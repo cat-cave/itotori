@@ -1,3 +1,5 @@
+mod replay;
+
 use std::path::PathBuf;
 
 use serde_json::{Value, json};
@@ -5,7 +7,7 @@ use utsushi_core::{
     RuntimeAdapterDescriptor, RuntimeAdapterRegistry, RuntimeOperation, RuntimeRequest, write_json,
 };
 
-const USAGE: &str = "usage: utsushi capabilities --output <path>\n       utsushi validate-reference-captures <corpus_manifest> --output <path>\n       utsushi <trace|capture|smoke> <game_dir> [--adapter <name>] [--artifact-root <path>] --output <path>";
+const USAGE: &str = "usage: utsushi capabilities --output <path>\n       utsushi validate-reference-captures <corpus_manifest> --output <path>\n       utsushi replay --engine reallive --seen <PATH> --scene <N> --output <PATH> [--snapshot-output <PATH>]\n       utsushi <trace|capture|smoke> <game_dir> [--adapter <name>] [--artifact-root <path>] --output <path>";
 const DEFAULT_ADAPTER_NAME: &str = utsushi_fixture::FixtureRuntimeAdapter::NAME;
 
 static FIXTURE_RUNTIME_ADAPTER: utsushi_fixture::FixtureRuntimeAdapter =
@@ -58,6 +60,16 @@ fn run_cli_with_registry(
             let output = flag(args, "--output")?;
             let report = utsushi_fixture::validate_reference_capture_corpus(&corpus_path)?;
             write_json(&PathBuf::from(output), &report.to_json_value()?)?;
+        }
+        Some("replay") => {
+            // The replay subcommand owns its own flag parsing in
+            // `replay::run_replay_command` because the required-flag
+            // matrix differs from the trace/capture/smoke commands
+            // (no positional `game_dir`, multiple required `--*`
+            // flags). Skip the leading `replay` argv slot when
+            // dispatching.
+            let tail: Vec<String> = args.iter().skip(1).cloned().collect();
+            replay::run_replay_command(&tail)?;
         }
         Some(command) => {
             let operation = operation_from_command(command).ok_or(USAGE)?;

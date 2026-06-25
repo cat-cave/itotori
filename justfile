@@ -167,6 +167,17 @@ hello-agentic-loop: build
     node apps/itotori/dist/cli.js agentic-loop-smoke --bridge apps/itotori/test/fixtures/agentic-loop-smoke-bridge.json --unit-index 0 --pair-policy apps/itotori/test/fixtures/agentic-loop-smoke-pair-policy.json --output .tmp/hello-agentic-loop/agentic-loop-bundle.json
     node scripts/print-agentic-loop-bundle-summary.mjs .tmp/hello-agentic-loop/agentic-loop-bundle.json
 
+# UTSUSHI-220: alpha-defining e2e Sweetie HD scene-1 text-replay smoke.
+# Runs the synthetic replay_scene acceptance tests through `cargo test`
+# (no real bytes required) so a fresh-clone reviewer can verify the
+# replay driver produces at least one TextLine event and writes
+# byte-deterministic JSON without touching the vault. The real-bytes
+# variant ships as `tests/replay_scene_real_bytes.rs` and is run
+# separately with KAIFUU_REAL_SWEETIE_HD_PATH set; see the spec
+# verification block.
+hello-replay:
+    cargo test -p utsushi-reallive --test replay_scene_synthetic -- --nocapture
+
 affected:
     node scripts/affected.mjs
 
