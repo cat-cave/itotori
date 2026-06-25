@@ -28,6 +28,7 @@ import {
   runLocalizeSweetieHdStageCommand,
   type LocalizeSweetieHdStageIo,
 } from "../src/orchestrator/localize-sweetie-hd-stage-command.js";
+import { PairPolicyVersionMismatchError } from "@itotori/localization-bridge-schema";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(HERE, "../../..");
@@ -94,11 +95,12 @@ describe("UTSUSHI-228 parseLocalizeSweetieHdPairPolicy", () => {
 
   it("rejects when a stage pair drifts from the top-level pair", () => {
     const preset = loadPreset() as {
-      stages: { translation: { primary: { modelId: string; providerId: string } } };
+      stages: {
+        translation: { primary: { pair: { modelId: string; providerId: string } } };
+      };
     };
     preset.stages.translation.primary = {
-      modelId: "anthropic/claude-sonnet-4",
-      providerId: "anthropic",
+      pair: { modelId: "anthropic/claude-sonnet-4", providerId: "anthropic" },
     };
     expect(() => parseLocalizeSweetieHdPairPolicy(preset)).toThrow(
       LocalizeSweetieHdPairPolicyError,
@@ -113,6 +115,40 @@ describe("UTSUSHI-228 parseLocalizeSweetieHdPairPolicy", () => {
     expect(() => parseLocalizeSweetieHdPairPolicy([1, 2, 3])).toThrow(
       LocalizeSweetieHdPairPolicyError,
     );
+  });
+
+  it("rejects v0.1 schemaVersion with PairPolicyVersionMismatchError (ITOTORI-234 no-legacy-compat)", () => {
+    const preset = loadPreset() as Record<string, unknown>;
+    preset.schemaVersion = "0.1";
+    expect(() => parseLocalizeSweetieHdPairPolicy(preset)).toThrow(PairPolicyVersionMismatchError);
+  });
+
+  it("rejects 'itotori.pair-policy.v0.1' schemaVersion with PairPolicyVersionMismatchError", () => {
+    const preset = loadPreset() as Record<string, unknown>;
+    preset.schemaVersion = "itotori.pair-policy.v0.1";
+    expect(() => parseLocalizeSweetieHdPairPolicy(preset)).toThrow(PairPolicyVersionMismatchError);
+  });
+
+  it("rejects absent schemaVersion with PairPolicyVersionMismatchError", () => {
+    const preset = loadPreset() as Record<string, unknown>;
+    delete preset.schemaVersion;
+    expect(() => parseLocalizeSweetieHdPairPolicy(preset)).toThrow(PairPolicyVersionMismatchError);
+  });
+
+  it("resolves per-leaf zdr=true + deterministic seed defaults from the v0.2 file", () => {
+    const parsed = parseLocalizeSweetieHdPairPolicy(loadPreset());
+    // Spot-check: translation.primary defaults to zdr=true and a seed
+    // derived from sha256('translation.primary')[:8].
+    expect(parsed.pairPolicy.translation.primary.zdr).toBe(true);
+    expect(Number.isInteger(parsed.pairPolicy.translation.primary.seed)).toBe(true);
+    expect(parsed.pairPolicy.translation.primary.seed).toBeGreaterThanOrEqual(0);
+    // Default maxPriceUsd is DEFAULT_COST_CAP_USD / 11 leaves; we don't
+    // assert the exact float because that hard-codes the divisor — but
+    // it must be positive + finite.
+    expect(Number.isFinite(parsed.pairPolicy.translation.primary.maxPriceUsd)).toBe(true);
+    expect(parsed.pairPolicy.translation.primary.maxPriceUsd).toBeGreaterThan(0);
+    // fallbackModels defaults to [].
+    expect(parsed.pairPolicy.translation.primary.fallbackModels).toEqual([]);
   });
 });
 
@@ -174,12 +210,14 @@ describe("UTSUSHI-228 runLocalizeSweetieHdStageCommand", () => {
           stageName: string;
           invocations: Array<{
             pair: { modelId: string; providerId: string };
+            zdr: boolean;
+            seed: number;
           }>;
         }>;
         finalDraft: { draftText?: string };
       };
       expect(bundle).toBeDefined();
-      expect(bundle.schemaVersion).toBe("itotori.agentic-loop-bundle.v1");
+      expect(bundle.schemaVersion).toBe("itotori.agentic-loop-bundle.v2");
       const stageNames = bundle.stages.map((s) => s.stageName);
       expect(stageNames).toEqual([
         "context",
@@ -191,11 +229,16 @@ describe("UTSUSHI-228 runLocalizeSweetieHdStageCommand", () => {
         "repair",
         "final_draft",
       ]);
-      // Every invocation's pair must be the policy pair.
+      // Every invocation's pair must be the policy pair, AND every
+      // invocation must carry the per-stage zdr + seed posture
+      // (ITOTORI-234 acceptance criterion #3).
       for (const stage of bundle.stages) {
         for (const invocation of stage.invocations) {
           expect(invocation.pair.modelId).toBe("deepseek/deepseek-v4-flash");
           expect(invocation.pair.providerId).toBe("fireworks");
+          expect(invocation.zdr).toBe(true);
+          expect(Number.isInteger(invocation.seed)).toBe(true);
+          expect(invocation.seed).toBeGreaterThanOrEqual(0);
         }
       }
       // The fake provider embeds the sentinel into the draft text so we

@@ -71,6 +71,25 @@ test("--dry-run --project ... exits 0 and prints per-phase commands", () => {
     result.stdout.includes("Per-stage provider.zdr posture: true"),
     `dry-run plan must declare the per-stage provider.zdr posture; got:\n${result.stdout}`,
   );
+  // ITOTORI-234 — every leaf must surface its zdr + seed posture so the
+  // operator can confirm the v0.2 pair-policy resolved as expected
+  // before the live run fires.
+  assert.ok(
+    result.stdout.includes("Per-stage posture (ITOTORI-234 v0.2"),
+    `dry-run plan must declare the ITOTORI-234 per-stage posture block; got:\n${result.stdout}`,
+  );
+  assert.ok(
+    /stage context\.sceneSummary: zdr=true seed=\d+/u.test(result.stdout),
+    `dry-run plan must surface zdr+seed for context.sceneSummary; got:\n${result.stdout}`,
+  );
+  assert.ok(
+    /stage translation\.primary: zdr=true seed=\d+/u.test(result.stdout),
+    `dry-run plan must surface zdr+seed for translation.primary; got:\n${result.stdout}`,
+  );
+  assert.ok(
+    /stage repair\.primary: zdr=true seed=\d+/u.test(result.stdout),
+    `dry-run plan must surface zdr+seed for repair.primary; got:\n${result.stdout}`,
+  );
 });
 
 test("--dry-run without --project exits non-zero with a usage line", () => {

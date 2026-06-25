@@ -206,6 +206,18 @@ function loadPairPolicy() {
   if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
     throw new Error(`pair-policy at ${PAIR_POLICY_PATH} must be a JSON object`);
   }
+  // ITOTORI-234 — v0.2 forcing function: reject v0.1 / absent schema
+  // version inputs at the driver boundary. Mirrors the typed
+  // PairPolicyVersionMismatchError thrown by the TS parser; we keep
+  // this duplicate gate inline because the driver is plain Node JS
+  // (no TS imports) and needs to fail fast BEFORE forking the stage
+  // command.
+  const EXPECTED_SCHEMA = "itotori.pair-policy.v0.2";
+  if (parsed.schemaVersion !== EXPECTED_SCHEMA) {
+    throw new Error(
+      `pair-policy at ${PAIR_POLICY_PATH} has schemaVersion='${String(parsed.schemaVersion)}'; expected '${EXPECTED_SCHEMA}' (v0.1 files are no longer accepted — ITOTORI-234 no-legacy-compat)`,
+    );
+  }
   const requiredKeys = ["policyId", "pair", "enUsSentinel", "sceneId", "stages"];
   for (const key of requiredKeys) {
     if (!(key in parsed)) {
@@ -213,6 +225,56 @@ function loadPairPolicy() {
     }
   }
   return parsed;
+}
+
+// ITOTORI-234 — deterministic seed derivation matching
+// packages/localization-bridge-schema/src/pair-policy.v0.2.ts
+// (`deriveDefaultSeed`). Duplicated inline because the driver does not
+// import TS code.
+function deriveDefaultSeed(leafPath) {
+  const hex = createHash("sha256").update(leafPath).digest("hex").slice(0, 8);
+  return Number.parseInt(hex, 16);
+}
+
+// Flatten the v0.2 stage tree into (leafPath, posture) tuples mirroring
+// `flattenPairPolicyV02Postures` in the schema package.
+function flattenPostures(policy) {
+  const out = [];
+  const groups = [
+    [
+      "context",
+      ["sceneSummary", "characterRelationship", "terminologyCandidate", "routeChoiceMap"],
+    ],
+    ["preTranslation", ["speakerLabel"]],
+    ["translation", ["primary"]],
+    ["qa", ["styleAdherence", "semanticDrift", "toneRegister", "unresolvedTerminology"]],
+    ["repair", ["primary"]],
+  ];
+  for (const [group, leaves] of groups) {
+    for (const leaf of leaves) {
+      const leafPath = `${group}.${leaf}`;
+      const node = policy.stages?.[group]?.[leaf];
+      if (node === undefined) continue;
+      const zdr = typeof node.zdr === "boolean" ? node.zdr : true;
+      const seed =
+        typeof node.seed === "number" && Number.isInteger(node.seed) && node.seed >= 0
+          ? node.seed
+          : deriveDefaultSeed(leafPath);
+      out.push({ leafPath, zdr, seed });
+    }
+    // Optional regrade leaf for translation.
+    if (group === "translation" && policy.stages?.translation?.regrade !== undefined) {
+      const leafPath = "translation.regrade";
+      const node = policy.stages.translation.regrade;
+      const zdr = typeof node.zdr === "boolean" ? node.zdr : true;
+      const seed =
+        typeof node.seed === "number" && Number.isInteger(node.seed) && node.seed >= 0
+          ? node.seed
+          : deriveDefaultSeed(leafPath);
+      out.push({ leafPath, zdr, seed });
+    }
+  }
+  return out;
 }
 
 function ensureWritableTargetDistinctFromSource(sourceRoot, targetRoot) {
@@ -242,7 +304,7 @@ function runCommand(command, args, env = process.env, options = {}) {
   }
 }
 
-function printDryRunPlan(plan) {
+function printDryRunPlan(plan, postures) {
   process.stdout.write(
     "[localize-sweetie-hd] --dry-run plan (no LLM calls; 0 ProviderRunRecords would be written):\n",
   );
@@ -258,6 +320,19 @@ function printDryRunPlan(plan) {
   process.stdout.write(
     "[localize-sweetie-hd] Per-stage provider.zdr posture: true (all non-public input classifications)\n",
   );
+  // ITOTORI-234 — the v0.2 pair-policy carries per-stage zdr + seed
+  // postures resolved at parse time. Emit one line per leaf so the
+  // operator can confirm the (zdr, seed) pair the orchestrator will
+  // pass into every invocation. Acceptance criterion #1: this block
+  // is what the test asserts on.
+  process.stdout.write(
+    "[localize-sweetie-hd] Per-stage posture (ITOTORI-234 v0.2 — leafPath: zdr=<bool> seed=<int>):\n",
+  );
+  for (const posture of postures) {
+    process.stdout.write(
+      `[localize-sweetie-hd]   stage ${posture.leafPath}: zdr=${posture.zdr} seed=${posture.seed}\n`,
+    );
+  }
   for (const line of plan) {
     process.stdout.write(`[localize-sweetie-hd] (planned) $ ${line}\n`);
   }
@@ -313,12 +388,15 @@ async function main() {
   }
 
   if (dryRun) {
-    printDryRunPlan([
-      `cargo run -p kaifuu-cli -- extract --engine reallive --scene ${sceneId} --bundle-output ${bridgeBundlePath}`,
-      `node apps/itotori/dist/cli.js localize-sweetie-hd-stage --bridge ${bridgeBundlePath} --pair-policy ${PAIR_POLICY_PATH} --unit-index ${args.unitIndex} --output ${agenticLoopBundlePath} --translated-bundle-output ${translatedBundlePath} --patch-report-output ${patchReportPath}`,
-      `cargo run -p kaifuu-cli -- patch --engine reallive --source <KAIFUU_REAL_SWEETIE_HD_PATH> --target <TARGET> --bundle ${translatedBundlePath} --force`,
-      `cargo run -p utsushi-cli -- replay-validate --engine reallive --seen <TARGET>/REALLIVEDATA/Seen.txt --scene ${sceneId} --expect-textline-contains ${sentinelSubstring} --print-replay-log ${replayLogPath}`,
-    ]);
+    printDryRunPlan(
+      [
+        `cargo run -p kaifuu-cli -- extract --engine reallive --scene ${sceneId} --bundle-output ${bridgeBundlePath}`,
+        `node apps/itotori/dist/cli.js localize-sweetie-hd-stage --bridge ${bridgeBundlePath} --pair-policy ${PAIR_POLICY_PATH} --unit-index ${args.unitIndex} --output ${agenticLoopBundlePath} --translated-bundle-output ${translatedBundlePath} --patch-report-output ${patchReportPath}`,
+        `cargo run -p kaifuu-cli -- patch --engine reallive --source <KAIFUU_REAL_SWEETIE_HD_PATH> --target <TARGET> --bundle ${translatedBundlePath} --force`,
+        `cargo run -p utsushi-cli -- replay-validate --engine reallive --seen <TARGET>/REALLIVEDATA/Seen.txt --scene ${sceneId} --expect-textline-contains ${sentinelSubstring} --print-replay-log ${replayLogPath}`,
+      ],
+      flattenPostures(policy),
+    );
     return;
   }
 

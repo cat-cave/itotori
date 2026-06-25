@@ -324,10 +324,15 @@ describe("runAgenticLoopForUnit (ITOTORI-222)", () => {
       10,
     );
     for (const invocation of invocations) {
-      expect(invocation.pair.modelId).toBe(DEV_POLICY.translation.primary.modelId);
-      expect(invocation.pair.providerId).toBe(DEV_POLICY.translation.primary.providerId);
+      expect(invocation.pair.modelId).toBe(DEV_POLICY.translation.primary.pair.modelId);
+      expect(invocation.pair.providerId).toBe(DEV_POLICY.translation.primary.pair.providerId);
       expect(invocation.pair.modelId.length).toBeGreaterThan(0);
       expect(invocation.pair.providerId.length).toBeGreaterThan(0);
+      // ITOTORI-234 — every invocation carries the per-stage posture's
+      // zdr + seed. Acceptance criterion #3.
+      expect(typeof invocation.zdr).toBe("boolean");
+      expect(Number.isInteger(invocation.seed)).toBe(true);
+      expect(invocation.seed).toBeGreaterThanOrEqual(0);
     }
   });
 
@@ -462,7 +467,15 @@ describe("runAgenticLoopForUnit (ITOTORI-222)", () => {
       qa: {
         ...DEV_POLICY.qa,
         // Synthesize an empty modelId to force the assertion to fire.
-        styleAdherence: { modelId: "", providerId: DEV_POLICY.qa.styleAdherence.providerId },
+        // The orchestrator asserts the v0.2 posture shape now, so we
+        // build a full posture and break the modelId.
+        styleAdherence: {
+          ...DEV_POLICY.qa.styleAdherence,
+          pair: {
+            modelId: "",
+            providerId: DEV_POLICY.qa.styleAdherence.pair.providerId,
+          },
+        },
       },
     };
     await expect(

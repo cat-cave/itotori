@@ -48,9 +48,14 @@
 import type { AuthorizationActor } from "@itotori/db";
 import {
   assertAgenticLoopBundle,
+  parsePairPolicyV02,
+  PairPolicyVersionMismatchError,
+  PairPolicyV02ValidationError,
+  flattenPairPolicyV02Postures,
   type AgenticLoopBundle,
   type BridgeBundleV02,
   type LocalizationUnitV02,
+  type PairPolicyV02,
 } from "@itotori/localization-bridge-schema";
 import { DEFAULT_COST_CAP_USD, OpenRouterModelProvider } from "../providers/openrouter.js";
 import { FakeModelProvider } from "../providers/fake.js";
@@ -137,113 +142,108 @@ export class LocalizeSweetieHdRefusedFakeError extends Error {
 
 const DEFAULT_UNIT_INDEX = 0;
 
+// Re-export so the test surface and any external integrators get the
+// version-mismatch error from the same place they used to import the
+// command-level error.
+export { PairPolicyVersionMismatchError };
+
 /**
- * Parse + validate a raw JSON value as a UTSUSHI-228 pair-policy.
+ * ITOTORI-234 — Parse + validate a raw JSON value as a v0.2 pair-policy
+ * tailored for the localize-sweetie-hd alpha closer.
  *
- * Required shape (a strict superset of the orchestrator's PairPolicy):
+ * Required shape (matches `PairPolicyV02` in
+ * `@itotori/localization-bridge-schema/pair-policy.v0.2`):
  *
  * ```json
  * {
+ *   "schemaVersion": "itotori.pair-policy.v0.2",
  *   "policyId": "localize-sweetie-hd-alpha-1",
  *   "pair": { "modelId": "...", "providerId": "..." },
  *   "enUsSentinel": "STELLA-ALPHA-EN-US-SENTINEL",
  *   "sceneId": 1,
- *   "stages": { ...full PairPolicy shape... }
+ *   "openrouterPresetSlug": "optional",
+ *   "stages": { ...per-stage StagePostureV02 leaves... }
  * }
  * ```
  *
- * Every leaf `stages.*.*` pair MUST byte-equal the top-level `pair`
- * field (single-game alpha invariant — only one pair drives this
- * recipe; the per-stage breakout is preserved so the orchestrator's
- * required PairPolicy shape lines up without us having to fork
- * either side).
+ * Every leaf's `pair` MUST byte-equal the top-level `pair` field
+ * (single-game alpha invariant — only one pair drives this recipe;
+ * the per-stage breakout is preserved so the orchestrator's required
+ * PairPolicy shape lines up without us having to fork either side).
+ *
+ * If `openrouterPresetSlug` is set, the OpenRouter-side preset
+ * (configured at the OR dashboard) handles routing AT REQUEST TIME.
+ * Per docs/openrouter-integration.md §3, explicit per-stage fields
+ * (zdr / fallbackModels / seed) OVERRIDE the preset's equivalents.
+ * This parser accepts both; the override is a deliberate posture.
+ *
+ * Throws `PairPolicyVersionMismatchError` for v0.1 / absent-schemaVersion
+ * inputs (the schema bump is the forcing function; there is no v0.1
+ * parsing path). Throws `LocalizeSweetieHdPairPolicyError` for anything
+ * else (missing field, byte-equal pair mismatch).
  */
 export function parseLocalizeSweetieHdPairPolicy(value: unknown): {
   policyId: string;
   pair: { modelId: string; providerId: string };
   enUsSentinel: string;
   sceneId: number;
+  openrouterPresetSlug?: string;
   pairPolicy: PairPolicy;
+  /**
+   * Raw parsed v0.2 policy. Surfaced so the dry-run printer + driver
+   * can iterate every leaf's posture (zdr + seed) verbatim.
+   */
+  policyV02: PairPolicyV02;
 } {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new LocalizeSweetieHdPairPolicyError("must be a JSON object");
+  let parsed: PairPolicyV02;
+  try {
+    parsed = parsePairPolicyV02(value, {
+      defaultCostCapUsd: DEFAULT_COST_CAP_USD,
+      zdrDowngradeEnv: process.env.OPENROUTER_ZDR_DOWNGRADE,
+    });
+  } catch (error) {
+    if (error instanceof PairPolicyVersionMismatchError) {
+      // Bubble the version-mismatch verbatim so callers can branch on it
+      // (the acceptance-criterion #2 test asserts on the typed class).
+      throw error;
+    }
+    if (error instanceof PairPolicyV02ValidationError) {
+      throw new LocalizeSweetieHdPairPolicyError(error.message);
+    }
+    throw error;
   }
-  const record = value as Record<string, unknown>;
-  const policyId = expectString(record, "policyId");
-  const pair = expectPair(record, "pair");
-  const enUsSentinel = expectString(record, "enUsSentinel");
-  if (enUsSentinel.length === 0) {
-    throw new LocalizeSweetieHdPairPolicyError("enUsSentinel must be a non-empty string");
+  assertEveryLeafMatches(parsed);
+  const out: {
+    policyId: string;
+    pair: { modelId: string; providerId: string };
+    enUsSentinel: string;
+    sceneId: number;
+    openrouterPresetSlug?: string;
+    pairPolicy: PairPolicy;
+    policyV02: PairPolicyV02;
+  } = {
+    policyId: parsed.policyId,
+    pair: { modelId: parsed.pair.modelId, providerId: parsed.pair.providerId },
+    enUsSentinel: parsed.enUsSentinel,
+    sceneId: parsed.sceneId,
+    pairPolicy: parsed.stages,
+    policyV02: parsed,
+  };
+  if (parsed.openrouterPresetSlug !== undefined) {
+    out.openrouterPresetSlug = parsed.openrouterPresetSlug;
   }
-  const sceneId = expectNumber(record, "sceneId");
-  if (!Number.isInteger(sceneId) || sceneId < 0) {
-    throw new LocalizeSweetieHdPairPolicyError("sceneId must be a non-negative integer");
-  }
-  const stages = record.stages;
-  if (typeof stages !== "object" || stages === null || Array.isArray(stages)) {
-    throw new LocalizeSweetieHdPairPolicyError("stages must be a JSON object");
-  }
-  const pairPolicy = stages as PairPolicy;
-  assertEveryLeafMatches(pairPolicy, pair);
-  return { policyId, pair, enUsSentinel, sceneId, pairPolicy };
+  return out;
 }
 
-function expectString(record: Record<string, unknown>, key: string): string {
-  const value = record[key];
-  if (typeof value !== "string") {
-    throw new LocalizeSweetieHdPairPolicyError(`${key} must be a string`);
-  }
-  return value;
-}
-
-function expectNumber(record: Record<string, unknown>, key: string): number {
-  const value = record[key];
-  if (typeof value !== "number" || !Number.isFinite(value)) {
-    throw new LocalizeSweetieHdPairPolicyError(`${key} must be a finite number`);
-  }
-  return value;
-}
-
-function expectPair(
-  record: Record<string, unknown>,
-  key: string,
-): { modelId: string; providerId: string } {
-  const value = record[key];
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new LocalizeSweetieHdPairPolicyError(`${key} must be a JSON object`);
-  }
-  const obj = value as Record<string, unknown>;
-  const modelId = expectString(obj, "modelId");
-  const providerId = expectString(obj, "providerId");
-  if (modelId.length === 0 || providerId.length === 0) {
-    throw new LocalizeSweetieHdPairPolicyError(
-      `${key}.modelId and ${key}.providerId must be non-empty`,
-    );
-  }
-  return { modelId, providerId };
-}
-
-function assertEveryLeafMatches(
-  pairPolicy: PairPolicy,
-  expectedPair: { modelId: string; providerId: string },
-): void {
-  const allPairs: Array<{ path: string; pair: { modelId: string; providerId: string } }> = [
-    { path: "context.sceneSummary", pair: pairPolicy.context.sceneSummary },
-    { path: "context.characterRelationship", pair: pairPolicy.context.characterRelationship },
-    { path: "context.terminologyCandidate", pair: pairPolicy.context.terminologyCandidate },
-    { path: "context.routeChoiceMap", pair: pairPolicy.context.routeChoiceMap },
-    { path: "preTranslation.speakerLabel", pair: pairPolicy.preTranslation.speakerLabel },
-    { path: "translation.primary", pair: pairPolicy.translation.primary },
-    { path: "qa.styleAdherence", pair: pairPolicy.qa.styleAdherence },
-    { path: "qa.semanticDrift", pair: pairPolicy.qa.semanticDrift },
-    { path: "qa.toneRegister", pair: pairPolicy.qa.toneRegister },
-    { path: "qa.unresolvedTerminology", pair: pairPolicy.qa.unresolvedTerminology },
-    { path: "repair.primary", pair: pairPolicy.repair.primary },
-  ];
-  for (const { path, pair } of allPairs) {
-    if (pair.modelId !== expectedPair.modelId || pair.providerId !== expectedPair.providerId) {
+function assertEveryLeafMatches(policy: PairPolicyV02): void {
+  const expected = policy.pair;
+  for (const { leafPath, posture } of flattenPairPolicyV02Postures(policy)) {
+    if (
+      posture.pair.modelId !== expected.modelId ||
+      posture.pair.providerId !== expected.providerId
+    ) {
       throw new LocalizeSweetieHdPairPolicyError(
-        `stages.${path} pair (modelId=${pair.modelId}, providerId=${pair.providerId}) does not byte-equal the top-level pair (modelId=${expectedPair.modelId}, providerId=${expectedPair.providerId}); the single-game alpha invariant forbids mixed pairs in this policy`,
+        `stages.${leafPath}.pair (modelId=${posture.pair.modelId}, providerId=${posture.pair.providerId}) does not byte-equal the top-level pair (modelId=${expected.modelId}, providerId=${expected.providerId}); the single-game alpha invariant forbids mixed pairs in this policy`,
       );
     }
   }
@@ -363,7 +363,12 @@ function liveOpenRouterFactory(opts: {
       inner: provider,
       stage,
       agentLabel,
-      pair,
+      // ITOTORI-234 — the factory now receives a full StagePostureV02
+      // (pair + zdr + fallbackModels + seed + maxPriceUsd). The wrapper
+      // only needs the bare (modelId, providerId) for its diagnostic
+      // surface; the orchestrator's bundle is what surfaces the full
+      // posture per invocation.
+      pair: { modelId: pair.pair.modelId, providerId: pair.pair.providerId },
       sentinel: opts.enUsSentinel,
     });
   };

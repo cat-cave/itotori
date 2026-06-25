@@ -19,6 +19,7 @@ import type { AuthorizationActor } from "@itotori/db";
 import {
   assertAgenticLoopBundle,
   assertDraftArtifactBundle,
+  parsePairPolicyV02,
   DRAFT_ARTIFACT_BUNDLE_SCHEMA_VERSION,
   type AgenticLoopBundle,
   type BridgeBundleV02,
@@ -28,6 +29,7 @@ import {
   STRUCTURED_TRANSLATION_DRAFT_OUTPUT_SCHEMA_VERSION,
   SPEAKER_LABEL_OUTPUT_SCHEMA_VERSION,
 } from "@itotori/localization-bridge-schema";
+import { DEFAULT_COST_CAP_USD } from "../providers/openrouter.js";
 import { FakeModelProvider } from "../providers/fake.js";
 import type { ModelInvocationRequest } from "../providers/types.js";
 import {
@@ -251,13 +253,15 @@ function assertBridgeBundleV02(value: unknown): BridgeBundleV02 {
 }
 
 function assertPairPolicy(value: unknown): PairPolicy {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new Error("agentic-loop-smoke refused: pair-policy must be an object");
-  }
-  // Deeper shape validation lives in `runAgenticLoopForUnit` —
-  // calling `assertPairPolicyComplete` there throws a typed error
-  // surfaced to the caller.
-  return value as PairPolicy;
+  // ITOTORI-234 — smoke command parses the v0.2 pair-policy through the
+  // shared parser so per-stage posture (zdr / fallback / seed) is
+  // resolved deterministically. The smoke fixture is a v0.2 file; old
+  // v0.1 fixtures are no longer accepted (PairPolicyVersionMismatchError).
+  const parsed = parsePairPolicyV02(value, {
+    defaultCostCapUsd: DEFAULT_COST_CAP_USD,
+    zdrDowngradeEnv: process.env.OPENROUTER_ZDR_DOWNGRADE,
+  });
+  return parsed.stages;
 }
 
 // ---------------------------------------------------------------------------

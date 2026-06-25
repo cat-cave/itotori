@@ -34,7 +34,15 @@
 // The schema version is locked to a literal so any change forces a
 // downstream consumer migration.
 
-export const AGENTIC_LOOP_BUNDLE_SCHEMA_VERSION = "itotori.agentic-loop-bundle.v1" as const;
+// ITOTORI-234 bumped v1 -> v2 to add per-invocation `zdr` + `seed`
+// fields on every `AgenticLoopInvocation`. The fields are drawn from
+// the parsed v0.2 pair-policy's per-stage posture and recorded verbatim
+// so an audit can prove the ZDR posture + seed-derived nondeterminism
+// applied at each call.
+//
+// No-legacy-compat: v1 bundles no longer load. Tests + driver fixtures
+// were rewritten in the same change.
+export const AGENTIC_LOOP_BUNDLE_SCHEMA_VERSION = "itotori.agentic-loop-bundle.v2" as const;
 
 /**
  * Closed enum of stage names. Order is the orchestrator's invocation
@@ -101,6 +109,20 @@ export type AgenticLoopInvocation = {
   costUsd: string;
   latencyMs: number;
   providerProofId: string;
+  /**
+   * ITOTORI-234 — per-invocation ZDR posture drawn from the v0.2
+   * pair-policy's per-stage value. `true` is the canonical alpha
+   * posture; `false` is only reachable when the operator approved the
+   * downgrade via OPENROUTER_ZDR_DOWNGRADE. Recorded verbatim so the
+   * bundle is self-describing without re-reading the policy file.
+   */
+  zdr: boolean;
+  /**
+   * ITOTORI-234 — per-invocation seed. For the primary attempt this is
+   * the policy's leaf seed; bounded-repair retries add the attempt
+   * number so each attempt records its own differentiated seed.
+   */
+  seed: number;
 };
 
 /**
@@ -279,6 +301,8 @@ function assertInvocation(value: unknown, label: string): void {
     "costUsd",
     "latencyMs",
     "providerProofId",
+    "zdr",
+    "seed",
   ]);
   for (const key of Object.keys(record)) {
     if (!allowed.has(key)) {
@@ -297,6 +321,12 @@ function assertInvocation(value: unknown, label: string): void {
   assertDecimalString(record.costUsd, `${label}.costUsd`);
   assertNonNegativeInteger(record.latencyMs, `${label}.latencyMs`);
   assertNonEmptyString(record.providerProofId, `${label}.providerProofId`);
+  // ITOTORI-234 — every invocation carries the per-stage zdr posture +
+  // seed from the v0.2 pair-policy. Defaulting is a structural failure.
+  if (typeof record.zdr !== "boolean") {
+    throw new AgenticLoopBundleValidationError(`${label}.zdr`, "type", "expected boolean");
+  }
+  assertNonNegativeInteger(record.seed, `${label}.seed`);
 }
 
 function assertProviderPair(value: unknown, label: string): void {
