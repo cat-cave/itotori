@@ -134,6 +134,21 @@ pub mod expression_eval;
 // Shift-JIS bytes, and the store register lives on the same struct.
 pub mod var_banks;
 
+// UTSUSHI-208: `RLOperation` trait, dispatch outcomes, and the
+// fail-soft `RlopRegistry` / `LongOpScheduler` plumbing the VM
+// consumes during `step`. The per-module RLOperation tables (the
+// actual text / control-flow / sys operations) land in UTSUSHI-209
+// and UTSUSHI-210; this module only ships the trait, the dispatch
+// outcome enum, and the test-controllable scheduler implementations.
+pub mod rlop;
+
+// UTSUSHI-208: bytecode VM. Owns the active `(scene, pc)`, the call
+// stack, the typed variable banks, and the suspended-longop queue.
+// The substrate `Inspectable` / `Restorable` impls round-trip the
+// whole VM through the snapshot store (paused longops carry their
+// private state through the round trip — acceptance criterion #3).
+pub mod vm;
+
 pub use scene_header::{
     COMPILER_VERSION_1_0, COMPILER_VERSION_1_10, COMPILER_VERSION_1_1110,
     ENTRYPOINT_TABLE_BYTE_OFFSET, ENTRYPOINT_TABLE_LEN, EntrypointEntry,
@@ -168,6 +183,17 @@ pub use var_banks::{
     BANK_BYTE_INT_M, BANK_BYTE_STR_K, BANK_BYTE_STR_M, BANK_BYTE_STR_S, BANK_INDEX_CAP, BankId,
     INT_BANK_COUNT, STR_BANK_COUNT, VAR_BANKS_INSPECTABLE_ID, Value, VarBanks,
     VarBanksRestoreError, VarBanksWarning,
+};
+
+pub use rlop::{
+    AfterNPollsScheduler, AlwaysReadyScheduler, DispatchOutcome, ExprValue, LongOp, LongOpId,
+    LongOpReadiness, LongOpScheduler, NeverReadyScheduler, RLOperation, RlopKey, RlopRegistry,
+};
+
+pub use vm::{
+    DEFAULT_STEP_BUDGET, InMemorySceneStore, Scene, SceneId, SceneStore, StackFrame,
+    StackFrameKind, StepManyOutcome, StepOutcome, VM_INSPECTABLE_ID, Vm, VmError, VmEvent,
+    VmWarning,
 };
 
 /// Stable port id used by the manifest and by audit tooling.

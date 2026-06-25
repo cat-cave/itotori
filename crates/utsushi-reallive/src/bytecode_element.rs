@@ -385,7 +385,14 @@ fn is_structural_lead_byte(byte: u8) -> bool {
 /// Returns the typed element on success. Advances are computed via
 /// each variant's `byte_len` field — the caller is responsible for
 /// stepping `pos` forward by `element.byte_len()`.
-fn decode_one_element(bytes: &[u8], pos: usize) -> Result<BytecodeElement, BytecodeDecodeError> {
+///
+/// Exposed `pub` so the UTSUSHI-208 VM can fetch one element at a
+/// time from a scene's decompressed bytecode without re-walking the
+/// full stream on every step.
+pub fn decode_one_element(
+    bytes: &[u8],
+    pos: usize,
+) -> Result<BytecodeElement, BytecodeDecodeError> {
     if pos >= bytes.len() {
         return Err(BytecodeDecodeError::Truncated {
             observed_len: bytes.len(),
