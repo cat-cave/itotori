@@ -21487,7 +21487,7 @@
     {
       "id": "UTSUSHI-208",
       "title": "Bytecode VM (fetch / decode / dispatch / advance)",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["utsushi"],
@@ -21527,14 +21527,12 @@
         "`step` advancing the pc by a constant instead of by the element's byte length",
         "Gosub/ret stack mishandling on cross-scene jumps"
       ],
-      "owner": "orchestrator-utsushi-208",
-      "branch": "spec/utsushi-208",
-      "worktree": "/scratch/worktrees/itotori-spec-utsushi-208"
+      "statusReason": "Implementation merged (commit 4c69a40). Vm + RLOperation + DispatchOutcome + LongOp scheduler + Inspectable/Restorable; 213 tests pass."
     },
     {
       "id": "UTSUSHI-209",
       "title": "Text / messaging RLOperation family (module_msg subset)",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P1",
       "target": "alpha",
       "projects": ["utsushi"],
@@ -21573,12 +21571,14 @@
         "Decoded body being lossy",
         "Speaker name not resolved through `NAMAE` table"
       ],
-      "statusReason": "Re-tier 2026-06-24: promoted continuous -> alpha — required for the redefined alpha (utsushi-reallive Linux runtime / real-bytes extraction) per docs/proposals/dag-retier-2026-06-24.md."
+      "owner": "orchestrator-utsushi-209",
+      "branch": "spec/utsushi-209",
+      "worktree": "/scratch/worktrees/itotori-spec-utsushi-209"
     },
     {
       "id": "UTSUSHI-210",
       "title": "Control-flow RLOperation family (`goto`/`gosub`/`farcall`/`ret`/`rtl` subset)",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P2",
       "target": "alpha",
       "projects": ["utsushi"],
@@ -21619,7 +21619,9 @@
         "Missing parameter-stack cleanup on `ret_with`",
         "Treating `goto_case` default as a fatal instead of a fallthrough"
       ],
-      "statusReason": "Re-tier 2026-06-24: promoted continuous -> alpha — required for the redefined alpha (utsushi-reallive Linux runtime / real-bytes extraction) per docs/proposals/dag-retier-2026-06-24.md."
+      "owner": "orchestrator-utsushi-210",
+      "branch": "spec/utsushi-210",
+      "worktree": "/scratch/worktrees/itotori-spec-utsushi-210"
     },
     {
       "id": "UTSUSHI-211",
