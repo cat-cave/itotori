@@ -25063,7 +25063,7 @@
     {
       "id": "UTSUSHI-227",
       "title": "utsushi-reallive: patched-Seen.txt replay-and-verify smoke (en-US TextLine assertion)",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["utsushi"],
@@ -25103,9 +25103,7 @@
         "ReplayLog non-deterministic across runs (timestamp / nondet ordering)",
         "Wine / Windows-binary invocation hidden in a dependency"
       ],
-      "owner": "orchestrator-utsushi-227",
-      "branch": "spec/utsushi-227",
-      "worktree": "/scratch/worktrees/itotori-spec-utsushi-227"
+      "statusReason": "Implementation merged (commit 652a26f). validate_replay_contains + replay-validate-sweetie-hd binary + utsushi-cli replay-validate; patched Sweetie HD matches STELLA-ALPHA-EN-US-SENTINEL at TextLine event 78, original returns NoMatch (regression sentinel intact)."
     },
     {
       "id": "UTSUSHI-228",
