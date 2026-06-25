@@ -13,8 +13,8 @@ use utsushi_core::redaction::reject_unredacted_local_paths;
 use utsushi_core::vfs::case_rule_matches;
 use utsushi_core::{
     AssetBytes, AssetId, AssetKind, AssetMetadata, AssetPackage, AssetSize, CaseRule, HelperId,
-    IoSummary, MountedVfs, PackageDescriptor, PackageKind, PackageSource, RequiredCapability,
-    RuntimeAdapterDiagnostic, RuntimeVfs, TraversalKind, VfsError, VfsResult,
+    IoSummary, PackageDescriptor, PackageKind, PackageSource, RequiredCapability,
+    RuntimeAdapterDiagnostic, TraversalKind, VfsError, VfsResult,
 };
 
 /// Synthetic per-path access policy parsed from the fixture's `package.toml`.

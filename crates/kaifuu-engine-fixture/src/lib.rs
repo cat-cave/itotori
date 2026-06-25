@@ -7072,7 +7072,7 @@ mod tests {
         let payload_offset = directory_byte_len as u32;
         let payload: &[u8] = b"generic-shape-payload";
         let mut seen_bytes = vec![0u8; directory_byte_len + payload.len()];
-        let slot1 = 1usize * 8;
+        let slot1 = 8usize;
         seen_bytes[slot1..slot1 + 4].copy_from_slice(&payload_offset.to_le_bytes());
         seen_bytes[slot1 + 4..slot1 + 8].copy_from_slice(&(payload.len() as u32).to_le_bytes());
         seen_bytes[directory_byte_len..].copy_from_slice(payload);
