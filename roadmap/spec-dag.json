@@ -24976,7 +24976,7 @@
     {
       "id": "KAIFUU-210",
       "title": "kaifuu-reallive: real Sweetie HD scene bytecode -> v0.2 bridge units",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["kaifuu", "shared"],
@@ -25023,9 +25023,7 @@
         "NAMAE speaker resolution silently falls back to free-text speaker name",
         "Provenance byteRange recorded against decompressed offset instead of file offset (breaks patchback)"
       ],
-      "owner": "orchestrator-kaifuu-210",
-      "branch": "spec/kaifuu-210",
-      "worktree": "/scratch/worktrees/itotori-spec-kaifuu-210"
+      "statusReason": "Implementation merged (commit ef220b0). produce_bundle + kaifuu-cli extract --engine reallive flag; Sweetie HD scene 1 -> 41-unit v0.2 BridgeBundle with NAMAE-resolved speaker + kidoku spans + file-offset-anchored provenance. Text-body fragmentation across MetaLine boundaries flagged as follow-up parser improvement (not blocking)."
     },
     {
       "id": "KAIFUU-211",
