@@ -809,13 +809,9 @@ function failedProviderRunFromRequest(input: {
       amountMicrosUsd: 0,
     },
     prompt: input.request.prompt,
-    dataHandling: input.descriptor.capabilities.dataHandling,
   };
   if (input.request.preset) {
     run.providerPreset = input.request.preset;
-  }
-  if (input.descriptor.capabilities.accountPrivacy) {
-    run.accountPrivacy = input.descriptor.capabilities.accountPrivacy;
   }
   return run;
 }
@@ -868,9 +864,12 @@ function providerRunLedgerInputFromRun(
     fallbackPlan: run.fallbackPlan,
     tokenUsage: run.tokenUsage,
     cost: run.cost,
-    dataHandling: run.dataHandling,
+    // ITOTORI-227 — the per-pair privacy axes were deleted; the ledger
+    // still requires a non-null `data_handling` jsonb column so we pass
+    // an empty record until the follow-up migration drops it. The
+    // optional ledger privacy column is simply omitted.
+    dataHandling: {},
     ...(run.providerPreset === undefined ? {} : { providerPreset: run.providerPreset }),
-    ...(run.accountPrivacy === undefined ? {} : { accountPrivacy: run.accountPrivacy }),
     ...(adapterMetadata === undefined ? {} : { adapterMetadata }),
   };
 }
@@ -919,7 +918,10 @@ function providerRunLedgerInputFromBenchmark(
     fallbackPlan: normalizeBenchmarkFallbackPlan(providerRun),
     tokenUsage: providerRun.tokenUsage,
     cost: narrowBenchmarkCostToItotoriShape(providerRun.cost),
-    dataHandling: unknownBenchmarkDataHandlingPolicy,
+    // ITOTORI-227 — `dataHandling` is no longer carried per-pair; the
+    // ledger still requires a non-null jsonb so we pass an empty record
+    // until the follow-up migration drops the column.
+    dataHandling: {},
     ...(providerPreset === undefined ? {} : { providerPreset }),
     adapterMetadata: {
       source: "benchmark_report",
@@ -974,15 +976,6 @@ function normalizeBenchmarkFallbackPlan(
   }
   return [...normalized];
 }
-
-const unknownBenchmarkDataHandlingPolicy = {
-  promptLogging: "unknown",
-  completionLogging: "unknown",
-  retention: "unknown",
-  trainingUse: "unknown",
-  dataCollection: "unknown",
-  rawCaptureDefault: "unknown",
-} satisfies JsonObject;
 
 function providerPresetFromBenchmarkPrompt(
   prompt: BenchmarkReportV02["providerModelCostRecords"][number]["prompt"],

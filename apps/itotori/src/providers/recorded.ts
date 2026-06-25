@@ -13,7 +13,6 @@
 
 import { createHash } from "node:crypto";
 import { assertProviderInvocationSupported } from "./capability-guard.js";
-import { deterministicFixtureDataHandlingPolicy } from "./policy.js";
 import {
   ModelProviderError,
   type JsonObject,
@@ -147,7 +146,6 @@ export class RecordedModelProvider implements ModelProvider {
         amountMicrosUsd: 0,
       },
       prompt: request.prompt,
-      dataHandling: this.descriptor.capabilities.dataHandling,
     };
     if (request.preset) {
       run.providerPreset = request.preset;
@@ -260,7 +258,6 @@ export const recordedModelCapabilities: ModelCapabilities = {
     dataCollectionControl: "unsupported",
     zeroDataRetentionRouting: "unsupported",
   },
-  dataHandling: deterministicFixtureDataHandlingPolicy,
   notes: ["replay-only provider for recorded fixture bundles"],
 };
 

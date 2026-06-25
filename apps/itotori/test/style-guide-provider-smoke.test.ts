@@ -116,15 +116,9 @@ describe("style-guide provider smoke", () => {
         costKind: "billed",
         amountMicrosUsd: 42,
       },
-      dataHandling: {
-        dataCollection: "deny",
-        trainingUse: "deny",
-        rawCaptureDefault: "disabled",
-      },
-      accountPrivacy: {
-        inputOutputLogging: "disabled",
-        providerDataPolicyFilters: "enabled",
-      },
+      // ITOTORI-227 — per-pair `dataHandling` / privacy axes are gone;
+      // privacy is enforced account-wide (ZDR assertion) plus
+      // per-request (provider.zdr=true default for non-public input).
     });
   });
 
@@ -272,21 +266,6 @@ function styleGuideLiveSmokeCapabilities(): ModelCapabilities {
       ...openRouterDefaultCapabilities.structuredOutputs,
       jsonSchema: "supported",
       preferredModes: ["json_schema"],
-    },
-    dataHandling: {
-      promptLogging: "disabled",
-      completionLogging: "disabled",
-      retention: "metadata_only",
-      trainingUse: "deny",
-      dataCollection: "deny",
-      rawCaptureDefault: "disabled",
-    },
-    accountPrivacy: {
-      inputOutputLogging: "disabled",
-      useOfInputsOutputs: "deny",
-      providerDataPolicyFilters: "enabled",
-      metadataCollection: "expected",
-      euRouting: "unknown",
     },
   };
 }

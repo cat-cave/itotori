@@ -1,5 +1,4 @@
 import { assertProviderInvocationSupported } from "./capability-guard.js";
-import { safeLocalDataHandlingPolicy } from "./policy.js";
 import {
   type JsonObject,
   type JsonValue,
@@ -229,7 +228,6 @@ export const localOpenAICompatibleDefaultCapabilities: ModelCapabilities = {
     dataCollectionControl: "unsupported",
     zeroDataRetentionRouting: "unsupported",
   },
-  dataHandling: safeLocalDataHandlingPolicy,
   notes: ["local OpenAI-compatible endpoint capabilities must be supplied per runtime"],
 };
 
@@ -438,7 +436,6 @@ function buildRun(input: {
       amountMicrosUsd: 0,
     },
     prompt: input.request.prompt,
-    dataHandling: input.descriptor.capabilities.dataHandling,
   };
   if (input.request.preset) {
     run.providerPreset = input.request.preset;

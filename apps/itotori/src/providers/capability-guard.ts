@@ -1,4 +1,3 @@
-import { assertProviderInputAllowed } from "./policy.js";
 import { supportForStructuredOutputMode } from "./structured-output.js";
 import {
   ModelProviderError,
@@ -20,9 +19,16 @@ export type ProviderInvocationGuardInput = {
   routingRequirements?: ProviderRoutingCapabilityRequirement[];
 };
 
+/**
+ * ITOTORI-227 — privacy enforcement no longer lives in the capability
+ * guard. The per-pair privacy registry was deleted in favour of the
+ * account-wide ZDR posture (assertOpenRouterZdrAccount at process
+ * startup) plus per-request `provider.zdr=true` defaulting in the
+ * OpenRouter routing block. The guard now only validates per-request
+ * capability claims (structured output, tools, images, routing).
+ */
 export function assertProviderInvocationSupported(input: ProviderInvocationGuardInput): void {
   const capabilities = input.capabilities ?? input.descriptor.capabilities;
-  assertProviderInputAllowed(capabilities, input.request.inputClassification);
   assertStructuredOutputSupported(capabilities, input.request);
   assertToolRequirementsSupported(capabilities, input.request);
   assertImageInputsSupported(capabilities, input.request.messages);

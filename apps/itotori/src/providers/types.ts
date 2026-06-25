@@ -46,46 +46,26 @@ export type RoutingCapabilities = {
   zeroDataRetentionRouting: CapabilitySupport;
 };
 
-export type ProviderPolicyState = "allow" | "deny" | "unknown" | "not_applicable";
-export type ProviderLoggingState = "enabled" | "disabled" | "unknown" | "not_applicable";
-export type ProviderRetentionState =
-  | "none"
-  | "metadata_only"
-  | "prompt_or_completion"
-  | "unknown"
-  | "not_applicable";
-
-/**
- * ITOTORI-225 — `costTier` is gone. The per-policy "free/paid/mixed/local/
- * unknown" enum was a category error: cost is a per-request fact (carried by
- * `ProviderCost`), not a per-policy axis. The privacy-only fields below are
- * the only thing left in this policy until ITOTORI-227 replaces the whole
- * shape with a pure privacy posture.
- */
-export type ProviderDataHandlingPolicy = {
-  promptLogging: ProviderLoggingState;
-  completionLogging: ProviderLoggingState;
-  retention: ProviderRetentionState;
-  trainingUse: ProviderPolicyState;
-  dataCollection: ProviderPolicyState;
-  rawCaptureDefault: ProviderLoggingState;
-};
-
-export type OpenRouterAccountPrivacyState = {
-  inputOutputLogging: ProviderLoggingState;
-  useOfInputsOutputs: ProviderPolicyState;
-  providerDataPolicyFilters: ProviderLoggingState;
-  metadataCollection: "expected" | "unknown" | "not_applicable";
-  euRouting: ProviderLoggingState;
-};
+// ITOTORI-227 — itotori's reinvention of OpenRouter's per-pair privacy
+// registry was deleted in favour of a three-part posture (see
+// docs/openrouter-integration.md §2):
+//   (a) the OpenRouter account is ZDR-only at the dashboard level,
+//       asserted at process startup via
+//       `OPENROUTER_ZDR_ACCOUNT_ASSERTED=1` (see providers/account-zdr.ts),
+//   (b) every non-public request body sends `provider.zdr=true` (see
+//       providers/openrouter.ts buildOpenRouterProviderRouting), and
+//   (c) the response surfaces a 404 envelope if no ZDR provider can
+//       serve the call (handled by the existing HTTP-error path).
+// The per-pair privacy axes are GONE from `ModelCapabilities` and
+// `ProviderRunRecord`. The ledger still has the historical
+// `data_handling` jsonb column; new writes pass `{}` until a follow-up
+// migration deletes it.
 
 export type ModelCapabilities = {
   structuredOutputs: StructuredOutputCapabilities;
   toolCalls: ToolCallCapabilities;
   imageInput: ImageInputCapabilities;
   routing: RoutingCapabilities;
-  dataHandling: ProviderDataHandlingPolicy;
-  accountPrivacy?: OpenRouterAccountPrivacyState;
   contextWindowTokens?: number;
   maxOutputTokens?: number;
   notes?: string[];
@@ -288,8 +268,6 @@ export type ProviderRunRecord = {
   cost: ProviderCost;
   prompt: PromptPresetReference;
   providerPreset?: ProviderPresetReference;
-  dataHandling: ProviderDataHandlingPolicy;
-  accountPrivacy?: OpenRouterAccountPrivacyState;
 };
 
 export type ModelInvocationResult = {
@@ -329,6 +307,15 @@ export type ProviderRunArtifactRecorder = {
   recordProviderRun(artifact: ProviderRunArtifact): Promise<void>;
 };
 
+/**
+ * Whether the live provider captures raw request/response bytes for the
+ * recorded-artifact pipeline. Live OpenRouter runs default to `disabled`
+ * (we record metadata only); the recorded provider passes
+ * `not_applicable`. Kept as a closed union (not an open string) so a
+ * caller cannot smuggle in an unaudited mode.
+ */
+export type ProviderRawCaptureMode = "enabled" | "disabled" | "unknown" | "not_applicable";
+
 export type ProviderLiveRunOptions =
   | {
       enabled: false;
@@ -336,7 +323,7 @@ export type ProviderLiveRunOptions =
   | {
       enabled: true;
       artifactRecorder: ProviderRunArtifactRecorder;
-      rawCapture: ProviderLoggingState;
+      rawCapture: ProviderRawCaptureMode;
     };
 
 export interface ModelProvider {
@@ -357,7 +344,6 @@ export class ModelProviderError extends Error {
       | "capability_unsupported"
       | "configuration_error"
       | "pair_mismatch"
-      | "policy_blocked"
       | "provider_http_error"
       | "provider_response_invalid",
     readonly retryable = false,

@@ -27,7 +27,6 @@ import { describe, expect, it, vi } from "vitest";
 import { FakeModelProvider } from "../src/providers/fake.js";
 import {
   ModelProviderError,
-  openRouterDefaultCapabilities,
   type ModelInvocationRequest,
   type ModelProvider,
   type ProviderRunRecord,
@@ -453,35 +452,15 @@ describe("ItotoriProjectWorkflowService", () => {
     expect(repository.saveDrafts).not.toHaveBeenCalled();
   });
 
-  it("rejects drafting provider policy violations before provider execution", async () => {
-    const repository = repositoryFixture();
-    const ledger = ledgerFixture();
-    const invoke = vi.fn(async () => {
-      throw new Error("provider execution should have been guarded");
-    });
-    const provider = policyBlockedProvider(invoke);
-    const service = new ItotoriProjectWorkflowService(repository, actor, provider, ledger);
-
-    await expect(
-      service.draftProject(projectFixture({ drafts: {} }), "fr-FR"),
-    ).rejects.toMatchObject({
-      code: "policy_blocked",
-    });
-
-    expect(invoke).not.toHaveBeenCalled();
-    expect(ledger.recordProviderRun).toHaveBeenCalledWith(
-      actor,
-      expect.objectContaining({
-        status: "failed",
-        errorClasses: ["policy_blocked"],
-        provider: expect.objectContaining({
-          providerFamily: "fake",
-          requestedModelId: "itotori-fake-draft-v0",
-        }),
-      }),
-    );
-    expect(repository.saveDrafts).not.toHaveBeenCalled();
-  });
+  // ITOTORI-227 — the per-pair `policy_blocked` failure mode was
+  // deleted along with the rest of itotori's reinvented privacy
+  // registry. Privacy posture is enforced account-wide
+  // (assertOpenRouterZdrAccount at process startup) plus per-request
+  // (`provider.zdr=true` for non-public input); failures surface as the
+  // ZDR account-assertion error at construction or as the OpenRouter
+  // 404 "No endpoints found matching your data policy" envelope from
+  // the wire. Neither requires a workflow-level gate, so the test that
+  // used to assert the gate is gone.
 
   it("records null draft content as a failed zero-cost provider run", async () => {
     const repository = repositoryFixture();
@@ -912,10 +891,10 @@ describe("ItotoriProjectWorkflowService", () => {
               benchmarkReport.providerModelCostRecords[1]!.provider.requestedModelId,
               benchmarkReport.providerModelCostRecords[1]!.provider.actualModelId,
             ]),
-            dataHandling: expect.objectContaining({
-              dataCollection: "unknown",
-              trainingUse: "unknown",
-            }),
+            // ITOTORI-227 — per-pair `dataHandling` axes are gone; the
+            // benchmark ingest now writes an empty record into the
+            // legacy ledger column until a follow-up migration drops it.
+            dataHandling: {},
             providerPreset: expect.objectContaining({
               slug: "openrouter/itotori-draft",
               version: "2026-06-17",
@@ -1107,21 +1086,6 @@ function nullContentProvider(): ModelProvider {
   };
 }
 
-function policyBlockedProvider(invoke: ModelProvider["invoke"]): ModelProvider {
-  const descriptor = new FakeModelProvider().descriptor;
-  return {
-    descriptor: {
-      ...descriptor,
-      capabilities: {
-        ...descriptor.capabilities,
-        dataHandling: openRouterDefaultCapabilities.dataHandling,
-        accountPrivacy: openRouterDefaultCapabilities.accountPrivacy,
-      },
-    },
-    invoke,
-  };
-}
-
 function failedProviderRun(request: ModelInvocationRequest, modelId: string): ProviderRunRecord {
   return {
     runId: "provider-run-failed",
@@ -1152,12 +1116,7 @@ function failedProviderRun(request: ModelInvocationRequest, modelId: string): Pr
       amountMicrosUsd: 0,
     },
     prompt: request.prompt,
-    dataHandling: descriptorDataHandling(),
   };
-}
-
-function descriptorDataHandling(): ProviderRunRecord["dataHandling"] {
-  return new FakeModelProvider().descriptor.capabilities.dataHandling;
 }
 
 function projectFixture(overrides: Partial<ProjectState> = {}): ProjectState {
@@ -1338,7 +1297,7 @@ const costReportFixture: ProjectCostReport = {
       reasoningTokens: null,
       cachedInputTokens: null,
       totalTokens: 14,
-      dataHandling: descriptorDataHandling(),
+      dataHandling: {},
       accountPrivacy: null,
     },
   ],

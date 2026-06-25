@@ -14,7 +14,6 @@ import type {
   ProviderRunRecord,
 } from "../src/providers/types.js";
 import { createProviderRunId } from "../src/providers/types.js";
-import { deterministicFixtureDataHandlingPolicy } from "../src/providers/policy.js";
 import {
   buildQaPrompt,
   makeAllSeverityCategoryFindings,
@@ -272,7 +271,6 @@ describe("QaAgent.invokeQa provider capability guard", () => {
         plainJsonExtraction: "unsupported",
         preferredModes: [],
       },
-      dataHandling: deterministicFixtureDataHandlingPolicy,
     };
     const descriptor: ProviderDescriptor = {
       family: "fake",
@@ -307,7 +305,6 @@ describe("QaAgent.invokeQa provider capability guard", () => {
           tokenUsage: { tokenCountSource: "deterministic_counter" },
           cost: { costKind: "zero", currency: "USD", amountMicrosUsd: 0 },
           prompt: request.prompt,
-          dataHandling: capabilities.dataHandling,
         };
         return {
           content: "{}",
@@ -534,7 +531,6 @@ describe("QaAgent.invokeQa partial / fallback diagnostics", () => {
           tokenUsage: { tokenCountSource: "deterministic_counter" },
           cost: { costKind: "zero", currency: "USD", amountMicrosUsd: 0 },
           prompt: request.prompt,
-          dataHandling: fakeModelCapabilities.dataHandling,
         };
         return {
           content: '{"schemaVersion":"itotori.structured-qa-finding-output.v1","findings":[',

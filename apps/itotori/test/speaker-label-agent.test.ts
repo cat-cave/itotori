@@ -16,7 +16,6 @@ import type {
   ProviderRunRecord,
 } from "../src/providers/types.js";
 import { createProviderRunId } from "../src/providers/types.js";
-import { deterministicFixtureDataHandlingPolicy } from "../src/providers/policy.js";
 import {
   buildSpeakerLabelPrompt,
   HiddenIdentityLeakError,
@@ -339,7 +338,6 @@ describe("SpeakerLabelAgent.invokeSpeakerLabel provider capability guard", () =>
         plainJsonExtraction: "unsupported",
         preferredModes: [],
       },
-      dataHandling: deterministicFixtureDataHandlingPolicy,
     };
     const descriptor: ProviderDescriptor = {
       family: "fake",
@@ -374,7 +372,6 @@ describe("SpeakerLabelAgent.invokeSpeakerLabel provider capability guard", () =>
           tokenUsage: { tokenCountSource: "deterministic_counter" },
           cost: { costKind: "zero", currency: "USD", amountMicrosUsd: 0 },
           prompt: request.prompt,
-          dataHandling: capabilities.dataHandling,
         };
         return {
           content: JSON.stringify(makeOutput([])),

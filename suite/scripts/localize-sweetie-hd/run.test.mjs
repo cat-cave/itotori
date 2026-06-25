@@ -60,6 +60,17 @@ test("--dry-run --project ... exits 0 and prints per-phase commands", () => {
     result.stdout.includes("0 LLM calls"),
     `dry-run plan must declare zero LLM calls; got:\n${result.stdout}`,
   );
+  // ITOTORI-227 — every dry-run plan must surface the ZDR posture so
+  // the operator can confirm OPENROUTER_ZDR_ACCOUNT_ASSERTED=1 is set
+  // and every non-public stage carries provider.zdr=true.
+  assert.ok(
+    result.stdout.includes("ZDR account asserted: OPENROUTER_ZDR_ACCOUNT_ASSERTED="),
+    `dry-run plan must report the ZDR account-assertion env; got:\n${result.stdout}`,
+  );
+  assert.ok(
+    result.stdout.includes("Per-stage provider.zdr posture: true"),
+    `dry-run plan must declare the per-stage provider.zdr posture; got:\n${result.stdout}`,
+  );
 });
 
 test("--dry-run without --project exits non-zero with a usage line", () => {

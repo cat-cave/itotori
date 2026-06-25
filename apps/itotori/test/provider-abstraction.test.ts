@@ -1,10 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  AccountZdrAssertionError,
   FakeModelProvider,
   LocalOpenAICompatibleProvider,
   ModelProviderError,
+  OpenRouterModelProvider,
   OpenRouterProvider,
-  evaluateProviderInputPolicy,
   openRouterDefaultCapabilities,
   selectStructuredOutputMode,
   type ModelCapabilities,
@@ -14,22 +15,7 @@ import {
   type ProviderRunArtifactRecorder,
 } from "../src/providers/index.js";
 
-describe("provider policy and capabilities", () => {
-  it("blocks private inputs when provider logging policy is unknown", () => {
-    const decision = evaluateProviderInputPolicy(
-      openRouterDefaultCapabilities.dataHandling,
-      "private_corpus",
-      openRouterDefaultCapabilities.accountPrivacy,
-    );
-
-    expect(decision.allowed).toBe(false);
-    // ITOTORI-225 — the cost-tier gate is gone. The privacy-only axes
-    // (prompt/completion logging, account-level routing) carry the gate
-    // until ITOTORI-227 replaces the whole policy seam.
-    expect(decision.reasons).toContain("prompt logging is unknown");
-    expect(decision.reasons).toContain("account input/output logging is unknown");
-  });
-
+describe("provider capabilities", () => {
   it("selects only explicitly supported structured-output modes", () => {
     const capabilities = openRouterCapabilitiesForPrivateInputs();
 
@@ -40,6 +26,141 @@ describe("provider policy and capabilities", () => {
         "plain_json",
       ]),
     ).toBe("json_schema");
+  });
+});
+
+describe("AccountZdrAssertionError (ITOTORI-227)", () => {
+  // The account-wide ZDR posture is the load-bearing operator gate. The
+  // OpenRouterModelProvider constructor MUST throw synchronously when
+  // OPENROUTER_ZDR_ACCOUNT_ASSERTED is anything other than "1". There
+  // is no warning mode, no default-true, no inferred "auto". The
+  // assertion lives in OpenRouterModelProvider only — recorded /
+  // local / fake providers do NOT carry it because they never make a
+  // live call.
+  it("throws AccountZdrAssertionError when OPENROUTER_ZDR_ACCOUNT_ASSERTED is unset", () => {
+    expect(
+      () =>
+        new OpenRouterModelProvider({
+          env: { OPENROUTER_API_KEY: "sk-test" },
+        }),
+    ).toThrow(AccountZdrAssertionError);
+  });
+
+  it("throws AccountZdrAssertionError when OPENROUTER_ZDR_ACCOUNT_ASSERTED is not the literal '1'", () => {
+    expect(
+      () =>
+        new OpenRouterModelProvider({
+          env: {
+            OPENROUTER_API_KEY: "sk-test",
+            OPENROUTER_ZDR_ACCOUNT_ASSERTED: "true",
+          },
+        }),
+    ).toThrow(AccountZdrAssertionError);
+    expect(
+      () =>
+        new OpenRouterModelProvider({
+          env: {
+            OPENROUTER_API_KEY: "sk-test",
+            OPENROUTER_ZDR_ACCOUNT_ASSERTED: "yes",
+          },
+        }),
+    ).toThrow(AccountZdrAssertionError);
+  });
+
+  it("constructs cleanly when OPENROUTER_ZDR_ACCOUNT_ASSERTED=1 (with the API key set)", () => {
+    expect(
+      () =>
+        new OpenRouterModelProvider({
+          env: {
+            OPENROUTER_API_KEY: "sk-test",
+            OPENROUTER_ZDR_ACCOUNT_ASSERTED: "1",
+          },
+        }),
+    ).not.toThrow();
+  });
+
+  it("asserts the ZDR posture BEFORE the API-key check (privacy gate is load-bearing)", () => {
+    // No OPENROUTER_API_KEY in env. If the assertion ran AFTER the
+    // key check, the error would be `OpenRouterMissingApiKeyError`.
+    // The assertion runs FIRST, so we must see the ZDR error.
+    expect(() => new OpenRouterModelProvider({ env: {} })).toThrow(AccountZdrAssertionError);
+  });
+});
+
+describe("OpenRouterModelProvider wire-level provider.zdr posture (ITOTORI-227)", () => {
+  function fetchMockSuccess(): {
+    fetch: typeof fetch;
+    calls: Array<{ body: string }>;
+  } {
+    const calls: Array<{ body: string }> = [];
+    const fetchImpl = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      calls.push({ body: String(init?.body ?? "") });
+      return jsonResponse({
+        id: "gen-test",
+        model: "deepseek/deepseek-v4-flash",
+        choices: [
+          {
+            finish_reason: "stop",
+            message: { role: "assistant", content: "Hello." },
+          },
+        ],
+        usage: { prompt_tokens: 4, completion_tokens: 2, total_tokens: 6, cost: 0.000003 },
+        provider: "fireworks",
+      });
+    }) as unknown as typeof fetch;
+    return { fetch: fetchImpl, calls };
+  }
+
+  it("sends provider.zdr=true for private_corpus input", async () => {
+    const { fetch: fetchMock, calls } = fetchMockSuccess();
+    const provider = new OpenRouterModelProvider({
+      env: { OPENROUTER_API_KEY: "sk-test", OPENROUTER_ZDR_ACCOUNT_ASSERTED: "1" },
+      httpClient: fetchMock,
+      costCapUsd: 1.0,
+      rateLimitPerSec: 1000,
+    });
+
+    await provider.invoke(
+      zdrPostureRequest("deepseek/deepseek-v4-flash", "fireworks", "private_corpus"),
+    );
+
+    expect(calls).toHaveLength(1);
+    const body = JSON.parse(calls[0]!.body) as { provider: { zdr?: unknown } };
+    expect(body.provider.zdr).toBe(true);
+  });
+
+  it("sends provider.zdr=true for synthetic_public input", async () => {
+    const { fetch: fetchMock, calls } = fetchMockSuccess();
+    const provider = new OpenRouterModelProvider({
+      env: { OPENROUTER_API_KEY: "sk-test", OPENROUTER_ZDR_ACCOUNT_ASSERTED: "1" },
+      httpClient: fetchMock,
+      costCapUsd: 1.0,
+      rateLimitPerSec: 1000,
+    });
+
+    await provider.invoke(
+      zdrPostureRequest("deepseek/deepseek-v4-flash", "fireworks", "synthetic_public"),
+    );
+
+    expect(calls).toHaveLength(1);
+    const body = JSON.parse(calls[0]!.body) as { provider: { zdr?: unknown } };
+    expect(body.provider.zdr).toBe(true);
+  });
+
+  it("does NOT send provider.zdr for public input (lower friction for public-content stages)", async () => {
+    const { fetch: fetchMock, calls } = fetchMockSuccess();
+    const provider = new OpenRouterModelProvider({
+      env: { OPENROUTER_API_KEY: "sk-test", OPENROUTER_ZDR_ACCOUNT_ASSERTED: "1" },
+      httpClient: fetchMock,
+      costCapUsd: 1.0,
+      rateLimitPerSec: 1000,
+    });
+
+    await provider.invoke(zdrPostureRequest("deepseek/deepseek-v4-flash", "fireworks", "public"));
+
+    expect(calls).toHaveLength(1);
+    const body = JSON.parse(calls[0]!.body) as { provider: { zdr?: unknown } };
+    expect(body.provider.zdr).toBeUndefined();
   });
 });
 
@@ -236,21 +357,6 @@ describe("OpenRouterProvider", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("blocks private inputs when OpenRouter account privacy state is unknown", async () => {
-    const fetchMock = vi.fn(async () => jsonResponse({})) as unknown as typeof fetch;
-    const provider = new OpenRouterProvider({
-      modelId: "openai/gpt-4o-mini",
-      apiKey: "test-key",
-      fetch: fetchMock,
-      live: { enabled: true, artifactRecorder: memoryRecorder(), rawCapture: "disabled" },
-    });
-
-    await expect(provider.invoke(jsonSchemaRequest())).rejects.toMatchObject({
-      code: "policy_blocked",
-    });
-    expect(fetchMock).not.toHaveBeenCalled();
-  });
-
   it("forces provider data collection denial for private inputs despite routing overrides", async () => {
     const recorder = memoryRecorder();
     const fetchCalls: Array<{ input: RequestInfo | URL; init?: RequestInit }> = [];
@@ -279,14 +385,14 @@ describe("OpenRouterProvider", () => {
       live: { enabled: true, artifactRecorder: recorder, rawCapture: "disabled" },
     });
 
-    const result = await provider.invoke(jsonSchemaRequest());
+    await provider.invoke(jsonSchemaRequest());
 
     const requestBody = JSON.parse(String(fetchCalls[0]?.init?.body)) as {
-      provider: { data_collection?: string };
+      provider: { data_collection?: string; zdr?: unknown };
     };
     expect(requestBody.provider.data_collection).toBe("deny");
-    expect(result.providerRun.dataHandling.dataCollection).toBe("deny");
-    expect(recorder.artifacts[0]?.run.dataHandling.dataCollection).toBe("deny");
+    // ITOTORI-227 — private_corpus input also defaults provider.zdr=true.
+    expect(requestBody.provider.zdr).toBe(true);
   });
 
   it("records the actual OpenRouter data collection routing policy for public inputs", async () => {
@@ -317,17 +423,17 @@ describe("OpenRouterProvider", () => {
       live: { enabled: true, artifactRecorder: recorder, rawCapture: "disabled" },
     });
 
-    const result = await provider.invoke({
+    await provider.invoke({
       ...jsonSchemaRequest(),
       inputClassification: "public",
     });
 
     const requestBody = JSON.parse(String(fetchCalls[0]?.init?.body)) as {
-      provider: { data_collection?: string };
+      provider: { data_collection?: string; zdr?: unknown };
     };
     expect(requestBody.provider.data_collection).toBe("allow");
-    expect(result.providerRun.dataHandling.dataCollection).toBe("allow");
-    expect(recorder.artifacts[0]?.run.dataHandling.dataCollection).toBe("allow");
+    // ITOTORI-227 — public input skips the provider.zdr default.
+    expect(requestBody.provider.zdr).toBeUndefined();
   });
 
   it("translates tool_call_arguments into a required OpenRouter tool call", async () => {
@@ -493,12 +599,6 @@ describe("OpenRouterProvider", () => {
       },
       providerPreset: expect.objectContaining({
         slug: "openrouter/itotori-test",
-      }),
-      dataHandling: expect.objectContaining({
-        dataCollection: "deny",
-      }),
-      accountPrivacy: expect.objectContaining({
-        inputOutputLogging: "disabled",
       }),
     });
     expect(recorder.artifacts[0]?.adapterMetadata).toMatchObject({
@@ -753,6 +853,26 @@ describe("FakeModelProvider", () => {
   });
 });
 
+/**
+ * ITOTORI-227 — minimal request fixture for the wire-level provider.zdr
+ * posture tests. No structured output / no tools — we only care about
+ * the routing block on the request body.
+ */
+function zdrPostureRequest(
+  modelId: string,
+  providerId: string,
+  inputClassification: ModelInvocationRequest["inputClassification"],
+): ModelInvocationRequest {
+  return {
+    taskKind: "draft_translation",
+    modelId,
+    providerId,
+    inputClassification,
+    prompt: promptFixture(),
+    messages: [{ role: "user", content: "translate hello" }],
+  };
+}
+
 function jsonSchemaRequest(
   modelId: string = "openai/gpt-4o-mini",
   providerId: string = "OpenAI",
@@ -864,26 +984,14 @@ function toolFixture(): ModelTool {
 }
 
 function openRouterCapabilitiesForPrivateInputs(): ModelCapabilities {
+  // ITOTORI-227 — capability sheets no longer carry per-pair privacy
+  // axes. Privacy is enforced account-wide (ZDR assertion) plus
+  // per-request (provider.zdr=true default for non-public input).
   return {
     ...openRouterDefaultCapabilities,
     structuredOutputs: {
       ...openRouterDefaultCapabilities.structuredOutputs,
       jsonSchema: "supported",
-    },
-    dataHandling: {
-      promptLogging: "disabled",
-      completionLogging: "disabled",
-      retention: "metadata_only",
-      trainingUse: "deny",
-      dataCollection: "deny",
-      rawCaptureDefault: "disabled",
-    },
-    accountPrivacy: {
-      inputOutputLogging: "disabled",
-      useOfInputsOutputs: "deny",
-      providerDataPolicyFilters: "enabled",
-      metadataCollection: "expected",
-      euRouting: "unknown",
     },
   };
 }
@@ -913,14 +1021,6 @@ function localCapabilities(): ModelCapabilities {
       requireParameters: "untested",
       dataCollectionControl: "unsupported",
       zeroDataRetentionRouting: "unsupported",
-    },
-    dataHandling: {
-      promptLogging: "not_applicable",
-      completionLogging: "not_applicable",
-      retention: "not_applicable",
-      trainingUse: "not_applicable",
-      dataCollection: "not_applicable",
-      rawCaptureDefault: "disabled",
     },
   };
 }
