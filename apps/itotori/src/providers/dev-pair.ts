@@ -130,7 +130,18 @@ function buildPairCapabilityTable(): ReadonlyArray<PairCapabilityEntry> {
         contextWindowTokens: 128_000,
         maxOutputTokens: 8_192,
         notes: [
-          "ITOTORI-221 DEV_PAIR capabilities are verified against OpenRouter's published Fireworks-hosted deepseek-v4 endpoint as of 2026-06.",
+          // ITOTORI-224 (2026-06-25): the previous claim ("verified against
+          // OpenRouter's published Fireworks-hosted deepseek-v4 endpoint as
+          // of 2026-06") was grounded in an invented endpoint description,
+          // not in a captured response. The real evidence — a live ZDR-
+          // posture toy call against the alpha pair, plus the catalog
+          // /api/v1/models/.../endpoints lookup — is recorded at
+          //   docs/openrouter-integration-evidence/2026-06-25.json
+          // and canonicalised at docs/openrouter-integration.md §9.3.
+          // ITOTORI-226 owns the slug correction (deepseek/deepseek-v4-flash
+          // replacing the invented deepseek/deepseek-chat-v4 above) and
+          // re-grounds this note once it lands.
+          "ITOTORI-224 (2026-06-25): evidence file at docs/openrouter-integration-evidence/2026-06-25.json; canonical reference at docs/openrouter-integration.md §9.3. Slug correction tracked by ITOTORI-226.",
         ],
       },
     },

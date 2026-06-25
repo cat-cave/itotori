@@ -26,22 +26,22 @@ ITOTORI-224 is **merged** with Wiring ITOTORI-224 only in the sense that
 both belong inside the same epoch (the rip-out happens after the canonical
 doc); functionally they are different so the rip-out gets a new id.
 
-| Proposed ID | From | Title (verbatim from audit) | Disposition |
-|---|---|---|---|
-| `ITOTORI-224` | Wiring §4-1 | "Publish canonical OR integration doc + adopt audit as baseline" | **keep-as-is** (anchors the evidence the Cost rip-out depends on) |
-| `ITOTORI-224` | Cost §3 N1 | "Rip out cost-tier abstraction and all estimated / hardcoded / unknown cost states" | **renumber-to-ITOTORI-225** |
-| `ITOTORI-225` | Wiring §4-2 | "Fix DEV_PAIR to deepseek/deepseek-v4-flash + re-key recorded bundles" | **renumber-to-ITOTORI-226** (was 225; bumped one to make room for the Cost rip-out) |
-| `ITOTORI-225` | Cost §3 N2 | "Recorded provider replays the captured real cost" | **renumber-to-ITOTORI-227** |
-| `ITOTORI-226` | Wiring §4-3 | "Delete reinvented data-handling registry; default provider.zdr=true" | **renumber-to-ITOTORI-228** |
-| `ITOTORI-226` | Cost §3 N3 | "Rename `costEstimate` → `costUsd`" | **renumber-to-ITOTORI-229** |
-| `ITOTORI-227` | Wiring §4-4 | "Persist OR routing posture in ledger + recorded bundles" | **renumber-to-ITOTORI-230** |
-| `ITOTORI-227` | Cost §3 N4 | "Single source of truth for `DEFAULT_COST_CAP_USD`" | **renumber-to-ITOTORI-231** |
-| `ITOTORI-228` | Wiring §4-5 | "Prompt-cache aware cost cap + cache hit telemetry" | **merge-with-Cost-230** → final `ITOTORI-233` |
-| `ITOTORI-228` | Cost §3 N5 | "Schema-level enforcement: ledger `cost_amount` is USD, mirrored from `usage.cost`, never null" | **renumber-to-ITOTORI-232** |
-| `ITOTORI-229` | Wiring §4-6 | "Pair-policy schema v0.2 carrying ZDR posture + fallback models + seed" | **renumber-to-ITOTORI-234** |
-| `ITOTORI-229` | Cost §3 N6 | "`/api/v1/generation` reconciliation endpoint" | **renumber-to-ITOTORI-235** |
-| `ITOTORI-230` | Cost §3 N7 | "Mirror prompt-caching cost annotations through ledger and telemetry" | **merge-with-Wiring-228** → final `ITOTORI-233` (see merge note below) |
-| `UTSUSHI-231` | Wiring §4-7 | "Re-run localize-sweetie-hd end-to-end; capture replay-log proving ZDR posture" | **keep-as-is** (UTSUSHI namespace, no collision) |
+| Proposed ID   | From        | Title (verbatim from audit)                                                                     | Disposition                                                                         |
+| ------------- | ----------- | ----------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| `ITOTORI-224` | Wiring §4-1 | "Publish canonical OR integration doc + adopt audit as baseline"                                | **keep-as-is** (anchors the evidence the Cost rip-out depends on)                   |
+| `ITOTORI-224` | Cost §3 N1  | "Rip out cost-tier abstraction and all estimated / hardcoded / unknown cost states"             | **renumber-to-ITOTORI-225**                                                         |
+| `ITOTORI-225` | Wiring §4-2 | "Fix DEV_PAIR to deepseek/deepseek-v4-flash + re-key recorded bundles"                          | **renumber-to-ITOTORI-226** (was 225; bumped one to make room for the Cost rip-out) |
+| `ITOTORI-225` | Cost §3 N2  | "Recorded provider replays the captured real cost"                                              | **renumber-to-ITOTORI-227**                                                         |
+| `ITOTORI-226` | Wiring §4-3 | "Delete reinvented data-handling registry; default provider.zdr=true"                           | **renumber-to-ITOTORI-228**                                                         |
+| `ITOTORI-226` | Cost §3 N3  | "Rename `costEstimate` → `costUsd`"                                                             | **renumber-to-ITOTORI-229**                                                         |
+| `ITOTORI-227` | Wiring §4-4 | "Persist OR routing posture in ledger + recorded bundles"                                       | **renumber-to-ITOTORI-230**                                                         |
+| `ITOTORI-227` | Cost §3 N4  | "Single source of truth for `DEFAULT_COST_CAP_USD`"                                             | **renumber-to-ITOTORI-231**                                                         |
+| `ITOTORI-228` | Wiring §4-5 | "Prompt-cache aware cost cap + cache hit telemetry"                                             | **merge-with-Cost-230** → final `ITOTORI-233`                                       |
+| `ITOTORI-228` | Cost §3 N5  | "Schema-level enforcement: ledger `cost_amount` is USD, mirrored from `usage.cost`, never null" | **renumber-to-ITOTORI-232**                                                         |
+| `ITOTORI-229` | Wiring §4-6 | "Pair-policy schema v0.2 carrying ZDR posture + fallback models + seed"                         | **renumber-to-ITOTORI-234**                                                         |
+| `ITOTORI-229` | Cost §3 N6  | "`/api/v1/generation` reconciliation endpoint"                                                  | **renumber-to-ITOTORI-235**                                                         |
+| `ITOTORI-230` | Cost §3 N7  | "Mirror prompt-caching cost annotations through ledger and telemetry"                           | **merge-with-Wiring-228** → final `ITOTORI-233` (see merge note below)              |
+| `UTSUSHI-231` | Wiring §4-7 | "Re-run localize-sweetie-hd end-to-end; capture replay-log proving ZDR posture"                 | **keep-as-is** (UTSUSHI namespace, no collision)                                    |
 
 ### Merges of genuinely overlapping nodes
 
@@ -646,19 +646,19 @@ The wiring audit named eight. The cost audit's §6 "Open questions" raised
 three additional ones (which Trevor flagged as non-blocking and assigned
 to corrective nodes); listed below as DOC-AMBIGUOUS-9..11 for parity.
 
-| # | From | Question | Empirical resolution |
-|---|---|---|---|
-| 1 | Wiring §1.2 | Is there a response field declaring "ZDR was in effect for this call"? | One toy call with `provider.zdr=true` against the alpha pair under Trevor's ZDR-only account; capture full response body to `docs/openrouter-integration-evidence/<date>.json`. Resolved by ITOTORI-224. The proof is the combination of (a) account ZDR-only, (b) `provider.zdr=true` on request, (c) non-error response — not a single field. |
-| 2 | Wiring §1.2 | What happens when no ZDR provider is available for a model? | Toy call to a model whose providers are non-ZDR while `provider.zdr=true`; observe the error envelope. Resolved by ITOTORI-224. |
-| 3 | Wiring §1.3 | Do `:nitro` / `:floor` / `:online` / `:free` suffixes still work? Detail page is missing. | Catalog query + one suffixed call against a public model; document outcome in `openrouter-integration.md`. Resolved by ITOTORI-224. |
-| 4 | Wiring §1.3 | What is the "Auto Router" — is it usable from chat-completions? | Fetch the (currently missing) router page or capture an Auto-Router response and document. Resolved by ITOTORI-224. |
-| 5 | Wiring §1.4 | Does the `structured_outputs: true` boolean parameter do anything useful alone (without `response_format`)? | Mock and live call comparing `{structured_outputs:true}` alone vs `{response_format:{type:'json_schema',...}}`. Resolved by ITOTORI-224. |
-| 6 | Wiring §1.5 | Does `usage.cost` already net out `cache_discount`, or must it be computed as `usage.cost - cache_discount`? | Toy call against an implicit-cache provider (DeepSeek V4 Flash, second call with same prompt); compare `usage.cost` vs `usage.cost_details.cache_discount`. Resolved by ITOTORI-224; cache-aware math implemented in ITOTORI-233. |
-| 7 | Wiring §1.8 | Is there an idempotency key? | Two consecutive identical requests with the same speculated key; observe whether OR dedupes. Resolved by ITOTORI-224 (likely "no idempotency"). |
-| 8 | Wiring §3-D | Does the `X-OpenRouter-Metadata: enabled` header actually surface the `openrouter_metadata.endpoints` echo block? | Two toy calls — one with header, one without — diff the response body shape. Resolved by ITOTORI-224; endpoint-pricing fallback path either fixed or deleted in ITOTORI-233. |
-| 9 | Cost §6.1 | Currency: assume USD-only for alpha? OR returns USD; ledger has `cost_unit text` permitting arbitrary strings. | ITOTORI-232's `check (cost_unit = 'usd')` is the proposed resolution — confirm in node deliverables that USD-only is correct for alpha. |
-| 10 | Cost §6.2 | Catalog-driven pre-flight forecasting from `/api/v1/models` (cost-cap expressed as "max N translation calls of K tokens"), or only post-hoc real-cost accounting? | Defer to beta; ITOTORI-235 (`/generation` reconciliation) is the post-hoc path. If catalog-driven forecasting becomes a need, mint a follow-on node at that time. |
-| 11 | Cost §6.3 | Existing recorded bundles do not carry original `usage.cost`. Do we re-record from live runs, or accept that pre-fix bundles replay with cost=0 until each is refreshed? | Cost audit's preference (Trevor confirm): mark old bundles schemaVersion-incompatible and force recapture. ITOTORI-228 captures this — the bundle format bump is non-optional. |
+| #   | From        | Question                                                                                                                                                                 | Empirical resolution                                                                                                                                                                                                                                                                                                                            |
+| --- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Wiring §1.2 | Is there a response field declaring "ZDR was in effect for this call"?                                                                                                   | One toy call with `provider.zdr=true` against the alpha pair under Trevor's ZDR-only account; capture full response body to `docs/openrouter-integration-evidence/<date>.json`. Resolved by ITOTORI-224. The proof is the combination of (a) account ZDR-only, (b) `provider.zdr=true` on request, (c) non-error response — not a single field. |
+| 2   | Wiring §1.2 | What happens when no ZDR provider is available for a model?                                                                                                              | Toy call to a model whose providers are non-ZDR while `provider.zdr=true`; observe the error envelope. Resolved by ITOTORI-224.                                                                                                                                                                                                                 |
+| 3   | Wiring §1.3 | Do `:nitro` / `:floor` / `:online` / `:free` suffixes still work? Detail page is missing.                                                                                | Catalog query + one suffixed call against a public model; document outcome in `openrouter-integration.md`. Resolved by ITOTORI-224.                                                                                                                                                                                                             |
+| 4   | Wiring §1.3 | What is the "Auto Router" — is it usable from chat-completions?                                                                                                          | Fetch the (currently missing) router page or capture an Auto-Router response and document. Resolved by ITOTORI-224.                                                                                                                                                                                                                             |
+| 5   | Wiring §1.4 | Does the `structured_outputs: true` boolean parameter do anything useful alone (without `response_format`)?                                                              | Mock and live call comparing `{structured_outputs:true}` alone vs `{response_format:{type:'json_schema',...}}`. Resolved by ITOTORI-224.                                                                                                                                                                                                        |
+| 6   | Wiring §1.5 | Does `usage.cost` already net out `cache_discount`, or must it be computed as `usage.cost - cache_discount`?                                                             | Toy call against an implicit-cache provider (DeepSeek V4 Flash, second call with same prompt); compare `usage.cost` vs `usage.cost_details.cache_discount`. Resolved by ITOTORI-224; cache-aware math implemented in ITOTORI-233.                                                                                                               |
+| 7   | Wiring §1.8 | Is there an idempotency key?                                                                                                                                             | Two consecutive identical requests with the same speculated key; observe whether OR dedupes. Resolved by ITOTORI-224 (likely "no idempotency").                                                                                                                                                                                                 |
+| 8   | Wiring §3-D | Does the `X-OpenRouter-Metadata: enabled` header actually surface the `openrouter_metadata.endpoints` echo block?                                                        | Two toy calls — one with header, one without — diff the response body shape. Resolved by ITOTORI-224; endpoint-pricing fallback path either fixed or deleted in ITOTORI-233.                                                                                                                                                                    |
+| 9   | Cost §6.1   | Currency: assume USD-only for alpha? OR returns USD; ledger has `cost_unit text` permitting arbitrary strings.                                                           | ITOTORI-232's `check (cost_unit = 'usd')` is the proposed resolution — confirm in node deliverables that USD-only is correct for alpha.                                                                                                                                                                                                         |
+| 10  | Cost §6.2   | Catalog-driven pre-flight forecasting from `/api/v1/models` (cost-cap expressed as "max N translation calls of K tokens"), or only post-hoc real-cost accounting?        | Defer to beta; ITOTORI-235 (`/generation` reconciliation) is the post-hoc path. If catalog-driven forecasting becomes a need, mint a follow-on node at that time.                                                                                                                                                                               |
+| 11  | Cost §6.3   | Existing recorded bundles do not carry original `usage.cost`. Do we re-record from live runs, or accept that pre-fix bundles replay with cost=0 until each is refreshed? | Cost audit's preference (Trevor confirm): mark old bundles schemaVersion-incompatible and force recapture. ITOTORI-228 captures this — the bundle format bump is non-optional.                                                                                                                                                                  |
 
 ---
 
@@ -671,17 +671,17 @@ Justification:
 
 1. UTSUSHI-228 was never `complete`; the `in_progress` state already
    correctly reflects "the closer landed but live-fire is blocked". The
-   audits did not invalidate the closer's *shape* (the wiring audit
+   audits did not invalidate the closer's _shape_ (the wiring audit
    §5.5 explicitly says the orchestration is correct; only the inputs
    it consumes are wrong).
 2. Marking `regressed: true` would imply a previously-passing state has
    broken — which is not what happened. The closer's live-fire never
    passed.
 3. Minting a new UTSUSHI-231 as the alpha gate (option b) is already
-   the right move for the *rerun proof artifact*, but UTSUSHI-228
+   the right move for the _rerun proof artifact_, but UTSUSHI-228
    itself is the substrate; deleting it and re-minting would erase the
    dependency edges from UTSUSHI-231 → UTSUSHI-228 (since UTSUSHI-231
-   re-runs the *same* command UTSUSHI-228 defines).
+   re-runs the _same_ command UTSUSHI-228 defines).
 4. The cleanest posture: UTSUSHI-228 remains the "this command exists
    and is wired" milestone; UTSUSHI-231 becomes the "this command was
    demonstrably run end-to-end against live OR with the corrected

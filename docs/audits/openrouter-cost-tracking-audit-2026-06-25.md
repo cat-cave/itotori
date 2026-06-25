@@ -89,9 +89,9 @@ opt-in/opt-out; cost is unconditionally returned.
 The `usage` block carries (all units are **USD as a `number`**, not
 credits — confirmed against live `/chat/completions` responses):
 
-| Field | Meaning |
-| --- | --- |
-| `usage.cost` | Total amount charged to your OpenRouter account for this request. |
+| Field                                        | Meaning                                                                                                      |
+| -------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `usage.cost`                                 | Total amount charged to your OpenRouter account for this request.                                            |
 | `usage.cost_details.upstream_inference_cost` | Underlying cost charged by the upstream AI provider (visible only on BYOK or transparency-enabled accounts). |
 
 The example response quoted in the cookbook:
@@ -138,7 +138,7 @@ From prompt-caching (`https://openrouter.ai/docs/guides/best-practices/prompt-ca
 itotori does **not** read any of these fields today (verified — grep for
 `cached_tokens`, `cache_write_tokens`, `cache_discount` returns only the
 single `cached_input_tokens` reference in `openrouter.ts:680`, which
-reads it as a *token count*, never as a cost annotation).
+reads it as a _token count_, never as a cost annotation).
 
 ### 1.4 The per-generation cost lookup endpoint
 
@@ -149,12 +149,12 @@ From `https://openrouter.ai/docs/api/api-reference/generations/get-generation.md
 Returns the full request/usage metadata for any previously-made
 generation. Cost fields:
 
-| Field | Type | Unit |
-| --- | --- | --- |
-| `total_cost` | `number` | USD |
-| `usage` | `number` | USD (synonym for `total_cost` at this seam) |
-| `upstream_inference_cost` | `number \| null` | USD |
-| `cache_discount` | `number \| null` | USD |
+| Field                     | Type             | Unit                                        |
+| ------------------------- | ---------------- | ------------------------------------------- |
+| `total_cost`              | `number`         | USD                                         |
+| `usage`                   | `number`         | USD (synonym for `total_cost` at this seam) |
+| `upstream_inference_cost` | `number \| null` | USD                                         |
+| `cache_discount`          | `number \| null` | USD                                         |
 
 This endpoint exists **specifically** so a caller can re-fetch real
 cost after the fact — e.g. for ledger reconciliation, late-arriving
@@ -184,7 +184,7 @@ From `https://openrouter.ai/docs/cookbook/administration/analytics-cost-control.
   `usage_cache`, `usage_data`, `usage_web`, `usage_file`, all in USD,
   grouped by `model`, `api_key_id`, `app`, `user`, `workspace`, or
   `generation_id`.
-- Requires a *management* API key (regular inference keys return 403).
+- Requires a _management_ API key (regular inference keys return 403).
 
 itotori does not currently consume this endpoint; the §3 corrective
 nodes treat it as the "outside" reconciliation seam.
@@ -206,7 +206,7 @@ audio_output, request, discount
 
 Example: `"pricing": {"prompt":"0.000005","completion":"0.000025","input_cache_read":"0.0000005","input_cache_write":"0.00000625"}`.
 
-This catalog is the canonical source for *forecasting* a cost (e.g. for
+This catalog is the canonical source for _forecasting_ a cost (e.g. for
 a cost cap budget) and for explaining a billed line item after the
 fact. itotori does **not** read this catalog at runtime today (the
 provider's HTTP shape never queries `/models` or `/models/<id>/endpoints`).
@@ -217,7 +217,7 @@ OR returns **real, billed USD cost in every chat-completions response**
 (`usage.cost`). It exposes a **per-generation lookup** to re-fetch real
 cost by id. It exposes a **catalog** for forecasting. It exposes a
 **management Analytics API** for period-level rollups. There is no
-documented mode in which OR ever asks the caller to *estimate* cost.
+documented mode in which OR ever asks the caller to _estimate_ cost.
 Every `costKind: "provider_estimate"`, `costKind: "local_estimate"`,
 `costKind: "unknown"`, and `costTier` enum value in itotori is
 architecturally redundant.
@@ -230,14 +230,14 @@ Sixteen sites. Listed by severity, then by file path.
 
 ### 2.1 — `ProviderDataHandlingPolicy.costTier` enum is a category error (critical / wrong abstraction)
 
-- **What's wrong:** `costTier` is encoded on the *data-handling policy*
+- **What's wrong:** `costTier` is encoded on the _data-handling policy_
   shape (privacy gate input) and gates `private_corpus`/`confidential`
   requests on whether the tier is `"free" | "paid" | "mixed" | "local"
-  | "unknown"`. The user's rule states there are no tiers — there is
+| "unknown"`. The user's rule states there are no tiers — there is
   only real spend. The policy gate is using "cost tier" as a proxy for
   some unrelated privacy concept (likely "is this a free tier where the
   provider's TOS lets them train on private inputs?"), but it's labeled
-  as a *cost* concept and so silently invites every cost code path in
+  as a _cost_ concept and so silently invites every cost code path in
   the repo to read it as such.
 - **Where:**
   - `apps/itotori/src/providers/types.ts:49` defines
@@ -261,12 +261,12 @@ Sixteen sites. Listed by severity, then by file path.
     `packages/itotori-db/test/model-ledger-repository.test.ts:67,590`,
     `fixtures/itotori-style-guide/provider-smoke-suggestion.json:210`.
 - **Severity:** critical. The field is load-bearing for the privacy
-  gate (so we cannot just delete it cold), but it's the *wrong shape*
+  gate (so we cannot just delete it cold), but it's the _wrong shape_
   for what it actually gates. The parallel wiring audit owns the
   privacy-gate redesign; for this audit's purposes, the cost-tier
   ABSTRACTION must die — whatever survives in the privacy gate must be
   renamed to a privacy concept (e.g. `inferenceContext: "free_trial" |
-  "byok" | "paid_marketplace" | "local"`) so no cost code path is
+"byok" | "paid_marketplace" | "local"`) so no cost code path is
   tempted to read it.
 - **What OR says:** there is no "tier" concept in OR's cost model. Every
   request reports a real `usage.cost`, and the catalog at `/api/v1/models`
@@ -283,7 +283,7 @@ Sixteen sites. Listed by severity, then by file path.
   treats `"unknown"` as a hard block on private inputs. This is the
   exact "unknown cost" Trevor said must never exist. (It is also the
   proximate cause of the `provider policy blocks private_corpus input:
-  cost tier is unknown` error that triggered the parallel wiring
+cost tier is unknown` error that triggered the parallel wiring
   audit.)
 - **Where:** `apps/itotori/src/providers/openrouter.ts:383`,
   `apps/itotori/src/providers/policy.ts:23-25`.
@@ -291,7 +291,7 @@ Sixteen sites. Listed by severity, then by file path.
   caller "fix" the cost tier before invoking, and the only "fix"
   callers know is to write `costTier: "paid"` literals at construction
   sites — which is itself another rule violation (a hardcoded
-  *categorical* cost claim, even if not a numeric one).
+  _categorical_ cost claim, even if not a numeric one).
 - **What OR says:** "Full usage details are now always included
   automatically in every response"
   (`https://openrouter.ai/docs/cookbook/administration/usage-accounting.md`).
@@ -354,7 +354,7 @@ Sixteen sites. Listed by severity, then by file path.
 ### 2.5 — `OpenRouterModelProvider.costCapUsd` defaults to a hardcoded `1.0` USD (high)
 
 - **What's wrong:** `DEFAULT_COST_CAP_USD = 1.0` at
-  `apps/itotori/src/providers/openrouter.ts:1162`. A second, *different*
+  `apps/itotori/src/providers/openrouter.ts:1162`. A second, _different_
   hardcoded default — `0.5` — lives at
   `apps/itotori/src/orchestrator/localize-sweetie-hd-stage-command.ts:139`.
   These are caller-tunable, but the defaults silently coexist; a
@@ -362,7 +362,7 @@ Sixteen sites. Listed by severity, then by file path.
   caller that goes through the alpha closer get different effective
   caps. The cap is enforced against `this.spentUsd` (USD micro-totals
   accumulated from `result.providerRun.cost.amountMicrosUsd`), so the
-  cap arithmetic is correct *if* `cost.amountMicrosUsd` is the real
+  cap arithmetic is correct _if_ `cost.amountMicrosUsd` is the real
   billed amount — which today it is, except `cost.costKind` is
   mis-labeled as `provider_estimate` (see §2.3).
 - **Where:** `apps/itotori/src/providers/openrouter.ts:1162,1176,1219-1254`;
@@ -377,7 +377,7 @@ Sixteen sites. Listed by severity, then by file path.
   `providerRun.cost.amountMicrosUsd`, which is `usdToMicros(usage.cost)`
   — verified at `openrouter.ts:691-696`).
 
-### 2.6 — The ledger column is named `cost_amount` but typed as a USD decimal-string; nothing in the schema constrains it to be the *real* cost (high)
+### 2.6 — The ledger column is named `cost_amount` but typed as a USD decimal-string; nothing in the schema constrains it to be the _real_ cost (high)
 
 - **What's wrong:** Migration `0035_draft_attempt_provider_ledger.sql`
   defines `cost_unit text not null, cost_amount numeric(20, 8) not null`
@@ -387,7 +387,7 @@ Sixteen sites. Listed by severity, then by file path.
   `unit: "usd"`, but the schema would happily accept `"jpy"` or
   `"micro_credits"`). There is no schema-level link between
   `cost_amount` and the `usage.cost` field of the originating OR
-  response — a future code path could insert *any* number.
+  response — a future code path could insert _any_ number.
 - **Where:** `packages/itotori-db/migrations/0035_draft_attempt_provider_ledger.sql:32-34`.
 - **Severity:** high. Combined with §2.3 (the cost is tagged
   `provider_estimate` even when real), there is no way to prove from
@@ -445,13 +445,13 @@ Sixteen sites. Listed by severity, then by file path.
 - **What's wrong:** Four call sites in the orchestrator do
   `BigInt(providerRun.cost.amountMicrosUsd ?? 0)`:
   - `apps/itotori/src/orchestrator/agentic-loop.ts:698,750,823,906`.
-  When the cost was `costKind: "unknown"` (no `amountMicrosUsd`), this
-  silently rolls it up as `0` USD spent. That cascades into the
-  telemetry rollups, the bundle's `costEstimate`, and ultimately the
-  cost cap budget (the cap thinks no money was spent and lets the next
-  call fire). Per Trevor's rule, the upstream "unknown" should not
-  exist; if it ever did, the right reaction is a hard error here, not
-  `?? 0`.
+    When the cost was `costKind: "unknown"` (no `amountMicrosUsd`), this
+    silently rolls it up as `0` USD spent. That cascades into the
+    telemetry rollups, the bundle's `costEstimate`, and ultimately the
+    cost cap budget (the cap thinks no money was spent and lets the next
+    call fire). Per Trevor's rule, the upstream "unknown" should not
+    exist; if it ever did, the right reaction is a hard error here, not
+    `?? 0`.
 - **Where:**
   `apps/itotori/src/orchestrator/agentic-loop.ts:698,750,823,906`.
 - **Severity:** medium — only fires when §2.3/§2.4 also fired, but
@@ -471,7 +471,7 @@ Sixteen sites. Listed by severity, then by file path.
 ### 2.11 — `dev-pair.ts` hardcodes `costTier: "paid"` per pair (medium / will vanish with §2.1)
 
 - **What's wrong:** Each known-pair entry hardcodes `costTier: "paid"`.
-  This is not a hardcoded *price*, but it is a hardcoded categorical
+  This is not a hardcoded _price_, but it is a hardcoded categorical
   claim about cost on a per-pair basis, which the policy gate then
   uses for non-cost purposes. Once `costTier` dies (§2.1), these
   literals go too.
@@ -482,9 +482,9 @@ Sixteen sites. Listed by severity, then by file path.
 
 - **What's wrong:** `apps/itotori/src/providers/recorded.ts:144-148`
   hardcodes `cost: { costKind: "zero", currency: "USD",
-  amountMicrosUsd: 0 }` for every replayed bundle. A recorded bundle
+amountMicrosUsd: 0 }` for every replayed bundle. A recorded bundle
   was supposed to faithfully reproduce the original LIVE call — but
-  the *original* call's billed cost is **not preserved** in
+  the _original_ call's billed cost is **not preserved** in
   `RecordedProviderResponse` and is **dropped on replay**. So every
   recorded call replays as if it were free, and every cost rollup that
   groups by recorded-mode runs is wrong.
@@ -493,7 +493,7 @@ Sixteen sites. Listed by severity, then by file path.
   `recorded.ts:144-148` (the hardcoded zero),
   `apps/itotori/src/draft/draft-attempt-fixtures.ts:207-217` (the
   fixture that writes `cost: { costKind: "zero", ..., amountMicrosUsd:
-  0 }` into the providerRun mirror).
+0 }` into the providerRun mirror).
 - **Severity:** high. This is a literal hardcoded cost
   (`amountMicrosUsd: 0`) standing in for the real captured cost. It is
   a recorded-cost ZERO fallback in a system that is meant to faithfully
@@ -520,7 +520,7 @@ Sixteen sites. Listed by severity, then by file path.
   using fixed costs is OK as long as they flow through the same code
   path as real ones").
 - **Note:** the same file's `costUsd?: number; ... cost: opts.costUsd
-  ?? 0.001` is the seam to add a regression-guard test that the cost
+?? 0.001` is the seam to add a regression-guard test that the cost
   flows in as `costKind: "billed"` (not `"provider_estimate"`) once
   §2.3 lands.
 
@@ -545,10 +545,10 @@ Sixteen sites. Listed by severity, then by file path.
 - **What:** `packages/itotori-db/src/repositories/model-ledger-repository.ts:134,148,316,352`
   and `translation-memory-repository.ts:62,749,1044` carry an
   `estimatedCostUsdSaved` field on translation-memory reuse events. This
-  is a *counterfactual* metric — "how much would the avoided LLM call
+  is a _counterfactual_ metric — "how much would the avoided LLM call
   have cost?" — not a real-spend mirror. It is a different question
   from "what did this call actually cost?". By the strict rule, it's
-  still an estimate; per the §1 contract, it should be computed *from*
+  still an estimate; per the §1 contract, it should be computed _from_
   the catalog (`/api/v1/models` per-token rates) of the pair that
   would have been called, never hardcoded.
 - **Where:** as above.
@@ -596,7 +596,7 @@ The proposed nodes are sequential.
   branches in `evaluateProviderInputPolicy` (`policy.ts:23-25`). What
   remains of that gate's privacy intent must be renamed to a privacy
   concept (e.g. `inferenceContext: "free_marketplace" | "byok" |
-  "paid_marketplace" | "local"`) — the renaming lives in the parallel
+"paid_marketplace" | "local"`) — the renaming lives in the parallel
   ZDR/wiring audit. Inside the OR provider, replace
   `normalizeOpenRouterCost`'s five-branch ladder with a single branch:
   read `usage.cost` (USD number) and tag it `costKind: "billed"`. If
@@ -665,7 +665,7 @@ The proposed nodes are sequential.
 - **target:** `alpha`
 - **dependsOn:** `["ITOTORI-224"]`
 - **summary:** Today every recorded replay returns `cost: { costKind:
-  "zero", amountMicrosUsd: 0 }` regardless of what the original LIVE
+"zero", amountMicrosUsd: 0 }` regardless of what the original LIVE
   call cost. The recorded bundle format must carry the original
   `usage.cost` (USD micros) verbatim from the captured response, and
   the replay must surface it on the `ProviderCost` of the replayed
@@ -687,7 +687,7 @@ The proposed nodes are sequential.
     write `usage.cost` into the bundle file so future replays mirror
     it.
 - **acceptanceCriteria:**
-  - A unit test constructs a recorded bundle from a *captured*
+  - A unit test constructs a recorded bundle from a _captured_
     LIVE-mode artifact, replays it, and asserts the replayed
     `ProviderCost.amountMicrosUsd` equals the captured value (not 0).
   - `git grep -nE 'costKind:\s*"zero"' apps/ packages/` returns hits
@@ -788,7 +788,7 @@ The proposed nodes are sequential.
     `(usage_response_json->>'cost')::numeric` within 1e-9 — so the row's
     cost MUST match the mirrored OR response.
   - Drop the model-ledger `cost_kind in ('billed', 'provider_estimate',
-    'local_estimate', 'zero', 'unknown')` constraint from migration
+'local_estimate', 'zero', 'unknown')` constraint from migration
     0006 and replace with `cost_kind in ('billed', 'zero')` (zero is
     recorded-mode only).
 - **deliverables:**
@@ -913,9 +913,9 @@ Touch the smallest possible delta. **No deprecation shims.**
 
 - **What to change:** none functionally — the aggregation is real-cost
   faithful conditional on the ledger being real-cost (§2.15). After N1
-  + N5, document in `queries.ts` that the `totalCostUsd` string is by
-  construction the sum of `usage.cost` values mirrored from OR
-  responses; no estimation involved.
+  - N5, document in `queries.ts` that the `totalCostUsd` string is by
+    construction the sum of `usage.cost` values mirrored from OR
+    responses; no estimation involved.
 
 ### UTSUSHI-228 — alpha closer
 
@@ -940,7 +940,7 @@ Touch the smallest possible delta. **No deprecation shims.**
    `estimatedMicrosUsd`.
 
 **Recommendation for the N1 migration:** the backfill must
-*re-tag*-`cost_kind` from `provider_estimate` → `billed` for rows where
+_re-tag_-`cost_kind` from `provider_estimate` → `billed` for rows where
 `amount_micros_usd is not null AND is_recorded_provider = false`. Rows
 with `is_recorded_provider = true AND cost_amount = 0` should be left
 alone (they will be re-recorded by N2's bundle re-capture, or marked
