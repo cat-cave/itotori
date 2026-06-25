@@ -1,0 +1,36 @@
+{
+  "policyId": "localize-sweetie-hd-alpha-1",
+  "pair": {
+    "modelId": "deepseek/deepseek-chat-v4",
+    "providerId": "fireworks"
+  },
+  "enUsSentinel": "STELLA-ALPHA-EN-US-SENTINEL",
+  "sceneId": 1,
+  "notes": "UTSUSHI-228 alpha closer. Single (modelId, providerId) pair pinned for every stage of the agentic loop. The enUsSentinel substring is woven into the translation prompt so the patched Seen.txt's replay produces a TextLine whose bodyUtf8 contains the substring verbatim. ASCII-only by deliberate choice: the leading SJIS bracket required by the KAIFUU-191 lexer is wrapped around the sentinel by the patch step, not by the prompt. See UTSUSHI-227 for the sentinel-validation contract. The discriminator '228' lives ONLY in this policyId; the sentinel never embeds digits because lexer leads 0-4 collide with SELECTION_OPTION_MARKER under UTSUSHI-204.",
+  "stages": {
+    "context": {
+      "sceneSummary": { "modelId": "deepseek/deepseek-chat-v4", "providerId": "fireworks" },
+      "characterRelationship": {
+        "modelId": "deepseek/deepseek-chat-v4",
+        "providerId": "fireworks"
+      },
+      "terminologyCandidate": { "modelId": "deepseek/deepseek-chat-v4", "providerId": "fireworks" },
+      "routeChoiceMap": { "modelId": "deepseek/deepseek-chat-v4", "providerId": "fireworks" }
+    },
+    "preTranslation": {
+      "speakerLabel": { "modelId": "deepseek/deepseek-chat-v4", "providerId": "fireworks" }
+    },
+    "translation": {
+      "primary": { "modelId": "deepseek/deepseek-chat-v4", "providerId": "fireworks" }
+    },
+    "qa": {
+      "styleAdherence": { "modelId": "deepseek/deepseek-chat-v4", "providerId": "fireworks" },
+      "semanticDrift": { "modelId": "deepseek/deepseek-chat-v4", "providerId": "fireworks" },
+      "toneRegister": { "modelId": "deepseek/deepseek-chat-v4", "providerId": "fireworks" },
+      "unresolvedTerminology": { "modelId": "deepseek/deepseek-chat-v4", "providerId": "fireworks" }
+    },
+    "repair": {
+      "primary": { "modelId": "deepseek/deepseek-chat-v4", "providerId": "fireworks" }
+    }
+  }
+}

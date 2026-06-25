@@ -25110,7 +25110,10 @@
     {
       "id": "UTSUSHI-228",
       "title": "suite: just localize-sweetie-hd end-to-end command (extract -> translate -> patch -> replay-verify)",
-      "status": "planned",
+      "status": "in_progress",
+      "owner": "orchestrator-utsushi-228",
+      "branch": "spec/utsushi-228",
+      "worktree": "/scratch/worktrees/itotori-spec-utsushi-228",
       "priority": "P1",
       "target": "alpha",
       "projects": ["suite"],
