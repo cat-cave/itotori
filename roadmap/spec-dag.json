@@ -25401,7 +25401,7 @@
     {
       "id": "ITOTORI-227",
       "title": "itotori-agent-runtime: delete reinvented data-handling registry; default provider.zdr=true",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P0",
       "target": "alpha",
       "projects": ["itotori"],
@@ -25443,14 +25443,12 @@
         "Documenting 'ZDR is on' without enforcing the env var assertion"
       ],
       "parallelGroup": "agent-runtime",
-      "owner": "orchestrator-itotori-227",
-      "branch": "spec/itotori-227",
-      "worktree": "/scratch/worktrees/itotori-spec-itotori-227"
+      "statusReason": "undefined\n\n[2026-06-25 landed at 87c9fb3 → merge 2cef0b1] policy.ts deleted. ProviderDataHandlingPolicy/OpenRouterAccountPrivacyState/ModelCapabilities.{dataHandling,accountPrivacy} removed. account-zdr.ts hard-throws on missing OPENROUTER_ZDR_ACCOUNT_ASSERTED=1 at provider construction. provider.zdr=true defaults for non-public input. 606 tests pass. Discovered ledger columns model_provider_run.account_privacy + .data_handling + benchmark_run.{account_privacy,data_handling} are now dead but written {} for notNull satisfaction — folded into ITOTORI-230 migration scope."
     },
     {
       "id": "ITOTORI-228",
       "title": "itotori-agent-runtime: recorded provider replays captured real cost; remove hardcoded costKind: zero",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P0",
       "target": "alpha",
       "projects": ["itotori"],
@@ -25483,9 +25481,7 @@
         "RecordedCostMismatchError downgraded to a warning"
       ],
       "parallelGroup": "agent-runtime",
-      "owner": "orchestrator-itotori-228",
-      "branch": "spec/itotori-228",
-      "worktree": "/scratch/worktrees/itotori-spec-itotori-228"
+      "statusReason": "undefined\n\n[2026-06-25 landed at a4fad2c → merge 661a447] RecordedProviderResponse.cost now REQUIRED (ProviderCost). RecordedModelProvider.invoke returns captured cost (was hardcoded 0). RECORDED_PROVIDER_BUNDLE_SCHEMA_VERSION=itotori.recorded-provider-bundle.v1 (forcing function for recapture). RecordedCostMismatchError + RecordedBundleSchemaMismatchError typed errors. 8 new replay tests; 610 total. One merge conflict resolved on recorded.ts (228 imported deterministicFixtureDataHandlingPolicy from deleted policy.ts; dropped — unused dead-import)."
     },
     {
       "id": "ITOTORI-229",
@@ -25526,22 +25522,26 @@
     {
       "id": "ITOTORI-230",
       "title": "itotori-agent-runtime: persist OR routing posture (zdr=true, data_collection=deny, only=[providerId]) in ledger and recorded bundles",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P1",
       "target": "alpha",
       "projects": ["itotori"],
       "dependsOn": ["ITOTORI-227", "ITOTORI-228"],
       "summary": "Persist the OR provider-routing block sent on each call into the ledger row (migration: add routing_posture jsonb) AND mirror it on RecordedProviderBundle responses so offline replays can prove the original call's routing posture. ProviderRunRecord gains a routingPosture field. RecordedModelProvider replay sets ProviderRunRecord.routingPosture from the bundle; capture path writes it on live calls. Telemetry queries.ts adds a per-pair 'ZDR-enforced call count' so a partial-coverage anomaly is visible in the dashboard.",
       "deliverables": [
-        "Migration 0040_provider_ledger_routing_posture.sql (numbered after ITOTORI-225's 0039)",
+        "0040_provider_ledger_routing_posture.sql (numbered after ITOTORI-225 0039): ADD routing_posture jsonb column (NOT NULL); DROP dead columns model_provider_run.account_privacy + .data_handling + benchmark_run.account_privacy + .data_handling (orphaned by ITOTORI-227 — currently receive {} writes only)",
         "apps/itotori/src/providers/types.ts: ProviderRunRecord.routingPosture",
         "apps/itotori/src/providers/recorded.ts: bundle response.routingPosture",
-        "apps/itotori/src/telemetry/queries.ts: countZdrEnforcedCallsByPair"
+        "apps/itotori/src/telemetry/queries.ts: countZdrEnforcedCallsByPair",
+        "packages/itotori-db/src/schema.ts: remove account_privacy + data_handling field references on modelProviderRun + benchmarkRun tables (ITOTORI-227 follow-up)",
+        "apps/itotori/src/draft/draft-attempt-recorder.ts + project-workflow.ts + dashboard.ts + any ProviderRunLedgerInput consumer: stop passing {} for dataHandling (post-column-drop)"
       ],
       "acceptanceCriteria": [
         "A live OR call writes routing_posture { only:[providerId], allow_fallbacks:false, data_collection:'deny', zdr:true, require_parameters?:bool } to the ledger",
         "A recorded bundle response carries routingPosture; replay sets it on the ProviderRunRecord",
-        "Telemetry CLI lists zdrEnforcedCount == invocationCount for the alpha pair over a non-trivial window"
+        "Telemetry CLI lists zdrEnforcedCount == invocationCount for the alpha pair over a non-trivial window",
+        "No code path in apps/itotori/src writes to (or even references) account_privacy or data_handling on ProviderRunLedgerInput post-migration",
+        "Migration 0040 cleanly drops 4 columns + adds 1 column in single forward-only transaction; rollback not provided per no-legacy-compat rule"
       ],
       "verification": [
         {
@@ -25562,8 +25562,10 @@
         "ZDR-enforced count includes recorded-bundle responses that didn't actually capture posture (silent partial coverage)",
         "Migration backfill widens to 'unknown' without explicit audit row"
       ],
-      "statusReason": "Per docs/audits/openrouter-wiring-audit-2026-06-25.md §4-4 (routing posture in ledger + recorded bundles) + §3-G (recorded provider doesn't mirror OR routing metadata, high).",
-      "parallelGroup": "agent-runtime"
+      "parallelGroup": "agent-runtime",
+      "owner": "orchestrator-itotori-230",
+      "branch": "spec/itotori-230",
+      "worktree": "/scratch/worktrees/itotori-spec-itotori-230"
     },
     {
       "id": "ITOTORI-231",
