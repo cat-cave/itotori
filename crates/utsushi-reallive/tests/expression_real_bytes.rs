@@ -168,7 +168,7 @@ fn scene1_expression_elements_parse_and_evaluate() {
         // may reference banks; on a zeroed snapshot every memory ref
         // resolves to 0 so the evaluator must always terminate with a
         // finite result or a typed error — never panic or infinite-loop.
-        let mut banks = VarBanks::zeroed();
+        let mut banks = VarBanks::new();
         let outcome = match &parsed.node {
             ExprNode::Assignment { .. } => match evaluate_assignment(&parsed.node, &mut banks) {
                 Ok(value) => format!("assign_ok({value})"),

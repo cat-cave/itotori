@@ -10,8 +10,8 @@
 //! "case 17 of 50 failed" message.
 
 use utsushi_reallive::{
-    AssignOp, ExprNode, ExprOp, ExpressionParseError, ExpressionWarning, VarBanks, evaluate,
-    evaluate_assignment, parse_expression, parse_expression_with_warnings,
+    AssignOp, BankId, ExprNode, ExprOp, ExpressionParseError, ExpressionWarning, Value, VarBanks,
+    evaluate, evaluate_assignment, parse_expression, parse_expression_with_warnings,
 };
 
 // ----- Encoding helpers --------------------------------------------
@@ -75,7 +75,7 @@ fn parse_and_eval(bytes: &[u8], expected: i32) -> ExprNode {
         "parse must consume every byte; consumed {consumed} of {} on {bytes:02X?}",
         bytes.len(),
     );
-    let banks = VarBanks::zeroed();
+    let banks = VarBanks::new();
     let result = evaluate(&node, &banks)
         .unwrap_or_else(|err| panic!("eval failed on {bytes:02X?}: {err:?}"));
     assert_eq!(
@@ -117,8 +117,10 @@ fn ac1_intb_zero_plus_five_with_value_ten_equals_fifteen() {
     let bytes = binary(&mem(0x01, &lit(0)), op(ExprOp::Add), &lit(5));
     let (node, consumed) = parse_expression(&bytes).expect("parse");
     assert_eq!(consumed, bytes.len());
-    let mut banks = VarBanks::zeroed();
-    banks.int_b[0] = 10;
+    let mut banks = VarBanks::new();
+    banks
+        .set(BankId::IntB, 0, Value::Int(10))
+        .expect("clean set");
     let result = evaluate(&node, &banks).expect("eval");
     assert_eq!(result, 15, "intB[0]=10, +5 must equal 15");
 }
@@ -156,7 +158,7 @@ fn ac2_unknown_operator_inside_chain_partial_result_at_warning_point() {
     bytes.push(0x5C);
     bytes.push(0xEE);
     let parsed = parse_expression_with_warnings(&bytes).expect("partial recovery");
-    let banks = VarBanks::zeroed();
+    let banks = VarBanks::new();
     let result = evaluate(&parsed.node, &banks).expect("partial eval");
     assert_eq!(result, 3, "partial result is the in-progress sum (1 + 2)");
     assert_eq!(parsed.warnings.len(), 1);
@@ -222,7 +224,7 @@ fn synth_10_div_truncates_toward_zero() {
 fn synth_11_div_by_zero_is_typed_error() {
     let bytes = binary(&lit(7), op(ExprOp::Div), &lit(0));
     let (node, _) = parse_expression(&bytes).expect("parse");
-    let banks = VarBanks::zeroed();
+    let banks = VarBanks::new();
     let err = evaluate(&node, &banks).expect_err("div by zero must fail typed-error");
     assert_eq!(format!("{err}"), "expression evaluator: division by zero",);
 }
@@ -236,7 +238,7 @@ fn synth_12_mod_positive() {
 fn synth_13_mod_by_zero_is_typed_error() {
     let bytes = binary(&lit(7), op(ExprOp::Mod), &lit(0));
     let (node, _) = parse_expression(&bytes).expect("parse");
-    let banks = VarBanks::zeroed();
+    let banks = VarBanks::new();
     assert!(evaluate(&node, &banks).is_err());
 }
 
@@ -348,16 +350,18 @@ fn synth_32_int_literal_zero() {
 
 #[test]
 fn synth_33_store_register_read() {
-    let mut banks = VarBanks::zeroed();
-    banks.store = 99;
+    let mut banks = VarBanks::new();
+    banks.set_store(99);
     let (node, _) = parse_expression(&store_ref()).expect("parse");
     assert_eq!(evaluate(&node, &banks).unwrap(), 99);
 }
 
 #[test]
 fn synth_34_memory_ref_intb_42() {
-    let mut banks = VarBanks::zeroed();
-    banks.int_b[42] = 1234;
+    let mut banks = VarBanks::new();
+    banks
+        .set(BankId::IntB, 42, Value::Int(1234))
+        .expect("clean set");
     let bytes = mem(0x01, &lit(42));
     let (node, _) = parse_expression(&bytes).expect("parse");
     assert_eq!(evaluate(&node, &banks).unwrap(), 1234);
@@ -365,8 +369,10 @@ fn synth_34_memory_ref_intb_42() {
 
 #[test]
 fn synth_35_memory_ref_inta_zero() {
-    let mut banks = VarBanks::zeroed();
-    banks.int_a[0] = 7;
+    let mut banks = VarBanks::new();
+    banks
+        .set(BankId::IntA, 0, Value::Int(7))
+        .expect("clean set");
     let bytes = mem(0x00, &lit(0));
     let (node, _) = parse_expression(&bytes).expect("parse");
     assert_eq!(evaluate(&node, &banks).unwrap(), 7);
@@ -375,8 +381,10 @@ fn synth_35_memory_ref_inta_zero() {
 #[test]
 fn synth_36_memory_ref_with_computed_index() {
     // $ 01 [ (2 + 1) ] — intB; index resolves at eval time to 3.
-    let mut banks = VarBanks::zeroed();
-    banks.int_b[3] = 555;
+    let mut banks = VarBanks::new();
+    banks
+        .set(BankId::IntB, 3, Value::Int(555))
+        .expect("clean set");
     let idx = binary(&lit(2), op(ExprOp::Add), &lit(1));
     let bytes = mem(0x01, &group(&idx));
     let (node, _) = parse_expression(&bytes).expect("parse");
@@ -391,7 +399,7 @@ fn synth_37_group_around_int_literal() {
     let (node, consumed) = parse_expression(&bytes).expect("parse");
     assert_eq!(consumed, bytes.len());
     assert!(matches!(node, ExprNode::Group(_)));
-    let banks = VarBanks::zeroed();
+    let banks = VarBanks::new();
     assert_eq!(evaluate(&node, &banks).unwrap(), 42);
 }
 
@@ -436,9 +444,9 @@ fn synth_42_plain_assign_into_intb() {
     bytes.extend_from_slice(&lit(7));
     let (node, consumed) = parse_expression(&bytes).expect("parse");
     assert_eq!(consumed, bytes.len());
-    let mut banks = VarBanks::zeroed();
+    let mut banks = VarBanks::new();
     evaluate_assignment(&node, &mut banks).expect("eval");
-    assert_eq!(banks.int_b[0], 7);
+    assert_eq!(banks.get(BankId::IntB, 0), Some(Value::Int(7)));
 }
 
 #[test]
@@ -447,10 +455,12 @@ fn synth_43_add_assign_compound() {
     bytes.extend_from_slice(&assign(AssignOp::AddAssign));
     bytes.extend_from_slice(&lit(3));
     let (node, _) = parse_expression(&bytes).expect("parse");
-    let mut banks = VarBanks::zeroed();
-    banks.int_b[0] = 5;
+    let mut banks = VarBanks::new();
+    banks
+        .set(BankId::IntB, 0, Value::Int(5))
+        .expect("clean set");
     evaluate_assignment(&node, &mut banks).unwrap();
-    assert_eq!(banks.int_b[0], 8);
+    assert_eq!(banks.get(BankId::IntB, 0), Some(Value::Int(8)));
 }
 
 #[test]
@@ -459,10 +469,12 @@ fn synth_44_sub_assign_compound() {
     bytes.extend_from_slice(&assign(AssignOp::SubAssign));
     bytes.extend_from_slice(&lit(3));
     let (node, _) = parse_expression(&bytes).expect("parse");
-    let mut banks = VarBanks::zeroed();
-    banks.int_b[0] = 10;
+    let mut banks = VarBanks::new();
+    banks
+        .set(BankId::IntB, 0, Value::Int(10))
+        .expect("clean set");
     evaluate_assignment(&node, &mut banks).unwrap();
-    assert_eq!(banks.int_b[0], 7);
+    assert_eq!(banks.get(BankId::IntB, 0), Some(Value::Int(7)));
 }
 
 #[test]
@@ -471,10 +483,12 @@ fn synth_45_mul_assign_compound() {
     bytes.extend_from_slice(&assign(AssignOp::MulAssign));
     bytes.extend_from_slice(&lit(4));
     let (node, _) = parse_expression(&bytes).expect("parse");
-    let mut banks = VarBanks::zeroed();
-    banks.int_b[0] = 3;
+    let mut banks = VarBanks::new();
+    banks
+        .set(BankId::IntB, 0, Value::Int(3))
+        .expect("clean set");
     evaluate_assignment(&node, &mut banks).unwrap();
-    assert_eq!(banks.int_b[0], 12);
+    assert_eq!(banks.get(BankId::IntB, 0), Some(Value::Int(12)));
 }
 
 #[test]
@@ -483,10 +497,12 @@ fn synth_46_div_assign_compound() {
     bytes.extend_from_slice(&assign(AssignOp::DivAssign));
     bytes.extend_from_slice(&lit(2));
     let (node, _) = parse_expression(&bytes).expect("parse");
-    let mut banks = VarBanks::zeroed();
-    banks.int_b[0] = 20;
+    let mut banks = VarBanks::new();
+    banks
+        .set(BankId::IntB, 0, Value::Int(20))
+        .expect("clean set");
     evaluate_assignment(&node, &mut banks).unwrap();
-    assert_eq!(banks.int_b[0], 10);
+    assert_eq!(banks.get(BankId::IntB, 0), Some(Value::Int(10)));
 }
 
 #[test]
@@ -495,10 +511,12 @@ fn synth_47_mod_assign_compound() {
     bytes.extend_from_slice(&assign(AssignOp::ModAssign));
     bytes.extend_from_slice(&lit(7));
     let (node, _) = parse_expression(&bytes).expect("parse");
-    let mut banks = VarBanks::zeroed();
-    banks.int_b[0] = 23;
+    let mut banks = VarBanks::new();
+    banks
+        .set(BankId::IntB, 0, Value::Int(23))
+        .expect("clean set");
     evaluate_assignment(&node, &mut banks).unwrap();
-    assert_eq!(banks.int_b[0], 2);
+    assert_eq!(banks.get(BankId::IntB, 0), Some(Value::Int(2)));
 }
 
 #[test]
@@ -507,10 +525,12 @@ fn synth_48_and_assign_compound() {
     bytes.extend_from_slice(&assign(AssignOp::AndAssign));
     bytes.extend_from_slice(&lit(0x0F));
     let (node, _) = parse_expression(&bytes).expect("parse");
-    let mut banks = VarBanks::zeroed();
-    banks.int_b[0] = 0xFF;
+    let mut banks = VarBanks::new();
+    banks
+        .set(BankId::IntB, 0, Value::Int(0xFF))
+        .expect("clean set");
     evaluate_assignment(&node, &mut banks).unwrap();
-    assert_eq!(banks.int_b[0], 0x0F);
+    assert_eq!(banks.get(BankId::IntB, 0), Some(Value::Int(0x0F)));
 }
 
 #[test]
@@ -519,10 +539,12 @@ fn synth_49_or_assign_compound() {
     bytes.extend_from_slice(&assign(AssignOp::OrAssign));
     bytes.extend_from_slice(&lit(0x0F));
     let (node, _) = parse_expression(&bytes).expect("parse");
-    let mut banks = VarBanks::zeroed();
-    banks.int_b[0] = 0xF0;
+    let mut banks = VarBanks::new();
+    banks
+        .set(BankId::IntB, 0, Value::Int(0xF0))
+        .expect("clean set");
     evaluate_assignment(&node, &mut banks).unwrap();
-    assert_eq!(banks.int_b[0], 0xFF);
+    assert_eq!(banks.get(BankId::IntB, 0), Some(Value::Int(0xFF)));
 }
 
 #[test]
@@ -531,10 +553,12 @@ fn synth_50_xor_assign_compound() {
     bytes.extend_from_slice(&assign(AssignOp::XorAssign));
     bytes.extend_from_slice(&lit(0xFF));
     let (node, _) = parse_expression(&bytes).expect("parse");
-    let mut banks = VarBanks::zeroed();
-    banks.int_b[0] = 0x0F;
+    let mut banks = VarBanks::new();
+    banks
+        .set(BankId::IntB, 0, Value::Int(0x0F))
+        .expect("clean set");
     evaluate_assignment(&node, &mut banks).unwrap();
-    assert_eq!(banks.int_b[0], 0xF0);
+    assert_eq!(banks.get(BankId::IntB, 0), Some(Value::Int(0xF0)));
 }
 
 // --- Negative / hardness cases ------------------------------------

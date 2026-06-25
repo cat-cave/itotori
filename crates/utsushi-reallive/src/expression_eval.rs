@@ -1,18 +1,19 @@
-//! UTSUSHI-205 — expression evaluator.
+//! UTSUSHI-205 — expression evaluator (UTSUSHI-206 sparse-banks edition).
 //!
 //! Given an [`ExprNode`] produced by [`crate::expression::parse_expression`]
-//! and a [`VarBanks`] snapshot, [`evaluate`] reduces the AST to an
-//! `i32` result. [`evaluate_assignment`] handles the
+//! and a [`crate::var_banks::VarBanks`] snapshot, [`evaluate`] reduces the
+//! AST to an `i32` result. [`evaluate_assignment`] handles the
 //! [`ExprNode::Assignment`] shape (mutating the supplied banks).
 //!
 //! # Bank layout
 //!
 //! Per `docs/research/reallive-engine.md` §G the integer banks are
 //! `intA`..`intM` (13 letters per Haeleth's documented RLDEV manual;
-//! rlvm caps each bank at 2,000 entries — this evaluator uses 4,096
-//! slots per bank as a conservative upper bound). Bank-byte
-//! indexing follows the documented `\x0B = intB` convention pinned
-//! in [`bank_byte_to_index`].
+//! rlvm caps each bank at 2 000 entries). The UTSUSHI-206 sparse model
+//! uses a [`std::collections::BTreeMap<u16, i32>`] per bank and clamps
+//! to [`crate::var_banks::BANK_INDEX_CAP`] (`2 000`). Bank-byte indexing
+//! follows the documented `\x00..=\x0C` convention pinned in
+//! [`bank_byte_to_index`].
 //!
 //! # Division and modulo by zero
 //!
@@ -24,192 +25,7 @@
 use thiserror::Error;
 
 use crate::expression::{AssignOp, ExprNode, ExprOp, UnaryOp};
-
-/// Number of slots per integer bank. rlvm caps each at 2,000; this
-/// evaluator uses 4,096 as a power-of-two upper bound so the array
-/// stays contiguous and bounds-check failures are still typed errors
-/// rather than panics.
-pub const INT_BANK_SLOT_COUNT: usize = 4096;
-
-/// Number of typed integer banks (`intA`..`intM`).
-pub const INT_BANK_COUNT: usize = 13;
-
-/// Typed integer-bank snapshot used as the evaluator's read/write
-/// surface.
-///
-/// The bank arrays are exposed as fixed-size `[i32; INT_BANK_SLOT_COUNT]`
-/// rather than as a `HashMap` because (a) the lookup is on a hot path
-/// — every expression in a scene's bytecode touches at least one
-/// memory ref — and (b) the dense representation lets the snapshot
-/// surface UTSUSHI-206 will land plug straight into the evaluator
-/// without an indirection.
-#[derive(Clone)]
-pub struct VarBanks {
-    /// `intA` — general-purpose bank A.
-    pub int_a: [i32; INT_BANK_SLOT_COUNT],
-    /// `intB` — general-purpose bank B (bank byte `0x01`).
-    pub int_b: [i32; INT_BANK_SLOT_COUNT],
-    /// `intC` — general-purpose bank C.
-    pub int_c: [i32; INT_BANK_SLOT_COUNT],
-    /// `intD` — general-purpose bank D.
-    pub int_d: [i32; INT_BANK_SLOT_COUNT],
-    /// `intE` — general-purpose bank E.
-    pub int_e: [i32; INT_BANK_SLOT_COUNT],
-    /// `intF` — general-purpose bank F.
-    pub int_f: [i32; INT_BANK_SLOT_COUNT],
-    /// `intG` — general-purpose bank G.
-    pub int_g: [i32; INT_BANK_SLOT_COUNT],
-    /// `intH` — general-purpose bank H.
-    pub int_h: [i32; INT_BANK_SLOT_COUNT],
-    /// `intI` — general-purpose bank I.
-    pub int_i: [i32; INT_BANK_SLOT_COUNT],
-    /// `intJ` — general-purpose bank J.
-    pub int_j: [i32; INT_BANK_SLOT_COUNT],
-    /// `intK` — general-purpose bank K (RealLive: "constant" historical).
-    pub int_k: [i32; INT_BANK_SLOT_COUNT],
-    /// `intL` — general-purpose bank L.
-    pub int_l: [i32; INT_BANK_SLOT_COUNT],
-    /// `intM` — general-purpose bank M.
-    pub int_m: [i32; INT_BANK_SLOT_COUNT],
-    /// Single store register (rlvm: `u32`; this crate treats it as
-    /// `i32` to match the arithmetic surface — sign reinterpretation
-    /// happens in the caller if needed).
-    pub store: i32,
-}
-
-impl Default for VarBanks {
-    fn default() -> Self {
-        Self::zeroed()
-    }
-}
-
-impl std::fmt::Debug for VarBanks {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        // The bank arrays are 13 * 4096 i32s — printing them defeats
-        // the purpose of a Debug impl. Instead surface the non-zero
-        // counts and the store register so a regression that scribbles
-        // into the banks is still visible in panic output.
-        let nonzero_total: usize = self.int_banks_iter().map(count_nonzero).sum();
-        formatter
-            .debug_struct("VarBanks")
-            .field("nonzero_int_slots", &nonzero_total)
-            .field("store", &self.store)
-            .finish()
-    }
-}
-
-impl VarBanks {
-    /// Construct a banks snapshot with every slot zeroed and the store
-    /// register cleared. Used by the synthetic test suite as the
-    /// neutral baseline.
-    pub fn zeroed() -> Self {
-        Self {
-            int_a: [0; INT_BANK_SLOT_COUNT],
-            int_b: [0; INT_BANK_SLOT_COUNT],
-            int_c: [0; INT_BANK_SLOT_COUNT],
-            int_d: [0; INT_BANK_SLOT_COUNT],
-            int_e: [0; INT_BANK_SLOT_COUNT],
-            int_f: [0; INT_BANK_SLOT_COUNT],
-            int_g: [0; INT_BANK_SLOT_COUNT],
-            int_h: [0; INT_BANK_SLOT_COUNT],
-            int_i: [0; INT_BANK_SLOT_COUNT],
-            int_j: [0; INT_BANK_SLOT_COUNT],
-            int_k: [0; INT_BANK_SLOT_COUNT],
-            int_l: [0; INT_BANK_SLOT_COUNT],
-            int_m: [0; INT_BANK_SLOT_COUNT],
-            store: 0,
-        }
-    }
-
-    /// Read a slot from the bank addressed by `bank_byte`. Returns
-    /// [`EvaluationError::UnknownBank`] if the bank byte does not map
-    /// to any documented bank, or
-    /// [`EvaluationError::BankIndexOutOfRange`] if `index` is past the
-    /// fixed slot count.
-    pub fn read(&self, bank_byte: u8, index: i32) -> Result<i32, EvaluationError> {
-        let slot = self.bank_slice(bank_byte)?;
-        let idx = bank_index_in_range(bank_byte, index)?;
-        Ok(slot[idx])
-    }
-
-    /// Write `value` to a slot in the bank addressed by `bank_byte`.
-    pub fn write(&mut self, bank_byte: u8, index: i32, value: i32) -> Result<(), EvaluationError> {
-        let slot = self.bank_slice_mut(bank_byte)?;
-        let idx = bank_index_in_range(bank_byte, index)?;
-        slot[idx] = value;
-        Ok(())
-    }
-
-    fn bank_slice(&self, bank_byte: u8) -> Result<&[i32; INT_BANK_SLOT_COUNT], EvaluationError> {
-        match bank_byte_to_index(bank_byte)? {
-            0 => Ok(&self.int_a),
-            1 => Ok(&self.int_b),
-            2 => Ok(&self.int_c),
-            3 => Ok(&self.int_d),
-            4 => Ok(&self.int_e),
-            5 => Ok(&self.int_f),
-            6 => Ok(&self.int_g),
-            7 => Ok(&self.int_h),
-            8 => Ok(&self.int_i),
-            9 => Ok(&self.int_j),
-            10 => Ok(&self.int_k),
-            11 => Ok(&self.int_l),
-            12 => Ok(&self.int_m),
-            other => Err(EvaluationError::UnknownBank {
-                bank_byte,
-                debug: format!("bank-byte slot index {other} out of range"),
-            }),
-        }
-    }
-
-    fn bank_slice_mut(
-        &mut self,
-        bank_byte: u8,
-    ) -> Result<&mut [i32; INT_BANK_SLOT_COUNT], EvaluationError> {
-        match bank_byte_to_index(bank_byte)? {
-            0 => Ok(&mut self.int_a),
-            1 => Ok(&mut self.int_b),
-            2 => Ok(&mut self.int_c),
-            3 => Ok(&mut self.int_d),
-            4 => Ok(&mut self.int_e),
-            5 => Ok(&mut self.int_f),
-            6 => Ok(&mut self.int_g),
-            7 => Ok(&mut self.int_h),
-            8 => Ok(&mut self.int_i),
-            9 => Ok(&mut self.int_j),
-            10 => Ok(&mut self.int_k),
-            11 => Ok(&mut self.int_l),
-            12 => Ok(&mut self.int_m),
-            other => Err(EvaluationError::UnknownBank {
-                bank_byte,
-                debug: format!("bank-byte slot index {other} out of range"),
-            }),
-        }
-    }
-
-    fn int_banks_iter(&self) -> impl Iterator<Item = &[i32; INT_BANK_SLOT_COUNT]> {
-        [
-            &self.int_a,
-            &self.int_b,
-            &self.int_c,
-            &self.int_d,
-            &self.int_e,
-            &self.int_f,
-            &self.int_g,
-            &self.int_h,
-            &self.int_i,
-            &self.int_j,
-            &self.int_k,
-            &self.int_l,
-            &self.int_m,
-        ]
-        .into_iter()
-    }
-}
-
-fn count_nonzero(slots: &[i32; INT_BANK_SLOT_COUNT]) -> usize {
-    slots.iter().filter(|&&value| value != 0).count()
-}
+use crate::var_banks::{BANK_INDEX_CAP, BankId, Value, VarBanks};
 
 /// Convert a raw bank byte (as it appears in the encoding) to the
 /// dense bank index `0..=12`. The byte-to-bank mapping is pinned by
@@ -250,23 +66,79 @@ pub fn bank_byte_to_index(bank_byte: u8) -> Result<usize, EvaluationError> {
     }
 }
 
-fn bank_index_in_range(bank_byte: u8, index: i32) -> Result<usize, EvaluationError> {
+fn bank_id_from_byte(bank_byte: u8) -> Result<BankId, EvaluationError> {
+    BankId::from_int_bank_byte(bank_byte).ok_or(EvaluationError::UnknownBank {
+        bank_byte,
+        debug: format!("bank byte 0x{bank_byte:02x} not in documented 0x00..=0x0C window"),
+    })
+}
+
+fn bank_index_in_range(bank_byte: u8, index: i32) -> Result<u16, EvaluationError> {
     if index < 0 {
         return Err(EvaluationError::BankIndexOutOfRange {
             bank_byte,
             index,
-            slot_count: INT_BANK_SLOT_COUNT,
+            slot_count: BANK_INDEX_CAP as usize,
         });
     }
     let as_usize = index as usize;
-    if as_usize >= INT_BANK_SLOT_COUNT {
+    if as_usize >= BANK_INDEX_CAP as usize {
         return Err(EvaluationError::BankIndexOutOfRange {
             bank_byte,
             index,
-            slot_count: INT_BANK_SLOT_COUNT,
+            slot_count: BANK_INDEX_CAP as usize,
         });
     }
-    Ok(as_usize)
+    Ok(as_usize as u16)
+}
+
+fn read_int_bank(banks: &VarBanks, bank_byte: u8, index: i32) -> Result<i32, EvaluationError> {
+    let bank = bank_id_from_byte(bank_byte)?;
+    let idx = bank_index_in_range(bank_byte, index)?;
+    Ok(match banks.get(bank, idx) {
+        Some(Value::Int(value)) => value,
+        // Sparse storage: unset indices read as zero — matches the
+        // dense-bank surface UTSUSHI-205 exposed (every slot defaulted
+        // to zero) so the evaluator's arithmetic on unset slots is
+        // unchanged.
+        None => 0,
+        Some(Value::Str(_)) => {
+            return Err(EvaluationError::UnknownBank {
+                bank_byte,
+                debug: format!(
+                    "bank byte 0x{bank_byte:02x} resolved to non-integer bank — \
+                     expression evaluator only addresses int banks"
+                ),
+            });
+        }
+    })
+}
+
+fn write_int_bank(
+    banks: &mut VarBanks,
+    bank_byte: u8,
+    index: i32,
+    value: i32,
+) -> Result<(), EvaluationError> {
+    let bank = bank_id_from_byte(bank_byte)?;
+    let idx = bank_index_in_range(bank_byte, index)?;
+    // The evaluator's caller-supplied indices already pass through
+    // `bank_index_in_range` above, so the sparse-banks `set` will
+    // never emit a `BankIndexOutOfRange` warning here. Treat any
+    // warning that surfaces as a structural bug.
+    if let Err(warning) = banks.set(bank, idx, Value::Int(value)) {
+        return Err(EvaluationError::BankIndexOutOfRange {
+            bank_byte,
+            index,
+            slot_count: warning_cap_or_default(warning),
+        });
+    }
+    Ok(())
+}
+
+fn warning_cap_or_default(warning: crate::var_banks::VarBanksWarning) -> usize {
+    let crate::var_banks::VarBanksWarning::BankIndexOutOfRange { cap, .. } = warning;
+    cap as usize
 }
 
 /// Typed evaluator failure modes.
@@ -357,10 +229,10 @@ pub enum EvaluationError {
 pub fn evaluate(expr: &ExprNode, banks: &VarBanks) -> Result<i32, EvaluationError> {
     match expr {
         ExprNode::IntLiteral(value) => Ok(*value),
-        ExprNode::StoreRegister => Ok(banks.store),
+        ExprNode::StoreRegister => Ok(banks.store() as i32),
         ExprNode::MemoryRef { bank, index } => {
             let idx = evaluate(index, banks)?;
-            banks.read(*bank, idx)
+            read_int_bank(banks, *bank, idx)
         }
         ExprNode::Group(inner) => evaluate(inner, banks),
         ExprNode::UnaryOp { op, operand } => {
@@ -465,15 +337,15 @@ pub fn evaluate_assignment(expr: &ExprNode, banks: &mut VarBanks) -> Result<i32,
     match dest.as_ref() {
         ExprNode::MemoryRef { bank, index } => {
             let idx = evaluate(index, banks)?;
-            let current = banks.read(*bank, idx)?;
+            let current = read_int_bank(banks, *bank, idx)?;
             let new_value = apply_assign_op(*op, current, source_value)?;
-            banks.write(*bank, idx, new_value)?;
+            write_int_bank(banks, *bank, idx, new_value)?;
             Ok(new_value)
         }
         ExprNode::StoreRegister => {
-            let current = banks.store;
+            let current = banks.store() as i32;
             let new_value = apply_assign_op(*op, current, source_value)?;
-            banks.store = new_value;
+            banks.set_store(new_value as u32);
             Ok(new_value)
         }
         other => Err(EvaluationError::NonLValueAssignmentDestination {
@@ -534,21 +406,23 @@ mod tests {
 
     #[test]
     fn int_literal_evaluates_to_itself() {
-        let banks = VarBanks::zeroed();
+        let banks = VarBanks::new();
         assert_eq!(evaluate(&ExprNode::IntLiteral(42), &banks).unwrap(), 42);
     }
 
     #[test]
     fn store_register_round_trip() {
-        let mut banks = VarBanks::zeroed();
-        banks.store = 7;
+        let mut banks = VarBanks::new();
+        banks.set_store(7);
         assert_eq!(evaluate(&ExprNode::StoreRegister, &banks).unwrap(), 7);
     }
 
     #[test]
     fn memory_ref_reads_intb_zero() {
-        let mut banks = VarBanks::zeroed();
-        banks.int_b[0] = 10;
+        let mut banks = VarBanks::new();
+        banks
+            .set(BankId::IntB, 0, Value::Int(10))
+            .expect("clean set");
         let node = ExprNode::MemoryRef {
             bank: 0x01,
             index: Box::new(ExprNode::IntLiteral(0)),
@@ -557,8 +431,18 @@ mod tests {
     }
 
     #[test]
+    fn memory_ref_unset_index_reads_as_zero() {
+        let banks = VarBanks::new();
+        let node = ExprNode::MemoryRef {
+            bank: 0x01,
+            index: Box::new(ExprNode::IntLiteral(42)),
+        };
+        assert_eq!(evaluate(&node, &banks).unwrap(), 0);
+    }
+
+    #[test]
     fn division_by_zero_is_typed_error_not_panic() {
-        let banks = VarBanks::zeroed();
+        let banks = VarBanks::new();
         let node = ExprNode::BinaryOp {
             op: ExprOp::Div,
             lhs: Box::new(ExprNode::IntLiteral(5)),
@@ -572,7 +456,7 @@ mod tests {
 
     #[test]
     fn modulo_by_zero_is_typed_error_not_panic() {
-        let banks = VarBanks::zeroed();
+        let banks = VarBanks::new();
         let node = ExprNode::BinaryOp {
             op: ExprOp::Mod,
             lhs: Box::new(ExprNode::IntLiteral(5)),
@@ -596,8 +480,8 @@ mod tests {
 
     #[test]
     fn out_of_range_bank_index_is_typed_error() {
-        let mut banks = VarBanks::zeroed();
-        let res = banks.write(0x01, INT_BANK_SLOT_COUNT as i32, 1);
+        let mut banks = VarBanks::new();
+        let res = write_int_bank(&mut banks, 0x01, BANK_INDEX_CAP as i32, 1);
         assert!(matches!(
             res,
             Err(EvaluationError::BankIndexOutOfRange { .. })
@@ -606,7 +490,7 @@ mod tests {
 
     #[test]
     fn evaluate_assignment_writes_into_intb() {
-        let mut banks = VarBanks::zeroed();
+        let mut banks = VarBanks::new();
         let node = ExprNode::Assignment {
             dest: Box::new(ExprNode::MemoryRef {
                 bank: 0x01,
@@ -617,13 +501,15 @@ mod tests {
         };
         let result = evaluate_assignment(&node, &mut banks).unwrap();
         assert_eq!(result, 7);
-        assert_eq!(banks.int_b[0], 7);
+        assert_eq!(banks.get(BankId::IntB, 0), Some(Value::Int(7)));
     }
 
     #[test]
     fn evaluate_compound_add_assign() {
-        let mut banks = VarBanks::zeroed();
-        banks.int_b[0] = 5;
+        let mut banks = VarBanks::new();
+        banks
+            .set(BankId::IntB, 0, Value::Int(5))
+            .expect("clean set");
         let node = ExprNode::Assignment {
             dest: Box::new(ExprNode::MemoryRef {
                 bank: 0x01,
@@ -633,12 +519,12 @@ mod tests {
             src: Box::new(ExprNode::IntLiteral(3)),
         };
         evaluate_assignment(&node, &mut banks).unwrap();
-        assert_eq!(banks.int_b[0], 8);
+        assert_eq!(banks.get(BankId::IntB, 0), Some(Value::Int(8)));
     }
 
     #[test]
     fn logical_and_short_circuits_on_false_lhs() {
-        let banks = VarBanks::zeroed();
+        let banks = VarBanks::new();
         // If RHS were evaluated it would division-by-zero. The
         // short-circuit must skip it.
         let node = ExprNode::BinaryOp {
@@ -655,7 +541,7 @@ mod tests {
 
     #[test]
     fn logical_or_short_circuits_on_true_lhs() {
-        let banks = VarBanks::zeroed();
+        let banks = VarBanks::new();
         let node = ExprNode::BinaryOp {
             op: ExprOp::LogicOr,
             lhs: Box::new(ExprNode::IntLiteral(1)),
