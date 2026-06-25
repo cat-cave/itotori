@@ -25030,7 +25030,7 @@
     {
       "id": "KAIFUU-211",
       "title": "kaifuu-reallive: real-bytes patchback driver (translated bundle -> writable Seen.txt)",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["kaifuu"],
@@ -25070,9 +25070,7 @@
         "Directory rewrite skipped when slot length changes (silent corruption)",
         "Readonly source mutated by the copy step (no sha256 invariant)"
       ],
-      "owner": "orchestrator-kaifuu-211",
-      "branch": "spec/kaifuu-211",
-      "worktree": "/scratch/worktrees/itotori-spec-kaifuu-211"
+      "statusReason": "Implementation merged (commit ad50c1d). apply_translated_bundle + kaifuu-cli patch --engine reallive round-trip Sweetie HD scene 1 through translated v0.2 bundle; 198-entry directory preserved, 41/82 textouts carry en-US sentinel."
     },
     {
       "id": "UTSUSHI-227",
