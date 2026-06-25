@@ -178,6 +178,19 @@ hello-agentic-loop: build
 hello-replay:
     cargo test -p utsushi-reallive --test replay_scene_synthetic -- --nocapture
 
+# UTSUSHI-227: patched-Seen.txt replay-and-verify smoke. Runs the
+# synthetic + validator integration tests through `cargo test` (no real
+# bytes required) so a fresh-clone reviewer can verify the
+# `validate_replay_contains` library API and the `replay-validate-
+# sweetie-hd` binary surface match without touching the vault. The
+# real-bytes variant lives in the same integration test file
+# (`tests/replay_validate_real_sweetie_hd.rs`) under the env-gated
+# ignored test; run it separately with KAIFUU_REAL_SWEETIE_HD_PATH set
+# per the spec verification block.
+hello-replay-validate:
+    cargo test -p utsushi-reallive --test replay_validate_real_sweetie_hd -- --nocapture
+    cargo run -p utsushi-reallive --bin replay-validate-sweetie-hd -- --help
+
 affected:
     node scripts/affected.mjs
 

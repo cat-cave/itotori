@@ -155,10 +155,20 @@ pub mod vm;
 // `TextLine` events.
 pub mod replay;
 
+// UTSUSHI-227: patched-Seen.txt replay-and-verify smoke. Consumes a
+// `ReplayLog` (or drives one via `replay_scene`) and reports whether
+// any captured `TextLine` body carries an expected substring. The
+// alpha-defining "verifiable patch landed" gate.
+pub mod replay_validate;
+
 pub use replay::{
     DEFAULT_REPLAY_STEP_BUDGET, REPLAY_LOG_SCHEMA_VERSION, ReplayError, ReplayEvent, ReplayLog,
     ReplayOpts, ReplayOutcome, replay_scene, replay_scene_bytes, replay_until_first_pause,
     restore_into_fresh_vm,
+};
+pub use replay_validate::{
+    NO_MATCH_SAMPLE_BODIES_CAP, NO_MATCH_SAMPLE_BODY_BYTE_CAP, ReplayValidation,
+    validate_log_contains, validate_replay_contains,
 };
 
 pub use scene_header::{

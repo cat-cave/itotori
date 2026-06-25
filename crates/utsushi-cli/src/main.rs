@@ -1,4 +1,5 @@
 mod replay;
+mod replay_validate;
 
 use std::path::PathBuf;
 
@@ -7,7 +8,7 @@ use utsushi_core::{
     RuntimeAdapterDescriptor, RuntimeAdapterRegistry, RuntimeOperation, RuntimeRequest, write_json,
 };
 
-const USAGE: &str = "usage: utsushi capabilities --output <path>\n       utsushi validate-reference-captures <corpus_manifest> --output <path>\n       utsushi replay --engine reallive --seen <PATH> --scene <N> --output <PATH> [--snapshot-output <PATH>]\n       utsushi <trace|capture|smoke> <game_dir> [--adapter <name>] [--artifact-root <path>] --output <path>";
+const USAGE: &str = "usage: utsushi capabilities --output <path>\n       utsushi validate-reference-captures <corpus_manifest> --output <path>\n       utsushi replay --engine reallive --seen <PATH> --scene <N> --output <PATH> [--snapshot-output <PATH>]\n       utsushi replay-validate --engine reallive --seen <PATH> --scene <N> --expect-textline-contains <SUBSTR> [--print-textlines] [--print-replay-log <PATH>]\n       utsushi <trace|capture|smoke> <game_dir> [--adapter <name>] [--artifact-root <path>] --output <path>";
 const DEFAULT_ADAPTER_NAME: &str = utsushi_fixture::FixtureRuntimeAdapter::NAME;
 
 static FIXTURE_RUNTIME_ADAPTER: utsushi_fixture::FixtureRuntimeAdapter =
@@ -70,6 +71,14 @@ fn run_cli_with_registry(
             // dispatching.
             let tail: Vec<String> = args.iter().skip(1).cloned().collect();
             replay::run_replay_command(&tail)?;
+        }
+        Some("replay-validate") => {
+            // UTSUSHI-227 — sibling of `replay` that drives the same
+            // pipeline and asserts an expected substring lands in at
+            // least one captured TextLine body. Skips the leading
+            // `replay-validate` argv slot.
+            let tail: Vec<String> = args.iter().skip(1).cloned().collect();
+            replay_validate::run_replay_validate_command(&tail)?;
         }
         Some(command) => {
             let operation = operation_from_command(command).ok_or(USAGE)?;

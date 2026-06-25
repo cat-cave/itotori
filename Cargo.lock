@@ -1234,6 +1234,8 @@ name = "utsushi-reallive"
 version = "0.0.0"
 dependencies = [
  "encoding_rs",
+ "kaifuu-core",
+ "kaifuu-reallive",
  "serde",
  "serde_json",
  "thiserror",
