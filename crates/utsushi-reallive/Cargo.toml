@@ -47,4 +47,13 @@ files-referenced = [
 ]
 
 [dev-dependencies]
+kaifuu-core = { path = "../kaifuu-core" }
+kaifuu-reallive = { path = "../kaifuu-reallive" }
 serde_json.workspace = true
+
+# UTSUSHI-227: patched-Seen.txt replay-and-verify smoke binary. Drives
+# `replay_scene` and asserts an expected substring lands in at least
+# one captured `TextLine` body. Linux-only; no Wine, no Windows helper.
+[[bin]]
+name = "replay-validate-sweetie-hd"
+path = "src/bin/replay_validate_sweetie_hd.rs"
