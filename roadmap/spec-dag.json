@@ -21217,7 +21217,7 @@
     {
       "id": "UTSUSHI-201",
       "title": "Real Seen.txt 10,000-slot directory parser",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P1",
       "target": "alpha",
       "projects": ["utsushi"],
@@ -21252,7 +21252,9 @@
         "Off-by-one slot indexing (slot 0 is reserved)",
         "Silent acceptance of overlap between slot N and slot N+1"
       ],
-      "statusReason": "Re-tier 2026-06-24: promoted continuous -> alpha — required for the redefined alpha (utsushi-reallive Linux runtime / real-bytes extraction) per docs/proposals/dag-retier-2026-06-24.md."
+      "owner": "orchestrator-utsushi-201",
+      "branch": "spec/utsushi-201",
+      "worktree": "/scratch/worktrees/itotori-spec-utsushi-201"
     },
     {
       "id": "UTSUSHI-202",
@@ -21448,7 +21450,7 @@
     {
       "id": "UTSUSHI-207",
       "title": "Structured Gameexe.ini parser (Shift-JIS, dotted-path)",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P1",
       "target": "alpha",
       "projects": ["utsushi"],
@@ -21482,7 +21484,9 @@
         "Reusing `kaifuu-reallive`'s inventory classifier under the hood instead of parsing structure",
         "Failing to model the `KEY = \"...\" = N : \"...\"` triple shape"
       ],
-      "statusReason": "Re-tier 2026-06-24: promoted continuous -> alpha — required for the redefined alpha (utsushi-reallive Linux runtime / real-bytes extraction) per docs/proposals/dag-retier-2026-06-24.md."
+      "owner": "orchestrator-utsushi-207",
+      "branch": "spec/utsushi-207",
+      "worktree": "/scratch/worktrees/itotori-spec-utsushi-207"
     },
     {
       "id": "UTSUSHI-208",
@@ -23956,7 +23960,7 @@
     {
       "id": "KAIFUU-191",
       "title": "RealLive scene bytecode opcode dispatch (drop synthetic '#' opener)",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P1",
       "target": "alpha",
       "projects": ["kaifuu"],
@@ -23990,7 +23994,9 @@
         "Shift-JIS decoder must reject UTF-8 byte sequences with a diagnostic (no silent transcoding).",
         "Diagnostic-to-instruction ratio guard must hold on at least one additional real scene payload chosen by the auditor."
       ],
-      "statusReason": "Re-tier 2026-06-24: promoted continuous -> alpha — required for the redefined alpha (utsushi-reallive Linux runtime / real-bytes extraction) per docs/proposals/dag-retier-2026-06-24.md."
+      "owner": "orchestrator-kaifuu-191",
+      "branch": "spec/kaifuu-191",
+      "worktree": "/scratch/worktrees/itotori-spec-kaifuu-191"
     },
     {
       "id": "KAIFUU-192",
@@ -24830,7 +24836,7 @@
     {
       "id": "ITOTORI-221",
       "title": "itotori-agent-runtime: live OpenRouter ModelProvider implementation (DEV_PAIR constant + caps)",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P1",
       "target": "alpha",
       "projects": ["itotori"],
@@ -24870,7 +24876,9 @@
         "Cost cap bypassed by a code path that constructs the HTTP request before the policy check",
         "DEV_PAIR defaulted to a comment instead of a code constant"
       ],
-      "statusReason": "Minted 2026-06-24 per docs/proposals/alpha-gap-analysis-2026-06-24.md §3 ITOTORI-NEW-Bopen: the alpha live-LLM clause needs a concrete provider impl that pins the pair at request time."
+      "owner": "orchestrator-itotori-221",
+      "branch": "spec/itotori-221",
+      "worktree": "/scratch/worktrees/itotori-spec-itotori-221"
     },
     {
       "id": "ITOTORI-222",
