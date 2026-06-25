@@ -24836,7 +24836,7 @@
     {
       "id": "ITOTORI-221",
       "title": "itotori-agent-runtime: live OpenRouter ModelProvider implementation (DEV_PAIR constant + caps)",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["itotori"],
@@ -24876,9 +24876,7 @@
         "Cost cap bypassed by a code path that constructs the HTTP request before the policy check",
         "DEV_PAIR defaulted to a comment instead of a code constant"
       ],
-      "owner": "orchestrator-itotori-221",
-      "branch": "spec/itotori-221",
-      "worktree": "/scratch/worktrees/itotori-spec-itotori-221"
+      "statusReason": "Implementation merged (commit fab7209). OpenRouterModelProvider + DEV_PAIR(deepseek-v4 on fireworks) + cost cap + token-bucket rate limit; 10 unit + 1 live test."
     },
     {
       "id": "ITOTORI-222",
