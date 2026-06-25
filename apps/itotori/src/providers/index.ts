@@ -73,7 +73,6 @@ export type {
   ModelToolChoice,
   OpenRouterAccountPrivacyState,
   ProviderCost,
-  ProviderCostTier,
   ProviderDataHandlingPolicy,
   ProviderDescriptor,
   ProviderFamily,
@@ -96,3 +95,9 @@ export type {
   ToolCallCapabilities,
 } from "./types.js";
 export { ModelProviderError } from "./types.js";
+export {
+  assertBilledCost,
+  decimalUsdStringToMicros,
+  usageCostToMicros,
+  ZERO_COST,
+} from "./cost.js";

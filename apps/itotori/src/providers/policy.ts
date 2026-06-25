@@ -19,10 +19,11 @@ export function evaluateProviderInputPolicy(
     return { allowed: true, reasons: [] };
   }
 
+  // ITOTORI-225 — the cost-tier gate is gone. Cost is a per-request fact
+  // (see ProviderCost), not a per-policy axis. The privacy-only checks
+  // below survive until ITOTORI-227 replaces the whole policy seam with a
+  // dedicated privacy posture.
   const reasons: string[] = [];
-  if (policy.costTier === "free" || policy.costTier === "mixed" || policy.costTier === "unknown") {
-    reasons.push(`cost tier is ${policy.costTier}`);
-  }
   if (policy.promptLogging !== "disabled" && policy.promptLogging !== "not_applicable") {
     reasons.push(`prompt logging is ${policy.promptLogging}`);
   }
@@ -74,7 +75,6 @@ export function assertProviderInputAllowed(
 }
 
 export const safeLocalDataHandlingPolicy: ProviderDataHandlingPolicy = {
-  costTier: "local",
   promptLogging: "not_applicable",
   completionLogging: "not_applicable",
   retention: "not_applicable",
@@ -84,7 +84,6 @@ export const safeLocalDataHandlingPolicy: ProviderDataHandlingPolicy = {
 };
 
 export const deterministicFixtureDataHandlingPolicy: ProviderDataHandlingPolicy = {
-  costTier: "local",
   promptLogging: "not_applicable",
   completionLogging: "not_applicable",
   retention: "not_applicable",

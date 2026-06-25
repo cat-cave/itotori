@@ -6,6 +6,7 @@ import {
   type ProviderRoutingCapabilityRequirement,
 } from "./capability-guard.js";
 import { knownPairs, type ModelProviderPair } from "./dev-pair.js";
+import { usageCostToMicros, ZERO_COST } from "./cost.js";
 import {
   type JsonObject,
   type JsonValue,
@@ -380,7 +381,6 @@ export const openRouterDefaultCapabilities: ModelCapabilities = {
     zeroDataRetentionRouting: "supported",
   },
   dataHandling: {
-    costTier: "unknown",
     promptLogging: "unknown",
     completionLogging: "unknown",
     retention: "unknown",
@@ -650,7 +650,7 @@ function normalizeOpenRouterResponse(
       optionalString(record.model) ?? selectedOpenRouterModel(body) ?? requestedModelId,
     upstreamProvider: selectedOpenRouterProvider(body),
     tokenUsage,
-    cost: normalizeOpenRouterCost(record, tokenUsage),
+    cost: normalizeOpenRouterCost(record),
   };
 }
 
@@ -682,42 +682,55 @@ function normalizeUsage(value: unknown): TokenUsage {
   return usage;
 }
 
-function normalizeOpenRouterCost(
+/**
+ * ITOTORI-225 — single-branch real-cost normalizer.
+ *
+ * Per docs/openrouter-integration.md §5 (canonical real-cost contract) and
+ * the live evidence at docs/openrouter-integration-evidence/2026-06-25.json,
+ * every successful OpenRouter response carries `usage.cost` as a decimal
+ * USD value. The integration is `usage.cost`-or-error: a successful HTTP
+ * response without a `usage.cost` field is a protocol violation we surface
+ * as `provider_response_invalid` so the caller can fail loudly instead of
+ * silently undercounting spend.
+ *
+ * The endpoint-pricing fallback path (recompute spend from per-token prices
+ * advertised in `openrouter_metadata.endpoints`) survives in the codebase
+ * via {@link normalizeOpenRouterCostFromEndpointPricing} — that branch is
+ * keep-and-fix territory for ITOTORI-233 per the 2026-06-25 audit. It is
+ * intentionally NOT wired into the active code path here: the only correct
+ * source of truth is the upstream-reported `usage.cost`. ITOTORI-233 will
+ * decide whether to wire it back as a sanity-check sentinel (compare
+ * recomputed-from-pricing to `usage.cost` and warn on drift) or repurpose
+ * it; either way, it is not silently chained in front of an error today.
+ */
+function normalizeOpenRouterCost(response: Record<string, unknown>): ProviderCost {
+  const usage = isRecord(response.usage) ? response.usage : undefined;
+  if (usage === undefined || usage.cost === undefined || usage.cost === null) {
+    throw new ModelProviderError(
+      "OpenRouter response missing usage.cost; ITOTORI-225 contract requires real billed cost on every successful call",
+      "provider_response_invalid",
+      false,
+    );
+  }
+  return {
+    costKind: "billed",
+    currency: "USD",
+    amountMicrosUsd: usageCostToMicros(usage.cost),
+  };
+}
+
+/**
+ * ITOTORI-233 (held) — endpoint-pricing recompute path, parked here so the
+ * 2026-06-25 audit's keep-and-fix verdict survives. NOT called from the
+ * main path. The audit's evidence (docs/audits/openrouter-cost-tracking-
+ * audit-2026-06-25.md §3 N1) explicitly tells ITOTORI-225 NOT to delete
+ * this as dead; ITOTORI-233 will resurrect it as a cross-check sentinel
+ * or repurpose its observation of the endpoints catalog.
+ */
+function normalizeOpenRouterCostFromEndpointPricing(
   response: Record<string, unknown>,
   tokenUsage: TokenUsage,
-): ProviderCost {
-  const usage = isRecord(response.usage) ? response.usage : undefined;
-  const usageCostUsd = finiteNonNegativeNumber(usage?.cost);
-  if (usageCostUsd !== undefined) {
-    return {
-      costKind: "provider_estimate",
-      currency: "USD",
-      amountMicrosUsd: usdToMicros(usageCostUsd),
-    };
-  }
-
-  const costDetails = isRecord(usage?.cost_details) ? usage.cost_details : undefined;
-  const promptCostUsd = finiteNonNegativeNumber(costDetails?.upstream_inference_prompt_cost);
-  const completionCostUsd = finiteNonNegativeNumber(
-    costDetails?.upstream_inference_completions_cost,
-  );
-  if (promptCostUsd !== undefined && completionCostUsd !== undefined) {
-    return {
-      costKind: "provider_estimate",
-      currency: "USD",
-      amountMicrosUsd: usdToMicros(promptCostUsd + completionCostUsd),
-    };
-  }
-
-  const upstreamCostUsd = finiteNonNegativeNumber(costDetails?.upstream_inference_cost);
-  if (upstreamCostUsd !== undefined) {
-    return {
-      costKind: "provider_estimate",
-      currency: "USD",
-      amountMicrosUsd: usdToMicros(upstreamCostUsd),
-    };
-  }
-
+): ProviderCost | undefined {
   const endpointPricing = selectedOpenRouterPricing(response);
   const promptPriceUsd = finiteNonNegativeNumber(endpointPricing?.prompt);
   const completionPriceUsd = finiteNonNegativeNumber(endpointPricing?.completion);
@@ -728,7 +741,7 @@ function normalizeOpenRouterCost(
     tokenUsage.completionTokens !== undefined
   ) {
     return {
-      costKind: "provider_estimate",
+      costKind: "billed",
       currency: "USD",
       amountMicrosUsd: usdToMicros(
         tokenUsage.promptTokens * promptPriceUsd + tokenUsage.completionTokens * completionPriceUsd,
@@ -736,11 +749,7 @@ function normalizeOpenRouterCost(
       pricingSnapshotId: "openrouter_response_endpoint_pricing",
     };
   }
-
-  return {
-    costKind: "unknown",
-    currency: "USD",
-  };
+  return undefined;
 }
 
 function buildProviderRunRecord(input: {
@@ -785,7 +794,11 @@ function buildProviderRunRecord(input: {
     fallbackUsed: fallbackPlan.length > 1 && input.actualModelId !== input.requestedModelId,
     fallbackPlan,
     tokenUsage: input.tokenUsage,
-    cost: input.status === "succeeded" && input.cost ? input.cost : unknownCost(),
+    // ITOTORI-225 — failed runs incurred no upstream charge; record them
+    // as zero-cost rather than the deprecated 'unknown'. Successful runs
+    // always carry an `input.cost` because normalizeOpenRouterCost
+    // throws on missing usage.cost rather than returning a fallback.
+    cost: input.status === "succeeded" && input.cost ? input.cost : ZERO_COST,
     prompt: input.request.prompt,
     dataHandling: input.dataHandling,
   };
@@ -796,13 +809,6 @@ function buildProviderRunRecord(input: {
     run.accountPrivacy = input.descriptor.capabilities.accountPrivacy;
   }
   return run;
-}
-
-function unknownCost(): ProviderCost {
-  return {
-    costKind: "unknown",
-    currency: "USD",
-  };
 }
 
 function buildArtifact(input: {

@@ -761,9 +761,11 @@ function failedProviderRunFromRun(run: ProviderRunRecord, errorClass: string): P
     ...run,
     status: "failed",
     errorClasses: Array.from(new Set([...run.errorClasses, errorClass])),
+    // ITOTORI-225 — failed runs incurred no upstream charge.
     cost: {
-      costKind: "unknown",
+      costKind: "zero",
       currency: "USD",
+      amountMicrosUsd: 0,
     },
   };
 }
@@ -800,9 +802,11 @@ function failedProviderRunFromRequest(input: {
     tokenUsage: {
       tokenCountSource: "unknown",
     },
+    // ITOTORI-225 — failed runs incurred no upstream charge.
     cost: {
-      costKind: "unknown",
+      costKind: "zero",
       currency: "USD",
+      amountMicrosUsd: 0,
     },
     prompt: input.request.prompt,
     dataHandling: input.descriptor.capabilities.dataHandling,
@@ -914,13 +918,49 @@ function providerRunLedgerInputFromBenchmark(
     fallbackUsed: providerRun.fallbackUsed,
     fallbackPlan: normalizeBenchmarkFallbackPlan(providerRun),
     tokenUsage: providerRun.tokenUsage,
-    cost: providerRun.cost,
+    cost: narrowBenchmarkCostToItotoriShape(providerRun.cost),
     dataHandling: unknownBenchmarkDataHandlingPolicy,
     ...(providerPreset === undefined ? {} : { providerPreset }),
     adapterMetadata: {
       source: "benchmark_report",
       routeSettingsHash: providerRun.provider.routeSettingsHash ?? null,
     },
+  };
+}
+
+/**
+ * ITOTORI-225 — benchmarks (`BenchmarkCostAmountV02` from the cross-app
+ * bridge schema) still emit the legacy `'billed' | 'provider_estimate' |
+ * 'local_estimate' | 'zero' | 'unknown'` enum. Itotori's `ProviderCost` is
+ * narrowed to `'billed' | 'zero'`. Map at the ingest boundary:
+ *  - rows with a non-null amount are treated as the real billed spend
+ *    (the benchmark recorded what was actually charged at run time);
+ *  - rows without an amount are treated as zero (no charge incurred — a
+ *    skipped or failed run).
+ *
+ * We intentionally do not preserve the estimate/unknown distinction
+ * downstream; the audit rule is "no estimates, no unknowns". If a
+ * benchmark ingest needs a fully-faithful round-trip of the legacy enum,
+ * that belongs in the bridge-schema layer, not in itotori's ledger.
+ */
+function narrowBenchmarkCostToItotoriShape(
+  cost: BenchmarkReportV02["providerModelCostRecords"][number]["cost"],
+): ProviderRunLedgerInput["cost"] {
+  if (cost.amountMicrosUsd === undefined || cost.amountMicrosUsd === null) {
+    return {
+      costKind: "zero",
+      currency: cost.currency,
+      amountMicrosUsd: 0,
+      ...(cost.pricingSnapshotId === undefined
+        ? {}
+        : { pricingSnapshotId: cost.pricingSnapshotId }),
+    };
+  }
+  return {
+    costKind: cost.amountMicrosUsd === 0 ? "zero" : "billed",
+    currency: cost.currency,
+    amountMicrosUsd: cost.amountMicrosUsd,
+    ...(cost.pricingSnapshotId === undefined ? {} : { pricingSnapshotId: cost.pricingSnapshotId }),
   };
 }
 
@@ -936,7 +976,6 @@ function normalizeBenchmarkFallbackPlan(
 }
 
 const unknownBenchmarkDataHandlingPolicy = {
-  costTier: "unknown",
   promptLogging: "unknown",
   completionLogging: "unknown",
   retention: "unknown",
@@ -980,20 +1019,15 @@ function emptyCostReport(projectId: string): ProjectCostReport {
     currency: "USD",
     runCount: 0,
     billedMicrosUsd: 0,
-    estimatedMicrosUsd: 0,
     zeroRunCount: 0,
-    unknownRunCount: 0,
-    includesUnknownCost: false,
-    totalsByCostKind: ["billed", "provider_estimate", "local_estimate", "zero", "unknown"].map(
-      (costKind) => ({
-        costKind: costKind as ProjectCostReport["totalsByCostKind"][number]["costKind"],
-        runCount: 0,
-        amountMicrosUsd: 0,
-        promptTokens: 0,
-        completionTokens: 0,
-        totalTokens: 0,
-      }),
-    ),
+    totalsByCostKind: (["billed", "zero"] as const).map((costKind) => ({
+      costKind,
+      runCount: 0,
+      amountMicrosUsd: 0,
+      promptTokens: 0,
+      completionTokens: 0,
+      totalTokens: 0,
+    })),
     recentRuns: [],
     translationMemoryReuse: emptyTranslationMemoryReuseCostReport(),
   };

@@ -212,6 +212,10 @@ export const migrations = [
     id: "0038_draft_attempt_provider_ledger_provider_id_required",
     file: "0038_draft_attempt_provider_ledger_provider_id_required.sql",
   },
+  {
+    id: "0039_drop_unknown_cost_kind",
+    file: "0039_drop_unknown_cost_kind.sql",
+  },
 ] as const;
 
 function migrationPath(file: string): string {

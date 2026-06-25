@@ -113,7 +113,7 @@ describe("style-guide provider smoke", () => {
         totalTokens: 530,
       },
       cost: {
-        costKind: "provider_estimate",
+        costKind: "billed",
         amountMicrosUsd: 42,
       },
       dataHandling: {
@@ -146,7 +146,7 @@ describe("style-guide provider smoke", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("accepts mocked successful OpenRouter live ledger with provider cost estimate", async () => {
+  it("accepts mocked successful OpenRouter live ledger with real billed usage.cost", async () => {
     const fixture = readSmokeFixture();
     const recorder = memoryRecorder();
     const fetchMock = vi.fn(async () =>
@@ -199,7 +199,7 @@ describe("style-guide provider smoke", () => {
     );
 
     expect(result.providerRun.cost).toEqual({
-      costKind: "provider_estimate",
+      costKind: "billed",
       currency: "USD",
       amountMicrosUsd: 123,
     });
@@ -207,7 +207,7 @@ describe("style-guide provider smoke", () => {
       expect.objectContaining({
         run: expect.objectContaining({
           cost: {
-            costKind: "provider_estimate",
+            costKind: "billed",
             currency: "USD",
             amountMicrosUsd: 123,
           },
@@ -274,7 +274,6 @@ function styleGuideLiveSmokeCapabilities(): ModelCapabilities {
       preferredModes: ["json_schema"],
     },
     dataHandling: {
-      costTier: "paid",
       promptLogging: "disabled",
       completionLogging: "disabled",
       retention: "metadata_only",

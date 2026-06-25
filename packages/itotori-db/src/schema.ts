@@ -104,12 +104,13 @@ export const providerRunStatusValues = {
 export type ProviderRunStatus =
   (typeof providerRunStatusValues)[keyof typeof providerRunStatusValues];
 
+// ITOTORI-225 — narrowed from the legacy 5-value enum to the only two cost
+// states the cost-tracking audit (docs/audits/openrouter-cost-tracking-
+// audit-2026-06-25.md) considers correct: a real upstream charge, or no
+// charge at all. Migration 0039 backfills + tightens the CHECK constraint.
 export const providerCostKindValues = {
   billed: "billed",
-  providerEstimate: "provider_estimate",
-  localEstimate: "local_estimate",
   zero: "zero",
-  unknown: "unknown",
 } as const;
 
 export type ProviderCostKind = (typeof providerCostKindValues)[keyof typeof providerCostKindValues];

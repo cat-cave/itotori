@@ -68,6 +68,7 @@ import type {
 import { FindingTriageRouter } from "../triage/router.js";
 import type { FindingTriageResult } from "../triage/router.js";
 import type { ModelInvocationRequest, ModelProvider, ProviderFamily } from "../providers/types.js";
+import { assertBilledCost } from "../providers/cost.js";
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -695,7 +696,7 @@ async function invokeContextLikeProbe(
     pair,
     tokensIn,
     tokensOut,
-    costMicros: BigInt(invocation.providerRun.cost.amountMicrosUsd ?? 0),
+    costMicros: assertBilledCost(invocation.providerRun.cost),
     latencyMs: Math.max(invocation.providerRun.latencyMs, endedAt.getTime() - startedAt.getTime()),
     providerProofId: invocation.providerRun.runId,
   };
@@ -747,7 +748,7 @@ function providerTelemetryFromSpeakerLabel(
     pair: pairPolicy.preTranslation.speakerLabel,
     tokensIn: result.tokensIn,
     tokensOut: result.tokensOut,
-    costMicros: BigInt(result.modelMetadata.providerRun.cost.amountMicrosUsd ?? 0),
+    costMicros: assertBilledCost(result.modelMetadata.providerRun.cost),
     latencyMs: result.modelMetadata.providerRun.latencyMs,
     providerProofId: result.providerRunId,
   };
@@ -820,7 +821,7 @@ function providerTelemetryFromTranslation(
     pair,
     tokensIn: result.tokensIn,
     tokensOut: result.tokensOut,
-    costMicros: BigInt(result.modelMetadata.providerRun.cost.amountMicrosUsd ?? 0),
+    costMicros: assertBilledCost(result.modelMetadata.providerRun.cost),
     latencyMs: result.modelMetadata.providerRun.latencyMs,
     providerProofId: result.providerRunId,
   };
@@ -903,7 +904,7 @@ function providerTelemetryFromQa(
     pair,
     tokensIn: result.tokensIn,
     tokensOut: result.tokensOut,
-    costMicros: BigInt(result.modelMetadata.providerRun.cost.amountMicrosUsd ?? 0),
+    costMicros: assertBilledCost(result.modelMetadata.providerRun.cost),
     latencyMs: result.modelMetadata.providerRun.latencyMs,
     providerProofId: result.providerRunId,
   };

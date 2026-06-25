@@ -23,7 +23,10 @@ describe("provider policy and capabilities", () => {
     );
 
     expect(decision.allowed).toBe(false);
-    expect(decision.reasons).toContain("cost tier is unknown");
+    // ITOTORI-225 — the cost-tier gate is gone. The privacy-only axes
+    // (prompt/completion logging, account-level routing) carry the gate
+    // until ITOTORI-227 replaces the whole policy seam.
+    expect(decision.reasons).toContain("prompt logging is unknown");
     expect(decision.reasons).toContain("account input/output logging is unknown");
   });
 
@@ -120,7 +123,7 @@ describe("OpenRouterProvider", () => {
     });
     expect(result.providerRun.provider.routeSettingsHash).toMatch(/^sha256:/u);
     expect(result.providerRun.cost).toEqual({
-      costKind: "provider_estimate",
+      costKind: "billed",
       currency: "USD",
       amountMicrosUsd: 19,
     });
@@ -172,7 +175,7 @@ describe("OpenRouterProvider", () => {
       providerRun: expect.objectContaining({
         status: "failed",
         errorClasses: ["http_429"],
-        cost: { costKind: "unknown", currency: "USD" },
+        cost: { costKind: "zero", currency: "USD", amountMicrosUsd: 0 },
         prompt: expect.objectContaining({ presetId: "test-prompt-v1" }),
         providerPreset: expect.objectContaining({ slug: "openrouter/itotori-test" }),
       }),
@@ -206,7 +209,7 @@ describe("OpenRouterProvider", () => {
       providerRun: expect.objectContaining({
         status: "failed",
         errorClasses: ["provider_response_invalid"],
-        cost: { costKind: "unknown", currency: "USD" },
+        cost: { costKind: "zero", currency: "USD", amountMicrosUsd: 0 },
         prompt: expect.objectContaining({ presetId: "test-prompt-v1" }),
       }),
     });
@@ -264,6 +267,7 @@ describe("OpenRouterProvider", () => {
             },
           },
         ],
+        usage: { prompt_tokens: 5, completion_tokens: 3, total_tokens: 8, cost: 0.000005 },
       });
     }) as unknown as typeof fetch;
     const provider = new OpenRouterProvider({
@@ -301,6 +305,7 @@ describe("OpenRouterProvider", () => {
             },
           },
         ],
+        usage: { prompt_tokens: 5, completion_tokens: 3, total_tokens: 8, cost: 0.000005 },
       });
     }) as unknown as typeof fetch;
     const provider = new OpenRouterProvider({
@@ -351,6 +356,7 @@ describe("OpenRouterProvider", () => {
             },
           },
         ],
+        usage: { prompt_tokens: 5, completion_tokens: 3, total_tokens: 8, cost: 0.000005 },
       });
     }) as unknown as typeof fetch;
     const provider = new OpenRouterProvider({
@@ -429,6 +435,7 @@ describe("OpenRouterProvider", () => {
           prompt_tokens: 9,
           completion_tokens: 5,
           total_tokens: 14,
+          cost: 0.000014,
         },
         openrouter_metadata: {
           requested: "openai/gpt-4o-mini",
@@ -488,7 +495,6 @@ describe("OpenRouterProvider", () => {
         slug: "openrouter/itotori-test",
       }),
       dataHandling: expect.objectContaining({
-        costTier: "paid",
         dataCollection: "deny",
       }),
       accountPrivacy: expect.objectContaining({
@@ -550,7 +556,7 @@ describe("LocalOpenAICompatibleProvider", () => {
     expect(result.content).toBe("Hello, {player}.");
     expect(result.providerRun.provider.providerFamily).toBe("local-openai-compatible");
     expect(result.providerRun.cost).toMatchObject({
-      costKind: "local_estimate",
+      costKind: "zero",
       amountMicrosUsd: 0,
     });
     const requestBody = JSON.parse(String(fetchCalls[0]?.init?.body)) as { provider?: unknown };
@@ -558,7 +564,7 @@ describe("LocalOpenAICompatibleProvider", () => {
     expect(recorder.artifacts[0]?.run.provider.endpointFamily).toBe("local-chat-completions");
   });
 
-  it("records malformed local responses as failed unknown-cost provider runs", async () => {
+  it("records malformed local responses as failed zero-cost provider runs", async () => {
     const recorder = memoryRecorder();
     const fetchMock = vi.fn(async () => {
       return jsonResponse({
@@ -586,7 +592,7 @@ describe("LocalOpenAICompatibleProvider", () => {
       providerRun: expect.objectContaining({
         status: "failed",
         errorClasses: ["provider_response_invalid"],
-        cost: { costKind: "unknown", currency: "USD" },
+        cost: { costKind: "zero", currency: "USD", amountMicrosUsd: 0 },
       }),
     });
     expect(recorder.artifacts).toHaveLength(1);
@@ -865,7 +871,6 @@ function openRouterCapabilitiesForPrivateInputs(): ModelCapabilities {
       jsonSchema: "supported",
     },
     dataHandling: {
-      costTier: "paid",
       promptLogging: "disabled",
       completionLogging: "disabled",
       retention: "metadata_only",
@@ -910,7 +915,6 @@ function localCapabilities(): ModelCapabilities {
       zeroDataRetentionRouting: "unsupported",
     },
     dataHandling: {
-      costTier: "local",
       promptLogging: "not_applicable",
       completionLogging: "not_applicable",
       retention: "not_applicable",

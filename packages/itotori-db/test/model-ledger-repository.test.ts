@@ -32,7 +32,10 @@ describe("ItotoriModelLedgerRepository", () => {
       await ledger.recordProviderRun(localActor, runInput("run-billed", "billed", 1200));
       await ledger.recordProviderRun(
         localActor,
-        runInput("run-estimated-fallback", "provider_estimate", 2500, {
+        // ITOTORI-225 — the legacy `provider_estimate` variant is gone;
+        // the real upstream charge captured by the recorded fallback run
+        // tags as `billed` with the actual amount.
+        runInput("run-billed-fallback", "billed", 2500, {
           provider: {
             providerFamily: "recorded",
             endpointFamily: "recorded-fixture",
@@ -64,7 +67,6 @@ describe("ItotoriModelLedgerRepository", () => {
             },
           },
           dataHandling: {
-            costTier: "paid",
             promptLogging: "unknown",
             completionLogging: "unknown",
             retention: "unknown",
@@ -82,34 +84,24 @@ describe("ItotoriModelLedgerRepository", () => {
         }),
       );
       await ledger.recordProviderRun(localActor, runInput("run-zero", "zero", 0));
-      await ledger.recordProviderRun(localActor, runInput("run-unknown", "unknown"));
 
       const report = await ledger.getProjectCostReport("project-test");
 
       expect(report).toMatchObject({
         projectId: "project-test",
-        runCount: 4,
-        billedMicrosUsd: 1200,
-        estimatedMicrosUsd: 2500,
+        runCount: 3,
+        billedMicrosUsd: 3700,
         zeroRunCount: 1,
-        unknownRunCount: 1,
-        includesUnknownCost: true,
       });
       expect(report.totalsByCostKind).toEqual(
         expect.arrayContaining([
-          expect.objectContaining({ costKind: "billed", runCount: 1, amountMicrosUsd: 1200 }),
-          expect.objectContaining({
-            costKind: "provider_estimate",
-            runCount: 1,
-            amountMicrosUsd: 2500,
-          }),
+          expect.objectContaining({ costKind: "billed", runCount: 2, amountMicrosUsd: 3700 }),
           expect.objectContaining({ costKind: "zero", runCount: 1, amountMicrosUsd: 0 }),
-          expect.objectContaining({ costKind: "unknown", runCount: 1, amountMicrosUsd: 0 }),
         ]),
       );
 
       const fallbackRun = report.recentRuns.find(
-        (run) => run.providerRunId === "run-estimated-fallback",
+        (run) => run.providerRunId === "run-billed-fallback",
       );
       expect(fallbackRun).toMatchObject({
         providerFamily: "recorded",
@@ -124,7 +116,7 @@ describe("ItotoriModelLedgerRepository", () => {
         fallbackPlan: ["fixture-model-v1", "fixture-model-v2"],
         retryCount: 1,
         errorClasses: ["provider_timeout_retry"],
-        costKind: "provider_estimate",
+        costKind: "billed",
         promptTokens: 10,
         completionTokens: 5,
         totalTokens: 15,
@@ -150,13 +142,13 @@ describe("ItotoriModelLedgerRepository", () => {
         provider_count: 2,
         model_count: 3,
         preset_count: 1,
-        provider_run_count: 4,
-        cost_entry_count: 4,
+        provider_run_count: 3,
+        cost_entry_count: 3,
       });
       const providerPreset = await context.db.execute(sql`
         select provider_preset
         from ${providerRuns}
-        where provider_run_id = 'run-estimated-fallback'
+        where provider_run_id = 'run-billed-fallback'
       `);
       expect(providerPreset.rows[0]).toMatchObject({
         provider_preset: expect.objectContaining({
@@ -171,7 +163,11 @@ describe("ItotoriModelLedgerRepository", () => {
     }
   });
 
-  it("records failed provider runs with unknown cost in the ledger", async () => {
+  it("records failed provider runs as zero-cost ledger entries", async () => {
+    // ITOTORI-225 — failed runs incur no upstream charge, so they record
+    // as `zero` with `amountMicrosUsd: 0`. The legacy `unknown` variant
+    // is gone; the migration's CHECK constraint refuses it at the storage
+    // layer.
     const context = await isolatedMigratedContext();
     try {
       const projectRepository = new ItotoriProjectRepository(context.db);
@@ -180,7 +176,7 @@ describe("ItotoriModelLedgerRepository", () => {
 
       await ledger.recordProviderRun(
         localActor,
-        runInput("run-failed-http", "unknown", undefined, {
+        runInput("run-failed-http", "zero", 0, {
           status: "failed",
           errorClasses: ["provider_http_error", "http_500"],
           tokenUsage: { tokenCountSource: "unknown" },
@@ -190,16 +186,44 @@ describe("ItotoriModelLedgerRepository", () => {
       const report = await ledger.getProjectCostReport("project-test");
       expect(report).toMatchObject({
         runCount: 1,
-        unknownRunCount: 1,
-        includesUnknownCost: true,
+        zeroRunCount: 1,
+        billedMicrosUsd: 0,
       });
       expect(report.recentRuns[0]).toMatchObject({
         providerRunId: "run-failed-http",
         status: "failed",
-        costKind: "unknown",
-        amountMicrosUsd: null,
+        costKind: "zero",
+        amountMicrosUsd: 0,
         tokenCountSource: "unknown",
       });
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("rejects ledger writes attempting to revive a legacy cost-kind value", async () => {
+    // ITOTORI-225 — every layer (typed input, validation, SQL CHECK) must
+    // refuse a write that tries to insert 'unknown'/'provider_estimate'/
+    // 'local_estimate'. We bypass the type system on purpose so the
+    // runtime guard's behavior is observable.
+    const context = await isolatedMigratedContext();
+    try {
+      const projectRepository = new ItotoriProjectRepository(context.db);
+      await projectRepository.importSourceBundle(localActor, projectFixture());
+      const ledger = new ItotoriModelLedgerRepository(context.db);
+
+      await expect(
+        ledger.recordProviderRun(
+          localActor,
+          runInput("run-legacy-revival", "billed", 100, {
+            cost: {
+              costKind: "provider_estimate" as unknown as "billed", // itotori-225-audit-allow: this test asserts the runtime guard rejects the legacy enum.
+              currency: "USD",
+              amountMicrosUsd: 100,
+            },
+          }),
+        ),
+      ).rejects.toThrow(/cost kind|cost_kind/iu);
     } finally {
       await context.close();
     }
@@ -278,7 +302,11 @@ describe("ItotoriModelLedgerRepository", () => {
 
       await ledger.recordProviderRun(
         localActor,
-        runInput("run-unknown-token-components", "unknown", undefined, {
+        // The cost-kind narrowing (ITOTORI-225) does not affect token-count-
+        // source semantics; unknown token sources can still pair with a
+        // zero-cost ledger entry (e.g. a failed run whose token usage we
+        // couldn't read off the upstream response).
+        runInput("run-unknown-token-components", "zero", 0, {
           tokenUsage: {
             tokenCountSource: "unknown",
             promptTokens: 10,
@@ -322,12 +350,15 @@ describe("ItotoriModelLedgerRepository", () => {
           },
         },
         providerRuns: [
-          runInput("run-skipped-partial-timing", "unknown", undefined, {
+          runInput("run-skipped-partial-timing", "zero", 0, {
             status: "skipped",
             completedAt: undefined,
             latencyMs: undefined,
             tokenUsage: { tokenCountSource: "unknown" },
-            cost: { costKind: "unknown", currency: "USD" },
+            // ITOTORI-225 — skipped runs have no upstream charge; we
+            // record them as zero-cost rather than the deprecated
+            // 'unknown' variant.
+            cost: { costKind: "zero", currency: "USD", amountMicrosUsd: 0 },
           }),
         ],
       });
@@ -337,13 +368,13 @@ describe("ItotoriModelLedgerRepository", () => {
       );
       expect(report).toMatchObject({
         runCount: 1,
-        unknownRunCount: 1,
-        includesUnknownCost: true,
+        zeroRunCount: 1,
+        billedMicrosUsd: 0,
       });
       expect(report.recentRuns[0]).toMatchObject({
         providerRunId: "run-skipped-partial-timing",
         status: "skipped",
-        costKind: "unknown",
+        costKind: "zero",
         tokenCountSource: "unknown",
       });
 
@@ -543,7 +574,7 @@ describe("ItotoriModelLedgerRepository", () => {
 function runInput(
   providerRunId: string,
   costKind: ProviderRunLedgerInput["cost"]["costKind"],
-  amountMicrosUsd?: number,
+  amountMicrosUsd: number,
   overrides: Partial<ProviderRunLedgerInput> = {},
 ): ProviderRunLedgerInput {
   const input: ProviderRunLedgerInput = {
@@ -583,11 +614,13 @@ function runInput(
     cost: {
       costKind,
       currency: "USD",
-      ...(amountMicrosUsd === undefined ? {} : { amountMicrosUsd }),
+      amountMicrosUsd,
       pricingSnapshotId: "fixture-pricing-2026-06-17",
     },
+    // ITOTORI-225 — `costTier` is gone; the policy carries only privacy
+    // axes. The privacy-only gate in providers/policy.ts survives until
+    // ITOTORI-227 replaces the whole seam.
     dataHandling: {
-      costTier: "local",
       promptLogging: "not_applicable",
       completionLogging: "not_applicable",
       retention: "not_applicable",

@@ -47,7 +47,7 @@ function baseRequest(overrides: Partial<ModelInvocationRequest> = {}): ModelInvo
 
 function successResponse(opts: {
   upstreamProvider?: string;
-  costUsd?: number;
+  usageCost?: number;
   modelId?: string;
 }): Response {
   const body = {
@@ -64,7 +64,7 @@ function successResponse(opts: {
       prompt_tokens: 10,
       completion_tokens: 5,
       total_tokens: 15,
-      cost: opts.costUsd ?? 0.001,
+      cost: opts.usageCost ?? 0.001,
     },
   };
   return new Response(JSON.stringify(body), {
@@ -184,7 +184,7 @@ describe("OpenRouterModelProvider — per-process cost cap", () => {
     // $1.20 which is already over the default $1 cap, so the third
     // invoke must throw BEFORE the HTTP request fires.
     const fetchMock = vi.fn(async () =>
-      successResponse({ costUsd: 0.6 }),
+      successResponse({ usageCost: 0.6 }),
     ) as unknown as typeof fetch;
     const provider = new OpenRouterModelProvider({
       env: { OPENROUTER_API_KEY: "abc" },
@@ -209,7 +209,7 @@ describe("OpenRouterModelProvider — per-process cost cap", () => {
 
   it("does not refuse a call that exactly equals the cap (the next call after will)", async () => {
     const fetchMock = vi.fn(async () =>
-      successResponse({ costUsd: 1.0 }),
+      successResponse({ usageCost: 1.0 }),
     ) as unknown as typeof fetch;
     const provider = new OpenRouterModelProvider({
       env: { OPENROUTER_API_KEY: "abc" },
@@ -235,7 +235,7 @@ describe("OpenRouterModelProvider — token-bucket rate limit", () => {
     };
     const now = () => nowMs;
     const fetchMock = vi.fn(async () =>
-      successResponse({ costUsd: 0.001 }),
+      successResponse({ usageCost: 0.001 }),
     ) as unknown as typeof fetch;
     const provider = new OpenRouterModelProvider({
       env: { OPENROUTER_API_KEY: "abc" },
@@ -256,5 +256,130 @@ describe("OpenRouterModelProvider — token-bucket rate limit", () => {
       expect(ms).toBeGreaterThanOrEqual(900);
       expect(ms).toBeLessThanOrEqual(1100);
     }
+  });
+});
+
+describe("OpenRouterModelProvider — ITOTORI-225 real-cost contract", () => {
+  // Acceptance criterion #2: every recorded ProviderCost from a
+  // successful response tags `costKind === 'billed'`. We exercise the
+  // single-branch `normalizeOpenRouterCost` with a `usage.cost` decimal
+  // string and an integer, plus the legacy floating-point form, and
+  // assert that all three land as billed integers in micros.
+  it("tags every successful response as billed with the exact upstream amount", async () => {
+    const cases: Array<{ cost: number | string; expectedMicros: number }> = [
+      { cost: 0.000019, expectedMicros: 19 },
+      { cost: "0.000006", expectedMicros: 6 },
+      { cost: 0, expectedMicros: 0 },
+      // Sub-micro values round-half-up rather than truncate to zero.
+      { cost: 0.00000049, expectedMicros: 0 },
+      { cost: 0.0000005, expectedMicros: 1 },
+    ];
+    for (const { cost, expectedMicros } of cases) {
+      const fetchMock = vi.fn(async () =>
+        successResponse({ usageCost: cost as number }),
+      ) as unknown as typeof fetch;
+      const provider = new OpenRouterModelProvider({
+        env: { OPENROUTER_API_KEY: "abc" },
+        httpClient: fetchMock,
+        capabilityGuard: new CapabilityGuard(),
+      });
+      const result = await provider.invoke(baseRequest());
+      expect(result.providerRun.cost).toEqual({
+        costKind: "billed",
+        currency: "USD",
+        amountMicrosUsd: expectedMicros,
+      });
+    }
+  });
+
+  // Acceptance criterion #3: a successful HTTP response without a
+  // `usage.cost` field is a protocol violation surfaced as
+  // `provider_response_invalid`. No silent zero-fill, no estimate.
+  it("raises provider_response_invalid when usage.cost is missing on a successful response", async () => {
+    const responseWithoutCost = (): Response =>
+      new Response(
+        JSON.stringify({
+          id: "gen-missing-cost",
+          model: DEV_PAIR.modelId,
+          provider: DEV_PAIR.providerId,
+          choices: [
+            {
+              finish_reason: "stop",
+              message: { role: "assistant", content: "hi" },
+            },
+          ],
+          usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    const fetchMock = vi.fn(async () => responseWithoutCost()) as unknown as typeof fetch;
+    const provider = new OpenRouterModelProvider({
+      env: { OPENROUTER_API_KEY: "abc" },
+      httpClient: fetchMock,
+      capabilityGuard: new CapabilityGuard(),
+    });
+    const error = await provider.invoke(baseRequest()).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(ModelProviderError);
+    if (error instanceof ModelProviderError) {
+      expect(error.code).toBe("provider_response_invalid");
+      expect(error.message).toContain("usage.cost");
+    }
+  });
+
+  // A missing top-level `usage` block is the same protocol violation.
+  it("raises provider_response_invalid when usage is entirely absent", async () => {
+    const responseWithoutUsage = (): Response =>
+      new Response(
+        JSON.stringify({
+          id: "gen-no-usage",
+          model: DEV_PAIR.modelId,
+          provider: DEV_PAIR.providerId,
+          choices: [
+            {
+              finish_reason: "stop",
+              message: { role: "assistant", content: "hi" },
+            },
+          ],
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    const fetchMock = vi.fn(async () => responseWithoutUsage()) as unknown as typeof fetch;
+    const provider = new OpenRouterModelProvider({
+      env: { OPENROUTER_API_KEY: "abc" },
+      httpClient: fetchMock,
+      capabilityGuard: new CapabilityGuard(),
+    });
+    await expect(provider.invoke(baseRequest())).rejects.toMatchObject({
+      code: "provider_response_invalid",
+    });
+  });
+
+  // A non-numeric / non-decimal-string cost is also a violation.
+  it("raises provider_response_invalid when usage.cost is not a number or decimal string", async () => {
+    const responseWithBadCost = (): Response =>
+      new Response(
+        JSON.stringify({
+          id: "gen-bad-cost",
+          model: DEV_PAIR.modelId,
+          provider: DEV_PAIR.providerId,
+          choices: [
+            {
+              finish_reason: "stop",
+              message: { role: "assistant", content: "hi" },
+            },
+          ],
+          usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2, cost: "not-a-number" },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    const fetchMock = vi.fn(async () => responseWithBadCost()) as unknown as typeof fetch;
+    const provider = new OpenRouterModelProvider({
+      env: { OPENROUTER_API_KEY: "abc" },
+      httpClient: fetchMock,
+      capabilityGuard: new CapabilityGuard(),
+    });
+    await expect(provider.invoke(baseRequest())).rejects.toMatchObject({
+      code: "provider_response_invalid",
+    });
   });
 });

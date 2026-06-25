@@ -416,7 +416,7 @@ describe("ItotoriProjectWorkflowService", () => {
         providerRunId: "provider-run-failed",
         status: "failed",
         errorClasses: ["http_500"],
-        cost: { costKind: "unknown", currency: "USD" },
+        cost: { costKind: "zero", currency: "USD", amountMicrosUsd: 0 },
       }),
     );
     expect(repository.saveDrafts).not.toHaveBeenCalled();
@@ -439,7 +439,7 @@ describe("ItotoriProjectWorkflowService", () => {
       expect.objectContaining({
         status: "failed",
         errorClasses: ["provider_response_invalid"],
-        cost: { costKind: "unknown", currency: "USD" },
+        cost: { costKind: "zero", currency: "USD", amountMicrosUsd: 0 },
         provider: expect.objectContaining({
           providerFamily: "fake",
           requestedModelId: "itotori-fake-draft-v0",
@@ -483,7 +483,7 @@ describe("ItotoriProjectWorkflowService", () => {
     expect(repository.saveDrafts).not.toHaveBeenCalled();
   });
 
-  it("records null draft content as a failed unknown-cost provider run", async () => {
+  it("records null draft content as a failed zero-cost provider run", async () => {
     const repository = repositoryFixture();
     const ledger = ledgerFixture();
     const provider = nullContentProvider();
@@ -501,7 +501,7 @@ describe("ItotoriProjectWorkflowService", () => {
         providerRunId: "provider-run-null-content",
         status: "failed",
         errorClasses: ["provider_response_invalid"],
-        cost: { costKind: "unknown", currency: "USD" },
+        cost: { costKind: "zero", currency: "USD", amountMicrosUsd: 0 },
       }),
     );
     expect(repository.saveDrafts).not.toHaveBeenCalled();
@@ -913,7 +913,6 @@ describe("ItotoriProjectWorkflowService", () => {
               benchmarkReport.providerModelCostRecords[1]!.provider.actualModelId,
             ]),
             dataHandling: expect.objectContaining({
-              costTier: "unknown",
               dataCollection: "unknown",
               trainingUse: "unknown",
             }),
@@ -950,7 +949,11 @@ describe("ItotoriProjectWorkflowService", () => {
     delete firstRun.latencyMs;
     firstRun.status = "skipped";
     firstRun.tokenUsage = { tokenCountSource: "unknown" };
-    firstRun.cost = { costKind: "unknown", currency: "USD" };
+    // The cross-app BenchmarkReportV02 still emits the legacy enum; the
+    // benchmark records a skipped run with no upstream charge. Itotori's
+    // ingest boundary (narrowBenchmarkCostToItotoriShape) maps this onto
+    // the narrowed `'billed' | 'zero'` enum — see ITOTORI-225.
+    firstRun.cost = { costKind: "unknown", currency: "USD" }; // itotori-225-audit-allow: cross-app BenchmarkCostAmountV02 still emits the legacy enum; this test verifies the itotori ingest boundary narrows it.
 
     await service.recordBenchmarkReport("project-test", {
       localeBranchId: "locale-en-us",
@@ -965,7 +968,10 @@ describe("ItotoriProjectWorkflowService", () => {
             providerRunId: firstRun.providerRunId,
             status: "skipped",
             tokenUsage: { tokenCountSource: "unknown" },
-            cost: { costKind: "unknown", currency: "USD" },
+            // The legacy `unknown` benchmark cost narrows to `zero` at
+            // the itotori ingest boundary; we no longer carry forward
+            // "I don't know" into the ledger.
+            cost: { costKind: "zero", currency: "USD", amountMicrosUsd: 0 },
           }),
         ]),
       }),
@@ -1139,9 +1145,11 @@ function failedProviderRun(request: ModelInvocationRequest, modelId: string): Pr
     tokenUsage: {
       tokenCountSource: "unknown",
     },
+    // ITOTORI-225 — failed runs incur no upstream charge.
     cost: {
-      costKind: "unknown",
+      costKind: "zero",
       currency: "USD",
+      amountMicrosUsd: 0,
     },
     prompt: request.prompt,
     dataHandling: descriptorDataHandling(),
@@ -1282,29 +1290,10 @@ const costReportFixture: ProjectCostReport = {
   currency: "USD",
   runCount: 1,
   billedMicrosUsd: 0,
-  estimatedMicrosUsd: 0,
   zeroRunCount: 1,
-  unknownRunCount: 0,
-  includesUnknownCost: false,
   totalsByCostKind: [
     {
       costKind: "billed",
-      runCount: 0,
-      amountMicrosUsd: 0,
-      promptTokens: 0,
-      completionTokens: 0,
-      totalTokens: 0,
-    },
-    {
-      costKind: "provider_estimate",
-      runCount: 0,
-      amountMicrosUsd: 0,
-      promptTokens: 0,
-      completionTokens: 0,
-      totalTokens: 0,
-    },
-    {
-      costKind: "local_estimate",
       runCount: 0,
       amountMicrosUsd: 0,
       promptTokens: 0,
@@ -1318,14 +1307,6 @@ const costReportFixture: ProjectCostReport = {
       promptTokens: 10,
       completionTokens: 4,
       totalTokens: 14,
-    },
-    {
-      costKind: "unknown",
-      runCount: 0,
-      amountMicrosUsd: 0,
-      promptTokens: 0,
-      completionTokens: 0,
-      totalTokens: 0,
     },
   ],
   recentRuns: [
