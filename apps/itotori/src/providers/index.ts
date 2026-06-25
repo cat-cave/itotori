@@ -1,9 +1,23 @@
 export { LocalProviderRunArtifactRecorder } from "./artifacts.js";
 export {
   assertProviderInvocationSupported,
+  CapabilityGuard,
+  CapabilityGuardMissError,
+  globalCapabilityGuard,
+  modelProviderPairKey,
+  type ModelProviderPairKey,
   type ProviderInvocationGuardInput,
   type ProviderRoutingCapabilityRequirement,
 } from "./capability-guard.js";
+export {
+  DEV_PAIR,
+  DevPairUnknownError,
+  getCapabilities,
+  getModelCapabilities,
+  knownPairs,
+  type DevPairCapabilities,
+  type ModelProviderPair,
+} from "./dev-pair.js";
 export { FakeModelProvider, fakeModelCapabilities } from "./fake.js";
 export {
   RecordedBundleMissingError,
@@ -18,9 +32,14 @@ export {
   localOpenAICompatibleDefaultCapabilities,
 } from "./local-openai-compatible.js";
 export {
+  OpenRouterCostCapError,
+  OpenRouterMissingApiKeyError,
+  OpenRouterModelProvider,
   OpenRouterProvider,
   openRouterApiKeyFromEnv,
   openRouterDefaultCapabilities,
+  type OpenRouterHttpClient,
+  type OpenRouterModelProviderOptions,
 } from "./openrouter.js";
 export {
   assertProviderInputAllowed,

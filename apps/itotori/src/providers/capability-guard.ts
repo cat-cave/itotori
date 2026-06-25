@@ -95,6 +95,11 @@ export class CapabilityGuard {
     return this.entries.has(modelProviderPairKey(modelId, providerId));
   }
 
+  /** Clear the registry — test-only escape hatch; never call from app code. */
+  clear(): void {
+    this.entries.clear();
+  }
+
   /** Snapshot of registered (modelId, providerId) keys for diagnostics. */
   registeredPairs(): { modelId: string; providerId: string }[] {
     return [...this.entries.keys()].map((key) => {
@@ -102,6 +107,27 @@ export class CapabilityGuard {
       return { modelId: modelId ?? "", providerId: providerId ?? "" };
     });
   }
+}
+
+// ITOTORI-221 — process-wide singleton CapabilityGuard. The
+// OpenRouterModelProvider registers the DEV_PAIR (and the rest of the
+// known-pair table) into this guard at construction so the agentic-loop
+// orchestrator can call `globalCapabilityGuard().lookup(modelId,
+// providerId)` without each call site having to wire its own guard. A
+// singleton is the right shape here because capability claims are
+// per-pair facts, not per-provider-instance facts.
+let GLOBAL_CAPABILITY_GUARD: CapabilityGuard | undefined;
+
+export function globalCapabilityGuard(): CapabilityGuard {
+  if (GLOBAL_CAPABILITY_GUARD === undefined) {
+    GLOBAL_CAPABILITY_GUARD = new CapabilityGuard();
+  }
+  return GLOBAL_CAPABILITY_GUARD;
+}
+
+/** Test-only: reset the singleton guard so each test starts clean. */
+export function __resetGlobalCapabilityGuardForTests(): void {
+  GLOBAL_CAPABILITY_GUARD = undefined;
 }
 
 function assertStructuredOutputSupported(
