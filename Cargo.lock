@@ -1231,7 +1231,6 @@ dependencies = [
 name = "utsushi-reallive"
 version = "0.0.0"
 dependencies = [
- "kaifuu-reallive",
  "serde",
  "serde_json",
  "utsushi-core",

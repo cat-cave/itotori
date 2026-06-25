@@ -52,10 +52,10 @@
 //!   and a scene index.
 //! - [`UtsushiReallivePortContext`] — the carrier struct the eventual
 //!   implementation will use to thread the asset package and the
-//!   `kaifuu-reallive` scene index into the lifecycle methods. Carries
-//!   `Option<...>` slots today; the post-alpha nodes will replace the
-//!   `Option` with required fields once the inventory cross-reference is
-//!   plumbed.
+//!   `utsushi-reallive`-owned [`RealSceneIndex`] into the lifecycle
+//!   methods. Carries `Option<...>` slots today; the post-alpha nodes
+//!   will replace the `Option` with required fields once the inventory
+//!   cross-reference is plumbed.
 //! - [`UNIMPLEMENTED_MESSAGE`] — the typed string every lifecycle method
 //!   currently returns inside [`EnginePortError::Lifecycle`]. Pinned as a
 //!   public `const` so the scaffold conformance test can assert against
@@ -89,15 +89,14 @@ use utsushi_core::substrate::{
 // narrow rename so the import site is grep-pinnable.
 use utsushi_core::CaptureOutcome as SubstrateCaptureOutcome;
 
-use kaifuu_reallive::{RealLiveSceneIndex, SceneEntry};
+// UTSUSHI-201: `utsushi-reallive` owns its own `Seen.txt` parser. The
+// scene-index types below are the ones successor nodes
+// (UTSUSHI-202..UTSUSHI-221) consume.
+pub mod scene_index;
 
-// Re-export the `kaifuu-reallive` cross-reference types so the integration
-// tests (and any downstream UTSUSHI-201..UTSUSHI-221 successor) can pin
-// the type identity directly off `utsushi_reallive::` without re-importing
-// `kaifuu-reallive` themselves. The re-export is intentionally narrow —
-// only the two cross-reference types named in the UTSUSHI-200 spec.
-pub use kaifuu_reallive::{
-    RealLiveSceneIndex as ReExportedSceneIndex, SceneEntry as ReExportedSceneEntry,
+pub use scene_index::{
+    REAL_SCENE_DIRECTORY_BYTE_LEN, REAL_SCENE_DIRECTORY_SLOT_BYTE_LEN,
+    REAL_SCENE_DIRECTORY_SLOT_COUNT, RealSceneEntry, RealSceneIndex, RealSceneIndexError,
 };
 
 /// Stable port id used by the manifest and by audit tooling.
@@ -138,14 +137,14 @@ pub const RLVM_RESEARCH_ANCHOR_BOUNDARY_STATEMENT: &str = concat!(
 /// Inert context the scaffold owns. The post-alpha nodes will populate
 /// the `asset_package` and `scene_index` slots from the runner's
 /// [`PortRequest::vfs`] (resolved to a typed [`AssetPackage`]) and from
-/// a `kaifuu-reallive` archive parse, respectively.
+/// an `utsushi-reallive` [`RealSceneIndex`] parse, respectively.
 ///
 /// The carrier is intentionally a struct (not a tuple) so the audit
 /// surface is named: every field has a docstring, every field's type is
-/// reachable from the substrate facade plus `kaifuu-reallive`. No
-/// runtime configuration knobs are introduced here — the only legitimate
-/// way to feed this struct is by replacing the construction call in a
-/// successor node.
+/// reachable from the substrate facade plus this crate's own scene-index
+/// module. No runtime configuration knobs are introduced here — the only
+/// legitimate way to feed this struct is by replacing the construction
+/// call in a successor node.
 #[derive(Clone, Default)]
 pub struct UtsushiReallivePortContext {
     /// Asset package the eventual implementation will read SEEN.TXT,
@@ -154,11 +153,11 @@ pub struct UtsushiReallivePortContext {
     /// without any I/O wiring; once UTSUSHI-201+ lands real behaviour,
     /// the `Option` is removed.
     asset_package: Option<Arc<dyn AssetPackage>>,
-    /// The `kaifuu-reallive` scene index the eventual implementation will
-    /// consume as the inventory cross-reference for bridge-unit
-    /// derivation. Held as `Option<Arc<...>>` for the same reason as
-    /// `asset_package`.
-    scene_index: Option<Arc<RealLiveSceneIndex>>,
+    /// The `utsushi-reallive`-owned [`RealSceneIndex`] the eventual
+    /// implementation will consume as the inventory cross-reference for
+    /// bridge-unit derivation. Held as `Option<Arc<...>>` for the same
+    /// reason as `asset_package`.
+    scene_index: Option<Arc<RealSceneIndex>>,
 }
 
 impl UtsushiReallivePortContext {
@@ -176,20 +175,21 @@ impl UtsushiReallivePortContext {
         self.asset_package.as_ref()
     }
 
-    /// Optional accessor for the cross-reference [`RealLiveSceneIndex`].
+    /// Optional accessor for the cross-reference [`RealSceneIndex`].
     /// Returns `None` while the scaffold is inert.
-    pub fn scene_index(&self) -> Option<&Arc<RealLiveSceneIndex>> {
+    pub fn scene_index(&self) -> Option<&Arc<RealSceneIndex>> {
         self.scene_index.as_ref()
     }
 
-    /// Number of [`SceneEntry`] rows the cross-reference scene index
-    /// carries, if any. Exposed so the scaffold conformance test can
-    /// pin "the scaffold's inert context reports zero cross-reference
-    /// entries" without poking at the `Option` directly.
+    /// Number of [`RealSceneEntry`] rows the cross-reference scene
+    /// index carries, if any. Exposed so the scaffold conformance test
+    /// can pin "the scaffold's inert context reports zero
+    /// cross-reference entries" without poking at the `Option`
+    /// directly.
     pub fn cross_reference_entry_count(&self) -> usize {
         self.scene_index
             .as_ref()
-            .map(|index| index.entries.len())
+            .map(|index| index.len())
             .unwrap_or(0)
     }
 }
@@ -325,9 +325,11 @@ const _: () = {
     assert!(!UNIMPLEMENTED_MESSAGE.is_empty());
 };
 
-// Reference re-exports so the originals are not flagged as unused while
-// the scaffold lifecycle bodies are inert.
+// Reference touch so the [`RealSceneEntry`] type stays visible from
+// `__doctest_scene_entry_kind` without dragging it into the scaffold's
+// runtime carrier surface. Successor nodes will replace this with a real
+// constructor that demands a populated scene index.
 #[doc(hidden)]
-pub fn __doctest_kaifuu_scene_entry_kind() -> std::marker::PhantomData<SceneEntry> {
+pub fn __doctest_real_scene_entry_kind() -> std::marker::PhantomData<RealSceneEntry> {
     std::marker::PhantomData
 }
