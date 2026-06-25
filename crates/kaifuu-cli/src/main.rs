@@ -57,6 +57,17 @@ fn run_with_args_and_registry(
             )?;
         }
         Some("extract") => {
+            // KAIFUU-210: --engine reallive --scene <N> --bundle-output <path>
+            // routes through the kaifuu-reallive bridge producer rather
+            // than the registry adapter surface. The `game_dir` positional
+            // is optional under --engine reallive — if absent we read
+            // `KAIFUU_REAL_SWEETIE_HD_PATH` to locate the Sweetie HD
+            // extracted root.
+            if let Some(engine) = flag_optional(&args, "--engine")
+                && engine == "reallive"
+            {
+                return run_extract_reallive_bundle(&args);
+            }
             let game_dir = PathBuf::from(positional(&args, 1)?);
             let output = PathBuf::from(flag(&args, "--output")?);
             let adapter = registered_adapter_for_game(registry, &game_dir)?;
@@ -199,6 +210,172 @@ fn run_with_args_and_registry(
         }
     }
     Ok(())
+}
+
+/// KAIFUU-210 — `extract --engine reallive --scene <N> --bundle-output <PATH>`.
+///
+/// Loads the Sweetie HD SEEN.TXT envelope from
+/// `KAIFUU_REAL_SWEETIE_HD_PATH` (or `--game-root <PATH>`), resolves
+/// scene `N` via the 10,000-slot directory, decompresses its AVG32 LZSS
+/// payload using kaifuu-reallive's `decompress_avg32`, walks the
+/// decompressed bytecode into the v0.2 BridgeBundle via
+/// `kaifuu_reallive::produce_bundle`, and writes the JSON bundle to
+/// `--bundle-output`.
+fn run_extract_reallive_bundle(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
+    use kaifuu_reallive::{
+        BridgeOpts, REALLIVE_SEEN_TXT_DIRECTORY_BYTE_LEN, SceneHeader, decompress_avg32,
+        gameexe::parse_gameexe_inventory, parse_archive, produce_bundle,
+    };
+
+    let bundle_output = PathBuf::from(flag(args, "--bundle-output")?);
+    let scene_id: u16 =
+        flag(args, "--scene")?
+            .parse()
+            .map_err(|err| -> Box<dyn std::error::Error> {
+                format!("--scene must be a u16: {err}").into()
+            })?;
+    let game_root = match flag_optional(args, "--game-root") {
+        Some(value) => PathBuf::from(value),
+        None => match std::env::var_os("KAIFUU_REAL_SWEETIE_HD_PATH") {
+            Some(value) => PathBuf::from(value),
+            None => {
+                return Err(
+                    "--game-root <PATH> or KAIFUU_REAL_SWEETIE_HD_PATH env var required".into(),
+                );
+            }
+        },
+    };
+
+    let seen_path = resolve_reallive_seen_path(&game_root)?;
+    let seen_bytes = fs::read(&seen_path).map_err(|err| -> Box<dyn std::error::Error> {
+        format!("failed to read {}: {err}", seen_path.display()).into()
+    })?;
+    if (seen_bytes.len() as u64) < REALLIVE_SEEN_TXT_DIRECTORY_BYTE_LEN {
+        return Err(format!(
+            "Seen.txt is shorter than the fixed 10,000-slot directory ({}); refusing to parse",
+            REALLIVE_SEEN_TXT_DIRECTORY_BYTE_LEN
+        )
+        .into());
+    }
+
+    let index = parse_archive(&seen_bytes).map_err(|err| -> Box<dyn std::error::Error> {
+        format!("kaifuu.reallive.archive_parse: {err:?}").into()
+    })?;
+    let entry = index
+        .entries
+        .iter()
+        .find(|entry| entry.scene_id == scene_id)
+        .ok_or_else(|| -> Box<dyn std::error::Error> {
+            format!("scene {scene_id} not present in archive directory").into()
+        })?;
+    let blob_start = entry.byte_offset as usize;
+    let blob_end = blob_start + entry.byte_len as usize;
+    if blob_end > seen_bytes.len() {
+        return Err(format!(
+            "scene {scene_id} blob (offset={blob_start}, len={}) runs past archive length",
+            entry.byte_len
+        )
+        .into());
+    }
+    let scene_blob = &seen_bytes[blob_start..blob_end];
+
+    let header = SceneHeader::parse(scene_blob).map_err(|err| -> Box<dyn std::error::Error> {
+        format!("kaifuu.reallive.scene_header_parse: {err}").into()
+    })?;
+    let bytecode_start = header.bytecode_offset as usize;
+    let bytecode_end = bytecode_start + header.bytecode_compressed_size as usize;
+    if bytecode_end > scene_blob.len() {
+        return Err(format!(
+            "scene {scene_id} declared bytecode_offset={bytecode_start} + size={} past blob end",
+            header.bytecode_compressed_size
+        )
+        .into());
+    }
+    let compressed = &scene_blob[bytecode_start..bytecode_end];
+    let decompressed = decompress_avg32(compressed, header.bytecode_uncompressed_size as usize)
+        .map_err(|err| -> Box<dyn std::error::Error> {
+            format!("kaifuu.reallive.decompress: {err}").into()
+        })?;
+
+    let gameexe_path = game_root_gameexe_path(&game_root);
+    let gameexe_bytes = fs::read(&gameexe_path).unwrap_or_default();
+    let gameexe_inventory = parse_gameexe_inventory(&gameexe_bytes);
+
+    let opts = BridgeOpts {
+        game_id: "sweetie-hd",
+        game_version: "1.0.0",
+        source_profile_id: "kaifuu-reallive-sweetie-hd",
+        source_locale: "ja-JP",
+        scene_blob_file_offset: entry.byte_offset,
+        extractor_name: "kaifuu-reallive-bridge",
+        extractor_version: "0.1.0",
+        scene_kidoku_count: header.kidoku_count,
+    };
+
+    let produced = produce_bundle(
+        scene_id,
+        scene_blob,
+        &decompressed,
+        &gameexe_inventory,
+        &opts,
+    )
+    .map_err(|err| -> Box<dyn std::error::Error> {
+        format!("kaifuu.reallive.bridge: {err}").into()
+    })?;
+
+    write_json(&bundle_output, &produced.json)?;
+    Ok(())
+}
+
+fn resolve_reallive_seen_path(game_root: &Path) -> Result<PathBuf, Box<dyn std::error::Error>> {
+    // Walk the game root for a `REALLIVEDATA/Seen.txt` payload. Sweetie
+    // HD extracts the game into a top-level
+    // `オシオキSweetie＋Sweets!! HD_DL版/REALLIVEDATA/Seen.txt`.
+    let direct = game_root.join("REALLIVEDATA").join("Seen.txt");
+    if direct.is_file() {
+        return Ok(direct);
+    }
+    if let Ok(entries) = fs::read_dir(game_root) {
+        for entry in entries.flatten() {
+            let candidate = entry.path().join("REALLIVEDATA").join("Seen.txt");
+            if candidate.is_file() {
+                return Ok(candidate);
+            }
+        }
+    }
+    Err(format!(
+        "REALLIVEDATA/Seen.txt not found under {}",
+        game_root.display()
+    )
+    .into())
+}
+
+fn game_root_gameexe_path(game_root: &Path) -> PathBuf {
+    // Sweetie HD ships Gameexe.ini under `REALLIVEDATA/Gameexe.ini`
+    // (alongside Seen.txt). Older RealLive titles can ship it at the
+    // game root. Probe both shapes.
+    let candidates = [
+        game_root.join("REALLIVEDATA").join("Gameexe.ini"),
+        game_root.join("Gameexe.ini"),
+    ];
+    for candidate in &candidates {
+        if candidate.is_file() {
+            return candidate.clone();
+        }
+    }
+    if let Ok(entries) = fs::read_dir(game_root) {
+        for entry in entries.flatten() {
+            for sub in [
+                entry.path().join("REALLIVEDATA").join("Gameexe.ini"),
+                entry.path().join("Gameexe.ini"),
+            ] {
+                if sub.is_file() {
+                    return sub;
+                }
+            }
+        }
+    }
+    candidates[0].clone()
 }
 
 fn run_binary_patch_smoke_command(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {

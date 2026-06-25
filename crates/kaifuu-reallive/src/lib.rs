@@ -104,6 +104,8 @@
 
 mod archive;
 mod ast;
+pub mod bridge;
+pub mod decompressor;
 pub mod detector;
 mod diagnostics;
 pub mod encoding;
@@ -114,6 +116,7 @@ mod opcodes;
 mod parser;
 pub mod patchback;
 pub mod protected_spans;
+pub mod scene_header;
 mod strings;
 
 pub use archive::{
@@ -124,6 +127,8 @@ pub use ast::{
     DiagnosticSeverity, Instruction, InstructionId, InstructionKind, Operand, ParseOutcome,
     ParseStatus, Scene, StringSlot, StringSlotId, StringSlotRef, StringSlotRole,
 };
+pub use bridge::{BridgeOpts, BridgeProduceError, ProducedBundle, produce_bundle};
+pub use decompressor::{AVG32_COMPRESSED_PREAMBLE_LEN, DecompressError, decompress_avg32};
 pub use detector::{
     REALLIVE_DATA_DIR_NAME, REALLIVE_DETECTOR_DEFAULT_MAX_DEPTH, RealLiveDetectError,
     RealLiveDetectionEvidence, detect as detect_reallive_data_dir,
@@ -164,3 +169,4 @@ pub use protected_spans::{
     PROTECTED_SPAN_UNKNOWN_CONTROL_CODE, ProtectedSpanKind, ProtectedSpanReport,
     ProtectedSpanWarning, RealLiveProtectedSpan, detect_protected_spans,
 };
+pub use scene_header::{SCENE_HEADER_BYTE_LEN, SceneHeader, SceneHeaderError};
