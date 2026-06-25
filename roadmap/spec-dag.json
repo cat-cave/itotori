@@ -21487,7 +21487,7 @@
     {
       "id": "UTSUSHI-208",
       "title": "Bytecode VM (fetch / decode / dispatch / advance)",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P1",
       "target": "alpha",
       "projects": ["utsushi"],
@@ -21527,7 +21527,9 @@
         "`step` advancing the pc by a constant instead of by the element's byte length",
         "Gosub/ret stack mishandling on cross-scene jumps"
       ],
-      "statusReason": "Re-tier 2026-06-24: promoted continuous -> alpha — required for the redefined alpha (utsushi-reallive Linux runtime / real-bytes extraction) per docs/proposals/dag-retier-2026-06-24.md."
+      "owner": "orchestrator-utsushi-208",
+      "branch": "spec/utsushi-208",
+      "worktree": "/scratch/worktrees/itotori-spec-utsushi-208"
     },
     {
       "id": "UTSUSHI-209",
