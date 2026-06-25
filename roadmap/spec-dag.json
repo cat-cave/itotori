@@ -21329,7 +21329,7 @@
     {
       "id": "UTSUSHI-204",
       "title": "Bytecode element stream decoder",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["utsushi"],
@@ -21364,14 +21364,12 @@
         "Forgetting that `0x00` and `0x2C` are both comma",
         "Treating `0x40` as arithmetic instead of meta"
       ],
-      "owner": "orchestrator-utsushi-204",
-      "branch": "spec/utsushi-204",
-      "worktree": "/scratch/worktrees/itotori-spec-utsushi-204"
+      "statusReason": "Implementation merged. BytecodeElement + decode_bytecode_stream in utsushi-reallive; 235 elements on Sweetie HD scene-1, partition invariant holds."
     },
     {
       "id": "UTSUSHI-205",
       "title": "Expression evaluator (RealLive expression byte-stream)",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P1",
       "target": "alpha",
       "projects": ["utsushi"],
@@ -21405,7 +21403,9 @@
         "Adding C-style precedence to flat / fully-parenthesised RealLive expressions",
         "Store-register read vs write distinction silently confused"
       ],
-      "statusReason": "Re-tier 2026-06-24: promoted continuous -> alpha — required for the redefined alpha (utsushi-reallive Linux runtime / real-bytes extraction) per docs/proposals/dag-retier-2026-06-24.md."
+      "owner": "orchestrator-utsushi-205",
+      "branch": "spec/utsushi-205",
+      "worktree": "/scratch/worktrees/itotori-spec-utsushi-205"
     },
     {
       "id": "UTSUSHI-206",
