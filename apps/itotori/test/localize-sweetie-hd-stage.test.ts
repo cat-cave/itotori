@@ -69,7 +69,7 @@ describe("UTSUSHI-228 parseLocalizeSweetieHdPairPolicy", () => {
     const parsed = parseLocalizeSweetieHdPairPolicy(loadPreset());
     expect(parsed.policyId).toBe("localize-sweetie-hd-alpha-1");
     expect(parsed.pair).toEqual({
-      modelId: "deepseek/deepseek-chat-v4",
+      modelId: "deepseek/deepseek-v4-flash",
       providerId: "fireworks",
     });
     expect(parsed.enUsSentinel).toBe("STELLA-ALPHA-EN-US-SENTINEL");
@@ -194,7 +194,7 @@ describe("UTSUSHI-228 runLocalizeSweetieHdStageCommand", () => {
       // Every invocation's pair must be the policy pair.
       for (const stage of bundle.stages) {
         for (const invocation of stage.invocations) {
-          expect(invocation.pair.modelId).toBe("deepseek/deepseek-chat-v4");
+          expect(invocation.pair.modelId).toBe("deepseek/deepseek-v4-flash");
           expect(invocation.pair.providerId).toBe("fireworks");
         }
       }
@@ -226,7 +226,7 @@ describe("UTSUSHI-228 runLocalizeSweetieHdStageCommand", () => {
       expect(patchReport).toBeDefined();
       expect(patchReport.schemaVersion).toBe("itotori.localize-sweetie-hd.patch-report.v0");
       expect(patchReport.pair).toEqual({
-        modelId: "deepseek/deepseek-chat-v4",
+        modelId: "deepseek/deepseek-v4-flash",
         providerId: "fireworks",
       });
       expect(patchReport.enUsSentinel).toBe("STELLA-ALPHA-EN-US-SENTINEL");
