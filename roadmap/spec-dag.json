@@ -25358,7 +25358,7 @@
     {
       "id": "ITOTORI-226",
       "title": "itotori-agent-runtime: fix DEV_PAIR to deepseek/deepseek-v4-flash + re-key recorded bundles",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P0",
       "target": "alpha",
       "projects": ["itotori"],
@@ -25396,14 +25396,12 @@
         "providerId pinned to a provider that does not host the model"
       ],
       "parallelGroup": "agent-runtime",
-      "owner": "orchestrator-itotori-226",
-      "branch": "spec/itotori-226",
-      "worktree": "/scratch/worktrees/itotori-spec-itotori-226"
+      "statusReason": "undefined\n\n[2026-06-25 landed at 2876047] DEV_PAIR.modelId is now deepseek/deepseek-v4-flash. Live smoke: HTTP 200, provider:Fireworks, usage.cost=$0.0000063. 0 hits of old slug in code/fixtures/presets/scripts; intentional historical references remain in docs/audits + docs/proposals + roadmap narrative."
     },
     {
       "id": "ITOTORI-227",
       "title": "itotori-agent-runtime: delete reinvented data-handling registry; default provider.zdr=true",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P0",
       "target": "alpha",
       "projects": ["itotori"],
@@ -25444,13 +25442,15 @@
         "AccountZdrAssertion downgraded to a warning instead of refusal",
         "Documenting 'ZDR is on' without enforcing the env var assertion"
       ],
-      "statusReason": "Per docs/audits/openrouter-wiring-audit-2026-06-25.md §3-B (itotori reinvents OR's account-wide ZDR, critical), §3-B-3 (private-corpus calls never set provider.zdr=true today), §3-C (capability shape is wrong), §3-D-1 (default zdr=true), §3-H-2/§3-H-5 (capability-guard simplification + zdr type tightening).",
-      "parallelGroup": "agent-runtime"
+      "parallelGroup": "agent-runtime",
+      "owner": "orchestrator-itotori-227",
+      "branch": "spec/itotori-227",
+      "worktree": "/scratch/worktrees/itotori-spec-itotori-227"
     },
     {
       "id": "ITOTORI-228",
       "title": "itotori-agent-runtime: recorded provider replays captured real cost; remove hardcoded costKind: zero",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P0",
       "target": "alpha",
       "projects": ["itotori"],
@@ -25482,13 +25482,15 @@
         "Pre-ITOTORI-228 bundles silently replay as zero (schema-version bump must force recapture)",
         "RecordedCostMismatchError downgraded to a warning"
       ],
-      "statusReason": "Per docs/audits/openrouter-cost-tracking-audit-2026-06-25.md §3 N2 / §2.12 (recorded provider replays hardcoded cost zero instead of captured real cost, high severity).",
-      "parallelGroup": "agent-runtime"
+      "parallelGroup": "agent-runtime",
+      "owner": "orchestrator-itotori-228",
+      "branch": "spec/itotori-228",
+      "worktree": "/scratch/worktrees/itotori-spec-itotori-228"
     },
     {
       "id": "ITOTORI-229",
       "title": "itotori-agent-runtime: rename costEstimate → costUsd in agentic-loop bundle and every downstream consumer",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["itotori"],
@@ -25519,9 +25521,7 @@
         "Downstream consumer left reading the old name silently"
       ],
       "parallelGroup": "agent-runtime",
-      "owner": "orchestrator-itotori-229",
-      "branch": "spec/itotori-229",
-      "worktree": "/scratch/worktrees/itotori-spec-itotori-229"
+      "statusReason": "undefined\n\n[2026-06-25 landed at 5c96eca] costEstimate → costUsd renamed across schema package + agentic-loop + draft fixtures/recorder. Bundle schemaVersion bumped itotori.agentic-loop-bundle.v0 → v1. DraftAttemptCostEstimate type also renamed to DraftAttemptCostUsd (spirit of audit)."
     },
     {
       "id": "ITOTORI-230",
@@ -25568,7 +25568,7 @@
     {
       "id": "ITOTORI-231",
       "title": "itotori-agent-runtime: single source of truth for DEFAULT_COST_CAP_USD; delete duplicated 0.5 in alpha closer",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["itotori"],
@@ -25598,9 +25598,7 @@
         "Local constant left as a 'fallback'"
       ],
       "parallelGroup": "agent-runtime",
-      "owner": "orchestrator-itotori-231",
-      "branch": "spec/itotori-231",
-      "worktree": "/scratch/worktrees/itotori-spec-itotori-231"
+      "statusReason": "undefined\n\n[2026-06-25 landed at 6739498] DEFAULT_COST_CAP_USD = 0.5 USD canonical exported from openrouter.ts, justified by ITOTORI-224 evidence (~USD 0.000003/call = ~166k calls of headroom). Local 0.5 in localize-stage deleted; tests use explicit overrides."
     },
     {
       "id": "ITOTORI-232",
