@@ -21408,7 +21408,7 @@
     {
       "id": "UTSUSHI-206",
       "title": "Variable banks + store register (typed `intA`..`intZ` / `strS`/`strM`/`strK`)",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P2",
       "target": "alpha",
       "projects": ["utsushi"],
@@ -21443,9 +21443,7 @@
         "Treating `intC` as identical to `intA` (the banks are semantically distinct in scripts)",
         "Snapshot key format leaking banks-by-position rather than banks-by-name"
       ],
-      "owner": "orchestrator-utsushi-206",
-      "branch": "spec/utsushi-206",
-      "worktree": "/scratch/worktrees/itotori-spec-utsushi-206"
+      "statusReason": "Implementation merged (commit a351a63). Sparse VarBanks + Inspectable/Restorable; empty snapshot 361 bytes; 185 tests pass."
     },
     {
       "id": "UTSUSHI-207",
