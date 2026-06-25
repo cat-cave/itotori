@@ -6674,7 +6674,7 @@
     {
       "id": "ITOTORI-022",
       "title": "Finding triage and root-cause router",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["itotori", "shared"],
@@ -6715,9 +6715,7 @@
         }
       ],
       "auditFocus": ["Misrouting systemic errors", "Human escalation overuse", "Stale policy use"],
-      "owner": "orchestrator-itotori-022",
-      "branch": "spec/itotori-022",
-      "worktree": "/scratch/worktrees/itotori-spec-itotori-022"
+      "statusReason": "Implementation merged (commit f8a0f85). FindingTriageRouter with 18 exhaustive routing rules + 26 tests."
     },
     {
       "id": "ITOTORI-023",
@@ -24879,7 +24877,7 @@
     {
       "id": "ITOTORI-222",
       "title": "itotori-agent-runtime: full agentic-loop orchestrator chaining context -> pre-translation -> translation -> deterministic -> QA -> repair",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P1",
       "target": "alpha",
       "projects": ["itotori"],
@@ -24930,7 +24928,9 @@
         "Old drafting command kept as a shim",
         "Repair loop unbounded or bypassing the router decision"
       ],
-      "statusReason": "Minted 2026-06-24 per docs/proposals/alpha-gap-analysis-2026-06-24.md §3 ITOTORI-NEW-Cloop: the alpha agentic-loop-fires clause needs a single orchestrator entry point."
+      "owner": "orchestrator-itotori-222",
+      "branch": "spec/itotori-222",
+      "worktree": "/scratch/worktrees/itotori-spec-itotori-222"
     },
     {
       "id": "ITOTORI-223",
