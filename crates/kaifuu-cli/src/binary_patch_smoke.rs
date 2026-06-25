@@ -133,7 +133,7 @@ pub fn build_synthetic_seen_txt() -> Vec<u8> {
     let payload_offset = directory_byte_len as u32;
     let mut archive = vec![0u8; directory_byte_len + scene_blob.len()];
     // Slot 1: (offset = 0x13880, size = scene_blob.len()).
-    let slot1 = 1usize * 8;
+    let slot1 = 8usize; // slot 1 lives at directory offset 8 (slot index × 8 bytes).
     archive[slot1..slot1 + 4].copy_from_slice(&payload_offset.to_le_bytes());
     archive[slot1 + 4..slot1 + 8].copy_from_slice(&(scene_blob.len() as u32).to_le_bytes());
     archive[directory_byte_len..].copy_from_slice(&scene_blob);
