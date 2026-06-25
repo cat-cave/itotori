@@ -7,13 +7,15 @@ repository.workspace = true
 description = "UTSUSHI-200 alpha-gate scaffold: pure-Rust RealLive engine port that registers conformance against the utsushi-core substrate facade. Clean-room; rlvm is a research anchor only and is not linked, vendored, or mechanically translated."
 
 [dependencies]
-# Intentionally NO `kaifuu-reallive` dependency. UTSUSHI-201's
+# Intentionally NO `kaifuu-reallive` dependency. UTSUSHI-201 + UTSUSHI-207's
 # architectural constraint is that `utsushi-reallive` owns its own
-# `Seen.txt` parser — the format is identical to the one
-# `kaifuu-reallive` recognises, but the implementations stay separate
-# so a regression in one project cannot poison the other.
+# `Seen.txt` and `Gameexe.ini` parsers — the formats are identical to
+# what `kaifuu-reallive` recognises, but the implementations stay
+# separate so a regression in one project cannot poison the other.
+encoding_rs.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+thiserror.workspace = true
 utsushi-core = { path = "../utsushi-core" }
 
 [package.metadata.research-anchor]
