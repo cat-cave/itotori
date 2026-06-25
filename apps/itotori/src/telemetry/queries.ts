@@ -109,6 +109,23 @@ export type TelemetryPairRanking = {
   readonly rankByLatency: number;
 };
 
+/**
+ * ITOTORI-230 — per-(modelId, providerId) row split by ZDR-enforcement.
+ * `zdrEnforcedCount` is the number of provider runs whose captured
+ * routing posture had `zdr=true` on the wire; `invocationCount` is the
+ * total over the window. For a healthy alpha pair, the two are equal —
+ * the dashboard surfaces the delta so silent partial-coverage anomalies
+ * are visible. Pre-migration sentinel rows
+ * (`routing_posture = '{"_pre_itotori_230": true}'`) count toward
+ * `invocationCount` but NOT `zdrEnforcedCount`: there is no captured
+ * evidence, and we refuse to synthesise one.
+ */
+export type TelemetryZdrEnforcedRow = {
+  readonly pair: TelemetryPairKey;
+  readonly invocationCount: number;
+  readonly zdrEnforcedCount: number;
+};
+
 export type TelemetryQuerySumByPairOptions = {
   readonly groupByDay?: boolean | undefined;
 };
@@ -138,6 +155,19 @@ export interface TelemetryQuery {
     projectId: string,
     window: TelemetryWindow,
   ): Promise<TelemetryPairRanking[]>;
+
+  /**
+   * ITOTORI-230 — per-(modelId, providerId) ZDR-enforcement counts over
+   * the window. Drives the dashboard's "alpha pair: zdrEnforcedCount /
+   * invocationCount" widget the 2026-06-25 wiring audit asked for so a
+   * partial-coverage anomaly (e.g. a code path that wrote a ledger row
+   * without posture) is immediately visible.
+   */
+  countZdrEnforcedCallsByPair(
+    actor: AuthorizationActor,
+    projectId: string,
+    window: TelemetryWindow,
+  ): Promise<TelemetryZdrEnforcedRow[]>;
 }
 
 /**

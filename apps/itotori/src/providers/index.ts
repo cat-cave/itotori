@@ -70,6 +70,7 @@ export type {
   ModelTool,
   ModelToolCall,
   ModelToolChoice,
+  OpenRouterRoutingPosture,
   ProviderCost,
   ProviderDescriptor,
   ProviderFamily,
@@ -89,7 +90,7 @@ export type {
   TokenUsage,
   ToolCallCapabilities,
 } from "./types.js";
-export { ModelProviderError } from "./types.js";
+export { localOnlyRoutingPosture, ModelProviderError } from "./types.js";
 export {
   assertBilledCost,
   decimalUsdStringToMicros,

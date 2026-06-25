@@ -19,6 +19,7 @@ import {
   ModelProviderError,
   type ModelTool,
   type ModelToolCall,
+  type OpenRouterRoutingPosture,
   type ProviderDescriptor,
   type ProviderCost,
   type ProviderInputClassification,
@@ -104,6 +105,11 @@ export class OpenRouterProvider implements ModelProvider {
     // providerId is authoritative and any pre-configured `only` list must
     // either match or be tightened to it.
     const providerRouting = buildOpenRouterProviderRouting(this.routing, request);
+    // ITOTORI-230 — typed restatement of the same posture for the
+    // ledger / recorded-bundle audit trail. Derived from the same
+    // routing block we put on the wire (above), not synthesized
+    // separately, so the two cannot drift.
+    const routingPosture = openRouterRoutingPostureFromBlock(providerRouting);
     assertProviderInvocationSupported({
       descriptor: this.descriptor,
       request,
@@ -146,6 +152,7 @@ export class OpenRouterProvider implements ModelProvider {
         routeSettingsHash,
         errorClasses: ["provider_network_error"],
         tokenUsage: { tokenCountSource: "unknown" },
+        routingPosture,
       });
       await this.live.artifactRecorder.recordProviderRun(
         buildArtifact({
@@ -182,6 +189,7 @@ export class OpenRouterProvider implements ModelProvider {
         routeSettingsHash,
         errorClasses: [`http_${response.status}`],
         tokenUsage: { tokenCountSource: "unknown" },
+        routingPosture,
       });
       await this.live.artifactRecorder.recordProviderRun(
         buildArtifact({
@@ -220,6 +228,7 @@ export class OpenRouterProvider implements ModelProvider {
         routeSettingsHash,
         errorClasses: ["provider_response_invalid"],
         tokenUsage: isRecord(body) ? normalizeUsage(body.usage) : { tokenCountSource: "unknown" },
+        routingPosture,
       });
       await this.live.artifactRecorder.recordProviderRun(
         buildArtifact({
@@ -272,6 +281,7 @@ export class OpenRouterProvider implements ModelProvider {
         routeSettingsHash,
         errorClasses: ["pair_mismatch"],
         tokenUsage: normalized.tokenUsage,
+        routingPosture,
       });
       await this.live.artifactRecorder.recordProviderRun(
         buildArtifact({
@@ -305,6 +315,7 @@ export class OpenRouterProvider implements ModelProvider {
       errorClasses: [],
       tokenUsage: normalized.tokenUsage,
       cost: normalized.cost,
+      routingPosture,
     });
     const metadata = adapterMetadata(body, providerRouting);
     await this.live.artifactRecorder.recordProviderRun(
@@ -437,9 +448,27 @@ function buildOpenRouterProviderRouting(
   routing: OpenRouterProviderRouting,
   request: ModelInvocationRequest,
 ): JsonObject {
+  // ITOTORI-230 — derive the typed posture FIRST, then mirror it onto
+  // the wire JsonObject. Driving the wire shape from the posture (not
+  // the other way round) is how we keep the captured-on-ledger posture
+  // identical to what actually went out — a captured posture that
+  // disagreed with the wire would be worse than no posture at all.
+  const posture = buildOpenRouterRoutingPosture(routing, request);
   const provider: Record<string, JsonValue> = {
-    data_collection: dataCollectionForRequest(routing.dataCollection, request.inputClassification),
+    only: posture.only,
+    allow_fallbacks: posture.allow_fallbacks,
+    data_collection: posture.data_collection,
   };
+  // ITOTORI-227 — posture.zdr is only emitted to the wire when the
+  // call carries a privacy contract; public-input calls skip it.
+  if (posture.zdr) {
+    provider.zdr = true;
+  } else if (routing.zdr !== undefined) {
+    // Caller explicitly set zdr (e.g. false). Mirror their choice.
+    provider.zdr = routing.zdr;
+  }
+  // require_parameters mirrors the posture's typed value when strict
+  // mode applies; otherwise we only emit if the caller asked.
   const strictParametersRequired =
     request.structuredOutput?.mode === "json_schema" ||
     request.structuredOutput?.mode === "tool_call_arguments" ||
@@ -452,24 +481,6 @@ function buildOpenRouterProviderRouting(
   if (routing.order) {
     provider.order = routing.order;
   }
-  // ITOTORI-220 — pin OpenRouter routing to the requested providerId. If
-  // the caller pre-supplied an `only` list, it MUST contain the request's
-  // providerId; we refuse to widen it for them.
-  if (routing.only !== undefined) {
-    if (!routing.only.includes(request.providerId)) {
-      throw new ModelProviderError(
-        `OpenRouter provider routing only=[${routing.only.join(",")}] does not include requested providerId '${request.providerId}'`,
-        "configuration_error",
-        false,
-      );
-    }
-    provider.only = [request.providerId];
-  } else {
-    provider.only = [request.providerId];
-  }
-  // Always disable provider fallbacks: pinning a providerId means we
-  // refuse to silently swap providers on this call.
-  provider.allow_fallbacks = false;
   if (routing.ignore) {
     provider.ignore = routing.ignore;
   }
@@ -479,20 +490,6 @@ function buildOpenRouterProviderRouting(
   if (routing.sort) {
     provider.sort = routing.sort;
   }
-  // ITOTORI-227 — `provider.zdr=true` is the DEFAULT for every non-public
-  // request. The account-wide ZDR posture is asserted at process startup
-  // (assertOpenRouterZdrAccount); this per-request default belt-and-braces
-  // the dashboard setting so every wire-level request also constrains the
-  // route to ZDR-only providers. `public` inputs skip the constraint —
-  // there is no privacy concern and lower friction matters for synthetic
-  // marketing copy / public-content stages. A caller MAY override via
-  // `routing.zdr` (e.g. to opt synthetic_public out for cheaper routing);
-  // the value is strictly boolean.
-  if (routing.zdr !== undefined) {
-    provider.zdr = routing.zdr;
-  } else if (request.inputClassification !== "public") {
-    provider.zdr = true;
-  }
   if (routing.enforceDistillableText !== undefined) {
     provider.enforce_distillable_text = routing.enforceDistillableText;
   }
@@ -500,6 +497,109 @@ function buildOpenRouterProviderRouting(
     provider.max_price = routing.maxPrice;
   }
   return provider as JsonObject;
+}
+
+/**
+ * ITOTORI-230 — build the typed `OpenRouterRoutingPosture` for THIS
+ * call. Pure function of the routing config + request; the wire-level
+ * routing block (above) is then derived from this posture so the two
+ * cannot drift.
+ *
+ * Why each field's value is what it is:
+ *   - only: always `[request.providerId]` — the ITOTORI-220 pair pin.
+ *   - allow_fallbacks: literal `false` — same reason.
+ *   - data_collection: `"deny"` for any private input; mirrors
+ *     `routing.dataCollection` for public input (defaults to `"deny"`).
+ *     A caller-explicit `"allow"` for public inputs is honoured so the
+ *     captured posture is HONEST about the wire shape.
+ *   - zdr: `true` by default for non-public inputs (ITOTORI-227); a
+ *     caller override is honoured verbatim. `public` inputs default
+ *     to `false` (no zdr on the wire) unless caller asks.
+ *   - require_parameters: `true` whenever strict structured output or
+ *     tool calls are in play; otherwise mirrors caller, defaulting to
+ *     `true` per the canonical ZDR posture (docs/openrouter-
+ *     integration.md §3) when the caller is silent.
+ */
+function buildOpenRouterRoutingPosture(
+  routing: OpenRouterProviderRouting,
+  request: ModelInvocationRequest,
+): OpenRouterRoutingPosture {
+  // ITOTORI-220 — pin OpenRouter routing to the requested providerId. If
+  // the caller pre-supplied an `only` list, it MUST contain the request's
+  // providerId; we refuse to widen it for them.
+  if (routing.only !== undefined && !routing.only.includes(request.providerId)) {
+    throw new ModelProviderError(
+      `OpenRouter provider routing only=[${routing.only.join(",")}] does not include requested providerId '${request.providerId}'`,
+      "configuration_error",
+      false,
+    );
+  }
+  const dataCollection = dataCollectionForRequest(
+    routing.dataCollection,
+    request.inputClassification,
+  );
+  // ITOTORI-227 — zdr default: true for non-public input, mirrors caller
+  // otherwise. Posture records the boolean explicitly (the wire shape
+  // skips the field for public input; both are recoverable from the
+  // posture + classification).
+  const zdr = routing.zdr !== undefined ? routing.zdr : request.inputClassification !== "public";
+  const strictParametersRequired =
+    request.structuredOutput?.mode === "json_schema" ||
+    request.structuredOutput?.mode === "tool_call_arguments" ||
+    Boolean(request.tools?.length);
+  const requireParameters = strictParametersRequired ? true : (routing.requireParameters ?? true);
+  return {
+    only: [request.providerId],
+    allow_fallbacks: false,
+    data_collection: dataCollection,
+    zdr,
+    require_parameters: requireParameters,
+  };
+}
+
+/**
+ * Restate the wire-level routing JsonObject as the typed
+ * {@link OpenRouterRoutingPosture}. Used by the post-build path where
+ * we have the JsonObject in hand (e.g. when threading the captured
+ * posture onto a `ProviderRunRecord` via the same `providerRouting`
+ * value that hit the wire). Strict: every required field MUST be
+ * present and shape-correct; otherwise a `ModelProviderError` of code
+ * `configuration_error` fires (the posture-derivation invariant is
+ * violated, which would be a bug in `buildOpenRouterProviderRouting`).
+ */
+function openRouterRoutingPostureFromBlock(block: JsonObject): OpenRouterRoutingPosture {
+  const only = block.only;
+  if (!Array.isArray(only) || !only.every((entry) => typeof entry === "string")) {
+    throw new ModelProviderError(
+      "OpenRouter routing posture missing 'only' string array",
+      "configuration_error",
+      false,
+    );
+  }
+  if (block.allow_fallbacks !== false) {
+    throw new ModelProviderError(
+      "OpenRouter routing posture must have allow_fallbacks=false",
+      "configuration_error",
+      false,
+    );
+  }
+  if (block.data_collection !== "deny" && block.data_collection !== "allow") {
+    throw new ModelProviderError(
+      `OpenRouter routing posture data_collection must be 'deny' or 'allow', got ${String(block.data_collection)}`,
+      "configuration_error",
+      false,
+    );
+  }
+  const zdr = typeof block.zdr === "boolean" ? block.zdr : false;
+  const requireParameters =
+    typeof block.require_parameters === "boolean" ? block.require_parameters : true;
+  return {
+    only: only as string[],
+    allow_fallbacks: false,
+    data_collection: block.data_collection,
+    zdr,
+    require_parameters: requireParameters,
+  };
 }
 
 function dataCollectionForRequest(
@@ -746,6 +846,8 @@ function buildProviderRunRecord(input: {
   errorClasses: string[];
   tokenUsage: TokenUsage;
   cost?: ProviderCost;
+  // ITOTORI-230 — typed routing posture for the captured run.
+  routingPosture: OpenRouterRoutingPosture;
 }): ProviderRunRecord {
   const completedAt = new Date();
   const fallbackPlan = fallbackPlanForRequest(input.request, input.requestedModelId);
@@ -780,6 +882,7 @@ function buildProviderRunRecord(input: {
     // always carry an `input.cost` because normalizeOpenRouterCost
     // throws on missing usage.cost rather than returning a fallback.
     cost: input.status === "succeeded" && input.cost ? input.cost : ZERO_COST,
+    routingPosture: input.routingPosture,
     prompt: input.request.prompt,
   };
   if (input.request.preset) {

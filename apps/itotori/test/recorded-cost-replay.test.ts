@@ -77,6 +77,16 @@ function bundleWith(
         content: "captured-response",
         finishReason: "stop",
         cost,
+        // ITOTORI-230 — canonical alpha posture stand-in; the cost
+        // replay test asserts cost shape, not posture content. A real
+        // capture would mirror the actual wire-level posture.
+        routingPosture: {
+          only: [request.providerId],
+          allow_fallbacks: false,
+          data_collection: "deny",
+          zdr: true,
+          require_parameters: true,
+        },
       },
     },
     ...overrides,
@@ -201,6 +211,82 @@ describe("ITOTORI-228 — RecordedModelProvider replays captured real cost", () 
     );
   });
 
+  it("refuses a bundle whose response is missing routingPosture (ITOTORI-230 / v2 forcing function)", () => {
+    const request = baseRequest();
+    const malformed = {
+      schemaVersion: RECORDED_PROVIDER_BUNDLE_SCHEMA_VERSION,
+      bundleId: "missing-routing-posture-bundle",
+      capturedProviderFamily: "openrouter" as const,
+      capturedProviderName: "openrouter:missing-posture",
+      capturedRequestedModelId: request.modelId,
+      capturedProviderId: request.providerId,
+      capturedActualModelId: request.modelId,
+      responses: {
+        [keyFor(request)]: {
+          content: "captured-response",
+          finishReason: "stop",
+          cost: ZERO_COST,
+          // routingPosture intentionally omitted — exactly what a
+          // pre-ITOTORI-230 (v1) bundle on disk would have looked like.
+        },
+      },
+    } as unknown as RecordedProviderBundle;
+
+    expect(() => new RecordedModelProvider({ bundle: malformed })).toThrow(
+      RecordedBundleSchemaMismatchError,
+    );
+  });
+
+  it("refuses a bundle whose routingPosture.allow_fallbacks is not literal false (ITOTORI-220 pin)", () => {
+    const request = baseRequest();
+    const stale = {
+      schemaVersion: RECORDED_PROVIDER_BUNDLE_SCHEMA_VERSION,
+      bundleId: "bad-allow-fallbacks-bundle",
+      capturedProviderFamily: "openrouter" as const,
+      capturedProviderName: "openrouter:bad-allow-fallbacks",
+      capturedRequestedModelId: request.modelId,
+      capturedProviderId: request.providerId,
+      capturedActualModelId: request.modelId,
+      responses: {
+        [keyFor(request)]: {
+          content: "captured-response",
+          finishReason: "stop",
+          cost: ZERO_COST,
+          routingPosture: {
+            only: [request.providerId],
+            // allow_fallbacks: true is forbidden — pair pin requires false.
+            allow_fallbacks: true,
+            data_collection: "deny",
+            zdr: true,
+            require_parameters: true,
+          },
+        },
+      },
+    } as unknown as RecordedProviderBundle;
+
+    expect(() => new RecordedModelProvider({ bundle: stale })).toThrow(
+      RecordedBundleSchemaMismatchError,
+    );
+  });
+
+  it("replays captured routingPosture verbatim onto the ProviderRunRecord", async () => {
+    const request = baseRequest();
+    const capturedPosture = {
+      only: [request.providerId],
+      allow_fallbacks: false as const,
+      data_collection: "deny" as const,
+      zdr: true,
+      require_parameters: true,
+    };
+    const bundle = bundleWith(request, ZERO_COST);
+    // Replace the auto-built posture with a specific captured value so
+    // we can assert byte-equal replay.
+    bundle.responses[keyFor(request)]!.routingPosture = capturedPosture;
+    const provider = new RecordedModelProvider({ bundle });
+    const result = await provider.invoke(request);
+    expect(result.providerRun.routingPosture).toEqual(capturedPosture);
+  });
+
   it("refuses a bundle whose response cost has an invalid costKind (post-ITOTORI-225 narrowing)", () => {
     const request = baseRequest();
     const stale = {
@@ -216,6 +302,16 @@ describe("ITOTORI-228 — RecordedModelProvider replays captured real cost", () 
           content: "captured-response",
           finishReason: "stop",
           cost: { costKind: "provider_estimate", currency: "USD", amountMicrosUsd: 5 }, // itotori-225-audit-allow: boundary test that the legacy enum value is rejected by RecordedBundleSchemaMismatchError
+          // ITOTORI-230 — the boundary test asserts the cost-kind check
+          // fires; a valid posture is supplied so we exercise the cost
+          // validation independently of the posture validation.
+          routingPosture: {
+            only: [request.providerId],
+            allow_fallbacks: false,
+            data_collection: "deny",
+            zdr: true,
+            require_parameters: true,
+          },
         },
       },
     } as unknown as RecordedProviderBundle;

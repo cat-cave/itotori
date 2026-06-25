@@ -801,13 +801,14 @@ export function assertProjectCostReport(
         `${tokenTotalLabel} must cover promptTokens, completionTokens, and reasoningTokens`,
       );
     }
-    // ITOTORI-227 — per-pair privacy axes are gone; the ledger column
-    // `data_handling` is retained as an opaque jsonb until a follow-up
-    // migration drops it, so we only validate it's an object (no field
-    // shape claims). Privacy posture is enforced by the account-wide
-    // ZDR assertion + per-request `provider.zdr=true` default, not by
-    // any per-run record on this report.
-    asRecord(run.dataHandling, `${label}.recentRuns[${index}].dataHandling`);
+    // ITOTORI-230 — every run row carries the captured OR routing
+    // posture (the `provider: { only, allow_fallbacks, data_collection,
+    // zdr, require_parameters }` block that hit the wire) on
+    // `routing_posture`. Pre-migration rows carry the sentinel
+    // `{_pre_itotori_230: true}`. We validate the field is present and
+    // an object; the typed shape is enforced at the application layer
+    // (OpenRouterRoutingPosture).
+    asRecord(run.routingPosture, `${label}.recentRuns[${index}].routingPosture`);
   }
   const reuse = asRecord(report.translationMemoryReuse, `${label}.translationMemoryReuse`);
   assertNonNegativeInteger(

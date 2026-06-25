@@ -88,9 +88,10 @@ describe("Itotori dashboard", () => {
     expect(root.textContent).toContain("itotori-draft-default-v1");
     expect(root.textContent).toContain("benchmark_qa");
     expect(root.textContent).toContain("itotori-fake-qa-v0 -> itotori-fake-qa-v1");
-    // ITOTORI-227 — per-pair privacy axes deleted; the dashboard now
-    // surfaces the posture-wide tag instead of `collection:* training:* io:*`.
-    expect(root.textContent).toContain("zdr-account+per-request:zdr=true");
+    // ITOTORI-230 — the dashboard renders the captured routing posture
+    // verbatim per row (zdr / data_collection fields); the fixture in
+    // api-fixtures.ts uses the canonical alpha posture.
+    expect(root.textContent).toContain("zdr=true; data_collection=deny");
     expect(root.textContent).toContain("hello_world_failed");
   });
 

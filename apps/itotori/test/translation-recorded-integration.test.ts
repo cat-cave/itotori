@@ -179,6 +179,16 @@ function bundleFor(
         // ZERO_COST is the structurally honest stand-in. Re-record from
         // a LIVE OR run if a future regression needs accurate cost.
         cost: ZERO_COST,
+        // ITOTORI-230 — canonical alpha posture stand-in for the
+        // synthesised bundle. A LIVE recapture would carry the actual
+        // wire-level posture from the OR request body.
+        routingPosture: {
+          only: [input.modelProfile.providerId],
+          allow_fallbacks: false,
+          data_collection: "deny",
+          zdr: true,
+          require_parameters: true,
+        },
       },
     },
   };
@@ -249,6 +259,14 @@ describe("TranslationAgent + RecordedModelProvider integration", () => {
           // ITOTORI-228 — see note above; bundle-miss test asserts the
           // typed error, not cost, so ZERO_COST is the honest stand-in.
           cost: ZERO_COST,
+          // ITOTORI-230 — canonical alpha posture stand-in.
+          routingPosture: {
+            only: [input.modelProfile.providerId],
+            allow_fallbacks: false,
+            data_collection: "deny",
+            zdr: true,
+            require_parameters: true,
+          },
         },
       },
     };

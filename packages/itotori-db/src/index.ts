@@ -145,6 +145,8 @@ export type {
   PromptPresetLedgerInput,
   ProviderRunCostSummary,
   ProviderRunLedgerInput,
+  ProviderRunZdrCountRow,
+  ProviderRunZdrCountWindow,
   TranslationMemoryReuseCostReport,
   TranslationMemoryReuseCostSummary,
 } from "./repositories/model-ledger-repository.js";

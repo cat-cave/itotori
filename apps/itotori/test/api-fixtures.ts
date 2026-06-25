@@ -70,8 +70,16 @@ export const costReportFixture: ProjectCostReport = {
       reasoningTokens: null,
       cachedInputTokens: null,
       totalTokens: 20,
-      dataHandling: {},
-      accountPrivacy: null,
+      // ITOTORI-230 — fixture posture for a fake-provider draft run.
+      // FakeModelProvider records the canonical localOnlyRoutingPosture
+      // (zdr=true) since no data leaves the process.
+      routingPosture: {
+        only: ["itotori-fixture"],
+        allow_fallbacks: false,
+        data_collection: "deny",
+        zdr: true,
+        require_parameters: true,
+      },
     },
     {
       providerRunId: "provider-run-2",
@@ -104,8 +112,16 @@ export const costReportFixture: ProjectCostReport = {
       reasoningTokens: null,
       cachedInputTokens: null,
       totalTokens: 16,
-      dataHandling: {},
-      accountPrivacy: null,
+      // ITOTORI-230 — fixture posture for an OR-routed benchmark-qa
+      // run. Matches the canonical alpha shape from
+      // docs/openrouter-integration-evidence/2026-06-25.json.
+      routingPosture: {
+        only: ["fixture-upstream"],
+        allow_fallbacks: false,
+        data_collection: "deny",
+        zdr: true,
+        require_parameters: true,
+      },
     },
   ],
   translationMemoryReuse: {

@@ -233,6 +233,8 @@ export function buildFocusedRecordedBundle(
     schemaVersion: STRUCTURED_QA_FINDING_OUTPUT_SCHEMA_VERSION,
     findings: args.findings.map((finding) => ({ ...finding })),
   };
+  const isFresh = args.authority === "fresh-judge";
+  const bundleId = `qa-calibration-${args.fixtureId}-${args.agentDescriptor.name}-${args.authority}`;
   const response: RecordedProviderResponse = {
     content: JSON.stringify(payload),
     finishReason: "stop",
@@ -251,10 +253,20 @@ export function buildFocusedRecordedBundle(
     // calibration capture is taken against live OR, this constant must
     // be replaced with the real micros derived from `usage.cost`.
     cost: ZERO_COST,
+    // ITOTORI-230 — synthesised bundle, no real captured posture. We
+    // record the canonical alpha posture as a "what a real capture
+    // would have produced" placeholder. A future LIVE capture against
+    // OR must REPLACE this with the actual wire-level posture.
+    routingPosture: {
+      only: [
+        isFresh ? QA_CALIBRATION_FRESH_JUDGE_PROVIDER_ID : QA_CALIBRATION_ORIGINAL_PROVIDER_ID,
+      ],
+      allow_fallbacks: false,
+      data_collection: "deny",
+      zdr: true,
+      require_parameters: true,
+    },
   };
-
-  const bundleId = `qa-calibration-${args.fixtureId}-${args.agentDescriptor.name}-${args.authority}`;
-  const isFresh = args.authority === "fresh-judge";
 
   return {
     schemaVersion: RECORDED_PROVIDER_BUNDLE_SCHEMA_VERSION,

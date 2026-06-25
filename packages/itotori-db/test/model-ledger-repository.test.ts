@@ -66,20 +66,15 @@ describe("ItotoriModelLedgerRepository", () => {
               order: ["fixture-upstream"],
             },
           },
-          dataHandling: {
-            promptLogging: "unknown",
-            completionLogging: "unknown",
-            retention: "unknown",
-            trainingUse: "unknown",
-            dataCollection: "deny",
-            rawCaptureDefault: "disabled",
-          },
-          accountPrivacy: {
-            inputOutputLogging: "disabled",
-            useOfInputsOutputs: "deny",
-            providerDataPolicyFilters: "enabled",
-            metadataCollection: "expected",
-            euRouting: "unknown",
+          // ITOTORI-230 — fixture captured-on-wire posture for the
+          // recorded-fallback ledger row. Mirrors what a real LIVE OR
+          // call would have produced.
+          routingPosture: {
+            only: ["fixture-upstream"],
+            allow_fallbacks: false,
+            data_collection: "deny",
+            zdr: true,
+            require_parameters: true,
           },
         }),
       );
@@ -120,13 +115,12 @@ describe("ItotoriModelLedgerRepository", () => {
         promptTokens: 10,
         completionTokens: 5,
         totalTokens: 15,
-        dataHandling: expect.objectContaining({
-          dataCollection: "deny",
-          trainingUse: "unknown",
-        }),
-        accountPrivacy: expect.objectContaining({
-          inputOutputLogging: "disabled",
-          providerDataPolicyFilters: "enabled",
+        routingPosture: expect.objectContaining({
+          only: ["fixture-upstream"],
+          allow_fallbacks: false,
+          data_collection: "deny",
+          zdr: true,
+          require_parameters: true,
         }),
       });
 
@@ -531,6 +525,48 @@ describe("ItotoriModelLedgerRepository", () => {
     }
   });
 
+  it("model-ledger-repository.test.ts ZDR-enforced count coverage — countZdrEnforcedByPair returns ZDR-enforced count per pair", async () => {
+    // ITOTORI-230 — acceptance criterion #3 schema check: insert two
+    // rows with `routing_posture->>'zdr' = 'true'` and one with
+    // `'false'`; assert the count by pair returns 2 enforced / 3 total.
+    const context = await isolatedMigratedContext();
+    try {
+      const projectRepository = new ItotoriProjectRepository(context.db);
+      await projectRepository.importSourceBundle(localActor, projectFixture());
+      const ledger = new ItotoriModelLedgerRepository(context.db);
+
+      await ledger.recordProviderRun(localActor, runInput("run-zdr-1", "billed", 100));
+      await ledger.recordProviderRun(localActor, runInput("run-zdr-2", "billed", 200));
+      await ledger.recordProviderRun(
+        localActor,
+        runInput("run-non-zdr", "billed", 50, {
+          // ITOTORI-230 — explicit non-ZDR posture (public input would
+          // typically carry this shape on the wire).
+          routingPosture: {
+            only: ["itotori-fixture"],
+            allow_fallbacks: false,
+            data_collection: "allow",
+            zdr: false,
+            require_parameters: true,
+          },
+        }),
+      );
+
+      const rows = await ledger.countZdrEnforcedByPair(localActor, "project-test", {
+        from: new Date("2026-06-01T00:00:00Z"),
+        to: new Date("2026-06-30T23:59:59Z"),
+      });
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({
+        modelId: "itotori-fake-draft-v0",
+        invocationCount: 3,
+        zdrEnforcedCount: 2,
+      });
+    } finally {
+      await context.close();
+    }
+  });
+
   it("rejects prompt preset drift for an existing preset id and version", async () => {
     const context = await isolatedMigratedContext();
     try {
@@ -617,16 +653,17 @@ function runInput(
       amountMicrosUsd,
       pricingSnapshotId: "fixture-pricing-2026-06-17",
     },
-    // ITOTORI-225 — `costTier` is gone; the policy carries only privacy
-    // axes. The privacy-only gate in providers/policy.ts survives until
-    // ITOTORI-227 replaces the whole seam.
-    dataHandling: {
-      promptLogging: "not_applicable",
-      completionLogging: "not_applicable",
-      retention: "not_applicable",
-      trainingUse: "not_applicable",
-      dataCollection: "not_applicable",
-      rawCaptureDefault: "disabled",
+    // ITOTORI-230 — the captured OR routing posture for THIS run. The
+    // default fixture uses the canonical alpha posture
+    // (only=[deepseek-v3.2-exp@fireworks-style], zdr=true). Individual
+    // test cases override via the `overrides` spread when they need to
+    // exercise a different posture (e.g. a public-input call).
+    routingPosture: {
+      only: ["itotori-fixture"],
+      allow_fallbacks: false,
+      data_collection: "deny",
+      zdr: true,
+      require_parameters: true,
     },
     adapterMetadata: {},
   };

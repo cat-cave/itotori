@@ -150,6 +150,15 @@ function bundleFor(input: QaInvocationInput, findings: QaFinding[]): RecordedPro
         // test asserts response shape, not cost-cap arithmetic. ZERO_COST
         // is structurally honest (no real charge was made).
         cost: ZERO_COST,
+        // ITOTORI-230 — canonical alpha posture stand-in for the
+        // synthesised bundle.
+        routingPosture: {
+          only: [input.modelProfile.providerId],
+          allow_fallbacks: false,
+          data_collection: "deny",
+          zdr: true,
+          require_parameters: true,
+        },
       },
     },
   };
@@ -214,6 +223,14 @@ describe("QaAgent + RecordedModelProvider integration", () => {
           finishReason: "stop",
           // ITOTORI-228 — see note above; bundle-miss test, ZERO_COST.
           cost: ZERO_COST,
+          // ITOTORI-230 — canonical alpha posture stand-in.
+          routingPosture: {
+            only: [input.modelProfile.providerId],
+            allow_fallbacks: false,
+            data_collection: "deny",
+            zdr: true,
+            require_parameters: true,
+          },
         },
       },
     };

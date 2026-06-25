@@ -15,6 +15,7 @@
 import type {
   AuthorizationActor,
   ItotoriDraftAttemptProviderLedgerRepositoryPort,
+  ItotoriModelLedgerRepositoryPort,
   LedgerPairAggregateRow,
 } from "@itotori/db";
 import {
@@ -27,6 +28,7 @@ import {
   type TelemetrySummaryByPair,
   type TelemetryTopPairRow,
   type TelemetryWindow,
+  type TelemetryZdrEnforcedRow,
 } from "./queries.js";
 
 export class TelemetryQueryError extends Error {
@@ -40,7 +42,16 @@ export class TelemetryQueryError extends Error {
 }
 
 export class LedgerTelemetryQuery implements TelemetryQuery {
-  constructor(private readonly repository: ItotoriDraftAttemptProviderLedgerRepositoryPort) {}
+  constructor(
+    private readonly repository: ItotoriDraftAttemptProviderLedgerRepositoryPort,
+    // ITOTORI-230 — countZdrEnforcedCallsByPair reads `routing_posture`
+    // from `itotori_provider_runs` (the model-ledger), not the
+    // draft-attempt ledger. Optional at the constructor seam so
+    // legacy test wiring that mocks only the draft-attempt port still
+    // compiles; callers that invoke countZdrEnforcedCallsByPair MUST
+    // pass the model-ledger port or get a typed error at call time.
+    private readonly modelLedger?: ItotoriModelLedgerRepositoryPort,
+  ) {}
 
   async sumByPair(
     actor: AuthorizationActor,
@@ -193,6 +204,43 @@ export class LedgerTelemetryQuery implements TelemetryQuery {
         rankByLatency: latencyRank,
       };
     });
+  }
+
+  /**
+   * ITOTORI-230 — count per-pair ZDR-enforcement. Delegates to the
+   * model-ledger repository's `countZdrEnforcedByPair` (which queries
+   * `routing_posture->>'zdr' = 'true'` on `itotori_provider_runs`), then
+   * shapes the result into the typed `TelemetryZdrEnforcedRow[]`. Rows
+   * are sorted deterministically by pair key for stable JSON output.
+   *
+   * Throws when the constructor was not given a model-ledger port. The
+   * dashboard wiring at apps/itotori/src/services/database-services.ts
+   * must supply it; if a test mocks only the draft-attempt port it
+   * cannot exercise this method (and gets a typed error rather than a
+   * silent partial result).
+   */
+  async countZdrEnforcedCallsByPair(
+    actor: AuthorizationActor,
+    projectId: string,
+    window: TelemetryWindow,
+  ): Promise<TelemetryZdrEnforcedRow[]> {
+    if (this.modelLedger === undefined) {
+      throw new TelemetryQueryError(
+        "telemetry_query_invalid_input",
+        "countZdrEnforcedCallsByPair requires an ItotoriModelLedgerRepositoryPort at construction",
+      );
+    }
+    const rows = await this.modelLedger.countZdrEnforcedByPair(actor, projectId, window);
+    const sorted = [...rows].sort((a, b) => {
+      const aKey = buildPairKey(a.modelId, a.providerId);
+      const bKey = buildPairKey(b.modelId, b.providerId);
+      return aKey.localeCompare(bKey);
+    });
+    return sorted.map((row) => ({
+      pair: buildPairKey(row.modelId, row.providerId),
+      invocationCount: row.invocationCount,
+      zdrEnforcedCount: row.zdrEnforcedCount,
+    }));
   }
 }
 

@@ -16,6 +16,7 @@ import {
   type ProviderRunRecord,
   type TokenUsage,
   createProviderRunId,
+  localOnlyRoutingPosture,
 } from "./types.js";
 
 export type LocalOpenAICompatibleProviderOptions = {
@@ -435,6 +436,10 @@ function buildRun(input: {
       currency: "USD",
       amountMicrosUsd: 0,
     },
+    // ITOTORI-230 — local providers talk to localhost; no data leaves
+    // the host, so the canonical ZDR posture trivially holds. Recording
+    // the canonical shape keeps the ledger schema uniform.
+    routingPosture: localOnlyRoutingPosture(input.request.providerId),
     prompt: input.request.prompt,
   };
   if (input.request.preset) {
