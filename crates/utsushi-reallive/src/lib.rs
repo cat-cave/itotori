@@ -108,11 +108,22 @@ pub mod scene_index;
 // during the walk.
 pub mod scene_header;
 
+// UTSUSHI-203: AVG32 LZSS + XOR decompressor for the scene bytecode
+// payload pointed at by `SceneHeader::bytecode_offset`. Consumes the
+// compressed slice and produces the post-LZSS plaintext bytecode.
+pub mod decompressor;
+
 pub use scene_header::{
     COMPILER_VERSION_1_0, COMPILER_VERSION_1_10, COMPILER_VERSION_1_1110,
     ENTRYPOINT_TABLE_BYTE_OFFSET, ENTRYPOINT_TABLE_LEN, EntrypointEntry,
     SAVEPOINT_BLOCK_BYTE_OFFSET, SCENE_HEADER_BYTE_LEN, SceneHeader, SceneHeaderError,
     SceneHeaderWarning, is_documented_compiler_version,
+};
+
+pub use decompressor::{
+    AVG32_COMPRESSED_PREAMBLE_LEN, AVG32_LZSS_MAX_BACK_DISTANCE, AVG32_LZSS_MAX_RUN,
+    AVG32_LZSS_MIN_RUN, AVG32_XOR_MASK, AVG32_XOR_MASK_LEN, AVG32_XOR2_KEY_LEN, AvgDecompressor,
+    DecompressError, DecompressWarning,
 };
 pub use scene_index::{
     REAL_SCENE_DIRECTORY_BYTE_LEN, REAL_SCENE_DIRECTORY_SLOT_BYTE_LEN,
