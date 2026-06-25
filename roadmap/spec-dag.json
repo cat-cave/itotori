@@ -21980,7 +21980,7 @@
     {
       "id": "UTSUSHI-220",
       "title": "End-to-end Sweetie HD scene-1 text-replay smoke",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P1",
       "target": "alpha",
       "projects": ["utsushi"],
@@ -21993,15 +21993,7 @@
         "UTSUSHI-207",
         "UTSUSHI-208",
         "UTSUSHI-209",
-        "UTSUSHI-210",
-        "UTSUSHI-211",
-        "UTSUSHI-212",
-        "UTSUSHI-213",
-        "UTSUSHI-214",
-        "UTSUSHI-215",
-        "UTSUSHI-216",
-        "UTSUSHI-217",
-        "UTSUSHI-218"
+        "UTSUSHI-210"
       ],
       "summary": "Drive Sweetie HD scene #0001 through the VM until either (a) the first `pause` opcode fires producing a `TextLine` capture through the substrate `TextSurfaceSink`, or (b) an unimplemented opcode trips a documented diagnostic. Byte-deterministic `ReplayLog` JSON across two runs; snapshot/restore identity at any tick boundary.",
       "deliverables": [
@@ -22036,7 +22028,9 @@
         "'Deterministic' actually being flaky and hidden by retry",
         "Snapshot-restore being a no-op"
       ],
-      "statusReason": "Re-tier 2026-06-24: promoted continuous -> alpha — required for the redefined alpha (utsushi-reallive Linux runtime / real-bytes extraction) per docs/proposals/dag-retier-2026-06-24.md."
+      "owner": "orchestrator-utsushi-220",
+      "branch": "spec/utsushi-220",
+      "worktree": "/scratch/worktrees/itotori-spec-utsushi-220"
     },
     {
       "id": "UTSUSHI-221",
