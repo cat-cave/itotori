@@ -186,8 +186,17 @@ pub use var_banks::{
 };
 
 pub use rlop::{
-    AfterNPollsScheduler, AlwaysReadyScheduler, DispatchOutcome, ExprValue, LongOp, LongOpId,
-    LongOpReadiness, LongOpScheduler, NeverReadyScheduler, RLOperation, RlopKey, RlopRegistry,
+    AfterNPollsScheduler, AlwaysReadyScheduler, DEFAULT_PAUSE_POLLS, DispatchOutcome, ExprValue,
+    LongOp, LongOpId, LongOpIdSequence, LongOpReadiness, LongOpScheduler, MSG_MODULE_ID,
+    MSG_MODULE_TYPE, MsgFontColorOp, MsgFontSizeOp, MsgLineBreakOp, MsgLineNumberOp, MsgMsgClearOp,
+    MsgMsgHideOp, MsgNameCloseOp, MsgNameOpenOp, MsgOpcode, MsgPageOp, MsgParagraphBreakOp,
+    MsgPauseOp, MsgRuntime, MsgSelectOp, MsgTextWindowOp, NeverReadyScheduler, OPCODE_FONT_COLOR,
+    OPCODE_FONT_SIZE, OPCODE_LINE_BREAK, OPCODE_LINE_NUMBER, OPCODE_MSG_CLEAR, OPCODE_MSG_HIDE,
+    OPCODE_NAME_CLOSE, OPCODE_NAME_OPEN, OPCODE_PAGE, OPCODE_PARAGRAPH_BREAK, OPCODE_PAUSE,
+    OPCODE_SELECT, OPCODE_TEXT_WINDOW, PAUSE_PRIVATE_STATE_MAGIC, PauseLongOp,
+    PauseLongOpDecodeError, RLOperation, RlopKey, RlopRegistry, SELECT_PRIVATE_STATE_MAGIC,
+    SelectLongOp, SelectionChoiceCountScheduler, dispatch_textout, register_text_rlops,
+    text_module_msg_keys,
 };
 
 pub use vm::{

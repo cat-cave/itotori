@@ -39,6 +39,26 @@ use serde::{Deserialize, Serialize};
 
 use crate::vm::{SceneId, Vm};
 
+// UTSUSHI-209: per-module RLOperation tables. The text/messaging
+// family lives in [`module_msg`]; the typed `LongOp` shapes (`pause`,
+// `select`) live in [`longops`].
+pub mod longops;
+pub mod module_msg;
+
+pub use longops::{
+    DEFAULT_PAUSE_POLLS, PAUSE_PRIVATE_STATE_MAGIC, PauseLongOp, PauseLongOpDecodeError,
+    SELECT_PRIVATE_STATE_MAGIC, SelectLongOp, SelectionChoiceCountScheduler,
+};
+pub use module_msg::{
+    LongOpIdSequence, MSG_MODULE_ID, MSG_MODULE_TYPE, MsgFontColorOp, MsgFontSizeOp,
+    MsgLineBreakOp, MsgLineNumberOp, MsgMsgClearOp, MsgMsgHideOp, MsgNameCloseOp, MsgNameOpenOp,
+    MsgOpcode, MsgPageOp, MsgParagraphBreakOp, MsgPauseOp, MsgRuntime, MsgRuntimeWarning,
+    MsgSelectOp, MsgTextWindowOp, OPCODE_FONT_COLOR, OPCODE_FONT_SIZE, OPCODE_LINE_BREAK,
+    OPCODE_LINE_NUMBER, OPCODE_MSG_CLEAR, OPCODE_MSG_HIDE, OPCODE_NAME_CLOSE, OPCODE_NAME_OPEN,
+    OPCODE_PAGE, OPCODE_PARAGRAPH_BREAK, OPCODE_PAUSE, OPCODE_SELECT, OPCODE_TEXT_OUT,
+    OPCODE_TEXT_WINDOW, dispatch_textout, register_text_rlops, text_module_msg_keys,
+};
+
 /// Engine-neutral dispatch argument. The UTSUSHI-205 evaluator returns
 /// `i32`, so the integer variant is `i32` for that path; the byte-string
 /// variant carries raw Shift-JIS bytes (no UTF-8 lossy conversion) so a
