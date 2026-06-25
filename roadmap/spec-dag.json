@@ -25797,6 +25797,42 @@
       ],
       "statusReason": "Per docs/audits/openrouter-wiring-audit-2026-06-25.md §4-7 (alpha closer rerun); cost-audit acceptance criterion added per §3 N1 retroactive section ('every cost_kind === billed').",
       "parallelGroup": "alpha-integration"
+    },
+    {
+      "id": "KAIFUU-236",
+      "title": "kaifuu-vault-source: repair 7z fixture so ExtractionUnsafePath path-traversal test re-runs",
+      "status": "planned",
+      "priority": "P2",
+      "target": "continuous",
+      "projects": ["kaifuu"],
+      "parallelGroup": "vault-source-extraction",
+      "dependsOn": [],
+      "summary": "The integration test materialize_raises_ExtractionUnsafePath_for_path_traversal_fixture in crates/kaifuu-vault-source/tests/extraction_test.rs was marked #[ignore] on 2026-06-25 to unblock CI on main. The 7z decoder errors before the path-traversal check fires; the test expects ExtractionUnsafePath{parent-dir} but observes ExtractionFailed { reason: \"7z decoder error\", bytes_written: 752 }. Either repair the 7z fixture so the decoder reaches the path-traversal check, or repair the decoder to surface the unsafe-path classification before failing on bytes. Un-ignore the test once fixed.",
+      "deliverables": [
+        "crates/kaifuu-vault-source/tests/extraction_test.rs: remove #[ignore] attribute on materialize_raises_ExtractionUnsafePath_for_path_traversal_fixture",
+        "Either: regenerate the 7z fixture (likely under tests/common/) so the path-traversal entry is encoded in a decoder-readable form, OR: surface VaultSourceError::ExtractionUnsafePath classification before the decoder fails on bytes_written",
+        "Verify just ci passes with the test re-enabled"
+      ],
+      "acceptanceCriteria": [
+        "rg \"#\\[ignore.*7z fixture regression\" crates/kaifuu-vault-source/ returns 0 hits",
+        "just ci exits 0 with the path-traversal test running and passing"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-vault-source --test extraction_test materialize_raises_ExtractionUnsafePath"
+        },
+        {
+          "type": "command",
+          "value": "just ci"
+        }
+      ],
+      "auditFocus": [
+        "Test renamed instead of repaired",
+        "ExtractionUnsafePath classification widened to swallow the 7z decoder error",
+        "Fixture replaced with a synthetic path-traversal that does NOT actually exercise the 7z decoder path"
+      ],
+      "statusReason": "Minted 2026-06-25 to track the #[ignore] applied at commit a7a93af when unblocking CI on main. Pre-existing regression; not introduced by the OR audit cascade."
     }
   ]
 }
