@@ -440,6 +440,11 @@ function buildRun(input: {
     // the host, so the canonical ZDR posture trivially holds. Recording
     // the canonical shape keeps the ledger schema uniform.
     routingPosture: localOnlyRoutingPosture(input.request.providerId),
+    // ITOTORI-232 — local providers never bill, so the captured `usage`
+    // block carries no `cost` key. The partial-NULL CHECK on the ledger
+    // exempts these rows; the typed sentinel here documents WHY no
+    // billed-cost field exists ("no upstream charge ever happened").
+    usageResponseJson: { _local_no_billing: true },
     prompt: input.request.prompt,
   };
   if (input.request.preset) {

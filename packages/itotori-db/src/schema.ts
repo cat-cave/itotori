@@ -3854,6 +3854,17 @@ export const draftAttemptProviderLedger = pgTable(
     tokensOut: integer("tokens_out"),
     costUnit: text("cost_unit").notNull(),
     costAmount: numeric("cost_amount", { precision: 20, scale: 8 }).notNull(),
+    /**
+     * ITOTORI-232 — full `usage` block from the originating OpenRouter
+     * response (prompt_tokens, completion_tokens, cost, cost_details,
+     * prompt_tokens_details). NOT NULL at the storage layer; the
+     * partial-NULL CHECK on cost_amount fires only when this object
+     * carries a `cost` key. Pre-migration rows carry the typed sentinel
+     * `{"_pre_itotori_232": true}` (see migration 0041). The application
+     * layer makes this field required on RecordLedgerEntryInput; the DB
+     * column is the belt-and-braces.
+     */
+    usageResponseJson: jsonb("usage_response_json").$type<Record<string, unknown>>().notNull(),
     latencyMs: integer("latency_ms"),
     fallbackChain: jsonb("fallback_chain")
       .$type<DraftAttemptFallbackChainEntry[]>()

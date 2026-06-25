@@ -23,15 +23,19 @@
 // captured OR routing posture (`zdr`, `data_collection`, `only`, etc.)
 // from the original LIVE call. Replay surfaces it on
 // `ProviderRunRecord.routingPosture` so an offline audit can prove the
-// ZDR posture without recapturing the wire. The bundle's
-// `schemaVersion` is locked to
-// `RECORDED_PROVIDER_BUNDLE_SCHEMA_VERSION` (now `v2`); pre-v2 bundles
-// (without captured routingPosture) fail at construction with a typed
-// `RecordedBundleSchemaMismatchError`. Any future capture path (live
-// OpenRouter run → on-disk bundle) MUST write BOTH the response's
-// `usage.cost` AND the request's `provider` block into the bundle;
-// refusing the write when either is absent is the contractual forcing
-// function and is documented at the future-capture seam.
+// ZDR posture without recapturing the wire.
+//
+// ITOTORI-232 — every `RecordedProviderResponse` ALSO carries the full
+// originating OR response's `usage` block as `usageResponseJson`. The
+// bundle's `schemaVersion` is locked to
+// `RECORDED_PROVIDER_BUNDLE_SCHEMA_VERSION` (now `v3`); pre-v3 bundles
+// fail at construction with a typed `RecordedBundleSchemaMismatchError`.
+// Any future capture path (live OpenRouter run → on-disk bundle) MUST
+// write the response's `usage` block (with `cost`), the request's
+// `provider` block, AND the response's `usage.cost` matching the
+// captured ProviderCost.amountMicrosUsd into the bundle; refusing the
+// write when any are absent is the contractual forcing function and is
+// documented at the future-capture seam.
 
 import { createHash } from "node:crypto";
 import { assertProviderInvocationSupported } from "./capability-guard.js";
@@ -60,18 +64,25 @@ import { createProviderRunId } from "./types.js";
  * - v1 (ITOTORI-228) added required `cost` on every
  *   `RecordedProviderResponse` + required `schemaVersion` on the
  *   bundle envelope.
- * - v2 (ITOTORI-230) adds required `routingPosture` on every
+ * - v2 (ITOTORI-230) added required `routingPosture` on every
  *   `RecordedProviderResponse` so an offline replay carries the
  *   originally-captured OR ZDR posture verbatim.
+ * - v3 (ITOTORI-232) adds required `usageResponseJson` on every
+ *   `RecordedProviderResponse` so an offline replay carries the
+ *   originating OR response's full `usage` block (prompt_tokens,
+ *   completion_tokens, cost, cost_details, prompt_tokens_details). The
+ *   replayed `ProviderRunRecord.usageResponseJson` mirrors it verbatim
+ *   so the ledger row's storage-layer CHECK (migration 0041) still
+ *   passes by construction.
  *
  * Bundles whose `schemaVersion` is anything other than this literal are
- * rejected at `RecordedModelProvider` construction time so a pre-v2
- * file on disk cannot silently replay without posture (which would
- * leave telemetry counting the row as ZDR-enforced based on no
- * evidence).
+ * rejected at `RecordedModelProvider` construction time so a pre-v3
+ * file on disk cannot silently replay without the captured usage block
+ * (which would leave the ledger row failing the cost-matches-usage
+ * CHECK on persist).
  */
 export const RECORDED_PROVIDER_BUNDLE_SCHEMA_VERSION =
-  "itotori.recorded-provider-bundle.v2" as const;
+  "itotori.recorded-provider-bundle.v3" as const;
 
 export type RecordedProviderResponse = {
   /** Verbatim provider content; usually a JSON string for structured-output paths. */
@@ -99,6 +110,24 @@ export type RecordedProviderResponse = {
    * trail would silently lose the captured-on-wire posture.
    */
   routingPosture: OpenRouterRoutingPosture;
+  /**
+   * ITOTORI-232 — the originating OR response's full `usage` block
+   * (prompt_tokens, completion_tokens, cost, cost_details,
+   * prompt_tokens_details with caching annotations). Mirrored verbatim
+   * so the replayed `ProviderRunRecord.usageResponseJson` matches the
+   * LIVE run byte-for-byte; the ledger CHECK (migration 0041) verifies
+   * `cost_amount = usage_response_json->>'cost'` to within 1e-9 USD on
+   * persist.
+   *
+   * For genuinely zero-cost captures (e.g. a recorded fixture that
+   * never backed a real OR call), pass an object with no `cost` key —
+   * the partial-NULL CHECK exempts these. Required: a recorded bundle
+   * that lacks this field is a schema mismatch, NOT a recoverable case;
+   * a future regression that silently elided the captured usage block
+   * would let the replay claim a different cost than the LIVE run that
+   * produced it.
+   */
+  usageResponseJson: JsonObject;
   adapterMetadata?: JsonObject;
 };
 
@@ -172,7 +201,7 @@ export class RecordedBundleSchemaMismatchError extends Error {
     public readonly detail: string,
   ) {
     super(
-      `RecordedBundleSchemaMismatchError: bundle '${bundleId}' is pre-ITOTORI-228 (${detail}); please recapture to schema '${RECORDED_PROVIDER_BUNDLE_SCHEMA_VERSION}' so the original usage.cost is mirrored on replay.`,
+      `RecordedBundleSchemaMismatchError: bundle '${bundleId}' is below the current bundle schema (${detail}); please recapture to schema '${RECORDED_PROVIDER_BUNDLE_SCHEMA_VERSION}' so the original usage.cost, routing posture, and usage block are mirrored on replay.`,
     );
     this.name = "RecordedBundleSchemaMismatchError";
   }
@@ -307,9 +336,14 @@ export class RecordedModelProvider implements ModelProvider {
       cost: response.cost,
       // ITOTORI-230 — mirror the captured routing posture verbatim so
       // the replayed run carries the same audit evidence as the LIVE
-      // run that produced the bundle. The bundle schema (v2) makes
+      // run that produced the bundle. The bundle schema (v3) makes
       // `response.routingPosture` non-optional.
       routingPosture: response.routingPosture,
+      // ITOTORI-232 — mirror the captured `usage` block verbatim so the
+      // replayed `cost` matches the LIVE `cost_amount` byte-for-byte.
+      // The bundle schema (v3) makes `response.usageResponseJson`
+      // non-optional.
+      usageResponseJson: response.usageResponseJson,
       prompt: request.prompt,
     };
     if (request.preset) {
@@ -474,6 +508,26 @@ function assertBundleSchema(bundle: RecordedProviderBundle): void {
       );
     }
     assertRoutingPostureShape(bundle.bundleId, key, posture);
+    // ITOTORI-232 — bundle schema v3 makes usageResponseJson required.
+    const usageJson = (response as { usageResponseJson?: unknown }).usageResponseJson;
+    if (usageJson === undefined || usageJson === null) {
+      throw new RecordedBundleSchemaMismatchError(
+        bundle.bundleId,
+        `response under key '${key}' is missing required field 'usageResponseJson' (ITOTORI-232 / bundle schema v3 added usageResponseJson: JsonObject as a required field on every recorded response so the replayed cost matches the LIVE cost_amount byte-for-byte)`,
+      );
+    }
+    if (typeof usageJson !== "object" || Array.isArray(usageJson)) {
+      throw new RecordedBundleSchemaMismatchError(
+        bundle.bundleId,
+        `response under key '${key}' usageResponseJson must be a JSON object (got ${JSON.stringify(usageJson)})`,
+      );
+    }
+    assertUsageResponseMatchesCost(
+      bundle.bundleId,
+      key,
+      usageJson as JsonObject,
+      cost as ProviderCost,
+    );
   }
   // Touch ZERO_COST so the import survives tree-shaking; documents the
   // canonical zero-cost shape callers should reuse on genuinely-free
@@ -557,6 +611,58 @@ function assertRoutingPostureShape(bundleId: string, key: string, posture: unkno
     throw new RecordedBundleSchemaMismatchError(
       bundleId,
       `response under key '${key}' routingPosture.require_parameters must be boolean (got ${JSON.stringify(candidate.require_parameters)})`,
+    );
+  }
+}
+
+/**
+ * ITOTORI-232 — verify the captured `usageResponseJson` is consistent with
+ * the captured `ProviderCost` at bundle-construction time. If the bundle
+ * carries a `usage.cost` field, it must equal `ProviderCost.amountMicrosUsd`
+ * to within 1e-9 USD (the same tolerance the DB CHECK enforces on persist).
+ * This catches a mis-recapture before replay; without it, a v3 bundle could
+ * silently load and only fail at the ledger-write seam, where the failure
+ * mode is less obvious.
+ *
+ * Zero-cost captures (genuinely-free or synthetic test fixtures) MAY omit
+ * the `cost` key in usageResponseJson; the partial-NULL CHECK exempts
+ * these. We accept `cost === 0` matching `amountMicrosUsd === 0`, and an
+ * absent `cost` key matching `costKind === 'zero'`, as the two truthful
+ * representations of "no upstream charge".
+ */
+function assertUsageResponseMatchesCost(
+  bundleId: string,
+  key: string,
+  usageResponseJson: JsonObject,
+  cost: ProviderCost,
+): void {
+  const declaredCost = usageResponseJson.cost;
+  if (declaredCost === undefined || declaredCost === null) {
+    // Zero-cost shape: cost key absent. Acceptable only if the captured
+    // ProviderCost is also zero — otherwise the bundle would silently
+    // claim a cost that does not appear in its own usage block.
+    if (cost.costKind !== "zero") {
+      throw new RecordedBundleSchemaMismatchError(
+        bundleId,
+        `response under key '${key}' captured costKind='${cost.costKind}' with amountMicrosUsd=${cost.amountMicrosUsd} but its usageResponseJson has no 'cost' field; either populate usage.cost from the original LIVE response or re-capture as a zero-cost bundle`,
+      );
+    }
+    return;
+  }
+  if (typeof declaredCost !== "number" || !Number.isFinite(declaredCost) || declaredCost < 0) {
+    throw new RecordedBundleSchemaMismatchError(
+      bundleId,
+      `response under key '${key}' usageResponseJson.cost must be a finite non-negative number (got ${JSON.stringify(declaredCost)})`,
+    );
+  }
+  // The captured ProviderCost stores micros; the declared usage.cost is
+  // a decimal USD. Compare in USD with the same tight bound the DB CHECK
+  // uses.
+  const recordedCostUsd = cost.amountMicrosUsd / 1_000_000;
+  if (Math.abs(recordedCostUsd - declaredCost) >= 1e-9) {
+    throw new RecordedBundleSchemaMismatchError(
+      bundleId,
+      `response under key '${key}' captured cost.amountMicrosUsd=${cost.amountMicrosUsd} (USD ${recordedCostUsd}) does not match usageResponseJson.cost=${declaredCost} within 1e-9 USD; the bundle would fail ITOTORI-232's ledger CHECK on replay-and-persist`,
     );
   }
 }

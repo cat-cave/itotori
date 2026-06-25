@@ -266,6 +266,18 @@ export function buildFocusedRecordedBundle(
       zdr: true,
       require_parameters: true,
     },
+    // ITOTORI-232 — synthesised bundle, no LIVE OR usage block to
+    // mirror. ZERO_COST above means the response shape validates as
+    // zero-cost; usage_response_json carries no `cost` key (sentinel)
+    // so the partial-NULL CHECK exempts the row on ledger persist. A
+    // future LIVE re-capture must replace this with the actual
+    // upstream `usage` block.
+    usageResponseJson: {
+      _synthetic_qa_calibration_bundle: true,
+      prompt_tokens: 1024,
+      completion_tokens: 256,
+      total_tokens: 1280,
+    },
   };
 
   return {

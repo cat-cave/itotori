@@ -85,6 +85,11 @@ export class FakeModelProvider implements ModelProvider {
       // canonical ZDR posture is trivially in force; record it
       // explicitly so the ledger row + telemetry have a uniform shape.
       routingPosture: localOnlyRoutingPosture(request.providerId),
+      // ITOTORI-232 — fake providers never bill, so the captured
+      // `usage` block carries no `cost` key. The partial-NULL CHECK on
+      // the ledger exempts these rows; the typed sentinel here
+      // documents WHY no billed-cost field exists.
+      usageResponseJson: { _fake_no_billing: true },
       prompt: request.prompt,
     };
     if (request.preset) {

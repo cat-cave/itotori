@@ -189,6 +189,8 @@ function bundleFor(
           zdr: true,
           require_parameters: true,
         },
+        // ITOTORI-232 — synthetic translation bundle; sentinel usage.
+        usageResponseJson: { _synthetic_translation_test_bundle: true },
       },
     },
   };
@@ -267,6 +269,8 @@ describe("TranslationAgent + RecordedModelProvider integration", () => {
             zdr: true,
             require_parameters: true,
           },
+          // ITOTORI-232 — bundle-miss test; sentinel usage.
+          usageResponseJson: { _synthetic_translation_miss_test_bundle: true },
         },
       },
     };

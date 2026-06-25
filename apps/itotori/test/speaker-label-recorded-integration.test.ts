@@ -186,6 +186,8 @@ function bundleFor(
           zdr: true,
           require_parameters: true,
         },
+        // ITOTORI-232 — synthetic speaker-label bundle; sentinel usage.
+        usageResponseJson: { _synthetic_speaker_label_test_bundle: true },
       },
     },
   };
@@ -258,6 +260,8 @@ describe("SpeakerLabelAgent + RecordedModelProvider integration", () => {
             zdr: true,
             require_parameters: true,
           },
+          // ITOTORI-232 — bundle-miss test; sentinel usage.
+          usageResponseJson: { _synthetic_speaker_label_miss_test_bundle: true },
         },
       },
     };

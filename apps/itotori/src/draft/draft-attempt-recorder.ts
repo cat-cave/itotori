@@ -67,6 +67,14 @@ export class DraftAttemptRecorder {
     // of the prompt (with sha256 scheme), token counts, model
     // metadata, fallback chain, and cost. The raw prompt body and the
     // raw response payload are NEVER referenced here.
+    //
+    // ITOTORI-232 — usage_response_json is plumbed verbatim from the
+    // providerRun. Live OR runs and recorded replays carry the
+    // originating `usage` block (with a real `cost` field equal to
+    // costUsd.amount within 1e-9 USD); fake / local providers carry a
+    // typed sentinel without a `cost` key. The DB CHECK enforces the
+    // equality where applicable; callers cannot smuggle in a fake
+    // cost_amount without it being visible in the ledger row.
     const input: RecordLedgerEntryInput = {
       draftJobAttemptId: args.draftJobAttemptId,
       providerProofId,
@@ -88,6 +96,7 @@ export class DraftAttemptRecorder {
       tokensOut: result.tokensOut,
       costUnit: args.costUsd.unit,
       costAmount: args.costUsd.amount,
+      usageResponseJson: providerRun.usageResponseJson,
       latencyMs: args.latencyMs,
       fallbackChain: [...args.fallbackChain],
       isRecordedProvider: isRecorded,

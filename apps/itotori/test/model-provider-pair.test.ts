@@ -221,6 +221,11 @@ describe("ITOTORI-220 — (modelId, providerId) pair contract", () => {
             zdr: true,
             require_parameters: true,
           },
+          // ITOTORI-232 — synthetic pair-contract bundle, no real LIVE
+          // call. ZERO_COST + sentinel-shaped usage (no `cost` key) so
+          // the bundle-construction check accepts the zero-cost
+          // capture and the ledger CHECK exempts the row on persist.
+          usageResponseJson: { _synthetic_pair_contract_test: true },
         },
       },
     };

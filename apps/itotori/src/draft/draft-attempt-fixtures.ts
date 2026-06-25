@@ -93,6 +93,15 @@ function fixtureProviderRun(overrides: Partial<ProviderRunRecord> = {}): Provide
       zdr: true,
       require_parameters: true,
     },
+    // ITOTORI-232 — `cost` mirrors the captured ProviderCost
+    // (12_500 micros = 0.0125 USD). The fixture's costUsd field
+    // (0.01250000) matches, so the DB CHECK passes by construction.
+    usageResponseJson: {
+      prompt_tokens: 480,
+      completion_tokens: 220,
+      total_tokens: 700,
+      cost: 0.0125,
+    },
     prompt: {
       presetId: "itotori-translation-agent",
       templateVersion: "itotori-translation-agent-v1",
@@ -174,6 +183,21 @@ export function fallbackChainFixture(
     retryCount: 1,
     latencyMs: 2400,
     completedAt: "2026-06-23T12:00:02.400Z",
+    // ITOTORI-232 — fallback fixture's costUsd is 0.00850000; mirror
+    // the same value into providerRun.cost (8_500 micros) and
+    // usageResponseJson.cost so the DB CHECK and the recorder's
+    // plumbed usage_response_json carry the same upstream cost.
+    cost: {
+      costKind: "billed",
+      currency: "USD",
+      amountMicrosUsd: 8_500,
+    },
+    usageResponseJson: {
+      prompt_tokens: 480,
+      completion_tokens: 220,
+      total_tokens: 700,
+      cost: 0.0085,
+    },
   });
   const fallbackChain: DraftAttemptFallbackChainEntry[] = [
     {
@@ -221,6 +245,16 @@ export function recordedProviderFixture(
       costKind: "zero",
       currency: "USD",
       amountMicrosUsd: 0,
+    },
+    // ITOTORI-232 — synthetic recorded fixture never backed a real OR
+    // call, so usage carries no `cost` key. The partial-NULL CHECK
+    // exempts the row. The sentinel key documents WHY no billed-cost
+    // field exists ("the bundle was synthesised offline").
+    usageResponseJson: {
+      _synthetic_recorded_fixture: true,
+      prompt_tokens: 480,
+      completion_tokens: 220,
+      total_tokens: 700,
     },
   });
   return {
