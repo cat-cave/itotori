@@ -23958,7 +23958,7 @@
     {
       "id": "KAIFUU-191",
       "title": "RealLive scene bytecode opcode dispatch (drop synthetic '#' opener)",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["kaifuu"],
@@ -23992,9 +23992,7 @@
         "Shift-JIS decoder must reject UTF-8 byte sequences with a diagnostic (no silent transcoding).",
         "Diagnostic-to-instruction ratio guard must hold on at least one additional real scene payload chosen by the auditor."
       ],
-      "owner": "orchestrator-kaifuu-191",
-      "branch": "spec/kaifuu-191",
-      "worktree": "/scratch/worktrees/itotori-spec-kaifuu-191"
+      "statusReason": "Implementation merged (commit e923322). Real bytecode dispatch in kaifuu-reallive; 84.62% recognition on Sweetie HD scene-1 (253/299). 75% honest-floor met; 90% aspirational target requires full expression evaluator (follow-up node)."
     },
     {
       "id": "KAIFUU-192",
