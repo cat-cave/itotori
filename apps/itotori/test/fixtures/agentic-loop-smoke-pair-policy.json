@@ -1,0 +1,23 @@
+{
+  "context": {
+    "sceneSummary": { "modelId": "deepseek/deepseek-chat-v4", "providerId": "fireworks" },
+    "characterRelationship": { "modelId": "deepseek/deepseek-chat-v4", "providerId": "fireworks" },
+    "terminologyCandidate": { "modelId": "deepseek/deepseek-chat-v4", "providerId": "fireworks" },
+    "routeChoiceMap": { "modelId": "deepseek/deepseek-chat-v4", "providerId": "fireworks" }
+  },
+  "preTranslation": {
+    "speakerLabel": { "modelId": "deepseek/deepseek-chat-v4", "providerId": "fireworks" }
+  },
+  "translation": {
+    "primary": { "modelId": "deepseek/deepseek-chat-v4", "providerId": "fireworks" }
+  },
+  "qa": {
+    "styleAdherence": { "modelId": "deepseek/deepseek-chat-v4", "providerId": "fireworks" },
+    "semanticDrift": { "modelId": "deepseek/deepseek-chat-v4", "providerId": "fireworks" },
+    "toneRegister": { "modelId": "deepseek/deepseek-chat-v4", "providerId": "fireworks" },
+    "unresolvedTerminology": { "modelId": "deepseek/deepseek-chat-v4", "providerId": "fireworks" }
+  },
+  "repair": {
+    "primary": { "modelId": "deepseek/deepseek-chat-v4", "providerId": "fireworks" }
+  }
+}

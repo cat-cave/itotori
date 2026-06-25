@@ -9,7 +9,8 @@
 //   --project       path to a JSON fixture describing the source bridge
 //                   view + asset decisions for the run.
 //   --draft-bundle  path to a `DraftArtifactBundle` produced by
-//                   `node apps/itotori/dist/cli.js draft-fixture`.
+//                   `node apps/itotori/dist/cli.js agentic-loop-smoke
+//                    --draft-artifact-output ...` (ITOTORI-222 adapter).
 //   --output        where to write the patch-export bundle (or, on
 //                   preflight failure, where to write the structured
 //                   failure report).

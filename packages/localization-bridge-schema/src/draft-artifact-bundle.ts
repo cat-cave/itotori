@@ -1,8 +1,10 @@
 // ITOTORI-019 — DraftArtifactBundle wire schema.
 //
-// The drafting fixture command (apps/itotori/src/draft/draft-fixture-command.ts)
-// writes one of these bundles per run. The bundle is the deterministic,
-// fixture-mode summary of the drafting loop's structural outcome:
+// The orchestrator's draft-artifact adapter
+// (apps/itotori/src/orchestrator/agentic-loop-smoke-command.ts, ITOTORI-222)
+// writes one of these bundles per run when `--draft-artifact-output`
+// is provided. The bundle is the deterministic, fixture-mode summary
+// of the drafting loop's structural outcome:
 //
 //   - which drafts each source unit produced (or failed to produce);
 //   - which provider proof / recorded artifact persisted them;

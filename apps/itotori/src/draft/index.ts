@@ -50,17 +50,7 @@ export {
   type FallbackEntry,
 } from "./draft-attempt-recorder.js";
 
-export {
-  DraftFixtureCommandLiveProviderRefusalError,
-  DraftFixtureCommandLocaleMismatchError,
-  DraftFixtureCommandUnknownProvenanceError,
-  runDraftFixtureCommand,
-  type DraftFixtureAttempt,
-  type DraftFixtureAttemptProviderIdentity,
-  type DraftFixtureBridgeUnit,
-  type DraftFixtureBundle,
-  type DraftFixtureCommandArgs,
-  type DraftFixtureCommandIo,
-  type DraftFixtureProject,
-  type DraftFixtureProtectedSpan,
-} from "./draft-fixture-command.js";
+// ITOTORI-222 — the legacy isolated drafting command was collapsed into
+// `apps/itotori/src/orchestrator/agentic-loop.ts`. Direct callers should
+// import `runAgenticLoopForUnit` (orchestrator entry point) or
+// `runAgenticLoopSmokeCommand` (CLI seam) instead.

@@ -432,44 +432,41 @@ describe("Itotori CLI handlers", () => {
     );
   });
 
-  it("draft-fixture writes a DraftArtifactBundle to --output and uses the in-memory repositories", async () => {
+  it("agentic-loop-smoke writes an AgenticLoopBundle and pins every invocation's pair", async () => {
     const { readFileSync } = await import("node:fs");
     const { fileURLToPath } = await import("node:url");
     const { dirname, resolve } = await import("node:path");
     const here = dirname(fileURLToPath(import.meta.url));
     const repoRoot = resolve(here, "../../..");
-    const projectJson = JSON.parse(
+    const bridgeJson = JSON.parse(
       readFileSync(
-        resolve(repoRoot, "apps/itotori/test/fixtures/draft-fixture-project.json"),
+        resolve(repoRoot, "apps/itotori/test/fixtures/agentic-loop-smoke-bridge.json"),
         "utf8",
       ),
     );
-    const bundleJson = JSON.parse(
+    const pairPolicyJson = JSON.parse(
       readFileSync(
-        resolve(
-          repoRoot,
-          "apps/itotori/src/draft/draft-fixture-bundles/deterministic-fake-provider.json",
-        ),
+        resolve(repoRoot, "apps/itotori/test/fixtures/agentic-loop-smoke-pair-policy.json"),
         "utf8",
       ),
     );
     const reads = new Map<string, unknown>([
-      ["fixtures/draft-fixture-project.json", projectJson],
-      ["fixtures/deterministic-fake-provider.json", bundleJson],
+      ["fixtures/agentic-loop-smoke-bridge.json", bridgeJson],
+      ["fixtures/agentic-loop-smoke-pair-policy.json", pairPolicyJson],
     ]);
     const writes = new Map<string, unknown>();
     const services = servicesFixture();
     await runItotoriCliCommand(
       [
-        "draft-fixture",
-        "--project",
-        "fixtures/draft-fixture-project.json",
-        "--locale",
-        "en-US",
+        "agentic-loop-smoke",
+        "--bridge",
+        "fixtures/agentic-loop-smoke-bridge.json",
+        "--unit-index",
+        "0",
+        "--pair-policy",
+        "fixtures/agentic-loop-smoke-pair-policy.json",
         "--output",
-        "out/bundle.json",
-        "--bundle",
-        "fixtures/deterministic-fake-provider.json",
+        "out/agentic-loop-bundle.json",
       ],
       {
         io: jsonStoreFixture(reads, writes),
@@ -477,13 +474,22 @@ describe("Itotori CLI handlers", () => {
         withServices: async (callback) => await callback(services),
       },
     );
-    const written = writes.get("out/bundle.json") as
-      | { schemaVersion: string; drafts: unknown[] }
+    const written = writes.get("out/agentic-loop-bundle.json") as
+      | { schemaVersion: string; stages: Array<{ stageName: string }> }
       | undefined;
     expect(written).toBeDefined();
     if (written === undefined) return;
-    expect(written.schemaVersion).toBe("itotori.draft-artifact-bundle.v1");
-    expect(written.drafts).toHaveLength(2);
+    expect(written.schemaVersion).toBe("itotori.agentic-loop-bundle.v0");
+    expect(written.stages.map((s) => s.stageName)).toEqual([
+      "context",
+      "pre_translation",
+      "translation",
+      "deterministic_checks",
+      "qa_findings",
+      "routing",
+      "repair",
+      "final_draft",
+    ]);
   });
 });
 

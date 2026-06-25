@@ -55,14 +55,14 @@ export default defineConfig({
         dependsOn: ["db:migrate:test"],
         cache: false,
       },
-      "itotori:draft-fixture": {
-        // ITOTORI-019: end-to-end drafting fixture command. The default
-        // entry point relies on the in-memory fixture repositories
-        // baked into `cli-handlers.ts`, so it does NOT need a Postgres
-        // connection. Tasks that want DB-backed runs pass the project
-        // path of their choice; CI invokes the deterministic fake
-        // provider fixture.
-        command: "node apps/itotori/dist/cli.js draft-fixture",
+      "itotori:agentic-loop-smoke": {
+        // ITOTORI-222: end-to-end agentic-loop smoke command. The
+        // default entry point relies on the FakeModelProvider baked
+        // into the smoke command, so it does NOT need a Postgres
+        // connection. CI invokes the deterministic fake provider per
+        // stage to exercise the orchestrator from context through
+        // final draft.
+        command: "node apps/itotori/dist/cli.js agentic-loop-smoke",
         dependsOn: ["ts:build"],
         cache: false,
       },

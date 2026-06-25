@@ -1,16 +1,17 @@
-// ITOTORI-019 — `just hello-draft` summary printer.
+// ITOTORI-222 — DraftArtifactBundle summary printer.
 //
-// Loads the DraftArtifactBundle produced by
-// `node apps/itotori/dist/cli.js draft-fixture ...` and asserts that
-// it is well-formed against the schema package. Exits non-zero on any
-// shape divergence so `just hello-draft` fails loudly when the
-// drafting fixture command regresses.
+// Loads the DraftArtifactBundle derived from
+// `node apps/itotori/dist/cli.js agentic-loop-smoke
+//  ... --draft-artifact-output` and asserts that it is well-formed
+// against the schema package. Exits non-zero on any shape divergence
+// so the recipe fails loudly when the orchestrator's adapter
+// regresses.
 
 import { readFileSync } from "node:fs";
 
 const path = process.argv[2];
 if (!path) {
-  throw new Error("Usage: node scripts/print-draft-fixture-bundle-summary.mjs <bundle.json>");
+  throw new Error("Usage: node scripts/print-draft-artifact-bundle-summary.mjs <bundle.json>");
 }
 
 const { assertDraftArtifactBundle } =
@@ -19,7 +20,7 @@ const { assertDraftArtifactBundle } =
 const bundle = JSON.parse(readFileSync(path, "utf8"));
 assertDraftArtifactBundle(bundle);
 
-console.log("Itotori draft fixture bundle is well-formed");
+console.log("Itotori draft artifact bundle is well-formed");
 console.log(`schemaVersion=${bundle.schemaVersion}`);
 console.log(`draftJobId=${bundle.draftJobId}`);
 console.log(`projectId=${bundle.projectId}`);

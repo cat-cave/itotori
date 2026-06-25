@@ -131,30 +131,41 @@ hello: build
     node apps/itotori/dist/cli.js dashboard-status --output .tmp/hello-world/dashboard-status.json
     node scripts/print-hello-summary.mjs .tmp/hello-world/final-summary.json
 
-# ITOTORI-019: synthetic hello-world loop with the drafting fixture
-# command spliced in at the drafting stage. Keeps the regular `hello`
-# recipe unchanged. Produces a `DraftArtifactBundle` and verifies its
-# well-formedness via the schema asserter shipped in
+# ITOTORI-019 / ITOTORI-222: synthetic hello-world loop wired through
+# the agentic-loop orchestrator at the drafting stage. Keeps the
+# regular `hello` recipe unchanged. Produces an `AgenticLoopBundle`
+# AND a derived `DraftArtifactBundle` (via the orchestrator's
+# adapter); verifies well-formedness against the schema asserters in
 # `@itotori/localization-bridge-schema`.
 hello-draft: build
     rm -rf .tmp/hello-draft
     mkdir -p .tmp/hello-draft
-    node apps/itotori/dist/cli.js draft-fixture --project apps/itotori/test/fixtures/draft-fixture-project.json --locale en-US --output .tmp/hello-draft/draft-artifact-bundle.json
-    node scripts/print-draft-fixture-bundle-summary.mjs .tmp/hello-draft/draft-artifact-bundle.json
+    node apps/itotori/dist/cli.js agentic-loop-smoke --bridge apps/itotori/test/fixtures/agentic-loop-smoke-bridge.json --unit-index 0 --pair-policy apps/itotori/test/fixtures/agentic-loop-smoke-pair-policy.json --output .tmp/hello-draft/agentic-loop-bundle.json --draft-artifact-output .tmp/hello-draft/draft-artifact-bundle.json
+    node scripts/print-agentic-loop-bundle-summary.mjs .tmp/hello-draft/agentic-loop-bundle.json
+    node scripts/print-draft-artifact-bundle-summary.mjs .tmp/hello-draft/draft-artifact-bundle.json
 
-# ITOTORI-025: synthetic hello-world loop with the drafting fixture
-# command AND the v0.2 patch-export pipeline spliced in. Keeps the
-# regular `hello` and `hello-draft` recipes unchanged. Produces a
-# `PatchExportBundle` v0.2 and verifies its well-formedness via the
-# schema asserter shipped in `@itotori/localization-bridge-schema`.
+# ITOTORI-025 / ITOTORI-222: synthetic hello-world loop with the v0.2
+# patch-export pipeline spliced in after the orchestrator's drafting
+# stage. Keeps the regular `hello` and `hello-draft` recipes unchanged.
+# Produces a `PatchExportBundle` v0.2 and verifies its well-formedness.
 hello-patch: build
     rm -rf .tmp/hello-patch
     mkdir -p .tmp/hello-patch
     node apps/itotori/dist/cli.js db-migrate
     node apps/itotori/dist/cli.js db-reset
-    node apps/itotori/dist/cli.js draft-fixture --project apps/itotori/test/fixtures/draft-fixture-project.json --locale en-US --output .tmp/hello-patch/draft-artifact-bundle.json
+    node apps/itotori/dist/cli.js agentic-loop-smoke --bridge apps/itotori/test/fixtures/agentic-loop-smoke-bridge.json --unit-index 0 --pair-policy apps/itotori/test/fixtures/agentic-loop-smoke-pair-policy.json --output .tmp/hello-patch/agentic-loop-bundle.json --draft-artifact-output .tmp/hello-patch/draft-artifact-bundle.json
     node apps/itotori/dist/cli.js export-patch-v2 --project apps/itotori/test/fixtures/patch-export-v2-project.json --draft-bundle .tmp/hello-patch/draft-artifact-bundle.json --locale en-US --output .tmp/hello-patch/patch-export-bundle.json
     node scripts/print-patch-export-bundle-summary.mjs .tmp/hello-patch/patch-export-bundle.json
+
+# ITOTORI-222: standalone agentic-loop smoke recipe. Exercises the
+# full orchestrator end-to-end on a single bridge unit using the smoke
+# FakeModelProvider; asserts the resulting AgenticLoopBundle is
+# well-formed via the schema asserter.
+hello-agentic-loop: build
+    rm -rf .tmp/hello-agentic-loop
+    mkdir -p .tmp/hello-agentic-loop
+    node apps/itotori/dist/cli.js agentic-loop-smoke --bridge apps/itotori/test/fixtures/agentic-loop-smoke-bridge.json --unit-index 0 --pair-policy apps/itotori/test/fixtures/agentic-loop-smoke-pair-policy.json --output .tmp/hello-agentic-loop/agentic-loop-bundle.json
+    node scripts/print-agentic-loop-bundle-summary.mjs .tmp/hello-agentic-loop/agentic-loop-bundle.json
 
 affected:
     node scripts/affected.mjs
