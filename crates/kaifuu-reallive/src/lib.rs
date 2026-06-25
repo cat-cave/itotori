@@ -1,5 +1,5 @@
-//! Pure-Rust RealLive Scene/SEEN parser-boundary smoke (KAIFUU-173) and
-//! text inventory adapter (KAIFUU-174).
+//! Pure-Rust RealLive Scene/SEEN parser (KAIFUU-173 + KAIFUU-188 +
+//! KAIFUU-191) and text inventory adapter (KAIFUU-174).
 //!
 //! Clean-room provenance:
 //! - All RealLive format observations are derived from publicly archived
@@ -21,6 +21,12 @@
 //!   and length-preserving patch-back. Offset-table rewriting and
 //!   jump-target recalculation are not implemented; length-changing edits
 //!   emit `kaifuu.reallive.patchback_offset_overflow` Fatal.
+//! - KAIFUU-191 replaces the synthetic `0x23 ('#') opener + named opcode
+//!   byte` shape with the **real** RealLive bytecode opener-byte switch
+//!   documented in `docs/research/reallive-engine.md` §D and confirmed
+//!   against Sweetie HD's decompressed scene 1 in
+//!   `docs/research/reallive-sweetie-hd-encryption-mechanism.md` §4.2.
+//!   The pre-KAIFUU-191 synthetic-opener path is deleted, not aliased.
 //! - No `Command::new`, no Wine, no Windows helper, no remote helper.
 //!   This crate is a pure function over `&[u8]`; the adapter (in
 //!   `kaifuu-engine-fixture`) owns the filesystem I/O.
@@ -30,10 +36,11 @@
 //! - [`parse_archive`] — decode a SEEN.TXT archive envelope into a
 //!   [`RealLiveSceneIndex`]. Out: per-scene `(byte_offset, byte_len)`
 //!   ranges keyed by the 10,000-slot directory index ([`SceneEntry`]).
-//! - [`parse_scene`] — decode a single scene byte-blob into a [`Scene`]
-//!   AST plus diagnostics. Out: structured AST with named opcodes,
-//!   [`StringSlot`]s with stable position-derived ids, and a
-//!   [`ParseStatus`] indicating fatal / warning / clean.
+//! - [`parse_scene`] — decode a single **decompressed** scene-bytecode
+//!   byte stream into the documented [`RealLiveOpcode`] sequence.
+//! - [`parse_scene_into_ast`] — adapter that wraps [`parse_scene`] and
+//!   builds the [`Scene`] tree consumed by [`build_scene_inventory`]
+//!   and [`apply_patches`].
 //!
 //! # SEEN.TXT envelope (real 10,000-slot fixed-offset-table — KAIFUU-188)
 //!
@@ -60,52 +67,37 @@
 //!   `kaifuu.reallive.truncated_scene` Fatal.
 //! - Sweetie HD has 198 populated slots, scene-id range 1..=9999.
 //!
-//! The pre-KAIFUU-188 synthetic count-plus-table envelope is removed — no
-//! legacy compat, no alias, no flag.
+//! # Scene bytecode (real RealLive opcode dispatch — KAIFUU-191)
 //!
-//! # Scene bytecode (synthetic-fixture shape, clean-room)
+//! Scene payloads encountered in the archive carry the AVG32-compressed
+//! header + bytecode. The caller decompresses the payload (the AVG32
+//! LZSS + 256-byte XOR transform documented in
+//! `docs/research/reallive-sweetie-hd-encryption-mechanism.md`) and
+//! feeds the resulting plaintext bytecode bytes to [`parse_scene`].
 //!
-//! This crate parses a deliberately small, named-opcode bytecode that the
-//! synthetic fixtures use to exercise the AST and diagnostic surface. The
-//! shape is intentionally narrower than the real RealLive opcode space; it
-//! is a clean-room smoke shape suitable for the parser boundary contract.
+//! [`parse_scene`] performs the documented opener-byte switch:
 //!
-//! ```text
-//! Instruction:
-//!   +------+--------+---------+----------+---- ... ----+
-//!   | 0x23 | opcode | operand | operand0 | operand1    |
-//!   | '#'  |  byte  | count   |          |             |
-//!   +------+--------+---------+----------+---- ... ----+
+//! | Lead byte           | BytecodeElement   | Decoded as                                                   |
+//! | ------------------- | ----------------- | ------------------------------------------------------------ |
+//! | `0x00`              | CommaElement      | [`RealLiveOpcode::Comma`]                                    |
+//! | `0x0A`              | MetaLine          | [`RealLiveOpcode::MetaLine`] (u16 LE line)                   |
+//! | `0x21`              | MetaEntrypoint    | [`RealLiveOpcode::MetaEntrypoint`] (u16 LE)                  |
+//! | `0x23`              | CommandElement    | 8-byte header + bracketed args; classified via module table  |
+//! | `0x24`              | ExpressionElement | [`RealLiveOpcode::Expression`] (body preserved verbatim)     |
+//! | `0x2C`              | CommaElement      | [`RealLiveOpcode::Comma`]                                    |
+//! | `0x40`              | MetaKidoku        | [`RealLiveOpcode::MetaKidoku`] (u16 LE)                      |
+//! | `0x81..=0x9F` /     | Textout (SJIS)    | [`RealLiveOpcode::Textout`] (Shift-JIS body)                 |
+//! | `0xE0..=0xFC`       |                   |                                                              |
+//! | other               | Unknown opener    | [`RealLiveOpcode::Unknown`] (single byte preserved)          |
 //!
-//! Operand:
-//!   - Int    : tag 0x69 'i' + i32 little-endian (4 bytes)
-//!   - String : tag 0x73 's' + u16 LE length (2 bytes) + N bytes
-//!   - Label  : tag 0x6C 'l' + u16 LE length (2 bytes) + N bytes (ASCII)
-//! ```
+//! Command elements decode the 8-byte header
+//! (`module_type`, `module_id`, `opcode_u16_le`, `argc`, `overload`,
+//! `reserved`) and classify into one of the documented RLOperation
+//! families per the catalogue in [`opcode`]. Commands outside the alpha
+//! classification set surface as [`RealLiveOpcode::Unknown`].
 //!
-//! Opener byte `0x23` ('#') delimits instructions; any other opener byte
-//! produces an `Unrecognized` instruction node carrying the raw opener
-//! plus a paired `kaifuu.reallive.unrecognized_instruction` warning. The
-//! parser advances by exactly one byte after an unrecognized opener so
-//! that the byte-range partition guarantee (see §8.3 of the plan) holds.
-//!
-//! Recognized opcode bytes — derived from the synthetic fixture plus
-//! the documented common-case cushion (Haeleth's RLDEV documentation):
-//!
-//! | Byte  | NamedOpcode    |
-//! | ----- | -------------- |
-//! | 0x01  | TextDisplay    |
-//! | 0x02  | SetSpeaker     |
-//! | 0x03  | Choice         |
-//! | 0x04  | SetVar         |
-//! | 0x05  | Jump           |
-//! | 0x06  | Return         |
-//! | 0x07  | ClearScreen    |
-//! | 0x08  | Pause          |
-//!
-//! Any other opcode byte after a `#` opener is recognized as an
-//! `Unrecognized` instruction with a paired warning. The byte run is
-//! never silently dropped.
+//! Empty input is a [`RealLiveParseError::TruncatedBytecode`] — never a
+//! silent `Ok(vec![])`.
 
 #![forbid(unsafe_code)]
 #![deny(missing_debug_implementations)]
@@ -117,6 +109,7 @@ mod diagnostics;
 pub mod encoding;
 pub mod gameexe;
 pub mod inventory;
+pub mod opcode;
 mod opcodes;
 mod parser;
 pub mod patchback;
@@ -153,8 +146,13 @@ pub use inventory::{
     INVENTORY_UNSUPPORTED_TEXT_SHAPE_CODE, InventoryReport, InventoryWarning, InventoryWarningCode,
     build_scene_inventory,
 };
+pub use opcode::{
+    COMMAND_HEADER_LEN, RealLiveOpcode, RealLiveParseError, TextEncoding,
+    is_expression_body_terminator, is_recognized_opener, is_shift_jis_textout_lead,
+    parse_real_bytecode,
+};
 pub use opcodes::NamedOpcode;
-pub use parser::parse_scene;
+pub use parser::{parse_scene, parse_scene_into_ast};
 pub use patchback::{
     PATCHBACK_OFFSET_OVERFLOW_CODE, PATCHBACK_PARSER_REGRESSION_CODE,
     PATCHBACK_PROTECTED_SPAN_LOST_CODE, PATCHBACK_SHIFT_JIS_ENCODE_FAILURE_CODE,

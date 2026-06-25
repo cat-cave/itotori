@@ -8,7 +8,9 @@
 use std::env;
 use std::fs;
 
-use kaifuu_reallive::{GameexeKeyTreatment, parse_archive, parse_gameexe_inventory, parse_scene};
+use kaifuu_reallive::{
+    GameexeKeyTreatment, parse_archive, parse_gameexe_inventory, parse_scene_into_ast,
+};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     if let Ok(path) = env::var("KAIFUU_PROBE_SEEN_TXT") {
@@ -47,7 +49,7 @@ fn probe_seen_txt(path: &str) -> Result<(), Box<dyn std::error::Error>> {
                 let end = start + first.byte_len as usize;
                 if end <= bytes.len() {
                     let outcome =
-                        parse_scene(&bytes[start..end], first.scene_id, first.byte_offset);
+                        parse_scene_into_ast(&bytes[start..end], first.scene_id, first.byte_offset);
                     let instruction_count = outcome
                         .scene
                         .as_ref()

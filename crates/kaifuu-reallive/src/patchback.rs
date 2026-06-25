@@ -20,7 +20,7 @@ use serde::{Deserialize, Serialize};
 use crate::archive::{RealLiveSceneIndex, parse_archive};
 use crate::ast::{Operand, Scene};
 use crate::encoding::{ShiftJisEncodeError, encode_shift_jis_slot, slice_control_bytes};
-use crate::parser::parse_scene;
+use crate::parser::parse_scene_into_ast;
 use crate::protected_spans::detect_protected_spans;
 
 /// Edit policy for a single [`SlotEdit`].
@@ -484,7 +484,7 @@ fn verify_archive_round_trip(
         }
         let blob_end = (new_entry.byte_offset + u64::from(new_entry.byte_len)) as usize;
         let blob = &output[new_entry.byte_offset as usize..blob_end];
-        let outcome = parse_scene(blob, new_entry.scene_id, new_entry.byte_offset);
+        let outcome = parse_scene_into_ast(blob, new_entry.scene_id, new_entry.byte_offset);
         let new_scene_id_str = new_entry.scene_id_str();
         if outcome.scene.is_none() {
             return Err(PatchBackError::new(

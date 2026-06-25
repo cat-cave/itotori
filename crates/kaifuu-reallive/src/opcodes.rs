@@ -1,60 +1,54 @@
-//! Named opcode catalogue (bounded).
+//! Named-opcode summary catalogue used by the [`crate::ast::Scene`] tree.
 //!
-//! Provenance: derived from the synthetic fixtures under
-//! `tests/fixtures/` plus the documented common-case cushion in Haeleth's
-//! RLDEV format notes (`https://dev.haeleth.net/rldev.shtml`). The byte
-//! mapping is a clean-room synthetic catalogue, not a copy of any rlvm or
-//! RLDEV table; opcodes whose byte does not match this catalogue produce
-//! an `Unrecognized` instruction with a paired warning rather than a
-//! silent skip. See the module-level comment in `lib.rs`.
+//! After KAIFUU-191 the parser produces a [`crate::opcode::RealLiveOpcode`]
+//! sequence by decoding the **real** RealLive byte stream. The
+//! [`NamedOpcode`] enum here is the **summary** classification used to
+//! decorate the [`crate::ast::Instruction`] kind in the legacy `Scene`
+//! tree consumed by [`crate::inventory`] and [`crate::patchback`]. It is
+//! a small, stable surface — the rich opcode taxonomy lives on
+//! [`crate::opcode::RealLiveOpcode`].
+//!
+//! Provenance: the names below are restated from the RLOperation module
+//! catalogue documented in Haeleth's RLDEV manual and reflected in
+//! rlvm's `src/modules/module_*.cc` listing (research anchor only;
+//! rlvm is GPL-3, not linked or vendored — `crate::opcode` is the
+//! actual decoder, this is just the labelling enum).
+//!
+//! The pre-KAIFUU-191 `INSTRUCTION_OPENER`/operand-tag-byte
+//! constants and the `from_byte(byte) -> Option<Self>` synthetic-fixture
+//! mapping are deleted; opcode classification lives in
+//! [`crate::opcode::parse_real_bytecode`] now.
 
 use serde::{Deserialize, Serialize};
 
-/// Bounded set of named RealLive-style opcodes recognized by the parser.
-///
-/// The byte mapping is documented in `lib.rs` (§ "Scene bytecode") and is
-/// derived from synthetic-fixture bytes plus the documented common-case
-/// cushion. Each opcode is **named** in the AST; no opaque byte ranges
-/// appear in serialized output.
+/// Summary opcode classification used in the legacy [`crate::ast::Scene`]
+/// tree. Decoded from the full [`crate::opcode::RealLiveOpcode`] stream
+/// by [`crate::parser::parse_scene_into_ast`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum NamedOpcode {
-    /// Display a dialogue text string.
+    /// Display a dialogue text string (rlvm `module_msg` family).
     TextDisplay,
-    /// Set the active speaker name string.
+    /// Set the active speaker name string (rlvm `module_msg::CharText`).
     SetSpeaker,
-    /// Present a choice option (one string slot per option).
+    /// Present a choice option (rlvm `module_sel`).
     Choice,
-    /// Assign a small integer to a numeric variable.
+    /// Variable bank write (rlvm `module_mem` / `module_str` / per-module
+    /// memory writes such as `bgmPlay`/`koePlay`/`Background`).
     SetVar,
-    /// Jump to a named label within the same scene.
+    /// Control-flow jump / branch / call (rlvm `module_jmp`).
     Jump,
-    /// Return from a scene-internal sub-section.
+    /// Subroutine return / scene end (rlvm `module_jmp::ret*` and
+    /// `module_sys::end`).
     Return,
-    /// Clear the text window.
+    /// Clear the text window (rlvm `module_msg::msgClr`).
     ClearScreen,
-    /// Pause for keypress.
+    /// Pause for keypress / wait longop (rlvm `module_sys::wait`,
+    /// `module_msg::pause`).
     Pause,
 }
 
 impl NamedOpcode {
-    /// Resolve the catalogue byte to a [`NamedOpcode`]. Returns `None` for
-    /// bytes outside the bounded catalogue; callers must emit an
-    /// `Unrecognized` instruction plus a paired warning.
-    pub fn from_byte(byte: u8) -> Option<Self> {
-        match byte {
-            0x01 => Some(Self::TextDisplay),
-            0x02 => Some(Self::SetSpeaker),
-            0x03 => Some(Self::Choice),
-            0x04 => Some(Self::SetVar),
-            0x05 => Some(Self::Jump),
-            0x06 => Some(Self::Return),
-            0x07 => Some(Self::ClearScreen),
-            0x08 => Some(Self::Pause),
-            _ => None,
-        }
-    }
-
     /// Stable serde label (snake_case), useful for golden tests that pin
     /// the AST surface to the named-opcode contract.
     pub fn as_label(self) -> &'static str {
@@ -71,29 +65,16 @@ impl NamedOpcode {
     }
 
     /// Default semantic role for the string slot(s) carried by this
-    /// opcode. Real-game heuristics may refine this in KAIFUU-174.
+    /// opcode. KAIFUU-174's heuristic refines this.
     pub fn default_string_slot_role(self) -> super::ast::StringSlotRole {
         use super::ast::StringSlotRole;
         match self {
             Self::TextDisplay => StringSlotRole::Dialogue,
             Self::SetSpeaker => StringSlotRole::SpeakerName,
             Self::Choice => StringSlotRole::Choice,
-            // SetVar/Jump/Return/ClearScreen/Pause carry no string slots
-            // by default in the synthetic catalogue.
             Self::SetVar | Self::Jump | Self::Return | Self::ClearScreen | Self::Pause => {
                 StringSlotRole::Unknown
             }
         }
     }
-}
-
-/// Instruction-opener byte. Any other lead byte is an `Unrecognized`
-/// instruction (advance by exactly one byte after emitting a warning).
-pub const INSTRUCTION_OPENER: u8 = 0x23;
-
-/// Operand-tag bytes documented in `lib.rs` (§ "Scene bytecode").
-pub mod operand_tag {
-    pub const INT: u8 = 0x69; // 'i'
-    pub const STRING: u8 = 0x73; // 's'
-    pub const LABEL: u8 = 0x6C; // 'l'
 }
