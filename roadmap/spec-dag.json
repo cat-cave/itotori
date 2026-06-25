@@ -21289,7 +21289,7 @@
     {
       "id": "UTSUSHI-203",
       "title": "AVG32 LZ + XOR scene decompressor",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["utsushi"],
@@ -21324,14 +21324,12 @@
         "LZSS window pointer arithmetic copied verbatim from C without re-derivation",
         "Wrong distance-encoding silently producing garbage"
       ],
-      "owner": "orchestrator-utsushi-203",
-      "branch": "spec/utsushi-203",
-      "worktree": "/scratch/worktrees/itotori-spec-utsushi-203"
+      "statusReason": "Implementation merged (commit 21291af). AvgDecompressor + AVG32_XOR_MASK; Sweetie HD scene-1 verified (1660 bytes, opener set, preamble self-consistency)."
     },
     {
       "id": "UTSUSHI-204",
       "title": "Bytecode element stream decoder",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P1",
       "target": "alpha",
       "projects": ["utsushi"],
@@ -21366,7 +21364,9 @@
         "Forgetting that `0x00` and `0x2C` are both comma",
         "Treating `0x40` as arithmetic instead of meta"
       ],
-      "statusReason": "Re-tier 2026-06-24: promoted continuous -> alpha — required for the redefined alpha (utsushi-reallive Linux runtime / real-bytes extraction) per docs/proposals/dag-retier-2026-06-24.md."
+      "owner": "orchestrator-utsushi-204",
+      "branch": "spec/utsushi-204",
+      "worktree": "/scratch/worktrees/itotori-spec-utsushi-204"
     },
     {
       "id": "UTSUSHI-205",
