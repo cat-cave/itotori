@@ -25805,7 +25805,7 @@
       "priority": "P2",
       "target": "continuous",
       "projects": ["kaifuu"],
-      "parallelGroup": "vault-source-extraction",
+      "parallelGroup": "kaifuu-core",
       "dependsOn": [],
       "summary": "The integration test materialize_raises_ExtractionUnsafePath_for_path_traversal_fixture in crates/kaifuu-vault-source/tests/extraction_test.rs was marked #[ignore] on 2026-06-25 to unblock CI on main. The 7z decoder errors before the path-traversal check fires; the test expects ExtractionUnsafePath{parent-dir} but observes ExtractionFailed { reason: \"7z decoder error\", bytes_written: 752 }. Either repair the 7z fixture so the decoder reaches the path-traversal check, or repair the decoder to surface the unsafe-path classification before failing on bytes. Un-ignore the test once fixed.",
       "deliverables": [
