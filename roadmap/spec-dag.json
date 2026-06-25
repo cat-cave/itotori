@@ -25522,7 +25522,7 @@
     {
       "id": "ITOTORI-230",
       "title": "itotori-agent-runtime: persist OR routing posture (zdr=true, data_collection=deny, only=[providerId]) in ledger and recorded bundles",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["itotori"],
@@ -25563,9 +25563,7 @@
         "Migration backfill widens to 'unknown' without explicit audit row"
       ],
       "parallelGroup": "agent-runtime",
-      "owner": "orchestrator-itotori-230",
-      "branch": "spec/itotori-230",
-      "worktree": "/scratch/worktrees/itotori-spec-itotori-230"
+      "statusReason": "undefined\n\n[2026-06-25 landed at fe7e0e7] Migration 0040 single forward-only txn. routingPosture v2 schema bump. countZdrEnforcedCallsByPair telemetry. data_collection widened to deny|allow union (worker judgment, defensible). 620 app + 369 db tests pass. 4 ITOTORI-227 dead columns dropped."
     },
     {
       "id": "ITOTORI-231",
@@ -25605,7 +25603,7 @@
     {
       "id": "ITOTORI-232",
       "title": "itotori-agent-runtime: schema-level enforcement — ledger cost_amount is USD, mirrored from usage.cost, never null",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P1",
       "target": "alpha",
       "projects": ["itotori"],
@@ -25635,8 +25633,10 @@
         "Tolerance widened beyond 1e-9 to 'work around' a flaky test",
         "Old model-ledger CHECK left in place"
       ],
-      "statusReason": "Per docs/audits/openrouter-cost-tracking-audit-2026-06-25.md §3 N5 / §2.6 (no schema constraint tying cost_amount to usage.cost) + §2.7 (model-ledger CHECK enumerates 'unknown').",
-      "parallelGroup": "agent-runtime"
+      "parallelGroup": "agent-runtime",
+      "owner": "orchestrator-itotori-232",
+      "branch": "spec/itotori-232",
+      "worktree": "/scratch/worktrees/itotori-spec-itotori-232"
     },
     {
       "id": "ITOTORI-233",
@@ -25690,7 +25690,7 @@
     {
       "id": "ITOTORI-234",
       "title": "itotori-agent-runtime: pair-policy schema v0.2 carrying ZDR posture + fallback models + seed",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P1",
       "target": "alpha",
       "projects": ["itotori"],
@@ -25721,8 +25721,10 @@
         "Default zdr posture not applied to repair stage",
         "seed defaulted to 0 instead of deterministic-per-stage"
       ],
-      "statusReason": "Per docs/audits/openrouter-wiring-audit-2026-06-25.md §4-6 / §3-D-2 (no fallbackModels) / §3-D-3 (no seed) / §3-F (pair-policy schema too narrow).",
-      "parallelGroup": "agent-runtime"
+      "parallelGroup": "agent-runtime",
+      "owner": "orchestrator-itotori-234",
+      "branch": "spec/itotori-234",
+      "worktree": "/scratch/worktrees/itotori-spec-itotori-234"
     },
     {
       "id": "ITOTORI-235",
