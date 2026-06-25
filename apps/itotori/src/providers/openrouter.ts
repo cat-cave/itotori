@@ -1,8 +1,11 @@
 import { createHash } from "node:crypto";
 import {
   assertProviderInvocationSupported,
+  globalCapabilityGuard,
+  type CapabilityGuard,
   type ProviderRoutingCapabilityRequirement,
 } from "./capability-guard.js";
+import { knownPairs, type ModelProviderPair } from "./dev-pair.js";
 import {
   type JsonObject,
   type JsonValue,
@@ -858,7 +861,18 @@ function fallbackPlanForRequest(
 
 function selectedOpenRouterProvider(body: unknown): string | undefined {
   const selected = selectedOpenRouterEndpoint(body);
-  return optionalString(selected?.provider);
+  const fromMetadata = optionalString(selected?.provider);
+  if (fromMetadata !== undefined) {
+    return fromMetadata;
+  }
+  // Fallback: OpenRouter chat-completions echoes the actual upstream
+  // provider on the top-level `provider` field (string id). ITOTORI-220
+  // post-response pair check reads this when `openrouter_metadata` is
+  // absent (which is the live-mode default).
+  if (isRecord(body)) {
+    return optionalString(body.provider);
+  }
+  return undefined;
 }
 
 function selectedOpenRouterModel(body: unknown): string | undefined {
@@ -988,3 +1002,264 @@ function isJsonValue(value: unknown): value is JsonValue {
   }
   return false;
 }
+
+// ---------------------------------------------------------------------------
+// ITOTORI-221 — OpenRouterModelProvider
+//
+// Concrete live-LLM ModelProvider implementation. Wraps the existing
+// `OpenRouterProvider` (which handles the HTTP request shape, provider-
+// routing block, and the post-response pair check) and layers on three
+// new responsibilities the alpha-gap analysis (§3 ITOTORI-NEW-Bopen)
+// requires for a production-tier seam:
+//
+//   1. Reads `OPENROUTER_API_KEY` from `process.env` at construction.
+//      Never touches `.env` on disk: that's the shell / direnv's job.
+//      Missing key → `OpenRouterMissingApiKeyError` at construction,
+//      not on first invoke, so the failure is loud and traceable to the
+//      starting process.
+//   2. Per-process USD cost cap. Tracks cumulative billed cost across
+//      every `invoke()` and refuses to fire a new request once the cap
+//      is hit. The check runs BEFORE the HTTP call so a cap-busted
+//      caller never spends money it doesn't have a budget for.
+//   3. Token-bucket rate limit at `rateLimitPerSec`. When the bucket is
+//      empty, `invoke()` awaits the next slot rather than throwing —
+//      this is the softer of the two limits, and matches OpenRouter's
+//      own rps-based throttling behaviour.
+//
+// On construction the provider also registers every known (modelId,
+// providerId) capability sheet from `dev-pair.ts` into the global
+// CapabilityGuard, so the orchestrator can `globalCapabilityGuard()
+// .lookup(modelId, providerId)` without each call site wiring its own
+// registration.
+// ---------------------------------------------------------------------------
+
+export class OpenRouterMissingApiKeyError extends Error {
+  constructor(readonly envVarName: string) {
+    super(
+      `OpenRouterModelProvider requires environment variable ${envVarName} to be set at construction; ` +
+        `it reads from process.env directly and never opens a .env file`,
+    );
+    this.name = "OpenRouterMissingApiKeyError";
+  }
+}
+
+export class OpenRouterCostCapError extends Error {
+  constructor(
+    readonly capUsd: number,
+    readonly spentUsd: number,
+    readonly remainingUsd: number,
+  ) {
+    super(
+      `OpenRouterModelProvider per-process cost cap of $${capUsd.toFixed(4)} USD hit: ` +
+        `$${spentUsd.toFixed(6)} already spent, remaining budget $${remainingUsd.toFixed(6)}`,
+    );
+    this.name = "OpenRouterCostCapError";
+  }
+}
+
+export type OpenRouterHttpClient = typeof fetch;
+
+export type OpenRouterModelProviderOptions = {
+  /** Env var to read for the API key. Defaults to `OPENROUTER_API_KEY`. */
+  apiKeyEnvVar?: string;
+  /** Per-process cumulative USD cap. Default `1.0`. */
+  costCapUsd?: number;
+  /** Token-bucket rate (rps). Default `1.0`. */
+  rateLimitPerSec?: number;
+  /** Optional injection for unit tests (defaults to global `fetch`). */
+  httpClient?: OpenRouterHttpClient;
+  /** Optional injection of the cap-guard clock (test-only). */
+  now?: () => number;
+  /** Optional injection of the cap-guard sleep (test-only). */
+  sleep?: (ms: number) => Promise<void>;
+  /** Optional override for the capability guard registration target. */
+  capabilityGuard?: CapabilityGuard;
+  /** Optional artifact recorder; defaults to a no-op in-memory recorder. */
+  artifactRecorder?: { recordProviderRun(artifact: ProviderRunArtifact): Promise<void> };
+  /**
+   * Optional override of the underlying base URL (test-only; production
+   * should use the default). Must include the `/api/v1` suffix.
+   */
+  baseUrl?: string;
+  /**
+   * Optional process env source; defaults to `process.env`. Test-only —
+   * production callers should never override this.
+   */
+  env?: Readonly<Record<string, string | undefined>>;
+  /**
+   * Optional providerName override (descriptor / logging). Defaults to
+   * `"openrouter"`.
+   */
+  providerName?: string;
+};
+
+// In-memory no-op artifact recorder. Real callers wire a persistent
+// recorder via the artifacts module; the live-mode provider needs one
+// to satisfy the underlying OpenRouterProvider's ProviderLiveRunOptions
+// shape even when artifact persistence is handled elsewhere.
+class NoopArtifactRecorder {
+  async recordProviderRun(_artifact: ProviderRunArtifact): Promise<void> {
+    return undefined;
+  }
+}
+
+type TokenBucketDeps = {
+  now: () => number;
+  sleep: (ms: number) => Promise<void>;
+};
+
+class TokenBucket {
+  private tokens: number;
+  private lastRefillMs: number;
+  private waitChain: Promise<void> = Promise.resolve();
+
+  constructor(
+    readonly ratePerSec: number,
+    readonly capacity: number,
+    private readonly deps: TokenBucketDeps,
+  ) {
+    this.tokens = capacity;
+    this.lastRefillMs = deps.now();
+  }
+
+  /**
+   * Acquire one token, awaiting the next available slot if the bucket
+   * is empty. Calls are FIFO-serialised so three back-to-back calls at
+   * 1 rps each wait ~1 second apart deterministically.
+   */
+  async acquire(): Promise<void> {
+    const next = this.waitChain.then(() => this.acquireOne());
+    this.waitChain = next.catch(() => undefined);
+    return next;
+  }
+
+  private async acquireOne(): Promise<void> {
+    this.refill();
+    if (this.tokens >= 1) {
+      this.tokens -= 1;
+      return;
+    }
+    const tokensNeeded = 1 - this.tokens;
+    const waitMs = Math.ceil((tokensNeeded / this.ratePerSec) * 1000);
+    await this.deps.sleep(waitMs);
+    this.refill();
+    this.tokens = Math.max(0, this.tokens - 1);
+  }
+
+  private refill(): void {
+    const nowMs = this.deps.now();
+    const elapsedSec = (nowMs - this.lastRefillMs) / 1000;
+    if (elapsedSec <= 0) {
+      return;
+    }
+    const refilled = elapsedSec * this.ratePerSec;
+    this.tokens = Math.min(this.capacity, this.tokens + refilled);
+    this.lastRefillMs = nowMs;
+  }
+}
+
+const DEFAULT_API_KEY_ENV_VAR = "OPENROUTER_API_KEY";
+const DEFAULT_COST_CAP_USD = 1.0;
+const DEFAULT_RATE_LIMIT_PER_SEC = 1.0;
+
+export class OpenRouterModelProvider implements ModelProvider {
+  readonly descriptor: ProviderDescriptor;
+  readonly costCapUsd: number;
+  readonly rateLimitPerSec: number;
+  readonly apiKeyEnvVar: string;
+  private spentUsd = 0;
+  private readonly inner: OpenRouterProvider;
+  private readonly bucket: TokenBucket;
+
+  constructor(options: OpenRouterModelProviderOptions = {}) {
+    this.apiKeyEnvVar = options.apiKeyEnvVar ?? DEFAULT_API_KEY_ENV_VAR;
+    this.costCapUsd = options.costCapUsd ?? DEFAULT_COST_CAP_USD;
+    this.rateLimitPerSec = options.rateLimitPerSec ?? DEFAULT_RATE_LIMIT_PER_SEC;
+
+    const envSource: Readonly<Record<string, string | undefined>> = options.env ?? process.env;
+    const apiKey = envSource[this.apiKeyEnvVar];
+    if (apiKey === undefined || apiKey.length === 0) {
+      throw new OpenRouterMissingApiKeyError(this.apiKeyEnvVar);
+    }
+
+    const recorder = options.artifactRecorder ?? new NoopArtifactRecorder();
+    const now = options.now ?? (() => Date.now());
+    const sleep =
+      options.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+
+    this.bucket = new TokenBucket(this.rateLimitPerSec, Math.max(1, this.rateLimitPerSec), {
+      now,
+      sleep,
+    });
+
+    // The inner OpenRouterProvider does the request shaping + pair
+    // check; we wrap it for cost cap + rate limit + env config.
+    // modelId on the descriptor is "openrouter" because the provider
+    // is multi-model — actual modelId per call comes from the request.
+    this.inner = new OpenRouterProvider({
+      modelId: "openrouter",
+      providerName: options.providerName ?? "openrouter",
+      ...(options.baseUrl !== undefined ? { baseUrl: options.baseUrl } : {}),
+      apiKey,
+      fetch: options.httpClient ?? globalThis.fetch,
+      live: { enabled: true, artifactRecorder: recorder, rawCapture: "disabled" },
+    });
+    this.descriptor = this.inner.descriptor;
+
+    // Register every known-pair capability sheet into the singleton
+    // CapabilityGuard so orchestrator code calling
+    // globalCapabilityGuard().lookup(modelId, providerId) succeeds for
+    // any pair from dev-pair.ts without per-call registration.
+    const guard = options.capabilityGuard ?? globalCapabilityGuard();
+    for (const entry of knownPairsForRegistration()) {
+      guard.register(entry.pair.modelId, entry.pair.providerId, entry.modelCapabilities);
+    }
+  }
+
+  async invoke(request: ModelInvocationRequest): Promise<ModelInvocationResult> {
+    // Cost cap check BEFORE the HTTP request fires (per the spec audit
+    // focus: "Cost cap bypassed by a code path that constructs the
+    // HTTP request before the policy check"). Mocked tests assert
+    // fetchMock was never called when the cap is hit.
+    const remaining = this.remainingBudgetUsd();
+    if (remaining <= 0) {
+      throw new OpenRouterCostCapError(this.costCapUsd, this.spentUsd, 0);
+    }
+
+    // Rate-limit wait. Softer than the cost cap: blocks the caller
+    // until the bucket has a token.
+    await this.bucket.acquire();
+
+    const result = await this.inner.invoke(request);
+    this.recordSpend(result);
+    return result;
+  }
+
+  /** Currently spent USD against the per-process cap. */
+  totalSpentUsd(): number {
+    return this.spentUsd;
+  }
+
+  /** Remaining USD budget (cap minus spent). */
+  remainingBudgetUsd(): number {
+    return Math.max(0, this.costCapUsd - this.spentUsd);
+  }
+
+  private recordSpend(result: ModelInvocationResult): void {
+    const cost = result.providerRun.cost;
+    if (cost.amountMicrosUsd === undefined) {
+      return;
+    }
+    this.spentUsd += cost.amountMicrosUsd / 1_000_000;
+  }
+}
+
+// Indirection so the dev-pair.ts import only resolves when called.
+// (Circularity-safe: dev-pair.ts imports only types +
+// openRouterDefaultCapabilities from this file, both of which are
+// module-top-level by the time knownPairsForRegistration runs.)
+function knownPairsForRegistration(): ReturnType<typeof knownPairs> {
+  return knownPairs();
+}
+
+export type { ModelProviderPair };
