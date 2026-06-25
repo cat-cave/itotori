@@ -712,6 +712,16 @@ const repositoryPermissionGateMatrix = [
         to: new Date(0),
       }),
   ),
+  draftAttemptProviderLedgerGate(
+    "sumByPairAndDay",
+    "catalogRead",
+    "draft-attempt-provider-ledger-repository.test.ts sum by pair and day coverage",
+    (repo) =>
+      repo.sumByPairAndDay(deniedActor, "project", {
+        from: new Date(0),
+        to: new Date(0),
+      }),
+  ),
   assetLocalizationDecisionGate(
     "recordDecision",
     "draftWrite",
@@ -1463,6 +1473,12 @@ describe("repository permission gate matrix", () => {
           "mutation": "ItotoriDraftAttemptProviderLedgerRepository.sumCostByProject",
           "requiredPermission": "catalog.read",
           "successFixture": "draft-attempt-provider-ledger-repository.test.ts sum cost by project coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriDraftAttemptProviderLedgerRepository.sumByPairAndDay",
+          "requiredPermission": "catalog.read",
+          "successFixture": "draft-attempt-provider-ledger-repository.test.ts sum by pair and day coverage",
         },
         {
           "denialFixture": "missing permission actor user-without-required-permission",

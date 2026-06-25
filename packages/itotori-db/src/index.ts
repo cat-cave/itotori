@@ -633,7 +633,9 @@ export {
 export type {
   DraftAttemptProviderLedgerEntry,
   ItotoriDraftAttemptProviderLedgerRepositoryPort,
+  LedgerPairAggregateRow,
   RecordLedgerEntryInput,
+  SumByPairAndDayOptions,
   SumCostByProjectOptions,
   SumCostByProjectResult,
   SumCostByProjectWindow,

@@ -86,6 +86,41 @@ export type SumCostByProjectResult = {
   byProvider?: Record<string, string>;
 };
 
+/**
+ * ITOTORI-223 — per-(modelId, providerId) aggregate row produced by
+ * {@link ItotoriDraftAttemptProviderLedgerRepositoryPort.sumByPairAndDay}.
+ *
+ * The aggregate is keyed exactly on the (modelId, providerId) pair per
+ * the standing model+provider pair rule. `modelId` is the underlying
+ * column value (nullable in the schema for pre-ITOTORI-077 rows); the
+ * repository returns the raw nullable value and the telemetry query
+ * layer is responsible for surfacing a typed "unknown" sentinel when
+ * rendering pair keys.
+ *
+ * Latency aggregates are NULL when no row in the bucket carries a
+ * latency_ms value. The telemetry query layer treats NULL latency as
+ * "no measurement" — it never coerces NULL to 0.
+ *
+ * `bucketDay`: ISO YYYY-MM-DD string when {@link SumByPairAndDayOptions.groupByDay}
+ * is true, otherwise NULL. The day boundary is computed from
+ * `created_at` in UTC.
+ */
+export type LedgerPairAggregateRow = {
+  modelId: string | null;
+  providerId: string;
+  bucketDay: string | null;
+  totalCostUsd: string;
+  totalTokensIn: number;
+  totalTokensOut: number;
+  invocationCount: number;
+  avgLatencyMs: number | null;
+  p95LatencyMs: number | null;
+};
+
+export type SumByPairAndDayOptions = {
+  groupByDay?: boolean | undefined;
+};
+
 export class DraftAttemptProviderLedgerRepositoryError extends Error {
   constructor(
     readonly code:
@@ -118,6 +153,22 @@ export interface ItotoriDraftAttemptProviderLedgerRepositoryPort {
     window: SumCostByProjectWindow,
     opts?: SumCostByProjectOptions,
   ): Promise<SumCostByProjectResult>;
+  /**
+   * ITOTORI-223 — per-(modelId, providerId) aggregate over a project /
+   * window, with optional per-day grouping. Returns raw aggregate rows
+   * (cost / token / latency totals + count + p95) — the telemetry
+   * query layer (apps/itotori/src/telemetry) builds the typed
+   * TelemetrySummaryByPair on top.
+   *
+   * The aggregation key is exactly (modelId, providerId) per the
+   * standing model+provider pair rule.
+   */
+  sumByPairAndDay(
+    actor: AuthorizationActor,
+    projectId: string,
+    window: SumCostByProjectWindow,
+    opts?: SumByPairAndDayOptions,
+  ): Promise<LedgerPairAggregateRow[]>;
 }
 
 export class ItotoriDraftAttemptProviderLedgerRepository implements ItotoriDraftAttemptProviderLedgerRepositoryPort {
@@ -298,6 +349,77 @@ export class ItotoriDraftAttemptProviderLedgerRepository implements ItotoriDraft
     return result;
   }
 
+  async sumByPairAndDay(
+    actor: AuthorizationActor,
+    projectId: string,
+    window: SumCostByProjectWindow,
+    opts?: SumByPairAndDayOptions,
+  ): Promise<LedgerPairAggregateRow[]> {
+    await requirePermission(this.db, actor, permissionValues.catalogRead);
+
+    if (window.from.getTime() > window.to.getTime()) {
+      throw new DraftAttemptProviderLedgerRepositoryError(
+        "ledger_entry_invalid_input",
+        "sumByPairAndDay window.from must not be after window.to",
+      );
+    }
+
+    const groupByDay = opts?.groupByDay === true;
+
+    // We compute every aggregate in SQL:
+    //   - totalCostUsd: sum of cost_amount (numeric)
+    //   - totalTokensIn/Out: sum of (nullable) token columns coerced to
+    //     0 when NULL (a NULL token reading is an absence of data; the
+    //     aggregate sum semantics here are "what we know about", so 0
+    //     is the correct identity element). The query layer DOES NOT
+    //     coerce: it forwards the value the repo returned.
+    //   - invocationCount: COUNT(*) of rows in the bucket.
+    //   - avgLatencyMs / p95LatencyMs: aggregates over the non-NULL
+    //     latency rows only. When every row in a bucket has NULL
+    //     latency, these are NULL (NOT zero), surfaced as null by the
+    //     mapper below.
+    const bucketDayExpr = sql<
+      string | null
+    >`to_char(${draftAttemptProviderLedger.createdAt} at time zone 'UTC', 'YYYY-MM-DD')`;
+    const nullBucketExpr = sql<string | null>`NULL::text`;
+
+    const rows = await this.db
+      .select({
+        modelId: draftAttemptProviderLedger.modelId,
+        providerId: draftAttemptProviderLedger.providerId,
+        bucketDay: groupByDay ? bucketDayExpr : nullBucketExpr,
+        totalCostUsd: sql<string>`coalesce(sum(${draftAttemptProviderLedger.costAmount}), 0)::text`,
+        totalTokensIn: sql<string>`coalesce(sum(coalesce(${draftAttemptProviderLedger.tokensIn}, 0)), 0)::text`,
+        totalTokensOut: sql<string>`coalesce(sum(coalesce(${draftAttemptProviderLedger.tokensOut}, 0)), 0)::text`,
+        invocationCount: sql<string>`count(*)::text`,
+        avgLatencyMs: sql<string | null>`(avg(${draftAttemptProviderLedger.latencyMs}))::text`,
+        p95LatencyMs: sql<
+          string | null
+        >`(percentile_cont(0.95) within group (order by ${draftAttemptProviderLedger.latencyMs}))::text`,
+      })
+      .from(draftAttemptProviderLedger)
+      .innerJoin(
+        draftJobAttempts,
+        eq(draftAttemptProviderLedger.draftJobAttemptId, draftJobAttempts.draftJobAttemptId),
+      )
+      .innerJoin(draftJobs, eq(draftJobAttempts.draftJobId, draftJobs.draftJobId))
+      .where(
+        and(
+          eq(draftJobs.projectId, projectId),
+          gte(draftAttemptProviderLedger.createdAt, window.from),
+          lte(draftAttemptProviderLedger.createdAt, window.to),
+        ),
+      )
+      .groupBy(
+        draftAttemptProviderLedger.modelId,
+        draftAttemptProviderLedger.providerId,
+        ...(groupByDay ? [bucketDayExpr] : []),
+      )
+      .orderBy(asc(draftAttemptProviderLedger.modelId), asc(draftAttemptProviderLedger.providerId));
+
+    return rows.map((row) => parseAggregateRow(row));
+  }
+
   private async fetchByLedgerEntryId(
     ledgerEntryId: string,
   ): Promise<DraftAttemptProviderLedgerEntry | null> {
@@ -375,6 +497,64 @@ function assertRecordLedgerEntryInput(input: RecordLedgerEntryInput): void {
       "latencyMs must be a non-negative integer",
     );
   }
+}
+
+type RawAggregateRow = {
+  modelId: string | null;
+  providerId: string;
+  bucketDay: string | null;
+  totalCostUsd: string;
+  totalTokensIn: string;
+  totalTokensOut: string;
+  invocationCount: string;
+  avgLatencyMs: string | null;
+  p95LatencyMs: string | null;
+};
+
+function parseAggregateRow(row: RawAggregateRow): LedgerPairAggregateRow {
+  const totalTokensIn = Number.parseInt(row.totalTokensIn, 10);
+  const totalTokensOut = Number.parseInt(row.totalTokensOut, 10);
+  const invocationCount = Number.parseInt(row.invocationCount, 10);
+  if (!Number.isFinite(totalTokensIn) || totalTokensIn < 0) {
+    throw new DraftAttemptProviderLedgerRepositoryError(
+      "ledger_entry_persistence_failed",
+      `unexpected totalTokensIn aggregate ${row.totalTokensIn}`,
+    );
+  }
+  if (!Number.isFinite(totalTokensOut) || totalTokensOut < 0) {
+    throw new DraftAttemptProviderLedgerRepositoryError(
+      "ledger_entry_persistence_failed",
+      `unexpected totalTokensOut aggregate ${row.totalTokensOut}`,
+    );
+  }
+  if (!Number.isFinite(invocationCount) || invocationCount < 0) {
+    throw new DraftAttemptProviderLedgerRepositoryError(
+      "ledger_entry_persistence_failed",
+      `unexpected invocationCount aggregate ${row.invocationCount}`,
+    );
+  }
+  return {
+    modelId: row.modelId,
+    providerId: row.providerId,
+    bucketDay: row.bucketDay,
+    totalCostUsd: row.totalCostUsd,
+    totalTokensIn,
+    totalTokensOut,
+    invocationCount,
+    avgLatencyMs: parseOptionalLatency(row.avgLatencyMs),
+    p95LatencyMs: parseOptionalLatency(row.p95LatencyMs),
+  };
+}
+
+function parseOptionalLatency(raw: string | null): number | null {
+  if (raw === null) {
+    return null;
+  }
+  const value = Number.parseFloat(raw);
+  if (!Number.isFinite(value)) {
+    return null;
+  }
+  return value;
 }
 
 function ledgerRowToEntry(
