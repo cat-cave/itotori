@@ -7,7 +7,11 @@ repository.workspace = true
 description = "UTSUSHI-200 alpha-gate scaffold: pure-Rust RealLive engine port that registers conformance against the utsushi-core substrate facade. Clean-room; rlvm is a research anchor only and is not linked, vendored, or mechanically translated."
 
 [dependencies]
-kaifuu-reallive = { path = "../kaifuu-reallive" }
+# Intentionally NO `kaifuu-reallive` dependency. UTSUSHI-201's
+# architectural constraint is that `utsushi-reallive` owns its own
+# `Seen.txt` parser — the format is identical to the one
+# `kaifuu-reallive` recognises, but the implementations stay separate
+# so a regression in one project cannot poison the other.
 serde.workspace = true
 serde_json.workspace = true
 utsushi-core = { path = "../utsushi-core" }
