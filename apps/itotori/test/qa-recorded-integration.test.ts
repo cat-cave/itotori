@@ -159,6 +159,10 @@ function bundleFor(input: QaInvocationInput, findings: QaFinding[]): RecordedPro
           zdr: true,
           require_parameters: true,
         },
+        // ITOTORI-232 — synthetic QA bundle; no LIVE `usage` to mirror.
+        // Sentinel-shaped usage (no `cost` key) so the partial-NULL
+        // CHECK exempts the ledger row on persist.
+        usageResponseJson: { _synthetic_qa_test_bundle: true },
       },
     },
   };
@@ -231,6 +235,8 @@ describe("QaAgent + RecordedModelProvider integration", () => {
             zdr: true,
             require_parameters: true,
           },
+          // ITOTORI-232 — bundle-miss test; sentinel-shaped usage.
+          usageResponseJson: { _synthetic_qa_miss_test_bundle: true },
         },
       },
     };

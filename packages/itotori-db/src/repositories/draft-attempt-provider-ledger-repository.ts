@@ -33,6 +33,15 @@ export type DraftAttemptProviderLedgerEntry = {
   tokensOut: number | null;
   costUnit: string;
   costAmount: string;
+  /**
+   * ITOTORI-232 — full `usage` block from the originating OpenRouter
+   * response, mirrored verbatim. The DB CHECK enforces that
+   * `cost_amount` equals `usage_response_json->>'cost'` within 1e-9 USD
+   * whenever the object carries a `cost` field; rows with no `cost` key
+   * (offline / local / fake providers; pre-ITOTORI-232 backfill
+   * sentinel) are exempt.
+   */
+  usageResponseJson: Record<string, unknown>;
   latencyMs: number | null;
   fallbackChain: DraftAttemptFallbackChainEntry[];
   isRecordedProvider: boolean;
@@ -60,6 +69,17 @@ export type RecordLedgerEntryInput = {
   tokensOut?: number | undefined;
   costUnit: string;
   costAmount: string;
+  /**
+   * ITOTORI-232 — REQUIRED. The originating OpenRouter response's full
+   * `usage` block (prompt_tokens, completion_tokens, cost, cost_details,
+   * prompt_tokens_details). For LIVE OR rows this MUST carry a real
+   * `cost` field whose value equals `costAmount` within 1e-9 USD — the
+   * DB CHECK refuses any row that violates the equality. For offline /
+   * local / fake provider rows that genuinely never billed, pass an
+   * object with no `cost` key (e.g. `{}` or a sentinel like
+   * `{"_local": true}`); the partial-NULL CHECK exempts these.
+   */
+  usageResponseJson: Record<string, unknown>;
   latencyMs?: number | undefined;
   fallbackChain?: DraftAttemptFallbackChainEntry[] | undefined;
   isRecordedProvider?: boolean | undefined;
@@ -200,6 +220,7 @@ export class ItotoriDraftAttemptProviderLedgerRepository implements ItotoriDraft
       tokensOut: input.tokensOut ?? null,
       costUnit: input.costUnit,
       costAmount: input.costAmount,
+      usageResponseJson: input.usageResponseJson,
       latencyMs: input.latencyMs ?? null,
       fallbackChain: input.fallbackChain ?? [],
       isRecordedProvider: input.isRecordedProvider ?? false,
@@ -473,6 +494,21 @@ function assertRecordLedgerEntryInput(input: RecordLedgerEntryInput): void {
       "costAmount must be non-negative",
     );
   }
+  // ITOTORI-232 — usage_response_json is required and must be a JSON
+  // object (not an array, not a primitive, not null). The DB CHECK
+  // enforces the same shape (`jsonb_typeof = 'object'`) plus the cost
+  // equality; this typed gate gives callers a clear error before the
+  // round-trip.
+  if (
+    input.usageResponseJson === null ||
+    typeof input.usageResponseJson !== "object" ||
+    Array.isArray(input.usageResponseJson)
+  ) {
+    throw new DraftAttemptProviderLedgerRepositoryError(
+      "ledger_entry_invalid_input",
+      "usageResponseJson must be a JSON object (ITOTORI-232 real-cost enforcement)",
+    );
+  }
   if (input.tokensIn !== undefined && (!Number.isInteger(input.tokensIn) || input.tokensIn < 0)) {
     throw new DraftAttemptProviderLedgerRepositoryError(
       "ledger_entry_invalid_input",
@@ -577,6 +613,7 @@ function ledgerRowToEntry(
     tokensOut: row.tokensOut,
     costUnit: row.costUnit,
     costAmount: row.costAmount,
+    usageResponseJson: row.usageResponseJson,
     latencyMs: row.latencyMs,
     fallbackChain: row.fallbackChain,
     isRecordedProvider: row.isRecordedProvider,

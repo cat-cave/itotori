@@ -351,6 +351,23 @@ export type ProviderRunRecord = {
    * a uniform shape. See {@link OpenRouterRoutingPosture}.
    */
   routingPosture: OpenRouterRoutingPosture;
+  /**
+   * ITOTORI-232 — full `usage` block from the originating OpenRouter
+   * response (prompt_tokens, completion_tokens, cost, cost_details,
+   * prompt_tokens_details with caching annotations). Required and
+   * non-optional: every record surfaces the bytes so the ledger CHECK
+   * can verify `cost_amount` equals `usage_response_json->>'cost'`
+   * within 1e-9 USD on every new row.
+   *
+   * For LIVE OR runs this MUST carry `cost` as a number (decimal USD)
+   * equal to `cost.amountMicrosUsd / 1_000_000` to within 1e-9; the OR
+   * adapter populates it from `responseBody.usage` verbatim so the
+   * equality holds by construction. Recorded replays mirror the bundle
+   * verbatim (bundle schema v3). Fake / local providers that never bill
+   * pass an object with no `cost` key (e.g. `{}` or a typed sentinel
+   * like `{"_local": true}`); the partial-NULL CHECK exempts these.
+   */
+  usageResponseJson: JsonObject;
   prompt: PromptPresetReference;
   providerPreset?: ProviderPresetReference;
 };

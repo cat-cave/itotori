@@ -64,6 +64,17 @@ function bundleWith(
   cost: ProviderCost,
   overrides: Partial<RecordedProviderBundle> = {},
 ): RecordedProviderBundle {
+  // ITOTORI-232 — bundle schema v3 requires usageResponseJson on every
+  // response. For a billed capture we mirror the captured `cost` into
+  // `usageResponseJson.cost` (USD decimal) so the bundle-construction
+  // CHECK (assertUsageResponseMatchesCost) passes; for a zero-cost
+  // capture we omit the `cost` key so the partial-NULL CHECK exempts
+  // the ledger row on persist.
+  const declaredCostUsd = cost.amountMicrosUsd / 1_000_000;
+  const usageResponseJson =
+    cost.costKind === "zero"
+      ? { _synthetic_zero_cost: true }
+      : { prompt_tokens: 4, completion_tokens: 4, cost: declaredCostUsd };
   return {
     schemaVersion: RECORDED_PROVIDER_BUNDLE_SCHEMA_VERSION,
     bundleId: "itotori-228-cost-replay-bundle",
@@ -87,6 +98,7 @@ function bundleWith(
           zdr: true,
           require_parameters: true,
         },
+        usageResponseJson,
       },
     },
     ...overrides,
@@ -312,6 +324,80 @@ describe("ITOTORI-228 — RecordedModelProvider replays captured real cost", () 
             zdr: true,
             require_parameters: true,
           },
+          // ITOTORI-232 — supply a valid usageResponseJson so the
+          // costKind check fires before the usage-block check.
+          usageResponseJson: { cost: 0.000005 },
+        },
+      },
+    } as unknown as RecordedProviderBundle;
+
+    expect(() => new RecordedModelProvider({ bundle: stale })).toThrow(
+      RecordedBundleSchemaMismatchError,
+    );
+  });
+
+  it("refuses a bundle whose response is missing usageResponseJson (ITOTORI-232 / v3 forcing function)", () => {
+    const request = baseRequest();
+    const malformed = {
+      schemaVersion: RECORDED_PROVIDER_BUNDLE_SCHEMA_VERSION,
+      bundleId: "missing-usage-bundle",
+      capturedProviderFamily: "openrouter" as const,
+      capturedProviderName: "openrouter:missing-usage",
+      capturedRequestedModelId: request.modelId,
+      capturedProviderId: request.providerId,
+      capturedActualModelId: request.modelId,
+      responses: {
+        [keyFor(request)]: {
+          content: "captured-response",
+          finishReason: "stop",
+          cost: ZERO_COST,
+          routingPosture: {
+            only: [request.providerId],
+            allow_fallbacks: false,
+            data_collection: "deny",
+            zdr: true,
+            require_parameters: true,
+          },
+          // usageResponseJson intentionally omitted — exactly what a
+          // pre-ITOTORI-232 (v2) bundle on disk would have looked like.
+          // Replaying without it would let the ledger row claim a
+          // different cost than the LIVE run that produced the bundle.
+        },
+      },
+    } as unknown as RecordedProviderBundle;
+
+    expect(() => new RecordedModelProvider({ bundle: malformed })).toThrow(
+      RecordedBundleSchemaMismatchError,
+    );
+  });
+
+  it("refuses a v3 bundle whose usageResponseJson.cost mismatches the captured ProviderCost", () => {
+    const request = baseRequest();
+    const stale = {
+      schemaVersion: RECORDED_PROVIDER_BUNDLE_SCHEMA_VERSION,
+      bundleId: "usage-cost-mismatch-bundle",
+      capturedProviderFamily: "openrouter" as const,
+      capturedProviderName: "openrouter:usage-cost-mismatch",
+      capturedRequestedModelId: request.modelId,
+      capturedProviderId: request.providerId,
+      capturedActualModelId: request.modelId,
+      responses: {
+        [keyFor(request)]: {
+          content: "captured-response",
+          finishReason: "stop",
+          // captured ProviderCost claims 10_000 micros = $0.01 USD …
+          cost: { costKind: "billed", currency: "USD", amountMicrosUsd: 10_000 },
+          routingPosture: {
+            only: [request.providerId],
+            allow_fallbacks: false,
+            data_collection: "deny",
+            zdr: true,
+            require_parameters: true,
+          },
+          // … but the captured usage block says $99 USD. The replay
+          // would silently disagree with itself; bundle construction
+          // must reject this before any caller sees the bundle.
+          usageResponseJson: { cost: 99 },
         },
       },
     } as unknown as RecordedProviderBundle;

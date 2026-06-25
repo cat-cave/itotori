@@ -71,6 +71,15 @@ function baseLedgerInput(draftJobAttemptId: string): RecordLedgerEntryInput {
     tokensOut: 200,
     costUnit: "usd",
     costAmount: "0.01250000",
+    // ITOTORI-232 — required `usage` block mirrored from the originating
+    // OR response. `cost: 0.0125` matches `costAmount: "0.01250000"`
+    // exactly; the DB CHECK enforces equality within 1e-9 USD.
+    usageResponseJson: {
+      prompt_tokens: 500,
+      completion_tokens: 200,
+      total_tokens: 700,
+      cost: 0.0125,
+    },
     latencyMs: 1200,
     fallbackChain: [],
     isRecordedProvider: false,
@@ -107,6 +116,12 @@ describe.skipIf(!process.env.DATABASE_URL)("ItotoriDraftAttemptProviderLedgerRep
       expect(entry.tokensOut).toBe(200);
       expect(entry.costUnit).toBe("usd");
       expect(entry.costAmount).toBe("0.01250000");
+      expect(entry.usageResponseJson).toEqual({
+        prompt_tokens: 500,
+        completion_tokens: 200,
+        total_tokens: 700,
+        cost: 0.0125,
+      });
       expect(entry.latencyMs).toBe(1200);
       expect(entry.fallbackChain).toEqual([]);
       expect(entry.isRecordedProvider).toBe(false);
@@ -128,6 +143,14 @@ describe.skipIf(!process.env.DATABASE_URL)("ItotoriDraftAttemptProviderLedgerRep
         ...baseLedgerInput(attemptId),
         providerProofId: "provider-proof-fixture-02",
         costAmount: "0.00500000",
+        // ITOTORI-232 — `cost` in usage_response_json must match the
+        // overridden `costAmount` (DB CHECK enforces within 1e-9 USD).
+        usageResponseJson: {
+          prompt_tokens: 500,
+          completion_tokens: 200,
+          total_tokens: 700,
+          cost: 0.005,
+        },
       });
 
       const entries = await repo.loadEntriesByAttempt(localActor, attemptId);
@@ -227,18 +250,21 @@ describe.skipIf(!process.env.DATABASE_URL)("ItotoriDraftAttemptProviderLedgerRep
         providerProofId: "proof-a",
         modelId: "anthropic/claude-3.5-sonnet",
         costAmount: "0.01000000",
+        usageResponseJson: { prompt_tokens: 500, completion_tokens: 200, cost: 0.01 },
       });
       await repo.recordLedgerEntry(localActor, {
         ...baseLedgerInput(attemptId),
         providerProofId: "proof-b",
         modelId: "anthropic/claude-3.5-sonnet",
         costAmount: "0.02000000",
+        usageResponseJson: { prompt_tokens: 500, completion_tokens: 200, cost: 0.02 },
       });
       await repo.recordLedgerEntry(localActor, {
         ...baseLedgerInput(attemptId),
         providerProofId: "proof-c",
         modelId: "openai/gpt-4o-mini",
         costAmount: "0.00500000",
+        usageResponseJson: { prompt_tokens: 500, completion_tokens: 200, cost: 0.005 },
       });
 
       const window = {
@@ -325,18 +351,21 @@ describe.skipIf(!process.env.DATABASE_URL)("ItotoriDraftAttemptProviderLedgerRep
         providerProofId: "proof-prov-a",
         providerId: "anthropic",
         costAmount: "0.01500000",
+        usageResponseJson: { prompt_tokens: 500, completion_tokens: 200, cost: 0.015 },
       });
       await repo.recordLedgerEntry(localActor, {
         ...baseLedgerInput(attemptId),
         providerProofId: "proof-prov-b",
         providerId: "anthropic",
         costAmount: "0.02500000",
+        usageResponseJson: { prompt_tokens: 500, completion_tokens: 200, cost: 0.025 },
       });
       await repo.recordLedgerEntry(localActor, {
         ...baseLedgerInput(attemptId),
         providerProofId: "proof-prov-c",
         providerId: "openai",
         costAmount: "0.00750000",
+        usageResponseJson: { prompt_tokens: 500, completion_tokens: 200, cost: 0.0075 },
       });
 
       const window = {
@@ -372,6 +401,7 @@ describe.skipIf(!process.env.DATABASE_URL)("ItotoriDraftAttemptProviderLedgerRep
         tokensIn: 100,
         tokensOut: 50,
         latencyMs: 1000,
+        usageResponseJson: { prompt_tokens: 100, completion_tokens: 50, cost: 0.01 },
       });
       await repo.recordLedgerEntry(localActor, {
         ...baseLedgerInput(attemptId),
@@ -382,6 +412,7 @@ describe.skipIf(!process.env.DATABASE_URL)("ItotoriDraftAttemptProviderLedgerRep
         tokensIn: 200,
         tokensOut: 100,
         latencyMs: 3000,
+        usageResponseJson: { prompt_tokens: 200, completion_tokens: 100, cost: 0.02 },
       });
       await repo.recordLedgerEntry(localActor, {
         ...baseLedgerInput(attemptId),
@@ -392,6 +423,7 @@ describe.skipIf(!process.env.DATABASE_URL)("ItotoriDraftAttemptProviderLedgerRep
         tokensIn: 50,
         tokensOut: 25,
         latencyMs: 500,
+        usageResponseJson: { prompt_tokens: 50, completion_tokens: 25, cost: 0.005 },
       });
 
       const window = {
@@ -440,6 +472,7 @@ describe.skipIf(!process.env.DATABASE_URL)("ItotoriDraftAttemptProviderLedgerRep
         modelId: "anthropic/claude-3.5-sonnet",
         providerId: "anthropic",
         costAmount: "0.01000000",
+        usageResponseJson: { prompt_tokens: 500, completion_tokens: 200, cost: 0.01 },
       });
       await repo.recordLedgerEntry(localActor, {
         ...baseLedgerInput(attemptId),
@@ -447,6 +480,7 @@ describe.skipIf(!process.env.DATABASE_URL)("ItotoriDraftAttemptProviderLedgerRep
         modelId: "anthropic/claude-3.5-sonnet",
         providerId: "anthropic",
         costAmount: "0.02000000",
+        usageResponseJson: { prompt_tokens: 500, completion_tokens: 200, cost: 0.02 },
       });
 
       const window = {
@@ -516,6 +550,162 @@ describe.skipIf(!process.env.DATABASE_URL)("ItotoriDraftAttemptProviderLedgerRep
           to: new Date(),
         }),
       ).rejects.toMatchObject({ name: "AuthorizationError", permission: "catalog.read" });
+    } finally {
+      await context.close();
+    }
+  });
+
+  // ---------------------------------------------------------------------
+  // ITOTORI-232 — schema-level enforcement of real cost.
+  //
+  // Migration 0041 adds three guards on itotori_draft_attempt_provider_ledger:
+  //   (a) cost_unit = 'usd';
+  //   (b) usage_response_json jsonb NOT NULL + jsonb_typeof = 'object';
+  //   (c) cost_amount equals (usage_response_json->>'cost')::numeric within
+  //       1e-9 USD whenever usage_response_json carries a real `cost` field.
+  //
+  // The tests below assert each guard fires with the expected Postgres
+  // error code (23514 check_violation, 23502 not_null_violation) so a
+  // future regression cannot silently weaken them.
+  // ---------------------------------------------------------------------
+
+  it("ITOTORI-232: rejects row whose cost_amount mismatches usage_response_json.cost", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      await provisionDraftJobFixtureProject(context.db, localActor);
+      const attemptId = await provisionDraftAttempt(context.db);
+      const repo = new ItotoriDraftAttemptProviderLedgerRepository(context.db);
+
+      // The audit-mandated regression: cost_amount = 99 (fake) but the
+      // mirrored usage block reports a real cost of 0.000005 USD. The
+      // partial-NULL CHECK fires because usage_response_json carries a
+      // real `cost` field.
+      let captured: unknown;
+      try {
+        await repo.recordLedgerEntry(localActor, {
+          ...baseLedgerInput(attemptId),
+          providerProofId: "provider-proof-fake-cost-01",
+          costAmount: "99.00000000",
+          usageResponseJson: {
+            prompt_tokens: 500,
+            completion_tokens: 200,
+            cost: 0.000005,
+          },
+        });
+      } catch (error) {
+        captured = error;
+      }
+      expect(pgErrorCodeOf(captured)).toBe("23514");
+      const message = (captured as { message?: string } | undefined)?.message ?? "";
+      expect(message).toMatch(/cost.*usage|usage.*cost|check/iu);
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("ITOTORI-232: allows rows whose usage_response_json has no `cost` field (sentinel exempt)", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      await provisionDraftJobFixtureProject(context.db, localActor);
+      const attemptId = await provisionDraftAttempt(context.db);
+      const repo = new ItotoriDraftAttemptProviderLedgerRepository(context.db);
+
+      // Offline / local / fake provider rows that genuinely never billed
+      // carry an object with no `cost` key. The partial-NULL CHECK
+      // exempts these — cost_amount = 0 by application contract; the
+      // sentinel key is greppable.
+      const entry = await repo.recordLedgerEntry(localActor, {
+        ...baseLedgerInput(attemptId),
+        providerProofId: "provider-proof-zero-cost-01",
+        costAmount: "0.00000000",
+        usageResponseJson: { _local_no_billing: true },
+      });
+      expect(entry.costAmount).toBe("0.00000000");
+      expect(entry.usageResponseJson).toEqual({ _local_no_billing: true });
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("ITOTORI-232: rejects row whose cost_unit is not 'usd'", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      await provisionDraftJobFixtureProject(context.db, localActor);
+      const attemptId = await provisionDraftAttempt(context.db);
+      const repo = new ItotoriDraftAttemptProviderLedgerRepository(context.db);
+
+      let captured: unknown;
+      try {
+        await repo.recordLedgerEntry(localActor, {
+          ...baseLedgerInput(attemptId),
+          providerProofId: "provider-proof-bad-unit-01",
+          costUnit: "eur",
+        });
+      } catch (error) {
+        captured = error;
+      }
+      expect(pgErrorCodeOf(captured)).toBe("23514");
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("ITOTORI-232: rejects row whose usage_response_json is not a JSON object", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      await provisionDraftJobFixtureProject(context.db, localActor);
+      const attemptId = await provisionDraftAttempt(context.db);
+      // Bypass the typed repository to attempt a raw INSERT with a
+      // JSON array for usage_response_json. The DB CHECK
+      // `jsonb_typeof(usage_response_json) = 'object'` must reject it.
+      let captured: unknown;
+      try {
+        await context.pool.query(
+          `insert into itotori_draft_attempt_provider_ledger (
+              ledger_entry_id,
+              draft_job_attempt_id,
+              provider_proof_id,
+              provider_id,
+              cost_unit,
+              cost_amount,
+              usage_response_json
+            ) values ($1, $2, $3, $4, $5, $6, $7::jsonb)`,
+          [
+            "draft-attempt-provider-ledger-bad-shape",
+            attemptId,
+            "provider-proof-bad-shape-01",
+            "anthropic",
+            "usd",
+            "0.00000000",
+            '["not", "an", "object"]',
+          ],
+        );
+      } catch (error) {
+        captured = error;
+      }
+      expect(pgErrorCodeOf(captured)).toBe("23514");
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("ITOTORI-232: allows rows whose cost_amount matches usage_response_json.cost within 1e-9", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      await provisionDraftJobFixtureProject(context.db, localActor);
+      const attemptId = await provisionDraftAttempt(context.db);
+      const repo = new ItotoriDraftAttemptProviderLedgerRepository(context.db);
+
+      // costAmount stores 8-decimal-place truncation of cost; the 9th
+      // and below are within tolerance. 0.00001234 ~= 0.0000123399 to
+      // within 1e-9. The CHECK MUST accept it.
+      const entry = await repo.recordLedgerEntry(localActor, {
+        ...baseLedgerInput(attemptId),
+        providerProofId: "provider-proof-tight-match-01",
+        costAmount: "0.00001234",
+        usageResponseJson: { cost: 0.00001234 },
+      });
+      expect(entry.costAmount).toBe("0.00001234");
     } finally {
       await context.close();
     }

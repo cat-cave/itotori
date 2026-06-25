@@ -814,6 +814,10 @@ function failedProviderRunFromRequest(input: {
     // honest stand-in. A future capture path could carry the
     // already-built routing block for HTTP-level failures.
     routingPosture: localOnlyRoutingPosture(input.request.providerId),
+    // ITOTORI-232 — pre-fetch failures never produced a `usage` block;
+    // record the typed sentinel so the ledger row is object-shaped and
+    // the partial-NULL CHECK exempts it (no `cost` key).
+    usageResponseJson: { _pre_fetch_failure: true },
     prompt: input.request.prompt,
   };
   if (input.request.preset) {

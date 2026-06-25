@@ -220,6 +220,10 @@ export const migrations = [
     id: "0040_provider_ledger_routing_posture",
     file: "0040_provider_ledger_routing_posture.sql",
   },
+  {
+    id: "0041_ledger_real_cost_enforcement",
+    file: "0041_ledger_real_cost_enforcement.sql",
+  },
 ] as const;
 
 function migrationPath(file: string): string {

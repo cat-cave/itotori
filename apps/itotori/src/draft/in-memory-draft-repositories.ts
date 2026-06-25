@@ -233,6 +233,43 @@ export class InMemoryDraftAttemptProviderLedgerRepository implements ItotoriDraf
         `providerId must be a non-empty string (ITOTORI-220 model+provider pair rule)`,
       );
     }
+    // ITOTORI-232 — mirror the DB-backed repository's typed gate so the
+    // in-memory fake refuses missing / mis-shaped usage_response_json
+    // before round-tripping it. The DB CHECK enforces the same shape +
+    // cost equality; this gate keeps the typed parity.
+    if (
+      input.usageResponseJson === null ||
+      typeof input.usageResponseJson !== "object" ||
+      Array.isArray(input.usageResponseJson)
+    ) {
+      throw new InMemoryDraftRepositoryError(
+        `usageResponseJson must be a JSON object (ITOTORI-232 real-cost enforcement)`,
+      );
+    }
+    // ITOTORI-232 — mirror the DB partial CHECK: when usage_response_json
+    // carries a real `cost` field, cost_amount must match it within 1e-9
+    // USD. Rows without a `cost` key (offline / local / fake providers)
+    // are exempt.
+    const declaredCost = (input.usageResponseJson as Record<string, unknown>).cost;
+    if (declaredCost !== undefined && declaredCost !== null) {
+      const declaredCostNumber =
+        typeof declaredCost === "number"
+          ? declaredCost
+          : typeof declaredCost === "string"
+            ? Number.parseFloat(declaredCost)
+            : Number.NaN;
+      const ledgerCostNumber = Number.parseFloat(input.costAmount);
+      if (!Number.isFinite(declaredCostNumber) || !Number.isFinite(ledgerCostNumber)) {
+        throw new InMemoryDraftRepositoryError(
+          `usageResponseJson.cost and costAmount must both be finite numbers (got ${String(declaredCost)} / ${input.costAmount})`,
+        );
+      }
+      if (Math.abs(ledgerCostNumber - declaredCostNumber) >= 1e-9) {
+        throw new InMemoryDraftRepositoryError(
+          `costAmount ${input.costAmount} does not match usageResponseJson.cost ${String(declaredCost)} within 1e-9 USD (ITOTORI-232 real-cost enforcement)`,
+        );
+      }
+    }
     const entry: DraftAttemptProviderLedgerEntry = {
       ledgerEntryId,
       draftJobAttemptId: input.draftJobAttemptId,
@@ -250,6 +287,7 @@ export class InMemoryDraftAttemptProviderLedgerRepository implements ItotoriDraf
       tokensOut: input.tokensOut ?? null,
       costUnit: input.costUnit,
       costAmount: input.costAmount,
+      usageResponseJson: { ...input.usageResponseJson },
       latencyMs: input.latencyMs ?? null,
       fallbackChain: [...(input.fallbackChain ?? [])],
       isRecordedProvider: input.isRecordedProvider ?? false,

@@ -153,6 +153,10 @@ export class OpenRouterProvider implements ModelProvider {
         errorClasses: ["provider_network_error"],
         tokenUsage: { tokenCountSource: "unknown" },
         routingPosture,
+        // ITOTORI-232 — no response body landed; record the typed
+        // network-error sentinel so a later audit can tell pre-response
+        // failures apart from missing-cost responses.
+        usageResponseJson: { _network_error: true },
       });
       await this.live.artifactRecorder.recordProviderRun(
         buildArtifact({
@@ -190,6 +194,11 @@ export class OpenRouterProvider implements ModelProvider {
         errorClasses: [`http_${response.status}`],
         tokenUsage: { tokenCountSource: "unknown" },
         routingPosture,
+        // ITOTORI-232 — surface whatever `usage` the error envelope
+        // carried (often nothing on 4xx/5xx); if the body wasn't a
+        // record at all, record the typed http-error sentinel so the
+        // ledger row is still object-shaped and traceable.
+        usageResponseJson: extractUsageResponseJson(body, "_http_error"),
       });
       await this.live.artifactRecorder.recordProviderRun(
         buildArtifact({
@@ -229,6 +238,10 @@ export class OpenRouterProvider implements ModelProvider {
         errorClasses: ["provider_response_invalid"],
         tokenUsage: isRecord(body) ? normalizeUsage(body.usage) : { tokenCountSource: "unknown" },
         routingPosture,
+        // ITOTORI-232 — preserve whatever `usage` shape the malformed
+        // response carried; the failed-run path tags the row zero-cost
+        // so even an absent `cost` field is honest.
+        usageResponseJson: extractUsageResponseJson(body, "_response_invalid"),
       });
       await this.live.artifactRecorder.recordProviderRun(
         buildArtifact({
@@ -282,6 +295,11 @@ export class OpenRouterProvider implements ModelProvider {
         errorClasses: ["pair_mismatch"],
         tokenUsage: normalized.tokenUsage,
         routingPosture,
+        // ITOTORI-232 — surface the upstream `usage` block; the
+        // pair-mismatch failure path tags the run zero-cost (see
+        // buildProviderRunRecord), so `cost_amount` is 0 — but we still
+        // capture whatever upstream charged the audit can review.
+        usageResponseJson: extractUsageResponseJson(body, "_pair_mismatch"),
       });
       await this.live.artifactRecorder.recordProviderRun(
         buildArtifact({
@@ -316,6 +334,12 @@ export class OpenRouterProvider implements ModelProvider {
       tokenUsage: normalized.tokenUsage,
       cost: normalized.cost,
       routingPosture,
+      // ITOTORI-232 — mirror the response's `usage` block verbatim onto
+      // the run so the recorder persists it into the ledger row. The
+      // `cost` field in this object is the same upstream value
+      // normalizeOpenRouterCost extracted; the DB CHECK enforces that
+      // `cost_amount = usage_response_json->>'cost'` within 1e-9 USD.
+      usageResponseJson: extractUsageResponseJson(body, null),
     });
     const metadata = adapterMetadata(body, providerRouting);
     await this.live.artifactRecorder.recordProviderRun(
@@ -802,6 +826,106 @@ function normalizeOpenRouterCost(response: Record<string, unknown>): ProviderCos
 }
 
 /**
+ * ITOTORI-232 — extract the `usage` block from an OpenRouter response body
+ * and return it as a plain JsonObject suitable for persisting verbatim into
+ * `itotori_draft_attempt_provider_ledger.usage_response_json`.
+ *
+ * Behaviour:
+ *
+ *   - On a successful call (`failureMarker === null`) the response's full
+ *     `usage` object is mirrored verbatim, including `cost`, `cost_details`,
+ *     `prompt_tokens_details`, and any caching annotations. This is the
+ *     ledger row's load-bearing payload: the DB CHECK (migration 0041)
+ *     verifies `cost_amount = usage_response_json->>'cost'` to within 1e-9
+ *     USD on every new row. We re-shape only the JSON-incompatible bits
+ *     (filtering out symbols / undefined leaves) via {@link jsonValueOrUndefined};
+ *     numbers, strings, booleans, arrays, and nested objects survive verbatim.
+ *
+ *   - On a FAILED call (`failureMarker` is a sentinel like `_http_error` /
+ *     `_response_invalid` / `_pair_mismatch`) we deliberately STRIP the
+ *     upstream `cost` field before persisting. Failed runs are tagged
+ *     zero-cost (see `buildProviderRunRecord`); if we kept the upstream
+ *     `cost` here, the partial-NULL CHECK would fire and reject the row
+ *     (cost_amount=0 ≠ usage.cost). The typed sentinel key documents WHY
+ *     the row carries no `cost`.
+ *
+ * The returned object is always shaped: caller never sees `undefined`.
+ */
+function extractUsageResponseJson(
+  body: unknown,
+  failureMarker: "_http_error" | "_response_invalid" | "_pair_mismatch" | null,
+): JsonObject {
+  const usageBlock = isRecord(body) && isRecord(body.usage) ? body.usage : undefined;
+  if (usageBlock === undefined) {
+    if (failureMarker === null) {
+      // A successful call MUST carry usage (normalizeOpenRouterCost will
+      // have thrown before we got here if usage.cost was absent); this
+      // branch is unreachable but we surface a typed sentinel rather
+      // than a silent empty object so a future regression surfaces
+      // visibly in the ledger.
+      return { _missing_usage: true };
+    }
+    return { [failureMarker]: true };
+  }
+  const json: JsonObject = {};
+  for (const [key, value] of Object.entries(usageBlock)) {
+    // Failure-path strip: never persist upstream `cost` on a zero-cost
+    // failure row; the CHECK would reject the equality.
+    if (failureMarker !== null && key === "cost") {
+      continue;
+    }
+    const converted = jsonValueOrUndefined(value);
+    if (converted !== undefined) {
+      json[key] = converted;
+    }
+  }
+  if (failureMarker !== null) {
+    json[failureMarker] = true;
+  }
+  return json;
+}
+
+/**
+ * ITOTORI-232 — best-effort coerce a value pulled from the OR response
+ * body into a {@link JsonValue}. OpenRouter responses are JSON to begin
+ * with so this is just a defensive filter for stray undefined / symbol /
+ * function leaves (impossible in practice; the helper exists so the
+ * extractor compiles against the strict JsonValue type without `any`).
+ */
+function jsonValueOrUndefined(value: unknown): JsonValue | undefined {
+  if (value === null) {
+    return null;
+  }
+  if (typeof value === "string" || typeof value === "boolean") {
+    return value;
+  }
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : undefined;
+  }
+  if (Array.isArray(value)) {
+    const arr: JsonValue[] = [];
+    for (const entry of value) {
+      const converted = jsonValueOrUndefined(entry);
+      if (converted !== undefined) {
+        arr.push(converted);
+      }
+    }
+    return arr;
+  }
+  if (typeof value === "object") {
+    const obj: JsonObject = {};
+    for (const [key, raw] of Object.entries(value as Record<string, unknown>)) {
+      const converted = jsonValueOrUndefined(raw);
+      if (converted !== undefined) {
+        obj[key] = converted;
+      }
+    }
+    return obj;
+  }
+  return undefined;
+}
+
+/**
  * ITOTORI-233 (held) — endpoint-pricing recompute path, parked here so the
  * 2026-06-25 audit's keep-and-fix verdict survives. NOT called from the
  * main path. The audit's evidence (docs/audits/openrouter-cost-tracking-
@@ -848,6 +972,19 @@ function buildProviderRunRecord(input: {
   cost?: ProviderCost;
   // ITOTORI-230 — typed routing posture for the captured run.
   routingPosture: OpenRouterRoutingPosture;
+  // ITOTORI-232 — full `usage` block from the originating OR response,
+  // mirrored verbatim onto the run so the recorder can persist it into
+  // the ledger row. For LIVE OR successes this carries `cost` as a
+  // number equal to ProviderCost.amountMicrosUsd / 1_000_000 (the same
+  // upstream value normalizeOpenRouterCost extracted); the DB CHECK
+  // (migration 0041) enforces the equality within 1e-9 USD.
+  //
+  // For failure paths (HTTP error, response-invalid, pair mismatch)
+  // we still surface whatever `usage` shape the response carried (or
+  // an empty `{}` when there was no body at all) — but those runs are
+  // tagged zero-cost, so the absence of a `cost` key in the JSON is
+  // honest and the CHECK does not fire on them.
+  usageResponseJson: JsonObject;
 }): ProviderRunRecord {
   const completedAt = new Date();
   const fallbackPlan = fallbackPlanForRequest(input.request, input.requestedModelId);
@@ -883,6 +1020,7 @@ function buildProviderRunRecord(input: {
     // throws on missing usage.cost rather than returning a fallback.
     cost: input.status === "succeeded" && input.cost ? input.cost : ZERO_COST,
     routingPosture: input.routingPosture,
+    usageResponseJson: input.usageResponseJson,
     prompt: input.request.prompt,
   };
   if (input.request.preset) {
