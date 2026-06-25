@@ -25829,6 +25829,38 @@
         "Fixture replaced with a synthetic path-traversal that does NOT actually exercise the 7z decoder path"
       ],
       "statusReason": "Minted 2026-06-25 to track the #[ignore] applied at commit a7a93af when unblocking CI on main. Pre-existing regression; not introduced by the OR audit cascade."
+    },
+    {
+      "id": "KAIFUU-237",
+      "title": "kaifuu-vault-source: repair catalog_schema_unsupported tests for CI parity",
+      "status": "planned",
+      "priority": "P2",
+      "target": "continuous",
+      "projects": ["kaifuu"],
+      "parallelGroup": "kaifuu-core",
+      "dependsOn": [],
+      "summary": "Two tests in crates/kaifuu-vault-source/tests/contract_failure_modes_test.rs (catalog_schema_unsupported_when_schema_version_row_is_absent + catalog_schema_unsupported_when_schema_version_exceeds_supported) pass on nix devshell locally but fail on Ubuntu CI. Likely rusqlite/SQLite version skew or schema_version table read path behavior. Marked #[ignore] at commit a7a93af to unblock CI. Investigate locally with Ubuntu container reproducer; either fix the test setup to be SQLite-version-agnostic or pin rusqlite versions.",
+      "deliverables": [
+        "Reproduce the failure on Ubuntu (docker run rust:stable cargo test, or matching CI rustc + rusqlite versions)",
+        "Either: fix the test setup so the expected error path fires consistently, OR: surface the actual error in the assertion message so future regressions are immediately diagnosable",
+        "Remove #[ignore] attributes on both tests"
+      ],
+      "acceptanceCriteria": [
+        "rg \"#\\[ignore.*CI-only failure.*KAIFUU-237\" crates/kaifuu-vault-source returns 0 hits",
+        "just ci exits 0 on Ubuntu CI with both tests re-enabled"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-vault-source --test contract_failure_modes_test catalog_schema_unsupported"
+        }
+      ],
+      "auditFocus": [
+        "Tests renamed instead of repaired",
+        "Assertion widened to accept any error variant (loses specificity)",
+        "CI gated to skip on Ubuntu (defeats the parity goal)"
+      ],
+      "statusReason": "Minted 2026-06-25 to track #[ignore] applied when unblocking CI on main. Pre-existing regression hidden behind the formatter failure that was blocking CI before the 165-commit unpushed period."
     }
   ]
 }
