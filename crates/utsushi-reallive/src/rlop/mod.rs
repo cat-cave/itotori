@@ -2,10 +2,13 @@
 //! registry / longop-scheduler seam.
 //!
 //! Per-module RLOperation tables (the actual text / control-flow / sys
-//! operations) land in UTSUSHI-209 and UTSUSHI-210. This module provides
-//! only the trait the per-module tables implement, the typed dispatch
-//! outcome they return, and the `RlopRegistry` / `LongOpScheduler`
-//! plumbing the [`crate::vm::Vm`] consumes during `step`.
+//! operations) land in UTSUSHI-209 and UTSUSHI-210. This module hosts
+//! both the trait substrate (defined here) and the per-module submodules
+//! that register concrete ops:
+//!
+//! - [`longops`] — typed long-op implementors (selection runtime, …).
+//! - [`module_ctrl`] — UTSUSHI-210 control-flow family
+//!   (`goto`/`gosub`/`farcall`/`ret`/`rtl`/`select`/`halt`).
 //!
 //! # Public surface
 //!
@@ -38,6 +41,9 @@ use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 
 use crate::vm::{SceneId, Vm};
+
+pub mod longops;
+pub mod module_ctrl;
 
 /// Engine-neutral dispatch argument. The UTSUSHI-205 evaluator returns
 /// `i32`, so the integer variant is `i32` for that path; the byte-string

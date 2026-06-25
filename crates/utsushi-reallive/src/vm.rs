@@ -90,6 +90,13 @@ const VM_MANIFEST: &str = "utsushi-reallive-vm/0.1.0-alpha";
 /// an infinite `goto +0` loop without a terminator.
 pub const DEFAULT_STEP_BUDGET: u32 = 100_000;
 
+/// Hard ceiling on the call-stack depth. Pinned at the rlvm-documented
+/// 1024 frames so a runaway `gosub`/`farcall` chain produces a typed
+/// [`VmError::StackOverflow`] instead of an unbounded `Vec` growth.
+/// Acceptance criterion #4 in UTSUSHI-210 — exercised by the
+/// `stack_overflow_after_limit_pushes` test.
+pub const STACK_DEPTH_LIMIT: usize = 1024;
+
 /// One frame on the VM call stack.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StackFrame {
@@ -399,6 +406,17 @@ pub enum VmWarning {
         /// pc where it appeared.
         pc: u32,
     },
+    /// An RLOp dispatch observed a malformed argument list (wrong arity
+    /// or wrong [`crate::rlop::ExprValue`] variant). The op advances and
+    /// the warning names the op family + reason so the audit trail can
+    /// pin the call site.
+    RlopArgsInvalid {
+        /// Stable string naming the op family (e.g. `"goto"`,
+        /// `"farcall_with_args"`).
+        op: &'static str,
+        /// Short reason ("expected 1 Int arg, got 0", etc.).
+        reason: String,
+    },
 }
 
 /// Typed error variants surfaced by [`Vm::step`]. Every failure mode is
@@ -460,6 +478,21 @@ pub enum VmError {
         pc: u32,
         /// Reason string (BytecodeDecodeError `to_string()`).
         reason: String,
+    },
+    /// The call stack reached [`STACK_DEPTH_LIMIT`] frames. The push was
+    /// rejected — the VM does not silently truncate the stack. Surfaces
+    /// the originating scene/pc so a runaway `gosub`/`farcall` chain can
+    /// be diagnosed at the call site.
+    #[error("utsushi.reallive.vm.stack_overflow: scene={scene} pc={pc} limit={limit} kind={kind}")]
+    StackOverflow {
+        /// Scene id where the offending push happened.
+        scene: SceneId,
+        /// pc where the offending push happened.
+        pc: u32,
+        /// Pinned ceiling ([`STACK_DEPTH_LIMIT`]).
+        limit: usize,
+        /// Stable string naming the frame kind that was being pushed.
+        kind: &'static str,
     },
 }
 
@@ -558,6 +591,31 @@ impl Vm {
     /// silently un-halts itself.
     pub fn clear_halt(&mut self) {
         self.halted = false;
+    }
+
+    /// Append a fail-soft warning to the VM's diagnostic buffer.
+    ///
+    /// Per-module RLOperation tables (UTSUSHI-209, UTSUSHI-210, …) use
+    /// this to surface a typed observation (e.g. a malformed argument
+    /// list) without panicking and without inventing a separate side
+    /// channel. The warning is drained by [`Vm::take_warnings`] at the
+    /// caller's cadence.
+    pub fn push_warning(&mut self, warning: VmWarning) {
+        self.warnings.push(warning);
+    }
+
+    /// Apply a [`DispatchOutcome`] against the VM, advancing to
+    /// `post_pc` for [`DispatchOutcome::Advance`] / `Yield`. Exposed so
+    /// per-module RLOperation tests can drive the same code path as
+    /// the dispatch loop without staging a synthetic scene store —
+    /// useful for the stack-overflow and frame-kind-mismatch
+    /// acceptance tests.
+    pub fn apply_dispatch_outcome(
+        &mut self,
+        outcome: &DispatchOutcome,
+        post_pc: u32,
+    ) -> Result<(), VmError> {
+        self.apply_outcome(outcome, post_pc)
     }
 
     /// Take a single fetch / decode / dispatch / advance step.
@@ -822,6 +880,14 @@ impl Vm {
                 target_scene,
                 target_pc,
             } => {
+                if self.stack.len() >= STACK_DEPTH_LIMIT {
+                    return Err(VmError::StackOverflow {
+                        scene: self.scene,
+                        pc: self.pc,
+                        limit: STACK_DEPTH_LIMIT,
+                        kind: StackFrameKind::Subroutine.as_str(),
+                    });
+                }
                 self.stack.push(StackFrame {
                     return_scene: None,
                     return_pc: *return_pc,
@@ -837,6 +903,14 @@ impl Vm {
                 target_scene,
                 target_pc,
             } => {
+                if self.stack.len() >= STACK_DEPTH_LIMIT {
+                    return Err(VmError::StackOverflow {
+                        scene: self.scene,
+                        pc: self.pc,
+                        limit: STACK_DEPTH_LIMIT,
+                        kind: StackFrameKind::FarCall.as_str(),
+                    });
+                }
                 self.stack.push(StackFrame {
                     return_scene: Some(*return_scene),
                     return_pc: *return_pc,
