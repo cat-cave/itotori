@@ -105,6 +105,7 @@
 mod archive;
 mod ast;
 pub mod bridge;
+pub mod compressor;
 pub mod decompressor;
 pub mod detector;
 mod diagnostics;
@@ -128,6 +129,7 @@ pub use ast::{
     ParseStatus, Scene, StringSlot, StringSlotId, StringSlotRef, StringSlotRole,
 };
 pub use bridge::{BridgeOpts, BridgeProduceError, ProducedBundle, produce_bundle};
+pub use compressor::{CompressError, compress_avg32_literal};
 pub use decompressor::{AVG32_COMPRESSED_PREAMBLE_LEN, DecompressError, decompress_avg32};
 pub use detector::{
     REALLIVE_DATA_DIR_NAME, REALLIVE_DETECTOR_DEFAULT_MAX_DEPTH, RealLiveDetectError,
@@ -158,6 +160,14 @@ pub use opcode::{
 };
 pub use opcodes::NamedOpcode;
 pub use parser::{parse_scene, parse_scene_into_ast};
+pub use patchback::bundle_driven::{
+    PATCHBACK_ARCHIVE_PARSE_FAILURE_CODE, PATCHBACK_BUNDLE_SCHEMA_INVALID_CODE,
+    PATCHBACK_COMPRESS_FAILURE_CODE, PATCHBACK_DECOMPRESS_FAILURE_CODE,
+    PATCHBACK_PROVENANCE_MISMATCH_CODE, PATCHBACK_SCENE_HEADER_INVALID_CODE,
+    PATCHBACK_SCENE_PACKING_OVERFLOW_CODE, PATCHBACK_TARGET_ENCODE_FAILURE_CODE,
+    PATCHBACK_TARGET_NONEMPTY_CODE, PatchbackEncoding, PatchbackError, PatchbackOpts,
+    TranslatedBundleV02, TranslatedUnitTarget, apply_translated_bundle,
+};
 pub use patchback::{
     PATCHBACK_OFFSET_OVERFLOW_CODE, PATCHBACK_PARSER_REGRESSION_CODE,
     PATCHBACK_PROTECTED_SPAN_LOST_CODE, PATCHBACK_SHIFT_JIS_ENCODE_FAILURE_CODE,

@@ -1,0 +1,1291 @@
+//! KAIFUU-211 — Real-bytes patchback driver.
+//!
+//! Consumes a translated v0.2 BridgeBundle ([`TranslatedBundleV02`])
+//! and a writable copy of a RealLive `Seen.txt`, walks each translated
+//! unit, locates its source-side Textout body inside the appropriate
+//! scene's decompressed bytecode, splices the Shift-JIS-encoded target
+//! text into the bytecode, re-compresses the scene via the AVG32 LZSS
+//! literal-only encoder ([`crate::compressor::compress_avg32_literal`]),
+//! rewrites the scene header's compressed-size field, and rewrites the
+//! 10,000-slot directory to accommodate the new scene offsets.
+//!
+//! Clean-room provenance:
+//! - The driver consumes the KAIFUU-210 v0.2 BridgeBundle surface
+//!   ([`kaifuu_core::BridgeBundleV02`]) and inverts the offsets the
+//!   producer pinned in `sourceLocation.range`. No rlvm source is
+//!   vendored; no Wine; no Windows helper; no external compressor.
+//! - The re-emission pipeline (decompress → splice → recompress → header
+//!   rewrite → directory rewrite) is the literal inverse of the
+//!   KAIFUU-188 / KAIFUU-210 read pipeline.
+//! - The translated-bundle schema is the source-side v0.2 BridgeBundle
+//!   augmented with a per-unit `target` object carrying `{locale, text}`.
+//!   The augmentation is local to this crate — itotori populates it via
+//!   `apply_translated_bundle` callers.
+//!
+//! Hard constraints:
+//! - The original `seen_txt_bytes` slice is NOT modified. The function
+//!   returns a fresh `Vec<u8>` carrying the patched archive.
+//! - Every failure mode is a typed [`PatchbackError`] variant. There is
+//!   no silent fallback; no `unwrap()` clusters in production code.
+//! - Length-changing edits are supported. The compressor emits
+//!   variable-length output and the directory is rewritten accordingly.
+//!   No length-preserving constraint is imposed on the translated text.
+
+use std::collections::BTreeMap;
+
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use thiserror::Error;
+
+use kaifuu_core::{BridgeBundleV02, BridgeContractValidationError};
+
+use crate::archive::{
+    REALLIVE_SEEN_TXT_DIRECTORY_BYTE_LEN, REALLIVE_SEEN_TXT_SLOT_COUNT, RealLiveSceneIndex,
+    parse_archive,
+};
+use crate::compressor::{CompressError, compress_avg32_literal};
+use crate::decompressor::decompress_avg32;
+use crate::encoding::{ShiftJisEncodeError, encode_shift_jis_slot};
+use crate::opcode::{RealLiveOpcode, parse_real_bytecode};
+use crate::scene_header::{SCENE_HEADER_BYTE_LEN, SceneHeader, SceneHeaderError};
+
+/// Stable error codes published per the KAIFUU-211 acceptance criteria.
+pub const PATCHBACK_PROVENANCE_MISMATCH_CODE: &str =
+    "kaifuu.reallive.patchback_provenance_mismatch";
+pub const PATCHBACK_SCENE_PACKING_OVERFLOW_CODE: &str =
+    "kaifuu.reallive.patchback_scene_packing_overflow";
+pub const PATCHBACK_TARGET_NONEMPTY_CODE: &str = "kaifuu.reallive.patchback_target_nonempty";
+pub const PATCHBACK_BUNDLE_SCHEMA_INVALID_CODE: &str =
+    "kaifuu.reallive.patchback_bundle_schema_invalid";
+pub const PATCHBACK_TARGET_ENCODE_FAILURE_CODE: &str =
+    "kaifuu.reallive.patchback_target_encode_failure";
+pub const PATCHBACK_SCENE_HEADER_INVALID_CODE: &str =
+    "kaifuu.reallive.patchback_scene_header_invalid";
+pub const PATCHBACK_DECOMPRESS_FAILURE_CODE: &str = "kaifuu.reallive.patchback_decompress_failure";
+pub const PATCHBACK_COMPRESS_FAILURE_CODE: &str = "kaifuu.reallive.patchback_compress_failure";
+pub const PATCHBACK_ARCHIVE_PARSE_FAILURE_CODE: &str =
+    "kaifuu.reallive.patchback_archive_parse_failure";
+
+/// Fatal errors raised by [`apply_translated_bundle`].
+#[derive(Debug, Clone, Error)]
+pub enum PatchbackError {
+    /// The translated bundle's source side failed v0.2 schema
+    /// validation, OR a unit was missing a `target.text` payload.
+    #[error(
+        "{PATCHBACK_BUNDLE_SCHEMA_INVALID_CODE}: translated bundle failed v0.2 validation: {message}"
+    )]
+    BundleSchemaInvalid { message: String },
+    /// The source Seen.txt envelope failed to parse.
+    #[error(
+        "{PATCHBACK_ARCHIVE_PARSE_FAILURE_CODE}: source Seen.txt envelope failed to parse: {message}"
+    )]
+    ArchiveParseFailure { message: String },
+    /// A unit's `sourceLocation.range` did not match any scene in the
+    /// source archive, or pointed outside the scene's decompressed
+    /// bytecode, or pointed at bytes that aren't a Shift-JIS Textout run.
+    #[error(
+        "{PATCHBACK_PROVENANCE_MISMATCH_CODE}: unit {bridge_unit_id} byte range {start_byte:#x}..{end_byte:#x} does not resolve to a scene textout body: {reason}"
+    )]
+    ProvenanceMismatch {
+        bridge_unit_id: String,
+        start_byte: u64,
+        end_byte: u64,
+        reason: String,
+    },
+    /// A scene header failed to parse after decompression.
+    #[error(
+        "{PATCHBACK_SCENE_HEADER_INVALID_CODE}: scene {scene_id:04} header parse failed: {message}"
+    )]
+    SceneHeaderInvalid { scene_id: u16, message: String },
+    /// AVG32 decompression of an original scene's bytecode failed.
+    #[error(
+        "{PATCHBACK_DECOMPRESS_FAILURE_CODE}: scene {scene_id:04} bytecode decompression failed: {message}"
+    )]
+    DecompressFailure { scene_id: u16, message: String },
+    /// AVG32 re-compression of a patched scene's bytecode failed.
+    #[error(
+        "{PATCHBACK_COMPRESS_FAILURE_CODE}: scene {scene_id:04} bytecode re-compression failed: {message}"
+    )]
+    CompressFailure { scene_id: u16, message: String },
+    /// The translated `target.text` could not be encoded as Shift-JIS.
+    #[error(
+        "{PATCHBACK_TARGET_ENCODE_FAILURE_CODE}: unit {bridge_unit_id} target text could not be encoded as Shift-JIS: {message}"
+    )]
+    TargetEncodeFailure {
+        bridge_unit_id: String,
+        message: String,
+    },
+    /// After re-compression, the patched archive's directory could not
+    /// fit the new scene sizes within `u32::MAX` total bytes (or some
+    /// slot's `byte_offset + byte_len` would have overflowed).
+    #[error(
+        "{PATCHBACK_SCENE_PACKING_OVERFLOW_CODE}: patched archive size {observed_size} exceeds the encodable budget; {reason}"
+    )]
+    ScenePackingOverflow { observed_size: u64, reason: String },
+}
+
+impl From<BridgeContractValidationError> for PatchbackError {
+    fn from(value: BridgeContractValidationError) -> Self {
+        Self::BundleSchemaInvalid {
+            message: value.to_string(),
+        }
+    }
+}
+
+/// Caller-supplied knobs for [`apply_translated_bundle`].
+///
+/// All fields are required; there are no implicit defaults. The
+/// encoding choice is named here in code (per the KAIFUU-211 audit-
+/// focus row "Encoding choice (UTF-8 vs Shift-JIS) defaulted instead of
+/// named in code").
+#[derive(Debug, Clone, Copy)]
+pub struct PatchbackOpts {
+    /// Target text-encoding for the patched bytes. RealLive's runtime
+    /// reads Shift-JIS Textout bodies from the bytecode stream; the
+    /// canonical patchback emits [`PatchbackEncoding::ShiftJis`].
+    pub target_encoding: PatchbackEncoding,
+}
+
+impl PatchbackOpts {
+    /// The canonical KAIFUU-211 emission mode: Shift-JIS target text.
+    pub const fn shift_jis() -> Self {
+        Self {
+            target_encoding: PatchbackEncoding::ShiftJis,
+        }
+    }
+}
+
+/// Named encoding choice for the patched Textout bodies.
+///
+/// The KAIFUU-211 spec calls out the choice as audit-focused: the
+/// patchback must NOT default the encoding silently. Today the only
+/// supported variant is [`PatchbackEncoding::ShiftJis`]; a future UTF-8
+/// runtime-decode hook would add a sibling variant.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PatchbackEncoding {
+    /// Encode `target.text` as Shift-JIS via
+    /// [`crate::encoding::encode_shift_jis_slot`] and splice the
+    /// resulting bytes into the bytecode stream verbatim.
+    ShiftJis,
+}
+
+/// One per-unit translation entry consumed by the patchback driver.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TranslatedUnitTarget {
+    /// Matches the source [`kaifuu_core::LocalizationUnitV02::bridge_unit_id`].
+    pub bridge_unit_id: String,
+    /// Locale tag of the target text (e.g. `"en-US"`).
+    pub target_locale: String,
+    /// The translated body — UTF-8 string that will be re-encoded to
+    /// Shift-JIS at write time.
+    pub target_text: String,
+}
+
+/// Translated v0.2 BridgeBundle.
+///
+/// Wraps the source-side [`kaifuu_core::BridgeBundleV02`] (which is
+/// validated against the v0.2 schema before being accepted) with one
+/// `target_text` per unit.
+///
+/// JSON shape consumed by [`TranslatedBundleV02::from_json`]:
+///
+/// ```text
+/// {
+///   "schemaVersion": "0.2.0",
+///   ...   // canonical v0.2 BridgeBundle fields
+///   "units": [
+///     {
+///       "bridgeUnitId": "...",
+///       ...   // canonical unit fields
+///       "target": { "locale": "en-US", "text": "Hello!" }
+///     },
+///     ...
+///   ]
+/// }
+/// ```
+#[derive(Debug, Clone)]
+pub struct TranslatedBundleV02 {
+    pub source: BridgeBundleV02,
+    pub targets: Vec<TranslatedUnitTarget>,
+}
+
+impl TranslatedBundleV02 {
+    /// Parse a translated-bundle JSON value: validate the source side
+    /// against the v0.2 contract and pull `target.text` per unit.
+    pub fn from_json(value: &Value) -> Result<Self, PatchbackError> {
+        let source = BridgeBundleV02::validate_json(value)?;
+        let units_json = value
+            .get("units")
+            .and_then(Value::as_array)
+            .ok_or_else(|| PatchbackError::BundleSchemaInvalid {
+                message: "translated bundle JSON has no `units` array".into(),
+            })?;
+        if units_json.len() != source.units.len() {
+            return Err(PatchbackError::BundleSchemaInvalid {
+                message: format!(
+                    "translated bundle units array length {observed} does not match validated unit count {expected}",
+                    observed = units_json.len(),
+                    expected = source.units.len()
+                ),
+            });
+        }
+        let mut targets = Vec::with_capacity(source.units.len());
+        for (index, unit_json) in units_json.iter().enumerate() {
+            let bridge_unit_id = source.units[index].bridge_unit_id.clone();
+            let target_obj = unit_json
+                .get("target")
+                .and_then(Value::as_object)
+                .ok_or_else(|| PatchbackError::BundleSchemaInvalid {
+                    message: format!(
+                        "translated bundle unit[{index}] is missing the `target` object"
+                    ),
+                })?;
+            let target_locale = target_obj
+                .get("locale")
+                .and_then(Value::as_str)
+                .ok_or_else(|| PatchbackError::BundleSchemaInvalid {
+                    message: format!(
+                        "translated bundle unit[{index}].target.locale must be a string"
+                    ),
+                })?
+                .to_string();
+            let target_text = target_obj
+                .get("text")
+                .and_then(Value::as_str)
+                .ok_or_else(|| PatchbackError::BundleSchemaInvalid {
+                    message: format!(
+                        "translated bundle unit[{index}].target.text must be a string"
+                    ),
+                })?
+                .to_string();
+            if target_text.is_empty() {
+                return Err(PatchbackError::BundleSchemaInvalid {
+                    message: format!(
+                        "translated bundle unit[{index}].target.text must be non-empty (got empty string)"
+                    ),
+                });
+            }
+            targets.push(TranslatedUnitTarget {
+                bridge_unit_id,
+                target_locale,
+                target_text,
+            });
+        }
+        Ok(Self { source, targets })
+    }
+}
+
+/// Apply a translated v0.2 BridgeBundle to a writable copy of a
+/// RealLive `Seen.txt`. Returns the patched archive bytes.
+///
+/// Steps (one synchronous pass — no I/O):
+///
+/// 1. Parse the source Seen.txt envelope via [`parse_archive`].
+/// 2. Walk every `bundle.targets[i]` paired with its source `bundle.source.units[i]`.
+///    Resolve each unit's `(scene_id, decompressed_byte_offset,
+///    decompressed_byte_len)` from `sourceLocation.range` minus the
+///    owning scene's `byte_offset`.
+/// 3. Group edits by scene.
+/// 4. For each modified scene:
+///    - Decompress its bytecode via [`decompress_avg32`].
+///    - Apply edits in **highest-offset-first** order so earlier edits
+///      do not shift later ones' offsets.
+///    - Re-compress the modified bytecode via
+///      [`compress_avg32_literal`].
+///    - Rewrite the scene header's `bytecode_compressed_size` field.
+///    - Re-emit the scene blob.
+/// 5. Re-pack the archive: rewrite the 10,000-slot directory with new
+///    `(byte_offset, byte_len)` pairs; scenes after a modified scene
+///    shift forward to accommodate length changes. Unmodified scenes
+///    keep their bytes verbatim.
+/// 6. Re-parse the patched archive as a self-check; mismatched scene
+///    count surfaces [`PatchbackError::ArchiveParseFailure`].
+pub fn apply_translated_bundle(
+    original_seen_txt: &[u8],
+    bundle: &TranslatedBundleV02,
+    opts: &PatchbackOpts,
+) -> Result<Vec<u8>, PatchbackError> {
+    let scene_index =
+        parse_archive(original_seen_txt).map_err(|diag| PatchbackError::ArchiveParseFailure {
+            message: format!("{}: {}", diag.code, diag.message),
+        })?;
+
+    // Resolve each translation to a (scene_entry_index, edit) tuple.
+    let mut edits_by_scene_index: BTreeMap<usize, Vec<ResolvedEdit>> = BTreeMap::new();
+    for (target, unit) in bundle.targets.iter().zip(bundle.source.units.iter()) {
+        let resolved = resolve_edit(target, unit, &scene_index, opts)?;
+        edits_by_scene_index
+            .entry(resolved.scene_entry_index)
+            .or_default()
+            .push(resolved);
+    }
+
+    // For every populated scene, prepare a `(scene_id, scene_bytes)`
+    // tuple. Edited scenes get re-emitted; untouched ones keep their
+    // original blob bytes verbatim.
+    let mut emitted_scene_blobs: Vec<(u16, Vec<u8>)> =
+        Vec::with_capacity(scene_index.entries.len());
+    for (entry_index, entry) in scene_index.entries.iter().enumerate() {
+        let blob_start = entry.byte_offset as usize;
+        let blob_end = blob_start + entry.byte_len as usize;
+        if blob_end > original_seen_txt.len() {
+            return Err(PatchbackError::ArchiveParseFailure {
+                message: format!(
+                    "scene {scene:04} blob runs past archive length \
+                     (offset={blob_start}, len={len}, archive_len={archive_len})",
+                    scene = entry.scene_id,
+                    len = entry.byte_len,
+                    archive_len = original_seen_txt.len()
+                ),
+            });
+        }
+        let original_blob = &original_seen_txt[blob_start..blob_end];
+
+        if let Some(edits) = edits_by_scene_index.get(&entry_index) {
+            let patched = patch_scene_blob(entry.scene_id, original_blob, edits)?;
+            emitted_scene_blobs.push((entry.scene_id, patched));
+        } else {
+            emitted_scene_blobs.push((entry.scene_id, original_blob.to_vec()));
+        }
+    }
+
+    // Re-pack the archive: 80,000-byte directory + concatenated scene
+    // blobs in slot-index order. Unpopulated slots stay zero.
+    let mut directory = vec![0u8; REALLIVE_SEEN_TXT_DIRECTORY_BYTE_LEN as usize];
+    let mut payload_cursor = REALLIVE_SEEN_TXT_DIRECTORY_BYTE_LEN;
+    let mut payload: Vec<u8> = Vec::new();
+    for (scene_id, blob) in &emitted_scene_blobs {
+        let slot_index = *scene_id as usize;
+        if slot_index >= REALLIVE_SEEN_TXT_SLOT_COUNT {
+            return Err(PatchbackError::ScenePackingOverflow {
+                observed_size: 0,
+                reason: format!("scene id {scene_id} is outside the 10,000-slot directory range"),
+            });
+        }
+        if payload_cursor + (blob.len() as u64) > u64::from(u32::MAX) {
+            return Err(PatchbackError::ScenePackingOverflow {
+                observed_size: payload_cursor + (blob.len() as u64),
+                reason: "scene byte_offset would exceed u32::MAX".into(),
+            });
+        }
+        let byte_offset_u32: u32 =
+            payload_cursor
+                .try_into()
+                .map_err(|_| PatchbackError::ScenePackingOverflow {
+                    observed_size: payload_cursor,
+                    reason: "scene byte_offset would exceed u32::MAX".into(),
+                })?;
+        let byte_len_u32: u32 =
+            blob.len()
+                .try_into()
+                .map_err(|_| PatchbackError::ScenePackingOverflow {
+                    observed_size: blob.len() as u64,
+                    reason: format!("scene {scene_id:04} blob length exceeds u32::MAX"),
+                })?;
+        let slot_byte_start = slot_index * 8;
+        directory[slot_byte_start..slot_byte_start + 4]
+            .copy_from_slice(&byte_offset_u32.to_le_bytes());
+        directory[slot_byte_start + 4..slot_byte_start + 8]
+            .copy_from_slice(&byte_len_u32.to_le_bytes());
+        payload.extend_from_slice(blob);
+        payload_cursor += blob.len() as u64;
+    }
+
+    let mut output = Vec::with_capacity(directory.len() + payload.len());
+    output.extend_from_slice(&directory);
+    output.extend_from_slice(&payload);
+
+    // Self-check: re-parse the patched archive. If the slot count
+    // changed or any slot runs past the new file length, surface a
+    // typed error rather than a silent corrupt output.
+    let reparse = parse_archive(&output).map_err(|diag| PatchbackError::ArchiveParseFailure {
+        message: format!(
+            "patched Seen.txt failed self-check parse: {}: {}",
+            diag.code, diag.message
+        ),
+    })?;
+    if reparse.entries.len() != scene_index.entries.len() {
+        return Err(PatchbackError::ArchiveParseFailure {
+            message: format!(
+                "patched archive has {} populated slots, source had {}",
+                reparse.entries.len(),
+                scene_index.entries.len()
+            ),
+        });
+    }
+    Ok(output)
+}
+
+/// Edit resolved against the source archive. Carries the indices and
+/// occurrence keys needed to splice the new bytes into the decompressed
+/// bytecode of the owning scene.
+///
+/// The per-unit `decompressed_byte_offset`/`_byte_len` are NOT
+/// authoritative — the KAIFUU-210 bridge producer pinned them
+/// approximately (Command opcode bodies do not surface their full
+/// byte width on the typed variant, so the cursor under-counts).
+/// [`patch_scene_blob`] re-walks the bytecode with [`parse_real_bytecode`]
+/// and matches edits to opcodes by occurrence index, which is the
+/// authoritative key per the v0.2 schema.
+#[derive(Debug, Clone)]
+struct ResolvedEdit {
+    /// Index into `scene_index.entries` (NOT the raw slot id).
+    scene_entry_index: usize,
+    /// Source-side `bridgeUnitId`. Used for typed error reporting.
+    bridge_unit_id: String,
+    /// Surface kind (`"dialogue"` or `"choice_label"`). Determines
+    /// whether to match a Textout or a Choice option during re-walk.
+    surface_kind: String,
+    /// Occurrence index within the scene (parsed from
+    /// `sourceUnitKey = "reallive:scene-NNNN#OOOO"`). This is the
+    /// authoritative key for matching edits to bytecode positions.
+    occurrence_index: usize,
+    /// New Shift-JIS-encoded bytes to splice in place of the existing
+    /// Textout body.
+    new_textout_bytes: Vec<u8>,
+}
+
+fn resolve_edit(
+    target: &TranslatedUnitTarget,
+    unit: &kaifuu_core::LocalizationUnitV02,
+    scene_index: &RealLiveSceneIndex,
+    opts: &PatchbackOpts,
+) -> Result<ResolvedEdit, PatchbackError> {
+    if target.bridge_unit_id != unit.bridge_unit_id {
+        return Err(PatchbackError::BundleSchemaInvalid {
+            message: format!(
+                "translated bundle target bridgeUnitId {target_id} does not match unit bridgeUnitId {unit_id}",
+                target_id = target.bridge_unit_id,
+                unit_id = unit.bridge_unit_id,
+            ),
+        });
+    }
+
+    // Pull (startByte, endByte) from the source-location range. The
+    // KAIFUU-210 producer pinned the start at the scene blob's file
+    // offset plus an approximate decompressed-byte cursor. We use only
+    // the file-offset half to identify which scene owns the unit;
+    // the exact in-bytecode position is recovered by re-walking
+    // [`parse_real_bytecode`] in [`patch_scene_blob`].
+    let range = unit
+        .source_location
+        .get("range")
+        .and_then(Value::as_object)
+        .ok_or_else(|| PatchbackError::ProvenanceMismatch {
+            bridge_unit_id: target.bridge_unit_id.clone(),
+            start_byte: 0,
+            end_byte: 0,
+            reason: "sourceLocation has no `range` object".into(),
+        })?;
+    let start_byte = range
+        .get("startByte")
+        .and_then(Value::as_u64)
+        .ok_or_else(|| PatchbackError::ProvenanceMismatch {
+            bridge_unit_id: target.bridge_unit_id.clone(),
+            start_byte: 0,
+            end_byte: 0,
+            reason: "sourceLocation.range.startByte must be a u64".into(),
+        })?;
+    let end_byte = range
+        .get("endByte")
+        .and_then(Value::as_u64)
+        .ok_or_else(|| PatchbackError::ProvenanceMismatch {
+            bridge_unit_id: target.bridge_unit_id.clone(),
+            start_byte,
+            end_byte: 0,
+            reason: "sourceLocation.range.endByte must be a u64".into(),
+        })?;
+    if end_byte <= start_byte {
+        return Err(PatchbackError::ProvenanceMismatch {
+            bridge_unit_id: target.bridge_unit_id.clone(),
+            start_byte,
+            end_byte,
+            reason: "endByte must be greater than startByte".into(),
+        });
+    }
+
+    // Locate the scene whose `byte_offset .. byte_offset + byte_len`
+    // strictly contains `start_byte`.
+    let (scene_entry_index, _entry) = scene_index
+        .entries
+        .iter()
+        .enumerate()
+        .find(|(_, entry)| {
+            let scene_start = entry.byte_offset;
+            let scene_end = scene_start + u64::from(entry.byte_len);
+            start_byte >= scene_start && start_byte < scene_end
+        })
+        .ok_or_else(|| PatchbackError::ProvenanceMismatch {
+            bridge_unit_id: target.bridge_unit_id.clone(),
+            start_byte,
+            end_byte,
+            reason: format!(
+                "no scene in archive directory contains startByte {start_byte:#x} \
+                 (archive has {scene_count} populated scenes)",
+                scene_count = scene_index.entries.len()
+            ),
+        })?;
+
+    // Parse the occurrence index out of the v0.2 sourceUnitKey shape
+    // `reallive:scene-NNNN#OOOO`. This is the authoritative
+    // unit-positioning key per the KAIFUU-210 producer's surface.
+    let occurrence_index = parse_occurrence_index(&unit.source_unit_key).ok_or_else(|| {
+        PatchbackError::ProvenanceMismatch {
+            bridge_unit_id: target.bridge_unit_id.clone(),
+            start_byte,
+            end_byte,
+            reason: format!(
+                "sourceUnitKey {key:?} does not match the canonical \
+                 `reallive:scene-NNNN#OOOO` shape",
+                key = unit.source_unit_key
+            ),
+        }
+    })?;
+
+    // Encode the target text per the named PatchbackOpts policy.
+    let new_textout_bytes = match opts.target_encoding {
+        PatchbackEncoding::ShiftJis => {
+            encode_shift_jis_slot(&target.target_text).map_err(|err: ShiftJisEncodeError| {
+                PatchbackError::TargetEncodeFailure {
+                    bridge_unit_id: target.bridge_unit_id.clone(),
+                    message: err.message,
+                }
+            })?
+        }
+    };
+
+    Ok(ResolvedEdit {
+        scene_entry_index,
+        bridge_unit_id: target.bridge_unit_id.clone(),
+        surface_kind: unit.surface_kind.clone(),
+        occurrence_index,
+        new_textout_bytes,
+    })
+}
+
+/// Parse the occurrence index out of a v0.2 `sourceUnitKey`. Returns
+/// `None` if the key does not match the canonical
+/// `reallive:scene-NNNN#OOOO` shape.
+fn parse_occurrence_index(key: &str) -> Option<usize> {
+    // `reallive:scene-{scene_id:04}#{occ:04}`. We pull the suffix
+    // after the literal `#`.
+    let (_, occurrence_str) = key.split_once('#')?;
+    occurrence_str.parse::<usize>().ok()
+}
+
+/// Re-emit a scene blob with the given edits applied.
+///
+/// - Parses the existing scene header.
+/// - Decompresses the existing bytecode.
+/// - Re-walks the decompressed bytecode via [`parse_real_bytecode`] to
+///   recover authoritative `(start_byte, end_byte)` ranges for every
+///   text-emitting opcode (Textout body + Choice option bytes).
+/// - Matches each edit to its opcode by `occurrence_index`.
+/// - Applies edits in **descending opcode-offset order** so earlier
+///   splices do not shift later ones.
+/// - Re-compresses the new bytecode via [`compress_avg32_literal`].
+/// - Rewrites the header's `bytecode_compressed_size` field in place.
+/// - Returns `[header || compressed_bytecode]` concatenation.
+fn patch_scene_blob(
+    scene_id: u16,
+    original_blob: &[u8],
+    edits: &[ResolvedEdit],
+) -> Result<Vec<u8>, PatchbackError> {
+    let header = SceneHeader::parse(original_blob).map_err(|err| match err {
+        SceneHeaderError::TruncatedHeader { .. } => PatchbackError::SceneHeaderInvalid {
+            scene_id,
+            message: err.to_string(),
+        },
+    })?;
+
+    let bytecode_start = header.bytecode_offset as usize;
+    let bytecode_end = bytecode_start + header.bytecode_compressed_size as usize;
+    if bytecode_end > original_blob.len() {
+        return Err(PatchbackError::SceneHeaderInvalid {
+            scene_id,
+            message: format!(
+                "scene header declares bytecode_offset={bytecode_start} + compressed_size={size} past blob length {blob_len}",
+                size = header.bytecode_compressed_size,
+                blob_len = original_blob.len()
+            ),
+        });
+    }
+    let compressed = &original_blob[bytecode_start..bytecode_end];
+    let mut decompressed = decompress_avg32(compressed, header.bytecode_uncompressed_size as usize)
+        .map_err(|err| PatchbackError::DecompressFailure {
+            scene_id,
+            message: format!("{err}"),
+        })?;
+
+    // Re-walk the bytecode to recover the exact byte range of every
+    // text-emitting opcode. The KAIFUU-210 producer cursored
+    // approximate offsets that don't survive Command-with-arglist
+    // widths; the authoritative key is `occurrence_index`.
+    let text_unit_positions = collect_text_unit_positions(scene_id, &decompressed)?;
+
+    // Build occurrence-index -> position lookup. Match each edit to
+    // its position; any unmatched edit surfaces a typed provenance
+    // mismatch BEFORE we mutate the bytecode.
+    let mut planned_splices: Vec<PlannedSplice> = Vec::with_capacity(edits.len());
+    for edit in edits {
+        let position = text_unit_positions
+            .iter()
+            .find(|pos| pos.occurrence_index == edit.occurrence_index)
+            .ok_or_else(|| PatchbackError::ProvenanceMismatch {
+                bridge_unit_id: edit.bridge_unit_id.clone(),
+                start_byte: edit.occurrence_index as u64,
+                end_byte: 0,
+                reason: format!(
+                    "occurrence_index {} not found in scene {scene_id:04} after bytecode re-walk \
+                     ({} text positions observed)",
+                    edit.occurrence_index,
+                    text_unit_positions.len()
+                ),
+            })?;
+        if position.surface_kind != edit.surface_kind {
+            return Err(PatchbackError::ProvenanceMismatch {
+                bridge_unit_id: edit.bridge_unit_id.clone(),
+                start_byte: position.start_byte as u64,
+                end_byte: position.end_byte as u64,
+                reason: format!(
+                    "occurrence {} surface_kind mismatch: bundle says {} but bytecode opcode at this position is {}",
+                    edit.occurrence_index, edit.surface_kind, position.surface_kind
+                ),
+            });
+        }
+        planned_splices.push(PlannedSplice {
+            start_byte: position.start_byte,
+            end_byte: position.end_byte,
+            new_bytes: edit.new_textout_bytes.clone(),
+        });
+    }
+
+    // Apply splices highest-offset-first so earlier splices don't
+    // shift later ones.
+    planned_splices.sort_by_key(|splice| std::cmp::Reverse(splice.start_byte));
+    for splice in planned_splices {
+        decompressed.splice(splice.start_byte..splice.end_byte, splice.new_bytes);
+    }
+
+    // Re-compress and re-emit the blob.
+    let compressed_new = compress_avg32_literal(&decompressed).map_err(|err| match err {
+        CompressError::InputTooLarge { .. } | CompressError::OutputTooLarge { .. } => {
+            PatchbackError::CompressFailure {
+                scene_id,
+                message: err.to_string(),
+            }
+        }
+    })?;
+
+    // Rewrite the header in place:
+    //  - bytecode_uncompressed_size at 0x24
+    //  - bytecode_compressed_size at 0x28
+    let mut new_header_bytes = original_blob[..SCENE_HEADER_BYTE_LEN].to_vec();
+    let new_uncompressed: u32 =
+        decompressed
+            .len()
+            .try_into()
+            .map_err(|_| PatchbackError::CompressFailure {
+                scene_id,
+                message: format!(
+                    "patched bytecode uncompressed length {} exceeds u32::MAX",
+                    decompressed.len()
+                ),
+            })?;
+    let new_compressed: u32 =
+        compressed_new
+            .len()
+            .try_into()
+            .map_err(|_| PatchbackError::CompressFailure {
+                scene_id,
+                message: format!(
+                    "patched bytecode compressed length {} exceeds u32::MAX",
+                    compressed_new.len()
+                ),
+            })?;
+    new_header_bytes[0x24..0x28].copy_from_slice(&new_uncompressed.to_le_bytes());
+    new_header_bytes[0x28..0x2c].copy_from_slice(&new_compressed.to_le_bytes());
+
+    // Re-emit: new header + compressed bytecode. The
+    // bytecode_offset stays at its original value (most commonly the
+    // immediate post-header offset, but the format allows other layouts
+    // where pre-bytecode tables sit between the header and the
+    // compressed payload). Preserve the bytes between the header end
+    // and `bytecode_offset` verbatim so any pre-bytecode tables
+    // (kidoku, etc.) survive unchanged.
+    let mut output = Vec::with_capacity(bytecode_start + compressed_new.len());
+    output.extend_from_slice(&new_header_bytes);
+    if bytecode_start > SCENE_HEADER_BYTE_LEN {
+        output.extend_from_slice(&original_blob[SCENE_HEADER_BYTE_LEN..bytecode_start]);
+    }
+    output.extend_from_slice(&compressed_new);
+    Ok(output)
+}
+
+/// Authoritative byte-range record for one text-emitting opcode in a
+/// scene's decompressed bytecode, recovered by re-walking the bytecode
+/// with [`parse_real_bytecode`].
+#[derive(Debug, Clone)]
+struct TextUnitPosition {
+    /// Occurrence sequence within the scene (Textout + Choice options
+    /// each consume one occurrence index, in encounter order — matches
+    /// the KAIFUU-210 producer's `occurrence_index`).
+    occurrence_index: usize,
+    /// Surface kind (`"dialogue"` or `"choice_label"`).
+    surface_kind: &'static str,
+    /// Byte offset (within decompressed bytecode) where the text body
+    /// starts.
+    start_byte: usize,
+    /// Byte offset (within decompressed bytecode) where the text body
+    /// ends (exclusive).
+    end_byte: usize,
+}
+
+/// Splice prepared from a `(ResolvedEdit, TextUnitPosition)` pair.
+struct PlannedSplice {
+    start_byte: usize,
+    end_byte: usize,
+    new_bytes: Vec<u8>,
+}
+
+/// Walk the decompressed bytecode and record exact byte ranges for
+/// every text-emitting opcode. The walker mirrors the lead-byte switch
+/// in [`parse_real_bytecode`] but tracks cursor positions so we can
+/// pair each Textout / Choice-option with an authoritative byte range.
+///
+/// The walker is intentionally narrow: it tracks only the lead bytes
+/// and element widths needed to advance past non-text opcodes. Any
+/// truncation or unrecognised opener surfaces a typed
+/// [`PatchbackError::DecompressFailure`] — partial walks would let
+/// edits target the wrong bytes.
+fn collect_text_unit_positions(
+    scene_id: u16,
+    decompressed: &[u8],
+) -> Result<Vec<TextUnitPosition>, PatchbackError> {
+    let opcodes =
+        parse_real_bytecode(decompressed).map_err(|err| PatchbackError::DecompressFailure {
+            scene_id,
+            message: format!("scene bytecode re-walk failed: {err}"),
+        })?;
+
+    // We re-derive byte ranges by re-scanning the byte stream in
+    // parallel with the opcode list. The opcode list's order matches
+    // the stream's element order; we use the same lead-byte switch to
+    // advance.
+    let mut out: Vec<TextUnitPosition> = Vec::new();
+    let mut pos: usize = 0;
+    let mut occurrence: usize = 0;
+    let mut opcode_iter = opcodes.iter();
+
+    while pos < decompressed.len() {
+        // Pull the next opcode for sanity (should mirror the lead-byte
+        // switch perfectly). If the opcode iterator runs out before we
+        // exhaust the byte stream, surface a typed error.
+        let op = opcode_iter
+            .next()
+            .ok_or_else(|| PatchbackError::DecompressFailure {
+                scene_id,
+                message: format!(
+                    "bytecode re-walk drift: opcode list exhausted at byte {pos} of {len}",
+                    len = decompressed.len()
+                ),
+            })?;
+        let lead = decompressed[pos];
+        let (new_pos, recorded) = advance_one_element(scene_id, decompressed, pos, op, lead)?;
+        if let Some((surface_kind, start_byte, end_byte)) = recorded {
+            out.push(TextUnitPosition {
+                occurrence_index: occurrence,
+                surface_kind,
+                start_byte,
+                end_byte,
+            });
+            occurrence += 1;
+        }
+        if let RealLiveOpcode::Choice { choices } = op {
+            // Each Choice contributes `choices.len()` units, one per
+            // choice option. Choice arg bytes live in `bytes[pos+8 ..
+            // new_pos]` per the rlvm ArgList layout (`(arg0, arg1,
+            // ...)`). Re-derive the per-arg byte ranges from the
+            // original byte stream because the typed `choices` vector
+            // dropped the byte positions.
+            let args_start = pos + crate::opcode::COMMAND_HEADER_LEN;
+            let args_region = &decompressed[args_start..new_pos];
+            let mut option_start = 0usize;
+            let mut cursor = if !args_region.is_empty() && args_region[0] == b'(' {
+                option_start = 1;
+                1
+            } else {
+                0
+            };
+            let mut option_index = 0usize;
+            while cursor < args_region.len() {
+                let b = args_region[cursor];
+                if b == b',' || b == b')' {
+                    let arg_start = args_start + option_start;
+                    let arg_end = args_start + cursor;
+                    if arg_end > arg_start && option_index < choices.len() {
+                        out.push(TextUnitPosition {
+                            occurrence_index: occurrence,
+                            surface_kind: "choice_label",
+                            start_byte: arg_start,
+                            end_byte: arg_end,
+                        });
+                        occurrence += 1;
+                    }
+                    option_index += 1;
+                    cursor += 1;
+                    option_start = cursor;
+                    if b == b')' {
+                        break;
+                    }
+                } else {
+                    cursor += 1;
+                }
+            }
+        }
+        if new_pos <= pos {
+            // No forward progress: defensive guard against infinite
+            // loops on a malformed stream.
+            return Err(PatchbackError::DecompressFailure {
+                scene_id,
+                message: format!(
+                    "bytecode re-walk made no forward progress at byte {pos}; \
+                     opcode={label}",
+                    label = op.label()
+                ),
+            });
+        }
+        pos = new_pos;
+    }
+    Ok(out)
+}
+
+/// Returned by [`advance_one_element`] when the advanced-past element
+/// was a Textout — carries the surface-kind tag plus the body byte
+/// range. `None` for every other element (Meta, Command, Expression,
+/// Unknown).
+type AdvancedTextRange = Option<(&'static str, usize, usize)>;
+
+/// Advance one element in the byte stream. Returns the new byte
+/// position and (if the element was a Textout) the `(surface_kind,
+/// start, end)` of its body bytes.
+fn advance_one_element(
+    scene_id: u16,
+    bytes: &[u8],
+    pos: usize,
+    op: &RealLiveOpcode,
+    lead: u8,
+) -> Result<(usize, AdvancedTextRange), PatchbackError> {
+    use crate::opcode::{COMMAND_HEADER_LEN, opener};
+    match lead {
+        opener::META_COMMA | opener::COMMA => Ok((pos + 1, None)),
+        opener::META_LINE | opener::META_ENTRYPOINT | opener::META_KIDOKU => {
+            if bytes.len() - pos < 3 {
+                return Err(PatchbackError::DecompressFailure {
+                    scene_id,
+                    message: format!("bytecode re-walk hit truncated meta header at byte {pos}"),
+                });
+            }
+            Ok((pos + 3, None))
+        }
+        opener::EXPRESSION => {
+            let body_start = pos + 1;
+            let mut body_end = body_start;
+            while body_end < bytes.len()
+                && !crate::opcode::is_expression_body_terminator(bytes[body_end])
+            {
+                body_end += 1;
+            }
+            Ok((body_end, None))
+        }
+        opener::COMMAND => {
+            if bytes.len() - pos < COMMAND_HEADER_LEN {
+                return Err(PatchbackError::DecompressFailure {
+                    scene_id,
+                    message: format!("bytecode re-walk hit truncated command header at byte {pos}"),
+                });
+            }
+            // Advance past the header and (optionally) the argument
+            // list `(arg0, arg1, ...)`. We mirror the argument scan
+            // from [`crate::opcode::decode_command`] so the cursor
+            // matches.
+            let mut cursor = pos + COMMAND_HEADER_LEN;
+            if cursor < bytes.len() && bytes[cursor] == b'(' {
+                cursor += 1;
+                while cursor < bytes.len() {
+                    let b = bytes[cursor];
+                    cursor += 1;
+                    if b == b')' {
+                        break;
+                    }
+                }
+            }
+            Ok((cursor, None))
+        }
+        other if crate::opcode::is_shift_jis_textout_lead(other) => {
+            // Re-derive the Textout body span. The opcode is
+            // `RealLiveOpcode::Textout { raw_bytes, .. }`; we use
+            // raw_bytes.len() rather than re-scanning so we land at
+            // exactly the same boundary the parser chose.
+            let body_len = match op {
+                RealLiveOpcode::Textout { raw_bytes, .. } => raw_bytes.len(),
+                _ => {
+                    return Err(PatchbackError::DecompressFailure {
+                        scene_id,
+                        message: format!(
+                            "bytecode re-walk drift at byte {pos}: lead {other:#04x} is SJIS \
+                             but opcode is {label}",
+                            label = op.label()
+                        ),
+                    });
+                }
+            };
+            let body_end = pos + body_len;
+            Ok((body_end, Some(("dialogue", pos, body_end))))
+        }
+        _other => {
+            // Coalesce unknown bytes until the next recognised opener
+            // — mirrors [`parse_real_bytecode`]'s Unknown coalescing.
+            let mut body_end = pos;
+            while body_end < bytes.len() && !crate::opcode::is_recognized_opener(bytes[body_end]) {
+                body_end += 1;
+            }
+            // Special case: parser emitted single-byte Unknown when
+            // it can't make progress at all.
+            if body_end == pos {
+                body_end = pos + 1;
+            }
+            Ok((body_end, None))
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::compressor::compress_avg32_literal;
+    use crate::encoding::encode_shift_jis_slot;
+    use serde_json::json;
+
+    /// Build the smallest viable synthetic Seen.txt with one scene
+    /// whose decompressed bytecode starts with one Shift-JIS Textout
+    /// run (`ハ` = `0x83 0x6E`) followed by a MetaLine terminator.
+    fn build_synthetic_archive() -> SyntheticArchive {
+        // Decompressed bytecode: SJIS for "ハ" (0x83 0x6E), then a
+        // MetaLine to terminate the textout run.
+        let plaintext = vec![0x83u8, 0x6E, 0x0A, 0x05, 0x00];
+        let compressed = compress_avg32_literal(&plaintext).expect("compress synthetic");
+
+        // Synthesize a scene header pointing at the compressed payload
+        // immediately after the 0x1d0-byte header.
+        let mut header = vec![0u8; SCENE_HEADER_BYTE_LEN];
+        header[0..4].copy_from_slice(&(SCENE_HEADER_BYTE_LEN as u32).to_le_bytes());
+        header[4..8].copy_from_slice(&110_002u32.to_le_bytes()); // compiler version
+        // bytecode_offset at 0x20.
+        header[0x20..0x24].copy_from_slice(&(SCENE_HEADER_BYTE_LEN as u32).to_le_bytes());
+        // bytecode_uncompressed_size at 0x24.
+        header[0x24..0x28].copy_from_slice(&(plaintext.len() as u32).to_le_bytes());
+        // bytecode_compressed_size at 0x28.
+        header[0x28..0x2c].copy_from_slice(&(compressed.len() as u32).to_le_bytes());
+
+        let mut scene_blob = Vec::with_capacity(header.len() + compressed.len());
+        scene_blob.extend_from_slice(&header);
+        scene_blob.extend_from_slice(&compressed);
+
+        // Build the 80,000-byte directory with scene 1 sitting at file
+        // offset 0x13880.
+        let scene_offset = REALLIVE_SEEN_TXT_DIRECTORY_BYTE_LEN;
+        let mut archive =
+            vec![0u8; REALLIVE_SEEN_TXT_DIRECTORY_BYTE_LEN as usize + scene_blob.len()];
+        // Scene 1's slot is at directory byte offset 1 * 8 == 8.
+        let slot_byte_start = 8;
+        archive[slot_byte_start..slot_byte_start + 4]
+            .copy_from_slice(&(scene_offset as u32).to_le_bytes());
+        archive[slot_byte_start + 4..slot_byte_start + 8]
+            .copy_from_slice(&(scene_blob.len() as u32).to_le_bytes());
+        archive[REALLIVE_SEEN_TXT_DIRECTORY_BYTE_LEN as usize..].copy_from_slice(&scene_blob);
+
+        // Decompressed-byte-offset of the Textout run inside the
+        // decompressed bytecode: position 0 (starts immediately).
+        let _ = scene_offset;
+        SyntheticArchive { archive }
+    }
+
+    struct SyntheticArchive {
+        archive: Vec<u8>,
+    }
+
+    fn make_bundle_json(
+        scene_blob_file_offset: u64,
+        decompressed_byte_offset: u64,
+        decompressed_byte_len: u64,
+        target_text: &str,
+    ) -> Value {
+        let bridge_id = "01970000-0000-7000-8000-000000000001";
+        let revision_id = "01970000-0000-7000-8000-000000000002";
+        let asset_id = "01970000-0000-7000-8000-000000000003";
+        let bridge_unit_id = "01970000-0000-7000-8000-000000000004";
+        let surface_id = "01970000-0000-7000-8000-000000000005";
+        let span_id_unused = "01970000-0000-7000-8000-000000000006";
+        let _ = span_id_unused;
+        let source_profile_revision_id = "01970000-0000-7000-8000-000000000007";
+
+        let scene_blob_hash =
+            kaifuu_core::sha256_hash_bytes(b"synthetic-scene-1-placeholder-content");
+        let source_hash = kaifuu_core::sha256_hash_bytes("Synthetic source text".as_bytes());
+        let source_profile_hash = kaifuu_core::sha256_hash_bytes(b"kaifuu-reallive-sweetie-hd");
+
+        let start_byte = scene_blob_file_offset + decompressed_byte_offset;
+        let end_byte = start_byte + decompressed_byte_len;
+
+        json!({
+            "schemaVersion": "0.2.0",
+            "bridgeId": bridge_id,
+            "sourceGame": {
+                "gameId": "sweetie-hd",
+                "gameVersion": "1.0.0",
+                "sourceProfileId": "kaifuu-reallive-sweetie-hd",
+                "sourceProfileRevision": {
+                    "revisionId": source_profile_revision_id,
+                    "revisionKind": "content_hash",
+                    "value": source_profile_hash,
+                },
+            },
+            "sourceBundleHash": scene_blob_hash,
+            "sourceBundleRevision": {
+                "revisionId": revision_id,
+                "revisionKind": "content_hash",
+                "value": scene_blob_hash,
+            },
+            "sourceLocale": "ja-JP",
+            "hashStrategy": {
+                "sourceProfile": {
+                    "scope": "source_profile",
+                    "algorithm": "sha256",
+                    "normalization": "utf8-nfc-lf-json-stable-v1",
+                },
+                "sourceBundle": {
+                    "scope": "source_bundle",
+                    "algorithm": "sha256",
+                    "normalization": "utf8-nfc-lf-json-stable-v1",
+                },
+                "sourceAsset": {
+                    "scope": "source_asset",
+                    "algorithm": "sha256",
+                    "normalization": "bytes",
+                },
+                "sourceUnit": {
+                    "scope": "source_unit",
+                    "algorithm": "sha256",
+                    "normalization": "utf8-nfc-lf-json-stable-v1",
+                    "fields": ["sourceLocale", "sourceUnitKey", "sourceText", "spans.raw"],
+                },
+                "patchExport": {
+                    "scope": "patch_export",
+                    "algorithm": "sha256",
+                    "normalization": "utf8-nfc-lf-json-stable-v1",
+                },
+                "deltaPackage": {
+                    "scope": "delta_package",
+                    "algorithm": "sha256",
+                    "normalization": "utf8-nfc-lf-json-stable-v1",
+                },
+            },
+            "extractor": {
+                "name": "kaifuu-reallive-bridge",
+                "version": "0.1.0",
+            },
+            "assets": [
+                {
+                    "assetId": asset_id,
+                    "assetKey": "reallive:scene-0001",
+                    "assetKind": "script",
+                    "sourceHash": scene_blob_hash,
+                    "sourceRevision": {
+                        "revisionId": revision_id,
+                        "revisionKind": "content_hash",
+                        "value": scene_blob_hash,
+                    },
+                    "path": "REALLIVEDATA/Seen.txt#scene-0001",
+                }
+            ],
+            "units": [
+                {
+                    "bridgeUnitId": bridge_unit_id,
+                    "surfaceId": surface_id,
+                    "surfaceKind": "dialogue",
+                    "sourceUnitKey": "reallive:scene-0001#0000",
+                    "occurrenceId": "scene-0001-occ-0000",
+                    "sourceLocale": "ja-JP",
+                    "sourceText": "Synthetic source text",
+                    "sourceHash": source_hash,
+                    "sourceRevision": {
+                        "revisionId": revision_id,
+                        "revisionKind": "content_hash",
+                        "value": scene_blob_hash,
+                    },
+                    "sourceAssetRef": {
+                        "assetId": asset_id,
+                        "assetKey": "reallive:scene-0001",
+                    },
+                    "sourceLocation": {
+                        "containerKey": "reallive:scene-0001",
+                        "entryPath": ["scene", "0001", "units", "0000"],
+                        "range": {
+                            "startByte": start_byte,
+                            "endByte": end_byte,
+                        },
+                    },
+                    "speaker": {"knowledgeState": "not_applicable"},
+                    "context": {
+                        "route": {
+                            "sceneKey": "scene-0001",
+                            "position": "line-0000",
+                        },
+                    },
+                    "spans": [],
+                    "patchRef": {
+                        "assetId": asset_id,
+                        "writeMode": "replace",
+                        "sourceUnitKey": "reallive:scene-0001#0000",
+                        "sourceRevision": {
+                            "revisionId": revision_id,
+                            "revisionKind": "content_hash",
+                            "value": scene_blob_hash,
+                        },
+                    },
+                    "runtimeExpectation": {
+                        "expectationKind": "trace_text",
+                        "traceKey": "scene-0001-occ-0000",
+                    },
+                    "target": {
+                        "locale": "en-US",
+                        "text": target_text,
+                    }
+                }
+            ],
+            "policyRecords": [],
+        })
+    }
+
+    #[test]
+    fn empty_bundle_is_identity_round_trip_through_archive_self_check() {
+        let SyntheticArchive { archive, .. } = build_synthetic_archive();
+        // A bundle with zero target units is a programming error
+        // (validate_json requires `units` to match the source side),
+        // but a 1-unit bundle with target_text identical to the source
+        // body should still re-emit a parseable archive.
+        let bundle_json = make_bundle_json(
+            REALLIVE_SEEN_TXT_DIRECTORY_BYTE_LEN,
+            0, // decompressed_byte_offset: Textout starts at decompressed offset 0
+            2,
+            "Hi", // 2-byte ASCII fits the source 2-byte SJIS body
+        );
+        let bundle = TranslatedBundleV02::from_json(&bundle_json).expect("bundle parses");
+        let patched = apply_translated_bundle(&archive, &bundle, &PatchbackOpts::shift_jis())
+            .expect("apply succeeds");
+        // Re-parse must yield a directory with the same number of
+        // populated entries.
+        let reparsed = parse_archive(&patched).expect("patched archive re-parses");
+        assert_eq!(reparsed.entries.len(), 1);
+    }
+
+    #[test]
+    fn provenance_byte_range_outside_any_scene_emits_typed_mismatch_error() {
+        let SyntheticArchive { archive, .. } = build_synthetic_archive();
+        // Point the byte range at file offset 0 (inside the directory,
+        // not any scene).
+        let bundle_json = make_bundle_json(0, 0, 4, "Hi!!");
+        let bundle = TranslatedBundleV02::from_json(&bundle_json).expect("bundle parses");
+        let err = apply_translated_bundle(&archive, &bundle, &PatchbackOpts::shift_jis())
+            .expect_err("must reject out-of-scene byte range");
+        assert!(
+            matches!(err, PatchbackError::ProvenanceMismatch { .. }),
+            "expected ProvenanceMismatch, got {err:?}"
+        );
+    }
+
+    #[test]
+    fn schema_invalid_bundle_emits_typed_error_before_any_write() {
+        let SyntheticArchive { archive, .. } = build_synthetic_archive();
+        // Drop schemaVersion to force v0.2 validation failure.
+        let mut bundle_json = make_bundle_json(
+            REALLIVE_SEEN_TXT_DIRECTORY_BYTE_LEN,
+            0, // decompressed_byte_offset: Textout starts at decompressed offset 0
+            2,
+            "Hi",
+        );
+        bundle_json
+            .as_object_mut()
+            .expect("object")
+            .remove("schemaVersion");
+        let err = TranslatedBundleV02::from_json(&bundle_json)
+            .expect_err("schema-invalid bundle must surface typed error");
+        assert!(
+            matches!(err, PatchbackError::BundleSchemaInvalid { .. }),
+            "expected BundleSchemaInvalid, got {err:?}"
+        );
+        // Sanity: the archive is unchanged.
+        let reparsed = parse_archive(&archive).expect("source still parses");
+        assert_eq!(reparsed.entries.len(), 1);
+    }
+
+    #[test]
+    fn missing_target_text_surfaces_typed_schema_invalid() {
+        let mut bundle_json = make_bundle_json(
+            REALLIVE_SEEN_TXT_DIRECTORY_BYTE_LEN,
+            0, // decompressed_byte_offset: Textout starts at decompressed offset 0
+            2,
+            "Hi",
+        );
+        bundle_json["units"][0]
+            .as_object_mut()
+            .expect("object")
+            .remove("target");
+        let err = TranslatedBundleV02::from_json(&bundle_json)
+            .expect_err("missing target object must surface typed error");
+        assert!(matches!(err, PatchbackError::BundleSchemaInvalid { .. }));
+    }
+
+    #[test]
+    fn length_changing_edit_succeeds_and_grows_archive() {
+        let SyntheticArchive { archive, .. } = build_synthetic_archive();
+        // Replace the 2-byte "ハ" with a 30-character ASCII string —
+        // length-changing edit.
+        let target = "[EN] hello world from kaifuu";
+        let bundle_json = make_bundle_json(
+            REALLIVE_SEEN_TXT_DIRECTORY_BYTE_LEN,
+            0, // decompressed_byte_offset: Textout starts at decompressed offset 0
+            2,
+            target,
+        );
+        let bundle = TranslatedBundleV02::from_json(&bundle_json).expect("bundle parses");
+        let patched = apply_translated_bundle(&archive, &bundle, &PatchbackOpts::shift_jis())
+            .expect("apply succeeds despite length growth");
+        let reparsed = parse_archive(&patched).expect("patched archive re-parses");
+        assert_eq!(reparsed.entries.len(), 1);
+        let new_entry = &reparsed.entries[0];
+        assert!(
+            new_entry.byte_len > 0,
+            "patched scene must have non-zero length"
+        );
+        // Decompress & confirm the new bytecode starts with the SJIS-
+        // encoded target.
+        let blob_start = new_entry.byte_offset as usize;
+        let blob_end = blob_start + new_entry.byte_len as usize;
+        let header = SceneHeader::parse(&patched[blob_start..blob_end]).expect("header");
+        let bytecode_start = blob_start + header.bytecode_offset as usize;
+        let bytecode_end = bytecode_start + header.bytecode_compressed_size as usize;
+        let new_decompressed = decompress_avg32(
+            &patched[bytecode_start..bytecode_end],
+            header.bytecode_uncompressed_size as usize,
+        )
+        .expect("re-decompress");
+        let target_sjis = encode_shift_jis_slot(target).expect("encode target");
+        assert!(
+            new_decompressed.starts_with(&target_sjis),
+            "patched bytecode must start with the new SJIS-encoded target bytes"
+        );
+    }
+}

@@ -534,6 +534,7 @@ dependencies = [
  "kaifuu-engine-fixture",
  "kaifuu-reallive",
  "serde_json",
+ "sha2",
  "tempfile",
 ]
 
