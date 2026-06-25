@@ -101,6 +101,19 @@ use utsushi_core::CaptureOutcome as SubstrateCaptureOutcome;
 // (UTSUSHI-202..UTSUSHI-221) consume.
 pub mod scene_index;
 
+// UTSUSHI-202: typed decoder for the 0x1d0-byte scene header that
+// prefixes every populated scene blob. Consumes the scene-blob slice
+// pointed at by a `RealSceneEntry` from UTSUSHI-201 and produces a
+// typed `SceneHeader` plus the list of non-fatal warnings observed
+// during the walk.
+pub mod scene_header;
+
+pub use scene_header::{
+    COMPILER_VERSION_1_0, COMPILER_VERSION_1_10, COMPILER_VERSION_1_1110,
+    ENTRYPOINT_TABLE_BYTE_OFFSET, ENTRYPOINT_TABLE_LEN, EntrypointEntry,
+    SAVEPOINT_BLOCK_BYTE_OFFSET, SCENE_HEADER_BYTE_LEN, SceneHeader, SceneHeaderError,
+    SceneHeaderWarning, is_documented_compiler_version,
+};
 pub use scene_index::{
     REAL_SCENE_DIRECTORY_BYTE_LEN, REAL_SCENE_DIRECTORY_SLOT_BYTE_LEN,
     REAL_SCENE_DIRECTORY_SLOT_COUNT, RealSceneEntry, RealSceneIndex, RealSceneIndexError,
