@@ -21450,7 +21450,7 @@
     {
       "id": "UTSUSHI-207",
       "title": "Structured Gameexe.ini parser (Shift-JIS, dotted-path)",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["utsushi"],
@@ -21484,9 +21484,7 @@
         "Reusing `kaifuu-reallive`'s inventory classifier under the hood instead of parsing structure",
         "Failing to model the `KEY = \"...\" = N : \"...\"` triple shape"
       ],
-      "owner": "orchestrator-utsushi-207",
-      "branch": "spec/utsushi-207",
-      "worktree": "/scratch/worktrees/itotori-spec-utsushi-207"
+      "statusReason": "Implementation merged (commit fefe3b6). Gameexe Shift-JIS parser in utsushi-reallive (no kaifuu dep); 1344 dotted-path entries on real Sweetie HD; 22 unit tests + 4 real-bytes test entries."
     },
     {
       "id": "UTSUSHI-208",
