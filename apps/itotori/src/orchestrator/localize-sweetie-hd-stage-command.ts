@@ -52,7 +52,7 @@ import {
   type BridgeBundleV02,
   type LocalizationUnitV02,
 } from "@itotori/localization-bridge-schema";
-import { OpenRouterModelProvider } from "../providers/openrouter.js";
+import { DEFAULT_COST_CAP_USD, OpenRouterModelProvider } from "../providers/openrouter.js";
 import { FakeModelProvider } from "../providers/fake.js";
 import type {
   ModelInvocationRequest,
@@ -136,7 +136,6 @@ export class LocalizeSweetieHdRefusedFakeError extends Error {
 }
 
 const DEFAULT_UNIT_INDEX = 0;
-const DEFAULT_COST_CAP_USD = 0.5;
 
 /**
  * Parse + validate a raw JSON value as a UTSUSHI-228 pair-policy.

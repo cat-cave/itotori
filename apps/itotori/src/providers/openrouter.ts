@@ -1165,7 +1165,20 @@ class TokenBucket {
 }
 
 const DEFAULT_API_KEY_ENV_VAR = "OPENROUTER_API_KEY";
-const DEFAULT_COST_CAP_USD = 1.0;
+// ITOTORI-231 — single source of truth for the per-process USD cap.
+//
+// Why 0.5 USD: Trevor's standing rule is that every model invocation
+// declares its (modelId, providerId) pair and cost is always REAL (the
+// generation/<id> endpoint settles `usage.cost`) — never estimated.
+// Empirically, per the ITOTORI-224 evidence pack a single agentic-loop
+// call against the DEV_PAIR (deepseek-v3.2-exp at fireworks) settles
+// at ~USD 0.000003 (USD 0.0000182 across six calls). A 0.5 USD ceiling
+// therefore admits roughly 166,000 calls of headroom in a single
+// process run — far more than any realistic interactive Sweetie HD
+// localization session needs, while still tight enough to refuse a
+// runaway loop. Batch runs pass `--cost-cap-usd` to override this
+// per-invocation; the constant is the only default in code.
+export const DEFAULT_COST_CAP_USD = 0.5;
 const DEFAULT_RATE_LIMIT_PER_SEC = 1.0;
 
 export class OpenRouterModelProvider implements ModelProvider {
