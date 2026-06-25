@@ -54,6 +54,10 @@ import {
   type CharacterRelationshipCliDependencies,
 } from "./agents/character-relationship/index.js";
 import { runAgenticLoopSmokeCommand } from "./orchestrator/agentic-loop-smoke-command.js";
+import {
+  runLocalizeSweetieHdStageCommand,
+  type LocalizeSweetieHdStageArgs,
+} from "./orchestrator/localize-sweetie-hd-stage-command.js";
 import { runExportPatchV2Command } from "./patch-export/index.js";
 import {
   parseTelemetrySummaryCliFlags,
@@ -146,6 +150,9 @@ export async function runItotoriCliCommand(
       break;
     case "agentic-loop-smoke":
       await runAgenticLoopSmoke(args, dependencies);
+      break;
+    case "localize-sweetie-hd-stage":
+      await runLocalizeSweetieHdStage(args, dependencies);
       break;
     case "export-patch":
       await runExportPatch(args, dependencies);
@@ -305,6 +312,86 @@ async function runAgenticLoopSmoke(
     },
     ...(draftArtifactOutputPath === undefined ? {} : { draftArtifactOutputPath }),
   });
+}
+
+async function runLocalizeSweetieHdStage(
+  args: string[],
+  dependencies: ItotoriCliDependencies,
+): Promise<void> {
+  // UTSUSHI-228 — live-LLM agentic-loop stage of the localize-sweetie-hd
+  // recipe. Required flags (no defaulting):
+  //   --bridge <PATH>                          bridge-bundle.json (v0.2)
+  //   --pair-policy <PATH>                     pair-policy JSON
+  //   --output <PATH>                          agentic-loop-bundle.v0.json
+  //   --translated-bundle-output <PATH>        translated v0.2 bridge JSON
+  //   --patch-report-output <PATH>             synthesised patch-report.json
+  // Optional:
+  //   --unit-index <N>                         default 0
+  //   --max-repair-attempts <N>                default 1
+  //   --provider-kind <live|fake>              default live; fake requires
+  //                                            ITOTORI_ALLOW_FAKE_LOCALIZE_PROVIDER=1
+  //   --cost-cap-usd <decimal>                 default 0.5
+  const bridgePath = requiredFlag(args, "--bridge");
+  const pairPolicyPath = requiredFlag(args, "--pair-policy");
+  const outputPath = requiredFlag(args, "--output");
+  const translatedBundleOutputPath = requiredFlag(args, "--translated-bundle-output");
+  const patchReportOutputPath = requiredFlag(args, "--patch-report-output");
+  const unitIndexRaw = optionalFlag(args, "--unit-index");
+  const maxRepairAttemptsRaw = optionalFlag(args, "--max-repair-attempts");
+  const providerKindRaw = optionalFlag(args, "--provider-kind");
+  const costCapUsdRaw = optionalFlag(args, "--cost-cap-usd");
+
+  const callArgs: LocalizeSweetieHdStageArgs = {
+    bridgePath,
+    pairPolicyPath,
+    outputPath,
+    translatedBundleOutputPath,
+    patchReportOutputPath,
+    io: {
+      readJson: (path) => dependencies.io.readJson(path),
+      writeJson: (path, value) => dependencies.io.writeJson(path, value),
+    },
+    actor: { userId: "local-user" },
+    log: (message) => {
+      process.stdout.write(`${message}\n`);
+    },
+  };
+  if (unitIndexRaw !== undefined) {
+    const parsed = Number.parseInt(unitIndexRaw, 10);
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      throw new Error(
+        `localize-sweetie-hd-stage refused: --unit-index '${unitIndexRaw}' must be a non-negative integer`,
+      );
+    }
+    callArgs.unitIndex = parsed;
+  }
+  if (maxRepairAttemptsRaw !== undefined) {
+    const parsed = Number.parseInt(maxRepairAttemptsRaw, 10);
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      throw new Error(
+        `localize-sweetie-hd-stage refused: --max-repair-attempts '${maxRepairAttemptsRaw}' must be a non-negative integer`,
+      );
+    }
+    callArgs.maxRepairAttempts = parsed;
+  }
+  if (providerKindRaw !== undefined) {
+    if (providerKindRaw !== "live" && providerKindRaw !== "fake") {
+      throw new Error(
+        `localize-sweetie-hd-stage refused: --provider-kind '${providerKindRaw}' must be 'live' or 'fake'`,
+      );
+    }
+    callArgs.providerKind = providerKindRaw;
+  }
+  if (costCapUsdRaw !== undefined) {
+    const parsed = Number.parseFloat(costCapUsdRaw);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      throw new Error(
+        `localize-sweetie-hd-stage refused: --cost-cap-usd '${costCapUsdRaw}' must be a positive number`,
+      );
+    }
+    callArgs.costCapUsd = parsed;
+  }
+  await runLocalizeSweetieHdStageCommand(callArgs);
 }
 
 async function runExportPatch(args: string[], dependencies: ItotoriCliDependencies): Promise<void> {
