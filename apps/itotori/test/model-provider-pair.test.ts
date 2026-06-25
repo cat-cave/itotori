@@ -21,10 +21,12 @@
 import { describe, expect, it } from "vitest";
 import { FakeModelProvider } from "../src/providers/fake.js";
 import {
+  RECORDED_PROVIDER_BUNDLE_SCHEMA_VERSION,
   RecordedModelProvider,
   recordedBundleKey,
   type RecordedProviderBundle,
 } from "../src/providers/recorded.js";
+import { ZERO_COST } from "../src/providers/cost.js";
 import { OpenRouterProvider, openRouterDefaultCapabilities } from "../src/providers/openrouter.js";
 import {
   CapabilityGuard,
@@ -195,6 +197,7 @@ describe("ITOTORI-220 — (modelId, providerId) pair contract", () => {
       inputClassification: "synthetic_public",
     });
     const bundle: RecordedProviderBundle = {
+      schemaVersion: RECORDED_PROVIDER_BUNDLE_SCHEMA_VERSION,
       bundleId: "pair-test-bundle-001",
       capturedProviderFamily: "openrouter",
       capturedProviderName: "openrouter:pair-test",
@@ -202,7 +205,10 @@ describe("ITOTORI-220 — (modelId, providerId) pair contract", () => {
       capturedProviderId: "OpenAI",
       capturedActualModelId: "openai/gpt-4o-mini",
       responses: {
-        [bundleKey]: { content: "ok", finishReason: "stop" },
+        // ITOTORI-228 — pair-contract test; the assertion is on
+        // providerId routing, not cost. ZERO_COST is the structurally
+        // honest stand-in (no real LIVE call ever produced these bytes).
+        [bundleKey]: { content: "ok", finishReason: "stop", cost: ZERO_COST },
       },
     };
     const provider = new RecordedModelProvider({ bundle });

@@ -20,8 +20,12 @@ export {
 } from "./dev-pair.js";
 export { FakeModelProvider, fakeModelCapabilities } from "./fake.js";
 export {
+  RECORDED_PROVIDER_BUNDLE_SCHEMA_VERSION,
   RecordedBundleMissingError,
+  RecordedBundleSchemaMismatchError,
+  RecordedCostMismatchError,
   RecordedModelProvider,
+  mergeRecordedBundles,
   recordedModelCapabilities,
   type RecordedModelProviderOptions,
   type RecordedProviderBundle,

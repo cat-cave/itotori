@@ -23,10 +23,12 @@ import { buildQaPrompt, qaPromptHash } from "../../agents/qa/prompt-template.js"
 import type { FocusedQaAgentDescriptor, FocusedQaAgentName } from "../../agents/qa/agents/index.js";
 import type { QaBridgeUnit, QaInvocationInput } from "../../agents/qa/shapes.js";
 import {
+  RECORDED_PROVIDER_BUNDLE_SCHEMA_VERSION,
   recordedBundleKey,
   type RecordedProviderBundle,
   type RecordedProviderResponse,
 } from "../../providers/recorded.js";
+import { ZERO_COST } from "../../providers/cost.js";
 import type { ProviderFamily } from "../../providers/types.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -240,12 +242,22 @@ export function buildFocusedRecordedBundle(
       completionTokens: 256,
       totalTokens: 1280,
     },
+    // ITOTORI-228 — the QA calibration bundles are synthesised in-code
+    // (no LIVE OR call ever produced them) so there is no captured
+    // `usage.cost` to mirror. We declare ZERO_COST explicitly: the
+    // calibration suite's purpose is to assert findings/regrade
+    // behaviour, not cost-cap arithmetic, so the response shape
+    // validates without misrepresenting a real charge. When a future
+    // calibration capture is taken against live OR, this constant must
+    // be replaced with the real micros derived from `usage.cost`.
+    cost: ZERO_COST,
   };
 
   const bundleId = `qa-calibration-${args.fixtureId}-${args.agentDescriptor.name}-${args.authority}`;
   const isFresh = args.authority === "fresh-judge";
 
   return {
+    schemaVersion: RECORDED_PROVIDER_BUNDLE_SCHEMA_VERSION,
     bundleId,
     capturedProviderFamily: CAPTURED_PROVIDER_FAMILY,
     capturedProviderName: isFresh ? FRESH_JUDGE_CAPTURED_PROVIDER_NAME : CAPTURED_PROVIDER_NAME,
