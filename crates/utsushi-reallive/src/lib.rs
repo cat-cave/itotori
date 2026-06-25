@@ -113,6 +113,12 @@ pub mod scene_header;
 // compressed slice and produces the post-LZSS plaintext bytecode.
 pub mod decompressor;
 
+// UTSUSHI-204: typed lead-byte lexer for the decompressed bytecode
+// stream produced by `AvgDecompressor::decompress`. Produces a
+// `Vec<BytecodeElement>` whose `byte_offset`/`byte_len` ranges
+// partition the input slice exactly.
+pub mod bytecode_element;
+
 pub use scene_header::{
     COMPILER_VERSION_1_0, COMPILER_VERSION_1_10, COMPILER_VERSION_1_1110,
     ENTRYPOINT_TABLE_BYTE_OFFSET, ENTRYPOINT_TABLE_LEN, EntrypointEntry,
@@ -120,6 +126,13 @@ pub use scene_header::{
     SceneHeaderWarning, is_documented_compiler_version,
 };
 
+pub use bytecode_element::{
+    BytecodeDecodeError, BytecodeElement, COMMA_LEAD_BYTE, COMMA_LEAD_BYTE_ALT,
+    COMMAND_HEADER_BYTE_LEN, COMMAND_LEAD_BYTE, EXPRESSION_LEAD_BYTE, META_ELEMENT_BYTE_LEN,
+    META_ENTRYPOINT_LEAD_BYTE, META_KIDOKU_LEAD_BYTE, META_LINE_LEAD_BYTE,
+    SELECTION_OPTION_MARKER_MAX, SELECTION_OPTION_MARKER_MIN, TextoutEncoding,
+    decode_bytecode_stream,
+};
 pub use decompressor::{
     AVG32_COMPRESSED_PREAMBLE_LEN, AVG32_LZSS_MAX_BACK_DISTANCE, AVG32_LZSS_MAX_RUN,
     AVG32_LZSS_MIN_RUN, AVG32_XOR_MASK, AVG32_XOR_MASK_LEN, AVG32_XOR2_KEY_LEN, AvgDecompressor,
