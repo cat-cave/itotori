@@ -6674,7 +6674,7 @@
     {
       "id": "ITOTORI-022",
       "title": "Finding triage and root-cause router",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P1",
       "target": "alpha",
       "projects": ["itotori", "shared"],
@@ -6715,7 +6715,9 @@
         }
       ],
       "auditFocus": ["Misrouting systemic errors", "Human escalation overuse", "Stale policy use"],
-      "statusReason": "Re-tier 2026-06-24: kept alpha under the new 4-tier framework (single-game Sweetie HD e2e set per docs/proposals/dag-retier-2026-06-24.md)."
+      "owner": "orchestrator-itotori-022",
+      "branch": "spec/itotori-022",
+      "worktree": "/scratch/worktrees/itotori-spec-itotori-022"
     },
     {
       "id": "ITOTORI-023",
@@ -24933,7 +24935,7 @@
     {
       "id": "ITOTORI-223",
       "title": "itotori-agent-runtime: live cost / token / latency telemetry per (modelId, providerId) pair",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P1",
       "target": "alpha",
       "projects": ["itotori"],
@@ -24971,7 +24973,9 @@
         "Free-tier path falling back to NULL without the Warning",
         "Dashboard rendering pair label without provider id (visual MPP violation)"
       ],
-      "statusReason": "Minted 2026-06-24 per docs/proposals/alpha-gap-analysis-2026-06-24.md §3 ITOTORI-NEW-Dtel: live cost visibility per pair is part of the alpha agentic-loop-fires clause."
+      "owner": "orchestrator-itotori-223",
+      "branch": "spec/itotori-223",
+      "worktree": "/scratch/worktrees/itotori-spec-itotori-223"
     },
     {
       "id": "KAIFUU-210",
@@ -25028,7 +25032,7 @@
     {
       "id": "KAIFUU-211",
       "title": "kaifuu-reallive: real-bytes patchback driver (translated bundle -> writable Seen.txt)",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P1",
       "target": "alpha",
       "projects": ["kaifuu"],
@@ -25068,7 +25072,9 @@
         "Directory rewrite skipped when slot length changes (silent corruption)",
         "Readonly source mutated by the copy step (no sha256 invariant)"
       ],
-      "statusReason": "Minted 2026-06-24 per docs/proposals/alpha-gap-analysis-2026-06-24.md §3 KAIFUU-NEW-Apatch: the alpha real-patchback clause needs a bundle-driven driver."
+      "owner": "orchestrator-kaifuu-211",
+      "branch": "spec/kaifuu-211",
+      "worktree": "/scratch/worktrees/itotori-spec-kaifuu-211"
     },
     {
       "id": "UTSUSHI-227",
