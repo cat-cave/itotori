@@ -27,7 +27,7 @@ import type { TranslationInvocationResult } from "../agents/translation/shapes.j
 
 export type FallbackEntry = DraftAttemptFallbackChainEntry;
 
-export type DraftAttemptCostEstimate = {
+export type DraftAttemptCostUsd = {
   unit: string;
   amount: string;
 };
@@ -36,7 +36,7 @@ export type DraftAttemptRecorderArgs = {
   draftJobAttemptId: string;
   translationResult: TranslationInvocationResult;
   fallbackChain: ReadonlyArray<FallbackEntry>;
-  costEstimate: DraftAttemptCostEstimate;
+  costUsd: DraftAttemptCostUsd;
   latencyMs: number;
   recordedProviderBundleId?: string;
   policyVersions?: DraftAttemptProviderLedgerPolicyVersions;
@@ -86,8 +86,8 @@ export class DraftAttemptRecorder {
       contextArtifactRefs: [...(args.contextArtifactRefs ?? [])],
       tokensIn: result.tokensIn,
       tokensOut: result.tokensOut,
-      costUnit: args.costEstimate.unit,
-      costAmount: args.costEstimate.amount,
+      costUnit: args.costUsd.unit,
+      costAmount: args.costUsd.amount,
       latencyMs: args.latencyMs,
       fallbackChain: [...args.fallbackChain],
       isRecordedProvider: isRecorded,

@@ -30,7 +30,7 @@ for (const stage of bundle.stages) {
     `stage name=${stage.stageName} outcome=${stage.outcome} ` +
       `invocations=${stage.invocations.length} ` +
       `tokensIn=${stage.tokensIn} tokensOut=${stage.tokensOut} ` +
-      `cost=${stage.costEstimate}`,
+      `cost=${stage.costUsd}`,
   );
 }
 console.log(
