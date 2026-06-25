@@ -46,7 +46,7 @@ export {
 export {
   DraftAttemptRecorder,
   type DraftAttemptRecorderArgs,
-  type DraftAttemptCostEstimate,
+  type DraftAttemptCostUsd,
   type FallbackEntry,
 } from "./draft-attempt-recorder.js";
 

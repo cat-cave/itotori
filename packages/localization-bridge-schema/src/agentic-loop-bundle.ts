@@ -34,7 +34,7 @@
 // The schema version is locked to a literal so any change forces a
 // downstream consumer migration.
 
-export const AGENTIC_LOOP_BUNDLE_SCHEMA_VERSION = "itotori.agentic-loop-bundle.v0" as const;
+export const AGENTIC_LOOP_BUNDLE_SCHEMA_VERSION = "itotori.agentic-loop-bundle.v1" as const;
 
 /**
  * Closed enum of stage names. Order is the orchestrator's invocation
@@ -87,8 +87,10 @@ export type AgenticLoopProviderPair = {
 /**
  * One LLM (or context-artifact) invocation inside a stage. Keyed on
  * `runId` (provider proof id), which is also the join key for the
- * draft-attempt provider ledger. `costEstimate` is a decimal string;
- * `tokensIn` / `tokensOut` and `latencyMs` are non-negative integers.
+ * draft-attempt provider ledger. `costUsd` is the real billed USD
+ * cost as a decimal string (the field carries actual cost, not an
+ * estimate); `tokensIn` / `tokensOut` and `latencyMs` are non-negative
+ * integers.
  */
 export type AgenticLoopInvocation = {
   invocationId: string;
@@ -96,7 +98,7 @@ export type AgenticLoopInvocation = {
   pair: AgenticLoopProviderPair;
   tokensIn: number;
   tokensOut: number;
-  costEstimate: string;
+  costUsd: string;
   latencyMs: number;
   providerProofId: string;
 };
@@ -113,7 +115,7 @@ export type AgenticLoopStageRecord = {
   invocations: AgenticLoopInvocation[];
   tokensIn: number;
   tokensOut: number;
-  costEstimate: string;
+  costUsd: string;
   latencyMs: number;
 };
 
@@ -231,7 +233,7 @@ function assertStageRecord(value: unknown, label: string): void {
     "invocations",
     "tokensIn",
     "tokensOut",
-    "costEstimate",
+    "costUsd",
     "latencyMs",
   ]);
   for (const key of Object.keys(record)) {
@@ -259,7 +261,7 @@ function assertStageRecord(value: unknown, label: string): void {
   }
   assertNonNegativeInteger(record.tokensIn, `${label}.tokensIn`);
   assertNonNegativeInteger(record.tokensOut, `${label}.tokensOut`);
-  assertDecimalString(record.costEstimate, `${label}.costEstimate`);
+  assertDecimalString(record.costUsd, `${label}.costUsd`);
   assertNonNegativeInteger(record.latencyMs, `${label}.latencyMs`);
 }
 
@@ -274,7 +276,7 @@ function assertInvocation(value: unknown, label: string): void {
     "pair",
     "tokensIn",
     "tokensOut",
-    "costEstimate",
+    "costUsd",
     "latencyMs",
     "providerProofId",
   ]);
@@ -292,7 +294,7 @@ function assertInvocation(value: unknown, label: string): void {
   assertProviderPair(record.pair, `${label}.pair`);
   assertNonNegativeInteger(record.tokensIn, `${label}.tokensIn`);
   assertNonNegativeInteger(record.tokensOut, `${label}.tokensOut`);
-  assertDecimalString(record.costEstimate, `${label}.costEstimate`);
+  assertDecimalString(record.costUsd, `${label}.costUsd`);
   assertNonNegativeInteger(record.latencyMs, `${label}.latencyMs`);
   assertNonEmptyString(record.providerProofId, `${label}.providerProofId`);
 }

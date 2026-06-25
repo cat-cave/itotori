@@ -170,7 +170,7 @@ function toDraftArtifactBundle(
     totalTokensOut += stage.tokensOut;
     for (const invocation of stage.invocations) {
       ledgerProofIds.push(invocation.providerProofId);
-      totalCostMicros += amountToMicros(invocation.costEstimate);
+      totalCostMicros += amountToMicros(invocation.costUsd);
     }
   }
   const proofId = ledgerProofIds[0] ?? `agentic-loop-smoke:${bundle.bridgeUnitId}:proof`;

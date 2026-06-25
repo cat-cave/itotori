@@ -603,7 +603,7 @@ function pushInvocation(stage: StageAccumulator, telemetry: RawProviderTelemetry
     pair: telemetry.pair,
     tokensIn: telemetry.tokensIn,
     tokensOut: telemetry.tokensOut,
-    costEstimate: microsToAmount(telemetry.costMicros),
+    costUsd: microsToAmount(telemetry.costMicros),
     latencyMs: telemetry.latencyMs,
     providerProofId: telemetry.providerProofId,
   });
@@ -620,7 +620,7 @@ function stageAccumulatorToRecord(stage: StageAccumulator): AgenticLoopStageReco
     invocations: stage.invocations,
     tokensIn: stage.tokensIn,
     tokensOut: stage.tokensOut,
-    costEstimate: microsToAmount(stage.costMicros),
+    costUsd: microsToAmount(stage.costMicros),
     latencyMs: stage.latencyMs,
   };
 }

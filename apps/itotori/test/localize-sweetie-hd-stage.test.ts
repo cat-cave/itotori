@@ -179,7 +179,7 @@ describe("UTSUSHI-228 runLocalizeSweetieHdStageCommand", () => {
         finalDraft: { draftText?: string };
       };
       expect(bundle).toBeDefined();
-      expect(bundle.schemaVersion).toBe("itotori.agentic-loop-bundle.v0");
+      expect(bundle.schemaVersion).toBe("itotori.agentic-loop-bundle.v1");
       const stageNames = bundle.stages.map((s) => s.stageName);
       expect(stageNames).toEqual([
         "context",
