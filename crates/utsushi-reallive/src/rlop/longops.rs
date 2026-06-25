@@ -597,7 +597,7 @@ impl SelectionLongOp {
 }
 
 #[cfg(test)]
-mod tests {
+mod selection_tests {
     use super::*;
 
     #[test]

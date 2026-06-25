@@ -149,6 +149,18 @@ pub mod rlop;
 // private state through the round trip — acceptance criterion #3).
 pub mod vm;
 
+// UTSUSHI-220: end-to-end Sweetie HD scene-1 text-replay smoke. Drives
+// a Seen.txt envelope through the full UTSUSHI-201..UTSUSHI-210 chain
+// and produces a typed `ReplayLog` containing the alpha-defining
+// `TextLine` events.
+pub mod replay;
+
+pub use replay::{
+    DEFAULT_REPLAY_STEP_BUDGET, REPLAY_LOG_SCHEMA_VERSION, ReplayError, ReplayEvent, ReplayLog,
+    ReplayOpts, ReplayOutcome, replay_scene, replay_scene_bytes, replay_until_first_pause,
+    restore_into_fresh_vm,
+};
+
 pub use scene_header::{
     COMPILER_VERSION_1_0, COMPILER_VERSION_1_10, COMPILER_VERSION_1_1110,
     ENTRYPOINT_TABLE_BYTE_OFFSET, ENTRYPOINT_TABLE_LEN, EntrypointEntry,

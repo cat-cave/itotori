@@ -9,3 +9,4 @@ repository.workspace = true
 serde_json.workspace = true
 utsushi-core = { path = "../utsushi-core" }
 utsushi-fixture = { path = "../utsushi-fixture" }
+utsushi-reallive = { path = "../utsushi-reallive" }
