@@ -24879,7 +24879,7 @@
     {
       "id": "ITOTORI-222",
       "title": "itotori-agent-runtime: full agentic-loop orchestrator chaining context -> pre-translation -> translation -> deterministic -> QA -> repair",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["itotori"],
@@ -24930,9 +24930,7 @@
         "Old drafting command kept as a shim",
         "Repair loop unbounded or bypassing the router decision"
       ],
-      "owner": "orchestrator-itotori-222",
-      "branch": "spec/itotori-222",
-      "worktree": "/scratch/worktrees/itotori-spec-itotori-222"
+      "statusReason": "Implementation merged (commit acf342f). Full agentic-loop orchestrator chains context -> pre-translation -> translation -> deterministic -> QA -> routing -> repair -> final_draft; AgenticLoopBundle v0 schema; PairPolicy + DEV_POLICY; CLI agentic-loop-smoke + just hello-agentic-loop; old isolated drafting command deleted (rg=0)."
     },
     {
       "id": "ITOTORI-223",
