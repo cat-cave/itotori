@@ -99,6 +99,16 @@ fn run_with_args_and_registry(
             write_stable_asset_inventory(&output, &manifest)?;
         }
         Some("patch") => {
+            // KAIFUU-211 — `patch --engine reallive --source <readonly>
+            // --target <writable> --bundle <translated.json>` routes
+            // through the kaifuu-reallive bundle-driven patchback. The
+            // historical registry-adapter path runs when --engine is
+            // absent or set to anything other than `reallive`.
+            if let Some(engine) = flag_optional(&args, "--engine")
+                && engine == "reallive"
+            {
+                return run_patch_reallive_bundle(&args);
+            }
             let game_dir = PathBuf::from(positional(&args, 1)?);
             let patch = PathBuf::from(flag(&args, "--patch")?);
             let output = PathBuf::from(flag(&args, "--output")?);
@@ -325,6 +335,171 @@ fn run_extract_reallive_bundle(args: &[String]) -> Result<(), Box<dyn std::error
 
     write_json(&bundle_output, &produced.json)?;
     Ok(())
+}
+
+/// KAIFUU-211 — `patch --engine reallive --source <readonly> --target <writable>
+/// --bundle bridge-bundle-translated.json [--force]`.
+///
+/// Reads the translated v0.2 BridgeBundle, copies the readonly source
+/// tree to the writable target (per the readonly-source / writable-
+/// target discipline called out in the KAIFUU-211 audit-focus row),
+/// patches the target's `REALLIVEDATA/Seen.txt` via
+/// [`kaifuu_reallive::apply_translated_bundle`], and writes the patched
+/// archive in place. The source tree is sha256-unchanged after the
+/// command.
+fn run_patch_reallive_bundle(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
+    use kaifuu_reallive::{
+        PATCHBACK_TARGET_NONEMPTY_CODE, PatchbackOpts, TranslatedBundleV02, apply_translated_bundle,
+    };
+
+    let source_root = PathBuf::from(flag(args, "--source")?);
+    let target_root = PathBuf::from(flag(args, "--target")?);
+    let bundle_path = PathBuf::from(flag(args, "--bundle")?);
+    let force = flag_optional(args, "--force").is_some();
+
+    // Refuse to overwrite a non-empty target without --force. The error
+    // code is the documented patchback_target_nonempty Fatal from
+    // KAIFUU-211.
+    if target_root.exists() && !force {
+        let nonempty = fs::read_dir(&target_root)
+            .map(|mut entries| entries.next().is_some())
+            .unwrap_or(false);
+        if nonempty {
+            return Err(format!(
+                "{PATCHBACK_TARGET_NONEMPTY_CODE}: target {} is non-empty; rerun with --force to overwrite",
+                target_root.display()
+            )
+            .into());
+        }
+    }
+
+    let bundle_bytes = fs::read(&bundle_path).map_err(|err| -> Box<dyn std::error::Error> {
+        format!(
+            "failed to read translated bundle {}: {err}",
+            bundle_path.display()
+        )
+        .into()
+    })?;
+    let bundle_value: serde_json::Value =
+        serde_json::from_slice(&bundle_bytes).map_err(|err| -> Box<dyn std::error::Error> {
+            format!("translated bundle JSON parse: {err}").into()
+        })?;
+    let translated = TranslatedBundleV02::from_json(&bundle_value)
+        .map_err(|err| -> Box<dyn std::error::Error> { format!("{err}").into() })?;
+
+    let source_seen_path = resolve_reallive_seen_path(&source_root)?;
+    let source_seen_bytes =
+        fs::read(&source_seen_path).map_err(|err| -> Box<dyn std::error::Error> {
+            format!(
+                "failed to read source Seen.txt {}: {err}",
+                source_seen_path.display()
+            )
+            .into()
+        })?;
+    let source_seen_hash = sha256_hash_bytes(&source_seen_bytes);
+
+    // Copy the readonly source tree to the writable target. We mirror
+    // the directory layout under `<target_root>/<inner_dirs>` so the
+    // resolved `REALLIVEDATA/Seen.txt` sits at the same relative path
+    // as the source.
+    copy_directory_tree(&source_root, &target_root)?;
+
+    // Re-resolve under the target so we know exactly which file to
+    // overwrite.
+    let target_seen_path = resolve_reallive_seen_path(&target_root)?;
+
+    let patched =
+        apply_translated_bundle(&source_seen_bytes, &translated, &PatchbackOpts::shift_jis())
+            .map_err(|err| -> Box<dyn std::error::Error> { format!("{err}").into() })?;
+    fs::write(&target_seen_path, &patched).map_err(|err| -> Box<dyn std::error::Error> {
+        format!(
+            "failed to write patched Seen.txt {}: {err}",
+            target_seen_path.display()
+        )
+        .into()
+    })?;
+
+    // Readonly-source sha256 invariant: re-read the source and assert
+    // it still matches the pre-write hash. This is the
+    // "Readonly source mutated by the copy step" audit-focus mitigation.
+    let post_source_bytes = fs::read(&source_seen_path)?;
+    let post_source_hash = sha256_hash_bytes(&post_source_bytes);
+    if post_source_hash != source_seen_hash {
+        return Err(format!(
+            "kaifuu.reallive.patchback_source_mutated: source Seen.txt at {} \
+             changed from {source_seen_hash} to {post_source_hash} during the patch step",
+            source_seen_path.display(),
+        )
+        .into());
+    }
+    Ok(())
+}
+
+/// Recursively copy `src` into `dst` and make every copied file
+/// user-writable. Skips symlinks (returns an error if any are
+/// encountered — RealLive game trees do not contain symlinks, and
+/// silently following one would be a security footgun).
+///
+/// The user-writable bump is required because RealLive source trees
+/// frequently ship every file as read-only (mode 0o444). `fs::copy`
+/// preserves the mode and the subsequent in-place rewrite of
+/// `REALLIVEDATA/Seen.txt` then fails with EACCES. The bump is local
+/// to the target tree (the readonly source is left untouched per the
+/// KAIFUU-211 "Readonly source mutated by the copy step" audit-focus
+/// row).
+fn copy_directory_tree(src: &Path, dst: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    fs::create_dir_all(dst)?;
+    let mut stack: Vec<(PathBuf, PathBuf)> = vec![(src.to_path_buf(), dst.to_path_buf())];
+    while let Some((src_dir, dst_dir)) = stack.pop() {
+        for entry in fs::read_dir(&src_dir)? {
+            let entry = entry?;
+            let metadata = entry.metadata()?;
+            let dst_entry = dst_dir.join(entry.file_name());
+            if metadata.file_type().is_symlink() {
+                return Err(format!(
+                    "kaifuu.reallive.patchback_source_symlink: refusing to follow symlink at {}",
+                    entry.path().display()
+                )
+                .into());
+            }
+            if metadata.is_dir() {
+                fs::create_dir_all(&dst_entry)?;
+                stack.push((entry.path(), dst_entry));
+            } else if metadata.is_file() {
+                fs::copy(entry.path(), &dst_entry)?;
+                make_writable(&dst_entry)?;
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Ensure the file at `path` is user-writable (Unix mode bits |= 0o200).
+/// Best-effort on non-Unix platforms.
+fn make_writable(path: &Path) -> io::Result<()> {
+    let metadata = fs::metadata(path)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt as _;
+        let mut perms = metadata.permissions();
+        let mode = perms.mode();
+        let writable = mode | 0o200;
+        if writable != mode {
+            perms.set_mode(writable);
+            fs::set_permissions(path, perms)?;
+        }
+        Ok(())
+    }
+    #[cfg(not(unix))]
+    {
+        let mut perms = metadata.permissions();
+        if perms.readonly() {
+            #[allow(deprecated)]
+            perms.set_readonly(false);
+            fs::set_permissions(path, perms)?;
+        }
+        Ok(())
+    }
 }
 
 fn resolve_reallive_seen_path(game_root: &Path) -> Result<PathBuf, Box<dyn std::error::Error>> {

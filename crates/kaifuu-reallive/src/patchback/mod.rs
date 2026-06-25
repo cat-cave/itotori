@@ -12,6 +12,16 @@
 //!   openers, operand tags, control bytes inside StringSlots) are
 //!   byte-identical to the source on every patched scene. The KAIFUU-174
 //!   tests in `tests/patchback.rs` exercise these invariants.
+//!
+//! KAIFUU-211 adds [`bundle_driven`], the canonical Seen.txt patchback
+//! path that consumes a translated v0.2 BridgeBundle and re-emits the
+//! archive with length-changing edits (offsets and compressed sizes
+//! rewritten). The legacy [`apply_patches`] surface in this file is
+//! retained for the synthetic length-preserving SlotEdit smoke (the
+//! `binary-patch-smoke` CLI command), but the canonical real-bytes
+//! Seen.txt path is [`bundle_driven::apply_translated_bundle`].
+
+pub mod bundle_driven;
 
 use std::collections::HashMap;
 
