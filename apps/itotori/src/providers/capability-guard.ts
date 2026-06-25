@@ -29,6 +29,81 @@ export function assertProviderInvocationSupported(input: ProviderInvocationGuard
   assertRoutingRequirementsSupported(capabilities, input);
 }
 
+// ---------------------------------------------------------------------------
+// ITOTORI-220 — pair-keyed capability lookup.
+//
+// The standing rule (feedback-model-provider-pair) is that capability
+// claims like "supportsStructuredOutput" are per (model, provider) pair,
+// not per model alone. `CapabilityGuard` is a small in-memory registry
+// keyed on `${modelId}::${providerId}` so callers can register what they
+// have measured and look it up without ambiguity. A miss throws — never
+// silently degrades to model-only lookup.
+// ---------------------------------------------------------------------------
+
+export type ModelProviderPairKey = string & { readonly __brand: "ModelProviderPairKey" };
+
+export function modelProviderPairKey(modelId: string, providerId: string): ModelProviderPairKey {
+  if (modelId.length === 0) {
+    throw new ModelProviderError(
+      "modelProviderPairKey requires a non-empty modelId",
+      "configuration_error",
+      false,
+    );
+  }
+  if (providerId.length === 0) {
+    throw new ModelProviderError(
+      "modelProviderPairKey requires a non-empty providerId",
+      "configuration_error",
+      false,
+    );
+  }
+  return `${modelId}::${providerId}` as ModelProviderPairKey;
+}
+
+export class CapabilityGuardMissError extends Error {
+  constructor(
+    public readonly modelId: string,
+    public readonly providerId: string,
+  ) {
+    super(
+      `capability guard miss for (modelId=${modelId}, providerId=${providerId}); register the pair before invocation`,
+    );
+    this.name = "CapabilityGuardMissError";
+  }
+}
+
+export class CapabilityGuard {
+  private readonly entries = new Map<ModelProviderPairKey, ModelCapabilities>();
+
+  /** Register (or overwrite) the capabilities for a (modelId, providerId) pair. */
+  register(modelId: string, providerId: string, capabilities: ModelCapabilities): void {
+    this.entries.set(modelProviderPairKey(modelId, providerId), capabilities);
+  }
+
+  /** Lookup; throws CapabilityGuardMissError when the pair has not been registered. */
+  lookup(modelId: string, providerId: string): ModelCapabilities {
+    const key = modelProviderPairKey(modelId, providerId);
+    const entry = this.entries.get(key);
+    if (entry === undefined) {
+      throw new CapabilityGuardMissError(modelId, providerId);
+    }
+    return entry;
+  }
+
+  /** True iff the pair is registered. */
+  has(modelId: string, providerId: string): boolean {
+    return this.entries.has(modelProviderPairKey(modelId, providerId));
+  }
+
+  /** Snapshot of registered (modelId, providerId) keys for diagnostics. */
+  registeredPairs(): { modelId: string; providerId: string }[] {
+    return [...this.entries.keys()].map((key) => {
+      const [modelId, providerId] = key.split("::");
+      return { modelId: modelId ?? "", providerId: providerId ?? "" };
+    });
+  }
+}
+
 function assertStructuredOutputSupported(
   capabilities: ModelCapabilities,
   request: ModelInvocationRequest,
@@ -122,8 +197,7 @@ function assertRoutingRequirementsSupported(
   capabilities: ModelCapabilities,
   input: ProviderInvocationGuardInput,
 ): void {
-  const requestedModelId =
-    input.requestedModelId ?? input.request.modelId ?? input.descriptor.defaultModelId;
+  const requestedModelId = input.requestedModelId ?? input.request.modelId;
   const requirements = new Set<ProviderRoutingCapabilityRequirement>(
     input.routingRequirements ?? [],
   );

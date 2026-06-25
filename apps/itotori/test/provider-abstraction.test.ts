@@ -451,23 +451,28 @@ describe("OpenRouterProvider", () => {
       apiKey: "test-key",
       fetch: fetchMock,
       capabilities: openRouterCapabilitiesForPrivateInputs(),
-      routing: { order: ["OpenAI", "Anthropic"], allowFallbacks: true },
+      // ITOTORI-220 — `only` pins provider routing to the request's
+      // providerId at invoke time; no caller-supplied `order` or
+      // `allowFallbacks` is honoured for provider routing.
+      routing: {},
       live: { enabled: true, artifactRecorder: recorder, rawCapture: "disabled" },
     });
 
     const result = await provider.invoke({
-      ...jsonSchemaRequest(),
+      // ITOTORI-220 — pin the providerId to the upstream that the mocked
+      // fixture returns so the post-response pair check accepts it.
+      ...jsonSchemaRequest("openai/gpt-4o-mini", "Anthropic"),
       fallbackModels: ["anthropic/claude-3-haiku"],
     });
 
     const requestBody = JSON.parse(String(fetchCalls[0]?.init?.body)) as {
       models?: string[];
-      provider: { order?: string[]; allow_fallbacks?: boolean };
+      provider: { only?: string[]; allow_fallbacks?: boolean };
     };
     expect(requestBody.models).toEqual(["openai/gpt-4o-mini", "anthropic/claude-3-haiku"]);
     expect(requestBody.provider).toMatchObject({
-      order: ["OpenAI", "Anthropic"],
-      allow_fallbacks: true,
+      only: ["Anthropic"],
+      allow_fallbacks: false,
     });
     expect(result.providerRun).toMatchObject({
       retryCount: 0,
@@ -492,8 +497,8 @@ describe("OpenRouterProvider", () => {
     });
     expect(recorder.artifacts[0]?.adapterMetadata).toMatchObject({
       providerRouting: expect.objectContaining({
-        order: ["OpenAI", "Anthropic"],
-        allow_fallbacks: true,
+        only: ["Anthropic"],
+        allow_fallbacks: false,
       }),
       openrouterMetadata: expect.objectContaining({
         strategy: "fallback",
@@ -742,9 +747,14 @@ describe("FakeModelProvider", () => {
   });
 });
 
-function jsonSchemaRequest(): ModelInvocationRequest {
+function jsonSchemaRequest(
+  modelId: string = "openai/gpt-4o-mini",
+  providerId: string = "OpenAI",
+): ModelInvocationRequest {
   return {
     taskKind: "draft_translation",
+    modelId,
+    providerId,
     inputClassification: "private_corpus",
     prompt: promptFixture(),
     preset: providerPresetFixture(),
@@ -765,9 +775,14 @@ function jsonSchemaRequest(): ModelInvocationRequest {
   };
 }
 
-function toolCallArgumentsRequest(): ModelInvocationRequest {
+function toolCallArgumentsRequest(
+  modelId: string = "openai/gpt-4o-mini",
+  providerId: string = "OpenAI",
+): ModelInvocationRequest {
   return {
     taskKind: "draft_translation",
+    modelId,
+    providerId,
     inputClassification: "private_corpus",
     prompt: promptFixture(),
     messages: [{ role: "user", content: "translate hello" }],

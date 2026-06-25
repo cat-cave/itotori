@@ -226,12 +226,18 @@ export class InMemoryDraftAttemptProviderLedgerRepository implements ItotoriDraf
     const ledgerEntryId = `fixture-ledger-${this.nextEntry.toString().padStart(4, "0")}`;
     this.nextEntry += 1;
     const createdAt = new Date(Date.UTC(2026, 5, 24, 12, 0, 0));
+    if (typeof input.providerId !== "string" || input.providerId.length === 0) {
+      throw new InMemoryDraftRepositoryError(
+        `providerId must be a non-empty string (ITOTORI-220 model+provider pair rule)`,
+      );
+    }
     const entry: DraftAttemptProviderLedgerEntry = {
       ledgerEntryId,
       draftJobAttemptId: input.draftJobAttemptId,
       providerProofId: input.providerProofId,
       modelProviderFamily: input.modelProviderFamily ?? null,
       modelId: input.modelId ?? null,
+      providerId: input.providerId,
       modelContextWindowTokens: input.modelContextWindowTokens ?? null,
       modelMaxOutputTokens: input.modelMaxOutputTokens ?? null,
       promptTemplateVersion: input.promptTemplateVersion ?? null,
@@ -282,6 +288,18 @@ export class InMemoryDraftAttemptProviderLedgerRepository implements ItotoriDraf
       }
       result.byModel = Object.fromEntries(
         Object.entries(byModel).map(([k, v]) => [k, v.toFixed(8)]),
+      );
+    }
+    // ITOTORI-220 — provider-level aggregation. Mirrors the DB-backed
+    // repository so the in-memory fixture preserves typed parity.
+    if (opts?.byProvider === true) {
+      const byProvider: Record<string, number> = {};
+      for (const entry of this.entries) {
+        const key = entry.providerId;
+        byProvider[key] = (byProvider[key] ?? 0) + Number(entry.costAmount);
+      }
+      result.byProvider = Object.fromEntries(
+        Object.entries(byProvider).map(([k, v]) => [k, v.toFixed(8)]),
       );
     }
     return result;

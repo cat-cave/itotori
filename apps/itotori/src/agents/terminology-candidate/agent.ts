@@ -62,6 +62,7 @@ export async function generateTerminologyCandidates(
   const request: ModelInvocationRequest = {
     taskKind: "experiment",
     modelId: input.modelProfile.modelId,
+    providerId: input.modelProfile.providerId,
     inputClassification: "private_corpus",
     messages,
     prompt: {

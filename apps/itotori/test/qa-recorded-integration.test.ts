@@ -18,6 +18,7 @@ import {
 import {
   RecordedBundleMissingError,
   RecordedModelProvider,
+  recordedBundleKey,
   type RecordedProviderBundle,
 } from "../src/providers/recorded.js";
 import {
@@ -38,6 +39,8 @@ function modelProfile(): QaModelProfile {
   return {
     providerFamily: "fake",
     modelId: "itotori-fake-qa-v0",
+    // ITOTORI-220 — required (modelId, providerId) pair.
+    providerId: "fake-fixture",
     contextWindowTokens: 16000,
     maxOutputTokens: 1024,
   };
@@ -116,15 +119,22 @@ function recordedInputFixture(): QaInvocationInput {
 
 function bundleFor(input: QaInvocationInput, findings: QaFinding[]): RecordedProviderBundle {
   const rendered = buildQaPrompt(input);
-  const promptHashKey = `sha256:${qaPromptHash(rendered)}`;
+  // ITOTORI-220 — key by the pair-aware default bundle key.
+  const bundleKey = recordedBundleKey({
+    modelId: input.modelProfile.modelId,
+    providerId: input.modelProfile.providerId,
+    promptHash: `sha256:${qaPromptHash(rendered)}`,
+    inputClassification: "private_corpus",
+  });
   return {
     bundleId: "qa-bundle-fixture-001",
     capturedProviderFamily: "openrouter",
     capturedProviderName: "openrouter:qa-judge",
     capturedRequestedModelId: input.modelProfile.modelId,
+    capturedProviderId: input.modelProfile.providerId,
     capturedActualModelId: "openrouter:claude-opus-fixture",
     responses: {
-      [promptHashKey]: {
+      [bundleKey]: {
         content: JSON.stringify(makeStructuredQaFindingOutputFixture(findings)),
         finishReason: "stop",
         tokenUsage: {
@@ -188,6 +198,7 @@ describe("QaAgent + RecordedModelProvider integration", () => {
       capturedProviderFamily: "openrouter",
       capturedProviderName: "openrouter:qa-judge",
       capturedRequestedModelId: input.modelProfile.modelId,
+      capturedProviderId: input.modelProfile.providerId,
       capturedActualModelId: "openrouter:claude-opus-fixture",
       responses: {
         ["sha256:wrong-key-no-match"]: {

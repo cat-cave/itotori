@@ -71,7 +71,9 @@ function fixtureProviderRun(overrides: Partial<ProviderRunRecord> = {}): Provide
       endpointFamily: "chat-completions",
       providerName: "openrouter:test",
       requestedModelId: "anthropic/claude-3.5-sonnet",
+      requestedProviderId: "anthropic",
       actualModelId: "anthropic/claude-3.5-sonnet",
+      upstreamProvider: "anthropic",
     },
     structuredOutputMode: "json_schema",
     retryCount: 0,
@@ -98,6 +100,7 @@ function fixtureModelProfile(): TranslationModelProfile {
   return {
     providerFamily: "openrouter",
     modelId: "anthropic/claude-3.5-sonnet",
+    providerId: "anthropic",
     contextWindowTokens: 200_000,
     maxOutputTokens: 8_192,
   };
@@ -158,7 +161,9 @@ export function fallbackChainFixture(
       endpointFamily: "chat-completions",
       providerName: "openrouter:test",
       requestedModelId: "anthropic/claude-3.5-sonnet",
+      requestedProviderId: "anthropic",
       actualModelId: "openai/gpt-4o-mini",
+      upstreamProvider: "openai",
     },
     retryCount: 1,
     latencyMs: 2400,
@@ -195,7 +200,9 @@ export function recordedProviderFixture(
       endpointFamily: "recorded-fixture",
       providerName: "recorded:fixture-bundle",
       requestedModelId: "anthropic/claude-3.5-sonnet",
+      requestedProviderId: "anthropic",
       actualModelId: "anthropic/claude-3.5-sonnet",
+      upstreamProvider: "anthropic",
     },
     cost: {
       costKind: "zero",

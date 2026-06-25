@@ -29,6 +29,8 @@ function fakeModelProfile(): RouteChoiceMapModelProfile {
   return {
     providerFamily: "fake",
     modelId: "itotori-fake-route-choice-map-v0",
+    // ITOTORI-220 — required (modelId, providerId) pair.
+    providerId: "fake-fixture",
     contextWindowTokens: 16000,
     maxOutputTokens: 1024,
   };
@@ -243,6 +245,24 @@ describe("generateRouteChoiceMap", () => {
         expect(choice.options[i]?.optionIndex).toBe(i);
       }
     }
+  });
+
+  it("ITOTORI-220: providerId is propagated through to the ModelProvider call", async () => {
+    const input = {
+      ...inputFixture(),
+      modelProfile: { ...fakeModelProfile(), providerId: "fake-fixture-pair-test" },
+    };
+    let observedProviderId: string | undefined;
+    const provider = new FakeModelProvider({
+      providerName: "route-choice-map-fake",
+      modelId: input.modelProfile.modelId,
+      generate: (request) => {
+        observedProviderId = request.providerId;
+        return successPackJson;
+      },
+    });
+    await generateRouteChoiceMap(input, { provider });
+    expect(observedProviderId).toBe("fake-fixture-pair-test");
   });
 
   it("is byte-stable across two invocations (same prompt hash)", async () => {

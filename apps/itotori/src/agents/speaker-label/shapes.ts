@@ -25,6 +25,11 @@ export const SPEAKER_LABEL_DEFAULT_STRUCTURED_OUTPUT_NAME = "itotori-speaker-lab
 export type SpeakerLabelModelProfile = {
   providerFamily: ProviderFamily;
   modelId: string;
+  /**
+   * ITOTORI-220 — required (modelId, providerId) pair. Pins the speaker-
+   * label invocation to a specific upstream provider.
+   */
+  providerId: string;
   contextWindowTokens: number;
   maxOutputTokens?: number | undefined;
 };

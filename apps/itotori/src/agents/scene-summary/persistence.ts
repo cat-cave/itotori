@@ -6,6 +6,15 @@ import type {
 } from "@itotori/db";
 import type { SceneSummary } from "./shapes.js";
 
+/**
+ * ITOTORI-220 — sentinel providerId surfaced when reconstructing a model
+ * profile from a legacy scene-summary persistence record. The
+ * scene-summary table does not yet carry a provider_id column (out of
+ * scope for ITOTORI-220); new invocations always pin a providerId
+ * explicitly on the way in.
+ */
+const RECONSTRUCTED_LEGACY_PROVIDER_ID = "unknown";
+
 export function summaryToSaveInput(summary: SceneSummary): SaveSceneSummaryInput {
   if (summary.citedUnitIds.length === 0) {
     throw new Error(`scene summary ${summary.id} cites no units`);
@@ -61,6 +70,7 @@ export function recordToSummary(record: SceneSummaryRecord): SceneSummary {
     modelProfile: {
       providerFamily: record.modelProviderFamily as SceneSummary["modelProfile"]["providerFamily"],
       modelId: record.modelId,
+      providerId: RECONSTRUCTED_LEGACY_PROVIDER_ID,
       contextWindowTokens: record.modelContextWindowTokens,
       maxOutputTokens: record.modelMaxOutputTokens ?? undefined,
     },

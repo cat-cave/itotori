@@ -72,6 +72,12 @@ export class DraftAttemptRecorder {
       providerProofId,
       modelProviderFamily: identity.providerFamily,
       modelId: profile.modelId,
+      // ITOTORI-220 — pinned providerId travels into the ledger row so
+      // an audit can verify the same (model, provider) pair would be
+      // used on rerun. The providerRun identity carries the requested
+      // pair; the profile carries the policy-declared pair; they MUST
+      // match by construction (typed) and we surface the identity here.
+      providerId: identity.requestedProviderId,
       modelContextWindowTokens: profile.contextWindowTokens,
       modelMaxOutputTokens: profile.maxOutputTokens,
       promptTemplateVersion: args.promptTemplateVersion ?? providerRun.prompt.templateVersion,

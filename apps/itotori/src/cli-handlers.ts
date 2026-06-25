@@ -83,12 +83,16 @@ export type ItotoriCliServices = {
      */
     cliDependencies(provider: ProviderFamily): Promise<SceneSummaryCliDependencies>;
     defaultModelId: string;
+    /** ITOTORI-220 — default providerId for the scene-summary model. */
+    defaultProviderId: string;
     defaultProviderFamily: ProviderFamily;
     defaultContextWindowTokens: number;
   };
   characterRelationship?: {
     cliDependencies(provider: ProviderFamily): Promise<CharacterRelationshipCliDependencies>;
     defaultModelId: string;
+    /** ITOTORI-220 — default providerId for the character-relationship model. */
+    defaultProviderId: string;
     defaultProviderFamily: ProviderFamily;
     defaultContextWindowTokens: number;
   };
@@ -568,6 +572,7 @@ async function runGenerateSceneSummariesHandler(
         modelProfile: {
           providerFamily,
           modelId: modelId ?? services.sceneSummary.defaultModelId,
+          providerId: services.sceneSummary.defaultProviderId,
           contextWindowTokens:
             contextWindowRaw === undefined
               ? services.sceneSummary.defaultContextWindowTokens
@@ -660,6 +665,7 @@ async function runGenerateCharacterRelationshipsHandler(
         modelProfile: {
           providerFamily,
           modelId: modelId ?? services.characterRelationship.defaultModelId,
+          providerId: services.characterRelationship.defaultProviderId,
           contextWindowTokens:
             contextWindowRaw === undefined
               ? services.characterRelationship.defaultContextWindowTokens

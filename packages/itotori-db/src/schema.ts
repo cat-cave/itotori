@@ -3821,6 +3821,13 @@ export const draftAttemptProviderLedger = pgTable(
     providerProofId: text("provider_proof_id").notNull(),
     modelProviderFamily: text("model_provider_family"),
     modelId: text("model_id"),
+    /**
+     * ITOTORI-220 — required pinned providerId per the (modelId,
+     * providerId) pair rule. NOT NULL is enforced by migration 0038
+     * (with `unknown` backfill for legacy rows); the repository's
+     * `recordLedgerEntry` requires it in its typed input.
+     */
+    providerId: text("provider_id").notNull().default("unknown"),
     modelContextWindowTokens: integer("model_context_window_tokens"),
     modelMaxOutputTokens: integer("model_max_output_tokens"),
     promptTemplateVersion: text("prompt_template_version"),
@@ -3852,6 +3859,11 @@ export const draftAttemptProviderLedger = pgTable(
     index("itotori_draft_attempt_provider_ledger_family_created_idx").on(
       table.modelProviderFamily,
       table.createdAt,
+    ),
+    // ITOTORI-220 — supports sumCostByProject `byProvider` aggregation.
+    index("itotori_draft_attempt_provider_ledger_provider_family_idx").on(
+      table.providerId,
+      table.modelProviderFamily,
     ),
   ],
 );

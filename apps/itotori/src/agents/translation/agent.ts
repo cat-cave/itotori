@@ -118,6 +118,7 @@ export class TranslationAgent {
     const request: ModelInvocationRequest = {
       taskKind: "draft_translation",
       modelId: input.modelProfile.modelId,
+      providerId: input.modelProfile.providerId,
       inputClassification: "private_corpus",
       messages,
       structuredOutput,

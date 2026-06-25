@@ -208,6 +208,10 @@ export const migrations = [
     id: "0037_audit_findings",
     file: "0037_audit_findings.sql",
   },
+  {
+    id: "0038_draft_attempt_provider_ledger_provider_id_required",
+    file: "0038_draft_attempt_provider_ledger_provider_id_required.sql",
+  },
 ] as const;
 
 function migrationPath(file: string): string {

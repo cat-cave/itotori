@@ -28,6 +28,8 @@ function fakeModelProfile(): TerminologyCandidateModelProfile {
   return {
     providerFamily: "fake",
     modelId: "itotori-fake-terminology-candidate-v0",
+    // ITOTORI-220 — required (modelId, providerId) pair.
+    providerId: "fake-fixture",
     contextWindowTokens: 16000,
     maxOutputTokens: 1024,
   };
@@ -199,6 +201,24 @@ describe("generateTerminologyCandidates", () => {
       hashes.add(c.promptHash);
     }
     expect(hashes.size).toBe(1);
+  });
+
+  it("ITOTORI-220: providerId is propagated through to the ModelProvider call", async () => {
+    const input = {
+      ...inputFixture(),
+      modelProfile: { ...fakeModelProfile(), providerId: "fake-fixture-pair-test" },
+    };
+    let observedProviderId: string | undefined;
+    const provider = new FakeModelProvider({
+      providerName: "terminology-candidate-fake",
+      modelId: input.modelProfile.modelId,
+      generate: (request) => {
+        observedProviderId = request.providerId;
+        return successPackJson;
+      },
+    });
+    await generateTerminologyCandidates(input, { provider });
+    expect(observedProviderId).toBe("fake-fixture-pair-test");
   });
 
   it("rejects empty input", async () => {

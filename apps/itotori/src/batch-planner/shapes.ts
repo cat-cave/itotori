@@ -80,6 +80,13 @@ export type BatchCitationManifest = {
 export type BatchModelProfile = {
   providerFamily: ProviderFamily;
   modelId: string;
+  /**
+   * ITOTORI-220 — required (modelId, providerId) pair pinned for every
+   * batch invocation. The batch planner does not invoke a model, but the
+   * downstream draft agent reads `providerId` off the profile when
+   * issuing the call, so it must travel with the batch shape.
+   */
+  providerId: string;
   contextWindowTokens: number;
   maxOutputTokens?: number | undefined;
   targetFillRatio: number;

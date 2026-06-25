@@ -17,6 +17,12 @@ export type DraftAttemptProviderLedgerEntry = {
   providerProofId: string;
   modelProviderFamily: string | null;
   modelId: string | null;
+  /**
+   * ITOTORI-220 — pinned upstream provider id. Always present (NOT NULL
+   * at the schema level); legacy rows are backfilled to `unknown` by
+   * migration 0038.
+   */
+  providerId: string;
   modelContextWindowTokens: number | null;
   modelMaxOutputTokens: number | null;
   promptTemplateVersion: string | null;
@@ -39,6 +45,11 @@ export type RecordLedgerEntryInput = {
   providerProofId: string;
   modelProviderFamily?: string | undefined;
   modelId?: string | undefined;
+  /**
+   * ITOTORI-220 — REQUIRED. The repository rejects null/empty
+   * providerId; per the standing pair rule, the writer must declare it.
+   */
+  providerId: string;
   modelContextWindowTokens?: number | undefined;
   modelMaxOutputTokens?: number | undefined;
   promptTemplateVersion?: string | undefined;
@@ -62,11 +73,17 @@ export type SumCostByProjectWindow = {
 
 export type SumCostByProjectOptions = {
   byModel?: boolean | undefined;
+  /**
+   * ITOTORI-220 — when true, return a `byProvider` aggregate keyed by
+   * `provider_id`. Independent of `byModel`; setting both returns both.
+   */
+  byProvider?: boolean | undefined;
 };
 
 export type SumCostByProjectResult = {
   totalCost: string;
   byModel?: Record<string, string>;
+  byProvider?: Record<string, string>;
 };
 
 export class DraftAttemptProviderLedgerRepositoryError extends Error {
@@ -121,6 +138,7 @@ export class ItotoriDraftAttemptProviderLedgerRepository implements ItotoriDraft
       providerProofId: input.providerProofId,
       modelProviderFamily: input.modelProviderFamily ?? null,
       modelId: input.modelId ?? null,
+      providerId: input.providerId,
       modelContextWindowTokens: input.modelContextWindowTokens ?? null,
       modelMaxOutputTokens: input.modelMaxOutputTokens ?? null,
       promptTemplateVersion: input.promptTemplateVersion ?? null,
@@ -245,6 +263,38 @@ export class ItotoriDraftAttemptProviderLedgerRepository implements ItotoriDraft
       result.byModel = byModel;
     }
 
+    // ITOTORI-220 — provider-level cost aggregation. Mirrors `byModel`
+    // but keys on `provider_id`. Useful for spotting providers that are
+    // unexpectedly expensive even if the model is the same.
+    if (opts?.byProvider === true) {
+      const byProviderRows = await this.db
+        .select({
+          providerId: draftAttemptProviderLedger.providerId,
+          amount: sql<string>`coalesce(sum(${draftAttemptProviderLedger.costAmount}), 0)::text`,
+        })
+        .from(draftAttemptProviderLedger)
+        .innerJoin(
+          draftJobAttempts,
+          eq(draftAttemptProviderLedger.draftJobAttemptId, draftJobAttempts.draftJobAttemptId),
+        )
+        .innerJoin(draftJobs, eq(draftJobAttempts.draftJobId, draftJobs.draftJobId))
+        .where(
+          and(
+            eq(draftJobs.projectId, projectId),
+            gte(draftAttemptProviderLedger.createdAt, window.from),
+            lte(draftAttemptProviderLedger.createdAt, window.to),
+          ),
+        )
+        .groupBy(draftAttemptProviderLedger.providerId)
+        .orderBy(desc(sql`coalesce(sum(${draftAttemptProviderLedger.costAmount}), 0)`));
+
+      const byProvider: Record<string, string> = {};
+      for (const row of byProviderRows) {
+        byProvider[row.providerId] = row.amount;
+      }
+      result.byProvider = byProvider;
+    }
+
     return result;
   }
 
@@ -275,6 +325,12 @@ function assertRecordLedgerEntryInput(input: RecordLedgerEntryInput): void {
     throw new DraftAttemptProviderLedgerRepositoryError(
       "ledger_entry_invalid_input",
       "providerProofId must be non-empty",
+    );
+  }
+  if (typeof input.providerId !== "string" || input.providerId.length === 0) {
+    throw new DraftAttemptProviderLedgerRepositoryError(
+      "ledger_entry_invalid_input",
+      "providerId must be a non-empty string (ITOTORI-220 model+provider pair rule)",
     );
   }
   if (input.costUnit.length === 0) {
@@ -330,6 +386,7 @@ function ledgerRowToEntry(
     providerProofId: row.providerProofId,
     modelProviderFamily: row.modelProviderFamily,
     modelId: row.modelId,
+    providerId: row.providerId,
     modelContextWindowTokens: row.modelContextWindowTokens,
     modelMaxOutputTokens: row.modelMaxOutputTokens,
     promptTemplateVersion: row.promptTemplateVersion,

@@ -248,6 +248,12 @@ export class ItotoriProjectWorkflowService implements ItotoriProjectWorkflowPort
       const request: ModelInvocationRequest = {
         taskKind: "draft_translation",
         modelId: this.draftModelProvider.descriptor.defaultModelId,
+        // ITOTORI-220 — pin the descriptor's providerName as the
+        // providerId for this internal workflow path. The fake provider
+        // surfaces "itotori-fixture", the recorded provider surfaces the
+        // captured upstream identity, and the live providers will
+        // surface their pinned providerId.
+        providerId: this.draftModelProvider.descriptor.providerName,
         inputClassification: "private_corpus",
         prompt,
         messages: [
@@ -769,7 +775,7 @@ function failedProviderRunFromRequest(input: {
   error: unknown;
 }): ProviderRunRecord {
   const completedAt = new Date();
-  const requestedModelId = input.request.modelId ?? input.descriptor.defaultModelId;
+  const requestedModelId = input.request.modelId;
   const fallbackPlan = fallbackPlanForRequest(input.request, requestedModelId);
   const run: ProviderRunRecord = {
     runId: input.request.runId ?? createProviderRunId(input.descriptor.family),
@@ -783,6 +789,7 @@ function failedProviderRunFromRequest(input: {
       endpointFamily: input.descriptor.endpointFamily,
       providerName: input.descriptor.providerName,
       requestedModelId,
+      requestedProviderId: input.request.providerId,
       actualModelId: requestedModelId,
     },
     structuredOutputMode: input.request.structuredOutput?.mode ?? "none",

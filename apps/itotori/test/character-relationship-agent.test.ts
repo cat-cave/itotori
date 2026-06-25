@@ -28,6 +28,8 @@ function fakeModelProfile(): CharacterRelationshipModelProfile {
   return {
     providerFamily: "fake",
     modelId: "itotori-fake-character-relationship-v0",
+    // ITOTORI-220 — required (modelId, providerId) pair.
+    providerId: "fake-fixture",
     contextWindowTokens: 16000,
     maxOutputTokens: 1024,
   };
@@ -246,6 +248,24 @@ describe("generateCharacterRelationships", () => {
       expect(rel.citedUnitHashes.length).toBe(rel.citedUnitIds.length);
       expect(CHARACTER_RELATIONSHIP_KINDS as ReadonlyArray<string>).toContain(rel.kind);
     }
+  });
+
+  it("ITOTORI-220: providerId is propagated through to the ModelProvider call", async () => {
+    const input = {
+      ...inputFixture(),
+      modelProfile: { ...fakeModelProfile(), providerId: "fake-fixture-pair-test" },
+    };
+    let observedProviderId: string | undefined;
+    const provider = new FakeModelProvider({
+      providerName: "character-relationship-fake",
+      modelId: input.modelProfile.modelId,
+      generate: (request) => {
+        observedProviderId = request.providerId;
+        return successPackJson;
+      },
+    });
+    await generateCharacterRelationships(input, { provider });
+    expect(observedProviderId).toBe("fake-fixture-pair-test");
   });
 
   it("is byte-stable across two invocations (same prompt hash)", async () => {

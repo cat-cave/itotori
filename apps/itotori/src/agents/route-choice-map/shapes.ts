@@ -27,6 +27,11 @@ export type RouteMapInvalidatedReason =
 export type RouteChoiceMapModelProfile = {
   providerFamily: ProviderFamily;
   modelId: string;
+  /**
+   * ITOTORI-220 — required (modelId, providerId) pair. Pins the
+   * route-choice-map invocation to a specific upstream provider.
+   */
+  providerId: string;
   contextWindowTokens: number;
   maxOutputTokens?: number | undefined;
 };

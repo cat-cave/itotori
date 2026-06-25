@@ -50,6 +50,17 @@ export type OpenRouterProviderOptions = {
   live: ProviderLiveRunOptions;
 };
 
+/**
+ * ITOTORI-220 — typed payload thrown when the upstream provider that
+ * answered does not match the providerId the request pinned. The metadata
+ * shape lands in the artifact recorder so downstream audit can see both
+ * the requested and the observed provider.
+ */
+export type OpenRouterProviderPairMismatchMetadata = {
+  requestedProviderId: string;
+  observedUpstreamProvider: string | undefined;
+};
+
 export class OpenRouterProvider implements ModelProvider {
   readonly descriptor: ProviderDescriptor;
   private readonly baseUrl: string;
@@ -82,7 +93,12 @@ export class OpenRouterProvider implements ModelProvider {
       );
     }
     const startedAt = new Date();
-    const requestedModelId = request.modelId ?? this.descriptor.defaultModelId;
+    const requestedModelId = request.modelId;
+    const requestedProviderId = request.providerId;
+    // ITOTORI-220 — pin OpenRouter to the requested provider id at request time.
+    // Merging with the routing-defined `only` is intentional: the request's
+    // providerId is authoritative and any pre-configured `only` list must
+    // either match or be tightened to it.
     const providerRouting = buildOpenRouterProviderRouting(this.routing, request);
     const effectiveDataHandling = openRouterDataHandlingForRouting(
       this.descriptor.capabilities.dataHandling,
@@ -230,6 +246,59 @@ export class OpenRouterProvider implements ModelProvider {
         false,
         run,
         metadata,
+      );
+    }
+    // ITOTORI-220 — post-response pair check. If the upstream provider
+    // that actually answered differs from the providerId we pinned, fail
+    // LOUDLY rather than accept the swap silently. We still record the
+    // artifact so audit can see the mismatch.
+    if (
+      normalized.upstreamProvider !== undefined &&
+      normalized.upstreamProvider !== requestedProviderId
+    ) {
+      const metadata = adapterMetadata(body, providerRouting);
+      const mismatchMetadata: OpenRouterProviderPairMismatchMetadata = {
+        requestedProviderId,
+        observedUpstreamProvider: normalized.upstreamProvider,
+      };
+      const mismatchAdapterMetadata: JsonObject = {
+        ...metadata,
+        pairMismatch: {
+          requestedProviderId: mismatchMetadata.requestedProviderId,
+          observedUpstreamProvider: mismatchMetadata.observedUpstreamProvider ?? null,
+        },
+      };
+      const run = buildProviderRunRecord({
+        descriptor: this.descriptor,
+        request,
+        requestedModelId,
+        startedAt,
+        status: "failed",
+        actualModelId: normalized.actualModelId,
+        upstreamProvider: normalized.upstreamProvider,
+        routeSettingsHash,
+        errorClasses: ["pair_mismatch"],
+        tokenUsage: normalized.tokenUsage,
+        dataHandling: effectiveDataHandling,
+      });
+      await this.live.artifactRecorder.recordProviderRun(
+        buildArtifact({
+          request,
+          run,
+          rawCapture: this.live.rawCapture,
+          error: {
+            class: "pair_mismatch",
+            message: `OpenRouter routed to provider '${normalized.upstreamProvider}' but request pinned providerId '${requestedProviderId}'`,
+          },
+          adapterMetadata: mismatchAdapterMetadata,
+        }),
+      );
+      throw new ModelProviderError(
+        `OpenRouter routed to provider '${normalized.upstreamProvider}' but request pinned providerId '${requestedProviderId}'`,
+        "pair_mismatch",
+        false,
+        run,
+        mismatchAdapterMetadata,
       );
     }
     const run = buildProviderRunRecord({
@@ -401,9 +470,24 @@ function buildOpenRouterProviderRouting(
   if (routing.order) {
     provider.order = routing.order;
   }
-  if (routing.only) {
-    provider.only = routing.only;
+  // ITOTORI-220 — pin OpenRouter routing to the requested providerId. If
+  // the caller pre-supplied an `only` list, it MUST contain the request's
+  // providerId; we refuse to widen it for them.
+  if (routing.only !== undefined) {
+    if (!routing.only.includes(request.providerId)) {
+      throw new ModelProviderError(
+        `OpenRouter provider routing only=[${routing.only.join(",")}] does not include requested providerId '${request.providerId}'`,
+        "configuration_error",
+        false,
+      );
+    }
+    provider.only = [request.providerId];
+  } else {
+    provider.only = [request.providerId];
   }
+  // Always disable provider fallbacks: pinning a providerId means we
+  // refuse to silently swap providers on this call.
+  provider.allow_fallbacks = false;
   if (routing.ignore) {
     provider.ignore = routing.ignore;
   }
@@ -413,9 +497,8 @@ function buildOpenRouterProviderRouting(
   if (routing.sort) {
     provider.sort = routing.sort;
   }
-  if (routing.allowFallbacks !== undefined) {
-    provider.allow_fallbacks = routing.allowFallbacks;
-  }
+  // `allow_fallbacks` is forced to false above by the providerId pin —
+  // honouring a caller-supplied true here would defeat the pair lock.
   if (routing.zdr !== undefined) {
     provider.zdr = routing.zdr;
   }
@@ -463,9 +546,8 @@ function openRouterRoutingRequirements(
   if (providerRouting.require_parameters === true) {
     requirements.add("requireParameters");
   }
-  if (routing.allowFallbacks !== undefined) {
-    requirements.add("modelFallbacks");
-  }
+  // ITOTORI-220 — provider fallbacks are forced off by the providerId pin,
+  // so we no longer require modelFallbacks capability based on routing.
   if (routing.zdr === true) {
     requirements.add("zeroDataRetentionRouting");
   }
@@ -679,6 +761,7 @@ function buildProviderRunRecord(input: {
     endpointFamily: input.descriptor.endpointFamily,
     providerName: input.descriptor.providerName,
     requestedModelId: input.requestedModelId,
+    requestedProviderId: input.request.providerId,
     actualModelId: input.actualModelId,
     routeSettingsHash: input.routeSettingsHash,
   };

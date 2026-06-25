@@ -9,6 +9,15 @@ import type {
 } from "@itotori/db";
 import type { RouteChoice, RouteMap } from "./shapes.js";
 
+/**
+ * ITOTORI-220 — sentinel providerId surfaced when reconstructing a model
+ * profile from a legacy route-choice-map persistence record. The
+ * route-choice-map table does not yet carry a provider_id column (out
+ * of scope for ITOTORI-220); new invocations always pin a providerId
+ * explicitly on the way in.
+ */
+const RECONSTRUCTED_LEGACY_PROVIDER_ID = "unknown";
+
 export function routeMapToSaveInput(routeMap: RouteMap): SaveRouteMapInput {
   if (routeMap.citedUnitIds.length === 0) {
     throw new Error(`route map ${routeMap.id} cites no units`);
@@ -114,6 +123,7 @@ export function recordToRouteMap(record: RouteMapRecord): RouteMap {
     modelProfile: {
       providerFamily: record.modelProviderFamily as RouteMap["modelProfile"]["providerFamily"],
       modelId: record.modelId,
+      providerId: RECONSTRUCTED_LEGACY_PROVIDER_ID,
       contextWindowTokens: record.modelContextWindowTokens,
       maxOutputTokens: record.modelMaxOutputTokens ?? undefined,
     },
@@ -146,6 +156,7 @@ export function recordToRouteChoice(record: RouteChoiceRecord): RouteChoice {
     modelProfile: {
       providerFamily: record.modelProviderFamily as RouteChoice["modelProfile"]["providerFamily"],
       modelId: record.modelId,
+      providerId: RECONSTRUCTED_LEGACY_PROVIDER_ID,
       contextWindowTokens: record.modelContextWindowTokens,
       maxOutputTokens: record.modelMaxOutputTokens ?? undefined,
     },

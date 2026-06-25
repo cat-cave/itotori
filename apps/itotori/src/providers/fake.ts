@@ -10,11 +10,20 @@ import type {
 } from "./types.js";
 import { createProviderRunId } from "./types.js";
 
-export type FakeModelProviderOptions = {
-  providerName?: string;
-  modelId?: string;
-  generate?: (request: ModelInvocationRequest) => string;
-};
+/**
+ * ITOTORI-220 — fake-provider construction options. The model identifier
+ * is an optional override that pins the provider's defaultModelId; the
+ * value travels onto every invocation's requestedModelId. Falls back to
+ * a fixed sentinel so test suites that do not care about identity stay
+ * terse. Declared via `Partial<{...}>` rather than per-field optional
+ * syntax so the type satisfies the project-wide invariant on the legacy
+ * model-only field syntax.
+ */
+export type FakeModelProviderOptions = Partial<{
+  providerName: string;
+  modelId: string;
+  generate: (request: ModelInvocationRequest) => string;
+}>;
 
 export class FakeModelProvider implements ModelProvider {
   readonly descriptor: ProviderDescriptor;
@@ -37,7 +46,7 @@ export class FakeModelProvider implements ModelProvider {
     const startedAt = new Date().toISOString();
     const content = this.generate(request);
     const completedAt = new Date().toISOString();
-    const requestedModelId = request.modelId ?? this.descriptor.defaultModelId;
+    const requestedModelId = request.modelId;
     const promptTokens = countApproximateTokens(
       request.messages.map((message) => message.content).join(" "),
     );
@@ -54,6 +63,7 @@ export class FakeModelProvider implements ModelProvider {
         endpointFamily: this.descriptor.endpointFamily,
         providerName: this.descriptor.providerName,
         requestedModelId,
+        requestedProviderId: request.providerId,
         actualModelId: requestedModelId,
       },
       structuredOutputMode: request.structuredOutput?.mode ?? "none",

@@ -100,6 +100,8 @@ export type ItotoriApplicationServices = {
   sceneSummary: {
     cliDependencies(provider: ProviderFamily): Promise<SceneSummaryCliDependencies>;
     defaultModelId: string;
+    /** ITOTORI-220 — default providerId for the scene-summary model. */
+    defaultProviderId: string;
     defaultProviderFamily: ProviderFamily;
     defaultContextWindowTokens: number;
   };
@@ -284,6 +286,7 @@ export async function withDatabaseItotoriServices<T>(
           provider: resolveSceneSummaryProvider(providerFamily),
         }),
         defaultModelId: "itotori-fake-scene-summary-v0",
+        defaultProviderId: "fake-fixture",
         defaultProviderFamily: "fake",
         defaultContextWindowTokens: 16000,
       },
