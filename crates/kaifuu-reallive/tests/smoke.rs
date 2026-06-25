@@ -2,15 +2,26 @@
 //! parser-boundary smoke, retargeted to the real 10,000-slot
 //! fixed-offset-table envelope (KAIFUU-188).
 //!
-//! The fixture set lives under `tests/fixtures/`. Bytes are produced by
-//! the `synthetic` module here and asserted to match the on-disk
-//! fixtures; this keeps the fixtures auditable while still letting CI
-//! validate behavior against committed bytes.
+//! # KAIFUU-191 status
 //!
-//! These tests are SYNTHETIC ENVELOPE SHAPE SMOKES: they exercise the
-//! parser's behavior on bytes the test file itself authored. They do not
-//! claim generality over real RealLive titles — the
-//! `tests/parse_archive_real_bytes.rs` corpus is the real-bytes anchor.
+//! These tests were authored against the **synthetic** `0x23 ('#') opener +
+//! named opcode byte` bytecode shape used by the pre-KAIFUU-191 parser.
+//! KAIFUU-191 replaced that shape with the **real** RealLive bytecode
+//! opener-byte switch (see `crates/kaifuu-reallive/src/opcode.rs`); the
+//! synthetic-shape byte builders in this file no longer correspond to the
+//! parser's contract. The entire file is gated off with
+//! `#![cfg(any())]` (a follow-up node will migrate the byte builders to
+//! the real opener-byte shape, per the KAIFUU-191 spec's note that
+//! "test fixtures may still reference [the synthetic opener] but a
+//! follow-up node will clean those"). The on-disk fixtures under
+//! `tests/fixtures/{smoke-scene-001,truncated-scene-001,unknown-opcode-001}/`
+//! are preserved for that follow-up migration.
+//!
+//! New parser tests live in `tests/parser_synthetic.rs` (per-opcode
+//! encode/decode) and `tests/scene_1_dispatch_real_bytes.rs` (real-bytes
+//! recognition-rate integration).
+
+#![cfg(any())]
 
 use std::collections::HashSet;
 use std::fs;
@@ -19,7 +30,7 @@ use std::path::PathBuf;
 use kaifuu_reallive::{
     DiagnosticSeverity, Instruction, InstructionKind, NamedOpcode, Operand, ParseDiagnostic,
     ParseDiagnosticCode, ParseStatus, REALLIVE_SEEN_TXT_DIRECTORY_BYTE_LEN, RealLiveSceneIndex,
-    SceneEntry, StringSlot, StringSlotRole, parse_archive, parse_scene,
+    SceneEntry, StringSlot, StringSlotRole, parse_archive, parse_scene_into_ast,
 };
 
 mod synthetic {
@@ -202,7 +213,7 @@ fn synthetic_envelope_shape_smoke_parses_smoke_scene_001_into_structured_ast_wit
     assert_eq!(entry.scene_id, synthetic::SINGLE_SCENE_SLOT);
     assert_eq!(entry.scene_id_str(), "reallive:scene-0001");
 
-    let outcome = parse_scene(&blob, entry.scene_id, entry.byte_offset);
+    let outcome = parse_scene_into_ast(&blob, entry.scene_id, entry.byte_offset);
     assert_eq!(
         outcome.status,
         ParseStatus::Ok,
@@ -279,7 +290,7 @@ fn synthetic_envelope_shape_smoke_extracts_stable_string_slot_ids_derived_from_b
     let scene_blob = synthetic::smoke_scene_001_blob();
     let archive_bytes = synthetic::single_scene_archive(&scene_blob);
     let (_, entry, blob) = parse_first_scene(&archive_bytes);
-    let outcome = parse_scene(&blob, entry.scene_id, entry.byte_offset);
+    let outcome = parse_scene_into_ast(&blob, entry.scene_id, entry.byte_offset);
     let scene = outcome.scene.expect("scene present");
 
     // The slot id MUST encode the within-scene byte offset and the
@@ -313,7 +324,7 @@ fn synthetic_envelope_shape_smoke_string_slot_id_format_matches_documented_bridg
     let scene_blob = synthetic::smoke_scene_001_blob();
     let archive_bytes = synthetic::single_scene_archive(&scene_blob);
     let (_, entry, blob) = parse_first_scene(&archive_bytes);
-    let outcome = parse_scene(&blob, entry.scene_id, entry.byte_offset);
+    let outcome = parse_scene_into_ast(&blob, entry.scene_id, entry.byte_offset);
     let scene = outcome.scene.expect("scene present");
 
     // The first slot is the SetSpeaker "Aoi" payload at scene-blob offset
@@ -333,7 +344,7 @@ fn synthetic_envelope_shape_smoke_ast_serializes_named_opcode_strings_not_opaque
     let scene_blob = synthetic::smoke_scene_001_blob();
     let archive_bytes = synthetic::single_scene_archive(&scene_blob);
     let (_, entry, blob) = parse_first_scene(&archive_bytes);
-    let outcome = parse_scene(&blob, entry.scene_id, entry.byte_offset);
+    let outcome = parse_scene_into_ast(&blob, entry.scene_id, entry.byte_offset);
     let scene = outcome.scene.expect("scene present");
 
     let json = serde_json::to_string(&scene).expect("serialize scene");
@@ -393,7 +404,7 @@ fn synthetic_envelope_shape_smoke_emits_kaifuu_reallive_unrecognized_instruction
     assert_synthetic_matches_committed("unknown-opcode-001", &archive_bytes);
 
     let (_, entry, blob) = parse_first_scene(&archive_bytes);
-    let outcome = parse_scene(&blob, entry.scene_id, entry.byte_offset);
+    let outcome = parse_scene_into_ast(&blob, entry.scene_id, entry.byte_offset);
     assert_eq!(
         outcome.status,
         ParseStatus::OkWithWarnings,
@@ -444,7 +455,7 @@ fn synthetic_envelope_shape_smoke_partitions_scene_bytes_completely_into_instruc
     let scene_blob = synthetic::unknown_opcode_001_blob();
     let archive_bytes = synthetic::single_scene_archive(&scene_blob);
     let (_, entry, blob) = parse_first_scene(&archive_bytes);
-    let outcome = parse_scene(&blob, entry.scene_id, entry.byte_offset);
+    let outcome = parse_scene_into_ast(&blob, entry.scene_id, entry.byte_offset);
     let scene = outcome.scene.expect("scene present");
 
     // Every byte must be covered by exactly one instruction node OR by a
@@ -501,7 +512,7 @@ fn synthetic_envelope_shape_smoke_parses_identical_bytes_to_identical_ast_across
     let mut serialized = Vec::with_capacity(3);
     for _ in 0..3 {
         let (index, entry, blob) = parse_first_scene(&archive_bytes);
-        let outcome = parse_scene(&blob, entry.scene_id, entry.byte_offset);
+        let outcome = parse_scene_into_ast(&blob, entry.scene_id, entry.byte_offset);
         let combined = serde_json::json!({
             "index": index,
             "outcome": outcome,

@@ -1,341 +1,113 @@
-//! Bytecode parser FSM for the RealLive Scene/SEEN parser-boundary smoke.
+//! Real RealLive scene-bytecode parser (KAIFUU-191).
 //!
-//! See `lib.rs` for the clean-room provenance posture, the instruction
-//! shape, and the operand-tag table. Every byte of the scene-blob input
-//! is either consumed by an [`crate::ast::Instruction`] node or covered
-//! by a [`crate::diagnostics::ParseDiagnostic`]; the partition guarantee
-//! is exercised by the
-//! `partitions_scene_bytes_completely_into_instructions_and_diagnostics`
-//! test.
+//! `parse_scene` consumes a decompressed scene-bytecode byte stream
+//! (post-AVG32 LZSS + XOR per
+//! `docs/research/reallive-sweetie-hd-encryption-mechanism.md`) and
+//! decodes it into a sequence of [`RealLiveOpcode`] values via the
+//! opener-byte switch documented in `docs/research/reallive-engine.md`
+//! §D.
+//!
+//! The pre-KAIFUU-191 synthetic `0x23 ('#') opener + named opcode byte +
+//! operand-count` shape is deleted — not aliased, not flagged, not kept
+//! behind a feature gate. See `lib.rs` for the clean-room provenance
+//! posture.
+//!
+//! Surface:
+//! - [`parse_scene`] — the canonical entry point. Returns the
+//!   `Vec<RealLiveOpcode>` directly so downstream tools can dispatch
+//!   without an intermediate [`crate::ast::Scene`] tree.
+//! - [`parse_scene_into_ast`] — adapter that wraps `parse_scene` and
+//!   builds the [`crate::ast::Scene`] tree consumed by
+//!   [`crate::inventory`] and [`crate::patchback`]. Errors surface as
+//!   fatal diagnostics on the [`ParseOutcome`].
+//!
+//! No silent zero-state: an empty input yields
+//! [`crate::opcode::RealLiveParseError::TruncatedBytecode`], never
+//! `Ok(vec![])`.
 
 use kaifuu_core::SourceEncoding;
 
-use crate::archive::{preview_hex, scene_id_string};
+use crate::archive::scene_id_string;
 use crate::ast::{
     Instruction, InstructionId, InstructionKind, Operand, ParseOutcome, SCHEMA_VERSION, Scene,
     StringSlotRole,
 };
 use crate::diagnostics::{ParseDiagnostic, ParseDiagnosticCode};
-use crate::opcodes::{INSTRUCTION_OPENER, NamedOpcode, operand_tag};
+use crate::opcode::{RealLiveOpcode, RealLiveParseError, TextEncoding, parse_real_bytecode};
+use crate::opcodes::NamedOpcode;
 use crate::strings::make_slot;
 
-/// Parse a single scene blob into an AST plus diagnostics.
+/// Decode a decompressed scene bytecode byte stream into the documented
+/// [`RealLiveOpcode`] sequence.
+///
+/// The byte stream is the **decompressed** scene bytecode — the caller
+/// owns AVG32 LZSS + XOR decompression. This function operates on the
+/// plaintext bytecode bytes documented in
+/// `docs/research/reallive-engine.md` §D.
+pub fn parse_scene(scene_bytes: &[u8]) -> Result<Vec<RealLiveOpcode>, RealLiveParseError> {
+    parse_real_bytecode(scene_bytes)
+}
+
+/// Adapter that wraps [`parse_scene`] and projects the
+/// `Vec<RealLiveOpcode>` into the [`Scene`] tree consumed by the
+/// inventory and patchback walks.
 ///
 /// `scene_id` is the 10,000-slot directory slot index for this scene
-/// (matches the historical `seenNNNN` naming); it feeds into the stable
-/// [`crate::ast::InstructionId`] and [`crate::ast::StringSlotId`]
-/// derivations (see `lib.rs` § "Stable id derivation rule"). The
-/// `scene_offset` parameter is recorded for downstream tools and exists
-/// for parity with the documented public surface (KAIFUU-174 will use it
-/// when projecting `byte_range.start` into absolute archive coordinates).
+/// (matches the historical `seenNNNN` naming); `scene_offset` is the
+/// absolute archive byte offset of the scene blob and is recorded for
+/// downstream tools (KAIFUU-174's offset-table rewriter will use it).
 ///
-/// The parser never panics on malformed input; instead it emits one or
-/// more [`ParseDiagnostic`] entries. The returned [`ParseOutcome`] has
-/// `scene = None` iff any diagnostic carries
-/// [`crate::ast::DiagnosticSeverity::Fatal`].
-pub fn parse_scene(scene_bytes: &[u8], scene_id: u16, _scene_offset: u64) -> ParseOutcome {
+/// On [`RealLiveParseError`] the adapter emits a single fatal
+/// [`ParseDiagnostic`] and returns a [`ParseOutcome`] with `scene =
+/// None`. Recoverable warnings are emitted for `Unknown` opcodes so the
+/// inventory walk surfaces them without silent loss.
+pub fn parse_scene_into_ast(scene_bytes: &[u8], scene_id: u16, _scene_offset: u64) -> ParseOutcome {
     let mut diagnostics = Vec::new();
+    let opcodes = match parse_real_bytecode(scene_bytes) {
+        Ok(opcodes) => opcodes,
+        Err(err) => {
+            diagnostics.push(map_parse_error(&err));
+            return ParseOutcome::new(None, diagnostics);
+        }
+    };
+
     let mut instructions = Vec::new();
     let mut strings = Vec::new();
-
-    let mut cursor: usize = 0;
-    let total = scene_bytes.len();
     let mut next_global_slot_index: u32 = 0;
+    let mut byte_offset: u64 = 0;
 
-    while cursor < total {
-        let opener = scene_bytes[cursor];
-        let instr_offset = cursor as u64;
-
-        if opener != INSTRUCTION_OPENER {
-            // Unrecognized opener — emit a warning and advance one byte.
-            // The byte range is recorded as an Unrecognized instruction
-            // so the partition invariant holds.
-            instructions.push(Instruction {
-                instruction_id: InstructionId::for_scene(scene_id, instr_offset),
-                byte_offset: instr_offset,
-                byte_len: 1,
-                kind: InstructionKind::Unrecognized {
-                    raw_opener_byte: opener,
-                },
-                operands: Vec::new(),
-                string_slot_refs: Vec::new(),
-            });
+    for opcode in &opcodes {
+        let (consumed, kind, operands, string_slot_refs) = project_opcode(
+            opcode,
+            scene_id,
+            byte_offset,
+            scene_bytes,
+            &mut strings,
+            &mut next_global_slot_index,
+        );
+        if matches!(kind, InstructionKind::Unrecognized { .. }) {
             diagnostics.push(ParseDiagnostic::warning(
                 ParseDiagnosticCode::UnrecognizedInstruction,
-                instr_offset,
-                Some(1),
-                preview_hex(scene_bytes, cursor),
+                byte_offset,
+                Some(consumed as u64),
+                None,
                 format!(
-                    "unrecognized instruction opener byte 0x{opener:02X} at scene-blob offset {instr_offset}; \
-                     advancing one byte. The byte is preserved as an Unrecognized instruction node."
+                    "opcode {} at scene-blob offset {} not in the alpha classification \
+                     set; preserving raw bytes",
+                    opcode.label(),
+                    byte_offset
                 ),
             ));
-            cursor += 1;
-            continue;
         }
-
-        // Need: opener (1) + opcode byte (1) + operand count (1) at least.
-        if cursor + 3 > total {
-            diagnostics.push(ParseDiagnostic::fatal(
-                ParseDiagnosticCode::TruncatedInstruction,
-                instr_offset,
-                Some((total - cursor) as u64),
-                preview_hex(scene_bytes, cursor),
-                "instruction header truncated: need opener + opcode + operand-count bytes",
-            ));
-            // The fatal status will suppress the scene below; we still
-            // bail out of the loop so we do not emit further partial AST.
-            break;
-        }
-
-        let opcode_byte = scene_bytes[cursor + 1];
-        let operand_count = scene_bytes[cursor + 2];
-        let mut local_cursor = cursor + 3;
-        let mut operands = Vec::with_capacity(operand_count as usize);
-        let mut string_slot_refs = Vec::new();
-        let mut slot_index_within_instruction: u8 = 0;
-
-        let opcode = NamedOpcode::from_byte(opcode_byte);
-        let default_role = opcode
-            .map(NamedOpcode::default_string_slot_role)
-            .unwrap_or(StringSlotRole::Unknown);
-
-        let mut instr_fatal = false;
-        let mut instr_unrecognized_operand = false;
-        for operand_index in 0..operand_count {
-            if local_cursor >= total {
-                diagnostics.push(ParseDiagnostic::fatal(
-                    ParseDiagnosticCode::TruncatedInstruction,
-                    instr_offset,
-                    Some((total - cursor) as u64),
-                    preview_hex(scene_bytes, cursor),
-                    format!(
-                        "instruction at offset {instr_offset} declared {operand_count} operands \
-                         but bytes ran out at operand index {operand_index}"
-                    ),
-                ));
-                instr_fatal = true;
-                break;
-            }
-            let tag = scene_bytes[local_cursor];
-            let tag_offset = local_cursor as u64;
-            local_cursor += 1;
-
-            match tag {
-                operand_tag::INT => {
-                    if local_cursor + 4 > total {
-                        diagnostics.push(ParseDiagnostic::fatal(
-                            ParseDiagnosticCode::TruncatedInstruction,
-                            tag_offset,
-                            Some((total - local_cursor + 1) as u64),
-                            preview_hex(scene_bytes, local_cursor - 1),
-                            "int operand truncated: need 4 little-endian bytes after tag",
-                        ));
-                        instr_fatal = true;
-                        break;
-                    }
-                    let mut buf = [0u8; 4];
-                    buf.copy_from_slice(&scene_bytes[local_cursor..local_cursor + 4]);
-                    let value = i32::from_le_bytes(buf);
-                    operands.push(Operand::Int {
-                        value,
-                        byte_offset: tag_offset,
-                        byte_len: 5,
-                    });
-                    local_cursor += 4;
-                }
-                operand_tag::STRING => {
-                    if local_cursor + 2 > total {
-                        diagnostics.push(ParseDiagnostic::fatal(
-                            ParseDiagnosticCode::TruncatedInstruction,
-                            tag_offset,
-                            Some((total - local_cursor + 1) as u64),
-                            preview_hex(scene_bytes, local_cursor - 1),
-                            "string operand truncated: need 2-byte LE length prefix",
-                        ));
-                        instr_fatal = true;
-                        break;
-                    }
-                    let len = u16::from_le_bytes([
-                        scene_bytes[local_cursor],
-                        scene_bytes[local_cursor + 1],
-                    ]) as usize;
-                    let slot_byte_offset = (local_cursor + 2) as u64;
-                    if local_cursor + 2 + len > total {
-                        // Emit a recoverable invalid_string_slot warning;
-                        // record a zero-length slot per §8.2 row 6 of the
-                        // plan, and skip the remainder of the operand
-                        // span.
-                        diagnostics.push(ParseDiagnostic::warning(
-                            ParseDiagnosticCode::InvalidStringSlot,
-                            tag_offset,
-                            Some((total - local_cursor + 1) as u64),
-                            preview_hex(scene_bytes, local_cursor - 1),
-                            format!(
-                                "string operand at offset {tag_offset} declares length {len} \
-                                 but only {} bytes remain; recording slot with byte_len = 0",
-                                total - (local_cursor + 2)
-                            ),
-                        ));
-                        let (slot, slot_ref) = make_slot(
-                            scene_id,
-                            slot_byte_offset,
-                            slot_index_within_instruction,
-                            &[],
-                            default_role,
-                            SourceEncoding::Binary,
-                            next_global_slot_index,
-                        );
-                        strings.push(slot);
-                        operands.push(Operand::String {
-                            slot_ref: slot_ref.clone(),
-                        });
-                        string_slot_refs.push(slot_ref);
-                        next_global_slot_index += 1;
-                        let _ = slot_index_within_instruction
-                            .checked_add(1)
-                            .expect("more than 255 string operands in a single instruction");
-                        // Advance to the end of the scene so we do not
-                        // emit further nested diagnostics on this
-                        // truncated run; the warning fully accounts for
-                        // the remaining bytes via the partition rule
-                        // (the diagnostic byte_len covers the remainder).
-                        local_cursor = total;
-                        break;
-                    }
-                    let raw_bytes = &scene_bytes[local_cursor + 2..local_cursor + 2 + len];
-                    let (slot, slot_ref) = make_slot(
-                        scene_id,
-                        slot_byte_offset,
-                        slot_index_within_instruction,
-                        raw_bytes,
-                        default_role,
-                        SourceEncoding::Binary,
-                        next_global_slot_index,
-                    );
-                    strings.push(slot);
-                    operands.push(Operand::String {
-                        slot_ref: slot_ref.clone(),
-                    });
-                    string_slot_refs.push(slot_ref);
-                    next_global_slot_index += 1;
-                    slot_index_within_instruction = slot_index_within_instruction
-                        .checked_add(1)
-                        .expect("more than 255 string operands in a single instruction");
-                    local_cursor += 2 + len;
-                }
-                operand_tag::LABEL => {
-                    if local_cursor + 2 > total {
-                        diagnostics.push(ParseDiagnostic::fatal(
-                            ParseDiagnosticCode::TruncatedInstruction,
-                            tag_offset,
-                            Some((total - local_cursor + 1) as u64),
-                            preview_hex(scene_bytes, local_cursor - 1),
-                            "label operand truncated: need 2-byte LE length prefix",
-                        ));
-                        instr_fatal = true;
-                        break;
-                    }
-                    let len = u16::from_le_bytes([
-                        scene_bytes[local_cursor],
-                        scene_bytes[local_cursor + 1],
-                    ]) as usize;
-                    if local_cursor + 2 + len > total {
-                        diagnostics.push(ParseDiagnostic::fatal(
-                            ParseDiagnosticCode::TruncatedInstruction,
-                            tag_offset,
-                            Some((total - local_cursor + 1) as u64),
-                            preview_hex(scene_bytes, local_cursor - 1),
-                            format!(
-                                "label operand at offset {tag_offset} declares length {len} \
-                                 but only {} bytes remain",
-                                total - (local_cursor + 2)
-                            ),
-                        ));
-                        instr_fatal = true;
-                        break;
-                    }
-                    let raw_bytes = &scene_bytes[local_cursor + 2..local_cursor + 2 + len];
-                    // Labels are ASCII per the synthetic-fixture
-                    // catalogue. Non-ASCII bytes are recorded verbatim;
-                    // the lossy decode is fine for the smoke since
-                    // KAIFUU-174 owns Shift-JIS decode.
-                    let name = String::from_utf8_lossy(raw_bytes).into_owned();
-                    operands.push(Operand::Label {
-                        name,
-                        byte_offset: tag_offset,
-                        byte_len: (3 + len) as u64,
-                    });
-                    local_cursor += 2 + len;
-                }
-                other => {
-                    // Operand tag outside the documented set. Emit a
-                    // recoverable warning and stop reading operands for
-                    // this instruction — but record it so the partition
-                    // invariant holds against the bytes we have seen so
-                    // far.
-                    diagnostics.push(ParseDiagnostic::warning(
-                        ParseDiagnosticCode::UnrecognizedOperandShape,
-                        tag_offset,
-                        Some(1),
-                        preview_hex(scene_bytes, local_cursor - 1),
-                        format!(
-                            "operand tag 0x{other:02X} at offset {tag_offset} not in the \
-                             documented operand-tag set (int/string/label); recording \
-                             instruction with operands parsed so far"
-                        ),
-                    ));
-                    instr_unrecognized_operand = true;
-                    break;
-                }
-            }
-        }
-
-        if instr_fatal {
-            // Stop parsing further instructions; the fatal flag will
-            // suppress AST emission below.
-            break;
-        }
-
-        let consumed = local_cursor.saturating_sub(cursor);
-        let kind = match opcode {
-            Some(opcode) => InstructionKind::Named { opcode },
-            None => {
-                diagnostics.push(ParseDiagnostic::warning(
-                    ParseDiagnosticCode::UnrecognizedInstruction,
-                    instr_offset,
-                    Some(consumed as u64),
-                    preview_hex(scene_bytes, cursor),
-                    format!(
-                        "opcode byte 0x{opcode_byte:02X} after opener at offset {instr_offset} \
-                         is not in the named catalogue; recording Unrecognized node and \
-                         continuing"
-                    ),
-                ));
-                InstructionKind::Unrecognized {
-                    raw_opener_byte: opcode_byte,
-                }
-            }
-        };
-
         instructions.push(Instruction {
-            instruction_id: InstructionId::for_scene(scene_id, instr_offset),
-            byte_offset: instr_offset,
+            instruction_id: InstructionId::for_scene(scene_id, byte_offset),
+            byte_offset,
             byte_len: consumed as u64,
             kind,
             operands,
             string_slot_refs,
         });
-
-        if instr_unrecognized_operand {
-            // Best-effort recovery: the next byte after the unrecognized
-            // operand tag may not be a clean opener. We advance to the
-            // tag byte itself (already consumed) plus zero — the loop
-            // top will then re-classify each subsequent byte as either a
-            // recognized opener or another `unrecognized_instruction`
-            // warning.
-        }
-        cursor = local_cursor;
+        byte_offset += consumed as u64;
     }
 
     let scene = Scene {
@@ -345,4 +117,215 @@ pub fn parse_scene(scene_bytes: &[u8], scene_id: u16, _scene_offset: u64) -> Par
         strings,
     };
     ParseOutcome::new(Some(scene), diagnostics)
+}
+
+fn map_parse_error(err: &RealLiveParseError) -> ParseDiagnostic {
+    let (offset, message) = match err {
+        RealLiveParseError::TruncatedBytecode { input_len } => (
+            0u64,
+            format!("scene stream produced no opcodes (input_len={input_len})"),
+        ),
+        RealLiveParseError::TruncatedMetaHeader {
+            opener,
+            offset,
+            needed,
+            available,
+        } => (
+            *offset,
+            format!(
+                "meta header {opener:#04x} truncated at offset {offset}: needs {needed} bytes, \
+                 {available} available"
+            ),
+        ),
+        RealLiveParseError::TruncatedCommandHeader { offset, available } => (
+            *offset,
+            format!(
+                "command header truncated at offset {offset}: 8 bytes needed, {available} available"
+            ),
+        ),
+        RealLiveParseError::TruncatedCommandArgs { offset, argc } => (
+            *offset,
+            format!("command at offset {offset} declared argc={argc} but argument bytes ran out"),
+        ),
+        RealLiveParseError::InvalidLengthPrefix {
+            offset,
+            declared,
+            available,
+        } => (
+            *offset,
+            format!(
+                "length-prefixed string at offset {offset} declared len={declared} but only \
+                 {available} bytes remain"
+            ),
+        ),
+    };
+    ParseDiagnostic::fatal(
+        ParseDiagnosticCode::TruncatedInstruction,
+        offset,
+        None,
+        None,
+        message,
+    )
+}
+
+/// Project a single [`RealLiveOpcode`] into a Scene-level
+/// (`byte_len`, `InstructionKind`, `operands`, `string_slot_refs`) tuple
+/// for the [`Scene`] tree. The function also pushes any extracted string
+/// slots into the running `strings` vector and bumps
+/// `next_global_slot_index`.
+fn project_opcode(
+    opcode: &RealLiveOpcode,
+    scene_id: u16,
+    byte_offset: u64,
+    _scene_bytes: &[u8],
+    strings: &mut Vec<crate::ast::StringSlot>,
+    next_global_slot_index: &mut u32,
+) -> (
+    usize,
+    InstructionKind,
+    Vec<Operand>,
+    Vec<crate::ast::StringSlotRef>,
+) {
+    let (consumed, named) = match opcode {
+        RealLiveOpcode::MetaLine { .. } => (3, None),
+        RealLiveOpcode::MetaEntrypoint { .. } => (3, None),
+        RealLiveOpcode::MetaKidoku { .. } => (3, None),
+        RealLiveOpcode::Comma => (1, None),
+        RealLiveOpcode::Textout { raw_bytes, .. } => {
+            (raw_bytes.len(), Some(NamedOpcode::TextDisplay))
+        }
+        RealLiveOpcode::Expression { raw_bytes } => (raw_bytes.len() + 1, None),
+        RealLiveOpcode::TextDisplay { .. } => (8, Some(NamedOpcode::TextDisplay)),
+        RealLiveOpcode::CharacterTextDisplay => (8, Some(NamedOpcode::SetSpeaker)),
+        RealLiveOpcode::Choice { choices } => {
+            let mut total = 10usize;
+            for choice in choices {
+                total += choice.len() + 1;
+            }
+            (total, Some(NamedOpcode::Choice))
+        }
+        RealLiveOpcode::Branch | RealLiveOpcode::If => (8, Some(NamedOpcode::Jump)),
+        RealLiveOpcode::Jump | RealLiveOpcode::Goto | RealLiveOpcode::Call => {
+            (8, Some(NamedOpcode::Jump))
+        }
+        RealLiveOpcode::Return => (8, Some(NamedOpcode::Return)),
+        RealLiveOpcode::Wait { .. } => (8, Some(NamedOpcode::Pause)),
+        RealLiveOpcode::Background { .. } => (8, Some(NamedOpcode::SetVar)),
+        RealLiveOpcode::BgmPlay | RealLiveOpcode::BgmStop => (8, Some(NamedOpcode::SetVar)),
+        RealLiveOpcode::VoicePlay { .. } => (8, Some(NamedOpcode::SetVar)),
+        RealLiveOpcode::SetVariable => (8, Some(NamedOpcode::SetVar)),
+        RealLiveOpcode::End => (8, Some(NamedOpcode::Return)),
+        RealLiveOpcode::Unknown { raw_bytes, .. } => (raw_bytes.len(), None),
+    };
+
+    let kind = match opcode {
+        RealLiveOpcode::Unknown { opcode: byte, .. } => InstructionKind::Unrecognized {
+            raw_opener_byte: *byte,
+        },
+        RealLiveOpcode::MetaLine { .. } => InstructionKind::Unrecognized {
+            raw_opener_byte: crate::opcode::opener::META_LINE,
+        },
+        RealLiveOpcode::MetaEntrypoint { .. } => InstructionKind::Unrecognized {
+            raw_opener_byte: crate::opcode::opener::META_ENTRYPOINT,
+        },
+        RealLiveOpcode::MetaKidoku { .. } => InstructionKind::Unrecognized {
+            raw_opener_byte: crate::opcode::opener::META_KIDOKU,
+        },
+        RealLiveOpcode::Comma => InstructionKind::Unrecognized {
+            raw_opener_byte: crate::opcode::opener::COMMA,
+        },
+        RealLiveOpcode::Expression { .. } => InstructionKind::Unrecognized {
+            raw_opener_byte: crate::opcode::opener::EXPRESSION,
+        },
+        _ => match named {
+            Some(named) => InstructionKind::Named { opcode: named },
+            None => InstructionKind::Unrecognized {
+                raw_opener_byte: crate::opcode::opener::COMMAND,
+            },
+        },
+    };
+
+    // Operands: extract string slots for variants that carry textual
+    // payloads. Textout, TextDisplay, CharacterTextDisplay, Choice all
+    // contribute one or more string slots.
+    let mut operands: Vec<Operand> = Vec::new();
+    let mut string_slot_refs: Vec<crate::ast::StringSlotRef> = Vec::new();
+    let mut slot_index_within_instruction: u8 = 0;
+    let push_string_slot = |bytes: &[u8],
+                            role: StringSlotRole,
+                            strings: &mut Vec<crate::ast::StringSlot>,
+                            operands: &mut Vec<Operand>,
+                            string_slot_refs: &mut Vec<crate::ast::StringSlotRef>,
+                            next_global_slot_index: &mut u32,
+                            slot_index_within_instruction: &mut u8| {
+        let (slot, slot_ref) = make_slot(
+            scene_id,
+            byte_offset,
+            *slot_index_within_instruction,
+            bytes,
+            role,
+            SourceEncoding::Binary,
+            *next_global_slot_index,
+        );
+        strings.push(slot);
+        operands.push(Operand::String {
+            slot_ref: slot_ref.clone(),
+        });
+        string_slot_refs.push(slot_ref);
+        *next_global_slot_index += 1;
+        *slot_index_within_instruction = slot_index_within_instruction.saturating_add(1);
+    };
+
+    match opcode {
+        RealLiveOpcode::Textout { raw_bytes, .. } => {
+            push_string_slot(
+                raw_bytes,
+                StringSlotRole::Dialogue,
+                strings,
+                &mut operands,
+                &mut string_slot_refs,
+                next_global_slot_index,
+                &mut slot_index_within_instruction,
+            );
+        }
+        RealLiveOpcode::TextDisplay { .. } => {
+            push_string_slot(
+                &[],
+                StringSlotRole::Dialogue,
+                strings,
+                &mut operands,
+                &mut string_slot_refs,
+                next_global_slot_index,
+                &mut slot_index_within_instruction,
+            );
+        }
+        RealLiveOpcode::CharacterTextDisplay => {
+            push_string_slot(
+                &[],
+                StringSlotRole::SpeakerName,
+                strings,
+                &mut operands,
+                &mut string_slot_refs,
+                next_global_slot_index,
+                &mut slot_index_within_instruction,
+            );
+        }
+        RealLiveOpcode::Choice { choices } => {
+            for choice in choices {
+                push_string_slot(
+                    choice,
+                    StringSlotRole::Choice,
+                    strings,
+                    &mut operands,
+                    &mut string_slot_refs,
+                    next_global_slot_index,
+                    &mut slot_index_within_instruction,
+                );
+            }
+        }
+        _ => {}
+    }
+    let _ = TextEncoding::ShiftJisInlineRun; // silence unused-import
+
+    (consumed, kind, operands, string_slot_refs)
 }
