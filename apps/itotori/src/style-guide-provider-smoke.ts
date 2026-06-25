@@ -273,12 +273,11 @@ export function assertStyleGuideProviderSmokeLedger(run: ProviderRunRecord): voi
   if (run.status === "succeeded" && run.cost.costKind !== "billed") {
     missing.push("billed cost");
   }
-  if (run.dataHandling.dataCollection === "unknown" || run.dataHandling.trainingUse === "unknown") {
-    missing.push("data-policy flags");
-  }
-  if (run.dataHandling.rawCaptureDefault !== "disabled") {
-    missing.push("raw capture disabled flag");
-  }
+  // ITOTORI-227 — per-pair privacy axes were deleted. Privacy posture
+  // is enforced account-wide (ZDR via assertOpenRouterZdrAccount) plus
+  // per-request (`provider.zdr=true` for non-public input). The smoke
+  // check no longer inspects per-pair axes; the ledger row is gated by
+  // the account/posture assertion at process startup.
   if (missing.length > 0) {
     throw new Error(`style-guide provider smoke ledger missing ${missing.join(", ")}`);
   }
@@ -338,21 +337,6 @@ function styleGuideLiveSmokeCapabilities(): ModelCapabilities {
       ...openRouterDefaultCapabilities.structuredOutputs,
       jsonSchema: "supported",
       preferredModes: ["json_schema"],
-    },
-    dataHandling: {
-      promptLogging: "disabled",
-      completionLogging: "disabled",
-      retention: "metadata_only",
-      trainingUse: "deny",
-      dataCollection: "deny",
-      rawCaptureDefault: "disabled",
-    },
-    accountPrivacy: {
-      inputOutputLogging: "disabled",
-      useOfInputsOutputs: "deny",
-      providerDataPolicyFilters: "enabled",
-      metadataCollection: "expected",
-      euRouting: "unknown",
     },
   };
 }

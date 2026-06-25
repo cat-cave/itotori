@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { assertOpenRouterZdrAccount } from "./account-zdr.js";
 import {
   assertProviderInvocationSupported,
   globalCapabilityGuard,
@@ -18,7 +19,6 @@ import {
   ModelProviderError,
   type ModelTool,
   type ModelToolCall,
-  type ProviderDataHandlingPolicy,
   type ProviderDescriptor,
   type ProviderCost,
   type ProviderInputClassification,
@@ -104,18 +104,10 @@ export class OpenRouterProvider implements ModelProvider {
     // providerId is authoritative and any pre-configured `only` list must
     // either match or be tightened to it.
     const providerRouting = buildOpenRouterProviderRouting(this.routing, request);
-    const effectiveDataHandling = openRouterDataHandlingForRouting(
-      this.descriptor.capabilities.dataHandling,
-      providerRouting,
-    );
     assertProviderInvocationSupported({
       descriptor: this.descriptor,
       request,
       requestedModelId,
-      capabilities: {
-        ...this.descriptor.capabilities,
-        dataHandling: effectiveDataHandling,
-      },
       routingRequirements: openRouterRoutingRequirements(this.routing, providerRouting),
     });
 
@@ -154,7 +146,6 @@ export class OpenRouterProvider implements ModelProvider {
         routeSettingsHash,
         errorClasses: ["provider_network_error"],
         tokenUsage: { tokenCountSource: "unknown" },
-        dataHandling: effectiveDataHandling,
       });
       await this.live.artifactRecorder.recordProviderRun(
         buildArtifact({
@@ -191,7 +182,6 @@ export class OpenRouterProvider implements ModelProvider {
         routeSettingsHash,
         errorClasses: [`http_${response.status}`],
         tokenUsage: { tokenCountSource: "unknown" },
-        dataHandling: effectiveDataHandling,
       });
       await this.live.artifactRecorder.recordProviderRun(
         buildArtifact({
@@ -230,7 +220,6 @@ export class OpenRouterProvider implements ModelProvider {
         routeSettingsHash,
         errorClasses: ["provider_response_invalid"],
         tokenUsage: isRecord(body) ? normalizeUsage(body.usage) : { tokenCountSource: "unknown" },
-        dataHandling: effectiveDataHandling,
       });
       await this.live.artifactRecorder.recordProviderRun(
         buildArtifact({
@@ -283,7 +272,6 @@ export class OpenRouterProvider implements ModelProvider {
         routeSettingsHash,
         errorClasses: ["pair_mismatch"],
         tokenUsage: normalized.tokenUsage,
-        dataHandling: effectiveDataHandling,
       });
       await this.live.artifactRecorder.recordProviderRun(
         buildArtifact({
@@ -317,7 +305,6 @@ export class OpenRouterProvider implements ModelProvider {
       errorClasses: [],
       tokenUsage: normalized.tokenUsage,
       cost: normalized.cost,
-      dataHandling: effectiveDataHandling,
     });
     const metadata = adapterMetadata(body, providerRouting);
     await this.live.artifactRecorder.recordProviderRun(
@@ -380,22 +367,14 @@ export const openRouterDefaultCapabilities: ModelCapabilities = {
     dataCollectionControl: "supported",
     zeroDataRetentionRouting: "supported",
   },
-  dataHandling: {
-    promptLogging: "unknown",
-    completionLogging: "unknown",
-    retention: "unknown",
-    trainingUse: "unknown",
-    dataCollection: "deny",
-    rawCaptureDefault: "disabled",
-  },
-  accountPrivacy: {
-    inputOutputLogging: "unknown",
-    useOfInputsOutputs: "unknown",
-    providerDataPolicyFilters: "unknown",
-    metadataCollection: "expected",
-    euRouting: "unknown",
-  },
-  notes: ["OpenRouter defaults require model/provider capability confirmation before private use"],
+  notes: [
+    // ITOTORI-227 — itotori no longer carries per-pair privacy axes.
+    // The posture is enforced by the account-wide ZDR assertion
+    // (assertOpenRouterZdrAccount) plus the per-request
+    // `provider.zdr=true` default for non-public input. See
+    // docs/openrouter-integration.md §2.
+    "OpenRouter privacy posture is account-wide ZDR + per-request provider.zdr=true (see docs/openrouter-integration.md §2)",
+  ],
 };
 
 function buildOpenRouterRequestBody(
@@ -500,10 +479,19 @@ function buildOpenRouterProviderRouting(
   if (routing.sort) {
     provider.sort = routing.sort;
   }
-  // `allow_fallbacks` is forced to false above by the providerId pin —
-  // honouring a caller-supplied true here would defeat the pair lock.
+  // ITOTORI-227 — `provider.zdr=true` is the DEFAULT for every non-public
+  // request. The account-wide ZDR posture is asserted at process startup
+  // (assertOpenRouterZdrAccount); this per-request default belt-and-braces
+  // the dashboard setting so every wire-level request also constrains the
+  // route to ZDR-only providers. `public` inputs skip the constraint —
+  // there is no privacy concern and lower friction matters for synthetic
+  // marketing copy / public-content stages. A caller MAY override via
+  // `routing.zdr` (e.g. to opt synthetic_public out for cheaper routing);
+  // the value is strictly boolean.
   if (routing.zdr !== undefined) {
     provider.zdr = routing.zdr;
+  } else if (request.inputClassification !== "public") {
+    provider.zdr = true;
   }
   if (routing.enforceDistillableText !== undefined) {
     provider.enforce_distillable_text = routing.enforceDistillableText;
@@ -528,18 +516,8 @@ function isPrivateInput(inputClassification: ProviderInputClassification): boole
   return inputClassification !== "synthetic_public" && inputClassification !== "public";
 }
 
-function openRouterDataHandlingForRouting(
-  basePolicy: ProviderDataHandlingPolicy,
-  providerRouting: JsonObject,
-): ProviderDataHandlingPolicy {
-  return {
-    ...basePolicy,
-    dataCollection: providerRouting.data_collection === "allow" ? "allow" : "deny",
-  };
-}
-
 function openRouterRoutingRequirements(
-  routing: OpenRouterProviderRouting,
+  _routing: OpenRouterProviderRouting,
   providerRouting: JsonObject,
 ): ProviderRoutingCapabilityRequirement[] {
   const requirements = new Set<ProviderRoutingCapabilityRequirement>([
@@ -549,9 +527,13 @@ function openRouterRoutingRequirements(
   if (providerRouting.require_parameters === true) {
     requirements.add("requireParameters");
   }
-  // ITOTORI-220 — provider fallbacks are forced off by the providerId pin,
-  // so we no longer require modelFallbacks capability based on routing.
-  if (routing.zdr === true) {
+  // ITOTORI-227 — every non-public request body carries
+  // `provider.zdr=true` by default, so the zero-data-retention capability
+  // requirement applies whenever the routing block carries `zdr`. This
+  // is set automatically (not just when the caller opts in) so the
+  // capability guard refuses to fire on providers that haven't been
+  // confirmed for ZDR routing.
+  if (providerRouting.zdr === true) {
     requirements.add("zeroDataRetentionRouting");
   }
   return [...requirements];
@@ -764,7 +746,6 @@ function buildProviderRunRecord(input: {
   errorClasses: string[];
   tokenUsage: TokenUsage;
   cost?: ProviderCost;
-  dataHandling: ProviderDataHandlingPolicy;
 }): ProviderRunRecord {
   const completedAt = new Date();
   const fallbackPlan = fallbackPlanForRequest(input.request, input.requestedModelId);
@@ -800,13 +781,9 @@ function buildProviderRunRecord(input: {
     // throws on missing usage.cost rather than returning a fallback.
     cost: input.status === "succeeded" && input.cost ? input.cost : ZERO_COST,
     prompt: input.request.prompt,
-    dataHandling: input.dataHandling,
   };
   if (input.request.preset) {
     run.providerPreset = input.request.preset;
-  }
-  if (input.descriptor.capabilities.accountPrivacy) {
-    run.accountPrivacy = input.descriptor.capabilities.accountPrivacy;
   }
   return run;
 }
@@ -1196,6 +1173,18 @@ export class OpenRouterModelProvider implements ModelProvider {
     this.rateLimitPerSec = options.rateLimitPerSec ?? DEFAULT_RATE_LIMIT_PER_SEC;
 
     const envSource: Readonly<Record<string, string | undefined>> = options.env ?? process.env;
+
+    // ITOTORI-227 — assert the account-wide Zero-Data-Retention posture
+    // BEFORE any other startup work. The assertion is synchronous and
+    // throws AccountZdrAssertionError if the operator has not flagged
+    // the OpenRouter dashboard as ZDR-only via
+    // OPENROUTER_ZDR_ACCOUNT_ASSERTED=1. This gate is intentionally
+    // ahead of the API-key check so a misconfigured live process fails
+    // on the privacy posture (the load-bearing one) rather than on the
+    // missing-key path. Recorded/replay providers do NOT carry this
+    // assertion — they never make a live call.
+    assertOpenRouterZdrAccount(envSource);
+
     const apiKey = envSource[this.apiKeyEnvVar];
     if (apiKey === undefined || apiKey.length === 0) {
       throw new OpenRouterMissingApiKeyError(this.apiKeyEnvVar);

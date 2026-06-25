@@ -246,6 +246,18 @@ function printDryRunPlan(plan) {
   process.stdout.write(
     "[localize-sweetie-hd] --dry-run plan (no LLM calls; 0 ProviderRunRecords would be written):\n",
   );
+  // ITOTORI-227 — the OpenRouter privacy posture is part of the dry-run
+  // plan so the operator can confirm the account-level ZDR setting is
+  // asserted and every non-public request body will carry
+  // provider.zdr=true. The constructor-level assertion runs in the live
+  // path; for dry-run we surface its expected state here.
+  const zdrAccountAsserted = process.env.OPENROUTER_ZDR_ACCOUNT_ASSERTED === "1" ? "1" : "MISSING";
+  process.stdout.write(
+    `[localize-sweetie-hd] ZDR account asserted: OPENROUTER_ZDR_ACCOUNT_ASSERTED=${zdrAccountAsserted}\n`,
+  );
+  process.stdout.write(
+    "[localize-sweetie-hd] Per-stage provider.zdr posture: true (all non-public input classifications)\n",
+  );
   for (const line of plan) {
     process.stdout.write(`[localize-sweetie-hd] (planned) $ ${line}\n`);
   }

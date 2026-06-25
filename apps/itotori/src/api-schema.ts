@@ -801,10 +801,13 @@ export function assertProjectCostReport(
         `${tokenTotalLabel} must cover promptTokens, completionTokens, and reasoningTokens`,
       );
     }
+    // ITOTORI-227 — per-pair privacy axes are gone; the ledger column
+    // `data_handling` is retained as an opaque jsonb until a follow-up
+    // migration drops it, so we only validate it's an object (no field
+    // shape claims). Privacy posture is enforced by the account-wide
+    // ZDR assertion + per-request `provider.zdr=true` default, not by
+    // any per-run record on this report.
     asRecord(run.dataHandling, `${label}.recentRuns[${index}].dataHandling`);
-    if (run.accountPrivacy !== null) {
-      asRecord(run.accountPrivacy, `${label}.recentRuns[${index}].accountPrivacy`);
-    }
   }
   const reuse = asRecord(report.translationMemoryReuse, `${label}.translationMemoryReuse`);
   assertNonNegativeInteger(

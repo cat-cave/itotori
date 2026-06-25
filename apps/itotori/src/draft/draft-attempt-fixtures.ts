@@ -10,7 +10,6 @@ import type {
   DraftAttemptProviderLedgerContextRef,
   DraftAttemptProviderLedgerPolicyVersions,
 } from "@itotori/db";
-import { deterministicFixtureDataHandlingPolicy } from "../providers/policy.js";
 import type { ProviderRunRecord, TokenUsage } from "../providers/types.js";
 import type {
   TranslationInvocationModelMetadata,
@@ -91,7 +90,6 @@ function fixtureProviderRun(overrides: Partial<ProviderRunRecord> = {}): Provide
       templateVersion: "itotori-translation-agent-v1",
       promptHash: `sha256:${FIXTURE_PROMPT_HASH}`,
     },
-    dataHandling: deterministicFixtureDataHandlingPolicy,
     ...overrides,
   };
 }

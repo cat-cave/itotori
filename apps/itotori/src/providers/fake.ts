@@ -1,4 +1,3 @@
-import { deterministicFixtureDataHandlingPolicy } from "./policy.js";
 import { assertProviderInvocationSupported } from "./capability-guard.js";
 import type {
   ModelCapabilities,
@@ -83,7 +82,6 @@ export class FakeModelProvider implements ModelProvider {
         amountMicrosUsd: 0,
       },
       prompt: request.prompt,
-      dataHandling: this.descriptor.capabilities.dataHandling,
     };
     if (request.preset) {
       run.providerPreset = request.preset;
@@ -116,7 +114,6 @@ export const fakeModelCapabilities: ModelCapabilities = {
     dataCollectionControl: "unsupported",
     zeroDataRetentionRouting: "unsupported",
   },
-  dataHandling: deterministicFixtureDataHandlingPolicy,
   notes: ["deterministic fake provider for CI and unit tests"],
 };
 

@@ -205,21 +205,6 @@
         "fallbackModels": ["style-guide-smoke-model-v1-routed"],
         "dataCollection": "deny"
       }
-    },
-    "dataHandling": {
-      "promptLogging": "disabled",
-      "completionLogging": "disabled",
-      "retention": "metadata_only",
-      "trainingUse": "deny",
-      "dataCollection": "deny",
-      "rawCaptureDefault": "disabled"
-    },
-    "accountPrivacy": {
-      "inputOutputLogging": "disabled",
-      "useOfInputsOutputs": "deny",
-      "providerDataPolicyFilters": "enabled",
-      "metadataCollection": "expected",
-      "euRouting": "unknown"
     }
   },
   "expected": {

@@ -823,13 +823,15 @@ function formatFallback(run: ProjectCostReport["recentRuns"][number]): string {
 }
 
 function formatDataPolicy(run: ProjectCostReport["recentRuns"][number]): string {
-  const dataCollection = stringValue(run.dataHandling.dataCollection) ?? "unknown";
-  const trainingUse = stringValue(run.dataHandling.trainingUse) ?? "unknown";
-  const inputOutputLogging = stringValue(run.accountPrivacy?.inputOutputLogging);
-  const policy = `collection:${dataCollection} training:${trainingUse}`;
-  return escapeHtml(
-    inputOutputLogging === undefined ? policy : `${policy} io:${inputOutputLogging}`,
-  );
+  // ITOTORI-227 — itotori's per-pair privacy registry was deleted;
+  // privacy is enforced account-wide (ZDR posture asserted at startup)
+  // plus per-request (`provider.zdr=true` for non-public input). The
+  // dashboard column now reports the posture-wide tag rather than
+  // per-run flags. The ledger column `data_handling` is retained as an
+  // opaque jsonb until a follow-up migration drops it; we still read
+  // the row to keep the table layout stable.
+  const _dataHandlingRecord = run.dataHandling;
+  return escapeHtml("zdr-account+per-request:zdr=true");
 }
 
 function stringValue(value: unknown): string | undefined {

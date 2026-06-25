@@ -88,7 +88,9 @@ describe("Itotori dashboard", () => {
     expect(root.textContent).toContain("itotori-draft-default-v1");
     expect(root.textContent).toContain("benchmark_qa");
     expect(root.textContent).toContain("itotori-fake-qa-v0 -> itotori-fake-qa-v1");
-    expect(root.textContent).toContain("collection:deny training:unknown io:disabled");
+    // ITOTORI-227 — per-pair privacy axes deleted; the dashboard now
+    // surfaces the posture-wide tag instead of `collection:* training:* io:*`.
+    expect(root.textContent).toContain("zdr-account+per-request:zdr=true");
     expect(root.textContent).toContain("hello_world_failed");
   });
 

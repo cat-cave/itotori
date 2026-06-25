@@ -74,21 +74,28 @@ function successResponse(opts: {
 }
 
 describe("OpenRouterModelProvider — env + construction", () => {
-  it("throws OpenRouterMissingApiKeyError when the env var is unset", () => {
+  // ITOTORI-227 — every live-path test passes
+  // OPENROUTER_ZDR_ACCOUNT_ASSERTED=1 so the account-wide ZDR assertion
+  // (the load-bearing operator gate) is satisfied; the rest of the
+  // construction behaviour is what these tests are about. The
+  // assertion-itself tests live in provider-abstraction.test.ts under
+  // `AccountZdrAssertionError (ITOTORI-227)`.
+
+  it("throws OpenRouterMissingApiKeyError when the API-key env var is unset (ZDR asserted)", () => {
     expect(
       () =>
         new OpenRouterModelProvider({
-          env: {},
+          env: { OPENROUTER_ZDR_ACCOUNT_ASSERTED: "1" },
           httpClient: vi.fn() as unknown as typeof fetch,
         }),
     ).toThrow(OpenRouterMissingApiKeyError);
   });
 
-  it("throws OpenRouterMissingApiKeyError when the env var is the empty string", () => {
+  it("throws OpenRouterMissingApiKeyError when the API-key env var is the empty string (ZDR asserted)", () => {
     expect(
       () =>
         new OpenRouterModelProvider({
-          env: { OPENROUTER_API_KEY: "" },
+          env: { OPENROUTER_API_KEY: "", OPENROUTER_ZDR_ACCOUNT_ASSERTED: "1" },
           httpClient: vi.fn() as unknown as typeof fetch,
         }),
     ).toThrow(OpenRouterMissingApiKeyError);
@@ -97,7 +104,7 @@ describe("OpenRouterModelProvider — env + construction", () => {
   it("honours apiKeyEnvVar override and reads from the provided env", () => {
     const provider = new OpenRouterModelProvider({
       apiKeyEnvVar: "MY_CUSTOM_KEY",
-      env: { MY_CUSTOM_KEY: "abc-123" },
+      env: { MY_CUSTOM_KEY: "abc-123", OPENROUTER_ZDR_ACCOUNT_ASSERTED: "1" },
       httpClient: vi.fn() as unknown as typeof fetch,
     });
     expect(provider.apiKeyEnvVar).toBe("MY_CUSTOM_KEY");
@@ -106,7 +113,7 @@ describe("OpenRouterModelProvider — env + construction", () => {
   it("registers DEV_PAIR + known production pairs into the CapabilityGuard at construction", () => {
     const guard = new CapabilityGuard();
     new OpenRouterModelProvider({
-      env: { OPENROUTER_API_KEY: "abc" },
+      env: { OPENROUTER_API_KEY: "abc", OPENROUTER_ZDR_ACCOUNT_ASSERTED: "1" },
       capabilityGuard: guard,
       httpClient: vi.fn() as unknown as typeof fetch,
     });
@@ -133,7 +140,7 @@ describe("OpenRouterModelProvider — request shape (ITOTORI-220 pair pin)", () 
       return successResponse({});
     }) as unknown as typeof fetch;
     const provider = new OpenRouterModelProvider({
-      env: { OPENROUTER_API_KEY: "abc" },
+      env: { OPENROUTER_API_KEY: "abc", OPENROUTER_ZDR_ACCOUNT_ASSERTED: "1" },
       httpClient: fetchMock,
       capabilityGuard: new CapabilityGuard(),
     });
@@ -148,7 +155,7 @@ describe("OpenRouterModelProvider — request shape (ITOTORI-220 pair pin)", () 
       successResponse({ upstreamProvider: "deepinfra" }),
     ) as unknown as typeof fetch;
     const provider = new OpenRouterModelProvider({
-      env: { OPENROUTER_API_KEY: "abc" },
+      env: { OPENROUTER_API_KEY: "abc", OPENROUTER_ZDR_ACCOUNT_ASSERTED: "1" },
       httpClient: fetchMock,
       capabilityGuard: new CapabilityGuard(),
     });
@@ -169,7 +176,7 @@ describe("OpenRouterModelProvider — request shape (ITOTORI-220 pair pin)", () 
       return successResponse({});
     }) as unknown as typeof fetch;
     const provider = new OpenRouterModelProvider({
-      env: { OPENROUTER_API_KEY: "sk-or-1234" },
+      env: { OPENROUTER_API_KEY: "sk-or-1234", OPENROUTER_ZDR_ACCOUNT_ASSERTED: "1" },
       httpClient: fetchMock,
       capabilityGuard: new CapabilityGuard(),
     });
@@ -189,7 +196,7 @@ describe("OpenRouterModelProvider — per-process cost cap", () => {
       successResponse({ usageCost: 0.6 }),
     ) as unknown as typeof fetch;
     const provider = new OpenRouterModelProvider({
-      env: { OPENROUTER_API_KEY: "abc" },
+      env: { OPENROUTER_API_KEY: "abc", OPENROUTER_ZDR_ACCOUNT_ASSERTED: "1" },
       httpClient: fetchMock,
       costCapUsd: 1.0,
       rateLimitPerSec: 1000, // effectively unlimited for this test
@@ -214,7 +221,7 @@ describe("OpenRouterModelProvider — per-process cost cap", () => {
       successResponse({ usageCost: 1.0 }),
     ) as unknown as typeof fetch;
     const provider = new OpenRouterModelProvider({
-      env: { OPENROUTER_API_KEY: "abc" },
+      env: { OPENROUTER_API_KEY: "abc", OPENROUTER_ZDR_ACCOUNT_ASSERTED: "1" },
       httpClient: fetchMock,
       costCapUsd: 1.0,
       rateLimitPerSec: 1000,
@@ -240,7 +247,7 @@ describe("OpenRouterModelProvider — token-bucket rate limit", () => {
       successResponse({ usageCost: 0.001 }),
     ) as unknown as typeof fetch;
     const provider = new OpenRouterModelProvider({
-      env: { OPENROUTER_API_KEY: "abc" },
+      env: { OPENROUTER_API_KEY: "abc", OPENROUTER_ZDR_ACCOUNT_ASSERTED: "1" },
       httpClient: fetchMock,
       rateLimitPerSec: 1.0,
       now,
@@ -281,7 +288,7 @@ describe("OpenRouterModelProvider — ITOTORI-225 real-cost contract", () => {
         successResponse({ usageCost: cost as number }),
       ) as unknown as typeof fetch;
       const provider = new OpenRouterModelProvider({
-        env: { OPENROUTER_API_KEY: "abc" },
+        env: { OPENROUTER_API_KEY: "abc", OPENROUTER_ZDR_ACCOUNT_ASSERTED: "1" },
         httpClient: fetchMock,
         capabilityGuard: new CapabilityGuard(),
       });
@@ -316,7 +323,7 @@ describe("OpenRouterModelProvider — ITOTORI-225 real-cost contract", () => {
       );
     const fetchMock = vi.fn(async () => responseWithoutCost()) as unknown as typeof fetch;
     const provider = new OpenRouterModelProvider({
-      env: { OPENROUTER_API_KEY: "abc" },
+      env: { OPENROUTER_API_KEY: "abc", OPENROUTER_ZDR_ACCOUNT_ASSERTED: "1" },
       httpClient: fetchMock,
       capabilityGuard: new CapabilityGuard(),
     });
@@ -347,7 +354,7 @@ describe("OpenRouterModelProvider — ITOTORI-225 real-cost contract", () => {
       );
     const fetchMock = vi.fn(async () => responseWithoutUsage()) as unknown as typeof fetch;
     const provider = new OpenRouterModelProvider({
-      env: { OPENROUTER_API_KEY: "abc" },
+      env: { OPENROUTER_API_KEY: "abc", OPENROUTER_ZDR_ACCOUNT_ASSERTED: "1" },
       httpClient: fetchMock,
       capabilityGuard: new CapabilityGuard(),
     });
@@ -376,7 +383,7 @@ describe("OpenRouterModelProvider — ITOTORI-225 real-cost contract", () => {
       );
     const fetchMock = vi.fn(async () => responseWithBadCost()) as unknown as typeof fetch;
     const provider = new OpenRouterModelProvider({
-      env: { OPENROUTER_API_KEY: "abc" },
+      env: { OPENROUTER_API_KEY: "abc", OPENROUTER_ZDR_ACCOUNT_ASSERTED: "1" },
       httpClient: fetchMock,
       capabilityGuard: new CapabilityGuard(),
     });
