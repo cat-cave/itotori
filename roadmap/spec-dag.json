@@ -4405,7 +4405,7 @@
     {
       "id": "KAIFUU-053",
       "title": "Capability-leveled engine detector registry",
-      "status": "in_progress",
+      "status": "planned",
       "priority": "P1",
       "target": "alpha",
       "projects": ["kaifuu", "shared", "itotori"],
@@ -4443,10 +4443,7 @@
         "Registry drift between Kaifuu and catalog scanner",
         "Private evidence leakage"
       ],
-      "owner": "orchestrator",
-      "branch": "spec/kaifuu-053",
-      "worktree": "/scratch/worktrees/itotori-spec-kaifuu-053",
-      "statusReason": "Re-tier 2026-06-24: kept alpha under the new 4-tier framework (single-game Sweetie HD e2e set per docs/proposals/dag-retier-2026-06-24.md)."
+      "statusReason": "Re-tier 2026-06-24: kept alpha under the new 4-tier framework (single-game Sweetie HD e2e set per docs/proposals/dag-retier-2026-06-24.md).\n\n[2026-06-25 stale-claim cleanup] Reverted from in_progress → planned. No active branch existed (spec/kaifuu-053 not in git branch -a); claim lock file dated 2026-06-23 had no matching worktree. Released for re-claim."
     },
     {
       "id": "KAIFUU-054",
