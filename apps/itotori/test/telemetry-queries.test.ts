@@ -45,7 +45,7 @@ const PAIR_A_MODEL = "anthropic/claude-3.5-sonnet";
 const PAIR_A_PROVIDER = "anthropic";
 const PAIR_B_MODEL = "openai/gpt-4o-mini";
 const PAIR_B_PROVIDER = "openai";
-const PAIR_C_MODEL = "deepseek/deepseek-chat-v4";
+const PAIR_C_MODEL = "deepseek/deepseek-v4-flash";
 const PAIR_C_PROVIDER = "fireworks";
 
 function utcDay(year: number, month: number, day: number, hour = 12): Date {
@@ -61,7 +61,7 @@ function utcDay(year: number, month: number, day: number, hour = 12): Date {
  *   - pair B (openai/gpt-4o-mini, openai): 3 rows across days 1, 4, 5.
  *     Cost totals: 0.005 + 0.005 + 0.005 = 0.015 USD. Latencies
  *     500/600/700 — p95 of [500,600,700] = 690.
- *   - pair C (deepseek/deepseek-chat-v4, fireworks): 3 rows across
+ *   - pair C (deepseek/deepseek-v4-flash, fireworks): 3 rows across
  *     days 2, 3, 4. Cost totals: 0.001 + 0.002 + 0.003 = 0.006 USD.
  *     Latencies 100/200/300 — p95 of [100,200,300] = 290.
  *

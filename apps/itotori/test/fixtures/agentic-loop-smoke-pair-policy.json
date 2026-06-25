@@ -1,23 +1,23 @@
 {
   "context": {
-    "sceneSummary": { "modelId": "deepseek/deepseek-chat-v4", "providerId": "fireworks" },
-    "characterRelationship": { "modelId": "deepseek/deepseek-chat-v4", "providerId": "fireworks" },
-    "terminologyCandidate": { "modelId": "deepseek/deepseek-chat-v4", "providerId": "fireworks" },
-    "routeChoiceMap": { "modelId": "deepseek/deepseek-chat-v4", "providerId": "fireworks" }
+    "sceneSummary": { "modelId": "deepseek/deepseek-v4-flash", "providerId": "fireworks" },
+    "characterRelationship": { "modelId": "deepseek/deepseek-v4-flash", "providerId": "fireworks" },
+    "terminologyCandidate": { "modelId": "deepseek/deepseek-v4-flash", "providerId": "fireworks" },
+    "routeChoiceMap": { "modelId": "deepseek/deepseek-v4-flash", "providerId": "fireworks" }
   },
   "preTranslation": {
-    "speakerLabel": { "modelId": "deepseek/deepseek-chat-v4", "providerId": "fireworks" }
+    "speakerLabel": { "modelId": "deepseek/deepseek-v4-flash", "providerId": "fireworks" }
   },
   "translation": {
-    "primary": { "modelId": "deepseek/deepseek-chat-v4", "providerId": "fireworks" }
+    "primary": { "modelId": "deepseek/deepseek-v4-flash", "providerId": "fireworks" }
   },
   "qa": {
-    "styleAdherence": { "modelId": "deepseek/deepseek-chat-v4", "providerId": "fireworks" },
-    "semanticDrift": { "modelId": "deepseek/deepseek-chat-v4", "providerId": "fireworks" },
-    "toneRegister": { "modelId": "deepseek/deepseek-chat-v4", "providerId": "fireworks" },
-    "unresolvedTerminology": { "modelId": "deepseek/deepseek-chat-v4", "providerId": "fireworks" }
+    "styleAdherence": { "modelId": "deepseek/deepseek-v4-flash", "providerId": "fireworks" },
+    "semanticDrift": { "modelId": "deepseek/deepseek-v4-flash", "providerId": "fireworks" },
+    "toneRegister": { "modelId": "deepseek/deepseek-v4-flash", "providerId": "fireworks" },
+    "unresolvedTerminology": { "modelId": "deepseek/deepseek-v4-flash", "providerId": "fireworks" }
   },
   "repair": {
-    "primary": { "modelId": "deepseek/deepseek-chat-v4", "providerId": "fireworks" }
+    "primary": { "modelId": "deepseek/deepseek-v4-flash", "providerId": "fireworks" }
   }
 }

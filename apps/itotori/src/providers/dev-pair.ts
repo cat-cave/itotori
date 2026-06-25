@@ -9,24 +9,45 @@
 // code, the choice is justified in this comment, and changes require a
 // real PR.
 //
-// Why deepseek/deepseek-chat-v4 on `fireworks`:
-//   - Pricing: deepseek-chat-v4 is the cheapest production-grade model on
-//     OpenRouter that still supports JSON-schema structured output well.
-//   - Provider pin: `fireworks` is documented by OpenRouter to host the
-//     deepseek-v4 family with response_format support and `strict: true`
-//     enforcement, which is required by ITOTORI-220 when QA/translation
-//     stages request `json_schema`. Picking a provider that silently
-//     drops `strict` would degrade QA precision without a typed error,
-//     which is exactly the failure mode the (model, provider) pair rule
-//     prevents.
-//   - Latency: fireworks publishes sub-second time-to-first-token for
-//     deepseek-v4 at our typical 50–4k token completions; alternative
-//     providers (deepinfra, novita) trade latency for marginally lower
-//     cost.
-//   - Cost cap: at $0.27 / Mtok prompt and $1.10 / Mtok completion (as of
-//     2026-06), a single 4k-prompt+1k-completion QA call costs ~$0.0022,
-//     so the $1.00 default per-process cap allows ~450 such calls — well
-//     above any single agentic-loop run.
+// Why deepseek/deepseek-v4-flash on `fireworks` (evidence-grounded
+// rewrite per ITOTORI-226; replaces the prior invented slug that was
+// never in OpenRouter's catalog — see
+// docs/audits/openrouter-wiring-audit-2026-06-25.md §3-A for the
+// audit-time identification):
+//   - Catalog match. The OpenRouter catalog lookup at
+//     /api/v1/models/deepseek/deepseek-v4-flash/endpoints (captured at
+//     docs/openrouter-integration-evidence/2026-06-25.json,
+//     alphaPairCatalog) returns 18 endpoints; canonical slug is
+//     `deepseek/deepseek-v4-flash-20260423`. The `fireworks` endpoint IS
+//     in that list (tag='fireworks'). See also
+//     docs/openrouter-integration.md §9.3 for the canonical reference.
+//   - Provider pin verified live. The evidence file's call_1
+//     (label `call_1_baseline_zdr_alpha_pair`) posted
+//     {model: "deepseek/deepseek-v4-flash",
+//      provider: { only: ["fireworks"], zdr: true, ... }}
+//     and received HTTP 200 with `body.provider === "Fireworks"` — i.e.
+//     the request actually routed to and was billed by Fireworks under
+//     the corrected slug. No fallback occurred (allow_fallbacks=false).
+//   - Pricing on Fireworks (from the same alphaPairCatalog block):
+//     prompt $0.00000014/token (≈$0.14/Mtok), completion $0.00000028/
+//     token (≈$0.28/Mtok). A 4k-prompt+1k-completion QA call costs
+//     ~$0.00084, so the ITOTORI-231 DEFAULT_COST_CAP_USD ($1.00) admits
+//     >1000 such calls — well above any single agentic-loop run.
+//   - Implicit caching is NOT supported on the Fireworks endpoint
+//     (alphaPairCatalog.fireworks_supports_implicit_caching === false).
+//     The `deepseek` endpoint does advertise it
+//     (deepseek_supports_implicit_caching === true) but is excluded
+//     from Trevor's ZDR allow-list — empirically proven by call_3 in
+//     the same evidence file (HTTP 404, "No endpoints found matching
+//     your data policy"). We accept no implicit caching as the price
+//     of staying within ZDR + a single deterministic provider pin.
+//   - JSON-schema structured output. Catalog and live capture confirm
+//     `response_format: { type: "json_schema" }` is accepted by
+//     Fireworks-hosted deepseek-v4-flash at this slug; the calls in
+//     the evidence file used plain prompts, but the catalog row's
+//     `supported_parameters` lists `response_format` and the
+//     openrouter-integration.md §4.2 path is the same one ITOTORI-220
+//     requires.
 //
 // Other entries in the table cover the two production-tier pairs we
 // reach for when DEV_PAIR isn't appropriate (e.g. high-stakes manual
@@ -44,7 +65,7 @@ import { openRouterDefaultCapabilities } from "./openrouter.js";
  * are no provider id literals scattered across the agent surface.
  */
 export const DEV_PAIR: { readonly modelId: string; readonly providerId: string } = Object.freeze({
-  modelId: "deepseek/deepseek-chat-v4",
+  modelId: "deepseek/deepseek-v4-flash",
   providerId: "fireworks",
 });
 
@@ -129,18 +150,16 @@ function buildPairCapabilityTable(): ReadonlyArray<PairCapabilityEntry> {
         contextWindowTokens: 128_000,
         maxOutputTokens: 8_192,
         notes: [
-          // ITOTORI-224 (2026-06-25): the previous claim ("verified against
-          // OpenRouter's published Fireworks-hosted deepseek-v4 endpoint as
-          // of 2026-06") was grounded in an invented endpoint description,
-          // not in a captured response. The real evidence — a live ZDR-
-          // posture toy call against the alpha pair, plus the catalog
-          // /api/v1/models/.../endpoints lookup — is recorded at
+          // ITOTORI-226 (2026-06-25): the slug correction landed; this
+          // capability sheet now describes the catalog-correct
+          // deepseek/deepseek-v4-flash pair pinned to Fireworks. Live
+          // evidence — call_1 in
           //   docs/openrouter-integration-evidence/2026-06-25.json
-          // and canonicalised at docs/openrouter-integration.md §9.3.
-          // ITOTORI-226 owns the slug correction (deepseek/deepseek-v4-flash
-          // replacing the invented deepseek/deepseek-chat-v4 above) and
-          // re-grounds this note once it lands.
-          "ITOTORI-224 (2026-06-25): evidence file at docs/openrouter-integration-evidence/2026-06-25.json; canonical reference at docs/openrouter-integration.md §9.3. Slug correction tracked by ITOTORI-226.",
+          // — confirms HTTP 200 with body.provider === "Fireworks" under
+          // provider.only=["fireworks"] + provider.zdr=true.
+          // ITOTORI-224 owns the canonical doc + evidence capture; see
+          // docs/openrouter-integration.md §9.3 for the catalog row.
+          "ITOTORI-226 (2026-06-25): slug correction landed (deepseek/deepseek-v4-flash on fireworks). Live evidence: docs/openrouter-integration-evidence/2026-06-25.json call_1 (HTTP 200, body.provider === 'Fireworks'). Canonical doc: docs/openrouter-integration.md §9.3.",
         ],
       },
     },
