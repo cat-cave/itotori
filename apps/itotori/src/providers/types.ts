@@ -46,7 +46,6 @@ export type RoutingCapabilities = {
   zeroDataRetentionRouting: CapabilitySupport;
 };
 
-export type ProviderCostTier = "free" | "paid" | "mixed" | "local" | "unknown";
 export type ProviderPolicyState = "allow" | "deny" | "unknown" | "not_applicable";
 export type ProviderLoggingState = "enabled" | "disabled" | "unknown" | "not_applicable";
 export type ProviderRetentionState =
@@ -56,8 +55,14 @@ export type ProviderRetentionState =
   | "unknown"
   | "not_applicable";
 
+/**
+ * ITOTORI-225 — `costTier` is gone. The per-policy "free/paid/mixed/local/
+ * unknown" enum was a category error: cost is a per-request fact (carried by
+ * `ProviderCost`), not a per-policy axis. The privacy-only fields below are
+ * the only thing left in this policy until ITOTORI-227 replaces the whole
+ * shape with a pure privacy posture.
+ */
 export type ProviderDataHandlingPolicy = {
-  costTier: ProviderCostTier;
   promptLogging: ProviderLoggingState;
   completionLogging: ProviderLoggingState;
   retention: ProviderRetentionState;
@@ -227,10 +232,26 @@ export type TokenUsage = {
   totalTokens?: number;
 };
 
+/**
+ * ITOTORI-225 — `costKind` is `'billed' | 'zero'`, full stop.
+ *
+ * - `billed`: a real upstream charge. `amountMicrosUsd` is the exact spend
+ *   reported by the provider (e.g. OpenRouter's `usage.cost`). Required.
+ * - `zero`: no charge was incurred (recorded-fixture replays, deterministic
+ *   local mocks, failed pre-billing requests). `amountMicrosUsd === 0`.
+ *
+ * No `unknown`. No `provider_estimate`. No `local_estimate`. The previous
+ * enum existed because we were guessing; per the standing
+ * no-hardcoded-cost / no-fallback rule, every successful upstream call
+ * returns the real cost, and unsuccessful calls cost nothing.
+ *
+ * `amountMicrosUsd` is non-optional: both variants carry a real number. A
+ * caller cannot omit it.
+ */
 export type ProviderCost = {
-  costKind: "billed" | "provider_estimate" | "local_estimate" | "zero" | "unknown";
+  costKind: "billed" | "zero";
   currency: "USD";
-  amountMicrosUsd?: number;
+  amountMicrosUsd: number;
   pricingSnapshotId?: string;
 };
 

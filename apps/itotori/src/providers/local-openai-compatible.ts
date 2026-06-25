@@ -428,17 +428,15 @@ function buildRun(input: {
     fallbackUsed: false,
     fallbackPlan: [input.requestedModelId],
     tokenUsage: input.tokenUsage,
-    cost:
-      input.status === "failed"
-        ? {
-            costKind: "unknown",
-            currency: "USD",
-          }
-        : {
-            costKind: "local_estimate",
-            currency: "USD",
-            amountMicrosUsd: 0,
-          },
+    // ITOTORI-225 — local providers never bill (no upstream charge); both
+    // failed and successful runs record zero. The previous
+    // `local_estimate` variant was a category error per the OpenRouter
+    // cost-tracking audit: estimates have no place in the cost ledger.
+    cost: {
+      costKind: "zero",
+      currency: "USD",
+      amountMicrosUsd: 0,
+    },
     prompt: input.request.prompt,
     dataHandling: input.descriptor.capabilities.dataHandling,
   };

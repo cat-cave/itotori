@@ -636,20 +636,15 @@ const costReportFixture: ProjectCostReport = {
   currency: "USD",
   runCount: 0,
   billedMicrosUsd: 0,
-  estimatedMicrosUsd: 0,
   zeroRunCount: 0,
-  unknownRunCount: 0,
-  includesUnknownCost: false,
-  totalsByCostKind: ["billed", "provider_estimate", "local_estimate", "zero", "unknown"].map(
-    (costKind) => ({
-      costKind: costKind as ProjectCostReport["totalsByCostKind"][number]["costKind"],
-      runCount: 0,
-      amountMicrosUsd: 0,
-      promptTokens: 0,
-      completionTokens: 0,
-      totalTokens: 0,
-    }),
-  ),
+  totalsByCostKind: (["billed", "zero"] as const).map((costKind) => ({
+    costKind,
+    runCount: 0,
+    amountMicrosUsd: 0,
+    promptTokens: 0,
+    completionTokens: 0,
+    totalTokens: 0,
+  })),
   recentRuns: [],
   translationMemoryReuse: {
     reuseEventCount: 0,

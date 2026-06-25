@@ -82,7 +82,7 @@ function fixtureProviderRun(overrides: Partial<ProviderRunRecord> = {}): Provide
     fallbackPlan: ["anthropic/claude-3.5-sonnet"],
     tokenUsage: fixtureTokenUsage(),
     cost: {
-      costKind: "provider_estimate",
+      costKind: "billed",
       currency: "USD",
       amountMicrosUsd: 12_500,
     },

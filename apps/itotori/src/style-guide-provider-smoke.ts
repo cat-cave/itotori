@@ -266,8 +266,12 @@ export function assertStyleGuideProviderSmokeLedger(run: ProviderRunRecord): voi
   if (run.tokenUsage.tokenCountSource === "unknown" || run.tokenUsage.totalTokens === undefined) {
     missing.push("tokenUsage estimate");
   }
-  if (run.cost.costKind === "unknown" || run.cost.amountMicrosUsd === undefined) {
-    missing.push("cost estimate");
+  // ITOTORI-225 — ProviderCost.amountMicrosUsd is non-optional and the
+  // enum is `'billed' | 'zero'`; a missing real cost no longer has a
+  // representation, so we only flag the case where the smoke run somehow
+  // landed without a billed amount on a successful invocation.
+  if (run.status === "succeeded" && run.cost.costKind !== "billed") {
+    missing.push("billed cost");
   }
   if (run.dataHandling.dataCollection === "unknown" || run.dataHandling.trainingUse === "unknown") {
     missing.push("data-policy flags");
@@ -336,7 +340,6 @@ function styleGuideLiveSmokeCapabilities(): ModelCapabilities {
       preferredModes: ["json_schema"],
     },
     dataHandling: {
-      costTier: "paid",
       promptLogging: "disabled",
       completionLogging: "disabled",
       retention: "metadata_only",

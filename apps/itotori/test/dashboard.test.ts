@@ -80,7 +80,7 @@ describe("Itotori dashboard", () => {
     expect(root.textContent).toContain("Readiness");
     expect(root.textContent).toContain("1/1");
     expect(root.textContent).toContain("patch_result_recorded");
-    expect(root.textContent).toContain("provider_estimate");
+    expect(root.textContent).toContain("billed");
     expect(root.textContent).toContain("TM avoided");
     expect(root.textContent).toContain("TM tokens saved");
     expect(root.textContent).toContain("bridge-unit-repeat");

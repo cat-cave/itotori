@@ -181,7 +181,7 @@
       "totalTokens": 530
     },
     "cost": {
-      "costKind": "provider_estimate",
+      "costKind": "billed",
       "currency": "USD",
       "amountMicrosUsd": 42,
       "pricingSnapshotId": "recorded-style-guide-smoke-pricing-2026-06-19"
@@ -207,7 +207,6 @@
       }
     },
     "dataHandling": {
-      "costTier": "paid",
       "promptLogging": "disabled",
       "completionLogging": "disabled",
       "retention": "metadata_only",

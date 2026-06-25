@@ -536,9 +536,8 @@ function renderCost(cost: ProjectCostReport): string {
     `
       <dl class="metric-list metric-list-compact">
         <div><dt>Billed</dt><dd>${formatMicrosUsd(cost.billedMicrosUsd)}</dd></div>
-        <div><dt>Estimated</dt><dd>${formatMicrosUsd(cost.estimatedMicrosUsd)}</dd></div>
         <div><dt>Runs</dt><dd>${cost.runCount}</dd></div>
-        <div><dt>Unknown</dt><dd>${cost.unknownRunCount}</dd></div>
+        <div><dt>Zero-cost runs</dt><dd>${cost.zeroRunCount}</dd></div>
         <div>
           <dt>TM avoided</dt>
           <dd>${cost.translationMemoryReuse.providerCallAvoidedCount}</dd>

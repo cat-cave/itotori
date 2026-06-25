@@ -67,7 +67,7 @@ export type ProviderRunLedgerInput = {
   cost: {
     costKind: ProviderCostKind;
     currency: "USD";
-    amountMicrosUsd?: number;
+    amountMicrosUsd: number;
     pricingSnapshotId?: string;
   };
   dataHandling: LedgerJsonRecord;
@@ -105,7 +105,10 @@ export type ProviderRunCostSummary = {
   fallbackUsed: boolean;
   fallbackPlan: string[];
   costKind: ProviderCostKind;
-  amountMicrosUsd: number | null;
+  // ITOTORI-225 — non-null after migration 0039: every row in the
+  // narrowed `'billed' | 'zero'` enum carries a real amount (zero entries
+  // store 0 explicitly). Read paths can rely on this without a null check.
+  amountMicrosUsd: number;
   tokenCountSource: string;
   promptTokens: number | null;
   completionTokens: number | null;
@@ -149,15 +152,19 @@ export type TranslationMemoryReuseCostReport = {
   recentEvents: TranslationMemoryReuseCostSummary[];
 };
 
+/**
+ * ITOTORI-225 — `estimatedMicrosUsd`, `unknownRunCount`, and
+ * `includesUnknownCost` are deleted. The narrowed cost enum has only
+ * billed-or-zero, so estimated/unknown buckets are meaningless. Cost-cap
+ * + audit consumers that previously read `estimatedMicrosUsd` should read
+ * `billedMicrosUsd` directly.
+ */
 export type ProjectCostReport = {
   projectId: string;
   currency: "USD";
   runCount: number;
   billedMicrosUsd: number;
-  estimatedMicrosUsd: number;
   zeroRunCount: number;
-  unknownRunCount: number;
-  includesUnknownCost: boolean;
   totalsByCostKind: CostKindBreakdown[];
   recentRuns: ProviderRunCostSummary[];
   translationMemoryReuse: TranslationMemoryReuseCostReport;
@@ -275,20 +282,13 @@ export class ItotoriModelLedgerRepository implements ItotoriModelLedgerRepositor
     const recentRuns = (recentRunsResult.rows as Array<Record<string, unknown>>).map(runFromRow);
     const translationMemoryReuse = await this.getTranslationMemoryReuseCostReport(targetProjectId);
     const billed = byKind.get(providerCostKindValues.billed)?.amountMicrosUsd ?? 0;
-    const providerEstimate =
-      byKind.get(providerCostKindValues.providerEstimate)?.amountMicrosUsd ?? 0;
-    const localEstimate = byKind.get(providerCostKindValues.localEstimate)?.amountMicrosUsd ?? 0;
-    const unknownRunCount = byKind.get(providerCostKindValues.unknown)?.runCount ?? 0;
 
     return {
       projectId: targetProjectId,
       currency: "USD",
       runCount: [...byKind.values()].reduce((sum, row) => sum + row.runCount, 0),
       billedMicrosUsd: billed,
-      estimatedMicrosUsd: providerEstimate + localEstimate,
       zeroRunCount: byKind.get(providerCostKindValues.zero)?.runCount ?? 0,
-      unknownRunCount,
-      includesUnknownCost: unknownRunCount > 0,
       totalsByCostKind: costKinds.map(
         (costKind) => byKind.get(costKind) ?? zeroBreakdown(costKind),
       ),
@@ -644,24 +644,16 @@ function assertProviderRunLedgerInput(input: ProviderRunLedgerInput): void {
   amountForCost(input.cost);
 }
 
-function amountForCost(cost: ProviderRunLedgerInput["cost"]): number | null {
-  if (cost.costKind === providerCostKindValues.unknown) {
-    if (cost.amountMicrosUsd !== undefined) {
-      throw new Error("unknown cost entries must not include amountMicrosUsd");
-    }
-    return null;
-  }
-  if (cost.costKind === providerCostKindValues.zero) {
-    if (cost.amountMicrosUsd !== undefined && cost.amountMicrosUsd !== 0) {
-      throw new Error("zero cost entries must use amountMicrosUsd 0");
-    }
-    return 0;
-  }
-  if (cost.amountMicrosUsd === undefined) {
-    throw new Error(`${cost.costKind} cost entries require amountMicrosUsd`);
-  }
+function amountForCost(cost: ProviderRunLedgerInput["cost"]): number {
+  // ITOTORI-225 — costKind is `'billed' | 'zero'` and amountMicrosUsd is
+  // required. Zero rows must carry exactly 0; billed rows must carry a
+  // non-negative finite number. The migration's CHECK constraint enforces
+  // the same shape at the storage layer.
   if (!Number.isFinite(cost.amountMicrosUsd) || cost.amountMicrosUsd < 0) {
     throw new Error("amountMicrosUsd must be a non-negative finite number");
+  }
+  if (cost.costKind === providerCostKindValues.zero && cost.amountMicrosUsd !== 0) {
+    throw new Error("zero cost entries must use amountMicrosUsd 0");
   }
   return cost.amountMicrosUsd;
 }
@@ -798,7 +790,8 @@ function runFromRow(row: Record<string, unknown>): ProviderRunCostSummary {
     fallbackUsed: row.fallback_used === true,
     fallbackPlan: stringArray(row.fallback_plan),
     costKind: asCostKind(row.cost_kind),
-    amountMicrosUsd: nullableNumber(row.amount_micros_usd),
+    // ITOTORI-225 — post-migration the column is always populated.
+    amountMicrosUsd: Number(row.amount_micros_usd ?? 0),
     tokenCountSource: String(row.token_count_source),
     promptTokens: nullableNumber(row.prompt_tokens),
     completionTokens: nullableNumber(row.completion_tokens),

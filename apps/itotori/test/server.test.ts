@@ -61,8 +61,12 @@ describe("Itotori server API contracts", () => {
 
     expect(response).toMatchObject({
       projectId: "project-1",
-      billedMicrosUsd: 1200,
-      estimatedMicrosUsd: 980,
+      // ITOTORI-225 — the api-fixtures' second run was previously tagged
+      // `provider_estimate` (amountMicrosUsd: 980). With the narrowed
+      // enum, both fixture runs record as `billed`, so the total billed
+      // is 1200 + 980 = 2180. The legacy `estimatedMicrosUsd` field is
+      // gone.
+      billedMicrosUsd: 2180,
     });
     expect(getCostReport).toHaveBeenCalledTimes(1);
     expect(getDashboardStatus).not.toHaveBeenCalled();

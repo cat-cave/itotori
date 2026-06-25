@@ -123,7 +123,6 @@ export async function runPlanBatches(
                 zeroDataRetentionRouting: "untested",
               },
               dataHandling: {
-                costTier: "unknown",
                 promptLogging: "unknown",
                 completionLogging: "unknown",
                 retention: "unknown",

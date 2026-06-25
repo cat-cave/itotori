@@ -119,7 +119,6 @@ function buildPairCapabilityTable(): ReadonlyArray<PairCapabilityEntry> {
           zeroDataRetentionRouting: "supported",
         },
         dataHandling: {
-          costTier: "paid",
           promptLogging: "disabled",
           completionLogging: "disabled",
           retention: "none",
@@ -178,7 +177,6 @@ function buildPairCapabilityTable(): ReadonlyArray<PairCapabilityEntry> {
           zeroDataRetentionRouting: "supported",
         },
         dataHandling: {
-          costTier: "paid",
           promptLogging: "disabled",
           completionLogging: "disabled",
           retention: "none",
@@ -223,7 +221,6 @@ function buildPairCapabilityTable(): ReadonlyArray<PairCapabilityEntry> {
           zeroDataRetentionRouting: "supported",
         },
         dataHandling: {
-          costTier: "paid",
           promptLogging: "disabled",
           completionLogging: "disabled",
           retention: "none",
