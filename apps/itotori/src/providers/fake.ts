@@ -7,7 +7,7 @@ import type {
   ProviderDescriptor,
   ProviderRunRecord,
 } from "./types.js";
-import { createProviderRunId } from "./types.js";
+import { createProviderRunId, localOnlyRoutingPosture } from "./types.js";
 
 /**
  * ITOTORI-220 — fake-provider construction options. The model identifier
@@ -81,6 +81,10 @@ export class FakeModelProvider implements ModelProvider {
         currency: "USD",
         amountMicrosUsd: 0,
       },
+      // ITOTORI-230 — fake providers never leave the process so the
+      // canonical ZDR posture is trivially in force; record it
+      // explicitly so the ledger row + telemetry have a uniform shape.
+      routingPosture: localOnlyRoutingPosture(request.providerId),
       prompt: request.prompt,
     };
     if (request.preset) {

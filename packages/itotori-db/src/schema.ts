@@ -2022,8 +2022,12 @@ export const modelProviders = pgTable(
     providerFamily: text("provider_family").notNull(),
     endpointFamily: text("endpoint_family").notNull(),
     providerName: text("provider_name").notNull(),
-    dataHandling: jsonb("data_handling").$type<Record<string, unknown>>().notNull(),
-    accountPrivacy: jsonb("account_privacy").$type<Record<string, unknown> | null>(),
+    // ITOTORI-230 — dropped `data_handling` and `account_privacy` jsonb
+    // columns left over from the per-pair privacy registry that
+    // ITOTORI-227 deleted. The canonical privacy posture is now
+    // account-wide ZDR + per-request `provider.zdr=true`; the
+    // routing-posture jsonb on `itotori_provider_runs` is the auditable
+    // record of (b) per call.
     metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -2118,8 +2122,13 @@ export const providerRuns = pgTable(
     reasoningTokens: integer("reasoning_tokens"),
     cachedInputTokens: integer("cached_input_tokens"),
     totalTokens: integer("total_tokens"),
-    dataHandling: jsonb("data_handling").$type<Record<string, unknown>>().notNull(),
-    accountPrivacy: jsonb("account_privacy").$type<Record<string, unknown> | null>(),
+    // ITOTORI-230 — captured OpenRouter routing posture for THIS run.
+    // Required (non-null) post-migration; pre-migration rows carry the
+    // sentinel `{"_pre_itotori_230": true}` jsonb so they cannot be
+    // mistaken for a real captured posture by telemetry queries that
+    // filter on `routing_posture->>'zdr' = 'true'`. The corresponding
+    // application type is `OpenRouterRoutingPosture` (providers/types.ts).
+    routingPosture: jsonb("routing_posture").$type<Record<string, unknown>>().notNull(),
     adapterMetadata: jsonb("adapter_metadata").$type<Record<string, unknown>>().notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),

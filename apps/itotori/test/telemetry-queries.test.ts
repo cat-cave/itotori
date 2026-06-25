@@ -468,6 +468,100 @@ describe("LedgerTelemetryQuery.pairRanking", () => {
   });
 });
 
+describe("LedgerTelemetryQuery.countZdrEnforcedCallsByPair (ITOTORI-230)", () => {
+  // ITOTORI-230 acceptance criterion #3 — schema-level test (no live OR
+  // call required). Stub the model-ledger port with fixture rows and
+  // assert the telemetry surface relays them with deterministic ordering.
+
+  type ZdrCountRow = {
+    modelId: string;
+    providerId: string;
+    invocationCount: number;
+    zdrEnforcedCount: number;
+  };
+
+  class StubModelLedgerPort {
+    constructor(private readonly rows: ZdrCountRow[]) {}
+    // Type-erased: we only use countZdrEnforcedByPair on this port.
+    async recordProviderRun(): Promise<never> {
+      throw new Error("stub does not implement recordProviderRun");
+    }
+    async getProjectCostReport(): Promise<never> {
+      throw new Error("stub does not implement getProjectCostReport");
+    }
+    async countZdrEnforcedByPair(): Promise<ZdrCountRow[]> {
+      return this.rows;
+    }
+  }
+
+  const WINDOW = {
+    from: new Date("2026-06-01T00:00:00Z"),
+    to: new Date("2026-06-30T23:59:59Z"),
+  };
+
+  it("returns ZDR-enforced counts per pair from the model-ledger port", async () => {
+    const modelLedger = new StubModelLedgerPort([
+      {
+        modelId: "deepseek-ai/deepseek-v3.2-exp",
+        providerId: "fireworks",
+        invocationCount: 3,
+        zdrEnforcedCount: 2,
+      },
+    ]);
+    const query = new LedgerTelemetryQuery(
+      new StubLedgerPort(buildSeed()),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      modelLedger as any,
+    );
+    const rows = await query.countZdrEnforcedCallsByPair(FIXED_ACTOR, PROJECT_ID, WINDOW);
+    expect(rows).toEqual([
+      {
+        pair: buildPairKey("deepseek-ai/deepseek-v3.2-exp", "fireworks"),
+        invocationCount: 3,
+        zdrEnforcedCount: 2,
+      },
+    ]);
+  });
+
+  it("orders rows deterministically by pair key for stable JSON output", async () => {
+    const modelLedger = new StubModelLedgerPort([
+      // Insert in non-sorted order to assert the surface re-sorts.
+      {
+        modelId: "model-z",
+        providerId: "provider-z",
+        invocationCount: 5,
+        zdrEnforcedCount: 5,
+      },
+      {
+        modelId: "model-a",
+        providerId: "provider-a",
+        invocationCount: 1,
+        zdrEnforcedCount: 1,
+      },
+    ]);
+    const query = new LedgerTelemetryQuery(
+      new StubLedgerPort(buildSeed()),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      modelLedger as any,
+    );
+    const rows = await query.countZdrEnforcedCallsByPair(FIXED_ACTOR, PROJECT_ID, WINDOW);
+    expect(rows.map((row) => row.pair)).toEqual([
+      buildPairKey("model-a", "provider-a"),
+      buildPairKey("model-z", "provider-z"),
+    ]);
+  });
+
+  it("throws TelemetryQueryError when constructor was not given a model-ledger port", async () => {
+    // Constructor wired only with the draft-attempt port — calling
+    // countZdrEnforcedCallsByPair must surface a typed error rather
+    // than silently returning empty.
+    const query = new LedgerTelemetryQuery(new StubLedgerPort(buildSeed()));
+    await expect(
+      query.countZdrEnforcedCallsByPair(FIXED_ACTOR, PROJECT_ID, WINDOW),
+    ).rejects.toThrow(TelemetryQueryError);
+  });
+});
+
 describe("TelemetryPairKey contract", () => {
   it("buildPairKey uses ${modelId}:${providerId} byte-for-byte", () => {
     const key = buildPairKey(PAIR_A_MODEL, PAIR_A_PROVIDER);

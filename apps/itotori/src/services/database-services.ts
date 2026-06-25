@@ -246,7 +246,14 @@ export async function withDatabaseItotoriServices<T>(
     const draftAttemptProviderLedgerRepository = new ItotoriDraftAttemptProviderLedgerRepository(
       context.db,
     );
-    const telemetryQuery = new LedgerTelemetryQuery(draftAttemptProviderLedgerRepository);
+    // ITOTORI-230 — modelLedgerRepository drives the
+    // `countZdrEnforcedCallsByPair` query (reads routing_posture from
+    // itotori_provider_runs). The draft-attempt port handles all the
+    // cost / token / latency aggregates as before.
+    const telemetryQuery = new LedgerTelemetryQuery(
+      draftAttemptProviderLedgerRepository,
+      modelLedgerRepository,
+    );
     return await callback({
       authorization: new ItotoriAuthorizationService(context.db, localUserActor),
       projectWorkflow: new ItotoriProjectWorkflowService(

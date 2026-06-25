@@ -70,8 +70,14 @@ export type ProviderRunLedgerInput = {
     amountMicrosUsd: number;
     pricingSnapshotId?: string;
   };
-  dataHandling: LedgerJsonRecord;
-  accountPrivacy?: LedgerJsonRecord;
+  /**
+   * ITOTORI-230 — the OpenRouter routing posture sent on the wire for
+   * this call. Required (non-null) at the storage layer post-migration
+   * 0040; the corresponding typed shape in app code is
+   * `OpenRouterRoutingPosture`. The structural assertion is "JSON
+   * object"; the app layer guarantees the full posture shape.
+   */
+  routingPosture: LedgerJsonRecord;
   adapterMetadata?: LedgerJsonRecord;
 };
 
@@ -115,8 +121,11 @@ export type ProviderRunCostSummary = {
   reasoningTokens: number | null;
   cachedInputTokens: number | null;
   totalTokens: number | null;
-  dataHandling: LedgerJsonRecord;
-  accountPrivacy: LedgerJsonRecord | null;
+  // ITOTORI-230 — captured OpenRouter routing posture for THIS run.
+  // Always present post-migration 0040: pre-migration rows carry the
+  // sentinel `{"_pre_itotori_230": true}` so downstream consumers can
+  // tell them apart from real captured postures.
+  routingPosture: LedgerJsonRecord;
 };
 
 export type TranslationMemoryReuseCostSummary = {
@@ -170,12 +179,44 @@ export type ProjectCostReport = {
   translationMemoryReuse: TranslationMemoryReuseCostReport;
 };
 
+/**
+ * ITOTORI-230 — per-(modelId, providerId) counts split by whether the
+ * captured routing posture had `zdr = true` on the wire. The query
+ * filters on `routing_posture->>'zdr' = 'true'` so the
+ * pre-ITOTORI-230 sentinel rows
+ * (`routing_posture = '{"_pre_itotori_230": true}'`) do NOT count as
+ * ZDR-enforced — which is correct: there is no evidence for those.
+ */
+export type ProviderRunZdrCountRow = {
+  modelId: string;
+  providerId: string;
+  invocationCount: number;
+  zdrEnforcedCount: number;
+};
+
+export type ProviderRunZdrCountWindow = {
+  readonly from: Date;
+  readonly to: Date;
+};
+
 export interface ItotoriModelLedgerRepositoryPort {
   recordProviderRun(
     actor: AuthorizationActor,
     input: ProviderRunLedgerInput,
   ): Promise<ProviderRunCostSummary>;
   getProjectCostReport(projectId?: string): Promise<ProjectCostReport>;
+  /**
+   * ITOTORI-230 — count provider runs per (modelId, providerId) over
+   * the window, split by whether the captured routing posture has
+   * `zdr = true`. Used by `apps/itotori/src/telemetry/queries.ts
+   * countZdrEnforcedCallsByPair` to surface the ZDR-enforcement axis
+   * the 2026-06-25 wiring audit asked for.
+   */
+  countZdrEnforcedByPair(
+    actor: AuthorizationActor,
+    projectId: string,
+    window: ProviderRunZdrCountWindow,
+  ): Promise<ProviderRunZdrCountRow[]>;
 }
 
 const costKinds = Object.values(providerCostKindValues) as ProviderCostKind[];
@@ -269,8 +310,7 @@ export class ItotoriModelLedgerRepository implements ItotoriModelLedgerRepositor
         cle.reasoning_tokens,
         cle.cached_input_tokens,
         cle.total_tokens,
-        pr.data_handling,
-        pr.account_privacy
+        pr.routing_posture
       from ${providerRuns} pr
       join ${modelProviders} mp on mp.provider_id = pr.provider_id
       join ${costLedgerEntries} cle on cle.provider_run_id = pr.provider_run_id
@@ -295,6 +335,44 @@ export class ItotoriModelLedgerRepository implements ItotoriModelLedgerRepositor
       recentRuns,
       translationMemoryReuse,
     };
+  }
+
+  /**
+   * ITOTORI-230 — count provider runs grouped by
+   * (requested_model_id, provider_id), split by whether the captured
+   * routing posture has `zdr = true` on the wire. The filter is
+   * `routing_posture->>'zdr' = 'true'`; pre-migration sentinel rows
+   * (`{"_pre_itotori_230": true}`) do NOT match and are correctly
+   * excluded from the ZDR-enforced count.
+   */
+  async countZdrEnforcedByPair(
+    actor: AuthorizationActor,
+    projectId: string,
+    window: ProviderRunZdrCountWindow,
+  ): Promise<ProviderRunZdrCountRow[]> {
+    await requirePermission(this.db, actor, permissionValues.catalogRead);
+    if (window.from.getTime() > window.to.getTime()) {
+      throw new Error("countZdrEnforcedByPair window.from must not be after window.to");
+    }
+    const result = await this.db.execute(sql`
+      select
+        pr.requested_model_id as model_id,
+        pr.provider_id,
+        count(*)::int as invocation_count,
+        count(*) filter (where pr.routing_posture->>'zdr' = 'true')::int as zdr_enforced_count
+      from ${providerRuns} pr
+      where pr.project_id = ${projectId}
+        and pr.started_at >= ${window.from}
+        and pr.started_at <= ${window.to}
+      group by pr.requested_model_id, pr.provider_id
+      order by pr.requested_model_id asc, pr.provider_id asc
+    `);
+    return (result.rows as Array<Record<string, unknown>>).map((row) => ({
+      modelId: String(row.model_id),
+      providerId: String(row.provider_id),
+      invocationCount: Number(row.invocation_count ?? 0),
+      zdrEnforcedCount: Number(row.zdr_enforced_count ?? 0),
+    }));
   }
 
   private async getTranslationMemoryReuseCostReport(
@@ -392,8 +470,7 @@ export class ItotoriModelLedgerRepository implements ItotoriModelLedgerRepositor
         cle.reasoning_tokens,
         cle.cached_input_tokens,
         cle.total_tokens,
-        pr.data_handling,
-        pr.account_privacy
+        pr.routing_posture
       from ${providerRuns} pr
       join ${modelProviders} mp on mp.provider_id = pr.provider_id
       join ${costLedgerEntries} cle on cle.provider_run_id = pr.provider_run_id
@@ -444,8 +521,6 @@ export async function insertProviderRunLedgerRows(
       providerFamily: input.provider.providerFamily,
       endpointFamily: input.provider.endpointFamily,
       providerName: input.provider.providerName,
-      dataHandling: input.dataHandling,
-      accountPrivacy: input.accountPrivacy ?? null,
       metadata: {},
     })
     .onConflictDoUpdate({
@@ -454,8 +529,6 @@ export async function insertProviderRunLedgerRows(
         providerFamily: input.provider.providerFamily,
         endpointFamily: input.provider.endpointFamily,
         providerName: input.provider.providerName,
-        dataHandling: input.dataHandling,
-        accountPrivacy: input.accountPrivacy ?? null,
         updatedAt: sql`now()`,
       },
     });
@@ -540,8 +613,7 @@ export async function insertProviderRunLedgerRows(
     reasoningTokens: input.tokenUsage.reasoningTokens ?? null,
     cachedInputTokens: input.tokenUsage.cachedInputTokens ?? null,
     totalTokens: input.tokenUsage.totalTokens ?? null,
-    dataHandling: input.dataHandling,
-    accountPrivacy: input.accountPrivacy ?? null,
+    routingPosture: input.routingPosture,
     adapterMetadata: input.adapterMetadata ?? {},
   });
 
@@ -631,10 +703,7 @@ function assertProviderRunLedgerInput(input: ProviderRunLedgerInput): void {
   assertStringArray(input.errorClasses, "errorClasses");
   assertFallbackPlan(input);
   assertTokenUsage(input.tokenUsage);
-  assertJsonRecord(input.dataHandling, "dataHandling");
-  if (input.accountPrivacy !== undefined) {
-    assertJsonRecord(input.accountPrivacy, "accountPrivacy");
-  }
+  assertJsonRecord(input.routingPosture, "routingPosture");
   if (!costKinds.includes(input.cost.costKind)) {
     throw new Error(`unsupported cost kind: ${input.cost.costKind}`);
   }
@@ -798,8 +867,7 @@ function runFromRow(row: Record<string, unknown>): ProviderRunCostSummary {
     reasoningTokens: nullableNumber(row.reasoning_tokens),
     cachedInputTokens: nullableNumber(row.cached_input_tokens),
     totalTokens: nullableNumber(row.total_tokens),
-    dataHandling: recordOrEmpty(row.data_handling),
-    accountPrivacy: nullableRecord(row.account_privacy),
+    routingPosture: recordOrEmpty(row.routing_posture),
   };
 }
 
@@ -850,13 +918,6 @@ function recordOrEmpty(value: unknown): LedgerJsonRecord {
     return {};
   }
   return value as LedgerJsonRecord;
-}
-
-function nullableRecord(value: unknown): LedgerJsonRecord | null {
-  if (value === null || value === undefined) {
-    return null;
-  }
-  return recordOrEmpty(value);
 }
 
 function zeroBreakdown(costKind: ProviderCostKind): CostKindBreakdown {

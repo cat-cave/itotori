@@ -57,9 +57,87 @@ export type RoutingCapabilities = {
 //   (c) the response surfaces a 404 envelope if no ZDR provider can
 //       serve the call (handled by the existing HTTP-error path).
 // The per-pair privacy axes are GONE from `ModelCapabilities` and
-// `ProviderRunRecord`. The ledger still has the historical
-// `data_handling` jsonb column; new writes pass `{}` until a follow-up
-// migration deletes it.
+// `ProviderRunRecord`.
+//
+// ITOTORI-230 — (b) is now captured verbatim on every `ProviderRunRecord`
+// via `routingPosture: OpenRouterRoutingPosture` (defined below) and
+// persisted in the ledger as a `routing_posture jsonb` column. The four
+// dead privacy-registry columns ITOTORI-227 left behind on
+// itotori_provider_runs and itotori_model_providers were dropped in
+// migration 0040 in the same transaction.
+
+/**
+ * ITOTORI-230 — the OpenRouter provider-routing block that was on the
+ * wire for the call. Captured verbatim on every `ProviderRunRecord` and
+ * mirrored on `RecordedProviderResponse` so an offline replay or audit
+ * can prove the (a)+(b)+(c) ZDR posture without recapturing the wire.
+ *
+ * The five fields here are exactly the canonical shape from
+ * docs/openrouter-integration.md §3 (Provider routing) and
+ * docs/openrouter-integration-evidence/2026-06-25.json call_1:
+ *   {
+ *     only: [providerId],
+ *     allow_fallbacks: false,
+ *     data_collection: "deny",
+ *     zdr: boolean,                  // true for non-public input
+ *     require_parameters: boolean    // typically true; mirrors strict mode
+ *   }
+ *
+ * `allow_fallbacks: false` is a literal-type discriminant: pinning a
+ * (model, providerId) pair means the call refuses to swap providers
+ * silently. Any other value would be an ITOTORI-220 violation.
+ *
+ * `data_collection: "deny"` is the wire-level commitment that the
+ * upstream provider will not retain the input for training. Combined
+ * with `zdr: true` and the account-wide ZDR assertion, this is the
+ * three-part posture audit needs to verify ZDR was in force.
+ *
+ * For non-OpenRouter providers (fake / local-openai-compatible /
+ * recorded) the field is still required: there is no remote provider
+ * to send data to in the local/fake case, so a `data_collection: "deny"`
+ * + `zdr: true` posture is trivially correct (no data leaves the
+ * boundary). Recorded replays carry the originally-captured posture
+ * verbatim (see providers/recorded.ts).
+ */
+export type OpenRouterRoutingPosture = {
+  only: string[];
+  allow_fallbacks: false;
+  /**
+   * Wire-level data-collection commitment. For the canonical ZDR
+   * posture this is `"deny"` (the alpha closer never carries anything
+   * else). The union admits `"allow"` strictly so the recorded posture
+   * is HONEST about a public-input call that opted out of the
+   * privacy-preserving default — a posture that always claimed `"deny"`
+   * would silently lie about the wire shape, defeating its audit
+   * purpose.
+   */
+  data_collection: "deny" | "allow";
+  zdr: boolean;
+  require_parameters: boolean;
+};
+
+/**
+ * ITOTORI-230 — canonical posture for providers that never make a
+ * remote call (fake / local-openai-compatible). The pair pin and
+ * `data_collection: "deny"` posture are trivially true (no data leaves
+ * the boundary), so we record the canonical-looking shape rather than a
+ * sentinel — telemetry queries that filter on
+ * `routing_posture->>'zdr' = 'true'` will count these rows as
+ * ZDR-enforced, which is the truthful summary for "the call never left
+ * the process". `require_parameters` follows the canonical default.
+ *
+ * Recorded-bundle replays do NOT use this helper — they carry the
+ * originally-captured posture verbatim from the bundle.
+ */
+export function localOnlyRoutingPosture(providerId: string): OpenRouterRoutingPosture {
+  return {
+    only: [providerId],
+    allow_fallbacks: false,
+    data_collection: "deny",
+    zdr: true,
+    require_parameters: true,
+  };
+}
 
 export type ModelCapabilities = {
   structuredOutputs: StructuredOutputCapabilities;
@@ -266,6 +344,13 @@ export type ProviderRunRecord = {
   fallbackPlan: string[];
   tokenUsage: TokenUsage;
   cost: ProviderCost;
+  /**
+   * ITOTORI-230 — the OpenRouter routing posture the call carried on
+   * the wire. Required: every record (LIVE OR, recorded replay, fake,
+   * local) MUST surface a posture so the ledger row + telemetry have
+   * a uniform shape. See {@link OpenRouterRoutingPosture}.
+   */
+  routingPosture: OpenRouterRoutingPosture;
   prompt: PromptPresetReference;
   providerPreset?: ProviderPresetReference;
 };

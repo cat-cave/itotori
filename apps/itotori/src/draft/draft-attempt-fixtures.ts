@@ -85,6 +85,14 @@ function fixtureProviderRun(overrides: Partial<ProviderRunRecord> = {}): Provide
       currency: "USD",
       amountMicrosUsd: 12_500,
     },
+    // ITOTORI-230 — canonical alpha posture for a fixture LIVE OR run.
+    routingPosture: {
+      only: ["anthropic"],
+      allow_fallbacks: false,
+      data_collection: "deny",
+      zdr: true,
+      require_parameters: true,
+    },
     prompt: {
       presetId: "itotori-translation-agent",
       templateVersion: "itotori-translation-agent-v1",

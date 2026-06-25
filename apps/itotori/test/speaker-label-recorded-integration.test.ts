@@ -178,6 +178,14 @@ function bundleFor(
         // ITOTORI-228 — synthetic test bundle (no LIVE OR capture); the
         // test asserts label byte-equality, not cost. ZERO_COST.
         cost: ZERO_COST,
+        // ITOTORI-230 — canonical alpha posture stand-in.
+        routingPosture: {
+          only: [input.modelMetadata.providerId],
+          allow_fallbacks: false,
+          data_collection: "deny",
+          zdr: true,
+          require_parameters: true,
+        },
       },
     },
   };
@@ -242,6 +250,14 @@ describe("SpeakerLabelAgent + RecordedModelProvider integration", () => {
           finishReason: "stop",
           // ITOTORI-228 — see note above; bundle-miss test, ZERO_COST.
           cost: ZERO_COST,
+          // ITOTORI-230 — canonical alpha posture stand-in.
+          routingPosture: {
+            only: [input.modelMetadata.providerId],
+            allow_fallbacks: false,
+            data_collection: "deny",
+            zdr: true,
+            require_parameters: true,
+          },
         },
       },
     };

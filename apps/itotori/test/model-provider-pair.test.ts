@@ -208,7 +208,20 @@ describe("ITOTORI-220 — (modelId, providerId) pair contract", () => {
         // ITOTORI-228 — pair-contract test; the assertion is on
         // providerId routing, not cost. ZERO_COST is the structurally
         // honest stand-in (no real LIVE call ever produced these bytes).
-        [bundleKey]: { content: "ok", finishReason: "stop", cost: ZERO_COST },
+        [bundleKey]: {
+          content: "ok",
+          finishReason: "stop",
+          cost: ZERO_COST,
+          // ITOTORI-230 — pair-contract test; canonical alpha posture
+          // stand-in (no real LIVE call ever produced these bytes).
+          routingPosture: {
+            only: ["OpenAI"],
+            allow_fallbacks: false,
+            data_collection: "deny",
+            zdr: true,
+            require_parameters: true,
+          },
+        },
       },
     };
     const provider = new RecordedModelProvider({ bundle });

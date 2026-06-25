@@ -98,6 +98,16 @@ const repositoryPermissionGateMatrix = [
     "model-ledger-repository.test.ts provider run coverage",
     (repo) => repo.recordProviderRun(deniedActor, undefined as never),
   ),
+  modelLedgerGate(
+    "countZdrEnforcedByPair",
+    "catalogRead",
+    "model-ledger-repository.test.ts ZDR-enforced count coverage",
+    (repo) =>
+      repo.countZdrEnforcedByPair(deniedActor, "project-denied", {
+        from: new Date("2026-06-01T00:00:00Z"),
+        to: new Date("2026-06-30T00:00:00Z"),
+      }),
+  ),
   queueGate(
     "appendOutboxEvent",
     "queueManage",
@@ -873,6 +883,12 @@ describe("repository permission gate matrix", () => {
           "mutation": "ItotoriModelLedgerRepository.recordProviderRun",
           "requiredPermission": "runtime.ingest",
           "successFixture": "model-ledger-repository.test.ts provider run coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriModelLedgerRepository.countZdrEnforcedByPair",
+          "requiredPermission": "catalog.read",
+          "successFixture": "model-ledger-repository.test.ts ZDR-enforced count coverage",
         },
         {
           "denialFixture": "missing permission actor user-without-required-permission",

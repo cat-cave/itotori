@@ -45,6 +45,7 @@ import {
   type ModelProvider,
   type ProviderRunRecord,
   createProviderRunId,
+  localOnlyRoutingPosture,
 } from "../providers/types.js";
 import {
   DeterministicPreExportQaError,
@@ -808,6 +809,11 @@ function failedProviderRunFromRequest(input: {
       currency: "USD",
       amountMicrosUsd: 0,
     },
+    // ITOTORI-230 — the call never reached the wire (pre-fetch
+    // failure), so we record the local-only posture as a structurally
+    // honest stand-in. A future capture path could carry the
+    // already-built routing block for HTTP-level failures.
+    routingPosture: localOnlyRoutingPosture(input.request.providerId),
     prompt: input.request.prompt,
   };
   if (input.request.preset) {
@@ -864,11 +870,13 @@ function providerRunLedgerInputFromRun(
     fallbackPlan: run.fallbackPlan,
     tokenUsage: run.tokenUsage,
     cost: run.cost,
-    // ITOTORI-227 — the per-pair privacy axes were deleted; the ledger
-    // still requires a non-null `data_handling` jsonb column so we pass
-    // an empty record until the follow-up migration drops it. The
-    // optional ledger privacy column is simply omitted.
-    dataHandling: {},
+    // ITOTORI-230 — the captured OR routing posture for THIS run lands
+    // verbatim in the ledger row's `routing_posture` jsonb. Every
+    // ProviderRunRecord MUST carry one (LIVE OR builds it from the
+    // wire block; fake / local / recorded fill in their canonical or
+    // captured posture); writing the ledger row without it would
+    // leave the ZDR-enforcement count blind.
+    routingPosture: run.routingPosture as unknown as Record<string, unknown>,
     ...(run.providerPreset === undefined ? {} : { providerPreset: run.providerPreset }),
     ...(adapterMetadata === undefined ? {} : { adapterMetadata }),
   };
@@ -918,10 +926,16 @@ function providerRunLedgerInputFromBenchmark(
     fallbackPlan: normalizeBenchmarkFallbackPlan(providerRun),
     tokenUsage: providerRun.tokenUsage,
     cost: narrowBenchmarkCostToItotoriShape(providerRun.cost),
-    // ITOTORI-227 — `dataHandling` is no longer carried per-pair; the
-    // ledger still requires a non-null jsonb so we pass an empty record
-    // until the follow-up migration drops the column.
-    dataHandling: {},
+    // ITOTORI-230 — benchmark reports come from the cross-app bridge
+    // schema (BenchmarkReportV02), which does NOT carry the captured
+    // OR routing posture today. We persist the same sentinel the SQL
+    // migration uses for pre-migration rows
+    // (`_pre_itotori_230: true`) so telemetry queries that filter on
+    // `routing_posture->>'zdr' = 'true'` correctly do NOT count these
+    // toward ZDR-enforcement: there is no captured evidence. A
+    // follow-up will extend the bridge schema to carry posture so
+    // benchmark-ingested runs can prove their wire-level posture too.
+    routingPosture: { _pre_itotori_230: true },
     ...(providerPreset === undefined ? {} : { providerPreset }),
     adapterMetadata: {
       source: "benchmark_report",

@@ -891,10 +891,12 @@ describe("ItotoriProjectWorkflowService", () => {
               benchmarkReport.providerModelCostRecords[1]!.provider.requestedModelId,
               benchmarkReport.providerModelCostRecords[1]!.provider.actualModelId,
             ]),
-            // ITOTORI-227 — per-pair `dataHandling` axes are gone; the
-            // benchmark ingest now writes an empty record into the
-            // legacy ledger column until a follow-up migration drops it.
-            dataHandling: {},
+            // ITOTORI-230 — benchmark ingest writes the
+            // pre-ITOTORI-230 sentinel into routing_posture because the
+            // bridge schema (BenchmarkReportV02) does not carry the
+            // captured posture today. Telemetry queries correctly do
+            // NOT count these rows toward ZDR-enforcement.
+            routingPosture: { _pre_itotori_230: true },
             providerPreset: expect.objectContaining({
               slug: "openrouter/itotori-draft",
               version: "2026-06-17",
@@ -1023,8 +1025,7 @@ function driftDetectingLedgerFixture(): ItotoriModelLedgerRepositoryPort {
         reasoningTokens: input.tokenUsage.reasoningTokens ?? null,
         cachedInputTokens: input.tokenUsage.cachedInputTokens ?? null,
         totalTokens: input.tokenUsage.totalTokens ?? null,
-        dataHandling: input.dataHandling,
-        accountPrivacy: input.accountPrivacy ?? null,
+        routingPosture: input.routingPosture,
       };
     }),
     getProjectCostReport: vi.fn(async () => costReportFixture),
@@ -1297,8 +1298,14 @@ const costReportFixture: ProjectCostReport = {
       reasoningTokens: null,
       cachedInputTokens: null,
       totalTokens: 14,
-      dataHandling: {},
-      accountPrivacy: null,
+      // ITOTORI-230 — fixture posture for a fake-provider draft run.
+      routingPosture: {
+        only: ["itotori-fixture"],
+        allow_fallbacks: false,
+        data_collection: "deny",
+        zdr: true,
+        require_parameters: true,
+      },
     },
   ],
   translationMemoryReuse: {

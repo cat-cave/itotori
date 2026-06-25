@@ -1,4 +1,5 @@
-// ITOTORI-078 / ITOTORI-220 / ITOTORI-228 — RecordedModelProvider.
+// ITOTORI-078 / ITOTORI-220 / ITOTORI-228 / ITOTORI-230 —
+// RecordedModelProvider.
 //
 // Replays a previously-recorded model invocation from an in-memory bundle.
 // Used by the QA invocation service in recorded mode so tests and offline
@@ -16,14 +17,21 @@
 // `usage.cost`). `RecordedModelProvider.invoke` surfaces it on the
 // replayed `ProviderRunRecord.cost` so cost-cap arithmetic, telemetry,
 // and ledger writes are byte-equal to the LIVE run that produced the
-// bundle. The bundle's `schemaVersion` is locked to
-// `RECORDED_PROVIDER_BUNDLE_SCHEMA_VERSION`; pre-ITOTORI-228 bundles
-// (without a captured `cost`) fail at construction with a typed
+// bundle.
+//
+// ITOTORI-230 — every `RecordedProviderResponse` ALSO carries the
+// captured OR routing posture (`zdr`, `data_collection`, `only`, etc.)
+// from the original LIVE call. Replay surfaces it on
+// `ProviderRunRecord.routingPosture` so an offline audit can prove the
+// ZDR posture without recapturing the wire. The bundle's
+// `schemaVersion` is locked to
+// `RECORDED_PROVIDER_BUNDLE_SCHEMA_VERSION` (now `v2`); pre-v2 bundles
+// (without captured routingPosture) fail at construction with a typed
 // `RecordedBundleSchemaMismatchError`. Any future capture path (live
-// OpenRouter run → on-disk bundle) MUST write the response's
-// `usage.cost` into the bundle; refusing the write when `usage.cost` is
-// absent is the contractual forcing function and is documented at the
-// future-capture seam.
+// OpenRouter run → on-disk bundle) MUST write BOTH the response's
+// `usage.cost` AND the request's `provider` block into the bundle;
+// refusing the write when either is absent is the contractual forcing
+// function and is documented at the future-capture seam.
 
 import { createHash } from "node:crypto";
 import { assertProviderInvocationSupported } from "./capability-guard.js";
@@ -36,6 +44,7 @@ import {
   type ModelInvocationResult,
   type ModelProvider,
   type ModelToolCall,
+  type OpenRouterRoutingPosture,
   type ProviderCost,
   type ProviderDescriptor,
   type ProviderFamily,
@@ -46,15 +55,23 @@ import {
 import { createProviderRunId } from "./types.js";
 
 /**
- * Wire-schema version of the recorded-provider bundle. Bumped by
- * ITOTORI-228 (added required `cost` on every `RecordedProviderResponse`
- * + required `schemaVersion` on the bundle envelope). Bundles whose
- * `schemaVersion` is anything other than this literal are rejected at
- * `RecordedModelProvider` construction time so a pre-ITOTORI-228 file
- * on disk silently replaying as `cost: 0` is impossible.
+ * Wire-schema version of the recorded-provider bundle.
+ *
+ * - v1 (ITOTORI-228) added required `cost` on every
+ *   `RecordedProviderResponse` + required `schemaVersion` on the
+ *   bundle envelope.
+ * - v2 (ITOTORI-230) adds required `routingPosture` on every
+ *   `RecordedProviderResponse` so an offline replay carries the
+ *   originally-captured OR ZDR posture verbatim.
+ *
+ * Bundles whose `schemaVersion` is anything other than this literal are
+ * rejected at `RecordedModelProvider` construction time so a pre-v2
+ * file on disk cannot silently replay without posture (which would
+ * leave telemetry counting the row as ZDR-enforced based on no
+ * evidence).
  */
 export const RECORDED_PROVIDER_BUNDLE_SCHEMA_VERSION =
-  "itotori.recorded-provider-bundle.v1" as const;
+  "itotori.recorded-provider-bundle.v2" as const;
 
 export type RecordedProviderResponse = {
   /** Verbatim provider content; usually a JSON string for structured-output paths. */
@@ -72,6 +89,16 @@ export type RecordedProviderResponse = {
    * lacks this field is a schema mismatch, not a recoverable case.
    */
   cost: ProviderCost;
+  /**
+   * ITOTORI-230 — the original LIVE call's OR routing posture (the
+   * `provider: { only, allow_fallbacks, data_collection, zdr,
+   * require_parameters }` block that hit the wire). Mirrored verbatim
+   * so an offline replay proves the three-part ZDR posture without
+   * recapturing the wire. Required: a recorded bundle that lacks this
+   * field is a schema mismatch, NOT a recoverable case — the audit
+   * trail would silently lose the captured-on-wire posture.
+   */
+  routingPosture: OpenRouterRoutingPosture;
   adapterMetadata?: JsonObject;
 };
 
@@ -278,6 +305,11 @@ export class RecordedModelProvider implements ModelProvider {
       // schema makes `response.cost` non-optional; pre-ITOTORI-228 files
       // would have already failed `assertBundleSchema` at construction.
       cost: response.cost,
+      // ITOTORI-230 — mirror the captured routing posture verbatim so
+      // the replayed run carries the same audit evidence as the LIVE
+      // run that produced the bundle. The bundle schema (v2) makes
+      // `response.routingPosture` non-optional.
+      routingPosture: response.routingPosture,
       prompt: request.prompt,
     };
     if (request.preset) {
@@ -434,6 +466,14 @@ function assertBundleSchema(bundle: RecordedProviderBundle): void {
       );
     }
     assertResponseCostShape(bundle.bundleId, key, cost);
+    const posture = (response as { routingPosture?: unknown }).routingPosture;
+    if (posture === undefined || posture === null) {
+      throw new RecordedBundleSchemaMismatchError(
+        bundle.bundleId,
+        `response under key '${key}' is missing required field 'routingPosture' (ITOTORI-230 / bundle schema v2 added routingPosture: OpenRouterRoutingPosture as a required field on every recorded response)`,
+      );
+    }
+    assertRoutingPostureShape(bundle.bundleId, key, posture);
   }
   // Touch ZERO_COST so the import survives tree-shaking; documents the
   // canonical zero-cost shape callers should reuse on genuinely-free
@@ -468,6 +508,55 @@ function assertResponseCostShape(bundleId: string, key: string, cost: unknown): 
     throw new RecordedBundleSchemaMismatchError(
       bundleId,
       `response under key '${key}' is costKind='zero' but amountMicrosUsd=${candidate.amountMicrosUsd} (zero-cost responses must have amountMicrosUsd=0)`,
+    );
+  }
+}
+
+/**
+ * ITOTORI-230 — validate the `routingPosture` shape on a recorded
+ * response. The five required fields are exactly the canonical posture
+ * from docs/openrouter-integration.md §3 and the live evidence at
+ * docs/openrouter-integration-evidence/2026-06-25.json. Any deviation
+ * (missing field, wrong type, `allow_fallbacks: true`) is a typed
+ * `RecordedBundleSchemaMismatchError`, not a synthesis-with-fallback
+ * site.
+ */
+function assertRoutingPostureShape(bundleId: string, key: string, posture: unknown): void {
+  if (posture === null || typeof posture !== "object" || Array.isArray(posture)) {
+    throw new RecordedBundleSchemaMismatchError(
+      bundleId,
+      `response under key '${key}' routingPosture is not an object`,
+    );
+  }
+  const candidate = posture as Partial<OpenRouterRoutingPosture>;
+  if (!Array.isArray(candidate.only) || candidate.only.some((entry) => typeof entry !== "string")) {
+    throw new RecordedBundleSchemaMismatchError(
+      bundleId,
+      `response under key '${key}' routingPosture.only must be a string array (got ${JSON.stringify(candidate.only)})`,
+    );
+  }
+  if (candidate.allow_fallbacks !== false) {
+    throw new RecordedBundleSchemaMismatchError(
+      bundleId,
+      `response under key '${key}' routingPosture.allow_fallbacks must be literal false (got ${JSON.stringify(candidate.allow_fallbacks)}); ITOTORI-220 pair pin requires no silent fallbacks`,
+    );
+  }
+  if (candidate.data_collection !== "deny" && candidate.data_collection !== "allow") {
+    throw new RecordedBundleSchemaMismatchError(
+      bundleId,
+      `response under key '${key}' routingPosture.data_collection must be 'deny' or 'allow' (got ${JSON.stringify(candidate.data_collection)})`,
+    );
+  }
+  if (typeof candidate.zdr !== "boolean") {
+    throw new RecordedBundleSchemaMismatchError(
+      bundleId,
+      `response under key '${key}' routingPosture.zdr must be boolean (got ${JSON.stringify(candidate.zdr)})`,
+    );
+  }
+  if (typeof candidate.require_parameters !== "boolean") {
+    throw new RecordedBundleSchemaMismatchError(
+      bundleId,
+      `response under key '${key}' routingPosture.require_parameters must be boolean (got ${JSON.stringify(candidate.require_parameters)})`,
     );
   }
 }
