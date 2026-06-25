@@ -21980,7 +21980,7 @@
     {
       "id": "UTSUSHI-220",
       "title": "End-to-end Sweetie HD scene-1 text-replay smoke",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["utsushi"],
@@ -22028,9 +22028,7 @@
         "'Deterministic' actually being flaky and hidden by retry",
         "Snapshot-restore being a no-op"
       ],
-      "owner": "orchestrator-utsushi-220",
-      "branch": "spec/utsushi-220",
-      "worktree": "/scratch/worktrees/itotori-spec-utsushi-220"
+      "statusReason": "Implementation merged (commit 2f2901b). Alpha-defining e2e: real Sweetie HD scene 1 -> first TextLine 州 via TextSurfaceSink. Byte-deterministic JSON (SHA256 ea7ceaa9…dacc0). Snapshot/restore round-trips. 31 unknown opcodes as warnings; final_outcome EndOfScene events=271 (never Fatal)."
     },
     {
       "id": "UTSUSHI-221",
