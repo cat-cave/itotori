@@ -21217,7 +21217,7 @@
     {
       "id": "UTSUSHI-201",
       "title": "Real Seen.txt 10,000-slot directory parser",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["utsushi"],
@@ -21252,9 +21252,7 @@
         "Off-by-one slot indexing (slot 0 is reserved)",
         "Silent acceptance of overlap between slot N and slot N+1"
       ],
-      "owner": "orchestrator-utsushi-201",
-      "branch": "spec/utsushi-201",
-      "worktree": "/scratch/worktrees/itotori-spec-utsushi-201"
+      "statusReason": "Implementation merged (commit b5d4fef). RealSceneIndex + RealSceneEntry in utsushi-reallive, no kaifuu dep; 198 Sweetie HD scenes verified."
     },
     {
       "id": "UTSUSHI-202",
