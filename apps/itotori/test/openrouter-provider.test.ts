@@ -181,8 +181,10 @@ describe("OpenRouterModelProvider — request shape (ITOTORI-220 pair pin)", () 
 describe("OpenRouterModelProvider — per-process cost cap", () => {
   it("raises OpenRouterCostCapError when cumulative spend exceeds the cap (third call blocked, no HTTP fired)", async () => {
     // Three calls each reporting $0.60 → after 2 the cumulative is
-    // $1.20 which is already over the default $1 cap, so the third
-    // invoke must throw BEFORE the HTTP request fires.
+    // $1.20 which is already over the explicit $1 cap configured
+    // below, so the third invoke must throw BEFORE the HTTP request
+    // fires. (The provider's canonical DEFAULT_COST_CAP_USD is 0.5;
+    // this test pins 1.0 so the per-call $0.60 reports are meaningful.)
     const fetchMock = vi.fn(async () =>
       successResponse({ usageCost: 0.6 }),
     ) as unknown as typeof fetch;
