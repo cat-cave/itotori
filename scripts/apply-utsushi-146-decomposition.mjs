@@ -761,7 +761,7 @@ const NODE_SPECS = [
       "Any UTSUSHI-200..UTSUSHI-220 node whose acceptance criterion would break under a Siglus reuse claim emits a documented 'engine-specific boundary' note instead of pretending portability.",
     ],
     verification: [
-      ["command", "cargo test -p utsushi-reallive cross_engine_facade_only_imports"],
+      ["command", "cargo test -p utsushi-siglus --test cross_engine_substrate_alignment"],
       ["command", "just check"],
     ],
     auditFocus: [

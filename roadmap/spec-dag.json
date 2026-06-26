@@ -22063,7 +22063,7 @@
       "verification": [
         {
           "type": "command",
-          "value": "cargo test -p utsushi-reallive cross_engine_facade_only_imports"
+          "value": "cargo test -p utsushi-siglus --test cross_engine_substrate_alignment"
         },
         {
           "type": "command",
@@ -22074,7 +22074,7 @@
         "'Reusable' claims that haven't been proven against a Siglus prototype",
         "Lineage notes that just repeat marketing instead of documenting actual code reuse points"
       ],
-      "statusReason": "Re-tier 2026-06-24: promoted continuous -> alpha — required for the redefined alpha (utsushi-reallive Linux runtime / real-bytes extraction) per docs/proposals/dag-retier-2026-06-24.md."
+      "statusReason": "Re-tier 2026-06-24: promoted continuous -> alpha — required for the redefined alpha (utsushi-reallive Linux runtime / real-bytes extraction) per docs/proposals/dag-retier-2026-06-24.md. | UTSUSHI-147 (2026-06-26): the inline Siglus minimal-port scaffold UTSUSHI-221 introduced was promoted into the `utsushi-siglus` sibling crate; the cross-engine fixture moved to `crates/utsushi-siglus/tests/cross_engine_substrate_alignment.rs` (no-legacy-compat: the inline file was deleted in the same change)."
     },
     {
       "projects": ["utsushi"],
