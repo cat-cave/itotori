@@ -9,3 +9,7 @@ require_clean_worktree = true
 clean_worktree_except = [".qd/", "artifacts/"]
 require_gate_before_ci = true
 require_ci_before_merge = true
+ci_provider = "github"
+ci_repo = "cat-cave/itotori"
+ci_workflow = "ci.yml"
+ci_auth = "gh-cli"
