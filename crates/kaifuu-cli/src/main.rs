@@ -23,7 +23,7 @@ use kaifuu_core::{
     validate_offset_map_value, validate_profile_value, validate_rpg_maker_mv_mz_fixture_key,
     write_json,
 };
-use kaifuu_delta::{apply_delta, create_delta};
+use kaifuu_delta::{SourceProvenance, apply_delta, create_delta};
 
 mod binary_patch_smoke;
 
@@ -164,9 +164,22 @@ fn run_with_args_and_registry(
             let original = positional(&args, 1)?;
             let patched = positional(&args, 2)?;
             let output = flag(&args, "--output")?;
+            // KAIFUU-238: --source-extract <path> reads the originating
+            // extract envelope (PartialAdapterReport on the KAIFUU-193
+            // partial path; a regular bridge envelope otherwise) and
+            // carries the `partial` provenance forward through the delta
+            // package so apply can refuse partial sources.
+            let source_provenance = match flag_optional(&args, "--source-extract") {
+                Some(path) => SourceProvenance::from_extract_envelope_file(Path::new(path))?,
+                None => SourceProvenance::complete(),
+            };
             write_json(
                 &PathBuf::from(output),
-                &create_delta(&PathBuf::from(original), &PathBuf::from(patched))?,
+                &create_delta(
+                    &PathBuf::from(original),
+                    &PathBuf::from(patched),
+                    source_provenance,
+                )?,
             )?;
         }
         Some("apply") => {
@@ -4964,7 +4977,12 @@ wait
             delta_path.to_str().unwrap(),
         ]);
         let delta: serde_json::Value = read_json(&delta_path).unwrap();
-        assert_eq!(delta["schemaVersion"], "0.2.0");
+        // KAIFUU-238 bumped the kaifuu-delta-package schema from 0.2.0 to
+        // 0.3.0 to add the required `sourceProvenance` envelope. The
+        // round-trip diff/apply still works when no --source-extract is
+        // passed; the resulting `sourceProvenance.partial` is false.
+        assert_eq!(delta["schemaVersion"], "0.3.0");
+        assert_eq!(delta["sourceProvenance"]["partial"], false);
         let changed_paths = delta["changedEntries"]
             .as_array()
             .unwrap()
