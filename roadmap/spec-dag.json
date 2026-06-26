@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "exported_at": "2026-06-26T22:37:48.979Z",
+  "exported_at": "2026-06-26T22:38:57.964Z",
   "registries": {
     "groups": [
       {
@@ -4226,7 +4226,7 @@
       "title": "MV/MZ encrypted media readiness command",
       "kind": "feature",
       "milestone": "beta",
-      "status": "mergeable",
+      "status": "done",
       "priority": "P1",
       "estimate_points": 1,
       "risk": "medium",
@@ -4237,9 +4237,9 @@
       "validation": null,
       "context": null,
       "created_at": "2026-06-26T02:53:54.696Z",
-      "updated_at": "2026-06-26T22:37:39.239Z",
+      "updated_at": "2026-06-26T22:38:51.492Z",
       "claimed_at": "2026-06-26T16:55:54.680Z",
-      "done_at": null,
+      "done_at": "2026-06-26T22:38:51.492Z",
       "group_name": "engine-research",
       "status_reason": "Re-tier 2026-06-24: moved from alpha to beta — multi-engine / encrypted-variant work belongs in beta under the new 4-tier framework (per docs/proposals/dag-retier-2026-06-24.md).\n[2026-06-26T22:21:25.588Z] 2026-06-26 implementation advanced on spec/kaifuu-039: commit c0df39a adds RPG Maker MV/MZ encrypted-media-proof command, synthetic public fixture matrix including encrypted image/audio/video (.rpgmvp/.rpgmvm/.rpgmvo/.rpgmvu/.png_/.m4a_/.ogg_), wrong-key hash-only validation, stdout qd contract for 'kaifuu rpgmaker encrypted-media-proof --fixture ...', and detector fixture snapshot updates. Focused audit found P1s for CLI contract, wrong-key coverage, and encrypted video coverage; repair resolved them and post-repair audit found no P0/P1 blockers. Merged current main into branch at c261d78. Verification passed on merged branch: cargo fmt --check, cargo test -p kaifuu-core, cargo test -p kaifuu-cli, just fixtures-validate, git diff --check.\n[2026-06-26T22:29:58.188Z] 2026-06-26 broad pre-CI gate passed on spec/kaifuu-039 after merge with main and fixture-format refresh: nix develop --command bash -lc 'pnpm exec vp check && node scripts/audit-no-hardcoded-cost.mjs && just fixtures-validate && just impl-map-schema-validate && node scripts/verify-toolchain-policy.mjs && pnpm exec vp run ts:typecheck && cargo fmt --check && cargo check --workspace'. Existing lint warnings only; command exited 0.",
       "check_command": null,
@@ -40618,6 +40618,18 @@
       "started_at": "2026-06-26T22:37:39.239Z",
       "finished_at": "2026-06-26T22:37:39.239Z",
       "summary": "Local full configured gate passed on spec/kaifuu-039 at 2026-06-26T22:37Z: pnpm exec vp check; audit-no-hardcoded-cost; just fixtures-validate; just impl-map-schema-validate; verify-toolchain-policy; ts:typecheck; cargo fmt --check; cargo check --workspace; just build; just db-migrate; just test; cargo clippy --workspace --all-targets --all-features -- -D warnings; cargo deny check. cargo deny emitted existing duplicate-crate warnings and ended advisories/bans/licenses/sources ok.\nEvidence: external_id=local-full-gate-2026-06-26T2237Z",
+      "log_path": null
+    },
+    {
+      "id": "63b923f7-913a-4469-95a0-4a15d3f1d3ae",
+      "node_id": "KAIFUU-039",
+      "kind": "merge",
+      "status": "recorded",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-26T22:38:51.492Z",
+      "finished_at": "2026-06-26T22:38:51.492Z",
+      "summary": "Merge recorded with squash at commit 463ea081b162bacbca929b1c0a727b77530c14ff",
       "log_path": null
     }
   ],
