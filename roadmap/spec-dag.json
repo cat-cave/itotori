@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "exported_at": "2026-06-26T23:28:58.449Z",
+  "exported_at": "2026-06-26T23:32:28.548Z",
   "registries": {
     "groups": [
       {
@@ -6853,19 +6853,19 @@
       "title": "Reviewer queue fixture command",
       "kind": "feature",
       "milestone": "alpha",
-      "status": "ready",
+      "status": "claimed",
       "priority": "P1",
       "estimate_points": 1,
       "risk": "medium",
-      "owner": null,
-      "branch": null,
+      "owner": "orchestrator-itotori-023",
+      "branch": "spec/itotori-023",
       "spec": "Implement the reviewer queue fixture command that composes queue state, context cards, batch decisions, and targeted rerun enqueue behavior.\n\nDeliverables:\n- `pnpm exec vp run itotori:review-queue-fixture` command\n- Queue artifact bundle with decision ids, finding ids, context refs, batch action ids, and rerun request ids\n- Dashboard/MSW fixture for pending, resolved, deferred, escalated, and batch-applied decisions\n- Negative tests for stale lease, missing permission, and context-free decision attempts",
       "acceptance": "- Reviewer decisions include source, draft, runtime, style, glossary, and QA context refs before mutation.\n- Batch accept, reject, defer, and escalate actions update queue state and create durable events.\n- Resolved decisions enqueue targeted reruns or explicitly record why no rerun is required.\n- Unauthorized or stale queue mutations fail with semantic diagnostics.",
       "validation": null,
       "context": null,
       "created_at": "2026-06-26T02:53:54.834Z",
-      "updated_at": "2026-06-26T02:53:54.834Z",
-      "claimed_at": null,
+      "updated_at": "2026-06-26T23:32:24.509Z",
+      "claimed_at": "2026-06-26T23:32:24.509Z",
       "done_at": null,
       "group_name": "dashboard",
       "status_reason": "Re-tier 2026-06-24: kept alpha under the new 4-tier framework (single-game Sweetie HD e2e set per docs/proposals/dag-retier-2026-06-24.md).",
