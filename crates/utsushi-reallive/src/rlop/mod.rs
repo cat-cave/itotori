@@ -42,15 +42,21 @@ use serde::{Deserialize, Serialize};
 
 use crate::vm::{SceneId, Vm};
 
-// UTSUSHI-209 / UTSUSHI-210 / UTSUSHI-211: per-module RLOperation
-// tables. The text/messaging family lives in [`module_msg`]; the
-// control-flow family in [`module_ctrl`]; the choice (`select` /
-// `select_s` / `select_w` / `select_objbtn`) family in [`module_sel`];
-// the typed `LongOp` shapes (`pause`, `select`) live in [`longops`].
+// UTSUSHI-209 / UTSUSHI-210 / UTSUSHI-211 / UTSUSHI-212: per-module
+// RLOperation tables. The text/messaging family lives in
+// [`module_msg`]; the control-flow family in [`module_ctrl`]; the
+// choice (`select` / `select_s` / `select_w` / `select_objbtn`) family
+// in [`module_sel`]; the typed `LongOp` shapes (`pause`, `select`)
+// live in [`longops`]. UTSUSHI-212 adds the string / memory /
+// system-arithmetic families in [`module_str`], [`module_mem`], and
+// [`module_sys`].
 pub mod longops;
 pub mod module_ctrl;
+pub mod module_mem;
 pub mod module_msg;
 pub mod module_sel;
+pub mod module_str;
+pub mod module_sys;
 
 pub use longops::{
     DEFAULT_PAUSE_POLLS, PAUSE_PRIVATE_STATE_MAGIC, PauseLongOp, PauseLongOpDecodeError,

@@ -279,6 +279,25 @@ pub use rlop::{
     register_text_rlops, text_module_msg_keys,
 };
 
+pub use rlop::module_mem::{
+    MEM_MODULE_ID, MEM_MODULE_TYPE, MEM_RLOP_COUNT, MemOpcode, OPCODE_CPYRNG, OPCODE_CPYVARS,
+    OPCODE_SETARRAY, OPCODE_SETARRAY_STEPPED, OPCODE_SETRNG, OPCODE_SETRNG_STEPPED, OPCODE_SUM,
+    OPCODE_SUMS, register_mem_rlops,
+};
+
+pub use rlop::module_str::{
+    OPCODE_ATOI, OPCODE_HANTOZEN, OPCODE_INTOUT, OPCODE_ITOA, OPCODE_LOWERCASE, OPCODE_STRCAT,
+    OPCODE_STRCPY, OPCODE_STRLEN, OPCODE_STRLPOS, OPCODE_STROUT, OPCODE_STRPOS, OPCODE_UPPERCASE,
+    OPCODE_ZENTOHAN, STR_MODULE_ID, STR_MODULE_TYPE, STR_RLOP_COUNT, StrOpcode, StrRuntime,
+    hantozen_bytes, register_str_rlops, zentohan_bytes,
+};
+
+pub use rlop::module_sys::{
+    OPCODE_ABS, OPCODE_CONSTRAIN, OPCODE_COS, OPCODE_MAX, OPCODE_MIN, OPCODE_PCNT, OPCODE_POWER,
+    OPCODE_RND, OPCODE_SIN, SYS_MODULE_ID, SYS_MODULE_TYPE, SYS_RLOP_COUNT,
+    SYS_RUNTIME_INSPECTABLE_ID, SysOpcode, SysRuntime, XorShift64State, register_sys_rlops,
+};
+
 pub use rlop::module_ctrl::{
     CONTROL_FLOW_RLOP_COUNT, FARCALL_ARG_BANK, FARCALL_ARG_BANK_SLOT_CAP, FarcallOp,
     FarcallWithArgsOp, GosubIfOp, GosubOp, GotoIfOp, GotoOnOp, GotoOp, GotoUnlessOp, HaltOp,
