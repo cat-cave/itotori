@@ -21,8 +21,14 @@
 //! | `farcall_with_args` | `FarCall` + intL arg-bank populated  |
 //! | `ret`             | [`DispatchOutcome::Return`]            |
 //! | `rtl`             | [`DispatchOutcome::ReturnFromCall`]    |
-//! | `select`          | [`DispatchOutcome::Yield`] with a [`SelectionLongOp`] |
 //! | `halt`            | [`DispatchOutcome::Halt`]              |
+//!
+//! The choice (`select` / `select_s` / `select_w` / `select_objbtn`)
+//! family is **not** a control-flow opcode in RealLive — it lives in
+//! `module_sel` ([`crate::rlop::module_sel`]) at `(module_type=1,
+//! module_id=5)`. The speculative `module_jmp` `select` slot that
+//! UTSUSHI-210 introduced was deleted in UTSUSHI-211 per the
+//! no-legacy-compat rule.
 //!
 //! # `(module_type, module_id, opcode)` keys
 //!
@@ -50,8 +56,7 @@
 
 use std::sync::Arc;
 
-use crate::rlop::longops::SelectionLongOp;
-use crate::rlop::{DispatchOutcome, ExprValue, LongOpId, RLOperation, RlopKey, RlopRegistry};
+use crate::rlop::{DispatchOutcome, ExprValue, RLOperation, RlopKey, RlopRegistry};
 use crate::var_banks::{BankId, Value};
 use crate::vm::{SceneId, Vm, VmWarning};
 
@@ -83,8 +88,6 @@ pub const OPCODE_FARCALL: u16 = 0x0020;
 pub const OPCODE_FARCALL_WITH_ARGS: u16 = 0x0021;
 /// rlvm-documented opcode for `rtl`.
 pub const OPCODE_RTL: u16 = 0x0022;
-/// rlvm-documented opcode for `select`.
-pub const OPCODE_SELECT: u16 = 0x0030;
 /// rlvm-documented opcode for `halt` (`end`/`exit` family — pinned at
 /// this slot so the alpha-tier registry can be exhaustively named).
 pub const OPCODE_HALT: u16 = 0x0040;
@@ -111,8 +114,6 @@ pub const KEY_FARCALL_WITH_ARGS: RlopKey =
     RlopKey::new(MODULE_JMP_TYPE, MODULE_JMP_ID, OPCODE_FARCALL_WITH_ARGS);
 /// Key for `rtl`.
 pub const KEY_RTL: RlopKey = RlopKey::new(MODULE_JMP_TYPE, MODULE_JMP_ID, OPCODE_RTL);
-/// Key for `select`.
-pub const KEY_SELECT: RlopKey = RlopKey::new(MODULE_JMP_TYPE, MODULE_JMP_ID, OPCODE_SELECT);
 /// Key for `halt`.
 pub const KEY_HALT: RlopKey = RlopKey::new(MODULE_JMP_TYPE, MODULE_JMP_ID, OPCODE_HALT);
 
@@ -565,93 +566,15 @@ impl RLOperation for HaltOp {
 }
 
 // ---------------------------------------------------------------------
-// select
-// ---------------------------------------------------------------------
-
-/// `select(choice_pc_0, choice_pc_1, ...)` — yields a selection long-op
-/// whose resume target is one of `choice_pc_*`.
-///
-/// The op produces a [`DispatchOutcome::Yield`] carrying the
-/// [`SelectionLongOp`] (with `user_choice = None`) serialised into the
-/// long-op private state. A follow-up selection-runtime node wires user
-/// input into the long-op via [`SelectionLongOp::record_user_choice`];
-/// on resume the long-op emits a [`DispatchOutcome::Jump`].
-///
-/// The long-op id is taken from the [`SelectLongOpIdSource`] the
-/// registration helper threaded into the op so the registry can keep a
-/// stable, deterministic id assignment without reaching for a global
-/// counter.
-#[derive(Debug)]
-pub struct SelectOp {
-    longop_id: LongOpId,
-}
-
-impl SelectOp {
-    /// Build a `select` op that emits long-ops under `longop_id`.
-    /// Production wiring (UTSUSHI-212+) will instantiate one of these
-    /// per registry; the alpha-tier registration helper threads a
-    /// pinned id so the synthetic test can assert on the queued
-    /// long-op verbatim.
-    pub fn new(longop_id: LongOpId) -> Self {
-        Self { longop_id }
-    }
-}
-
-impl RLOperation for SelectOp {
-    fn dispatch(&self, vm: &mut Vm, args: &[ExprValue]) -> DispatchOutcome {
-        if args.is_empty() {
-            return warn_and_advance(
-                vm,
-                "select",
-                "expected at least 1 choice target_pc, got 0".to_string(),
-            );
-        }
-        let mut choices = Vec::with_capacity(args.len());
-        for (idx, value) in args.iter().enumerate() {
-            match arg_pc(value, "choice_pc") {
-                Ok(pc) => choices.push(pc),
-                Err(reason) => {
-                    return warn_and_advance(vm, "select", format!("choice {idx}: {reason}"));
-                }
-            }
-        }
-        let longop = match SelectionLongOp::new(self.longop_id, choices) {
-            Ok(op) => op,
-            Err(err) => {
-                return warn_and_advance(vm, "select", err.to_string());
-            }
-        };
-        let queued = match longop.to_longop() {
-            Ok(queued) => queued,
-            Err(err) => {
-                return warn_and_advance(vm, "select", err.to_string());
-            }
-        };
-        DispatchOutcome::Yield {
-            longop_id: queued.id,
-            private_state: queued.private_state,
-        }
-    }
-}
-
-// ---------------------------------------------------------------------
 // Registry helper
 // ---------------------------------------------------------------------
 
-/// Pinned base for the long-op id space the control-flow registry
-/// owns. The `select` op's queued long-op uses this id; later
-/// per-module registries (text long-ops, animation long-ops, …) will
-/// claim distinct bases so a snapshot can disambiguate the queued
-/// long-op by id range.
-pub const CONTROL_FLOW_LONGOP_ID_BASE: u64 = 0x0001_0000;
-
-/// `select` long-op id assigned by [`register_control_flow_rlops`].
-pub const SELECT_LONGOP_ID: LongOpId = LongOpId(CONTROL_FLOW_LONGOP_ID_BASE);
-
 /// Number of opcodes [`register_control_flow_rlops`] populates. Pinned
 /// so audit tooling can assert "the registry covers the UTSUSHI-210
-/// frontier exactly" without scraping the helper body.
-pub const CONTROL_FLOW_RLOP_COUNT: usize = 12;
+/// frontier exactly" without scraping the helper body. UTSUSHI-211
+/// deleted the speculative `module_jmp` `select` slot — the choice
+/// family lives in [`crate::rlop::module_sel`].
+pub const CONTROL_FLOW_RLOP_COUNT: usize = 11;
 
 /// Populate `registry` with the UTSUSHI-210 control-flow RLOperation
 /// family. Returns the number of registered ops (matches
@@ -674,7 +597,6 @@ pub fn register_control_flow_rlops(registry: &mut RlopRegistry) -> usize {
         (KEY_FARCALL_WITH_ARGS, Arc::new(FarcallWithArgsOp)),
         (KEY_RET, Arc::new(RetOp)),
         (KEY_RTL, Arc::new(RtlOp)),
-        (KEY_SELECT, Arc::new(SelectOp::new(SELECT_LONGOP_ID))),
         (KEY_HALT, Arc::new(HaltOp)),
     ];
     let count = entries.len();
@@ -712,7 +634,6 @@ mod tests {
             KEY_FARCALL_WITH_ARGS,
             KEY_RET,
             KEY_RTL,
-            KEY_SELECT,
             KEY_HALT,
         ] {
             assert!(registry.get(key).is_some(), "missing key: {key}");

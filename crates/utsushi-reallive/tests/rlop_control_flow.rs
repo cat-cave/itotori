@@ -24,9 +24,9 @@ use utsushi_reallive::{
     AlwaysReadyScheduler, CONTROL_FLOW_RLOP_COUNT, DispatchOutcome, ExprValue, FARCALL_ARG_BANK,
     FarcallOp, FarcallWithArgsOp, GosubIfOp, GosubOp, GotoIfOp, GotoOnOp, GotoOp, GotoUnlessOp,
     HaltOp, KEY_FARCALL, KEY_FARCALL_WITH_ARGS, KEY_GOSUB, KEY_GOSUB_IF, KEY_GOTO, KEY_GOTO_IF,
-    KEY_GOTO_ON, KEY_GOTO_UNLESS, KEY_HALT, KEY_RET, KEY_RTL, KEY_SELECT, LongOp, LongOpId,
-    RLOperation, RetOp, RlopRegistry, RtlOp, SELECT_LONGOP_ID, STACK_DEPTH_LIMIT, SelectOp,
-    SelectionLongOp, StackFrameKind, Value, Vm, VmError, VmWarning, register_control_flow_rlops,
+    KEY_GOTO_ON, KEY_GOTO_UNLESS, KEY_HALT, KEY_RET, KEY_RTL, RLOperation, RetOp, RlopRegistry,
+    RtlOp, STACK_DEPTH_LIMIT, StackFrameKind, Value, Vm, VmError, VmWarning,
+    register_control_flow_rlops,
 };
 
 // ---------------------------------------------------------------------
@@ -337,43 +337,11 @@ fn ctl_halt_sets_halted_flag() {
     assert!(vm.is_halted());
 }
 
-// ---------------------------------------------------------------------
-// select
-// ---------------------------------------------------------------------
-
-#[test]
-fn ctl_select_yields_selection_longop() {
-    let mut vm = Vm::new(1, 0);
-    let op = SelectOp::new(LongOpId(0xabcd));
-    let outcome = op.dispatch(
-        &mut vm,
-        &[
-            ExprValue::Int(100),
-            ExprValue::Int(200),
-            ExprValue::Int(300),
-        ],
-    );
-    let (longop_id, private_state) = match outcome {
-        DispatchOutcome::Yield {
-            longop_id,
-            private_state,
-        } => (longop_id, private_state),
-        other => panic!("expected Yield, got {other:?}"),
-    };
-    assert_eq!(longop_id, LongOpId(0xabcd));
-    let queued = LongOp::new(longop_id, private_state);
-    let decoded = SelectionLongOp::from_longop(&queued).expect("decode");
-    assert_eq!(decoded.choices(), &[100, 200, 300]);
-    assert_eq!(decoded.user_choice(), None);
-}
-
-#[test]
-fn ctl_select_longop_resume_targets_recorded_choice() {
-    let mut longop = SelectionLongOp::new(LongOpId(7), vec![100, 200, 300]).expect("new");
-    longop.record_user_choice(2).expect("record");
-    let outcome = longop.resume(1).expect("resume");
-    assert_eq!(outcome, DispatchOutcome::Jump { scene: 1, pc: 300 });
-}
+// The choice (`select` / `select_s` / `select_w` / `select_objbtn`)
+// family lives in `module_sel` as of UTSUSHI-211 — see
+// `tests/rlop_sel.rs`. The speculative `module_jmp` `select` slot
+// previously documented here was deleted in the same change per the
+// no-legacy-compat rule.
 
 // ---------------------------------------------------------------------
 // Stack overflow & invalid args
@@ -474,24 +442,9 @@ fn ctl_register_helper_populates_full_family() {
         KEY_FARCALL_WITH_ARGS,
         KEY_RET,
         KEY_RTL,
-        KEY_SELECT,
         KEY_HALT,
     ] {
         assert!(registry.get(key).is_some(), "missing key {key}");
-    }
-}
-
-#[test]
-fn ctl_select_longop_id_is_pinned() {
-    // The registry-managed select op's long-op id is the pinned
-    // constant — snapshot tooling can identify the queued long-op by
-    // this id.
-    let mut vm = Vm::new(1, 0);
-    let op = SelectOp::new(SELECT_LONGOP_ID);
-    let outcome = op.dispatch(&mut vm, &[ExprValue::Int(10)]);
-    match outcome {
-        DispatchOutcome::Yield { longop_id, .. } => assert_eq!(longop_id, SELECT_LONGOP_ID),
-        other => panic!("expected Yield, got {other:?}"),
     }
 }
 

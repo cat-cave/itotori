@@ -42,26 +42,35 @@ use serde::{Deserialize, Serialize};
 
 use crate::vm::{SceneId, Vm};
 
-// UTSUSHI-209/210: per-module RLOperation tables. The text/messaging
-// family lives in [`module_msg`]; the control-flow family in
-// [`module_ctrl`]; the typed `LongOp` shapes (`pause`, `select`) live
-// in [`longops`].
+// UTSUSHI-209 / UTSUSHI-210 / UTSUSHI-211: per-module RLOperation
+// tables. The text/messaging family lives in [`module_msg`]; the
+// control-flow family in [`module_ctrl`]; the choice (`select` /
+// `select_s` / `select_w` / `select_objbtn`) family in [`module_sel`];
+// the typed `LongOp` shapes (`pause`, `select`) live in [`longops`].
 pub mod longops;
 pub mod module_ctrl;
 pub mod module_msg;
+pub mod module_sel;
 
 pub use longops::{
     DEFAULT_PAUSE_POLLS, PAUSE_PRIVATE_STATE_MAGIC, PauseLongOp, PauseLongOpDecodeError,
-    SELECT_PRIVATE_STATE_MAGIC, SelectLongOp, SelectionChoiceCountScheduler,
+    SELECT_PRIVATE_STATE_MAGIC, SelectLongOp, SelectLongOpDecodeError,
+    SelectionChoiceCountScheduler,
 };
 pub use module_msg::{
     LongOpIdSequence, MSG_MODULE_ID, MSG_MODULE_TYPE, MsgFontColorOp, MsgFontSizeOp,
     MsgLineBreakOp, MsgLineNumberOp, MsgMsgClearOp, MsgMsgHideOp, MsgNameCloseOp, MsgNameOpenOp,
     MsgOpcode, MsgPageOp, MsgParagraphBreakOp, MsgPauseOp, MsgRuntime, MsgRuntimeWarning,
-    MsgSelectOp, MsgTextWindowOp, OPCODE_FONT_COLOR, OPCODE_FONT_SIZE, OPCODE_LINE_BREAK,
-    OPCODE_LINE_NUMBER, OPCODE_MSG_CLEAR, OPCODE_MSG_HIDE, OPCODE_NAME_CLOSE, OPCODE_NAME_OPEN,
-    OPCODE_PAGE, OPCODE_PARAGRAPH_BREAK, OPCODE_PAUSE, OPCODE_SELECT, OPCODE_TEXT_OUT,
-    OPCODE_TEXT_WINDOW, dispatch_textout, register_text_rlops, text_module_msg_keys,
+    MsgTextWindowOp, OPCODE_FONT_COLOR, OPCODE_FONT_SIZE, OPCODE_LINE_BREAK, OPCODE_LINE_NUMBER,
+    OPCODE_MSG_CLEAR, OPCODE_MSG_HIDE, OPCODE_NAME_CLOSE, OPCODE_NAME_OPEN, OPCODE_PAGE,
+    OPCODE_PARAGRAPH_BREAK, OPCODE_PAUSE, OPCODE_TEXT_OUT, OPCODE_TEXT_WINDOW, dispatch_textout,
+    register_text_rlops, text_module_msg_keys,
+};
+pub use module_sel::{
+    ChoiceInputScheduler, OPCODE_SELECT as SEL_OPCODE_SELECT, OPCODE_SELECT_OBJBTN,
+    OPCODE_SELECT_S, OPCODE_SELECT_W, OPCODE_SELECT_W_SWEETIE_HD_ALIAS, SEL_MODULE_ID,
+    SEL_MODULE_TYPE, SEL_RLOP_COUNT, SelRuntime, SelRuntimeWarning, SelectObjbtnOp, SelectOp,
+    SelectSOp, SelectVariant, SelectWOp, register_sel_rlops,
 };
 
 /// Engine-neutral dispatch argument. The UTSUSHI-205 evaluator returns
@@ -325,9 +334,16 @@ pub enum LongOpReadiness {
 /// longop should resume now. The default `NeverReady` impl keeps a
 /// longop suspended indefinitely — useful for the "snapshot at suspend
 /// point" round trip test.
+///
+/// Schedulers receive `&mut LongOp` so an input-driven scheduler can
+/// commit a typed resume payload (e.g. the chosen index for a select
+/// longop) into the head's private state before signalling `Ready`.
+/// Schedulers that don't need to mutate the head simply ignore the
+/// mutable reference — see [`NeverReadyScheduler`] /
+/// [`AlwaysReadyScheduler`].
 pub trait LongOpScheduler: Send + Sync {
     /// Inspect the queue head and report whether it should resume.
-    fn poll(&mut self, head: &LongOp) -> LongOpReadiness;
+    fn poll(&mut self, head: &mut LongOp) -> LongOpReadiness;
 }
 
 /// Scheduler that never resumes a queued longop. Used as the default
@@ -337,7 +353,7 @@ pub trait LongOpScheduler: Send + Sync {
 pub struct NeverReadyScheduler;
 
 impl LongOpScheduler for NeverReadyScheduler {
-    fn poll(&mut self, _head: &LongOp) -> LongOpReadiness {
+    fn poll(&mut self, _head: &mut LongOp) -> LongOpReadiness {
         LongOpReadiness::Pending
     }
 }
@@ -348,7 +364,7 @@ impl LongOpScheduler for NeverReadyScheduler {
 pub struct AlwaysReadyScheduler;
 
 impl LongOpScheduler for AlwaysReadyScheduler {
-    fn poll(&mut self, _head: &LongOp) -> LongOpReadiness {
+    fn poll(&mut self, _head: &mut LongOp) -> LongOpReadiness {
         LongOpReadiness::Ready
     }
 }
@@ -374,7 +390,7 @@ impl AfterNPollsScheduler {
 }
 
 impl LongOpScheduler for AfterNPollsScheduler {
-    fn poll(&mut self, _head: &LongOp) -> LongOpReadiness {
+    fn poll(&mut self, _head: &mut LongOp) -> LongOpReadiness {
         if self.polls_remaining == 0 {
             LongOpReadiness::Ready
         } else {
@@ -417,26 +433,26 @@ mod tests {
     #[test]
     fn never_ready_scheduler_keeps_longop_pending() {
         let mut scheduler = NeverReadyScheduler;
-        let op = LongOp::new(LongOpId(1), vec![]);
-        assert_eq!(scheduler.poll(&op), LongOpReadiness::Pending);
-        assert_eq!(scheduler.poll(&op), LongOpReadiness::Pending);
+        let mut op = LongOp::new(LongOpId(1), vec![]);
+        assert_eq!(scheduler.poll(&mut op), LongOpReadiness::Pending);
+        assert_eq!(scheduler.poll(&mut op), LongOpReadiness::Pending);
     }
 
     #[test]
     fn always_ready_scheduler_consumes_longop_immediately() {
         let mut scheduler = AlwaysReadyScheduler;
-        let op = LongOp::new(LongOpId(1), vec![]);
-        assert_eq!(scheduler.poll(&op), LongOpReadiness::Ready);
+        let mut op = LongOp::new(LongOpId(1), vec![]);
+        assert_eq!(scheduler.poll(&mut op), LongOpReadiness::Ready);
     }
 
     #[test]
     fn after_n_polls_scheduler_observes_pending_then_ready() {
         let mut scheduler = AfterNPollsScheduler::new(2);
-        let op = LongOp::new(LongOpId(1), vec![]);
-        assert_eq!(scheduler.poll(&op), LongOpReadiness::Pending);
-        assert_eq!(scheduler.poll(&op), LongOpReadiness::Pending);
-        assert_eq!(scheduler.poll(&op), LongOpReadiness::Ready);
-        assert_eq!(scheduler.poll(&op), LongOpReadiness::Ready);
+        let mut op = LongOp::new(LongOpId(1), vec![]);
+        assert_eq!(scheduler.poll(&mut op), LongOpReadiness::Pending);
+        assert_eq!(scheduler.poll(&mut op), LongOpReadiness::Pending);
+        assert_eq!(scheduler.poll(&mut op), LongOpReadiness::Ready);
+        assert_eq!(scheduler.poll(&mut op), LongOpReadiness::Ready);
     }
 
     #[test]

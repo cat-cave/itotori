@@ -52,6 +52,11 @@ use utsushi_core::substrate::{EvidenceTier, SinkError, TextLine, TextSurfaceSink
 
 use super::{DispatchOutcome, ExprValue, LongOp, LongOpId, RLOperation, RlopKey, RlopRegistry};
 use crate::vm::Vm;
+// `msg.select` lived here briefly (UTSUSHI-209) as a placeholder for the
+// `(1, 5, 120)` Sweetie-HD-observed `select_w` byte. UTSUSHI-211 moves
+// the four-variant choice family into `module_sel` at its proper
+// `module_id=5` address; the placeholder was deleted in the same change
+// per the no-legacy-compat rule.
 
 /// `module_type` byte the Sweetie HD corpus exhibits for the
 /// message-control submodule. Pinned at the byte observed at scene 1
@@ -122,13 +127,6 @@ pub const OPCODE_NAME_CLOSE: u16 = 41;
 /// `TextWindow(int)`).
 pub const OPCODE_TEXT_WINDOW: u16 = 100;
 
-/// `msg.select` — choose-from-options longop (RLDEV: `select_w(...)`).
-/// Mapped onto the message-control submodule here so the alpha test
-/// suite exercises the yield path through a single registry entry; a
-/// follow-up node will split this into the per-module
-/// `module_sel` table at `module_type=1, module_id=4`.
-pub const OPCODE_SELECT: u16 = 120;
-
 /// Stable enum naming the opcode set this module ships. Used by audit
 /// tooling to assert "every variant is registered" without re-walking
 /// the registry's `BTreeMap`.
@@ -146,7 +144,6 @@ pub enum MsgOpcode {
     NameOpen,
     NameClose,
     TextWindow,
-    Select,
 }
 
 impl MsgOpcode {
@@ -166,7 +163,6 @@ impl MsgOpcode {
         Self::NameOpen,
         Self::NameClose,
         Self::TextWindow,
-        Self::Select,
     ];
 
     /// Numeric opcode byte associated with this variant.
@@ -184,7 +180,6 @@ impl MsgOpcode {
             Self::NameOpen => OPCODE_NAME_OPEN,
             Self::NameClose => OPCODE_NAME_CLOSE,
             Self::TextWindow => OPCODE_TEXT_WINDOW,
-            Self::Select => OPCODE_SELECT,
         }
     }
 
@@ -208,7 +203,6 @@ impl MsgOpcode {
             Self::NameOpen => "msg.name_open",
             Self::NameClose => "msg.name_close",
             Self::TextWindow => "msg.text_window",
-            Self::Select => "msg.select",
         }
     }
 }
@@ -948,80 +942,6 @@ impl RLOperation for MsgTextWindowOp {
     }
 }
 
-/// `msg.select(choices)` — choose-from-options longop. Each choice is a
-/// Shift-JIS-encoded byte string carried as an [`ExprValue::Bytes`]
-/// argument. The op:
-///
-/// 1. Flushes the pending body so the prompt that introduced the
-///    select is visible before the choices.
-/// 2. Pushes one [`TextLine`] per choice through the sink with
-///    `text_surface = "choice:<index>"` so the substrate observation
-///    trail names each choice.
-/// 3. Yields a [`crate::rlop::LongOp`] carrying a
-///    [`crate::rlop::longops::SelectLongOp`] private state.
-#[derive(Debug)]
-pub struct MsgSelectOp {
-    runtime: Arc<MsgRuntime>,
-}
-
-impl MsgSelectOp {
-    pub fn new(runtime: Arc<MsgRuntime>) -> Self {
-        Self { runtime }
-    }
-}
-
-impl RLOperation for MsgSelectOp {
-    fn dispatch(&self, _vm: &mut Vm, args: &[ExprValue]) -> DispatchOutcome {
-        self.runtime.flush_pending_line(MsgOpcode::Select);
-        let mut choices: Vec<Vec<u8>> = Vec::with_capacity(args.len());
-        for (idx, arg) in args.iter().enumerate() {
-            let bytes = match arg {
-                ExprValue::Bytes(bytes) => bytes.clone(),
-                ExprValue::Int(_) => {
-                    self.runtime
-                        .record_warning(MsgRuntimeWarning::ArgShapeMismatch {
-                            opcode: MsgOpcode::Select,
-                            expected: "bytes",
-                        });
-                    continue;
-                }
-            };
-            let text = decode_shift_jis(&bytes).unwrap_or_else(|| {
-                self.runtime
-                    .record_warning(MsgRuntimeWarning::InvalidShiftJis {
-                        opcode: MsgOpcode::Select,
-                    });
-                String::from_utf8_lossy(&bytes).into_owned()
-            });
-            let line_id = self.runtime.next_line_id();
-            let line = TextLine {
-                line_id,
-                evidence_tier: EvidenceTier::E1,
-                text,
-                speaker: None,
-                text_surface: Some(format!("choice:{idx}")),
-                bridge_ref: None,
-                source_asset: None,
-            };
-            self.runtime.emit(MsgOpcode::Select, line);
-            choices.push(bytes);
-        }
-        if args.is_empty() {
-            self.runtime.record_warning(MsgRuntimeWarning::MissingArg {
-                opcode: MsgOpcode::Select,
-                slot: "choices",
-            });
-        }
-        let id = self.runtime.id_sequence().allocate();
-        let select = super::longops::SelectLongOp::new(id, choices);
-        let LongOp { id, private_state } = select.into_longop();
-        DispatchOutcome::Yield {
-            longop_id: id,
-            private_state,
-        }
-    }
-}
-
 /// Mount every text/messaging op this module ships into `registry`.
 /// Returns the number of opcodes registered so a caller can audit
 /// "every opcode in [`MsgOpcode::ALL`] landed" without re-walking the
@@ -1080,10 +1000,6 @@ pub fn register_text_rlops(registry: &mut RlopRegistry, runtime: Arc<MsgRuntime>
         MsgOpcode::TextWindow.rlop_key(),
         Arc::new(MsgTextWindowOp::new(Arc::clone(&runtime))),
     );
-    register(
-        MsgOpcode::Select.rlop_key(),
-        Arc::new(MsgSelectOp::new(Arc::clone(&runtime))),
-    );
     count
 }
 
@@ -1124,10 +1040,11 @@ mod tests {
     }
 
     #[test]
-    fn msg_opcode_all_covers_thirteen_opcodes() {
-        assert!(
-            MsgOpcode::ALL.len() >= 12,
-            "alpha contract: at least 12 module_msg opcodes covered",
+    fn msg_opcode_all_covers_twelve_opcodes() {
+        assert_eq!(
+            MsgOpcode::ALL.len(),
+            12,
+            "alpha contract: exactly 12 module_msg opcodes covered (choice family lives in module_sel as of UTSUSHI-211)",
         );
     }
 
