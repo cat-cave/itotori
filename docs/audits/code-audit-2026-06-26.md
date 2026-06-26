@@ -41,7 +41,7 @@ rlop/module_str.rs` at 1,758, `openrouter.ts` at 1,738,
   `$1.00`, but ITOTORI-231 set it to `0.5` (`openrouter.ts:1587`). P3.
 - **Two parallel orchestration tools both live in `justfile` and
   `package.json` `scripts`** — `roadmap-validate / roadmap-ready /
-  roadmap-pop` (legacy `spec-dag.mjs`) and `qd-import` (qdcli). Neither
+roadmap-pop` (legacy `spec-dag.mjs`) and `qd-import` (qdcli). Neither
   is marked deprecated; nothing in code chooses. This is the
   no-legacy-compat memory: pick one, delete the other in the same
   change. P2.
@@ -99,11 +99,11 @@ rlop/module_str.rs` at 1,758, `openrouter.ts` at 1,738,
   `docs/kaifuu-engine-playbook.md`, and several proposal docs.
   `rg -c "qd " docs/` returns 0 — no doc file even mentions the new
   ledger. Yet `.qd/config.toml`, `.qd/agents.md`, `.qd/skills/qd-dag/
-  SKILL.md`, and the commit `63f59ce: feat(qd): adopt qdcli as
-  orchestration ledger; import 639-node DAG` make qdcli the canonical
+SKILL.md`, and the commit `63f59ce: feat(qd): adopt qdcli as
+orchestration ledger; import 639-node DAG` make qdcli the canonical
   surface. The `justfile` and `package.json scripts` still expose the
   legacy `roadmap-validate / roadmap-ready / roadmap-pop /
-  roadmap:issues / roadmap:ready / roadmap:test / roadmap:validate`
+roadmap:issues / roadmap:ready / roadmap:test / roadmap:validate`
   recipes, so onboarding contributors who read docs first will run
   the wrong tool.
 - **Why it matters.** A future contributor following the playbook will
@@ -171,9 +171,9 @@ rlop/module_str.rs` at 1,758, `openrouter.ts` at 1,738,
   - `utsushi-reallive/src/rlop/module_str.rs`: 1,758 lines (1,266
     production + 492 tests).
   - `utsushi-reallive/src/lib.rs`: 550 lines.
-  The engine-port crates have adopted the `src/<module>.rs` layout
-  (e.g., `utsushi-reallive/src/rlop/{mod,module_str,module_mem,
-  module_sys,...}.rs`); the core crates have not.
+    The engine-port crates have adopted the `src/<module>.rs` layout
+    (e.g., `utsushi-reallive/src/rlop/{mod,module_str,module_mem,
+module_sys,...}.rs`); the core crates have not.
 - **Why it matters.** Compile time, IDE indexing, navigation, and
   "where does X live" questions all hurt. Not blocking and the file
   passes `cargo check`, `cargo fmt`, and clippy `-D warnings`, so it
@@ -187,7 +187,7 @@ rlop/module_str.rs` at 1,758, `openrouter.ts` at 1,738,
   bridge-bundle plumbing (move to `bridge_bundle.rs`). The 5,975-line
   embedded test module is also a candidate for `tests/` extraction.
 - **Suggested mint.** `KAIFUU-300` — "Decompose `kaifuu-core/src/
-  lib.rs` (23,110 lines) into module files matching the engine-port
+lib.rs` (23,110 lines) into module files matching the engine-port
   pattern".
 
 ### F-006 — P3 — Mild dep-declaration shape inconsistency in Cargo.tomls
@@ -224,7 +224,7 @@ clean codebase. Specifically:
    `OpenRouterMissingApiKeyError`) and the documented
    `OPENROUTER_ZDR_DOWNGRADE` posture flag.
 4. **Zero `as any` / `@ts-ignore` in production TS.** The `as unknown
-   as` casts are all either (a) in the `spec-dag-dashboard` client-side
+as` casts are all either (a) in the `spec-dag-dashboard` client-side
    DOM-traversal code (legitimate type-narrowing across runtime
    boundaries), (b) at structured-output `as unknown as JsonObject`
    sites in the agent files (legitimate JSON-schema -> runtime shape
@@ -255,8 +255,8 @@ clean codebase. Specifically:
     sampled is documented either in `feedback_ci_parity_before_push`
     or in the `#[ignore]`-test's preamble; `just ci` is the single
     canonical gate; the recent CI fix for the 7z fixture (KAIFUU-236)
-    + the catalog-schema-unsupported ignore (KAIFUU-237) were both
-    minted as DAG nodes, not silently `#[ignore]`d.
+    - the catalog-schema-unsupported ignore (KAIFUU-237) were both
+      minted as DAG nodes, not silently `#[ignore]`d.
 
 ## Counted findings
 
