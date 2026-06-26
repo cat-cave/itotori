@@ -1,0 +1,40 @@
+{
+  "nodesPath": "nodes",
+  "id": "id",
+  "title": "title",
+  "milestone": "target",
+  "group": "parallelGroup",
+  "projects": "projects",
+  "status": "status",
+  "priority": "priority",
+  "verification": "verification",
+  "auditFocus": "auditFocus",
+  "statusReason": "statusReason",
+  "spec": {
+    "concat": ["summary", "deliverables"],
+    "separator": "\n- ",
+    "preamble": {
+      "summary": "",
+      "deliverables": "\n\nDeliverables:\n- "
+    }
+  },
+  "acceptance": {
+    "concat": ["acceptanceCriteria"],
+    "separator": "\n- ",
+    "preamble": {
+      "acceptanceCriteria": "- "
+    }
+  },
+  "statusMap": {
+    "planned": "ready",
+    "in_progress": "working",
+    "complete": "done",
+    "cancelled": "cancelled",
+    "regressed": "regressed"
+  },
+  "nodeEdges": {
+    "path": "dependsOn",
+    "edgeDirection": "deps-block-this-node",
+    "edgeType": "requires"
+  }
+}

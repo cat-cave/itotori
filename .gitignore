@@ -22,3 +22,9 @@ fixtures/private-local/
 /research/
 # Per-agent worktrees managed by Claude Code agents.
 .claude/
+
+# qdcli — repo-local sqlite cache; rebuild via `qd import --from roadmap/spec-dag.json --schema-mapping roadmap/qd-import-map.json`
+.qd/qd.db
+.qd/qd.db-wal
+.qd/qd.db-shm
+.qd/logs/

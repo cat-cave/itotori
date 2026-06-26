@@ -249,3 +249,15 @@ upgrade:
     rustup update stable
     cargo update
     node scripts/verify-toolchain-policy.mjs
+
+# Rebuild the local qd sqlite cache from the declarative source-of-truth DAG.
+# Drop + recreate so the cache reflects the current roadmap/spec-dag.json exactly.
+qd-import:
+    rm -f .qd/qd.db .qd/qd.db-wal .qd/qd.db-shm
+    qd setup
+    qd config set check-command --value "just check"
+    qd config set ci-command --value "just ci"
+    qd config set merge-strategy --value "squash"
+    for m in baseline real-game-testing-ready alpha beta continuous; do qd milestone register --name "$m" --rank "$(echo "baseline real-game-testing-ready alpha beta continuous" | tr ' ' '\n' | grep -n "^$m\$" | cut -d: -f1 | awk '{print $1-1}')"; done
+    qd import --from roadmap/spec-dag.json --schema-mapping roadmap/qd-import-map.json
+    qd doctor --json
