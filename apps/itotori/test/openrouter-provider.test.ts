@@ -188,6 +188,45 @@ describe("OpenRouterModelProvider — request shape (ITOTORI-220 pair pin)", () 
     }
   });
 
+  it("ITOTORI-236: accepts TitleCase response.provider when request.providerId is the lowercase slug (Fireworks ↔ fireworks)", async () => {
+    // Live OR responses echo the human-readable provider_name (TitleCase,
+    // e.g. "Fireworks") while the request pins the lowercase routing slug
+    // ("fireworks"). The historical strict-equality pair check (ITOTORI-220)
+    // tripped on this legit shape; see docs/openrouter-integration.md §9.2.
+    const fetchMock = vi.fn(async () =>
+      successResponse({ upstreamProvider: "Fireworks" }),
+    ) as unknown as typeof fetch;
+    const provider = new OpenRouterModelProvider({
+      env: { OPENROUTER_API_KEY: "abc", OPENROUTER_ZDR_ACCOUNT_ASSERTED: "1" },
+      httpClient: fetchMock,
+      capabilityGuard: new CapabilityGuard(),
+    });
+    const result = await provider.invoke(baseRequest());
+    expect(result.providerRun.status).toBe("succeeded");
+    expect(result.providerRun.provider.requestedProviderId).toBe(DEV_PAIR.providerId);
+    expect(result.providerRun.provider.upstreamProvider).toBe("Fireworks");
+  });
+
+  it("ITOTORI-236: still throws pair_mismatch on a GENUINE swap (request='fireworks' → response='OpenAI')", async () => {
+    // The fix must NOT relax the load-bearing routing-swap signal. A
+    // Fireworks-pinned request answered by OpenAI is still a hard fail.
+    const fetchMock = vi.fn(async () =>
+      successResponse({ upstreamProvider: "OpenAI" }),
+    ) as unknown as typeof fetch;
+    const provider = new OpenRouterModelProvider({
+      env: { OPENROUTER_API_KEY: "abc", OPENROUTER_ZDR_ACCOUNT_ASSERTED: "1" },
+      httpClient: fetchMock,
+      capabilityGuard: new CapabilityGuard(),
+    });
+    const error = await provider.invoke(baseRequest()).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(ModelProviderError);
+    if (error instanceof ModelProviderError) {
+      expect(error.code).toBe("pair_mismatch");
+      expect(error.message).toContain("OpenAI");
+      expect(error.message).toContain(DEV_PAIR.providerId);
+    }
+  });
+
   it("sends Bearer auth header populated from the resolved env API key", async () => {
     let observedAuth: string | undefined;
     const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
