@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "exported_at": "2026-06-26T21:52:26.462Z",
+  "exported_at": "2026-06-26T22:21:45.859Z",
   "registries": {
     "groups": [
       {
@@ -4237,11 +4237,11 @@
       "validation": null,
       "context": null,
       "created_at": "2026-06-26T02:53:54.696Z",
-      "updated_at": "2026-06-26T16:55:54.680Z",
+      "updated_at": "2026-06-26T22:21:25.588Z",
       "claimed_at": "2026-06-26T16:55:54.680Z",
       "done_at": null,
       "group_name": "engine-research",
-      "status_reason": "Re-tier 2026-06-24: moved from alpha to beta — multi-engine / encrypted-variant work belongs in beta under the new 4-tier framework (per docs/proposals/dag-retier-2026-06-24.md).",
+      "status_reason": "Re-tier 2026-06-24: moved from alpha to beta — multi-engine / encrypted-variant work belongs in beta under the new 4-tier framework (per docs/proposals/dag-retier-2026-06-24.md).\n[2026-06-26T22:21:25.588Z] 2026-06-26 implementation advanced on spec/kaifuu-039: commit c0df39a adds RPG Maker MV/MZ encrypted-media-proof command, synthetic public fixture matrix including encrypted image/audio/video (.rpgmvp/.rpgmvm/.rpgmvo/.rpgmvu/.png_/.m4a_/.ogg_), wrong-key hash-only validation, stdout qd contract for 'kaifuu rpgmaker encrypted-media-proof --fixture ...', and detector fixture snapshot updates. Focused audit found P1s for CLI contract, wrong-key coverage, and encrypted video coverage; repair resolved them and post-repair audit found no P0/P1 blockers. Merged current main into branch at c261d78. Verification passed on merged branch: cargo fmt --check, cargo test -p kaifuu-core, cargo test -p kaifuu-cli, just fixtures-validate, git diff --check.",
       "check_command": null,
       "ci_command": null,
       "projects": ["kaifuu"],
@@ -40717,6 +40717,12 @@
       "node_id": "UTSUSHI-231",
       "text": "ATTEMPT-9-PREFLIGHT 2026-06-26 21:51Z: main pushed to origin at 3fc27f2. Live just localize-sweetie-hd --project sweetie-hd-alpha-1 was not executed because the tool approval policy rejected the external-provider run as possible project/corpus content export without explicit user approval. Safe offline preflight passed: nix develop --command bash -lc 'just localize-sweetie-hd --dry-run --project sweetie-hd-alpha-1' built bridge-schema/db/app and printed the four-phase plan with 'DRY-RUN: 0 LLM calls would be made.' Dry-run also reported OPENROUTER_ZDR_ACCOUNT_ASSERTED=MISSING, so a future approved live retry needs that process env assertion set, plus OPENROUTER_API_KEY, KAIFUU_REAL_SWEETIE_HD_PATH, and TARGET from the invoking environment. No provider call was made in this attempt.",
       "created_at": "2026-06-26T21:52:09.905Z"
+    },
+    {
+      "id": "eaeaec44-fb19-4fe7-bffe-541d085282f9",
+      "node_id": "KAIFUU-039",
+      "text": "2026-06-26 implementation advanced on spec/kaifuu-039: commit c0df39a adds RPG Maker MV/MZ encrypted-media-proof command, synthetic public fixture matrix including encrypted image/audio/video (.rpgmvp/.rpgmvm/.rpgmvo/.rpgmvu/.png_/.m4a_/.ogg_), wrong-key hash-only validation, stdout qd contract for 'kaifuu rpgmaker encrypted-media-proof --fixture ...', and detector fixture snapshot updates. Focused audit found P1s for CLI contract, wrong-key coverage, and encrypted video coverage; repair resolved them and post-repair audit found no P0/P1 blockers. Merged current main into branch at c261d78. Verification passed on merged branch: cargo fmt --check, cargo test -p kaifuu-core, cargo test -p kaifuu-cli, just fixtures-validate, git diff --check.",
+      "created_at": "2026-06-26T22:21:25.588Z"
     }
   ]
 }
