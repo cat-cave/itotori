@@ -228,6 +228,10 @@ export const migrations = [
     id: "0042_provider_ledger_cache_discount",
     file: "0042_provider_ledger_cache_discount.sql",
   },
+  {
+    id: "0043_reviewer_queue_items",
+    file: "0043_reviewer_queue_items.sql",
+  },
 ] as const;
 
 function migrationPath(file: string): string {

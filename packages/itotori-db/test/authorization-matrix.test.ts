@@ -8,6 +8,7 @@ import {
 } from "../src/authorization.js";
 import { ItotoriAssetLocalizationDecisionRepository } from "../src/repositories/asset-localization-decision-repository.js";
 import { ItotoriAuditFindingRepository } from "../src/repositories/audit-finding-repository.js";
+import { ItotoriReviewerQueueRepository } from "../src/repositories/reviewer-queue-repository.js";
 import { ItotoriBranchReferenceRepository } from "../src/repositories/branch-reference-repository.js";
 import { ItotoriCharacterRelationshipRepository } from "../src/repositories/character-relationship-repository.js";
 import { ItotoriConformanceRepository } from "../src/repositories/conformance-repository.js";
@@ -803,6 +804,36 @@ const repositoryPermissionGateMatrix = [
     (repo) =>
       repo.markFindingSuperseded(deniedActor, "audit-finding-old", "audit-finding-new", new Date()),
   ),
+  reviewerQueueGate(
+    "createItem",
+    "queueManage",
+    "reviewer-queue-repository.test.ts create item coverage",
+    (repo) => repo.createItem(deniedActor, undefined as never),
+  ),
+  reviewerQueueGate(
+    "applyAction",
+    "queueManage",
+    "reviewer-queue-repository.test.ts apply action coverage",
+    (repo) => repo.applyAction(deniedActor, undefined as never),
+  ),
+  reviewerQueueGate(
+    "getItem",
+    "queueRead",
+    "reviewer-queue-repository.test.ts get item coverage",
+    (repo) => repo.getItem(deniedActor, "reviewer-queue-x"),
+  ),
+  reviewerQueueGate(
+    "loadItemsByBranch",
+    "queueRead",
+    "reviewer-queue-repository.test.ts load items by branch coverage",
+    (repo) => repo.loadItemsByBranch(deniedActor, "branch-x"),
+  ),
+  reviewerQueueGate(
+    "loadTransitionsByItem",
+    "queueRead",
+    "reviewer-queue-repository.test.ts load transitions by item coverage",
+    (repo) => repo.loadTransitionsByItem(deniedActor, "reviewer-queue-x"),
+  ),
 ] as const satisfies readonly RepositoryPermissionGateCase[];
 
 describe("repository permission gate matrix", () => {
@@ -1562,6 +1593,36 @@ describe("repository permission gate matrix", () => {
           "requiredPermission": "audit.write",
           "successFixture": "audit-finding-repository.test.ts mark finding superseded coverage",
         },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriReviewerQueueRepository.createItem",
+          "requiredPermission": "queue.manage",
+          "successFixture": "reviewer-queue-repository.test.ts create item coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriReviewerQueueRepository.applyAction",
+          "requiredPermission": "queue.manage",
+          "successFixture": "reviewer-queue-repository.test.ts apply action coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriReviewerQueueRepository.getItem",
+          "requiredPermission": "queue.read",
+          "successFixture": "reviewer-queue-repository.test.ts get item coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriReviewerQueueRepository.loadItemsByBranch",
+          "requiredPermission": "queue.read",
+          "successFixture": "reviewer-queue-repository.test.ts load items by branch coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriReviewerQueueRepository.loadTransitionsByItem",
+          "requiredPermission": "queue.read",
+          "successFixture": "reviewer-queue-repository.test.ts load transitions by item coverage",
+        },
       ]
     `);
   });
@@ -1961,6 +2022,22 @@ function auditFindingGate(
     permissionKey,
     successFixture,
     runDeniedMutation: (db) => run(new ItotoriAuditFindingRepository(db)),
+  });
+}
+
+function reviewerQueueGate(
+  mutation: string,
+  permissionKey: PermissionKey,
+  successFixture: string,
+  run: (repository: ItotoriReviewerQueueRepository) => Promise<unknown>,
+): RepositoryPermissionGateCase {
+  return repositoryGate({
+    repository: "ItotoriReviewerQueueRepository",
+    sourceFile: "reviewer-queue-repository.ts",
+    mutation,
+    permissionKey,
+    successFixture,
+    runDeniedMutation: (db) => run(new ItotoriReviewerQueueRepository(db)),
   });
 }
 

@@ -1,0 +1,436 @@
+// ITOTORI-081 — reviewer queue repository tests.
+//
+// Each test stands up an isolated migrated schema, seeds the project /
+// locale branch / source revision the items reference, and exercises a
+// distinct invariant: happy-path transition, atomic transition log,
+// permission denial, stale-source rejection, duplicate enqueue,
+// invalid-transition refusal, and the runtime-evidence tier-preservation
+// guard.
+
+import { sql } from "drizzle-orm";
+import { describe, expect, it } from "vitest";
+import { localUserId, type AuthorizationActor } from "../src/authorization.js";
+import {
+  ItotoriReviewerQueueRepository,
+  reviewerQueueActionValues,
+  reviewerQueueItemKindValues,
+  reviewerQueueItemStateValues,
+  ReviewerQueueRepositoryError,
+} from "../src/repositories/reviewer-queue-repository.js";
+import { isolatedMigratedContext } from "./db-test-context.js";
+
+const localActor: AuthorizationActor = { userId: localUserId };
+const deniedActor: AuthorizationActor = { userId: "user-without-required-permission" };
+
+const projectId = "project-reviewer-081";
+const localeBranchId = "locale-branch-reviewer-081";
+const sourceRevisionId = "source-revision-reviewer-081";
+const supersedingSourceRevisionId = "source-revision-reviewer-081-next";
+
+async function seedProjectScope(context: Awaited<ReturnType<typeof isolatedMigratedContext>>) {
+  await context.db.execute(sql`
+    insert into itotori_workspaces (workspace_id, name)
+    values ('workspace-reviewer-081', 'Reviewer Workspace')
+    on conflict (workspace_id) do nothing
+  `);
+  await context.db.execute(sql`
+    insert into itotori_projects (
+      project_id, workspace_id, project_key, name, source_locale, status
+    )
+    values (
+      ${projectId}, 'workspace-reviewer-081', 'reviewer-fixture', 'Reviewer Fixture', 'ja-JP', 'imported'
+    )
+    on conflict (project_id) do nothing
+  `);
+  await context.db.execute(sql`
+    insert into itotori_source_revisions (
+      source_revision_id, project_id, revision_kind, value
+    )
+    values
+      (${sourceRevisionId}, ${projectId}, 'bridge_revision', 'reviewer-v1'),
+      (${supersedingSourceRevisionId}, ${projectId}, 'bridge_revision', 'reviewer-v2')
+    on conflict (source_revision_id) do nothing
+  `);
+  await context.db.execute(sql`
+    insert into itotori_source_bundles (
+      source_bundle_id, project_id, source_bundle_revision_id, bridge_id,
+      schema_version, source_bundle_hash, source_locale,
+      extractor_name, extractor_version, unit_count, asset_count
+    )
+    values (
+      'source-bundle-reviewer-081', ${projectId}, ${sourceRevisionId}, 'bridge-reviewer-081',
+      '0.2.0', 'hash:reviewer-bundle', 'ja-JP',
+      'fixture-extractor', '1.0.0', 0, 0
+    )
+    on conflict (source_bundle_id) do nothing
+  `);
+  await context.db.execute(sql`
+    insert into itotori_locale_branches (
+      locale_branch_id, project_id, source_bundle_id, target_locale, branch_name, status
+    )
+    values (
+      ${localeBranchId}, ${projectId}, 'source-bundle-reviewer-081', 'en-US', 'English', 'active'
+    )
+    on conflict (locale_branch_id) do nothing
+  `);
+}
+
+function baseCreate(kind: keyof typeof reviewerQueueItemKindValues = "qa") {
+  return {
+    projectId,
+    localeBranchId,
+    sourceRevisionId,
+    itemKind: reviewerQueueItemKindValues[kind],
+    sourceItemRef: `qa-finding-${kind}-1`,
+    summary: `reviewer queue ${kind} fixture`,
+    affectedArtifactIds: [`artifact-${kind}-1`],
+  } as const;
+}
+
+describe.skipIf(!process.env.DATABASE_URL)("ItotoriReviewerQueueRepository", () => {
+  it("createItem persists a pending item with the per-kind discriminant", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      await seedProjectScope(context);
+      const repo = new ItotoriReviewerQueueRepository(context.db);
+      const qa = await repo.createItem(localActor, baseCreate("qa"));
+
+      expect(qa.reviewItemId).toMatch(/^reviewer-queue-/);
+      expect(qa.state).toBe(reviewerQueueItemStateValues.pending);
+      expect(qa.itemKind).toBe(reviewerQueueItemKindValues.qa);
+      expect(qa.evidenceTier).toBeNull();
+      expect(qa.observationEventIds).toBeNull();
+      expect(qa.artifactHashes).toBeNull();
+      expect(qa.resolvedAt).toBeNull();
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("createItem rejects runtime evidence without evidence tier / observation refs", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      await seedProjectScope(context);
+      const repo = new ItotoriReviewerQueueRepository(context.db);
+      await expect(
+        repo.createItem(localActor, {
+          ...baseCreate("runtimeEvidence"),
+          sourceItemRef: "runtime-evidence-1",
+        }),
+      ).rejects.toMatchObject({
+        name: "ReviewerQueueRepositoryError",
+        code: "reviewer_queue_item_runtime_evidence_invariant",
+      });
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("createItem rejects evidence-tier metadata on non-runtime kinds", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      await seedProjectScope(context);
+      const repo = new ItotoriReviewerQueueRepository(context.db);
+      await expect(
+        repo.createItem(localActor, {
+          ...baseCreate("qa"),
+          // @ts-expect-error — supplying tier on a non-runtime kind is invalid input.
+          evidenceTier: "tier-2",
+        }),
+      ).rejects.toMatchObject({
+        name: "ReviewerQueueRepositoryError",
+        code: "reviewer_queue_item_runtime_evidence_invariant",
+      });
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("createItem persists runtime evidence with tier + observation refs verbatim", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      await seedProjectScope(context);
+      const repo = new ItotoriReviewerQueueRepository(context.db);
+      const runtime = await repo.createItem(localActor, {
+        ...baseCreate("runtimeEvidence"),
+        sourceItemRef: "runtime-evidence-1",
+        evidenceTier: "tier-2-screenshot-and-event",
+        observationEventIds: ["event-1", "event-2"],
+        artifactHashes: ["sha256:abc", "sha256:def"],
+      });
+
+      expect(runtime.evidenceTier).toBe("tier-2-screenshot-and-event");
+      expect(runtime.observationEventIds).toEqual(["event-1", "event-2"]);
+      expect(runtime.artifactHashes).toEqual(["sha256:abc", "sha256:def"]);
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("createItem rejects a duplicate (branch + revision + kind + ref)", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      await seedProjectScope(context);
+      const repo = new ItotoriReviewerQueueRepository(context.db);
+      await repo.createItem(localActor, baseCreate("qa"));
+      await expect(repo.createItem(localActor, baseCreate("qa"))).rejects.toMatchObject({
+        name: "ReviewerQueueRepositoryError",
+        code: "reviewer_queue_item_duplicate",
+      });
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("applyAction approve transitions pending → accepted and logs the transition", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      await seedProjectScope(context);
+      const repo = new ItotoriReviewerQueueRepository(context.db);
+      const item = await repo.createItem(localActor, baseCreate("qa"));
+
+      const result = await repo.applyAction(localActor, {
+        reviewItemId: item.reviewItemId,
+        action: reviewerQueueActionValues.approve,
+        actorUserId: localUserId,
+        expectedSourceRevisionId: sourceRevisionId,
+        affectedArtifactIds: ["artifact-qa-after"],
+        diagnostics: [],
+        metadata: { reviewerNote: "approved-by-fixture" },
+      });
+
+      expect(result.item.state).toBe(reviewerQueueItemStateValues.accepted);
+      expect(result.item.resolvedAt).not.toBeNull();
+      expect(result.item.affectedArtifactIds).toEqual(["artifact-qa-after"]);
+
+      expect(result.transition.priorState).toBe(reviewerQueueItemStateValues.pending);
+      expect(result.transition.nextState).toBe(reviewerQueueItemStateValues.accepted);
+      expect(result.transition.actorUserId).toBe(localUserId);
+      expect(result.transition.action).toBe(reviewerQueueActionValues.approve);
+      expect(result.transition.itemKind).toBe(reviewerQueueItemKindValues.qa);
+      expect(result.transition.sourceRevisionId).toBe(sourceRevisionId);
+      expect(result.transition.metadata).toMatchObject({ reviewerNote: "approved-by-fixture" });
+
+      const transitions = await repo.loadTransitionsByItem(localActor, item.reviewItemId);
+      expect(transitions).toHaveLength(1);
+      expect(transitions[0]!.transitionId).toBe(result.transition.transitionId);
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("applyAction rejects stale-source decisions without partial writes", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      await seedProjectScope(context);
+      const repo = new ItotoriReviewerQueueRepository(context.db);
+      const item = await repo.createItem(localActor, baseCreate("qa"));
+
+      await expect(
+        repo.applyAction(localActor, {
+          reviewItemId: item.reviewItemId,
+          action: reviewerQueueActionValues.approve,
+          actorUserId: localUserId,
+          expectedSourceRevisionId: supersedingSourceRevisionId,
+        }),
+      ).rejects.toMatchObject({
+        name: "ReviewerQueueRepositoryError",
+        code: "reviewer_queue_item_stale_revision",
+      });
+
+      // Item state must remain pending; no transition was logged.
+      const reloaded = await repo.getItem(localActor, item.reviewItemId);
+      expect(reloaded?.state).toBe(reviewerQueueItemStateValues.pending);
+      const transitions = await repo.loadTransitionsByItem(localActor, item.reviewItemId);
+      expect(transitions).toHaveLength(0);
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("applyAction refuses an invalid transition (accepted → repair_requested)", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      await seedProjectScope(context);
+      const repo = new ItotoriReviewerQueueRepository(context.db);
+      const item = await repo.createItem(localActor, baseCreate("qa"));
+
+      await repo.applyAction(localActor, {
+        reviewItemId: item.reviewItemId,
+        action: reviewerQueueActionValues.approve,
+        actorUserId: localUserId,
+        expectedSourceRevisionId: sourceRevisionId,
+      });
+
+      await expect(
+        repo.applyAction(localActor, {
+          reviewItemId: item.reviewItemId,
+          action: reviewerQueueActionValues.requestRepair,
+          actorUserId: localUserId,
+          expectedSourceRevisionId: sourceRevisionId,
+        }),
+      ).rejects.toMatchObject({
+        name: "ReviewerQueueRepositoryError",
+        code: "reviewer_queue_item_invalid_transition",
+      });
+
+      const transitions = await repo.loadTransitionsByItem(localActor, item.reviewItemId);
+      expect(transitions).toHaveLength(1);
+      expect(transitions[0]!.nextState).toBe(reviewerQueueItemStateValues.accepted);
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("applyAction rejects an action whose kind does not match the item kind", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      await seedProjectScope(context);
+      const repo = new ItotoriReviewerQueueRepository(context.db);
+      const glossaryItem = await repo.createItem(localActor, {
+        ...baseCreate("glossary"),
+        sourceItemRef: "glossary-proposal-1",
+      });
+
+      await expect(
+        repo.applyAction(localActor, {
+          reviewItemId: glossaryItem.reviewItemId,
+          action: reviewerQueueActionValues.updateStyle,
+          actorUserId: localUserId,
+          expectedSourceRevisionId: sourceRevisionId,
+        }),
+      ).rejects.toMatchObject({
+        name: "ReviewerQueueRepositoryError",
+        code: "reviewer_queue_item_invalid_input",
+      });
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("importRuntimeFeedback preserves evidence tier on the transition log", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      await seedProjectScope(context);
+      const repo = new ItotoriReviewerQueueRepository(context.db);
+      const runtime = await repo.createItem(localActor, {
+        ...baseCreate("runtimeEvidence"),
+        sourceItemRef: "runtime-evidence-import-1",
+        evidenceTier: "tier-3-recording",
+        observationEventIds: ["event-99"],
+        artifactHashes: ["sha256:zzz"],
+      });
+
+      const result = await repo.applyAction(localActor, {
+        reviewItemId: runtime.reviewItemId,
+        action: reviewerQueueActionValues.importRuntimeFeedback,
+        actorUserId: localUserId,
+        expectedSourceRevisionId: sourceRevisionId,
+        metadata: {
+          evidenceTier: "tier-3-recording",
+          observationEventIds: ["event-99"],
+          artifactHashes: ["sha256:zzz"],
+        },
+      });
+
+      expect(result.item.evidenceTier).toBe("tier-3-recording");
+      expect(result.item.observationEventIds).toEqual(["event-99"]);
+      expect(result.item.artifactHashes).toEqual(["sha256:zzz"]);
+      expect(result.transition.metadata).toMatchObject({
+        evidenceTier: "tier-3-recording",
+        observationEventIds: ["event-99"],
+        artifactHashes: ["sha256:zzz"],
+      });
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("denies queue.manage actions for an actor missing the permission", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      await seedProjectScope(context);
+      const repo = new ItotoriReviewerQueueRepository(context.db);
+      await expect(repo.createItem(deniedActor, baseCreate("qa"))).rejects.toMatchObject({
+        name: "AuthorizationError",
+        permission: "queue.manage",
+      });
+      await expect(
+        repo.applyAction(deniedActor, {
+          reviewItemId: "reviewer-queue-not-real",
+          action: reviewerQueueActionValues.approve,
+          actorUserId: localUserId,
+          expectedSourceRevisionId: sourceRevisionId,
+        }),
+      ).rejects.toMatchObject({ name: "AuthorizationError", permission: "queue.manage" });
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("denies queue.read for an actor missing the permission", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      await seedProjectScope(context);
+      const repo = new ItotoriReviewerQueueRepository(context.db);
+      await expect(repo.getItem(deniedActor, "reviewer-queue-x")).rejects.toMatchObject({
+        name: "AuthorizationError",
+        permission: "queue.read",
+      });
+      await expect(repo.loadItemsByBranch(deniedActor, localeBranchId)).rejects.toMatchObject({
+        name: "AuthorizationError",
+        permission: "queue.read",
+      });
+      await expect(
+        repo.loadTransitionsByItem(deniedActor, "reviewer-queue-x"),
+      ).rejects.toMatchObject({ name: "AuthorizationError", permission: "queue.read" });
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("loadItemsByBranch filters by state and kind", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      await seedProjectScope(context);
+      const repo = new ItotoriReviewerQueueRepository(context.db);
+      const qa = await repo.createItem(localActor, baseCreate("qa"));
+      await repo.createItem(localActor, {
+        ...baseCreate("style"),
+        sourceItemRef: "style-proposal-1",
+      });
+      await repo.applyAction(localActor, {
+        reviewItemId: qa.reviewItemId,
+        action: reviewerQueueActionValues.approve,
+        actorUserId: localUserId,
+        expectedSourceRevisionId: sourceRevisionId,
+      });
+
+      const pending = await repo.loadItemsByBranch(localActor, localeBranchId, {
+        stateFilter: reviewerQueueItemStateValues.pending,
+      });
+      expect(pending).toHaveLength(1);
+      expect(pending[0]!.itemKind).toBe(reviewerQueueItemKindValues.style);
+
+      const styleOnly = await repo.loadItemsByBranch(localActor, localeBranchId, {
+        kindFilter: reviewerQueueItemKindValues.style,
+      });
+      expect(styleOnly).toHaveLength(1);
+      expect(styleOnly[0]!.itemKind).toBe(reviewerQueueItemKindValues.style);
+
+      const all = await repo.loadItemsByBranch(localActor, localeBranchId);
+      expect(all).toHaveLength(2);
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("ReviewerQueueRepositoryError is preserved across throw boundaries", () => {
+    const error = new ReviewerQueueRepositoryError(
+      "reviewer_queue_item_invalid_transition",
+      "test",
+    );
+    expect(error.name).toBe("ReviewerQueueRepositoryError");
+    expect(error.code).toBe("reviewer_queue_item_invalid_transition");
+  });
+});

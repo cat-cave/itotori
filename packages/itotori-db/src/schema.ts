@@ -4074,3 +4074,225 @@ export const auditFindings = pgTable(
     index("itotori_audit_findings_severity_status_idx").on(table.severity, table.status),
   ],
 );
+
+// ---------------------------------------------------------------------
+// ITOTORI-081 — reviewer queue action API + state machine
+// ---------------------------------------------------------------------
+
+/**
+ * Closed enum of reviewer-queue item kinds. Mirrors the SQL check
+ * constraint on `itotori_reviewer_queue_items.item_kind`. Adding a kind
+ * requires (1) a SQL migration that replaces the check constraint and
+ * (2) a routing rule in the reviewer-queue action service so the new
+ * kind dispatches to a typed action.
+ */
+export const reviewerQueueItemKindValues = {
+  qa: "qa",
+  style: "style",
+  glossary: "glossary",
+  feedback: "feedback",
+  runtimeEvidence: "runtime_evidence",
+} as const;
+
+export type ReviewerQueueItemKind =
+  (typeof reviewerQueueItemKindValues)[keyof typeof reviewerQueueItemKindValues];
+
+/**
+ * Closed enum of reviewer-queue item states. Mirrors the SQL check
+ * constraint on `itotori_reviewer_queue_items.state` and the prior /
+ * next state constraints on `itotori_reviewer_queue_transitions`.
+ *
+ * Terminal states (`accepted`, `rejected`) require `resolvedAt`; the
+ * `itotori_reviewer_queue_items_resolved_state_consistent` check guards
+ * that invariant at the database level.
+ */
+export const reviewerQueueItemStateValues = {
+  pending: "pending",
+  inReview: "in_review",
+  accepted: "accepted",
+  rejected: "rejected",
+  repairRequested: "repair_requested",
+  escalated: "escalated",
+} as const;
+
+export type ReviewerQueueItemState =
+  (typeof reviewerQueueItemStateValues)[keyof typeof reviewerQueueItemStateValues];
+
+/**
+ * Closed enum of reviewer-queue actions. Each maps 1:1 to a typed entry
+ * on the action API (`approve`, `reject`, `requestRepair`,
+ * `updateGlossary`, `updateStyle`, `importRuntimeFeedback`).
+ */
+export const reviewerQueueActionValues = {
+  approve: "approve",
+  reject: "reject",
+  requestRepair: "request_repair",
+  updateGlossary: "update_glossary",
+  updateStyle: "update_style",
+  importRuntimeFeedback: "import_runtime_feedback",
+} as const;
+
+export type ReviewerQueueAction =
+  (typeof reviewerQueueActionValues)[keyof typeof reviewerQueueActionValues];
+
+/**
+ * Persisted shape of a reviewer-queue item row. Runtime-evidence rows
+ * carry `evidenceTier`, `observationEventIds`, and `artifactHashes` per
+ * the SQL discriminant; every other kind has those three fields = null.
+ */
+export type ReviewerQueueItemRecord = {
+  reviewItemId: string;
+  projectId: string;
+  localeBranchId: string;
+  sourceRevisionId: string;
+  itemKind: ReviewerQueueItemKind;
+  sourceItemRef: string;
+  state: ReviewerQueueItemState;
+  priority: number;
+  summary: string;
+  affectedArtifactIds: string[];
+  evidenceTier: string | null;
+  observationEventIds: string[] | null;
+  artifactHashes: string[] | null;
+  payload: Record<string, unknown>;
+  metadata: Record<string, unknown>;
+  createdByUserId: string | null;
+  assignedToUserId: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  resolvedAt: Date | null;
+};
+
+/**
+ * Persisted shape of one append-only transition log row.
+ */
+export type ReviewerQueueTransitionRecord = {
+  transitionId: string;
+  reviewItemId: string;
+  localeBranchId: string;
+  sourceRevisionId: string;
+  itemKind: ReviewerQueueItemKind;
+  action: ReviewerQueueAction;
+  priorState: ReviewerQueueItemState;
+  nextState: ReviewerQueueItemState;
+  actorUserId: string;
+  affectedArtifactIds: string[];
+  diagnostics: ReviewerQueueDiagnostic[];
+  metadata: Record<string, unknown>;
+  createdAt: Date;
+};
+
+/**
+ * Semantic diagnostic emitted alongside a transition (e.g. invalid
+ * transition reason, stale-source explanation). Stored verbatim on the
+ * transition row so the dashboard can render the reviewer's diagnostic
+ * trail without re-querying the orchestrator.
+ */
+export type ReviewerQueueDiagnostic = {
+  code: string;
+  message: string;
+};
+
+export const reviewerQueueItems = pgTable(
+  "itotori_reviewer_queue_items",
+  {
+    reviewItemId: text("review_item_id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.projectId, { onDelete: "cascade" }),
+    localeBranchId: text("locale_branch_id")
+      .notNull()
+      .references(() => localeBranches.localeBranchId, { onDelete: "cascade" }),
+    sourceRevisionId: text("source_revision_id")
+      .notNull()
+      .references(() => sourceRevisions.sourceRevisionId, { onDelete: "restrict" }),
+    itemKind: text("item_kind").$type<ReviewerQueueItemKind>().notNull(),
+    sourceItemRef: text("source_item_ref").notNull(),
+    state: text("state").$type<ReviewerQueueItemState>().notNull().default("pending"),
+    priority: integer("priority").notNull().default(0),
+    summary: text("summary").notNull(),
+    affectedArtifactIds: jsonb("affected_artifact_ids")
+      .$type<string[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    evidenceTier: text("evidence_tier"),
+    observationEventIds: jsonb("observation_event_ids").$type<string[]>(),
+    artifactHashes: jsonb("artifact_hashes").$type<string[]>(),
+    payload: jsonb("payload")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    metadata: jsonb("metadata")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    createdByUserId: text("created_by_user_id").references(() => users.userId, {
+      onDelete: "set null",
+    }),
+    assignedToUserId: text("assigned_to_user_id").references(() => users.userId, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+  },
+  (table) => [
+    uniqueIndex("itotori_reviewer_queue_items_source_item_unique").on(
+      table.localeBranchId,
+      table.sourceRevisionId,
+      table.itemKind,
+      table.sourceItemRef,
+    ),
+    index("itotori_reviewer_queue_items_branch_state_idx").on(
+      table.localeBranchId,
+      table.state,
+      table.updatedAt,
+    ),
+    index("itotori_reviewer_queue_items_project_kind_state_idx").on(
+      table.projectId,
+      table.itemKind,
+      table.state,
+    ),
+    index("itotori_reviewer_queue_items_assigned_idx").on(table.assignedToUserId, table.state),
+  ],
+);
+
+export const reviewerQueueTransitions = pgTable(
+  "itotori_reviewer_queue_transitions",
+  {
+    transitionId: text("transition_id").primaryKey(),
+    reviewItemId: text("review_item_id")
+      .notNull()
+      .references(() => reviewerQueueItems.reviewItemId, { onDelete: "cascade" }),
+    localeBranchId: text("locale_branch_id")
+      .notNull()
+      .references(() => localeBranches.localeBranchId, { onDelete: "cascade" }),
+    sourceRevisionId: text("source_revision_id")
+      .notNull()
+      .references(() => sourceRevisions.sourceRevisionId, { onDelete: "restrict" }),
+    itemKind: text("item_kind").$type<ReviewerQueueItemKind>().notNull(),
+    action: text("action").$type<ReviewerQueueAction>().notNull(),
+    priorState: text("prior_state").$type<ReviewerQueueItemState>().notNull(),
+    nextState: text("next_state").$type<ReviewerQueueItemState>().notNull(),
+    actorUserId: text("actor_user_id")
+      .notNull()
+      .references(() => users.userId, { onDelete: "restrict" }),
+    affectedArtifactIds: jsonb("affected_artifact_ids")
+      .$type<string[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    diagnostics: jsonb("diagnostics")
+      .$type<ReviewerQueueDiagnostic[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    metadata: jsonb("metadata")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("itotori_reviewer_queue_transitions_item_idx").on(table.reviewItemId, table.createdAt),
+    index("itotori_reviewer_queue_transitions_actor_idx").on(table.actorUserId, table.createdAt),
+  ],
+);
