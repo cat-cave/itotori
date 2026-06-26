@@ -267,9 +267,19 @@ export class OpenRouterProvider implements ModelProvider {
     // that actually answered differs from the providerId we pinned, fail
     // LOUDLY rather than accept the swap silently. We still record the
     // artifact so audit can see the mismatch.
+    //
+    // ITOTORI-236 — `request.providerId` is the lowercase routing slug
+    // (e.g. `"fireworks"`) used in `provider.only`/`provider.order`, but
+    // `response.provider` is the TitleCase human-readable `provider_name`
+    // (e.g. `"Fireworks"`) per docs/openrouter-integration.md §9.2. A
+    // strict `===` here flagged every successful Fireworks-routed call as
+    // a `pair_mismatch`. The fix routes both ends through
+    // `openRouterProviderIdsMatch`, which checks the known slug↔name
+    // registry first and then falls back to case-insensitive comparison;
+    // a GENUINE mismatch (Fireworks pinned, OpenAI returned) still throws.
     if (
       normalized.upstreamProvider !== undefined &&
-      normalized.upstreamProvider !== requestedProviderId
+      !openRouterProviderIdsMatch(requestedProviderId, normalized.upstreamProvider)
     ) {
       const metadata = adapterMetadata(body, providerRouting);
       const mismatchMetadata: OpenRouterProviderPairMismatchMetadata = {
@@ -1238,6 +1248,66 @@ function selectedOpenRouterEndpoint(body: unknown): Record<string, unknown> | un
 function selectedOpenRouterPricing(body: unknown): Record<string, unknown> | undefined {
   const selectedEndpoint = selectedOpenRouterEndpoint(body);
   return isRecord(selectedEndpoint?.pricing) ? selectedEndpoint.pricing : undefined;
+}
+
+/**
+ * ITOTORI-236 — known-provider registry mapping the lowercase routing
+ * slug (the `tag` form used in `provider.only` / `provider.order`) to
+ * the TitleCase human-readable `provider_name` that OpenRouter echoes
+ * on the response body. Per docs/openrouter-integration.md §9.2 OR
+ * carries both forms, so a strict `===` between the request slug and
+ * the response provider name spuriously trips the ITOTORI-220 pair
+ * check on every legitimate routed call.
+ *
+ * Entries cover the providers itotori's dev-pair table reaches for
+ * (see dev-pair.ts). Unknown providers fall through to the
+ * case-insensitive comparison in `openRouterProviderIdsMatch` — still
+ * safer than the historical strict-equality path and the registry is
+ * additive: register new pairs here as they're empirically observed.
+ */
+const OPENROUTER_KNOWN_PROVIDERS: ReadonlyArray<{
+  readonly slug: string;
+  readonly name: string;
+}> = Object.freeze([
+  { slug: "fireworks", name: "Fireworks" },
+  { slug: "anthropic", name: "Anthropic" },
+  { slug: "google-vertex", name: "Google Vertex" },
+  { slug: "openai", name: "OpenAI" },
+  { slug: "deepinfra", name: "DeepInfra" },
+]);
+
+/**
+ * ITOTORI-236 — compare the request's lowercase routing slug against
+ * the response's human-readable `provider_name`. Match semantics:
+ *
+ *   1. If both ends normalize (lowercase) equal → match.
+ *   2. If the registry knows a (slug, name) pair where either field
+ *      case-insensitively equals one input and the other field
+ *      case-insensitively equals the other → match.
+ *   3. Otherwise → mismatch (the load-bearing routing-swap signal).
+ *
+ * Case 1 alone would already be sufficient for the alpha-validation
+ * fix; case 2 exists so a future OR rename like "Google Vertex AI"
+ * vs slug `google-vertex` is still recognized as the same provider
+ * without re-tripping the pair check.
+ */
+function openRouterProviderIdsMatch(
+  requestedProviderId: string,
+  observedProviderName: string,
+): boolean {
+  const requested = requestedProviderId.toLowerCase();
+  const observed = observedProviderName.toLowerCase();
+  if (requested === observed) {
+    return true;
+  }
+  for (const entry of OPENROUTER_KNOWN_PROVIDERS) {
+    const slug = entry.slug.toLowerCase();
+    const name = entry.name.toLowerCase();
+    if ((requested === slug && observed === name) || (requested === name && observed === slug)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 async function safeJson(response: Response): Promise<unknown> {
