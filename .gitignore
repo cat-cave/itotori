@@ -28,3 +28,4 @@ fixtures/private-local/
 .qd/qd.db-wal
 .qd/qd.db-shm
 .qd/logs/
+artifacts/
