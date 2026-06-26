@@ -1,5 +1,5 @@
 {
-  "schemaVersion": "itotori.pair-policy.v0.2",
+  "schemaVersion": "itotori.pair-policy.v0.3",
   "policyId": "agentic-loop-smoke-fixture",
   "pair": {
     "modelId": "deepseek/deepseek-v4-flash",

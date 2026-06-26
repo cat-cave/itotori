@@ -8,7 +8,7 @@ export * from "./translation-draft.js";
 export * from "./draft-artifact-bundle.js";
 export * from "./patch-export-bundle.js";
 export * from "./agentic-loop-bundle.js";
-export * from "./pair-policy.v0.2.js";
+export * from "./pair-policy.v0.3.js";
 
 export type Uuid7 = string;
 export type Bcp47Locale = string;

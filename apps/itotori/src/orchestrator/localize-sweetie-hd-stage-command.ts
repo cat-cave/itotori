@@ -1,4 +1,4 @@
-// UTSUSHI-228 — `itotori:localize-sweetie-hd-stage` CLI handler.
+// UTSUSHI-228 / ITOTORI-238 — `itotori:localize-sweetie-hd-stage` CLI handler.
 //
 // Thin LIVE-LLM wrapper around `runAgenticLoopForUnit` used by the
 // suite/scripts/localize-sweetie-hd/run.mjs driver. Distinct from
@@ -9,6 +9,30 @@
 // the en-US sentinel into the prompt so the translated draft text the
 // LLM emits is guaranteed to include the substring the patchback +
 // replay-validate pipeline asserts on.
+//
+// ITOTORI-238 — explicit alternate providers + failover predicate.
+//
+//   The pair-policy v0.3 widens v0.2 by adding two top-level fields:
+//     - alternateProviders: ordered list of fully-declared
+//       (modelId, providerId, capabilitySheet) entries.
+//     - failoverPredicate: the literal 'http_429_from_primary' — the
+//       ONLY failure mode that causes this driver to advance to the
+//       next alternate.
+//
+//   On a primary 429 the driver:
+//     1. records the audit-trail (primary 429 + alternate adopted),
+//     2. constructs a NEW provider pinned to the next alternate's
+//        (modelId, providerId),
+//     3. re-runs the agentic loop with the same input + a per-stage
+//        pair-policy whose pinned pair has been replaced byte-equal
+//        with the alternate's pair, and
+//     4. surfaces `AlphaRerunBlockedExternal` when every alternate has
+//        been exhausted.
+//
+//   On ANY other failure (pair_mismatch, provider_response_invalid,
+//   non-429 provider_http_error, capability_unsupported, etc.) the
+//   driver raises immediately — silent provider swap is forbidden
+//   (audit-focus 3).
 //
 // Outputs three files:
 //   1. <output>                       — the AgenticLoopBundle.v0 JSON
@@ -27,7 +51,10 @@
 //                                       summarising which pair drove
 //                                       the run (the (modelId,
 //                                       providerId) pair from the
-//                                       pair-policy), the bridge unit
+//                                       pair-policy — the PRIMARY pair
+//                                       on a clean run, the FAILOVER
+//                                       pair when an alternate was
+//                                       adopted), the bridge unit
 //                                       count, and the sentinel
 //                                       substring. The Rust patchback
 //                                       crate does not emit a
@@ -48,17 +75,20 @@
 import type { AuthorizationActor } from "@itotori/db";
 import {
   assertAgenticLoopBundle,
-  parsePairPolicyV02,
+  parsePairPolicyV03,
   PairPolicyVersionMismatchError,
-  PairPolicyV02ValidationError,
-  flattenPairPolicyV02Postures,
+  PairPolicyV03ValidationError,
+  flattenPairPolicyV03Postures,
   type AgenticLoopBundle,
   type BridgeBundleV02,
   type LocalizationUnitV02,
-  type PairPolicyV02,
+  type PairPolicyV03,
+  type PairPolicyV03Alternate,
+  type StagePostureV03,
 } from "@itotori/localization-bridge-schema";
 import { DEFAULT_COST_CAP_USD, OpenRouterModelProvider } from "../providers/openrouter.js";
 import { FakeModelProvider } from "../providers/fake.js";
+import { ModelProviderError } from "../providers/types.js";
 import type {
   ModelInvocationRequest,
   ModelInvocationResult,
@@ -113,6 +143,15 @@ export type LocalizeSweetieHdStageArgs = {
    * at the DEV_PAIR rates) but tight enough to refuse a runaway loop.
    */
   costCapUsd?: number;
+  /**
+   * ITOTORI-238 — test-only seam. When provided, the test factory
+   * REPLACES `liveOpenRouterFactory` so a test can inject a primary
+   * provider that throws a typed `provider_http_error` (status 429)
+   * and per-alternate factories that succeed. The production driver
+   * never passes this; the failover code path runs against real
+   * OpenRouter providers.
+   */
+  liveFactoryOverride?: (pair: PairPolicyV03["pair"]) => AgenticLoopProviderFactory;
 };
 
 export class LocalizeSweetieHdMissingApiKeyError extends Error {
@@ -140,6 +179,40 @@ export class LocalizeSweetieHdRefusedFakeError extends Error {
   }
 }
 
+/**
+ * ITOTORI-238 — raised when the primary pair returned HTTP 429 AND
+ * every declared alternate has also been exhausted (or none were
+ * declared). Carries the per-pair failure record so the operator can
+ * see exactly which providers refused and why.
+ *
+ * The name encodes the audit-focus claim: this is a STRUCTURAL
+ * external block — Trevor's account is at quota on every pair the
+ * policy file declared, and itotori cannot continue without operator
+ * action (either a quota increase upstream, or a new alternate added
+ * to the policy file + re-validated).
+ */
+export class AlphaRerunBlockedExternal extends Error {
+  constructor(
+    public readonly attempts: ReadonlyArray<{
+      pair: { modelId: string; providerId: string };
+      role: "primary" | "alternate";
+      failureClass: string;
+      detail: string;
+    }>,
+  ) {
+    const summary = attempts
+      .map(
+        (entry, idx) =>
+          `  [${idx}] role=${entry.role} pair=(${entry.pair.modelId}, ${entry.pair.providerId}) failure=${entry.failureClass} — ${entry.detail}`,
+      )
+      .join("\n");
+    super(
+      `localize-sweetie-hd-stage refused: ALPHA RERUN BLOCKED (external) — every declared (modelId, providerId) pair returned the configured failover predicate's failure. Attempts:\n${summary}\nResolution: either add a new evidence-validated alternate to the pair-policy preset (alternateProviders[]), wait for the upstream quota to lift, or request an OpenRouter-side quota increase. No silent provider broadening is allowed — every alternate must be a commit-visible, evidence-validated entry.`,
+    );
+    this.name = "AlphaRerunBlockedExternal";
+  }
+}
+
 const DEFAULT_UNIT_INDEX = 0;
 
 // Re-export so the test surface and any external integrators get the
@@ -148,21 +221,33 @@ const DEFAULT_UNIT_INDEX = 0;
 export { PairPolicyVersionMismatchError };
 
 /**
- * ITOTORI-234 — Parse + validate a raw JSON value as a v0.2 pair-policy
- * tailored for the localize-sweetie-hd alpha closer.
+ * ITOTORI-234 / ITOTORI-238 — Parse + validate a raw JSON value as a
+ * v0.3 pair-policy tailored for the localize-sweetie-hd alpha closer.
  *
- * Required shape (matches `PairPolicyV02` in
- * `@itotori/localization-bridge-schema/pair-policy.v0.2`):
+ * Required shape (matches `PairPolicyV03` in
+ * `@itotori/localization-bridge-schema/pair-policy.v0.3`):
  *
  * ```json
  * {
- *   "schemaVersion": "itotori.pair-policy.v0.2",
+ *   "schemaVersion": "itotori.pair-policy.v0.3",
  *   "policyId": "localize-sweetie-hd-alpha-1",
  *   "pair": { "modelId": "...", "providerId": "..." },
+ *   "alternateProviders": [{
+ *     "modelId": "...",
+ *     "providerId": "...",
+ *     "capabilitySheet": {
+ *       "supportsStructuredOutputJsonSchema": true,
+ *       "supportsToolUse": true,
+ *       "contextWindowTokens": 128000,
+ *       "maxOutputTokens": 8192,
+ *       "evidenceRef": "docs/openrouter-integration-evidence/..."
+ *     }
+ *   }],
+ *   "failoverPredicate": "http_429_from_primary",
  *   "enUsSentinel": "STELLA-ALPHA-EN-US-SENTINEL",
  *   "sceneId": 1,
  *   "openrouterPresetSlug": "optional",
- *   "stages": { ...per-stage StagePostureV02 leaves... }
+ *   "stages": { ...per-stage StagePostureV03 leaves... }
  * }
  * ```
  *
@@ -175,12 +260,12 @@ export { PairPolicyVersionMismatchError };
  * (configured at the OR dashboard) handles routing AT REQUEST TIME.
  * Per docs/openrouter-integration.md §3, explicit per-stage fields
  * (zdr / fallbackModels / seed) OVERRIDE the preset's equivalents.
- * This parser accepts both; the override is a deliberate posture.
  *
- * Throws `PairPolicyVersionMismatchError` for v0.1 / absent-schemaVersion
- * inputs (the schema bump is the forcing function; there is no v0.1
- * parsing path). Throws `LocalizeSweetieHdPairPolicyError` for anything
- * else (missing field, byte-equal pair mismatch).
+ * Throws `PairPolicyVersionMismatchError` for v0.1 / v0.2 / absent-
+ * schemaVersion inputs (the schema bump is the forcing function;
+ * there is no v0.2 parsing path). Throws
+ * `LocalizeSweetieHdPairPolicyError` for anything else (missing
+ * field, byte-equal pair mismatch).
  */
 export function parseLocalizeSweetieHdPairPolicy(value: unknown): {
   policyId: string;
@@ -190,14 +275,15 @@ export function parseLocalizeSweetieHdPairPolicy(value: unknown): {
   openrouterPresetSlug?: string;
   pairPolicy: PairPolicy;
   /**
-   * Raw parsed v0.2 policy. Surfaced so the dry-run printer + driver
-   * can iterate every leaf's posture (zdr + seed) verbatim.
+   * Raw parsed v0.3 policy. Surfaced so the dry-run printer + driver
+   * can iterate every leaf's posture (zdr + seed) verbatim AND so the
+   * driver can read alternateProviders[] + failoverPredicate.
    */
-  policyV02: PairPolicyV02;
+  policyV03: PairPolicyV03;
 } {
-  let parsed: PairPolicyV02;
+  let parsed: PairPolicyV03;
   try {
-    parsed = parsePairPolicyV02(value, {
+    parsed = parsePairPolicyV03(value, {
       defaultCostCapUsd: DEFAULT_COST_CAP_USD,
       zdrDowngradeEnv: process.env.OPENROUTER_ZDR_DOWNGRADE,
     });
@@ -207,7 +293,7 @@ export function parseLocalizeSweetieHdPairPolicy(value: unknown): {
       // (the acceptance-criterion #2 test asserts on the typed class).
       throw error;
     }
-    if (error instanceof PairPolicyV02ValidationError) {
+    if (error instanceof PairPolicyV03ValidationError) {
       throw new LocalizeSweetieHdPairPolicyError(error.message);
     }
     throw error;
@@ -220,14 +306,14 @@ export function parseLocalizeSweetieHdPairPolicy(value: unknown): {
     sceneId: number;
     openrouterPresetSlug?: string;
     pairPolicy: PairPolicy;
-    policyV02: PairPolicyV02;
+    policyV03: PairPolicyV03;
   } = {
     policyId: parsed.policyId,
     pair: { modelId: parsed.pair.modelId, providerId: parsed.pair.providerId },
     enUsSentinel: parsed.enUsSentinel,
     sceneId: parsed.sceneId,
     pairPolicy: parsed.stages,
-    policyV02: parsed,
+    policyV03: parsed,
   };
   if (parsed.openrouterPresetSlug !== undefined) {
     out.openrouterPresetSlug = parsed.openrouterPresetSlug;
@@ -235,9 +321,9 @@ export function parseLocalizeSweetieHdPairPolicy(value: unknown): {
   return out;
 }
 
-function assertEveryLeafMatches(policy: PairPolicyV02): void {
+function assertEveryLeafMatches(policy: PairPolicyV03): void {
   const expected = policy.pair;
-  for (const { leafPath, posture } of flattenPairPolicyV02Postures(policy)) {
+  for (const { leafPath, posture } of flattenPairPolicyV03Postures(policy)) {
     if (
       posture.pair.modelId !== expected.modelId ||
       posture.pair.providerId !== expected.providerId
@@ -247,6 +333,88 @@ function assertEveryLeafMatches(policy: PairPolicyV02): void {
       );
     }
   }
+}
+
+/**
+ * Replace every leaf-pair in the per-stage policy with the alternate
+ * pair. Preserves zdr / fallbackModels / seed / maxPriceUsd verbatim
+ * (the alternate inherits the primary's posture; only the routing
+ * pair changes).
+ *
+ * Why we don't re-derive the seed from the new pair: failover MUST
+ * be deterministic from the operator's perspective. The seed is
+ * derived from the LEAF PATH, not the pair, so it stays stable across
+ * primary/alternate runs. This keeps replay traces comparable when
+ * an alternate is adopted.
+ */
+function replaceLeafPair(pairPolicy: PairPolicy, alternate: PairPolicyV03Alternate): PairPolicy {
+  const swap = (leaf: StagePostureV03): StagePostureV03 => ({
+    pair: { modelId: alternate.modelId, providerId: alternate.providerId },
+    zdr: leaf.zdr,
+    fallbackModels: leaf.fallbackModels,
+    seed: leaf.seed,
+    maxPriceUsd: leaf.maxPriceUsd,
+  });
+  const out: PairPolicy = {
+    context: {
+      sceneSummary: swap(pairPolicy.context.sceneSummary),
+      characterRelationship: swap(pairPolicy.context.characterRelationship),
+      terminologyCandidate: swap(pairPolicy.context.terminologyCandidate),
+      routeChoiceMap: swap(pairPolicy.context.routeChoiceMap),
+    },
+    preTranslation: {
+      speakerLabel: swap(pairPolicy.preTranslation.speakerLabel),
+    },
+    translation: {
+      primary: swap(pairPolicy.translation.primary),
+      ...(pairPolicy.translation.regrade !== undefined
+        ? { regrade: swap(pairPolicy.translation.regrade) }
+        : {}),
+    },
+    qa: {
+      styleAdherence: swap(pairPolicy.qa.styleAdherence),
+      semanticDrift: swap(pairPolicy.qa.semanticDrift),
+      toneRegister: swap(pairPolicy.qa.toneRegister),
+      unresolvedTerminology: swap(pairPolicy.qa.unresolvedTerminology),
+    },
+    repair: {
+      primary: swap(pairPolicy.repair.primary),
+    },
+  };
+  return out;
+}
+
+/**
+ * ITOTORI-238 — does the thrown error match the policy's
+ * `failoverPredicate`? Today the only predicate is
+ * `"http_429_from_primary"`, which matches a
+ * `ModelProviderError` whose `code === "provider_http_error"` AND
+ * whose `providerRun.errorClasses` includes `"http_429"`.
+ *
+ * Any other failure (pair_mismatch, provider_response_invalid,
+ * capability_unsupported, configuration_error, OR a non-429
+ * provider_http_error) MUST return `false` so the caller surfaces
+ * the error immediately. This is the audit-focus 3 invariant.
+ */
+function matchesFailoverPredicate(
+  predicate: PairPolicyV03["failoverPredicate"],
+  error: unknown,
+): boolean {
+  if (predicate !== "http_429_from_primary") {
+    return false;
+  }
+  if (!(error instanceof ModelProviderError)) {
+    return false;
+  }
+  if (error.code !== "provider_http_error") {
+    return false;
+  }
+  // The OpenRouter provider tags 429 responses with errorClass
+  // `"http_429"` in the provider run record (see
+  // apps/itotori/src/providers/openrouter.ts:194 — `errorClasses:
+  // [\`http_${response.status}\`]`).
+  const classes = error.providerRun?.errorClasses ?? [];
+  return classes.includes("http_429");
 }
 
 export async function runLocalizeSweetieHdStageCommand(
@@ -271,10 +439,10 @@ export async function runLocalizeSweetieHdStageCommand(
   }
 
   const rawPolicy = args.io.readJson(args.pairPolicyPath);
-  const { policyId, pair, enUsSentinel, sceneId, pairPolicy } =
+  const { policyId, pair, enUsSentinel, sceneId, pairPolicy, policyV03 } =
     parseLocalizeSweetieHdPairPolicy(rawPolicy);
   log(
-    `localize-sweetie-hd-stage: policyId=${policyId} pair=(${pair.modelId}, ${pair.providerId}) sentinel=${enUsSentinel}`,
+    `localize-sweetie-hd-stage: policyId=${policyId} primary=(${pair.modelId}, ${pair.providerId}) sentinel=${enUsSentinel} alternates=${policyV03.alternateProviders.length} failoverPredicate=${policyV03.failoverPredicate}`,
   );
 
   const providerKind = args.providerKind ?? "live";
@@ -291,14 +459,6 @@ export async function runLocalizeSweetieHdStageCommand(
     now: deterministicNow(),
   };
 
-  const factory =
-    providerKind === "fake"
-      ? sentinelFakeFactory(unit, policy, enUsSentinel)
-      : liveOpenRouterFactory({
-          enUsSentinel,
-          costCapUsd: args.costCapUsd ?? DEFAULT_COST_CAP_USD,
-        });
-
   const input: AgenticLoopUnitInput = {
     unit,
     sceneUnits: [],
@@ -307,8 +467,107 @@ export async function runLocalizeSweetieHdStageCommand(
     knownCharacters: [],
     actor: args.actor,
   };
-  const bundle = await runAgenticLoopForUnit(input, pairPolicy, policy, factory);
-  assertAgenticLoopBundle(bundle);
+
+  // ITOTORI-238 — failover orchestration. We attempt the primary pair
+  // first; if it raises an error matching the policy's failoverPredicate
+  // we advance to the next declared alternate (in policy-declared order).
+  // Each attempt re-runs the FULL agentic loop from scratch — there is
+  // no per-stage failover, because mid-run provider swap would invalidate
+  // the audit trail (the stage's seed + posture is bound to a single
+  // pair).
+  const attemptPairs: Array<{
+    pair: { modelId: string; providerId: string };
+    role: "primary" | "alternate";
+    pairPolicy: PairPolicy;
+    factory: AgenticLoopProviderFactory;
+  }> = [
+    {
+      pair,
+      role: "primary",
+      pairPolicy,
+      factory:
+        providerKind === "fake"
+          ? sentinelFakeFactory(unit, policy, enUsSentinel)
+          : args.liveFactoryOverride !== undefined
+            ? args.liveFactoryOverride(pair)
+            : liveOpenRouterFactory({
+                enUsSentinel,
+                costCapUsd: args.costCapUsd ?? DEFAULT_COST_CAP_USD,
+              }),
+    },
+    ...policyV03.alternateProviders.map((alternate) => {
+      const altPair = { modelId: alternate.modelId, providerId: alternate.providerId };
+      return {
+        pair: altPair,
+        role: "alternate" as const,
+        pairPolicy: replaceLeafPair(pairPolicy, alternate),
+        factory:
+          providerKind === "fake"
+            ? sentinelFakeFactory(unit, policy, enUsSentinel)
+            : args.liveFactoryOverride !== undefined
+              ? args.liveFactoryOverride(altPair)
+              : liveOpenRouterFactory({
+                  enUsSentinel,
+                  costCapUsd: args.costCapUsd ?? DEFAULT_COST_CAP_USD,
+                }),
+      };
+    }),
+  ];
+
+  const failureAttempts: Array<{
+    pair: { modelId: string; providerId: string };
+    role: "primary" | "alternate";
+    failureClass: string;
+    detail: string;
+  }> = [];
+  let bundle: AgenticLoopBundle | undefined;
+  let driverPair: { modelId: string; providerId: string } = pair;
+
+  for (let i = 0; i < attemptPairs.length; i += 1) {
+    const attempt = attemptPairs[i];
+    if (attempt === undefined) {
+      // Defensive — the loop bound is `attemptPairs.length` so this
+      // branch is unreachable, but TS narrowing benefits from the check.
+      break;
+    }
+    log(
+      `localize-sweetie-hd-stage: attempt ${i + 1}/${attemptPairs.length} role=${attempt.role} pair=(${attempt.pair.modelId}, ${attempt.pair.providerId})`,
+    );
+    try {
+      bundle = await runAgenticLoopForUnit(input, attempt.pairPolicy, policy, attempt.factory);
+      assertAgenticLoopBundle(bundle);
+      driverPair = attempt.pair;
+      break;
+    } catch (error) {
+      if (matchesFailoverPredicate(policyV03.failoverPredicate, error)) {
+        // Record the audit trail entry and advance — but ONLY when the
+        // primary failed. Alternate-stage failures with the same
+        // predicate also advance (a chain of 429s is still a 429 chain),
+        // but a non-primary 429 indicates the alternate is itself at
+        // quota.
+        const detail = error instanceof Error ? error.message : String(error);
+        failureAttempts.push({
+          pair: attempt.pair,
+          role: attempt.role,
+          failureClass: "http_429",
+          detail,
+        });
+        log(
+          `localize-sweetie-hd-stage: pair (${attempt.pair.modelId}, ${attempt.pair.providerId}) returned the failover predicate's failure (http_429); advancing to next alternate (${attemptPairs.length - i - 1} remaining)`,
+        );
+        continue;
+      }
+      // Any other failure surfaces IMMEDIATELY — this is the audit-
+      // focus 3 invariant: silent provider swap on an unknown error
+      // is forbidden. Raise verbatim.
+      throw error;
+    }
+  }
+
+  if (bundle === undefined) {
+    throw new AlphaRerunBlockedExternal(failureAttempts);
+  }
+
   args.io.writeJson(args.outputPath, bundle);
   log(`localize-sweetie-hd-stage: wrote ${args.outputPath}`);
 
@@ -326,16 +585,23 @@ export async function runLocalizeSweetieHdStageCommand(
   // driven patchback writes the patched Seen.txt in place but does
   // NOT emit a per-run report; the driver shoulders that artifact so
   // the UTSUSHI-228 artifact contract is satisfied.
+  //
+  // ITOTORI-238 — the `pair` field carries the pair THAT ACTUALLY DROVE
+  // THE SUCCESSFUL RUN (i.e. the primary on a clean run, the alternate
+  // on a failover-adopted run). The `failoverAttempts` field carries
+  // every 429 along the way so audit can trace the chain.
   const patchReport = {
     schemaVersion: "itotori.localize-sweetie-hd.patch-report.v0",
     policyId,
-    pair,
+    pair: driverPair,
     enUsSentinel,
     sceneId,
     bridgeUnitId: unit.bridgeUnitId,
     unitCount: bridge.units.length,
     finalDraftTextLength: draftText.length,
     translatedTargetText: wrapWithSentinel(draftText, enUsSentinel),
+    failoverPredicate: policyV03.failoverPredicate,
+    failoverAttempts: failureAttempts,
   };
   args.io.writeJson(args.patchReportOutputPath, patchReport);
   log(`localize-sweetie-hd-stage: wrote ${args.patchReportOutputPath}`);
@@ -363,7 +629,7 @@ function liveOpenRouterFactory(opts: {
       inner: provider,
       stage,
       agentLabel,
-      // ITOTORI-234 — the factory now receives a full StagePostureV02
+      // ITOTORI-234 — the factory now receives a full StagePostureV03
       // (pair + zdr + fallbackModels + seed + maxPriceUsd). The wrapper
       // only needs the bare (modelId, providerId) for its diagnostic
       // surface; the orchestrator's bundle is what surfaces the full
