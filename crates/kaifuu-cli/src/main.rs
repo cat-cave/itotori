@@ -4,18 +4,19 @@ use std::path::{Component, Path, PathBuf};
 
 use kaifuu_core::{
     AdapterRegistry, AssetInventoryManifest, AssetInventoryRequest, DetectionReport,
-    DetectionResult, EngineAdapter, EvidenceStatus, ExtractRequest, GameProfile,
-    GoldenByteEquivalenceMode, GoldenHarnessRequest, HELPER_REGISTRY_SCHEMA_VERSION,
-    HelperBinaryLaunchDiagnostic, HelperBinaryLaunchValidationRequest,
-    HelperBinaryLaunchValidationResult, HelperCapability, HelperExecutionMode,
-    HelperProcessCancelToken, HelperRedactionStatus, HelperRegistryInvocationRequest, KaifuuResult,
-    LocalKeyImportRequest, LocalKeyImportSource, LocalSecretDirectoryStore, PartialAdapterCommand,
-    PartialAdapterDiagnostic, PartialAdapterInventory, PartialAdapterReport,
-    PartialDiagnosticSeverity, PatchExport, PatchPreflightRequest, PatchRequest, PatchResult,
-    ProfileRequest, ProofHash, RegisteredBoundedHelperProcessRequest,
-    RpgMakerMvMzFixtureKeyValidationRequest, SEMANTIC_HELPER_EXECUTION_DISALLOWED, SecretRef,
-    SiglusParserBoundarySmokeRequest, SiglusParserBoundarySmokeVariant, VerifyRequest,
-    Xp3ProfileProofFixture, Xp3ProfileProofRequest, atomic_write_text, encode_xp3,
+    DetectionResult, EncryptedMediaProofFixture, EncryptedMediaProofRequest, EngineAdapter,
+    EvidenceStatus, ExtractRequest, GameProfile, GoldenByteEquivalenceMode, GoldenHarnessRequest,
+    HELPER_REGISTRY_SCHEMA_VERSION, HelperBinaryLaunchDiagnostic,
+    HelperBinaryLaunchValidationRequest, HelperBinaryLaunchValidationResult, HelperCapability,
+    HelperExecutionMode, HelperProcessCancelToken, HelperRedactionStatus,
+    HelperRegistryInvocationRequest, KaifuuResult, LocalKeyImportRequest, LocalKeyImportSource,
+    LocalSecretDirectoryStore, PartialAdapterCommand, PartialAdapterDiagnostic,
+    PartialAdapterInventory, PartialAdapterReport, PartialDiagnosticSeverity, PatchExport,
+    PatchPreflightRequest, PatchRequest, PatchResult, ProfileRequest, ProofHash,
+    RegisteredBoundedHelperProcessRequest, RpgMakerMvMzFixtureKeyValidationRequest,
+    SEMANTIC_HELPER_EXECUTION_DISALLOWED, SecretRef, SiglusParserBoundarySmokeRequest,
+    SiglusParserBoundarySmokeVariant, VerifyRequest, Xp3ProfileProofFixture,
+    Xp3ProfileProofRequest, atomic_write_text, encode_xp3, encrypted_media_proof,
     fixture_helper_registry, normalize_helper_result_value, pack_plain_xp3_from_directory,
     parse_helper_capability, parse_hex_bytes, plain_xp3_writer_capability,
     promote_staged_directory_no_clobber, read_json, read_plain_xp3_archive,
@@ -250,7 +251,7 @@ fn run_with_args_and_registry(
         Some("siglus") => {
             run_siglus_command(&args)?;
         }
-        Some("rpg-maker") => {
+        Some("rpg-maker" | "rpgmaker") => {
             run_rpg_maker_command(&args)?;
         }
         Some("xp3") => {
@@ -273,7 +274,7 @@ fn run_with_args_and_registry(
         }
         _ => {
             return Err(
-                "usage: kaifuu <detect|extract|asset-inventory|patch|diff|apply|verify|golden|offset-map|helper-result|key-helper|helper-registry|key|siglus|rpg-maker|xp3|profile|capabilities|binary-patch-smoke> ..."
+                "usage: kaifuu <detect|extract|asset-inventory|patch|diff|apply|verify|golden|offset-map|helper-result|key-helper|helper-registry|key|siglus|rpgmaker|rpg-maker|xp3|profile|capabilities|binary-patch-smoke> ..."
                     .into(),
             );
         }
@@ -640,8 +641,61 @@ fn run_binary_patch_smoke_command(args: &[String]) -> Result<(), Box<dyn std::er
     }
 }
 
+/// KAIFUU-039 — `kaifuu rpgmaker encrypted-media-proof
+///                 --fixture <fixture.json> [--output <report.json>]`.
+///
+/// Reads an RPG Maker MV/MZ encrypted-media-proof fixture, classifies each
+/// declared media asset (encrypted image / audio / video, plaintext,
+/// malformed-header, missing-asset, unknown-suffix), validates the
+/// `data/System.json` key-profile evidence, and writes a redacted
+/// readiness report.
+///
+/// Posture: research-only. The command never decrypts encrypted bytes,
+/// never persists decrypted media, never claims dialogue extraction or
+/// script-patch support based on media-key detection, and never
+/// surfaces patch_back / extract capability for any encrypted asset.
+/// Exits non-zero when any blocking (P0/P1) diagnostic fires so CI
+/// pipelines can gate on the readiness field without re-parsing the
+/// JSON.
+fn run_rpg_maker_encrypted_media_proof(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
+    let fixture_path = PathBuf::from(flag(args, "--fixture")?);
+    let output = flag_optional(args, "--output").map(PathBuf::from);
+    let fixture: EncryptedMediaProofFixture = read_json(&fixture_path)?;
+    let fixture_dir = fixture_path
+        .parent()
+        .ok_or("fixture path must have a parent directory")?;
+    let report = encrypted_media_proof(EncryptedMediaProofRequest {
+        fixture: &fixture,
+        fixture_dir,
+    })?;
+    let redacted = report.redacted_for_report();
+    let report_json = redacted.stable_json()?;
+    if let Some(output) = output.as_ref() {
+        atomic_write_text(output, &report_json)?;
+    } else {
+        println!("{report_json}");
+    }
+    if redacted.status == kaifuu_core::OperationStatus::Failed {
+        return Err(format!(
+            "RPG Maker MV/MZ encrypted-media proof failed: {}",
+            redacted
+                .diagnostics
+                .iter()
+                .filter(|diagnostic| diagnostic.severity.is_blocking())
+                .map(|diagnostic| format!("{}:{}", diagnostic.severity.as_str(), diagnostic.code,))
+                .collect::<Vec<_>>()
+                .join(", ")
+        )
+        .into());
+    }
+    Ok(())
+}
+
 fn run_rpg_maker_command(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
     match positional(args, 1)? {
+        "encrypted-media-proof" => {
+            run_rpg_maker_encrypted_media_proof(args)?;
+        }
         "validate-fixture-key" => {
             let game_dir = PathBuf::from(flag(args, "--game-dir")?);
             let image_asset = PathBuf::from(flag(args, "--image-asset")?);
@@ -681,7 +735,7 @@ fn run_rpg_maker_command(args: &[String]) -> Result<(), Box<dyn std::error::Erro
         }
         _ => {
             return Err(
-                "usage: kaifuu rpg-maker validate-fixture-key --game-dir <dir> --image-asset <asset> --secret-store <dir> --secret-ref <local-secret:id> --output <report.json> [--requirement-id <id>] [--fixture-id <id>]"
+                "usage: kaifuu rpgmaker <validate-fixture-key|encrypted-media-proof> ...\n  validate-fixture-key --game-dir <dir> --image-asset <asset> --secret-store <dir> --secret-ref <local-secret:id> --output <report.json> [--requirement-id <id>] [--fixture-id <id>]\n  encrypted-media-proof --fixture <fixture.json> [--output <report.json>]\n(alias: kaifuu rpg-maker ...)"
                     .into(),
             );
         }
@@ -6336,7 +6390,7 @@ wait
                 .contains(&ArchiveDetectionSignal::Encrypted)
         );
         assert!(rpg_maker.evidence.iter().any(|evidence| {
-            evidence.pattern == "*.rpgmvp|*.rpgmvm|*.rpgmvo|*.png_|*.m4a_|*.ogg_"
+            evidence.pattern == "*.rpgmvp|*.rpgmvm|*.rpgmvo|*.rpgmvu|*.png_|*.m4a_|*.ogg_"
                 && evidence.status == EvidenceStatus::Matched
                 && evidence.count == 2
         }));
@@ -6395,9 +6449,9 @@ wait
             .unwrap();
         assert!(rpg_maker.detected);
         assert!(rpg_maker.evidence.iter().any(|evidence| {
-            evidence.pattern == "*.rpgmvp|*.rpgmvm|*.rpgmvo|*.png_|*.m4a_|*.ogg_"
+            evidence.pattern == "*.rpgmvp|*.rpgmvm|*.rpgmvo|*.rpgmvu|*.png_|*.m4a_|*.ogg_"
                 && evidence.status == EvidenceStatus::Matched
-                && evidence.count == 6
+                && evidence.count == 7
         }));
         assert!(
             rpg_maker
@@ -6428,7 +6482,7 @@ wait
             .iter()
             .filter(|surface| surface.variant == "unknown_suffix")
             .collect::<Vec<_>>();
-        assert_eq!(unknown_surfaces.len(), 2);
+        assert_eq!(unknown_surfaces.len(), 1);
         for surface in unknown_surfaces {
             assert_eq!(surface.crypto, CryptoTransform::Unknown);
             assert!(surface.key_requirement_refs.is_empty());
@@ -8430,6 +8484,344 @@ wait
         assert_eq!(value["patchBackMode"], "archive_rebuild_plain");
         assert_eq!(value["variant"], "plain");
         assert_eq!(value["adapterId"], kaifuu_core::PLAIN_XP3_WRITER_ADAPTER_ID);
+        let _ = fs::remove_dir_all(root);
+    }
+    // ----- KAIFUU-039 — RPG Maker MV/MZ encrypted-media readiness CLI -----
+
+    fn rpgmaker_fixture_path(relative_path: &str) -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .join("fixtures/kaifuu/rpgmaker")
+            .join(relative_path)
+    }
+
+    fn run_encrypted_media_proof_cli(
+        fixture: &Path,
+        output: &Path,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        run_with_args(
+            [
+                "rpg-maker",
+                "encrypted-media-proof",
+                "--fixture",
+                fixture.to_str().unwrap(),
+                "--output",
+                output.to_str().unwrap(),
+            ]
+            .iter()
+            .map(|arg| arg.to_string())
+            .collect(),
+        )
+    }
+
+    #[test]
+    fn encrypted_media_proof_command_happy_path_routes_without_overclaim() {
+        let root = temp_dir("encrypted-media-happy");
+        let output = root.join("encrypted-media-proof.json");
+        run_encrypted_media_proof_cli(&rpgmaker_fixture_path("encrypted-media.json"), &output)
+            .unwrap();
+        let report: serde_json::Value = read_json(&output).unwrap();
+        assert_eq!(report["status"], "passed");
+        assert_eq!(report["readiness"], "ready");
+        // Load-bearing: media-key detection never implies script
+        // capability; decrypted bytes are never persisted; the
+        // aggregate patch capability never claims patch_back or extract.
+        assert_eq!(report["scriptCapabilityClaimed"], false);
+        assert_eq!(report["decryptedBytesPersisted"], false);
+        assert_ne!(report["patchCapabilityLevel"], "patch_back");
+        assert_ne!(report["patchCapabilityLevel"], "extract");
+        // Per-asset distinct kinds.
+        let assets = report["assets"].as_array().unwrap();
+        let kinds: Vec<&str> = assets
+            .iter()
+            .map(|asset| asset["kind"].as_str().unwrap())
+            .collect();
+        assert!(kinds.contains(&"image"));
+        assert!(kinds.contains(&"audio"));
+        assert!(kinds.contains(&"video"));
+        // Every encrypted asset claims `unsupported` patch capability.
+        for asset in assets {
+            if asset["classification"] == "encrypted" {
+                assert_eq!(asset["patchCapabilityLevel"], "unsupported");
+                assert_ne!(asset["patchCapabilityLevel"], "patch_back");
+                assert_ne!(asset["patchCapabilityLevel"], "extract");
+                assert_eq!(asset["decryptability"], "key_profile_satisfied");
+            }
+        }
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn encrypted_media_proof_command_qd_contract_writes_stdout_without_output_flag() {
+        run_with_args(
+            [
+                "rpgmaker",
+                "encrypted-media-proof",
+                "--fixture",
+                rpgmaker_fixture_path("encrypted-media.json")
+                    .to_str()
+                    .unwrap(),
+            ]
+            .iter()
+            .map(|arg| arg.to_string())
+            .collect(),
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn encrypted_media_proof_command_missing_key_routes_to_unsupported() {
+        let root = temp_dir("encrypted-media-missing-key");
+        let output = root.join("missing-key-report.json");
+        let result = run_encrypted_media_proof_cli(
+            &rpgmaker_fixture_path("encrypted-media-missing-key.json"),
+            &output,
+        );
+        assert!(result.is_err(), "missing-key fixture must exit non-zero");
+        let report: serde_json::Value = read_json(&output).unwrap();
+        assert_eq!(report["status"], "failed");
+        assert_eq!(report["readiness"], "unsupported");
+        assert_eq!(report["decryptedBytesPersisted"], false);
+        assert!(
+            report["diagnostics"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|diagnostic| diagnostic["code"]
+                    == "rpgmaker.encrypted_media.system_json.key_missing")
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn encrypted_media_proof_command_wrong_key_routes_to_unsupported() {
+        let root = temp_dir("encrypted-media-wrong-key");
+        let output = root.join("wrong-key-report.json");
+        let result = run_encrypted_media_proof_cli(
+            &rpgmaker_fixture_path("encrypted-media-wrong-key.json"),
+            &output,
+        );
+        assert!(result.is_err(), "wrong-key fixture must exit non-zero");
+        let report: serde_json::Value = read_json(&output).unwrap();
+        assert_eq!(report["status"], "failed");
+        assert_eq!(report["readiness"], "unsupported");
+        assert_eq!(report["decryptedBytesPersisted"], false);
+        assert!(
+            report["diagnostics"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|diagnostic| diagnostic["code"]
+                    == "rpgmaker.encrypted_media.system_json.key_mismatch"
+                    && diagnostic["semanticCode"] == "kaifuu.key_validation_failed")
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn encrypted_media_proof_command_leaked_game_dir_rejected_before_any_decryption_claim() {
+        let root = temp_dir("encrypted-media-leaked-game-dir");
+        let output = root.join("leaked-game-dir-report.json");
+        let result = run_encrypted_media_proof_cli(
+            &rpgmaker_fixture_path("negative/encrypted-media-leaked-game-dir.json"),
+            &output,
+        );
+        assert!(result.is_err(), "leaked game dir must exit non-zero");
+        let report: serde_json::Value = read_json(&output).unwrap();
+        assert_eq!(report["status"], "failed");
+        assert_eq!(report["readiness"], "unsupported");
+        assert!(
+            report["diagnostics"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|diagnostic| diagnostic["code"] == "rpgmaker.encrypted_media.game_dir.leaked")
+        );
+        // The leaked absolute path must not survive into the report.
+        let serialized = fs::read_to_string(&output).unwrap();
+        assert!(!serialized.contains("/home/local-user"));
+        assert!(!serialized.contains("C:\\"));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn encrypted_media_proof_command_malformed_header_routes_to_unsupported() {
+        let root = temp_dir("encrypted-media-malformed-header");
+        let output = root.join("malformed-header-report.json");
+        let result = run_encrypted_media_proof_cli(
+            &rpgmaker_fixture_path("negative/encrypted-media-malformed-header.json"),
+            &output,
+        );
+        assert!(
+            result.is_err(),
+            "malformed-header fixture must exit non-zero"
+        );
+        let report: serde_json::Value = read_json(&output).unwrap();
+        assert_eq!(report["status"], "failed");
+        assert!(
+            report["diagnostics"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|diagnostic| diagnostic["code"]
+                    == "rpgmaker.encrypted_media.header.malformed")
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn encrypted_media_proof_command_unknown_key_profile_routes_to_unsupported() {
+        let root = temp_dir("encrypted-media-unknown-profile");
+        let output = root.join("unknown-profile-report.json");
+        let result = run_encrypted_media_proof_cli(
+            &rpgmaker_fixture_path("negative/encrypted-media-unknown-key-profile.json"),
+            &output,
+        );
+        assert!(result.is_err(), "unknown-key-profile must exit non-zero");
+        let report: serde_json::Value = read_json(&output).unwrap();
+        assert_eq!(report["status"], "failed");
+        assert!(
+            report["diagnostics"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|diagnostic| diagnostic["code"]
+                    == "rpgmaker.encrypted_media.key_profile.unknown")
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    /// KAIFUU-039 multi-game validation — exercise the proof against
+    /// real RPG Maker MV/MZ media bytes when the engine-research scratch
+    /// directory is populated. Following the "multi-game validation"
+    /// memory rule and the spec's research-only anchor (commercial
+    /// product; no vendored decryption code, no key extraction): the
+    /// test reads, classifies, and emits the redacted readiness report;
+    /// it never decrypts, never extracts, and never claims patch_back
+    /// or script capability on real bytes.
+    ///
+    /// The test no-ops when the real-bytes corpus is not mounted
+    /// (public CI without /scratch/itotori-research/) — the synthetic
+    /// fixtures above are the load-bearing correctness coverage.
+    #[test]
+    fn encrypted_media_proof_command_real_bytes_rpgmaker_corpus_when_available() {
+        let real_root =
+            Path::new("/scratch/itotori-research/rpg-maker-mv-mz/extracted/LustMemory/www");
+        if !real_root.is_dir() {
+            println!("KAIFUU-039 real-bytes corpus not mounted; skipping");
+            return;
+        }
+        let title_asset = real_root.join("img/sv_actors/Actor1_1.rpgmvp");
+        let theme_asset = real_root.join("audio/bgm/Battle1.rpgmvo");
+        let system_json = real_root.join("data/System.json");
+        // If any of the expected real-bytes anchors is missing, no-op
+        // rather than fail public CI.
+        if !title_asset.is_file() || !theme_asset.is_file() || !system_json.is_file() {
+            println!("KAIFUU-039 real-bytes corpus partial; skipping");
+            return;
+        }
+
+        let root = temp_dir("encrypted-media-real-bytes");
+        // The proof's path validator rejects absolute paths so we
+        // materialise a relative game tree by symlinking the real
+        // sub-tree under our fixture-root.
+        let game_dir = root.join("game");
+        fs::create_dir_all(&game_dir).unwrap();
+        let symlink_targets = &[
+            ("data", real_root.join("data")),
+            ("img", real_root.join("img")),
+            ("audio", real_root.join("audio")),
+        ];
+        for (name, target) in symlink_targets {
+            std::os::unix::fs::symlink(target, game_dir.join(name)).unwrap();
+        }
+
+        let fixture_path = root.join("fixture.json");
+        let fixture_body = serde_json::json!({
+            "schemaVersion": "0.1.0",
+            "fixtureId": "kaifuu-real-rpgmaker-lust-memory",
+            "profileId": "019ed000-0000-7000-8000-000000039999",
+            "gameDir": "game",
+            "assets": [
+                {
+                    "assetId": "real-image-mv",
+                    "path": "img/sv_actors/Actor1_1.rpgmvp",
+                    "expectedKind": "image",
+                    "expectedClassification": "encrypted"
+                },
+                {
+                    "assetId": "real-audio-mv",
+                    "path": "audio/bgm/Battle1.rpgmvo",
+                    "expectedKind": "audio",
+                    "expectedClassification": "encrypted"
+                }
+            ],
+            "keyProfile": {
+                "profileId": "rpg-maker-mv-mz-asset-key",
+                "keyRefRequirement": {
+                    "requirementId": "rpg-maker-mv-mz-asset-key",
+                    "secretRef": "local-secret:fixture/rpgmaker/mv-mz-asset-key"
+                }
+            }
+        });
+        fs::write(&fixture_path, fixture_body.to_string()).unwrap();
+
+        let output = root.join("real-bytes-proof.json");
+        // We accept Err — the proof exits non-zero whenever any blocking
+        // diagnostic fires. We assert from the report contents.
+        let _ = run_encrypted_media_proof_cli(&fixture_path, &output);
+
+        let report: serde_json::Value = read_json(&output).unwrap();
+
+        // Load-bearing checks across real bytes:
+        // - decryptedBytesPersisted is always false (no decryption).
+        // - scriptCapabilityClaimed is always false (no script claim).
+        // - patchCapabilityLevel never claims patch_back / extract.
+        assert_eq!(report["decryptedBytesPersisted"], false);
+        assert_eq!(report["scriptCapabilityClaimed"], false);
+        assert_ne!(report["patchCapabilityLevel"], "patch_back");
+        assert_ne!(report["patchCapabilityLevel"], "extract");
+
+        // Every real-bytes encrypted asset must be classified as
+        // `encrypted` and route to `unsupported` patch capability.
+        let assets = report["assets"].as_array().unwrap();
+        let encrypted_assets: Vec<_> = assets
+            .iter()
+            .filter(|asset| asset["classification"] == "encrypted")
+            .collect();
+        assert!(
+            !encrypted_assets.is_empty(),
+            "expected at least one encrypted real-bytes asset"
+        );
+        for asset in &encrypted_assets {
+            assert_eq!(asset["patchCapabilityLevel"], "unsupported");
+            assert_ne!(asset["patchCapabilityLevel"], "patch_back");
+            assert_ne!(asset["patchCapabilityLevel"], "extract");
+        }
+
+        // Absolute real-bytes path must not leak into the report.
+        let serialized = fs::read_to_string(&output).unwrap();
+        assert!(
+            !serialized.contains("/scratch/itotori-research"),
+            "real-bytes absolute path leaked into report: {serialized}",
+        );
+
+        // The encryption key from real-bytes System.json must not leak
+        // into the report (we only emit the proof hash). Real-bytes
+        // LustMemory System.json uses `d41d8cd98f00b204e9800998ecf8427e`
+        // (the MD5 of empty string) as a permissive placeholder — but
+        // any 32-hex token would be unsafe to surface.
+        if let Ok(system_json_text) = fs::read_to_string(&system_json)
+            && let Ok(value) = serde_json::from_str::<serde_json::Value>(&system_json_text)
+            && let Some(real_key) = value.get("encryptionKey").and_then(|v| v.as_str())
+        {
+            assert!(
+                !serialized.contains(real_key),
+                "raw real-bytes System.json key leaked into report",
+            );
+        }
+
+        println!("KAIFUU-039 real-bytes corpus exercised LustMemory");
         let _ = fs::remove_dir_all(root);
     }
 }

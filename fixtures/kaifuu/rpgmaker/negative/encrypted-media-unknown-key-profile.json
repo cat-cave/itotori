@@ -1,0 +1,22 @@
+{
+  "schemaVersion": "0.1.0",
+  "fixtureId": "kaifuu-rpgmaker-encrypted-media-unknown-key-profile-negative",
+  "profileId": "019ed000-0000-7000-8000-000000039006",
+  "gameDir": "game",
+  "assets": [
+    {
+      "assetId": "malformed-image-mv",
+      "path": "img/pictures/malformed.rpgmvp",
+      "expectedKind": "image",
+      "expectedClassification": "encrypted"
+    }
+  ],
+  "keyProfile": {
+    "profileId": "this-key-profile-is-not-in-the-vocabulary",
+    "expectedSystemJsonKeyHash": "sha256:5947d7c33d783f94b3b4c1a96ebc8991ed28f1b069b71e03376cba8caa98a720",
+    "keyRefRequirement": {
+      "requirementId": "rpg-maker-mv-mz-asset-key",
+      "secretRef": "local-secret:fixture/rpgmaker/mv-mz-asset-key"
+    }
+  }
+}

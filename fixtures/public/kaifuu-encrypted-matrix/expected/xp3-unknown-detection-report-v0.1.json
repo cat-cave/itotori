@@ -697,14 +697,14 @@
           },
           {
             "evidenceType": "file_extension",
-            "pattern": "*.rpgmvp|*.rpgmvm|*.rpgmvo|*.png_|*.m4a_|*.ogg_",
+            "pattern": "*.rpgmvp|*.rpgmvm|*.rpgmvo|*.rpgmvu|*.png_|*.m4a_|*.ogg_",
             "status": "missing",
             "count": 0,
             "detail": "RPG Maker MV/MZ encrypted asset extension count"
           },
           {
             "evidenceType": "file_extension",
-            "pattern": "*.rpgmvu|*.webp_",
+            "pattern": "*.webp_",
             "status": "missing",
             "count": 0,
             "detail": "RPG Maker-like encrypted asset suffixes without a known codec/key mapping"
