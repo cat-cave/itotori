@@ -1244,6 +1244,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "utsushi-siglus"
+version = "0.0.0"
+dependencies = [
+ "utsushi-core",
+ "utsushi-reallive",
+]
+
+[[package]]
 name = "uuid"
 version = "1.23.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"

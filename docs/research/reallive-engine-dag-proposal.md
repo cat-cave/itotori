@@ -747,8 +747,10 @@ sample 46` and emits `AudioEvent { kind: VoicePlay, archive_id:
 - **Synthetic fixture acceptable** (this is a documentation +
   conformance-pin node).
 - **Dependencies:** UTSUSHI-146u, UTSUSHI-147 (declared but planned).
-- **Verification:** `cargo test -p utsushi-reallive cross_engine_facade_only_imports`,
-  `just check`.
+- **Verification:** `cargo test -p utsushi-siglus --test cross_engine_substrate_alignment`,
+  `just check`. (UTSUSHI-147 promoted the inline scaffold into the
+  `utsushi-siglus` sibling crate; the cross-engine fixture lives there
+  now.)
 - **Audit focus:** "reusable" claims that haven't been proven against a
   Siglus prototype; lineage notes that just repeat marketing instead of
   documenting actual code reuse points.
