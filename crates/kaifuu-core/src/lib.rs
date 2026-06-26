@@ -5435,13 +5435,14 @@ fn siglus_parser_boundary_key_refs(
 // fixture declares (and rejects absolute / traversal paths up front).
 
 pub const XP3_PROFILE_PROOF_SCHEMA_VERSION: &str = "0.1.0";
-pub const XP3_PROFILE_PROOF_SUPPORT_BOUNDARY: &str = "KiriKiri XP3 profile proof scoped to plain XP3 as the claimed-support concern (detect / extract / patch_back); encrypted, helper-required, and unsupported-protected-executable cases are routing diagnostics only and never claim extract or patch_back.";
+pub const XP3_PROFILE_PROOF_SUPPORT_BOUNDARY: &str = "KiriKiri XP3 profile proof scoped to plain XP3 as the claimed-support concern (detect / extract / patch_back); encrypted, compressed, helper-required, and unsupported-protected-executable cases are routing diagnostics only and never claim extract or patch_back.";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Xp3ProfileClassification {
     Plain,
     Encrypted,
+    Compressed,
     HelperRequired,
     UnsupportedProtectedExecutable,
 }
@@ -5451,6 +5452,7 @@ impl Xp3ProfileClassification {
         match self {
             Self::Plain => "plain",
             Self::Encrypted => "encrypted",
+            Self::Compressed => "compressed",
             Self::HelperRequired => "helper_required",
             Self::UnsupportedProtectedExecutable => "unsupported_protected_executable",
         }
@@ -5735,13 +5737,13 @@ const XP3_HEADER_MAGIC: &[u8] = b"XP3\r\n";
 ///   `patch_capability_level` is `patch_back`. The report carries the
 ///   entry count from `read_plain_xp3_inventory`. This is the only
 ///   variant for which `patch_back` is a valid claim.
-/// - `encrypted` / `helper_required`: archive bytes start with the
+/// - `encrypted` / `compressed` / `helper_required`: archive bytes start with the
 ///   `XP3\r\n` magic but [`read_plain_xp3_inventory`] reports
 ///   `UnsupportedEncrypted` (the legacy KAIFUU-095 detector marker, used
 ///   for synthetic fixtures) or the declared classification routes the
 ///   case there. The proof claims **no** `extract` / `patch_back`
 ///   capability — `patch_capability_level` is forced to `Unsupported` in
-///   the report, and a typed diagnostic with the encrypted /
+///   the report, and a typed diagnostic with the encrypted / packed /
 ///   helper-required semantic code fires before any extract is attempted.
 /// - `unsupported_protected_executable`: archive bytes do not start with
 ///   the XP3 magic at all (e.g. a protected-executable container). The
@@ -5914,7 +5916,7 @@ pub fn xp3_profile_proof(
         _ => Xp3HelperRequirement::NotRequired,
     };
 
-    // Encrypted / helper-required / unsupported-protected-executable
+    // Encrypted / compressed / helper-required / unsupported-protected-executable
     // routing. Each variant emits a typed diagnostic naming the semantic
     // code and forces `patch_capability_level` to `Unsupported` — the
     // proof never claims extract or patch_back for these cases
@@ -5936,6 +5938,22 @@ pub fn xp3_profile_proof(
                     "encrypted XP3 archive routed to diagnostics; no decryption capability claimed"
                         .to_string(),
                 semantic_code: Some(SEMANTIC_UNSUPPORTED_VARIANT_ENCRYPTED.to_string()),
+                remediation: routing_remediation.clone(),
+            });
+        }
+        Xp3ProfileClassification::Compressed => {
+            patch_capability_level = Xp3PatchCapabilityLevel::Unsupported;
+            routing_remediation = Some(
+                "compressed XP3 is routed for diagnostics only; KAIFUU-098 makes no decompression, extraction, or patch-back claim".to_string(),
+            );
+            diagnostics.push(Xp3ProfileProofDiagnostic {
+                code: "xp3.compressed.unsupported".to_string(),
+                severity: PartialDiagnosticSeverity::P1,
+                field: "classification".to_string(),
+                message:
+                    "compressed XP3 archive routed to diagnostics; no decompression capability claimed"
+                        .to_string(),
+                semantic_code: Some(SEMANTIC_UNSUPPORTED_VARIANT_PACKED.to_string()),
                 remediation: routing_remediation.clone(),
             });
         }
@@ -6066,6 +6084,9 @@ fn classify_xp3_bytes(bytes: &[u8]) -> Option<Xp3ProfileClassification> {
         // real bytes without an explicit fixture annotation.
         let marker_window =
             String::from_utf8_lossy(&bytes[..bytes.len().min(128)]).to_ascii_lowercase();
+        if marker_window.contains("xp3-compressed") {
+            return Some(Xp3ProfileClassification::Compressed);
+        }
         if marker_window.contains("xp3-helper-required") {
             return Some(Xp3ProfileClassification::HelperRequired);
         }
@@ -6081,6 +6102,7 @@ fn evaluate_xp3_crypt_profile(
 ) -> Xp3ProfileProofCryptProfile {
     match (classification, crypt_profile) {
         (Xp3ProfileClassification::Plain, _)
+        | (Xp3ProfileClassification::Compressed, _)
         | (Xp3ProfileClassification::UnsupportedProtectedExecutable, _) => {
             Xp3ProfileProofCryptProfile {
                 status: Xp3CryptProfileStatus::NotRequired,
@@ -15920,7 +15942,7 @@ pub fn read_plain_xp3_inventory(bytes: &[u8]) -> Result<PlainXp3Inventory, Plain
 //
 // The KAIFUU-098 writer covers the WRITE side of the plain-XP3 patch-back
 // claim. KAIFUU-038 established the read-side classification (plain /
-// encrypted / helper-required / unsupported-protected-executable) and
+// encrypted / compressed / helper-required / unsupported-protected-executable) and
 // scoped patch_back to plain XP3 only. KAIFUU-098 adds the
 // `archive_rebuild_plain` write surface: take a source-fidelity manifest
 // of a plain XP3 archive (entry order, per-segment metadata, stored
@@ -16090,6 +16112,10 @@ pub enum PlainXp3WriterError {
     /// to surface an unpack/repack path and forwards the
     /// `kaifuu.unsupported_variant.encrypted` semantic code.
     UnsupportedEncrypted,
+    /// The source bytes carry compressed/packed XP3 markers. The writer
+    /// refuses to surface an unpack/repack path and forwards the
+    /// `kaifuu.unsupported_variant.packed` semantic code.
+    UnsupportedCompressed,
     /// The source bytes carry helper-required markers. The writer
     /// refuses to surface an unpack/repack path and forwards the
     /// `kaifuu.helper_required` semantic code.
@@ -16128,6 +16154,9 @@ impl fmt::Display for PlainXp3WriterError {
             Self::UnsupportedEncrypted => formatter.write_str(
                 "encrypted XP3 archives are not writable by the plain-XP3 writer (semantic: kaifuu.unsupported_variant.encrypted)",
             ),
+            Self::UnsupportedCompressed => formatter.write_str(
+                "compressed XP3 archives are not writable by the plain-XP3 writer (semantic: kaifuu.unsupported_variant.packed)",
+            ),
             Self::UnsupportedHelperRequired => formatter.write_str(
                 "helper-required XP3 archives are not writable by the plain-XP3 writer (semantic: kaifuu.helper_required)",
             ),
@@ -16165,6 +16194,7 @@ impl PlainXp3WriterError {
     pub fn semantic_code(&self) -> &'static str {
         match self {
             Self::UnsupportedEncrypted => SEMANTIC_UNSUPPORTED_VARIANT_ENCRYPTED,
+            Self::UnsupportedCompressed => SEMANTIC_UNSUPPORTED_VARIANT_PACKED,
             Self::UnsupportedHelperRequired => SEMANTIC_HELPER_REQUIRED,
             Self::UnsupportedProtectedExecutable => SEMANTIC_PROTECTED_EXECUTABLE_UNSUPPORTED,
             Self::UnsupportedVariant(_) => SEMANTIC_UNSUPPORTED_ENGINE_VARIANT,
@@ -16187,13 +16217,16 @@ pub const PLAIN_XP3_MANIFEST_SCHEMA_VERSION: &str = "0.1.0";
 /// Read a plain XP3 archive into a source-fidelity [`PlainXp3Archive`]
 /// suitable for byte-identical rebuild.
 ///
-/// Refuses encrypted / helper-required / protected-executable inputs
+/// Refuses encrypted / compressed / helper-required / protected-executable inputs
 /// before exposing any write surface — callers can rely on the
 /// `Unsupported*` errors to gate downstream patch-back claims.
 pub fn read_plain_xp3_archive(bytes: &[u8]) -> Result<PlainXp3Archive, PlainXp3WriterError> {
     if !bytes.starts_with(XP3_PLAIN_MAGIC) {
         if has_legacy_xp3_encrypted_marker(bytes) {
             return Err(PlainXp3WriterError::UnsupportedEncrypted);
+        }
+        if has_legacy_xp3_compressed_marker(bytes) {
+            return Err(PlainXp3WriterError::UnsupportedCompressed);
         }
         if has_legacy_xp3_helper_required_marker(bytes) {
             return Err(PlainXp3WriterError::UnsupportedHelperRequired);
@@ -16342,6 +16375,16 @@ fn has_legacy_xp3_helper_required_marker(bytes: &[u8]) -> bool {
     let marker_region = &bytes[..bytes.len().min(128)];
     header_contains_ascii(marker_region, "XP3-HELPER-REQUIRED")
         || header_contains_ascii(marker_region, "kaifuu-xp3-helper-required")
+}
+
+/// Detect the compressed/packed marker the KAIFUU-038 classifier emits.
+fn has_legacy_xp3_compressed_marker(bytes: &[u8]) -> bool {
+    if !bytes.starts_with(b"XP3\r\n") {
+        return false;
+    }
+    let marker_region = &bytes[..bytes.len().min(128)];
+    header_contains_ascii(marker_region, "XP3-COMPRESSED")
+        || header_contains_ascii(marker_region, "kaifuu-xp3-compressed")
 }
 
 /// Encode a [`PlainXp3Archive`] to a deterministic XP3 byte stream.
@@ -16519,7 +16562,7 @@ pub struct PlainXp3DirectoryManifestEntry {
 ///   entry, where `<index>` is the entry's zero-padded source-order
 ///   index and `<flat-path>` replaces slashes with `__`.
 ///
-/// Refuses non-plain XP3 bytes (encrypted, helper-required, or unknown
+/// Refuses non-plain XP3 bytes (encrypted, compressed, helper-required, or unknown
 /// containers) **before** writing any file under `dir`. The directory
 /// is created if missing.
 pub fn unpack_plain_xp3_to_directory(
@@ -16575,7 +16618,7 @@ pub fn unpack_plain_xp3_to_directory(
 ///
 /// The directory's `manifest.json` is parsed; each entry's payload is
 /// loaded from the manifest-declared relative path. The writer refuses
-/// non-`plain` variants (encrypted / helper-required / unknown) with the
+/// non-`plain` variants (encrypted / compressed / helper-required / unknown) with the
 /// matching semantic diagnostic. Compressed entries are passed through
 /// when their payload length still matches the recorded `archive_size`;
 /// a length mismatch on a compressed entry triggers
@@ -19375,6 +19418,33 @@ mod tests {
         assert!(
             !target_dir.exists(),
             "encrypted unpack must not create the target directory"
+        );
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn read_plain_xp3_archive_refuses_compressed_profile_with_packed_semantic_diagnostic() {
+        // Acceptance criterion: "... compressed-unknown ... profiles
+        // fail before writes with semantic diagnostics."
+        let compressed_bytes = b"XP3\r\nXP3-COMPRESSED\nkaifuu-xp3-compressed fixture\n";
+        let error = read_plain_xp3_archive(compressed_bytes).unwrap_err();
+        assert_eq!(error, PlainXp3WriterError::UnsupportedCompressed);
+        assert_eq!(error.semantic_code(), SEMANTIC_UNSUPPORTED_VARIANT_PACKED);
+        assert!(
+            error
+                .to_string()
+                .contains(SEMANTIC_UNSUPPORTED_VARIANT_PACKED),
+            "compressed-profile refusal must surface kaifuu.unsupported_variant.packed"
+        );
+
+        // Unpack must refuse before creating the target directory.
+        let dir = temp_dir("kaifuu-098-compressed-refusal");
+        let target_dir = dir.join("unpacked");
+        let error = unpack_plain_xp3_to_directory(compressed_bytes, &target_dir).unwrap_err();
+        assert_eq!(error, PlainXp3WriterError::UnsupportedCompressed);
+        assert!(
+            !target_dir.exists(),
+            "compressed unpack must not create the target directory"
         );
         let _ = fs::remove_dir_all(&dir);
     }
@@ -25192,6 +25262,10 @@ printf launched > '{}'
             .to_vec()
     }
 
+    fn build_compressed_xp3_marker_archive_bytes() -> Vec<u8> {
+        b"XP3\r\nXP3-COMPRESSED\nkaifuu-xp3-compressed synthetic routing fixture\n".to_vec()
+    }
+
     fn build_protected_executable_bytes() -> Vec<u8> {
         b"MZ\x90\0\x03\0\0\0PROTECTED-EXECUTABLE-FIXTURE\n".to_vec()
     }
@@ -25235,11 +25309,26 @@ printf launched > '{}'
         }
     }
 
+    fn make_compressed_fixture(archive_name: &str) -> Xp3ProfileProofFixture {
+        Xp3ProfileProofFixture {
+            schema_version: XP3_PROFILE_PROOF_SCHEMA_VERSION.to_string(),
+            fixture_id: "kaifuu-kirikiri-xp3-compressed-profile-proof".to_string(),
+            profile_id: "019ed000-0000-7000-8000-000000095003".to_string(),
+            archive: Xp3ProfileProofFixtureArchive {
+                archive_id: "kirikiri-xp3-archive".to_string(),
+                path: archive_name.to_string(),
+            },
+            expected_classification: Xp3ProfileClassification::Compressed,
+            patch_capability_level: Xp3PatchCapabilityLevel::Unsupported,
+            crypt_profile: None,
+        }
+    }
+
     #[test]
     fn xp3_profile_proof_distinct_outcomes_for_each_variant() {
-        // Acceptance criterion: "Plain XP3, encrypted XP3, helper-required
-        // XP3, and protected executable cases produce distinct capability
-        // outcomes."
+        // Acceptance criterion: "Plain XP3, encrypted XP3, compressed
+        // XP3, helper-required XP3, and protected executable cases
+        // produce distinct capability outcomes."
         let dir = temp_dir("xp3-profile-proof-distinct");
 
         write_xp3_archive(&dir, "plain.xp3", &build_plain_xp3_archive_bytes());
@@ -25247,6 +25336,11 @@ printf launched > '{}'
             &dir,
             "encrypted.xp3",
             &build_encrypted_xp3_marker_archive_bytes(),
+        );
+        write_xp3_archive(
+            &dir,
+            "compressed.xp3",
+            &build_compressed_xp3_marker_archive_bytes(),
         );
         write_xp3_archive(
             &dir,
@@ -25313,6 +25407,34 @@ printf launched > '{}'
                     && diagnostic.semantic_code.as_deref()
                         == Some(SEMANTIC_UNSUPPORTED_VARIANT_ENCRYPTED))
         );
+
+        let compressed_report = xp3_profile_proof(Xp3ProfileProofRequest {
+            fixture: &make_compressed_fixture("compressed.xp3"),
+            fixture_dir: &dir,
+        })
+        .unwrap();
+        assert_eq!(
+            compressed_report.classification,
+            Xp3ProfileClassification::Compressed
+        );
+        assert_eq!(
+            compressed_report.patch_capability_level,
+            Xp3PatchCapabilityLevel::Unsupported
+        );
+        assert_eq!(
+            compressed_report.helper_requirement,
+            Xp3HelperRequirement::NotRequired
+        );
+        assert_eq!(compressed_report.archive.entry_count, None);
+        assert!(!compressed_report.patch_write_attempted);
+        assert_eq!(
+            compressed_report.crypt_profile.status,
+            Xp3CryptProfileStatus::NotRequired
+        );
+        assert!(compressed_report.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "xp3.compressed.unsupported"
+                && diagnostic.semantic_code.as_deref() == Some(SEMANTIC_UNSUPPORTED_VARIANT_PACKED)
+        }));
 
         let mut helper_fixture = make_encrypted_fixture("helper-required.xp3");
         helper_fixture.fixture_id = "kaifuu-kirikiri-xp3-helper-required-profile-proof".to_string();
@@ -25383,10 +25505,14 @@ printf launched > '{}'
                             == Some(SEMANTIC_PROTECTED_EXECUTABLE_UNSUPPORTED)
                 )
         );
-        // Exactly the four classifications cover distinct outcomes.
+        // The routed classifications cover distinct outcomes.
         assert_ne!(plain_report.classification, encrypted_report.classification);
         assert_ne!(
             encrypted_report.classification,
+            compressed_report.classification
+        );
+        assert_ne!(
+            compressed_report.classification,
             helper_report.classification
         );
         assert_ne!(
