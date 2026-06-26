@@ -110,7 +110,65 @@ instead of family-specific key requirements.
 `profile init` writes stable JSON profiles. The legacy `profile <game-dir>` form
 is compatibility-only and delegates to the same validation, redaction, and atomic
 write gate. Profiles include assets, capability reports, and explicit
-requirements for files, platform constraints, and secret keys. Secret
+requirements for files, platform constraints, and secret keys.
+
+### Partial extract / profile / verify (KAIFUU-193)
+
+`extract`, `profile`, and `verify` no longer fail closed with `"no registered
+adapter detected"` when an adapter reports `detected == false` but accumulated
+nonzero `EvidenceStatus::Matched` rows. They take a partial path that emits a
+`PartialAdapterReport` JSON envelope (`schemaVersion: "0.1.0"`) summarising
+what bytes WERE recovered, which adapter refusals fired, and at which
+severity.
+
+```json
+{
+  "schemaVersion": "0.1.0",
+  "adapterId": "kaifuu.reallive",
+  "detected": false,
+  "partial": true,
+  "detectedVariant": "unknown-reallive-named-files",
+  "command": "extract",
+  "evidence": [
+    /* same DetectionEvidence rows as `detect` */
+  ],
+  "diagnostics": [
+    {
+      "code": "kaifuu.reallive.partial.gameexe_key_catalogue_mismatch",
+      "severity": "P2",
+      "message": "Gameexe.ini key catalogue mismatch: ...",
+      "assetRef": "Gameexe.ini"
+    }
+  ],
+  "severityCounts": { "p0": 0, "p1": 0, "p2": 1, "p3": 0 },
+  "inventory": {
+    "entries": 3,
+    "sources": ["REALLIVEDATA/SEEN.TXT"],
+    "sourceBundleHash": "..."
+  }
+}
+```
+
+The `partial == true` and `detected == false` fields are always serialized so
+downstream ingestion (`apply` / `verify` / the dashboard) can distinguish a
+partial run from a complete one without inferring it from missing keys. The
+diagnostic severity routes the `verify` exit code: P0/P1 are blocking (verify
+exits 1), P2/P3 are informational (verify exits 0 even with diagnostics
+attached). `apply` MUST refuse to ingest any envelope whose `partial` field
+is `true`.
+
+For the RealLive adapter, the partial extractor parses `REALLIVEDATA/Seen.txt`
+through `kaifuu_reallive::parse_archive` directly, counts populated scene-index
+entries, classifies Gameexe.ini key-catalogue mismatch as P2, and surfaces
+SEEN.TXT envelope failures (truncation, malformed directory) as P0. Adapter
+families without an engine-specific partial extractor emit a generic envelope
+carrying the recovered evidence plus a single P2 diagnostic noting the missing
+partial path. The regression test
+(`crates/kaifuu-cli/tests/partial_extract.rs`) covers extract, profile, and
+both verify exit-code paths against a synthetic SEEN.TXT envelope that mirrors
+Sweetie HD's `parse_archive` success + Gameexe.ini key mismatch.
+
+Secret
 requirements use placeholders only; actual secret values must stay out of
 profile files. The fixture engine marks decryption keys as `not_required`, so
 missing-key handling does not block unencrypted games.
