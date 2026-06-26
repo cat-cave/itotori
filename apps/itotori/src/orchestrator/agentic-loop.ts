@@ -36,7 +36,7 @@ import {
   type AgenticLoopStageRecord,
   type LocalizationUnitV02,
   type QaFinding,
-  type StagePostureV02,
+  type StagePostureV03,
 } from "@itotori/localization-bridge-schema";
 import { SpeakerLabelAgent } from "../agents/speaker-label/agent.js";
 import {
@@ -76,16 +76,17 @@ import { assertBilledCost } from "../providers/cost.js";
 // ---------------------------------------------------------------------------
 
 /**
- * ITOTORI-234 — A single stage / agent's full posture: pinned
- * (modelId, providerId) pair + ZDR posture + fallback list + seed +
- * USD cap. Every invocation carries the seed + zdr + pair fields onto
- * the bundle so audit can prove the orchestrator never defaulted.
+ * ITOTORI-234 / ITOTORI-238 — A single stage / agent's full posture:
+ * pinned (modelId, providerId) pair + ZDR posture + fallback list +
+ * seed + USD cap. Every invocation carries the seed + zdr + pair
+ * fields onto the bundle so audit can prove the orchestrator never
+ * defaulted.
  *
  * The orchestrator never constructs these — callers build them from
- * the parsed v0.2 pair-policy (`parsePairPolicyV02` resolves every
+ * the parsed v0.3 pair-policy (`parsePairPolicyV03` resolves every
  * defaulted field) and pass them in.
  */
-export type PairChoice = StagePostureV02;
+export type PairChoice = StagePostureV03;
 
 /**
  * Per-stage pair policy. Every stage that issues at least one LLM
@@ -125,7 +126,7 @@ import { DEV_PAIR } from "../providers/dev-pair.js";
 import { deriveDefaultSeed } from "@itotori/localization-bridge-schema";
 
 /**
- * Build a `PairChoice` (== `StagePostureV02`) keyed to `DEV_PAIR` with
+ * Build a `PairChoice` (== `StagePostureV03`) keyed to `DEV_PAIR` with
  * the canonical alpha posture: `zdr: true`, no fallbacks, a
  * deterministic seed derived from the leaf path, and a single-stage
  * cost cap (DEV-only — production callers feed the parsed v0.2 policy
@@ -151,7 +152,7 @@ function devPosture(leafPath: string): PairChoice {
  * per-stage seeds, dev-mode USD caps). Used by the smoke command and
  * the orchestrator's test suite so a single import drops in a complete
  * policy. Production callers build their own policy via
- * `parsePairPolicyV02` and pass it explicitly.
+ * `parsePairPolicyV03` and pass it explicitly.
  */
 export const DEV_POLICY: PairPolicy = {
   context: {

@@ -19,7 +19,7 @@ import type { AuthorizationActor } from "@itotori/db";
 import {
   assertAgenticLoopBundle,
   assertDraftArtifactBundle,
-  parsePairPolicyV02,
+  parsePairPolicyV03,
   DRAFT_ARTIFACT_BUNDLE_SCHEMA_VERSION,
   type AgenticLoopBundle,
   type BridgeBundleV02,
@@ -253,11 +253,12 @@ function assertBridgeBundleV02(value: unknown): BridgeBundleV02 {
 }
 
 function assertPairPolicy(value: unknown): PairPolicy {
-  // ITOTORI-234 — smoke command parses the v0.2 pair-policy through the
-  // shared parser so per-stage posture (zdr / fallback / seed) is
-  // resolved deterministically. The smoke fixture is a v0.2 file; old
-  // v0.1 fixtures are no longer accepted (PairPolicyVersionMismatchError).
-  const parsed = parsePairPolicyV02(value, {
+  // ITOTORI-234 / ITOTORI-238 — smoke command parses the v0.3 pair-
+  // policy through the shared parser so per-stage posture (zdr /
+  // fallback / seed) is resolved deterministically. The smoke fixture
+  // is a v0.3 file; v0.1 and v0.2 fixtures are no longer accepted
+  // (PairPolicyVersionMismatchError).
+  const parsed = parsePairPolicyV03(value, {
     defaultCostCapUsd: DEFAULT_COST_CAP_USD,
     zdrDowngradeEnv: process.env.OPENROUTER_ZDR_DOWNGRADE,
   });

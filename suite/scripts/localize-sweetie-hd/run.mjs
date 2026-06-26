@@ -206,16 +206,16 @@ function loadPairPolicy() {
   if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
     throw new Error(`pair-policy at ${PAIR_POLICY_PATH} must be a JSON object`);
   }
-  // ITOTORI-234 — v0.2 forcing function: reject v0.1 / absent schema
-  // version inputs at the driver boundary. Mirrors the typed
-  // PairPolicyVersionMismatchError thrown by the TS parser; we keep
-  // this duplicate gate inline because the driver is plain Node JS
-  // (no TS imports) and needs to fail fast BEFORE forking the stage
-  // command.
-  const EXPECTED_SCHEMA = "itotori.pair-policy.v0.2";
+  // ITOTORI-234 / ITOTORI-238 — v0.3 forcing function: reject v0.1 /
+  // v0.2 / absent schema version inputs at the driver boundary.
+  // Mirrors the typed PairPolicyVersionMismatchError thrown by the TS
+  // parser; we keep this duplicate gate inline because the driver is
+  // plain Node JS (no TS imports) and needs to fail fast BEFORE
+  // forking the stage command.
+  const EXPECTED_SCHEMA = "itotori.pair-policy.v0.3";
   if (parsed.schemaVersion !== EXPECTED_SCHEMA) {
     throw new Error(
-      `pair-policy at ${PAIR_POLICY_PATH} has schemaVersion='${String(parsed.schemaVersion)}'; expected '${EXPECTED_SCHEMA}' (v0.1 files are no longer accepted — ITOTORI-234 no-legacy-compat)`,
+      `pair-policy at ${PAIR_POLICY_PATH} has schemaVersion='${String(parsed.schemaVersion)}'; expected '${EXPECTED_SCHEMA}' (v0.1 and v0.2 files are no longer accepted — ITOTORI-238 no-legacy-compat)`,
     );
   }
   const requiredKeys = ["policyId", "pair", "enUsSentinel", "sceneId", "stages"];
@@ -227,8 +227,8 @@ function loadPairPolicy() {
   return parsed;
 }
 
-// ITOTORI-234 — deterministic seed derivation matching
-// packages/localization-bridge-schema/src/pair-policy.v0.2.ts
+// ITOTORI-234 / ITOTORI-238 — deterministic seed derivation matching
+// packages/localization-bridge-schema/src/pair-policy.v0.3.ts
 // (`deriveDefaultSeed`). Duplicated inline because the driver does not
 // import TS code.
 function deriveDefaultSeed(leafPath) {
@@ -236,8 +236,8 @@ function deriveDefaultSeed(leafPath) {
   return Number.parseInt(hex, 16);
 }
 
-// Flatten the v0.2 stage tree into (leafPath, posture) tuples mirroring
-// `flattenPairPolicyV02Postures` in the schema package.
+// Flatten the v0.3 stage tree into (leafPath, posture) tuples mirroring
+// `flattenPairPolicyV03Postures` in the schema package.
 function flattenPostures(policy) {
   const out = [];
   const groups = [
