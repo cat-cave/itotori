@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "exported_at": "2026-06-26T20:47:57.899Z",
+  "exported_at": "2026-06-26T21:05:36.687Z",
   "registries": {
     "groups": [
       {
@@ -28183,7 +28183,7 @@
       "title": "Register every pair-policy alternate capabilitySheet into globalCapabilityGuard so descriptorForPair returns supported",
       "kind": "feature",
       "milestone": null,
-      "status": "claimed",
+      "status": "mergeable",
       "priority": "P1",
       "estimate_points": 1,
       "risk": "medium",
@@ -28194,11 +28194,11 @@
       "validation": null,
       "context": null,
       "created_at": "2026-06-26T17:41:25.038Z",
-      "updated_at": "2026-06-26T20:47:53.993Z",
-      "claimed_at": "2026-06-26T20:47:53.993Z",
+      "updated_at": "2026-06-26T21:05:33.469Z",
+      "claimed_at": "2026-06-26T20:59:44.875Z",
       "done_at": null,
       "group_name": null,
-      "status_reason": "[2026-06-26T20:34:21.546Z] 2026-06-26 orchestration note: two qd check attempts failed because repo qd config still pointed check-command at just check, and just check still invokes legacy scripts/spec-dag*.mjs validators against the qd-export-shaped roadmap/spec-dag.json. Focused ITOTORI-240 test passed separately. Updated qd check-command to the same broad local preflight minus obsolete spec-dag validators; larger docs/tooling cleanup remains ITOTORI-300.\n[2026-06-26T20:38:25.673Z] 2026-06-26 verification: focused subagent audit found no blocking findings. Checks: pnpm --filter @itotori/app test test/localize-sweetie-hd-stage.test.ts (23 passed), pnpm --filter @itotori/app typecheck (passed), git diff --check main...HEAD (passed). qd check run passed after check-command was corrected to enter nix develop; log .qd/logs/check-ITOTORI-240-2026-06-26T20-36-09-755Z.log.",
+      "status_reason": "[2026-06-26T20:34:21.546Z] 2026-06-26 orchestration note: two qd check attempts failed because repo qd config still pointed check-command at just check, and just check still invokes legacy scripts/spec-dag*.mjs validators against the qd-export-shaped roadmap/spec-dag.json. Focused ITOTORI-240 test passed separately. Updated qd check-command to the same broad local preflight minus obsolete spec-dag validators; larger docs/tooling cleanup remains ITOTORI-300.\n[2026-06-26T20:38:25.673Z] 2026-06-26 verification: focused subagent audit found no blocking findings. Checks: pnpm --filter @itotori/app test test/localize-sweetie-hd-stage.test.ts (23 passed), pnpm --filter @itotori/app typecheck (passed), git diff --check main...HEAD (passed). qd check run passed after check-command was corrected to enter nix develop; log .qd/logs/check-ITOTORI-240-2026-06-26T20-36-09-755Z.log.\n[2026-06-26T20:53:44.688Z] 2026-06-26 integration CI attempt on branch integration/itotori-240-verify failed in packages/itotori-db/test/catalog-recorded-importers.test.ts: CATALOG-011 spec text guard regex expects camelCase auditFocus, but current qd export uses snake_case audit_focus. CATALOG-011 node/spec text is present in qd and roadmap export. Assigned narrow test compatibility fix; not an ITOTORI-240 feature regression.\n[2026-06-26T21:05:33.469Z] 2026-06-26 integration verification passed on branch integration/itotori-240-verify at commit 84838a4: qd check run passed (.qd/logs/check-ITOTORI-240-2026-06-26T20-59-53-773Z.log) and full qd CI passed (.qd/logs/ci-ITOTORI-240-2026-06-26T21-00-26-076Z.log). qd marked node mergeable. main remains unmodified pending explicit merge approval.",
       "check_command": null,
       "ci_command": null,
       "projects": ["itotori"],
@@ -40394,6 +40394,66 @@
       "finished_at": "2026-06-26T20:47:21.968Z",
       "summary": "check command failed: nix develop --command bash -lc 'pnpm exec vp check && node scripts/audit-no-hardcoded-cost.mjs && just fixtures-validate && just impl-map-schema-validate && node scripts/verify-toolchain-policy.mjs && pnpm exec vp run ts:typecheck && cargo fmt --check && cargo check --workspace'",
       "log_path": "/home/trevor/projects/itotori/.qd/logs/check-ITOTORI-240-2026-06-26T20-47-17-542Z.log"
+    },
+    {
+      "id": "caa4b5d4-da4b-46ac-baa7-858bac833af7",
+      "node_id": "ITOTORI-240",
+      "kind": "check",
+      "status": "passed",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-26T20:48:32.362Z",
+      "finished_at": "2026-06-26T20:48:58.795Z",
+      "summary": "check command passed: nix develop --command bash -lc 'pnpm exec vp check && node scripts/audit-no-hardcoded-cost.mjs && just fixtures-validate && just impl-map-schema-validate && node scripts/verify-toolchain-policy.mjs && pnpm exec vp run ts:typecheck && cargo fmt --check && cargo check --workspace'",
+      "log_path": "/home/trevor/projects/itotori/.qd/logs/check-ITOTORI-240-2026-06-26T20-48-32-362Z.log"
+    },
+    {
+      "id": "2aff57fd-f324-43b5-a086-c699fa1f0e03",
+      "node_id": "ITOTORI-240",
+      "kind": "ci",
+      "status": "failed",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-26T20:49:11.669Z",
+      "finished_at": "2026-06-26T20:52:52.902Z",
+      "summary": "ci command failed: nix develop --command bash -lc 'pnpm exec vp check && node scripts/audit-no-hardcoded-cost.mjs && just fixtures-validate && just impl-map-schema-validate && node scripts/verify-toolchain-policy.mjs && pnpm exec vp run ts:typecheck && cargo fmt --check && cargo check --workspace && just build && just db-migrate && just test && cargo clippy --workspace --all-targets --all-features -- -D warnings && cargo deny check'",
+      "log_path": "/home/trevor/projects/itotori/.qd/logs/ci-ITOTORI-240-2026-06-26T20-49-11-669Z.log"
+    },
+    {
+      "id": "b318a130-f295-412b-a558-966548797c5b",
+      "node_id": "ITOTORI-240",
+      "kind": "ci",
+      "status": "failed",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-26T20:57:00.181Z",
+      "finished_at": "2026-06-26T20:57:04.656Z",
+      "summary": "ci command failed: nix develop --command bash -lc 'pnpm exec vp check && node scripts/audit-no-hardcoded-cost.mjs && just fixtures-validate && just impl-map-schema-validate && node scripts/verify-toolchain-policy.mjs && pnpm exec vp run ts:typecheck && cargo fmt --check && cargo check --workspace && just build && just db-migrate && just test && cargo clippy --workspace --all-targets --all-features -- -D warnings && cargo deny check'",
+      "log_path": "/home/trevor/projects/itotori/.qd/logs/ci-ITOTORI-240-2026-06-26T20-57-00-181Z.log"
+    },
+    {
+      "id": "b526600a-7b22-40fa-aff6-066a4ba47cba",
+      "node_id": "ITOTORI-240",
+      "kind": "check",
+      "status": "passed",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-26T20:59:53.773Z",
+      "finished_at": "2026-06-26T21:00:15.978Z",
+      "summary": "check command passed: nix develop --command bash -lc 'pnpm exec vp check && node scripts/audit-no-hardcoded-cost.mjs && just fixtures-validate && just impl-map-schema-validate && node scripts/verify-toolchain-policy.mjs && pnpm exec vp run ts:typecheck && cargo fmt --check && cargo check --workspace'",
+      "log_path": "/home/trevor/projects/itotori/.qd/logs/check-ITOTORI-240-2026-06-26T20-59-53-773Z.log"
+    },
+    {
+      "id": "d508d79f-9219-4684-8932-34e75f95b5bc",
+      "node_id": "ITOTORI-240",
+      "kind": "ci",
+      "status": "passed",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-26T21:00:26.076Z",
+      "finished_at": "2026-06-26T21:05:22.407Z",
+      "summary": "ci command passed: nix develop --command bash -lc 'pnpm exec vp check && node scripts/audit-no-hardcoded-cost.mjs && just fixtures-validate && just impl-map-schema-validate && node scripts/verify-toolchain-policy.mjs && pnpm exec vp run ts:typecheck && cargo fmt --check && cargo check --workspace && just build && just db-migrate && just test && cargo clippy --workspace --all-targets --all-features -- -D warnings && cargo deny check'",
+      "log_path": "/home/trevor/projects/itotori/.qd/logs/ci-ITOTORI-240-2026-06-26T21-00-26-076Z.log"
     }
   ],
   "node_notes": [
@@ -40456,6 +40516,18 @@
       "node_id": "KAIFUU-098",
       "text": "2026-06-26 P1 repair: commit 128eb35fc5e9d67434fd61eacec198d6b0b3ab42 validates both entry.path and payload_relative_path before XP3 replace writes or mutates manifest metadata, and adds replace_plain_xp3_entry_rejects_tampered_payload_path_before_write regression. Verification passed: nix develop --command bash -lc 'cargo test -p kaifuu-core plain_xp3 -- --nocapture && cargo test -p kaifuu-cli xp3_ -- --nocapture && git diff --check main...HEAD'.",
       "created_at": "2026-06-26T20:44:20.244Z"
+    },
+    {
+      "id": "25cb8ab1-a17f-4a1b-bf14-4ca1d100b1f9",
+      "node_id": "ITOTORI-240",
+      "text": "2026-06-26 integration CI attempt on branch integration/itotori-240-verify failed in packages/itotori-db/test/catalog-recorded-importers.test.ts: CATALOG-011 spec text guard regex expects camelCase auditFocus, but current qd export uses snake_case audit_focus. CATALOG-011 node/spec text is present in qd and roadmap export. Assigned narrow test compatibility fix; not an ITOTORI-240 feature regression.",
+      "created_at": "2026-06-26T20:53:44.688Z"
+    },
+    {
+      "id": "ab1be88d-eeb5-42b6-9c3a-978d67863843",
+      "node_id": "ITOTORI-240",
+      "text": "2026-06-26 integration verification passed on branch integration/itotori-240-verify at commit 84838a4: qd check run passed (.qd/logs/check-ITOTORI-240-2026-06-26T20-59-53-773Z.log) and full qd CI passed (.qd/logs/ci-ITOTORI-240-2026-06-26T21-00-26-076Z.log). qd marked node mergeable. main remains unmodified pending explicit merge approval.",
+      "created_at": "2026-06-26T21:05:33.469Z"
     }
   ]
 }
