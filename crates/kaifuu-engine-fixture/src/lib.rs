@@ -1242,18 +1242,18 @@ impl EngineAdapter for FixtureAdapter {
                     "runtime validation belongs to Utsushi fixture plumbing",
                 ),
             ],
+            AdapterCapabilityMatrix::new(
+                FIXTURE_ADAPTER_ID,
+                CapabilityLevelStatus::supported(),
+                CapabilityLevelStatus::supported(),
+                CapabilityLevelStatus::supported(),
+                CapabilityLevelStatus::partial(vec![
+                    "writes source.json only; does not rebuild engine archives or binary assets"
+                        .to_string(),
+                    "requires patch entries to match existing sourceUnitKey values".to_string(),
+                ]),
+            ),
         )
-        .with_level_matrix(AdapterCapabilityMatrix::new(
-            FIXTURE_ADAPTER_ID,
-            CapabilityLevelStatus::supported(),
-            CapabilityLevelStatus::supported(),
-            CapabilityLevelStatus::supported(),
-            CapabilityLevelStatus::partial(vec![
-                "writes source.json only; does not rebuild engine archives or binary assets"
-                    .to_string(),
-                "requires patch entries to match existing sourceUnitKey values".to_string(),
-            ]),
-        ))
         .with_access_contract(LayeredAccessCapabilityContract::plaintext_identity())
         .with_helper_requirements(vec![AdapterHelperRequirementDeclaration::new(
             FIXTURE_HELPER_REGISTRY_ID,
@@ -2374,18 +2374,18 @@ impl EngineAdapter for Xp3ProfileDetectorAdapter {
                     "no non-text extraction or OCR is performed for XP3 detector fixtures",
                 ),
             ],
+            AdapterCapabilityMatrix::new(
+                XP3_DETECTOR_ADAPTER_ID,
+                CapabilityLevelStatus::supported(),
+                CapabilityLevelStatus::supported(),
+                CapabilityLevelStatus::unsupported(
+                    "KAIFUU-095 is an XP3 detector/profile fixture only; payload extraction, decompression, decryption, and patch-back are outside the detector profile",
+                ),
+                CapabilityLevelStatus::unsupported(
+                    "XP3 patch-back/repack support is outside the detector profile (KAIFUU-XP3 patch backlog)",
+                ),
+            ),
         )
-        .with_level_matrix(AdapterCapabilityMatrix::new(
-            XP3_DETECTOR_ADAPTER_ID,
-            CapabilityLevelStatus::supported(),
-            CapabilityLevelStatus::supported(),
-            CapabilityLevelStatus::unsupported(
-                "KAIFUU-095 is an XP3 detector/profile fixture only; payload extraction, decompression, decryption, and patch-back are outside the detector profile",
-            ),
-            CapabilityLevelStatus::unsupported(
-                "XP3 patch-back/repack support is outside the detector profile (KAIFUU-XP3 patch backlog)",
-            ),
-        ))
         .with_access_contract(LayeredAccessCapabilityContract {
             identify,
             inventory,
@@ -3134,11 +3134,11 @@ impl EngineAdapter for SiglusProfileDetectorAdapter {
                     "no non-text extraction or OCR is performed for Siglus detector fixtures",
                 ),
             ],
+            AdapterCapabilityMatrix::identify_only(
+                SIGLUS_DETECTOR_ADAPTER_ID,
+                "Siglus detector profile is identify-only; Scene.pck/Gameexe.dat archive parsing, extraction, decryption, and patch-back are unsupported (KAIFUU-091)",
+            ),
         )
-        .with_level_matrix(AdapterCapabilityMatrix::identify_only(
-            SIGLUS_DETECTOR_ADAPTER_ID,
-            "Siglus detector profile is identify-only; Scene.pck/Gameexe.dat archive parsing, extraction, decryption, and patch-back are unsupported (KAIFUU-091)",
-        ))
         .with_access_contract(LayeredAccessCapabilityContract {
             identify,
             inventory,
@@ -4131,20 +4131,20 @@ impl EngineAdapter for RealLiveProfileDetectorAdapter {
                     "no non-text extraction or OCR is performed for RealLive fixtures",
                 ),
             ],
-        )
-        .with_level_matrix(AdapterCapabilityMatrix::new(
-            REALLIVE_DETECTOR_ADAPTER_ID,
-            CapabilityLevelStatus::supported(),
-            CapabilityLevelStatus::supported(),
-            CapabilityLevelStatus::partial(vec![
-                "Scene parser (KAIFUU-173) covers text slots but not all asset surfaces"
-                    .to_string(),
-                "image-overlaid text inside .g00 is not in scope".to_string(),
-            ]),
-            CapabilityLevelStatus::unsupported(
-                "no full patch path yet; KAIFUU-053 reports patch as Unsupported at the matrix even though KAIFUU-174 supports length-preserving slot replacement",
+            AdapterCapabilityMatrix::new(
+                REALLIVE_DETECTOR_ADAPTER_ID,
+                CapabilityLevelStatus::supported(),
+                CapabilityLevelStatus::supported(),
+                CapabilityLevelStatus::partial(vec![
+                    "Scene parser (KAIFUU-173) covers text slots but not all asset surfaces"
+                        .to_string(),
+                    "image-overlaid text inside .g00 is not in scope".to_string(),
+                ]),
+                CapabilityLevelStatus::unsupported(
+                    "no full patch path yet; KAIFUU-053 reports patch as Unsupported at the matrix even though KAIFUU-174 supports length-preserving slot replacement",
+                ),
             ),
-        ))
+        )
         .with_access_contract(LayeredAccessCapabilityContract {
             identify,
             inventory,

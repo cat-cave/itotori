@@ -393,11 +393,26 @@ pub struct AdapterCapabilities {
 }
 
 impl AdapterCapabilities {
-    pub fn new(adapter_id: impl Into<String>, reports: Vec<CapabilityReport>) -> Self {
-        let adapter_id = adapter_id.into();
-        let level_matrix = AdapterCapabilityMatrix::derive_from_reports(&adapter_id, &reports);
+    /// Construct an adapter capability declaration.
+    ///
+    /// KAIFUU-053 acceptance: every adapter MUST declare its 4-rung
+    /// [`AdapterCapabilityMatrix`] at construction. There is no silent
+    /// fallback from per-`Capability` reports to a derived matrix — that
+    /// fallback was the audit-flagged risk (KAIFUU-053-F002) of recognised
+    /// engines accidentally bubbling up to `Extract`/`Patch` because a
+    /// granular report drifted. `derive_from_reports` is now a private
+    /// drift-check helper used in `normalize` only.
+    ///
+    /// The declared matrix must not claim more than the granular `reports`
+    /// support; that constraint is enforced in `normalize` via
+    /// `debug_assert!` against `first_overclaim_against`.
+    pub fn new(
+        adapter_id: impl Into<String>,
+        reports: Vec<CapabilityReport>,
+        level_matrix: AdapterCapabilityMatrix,
+    ) -> Self {
         let mut capabilities = Self {
-            adapter_id,
+            adapter_id: adapter_id.into(),
             reports,
             level_matrix,
             access_contract: None,
@@ -406,17 +421,6 @@ impl AdapterCapabilities {
         };
         capabilities.normalize();
         capabilities
-    }
-
-    /// Declare the typed level matrix explicitly. The declared matrix must
-    /// not claim more than the granular `reports` would support — see
-    /// [`AdapterCapabilityMatrix::first_overclaim_against`] and the
-    /// `derive_from_reports` mapping; this constraint is enforced in
-    /// `normalize` via `debug_assert!` so detector tests catch drift.
-    pub fn with_level_matrix(mut self, level_matrix: AdapterCapabilityMatrix) -> Self {
-        self.level_matrix = level_matrix;
-        self.normalize();
-        self
     }
 
     pub fn with_access_contract(
@@ -16913,6 +16917,19 @@ mod tests {
         atomic::{AtomicUsize, Ordering},
     };
 
+    /// KAIFUU-053 test helper: explicitly request the derived-from-reports
+    /// matrix for fixtures that exercise contract / preflight machinery
+    /// where the registry-side capability gate is not the subject of the
+    /// test. This is an *explicit* request (not a silent fallback) — the
+    /// derivation rule lives in
+    /// [`AdapterCapabilityMatrix::derive_from_reports`].
+    fn derived_matrix_for(
+        adapter_id: &str,
+        reports: &[CapabilityReport],
+    ) -> AdapterCapabilityMatrix {
+        AdapterCapabilityMatrix::derive_from_reports(adapter_id, reports)
+    }
+
     fn temp_dir(name: &str) -> PathBuf {
         let nonce = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -17324,15 +17341,18 @@ mod tests {
         }
 
         fn capabilities(&self) -> AdapterCapabilities {
-            AdapterCapabilities::new(
-                self.id(),
-                vec![
-                    CapabilityReport::supported(Capability::Detection),
-                    CapabilityReport::supported(Capability::Extraction),
-                    CapabilityReport::supported(Capability::Patching),
-                    CapabilityReport::supported(Capability::Verification),
-                ],
-            )
+            // KAIFUU-053: the golden boundary covers Detection, Extraction,
+            // Patching, Verification — but not AssetListing/AssetInventory,
+            // so derive the matrix explicitly to keep the registry gate
+            // honest (Inventory will land at Unsupported).
+            let reports = vec![
+                CapabilityReport::supported(Capability::Detection),
+                CapabilityReport::supported(Capability::Extraction),
+                CapabilityReport::supported(Capability::Patching),
+                CapabilityReport::supported(Capability::Verification),
+            ];
+            let matrix = AdapterCapabilityMatrix::derive_from_reports(self.id(), &reports);
+            AdapterCapabilities::new(self.id(), reports, matrix)
         }
 
         fn detect(&self, _request: DetectRequest<'_>) -> KaifuuResult<DetectionResult> {
@@ -21406,50 +21426,52 @@ printf launched > '{}'
 
     #[test]
     fn adapter_key_declarations_serialize_stable_semantic_errors() {
-        let capabilities = AdapterCapabilities::new(
-            "kaifuu.siglus",
-            vec![
-                CapabilityReport::requires_user_input(
-                    Capability::KeyProfile,
-                    "requires local-only key profile secret refs",
-                ),
-                CapabilityReport::requires_user_input(
-                    Capability::EncryptedInput,
-                    "requires caller-provided resolved keys",
-                ),
-            ],
-        )
-        .with_key_requirements(vec![AdapterKeyRequirementDeclaration {
-            requirement_id: "siglus-secondary-key".to_string(),
-            engine_family: "siglus".to_string(),
-            material_kind: KeyMaterialKind::FixedBytes,
-            bytes: Some(16),
-            archive_parameters: vec![ArchiveParameterDeclaration {
-                parameter_id: "scene-archive".to_string(),
-                name: "sceneArchive".to_string(),
-                kind: ArchiveParameterKind::ArchiveFormat,
-                required: true,
-            }],
-            validation: AdapterKeyValidationDeclaration {
-                method: KeyValidationMethod::DecryptHeaderProof,
-                proof_required: true,
-            },
-            semantic_errors: vec![
-                SemanticErrorCode::MissingKeyProfile,
-                SemanticErrorCode::MissingKeyMaterial,
-                SemanticErrorCode::HelperUnavailable,
-                SemanticErrorCode::HelperRequired,
-                SemanticErrorCode::KeyValidationFailed,
-                SemanticErrorCode::SecretRedacted,
-                SemanticErrorCode::ProtectedExecutableUnsupported,
-                SemanticErrorCode::UnsupportedLayeredTransform,
-                SemanticErrorCode::MissingContainerCapability,
-                SemanticErrorCode::MissingCryptoCapability,
-                SemanticErrorCode::MissingCodecCapability,
-                SemanticErrorCode::MissingPatchBackCapability,
-                SemanticErrorCode::UnsupportedVariantEncrypted,
-            ],
-        }]);
+        let reports = vec![
+            CapabilityReport::requires_user_input(
+                Capability::KeyProfile,
+                "requires local-only key profile secret refs",
+            ),
+            CapabilityReport::requires_user_input(
+                Capability::EncryptedInput,
+                "requires caller-provided resolved keys",
+            ),
+        ];
+        // KAIFUU-053: derive explicitly from reports so the registry gate
+        // sees Identify Unsupported (no Detection report) rather than a
+        // bubbled-up identify-only claim against missing Detection.
+        let matrix = AdapterCapabilityMatrix::derive_from_reports("kaifuu.siglus", &reports);
+        let capabilities = AdapterCapabilities::new("kaifuu.siglus", reports, matrix)
+            .with_key_requirements(vec![AdapterKeyRequirementDeclaration {
+                requirement_id: "siglus-secondary-key".to_string(),
+                engine_family: "siglus".to_string(),
+                material_kind: KeyMaterialKind::FixedBytes,
+                bytes: Some(16),
+                archive_parameters: vec![ArchiveParameterDeclaration {
+                    parameter_id: "scene-archive".to_string(),
+                    name: "sceneArchive".to_string(),
+                    kind: ArchiveParameterKind::ArchiveFormat,
+                    required: true,
+                }],
+                validation: AdapterKeyValidationDeclaration {
+                    method: KeyValidationMethod::DecryptHeaderProof,
+                    proof_required: true,
+                },
+                semantic_errors: vec![
+                    SemanticErrorCode::MissingKeyProfile,
+                    SemanticErrorCode::MissingKeyMaterial,
+                    SemanticErrorCode::HelperUnavailable,
+                    SemanticErrorCode::HelperRequired,
+                    SemanticErrorCode::KeyValidationFailed,
+                    SemanticErrorCode::SecretRedacted,
+                    SemanticErrorCode::ProtectedExecutableUnsupported,
+                    SemanticErrorCode::UnsupportedLayeredTransform,
+                    SemanticErrorCode::MissingContainerCapability,
+                    SemanticErrorCode::MissingCryptoCapability,
+                    SemanticErrorCode::MissingCodecCapability,
+                    SemanticErrorCode::MissingPatchBackCapability,
+                    SemanticErrorCode::UnsupportedVariantEncrypted,
+                ],
+            }]);
 
         let value = serde_json::to_value(capabilities).unwrap();
 
@@ -21475,32 +21497,34 @@ printf launched > '{}'
 
     #[test]
     fn adapter_capabilities_redacts_key_requirement_declaration_strings() {
-        let capabilities = AdapterCapabilities::new(
-            "kaifuu.path=/home/dev/game/private-route-ending.ks",
-            vec![CapabilityReport::requires_user_input(
-                Capability::KeyProfile,
-                "helper dump source:/home/dev/game/private-route-ending.ks exposed raw key 00112233445566778899aabbccddeeff",
-            )],
-        )
-        .with_key_requirements(vec![AdapterKeyRequirementDeclaration {
-            requirement_id:
-                "source:/home/dev/game/private-route-ending.ks:00112233445566778899aabbccddeeff"
-                    .to_string(),
-            engine_family: "helper dump C:\\Games\\SecretRoute\\engine.exe".to_string(),
-            material_kind: KeyMaterialKind::FixedBytes,
-            bytes: Some(16),
-            archive_parameters: vec![ArchiveParameterDeclaration {
-                parameter_id: "file=C:\\Games\\SecretRoute\\Scene.pck".to_string(),
-                name: "private-route-ending.ks".to_string(),
-                kind: ArchiveParameterKind::ArchiveFormat,
-                required: true,
-            }],
-            validation: AdapterKeyValidationDeclaration {
-                method: KeyValidationMethod::DecryptHeaderProof,
-                proof_required: true,
-            },
-            semantic_errors: vec![SemanticErrorCode::SecretRedacted],
-        }]);
+        let adapter_id = "kaifuu.path=/home/dev/game/private-route-ending.ks";
+        let reports = vec![CapabilityReport::requires_user_input(
+            Capability::KeyProfile,
+            "helper dump source:/home/dev/game/private-route-ending.ks exposed raw key 00112233445566778899aabbccddeeff",
+        )];
+        // KAIFUU-053: redaction-pipeline fixture — derive explicitly so
+        // the matrix matches the (fully unsupported at Identify) reports.
+        let matrix = AdapterCapabilityMatrix::derive_from_reports(adapter_id, &reports);
+        let capabilities = AdapterCapabilities::new(adapter_id, reports, matrix)
+            .with_key_requirements(vec![AdapterKeyRequirementDeclaration {
+                requirement_id:
+                    "source:/home/dev/game/private-route-ending.ks:00112233445566778899aabbccddeeff"
+                        .to_string(),
+                engine_family: "helper dump C:\\Games\\SecretRoute\\engine.exe".to_string(),
+                material_kind: KeyMaterialKind::FixedBytes,
+                bytes: Some(16),
+                archive_parameters: vec![ArchiveParameterDeclaration {
+                    parameter_id: "file=C:\\Games\\SecretRoute\\Scene.pck".to_string(),
+                    name: "private-route-ending.ks".to_string(),
+                    kind: ArchiveParameterKind::ArchiveFormat,
+                    required: true,
+                }],
+                validation: AdapterKeyValidationDeclaration {
+                    method: KeyValidationMethod::DecryptHeaderProof,
+                    proof_required: true,
+                },
+                semantic_errors: vec![SemanticErrorCode::SecretRedacted],
+            }]);
 
         let redacted = capabilities.redacted_for_report();
         let serialized = serde_json::to_string(&redacted).unwrap();
@@ -21790,14 +21814,16 @@ printf launched > '{}'
 
     #[test]
     fn layered_access_preflight_blocks_transform_key_and_helper_gates() {
+        let reports = vec![
+            CapabilityReport::supported(Capability::ContainerAccess),
+            CapabilityReport::supported(Capability::CryptoAccess),
+            CapabilityReport::supported(Capability::CodecAccess),
+            CapabilityReport::supported(Capability::PatchBack),
+        ];
         let capabilities = AdapterCapabilities::new(
             "kaifuu.layered-test",
-            vec![
-                CapabilityReport::supported(Capability::ContainerAccess),
-                CapabilityReport::supported(Capability::CryptoAccess),
-                CapabilityReport::supported(Capability::CodecAccess),
-                CapabilityReport::supported(Capability::PatchBack),
-            ],
+            reports.clone(),
+            derived_matrix_for("kaifuu.layered-test", &reports),
         )
         .with_access_contract(LayeredAccessCapabilityContract::plaintext_identity());
         let access_profile = LayeredAccessProfile {
@@ -21873,14 +21899,16 @@ printf launched > '{}'
 
     #[test]
     fn layered_access_preflight_allows_plaintext_identity_without_patch_contract() {
+        let reports = vec![
+            CapabilityReport::supported(Capability::ContainerAccess),
+            CapabilityReport::supported(Capability::CryptoAccess),
+            CapabilityReport::supported(Capability::CodecAccess),
+            CapabilityReport::supported(Capability::PatchBack),
+        ];
         let capabilities = AdapterCapabilities::new(
             "kaifuu.layered-test",
-            vec![
-                CapabilityReport::supported(Capability::ContainerAccess),
-                CapabilityReport::supported(Capability::CryptoAccess),
-                CapabilityReport::supported(Capability::CodecAccess),
-                CapabilityReport::supported(Capability::PatchBack),
-            ],
+            reports.clone(),
+            derived_matrix_for("kaifuu.layered-test", &reports),
         );
         let access_profile = LayeredAccessProfile::plaintext_identity_for_asset(
             "source-json",
@@ -21903,14 +21931,16 @@ printf launched > '{}'
 
     #[test]
     fn layered_access_preflight_fails_closed_without_patch_contract_for_non_identity_transforms() {
+        let reports = vec![
+            CapabilityReport::supported(Capability::ContainerAccess),
+            CapabilityReport::supported(Capability::CryptoAccess),
+            CapabilityReport::supported(Capability::CodecAccess),
+            CapabilityReport::supported(Capability::PatchBack),
+        ];
         let capabilities = AdapterCapabilities::new(
             "kaifuu.layered-test",
-            vec![
-                CapabilityReport::supported(Capability::ContainerAccess),
-                CapabilityReport::supported(Capability::CryptoAccess),
-                CapabilityReport::supported(Capability::CodecAccess),
-                CapabilityReport::supported(Capability::PatchBack),
-            ],
+            reports.clone(),
+            derived_matrix_for("kaifuu.layered-test", &reports),
         );
         let access_profile = LayeredAccessProfile {
             schema_version: PROFILE_SCHEMA_VERSION.to_string(),
@@ -21974,14 +22004,16 @@ printf launched > '{}'
             access_contract.patch.support_boundary = Some(format!(
                 "patch contract status {status:?} requires local evidence before writing"
             ));
+            let reports = vec![
+                CapabilityReport::supported(Capability::ContainerAccess),
+                CapabilityReport::supported(Capability::CryptoAccess),
+                CapabilityReport::supported(Capability::CodecAccess),
+                CapabilityReport::supported(Capability::PatchBack),
+            ];
             let capabilities = AdapterCapabilities::new(
                 "kaifuu.layered-test",
-                vec![
-                    CapabilityReport::supported(Capability::ContainerAccess),
-                    CapabilityReport::supported(Capability::CryptoAccess),
-                    CapabilityReport::supported(Capability::CodecAccess),
-                    CapabilityReport::supported(Capability::PatchBack),
-                ],
+                reports.clone(),
+                derived_matrix_for("kaifuu.layered-test", &reports),
             )
             .with_access_contract(access_contract);
             let access_profile = LayeredAccessProfile::plaintext_identity_for_asset(
@@ -22797,7 +22829,7 @@ printf launched > '{}'
             }
 
             fn capabilities(&self) -> AdapterCapabilities {
-                AdapterCapabilities::new(self.0, vec![])
+                AdapterCapabilities::new(self.0, vec![], derived_matrix_for(self.0, &[]))
             }
 
             fn detect(&self, _request: DetectRequest<'_>) -> KaifuuResult<DetectionResult> {

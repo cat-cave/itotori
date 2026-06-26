@@ -24,7 +24,8 @@ use kaifuu_core::patch_transaction::{
     PatchTransaction, PatchTransactionConfig, PatchTransactionOutcome, TransactionState,
 };
 use kaifuu_core::{
-    AdapterCapabilities, LayeredAccessCapabilityContract, sha256_hash_bytes, write_json,
+    AdapterCapabilities, AdapterCapabilityMatrix, LayeredAccessCapabilityContract,
+    sha256_hash_bytes, write_json,
 };
 use kaifuu_reallive::{
     PatchBackError, PatchBackErrorCode, RealLiveSceneIndex, Scene, SlotEdit, SlotEditLengthPolicy,
@@ -235,7 +236,12 @@ const REQUIRED_TRANSFORMS: &[&str] = &["identity"];
 /// the harness later will supply their own capability matrix; this
 /// fixture is the structural defense for the smoke.
 fn reallive_capabilities() -> AdapterCapabilities {
-    AdapterCapabilities::new(ADAPTER_ID, vec![])
+    // KAIFUU-053: the binary-patch smoke is a plaintext-identity fixture;
+    // it carries no per-Capability reports, so the explicitly-derived
+    // matrix declares every rung Unsupported. The registry-side gate
+    // must never bubble this smoke up to Identify/Extract/Patch.
+    let matrix = AdapterCapabilityMatrix::derive_from_reports(ADAPTER_ID, &[]);
+    AdapterCapabilities::new(ADAPTER_ID, vec![], matrix)
         .with_access_contract(LayeredAccessCapabilityContract::plaintext_identity())
 }
 

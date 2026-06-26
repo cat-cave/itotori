@@ -1593,14 +1593,15 @@ fn flag_values<'a>(args: &'a [String], name: &str) -> Vec<&'a str> {
 mod tests {
     use super::*;
     use kaifuu_core::{
-        ASSET_INVENTORY_SCHEMA_VERSION, AdapterCapabilities, AdapterFailure, AdapterWarning,
-        ArchiveDetectionSignal, ArchiveDetectionStatus, AssetInventoryAsset,
-        AssetInventoryAssetKind, AssetInventoryAssetRef, AssetInventoryPatchMode,
-        AssetInventorySurface, AssetInventorySurfaceKind, AssetInventoryTextSourceKind, AssetKind,
-        AssetList, AssetListRequest, AssetProfile, BridgeBundle, BridgeUnit, Capability,
-        CapabilityReport, CapabilityStatus, CodecTransform, ContainerTransform, CryptoTransform,
-        DetectRequest, DetectionEvidence, DetectionReportStatus, EngineProfile, EvidenceStatus,
-        ExtractionResult, GoldenAssertionStatus, GoldenRoundTripReport, HelperCapability,
+        ASSET_INVENTORY_SCHEMA_VERSION, AdapterCapabilities, AdapterCapabilityMatrix,
+        AdapterFailure, AdapterWarning, ArchiveDetectionSignal, ArchiveDetectionStatus,
+        AssetInventoryAsset, AssetInventoryAssetKind, AssetInventoryAssetRef,
+        AssetInventoryPatchMode, AssetInventorySurface, AssetInventorySurfaceKind,
+        AssetInventoryTextSourceKind, AssetKind, AssetList, AssetListRequest, AssetProfile,
+        BridgeBundle, BridgeUnit, Capability, CapabilityLevelStatus, CapabilityReport,
+        CapabilityStatus, CodecTransform, ContainerTransform, CryptoTransform, DetectRequest,
+        DetectionEvidence, DetectionReportStatus, EngineProfile, EvidenceStatus, ExtractionResult,
+        GoldenAssertionStatus, GoldenRoundTripReport, HelperCapability,
         LayeredAccessCapabilityContract, LayeredAccessPreflightReport,
         LayeredAccessPreflightRequirement, LayeredAccessProfile, LayeredAccessStage,
         OperationStatus, PatchExportEntry, PatchRef, PatchResult, ProfileRequirement,
@@ -3121,10 +3122,19 @@ wait
                 CapabilityReport::supported(Capability::Extraction),
                 CapabilityReport::supported(Capability::Patching),
                 CapabilityReport::supported(Capability::Verification),
+                CapabilityReport::supported(Capability::AssetListing),
                 CapabilityReport::supported(Capability::AssetInventory),
                 CapabilityReport::supported(Capability::NonTextSurfaceExtraction),
                 CapabilityReport::supported(Capability::ProfileGeneration),
             ],
+            // KAIFUU-053: full-rung matrix mirrors the per-Capability
+            // reports above; declared explicitly so the registry gate
+            // sees a Supported claim at every rung.
+            AdapterCapabilityMatrix::up_to(
+                TEST_ADAPTER_ID,
+                kaifuu_core::CapabilityLevel::Patch,
+                "test capabilities cover every rung",
+            ),
         )
     }
 
@@ -3368,6 +3378,13 @@ wait
                         "synthetic preflight requires crypto support",
                     ),
                 ],
+                // KAIFUU-053: identify-only matrix — this synthetic
+                // preflight fixture stops at Identify, so the registry
+                // gate must never bubble it up to Inventory/Extract/Patch.
+                AdapterCapabilityMatrix::identify_only(
+                    self.id(),
+                    "preflight failure test adapter is identify-only; container/crypto required-user-input gates inventory/extract/patch",
+                ),
             )
         }
 
@@ -3473,6 +3490,13 @@ wait
                     CapabilityReport::supported(Capability::CodecAccess),
                     CapabilityReport::supported(Capability::PatchBack),
                 ],
+                // KAIFUU-053: identify-only matrix — Patching reports as
+                // Supported but the access-contract `RequiresUserInput`
+                // status keeps the registry gate strict.
+                AdapterCapabilityMatrix::identify_only(
+                    self.id(),
+                    "contract-status preflight test adapter is identify-only; patch contract requires user input before any write",
+                ),
             )
             .with_access_contract(access_contract)
         }
@@ -3588,6 +3612,13 @@ wait
                     CapabilityReport::supported(Capability::Detection),
                     CapabilityReport::supported(Capability::Patching),
                 ],
+                // KAIFUU-053: identify-only matrix — the malicious-preflight
+                // fixture intentionally has no real inventory/extract/patch
+                // path despite a Patching capability report.
+                AdapterCapabilityMatrix::identify_only(
+                    self.id(),
+                    "malicious-preflight test adapter is identify-only at the registry gate",
+                ),
             )
         }
 
@@ -3682,6 +3713,13 @@ wait
                     CapabilityReport::supported(Capability::Detection),
                     CapabilityReport::supported(Capability::Patching),
                 ],
+                // KAIFUU-053: identify-only matrix — this test adapter
+                // simulates filesystem failure during patch and never
+                // promotes itself in the registry-side gate.
+                AdapterCapabilityMatrix::identify_only(
+                    self.id(),
+                    "patch filesystem-failure test adapter is identify-only at the registry gate",
+                ),
             )
         }
 
@@ -3806,6 +3844,24 @@ wait
                         "requires file=%USERPROFILE%\\Games\\SecretRoute\\patcher.exe",
                     ),
                 ],
+                // KAIFUU-053: this fixture has no Detection report so even
+                // Identify is Unsupported at the registry gate; the fully
+                // unsupported matrix exercises the redaction pipeline only.
+                AdapterCapabilityMatrix::new(
+                    self.id(),
+                    CapabilityLevelStatus::unsupported(
+                        "sensitive-report fixture has no Detection capability report",
+                    ),
+                    CapabilityLevelStatus::unsupported(
+                        "sensitive-report fixture has no AssetListing capability report",
+                    ),
+                    CapabilityLevelStatus::unsupported(
+                        "sensitive-report fixture has no Extraction capability report",
+                    ),
+                    CapabilityLevelStatus::unsupported(
+                        "sensitive-report fixture has no Patching capability report",
+                    ),
+                ),
             )
         }
 
@@ -3940,6 +3996,13 @@ wait
                     CapabilityReport::supported(Capability::ProfileGeneration),
                     CapabilityReport::supported(Capability::Patching),
                 ],
+                // KAIFUU-053: identify-only matrix — exercises the
+                // missing-profile-id path; the registry gate must stay
+                // strict despite the per-Capability reports.
+                AdapterCapabilityMatrix::identify_only(
+                    self.id(),
+                    "invalid-profile fixture is identify-only at the registry gate",
+                ),
             )
         }
 

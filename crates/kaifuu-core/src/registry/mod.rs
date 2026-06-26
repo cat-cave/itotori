@@ -96,8 +96,8 @@ mod tests {
                     CapabilityReport::supported(Capability::Extraction),
                     CapabilityReport::supported(Capability::Patching),
                 ],
+                self.matrix.clone(),
             )
-            .with_level_matrix(self.matrix.clone())
         }
 
         fn detect(&self, _: DetectRequest<'_>) -> KaifuuResult<DetectionResult> {
@@ -229,6 +229,75 @@ mod tests {
                 "kaifuu.identify_only".to_string(),
                 "kaifuu.up_to_inventory".to_string(),
             ]
+        );
+    }
+
+    /// KAIFUU-053 follow-up F002: every adapter must declare its
+    /// `AdapterCapabilityMatrix` at construction. The
+    /// `AdapterCapabilities::new` signature requires the matrix as a
+    /// non-optional third parameter — there is no silent fallback to
+    /// `derive_from_reports`. This test documents that contract via a
+    /// concrete identify-only declaration; the compile-time enforcement
+    /// lives in the type signature itself.
+    #[test]
+    fn adapter_capabilities_requires_explicit_level_matrix_at_construction() {
+        let adapter_id = "kaifuu.f002.witness";
+        let reports = vec![CapabilityReport::supported(Capability::Detection)];
+        let matrix = AdapterCapabilityMatrix::identify_only(
+            adapter_id,
+            "F002 witness — identify-only adapter, no inventory/extract/patch claim",
+        );
+        let capabilities = AdapterCapabilities::new(adapter_id, reports, matrix);
+        assert!(
+            capabilities
+                .level_matrix
+                .supports(CapabilityLevel::Identify)
+        );
+        assert!(
+            !capabilities
+                .level_matrix
+                .supports(CapabilityLevel::Inventory)
+        );
+        assert!(!capabilities.level_matrix.supports(CapabilityLevel::Extract));
+        assert!(!capabilities.level_matrix.supports(CapabilityLevel::Patch));
+    }
+
+    /// KAIFUU-053 follow-up F002: `derive_from_reports` is now a public
+    /// helper that adapter / test authors call explicitly when they want
+    /// the conservative derivation. It is not a fallback. This test pins
+    /// the conservative mapping so a future change cannot silently
+    /// promote a recognised engine to Extract / Patch.
+    #[test]
+    fn derive_from_reports_is_explicit_and_conservative() {
+        let adapter_id = "kaifuu.f002.derived";
+        let reports = vec![CapabilityReport::supported(Capability::Detection)];
+        let matrix = AdapterCapabilityMatrix::derive_from_reports(adapter_id, &reports);
+        // Detection alone yields Identify Supported and every higher rung
+        // Unsupported because the contributing reports are missing.
+        assert!(matrix.supports(CapabilityLevel::Identify));
+        assert!(matrix.inventory.is_unsupported());
+        assert!(matrix.extract.is_unsupported());
+        assert!(matrix.patch.is_unsupported());
+        // And the registry-side strict gate excludes the derived adapter
+        // from extract / patch consumers — the audit-focus item
+        // "Recognized engine overstated as usable" is closed at the gate.
+        let mut registry = AdapterRegistry::new();
+        registry.register(FakeAdapter::new("kaifuu.f002.derived", matrix));
+        assert!(
+            registry
+                .adapters_supporting(CapabilityLevel::Extract)
+                .is_empty()
+        );
+        assert!(
+            registry
+                .adapters_supporting(CapabilityLevel::Patch)
+                .is_empty()
+        );
+        assert_eq!(
+            registry
+                .adapters_supporting(CapabilityLevel::Identify)
+                .len(),
+            1
         );
     }
 }
