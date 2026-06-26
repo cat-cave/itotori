@@ -29,14 +29,14 @@ The readiness report is for engine-research provenance only.
 
 ## Matrix
 
-| Fixture                                             | Surface                                                                           |
-| --------------------------------------------------- | --------------------------------------------------------------------------------- |
-| `encrypted-media.json`                              | Happy-path: MV + MZ encrypted images, audio, encrypted video, plus plaintext png/ogg/webm |
-| `encrypted-media-missing-key.json`                  | Encrypted asset present, `System.json` has no `encryptionKey`                     |
+| Fixture                                             | Surface                                                                                           |
+| --------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `encrypted-media.json`                              | Happy-path: MV + MZ encrypted images, audio, encrypted video, plus plaintext png/ogg/webm         |
+| `encrypted-media-missing-key.json`                  | Encrypted asset present, `System.json` has no `encryptionKey`                                     |
 | `encrypted-media-wrong-key.json`                    | Encrypted asset present, `System.json` `encryptionKey` is 32-hex but mismatches expected key hash |
-| `negative/encrypted-media-leaked-game-dir.json`     | `gameDir` is absolute / contains private path — must be rejected                  |
-| `negative/encrypted-media-malformed-header.json`    | `.rpgmvp` file missing the RPGMV header magic                                     |
-| `negative/encrypted-media-unknown-key-profile.json` | `keyProfile.profileId` is not in the recognised vocabulary                        |
+| `negative/encrypted-media-leaked-game-dir.json`     | `gameDir` is absolute / contains private path — must be rejected                                  |
+| `negative/encrypted-media-malformed-header.json`    | `.rpgmvp` file missing the RPGMV header magic                                                     |
+| `negative/encrypted-media-unknown-key-profile.json` | `keyProfile.profileId` is not in the recognised vocabulary                                        |
 
 The negative fixtures expect the proof to fail (status `failed`,
 blocking diagnostics fired before any decryption claim).
