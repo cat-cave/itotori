@@ -167,6 +167,19 @@ pub mod replay_validate;
 // represented in a given corpus.
 pub mod g00;
 
+// UTSUSHI-213: system-call dispatch wired to Gameexe routes. Owns the
+// typed `SyscallDispatcher` that builds a route table from the
+// Sweetie HD-shaped `Gameexe.ini` and invokes each route through the
+// UTSUSHI-211 `FarcallOp` (no private dispatch path).
+pub mod syscall;
+
+pub use syscall::{
+    HotRegion, SYSCALL_KIND_COUNT, SYSCALL_MISSING_SCREEN_SIZE_CODE,
+    SYSCALL_MOUSE_AREA_MALFORMED_CODE, SYSCALL_ROUTE_MALFORMED_PAIR_CODE, ScreenSize,
+    SyscallDispatchBuildError, SyscallDispatcher, SyscallRoute, SyscallRouteKind,
+    WBCALL_SLOT_COUNT,
+};
+
 pub use g00::{
     G00_HEADER_PREAMBLE_BYTE_LEN, G00_LZSS_INITIAL_CURSOR, G00_LZSS_MAX_RUN, G00_LZSS_MIN_RUN,
     G00_LZSS_RING_BUFFER_LEN, G00_REGION_RECORD_BYTE_LEN, G00_TYPE_PALETTED_LZSS, G00_TYPE_RAW_BGR,
