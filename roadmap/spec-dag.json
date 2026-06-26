@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "exported_at": "2026-06-26T22:41:48.223Z",
+  "exported_at": "2026-06-26T22:44:39.790Z",
   "registries": {
     "groups": [
       {
@@ -12395,19 +12395,19 @@
       "title": "Reviewer-triggered rerun wiring",
       "kind": "feature",
       "milestone": "alpha",
-      "status": "ready",
+      "status": "claimed",
       "priority": "P1",
       "estimate_points": 1,
       "risk": "medium",
-      "owner": null,
-      "branch": null,
+      "owner": "orchestrator-itotori-084",
+      "branch": "spec/itotori-084",
       "spec": "Wire reviewer actions to targeted repair and rerun jobs.\n\nDeliverables:\n- ReviewerRepairRerun scheduler mapping queue actions to targeted draft, QA, export, and runtime validation jobs\n- Rerun job payload schema with affected artifact ids and policy/glossary versions\n- Fixtures for single-item repair, batch repair, policy invalidation, and runtime feedback rerun\n- Idempotent rerun enqueue tests",
       "acceptance": "- Reviewer actions enqueue targeted rerun jobs with project id, locale branch id, source revision, affected unit ids, artifact ids, policy versions, and reason codes.\n- Repeated reviewer actions do not duplicate equivalent pending rerun jobs.\n- Rerun scheduling preserves dependencies between draft repair, QA replay, export regeneration, and runtime validation.\n- Invalid or unauthorized rerun requests fail before job enqueue.",
       "validation": null,
       "context": null,
       "created_at": "2026-06-26T02:53:55.155Z",
-      "updated_at": "2026-06-26T02:53:55.155Z",
-      "claimed_at": null,
+      "updated_at": "2026-06-26T22:44:36.567Z",
+      "claimed_at": "2026-06-26T22:44:36.567Z",
       "done_at": null,
       "group_name": "translation-loop",
       "status_reason": "Re-tier 2026-06-24: kept alpha under the new 4-tier framework (single-game Sweetie HD e2e set per docs/proposals/dag-retier-2026-06-24.md).",
