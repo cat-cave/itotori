@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "exported_at": "2026-06-26T23:27:55.176Z",
+  "exported_at": "2026-06-26T23:28:58.449Z",
   "registries": {
     "groups": [
       {
@@ -12395,7 +12395,7 @@
       "title": "Reviewer-triggered rerun wiring",
       "kind": "feature",
       "milestone": "alpha",
-      "status": "mergeable",
+      "status": "done",
       "priority": "P1",
       "estimate_points": 1,
       "risk": "medium",
@@ -12406,9 +12406,9 @@
       "validation": null,
       "context": null,
       "created_at": "2026-06-26T02:53:55.155Z",
-      "updated_at": "2026-06-26T23:27:41.649Z",
+      "updated_at": "2026-06-26T23:28:53.282Z",
       "claimed_at": "2026-06-26T22:44:36.567Z",
-      "done_at": null,
+      "done_at": "2026-06-26T23:28:53.282Z",
       "group_name": "translation-loop",
       "status_reason": "Re-tier 2026-06-24: kept alpha under the new 4-tier framework (single-game Sweetie HD e2e set per docs/proposals/dag-retier-2026-06-24.md).\n[2026-06-26T23:26:31.397Z] Implemented reviewer-triggered rerun scheduling via atomic reviewer action + job-chain enqueue. ReviewerQueueActionService now routes actions through applyActionAndEnqueueJobs; DB transaction applies transition, plans full draft-repair -> QA-replay -> export-regeneration -> runtime-validation chain, and enqueues all jobs with dependencies/idempotency. Added DB migration for depends_on_job_ids, dependency-aware claim gating, production batch-path coverage, rollback coverage for mid-chain enqueue failure, and payload assertions for targeting/runtime evidence. Verification passed: app/db typecheck; app Vitest reviewer-action-service, reviewer-repair-rerun-scheduler, reviewer-batch-execute; DB-backed @itotori/db tests with --require-database reviewer-queue-repository, event-queue-repository, authorization-matrix (156 Vitest tests + permission harness); vp check; audit-no-hardcoded-cost; fixtures-validate; impl-map-schema-validate; verify-toolchain-policy; vp run ts:typecheck; cargo fmt --check; cargo check --workspace. Focused audit found no P0/P1; prior P1 findings 4c8e04e4-e80d-4dc1-bb21-57cb6223b0b7 and 2e6fdc54-3b65-4650-bde3-a5ad4139e088 resolved.",
       "check_command": null,
@@ -40672,6 +40672,18 @@
       "started_at": "2026-06-26T23:27:41.649Z",
       "finished_at": "2026-06-26T23:27:41.649Z",
       "summary": "Local verification passed on spec/itotori-084 commit 811d594: app/db typecheck; app reviewer Vitest; DB-backed reviewer/event/authorization tests with 156 Vitest tests plus permission harness; vp check; cost audit; fixture and impl-map validation; toolchain policy; vp run ts:typecheck; cargo fmt --check; cargo check --workspace. Focused audit found no P0/P1.\nEvidence: external_id=local-itotori-084-811d594-20260626",
+      "log_path": null
+    },
+    {
+      "id": "a1b9a6e5-b5e5-4f43-938b-30bcc85ceec4",
+      "node_id": "ITOTORI-084",
+      "kind": "merge",
+      "status": "recorded",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-26T23:28:53.282Z",
+      "finished_at": "2026-06-26T23:28:53.282Z",
+      "summary": "Merge recorded with squash at commit bb8669f",
       "log_path": null
     }
   ],
