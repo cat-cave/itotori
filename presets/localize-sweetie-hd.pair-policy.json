@@ -16,12 +16,56 @@
         "maxOutputTokens": 8192,
         "evidenceRef": "docs/openrouter-integration-evidence/2026-06-26-alt-providers.json call_deepinfra_zdr_probe (HTTP 200, body.provider='DeepInfra') + call_deepinfra_json_schema_probe (HTTP 200, structured-output mode supported, body parsed conforming to schema). ZDR posture sent: zdr=true, data_collection=deny, allow_fallbacks=false. ITOTORI-238 evidence-validation."
       }
+    },
+    {
+      "modelId": "deepseek/deepseek-v4-flash",
+      "providerId": "wafer",
+      "capabilitySheet": {
+        "supportsStructuredOutputJsonSchema": true,
+        "supportsToolUse": true,
+        "contextWindowTokens": 128000,
+        "maxOutputTokens": 8192,
+        "evidenceRef": "docs/openrouter-integration-evidence/2026-06-26-itotori-239.json call_wafer_plain_realistic (HTTP 200, body.provider='Wafer', ~200-token translation prompt) + call_wafer_json_schema_realistic (HTTP 200, structured-output mode supported, body parsed conforming to multi-field QA schema). ZDR posture sent: zdr=true, data_collection=deny, allow_fallbacks=false. ITOTORI-239 broader-alternate evidence-validation."
+      }
+    },
+    {
+      "modelId": "deepseek/deepseek-v4-flash",
+      "providerId": "digitalocean",
+      "capabilitySheet": {
+        "supportsStructuredOutputJsonSchema": true,
+        "supportsToolUse": true,
+        "contextWindowTokens": 128000,
+        "maxOutputTokens": 8192,
+        "evidenceRef": "docs/openrouter-integration-evidence/2026-06-26-itotori-239.json call_digitalocean_plain_realistic (HTTP 200, body.provider='DigitalOcean', ~200-token translation prompt) + call_digitalocean_json_schema_realistic (HTTP 200, structured-output mode supported, body parsed conforming to multi-field QA schema). ZDR posture sent: zdr=true, data_collection=deny, allow_fallbacks=false. ITOTORI-239 broader-alternate evidence-validation."
+      }
+    },
+    {
+      "modelId": "deepseek/deepseek-v4-flash",
+      "providerId": "morph",
+      "capabilitySheet": {
+        "supportsStructuredOutputJsonSchema": true,
+        "supportsToolUse": true,
+        "contextWindowTokens": 128000,
+        "maxOutputTokens": 8192,
+        "evidenceRef": "docs/openrouter-integration-evidence/2026-06-26-itotori-239.json call_morph_plain_realistic (HTTP 200, body.provider='Morph', ~200-token translation prompt) + call_morph_json_schema_realistic (HTTP 200, structured-output mode supported, body parsed conforming to multi-field QA schema). ZDR posture sent: zdr=true, data_collection=deny, allow_fallbacks=false. ITOTORI-239 broader-alternate evidence-validation."
+      }
+    },
+    {
+      "modelId": "deepseek/deepseek-v4-flash",
+      "providerId": "atlas-cloud",
+      "capabilitySheet": {
+        "supportsStructuredOutputJsonSchema": true,
+        "supportsToolUse": true,
+        "contextWindowTokens": 128000,
+        "maxOutputTokens": 8192,
+        "evidenceRef": "docs/openrouter-integration-evidence/2026-06-26-itotori-239.json call_atlas-cloud_plain_realistic (HTTP 200, body.provider='AtlasCloud', ~200-token translation prompt) + call_atlas-cloud_json_schema_realistic (HTTP 200, structured-output mode supported, body parsed conforming to multi-field QA schema). ZDR posture sent: zdr=true, data_collection=deny, allow_fallbacks=false. ITOTORI-239 broader-alternate evidence-validation."
+      }
     }
   ],
   "failoverPredicate": "http_429_from_primary",
   "enUsSentinel": "STELLA-ALPHA-EN-US-SENTINEL",
   "sceneId": 1,
-  "notes": "ITOTORI-238 v0.3 shape (was ITOTORI-234 v0.2). Single (modelId, providerId) primary pair pinned for every stage of the agentic loop; v0.3 adds an EXPLICIT alternateProviders[] list + failoverPredicate to handle the Fireworks-side HTTP 429 quota issue that blocked 3/6 UTSUSHI-231 reruns. The alternate `(deepseek/deepseek-v4-flash, deepinfra)` was evidence-validated for ZDR posture AND json_schema structured outputs against Trevor's account on 2026-06-26 — see docs/openrouter-integration-evidence/2026-06-26-alt-providers.json. failoverPredicate is the literal 'http_429_from_primary': the orchestrator advances to the next alternate ONLY when the primary returns HTTP 429. Any other failure (pair_mismatch, provider_response_invalid, non-429 HTTP error, etc.) surfaces immediately — silent provider swap is forbidden (audit-focus 3). The enUsSentinel substring is woven into the translation prompt so the patched Seen.txt's replay produces a TextLine whose bodyUtf8 contains the substring verbatim. ASCII-only by deliberate choice: the leading SJIS bracket required by the KAIFUU-191 lexer is wrapped around the sentinel by the patch step, not by the prompt. Per-stage zdr / fallbackModels / seed / maxPriceUsd are intentionally omitted: the parser fills in canonical defaults. Operator-level zdr downgrades require OPENROUTER_ZDR_DOWNGRADE; no file-level escape hatch.",
+  "notes": "ITOTORI-239 v0.3 update (was ITOTORI-238). Single (modelId, providerId) primary pair pinned for every stage of the agentic loop; alternateProviders[] now lists FIVE evidence-validated fallback pairs (deepinfra from ITOTORI-238 + wafer, digitalocean, morph, atlas-cloud from ITOTORI-239). The expansion was forced by UTSUSHI-231 retry 7, where BOTH fireworks (primary) AND deepinfra (the sole alternate) returned HTTP 429 simultaneously, wiping the entire agentic-loop bundle. Each new alternate was validated against Trevor's account on 2026-06-26 with a ~200-token translation-style prompt (vs the 16-token ITOTORI-238 toy call) under provider.only=[<alt>] + provider.zdr=true + provider.allow_fallbacks=false + provider.data_collection=deny — see docs/openrouter-integration-evidence/2026-06-26-itotori-239.json. failoverPredicate is the literal 'http_429_from_primary': the orchestrator advances to the next alternate ONLY when the primary returns HTTP 429. Any other failure (pair_mismatch, provider_response_invalid, non-429 HTTP error, etc.) surfaces immediately — silent provider swap is forbidden (audit-focus 3). Order is intentional: deepinfra first (cheapest at ~$0.0011/Mtok prompt, validated 2026-06-26), then wafer/digitalocean/morph/atlas-cloud (all ~$0.13-0.40/Mtok prompt). The enUsSentinel substring is woven into the translation prompt so the patched Seen.txt's replay produces a TextLine whose bodyUtf8 contains the substring verbatim. ASCII-only by deliberate choice: the leading SJIS bracket required by the KAIFUU-191 lexer is wrapped around the sentinel by the patch step, not by the prompt. Per-stage zdr / fallbackModels / seed / maxPriceUsd are intentionally omitted: the parser fills in canonical defaults. Operator-level zdr downgrades require OPENROUTER_ZDR_DOWNGRADE; no file-level escape hatch.",
   "stages": {
     "context": {
       "sceneSummary": {
