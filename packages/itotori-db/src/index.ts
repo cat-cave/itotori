@@ -677,13 +677,17 @@ export {
 export {
   ItotoriReviewerQueueRepository,
   ReviewerQueueRepositoryError,
+  reviewerQueueActionAllowedKinds,
   reviewerQueueActionList,
+  reviewerQueueActionToNextState,
   reviewerQueueActionValues,
+  reviewerQueueAllowedTransitions,
   reviewerQueueItemKindList,
   reviewerQueueItemKindValues,
   reviewerQueueItemStateList,
   reviewerQueueItemStateValues,
   reviewerQueueRepositoryErrorCodes,
+  validateReviewerQueueTransition,
 } from "./repositories/reviewer-queue-repository.js";
 export type {
   CreateReviewerQueueItemInput,
@@ -692,6 +696,7 @@ export type {
   ReviewerQueueActionInput,
   ReviewerQueueActionResult,
   ReviewerQueueRepositoryErrorCode,
+  ReviewerQueueTransitionValidation,
 } from "./repositories/reviewer-queue-repository.js";
 export type {
   ReviewerQueueAction,

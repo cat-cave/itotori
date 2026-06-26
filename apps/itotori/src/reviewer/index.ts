@@ -70,3 +70,79 @@ export type {
 // `requirePermission` call stays in `auth.ts` per the API mutation
 // permission matrix audit.
 export { resolveReviewerQueuePermissionView, type ReviewerQueuePermissionView } from "../auth.js";
+
+// ITOTORI-083 — batch action preview + atomic batch executor.
+export {
+  ReviewerBatchPreviewService,
+  ReviewerBatchPreviewServiceInputError,
+  reviewerBatchPreviewStatusValues,
+} from "./batch-preview.js";
+export type {
+  BatchPreviewItem,
+  ReviewerBatchActionRequest,
+  ReviewerBatchConsequence,
+  ReviewerBatchConsequenceResolverPort,
+  ReviewerBatchPermissionView,
+  ReviewerBatchPreview,
+  ReviewerBatchPreviewServicePort,
+  ReviewerBatchPreviewStatus,
+  ReviewerBatchSelection,
+} from "./batch-preview.js";
+
+export {
+  ReviewerBatchActionService,
+  ReviewerBatchActionServiceInputError,
+} from "./batch-execute.js";
+export type {
+  BatchActionPayload,
+  BatchActionPayloadResolver,
+  BatchExecuteOutcome,
+  ReviewerBatchActionServiceDeps,
+  ReviewerBatchActionServicePort,
+  ReviewerBatchExecuteResult,
+} from "./batch-execute.js";
+
+export {
+  parseReviewerBatchRoute,
+  reviewerBatchRoutePathRegex,
+  renderReviewerBatchPreviewView,
+} from "./batch-view.js";
+
+export {
+  loadReviewerBatchPreview,
+  renderReviewerBatchRoute,
+  confirmReviewerBatch,
+} from "./batch-route.js";
+export type { ReviewerBatchConfirmDeps, ReviewerBatchRouteDeps } from "./batch-route.js";
+
+export {
+  fixtureAcceptedItem,
+  fixtureAllAllowedPreview,
+  fixtureAllowedGlossaryRow,
+  fixtureAllowedRow,
+  fixtureAllowedRuntimeRow,
+  fixtureBatchPermissionView,
+  fixtureBenchmarkConsequence,
+  fixtureConflictingActionRequest,
+  fixtureDeniedPreview,
+  fixtureDraftStateChangeConsequence,
+  fixtureDuplicateRow,
+  fixtureEmptyPreview,
+  fixtureEmptyRequest,
+  fixtureExportConsequence,
+  fixtureGlossaryWriteConsequence,
+  fixtureInvalidInputRow,
+  fixtureInvalidTransitionRow,
+  fixtureMixedKindRequest,
+  fixtureMixedPreview,
+  fixtureNotFoundRow,
+  fixturePendingGlossaryItem,
+  fixturePendingQaItem,
+  fixturePendingRuntimeEvidenceItem,
+  fixturePolicyWriteConsequence,
+  fixtureRerunJobConsequence,
+  fixtureStaleRow,
+  itotori083FixtureLocaleBranchId,
+  itotori083FixtureProjectId,
+  itotori083FixtureSourceRevisionId,
+} from "./batch-fixtures.js";
