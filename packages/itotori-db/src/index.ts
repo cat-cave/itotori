@@ -674,6 +674,33 @@ export {
   auditFindingStatusList,
   auditFindingStatusValues,
 } from "./repositories/audit-finding-repository.js";
+export {
+  ItotoriReviewerQueueRepository,
+  ReviewerQueueRepositoryError,
+  reviewerQueueActionList,
+  reviewerQueueActionValues,
+  reviewerQueueItemKindList,
+  reviewerQueueItemKindValues,
+  reviewerQueueItemStateList,
+  reviewerQueueItemStateValues,
+  reviewerQueueRepositoryErrorCodes,
+} from "./repositories/reviewer-queue-repository.js";
+export type {
+  CreateReviewerQueueItemInput,
+  ItotoriReviewerQueueRepositoryPort,
+  LoadReviewerQueueItemsOptions,
+  ReviewerQueueActionInput,
+  ReviewerQueueActionResult,
+  ReviewerQueueRepositoryErrorCode,
+} from "./repositories/reviewer-queue-repository.js";
+export type {
+  ReviewerQueueAction,
+  ReviewerQueueDiagnostic,
+  ReviewerQueueItemKind,
+  ReviewerQueueItemRecord,
+  ReviewerQueueItemState,
+  ReviewerQueueTransitionRecord,
+} from "./schema.js";
 export type {
   ItotoriAuditFindingRepositoryPort,
   LoadFindingsByNodeOptions,
