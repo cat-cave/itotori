@@ -1,4 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet};
+use std::fmt;
 use std::fs;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
@@ -10,7 +11,13 @@ use kaifuu_core::{
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-const DELTA_SCHEMA_VERSION: &str = "0.2.0";
+// KAIFUU-238: schema bumped to 0.3.0 to add the required `sourceProvenance`
+// envelope that carries the KAIFUU-193 `partial: true` bit forward from the
+// originating extract envelope. Apply refuses any package whose
+// `sourceProvenance.partial` is true. The 0.2.0 loader is deleted in the
+// same change — there is no compatibility shim for packages without
+// `sourceProvenance`.
+const DELTA_SCHEMA_VERSION: &str = "0.3.0";
 const DELTA_FORMAT: &str = "kaifuu-delta-package";
 const DELTA_HASH_VERSION: &str = "kaifuu-delta-root-v0.2";
 
@@ -21,10 +28,119 @@ struct DeltaPackage {
     delta_package_id: String,
     format: String,
     metadata: DeltaMetadata,
+    source_provenance: SourceProvenance,
     source_compatibility: SourceCompatibility,
     target: TargetManifest,
     changed_entries: Vec<ChangedEntry>,
 }
+
+/// KAIFUU-238: carries the partial provenance bit forward from the source
+/// extract envelope through diff into apply. `partial` is required — there
+/// is no schema-level fallback to "assume complete" because forgetting the
+/// field is exactly the KAIFUU-193 audit P1 failure mode. Apply refuses any
+/// package with `partial == true`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SourceProvenance {
+    pub partial: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub adapter_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub partial_report_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub blocking_diagnostic_count: Option<u32>,
+}
+
+impl SourceProvenance {
+    /// A package whose source extract was a fully-detected (complete)
+    /// envelope. This is the path taken by `kaifuu diff` without
+    /// `--source-extract`, and by `kaifuu diff --source-extract <path>`
+    /// where the envelope is a regular bridge (PatchExport) with no
+    /// `partial` field.
+    pub fn complete() -> Self {
+        Self {
+            partial: false,
+            adapter_id: None,
+            partial_report_id: None,
+            blocking_diagnostic_count: None,
+        }
+    }
+
+    /// Read an extract envelope JSON file and derive the provenance. If the
+    /// envelope carries `partial: true` (the KAIFUU-193 PartialAdapterReport
+    /// shape) the resulting provenance is marked partial and carries the
+    /// adapter id / report id / blocking diagnostic count forward for
+    /// debugging. Any other shape (including a regular bridge envelope
+    /// without a `partial` field) is treated as complete.
+    pub fn from_extract_envelope_file(path: &Path) -> KaifuuResult<Self> {
+        let envelope: Value = read_json(path)?;
+        Ok(Self::from_extract_envelope_value(&envelope))
+    }
+
+    pub fn from_extract_envelope_value(envelope: &Value) -> Self {
+        let partial = envelope
+            .get("partial")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        if !partial {
+            return Self::complete();
+        }
+        let adapter_id = envelope
+            .get("adapterId")
+            .and_then(Value::as_str)
+            .map(str::to_string);
+        let partial_report_id = envelope
+            .get("reportId")
+            .and_then(Value::as_str)
+            .map(str::to_string);
+        let blocking_diagnostic_count = envelope.get("severityCounts").map(|counts| {
+            let p0 = counts.get("p0").and_then(Value::as_u64).unwrap_or(0);
+            let p1 = counts.get("p1").and_then(Value::as_u64).unwrap_or(0);
+            u32::try_from(p0 + p1).unwrap_or(u32::MAX)
+        });
+        Self {
+            partial: true,
+            adapter_id,
+            partial_report_id,
+            blocking_diagnostic_count,
+        }
+    }
+}
+
+/// KAIFUU-238: typed error returned by `apply_delta` when a package's source
+/// extract carried `partial: true`. Apply must refuse — the documented
+/// KAIFUU-193 contract is "apply MUST refuse any envelope whose `partial`
+/// field is true" and the delta is the carrier through which that
+/// provenance reaches apply.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PartialSourceRefused {
+    pub delta_package_id: String,
+    pub adapter_id: Option<String>,
+    pub partial_report_id: Option<String>,
+    pub blocking_diagnostic_count: Option<u32>,
+}
+
+impl fmt::Display for PartialSourceRefused {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            formatter,
+            "kaifuu.delta.partial_source_refused: delta package {} carries sourceProvenance.partial=true",
+            self.delta_package_id,
+        )?;
+        if let Some(adapter_id) = &self.adapter_id {
+            write!(formatter, "; adapterId={adapter_id}")?;
+        }
+        if let Some(report_id) = &self.partial_report_id {
+            write!(formatter, "; partialReportId={report_id}")?;
+        }
+        if let Some(blocking) = self.blocking_diagnostic_count {
+            write!(formatter, "; blockingDiagnosticCount={blocking}")?;
+        }
+        Ok(())
+    }
+}
+
+impl std::error::Error for PartialSourceRefused {}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -110,7 +226,11 @@ struct DirectorySnapshot {
     files: BTreeMap<String, FileSnapshot>,
 }
 
-pub fn create_delta(original_dir: &Path, patched_dir: &Path) -> KaifuuResult<Value> {
+pub fn create_delta(
+    original_dir: &Path,
+    patched_dir: &Path,
+    source_provenance: SourceProvenance,
+) -> KaifuuResult<Value> {
     let original = snapshot_directory(original_dir)?;
     let patched = snapshot_directory(patched_dir)?;
     let mut changed_entries = Vec::new();
@@ -165,12 +285,13 @@ pub fn create_delta(original_dir: &Path, patched_dir: &Path) -> KaifuuResult<Val
         delta_package_id: deterministic_id("delta", 2),
         format: DELTA_FORMAT.to_string(),
         metadata: DeltaMetadata {
-            generator: "kaifuu-delta/0.2".to_string(),
+            generator: "kaifuu-delta/0.3".to_string(),
             hash_algorithm: "sha256".to_string(),
             path_encoding: "relative-utf8-posix".to_string(),
             content_encodings: vec!["utf8".to_string(), "hex".to_string()],
             ignored_artifacts: vec![],
         },
+        source_provenance,
         source_compatibility: SourceCompatibility {
             root_hash: original.root_hash,
             file_count: original.files.len() as u64,
@@ -192,6 +313,19 @@ pub fn create_delta(original_dir: &Path, patched_dir: &Path) -> KaifuuResult<Val
 pub fn apply_delta(game_dir: &Path, delta_path: &Path, output_dir: &Path) -> KaifuuResult<Value> {
     let package: DeltaPackage = read_json(delta_path)?;
     validate_package_shape(&package)?;
+    // KAIFUU-238: refuse the package before touching the source tree or
+    // allocating staging when the source extract envelope was partial.
+    // KAIFUU-193's documented contract is "apply MUST refuse any envelope
+    // whose `partial` field is true"; the delta package carries that bit
+    // forward through `sourceProvenance.partial`.
+    if package.source_provenance.partial {
+        return Err(Box::new(PartialSourceRefused {
+            delta_package_id: package.delta_package_id.clone(),
+            adapter_id: package.source_provenance.adapter_id.clone(),
+            partial_report_id: package.source_provenance.partial_report_id.clone(),
+            blocking_diagnostic_count: package.source_provenance.blocking_diagnostic_count,
+        }));
+    }
     if output_dir.exists() {
         return Err(format!(
             "delta output directory already exists: {}",
@@ -969,18 +1103,19 @@ mod tests {
     ];
 
     #[test]
-    fn create_delta_emits_deterministic_v02_changed_file_package() {
-        let root = temp_dir("create-v02");
+    fn create_delta_emits_deterministic_v03_changed_file_package() {
+        let root = temp_dir("create-v03");
         let (original, patched) = write_sample_dirs(&root);
 
-        let first = create_delta(&original, &patched).unwrap();
-        let second = create_delta(&original, &patched).unwrap();
+        let first = create_delta(&original, &patched, SourceProvenance::complete()).unwrap();
+        let second = create_delta(&original, &patched, SourceProvenance::complete()).unwrap();
 
         assert_eq!(first, second);
         assert_eq!(first["schemaVersion"], DELTA_SCHEMA_VERSION);
         assert_eq!(first["format"], DELTA_FORMAT);
         assert_eq!(first["metadata"]["hashAlgorithm"], "sha256");
         assert_eq!(first["metadata"]["ignoredArtifacts"], json!([]));
+        assert_eq!(first["sourceProvenance"]["partial"], false);
         assert_eq!(first["sourceCompatibility"]["fileCount"], 4);
         assert_eq!(first["target"]["fileCount"], 4);
         assert!(
@@ -1016,7 +1151,11 @@ mod tests {
         let (original, patched) = write_sample_dirs(&root);
         let output_dir = root.join("output");
         let delta_path = root.join("package.kaifuu");
-        write_json(&delta_path, &create_delta(&original, &patched).unwrap()).unwrap();
+        write_json(
+            &delta_path,
+            &create_delta(&original, &patched, SourceProvenance::complete()).unwrap(),
+        )
+        .unwrap();
 
         let result = apply_delta(&original, &delta_path, &output_dir).unwrap();
 
@@ -1043,9 +1182,152 @@ mod tests {
         assert!(!output_dir.join(ROOT_PATCH_RESULT_ARTIFACT).exists());
         assert_eq!(
             result["outputHash"],
-            create_delta(&original, &output_dir).unwrap()["target"]["rootHash"]
+            create_delta(&original, &output_dir, SourceProvenance::complete()).unwrap()["target"]["rootHash"]
         );
         let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn apply_delta_refuses_partial_source_before_touching_source_or_staging() {
+        // KAIFUU-238: when sourceProvenance.partial is true the apply path
+        // must refuse with a typed PartialSourceRefused error before the
+        // source tree is walked or staging is allocated. The KAIFUU-193
+        // contract says apply must refuse any envelope whose `partial`
+        // bit is true.
+        let root = temp_dir("partial-source-refused");
+        let (original, patched) = write_sample_dirs(&root);
+        let output_parent = root.join("new-output-parent");
+        let output_dir = output_parent.join("output");
+        let delta_path = root.join("partial-source.kaifuu");
+        let partial_provenance = SourceProvenance {
+            partial: true,
+            adapter_id: Some("kaifuu-reallive".to_string()),
+            partial_report_id: Some("019ed012-0000-7000-8000-0000000000c1".to_string()),
+            blocking_diagnostic_count: Some(1),
+        };
+        write_json(
+            &delta_path,
+            &create_delta(&original, &patched, partial_provenance).unwrap(),
+        )
+        .unwrap();
+
+        let error = apply_delta(&original, &delta_path, &output_dir).unwrap_err();
+        let typed = error
+            .downcast_ref::<PartialSourceRefused>()
+            .expect("apply must return a typed PartialSourceRefused error");
+        assert_eq!(typed.adapter_id.as_deref(), Some("kaifuu-reallive"));
+        assert_eq!(typed.blocking_diagnostic_count, Some(1));
+        assert!(
+            typed.to_string().contains("partial_source_refused"),
+            "{typed}"
+        );
+        assert!(!output_dir.exists());
+        assert!(!output_parent.exists());
+        assert_no_staging_dirs(&root, "output");
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn apply_delta_passes_through_explicitly_complete_source_provenance() {
+        // KAIFUU-238: the complete-source path must still succeed end to
+        // end with the new required `sourceProvenance` field present.
+        let root = temp_dir("complete-source-passes");
+        let (original, patched) = write_sample_dirs(&root);
+        let output_dir = root.join("output");
+        let delta_path = root.join("complete-source.kaifuu");
+        write_json(
+            &delta_path,
+            &create_delta(&original, &patched, SourceProvenance::complete()).unwrap(),
+        )
+        .unwrap();
+
+        let result = apply_delta(&original, &delta_path, &output_dir).unwrap();
+        assert_eq!(result["status"], "passed");
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn validate_package_shape_rejects_legacy_v02_schema_version() {
+        // KAIFUU-238: the v0.2.0 loader is deleted in the same change as
+        // the v0.3.0 introduction. There is no compatibility shim.
+        let mut package: Value = serde_json::from_value(
+            serde_json::to_value(
+                // Build a v0.3 package, then mutate the schemaVersion.
+                DeltaPackage {
+                    schema_version: DELTA_SCHEMA_VERSION.to_string(),
+                    delta_package_id: deterministic_id("delta", 2),
+                    format: DELTA_FORMAT.to_string(),
+                    metadata: DeltaMetadata {
+                        generator: "kaifuu-delta/0.3".to_string(),
+                        hash_algorithm: "sha256".to_string(),
+                        path_encoding: "relative-utf8-posix".to_string(),
+                        content_encodings: vec!["utf8".to_string(), "hex".to_string()],
+                        ignored_artifacts: vec![],
+                    },
+                    source_provenance: SourceProvenance::complete(),
+                    source_compatibility: SourceCompatibility {
+                        root_hash: root_hash([].iter().copied()),
+                        file_count: 0,
+                        byte_count: 0,
+                        files: vec![],
+                    },
+                    target: TargetManifest {
+                        root_hash: root_hash([].iter().copied()),
+                        file_count: 0,
+                        byte_count: 0,
+                        files: vec![],
+                    },
+                    changed_entries: vec![],
+                },
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        package["schemaVersion"] = json!("0.2.0");
+        let parsed: DeltaPackage = serde_json::from_value(package).unwrap();
+        let error = validate_package_shape(&parsed).unwrap_err().to_string();
+        assert!(
+            error.contains("unsupported delta schema version 0.2.0"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn source_provenance_from_envelope_value_detects_partial_true() {
+        let envelope = json!({
+            "schemaVersion": "0.1.0",
+            "reportId": "kaifuu-partial-adapter-abc",
+            "adapterId": "kaifuu-reallive",
+            "detected": false,
+            "partial": true,
+            "command": "extract",
+            "evidence": [],
+            "diagnostics": [],
+            "severityCounts": { "p0": 0, "p1": 2, "p2": 1, "p3": 0 },
+            "inventory": { "entries": 3, "sources": [] }
+        });
+        let provenance = SourceProvenance::from_extract_envelope_value(&envelope);
+        assert!(provenance.partial);
+        assert_eq!(provenance.adapter_id.as_deref(), Some("kaifuu-reallive"));
+        assert_eq!(
+            provenance.partial_report_id.as_deref(),
+            Some("kaifuu-partial-adapter-abc")
+        );
+        assert_eq!(provenance.blocking_diagnostic_count, Some(2));
+    }
+
+    #[test]
+    fn source_provenance_from_envelope_value_treats_missing_partial_as_complete() {
+        // A regular bridge envelope (PatchExport / extract bundle) does
+        // not carry a `partial` field. Apply must treat that as complete.
+        let envelope = json!({
+            "schemaVersion": "0.2.0",
+            "bridgeId": "abc",
+            "units": []
+        });
+        let provenance = SourceProvenance::from_extract_envelope_value(&envelope);
+        assert!(!provenance.partial);
+        assert!(provenance.adapter_id.is_none());
     }
 
     #[test]
@@ -1198,7 +1480,11 @@ mod tests {
         let (original, patched) = write_sample_dirs(&root);
         let output_dir = root.join("output");
         let delta_path = root.join("package.kaifuu");
-        write_json(&delta_path, &create_delta(&original, &patched).unwrap()).unwrap();
+        write_json(
+            &delta_path,
+            &create_delta(&original, &patched, SourceProvenance::complete()).unwrap(),
+        )
+        .unwrap();
         write_file(&original, "data/unchanged.txt", b"changed source\n");
 
         let error = apply_delta(&original, &delta_path, &output_dir)
@@ -1229,7 +1515,8 @@ mod tests {
             let (original, patched) = write_sample_dirs(&root);
             let output_dir = root.join("output");
             let delta_path = root.join("unsafe.kaifuu");
-            let mut package = create_delta(&original, &patched).unwrap();
+            let mut package =
+                create_delta(&original, &patched, SourceProvenance::complete()).unwrap();
             package["changedEntries"][0]["path"] = json!(unsafe_path);
             write_json(&delta_path, &package).unwrap();
 
@@ -1255,7 +1542,9 @@ mod tests {
         let (original, patched) = write_sample_dirs(&root);
         fs::write(patched.join("data\\ambiguous.txt"), b"ambiguous\n").unwrap();
 
-        let error = create_delta(&original, &patched).unwrap_err().to_string();
+        let error = create_delta(&original, &patched, SourceProvenance::complete())
+            .unwrap_err()
+            .to_string();
 
         assert!(error.contains("separator characters"));
         let _ = fs::remove_dir_all(root);
@@ -1267,7 +1556,7 @@ mod tests {
         let (original, patched) = write_sample_dirs(&root);
         let output_dir = root.join("output");
         let delta_path = root.join("corrupt.kaifuu");
-        let mut package = create_delta(&original, &patched).unwrap();
+        let mut package = create_delta(&original, &patched, SourceProvenance::complete()).unwrap();
         let entry = package["changedEntries"]
             .as_array_mut()
             .unwrap()
@@ -1296,7 +1585,7 @@ mod tests {
         let output_parent = root.join("new-output-parent");
         let output_dir = output_parent.join("output");
         let delta_path = root.join("conflict.kaifuu");
-        let mut package = create_delta(&original, &original).unwrap();
+        let mut package = create_delta(&original, &original, SourceProvenance::complete()).unwrap();
         add_utf8_changed_entry(&mut package, "data/nested.txt", b"nested\n");
         add_target_file_record(&mut package, "data/nested.txt", b"nested\n");
         refresh_manifest(&mut package, "target");
@@ -1321,7 +1610,7 @@ mod tests {
         let output_parent = root.join("new-output-parent");
         let output_dir = output_parent.join("output");
         let delta_path = root.join("conflict.kaifuu");
-        let mut package = create_delta(&original, &original).unwrap();
+        let mut package = create_delta(&original, &original, SourceProvenance::complete()).unwrap();
         add_utf8_changed_entry(&mut package, "data\\nested.txt", b"nested\n");
         add_target_file_record(&mut package, "data\\nested.txt", b"nested\n");
         refresh_manifest(&mut package, "target");
@@ -1347,7 +1636,7 @@ mod tests {
         let output_parent = root.join("new-output-parent");
         let output_dir = output_parent.join("output");
         let delta_path = root.join("conflict.kaifuu");
-        let mut package = create_delta(&original, &original).unwrap();
+        let mut package = create_delta(&original, &original, SourceProvenance::complete()).unwrap();
         add_target_file_record(&mut package, "data\\nested.txt", b"colliding target\n");
         package["target"]["fileCount"] = json!(2);
         package["target"]["byteCount"] =
@@ -1372,7 +1661,7 @@ mod tests {
         let output_dir = root.join("output");
         let delta_path = root.join("delete-source-report.kaifuu");
         write_file(&original, ROOT_PATCH_RESULT_ARTIFACT, b"source game file\n");
-        let package = create_delta(&original, &patched).unwrap();
+        let package = create_delta(&original, &patched, SourceProvenance::complete()).unwrap();
         write_json(&delta_path, &package).unwrap();
 
         let source_paths = package["sourceCompatibility"]["files"]
@@ -1407,7 +1696,7 @@ mod tests {
         let output_dir = root.join("output");
         let delta_path = root.join("target-report-file.kaifuu");
         write_file(&patched, ROOT_PATCH_RESULT_ARTIFACT, b"target game file\n");
-        let package = create_delta(&original, &patched).unwrap();
+        let package = create_delta(&original, &patched, SourceProvenance::complete()).unwrap();
         write_json(&delta_path, &package).unwrap();
 
         let target_paths = package["target"]["files"]
@@ -1440,7 +1729,7 @@ mod tests {
         let (original, patched) = write_sample_dirs(&root);
         let output_dir = root.join("output");
         let delta_path = root.join("incomplete.kaifuu");
-        let mut package = create_delta(&original, &patched).unwrap();
+        let mut package = create_delta(&original, &patched, SourceProvenance::complete()).unwrap();
         remove_changed_entry(&mut package, "source.json");
         write_json(&delta_path, &package).unwrap();
 
@@ -1461,7 +1750,7 @@ mod tests {
         let output_parent = root.join("new-output-parent");
         let output_dir = output_parent.join("output");
         let delta_path = root.join("incomplete.kaifuu");
-        let mut package = create_delta(&original, &patched).unwrap();
+        let mut package = create_delta(&original, &patched, SourceProvenance::complete()).unwrap();
         remove_changed_entry(&mut package, "source.json");
         write_json(&delta_path, &package).unwrap();
 
@@ -1482,7 +1771,7 @@ mod tests {
         let output_parent = root.join("new-output-parent");
         let output_dir = output_parent.join("output");
         let delta_path = root.join("incomplete-add.kaifuu");
-        let mut package = create_delta(&original, &patched).unwrap();
+        let mut package = create_delta(&original, &patched, SourceProvenance::complete()).unwrap();
         remove_changed_entry(&mut package, "data/add.txt");
         write_json(&delta_path, &package).unwrap();
 
@@ -1503,7 +1792,7 @@ mod tests {
         let output_parent = root.join("new-output-parent");
         let output_dir = output_parent.join("output");
         let delta_path = root.join("incomplete-delete.kaifuu");
-        let mut package = create_delta(&original, &patched).unwrap();
+        let mut package = create_delta(&original, &patched, SourceProvenance::complete()).unwrap();
         remove_changed_entry(&mut package, "data/delete.txt");
         write_json(&delta_path, &package).unwrap();
 
@@ -1523,7 +1812,7 @@ mod tests {
         let (original, patched) = write_sample_dirs(&root);
         let output_dir = root.join("output");
         let delta_path = root.join("reordered.kaifuu");
-        let mut package = create_delta(&original, &patched).unwrap();
+        let mut package = create_delta(&original, &patched, SourceProvenance::complete()).unwrap();
         package["changedEntries"].as_array_mut().unwrap().reverse();
         package["target"]["files"].as_array_mut().unwrap().reverse();
         write_json(&delta_path, &package).unwrap();
@@ -1533,7 +1822,7 @@ mod tests {
         assert_eq!(result["status"], "passed");
         assert_eq!(
             result["outputHash"],
-            create_delta(&original, &output_dir).unwrap()["target"]["rootHash"]
+            create_delta(&original, &output_dir, SourceProvenance::complete()).unwrap()["target"]["rootHash"]
         );
         let _ = fs::remove_dir_all(root);
     }
