@@ -16686,6 +16686,11 @@ pub fn replace_plain_xp3_entry_payload(
                 "entry {entry_path:?} not present in manifest"
             ))
         })?;
+    validate_safe_relative_path(&entry.path)
+        .map_err(|_| PlainXp3WriterError::UnsafeRelativePath(entry.path.clone()))?;
+    validate_safe_relative_path(&entry.payload_relative_path).map_err(|_| {
+        PlainXp3WriterError::UnsafeRelativePath(entry.payload_relative_path.clone())
+    })?;
     if entry
         .segments
         .iter()
@@ -19253,6 +19258,61 @@ mod tests {
         assert_eq!(title.archive_size, 18);
 
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn replace_plain_xp3_entry_rejects_tampered_payload_path_before_write() {
+        let fixture_bytes =
+            fs::read(repo_fixture_path("fixtures/kaifuu/kirikiri/plain.xp3")).unwrap();
+        let root = temp_dir("kaifuu-098-replace-tampered-payload");
+        let dir = root.join("unpacked");
+        let outside_path = root.join("escape.bin");
+        unpack_plain_xp3_to_directory(&fixture_bytes, &dir).unwrap();
+
+        let manifest_path = dir.join("manifest.json");
+        let manifest_bytes = fs::read(&manifest_path).unwrap();
+        let mut manifest: PlainXp3DirectoryManifest =
+            serde_json::from_slice(&manifest_bytes).unwrap();
+        let entry = manifest
+            .entries
+            .iter_mut()
+            .find(|entry| entry.path == "scenario/intro.ks")
+            .unwrap();
+        let expected_original_size = entry.original_size;
+        let expected_archive_size = entry.archive_size;
+        entry.payload_relative_path = "../escape.bin".to_string();
+        let tampered_manifest = serde_json::to_string_pretty(&manifest).unwrap();
+        fs::write(&manifest_path, tampered_manifest).unwrap();
+
+        let error =
+            replace_plain_xp3_entry_payload(&dir, "scenario/intro.ks", b"must not escape\n")
+                .unwrap_err();
+        assert!(matches!(
+            error,
+            PlainXp3WriterError::UnsafeRelativePath(ref path) if path == "../escape.bin"
+        ));
+        assert!(
+            !outside_path.exists(),
+            "replace must reject the tampered payloadRelativePath before writing outside dir"
+        );
+
+        let persisted_manifest: PlainXp3DirectoryManifest =
+            serde_json::from_slice(&fs::read(&manifest_path).unwrap()).unwrap();
+        let persisted_entry = persisted_manifest
+            .entries
+            .iter()
+            .find(|entry| entry.path == "scenario/intro.ks")
+            .unwrap();
+        assert_eq!(
+            persisted_entry.original_size, expected_original_size,
+            "replace must fail before mutating manifest metadata"
+        );
+        assert_eq!(
+            persisted_entry.archive_size, expected_archive_size,
+            "replace must fail before mutating manifest metadata"
+        );
+
+        let _ = fs::remove_dir_all(&root);
     }
 
     #[test]
