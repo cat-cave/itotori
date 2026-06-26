@@ -1577,7 +1577,7 @@ const DEFAULT_API_KEY_ENV_VAR = "OPENROUTER_API_KEY";
 // declares its (modelId, providerId) pair and cost is always REAL (the
 // generation/<id> endpoint settles `usage.cost`) — never estimated.
 // Empirically, per the ITOTORI-224 evidence pack a single agentic-loop
-// call against the DEV_PAIR (deepseek-v3.2-exp at fireworks) settles
+// call against the DEV_PAIR (deepseek-v4-flash at fireworks) settles
 // at ~USD 0.000003 (USD 0.0000182 across six calls). A 0.5 USD ceiling
 // therefore admits roughly 166,000 calls of headroom in a single
 // process run — far more than any realistic interactive Sweetie HD

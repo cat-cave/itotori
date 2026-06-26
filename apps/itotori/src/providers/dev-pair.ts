@@ -31,8 +31,8 @@
 //   - Pricing on Fireworks (from the same alphaPairCatalog block):
 //     prompt $0.00000014/token (≈$0.14/Mtok), completion $0.00000028/
 //     token (≈$0.28/Mtok). A 4k-prompt+1k-completion QA call costs
-//     ~$0.00084, so the ITOTORI-231 DEFAULT_COST_CAP_USD ($1.00) admits
-//     >1000 such calls — well above any single agentic-loop run.
+//     ~$0.00084, so the ITOTORI-231 DEFAULT_COST_CAP_USD ($0.5) admits
+//     ~600 such calls — well above any single agentic-loop run.
 //   - Implicit caching is NOT supported on the Fireworks endpoint
 //     (alphaPairCatalog.fireworks_supports_implicit_caching === false).
 //     The `deepseek` endpoint does advertise it
