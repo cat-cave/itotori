@@ -233,10 +233,15 @@ usability.
 
 Rules every adapter author follows:
 
-- Declare `level_matrix` explicitly via
-  `AdapterCapabilities::with_level_matrix`. The default
-  `derive_from_reports` mapping is conservative and is a safety net, not a
-  substitute for the explicit declaration.
+- Declare `level_matrix` at construction. KAIFUU-053 follow-up F002 made
+  the matrix a required parameter of `AdapterCapabilities::new(adapter_id,
+reports, level_matrix)` — there is no silent fallback from
+  per-`Capability` reports to a derived matrix. Tests that genuinely don't
+  care about the registry gate may pass
+  `AdapterCapabilityMatrix::derive_from_reports(adapter_id, &reports)`
+  explicitly; the derivation rule is conservative (every contributing
+  report must be `Supported` for the rung to be `Supported`) but the
+  request must be explicit, never implicit.
 - Use `CapabilityLevelStatus::supported()` only when the rung works without
   caveats; use `partial([…])` (non-empty limitations) when it works with
   documented gaps; use `unsupported(reason)` when the rung is not implemented.
@@ -247,8 +252,8 @@ Rules every adapter author follows:
   engine exists does not imply the adapter can extract or patch it.
 - The declared matrix must never claim more than the per-`Capability` reports
   support. `AdapterCapabilities::normalize` enforces this with a
-  `debug_assert!`; tests that hit `with_level_matrix` will fail loudly if a
-  detector tries to over-claim.
+  `debug_assert!` against `derive_from_reports`; over-claims fail loudly at
+  construction time.
 - Strict gate: `adapters_supporting(level)` counts only `Supported`. `Partial`
   and `Unsupported` are excluded by design. If a consumer wants "at least
   level X", use `adapters_at_least(level)`.
@@ -258,7 +263,7 @@ rung (e.g. round-trip verify) requires a coordinated Rust + TS + DB schema
 bump: extend `CapabilityLevel`, the
 `packages/localization-bridge-schema/src/index.ts` `CAPABILITY_LEVELS_V02`
 constant, and the Postgres `capability_level_enum` in a new migration. The
-CHECK constraint in `0028_engine_capability_reports.sql` documents the
+CHECK constraint in `0030_engine_capability_reports.sql` documents the
 status-kind discriminator that must stay in lockstep.
 
 ## Semantic Error Code Rules

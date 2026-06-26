@@ -1025,8 +1025,8 @@ fn deterministic_uuid7(parts: &[&str]) -> String {
 mod tests {
     use super::*;
     use crate::{
-        AdapterCapabilities, CapabilityStatus, LayeredAccessCapabilityContract,
-        LayeredAccessOperationContract,
+        AdapterCapabilities, AdapterCapabilityMatrix, CapabilityStatus,
+        LayeredAccessCapabilityContract, LayeredAccessOperationContract,
     };
 
     const ADAPTER_ID: &str = "kaifuu-fixture";
@@ -1036,13 +1036,24 @@ mod tests {
     const RUN_ID: &str = "run-001";
     const COMMAND: &str = "patch.write_string_slot";
 
+    /// Patch-transaction tests run inside `kaifuu-core`'s own crate boundary
+    /// and exercise the access-contract machinery directly; the level matrix
+    /// is not the subject of these tests, but KAIFUU-053 requires every
+    /// `AdapterCapabilities` to declare one. Use the explicitly-derived
+    /// matrix from an empty report vec (every rung Unsupported) so the
+    /// fixture cannot be mistaken for an adapter that supports
+    /// inventory/extract/patch from registry-side gates.
+    fn fixture_matrix() -> AdapterCapabilityMatrix {
+        AdapterCapabilityMatrix::derive_from_reports(ADAPTER_ID, &[])
+    }
+
     fn capabilities_with_identity_patch() -> AdapterCapabilities {
-        AdapterCapabilities::new(ADAPTER_ID, vec![])
+        AdapterCapabilities::new(ADAPTER_ID, vec![], fixture_matrix())
             .with_access_contract(LayeredAccessCapabilityContract::plaintext_identity())
     }
 
     fn capabilities_with_no_access_contract() -> AdapterCapabilities {
-        AdapterCapabilities::new(ADAPTER_ID, vec![])
+        AdapterCapabilities::new(ADAPTER_ID, vec![], fixture_matrix())
     }
 
     fn capabilities_with_unsupported_patch() -> AdapterCapabilities {
@@ -1057,7 +1068,8 @@ mod tests {
             supported_patch_back: vec![],
             support_boundary: Some("intentionally unsupported".to_string()),
         };
-        AdapterCapabilities::new(ADAPTER_ID, vec![]).with_access_contract(contract)
+        AdapterCapabilities::new(ADAPTER_ID, vec![], fixture_matrix())
+            .with_access_contract(contract)
     }
 
     fn make_config<'a>(
