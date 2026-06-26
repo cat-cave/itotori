@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "exported_at": "2026-06-26T22:21:45.859Z",
+  "exported_at": "2026-06-26T22:30:07.686Z",
   "registries": {
     "groups": [
       {
@@ -4237,11 +4237,11 @@
       "validation": null,
       "context": null,
       "created_at": "2026-06-26T02:53:54.696Z",
-      "updated_at": "2026-06-26T22:21:25.588Z",
+      "updated_at": "2026-06-26T22:29:58.188Z",
       "claimed_at": "2026-06-26T16:55:54.680Z",
       "done_at": null,
       "group_name": "engine-research",
-      "status_reason": "Re-tier 2026-06-24: moved from alpha to beta — multi-engine / encrypted-variant work belongs in beta under the new 4-tier framework (per docs/proposals/dag-retier-2026-06-24.md).\n[2026-06-26T22:21:25.588Z] 2026-06-26 implementation advanced on spec/kaifuu-039: commit c0df39a adds RPG Maker MV/MZ encrypted-media-proof command, synthetic public fixture matrix including encrypted image/audio/video (.rpgmvp/.rpgmvm/.rpgmvo/.rpgmvu/.png_/.m4a_/.ogg_), wrong-key hash-only validation, stdout qd contract for 'kaifuu rpgmaker encrypted-media-proof --fixture ...', and detector fixture snapshot updates. Focused audit found P1s for CLI contract, wrong-key coverage, and encrypted video coverage; repair resolved them and post-repair audit found no P0/P1 blockers. Merged current main into branch at c261d78. Verification passed on merged branch: cargo fmt --check, cargo test -p kaifuu-core, cargo test -p kaifuu-cli, just fixtures-validate, git diff --check.",
+      "status_reason": "Re-tier 2026-06-24: moved from alpha to beta — multi-engine / encrypted-variant work belongs in beta under the new 4-tier framework (per docs/proposals/dag-retier-2026-06-24.md).\n[2026-06-26T22:21:25.588Z] 2026-06-26 implementation advanced on spec/kaifuu-039: commit c0df39a adds RPG Maker MV/MZ encrypted-media-proof command, synthetic public fixture matrix including encrypted image/audio/video (.rpgmvp/.rpgmvm/.rpgmvo/.rpgmvu/.png_/.m4a_/.ogg_), wrong-key hash-only validation, stdout qd contract for 'kaifuu rpgmaker encrypted-media-proof --fixture ...', and detector fixture snapshot updates. Focused audit found P1s for CLI contract, wrong-key coverage, and encrypted video coverage; repair resolved them and post-repair audit found no P0/P1 blockers. Merged current main into branch at c261d78. Verification passed on merged branch: cargo fmt --check, cargo test -p kaifuu-core, cargo test -p kaifuu-cli, just fixtures-validate, git diff --check.\n[2026-06-26T22:29:58.188Z] 2026-06-26 broad pre-CI gate passed on spec/kaifuu-039 after merge with main and fixture-format refresh: nix develop --command bash -lc 'pnpm exec vp check && node scripts/audit-no-hardcoded-cost.mjs && just fixtures-validate && just impl-map-schema-validate && node scripts/verify-toolchain-policy.mjs && pnpm exec vp run ts:typecheck && cargo fmt --check && cargo check --workspace'. Existing lint warnings only; command exited 0.",
       "check_command": null,
       "ci_command": null,
       "projects": ["kaifuu"],
@@ -40723,6 +40723,12 @@
       "node_id": "KAIFUU-039",
       "text": "2026-06-26 implementation advanced on spec/kaifuu-039: commit c0df39a adds RPG Maker MV/MZ encrypted-media-proof command, synthetic public fixture matrix including encrypted image/audio/video (.rpgmvp/.rpgmvm/.rpgmvo/.rpgmvu/.png_/.m4a_/.ogg_), wrong-key hash-only validation, stdout qd contract for 'kaifuu rpgmaker encrypted-media-proof --fixture ...', and detector fixture snapshot updates. Focused audit found P1s for CLI contract, wrong-key coverage, and encrypted video coverage; repair resolved them and post-repair audit found no P0/P1 blockers. Merged current main into branch at c261d78. Verification passed on merged branch: cargo fmt --check, cargo test -p kaifuu-core, cargo test -p kaifuu-cli, just fixtures-validate, git diff --check.",
       "created_at": "2026-06-26T22:21:25.588Z"
+    },
+    {
+      "id": "f410d764-b2e5-4cee-8d10-92053151f859",
+      "node_id": "KAIFUU-039",
+      "text": "2026-06-26 broad pre-CI gate passed on spec/kaifuu-039 after merge with main and fixture-format refresh: nix develop --command bash -lc 'pnpm exec vp check && node scripts/audit-no-hardcoded-cost.mjs && just fixtures-validate && just impl-map-schema-validate && node scripts/verify-toolchain-policy.mjs && pnpm exec vp run ts:typecheck && cargo fmt --check && cargo check --workspace'. Existing lint warnings only; command exited 0.",
+      "created_at": "2026-06-26T22:29:58.188Z"
     }
   ]
 }
