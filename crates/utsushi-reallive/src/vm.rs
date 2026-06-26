@@ -417,6 +417,27 @@ pub enum VmWarning {
         /// Short reason ("expected 1 Int arg, got 0", etc.).
         reason: String,
     },
+    /// The choice-resume path observed a popped [`crate::rlop::LongOp`]
+    /// whose private state carries the
+    /// [`crate::rlop::SELECT_PRIVATE_STATE_MAGIC`] magic byte but
+    /// decoded to a malformed payload. Surfaces a typed reason; the
+    /// VM does not write to the store register. See
+    /// [`Vm::apply_choice_resume`].
+    ChoiceResumeMalformed {
+        /// Long-op id whose payload was malformed.
+        longop_id: LongOpId,
+        /// Reason string (typed decode error `to_string()`).
+        reason: String,
+    },
+    /// The choice-resume path popped a select-shaped longop whose
+    /// chosen-index was still the pending sentinel. No store-register
+    /// write happens; the warning names the longop id so the audit
+    /// trail can correlate with the scheduler that signalled Ready
+    /// without recording a choice.
+    ChoiceResumeWithoutChoice {
+        /// Long-op id that was missing a recorded choice.
+        longop_id: LongOpId,
+    },
 }
 
 /// Typed error variants surfaced by [`Vm::step`]. Every failure mode is
@@ -618,6 +639,42 @@ impl Vm {
         self.apply_outcome(outcome, post_pc)
     }
 
+    /// Apply the typed resume side-effect for a popped longop.
+    ///
+    /// If `popped` carries a select-shaped private state (magic byte =
+    /// [`crate::rlop::SELECT_PRIVATE_STATE_MAGIC`]) and the chosen
+    /// index has been recorded, write the chosen index to the store
+    /// register through [`crate::var_banks::VarBanks::set_store`].
+    /// Non-select longops are ignored. Malformed payloads surface a
+    /// fail-soft [`VmWarning::ChoiceResumeMalformed`].
+    ///
+    /// Exposed so per-module integration tests and the substrate
+    /// runner can drive the same code path as [`Vm::step`] without
+    /// staging a synthetic scene store.
+    pub fn apply_choice_resume(&mut self, popped: &crate::rlop::LongOp) {
+        if popped.private_state.first() != Some(&crate::rlop::SELECT_PRIVATE_STATE_MAGIC) {
+            return;
+        }
+        match crate::rlop::SelectLongOp::try_from_longop(popped) {
+            Ok(select) => match select.chosen() {
+                Some(index) => {
+                    self.banks.set_store(index as u32);
+                }
+                None => {
+                    self.warnings.push(VmWarning::ChoiceResumeWithoutChoice {
+                        longop_id: popped.id,
+                    });
+                }
+            },
+            Err(err) => {
+                self.warnings.push(VmWarning::ChoiceResumeMalformed {
+                    longop_id: popped.id,
+                    reason: err.to_string(),
+                });
+            }
+        }
+    }
+
     /// Take a single fetch / decode / dispatch / advance step.
     ///
     /// The scheduler is consulted before fetching the next element so a
@@ -636,14 +693,34 @@ impl Vm {
         // element. A `Pending` reading suspends the VM; a `Ready`
         // reading pops the head and lets the next step resume the
         // normal dispatch.
-        if let Some(head) = self.longop_queue.front() {
+        if let Some(head) = self.longop_queue.front_mut() {
             let head_id = head.id;
             match scheduler.poll(head) {
                 LongOpReadiness::Pending => {
                     return Ok(StepOutcome::Suspended { longop_id: head_id });
                 }
                 LongOpReadiness::Ready => {
-                    self.longop_queue.pop_front();
+                    // SAFETY: front_mut returned Some so pop_front
+                    // cannot fail. The expect documents the invariant.
+                    let popped = self
+                        .longop_queue
+                        .pop_front()
+                        .expect("front_mut returned Some, pop_front must succeed");
+                    // UTSUSHI-211: typed resume side-effect. If the
+                    // popped longop carries a SelectLongOp payload
+                    // (magic byte = SELECT_PRIVATE_STATE_MAGIC), decode
+                    // the chosen index and write it into the store
+                    // register. The scheduler (e.g.
+                    // [`ChoiceInputScheduler`]) is responsible for
+                    // recording the chosen index into the head's
+                    // private state before signalling Ready; this path
+                    // is the substrate-coupled translation from
+                    // "scheduler said Ready" to "VM observed a chosen
+                    // index". The audit-focus pin for UTSUSHI-211
+                    // ("Longop coupling — the longop must use the
+                    // substrate scheduler, not a private wait loop")
+                    // lands here.
+                    self.apply_choice_resume(&popped);
                     return Ok(StepOutcome::LongOpResumed { longop_id: head_id });
                 }
             }

@@ -8,14 +8,11 @@
 //! banks stay untouched (the text opcodes do not write banks; that is
 //! the `module_sys` / `module_mem` job for UTSUSHI-210).
 //!
-//! The pause + select opcodes additionally exercise the longop queue
-//! path:
-//!
-//! - `msg.pause` yields and then resumes once the
-//!   [`utsushi_reallive::AlwaysReadyScheduler`] sees the head.
-//! - `msg.select` yields with the encoded choice list and the
-//!   [`utsushi_reallive::SelectionChoiceCountScheduler`] consumes the
-//!   head after a configurable number of polls.
+//! `msg.pause` exercises the longop queue path: it yields and resumes
+//! once the [`utsushi_reallive::AlwaysReadyScheduler`] sees the head.
+//! The choice family (`select` / `select_s` / `select_w` /
+//! `select_objbtn`) lives in `module_sel` as of UTSUSHI-211; see
+//! `tests/rlop_sel.rs` for that family's acceptance tests.
 
 use std::sync::{Arc, Mutex};
 
@@ -26,9 +23,8 @@ use utsushi_reallive::{
     LongOpId, LongOpIdSequence, MSG_MODULE_ID, MSG_MODULE_TYPE, MsgOpcode, MsgRuntime,
     OPCODE_FONT_COLOR, OPCODE_FONT_SIZE, OPCODE_LINE_BREAK, OPCODE_LINE_NUMBER, OPCODE_MSG_CLEAR,
     OPCODE_MSG_HIDE, OPCODE_NAME_CLOSE, OPCODE_NAME_OPEN, OPCODE_PAGE, OPCODE_PARAGRAPH_BREAK,
-    OPCODE_PAUSE, OPCODE_SELECT, OPCODE_TEXT_WINDOW, PauseLongOp, RlopKey, RlopRegistry, Scene,
-    SelectLongOp, SelectionChoiceCountScheduler, StepOutcome, Vm, VmEvent, dispatch_textout,
-    register_text_rlops, text_module_msg_keys,
+    OPCODE_PAUSE, OPCODE_TEXT_WINDOW, PauseLongOp, RlopKey, RlopRegistry, Scene, StepOutcome, Vm,
+    VmEvent, dispatch_textout, register_text_rlops, text_module_msg_keys,
 };
 
 // ---------------------------------------------------------------------
@@ -150,14 +146,14 @@ fn dispatch_command(
 // ---------------------------------------------------------------------
 
 #[test]
-fn register_text_rlops_registers_at_least_twelve_opcodes() {
+fn register_text_rlops_registers_exactly_twelve_opcodes() {
     let sink = Arc::new(CollectingSink::new());
     let runtime = Arc::new(MsgRuntime::with_sink(sink));
     let mut registry = RlopRegistry::new();
     let count = register_text_rlops(&mut registry, runtime);
-    assert!(
-        count >= 12,
-        "alpha contract: at least 12 module_msg opcodes covered, got {count}",
+    assert_eq!(
+        count, 12,
+        "alpha contract: exactly 12 module_msg opcodes covered after UTSUSHI-211 moved the choice family to module_sel, got {count}",
     );
     assert_eq!(count, MsgOpcode::ALL.len());
     assert_eq!(registry.len(), count);
@@ -490,81 +486,6 @@ fn pause_through_vm_yields_then_resumes_with_always_ready_scheduler() {
 }
 
 // ---------------------------------------------------------------------
-// msg.select — yields a SelectLongOp; emits choices through sink
-// ---------------------------------------------------------------------
-
-#[test]
-fn select_yields_select_longop_and_emits_choices_through_sink() {
-    let sink = Arc::new(CollectingSink::new());
-    let runtime = Arc::new(MsgRuntime::with_sink(sink.clone()));
-    let mut registry = RlopRegistry::new();
-    register_text_rlops(&mut registry, Arc::clone(&runtime));
-    let op = registry
-        .get(RlopKey::new(MSG_MODULE_TYPE, MSG_MODULE_ID, OPCODE_SELECT))
-        .expect("select registered");
-    let mut vm = Vm::new(1, 0);
-    // Shift-JIS for "はい" and "いいえ".
-    let yes = vec![0x82, 0xcd, 0x82, 0xa2];
-    let no = vec![0x82, 0xa2, 0x82, 0xa2, 0x82, 0xa6];
-    let outcome = op.dispatch(
-        &mut vm,
-        &[ExprValue::Bytes(yes.clone()), ExprValue::Bytes(no.clone())],
-    );
-    let (longop_id, private_state) = match outcome {
-        DispatchOutcome::Yield {
-            longop_id,
-            private_state,
-        } => (longop_id, private_state),
-        other => panic!("expected Yield, got {other:?}"),
-    };
-    let lines = sink.drain();
-    assert_eq!(lines.len(), 2);
-    assert_eq!(lines[0].text, "はい");
-    assert_eq!(lines[0].text_surface.as_deref(), Some("choice:0"));
-    assert_eq!(lines[1].text, "いいえ");
-    assert_eq!(lines[1].text_surface.as_deref(), Some("choice:1"));
-    // The yielded longop encodes a SelectLongOp.
-    assert_eq!(
-        private_state[0],
-        utsushi_reallive::SELECT_PRIVATE_STATE_MAGIC
-    );
-    assert_eq!(longop_id, LongOpId(1));
-}
-
-#[test]
-fn select_resumes_through_choice_count_scheduler() {
-    let sink = Arc::new(CollectingSink::new());
-    let runtime = Arc::new(MsgRuntime::with_sink(sink));
-    let mut registry = RlopRegistry::new();
-    register_text_rlops(&mut registry, Arc::clone(&runtime));
-    // Synthetic scene: just OPCODE_SELECT; we hand-feed the args by
-    // mutating the queue after the dispatch.
-    let scene = build_scene(&[OPCODE_SELECT]);
-    let mut store = InMemorySceneStore::new();
-    store.insert(scene);
-    let mut vm = Vm::new(1, 0);
-    let mut scheduler = SelectionChoiceCountScheduler::new(0);
-    // Dispatch the select; because the bytecode Command we built has
-    // argc=0 the dispatch path sees zero ExprValue args — the op
-    // records a `MissingArg` warning but still yields a select longop
-    // with an empty choice list. The scheduler then immediately
-    // resumes.
-    let step1 = vm.step(&store, &registry, &mut scheduler).expect("step 1");
-    assert!(matches!(
-        step1,
-        StepOutcome::Advanced {
-            event: VmEvent::CommandDispatched {
-                outcome: DispatchOutcome::Yield { .. },
-                ..
-            }
-        }
-    ));
-    assert_eq!(vm.longop_queue().len(), 1);
-    let step2 = vm.step(&store, &registry, &mut scheduler).expect("step 2");
-    assert!(matches!(step2, StepOutcome::LongOpResumed { .. }));
-}
-
-// ---------------------------------------------------------------------
 // VarBanks invariant — none of the text ops mutate banks
 // ---------------------------------------------------------------------
 
@@ -625,16 +546,4 @@ fn longop_id_sequence_pin() {
     let seq = LongOpIdSequence::new();
     assert_eq!(seq.allocate(), LongOpId(1));
     assert_eq!(seq.allocate(), LongOpId(2));
-}
-
-#[test]
-fn select_longop_round_trips_through_carrier() {
-    let mut select = SelectLongOp::new(LongOpId(7), vec![b"a".to_vec(), b"b".to_vec()]);
-    select.choose(0);
-    let longop = select.into_longop();
-    assert_eq!(longop.id, LongOpId(7));
-    assert_eq!(
-        longop.private_state[0],
-        utsushi_reallive::SELECT_PRIVATE_STATE_MAGIC
-    );
 }
