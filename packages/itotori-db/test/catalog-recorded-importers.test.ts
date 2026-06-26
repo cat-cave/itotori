@@ -307,14 +307,31 @@ describe("catalog recorded source importers", () => {
         };
       }>;
     };
-    const specText = readFileSync(
-      new URL("../../../roadmap/spec-dag.json", import.meta.url),
-      "utf8",
+    const specDag = record(
+      JSON.parse(
+        readFileSync(new URL("../../../roadmap/spec-dag.json", import.meta.url), "utf8"),
+      ),
+      "spec DAG",
     );
-    const catalog011Text = required(
-      specText.match(/"id": "CATALOG-011"[\s\S]*?"auditFocus": \[/u)?.[0],
-      "CATALOG-011 spec text",
+    const catalog011Node = record(
+      required(
+        requiredArray(specDag.nodes, "spec DAG nodes").find(
+          (node) => record(node, "spec DAG node").id === "CATALOG-011",
+        ),
+        "CATALOG-011 spec node",
+      ),
+      "CATALOG-011 spec node",
     );
+    const catalog011AuditFocus = requiredArray(
+      catalog011Node.audit_focus,
+      "CATALOG-011 audit_focus",
+    );
+    const catalog011Text = [
+      catalog011Node.title,
+      catalog011Node.spec,
+      catalog011Node.acceptance,
+      ...catalog011AuditFocus,
+    ].join("\n");
 
     const egsReleasePlatforms = egsFixture.steps.flatMap((step) =>
       step.facts.flatMap((fact) =>
