@@ -308,9 +308,7 @@ describe("catalog recorded source importers", () => {
       }>;
     };
     const specDag = record(
-      JSON.parse(
-        readFileSync(new URL("../../../roadmap/spec-dag.json", import.meta.url), "utf8"),
-      ),
+      JSON.parse(readFileSync(new URL("../../../roadmap/spec-dag.json", import.meta.url), "utf8")),
       "spec DAG",
     );
     const catalog011Node = record(
