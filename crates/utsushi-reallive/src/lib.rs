@@ -190,6 +190,13 @@ pub mod graphics_objects;
 // doesn't actually retain bytes" cannot apply.
 pub mod render_pipeline;
 
+// UTSUSHI-218: AVG-derived save format (`SAVE_FORMAT=3`). Typed
+// reader/writer for `REALLIVE.sav` (per-slot system save),
+// `save999.sav` (global save), and `read.sav` (per-line read flags).
+// The substrate `SnapshotStore` is the in-memory backing for save
+// state; the on-disk serialiser is intentionally separate.
+pub mod save;
+
 pub use syscall::{
     HotRegion, SYSCALL_KIND_COUNT, SYSCALL_MISSING_SCREEN_SIZE_CODE,
     SYSCALL_MOUSE_AREA_MALFORMED_CODE, SYSCALL_ROUTE_MALFORMED_PAIR_CODE, ScreenSize,
@@ -207,6 +214,12 @@ pub use render_pipeline::{
     PNG_COLOUR_TYPE_RGBA, PNG_FILE_MAGIC, RENDER_PIPELINE_ARTIFACT_MISS_CODE,
     RENDER_PIPELINE_ZERO_SCREEN_SIZE_CODE, RGBA_BYTES_PER_PIXEL, RenderPass, RenderPassBuildError,
     adler32, crc32_ieee, encode_png_rgba_deterministic, sha256_hex,
+};
+
+pub use save::{
+    AVG_SAVE_PREAMBLE_BYTE_LEN, AvgSavePreamble, GLOBAL_SAVE_MAGIC, GlobalSave, ReadFlags,
+    SAVE_FORMAT_AVG_DERIVED, SAVE_STATE_INSPECTABLE_ID, SWEETIE_HD_COMPILER_VERSION,
+    SYSTEM_SAVE_MAGIC, SaveDecodeError, SaveRoundTrip, SaveState, SystemSave,
 };
 
 pub use g00::{
