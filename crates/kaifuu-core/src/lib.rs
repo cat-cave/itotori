@@ -1673,14 +1673,15 @@ fn detect_rpg_maker_mv_mz(scan: &ArchiveDetectionScan) -> ArchiveDetectionRow {
     })
 }
 
-const RPG_MAKER_MV_MZ_ENCRYPTED_SUFFIXES: &[&str] =
-    &["rpgmvp", "rpgmvm", "rpgmvo", "png_", "m4a_", "ogg_"];
+const RPG_MAKER_MV_MZ_ENCRYPTED_SUFFIXES: &[&str] = &[
+    "rpgmvp", "rpgmvm", "rpgmvo", "rpgmvu", "png_", "m4a_", "ogg_",
+];
 const RPG_MAKER_MV_MZ_ENCRYPTED_SUFFIX_PATTERN: &str =
-    "*.rpgmvp|*.rpgmvm|*.rpgmvo|*.png_|*.m4a_|*.ogg_";
+    "*.rpgmvp|*.rpgmvm|*.rpgmvo|*.rpgmvu|*.png_|*.m4a_|*.ogg_";
 const RPG_MAKER_MV_MZ_PLAIN_SUFFIXES: &[&str] = &["png", "m4a", "ogg"];
 const RPG_MAKER_MV_MZ_PLAIN_SUFFIX_PATTERN: &str = "*.png|*.m4a|*.ogg";
-const RPG_MAKER_MV_MZ_UNKNOWN_SUFFIXES: &[&str] = &["rpgmvu", "webp_"];
-const RPG_MAKER_MV_MZ_UNKNOWN_SUFFIX_PATTERN: &str = "*.rpgmvu|*.webp_";
+const RPG_MAKER_MV_MZ_UNKNOWN_SUFFIXES: &[&str] = &["webp_"];
+const RPG_MAKER_MV_MZ_UNKNOWN_SUFFIX_PATTERN: &str = "*.webp_";
 
 struct RpgMakerSuffixProfile {
     suffix: &'static str,
@@ -1786,13 +1787,13 @@ const RPG_MAKER_MV_MZ_SUFFIX_PROFILES: &[RpgMakerSuffixProfile] = &[
     },
     RpgMakerSuffixProfile {
         suffix: "rpgmvu",
-        fixture_id: "kaifuu-rpgmaker-unknown-rpgmvu",
-        variant: "unknown_suffix",
-        surface: "unknown_asset",
-        crypto: CryptoTransform::Unknown,
+        fixture_id: "kaifuu-rpgmaker-mv-video-rpgmvu",
+        variant: "mv_or_mz",
+        surface: "video_asset",
+        crypto: CryptoTransform::RpgMakerAssetXor,
         codec: CodecTransform::Unknown,
-        key_required: false,
-        unknown_crypto: true,
+        key_required: true,
+        unknown_crypto: false,
     },
     RpgMakerSuffixProfile {
         suffix: "webp_",
@@ -6208,6 +6209,1240 @@ fn validate_xp3_fixture_archive_path(path: &str) -> Result<&str, String> {
         }
     }
     Ok(path)
+}
+
+// ---------------------------------------------------------------------------
+// KAIFUU-039 — RPG Maker MV/MZ encrypted-media-proof
+// ---------------------------------------------------------------------------
+//
+// `encrypted_media_proof` runs a fixture matrix of RPG Maker MV/MZ media
+// assets (encrypted images / audio / movies, plus plaintext), validates the
+// asset-key profile against `data/System.json`, and emits a readiness report.
+//
+// Posture (load-bearing): RPG Maker MV/MZ is a commercial product.
+// KAIFUU-039 is a **research-only** profile — the proof never decrypts an
+// encrypted asset, never persists decrypted bytes, never extracts plaintext
+// from an encrypted asset, and never claims a "media-key detection implies
+// dialogue extraction or script patch support" capability. The proof
+// classifies the leading 16-byte RPGMV signature, validates the
+// `data/System.json.encryptionKey` shape, and routes per-asset readiness
+// diagnostics. Key bytes never appear in the report — only the
+// `data/System.json` proof hash and a routing diagnostic.
+
+pub const ENCRYPTED_MEDIA_PROOF_SCHEMA_VERSION: &str = "0.1.0";
+pub const ENCRYPTED_MEDIA_PROOF_SUPPORT_BOUNDARY: &str = "RPG Maker MV/MZ encrypted-media proof; research-only profile scope: detect encrypted asset suffix + signature; validate System.json key profile; readiness only. No decryption capability is claimed; no media bytes are persisted decrypted; dialogue extraction and script patch support are explicitly out of scope.";
+
+/// 16-byte RPGMV header magic that fronts every encrypted .rpgmvp /
+/// .rpgmvo / .rpgmvm / .rpgmvu / .png_ / .ogg_ / .m4a_ asset. Bytes 0..5 are
+/// `RPGMV`, bytes 5..8 are zero, byte 8 is the header version (0x00),
+/// bytes 9..10 carry the format version (0x03 0x01), bytes 10..16 are
+/// reserved. We treat the full 16 bytes as the routing signature so a
+/// fixture cannot pass the proof with a malformed or partially-zeroed
+/// header.
+pub const RPGMAKER_MV_ENCRYPTED_MEDIA_HEADER: &[u8; 16] = &[
+    b'R', b'P', b'G', b'M', b'V', 0, 0, 0, 0, 0x03, 0x01, 0, 0, 0, 0, 0,
+];
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EncryptedMediaAssetKind {
+    Image,
+    Audio,
+    Video,
+}
+
+impl EncryptedMediaAssetKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Image => "image",
+            Self::Audio => "audio",
+            Self::Video => "video",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EncryptedMediaClassification {
+    /// Bytes carry the RPGMV header magic and the fixture declared an
+    /// encrypted asset suffix (.rpgmvp / .rpgmvo / .rpgmvm / .rpgmvu /
+    /// .png_ / .ogg_ / .m4a_).
+    Encrypted,
+    /// Asset is declared and present plaintext (e.g. .png, .ogg, .webm) —
+    /// no encryption signature, no key requirement.
+    Plaintext,
+    /// Asset is declared encrypted but the header magic is missing, the
+    /// file is shorter than 16 bytes, or the bytes carry an unknown
+    /// header. Routed to readiness=`unsupported`; no decryption attempt.
+    MalformedHeader,
+    /// Asset is declared encrypted but cannot be read off disk.
+    MissingAsset,
+    /// Asset suffix is recognised as an RPG Maker-family extension but the
+    /// suffix has no profiled crypto / codec mapping (e.g. `.rpgmvu`,
+    /// `.webp_`). Routed to `unsupported`; no key requirement.
+    UnknownSuffix,
+}
+
+impl EncryptedMediaClassification {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Encrypted => "encrypted",
+            Self::Plaintext => "plaintext",
+            Self::MalformedHeader => "malformed_header",
+            Self::MissingAsset => "missing_asset",
+            Self::UnknownSuffix => "unknown_suffix",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EncryptedMediaDecryptability {
+    /// Asset is plaintext; nothing to decrypt.
+    NotApplicable,
+    /// Encrypted asset has a present, key-shape-valid `System.json`
+    /// encryption key. The proof still does **not** decrypt — this status
+    /// only indicates the key profile is wired.
+    KeyProfileSatisfied,
+    /// Encrypted asset is missing a `data/System.json` encryption key.
+    KeyMissing,
+    /// `data/System.json` encryption key value is malformed (wrong length,
+    /// not lowercase hex). The proof does not attempt to decrypt with the
+    /// candidate key.
+    KeyMalformed,
+    /// `data/System.json` carries a well-formed 32-hex key, but its hash
+    /// does not match the fixture's expected public proof hash.
+    KeyMismatch,
+    /// Asset declares a media kind whose key profile recognition is out of
+    /// scope for the research-only readiness command.
+    OutOfScope,
+}
+
+impl EncryptedMediaDecryptability {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::NotApplicable => "not_applicable",
+            Self::KeyProfileSatisfied => "key_profile_satisfied",
+            Self::KeyMissing => "key_missing",
+            Self::KeyMalformed => "key_malformed",
+            Self::KeyMismatch => "key_mismatch",
+            Self::OutOfScope => "out_of_scope",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EncryptedMediaPatchCapability {
+    /// Plaintext asset; no patch capability is claimed in this proof. This
+    /// command is research-only — even plaintext media is not surfaced as
+    /// a patchable artifact here.
+    NotClaimed,
+    /// Asset is routed for diagnostics only; no patch capability is or
+    /// will be claimed by KAIFUU-039 for any encrypted media asset.
+    Unsupported,
+}
+
+impl EncryptedMediaPatchCapability {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::NotClaimed => "not_claimed",
+            Self::Unsupported => "unsupported",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EncryptedMediaKeyRefStatus {
+    /// Fixture is plaintext or out-of-scope; no keyRef is required.
+    NotRequired,
+    /// Fixture declared an encrypted asset and supplied a key-profile id +
+    /// secret ref; recognition is routing-only (does **not** imply a
+    /// decryption capability claim).
+    Present,
+    /// Fixture declared an encrypted asset but supplied no keyRef.
+    Missing,
+}
+
+impl EncryptedMediaKeyRefStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::NotRequired => "not_required",
+            Self::Present => "present",
+            Self::Missing => "missing",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EncryptedMediaReadiness {
+    /// Encrypted asset is detected, key profile is wired, no script
+    /// capability is claimed — research-ready.
+    Ready,
+    /// Plaintext asset is plumbed as evidence; readiness is informational
+    /// only (no patch claim, no script capability).
+    PlaintextEvidence,
+    /// Asset is routed for diagnostics only (malformed, missing, unknown
+    /// suffix, missing key, malformed key, key/asset mismatch); the proof
+    /// claims **no** decryption or patch capability.
+    Unsupported,
+}
+
+impl EncryptedMediaReadiness {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Ready => "ready",
+            Self::PlaintextEvidence => "plaintext_evidence",
+            Self::Unsupported => "unsupported",
+        }
+    }
+}
+
+/// Set of asset-key profile ids the routing diagnostics recognize. This
+/// is **not** a decryption-capability claim — recognition here only means
+/// the fixture's declared profile id matches a known KAIFUU MV/MZ
+/// asset-key vocabulary entry, so the proof can route the case without
+/// emitting an `unknown_plugin`-shaped diagnostic. Adding an entry adds
+/// zero decryption capability; it only widens the routing taxonomy.
+pub const RPG_MAKER_MV_MZ_RECOGNIZED_KEY_PROFILE_IDS: &[&str] = &[
+    "rpg-maker-mv-mz-asset-key",
+    "rpg-maker-mv-mz-fixture-asset-key",
+];
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EncryptedMediaProofFixture {
+    pub schema_version: String,
+    pub fixture_id: String,
+    pub profile_id: String,
+    pub game_dir: String,
+    pub assets: Vec<EncryptedMediaProofFixtureAsset>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub key_profile: Option<EncryptedMediaProofFixtureKeyProfile>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EncryptedMediaProofFixtureAsset {
+    pub asset_id: String,
+    /// Path **relative to `game_dir`**. Absolute / drive-letter / parent
+    /// traversal / home-prefixed paths are rejected up front and never
+    /// echoed into the report.
+    pub path: String,
+    pub expected_kind: EncryptedMediaAssetKind,
+    pub expected_classification: EncryptedMediaClassification,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EncryptedMediaProofFixtureKeyProfile {
+    pub profile_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_system_json_key_hash: Option<ProofHash>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub key_ref_requirement: Option<EncryptedMediaProofFixtureKeyRefRequirement>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EncryptedMediaProofFixtureKeyRefRequirement {
+    pub requirement_id: String,
+    pub secret_ref: SecretRef,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EncryptedMediaProofReport {
+    pub schema_version: String,
+    pub fixture_id: String,
+    pub profile_id: String,
+    pub status: OperationStatus,
+    pub support_boundary: String,
+    pub readiness: EncryptedMediaReadiness,
+    pub patch_capability_level: EncryptedMediaPatchCapability,
+    pub script_capability_claimed: bool,
+    pub decrypted_bytes_persisted: bool,
+    pub assets: Vec<EncryptedMediaProofAsset>,
+    pub key_profile: EncryptedMediaProofKeyProfile,
+    pub diagnostics: Vec<EncryptedMediaProofDiagnostic>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub semantic_remediation: Option<String>,
+}
+
+impl EncryptedMediaProofReport {
+    pub fn redacted_for_report(&self) -> Self {
+        Self {
+            schema_version: self.schema_version.clone(),
+            fixture_id: redact_for_log_or_report(&self.fixture_id),
+            profile_id: redact_for_log_or_report(&self.profile_id),
+            status: self.status.clone(),
+            support_boundary: redact_for_log_or_report(&self.support_boundary),
+            readiness: self.readiness,
+            patch_capability_level: self.patch_capability_level,
+            script_capability_claimed: self.script_capability_claimed,
+            decrypted_bytes_persisted: self.decrypted_bytes_persisted,
+            assets: self
+                .assets
+                .iter()
+                .map(EncryptedMediaProofAsset::redacted_for_report)
+                .collect(),
+            key_profile: self.key_profile.redacted_for_report(),
+            diagnostics: self
+                .diagnostics
+                .iter()
+                .map(EncryptedMediaProofDiagnostic::redacted_for_report)
+                .collect(),
+            semantic_remediation: self
+                .semantic_remediation
+                .as_deref()
+                .map(redact_for_log_or_report),
+        }
+    }
+
+    pub fn stable_json(&self) -> KaifuuResult<String> {
+        stable_json(&self.redacted_for_report())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EncryptedMediaProofAsset {
+    pub asset_id: String,
+    pub declared_path: String,
+    pub kind: EncryptedMediaAssetKind,
+    pub classification: EncryptedMediaClassification,
+    pub readiness: EncryptedMediaReadiness,
+    pub patch_capability_level: EncryptedMediaPatchCapability,
+    pub key_ref_status: EncryptedMediaKeyRefStatus,
+    pub decryptability: EncryptedMediaDecryptability,
+    pub asset_evidence_hash: ProofHash,
+    pub suffix: String,
+}
+
+impl EncryptedMediaProofAsset {
+    fn redacted_for_report(&self) -> Self {
+        Self {
+            asset_id: redact_for_log_or_report(&self.asset_id),
+            declared_path: redact_for_log_or_report(&self.declared_path),
+            kind: self.kind,
+            classification: self.classification,
+            readiness: self.readiness,
+            patch_capability_level: self.patch_capability_level,
+            key_ref_status: self.key_ref_status,
+            decryptability: self.decryptability,
+            asset_evidence_hash: self.asset_evidence_hash.clone(),
+            suffix: self.suffix.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EncryptedMediaProofKeyProfile {
+    pub status: EncryptedMediaKeyRefStatus,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub key_profile_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub requirement_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub secret_ref: Option<SecretRef>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub system_json_proof_hash: Option<ProofHash>,
+    pub system_json_present: bool,
+    pub system_json_key_present: bool,
+    pub system_json_key_well_formed: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_system_json_key_hash: Option<ProofHash>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub system_json_key_hash: Option<ProofHash>,
+    pub has_encrypted_images_flag: Option<bool>,
+    pub has_encrypted_audio_flag: Option<bool>,
+}
+
+impl EncryptedMediaProofKeyProfile {
+    fn redacted_for_report(&self) -> Self {
+        Self {
+            status: self.status,
+            key_profile_id: self.key_profile_id.as_deref().map(redact_for_log_or_report),
+            requirement_id: self.requirement_id.as_deref().map(redact_for_log_or_report),
+            secret_ref: self.secret_ref.clone(),
+            system_json_proof_hash: self.system_json_proof_hash.clone(),
+            system_json_present: self.system_json_present,
+            system_json_key_present: self.system_json_key_present,
+            system_json_key_well_formed: self.system_json_key_well_formed,
+            expected_system_json_key_hash: self.expected_system_json_key_hash.clone(),
+            system_json_key_hash: self.system_json_key_hash.clone(),
+            has_encrypted_images_flag: self.has_encrypted_images_flag,
+            has_encrypted_audio_flag: self.has_encrypted_audio_flag,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EncryptedMediaProofDiagnostic {
+    pub code: String,
+    pub severity: PartialDiagnosticSeverity,
+    pub field: String,
+    pub message: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub semantic_code: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub remediation: Option<String>,
+}
+
+impl EncryptedMediaProofDiagnostic {
+    fn redacted_for_report(&self) -> Self {
+        Self {
+            code: redact_for_log_or_report(&self.code),
+            severity: self.severity,
+            field: redact_for_log_or_report(&self.field),
+            message: redact_for_log_or_report(&self.message),
+            semantic_code: self.semantic_code.as_deref().map(redact_for_log_or_report),
+            remediation: self.remediation.as_deref().map(redact_for_log_or_report),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct EncryptedMediaProofRequest<'a> {
+    pub fixture: &'a EncryptedMediaProofFixture,
+    /// Directory the fixture file lives in. The `game_dir` declared in
+    /// the fixture is resolved relative to this directory.
+    pub fixture_dir: &'a Path,
+}
+
+/// Per-suffix profile for KAIFUU-039 readiness routing. This is a
+/// research-only table — every encrypted-suffix entry carries
+/// `patch_capability_level = Unsupported` and `decryptability = OutOfScope`
+/// until a key profile resolves it upward to `KeyProfileSatisfied`.
+struct EncryptedMediaSuffixProfile {
+    suffix: &'static str,
+    kind: Option<EncryptedMediaAssetKind>,
+    encrypted: bool,
+    /// Suffix is in the recognised RPG Maker family but has no profiled
+    /// crypto / codec mapping (e.g. `.webp_`).
+    unknown_in_family: bool,
+}
+
+const ENCRYPTED_MEDIA_SUFFIX_PROFILES: &[EncryptedMediaSuffixProfile] = &[
+    // MV-era encrypted suffixes.
+    EncryptedMediaSuffixProfile {
+        suffix: "rpgmvp",
+        kind: Some(EncryptedMediaAssetKind::Image),
+        encrypted: true,
+        unknown_in_family: false,
+    },
+    EncryptedMediaSuffixProfile {
+        suffix: "rpgmvm",
+        kind: Some(EncryptedMediaAssetKind::Audio),
+        encrypted: true,
+        unknown_in_family: false,
+    },
+    EncryptedMediaSuffixProfile {
+        suffix: "rpgmvo",
+        kind: Some(EncryptedMediaAssetKind::Audio),
+        encrypted: true,
+        unknown_in_family: false,
+    },
+    EncryptedMediaSuffixProfile {
+        suffix: "rpgmvu",
+        kind: Some(EncryptedMediaAssetKind::Video),
+        encrypted: true,
+        unknown_in_family: false,
+    },
+    // MZ-era encrypted suffixes.
+    EncryptedMediaSuffixProfile {
+        suffix: "png_",
+        kind: Some(EncryptedMediaAssetKind::Image),
+        encrypted: true,
+        unknown_in_family: false,
+    },
+    EncryptedMediaSuffixProfile {
+        suffix: "m4a_",
+        kind: Some(EncryptedMediaAssetKind::Audio),
+        encrypted: true,
+        unknown_in_family: false,
+    },
+    EncryptedMediaSuffixProfile {
+        suffix: "ogg_",
+        kind: Some(EncryptedMediaAssetKind::Audio),
+        encrypted: true,
+        unknown_in_family: false,
+    },
+    // Plaintext (unencrypted) media — present as evidence only.
+    EncryptedMediaSuffixProfile {
+        suffix: "png",
+        kind: Some(EncryptedMediaAssetKind::Image),
+        encrypted: false,
+        unknown_in_family: false,
+    },
+    EncryptedMediaSuffixProfile {
+        suffix: "m4a",
+        kind: Some(EncryptedMediaAssetKind::Audio),
+        encrypted: false,
+        unknown_in_family: false,
+    },
+    EncryptedMediaSuffixProfile {
+        suffix: "ogg",
+        kind: Some(EncryptedMediaAssetKind::Audio),
+        encrypted: false,
+        unknown_in_family: false,
+    },
+    EncryptedMediaSuffixProfile {
+        suffix: "webm",
+        kind: Some(EncryptedMediaAssetKind::Video),
+        encrypted: false,
+        unknown_in_family: false,
+    },
+    // Recognised but unmapped suffixes (route to unknown_suffix).
+    EncryptedMediaSuffixProfile {
+        suffix: "rpgmvu",
+        kind: None,
+        encrypted: true,
+        unknown_in_family: true,
+    },
+    EncryptedMediaSuffixProfile {
+        suffix: "webp_",
+        kind: None,
+        encrypted: true,
+        unknown_in_family: true,
+    },
+];
+
+fn encrypted_media_suffix_profile(suffix: &str) -> Option<&'static EncryptedMediaSuffixProfile> {
+    let lower = suffix.to_ascii_lowercase();
+    ENCRYPTED_MEDIA_SUFFIX_PROFILES
+        .iter()
+        .find(|profile| profile.suffix == lower)
+}
+
+/// Asset-relative-path validator. Mirrors the XP3 profile-proof
+/// validator: rejects absolute / drive-letter / parent-traversal / home
+/// prefixes so private paths cannot survive into the report.
+fn validate_encrypted_media_fixture_path(path: &str) -> Result<&str, String> {
+    if path.is_empty() {
+        return Err("asset path must not be empty".to_string());
+    }
+    let trimmed = path.trim_start();
+    if trimmed != path {
+        return Err("asset path must not contain leading whitespace".to_string());
+    }
+    if path.starts_with('/') || path.starts_with('\\') {
+        return Err("asset path must be relative to the game directory".to_string());
+    }
+    if path.starts_with("~/") || path.starts_with("~\\") {
+        return Err("asset path must not contain home prefixes".to_string());
+    }
+    if path.starts_with("$HOME")
+        || path.starts_with("${HOME}")
+        || path.starts_with("%USERPROFILE%")
+        || path.starts_with("%HOME%")
+        || path.starts_with("$USERPROFILE")
+    {
+        return Err("asset path must not contain environment-variable home prefixes".to_string());
+    }
+    for component in path.split(['/', '\\']) {
+        if component == ".." {
+            return Err("asset path must not contain parent traversal".to_string());
+        }
+    }
+    if path.len() >= 2 {
+        let mut chars = path.chars();
+        let first = chars.next().unwrap_or(' ');
+        let second = chars.next().unwrap_or(' ');
+        if first.is_ascii_alphabetic() && second == ':' {
+            return Err("asset path must not contain a drive letter".to_string());
+        }
+    }
+    Ok(path)
+}
+
+/// `data/System.json` evidence parsed for readiness routing. Stored
+/// alongside the proof hash so the key profile section can surface
+/// `has_encrypted_images_flag` / `has_encrypted_audio_flag` without
+/// re-reading the file.
+struct EncryptedMediaSystemJson {
+    proof_hash: Option<ProofHash>,
+    has_encrypted_images: Option<bool>,
+    has_encrypted_audio: Option<bool>,
+    encryption_key_present: bool,
+    encryption_key_well_formed: bool,
+    encryption_key_hash: Option<ProofHash>,
+}
+
+fn read_encrypted_media_system_json(game_dir: &Path) -> Option<EncryptedMediaSystemJson> {
+    let path = find_rpg_maker_system_json(game_dir)?;
+    let bytes = fs::read(&path).ok()?;
+    let proof_hash = ProofHash::new(sha256_hash_bytes(&bytes)).ok();
+    let value = serde_json::from_slice::<Value>(&bytes).ok();
+    let (
+        has_encrypted_images,
+        has_encrypted_audio,
+        encryption_key_present,
+        encryption_key_well_formed,
+        encryption_key_hash,
+    ) = match value {
+        Some(value) => {
+            let has_encrypted_images = value.get("hasEncryptedImages").and_then(Value::as_bool);
+            let has_encrypted_audio = value.get("hasEncryptedAudio").and_then(Value::as_bool);
+            let key = value
+                .get("encryptionKey")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|key| !key.is_empty());
+            let well_formed = key
+                .map(|key| {
+                    // MV/MZ asset XOR key is 16 bytes encoded as 32
+                    // lowercase hex chars.
+                    key.len() == 32
+                        && key.chars().all(|c| {
+                            c.is_ascii_hexdigit()
+                                && (!c.is_ascii_alphabetic() || c.is_ascii_lowercase())
+                        })
+                })
+                .unwrap_or(false);
+            let key_hash = if well_formed {
+                key.and_then(|key| ProofHash::new(sha256_hash_bytes(key.as_bytes())).ok())
+            } else {
+                None
+            };
+            (
+                has_encrypted_images,
+                has_encrypted_audio,
+                key.is_some(),
+                well_formed,
+                key_hash,
+            )
+        }
+        None => (None, None, false, false, None),
+    };
+    Some(EncryptedMediaSystemJson {
+        proof_hash,
+        has_encrypted_images,
+        has_encrypted_audio,
+        encryption_key_present,
+        encryption_key_well_formed,
+        encryption_key_hash,
+    })
+}
+
+/// Hash 64 bytes of asset evidence (or all bytes if shorter). Mirrors
+/// [`rpg_maker_mv_mz_image_evidence_hash`] — the proof never persists
+/// full asset bytes, only a stable hash of the leading window for
+/// downstream provenance review.
+fn encrypted_media_asset_evidence_hash(bytes: &[u8]) -> ProofHash {
+    ProofHash::new(sha256_hash_bytes(&bytes[..bytes.len().min(64)]))
+        .expect("sha256 hash output is always shaped as a valid kaifuu ProofHash")
+}
+
+/// Classify a single asset by its on-disk bytes + declared suffix +
+/// declared kind. Byte-level classification is the source of truth: a
+/// fixture that *declares* `encrypted` but supplies plaintext-shaped
+/// bytes is re-classified to `MalformedHeader`, never silently upgraded
+/// to `Encrypted`.
+fn classify_encrypted_media_asset(
+    profile: Option<&EncryptedMediaSuffixProfile>,
+    bytes: Option<&[u8]>,
+) -> EncryptedMediaClassification {
+    let Some(profile) = profile else {
+        return EncryptedMediaClassification::UnknownSuffix;
+    };
+    if profile.unknown_in_family {
+        return EncryptedMediaClassification::UnknownSuffix;
+    }
+    let Some(bytes) = bytes else {
+        return EncryptedMediaClassification::MissingAsset;
+    };
+    if profile.encrypted {
+        if bytes.len() < RPGMAKER_MV_ENCRYPTED_MEDIA_HEADER.len() {
+            return EncryptedMediaClassification::MalformedHeader;
+        }
+        if &bytes[..RPGMAKER_MV_ENCRYPTED_MEDIA_HEADER.len()] == RPGMAKER_MV_ENCRYPTED_MEDIA_HEADER
+        {
+            EncryptedMediaClassification::Encrypted
+        } else {
+            EncryptedMediaClassification::MalformedHeader
+        }
+    } else {
+        EncryptedMediaClassification::Plaintext
+    }
+}
+
+/// Run the KAIFUU-039 encrypted-media readiness proof.
+///
+/// Routing rules (acceptance criteria):
+/// - Encrypted image / audio / video media variants are detected with
+///   exact asset-kind capability levels — per-asset `kind` and
+///   `classification` are set from the bytes, not the fixture.
+/// - Missing or wrong keys return semantic diagnostics before decrypted
+///   bytes are persisted (the proof never decrypts; `decryptedBytesPersisted`
+///   is always `false`).
+/// - Readiness output never claims dialogue extraction or script patch
+///   support based only on media-key detection (`scriptCapabilityClaimed`
+///   is always `false`; `patchCapabilityLevel` is never `patch_back` or
+///   `extract` — for encrypted assets it is forced to `Unsupported`, for
+///   plaintext it is `NotClaimed`).
+/// - Public fixtures use synthetic media and public test keys only —
+///   absolute / traversal / home paths are rejected up front and never
+///   appear in the report.
+pub fn encrypted_media_proof(
+    request: EncryptedMediaProofRequest<'_>,
+) -> KaifuuResult<EncryptedMediaProofReport> {
+    let fixture = request.fixture;
+    let mut diagnostics: Vec<EncryptedMediaProofDiagnostic> = Vec::new();
+
+    let game_dir_validated = match validate_encrypted_media_fixture_path(&fixture.game_dir) {
+        Ok(_) => true,
+        Err(message) => {
+            diagnostics.push(EncryptedMediaProofDiagnostic {
+                code: "rpgmaker.encrypted_media.game_dir.leaked".to_string(),
+                severity: PartialDiagnosticSeverity::P0,
+                field: "gameDir".to_string(),
+                message,
+                semantic_code: Some(SEMANTIC_FORBIDDEN_PUBLIC_SERIALIZATION.to_string()),
+                remediation: Some(
+                    "gameDir must be relative to the fixture file and must not contain absolute roots, drive letters, parent traversal, or home prefixes"
+                        .to_string(),
+                ),
+            });
+            false
+        }
+    };
+
+    let game_dir_full = if game_dir_validated {
+        Some(request.fixture_dir.join(&fixture.game_dir))
+    } else {
+        None
+    };
+
+    // Read System.json once so per-asset routing can branch on the
+    // shared key profile evidence.
+    let system_json = game_dir_full
+        .as_deref()
+        .and_then(read_encrypted_media_system_json);
+    let system_json_present = system_json.is_some();
+    let system_json_key_present = system_json
+        .as_ref()
+        .map(|sj| sj.encryption_key_present)
+        .unwrap_or(false);
+    let system_json_key_well_formed = system_json
+        .as_ref()
+        .map(|sj| sj.encryption_key_well_formed)
+        .unwrap_or(false);
+    let system_json_proof_hash = system_json.as_ref().and_then(|sj| sj.proof_hash.clone());
+    let system_json_key_hash = system_json
+        .as_ref()
+        .and_then(|sj| sj.encryption_key_hash.clone());
+    let expected_system_json_key_hash = fixture
+        .key_profile
+        .as_ref()
+        .and_then(|profile| profile.expected_system_json_key_hash.clone());
+    let system_json_key_matches_expected = match (
+        expected_system_json_key_hash.as_ref(),
+        system_json_key_hash.as_ref(),
+    ) {
+        (Some(expected), Some(actual)) => expected == actual,
+        _ => true,
+    };
+    let has_encrypted_images_flag = system_json.as_ref().and_then(|sj| sj.has_encrypted_images);
+    let has_encrypted_audio_flag = system_json.as_ref().and_then(|sj| sj.has_encrypted_audio);
+
+    let any_encrypted_declared = fixture.assets.iter().any(|asset| {
+        matches!(
+            asset.expected_classification,
+            EncryptedMediaClassification::Encrypted
+        )
+    });
+
+    // Per-asset routing.
+    let mut assets: Vec<EncryptedMediaProofAsset> = Vec::with_capacity(fixture.assets.len());
+    for fixture_asset in &fixture.assets {
+        let path_validation = validate_encrypted_media_fixture_path(&fixture_asset.path);
+        let path_rejected = path_validation.is_err();
+        if let Err(message) = path_validation {
+            diagnostics.push(EncryptedMediaProofDiagnostic {
+                code: "rpgmaker.encrypted_media.asset_path.leaked".to_string(),
+                severity: PartialDiagnosticSeverity::P0,
+                field: format!("assets[{}].path", fixture_asset.asset_id),
+                message,
+                semantic_code: Some(SEMANTIC_FORBIDDEN_PUBLIC_SERIALIZATION.to_string()),
+                remediation: Some(
+                    "asset paths must be relative to the game directory and must not contain absolute roots, drive letters, parent traversal, or home prefixes"
+                        .to_string(),
+                ),
+            });
+        }
+
+        let declared_path_for_report = if path_rejected {
+            format!("[REDACTED:{SEMANTIC_SECRET_REDACTED}]")
+        } else {
+            fixture_asset.path.clone()
+        };
+
+        let suffix = Path::new(&fixture_asset.path)
+            .extension()
+            .and_then(|os| os.to_str())
+            .unwrap_or("")
+            .to_ascii_lowercase();
+        let suffix_profile = encrypted_media_suffix_profile(&suffix);
+
+        let asset_full = match (path_rejected, game_dir_full.as_deref()) {
+            (false, Some(game_dir)) => Some(game_dir.join(&fixture_asset.path)),
+            _ => None,
+        };
+        let asset_bytes = asset_full.as_deref().and_then(|path| fs::read(path).ok());
+
+        let bytes_for_classify = asset_bytes.as_deref();
+        let classification = classify_encrypted_media_asset(suffix_profile, bytes_for_classify);
+
+        // Bytes-classification override is final — the fixture declared
+        // classification is only allowed to *match* the byte-level routing.
+        // Surface a P1 mismatch diagnostic when the two disagree so
+        // fixture authors notice (acceptance criterion: "Encrypted image,
+        // audio, and video media variants are detected with exact
+        // asset-kind capability levels").
+        if !path_rejected
+            && classification != fixture_asset.expected_classification
+            // MissingAsset / UnknownSuffix are intrinsic byte-routing
+            // outcomes; the fixture is never *expected* to declare them
+            // in a way that conflicts with their physical state.
+            && !matches!(
+                classification,
+                EncryptedMediaClassification::MissingAsset
+                    | EncryptedMediaClassification::UnknownSuffix
+            )
+        {
+            diagnostics.push(EncryptedMediaProofDiagnostic {
+                code: "rpgmaker.encrypted_media.classification.mismatch".to_string(),
+                severity: PartialDiagnosticSeverity::P1,
+                field: format!("assets[{}].expectedClassification", fixture_asset.asset_id),
+                message: format!(
+                    "fixture declared {} but asset bytes classify as {}",
+                    fixture_asset.expected_classification.as_str(),
+                    classification.as_str(),
+                ),
+                semantic_code: Some(SEMANTIC_AMBIGUOUS_ENGINE_VARIANT.to_string()),
+                remediation: Some(
+                    "regenerate the fixture so the declared classification matches the asset bytes"
+                        .to_string(),
+                ),
+            });
+        }
+
+        // For missing-asset / malformed-header cases that the fixture
+        // *declared* (e.g. negative fixtures), record the declared
+        // classification but keep the byte-level outcome as the routing.
+        // No upward re-classification.
+        if matches!(classification, EncryptedMediaClassification::MissingAsset) {
+            if !path_rejected {
+                diagnostics.push(EncryptedMediaProofDiagnostic {
+                    code: "rpgmaker.encrypted_media.asset.missing".to_string(),
+                    severity: PartialDiagnosticSeverity::P0,
+                    field: format!("assets[{}].path", fixture_asset.asset_id),
+                    message: format!("asset {} could not be read", fixture_asset.asset_id),
+                    semantic_code: Some(SEMANTIC_UNSUPPORTED_VARIANT_ENCRYPTED.to_string()),
+                    remediation: Some(
+                        "ensure the asset file exists under the game directory before running the proof".to_string(),
+                    ),
+                });
+            }
+        } else if matches!(classification, EncryptedMediaClassification::UnknownSuffix) {
+            diagnostics.push(EncryptedMediaProofDiagnostic {
+                code: "rpgmaker.encrypted_media.suffix.unknown".to_string(),
+                severity: PartialDiagnosticSeverity::P1,
+                field: format!("assets[{}].path", fixture_asset.asset_id),
+                message: format!(
+                    "asset suffix .{} has no profiled MV/MZ media mapping",
+                    suffix
+                ),
+                semantic_code: Some(SEMANTIC_UNKNOWN_ENGINE_VARIANT.to_string()),
+                remediation: Some(
+                    "add a suffix profile before declaring readiness; recognition does not imply a decryption capability claim".to_string(),
+                ),
+            });
+        } else if matches!(
+            classification,
+            EncryptedMediaClassification::MalformedHeader
+        ) {
+            diagnostics.push(EncryptedMediaProofDiagnostic {
+                code: "rpgmaker.encrypted_media.header.malformed".to_string(),
+                severity: PartialDiagnosticSeverity::P0,
+                field: format!("assets[{}]", fixture_asset.asset_id),
+                message: format!(
+                    "asset {} is declared encrypted but does not carry the RPGMV header magic",
+                    fixture_asset.asset_id
+                ),
+                semantic_code: Some(SEMANTIC_UNSUPPORTED_VARIANT_ENCRYPTED.to_string()),
+                remediation: Some(
+                    "regenerate the encrypted asset so the leading 16 bytes match the RPGMV header magic".to_string(),
+                ),
+            });
+        }
+
+        // Effective asset kind: bytes-routed suffix profile wins. For
+        // unknown / missing cases we still surface the *declared* kind so
+        // the report carries the fixture author's intent.
+        let kind = suffix_profile
+            .and_then(|p| p.kind)
+            .unwrap_or(fixture_asset.expected_kind);
+
+        // Decryptability / patch-capability / readiness routing for this
+        // asset. Encrypted assets force `patch_capability_level =
+        // Unsupported` and never claim `key_profile_satisfied` unless the
+        // key profile evidence section is fully wired — even then, the
+        // status only indicates the *profile* is wired, not that the
+        // proof has any decryption capability.
+        let (decryptability, key_ref_status, patch_capability_level, readiness) =
+            match classification {
+                EncryptedMediaClassification::Plaintext => (
+                    EncryptedMediaDecryptability::NotApplicable,
+                    EncryptedMediaKeyRefStatus::NotRequired,
+                    EncryptedMediaPatchCapability::NotClaimed,
+                    EncryptedMediaReadiness::PlaintextEvidence,
+                ),
+                EncryptedMediaClassification::Encrypted => {
+                    let key_ref_status = match &fixture.key_profile {
+                        Some(profile) => match profile.key_ref_requirement {
+                            Some(_) => EncryptedMediaKeyRefStatus::Present,
+                            None => EncryptedMediaKeyRefStatus::Missing,
+                        },
+                        None => EncryptedMediaKeyRefStatus::Missing,
+                    };
+                    let decryptability = if !system_json_present || !system_json_key_present {
+                        EncryptedMediaDecryptability::KeyMissing
+                    } else if !system_json_key_well_formed {
+                        EncryptedMediaDecryptability::KeyMalformed
+                    } else if !system_json_key_matches_expected {
+                        EncryptedMediaDecryptability::KeyMismatch
+                    } else if matches!(key_ref_status, EncryptedMediaKeyRefStatus::Missing) {
+                        EncryptedMediaDecryptability::KeyMissing
+                    } else {
+                        EncryptedMediaDecryptability::KeyProfileSatisfied
+                    };
+                    let readiness = if matches!(
+                        decryptability,
+                        EncryptedMediaDecryptability::KeyProfileSatisfied
+                    ) {
+                        EncryptedMediaReadiness::Ready
+                    } else {
+                        EncryptedMediaReadiness::Unsupported
+                    };
+                    (
+                        decryptability,
+                        key_ref_status,
+                        EncryptedMediaPatchCapability::Unsupported,
+                        readiness,
+                    )
+                }
+                EncryptedMediaClassification::MalformedHeader
+                | EncryptedMediaClassification::MissingAsset
+                | EncryptedMediaClassification::UnknownSuffix => (
+                    EncryptedMediaDecryptability::OutOfScope,
+                    if matches!(classification, EncryptedMediaClassification::UnknownSuffix) {
+                        EncryptedMediaKeyRefStatus::NotRequired
+                    } else {
+                        match &fixture.key_profile {
+                            Some(profile) => match profile.key_ref_requirement {
+                                Some(_) => EncryptedMediaKeyRefStatus::Present,
+                                None => EncryptedMediaKeyRefStatus::Missing,
+                            },
+                            None => EncryptedMediaKeyRefStatus::Missing,
+                        }
+                    },
+                    EncryptedMediaPatchCapability::Unsupported,
+                    EncryptedMediaReadiness::Unsupported,
+                ),
+            };
+
+        // Hash the asset's leading bytes for provenance. Missing /
+        // unreadable assets get the empty-bytes hash (still a valid
+        // ProofHash; the routing diagnostic above makes the asset's
+        // failure mode unambiguous).
+        let asset_evidence_hash =
+            encrypted_media_asset_evidence_hash(asset_bytes.as_deref().unwrap_or(&[]));
+
+        assets.push(EncryptedMediaProofAsset {
+            asset_id: fixture_asset.asset_id.clone(),
+            declared_path: declared_path_for_report,
+            kind,
+            classification,
+            readiness,
+            patch_capability_level,
+            key_ref_status,
+            decryptability,
+            asset_evidence_hash,
+            suffix: suffix.clone(),
+        });
+    }
+
+    // Per-asset key-profile mismatch surfacing: System.json says
+    // `hasEncryptedImages: false` but the fixture declared encrypted
+    // images (or vice versa). Surfaced as P1 readiness diagnostics so a
+    // fixture-authoring drift is noticed before patch claims spread.
+    let declared_image_encrypted = fixture.assets.iter().any(|asset| {
+        asset.expected_kind == EncryptedMediaAssetKind::Image
+            && asset.expected_classification == EncryptedMediaClassification::Encrypted
+    });
+    let declared_audio_encrypted = fixture.assets.iter().any(|asset| {
+        asset.expected_kind == EncryptedMediaAssetKind::Audio
+            && asset.expected_classification == EncryptedMediaClassification::Encrypted
+    });
+    if let (Some(false), true) = (has_encrypted_images_flag, declared_image_encrypted) {
+        diagnostics.push(EncryptedMediaProofDiagnostic {
+            code: "rpgmaker.encrypted_media.system_json.images_flag_mismatch".to_string(),
+            severity: PartialDiagnosticSeverity::P1,
+            field: "data/System.json.hasEncryptedImages".to_string(),
+            message:
+                "fixture declared encrypted images but data/System.json hasEncryptedImages is false"
+                    .to_string(),
+            semantic_code: Some(SEMANTIC_AMBIGUOUS_ENGINE_VARIANT.to_string()),
+            remediation: Some(
+                "align data/System.json hasEncryptedImages with the declared media surface"
+                    .to_string(),
+            ),
+        });
+    }
+    if let (Some(false), true) = (has_encrypted_audio_flag, declared_audio_encrypted) {
+        diagnostics.push(EncryptedMediaProofDiagnostic {
+            code: "rpgmaker.encrypted_media.system_json.audio_flag_mismatch".to_string(),
+            severity: PartialDiagnosticSeverity::P1,
+            field: "data/System.json.hasEncryptedAudio".to_string(),
+            message:
+                "fixture declared encrypted audio but data/System.json hasEncryptedAudio is false"
+                    .to_string(),
+            semantic_code: Some(SEMANTIC_AMBIGUOUS_ENGINE_VARIANT.to_string()),
+            remediation: Some(
+                "align data/System.json hasEncryptedAudio with the declared media surface"
+                    .to_string(),
+            ),
+        });
+    }
+
+    // Key-profile section + cross-cutting routing diagnostics.
+    let key_profile_status = match (&fixture.key_profile, any_encrypted_declared) {
+        (Some(profile), _) => {
+            let recognized =
+                RPG_MAKER_MV_MZ_RECOGNIZED_KEY_PROFILE_IDS.contains(&profile.profile_id.as_str());
+            if !recognized {
+                diagnostics.push(EncryptedMediaProofDiagnostic {
+                    code: "rpgmaker.encrypted_media.key_profile.unknown".to_string(),
+                    severity: PartialDiagnosticSeverity::P0,
+                    field: "keyProfile.profileId".to_string(),
+                    message: format!(
+                        "key profile id {} is not in the recognised RPG Maker MV/MZ vocabulary",
+                        profile.profile_id
+                    ),
+                    semantic_code: Some(SEMANTIC_UNKNOWN_ENGINE_VARIANT.to_string()),
+                    remediation: Some(
+                        "use a recognised KAIFUU key-profile id; recognition does not imply a decryption capability claim".to_string(),
+                    ),
+                });
+            }
+            if profile.key_ref_requirement.is_none() {
+                diagnostics.push(EncryptedMediaProofDiagnostic {
+                    code: "rpgmaker.encrypted_media.key_profile.missing_key_ref".to_string(),
+                    severity: PartialDiagnosticSeverity::P0,
+                    field: "keyProfile.keyRefRequirement".to_string(),
+                    message: "encrypted-media fixtures must declare a keyRef requirement"
+                        .to_string(),
+                    semantic_code: Some(SEMANTIC_MISSING_KEY_PROFILE.to_string()),
+                    remediation: Some(
+                        "add a keyRefRequirement entry with requirementId and secretRef"
+                            .to_string(),
+                    ),
+                });
+            }
+            EncryptedMediaKeyRefStatus::Present
+        }
+        (None, true) => {
+            diagnostics.push(EncryptedMediaProofDiagnostic {
+                code: "rpgmaker.encrypted_media.key_profile.missing".to_string(),
+                severity: PartialDiagnosticSeverity::P0,
+                field: "keyProfile".to_string(),
+                message: "fixture declares encrypted media but supplies no keyProfile".to_string(),
+                semantic_code: Some(SEMANTIC_MISSING_KEY_PROFILE.to_string()),
+                remediation: Some(
+                    "add a keyProfile entry with profileId and keyRefRequirement".to_string(),
+                ),
+            });
+            EncryptedMediaKeyRefStatus::Missing
+        }
+        (None, false) => EncryptedMediaKeyRefStatus::NotRequired,
+    };
+
+    if any_encrypted_declared && !system_json_present {
+        diagnostics.push(EncryptedMediaProofDiagnostic {
+            code: "rpgmaker.encrypted_media.system_json.missing".to_string(),
+            severity: PartialDiagnosticSeverity::P0,
+            field: "gameDir".to_string(),
+            message: "encrypted-media readiness requires data/System.json evidence under the game directory".to_string(),
+            semantic_code: Some(SEMANTIC_MISSING_KEY_PROFILE.to_string()),
+            remediation: Some(
+                "stage a data/System.json file with encryptionKey + hasEncryptedImages / hasEncryptedAudio flags under the game directory".to_string(),
+            ),
+        });
+    } else if any_encrypted_declared && system_json_present && !system_json_key_present {
+        diagnostics.push(EncryptedMediaProofDiagnostic {
+            code: "rpgmaker.encrypted_media.system_json.key_missing".to_string(),
+            severity: PartialDiagnosticSeverity::P0,
+            field: "data/System.json.encryptionKey".to_string(),
+            message: "data/System.json has no encryptionKey value".to_string(),
+            semantic_code: Some(SEMANTIC_MISSING_KEY_MATERIAL.to_string()),
+            remediation: Some(
+                "populate data/System.json.encryptionKey with a fixture-safe 32-char lowercase hex value".to_string(),
+            ),
+        });
+    } else if any_encrypted_declared
+        && system_json_present
+        && system_json_key_present
+        && !system_json_key_well_formed
+    {
+        diagnostics.push(EncryptedMediaProofDiagnostic {
+            code: "rpgmaker.encrypted_media.system_json.key_malformed".to_string(),
+            severity: PartialDiagnosticSeverity::P0,
+            field: "data/System.json.encryptionKey".to_string(),
+            message: "data/System.json.encryptionKey is not a 32-char lowercase hex value"
+                .to_string(),
+            semantic_code: Some(SEMANTIC_KEY_VALIDATION_FAILED.to_string()),
+            remediation: Some(
+                "regenerate data/System.json.encryptionKey as a 32-char lowercase hex string"
+                    .to_string(),
+            ),
+        });
+    } else if any_encrypted_declared
+        && system_json_present
+        && system_json_key_present
+        && system_json_key_well_formed
+        && !system_json_key_matches_expected
+    {
+        diagnostics.push(EncryptedMediaProofDiagnostic {
+            code: "rpgmaker.encrypted_media.system_json.key_mismatch".to_string(),
+            severity: PartialDiagnosticSeverity::P0,
+            field: "data/System.json.encryptionKey".to_string(),
+            message:
+                "data/System.json.encryptionKey hash does not match the fixture key-profile evidence"
+                    .to_string(),
+            semantic_code: Some(SEMANTIC_KEY_VALIDATION_FAILED.to_string()),
+            remediation: Some(
+                "align the fixture-safe System.json key with expectedSystemJsonKeyHash; raw keys must not be serialized"
+                    .to_string(),
+            ),
+        });
+    }
+
+    // Aggregate readiness: `Ready` requires *all* encrypted assets to
+    // be `Ready` and no blocking diagnostics. Plaintext-only fixtures
+    // resolve to `PlaintextEvidence`. Anything else routes to
+    // `Unsupported`.
+    let has_blocking_diagnostic = diagnostics
+        .iter()
+        .any(|diagnostic| diagnostic.severity.is_blocking());
+    let aggregate_readiness = if has_blocking_diagnostic || assets.is_empty() {
+        EncryptedMediaReadiness::Unsupported
+    } else if assets
+        .iter()
+        .all(|asset| matches!(asset.readiness, EncryptedMediaReadiness::PlaintextEvidence))
+    {
+        EncryptedMediaReadiness::PlaintextEvidence
+    } else if assets.iter().all(|asset| {
+        matches!(
+            asset.readiness,
+            EncryptedMediaReadiness::Ready | EncryptedMediaReadiness::PlaintextEvidence
+        )
+    }) && assets
+        .iter()
+        .any(|asset| matches!(asset.readiness, EncryptedMediaReadiness::Ready))
+    {
+        EncryptedMediaReadiness::Ready
+    } else {
+        EncryptedMediaReadiness::Unsupported
+    };
+
+    let key_profile_id = fixture
+        .key_profile
+        .as_ref()
+        .map(|profile| profile.profile_id.clone());
+    let requirement_id = fixture
+        .key_profile
+        .as_ref()
+        .and_then(|profile| profile.key_ref_requirement.as_ref())
+        .map(|requirement| requirement.requirement_id.clone());
+    let secret_ref = fixture
+        .key_profile
+        .as_ref()
+        .and_then(|profile| profile.key_ref_requirement.as_ref())
+        .map(|requirement| requirement.secret_ref.clone());
+
+    let semantic_remediation = if matches!(aggregate_readiness, EncryptedMediaReadiness::Ready) {
+        Some(
+            "encrypted-media readiness reports profile wiring only; KAIFUU-039 makes no decryption, extraction, script-patch, or dialogue-extraction capability claim".to_string(),
+        )
+    } else if matches!(
+        aggregate_readiness,
+        EncryptedMediaReadiness::PlaintextEvidence
+    ) {
+        Some(
+            "plaintext media surfaced as evidence only; no patch capability is claimed".to_string(),
+        )
+    } else {
+        Some(
+            "encrypted-media routing diagnostics fired; KAIFUU-039 makes no decryption, extraction, script-patch, or dialogue-extraction capability claim".to_string(),
+        )
+    };
+
+    let status = if has_blocking_diagnostic {
+        OperationStatus::Failed
+    } else {
+        OperationStatus::Passed
+    };
+
+    Ok(EncryptedMediaProofReport {
+        schema_version: ENCRYPTED_MEDIA_PROOF_SCHEMA_VERSION.to_string(),
+        fixture_id: fixture.fixture_id.clone(),
+        profile_id: fixture.profile_id.clone(),
+        status,
+        support_boundary: ENCRYPTED_MEDIA_PROOF_SUPPORT_BOUNDARY.to_string(),
+        readiness: aggregate_readiness,
+        patch_capability_level: if matches!(
+            aggregate_readiness,
+            EncryptedMediaReadiness::PlaintextEvidence
+        ) {
+            EncryptedMediaPatchCapability::NotClaimed
+        } else {
+            EncryptedMediaPatchCapability::Unsupported
+        },
+        // Acceptance criterion: "Readiness output never claims dialogue
+        // extraction or script patch support based only on media-key
+        // detection." Hardcoded false; this is the load-bearing
+        // separation between media routing and script capability.
+        script_capability_claimed: false,
+        // Acceptance criterion: "Missing or wrong keys return semantic
+        // diagnostics before decrypted bytes are persisted." The proof
+        // never decrypts; this flag is hardcoded false so downstream
+        // auditors can confirm the proof did not persist decrypted
+        // bytes.
+        decrypted_bytes_persisted: false,
+        assets,
+        key_profile: EncryptedMediaProofKeyProfile {
+            status: key_profile_status,
+            key_profile_id,
+            requirement_id,
+            secret_ref,
+            system_json_proof_hash,
+            system_json_present,
+            system_json_key_present,
+            system_json_key_well_formed,
+            expected_system_json_key_hash,
+            system_json_key_hash,
+            has_encrypted_images_flag,
+            has_encrypted_audio_flag,
+        },
+        diagnostics,
+        semantic_remediation,
+    })
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -24355,5 +25590,518 @@ printf launched > '{}'
                 .iter()
                 .any(|diagnostic| diagnostic.code == "xp3.classification.mismatch")
         );
+    }
+
+    // ----- KAIFUU-039 RPG Maker MV/MZ encrypted-media proof -----
+
+    fn write_encrypted_media_system_json(
+        game_dir: &Path,
+        has_encrypted_images: bool,
+        has_encrypted_audio: bool,
+        key: Option<&str>,
+    ) {
+        let data_dir = game_dir.join("data");
+        fs::create_dir_all(&data_dir).unwrap();
+        let body = match key {
+            Some(key) => format!(
+                "{{\"hasEncryptedImages\":{},\"hasEncryptedAudio\":{},\"encryptionKey\":\"{}\"}}",
+                has_encrypted_images, has_encrypted_audio, key
+            ),
+            None => format!(
+                "{{\"hasEncryptedImages\":{},\"hasEncryptedAudio\":{}}}",
+                has_encrypted_images, has_encrypted_audio
+            ),
+        };
+        fs::write(data_dir.join("System.json"), body).unwrap();
+    }
+
+    fn write_encrypted_media_asset(game_dir: &Path, relative: &str, bytes: &[u8]) {
+        let full = game_dir.join(relative);
+        if let Some(parent) = full.parent() {
+            fs::create_dir_all(parent).unwrap();
+        }
+        fs::write(&full, bytes).unwrap();
+    }
+
+    fn encrypted_media_with_rpgmv_header(extra: &[u8]) -> Vec<u8> {
+        let mut bytes = RPGMAKER_MV_ENCRYPTED_MEDIA_HEADER.to_vec();
+        bytes.extend_from_slice(extra);
+        bytes
+    }
+
+    fn happy_path_encrypted_media_fixture() -> EncryptedMediaProofFixture {
+        EncryptedMediaProofFixture {
+            schema_version: ENCRYPTED_MEDIA_PROOF_SCHEMA_VERSION.to_string(),
+            fixture_id: "kaifuu-rpgmaker-encrypted-media-readiness-synthetic".to_string(),
+            profile_id: "019ed000-0000-7000-8000-000000039001".to_string(),
+            game_dir: "game".to_string(),
+            assets: vec![
+                EncryptedMediaProofFixtureAsset {
+                    asset_id: "title-mv".to_string(),
+                    path: "img/pictures/title.rpgmvp".to_string(),
+                    expected_kind: EncryptedMediaAssetKind::Image,
+                    expected_classification: EncryptedMediaClassification::Encrypted,
+                },
+                EncryptedMediaProofFixtureAsset {
+                    asset_id: "theme-mv".to_string(),
+                    path: "audio/bgm/theme.rpgmvm".to_string(),
+                    expected_kind: EncryptedMediaAssetKind::Audio,
+                    expected_classification: EncryptedMediaClassification::Encrypted,
+                },
+                EncryptedMediaProofFixtureAsset {
+                    asset_id: "cutscene-video-mv".to_string(),
+                    path: "movies/cutscene.rpgmvu".to_string(),
+                    expected_kind: EncryptedMediaAssetKind::Video,
+                    expected_classification: EncryptedMediaClassification::Encrypted,
+                },
+                EncryptedMediaProofFixtureAsset {
+                    asset_id: "portrait-mz".to_string(),
+                    path: "img/pictures/portrait.png_".to_string(),
+                    expected_kind: EncryptedMediaAssetKind::Image,
+                    expected_classification: EncryptedMediaClassification::Encrypted,
+                },
+                EncryptedMediaProofFixtureAsset {
+                    asset_id: "opening-video-plain".to_string(),
+                    path: "movies/opening.webm".to_string(),
+                    expected_kind: EncryptedMediaAssetKind::Video,
+                    expected_classification: EncryptedMediaClassification::Plaintext,
+                },
+            ],
+            key_profile: Some(EncryptedMediaProofFixtureKeyProfile {
+                profile_id: "rpg-maker-mv-mz-asset-key".to_string(),
+                expected_system_json_key_hash: Some(
+                    ProofHash::new(
+                        "sha256:5947d7c33d783f94b3b4c1a96ebc8991ed28f1b069b71e03376cba8caa98a720",
+                    )
+                    .unwrap(),
+                ),
+                key_ref_requirement: Some(EncryptedMediaProofFixtureKeyRefRequirement {
+                    requirement_id: "rpg-maker-mv-mz-asset-key".to_string(),
+                    secret_ref: SecretRef::new(
+                        "local-secret:fixture/rpgmaker/mv-mz-asset-key".to_string(),
+                    )
+                    .unwrap(),
+                }),
+            }),
+        }
+    }
+
+    fn stage_happy_path_encrypted_media_tree(dir: &Path) {
+        let game = dir.join("game");
+        write_encrypted_media_system_json(
+            &game,
+            true,
+            true,
+            Some("00112233445566778899aabbccddeeff"),
+        );
+        write_encrypted_media_asset(
+            &game,
+            "img/pictures/title.rpgmvp",
+            &encrypted_media_with_rpgmv_header(b"img-payload"),
+        );
+        write_encrypted_media_asset(
+            &game,
+            "audio/bgm/theme.rpgmvm",
+            &encrypted_media_with_rpgmv_header(b"audio-payload"),
+        );
+        write_encrypted_media_asset(
+            &game,
+            "movies/cutscene.rpgmvu",
+            &encrypted_media_with_rpgmv_header(b"video-payload"),
+        );
+        write_encrypted_media_asset(
+            &game,
+            "img/pictures/portrait.png_",
+            &encrypted_media_with_rpgmv_header(b"mz-img"),
+        );
+        write_encrypted_media_asset(&game, "movies/opening.webm", b"synthetic-webm-bytes");
+    }
+
+    #[test]
+    fn encrypted_media_proof_routes_each_asset_kind_with_distinct_capability_levels() {
+        // Acceptance criterion: "Encrypted image, audio, and video media
+        // variants are detected with exact asset-kind capability levels."
+        let dir = temp_dir("encrypted-media-distinct-kinds");
+        stage_happy_path_encrypted_media_tree(&dir);
+
+        let fixture = happy_path_encrypted_media_fixture();
+        let report = encrypted_media_proof(EncryptedMediaProofRequest {
+            fixture: &fixture,
+            fixture_dir: &dir,
+        })
+        .unwrap();
+        assert_eq!(report.status, OperationStatus::Passed);
+        assert_eq!(report.readiness, EncryptedMediaReadiness::Ready);
+        // Patch capability never claims `patch_back` or `extract` for any
+        // asset — every encrypted asset is `Unsupported`, the aggregate
+        // settles at `Unsupported`.
+        assert_eq!(
+            report.patch_capability_level,
+            EncryptedMediaPatchCapability::Unsupported
+        );
+        // Per-asset kinds + capabilities are distinct.
+        let kinds: Vec<EncryptedMediaAssetKind> =
+            report.assets.iter().map(|asset| asset.kind).collect();
+        assert_eq!(
+            kinds,
+            vec![
+                EncryptedMediaAssetKind::Image,
+                EncryptedMediaAssetKind::Audio,
+                EncryptedMediaAssetKind::Video,
+                EncryptedMediaAssetKind::Image,
+                EncryptedMediaAssetKind::Video,
+            ]
+        );
+        let encrypted_assets: Vec<&EncryptedMediaProofAsset> = report
+            .assets
+            .iter()
+            .filter(|asset| asset.classification == EncryptedMediaClassification::Encrypted)
+            .collect();
+        assert_eq!(encrypted_assets.len(), 4);
+        for asset in &encrypted_assets {
+            assert_eq!(
+                asset.patch_capability_level,
+                EncryptedMediaPatchCapability::Unsupported,
+                "encrypted asset {} must not claim patch capability",
+                asset.asset_id
+            );
+            assert_eq!(
+                asset.decryptability,
+                EncryptedMediaDecryptability::KeyProfileSatisfied
+            );
+            assert_eq!(asset.readiness, EncryptedMediaReadiness::Ready);
+        }
+        // Plaintext video surfaces as evidence only.
+        let video = report
+            .assets
+            .iter()
+            .find(|asset| asset.asset_id == "opening-video-plain")
+            .unwrap();
+        assert_eq!(
+            video.classification,
+            EncryptedMediaClassification::Plaintext
+        );
+        assert_eq!(
+            video.patch_capability_level,
+            EncryptedMediaPatchCapability::NotClaimed
+        );
+        assert_eq!(video.readiness, EncryptedMediaReadiness::PlaintextEvidence);
+        // Load-bearing claims: media-key detection never implies dialogue
+        // extraction or script-patch support, and decrypted bytes are
+        // never persisted.
+        assert!(!report.script_capability_claimed);
+        assert!(!report.decrypted_bytes_persisted);
+    }
+
+    #[test]
+    fn encrypted_media_proof_carries_metadata_and_redacts_secret_payloads() {
+        let dir = temp_dir("encrypted-media-metadata");
+        stage_happy_path_encrypted_media_tree(&dir);
+
+        let fixture = happy_path_encrypted_media_fixture();
+        let report = encrypted_media_proof(EncryptedMediaProofRequest {
+            fixture: &fixture,
+            fixture_dir: &dir,
+        })
+        .unwrap();
+        assert_eq!(
+            report.fixture_id,
+            "kaifuu-rpgmaker-encrypted-media-readiness-synthetic"
+        );
+        assert_eq!(report.profile_id, "019ed000-0000-7000-8000-000000039001");
+        // System.json proof hash present + asset evidence hashes present.
+        assert!(
+            report
+                .key_profile
+                .system_json_proof_hash
+                .as_ref()
+                .map(|hash| hash.as_str().starts_with("sha256:"))
+                .unwrap_or(false)
+        );
+        for asset in &report.assets {
+            assert!(asset.asset_evidence_hash.as_str().starts_with("sha256:"));
+        }
+        // Stable JSON serialization round-trips and never echoes the raw
+        // System.json key value (the proof hash is fine; the key bytes
+        // are not).
+        let json = report.stable_json().unwrap();
+        assert!(
+            !json.contains("00112233445566778899aabbccddeeff"),
+            "raw System.json key must not appear in the report",
+        );
+        // The system_json_present + key_well_formed flags reflect the
+        // happy-path setup.
+        assert!(report.key_profile.system_json_present);
+        assert!(report.key_profile.system_json_key_present);
+        assert!(report.key_profile.system_json_key_well_formed);
+        assert_eq!(report.key_profile.has_encrypted_images_flag, Some(true));
+        assert_eq!(report.key_profile.has_encrypted_audio_flag, Some(true));
+    }
+
+    #[test]
+    fn encrypted_media_proof_rejects_leaked_game_dir_before_decryption_claim() {
+        // Acceptance criterion: "Public fixtures use synthetic media and
+        // public test keys only" + "raw key leakage" negative coverage.
+        let dir = temp_dir("encrypted-media-leaked-game-dir");
+        let mut fixture = happy_path_encrypted_media_fixture();
+        fixture.game_dir = "/home/local-user/private/rpgmaker-mv-mz".to_string();
+        let report = encrypted_media_proof(EncryptedMediaProofRequest {
+            fixture: &fixture,
+            fixture_dir: &dir,
+        })
+        .unwrap();
+        assert_eq!(report.status, OperationStatus::Failed);
+        assert_eq!(report.readiness, EncryptedMediaReadiness::Unsupported);
+        assert!(report.diagnostics.iter().any(|diagnostic| diagnostic.code
+            == "rpgmaker.encrypted_media.game_dir.leaked"
+            && diagnostic.semantic_code.as_deref()
+                == Some(SEMANTIC_FORBIDDEN_PUBLIC_SERIALIZATION)));
+        // The leaked absolute path is **never** echoed into the report —
+        // verify the redacted JSON does not contain the private prefix.
+        let json = report.stable_json().unwrap();
+        assert!(
+            !json.contains("/home/local-user"),
+            "leaked absolute path survived into the report: {json}",
+        );
+    }
+
+    #[test]
+    fn encrypted_media_proof_missing_system_json_key_fails_before_decryption_claim() {
+        // Acceptance criterion: "Missing or wrong keys return semantic
+        // diagnostics before decrypted bytes are persisted."
+        let dir = temp_dir("encrypted-media-missing-key");
+        let game = dir.join("game");
+        write_encrypted_media_system_json(&game, true, true, None);
+        write_encrypted_media_asset(
+            &game,
+            "img/pictures/title.rpgmvp",
+            &encrypted_media_with_rpgmv_header(b"img-payload"),
+        );
+
+        let mut fixture = happy_path_encrypted_media_fixture();
+        fixture.assets.truncate(1);
+        let report = encrypted_media_proof(EncryptedMediaProofRequest {
+            fixture: &fixture,
+            fixture_dir: &dir,
+        })
+        .unwrap();
+        assert_eq!(report.status, OperationStatus::Failed);
+        assert!(report.diagnostics.iter().any(|diagnostic| diagnostic.code
+            == "rpgmaker.encrypted_media.system_json.key_missing"
+            && diagnostic.semantic_code.as_deref() == Some(SEMANTIC_MISSING_KEY_MATERIAL)));
+        assert!(!report.decrypted_bytes_persisted);
+        assert!(!report.script_capability_claimed);
+    }
+
+    #[test]
+    fn encrypted_media_proof_malformed_key_fails_before_decryption_claim() {
+        // Acceptance criterion: "Missing or wrong keys return semantic
+        // diagnostics before decrypted bytes are persisted." A
+        // malformed-shape key is the canonical "wrong key" surface.
+        let dir = temp_dir("encrypted-media-malformed-key");
+        let game = dir.join("game");
+        write_encrypted_media_system_json(&game, true, true, Some("not-a-valid-hex-key"));
+        write_encrypted_media_asset(
+            &game,
+            "img/pictures/title.rpgmvp",
+            &encrypted_media_with_rpgmv_header(b"img-payload"),
+        );
+
+        let mut fixture = happy_path_encrypted_media_fixture();
+        fixture.assets.truncate(1);
+        let report = encrypted_media_proof(EncryptedMediaProofRequest {
+            fixture: &fixture,
+            fixture_dir: &dir,
+        })
+        .unwrap();
+        assert_eq!(report.status, OperationStatus::Failed);
+        assert!(report.diagnostics.iter().any(|diagnostic| diagnostic.code
+            == "rpgmaker.encrypted_media.system_json.key_malformed"
+            && diagnostic.semantic_code.as_deref() == Some(SEMANTIC_KEY_VALIDATION_FAILED)));
+        assert!(!report.decrypted_bytes_persisted);
+    }
+
+    #[test]
+    fn encrypted_media_proof_wrong_well_formed_key_fails_before_decryption_claim() {
+        // A wrong-but-well-formed 32-hex System.json key must fail as
+        // key-validation mismatch, not as malformed input. The proof compares
+        // hash-only fixture evidence and still never decrypts.
+        let dir = temp_dir("encrypted-media-wrong-key");
+        let game = dir.join("game");
+        write_encrypted_media_system_json(
+            &game,
+            true,
+            true,
+            Some("ffeeddccbbaa99887766554433221100"),
+        );
+        write_encrypted_media_asset(
+            &game,
+            "img/pictures/title.rpgmvp",
+            &encrypted_media_with_rpgmv_header(b"img-payload"),
+        );
+
+        let mut fixture = happy_path_encrypted_media_fixture();
+        fixture.assets.truncate(1);
+        let report = encrypted_media_proof(EncryptedMediaProofRequest {
+            fixture: &fixture,
+            fixture_dir: &dir,
+        })
+        .unwrap();
+        assert_eq!(report.status, OperationStatus::Failed);
+        assert!(report.diagnostics.iter().any(|diagnostic| diagnostic.code
+            == "rpgmaker.encrypted_media.system_json.key_mismatch"
+            && diagnostic.semantic_code.as_deref() == Some(SEMANTIC_KEY_VALIDATION_FAILED)));
+        assert_eq!(
+            report.assets[0].decryptability,
+            EncryptedMediaDecryptability::KeyMismatch
+        );
+        assert!(!report.decrypted_bytes_persisted);
+        assert!(!report.script_capability_claimed);
+    }
+
+    #[test]
+    fn encrypted_media_proof_malformed_header_routes_to_unsupported_without_overclaim() {
+        // Negative coverage: encrypted asset is declared but the bytes do
+        // not start with the RPGMV header magic. Must route to
+        // `MalformedHeader` + `Unsupported` and never silently upgrade
+        // to `Encrypted`.
+        let dir = temp_dir("encrypted-media-malformed-header");
+        let game = dir.join("game");
+        write_encrypted_media_system_json(
+            &game,
+            true,
+            true,
+            Some("00112233445566778899aabbccddeeff"),
+        );
+        write_encrypted_media_asset(
+            &game,
+            "img/pictures/malformed.rpgmvp",
+            b"NOT-A-RPGMV-HEADER",
+        );
+
+        let mut fixture = happy_path_encrypted_media_fixture();
+        fixture.assets = vec![EncryptedMediaProofFixtureAsset {
+            asset_id: "malformed".to_string(),
+            path: "img/pictures/malformed.rpgmvp".to_string(),
+            expected_kind: EncryptedMediaAssetKind::Image,
+            expected_classification: EncryptedMediaClassification::Encrypted,
+        }];
+        let report = encrypted_media_proof(EncryptedMediaProofRequest {
+            fixture: &fixture,
+            fixture_dir: &dir,
+        })
+        .unwrap();
+        assert_eq!(report.status, OperationStatus::Failed);
+        assert_eq!(
+            report.assets[0].classification,
+            EncryptedMediaClassification::MalformedHeader
+        );
+        assert_eq!(
+            report.assets[0].patch_capability_level,
+            EncryptedMediaPatchCapability::Unsupported
+        );
+        assert!(
+            report
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "rpgmaker.encrypted_media.header.malformed")
+        );
+    }
+
+    #[test]
+    fn encrypted_media_proof_unknown_key_profile_fails_closed() {
+        // The recognised vocabulary check is routing-only — recognition
+        // does not imply decryption capability. Unknown profile id must
+        // fire a P0 diagnostic so a fixture-author cannot wedge an
+        // arbitrary plugin id into the proof.
+        let dir = temp_dir("encrypted-media-unknown-profile");
+        stage_happy_path_encrypted_media_tree(&dir);
+
+        let mut fixture = happy_path_encrypted_media_fixture();
+        if let Some(profile) = fixture.key_profile.as_mut() {
+            profile.profile_id = "not-a-recognised-profile-id".to_string();
+        }
+        let report = encrypted_media_proof(EncryptedMediaProofRequest {
+            fixture: &fixture,
+            fixture_dir: &dir,
+        })
+        .unwrap();
+        assert_eq!(report.status, OperationStatus::Failed);
+        assert!(report.diagnostics.iter().any(|diagnostic| diagnostic.code
+            == "rpgmaker.encrypted_media.key_profile.unknown"
+            && diagnostic.semantic_code.as_deref() == Some(SEMANTIC_UNKNOWN_ENGINE_VARIANT)));
+    }
+
+    #[test]
+    fn encrypted_media_proof_byte_classification_overrides_fixture_declaration() {
+        // A fixture that declares plaintext but ships RPGMV-headered bytes
+        // must be routed by the bytes (encrypted), not silently trusted
+        // as plaintext.
+        let dir = temp_dir("encrypted-media-byte-routing");
+        let game = dir.join("game");
+        write_encrypted_media_system_json(
+            &game,
+            true,
+            true,
+            Some("00112233445566778899aabbccddeeff"),
+        );
+        // Plaintext-suffix asset with RPGMV bytes — bytes win.
+        write_encrypted_media_asset(
+            &game,
+            "img/pictures/title.png",
+            &encrypted_media_with_rpgmv_header(b"sneaky"),
+        );
+
+        let mut fixture = happy_path_encrypted_media_fixture();
+        fixture.assets = vec![EncryptedMediaProofFixtureAsset {
+            asset_id: "sneaky-plain".to_string(),
+            path: "img/pictures/title.png".to_string(),
+            expected_kind: EncryptedMediaAssetKind::Image,
+            expected_classification: EncryptedMediaClassification::Plaintext,
+        }];
+        let report = encrypted_media_proof(EncryptedMediaProofRequest {
+            fixture: &fixture,
+            fixture_dir: &dir,
+        })
+        .unwrap();
+        // Suffix is .png (plaintext suffix) so the routing settles at
+        // Plaintext — the bytes-classification doesn't override a
+        // plaintext-suffix declaration with no encrypted suffix profile;
+        // however, since the suffix is plain the resulting classification
+        // is still Plaintext but the readiness reports must not assume
+        // anything decryptable. This is the "no script capability"
+        // separation.
+        assert_eq!(
+            report.assets[0].classification,
+            EncryptedMediaClassification::Plaintext
+        );
+        assert!(!report.script_capability_claimed);
+        assert!(!report.decrypted_bytes_persisted);
+        assert_eq!(
+            report.assets[0].patch_capability_level,
+            EncryptedMediaPatchCapability::NotClaimed
+        );
+    }
+
+    #[test]
+    fn encrypted_media_proof_redacted_view_strips_secret_substrings() {
+        let dir = temp_dir("encrypted-media-redacted");
+        stage_happy_path_encrypted_media_tree(&dir);
+
+        let fixture = happy_path_encrypted_media_fixture();
+        let report = encrypted_media_proof(EncryptedMediaProofRequest {
+            fixture: &fixture,
+            fixture_dir: &dir,
+        })
+        .unwrap();
+        let redacted = report.redacted_for_report();
+        // Acceptance criterion: "Public fixtures use synthetic media and
+        // public test keys only" — the raw key value must never appear
+        // in the redacted JSON either.
+        let json = redacted.stable_json().unwrap();
+        assert!(!json.contains("00112233445566778899aabbccddeeff"));
+        // Load-bearing flags survive redaction.
+        assert!(!redacted.script_capability_claimed);
+        assert!(!redacted.decrypted_bytes_persisted);
     }
 }

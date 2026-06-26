@@ -719,6 +719,33 @@
             ]
           },
           {
+            "fixtureId": "kaifuu-rpgmaker-mv-video-rpgmvu",
+            "engineFamily": "rpgmaker",
+            "variant": "mv_or_mz",
+            "container": "project_asset",
+            "crypto": "rpg_maker_asset_xor",
+            "codec": "unknown",
+            "surface": "video_asset",
+            "count": 1,
+            "keyRequirementRefs": ["rpg-maker-mv-mz-asset-key"],
+            "diagnostics": [
+              {
+                "code": "kaifuu.missing_key_material",
+                "signal": "missing_key",
+                "requiredCapability": "key_profile",
+                "supportBoundary": "RPG Maker MV/MZ encrypted asset suffix maps to the asset-key requirement.",
+                "remediation": "resolve local key material through a secret ref; do not persist raw keys"
+              },
+              {
+                "code": "kaifuu.unsupported_variant.encrypted",
+                "signal": "encrypted",
+                "requiredCapability": "encrypted_input",
+                "supportBoundary": "RPG Maker MV/MZ encrypted asset suffix detection is not decryption support.",
+                "remediation": "provide a supported key profile only after an adapter explicitly supports encrypted media extraction"
+              }
+            ]
+          },
+          {
             "fixtureId": "kaifuu-rpgmaker-mz-audio-m4a_",
             "engineFamily": "rpgmaker",
             "variant": "mv_or_mz",
@@ -836,33 +863,6 @@
             "diagnostics": []
           },
           {
-            "fixtureId": "kaifuu-rpgmaker-unknown-rpgmvu",
-            "engineFamily": "rpgmaker",
-            "variant": "unknown_suffix",
-            "container": "project_asset",
-            "crypto": "unknown",
-            "codec": "unknown",
-            "surface": "unknown_asset",
-            "count": 1,
-            "keyRequirementRefs": [],
-            "diagnostics": [
-              {
-                "code": "kaifuu.missing_capability.crypto",
-                "signal": "unknown_variant",
-                "requiredCapability": "crypto_access",
-                "supportBoundary": "RPG Maker-like asset suffix has no profiled MV/MZ codec or key mapping.",
-                "remediation": "do not request key material until the suffix crypto profile is known"
-              },
-              {
-                "code": "kaifuu.unknown_engine_variant",
-                "signal": "unknown_variant",
-                "requiredCapability": "detection",
-                "supportBoundary": "RPG Maker-like asset suffix has no profiled MV/MZ codec or key mapping.",
-                "remediation": "add a public fixture profile before assigning key requirements"
-              }
-            ]
-          },
-          {
             "fixtureId": "kaifuu-rpgmaker-unknown-webp_",
             "engineFamily": "rpgmaker",
             "variant": "unknown_suffix",
@@ -900,16 +900,16 @@
           },
           {
             "evidenceType": "file_extension",
-            "pattern": "*.rpgmvp|*.rpgmvm|*.rpgmvo|*.png_|*.m4a_|*.ogg_",
+            "pattern": "*.rpgmvp|*.rpgmvm|*.rpgmvo|*.rpgmvu|*.png_|*.m4a_|*.ogg_",
             "status": "matched",
-            "count": 6,
+            "count": 7,
             "detail": "RPG Maker MV/MZ encrypted asset extension count"
           },
           {
             "evidenceType": "file_extension",
-            "pattern": "*.rpgmvu|*.webp_",
+            "pattern": "*.webp_",
             "status": "matched",
-            "count": 2,
+            "count": 1,
             "detail": "RPG Maker-like encrypted asset suffixes without a known codec/key mapping"
           },
           {
@@ -1130,7 +1130,5 @@
       }
     ]
   },
-  "warnings": [
-    "no registered extraction adapter matched this directory; archive detection reported unsupported input diagnostics"
-  ]
+  "warnings": ["no registered extraction adapter matched this directory; archive detection reported unsupported input diagnostics"]
 }

@@ -80,8 +80,8 @@
       "path": "fixtures/public/kaifuu-rpg-maker-encrypted-suffixes/expected/detection-report-v0.1.json",
       "role": "expected-output",
       "mediaType": "application/json",
-      "sha256": "cbef3ec39080d36d85a1d99dbe51f7f07bcb552fd7d3c1595266a27b2a8a6f2b",
-      "bytes": 41159,
+      "sha256": "68bcc41c6a9d70fd0be7ba4b137f46d12d387fb2f9f9eabe2d971b0ff5544869",
+      "bytes": 41227,
       "redistributable": true
     },
     {
@@ -133,7 +133,7 @@
     "sourceLocales": ["ja-JP"],
     "targetLocales": [],
     "engineKinds": ["rpg-maker-mv-mz-synthetic-encrypted-suffixes"],
-    "notes": "Covers MV encrypted suffixes .rpgmvp, .rpgmvm, and .rpgmvo; MZ encrypted suffixes .png_, .m4a_, and .ogg_; plain .png, .m4a, and .ogg assets; and unknown .rpgmvu and .webp_ suffixes. The expected detection report asserts adapter status remains unknown while archiveDetection reports matched unsupported encrypted input diagnostics and unknown suffix diagnostics without inventing key requirements."
+    "notes": "Covers MV encrypted suffixes .rpgmvp, .rpgmvm, .rpgmvo, and .rpgmvu; MZ encrypted suffixes .png_, .m4a_, and .ogg_; plain .png, .m4a, and .ogg assets; and unknown .webp_ suffix diagnostics. The expected detection report asserts adapter status remains unknown while archiveDetection reports matched unsupported encrypted input diagnostics and unknown suffix diagnostics without inventing key requirements."
   },
   "benchmarkUse": {
     "allowedInPublicCi": true,

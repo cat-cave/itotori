@@ -1,0 +1,76 @@
+{
+  "schemaVersion": "0.1.0",
+  "fixtureId": "kaifuu-rpgmaker-encrypted-media-readiness",
+  "profileId": "019ed000-0000-7000-8000-000000039001",
+  "gameDir": "game",
+  "assets": [
+    {
+      "assetId": "title-image-mv",
+      "path": "img/pictures/title.rpgmvp",
+      "expectedKind": "image",
+      "expectedClassification": "encrypted"
+    },
+    {
+      "assetId": "theme-audio-mv",
+      "path": "audio/bgm/theme.rpgmvm",
+      "expectedKind": "audio",
+      "expectedClassification": "encrypted"
+    },
+    {
+      "assetId": "cursor-audio-mv",
+      "path": "audio/se/cursor.rpgmvo",
+      "expectedKind": "audio",
+      "expectedClassification": "encrypted"
+    },
+    {
+      "assetId": "cutscene-video-mv",
+      "path": "movies/cutscene.rpgmvu",
+      "expectedKind": "video",
+      "expectedClassification": "encrypted"
+    },
+    {
+      "assetId": "portrait-image-mz",
+      "path": "img/pictures/portrait.png_",
+      "expectedKind": "image",
+      "expectedClassification": "encrypted"
+    },
+    {
+      "assetId": "menu-audio-mz",
+      "path": "audio/bgm/menu.ogg_",
+      "expectedKind": "audio",
+      "expectedClassification": "encrypted"
+    },
+    {
+      "assetId": "click-audio-mz",
+      "path": "audio/se/click.m4a_",
+      "expectedKind": "audio",
+      "expectedClassification": "encrypted"
+    },
+    {
+      "assetId": "logo-image-plain",
+      "path": "img/pictures/logo.png",
+      "expectedKind": "image",
+      "expectedClassification": "plaintext"
+    },
+    {
+      "assetId": "intro-audio-plain",
+      "path": "audio/bgm/intro.ogg",
+      "expectedKind": "audio",
+      "expectedClassification": "plaintext"
+    },
+    {
+      "assetId": "opening-video-plain",
+      "path": "movies/opening.webm",
+      "expectedKind": "video",
+      "expectedClassification": "plaintext"
+    }
+  ],
+  "keyProfile": {
+    "profileId": "rpg-maker-mv-mz-asset-key",
+    "expectedSystemJsonKeyHash": "sha256:5947d7c33d783f94b3b4c1a96ebc8991ed28f1b069b71e03376cba8caa98a720",
+    "keyRefRequirement": {
+      "requirementId": "rpg-maker-mv-mz-asset-key",
+      "secretRef": "local-secret:fixture/rpgmaker/mv-mz-asset-key"
+    }
+  }
+}
