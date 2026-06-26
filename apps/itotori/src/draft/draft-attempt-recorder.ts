@@ -97,6 +97,17 @@ export class DraftAttemptRecorder {
       costUnit: args.costUsd.unit,
       costAmount: args.costUsd.amount,
       usageResponseJson: providerRun.usageResponseJson,
+      // ITOTORI-233 — mirror prompt-caching annotations from the
+      // ProviderRunRecord. The OR adapter populates `cacheReadTokens` /
+      // `cacheWriteTokens` from `usage.prompt_tokens_details` and
+      // `cost.cacheDiscountMicrosUsd` from `usage.cost_details.cache_discount`
+      // verbatim (see normalizeUsage + normalizeOpenRouterCost in
+      // providers/openrouter.ts). Absent → 0 at the storage layer
+      // (DEFAULT 0 per migration 0042). Real cost only — these values
+      // come from the upstream response, never derived.
+      cacheReadTokens: providerRun.tokenUsage.cacheReadTokens ?? 0,
+      cacheWriteTokens: providerRun.tokenUsage.cacheWriteTokens ?? 0,
+      cacheDiscountMicrosUsd: providerRun.cost.cacheDiscountMicrosUsd ?? 0,
       latencyMs: args.latencyMs,
       fallbackChain: [...args.fallbackChain],
       isRecordedProvider: isRecorded,

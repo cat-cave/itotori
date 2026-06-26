@@ -42,6 +42,24 @@ export type DraftAttemptProviderLedgerEntry = {
    * sentinel) are exempt.
    */
   usageResponseJson: Record<string, unknown>;
+  /**
+   * ITOTORI-233 — prompt-caching annotations mirrored verbatim from
+   * `usage.prompt_tokens_details.cached_tokens` /
+   * `usage.prompt_tokens_details.cache_write_tokens` on the originating
+   * OpenRouter response. Non-NULL at the schema level (DEFAULT 0); a
+   * non-cache-hit is 0, not NULL. Always known.
+   */
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  /**
+   * ITOTORI-233 — `usage.cost_details.cache_discount` in integer micros
+   * USD. Non-NULL at the schema level (DEFAULT 0). Informational
+   * annotation per DOC-AMBIGUOUS-6 (integration doc §11 entry 6,
+   * §5.3): `usage.cost` is already net of this discount, so the cost
+   * cap does NOT subtract it again — telemetry surfaces it as
+   * "cache_savings_usd" instead.
+   */
+  cacheDiscountMicrosUsd: number;
   latencyMs: number | null;
   fallbackChain: DraftAttemptFallbackChainEntry[];
   isRecordedProvider: boolean;
@@ -80,6 +98,15 @@ export type RecordLedgerEntryInput = {
    * `{"_local": true}`); the partial-NULL CHECK exempts these.
    */
   usageResponseJson: Record<string, unknown>;
+  /**
+   * ITOTORI-233 — optional input fields for the three cache-aware
+   * columns. Default to 0 when omitted (matches the DB DEFAULT 0), so
+   * a caller that does not know about caching writes the same row as
+   * a non-cache-hit. Negative values are rejected.
+   */
+  cacheReadTokens?: number | undefined;
+  cacheWriteTokens?: number | undefined;
+  cacheDiscountMicrosUsd?: number | undefined;
   latencyMs?: number | undefined;
   fallbackChain?: DraftAttemptFallbackChainEntry[] | undefined;
   isRecordedProvider?: boolean | undefined;
@@ -135,6 +162,28 @@ export type LedgerPairAggregateRow = {
   invocationCount: number;
   avgLatencyMs: number | null;
   p95LatencyMs: number | null;
+  /**
+   * ITOTORI-233 — per-bucket cache hit counts + savings sums. Sourced
+   * VERBATIM from the `cache_read_tokens` / `cache_discount_micros_usd`
+   * columns (which themselves mirror `usage.prompt_tokens_details` /
+   * `usage.cost_details` from the originating OR response).
+   *
+   * - `cacheHitCount` is the number of rows in the bucket where
+   *   `cache_read_tokens > 0` — i.e. the cache delivered at least one
+   *   prompt token. Rows with `cache_read_tokens = 0` are misses; the
+   *   row IS counted in `invocationCount` but NOT in `cacheHitCount`.
+   * - `totalCacheReadTokens` / `totalCacheWriteTokens` are SUMs over
+   *   the bucket. `cacheSavingsUsd` is the SUM of
+   *   `cache_discount_micros_usd / 1_000_000` over the bucket,
+   *   formatted as a decimal-USD string for parity with `totalCostUsd`.
+   *
+   * Never derived from token-count × pricing — the audit's named
+   * anti-pattern. Always real, per the no-hardcoded-cost rule.
+   */
+  cacheHitCount: number;
+  totalCacheReadTokens: number;
+  totalCacheWriteTokens: number;
+  cacheSavingsUsd: string;
 };
 
 export type SumByPairAndDayOptions = {
@@ -221,6 +270,13 @@ export class ItotoriDraftAttemptProviderLedgerRepository implements ItotoriDraft
       costUnit: input.costUnit,
       costAmount: input.costAmount,
       usageResponseJson: input.usageResponseJson,
+      // ITOTORI-233 — cache-aware annotations default to 0 when the
+      // caller omits them (matches the DB DEFAULT 0). A caller that
+      // does know is mirroring the OR response's
+      // prompt_tokens_details / cost_details verbatim.
+      cacheReadTokens: input.cacheReadTokens ?? 0,
+      cacheWriteTokens: input.cacheWriteTokens ?? 0,
+      cacheDiscountMicrosUsd: input.cacheDiscountMicrosUsd ?? 0,
       latencyMs: input.latencyMs ?? null,
       fallbackChain: input.fallbackChain ?? [],
       isRecordedProvider: input.isRecordedProvider ?? false,
@@ -417,6 +473,21 @@ export class ItotoriDraftAttemptProviderLedgerRepository implements ItotoriDraft
         p95LatencyMs: sql<
           string | null
         >`(percentile_cont(0.95) within group (order by ${draftAttemptProviderLedger.latencyMs}))::text`,
+        // ITOTORI-233 — cache aggregates.
+        //   - cacheHitCount: count of rows where cache_read_tokens > 0
+        //     (a real cache hit landed at least one prompt token).
+        //   - totalCacheReadTokens / totalCacheWriteTokens: SUM of the
+        //     respective columns, which themselves mirror
+        //     usage.prompt_tokens_details.cached_tokens /
+        //     cache_write_tokens verbatim.
+        //   - cacheSavingsUsd: SUM of cache_discount_micros_usd / 1e6
+        //     formatted as a decimal-USD string. Real cost only — the
+        //     micros come from usage.cost_details.cache_discount
+        //     verbatim, never derived from token counts × pricing.
+        cacheHitCount: sql<string>`count(*) filter (where ${draftAttemptProviderLedger.cacheReadTokens} > 0)::text`,
+        totalCacheReadTokens: sql<string>`coalesce(sum(${draftAttemptProviderLedger.cacheReadTokens}), 0)::text`,
+        totalCacheWriteTokens: sql<string>`coalesce(sum(${draftAttemptProviderLedger.cacheWriteTokens}), 0)::text`,
+        cacheSavingsUsd: sql<string>`(coalesce(sum(${draftAttemptProviderLedger.cacheDiscountMicrosUsd}), 0)::numeric / 1000000)::text`,
       })
       .from(draftAttemptProviderLedger)
       .innerJoin(
@@ -533,6 +604,36 @@ function assertRecordLedgerEntryInput(input: RecordLedgerEntryInput): void {
       "latencyMs must be a non-negative integer",
     );
   }
+  // ITOTORI-233 — cache columns are non-negative integers when present.
+  // The DB CHECK enforces the same shape; this typed gate gives callers
+  // a clear error before the round-trip.
+  if (
+    input.cacheReadTokens !== undefined &&
+    (!Number.isInteger(input.cacheReadTokens) || input.cacheReadTokens < 0)
+  ) {
+    throw new DraftAttemptProviderLedgerRepositoryError(
+      "ledger_entry_invalid_input",
+      "cacheReadTokens must be a non-negative integer",
+    );
+  }
+  if (
+    input.cacheWriteTokens !== undefined &&
+    (!Number.isInteger(input.cacheWriteTokens) || input.cacheWriteTokens < 0)
+  ) {
+    throw new DraftAttemptProviderLedgerRepositoryError(
+      "ledger_entry_invalid_input",
+      "cacheWriteTokens must be a non-negative integer",
+    );
+  }
+  if (
+    input.cacheDiscountMicrosUsd !== undefined &&
+    (!Number.isInteger(input.cacheDiscountMicrosUsd) || input.cacheDiscountMicrosUsd < 0)
+  ) {
+    throw new DraftAttemptProviderLedgerRepositoryError(
+      "ledger_entry_invalid_input",
+      "cacheDiscountMicrosUsd must be a non-negative integer",
+    );
+  }
 }
 
 type RawAggregateRow = {
@@ -545,6 +646,10 @@ type RawAggregateRow = {
   invocationCount: string;
   avgLatencyMs: string | null;
   p95LatencyMs: string | null;
+  cacheHitCount: string;
+  totalCacheReadTokens: string;
+  totalCacheWriteTokens: string;
+  cacheSavingsUsd: string;
 };
 
 function parseAggregateRow(row: RawAggregateRow): LedgerPairAggregateRow {
@@ -569,6 +674,28 @@ function parseAggregateRow(row: RawAggregateRow): LedgerPairAggregateRow {
       `unexpected invocationCount aggregate ${row.invocationCount}`,
     );
   }
+  // ITOTORI-233 — parse the cache aggregates the same defensive way.
+  const cacheHitCount = Number.parseInt(row.cacheHitCount, 10);
+  const totalCacheReadTokens = Number.parseInt(row.totalCacheReadTokens, 10);
+  const totalCacheWriteTokens = Number.parseInt(row.totalCacheWriteTokens, 10);
+  if (!Number.isFinite(cacheHitCount) || cacheHitCount < 0) {
+    throw new DraftAttemptProviderLedgerRepositoryError(
+      "ledger_entry_persistence_failed",
+      `unexpected cacheHitCount aggregate ${row.cacheHitCount}`,
+    );
+  }
+  if (!Number.isFinite(totalCacheReadTokens) || totalCacheReadTokens < 0) {
+    throw new DraftAttemptProviderLedgerRepositoryError(
+      "ledger_entry_persistence_failed",
+      `unexpected totalCacheReadTokens aggregate ${row.totalCacheReadTokens}`,
+    );
+  }
+  if (!Number.isFinite(totalCacheWriteTokens) || totalCacheWriteTokens < 0) {
+    throw new DraftAttemptProviderLedgerRepositoryError(
+      "ledger_entry_persistence_failed",
+      `unexpected totalCacheWriteTokens aggregate ${row.totalCacheWriteTokens}`,
+    );
+  }
   return {
     modelId: row.modelId,
     providerId: row.providerId,
@@ -579,6 +706,10 @@ function parseAggregateRow(row: RawAggregateRow): LedgerPairAggregateRow {
     invocationCount,
     avgLatencyMs: parseOptionalLatency(row.avgLatencyMs),
     p95LatencyMs: parseOptionalLatency(row.p95LatencyMs),
+    cacheHitCount,
+    totalCacheReadTokens,
+    totalCacheWriteTokens,
+    cacheSavingsUsd: row.cacheSavingsUsd,
   };
 }
 
@@ -614,6 +745,9 @@ function ledgerRowToEntry(
     costUnit: row.costUnit,
     costAmount: row.costAmount,
     usageResponseJson: row.usageResponseJson,
+    cacheReadTokens: row.cacheReadTokens,
+    cacheWriteTokens: row.cacheWriteTokens,
+    cacheDiscountMicrosUsd: row.cacheDiscountMicrosUsd,
     latencyMs: row.latencyMs,
     fallbackChain: row.fallbackChain,
     isRecordedProvider: row.isRecordedProvider,

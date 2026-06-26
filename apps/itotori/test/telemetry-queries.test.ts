@@ -22,6 +22,7 @@ import type {
   SumCostByProjectWindow,
 } from "@itotori/db";
 import { LedgerTelemetryQuery, TelemetryQueryError } from "../src/telemetry/queries-impl.js";
+import { renderTextSummary } from "../src/telemetry/cli.js";
 import {
   TELEMETRY_UNKNOWN_MODEL_SENTINEL,
   buildPairKey,
@@ -39,6 +40,12 @@ type SeedRow = {
   tokensOut: number;
   latencyMs: number;
   createdAt: Date;
+  // ITOTORI-233 — optional cache fields. Default to 0 when omitted so
+  // existing seed rows continue to express "no cache hit / no
+  // discount" without explicit zeros at every call site.
+  cacheReadTokens?: number;
+  cacheWriteTokens?: number;
+  cacheDiscountMicrosUsd?: number;
 };
 
 const PAIR_A_MODEL = "anthropic/claude-3.5-sonnet";
@@ -232,6 +239,17 @@ class StubLedgerPort implements ItotoriDraftAttemptProviderLedgerRepositoryPort 
       const avgLatency =
         latencies.length === 0 ? null : latencies.reduce((acc, l) => acc + l, 0) / latencies.length;
       const p95 = latencies.length === 0 ? null : computeP95LinearInterp(latencies);
+      // ITOTORI-233 — cache aggregates parallel the SQL aggregates in
+      // the real repository. cacheHitCount counts rows with
+      // cacheReadTokens > 0; cacheSavingsUsd is the SUM of
+      // cacheDiscountMicrosUsd / 1_000_000.
+      const cacheHitCount = rows.reduce(
+        (acc, r) => acc + ((r.cacheReadTokens ?? 0) > 0 ? 1 : 0),
+        0,
+      );
+      const totalCacheReadTokens = rows.reduce((acc, r) => acc + (r.cacheReadTokens ?? 0), 0);
+      const totalCacheWriteTokens = rows.reduce((acc, r) => acc + (r.cacheWriteTokens ?? 0), 0);
+      const cacheSavingsMicros = rows.reduce((acc, r) => acc + (r.cacheDiscountMicrosUsd ?? 0), 0);
       result.push({
         modelId,
         providerId,
@@ -242,6 +260,10 @@ class StubLedgerPort implements ItotoriDraftAttemptProviderLedgerRepositoryPort 
         invocationCount: rows.length,
         avgLatencyMs: avgLatency,
         p95LatencyMs: p95,
+        cacheHitCount,
+        totalCacheReadTokens,
+        totalCacheWriteTokens,
+        cacheSavingsUsd: (cacheSavingsMicros / 1_000_000).toFixed(8),
       });
     }
     // Sort: model asc, provider asc, day asc
@@ -559,6 +581,171 @@ describe("LedgerTelemetryQuery.countZdrEnforcedCallsByPair (ITOTORI-230)", () =>
     await expect(
       query.countZdrEnforcedCallsByPair(FIXED_ACTOR, PROJECT_ID, WINDOW),
     ).rejects.toThrow(TelemetryQueryError);
+  });
+});
+
+describe("LedgerTelemetryQuery — ITOTORI-233 cache aggregates", () => {
+  // ITOTORI-233 acceptance #5: `cache_savings_usd` lands on the
+  // summary + per-pair rows. Real cost only — sourced from
+  // cache_discount_micros_usd, never derived from token counts × pricing.
+
+  function cacheSeed(): SeedRow[] {
+    // Two pairs:
+    //  - C (deepseek/deepseek-v4-flash, fireworks): 2 rows, one cache
+    //    hit ($0.000003 discount) + one non-hit (0 discount). Hit
+    //    rate = 1/2.
+    //  - A (anthropic/claude-3.5-sonnet, anthropic): 1 row, no cache
+    //    annotations at all. Hit rate = 0/1.
+    return [
+      {
+        modelId: PAIR_C_MODEL,
+        providerId: PAIR_C_PROVIDER,
+        costAmount: "0.00000500",
+        tokensIn: 100,
+        tokensOut: 50,
+        latencyMs: 100,
+        createdAt: utcDay(2026, 6, 1),
+        cacheReadTokens: 50,
+        cacheWriteTokens: 0,
+        cacheDiscountMicrosUsd: 3,
+      },
+      {
+        modelId: PAIR_C_MODEL,
+        providerId: PAIR_C_PROVIDER,
+        costAmount: "0.00000800",
+        tokensIn: 120,
+        tokensOut: 60,
+        latencyMs: 110,
+        createdAt: utcDay(2026, 6, 2),
+        cacheReadTokens: 0,
+        cacheWriteTokens: 0,
+        cacheDiscountMicrosUsd: 0,
+      },
+      {
+        modelId: PAIR_A_MODEL,
+        providerId: PAIR_A_PROVIDER,
+        costAmount: "0.01000000",
+        tokensIn: 100,
+        tokensOut: 50,
+        latencyMs: 1000,
+        createdAt: utcDay(2026, 6, 3),
+      },
+    ];
+  }
+
+  it("sumByPair surfaces cacheHitCount + cacheSavingsUsd per pair", async () => {
+    const port = new StubLedgerPort(cacheSeed());
+    const query = new LedgerTelemetryQuery(port);
+    const summary = await query.sumByPair(FIXED_ACTOR, PROJECT_ID, FULL_WINDOW);
+    const pairC = summary.byPair[buildPairKey(PAIR_C_MODEL, PAIR_C_PROVIDER)];
+    expect(pairC).toBeDefined();
+    expect(pairC!.invocationCount).toBe(2);
+    expect(pairC!.cacheHitCount).toBe(1);
+    expect(pairC!.totalCacheReadTokens).toBe(50);
+    expect(pairC!.totalCacheWriteTokens).toBe(0);
+    // 3 micros / 1_000_000 = 0.000003 USD
+    expect(pairC!.cacheSavingsUsd).toBe("0.00000300");
+
+    const pairA = summary.byPair[buildPairKey(PAIR_A_MODEL, PAIR_A_PROVIDER)];
+    expect(pairA).toBeDefined();
+    expect(pairA!.cacheHitCount).toBe(0);
+    expect(pairA!.cacheSavingsUsd).toBe("0.00000000");
+  });
+
+  it("sumByPair surfaces top-level cacheSavingsUsd as the SUM across pairs", async () => {
+    const port = new StubLedgerPort(cacheSeed());
+    const query = new LedgerTelemetryQuery(port);
+    const summary = await query.sumByPair(FIXED_ACTOR, PROJECT_ID, FULL_WINDOW);
+    // Pair C: $0.000003; Pair A: $0. Total: $0.000003.
+    expect(summary.cacheSavingsUsd).toBe("0.00000300");
+  });
+
+  it("countCacheHitsByPair surfaces per-pair hit counts + savings, sorted by pair key", async () => {
+    const port = new StubLedgerPort(cacheSeed());
+    const query = new LedgerTelemetryQuery(port);
+    const rows = await query.countCacheHitsByPair(FIXED_ACTOR, PROJECT_ID, FULL_WINDOW);
+    expect(rows).toHaveLength(2);
+    // Sorted by pair key lexicographically.
+    expect(rows[0]!.pair).toBe(buildPairKey(PAIR_A_MODEL, PAIR_A_PROVIDER));
+    expect(rows[0]!.invocationCount).toBe(1);
+    expect(rows[0]!.cacheHitCount).toBe(0);
+    expect(rows[0]!.cacheSavingsUsd).toBe("0.00000000");
+
+    expect(rows[1]!.pair).toBe(buildPairKey(PAIR_C_MODEL, PAIR_C_PROVIDER));
+    expect(rows[1]!.invocationCount).toBe(2);
+    expect(rows[1]!.cacheHitCount).toBe(1);
+    expect(rows[1]!.totalCacheReadTokens).toBe(50);
+    expect(rows[1]!.cacheSavingsUsd).toBe("0.00000300");
+  });
+
+  it("countCacheHitsByPair returns empty list for an empty window", async () => {
+    const port = new StubLedgerPort(cacheSeed());
+    const query = new LedgerTelemetryQuery(port);
+    const rows = await query.countCacheHitsByPair(FIXED_ACTOR, PROJECT_ID, {
+      from: new Date("1990-01-01T00:00:00Z"),
+      to: new Date("1990-01-02T00:00:00Z"),
+    });
+    expect(rows).toEqual([]);
+  });
+
+  it("cacheSavingsUsd from existing non-cache seed remains 0 (backward-compat)", async () => {
+    const port = new StubLedgerPort(buildSeed());
+    const query = new LedgerTelemetryQuery(port);
+    const summary = await query.sumByPair(FIXED_ACTOR, PROJECT_ID, FULL_WINDOW);
+    expect(summary.cacheSavingsUsd).toBe("0.00000000");
+    for (const pair of Object.values(summary.byPair)) {
+      expect(pair.cacheHitCount).toBe(0);
+      expect(pair.cacheSavingsUsd).toBe("0.00000000");
+    }
+  });
+});
+
+describe("telemetry CLI renderTextSummary — ITOTORI-233", () => {
+  // Acceptance criterion #5: "apps/itotori/src/telemetry/cli.ts prints
+  // cache_savings_usd=<real> for the window."
+
+  it("prints a cache_savings_usd=<real> line at the top of the text summary", async () => {
+    const port = new StubLedgerPort([
+      {
+        modelId: PAIR_C_MODEL,
+        providerId: PAIR_C_PROVIDER,
+        costAmount: "0.00000500",
+        tokensIn: 100,
+        tokensOut: 50,
+        latencyMs: 100,
+        createdAt: utcDay(2026, 6, 1),
+        cacheReadTokens: 50,
+        cacheWriteTokens: 0,
+        cacheDiscountMicrosUsd: 3,
+      },
+    ]);
+    const query = new LedgerTelemetryQuery(port);
+    const summary = await query.sumByPair(FIXED_ACTOR, PROJECT_ID, FULL_WINDOW);
+    const lines = renderTextSummary(summary, {
+      projectId: PROJECT_ID,
+      from: FULL_WINDOW.from,
+      to: FULL_WINDOW.to,
+    });
+    // The CLI prints `cache_savings_usd=<real>` exactly once near the
+    // top; the real value mirrors summary.cacheSavingsUsd byte-for-byte.
+    const cacheSavingsLines = lines.filter((line) => line.startsWith("cache_savings_usd="));
+    expect(cacheSavingsLines).toHaveLength(1);
+    expect(cacheSavingsLines[0]).toBe("cache_savings_usd=0.00000300");
+  });
+
+  it("prints cache_savings_usd=0.00000000 for an empty window", async () => {
+    const port = new StubLedgerPort(buildSeed());
+    const query = new LedgerTelemetryQuery(port);
+    const summary = await query.sumByPair(FIXED_ACTOR, PROJECT_ID, {
+      from: new Date("1990-01-01T00:00:00Z"),
+      to: new Date("1990-01-02T00:00:00Z"),
+    });
+    const lines = renderTextSummary(summary, {
+      projectId: PROJECT_ID,
+      from: new Date("1990-01-01T00:00:00Z"),
+      to: new Date("1990-01-02T00:00:00Z"),
+    });
+    expect(lines).toContain("cache_savings_usd=0.00000000");
   });
 });
 

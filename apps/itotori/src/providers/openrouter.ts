@@ -7,7 +7,7 @@ import {
   type ProviderRoutingCapabilityRequirement,
 } from "./capability-guard.js";
 import { knownPairs, type ModelProviderPair } from "./dev-pair.js";
-import { usageCostToMicros, ZERO_COST } from "./cost.js";
+import { decimalUsdStringToMicros, usageCostToMicros, ZERO_COST } from "./cost.js";
 import {
   type JsonObject,
   type JsonValue,
@@ -785,11 +785,24 @@ function normalizeUsage(value: unknown): TokenUsage {
   assignNumber(usage, "reasoningTokens", value.reasoning_tokens);
   assignNumber(usage, "cachedInputTokens", value.cached_tokens);
   assignNumber(usage, "totalTokens", value.total_tokens);
+  // ITOTORI-233 — mirror prompt-caching annotations from
+  // `usage.prompt_tokens_details` per docs/openrouter-integration.md §5.3
+  // (canonical shape verified in docs/openrouter-integration-evidence/
+  // 2026-06-25.json call_1: `prompt_tokens_details: { cached_tokens: 0,
+  // cache_write_tokens: 0, audio_tokens: 0, video_tokens: 0 }`). Absent
+  // → undefined → 0 at the storage layer (NOT NULL DEFAULT 0 per
+  // migration 0042).
+  const promptTokensDetails = value.prompt_tokens_details;
+  if (isRecord(promptTokensDetails)) {
+    assignNumber(usage, "cacheReadTokens", promptTokensDetails.cached_tokens);
+    assignNumber(usage, "cacheWriteTokens", promptTokensDetails.cache_write_tokens);
+  }
   return usage;
 }
 
 /**
- * ITOTORI-225 — single-branch real-cost normalizer.
+ * ITOTORI-225 / ITOTORI-233 — single-branch real-cost normalizer with
+ * cache-aware annotations.
  *
  * Per docs/openrouter-integration.md §5 (canonical real-cost contract) and
  * the live evidence at docs/openrouter-integration-evidence/2026-06-25.json,
@@ -799,15 +812,38 @@ function normalizeUsage(value: unknown): TokenUsage {
  * as `provider_response_invalid` so the caller can fail loudly instead of
  * silently undercounting spend.
  *
- * The endpoint-pricing fallback path (recompute spend from per-token prices
- * advertised in `openrouter_metadata.endpoints`) survives in the codebase
- * via {@link normalizeOpenRouterCostFromEndpointPricing} — that branch is
- * keep-and-fix territory for ITOTORI-233 per the 2026-06-25 audit. It is
- * intentionally NOT wired into the active code path here: the only correct
- * source of truth is the upstream-reported `usage.cost`. ITOTORI-233 will
- * decide whether to wire it back as a sanity-check sentinel (compare
- * recomputed-from-pricing to `usage.cost` and warn on drift) or repurpose
- * it; either way, it is not silently chained in front of an error today.
+ * ITOTORI-233 / DOC-AMBIGUOUS-6 RESOLVED (integration doc §11 entry 6,
+ * §5.3): `usage.cost` is **net of `cache_discount`** by treaty — we treat
+ * it as authoritative billed cost and **never recompute**. The cost cap
+ * therefore consumes `amountMicrosUsd` directly; `cache_discount` is
+ * mirrored onto `cacheDiscountMicrosUsd` as an INFORMATIONAL annotation
+ * for telemetry ("how much did caching save us") and is NOT subtracted
+ * from `amountMicrosUsd`. Subtracting it would double-count the discount
+ * (it is already netted out upstream).
+ *
+ * Source: docs/openrouter-integration-evidence/2026-06-25.json call_1
+ * shows the canonical `usage.cost_details` shape; call_6 shows
+ * `cache_discount: null` is the normal case on a non-cache hit (we map
+ * null → 0 micros). The implicit-cache evidence with a non-null
+ * `cache_discount` is empirically UNAVAILABLE on Trevor's account
+ * because the deepseek-tagged endpoint is excluded from the ZDR
+ * allow-list (call_3 returned HTTP 404 ZDR envelope); the math is still
+ * correct because the value flows verbatim through
+ * `decimalUsdStringToMicros` whenever a provider DOES surface it.
+ *
+ * The endpoint-pricing fallback path (recompute spend from per-token
+ * prices advertised in `openrouter_metadata.endpoints`) survives in the
+ * codebase via {@link normalizeOpenRouterCostFromEndpointPricing}. The
+ * 2026-06-25 audit's "keep + fix" verdict per ITOTORI-224 (the
+ * `X-OpenRouter-Metadata: enabled` header IS supported, per call_1 vs
+ * call_2 diff) — KEEP + DOCUMENT branch was selected for ITOTORI-233:
+ * the path is NOT wired into the active normalizer because `usage.cost`
+ * is the canonical source of truth (cost-audit §1.2: "must be read as
+ * the source of truth, never recomputed"), but it is preserved as a
+ * documented sanity-check seam for a future reconciler that wants to
+ * cross-validate `usage.cost` against the endpoint pricing block; see
+ * the doc-comment on `normalizeOpenRouterCostFromEndpointPricing` for
+ * the activation criteria.
  */
 function normalizeOpenRouterCost(response: Record<string, unknown>): ProviderCost {
   const usage = isRecord(response.usage) ? response.usage : undefined;
@@ -818,11 +854,54 @@ function normalizeOpenRouterCost(response: Record<string, unknown>): ProviderCos
       false,
     );
   }
-  return {
+  const cost: ProviderCost = {
     costKind: "billed",
     currency: "USD",
     amountMicrosUsd: usageCostToMicros(usage.cost),
+    cacheDiscountMicrosUsd: extractCacheDiscountMicros(usage),
   };
+  return cost;
+}
+
+/**
+ * ITOTORI-233 — extract `cache_discount` from `usage.cost_details` and
+ * convert to integer micros via the canonical decimal-string helper.
+ *
+ * Empirical wire shape (docs/openrouter-integration-evidence/2026-06-25.json
+ * call_6): `cache_discount: null` is the normal case on a non-cache-hit,
+ * mapped to 0 here. When non-null the value is a USD decimal number; we
+ * stringify via `toFixed(12)` so the same `decimalUsdStringToMicros`
+ * parser handles it without floating-point loss-of-precision. Negative
+ * values would be an upstream protocol violation — the parser rejects
+ * them with `provider_response_invalid`. Defaults to 0 if `cost_details`
+ * is absent.
+ */
+function extractCacheDiscountMicros(usage: Record<string, unknown>): number {
+  const costDetails = usage.cost_details;
+  if (!isRecord(costDetails)) {
+    return 0;
+  }
+  const cacheDiscount = costDetails.cache_discount;
+  if (cacheDiscount === undefined || cacheDiscount === null) {
+    return 0;
+  }
+  if (typeof cacheDiscount === "number") {
+    if (!Number.isFinite(cacheDiscount) || cacheDiscount === 0) {
+      return 0;
+    }
+    return decimalUsdStringToMicros(cacheDiscount.toFixed(12));
+  }
+  if (typeof cacheDiscount === "string") {
+    if (cacheDiscount.trim().length === 0) {
+      return 0;
+    }
+    return decimalUsdStringToMicros(cacheDiscount);
+  }
+  throw new ModelProviderError(
+    `OpenRouter usage.cost_details.cache_discount must be a number, decimal string, or null (got ${typeof cacheDiscount})`,
+    "provider_response_invalid",
+    false,
+  );
 }
 
 /**
@@ -926,12 +1005,51 @@ function jsonValueOrUndefined(value: unknown): JsonValue | undefined {
 }
 
 /**
- * ITOTORI-233 (held) — endpoint-pricing recompute path, parked here so the
- * 2026-06-25 audit's keep-and-fix verdict survives. NOT called from the
- * main path. The audit's evidence (docs/audits/openrouter-cost-tracking-
- * audit-2026-06-25.md §3 N1) explicitly tells ITOTORI-225 NOT to delete
- * this as dead; ITOTORI-233 will resurrect it as a cross-check sentinel
- * or repurpose its observation of the endpoints catalog.
+ * ITOTORI-233 — endpoint-pricing recompute path, KEEP + DOCUMENT.
+ *
+ * 2026-06-25 audit verdict (docs/audits/openrouter-wiring-audit-2026-06-25.md
+ * §3-E + §4-5): the `X-OpenRouter-Metadata: enabled` header IS empirically
+ * supported (call_1 vs call_2 diff in
+ * docs/openrouter-integration-evidence/2026-06-25.json shows the
+ * `openrouter_metadata.endpoints[]` block only surfaces when the header is
+ * present), and itotori sends the header by default (see
+ * `this.fetchImpl` headers above). The path is therefore NOT dead code —
+ * it CAN fire — but it is intentionally NOT wired into the active
+ * normalizer because:
+ *
+ *   1. `usage.cost` is the canonical real-cost contract per
+ *      docs/openrouter-integration.md §5.2 (resolved DOC-AMBIGUOUS-6 /
+ *      cost-audit §1.2: "must be read as the source of truth, never
+ *      recomputed"). Wiring a recompute-from-endpoint-pricing fallback
+ *      in front of an error would let a future regression silently
+ *      replace the authoritative billed amount with a per-token-pricing
+ *      estimate that does NOT account for `cache_discount`, BYOK
+ *      adjustments, or upstream renegotiations.
+ *   2. The math here also predates ITOTORI-233's cache-aware posture:
+ *      it does not subtract cached tokens at the implicit-cache
+ *      discount rate. Activating it without first folding
+ *      `pricing.input_cache_read` / `pricing.input_cache_write` into
+ *      the calculation would double-count the discount.
+ *
+ * Activation criteria (for a future reconciler that wants to
+ * cross-validate `usage.cost` against the endpoint pricing block — NOT
+ * for use as a fallback in front of `normalizeOpenRouterCost`):
+ *
+ *   (a) The selected endpoint's `pricing.prompt` / `pricing.completion`
+ *       are present and non-negative decimal strings.
+ *   (b) `tokenUsage.promptTokens` / `tokenUsage.completionTokens` are
+ *       both populated (a successful OR response always carries them).
+ *   (c) When `tokenUsage.cacheReadTokens > 0`, the calculation MUST
+ *       subtract `cacheReadTokens * pricing.input_cache_read` and add
+ *       `cacheWriteTokens * pricing.input_cache_write` so the
+ *       recomputed value compares cleanly against `usage.cost` which
+ *       is already net of `cache_discount` (DOC-AMBIGUOUS-6 / §5.3).
+ *
+ * The function below implements (a) + (b) but NOT (c). Wiring it as a
+ * cross-validator would require extending it; doing that here without
+ * a consuming caller would just be speculative speccing. The path
+ * survives so a future reconciler (likely ITOTORI-235's
+ * generation-lookup variant) can extend and call it.
  */
 function normalizeOpenRouterCostFromEndpointPricing(
   response: Record<string, unknown>,
@@ -1499,6 +1617,16 @@ export class OpenRouterModelProvider implements ModelProvider {
     if (cost.amountMicrosUsd === undefined) {
       return;
     }
+    // ITOTORI-233 — `cost.amountMicrosUsd` mirrors `usage.cost` verbatim
+    // and `usage.cost` is **net of `cache_discount`** per
+    // docs/openrouter-integration.md §5.3 / §11 entry 6 (DOC-AMBIGUOUS-6
+    // RESOLVED: treat as authoritative billed cost, never recompute).
+    // The cost cap therefore consumes the post-discount amount directly;
+    // we do NOT subtract `cost.cacheDiscountMicrosUsd` again — that
+    // would double-count the discount. The discount is an INFORMATIONAL
+    // annotation surfaced through telemetry (see `cache_savings_usd` in
+    // apps/itotori/src/telemetry/queries.ts + cli.ts), not an arithmetic
+    // input to the cap.
     this.spentUsd += cost.amountMicrosUsd / 1_000_000;
   }
 }

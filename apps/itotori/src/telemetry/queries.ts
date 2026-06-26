@@ -52,6 +52,29 @@ export type TelemetryPairSummary = {
   readonly avgLatencyMs: number;
   readonly p95LatencyMs: number;
   readonly invocationCount: number;
+  /**
+   * ITOTORI-233 — number of invocations in the bucket that landed at
+   * least one prompt token from cache (i.e. `cache_read_tokens > 0`).
+   * The miss case (no cache hit) is `invocationCount - cacheHitCount`.
+   */
+  readonly cacheHitCount: number;
+  /**
+   * ITOTORI-233 — SUM of `cache_read_tokens` / `cache_write_tokens`
+   * over the bucket. Sourced verbatim from the ledger columns which
+   * mirror `usage.prompt_tokens_details` on the originating OR
+   * response.
+   */
+  readonly totalCacheReadTokens: number;
+  readonly totalCacheWriteTokens: number;
+  /**
+   * ITOTORI-233 — SUM of `cache_discount_micros_usd / 1_000_000` over
+   * the bucket, formatted as a decimal-USD string for parity with
+   * `totalCostUsd`. Real cost only — sourced verbatim from
+   * `usage.cost_details.cache_discount`, never derived from token
+   * counts × pricing. This is the "how much did caching save us" line
+   * the audit's §3 N7 deliverable asked for.
+   */
+  readonly cacheSavingsUsd: string;
 };
 
 /**
@@ -76,6 +99,14 @@ export const TELEMETRY_UNKNOWN_MODEL_SENTINEL = "unknown-model" as const;
 export type TelemetrySummaryByPair = {
   readonly byPair: Record<TelemetryPairKey, TelemetryPairSummary>;
   readonly totalCostUsd: string;
+  /**
+   * ITOTORI-233 — total of `cacheSavingsUsd` across every pair in the
+   * window. Surfaced as a single line in the CLI dashboard
+   * (`cache_savings_usd=<real>`), satisfying the acceptance criterion
+   * "apps/itotori/src/telemetry/cli.ts prints cache_savings_usd=<real>
+   * for the window".
+   */
+  readonly cacheSavingsUsd: string;
   readonly byDay?: Record<string, TelemetrySummaryByPair>;
 };
 
@@ -126,6 +157,25 @@ export type TelemetryZdrEnforcedRow = {
   readonly zdrEnforcedCount: number;
 };
 
+/**
+ * ITOTORI-233 — per-(modelId, providerId) cache hit / savings row.
+ * `cacheHitCount` is the number of invocations where the response
+ * landed at least one prompt token from cache; the miss case is
+ * `invocationCount - cacheHitCount`. `cacheSavingsUsd` is the SUM of
+ * `cache_discount_micros_usd / 1_000_000` for the pair over the
+ * window, sourced verbatim from `usage.cost_details.cache_discount`
+ * (NEVER derived from token counts × pricing — the audit's named
+ * anti-pattern).
+ */
+export type TelemetryCacheRow = {
+  readonly pair: TelemetryPairKey;
+  readonly invocationCount: number;
+  readonly cacheHitCount: number;
+  readonly totalCacheReadTokens: number;
+  readonly totalCacheWriteTokens: number;
+  readonly cacheSavingsUsd: string;
+};
+
 export type TelemetryQuerySumByPairOptions = {
   readonly groupByDay?: boolean | undefined;
 };
@@ -168,6 +218,23 @@ export interface TelemetryQuery {
     projectId: string,
     window: TelemetryWindow,
   ): Promise<TelemetryZdrEnforcedRow[]>;
+
+  /**
+   * ITOTORI-233 — per-(modelId, providerId) cache hit / savings count
+   * over the window. `cacheHitCount` is the number of rows with
+   * `cache_read_tokens > 0`; `cacheSavingsUsd` is the SUM of the
+   * verbatim `cache_discount_micros_usd` column, formatted as a
+   * decimal-USD string. Rows are returned sorted by pair key for
+   * deterministic JSON output.
+   *
+   * Drives the dashboard's per-pair "cache hits / savings" widget and
+   * the CLI's `cache_savings_usd=<real>` line.
+   */
+  countCacheHitsByPair(
+    actor: AuthorizationActor,
+    projectId: string,
+    window: TelemetryWindow,
+  ): Promise<TelemetryCacheRow[]>;
 }
 
 /**

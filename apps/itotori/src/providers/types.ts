@@ -287,6 +287,34 @@ export type TokenUsage = {
   completionTokens?: number;
   reasoningTokens?: number;
   cachedInputTokens?: number;
+  /**
+   * ITOTORI-233 — prompt-caching annotations mirrored verbatim from
+   * `usage.prompt_tokens_details` on the originating OpenRouter response
+   * (see docs/openrouter-integration.md §5.3 and the canonical wire shape
+   * in docs/openrouter-integration-evidence/2026-06-25.json call_1).
+   *
+   * - `cacheReadTokens`: `usage.prompt_tokens_details.cached_tokens` —
+   *   "Number of tokens read from the cache (cache hit)" (OR docs).
+   *   `cachedInputTokens` above mirrors the legacy top-level
+   *   `usage.cached_tokens` shape some providers emit; `cacheReadTokens`
+   *   mirrors the canonical OR shape from `prompt_tokens_details`. Both
+   *   carry the same semantic when both are present, but we surface them
+   *   under distinct names so the captured-from-the-wire field is
+   *   greppable without losing the legacy alias.
+   * - `cacheWriteTokens`: `usage.prompt_tokens_details.cache_write_tokens`
+   *   — "Number of tokens written to the cache" (OR docs). Some providers
+   *   omit this field even when caching is in play; absent → undefined →
+   *   0 at the storage layer.
+   *
+   * Implicit-cache evidence is empirically UNAVAILABLE on Trevor's
+   * account because the deepseek-tagged endpoint (the only deepseek-v4-flash
+   * endpoint advertising `supports_implicit_caching: true`) is excluded
+   * from the ZDR allow-list; live capture of a non-zero `cached_tokens`
+   * is gated on `OPENROUTER_IMPLICIT_CACHE_PROVIDER` being set to a
+   * ZDR-allowed cache-supporting provider.
+   */
+  cacheReadTokens?: number;
+  cacheWriteTokens?: number;
   totalTokens?: number;
 };
 
@@ -311,6 +339,26 @@ export type ProviderCost = {
   currency: "USD";
   amountMicrosUsd: number;
   pricingSnapshotId?: string;
+  /**
+   * ITOTORI-233 — prompt-caching discount mirrored verbatim from
+   * `usage.cost_details.cache_discount` on the originating OpenRouter
+   * response (see docs/openrouter-integration.md §5.3 and the live
+   * evidence at docs/openrouter-integration-evidence/2026-06-25.json
+   * call_6 — `cache_discount` is a `number | null` field).
+   *
+   * DOC-AMBIGUOUS-6 RESOLVED (integration doc §11 entry 6, §5.3):
+   * `usage.cost` is treated as authoritative billed cost and is **net**
+   * of `cache_discount`; we surface `cache_discount` here as an
+   * informational annotation for telemetry ("how much did caching save
+   * us"), NOT as an arithmetic input to the cost cap. The cap consumes
+   * `amountMicrosUsd` verbatim — see `OpenRouterModelProvider.recordSpend`.
+   *
+   * Optional at the TS layer (older shapes / non-OR providers omit it),
+   * but the storage layer DEFAULTS to 0 NOT NULL on persist (migration
+   * 0042). Absent on the wire → 0 here → 0 in the ledger; present →
+   * mirrored verbatim via `decimalUsdStringToMicros`.
+   */
+  cacheDiscountMicrosUsd?: number;
 };
 
 export type ProviderRunIdentity = {

@@ -20,6 +20,7 @@ import type {
 } from "@itotori/db";
 import {
   buildPairKey,
+  type TelemetryCacheRow,
   type TelemetryPairKey,
   type TelemetryPairRanking,
   type TelemetryPairSummary,
@@ -242,6 +243,75 @@ export class LedgerTelemetryQuery implements TelemetryQuery {
       zdrEnforcedCount: row.zdrEnforcedCount,
     }));
   }
+
+  /**
+   * ITOTORI-233 — per-(modelId, providerId) cache hit counts + savings
+   * over the window. Reads `cache_read_tokens > 0` rows for hit count,
+   * and SUMs `cache_discount_micros_usd / 1_000_000` for savings,
+   * BOTH sourced from the draft-attempt provider ledger (which
+   * mirrors the originating OR response's `usage.prompt_tokens_details`
+   * + `usage.cost_details` verbatim — never derived).
+   *
+   * Returns rows sorted by pair key for stable JSON output. Pairs that
+   * never logged a cache hit AND never logged a non-zero discount are
+   * still surfaced if they have any invocations — telemetry consumers
+   * decide whether to suppress the zero rows.
+   */
+  async countCacheHitsByPair(
+    actor: AuthorizationActor,
+    projectId: string,
+    window: TelemetryWindow,
+  ): Promise<TelemetryCacheRow[]> {
+    const rows = await this.repository.sumByPairAndDay(actor, projectId, window);
+    // Aggregate per pair (the repository result may not be grouped if
+    // multiple buckets exist for a pair across days when groupByDay is
+    // requested elsewhere; here we explicitly call without groupByDay
+    // so rows are one-per-pair already, but we re-aggregate defensively
+    // to handle pre-aggregated callers).
+    type Aggregate = {
+      invocationCount: number;
+      cacheHitCount: number;
+      cacheReadTokens: number;
+      cacheWriteTokens: number;
+      cacheSavings: number;
+    };
+    const aggregated = new Map<TelemetryPairKey, Aggregate>();
+    for (const row of rows) {
+      const key = buildPairKey(row.modelId, row.providerId);
+      const cacheSavings = parseCost(row.cacheSavingsUsd);
+      const existing = aggregated.get(key);
+      if (existing === undefined) {
+        aggregated.set(key, {
+          invocationCount: row.invocationCount,
+          cacheHitCount: row.cacheHitCount,
+          cacheReadTokens: row.totalCacheReadTokens,
+          cacheWriteTokens: row.totalCacheWriteTokens,
+          cacheSavings,
+        });
+      } else {
+        existing.invocationCount += row.invocationCount;
+        existing.cacheHitCount += row.cacheHitCount;
+        existing.cacheReadTokens += row.totalCacheReadTokens;
+        existing.cacheWriteTokens += row.totalCacheWriteTokens;
+        existing.cacheSavings += cacheSavings;
+      }
+    }
+    const sortedKeys = Array.from(aggregated.keys()).sort();
+    const result: TelemetryCacheRow[] = [];
+    for (const pair of sortedKeys) {
+      const entry = aggregated.get(pair);
+      if (entry === undefined) continue;
+      result.push({
+        pair,
+        invocationCount: entry.invocationCount,
+        cacheHitCount: entry.cacheHitCount,
+        totalCacheReadTokens: entry.cacheReadTokens,
+        totalCacheWriteTokens: entry.cacheWriteTokens,
+        cacheSavingsUsd: entry.cacheSavings.toFixed(8),
+      });
+    }
+    return result;
+  }
 }
 
 /**
@@ -265,12 +335,18 @@ function summariseRows(rows: ReadonlyArray<LedgerPairAggregateRow>): TelemetrySu
       latencyWeightedSum: number;
       latencyCount: number;
       p95Max: number;
+      // ITOTORI-233 — cache aggregates.
+      cacheHitCount: number;
+      cacheReadTokens: number;
+      cacheWriteTokens: number;
+      cacheSavings: number;
     }
   >();
 
   for (const row of rows) {
     const key = buildPairKey(row.modelId, row.providerId);
     const cost = parseCost(row.totalCostUsd);
+    const cacheSavings = parseCost(row.cacheSavingsUsd);
     const existing = aggregated.get(key);
     const avgLatency = row.avgLatencyMs ?? 0;
     const p95Latency = row.p95LatencyMs ?? 0;
@@ -283,6 +359,10 @@ function summariseRows(rows: ReadonlyArray<LedgerPairAggregateRow>): TelemetrySu
         latencyWeightedSum: avgLatency * row.invocationCount,
         latencyCount: row.invocationCount,
         p95Max: p95Latency,
+        cacheHitCount: row.cacheHitCount,
+        cacheReadTokens: row.totalCacheReadTokens,
+        cacheWriteTokens: row.totalCacheWriteTokens,
+        cacheSavings,
       });
     } else {
       existing.cost += cost;
@@ -292,11 +372,16 @@ function summariseRows(rows: ReadonlyArray<LedgerPairAggregateRow>): TelemetrySu
       existing.latencyWeightedSum += avgLatency * row.invocationCount;
       existing.latencyCount += row.invocationCount;
       existing.p95Max = Math.max(existing.p95Max, p95Latency);
+      existing.cacheHitCount += row.cacheHitCount;
+      existing.cacheReadTokens += row.totalCacheReadTokens;
+      existing.cacheWriteTokens += row.totalCacheWriteTokens;
+      existing.cacheSavings += cacheSavings;
     }
   }
 
   const byPair: Record<TelemetryPairKey, TelemetryPairSummary> = {};
   let totalCost = 0;
+  let totalCacheSavings = 0;
   // Iterate sorted by pair key for deterministic JSON key order.
   const sortedKeys = Array.from(aggregated.keys()).sort();
   for (const key of sortedKeys) {
@@ -311,13 +396,19 @@ function summariseRows(rows: ReadonlyArray<LedgerPairAggregateRow>): TelemetrySu
       avgLatencyMs: entry.latencyCount === 0 ? 0 : entry.latencyWeightedSum / entry.latencyCount,
       p95LatencyMs: entry.p95Max,
       invocationCount: entry.invocations,
+      cacheHitCount: entry.cacheHitCount,
+      totalCacheReadTokens: entry.cacheReadTokens,
+      totalCacheWriteTokens: entry.cacheWriteTokens,
+      cacheSavingsUsd: entry.cacheSavings.toFixed(8),
     };
     totalCost += entry.cost;
+    totalCacheSavings += entry.cacheSavings;
   }
 
   return {
     byPair,
     totalCostUsd: totalCost.toFixed(8),
+    cacheSavingsUsd: totalCacheSavings.toFixed(8),
   };
 }
 

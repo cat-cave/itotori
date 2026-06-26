@@ -247,6 +247,9 @@ describe("OpenRouterProvider", () => {
       costKind: "billed",
       currency: "USD",
       amountMicrosUsd: 19,
+      // ITOTORI-233 — synthetic response has no usage.cost_details so
+      // the cache discount lands as 0.
+      cacheDiscountMicrosUsd: 0,
     });
     expect(fetchCalls).toHaveLength(1);
     const requestBody = JSON.parse(String(fetchCalls[0]?.init?.body)) as {

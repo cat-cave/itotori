@@ -196,6 +196,9 @@ describe("style-guide provider smoke", () => {
       costKind: "billed",
       currency: "USD",
       amountMicrosUsd: 123,
+      // ITOTORI-233 — synthetic response has no usage.cost_details so
+      // the cache discount lands as 0.
+      cacheDiscountMicrosUsd: 0,
     });
     expect(recorder.recordProviderRun).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -204,6 +207,7 @@ describe("style-guide provider smoke", () => {
             costKind: "billed",
             currency: "USD",
             amountMicrosUsd: 123,
+            cacheDiscountMicrosUsd: 0,
           },
         }),
       }),

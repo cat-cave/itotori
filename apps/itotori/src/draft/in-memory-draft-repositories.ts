@@ -288,6 +288,10 @@ export class InMemoryDraftAttemptProviderLedgerRepository implements ItotoriDraf
       costUnit: input.costUnit,
       costAmount: input.costAmount,
       usageResponseJson: { ...input.usageResponseJson },
+      // ITOTORI-233 — cache fields default to 0 (matches DB DEFAULT 0).
+      cacheReadTokens: input.cacheReadTokens ?? 0,
+      cacheWriteTokens: input.cacheWriteTokens ?? 0,
+      cacheDiscountMicrosUsd: input.cacheDiscountMicrosUsd ?? 0,
       latencyMs: input.latencyMs ?? null,
       fallbackChain: [...(input.fallbackChain ?? [])],
       isRecordedProvider: input.isRecordedProvider ?? false,
@@ -371,12 +375,18 @@ export class InMemoryDraftAttemptProviderLedgerRepository implements ItotoriDraf
       tokensOutSum: number;
       count: number;
       latencies: number[];
+      // ITOTORI-233 — cache aggregates mirrored from the entries.
+      cacheHitCount: number;
+      cacheReadSum: number;
+      cacheWriteSum: number;
+      cacheDiscountMicrosSum: number;
     };
     const buckets = new Map<string, Bucket>();
     for (const entry of filtered) {
       const day = groupByDay ? entry.createdAt.toISOString().slice(0, 10) : null;
       const key = `${entry.modelId ?? "__null__"}|${entry.providerId}|${day ?? "__all__"}`;
       const existing = buckets.get(key);
+      const isCacheHit = entry.cacheReadTokens > 0;
       if (existing === undefined) {
         buckets.set(key, {
           modelId: entry.modelId,
@@ -387,6 +397,10 @@ export class InMemoryDraftAttemptProviderLedgerRepository implements ItotoriDraf
           tokensOutSum: entry.tokensOut ?? 0,
           count: 1,
           latencies: entry.latencyMs === null ? [] : [entry.latencyMs],
+          cacheHitCount: isCacheHit ? 1 : 0,
+          cacheReadSum: entry.cacheReadTokens,
+          cacheWriteSum: entry.cacheWriteTokens,
+          cacheDiscountMicrosSum: entry.cacheDiscountMicrosUsd,
         });
       } else {
         existing.costSum += Number(entry.costAmount);
@@ -396,6 +410,12 @@ export class InMemoryDraftAttemptProviderLedgerRepository implements ItotoriDraf
         if (entry.latencyMs !== null) {
           existing.latencies.push(entry.latencyMs);
         }
+        if (isCacheHit) {
+          existing.cacheHitCount += 1;
+        }
+        existing.cacheReadSum += entry.cacheReadTokens;
+        existing.cacheWriteSum += entry.cacheWriteTokens;
+        existing.cacheDiscountMicrosSum += entry.cacheDiscountMicrosUsd;
       }
     }
 
@@ -418,6 +438,12 @@ export class InMemoryDraftAttemptProviderLedgerRepository implements ItotoriDraf
         invocationCount: bucket.count,
         avgLatencyMs,
         p95LatencyMs,
+        cacheHitCount: bucket.cacheHitCount,
+        totalCacheReadTokens: bucket.cacheReadSum,
+        totalCacheWriteTokens: bucket.cacheWriteSum,
+        // ITOTORI-233 — formatted to a decimal-USD string with the same
+        // precision discipline as totalCostUsd. micros / 1e6.
+        cacheSavingsUsd: (bucket.cacheDiscountMicrosSum / 1_000_000).toFixed(8),
       });
     }
     rows.sort((a, b) => {
