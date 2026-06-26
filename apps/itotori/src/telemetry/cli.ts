@@ -72,9 +72,19 @@ export function renderTextSummary(
     `telemetry-summary project=${header.projectId} from=${header.from.toISOString()} to=${header.to.toISOString()}`,
   );
   lines.push(`total_cost_usd=${summary.totalCostUsd}`);
+  // ITOTORI-233 — cache_savings_usd is the SUM of
+  // `cache_discount_micros_usd / 1_000_000` across every pair in the
+  // window, sourced verbatim from `usage.cost_details.cache_discount`
+  // (never derived from token counts × pricing). Satisfies the
+  // acceptance criterion:
+  //   "apps/itotori/src/telemetry/cli.ts prints cache_savings_usd=<real>
+  //    for the window"
+  // The line is always emitted (zero when no caching hit landed in the
+  // window) so the dashboard can render a deterministic row.
+  lines.push(`cache_savings_usd=${summary.cacheSavingsUsd}`);
   lines.push("");
   lines.push(
-    "pair | invocations | cost_usd | tokens_in | tokens_out | avg_latency_ms | p95_latency_ms",
+    "pair | invocations | cost_usd | cache_hits | cache_savings_usd | tokens_in | tokens_out | avg_latency_ms | p95_latency_ms",
   );
   lines.push("---");
   const entries = Object.entries(summary.byPair) as Array<[TelemetryPairKey, TelemetryPairSummary]>;
@@ -87,6 +97,8 @@ export function renderTextSummary(
           pair,
           row.invocationCount.toString(),
           row.totalCostUsd,
+          row.cacheHitCount.toString(),
+          row.cacheSavingsUsd,
           row.totalTokensIn.toString(),
           row.totalTokensOut.toString(),
           row.avgLatencyMs.toFixed(2),

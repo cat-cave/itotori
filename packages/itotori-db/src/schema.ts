@@ -3865,6 +3865,30 @@ export const draftAttemptProviderLedger = pgTable(
      * column is the belt-and-braces.
      */
     usageResponseJson: jsonb("usage_response_json").$type<Record<string, unknown>>().notNull(),
+    /**
+     * ITOTORI-233 — prompt-caching annotations mirrored verbatim from
+     * `usage.prompt_tokens_details.cached_tokens` and
+     * `usage.prompt_tokens_details.cache_write_tokens` on the originating
+     * OpenRouter response. NOT NULL DEFAULT 0 (migration 0042): every
+     * response either has a cache hit/write or it doesn't, and the
+     * "doesn't" case IS zero, not NULL.
+     */
+    cacheReadTokens: integer("cache_read_tokens").notNull().default(0),
+    cacheWriteTokens: integer("cache_write_tokens").notNull().default(0),
+    /**
+     * ITOTORI-233 — `usage.cost_details.cache_discount` mirrored verbatim,
+     * converted to integer micros via decimalUsdStringToMicros. Per
+     * docs/openrouter-integration.md §5.3 / §11 entry 6 (DOC-AMBIGUOUS-6
+     * RESOLVED), `usage.cost` is treated as authoritative billed cost
+     * AND is net of `cache_discount` — this column is an INFORMATIONAL
+     * annotation for telemetry ("how much did caching save us"), NOT an
+     * arithmetic input to the cost cap. NOT NULL DEFAULT 0 (migration
+     * 0042): a non-cache-hit `cache_discount: null` on the wire maps to
+     * 0 here. bigint matches the precision discipline of cost_amount.
+     */
+    cacheDiscountMicrosUsd: pgBigint("cache_discount_micros_usd", { mode: "number" })
+      .notNull()
+      .default(0),
     latencyMs: integer("latency_ms"),
     fallbackChain: jsonb("fallback_chain")
       .$type<DraftAttemptFallbackChainEntry[]>()

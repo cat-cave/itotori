@@ -67,7 +67,7 @@ import { createProviderRunId } from "./types.js";
  * - v2 (ITOTORI-230) added required `routingPosture` on every
  *   `RecordedProviderResponse` so an offline replay carries the
  *   originally-captured OR ZDR posture verbatim.
- * - v3 (ITOTORI-232) adds required `usageResponseJson` on every
+ * - v3 (ITOTORI-232) added required `usageResponseJson` on every
  *   `RecordedProviderResponse` so an offline replay carries the
  *   originating OR response's full `usage` block (prompt_tokens,
  *   completion_tokens, cost, cost_details, prompt_tokens_details). The
@@ -75,11 +75,28 @@ import { createProviderRunId } from "./types.js";
  *   so the ledger row's storage-layer CHECK (migration 0041) still
  *   passes by construction.
  *
+ * ITOTORI-233 considered a v3 → v4 bump for the new cache-aware
+ * annotations (`cacheReadTokens` / `cacheWriteTokens` /
+ * `cacheDiscountMicrosUsd`) but ultimately KEPT v3 because the
+ * annotations ride naturally on the EXISTING required v3 shapes:
+ *
+ *   - Read/write tokens land on `RecordedProviderResponse.tokenUsage`
+ *     (already an optional but read-by-replay `TokenUsage`).
+ *   - The cache discount lands on `RecordedProviderResponse.cost`
+ *     (already required v1 `ProviderCost`).
+ *
+ * Pre-ITOTORI-233 v3 bundles that lack these optional fields replay
+ * with `undefined` → DraftAttemptRecorder defaults to 0 on persist →
+ * ledger DEFAULT 0 — which IS the truthful zero a non-cache-hit row
+ * would record from a live run. The `usageResponseJson` already
+ * mirrors `cost_details` + `prompt_tokens_details` verbatim, so the
+ * canonical truth is preserved on disk regardless. A v4 bump would be
+ * ceremonial: it would not catch a regression that the v3 shape's
+ * `usageResponseJson` mirror does not already catch.
+ *
  * Bundles whose `schemaVersion` is anything other than this literal are
- * rejected at `RecordedModelProvider` construction time so a pre-v3
- * file on disk cannot silently replay without the captured usage block
- * (which would leave the ledger row failing the cost-matches-usage
- * CHECK on persist).
+ * rejected at `RecordedModelProvider` construction time so a stale file
+ * on disk cannot silently replay missing required fields.
  */
 export const RECORDED_PROVIDER_BUNDLE_SCHEMA_VERSION =
   "itotori.recorded-provider-bundle.v3" as const;

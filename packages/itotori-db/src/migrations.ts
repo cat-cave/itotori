@@ -224,6 +224,10 @@ export const migrations = [
     id: "0041_ledger_real_cost_enforcement",
     file: "0041_ledger_real_cost_enforcement.sql",
   },
+  {
+    id: "0042_provider_ledger_cache_discount",
+    file: "0042_provider_ledger_cache_discount.sql",
+  },
 ] as const;
 
 function migrationPath(file: string): string {

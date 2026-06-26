@@ -126,6 +126,110 @@ describe.skipIf(!process.env.DATABASE_URL)("ItotoriDraftAttemptProviderLedgerRep
       expect(entry.fallbackChain).toEqual([]);
       expect(entry.isRecordedProvider).toBe(false);
       expect(entry.recordedProviderBundleId).toBeNull();
+      // ITOTORI-233 — cache columns default to 0 when the input omits
+      // them. Pre-cache-aware callers continue to write valid rows.
+      expect(entry.cacheReadTokens).toBe(0);
+      expect(entry.cacheWriteTokens).toBe(0);
+      expect(entry.cacheDiscountMicrosUsd).toBe(0);
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("ITOTORI-233 — round-trips cache_read_tokens / cache_write_tokens / cache_discount_micros_usd", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      await provisionDraftJobFixtureProject(context.db, localActor);
+      const attemptId = await provisionDraftAttempt(context.db);
+      const repo = new ItotoriDraftAttemptProviderLedgerRepository(context.db);
+
+      const input: RecordLedgerEntryInput = {
+        ...baseLedgerInput(attemptId),
+        cacheReadTokens: 250,
+        cacheWriteTokens: 100,
+        cacheDiscountMicrosUsd: 3, // 3 micros = $0.000003 USD (sub-micro round-up)
+      };
+      const entry = await repo.recordLedgerEntry(localActor, input);
+      expect(entry.cacheReadTokens).toBe(250);
+      expect(entry.cacheWriteTokens).toBe(100);
+      expect(entry.cacheDiscountMicrosUsd).toBe(3);
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("ITOTORI-233 — rejects negative cache values at the application layer", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      await provisionDraftJobFixtureProject(context.db, localActor);
+      const attemptId = await provisionDraftAttempt(context.db);
+      const repo = new ItotoriDraftAttemptProviderLedgerRepository(context.db);
+
+      await expect(
+        repo.recordLedgerEntry(localActor, {
+          ...baseLedgerInput(attemptId),
+          cacheReadTokens: -1,
+        }),
+      ).rejects.toThrow(/cacheReadTokens/);
+      await expect(
+        repo.recordLedgerEntry(localActor, {
+          ...baseLedgerInput(attemptId),
+          providerProofId: "provider-proof-fixture-neg-write",
+          cacheWriteTokens: -1,
+        }),
+      ).rejects.toThrow(/cacheWriteTokens/);
+      await expect(
+        repo.recordLedgerEntry(localActor, {
+          ...baseLedgerInput(attemptId),
+          providerProofId: "provider-proof-fixture-neg-discount",
+          cacheDiscountMicrosUsd: -1,
+        }),
+      ).rejects.toThrow(/cacheDiscountMicrosUsd/);
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("ITOTORI-233 — sumByPairAndDay surfaces cache hit count + cache savings aggregates", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      await provisionDraftJobFixtureProject(context.db, localActor);
+      const attemptId = await provisionDraftAttempt(context.db);
+      const repo = new ItotoriDraftAttemptProviderLedgerRepository(context.db);
+
+      // Two rows for the same pair: one cache hit ($0.000003 discount),
+      // one miss ($0 discount). Hit rate = 1/2; savings = $0.000003.
+      await repo.recordLedgerEntry(localActor, {
+        ...baseLedgerInput(attemptId),
+        providerProofId: "provider-proof-cache-hit",
+        cacheReadTokens: 50,
+        cacheWriteTokens: 0,
+        cacheDiscountMicrosUsd: 3,
+      });
+      await repo.recordLedgerEntry(localActor, {
+        ...baseLedgerInput(attemptId),
+        providerProofId: "provider-proof-cache-miss",
+        cacheReadTokens: 0,
+        cacheWriteTokens: 0,
+        cacheDiscountMicrosUsd: 0,
+      });
+
+      const rows = await repo.sumByPairAndDay(localActor, draftJobFixtureProjectId, {
+        from: new Date("2020-01-01T00:00:00Z"),
+        to: new Date("2099-01-01T00:00:00Z"),
+      });
+      const pairRow = rows.find(
+        (row) => row.modelId === "anthropic/claude-3.5-sonnet" && row.providerId === "anthropic",
+      );
+      expect(pairRow).toBeDefined();
+      expect(pairRow!.invocationCount).toBe(2);
+      expect(pairRow!.cacheHitCount).toBe(1);
+      expect(pairRow!.totalCacheReadTokens).toBe(50);
+      expect(pairRow!.totalCacheWriteTokens).toBe(0);
+      // 3 micros / 1_000_000 = 0.000003 USD; SQL returns a numeric ::text
+      // string. Compare as a number to tolerate any (formatting-only)
+      // representation difference (e.g. 0.000003 vs 0.0000030).
+      expect(Number(pairRow!.cacheSavingsUsd)).toBeCloseTo(0.000003, 9);
     } finally {
       await context.close();
     }
