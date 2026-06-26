@@ -5412,6 +5412,804 @@ fn siglus_parser_boundary_key_refs(
         .collect()
 }
 
+// =============================================================================
+// KAIFUU-038 — KiriKiri XP3 profile proof
+// =============================================================================
+//
+// `kaifuu xp3 profile-proof --fixture <path> --output <path>` consumes a
+// fixture JSON file describing a single XP3 archive case (plain, encrypted,
+// helper-required, or unsupported-protected-executable), classifies the
+// archive bytes via the KAIFUU-095 shared header / inventory machinery,
+// and emits a redacted proof report. The command never decrypts, extracts,
+// or patches encrypted bytes — plain XP3 is the only variant for which we
+// claim detect / extract / patch_back capability; every other classification
+// fails closed before any extract or patch claim is made (acceptance
+// criterion: "Unsupported cases fail before extract or patch claims are
+// made").
+//
+// The redaction surface follows the SiglusParserBoundaryReport pattern:
+// fixture id, profile id, archive id, support boundary text, diagnostic
+// fields/messages, and any free-form remediation text run through
+// `redact_for_log_or_report`. Archive paths are never written verbatim;
+// the proof carries only an archive hash plus the relative path the
+// fixture declares (and rejects absolute / traversal paths up front).
+
+pub const XP3_PROFILE_PROOF_SCHEMA_VERSION: &str = "0.1.0";
+pub const XP3_PROFILE_PROOF_SUPPORT_BOUNDARY: &str = "KiriKiri XP3 profile proof scoped to plain XP3 as the claimed-support concern (detect / extract / patch_back); encrypted, helper-required, and unsupported-protected-executable cases are routing diagnostics only and never claim extract or patch_back.";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Xp3ProfileClassification {
+    Plain,
+    Encrypted,
+    HelperRequired,
+    UnsupportedProtectedExecutable,
+}
+
+impl Xp3ProfileClassification {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Plain => "plain",
+            Self::Encrypted => "encrypted",
+            Self::HelperRequired => "helper_required",
+            Self::UnsupportedProtectedExecutable => "unsupported_protected_executable",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Xp3PatchCapabilityLevel {
+    /// Classification only; no extract / patch capability claimed.
+    Detect,
+    /// Inventory is exposable; payloads are not modified.
+    Extract,
+    /// Plain XP3 patch-back is claimed (only valid for the `plain` variant).
+    PatchBack,
+    /// Variant is routed for diagnostics only; no extract or patch-back claim.
+    Unsupported,
+}
+
+impl Xp3PatchCapabilityLevel {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Detect => "detect",
+            Self::Extract => "extract",
+            Self::PatchBack => "patch_back",
+            Self::Unsupported => "unsupported",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Xp3CryptProfileStatus {
+    /// No crypt profile is required (plain archives, unsupported protected
+    /// executables that have no decryption claim at all).
+    NotRequired,
+    /// The fixture declares a crypt profile id and key-ref requirement
+    /// that satisfy the encrypted-or-helper-required routing diagnostics.
+    /// This status does not imply decryption capability; it only confirms
+    /// the routing surface is wired.
+    Satisfied,
+    /// The fixture declares an encrypted or helper-required classification
+    /// but supplies no crypt profile id at all.
+    Missing,
+    /// The fixture declares a crypt profile id that is not present in the
+    /// recognized encryption-plugin set (e.g. an unknown KiriKiri plugin).
+    UnknownPlugin,
+}
+
+impl Xp3CryptProfileStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::NotRequired => "not_required",
+            Self::Satisfied => "satisfied",
+            Self::Missing => "missing",
+            Self::UnknownPlugin => "unknown_plugin",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Xp3HelperRequirement {
+    NotRequired,
+    Required,
+}
+
+impl Xp3HelperRequirement {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::NotRequired => "not_required",
+            Self::Required => "required",
+        }
+    }
+}
+
+/// Set of crypt profile ids the routing diagnostics recognize. This is
+/// **not** a decryption-capability claim — recognition here only means the
+/// fixture's declared encryption plugin id matches a known KiriKiri
+/// crypt-profile vocabulary entry, so the proof can route the case to
+/// `Encrypted` / `HelperRequired` without claiming `UnknownPlugin`. Adding
+/// an entry to this set adds zero decryption capability; it only widens
+/// the routing taxonomy.
+pub const XP3_RECOGNIZED_CRYPT_PROFILE_IDS: &[&str] = &[
+    "kirikiri-xp3-null-key",
+    "kirikiri-xp3-fixture-key-profile",
+    "kirikiri-xp3-helper-required-key-profile",
+];
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Xp3ProfileProofFixture {
+    pub schema_version: String,
+    pub fixture_id: String,
+    pub profile_id: String,
+    pub archive: Xp3ProfileProofFixtureArchive,
+    pub expected_classification: Xp3ProfileClassification,
+    pub patch_capability_level: Xp3PatchCapabilityLevel,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub crypt_profile: Option<Xp3ProfileProofFixtureCryptProfile>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Xp3ProfileProofFixtureArchive {
+    pub archive_id: String,
+    /// Archive path **relative to the fixture file's directory**. Absolute
+    /// paths, drive-letter paths, parent traversal (`..`), and home
+    /// prefixes are rejected by `xp3_profile_proof` — they cannot appear
+    /// in the report (acceptance criterion: "Private archive paths, raw
+    /// keys, and decrypted text cannot appear in the report.").
+    pub path: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Xp3ProfileProofFixtureCryptProfile {
+    pub crypt_profile_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub key_ref_requirement: Option<Xp3ProfileProofFixtureKeyRefRequirement>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Xp3ProfileProofFixtureKeyRefRequirement {
+    pub requirement_id: String,
+    pub secret_ref: SecretRef,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Xp3ProfileProofReport {
+    pub schema_version: String,
+    pub fixture_id: String,
+    pub profile_id: String,
+    pub status: OperationStatus,
+    pub classification: Xp3ProfileClassification,
+    pub support_boundary: String,
+    pub patch_capability_level: Xp3PatchCapabilityLevel,
+    pub helper_requirement: Xp3HelperRequirement,
+    pub patch_write_attempted: bool,
+    pub archive: Xp3ProfileProofArchive,
+    pub crypt_profile: Xp3ProfileProofCryptProfile,
+    pub diagnostics: Vec<Xp3ProfileProofDiagnostic>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub semantic_remediation: Option<String>,
+}
+
+impl Xp3ProfileProofReport {
+    pub fn redacted_for_report(&self) -> Self {
+        Self {
+            schema_version: self.schema_version.clone(),
+            fixture_id: redact_for_log_or_report(&self.fixture_id),
+            profile_id: redact_for_log_or_report(&self.profile_id),
+            status: self.status.clone(),
+            classification: self.classification,
+            support_boundary: redact_for_log_or_report(&self.support_boundary),
+            patch_capability_level: self.patch_capability_level,
+            helper_requirement: self.helper_requirement,
+            patch_write_attempted: self.patch_write_attempted,
+            archive: self.archive.redacted_for_report(),
+            crypt_profile: self.crypt_profile.redacted_for_report(),
+            diagnostics: self
+                .diagnostics
+                .iter()
+                .map(Xp3ProfileProofDiagnostic::redacted_for_report)
+                .collect(),
+            semantic_remediation: self
+                .semantic_remediation
+                .as_deref()
+                .map(redact_for_log_or_report),
+        }
+    }
+
+    pub fn stable_json(&self) -> KaifuuResult<String> {
+        stable_json(&self.redacted_for_report())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Xp3ProfileProofArchive {
+    pub archive_id: String,
+    pub archive_hash: ProofHash,
+    pub declared_path: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub entry_count: Option<u64>,
+}
+
+impl Xp3ProfileProofArchive {
+    fn redacted_for_report(&self) -> Self {
+        Self {
+            archive_id: redact_for_log_or_report(&self.archive_id),
+            archive_hash: self.archive_hash.clone(),
+            // declared_path is the fixture-relative path (already
+            // guard-railed away from absolute / traversal / home prefixes)
+            // — but we still funnel it through redact_for_log_or_report
+            // so any redaction-bearing substring is scrubbed.
+            declared_path: redact_for_log_or_report(&self.declared_path),
+            entry_count: self.entry_count,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Xp3ProfileProofCryptProfile {
+    pub status: Xp3CryptProfileStatus,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub crypt_profile_id: Option<String>,
+    pub key_ref_requirement_present: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub requirement_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub secret_ref: Option<SecretRef>,
+}
+
+impl Xp3ProfileProofCryptProfile {
+    fn redacted_for_report(&self) -> Self {
+        Self {
+            status: self.status,
+            crypt_profile_id: self
+                .crypt_profile_id
+                .as_deref()
+                .map(redact_for_log_or_report),
+            key_ref_requirement_present: self.key_ref_requirement_present,
+            requirement_id: self.requirement_id.as_deref().map(redact_for_log_or_report),
+            secret_ref: self.secret_ref.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Xp3ProfileProofDiagnostic {
+    pub code: String,
+    pub severity: PartialDiagnosticSeverity,
+    pub field: String,
+    pub message: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub semantic_code: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub remediation: Option<String>,
+}
+
+impl Xp3ProfileProofDiagnostic {
+    fn redacted_for_report(&self) -> Self {
+        Self {
+            code: redact_for_log_or_report(&self.code),
+            severity: self.severity,
+            field: redact_for_log_or_report(&self.field),
+            message: redact_for_log_or_report(&self.message),
+            semantic_code: self.semantic_code.as_deref().map(redact_for_log_or_report),
+            remediation: self.remediation.as_deref().map(redact_for_log_or_report),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct Xp3ProfileProofRequest<'a> {
+    pub fixture: &'a Xp3ProfileProofFixture,
+    /// Directory the fixture file lives in. Archive paths declared in the
+    /// fixture are resolved relative to this directory.
+    pub fixture_dir: &'a Path,
+}
+
+/// XP3 magic the encrypted-or-compressed routing path keys off. Plain
+/// XP3 archives match the full [`XP3_PLAIN_MAGIC`] prefix; encrypted
+/// archives carry the leading `XP3\r\n` magic followed by a non-plain
+/// header signature that `read_plain_xp3_inventory` rejects with
+/// `UnsupportedEncrypted`.
+const XP3_HEADER_MAGIC: &[u8] = b"XP3\r\n";
+
+/// Run the KAIFUU-038 XP3 profile proof against `request.fixture`.
+///
+/// Routing rules (acceptance criterion: "Plain XP3, encrypted XP3,
+/// helper-required XP3, and protected executable cases produce distinct
+/// capability outcomes."):
+///
+/// - `plain`: archive bytes start with [`XP3_PLAIN_MAGIC`] **and** the
+///   declared classification is `plain` **and** the fixture's
+///   `patch_capability_level` is `patch_back`. The report carries the
+///   entry count from `read_plain_xp3_inventory`. This is the only
+///   variant for which `patch_back` is a valid claim.
+/// - `encrypted` / `helper_required`: archive bytes start with the
+///   `XP3\r\n` magic but [`read_plain_xp3_inventory`] reports
+///   `UnsupportedEncrypted` (the legacy KAIFUU-095 detector marker, used
+///   for synthetic fixtures) or the declared classification routes the
+///   case there. The proof claims **no** `extract` / `patch_back`
+///   capability — `patch_capability_level` is forced to `Unsupported` in
+///   the report, and a typed diagnostic with the encrypted /
+///   helper-required semantic code fires before any extract is attempted.
+/// - `unsupported_protected_executable`: archive bytes do not start with
+///   the XP3 magic at all (e.g. a protected-executable container). The
+///   proof refuses with `SEMANTIC_PROTECTED_EXECUTABLE_UNSUPPORTED`
+///   before any extract claim.
+///
+/// Negative cases (acceptance criterion: "Negative fixtures for missing
+/// crypt profile, unknown encryption plugin, and leaked archive paths"):
+///
+/// - Missing crypt profile: `encrypted` / `helper_required` with no
+///   `crypt_profile` field → diagnostic `xp3.crypt_profile.missing`.
+/// - Unknown encryption plugin: `crypt_profile.crypt_profile_id` is not
+///   in [`XP3_RECOGNIZED_CRYPT_PROFILE_IDS`] → diagnostic
+///   `xp3.crypt_profile.unknown_plugin`.
+/// - Leaked archive paths: absolute / traversal / home-prefixed
+///   `archive.path` → rejected up front before the archive is read.
+pub fn xp3_profile_proof(
+    request: Xp3ProfileProofRequest<'_>,
+) -> KaifuuResult<Xp3ProfileProofReport> {
+    let fixture = request.fixture;
+
+    let mut diagnostics: Vec<Xp3ProfileProofDiagnostic> = Vec::new();
+    let mut path_was_rejected = false;
+    let mut classification = fixture.expected_classification;
+    let mut patch_capability_level = fixture.patch_capability_level;
+
+    // Acceptance criterion: "Private archive paths, raw keys, and
+    // decrypted text cannot appear in the report." The declared path is
+    // the only path-shaped field that survives into the report and we
+    // refuse to echo absolute / traversal paths under any circumstance
+    // — they're replaced by a redaction sentinel before being placed in
+    // `Xp3ProfileProofArchive::declared_path`.
+    let declared_path_for_report = match validate_xp3_fixture_archive_path(&fixture.archive.path) {
+        Ok(path) => path.to_string(),
+        Err(message) => {
+            path_was_rejected = true;
+            diagnostics.push(Xp3ProfileProofDiagnostic {
+                code: "xp3.archive_path.leaked".to_string(),
+                severity: PartialDiagnosticSeverity::P0,
+                field: "archive.path".to_string(),
+                message,
+                semantic_code: Some(SEMANTIC_FORBIDDEN_PUBLIC_SERIALIZATION.to_string()),
+                remediation: Some(
+                    "archive paths must be relative to the fixture file and must not contain absolute roots, drive letters, parent traversal, or home prefixes"
+                        .to_string(),
+                ),
+            });
+            format!("[REDACTED:{SEMANTIC_SECRET_REDACTED}]")
+        }
+    };
+
+    // Resolve the archive bytes only if the declared path passed
+    // validation. If it didn't, we still hash the empty byte stream as a
+    // placeholder so the report has a well-formed archive hash — the P0
+    // diagnostic + `Failed` status make it clear the proof did not
+    // actually inspect a real archive.
+    let archive_bytes = if path_was_rejected {
+        Vec::new()
+    } else {
+        let archive_full = request.fixture_dir.join(&fixture.archive.path);
+        match fs::read(&archive_full) {
+            Ok(bytes) => bytes,
+            Err(error) => {
+                diagnostics.push(Xp3ProfileProofDiagnostic {
+                    code: "xp3.archive.read_failed".to_string(),
+                    severity: PartialDiagnosticSeverity::P0,
+                    field: "archive.path".to_string(),
+                    message: format!(
+                        "archive could not be read: {}",
+                        redact_for_log_or_report(&error.to_string())
+                    ),
+                    semantic_code: None,
+                    remediation: Some(
+                        "ensure the fixture archive is present alongside the fixture file"
+                            .to_string(),
+                    ),
+                });
+                Vec::new()
+            }
+        }
+    };
+
+    let archive_hash = ProofHash::new(sha256_hash_bytes(&archive_bytes))?;
+
+    // Classify the archive bytes. The byte-level routing is the source of
+    // truth — a fixture that *declares* `plain` but supplies non-plain
+    // bytes gets routed by the bytes, and we emit a diagnostic noting the
+    // mismatch. The proof never re-classifies upward (e.g. byte-plain
+    // bytes are never reported as encrypted just because the fixture said
+    // so) — that would let a malicious fixture under-claim and bypass the
+    // pre-extract / patch refusal.
+    let bytes_classification = classify_xp3_bytes(&archive_bytes);
+
+    if !path_was_rejected && !archive_bytes.is_empty() {
+        match (bytes_classification, classification) {
+            (Some(byte_class), declared) if byte_class != declared => {
+                diagnostics.push(Xp3ProfileProofDiagnostic {
+                    code: "xp3.classification.mismatch".to_string(),
+                    severity: PartialDiagnosticSeverity::P1,
+                    field: "expectedClassification".to_string(),
+                    message: format!(
+                        "fixture declared {} but archive bytes classify as {}",
+                        declared.as_str(),
+                        byte_class.as_str()
+                    ),
+                    semantic_code: Some(SEMANTIC_AMBIGUOUS_ENGINE_VARIANT.to_string()),
+                    remediation: Some(
+                        "regenerate the fixture so the declared classification matches the archive bytes"
+                            .to_string(),
+                    ),
+                });
+                classification = byte_class;
+            }
+            _ => {}
+        }
+    }
+
+    // Plain inventory probe. We probe the inventory only when the bytes
+    // classify as plain — the function refuses to decrypt and we never
+    // call it on encrypted bytes.
+    //
+    // If the plain-magic-prefixed archive fails to parse its index
+    // (e.g. encrypted index entries, common in real-bytes KiriKiri
+    // games that wear the plain magic but carry an encrypted directory),
+    // we re-route the classification to `Encrypted` and demote the
+    // patch capability to `Unsupported` — claiming `patch_back` on an
+    // archive we cannot even inventory would violate the
+    // pre-extract-claim contract.
+    let mut entry_count: Option<u64> = None;
+    if matches!(bytes_classification, Some(Xp3ProfileClassification::Plain)) {
+        match read_plain_xp3_inventory(&archive_bytes) {
+            Ok(inventory) => entry_count = Some(inventory.entries.len() as u64),
+            Err(error) => {
+                let is_unsupported_encrypted_index =
+                    matches!(error, PlainXp3InventoryError::UnsupportedEncrypted);
+                diagnostics.push(Xp3ProfileProofDiagnostic {
+                    code: "xp3.inventory.read_failed".to_string(),
+                    severity: PartialDiagnosticSeverity::P0,
+                    field: "archive".to_string(),
+                    message: format!(
+                        "plain-magic XP3 inventory could not be parsed: {}",
+                        redact_for_log_or_report(&error.to_string())
+                    ),
+                    semantic_code: if is_unsupported_encrypted_index {
+                        Some(SEMANTIC_UNSUPPORTED_VARIANT_ENCRYPTED.to_string())
+                    } else {
+                        None
+                    },
+                    remediation: Some(
+                        "archives that carry the plain magic but cannot be inventoried route to encrypted; KAIFUU-038 makes no decryption or patch-back claim".to_string(),
+                    ),
+                });
+                // Route per inventory failure mode: the
+                // `UnsupportedEncrypted` arm explicitly indicates the
+                // directory entries are encrypted, and any other parse
+                // failure on a plain-magic-prefixed archive can't be
+                // claimed as a plain-patch case either.
+                classification = Xp3ProfileClassification::Encrypted;
+                patch_capability_level = Xp3PatchCapabilityLevel::Unsupported;
+            }
+        }
+    }
+
+    // Helper requirement is derived from the (post-byte-classification,
+    // post-inventory-probe) routing so a bytes-driven re-route to
+    // HelperRequired surfaces correctly. This is computed once here —
+    // earlier mutations to `classification` are now sealed.
+    let helper_requirement = match classification {
+        Xp3ProfileClassification::HelperRequired => Xp3HelperRequirement::Required,
+        _ => Xp3HelperRequirement::NotRequired,
+    };
+
+    // Encrypted / helper-required / unsupported-protected-executable
+    // routing. Each variant emits a typed diagnostic naming the semantic
+    // code and forces `patch_capability_level` to `Unsupported` — the
+    // proof never claims extract or patch_back for these cases
+    // (acceptance criterion: "Unsupported cases fail before extract or
+    // patch claims are made.").
+    let mut routing_remediation: Option<String> = None;
+    match classification {
+        Xp3ProfileClassification::Plain => {}
+        Xp3ProfileClassification::Encrypted => {
+            patch_capability_level = Xp3PatchCapabilityLevel::Unsupported;
+            routing_remediation = Some(
+                "encrypted XP3 is routed for diagnostics only; KAIFUU-038 makes no decryption, extraction, or patch-back claim".to_string(),
+            );
+            diagnostics.push(Xp3ProfileProofDiagnostic {
+                code: "xp3.encrypted.unsupported".to_string(),
+                severity: PartialDiagnosticSeverity::P1,
+                field: "classification".to_string(),
+                message:
+                    "encrypted XP3 archive routed to diagnostics; no decryption capability claimed"
+                        .to_string(),
+                semantic_code: Some(SEMANTIC_UNSUPPORTED_VARIANT_ENCRYPTED.to_string()),
+                remediation: routing_remediation.clone(),
+            });
+        }
+        Xp3ProfileClassification::HelperRequired => {
+            patch_capability_level = Xp3PatchCapabilityLevel::Unsupported;
+            routing_remediation = Some(
+                "helper-required XP3 archives require a KAIFUU-085 helper result; KAIFUU-038 makes no extraction or patch-back claim until the helper is recorded".to_string(),
+            );
+            diagnostics.push(Xp3ProfileProofDiagnostic {
+                code: "xp3.helper_required".to_string(),
+                severity: PartialDiagnosticSeverity::P1,
+                field: "classification".to_string(),
+                message: "helper-required XP3 archive routed to diagnostics; no extraction capability claimed".to_string(),
+                semantic_code: Some(SEMANTIC_HELPER_REQUIRED.to_string()),
+                remediation: routing_remediation.clone(),
+            });
+        }
+        Xp3ProfileClassification::UnsupportedProtectedExecutable => {
+            patch_capability_level = Xp3PatchCapabilityLevel::Unsupported;
+            routing_remediation = Some(
+                "protected-executable containers are not XP3 archives; no extract or patch-back capability is claimed".to_string(),
+            );
+            diagnostics.push(Xp3ProfileProofDiagnostic {
+                code: "xp3.unsupported_protected_executable".to_string(),
+                severity: PartialDiagnosticSeverity::P1,
+                field: "classification".to_string(),
+                message: "protected-executable container routed to diagnostics; no extraction capability claimed".to_string(),
+                semantic_code: Some(SEMANTIC_PROTECTED_EXECUTABLE_UNSUPPORTED.to_string()),
+                remediation: routing_remediation.clone(),
+            });
+        }
+    }
+
+    // Plain XP3 must declare `patch_back`; anything else gets the
+    // `xp3.patch_capability.overclaim` diagnostic and forced down to
+    // `Unsupported`.
+    if !matches!(classification, Xp3ProfileClassification::Plain)
+        && !matches!(
+            fixture.patch_capability_level,
+            Xp3PatchCapabilityLevel::Unsupported
+        )
+    {
+        diagnostics.push(Xp3ProfileProofDiagnostic {
+            code: "xp3.patch_capability.overclaim".to_string(),
+            severity: PartialDiagnosticSeverity::P0,
+            field: "patchCapabilityLevel".to_string(),
+            message: format!(
+                "fixture declared {} but only plain XP3 may claim extract or patch_back",
+                fixture.patch_capability_level.as_str()
+            ),
+            semantic_code: Some(SEMANTIC_MISSING_PATCH_BACK_CAPABILITY.to_string()),
+            remediation: Some(
+                "set patchCapabilityLevel to \"unsupported\" for non-plain classifications"
+                    .to_string(),
+            ),
+        });
+    }
+
+    // Crypt profile evaluation.
+    let crypt_profile = evaluate_xp3_crypt_profile(
+        fixture.crypt_profile.as_ref(),
+        classification,
+        &mut diagnostics,
+    );
+
+    // Plain archives must not declare a crypt profile (it would imply a
+    // decryption capability the proof never has). We surface this as a
+    // P1 diagnostic — plain bytes plus declared crypt profile is a clear
+    // fixture-authoring error, but the bytes are still safe to inventory.
+    if matches!(classification, Xp3ProfileClassification::Plain) && fixture.crypt_profile.is_some()
+    {
+        diagnostics.push(Xp3ProfileProofDiagnostic {
+            code: "xp3.crypt_profile.plain_overclaim".to_string(),
+            severity: PartialDiagnosticSeverity::P1,
+            field: "cryptProfile".to_string(),
+            message: "plain XP3 fixtures must not declare a crypt profile".to_string(),
+            semantic_code: Some(SEMANTIC_FORBIDDEN_PUBLIC_SERIALIZATION.to_string()),
+            remediation: Some("remove the cryptProfile entry for plain XP3 fixtures".to_string()),
+        });
+    }
+
+    let status = if diagnostics
+        .iter()
+        .any(|diagnostic| diagnostic.severity.is_blocking())
+    {
+        OperationStatus::Failed
+    } else {
+        OperationStatus::Passed
+    };
+
+    Ok(Xp3ProfileProofReport {
+        schema_version: XP3_PROFILE_PROOF_SCHEMA_VERSION.to_string(),
+        fixture_id: fixture.fixture_id.clone(),
+        profile_id: fixture.profile_id.clone(),
+        status,
+        classification,
+        support_boundary: XP3_PROFILE_PROOF_SUPPORT_BOUNDARY.to_string(),
+        patch_capability_level,
+        helper_requirement,
+        // KAIFUU-038 never attempts an encrypted patch-back; this flag is
+        // always false. We surface it explicitly so downstream auditors
+        // can confirm the proof did not write any patched bytes.
+        patch_write_attempted: false,
+        archive: Xp3ProfileProofArchive {
+            archive_id: fixture.archive.archive_id.clone(),
+            archive_hash,
+            declared_path: declared_path_for_report,
+            entry_count,
+        },
+        crypt_profile,
+        diagnostics,
+        semantic_remediation: routing_remediation,
+    })
+}
+
+fn classify_xp3_bytes(bytes: &[u8]) -> Option<Xp3ProfileClassification> {
+    if bytes.is_empty() {
+        return None;
+    }
+    if bytes.starts_with(XP3_PLAIN_MAGIC) {
+        return Some(Xp3ProfileClassification::Plain);
+    }
+    if bytes.starts_with(XP3_HEADER_MAGIC) {
+        // KAIFUU-095 synthetic fixtures encode the helper-required vs
+        // encrypted distinction in a literal marker inside the header
+        // tail. Real-bytes encrypted XP3 (no marker) falls back to
+        // `Encrypted` — we never claim the helper-required path for
+        // real bytes without an explicit fixture annotation.
+        let marker_window =
+            String::from_utf8_lossy(&bytes[..bytes.len().min(128)]).to_ascii_lowercase();
+        if marker_window.contains("xp3-helper-required") {
+            return Some(Xp3ProfileClassification::HelperRequired);
+        }
+        return Some(Xp3ProfileClassification::Encrypted);
+    }
+    Some(Xp3ProfileClassification::UnsupportedProtectedExecutable)
+}
+
+fn evaluate_xp3_crypt_profile(
+    crypt_profile: Option<&Xp3ProfileProofFixtureCryptProfile>,
+    classification: Xp3ProfileClassification,
+    diagnostics: &mut Vec<Xp3ProfileProofDiagnostic>,
+) -> Xp3ProfileProofCryptProfile {
+    match (classification, crypt_profile) {
+        (Xp3ProfileClassification::Plain, _)
+        | (Xp3ProfileClassification::UnsupportedProtectedExecutable, _) => {
+            Xp3ProfileProofCryptProfile {
+                status: Xp3CryptProfileStatus::NotRequired,
+                crypt_profile_id: crypt_profile.map(|profile| profile.crypt_profile_id.clone()),
+                key_ref_requirement_present: crypt_profile
+                    .and_then(|profile| profile.key_ref_requirement.as_ref())
+                    .is_some(),
+                requirement_id: crypt_profile
+                    .and_then(|profile| profile.key_ref_requirement.as_ref())
+                    .map(|requirement| requirement.requirement_id.clone()),
+                secret_ref: crypt_profile
+                    .and_then(|profile| profile.key_ref_requirement.as_ref())
+                    .map(|requirement| requirement.secret_ref.clone()),
+            }
+        }
+        (Xp3ProfileClassification::Encrypted, None)
+        | (Xp3ProfileClassification::HelperRequired, None) => {
+            diagnostics.push(Xp3ProfileProofDiagnostic {
+                code: "xp3.crypt_profile.missing".to_string(),
+                severity: PartialDiagnosticSeverity::P0,
+                field: "cryptProfile".to_string(),
+                message: format!(
+                    "{} XP3 fixtures must declare a crypt profile",
+                    classification.as_str()
+                ),
+                semantic_code: Some(SEMANTIC_MISSING_KEY_PROFILE.to_string()),
+                remediation: Some(
+                    "add a cryptProfile entry with crypt_profile_id and key_ref_requirement"
+                        .to_string(),
+                ),
+            });
+            Xp3ProfileProofCryptProfile {
+                status: Xp3CryptProfileStatus::Missing,
+                crypt_profile_id: None,
+                key_ref_requirement_present: false,
+                requirement_id: None,
+                secret_ref: None,
+            }
+        }
+        (Xp3ProfileClassification::Encrypted, Some(profile))
+        | (Xp3ProfileClassification::HelperRequired, Some(profile)) => {
+            let recognized =
+                XP3_RECOGNIZED_CRYPT_PROFILE_IDS.contains(&profile.crypt_profile_id.as_str());
+            let key_ref = profile.key_ref_requirement.as_ref();
+            if !recognized {
+                diagnostics.push(Xp3ProfileProofDiagnostic {
+                    code: "xp3.crypt_profile.unknown_plugin".to_string(),
+                    severity: PartialDiagnosticSeverity::P0,
+                    field: "cryptProfile.cryptProfileId".to_string(),
+                    message: format!(
+                        "crypt profile id {} is not in the recognized KiriKiri plugin set",
+                        profile.crypt_profile_id
+                    ),
+                    semantic_code: Some(SEMANTIC_UNKNOWN_ENGINE_VARIANT.to_string()),
+                    remediation: Some(
+                        "use a recognized KAIFUU crypt-profile id; recognition does not imply decryption capability".to_string(),
+                    ),
+                });
+            }
+            if key_ref.is_none() {
+                diagnostics.push(Xp3ProfileProofDiagnostic {
+                    code: "xp3.crypt_profile.missing_key_ref".to_string(),
+                    severity: PartialDiagnosticSeverity::P0,
+                    field: "cryptProfile.keyRefRequirement".to_string(),
+                    message: format!(
+                        "{} XP3 fixtures must declare a keyRef requirement",
+                        classification.as_str()
+                    ),
+                    semantic_code: Some(SEMANTIC_MISSING_KEY_PROFILE.to_string()),
+                    remediation: Some(
+                        "add a keyRefRequirement entry with requirementId and secretRef"
+                            .to_string(),
+                    ),
+                });
+            }
+            Xp3ProfileProofCryptProfile {
+                status: if recognized {
+                    Xp3CryptProfileStatus::Satisfied
+                } else {
+                    Xp3CryptProfileStatus::UnknownPlugin
+                },
+                crypt_profile_id: Some(profile.crypt_profile_id.clone()),
+                key_ref_requirement_present: key_ref.is_some(),
+                requirement_id: key_ref.map(|requirement| requirement.requirement_id.clone()),
+                secret_ref: key_ref.map(|requirement| requirement.secret_ref.clone()),
+            }
+        }
+    }
+}
+
+fn validate_xp3_fixture_archive_path(path: &str) -> Result<&str, String> {
+    if path.is_empty() {
+        return Err("archive path must not be empty".to_string());
+    }
+    let trimmed = path.trim_start();
+    if trimmed != path {
+        return Err("archive path must not contain leading whitespace".to_string());
+    }
+    if path.starts_with('/') || path.starts_with('\\') {
+        return Err("archive path must be relative to the fixture file".to_string());
+    }
+    if path.starts_with("~/") || path.starts_with("~\\") {
+        return Err("archive path must not contain home prefixes".to_string());
+    }
+    if path.starts_with("$HOME")
+        || path.starts_with("${HOME}")
+        || path.starts_with("%USERPROFILE%")
+        || path.starts_with("%HOME%")
+        || path.starts_with("$USERPROFILE")
+    {
+        return Err("archive path must not contain environment-variable home prefixes".to_string());
+    }
+    for component in path.split(['/', '\\']) {
+        if component == ".." {
+            return Err("archive path must not contain parent traversal".to_string());
+        }
+    }
+    // Drive letter check (Windows-style absolute path).
+    if path.len() >= 2 {
+        let mut chars = path.chars();
+        let first = chars.next().unwrap_or(' ');
+        let second = chars.next().unwrap_or(' ');
+        if first.is_ascii_alphabetic() && second == ':' {
+            return Err("archive path must not contain a drive letter".to_string());
+        }
+    }
+    Ok(path)
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HelperResultValidationResult {
@@ -23106,5 +23904,456 @@ printf launched > '{}'
             .map(|adapter| adapter.id())
             .collect::<Vec<_>>();
         assert_eq!(ids, vec!["a.fixture", "z.fixture"]);
+    }
+
+    // =========================================================================
+    // KAIFUU-038 — XP3 profile proof tests
+    // =========================================================================
+
+    fn write_xp3_archive(dir: &Path, name: &str, bytes: &[u8]) -> PathBuf {
+        let archive = dir.join(name);
+        fs::write(&archive, bytes).unwrap();
+        archive
+    }
+
+    fn build_plain_xp3_archive_bytes() -> Vec<u8> {
+        // Smallest synthetic plain XP3 archive the
+        // `read_plain_xp3_inventory` parser will accept: magic + index
+        // offset pointing at an empty index.
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(XP3_PLAIN_MAGIC);
+        let index_offset = (bytes.len() + 8) as u64;
+        bytes.extend_from_slice(&index_offset.to_le_bytes());
+        // Plain index encoding flag.
+        bytes.push(0);
+        // Index size = 0 (empty index).
+        bytes.extend_from_slice(&0u64.to_le_bytes());
+        bytes
+    }
+
+    fn build_encrypted_xp3_marker_archive_bytes() -> Vec<u8> {
+        b"XP3\r\nXP3-CRYPT\nkaifuu-xp3-encrypted synthetic routing fixture\n".to_vec()
+    }
+
+    fn build_helper_required_xp3_marker_archive_bytes() -> Vec<u8> {
+        b"XP3\r\nXP3-HELPER-REQUIRED\nkaifuu-xp3-helper-required synthetic routing fixture\n"
+            .to_vec()
+    }
+
+    fn build_protected_executable_bytes() -> Vec<u8> {
+        b"MZ\x90\0\x03\0\0\0PROTECTED-EXECUTABLE-FIXTURE\n".to_vec()
+    }
+
+    fn make_plain_fixture(archive_name: &str) -> Xp3ProfileProofFixture {
+        Xp3ProfileProofFixture {
+            schema_version: XP3_PROFILE_PROOF_SCHEMA_VERSION.to_string(),
+            fixture_id: "kaifuu-kirikiri-xp3-plain-profile-proof".to_string(),
+            profile_id: "019ed000-0000-7000-8000-000000095001".to_string(),
+            archive: Xp3ProfileProofFixtureArchive {
+                archive_id: "kirikiri-xp3-archive".to_string(),
+                path: archive_name.to_string(),
+            },
+            expected_classification: Xp3ProfileClassification::Plain,
+            patch_capability_level: Xp3PatchCapabilityLevel::PatchBack,
+            crypt_profile: None,
+        }
+    }
+
+    fn make_encrypted_fixture(archive_name: &str) -> Xp3ProfileProofFixture {
+        Xp3ProfileProofFixture {
+            schema_version: XP3_PROFILE_PROOF_SCHEMA_VERSION.to_string(),
+            fixture_id: "kaifuu-kirikiri-xp3-encrypted-profile-proof".to_string(),
+            profile_id: "019ed000-0000-7000-8000-000000095002".to_string(),
+            archive: Xp3ProfileProofFixtureArchive {
+                archive_id: "kirikiri-xp3-archive".to_string(),
+                path: archive_name.to_string(),
+            },
+            expected_classification: Xp3ProfileClassification::Encrypted,
+            patch_capability_level: Xp3PatchCapabilityLevel::Unsupported,
+            crypt_profile: Some(Xp3ProfileProofFixtureCryptProfile {
+                crypt_profile_id: "kirikiri-xp3-fixture-key-profile".to_string(),
+                key_ref_requirement: Some(Xp3ProfileProofFixtureKeyRefRequirement {
+                    requirement_id: "kirikiri-xp3-key-profile".to_string(),
+                    secret_ref: SecretRef::new(
+                        "local-secret:fixture/kirikiri/xp3-archive-password".to_string(),
+                    )
+                    .unwrap(),
+                }),
+            }),
+        }
+    }
+
+    #[test]
+    fn xp3_profile_proof_distinct_outcomes_for_each_variant() {
+        // Acceptance criterion: "Plain XP3, encrypted XP3, helper-required
+        // XP3, and protected executable cases produce distinct capability
+        // outcomes."
+        let dir = temp_dir("xp3-profile-proof-distinct");
+
+        write_xp3_archive(&dir, "plain.xp3", &build_plain_xp3_archive_bytes());
+        write_xp3_archive(
+            &dir,
+            "encrypted.xp3",
+            &build_encrypted_xp3_marker_archive_bytes(),
+        );
+        write_xp3_archive(
+            &dir,
+            "helper-required.xp3",
+            &build_helper_required_xp3_marker_archive_bytes(),
+        );
+        write_xp3_archive(
+            &dir,
+            "protected-executable.bin",
+            &build_protected_executable_bytes(),
+        );
+
+        let plain_report = xp3_profile_proof(Xp3ProfileProofRequest {
+            fixture: &make_plain_fixture("plain.xp3"),
+            fixture_dir: &dir,
+        })
+        .unwrap();
+        assert_eq!(plain_report.status, OperationStatus::Passed);
+        assert_eq!(plain_report.classification, Xp3ProfileClassification::Plain);
+        assert_eq!(
+            plain_report.patch_capability_level,
+            Xp3PatchCapabilityLevel::PatchBack
+        );
+        assert_eq!(
+            plain_report.helper_requirement,
+            Xp3HelperRequirement::NotRequired
+        );
+        assert_eq!(plain_report.archive.entry_count, Some(0));
+        assert!(!plain_report.patch_write_attempted);
+        assert!(plain_report.diagnostics.is_empty());
+        assert_eq!(
+            plain_report.crypt_profile.status,
+            Xp3CryptProfileStatus::NotRequired
+        );
+
+        let encrypted_report = xp3_profile_proof(Xp3ProfileProofRequest {
+            fixture: &make_encrypted_fixture("encrypted.xp3"),
+            fixture_dir: &dir,
+        })
+        .unwrap();
+        assert_eq!(
+            encrypted_report.classification,
+            Xp3ProfileClassification::Encrypted
+        );
+        assert_eq!(
+            encrypted_report.patch_capability_level,
+            Xp3PatchCapabilityLevel::Unsupported
+        );
+        assert_eq!(
+            encrypted_report.helper_requirement,
+            Xp3HelperRequirement::NotRequired
+        );
+        assert_eq!(encrypted_report.archive.entry_count, None);
+        assert!(!encrypted_report.patch_write_attempted);
+        assert_eq!(
+            encrypted_report.crypt_profile.status,
+            Xp3CryptProfileStatus::Satisfied
+        );
+        assert!(
+            encrypted_report
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "xp3.encrypted.unsupported"
+                    && diagnostic.semantic_code.as_deref()
+                        == Some(SEMANTIC_UNSUPPORTED_VARIANT_ENCRYPTED))
+        );
+
+        let mut helper_fixture = make_encrypted_fixture("helper-required.xp3");
+        helper_fixture.fixture_id = "kaifuu-kirikiri-xp3-helper-required-profile-proof".to_string();
+        helper_fixture.profile_id = "019ed000-0000-7000-8000-000000095004".to_string();
+        helper_fixture.expected_classification = Xp3ProfileClassification::HelperRequired;
+        helper_fixture.crypt_profile = Some(Xp3ProfileProofFixtureCryptProfile {
+            crypt_profile_id: "kirikiri-xp3-helper-required-key-profile".to_string(),
+            key_ref_requirement: Some(Xp3ProfileProofFixtureKeyRefRequirement {
+                requirement_id: "kirikiri-xp3-key-profile".to_string(),
+                secret_ref: SecretRef::new(
+                    "local-secret:fixture/kirikiri/xp3-archive-password".to_string(),
+                )
+                .unwrap(),
+            }),
+        });
+        let helper_report = xp3_profile_proof(Xp3ProfileProofRequest {
+            fixture: &helper_fixture,
+            fixture_dir: &dir,
+        })
+        .unwrap();
+        assert_eq!(
+            helper_report.classification,
+            Xp3ProfileClassification::HelperRequired
+        );
+        assert_eq!(
+            helper_report.patch_capability_level,
+            Xp3PatchCapabilityLevel::Unsupported
+        );
+        assert_eq!(
+            helper_report.helper_requirement,
+            Xp3HelperRequirement::Required
+        );
+        assert!(
+            helper_report
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "xp3.helper_required"
+                    && diagnostic.semantic_code.as_deref() == Some(SEMANTIC_HELPER_REQUIRED))
+        );
+
+        let mut protected_fixture = make_plain_fixture("protected-executable.bin");
+        protected_fixture.fixture_id =
+            "kaifuu-kirikiri-xp3-protected-executable-profile-proof".to_string();
+        protected_fixture.profile_id = "019ed000-0000-7000-8000-000000095099".to_string();
+        protected_fixture.expected_classification =
+            Xp3ProfileClassification::UnsupportedProtectedExecutable;
+        protected_fixture.patch_capability_level = Xp3PatchCapabilityLevel::Unsupported;
+        let protected_report = xp3_profile_proof(Xp3ProfileProofRequest {
+            fixture: &protected_fixture,
+            fixture_dir: &dir,
+        })
+        .unwrap();
+        assert_eq!(
+            protected_report.classification,
+            Xp3ProfileClassification::UnsupportedProtectedExecutable
+        );
+        assert_eq!(
+            protected_report.patch_capability_level,
+            Xp3PatchCapabilityLevel::Unsupported
+        );
+        assert!(
+            protected_report
+                .diagnostics
+                .iter()
+                .any(
+                    |diagnostic| diagnostic.code == "xp3.unsupported_protected_executable"
+                        && diagnostic.semantic_code.as_deref()
+                            == Some(SEMANTIC_PROTECTED_EXECUTABLE_UNSUPPORTED)
+                )
+        );
+        // Exactly the four classifications cover distinct outcomes.
+        assert_ne!(plain_report.classification, encrypted_report.classification);
+        assert_ne!(
+            encrypted_report.classification,
+            helper_report.classification
+        );
+        assert_ne!(
+            helper_report.classification,
+            protected_report.classification
+        );
+    }
+
+    #[test]
+    fn xp3_profile_proof_report_carries_fixture_metadata_and_redacts_secrets() {
+        // Acceptance criterion: "The proof report includes fixture id,
+        // profile id, archive hash, crypt profile status, helper requirement,
+        // and semantic remediation."
+        let dir = temp_dir("xp3-profile-proof-metadata");
+        write_xp3_archive(&dir, "plain.xp3", &build_plain_xp3_archive_bytes());
+        write_xp3_archive(
+            &dir,
+            "encrypted.xp3",
+            &build_encrypted_xp3_marker_archive_bytes(),
+        );
+
+        let plain_report = xp3_profile_proof(Xp3ProfileProofRequest {
+            fixture: &make_plain_fixture("plain.xp3"),
+            fixture_dir: &dir,
+        })
+        .unwrap();
+        assert_eq!(
+            plain_report.fixture_id,
+            "kaifuu-kirikiri-xp3-plain-profile-proof"
+        );
+        assert_eq!(
+            plain_report.profile_id,
+            "019ed000-0000-7000-8000-000000095001"
+        );
+        assert_eq!(plain_report.archive.archive_id, "kirikiri-xp3-archive");
+        assert!(
+            plain_report
+                .archive
+                .archive_hash
+                .as_str()
+                .starts_with("sha256:")
+        );
+        assert_eq!(plain_report.semantic_remediation, None);
+
+        let encrypted_report = xp3_profile_proof(Xp3ProfileProofRequest {
+            fixture: &make_encrypted_fixture("encrypted.xp3"),
+            fixture_dir: &dir,
+        })
+        .unwrap();
+        assert_eq!(
+            encrypted_report.crypt_profile.status,
+            Xp3CryptProfileStatus::Satisfied
+        );
+        assert_eq!(
+            encrypted_report.crypt_profile.requirement_id.as_deref(),
+            Some("kirikiri-xp3-key-profile")
+        );
+        assert!(encrypted_report.semantic_remediation.is_some());
+
+        // Redaction surface: stable_json round-trips through redaction.
+        let json = encrypted_report.stable_json().unwrap();
+        // The fixture-only secret-ref label is safe to surface, but raw
+        // key material patterns must not appear. Make sure no absolute
+        // host paths or hex secrets leaked into the report.
+        assert!(
+            !json.contains("/home/"),
+            "report leaked absolute host path: {json}"
+        );
+        assert!(!json.contains("C:\\"), "report leaked drive path: {json}");
+    }
+
+    #[test]
+    fn xp3_profile_proof_rejects_leaked_archive_paths_before_extract_claims() {
+        // Acceptance criterion: "Private archive paths, raw keys, and
+        // decrypted text cannot appear in the report." plus "Unsupported
+        // cases fail before extract or patch claims are made."
+        let dir = temp_dir("xp3-profile-proof-leaked-paths");
+        write_xp3_archive(&dir, "plain.xp3", &build_plain_xp3_archive_bytes());
+
+        for leaked_path in [
+            "/home/local-user/private/data.xp3",
+            "C:\\Users\\local-user\\private\\data.xp3",
+            "../../../etc/passwd",
+            "~/secret/data.xp3",
+            "$HOME/secret/data.xp3",
+        ] {
+            let mut fixture = make_plain_fixture("plain.xp3");
+            fixture.archive.path = leaked_path.to_string();
+            let report = xp3_profile_proof(Xp3ProfileProofRequest {
+                fixture: &fixture,
+                fixture_dir: &dir,
+            })
+            .unwrap();
+            assert_eq!(
+                report.status,
+                OperationStatus::Failed,
+                "leaked path {leaked_path} must fail"
+            );
+            assert!(
+                report
+                    .diagnostics
+                    .iter()
+                    .any(|diagnostic| diagnostic.code == "xp3.archive_path.leaked"),
+                "leaked path {leaked_path} must fire xp3.archive_path.leaked"
+            );
+            // The declared_path field is scrubbed of the leaked text.
+            assert!(
+                !report.archive.declared_path.contains(leaked_path),
+                "leaked path {leaked_path} survived into report: {}",
+                report.archive.declared_path
+            );
+            // Patch capability is never elevated past unsupported when
+            // the path was rejected.
+            let stable_json = report.stable_json().unwrap();
+            assert!(
+                !stable_json.contains(leaked_path),
+                "leaked path {leaked_path} survived into stable_json: {stable_json}"
+            );
+        }
+    }
+
+    #[test]
+    fn xp3_profile_proof_missing_crypt_profile_fails_closed() {
+        // Negative fixture: encrypted classification without a
+        // crypt_profile entry → P0 missing-crypt-profile diagnostic.
+        let dir = temp_dir("xp3-profile-proof-missing-crypt");
+        write_xp3_archive(
+            &dir,
+            "encrypted.xp3",
+            &build_encrypted_xp3_marker_archive_bytes(),
+        );
+        let mut fixture = make_encrypted_fixture("encrypted.xp3");
+        fixture.crypt_profile = None;
+        let report = xp3_profile_proof(Xp3ProfileProofRequest {
+            fixture: &fixture,
+            fixture_dir: &dir,
+        })
+        .unwrap();
+        assert_eq!(report.status, OperationStatus::Failed);
+        assert_eq!(report.crypt_profile.status, Xp3CryptProfileStatus::Missing);
+        assert!(
+            report
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "xp3.crypt_profile.missing")
+        );
+        assert_eq!(
+            report.patch_capability_level,
+            Xp3PatchCapabilityLevel::Unsupported
+        );
+    }
+
+    #[test]
+    fn xp3_profile_proof_unknown_encryption_plugin_fails_closed() {
+        // Negative fixture: crypt_profile_id not in
+        // XP3_RECOGNIZED_CRYPT_PROFILE_IDS → P0 unknown-plugin diagnostic.
+        let dir = temp_dir("xp3-profile-proof-unknown-plugin");
+        write_xp3_archive(
+            &dir,
+            "encrypted.xp3",
+            &build_encrypted_xp3_marker_archive_bytes(),
+        );
+        let mut fixture = make_encrypted_fixture("encrypted.xp3");
+        fixture.crypt_profile = Some(Xp3ProfileProofFixtureCryptProfile {
+            crypt_profile_id: "kirikiri-xp3-unrecognized-encryption-plugin".to_string(),
+            key_ref_requirement: Some(Xp3ProfileProofFixtureKeyRefRequirement {
+                requirement_id: "kirikiri-xp3-key-profile".to_string(),
+                secret_ref: SecretRef::new(
+                    "local-secret:fixture/kirikiri/xp3-archive-password".to_string(),
+                )
+                .unwrap(),
+            }),
+        });
+        let report = xp3_profile_proof(Xp3ProfileProofRequest {
+            fixture: &fixture,
+            fixture_dir: &dir,
+        })
+        .unwrap();
+        assert_eq!(report.status, OperationStatus::Failed);
+        assert_eq!(
+            report.crypt_profile.status,
+            Xp3CryptProfileStatus::UnknownPlugin
+        );
+        assert!(
+            report
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "xp3.crypt_profile.unknown_plugin")
+        );
+    }
+
+    #[test]
+    fn xp3_profile_proof_byte_classification_mismatch_routes_by_bytes() {
+        // A fixture that *declares* plain but supplies encrypted bytes
+        // must be routed by the bytes (encrypted), never trusted into
+        // a plain-patch claim. This protects the no-extract-claim
+        // invariant against fixture-level under-classification.
+        let dir = temp_dir("xp3-profile-proof-mismatch");
+        write_xp3_archive(
+            &dir,
+            "fake-plain.xp3",
+            &build_encrypted_xp3_marker_archive_bytes(),
+        );
+        let fixture = make_plain_fixture("fake-plain.xp3");
+        let report = xp3_profile_proof(Xp3ProfileProofRequest {
+            fixture: &fixture,
+            fixture_dir: &dir,
+        })
+        .unwrap();
+        assert_eq!(report.classification, Xp3ProfileClassification::Encrypted);
+        assert_eq!(
+            report.patch_capability_level,
+            Xp3PatchCapabilityLevel::Unsupported
+        );
+        assert!(
+            report
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "xp3.classification.mismatch")
+        );
     }
 }

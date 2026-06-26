@@ -1,0 +1,11 @@
+{
+  "schemaVersion": "0.1.0",
+  "fixtureId": "kaifuu-kirikiri-xp3-protected-executable-profile-proof",
+  "profileId": "019ed000-0000-7000-8000-000000095099",
+  "archive": {
+    "archiveId": "kirikiri-xp3-archive",
+    "path": "protected-executable.bin"
+  },
+  "expectedClassification": "unsupported_protected_executable",
+  "patchCapabilityLevel": "unsupported"
+}

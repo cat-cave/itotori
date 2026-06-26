@@ -15,13 +15,13 @@ use kaifuu_core::{
     ProfileRequest, ProofHash, RegisteredBoundedHelperProcessRequest,
     RpgMakerMvMzFixtureKeyValidationRequest, SEMANTIC_HELPER_EXECUTION_DISALLOWED, SecretRef,
     SiglusParserBoundarySmokeRequest, SiglusParserBoundarySmokeVariant, VerifyRequest,
-    atomic_write_text, fixture_helper_registry, normalize_helper_result_value,
-    parse_helper_capability, parse_hex_bytes, promote_staged_directory_no_clobber, read_json,
-    redact_for_log_or_report, redact_report_value, run_registered_bounded_helper_process,
-    run_round_trip_golden, run_siglus_known_key_parser_boundary_smoke, sha256_hash_bytes,
-    stable_json, validate_helper_registry_entry_value, validate_helper_result_value,
-    validate_offset_map_value, validate_profile_value, validate_rpg_maker_mv_mz_fixture_key,
-    write_json,
+    Xp3ProfileProofFixture, Xp3ProfileProofRequest, atomic_write_text, fixture_helper_registry,
+    normalize_helper_result_value, parse_helper_capability, parse_hex_bytes,
+    promote_staged_directory_no_clobber, read_json, redact_for_log_or_report, redact_report_value,
+    run_registered_bounded_helper_process, run_round_trip_golden,
+    run_siglus_known_key_parser_boundary_smoke, sha256_hash_bytes, stable_json,
+    validate_helper_registry_entry_value, validate_helper_result_value, validate_offset_map_value,
+    validate_profile_value, validate_rpg_maker_mv_mz_fixture_key, write_json, xp3_profile_proof,
 };
 use kaifuu_delta::{SourceProvenance, apply_delta, create_delta};
 
@@ -250,6 +250,9 @@ fn run_with_args_and_registry(
         Some("rpg-maker") => {
             run_rpg_maker_command(&args)?;
         }
+        Some("xp3") => {
+            run_xp3_command(&args)?;
+        }
         Some("profile") => {
             run_profile_command(&args, registry)?;
         }
@@ -267,7 +270,7 @@ fn run_with_args_and_registry(
         }
         _ => {
             return Err(
-                "usage: kaifuu <detect|extract|asset-inventory|patch|diff|apply|verify|golden|offset-map|helper-result|key-helper|helper-registry|key|siglus|rpg-maker|profile|capabilities|binary-patch-smoke> ..."
+                "usage: kaifuu <detect|extract|asset-inventory|patch|diff|apply|verify|golden|offset-map|helper-result|key-helper|helper-registry|key|siglus|rpg-maker|xp3|profile|capabilities|binary-patch-smoke> ..."
                     .into(),
             );
         }
@@ -713,6 +716,58 @@ fn run_siglus_command(args: &[String]) -> Result<(), Box<dyn std::error::Error>>
         _ => {
             return Err(
                 "usage: kaifuu siglus parser-boundary-smoke --scene <Scene.pck> --gameexe <Gameexe.dat> --key-request <helper-request.json> --output <report.json> [--variant parser-boundary-success|helper-required|missing-key|unsupported-opcode|out-of-profile]"
+                    .into(),
+            );
+        }
+    }
+    Ok(())
+}
+
+/// KAIFUU-038 — `kaifuu xp3 profile-proof --fixture <fixture.json> --output <report.json>`.
+///
+/// Reads a KiriKiri XP3 profile-proof fixture, classifies the referenced
+/// archive bytes (plain / encrypted / helper-required /
+/// unsupported-protected-executable), and writes a redacted proof report.
+/// The command never decrypts encrypted bytes, never extracts payloads,
+/// and never claims patch-back on anything other than plain XP3. Exits
+/// non-zero when any blocking (P0/P1) diagnostic fires so CI pipelines
+/// can gate on the proof's `status` field without re-parsing the JSON.
+fn run_xp3_command(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
+    match positional(args, 1)? {
+        "profile-proof" => {
+            let fixture_path = PathBuf::from(flag(args, "--fixture")?);
+            let output = PathBuf::from(flag(args, "--output")?);
+            let fixture: Xp3ProfileProofFixture = read_json(&fixture_path)?;
+            let fixture_dir = fixture_path
+                .parent()
+                .ok_or("fixture path must have a parent directory")?;
+            let report = xp3_profile_proof(Xp3ProfileProofRequest {
+                fixture: &fixture,
+                fixture_dir,
+            })?;
+            let redacted = report.redacted_for_report();
+            atomic_write_text(&output, &redacted.stable_json()?)?;
+            if redacted.status == kaifuu_core::OperationStatus::Failed {
+                return Err(format!(
+                    "XP3 profile proof failed: {}",
+                    redacted
+                        .diagnostics
+                        .iter()
+                        .filter(|diagnostic| diagnostic.severity.is_blocking())
+                        .map(|diagnostic| format!(
+                            "{}:{}",
+                            diagnostic.severity.as_str(),
+                            diagnostic.code
+                        ))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
+                .into());
+            }
+        }
+        _ => {
+            return Err(
+                "usage: kaifuu xp3 profile-proof --fixture <fixture.json> --output <report.json>"
                     .into(),
             );
         }
@@ -7664,5 +7719,320 @@ wait
         assert!(!serialized.contains("actual-secret"));
 
         let _ = fs::remove_dir_all(root);
+    }
+
+    // =========================================================================
+    // KAIFUU-038 — `kaifuu xp3 profile-proof` CLI tests
+    // =========================================================================
+
+    fn kirikiri_fixture_path(relative_path: &str) -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .join("fixtures/kaifuu/kirikiri")
+            .join(relative_path)
+    }
+
+    #[test]
+    fn xp3_profile_proof_command_plain_fixture_passes() {
+        let root = temp_dir("xp3-profile-proof-plain");
+        let output = root.join("plain-proof.json");
+        run_cli(&[
+            "xp3",
+            "profile-proof",
+            "--fixture",
+            kirikiri_fixture_path("xp3-profile.json").to_str().unwrap(),
+            "--output",
+            output.to_str().unwrap(),
+        ]);
+        let report: serde_json::Value = read_json(&output).unwrap();
+        assert_eq!(report["status"], "passed");
+        assert_eq!(report["classification"], "plain");
+        assert_eq!(report["patchCapabilityLevel"], "patch_back");
+        assert_eq!(report["helperRequirement"], "not_required");
+        assert_eq!(report["patchWriteAttempted"], false);
+        assert_eq!(report["archive"]["archiveId"], "kirikiri-xp3-archive");
+        assert_eq!(
+            report["fixtureId"],
+            "kaifuu-kirikiri-xp3-plain-profile-proof"
+        );
+        assert_eq!(report["profileId"], "019ed000-0000-7000-8000-000000095001");
+        assert_eq!(report["cryptProfile"]["status"], "not_required");
+        let serialized = fs::read_to_string(&output).unwrap();
+        assert!(!serialized.contains("/home/"));
+        assert!(!serialized.contains("C:\\"));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    fn run_xp3_profile_proof_cli(
+        fixture: &Path,
+        output: &Path,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        run_with_args(
+            [
+                "xp3",
+                "profile-proof",
+                "--fixture",
+                fixture.to_str().unwrap(),
+                "--output",
+                output.to_str().unwrap(),
+            ]
+            .iter()
+            .map(|arg| arg.to_string())
+            .collect(),
+        )
+    }
+
+    #[test]
+    fn xp3_profile_proof_command_encrypted_fixture_routes_without_patch_claim() {
+        // Acceptance criterion: "Unsupported cases fail before extract or
+        // patch claims are made." The CLI exits non-zero on encrypted
+        // routing and writes the redacted proof carrying the unsupported
+        // capability level.
+        let root = temp_dir("xp3-profile-proof-encrypted");
+        let output = root.join("encrypted-proof.json");
+        let result = run_xp3_profile_proof_cli(
+            &kirikiri_fixture_path("xp3-encrypted-profile.json"),
+            &output,
+        );
+        assert!(result.is_err(), "encrypted routing must exit non-zero");
+        let report: serde_json::Value = read_json(&output).unwrap();
+        assert_eq!(report["status"], "failed");
+        assert_eq!(report["classification"], "encrypted");
+        assert_eq!(report["patchCapabilityLevel"], "unsupported");
+        assert_eq!(report["patchWriteAttempted"], false);
+        assert_eq!(report["cryptProfile"]["status"], "satisfied");
+        let diagnostics = report["diagnostics"].as_array().unwrap();
+        assert!(
+            diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic["code"] == "xp3.encrypted.unsupported")
+        );
+        assert!(
+            report["semanticRemediation"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("encrypted")
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn xp3_profile_proof_command_helper_required_fixture_routes_without_patch_claim() {
+        let root = temp_dir("xp3-profile-proof-helper-required");
+        let output = root.join("helper-required-proof.json");
+        let result = run_xp3_profile_proof_cli(
+            &kirikiri_fixture_path("xp3-helper-required-profile.json"),
+            &output,
+        );
+        assert!(
+            result.is_err(),
+            "helper-required routing must exit non-zero"
+        );
+        let report: serde_json::Value = read_json(&output).unwrap();
+        assert_eq!(report["status"], "failed");
+        assert_eq!(report["classification"], "helper_required");
+        assert_eq!(report["patchCapabilityLevel"], "unsupported");
+        assert_eq!(report["helperRequirement"], "required");
+        let diagnostics = report["diagnostics"].as_array().unwrap();
+        assert!(
+            diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic["code"] == "xp3.helper_required")
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn xp3_profile_proof_command_protected_executable_fixture_routes_without_patch_claim() {
+        let root = temp_dir("xp3-profile-proof-protected-executable");
+        let output = root.join("protected-executable-proof.json");
+        let result = run_xp3_profile_proof_cli(
+            &kirikiri_fixture_path("xp3-protected-executable-profile.json"),
+            &output,
+        );
+        assert!(
+            result.is_err(),
+            "protected-executable routing must exit non-zero"
+        );
+        let report: serde_json::Value = read_json(&output).unwrap();
+        assert_eq!(report["status"], "failed");
+        assert_eq!(report["classification"], "unsupported_protected_executable");
+        assert_eq!(report["patchCapabilityLevel"], "unsupported");
+        let diagnostics = report["diagnostics"].as_array().unwrap();
+        assert!(
+            diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic["code"] == "xp3.unsupported_protected_executable")
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn xp3_profile_proof_command_missing_crypt_profile_fails_and_writes_report() {
+        let root = temp_dir("xp3-profile-proof-missing-crypt-cli");
+        let output = root.join("missing-crypt-proof.json");
+        let result = run_xp3_profile_proof_cli(
+            &kirikiri_fixture_path("negative/xp3-missing-crypt-profile.json"),
+            &output,
+        );
+        assert!(result.is_err(), "missing-crypt-profile must exit non-zero");
+        let report: serde_json::Value = read_json(&output).unwrap();
+        assert_eq!(report["status"], "failed");
+        assert_eq!(report["cryptProfile"]["status"], "missing");
+        assert!(
+            report["diagnostics"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|diagnostic| diagnostic["code"] == "xp3.crypt_profile.missing")
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn xp3_profile_proof_command_unknown_encryption_plugin_fails_and_writes_report() {
+        let root = temp_dir("xp3-profile-proof-unknown-plugin-cli");
+        let output = root.join("unknown-plugin-proof.json");
+        let result = run_xp3_profile_proof_cli(
+            &kirikiri_fixture_path("negative/xp3-unknown-encryption-plugin.json"),
+            &output,
+        );
+        assert!(result.is_err(), "unknown-plugin must exit non-zero");
+        let report: serde_json::Value = read_json(&output).unwrap();
+        assert_eq!(report["status"], "failed");
+        assert_eq!(report["cryptProfile"]["status"], "unknown_plugin");
+        assert!(
+            report["diagnostics"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|diagnostic| diagnostic["code"] == "xp3.crypt_profile.unknown_plugin")
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn xp3_profile_proof_command_leaked_archive_path_fails_and_redacts_path() {
+        let root = temp_dir("xp3-profile-proof-leaked-path-cli");
+        let output = root.join("leaked-path-proof.json");
+        let result = run_xp3_profile_proof_cli(
+            &kirikiri_fixture_path("negative/xp3-leaked-archive-path.json"),
+            &output,
+        );
+        assert!(result.is_err(), "leaked archive path must exit non-zero");
+        let serialized = fs::read_to_string(&output).unwrap();
+        let report: serde_json::Value = serde_json::from_str(&serialized).unwrap();
+        assert_eq!(report["status"], "failed");
+        assert!(
+            report["diagnostics"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|diagnostic| diagnostic["code"] == "xp3.archive_path.leaked")
+        );
+        // The literal leaked path must not survive into the report.
+        assert!(
+            !serialized.contains("/home/local-user/private/data.xp3"),
+            "leaked path survived into report: {serialized}"
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    /// KAIFUU-038 multi-game validation — exercise the proof against real
+    /// KiriKiri XP3 bytes when the engine-research scratch directory is
+    /// populated. Following the "multi-game validation" memory rule and
+    /// the spec's `KiriKiri research-only anchor; no vendored decryption
+    /// code` load-bearing rule: this test reads, classifies, and emits
+    /// the redacted proof; it never decrypts, never extracts, and never
+    /// claims patch-back on archives whose index cannot be inventoried by
+    /// the KAIFUU-095 plain reader.
+    ///
+    /// The test no-ops when the real-bytes corpus is not mounted (CI
+    /// without /scratch/itotori-research/) — public CI is satisfied by
+    /// the synthetic fixtures above.
+    #[test]
+    fn xp3_profile_proof_command_real_bytes_kirikiri_corpus_when_available() {
+        // Two real KiriKiri games. Both wear the XP3 plain magic, but the
+        // KAIFUU-095 plain inventory reader only handles flag=0 (plain
+        // index encoding) and rejects everything else as
+        // UnsupportedEncrypted. In practice these games carry compressed
+        // or encrypted directories, so the proof routes them to the
+        // `Encrypted` taxonomy and refuses to claim patch_back. This is
+        // the load-bearing protection: real KiriKiri bytes never silently
+        // produce a patch_back capability claim.
+        let real_cases: &[(&str, &str)] = &[
+            (
+                "/scratch/itotori-research/kirikiri-plain/extracted/Cum on! Bukkake Ranch! ver.1.03e [English-Uncen]/data.xp3",
+                "kaifuu-real-kirikiri-bukkake-ranch",
+            ),
+            (
+                "/scratch/itotori-research/kirikiri-encrypted/extracted/How to Raise a Wolf Girl/data.xp3",
+                "kaifuu-real-kirikiri-wolf-girl",
+            ),
+        ];
+
+        let mut exercised = 0u32;
+        for (archive_path, fixture_id) in real_cases {
+            let archive = Path::new(archive_path);
+            if !archive.is_file() {
+                continue;
+            }
+            exercised += 1;
+
+            let root = temp_dir(&format!("xp3-real-bytes-{fixture_id}"));
+            // Materialize the fixture next to a symlink pointing at the
+            // real archive — the proof's path validator rejects absolute
+            // paths so we must hand it a relative archive reference.
+            let archive_link = root.join("archive.xp3");
+            std::os::unix::fs::symlink(archive, &archive_link).unwrap();
+            let fixture_path = root.join("fixture.json");
+            let fixture_body = serde_json::json!({
+                "schemaVersion": "0.1.0",
+                "fixtureId": fixture_id,
+                "profileId": "019ed000-0000-7000-8000-000000095001",
+                "archive": {
+                    "archiveId": "kirikiri-xp3-archive",
+                    "path": "archive.xp3",
+                },
+                "expectedClassification": "plain",
+                "patchCapabilityLevel": "patch_back",
+            });
+            fs::write(&fixture_path, fixture_body.to_string()).unwrap();
+
+            let output = root.join("real-bytes-proof.json");
+            // We accept Err from the CLI here — the proof exits non-zero
+            // when the plain inventory cannot be read and the fixture
+            // overclaimed patch_back. We assert from the report contents.
+            let _ = run_xp3_profile_proof_cli(&fixture_path, &output);
+
+            let report: serde_json::Value = read_json(&output).unwrap();
+            // The proof must never claim patch-back on a real-bytes
+            // archive whose index the KAIFUU-095 reader cannot inventory.
+            assert_ne!(
+                report["patchCapabilityLevel"], "patch_back",
+                "real-bytes archive {archive_path} must never claim patch_back"
+            );
+            // Patch-write attempted is always false — the proof never
+            // writes patched bytes.
+            assert_eq!(report["patchWriteAttempted"], false);
+            // The archive hash is computed regardless of classification.
+            let archive_hash = report["archive"]["archiveHash"].as_str().unwrap();
+            assert!(archive_hash.starts_with("sha256:"));
+
+            // The absolute path must not be echoed in the report.
+            let serialized = fs::read_to_string(&output).unwrap();
+            assert!(
+                !serialized.contains(*archive_path),
+                "real-bytes absolute path leaked into report: {serialized}"
+            );
+
+            let _ = fs::remove_dir_all(root);
+        }
+
+        // Public CI without the scratch corpus is fine — the synthetic
+        // tests cover correctness; this test only adds *additional* signal
+        // when real bytes are available. Logging via println!() makes the
+        // exercised count visible in `cargo test -- --nocapture`.
+        println!("KAIFUU-038 real-bytes corpus exercised {exercised} game(s)");
     }
 }
