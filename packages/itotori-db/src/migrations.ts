@@ -232,6 +232,10 @@ export const migrations = [
     id: "0043_reviewer_queue_items",
     file: "0043_reviewer_queue_items.sql",
   },
+  {
+    id: "0044_job_dependencies",
+    file: "0044_job_dependencies.sql",
+  },
 ] as const;
 
 function migrationPath(file: string): string {

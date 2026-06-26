@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "exported_at": "2026-06-26T22:44:39.790Z",
+  "exported_at": "2026-06-26T23:27:55.176Z",
   "registries": {
     "groups": [
       {
@@ -12395,7 +12395,7 @@
       "title": "Reviewer-triggered rerun wiring",
       "kind": "feature",
       "milestone": "alpha",
-      "status": "claimed",
+      "status": "mergeable",
       "priority": "P1",
       "estimate_points": 1,
       "risk": "medium",
@@ -12406,11 +12406,11 @@
       "validation": null,
       "context": null,
       "created_at": "2026-06-26T02:53:55.155Z",
-      "updated_at": "2026-06-26T22:44:36.567Z",
+      "updated_at": "2026-06-26T23:27:41.649Z",
       "claimed_at": "2026-06-26T22:44:36.567Z",
       "done_at": null,
       "group_name": "translation-loop",
-      "status_reason": "Re-tier 2026-06-24: kept alpha under the new 4-tier framework (single-game Sweetie HD e2e set per docs/proposals/dag-retier-2026-06-24.md).",
+      "status_reason": "Re-tier 2026-06-24: kept alpha under the new 4-tier framework (single-game Sweetie HD e2e set per docs/proposals/dag-retier-2026-06-24.md).\n[2026-06-26T23:26:31.397Z] Implemented reviewer-triggered rerun scheduling via atomic reviewer action + job-chain enqueue. ReviewerQueueActionService now routes actions through applyActionAndEnqueueJobs; DB transaction applies transition, plans full draft-repair -> QA-replay -> export-regeneration -> runtime-validation chain, and enqueues all jobs with dependencies/idempotency. Added DB migration for depends_on_job_ids, dependency-aware claim gating, production batch-path coverage, rollback coverage for mid-chain enqueue failure, and payload assertions for targeting/runtime evidence. Verification passed: app/db typecheck; app Vitest reviewer-action-service, reviewer-repair-rerun-scheduler, reviewer-batch-execute; DB-backed @itotori/db tests with --require-database reviewer-queue-repository, event-queue-repository, authorization-matrix (156 Vitest tests + permission harness); vp check; audit-no-hardcoded-cost; fixtures-validate; impl-map-schema-validate; verify-toolchain-policy; vp run ts:typecheck; cargo fmt --check; cargo check --workspace. Focused audit found no P0/P1; prior P1 findings 4c8e04e4-e80d-4dc1-bb21-57cb6223b0b7 and 2e6fdc54-3b65-4650-bde3-a5ad4139e088 resolved.",
       "check_command": null,
       "ci_command": null,
       "projects": ["itotori"],
@@ -39321,6 +39321,36 @@
       "suggested_fix": null,
       "created_at": "2026-06-26T21:21:25.143Z",
       "resolved_at": "2026-06-26T21:48:17.380Z"
+    },
+    {
+      "id": "4c8e04e4-e80d-4dc1-bb21-57cb6223b0b7",
+      "node_id": "ITOTORI-084",
+      "run_id": null,
+      "severity": "P1",
+      "status": "resolved",
+      "title": "Reviewer action transition and rerun enqueue are non-atomic",
+      "path": null,
+      "line": null,
+      "evidence": "Focused audit 2026-06-26: apps/itotori/src/reviewer/action-service.ts applies repository.applyAction before scheduling, and repair-rerun-scheduler enqueues the chain one job at a time. A scheduler failure can leave a committed reviewer transition with no rerun chain or a partial dependency chain. Acceptance: reviewer transition plus full rerun chain must be committed atomically, or a same-transaction outbox/recovery mechanism must prove no externally visible partial state; add a failure test.",
+      "expected": null,
+      "suggested_fix": null,
+      "created_at": "2026-06-26T23:04:14.903Z",
+      "resolved_at": "2026-06-26T23:26:14.573Z"
+    },
+    {
+      "id": "2e6fdc54-3b65-4650-bde3-a5ad4139e088",
+      "node_id": "ITOTORI-084",
+      "run_id": null,
+      "severity": "P1",
+      "status": "resolved",
+      "title": "Reviewer rerun scheduler is optional and unwired in production action paths",
+      "path": null,
+      "line": null,
+      "evidence": "Focused audit 2026-06-26: ReviewerQueueActionService defaults deps to {}, only schedules when rerunScheduler is supplied, and repository search found ReviewerRepairRerunScheduler constructed only in tests. Existing action-service callers can still mutate reviewer actions without rerun jobs. Acceptance: production reviewer action composition must require or inject a durable scheduler backed by ItotoriEventQueueRepository, with tests covering the real API/batch action path.",
+      "expected": null,
+      "suggested_fix": null,
+      "created_at": "2026-06-26T23:04:21.786Z",
+      "resolved_at": "2026-06-26T23:26:21.898Z"
     }
   ],
   "runs": [
@@ -40631,6 +40661,18 @@
       "finished_at": "2026-06-26T22:38:51.492Z",
       "summary": "Merge recorded with squash at commit 463ea081b162bacbca929b1c0a727b77530c14ff",
       "log_path": null
+    },
+    {
+      "id": "1e546eee-ccd7-4fb4-9720-df5bf39f6d9f",
+      "node_id": "ITOTORI-084",
+      "kind": "ci",
+      "status": "passed",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-26T23:27:41.649Z",
+      "finished_at": "2026-06-26T23:27:41.649Z",
+      "summary": "Local verification passed on spec/itotori-084 commit 811d594: app/db typecheck; app reviewer Vitest; DB-backed reviewer/event/authorization tests with 156 Vitest tests plus permission harness; vp check; cost audit; fixture and impl-map validation; toolchain policy; vp run ts:typecheck; cargo fmt --check; cargo check --workspace. Focused audit found no P0/P1.\nEvidence: external_id=local-itotori-084-811d594-20260626",
+      "log_path": null
     }
   ],
   "node_notes": [
@@ -40759,6 +40801,12 @@
       "node_id": "KAIFUU-039",
       "text": "NOTIFICATION-MISSED 2026-06-26 22:40Z: playbook milestone notification for KAIFUU-039 merged/done was not sent because the tool approval policy rejected posting project workflow metadata to external ntfy without explicit user authorization. Main is pushed at afa02aa and qd marks KAIFUU-039 done.",
       "created_at": "2026-06-26T22:41:42.908Z"
+    },
+    {
+      "id": "6b321d15-d110-40a6-93c2-9e4d998456f9",
+      "node_id": "ITOTORI-084",
+      "text": "Implemented reviewer-triggered rerun scheduling via atomic reviewer action + job-chain enqueue. ReviewerQueueActionService now routes actions through applyActionAndEnqueueJobs; DB transaction applies transition, plans full draft-repair -> QA-replay -> export-regeneration -> runtime-validation chain, and enqueues all jobs with dependencies/idempotency. Added DB migration for depends_on_job_ids, dependency-aware claim gating, production batch-path coverage, rollback coverage for mid-chain enqueue failure, and payload assertions for targeting/runtime evidence. Verification passed: app/db typecheck; app Vitest reviewer-action-service, reviewer-repair-rerun-scheduler, reviewer-batch-execute; DB-backed @itotori/db tests with --require-database reviewer-queue-repository, event-queue-repository, authorization-matrix (156 Vitest tests + permission harness); vp check; audit-no-hardcoded-cost; fixtures-validate; impl-map-schema-validate; verify-toolchain-policy; vp run ts:typecheck; cargo fmt --check; cargo check --workspace. Focused audit found no P0/P1; prior P1 findings 4c8e04e4-e80d-4dc1-bb21-57cb6223b0b7 and 2e6fdc54-3b65-4650-bde3-a5ad4139e088 resolved.",
+      "created_at": "2026-06-26T23:26:31.397Z"
     }
   ]
 }

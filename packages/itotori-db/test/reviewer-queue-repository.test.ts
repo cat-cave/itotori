@@ -10,6 +10,7 @@
 import { sql } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import { localUserId, type AuthorizationActor } from "../src/authorization.js";
+import type { JobQueueInput } from "../src/repositories/event-queue-repository.js";
 import {
   ItotoriReviewerQueueRepository,
   reviewerQueueActionValues,
@@ -17,6 +18,7 @@ import {
   reviewerQueueItemStateValues,
   ReviewerQueueRepositoryError,
 } from "../src/repositories/reviewer-queue-repository.js";
+import { jobIdempotencyPolicyValues, jobQueue, jobTaskTypeValues } from "../src/schema.js";
 import { isolatedMigratedContext } from "./db-test-context.js";
 
 const localActor: AuthorizationActor = { userId: localUserId };
@@ -85,6 +87,25 @@ function baseCreate(kind: keyof typeof reviewerQueueItemKindValues = "qa") {
     summary: `reviewer queue ${kind} fixture`,
     affectedArtifactIds: [`artifact-${kind}-1`],
   } as const;
+}
+
+function rerunJobInput(overrides: Partial<JobQueueInput> = {}): JobQueueInput {
+  return {
+    jobId: "job-reviewer-084-draft-repair",
+    projectId,
+    localeBranchId,
+    jobType: jobTaskTypeValues.rerun,
+    jobName: "rerun.draft-repair",
+    queueName: "reviewer-rerun",
+    idempotency: {
+      policy: jobIdempotencyPolicyValues.idempotent,
+      key: "reviewer-084:job:draft-repair",
+    },
+    correlationId: "reviewer-rerun:reviewer-084",
+    subjectRefs: [{ subjectKind: "bridge_unit", subjectId: "qa-finding-qa-1" }],
+    payload: { reason: "reviewer_request_repair" },
+    ...overrides,
+  };
 }
 
 describe.skipIf(!process.env.DATABASE_URL)("ItotoriReviewerQueueRepository", () => {
@@ -243,6 +264,53 @@ describe.skipIf(!process.env.DATABASE_URL)("ItotoriReviewerQueueRepository", () 
       expect(reloaded?.state).toBe(reviewerQueueItemStateValues.pending);
       const transitions = await repo.loadTransitionsByItem(localActor, item.reviewItemId);
       expect(transitions).toHaveLength(0);
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("applyActionAndEnqueueJobs rolls back the reviewer transition when enqueue fails mid-chain", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      await seedProjectScope(context);
+      const repo = new ItotoriReviewerQueueRepository(context.db);
+      const item = await repo.createItem(localActor, baseCreate("qa"));
+
+      await expect(
+        repo.applyActionAndEnqueueJobs(
+          localActor,
+          {
+            reviewItemId: item.reviewItemId,
+            action: reviewerQueueActionValues.requestRepair,
+            actorUserId: localUserId,
+            expectedSourceRevisionId: sourceRevisionId,
+            metadata: { repairHint: "retry with glossary context" },
+          },
+          () => [
+            rerunJobInput(),
+            rerunJobInput({
+              jobName: "rerun.qa-replay",
+              idempotency: {
+                policy: jobIdempotencyPolicyValues.idempotent,
+                key: "reviewer-084:job:qa-replay",
+              },
+              dependsOnJobIds: ["job-reviewer-084-draft-repair"],
+            }),
+          ],
+        ),
+      ).rejects.toThrow();
+
+      const reloaded = await repo.getItem(localActor, item.reviewItemId);
+      expect(reloaded?.state).toBe(reviewerQueueItemStateValues.pending);
+      expect(reloaded?.resolvedAt).toBeNull();
+      await expect(repo.loadTransitionsByItem(localActor, item.reviewItemId)).resolves.toEqual([]);
+
+      const counts = await context.db.execute(sql`
+        select count(*)::int as job_count
+        from ${jobQueue}
+        where project_id = ${projectId}
+      `);
+      expect(counts.rows[0]).toMatchObject({ job_count: 0 });
     } finally {
       await context.close();
     }

@@ -18,6 +18,12 @@ import { and, asc, eq } from "drizzle-orm";
 import type { ItotoriDatabase } from "../connection.js";
 import { type AuthorizationActor, permissionValues, requirePermission } from "../authorization.js";
 import {
+  ItotoriEventQueueRepository,
+  type JobQueueInput,
+  type JobQueueRecord,
+  type QueueSqlExecutor,
+} from "./event-queue-repository.js";
+import {
   reviewerQueueActionValues,
   reviewerQueueItemKindValues,
   reviewerQueueItemStateValues,
@@ -141,6 +147,15 @@ export type ReviewerQueueActionResult = {
   transition: ReviewerQueueTransitionRecord;
 };
 
+export type ReviewerQueueActionJobPlanner = (
+  result: ReviewerQueueActionResult,
+) => readonly JobQueueInput[] | Promise<readonly JobQueueInput[]>;
+
+export type ReviewerQueueActionAndJobsResult = {
+  actionResult: ReviewerQueueActionResult;
+  jobs: JobQueueRecord[];
+};
+
 export type LoadReviewerQueueItemsOptions = {
   stateFilter?: ReviewerQueueItemState;
   kindFilter?: ReviewerQueueItemKind;
@@ -155,6 +170,11 @@ export interface ItotoriReviewerQueueRepositoryPort {
     actor: AuthorizationActor,
     input: ReviewerQueueActionInput,
   ): Promise<ReviewerQueueActionResult>;
+  applyActionAndEnqueueJobs(
+    actor: AuthorizationActor,
+    input: ReviewerQueueActionInput,
+    planJobs: ReviewerQueueActionJobPlanner,
+  ): Promise<ReviewerQueueActionAndJobsResult>;
   getItem(actor: AuthorizationActor, reviewItemId: string): Promise<ReviewerQueueItemRecord | null>;
   loadItemsByBranch(
     actor: AuthorizationActor,
@@ -405,108 +425,25 @@ export class ItotoriReviewerQueueRepository implements ItotoriReviewerQueueRepos
     await requirePermission(this.db, actor, permissionValues.queueManage);
     assertActionInputShape(input);
 
+    return this.db.transaction(async (tx) => applyActionInTransaction(tx, input));
+  }
+
+  async applyActionAndEnqueueJobs(
+    actor: AuthorizationActor,
+    input: ReviewerQueueActionInput,
+    planJobs: ReviewerQueueActionJobPlanner,
+  ): Promise<ReviewerQueueActionAndJobsResult> {
+    await requirePermission(this.db, actor, permissionValues.queueManage);
+    assertActionInputShape(input);
+
     return this.db.transaction(async (tx) => {
-      const existingRows = await tx
-        .select()
-        .from(reviewerQueueItems)
-        .where(eq(reviewerQueueItems.reviewItemId, input.reviewItemId))
-        .limit(1);
-      const existing = existingRows[0];
-      if (existing === undefined) {
-        throw new ReviewerQueueRepositoryError(
-          "reviewer_queue_item_not_found",
-          `reviewer queue item ${input.reviewItemId} not found`,
-        );
-      }
-
-      // The transition validator is shared with the ITOTORI-083 batch
-      // consequence preview — same input → same diagnostic. The preview
-      // service runs this same function over a fetched item snapshot
-      // before the operator confirms; the repository runs it here
-      // inside the transaction so concurrent moves are still caught by
-      // the optimistic-lock UPDATE further below.
-      const existingItem = rowToItem(existing);
-      const validation = validateReviewerQueueTransition({
-        item: existingItem,
-        action: input.action,
-        expectedSourceRevisionId: input.expectedSourceRevisionId,
-        ...(input.forcedNextState === undefined ? {} : { forcedNextState: input.forcedNextState }),
-      });
-      if (!validation.ok) {
-        throw new ReviewerQueueRepositoryError(
-          validation.code,
-          validation.message,
-          validation.diagnostics,
-        );
-      }
-      const requestedNextState = validation.nextState;
-
-      const transitionId = `reviewer-queue-transition-${randomUUID()}`;
-      const at = input.at ?? new Date();
-      const isTerminal =
-        requestedNextState === reviewerQueueItemStateValues.accepted ||
-        requestedNextState === reviewerQueueItemStateValues.rejected;
-
-      const updateRows = await tx
-        .update(reviewerQueueItems)
-        .set({
-          state: requestedNextState,
-          updatedAt: at,
-          resolvedAt: isTerminal ? at : null,
-          affectedArtifactIds:
-            input.affectedArtifactIds === undefined
-              ? existing.affectedArtifactIds
-              : input.affectedArtifactIds,
-        })
-        .where(
-          and(
-            eq(reviewerQueueItems.reviewItemId, input.reviewItemId),
-            eq(reviewerQueueItems.state, existing.state),
-            eq(reviewerQueueItems.sourceRevisionId, input.expectedSourceRevisionId),
-          ),
-        )
-        .returning();
-      const updated = updateRows[0];
-      if (updated === undefined) {
-        // Optimistic lock collision: the item moved out from under us
-        // between the SELECT and the UPDATE. Treat as invalid transition
-        // so the caller retries with a fresh read.
-        throw new ReviewerQueueRepositoryError(
-          "reviewer_queue_item_invalid_transition",
-          `reviewer queue item ${input.reviewItemId} state changed concurrently; please retry with a fresh fetch`,
-        );
-      }
-
-      const transitionRows = await tx
-        .insert(reviewerQueueTransitions)
-        .values({
-          transitionId,
-          reviewItemId: input.reviewItemId,
-          localeBranchId: existing.localeBranchId,
-          sourceRevisionId: existing.sourceRevisionId,
-          itemKind: existing.itemKind,
-          action: input.action,
-          priorState: existing.state,
-          nextState: requestedNextState,
-          actorUserId: input.actorUserId,
-          affectedArtifactIds: input.affectedArtifactIds ?? existing.affectedArtifactIds,
-          diagnostics: input.diagnostics ?? [],
-          metadata: input.metadata ?? {},
-          createdAt: at,
-        })
-        .returning();
-      const transition = transitionRows[0];
-      if (transition === undefined) {
-        throw new ReviewerQueueRepositoryError(
-          "reviewer_queue_item_not_found",
-          `reviewer queue transition ${transitionId} disappeared immediately after insert`,
-        );
-      }
-
-      return {
-        item: rowToItem(updated),
-        transition: rowToTransition(transition),
-      };
+      const actionResult = await applyActionInTransaction(tx, input);
+      const jobInputs = await planJobs(actionResult);
+      const jobs = await ItotoriEventQueueRepository.enqueueJobsInTransaction(
+        tx as unknown as QueueSqlExecutor,
+        jobInputs,
+      );
+      return { actionResult, jobs };
     });
   }
 
@@ -561,6 +498,108 @@ export class ItotoriReviewerQueueRepository implements ItotoriReviewerQueueRepos
       .orderBy(asc(reviewerQueueTransitions.createdAt));
     return rows.map(rowToTransition);
   }
+}
+
+type ReviewerQueueTransaction = Pick<ItotoriDatabase, "select" | "update" | "insert">;
+
+async function applyActionInTransaction(
+  tx: ReviewerQueueTransaction,
+  input: ReviewerQueueActionInput,
+): Promise<ReviewerQueueActionResult> {
+  const existingRows = await tx
+    .select()
+    .from(reviewerQueueItems)
+    .where(eq(reviewerQueueItems.reviewItemId, input.reviewItemId))
+    .limit(1);
+  const existing = existingRows[0];
+  if (existing === undefined) {
+    throw new ReviewerQueueRepositoryError(
+      "reviewer_queue_item_not_found",
+      `reviewer queue item ${input.reviewItemId} not found`,
+    );
+  }
+
+  // Shared with the ITOTORI-083 batch preview: same input yields the
+  // same diagnostic before this transaction writes anything.
+  const existingItem = rowToItem(existing);
+  const validation = validateReviewerQueueTransition({
+    item: existingItem,
+    action: input.action,
+    expectedSourceRevisionId: input.expectedSourceRevisionId,
+    ...(input.forcedNextState === undefined ? {} : { forcedNextState: input.forcedNextState }),
+  });
+  if (!validation.ok) {
+    throw new ReviewerQueueRepositoryError(
+      validation.code,
+      validation.message,
+      validation.diagnostics,
+    );
+  }
+  const requestedNextState = validation.nextState;
+
+  const transitionId = `reviewer-queue-transition-${randomUUID()}`;
+  const at = input.at ?? new Date();
+  const isTerminal =
+    requestedNextState === reviewerQueueItemStateValues.accepted ||
+    requestedNextState === reviewerQueueItemStateValues.rejected;
+
+  const updateRows = await tx
+    .update(reviewerQueueItems)
+    .set({
+      state: requestedNextState,
+      updatedAt: at,
+      resolvedAt: isTerminal ? at : null,
+      affectedArtifactIds:
+        input.affectedArtifactIds === undefined
+          ? existing.affectedArtifactIds
+          : input.affectedArtifactIds,
+    })
+    .where(
+      and(
+        eq(reviewerQueueItems.reviewItemId, input.reviewItemId),
+        eq(reviewerQueueItems.state, existing.state),
+        eq(reviewerQueueItems.sourceRevisionId, input.expectedSourceRevisionId),
+      ),
+    )
+    .returning();
+  const updated = updateRows[0];
+  if (updated === undefined) {
+    throw new ReviewerQueueRepositoryError(
+      "reviewer_queue_item_invalid_transition",
+      `reviewer queue item ${input.reviewItemId} state changed concurrently; please retry with a fresh fetch`,
+    );
+  }
+
+  const transitionRows = await tx
+    .insert(reviewerQueueTransitions)
+    .values({
+      transitionId,
+      reviewItemId: input.reviewItemId,
+      localeBranchId: existing.localeBranchId,
+      sourceRevisionId: existing.sourceRevisionId,
+      itemKind: existing.itemKind,
+      action: input.action,
+      priorState: existing.state,
+      nextState: requestedNextState,
+      actorUserId: input.actorUserId,
+      affectedArtifactIds: input.affectedArtifactIds ?? existing.affectedArtifactIds,
+      diagnostics: input.diagnostics ?? [],
+      metadata: input.metadata ?? {},
+      createdAt: at,
+    })
+    .returning();
+  const transition = transitionRows[0];
+  if (transition === undefined) {
+    throw new ReviewerQueueRepositoryError(
+      "reviewer_queue_item_not_found",
+      `reviewer queue transition ${transitionId} disappeared immediately after insert`,
+    );
+  }
+
+  return {
+    item: rowToItem(updated),
+    transition: rowToTransition(transition),
+  };
 }
 
 function assertCreateInput(input: CreateReviewerQueueItemInput): void {

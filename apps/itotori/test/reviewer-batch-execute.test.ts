@@ -13,6 +13,10 @@ import {
   reviewerQueueItemKindValues,
   reviewerQueueItemStateValues,
   type AuthorizationActor,
+  type ItotoriReviewerQueueRepositoryPort,
+  type JobQueueInput,
+  type ReviewerQueueActionInput,
+  type ReviewerQueueActionJobPlanner,
   type ReviewerQueueActionResult,
   type ReviewerQueueItemRecord,
 } from "@itotori/db";
@@ -26,7 +30,9 @@ import {
   ReviewerBatchActionService,
   ReviewerBatchActionServiceInputError,
   ReviewerBatchPreviewService,
+  ReviewerQueueActionService,
   reviewerBatchPreviewStatusValues,
+  reviewerTriggeredRerunJobNameValues,
   type BatchActionPayload,
   type BatchActionPayloadResolver,
   type ReviewerBatchActionRequest,
@@ -138,6 +144,39 @@ describe("ReviewerBatchActionService — happy path", () => {
     expect(result.applied.every((entry) => entry.kind === "applied")).toBe(true);
     expect(calls.map((c) => c.method)).toEqual(["approve", "approve"]);
     expect(calls.map((c) => c.reviewItemId)).toEqual([qa1.reviewItemId, qa2.reviewItemId]);
+  });
+
+  it("uses the real reviewer action service path that plans rerun jobs atomically", async () => {
+    const qa = fixturePendingQaItem("reviewer-queue-083-qa-rerun");
+    const previewService = new ReviewerBatchPreviewService(makeResolver({ [qa.reviewItemId]: qa }));
+    const plannedJobs: JobQueueInput[] = [];
+    const repo = makeAtomicActionRepo(plannedJobs);
+    const actionService = new ReviewerQueueActionService(repo);
+    const executor = new ReviewerBatchActionService({
+      previewService,
+      actionService,
+      resolvePayload: () => ({ kind: "requestRepair", repairHint: "refresh affected draft" }),
+    });
+
+    const result = await executor.execute(
+      actor,
+      {
+        action: reviewerQueueActionValues.requestRepair,
+        actorUserId: actor.userId,
+        selections: [
+          { reviewItemId: qa.reviewItemId, expectedSourceRevisionId: qa.sourceRevisionId },
+        ],
+      },
+      fixtureBatchPermissionView(),
+    );
+
+    expect(result.appliedAll).toBe(true);
+    expect(plannedJobs.map((job) => job.jobName)).toEqual([
+      reviewerTriggeredRerunJobNameValues.draftRepair,
+      reviewerTriggeredRerunJobNameValues.qaReplay,
+      reviewerTriggeredRerunJobNameValues.exportRegeneration,
+      reviewerTriggeredRerunJobNameValues.runtimeValidation,
+    ]);
   });
 });
 
@@ -391,5 +430,30 @@ function makeResult(reviewItemId: string): ReviewerQueueActionResult {
       metadata: {},
       createdAt: new Date(),
     },
+  };
+}
+
+function makeAtomicActionRepo(plannedJobs: JobQueueInput[]): ItotoriReviewerQueueRepositoryPort {
+  return {
+    createItem: vi.fn(),
+    applyAction: vi.fn(),
+    applyActionAndEnqueueJobs: vi.fn(
+      async (
+        actor: AuthorizationActor,
+        input: ReviewerQueueActionInput,
+        planJobs: ReviewerQueueActionJobPlanner,
+      ) => {
+        const actionResult = makeResult(input.reviewItemId);
+        actionResult.transition.action = input.action;
+        actionResult.transition.actorUserId = actor.userId;
+        actionResult.transition.metadata = input.metadata ?? {};
+        actionResult.transition.affectedArtifactIds = input.affectedArtifactIds ?? [];
+        plannedJobs.push(...(await planJobs(actionResult)));
+        return { actionResult, jobs: [] };
+      },
+    ),
+    getItem: vi.fn(),
+    loadItemsByBranch: vi.fn(),
+    loadTransitionsByItem: vi.fn(),
   };
 }

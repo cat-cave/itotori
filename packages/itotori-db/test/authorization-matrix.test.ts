@@ -119,6 +119,12 @@ const repositoryPermissionGateMatrix = [
     repo.enqueueJob(deniedActor, undefined as never),
   ),
   queueGate(
+    "enqueueJobs",
+    "queueManage",
+    "event-queue-repository.test.ts atomic job chain coverage",
+    (repo) => repo.enqueueJobs(deniedActor, undefined as never),
+  ),
+  queueGate(
     "appendOutboxEventWithJobs",
     "queueManage",
     "event-queue-repository.test.ts outbox plus jobs coverage",
@@ -817,6 +823,12 @@ const repositoryPermissionGateMatrix = [
     (repo) => repo.applyAction(deniedActor, undefined as never),
   ),
   reviewerQueueGate(
+    "applyActionAndEnqueueJobs",
+    "queueManage",
+    "reviewer-queue-repository.test.ts atomic reviewer action plus jobs coverage",
+    (repo) => repo.applyActionAndEnqueueJobs(deniedActor, undefined as never, undefined as never),
+  ),
+  reviewerQueueGate(
     "getItem",
     "queueRead",
     "reviewer-queue-repository.test.ts get item coverage",
@@ -932,6 +944,12 @@ describe("repository permission gate matrix", () => {
           "mutation": "ItotoriEventQueueRepository.enqueueJob",
           "requiredPermission": "queue.manage",
           "successFixture": "event-queue-repository.test.ts job coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriEventQueueRepository.enqueueJobs",
+          "requiredPermission": "queue.manage",
+          "successFixture": "event-queue-repository.test.ts atomic job chain coverage",
         },
         {
           "denialFixture": "missing permission actor user-without-required-permission",
@@ -1604,6 +1622,12 @@ describe("repository permission gate matrix", () => {
           "mutation": "ItotoriReviewerQueueRepository.applyAction",
           "requiredPermission": "queue.manage",
           "successFixture": "reviewer-queue-repository.test.ts apply action coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriReviewerQueueRepository.applyActionAndEnqueueJobs",
+          "requiredPermission": "queue.manage",
+          "successFixture": "reviewer-queue-repository.test.ts atomic reviewer action plus jobs coverage",
         },
         {
           "denialFixture": "missing permission actor user-without-required-permission",

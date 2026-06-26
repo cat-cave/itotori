@@ -354,6 +354,86 @@ describe("ItotoriEventQueueRepository", () => {
     }
   });
 
+  it("claims dependent jobs only after all dependency jobs have succeeded", async () => {
+    const context = await migratedContext();
+    try {
+      await seedProject(context.db);
+      const queue = new ItotoriEventQueueRepository(context.db);
+      await queue.enqueueJob(
+        localActor,
+        jobInput({
+          jobId: "job-rerun-draft-repair",
+          jobName: "rerun.draft-repair",
+          idempotency: {
+            policy: jobIdempotencyPolicyValues.idempotent,
+            key: "job:rerun:draft-repair",
+          },
+          priority: 40,
+        }),
+      );
+      await queue.enqueueJob(
+        localActor,
+        jobInput({
+          jobId: "job-rerun-qa-replay",
+          jobName: "rerun.qa-replay",
+          idempotency: {
+            policy: jobIdempotencyPolicyValues.idempotent,
+            key: "job:rerun:qa-replay",
+          },
+          dependsOnJobIds: ["job-rerun-draft-repair"],
+          priority: 30,
+        }),
+      );
+      await queue.enqueueJob(
+        localActor,
+        jobInput({
+          jobId: "job-rerun-export-regeneration",
+          jobName: "rerun.export-regeneration",
+          idempotency: {
+            policy: jobIdempotencyPolicyValues.idempotent,
+            key: "job:rerun:export-regeneration",
+          },
+          dependsOnJobIds: ["job-rerun-qa-replay"],
+          priority: 20,
+        }),
+      );
+      await queue.enqueueJob(
+        localActor,
+        jobInput({
+          jobId: "job-rerun-runtime-validation",
+          jobName: "rerun.runtime-validation",
+          idempotency: {
+            policy: jobIdempotencyPolicyValues.idempotent,
+            key: "job:rerun:runtime-validation",
+          },
+          dependsOnJobIds: ["job-rerun-export-regeneration"],
+          priority: 10,
+        }),
+      );
+
+      const draft = await queue.claimJobs(localActor, "worker-draft", { limit: 10 });
+      expect(draft.map((job) => job.jobId)).toEqual(["job-rerun-draft-repair"]);
+      await expect(queue.claimJobs(localActor, "worker-blocked", { limit: 10 })).resolves.toEqual(
+        [],
+      );
+
+      await queue.completeJob(localActor, "job-rerun-draft-repair", "worker-draft");
+      const qa = await queue.claimJobs(localActor, "worker-qa", { limit: 10 });
+      expect(qa.map((job) => job.jobId)).toEqual(["job-rerun-qa-replay"]);
+
+      await queue.completeJob(localActor, "job-rerun-qa-replay", "worker-qa");
+      const exported = await queue.claimJobs(localActor, "worker-export", { limit: 10 });
+      expect(exported.map((job) => job.jobId)).toEqual(["job-rerun-export-regeneration"]);
+
+      await queue.completeJob(localActor, "job-rerun-export-regeneration", "worker-export");
+      const runtime = await queue.claimJobs(localActor, "worker-runtime", { limit: 10 });
+      expect(runtime.map((job) => job.jobId)).toEqual(["job-rerun-runtime-validation"]);
+      expect(runtime[0]?.dependsOnJobIds).toEqual(["job-rerun-export-regeneration"]);
+    } finally {
+      await context.close();
+    }
+  });
+
   it("dead-letters expired job leases after the final allowed attempt", async () => {
     const context = await migratedContext();
     try {

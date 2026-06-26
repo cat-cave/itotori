@@ -10,12 +10,15 @@ import { describe, expect, it, vi } from "vitest";
 import type {
   AuthorizationActor,
   ItotoriReviewerQueueRepositoryPort,
+  JobQueueInput,
   ReviewerQueueActionInput,
+  ReviewerQueueActionJobPlanner,
   ReviewerQueueActionResult,
   ReviewerQueueItemRecord,
   ReviewerQueueTransitionRecord,
 } from "@itotori/db";
 import {
+  ReviewerQueueRepositoryError,
   reviewerQueueActionValues,
   reviewerQueueItemKindValues,
   reviewerQueueItemStateValues,
@@ -24,6 +27,7 @@ import {
   isRuntimeEvidenceItem,
   ReviewerQueueActionService,
   ReviewerQueueActionServiceInputError,
+  reviewerTriggeredRerunJobNameValues,
 } from "../src/reviewer/index.js";
 
 const actor: AuthorizationActor = { userId: "local-user" };
@@ -78,6 +82,8 @@ function transitionFixture(
 function makeStubRepo(): {
   repo: ItotoriReviewerQueueRepositoryPort;
   applyAction: ReturnType<typeof vi.fn>;
+  applyActionAndEnqueueJobs: ReturnType<typeof vi.fn>;
+  plannedJobs: JobQueueInput[];
 } {
   const applyAction = vi.fn<
     [AuthorizationActor, ReviewerQueueActionInput],
@@ -98,18 +104,30 @@ function makeStubRepo(): {
         reviewItemId: input.reviewItemId,
         action: input.action,
         actorUserId: input.actorUserId,
+        affectedArtifactIds: input.affectedArtifactIds ?? [],
         metadata: input.metadata ?? {},
       }),
     }),
   );
+  const plannedJobs: JobQueueInput[] = [];
+  const applyActionAndEnqueueJobs = vi.fn<
+    [AuthorizationActor, ReviewerQueueActionInput, ReviewerQueueActionJobPlanner],
+    Promise<{ actionResult: ReviewerQueueActionResult; jobs: [] }>
+  >();
+  applyActionAndEnqueueJobs.mockImplementation(async (actor, input, planJobs) => {
+    const actionResult = await applyAction(actor, input);
+    plannedJobs.push(...(await planJobs(actionResult)));
+    return { actionResult, jobs: [] };
+  });
   const repo: ItotoriReviewerQueueRepositoryPort = {
     createItem: vi.fn(),
     applyAction,
+    applyActionAndEnqueueJobs,
     getItem: vi.fn(),
     loadItemsByBranch: vi.fn(),
     loadTransitionsByItem: vi.fn(),
   };
-  return { repo, applyAction };
+  return { repo, applyAction, applyActionAndEnqueueJobs, plannedJobs };
 }
 
 describe("ReviewerQueueActionService", () => {
@@ -177,6 +195,72 @@ describe("ReviewerQueueActionService", () => {
       repairHint: "re-translate with tighter glossary",
       reviewerNote: "needs glossary",
     });
+  });
+
+  it("plans reviewer reruns inside the repository action composition", async () => {
+    const { repo, applyActionAndEnqueueJobs, plannedJobs } = makeStubRepo();
+    const service = new ReviewerQueueActionService(repo);
+
+    const result = await service.requestRepair(actor, {
+      reviewItemId: "reviewer-queue-rerun",
+      actorUserId: "local-user",
+      expectedSourceRevisionId: "source-revision-fixture",
+      repairHint: "targeted repair",
+    });
+
+    expect(applyActionAndEnqueueJobs).toHaveBeenCalledTimes(1);
+    expect(applyActionAndEnqueueJobs.mock.calls[0]![0]).toBe(actor);
+    expect(result.transition.action).toBe(reviewerQueueActionValues.requestRepair);
+    expect(plannedJobs.map((job) => job.jobName)).toEqual([
+      reviewerTriggeredRerunJobNameValues.draftRepair,
+      reviewerTriggeredRerunJobNameValues.qaReplay,
+      reviewerTriggeredRerunJobNameValues.exportRegeneration,
+      reviewerTriggeredRerunJobNameValues.runtimeValidation,
+    ]);
+    expect(plannedJobs.map((job) => job.dependsOnJobIds)).toEqual([
+      [],
+      [plannedJobs[0]!.jobId],
+      [plannedJobs[1]!.jobId],
+      [plannedJobs[2]!.jobId],
+    ]);
+  });
+
+  it("does not enter the repository composition when input validation fails", async () => {
+    const { repo, applyActionAndEnqueueJobs } = makeStubRepo();
+    const service = new ReviewerQueueActionService(repo);
+
+    await expect(
+      service.requestRepair(actor, {
+        reviewItemId: "reviewer-queue-invalid",
+        actorUserId: "local-user",
+        expectedSourceRevisionId: "source-revision-fixture",
+        repairHint: "",
+      }),
+    ).rejects.toBeInstanceOf(ReviewerQueueActionServiceInputError);
+
+    expect(applyActionAndEnqueueJobs).not.toHaveBeenCalled();
+  });
+
+  it("does not plan reruns when the repository denies or rejects the action", async () => {
+    const { repo, applyActionAndEnqueueJobs, plannedJobs } = makeStubRepo();
+    applyActionAndEnqueueJobs.mockRejectedValueOnce(
+      new ReviewerQueueRepositoryError(
+        "reviewer_queue_item_stale_revision",
+        "stale source revision",
+      ),
+    );
+    const service = new ReviewerQueueActionService(repo);
+
+    await expect(
+      service.requestRepair(actor, {
+        reviewItemId: "reviewer-queue-stale",
+        actorUserId: "local-user",
+        expectedSourceRevisionId: "source-revision-old",
+        repairHint: "targeted repair",
+      }),
+    ).rejects.toBeInstanceOf(ReviewerQueueRepositoryError);
+
+    expect(plannedJobs).toHaveLength(0);
   });
 
   it("updateGlossary requires termId and approvedTranslation", async () => {

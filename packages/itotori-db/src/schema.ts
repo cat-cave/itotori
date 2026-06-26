@@ -1982,6 +1982,10 @@ export const jobQueue = pgTable(
     correlationId: text("correlation_id").notNull(),
     causationId: text("causation_id"),
     subjectRefs: jsonb("subject_refs").$type<unknown[]>().notNull(),
+    dependsOnJobIds: jsonb("depends_on_job_ids")
+      .$type<string[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
     payload: jsonb("payload").$type<Record<string, unknown>>().notNull(),
     priority: integer("priority").notNull().default(0),
     availableAt: timestamp("available_at", { withTimezone: true }).notNull().defaultNow(),

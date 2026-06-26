@@ -11,10 +11,41 @@ export type {
   RejectActionInput,
   RequestRepairActionInput,
   ReviewerQueueActionCommonInput,
+  ReviewerQueueActionServiceDeps,
   ReviewerQueueActionServicePort,
   UpdateGlossaryActionInput,
   UpdateStyleActionInput,
 } from "./action-service.js";
+
+export {
+  buildReviewerTriggeredRerunJobInputs,
+  ReviewerRepairRerunScheduler,
+  reviewerTriggeredRerunJobNameValues,
+  reviewerTriggeredRerunPayloadSchemaVersion,
+  reviewerTriggeredRerunReasonCodeValues,
+  reviewerTriggeredRerunStageValues,
+} from "./repair-rerun-scheduler.js";
+export type {
+  ReviewerRepairRerunSchedulerOptions,
+  ReviewerRepairRerunSchedulerPort,
+  ReviewerTriggeredRerunJobName,
+  ReviewerTriggeredRerunPayload,
+  ReviewerTriggeredRerunPolicyVersions,
+  ReviewerTriggeredRerunQueuePort,
+  ReviewerTriggeredRerunReasonCode,
+  ReviewerTriggeredRerunScheduleResult,
+  ReviewerTriggeredRerunStage,
+} from "./repair-rerun-scheduler.js";
+export {
+  fixtureBatchRepairRerun,
+  fixturePolicyInvalidationRerun,
+  fixtureRuntimeFeedbackRerun,
+  fixtureSingleItemRepairRerun,
+  itotori084FixtureLocaleBranchId,
+  itotori084FixturePolicyVersions,
+  itotori084FixtureProjectId,
+  itotori084FixtureSourceRevisionId,
+} from "./repair-rerun-fixtures.js";
 
 // ITOTORI-082 — reviewer detail view + route loader.
 export {

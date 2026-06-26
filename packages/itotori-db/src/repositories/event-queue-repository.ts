@@ -64,6 +64,7 @@ export type JobQueueRecord = {
   correlationId: string;
   causationId: string | null;
   subjectRefs: unknown[];
+  dependsOnJobIds: string[];
   payload: QueueJsonRecord;
   priority: number;
   availableAt: Date;
@@ -116,6 +117,7 @@ export type JobQueueInput = {
   correlationId?: string;
   causationId?: string;
   subjectRefs?: unknown[];
+  dependsOnJobIds?: string[];
   payload?: QueueJsonRecord;
   priority?: number;
   availableAt?: Date;
@@ -148,7 +150,7 @@ export type QueueFailureInput = {
   retryAfterSeconds?: number;
 };
 
-type QueueSqlExecutor = {
+export type QueueSqlExecutor = {
   execute: (query: SQL) => Promise<{ rows: unknown[] }>;
 };
 
@@ -160,6 +162,10 @@ type InsertOutboxEventResult = {
 export interface ItotoriEventQueueRepositoryPort {
   appendOutboxEvent(actor: AuthorizationActor, input: OutboxEventInput): Promise<OutboxEventRecord>;
   enqueueJob(actor: AuthorizationActor, input: JobQueueInput): Promise<JobQueueRecord>;
+  enqueueJobs(
+    actor: AuthorizationActor,
+    input: readonly JobQueueInput[],
+  ): Promise<JobQueueRecord[]>;
   appendOutboxEventWithJobs(
     actor: AuthorizationActor,
     input: OutboxEventWithJobsInput,
@@ -209,6 +215,13 @@ export interface ItotoriEventQueueRepositoryPort {
 export class ItotoriEventQueueRepository implements ItotoriEventQueueRepositoryPort {
   constructor(private readonly db: ItotoriDatabase) {}
 
+  static enqueueJobsInTransaction(
+    executor: QueueSqlExecutor,
+    inputs: readonly JobQueueInput[],
+  ): Promise<JobQueueRecord[]> {
+    return enqueueJobInputsInTransaction(executor, inputs);
+  }
+
   async appendOutboxEvent(
     actor: AuthorizationActor,
     input: OutboxEventInput,
@@ -223,6 +236,16 @@ export class ItotoriEventQueueRepository implements ItotoriEventQueueRepositoryP
     return insertJob(this.db as unknown as QueueSqlExecutor, input);
   }
 
+  async enqueueJobs(
+    actor: AuthorizationActor,
+    input: readonly JobQueueInput[],
+  ): Promise<JobQueueRecord[]> {
+    await requirePermission(this.db, actor, permissionValues.queueManage);
+    return this.db.transaction(async (tx) =>
+      enqueueJobInputsInTransaction(tx as unknown as QueueSqlExecutor, input),
+    );
+  }
+
   async appendOutboxEventWithJobs(
     actor: AuthorizationActor,
     input: OutboxEventWithJobsInput,
@@ -235,8 +258,7 @@ export class ItotoriEventQueueRepository implements ItotoriEventQueueRepositoryP
       if (!outboxInsert.inserted) {
         return { outboxEvent, jobs: [] };
       }
-      const jobs: JobQueueRecord[] = [];
-      for (const jobInput of input.jobs) {
+      const linkedJobInputs = input.jobs.map((jobInput) => {
         const linkedJobInput: JobQueueInput = {
           ...jobInput,
           triggerOutboxEventId: jobInput.triggerOutboxEventId ?? outboxEvent.outboxEventId,
@@ -246,8 +268,9 @@ export class ItotoriEventQueueRepository implements ItotoriEventQueueRepositoryP
         if (linkedJobInput.sourceEventId === undefined && input.event.sourceEventId !== undefined) {
           linkedJobInput.sourceEventId = input.event.sourceEventId;
         }
-        jobs.push(await insertJob(executor, linkedJobInput));
-      }
+        return linkedJobInput;
+      });
+      const jobs = await enqueueJobInputsInTransaction(executor, linkedJobInputs);
       return { outboxEvent, jobs };
     });
   }
@@ -414,6 +437,13 @@ export class ItotoriEventQueueRepository implements ItotoriEventQueueRepositoryP
           where status in (${jobStatusValues.queued}, ${jobStatusValues.retryWaiting})
             and available_at <= now()
             and (lease_expires_at is null or lease_expires_at <= now())
+            and not exists (
+              select 1
+              from jsonb_array_elements_text(depends_on_job_ids) as dependency_ref(job_id)
+              left join ${jobQueue} dependency on dependency.job_id = dependency_ref.job_id
+              where dependency.job_id is null
+                or dependency.status <> ${jobStatusValues.succeeded}
+            )
             ${queueNameFilter}
           order by priority desc, available_at asc, created_at asc
           limit ${limit}
@@ -654,6 +684,7 @@ async function insertJob(
         correlation_id,
         causation_id,
         subject_refs,
+        depends_on_job_ids,
         payload,
         priority,
         available_at,
@@ -674,6 +705,7 @@ async function insertJob(
         ${correlationId},
         ${input.causationId ?? null},
         ${JSON.stringify(input.subjectRefs ?? [])}::jsonb,
+        ${JSON.stringify(input.dependsOnJobIds ?? [])}::jsonb,
         ${JSON.stringify(input.payload ?? {})}::jsonb,
         ${input.priority ?? 0},
         ${availableAt},
@@ -685,6 +717,17 @@ async function insertJob(
     `,
   );
   return singleJobRow(rows, jobId);
+}
+
+export async function enqueueJobInputsInTransaction(
+  executor: QueueSqlExecutor,
+  inputs: readonly JobQueueInput[],
+): Promise<JobQueueRecord[]> {
+  const jobs: JobQueueRecord[] = [];
+  for (const input of inputs) {
+    jobs.push(await insertJob(executor, input));
+  }
+  return jobs;
 }
 
 async function executeRows(
@@ -756,6 +799,7 @@ function jobFromRow(row: Record<string, unknown>): JobQueueRecord {
     correlationId: rowString(row, "correlation_id"),
     causationId: nullableRowString(row, "causation_id"),
     subjectRefs: rowArray(row, "subject_refs"),
+    dependsOnJobIds: rowArray(row, "depends_on_job_ids") as string[],
     payload: rowJsonRecord(row, "payload"),
     priority: rowNumber(row, "priority"),
     availableAt: rowDate(row, "available_at"),

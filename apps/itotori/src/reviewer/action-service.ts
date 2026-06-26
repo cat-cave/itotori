@@ -33,6 +33,7 @@ import type {
   ReviewerQueueItemRecord,
 } from "@itotori/db";
 import { reviewerQueueActionValues } from "@itotori/db";
+import { buildReviewerTriggeredRerunJobInputs } from "./repair-rerun-scheduler.js";
 
 export type ReviewerQueueActionServicePort = {
   approve(actor: AuthorizationActor, input: ApproveActionInput): Promise<ReviewerQueueActionResult>;
@@ -54,6 +55,8 @@ export type ReviewerQueueActionServicePort = {
     input: ImportRuntimeFeedbackActionInput,
   ): Promise<ReviewerQueueActionResult>;
 };
+
+export type ReviewerQueueActionServiceDeps = Record<string, never>;
 
 /**
  * Shared shape every action carries. `expectedSourceRevisionId` lets the
@@ -121,7 +124,7 @@ export class ReviewerQueueActionService implements ReviewerQueueActionServicePor
     actor: AuthorizationActor,
     input: ApproveActionInput,
   ): Promise<ReviewerQueueActionResult> {
-    return this.repository.applyAction(
+    return this.applyActionAndSchedule(
       actor,
       buildActionInput(input, reviewerQueueActionValues.approve),
     );
@@ -131,7 +134,7 @@ export class ReviewerQueueActionService implements ReviewerQueueActionServicePor
     actor: AuthorizationActor,
     input: RejectActionInput,
   ): Promise<ReviewerQueueActionResult> {
-    return this.repository.applyAction(
+    return this.applyActionAndSchedule(
       actor,
       buildActionInput(input, reviewerQueueActionValues.reject),
     );
@@ -142,7 +145,7 @@ export class ReviewerQueueActionService implements ReviewerQueueActionServicePor
     input: RequestRepairActionInput,
   ): Promise<ReviewerQueueActionResult> {
     assertNonEmpty("repairHint", input.repairHint);
-    return this.repository.applyAction(
+    return this.applyActionAndSchedule(
       actor,
       buildActionInput(input, reviewerQueueActionValues.requestRepair, {
         repairHint: input.repairHint,
@@ -156,7 +159,7 @@ export class ReviewerQueueActionService implements ReviewerQueueActionServicePor
   ): Promise<ReviewerQueueActionResult> {
     assertNonEmpty("termId", input.termId);
     assertNonEmpty("approvedTranslation", input.approvedTranslation);
-    return this.repository.applyAction(
+    return this.applyActionAndSchedule(
       actor,
       buildActionInput(input, reviewerQueueActionValues.updateGlossary, {
         termId: input.termId,
@@ -171,7 +174,7 @@ export class ReviewerQueueActionService implements ReviewerQueueActionServicePor
   ): Promise<ReviewerQueueActionResult> {
     assertNonEmpty("styleGuideVersionId", input.styleGuideVersionId);
     assertNonEmpty("ruleLabel", input.ruleLabel);
-    return this.repository.applyAction(
+    return this.applyActionAndSchedule(
       actor,
       buildActionInput(input, reviewerQueueActionValues.updateStyle, {
         styleGuideVersionId: input.styleGuideVersionId,
@@ -191,7 +194,7 @@ export class ReviewerQueueActionService implements ReviewerQueueActionServicePor
     // hashes verbatim onto the transition's metadata so the audit trail
     // captures what was imported, in addition to the persisted values
     // on the item row itself.
-    return this.repository.applyAction(
+    return this.applyActionAndSchedule(
       actor,
       buildActionInput(input, reviewerQueueActionValues.importRuntimeFeedback, {
         evidenceTier: input.evidenceTier,
@@ -199,6 +202,18 @@ export class ReviewerQueueActionService implements ReviewerQueueActionServicePor
         artifactHashes: input.artifactHashes,
       }),
     );
+  }
+
+  private async applyActionAndSchedule(
+    actor: AuthorizationActor,
+    input: ReviewerQueueActionInput,
+  ): Promise<ReviewerQueueActionResult> {
+    const result = await this.repository.applyActionAndEnqueueJobs(
+      actor,
+      input,
+      buildReviewerTriggeredRerunJobInputs,
+    );
+    return result.actionResult;
   }
 }
 
