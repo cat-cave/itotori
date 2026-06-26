@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "exported_at": "2026-06-26T21:36:12.123Z",
+  "exported_at": "2026-06-26T21:37:29.789Z",
   "registries": {
     "groups": [
       {
@@ -13814,7 +13814,7 @@
       "title": "Plain XP3 deterministic writer and rebuild",
       "kind": "feature",
       "milestone": "beta",
-      "status": "mergeable",
+      "status": "done",
       "priority": "P1",
       "estimate_points": 1,
       "risk": "medium",
@@ -13825,9 +13825,9 @@
       "validation": null,
       "context": null,
       "created_at": "2026-06-26T02:53:55.257Z",
-      "updated_at": "2026-06-26T21:33:00.537Z",
+      "updated_at": "2026-06-26T21:37:05.546Z",
       "claimed_at": "2026-06-26T21:26:49.729Z",
-      "done_at": null,
+      "done_at": "2026-06-26T21:37:05.546Z",
       "group_name": "engine-adapters",
       "status_reason": "Re-tier 2026-06-24: moved from alpha to beta — multi-engine / encrypted-variant work belongs in beta under the new 4-tier framework (per docs/proposals/dag-retier-2026-06-24.md).\n[2026-06-26T20:44:20.244Z] 2026-06-26 P1 repair: commit 128eb35fc5e9d67434fd61eacec198d6b0b3ab42 validates both entry.path and payload_relative_path before XP3 replace writes or mutates manifest metadata, and adds replace_plain_xp3_entry_rejects_tampered_payload_path_before_write regression. Verification passed: nix develop --command bash -lc 'cargo test -p kaifuu-core plain_xp3 -- --nocapture && cargo test -p kaifuu-cli xp3_ -- --nocapture && git diff --check main...HEAD'.\n[2026-06-26T21:21:33.093Z] 2026-06-26 focused audit P1 repaired on integration/kaifuu-098-verify commit 2e634b392f073b1fe264c5773c122050d42da783: compressed XP3 marker/profile bytes now route to kaifuu.unsupported_variant.packed instead of protected-executable fallback, with regression read_plain_xp3_archive_refuses_compressed_profile_with_packed_semantic_diagnostic and profile-proof compressed outcome coverage. Verification passed: nix develop --command bash -lc 'cargo test -p kaifuu-core xp3 -- --nocapture && cargo test -p kaifuu-cli xp3_ -- --nocapture'. Blocking finding a12a226c-e056-4f64-b60c-75e9d559434b resolved; P2 symlink-materialization hardening tracked separately as 70a979c0-227a-4618-b147-af685067abf1.\n[2026-06-26T21:33:00.537Z] 2026-06-26 integration verification passed on branch integration/kaifuu-098-verify at commit 8b754cd with KAIFUU repair commit 2e634b392f073b1fe264c5773c122050d42da783 included: qd check passed (.qd/logs/check-KAIFUU-098-2026-06-26T21-27-10-099Z.log) and full qd CI passed (.qd/logs/ci-KAIFUU-098-2026-06-26T21-27-43-111Z.log). qd marked node mergeable. main remains unmodified pending explicit merge approval.",
       "check_command": null,
@@ -28183,7 +28183,7 @@
       "title": "Register every pair-policy alternate capabilitySheet into globalCapabilityGuard so descriptorForPair returns supported",
       "kind": "feature",
       "milestone": null,
-      "status": "mergeable",
+      "status": "done",
       "priority": "P1",
       "estimate_points": 1,
       "risk": "medium",
@@ -28194,9 +28194,9 @@
       "validation": null,
       "context": null,
       "created_at": "2026-06-26T17:41:25.038Z",
-      "updated_at": "2026-06-26T21:05:33.469Z",
+      "updated_at": "2026-06-26T21:37:01.357Z",
       "claimed_at": "2026-06-26T20:59:44.875Z",
-      "done_at": null,
+      "done_at": "2026-06-26T21:37:01.357Z",
       "group_name": null,
       "status_reason": "[2026-06-26T20:34:21.546Z] 2026-06-26 orchestration note: two qd check attempts failed because repo qd config still pointed check-command at just check, and just check still invokes legacy scripts/spec-dag*.mjs validators against the qd-export-shaped roadmap/spec-dag.json. Focused ITOTORI-240 test passed separately. Updated qd check-command to the same broad local preflight minus obsolete spec-dag validators; larger docs/tooling cleanup remains ITOTORI-300.\n[2026-06-26T20:38:25.673Z] 2026-06-26 verification: focused subagent audit found no blocking findings. Checks: pnpm --filter @itotori/app test test/localize-sweetie-hd-stage.test.ts (23 passed), pnpm --filter @itotori/app typecheck (passed), git diff --check main...HEAD (passed). qd check run passed after check-command was corrected to enter nix develop; log .qd/logs/check-ITOTORI-240-2026-06-26T20-36-09-755Z.log.\n[2026-06-26T20:53:44.688Z] 2026-06-26 integration CI attempt on branch integration/itotori-240-verify failed in packages/itotori-db/test/catalog-recorded-importers.test.ts: CATALOG-011 spec text guard regex expects camelCase auditFocus, but current qd export uses snake_case audit_focus. CATALOG-011 node/spec text is present in qd and roadmap export. Assigned narrow test compatibility fix; not an ITOTORI-240 feature regression.\n[2026-06-26T21:05:33.469Z] 2026-06-26 integration verification passed on branch integration/itotori-240-verify at commit 84838a4: qd check run passed (.qd/logs/check-ITOTORI-240-2026-06-26T20-59-53-773Z.log) and full qd CI passed (.qd/logs/ci-ITOTORI-240-2026-06-26T21-00-26-076Z.log). qd marked node mergeable. main remains unmodified pending explicit merge approval.",
       "check_command": null,
@@ -40556,6 +40556,30 @@
       "finished_at": "2026-06-26T21:32:48.433Z",
       "summary": "ci command passed: nix develop --command bash -lc 'pnpm exec vp check && node scripts/audit-no-hardcoded-cost.mjs && just fixtures-validate && just impl-map-schema-validate && node scripts/verify-toolchain-policy.mjs && pnpm exec vp run ts:typecheck && cargo fmt --check && cargo check --workspace && just build && just db-migrate && just test && cargo clippy --workspace --all-targets --all-features -- -D warnings && cargo deny check'",
       "log_path": "/home/trevor/projects/itotori/.qd/logs/ci-KAIFUU-098-2026-06-26T21-27-43-111Z.log"
+    },
+    {
+      "id": "ea64fe9a-5620-4681-8ee1-3e5a2487356a",
+      "node_id": "ITOTORI-240",
+      "kind": "merge",
+      "status": "recorded",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-26T21:37:01.357Z",
+      "finished_at": "2026-06-26T21:37:01.357Z",
+      "summary": "Merge recorded with squash at commit 40ed2ff",
+      "log_path": null
+    },
+    {
+      "id": "ff357b12-9a29-44fe-91c8-00f4c56fb10f",
+      "node_id": "KAIFUU-098",
+      "kind": "merge",
+      "status": "recorded",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-26T21:37:05.546Z",
+      "finished_at": "2026-06-26T21:37:05.546Z",
+      "summary": "Merge recorded with squash at commit 3646975",
+      "log_path": null
     }
   ],
   "node_notes": [
