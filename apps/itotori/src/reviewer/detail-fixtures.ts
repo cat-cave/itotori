@@ -1,0 +1,530 @@
+// ITOTORI-082 — typed evidence fixtures for the reviewer detail UI.
+//
+// Every fixture mirrors the shape the detail view consumes when wired
+// to live repositories. The fixtures are exported by name so tests can
+// pin the rendered HTML against deterministic inputs, and so the route
+// loader can swap a fake context in for screenshot / snapshot tests
+// without standing up Postgres.
+//
+// Audit focus addressed by these fixtures:
+//   - Runtime evidence rows always carry `evidenceTier`, `artifactHash`,
+//     `runtimeTargetId`, and `observationEventIds` (acceptance #2). No
+//     fixture surfaces a raw `localPath`; the runtime evidence view
+//     intentionally has no such field.
+//   - Stale and denied fixtures are first-class so detail UI tests can
+//     pin the visible diagnostic copy (acceptance #4 / #3).
+
+import {
+  reviewerQueueActionValues,
+  reviewerQueueItemKindValues,
+  reviewerQueueItemStateValues,
+  type ReviewerQueueAction,
+  type ReviewerQueueItemKind,
+  type ReviewerQueueItemRecord,
+  type ReviewerQueueItemState,
+  type ReviewerQueueTransitionRecord,
+} from "@itotori/db";
+
+/**
+ * Source-unit panel data. Renders the bridge unit id, the source
+ * revision id, and the source bytes that were translated. Matches the
+ * shape carried by the localization-bridge unit catalog so the live
+ * loader can pass this through unchanged.
+ */
+export type ReviewerDetailSourceUnit = {
+  bridgeUnitId: string;
+  sourceUnitKey: string;
+  sourceRevisionId: string;
+  sourceLocale: string;
+  sourceText: string;
+  contextNote: string | null;
+};
+
+/**
+ * Draft panel data. The reviewer detail view renders the draft side-by-
+ * side with the source so the reviewer can compare them at a glance.
+ */
+export type ReviewerDetailDraft = {
+  draftId: string;
+  draftAttemptId: string;
+  targetLocale: string;
+  draftText: string;
+  approvedPatchText: string | null;
+  draftStatus: "pending_review" | "accepted" | "rejected" | "repair_requested";
+  attemptCount: number;
+};
+
+/**
+ * Locale-branch style guide policy reference. The reviewer detail UI
+ * shows the policy version id, status, and a short label so the
+ * reviewer can decide if the draft followed the active policy.
+ */
+export type ReviewerDetailPolicy = {
+  styleGuidePolicyVersionId: string;
+  styleGuidePolicyStatus: "draft" | "approved" | "stale";
+  policyLabel: string;
+  approvedAt: Date | null;
+  approverUserId: string | null;
+};
+
+/**
+ * Glossary entry reference. The reviewer detail UI renders one row per
+ * referenced term so the reviewer can confirm the draft used the
+ * approved translation.
+ */
+export type ReviewerDetailGlossaryEntry = {
+  termId: string;
+  sourceTerm: string;
+  preferredTranslation: string;
+  glossaryEntryStatus: "approved" | "proposed" | "rejected";
+};
+
+/**
+ * QA finding reference. Only includes typed refs (category, severity,
+ * finding id) — the full finding payload lives behind the finding id so
+ * the reviewer detail UI does not duplicate / drift QA copy.
+ */
+export type ReviewerDetailQaFinding = {
+  findingId: string;
+  category: "semantic_drift" | "style_adherence" | "tone_register" | "unresolved_terminology";
+  severity: "blocker" | "major" | "minor" | "info";
+  summary: string;
+};
+
+/**
+ * Runtime evidence panel data. Carries the Utsushi evidence tier,
+ * artifact hashes, runtime target id, and observation event ids
+ * verbatim. No `localPath` field exists — that is the explicit
+ * acceptance guarantee for ITOTORI-082 acceptance #2.
+ */
+export type ReviewerDetailRuntimeEvidence = {
+  evidenceKind: "text_trace" | "screenshot_artifact" | "recording_artifact" | "benchmark_finding";
+  evidenceTier: string;
+  runtimeTargetId: string;
+  observationEventIds: string[];
+  artifactHashes: string[];
+  /**
+   * Optional provider proof refs (e.g. `provider:openrouter:run-id`).
+   * Recorded verbatim — the reviewer UI does not derive these from
+   * local file paths.
+   */
+  providerProofRefs: string[];
+  summary: string;
+};
+
+/**
+ * Rationale chain for the reviewer's decision. Carries refs to upstream
+ * artifacts (model run ids, agent attempt ids, source revision id) so
+ * the reviewer can audit why the draft was produced.
+ */
+export type ReviewerDetailRationaleRef = {
+  refKind: "model_run" | "agent_attempt" | "source_revision" | "context_artifact";
+  refId: string;
+  label: string;
+};
+
+/**
+ * Lightweight summary of one prior transition log row. Renders the
+ * action, actor, prior/next state, and timestamp so reviewers see the
+ * decision history without leaving the detail page.
+ */
+export type ReviewerDetailTransition = {
+  transitionId: string;
+  action: ReviewerQueueAction;
+  priorState: ReviewerQueueItemState;
+  nextState: ReviewerQueueItemState;
+  actorUserId: string;
+  createdAt: Date;
+};
+
+/**
+ * Closed taxonomy of detail-level diagnostics the loader emits. Each
+ * code maps to a visible block on the detail UI so missing or stale
+ * context produces a banner instead of an empty panel (audit focus).
+ */
+export const reviewerDetailDiagnosticCodeValues = {
+  staleSourceRevision: "reviewer_detail_stale_source_revision",
+  missingDraft: "reviewer_detail_missing_draft",
+  missingPolicy: "reviewer_detail_missing_policy",
+  missingGlossaryRef: "reviewer_detail_missing_glossary_ref",
+  missingRuntimeEvidence: "reviewer_detail_missing_runtime_evidence",
+  missingRationale: "reviewer_detail_missing_rationale",
+  permissionDenied: "reviewer_detail_permission_denied",
+} as const;
+
+export type ReviewerDetailDiagnosticCode =
+  (typeof reviewerDetailDiagnosticCodeValues)[keyof typeof reviewerDetailDiagnosticCodeValues];
+
+export type ReviewerDetailDiagnostic = {
+  code: ReviewerDetailDiagnosticCode;
+  message: string;
+};
+
+/**
+ * Top-level reviewer detail context. Wraps every panel + the diagnostic
+ * trail so the renderer can dispatch on a single typed value.
+ *
+ * `permission` is the only async piece the loader resolves up front;
+ * when the actor lacks `queue.read`, every payload field is null and
+ * the renderer emits the denial UI without touching evidence.
+ */
+export type ReviewerDetailContext = {
+  reviewItemId: string;
+  permission: ReviewerDetailPermissionView;
+  item: ReviewerQueueItemRecord | null;
+  source: ReviewerDetailSourceUnit | null;
+  draft: ReviewerDetailDraft | null;
+  policy: ReviewerDetailPolicy | null;
+  glossary: ReviewerDetailGlossaryEntry[];
+  qaFindings: ReviewerDetailQaFinding[];
+  runtimeEvidence: ReviewerDetailRuntimeEvidence[];
+  rationaleRefs: ReviewerDetailRationaleRef[];
+  transitions: ReviewerDetailTransition[];
+  diagnostics: ReviewerDetailDiagnostic[];
+};
+
+/**
+ * Reviewer permission view. The loader resolves the queue.read /
+ * queue.manage grants for the current actor so the detail view can
+ * disable the action buttons inline; the action buttons themselves are
+ * still gated server-side by the action service.
+ */
+export type ReviewerDetailPermissionView = {
+  actorUserId: string;
+  canReadQueue: boolean;
+  canManageQueue: boolean;
+  denialReasons: string[];
+};
+
+const fixtureProjectId = "project-itotori-082";
+const fixtureLocaleBranchId = "locale-branch-itotori-082";
+const fixtureSourceRevisionId = "source-revision-itotori-082";
+const fixtureCreatedAt = new Date("2026-06-24T00:00:00Z");
+
+function makeItem(
+  itemKind: ReviewerQueueItemKind,
+  state: ReviewerQueueItemState,
+  overrides: Partial<ReviewerQueueItemRecord> = {},
+): ReviewerQueueItemRecord {
+  const isRuntime = itemKind === reviewerQueueItemKindValues.runtimeEvidence;
+  return {
+    reviewItemId: "reviewer-queue-itotori-082",
+    projectId: fixtureProjectId,
+    localeBranchId: fixtureLocaleBranchId,
+    sourceRevisionId: fixtureSourceRevisionId,
+    itemKind,
+    sourceItemRef: "fixture-source-ref",
+    state,
+    priority: 0,
+    summary: "fixture reviewer queue item",
+    affectedArtifactIds: [],
+    evidenceTier: isRuntime ? "tier-2-trace" : null,
+    observationEventIds: isRuntime ? ["observation-event-fixture-1"] : null,
+    artifactHashes: isRuntime ? ["sha256:fixture-runtime-bytes"] : null,
+    payload: {},
+    metadata: {},
+    createdByUserId: null,
+    assignedToUserId: null,
+    createdAt: fixtureCreatedAt,
+    updatedAt: fixtureCreatedAt,
+    resolvedAt: state === reviewerQueueItemStateValues.pending ? null : fixtureCreatedAt,
+    ...overrides,
+  };
+}
+
+export function sourceUnitFixture(
+  overrides: Partial<ReviewerDetailSourceUnit> = {},
+): ReviewerDetailSourceUnit {
+  return {
+    bridgeUnitId: "bridge-unit-itotori-082",
+    sourceUnitKey: "scene.001.line.001",
+    sourceRevisionId: fixtureSourceRevisionId,
+    sourceLocale: "ja-JP",
+    sourceText: "こんにちは、世界。",
+    contextNote: "Greeting in scene 1.",
+    ...overrides,
+  };
+}
+
+export function draftFixture(overrides: Partial<ReviewerDetailDraft> = {}): ReviewerDetailDraft {
+  return {
+    draftId: "draft-itotori-082",
+    draftAttemptId: "draft-attempt-itotori-082",
+    targetLocale: "en-US",
+    draftText: "Hello, world.",
+    approvedPatchText: null,
+    draftStatus: "pending_review",
+    attemptCount: 1,
+    ...overrides,
+  };
+}
+
+export function policyFixture(overrides: Partial<ReviewerDetailPolicy> = {}): ReviewerDetailPolicy {
+  return {
+    styleGuidePolicyVersionId: "style-guide-version-itotori-082",
+    styleGuidePolicyStatus: "approved",
+    policyLabel: "Sweetie HD — informal honorifics",
+    approvedAt: fixtureCreatedAt,
+    approverUserId: "local-user",
+    ...overrides,
+  };
+}
+
+export function glossaryFixture(
+  overrides: Partial<ReviewerDetailGlossaryEntry> = {},
+): ReviewerDetailGlossaryEntry {
+  return {
+    termId: "term-itotori-082",
+    sourceTerm: "世界",
+    preferredTranslation: "world",
+    glossaryEntryStatus: "approved",
+    ...overrides,
+  };
+}
+
+export function qaFindingFixture(
+  overrides: Partial<ReviewerDetailQaFinding> = {},
+): ReviewerDetailQaFinding {
+  return {
+    findingId: "qa-finding-itotori-082",
+    category: "semantic_drift",
+    severity: "major",
+    summary: "Draft drops the greeting marker.",
+    ...overrides,
+  };
+}
+
+export function runtimeTextTraceFixture(
+  overrides: Partial<ReviewerDetailRuntimeEvidence> = {},
+): ReviewerDetailRuntimeEvidence {
+  return {
+    evidenceKind: "text_trace",
+    evidenceTier: "tier-2-trace",
+    runtimeTargetId: "utsushi-runtime-target-fixture",
+    observationEventIds: ["observation-event-text-1", "observation-event-text-2"],
+    artifactHashes: ["sha256:text-trace-bytes-1"],
+    providerProofRefs: ["provider:openrouter:run-text-trace-1"],
+    summary: "Text trace covering scene 1 greeting.",
+    ...overrides,
+  };
+}
+
+export function runtimeScreenshotFixture(
+  overrides: Partial<ReviewerDetailRuntimeEvidence> = {},
+): ReviewerDetailRuntimeEvidence {
+  return {
+    evidenceKind: "screenshot_artifact",
+    evidenceTier: "tier-3-recording",
+    runtimeTargetId: "utsushi-runtime-target-fixture",
+    observationEventIds: ["observation-event-screenshot-1"],
+    artifactHashes: ["sha256:screenshot-bytes-1"],
+    providerProofRefs: [],
+    summary: "Screenshot of greeting frame after draft applied.",
+    ...overrides,
+  };
+}
+
+export function runtimeBenchmarkFixture(
+  overrides: Partial<ReviewerDetailRuntimeEvidence> = {},
+): ReviewerDetailRuntimeEvidence {
+  return {
+    evidenceKind: "benchmark_finding",
+    evidenceTier: "tier-2-trace",
+    runtimeTargetId: "utsushi-runtime-target-benchmark",
+    observationEventIds: ["observation-event-benchmark-1"],
+    artifactHashes: ["sha256:benchmark-bytes-1"],
+    providerProofRefs: [
+      "provider:openrouter:run-benchmark-1",
+      "provider:openrouter:run-benchmark-2",
+    ],
+    summary: "Benchmark run on scene 1.",
+    ...overrides,
+  };
+}
+
+export function runtimeProviderProofFixture(
+  overrides: Partial<ReviewerDetailRuntimeEvidence> = {},
+): ReviewerDetailRuntimeEvidence {
+  return {
+    evidenceKind: "recording_artifact",
+    evidenceTier: "tier-3-recording",
+    runtimeTargetId: "utsushi-runtime-target-fixture",
+    observationEventIds: ["observation-event-recording-1"],
+    artifactHashes: ["sha256:recording-bytes-1"],
+    providerProofRefs: [
+      "provider:openrouter:proof-recording-1",
+      "provider:openai:proof-recording-2",
+    ],
+    summary: "Recording artifact with provider proof refs.",
+    ...overrides,
+  };
+}
+
+export function rationaleFixture(
+  overrides: Partial<ReviewerDetailRationaleRef> = {},
+): ReviewerDetailRationaleRef {
+  return {
+    refKind: "model_run",
+    refId: "model-run-itotori-082",
+    label: "Translation model run, attempt 1",
+    ...overrides,
+  };
+}
+
+export function transitionFixture(
+  overrides: Partial<ReviewerDetailTransition> = {},
+): ReviewerDetailTransition {
+  return {
+    transitionId: "reviewer-queue-transition-itotori-082",
+    action: reviewerQueueActionValues.approve,
+    priorState: reviewerQueueItemStateValues.pending,
+    nextState: reviewerQueueItemStateValues.accepted,
+    actorUserId: "local-user",
+    createdAt: fixtureCreatedAt,
+    ...overrides,
+  };
+}
+
+export function repositoryTransitionFixture(
+  overrides: Partial<ReviewerQueueTransitionRecord> = {},
+): ReviewerQueueTransitionRecord {
+  return {
+    transitionId: "reviewer-queue-transition-itotori-082",
+    reviewItemId: "reviewer-queue-itotori-082",
+    localeBranchId: fixtureLocaleBranchId,
+    sourceRevisionId: fixtureSourceRevisionId,
+    itemKind: reviewerQueueItemKindValues.qa,
+    action: reviewerQueueActionValues.approve,
+    priorState: reviewerQueueItemStateValues.pending,
+    nextState: reviewerQueueItemStateValues.accepted,
+    actorUserId: "local-user",
+    affectedArtifactIds: [],
+    diagnostics: [],
+    metadata: {},
+    createdAt: fixtureCreatedAt,
+    ...overrides,
+  };
+}
+
+export function readyContextFixture(
+  overrides: Partial<ReviewerDetailContext> = {},
+): ReviewerDetailContext {
+  const item = makeItem(reviewerQueueItemKindValues.qa, reviewerQueueItemStateValues.pending);
+  return {
+    reviewItemId: item.reviewItemId,
+    permission: {
+      actorUserId: "local-user",
+      canReadQueue: true,
+      canManageQueue: true,
+      denialReasons: [],
+    },
+    item,
+    source: sourceUnitFixture(),
+    draft: draftFixture(),
+    policy: policyFixture(),
+    glossary: [glossaryFixture()],
+    qaFindings: [qaFindingFixture()],
+    runtimeEvidence: [
+      runtimeTextTraceFixture(),
+      runtimeScreenshotFixture(),
+      runtimeBenchmarkFixture(),
+      runtimeProviderProofFixture(),
+    ],
+    rationaleRefs: [
+      rationaleFixture(),
+      rationaleFixture({
+        refKind: "source_revision",
+        refId: fixtureSourceRevisionId,
+        label: "Source revision in scope",
+      }),
+    ],
+    transitions: [transitionFixture()],
+    diagnostics: [],
+    ...overrides,
+  };
+}
+
+export function runtimeEvidenceItemFixture(
+  overrides: Partial<ReviewerQueueItemRecord> = {},
+): ReviewerQueueItemRecord {
+  return makeItem(
+    reviewerQueueItemKindValues.runtimeEvidence,
+    reviewerQueueItemStateValues.pending,
+    overrides,
+  );
+}
+
+export function deniedContextFixture(actorUserId = "unauthorized-user"): ReviewerDetailContext {
+  return {
+    reviewItemId: "reviewer-queue-itotori-082",
+    permission: {
+      actorUserId,
+      canReadQueue: false,
+      canManageQueue: false,
+      denialReasons: [`user ${actorUserId} is missing permission queue.read`],
+    },
+    item: null,
+    source: null,
+    draft: null,
+    policy: null,
+    glossary: [],
+    qaFindings: [],
+    runtimeEvidence: [],
+    rationaleRefs: [],
+    transitions: [],
+    diagnostics: [
+      {
+        code: reviewerDetailDiagnosticCodeValues.permissionDenied,
+        message: `Reviewer detail blocked: user ${actorUserId} is missing permission queue.read.`,
+      },
+    ],
+  };
+}
+
+export function staleContextFixture(): ReviewerDetailContext {
+  const item = makeItem(reviewerQueueItemKindValues.qa, reviewerQueueItemStateValues.pending, {
+    sourceRevisionId: "source-revision-itotori-082-newer",
+  });
+  return {
+    reviewItemId: item.reviewItemId,
+    permission: {
+      actorUserId: "local-user",
+      canReadQueue: true,
+      canManageQueue: true,
+      denialReasons: [],
+    },
+    item,
+    source: sourceUnitFixture({
+      sourceRevisionId: fixtureSourceRevisionId,
+      contextNote: "Source revision in scope was superseded.",
+    }),
+    draft: null,
+    policy: null,
+    glossary: [],
+    qaFindings: [qaFindingFixture()],
+    runtimeEvidence: [],
+    rationaleRefs: [],
+    transitions: [
+      transitionFixture({
+        action: reviewerQueueActionValues.requestRepair,
+        nextState: reviewerQueueItemStateValues.repairRequested,
+      }),
+    ],
+    diagnostics: [
+      {
+        code: reviewerDetailDiagnosticCodeValues.staleSourceRevision,
+        message: `Item references source_revision=${item.sourceRevisionId} but loaded source bytes are on ${fixtureSourceRevisionId}; refusing to render draft / policy until the reviewer reloads.`,
+      },
+      {
+        code: reviewerDetailDiagnosticCodeValues.missingDraft,
+        message:
+          "No draft attempt is associated with this reviewer-queue item; nothing to compare.",
+      },
+      {
+        code: reviewerDetailDiagnosticCodeValues.missingPolicy,
+        message:
+          "Locale-branch style-guide policy version is missing; the reviewer cannot confirm policy adherence.",
+      },
+    ],
+  };
+}
