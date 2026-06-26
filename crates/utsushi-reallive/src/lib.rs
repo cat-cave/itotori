@@ -70,6 +70,31 @@
 
 pub mod gameexe;
 
+// UTSUSHI-217: in-crate `AudioEvent` carrier + sink, the audible
+// counterpart to UTSUSHI-214's headless render pipeline.
+pub mod audio;
+
+// UTSUSHI-217: typed decoders for the `.nwa` BGM / SE container and
+// the `.ovk` voice archive container.
+pub mod nwa;
+pub mod ovk;
+
+pub use audio::{
+    AUDIO_EVENT_STORE_MISS_CODE, AudioEvent, AudioEventEmitter, AudioEventKind, AudioEventPayload,
+    AudioEventStoreError, InMemoryAudioEventStore,
+};
+pub use nwa::{
+    NWA_COMPRESSION_MODE_MAX, NWA_COMPRESSION_MODE_RAW_PCM, NWA_HEADER_BYTE_LEN,
+    NWA_HEADER_TRUNCATED_CODE, NWA_OUT_OF_PROFILE_COMPRESSION_CODE, NWA_UNSUPPORTED_BPS_CODE,
+    NWA_UNSUPPORTED_CHANNELS_CODE, NwaCompressionMode, NwaDecodeError, NwaFile, NwaHeader,
+    decode_nwa, decode_nwa_header, nwa_block_table_byte_len,
+};
+pub use ovk::{
+    OGG_PAGE_MAGIC, OVK_ENTRY_BODY_OUT_OF_BOUNDS_CODE, OVK_ENTRY_BYTE_LEN,
+    OVK_ENTRY_TABLE_TRUNCATED_CODE, OVK_HEADER_BYTE_LEN, OVK_HEADER_TRUNCATED_CODE, OvkDecodeError,
+    OvkEntry, OvkFile, decode_ovk,
+};
+
 pub use gameexe::{
     GAMEEXE_SHIFT_JIS_DECODE_FAILURE_CODE, Gameexe, GameexeParseError, GameexeValue, NamaeEntry,
     SyscomLabel, SyscomVisibility, parse_into_arc as parse_gameexe_into_arc,
@@ -290,6 +315,17 @@ pub use rlop::module_str::{
     OPCODE_STRCPY, OPCODE_STRLEN, OPCODE_STRLPOS, OPCODE_STROUT, OPCODE_STRPOS, OPCODE_UPPERCASE,
     OPCODE_ZENTOHAN, STR_MODULE_ID, STR_MODULE_TYPE, STR_RLOP_COUNT, StrOpcode, StrRuntime,
     hantozen_bytes, register_str_rlops, zentohan_bytes,
+};
+
+pub use rlop::module_audio::{
+    AUDIO_RLOP_COUNT, AudioRuntime, AudioRuntimeWarning, BGM_MODULE_ID, BGM_MODULE_TYPE,
+    BgmFadeOutOp, BgmLoopOp, BgmOpcode, BgmPlayOp, BgmStatusOp, BgmStopOp, HasSeOp, KOE_MODULE_ID,
+    KOE_MODULE_TYPE, KoeOpcode, KoePlayExOp, KoePlayOp, KoeStatusOp, KoeStopOp, KoeWaitOp,
+    OPCODE_BGM_FADE_OUT, OPCODE_BGM_LOOP, OPCODE_BGM_PLAY, OPCODE_BGM_STATUS, OPCODE_BGM_STOP,
+    OPCODE_HAS_SE, OPCODE_KOE_PLAY, OPCODE_KOE_PLAY_EX, OPCODE_KOE_STATUS, OPCODE_KOE_STOP,
+    OPCODE_KOE_WAIT, OPCODE_PLAY_SE, OPCODE_WAV_LOOP, OPCODE_WAV_PLAY, OPCODE_WAV_STOP,
+    PCM_MODULE_ID, PCM_MODULE_TYPE, PcmOpcode, PlaySeOp, SE_MODULE_ID, SE_MODULE_TYPE, SeOpcode,
+    WavLoopOp, WavPlayOp, WavStopOp, register_audio_rlops,
 };
 
 pub use rlop::module_sys::{
