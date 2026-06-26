@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "exported_at": "2026-06-26T21:05:36.687Z",
+  "exported_at": "2026-06-26T21:36:12.123Z",
   "registries": {
     "groups": [
       {
@@ -13814,7 +13814,7 @@
       "title": "Plain XP3 deterministic writer and rebuild",
       "kind": "feature",
       "milestone": "beta",
-      "status": "review",
+      "status": "mergeable",
       "priority": "P1",
       "estimate_points": 1,
       "risk": "medium",
@@ -13825,11 +13825,11 @@
       "validation": null,
       "context": null,
       "created_at": "2026-06-26T02:53:55.257Z",
-      "updated_at": "2026-06-26T20:44:20.244Z",
-      "claimed_at": "2026-06-26T16:55:55.208Z",
+      "updated_at": "2026-06-26T21:33:00.537Z",
+      "claimed_at": "2026-06-26T21:26:49.729Z",
       "done_at": null,
       "group_name": "engine-adapters",
-      "status_reason": "Re-tier 2026-06-24: moved from alpha to beta — multi-engine / encrypted-variant work belongs in beta under the new 4-tier framework (per docs/proposals/dag-retier-2026-06-24.md).\n[2026-06-26T20:44:20.244Z] 2026-06-26 P1 repair: commit 128eb35fc5e9d67434fd61eacec198d6b0b3ab42 validates both entry.path and payload_relative_path before XP3 replace writes or mutates manifest metadata, and adds replace_plain_xp3_entry_rejects_tampered_payload_path_before_write regression. Verification passed: nix develop --command bash -lc 'cargo test -p kaifuu-core plain_xp3 -- --nocapture && cargo test -p kaifuu-cli xp3_ -- --nocapture && git diff --check main...HEAD'.",
+      "status_reason": "Re-tier 2026-06-24: moved from alpha to beta — multi-engine / encrypted-variant work belongs in beta under the new 4-tier framework (per docs/proposals/dag-retier-2026-06-24.md).\n[2026-06-26T20:44:20.244Z] 2026-06-26 P1 repair: commit 128eb35fc5e9d67434fd61eacec198d6b0b3ab42 validates both entry.path and payload_relative_path before XP3 replace writes or mutates manifest metadata, and adds replace_plain_xp3_entry_rejects_tampered_payload_path_before_write regression. Verification passed: nix develop --command bash -lc 'cargo test -p kaifuu-core plain_xp3 -- --nocapture && cargo test -p kaifuu-cli xp3_ -- --nocapture && git diff --check main...HEAD'.\n[2026-06-26T21:21:33.093Z] 2026-06-26 focused audit P1 repaired on integration/kaifuu-098-verify commit 2e634b392f073b1fe264c5773c122050d42da783: compressed XP3 marker/profile bytes now route to kaifuu.unsupported_variant.packed instead of protected-executable fallback, with regression read_plain_xp3_archive_refuses_compressed_profile_with_packed_semantic_diagnostic and profile-proof compressed outcome coverage. Verification passed: nix develop --command bash -lc 'cargo test -p kaifuu-core xp3 -- --nocapture && cargo test -p kaifuu-cli xp3_ -- --nocapture'. Blocking finding a12a226c-e056-4f64-b60c-75e9d559434b resolved; P2 symlink-materialization hardening tracked separately as 70a979c0-227a-4618-b147-af685067abf1.\n[2026-06-26T21:33:00.537Z] 2026-06-26 integration verification passed on branch integration/kaifuu-098-verify at commit 8b754cd with KAIFUU repair commit 2e634b392f073b1fe264c5773c122050d42da783 included: qd check passed (.qd/logs/check-KAIFUU-098-2026-06-26T21-27-10-099Z.log) and full qd CI passed (.qd/logs/ci-KAIFUU-098-2026-06-26T21-27-43-111Z.log). qd marked node mergeable. main remains unmodified pending explicit merge approval.",
       "check_command": null,
       "ci_command": null,
       "projects": ["kaifuu"],
@@ -39264,6 +39264,36 @@
       "suggested_fix": null,
       "created_at": "2026-06-26T20:37:58.855Z",
       "resolved_at": "2026-06-26T20:44:12.579Z"
+    },
+    {
+      "id": "a12a226c-e056-4f64-b60c-75e9d559434b",
+      "node_id": "KAIFUU-098",
+      "run_id": null,
+      "severity": "P1",
+      "status": "resolved",
+      "title": "Compressed XP3 profiles fall through to protected-executable diagnostic",
+      "path": null,
+      "line": null,
+      "evidence": "Focused audit found read_plain_xp3_archive only recognizes encrypted and helper-required markers before falling through to UnsupportedProtectedExecutable; existing synthetic compressed fixture uses XP3-COMPRESSED and the acceptance requires compressed-unknown profiles to fail before writes with semantic diagnostics. Current tests cover compressed entry replacement but not compressed-profile unpack/refusal.",
+      "expected": null,
+      "suggested_fix": null,
+      "created_at": "2026-06-26T21:12:48.900Z",
+      "resolved_at": "2026-06-26T21:21:19.255Z"
+    },
+    {
+      "id": "70a979c0-227a-4618-b147-af685067abf1",
+      "node_id": "KAIFUU-098",
+      "run_id": null,
+      "severity": "P2",
+      "status": "open",
+      "title": "Harden XP3 unpacked payload materialization against symlink traversal",
+      "path": null,
+      "line": null,
+      "evidence": "Focused audit follow-up: replace_plain_xp3_entry_payload and pack_plain_xp3_from_directory validate manifest-controlled relative path strings before fs::write/fs::read, but the local validate_safe_relative_path helper does not canonicalize/materialize paths. Prior traversal P1 is fixed, but symlink-aware materialization would further harden unpacked directory handling without blocking KAIFUU-098 acceptance.",
+      "expected": null,
+      "suggested_fix": null,
+      "created_at": "2026-06-26T21:21:25.143Z",
+      "resolved_at": null
     }
   ],
   "runs": [
@@ -40454,6 +40484,78 @@
       "finished_at": "2026-06-26T21:05:22.407Z",
       "summary": "ci command passed: nix develop --command bash -lc 'pnpm exec vp check && node scripts/audit-no-hardcoded-cost.mjs && just fixtures-validate && just impl-map-schema-validate && node scripts/verify-toolchain-policy.mjs && pnpm exec vp run ts:typecheck && cargo fmt --check && cargo check --workspace && just build && just db-migrate && just test && cargo clippy --workspace --all-targets --all-features -- -D warnings && cargo deny check'",
       "log_path": "/home/trevor/projects/itotori/.qd/logs/ci-ITOTORI-240-2026-06-26T21-00-26-076Z.log"
+    },
+    {
+      "id": "d562509a-6ee6-42b2-b867-dd13e7218487",
+      "node_id": "KAIFUU-098",
+      "kind": "check",
+      "status": "failed",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-26T21:09:08.583Z",
+      "finished_at": "2026-06-26T21:09:13.101Z",
+      "summary": "check command failed: nix develop --command bash -lc 'pnpm exec vp check && node scripts/audit-no-hardcoded-cost.mjs && just fixtures-validate && just impl-map-schema-validate && node scripts/verify-toolchain-policy.mjs && pnpm exec vp run ts:typecheck && cargo fmt --check && cargo check --workspace'",
+      "log_path": "/home/trevor/projects/itotori/.qd/logs/check-KAIFUU-098-2026-06-26T21-09-08-583Z.log"
+    },
+    {
+      "id": "255a25da-12c4-460b-b532-53798fbadf1f",
+      "node_id": "KAIFUU-098",
+      "kind": "check",
+      "status": "passed",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-26T21:09:59.143Z",
+      "finished_at": "2026-06-26T21:10:37.573Z",
+      "summary": "check command passed: nix develop --command bash -lc 'pnpm exec vp check && node scripts/audit-no-hardcoded-cost.mjs && just fixtures-validate && just impl-map-schema-validate && node scripts/verify-toolchain-policy.mjs && pnpm exec vp run ts:typecheck && cargo fmt --check && cargo check --workspace'",
+      "log_path": "/home/trevor/projects/itotori/.qd/logs/check-KAIFUU-098-2026-06-26T21-09-59-143Z.log"
+    },
+    {
+      "id": "1e1f4602-8b42-4c07-8760-01344bbcc002",
+      "node_id": "KAIFUU-098",
+      "kind": "check",
+      "status": "passed",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-26T21:21:47.186Z",
+      "finished_at": "2026-06-26T21:22:18.912Z",
+      "summary": "check command passed: nix develop --command bash -lc 'pnpm exec vp check && node scripts/audit-no-hardcoded-cost.mjs && just fixtures-validate && just impl-map-schema-validate && node scripts/verify-toolchain-policy.mjs && pnpm exec vp run ts:typecheck && cargo fmt --check && cargo check --workspace'",
+      "log_path": "/home/trevor/projects/itotori/.qd/logs/check-KAIFUU-098-2026-06-26T21-21-47-186Z.log"
+    },
+    {
+      "id": "0080f106-59e8-4152-830d-f16402bd60a2",
+      "node_id": "KAIFUU-098",
+      "kind": "ci",
+      "status": "failed",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-26T21:22:37.149Z",
+      "finished_at": "2026-06-26T21:26:18.369Z",
+      "summary": "ci command failed: nix develop --command bash -lc 'pnpm exec vp check && node scripts/audit-no-hardcoded-cost.mjs && just fixtures-validate && just impl-map-schema-validate && node scripts/verify-toolchain-policy.mjs && pnpm exec vp run ts:typecheck && cargo fmt --check && cargo check --workspace && just build && just db-migrate && just test && cargo clippy --workspace --all-targets --all-features -- -D warnings && cargo deny check'",
+      "log_path": "/home/trevor/projects/itotori/.qd/logs/ci-KAIFUU-098-2026-06-26T21-22-37-149Z.log"
+    },
+    {
+      "id": "85290639-7308-4125-9de0-8d50df1784b5",
+      "node_id": "KAIFUU-098",
+      "kind": "check",
+      "status": "passed",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-26T21:27:10.099Z",
+      "finished_at": "2026-06-26T21:27:32.727Z",
+      "summary": "check command passed: nix develop --command bash -lc 'pnpm exec vp check && node scripts/audit-no-hardcoded-cost.mjs && just fixtures-validate && just impl-map-schema-validate && node scripts/verify-toolchain-policy.mjs && pnpm exec vp run ts:typecheck && cargo fmt --check && cargo check --workspace'",
+      "log_path": "/home/trevor/projects/itotori/.qd/logs/check-KAIFUU-098-2026-06-26T21-27-10-099Z.log"
+    },
+    {
+      "id": "2a6cee53-e960-4783-b093-90c9302ae624",
+      "node_id": "KAIFUU-098",
+      "kind": "ci",
+      "status": "passed",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-26T21:27:43.111Z",
+      "finished_at": "2026-06-26T21:32:48.433Z",
+      "summary": "ci command passed: nix develop --command bash -lc 'pnpm exec vp check && node scripts/audit-no-hardcoded-cost.mjs && just fixtures-validate && just impl-map-schema-validate && node scripts/verify-toolchain-policy.mjs && pnpm exec vp run ts:typecheck && cargo fmt --check && cargo check --workspace && just build && just db-migrate && just test && cargo clippy --workspace --all-targets --all-features -- -D warnings && cargo deny check'",
+      "log_path": "/home/trevor/projects/itotori/.qd/logs/ci-KAIFUU-098-2026-06-26T21-27-43-111Z.log"
     }
   ],
   "node_notes": [
@@ -40528,6 +40630,18 @@
       "node_id": "ITOTORI-240",
       "text": "2026-06-26 integration verification passed on branch integration/itotori-240-verify at commit 84838a4: qd check run passed (.qd/logs/check-ITOTORI-240-2026-06-26T20-59-53-773Z.log) and full qd CI passed (.qd/logs/ci-ITOTORI-240-2026-06-26T21-00-26-076Z.log). qd marked node mergeable. main remains unmodified pending explicit merge approval.",
       "created_at": "2026-06-26T21:05:33.469Z"
+    },
+    {
+      "id": "5e20e82b-f70b-4220-b490-2709abc3dfe8",
+      "node_id": "KAIFUU-098",
+      "text": "2026-06-26 focused audit P1 repaired on integration/kaifuu-098-verify commit 2e634b392f073b1fe264c5773c122050d42da783: compressed XP3 marker/profile bytes now route to kaifuu.unsupported_variant.packed instead of protected-executable fallback, with regression read_plain_xp3_archive_refuses_compressed_profile_with_packed_semantic_diagnostic and profile-proof compressed outcome coverage. Verification passed: nix develop --command bash -lc 'cargo test -p kaifuu-core xp3 -- --nocapture && cargo test -p kaifuu-cli xp3_ -- --nocapture'. Blocking finding a12a226c-e056-4f64-b60c-75e9d559434b resolved; P2 symlink-materialization hardening tracked separately as 70a979c0-227a-4618-b147-af685067abf1.",
+      "created_at": "2026-06-26T21:21:33.093Z"
+    },
+    {
+      "id": "b2d22224-1937-467c-b41f-6e8f3c112da4",
+      "node_id": "KAIFUU-098",
+      "text": "2026-06-26 integration verification passed on branch integration/kaifuu-098-verify at commit 8b754cd with KAIFUU repair commit 2e634b392f073b1fe264c5773c122050d42da783 included: qd check passed (.qd/logs/check-KAIFUU-098-2026-06-26T21-27-10-099Z.log) and full qd CI passed (.qd/logs/ci-KAIFUU-098-2026-06-26T21-27-43-111Z.log). qd marked node mergeable. main remains unmodified pending explicit merge approval.",
+      "created_at": "2026-06-26T21:33:00.537Z"
     }
   ]
 }

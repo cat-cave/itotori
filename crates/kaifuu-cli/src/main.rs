@@ -15,13 +15,16 @@ use kaifuu_core::{
     ProfileRequest, ProofHash, RegisteredBoundedHelperProcessRequest,
     RpgMakerMvMzFixtureKeyValidationRequest, SEMANTIC_HELPER_EXECUTION_DISALLOWED, SecretRef,
     SiglusParserBoundarySmokeRequest, SiglusParserBoundarySmokeVariant, VerifyRequest,
-    Xp3ProfileProofFixture, Xp3ProfileProofRequest, atomic_write_text, fixture_helper_registry,
-    normalize_helper_result_value, parse_helper_capability, parse_hex_bytes,
-    promote_staged_directory_no_clobber, read_json, redact_for_log_or_report, redact_report_value,
+    Xp3ProfileProofFixture, Xp3ProfileProofRequest, atomic_write_text, encode_xp3,
+    fixture_helper_registry, normalize_helper_result_value, pack_plain_xp3_from_directory,
+    parse_helper_capability, parse_hex_bytes, plain_xp3_writer_capability,
+    promote_staged_directory_no_clobber, read_json, read_plain_xp3_archive,
+    redact_for_log_or_report, redact_report_value, replace_plain_xp3_entry_payload,
     run_registered_bounded_helper_process, run_round_trip_golden,
     run_siglus_known_key_parser_boundary_smoke, sha256_hash_bytes, stable_json,
-    validate_helper_registry_entry_value, validate_helper_result_value, validate_offset_map_value,
-    validate_profile_value, validate_rpg_maker_mv_mz_fixture_key, write_json, xp3_profile_proof,
+    unpack_plain_xp3_to_directory, validate_helper_registry_entry_value,
+    validate_helper_result_value, validate_offset_map_value, validate_profile_value,
+    validate_rpg_maker_mv_mz_fixture_key, write_json, xp3_profile_proof,
 };
 use kaifuu_delta::{SourceProvenance, apply_delta, create_delta};
 
@@ -723,15 +726,31 @@ fn run_siglus_command(args: &[String]) -> Result<(), Box<dyn std::error::Error>>
     Ok(())
 }
 
-/// KAIFUU-038 — `kaifuu xp3 profile-proof --fixture <fixture.json> --output <report.json>`.
+/// KAIFUU-038 / KAIFUU-098 — `kaifuu xp3` subcommands.
 ///
-/// Reads a KiriKiri XP3 profile-proof fixture, classifies the referenced
-/// archive bytes (plain / encrypted / helper-required /
-/// unsupported-protected-executable), and writes a redacted proof report.
-/// The command never decrypts encrypted bytes, never extracts payloads,
-/// and never claims patch-back on anything other than plain XP3. Exits
-/// non-zero when any blocking (P0/P1) diagnostic fires so CI pipelines
-/// can gate on the proof's `status` field without re-parsing the JSON.
+/// `profile-proof` (KAIFUU-038): reads a KiriKiri XP3 profile-proof
+/// fixture, classifies the referenced archive bytes (plain / encrypted
+/// / helper-required / unsupported-protected-executable), and writes a
+/// redacted proof report. The command never decrypts encrypted bytes,
+/// never extracts payloads, and never claims patch-back on anything
+/// other than plain XP3.
+///
+/// `unpack` / `pack` / `replace` / `writer-capability` (KAIFUU-098):
+/// expose the deterministic plain-XP3 writer surface. `unpack` lays an
+/// archive out under a directory (`manifest.json` + raw segment
+/// payloads), `pack` rebuilds an archive from such a directory, and
+/// `replace` rewrites a single allowed (uncompressed, single-segment)
+/// entry's payload — round-tripping any of these against an unchanged
+/// plain fixture produces byte-identical output (KAIFUU-098 determinism
+/// guarantee). Each non-plain input (encrypted, helper-required,
+/// protected-executable, compressed-replacement) is rejected with a
+/// `kaifuu.*` semantic diagnostic before any write side effect.
+///
+/// `writer-capability` reports the writer's capability tuple
+/// (`patch_back_mode=archive_rebuild_plain`) for orchestrator
+/// inspection.
+///
+/// Exits non-zero on any blocking diagnostic.
 fn run_xp3_command(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
     match positional(args, 1)? {
         "profile-proof" => {
@@ -765,9 +784,114 @@ fn run_xp3_command(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
                 .into());
             }
         }
+        "unpack" => {
+            let archive_path = PathBuf::from(flag(args, "--archive")?);
+            let output_dir = PathBuf::from(flag(args, "--output-dir")?);
+            let bytes = std::fs::read(&archive_path)
+                .map_err(|error| format!("read {archive_path:?}: {error}"))?;
+            let manifest = unpack_plain_xp3_to_directory(&bytes, &output_dir).map_err(
+                |error| -> Box<dyn std::error::Error> {
+                    format!("{} (semantic: {})", error, error.semantic_code()).into()
+                },
+            )?;
+            // Surface a summary to stdout so CI logs carry the entry
+            // count and variant without re-reading the manifest.
+            println!(
+                "kaifuu xp3 unpack: variant={} entries={}",
+                manifest.variant,
+                manifest.entries.len()
+            );
+        }
+        "pack" => {
+            let input_dir = PathBuf::from(flag(args, "--input-dir")?);
+            let output_path = PathBuf::from(flag(args, "--output")?);
+            let bytes = pack_plain_xp3_from_directory(&input_dir).map_err(
+                |error| -> Box<dyn std::error::Error> {
+                    format!("{} (semantic: {})", error, error.semantic_code()).into()
+                },
+            )?;
+            std::fs::write(&output_path, &bytes)
+                .map_err(|error| format!("write {output_path:?}: {error}"))?;
+            println!(
+                "kaifuu xp3 pack: bytes={} sha256={}",
+                bytes.len(),
+                sha256_hash_bytes(&bytes)
+            );
+        }
+        "replace" => {
+            let input_dir = PathBuf::from(flag(args, "--input-dir")?);
+            let entry_path = flag(args, "--entry-path")?;
+            let payload_path = PathBuf::from(flag(args, "--payload")?);
+            let payload = std::fs::read(&payload_path)
+                .map_err(|error| format!("read {payload_path:?}: {error}"))?;
+            let manifest = replace_plain_xp3_entry_payload(&input_dir, entry_path, &payload)
+                .map_err(|error| -> Box<dyn std::error::Error> {
+                    format!("{} (semantic: {})", error, error.semantic_code()).into()
+                })?;
+            let replaced = manifest
+                .entries
+                .iter()
+                .find(|entry| entry.path == entry_path)
+                .ok_or("replaced entry vanished from manifest")?;
+            println!(
+                "kaifuu xp3 replace: entry={} original_size={} archive_size={} adler32={}",
+                replaced.path,
+                replaced.original_size,
+                replaced.archive_size,
+                replaced.stored_adler32_hex.as_deref().unwrap_or("none")
+            );
+        }
+        "verify" => {
+            // KAIFUU-098 verification surface: read both the source
+            // archive and the rebuilt directory's pack output, then
+            // confirm byte-identity. Used by the CI determinism gate.
+            let source_path = PathBuf::from(flag(args, "--source")?);
+            let input_dir = PathBuf::from(flag(args, "--input-dir")?);
+            let source = std::fs::read(&source_path)
+                .map_err(|error| format!("read {source_path:?}: {error}"))?;
+            let archive =
+                read_plain_xp3_archive(&source).map_err(|error| -> Box<dyn std::error::Error> {
+                    format!("{} (semantic: {})", error, error.semantic_code()).into()
+                })?;
+            let direct_rebuild =
+                encode_xp3(&archive).map_err(|error| -> Box<dyn std::error::Error> {
+                    format!("{} (semantic: {})", error, error.semantic_code()).into()
+                })?;
+            let directory_rebuild = pack_plain_xp3_from_directory(&input_dir).map_err(
+                |error| -> Box<dyn std::error::Error> {
+                    format!("{} (semantic: {})", error, error.semantic_code()).into()
+                },
+            )?;
+            if direct_rebuild != source {
+                return Err(
+                    "encode_xp3 rebuild of source bytes did not match source (determinism violation)"
+                        .into(),
+                );
+            }
+            if directory_rebuild != source {
+                return Err(
+                    "pack_plain_xp3_from_directory rebuild did not match source (round-trip violation)"
+                        .into(),
+                );
+            }
+            println!(
+                "kaifuu xp3 verify: sha256={} bytes={} entries={}",
+                sha256_hash_bytes(&source),
+                source.len(),
+                archive.entries.len()
+            );
+        }
+        "writer-capability" => {
+            let capability = plain_xp3_writer_capability();
+            let json = stable_json(&serde_json::to_value(capability)?)?;
+            match flag_optional(args, "--output") {
+                Some(output) => atomic_write_text(&PathBuf::from(output), &json)?,
+                None => println!("{json}"),
+            }
+        }
         _ => {
             return Err(
-                "usage: kaifuu xp3 profile-proof --fixture <fixture.json> --output <report.json>"
+                "usage: kaifuu xp3 <profile-proof|unpack|pack|replace|verify|writer-capability> ..."
                     .into(),
             );
         }
@@ -8034,5 +8158,278 @@ wait
         // when real bytes are available. Logging via println!() makes the
         // exercised count visible in `cargo test -- --nocapture`.
         println!("KAIFUU-038 real-bytes corpus exercised {exercised} game(s)");
+    }
+
+    // =========================================================================
+    // KAIFUU-098 — Plain XP3 deterministic writer CLI tests
+    // =========================================================================
+
+    fn write_real_plain_xp3_fixture(dir: &Path) -> PathBuf {
+        let source = kirikiri_fixture_path("plain.xp3");
+        let staged = dir.join("plain.xp3");
+        fs::copy(&source, &staged).unwrap();
+        staged
+    }
+
+    #[test]
+    fn xp3_unpack_pack_round_trips_real_plain_fixture_byte_identical_via_cli() {
+        // Acceptance criterion (writer): unpack -> pack reproduces the
+        // source bytes for an unchanged plain fixture. Round-trips via
+        // the `kaifuu xp3 unpack` and `kaifuu xp3 pack` subcommands so
+        // the CLI surface is exercised end-to-end.
+        let root = temp_dir("xp3-unpack-pack-real-cli");
+        let staged = write_real_plain_xp3_fixture(&root);
+        let unpack_dir = root.join("unpacked");
+        let rebuilt = root.join("rebuilt.xp3");
+
+        run_cli(&[
+            "xp3",
+            "unpack",
+            "--archive",
+            staged.to_str().unwrap(),
+            "--output-dir",
+            unpack_dir.to_str().unwrap(),
+        ]);
+        assert!(unpack_dir.join("manifest.json").exists());
+
+        run_cli(&[
+            "xp3",
+            "pack",
+            "--input-dir",
+            unpack_dir.to_str().unwrap(),
+            "--output",
+            rebuilt.to_str().unwrap(),
+        ]);
+        let original = fs::read(&staged).unwrap();
+        let rebuilt_bytes = fs::read(&rebuilt).unwrap();
+        assert_eq!(
+            rebuilt_bytes, original,
+            "CLI unpack -> pack must round-trip byte-identical"
+        );
+
+        // The verify subcommand confirms the same property without us
+        // having to re-read the bytes ourselves.
+        run_cli(&[
+            "xp3",
+            "verify",
+            "--source",
+            staged.to_str().unwrap(),
+            "--input-dir",
+            unpack_dir.to_str().unwrap(),
+        ]);
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn xp3_replace_command_updates_table_and_round_trip_passes_through_inventory() {
+        // Acceptance criterion: "Replacing an allowed plain fixture file
+        // updates table metadata and verification output."
+        let root = temp_dir("xp3-replace-cli");
+        let staged = write_real_plain_xp3_fixture(&root);
+        let unpack_dir = root.join("unpacked");
+        let rebuilt = root.join("rebuilt.xp3");
+        let new_payload_path = root.join("new-intro.bin");
+        let new_payload = b"intro replaced by KAIFUU-098 writer CLI\n";
+        fs::write(&new_payload_path, new_payload).unwrap();
+
+        run_cli(&[
+            "xp3",
+            "unpack",
+            "--archive",
+            staged.to_str().unwrap(),
+            "--output-dir",
+            unpack_dir.to_str().unwrap(),
+        ]);
+        run_cli(&[
+            "xp3",
+            "replace",
+            "--input-dir",
+            unpack_dir.to_str().unwrap(),
+            "--entry-path",
+            "scenario/intro.ks",
+            "--payload",
+            new_payload_path.to_str().unwrap(),
+        ]);
+        run_cli(&[
+            "xp3",
+            "pack",
+            "--input-dir",
+            unpack_dir.to_str().unwrap(),
+            "--output",
+            rebuilt.to_str().unwrap(),
+        ]);
+
+        let inventory =
+            kaifuu_core::read_plain_xp3_inventory(&fs::read(&rebuilt).unwrap()).unwrap();
+        let intro = inventory
+            .entries
+            .iter()
+            .find(|entry| entry.path == "scenario/intro.ks")
+            .unwrap();
+        assert_eq!(intro.archive_size, new_payload.len() as u64);
+        assert_eq!(intro.original_size, new_payload.len() as u64);
+        assert_eq!(
+            intro.payload_hash.as_deref(),
+            Some(sha256_hash_bytes(new_payload).as_str())
+        );
+        let expected_adler = kaifuu_core::compute_adler32(new_payload);
+        assert_eq!(
+            intro.stored_adler32.as_deref(),
+            Some(format!("adler32:{expected_adler:08x}").as_str())
+        );
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn xp3_unpack_refuses_encrypted_fixture_with_semantic_diagnostic() {
+        // Acceptance criterion: "Encrypted ... profiles fail before
+        // writes with semantic diagnostics."
+        let root = temp_dir("xp3-unpack-encrypted-refusal");
+        let encrypted = kirikiri_fixture_path("encrypted.xp3");
+        let target = root.join("would-not-create");
+        let result = run_with_args(
+            [
+                "xp3",
+                "unpack",
+                "--archive",
+                encrypted.to_str().unwrap(),
+                "--output-dir",
+                target.to_str().unwrap(),
+            ]
+            .iter()
+            .map(|arg| arg.to_string())
+            .collect(),
+        );
+        let error = result.unwrap_err().to_string();
+        assert!(
+            error.contains("kaifuu.unsupported_variant.encrypted"),
+            "encrypted refusal must surface the semantic code: {error}"
+        );
+        assert!(
+            !target.exists(),
+            "encrypted unpack must not create the output directory"
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn xp3_unpack_refuses_helper_required_fixture_with_semantic_diagnostic() {
+        let root = temp_dir("xp3-unpack-helper-required-refusal");
+        let helper_required = kirikiri_fixture_path("helper-required.xp3");
+        let target = root.join("would-not-create");
+        let result = run_with_args(
+            [
+                "xp3",
+                "unpack",
+                "--archive",
+                helper_required.to_str().unwrap(),
+                "--output-dir",
+                target.to_str().unwrap(),
+            ]
+            .iter()
+            .map(|arg| arg.to_string())
+            .collect(),
+        );
+        let error = result.unwrap_err().to_string();
+        assert!(
+            error.contains("kaifuu.helper_required"),
+            "helper-required refusal must surface the semantic code: {error}"
+        );
+        assert!(!target.exists());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn xp3_unpack_refuses_protected_executable_fixture_with_semantic_diagnostic() {
+        let root = temp_dir("xp3-unpack-protected-executable-refusal");
+        let protected = kirikiri_fixture_path("protected-executable.bin");
+        let target = root.join("would-not-create");
+        let result = run_with_args(
+            [
+                "xp3",
+                "unpack",
+                "--archive",
+                protected.to_str().unwrap(),
+                "--output-dir",
+                target.to_str().unwrap(),
+            ]
+            .iter()
+            .map(|arg| arg.to_string())
+            .collect(),
+        );
+        let error = result.unwrap_err().to_string();
+        assert!(
+            error.contains("kaifuu.protected_executable_unsupported"),
+            "protected-executable refusal must surface the semantic code: {error}"
+        );
+        assert!(!target.exists());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn xp3_replace_refuses_compressed_entry_with_semantic_diagnostic() {
+        // Acceptance criterion: "Encrypted, compressed-unknown, or
+        // helper-required profiles fail before writes with semantic
+        // diagnostics." The CLI replace command refuses compressed
+        // entries with the matching kaifuu.unsupported_variant.packed
+        // semantic code.
+        let root = temp_dir("xp3-replace-compressed-refusal");
+        let staged = write_real_plain_xp3_fixture(&root);
+        let unpack_dir = root.join("unpacked");
+        let new_payload_path = root.join("would-require-recompression.bin");
+        fs::write(&new_payload_path, b"replacement requires recompression").unwrap();
+
+        run_cli(&[
+            "xp3",
+            "unpack",
+            "--archive",
+            staged.to_str().unwrap(),
+            "--output-dir",
+            unpack_dir.to_str().unwrap(),
+        ]);
+        let result = run_with_args(
+            [
+                "xp3",
+                "replace",
+                "--input-dir",
+                unpack_dir.to_str().unwrap(),
+                "--entry-path",
+                "scenario/compressed.ks",
+                "--payload",
+                new_payload_path.to_str().unwrap(),
+            ]
+            .iter()
+            .map(|arg| arg.to_string())
+            .collect(),
+        );
+        let error = result.unwrap_err().to_string();
+        assert!(
+            error.contains("kaifuu.unsupported_variant.packed"),
+            "compressed-replacement refusal must surface the packed semantic code: {error}"
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn xp3_writer_capability_command_emits_archive_rebuild_plain_tuple() {
+        // Acceptance criterion: "Writer capability tuple records
+        // patch_back_mode=archive_rebuild_plain". CLI exposes the tuple
+        // so orchestrator code can pattern-match without statically
+        // linking kaifuu-core.
+        let root = temp_dir("xp3-writer-capability");
+        let output = root.join("capability.json");
+        run_cli(&[
+            "xp3",
+            "writer-capability",
+            "--output",
+            output.to_str().unwrap(),
+        ]);
+        let value: serde_json::Value = read_json(&output).unwrap();
+        assert_eq!(value["patchBackMode"], "archive_rebuild_plain");
+        assert_eq!(value["variant"], "plain");
+        assert_eq!(value["adapterId"], kaifuu_core::PLAIN_XP3_WRITER_ADAPTER_ID);
+        let _ = fs::remove_dir_all(root);
     }
 }
