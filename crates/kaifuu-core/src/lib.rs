@@ -15914,6 +15914,826 @@ pub fn read_plain_xp3_inventory(bytes: &[u8]) -> Result<PlainXp3Inventory, Plain
     Ok(inventory)
 }
 
+// =========================================================================
+// KAIFUU-098 — Plain XP3 deterministic writer
+// =========================================================================
+//
+// The KAIFUU-098 writer covers the WRITE side of the plain-XP3 patch-back
+// claim. KAIFUU-038 established the read-side classification (plain /
+// encrypted / helper-required / unsupported-protected-executable) and
+// scoped patch_back to plain XP3 only. KAIFUU-098 adds the
+// `archive_rebuild_plain` write surface: take a source-fidelity manifest
+// of a plain XP3 archive (entry order, per-segment metadata, stored
+// adler32, raw segment payloads) and emit a deterministic XP3 byte
+// stream. Rebuilding from an unchanged manifest produces the same bytes
+// as the source archive — round-trip is byte-identical.
+//
+// The writer never decrypts, never re-encrypts, and never recompresses.
+// Compressed segments are passed through verbatim; the writer does not
+// claim a decompression or compression capability. Encrypted,
+// helper-required, and protected-executable inputs are rejected at
+// [`unpack_plain_xp3_to_directory`] before any write surface is exposed.
+
+/// Patch-back mode declared by a writer capability tuple.
+///
+/// KAIFUU-098 introduces [`PatchBackMode::ArchiveRebuildPlain`] as the
+/// first concrete writer surface: deterministic rebuild of a plain XP3
+/// archive from a source-fidelity manifest. No other variant is claimed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PatchBackMode {
+    /// Plain XP3 rebuild: the writer takes a manifest produced by
+    /// [`unpack_plain_xp3_to_directory`] (or constructed by hand) and
+    /// emits a byte-identical archive when the manifest is unchanged.
+    ArchiveRebuildPlain,
+}
+
+impl PatchBackMode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::ArchiveRebuildPlain => "archive_rebuild_plain",
+        }
+    }
+}
+
+/// Writer capability tuple recorded by the KAIFUU-098 plain XP3 writer.
+///
+/// Per the spec acceptance criterion: "Writer capability tuple records
+/// patch_back_mode=archive_rebuild_plain". This is a tuple (not a
+/// freeform capability map) so the orchestrator can pattern-match on the
+/// declared mode without re-parsing capability reports.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlainXp3WriterCapability {
+    pub adapter_id: &'static str,
+    pub variant: &'static str,
+    pub patch_back_mode: PatchBackMode,
+}
+
+/// Adapter id under which the KAIFUU-098 writer registers its capability
+/// tuple. Distinct from the KAIFUU-038 detector adapter id so callers can
+/// fan capability claims across read and write surfaces independently.
+pub const PLAIN_XP3_WRITER_ADAPTER_ID: &str = "kaifuu.kirikiri-xp3.plain-writer";
+
+/// Plain-XP3 variant string the writer claims patch-back for.
+pub const PLAIN_XP3_WRITER_VARIANT: &str = "plain";
+
+/// Return the writer capability tuple for the KAIFUU-098 plain XP3
+/// writer. Always declares
+/// `patch_back_mode = PatchBackMode::ArchiveRebuildPlain`; no other
+/// variant is claimed.
+pub const fn plain_xp3_writer_capability() -> PlainXp3WriterCapability {
+    PlainXp3WriterCapability {
+        adapter_id: PLAIN_XP3_WRITER_ADAPTER_ID,
+        variant: PLAIN_XP3_WRITER_VARIANT,
+        patch_back_mode: PatchBackMode::ArchiveRebuildPlain,
+    }
+}
+
+/// Source-fidelity archive structure used by the deterministic writer.
+///
+/// Unlike [`PlainXp3Inventory`] (which sorts entries by path and hashes
+/// payloads for reporting), [`PlainXp3Archive`] preserves the **source
+/// order** of entries and the raw bytes of each segment so the writer
+/// can produce a byte-identical rebuild. The struct is the canonical
+/// in-memory representation passed between [`read_plain_xp3_archive`]
+/// and [`encode_xp3`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlainXp3Archive {
+    pub schema_version: String,
+    pub variant: String,
+    pub entries: Vec<PlainXp3ArchiveEntry>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlainXp3ArchiveEntry {
+    pub path: String,
+    pub original_size: u64,
+    pub archive_size: u64,
+    /// `Some(value)` when the source File chunk carried an `adlr` chunk;
+    /// `None` otherwise. The writer preserves this faithfully — absent
+    /// adlr chunks are not synthesized.
+    pub stored_adler32: Option<u32>,
+    pub segments: Vec<PlainXp3ArchiveSegment>,
+    /// Concatenated raw segment payloads in source order. The
+    /// [`encode_xp3`] writer slices this back into segments by
+    /// [`PlainXp3ArchiveSegment::archive_size`].
+    #[serde(with = "plain_xp3_payload_serde")]
+    pub payload: Vec<u8>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlainXp3ArchiveSegment {
+    pub flags: u32,
+    pub original_size: u64,
+    pub archive_size: u64,
+}
+
+impl PlainXp3ArchiveSegment {
+    /// Returns whether the segment is marked compressed (low bit of flags).
+    /// The writer does not decompress; this is exposed so callers can
+    /// detect compressed-unknown variants before requesting a payload
+    /// replacement.
+    pub fn is_compressed(&self) -> bool {
+        self.flags & 1 != 0
+    }
+}
+
+mod plain_xp3_payload_serde {
+    use serde::{Deserialize, Deserializer, Serializer};
+
+    pub fn serialize<S: Serializer>(bytes: &[u8], serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&hex_encode(bytes))
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Vec<u8>, D::Error> {
+        let hex = String::deserialize(deserializer)?;
+        hex_decode(&hex).map_err(serde::de::Error::custom)
+    }
+
+    fn hex_encode(bytes: &[u8]) -> String {
+        let mut output = String::with_capacity(bytes.len() * 2);
+        for byte in bytes {
+            output.push_str(&format!("{byte:02x}"));
+        }
+        output
+    }
+
+    fn hex_decode(input: &str) -> Result<Vec<u8>, String> {
+        if !input.len().is_multiple_of(2) {
+            return Err("hex payload length must be even".to_string());
+        }
+        let mut output = Vec::with_capacity(input.len() / 2);
+        for index in (0..input.len()).step_by(2) {
+            let pair = &input[index..index + 2];
+            output.push(
+                u8::from_str_radix(pair, 16)
+                    .map_err(|_| format!("invalid hex byte at offset {index}"))?,
+            );
+        }
+        Ok(output)
+    }
+}
+
+/// Errors emitted by the KAIFUU-098 plain XP3 writer.
+///
+/// Each variant carries enough context for the CLI to surface a
+/// semantic diagnostic without leaking secrets or fixture paths. The
+/// `Unsupported*` variants are routed before any write side effect —
+/// the writer never opens an output file when one of those is raised.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PlainXp3WriterError {
+    /// The source bytes carry encrypted XP3 markers. The writer refuses
+    /// to surface an unpack/repack path and forwards the
+    /// `kaifuu.unsupported_variant.encrypted` semantic code.
+    UnsupportedEncrypted,
+    /// The source bytes carry helper-required markers. The writer
+    /// refuses to surface an unpack/repack path and forwards the
+    /// `kaifuu.helper_required` semantic code.
+    UnsupportedHelperRequired,
+    /// The source bytes do not start with [`XP3_PLAIN_MAGIC`] and don't
+    /// match any other recognized routing marker — the writer treats
+    /// this as an unsupported / unknown container and refuses to claim
+    /// patch-back.
+    UnsupportedProtectedExecutable,
+    /// The manifest declares a non-plain `variant` (anything other than
+    /// `"plain"`). Forwards the
+    /// `kaifuu.unsupported_engine_variant` semantic code.
+    UnsupportedVariant(String),
+    /// The manifest carries a compressed segment for an entry whose
+    /// payload has been replaced (segment archive_size no longer
+    /// matches the payload slice length). KAIFUU-098 does not claim
+    /// any recompression capability, so this is rejected with the
+    /// `kaifuu.unsupported_variant.packed` semantic code.
+    UnsupportedCompressedReplacement(String),
+    /// Inventory read error encountered while unpacking source bytes.
+    InventoryError(PlainXp3InventoryError),
+    /// Sizes recorded in the manifest do not match payload byte counts.
+    InconsistentManifest(String),
+    /// I/O error while reading or writing the directory layout.
+    Io(String),
+    /// The manifest carries a path that fails Kaifuu's safe-relative-path
+    /// rule (see [`validate_safe_relative_path`]).
+    UnsafeRelativePath(String),
+    /// Manifest JSON could not be parsed.
+    ManifestParse(String),
+}
+
+impl fmt::Display for PlainXp3WriterError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::UnsupportedEncrypted => formatter.write_str(
+                "encrypted XP3 archives are not writable by the plain-XP3 writer (semantic: kaifuu.unsupported_variant.encrypted)",
+            ),
+            Self::UnsupportedHelperRequired => formatter.write_str(
+                "helper-required XP3 archives are not writable by the plain-XP3 writer (semantic: kaifuu.helper_required)",
+            ),
+            Self::UnsupportedProtectedExecutable => formatter.write_str(
+                "protected-executable / unknown XP3 containers are not writable (semantic: kaifuu.protected_executable_unsupported)",
+            ),
+            Self::UnsupportedVariant(variant) => write!(
+                formatter,
+                "manifest variant {variant:?} is not supported by the plain-XP3 writer (semantic: kaifuu.unsupported_engine_variant)"
+            ),
+            Self::UnsupportedCompressedReplacement(path) => write!(
+                formatter,
+                "compressed XP3 entry {path:?} cannot have its payload replaced — the writer does not claim recompression (semantic: kaifuu.unsupported_variant.packed)"
+            ),
+            Self::InventoryError(error) => write!(formatter, "plain XP3 inventory error: {error}"),
+            Self::InconsistentManifest(message) => {
+                write!(formatter, "inconsistent plain XP3 manifest: {message}")
+            }
+            Self::Io(message) => write!(formatter, "plain XP3 writer I/O error: {message}"),
+            Self::UnsafeRelativePath(path) => {
+                write!(formatter, "unsafe relative manifest path {path:?}")
+            }
+            Self::ManifestParse(message) => {
+                write!(formatter, "plain XP3 manifest parse error: {message}")
+            }
+        }
+    }
+}
+
+impl std::error::Error for PlainXp3WriterError {}
+
+impl PlainXp3WriterError {
+    /// Semantic code (one of the existing `SEMANTIC_*` constants) that
+    /// a CLI / orchestrator diagnostic should surface for the error.
+    pub fn semantic_code(&self) -> &'static str {
+        match self {
+            Self::UnsupportedEncrypted => SEMANTIC_UNSUPPORTED_VARIANT_ENCRYPTED,
+            Self::UnsupportedHelperRequired => SEMANTIC_HELPER_REQUIRED,
+            Self::UnsupportedProtectedExecutable => SEMANTIC_PROTECTED_EXECUTABLE_UNSUPPORTED,
+            Self::UnsupportedVariant(_) => SEMANTIC_UNSUPPORTED_ENGINE_VARIANT,
+            Self::UnsupportedCompressedReplacement(_) => SEMANTIC_UNSUPPORTED_VARIANT_PACKED,
+            Self::InventoryError(_)
+            | Self::InconsistentManifest(_)
+            | Self::Io(_)
+            | Self::UnsafeRelativePath(_)
+            | Self::ManifestParse(_) => "kaifuu.plain_xp3_writer.error",
+        }
+    }
+}
+
+/// Plain-XP3 manifest variant identifier written to disk.
+pub const PLAIN_XP3_MANIFEST_VARIANT: &str = "plain";
+
+/// Plain-XP3 manifest schema version.
+pub const PLAIN_XP3_MANIFEST_SCHEMA_VERSION: &str = "0.1.0";
+
+/// Read a plain XP3 archive into a source-fidelity [`PlainXp3Archive`]
+/// suitable for byte-identical rebuild.
+///
+/// Refuses encrypted / helper-required / protected-executable inputs
+/// before exposing any write surface — callers can rely on the
+/// `Unsupported*` errors to gate downstream patch-back claims.
+pub fn read_plain_xp3_archive(bytes: &[u8]) -> Result<PlainXp3Archive, PlainXp3WriterError> {
+    if !bytes.starts_with(XP3_PLAIN_MAGIC) {
+        if has_legacy_xp3_encrypted_marker(bytes) {
+            return Err(PlainXp3WriterError::UnsupportedEncrypted);
+        }
+        if has_legacy_xp3_helper_required_marker(bytes) {
+            return Err(PlainXp3WriterError::UnsupportedHelperRequired);
+        }
+        return Err(PlainXp3WriterError::UnsupportedProtectedExecutable);
+    }
+
+    let index_offset = read_le_u64(bytes, XP3_PLAIN_MAGIC.len(), "index offset")
+        .map_err(PlainXp3WriterError::InventoryError)?;
+    let index_offset = usize::try_from(index_offset).map_err(|_| {
+        PlainXp3WriterError::InventoryError(PlainXp3InventoryError::InvalidOffset("index"))
+    })?;
+    if index_offset >= bytes.len() {
+        return Err(PlainXp3WriterError::InventoryError(
+            PlainXp3InventoryError::InvalidOffset("index"),
+        ));
+    }
+
+    let index_encoding = *bytes
+        .get(index_offset)
+        .ok_or(PlainXp3WriterError::InventoryError(
+            PlainXp3InventoryError::Truncated("index encoding"),
+        ))?;
+    if index_encoding != 0 {
+        return Err(PlainXp3WriterError::InventoryError(
+            PlainXp3InventoryError::UnsupportedIndexEncoding(index_encoding),
+        ));
+    }
+    let index_size = read_le_u64(bytes, index_offset + 1, "index size")
+        .map_err(PlainXp3WriterError::InventoryError)?;
+    let index_start = index_offset
+        .checked_add(9)
+        .ok_or(PlainXp3WriterError::InventoryError(
+            PlainXp3InventoryError::InvalidOffset("index start"),
+        ))?;
+    let index_size = usize::try_from(index_size).map_err(|_| {
+        PlainXp3WriterError::InventoryError(PlainXp3InventoryError::InvalidOffset("index size"))
+    })?;
+    let index_end = checked_end(index_start, index_size, bytes.len(), "index")
+        .map_err(PlainXp3WriterError::InventoryError)?;
+
+    let mut cursor = index_start;
+    let mut entries: Vec<PlainXp3ArchiveEntry> = Vec::new();
+    let mut seen_paths: HashSet<String> = HashSet::new();
+    while cursor < index_end {
+        let chunk_name = read_chunk_name(bytes, cursor, "index chunk name")
+            .map_err(PlainXp3WriterError::InventoryError)?;
+        let chunk_size = read_le_u64(bytes, cursor + 4, "index chunk size")
+            .map_err(PlainXp3WriterError::InventoryError)?;
+        let content_start = cursor + 12;
+        let content_size = usize::try_from(chunk_size).map_err(|_| {
+            PlainXp3WriterError::InventoryError(PlainXp3InventoryError::InvalidOffset(
+                "index chunk size",
+            ))
+        })?;
+        let content_end = checked_end(content_start, content_size, index_end, "index chunk")
+            .map_err(PlainXp3WriterError::InventoryError)?;
+        if chunk_name == *b"File" {
+            let chunk = parse_xp3_file_chunk(bytes, content_start, content_end)
+                .map_err(PlainXp3WriterError::InventoryError)?;
+            let path = chunk.path.ok_or_else(|| {
+                PlainXp3WriterError::InventoryError(PlainXp3InventoryError::InvalidChunk(
+                    "File chunk missing info path".to_string(),
+                ))
+            })?;
+            if !seen_paths.insert(path.clone()) {
+                return Err(PlainXp3WriterError::InventoryError(
+                    PlainXp3InventoryError::DuplicateEntry(path),
+                ));
+            }
+            let original_size = chunk.original_size.ok_or_else(|| {
+                PlainXp3WriterError::InventoryError(PlainXp3InventoryError::InvalidChunk(
+                    "File chunk missing info original size".to_string(),
+                ))
+            })?;
+            let archive_size = chunk.archive_size.ok_or_else(|| {
+                PlainXp3WriterError::InventoryError(PlainXp3InventoryError::InvalidChunk(
+                    "File chunk missing info archive size".to_string(),
+                ))
+            })?;
+
+            let mut payload: Vec<u8> = Vec::new();
+            let mut writer_segments: Vec<PlainXp3ArchiveSegment> = Vec::new();
+            for segment in &chunk.segments {
+                let offset = usize::try_from(segment.offset).map_err(|_| {
+                    PlainXp3WriterError::InventoryError(PlainXp3InventoryError::InvalidOffset(
+                        "segment",
+                    ))
+                })?;
+                let size = usize::try_from(segment.archive_size).map_err(|_| {
+                    PlainXp3WriterError::InventoryError(PlainXp3InventoryError::InvalidOffset(
+                        "segment size",
+                    ))
+                })?;
+                let end = checked_end(offset, size, bytes.len(), "segment payload")
+                    .map_err(PlainXp3WriterError::InventoryError)?;
+                payload.extend_from_slice(&bytes[offset..end]);
+                writer_segments.push(PlainXp3ArchiveSegment {
+                    flags: segment.flags,
+                    original_size: segment.original_size,
+                    archive_size: segment.archive_size,
+                });
+            }
+
+            let stored_adler32 = match chunk.stored_adler32.as_deref() {
+                Some(formatted) => {
+                    let hex = formatted.strip_prefix("adler32:").ok_or_else(|| {
+                        PlainXp3WriterError::InventoryError(PlainXp3InventoryError::InvalidChunk(
+                            format!("adlr chunk had unexpected format {formatted:?}"),
+                        ))
+                    })?;
+                    let value = u32::from_str_radix(hex, 16).map_err(|_| {
+                        PlainXp3WriterError::InventoryError(PlainXp3InventoryError::InvalidChunk(
+                            format!("adlr chunk had non-hex value {hex:?}"),
+                        ))
+                    })?;
+                    Some(value)
+                }
+                None => None,
+            };
+
+            entries.push(PlainXp3ArchiveEntry {
+                path,
+                original_size,
+                archive_size,
+                stored_adler32,
+                segments: writer_segments,
+                payload,
+            });
+        }
+        cursor = content_end;
+    }
+
+    Ok(PlainXp3Archive {
+        schema_version: PLAIN_XP3_MANIFEST_SCHEMA_VERSION.to_string(),
+        variant: PLAIN_XP3_MANIFEST_VARIANT.to_string(),
+        entries,
+    })
+}
+
+/// Detect the helper-required marker the KAIFUU-038 classifier emits.
+fn has_legacy_xp3_helper_required_marker(bytes: &[u8]) -> bool {
+    if !bytes.starts_with(b"XP3\r\n") {
+        return false;
+    }
+    let marker_region = &bytes[..bytes.len().min(128)];
+    header_contains_ascii(marker_region, "XP3-HELPER-REQUIRED")
+        || header_contains_ascii(marker_region, "kaifuu-xp3-helper-required")
+}
+
+/// Encode a [`PlainXp3Archive`] to a deterministic XP3 byte stream.
+///
+/// Layout (matches the existing fixture-only synthetic builder):
+///
+/// 1. [`XP3_PLAIN_MAGIC`] (11 bytes)
+/// 2. Placeholder u64 for the index offset (filled in at the end).
+/// 3. Each entry's concatenated segment payloads, in entry order, in
+///    segment order. The offset of each segment is recorded into the
+///    segm chunk so a re-parse round-trips.
+/// 4. Index encoding byte (`0`).
+/// 5. Index size u64 (the byte length of the File chunks that follow).
+/// 6. One `File` chunk per entry, each containing `info`, `segm`, and
+///    (when the source had one) `adlr` chunks in that order.
+///
+/// Rebuilding from a manifest produced by [`read_plain_xp3_archive`]
+/// returns the same bytes as the source archive: this is the
+/// determinism guarantee KAIFUU-098 makes.
+pub fn encode_xp3(archive: &PlainXp3Archive) -> Result<Vec<u8>, PlainXp3WriterError> {
+    if archive.variant != PLAIN_XP3_MANIFEST_VARIANT {
+        return Err(PlainXp3WriterError::UnsupportedVariant(
+            archive.variant.clone(),
+        ));
+    }
+
+    let mut bytes = Vec::new();
+    bytes.extend_from_slice(XP3_PLAIN_MAGIC);
+    // Placeholder for index_offset.
+    bytes.extend_from_slice(&0_u64.to_le_bytes());
+
+    // Track segment offsets per entry as we emit payloads.
+    let mut entry_segment_offsets: Vec<Vec<u64>> = Vec::with_capacity(archive.entries.len());
+    for entry in &archive.entries {
+        validate_safe_relative_path(&entry.path)
+            .map_err(|_| PlainXp3WriterError::UnsafeRelativePath(entry.path.clone()))?;
+
+        let total_archive_size: u64 = entry
+            .segments
+            .iter()
+            .map(|segment| segment.archive_size)
+            .sum();
+        if total_archive_size != entry.archive_size {
+            return Err(PlainXp3WriterError::InconsistentManifest(format!(
+                "entry {:?} segment archive_size sum {} does not match recorded archive_size {}",
+                entry.path, total_archive_size, entry.archive_size
+            )));
+        }
+        if (entry.payload.len() as u64) != total_archive_size {
+            return Err(PlainXp3WriterError::InconsistentManifest(format!(
+                "entry {:?} payload length {} does not match segment archive_size sum {}",
+                entry.path,
+                entry.payload.len(),
+                total_archive_size
+            )));
+        }
+
+        let mut offsets = Vec::with_capacity(entry.segments.len());
+        let mut payload_cursor = 0_usize;
+        for segment in &entry.segments {
+            offsets.push(bytes.len() as u64);
+            let segment_len = usize::try_from(segment.archive_size).map_err(|_| {
+                PlainXp3WriterError::InconsistentManifest(format!(
+                    "entry {:?} segment archive_size {} does not fit in usize",
+                    entry.path, segment.archive_size
+                ))
+            })?;
+            let segment_end = payload_cursor.checked_add(segment_len).ok_or_else(|| {
+                PlainXp3WriterError::InconsistentManifest(format!(
+                    "entry {:?} segment slice overflows payload",
+                    entry.path
+                ))
+            })?;
+            if segment_end > entry.payload.len() {
+                return Err(PlainXp3WriterError::InconsistentManifest(format!(
+                    "entry {:?} segment slice {}..{} exceeds payload length {}",
+                    entry.path,
+                    payload_cursor,
+                    segment_end,
+                    entry.payload.len()
+                )));
+            }
+            bytes.extend_from_slice(&entry.payload[payload_cursor..segment_end]);
+            payload_cursor = segment_end;
+        }
+        entry_segment_offsets.push(offsets);
+    }
+
+    let index_offset = bytes.len() as u64;
+    let mut index = Vec::new();
+    for (entry, offsets) in archive.entries.iter().zip(&entry_segment_offsets) {
+        let mut file = Vec::new();
+
+        let path_units: Vec<u16> = entry.path.encode_utf16().collect();
+        let mut info = Vec::with_capacity(4 + 8 + 8 + 2 + path_units.len() * 2);
+        // KAIFUU-098 writes the four reserved info-chunk bytes as zero,
+        // matching every fixture-only plain XP3 archive in the repo. The
+        // reader ignores these bytes; preserving the value keeps the
+        // round-trip byte-identical for every fixture we have.
+        info.extend_from_slice(&0_u32.to_le_bytes());
+        info.extend_from_slice(&entry.original_size.to_le_bytes());
+        info.extend_from_slice(&entry.archive_size.to_le_bytes());
+        info.extend_from_slice(&(path_units.len() as u16).to_le_bytes());
+        for unit in path_units {
+            info.extend_from_slice(&unit.to_le_bytes());
+        }
+        append_plain_xp3_chunk(&mut file, b"info", &info);
+
+        let mut segm = Vec::with_capacity(entry.segments.len() * 28);
+        for (segment, segment_offset) in entry.segments.iter().zip(offsets) {
+            segm.extend_from_slice(&segment.flags.to_le_bytes());
+            segm.extend_from_slice(&segment_offset.to_le_bytes());
+            segm.extend_from_slice(&segment.original_size.to_le_bytes());
+            segm.extend_from_slice(&segment.archive_size.to_le_bytes());
+        }
+        append_plain_xp3_chunk(&mut file, b"segm", &segm);
+
+        if let Some(adler) = entry.stored_adler32 {
+            append_plain_xp3_chunk(&mut file, b"adlr", &adler.to_le_bytes());
+        }
+
+        append_plain_xp3_chunk(&mut index, b"File", &file);
+    }
+
+    // Index encoding (plain) + size + content.
+    bytes.push(0);
+    bytes.extend_from_slice(&(index.len() as u64).to_le_bytes());
+    bytes.extend_from_slice(&index);
+
+    // Backfill the index offset.
+    bytes[XP3_PLAIN_MAGIC.len()..XP3_PLAIN_MAGIC.len() + 8]
+        .copy_from_slice(&index_offset.to_le_bytes());
+
+    Ok(bytes)
+}
+
+fn append_plain_xp3_chunk(output: &mut Vec<u8>, name: &[u8; 4], content: &[u8]) {
+    output.extend_from_slice(name);
+    output.extend_from_slice(&(content.len() as u64).to_le_bytes());
+    output.extend_from_slice(content);
+}
+
+/// Manifest written to disk by [`unpack_plain_xp3_to_directory`].
+///
+/// The on-disk layout mirrors [`PlainXp3Archive`] but stores each entry's
+/// raw payload as a separate file under `payload/` so callers can edit
+/// individual entries without going through hex round-tripping.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlainXp3DirectoryManifest {
+    pub schema_version: String,
+    pub variant: String,
+    pub entries: Vec<PlainXp3DirectoryManifestEntry>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlainXp3DirectoryManifestEntry {
+    pub path: String,
+    pub payload_relative_path: String,
+    pub original_size: u64,
+    pub archive_size: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stored_adler32_hex: Option<String>,
+    pub segments: Vec<PlainXp3ArchiveSegment>,
+}
+
+/// Unpack a plain XP3 archive into a directory layout suitable for the
+/// deterministic writer.
+///
+/// Layout produced under `dir`:
+///
+/// - `manifest.json`: ordered list of entries with per-segment metadata.
+/// - `payload/<index>-<flat-path>.bin`: raw segment payload for each
+///   entry, where `<index>` is the entry's zero-padded source-order
+///   index and `<flat-path>` replaces slashes with `__`.
+///
+/// Refuses non-plain XP3 bytes (encrypted, helper-required, or unknown
+/// containers) **before** writing any file under `dir`. The directory
+/// is created if missing.
+pub fn unpack_plain_xp3_to_directory(
+    bytes: &[u8],
+    dir: &Path,
+) -> Result<PlainXp3DirectoryManifest, PlainXp3WriterError> {
+    let archive = read_plain_xp3_archive(bytes)?;
+
+    fs::create_dir_all(dir).map_err(|error| PlainXp3WriterError::Io(error.to_string()))?;
+    let payload_dir = dir.join("payload");
+    fs::create_dir_all(&payload_dir).map_err(|error| PlainXp3WriterError::Io(error.to_string()))?;
+
+    let mut manifest_entries = Vec::with_capacity(archive.entries.len());
+    let width = format!("{}", archive.entries.len().saturating_sub(1))
+        .len()
+        .max(2);
+    for (index, entry) in archive.entries.iter().enumerate() {
+        validate_safe_relative_path(&entry.path)
+            .map_err(|_| PlainXp3WriterError::UnsafeRelativePath(entry.path.clone()))?;
+        let flat = entry.path.replace('/', "__");
+        let payload_relative = format!("payload/{index:0width$}-{flat}.bin", width = width);
+        let payload_path = dir.join(&payload_relative);
+        if let Some(parent) = payload_path.parent() {
+            fs::create_dir_all(parent)
+                .map_err(|error| PlainXp3WriterError::Io(error.to_string()))?;
+        }
+        fs::write(&payload_path, &entry.payload)
+            .map_err(|error| PlainXp3WriterError::Io(error.to_string()))?;
+        manifest_entries.push(PlainXp3DirectoryManifestEntry {
+            path: entry.path.clone(),
+            payload_relative_path: payload_relative,
+            original_size: entry.original_size,
+            archive_size: entry.archive_size,
+            stored_adler32_hex: entry.stored_adler32.map(|value| format!("{value:08x}")),
+            segments: entry.segments.clone(),
+        });
+    }
+
+    let manifest = PlainXp3DirectoryManifest {
+        schema_version: PLAIN_XP3_MANIFEST_SCHEMA_VERSION.to_string(),
+        variant: PLAIN_XP3_MANIFEST_VARIANT.to_string(),
+        entries: manifest_entries,
+    };
+    let manifest_json = serde_json::to_string_pretty(&manifest)
+        .map_err(|error| PlainXp3WriterError::ManifestParse(error.to_string()))?;
+    fs::write(dir.join("manifest.json"), manifest_json)
+        .map_err(|error| PlainXp3WriterError::Io(error.to_string()))?;
+    Ok(manifest)
+}
+
+/// Rebuild a plain XP3 archive from a directory previously produced by
+/// [`unpack_plain_xp3_to_directory`].
+///
+/// The directory's `manifest.json` is parsed; each entry's payload is
+/// loaded from the manifest-declared relative path. The writer refuses
+/// non-`plain` variants (encrypted / helper-required / unknown) with the
+/// matching semantic diagnostic. Compressed entries are passed through
+/// when their payload length still matches the recorded `archive_size`;
+/// a length mismatch on a compressed entry triggers
+/// [`PlainXp3WriterError::UnsupportedCompressedReplacement`] because the
+/// writer cannot recompress.
+pub fn pack_plain_xp3_from_directory(dir: &Path) -> Result<Vec<u8>, PlainXp3WriterError> {
+    let manifest_path = dir.join("manifest.json");
+    let manifest_bytes =
+        fs::read(&manifest_path).map_err(|error| PlainXp3WriterError::Io(error.to_string()))?;
+    let manifest: PlainXp3DirectoryManifest = serde_json::from_slice(&manifest_bytes)
+        .map_err(|error| PlainXp3WriterError::ManifestParse(error.to_string()))?;
+
+    if manifest.variant != PLAIN_XP3_MANIFEST_VARIANT {
+        return Err(PlainXp3WriterError::UnsupportedVariant(manifest.variant));
+    }
+
+    let mut archive_entries = Vec::with_capacity(manifest.entries.len());
+    for entry in manifest.entries {
+        validate_safe_relative_path(&entry.path)
+            .map_err(|_| PlainXp3WriterError::UnsafeRelativePath(entry.path.clone()))?;
+        validate_safe_relative_path(&entry.payload_relative_path).map_err(|_| {
+            PlainXp3WriterError::UnsafeRelativePath(entry.payload_relative_path.clone())
+        })?;
+        let payload_path = dir.join(&entry.payload_relative_path);
+        let payload =
+            fs::read(&payload_path).map_err(|error| PlainXp3WriterError::Io(error.to_string()))?;
+
+        let total_archive_size: u64 = entry.segments.iter().map(|s| s.archive_size).sum();
+        if (payload.len() as u64) != total_archive_size {
+            let any_compressed = entry
+                .segments
+                .iter()
+                .any(PlainXp3ArchiveSegment::is_compressed);
+            if any_compressed {
+                return Err(PlainXp3WriterError::UnsupportedCompressedReplacement(
+                    entry.path,
+                ));
+            }
+            return Err(PlainXp3WriterError::InconsistentManifest(format!(
+                "entry {:?} payload length {} no longer matches segment archive_size sum {}",
+                entry.path,
+                payload.len(),
+                total_archive_size
+            )));
+        }
+        let stored_adler32 = match entry.stored_adler32_hex.as_deref() {
+            Some(hex) => Some(u32::from_str_radix(hex, 16).map_err(|_| {
+                PlainXp3WriterError::ManifestParse(format!(
+                    "stored_adler32_hex {hex:?} is not a valid hex u32"
+                ))
+            })?),
+            None => None,
+        };
+        archive_entries.push(PlainXp3ArchiveEntry {
+            path: entry.path,
+            original_size: entry.original_size,
+            archive_size: entry.archive_size,
+            stored_adler32,
+            segments: entry.segments,
+            payload,
+        });
+    }
+
+    let archive = PlainXp3Archive {
+        schema_version: PLAIN_XP3_MANIFEST_SCHEMA_VERSION.to_string(),
+        variant: PLAIN_XP3_MANIFEST_VARIANT.to_string(),
+        entries: archive_entries,
+    };
+    encode_xp3(&archive)
+}
+
+/// Replace a single entry's payload inside an unpacked plain XP3
+/// directory layout. Updates `manifest.json` (archive_size,
+/// original_size, segment archive_size/original_size) so the next
+/// [`pack_plain_xp3_from_directory`] call emits the rewritten entry.
+///
+/// Acceptance criterion: "Replacing an allowed plain fixture file
+/// updates table metadata and verification output."
+///
+/// The replacement is only allowed when the entry's segments are all
+/// uncompressed (no decompression / recompression is in scope for
+/// KAIFUU-098). Refuses with
+/// [`PlainXp3WriterError::UnsupportedCompressedReplacement`] otherwise.
+/// Multi-segment uncompressed entries are also out of scope — the
+/// writer would have no canonical rule for how to split the new payload
+/// across the original segment boundaries, so we refuse with
+/// `InconsistentManifest` to keep the rebuild deterministic.
+pub fn replace_plain_xp3_entry_payload(
+    dir: &Path,
+    entry_path: &str,
+    new_payload: &[u8],
+) -> Result<PlainXp3DirectoryManifest, PlainXp3WriterError> {
+    let manifest_path = dir.join("manifest.json");
+    let manifest_bytes =
+        fs::read(&manifest_path).map_err(|error| PlainXp3WriterError::Io(error.to_string()))?;
+    let mut manifest: PlainXp3DirectoryManifest = serde_json::from_slice(&manifest_bytes)
+        .map_err(|error| PlainXp3WriterError::ManifestParse(error.to_string()))?;
+    if manifest.variant != PLAIN_XP3_MANIFEST_VARIANT {
+        return Err(PlainXp3WriterError::UnsupportedVariant(manifest.variant));
+    }
+
+    let entry = manifest
+        .entries
+        .iter_mut()
+        .find(|entry| entry.path == entry_path)
+        .ok_or_else(|| {
+            PlainXp3WriterError::InconsistentManifest(format!(
+                "entry {entry_path:?} not present in manifest"
+            ))
+        })?;
+    if entry
+        .segments
+        .iter()
+        .any(PlainXp3ArchiveSegment::is_compressed)
+    {
+        return Err(PlainXp3WriterError::UnsupportedCompressedReplacement(
+            entry.path.clone(),
+        ));
+    }
+    if entry.segments.len() != 1 {
+        return Err(PlainXp3WriterError::InconsistentManifest(format!(
+            "entry {entry_path:?} has {} segments; KAIFUU-098 only replaces single-segment uncompressed entries",
+            entry.segments.len()
+        )));
+    }
+
+    let new_size = new_payload.len() as u64;
+    entry.original_size = new_size;
+    entry.archive_size = new_size;
+    entry.segments[0].original_size = new_size;
+    entry.segments[0].archive_size = new_size;
+    entry.stored_adler32_hex = Some(format!("{:08x}", compute_adler32(new_payload)));
+
+    let payload_path = dir.join(&entry.payload_relative_path);
+    fs::write(&payload_path, new_payload)
+        .map_err(|error| PlainXp3WriterError::Io(error.to_string()))?;
+
+    let manifest_json = serde_json::to_string_pretty(&manifest)
+        .map_err(|error| PlainXp3WriterError::ManifestParse(error.to_string()))?;
+    fs::write(&manifest_path, manifest_json)
+        .map_err(|error| PlainXp3WriterError::Io(error.to_string()))?;
+    Ok(manifest)
+}
+
+/// Compute the Adler-32 checksum of `bytes` (used when the writer
+/// updates an `adlr` chunk after a replacement). Pure-Rust to avoid
+/// adding a dependency.
+pub fn compute_adler32(bytes: &[u8]) -> u32 {
+    const MOD_ADLER: u32 = 65521;
+    let mut a: u32 = 1;
+    let mut b: u32 = 0;
+    for &byte in bytes {
+        a = (a + u32::from(byte)) % MOD_ADLER;
+        b = (b + a) % MOD_ADLER;
+    }
+    (b << 16) | a
+}
+
 fn has_legacy_xp3_encrypted_marker(bytes: &[u8]) -> bool {
     if !bytes.starts_with(b"XP3\r\n") {
         return false;
@@ -18226,6 +19046,378 @@ mod tests {
             read_plain_xp3_inventory(&bytes).unwrap_err(),
             PlainXp3InventoryError::DuplicateEntry("scenario/dup.ks".to_string())
         );
+    }
+
+    // =========================================================================
+    // KAIFUU-098 — Plain XP3 deterministic writer tests
+    // =========================================================================
+
+    #[test]
+    fn plain_xp3_writer_capability_records_archive_rebuild_plain() {
+        // Acceptance criterion: "Writer capability tuple records
+        // patch_back_mode=archive_rebuild_plain".
+        let capability = plain_xp3_writer_capability();
+        assert_eq!(capability.adapter_id, PLAIN_XP3_WRITER_ADAPTER_ID);
+        assert_eq!(capability.variant, PLAIN_XP3_WRITER_VARIANT);
+        assert_eq!(
+            capability.patch_back_mode,
+            PatchBackMode::ArchiveRebuildPlain
+        );
+        assert_eq!(capability.patch_back_mode.as_str(), "archive_rebuild_plain");
+    }
+
+    #[test]
+    fn encode_xp3_round_trips_synthetic_fixture_byte_identical() {
+        // Acceptance criterion: "Rebuilding an unchanged plain fixture
+        // produces stable archive structure and expected hashes."
+        let synthetic = plain_xp3_fixture(&[
+            Xp3TestEntry {
+                path: "scenario/intro.ks",
+                payload: b"hello public xp3\n",
+                compressed: false,
+                adler32: 0x1111_2222,
+            },
+            Xp3TestEntry {
+                path: "scenario/compressed.ks",
+                payload: b"compressed public payload\n",
+                compressed: true,
+                adler32: 0x3333_44dd,
+            },
+            Xp3TestEntry {
+                path: "image/title.png",
+                payload: b"png fixture bytes\n",
+                compressed: false,
+                adler32: 0x5555_66ff,
+            },
+        ]);
+
+        let archive = read_plain_xp3_archive(&synthetic).unwrap();
+        assert_eq!(archive.entries.len(), 3);
+        // Source order is preserved (KAIFUU-098 specifically does not
+        // sort like `PlainXp3Inventory::normalize`).
+        assert_eq!(archive.entries[0].path, "scenario/intro.ks");
+        assert_eq!(archive.entries[1].path, "scenario/compressed.ks");
+        assert_eq!(archive.entries[2].path, "image/title.png");
+        // The compressed entry carries the flag.
+        assert!(archive.entries[1].segments[0].is_compressed());
+
+        let re_encoded = encode_xp3(&archive).unwrap();
+        assert_eq!(
+            re_encoded, synthetic,
+            "encode_xp3 must produce byte-identical output for an unchanged manifest"
+        );
+
+        // Determinism: encoding twice yields the same bytes.
+        let re_encoded_again = encode_xp3(&archive).unwrap();
+        assert_eq!(re_encoded_again, re_encoded);
+
+        // Re-parsing the rebuilt bytes through the read-side inventory
+        // (which sorts) reproduces the same payload hashes and adler32
+        // strings, confirming the rebuild kept payload bytes intact.
+        let original_inventory = read_plain_xp3_inventory(&synthetic).unwrap();
+        let rebuilt_inventory = read_plain_xp3_inventory(&re_encoded).unwrap();
+        assert_eq!(original_inventory.entries, rebuilt_inventory.entries);
+    }
+
+    #[test]
+    fn encode_xp3_round_trips_real_plain_xp3_fixture_byte_identical() {
+        // Real-bytes round-trip against the canonical plain XP3 fixture
+        // from KAIFUU-038. KAIFUU-098's determinism guarantee is enforced
+        // here: bytes -> archive -> bytes is the identity for an unchanged
+        // manifest, and the rebuilt archive's sha256 matches the source.
+        let fixture_bytes = fs::read(repo_fixture_path("fixtures/kaifuu/kirikiri/plain.xp3"))
+            .expect("real-bytes plain XP3 fixture should be readable");
+        let archive = read_plain_xp3_archive(&fixture_bytes).unwrap();
+        assert!(
+            archive
+                .entries
+                .iter()
+                .any(|entry| entry.segments[0].is_compressed())
+        );
+        let rebuilt = encode_xp3(&archive).unwrap();
+        assert_eq!(
+            rebuilt, fixture_bytes,
+            "encode_xp3 must reproduce the real plain XP3 fixture byte-identical"
+        );
+        assert_eq!(
+            sha256_hash_bytes(&rebuilt),
+            sha256_hash_bytes(&fixture_bytes),
+            "rebuild hash must match source hash"
+        );
+    }
+
+    #[test]
+    fn unpack_and_pack_round_trips_real_plain_xp3_directory_byte_identical() {
+        // Acceptance criterion: "Rebuilding an unchanged plain fixture
+        // produces stable archive structure and expected hashes." This
+        // exercises the directory unpack/repack path (the actual writer
+        // entry point: "take an unpacked plain XP3 dir + rebuild a
+        // byte-identical XP3 archive").
+        let fixture_bytes =
+            fs::read(repo_fixture_path("fixtures/kaifuu/kirikiri/plain.xp3")).unwrap();
+        let dir = temp_dir("kaifuu-098-unpack-real");
+        let manifest = unpack_plain_xp3_to_directory(&fixture_bytes, &dir).unwrap();
+        assert_eq!(manifest.variant, PLAIN_XP3_MANIFEST_VARIANT);
+        assert_eq!(manifest.entries.len(), 3);
+        assert!(dir.join("manifest.json").exists());
+        for entry in &manifest.entries {
+            assert!(
+                dir.join(&entry.payload_relative_path).exists(),
+                "payload file for {:?} should exist",
+                entry.path
+            );
+        }
+
+        let rebuilt = pack_plain_xp3_from_directory(&dir).unwrap();
+        assert_eq!(
+            rebuilt, fixture_bytes,
+            "unpack -> pack round trip must be byte-identical for the real plain XP3 fixture"
+        );
+
+        // Determinism: packing twice from the unchanged directory yields
+        // the same bytes.
+        let rebuilt_again = pack_plain_xp3_from_directory(&dir).unwrap();
+        assert_eq!(rebuilt, rebuilt_again);
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn replace_plain_xp3_entry_updates_table_metadata_and_verification() {
+        // Acceptance criterion: "Replacing an allowed plain fixture file
+        // updates table metadata and verification output."
+        let fixture_bytes =
+            fs::read(repo_fixture_path("fixtures/kaifuu/kirikiri/plain.xp3")).unwrap();
+        let dir = temp_dir("kaifuu-098-replace-real");
+        unpack_plain_xp3_to_directory(&fixture_bytes, &dir).unwrap();
+
+        let replacement = b"replaced public payload bytes\n";
+        let updated_manifest =
+            replace_plain_xp3_entry_payload(&dir, "scenario/intro.ks", replacement).unwrap();
+        let replaced_entry = updated_manifest
+            .entries
+            .iter()
+            .find(|entry| entry.path == "scenario/intro.ks")
+            .unwrap();
+        assert_eq!(replaced_entry.original_size, replacement.len() as u64);
+        assert_eq!(replaced_entry.archive_size, replacement.len() as u64);
+        assert_eq!(
+            replaced_entry.segments[0].original_size,
+            replacement.len() as u64
+        );
+        assert_eq!(
+            replaced_entry.segments[0].archive_size,
+            replacement.len() as u64
+        );
+        // adler32 was recomputed.
+        let expected_adler = compute_adler32(replacement);
+        assert_eq!(
+            replaced_entry.stored_adler32_hex.as_deref(),
+            Some(format!("{expected_adler:08x}").as_str())
+        );
+
+        // Unchanged entries keep their original metadata.
+        let untouched_entry = updated_manifest
+            .entries
+            .iter()
+            .find(|entry| entry.path == "image/title.png")
+            .unwrap();
+        assert_eq!(untouched_entry.archive_size, 18);
+
+        // Rebuild and verify via the read-side inventory: the replaced
+        // entry's payload hash now equals the sha256 of the new bytes,
+        // and the table records the new size.
+        let rebuilt = pack_plain_xp3_from_directory(&dir).unwrap();
+        let inventory = read_plain_xp3_inventory(&rebuilt).unwrap();
+        let intro = inventory
+            .entries
+            .iter()
+            .find(|entry| entry.path == "scenario/intro.ks")
+            .unwrap();
+        assert_eq!(intro.original_size, replacement.len() as u64);
+        assert_eq!(intro.archive_size, replacement.len() as u64);
+        assert_eq!(
+            intro.payload_hash.as_deref(),
+            Some(sha256_hash_bytes(replacement).as_str())
+        );
+        assert_eq!(
+            intro.stored_adler32.as_deref(),
+            Some(format!("adler32:{expected_adler:08x}").as_str())
+        );
+        // The other plain entry survived the replacement untouched.
+        let title = inventory
+            .entries
+            .iter()
+            .find(|entry| entry.path == "image/title.png")
+            .unwrap();
+        assert_eq!(title.archive_size, 18);
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn replace_plain_xp3_entry_refuses_compressed_entry() {
+        // Acceptance criterion: "Encrypted, compressed-unknown, or
+        // helper-required profiles fail before writes with semantic
+        // diagnostics." Compressed-entry replacement is the
+        // compressed-unknown path: KAIFUU-098 does not claim
+        // recompression, so the writer refuses with the matching
+        // semantic diagnostic before mutating the directory.
+        let fixture_bytes =
+            fs::read(repo_fixture_path("fixtures/kaifuu/kirikiri/plain.xp3")).unwrap();
+        let dir = temp_dir("kaifuu-098-replace-compressed");
+        unpack_plain_xp3_to_directory(&fixture_bytes, &dir).unwrap();
+
+        let error = replace_plain_xp3_entry_payload(
+            &dir,
+            "scenario/compressed.ks",
+            b"would require recompression\n",
+        )
+        .unwrap_err();
+        assert!(matches!(
+            error,
+            PlainXp3WriterError::UnsupportedCompressedReplacement(_)
+        ));
+        assert_eq!(
+            error.semantic_code(),
+            SEMANTIC_UNSUPPORTED_VARIANT_PACKED,
+            "compressed-entry refusal must surface kaifuu.unsupported_variant.packed"
+        );
+
+        // No write happened: rebuilding the directory still yields the
+        // original fixture bytes.
+        let rebuilt = pack_plain_xp3_from_directory(&dir).unwrap();
+        assert_eq!(rebuilt, fixture_bytes);
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn read_plain_xp3_archive_refuses_encrypted_with_semantic_diagnostic() {
+        // Acceptance criterion: "Encrypted ... profiles fail before
+        // writes with semantic diagnostics."
+        let encrypted_bytes = b"XP3\r\nXP3-CRYPT\nkaifuu-xp3-encrypted fixture\n";
+        let error = read_plain_xp3_archive(encrypted_bytes).unwrap_err();
+        assert_eq!(error, PlainXp3WriterError::UnsupportedEncrypted);
+        assert_eq!(
+            error.semantic_code(),
+            SEMANTIC_UNSUPPORTED_VARIANT_ENCRYPTED
+        );
+
+        // Unpack must refuse before creating the target directory.
+        let dir = temp_dir("kaifuu-098-encrypted-refusal");
+        // We don't pre-create the directory — unpack creates it on the
+        // happy path. The encrypted path must refuse before any side
+        // effect, so `dir` should not be populated.
+        let target_dir = dir.join("unpacked");
+        let error = unpack_plain_xp3_to_directory(encrypted_bytes, &target_dir).unwrap_err();
+        assert_eq!(error, PlainXp3WriterError::UnsupportedEncrypted);
+        assert!(
+            !target_dir.exists(),
+            "encrypted unpack must not create the target directory"
+        );
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn read_plain_xp3_archive_refuses_helper_required_with_semantic_diagnostic() {
+        // Acceptance criterion: "... helper-required profiles fail
+        // before writes with semantic diagnostics."
+        let helper_bytes = b"XP3\r\nXP3-HELPER-REQUIRED\nkaifuu-xp3-helper-required fixture\n";
+        let error = read_plain_xp3_archive(helper_bytes).unwrap_err();
+        assert_eq!(error, PlainXp3WriterError::UnsupportedHelperRequired);
+        assert_eq!(error.semantic_code(), SEMANTIC_HELPER_REQUIRED);
+
+        let dir = temp_dir("kaifuu-098-helper-required-refusal");
+        let target_dir = dir.join("unpacked");
+        let error = unpack_plain_xp3_to_directory(helper_bytes, &target_dir).unwrap_err();
+        assert_eq!(error, PlainXp3WriterError::UnsupportedHelperRequired);
+        assert!(!target_dir.exists());
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn read_plain_xp3_archive_refuses_unknown_container_with_semantic_diagnostic() {
+        // Acceptance criterion (protected-executable / unknown
+        // container variant of "fail before writes").
+        let protected_bytes = b"MZ\x90\0\x03\0\0\0PROTECTED-EXECUTABLE\n";
+        let error = read_plain_xp3_archive(protected_bytes).unwrap_err();
+        assert_eq!(error, PlainXp3WriterError::UnsupportedProtectedExecutable);
+        assert_eq!(
+            error.semantic_code(),
+            SEMANTIC_PROTECTED_EXECUTABLE_UNSUPPORTED
+        );
+    }
+
+    #[test]
+    fn encode_xp3_refuses_non_plain_variant_with_semantic_diagnostic() {
+        let archive = PlainXp3Archive {
+            schema_version: PLAIN_XP3_MANIFEST_SCHEMA_VERSION.to_string(),
+            variant: "encrypted".to_string(),
+            entries: Vec::new(),
+        };
+        let error = encode_xp3(&archive).unwrap_err();
+        assert!(
+            matches!(error, PlainXp3WriterError::UnsupportedVariant(ref variant) if variant == "encrypted")
+        );
+        assert_eq!(error.semantic_code(), SEMANTIC_UNSUPPORTED_ENGINE_VARIANT);
+    }
+
+    #[test]
+    fn encode_xp3_rejects_inconsistent_manifest() {
+        // Inconsistent manifest: declared archive_size does not match
+        // segment archive_size sum.
+        let archive = PlainXp3Archive {
+            schema_version: PLAIN_XP3_MANIFEST_SCHEMA_VERSION.to_string(),
+            variant: PLAIN_XP3_MANIFEST_VARIANT.to_string(),
+            entries: vec![PlainXp3ArchiveEntry {
+                path: "scenario/intro.ks".to_string(),
+                original_size: 10,
+                archive_size: 10,
+                stored_adler32: None,
+                segments: vec![PlainXp3ArchiveSegment {
+                    flags: 0,
+                    original_size: 5,
+                    archive_size: 5,
+                }],
+                payload: vec![0; 5],
+            }],
+        };
+        let error = encode_xp3(&archive).unwrap_err();
+        assert!(matches!(
+            error,
+            PlainXp3WriterError::InconsistentManifest(_)
+        ));
+    }
+
+    #[test]
+    fn encode_xp3_rejects_unsafe_relative_path() {
+        let archive = PlainXp3Archive {
+            schema_version: PLAIN_XP3_MANIFEST_SCHEMA_VERSION.to_string(),
+            variant: PLAIN_XP3_MANIFEST_VARIANT.to_string(),
+            entries: vec![PlainXp3ArchiveEntry {
+                path: "../escape.ks".to_string(),
+                original_size: 1,
+                archive_size: 1,
+                stored_adler32: None,
+                segments: vec![PlainXp3ArchiveSegment {
+                    flags: 0,
+                    original_size: 1,
+                    archive_size: 1,
+                }],
+                payload: vec![0],
+            }],
+        };
+        let error = encode_xp3(&archive).unwrap_err();
+        assert!(matches!(error, PlainXp3WriterError::UnsafeRelativePath(_)));
+    }
+
+    #[test]
+    fn compute_adler32_matches_zlib_reference_vectors() {
+        // Known Adler-32 reference vectors.
+        assert_eq!(compute_adler32(b""), 1);
+        assert_eq!(compute_adler32(b"abc"), 0x024d_0127);
+        assert_eq!(compute_adler32(b"Wikipedia"), 0x11e6_0398);
     }
 
     fn golden_boundary_profile(adapter_id: &str) -> GameProfile {
