@@ -1,0 +1,11 @@
+{
+  "schemaVersion": "0.1.0",
+  "fixtureId": "kaifuu-kirikiri-xp3-plain-profile-proof",
+  "profileId": "019ed000-0000-7000-8000-000000095001",
+  "archive": {
+    "archiveId": "kirikiri-xp3-archive",
+    "path": "plain.xp3"
+  },
+  "expectedClassification": "plain",
+  "patchCapabilityLevel": "patch_back"
+}
