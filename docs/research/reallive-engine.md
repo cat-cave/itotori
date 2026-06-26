@@ -871,3 +871,257 @@ Existing itotori code:
 - `crates/utsushi-core/src/substrate.rs` — runtime substrate facade
   (UTSUSHI-120, complete).
 - `roadmap/spec-dag.json:20898-20940` — current single-node UTSUSHI-146.
+
+---
+
+## M. Cross-engine substrate conformance + Siglus lineage (UTSUSHI-221)
+
+> Scope: tie the `utsushi-reallive` port (UTSUSHI-200..UTSUSHI-220) into
+> UTSUSHI-147's cross-engine conformance fixture, and document which
+> sub-nodes of the decomposition will be reusable when a Siglus port
+> eventually lands as a sibling `utsushi-siglus` crate (the
+> AVG32 → RealLive → Siglus lineage Visual Arts documents).
+>
+> **Substrate work means ≥2 engine families.** This appendix and the
+> `cross_engine_facade_only_imports` conformance test in
+> `crates/utsushi-reallive/tests/` together fulfil that requirement at
+> the **scaffold-contract level**: the test embeds a clean-room Siglus
+> minimal-port scaffold and proves it consumes the same
+> `utsushi_core::substrate::*` import surface the RealLive scaffold
+> consumes. A full Siglus VM is **research-only** at this point and out
+> of alpha scope (the alpha tier targets a single engine family,
+> RealLive against Sweetie HD); the substrate conformance documented
+> here pins **expectations** without requiring the VM to land.
+>
+> **Boundary-aware ("reusable" is not an assertion).** The audit-focus
+> block on UTSUSHI-221 calls out two failure modes the conformance
+> evidence must guard against:
+>
+> 1. _"'Reusable' claims that haven't been proven against a Siglus
+>    prototype."_ Each "reusable" entry below ties to a concrete
+>    `utsushi_core::substrate::*` type or trait that both the
+>    `utsushi-reallive` source and the inline Siglus minimal-port
+>    scaffold consume. If a future change removes one side, the
+>    cross-engine test fails the import-surface comparison at compile
+>    time. Reusability is therefore a property of the substrate facade
+>    (proven by the test), not of the engine implementations (which
+>    remain RealLive-only until a real `utsushi-siglus` crate lands).
+> 2. _"Lineage notes that just repeat marketing instead of documenting
+>    actual code reuse points."_ Every reusable-anchor entry below
+>    names the concrete substrate type that carries — `AssetPackage`,
+>    `TextSurfaceSink`, `SnapshotStore`, `EnginePort`, etc. — and the
+>    sub-node where that type is consumed. The reuse claim is a code
+>    citation, not a brand affinity.
+>
+> **Clean-room posture for the inline Siglus scaffold.** siglus_rs
+> (https://github.com/CommitteeOfZero/siglus_rs equivalents and the
+> historical Mafia / SiglusExtract / GARbro reverse-engineering work)
+> is a **research anchor only**. The inline scaffold does NOT depend on
+> siglus_rs, does NOT include siglus_rs headers, does NOT copy
+> siglus_rs's structure layouts, and does NOT mechanically translate
+> siglus_rs code into Rust. The clean-room boundary statement is
+> mirrored from the RLVM one and is asserted load-bearingly by the
+> cross-engine conformance test.
+
+### M.1 Reusable across engines (substrate-carried surfaces)
+
+The lineage Visual Arts documents (AVG32 → RealLive → Siglus) lets us
+predict which sub-node surfaces survive a port from RealLive to Siglus
+at the substrate-facade level. The following are encoded as **trait /
+type reuses** on `utsushi_core::substrate::*`; the engine's own work is
+to populate the typed surface, not to redesign it.
+
+| RealLive sub-node                                 | Substrate facade carrier                                    | Why reusable for Siglus                                                                                                                                                                                                                                                                                                                                                                 |
+| ------------------------------------------------- | ----------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| UTSUSHI-205 expression encoding                   | (engine-local AST; trait-free)                              | The expression byte-stream grammar Visual Arts shipped in AVG32 is the **direct ancestor** of the Siglus expression encoding. Same opener-byte tagging strategy (`\xFF` int literal, `\xC8` store reference, dotted-bank reference). The engine-local `ExprNode` shape ports cleanly. _[P]_                                                                                             |
+| UTSUSHI-206 variable banks                        | `Inspectable` + `Restorable`                                | RealLive ships 13 integer-bank letters (`intA`-`intZ` minus 13 unused), Siglus extends to **26 letters** plus longer index ranges. The substrate's `StateTree` + `StatePath` types are bank-shape-neutral: each bank's letter and index land as a `StatePath`, identical at the snapshot layer. _[P]_                                                                                   |
+| UTSUSHI-203 AVG32 LZ + XOR                        | (engine-local decompressor; trait-free)                     | AVG32's `XOR + LZSS` first-level transform is shared substrate; the AVG32 256-byte XOR mask is the same constant in both engines per Visual Arts's compression pipeline. Siglus adds a different second-level transform on top, but the LZ+XOR foundation is reusable. _[P]_                                                                                                            |
+| UTSUSHI-207 Gameexe-style config                  | `RuntimeVfs::open` + engine-local parser                    | RealLive uses `Gameexe.ini` (Shift-JIS, dotted-key); Siglus uses `Resource.txt` (UTF-16LE, also dotted) plus a per-namespace `Gameexe.dat`. The dotted-path tree shape and the typed `get_int` / `get_tuple3` access patterns generalise; only the encoding + tokeniser differs.                                                                                                        |
+| (multiple) headless sink pipeline                 | `TextSurfaceSink`, `AudioEventSink`, `FrameArtifactSink`    | Every text-displaying / audio-playing / frame-rendering opcode in both engines reduces to one of the three substrate `SinkSet` channels. `TextLine { speaker, body, evidence_tier }`, `AudioEvent { event_kind, evidence_tier }`, and `FrameArtifact { artifact_id, width, height, frame_index }` are engine-neutral payload shapes. _[V]_                                              |
+| UTSUSHI-208 snapshot/restore contract             | `SnapshotStore` + `Inspectable` + `Restorable`              | The "VM snapshot at any tick boundary" round-trip contract is identical: both engines snapshot the call stack + variable banks + active longop's private state. The substrate's `take_snapshot` / `restore_snapshot` free functions consume the engine's `Inspectable` / `Restorable` impls without knowing which engine they came from. _[V]_                                          |
+| UTSUSHI-220 end-to-end replay (text-replay smoke) | `ReplayLog` + `ReplayLogBuilder` + `LogicalClockTick`       | The replay-log JSON envelope (schema `utsushi-reallive-replay-log/0.1.0-alpha` for the RealLive port; the equivalent `utsushi-siglus-replay-log/...` for the future Siglus port) consumes the same substrate `ReplayLog` builder; the per-engine schema-id is an envelope-level label, not a substrate fork.                                                                            |
+| (port-shape) port manifest + lifecycle            | `EnginePort` + `PortManifest` + `REQUIRED_LIFECYCLE_STAGES` | Both engines declare the same four required lifecycle stages (Launch, Observe, Capture, Shutdown) and the same `PortCapability` set. The inline Siglus minimal-port scaffold proves this byte-for-byte: identical manifest shape, identical capability slice, identical evidence/fidelity tier ceilings at the scaffold gate. _[V — proven by `cross_engine_facade_only_imports` test]_ |
+
+The conformance test asserts (compile-time + source-scan) that the
+RealLive scaffold and the inline Siglus minimal-port scaffold reach for
+exactly the same set of `utsushi_core::substrate::*` symbols at the
+scaffold-contract level. If a future change to either side breaks the
+identical-import-surface invariant, the test fails before the import
+asymmetry can be silently accepted.
+
+### M.2 RealLive-only (does NOT carry to Siglus)
+
+The following sub-node surfaces are **engine-specific to RealLive**.
+A Siglus port reusing the substrate facade reuses the substrate facade
+— it does NOT reuse the per-RealLive byte layouts or opcode-table
+identifiers below. Any acceptance criterion that names one of these is
+RealLive-only and is flagged as such in §M.3 below.
+
+| RealLive sub-node                       | RealLive-only surface                                                                                                                                                                                                                                                                                                    |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| UTSUSHI-201 Seen.txt parser             | The 10,000-slot `(offset, size)` directory layout is RealLive's archive shape. Siglus ships `Scene.pck` with a **different** envelope (header + per-scene block table + encrypted scene blobs). The substrate's `AssetPackage::open` carries; the parser does not.                                                       |
+| UTSUSHI-202 scene-header parser         | The 0x1d0-byte typed scene header (compiler_version, kidoku_offset/count, entrypoint table at 0x34, savepoint table at offset N) is RealLive-only. Siglus scene headers are a different shape with a different field set.                                                                                                |
+| UTSUSHI-204 bytecode element stream     | The RealLive bytecode element lead-byte set `{0x00, 0x0a, 0x21, 0x23, 0x24, 0x2c, 0x40}` plus the 8-byte `CommandElement` header `(0x23, module_type, module_id, opcode_u16, arg_count, overload)` is the AVG32-derived RealLive shape. Siglus uses a different command-header byte layout.                              |
+| UTSUSHI-209 module_msg opcodes          | The rlvm-specific opcode catalogue (`msg.text`, `msg.pause`, `msg.par`, `msg.FontColor`, `msg.FaceOpen`, etc.) and the `(module_type=0x00, module_id=0x00)` module identifiers addressing is RealLive's. Siglus uses different module identifiers and a different per-module dispatch table; opcode IDs do not transfer. |
+| UTSUSHI-210 module_jmp (control-flow)   | The `goto_if` / `goto_unless` / `goto_on` / `gosub` / `farcall` opcode byte-codes are RealLive's. Siglus has structurally equivalent operations (its VM is descended from AVG32's) but different opcode bytes and a different `farcall` cross-scene addressing scheme.                                                   |
+| UTSUSHI-211 select family               | `select` / `select_s` / `select_w` / `select_objbtn` and the `SELBTN.NNN.*` Gameexe styling values are RealLive-only. Siglus's choice machinery uses a different opcode family and a different per-choice styling source.                                                                                                |
+| UTSUSHI-216 g00 image decoder           | The g00 format (types 0, 1, 2 with the region-list sub-format for type 2) is RealLive-exclusive. Siglus uses `.g00` filenames in some titles but with a **different** internal format; more commonly Siglus titles ship `.pna` / `.pnp` images. The decoder does not transfer.                                           |
+| UTSUSHI-217 NWA + OVK voice archives    | NWA is the AVG32 audio container; while AVG32 is a shared ancestor, Siglus titles ship audio in **different containers** (e.g. `.ogg` directly, or `.ovk` with a different sub-sample addressing). The OVK voice archives format with the `(speaker, sample_id)` 16-byte entry table is RealLive's.                      |
+| UTSUSHI-218 AVG_SYSTEM/GLOBAL/READ save | The `AVG_SYSTEM_SAVE` / `AVG_GLOBAL_SAVE` / `AVG-derived read flags` save-file layout is RealLive-derived. Siglus saves use a different magic and a different per-slot block structure.                                                                                                                                  |
+| UTSUSHI-213 system-call dispatch        | The `9999, 10`-style `(scene_id, entrypoint)` system-call route addressing is a RealLive-only Gameexe convention. Siglus's equivalent uses dotted `Resource.txt` keys with a different routing shape.                                                                                                                    |
+| UTSUSHI-219 Sukara XOR-2 key research   | The Sukara-title second-level XOR transform is a **per-publisher-per-compiler-version** RealLive concern. Siglus has its own per-title encryption scheme (Scene.pck key derivation) that is unrelated.                                                                                                                   |
+
+### M.3 Engine-specific boundary notes per sub-node
+
+The spec's third deliverable is to emit a documented **engine-specific
+boundary note** wherever a UTSUSHI-200..UTSUSHI-220 acceptance
+criterion would break under a Siglus reuse claim. The notes below pin
+those criteria. Each one cross-references the substrate-carried
+surface from §M.1 that DOES carry (so the boundary is narrow: the
+surface generalises, the byte-layout does not).
+
+- **UTSUSHI-201** (Seen.txt 10,000-slot parser) — _RealLive-only._ The
+  acceptance criterion "parser returns exactly 198 non-zero scenes,
+  scene-id range 1..=9999" is RealLive-archive-specific. Siglus's
+  `Scene.pck` carries a header + block-table envelope with no
+  10,000-slot reservation. The substrate carrier (`AssetPackage::open`)
+  is reusable; the byte layout is not. A future Siglus port re-uses
+  the substrate VFS path but ships its own `scene_index` module.
+
+- **UTSUSHI-203** (AVG32 LZ + XOR decompressor) — _partially reusable._
+  The first-level AVG32 LZSS + 256-byte XOR transform IS the shared
+  Visual Arts substrate (per the lineage; `AVG32_XOR_MASK` would be
+  literal-identical). The acceptance criterion "Sweetie HD scene #0001
+  decompresses to exactly 1660 bytes" is RealLive-byte-specific. The
+  `xor_2_key = None` posture (UTSUSHI-219) is RealLive-only; Siglus
+  uses a different second-level key-derivation that has no analogue in
+  the RealLive XOR-2 family.
+
+- **UTSUSHI-207** (Gameexe.ini Shift-JIS dotted parser) — _shape
+  reusable, encoding RealLive-only._ The dotted-path typed-value
+  access pattern (`gameexe.get_int_array("...")`, etc.) generalises to
+  Siglus's `Resource.txt` (UTF-16LE) plus per-namespace `Gameexe.dat`
+  (binary, requires the Siglus-specific key profile to decrypt).
+  Acceptance criteria naming Shift-JIS keys ("`CAPTION ==
+"オシオキSweetie＋Sweets!! HD Edition　"`", "`FOLDNAME.G00 == ("G00",
+0, "G00.PAK")`") are RealLive-encoding-specific. The substrate
+  carrier (`RuntimeVfs::open` for the config asset, then engine-local
+  parser) is reusable.
+
+- **UTSUSHI-209** (module*msg text/messaging opcodes) — \_RealLive-only
+  byte-codes; substrate sink carries.* The acceptance criterion "each
+  implemented opcode emits exactly one TextLine through
+  TextSurfaceSink with the Shift-JIS-decoded body" — the
+  `TextSurfaceSink` part is reusable (substrate carrier); the opcode
+  IDs (`text`, `pause`, `par`, `br`, `page`, `FontColor`, etc. with
+  their RealLive-specific module-type/module-id addressing) are not.
+  A Siglus port reuses `TextSurfaceSink::emit_line` but populates it
+  from a different opcode dispatch table.
+
+- **UTSUSHI-211** (`select` / `select_s` / `select_w` family) —
+  _RealLive-only opcodes; substrate ChoiceIndex carries._ Acceptance
+  criteria naming the RealLive sel-module opcodes and the
+  `SELBTN.NNN.*` Gameexe styling values are RealLive-specific. The
+  substrate `ChoiceIndex` input event and the `TextLine` with
+  `kind=Choice` are reusable across engines.
+
+- **UTSUSHI-216** (g00 image decoder) — _RealLive-only._ g00 types 0,
+  1, 2 with the type-2 region-list sub-format is a RealLive-exclusive
+  asset format. A Siglus port carrying the substrate `FrameArtifactSink`
+  is reusable; the image decoder is not. The acceptance criterion
+  "type 2 decoded files expose a `regions: Vec<G00Region>`" does not
+  port — Siglus has no equivalent region-list image format.
+
+- **UTSUSHI-217** (NWA + OVK audio decoders) — _RealLive-only audio
+  formats; substrate AudioEventSink carries._ The acceptance criteria
+  "NWA decoder returns 33,818,820 sample frames" and "OVK decoder
+  returns 2 entries with `(sample_num=46, sample_num=52)`" are
+  RealLive-byte-specific. The substrate `AudioEvent` payload shape
+  (with `event_kind`, `cue_id`, `source_asset`) is reusable; the
+  decoder layer is not. Siglus's audio path emits the same
+  `AudioEvent` envelope from its own (different) decoders. Sub-sample
+  addressing for voice cues (`(archive_id, sample_id)` for RealLive's
+  OVK) is RealLive-specific; the substrate's audio facade still has
+  the open gap UTSUSHI-146 § K.3 flagged.
+
+- **UTSUSHI-218** (`AVG_SYSTEM_SAVE` / `AVG_GLOBAL_SAVE` / read flags) —
+  _RealLive-only on-disk format; substrate SnapshotStore carries._ The
+  substrate `SnapshotStore` is reusable as the in-memory backing for
+  save state on both engines; the on-disk serialiser differs. The
+  acceptance criterion naming "`AVG_SYSTEM_SAVE` magic at byte 0x18"
+  and the file sizes does not port to Siglus.
+
+### M.4 Cross-engine conformance fixture (UTSUSHI-147 tie-in)
+
+The cross-engine conformance fixture promised by UTSUSHI-147 is
+realised at the **scaffold-contract level** by
+`crates/utsushi-reallive/tests/cross_engine_facade_only_imports.rs`.
+The fixture:
+
+1. **Defines a clean-room Siglus minimal-port scaffold inline.** The
+   scaffold mirrors `UtsushiReallivePort` byte-for-byte at the
+   `utsushi_core::*` import-surface level. It declares its own
+   research-anchor boundary statement (siglus_rs is a research anchor
+   only) and pins the same `EnginePort` lifecycle contract.
+2. **Compile-time witnesses both `EnginePort` bounds.** A generic
+   helper function constrains the witness to the facade's
+   `EnginePort` trait — if a future substrate refactor splits the
+   trait, this file fails to compile, blocking the substrate API
+   drift from landing without a paired conformance update.
+3. **Source-scans both scaffolds for `utsushi_core::*` imports.** The
+   audit asserts (a) neither scaffold reaches a forbidden subsystem
+   root (`vfs`, `port`, `clock`, etc. directly); (b) crate-root
+   reach-arounds (`CaptureOutcome`, `RuntimeOperation`) are
+   symmetric across engines — if one needs the reach-around, the
+   other does too; (c) the Siglus scaffold's facade-leaf import set
+   is a subset of the RealLive scaffold's, proving the cross-engine
+   baseline.
+4. **Pins the substrate-API-drift regression coverage.** Any future
+   change to the substrate facade that affects a symbol the
+   cross-engine fixture touches will fail the identical-imports
+   audit, surfacing the drift as a semantic diagnostic ("Siglus
+   minimal-port imports facade leaf `X` but RealLive scaffold does
+   not") rather than as a silent scaffold-out-of-sync regression.
+
+### M.5 Substrate-gap candidates flagged for Siglus extension
+
+The three substrate-gap candidates UTSUSHI-146 § K.3 flagged for the
+RealLive port are revisited here under the Siglus reuse lens:
+
+1. **Per-frame artifact emission cadence.** RealLive's text-display /
+   choice-display / effect-cluster frame boundaries are scene-stream
+   boundaries; Siglus has the same logical-frame concept (its `wipe`
+   / `bgload` / `objSetPos` analogues map to the same
+   `FrameArtifactSink::emit_frame` cadence). The gap is shared.
+2. **Voice-archive sub-sample addressing.** RealLive's OVK
+   `(archive_id, sample_id)` shape does NOT carry to Siglus, which
+   uses a different voice-archive format. The substrate gap (a
+   typed `(archive_id, sample_id)` payload on `AudioEvent`) is
+   real, but the carrier semantics differ across engines — the gap
+   is engine-shared in shape but not in addressing.
+3. **Snapshot of the longop scheduler.** RealLive's mid-`select` /
+   mid-`pause` longop save points (e.g. `SAVEPOINT_SELCOM=1`) have
+   direct Siglus analogues (Siglus VMs ship with the same
+   scene-stream-pausing longop concept). The substrate gap is
+   engine-shared.
+
+### M.6 Provenance
+
+- AVG32 → RealLive lineage: documented in Visual Arts's own engine
+  evolution history (publicly archived). The AVG32 LZSS + 256-byte
+  XOR transform constant is identified in § E of this document and
+  is the literal-shared substrate point. _[P]_
+- RealLive → Siglus lineage: documented in Visual Arts's compiler
+  evolution. The expression encoding, variable-bank shape (Siglus
+  extends to 26 letters), `SystemCall` dispatch pattern, and choice
+  family are direct descendants. The byte layouts differ; the
+  shape carries. _[P]_
+- Siglus-only post-RealLive additions: per-title `Scene.pck`
+  encryption (engine-specific key profile), `Resource.txt`
+  UTF-16LE config tree, `.pna` / `.pnp` image format family.
+  _[P]_
+- The inline Siglus minimal-port scaffold derives no source
+  expression from siglus_rs or SiglusExtract or GARbro. The
+  scaffold's behavioural surface is inert — every lifecycle method
+  returns a typed `Unimplemented` Lifecycle error — so there is no
+  reverse-engineered byte-decode logic to derive.
