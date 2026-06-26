@@ -1595,6 +1595,7 @@ export class OpenRouterModelProvider implements ModelProvider {
   private spentUsd = 0;
   private readonly inner: OpenRouterProvider;
   private readonly bucket: TokenBucket;
+  private readonly capabilityGuard: CapabilityGuard;
 
   constructor(options: OpenRouterModelProviderOptions = {}) {
     this.apiKeyEnvVar = options.apiKeyEnvVar ?? DEFAULT_API_KEY_ENV_VAR;
@@ -1651,6 +1652,31 @@ export class OpenRouterModelProvider implements ModelProvider {
     for (const entry of knownPairsForRegistration()) {
       guard.register(entry.pair.modelId, entry.pair.providerId, entry.modelCapabilities);
     }
+    this.capabilityGuard = guard;
+  }
+
+  /**
+   * ITOTORI-237 — return a per-pair-aware descriptor whose `capabilities`
+   * field reflects the (modelId, providerId) sheet registered in the
+   * provider's CapabilityGuard at construction.
+   *
+   * Why this exists: the agentic-loop pre-flight check (see
+   * `apps/itotori/src/agents/speaker-label/agent.ts`'s
+   * `assertProviderSupportsStructuredOutput`) reads
+   * `provider.descriptor.capabilities` directly. The class-level
+   * `descriptor` falls back to `openRouterDefaultCapabilities` (safe but
+   * `untested` for structured outputs), so without a per-pair lookup the
+   * agent refuses even pairs that DO support structured outputs.
+   *
+   * Unknown pairs (not in dev-pair.ts) intentionally fall back to the
+   * default sheet — they keep their `untested` posture and remain
+   * refused, preserving the no-silent-fallback invariant.
+   */
+  descriptorForPair(pair: ModelProviderPair): ProviderDescriptor {
+    const capabilities = this.capabilityGuard.has(pair.modelId, pair.providerId)
+      ? this.capabilityGuard.lookup(pair.modelId, pair.providerId)
+      : this.descriptor.capabilities;
+    return { ...this.descriptor, capabilities };
   }
 
   async invoke(request: ModelInvocationRequest): Promise<ModelInvocationResult> {
