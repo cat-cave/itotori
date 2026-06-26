@@ -161,6 +161,19 @@ pub mod replay;
 // alpha-defining "verifiable patch landed" gate.
 pub mod replay_validate;
 
+// UTSUSHI-216: g00 image-format decoder (types 0, 1, 2). Owns the
+// shared LZSS variants and the corpus-wide lead-byte histogram that
+// emits `utsushi.reallive.g00_no_type_N_in_corpus` for types not
+// represented in a given corpus.
+pub mod g00;
+
+pub use g00::{
+    G00_HEADER_PREAMBLE_BYTE_LEN, G00_LZSS_INITIAL_CURSOR, G00_LZSS_MAX_RUN, G00_LZSS_MIN_RUN,
+    G00_LZSS_RING_BUFFER_LEN, G00_REGION_RECORD_BYTE_LEN, G00_TYPE_PALETTED_LZSS, G00_TYPE_RAW_BGR,
+    G00_TYPE_REGIONED_LZSS, G00_TYPE1_PALETTE_BYTE_LEN, G00CorpusHistogram, G00DecodeError,
+    G00Image, G00Rect, G00Region, G00Type, G00Warning, decode_g00,
+};
+
 pub use replay::{
     DEFAULT_REPLAY_STEP_BUDGET, REPLAY_LOG_SCHEMA_VERSION, ReplayError, ReplayEvent, ReplayLog,
     ReplayOpts, ReplayOutcome, replay_scene, replay_scene_bytes, replay_until_first_pause,
