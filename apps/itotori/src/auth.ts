@@ -1,8 +1,10 @@
 import {
+  AuthorizationError,
   type AuthorizationActor,
   type ItotoriDatabase,
   localUserId,
   type Permission,
+  permissionValues,
   requirePermission,
 } from "@itotori/db";
 
@@ -20,5 +22,61 @@ export class ItotoriAuthorizationService implements ItotoriAuthorizationPort {
 
   async requirePermission(permission: Permission): Promise<void> {
     await requirePermission(this.db, this.actor, permission);
+  }
+}
+
+/**
+ * Permission view consumed by the reviewer detail SPA route
+ * (ITOTORI-082). Resolved here (and not inside the route loader) so
+ * that all `requirePermission` callsites stay confined to the
+ * canonical auth / api-handler boundary per the API mutation
+ * permission matrix audit.
+ */
+export type ReviewerQueuePermissionView = {
+  actorUserId: string;
+  canReadQueue: boolean;
+  canManageQueue: boolean;
+  denialReasons: string[];
+};
+
+export async function resolveReviewerQueuePermissionView(
+  authorization: ItotoriAuthorizationPort,
+  actorUserId: string,
+): Promise<ReviewerQueuePermissionView> {
+  const [canReadQueue, readDenial] = await tryRequirePermission(
+    authorization,
+    permissionValues.queueRead,
+  );
+  const [canManageQueue, manageDenial] = await tryRequirePermission(
+    authorization,
+    permissionValues.queueManage,
+  );
+  const denialReasons: string[] = [];
+  if (readDenial !== null) {
+    denialReasons.push(readDenial);
+  }
+  if (manageDenial !== null) {
+    denialReasons.push(manageDenial);
+  }
+  return {
+    actorUserId,
+    canReadQueue,
+    canManageQueue,
+    denialReasons,
+  };
+}
+
+async function tryRequirePermission(
+  authorization: ItotoriAuthorizationPort,
+  permission: Permission,
+): Promise<[boolean, string | null]> {
+  try {
+    await authorization.requirePermission(permission);
+    return [true, null];
+  } catch (error) {
+    if (error instanceof AuthorizationError) {
+      return [false, error.message];
+    }
+    throw error;
   }
 }

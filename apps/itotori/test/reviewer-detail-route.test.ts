@@ -1,0 +1,490 @@
+// @vitest-environment jsdom
+// ITOTORI-082 — reviewer detail route loader tests.
+//
+// Exercises the loader's permission gate, missing-item path, stale
+// source revision path, and per-kind diagnostic emission. The loader
+// receives a pre-resolved permission view (resolved by the SPA
+// bootstrap / JSON API layer via `auth.ts`) and an evidence loader
+// port. Tests stub both with hand-rolled fakes so the behavior is
+// observable without standing up Postgres.
+
+import { describe, expect, it, vi } from "vitest";
+import {
+  AuthorizationError,
+  permissionValues,
+  reviewerQueueActionValues,
+  reviewerQueueItemKindValues,
+  reviewerQueueItemStateValues,
+  type ReviewerQueueItemRecord,
+  type ReviewerQueueTransitionRecord,
+} from "@itotori/db";
+import { resolveReviewerQueuePermissionView, type ItotoriAuthorizationPort } from "../src/auth.js";
+import {
+  draftFixture,
+  glossaryFixture,
+  loadReviewerDetailContext,
+  policyFixture,
+  qaFindingFixture,
+  rationaleFixture,
+  renderReviewerDetailRoute,
+  repositoryTransitionFixture,
+  reviewerDetailDiagnosticCodeValues,
+  runtimeEvidenceItemFixture,
+  runtimeTextTraceFixture,
+  sourceUnitFixture,
+  type ReviewerDetailEvidenceLoaderPort,
+  type ReviewerDetailEvidencePayload,
+  type ReviewerDetailPermissionView,
+} from "../src/reviewer/index.js";
+
+type StubLoaderHandle = {
+  loader: ReviewerDetailEvidenceLoaderPort;
+  loadItem: ReturnType<typeof vi.fn>;
+  loadTransitions: ReturnType<typeof vi.fn>;
+  loadDetailEvidence: ReturnType<typeof vi.fn>;
+};
+
+function stubLoader(opts: {
+  item?: ReviewerQueueItemRecord | null;
+  transitions?: ReviewerQueueTransitionRecord[];
+  payload?: Partial<ReviewerDetailEvidencePayload>;
+}): StubLoaderHandle {
+  const loadItem = vi.fn(async (_id: string) => opts.item ?? null);
+  const loadTransitions = vi.fn(async (_id: string) => opts.transitions ?? []);
+  const loadDetailEvidence = vi.fn(async (item: ReviewerQueueItemRecord) => {
+    const payload: ReviewerDetailEvidencePayload = {
+      loadedSourceRevisionId: opts.payload?.loadedSourceRevisionId ?? item.sourceRevisionId,
+      source: opts.payload?.source ?? null,
+      draft: opts.payload?.draft ?? null,
+      policy: opts.payload?.policy ?? null,
+      glossary: opts.payload?.glossary ?? [],
+      qaFindings: opts.payload?.qaFindings ?? [],
+      runtimeEvidence: opts.payload?.runtimeEvidence ?? [],
+      rationaleRefs: opts.payload?.rationaleRefs ?? [],
+      diagnostics: opts.payload?.diagnostics ?? [],
+    };
+    return payload;
+  });
+  return {
+    loader: { loadItem, loadTransitions, loadDetailEvidence },
+    loadItem,
+    loadTransitions,
+    loadDetailEvidence,
+  };
+}
+
+function permissionView(
+  overrides: Partial<ReviewerDetailPermissionView> = {},
+): ReviewerDetailPermissionView {
+  return {
+    actorUserId: "local-user",
+    canReadQueue: true,
+    canManageQueue: true,
+    denialReasons: [],
+    ...overrides,
+  };
+}
+
+describe("loadReviewerDetailContext — permission gate", () => {
+  it("returns a denied context and skips the evidence loader entirely when queue.read is missing", async () => {
+    const stub = stubLoader({ item: runtimeEvidenceItemFixture() });
+    const context = await loadReviewerDetailContext(
+      { reviewItemId: "reviewer-queue-1" },
+      {
+        permission: permissionView({
+          actorUserId: "anon",
+          canReadQueue: false,
+          canManageQueue: false,
+          denialReasons: ["user anon is missing permission queue.read"],
+        }),
+        evidenceLoader: stub.loader,
+      },
+    );
+
+    expect(context.permission.canReadQueue).toBe(false);
+    expect(context.permission.canManageQueue).toBe(false);
+    expect(context.permission.denialReasons[0]).toContain("queue.read");
+    expect(context.item).toBeNull();
+    expect(context.source).toBeNull();
+    expect(context.runtimeEvidence).toEqual([]);
+    expect(context.diagnostics[0]?.code).toBe(reviewerDetailDiagnosticCodeValues.permissionDenied);
+
+    // Audit guard: the evidence loader must never be consulted when the
+    // permission view refuses queue.read.
+    expect(stub.loadItem).not.toHaveBeenCalled();
+    expect(stub.loadTransitions).not.toHaveBeenCalled();
+    expect(stub.loadDetailEvidence).not.toHaveBeenCalled();
+  });
+
+  it("synthesizes a default denial reason when the view does not carry one", async () => {
+    const stub = stubLoader({ item: runtimeEvidenceItemFixture() });
+    const context = await loadReviewerDetailContext(
+      { reviewItemId: "reviewer-queue-1" },
+      {
+        permission: permissionView({
+          actorUserId: "anon",
+          canReadQueue: false,
+          canManageQueue: false,
+          denialReasons: [],
+        }),
+        evidenceLoader: stub.loader,
+      },
+    );
+
+    expect(context.diagnostics[0]?.message).toContain("queue.read");
+  });
+
+  it("loads evidence but disables manage actions when queue.read is granted and queue.manage is not", async () => {
+    const item = runtimeEvidenceItemFixture();
+    const stub = stubLoader({
+      item,
+      payload: {
+        loadedSourceRevisionId: item.sourceRevisionId,
+        source: sourceUnitFixture(),
+        draft: draftFixture(),
+        policy: policyFixture(),
+        runtimeEvidence: [runtimeTextTraceFixture()],
+        rationaleRefs: [rationaleFixture()],
+      },
+    });
+    const context = await loadReviewerDetailContext(
+      { reviewItemId: item.reviewItemId },
+      {
+        permission: permissionView({ canManageQueue: false }),
+        evidenceLoader: stub.loader,
+      },
+    );
+
+    expect(context.permission.canReadQueue).toBe(true);
+    expect(context.permission.canManageQueue).toBe(false);
+    expect(context.runtimeEvidence.length).toBe(1);
+    expect(stub.loadItem).toHaveBeenCalledWith(item.reviewItemId);
+    expect(stub.loadDetailEvidence).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("loadReviewerDetailContext — missing item", () => {
+  it("returns a stale-source diagnostic when the item is not found", async () => {
+    const stub = stubLoader({ item: null });
+    const context = await loadReviewerDetailContext(
+      { reviewItemId: "reviewer-queue-missing" },
+      {
+        permission: permissionView(),
+        evidenceLoader: stub.loader,
+      },
+    );
+
+    expect(context.item).toBeNull();
+    expect(context.diagnostics[0]?.code).toBe(
+      reviewerDetailDiagnosticCodeValues.staleSourceRevision,
+    );
+    expect(stub.loadDetailEvidence).not.toHaveBeenCalled();
+  });
+});
+
+describe("loadReviewerDetailContext — stale source revision", () => {
+  it("blanks out the draft and policy and surfaces a stale_source_revision diagnostic", async () => {
+    const item = runtimeEvidenceItemFixture({
+      sourceRevisionId: "source-revision-itotori-082-newer",
+    });
+    const stub = stubLoader({
+      item,
+      payload: {
+        loadedSourceRevisionId: "source-revision-itotori-082-older",
+        source: sourceUnitFixture({ sourceRevisionId: "source-revision-itotori-082-older" }),
+        draft: draftFixture(),
+        policy: policyFixture(),
+        runtimeEvidence: [runtimeTextTraceFixture()],
+        rationaleRefs: [rationaleFixture()],
+      },
+    });
+    const context = await loadReviewerDetailContext(
+      { reviewItemId: item.reviewItemId },
+      {
+        permission: permissionView(),
+        evidenceLoader: stub.loader,
+      },
+    );
+
+    expect(context.draft).toBeNull();
+    expect(context.policy).toBeNull();
+    expect(context.source).not.toBeNull();
+    expect(
+      context.diagnostics.some(
+        (d) => d.code === reviewerDetailDiagnosticCodeValues.staleSourceRevision,
+      ),
+    ).toBe(true);
+  });
+});
+
+describe("loadReviewerDetailContext — missing context emits diagnostics, not silent empty panels", () => {
+  it("emits missing_glossary_ref when a glossary item resolves zero terms", async () => {
+    const item: ReviewerQueueItemRecord = {
+      ...runtimeEvidenceItemFixture(),
+      itemKind: reviewerQueueItemKindValues.glossary,
+      evidenceTier: null,
+      observationEventIds: null,
+      artifactHashes: null,
+    };
+    const stub = stubLoader({
+      item,
+      payload: {
+        loadedSourceRevisionId: item.sourceRevisionId,
+        source: sourceUnitFixture(),
+        draft: draftFixture(),
+        policy: policyFixture(),
+        rationaleRefs: [rationaleFixture()],
+      },
+    });
+    const context = await loadReviewerDetailContext(
+      { reviewItemId: item.reviewItemId },
+      {
+        permission: permissionView(),
+        evidenceLoader: stub.loader,
+      },
+    );
+
+    const codes = context.diagnostics.map((d) => d.code);
+    expect(codes).toContain(reviewerDetailDiagnosticCodeValues.missingGlossaryRef);
+  });
+
+  it("emits missing_runtime_evidence when a runtime_evidence item resolves zero rows", async () => {
+    const item = runtimeEvidenceItemFixture();
+    const stub = stubLoader({
+      item,
+      payload: {
+        loadedSourceRevisionId: item.sourceRevisionId,
+        source: sourceUnitFixture(),
+        draft: draftFixture(),
+        policy: policyFixture(),
+        glossary: [glossaryFixture()],
+        qaFindings: [qaFindingFixture()],
+        runtimeEvidence: [],
+        rationaleRefs: [rationaleFixture()],
+      },
+    });
+    const context = await loadReviewerDetailContext(
+      { reviewItemId: item.reviewItemId },
+      {
+        permission: permissionView(),
+        evidenceLoader: stub.loader,
+      },
+    );
+
+    expect(context.diagnostics.map((d) => d.code)).toContain(
+      reviewerDetailDiagnosticCodeValues.missingRuntimeEvidence,
+    );
+  });
+
+  it("emits missing_rationale when no rationale refs were resolved", async () => {
+    const item = runtimeEvidenceItemFixture();
+    const stub = stubLoader({
+      item,
+      payload: {
+        loadedSourceRevisionId: item.sourceRevisionId,
+        source: sourceUnitFixture(),
+        draft: draftFixture(),
+        policy: policyFixture(),
+        runtimeEvidence: [runtimeTextTraceFixture()],
+        rationaleRefs: [],
+      },
+    });
+    const context = await loadReviewerDetailContext(
+      { reviewItemId: item.reviewItemId },
+      {
+        permission: permissionView(),
+        evidenceLoader: stub.loader,
+      },
+    );
+    expect(context.diagnostics.map((d) => d.code)).toContain(
+      reviewerDetailDiagnosticCodeValues.missingRationale,
+    );
+  });
+
+  it("emits stale_source + missing_draft + missing_policy when the source is missing", async () => {
+    const item = runtimeEvidenceItemFixture();
+    const stub = stubLoader({
+      item,
+      payload: {
+        loadedSourceRevisionId: item.sourceRevisionId,
+        source: null,
+        draft: null,
+        policy: null,
+        rationaleRefs: [rationaleFixture()],
+        runtimeEvidence: [runtimeTextTraceFixture()],
+      },
+    });
+    const context = await loadReviewerDetailContext(
+      { reviewItemId: item.reviewItemId },
+      {
+        permission: permissionView(),
+        evidenceLoader: stub.loader,
+      },
+    );
+    const codes = context.diagnostics.map((d) => d.code);
+    expect(codes).toContain(reviewerDetailDiagnosticCodeValues.staleSourceRevision);
+    expect(codes).toContain(reviewerDetailDiagnosticCodeValues.missingDraft);
+    expect(codes).toContain(reviewerDetailDiagnosticCodeValues.missingPolicy);
+  });
+});
+
+describe("loadReviewerDetailContext — transition history", () => {
+  it("maps the transition rows into the detail context view", async () => {
+    const item = runtimeEvidenceItemFixture();
+    const stub = stubLoader({
+      item,
+      transitions: [
+        repositoryTransitionFixture({
+          action: reviewerQueueActionValues.requestRepair,
+          priorState: reviewerQueueItemStateValues.pending,
+          nextState: reviewerQueueItemStateValues.repairRequested,
+        }),
+      ],
+      payload: {
+        loadedSourceRevisionId: item.sourceRevisionId,
+        source: sourceUnitFixture(),
+        draft: draftFixture(),
+        policy: policyFixture(),
+        rationaleRefs: [rationaleFixture()],
+        runtimeEvidence: [runtimeTextTraceFixture()],
+      },
+    });
+    const context = await loadReviewerDetailContext(
+      { reviewItemId: item.reviewItemId },
+      {
+        permission: permissionView(),
+        evidenceLoader: stub.loader,
+      },
+    );
+
+    expect(context.transitions.length).toBe(1);
+    const first = context.transitions[0]!;
+    expect(first.action).toBe(reviewerQueueActionValues.requestRepair);
+    expect(first.nextState).toBe(reviewerQueueItemStateValues.repairRequested);
+  });
+});
+
+describe("renderReviewerDetailRoute — DOM integration", () => {
+  it("renders the loading shell, then the denied view when the actor is unauthorized", async () => {
+    const stub = stubLoader({ item: null });
+    const root = document.createElement("div");
+    await renderReviewerDetailRoute(
+      root,
+      { reviewItemId: "reviewer-queue-1" },
+      {
+        permission: permissionView({
+          actorUserId: "anon",
+          canReadQueue: false,
+          canManageQueue: false,
+          denialReasons: ["user anon is missing permission queue.read"],
+        }),
+        evidenceLoader: stub.loader,
+      },
+    );
+    expect(root.querySelector('[data-state="denied"]')).not.toBeNull();
+    expect(root.textContent).toContain("Access denied");
+  });
+
+  it("renders the ready view end-to-end when permissions and evidence are present", async () => {
+    const item = runtimeEvidenceItemFixture();
+    const stub = stubLoader({
+      item,
+      payload: {
+        loadedSourceRevisionId: item.sourceRevisionId,
+        source: sourceUnitFixture(),
+        draft: draftFixture(),
+        policy: policyFixture(),
+        glossary: [glossaryFixture()],
+        qaFindings: [qaFindingFixture()],
+        runtimeEvidence: [runtimeTextTraceFixture()],
+        rationaleRefs: [rationaleFixture()],
+      },
+    });
+    const root = document.createElement("div");
+    await renderReviewerDetailRoute(
+      root,
+      { reviewItemId: item.reviewItemId },
+      {
+        permission: permissionView(),
+        evidenceLoader: stub.loader,
+      },
+    );
+    const main = root.querySelector(".reviewer-detail")!;
+    expect(main.getAttribute("data-state")).toBe("ready");
+    expect(main.getAttribute("data-can-manage")).toBe("true");
+    expect(root.querySelector('[data-panel-id="runtime-evidence"]')).not.toBeNull();
+  });
+
+  it("renders an error pane when the loader throws", async () => {
+    const root = document.createElement("div");
+    const exploding: ReviewerDetailEvidenceLoaderPort = {
+      loadItem: async () => {
+        throw new Error("DB connection lost");
+      },
+      loadTransitions: async () => [],
+      loadDetailEvidence: async () => {
+        throw new Error("unreachable");
+      },
+    };
+    await renderReviewerDetailRoute(
+      root,
+      { reviewItemId: "reviewer-queue-1" },
+      {
+        permission: permissionView(),
+        evidenceLoader: exploding,
+      },
+    );
+    expect(root.querySelector('[data-state="error"]')).not.toBeNull();
+    expect(root.textContent).toContain("DB connection lost");
+  });
+});
+
+describe("resolveReviewerQueuePermissionView", () => {
+  function authorization(
+    grants: ReadonlyArray<string>,
+    actorUserId = "local-user",
+  ): ItotoriAuthorizationPort {
+    const granted = new Set(grants);
+    return {
+      requirePermission: async (permission) => {
+        if (!granted.has(permission)) {
+          throw new AuthorizationError({ userId: actorUserId }, permission);
+        }
+      },
+    };
+  }
+
+  it("flags canReadQueue=true and canManageQueue=true when both grants are present", async () => {
+    const view = await resolveReviewerQueuePermissionView(
+      authorization([permissionValues.queueRead, permissionValues.queueManage]),
+      "local-user",
+    );
+    expect(view).toEqual({
+      actorUserId: "local-user",
+      canReadQueue: true,
+      canManageQueue: true,
+      denialReasons: [],
+    });
+  });
+
+  it("returns the AuthorizationError messages verbatim when permissions are missing", async () => {
+    const view = await resolveReviewerQueuePermissionView(authorization([], "anon"), "anon");
+    expect(view.canReadQueue).toBe(false);
+    expect(view.canManageQueue).toBe(false);
+    expect(view.denialReasons).toEqual([
+      "user anon is missing permission queue.read",
+      "user anon is missing permission queue.manage",
+    ]);
+  });
+
+  it("rethrows non-AuthorizationError failures from the underlying port", async () => {
+    const exploding: ItotoriAuthorizationPort = {
+      requirePermission: async () => {
+        throw new Error("auth backend offline");
+      },
+    };
+    await expect(resolveReviewerQueuePermissionView(exploding, "local-user")).rejects.toThrowError(
+      "auth backend offline",
+    );
+  });
+});
