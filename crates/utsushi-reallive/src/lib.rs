@@ -330,6 +330,25 @@ pub use rlop::module_str::{
     hantozen_bytes, register_str_rlops, zentohan_bytes,
 };
 
+pub use rlop::module_grp::{
+    BG_PLANE_SLOT, GRP_MODULE_ID, GRP_MODULE_TYPE, GRP_RLOP_COUNT, GrpAllocDcOp, GrpColourOp,
+    GrpCopyOp, GrpFadeOp, GrpInvertOp, GrpLightOp, GrpLoadOp, GrpMonoOp, GrpOpcode, GrpOpenBgOp,
+    GrpShakeOp, GrpStretchBlitOp, GrpWipeOp, GrpZoomOp, OPCODE_GRP_ALLOC_DC, OPCODE_GRP_COLOUR,
+    OPCODE_GRP_COPY, OPCODE_GRP_FADE, OPCODE_GRP_FILL, OPCODE_GRP_INVERT, OPCODE_GRP_LIGHT,
+    OPCODE_GRP_LOAD, OPCODE_GRP_MONO, OPCODE_GRP_OPEN, OPCODE_GRP_OPEN_BG, OPCODE_GRP_SHAKE,
+    OPCODE_GRP_STRETCH_BLIT, OPCODE_GRP_WIPE, OPCODE_GRP_ZOOM, register_grp_rlops,
+};
+
+pub use rlop::module_obj::{
+    BgCanvas, DEFAULT_FADE_TICKS_PER_MS, DcAllocation, FADE_PRIVATE_STATE_MAGIC, FadeLongOp,
+    FadeLongOpDecodeError, FadeSchedule, GraphicsRuntime, GraphicsRuntimeWarning,
+    GraphicsStateSnapshot, OBJ_BG_MODULE_ID, OBJ_BG_MODULE_TYPE, OBJ_FG_MODULE_ID,
+    OBJ_FG_MODULE_TYPE, OBJ_MGMT_MODULE_ID, OBJ_MGMT_MODULE_TYPE, OBJ_RLOP_COUNT, OPCODE_OBJ_ALLOC,
+    OPCODE_OBJ_COPY, OPCODE_OBJ_FREE, OPCODE_OBJ_HIDE, OPCODE_OBJ_INIT, OPCODE_OBJ_SET_ALPHA,
+    OPCODE_OBJ_SET_LAYER, OPCODE_OBJ_SET_POS, OPCODE_OBJ_SET_SCALE, OPCODE_OBJ_SHOW, ObjAllocOp,
+    ObjCopyOp, ObjFgBgOp, ObjFgBgOpcode, ObjFreeOp, ObjInitOp, ObjMgmtOpcode, register_obj_rlops,
+};
+
 pub use rlop::module_audio::{
     AUDIO_RLOP_COUNT, AudioRuntime, AudioRuntimeWarning, BGM_MODULE_ID, BGM_MODULE_TYPE,
     BgmFadeOutOp, BgmLoopOp, BgmOpcode, BgmPlayOp, BgmStatusOp, BgmStopOp, HasSeOp, KOE_MODULE_ID,
