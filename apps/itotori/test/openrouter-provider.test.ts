@@ -26,6 +26,7 @@ import {
   OpenRouterCostCapError,
   OpenRouterMissingApiKeyError,
   OpenRouterModelProvider,
+  openRouterDefaultCapabilities,
   type ModelInvocationRequest,
 } from "../src/providers/index.js";
 
@@ -602,5 +603,67 @@ describe("OpenRouterModelProvider — ITOTORI-233 live cache evidence (env-gated
       // sentinel is redundant but still passes.
       expect(true).toBe(true);
     }
+  });
+});
+
+describe("OpenRouterModelProvider — ITOTORI-237 descriptorForPair", () => {
+  // The agentic-loop pre-flight check (e.g. SpeakerLabelAgent's
+  // assertProviderSupportsStructuredOutput) reads
+  // `provider.descriptor.capabilities` directly. The class-level
+  // `descriptor` falls back to `openRouterDefaultCapabilities` (untested
+  // for structured outputs), which would refuse DEV_PAIR even though
+  // its registered capability sheet declares jsonSchema='supported'.
+  // `descriptorForPair` synthesises a descriptor whose capabilities
+  // reflect the per-(modelId, providerId) sheet registered in the
+  // provider's CapabilityGuard at construction.
+
+  it("returns a descriptor whose capabilities reflect the registered DEV_PAIR sheet (jsonSchema='supported')", () => {
+    const provider = new OpenRouterModelProvider({
+      env: { OPENROUTER_API_KEY: "abc", OPENROUTER_ZDR_ACCOUNT_ASSERTED: "1" },
+      httpClient: vi.fn() as unknown as typeof fetch,
+      capabilityGuard: new CapabilityGuard(),
+    });
+    const descriptor = provider.descriptorForPair(DEV_PAIR);
+    expect(descriptor.capabilities.structuredOutputs.jsonSchema).toBe("supported");
+    expect(descriptor.capabilities.toolCalls.support).toBe("supported");
+    // The non-capabilities fields stay identical to the class-level descriptor.
+    expect(descriptor.family).toBe(provider.descriptor.family);
+    expect(descriptor.endpointFamily).toBe(provider.descriptor.endpointFamily);
+    expect(descriptor.providerName).toBe(provider.descriptor.providerName);
+    expect(descriptor.defaultModelId).toBe(provider.descriptor.defaultModelId);
+  });
+
+  it("falls back to openRouterDefaultCapabilities for an unknown pair (jsonSchema stays 'untested')", () => {
+    const provider = new OpenRouterModelProvider({
+      env: { OPENROUTER_API_KEY: "abc", OPENROUTER_ZDR_ACCOUNT_ASSERTED: "1" },
+      httpClient: vi.fn() as unknown as typeof fetch,
+      capabilityGuard: new CapabilityGuard(),
+    });
+    const descriptor = provider.descriptorForPair({
+      modelId: "some/random-model",
+      providerId: "some-random-provider",
+    });
+    // Unknown pair falls back to the safe defaults — jsonSchema remains
+    // 'untested' so the pre-flight check still refuses, preserving the
+    // no-silent-fallback invariant.
+    expect(descriptor.capabilities.structuredOutputs.jsonSchema).toBe("untested");
+    expect(descriptor.capabilities).toBe(provider.descriptor.capabilities);
+    expect(descriptor.capabilities.structuredOutputs.jsonSchema).toBe(
+      openRouterDefaultCapabilities.structuredOutputs.jsonSchema,
+    );
+  });
+
+  it("leaves the class-level descriptor (request-agnostic) at the safe defaults", () => {
+    // Sanity check on the load-bearing invariant: nothing about
+    // descriptorForPair should mutate the class-level descriptor —
+    // unknown callers still see 'untested'.
+    const provider = new OpenRouterModelProvider({
+      env: { OPENROUTER_API_KEY: "abc", OPENROUTER_ZDR_ACCOUNT_ASSERTED: "1" },
+      httpClient: vi.fn() as unknown as typeof fetch,
+      capabilityGuard: new CapabilityGuard(),
+    });
+    // Read the per-pair descriptor first — must not mutate class state.
+    provider.descriptorForPair(DEV_PAIR);
+    expect(provider.descriptor.capabilities.structuredOutputs.jsonSchema).toBe("untested");
   });
 });

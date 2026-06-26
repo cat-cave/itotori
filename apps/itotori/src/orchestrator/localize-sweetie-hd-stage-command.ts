@@ -389,14 +389,20 @@ class SentinelInjectingProviderWrapper implements ModelProvider {
   readonly descriptor: ModelProvider["descriptor"];
   constructor(
     private readonly opts: {
-      inner: ModelProvider;
+      inner: OpenRouterModelProvider;
       stage: string;
       agentLabel: string;
       pair: { modelId: string; providerId: string };
       sentinel: string;
     },
   ) {
-    this.descriptor = opts.inner.descriptor;
+    // ITOTORI-237 — surface the per-pair capability sheet to agents
+    // reading `provider.descriptor.capabilities` directly (e.g. the
+    // speaker-label pre-flight check). The wrapper knows the
+    // (modelId, providerId) at construction, so the descriptor is
+    // pair-specific from the moment the agent receives it. Unknown
+    // pairs fall back to the safe defaults inside `descriptorForPair`.
+    this.descriptor = opts.inner.descriptorForPair(opts.pair);
   }
   async invoke(request: ModelInvocationRequest): Promise<ModelInvocationResult> {
     const isTranslation = request.taskKind === "draft_translation";
