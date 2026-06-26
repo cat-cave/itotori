@@ -51,6 +51,7 @@ use crate::vm::{SceneId, Vm};
 // system-arithmetic families in [`module_str`], [`module_mem`], and
 // [`module_sys`].
 pub mod longops;
+pub mod module_audio;
 pub mod module_ctrl;
 pub mod module_mem;
 pub mod module_msg;
