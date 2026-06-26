@@ -15,6 +15,10 @@ description = "UTSUSHI-200 alpha-gate scaffold: pure-Rust RealLive engine port t
 encoding_rs.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+# UTSUSHI-214: SHA-256-derived `artifact_id` for the headless render
+# pipeline's in-memory artifact store. Sourced through the workspace
+# dep (`utsushi-core` already declares `sha2.workspace = true`).
+sha2.workspace = true
 thiserror.workspace = true
 utsushi-core = { path = "../utsushi-core" }
 

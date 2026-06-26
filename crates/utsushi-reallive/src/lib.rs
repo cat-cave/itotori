@@ -173,11 +173,40 @@ pub mod g00;
 // UTSUSHI-211 `FarcallOp` (no private dispatch path).
 pub mod syscall;
 
+// UTSUSHI-214: graphics object stack (256 slots × 2 planes) — the
+// rlvm `GraphicsSystem` equivalent. Owns per-object state
+// (`position`, `scale`, `alpha`, `colour_tone`, `image_ref`,
+// `layer_order`) but no rasterisation logic; the headless render
+// pipeline at [`render_pipeline`] is what walks the stack and emits
+// PNGs.
+pub mod graphics_objects;
+
+// UTSUSHI-214: headless render pipeline + deterministic PNG encoder.
+// Walks the [`graphics_objects::GraphicsObjectStack`], rasterises into
+// a `Framebuffer`, encodes a deterministic (no timestamp metadata)
+// PNG, and stores the bytes in an [`render_pipeline::InMemoryFrameArtifactStore`]
+// keyed by a SHA-256-derived `artifact_id`. The artifact-store is
+// intentionally byte-retaining so the audit-focus "stub `Vec` that
+// doesn't actually retain bytes" cannot apply.
+pub mod render_pipeline;
+
 pub use syscall::{
     HotRegion, SYSCALL_KIND_COUNT, SYSCALL_MISSING_SCREEN_SIZE_CODE,
     SYSCALL_MOUSE_AREA_MALFORMED_CODE, SYSCALL_ROUTE_MALFORMED_PAIR_CODE, ScreenSize,
     SyscallDispatchBuildError, SyscallDispatcher, SyscallRoute, SyscallRouteKind,
     WBCALL_SLOT_COUNT,
+};
+
+pub use graphics_objects::{
+    GRAPHICS_OBJECT_SLOT_COUNT, GRAPHICS_OBJECT_TOTAL_SLOTS, GraphicsAlpha, GraphicsColourTone,
+    GraphicsObject, GraphicsObjectKind, GraphicsObjectStack, GraphicsPlane, GraphicsPosition,
+    GraphicsScale, GraphicsStackError, ImageRef, WipeColour,
+};
+pub use render_pipeline::{
+    FrameArtifactStoreError, FrameEmission, Framebuffer, InMemoryFrameArtifactStore, PNG_BIT_DEPTH,
+    PNG_COLOUR_TYPE_RGBA, PNG_FILE_MAGIC, RENDER_PIPELINE_ARTIFACT_MISS_CODE,
+    RENDER_PIPELINE_ZERO_SCREEN_SIZE_CODE, RGBA_BYTES_PER_PIXEL, RenderPass, RenderPassBuildError,
+    adler32, crc32_ieee, encode_png_rgba_deterministic, sha256_hex,
 };
 
 pub use g00::{

@@ -1238,6 +1238,7 @@ dependencies = [
  "kaifuu-reallive",
  "serde",
  "serde_json",
+ "sha2",
  "thiserror",
  "utsushi-core",
 ]
