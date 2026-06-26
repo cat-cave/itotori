@@ -2,14 +2,14 @@
 # qd expects one canonical command that means "this node is safe to merge".
 schema_version = 1
 skills_dir = ".qd/skills"
-check_command = "just check"
-ci_command = "just ci"
+check_command = "nix develop --command bash -lc 'pnpm exec vp check && node scripts/audit-no-hardcoded-cost.mjs && just fixtures-validate && just impl-map-schema-validate && node scripts/verify-toolchain-policy.mjs && pnpm exec vp run ts:typecheck && cargo fmt --check && cargo check --workspace'"
+ci_command = "nix develop --command bash -lc 'pnpm exec vp check && node scripts/audit-no-hardcoded-cost.mjs && just fixtures-validate && just impl-map-schema-validate && node scripts/verify-toolchain-policy.mjs && pnpm exec vp run ts:typecheck && cargo fmt --check && cargo check --workspace && just build && just db-migrate && just test && cargo clippy --workspace --all-targets --all-features -- -D warnings && cargo deny check'"
+ci_provider = "github"
+ci_repo = "cat-cave/itotori"
+ci_workflow = "ci.yml"
+ci_auth = "gh-cli"
 merge_strategy = "squash"
 require_clean_worktree = true
 clean_worktree_except = [".qd/", "artifacts/"]
 require_gate_before_ci = true
 require_ci_before_merge = true
-ci_provider = "github"
-ci_repo = "cat-cave/itotori"
-ci_workflow = "ci.yml"
-ci_auth = "gh-cli"

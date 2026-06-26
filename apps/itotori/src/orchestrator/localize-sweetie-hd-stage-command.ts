@@ -86,10 +86,16 @@ import {
   type PairPolicyV03Alternate,
   type StagePostureV03,
 } from "@itotori/localization-bridge-schema";
-import { DEFAULT_COST_CAP_USD, OpenRouterModelProvider } from "../providers/openrouter.js";
+import {
+  DEFAULT_COST_CAP_USD,
+  OpenRouterModelProvider,
+  openRouterDefaultCapabilities,
+} from "../providers/openrouter.js";
 import { FakeModelProvider } from "../providers/fake.js";
+import { globalCapabilityGuard, type CapabilityGuard } from "../providers/capability-guard.js";
 import { ModelProviderError } from "../providers/types.js";
 import type {
+  ModelCapabilities,
   ModelInvocationRequest,
   ModelInvocationResult,
   ModelProvider,
@@ -385,6 +391,111 @@ function replaceLeafPair(pairPolicy: PairPolicy, alternate: PairPolicyV03Alterna
 }
 
 /**
+ * ITOTORI-240 — translate an alternate's declared
+ * `PairPolicyV03AlternateCapabilitySheet` into the wider
+ * `ModelCapabilities` shape consumed by `CapabilityGuard`, then register
+ * the entry under the alternate's (modelId, providerId) pair.
+ *
+ * Root cause this closes (from the UTSUSHI-231 retry #8 sweep): the
+ * pair-policy preset declares every alternate's capability sheet
+ * inline, but ITOTORI-239 wired the data INTO the policy file without
+ * teaching the driver to push it into `globalCapabilityGuard`. The
+ * `SentinelInjectingProviderWrapper` calls
+ * `inner.descriptorForPair(opts.pair)` which delegates to
+ * `CapabilityGuard.has/lookup` — and on a miss, the descriptor falls
+ * back to `openRouterDefaultCapabilities` (jsonSchema=`untested`),
+ * which the speaker-label agent's pre-flight assertion refuses. End
+ * effect: every alternate in the chain hard-refused with
+ * `capability_unsupported` before its HTTP call could even fire.
+ *
+ * The fix here registers each alternate's capabilitySheet into the
+ * SAME singleton guard `OpenRouterModelProvider` reaches into in
+ * `descriptorForPair`, so `globalCapabilityGuard().has(alt.modelId,
+ * alt.providerId)` is true BEFORE the failover loop begins.
+ *
+ * Why only the active policy's alternates (and NOT every pair we
+ * could imagine): the no-silent-fallback invariant. Auto-registering
+ * arbitrary pairs at module load would let an unaudited (model,
+ * provider) pair slip into a run via a renamed alternate. Each
+ * registration is anchored to a commit-visible alternate inside the
+ * preset file, and the alternate-validation rule (parser enforces
+ * `supportsStructuredOutputJsonSchema=true` + non-empty `evidenceRef`)
+ * makes the data trustworthy at the registration site.
+ *
+ * Unknown pairs (not declared in the active policy's alternates) are
+ * NOT registered here — `descriptorForPair` keeps its safe-default
+ * fallback for those, and any agent attempting to use such a pair
+ * will still refuse with `capability_unsupported` (which is the
+ * desired posture per ITOTORI-220 / ITOTORI-237).
+ */
+export function alternateCapabilitiesAsModelCapabilities(
+  alternate: PairPolicyV03Alternate,
+): ModelCapabilities {
+  const sheet = alternate.capabilitySheet;
+  // Translate the alternate's coarse booleans into the structured-
+  // output axis the speaker-label pre-flight asserts on. The other
+  // axes (image input, routing) inherit the OpenRouter defaults —
+  // those are not policy-configurable per alternate and the family-
+  // wide defaults are correct.
+  const structuredOutputSupport = sheet.supportsStructuredOutputJsonSchema
+    ? ("supported" as const)
+    : ("untested" as const);
+  const toolCallSupport = sheet.supportsToolUse ? ("supported" as const) : ("untested" as const);
+  return {
+    ...openRouterDefaultCapabilities,
+    structuredOutputs: {
+      jsonSchema: structuredOutputSupport,
+      jsonObject: structuredOutputSupport,
+      toolCallArguments: toolCallSupport,
+      plainJsonExtraction: "supported",
+      preferredModes: ["json_schema", "tool_call_arguments", "json_object", "plain_json"],
+    },
+    toolCalls: {
+      support: toolCallSupport,
+      // Alternates declared by the alpha closer's pair-policy preset
+      // share the deepseek-v4-flash family — parallel tool calls are
+      // not asserted by the alternate sheet, so we inherit the default
+      // (`untested`). The orchestrator never asks for parallel calls.
+      parallelToolCalls: openRouterDefaultCapabilities.toolCalls.parallelToolCalls,
+      requiresSchemaPerRequest: true,
+    },
+    routing: {
+      ...openRouterDefaultCapabilities.routing,
+    },
+    contextWindowTokens: sheet.contextWindowTokens,
+    maxOutputTokens: sheet.maxOutputTokens,
+    notes: [
+      `ITOTORI-240: registered from pair-policy alternateProviders[] entry (evidenceRef: ${sheet.evidenceRef})`,
+    ],
+  };
+}
+
+/**
+ * ITOTORI-240 — registration loop. Pre-iterates the policy's
+ * `alternateProviders[]` and registers each `capabilitySheet` into the
+ * supplied `CapabilityGuard` (defaults to the singleton). MUST run
+ * BEFORE the failover loop so any per-pair `descriptorForPair` lookup
+ * during stage execution finds the alternate's registered sheet
+ * instead of falling back to the safe-default `untested` posture.
+ *
+ * Idempotent: re-registering the same pair overwrites the entry, so
+ * repeated invocations across re-runs of the command in the same
+ * process (e.g. a script that loops) do not accumulate stale data.
+ */
+export function registerPairPolicyAlternatesInCapabilityGuard(
+  policy: PairPolicyV03,
+  guard: CapabilityGuard = globalCapabilityGuard(),
+): void {
+  for (const alternate of policy.alternateProviders) {
+    guard.register(
+      alternate.modelId,
+      alternate.providerId,
+      alternateCapabilitiesAsModelCapabilities(alternate),
+    );
+  }
+}
+
+/**
  * ITOTORI-238 — does the thrown error match the policy's
  * `failoverPredicate`? Today the only predicate is
  * `"http_429_from_primary"`, which matches a
@@ -443,6 +554,22 @@ export async function runLocalizeSweetieHdStageCommand(
     parseLocalizeSweetieHdPairPolicy(rawPolicy);
   log(
     `localize-sweetie-hd-stage: policyId=${policyId} primary=(${pair.modelId}, ${pair.providerId}) sentinel=${enUsSentinel} alternates=${policyV03.alternateProviders.length} failoverPredicate=${policyV03.failoverPredicate}`,
+  );
+
+  // ITOTORI-240 — register every alternate's capabilitySheet into the
+  // singleton CapabilityGuard BEFORE the failover loop starts. The
+  // SentinelInjectingProviderWrapper (and any downstream pre-flight
+  // check that reads `provider.descriptor.capabilities`) calls
+  // `inner.descriptorForPair(opts.pair)` per attempt; without this
+  // registration the alternate's pair is a guard miss and the wrapper
+  // falls back to the family-default `untested` posture, which the
+  // speaker-label agent's structured-output pre-flight refuses. The
+  // primary pair is already covered by OpenRouterModelProvider's
+  // constructor-time registration of the dev-pair.ts known table;
+  // this loop closes the gap for the policy-declared alternates.
+  registerPairPolicyAlternatesInCapabilityGuard(policyV03);
+  log(
+    `localize-sweetie-hd-stage: registered ${policyV03.alternateProviders.length} alternate capability sheet(s) into globalCapabilityGuard`,
   );
 
   const providerKind = args.providerKind ?? "live";

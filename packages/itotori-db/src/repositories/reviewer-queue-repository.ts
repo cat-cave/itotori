@@ -127,7 +127,7 @@ export type ReviewerQueueActionInput = {
   metadata?: Record<string, unknown>;
   /**
    * Optional override of the next state. The default per-action
-   * mapping is documented on `actionToNextState`. The override is
+   * mapping is documented on `reviewerQueueActionToNextState`. The override is
    * only honored for the `approve` and `reject` actions for the
    * glossary / style guide kinds, which may collapse to `accepted`
    * via either path.
@@ -172,32 +172,43 @@ export interface ItotoriReviewerQueueRepositoryPort {
  * return `reviewer_queue_item_invalid_transition`; the repository
  * surfaces both the prior and the requested next state in the
  * diagnostic message so the dashboard can render a precise error.
+ *
+ * Exported so the ITOTORI-083 batch consequence-preview service and the
+ * repository's `applyAction` share the SAME transition validator — the
+ * preview must never disagree with execution (audit focus: "Consequence
+ * preview disagreeing with execution").
  */
-const allowedTransitions: ReadonlyArray<readonly [ReviewerQueueItemState, ReviewerQueueItemState]> =
-  [
-    [reviewerQueueItemStateValues.pending, reviewerQueueItemStateValues.inReview],
-    [reviewerQueueItemStateValues.pending, reviewerQueueItemStateValues.accepted],
-    [reviewerQueueItemStateValues.pending, reviewerQueueItemStateValues.rejected],
-    [reviewerQueueItemStateValues.pending, reviewerQueueItemStateValues.repairRequested],
-    [reviewerQueueItemStateValues.pending, reviewerQueueItemStateValues.escalated],
-    [reviewerQueueItemStateValues.inReview, reviewerQueueItemStateValues.accepted],
-    [reviewerQueueItemStateValues.inReview, reviewerQueueItemStateValues.rejected],
-    [reviewerQueueItemStateValues.inReview, reviewerQueueItemStateValues.repairRequested],
-    [reviewerQueueItemStateValues.inReview, reviewerQueueItemStateValues.escalated],
-    [reviewerQueueItemStateValues.repairRequested, reviewerQueueItemStateValues.pending],
-    [reviewerQueueItemStateValues.repairRequested, reviewerQueueItemStateValues.accepted],
-    [reviewerQueueItemStateValues.repairRequested, reviewerQueueItemStateValues.rejected],
-    [reviewerQueueItemStateValues.escalated, reviewerQueueItemStateValues.accepted],
-    [reviewerQueueItemStateValues.escalated, reviewerQueueItemStateValues.rejected],
-  ];
+export const reviewerQueueAllowedTransitions: ReadonlyArray<
+  readonly [ReviewerQueueItemState, ReviewerQueueItemState]
+> = [
+  [reviewerQueueItemStateValues.pending, reviewerQueueItemStateValues.inReview],
+  [reviewerQueueItemStateValues.pending, reviewerQueueItemStateValues.accepted],
+  [reviewerQueueItemStateValues.pending, reviewerQueueItemStateValues.rejected],
+  [reviewerQueueItemStateValues.pending, reviewerQueueItemStateValues.repairRequested],
+  [reviewerQueueItemStateValues.pending, reviewerQueueItemStateValues.escalated],
+  [reviewerQueueItemStateValues.inReview, reviewerQueueItemStateValues.accepted],
+  [reviewerQueueItemStateValues.inReview, reviewerQueueItemStateValues.rejected],
+  [reviewerQueueItemStateValues.inReview, reviewerQueueItemStateValues.repairRequested],
+  [reviewerQueueItemStateValues.inReview, reviewerQueueItemStateValues.escalated],
+  [reviewerQueueItemStateValues.repairRequested, reviewerQueueItemStateValues.pending],
+  [reviewerQueueItemStateValues.repairRequested, reviewerQueueItemStateValues.accepted],
+  [reviewerQueueItemStateValues.repairRequested, reviewerQueueItemStateValues.rejected],
+  [reviewerQueueItemStateValues.escalated, reviewerQueueItemStateValues.accepted],
+  [reviewerQueueItemStateValues.escalated, reviewerQueueItemStateValues.rejected],
+];
 
-const allowedTransitionSet = new Set(allowedTransitions.map(([prior, next]) => `${prior}→${next}`));
+const allowedTransitionSet = new Set(
+  reviewerQueueAllowedTransitions.map(([prior, next]) => `${prior}→${next}`),
+);
 
 /**
  * Default action → next-state mapping. The repository uses these
- * unless the caller supplies a `forcedNextState` override.
+ * unless the caller supplies a `forcedNextState` override. Exported so
+ * the ITOTORI-083 batch preview reads the SAME mapping (audit focus).
  */
-const actionToNextState: Readonly<Record<ReviewerQueueAction, ReviewerQueueItemState>> = {
+export const reviewerQueueActionToNextState: Readonly<
+  Record<ReviewerQueueAction, ReviewerQueueItemState>
+> = {
   [reviewerQueueActionValues.approve]: reviewerQueueItemStateValues.accepted,
   [reviewerQueueActionValues.reject]: reviewerQueueItemStateValues.rejected,
   [reviewerQueueActionValues.requestRepair]: reviewerQueueItemStateValues.repairRequested,
@@ -210,9 +221,10 @@ const actionToNextState: Readonly<Record<ReviewerQueueAction, ReviewerQueueItemS
  * Each action is only valid for a subset of item kinds. Mixing an
  * action with the wrong kind (e.g. `updateGlossary` on a runtime
  * evidence item) returns `reviewer_queue_item_invalid_input` before any
- * SQL fires.
+ * SQL fires. Exported so the ITOTORI-083 batch preview reads the SAME
+ * mapping (audit focus).
  */
-const actionAllowedKinds: Readonly<
+export const reviewerQueueActionAllowedKinds: Readonly<
   Record<ReviewerQueueAction, ReadonlyArray<ReviewerQueueItemKind>>
 > = {
   [reviewerQueueActionValues.approve]: reviewerQueueItemKindList,
@@ -229,6 +241,98 @@ const actionAllowedKinds: Readonly<
     reviewerQueueItemKindValues.feedback,
   ],
 };
+
+/**
+ * Pure transition validator shared by `ItotoriReviewerQueueRepository.applyAction`
+ * (execution path) and the ITOTORI-083 batch consequence preview service.
+ * Same input → same diagnostic; the preview never disagrees with execution.
+ *
+ * Returns `{ ok: true, nextState }` when the action is allowed for the
+ * item kind, the expected source revision matches the item, and the
+ * (prior → next) edge is in `reviewerQueueAllowedTransitions`. Otherwise
+ * returns `{ ok: false, code, message, diagnostics? }` matching the
+ * exact error shape `applyAction` would have thrown.
+ */
+export type ReviewerQueueTransitionValidation =
+  | {
+      ok: true;
+      action: ReviewerQueueAction;
+      priorState: ReviewerQueueItemState;
+      nextState: ReviewerQueueItemState;
+    }
+  | {
+      ok: false;
+      code: ReviewerQueueRepositoryErrorCode;
+      message: string;
+      diagnostics: ReviewerQueueDiagnostic[];
+    };
+
+export function validateReviewerQueueTransition(args: {
+  item: ReviewerQueueItemRecord;
+  action: ReviewerQueueAction;
+  expectedSourceRevisionId: string;
+  forcedNextState?: ReviewerQueueItemState;
+}): ReviewerQueueTransitionValidation {
+  const allowedKinds = reviewerQueueActionAllowedKinds[args.action];
+  if (!allowedKinds.includes(args.item.itemKind)) {
+    return {
+      ok: false,
+      code: "reviewer_queue_item_invalid_input",
+      message: `action '${args.action}' is not valid for item kind '${args.item.itemKind}'`,
+      diagnostics: [],
+    };
+  }
+
+  if (args.item.sourceRevisionId !== args.expectedSourceRevisionId) {
+    return {
+      ok: false,
+      code: "reviewer_queue_item_stale_revision",
+      message: `reviewer action targeted source_revision=${args.expectedSourceRevisionId} but item ${args.item.reviewItemId} is on source_revision=${args.item.sourceRevisionId}`,
+      diagnostics: [
+        {
+          code: "reviewer_queue_item_stale_revision",
+          message: `current source_revision_id=${args.item.sourceRevisionId}`,
+        },
+      ],
+    };
+  }
+
+  if (
+    args.item.itemKind === reviewerQueueItemKindValues.runtimeEvidence &&
+    (args.item.evidenceTier === null ||
+      args.item.observationEventIds === null ||
+      args.item.artifactHashes === null)
+  ) {
+    return {
+      ok: false,
+      code: "reviewer_queue_item_runtime_evidence_invariant",
+      message: `runtime evidence item ${args.item.reviewItemId} is missing evidence tier or observation refs; refusing to transition`,
+      diagnostics: [],
+    };
+  }
+
+  const requestedNextState = args.forcedNextState ?? reviewerQueueActionToNextState[args.action];
+  if (!allowedTransitionSet.has(`${args.item.state}→${requestedNextState}`)) {
+    return {
+      ok: false,
+      code: "reviewer_queue_item_invalid_transition",
+      message: `cannot transition reviewer queue item ${args.item.reviewItemId} from '${args.item.state}' to '${requestedNextState}' via action '${args.action}'`,
+      diagnostics: [
+        {
+          code: "reviewer_queue_item_invalid_transition",
+          message: `prior_state=${args.item.state} requested_next_state=${requestedNextState}`,
+        },
+      ],
+    };
+  }
+
+  return {
+    ok: true,
+    action: args.action,
+    priorState: args.item.state,
+    nextState: requestedNextState,
+  };
+}
 
 export class ItotoriReviewerQueueRepository implements ItotoriReviewerQueueRepositoryPort {
   constructor(private readonly db: ItotoriDatabase) {}
@@ -315,58 +419,27 @@ export class ItotoriReviewerQueueRepository implements ItotoriReviewerQueueRepos
         );
       }
 
-      const allowedKinds = actionAllowedKinds[input.action];
-      if (!allowedKinds.includes(existing.itemKind)) {
+      // The transition validator is shared with the ITOTORI-083 batch
+      // consequence preview — same input → same diagnostic. The preview
+      // service runs this same function over a fetched item snapshot
+      // before the operator confirms; the repository runs it here
+      // inside the transaction so concurrent moves are still caught by
+      // the optimistic-lock UPDATE further below.
+      const existingItem = rowToItem(existing);
+      const validation = validateReviewerQueueTransition({
+        item: existingItem,
+        action: input.action,
+        expectedSourceRevisionId: input.expectedSourceRevisionId,
+        ...(input.forcedNextState === undefined ? {} : { forcedNextState: input.forcedNextState }),
+      });
+      if (!validation.ok) {
         throw new ReviewerQueueRepositoryError(
-          "reviewer_queue_item_invalid_input",
-          `action '${input.action}' is not valid for item kind '${existing.itemKind}'`,
+          validation.code,
+          validation.message,
+          validation.diagnostics,
         );
       }
-
-      if (existing.sourceRevisionId !== input.expectedSourceRevisionId) {
-        throw new ReviewerQueueRepositoryError(
-          "reviewer_queue_item_stale_revision",
-          `reviewer action targeted source_revision=${input.expectedSourceRevisionId} but item ${input.reviewItemId} is on source_revision=${existing.sourceRevisionId}`,
-          [
-            {
-              code: "reviewer_queue_item_stale_revision",
-              message: `current source_revision_id=${existing.sourceRevisionId}`,
-            },
-          ],
-        );
-      }
-
-      const requestedNextState = input.forcedNextState ?? actionToNextState[input.action];
-      if (!allowedTransitionSet.has(`${existing.state}→${requestedNextState}`)) {
-        throw new ReviewerQueueRepositoryError(
-          "reviewer_queue_item_invalid_transition",
-          `cannot transition reviewer queue item ${input.reviewItemId} from '${existing.state}' to '${requestedNextState}' via action '${input.action}'`,
-          [
-            {
-              code: "reviewer_queue_item_invalid_transition",
-              message: `prior_state=${existing.state} requested_next_state=${requestedNextState}`,
-            },
-          ],
-        );
-      }
-
-      // Runtime-evidence invariant: every transition on a
-      // runtime_evidence item preserves the evidence tier, observation
-      // event ids, and artifact hashes verbatim. The SQL discriminant
-      // already prevents NULL-ing them at the row level; this explicit
-      // application-side guard preserves the invariant when a payload
-      // is supplied alongside the action.
-      if (
-        existing.itemKind === reviewerQueueItemKindValues.runtimeEvidence &&
-        (existing.evidenceTier === null ||
-          existing.observationEventIds === null ||
-          existing.artifactHashes === null)
-      ) {
-        throw new ReviewerQueueRepositoryError(
-          "reviewer_queue_item_runtime_evidence_invariant",
-          `runtime evidence item ${input.reviewItemId} is missing evidence tier or observation refs; refusing to transition`,
-        );
-      }
+      const requestedNextState = validation.nextState;
 
       const transitionId = `reviewer-queue-transition-${randomUUID()}`;
       const at = input.at ?? new Date();
