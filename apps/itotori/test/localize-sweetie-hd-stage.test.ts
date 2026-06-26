@@ -689,4 +689,64 @@ describe("ITOTORI-238 failover orchestration", () => {
     expect(deepinfra?.capabilitySheet.supportsStructuredOutputJsonSchema).toBe(true);
     expect(deepinfra?.capabilitySheet.evidenceRef).toContain("2026-06-26-alt-providers.json");
   });
+
+  // ---------------------------------------------------------------------------
+  // ITOTORI-239 — broader alternateProviders[] coverage
+  // ---------------------------------------------------------------------------
+  //
+  // UTSUSHI-231 retry 7 saw HTTP 429 from BOTH fireworks (primary) and
+  // deepinfra (the sole ITOTORI-238 alternate) — a single quota co-incidence
+  // wiped the entire bundle. ITOTORI-239 forces the preset to declare
+  // additional evidence-validated alternates so a co-incident 429 across
+  // two providers cannot block the alpha gate. Each alternate added by
+  // ITOTORI-239 was validated against Trevor's account on 2026-06-26 under
+  // a ~200-token translation prompt with provider.only=[<alt>] +
+  // provider.zdr=true + provider.allow_fallbacks=false + json_schema
+  // structured outputs; see docs/openrouter-integration-evidence/
+  // 2026-06-26-itotori-239.json. The test below is the commit-visible
+  // guard against silent shrinkage of the alternate list.
+
+  it("ITOTORI-239: declares wafer, digitalocean, morph, atlas-cloud as alternates with broader-alts evidence", () => {
+    const parsed = parseLocalizeSweetieHdPairPolicy(loadPreset());
+    const v03 = parsed.policyV03 as PairPolicyV03;
+    const expected = ["wafer", "digitalocean", "morph", "atlas-cloud"] as const;
+    for (const providerId of expected) {
+      const alt = v03.alternateProviders.find((a) => a.providerId === providerId);
+      expect(alt, `expected alternate '${providerId}' present in preset`).toBeDefined();
+      expect(alt?.modelId).toBe("deepseek/deepseek-v4-flash");
+      expect(alt?.capabilitySheet.supportsStructuredOutputJsonSchema).toBe(true);
+      expect(alt?.capabilitySheet.supportsToolUse).toBe(true);
+      expect(alt?.capabilitySheet.evidenceRef).toContain("2026-06-26-itotori-239.json");
+      // Each ITOTORI-239 alternate's evidenceRef must name BOTH the plain
+      // and the json_schema probe — silent removal of either would make the
+      // alternate untrustworthy at QA time.
+      expect(alt?.capabilitySheet.evidenceRef).toContain(`call_${providerId}_plain_realistic`);
+      expect(alt?.capabilitySheet.evidenceRef).toContain(
+        `call_${providerId}_json_schema_realistic`,
+      );
+    }
+  });
+
+  it("ITOTORI-239: preset declares strictly more than one alternate (single-alternate co-incident 429 is the failure mode being closed)", () => {
+    const parsed = parseLocalizeSweetieHdPairPolicy(loadPreset());
+    const v03 = parsed.policyV03 as PairPolicyV03;
+    // 1 (ITOTORI-238 deepinfra) + 4 (ITOTORI-239) = 5; the test guards
+    // ">= 2" so an honest future contraction (e.g. dropping atlas-cloud
+    // because its price climbs) still passes, while a regression all
+    // the way back to a single alternate fails immediately.
+    expect(v03.alternateProviders.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("ITOTORI-239: every alternate pair is unique and none byte-equals the primary (pair-policy parser already enforces this; this test pins the preset's compliance)", () => {
+    const parsed = parseLocalizeSweetieHdPairPolicy(loadPreset());
+    const v03 = parsed.policyV03 as PairPolicyV03;
+    const primaryKey = `${v03.pair.modelId}::${v03.pair.providerId}`;
+    const seen = new Set<string>();
+    for (const alt of v03.alternateProviders) {
+      const key = `${alt.modelId}::${alt.providerId}`;
+      expect(key, `alternate must not byte-equal primary pair`).not.toBe(primaryKey);
+      expect(seen.has(key), `duplicate alternate ${key}`).toBe(false);
+      seen.add(key);
+    }
+  });
 });
