@@ -24,8 +24,8 @@
       "path": "fixtures/catalog-benchmark-seeds/fixture.json",
       "role": "benchmark-input",
       "mediaType": "application/json",
-      "sha256": "d04d92291cdd7d170bde66c03022dfa430fc24e181505de7fdae8161ec3bc0ef",
-      "bytes": 9606,
+      "sha256": "f14a939cf7cc44c3c761c801189bf8b1d24ed585c511ec2765916a6e11c1ab22",
+      "bytes": 10277,
       "redistributable": true
     },
     {
