@@ -155,21 +155,23 @@ describe("catalog local scanner", () => {
     expect(serialized).not.toContain("kaifuu.rpgmaker_vx_ace");
     expect(serialized).not.toContain(bareSha256(`root:${root}`));
     expect(serialized).not.toContain(bareSha256("root-label:synthetic-private-fixture"));
-    expect(serialized).not.toContain(bareSha256(`path:${report.hashes.rootPathHash}:Vendor/Game.zip`));
+    expect(serialized).not.toContain(
+      bareSha256(`path:${report.hashes.rootPathHash}:Vendor/Game.zip`),
+    );
     expect(serialized).not.toContain(bareSha256("collection:sha256:fixture-collection"));
     expect(serialized).not.toContain(bareSha256("edition:sha256:fixture-original"));
-    expect(serialized).not.toContain(
-      hmacSha256("wrong-local-key", "root-path", root),
-    );
+    expect(serialized).not.toContain(hmacSha256("wrong-local-key", "root-path", root));
     expect(report.hashes.rootPathHash).toBe(hmacSha256(localHashKey, "root-path", root));
     expect(report.scanRoot.labelHash).toBe(
       hmacSha256(localHashKey, "root-label", "synthetic-private-fixture"),
     );
-    expect(report.entries.some((entry) => entry.pathHash === hmacSha256(
-      localHashKey,
-      "entry-path",
-      `${report.hashes.rootPathHash}:Vendor/Game.zip`,
-    ))).toBe(true);
+    expect(
+      report.entries.some(
+        (entry) =>
+          entry.pathHash ===
+          hmacSha256(localHashKey, "entry-path", `${report.hashes.rootPathHash}:Vendor/Game.zip`),
+      ),
+    ).toBe(true);
     expect(serialized).not.toContain(localHashKey);
     expect(serialized).not.toContain(root);
     expect(serialized).not.toContain("Private Story Vol 1");
@@ -327,10 +329,7 @@ async function syntheticCatalogRoot(): Promise<string> {
   return root;
 }
 
-async function writeSafeMetadata(
-  dir: string,
-  value: Record<string, unknown>,
-): Promise<void> {
+async function writeSafeMetadata(dir: string, value: Record<string, unknown>): Promise<void> {
   await writeFile(
     join(dir, ".itotori-local-corpus.json"),
     `${JSON.stringify({ schemaVersion: "catalog.local_corpus_hint.v0.1", ...value })}\n`,
@@ -338,10 +337,7 @@ async function writeSafeMetadata(
 }
 
 function fixedClock(): () => Date {
-  const dates = [
-    new Date("2026-06-26T12:00:00.000Z"),
-    new Date("2026-06-26T12:00:01.000Z"),
-  ];
+  const dates = [new Date("2026-06-26T12:00:00.000Z"), new Date("2026-06-26T12:00:01.000Z")];
   let index = 0;
   return () => dates[Math.min(index++, dates.length - 1)] ?? dates[dates.length - 1]!;
 }
@@ -351,7 +347,9 @@ function bareSha256(value: string): string {
 }
 
 function hmacSha256(key: string, scope: string, value: string): string {
-  return `sha256:${createHmac("sha256", key).update(scope).update("\0").update(value).digest(
-    "hex",
-  )}`;
+  return `sha256:${createHmac("sha256", key)
+    .update(scope)
+    .update("\0")
+    .update(value)
+    .digest("hex")}`;
 }

@@ -715,7 +715,7 @@ async function profileDirectory(
           }
         }
       }
-      if (/_Data$/u.test(entry.name)) {
+      if (entry.name.endsWith("_Data")) {
         directory.markerKinds.add("unity_data_directory");
       }
       continue;
@@ -908,7 +908,9 @@ function localEngineConfidence(
   return "low";
 }
 
-function archiveRowsForDirectory(directory: DirectoryProfile): CatalogLocalKaifuuArchiveDetectionRow[] {
+function archiveRowsForDirectory(
+  directory: DirectoryProfile,
+): CatalogLocalKaifuuArchiveDetectionRow[] {
   const rows: CatalogLocalKaifuuArchiveDetectionRow[] = [];
   if (directory.markerKinds.has("rpgmaker_mv_metadata")) {
     rows.push(
@@ -978,7 +980,10 @@ function archiveRowsForDirectory(directory: DirectoryProfile): CatalogLocalKaifu
   return rows;
 }
 
-function archiveRowForExtension(extension: string, count: number): CatalogLocalKaifuuArchiveDetectionRow {
+function archiveRowForExtension(
+  extension: string,
+  count: number,
+): CatalogLocalKaifuuArchiveDetectionRow {
   switch (extension) {
     case ".xp3":
       return archiveRow({
@@ -1053,7 +1058,8 @@ function archiveRow(input: {
       {
         capability: "detection",
         status: "limited",
-        limitation: "local scan reports aggregate file markers only; no adapter execution was performed",
+        limitation:
+          "local scan reports aggregate file markers only; no adapter execution was performed",
       },
     ],
     diagnostics: [],
@@ -1204,7 +1210,10 @@ function flattenFiles(directory: DirectoryProfile): FileProfile[] {
   ];
 }
 
-function isUnderDirectoryCandidate(relativePath: string, candidateRelativePaths: string[]): boolean {
+function isUnderDirectoryCandidate(
+  relativePath: string,
+  candidateRelativePaths: string[],
+): boolean {
   const normalized = normalizeRelativePath(relativePath);
   return candidateRelativePaths.some(
     (candidate) => normalized === candidate || normalized.startsWith(`${candidate}/`),
@@ -1240,7 +1249,11 @@ function safeReference(value: string): string | undefined {
   return /^[a-z0-9_.:-]+$/u.test(value) ? value : undefined;
 }
 
-function increment(target: Record<string, number>, key: string, by: number): Record<string, number> {
+function increment(
+  target: Record<string, number>,
+  key: string,
+  by: number,
+): Record<string, number> {
   target[key] = (target[key] ?? 0) + by;
   return target;
 }
