@@ -1,0 +1,55 @@
+{
+  "$schema": "./manifest.schema.json",
+  "schemaVersion": "0.1.0",
+  "fixture": {
+    "id": "catalog-opportunities",
+    "title": "Catalog Opportunity Ranking Fixture",
+    "kind": "synthetic",
+    "summary": "Synthetic public fixture input and expected output for deterministic catalog opportunity ranking across engines, translation gaps, demand buckets, readiness evidence, and official-English demotions.",
+    "sourceLocale": "ja-JP",
+    "targetLocales": ["en-US"],
+    "publicRedistribution": "allowed",
+    "license": {
+      "spdx": "CC0-1.0",
+      "evidence": "Hand-authored synthetic catalog records, public numeric demand facts, public capability labels, aggregate local evidence counts, and expected ranking output; no third-party raw assets."
+    },
+    "provenance": {
+      "author": "Itotori contributors",
+      "creationMethod": "Hand-authored synthetic fixture for CATALOG-061 opportunity ranking read-model and leakage-policy verification.",
+      "rawAssetPolicy": "contains-no-copyrighted-game-assets"
+    }
+  },
+  "files": [
+    {
+      "path": "fixtures/catalog-opportunities/fixture.json",
+      "role": "benchmark-input",
+      "mediaType": "application/json",
+      "sha256": "a38896e65ea260cb70f19102c62b70a67cbdc7edbcd5415d5cbdebef2672593d",
+      "bytes": 51344,
+      "redistributable": true
+    }
+  ],
+  "aggregateStats": {
+    "files": 1,
+    "textUnits": 0,
+    "sourceTextUtf16CodeUnits": 0,
+    "protectedSpans": 0,
+    "sourceLocales": ["ja-JP"],
+    "targetLocales": ["en-US"],
+    "engineKinds": [
+      "kirikiri-xp3",
+      "rgss3-vx-ace",
+      "rpg-maker-mv-mz",
+      "siglus",
+      "tyranoscript",
+      "unity",
+      "wolf-rpg-editor"
+    ],
+    "notes": "Covers no-English, MTL-only, fan-partial, official-English-conflict, demand-ranked pools, public readiness evidence, and CATALOG-007-style private-local aggregate evidence without raw private material."
+  },
+  "benchmarkUse": {
+    "allowedInPublicCi": true,
+    "allowedInPublicReports": true,
+    "reportingLabel": "public:catalog-opportunities"
+  }
+}

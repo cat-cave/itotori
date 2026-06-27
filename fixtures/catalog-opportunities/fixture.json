@@ -1,0 +1,1054 @@
+{
+  "schemaVersion": "catalog.opportunity_ranking.fixture.v0.1",
+  "fixtureId": "catalog-opportunities-catalog-061",
+  "generatedAt": "2026-06-27T16:10:00.000Z",
+  "targetLanguage": "en-US",
+  "weightsVersion": "catalog-opportunity-ranking-public-fixture-v0.1",
+  "reviewNotes": [
+    "Synthetic public fixture only; all catalog records, demand facts, capability evidence, and ranking outputs are hand-authored.",
+    "Private-local evidence is represented as aggregate counts and coarse readiness only.",
+    "The leakage policy below records forbidden private data classes; this fixture includes only synthetic public facts and aggregate-safe evidence.",
+    "Expected scores are deterministic after generatedAt is normalized by tests; ties sort by score descending, canonicalTitle ascending, then workId ascending."
+  ],
+  "scoringModel": {
+    "decisionRules": {
+      "candidate": "score is non-negative and no blocking official-English conflict exists",
+      "demoted": "candidate has useful public metadata but an official English platform-language conflict or other open catalog conflict",
+      "excluded": "candidate lacks redistributable provenance or violates leakage policy"
+    },
+    "tieBreaks": ["score_desc", "canonicalTitle_asc", "workId_asc"],
+    "factorWeights": {
+      "translation_completeness": {
+        "no_english": 30,
+        "mtl_only": 22,
+        "fan_partial": 16,
+        "official_english_conflict": -42
+      },
+      "local_ownership": {
+        "owned": 10,
+        "aggregate_seen": 4,
+        "not_owned": 0,
+        "unknown": 0
+      },
+      "dlsite_demand": {
+        "very_high": 18,
+        "high": 12,
+        "medium": 7,
+        "low": 3,
+        "none": 0
+      },
+      "market_prevalence": {
+        "common": 7,
+        "notable": 4,
+        "niche": 1,
+        "unknown": 0
+      },
+      "adapter_readiness": {
+        "extract_patch": 18,
+        "extract_only": 8,
+        "identify_only": 2,
+        "unsupported": -8,
+        "unknown": -4
+      },
+      "runtime_evidence_readiness": {
+        "ready": 6,
+        "partial": 3,
+        "unknown": 0
+      },
+      "benchmark_usefulness": {
+        "broad_pool_coverage": 5,
+        "engine_gap_coverage": 3,
+        "conflict_regression": 2,
+        "none": 0
+      }
+    }
+  },
+  "inputSummary": {
+    "sourceVersion": "catalog-opportunity-public-fixture-v1",
+    "filters": [
+      {
+        "name": "default",
+        "filter": { "targetLanguage": "en-US", "includeDemoted": false, "limit": 20 },
+        "expectedWorkIds": [
+          "019ed161-0000-7000-8000-000000000101",
+          "019ed161-0000-7000-8000-000000000102",
+          "019ed161-0000-7000-8000-000000000103",
+          "019ed161-0000-7000-8000-000000000104",
+          "019ed161-0000-7000-8000-000000000105",
+          "019ed161-0000-7000-8000-000000000106",
+          "019ed161-0000-7000-8000-000000000107",
+          "019ed161-0000-7000-8000-000000000108",
+          "019ed161-0000-7000-8000-000000000109"
+        ]
+      },
+      {
+        "name": "include demoted conflicts",
+        "filter": { "targetLanguage": "en-US", "includeDemoted": true, "limit": 20 },
+        "expectedWorkIds": [
+          "019ed161-0000-7000-8000-000000000101",
+          "019ed161-0000-7000-8000-000000000102",
+          "019ed161-0000-7000-8000-000000000103",
+          "019ed161-0000-7000-8000-000000000104",
+          "019ed161-0000-7000-8000-000000000105",
+          "019ed161-0000-7000-8000-000000000106",
+          "019ed161-0000-7000-8000-000000000107",
+          "019ed161-0000-7000-8000-000000000108",
+          "019ed161-0000-7000-8000-000000000109",
+          "019ed161-0000-7000-8000-000000000110"
+        ]
+      },
+      {
+        "name": "very high demand only",
+        "filter": { "targetLanguage": "en-US", "demandBucket": "very_high", "includeDemoted": true, "limit": 20 },
+        "expectedWorkIds": [
+          "019ed161-0000-7000-8000-000000000101",
+          "019ed161-0000-7000-8000-000000000110"
+        ]
+      }
+    ],
+    "works": [
+      {
+        "workId": "019ed161-0000-7000-8000-000000000101",
+        "canonicalTitle": "Opportunity MV MZ no-English owned",
+        "originalLanguage": "ja-JP",
+        "engineName": "rpg-maker-mv-mz",
+        "adapterId": "kaifuu.rpg-maker-mv-mz",
+        "completenessPool": "no_english",
+        "translationStatuses": [
+          { "language": "en-US", "status": "none", "confidence": "high", "statusScope": "work", "platform": null }
+        ],
+        "sourceIds": [
+          { "catalogSource": "dlsite", "sourceId": "RJOPP001", "externalIdKind": "store_product" }
+        ],
+        "dlsiteDemandFacts": {
+          "salesOrDownloadCount": 61240,
+          "ratingSummary": { "average": 4.72, "count": 1880 },
+          "wishlistCount": 12040,
+          "bestRank": { "rank": 3, "category": "all_age", "period": "monthly" },
+          "workType": { "code": "RPG", "label": "Role-playing game" },
+          "demandBucket": "very_high"
+        },
+        "localOwnership": "owned",
+        "localEvidenceCount": 5,
+        "marketPrevalence": "common",
+        "readiness": {
+          "adapterId": "kaifuu.rpg-maker-mv-mz",
+          "identify": "supported",
+          "inventory": "supported",
+          "extract": "supported",
+          "patch": "supported",
+          "helper": "unknown",
+          "runtime": "ready"
+        },
+        "capabilityEvidence": {
+          "publicFixture": [
+            {
+              "evidenceRef": "public:kaifuu-rpg-maker-encrypted-suffixes",
+              "level": "extract_patch",
+              "evidenceKind": "adapter_matrix",
+              "status": "supported",
+              "limitations": ["synthetic encrypted suffix fixture only"]
+            }
+          ],
+          "privateLocalAggregate": [
+            {
+              "evidenceRef": "aggregate:mv-mz-owned-public-safe-counts",
+              "level": "identify",
+              "status": "partial",
+              "aggregateCounts": {
+                "marker.rpgmaker_mv_metadata": 5,
+                "file_kind.script": 18,
+                "file_kind.image": 9
+              },
+              "limitations": ["aggregate counts only", "no filenames or raw paths"]
+            }
+          ]
+        },
+        "expectedFactorContributions": {
+          "translation_completeness": 30,
+          "local_ownership": 10,
+          "dlsite_demand": 18,
+          "market_prevalence": 7,
+          "adapter_readiness": 18,
+          "runtime_evidence_readiness": 6,
+          "benchmark_usefulness": 5
+        },
+        "expectedScore": 94,
+        "expectedDecision": "candidate"
+      },
+      {
+        "workId": "019ed161-0000-7000-8000-000000000102",
+        "canonicalTitle": "Opportunity KiriKiri XP3 no-English",
+        "originalLanguage": "ja-JP",
+        "engineName": "kirikiri-xp3",
+        "adapterId": "kaifuu.kirikiri-xp3",
+        "completenessPool": "no_english",
+        "translationStatuses": [
+          { "language": "en-US", "status": "none", "confidence": "high", "statusScope": "work", "platform": null }
+        ],
+        "sourceIds": [
+          { "catalogSource": "dlsite", "sourceId": "RJOPP002", "externalIdKind": "store_product" }
+        ],
+        "dlsiteDemandFacts": {
+          "salesOrDownloadCount": 48910,
+          "ratingSummary": { "average": 4.61, "count": 1330 },
+          "wishlistCount": 8840,
+          "bestRank": { "rank": 9, "category": "adventure", "period": "monthly" },
+          "workType": { "code": "ADV", "label": "Adventure game" },
+          "demandBucket": "high"
+        },
+        "localOwnership": "aggregate_seen",
+        "localEvidenceCount": 4,
+        "marketPrevalence": "common",
+        "readiness": {
+          "adapterId": "kaifuu.kirikiri-xp3",
+          "identify": "supported",
+          "inventory": "supported",
+          "extract": "supported",
+          "patch": "supported",
+          "helper": "optional",
+          "runtime": "partial"
+        },
+        "capabilityEvidence": {
+          "publicFixture": [
+            {
+              "evidenceRef": "public:kaifuu-encrypted-matrix:kirikiri",
+              "level": "extract_patch",
+              "evidenceKind": "adapter_matrix",
+              "status": "supported",
+              "limitations": ["synthetic XP3-like byte strings only"]
+            }
+          ],
+          "privateLocalAggregate": [
+            {
+              "evidenceRef": "aggregate:kirikiri-xp3-redacted-counts",
+              "level": "identify",
+              "status": "present",
+              "aggregateCounts": {
+                "marker.kirikiri_archive": 4,
+                "readiness.extract_supported": 3,
+                "readiness.patch_supported": 3
+              },
+              "limitations": ["aggregate readiness only", "no archive member names"]
+            }
+          ]
+        },
+        "expectedFactorContributions": {
+          "translation_completeness": 30,
+          "local_ownership": 4,
+          "dlsite_demand": 12,
+          "market_prevalence": 7,
+          "adapter_readiness": 18,
+          "runtime_evidence_readiness": 3,
+          "benchmark_usefulness": 5
+        },
+        "expectedScore": 79,
+        "expectedDecision": "candidate"
+      },
+      {
+        "workId": "019ed161-0000-7000-8000-000000000103",
+        "canonicalTitle": "Opportunity Wolf no-English demand",
+        "originalLanguage": "ja-JP",
+        "engineName": "wolf-rpg-editor",
+        "adapterId": "kaifuu.wolf-rpg-editor",
+        "completenessPool": "no_english",
+        "translationStatuses": [
+          { "language": "en-US", "status": "none", "confidence": "medium", "statusScope": "work", "platform": null }
+        ],
+        "sourceIds": [
+          { "catalogSource": "dlsite", "sourceId": "RJOPP003", "externalIdKind": "store_product" }
+        ],
+        "dlsiteDemandFacts": {
+          "salesOrDownloadCount": 27250,
+          "ratingSummary": { "average": 4.49, "count": 820 },
+          "wishlistCount": 5100,
+          "bestRank": { "rank": 18, "category": "rpg", "period": "quarterly" },
+          "workType": { "code": "RPG", "label": "Role-playing game" },
+          "demandBucket": "high"
+        },
+        "localOwnership": "aggregate_seen",
+        "localEvidenceCount": 3,
+        "marketPrevalence": "common",
+        "readiness": {
+          "adapterId": "kaifuu.wolf-rpg-editor",
+          "identify": "supported",
+          "inventory": "supported",
+          "extract": "supported",
+          "patch": "supported",
+          "helper": "unknown",
+          "runtime": "partial"
+        },
+        "capabilityEvidence": {
+          "publicFixture": [
+            {
+              "evidenceRef": "public:kaifuu-encrypted-matrix:wolf",
+              "level": "extract_patch",
+              "evidenceKind": "adapter_matrix",
+              "status": "supported",
+              "limitations": ["synthetic Wolf-like archive signal only"]
+            }
+          ],
+          "privateLocalAggregate": [
+            {
+              "evidenceRef": "aggregate:wolf-redacted-readiness",
+              "level": "identify",
+              "status": "present",
+              "aggregateCounts": {
+                "marker.wolf_archive": 3,
+                "readiness.extract_supported": 2,
+                "readiness.patch_supported": 2
+              },
+              "limitations": ["aggregate counts only"]
+            }
+          ]
+        },
+        "expectedFactorContributions": {
+          "translation_completeness": 30,
+          "local_ownership": 4,
+          "dlsite_demand": 12,
+          "market_prevalence": 7,
+          "adapter_readiness": 18,
+          "runtime_evidence_readiness": 3,
+          "benchmark_usefulness": 5
+        },
+        "expectedScore": 76,
+        "expectedDecision": "candidate"
+      },
+      {
+        "workId": "019ed161-0000-7000-8000-000000000104",
+        "canonicalTitle": "Opportunity RGSS3 VX Ace MTL-only",
+        "originalLanguage": "ja-JP",
+        "engineName": "rgss3-vx-ace",
+        "adapterId": "kaifuu.rgss3-vx-ace",
+        "completenessPool": "mtl_only",
+        "translationStatuses": [
+          { "language": "en-US", "status": "mtl", "confidence": "high", "statusScope": "work", "platform": null }
+        ],
+        "sourceIds": [
+          { "catalogSource": "dlsite", "sourceId": "RJOPP004", "externalIdKind": "store_product" }
+        ],
+        "dlsiteDemandFacts": {
+          "salesOrDownloadCount": 22100,
+          "ratingSummary": { "average": 4.36, "count": 640 },
+          "wishlistCount": 4080,
+          "bestRank": { "rank": 27, "category": "rpg", "period": "quarterly" },
+          "workType": { "code": "RPG", "label": "Role-playing game" },
+          "demandBucket": "high"
+        },
+        "localOwnership": "owned",
+        "localEvidenceCount": 2,
+        "marketPrevalence": "notable",
+        "readiness": {
+          "adapterId": "kaifuu.rgss3-vx-ace",
+          "identify": "supported",
+          "inventory": "supported",
+          "extract": "supported",
+          "patch": "partial",
+          "helper": "unknown",
+          "runtime": "unknown"
+        },
+        "capabilityEvidence": {
+          "publicFixture": [
+            {
+              "evidenceRef": "public:rgss3-vx-ace-capability-matrix",
+              "level": "extract_only",
+              "evidenceKind": "adapter_matrix",
+              "status": "partial",
+              "limitations": ["patch support is not claimed by public fixture"]
+            }
+          ],
+          "privateLocalAggregate": [
+            {
+              "evidenceRef": "aggregate:rgss3-vx-ace-redacted-counts",
+              "level": "inventory",
+              "status": "present",
+              "aggregateCounts": {
+                "marker.rgss3_project": 2,
+                "readiness.extract_supported": 2
+              },
+              "limitations": ["aggregate marker counts only"]
+            }
+          ]
+        },
+        "expectedFactorContributions": {
+          "translation_completeness": 22,
+          "local_ownership": 10,
+          "dlsite_demand": 12,
+          "market_prevalence": 4,
+          "adapter_readiness": 8,
+          "runtime_evidence_readiness": 0,
+          "benchmark_usefulness": 5
+        },
+        "expectedScore": 61,
+        "expectedDecision": "candidate"
+      },
+      {
+        "workId": "019ed161-0000-7000-8000-000000000105",
+        "canonicalTitle": "Opportunity TyranoScript fan partial",
+        "originalLanguage": "ja-JP",
+        "engineName": "tyranoscript",
+        "adapterId": "kaifuu.tyranoscript",
+        "completenessPool": "fan_partial",
+        "translationStatuses": [
+          { "language": "en-US", "status": "fan_partial", "confidence": "medium", "statusScope": "work", "platform": null }
+        ],
+        "sourceIds": [
+          { "catalogSource": "dlsite", "sourceId": "RJOPP005", "externalIdKind": "store_product" }
+        ],
+        "dlsiteDemandFacts": {
+          "salesOrDownloadCount": 18320,
+          "ratingSummary": { "average": 4.28, "count": 520 },
+          "wishlistCount": 3320,
+          "bestRank": { "rank": 41, "category": "adventure", "period": "quarterly" },
+          "workType": { "code": "ADV", "label": "Adventure game" },
+          "demandBucket": "medium"
+        },
+        "localOwnership": "unknown",
+        "localEvidenceCount": 0,
+        "marketPrevalence": "notable",
+        "readiness": {
+          "adapterId": "kaifuu.tyranoscript",
+          "identify": "supported",
+          "inventory": "supported",
+          "extract": "supported",
+          "patch": "supported",
+          "helper": "unknown",
+          "runtime": "ready"
+        },
+        "capabilityEvidence": {
+          "publicFixture": [
+            {
+              "evidenceRef": "public:tyranoscript-capability-matrix",
+              "level": "extract_patch",
+              "evidenceKind": "adapter_matrix",
+              "status": "supported",
+              "limitations": ["synthetic command syntax coverage only"]
+            }
+          ],
+          "privateLocalAggregate": []
+        },
+        "expectedFactorContributions": {
+          "translation_completeness": 16,
+          "local_ownership": 0,
+          "dlsite_demand": 7,
+          "market_prevalence": 4,
+          "adapter_readiness": 18,
+          "runtime_evidence_readiness": 6,
+          "benchmark_usefulness": 5
+        },
+        "expectedScore": 59,
+        "expectedDecision": "candidate"
+      },
+      {
+        "workId": "019ed161-0000-7000-8000-000000000106",
+        "canonicalTitle": "Opportunity Siglus no-English aggregate",
+        "originalLanguage": "ja-JP",
+        "engineName": "siglus",
+        "adapterId": "kaifuu.siglus",
+        "completenessPool": "no_english",
+        "translationStatuses": [
+          { "language": "en-US", "status": "none", "confidence": "medium", "statusScope": "work", "platform": null }
+        ],
+        "sourceIds": [
+          { "catalogSource": "dlsite", "sourceId": "RJOPP006", "externalIdKind": "store_product" }
+        ],
+        "dlsiteDemandFacts": {
+          "salesOrDownloadCount": 13900,
+          "ratingSummary": { "average": 4.18, "count": 390 },
+          "wishlistCount": 2100,
+          "bestRank": { "rank": 66, "category": "adventure", "period": "yearly" },
+          "workType": { "code": "ADV", "label": "Adventure game" },
+          "demandBucket": "medium"
+        },
+        "localOwnership": "aggregate_seen",
+        "localEvidenceCount": 2,
+        "marketPrevalence": "niche",
+        "readiness": {
+          "adapterId": "kaifuu.siglus",
+          "identify": "supported",
+          "inventory": "supported",
+          "extract": "supported",
+          "patch": "unsupported",
+          "helper": "required",
+          "runtime": "partial"
+        },
+        "capabilityEvidence": {
+          "publicFixture": [
+            {
+              "evidenceRef": "public:kaifuu-encrypted-matrix:siglus",
+              "level": "extract_only",
+              "evidenceKind": "adapter_matrix",
+              "status": "partial",
+              "limitations": ["secondary-key and patch workflows are outside this public fixture"]
+            }
+          ],
+          "privateLocalAggregate": [
+            {
+              "evidenceRef": "aggregate:siglus-redacted-readiness",
+              "level": "identify",
+              "status": "present",
+              "aggregateCounts": {
+                "marker.siglus_container": 2,
+                "helper.required": 2
+              },
+              "limitations": ["no helper logs or key material"]
+            }
+          ]
+        },
+        "expectedFactorContributions": {
+          "translation_completeness": 30,
+          "local_ownership": 4,
+          "dlsite_demand": 7,
+          "market_prevalence": 1,
+          "adapter_readiness": 8,
+          "runtime_evidence_readiness": 3,
+          "benchmark_usefulness": 3
+        },
+        "expectedScore": 56,
+        "expectedDecision": "candidate"
+      },
+      {
+        "workId": "019ed161-0000-7000-8000-000000000107",
+        "canonicalTitle": "Opportunity Unity no-English unknown adapter",
+        "originalLanguage": "ja-JP",
+        "engineName": "unity",
+        "adapterId": "kaifuu.unity",
+        "completenessPool": "no_english",
+        "translationStatuses": [
+          { "language": "en-US", "status": "none", "confidence": "high", "statusScope": "work", "platform": null }
+        ],
+        "sourceIds": [
+          { "catalogSource": "dlsite", "sourceId": "RJOPP007", "externalIdKind": "store_product" }
+        ],
+        "dlsiteDemandFacts": {
+          "salesOrDownloadCount": 31500,
+          "ratingSummary": { "average": 4.12, "count": 710 },
+          "wishlistCount": 6020,
+          "bestRank": { "rank": 22, "category": "simulation", "period": "quarterly" },
+          "workType": { "code": "SLG", "label": "Simulation game" },
+          "demandBucket": "high"
+        },
+        "localOwnership": "unknown",
+        "localEvidenceCount": 0,
+        "marketPrevalence": "common",
+        "readiness": {
+          "adapterId": "kaifuu.unity",
+          "identify": "supported",
+          "inventory": "partial",
+          "extract": "unknown",
+          "patch": "unknown",
+          "helper": "unknown",
+          "runtime": "unknown"
+        },
+        "capabilityEvidence": {
+          "publicFixture": [
+            {
+              "evidenceRef": "public:unity-capability-placeholder",
+              "level": "identify",
+              "evidenceKind": "adapter_matrix",
+              "status": "identify_only",
+              "limitations": ["public fixture does not claim extract or patch support"]
+            }
+          ],
+          "privateLocalAggregate": []
+        },
+        "expectedFactorContributions": {
+          "translation_completeness": 30,
+          "local_ownership": 0,
+          "dlsite_demand": 12,
+          "market_prevalence": 7,
+          "adapter_readiness": -4,
+          "runtime_evidence_readiness": 0,
+          "benchmark_usefulness": 3
+        },
+        "expectedScore": 48,
+        "expectedDecision": "candidate"
+      },
+      {
+        "workId": "019ed161-0000-7000-8000-000000000108",
+        "canonicalTitle": "Opportunity MV MZ MTL-only low demand",
+        "originalLanguage": "ja-JP",
+        "engineName": "rpg-maker-mv-mz",
+        "adapterId": "kaifuu.rpg-maker-mv-mz",
+        "completenessPool": "mtl_only",
+        "translationStatuses": [
+          { "language": "en-US", "status": "mtl", "confidence": "high", "statusScope": "work", "platform": null }
+        ],
+        "sourceIds": [
+          { "catalogSource": "dlsite", "sourceId": "RJOPP008", "externalIdKind": "store_product" }
+        ],
+        "dlsiteDemandFacts": {
+          "salesOrDownloadCount": 4200,
+          "ratingSummary": { "average": 4.01, "count": 118 },
+          "wishlistCount": 720,
+          "bestRank": { "rank": 140, "category": "rpg", "period": "yearly" },
+          "workType": { "code": "RPG", "label": "Role-playing game" },
+          "demandBucket": "low"
+        },
+        "localOwnership": "not_owned",
+        "localEvidenceCount": 1,
+        "marketPrevalence": "common",
+        "readiness": {
+          "adapterId": "kaifuu.rpg-maker-mv-mz",
+          "identify": "supported",
+          "inventory": "supported",
+          "extract": "supported",
+          "patch": "supported",
+          "helper": "unknown",
+          "runtime": "ready"
+        },
+        "capabilityEvidence": {
+          "publicFixture": [
+            {
+              "evidenceRef": "public:kaifuu-rpg-maker-encrypted-suffixes",
+              "level": "extract_patch",
+              "evidenceKind": "adapter_matrix",
+              "status": "supported",
+              "limitations": ["synthetic encrypted suffix fixture only"]
+            }
+          ],
+          "privateLocalAggregate": [
+            {
+              "evidenceRef": "aggregate:mv-mz-not-owned-redacted-counts",
+              "level": "identify",
+              "status": "present",
+              "aggregateCounts": {
+                "marker.rpgmaker_mv_metadata": 1
+              },
+              "limitations": ["aggregate counts only"]
+            }
+          ]
+        },
+        "expectedFactorContributions": {
+          "translation_completeness": 22,
+          "local_ownership": 0,
+          "dlsite_demand": 3,
+          "market_prevalence": 7,
+          "adapter_readiness": 18,
+          "runtime_evidence_readiness": 6,
+          "benchmark_usefulness": 3
+        },
+        "expectedScore": 59,
+        "expectedDecision": "candidate"
+      },
+      {
+        "workId": "019ed161-0000-7000-8000-000000000109",
+        "canonicalTitle": "Opportunity Unity fan partial niche",
+        "originalLanguage": "ja-JP",
+        "engineName": "unity",
+        "adapterId": "kaifuu.unity",
+        "completenessPool": "fan_partial",
+        "translationStatuses": [
+          { "language": "en-US", "status": "fan_partial", "confidence": "medium", "statusScope": "work", "platform": null }
+        ],
+        "sourceIds": [
+          { "catalogSource": "dlsite", "sourceId": "RJOPP009", "externalIdKind": "store_product" }
+        ],
+        "dlsiteDemandFacts": {
+          "salesOrDownloadCount": 6500,
+          "ratingSummary": { "average": 3.96, "count": 144 },
+          "wishlistCount": 990,
+          "bestRank": { "rank": 188, "category": "simulation", "period": "yearly" },
+          "workType": { "code": "SLG", "label": "Simulation game" },
+          "demandBucket": "low"
+        },
+        "localOwnership": "unknown",
+        "localEvidenceCount": 0,
+        "marketPrevalence": "niche",
+        "readiness": {
+          "adapterId": "kaifuu.unity",
+          "identify": "supported",
+          "inventory": "partial",
+          "extract": "unknown",
+          "patch": "unknown",
+          "helper": "unknown",
+          "runtime": "unknown"
+        },
+        "capabilityEvidence": {
+          "publicFixture": [
+            {
+              "evidenceRef": "public:unity-capability-placeholder",
+              "level": "identify",
+              "evidenceKind": "adapter_matrix",
+              "status": "identify_only",
+              "limitations": ["public fixture does not claim extract or patch support"]
+            }
+          ],
+          "privateLocalAggregate": []
+        },
+        "expectedFactorContributions": {
+          "translation_completeness": 16,
+          "local_ownership": 0,
+          "dlsite_demand": 3,
+          "market_prevalence": 1,
+          "adapter_readiness": -4,
+          "runtime_evidence_readiness": 0,
+          "benchmark_usefulness": 3
+        },
+        "expectedScore": 19,
+        "expectedDecision": "candidate"
+      },
+      {
+        "workId": "019ed161-0000-7000-8000-000000000110",
+        "canonicalTitle": "Opportunity official English conflict",
+        "originalLanguage": "ja-JP",
+        "engineName": "rpg-maker-mv-mz",
+        "adapterId": "kaifuu.rpg-maker-mv-mz",
+        "completenessPool": "official_english_conflict",
+        "translationStatuses": [
+          { "language": "en-US", "status": "official", "confidence": "high", "statusScope": "platform", "platform": "steam" }
+        ],
+        "sourceIds": [
+          { "catalogSource": "dlsite", "sourceId": "RJOPP010", "externalIdKind": "store_product" },
+          { "catalogSource": "steam", "sourceId": "STEAMOPP010", "externalIdKind": "platform_product" }
+        ],
+        "dlsiteDemandFacts": {
+          "salesOrDownloadCount": 74000,
+          "ratingSummary": { "average": 4.79, "count": 2420 },
+          "wishlistCount": 18100,
+          "bestRank": { "rank": 1, "category": "rpg", "period": "monthly" },
+          "workType": { "code": "RPG", "label": "Role-playing game" },
+          "demandBucket": "very_high"
+        },
+        "localOwnership": "owned",
+        "localEvidenceCount": 3,
+        "marketPrevalence": "common",
+        "readiness": {
+          "adapterId": "kaifuu.rpg-maker-mv-mz",
+          "identify": "supported",
+          "inventory": "supported",
+          "extract": "supported",
+          "patch": "supported",
+          "helper": "unknown",
+          "runtime": "ready"
+        },
+        "demotions": [
+          {
+            "kind": "official_english_platform_language_conflict",
+            "platform": "steam",
+            "status": "open",
+            "evidenceRefs": ["public:platform-language-conflicts:steam:STEAMOPP010"],
+            "explanationCode": "official_english_conflict"
+          }
+        ],
+        "capabilityEvidence": {
+          "publicFixture": [
+            {
+              "evidenceRef": "public:kaifuu-rpg-maker-encrypted-suffixes",
+              "level": "extract_patch",
+              "evidenceKind": "adapter_matrix",
+              "status": "supported",
+              "limitations": ["synthetic encrypted suffix fixture only"]
+            }
+          ],
+          "privateLocalAggregate": [
+            {
+              "evidenceRef": "aggregate:mv-mz-conflict-redacted-counts",
+              "level": "identify",
+              "status": "present",
+              "aggregateCounts": {
+                "marker.rpgmaker_mv_metadata": 3
+              },
+              "limitations": ["aggregate counts only"]
+            }
+          ]
+        },
+        "expectedFactorContributions": {
+          "translation_completeness": -42,
+          "local_ownership": 10,
+          "dlsite_demand": 18,
+          "market_prevalence": 7,
+          "adapter_readiness": 18,
+          "runtime_evidence_readiness": 6,
+          "benchmark_usefulness": 2
+        },
+        "expectedScore": 19,
+        "expectedDecision": "demoted"
+      }
+    ]
+  },
+  "expectedDefaultReadModel": {
+    "schemaVersion": "catalog.opportunity_ranking.v0.1",
+    "targetLanguage": "en-US",
+    "generatedAt": "2026-06-27T16:10:00.000Z",
+    "weightsVersion": "catalog-opportunity-ranking-public-fixture-v0.1",
+    "rows": [
+      {
+        "rank": 1,
+        "workId": "019ed161-0000-7000-8000-000000000101",
+        "canonicalTitle": "Opportunity MV MZ no-English owned",
+        "engineName": "rpg-maker-mv-mz",
+        "adapterId": "kaifuu.rpg-maker-mv-mz",
+        "completenessPool": "no_english",
+        "decision": "candidate",
+        "score": 94,
+        "demandBucket": "very_high",
+        "factorBreakdown": [
+          { "factor": "translation_completeness", "rawValue": "no_english", "weight": 30, "weightedScore": 30, "evidenceRefs": ["translation_status:en-US:none"], "explanationCode": "pool:no_english" },
+          { "factor": "local_ownership", "rawValue": "owned", "weight": 10, "weightedScore": 10, "evidenceRefs": ["aggregate:mv-mz-owned-public-safe-counts"], "explanationCode": "local_ownership:owned" },
+          { "factor": "dlsite_demand", "rawValue": "very_high", "weight": 18, "weightedScore": 18, "evidenceRefs": ["dlsite:RJOPP001"], "explanationCode": "demand_bucket:very_high" },
+          { "factor": "market_prevalence", "rawValue": "common", "weight": 7, "weightedScore": 7, "evidenceRefs": ["market_prevalence:common"], "explanationCode": "market_prevalence:common" },
+          { "factor": "adapter_readiness", "rawValue": "extract_patch", "weight": 18, "weightedScore": 18, "evidenceRefs": ["public:kaifuu-rpg-maker-encrypted-suffixes"], "explanationCode": "adapter_readiness:extract_patch" },
+          { "factor": "runtime_evidence_readiness", "rawValue": "ready", "weight": 6, "weightedScore": 6, "evidenceRefs": ["runtime:ready"], "explanationCode": "runtime_readiness:ready" },
+          { "factor": "benchmark_usefulness", "rawValue": "broad_pool_coverage", "weight": 5, "weightedScore": 5, "evidenceRefs": ["fixture:catalog-opportunities-catalog-061"], "explanationCode": "benchmark_usefulness:broad_pool_coverage" }
+        ],
+        "explanationCodes": ["pool:no_english", "local_ownership:owned", "demand_bucket:very_high", "adapter_readiness:extract_patch", "runtime_readiness:ready"]
+      },
+      {
+        "rank": 2,
+        "workId": "019ed161-0000-7000-8000-000000000102",
+        "canonicalTitle": "Opportunity KiriKiri XP3 no-English",
+        "engineName": "kirikiri-xp3",
+        "adapterId": "kaifuu.kirikiri-xp3",
+        "completenessPool": "no_english",
+        "decision": "candidate",
+        "score": 79,
+        "demandBucket": "high",
+        "factorBreakdown": [
+          { "factor": "translation_completeness", "rawValue": "no_english", "weight": 30, "weightedScore": 30, "evidenceRefs": ["translation_status:en-US:none"], "explanationCode": "pool:no_english" },
+          { "factor": "local_ownership", "rawValue": "aggregate_seen", "weight": 4, "weightedScore": 4, "evidenceRefs": ["aggregate:kirikiri-xp3-redacted-counts"], "explanationCode": "local_ownership:aggregate_seen" },
+          { "factor": "dlsite_demand", "rawValue": "high", "weight": 12, "weightedScore": 12, "evidenceRefs": ["dlsite:RJOPP002"], "explanationCode": "demand_bucket:high" },
+          { "factor": "market_prevalence", "rawValue": "common", "weight": 7, "weightedScore": 7, "evidenceRefs": ["market_prevalence:common"], "explanationCode": "market_prevalence:common" },
+          { "factor": "adapter_readiness", "rawValue": "extract_patch", "weight": 18, "weightedScore": 18, "evidenceRefs": ["public:kaifuu-encrypted-matrix:kirikiri"], "explanationCode": "adapter_readiness:extract_patch" },
+          { "factor": "runtime_evidence_readiness", "rawValue": "partial", "weight": 3, "weightedScore": 3, "evidenceRefs": ["runtime:partial"], "explanationCode": "runtime_readiness:partial" },
+          { "factor": "benchmark_usefulness", "rawValue": "broad_pool_coverage", "weight": 5, "weightedScore": 5, "evidenceRefs": ["fixture:catalog-opportunities-catalog-061"], "explanationCode": "benchmark_usefulness:broad_pool_coverage" }
+        ],
+        "explanationCodes": ["pool:no_english", "local_ownership:aggregate_seen", "demand_bucket:high", "adapter_readiness:extract_patch", "runtime_readiness:partial"]
+      },
+      {
+        "rank": 3,
+        "workId": "019ed161-0000-7000-8000-000000000103",
+        "canonicalTitle": "Opportunity Wolf no-English demand",
+        "engineName": "wolf-rpg-editor",
+        "adapterId": "kaifuu.wolf-rpg-editor",
+        "completenessPool": "no_english",
+        "decision": "candidate",
+        "score": 76,
+        "demandBucket": "high",
+        "factorBreakdown": [
+          { "factor": "translation_completeness", "rawValue": "no_english", "weight": 30, "weightedScore": 30, "evidenceRefs": ["translation_status:en-US:none"], "explanationCode": "pool:no_english" },
+          { "factor": "local_ownership", "rawValue": "aggregate_seen", "weight": 4, "weightedScore": 4, "evidenceRefs": ["aggregate:wolf-redacted-readiness"], "explanationCode": "local_ownership:aggregate_seen" },
+          { "factor": "dlsite_demand", "rawValue": "high", "weight": 12, "weightedScore": 12, "evidenceRefs": ["dlsite:RJOPP003"], "explanationCode": "demand_bucket:high" },
+          { "factor": "market_prevalence", "rawValue": "notable", "weight": 4, "weightedScore": 4, "evidenceRefs": ["market_prevalence:notable"], "explanationCode": "market_prevalence:notable" },
+          { "factor": "adapter_readiness", "rawValue": "extract_patch", "weight": 18, "weightedScore": 18, "evidenceRefs": ["public:kaifuu-encrypted-matrix:wolf"], "explanationCode": "adapter_readiness:extract_patch" },
+          { "factor": "runtime_evidence_readiness", "rawValue": "partial", "weight": 3, "weightedScore": 3, "evidenceRefs": ["runtime:partial"], "explanationCode": "runtime_readiness:partial" },
+          { "factor": "benchmark_usefulness", "rawValue": "broad_pool_coverage", "weight": 5, "weightedScore": 5, "evidenceRefs": ["fixture:catalog-opportunities-catalog-061"], "explanationCode": "benchmark_usefulness:broad_pool_coverage" }
+        ],
+        "explanationCodes": ["pool:no_english", "local_ownership:aggregate_seen", "demand_bucket:high", "adapter_readiness:extract_patch", "runtime_readiness:partial"]
+      },
+      {
+        "rank": 4,
+        "workId": "019ed161-0000-7000-8000-000000000104",
+        "canonicalTitle": "Opportunity RGSS3 VX Ace MTL-only",
+        "engineName": "rgss3-vx-ace",
+        "adapterId": "kaifuu.rgss3-vx-ace",
+        "completenessPool": "mtl_only",
+        "decision": "candidate",
+        "score": 61,
+        "demandBucket": "high",
+        "factorBreakdown": [
+          { "factor": "translation_completeness", "rawValue": "mtl_only", "weight": 22, "weightedScore": 22, "evidenceRefs": ["translation_status:en-US:mtl"], "explanationCode": "pool:mtl_only" },
+          { "factor": "local_ownership", "rawValue": "owned", "weight": 10, "weightedScore": 10, "evidenceRefs": ["aggregate:rgss3-vx-ace-redacted-counts"], "explanationCode": "local_ownership:owned" },
+          { "factor": "dlsite_demand", "rawValue": "high", "weight": 12, "weightedScore": 12, "evidenceRefs": ["dlsite:RJOPP004"], "explanationCode": "demand_bucket:high" },
+          { "factor": "market_prevalence", "rawValue": "notable", "weight": 4, "weightedScore": 4, "evidenceRefs": ["market_prevalence:notable"], "explanationCode": "market_prevalence:notable" },
+          { "factor": "adapter_readiness", "rawValue": "extract_only", "weight": 8, "weightedScore": 8, "evidenceRefs": ["public:rgss3-vx-ace-capability-matrix"], "explanationCode": "adapter_readiness:extract_only" },
+          { "factor": "runtime_evidence_readiness", "rawValue": "unknown", "weight": 0, "weightedScore": 0, "evidenceRefs": ["runtime:unknown"], "explanationCode": "runtime_readiness:unknown" },
+          { "factor": "benchmark_usefulness", "rawValue": "broad_pool_coverage", "weight": 5, "weightedScore": 5, "evidenceRefs": ["fixture:catalog-opportunities-catalog-061"], "explanationCode": "benchmark_usefulness:broad_pool_coverage" }
+        ],
+        "explanationCodes": ["pool:mtl_only", "local_ownership:owned", "demand_bucket:high", "adapter_readiness:extract_only", "runtime_readiness:unknown"]
+      },
+      {
+        "rank": 5,
+        "workId": "019ed161-0000-7000-8000-000000000108",
+        "canonicalTitle": "Opportunity MV MZ MTL-only low demand",
+        "engineName": "rpg-maker-mv-mz",
+        "adapterId": "kaifuu.rpg-maker-mv-mz",
+        "completenessPool": "mtl_only",
+        "decision": "candidate",
+        "score": 59,
+        "demandBucket": "low",
+        "factorBreakdown": [
+          { "factor": "translation_completeness", "rawValue": "mtl_only", "weight": 22, "weightedScore": 22, "evidenceRefs": ["translation_status:en-US:mtl"], "explanationCode": "pool:mtl_only" },
+          { "factor": "local_ownership", "rawValue": "not_owned", "weight": 0, "weightedScore": 0, "evidenceRefs": ["aggregate:mv-mz-not-owned-redacted-counts"], "explanationCode": "local_ownership:not_owned" },
+          { "factor": "dlsite_demand", "rawValue": "low", "weight": 3, "weightedScore": 3, "evidenceRefs": ["dlsite:RJOPP008"], "explanationCode": "demand_bucket:low" },
+          { "factor": "market_prevalence", "rawValue": "common", "weight": 7, "weightedScore": 7, "evidenceRefs": ["market_prevalence:common"], "explanationCode": "market_prevalence:common" },
+          { "factor": "adapter_readiness", "rawValue": "extract_patch", "weight": 18, "weightedScore": 18, "evidenceRefs": ["public:kaifuu-rpg-maker-encrypted-suffixes"], "explanationCode": "adapter_readiness:extract_patch" },
+          { "factor": "runtime_evidence_readiness", "rawValue": "ready", "weight": 6, "weightedScore": 6, "evidenceRefs": ["runtime:ready"], "explanationCode": "runtime_readiness:ready" },
+          { "factor": "benchmark_usefulness", "rawValue": "engine_gap_coverage", "weight": 3, "weightedScore": 3, "evidenceRefs": ["fixture:catalog-opportunities-catalog-061"], "explanationCode": "benchmark_usefulness:engine_gap_coverage" }
+        ],
+        "explanationCodes": ["pool:mtl_only", "local_ownership:not_owned", "demand_bucket:low", "adapter_readiness:extract_patch", "runtime_readiness:ready"]
+      },
+      {
+        "rank": 6,
+        "workId": "019ed161-0000-7000-8000-000000000105",
+        "canonicalTitle": "Opportunity TyranoScript fan partial",
+        "engineName": "tyranoscript",
+        "adapterId": "kaifuu.tyranoscript",
+        "completenessPool": "fan_partial",
+        "decision": "candidate",
+        "score": 59,
+        "demandBucket": "medium",
+        "factorBreakdown": [
+          { "factor": "translation_completeness", "rawValue": "fan_partial", "weight": 16, "weightedScore": 16, "evidenceRefs": ["translation_status:en-US:fan_partial"], "explanationCode": "pool:fan_partial" },
+          { "factor": "local_ownership", "rawValue": "unknown", "weight": 0, "weightedScore": 0, "evidenceRefs": [], "explanationCode": "local_ownership:unknown" },
+          { "factor": "dlsite_demand", "rawValue": "medium", "weight": 7, "weightedScore": 7, "evidenceRefs": ["dlsite:RJOPP005"], "explanationCode": "demand_bucket:medium" },
+          { "factor": "market_prevalence", "rawValue": "common", "weight": 7, "weightedScore": 7, "evidenceRefs": ["market_prevalence:common"], "explanationCode": "market_prevalence:common" },
+          { "factor": "adapter_readiness", "rawValue": "extract_patch", "weight": 18, "weightedScore": 18, "evidenceRefs": ["public:tyranoscript-capability-matrix"], "explanationCode": "adapter_readiness:extract_patch" },
+          { "factor": "runtime_evidence_readiness", "rawValue": "ready", "weight": 6, "weightedScore": 6, "evidenceRefs": ["runtime:ready"], "explanationCode": "runtime_readiness:ready" },
+          { "factor": "benchmark_usefulness", "rawValue": "broad_pool_coverage", "weight": 5, "weightedScore": 5, "evidenceRefs": ["fixture:catalog-opportunities-catalog-061"], "explanationCode": "benchmark_usefulness:broad_pool_coverage" }
+        ],
+        "explanationCodes": ["pool:fan_partial", "local_ownership:unknown", "demand_bucket:medium", "adapter_readiness:extract_patch", "runtime_readiness:ready"]
+      },
+      {
+        "rank": 7,
+        "workId": "019ed161-0000-7000-8000-000000000106",
+        "canonicalTitle": "Opportunity Siglus no-English aggregate",
+        "engineName": "siglus",
+        "adapterId": "kaifuu.siglus",
+        "completenessPool": "no_english",
+        "decision": "candidate",
+        "score": 56,
+        "demandBucket": "medium",
+        "factorBreakdown": [
+          { "factor": "translation_completeness", "rawValue": "no_english", "weight": 30, "weightedScore": 30, "evidenceRefs": ["translation_status:en-US:none"], "explanationCode": "pool:no_english" },
+          { "factor": "local_ownership", "rawValue": "aggregate_seen", "weight": 4, "weightedScore": 4, "evidenceRefs": ["aggregate:siglus-redacted-readiness"], "explanationCode": "local_ownership:aggregate_seen" },
+          { "factor": "dlsite_demand", "rawValue": "medium", "weight": 7, "weightedScore": 7, "evidenceRefs": ["dlsite:RJOPP006"], "explanationCode": "demand_bucket:medium" },
+          { "factor": "market_prevalence", "rawValue": "niche", "weight": 1, "weightedScore": 1, "evidenceRefs": ["market_prevalence:niche"], "explanationCode": "market_prevalence:niche" },
+          { "factor": "adapter_readiness", "rawValue": "extract_only", "weight": 8, "weightedScore": 8, "evidenceRefs": ["public:kaifuu-encrypted-matrix:siglus"], "explanationCode": "adapter_readiness:extract_only" },
+          { "factor": "runtime_evidence_readiness", "rawValue": "partial", "weight": 3, "weightedScore": 3, "evidenceRefs": ["runtime:partial"], "explanationCode": "runtime_readiness:partial" },
+          { "factor": "benchmark_usefulness", "rawValue": "engine_gap_coverage", "weight": 3, "weightedScore": 3, "evidenceRefs": ["fixture:catalog-opportunities-catalog-061"], "explanationCode": "benchmark_usefulness:engine_gap_coverage" }
+        ],
+        "explanationCodes": ["pool:no_english", "local_ownership:aggregate_seen", "demand_bucket:medium", "adapter_readiness:extract_only", "runtime_readiness:partial"]
+      },
+      {
+        "rank": 8,
+        "workId": "019ed161-0000-7000-8000-000000000107",
+        "canonicalTitle": "Opportunity Unity no-English unknown adapter",
+        "engineName": "unity",
+        "adapterId": "kaifuu.unity",
+        "completenessPool": "no_english",
+        "decision": "candidate",
+        "score": 48,
+        "demandBucket": "high",
+        "factorBreakdown": [
+          { "factor": "translation_completeness", "rawValue": "no_english", "weight": 30, "weightedScore": 30, "evidenceRefs": ["translation_status:en-US:none"], "explanationCode": "pool:no_english" },
+          { "factor": "local_ownership", "rawValue": "unknown", "weight": 0, "weightedScore": 0, "evidenceRefs": [], "explanationCode": "local_ownership:unknown" },
+          { "factor": "dlsite_demand", "rawValue": "high", "weight": 12, "weightedScore": 12, "evidenceRefs": ["dlsite:RJOPP007"], "explanationCode": "demand_bucket:high" },
+          { "factor": "market_prevalence", "rawValue": "common", "weight": 7, "weightedScore": 7, "evidenceRefs": ["market_prevalence:common"], "explanationCode": "market_prevalence:common" },
+          { "factor": "adapter_readiness", "rawValue": "unknown", "weight": -4, "weightedScore": -4, "evidenceRefs": ["public:unity-capability-placeholder"], "explanationCode": "adapter_readiness:unknown" },
+          { "factor": "runtime_evidence_readiness", "rawValue": "unknown", "weight": 0, "weightedScore": 0, "evidenceRefs": ["runtime:unknown"], "explanationCode": "runtime_readiness:unknown" },
+          { "factor": "benchmark_usefulness", "rawValue": "engine_gap_coverage", "weight": 3, "weightedScore": 3, "evidenceRefs": ["fixture:catalog-opportunities-catalog-061"], "explanationCode": "benchmark_usefulness:engine_gap_coverage" }
+        ],
+        "explanationCodes": ["pool:no_english", "local_ownership:unknown", "demand_bucket:high", "adapter_readiness:unknown", "runtime_readiness:unknown"]
+      },
+      {
+        "rank": 9,
+        "workId": "019ed161-0000-7000-8000-000000000109",
+        "canonicalTitle": "Opportunity Unity fan partial niche",
+        "engineName": "unity",
+        "adapterId": "kaifuu.unity",
+        "completenessPool": "fan_partial",
+        "decision": "candidate",
+        "score": 19,
+        "demandBucket": "low",
+        "factorBreakdown": [
+          { "factor": "translation_completeness", "rawValue": "fan_partial", "weight": 16, "weightedScore": 16, "evidenceRefs": ["translation_status:en-US:fan_partial"], "explanationCode": "pool:fan_partial" },
+          { "factor": "local_ownership", "rawValue": "unknown", "weight": 0, "weightedScore": 0, "evidenceRefs": [], "explanationCode": "local_ownership:unknown" },
+          { "factor": "dlsite_demand", "rawValue": "low", "weight": 3, "weightedScore": 3, "evidenceRefs": ["dlsite:RJOPP009"], "explanationCode": "demand_bucket:low" },
+          { "factor": "market_prevalence", "rawValue": "niche", "weight": 1, "weightedScore": 1, "evidenceRefs": ["market_prevalence:niche"], "explanationCode": "market_prevalence:niche" },
+          { "factor": "adapter_readiness", "rawValue": "unknown", "weight": -4, "weightedScore": -4, "evidenceRefs": ["public:unity-capability-placeholder"], "explanationCode": "adapter_readiness:unknown" },
+          { "factor": "runtime_evidence_readiness", "rawValue": "unknown", "weight": 0, "weightedScore": 0, "evidenceRefs": ["runtime:unknown"], "explanationCode": "runtime_readiness:unknown" },
+          { "factor": "benchmark_usefulness", "rawValue": "engine_gap_coverage", "weight": 3, "weightedScore": 3, "evidenceRefs": ["fixture:catalog-opportunities-catalog-061"], "explanationCode": "benchmark_usefulness:engine_gap_coverage" }
+        ],
+        "explanationCodes": ["pool:fan_partial", "local_ownership:unknown", "demand_bucket:low", "adapter_readiness:unknown", "runtime_readiness:unknown"]
+      }
+    ]
+  },
+  "expectedReadModelWithDemotions": {
+    "schemaVersion": "catalog.opportunity_ranking.v0.1",
+    "targetLanguage": "en-US",
+    "generatedAt": "2026-06-27T16:10:00.000Z",
+    "weightsVersion": "catalog-opportunity-ranking-public-fixture-v0.1",
+    "rows": [
+      { "rank": 1, "workId": "019ed161-0000-7000-8000-000000000101", "decision": "candidate", "score": 94 },
+      { "rank": 2, "workId": "019ed161-0000-7000-8000-000000000102", "decision": "candidate", "score": 79 },
+      { "rank": 3, "workId": "019ed161-0000-7000-8000-000000000103", "decision": "candidate", "score": 76 },
+      { "rank": 4, "workId": "019ed161-0000-7000-8000-000000000104", "decision": "candidate", "score": 61 },
+      { "rank": 5, "workId": "019ed161-0000-7000-8000-000000000108", "decision": "candidate", "score": 59 },
+      { "rank": 6, "workId": "019ed161-0000-7000-8000-000000000105", "decision": "candidate", "score": 59 },
+      { "rank": 7, "workId": "019ed161-0000-7000-8000-000000000106", "decision": "candidate", "score": 56 },
+      { "rank": 8, "workId": "019ed161-0000-7000-8000-000000000107", "decision": "candidate", "score": 48 },
+      { "rank": 9, "workId": "019ed161-0000-7000-8000-000000000109", "decision": "candidate", "score": 19 },
+      {
+        "rank": 10,
+        "workId": "019ed161-0000-7000-8000-000000000110",
+        "canonicalTitle": "Opportunity official English conflict",
+        "engineName": "rpg-maker-mv-mz",
+        "adapterId": "kaifuu.rpg-maker-mv-mz",
+        "completenessPool": "official_english_conflict",
+        "decision": "demoted",
+        "score": 19,
+        "demandBucket": "very_high",
+        "demotions": [
+          {
+            "kind": "official_english_platform_language_conflict",
+            "platform": "steam",
+            "status": "open",
+            "evidenceRefs": ["public:platform-language-conflicts:steam:STEAMOPP010"],
+            "explanationCode": "official_english_conflict"
+          }
+        ],
+        "factorBreakdown": [
+          { "factor": "translation_completeness", "rawValue": "official_english_conflict", "weight": -42, "weightedScore": -42, "evidenceRefs": ["public:platform-language-conflicts:steam:STEAMOPP010"], "explanationCode": "official_english_conflict" },
+          { "factor": "local_ownership", "rawValue": "owned", "weight": 10, "weightedScore": 10, "evidenceRefs": ["aggregate:mv-mz-conflict-redacted-counts"], "explanationCode": "local_ownership:owned" },
+          { "factor": "dlsite_demand", "rawValue": "very_high", "weight": 18, "weightedScore": 18, "evidenceRefs": ["dlsite:RJOPP010"], "explanationCode": "demand_bucket:very_high" },
+          { "factor": "market_prevalence", "rawValue": "common", "weight": 7, "weightedScore": 7, "evidenceRefs": ["market_prevalence:common"], "explanationCode": "market_prevalence:common" },
+          { "factor": "adapter_readiness", "rawValue": "extract_patch", "weight": 18, "weightedScore": 18, "evidenceRefs": ["public:kaifuu-rpg-maker-encrypted-suffixes"], "explanationCode": "adapter_readiness:extract_patch" },
+          { "factor": "runtime_evidence_readiness", "rawValue": "ready", "weight": 6, "weightedScore": 6, "evidenceRefs": ["runtime:ready"], "explanationCode": "runtime_readiness:ready" },
+          { "factor": "benchmark_usefulness", "rawValue": "conflict_regression", "weight": 2, "weightedScore": 2, "evidenceRefs": ["fixture:catalog-opportunities-catalog-061"], "explanationCode": "benchmark_usefulness:conflict_regression" }
+        ],
+        "explanationCodes": ["official_english_conflict", "demand_bucket:very_high", "adapter_readiness:extract_patch", "runtime_readiness:ready"]
+      }
+    ]
+  },
+  "publicLeakagePolicy": {
+    "forbiddenPrivateSubstrings": [
+      "/home",
+      "/tmp",
+      "/scratch",
+      "C:\\",
+      "D:\\",
+      "file:",
+      ".zip",
+      ".rar",
+      ".7z",
+      ".xp3",
+      ".wolf",
+      ".rvdata2",
+      ".rpgmvp",
+      ".rpgmvm",
+      ".rpgmvo",
+      ".unity3d",
+      ".assetbundle",
+      "pathHash",
+      "path_hash",
+      "localScanEntryId",
+      "rawText",
+      "raw_text",
+      "SECRET_KEY",
+      "screenshot",
+      "helper log",
+      "private-story-title",
+      "private-corpus-id",
+      "local-scan-entry-secret",
+      "rawPayloadSecret"
+    ],
+    "allowedAggregateEvidenceOnly": [
+      "aggregateCounts",
+      "localEvidenceCount",
+      "redacted readiness labels",
+      "public fixture ids",
+      "synthetic public source ids"
+    ]
+  }
+}
