@@ -105,6 +105,16 @@ const publicFixtureEvidenceKeys = new Set([
   "evidenceLabels",
   "limitations",
 ]);
+const capabilityMatrixLevels = [
+  capabilityLevelValues.identify,
+  capabilityLevelValues.inventory,
+  capabilityLevelValues.extract,
+  capabilityLevelValues.patch,
+] as const;
+const publicMatrixKeys = new Set(["adapterId", ...capabilityMatrixLevels]);
+const supportedMatrixStatusKeys = new Set(["kind"]);
+const partialMatrixStatusKeys = new Set(["kind", "limitations"]);
+const unsupportedMatrixStatusKeys = new Set(["kind", "reason"]);
 const knownExtensionCountKeys = new Set([
   "[none]",
   ".json",
@@ -140,11 +150,17 @@ const forbiddenEvidenceKeys = new Set([
 ]);
 const forbiddenEvidenceValuePatterns = [
   /(^|[\s"'])\/home\//u,
+  /(^|[\s"'])\/scratch\//u,
+  /(^|[\s"'])\/mnt\//u,
+  /(^|[\s"'])\/Users\//u,
+  /(^|[\s"'])\/Volumes\//u,
+  /(^|[\s"'])\/private\//u,
   /(^|[\s"'])\/tmp\//u,
   /(^|[\s"'])\/var\//u,
+  /(^|[\s"'])~\//u,
   /(^|[\s"'])[A-Za-z]:[\\/]/u,
   /file:/iu,
-  /\b[A-Za-z0-9 ._-]+\.(?:rpgmvp|rpgmvm|rpgmvo|zip|rar|7z|png|jpe?g|webp)\b/iu,
+  /\b[A-Za-z0-9 ._-]+\.(?:json|txt|rpgmvp|rpgmvm|rpgmvo|zip|rar|7z|png|jpe?g|webp)\b/iu,
   /\.rpgmvp\b/iu,
   /\bsecret[_ -]?key\b/iu,
   /\bkeyMaterial\b/u,
@@ -224,12 +240,8 @@ export function mergeCapabilityEvidenceFixture(
       `unsupported merge fixture schemaVersion ${input.schemaVersion}`,
     );
   }
-  if (input.publicFixture.matrix.adapterId !== catalogPublicRpgMakerMvMzAdapterId) {
-    throw new CatalogLocalCapabilityEvidenceError(
-      `public matrix adapterId must be ${catalogPublicRpgMakerMvMzAdapterId}`,
-    );
-  }
 
+  const publicMatrix = publicMatrixForMerge(input.publicFixture.matrix);
   const privateLocalAggregate = input.privateLocalAggregate?.localEngineEvidence
     ? mapLocalEngineEvidenceToCapabilityEvidence(input.privateLocalAggregate.localEngineEvidence)
     : [];
@@ -237,13 +249,87 @@ export function mergeCapabilityEvidenceFixture(
 
   return {
     schemaVersion: catalogCapabilityEvidenceReadinessSchemaVersion,
-    adapterId: input.publicFixture.matrix.adapterId,
-    matrix: input.publicFixture.matrix,
+    adapterId: publicMatrix.adapterId,
+    matrix: publicMatrix,
     supportEvidence: {
       publicFixture,
       privateLocalAggregate,
     },
   };
+}
+
+function publicMatrixForMerge(matrix: unknown): AdapterCapabilityMatrixRecord {
+  if (matrix === null || typeof matrix !== "object" || Array.isArray(matrix)) {
+    throw new CatalogLocalCapabilityEvidenceError("publicFixture.matrix must be an object");
+  }
+  for (const key of Object.keys(matrix)) {
+    if (!publicMatrixKeys.has(key)) {
+      throw new CatalogLocalCapabilityEvidenceError(
+        `publicFixture.matrix.${key} is not allowed in public fixture matrix`,
+      );
+    }
+  }
+
+  const record = matrix as Partial<AdapterCapabilityMatrixRecord>;
+  if (record.adapterId !== catalogPublicRpgMakerMvMzAdapterId) {
+    throw new CatalogLocalCapabilityEvidenceError(
+      `public matrix adapterId must be ${catalogPublicRpgMakerMvMzAdapterId}`,
+    );
+  }
+
+  return {
+    adapterId: record.adapterId,
+    identify: publicMatrixStatusForMerge(record.identify, "publicFixture.matrix.identify"),
+    inventory: publicMatrixStatusForMerge(record.inventory, "publicFixture.matrix.inventory"),
+    extract: publicMatrixStatusForMerge(record.extract, "publicFixture.matrix.extract"),
+    patch: publicMatrixStatusForMerge(record.patch, "publicFixture.matrix.patch"),
+  };
+}
+
+function publicMatrixStatusForMerge(
+  status: unknown,
+  path: string,
+): AdapterCapabilityMatrixRecord["identify"] {
+  if (status === null || typeof status !== "object" || Array.isArray(status)) {
+    throw new CatalogLocalCapabilityEvidenceError(`${path} must be an object`);
+  }
+  const record = status as Record<string, unknown>;
+  switch (record.kind) {
+    case "supported":
+      assertOnlyPublicMatrixStatusKeys(record, supportedMatrixStatusKeys, path);
+      return { kind: "supported" };
+    case "partial": {
+      assertOnlyPublicMatrixStatusKeys(record, partialMatrixStatusKeys, path);
+      assertPublicNonEmptyStringArray(record.limitations, `${path}.limitations`);
+      assertNoForbiddenPublicFixtureEvidenceLeakage(record.limitations, `${path}.limitations`);
+      return { kind: "partial", limitations: [...record.limitations] };
+    }
+    case "unsupported":
+      assertOnlyPublicMatrixStatusKeys(record, unsupportedMatrixStatusKeys, path);
+      if (typeof record.reason !== "string" || record.reason.trim().length === 0) {
+        throw new CatalogLocalCapabilityEvidenceError(`${path}.reason must be a non-empty string`);
+      }
+      assertNoForbiddenPublicFixtureEvidenceLeakage(record.reason, `${path}.reason`);
+      return { kind: "unsupported", reason: record.reason };
+    default:
+      throw new CatalogLocalCapabilityEvidenceError(
+        `${path}.kind must be supported, partial, or unsupported`,
+      );
+  }
+}
+
+function assertOnlyPublicMatrixStatusKeys(
+  record: Record<string, unknown>,
+  allowlist: Set<string>,
+  path: string,
+): void {
+  for (const key of Object.keys(record)) {
+    if (!allowlist.has(key)) {
+      throw new CatalogLocalCapabilityEvidenceError(
+        `${path}.${key} is not allowed in public fixture matrix status`,
+      );
+    }
+  }
 }
 
 function publicFixtureEvidenceForMerge(
@@ -499,6 +585,16 @@ function assertPublicStringArray(values: unknown, field: string): asserts values
     if (typeof value !== "string" || value.trim().length === 0) {
       throw new CatalogLocalCapabilityEvidenceError(`${field}.${index} must be a non-empty string`);
     }
+  }
+}
+
+function assertPublicNonEmptyStringArray(
+  values: unknown,
+  field: string,
+): asserts values is string[] {
+  assertPublicStringArray(values, field);
+  if (values.length === 0) {
+    throw new CatalogLocalCapabilityEvidenceError(`${field} must be a non-empty string array`);
   }
 }
 

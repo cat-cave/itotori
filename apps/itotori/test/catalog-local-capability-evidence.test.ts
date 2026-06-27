@@ -232,7 +232,7 @@ describe("catalog local capability evidence mapper", () => {
           mergeCapabilityEvidenceFixture(input as unknown as CatalogCapabilityEvidenceMergeInput),
         name,
       ).toThrow(
-        /unsupported|not supported|forbidden public evidence|not allowed in public fixture evidence/u,
+        /unsupported|not supported|forbidden public evidence|not allowed in public fixture (?:evidence|matrix(?: status)?)|must be/u,
       );
     }
   });
@@ -331,6 +331,63 @@ function publicOnlyMergeInput(): CatalogCapabilityEvidenceMergeInput {
 function unsafePublicFixtureMergeVariants(): [string, (input: Record<string, unknown>) => void][] {
   return [
     [
+      "unsupported public matrix key",
+      (input) => {
+        publicMatrix(input).debug = true;
+      },
+    ],
+    [
+      "unsupported public matrix status key",
+      (input) => {
+        matrixStatus(input, "identify").sourcePath = "/scratch/local/private-game/System.json";
+      },
+    ],
+    [
+      "unknown public matrix status kind",
+      (input) => {
+        matrixStatus(input, "inventory").kind = "unknown";
+      },
+    ],
+    [
+      "public matrix supported status reason",
+      (input) => {
+        matrixStatus(input, "identify").reason = "supported status must not carry reasons";
+      },
+    ],
+    [
+      "public matrix unsupported status limitations",
+      (input) => {
+        matrixStatus(input, "extract").limitations = ["unsupported status must not carry limits"];
+      },
+    ],
+    [
+      "public matrix reason private path",
+      (input) => {
+        matrixStatus(input, "extract").reason = "/scratch/local/private-game/System.json";
+      },
+    ],
+    [
+      "public matrix partial limitation private path",
+      (input) => {
+        publicMatrix(input).inventory = {
+          kind: "partial",
+          limitations: ["~/private-game/dialogue.txt"],
+        };
+      },
+    ],
+    [
+      "public matrix empty partial limitations",
+      (input) => {
+        publicMatrix(input).inventory = { kind: "partial", limitations: [] };
+      },
+    ],
+    [
+      "public matrix malformed partial limitations",
+      (input) => {
+        publicMatrix(input).inventory = { kind: "partial", limitations: [""] };
+      },
+    ],
+    [
       "private path fixture id",
       (input) => {
         publicFixture(input).fixtureId = "/home/local/private-game";
@@ -385,11 +442,67 @@ function unsafePublicFixtureMergeVariants(): [string, (input: Record<string, unk
         publicEvidenceRow(input).screenshot = "capture.png";
       },
     ],
+    [
+      "scratch path limitation",
+      (input) => {
+        publicEvidenceRow(input).limitations = ["/scratch/local/private-game/System.json"];
+      },
+    ],
+    [
+      "mnt path limitation",
+      (input) => {
+        publicEvidenceRow(input).limitations = ["/mnt/private-game/System.json"];
+      },
+    ],
+    [
+      "Users path limitation",
+      (input) => {
+        publicEvidenceRow(input).limitations = ["/Users/alice/private-game/System.json"];
+      },
+    ],
+    [
+      "Volumes path limitation",
+      (input) => {
+        publicEvidenceRow(input).limitations = ["/Volumes/data/private-game/System.json"];
+      },
+    ],
+    [
+      "private path limitation",
+      (input) => {
+        publicEvidenceRow(input).limitations = ["/private/tmp/private-game/System.json"];
+      },
+    ],
+    [
+      "home-relative path limitation",
+      (input) => {
+        publicEvidenceRow(input).limitations = ["~/private-game/System.json"];
+      },
+    ],
+    [
+      "json filename limitation",
+      (input) => {
+        publicEvidenceRow(input).limitations = ["System.json"];
+      },
+    ],
+    [
+      "txt filename limitation",
+      (input) => {
+        publicEvidenceRow(input).limitations = ["dialogue.txt"];
+      },
+    ],
   ];
 }
 
 function publicFixture(input: Record<string, unknown>): Record<string, unknown> {
   return input.publicFixture as Record<string, unknown>;
+}
+
+function publicMatrix(input: Record<string, unknown>): Record<string, unknown> {
+  return publicFixture(input).matrix as Record<string, unknown>;
+}
+
+function matrixStatus(input: Record<string, unknown>, level: string): Record<string, unknown> {
+  return publicMatrix(input)[level] as Record<string, unknown>;
 }
 
 function publicEvidenceRow(input: Record<string, unknown>): Record<string, unknown> {
