@@ -197,23 +197,23 @@ hello-replay-validate:
 # UTSUSHI-228 — alpha closer. Wraps every other alpha node into one
 # command: kaifuu extract -> itotori live agentic loop -> kaifuu patch
 # -> utsushi replay-validate. The driver hard-fails if
-# OPENROUTER_API_KEY, KAIFUU_REAL_SWEETIE_HD_PATH, or TARGET is unset
+# OPENROUTER_API_KEY, LOCALIZE_PROJECT_SOURCE_PATH, or TARGET is unset
 # (no fallback to the recorded provider). Pass --dry-run to print the
 # per-phase commands without invoking any LLM.
 #
 # Required env (unless --dry-run):
 #   OPENROUTER_API_KEY              live OpenRouter key
-#   KAIFUU_REAL_SWEETIE_HD_PATH     readonly extracted Sweetie HD root
+#   LOCALIZE_PROJECT_SOURCE_PATH     readonly extracted project source root
 #   TARGET                          writable path for the patched copy
 #
 # Usage:
-#   just localize-sweetie-hd --project sweetie-hd-alpha-1
-#   just localize-sweetie-hd --dry-run --project sweetie-hd-alpha-1
-localize-sweetie-hd *ARGS:
+#   just localize-project --project sweetie-hd-alpha-1
+#   just localize-project --dry-run --project sweetie-hd-alpha-1
+localize-project *ARGS:
     pnpm --filter @itotori/localization-bridge-schema build
     pnpm --filter @itotori/db build
     pnpm --filter @itotori/app build
-    node suite/scripts/localize-sweetie-hd/run.mjs {{ARGS}}
+    node suite/scripts/localize-project/run.mjs {{ARGS}}
 
 affected:
     node scripts/affected.mjs

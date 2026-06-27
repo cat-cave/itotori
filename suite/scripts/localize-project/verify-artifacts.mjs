@@ -12,7 +12,7 @@ const OLD_MODEL_ID = "deepseek/deepseek-chat-v4";
 
 function usage() {
   return [
-    "usage: node suite/scripts/localize-sweetie-hd/verify-artifacts.mjs --run-dir <DIR> --telemetry-summary <PATH> [--expected-model-id <MODEL>] [--output <PATH>]",
+    "usage: node suite/scripts/localize-project/verify-artifacts.mjs --run-dir <DIR> --telemetry-summary <PATH> [--expected-model-id <MODEL>] [--output <PATH>]",
     "",
     "Offline verifier for UTSUSHI-231 post-run evidence. Reads only saved JSON artifacts; it does not call providers.",
   ].join("\n");
@@ -630,7 +630,7 @@ export function verify(args) {
   }
 
   return {
-    schemaVersion: "itotori.localize-sweetie-hd.post-run-verification.v0",
+    schemaVersion: "itotori.localize-project.post-run-verification.v0",
     verifiedAt: new Date().toISOString(),
     runDir,
     expectedModelId: args.expectedModelId,
@@ -664,7 +664,7 @@ if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.a
       process.stdout.write(json);
     }
   } catch (error) {
-    process.stderr.write(`[localize-sweetie-hd.verify] FAILED: ${error.message}\n`);
+    process.stderr.write(`[localize-project.verify] FAILED: ${error.message}\n`);
     process.exitCode = 1;
   }
 }

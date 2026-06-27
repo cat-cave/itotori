@@ -1,6 +1,6 @@
 {
-  "schemaVersion": "itotori.localize-sweetie-hd.project-metadata.v0",
-  "projectId": "localize-sweetie-hd-alpha-1",
+  "schemaVersion": "itotori.localize-project.project-metadata.v0",
+  "projectId": "sweetie-hd-alpha-1",
   "reallive": {
     "game_id": "sweetie-hd",
     "game_version": "1.0.0",

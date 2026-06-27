@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 /*
- * UTSUSHI-228 — alpha-closing driver for `just localize-sweetie-hd`.
+ * UTSUSHI-228 — alpha-closing driver for `just localize-project`.
  *
  * Chains the four phases of the alpha-defining end-to-end pipeline:
  *
  *   1. kaifuu-cli extract --engine reallive  (KAIFUU-210)
- *      -> artifacts/localize-sweetie-hd/<ts>/bridge-bundle.json
+ *      -> artifacts/localize-project/<ts>/bridge-bundle.json
  *
- *   2. itotori localize-sweetie-hd-stage     (UTSUSHI-228 itself —
+ *   2. itotori localize-project-stage     (UTSUSHI-228 itself —
  *      live OpenRouter via ITOTORI-221, agentic loop via ITOTORI-222)
  *      -> artifacts/.../agentic-loop-bundle.v0.json
  *         artifacts/.../translated-bridge.json
@@ -26,10 +26,10 @@
  *   - OPENROUTER_API_KEY is REQUIRED unless `--dry-run`. No fallback to
  *     RecordedModelProvider. If OPENROUTER_LIVE=1 is set but the API
  *     key is missing the driver fails loudly (no silent downgrade).
- *   - `KAIFUU_REAL_SWEETIE_HD_PATH` is REQUIRED unless `--dry-run`.
+ *   - `LOCALIZE_PROJECT_SOURCE_PATH` is REQUIRED unless `--dry-run`.
  *   - `TARGET` env var is REQUIRED unless `--dry-run`. The driver
  *     refuses to write inside the source tree.
- *   - The source `<KAIFUU_REAL_SWEETIE_HD_PATH>/REALLIVEDATA/Seen.txt`
+ *   - The source `<LOCALIZE_PROJECT_SOURCE_PATH>/REALLIVEDATA/Seen.txt`
  *     is sha256-checked before AND after the run; any drift fails the
  *     command.
  *   - `--dry-run` prints the per-step commands and exits 0 without
@@ -57,20 +57,20 @@ import process from "node:process";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolvePath(HERE, "../../..");
-const PAIR_POLICY_PATH = join(REPO_ROOT, "presets", "localize-sweetie-hd.pair-policy.json");
+const PAIR_POLICY_PATH = join(REPO_ROOT, "presets", "localize-project.pair-policy.json");
 const DEFAULT_PROJECT_METADATA_PATH = join(
   REPO_ROOT,
   "presets",
-  "localize-sweetie-hd.project-metadata.json",
+  "localize-project.project-metadata.json",
 );
 
 function usage() {
   return [
-    "usage: node suite/scripts/localize-sweetie-hd/run.mjs --project <NAME> [--dry-run] [--scene <N>] [--unit-index <N>] [--provider-kind <live|fake>] [--project-metadata <PATH>]",
+    "usage: node suite/scripts/localize-project/run.mjs --project <NAME> [--dry-run] [--scene <N>] [--unit-index <N>] [--provider-kind <live|fake>] [--project-metadata <PATH>]",
     "",
     "Required env (unless --dry-run):",
     "  OPENROUTER_API_KEY              live OpenRouter key for the (modelId, providerId) pair",
-    "  KAIFUU_REAL_SWEETIE_HD_PATH     readonly path to the extracted Sweetie HD game root",
+    "  LOCALIZE_PROJECT_SOURCE_PATH     readonly path to the extracted project source root",
     "  TARGET                          writable path for the patched copy (must NOT alias source)",
     "",
     "Flags:",
@@ -288,7 +288,7 @@ function loadProjectMetadata(metadataPath) {
   if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
     throw new Error(`project metadata at ${metadataPath} must be a JSON object`);
   }
-  const EXPECTED_SCHEMA = "itotori.localize-sweetie-hd.project-metadata.v0";
+  const EXPECTED_SCHEMA = "itotori.localize-project.project-metadata.v0";
   if (parsed.schemaVersion !== EXPECTED_SCHEMA) {
     throw new Error(
       `project metadata at ${metadataPath} has schemaVersion='${String(parsed.schemaVersion)}'; expected '${EXPECTED_SCHEMA}'`,
@@ -377,19 +377,19 @@ function ensureWritableTargetDistinctFromSource(sourceRoot, targetRoot) {
   const targetAbs = resolvePath(targetRoot);
   if (sourceAbs === targetAbs) {
     throw new Error(
-      `TARGET (${targetAbs}) must not alias KAIFUU_REAL_SWEETIE_HD_PATH (${sourceAbs})`,
+      `TARGET (${targetAbs}) must not alias LOCALIZE_PROJECT_SOURCE_PATH (${sourceAbs})`,
     );
   }
   if (targetAbs.startsWith(sourceAbs + "/") || sourceAbs.startsWith(targetAbs + "/")) {
     throw new Error(
-      `TARGET (${targetAbs}) must not nest with KAIFUU_REAL_SWEETIE_HD_PATH (${sourceAbs}); pick a fully-disjoint path`,
+      `TARGET (${targetAbs}) must not nest with LOCALIZE_PROJECT_SOURCE_PATH (${sourceAbs}); pick a fully-disjoint path`,
     );
   }
 }
 
 function runCommand(command, args, env = process.env, options = {}) {
   const printable = `${command} ${args.join(" ")}`;
-  process.stdout.write(`[localize-sweetie-hd] $ ${printable}\n`);
+  process.stdout.write(`[localize-project] $ ${printable}\n`);
   const result = spawnSync(command, args, { stdio: "inherit", env, ...options });
   if (result.error) {
     throw new Error(`command failed to start: ${printable}: ${result.error.message}`);
@@ -401,7 +401,7 @@ function runCommand(command, args, env = process.env, options = {}) {
 
 function printDryRunPlan(plan, postures) {
   process.stdout.write(
-    "[localize-sweetie-hd] --dry-run plan (no LLM calls; 0 ProviderRunRecords would be written):\n",
+    "[localize-project] --dry-run plan (no LLM calls; 0 ProviderRunRecords would be written):\n",
   );
   // ITOTORI-227 — the OpenRouter privacy posture is part of the dry-run
   // plan so the operator can confirm the account-level ZDR setting is
@@ -410,10 +410,10 @@ function printDryRunPlan(plan, postures) {
   // path; for dry-run we surface its expected state here.
   const zdrAccountAsserted = process.env.OPENROUTER_ZDR_ACCOUNT_ASSERTED === "1" ? "1" : "MISSING";
   process.stdout.write(
-    `[localize-sweetie-hd] ZDR account asserted: OPENROUTER_ZDR_ACCOUNT_ASSERTED=${zdrAccountAsserted}\n`,
+    `[localize-project] ZDR account asserted: OPENROUTER_ZDR_ACCOUNT_ASSERTED=${zdrAccountAsserted}\n`,
   );
   process.stdout.write(
-    "[localize-sweetie-hd] Per-stage provider.zdr posture: true (all non-public input classifications)\n",
+    "[localize-project] Per-stage provider.zdr posture: true (all non-public input classifications)\n",
   );
   // ITOTORI-234 — the v0.2 pair-policy carries per-stage zdr + seed
   // postures resolved at parse time. Emit one line per leaf so the
@@ -421,17 +421,17 @@ function printDryRunPlan(plan, postures) {
   // pass into every invocation. Acceptance criterion #1: this block
   // is what the test asserts on.
   process.stdout.write(
-    "[localize-sweetie-hd] Per-stage posture (ITOTORI-234 v0.2 — leafPath: zdr=<bool> seed=<int>):\n",
+    "[localize-project] Per-stage posture (ITOTORI-234 v0.2 — leafPath: zdr=<bool> seed=<int>):\n",
   );
   for (const posture of postures) {
     process.stdout.write(
-      `[localize-sweetie-hd]   stage ${posture.leafPath}: zdr=${posture.zdr} seed=${posture.seed}\n`,
+      `[localize-project]   stage ${posture.leafPath}: zdr=${posture.zdr} seed=${posture.seed}\n`,
     );
   }
   for (const line of plan) {
-    process.stdout.write(`[localize-sweetie-hd] (planned) $ ${line}\n`);
+    process.stdout.write(`[localize-project] (planned) $ ${line}\n`);
   }
-  process.stdout.write("[localize-sweetie-hd] DRY-RUN: 0 LLM calls would be made.\n");
+  process.stdout.write("[localize-project] DRY-RUN: 0 LLM calls would be made.\n");
 }
 
 async function main() {
@@ -442,7 +442,7 @@ async function main() {
   const sceneId = policy.sceneId ?? args.scene;
   const ts = isoTimestampUtc();
   const runDirName = `${ts}-${args.project}`;
-  const runDir = join(REPO_ROOT, "artifacts", "localize-sweetie-hd", runDirName);
+  const runDir = join(REPO_ROOT, "artifacts", "localize-project", runDirName);
 
   const bridgeBundlePath = join(runDir, "bridge-bundle.json");
   const agenticLoopBundlePath = join(runDir, "agentic-loop-bundle.v0.json");
@@ -472,9 +472,9 @@ async function main() {
     }
   }
 
-  const gameRoot = process.env.KAIFUU_REAL_SWEETIE_HD_PATH;
+  const gameRoot = process.env.LOCALIZE_PROJECT_SOURCE_PATH;
   if (!dryRun && (gameRoot === undefined || gameRoot.length === 0)) {
-    throw new Error("KAIFUU_REAL_SWEETIE_HD_PATH must be set unless --dry-run");
+    throw new Error("LOCALIZE_PROJECT_SOURCE_PATH must be set unless --dry-run");
   }
   const targetRoot = process.env.TARGET;
   if (!dryRun && (targetRoot === undefined || targetRoot.length === 0)) {
@@ -487,9 +487,9 @@ async function main() {
   if (dryRun) {
     printDryRunPlan(
       [
-        `cargo run -p kaifuu-cli -- extract --engine reallive --game-root <KAIFUU_REAL_SWEETIE_HD_PATH> --game-id ${projectMetadata.gameId} --game-version ${projectMetadata.gameVersion} --source-profile-id ${projectMetadata.sourceProfileId} --source-locale ${projectMetadata.sourceLocale} --scene ${sceneId} --bundle-output ${bridgeBundlePath}`,
-        `node apps/itotori/dist/cli.js localize-sweetie-hd-stage --bridge ${bridgeBundlePath} --pair-policy ${PAIR_POLICY_PATH} --unit-index ${args.unitIndex} --output ${agenticLoopBundlePath} --translated-bundle-output ${translatedBundlePath} --patch-report-output ${patchReportPath} --provider-run-artifacts-dir ${providerRunArtifactsDir}`,
-        `cargo run -p kaifuu-cli -- patch --engine reallive --source <KAIFUU_REAL_SWEETIE_HD_PATH> --target <TARGET> --bundle ${translatedBundlePath} --force`,
+        `cargo run -p kaifuu-cli -- extract --engine reallive --game-root <LOCALIZE_PROJECT_SOURCE_PATH> --game-id ${projectMetadata.gameId} --game-version ${projectMetadata.gameVersion} --source-profile-id ${projectMetadata.sourceProfileId} --source-locale ${projectMetadata.sourceLocale} --scene ${sceneId} --bundle-output ${bridgeBundlePath}`,
+        `node apps/itotori/dist/cli.js localize-project-stage --bridge ${bridgeBundlePath} --pair-policy ${PAIR_POLICY_PATH} --unit-index ${args.unitIndex} --output ${agenticLoopBundlePath} --translated-bundle-output ${translatedBundlePath} --patch-report-output ${patchReportPath} --provider-run-artifacts-dir ${providerRunArtifactsDir}`,
+        `cargo run -p kaifuu-cli -- patch --engine reallive --source <LOCALIZE_PROJECT_SOURCE_PATH> --target <TARGET> --bundle ${translatedBundlePath} --force`,
         `cargo run -p utsushi-cli -- replay-validate --engine reallive --seen <TARGET>/REALLIVEDATA/Seen.txt --scene ${sceneId} --expect-textline-contains ${sentinelSubstring} --print-replay-log ${replayLogPath}`,
       ],
       flattenPostures(policy),
@@ -503,7 +503,7 @@ async function main() {
   const sourceSeenPath = resolveReallivedataSeen(gameRoot);
   const sourceSeenSha256Before = sha256OfFile(sourceSeenPath);
   process.stdout.write(
-    `[localize-sweetie-hd] source Seen.txt sha256 (pre): ${sourceSeenSha256Before}\n`,
+    `[localize-project] source Seen.txt sha256 (pre): ${sourceSeenSha256Before}\n`,
   );
 
   // ------------------- Phase 1: kaifuu extract --------------------
@@ -528,7 +528,7 @@ async function main() {
   // -------------- Phase 2: agentic loop (live LLM) ----------------
   const stageArgs = [
     join(REPO_ROOT, "apps", "itotori", "dist", "cli.js"),
-    "localize-sweetie-hd-stage",
+    "localize-project-stage",
     "--bridge",
     bridgeBundlePath,
     "--pair-policy",
@@ -558,7 +558,7 @@ async function main() {
       );
     }
     process.stdout.write(
-      `[localize-sweetie-hd] provider-run artifacts: ${providerRunArtifactCount} persisted under ${providerRunArtifactsDir}\n`,
+      `[localize-project] provider-run artifacts: ${providerRunArtifactCount} persisted under ${providerRunArtifactsDir}\n`,
     );
   }
 
@@ -610,7 +610,7 @@ async function main() {
   // ---- Readonly-source invariant: re-hash + assert no drift. ----
   const sourceSeenSha256After = sha256OfFile(sourceSeenPath);
   process.stdout.write(
-    `[localize-sweetie-hd] source Seen.txt sha256 (post): ${sourceSeenSha256After}\n`,
+    `[localize-project] source Seen.txt sha256 (post): ${sourceSeenSha256After}\n`,
   );
   if (sourceSeenSha256Before !== sourceSeenSha256After) {
     throw new Error(
@@ -653,10 +653,10 @@ async function main() {
     },
   };
   writeFileSync(join(runDir, "run-summary.json"), `${JSON.stringify(summary, null, 2)}\n`);
-  process.stdout.write(`[localize-sweetie-hd] SUCCESS — run dir: ${runDir}\n`);
+  process.stdout.write(`[localize-project] SUCCESS — run dir: ${runDir}\n`);
 }
 
 main().catch((error) => {
-  process.stderr.write(`[localize-sweetie-hd] FAILED: ${error.message}\n`);
+  process.stderr.write(`[localize-project] FAILED: ${error.message}\n`);
   process.exit(1);
 });
