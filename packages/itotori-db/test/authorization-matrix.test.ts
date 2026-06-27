@@ -532,6 +532,12 @@ const repositoryPermissionGateMatrix = [
         patch: { kind: "supported" },
       }),
   ),
+  engineCapabilityReportGate(
+    "recordCapabilityEvidence",
+    "projectImport",
+    "engine-capability-report-repository.test.ts capability evidence coverage",
+    (repo) => repo.recordCapabilityEvidence(deniedActor, undefined as never),
+  ),
   characterRelationshipGate(
     "saveBio",
     "draftWrite",
@@ -1363,6 +1369,12 @@ describe("repository permission gate matrix", () => {
           "mutation": "EngineCapabilityReportRepository.writeMatrix",
           "requiredPermission": "project.import",
           "successFixture": "engine-capability-report-repository.test.ts write matrix coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "EngineCapabilityReportRepository.recordCapabilityEvidence",
+          "requiredPermission": "project.import",
+          "successFixture": "engine-capability-report-repository.test.ts capability evidence coverage",
         },
         {
           "denialFixture": "missing permission actor user-without-required-permission",
