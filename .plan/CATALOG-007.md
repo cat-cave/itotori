@@ -32,7 +32,7 @@ Relevant surfaces already present:
   - Emits `localEngineEvidence` with
     `schemaVersion: "catalog.local_corpus_engine_evidence.v0.1"`,
     `adapterId: "local-scan:rpg_maker_mv_mz"`, `engineSource:
-    "local_scan"`, aggregate `markerKinds`, `extensionCounts`, and
+"local_scan"`, aggregate `markerKinds`, `extensionCounts`, and
     `fileKindCounts`.
   - Explicitly states local scan evidence does not claim registered Kaifuu
     adapter execution, extraction, decryption, inventory, or patch support.

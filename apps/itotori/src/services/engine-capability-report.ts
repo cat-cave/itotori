@@ -336,7 +336,10 @@ function appendSafePrivateLimitations(target: string[], values: string[] | undef
   target.sort();
 }
 
-function mergeAggregateCounts(target: Record<string, number>, counts: Record<string, unknown> = {}) {
+function mergeAggregateCounts(
+  target: Record<string, number>,
+  counts: Record<string, unknown> = {},
+) {
   for (const [key, value] of Object.entries(counts)) {
     if (!isAllowedAggregateCountKey(key) || !isFiniteNonNegativeInteger(value)) {
       continue;
@@ -347,7 +350,9 @@ function mergeAggregateCounts(target: Record<string, number>, counts: Record<str
 }
 
 function isFiniteNonNegativeInteger(value: unknown): value is number {
-  return typeof value === "number" && Number.isInteger(value) && value >= 0 && Number.isFinite(value);
+  return (
+    typeof value === "number" && Number.isInteger(value) && value >= 0 && Number.isFinite(value)
+  );
 }
 
 function isAllowedAggregateCountKey(value: string): boolean {

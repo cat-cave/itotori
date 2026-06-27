@@ -1270,9 +1270,7 @@ function renderPrivateLocalAggregateEvidence(
   const details = [
     counts.join(" "),
     privateLocal.markerKinds.length > 0 ? `labels=${privateLocal.markerKinds.join(", ")}` : "",
-    privateLocal.limitations.length > 0
-      ? `limitations=${privateLocal.limitations.join("; ")}`
-      : "",
+    privateLocal.limitations.length > 0 ? `limitations=${privateLocal.limitations.join("; ")}` : "",
   ]
     .filter((part) => part.length > 0)
     .join(" | ");
