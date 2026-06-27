@@ -105,6 +105,19 @@ function transitionFixture(
   };
 }
 
+function itemKindForAction(input: ReviewerQueueActionInput): ReviewerQueueItemRecord["itemKind"] {
+  switch (input.action) {
+    case reviewerQueueActionValues.updateStyle:
+      return reviewerQueueItemKindValues.style;
+    case reviewerQueueActionValues.updateGlossary:
+      return reviewerQueueItemKindValues.glossary;
+    case reviewerQueueActionValues.importRuntimeFeedback:
+      return reviewerQueueItemKindValues.feedback;
+    default:
+      return reviewerQueueItemKindValues.qa;
+  }
+}
+
 function makeStubRepo(): {
   repo: ItotoriReviewerQueueRepositoryPort;
   applyAction: ReturnType<typeof vi.fn>;
@@ -120,6 +133,7 @@ function makeStubRepo(): {
     Promise.resolve({
       item: itemFixture({
         reviewItemId: input.reviewItemId,
+        itemKind: itemKindForAction(input),
         state:
           input.action === reviewerQueueActionValues.requestRepair
             ? reviewerQueueItemStateValues.repairRequested
@@ -133,6 +147,7 @@ function makeStubRepo(): {
       }),
       transition: transitionFixture({
         reviewItemId: input.reviewItemId,
+        itemKind: itemKindForAction(input),
         action: input.action,
         actorUserId: input.actorUserId,
         affectedArtifactIds: input.affectedArtifactIds ?? [],
@@ -210,6 +225,28 @@ describe("ReviewerQueueActionService", () => {
     });
 
     expect(applyAction.mock.calls[0]![1]!.action).toBe(reviewerQueueActionValues.reject);
+  });
+
+  it("reject preserves style dispute rationale metadata", async () => {
+    const { repo, applyAction } = makeStubRepo();
+    const service = new ReviewerQueueActionService(repo);
+
+    await service.reject(actor, {
+      reviewItemId: "reviewer-queue-style-dispute-reject",
+      actorUserId: "local-user",
+      expectedSourceRevisionId: "source-revision-fixture",
+      contextRefs: decisionContextRefs,
+      metadata: {
+        rejectionReason: "Project voice guide already requires informal protagonist lines.",
+        styleDisputeKey: "feedback-1",
+      },
+    });
+
+    expect(applyAction.mock.calls[0]![1]!.metadata).toMatchObject({
+      rejectionReason: "Project voice guide already requires informal protagonist lines.",
+      styleDisputeKey: "feedback-1",
+      contextRefs: decisionContextRefs,
+    });
   });
 
   it("defer dispatches the defer action with no rerun jobs", async () => {
@@ -419,6 +456,42 @@ describe("ReviewerQueueActionService", () => {
       styleGuideVersionId: "style-version-1",
       ruleLabel: "Honorifics: keep -san suffix",
       contextRefs: decisionContextRefs,
+    });
+  });
+
+  it("updateStyle on a style dispute item plans style invalidation reruns", async () => {
+    const { repo, plannedJobs } = makeStubRepo();
+    const service = new ReviewerQueueActionService(repo);
+
+    await service.updateStyle(actor, {
+      reviewItemId: "reviewer-queue-style-dispute",
+      actorUserId: "local-user",
+      expectedSourceRevisionId: "source-revision-fixture",
+      contextRefs: decisionContextRefs,
+      metadata: {
+        styleDisputeKey: "feedback-1",
+        feedbackReportId: "feedback-1",
+        triageLabel: "style_dispute_candidate",
+        affectedUnitIds: ["bridge-unit-from-feedback"],
+      },
+      styleGuideVersionId: "style-version-1",
+      ruleLabel: "Protagonist voice: use casual register",
+    });
+
+    expect(plannedJobs.map((job) => job.jobName)).toEqual([
+      reviewerTriggeredRerunJobNameValues.draftRepair,
+      reviewerTriggeredRerunJobNameValues.qaReplay,
+      reviewerTriggeredRerunJobNameValues.exportRegeneration,
+      reviewerTriggeredRerunJobNameValues.runtimeValidation,
+    ]);
+    expect(plannedJobs[0]!.payload).toMatchObject({
+      itemKind: reviewerQueueItemKindValues.style,
+      reviewerAction: reviewerQueueActionValues.updateStyle,
+      affectedUnitIds: ["bridge-unit-from-feedback"],
+      ruleLabel: "Protagonist voice: use casual register",
+      policyVersions: {
+        styleGuideVersionId: "style-version-1",
+      },
     });
   });
 

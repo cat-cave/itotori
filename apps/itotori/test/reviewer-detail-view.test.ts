@@ -229,6 +229,11 @@ describe("renderReviewerDetailView — ready view", () => {
         .actionButtonsForKind(reviewerQueueItemKindValues.style)
         .map((b) => b.action),
     ).toContain(reviewerQueueActionValues.updateStyle);
+    expect(
+      reviewerDetailViewInternals
+        .actionButtonsForKind(reviewerQueueItemKindValues.feedback)
+        .map((b) => b.action),
+    ).not.toContain(reviewerQueueActionValues.updateStyle);
   });
 });
 

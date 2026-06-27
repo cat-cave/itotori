@@ -5,8 +5,10 @@ import {
   type ManualFeedbackImportInput,
   parseManualFeedbackImportInput,
   type ManualFeedbackImportResult,
+  type ReviewerQueueItemRecord,
   ReviewerQueueRepositoryError,
   feedbackContextStatusValues,
+  feedbackTriageLabelValues,
   reviewerQueueItemKindValues,
 } from "@itotori/db";
 import { localUserActor } from "./auth.js";
@@ -23,7 +25,8 @@ export class ManualFeedbackImportService {
     private readonly reviewerQueueRepository?: Pick<
       ItotoriReviewerQueueRepositoryPort,
       "createItem"
-    >,
+    > &
+      Partial<Pick<ItotoriReviewerQueueRepositoryPort, "loadItemsByBranch">>,
   ) {}
 
   async importManualFeedback(input: unknown): Promise<ManualFeedbackImportResult> {
@@ -53,13 +56,34 @@ export class ManualFeedbackImportService {
     }
     const queueContext = sanitizeReviewerQueueRecord(context.context);
     const queueAttachments = sanitizeReviewerQueueAttachments(context.attachments);
+    const isStyleDispute =
+      context.triageLabel === feedbackTriageLabelValues.styleDisputeCandidate;
+    const styleDisputeKey = isStyleDispute ? context.feedbackReportId : undefined;
+    const affectedBridgeUnitIds = bridgeUnitIdsFromContext(queueContext);
+    const affectedUnitMetadata =
+      affectedBridgeUnitIds.length === 0
+        ? {}
+        : { affectedUnitIds: affectedBridgeUnitIds, bridgeUnitIds: affectedBridgeUnitIds };
+
+    if (
+      isStyleDispute &&
+      (await this.hasExistingStyleDisputeItem({
+        localeBranchId: context.localeBranchId,
+        sourceRevisionId: context.sourceRevisionId,
+        styleDisputeKey: context.feedbackReportId,
+      }))
+    ) {
+      return;
+    }
 
     try {
       await this.reviewerQueueRepository.createItem(this.actor, {
         projectId: context.projectId,
         localeBranchId: context.localeBranchId,
         sourceRevisionId: context.sourceRevisionId,
-        itemKind: reviewerQueueItemKindValues.feedback,
+        itemKind: isStyleDispute
+          ? reviewerQueueItemKindValues.style
+          : reviewerQueueItemKindValues.feedback,
         sourceItemRef: context.feedbackReportId,
         summary: summarizeFeedbackForQueue(context.reporterNote),
         affectedArtifactIds: context.affectedArtifactIds,
@@ -67,8 +91,10 @@ export class ManualFeedbackImportService {
           feedbackReportId: context.feedbackReportId,
           feedbackEvidenceId: context.feedbackEvidenceId,
           evidenceId: context.feedbackEvidenceId,
+          ...(styleDisputeKey === undefined ? {} : { styleDisputeKey }),
           feedbackType: context.feedbackType,
           triageLabel: context.triageLabel,
+          ...affectedUnitMetadata,
           context: queueContext,
           attachments: queueAttachments,
           reporterNote: context.reporterNote,
@@ -78,8 +104,10 @@ export class ManualFeedbackImportService {
           feedbackReportId: context.feedbackReportId,
           feedbackEvidenceId: context.feedbackEvidenceId,
           evidenceId: context.feedbackEvidenceId,
+          ...(styleDisputeKey === undefined ? {} : { styleDisputeKey }),
           triageLabel: context.triageLabel,
           contextStatus: context.contextStatus,
+          ...affectedUnitMetadata,
           context: queueContext,
           attachments: queueAttachments,
         },
@@ -94,6 +122,26 @@ export class ManualFeedbackImportService {
       }
       throw error;
     }
+  }
+
+  private async hasExistingStyleDisputeItem(input: {
+    localeBranchId: string;
+    sourceRevisionId: string;
+    styleDisputeKey: string;
+  }): Promise<boolean> {
+    if (this.reviewerQueueRepository?.loadItemsByBranch === undefined) {
+      return false;
+    }
+    const items = await this.reviewerQueueRepository.loadItemsByBranch(
+      this.actor,
+      input.localeBranchId,
+    );
+    return items.some(
+      (item) =>
+        item.sourceRevisionId === input.sourceRevisionId &&
+        item.sourceItemRef === input.styleDisputeKey &&
+        isStyleDisputeQueueItem(item, input.styleDisputeKey),
+    );
   }
 }
 
@@ -159,6 +207,30 @@ function sanitizeReviewerQueueRecord(value: Record<string, unknown>): Record<str
   return compactRecord(sanitized);
 }
 
+function bridgeUnitIdsFromContext(context: Record<string, unknown>): string[] {
+  return sortedUnique([
+    ...stringArrayValue(context.affectedUnitIds),
+    ...stringArrayValue(context.affectedBridgeUnitIds),
+    ...stringArrayValue(context.bridgeUnitIds),
+    ...stringArrayValue(context.unitIds),
+    ...stringValue(recordValue(context.lineReference)?.bridgeUnitId),
+  ]);
+}
+
+function isStyleDisputeQueueItem(item: ReviewerQueueItemRecord, styleDisputeKey: string): boolean {
+  if (item.itemKind === reviewerQueueItemKindValues.style) {
+    return true;
+  }
+  if (item.itemKind !== reviewerQueueItemKindValues.feedback) {
+    return false;
+  }
+  return [item.payload, item.metadata].some(
+    (record) =>
+      record.styleDisputeKey === styleDisputeKey ||
+      record.triageLabel === feedbackTriageLabelValues.styleDisputeCandidate,
+  );
+}
+
 function compactRecord(value: Record<string, unknown>): Record<string, unknown> {
   const compacted: Record<string, unknown> = {};
   for (const [key, entry] of Object.entries(value)) {
@@ -178,6 +250,24 @@ function compactRecord(value: Record<string, unknown>): Record<string, unknown> 
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function recordValue(value: unknown): Record<string, unknown> | undefined {
+  return isRecord(value) ? value : undefined;
+}
+
+function stringValue(value: unknown): string[] {
+  return typeof value === "string" && value.length > 0 ? [value] : [];
+}
+
+function stringArrayValue(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((entry): entry is string => typeof entry === "string" && entry.length > 0)
+    : [];
+}
+
+function sortedUnique(values: readonly string[]): string[] {
+  return Array.from(new Set(values)).sort((a, b) => a.localeCompare(b));
 }
 
 const reviewerQueueContextOmittedKeys = new Set([

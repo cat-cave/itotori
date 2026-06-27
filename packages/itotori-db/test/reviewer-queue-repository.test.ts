@@ -495,6 +495,54 @@ describe.skipIf(!process.env.DATABASE_URL)("ItotoriReviewerQueueRepository", () 
     }
   });
 
+  it("applyAction preserves style dispute rejection rationale metadata", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      await seedProjectScope(context);
+      const repo = new ItotoriReviewerQueueRepository(context.db);
+      const styleDispute = await repo.createItem(localActor, {
+        ...baseCreate("style"),
+        sourceItemRef: "feedback-style-dispute-1",
+        payload: {
+          feedbackReportId: "feedback-style-dispute-1",
+          feedbackEvidenceId: "feedback-evidence-style-dispute-1",
+          feedbackType: "style_preference",
+          triageLabel: "style_dispute_candidate",
+          styleDisputeKey: "feedback-style-dispute-1",
+        },
+        metadata: {
+          source: "manual_feedback_import",
+          styleDisputeKey: "feedback-style-dispute-1",
+        },
+      });
+
+      const result = await repo.applyAction(localActor, {
+        reviewItemId: styleDispute.reviewItemId,
+        action: reviewerQueueActionValues.reject,
+        actorUserId: localUserId,
+        expectedSourceRevisionId: sourceRevisionId,
+        metadata: {
+          rejectionReason: "Existing protagonist voice rule already covers this preference.",
+          styleDisputeKey: "feedback-style-dispute-1",
+        },
+      });
+
+      expect(result.item.state).toBe(reviewerQueueItemStateValues.rejected);
+      expect(result.transition.metadata).toMatchObject({
+        rejectionReason: "Existing protagonist voice rule already covers this preference.",
+        styleDisputeKey: "feedback-style-dispute-1",
+      });
+
+      const transitions = await repo.loadTransitionsByItem(localActor, styleDispute.reviewItemId);
+      expect(transitions[0]?.metadata).toMatchObject({
+        rejectionReason: "Existing protagonist voice rule already covers this preference.",
+        styleDisputeKey: "feedback-style-dispute-1",
+      });
+    } finally {
+      await context.close();
+    }
+  });
+
   it("importRuntimeFeedback preserves evidence tier on the transition log", async () => {
     const context = await isolatedMigratedContext();
     try {
