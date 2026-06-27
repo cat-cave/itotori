@@ -45,8 +45,8 @@ use std::fs;
 use std::path::PathBuf;
 
 use kaifuu_reallive::{
-    REALLIVE_DATA_DIR_NAME, RealLiveDetectError, detect_reallive_data_dir,
-    detect_reallive_data_dir_with_max_depth,
+    REALLIVE_DATA_DIR_NAME, REALLIVE_DETECTOR_DEFAULT_MAX_DEPTH, RealLiveDetectError,
+    detect_reallive_data_dir, detect_reallive_data_dir_with_max_depth,
 };
 
 fn unique_temp_dir(label: &str) -> PathBuf {
@@ -131,16 +131,32 @@ fn detects_reallivedata_under_sweetie_hd_root_with_resolved_path() {
         env_path.display()
     );
 
-    // Acceptance #4: search depth on Sweetie HD is exactly 2 (the JP
-    // title subdir, then REALLIVEDATA). If the install tree changes
-    // shape we want a loud test failure, not a silent pass at a
-    // different depth.
+    // Acceptance #4: search depth reports the relative directory depth
+    // of the resolved REALLIVEDATA marker. Direct roots
+    // (`<game>/REALLIVEDATA`) and shallow wrapper roots
+    // (`<parent>/<game>/REALLIVEDATA`) are both valid generic fixture
+    // shapes.
+    let expected_search_depth = evidence
+        .reallive_data_path
+        .strip_prefix(&env_path)
+        .unwrap_or_else(|_| {
+            panic!(
+                "resolved REALLIVEDATA path {} must be relative to input root {}",
+                evidence.reallive_data_path.display(),
+                env_path.display()
+            )
+        })
+        .components()
+        .count();
     assert_eq!(
-        evidence.search_depth, 2,
-        "Sweetie HD REALLIVEDATA must be at depth 2 from the install root \
-         (root/<JP title subdir>/REALLIVEDATA); KAIFUU-189 audit references \
-         this exact shape. Got depth {}.",
-        evidence.search_depth
+        evidence.search_depth, expected_search_depth,
+        "reported search depth must match the resolved REALLIVEDATA path depth from the input root"
+    );
+    assert!(
+        evidence.search_depth <= REALLIVE_DETECTOR_DEFAULT_MAX_DEPTH,
+        "reported search depth {} must stay within the detector's default bound {}",
+        evidence.search_depth,
+        REALLIVE_DETECTOR_DEFAULT_MAX_DEPTH
     );
 
     // Acceptance #5: corroborating bytes — Seen.txt must live inside

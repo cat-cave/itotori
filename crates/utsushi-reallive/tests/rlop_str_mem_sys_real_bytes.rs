@@ -40,7 +40,6 @@ use utsushi_reallive::{
     register_mem_rlops, register_str_rlops, register_sys_rlops,
 };
 
-
 /// Step budget — pinned to 400 so the walk reaches past the scene-1
 /// preamble while still terminating deterministically.
 const REAL_BYTES_STEP_BUDGET: u32 = 400;

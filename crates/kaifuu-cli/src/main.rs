@@ -314,8 +314,9 @@ fn run_extract_reallive_bundle(args: &[String]) -> Result<(), Box<dyn std::error
         None => match std::env::var_os(REAL_GAME_ROOT_ENV) {
             Some(value) => PathBuf::from(value),
             None => {
-                return Err(format!("--game-root <PATH> or {REAL_GAME_ROOT_ENV} env var required")
-                    .into());
+                return Err(
+                    format!("--game-root <PATH> or {REAL_GAME_ROOT_ENV} env var required").into(),
+                );
             }
         },
     };

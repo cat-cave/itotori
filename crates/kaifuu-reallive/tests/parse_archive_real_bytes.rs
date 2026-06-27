@@ -26,7 +26,6 @@ use kaifuu_reallive::{
     parse_archive,
 };
 
-
 #[test]
 #[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
 fn parses_sweetie_hd_seen_txt_into_198_populated_scene_entries() {

@@ -41,7 +41,6 @@ use std::path::PathBuf;
 
 use utsushi_reallive::{OGG_PAGE_MAGIC, OVK_ENTRY_BYTE_LEN, OvkDecodeError, decode_ovk};
 
-
 /// File name of the UTSUSHI-217 spec-pinned z0001.ovk fixture.
 const Z0001_OVK: &str = "z0001.ovk";
 

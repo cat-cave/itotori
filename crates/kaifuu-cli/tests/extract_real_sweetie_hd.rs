@@ -32,7 +32,10 @@ fn kaifuu_cli_binary() -> PathBuf {
 #[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
 fn cli_extract_engine_reallive_scene_1_writes_schema_valid_v02_bundle() {
     let Some(game_root) = real_corpus::game_root() else {
-        eprintln!("{}", real_corpus::skip_message("CLI extract real-bytes test"));
+        eprintln!(
+            "{}",
+            real_corpus::skip_message("CLI extract real-bytes test")
+        );
         return;
     };
 

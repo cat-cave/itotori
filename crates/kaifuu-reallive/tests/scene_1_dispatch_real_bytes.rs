@@ -51,7 +51,6 @@ use std::path::PathBuf;
 
 use kaifuu_reallive::{REALLIVE_SEEN_TXT_DIRECTORY_BYTE_LEN, RealLiveOpcode, parse_real_bytecode};
 
-
 #[test]
 #[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
 fn dispatches_sweetie_hd_scene_1_with_at_least_90_percent_opcode_recognition() {

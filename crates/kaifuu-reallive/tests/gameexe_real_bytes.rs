@@ -27,7 +27,6 @@ use std::path::PathBuf;
 
 use kaifuu_reallive::{GameexeKeyFamily, GameexeKeyTreatment, parse_gameexe_inventory};
 
-
 #[test]
 #[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
 fn classifies_sweetie_hd_gameexe_ini_to_at_least_ninety_percent_coverage() {
