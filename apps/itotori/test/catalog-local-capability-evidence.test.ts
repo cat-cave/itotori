@@ -208,6 +208,34 @@ describe("catalog local capability evidence mapper", () => {
     expect(serialized).not.toContain("local-scan:rpg_maker_mv_mz");
     expect(serialized).not.toContain("catalog.local_corpus_engine_evidence.v0.1");
   });
+
+  it("loads the public-only merge fixture with an explicit empty private aggregate", async () => {
+    const input = await readJson<CatalogCapabilityEvidenceMergeInput>(
+      "fixtures/public/catalog-capability-evidence-mv-mz-merge/input/merge-public-only-v0.1.json",
+    );
+
+    (input as unknown as { privateLocalAggregate: [] }).privateLocalAggregate = [];
+
+    const merged = mergeCapabilityEvidenceFixture(input);
+
+    expect(merged.supportEvidence.publicFixture).toHaveLength(1);
+    expect(merged.supportEvidence.privateLocalAggregate).toEqual([]);
+  });
+
+  it("rejects contaminated public fixture merge evidence before readiness JSON generation", () => {
+    for (const [name, contaminate] of unsafePublicFixtureMergeVariants()) {
+      const input = publicOnlyMergeInput() as unknown as Record<string, unknown>;
+      contaminate(input);
+
+      expect(
+        () =>
+          mergeCapabilityEvidenceFixture(input as unknown as CatalogCapabilityEvidenceMergeInput),
+        name,
+      ).toThrow(
+        /unsupported|not supported|forbidden public evidence|not allowed in public fixture evidence/u,
+      );
+    }
+  });
 });
 
 function localMvMzEvidence(): CatalogLocalEngineEvidence {
@@ -259,6 +287,114 @@ function unsafeEvidenceVariants(): CatalogLocalEngineEvidence[] {
       extra: { uri: "file:/tmp/private-game/System.json" },
     } as CatalogLocalEngineEvidence,
   ];
+}
+
+function publicOnlyMergeInput(): CatalogCapabilityEvidenceMergeInput {
+  return {
+    schemaVersion: "catalog.capability_evidence_merge_fixture.v0.1",
+    publicFixture: {
+      fixtureId: "catalog-capability-evidence-mv-mz-public-matrix",
+      matrix: {
+        adapterId: "kaifuu.rpg-maker-mv-mz",
+        identify: {
+          kind: "supported",
+        },
+        inventory: {
+          kind: "unsupported",
+          reason: "public synthetic fixture records identify-only MV/MZ matrix support",
+        },
+        extract: {
+          kind: "unsupported",
+          reason: "public synthetic fixture does not claim extraction support",
+        },
+        patch: {
+          kind: "unsupported",
+          reason: "public synthetic fixture does not claim patch support",
+        },
+      },
+      evidence: [
+        {
+          level: "identify",
+          evidenceSource: "public_fixture",
+          evidenceKind: "adapter_matrix",
+          status: "present",
+          evidenceLabels: ["rpg_maker_mv_mz_public_fixture_matrix"],
+          limitations: [
+            "public synthetic fixture matrix only; no private-local aggregate sidecar is required",
+          ],
+        },
+      ],
+    },
+  };
+}
+
+function unsafePublicFixtureMergeVariants(): [string, (input: Record<string, unknown>) => void][] {
+  return [
+    [
+      "private path fixture id",
+      (input) => {
+        publicFixture(input).fixtureId = "/home/local/private-game";
+      },
+    ],
+    [
+      "private source marker",
+      (input) => {
+        publicEvidenceRow(input).evidenceSource = "private_local_aggregate";
+      },
+    ],
+    [
+      "local sidecar evidence kind",
+      (input) => {
+        publicEvidenceRow(input).evidenceKind = "local_corpus_sidecar";
+      },
+    ],
+    [
+      "unsupported status",
+      (input) => {
+        publicEvidenceRow(input).status = "supported";
+      },
+    ],
+    [
+      "unsupported label",
+      (input) => {
+        publicEvidenceRow(input).evidenceLabels = ["rpgmaker_mv_metadata"];
+      },
+    ],
+    [
+      "private scan id field",
+      (input) => {
+        publicEvidenceRow(input).localScanEntryId = "catalog-local-entry:secret";
+      },
+    ],
+    [
+      "private hash field",
+      (input) => {
+        publicEvidenceRow(input).pathHash =
+          "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+      },
+    ],
+    [
+      "private filename limitation",
+      (input) => {
+        publicEvidenceRow(input).limitations = ["rawText Private Story Vol 1.zip"];
+      },
+    ],
+    [
+      "screenshot evidence field",
+      (input) => {
+        publicEvidenceRow(input).screenshot = "capture.png";
+      },
+    ],
+  ];
+}
+
+function publicFixture(input: Record<string, unknown>): Record<string, unknown> {
+  return input.publicFixture as Record<string, unknown>;
+}
+
+function publicEvidenceRow(input: Record<string, unknown>): Record<string, unknown> {
+  const evidence = publicFixture(input).evidence as Record<string, unknown>[];
+  return evidence[0]!;
 }
 
 async function readJson<T>(path: string): Promise<T> {

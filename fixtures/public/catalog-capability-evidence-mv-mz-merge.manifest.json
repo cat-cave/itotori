@@ -29,16 +29,32 @@
       "redistributable": true
     },
     {
+      "path": "fixtures/public/catalog-capability-evidence-mv-mz-merge/input/merge-public-only-v0.1.json",
+      "role": "metadata",
+      "mediaType": "application/json",
+      "sha256": "43f486294163862a0d40f58acc983b04d6b99eba9ec35c0ce1a101099a9cec6d",
+      "bytes": 1093,
+      "redistributable": true
+    },
+    {
       "path": "fixtures/public/catalog-capability-evidence-mv-mz-merge/expected/readiness-merge-v0.1.json",
       "role": "expected-output",
       "mediaType": "application/json",
       "sha256": "cd0880a312c4f25db115dcd45a229688016c6143ead6994255f6455eb9baa421",
       "bytes": 2313,
       "redistributable": true
+    },
+    {
+      "path": "fixtures/public/catalog-capability-evidence-mv-mz-merge/expected/readiness-public-only-v0.1.json",
+      "role": "expected-output",
+      "mediaType": "application/json",
+      "sha256": "51e62f1ca74ea8e967492d8316bfa4010d85d4876f7d99b0167de1781af67d8f",
+      "bytes": 1252,
+      "redistributable": true
     }
   ],
   "aggregateStats": {
-    "files": 2,
+    "files": 4,
     "textUnits": 0,
     "sourceTextUtf16CodeUnits": 0,
     "protectedSpans": 0,

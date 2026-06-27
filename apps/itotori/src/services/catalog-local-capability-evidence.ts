@@ -71,7 +71,10 @@ export type CatalogCapabilityEvidenceMergeInput = {
   publicFixture: {
     fixtureId: string;
     matrix: AdapterCapabilityMatrixRecord;
-    evidence: Omit<CatalogPublicFixtureCapabilityEvidence, "schemaVersion" | "adapterId">[];
+    evidence: Omit<
+      CatalogPublicFixtureCapabilityEvidence,
+      "schemaVersion" | "adapterId" | "fixtureId"
+    >[];
   };
   privateLocalAggregate?: {
     localEngineEvidence: CatalogLocalEngineEvidence;
@@ -86,6 +89,22 @@ export class CatalogLocalCapabilityEvidenceError extends Error {
 }
 
 const knownMarkerLabels = new Set(["rpgmaker_mv_metadata"]);
+const knownPublicFixtureIds = new Set(["catalog-capability-evidence-mv-mz-public-matrix"]);
+const knownPublicEvidenceLabels = new Set(["rpg_maker_mv_mz_public_fixture_matrix"]);
+const catalogCapabilityEvidenceStatusValues = new Set<CatalogCapabilityEvidenceStatus>([
+  "present",
+  "partial",
+  "missing",
+  "unknown",
+]);
+const publicFixtureEvidenceKeys = new Set([
+  "level",
+  "evidenceSource",
+  "evidenceKind",
+  "status",
+  "evidenceLabels",
+  "limitations",
+]);
 const knownExtensionCountKeys = new Set([
   "[none]",
   ".json",
@@ -122,14 +141,21 @@ const forbiddenEvidenceKeys = new Set([
 const forbiddenEvidenceValuePatterns = [
   /(^|[\s"'])\/home\//u,
   /(^|[\s"'])\/tmp\//u,
+  /(^|[\s"'])\/var\//u,
   /(^|[\s"'])[A-Za-z]:[\\/]/u,
   /file:/iu,
+  /\b[A-Za-z0-9 ._-]+\.(?:rpgmvp|rpgmvm|rpgmvo|zip|rar|7z|png|jpe?g|webp)\b/iu,
   /\.rpgmvp\b/iu,
-  /SECRET_KEY/u,
+  /\bsecret[_ -]?key\b/iu,
+  /\bkeyMaterial\b/u,
   /screenshot/iu,
+  /\bsha256:[a-f0-9]{16,}\b/iu,
+  /\b[a-f0-9]{64}\b/iu,
   /pathHash/u,
   /localScanEntryId/u,
-  /rawText/u,
+  /\blocal[-_ ]?scan[-_ ]?(entry[-_ ]?)?id\b/iu,
+  /\bscan[-_ ]?id\b/iu,
+  /raw\s*text|rawText/iu,
 ];
 
 export function mapLocalEngineEvidenceToCapabilityEvidence(
@@ -207,12 +233,7 @@ export function mergeCapabilityEvidenceFixture(
   const privateLocalAggregate = input.privateLocalAggregate?.localEngineEvidence
     ? mapLocalEngineEvidenceToCapabilityEvidence(input.privateLocalAggregate.localEngineEvidence)
     : [];
-  const publicFixture = input.publicFixture.evidence.map((evidence) => ({
-    ...evidence,
-    schemaVersion: catalogCapabilityEvidenceInputSchemaVersion,
-    adapterId: input.publicFixture.matrix.adapterId,
-    fixtureId: input.publicFixture.fixtureId,
-  }));
+  const publicFixture = publicFixtureEvidenceForMerge(input);
 
   return {
     schemaVersion: catalogCapabilityEvidenceReadinessSchemaVersion,
@@ -223,6 +244,81 @@ export function mergeCapabilityEvidenceFixture(
       privateLocalAggregate,
     },
   };
+}
+
+function publicFixtureEvidenceForMerge(
+  input: CatalogCapabilityEvidenceMergeInput,
+): CatalogPublicFixtureCapabilityEvidence[] {
+  assertKnownPublicFixtureId(input.publicFixture.fixtureId);
+  assertNoForbiddenPublicFixtureEvidenceLeakage(
+    input.publicFixture.fixtureId,
+    "publicFixture.fixtureId",
+  );
+  if (!Array.isArray(input.publicFixture.evidence)) {
+    throw new CatalogLocalCapabilityEvidenceError("public fixture evidence must be an array");
+  }
+
+  return input.publicFixture.evidence.map((evidence, index) => {
+    assertPublicFixtureEvidenceRow(evidence, index);
+    return {
+      schemaVersion: catalogCapabilityEvidenceInputSchemaVersion,
+      adapterId: input.publicFixture.matrix.adapterId,
+      level: evidence.level,
+      evidenceSource: "public_fixture",
+      evidenceKind: "adapter_matrix",
+      fixtureId: input.publicFixture.fixtureId,
+      status: evidence.status,
+      evidenceLabels: [...evidence.evidenceLabels],
+      limitations: [...evidence.limitations],
+    };
+  });
+}
+
+function assertKnownPublicFixtureId(fixtureId: unknown): asserts fixtureId is string {
+  if (typeof fixtureId !== "string" || !knownPublicFixtureIds.has(fixtureId)) {
+    throw new CatalogLocalCapabilityEvidenceError("unsupported public fixtureId");
+  }
+}
+
+function assertPublicFixtureEvidenceRow(
+  evidence: unknown,
+  index: number,
+): asserts evidence is Omit<
+  CatalogPublicFixtureCapabilityEvidence,
+  "schemaVersion" | "adapterId" | "fixtureId"
+> {
+  const path = `publicFixture.evidence.${index}`;
+  if (evidence === null || typeof evidence !== "object" || Array.isArray(evidence)) {
+    throw new CatalogLocalCapabilityEvidenceError(`${path} must be an object`);
+  }
+  for (const key of Object.keys(evidence)) {
+    if (!publicFixtureEvidenceKeys.has(key)) {
+      throw new CatalogLocalCapabilityEvidenceError(
+        `${path}.${key} is not allowed in public fixture evidence`,
+      );
+    }
+  }
+
+  const row = evidence as Partial<CatalogPublicFixtureCapabilityEvidence>;
+  if (row.level !== capabilityLevelValues.identify) {
+    throw new CatalogLocalCapabilityEvidenceError(`${path}.level is not supported`);
+  }
+  if (row.evidenceSource !== "public_fixture") {
+    throw new CatalogLocalCapabilityEvidenceError(`${path}.evidenceSource is not supported`);
+  }
+  if (row.evidenceKind !== "adapter_matrix") {
+    throw new CatalogLocalCapabilityEvidenceError(`${path}.evidenceKind is not supported`);
+  }
+  if (!catalogCapabilityEvidenceStatusValues.has(row.status as CatalogCapabilityEvidenceStatus)) {
+    throw new CatalogLocalCapabilityEvidenceError(`${path}.status is not supported`);
+  }
+  assertKnownLabels(
+    row.evidenceLabels as string[],
+    knownPublicEvidenceLabels,
+    `${path}.evidenceLabels`,
+  );
+  assertPublicStringArray(row.limitations, `${path}.limitations`);
+  assertNoForbiddenPublicFixtureEvidenceLeakage(row, path);
 }
 
 function dbEvidenceStatus(
@@ -391,6 +487,47 @@ function assertNoForbiddenLocalEvidenceLeakage(value: unknown, path = "localEngi
         throw new CatalogLocalCapabilityEvidenceError(`${path}.${key} is not aggregate-safe`);
       }
       assertNoForbiddenLocalEvidenceLeakage(entry, `${path}.${key}`);
+    }
+  }
+}
+
+function assertPublicStringArray(values: unknown, field: string): asserts values is string[] {
+  if (!Array.isArray(values)) {
+    throw new CatalogLocalCapabilityEvidenceError(`${field} must be an array`);
+  }
+  for (const [index, value] of values.entries()) {
+    if (typeof value !== "string" || value.trim().length === 0) {
+      throw new CatalogLocalCapabilityEvidenceError(`${field}.${index} must be a non-empty string`);
+    }
+  }
+}
+
+function assertNoForbiddenPublicFixtureEvidenceLeakage(
+  value: unknown,
+  path = "publicFixture",
+): void {
+  if (typeof value === "string") {
+    for (const pattern of forbiddenEvidenceValuePatterns) {
+      if (pattern.test(value)) {
+        throw new CatalogLocalCapabilityEvidenceError(`${path} contains forbidden public evidence`);
+      }
+    }
+    return;
+  }
+  if (Array.isArray(value)) {
+    value.forEach((entry, index) =>
+      assertNoForbiddenPublicFixtureEvidenceLeakage(entry, `${path}.${index}`),
+    );
+    return;
+  }
+  if (value !== null && typeof value === "object") {
+    for (const [key, entry] of Object.entries(value)) {
+      if (forbiddenEvidenceKeys.has(key)) {
+        throw new CatalogLocalCapabilityEvidenceError(
+          `${path}.${key} is not allowed in public fixture evidence`,
+        );
+      }
+      assertNoForbiddenPublicFixtureEvidenceLeakage(entry, `${path}.${key}`);
     }
   }
 }
