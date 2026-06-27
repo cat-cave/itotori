@@ -132,10 +132,10 @@
         "rank": 1,
         "seedRank": 1,
         "explanationCodes": [
-          "pool:no_english",
           "demand_bucket:very_high",
-          "local_ownership:owned",
           "helper_readiness_unknown",
+          "local_ownership:owned",
+          "pool:no_english",
           "runtime_readiness_unknown"
         ]
       },
@@ -171,10 +171,10 @@
         "rank": 2,
         "seedRank": 2,
         "explanationCodes": [
-          "pool:no_english",
           "demand_bucket:none",
-          "local_ownership:not_owned",
           "helper_readiness_unknown",
+          "local_ownership:not_owned",
+          "pool:no_english",
           "runtime_readiness_unknown",
           "unrecorded_or_local_only"
         ]
@@ -226,10 +226,10 @@
         "rank": 3,
         "seedRank": null,
         "explanationCodes": [
-          "pool:mtl_only",
           "demand_bucket:high",
-          "local_ownership:unknown",
           "helper_readiness_unknown",
+          "local_ownership:unknown",
+          "pool:mtl_only",
           "runtime_readiness_unknown"
         ]
       },
@@ -280,10 +280,10 @@
         "rank": 4,
         "seedRank": null,
         "explanationCodes": [
-          "pool:fan_partial",
           "demand_bucket:medium",
-          "local_ownership:unknown",
           "helper_readiness_unknown",
+          "local_ownership:unknown",
+          "pool:fan_partial",
           "runtime_readiness_unknown"
         ]
       }
