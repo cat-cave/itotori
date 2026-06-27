@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "exported_at": "2026-06-27T19:23:19.838Z",
+  "exported_at": "2026-06-27T19:25:37.380Z",
   "registries": {
     "groups": [
       {
@@ -28609,11 +28609,11 @@
       "validation": null,
       "context": null,
       "created_at": "2026-06-27T18:49:18.117Z",
-      "updated_at": "2026-06-27T19:23:16.140Z",
+      "updated_at": "2026-06-27T19:25:32.275Z",
       "claimed_at": "2026-06-27T19:23:16.140Z",
       "done_at": null,
       "group_name": "alpha-integration",
-      "status_reason": null,
+      "status_reason": "[2026-06-27T19:25:32.275Z] ORCHESTRATOR 2026-06-27: Claim notification to ntfy was not sent because prior tool policy rejected external disclosure of project workflow metadata. Proceeding with durable qd/main claim state instead.",
       "check_command": null,
       "ci_command": null,
       "projects": ["itotori", "suite", "kaifuu", "utsushi"],
@@ -42144,6 +42144,12 @@
       "node_id": "parameterize-reallive-bridge-identity-metadata",
       "text": "ORCHESTRATOR 2026-06-27: Claim notification to ntfy was not sent because tool policy rejected external disclosure of project workflow metadata. Proceeding with durable qd/main claim state instead.",
       "created_at": "2026-06-27T18:55:57.033Z"
+    },
+    {
+      "id": "09656458-8112-4ee2-9d4e-adcf98bab088",
+      "node_id": "generalize-localize-workflow-command-surface",
+      "text": "ORCHESTRATOR 2026-06-27: Claim notification to ntfy was not sent because prior tool policy rejected external disclosure of project workflow metadata. Proceeding with durable qd/main claim state instead.",
+      "created_at": "2026-06-27T19:25:32.275Z"
     }
   ]
 }
