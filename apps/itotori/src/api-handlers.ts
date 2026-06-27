@@ -11,6 +11,8 @@ import {
   type CatalogBenchmarkLocalOwnership,
   type CatalogBenchmarkSeedFinderFilter,
   type CatalogBenchmarkSeedFinderReadModel,
+  type CatalogOpportunityRankingFilter,
+  type CatalogOpportunityRankingReadModel,
   permissionValues,
   type CatalogCompletenessBenchmarkPools,
   type CatalogCompletenessPool,
@@ -93,6 +95,9 @@ export type ItotoriApiServices = {
     catalogBenchmarkSeedFinder(
       filter?: CatalogBenchmarkSeedFinderFilter,
     ): Promise<CatalogBenchmarkSeedFinderReadModel>;
+    catalogOpportunityRanking(
+      filter?: CatalogOpportunityRankingFilter,
+    ): Promise<CatalogOpportunityRankingReadModel>;
   };
   terminologyRepository: {
     searchTerms(input: TerminologySearchInput): Promise<TerminologySearchReadModel>;
@@ -185,6 +190,15 @@ async function routeItotoriApiRequest(
     );
   }
 
+  if (request.method === "GET" && request.pathname === "/api/catalog/opportunities") {
+    return ok(
+      "catalog.opportunities",
+      await services.catalogRepository.catalogOpportunityRanking(
+        parseCatalogOpportunityRankingFilter(request.search),
+      ),
+    );
+  }
+
   if (request.method === "GET" && request.pathname === "/api/terminology/search") {
     return ok(
       "terminology.search",
@@ -200,6 +214,7 @@ async function routeItotoriApiRequest(
     request.pathname === "/api/catalog/conflicts" ||
     request.pathname === "/api/catalog/completeness" ||
     request.pathname === "/api/catalog/benchmark-seeds" ||
+    request.pathname === "/api/catalog/opportunities" ||
     request.pathname === "/api/terminology/search"
   ) {
     return methodNotAllowed(["GET"]);
@@ -270,6 +285,66 @@ async function requireApiPermission(
   gate: ApiMutationPermissionGate,
 ): Promise<void> {
   await services.authorization.requirePermission(gate.permission);
+}
+
+function parseCatalogOpportunityRankingFilter(search = ""): CatalogOpportunityRankingFilter {
+  const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
+  const filter: CatalogOpportunityRankingFilter = {};
+  const targetLanguage = params.get("targetLanguage");
+  if (targetLanguage !== null) {
+    if (targetLanguage.trim().length === 0) {
+      throw new ApiValidationError("targetLanguage must be non-empty");
+    }
+    filter.targetLanguage = targetLanguage;
+  }
+  const includeDemoted = params.get("includeDemoted");
+  if (includeDemoted !== null) {
+    filter.includeDemoted = booleanParam(includeDemoted, "includeDemoted");
+  }
+  const limit = params.get("limit");
+  if (limit !== null) {
+    const parsedLimit = Number(limit);
+    if (!Number.isInteger(parsedLimit) || parsedLimit < 1 || parsedLimit > 500) {
+      throw new ApiValidationError("limit must be an integer from 1 through 500");
+    }
+    filter.limit = parsedLimit;
+  }
+  const engine = params.get("engine");
+  if (engine !== null) {
+    if (engine.trim().length === 0) {
+      throw new ApiValidationError("engine must be non-empty");
+    }
+    filter.engine = engine;
+  }
+  const pool = params.get("pool");
+  if (pool !== null) {
+    filter.pool = enumParam(
+      pool,
+      Object.values(catalogCompletenessPoolValues) as CatalogCompletenessPool[],
+      "pool",
+    );
+  }
+  const minCapabilityLevel = params.get("minCapabilityLevel");
+  if (minCapabilityLevel !== null) {
+    filter.minCapabilityLevel = enumParam(
+      minCapabilityLevel,
+      Object.values(capabilityLevelValues) as CapabilityLevel[],
+      "minCapabilityLevel",
+    );
+  }
+  const localOwnership = params.get("localOwnership");
+  if (localOwnership !== null) {
+    filter.localOwnership = enumParam(
+      localOwnership,
+      catalogBenchmarkLocalOwnershipValues,
+      "localOwnership",
+    );
+  }
+  const demandBucket = params.get("demandBucket");
+  if (demandBucket !== null) {
+    filter.demandBucket = enumParam(demandBucket, catalogBenchmarkDemandBuckets, "demandBucket");
+  }
+  return filter;
 }
 
 function parseCatalogCompletenessPoolFilter(search = ""): CatalogCompletenessPoolFilter {
@@ -509,6 +584,10 @@ function ok(
 function ok(
   routeId: "catalog.benchmarkSeeds",
   body: CatalogBenchmarkSeedFinderReadModel,
+): ApiJsonResponse;
+function ok(
+  routeId: "catalog.opportunities",
+  body: CatalogOpportunityRankingReadModel,
 ): ApiJsonResponse;
 function ok(routeId: "terminology.search", body: TerminologySearchReadModel): ApiJsonResponse;
 function ok(routeId: "projects.status", body: ProjectDashboardStatus): ApiJsonResponse;

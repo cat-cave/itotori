@@ -6,6 +6,11 @@ import type {
   CatalogExternalIdKind,
   CatalogLanguageStatus,
   CatalogLanguageStatusScope,
+  CatalogOpportunityDecision,
+  CatalogOpportunityFactorName,
+  CatalogOpportunityMarketPrevalenceSignal,
+  CatalogOpportunityRankingReadModel,
+  CatalogOpportunityRuntimeEvidenceSignal,
   CatalogRawContentRedactionClass,
   CatalogSource,
   CatalogSourceRecordKind,
@@ -58,6 +63,7 @@ export type ItotoriApiRouteId =
   | "catalog.benchmarkSeeds"
   | "catalog.completeness"
   | "catalog.conflicts"
+  | "catalog.opportunities"
   | "terminology.search"
   | "projects.list"
   | "projects.status"
@@ -89,6 +95,8 @@ export type ApiCatalogConflictReviewResponse = CatalogConflictReviewReadModel;
 export type ApiCatalogCompletenessResponse = CatalogCompletenessBenchmarkPools;
 
 export type ApiCatalogBenchmarkSeedsResponse = CatalogBenchmarkSeedFinderReadModel;
+
+export type ApiCatalogOpportunitiesResponse = CatalogOpportunityRankingReadModel;
 
 export type ApiTerminologySearchResponse = TerminologySearchReadModel;
 
@@ -144,6 +152,7 @@ export type ItotoriApiResponseBody =
   | ApiCatalogBenchmarkSeedsResponse
   | ApiCatalogCompletenessResponse
   | ApiCatalogConflictReviewResponse
+  | ApiCatalogOpportunitiesResponse
   | ApiTerminologySearchResponse
   | ApiProjectsResponse
   | ProjectDashboardStatus
@@ -258,6 +267,9 @@ export function assertItotoriApiResponse(
     case "catalog.conflicts":
       assertCatalogConflictReviewReadModel(value);
       return;
+    case "catalog.opportunities":
+      assertCatalogOpportunityRankingReadModel(value);
+      return;
     case "terminology.search":
       assertTerminologySearchReadModel(value);
       return;
@@ -294,6 +306,241 @@ export function assertItotoriApiResponse(
     case "runtimeEvidence.ingest":
       assertRuntimeEvidenceResponse(value);
       return;
+  }
+}
+
+export function assertCatalogOpportunityRankingReadModel(
+  value: unknown,
+  label = "CatalogOpportunityRankingReadModel",
+): asserts value is CatalogOpportunityRankingReadModel {
+  const model = asStrictRecord(value, label, [
+    "schemaVersion",
+    "targetLanguage",
+    "generatedAt",
+    "weightsVersion",
+    "rows",
+  ]);
+  assertLiteral(
+    model.schemaVersion,
+    "catalog.opportunity_ranking.v0.1",
+    `${label}.schemaVersion`,
+  );
+  assertPublicOpportunityString(model.targetLanguage, `${label}.targetLanguage`);
+  assertDateLike(model.generatedAt, `${label}.generatedAt`);
+  assertPublicOpportunityString(model.weightsVersion, `${label}.weightsVersion`);
+  const rows = asArray(model.rows, `${label}.rows`);
+  for (const [index, rowValue] of rows.entries()) {
+    assertCatalogOpportunityRow(rowValue, `${label}.rows[${index}]`);
+  }
+}
+
+function assertCatalogOpportunityRow(value: unknown, label: string): void {
+  const row = asStrictRecord(value, label, [
+    "rank",
+    "workId",
+    "canonicalTitle",
+    "originalLanguage",
+    "sourceIds",
+    "engineName",
+    "adapterId",
+    "readiness",
+    "runtimeEvidenceReadiness",
+    "completenessPool",
+    "translationStatuses",
+    "demandFacts",
+    "localOwnership",
+    "localEvidenceCount",
+    "marketPrevalence",
+    "decision",
+    "score",
+    "factorBreakdown",
+    "explanationCodes",
+    "provenance",
+    "demotions",
+  ]);
+  assertNonNegativeInteger(row.rank, `${label}.rank`);
+  assertPublicOpportunityString(row.workId, `${label}.workId`);
+  assertPublicOpportunityString(row.canonicalTitle, `${label}.canonicalTitle`);
+  assertNullablePublicOpportunityString(row.originalLanguage, `${label}.originalLanguage`);
+  assertCatalogBenchmarkSeedSourceIds(row.sourceIds, `${label}.sourceIds`);
+  assertNullablePublicOpportunityString(row.engineName, `${label}.engineName`);
+  assertNullablePublicOpportunityString(row.adapterId, `${label}.adapterId`);
+  assertCatalogBenchmarkSeedReadiness(row.readiness, `${label}.readiness`);
+  assertCatalogOpportunityRuntimeEvidenceReadiness(
+    row.runtimeEvidenceReadiness,
+    `${label}.runtimeEvidenceReadiness`,
+  );
+  assertEnum(
+    row.completenessPool,
+    ["mtl_only", "fan_partial", "no_english", "unknown", "conflict"] as const,
+    `${label}.completenessPool`,
+  );
+  assertCatalogBenchmarkSeedTranslationStatuses(
+    row.translationStatuses,
+    `${label}.translationStatuses`,
+  );
+  assertCatalogOpportunityDemandFacts(row.demandFacts, `${label}.demandFacts`);
+  assertEnum(
+    row.localOwnership,
+    ["owned", "not_owned", "unknown"] as const,
+    `${label}.localOwnership`,
+  );
+  assertNonNegativeInteger(row.localEvidenceCount, `${label}.localEvidenceCount`);
+  assertEnum(
+    row.marketPrevalence,
+    [
+      "public_and_local_aggregate",
+      "public_only",
+      "local_aggregate_only",
+      "unknown",
+    ] as CatalogOpportunityMarketPrevalenceSignal[],
+    `${label}.marketPrevalence`,
+  );
+  assertEnum(
+    row.decision,
+    ["candidate", "demoted", "excluded"] as CatalogOpportunityDecision[],
+    `${label}.decision`,
+  );
+  assertFiniteNumber(row.score, `${label}.score`);
+  assertCatalogOpportunityFactors(row.factorBreakdown, `${label}.factorBreakdown`);
+  assertPublicOpportunityStringArray(row.explanationCodes, `${label}.explanationCodes`);
+  assertCatalogBenchmarkSeedProvenance(row.provenance, `${label}.provenance`);
+  assertCatalogOpportunityDemotions(row.demotions, `${label}.demotions`);
+}
+
+function assertCatalogOpportunityRuntimeEvidenceReadiness(value: unknown, label: string): void {
+  const readiness = asStrictRecord(value, label, [
+    "status",
+    "publicFixtureEvidenceCount",
+    "privateLocalAggregateEvidenceCount",
+  ]);
+  assertEnum(
+    readiness.status,
+    [
+      "public_and_aggregate",
+      "public_fixture",
+      "private_local_aggregate",
+      "unknown",
+    ] as CatalogOpportunityRuntimeEvidenceSignal[],
+    `${label}.status`,
+  );
+  assertNonNegativeInteger(
+    readiness.publicFixtureEvidenceCount,
+    `${label}.publicFixtureEvidenceCount`,
+  );
+  assertNonNegativeInteger(
+    readiness.privateLocalAggregateEvidenceCount,
+    `${label}.privateLocalAggregateEvidenceCount`,
+  );
+}
+
+function assertCatalogOpportunityDemandFacts(value: unknown, label: string): void {
+  const facts = asStrictRecord(value, label, [
+    "demandBucket",
+    "dlCount",
+    "ratingAverage",
+    "ratingCount",
+    "wishlistCount",
+    "bestRank",
+    "workType",
+  ]);
+  assertEnum(
+    facts.demandBucket,
+    ["none", "low", "medium", "high", "very_high"] as const,
+    `${label}.demandBucket`,
+  );
+  assertNullableNonNegativeInteger(facts.dlCount, `${label}.dlCount`);
+  assertNullableNonNegativeNumber(facts.ratingAverage, `${label}.ratingAverage`);
+  assertNullableNonNegativeInteger(facts.ratingCount, `${label}.ratingCount`);
+  assertNullableNonNegativeInteger(facts.wishlistCount, `${label}.wishlistCount`);
+  assertNullableNonNegativeInteger(facts.bestRank, `${label}.bestRank`);
+  assertNullablePublicOpportunityString(facts.workType, `${label}.workType`);
+}
+
+function assertCatalogOpportunityFactors(value: unknown, label: string): void {
+  const factors = asArray(value, label);
+  for (const [index, factorValue] of factors.entries()) {
+    const factorLabel = `${label}[${index}]`;
+    const factor = asStrictRecord(factorValue, factorLabel, [
+      "factor",
+      "weight",
+      "rawValue",
+      "weightedScore",
+      "evidenceRefs",
+      "explanationCode",
+    ]);
+    assertEnum(
+      factor.factor,
+      [
+        "translation_completeness",
+        "local_ownership",
+        "dlsite_demand",
+        "platform_language_conflict",
+        "market_prevalence",
+        "adapter_readiness",
+        "runtime_evidence_readiness",
+        "existing_translation_status",
+        "benchmark_usefulness",
+        "unknown_evidence",
+      ] as CatalogOpportunityFactorName[],
+      `${factorLabel}.factor`,
+    );
+    assertFiniteNumber(factor.weight, `${factorLabel}.weight`);
+    assertCatalogOpportunityRawValue(factor.rawValue, `${factorLabel}.rawValue`);
+    assertFiniteNumber(factor.weightedScore, `${factorLabel}.weightedScore`);
+    assertPublicOpportunityStringArray(factor.evidenceRefs, `${factorLabel}.evidenceRefs`);
+    assertPublicOpportunityString(factor.explanationCode, `${factorLabel}.explanationCode`);
+  }
+}
+
+function assertCatalogOpportunityRawValue(value: unknown, label: string): void {
+  if (value === null || typeof value === "boolean") {
+    return;
+  }
+  if (typeof value === "number") {
+    assertFiniteNumber(value, label);
+    return;
+  }
+  assertPublicOpportunityString(value, label);
+}
+
+function assertCatalogOpportunityDemotions(value: unknown, label: string): void {
+  const demotions = asArray(value, label);
+  for (const [index, demotionValue] of demotions.entries()) {
+    const demotionLabel = `${label}[${index}]`;
+    const demotion = asStrictRecord(demotionValue, demotionLabel, [
+      "reasonCode",
+      "conflictId",
+      "severity",
+      "sourceIds",
+    ]);
+    assertPublicOpportunityString(demotion.reasonCode, `${demotionLabel}.reasonCode`);
+    assertNullablePublicOpportunityString(demotion.conflictId, `${demotionLabel}.conflictId`);
+    assertEnum(
+      demotion.severity,
+      ["error", "warning", "info"] as const,
+      `${demotionLabel}.severity`,
+    );
+    assertCatalogOpportunityDemotionSourceIds(demotion.sourceIds, `${demotionLabel}.sourceIds`);
+  }
+}
+
+function assertCatalogOpportunityDemotionSourceIds(value: unknown, label: string): void {
+  const sourceIds = asArray(value, label);
+  for (const [index, sourceIdValue] of sourceIds.entries()) {
+    const sourceId = asStrictRecord(sourceIdValue, `${label}[${index}]`, [
+      "catalogSource",
+      "sourceId",
+    ]);
+    assertEnum(
+      sourceId.catalogSource,
+      Object.values(catalogSourceValues) as CatalogSource[],
+      `${label}[${index}].catalogSource`,
+    );
+    if (sourceId.catalogSource === catalogSourceValues.localCorpus) {
+      throw new Error(`${label}[${index}].catalogSource must not expose local corpus sources`);
+    }
+    assertPublicOpportunityString(sourceId.sourceId, `${label}[${index}].sourceId`);
   }
 }
 
@@ -525,6 +772,41 @@ const benchmarkSeedPrivateLeakagePatterns = [
 
 function assertNoBenchmarkSeedPrivateLeakage(value: string, label: string): void {
   if (benchmarkSeedPrivateLeakagePatterns.some((pattern) => pattern.test(value))) {
+    throw new Error(`${label} must not expose private response data`);
+  }
+}
+
+function assertPublicOpportunityString(value: unknown, label: string): asserts value is string {
+  assertString(value, label);
+  assertNoOpportunityPrivateLeakage(value, label);
+}
+
+function assertNullablePublicOpportunityString(
+  value: unknown,
+  label: string,
+): asserts value is string | null {
+  assertNullableString(value, label);
+  if (value !== null) {
+    assertNoOpportunityPrivateLeakage(value, label);
+  }
+}
+
+function assertPublicOpportunityStringArray(value: unknown, label: string): void {
+  const entries = asArray(value, label);
+  for (const [index, entry] of entries.entries()) {
+    assertPublicOpportunityString(entry, `${label}[${index}]`);
+  }
+}
+
+const opportunityPrivateLeakagePatterns = [
+  ...benchmarkSeedPrivateLeakagePatterns,
+  /(?:localScanEntryId|local_scan_entry_id|pathHash|path_hash|rawText|raw_text)/iu,
+  /(?:SECRET_KEY|helper log|rawPayloadSecret|screenshot)/iu,
+  /\.(?:xp3|wolf|rvdata2|rpgmvp|rpgmvm|rpgmvo|unity3d|assetbundle)(?:$|[\\/!?#:])/iu,
+] as const;
+
+function assertNoOpportunityPrivateLeakage(value: string, label: string): void {
+  if (opportunityPrivateLeakagePatterns.some((pattern) => pattern.test(value))) {
     throw new Error(`${label} must not expose private response data`);
   }
 }
@@ -1631,12 +1913,27 @@ function assertNonNegativeNumber(value: unknown, label: string): asserts value i
   }
 }
 
+function assertFiniteNumber(value: unknown, label: string): asserts value is number {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    throw new Error(`${label} must be a finite number`);
+  }
+}
+
 function assertNullableNonNegativeInteger(
   value: unknown,
   label: string,
 ): asserts value is number | null {
   if (value !== null) {
     assertNonNegativeInteger(value, label);
+  }
+}
+
+function assertNullableNonNegativeNumber(
+  value: unknown,
+  label: string,
+): asserts value is number | null {
+  if (value !== null) {
+    assertNonNegativeNumber(value, label);
   }
 }
 

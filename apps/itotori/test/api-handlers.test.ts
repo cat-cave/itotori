@@ -26,6 +26,7 @@ import {
   catalogBenchmarkSeedsFixture,
   catalogCompletenessFixture,
   catalogConflictReviewFixture,
+  catalogOpportunitiesFixture,
   costReportFixture,
   dashboardDecisionsFixture,
   dashboardStatusFixture,
@@ -155,6 +156,10 @@ describe("Itotori API handlers", () => {
       { method: "GET", pathname: "/api/catalog/benchmark-seeds" },
       services,
     );
+    const catalogOpportunities = await handleItotoriApiRequest(
+      { method: "GET", pathname: "/api/catalog/opportunities" },
+      services,
+    );
     const terminologySearch = await handleItotoriApiRequest(
       {
         method: "GET",
@@ -205,6 +210,7 @@ describe("Itotori API handlers", () => {
     expect(catalogConflicts).toEqual({ statusCode: 200, body: catalogConflictReviewFixture });
     expect(catalogCompleteness).toEqual({ statusCode: 200, body: catalogCompletenessFixture });
     expect(catalogBenchmarkSeeds).toEqual({ statusCode: 200, body: catalogBenchmarkSeedsFixture });
+    expect(catalogOpportunities).toEqual({ statusCode: 200, body: catalogOpportunitiesFixture });
     expect(terminologySearch).toEqual({ statusCode: 200, body: terminologySearchFixture });
     expect(services.projectWorkflow.getDashboardStatus).toHaveBeenCalledTimes(2);
     expect(services.projectWorkflow.getRuntimeStatus).toHaveBeenCalledTimes(2);
@@ -215,6 +221,7 @@ describe("Itotori API handlers", () => {
     expect(services.catalogRepository.catalogConflictReview).toHaveBeenCalledWith({});
     expect(services.catalogRepository.catalogCompletenessBenchmarkPools).toHaveBeenCalledWith({});
     expect(services.catalogRepository.catalogBenchmarkSeedFinder).toHaveBeenCalledWith({});
+    expect(services.catalogRepository.catalogOpportunityRanking).toHaveBeenCalledWith({});
     expect(services.terminologyRepository.searchTerms).toHaveBeenCalledWith({
       localeBranchId: "locale-1",
       query: "Hero",
@@ -334,6 +341,85 @@ describe("Itotori API handlers", () => {
     expect(response).toEqual({ statusCode: 200, body: catalogBenchmarkSeedsFixture });
     expect(services.catalogRepository.catalogBenchmarkSeedFinder).toHaveBeenCalledWith(filter);
     expect(services.authorization.requirePermission).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    {
+      query: "?targetLanguage=en-US",
+      filter: { targetLanguage: "en-US" },
+    },
+    {
+      query:
+        "?targetLanguage=en-US&includeDemoted=true&limit=25&engine=rpg-maker-mv-mz&pool=no_english&minCapabilityLevel=extract&localOwnership=owned&demandBucket=very_high",
+      filter: {
+        targetLanguage: "en-US",
+        includeDemoted: true,
+        limit: 25,
+        engine: "rpg-maker-mv-mz",
+        pool: "no_english",
+        minCapabilityLevel: "extract",
+        localOwnership: "owned",
+        demandBucket: "very_high",
+      },
+    },
+  ])("passes catalog opportunity filter $query to the read model", async ({ query, filter }) => {
+    const services = serviceFixture();
+
+    const response = await handleItotoriApiRequest(
+      { method: "GET", pathname: "/api/catalog/opportunities", search: query },
+      services,
+    );
+
+    expect(response).toEqual({ statusCode: 200, body: catalogOpportunitiesFixture });
+    expect(services.catalogRepository.catalogOpportunityRanking).toHaveBeenCalledWith(filter);
+    expect(services.authorization.requirePermission).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    {
+      query: "?targetLanguage=",
+      error: /targetLanguage/u,
+    },
+    {
+      query: "?includeDemoted=1",
+      error: /includeDemoted/u,
+    },
+    {
+      query: "?limit=0",
+      error: /limit/u,
+    },
+    {
+      query: "?engine=",
+      error: /engine/u,
+    },
+    {
+      query: "?pool=official_english_conflict",
+      error: /pool/u,
+    },
+    {
+      query: "?minCapabilityLevel=runtime",
+      error: /minCapabilityLevel/u,
+    },
+    {
+      query: "?localOwnership=aggregate_seen",
+      error: /localOwnership/u,
+    },
+    {
+      query: "?demandBucket=viral",
+      error: /demandBucket/u,
+    },
+  ])("rejects malformed catalog opportunity query $query", async ({ query, error }) => {
+    const services = serviceFixture();
+
+    const response = await handleItotoriApiRequest(
+      { method: "GET", pathname: "/api/catalog/opportunities", search: query },
+      services,
+    );
+
+    expect(response.statusCode).toBe(400);
+    expect(response.body).toMatchObject({ code: "bad_request" });
+    expect(response.body.error).toMatch(error);
+    expect(services.catalogRepository.catalogOpportunityRanking).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -637,6 +723,101 @@ describe("Itotori API handlers", () => {
 
     const response = await handleItotoriApiRequest(
       { method: "GET", pathname: "/api/catalog/benchmark-seeds" },
+      services,
+    );
+
+    expect(response.statusCode).toBe(500);
+    expect(response.body).toMatchObject({ code: "internal_error" });
+    expect(response.body.error).toMatch(error);
+  });
+
+  it.each([
+    {
+      name: "non-finite score",
+      body: {
+        ...catalogOpportunitiesFixture,
+        rows: [{ ...catalogOpportunitiesFixture.rows[0]!, score: Number.POSITIVE_INFINITY }],
+      },
+      error: /score/u,
+    },
+    {
+      name: "non-finite factor weighted score",
+      body: {
+        ...catalogOpportunitiesFixture,
+        rows: [
+          {
+            ...catalogOpportunitiesFixture.rows[0]!,
+            factorBreakdown: [
+              {
+                ...catalogOpportunitiesFixture.rows[0]!.factorBreakdown[0]!,
+                weightedScore: Number.NaN,
+              },
+            ],
+          },
+        ],
+      },
+      error: /weightedScore/u,
+    },
+    {
+      name: "malformed factor row",
+      body: {
+        ...catalogOpportunitiesFixture,
+        rows: [
+          {
+            ...catalogOpportunitiesFixture.rows[0]!,
+            factorBreakdown: [
+              {
+                ...catalogOpportunitiesFixture.rows[0]!.factorBreakdown[0]!,
+                rawPath: "/home/private/game",
+              },
+            ],
+          },
+        ],
+      },
+      error: /rawPath/u,
+    },
+    {
+      name: "private evidence ref",
+      body: {
+        ...catalogOpportunitiesFixture,
+        rows: [
+          {
+            ...catalogOpportunitiesFixture.rows[0]!,
+            factorBreakdown: [
+              {
+                ...catalogOpportunitiesFixture.rows[0]!.factorBreakdown[0]!,
+                evidenceRefs: ["localScanEntryId:local-scan-entry-secret"],
+              },
+            ],
+          },
+        ],
+      },
+      error: /evidenceRefs/u,
+    },
+    {
+      name: "private source id",
+      body: {
+        ...catalogOpportunitiesFixture,
+        rows: [
+          {
+            ...catalogOpportunitiesFixture.rows[0]!,
+            sourceIds: [
+              {
+                ...catalogOpportunitiesFixture.rows[0]!.sourceIds[0]!,
+                sourceId: "file:/scratch/private/archive.zip/member.json",
+              },
+            ],
+          },
+        ],
+      },
+      error: /sourceId/u,
+    },
+  ])("rejects malformed or private catalog opportunity $name fields", async ({ body, error }) => {
+    const services = serviceFixture();
+    services.catalogRepository.catalogOpportunityRanking.mockResolvedValueOnce(body);
+
+    const response = await handleItotoriApiRequest(
+      { method: "GET", pathname: "/api/catalog/opportunities" },
       services,
     );
 
@@ -1477,6 +1658,7 @@ function serviceFixture(): ItotoriApiServices {
       catalogConflictReview: vi.fn(async () => catalogConflictReviewFixture),
       catalogCompletenessBenchmarkPools: vi.fn(async () => catalogCompletenessFixture),
       catalogBenchmarkSeedFinder: vi.fn(async () => catalogBenchmarkSeedsFixture),
+      catalogOpportunityRanking: vi.fn(async () => catalogOpportunitiesFixture),
     },
     terminologyRepository: {
       searchTerms: vi.fn(async () => terminologySearchFixture),

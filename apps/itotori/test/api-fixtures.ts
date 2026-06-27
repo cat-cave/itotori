@@ -3,6 +3,7 @@ import type {
   CatalogBenchmarkSeedFinderReadModel,
   CatalogCompletenessBenchmarkPools,
   CatalogConflictReviewReadModel,
+  CatalogOpportunityRankingReadModel,
   DashboardDecisionReadModel,
   ProjectCostReport,
   ProjectDashboardStatus,
@@ -465,6 +466,104 @@ export const catalogBenchmarkSeedsFixture: CatalogBenchmarkSeedFinderReadModel =
       rank: 1,
       seedRank: 1,
       explanationCodes: ["pool:no_english", "demand_bucket:very_high", "local_ownership:owned"],
+    },
+  ],
+};
+
+export const catalogOpportunitiesFixture: CatalogOpportunityRankingReadModel = {
+  schemaVersion: "catalog.opportunity_ranking.v0.1",
+  targetLanguage: "en-US",
+  generatedAt: new Date("2026-06-27T16:10:00.000Z"),
+  weightsVersion: "catalog.opportunity_ranking.weights.v0.1",
+  rows: [
+    {
+      rank: 1,
+      workId: "work-opportunity",
+      canonicalTitle: "Opportunity API Fixture",
+      originalLanguage: "ja-JP",
+      sourceIds: [
+        {
+          catalogSource: "dlsite",
+          sourceId: "RJOPPAPI001",
+          externalIdKind: "store_product",
+        },
+      ],
+      engineName: "rpg-maker-mv-mz",
+      adapterId: "kaifuu.rpg-maker-mv-mz",
+      readiness: {
+        adapterId: "kaifuu.rpg-maker-mv-mz",
+        identify: "supported",
+        inventory: "supported",
+        extract: "supported",
+        patch: "supported",
+        helper: "unknown",
+        runtime: "partial",
+      },
+      runtimeEvidenceReadiness: {
+        status: "public_and_aggregate",
+        publicFixtureEvidenceCount: 1,
+        privateLocalAggregateEvidenceCount: 2,
+      },
+      completenessPool: "no_english",
+      translationStatuses: [
+        {
+          language: "en-US",
+          status: "none",
+          confidence: "high",
+          statusScope: "work",
+          platform: null,
+        },
+      ],
+      demandFacts: {
+        demandBucket: "very_high",
+        dlCount: 61240,
+        ratingAverage: 4.72,
+        ratingCount: 1880,
+        wishlistCount: 12040,
+        bestRank: 3,
+        workType: "RPG",
+      },
+      localOwnership: "owned",
+      localEvidenceCount: 2,
+      marketPrevalence: "public_and_local_aggregate",
+      decision: "candidate",
+      score: 91.5,
+      factorBreakdown: [
+        {
+          factor: "translation_completeness",
+          weight: 30,
+          rawValue: 1,
+          weightedScore: 30,
+          evidenceRefs: ["catalog-language-status:work-opportunity:en-US:none"],
+          explanationCode: "translation_completeness:no_english",
+        },
+        {
+          factor: "runtime_evidence_readiness",
+          weight: 6,
+          rawValue: 1,
+          weightedScore: 6,
+          evidenceRefs: [
+            "public_fixture_evidence_count:1",
+            "private_local_aggregate_evidence_count:2",
+          ],
+          explanationCode: "runtime_evidence_readiness:public_and_aggregate",
+        },
+      ],
+      explanationCodes: [
+        "translation_completeness:no_english",
+        "runtime_evidence_readiness:public_and_aggregate",
+      ],
+      provenance: [
+        {
+          catalogSource: "dlsite",
+          sourceId: "RJOPPAPI001",
+          sourceRecordKind: "recorded_fixture",
+          sourceVersion: "fixture-2026-06-27",
+          fixtureId: "catalog-opportunities/fixture.json",
+          redactionClass: "public_metadata",
+        },
+      ],
+      demotions: [],
     },
   ],
 };

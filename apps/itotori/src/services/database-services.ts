@@ -28,6 +28,8 @@ import {
   type ItotoriCatalogCrawlerRepositoryPort,
   type CatalogBenchmarkSeedFinderFilter,
   type CatalogBenchmarkSeedFinderReadModel,
+  type CatalogOpportunityRankingFilter,
+  type CatalogOpportunityRankingReadModel,
   type CatalogConflictReviewFilter,
   type CatalogConflictReviewReadModel,
   type CatalogCompletenessBenchmarkPools,
@@ -86,6 +88,9 @@ export type ItotoriApplicationServices = {
     catalogBenchmarkSeedFinder(
       filter?: CatalogBenchmarkSeedFinderFilter,
     ): Promise<CatalogBenchmarkSeedFinderReadModel>;
+    catalogOpportunityRanking(
+      filter?: CatalogOpportunityRankingFilter,
+    ): Promise<CatalogOpportunityRankingReadModel>;
   };
   terminologyRepository: {
     searchTerms(input: TerminologySearchInput): Promise<TerminologySearchReadModel>;
@@ -282,6 +287,8 @@ export async function withDatabaseItotoriServices<T>(
           catalogRepository.catalogCompletenessBenchmarkPools(localUserActor, filter),
         catalogBenchmarkSeedFinder: (filter) =>
           catalogRepository.catalogBenchmarkSeedFinder(localUserActor, filter),
+        catalogOpportunityRanking: (filter) =>
+          catalogRepository.catalogOpportunityRanking(localUserActor, filter),
       },
       terminologyRepository: {
         searchTerms: (input) => terminologyRepository.searchTerms(localUserActor, input),
