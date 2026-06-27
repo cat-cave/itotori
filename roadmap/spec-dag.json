@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "exported_at": "2026-06-27T18:26:11.895Z",
+  "exported_at": "2026-06-27T18:43:10.745Z",
   "registries": {
     "groups": [
       {
@@ -28429,7 +28429,7 @@
       "title": "Live alpha path must persist provider-run artifacts",
       "kind": "audit-fix",
       "milestone": "alpha",
-      "status": "claimed",
+      "status": "done",
       "priority": "P1",
       "estimate_points": 1,
       "risk": "medium",
@@ -28440,11 +28440,11 @@
       "validation": null,
       "context": null,
       "created_at": "2026-06-27T06:37:32.455Z",
-      "updated_at": "2026-06-27T18:25:50.283Z",
+      "updated_at": "2026-06-27T18:42:57.861Z",
       "claimed_at": "2026-06-27T18:25:50.283Z",
-      "done_at": null,
+      "done_at": "2026-06-27T18:42:57.861Z",
       "group_name": "agent-runtime",
-      "status_reason": null,
+      "status_reason": "[2026-06-27T18:40:43.500Z] ORCHESTRATOR 2026-06-27: Implementation commit 6ba2a01 plus formatting 474584c on qd/live-alpha-provider-run-artifacts passed focused tests, app typecheck, focused audit with no P0/P1, and full branch 'nix develop --command bash -lc just check'. Direct qd check run from main was not executed because qd requires clean worktree and main contains unrelated untracked GENERALIZATION_AUDIT.md not created by this task; left untouched.",
       "check_command": null,
       "ci_command": null,
       "projects": ["itotori"],
@@ -41620,6 +41620,42 @@
       "finished_at": "2026-06-27T17:12:21.458Z",
       "summary": "Merge recorded with squash at commit 0f2da0db4cb9a9fd2993b439578217511b9749b3",
       "log_path": null
+    },
+    {
+      "id": "478b566e-ecc8-4a1b-9dfc-bff9fdaad80a",
+      "node_id": "live-alpha-provider-run-artifacts-not-recorded",
+      "kind": "implement",
+      "status": "completed",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-27T18:40:14.552Z",
+      "finished_at": "2026-06-27T18:40:14.552Z",
+      "summary": "Live OpenRouter/localize-sweetie-hd paths now require persistent provider-run artifact recording: OpenRouterModelProvider refuses missing artifactRecorder, live stage requires/wires LocalProviderRunArtifactRecorder, regression tests assert routingPosture + usageResponseJson and no raw prompt/response/API key leakage. Focused tests and just check passed; focused audit found no P0/P1.",
+      "log_path": null
+    },
+    {
+      "id": "a65c199f-608e-488a-ab89-4456aa39ced2",
+      "node_id": "live-alpha-provider-run-artifacts-not-recorded",
+      "kind": "ci",
+      "status": "passed",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-27T18:42:33.427Z",
+      "finished_at": "2026-06-27T18:42:33.427Z",
+      "summary": "Branch qd/live-alpha-provider-run-artifacts passed nix develop --command bash -lc 'just check' before merge; focused audit found no P0/P1. Main qd check run was blocked only by unrelated untracked GENERALIZATION_AUDIT.md.\nEvidence: external_id=local-just-check-qd-live-alpha-provider-run-artifacts-2026-06-27",
+      "log_path": null
+    },
+    {
+      "id": "462ad12e-6588-4c2a-9072-0d965e686d42",
+      "node_id": "live-alpha-provider-run-artifacts-not-recorded",
+      "kind": "merge",
+      "status": "recorded",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-27T18:42:57.861Z",
+      "finished_at": "2026-06-27T18:42:57.861Z",
+      "summary": "Merge recorded with squash at commit 474584cece9ca4dedcf1af140ea87450f2b968ee",
+      "log_path": null
     }
   ],
   "node_notes": [
@@ -41814,6 +41850,12 @@
       "node_id": "UTSUSHI-231",
       "text": "ORCHESTRATOR 2026-06-27: Preparatory UTSUSHI-231 evidence hardening merged and pushed to main at d368ca7. qd gate is clean with no P0/P1 blockers; P2 follow-ups e9815e5e and a044add0 are recorded for future suite/workflow hardening. just check passed on the integration branch before merge. UTSUSHI-231 remains claimed/not complete because the live Sweetie HD run has not executed; this orchestrator shell still lacks OPENROUTER_API_KEY, OPENROUTER_ZDR_ACCOUNT_ASSERTED, KAIFUU_REAL_SWEETIE_HD_PATH, and TARGET.",
       "created_at": "2026-06-27T18:20:09.923Z"
+    },
+    {
+      "id": "3aca255b-ee97-42e8-918d-17c434080b18",
+      "node_id": "live-alpha-provider-run-artifacts-not-recorded",
+      "text": "ORCHESTRATOR 2026-06-27: Implementation commit 6ba2a01 plus formatting 474584c on qd/live-alpha-provider-run-artifacts passed focused tests, app typecheck, focused audit with no P0/P1, and full branch 'nix develop --command bash -lc just check'. Direct qd check run from main was not executed because qd requires clean worktree and main contains unrelated untracked GENERALIZATION_AUDIT.md not created by this task; left untouched.",
+      "created_at": "2026-06-27T18:40:43.500Z"
     }
   ]
 }
