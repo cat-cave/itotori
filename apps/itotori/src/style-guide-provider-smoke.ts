@@ -9,6 +9,7 @@ import {
 } from "@itotori/localization-bridge-schema";
 import {
   OpenRouterProvider,
+  assertOpenRouterZdrAccount,
   openRouterApiKeyFromEnv,
   openRouterDefaultCapabilities,
   type JsonObject,
@@ -128,6 +129,7 @@ export async function runLiveStyleGuideProviderSmoke(
   if (!apiKey) {
     return { status: "skipped", mode: "live", reason: "missing_provider_credential" };
   }
+  assertOpenRouterZdrAccount(env);
 
   const recorder = memoryRecorder();
   const providerOptions: ConstructorParameters<typeof OpenRouterProvider>[0] = {

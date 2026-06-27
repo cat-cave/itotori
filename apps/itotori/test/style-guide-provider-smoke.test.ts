@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  AccountZdrAssertionError,
   OpenRouterProvider,
   openRouterDefaultCapabilities,
   type ModelCapabilities,
@@ -231,6 +232,28 @@ describe("style-guide provider smoke", () => {
       mode: "live",
       reason: "missing_provider_credential",
     });
+  });
+
+  it("refuses opted-in OpenRouter live smoke before fetch without ZDR account assertion", async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({})) as unknown as typeof fetch;
+
+    try {
+      await runStyleGuideProviderSmoke({
+        mode: "live",
+        env: {
+          [STYLE_GUIDE_LIVE_PROVIDER_SMOKE_FLAG]: "1",
+          OPENROUTER_API_KEY: "test-key",
+        },
+        fetch: fetchMock,
+      });
+      throw new Error("style-guide live smoke should require OPENROUTER_ZDR_ACCOUNT_ASSERTED=1");
+    } catch (error) {
+      expect(error).toBeInstanceOf(AccountZdrAssertionError);
+      expect(error).toMatchObject({
+        message: expect.stringMatching(/OPENROUTER_ZDR_ACCOUNT_ASSERTED=1 is required/u),
+      });
+    }
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("rejects stale recorded smoke fixture schemas", () => {
