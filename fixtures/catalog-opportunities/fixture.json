@@ -945,7 +945,7 @@
         "translationStatuses": [
           {
             "language": "en-US",
-            "status": "official",
+            "status": "official_full",
             "confidence": "high",
             "statusScope": "platform",
             "platform": "steam"
@@ -4479,7 +4479,7 @@
         "translationStatuses": [
           {
             "language": "en-US",
-            "status": "official",
+            "status": "official_full",
             "confidence": "high",
             "statusScope": "platform",
             "platform": "steam"
@@ -4506,7 +4506,7 @@
             "rawValue": 0.1,
             "weightedScore": 3,
             "evidenceRefs": [
-              "translation_status:en-US:official"
+              "translation_status:en-US:official_full"
             ],
             "explanationCode": "translation_completeness:conflict"
           },
@@ -4588,7 +4588,7 @@
             "rawValue": 0,
             "weightedScore": 0,
             "evidenceRefs": [
-              "translation_status:en-US:official"
+              "translation_status:en-US:official_full"
             ],
             "explanationCode": "existing_translation_status:none"
           },
