@@ -170,6 +170,25 @@ const privateLocalEvidenceKinds = new Set<string>([
   engineCapabilityEvidenceKindValues.engineMarkerCount,
 ]);
 
+const publicFixtureEvidenceKinds = new Set<string>([
+  engineCapabilityEvidenceKindValues.adapterMatrix,
+  engineCapabilityEvidenceKindValues.keyValidation,
+]);
+
+const privateLocalEvidenceLabels = new Set<string>([
+  capabilityEvidenceLabelValues.localEngineMarkerCount,
+  capabilityEvidenceLabelValues.localExtensionCount,
+  capabilityEvidenceLabelValues.localFileKindCount,
+  capabilityEvidenceLabelValues.localCorpusMarkerEvidence,
+  capabilityEvidenceLabelValues.mvMzMarkerEvidence,
+]);
+
+const publicFixtureEvidenceLabels = new Set<string>([
+  capabilityEvidenceLabelValues.adapterCapabilityMatrix,
+  capabilityEvidenceLabelValues.publicFixtureMatrix,
+  capabilityEvidenceLabelValues.publicFixtureKeyValidation,
+]);
+
 const evidenceLeakagePatterns: Array<{ pattern: RegExp; label: string }> = [
   {
     pattern: /(^|[\s"'`])(?:\/(?:home|users|tmp|var|scratch|mnt|volumes)\b|~\/|[a-z]:[\\/]|file:)/i,
@@ -187,7 +206,7 @@ const evidenceLeakagePatterns: Array<{ pattern: RegExp; label: string }> = [
     label: "key material",
   },
   {
-    pattern: /\b(?:path[_ -]?hash|local[_ -]?scan[_ -]?entry[_ -]?id|entry[_ -]?id)(?:\b|_)/i,
+    pattern: /(?:path[._\-\s]*hash|local[._\-\s]*scan[._\-\s]*entry[._\-\s]*id|entry[._\-\s]*id)/i,
     label: "path hash or local entry id",
   },
   { pattern: /\b[a-f0-9]{32,}\b/i, label: "raw hash" },
@@ -490,6 +509,19 @@ function validateCapabilityEvidenceInput(input: CapabilityEvidenceInput): void {
       "CapabilityEvidence.publicFixtureId is only valid for public_fixture evidence",
     );
   }
+  validateEvidenceSourcePairing(input);
+  assertNoEvidenceLeakage(input);
+}
+
+function validateEvidenceSourcePairing(input: CapabilityEvidenceInput): void {
+  if (
+    input.evidenceSource === engineCapabilityEvidenceSourceValues.publicFixture &&
+    !publicFixtureEvidenceKinds.has(input.evidenceKind)
+  ) {
+    throw new EngineCapabilityReportShapeError(
+      "CapabilityEvidence.public_fixture only accepts public fixture evidence kinds",
+    );
+  }
   if (
     input.evidenceSource === engineCapabilityEvidenceSourceValues.privateLocalAggregate &&
     !privateLocalEvidenceKinds.has(input.evidenceKind)
@@ -498,7 +530,24 @@ function validateCapabilityEvidenceInput(input: CapabilityEvidenceInput): void {
       "CapabilityEvidence.private_local_aggregate only accepts aggregate local evidence kinds",
     );
   }
-  assertNoEvidenceLeakage(input);
+  for (const label of input.evidenceLabels ?? []) {
+    if (
+      input.evidenceSource === engineCapabilityEvidenceSourceValues.publicFixture &&
+      privateLocalEvidenceLabels.has(label)
+    ) {
+      throw new EngineCapabilityReportShapeError(
+        `CapabilityEvidence.public_fixture does not accept private-local label ${label}`,
+      );
+    }
+    if (
+      input.evidenceSource === engineCapabilityEvidenceSourceValues.privateLocalAggregate &&
+      publicFixtureEvidenceLabels.has(label)
+    ) {
+      throw new EngineCapabilityReportShapeError(
+        `CapabilityEvidence.private_local_aggregate does not accept public fixture label ${label}`,
+      );
+    }
+  }
 }
 
 function validateAggregateCounts(counts: Record<string, number>): void {

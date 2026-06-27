@@ -4,13 +4,15 @@ import {
   type AdapterCapabilityMatrixRecord,
   type CapabilityEvidenceInput,
   capabilityEvidenceLabelValues,
+  EngineCapabilityReportRepository,
+  EngineCapabilityReportShapeError,
+} from "../src/repositories/engine-capability-report-repository.js";
+import {
   capabilityLevelValues,
   engineCapabilityEvidenceKindValues,
   engineCapabilityEvidenceSourceValues,
   engineCapabilityEvidenceStatusValues,
-  EngineCapabilityReportRepository,
-  EngineCapabilityReportShapeError,
-} from "../src/index.js";
+} from "../src/schema.js";
 import { isolatedMigratedContext } from "./db-test-context.js";
 
 // KAIFUU-053 db-side coverage. The CHECK constraint declared in
@@ -44,6 +46,24 @@ function repositoryWithAuthorizedStub(): EngineCapabilityReportRepository {
     insert: () => {
       throw new Error("invalid evidence should be rejected before persistence");
     },
+  } as never;
+  return new EngineCapabilityReportRepository(db);
+}
+
+function repositoryWithCapturingStub(): EngineCapabilityReportRepository {
+  const db = {
+    select: () => ({
+      from: () => ({
+        where: () => ({
+          limit: async () => [{ permission: "project.import" }],
+        }),
+      }),
+    }),
+    insert: () => ({
+      values: (row: unknown) => ({
+        returning: async () => [row],
+      }),
+    }),
   } as never;
   return new EngineCapabilityReportRepository(db);
 }
@@ -84,6 +104,42 @@ function privateLocalAggregateEvidenceInput(
 }
 
 describe("EngineCapabilityReportRepository evidence input validation", () => {
+  it("accepts valid source-specific evidence before persistence", async () => {
+    await expect(
+      repositoryWithCapturingStub().recordCapabilityEvidence(
+        localActor,
+        publicFixtureEvidenceInput({
+          evidenceKind: engineCapabilityEvidenceKindValues.keyValidation,
+          evidenceLabels: [capabilityEvidenceLabelValues.publicFixtureKeyValidation],
+        }),
+      ),
+    ).resolves.toMatchObject({
+      evidenceSource: engineCapabilityEvidenceSourceValues.publicFixture,
+      evidenceKind: engineCapabilityEvidenceKindValues.keyValidation,
+      evidenceLabels: [capabilityEvidenceLabelValues.publicFixtureKeyValidation],
+    });
+
+    await expect(
+      repositoryWithCapturingStub().recordCapabilityEvidence(
+        localActor,
+        privateLocalAggregateEvidenceInput({
+          evidenceKind: engineCapabilityEvidenceKindValues.engineMarkerCount,
+          evidenceLabels: [
+            capabilityEvidenceLabelValues.localEngineMarkerCount,
+            capabilityEvidenceLabelValues.mvMzMarkerEvidence,
+          ],
+        }),
+      ),
+    ).resolves.toMatchObject({
+      evidenceSource: engineCapabilityEvidenceSourceValues.privateLocalAggregate,
+      evidenceKind: engineCapabilityEvidenceKindValues.engineMarkerCount,
+      evidenceLabels: [
+        capabilityEvidenceLabelValues.localEngineMarkerCount,
+        capabilityEvidenceLabelValues.mvMzMarkerEvidence,
+      ],
+    });
+  });
+
   it("rejects leakage-shaped public and private evidence before persistence", async () => {
     const sourceInputs = [publicFixtureEvidenceInput, privateLocalAggregateEvidenceInput];
     const leakageCases: Record<string, unknown>[] = [
@@ -107,6 +163,30 @@ describe("EngineCapabilityReportRepository evidence input validation", () => {
     }
   });
 
+  it("rejects path-hash-shaped aggregate keys for public and private evidence", async () => {
+    const sourceInputs = [publicFixtureEvidenceInput, privateLocalAggregateEvidenceInput];
+    const leakageCases: Record<string, number>[] = [
+      { "path.hash": 1 },
+      { "path hash": 1 },
+      { private_path_hash: 1 },
+      { privatePathHash: 1 },
+      { "public-path-hash-count": 1 },
+      { fixturePathHashCount: 1 },
+      { path_hash_private: 1 },
+    ];
+
+    for (const makeInput of sourceInputs) {
+      for (const aggregateCounts of leakageCases) {
+        await expect(
+          repositoryWithAuthorizedStub().recordCapabilityEvidence(
+            localActor,
+            makeInput({ aggregateCounts }),
+          ),
+        ).rejects.toBeInstanceOf(EngineCapabilityReportShapeError);
+      }
+    }
+  });
+
   it("rejects public fixture ids with scan-entry leakage before persistence", async () => {
     await expect(
       repositoryWithAuthorizedStub().recordCapabilityEvidence(
@@ -114,6 +194,44 @@ describe("EngineCapabilityReportRepository evidence input validation", () => {
         publicFixtureEvidenceInput({ publicFixtureId: "localScanEntryId_123" }),
       ),
     ).rejects.toBeInstanceOf(EngineCapabilityReportShapeError);
+  });
+
+  it("rejects source/kind and source/label vocabulary mismatches before persistence", async () => {
+    const mismatchedInputs = [
+      publicFixtureEvidenceInput({
+        evidenceKind: engineCapabilityEvidenceKindValues.localCorpusSidecar,
+      }),
+      publicFixtureEvidenceInput({
+        evidenceKind: engineCapabilityEvidenceKindValues.engineMarkerCount,
+      }),
+      publicFixtureEvidenceInput({
+        evidenceLabels: [capabilityEvidenceLabelValues.localCorpusMarkerEvidence],
+      }),
+      publicFixtureEvidenceInput({
+        evidenceLabels: [capabilityEvidenceLabelValues.localEngineMarkerCount],
+      }),
+      privateLocalAggregateEvidenceInput({
+        evidenceKind: engineCapabilityEvidenceKindValues.adapterMatrix,
+      }),
+      privateLocalAggregateEvidenceInput({
+        evidenceKind: engineCapabilityEvidenceKindValues.keyValidation,
+      }),
+      privateLocalAggregateEvidenceInput({
+        evidenceLabels: [capabilityEvidenceLabelValues.adapterCapabilityMatrix],
+      }),
+      privateLocalAggregateEvidenceInput({
+        evidenceLabels: [capabilityEvidenceLabelValues.publicFixtureMatrix],
+      }),
+      privateLocalAggregateEvidenceInput({
+        evidenceLabels: [capabilityEvidenceLabelValues.publicFixtureKeyValidation],
+      }),
+    ];
+
+    for (const input of mismatchedInputs) {
+      await expect(
+        repositoryWithAuthorizedStub().recordCapabilityEvidence(localActor, input),
+      ).rejects.toBeInstanceOf(EngineCapabilityReportShapeError);
+    }
   });
 });
 
