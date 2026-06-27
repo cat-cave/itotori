@@ -52,11 +52,11 @@ use utsushi_reallive::{
     validate_log_contains, validate_replay_contains,
 };
 
-/// Relative path under the Sweetie HD extraction root that holds the
-/// raw `Seen.txt` envelope. Mirrors UTSUSHI-220's real-bytes test.
-/// Relative path under the Sweetie HD extraction root that holds the
-/// Gameexe.ini sidecar (used by the KAIFUU-210 producer for NAMAE
-/// resolution).
+// Relative path under the Sweetie HD extraction root that holds the
+// raw `Seen.txt` envelope. Mirrors UTSUSHI-220's real-bytes test.
+// Relative path under the Sweetie HD extraction root that holds the
+// Gameexe.ini sidecar (used by the KAIFUU-210 producer for NAMAE
+// resolution).
 
 /// English-language sentinel used by the regression-sentinel
 /// assertion. The leading `「` (SJIS `0x81 0x75`) is required so the

@@ -30,8 +30,8 @@ use utsushi_reallive::{
     DecompressWarning, RealSceneIndex, SCENE_HEADER_BYTE_LEN, SceneHeader,
 };
 
-/// Relative path under the Sweetie HD extraction root that holds the
-/// raw `Seen.txt` envelope.
+// Relative path under the Sweetie HD extraction root that holds the
+// raw `Seen.txt` envelope.
 
 /// Documented decompressed-output values for Sweetie HD scene #0001.
 /// Sourced from `docs/research/reallive-sweetie-hd-encryption-mechanism.md` §1.

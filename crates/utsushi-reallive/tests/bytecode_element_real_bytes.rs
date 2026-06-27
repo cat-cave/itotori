@@ -31,8 +31,8 @@ use utsushi_reallive::{
     SELECTION_OPTION_MARKER_MAX, SELECTION_OPTION_MARKER_MIN, SceneHeader, decode_bytecode_stream,
 };
 
-/// Relative path under the Sweetie HD extraction root that holds the
-/// raw `Seen.txt` envelope.
+// Relative path under the Sweetie HD extraction root that holds the
+// raw `Seen.txt` envelope.
 
 /// Documented decompressed-output values for Sweetie HD scene #0001.
 /// Sourced from

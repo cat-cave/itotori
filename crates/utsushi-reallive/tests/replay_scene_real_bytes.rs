@@ -28,9 +28,9 @@ use utsushi_reallive::{
     restore_into_fresh_vm,
 };
 
-/// Relative path under the Sweetie HD extraction root that holds the
-/// raw `Seen.txt` envelope. Mirrors the UTSUSHI-201..UTSUSHI-209
-/// real-bytes integration tests in this crate.
+// Relative path under the Sweetie HD extraction root that holds the
+// raw `Seen.txt` envelope. Mirrors the UTSUSHI-201..UTSUSHI-209
+// real-bytes integration tests in this crate.
 
 fn real_seen_txt_path() -> Option<PathBuf> {
     real_corpus::seen_txt_path()

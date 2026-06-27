@@ -53,8 +53,8 @@ use utsushi_reallive::{
     SystemSave,
 };
 
-/// Default name of the Sweetie HD title directory inside the
-/// extraction root.
+// Default name of the Sweetie HD title directory inside the
+// extraction root.
 
 /// Documented Sweetie HD `REALLIVE.sav` size (audit doc § J).
 const SWEETIE_HD_SYSTEM_SAVE_BYTES: usize = 24_876;

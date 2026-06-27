@@ -32,8 +32,8 @@ use std::path::PathBuf;
 
 use utsushi_reallive::{REAL_SCENE_DIRECTORY_BYTE_LEN, RealSceneIndex};
 
-/// Relative path under the Sweetie HD extraction root that holds the
-/// raw `Seen.txt` envelope.
+// Relative path under the Sweetie HD extraction root that holds the
+// raw `Seen.txt` envelope.
 
 /// Sweetie HD is the only RealLive corpus currently staged, so its
 /// populated-slot count is the alpha-gate anchor. Mirrors the

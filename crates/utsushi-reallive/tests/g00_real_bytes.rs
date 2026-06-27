@@ -56,8 +56,8 @@ use utsushi_reallive::{
     G00Warning, decode_g00,
 };
 
-/// Relative path under the Sweetie HD extraction root to the
-/// `g00` directory.
+// Relative path under the Sweetie HD extraction root to the
+// `g00` directory.
 
 /// File name of the type-0 BACK.g00 image pinned by the UTSUSHI-216
 /// acceptance criterion.

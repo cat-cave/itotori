@@ -52,12 +52,12 @@ use utsushi_reallive::{
     NWA_HEADER_BYTE_LEN, NwaCompressionMode, NwaDecodeError, decode_nwa, decode_nwa_header,
 };
 
-/// Title directory under the Sweetie HD extraction root. Mirrors the
-/// existing `gameexe_real_bytes.rs` / `g00_real_bytes.rs` constants.
+// Title directory under the Sweetie HD extraction root. Mirrors the
+// existing `gameexe_real_bytes.rs` / `g00_real_bytes.rs` constants.
 
-/// Relative path under the title dir to the `bgm/` corpus.
+// Relative path under the title dir to the `bgm/` corpus.
 
-/// Relative path under the title dir to the `wav/` corpus.
+// Relative path under the title dir to the `wav/` corpus.
 
 /// File name of the UTSUSHI-217 spec-pinned ASA.nwa fixture.
 const ASA_NWA: &str = "ASA.nwa";

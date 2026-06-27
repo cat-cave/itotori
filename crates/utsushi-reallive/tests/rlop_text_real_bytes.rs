@@ -28,9 +28,9 @@ use utsushi_reallive::{
     VmEvent, decode_bytecode_stream, dispatch_textout, register_text_rlops,
 };
 
-/// Relative path under the Sweetie HD extraction root that holds the
-/// raw `Seen.txt` envelope. Mirrors the other real-bytes integration
-/// tests in this crate.
+// Relative path under the Sweetie HD extraction root that holds the
+// raw `Seen.txt` envelope. Mirrors the other real-bytes integration
+// tests in this crate.
 
 /// Step budget for the VM walk. Pinned at 400 so the walk reaches the
 /// later Shift-JIS textout runs in scene 1 (the script-preamble run at

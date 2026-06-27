@@ -29,10 +29,10 @@ use utsushi_reallive::{
     WipeColour,
 };
 
-/// Default name of the Sweetie HD title directory inside the
-/// extraction root. Mirrors the existing
-/// `gameexe_real_bytes.rs` / `syscall_routes_real_sweetie_hd.rs`
-/// constant.
+// Default name of the Sweetie HD title directory inside the
+// extraction root. Mirrors the existing
+// `gameexe_real_bytes.rs` / `syscall_routes_real_sweetie_hd.rs`
+// constant.
 
 /// Acceptance: allocating 256 objects on a single plane succeeds; the
 /// 257th allocation on that plane is typed-rejected; populating the

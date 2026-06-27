@@ -37,8 +37,8 @@ use utsushi_reallive::{
     COMPILER_VERSION_1_10, ENTRYPOINT_TABLE_LEN, RealSceneIndex, SCENE_HEADER_BYTE_LEN, SceneHeader,
 };
 
-/// Relative path under the Sweetie HD extraction root that holds the
-/// raw `Seen.txt` envelope.
+// Relative path under the Sweetie HD extraction root that holds the
+// raw `Seen.txt` envelope.
 
 /// Sweetie HD scene #0001 file-offset pin. Verified by UTSUSHI-201's
 /// integration test. The scene blob starts here in the `Seen.txt`

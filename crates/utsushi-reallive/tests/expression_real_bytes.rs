@@ -33,10 +33,10 @@ use utsushi_reallive::{
     evaluate_assignment, parse_expression_with_warnings,
 };
 
-/// Relative path under the Sweetie HD extraction root that holds the
-/// raw `Seen.txt` envelope. Mirrors
-/// `tests/bytecode_element_real_bytes.rs` so a change to the
-/// upstream fixture surfaces in both tests.
+// Relative path under the Sweetie HD extraction root that holds the
+// raw `Seen.txt` envelope. Mirrors
+// `tests/bytecode_element_real_bytes.rs` so a change to the
+// upstream fixture surfaces in both tests.
 
 /// Documented Expression-element count for scene #0001. Pinned by the
 /// UTSUSHI-204 real-bytes test ("20 Expressions" in the per-variant
