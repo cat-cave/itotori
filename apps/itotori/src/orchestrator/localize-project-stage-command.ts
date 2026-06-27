@@ -1,7 +1,7 @@
-// UTSUSHI-228 / ITOTORI-238 — `itotori:localize-sweetie-hd-stage` CLI handler.
+// UTSUSHI-228 / ITOTORI-238 — `itotori:localize-project-stage` CLI handler.
 //
 // Thin LIVE-LLM wrapper around `runAgenticLoopForUnit` used by the
-// suite/scripts/localize-sweetie-hd/run.mjs driver. Distinct from
+// suite/scripts/localize-project/run.mjs driver. Distinct from
 // `agentic-loop-smoke` because that command HARD-REFUSES live providers
 // (it is a synthetic CI smoke). This command does the opposite: it
 // hard-requires the live OpenRouter provider via OPENROUTER_API_KEY,
@@ -26,7 +26,7 @@
 //     3. re-runs the agentic loop with the same input + a per-stage
 //        pair-policy whose pinned pair has been replaced byte-equal
 //        with the alternate's pair, and
-//     4. surfaces `AlphaRerunBlockedExternal` when every alternate has
+//     4. surfaces `LocalizeProjectBlockedExternal` when every alternate has
 //        been exhausted.
 //
 //   On ANY other failure (pair_mismatch, provider_response_invalid,
@@ -110,12 +110,12 @@ import {
   type PairPolicy,
 } from "./agentic-loop.js";
 
-export type LocalizeSweetieHdStageIo = {
+export type LocalizeProjectStageIo = {
   readJson(path: string): unknown;
   writeJson(path: string, value: unknown): void;
 };
 
-export type LocalizeSweetieHdStageArgs = {
+export type LocalizeProjectStageArgs = {
   bridgePath: string;
   pairPolicyPath: string;
   /** Where to write the AgenticLoopBundle.v0 JSON. */
@@ -129,7 +129,7 @@ export type LocalizeSweetieHdStageArgs = {
    * runs against scene-1, unit 0 (the first dialogue unit) by default.
    */
   unitIndex?: number;
-  io: LocalizeSweetieHdStageIo;
+  io: LocalizeProjectStageIo;
   actor: AuthorizationActor;
   log?: (message: string) => void;
   /**
@@ -172,37 +172,37 @@ export type LocalizeSweetieHdStageArgs = {
   ) => AgenticLoopProviderFactory;
 };
 
-export class LocalizeSweetieHdMissingApiKeyError extends Error {
+export class LocalizeProjectMissingApiKeyError extends Error {
   constructor(envVarName: string) {
     super(
-      `localize-sweetie-hd-stage refused: env var ${envVarName} must be set (the no-fallback rule forbids downgrading to the recorded provider when the live path is requested)`,
+      `localize-project-stage refused: env var ${envVarName} must be set (the no-fallback rule forbids downgrading to the recorded provider when the live path is requested)`,
     );
-    this.name = "LocalizeSweetieHdMissingApiKeyError";
+    this.name = "LocalizeProjectMissingApiKeyError";
   }
 }
 
-export class LocalizeSweetieHdPairPolicyError extends Error {
+export class LocalizeProjectPairPolicyError extends Error {
   constructor(detail: string) {
-    super(`localize-sweetie-hd-stage refused: pair-policy ${detail}`);
-    this.name = "LocalizeSweetieHdPairPolicyError";
+    super(`localize-project-stage refused: pair-policy ${detail}`);
+    this.name = "LocalizeProjectPairPolicyError";
   }
 }
 
-export class LocalizeSweetieHdRefusedFakeError extends Error {
+export class LocalizeProjectRefusedFakeError extends Error {
   constructor() {
     super(
-      "localize-sweetie-hd-stage refused: --provider-kind fake requires ITOTORI_ALLOW_FAKE_LOCALIZE_PROVIDER=1 to be set; the production recipe must run live",
+      "localize-project-stage refused: --provider-kind fake requires ITOTORI_ALLOW_FAKE_LOCALIZE_PROVIDER=1 to be set; the production recipe must run live",
     );
-    this.name = "LocalizeSweetieHdRefusedFakeError";
+    this.name = "LocalizeProjectRefusedFakeError";
   }
 }
 
-export class LocalizeSweetieHdMissingProviderRunArtifactsDirectoryError extends Error {
+export class LocalizeProjectMissingProviderRunArtifactsDirectoryError extends Error {
   constructor() {
     super(
-      "localize-sweetie-hd-stage refused: live OpenRouter provider construction requires --provider-run-artifacts-dir so provider-run artifacts are persisted under the run artifact directory",
+      "localize-project-stage refused: live OpenRouter provider construction requires --provider-run-artifacts-dir so provider-run artifacts are persisted under the run artifact directory",
     );
-    this.name = "LocalizeSweetieHdMissingProviderRunArtifactsDirectoryError";
+    this.name = "LocalizeProjectMissingProviderRunArtifactsDirectoryError";
   }
 }
 
@@ -218,7 +218,7 @@ export class LocalizeSweetieHdMissingProviderRunArtifactsDirectoryError extends 
  * action (either a quota increase upstream, or a new alternate added
  * to the policy file + re-validated).
  */
-export class AlphaRerunBlockedExternal extends Error {
+export class LocalizeProjectBlockedExternal extends Error {
   constructor(
     public readonly attempts: ReadonlyArray<{
       pair: { modelId: string; providerId: string };
@@ -234,9 +234,9 @@ export class AlphaRerunBlockedExternal extends Error {
       )
       .join("\n");
     super(
-      `localize-sweetie-hd-stage refused: ALPHA RERUN BLOCKED (external) — every declared (modelId, providerId) pair returned the configured failover predicate's failure. Attempts:\n${summary}\nResolution: either add a new evidence-validated alternate to the pair-policy preset (alternateProviders[]), wait for the upstream quota to lift, or request an OpenRouter-side quota increase. No silent provider broadening is allowed — every alternate must be a commit-visible, evidence-validated entry.`,
+      `localize-project-stage refused: LOCALIZE PROJECT BLOCKED (external) — every declared (modelId, providerId) pair returned the configured failover predicate's failure. Attempts:\n${summary}\nResolution: either add a new evidence-validated alternate to the pair-policy preset (alternateProviders[]), wait for the upstream quota to lift, or request an OpenRouter-side quota increase. No silent provider broadening is allowed — every alternate must be a commit-visible, evidence-validated entry.`,
     );
-    this.name = "AlphaRerunBlockedExternal";
+    this.name = "LocalizeProjectBlockedExternal";
   }
 }
 
@@ -249,7 +249,7 @@ export { PairPolicyVersionMismatchError };
 
 /**
  * ITOTORI-234 / ITOTORI-238 — Parse + validate a raw JSON value as a
- * v0.3 pair-policy tailored for the localize-sweetie-hd alpha closer.
+ * v0.3 pair-policy tailored for the localize-project alpha closer.
  *
  * Required shape (matches `PairPolicyV03` in
  * `@itotori/localization-bridge-schema/pair-policy.v0.3`):
@@ -257,7 +257,7 @@ export { PairPolicyVersionMismatchError };
  * ```json
  * {
  *   "schemaVersion": "itotori.pair-policy.v0.3",
- *   "policyId": "localize-sweetie-hd-alpha-1",
+ *   "policyId": "localize-project-alpha-1",
  *   "pair": { "modelId": "...", "providerId": "..." },
  *   "alternateProviders": [{
  *     "modelId": "...",
@@ -291,10 +291,10 @@ export { PairPolicyVersionMismatchError };
  * Throws `PairPolicyVersionMismatchError` for v0.1 / v0.2 / absent-
  * schemaVersion inputs (the schema bump is the forcing function;
  * there is no v0.2 parsing path). Throws
- * `LocalizeSweetieHdPairPolicyError` for anything else (missing
+ * `LocalizeProjectPairPolicyError` for anything else (missing
  * field, byte-equal pair mismatch).
  */
-export function parseLocalizeSweetieHdPairPolicy(value: unknown): {
+export function parseLocalizeProjectPairPolicy(value: unknown): {
   policyId: string;
   pair: { modelId: string; providerId: string };
   enUsSentinel: string;
@@ -321,7 +321,7 @@ export function parseLocalizeSweetieHdPairPolicy(value: unknown): {
       throw error;
     }
     if (error instanceof PairPolicyV03ValidationError) {
-      throw new LocalizeSweetieHdPairPolicyError(error.message);
+      throw new LocalizeProjectPairPolicyError(error.message);
     }
     throw error;
   }
@@ -355,7 +355,7 @@ function assertEveryLeafMatches(policy: PairPolicyV03): void {
       posture.pair.modelId !== expected.modelId ||
       posture.pair.providerId !== expected.providerId
     ) {
-      throw new LocalizeSweetieHdPairPolicyError(
+      throw new LocalizeProjectPairPolicyError(
         `stages.${leafPath}.pair (modelId=${posture.pair.modelId}, providerId=${posture.pair.providerId}) does not byte-equal the top-level pair (modelId=${expected.modelId}, providerId=${expected.providerId}); the single-game alpha invariant forbids mixed pairs in this policy`,
       );
     }
@@ -549,32 +549,32 @@ function matchesFailoverPredicate(
   return classes.includes("http_429");
 }
 
-export async function runLocalizeSweetieHdStageCommand(
-  args: LocalizeSweetieHdStageArgs,
+export async function runLocalizeProjectStageCommand(
+  args: LocalizeProjectStageArgs,
 ): Promise<AgenticLoopBundle> {
   const log = args.log ?? (() => {});
 
   const rawBridge = args.io.readJson(args.bridgePath);
   const bridge = assertBridgeBundleV02Shape(rawBridge);
   if (bridge.units.length === 0) {
-    throw new Error("localize-sweetie-hd-stage refused: bridge has zero units");
+    throw new Error("localize-project-stage refused: bridge has zero units");
   }
   const unitIndex = args.unitIndex ?? DEFAULT_UNIT_INDEX;
   if (unitIndex < 0 || unitIndex >= bridge.units.length) {
     throw new Error(
-      `localize-sweetie-hd-stage refused: --unit-index ${unitIndex} out of range; bridge has ${bridge.units.length} unit(s)`,
+      `localize-project-stage refused: --unit-index ${unitIndex} out of range; bridge has ${bridge.units.length} unit(s)`,
     );
   }
   const unit = bridge.units[unitIndex];
   if (unit === undefined) {
-    throw new Error("localize-sweetie-hd-stage refused: bridge unit lookup returned undefined");
+    throw new Error("localize-project-stage refused: bridge unit lookup returned undefined");
   }
 
   const rawPolicy = args.io.readJson(args.pairPolicyPath);
   const { policyId, pair, enUsSentinel, sceneId, pairPolicy, policyV03 } =
-    parseLocalizeSweetieHdPairPolicy(rawPolicy);
+    parseLocalizeProjectPairPolicy(rawPolicy);
   log(
-    `localize-sweetie-hd-stage: policyId=${policyId} primary=(${pair.modelId}, ${pair.providerId}) sentinel=${enUsSentinel} alternates=${policyV03.alternateProviders.length} failoverPredicate=${policyV03.failoverPredicate}`,
+    `localize-project-stage: primary=(${pair.modelId}, ${pair.providerId}) sentinel=${enUsSentinel} alternates=${policyV03.alternateProviders.length} failoverPredicate=${policyV03.failoverPredicate}`,
   );
 
   // ITOTORI-240 — register every alternate's capabilitySheet into the
@@ -590,19 +590,19 @@ export async function runLocalizeSweetieHdStageCommand(
   // this loop closes the gap for the policy-declared alternates.
   registerPairPolicyAlternatesInCapabilityGuard(policyV03);
   log(
-    `localize-sweetie-hd-stage: registered ${policyV03.alternateProviders.length} alternate capability sheet(s) into globalCapabilityGuard`,
+    `localize-project-stage: registered ${policyV03.alternateProviders.length} alternate capability sheet(s) into globalCapabilityGuard`,
   );
 
   const providerKind = args.providerKind ?? "live";
   if (providerKind === "fake" && process.env.ITOTORI_ALLOW_FAKE_LOCALIZE_PROVIDER !== "1") {
-    throw new LocalizeSweetieHdRefusedFakeError();
+    throw new LocalizeProjectRefusedFakeError();
   }
   if (
     providerKind === "live" &&
     args.providerRunArtifactDirectory === undefined &&
     args.liveFactoryOverride === undefined
   ) {
-    throw new LocalizeSweetieHdMissingProviderRunArtifactsDirectoryError();
+    throw new LocalizeProjectMissingProviderRunArtifactsDirectoryError();
   }
   const artifactRecorder =
     providerKind === "live" && args.providerRunArtifactDirectory !== undefined
@@ -692,7 +692,7 @@ export async function runLocalizeSweetieHdStageCommand(
       break;
     }
     log(
-      `localize-sweetie-hd-stage: attempt ${i + 1}/${attemptPairs.length} role=${attempt.role} pair=(${attempt.pair.modelId}, ${attempt.pair.providerId})`,
+      `localize-project-stage: attempt ${i + 1}/${attemptPairs.length} role=${attempt.role} pair=(${attempt.pair.modelId}, ${attempt.pair.providerId})`,
     );
     try {
       bundle = await runAgenticLoopForUnit(input, attempt.pairPolicy, policy, attempt.factory);
@@ -714,7 +714,7 @@ export async function runLocalizeSweetieHdStageCommand(
           detail,
         });
         log(
-          `localize-sweetie-hd-stage: pair (${attempt.pair.modelId}, ${attempt.pair.providerId}) returned the failover predicate's failure (http_429); advancing to next alternate (${attemptPairs.length - i - 1} remaining)`,
+          `localize-project-stage: pair (${attempt.pair.modelId}, ${attempt.pair.providerId}) returned the failover predicate's failure (http_429); advancing to next alternate (${attemptPairs.length - i - 1} remaining)`,
         );
         continue;
       }
@@ -726,11 +726,11 @@ export async function runLocalizeSweetieHdStageCommand(
   }
 
   if (bundle === undefined) {
-    throw new AlphaRerunBlockedExternal(failureAttempts);
+    throw new LocalizeProjectBlockedExternal(failureAttempts);
   }
 
   args.io.writeJson(args.outputPath, bundle);
-  log(`localize-sweetie-hd-stage: wrote ${args.outputPath}`);
+  log(`localize-project-stage: wrote ${args.outputPath}`);
 
   // Synthesise the translated bridge bundle: clone the source JSON,
   // overwrite each unit's `target` block with the sentinel-wrapped
@@ -740,7 +740,7 @@ export async function runLocalizeSweetieHdStageCommand(
   const draftText = bundle.finalDraft.draftText ?? `[en-US] ${unit.sourceText}`;
   const translatedBridge = synthesiseTranslatedBridge(rawBridge, draftText, enUsSentinel);
   args.io.writeJson(args.translatedBundleOutputPath, translatedBridge);
-  log(`localize-sweetie-hd-stage: wrote ${args.translatedBundleOutputPath}`);
+  log(`localize-project-stage: wrote ${args.translatedBundleOutputPath}`);
 
   // Synthesise the patch-report.json. The kaifuu-reallive bundle-
   // driven patchback writes the patched Seen.txt in place but does
@@ -752,7 +752,7 @@ export async function runLocalizeSweetieHdStageCommand(
   // on a failover-adopted run). The `failoverAttempts` field carries
   // every 429 along the way so audit can trace the chain.
   const patchReport = {
-    schemaVersion: "itotori.localize-sweetie-hd.patch-report.v0",
+    schemaVersion: "itotori.localize-project.patch-report.v0",
     policyId,
     pair: driverPair,
     enUsSentinel,
@@ -765,7 +765,7 @@ export async function runLocalizeSweetieHdStageCommand(
     failoverAttempts: failureAttempts,
   };
   args.io.writeJson(args.patchReportOutputPath, patchReport);
-  log(`localize-sweetie-hd-stage: wrote ${args.patchReportOutputPath}`);
+  log(`localize-project-stage: wrote ${args.patchReportOutputPath}`);
 
   return bundle;
 }
@@ -784,7 +784,7 @@ function liveOpenRouterFactory(opts: {
   return ({ stage, agentLabel, pair }) => {
     if (provider === undefined) {
       if (opts.artifactRecorder === undefined) {
-        throw new LocalizeSweetieHdMissingProviderRunArtifactsDirectoryError();
+        throw new LocalizeProjectMissingProviderRunArtifactsDirectoryError();
       }
       provider = new OpenRouterModelProvider({
         costCapUsd: opts.costCapUsd,
@@ -843,7 +843,7 @@ class SentinelInjectingProviderWrapper implements ModelProvider {
           if (index === 0 && message.role === "system" && typeof message.content === "string") {
             return {
               ...message,
-              content: `${message.content}\n\nIMPORTANT (UTSUSHI-228 alpha closer): your translated draft MUST include the literal ASCII substring "${this.opts.sentinel}" exactly once. The downstream replay-validate step asserts on it.`,
+              content: `${message.content}\n\nIMPORTANT (localize-project-stage): your translated draft MUST include the literal ASCII substring "${this.opts.sentinel}" exactly once. The downstream replay-validate step asserts on it.`,
             };
           }
           return message;
@@ -866,7 +866,7 @@ function sentinelFakeFactory(
 ): AgenticLoopProviderFactory {
   return ({ stage, agentLabel }) =>
     new FakeModelProvider({
-      providerName: `localize-sweetie-hd-fake:${stage}:${agentLabel}`,
+      providerName: `localize-project-fake:${stage}:${agentLabel}`,
       generate: (request: ModelInvocationRequest) => {
         if (request.taskKind === "experiment" && agentLabel === "speaker-label") {
           return JSON.stringify({
@@ -877,13 +877,13 @@ function sentinelFakeFactory(
                 speakerId: { kind: "narration" },
                 confidence: "high",
                 evidenceRefs: [],
-                agentRationale: "localize-sweetie-hd-fake narration",
+                agentRationale: "localize-project-fake narration",
               },
             ],
           });
         }
         if (request.taskKind === "experiment") {
-          return `localize-sweetie-hd-fake:context:${agentLabel}`;
+          return `localize-project-fake:context:${agentLabel}`;
         }
         if (request.taskKind === "draft_translation") {
           return JSON.stringify({
@@ -898,7 +898,7 @@ function sentinelFakeFactory(
                 draftText: `${sentinel} ${unit.sourceText}`,
                 protectedSpanRefs: [],
                 citationRefs: [],
-                agentRationale: "localize-sweetie-hd-fake translation",
+                agentRationale: "localize-project-fake translation",
                 confidenceFloor: "medium",
               },
             ],
@@ -928,18 +928,18 @@ function synthesiseTranslatedBridge(
   enUsSentinel: string,
 ): unknown {
   if (typeof rawBridge !== "object" || rawBridge === null || Array.isArray(rawBridge)) {
-    throw new Error("localize-sweetie-hd-stage refused: bridge JSON must be an object");
+    throw new Error("localize-project-stage refused: bridge JSON must be an object");
   }
   // Deep-clone via JSON round-trip — the bridge bundle is plain JSON.
   const clone = JSON.parse(JSON.stringify(rawBridge)) as Record<string, unknown>;
   const units = clone.units;
   if (!Array.isArray(units)) {
-    throw new Error("localize-sweetie-hd-stage refused: bridge.units must be an array");
+    throw new Error("localize-project-stage refused: bridge.units must be an array");
   }
   const wrappedText = wrapWithSentinel(draftText, enUsSentinel);
   for (const unit of units) {
     if (typeof unit !== "object" || unit === null) {
-      throw new Error("localize-sweetie-hd-stage refused: bridge unit must be an object");
+      throw new Error("localize-project-stage refused: bridge unit must be an object");
     }
     (unit as Record<string, unknown>).target = {
       locale: "en-US",
@@ -958,12 +958,12 @@ function wrapWithSentinel(draftText: string, sentinel: string): string {
 
 function assertBridgeBundleV02Shape(value: unknown): BridgeBundleV02 {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new Error("localize-sweetie-hd-stage refused: bridge file must be an object");
+    throw new Error("localize-project-stage refused: bridge file must be an object");
   }
   const record = value as Record<string, unknown>;
   if (record.schemaVersion !== "0.2.0") {
     throw new Error(
-      `localize-sweetie-hd-stage refused: bridge schemaVersion must be '0.2.0' (got ${String(record.schemaVersion)})`,
+      `localize-project-stage refused: bridge schemaVersion must be '0.2.0' (got ${String(record.schemaVersion)})`,
     );
   }
   return value as BridgeBundleV02;
