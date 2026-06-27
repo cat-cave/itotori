@@ -434,8 +434,7 @@ function isCanonicalKaifuuArchiveDetectionRowV010(value: unknown): boolean {
     canonicalKaifuuArchiveEngineFamilies.has(row.engineFamily) &&
     Array.isArray(row.signals) &&
     row.signals.every(
-      (signal) =>
-        typeof signal === "string" && canonicalKaifuuArchiveDetectionSignals.has(signal),
+      (signal) => typeof signal === "string" && canonicalKaifuuArchiveDetectionSignals.has(signal),
     )
   );
 }

@@ -3,8 +3,7 @@ import { lstat, readdir, readFile, stat } from "node:fs/promises";
 import { extname, join, resolve, sep } from "node:path";
 
 export const catalogLocalScanSchemaVersion = "catalog.local_corpus_sidecar.v0.1" as const;
-export const catalogLocalDetectionSchemaVersion =
-  "catalog.local_corpus_detection.v0.1" as const;
+export const catalogLocalDetectionSchemaVersion = "catalog.local_corpus_detection.v0.1" as const;
 export const catalogLocalArchiveDetectionSchemaVersion =
   "catalog.local_corpus_archive_detection.v0.1" as const;
 export const catalogLocalEngineEvidenceSchemaVersion =
