@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "exported_at": "2026-06-27T23:10:06.697Z",
+  "exported_at": "2026-06-27T23:18:12.744Z",
   "registries": {
     "groups": [
       {
@@ -28473,7 +28473,7 @@
       "title": "Pair-policy maxPriceUsd must be enforced or sent to OpenRouter",
       "kind": "audit-fix",
       "milestone": "alpha",
-      "status": "claimed",
+      "status": "done",
       "priority": "P2",
       "estimate_points": 1,
       "risk": "medium",
@@ -28484,9 +28484,9 @@
       "validation": null,
       "context": null,
       "created_at": "2026-06-27T06:37:40.482Z",
-      "updated_at": "2026-06-27T22:42:05.577Z",
+      "updated_at": "2026-06-27T23:18:05.299Z",
       "claimed_at": "2026-06-27T22:42:05.577Z",
-      "done_at": null,
+      "done_at": "2026-06-27T23:18:05.299Z",
       "group_name": "agent-runtime",
       "status_reason": null,
       "check_command": null,
@@ -42480,6 +42480,54 @@
       "started_at": "2026-06-27T23:09:59.307Z",
       "finished_at": "2026-06-27T23:09:59.307Z",
       "summary": "Merge recorded with squash at commit 16b5a816860b4b82785f510a9305fb69b0a33d9e",
+      "log_path": null
+    },
+    {
+      "id": "61604228-affc-47b9-b29b-b58cd8e1d94e",
+      "node_id": "pair-policy-max-price-not-enforced",
+      "kind": "implement",
+      "status": "completed",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-27T23:12:26.447Z",
+      "finished_at": "2026-06-27T23:12:26.447Z",
+      "summary": "Implemented and integrated pair-policy maxPriceUsd enforcement. OpenRouter requests now set provider.max_price.request, completed responses over maxPriceUsd throw ModelProviderError code cost_cap_exceeded while preserving billed usage.cost/providerRun cost and advancing totalSpentUsd, and localize-stage live override providers preserve caps. Audit blockers repaired at b676e10 before integration. Verification from main passed: pnpm --filter @itotori/app typecheck; pnpm -C apps/itotori exec vitest run test/openrouter-provider.test.ts test/localize-project-stage.test.ts (55 passed, 1 skipped); pnpm --filter @itotori/localization-bridge-schema typecheck; pnpm --filter @itotori/localization-bridge-schema test (254 passed); git diff --check HEAD~1..HEAD.",
+      "log_path": null
+    },
+    {
+      "id": "4b0629f3-facf-419a-9d16-60ae6b34660a",
+      "node_id": "pair-policy-max-price-not-enforced",
+      "kind": "check",
+      "status": "passed",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-27T23:12:48.443Z",
+      "finished_at": "2026-06-27T23:13:25.983Z",
+      "summary": "check command passed: nix develop --command bash -lc 'just check'",
+      "log_path": "/home/trevor/projects/itotori/.qd/logs/check-pair-policy-max-price-not-enforced-2026-06-27T23-12-48-443Z.log"
+    },
+    {
+      "id": "6bb71e55-7f16-4ed7-bc51-12eb140d01b8",
+      "node_id": "pair-policy-max-price-not-enforced",
+      "kind": "ci",
+      "status": "passed",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-27T23:13:34.298Z",
+      "finished_at": "2026-06-27T23:17:51.713Z",
+      "summary": "ci command passed: nix develop --command bash -lc 'just ci'",
+      "log_path": "/home/trevor/projects/itotori/.qd/logs/ci-pair-policy-max-price-not-enforced-2026-06-27T23-13-34-298Z.log"
+    },
+    {
+      "id": "7b9b9a6e-460a-4535-a4c8-768497cddc11",
+      "node_id": "pair-policy-max-price-not-enforced",
+      "kind": "merge",
+      "status": "recorded",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-27T23:18:05.299Z",
+      "finished_at": "2026-06-27T23:18:05.299Z",
+      "summary": "Merge recorded with squash at commit b276580cb02f3d0119c42b6ce2b089cd6547fac0",
       "log_path": null
     }
   ],
