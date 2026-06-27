@@ -343,6 +343,34 @@ describe("Itotori API handlers", () => {
     expect(services.authorization.requirePermission).not.toHaveBeenCalled();
   });
 
+  it("accepts catalog benchmark seed rows with partial runtime evidence readiness and fractional evidence counts", async () => {
+    const services = serviceFixture();
+    const readinessStates = [
+      "partial_public_and_aggregate",
+      "partial_public_fixture",
+      "partial_private_local_aggregate",
+    ];
+    const body = {
+      ...catalogBenchmarkSeedsFixture,
+      rows: readinessStates.map((runtimeEvidenceReadiness, index) => ({
+        ...catalogBenchmarkSeedsFixture.rows[0]!,
+        workId: `work-seed-${index + 1}`,
+        localEvidenceCount: 0.5,
+        runtimeEvidenceReadiness,
+        rank: index + 1,
+        seedRank: index + 1,
+      })),
+    } as unknown as typeof catalogBenchmarkSeedsFixture;
+    services.catalogRepository.catalogBenchmarkSeedFinder.mockResolvedValueOnce(body);
+
+    const response = await handleItotoriApiRequest(
+      { method: "GET", pathname: "/api/catalog/benchmark-seeds" },
+      services,
+    );
+
+    expect(response).toEqual({ statusCode: 200, body });
+  });
+
   it.each([
     {
       query: "?targetLanguage=en-US",
