@@ -3,13 +3,12 @@
 //!
 //! Two engine families are exercised here per the
 //! `docs/orchestration-operating-model.md` "Single-game validation
-//! passing as 'claimed support'" rule: RealLive (Sweetie HD) and
-//! RPG Maker MV/MZ (Lust Memory). Both must pass for the substrate's
-//! cross-engine genericity claim to hold. Single-corpus validation is
-//! a P0 audit failure.
+//! passing as 'claimed support'" rule: RealLive and RPG Maker MV/MZ.
+//! Both must pass for the substrate's cross-engine genericity claim to
+//! hold. Single-corpus validation is a P0 audit failure.
 //!
-//! Each test is gated on a `KAIFUU_REAL_*` env var. When unset, the
-//! test emits a visible-skip via `eprintln!` and returns OK — silent
+//! Each test is gated on a generic `ITOTORI_REAL_*` env var. When unset,
+//! the test emits a visible-skip via `eprintln!` and returns OK — silent
 //! pass is explicitly forbidden by the spec node's audit-focus list.
 
 #[path = "support/real_corpus.rs"]
@@ -23,10 +22,11 @@ use utsushi_core::{
     AssetPackage, CaseRule, CompositeAssetPackage, PackageSource, PlaintextDirPackage,
 };
 
+const RPG_MAKER_MV_MZ_ROOT_ENV: &str = "ITOTORI_REAL_GAME_ROOT_RPG_MAKER_MV_MZ";
+
 /// Walk the host filesystem under `root` looking for the first directory
-/// matching `needle` (case-insensitive). Used because the staged
-/// research corpus stores the Sweetie HD tree under a Japanese-named
-/// parent directory.
+/// matching `needle` (case-insensitive). Used because staged real
+/// corpora can have an additional title-specific parent directory.
 fn find_subdir_by_case_insensitive_name(root: &Path, needle: &str) -> Option<PathBuf> {
     let entries = std::fs::read_dir(root).ok()?;
     for entry in entries.flatten() {
@@ -128,7 +128,7 @@ fn composite_asset_package_real_bytes_sweetie_hd_realivedata() {
         eprintln!(
             "SKIP composite_asset_package_real_bytes_sweetie_hd_realivedata: {}; \
              multi-engine validation needs both ITOTORI_REAL_GAME_ROOT and \
-             KAIFUU_REAL_LUST_MEMORY_PATH to confirm cross-engine genericity",
+             ITOTORI_REAL_GAME_ROOT_RPG_MAKER_MV_MZ to confirm cross-engine genericity",
             real_corpus::skip_message("RealLive composite asset package test")
         );
         return;
@@ -265,16 +265,16 @@ fn composite_asset_package_real_bytes_sweetie_hd_realivedata() {
 
 #[test]
 fn composite_asset_package_real_bytes_lust_memory_www_data_system_json() {
-    let env_path = match env::var("KAIFUU_REAL_LUST_MEMORY_PATH") {
+    let env_path = match env::var(RPG_MAKER_MV_MZ_ROOT_ENV) {
         Ok(value) => PathBuf::from(value),
         Err(_) => {
             // Visible-skip per UTSUSHI-222 acceptance criteria.
-            assert!(env::var("KAIFUU_REAL_LUST_MEMORY_PATH").is_err());
+            assert!(env::var(RPG_MAKER_MV_MZ_ROOT_ENV).is_err());
             eprintln!(
                 "SKIP composite_asset_package_real_bytes_lust_memory_www_data_system_json: \
-                 KAIFUU_REAL_LUST_MEMORY_PATH is unset; \
+                 {RPG_MAKER_MV_MZ_ROOT_ENV} is unset; \
                  multi-engine validation needs both ITOTORI_REAL_GAME_ROOT and \
-                 KAIFUU_REAL_LUST_MEMORY_PATH to confirm cross-engine genericity"
+                 {RPG_MAKER_MV_MZ_ROOT_ENV} to confirm cross-engine genericity"
             );
             return;
         }
@@ -282,12 +282,12 @@ fn composite_asset_package_real_bytes_lust_memory_www_data_system_json() {
 
     let www = locate_subdir(&env_path, "www").unwrap_or_else(|| {
         panic!(
-            "KAIFUU_REAL_LUST_MEMORY_PATH set but `www/` directory not found under root; \
+            "{RPG_MAKER_MV_MZ_ROOT_ENV} set but `www/` directory not found under root; \
              expected an RPG Maker MV/MZ installation tree"
         )
     });
 
-    let public_source = PackageSource::PublicName("public-fixture:lust-memory-www".into());
+    let public_source = PackageSource::PublicName("real-corpus:rpg-maker-mv-mz-www".into());
     let plaintext = PlaintextDirPackage::new(
         "rpgmv.www",
         &www,
@@ -313,7 +313,7 @@ fn composite_asset_package_real_bytes_lust_memory_www_data_system_json() {
         "composite open must be byte-equal to fs::read"
     );
     eprintln!(
-        "Lust Memory plaintext byte-equality verified for data/System.json ({} bytes)",
+        "RPG Maker MV/MZ plaintext byte-equality verified for data/System.json ({} bytes)",
         disk_bytes.len()
     );
 

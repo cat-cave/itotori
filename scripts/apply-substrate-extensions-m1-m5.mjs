@@ -57,21 +57,21 @@ const NODES = [
     target: "alpha",
     dependsOn: ["UTSUSHI-020"],
     summary:
-      'Replace the single-path VFS resolver with `CompositeAssetPackage` whose `resolve` walks an ordered source list of `(plaintext_dir | archive_reader)` first-match-wins, with case-folded O(1) directory indices. Introduces the `AssetArchiveReader` trait so PAK and XP3 archive readers can plug in later without re-architecting the resolver. Validated against ≥2 engine families\' real bytes (RealLive Sweetie HD\'s `#FOLDNAME.G00 = "G00" = 0 : "G00.PAK"` pattern + MV/MZ Lust Memory\'s `www/img/` + `www/data/`). The single-source resolver shipped with UTSUSHI-020 is removed in the same change — no shim, no #[deprecated]. From docs/audits/substrate-honesty.md §M.1.',
+      'Replace the single-path VFS resolver with `CompositeAssetPackage` whose `resolve` walks an ordered source list of `(plaintext_dir | archive_reader)` first-match-wins, with case-folded O(1) directory indices. Introduces the `AssetArchiveReader` trait so PAK and XP3 archive readers can plug in later without re-architecting the resolver. Validated against ≥2 engine families\' real bytes (a RealLive corpus with `#FOLDNAME.G00 = "G00" = 0 : "G00.PAK"`-style declarations + an RPG Maker MV/MZ corpus with `www/img/` + `www/data/`). The single-source resolver shipped with UTSUSHI-020 is removed in the same change — no shim, no #[deprecated]. From docs/audits/substrate-honesty.md §M.1.',
     deliverables: [
       "`CompositeAssetPackage` impl in `utsushi-core::vfs` with ordered source list",
       "`AssetArchiveReader` trait (sealed) with empty default impl set",
       "Case-folded directory index built lazily on first resolve, cached per source",
       "Old single-path resolver fully removed from `utsushi-core::vfs` (no shim)",
-      "Integration test loading the RealLive Sweetie HD asset layout via `ITOTORI_REAL_GAME_ROOT` env-gated test",
-      "Integration test loading the MV/MZ Lust Memory `www/data/` layout via `KAIFUU_REAL_LUST_MEMORY_PATH` env-gated test",
+      "Integration test loading a RealLive asset layout via `ITOTORI_REAL_GAME_ROOT` env-gated test",
+      "Integration test loading an RPG Maker MV/MZ `www/data/` layout via `ITOTORI_REAL_GAME_ROOT_RPG_MAKER_MV_MZ` env-gated test",
     ],
     acceptanceCriteria: [
       "`CompositeAssetPackage` resolves a `G00/BG01A1.g00` query by first checking the `G00/` plaintext dir and falling back to a registered `G00.PAK` archive reader without rebuilding the directory index between calls.",
-      "Against `/scratch/itotori-research/sweetie-hd/extracted/.../REALLIVEDATA/`: resolver enumerates 13 asset folders with at least one plaintext-only folder, one archive-only folder, and one mixed folder; each enumerated entry's path is reachable via `composite.resolve(path)` in O(1) per query.",
-      "Against `/scratch/itotori-research/rpg-maker-mv-mz/extracted/.../www/`: resolver enumerates `data/`, `img/`, `audio/` as plaintext sources; resolving `data/System.json` returns identical bytes to `fs::read(<path>)`.",
+      "Against `<reallive-game-root>/REALLIVEDATA/`: resolver enumerates asset folders with at least one plaintext-only folder, one archive-only folder, and one mixed folder; each enumerated entry's path is reachable via `composite.resolve(path)` in O(1) per query.",
+      "Against `<rpg-maker-mv-mz-game-root>/www/`: resolver enumerates `data/`, `img/`, `audio/` as plaintext sources; resolving `data/System.json` returns identical bytes to `fs::read(<path>)`.",
       "`rg -n 'fn resolve_asset' crates/utsushi-core/src/vfs/` returns zero hits for the legacy single-path resolver name; `git log -p` of the merge commit shows the old symbol deleted, not just unused.",
-      "Acceptance test runs are gated on the two env vars; when unset, the tests `assert!(env::var(...).is_err())` and skip with an explicit `eprintln!` rather than silently passing.",
+      "Acceptance test runs are gated on generic real-corpus env vars; when unset, the tests `assert!(env::var(...).is_err())` and skip with an explicit `eprintln!` rather than silently passing.",
     ],
     verification: [
       {
@@ -81,7 +81,7 @@ const NODES = [
       {
         type: "command",
         value:
-          "ITOTORI_REAL_GAME_ROOT=/scratch/itotori-research/sweetie-hd/extracted KAIFUU_REAL_LUST_MEMORY_PATH=/scratch/itotori-research/rpg-maker-mv-mz/extracted cargo test -p utsushi-core composite_asset_package_real_bytes -- --include-ignored",
+          "ITOTORI_REAL_GAME_ROOT=<reallive-game-root> ITOTORI_REAL_GAME_ROOT_RPG_MAKER_MV_MZ=<rpg-maker-mv-mz-game-root> cargo test -p utsushi-core composite_asset_package_real_bytes -- --include-ignored",
       },
       {
         type: "command",

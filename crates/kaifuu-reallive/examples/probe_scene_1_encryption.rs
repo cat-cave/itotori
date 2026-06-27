@@ -1,9 +1,9 @@
-//! Scene-1 encryption-mechanism probe for Sweetie HD.
+//! Scene-1 encryption-mechanism probe for an explicit RealLive corpus.
 //!
-//! Reads `Seen.txt` under `$ITOTORI_REAL_GAME_ROOT` (or falls back to the
-//! canonical `/scratch/itotori-research/...` mount), isolates scene #0001's
-//! compressed bytecode payload, applies the rlvm-documented AVG32 LZSS+XOR
-//! decompression (no second-level XOR), and reports:
+//! Reads `Seen.txt` from an explicit CLI path or from
+//! `$ITOTORI_REAL_GAME_ROOT`, isolates scene #0001's compressed bytecode
+//! payload, applies the rlvm-documented AVG32 LZSS+XOR decompression
+//! (no second-level XOR), and reports:
 //!
 //! - first 32 bytes of raw compressed payload (for traceability),
 //! - first 64 bytes of decompressed output,
@@ -212,17 +212,32 @@ fn resolve_seen_path(root: &Path) -> PathBuf {
     direct
 }
 
+fn explicit_seen_input() -> Result<(PathBuf, &'static str), Box<dyn std::error::Error>> {
+    if let Some(path) = env::args_os().nth(1) {
+        let input = PathBuf::from(path);
+        let seen_path = if input.is_file() {
+            input
+        } else {
+            resolve_seen_path(&input)
+        };
+        return Ok((seen_path, "cli"));
+    }
+
+    if let Some(root) = env::var_os(REAL_GAME_ROOT_ENV) {
+        return Ok((resolve_seen_path(&PathBuf::from(root)), REAL_GAME_ROOT_ENV));
+    }
+
+    Err(format!(
+        "explicit RealLive input required: pass a game root or Seen.txt path as the first argument, \
+         or set {REAL_GAME_ROOT_ENV}"
+    )
+    .into())
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let path = env::var_os(REAL_GAME_ROOT_ENV)
-        .map(|root| resolve_seen_path(&PathBuf::from(root)))
-        .unwrap_or_else(|| {
-            PathBuf::from(
-                "/scratch/itotori-research/sweetie-hd/extracted/\
-                 オシオキSweetie＋Sweets!! HD_DL版/REALLIVEDATA/Seen.txt",
-            )
-        });
-    println!("=== Sweetie HD scene #0001 encryption-mechanism probe ===");
-    println!("seen_path: {}", path.display());
+    let (path, input_source) = explicit_seen_input()?;
+    println!("=== RealLive scene #0001 encryption-mechanism probe ===");
+    println!("input_source: {input_source}");
     let bytes = fs::read(&path)?;
     println!("file_bytes: {}", bytes.len());
 
@@ -250,11 +265,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("bytecode_offset: 0x{bytecode_offset:x}");
     println!("bytecode_uncompressed_size: {bytecode_uncompressed}");
     println!("bytecode_compressed_size: {bytecode_compressed}");
-    assert_eq!(
-        compiler_ver, 110002,
-        "compiler must be 110002 for Sweetie HD"
-    );
-
     // Compressed payload bytes.
     let cstart = bytecode_offset as usize;
     let cend = cstart + bytecode_compressed;
