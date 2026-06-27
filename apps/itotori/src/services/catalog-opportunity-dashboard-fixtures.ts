@@ -52,6 +52,19 @@ export function loadCatalogOpportunityDashboardSeedFixture(
     fixture.publicLeakagePolicy,
     "catalog opportunity expected default read model",
   );
+  const readModelWithDemotions = asRecord(
+    fixture.expectedReadModelWithDemotions,
+    "fixture.expectedReadModelWithDemotions",
+  );
+  assertCatalogOpportunityRankingReadModel(
+    readModelWithDemotions,
+    "fixture.expectedReadModelWithDemotions",
+  );
+  assertFixtureOutputHasNoForbiddenPrivateSubstrings(
+    readModelWithDemotions,
+    fixture.publicLeakagePolicy,
+    "catalog opportunity expected read model with demotions",
+  );
   const targetLanguage = assertString(
     readModel.targetLanguage,
     "fixture.expectedDefaultReadModel.targetLanguage",

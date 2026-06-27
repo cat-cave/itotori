@@ -3,7 +3,7 @@
   "fixtureId": "catalog-opportunities-catalog-061",
   "generatedAt": "2026-06-27T16:10:00.000Z",
   "targetLanguage": "en-US",
-  "weightsVersion": "catalog-opportunity-ranking-public-fixture-v0.1",
+  "weightsVersion": "catalog.opportunity_ranking.weights.v0.1",
   "reviewNotes": [
     "Synthetic public fixture only; all catalog records, demand facts, capability evidence, and ranking outputs are hand-authored.",
     "Private-local evidence is represented as aggregate counts and coarse readiness only.",
@@ -12,59 +12,41 @@
   ],
   "scoringModel": {
     "decisionRules": {
-      "candidate": "score is non-negative and no blocking official-English conflict exists",
-      "demoted": "candidate has useful public metadata but an official English platform-language conflict or other open catalog conflict",
-      "excluded": "candidate lacks redistributable provenance or violates leakage policy"
+      "candidate": "score is ranked as a public opportunity when no blocking official-or-complete English status or open platform-language conflict applies",
+      "demoted": "candidate has useful public metadata but an open platform-language conflict applies",
+      "excluded": "candidate has an official or complete existing English translation status"
     },
     "tieBreaks": [
+      "decision_order",
       "score_desc",
       "canonicalTitle_asc",
       "workId_asc"
     ],
+    "factorOrder": [
+      "translation_completeness",
+      "local_ownership",
+      "dlsite_demand",
+      "platform_language_conflict",
+      "market_prevalence",
+      "adapter_readiness",
+      "runtime_evidence_readiness",
+      "dlsite_work_type",
+      "existing_translation_status",
+      "benchmark_usefulness",
+      "unknown_evidence"
+    ],
     "factorWeights": {
-      "translation_completeness": {
-        "no_english": 30,
-        "mtl_only": 22,
-        "fan_partial": 16,
-        "official_english_conflict": -42
-      },
-      "local_ownership": {
-        "owned": 10,
-        "aggregate_seen": 4,
-        "not_owned": 0,
-        "unknown": 0
-      },
-      "dlsite_demand": {
-        "very_high": 18,
-        "high": 12,
-        "medium": 7,
-        "low": 3,
-        "none": 0
-      },
-      "market_prevalence": {
-        "common": 7,
-        "notable": 4,
-        "niche": 1,
-        "unknown": 0
-      },
-      "adapter_readiness": {
-        "extract_patch": 18,
-        "extract_only": 8,
-        "identify_only": 2,
-        "unsupported": -8,
-        "unknown": -4
-      },
-      "runtime_evidence_readiness": {
-        "ready": 6,
-        "partial": 3,
-        "unknown": 0
-      },
-      "benchmark_usefulness": {
-        "broad_pool_coverage": 5,
-        "engine_gap_coverage": 3,
-        "conflict_regression": 2,
-        "none": 0
-      }
+      "translation_completeness": 30,
+      "local_ownership": 8,
+      "dlsite_demand": 20,
+      "platform_language_conflict": -60,
+      "market_prevalence": 8,
+      "adapter_readiness": 18,
+      "runtime_evidence_readiness": 6,
+      "dlsite_work_type": 0,
+      "existing_translation_status": -20,
+      "benchmark_usefulness": 10,
+      "unknown_evidence": 0
     }
   },
   "inputSummary": {
@@ -82,9 +64,9 @@
           "019ed161-0000-7000-8000-000000000102",
           "019ed161-0000-7000-8000-000000000103",
           "019ed161-0000-7000-8000-000000000104",
-          "019ed161-0000-7000-8000-000000000105",
           "019ed161-0000-7000-8000-000000000106",
           "019ed161-0000-7000-8000-000000000107",
+          "019ed161-0000-7000-8000-000000000105",
           "019ed161-0000-7000-8000-000000000108",
           "019ed161-0000-7000-8000-000000000109"
         ]
@@ -101,9 +83,9 @@
           "019ed161-0000-7000-8000-000000000102",
           "019ed161-0000-7000-8000-000000000103",
           "019ed161-0000-7000-8000-000000000104",
-          "019ed161-0000-7000-8000-000000000105",
           "019ed161-0000-7000-8000-000000000106",
           "019ed161-0000-7000-8000-000000000107",
+          "019ed161-0000-7000-8000-000000000105",
           "019ed161-0000-7000-8000-000000000108",
           "019ed161-0000-7000-8000-000000000109",
           "019ed161-0000-7000-8000-000000000110"
@@ -208,14 +190,18 @@
         },
         "expectedFactorContributions": {
           "translation_completeness": 30,
-          "local_ownership": 10,
-          "dlsite_demand": 18,
-          "market_prevalence": 7,
+          "local_ownership": 8,
+          "dlsite_demand": 20,
+          "platform_language_conflict": 0,
+          "market_prevalence": 8,
           "adapter_readiness": 18,
           "runtime_evidence_readiness": 6,
-          "benchmark_usefulness": 5
+          "dlsite_work_type": 0,
+          "existing_translation_status": 0,
+          "benchmark_usefulness": 10,
+          "unknown_evidence": 0
         },
-        "expectedScore": 94,
+        "expectedScore": 100,
         "expectedDecision": "candidate"
       },
       {
@@ -302,14 +288,18 @@
         },
         "expectedFactorContributions": {
           "translation_completeness": 30,
-          "local_ownership": 4,
-          "dlsite_demand": 12,
-          "market_prevalence": 7,
+          "local_ownership": 0,
+          "dlsite_demand": 17,
+          "platform_language_conflict": 0,
+          "market_prevalence": 8,
           "adapter_readiness": 18,
-          "runtime_evidence_readiness": 3,
-          "benchmark_usefulness": 5
+          "runtime_evidence_readiness": 6,
+          "dlsite_work_type": 0,
+          "existing_translation_status": 0,
+          "benchmark_usefulness": 10,
+          "unknown_evidence": 0
         },
-        "expectedScore": 79,
+        "expectedScore": 89,
         "expectedDecision": "candidate"
       },
       {
@@ -395,14 +385,18 @@
         },
         "expectedFactorContributions": {
           "translation_completeness": 30,
-          "local_ownership": 4,
-          "dlsite_demand": 12,
-          "market_prevalence": 7,
+          "local_ownership": 0,
+          "dlsite_demand": 16,
+          "platform_language_conflict": 0,
+          "market_prevalence": 8,
           "adapter_readiness": 18,
-          "runtime_evidence_readiness": 3,
-          "benchmark_usefulness": 5
+          "runtime_evidence_readiness": 6,
+          "dlsite_work_type": 0,
+          "existing_translation_status": 0,
+          "benchmark_usefulness": 10,
+          "unknown_evidence": 0
         },
-        "expectedScore": 76,
+        "expectedScore": 88,
         "expectedDecision": "candidate"
       },
       {
@@ -486,15 +480,19 @@
           ]
         },
         "expectedFactorContributions": {
-          "translation_completeness": 22,
-          "local_ownership": 10,
-          "dlsite_demand": 12,
-          "market_prevalence": 4,
-          "adapter_readiness": 8,
-          "runtime_evidence_readiness": 0,
-          "benchmark_usefulness": 5
+          "translation_completeness": 22.5,
+          "local_ownership": 8,
+          "dlsite_demand": 16,
+          "platform_language_conflict": 0,
+          "market_prevalence": 8,
+          "adapter_readiness": 13.5,
+          "runtime_evidence_readiness": 6,
+          "dlsite_work_type": 0,
+          "existing_translation_status": -2,
+          "benchmark_usefulness": 6,
+          "unknown_evidence": 0
         },
-        "expectedScore": 61,
+        "expectedScore": 78,
         "expectedDecision": "candidate"
       },
       {
@@ -565,15 +563,19 @@
           "privateLocalAggregate": []
         },
         "expectedFactorContributions": {
-          "translation_completeness": 16,
+          "translation_completeness": 19.5,
           "local_ownership": 0,
-          "dlsite_demand": 7,
-          "market_prevalence": 4,
+          "dlsite_demand": 10,
+          "platform_language_conflict": 0,
+          "market_prevalence": 5.6,
           "adapter_readiness": 18,
-          "runtime_evidence_readiness": 6,
-          "benchmark_usefulness": 5
+          "runtime_evidence_readiness": 4.2,
+          "dlsite_work_type": 0,
+          "existing_translation_status": -5,
+          "benchmark_usefulness": 6,
+          "unknown_evidence": 0
         },
-        "expectedScore": 59,
+        "expectedScore": 58.3,
         "expectedDecision": "candidate"
       },
       {
@@ -658,14 +660,18 @@
         },
         "expectedFactorContributions": {
           "translation_completeness": 30,
-          "local_ownership": 4,
-          "dlsite_demand": 7,
-          "market_prevalence": 1,
-          "adapter_readiness": 8,
-          "runtime_evidence_readiness": 3,
-          "benchmark_usefulness": 3
+          "local_ownership": 0,
+          "dlsite_demand": 10,
+          "platform_language_conflict": 0,
+          "market_prevalence": 8,
+          "adapter_readiness": 13.5,
+          "runtime_evidence_readiness": 6,
+          "dlsite_work_type": 0,
+          "existing_translation_status": 0,
+          "benchmark_usefulness": 10,
+          "unknown_evidence": 0
         },
-        "expectedScore": 56,
+        "expectedScore": 77.5,
         "expectedDecision": "candidate"
       },
       {
@@ -738,13 +744,17 @@
         "expectedFactorContributions": {
           "translation_completeness": 30,
           "local_ownership": 0,
-          "dlsite_demand": 12,
-          "market_prevalence": 7,
-          "adapter_readiness": -4,
-          "runtime_evidence_readiness": 0,
-          "benchmark_usefulness": 3
+          "dlsite_demand": 16,
+          "platform_language_conflict": 0,
+          "market_prevalence": 5.6,
+          "adapter_readiness": 3.6,
+          "runtime_evidence_readiness": 4.2,
+          "dlsite_work_type": 0,
+          "existing_translation_status": 0,
+          "benchmark_usefulness": 10,
+          "unknown_evidence": 0
         },
-        "expectedScore": 48,
+        "expectedScore": 69.4,
         "expectedDecision": "candidate"
       },
       {
@@ -827,15 +837,19 @@
           ]
         },
         "expectedFactorContributions": {
-          "translation_completeness": 22,
-          "local_ownership": 0,
-          "dlsite_demand": 3,
-          "market_prevalence": 7,
+          "translation_completeness": 22.5,
+          "local_ownership": -4,
+          "dlsite_demand": 4,
+          "platform_language_conflict": 0,
+          "market_prevalence": 8,
           "adapter_readiness": 18,
           "runtime_evidence_readiness": 6,
-          "benchmark_usefulness": 3
+          "dlsite_work_type": 0,
+          "existing_translation_status": -2,
+          "benchmark_usefulness": 2.5,
+          "unknown_evidence": 0
         },
-        "expectedScore": 59,
+        "expectedScore": 55,
         "expectedDecision": "candidate"
       },
       {
@@ -906,15 +920,19 @@
           "privateLocalAggregate": []
         },
         "expectedFactorContributions": {
-          "translation_completeness": 16,
+          "translation_completeness": 19.5,
           "local_ownership": 0,
           "dlsite_demand": 3,
-          "market_prevalence": 1,
-          "adapter_readiness": -4,
-          "runtime_evidence_readiness": 0,
-          "benchmark_usefulness": 3
+          "platform_language_conflict": 0,
+          "market_prevalence": 5.6,
+          "adapter_readiness": 3.6,
+          "runtime_evidence_readiness": 4.2,
+          "dlsite_work_type": 0,
+          "existing_translation_status": -5,
+          "benchmark_usefulness": 2.5,
+          "unknown_evidence": 0
         },
-        "expectedScore": 19,
+        "expectedScore": 33.4,
         "expectedDecision": "candidate"
       },
       {
@@ -1013,15 +1031,19 @@
           ]
         },
         "expectedFactorContributions": {
-          "translation_completeness": -42,
-          "local_ownership": 10,
-          "dlsite_demand": 18,
-          "market_prevalence": 7,
+          "translation_completeness": 3,
+          "local_ownership": 8,
+          "dlsite_demand": 20,
+          "platform_language_conflict": -60,
+          "market_prevalence": 8,
           "adapter_readiness": 18,
           "runtime_evidence_readiness": 6,
-          "benchmark_usefulness": 2
+          "dlsite_work_type": 0,
+          "existing_translation_status": 0,
+          "benchmark_usefulness": 0,
+          "unknown_evidence": 0
         },
-        "expectedScore": 19,
+        "expectedScore": 3,
         "expectedDecision": "demoted"
       }
     ]
@@ -1030,7 +1052,7 @@
     "schemaVersion": "catalog.opportunity_ranking.v0.1",
     "targetLanguage": "en-US",
     "generatedAt": "2026-06-27T16:10:00.000Z",
-    "weightsVersion": "catalog-opportunity-ranking-public-fixture-v0.1",
+    "weightsVersion": "catalog.opportunity_ranking.weights.v0.1",
     "rows": [
       {
         "rank": 1,
@@ -1083,85 +1105,130 @@
         "localEvidenceCount": 5,
         "marketPrevalence": "public_and_local_aggregate",
         "decision": "candidate",
-        "score": 94,
+        "score": 100,
         "factorBreakdown": [
           {
             "factor": "translation_completeness",
-            "rawValue": "no_english",
             "weight": 30,
+            "rawValue": 1,
             "weightedScore": 30,
             "evidenceRefs": [
               "translation_status:en-US:none"
             ],
-            "explanationCode": "pool:no_english"
+            "explanationCode": "translation_completeness:no_english"
           },
           {
             "factor": "local_ownership",
-            "rawValue": "owned",
-            "weight": 10,
-            "weightedScore": 10,
+            "weight": 8,
+            "rawValue": 1,
+            "weightedScore": 8,
             "evidenceRefs": [
-              "aggregate:mv-mz-owned-public-safe-counts"
+              "local_evidence_count:5"
             ],
             "explanationCode": "local_ownership:owned"
           },
           {
             "factor": "dlsite_demand",
-            "rawValue": "very_high",
-            "weight": 18,
-            "weightedScore": 18,
+            "weight": 20,
+            "rawValue": 1,
+            "weightedScore": 20,
             "evidenceRefs": [
               "dlsite:RJOPP001"
             ],
-            "explanationCode": "demand_bucket:very_high"
+            "explanationCode": "dlsite_demand:very_high:rating_high"
+          },
+          {
+            "factor": "platform_language_conflict",
+            "weight": -60,
+            "rawValue": 0,
+            "weightedScore": 0,
+            "evidenceRefs": [],
+            "explanationCode": "platform_language_conflict:none"
           },
           {
             "factor": "market_prevalence",
-            "rawValue": "common",
-            "weight": 7,
-            "weightedScore": 7,
+            "weight": 8,
+            "rawValue": 1,
+            "weightedScore": 8,
             "evidenceRefs": [
-              "market_prevalence:common"
+              "local_evidence_count:5",
+              "source_id_count:1"
             ],
-            "explanationCode": "market_prevalence:common"
+            "explanationCode": "market_prevalence:public_and_local_aggregate"
           },
           {
             "factor": "adapter_readiness",
-            "rawValue": "extract_patch",
             "weight": 18,
+            "rawValue": 1,
             "weightedScore": 18,
             "evidenceRefs": [
-              "public:kaifuu-rpg-maker-encrypted-suffixes"
+              "kaifuu.rpg-maker-mv-mz"
             ],
-            "explanationCode": "adapter_readiness:extract_patch"
+            "explanationCode": "adapter_readiness:patch_supported"
           },
           {
             "factor": "runtime_evidence_readiness",
-            "rawValue": "ready",
             "weight": 6,
+            "rawValue": 1,
             "weightedScore": 6,
             "evidenceRefs": [
-              "runtime:ready"
+              "private_local_aggregate_evidence_count:1",
+              "public_fixture_evidence_count:1"
             ],
-            "explanationCode": "runtime_readiness:ready"
+            "explanationCode": "runtime_evidence_readiness:public_and_aggregate"
+          },
+          {
+            "factor": "dlsite_work_type",
+            "weight": 0,
+            "rawValue": 1,
+            "weightedScore": 0,
+            "evidenceRefs": [
+              "work_type:RPG"
+            ],
+            "explanationCode": "dlsite_work_type:rpg"
+          },
+          {
+            "factor": "existing_translation_status",
+            "weight": -20,
+            "rawValue": 0,
+            "weightedScore": 0,
+            "evidenceRefs": [
+              "translation_status:en-US:none"
+            ],
+            "explanationCode": "existing_translation_status:none"
           },
           {
             "factor": "benchmark_usefulness",
-            "rawValue": "broad_pool_coverage",
-            "weight": 5,
-            "weightedScore": 5,
+            "weight": 10,
+            "rawValue": 1,
+            "weightedScore": 10,
             "evidenceRefs": [
-              "fixture:catalog-opportunities-catalog-061"
+              "demand_bucket:very_high",
+              "pool:no_english"
             ],
-            "explanationCode": "benchmark_usefulness:broad_pool_coverage"
+            "explanationCode": "benchmark_usefulness:high"
+          },
+          {
+            "factor": "unknown_evidence",
+            "weight": 0,
+            "rawValue": 0,
+            "weightedScore": 0,
+            "evidenceRefs": [],
+            "explanationCode": "unknown_evidence:none"
           }
         ],
         "explanationCodes": [
-          "pool:no_english",
+          "translation_completeness:no_english",
           "local_ownership:owned",
-          "demand_bucket:very_high",
-          "adapter_readiness:extract_patch",
-          "runtime_readiness:ready"
+          "dlsite_demand:very_high:rating_high",
+          "platform_language_conflict:none",
+          "market_prevalence:public_and_local_aggregate",
+          "adapter_readiness:patch_supported",
+          "runtime_evidence_readiness:public_and_aggregate",
+          "dlsite_work_type:rpg",
+          "existing_translation_status:none",
+          "benchmark_usefulness:high",
+          "unknown_evidence:none"
         ],
         "provenance": [
           {
@@ -1226,85 +1293,130 @@
         "localEvidenceCount": 4,
         "marketPrevalence": "public_and_local_aggregate",
         "decision": "candidate",
-        "score": 79,
+        "score": 89,
         "factorBreakdown": [
           {
             "factor": "translation_completeness",
-            "rawValue": "no_english",
             "weight": 30,
+            "rawValue": 1,
             "weightedScore": 30,
             "evidenceRefs": [
               "translation_status:en-US:none"
             ],
-            "explanationCode": "pool:no_english"
+            "explanationCode": "translation_completeness:no_english"
           },
           {
             "factor": "local_ownership",
-            "rawValue": "aggregate_seen",
-            "weight": 4,
-            "weightedScore": 4,
+            "weight": 8,
+            "rawValue": 0,
+            "weightedScore": 0,
             "evidenceRefs": [
-              "aggregate:kirikiri-xp3-redacted-counts"
+              "local_evidence_count:4"
             ],
-            "explanationCode": "local_ownership:aggregate_seen"
+            "explanationCode": "local_ownership:unknown"
           },
           {
             "factor": "dlsite_demand",
-            "rawValue": "high",
-            "weight": 12,
-            "weightedScore": 12,
+            "weight": 20,
+            "rawValue": 0.85,
+            "weightedScore": 17,
             "evidenceRefs": [
               "dlsite:RJOPP002"
             ],
-            "explanationCode": "demand_bucket:high"
+            "explanationCode": "dlsite_demand:high:rating_high"
+          },
+          {
+            "factor": "platform_language_conflict",
+            "weight": -60,
+            "rawValue": 0,
+            "weightedScore": 0,
+            "evidenceRefs": [],
+            "explanationCode": "platform_language_conflict:none"
           },
           {
             "factor": "market_prevalence",
-            "rawValue": "common",
-            "weight": 7,
-            "weightedScore": 7,
+            "weight": 8,
+            "rawValue": 1,
+            "weightedScore": 8,
             "evidenceRefs": [
-              "market_prevalence:common"
+              "local_evidence_count:4",
+              "source_id_count:1"
             ],
-            "explanationCode": "market_prevalence:common"
+            "explanationCode": "market_prevalence:public_and_local_aggregate"
           },
           {
             "factor": "adapter_readiness",
-            "rawValue": "extract_patch",
             "weight": 18,
+            "rawValue": 1,
             "weightedScore": 18,
             "evidenceRefs": [
-              "public:kaifuu-encrypted-matrix:kirikiri"
+              "kaifuu.kirikiri-xp3"
             ],
-            "explanationCode": "adapter_readiness:extract_patch"
+            "explanationCode": "adapter_readiness:patch_supported"
           },
           {
             "factor": "runtime_evidence_readiness",
-            "rawValue": "partial",
-            "weight": 3,
-            "weightedScore": 3,
+            "weight": 6,
+            "rawValue": 1,
+            "weightedScore": 6,
             "evidenceRefs": [
-              "runtime:partial"
+              "private_local_aggregate_evidence_count:1",
+              "public_fixture_evidence_count:1"
             ],
-            "explanationCode": "runtime_readiness:partial"
+            "explanationCode": "runtime_evidence_readiness:public_and_aggregate"
+          },
+          {
+            "factor": "dlsite_work_type",
+            "weight": 0,
+            "rawValue": 0.5,
+            "weightedScore": 0,
+            "evidenceRefs": [
+              "work_type:ADV"
+            ],
+            "explanationCode": "dlsite_work_type:game"
+          },
+          {
+            "factor": "existing_translation_status",
+            "weight": -20,
+            "rawValue": 0,
+            "weightedScore": 0,
+            "evidenceRefs": [
+              "translation_status:en-US:none"
+            ],
+            "explanationCode": "existing_translation_status:none"
           },
           {
             "factor": "benchmark_usefulness",
-            "rawValue": "broad_pool_coverage",
-            "weight": 5,
-            "weightedScore": 5,
+            "weight": 10,
+            "rawValue": 1,
+            "weightedScore": 10,
             "evidenceRefs": [
-              "fixture:catalog-opportunities-catalog-061"
+              "demand_bucket:high",
+              "pool:no_english"
             ],
-            "explanationCode": "benchmark_usefulness:broad_pool_coverage"
+            "explanationCode": "benchmark_usefulness:high"
+          },
+          {
+            "factor": "unknown_evidence",
+            "weight": 0,
+            "rawValue": 0,
+            "weightedScore": 0,
+            "evidenceRefs": [],
+            "explanationCode": "unknown_evidence:none"
           }
         ],
         "explanationCodes": [
-          "pool:no_english",
-          "local_ownership:aggregate_seen",
-          "demand_bucket:high",
-          "adapter_readiness:extract_patch",
-          "runtime_readiness:partial"
+          "translation_completeness:no_english",
+          "local_ownership:unknown",
+          "dlsite_demand:high:rating_high",
+          "platform_language_conflict:none",
+          "market_prevalence:public_and_local_aggregate",
+          "adapter_readiness:patch_supported",
+          "runtime_evidence_readiness:public_and_aggregate",
+          "dlsite_work_type:game",
+          "existing_translation_status:none",
+          "benchmark_usefulness:high",
+          "unknown_evidence:none"
         ],
         "provenance": [
           {
@@ -1369,85 +1481,130 @@
         "localEvidenceCount": 3,
         "marketPrevalence": "public_and_local_aggregate",
         "decision": "candidate",
-        "score": 76,
+        "score": 88,
         "factorBreakdown": [
           {
             "factor": "translation_completeness",
-            "rawValue": "no_english",
             "weight": 30,
+            "rawValue": 1,
             "weightedScore": 30,
             "evidenceRefs": [
               "translation_status:en-US:none"
             ],
-            "explanationCode": "pool:no_english"
+            "explanationCode": "translation_completeness:no_english"
           },
           {
             "factor": "local_ownership",
-            "rawValue": "aggregate_seen",
-            "weight": 4,
-            "weightedScore": 4,
+            "weight": 8,
+            "rawValue": 0,
+            "weightedScore": 0,
             "evidenceRefs": [
-              "aggregate:wolf-redacted-readiness"
+              "local_evidence_count:3"
             ],
-            "explanationCode": "local_ownership:aggregate_seen"
+            "explanationCode": "local_ownership:unknown"
           },
           {
             "factor": "dlsite_demand",
-            "rawValue": "high",
-            "weight": 12,
-            "weightedScore": 12,
+            "weight": 20,
+            "rawValue": 0.8,
+            "weightedScore": 16,
             "evidenceRefs": [
               "dlsite:RJOPP003"
             ],
-            "explanationCode": "demand_bucket:high"
+            "explanationCode": "dlsite_demand:high:rating_positive"
+          },
+          {
+            "factor": "platform_language_conflict",
+            "weight": -60,
+            "rawValue": 0,
+            "weightedScore": 0,
+            "evidenceRefs": [],
+            "explanationCode": "platform_language_conflict:none"
           },
           {
             "factor": "market_prevalence",
-            "rawValue": "notable",
-            "weight": 4,
-            "weightedScore": 4,
+            "weight": 8,
+            "rawValue": 1,
+            "weightedScore": 8,
             "evidenceRefs": [
-              "market_prevalence:notable"
+              "local_evidence_count:3",
+              "source_id_count:1"
             ],
-            "explanationCode": "market_prevalence:notable"
+            "explanationCode": "market_prevalence:public_and_local_aggregate"
           },
           {
             "factor": "adapter_readiness",
-            "rawValue": "extract_patch",
             "weight": 18,
+            "rawValue": 1,
             "weightedScore": 18,
             "evidenceRefs": [
-              "public:kaifuu-encrypted-matrix:wolf"
+              "kaifuu.wolf-rpg-editor"
             ],
-            "explanationCode": "adapter_readiness:extract_patch"
+            "explanationCode": "adapter_readiness:patch_supported"
           },
           {
             "factor": "runtime_evidence_readiness",
-            "rawValue": "partial",
-            "weight": 3,
-            "weightedScore": 3,
+            "weight": 6,
+            "rawValue": 1,
+            "weightedScore": 6,
             "evidenceRefs": [
-              "runtime:partial"
+              "private_local_aggregate_evidence_count:1",
+              "public_fixture_evidence_count:1"
             ],
-            "explanationCode": "runtime_readiness:partial"
+            "explanationCode": "runtime_evidence_readiness:public_and_aggregate"
+          },
+          {
+            "factor": "dlsite_work_type",
+            "weight": 0,
+            "rawValue": 1,
+            "weightedScore": 0,
+            "evidenceRefs": [
+              "work_type:RPG"
+            ],
+            "explanationCode": "dlsite_work_type:rpg"
+          },
+          {
+            "factor": "existing_translation_status",
+            "weight": -20,
+            "rawValue": 0,
+            "weightedScore": 0,
+            "evidenceRefs": [
+              "translation_status:en-US:none"
+            ],
+            "explanationCode": "existing_translation_status:none"
           },
           {
             "factor": "benchmark_usefulness",
-            "rawValue": "broad_pool_coverage",
-            "weight": 5,
-            "weightedScore": 5,
+            "weight": 10,
+            "rawValue": 1,
+            "weightedScore": 10,
             "evidenceRefs": [
-              "fixture:catalog-opportunities-catalog-061"
+              "demand_bucket:high",
+              "pool:no_english"
             ],
-            "explanationCode": "benchmark_usefulness:broad_pool_coverage"
+            "explanationCode": "benchmark_usefulness:high"
+          },
+          {
+            "factor": "unknown_evidence",
+            "weight": 0,
+            "rawValue": 0,
+            "weightedScore": 0,
+            "evidenceRefs": [],
+            "explanationCode": "unknown_evidence:none"
           }
         ],
         "explanationCodes": [
-          "pool:no_english",
-          "local_ownership:aggregate_seen",
-          "demand_bucket:high",
-          "adapter_readiness:extract_patch",
-          "runtime_readiness:partial"
+          "translation_completeness:no_english",
+          "local_ownership:unknown",
+          "dlsite_demand:high:rating_positive",
+          "platform_language_conflict:none",
+          "market_prevalence:public_and_local_aggregate",
+          "adapter_readiness:patch_supported",
+          "runtime_evidence_readiness:public_and_aggregate",
+          "dlsite_work_type:rpg",
+          "existing_translation_status:none",
+          "benchmark_usefulness:high",
+          "unknown_evidence:none"
         ],
         "provenance": [
           {
@@ -1512,85 +1669,130 @@
         "localEvidenceCount": 2,
         "marketPrevalence": "public_and_local_aggregate",
         "decision": "candidate",
-        "score": 61,
+        "score": 78,
         "factorBreakdown": [
           {
             "factor": "translation_completeness",
-            "rawValue": "mtl_only",
-            "weight": 22,
-            "weightedScore": 22,
+            "weight": 30,
+            "rawValue": 0.75,
+            "weightedScore": 22.5,
             "evidenceRefs": [
               "translation_status:en-US:mtl"
             ],
-            "explanationCode": "pool:mtl_only"
+            "explanationCode": "translation_completeness:mtl_only"
           },
           {
             "factor": "local_ownership",
-            "rawValue": "owned",
-            "weight": 10,
-            "weightedScore": 10,
+            "weight": 8,
+            "rawValue": 1,
+            "weightedScore": 8,
             "evidenceRefs": [
-              "aggregate:rgss3-vx-ace-redacted-counts"
+              "local_evidence_count:2"
             ],
             "explanationCode": "local_ownership:owned"
           },
           {
             "factor": "dlsite_demand",
-            "rawValue": "high",
-            "weight": 12,
-            "weightedScore": 12,
+            "weight": 20,
+            "rawValue": 0.8,
+            "weightedScore": 16,
             "evidenceRefs": [
               "dlsite:RJOPP004"
             ],
-            "explanationCode": "demand_bucket:high"
+            "explanationCode": "dlsite_demand:high:rating_positive"
+          },
+          {
+            "factor": "platform_language_conflict",
+            "weight": -60,
+            "rawValue": 0,
+            "weightedScore": 0,
+            "evidenceRefs": [],
+            "explanationCode": "platform_language_conflict:none"
           },
           {
             "factor": "market_prevalence",
-            "rawValue": "notable",
-            "weight": 4,
-            "weightedScore": 4,
+            "weight": 8,
+            "rawValue": 1,
+            "weightedScore": 8,
             "evidenceRefs": [
-              "market_prevalence:notable"
+              "local_evidence_count:2",
+              "source_id_count:1"
             ],
-            "explanationCode": "market_prevalence:notable"
+            "explanationCode": "market_prevalence:public_and_local_aggregate"
           },
           {
             "factor": "adapter_readiness",
-            "rawValue": "extract_only",
-            "weight": 8,
-            "weightedScore": 8,
+            "weight": 18,
+            "rawValue": 0.75,
+            "weightedScore": 13.5,
             "evidenceRefs": [
-              "public:rgss3-vx-ace-capability-matrix"
+              "kaifuu.rgss3-vx-ace"
             ],
-            "explanationCode": "adapter_readiness:extract_only"
+            "explanationCode": "adapter_readiness:extract_supported"
           },
           {
             "factor": "runtime_evidence_readiness",
-            "rawValue": "unknown",
+            "weight": 6,
+            "rawValue": 1,
+            "weightedScore": 6,
+            "evidenceRefs": [
+              "private_local_aggregate_evidence_count:1",
+              "public_fixture_evidence_count:1"
+            ],
+            "explanationCode": "runtime_evidence_readiness:public_and_aggregate"
+          },
+          {
+            "factor": "dlsite_work_type",
             "weight": 0,
+            "rawValue": 1,
             "weightedScore": 0,
             "evidenceRefs": [
-              "runtime:unknown"
+              "work_type:RPG"
             ],
-            "explanationCode": "runtime_readiness:unknown"
+            "explanationCode": "dlsite_work_type:rpg"
+          },
+          {
+            "factor": "existing_translation_status",
+            "weight": -20,
+            "rawValue": 0.1,
+            "weightedScore": -2,
+            "evidenceRefs": [
+              "translation_status:en-US:mtl"
+            ],
+            "explanationCode": "existing_translation_status:mtl"
           },
           {
             "factor": "benchmark_usefulness",
-            "rawValue": "broad_pool_coverage",
-            "weight": 5,
-            "weightedScore": 5,
+            "weight": 10,
+            "rawValue": 0.6,
+            "weightedScore": 6,
             "evidenceRefs": [
-              "fixture:catalog-opportunities-catalog-061"
+              "demand_bucket:high",
+              "pool:mtl_only"
             ],
-            "explanationCode": "benchmark_usefulness:broad_pool_coverage"
+            "explanationCode": "benchmark_usefulness:medium"
+          },
+          {
+            "factor": "unknown_evidence",
+            "weight": 0,
+            "rawValue": 0,
+            "weightedScore": 0,
+            "evidenceRefs": [],
+            "explanationCode": "unknown_evidence:none"
           }
         ],
         "explanationCodes": [
-          "pool:mtl_only",
+          "translation_completeness:mtl_only",
           "local_ownership:owned",
-          "demand_bucket:high",
-          "adapter_readiness:extract_only",
-          "runtime_readiness:unknown"
+          "dlsite_demand:high:rating_positive",
+          "platform_language_conflict:none",
+          "market_prevalence:public_and_local_aggregate",
+          "adapter_readiness:extract_supported",
+          "runtime_evidence_readiness:public_and_aggregate",
+          "dlsite_work_type:rpg",
+          "existing_translation_status:mtl",
+          "benchmark_usefulness:medium",
+          "unknown_evidence:none"
         ],
         "provenance": [
           {
@@ -1606,290 +1808,6 @@
       },
       {
         "rank": 5,
-        "workId": "019ed161-0000-7000-8000-000000000108",
-        "canonicalTitle": "Opportunity MV MZ MTL-only low demand",
-        "originalLanguage": "ja-JP",
-        "sourceIds": [
-          {
-            "catalogSource": "dlsite",
-            "sourceId": "RJOPP008",
-            "externalIdKind": "store_product"
-          }
-        ],
-        "engineName": "rpg-maker-mv-mz",
-        "adapterId": "kaifuu.rpg-maker-mv-mz",
-        "readiness": {
-          "adapterId": "kaifuu.rpg-maker-mv-mz",
-          "identify": "supported",
-          "inventory": "supported",
-          "extract": "supported",
-          "patch": "supported",
-          "helper": "unknown",
-          "runtime": "supported"
-        },
-        "runtimeEvidenceReadiness": {
-          "status": "public_and_aggregate",
-          "publicFixtureEvidenceCount": 1,
-          "privateLocalAggregateEvidenceCount": 1
-        },
-        "completenessPool": "mtl_only",
-        "translationStatuses": [
-          {
-            "language": "en-US",
-            "status": "mtl",
-            "confidence": "high",
-            "statusScope": "work",
-            "platform": null
-          }
-        ],
-        "demandFacts": {
-          "demandBucket": "low",
-          "dlCount": 4200,
-          "ratingAverage": 4.01,
-          "ratingCount": 118,
-          "wishlistCount": 720,
-          "bestRank": 140,
-          "workType": "RPG"
-        },
-        "localOwnership": "not_owned",
-        "localEvidenceCount": 1,
-        "marketPrevalence": "public_and_local_aggregate",
-        "decision": "candidate",
-        "score": 59,
-        "factorBreakdown": [
-          {
-            "factor": "translation_completeness",
-            "rawValue": "mtl_only",
-            "weight": 22,
-            "weightedScore": 22,
-            "evidenceRefs": [
-              "translation_status:en-US:mtl"
-            ],
-            "explanationCode": "pool:mtl_only"
-          },
-          {
-            "factor": "local_ownership",
-            "rawValue": "not_owned",
-            "weight": 0,
-            "weightedScore": 0,
-            "evidenceRefs": [
-              "aggregate:mv-mz-not-owned-redacted-counts"
-            ],
-            "explanationCode": "local_ownership:not_owned"
-          },
-          {
-            "factor": "dlsite_demand",
-            "rawValue": "low",
-            "weight": 3,
-            "weightedScore": 3,
-            "evidenceRefs": [
-              "dlsite:RJOPP008"
-            ],
-            "explanationCode": "demand_bucket:low"
-          },
-          {
-            "factor": "market_prevalence",
-            "rawValue": "common",
-            "weight": 7,
-            "weightedScore": 7,
-            "evidenceRefs": [
-              "market_prevalence:common"
-            ],
-            "explanationCode": "market_prevalence:common"
-          },
-          {
-            "factor": "adapter_readiness",
-            "rawValue": "extract_patch",
-            "weight": 18,
-            "weightedScore": 18,
-            "evidenceRefs": [
-              "public:kaifuu-rpg-maker-encrypted-suffixes"
-            ],
-            "explanationCode": "adapter_readiness:extract_patch"
-          },
-          {
-            "factor": "runtime_evidence_readiness",
-            "rawValue": "ready",
-            "weight": 6,
-            "weightedScore": 6,
-            "evidenceRefs": [
-              "runtime:ready"
-            ],
-            "explanationCode": "runtime_readiness:ready"
-          },
-          {
-            "factor": "benchmark_usefulness",
-            "rawValue": "engine_gap_coverage",
-            "weight": 3,
-            "weightedScore": 3,
-            "evidenceRefs": [
-              "fixture:catalog-opportunities-catalog-061"
-            ],
-            "explanationCode": "benchmark_usefulness:engine_gap_coverage"
-          }
-        ],
-        "explanationCodes": [
-          "pool:mtl_only",
-          "local_ownership:not_owned",
-          "demand_bucket:low",
-          "adapter_readiness:extract_patch",
-          "runtime_readiness:ready"
-        ],
-        "provenance": [
-          {
-            "catalogSource": "dlsite",
-            "sourceId": "RJOPP008",
-            "sourceRecordKind": "recorded_fixture",
-            "sourceVersion": "catalog-opportunity-public-fixture-v1",
-            "fixtureId": "catalog-opportunities/fixture.json",
-            "redactionClass": "public_metadata"
-          }
-        ],
-        "demotions": []
-      },
-      {
-        "rank": 6,
-        "workId": "019ed161-0000-7000-8000-000000000105",
-        "canonicalTitle": "Opportunity TyranoScript fan partial",
-        "originalLanguage": "ja-JP",
-        "sourceIds": [
-          {
-            "catalogSource": "dlsite",
-            "sourceId": "RJOPP005",
-            "externalIdKind": "store_product"
-          }
-        ],
-        "engineName": "tyranoscript",
-        "adapterId": "kaifuu.tyranoscript",
-        "readiness": {
-          "adapterId": "kaifuu.tyranoscript",
-          "identify": "supported",
-          "inventory": "supported",
-          "extract": "supported",
-          "patch": "supported",
-          "helper": "unknown",
-          "runtime": "supported"
-        },
-        "runtimeEvidenceReadiness": {
-          "status": "public_fixture",
-          "publicFixtureEvidenceCount": 1,
-          "privateLocalAggregateEvidenceCount": 0
-        },
-        "completenessPool": "fan_partial",
-        "translationStatuses": [
-          {
-            "language": "en-US",
-            "status": "fan_partial",
-            "confidence": "medium",
-            "statusScope": "work",
-            "platform": null
-          }
-        ],
-        "demandFacts": {
-          "demandBucket": "medium",
-          "dlCount": 18320,
-          "ratingAverage": 4.28,
-          "ratingCount": 520,
-          "wishlistCount": 3320,
-          "bestRank": 41,
-          "workType": "ADV"
-        },
-        "localOwnership": "unknown",
-        "localEvidenceCount": 0,
-        "marketPrevalence": "public_only",
-        "decision": "candidate",
-        "score": 59,
-        "factorBreakdown": [
-          {
-            "factor": "translation_completeness",
-            "rawValue": "fan_partial",
-            "weight": 16,
-            "weightedScore": 16,
-            "evidenceRefs": [
-              "translation_status:en-US:fan_partial"
-            ],
-            "explanationCode": "pool:fan_partial"
-          },
-          {
-            "factor": "local_ownership",
-            "rawValue": "unknown",
-            "weight": 0,
-            "weightedScore": 0,
-            "evidenceRefs": [],
-            "explanationCode": "local_ownership:unknown"
-          },
-          {
-            "factor": "dlsite_demand",
-            "rawValue": "medium",
-            "weight": 7,
-            "weightedScore": 7,
-            "evidenceRefs": [
-              "dlsite:RJOPP005"
-            ],
-            "explanationCode": "demand_bucket:medium"
-          },
-          {
-            "factor": "market_prevalence",
-            "rawValue": "common",
-            "weight": 7,
-            "weightedScore": 7,
-            "evidenceRefs": [
-              "market_prevalence:common"
-            ],
-            "explanationCode": "market_prevalence:common"
-          },
-          {
-            "factor": "adapter_readiness",
-            "rawValue": "extract_patch",
-            "weight": 18,
-            "weightedScore": 18,
-            "evidenceRefs": [
-              "public:tyranoscript-capability-matrix"
-            ],
-            "explanationCode": "adapter_readiness:extract_patch"
-          },
-          {
-            "factor": "runtime_evidence_readiness",
-            "rawValue": "ready",
-            "weight": 6,
-            "weightedScore": 6,
-            "evidenceRefs": [
-              "runtime:ready"
-            ],
-            "explanationCode": "runtime_readiness:ready"
-          },
-          {
-            "factor": "benchmark_usefulness",
-            "rawValue": "broad_pool_coverage",
-            "weight": 5,
-            "weightedScore": 5,
-            "evidenceRefs": [
-              "fixture:catalog-opportunities-catalog-061"
-            ],
-            "explanationCode": "benchmark_usefulness:broad_pool_coverage"
-          }
-        ],
-        "explanationCodes": [
-          "pool:fan_partial",
-          "local_ownership:unknown",
-          "demand_bucket:medium",
-          "adapter_readiness:extract_patch",
-          "runtime_readiness:ready"
-        ],
-        "provenance": [
-          {
-            "catalogSource": "dlsite",
-            "sourceId": "RJOPP005",
-            "sourceRecordKind": "recorded_fixture",
-            "sourceVersion": "catalog-opportunity-public-fixture-v1",
-            "fixtureId": "catalog-opportunities/fixture.json",
-            "redactionClass": "public_metadata"
-          }
-        ],
-        "demotions": []
-      },
-      {
-        "rank": 7,
         "workId": "019ed161-0000-7000-8000-000000000106",
         "canonicalTitle": "Opportunity Siglus no-English aggregate",
         "originalLanguage": "ja-JP",
@@ -1939,85 +1857,130 @@
         "localEvidenceCount": 2,
         "marketPrevalence": "public_and_local_aggregate",
         "decision": "candidate",
-        "score": 56,
+        "score": 77.5,
         "factorBreakdown": [
           {
             "factor": "translation_completeness",
-            "rawValue": "no_english",
             "weight": 30,
+            "rawValue": 1,
             "weightedScore": 30,
             "evidenceRefs": [
               "translation_status:en-US:none"
             ],
-            "explanationCode": "pool:no_english"
+            "explanationCode": "translation_completeness:no_english"
           },
           {
             "factor": "local_ownership",
-            "rawValue": "aggregate_seen",
-            "weight": 4,
-            "weightedScore": 4,
+            "weight": 8,
+            "rawValue": 0,
+            "weightedScore": 0,
             "evidenceRefs": [
-              "aggregate:siglus-redacted-readiness"
+              "local_evidence_count:2"
             ],
-            "explanationCode": "local_ownership:aggregate_seen"
+            "explanationCode": "local_ownership:unknown"
           },
           {
             "factor": "dlsite_demand",
-            "rawValue": "medium",
-            "weight": 7,
-            "weightedScore": 7,
+            "weight": 20,
+            "rawValue": 0.5,
+            "weightedScore": 10,
             "evidenceRefs": [
               "dlsite:RJOPP006"
             ],
-            "explanationCode": "demand_bucket:medium"
+            "explanationCode": "dlsite_demand:medium:rating_positive"
+          },
+          {
+            "factor": "platform_language_conflict",
+            "weight": -60,
+            "rawValue": 0,
+            "weightedScore": 0,
+            "evidenceRefs": [],
+            "explanationCode": "platform_language_conflict:none"
           },
           {
             "factor": "market_prevalence",
-            "rawValue": "niche",
-            "weight": 1,
-            "weightedScore": 1,
+            "weight": 8,
+            "rawValue": 1,
+            "weightedScore": 8,
             "evidenceRefs": [
-              "market_prevalence:niche"
+              "local_evidence_count:2",
+              "source_id_count:1"
             ],
-            "explanationCode": "market_prevalence:niche"
+            "explanationCode": "market_prevalence:public_and_local_aggregate"
           },
           {
             "factor": "adapter_readiness",
-            "rawValue": "extract_only",
-            "weight": 8,
-            "weightedScore": 8,
+            "weight": 18,
+            "rawValue": 0.75,
+            "weightedScore": 13.5,
             "evidenceRefs": [
-              "public:kaifuu-encrypted-matrix:siglus"
+              "kaifuu.siglus"
             ],
-            "explanationCode": "adapter_readiness:extract_only"
+            "explanationCode": "adapter_readiness:extract_supported"
           },
           {
             "factor": "runtime_evidence_readiness",
-            "rawValue": "partial",
-            "weight": 3,
-            "weightedScore": 3,
+            "weight": 6,
+            "rawValue": 1,
+            "weightedScore": 6,
             "evidenceRefs": [
-              "runtime:partial"
+              "private_local_aggregate_evidence_count:1",
+              "public_fixture_evidence_count:1"
             ],
-            "explanationCode": "runtime_readiness:partial"
+            "explanationCode": "runtime_evidence_readiness:public_and_aggregate"
+          },
+          {
+            "factor": "dlsite_work_type",
+            "weight": 0,
+            "rawValue": 0.5,
+            "weightedScore": 0,
+            "evidenceRefs": [
+              "work_type:ADV"
+            ],
+            "explanationCode": "dlsite_work_type:game"
+          },
+          {
+            "factor": "existing_translation_status",
+            "weight": -20,
+            "rawValue": 0,
+            "weightedScore": 0,
+            "evidenceRefs": [
+              "translation_status:en-US:none"
+            ],
+            "explanationCode": "existing_translation_status:none"
           },
           {
             "factor": "benchmark_usefulness",
-            "rawValue": "engine_gap_coverage",
-            "weight": 3,
-            "weightedScore": 3,
+            "weight": 10,
+            "rawValue": 1,
+            "weightedScore": 10,
             "evidenceRefs": [
-              "fixture:catalog-opportunities-catalog-061"
+              "demand_bucket:medium",
+              "pool:no_english"
             ],
-            "explanationCode": "benchmark_usefulness:engine_gap_coverage"
+            "explanationCode": "benchmark_usefulness:high"
+          },
+          {
+            "factor": "unknown_evidence",
+            "weight": 0,
+            "rawValue": 0,
+            "weightedScore": 0,
+            "evidenceRefs": [],
+            "explanationCode": "unknown_evidence:none"
           }
         ],
         "explanationCodes": [
-          "pool:no_english",
-          "local_ownership:aggregate_seen",
-          "demand_bucket:medium",
-          "adapter_readiness:extract_only",
-          "runtime_readiness:partial"
+          "translation_completeness:no_english",
+          "local_ownership:unknown",
+          "dlsite_demand:medium:rating_positive",
+          "platform_language_conflict:none",
+          "market_prevalence:public_and_local_aggregate",
+          "adapter_readiness:extract_supported",
+          "runtime_evidence_readiness:public_and_aggregate",
+          "dlsite_work_type:game",
+          "existing_translation_status:none",
+          "benchmark_usefulness:high",
+          "unknown_evidence:none"
         ],
         "provenance": [
           {
@@ -2032,7 +1995,7 @@
         "demotions": []
       },
       {
-        "rank": 8,
+        "rank": 6,
         "workId": "019ed161-0000-7000-8000-000000000107",
         "canonicalTitle": "Opportunity Unity no-English unknown adapter",
         "originalLanguage": "ja-JP",
@@ -2082,88 +2045,509 @@
         "localEvidenceCount": 0,
         "marketPrevalence": "public_only",
         "decision": "candidate",
-        "score": 48,
+        "score": 69.4,
         "factorBreakdown": [
           {
             "factor": "translation_completeness",
-            "rawValue": "no_english",
             "weight": 30,
+            "rawValue": 1,
             "weightedScore": 30,
             "evidenceRefs": [
               "translation_status:en-US:none"
             ],
-            "explanationCode": "pool:no_english"
+            "explanationCode": "translation_completeness:no_english"
           },
           {
             "factor": "local_ownership",
-            "rawValue": "unknown",
-            "weight": 0,
+            "weight": 8,
+            "rawValue": 0,
             "weightedScore": 0,
             "evidenceRefs": [],
             "explanationCode": "local_ownership:unknown"
           },
           {
             "factor": "dlsite_demand",
-            "rawValue": "high",
-            "weight": 12,
-            "weightedScore": 12,
+            "weight": 20,
+            "rawValue": 0.8,
+            "weightedScore": 16,
             "evidenceRefs": [
               "dlsite:RJOPP007"
             ],
-            "explanationCode": "demand_bucket:high"
+            "explanationCode": "dlsite_demand:high:rating_positive"
+          },
+          {
+            "factor": "platform_language_conflict",
+            "weight": -60,
+            "rawValue": 0,
+            "weightedScore": 0,
+            "evidenceRefs": [],
+            "explanationCode": "platform_language_conflict:none"
           },
           {
             "factor": "market_prevalence",
-            "rawValue": "common",
-            "weight": 7,
-            "weightedScore": 7,
+            "weight": 8,
+            "rawValue": 0.7,
+            "weightedScore": 5.6,
             "evidenceRefs": [
-              "market_prevalence:common"
+              "local_evidence_count:0",
+              "source_id_count:1"
             ],
-            "explanationCode": "market_prevalence:common"
+            "explanationCode": "market_prevalence:public_only"
           },
           {
             "factor": "adapter_readiness",
-            "rawValue": "unknown",
-            "weight": -4,
-            "weightedScore": -4,
+            "weight": 18,
+            "rawValue": 0.2,
+            "weightedScore": 3.6,
             "evidenceRefs": [
-              "public:unity-capability-placeholder"
+              "kaifuu.unity"
             ],
-            "explanationCode": "adapter_readiness:unknown"
+            "explanationCode": "adapter_readiness:identify_supported"
           },
           {
             "factor": "runtime_evidence_readiness",
-            "rawValue": "unknown",
+            "weight": 6,
+            "rawValue": 0.7,
+            "weightedScore": 4.2,
+            "evidenceRefs": [
+              "private_local_aggregate_evidence_count:0",
+              "public_fixture_evidence_count:1"
+            ],
+            "explanationCode": "runtime_evidence_readiness:public_fixture"
+          },
+          {
+            "factor": "dlsite_work_type",
             "weight": 0,
+            "rawValue": 0.5,
             "weightedScore": 0,
             "evidenceRefs": [
-              "runtime:unknown"
+              "work_type:SLG"
             ],
-            "explanationCode": "runtime_readiness:unknown"
+            "explanationCode": "dlsite_work_type:game"
+          },
+          {
+            "factor": "existing_translation_status",
+            "weight": -20,
+            "rawValue": 0,
+            "weightedScore": 0,
+            "evidenceRefs": [
+              "translation_status:en-US:none"
+            ],
+            "explanationCode": "existing_translation_status:none"
           },
           {
             "factor": "benchmark_usefulness",
-            "rawValue": "engine_gap_coverage",
-            "weight": 3,
-            "weightedScore": 3,
+            "weight": 10,
+            "rawValue": 1,
+            "weightedScore": 10,
             "evidenceRefs": [
-              "fixture:catalog-opportunities-catalog-061"
+              "demand_bucket:high",
+              "pool:no_english"
             ],
-            "explanationCode": "benchmark_usefulness:engine_gap_coverage"
+            "explanationCode": "benchmark_usefulness:high"
+          },
+          {
+            "factor": "unknown_evidence",
+            "weight": 0,
+            "rawValue": 1,
+            "weightedScore": 0,
+            "evidenceRefs": [
+              "public_evidence:incomplete"
+            ],
+            "explanationCode": "unknown_evidence:present"
           }
         ],
         "explanationCodes": [
-          "pool:no_english",
+          "translation_completeness:no_english",
           "local_ownership:unknown",
-          "demand_bucket:high",
-          "adapter_readiness:unknown",
-          "runtime_readiness:unknown"
+          "dlsite_demand:high:rating_positive",
+          "platform_language_conflict:none",
+          "market_prevalence:public_only",
+          "adapter_readiness:identify_supported",
+          "runtime_evidence_readiness:public_fixture",
+          "dlsite_work_type:game",
+          "existing_translation_status:none",
+          "benchmark_usefulness:high",
+          "unknown_evidence:present"
         ],
         "provenance": [
           {
             "catalogSource": "dlsite",
             "sourceId": "RJOPP007",
+            "sourceRecordKind": "recorded_fixture",
+            "sourceVersion": "catalog-opportunity-public-fixture-v1",
+            "fixtureId": "catalog-opportunities/fixture.json",
+            "redactionClass": "public_metadata"
+          }
+        ],
+        "demotions": []
+      },
+      {
+        "rank": 7,
+        "workId": "019ed161-0000-7000-8000-000000000105",
+        "canonicalTitle": "Opportunity TyranoScript fan partial",
+        "originalLanguage": "ja-JP",
+        "sourceIds": [
+          {
+            "catalogSource": "dlsite",
+            "sourceId": "RJOPP005",
+            "externalIdKind": "store_product"
+          }
+        ],
+        "engineName": "tyranoscript",
+        "adapterId": "kaifuu.tyranoscript",
+        "readiness": {
+          "adapterId": "kaifuu.tyranoscript",
+          "identify": "supported",
+          "inventory": "supported",
+          "extract": "supported",
+          "patch": "supported",
+          "helper": "unknown",
+          "runtime": "supported"
+        },
+        "runtimeEvidenceReadiness": {
+          "status": "public_fixture",
+          "publicFixtureEvidenceCount": 1,
+          "privateLocalAggregateEvidenceCount": 0
+        },
+        "completenessPool": "fan_partial",
+        "translationStatuses": [
+          {
+            "language": "en-US",
+            "status": "fan_partial",
+            "confidence": "medium",
+            "statusScope": "work",
+            "platform": null
+          }
+        ],
+        "demandFacts": {
+          "demandBucket": "medium",
+          "dlCount": 18320,
+          "ratingAverage": 4.28,
+          "ratingCount": 520,
+          "wishlistCount": 3320,
+          "bestRank": 41,
+          "workType": "ADV"
+        },
+        "localOwnership": "unknown",
+        "localEvidenceCount": 0,
+        "marketPrevalence": "public_only",
+        "decision": "candidate",
+        "score": 58.3,
+        "factorBreakdown": [
+          {
+            "factor": "translation_completeness",
+            "weight": 30,
+            "rawValue": 0.65,
+            "weightedScore": 19.5,
+            "evidenceRefs": [
+              "translation_status:en-US:fan_partial"
+            ],
+            "explanationCode": "translation_completeness:fan_partial"
+          },
+          {
+            "factor": "local_ownership",
+            "weight": 8,
+            "rawValue": 0,
+            "weightedScore": 0,
+            "evidenceRefs": [],
+            "explanationCode": "local_ownership:unknown"
+          },
+          {
+            "factor": "dlsite_demand",
+            "weight": 20,
+            "rawValue": 0.5,
+            "weightedScore": 10,
+            "evidenceRefs": [
+              "dlsite:RJOPP005"
+            ],
+            "explanationCode": "dlsite_demand:medium:rating_positive"
+          },
+          {
+            "factor": "platform_language_conflict",
+            "weight": -60,
+            "rawValue": 0,
+            "weightedScore": 0,
+            "evidenceRefs": [],
+            "explanationCode": "platform_language_conflict:none"
+          },
+          {
+            "factor": "market_prevalence",
+            "weight": 8,
+            "rawValue": 0.7,
+            "weightedScore": 5.6,
+            "evidenceRefs": [
+              "local_evidence_count:0",
+              "source_id_count:1"
+            ],
+            "explanationCode": "market_prevalence:public_only"
+          },
+          {
+            "factor": "adapter_readiness",
+            "weight": 18,
+            "rawValue": 1,
+            "weightedScore": 18,
+            "evidenceRefs": [
+              "kaifuu.tyranoscript"
+            ],
+            "explanationCode": "adapter_readiness:patch_supported"
+          },
+          {
+            "factor": "runtime_evidence_readiness",
+            "weight": 6,
+            "rawValue": 0.7,
+            "weightedScore": 4.2,
+            "evidenceRefs": [
+              "private_local_aggregate_evidence_count:0",
+              "public_fixture_evidence_count:1"
+            ],
+            "explanationCode": "runtime_evidence_readiness:public_fixture"
+          },
+          {
+            "factor": "dlsite_work_type",
+            "weight": 0,
+            "rawValue": 0.5,
+            "weightedScore": 0,
+            "evidenceRefs": [
+              "work_type:ADV"
+            ],
+            "explanationCode": "dlsite_work_type:game"
+          },
+          {
+            "factor": "existing_translation_status",
+            "weight": -20,
+            "rawValue": 0.25,
+            "weightedScore": -5,
+            "evidenceRefs": [
+              "translation_status:en-US:fan_partial"
+            ],
+            "explanationCode": "existing_translation_status:fan_partial"
+          },
+          {
+            "factor": "benchmark_usefulness",
+            "weight": 10,
+            "rawValue": 0.6,
+            "weightedScore": 6,
+            "evidenceRefs": [
+              "demand_bucket:medium",
+              "pool:fan_partial"
+            ],
+            "explanationCode": "benchmark_usefulness:medium"
+          },
+          {
+            "factor": "unknown_evidence",
+            "weight": 0,
+            "rawValue": 0,
+            "weightedScore": 0,
+            "evidenceRefs": [],
+            "explanationCode": "unknown_evidence:none"
+          }
+        ],
+        "explanationCodes": [
+          "translation_completeness:fan_partial",
+          "local_ownership:unknown",
+          "dlsite_demand:medium:rating_positive",
+          "platform_language_conflict:none",
+          "market_prevalence:public_only",
+          "adapter_readiness:patch_supported",
+          "runtime_evidence_readiness:public_fixture",
+          "dlsite_work_type:game",
+          "existing_translation_status:fan_partial",
+          "benchmark_usefulness:medium",
+          "unknown_evidence:none"
+        ],
+        "provenance": [
+          {
+            "catalogSource": "dlsite",
+            "sourceId": "RJOPP005",
+            "sourceRecordKind": "recorded_fixture",
+            "sourceVersion": "catalog-opportunity-public-fixture-v1",
+            "fixtureId": "catalog-opportunities/fixture.json",
+            "redactionClass": "public_metadata"
+          }
+        ],
+        "demotions": []
+      },
+      {
+        "rank": 8,
+        "workId": "019ed161-0000-7000-8000-000000000108",
+        "canonicalTitle": "Opportunity MV MZ MTL-only low demand",
+        "originalLanguage": "ja-JP",
+        "sourceIds": [
+          {
+            "catalogSource": "dlsite",
+            "sourceId": "RJOPP008",
+            "externalIdKind": "store_product"
+          }
+        ],
+        "engineName": "rpg-maker-mv-mz",
+        "adapterId": "kaifuu.rpg-maker-mv-mz",
+        "readiness": {
+          "adapterId": "kaifuu.rpg-maker-mv-mz",
+          "identify": "supported",
+          "inventory": "supported",
+          "extract": "supported",
+          "patch": "supported",
+          "helper": "unknown",
+          "runtime": "supported"
+        },
+        "runtimeEvidenceReadiness": {
+          "status": "public_and_aggregate",
+          "publicFixtureEvidenceCount": 1,
+          "privateLocalAggregateEvidenceCount": 1
+        },
+        "completenessPool": "mtl_only",
+        "translationStatuses": [
+          {
+            "language": "en-US",
+            "status": "mtl",
+            "confidence": "high",
+            "statusScope": "work",
+            "platform": null
+          }
+        ],
+        "demandFacts": {
+          "demandBucket": "low",
+          "dlCount": 4200,
+          "ratingAverage": 4.01,
+          "ratingCount": 118,
+          "wishlistCount": 720,
+          "bestRank": 140,
+          "workType": "RPG"
+        },
+        "localOwnership": "not_owned",
+        "localEvidenceCount": 1,
+        "marketPrevalence": "public_and_local_aggregate",
+        "decision": "candidate",
+        "score": 55,
+        "factorBreakdown": [
+          {
+            "factor": "translation_completeness",
+            "weight": 30,
+            "rawValue": 0.75,
+            "weightedScore": 22.5,
+            "evidenceRefs": [
+              "translation_status:en-US:mtl"
+            ],
+            "explanationCode": "translation_completeness:mtl_only"
+          },
+          {
+            "factor": "local_ownership",
+            "weight": 8,
+            "rawValue": -0.5,
+            "weightedScore": -4,
+            "evidenceRefs": [
+              "local_evidence_count:1"
+            ],
+            "explanationCode": "local_ownership:not_owned"
+          },
+          {
+            "factor": "dlsite_demand",
+            "weight": 20,
+            "rawValue": 0.2,
+            "weightedScore": 4,
+            "evidenceRefs": [
+              "dlsite:RJOPP008"
+            ],
+            "explanationCode": "dlsite_demand:low:rating_positive"
+          },
+          {
+            "factor": "platform_language_conflict",
+            "weight": -60,
+            "rawValue": 0,
+            "weightedScore": 0,
+            "evidenceRefs": [],
+            "explanationCode": "platform_language_conflict:none"
+          },
+          {
+            "factor": "market_prevalence",
+            "weight": 8,
+            "rawValue": 1,
+            "weightedScore": 8,
+            "evidenceRefs": [
+              "local_evidence_count:1",
+              "source_id_count:1"
+            ],
+            "explanationCode": "market_prevalence:public_and_local_aggregate"
+          },
+          {
+            "factor": "adapter_readiness",
+            "weight": 18,
+            "rawValue": 1,
+            "weightedScore": 18,
+            "evidenceRefs": [
+              "kaifuu.rpg-maker-mv-mz"
+            ],
+            "explanationCode": "adapter_readiness:patch_supported"
+          },
+          {
+            "factor": "runtime_evidence_readiness",
+            "weight": 6,
+            "rawValue": 1,
+            "weightedScore": 6,
+            "evidenceRefs": [
+              "private_local_aggregate_evidence_count:1",
+              "public_fixture_evidence_count:1"
+            ],
+            "explanationCode": "runtime_evidence_readiness:public_and_aggregate"
+          },
+          {
+            "factor": "dlsite_work_type",
+            "weight": 0,
+            "rawValue": 1,
+            "weightedScore": 0,
+            "evidenceRefs": [
+              "work_type:RPG"
+            ],
+            "explanationCode": "dlsite_work_type:rpg"
+          },
+          {
+            "factor": "existing_translation_status",
+            "weight": -20,
+            "rawValue": 0.1,
+            "weightedScore": -2,
+            "evidenceRefs": [
+              "translation_status:en-US:mtl"
+            ],
+            "explanationCode": "existing_translation_status:mtl"
+          },
+          {
+            "factor": "benchmark_usefulness",
+            "weight": 10,
+            "rawValue": 0.25,
+            "weightedScore": 2.5,
+            "evidenceRefs": [
+              "demand_bucket:low",
+              "pool:mtl_only"
+            ],
+            "explanationCode": "benchmark_usefulness:low"
+          },
+          {
+            "factor": "unknown_evidence",
+            "weight": 0,
+            "rawValue": 0,
+            "weightedScore": 0,
+            "evidenceRefs": [],
+            "explanationCode": "unknown_evidence:none"
+          }
+        ],
+        "explanationCodes": [
+          "translation_completeness:mtl_only",
+          "local_ownership:not_owned",
+          "dlsite_demand:low:rating_positive",
+          "platform_language_conflict:none",
+          "market_prevalence:public_and_local_aggregate",
+          "adapter_readiness:patch_supported",
+          "runtime_evidence_readiness:public_and_aggregate",
+          "dlsite_work_type:rpg",
+          "existing_translation_status:mtl",
+          "benchmark_usefulness:low",
+          "unknown_evidence:none"
+        ],
+        "provenance": [
+          {
+            "catalogSource": "dlsite",
+            "sourceId": "RJOPP008",
             "sourceRecordKind": "recorded_fixture",
             "sourceVersion": "catalog-opportunity-public-fixture-v1",
             "fixtureId": "catalog-opportunities/fixture.json",
@@ -2223,83 +2607,130 @@
         "localEvidenceCount": 0,
         "marketPrevalence": "public_only",
         "decision": "candidate",
-        "score": 19,
+        "score": 33.4,
         "factorBreakdown": [
           {
             "factor": "translation_completeness",
-            "rawValue": "fan_partial",
-            "weight": 16,
-            "weightedScore": 16,
+            "weight": 30,
+            "rawValue": 0.65,
+            "weightedScore": 19.5,
             "evidenceRefs": [
               "translation_status:en-US:fan_partial"
             ],
-            "explanationCode": "pool:fan_partial"
+            "explanationCode": "translation_completeness:fan_partial"
           },
           {
             "factor": "local_ownership",
-            "rawValue": "unknown",
-            "weight": 0,
+            "weight": 8,
+            "rawValue": 0,
             "weightedScore": 0,
             "evidenceRefs": [],
             "explanationCode": "local_ownership:unknown"
           },
           {
             "factor": "dlsite_demand",
-            "rawValue": "low",
-            "weight": 3,
+            "weight": 20,
+            "rawValue": 0.15,
             "weightedScore": 3,
             "evidenceRefs": [
               "dlsite:RJOPP009"
             ],
-            "explanationCode": "demand_bucket:low"
+            "explanationCode": "dlsite_demand:low:rating_neutral"
+          },
+          {
+            "factor": "platform_language_conflict",
+            "weight": -60,
+            "rawValue": 0,
+            "weightedScore": 0,
+            "evidenceRefs": [],
+            "explanationCode": "platform_language_conflict:none"
           },
           {
             "factor": "market_prevalence",
-            "rawValue": "niche",
-            "weight": 1,
-            "weightedScore": 1,
+            "weight": 8,
+            "rawValue": 0.7,
+            "weightedScore": 5.6,
             "evidenceRefs": [
-              "market_prevalence:niche"
+              "local_evidence_count:0",
+              "source_id_count:1"
             ],
-            "explanationCode": "market_prevalence:niche"
+            "explanationCode": "market_prevalence:public_only"
           },
           {
             "factor": "adapter_readiness",
-            "rawValue": "unknown",
-            "weight": -4,
-            "weightedScore": -4,
+            "weight": 18,
+            "rawValue": 0.2,
+            "weightedScore": 3.6,
             "evidenceRefs": [
-              "public:unity-capability-placeholder"
+              "kaifuu.unity"
             ],
-            "explanationCode": "adapter_readiness:unknown"
+            "explanationCode": "adapter_readiness:identify_supported"
           },
           {
             "factor": "runtime_evidence_readiness",
-            "rawValue": "unknown",
+            "weight": 6,
+            "rawValue": 0.7,
+            "weightedScore": 4.2,
+            "evidenceRefs": [
+              "private_local_aggregate_evidence_count:0",
+              "public_fixture_evidence_count:1"
+            ],
+            "explanationCode": "runtime_evidence_readiness:public_fixture"
+          },
+          {
+            "factor": "dlsite_work_type",
             "weight": 0,
+            "rawValue": 0.5,
             "weightedScore": 0,
             "evidenceRefs": [
-              "runtime:unknown"
+              "work_type:SLG"
             ],
-            "explanationCode": "runtime_readiness:unknown"
+            "explanationCode": "dlsite_work_type:game"
+          },
+          {
+            "factor": "existing_translation_status",
+            "weight": -20,
+            "rawValue": 0.25,
+            "weightedScore": -5,
+            "evidenceRefs": [
+              "translation_status:en-US:fan_partial"
+            ],
+            "explanationCode": "existing_translation_status:fan_partial"
           },
           {
             "factor": "benchmark_usefulness",
-            "rawValue": "engine_gap_coverage",
-            "weight": 3,
-            "weightedScore": 3,
+            "weight": 10,
+            "rawValue": 0.25,
+            "weightedScore": 2.5,
             "evidenceRefs": [
-              "fixture:catalog-opportunities-catalog-061"
+              "demand_bucket:low",
+              "pool:fan_partial"
             ],
-            "explanationCode": "benchmark_usefulness:engine_gap_coverage"
+            "explanationCode": "benchmark_usefulness:low"
+          },
+          {
+            "factor": "unknown_evidence",
+            "weight": 0,
+            "rawValue": 1,
+            "weightedScore": 0,
+            "evidenceRefs": [
+              "public_evidence:incomplete"
+            ],
+            "explanationCode": "unknown_evidence:present"
           }
         ],
         "explanationCodes": [
-          "pool:fan_partial",
+          "translation_completeness:fan_partial",
           "local_ownership:unknown",
-          "demand_bucket:low",
-          "adapter_readiness:unknown",
-          "runtime_readiness:unknown"
+          "dlsite_demand:low:rating_neutral",
+          "platform_language_conflict:none",
+          "market_prevalence:public_only",
+          "adapter_readiness:identify_supported",
+          "runtime_evidence_readiness:public_fixture",
+          "dlsite_work_type:game",
+          "existing_translation_status:fan_partial",
+          "benchmark_usefulness:low",
+          "unknown_evidence:present"
         ],
         "provenance": [
           {
@@ -2319,7 +2750,7 @@
     "schemaVersion": "catalog.opportunity_ranking.v0.1",
     "targetLanguage": "en-US",
     "generatedAt": "2026-06-27T16:10:00.000Z",
-    "weightsVersion": "catalog-opportunity-ranking-public-fixture-v0.1",
+    "weightsVersion": "catalog.opportunity_ranking.weights.v0.1",
     "rows": [
       {
         "rank": 1,
@@ -2372,7 +2803,7 @@
         "localEvidenceCount": 5,
         "marketPrevalence": "public_and_local_aggregate",
         "decision": "candidate",
-        "score": 94,
+        "score": 100,
         "provenance": [
           {
             "catalogSource": "dlsite",
@@ -2383,7 +2814,131 @@
             "redactionClass": "public_metadata"
           }
         ],
-        "demotions": []
+        "demotions": [],
+        "factorBreakdown": [
+          {
+            "factor": "translation_completeness",
+            "weight": 30,
+            "rawValue": 1,
+            "weightedScore": 30,
+            "evidenceRefs": [
+              "translation_status:en-US:none"
+            ],
+            "explanationCode": "translation_completeness:no_english"
+          },
+          {
+            "factor": "local_ownership",
+            "weight": 8,
+            "rawValue": 1,
+            "weightedScore": 8,
+            "evidenceRefs": [
+              "local_evidence_count:5"
+            ],
+            "explanationCode": "local_ownership:owned"
+          },
+          {
+            "factor": "dlsite_demand",
+            "weight": 20,
+            "rawValue": 1,
+            "weightedScore": 20,
+            "evidenceRefs": [
+              "dlsite:RJOPP001"
+            ],
+            "explanationCode": "dlsite_demand:very_high:rating_high"
+          },
+          {
+            "factor": "platform_language_conflict",
+            "weight": -60,
+            "rawValue": 0,
+            "weightedScore": 0,
+            "evidenceRefs": [],
+            "explanationCode": "platform_language_conflict:none"
+          },
+          {
+            "factor": "market_prevalence",
+            "weight": 8,
+            "rawValue": 1,
+            "weightedScore": 8,
+            "evidenceRefs": [
+              "local_evidence_count:5",
+              "source_id_count:1"
+            ],
+            "explanationCode": "market_prevalence:public_and_local_aggregate"
+          },
+          {
+            "factor": "adapter_readiness",
+            "weight": 18,
+            "rawValue": 1,
+            "weightedScore": 18,
+            "evidenceRefs": [
+              "kaifuu.rpg-maker-mv-mz"
+            ],
+            "explanationCode": "adapter_readiness:patch_supported"
+          },
+          {
+            "factor": "runtime_evidence_readiness",
+            "weight": 6,
+            "rawValue": 1,
+            "weightedScore": 6,
+            "evidenceRefs": [
+              "private_local_aggregate_evidence_count:1",
+              "public_fixture_evidence_count:1"
+            ],
+            "explanationCode": "runtime_evidence_readiness:public_and_aggregate"
+          },
+          {
+            "factor": "dlsite_work_type",
+            "weight": 0,
+            "rawValue": 1,
+            "weightedScore": 0,
+            "evidenceRefs": [
+              "work_type:RPG"
+            ],
+            "explanationCode": "dlsite_work_type:rpg"
+          },
+          {
+            "factor": "existing_translation_status",
+            "weight": -20,
+            "rawValue": 0,
+            "weightedScore": 0,
+            "evidenceRefs": [
+              "translation_status:en-US:none"
+            ],
+            "explanationCode": "existing_translation_status:none"
+          },
+          {
+            "factor": "benchmark_usefulness",
+            "weight": 10,
+            "rawValue": 1,
+            "weightedScore": 10,
+            "evidenceRefs": [
+              "demand_bucket:very_high",
+              "pool:no_english"
+            ],
+            "explanationCode": "benchmark_usefulness:high"
+          },
+          {
+            "factor": "unknown_evidence",
+            "weight": 0,
+            "rawValue": 0,
+            "weightedScore": 0,
+            "evidenceRefs": [],
+            "explanationCode": "unknown_evidence:none"
+          }
+        ],
+        "explanationCodes": [
+          "translation_completeness:no_english",
+          "local_ownership:owned",
+          "dlsite_demand:very_high:rating_high",
+          "platform_language_conflict:none",
+          "market_prevalence:public_and_local_aggregate",
+          "adapter_readiness:patch_supported",
+          "runtime_evidence_readiness:public_and_aggregate",
+          "dlsite_work_type:rpg",
+          "existing_translation_status:none",
+          "benchmark_usefulness:high",
+          "unknown_evidence:none"
+        ]
       },
       {
         "rank": 2,
@@ -2436,7 +2991,7 @@
         "localEvidenceCount": 4,
         "marketPrevalence": "public_and_local_aggregate",
         "decision": "candidate",
-        "score": 79,
+        "score": 89,
         "provenance": [
           {
             "catalogSource": "dlsite",
@@ -2447,7 +3002,131 @@
             "redactionClass": "public_metadata"
           }
         ],
-        "demotions": []
+        "demotions": [],
+        "factorBreakdown": [
+          {
+            "factor": "translation_completeness",
+            "weight": 30,
+            "rawValue": 1,
+            "weightedScore": 30,
+            "evidenceRefs": [
+              "translation_status:en-US:none"
+            ],
+            "explanationCode": "translation_completeness:no_english"
+          },
+          {
+            "factor": "local_ownership",
+            "weight": 8,
+            "rawValue": 0,
+            "weightedScore": 0,
+            "evidenceRefs": [
+              "local_evidence_count:4"
+            ],
+            "explanationCode": "local_ownership:unknown"
+          },
+          {
+            "factor": "dlsite_demand",
+            "weight": 20,
+            "rawValue": 0.85,
+            "weightedScore": 17,
+            "evidenceRefs": [
+              "dlsite:RJOPP002"
+            ],
+            "explanationCode": "dlsite_demand:high:rating_high"
+          },
+          {
+            "factor": "platform_language_conflict",
+            "weight": -60,
+            "rawValue": 0,
+            "weightedScore": 0,
+            "evidenceRefs": [],
+            "explanationCode": "platform_language_conflict:none"
+          },
+          {
+            "factor": "market_prevalence",
+            "weight": 8,
+            "rawValue": 1,
+            "weightedScore": 8,
+            "evidenceRefs": [
+              "local_evidence_count:4",
+              "source_id_count:1"
+            ],
+            "explanationCode": "market_prevalence:public_and_local_aggregate"
+          },
+          {
+            "factor": "adapter_readiness",
+            "weight": 18,
+            "rawValue": 1,
+            "weightedScore": 18,
+            "evidenceRefs": [
+              "kaifuu.kirikiri-xp3"
+            ],
+            "explanationCode": "adapter_readiness:patch_supported"
+          },
+          {
+            "factor": "runtime_evidence_readiness",
+            "weight": 6,
+            "rawValue": 1,
+            "weightedScore": 6,
+            "evidenceRefs": [
+              "private_local_aggregate_evidence_count:1",
+              "public_fixture_evidence_count:1"
+            ],
+            "explanationCode": "runtime_evidence_readiness:public_and_aggregate"
+          },
+          {
+            "factor": "dlsite_work_type",
+            "weight": 0,
+            "rawValue": 0.5,
+            "weightedScore": 0,
+            "evidenceRefs": [
+              "work_type:ADV"
+            ],
+            "explanationCode": "dlsite_work_type:game"
+          },
+          {
+            "factor": "existing_translation_status",
+            "weight": -20,
+            "rawValue": 0,
+            "weightedScore": 0,
+            "evidenceRefs": [
+              "translation_status:en-US:none"
+            ],
+            "explanationCode": "existing_translation_status:none"
+          },
+          {
+            "factor": "benchmark_usefulness",
+            "weight": 10,
+            "rawValue": 1,
+            "weightedScore": 10,
+            "evidenceRefs": [
+              "demand_bucket:high",
+              "pool:no_english"
+            ],
+            "explanationCode": "benchmark_usefulness:high"
+          },
+          {
+            "factor": "unknown_evidence",
+            "weight": 0,
+            "rawValue": 0,
+            "weightedScore": 0,
+            "evidenceRefs": [],
+            "explanationCode": "unknown_evidence:none"
+          }
+        ],
+        "explanationCodes": [
+          "translation_completeness:no_english",
+          "local_ownership:unknown",
+          "dlsite_demand:high:rating_high",
+          "platform_language_conflict:none",
+          "market_prevalence:public_and_local_aggregate",
+          "adapter_readiness:patch_supported",
+          "runtime_evidence_readiness:public_and_aggregate",
+          "dlsite_work_type:game",
+          "existing_translation_status:none",
+          "benchmark_usefulness:high",
+          "unknown_evidence:none"
+        ]
       },
       {
         "rank": 3,
@@ -2500,7 +3179,7 @@
         "localEvidenceCount": 3,
         "marketPrevalence": "public_and_local_aggregate",
         "decision": "candidate",
-        "score": 76,
+        "score": 88,
         "provenance": [
           {
             "catalogSource": "dlsite",
@@ -2511,7 +3190,131 @@
             "redactionClass": "public_metadata"
           }
         ],
-        "demotions": []
+        "demotions": [],
+        "factorBreakdown": [
+          {
+            "factor": "translation_completeness",
+            "weight": 30,
+            "rawValue": 1,
+            "weightedScore": 30,
+            "evidenceRefs": [
+              "translation_status:en-US:none"
+            ],
+            "explanationCode": "translation_completeness:no_english"
+          },
+          {
+            "factor": "local_ownership",
+            "weight": 8,
+            "rawValue": 0,
+            "weightedScore": 0,
+            "evidenceRefs": [
+              "local_evidence_count:3"
+            ],
+            "explanationCode": "local_ownership:unknown"
+          },
+          {
+            "factor": "dlsite_demand",
+            "weight": 20,
+            "rawValue": 0.8,
+            "weightedScore": 16,
+            "evidenceRefs": [
+              "dlsite:RJOPP003"
+            ],
+            "explanationCode": "dlsite_demand:high:rating_positive"
+          },
+          {
+            "factor": "platform_language_conflict",
+            "weight": -60,
+            "rawValue": 0,
+            "weightedScore": 0,
+            "evidenceRefs": [],
+            "explanationCode": "platform_language_conflict:none"
+          },
+          {
+            "factor": "market_prevalence",
+            "weight": 8,
+            "rawValue": 1,
+            "weightedScore": 8,
+            "evidenceRefs": [
+              "local_evidence_count:3",
+              "source_id_count:1"
+            ],
+            "explanationCode": "market_prevalence:public_and_local_aggregate"
+          },
+          {
+            "factor": "adapter_readiness",
+            "weight": 18,
+            "rawValue": 1,
+            "weightedScore": 18,
+            "evidenceRefs": [
+              "kaifuu.wolf-rpg-editor"
+            ],
+            "explanationCode": "adapter_readiness:patch_supported"
+          },
+          {
+            "factor": "runtime_evidence_readiness",
+            "weight": 6,
+            "rawValue": 1,
+            "weightedScore": 6,
+            "evidenceRefs": [
+              "private_local_aggregate_evidence_count:1",
+              "public_fixture_evidence_count:1"
+            ],
+            "explanationCode": "runtime_evidence_readiness:public_and_aggregate"
+          },
+          {
+            "factor": "dlsite_work_type",
+            "weight": 0,
+            "rawValue": 1,
+            "weightedScore": 0,
+            "evidenceRefs": [
+              "work_type:RPG"
+            ],
+            "explanationCode": "dlsite_work_type:rpg"
+          },
+          {
+            "factor": "existing_translation_status",
+            "weight": -20,
+            "rawValue": 0,
+            "weightedScore": 0,
+            "evidenceRefs": [
+              "translation_status:en-US:none"
+            ],
+            "explanationCode": "existing_translation_status:none"
+          },
+          {
+            "factor": "benchmark_usefulness",
+            "weight": 10,
+            "rawValue": 1,
+            "weightedScore": 10,
+            "evidenceRefs": [
+              "demand_bucket:high",
+              "pool:no_english"
+            ],
+            "explanationCode": "benchmark_usefulness:high"
+          },
+          {
+            "factor": "unknown_evidence",
+            "weight": 0,
+            "rawValue": 0,
+            "weightedScore": 0,
+            "evidenceRefs": [],
+            "explanationCode": "unknown_evidence:none"
+          }
+        ],
+        "explanationCodes": [
+          "translation_completeness:no_english",
+          "local_ownership:unknown",
+          "dlsite_demand:high:rating_positive",
+          "platform_language_conflict:none",
+          "market_prevalence:public_and_local_aggregate",
+          "adapter_readiness:patch_supported",
+          "runtime_evidence_readiness:public_and_aggregate",
+          "dlsite_work_type:rpg",
+          "existing_translation_status:none",
+          "benchmark_usefulness:high",
+          "unknown_evidence:none"
+        ]
       },
       {
         "rank": 4,
@@ -2564,7 +3367,7 @@
         "localEvidenceCount": 2,
         "marketPrevalence": "public_and_local_aggregate",
         "decision": "candidate",
-        "score": 61,
+        "score": 78,
         "provenance": [
           {
             "catalogSource": "dlsite",
@@ -2575,138 +3378,134 @@
             "redactionClass": "public_metadata"
           }
         ],
-        "demotions": []
+        "demotions": [],
+        "factorBreakdown": [
+          {
+            "factor": "translation_completeness",
+            "weight": 30,
+            "rawValue": 0.75,
+            "weightedScore": 22.5,
+            "evidenceRefs": [
+              "translation_status:en-US:mtl"
+            ],
+            "explanationCode": "translation_completeness:mtl_only"
+          },
+          {
+            "factor": "local_ownership",
+            "weight": 8,
+            "rawValue": 1,
+            "weightedScore": 8,
+            "evidenceRefs": [
+              "local_evidence_count:2"
+            ],
+            "explanationCode": "local_ownership:owned"
+          },
+          {
+            "factor": "dlsite_demand",
+            "weight": 20,
+            "rawValue": 0.8,
+            "weightedScore": 16,
+            "evidenceRefs": [
+              "dlsite:RJOPP004"
+            ],
+            "explanationCode": "dlsite_demand:high:rating_positive"
+          },
+          {
+            "factor": "platform_language_conflict",
+            "weight": -60,
+            "rawValue": 0,
+            "weightedScore": 0,
+            "evidenceRefs": [],
+            "explanationCode": "platform_language_conflict:none"
+          },
+          {
+            "factor": "market_prevalence",
+            "weight": 8,
+            "rawValue": 1,
+            "weightedScore": 8,
+            "evidenceRefs": [
+              "local_evidence_count:2",
+              "source_id_count:1"
+            ],
+            "explanationCode": "market_prevalence:public_and_local_aggregate"
+          },
+          {
+            "factor": "adapter_readiness",
+            "weight": 18,
+            "rawValue": 0.75,
+            "weightedScore": 13.5,
+            "evidenceRefs": [
+              "kaifuu.rgss3-vx-ace"
+            ],
+            "explanationCode": "adapter_readiness:extract_supported"
+          },
+          {
+            "factor": "runtime_evidence_readiness",
+            "weight": 6,
+            "rawValue": 1,
+            "weightedScore": 6,
+            "evidenceRefs": [
+              "private_local_aggregate_evidence_count:1",
+              "public_fixture_evidence_count:1"
+            ],
+            "explanationCode": "runtime_evidence_readiness:public_and_aggregate"
+          },
+          {
+            "factor": "dlsite_work_type",
+            "weight": 0,
+            "rawValue": 1,
+            "weightedScore": 0,
+            "evidenceRefs": [
+              "work_type:RPG"
+            ],
+            "explanationCode": "dlsite_work_type:rpg"
+          },
+          {
+            "factor": "existing_translation_status",
+            "weight": -20,
+            "rawValue": 0.1,
+            "weightedScore": -2,
+            "evidenceRefs": [
+              "translation_status:en-US:mtl"
+            ],
+            "explanationCode": "existing_translation_status:mtl"
+          },
+          {
+            "factor": "benchmark_usefulness",
+            "weight": 10,
+            "rawValue": 0.6,
+            "weightedScore": 6,
+            "evidenceRefs": [
+              "demand_bucket:high",
+              "pool:mtl_only"
+            ],
+            "explanationCode": "benchmark_usefulness:medium"
+          },
+          {
+            "factor": "unknown_evidence",
+            "weight": 0,
+            "rawValue": 0,
+            "weightedScore": 0,
+            "evidenceRefs": [],
+            "explanationCode": "unknown_evidence:none"
+          }
+        ],
+        "explanationCodes": [
+          "translation_completeness:mtl_only",
+          "local_ownership:owned",
+          "dlsite_demand:high:rating_positive",
+          "platform_language_conflict:none",
+          "market_prevalence:public_and_local_aggregate",
+          "adapter_readiness:extract_supported",
+          "runtime_evidence_readiness:public_and_aggregate",
+          "dlsite_work_type:rpg",
+          "existing_translation_status:mtl",
+          "benchmark_usefulness:medium",
+          "unknown_evidence:none"
+        ]
       },
       {
         "rank": 5,
-        "workId": "019ed161-0000-7000-8000-000000000108",
-        "canonicalTitle": "Opportunity MV MZ MTL-only low demand",
-        "originalLanguage": "ja-JP",
-        "sourceIds": [
-          {
-            "catalogSource": "dlsite",
-            "sourceId": "RJOPP008",
-            "externalIdKind": "store_product"
-          }
-        ],
-        "engineName": "rpg-maker-mv-mz",
-        "adapterId": "kaifuu.rpg-maker-mv-mz",
-        "readiness": {
-          "adapterId": "kaifuu.rpg-maker-mv-mz",
-          "identify": "supported",
-          "inventory": "supported",
-          "extract": "supported",
-          "patch": "supported",
-          "helper": "unknown",
-          "runtime": "supported"
-        },
-        "runtimeEvidenceReadiness": {
-          "status": "public_and_aggregate",
-          "publicFixtureEvidenceCount": 1,
-          "privateLocalAggregateEvidenceCount": 1
-        },
-        "completenessPool": "mtl_only",
-        "translationStatuses": [
-          {
-            "language": "en-US",
-            "status": "mtl",
-            "confidence": "high",
-            "statusScope": "work",
-            "platform": null
-          }
-        ],
-        "demandFacts": {
-          "demandBucket": "low",
-          "dlCount": 4200,
-          "ratingAverage": 4.01,
-          "ratingCount": 118,
-          "wishlistCount": 720,
-          "bestRank": 140,
-          "workType": "RPG"
-        },
-        "localOwnership": "not_owned",
-        "localEvidenceCount": 1,
-        "marketPrevalence": "public_and_local_aggregate",
-        "decision": "candidate",
-        "score": 59,
-        "provenance": [
-          {
-            "catalogSource": "dlsite",
-            "sourceId": "RJOPP008",
-            "sourceRecordKind": "recorded_fixture",
-            "sourceVersion": "catalog-opportunity-public-fixture-v1",
-            "fixtureId": "catalog-opportunities/fixture.json",
-            "redactionClass": "public_metadata"
-          }
-        ],
-        "demotions": []
-      },
-      {
-        "rank": 6,
-        "workId": "019ed161-0000-7000-8000-000000000105",
-        "canonicalTitle": "Opportunity TyranoScript fan partial",
-        "originalLanguage": "ja-JP",
-        "sourceIds": [
-          {
-            "catalogSource": "dlsite",
-            "sourceId": "RJOPP005",
-            "externalIdKind": "store_product"
-          }
-        ],
-        "engineName": "tyranoscript",
-        "adapterId": "kaifuu.tyranoscript",
-        "readiness": {
-          "adapterId": "kaifuu.tyranoscript",
-          "identify": "supported",
-          "inventory": "supported",
-          "extract": "supported",
-          "patch": "supported",
-          "helper": "unknown",
-          "runtime": "supported"
-        },
-        "runtimeEvidenceReadiness": {
-          "status": "public_fixture",
-          "publicFixtureEvidenceCount": 1,
-          "privateLocalAggregateEvidenceCount": 0
-        },
-        "completenessPool": "fan_partial",
-        "translationStatuses": [
-          {
-            "language": "en-US",
-            "status": "fan_partial",
-            "confidence": "medium",
-            "statusScope": "work",
-            "platform": null
-          }
-        ],
-        "demandFacts": {
-          "demandBucket": "medium",
-          "dlCount": 18320,
-          "ratingAverage": 4.28,
-          "ratingCount": 520,
-          "wishlistCount": 3320,
-          "bestRank": 41,
-          "workType": "ADV"
-        },
-        "localOwnership": "unknown",
-        "localEvidenceCount": 0,
-        "marketPrevalence": "public_only",
-        "decision": "candidate",
-        "score": 59,
-        "provenance": [
-          {
-            "catalogSource": "dlsite",
-            "sourceId": "RJOPP005",
-            "sourceRecordKind": "recorded_fixture",
-            "sourceVersion": "catalog-opportunity-public-fixture-v1",
-            "fixtureId": "catalog-opportunities/fixture.json",
-            "redactionClass": "public_metadata"
-          }
-        ],
-        "demotions": []
-      },
-      {
-        "rank": 7,
         "workId": "019ed161-0000-7000-8000-000000000106",
         "canonicalTitle": "Opportunity Siglus no-English aggregate",
         "originalLanguage": "ja-JP",
@@ -2756,7 +3555,7 @@
         "localEvidenceCount": 2,
         "marketPrevalence": "public_and_local_aggregate",
         "decision": "candidate",
-        "score": 56,
+        "score": 77.5,
         "provenance": [
           {
             "catalogSource": "dlsite",
@@ -2767,10 +3566,134 @@
             "redactionClass": "public_metadata"
           }
         ],
-        "demotions": []
+        "demotions": [],
+        "factorBreakdown": [
+          {
+            "factor": "translation_completeness",
+            "weight": 30,
+            "rawValue": 1,
+            "weightedScore": 30,
+            "evidenceRefs": [
+              "translation_status:en-US:none"
+            ],
+            "explanationCode": "translation_completeness:no_english"
+          },
+          {
+            "factor": "local_ownership",
+            "weight": 8,
+            "rawValue": 0,
+            "weightedScore": 0,
+            "evidenceRefs": [
+              "local_evidence_count:2"
+            ],
+            "explanationCode": "local_ownership:unknown"
+          },
+          {
+            "factor": "dlsite_demand",
+            "weight": 20,
+            "rawValue": 0.5,
+            "weightedScore": 10,
+            "evidenceRefs": [
+              "dlsite:RJOPP006"
+            ],
+            "explanationCode": "dlsite_demand:medium:rating_positive"
+          },
+          {
+            "factor": "platform_language_conflict",
+            "weight": -60,
+            "rawValue": 0,
+            "weightedScore": 0,
+            "evidenceRefs": [],
+            "explanationCode": "platform_language_conflict:none"
+          },
+          {
+            "factor": "market_prevalence",
+            "weight": 8,
+            "rawValue": 1,
+            "weightedScore": 8,
+            "evidenceRefs": [
+              "local_evidence_count:2",
+              "source_id_count:1"
+            ],
+            "explanationCode": "market_prevalence:public_and_local_aggregate"
+          },
+          {
+            "factor": "adapter_readiness",
+            "weight": 18,
+            "rawValue": 0.75,
+            "weightedScore": 13.5,
+            "evidenceRefs": [
+              "kaifuu.siglus"
+            ],
+            "explanationCode": "adapter_readiness:extract_supported"
+          },
+          {
+            "factor": "runtime_evidence_readiness",
+            "weight": 6,
+            "rawValue": 1,
+            "weightedScore": 6,
+            "evidenceRefs": [
+              "private_local_aggregate_evidence_count:1",
+              "public_fixture_evidence_count:1"
+            ],
+            "explanationCode": "runtime_evidence_readiness:public_and_aggregate"
+          },
+          {
+            "factor": "dlsite_work_type",
+            "weight": 0,
+            "rawValue": 0.5,
+            "weightedScore": 0,
+            "evidenceRefs": [
+              "work_type:ADV"
+            ],
+            "explanationCode": "dlsite_work_type:game"
+          },
+          {
+            "factor": "existing_translation_status",
+            "weight": -20,
+            "rawValue": 0,
+            "weightedScore": 0,
+            "evidenceRefs": [
+              "translation_status:en-US:none"
+            ],
+            "explanationCode": "existing_translation_status:none"
+          },
+          {
+            "factor": "benchmark_usefulness",
+            "weight": 10,
+            "rawValue": 1,
+            "weightedScore": 10,
+            "evidenceRefs": [
+              "demand_bucket:medium",
+              "pool:no_english"
+            ],
+            "explanationCode": "benchmark_usefulness:high"
+          },
+          {
+            "factor": "unknown_evidence",
+            "weight": 0,
+            "rawValue": 0,
+            "weightedScore": 0,
+            "evidenceRefs": [],
+            "explanationCode": "unknown_evidence:none"
+          }
+        ],
+        "explanationCodes": [
+          "translation_completeness:no_english",
+          "local_ownership:unknown",
+          "dlsite_demand:medium:rating_positive",
+          "platform_language_conflict:none",
+          "market_prevalence:public_and_local_aggregate",
+          "adapter_readiness:extract_supported",
+          "runtime_evidence_readiness:public_and_aggregate",
+          "dlsite_work_type:game",
+          "existing_translation_status:none",
+          "benchmark_usefulness:high",
+          "unknown_evidence:none"
+        ]
       },
       {
-        "rank": 8,
+        "rank": 6,
         "workId": "019ed161-0000-7000-8000-000000000107",
         "canonicalTitle": "Opportunity Unity no-English unknown adapter",
         "originalLanguage": "ja-JP",
@@ -2820,7 +3743,7 @@
         "localEvidenceCount": 0,
         "marketPrevalence": "public_only",
         "decision": "candidate",
-        "score": 48,
+        "score": 69.4,
         "provenance": [
           {
             "catalogSource": "dlsite",
@@ -2831,7 +3754,505 @@
             "redactionClass": "public_metadata"
           }
         ],
-        "demotions": []
+        "demotions": [],
+        "factorBreakdown": [
+          {
+            "factor": "translation_completeness",
+            "weight": 30,
+            "rawValue": 1,
+            "weightedScore": 30,
+            "evidenceRefs": [
+              "translation_status:en-US:none"
+            ],
+            "explanationCode": "translation_completeness:no_english"
+          },
+          {
+            "factor": "local_ownership",
+            "weight": 8,
+            "rawValue": 0,
+            "weightedScore": 0,
+            "evidenceRefs": [],
+            "explanationCode": "local_ownership:unknown"
+          },
+          {
+            "factor": "dlsite_demand",
+            "weight": 20,
+            "rawValue": 0.8,
+            "weightedScore": 16,
+            "evidenceRefs": [
+              "dlsite:RJOPP007"
+            ],
+            "explanationCode": "dlsite_demand:high:rating_positive"
+          },
+          {
+            "factor": "platform_language_conflict",
+            "weight": -60,
+            "rawValue": 0,
+            "weightedScore": 0,
+            "evidenceRefs": [],
+            "explanationCode": "platform_language_conflict:none"
+          },
+          {
+            "factor": "market_prevalence",
+            "weight": 8,
+            "rawValue": 0.7,
+            "weightedScore": 5.6,
+            "evidenceRefs": [
+              "local_evidence_count:0",
+              "source_id_count:1"
+            ],
+            "explanationCode": "market_prevalence:public_only"
+          },
+          {
+            "factor": "adapter_readiness",
+            "weight": 18,
+            "rawValue": 0.2,
+            "weightedScore": 3.6,
+            "evidenceRefs": [
+              "kaifuu.unity"
+            ],
+            "explanationCode": "adapter_readiness:identify_supported"
+          },
+          {
+            "factor": "runtime_evidence_readiness",
+            "weight": 6,
+            "rawValue": 0.7,
+            "weightedScore": 4.2,
+            "evidenceRefs": [
+              "private_local_aggregate_evidence_count:0",
+              "public_fixture_evidence_count:1"
+            ],
+            "explanationCode": "runtime_evidence_readiness:public_fixture"
+          },
+          {
+            "factor": "dlsite_work_type",
+            "weight": 0,
+            "rawValue": 0.5,
+            "weightedScore": 0,
+            "evidenceRefs": [
+              "work_type:SLG"
+            ],
+            "explanationCode": "dlsite_work_type:game"
+          },
+          {
+            "factor": "existing_translation_status",
+            "weight": -20,
+            "rawValue": 0,
+            "weightedScore": 0,
+            "evidenceRefs": [
+              "translation_status:en-US:none"
+            ],
+            "explanationCode": "existing_translation_status:none"
+          },
+          {
+            "factor": "benchmark_usefulness",
+            "weight": 10,
+            "rawValue": 1,
+            "weightedScore": 10,
+            "evidenceRefs": [
+              "demand_bucket:high",
+              "pool:no_english"
+            ],
+            "explanationCode": "benchmark_usefulness:high"
+          },
+          {
+            "factor": "unknown_evidence",
+            "weight": 0,
+            "rawValue": 1,
+            "weightedScore": 0,
+            "evidenceRefs": [
+              "public_evidence:incomplete"
+            ],
+            "explanationCode": "unknown_evidence:present"
+          }
+        ],
+        "explanationCodes": [
+          "translation_completeness:no_english",
+          "local_ownership:unknown",
+          "dlsite_demand:high:rating_positive",
+          "platform_language_conflict:none",
+          "market_prevalence:public_only",
+          "adapter_readiness:identify_supported",
+          "runtime_evidence_readiness:public_fixture",
+          "dlsite_work_type:game",
+          "existing_translation_status:none",
+          "benchmark_usefulness:high",
+          "unknown_evidence:present"
+        ]
+      },
+      {
+        "rank": 7,
+        "workId": "019ed161-0000-7000-8000-000000000105",
+        "canonicalTitle": "Opportunity TyranoScript fan partial",
+        "originalLanguage": "ja-JP",
+        "sourceIds": [
+          {
+            "catalogSource": "dlsite",
+            "sourceId": "RJOPP005",
+            "externalIdKind": "store_product"
+          }
+        ],
+        "engineName": "tyranoscript",
+        "adapterId": "kaifuu.tyranoscript",
+        "readiness": {
+          "adapterId": "kaifuu.tyranoscript",
+          "identify": "supported",
+          "inventory": "supported",
+          "extract": "supported",
+          "patch": "supported",
+          "helper": "unknown",
+          "runtime": "supported"
+        },
+        "runtimeEvidenceReadiness": {
+          "status": "public_fixture",
+          "publicFixtureEvidenceCount": 1,
+          "privateLocalAggregateEvidenceCount": 0
+        },
+        "completenessPool": "fan_partial",
+        "translationStatuses": [
+          {
+            "language": "en-US",
+            "status": "fan_partial",
+            "confidence": "medium",
+            "statusScope": "work",
+            "platform": null
+          }
+        ],
+        "demandFacts": {
+          "demandBucket": "medium",
+          "dlCount": 18320,
+          "ratingAverage": 4.28,
+          "ratingCount": 520,
+          "wishlistCount": 3320,
+          "bestRank": 41,
+          "workType": "ADV"
+        },
+        "localOwnership": "unknown",
+        "localEvidenceCount": 0,
+        "marketPrevalence": "public_only",
+        "decision": "candidate",
+        "score": 58.3,
+        "provenance": [
+          {
+            "catalogSource": "dlsite",
+            "sourceId": "RJOPP005",
+            "sourceRecordKind": "recorded_fixture",
+            "sourceVersion": "catalog-opportunity-public-fixture-v1",
+            "fixtureId": "catalog-opportunities/fixture.json",
+            "redactionClass": "public_metadata"
+          }
+        ],
+        "demotions": [],
+        "factorBreakdown": [
+          {
+            "factor": "translation_completeness",
+            "weight": 30,
+            "rawValue": 0.65,
+            "weightedScore": 19.5,
+            "evidenceRefs": [
+              "translation_status:en-US:fan_partial"
+            ],
+            "explanationCode": "translation_completeness:fan_partial"
+          },
+          {
+            "factor": "local_ownership",
+            "weight": 8,
+            "rawValue": 0,
+            "weightedScore": 0,
+            "evidenceRefs": [],
+            "explanationCode": "local_ownership:unknown"
+          },
+          {
+            "factor": "dlsite_demand",
+            "weight": 20,
+            "rawValue": 0.5,
+            "weightedScore": 10,
+            "evidenceRefs": [
+              "dlsite:RJOPP005"
+            ],
+            "explanationCode": "dlsite_demand:medium:rating_positive"
+          },
+          {
+            "factor": "platform_language_conflict",
+            "weight": -60,
+            "rawValue": 0,
+            "weightedScore": 0,
+            "evidenceRefs": [],
+            "explanationCode": "platform_language_conflict:none"
+          },
+          {
+            "factor": "market_prevalence",
+            "weight": 8,
+            "rawValue": 0.7,
+            "weightedScore": 5.6,
+            "evidenceRefs": [
+              "local_evidence_count:0",
+              "source_id_count:1"
+            ],
+            "explanationCode": "market_prevalence:public_only"
+          },
+          {
+            "factor": "adapter_readiness",
+            "weight": 18,
+            "rawValue": 1,
+            "weightedScore": 18,
+            "evidenceRefs": [
+              "kaifuu.tyranoscript"
+            ],
+            "explanationCode": "adapter_readiness:patch_supported"
+          },
+          {
+            "factor": "runtime_evidence_readiness",
+            "weight": 6,
+            "rawValue": 0.7,
+            "weightedScore": 4.2,
+            "evidenceRefs": [
+              "private_local_aggregate_evidence_count:0",
+              "public_fixture_evidence_count:1"
+            ],
+            "explanationCode": "runtime_evidence_readiness:public_fixture"
+          },
+          {
+            "factor": "dlsite_work_type",
+            "weight": 0,
+            "rawValue": 0.5,
+            "weightedScore": 0,
+            "evidenceRefs": [
+              "work_type:ADV"
+            ],
+            "explanationCode": "dlsite_work_type:game"
+          },
+          {
+            "factor": "existing_translation_status",
+            "weight": -20,
+            "rawValue": 0.25,
+            "weightedScore": -5,
+            "evidenceRefs": [
+              "translation_status:en-US:fan_partial"
+            ],
+            "explanationCode": "existing_translation_status:fan_partial"
+          },
+          {
+            "factor": "benchmark_usefulness",
+            "weight": 10,
+            "rawValue": 0.6,
+            "weightedScore": 6,
+            "evidenceRefs": [
+              "demand_bucket:medium",
+              "pool:fan_partial"
+            ],
+            "explanationCode": "benchmark_usefulness:medium"
+          },
+          {
+            "factor": "unknown_evidence",
+            "weight": 0,
+            "rawValue": 0,
+            "weightedScore": 0,
+            "evidenceRefs": [],
+            "explanationCode": "unknown_evidence:none"
+          }
+        ],
+        "explanationCodes": [
+          "translation_completeness:fan_partial",
+          "local_ownership:unknown",
+          "dlsite_demand:medium:rating_positive",
+          "platform_language_conflict:none",
+          "market_prevalence:public_only",
+          "adapter_readiness:patch_supported",
+          "runtime_evidence_readiness:public_fixture",
+          "dlsite_work_type:game",
+          "existing_translation_status:fan_partial",
+          "benchmark_usefulness:medium",
+          "unknown_evidence:none"
+        ]
+      },
+      {
+        "rank": 8,
+        "workId": "019ed161-0000-7000-8000-000000000108",
+        "canonicalTitle": "Opportunity MV MZ MTL-only low demand",
+        "originalLanguage": "ja-JP",
+        "sourceIds": [
+          {
+            "catalogSource": "dlsite",
+            "sourceId": "RJOPP008",
+            "externalIdKind": "store_product"
+          }
+        ],
+        "engineName": "rpg-maker-mv-mz",
+        "adapterId": "kaifuu.rpg-maker-mv-mz",
+        "readiness": {
+          "adapterId": "kaifuu.rpg-maker-mv-mz",
+          "identify": "supported",
+          "inventory": "supported",
+          "extract": "supported",
+          "patch": "supported",
+          "helper": "unknown",
+          "runtime": "supported"
+        },
+        "runtimeEvidenceReadiness": {
+          "status": "public_and_aggregate",
+          "publicFixtureEvidenceCount": 1,
+          "privateLocalAggregateEvidenceCount": 1
+        },
+        "completenessPool": "mtl_only",
+        "translationStatuses": [
+          {
+            "language": "en-US",
+            "status": "mtl",
+            "confidence": "high",
+            "statusScope": "work",
+            "platform": null
+          }
+        ],
+        "demandFacts": {
+          "demandBucket": "low",
+          "dlCount": 4200,
+          "ratingAverage": 4.01,
+          "ratingCount": 118,
+          "wishlistCount": 720,
+          "bestRank": 140,
+          "workType": "RPG"
+        },
+        "localOwnership": "not_owned",
+        "localEvidenceCount": 1,
+        "marketPrevalence": "public_and_local_aggregate",
+        "decision": "candidate",
+        "score": 55,
+        "provenance": [
+          {
+            "catalogSource": "dlsite",
+            "sourceId": "RJOPP008",
+            "sourceRecordKind": "recorded_fixture",
+            "sourceVersion": "catalog-opportunity-public-fixture-v1",
+            "fixtureId": "catalog-opportunities/fixture.json",
+            "redactionClass": "public_metadata"
+          }
+        ],
+        "demotions": [],
+        "factorBreakdown": [
+          {
+            "factor": "translation_completeness",
+            "weight": 30,
+            "rawValue": 0.75,
+            "weightedScore": 22.5,
+            "evidenceRefs": [
+              "translation_status:en-US:mtl"
+            ],
+            "explanationCode": "translation_completeness:mtl_only"
+          },
+          {
+            "factor": "local_ownership",
+            "weight": 8,
+            "rawValue": -0.5,
+            "weightedScore": -4,
+            "evidenceRefs": [
+              "local_evidence_count:1"
+            ],
+            "explanationCode": "local_ownership:not_owned"
+          },
+          {
+            "factor": "dlsite_demand",
+            "weight": 20,
+            "rawValue": 0.2,
+            "weightedScore": 4,
+            "evidenceRefs": [
+              "dlsite:RJOPP008"
+            ],
+            "explanationCode": "dlsite_demand:low:rating_positive"
+          },
+          {
+            "factor": "platform_language_conflict",
+            "weight": -60,
+            "rawValue": 0,
+            "weightedScore": 0,
+            "evidenceRefs": [],
+            "explanationCode": "platform_language_conflict:none"
+          },
+          {
+            "factor": "market_prevalence",
+            "weight": 8,
+            "rawValue": 1,
+            "weightedScore": 8,
+            "evidenceRefs": [
+              "local_evidence_count:1",
+              "source_id_count:1"
+            ],
+            "explanationCode": "market_prevalence:public_and_local_aggregate"
+          },
+          {
+            "factor": "adapter_readiness",
+            "weight": 18,
+            "rawValue": 1,
+            "weightedScore": 18,
+            "evidenceRefs": [
+              "kaifuu.rpg-maker-mv-mz"
+            ],
+            "explanationCode": "adapter_readiness:patch_supported"
+          },
+          {
+            "factor": "runtime_evidence_readiness",
+            "weight": 6,
+            "rawValue": 1,
+            "weightedScore": 6,
+            "evidenceRefs": [
+              "private_local_aggregate_evidence_count:1",
+              "public_fixture_evidence_count:1"
+            ],
+            "explanationCode": "runtime_evidence_readiness:public_and_aggregate"
+          },
+          {
+            "factor": "dlsite_work_type",
+            "weight": 0,
+            "rawValue": 1,
+            "weightedScore": 0,
+            "evidenceRefs": [
+              "work_type:RPG"
+            ],
+            "explanationCode": "dlsite_work_type:rpg"
+          },
+          {
+            "factor": "existing_translation_status",
+            "weight": -20,
+            "rawValue": 0.1,
+            "weightedScore": -2,
+            "evidenceRefs": [
+              "translation_status:en-US:mtl"
+            ],
+            "explanationCode": "existing_translation_status:mtl"
+          },
+          {
+            "factor": "benchmark_usefulness",
+            "weight": 10,
+            "rawValue": 0.25,
+            "weightedScore": 2.5,
+            "evidenceRefs": [
+              "demand_bucket:low",
+              "pool:mtl_only"
+            ],
+            "explanationCode": "benchmark_usefulness:low"
+          },
+          {
+            "factor": "unknown_evidence",
+            "weight": 0,
+            "rawValue": 0,
+            "weightedScore": 0,
+            "evidenceRefs": [],
+            "explanationCode": "unknown_evidence:none"
+          }
+        ],
+        "explanationCodes": [
+          "translation_completeness:mtl_only",
+          "local_ownership:not_owned",
+          "dlsite_demand:low:rating_positive",
+          "platform_language_conflict:none",
+          "market_prevalence:public_and_local_aggregate",
+          "adapter_readiness:patch_supported",
+          "runtime_evidence_readiness:public_and_aggregate",
+          "dlsite_work_type:rpg",
+          "existing_translation_status:mtl",
+          "benchmark_usefulness:low",
+          "unknown_evidence:none"
+        ]
       },
       {
         "rank": 9,
@@ -2884,7 +4305,7 @@
         "localEvidenceCount": 0,
         "marketPrevalence": "public_only",
         "decision": "candidate",
-        "score": 19,
+        "score": 33.4,
         "provenance": [
           {
             "catalogSource": "dlsite",
@@ -2895,7 +4316,131 @@
             "redactionClass": "public_metadata"
           }
         ],
-        "demotions": []
+        "demotions": [],
+        "factorBreakdown": [
+          {
+            "factor": "translation_completeness",
+            "weight": 30,
+            "rawValue": 0.65,
+            "weightedScore": 19.5,
+            "evidenceRefs": [
+              "translation_status:en-US:fan_partial"
+            ],
+            "explanationCode": "translation_completeness:fan_partial"
+          },
+          {
+            "factor": "local_ownership",
+            "weight": 8,
+            "rawValue": 0,
+            "weightedScore": 0,
+            "evidenceRefs": [],
+            "explanationCode": "local_ownership:unknown"
+          },
+          {
+            "factor": "dlsite_demand",
+            "weight": 20,
+            "rawValue": 0.15,
+            "weightedScore": 3,
+            "evidenceRefs": [
+              "dlsite:RJOPP009"
+            ],
+            "explanationCode": "dlsite_demand:low:rating_neutral"
+          },
+          {
+            "factor": "platform_language_conflict",
+            "weight": -60,
+            "rawValue": 0,
+            "weightedScore": 0,
+            "evidenceRefs": [],
+            "explanationCode": "platform_language_conflict:none"
+          },
+          {
+            "factor": "market_prevalence",
+            "weight": 8,
+            "rawValue": 0.7,
+            "weightedScore": 5.6,
+            "evidenceRefs": [
+              "local_evidence_count:0",
+              "source_id_count:1"
+            ],
+            "explanationCode": "market_prevalence:public_only"
+          },
+          {
+            "factor": "adapter_readiness",
+            "weight": 18,
+            "rawValue": 0.2,
+            "weightedScore": 3.6,
+            "evidenceRefs": [
+              "kaifuu.unity"
+            ],
+            "explanationCode": "adapter_readiness:identify_supported"
+          },
+          {
+            "factor": "runtime_evidence_readiness",
+            "weight": 6,
+            "rawValue": 0.7,
+            "weightedScore": 4.2,
+            "evidenceRefs": [
+              "private_local_aggregate_evidence_count:0",
+              "public_fixture_evidence_count:1"
+            ],
+            "explanationCode": "runtime_evidence_readiness:public_fixture"
+          },
+          {
+            "factor": "dlsite_work_type",
+            "weight": 0,
+            "rawValue": 0.5,
+            "weightedScore": 0,
+            "evidenceRefs": [
+              "work_type:SLG"
+            ],
+            "explanationCode": "dlsite_work_type:game"
+          },
+          {
+            "factor": "existing_translation_status",
+            "weight": -20,
+            "rawValue": 0.25,
+            "weightedScore": -5,
+            "evidenceRefs": [
+              "translation_status:en-US:fan_partial"
+            ],
+            "explanationCode": "existing_translation_status:fan_partial"
+          },
+          {
+            "factor": "benchmark_usefulness",
+            "weight": 10,
+            "rawValue": 0.25,
+            "weightedScore": 2.5,
+            "evidenceRefs": [
+              "demand_bucket:low",
+              "pool:fan_partial"
+            ],
+            "explanationCode": "benchmark_usefulness:low"
+          },
+          {
+            "factor": "unknown_evidence",
+            "weight": 0,
+            "rawValue": 1,
+            "weightedScore": 0,
+            "evidenceRefs": [
+              "public_evidence:incomplete"
+            ],
+            "explanationCode": "unknown_evidence:present"
+          }
+        ],
+        "explanationCodes": [
+          "translation_completeness:fan_partial",
+          "local_ownership:unknown",
+          "dlsite_demand:low:rating_neutral",
+          "platform_language_conflict:none",
+          "market_prevalence:public_only",
+          "adapter_readiness:identify_supported",
+          "runtime_evidence_readiness:public_fixture",
+          "dlsite_work_type:game",
+          "existing_translation_status:fan_partial",
+          "benchmark_usefulness:low",
+          "unknown_evidence:present"
+        ]
       },
       {
         "rank": 10,
@@ -2953,84 +4498,132 @@
         "localEvidenceCount": 3,
         "marketPrevalence": "public_and_local_aggregate",
         "decision": "demoted",
-        "score": 19,
+        "score": 3,
         "factorBreakdown": [
           {
             "factor": "translation_completeness",
-            "rawValue": "official_english_conflict",
-            "weight": -42,
-            "weightedScore": -42,
+            "weight": 30,
+            "rawValue": 0.1,
+            "weightedScore": 3,
             "evidenceRefs": [
-              "public:platform-language-conflicts:steam:STEAMOPP010"
+              "translation_status:en-US:official"
             ],
-            "explanationCode": "official_english_conflict"
+            "explanationCode": "translation_completeness:conflict"
           },
           {
             "factor": "local_ownership",
-            "rawValue": "owned",
-            "weight": 10,
-            "weightedScore": 10,
+            "weight": 8,
+            "rawValue": 1,
+            "weightedScore": 8,
             "evidenceRefs": [
-              "aggregate:mv-mz-conflict-redacted-counts"
+              "local_evidence_count:3"
             ],
             "explanationCode": "local_ownership:owned"
           },
           {
             "factor": "dlsite_demand",
-            "rawValue": "very_high",
-            "weight": 18,
-            "weightedScore": 18,
+            "weight": 20,
+            "rawValue": 1,
+            "weightedScore": 20,
             "evidenceRefs": [
               "dlsite:RJOPP010"
             ],
-            "explanationCode": "demand_bucket:very_high"
+            "explanationCode": "dlsite_demand:very_high:rating_high"
+          },
+          {
+            "factor": "platform_language_conflict",
+            "weight": -60,
+            "rawValue": 1,
+            "weightedScore": -60,
+            "evidenceRefs": [
+              "019ed161-0000-7000-8000-000000000110:demotion:1"
+            ],
+            "explanationCode": "platform_language_conflict:open_platform_language_conflict"
           },
           {
             "factor": "market_prevalence",
-            "rawValue": "common",
-            "weight": 7,
-            "weightedScore": 7,
+            "weight": 8,
+            "rawValue": 1,
+            "weightedScore": 8,
             "evidenceRefs": [
-              "market_prevalence:common"
+              "local_evidence_count:3",
+              "source_id_count:2"
             ],
-            "explanationCode": "market_prevalence:common"
+            "explanationCode": "market_prevalence:public_and_local_aggregate"
           },
           {
             "factor": "adapter_readiness",
-            "rawValue": "extract_patch",
             "weight": 18,
+            "rawValue": 1,
             "weightedScore": 18,
             "evidenceRefs": [
-              "public:kaifuu-rpg-maker-encrypted-suffixes"
+              "kaifuu.rpg-maker-mv-mz"
             ],
-            "explanationCode": "adapter_readiness:extract_patch"
+            "explanationCode": "adapter_readiness:patch_supported"
           },
           {
             "factor": "runtime_evidence_readiness",
-            "rawValue": "ready",
             "weight": 6,
+            "rawValue": 1,
             "weightedScore": 6,
             "evidenceRefs": [
-              "runtime:ready"
+              "private_local_aggregate_evidence_count:1",
+              "public_fixture_evidence_count:1"
             ],
-            "explanationCode": "runtime_readiness:ready"
+            "explanationCode": "runtime_evidence_readiness:public_and_aggregate"
+          },
+          {
+            "factor": "dlsite_work_type",
+            "weight": 0,
+            "rawValue": 1,
+            "weightedScore": 0,
+            "evidenceRefs": [
+              "work_type:RPG"
+            ],
+            "explanationCode": "dlsite_work_type:rpg"
+          },
+          {
+            "factor": "existing_translation_status",
+            "weight": -20,
+            "rawValue": 0,
+            "weightedScore": 0,
+            "evidenceRefs": [
+              "translation_status:en-US:official"
+            ],
+            "explanationCode": "existing_translation_status:none"
           },
           {
             "factor": "benchmark_usefulness",
-            "rawValue": "conflict_regression",
-            "weight": 2,
-            "weightedScore": 2,
+            "weight": 10,
+            "rawValue": 0,
+            "weightedScore": 0,
             "evidenceRefs": [
-              "fixture:catalog-opportunities-catalog-061"
+              "demand_bucket:very_high",
+              "pool:conflict"
             ],
-            "explanationCode": "benchmark_usefulness:conflict_regression"
+            "explanationCode": "benchmark_usefulness:none"
+          },
+          {
+            "factor": "unknown_evidence",
+            "weight": 0,
+            "rawValue": 0,
+            "weightedScore": 0,
+            "evidenceRefs": [],
+            "explanationCode": "unknown_evidence:none"
           }
         ],
         "explanationCodes": [
-          "official_english_conflict",
-          "demand_bucket:very_high",
-          "adapter_readiness:extract_patch",
-          "runtime_readiness:ready"
+          "translation_completeness:conflict",
+          "local_ownership:owned",
+          "dlsite_demand:very_high:rating_high",
+          "platform_language_conflict:open_platform_language_conflict",
+          "market_prevalence:public_and_local_aggregate",
+          "adapter_readiness:patch_supported",
+          "runtime_evidence_readiness:public_and_aggregate",
+          "dlsite_work_type:rpg",
+          "existing_translation_status:none",
+          "benchmark_usefulness:none",
+          "unknown_evidence:none"
         ],
         "provenance": [
           {

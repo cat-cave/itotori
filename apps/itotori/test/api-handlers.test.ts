@@ -375,6 +375,30 @@ describe("Itotori API handlers", () => {
     expect(services.authorization.requirePermission).not.toHaveBeenCalled();
   });
 
+  it("accepts real-shaped catalog opportunity factor rows including DLsite work type", async () => {
+    const services = serviceFixture();
+
+    const response = await handleItotoriApiRequest(
+      { method: "GET", pathname: "/api/catalog/opportunities" },
+      services,
+    );
+
+    expect(response).toEqual({ statusCode: 200, body: catalogOpportunitiesFixture });
+    expect(response.body.rows[0]?.factorBreakdown.map((factor) => factor.factor)).toEqual([
+      "translation_completeness",
+      "local_ownership",
+      "dlsite_demand",
+      "platform_language_conflict",
+      "market_prevalence",
+      "adapter_readiness",
+      "runtime_evidence_readiness",
+      "dlsite_work_type",
+      "existing_translation_status",
+      "benchmark_usefulness",
+      "unknown_evidence",
+    ]);
+  });
+
   it.each([
     {
       query: "?targetLanguage=",
@@ -736,6 +760,24 @@ describe("Itotori API handlers", () => {
   });
 
   it.each([
+    {
+      name: "unsupported factor name",
+      body: {
+        ...catalogOpportunitiesFixture,
+        rows: [
+          {
+            ...catalogOpportunitiesFixture.rows[0]!,
+            factorBreakdown: [
+              {
+                ...catalogOpportunitiesFixture.rows[0]!.factorBreakdown[0]!,
+                factor: "private_repository_signal",
+              },
+            ],
+          },
+        ],
+      },
+      error: /factor/u,
+    },
     {
       name: "non-finite score",
       body: {

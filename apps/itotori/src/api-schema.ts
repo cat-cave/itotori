@@ -479,6 +479,7 @@ function assertCatalogOpportunityFactors(value: unknown, label: string): void {
         "market_prevalence",
         "adapter_readiness",
         "runtime_evidence_readiness",
+        "dlsite_work_type",
         "existing_translation_status",
         "benchmark_usefulness",
         "unknown_evidence",
