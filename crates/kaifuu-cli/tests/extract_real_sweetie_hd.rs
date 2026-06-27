@@ -1,12 +1,14 @@
 //! KAIFUU-210 — CLI integration test for
 //! `kaifuu-cli extract --engine reallive --scene 1 --bundle-output PATH`.
 //!
-//! Env-gated on `KAIFUU_REAL_SWEETIE_HD_PATH`. Runs the kaifuu-cli
+//! Env-gated on `ITOTORI_REAL_GAME_ROOT`. Runs the kaifuu-cli
 //! binary against the real Sweetie HD extracted root, asserts the
 //! output file exists and decodes as a v0.2 bridge bundle whose
 //! `schemaVersion` and `units` length pass the canonical contract.
 
-use std::env;
+#[path = "support/real_corpus.rs"]
+mod real_corpus;
+
 use std::path::PathBuf;
 use std::process::Command;
 
@@ -27,16 +29,12 @@ fn kaifuu_cli_binary() -> PathBuf {
 }
 
 #[test]
-#[ignore = "real-bytes; requires KAIFUU_REAL_SWEETIE_HD_PATH env var"]
+#[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
 fn cli_extract_engine_reallive_scene_1_writes_schema_valid_v02_bundle() {
-    let Some(root) = env::var_os("KAIFUU_REAL_SWEETIE_HD_PATH") else {
-        eprintln!(
-            "KAIFUU_REAL_SWEETIE_HD_PATH unset; skipping (re-run with \
-             KAIFUU_REAL_SWEETIE_HD_PATH=/scratch/itotori-research/sweetie-hd/extracted)"
-        );
+    let Some(game_root) = real_corpus::game_root() else {
+        eprintln!("{}", real_corpus::skip_message("CLI extract real-bytes test"));
         return;
     };
-    let game_root = PathBuf::from(root);
 
     let tmp_dir = tempfile::tempdir().expect("tmp dir");
     let bundle_out = tmp_dir.path().join("sweetie-hd-scene-1.bridge.json");

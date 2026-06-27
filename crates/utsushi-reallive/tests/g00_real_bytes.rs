@@ -5,7 +5,7 @@
 //! corpus (2,450 files) following the same pattern as
 //! `decompressor_real_bytes.rs` / `scene_header_real_bytes.rs`: the
 //! tests are `#[ignore]`-gated and only run when
-//! `KAIFUU_REAL_SWEETIE_HD_PATH` is set (the same env var the rest of
+//! `ITOTORI_REAL_GAME_ROOT` is set (the same env var the rest of
 //! the real-bytes suite uses — see `tests/gameexe_real_bytes.rs` for
 //! the canonical pattern).
 //!
@@ -46,7 +46,9 @@
 //! follow-up tracked as a known gap. The commit message records the
 //! single-corpus posture explicitly.
 
-use std::env;
+#[path = "support/real_corpus.rs"]
+mod real_corpus;
+
 use std::fs;
 use std::path::PathBuf;
 
@@ -57,7 +59,6 @@ use utsushi_reallive::{
 
 /// Relative path under the Sweetie HD extraction root to the
 /// `g00` directory.
-const SWEETIE_HD_G00_DIR_RELATIVE: &str = "オシオキSweetie＋Sweets!! HD_DL版/REALLIVEDATA/g00";
 
 /// File name of the type-0 BACK.g00 image pinned by the UTSUSHI-216
 /// acceptance criterion.
@@ -77,23 +78,21 @@ const SWEETIE_HD_BACK_WIDTH: u32 = 1280;
 const SWEETIE_HD_BACK_HEIGHT: u32 = 720;
 
 /// Resolve the Sweetie HD g00 directory under
-/// `KAIFUU_REAL_SWEETIE_HD_PATH`. Returns `None` when the env var is
+/// `ITOTORI_REAL_GAME_ROOT`. Returns `None` when the env var is
 /// unset so each test can skip with a documented diagnostic (no silent
 /// pass).
-fn sweetie_hd_g00_dir() -> Option<PathBuf> {
-    let root = env::var_os("KAIFUU_REAL_SWEETIE_HD_PATH")?;
-    let path = PathBuf::from(root).join(SWEETIE_HD_G00_DIR_RELATIVE);
-    Some(path)
+fn real_g00_dir() -> Option<PathBuf> {
+    real_corpus::reallivedata_subdir("g00")
 }
 
 #[test]
-#[ignore = "real-bytes; requires KAIFUU_REAL_SWEETIE_HD_PATH env var"]
+#[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
 fn g00_type0_back_decodes() {
-    let Some(g00_dir) = sweetie_hd_g00_dir() else {
+    let Some(g00_dir) = real_g00_dir() else {
         eprintln!(
-            "KAIFUU_REAL_SWEETIE_HD_PATH unset; skipping Sweetie HD real-bytes test for \
+            "ITOTORI_REAL_GAME_ROOT unset; skipping Sweetie HD real-bytes test for \
              utsushi-reallive g00 type-0 BACK.g00 decode (no silent pass: re-run with \
-             KAIFUU_REAL_SWEETIE_HD_PATH=/scratch/itotori-research/sweetie-hd/extracted)",
+             ITOTORI_REAL_GAME_ROOT=/path/to/reallive-game-root)",
         );
         return;
     };
@@ -157,13 +156,13 @@ fn g00_type0_back_decodes() {
 }
 
 #[test]
-#[ignore = "real-bytes; requires KAIFUU_REAL_SWEETIE_HD_PATH env var"]
+#[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
 fn g00_corpus_histogram_sweetie_hd_2450_files() {
-    let Some(g00_dir) = sweetie_hd_g00_dir() else {
+    let Some(g00_dir) = real_g00_dir() else {
         eprintln!(
-            "KAIFUU_REAL_SWEETIE_HD_PATH unset; skipping Sweetie HD real-bytes test for \
+            "ITOTORI_REAL_GAME_ROOT unset; skipping Sweetie HD real-bytes test for \
              utsushi-reallive g00 corpus histogram (no silent pass: re-run with \
-             KAIFUU_REAL_SWEETIE_HD_PATH=/scratch/itotori-research/sweetie-hd/extracted)",
+             ITOTORI_REAL_GAME_ROOT=/path/to/reallive-game-root)",
         );
         return;
     };
@@ -246,13 +245,13 @@ fn g00_corpus_histogram_sweetie_hd_2450_files() {
 }
 
 #[test]
-#[ignore = "real-bytes; requires KAIFUU_REAL_SWEETIE_HD_PATH env var"]
+#[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
 fn g00_type2_btn000_decodes_header_and_regions() {
-    let Some(g00_dir) = sweetie_hd_g00_dir() else {
+    let Some(g00_dir) = real_g00_dir() else {
         eprintln!(
-            "KAIFUU_REAL_SWEETIE_HD_PATH unset; skipping Sweetie HD real-bytes test for \
+            "ITOTORI_REAL_GAME_ROOT unset; skipping Sweetie HD real-bytes test for \
              utsushi-reallive g00 type-2 btn000.g00 decode (no silent pass: re-run with \
-             KAIFUU_REAL_SWEETIE_HD_PATH=/scratch/itotori-research/sweetie-hd/extracted)",
+             ITOTORI_REAL_GAME_ROOT=/path/to/reallive-game-root)",
         );
         return;
     };
@@ -344,12 +343,12 @@ fn g00_corpus_histogram_no_path_set_documents_skip() {
     // print a diagnostic and return. This test makes the skip
     // explicit so the CI run records the "skipped, not silently
     // passed" semantics.
-    if env::var_os("KAIFUU_REAL_SWEETIE_HD_PATH").is_some() {
+    if real_corpus::game_root().is_some() {
         return;
     }
     eprintln!(
-        "KAIFUU_REAL_SWEETIE_HD_PATH not set — g00 corpus histogram real-bytes tests are \
-         #[ignore]-gated and only run with KAIFUU_REAL_SWEETIE_HD_PATH set.",
+        "ITOTORI_REAL_GAME_ROOT not set — g00 corpus histogram real-bytes tests are \
+         #[ignore]-gated and only run with ITOTORI_REAL_GAME_ROOT set.",
     );
 }
 

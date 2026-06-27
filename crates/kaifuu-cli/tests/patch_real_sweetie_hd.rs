@@ -1,7 +1,7 @@
 //! KAIFUU-211 — CLI integration test for
 //! `kaifuu-cli patch --engine reallive --source <readonly> --target <writable> --bundle <translated.json>`.
 //!
-//! Env-gated on `KAIFUU_REAL_SWEETIE_HD_PATH`. Runs the kaifuu-cli
+//! Env-gated on `ITOTORI_REAL_GAME_ROOT`. Runs the kaifuu-cli
 //! binary against the real Sweetie HD extracted root, asserts:
 //!
 //! - The command exits 0.
@@ -11,12 +11,12 @@
 //! - The source root's `Seen.txt` is sha256-unchanged after the run.
 //! - The patched archive re-parses with the source's scene count.
 
-use std::env;
-use std::fs;
-use std::path::{Path, PathBuf};
-use std::process::Command;
+#[path = "support/real_corpus.rs"]
+mod real_corpus;
 
-const SWEETIE_HD_INNER_DIR: &str = "オシオキSweetie＋Sweets!! HD_DL版";
+use std::fs;
+use std::path::PathBuf;
+use std::process::Command;
 
 fn kaifuu_cli_binary() -> PathBuf {
     let mut path = PathBuf::from(env!("CARGO_BIN_EXE_kaifuu-cli"));
@@ -29,24 +29,6 @@ fn kaifuu_cli_binary() -> PathBuf {
         .map(|p| p.join("target/debug/kaifuu-cli"))
         .expect("workspace root");
     path
-}
-
-fn resolve_seen_path(root: &Path) -> PathBuf {
-    let direct = root.join("REALLIVEDATA").join("Seen.txt");
-    if direct.is_file() {
-        return direct;
-    }
-    let inner = root
-        .join(SWEETIE_HD_INNER_DIR)
-        .join("REALLIVEDATA")
-        .join("Seen.txt");
-    if inner.is_file() {
-        return inner;
-    }
-    panic!(
-        "REALLIVEDATA/Seen.txt not found under {} (expected inner dir {SWEETIE_HD_INNER_DIR})",
-        root.display()
-    )
 }
 
 fn sha256_hex(bytes: &[u8]) -> String {
@@ -62,17 +44,13 @@ fn sha256_hex(bytes: &[u8]) -> String {
 }
 
 #[test]
-#[ignore = "real-bytes; requires KAIFUU_REAL_SWEETIE_HD_PATH env var"]
+#[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
 fn cli_patch_engine_reallive_writes_patched_seen_txt_under_writable_target() {
-    let Some(root) = env::var_os("KAIFUU_REAL_SWEETIE_HD_PATH") else {
-        eprintln!(
-            "KAIFUU_REAL_SWEETIE_HD_PATH unset; skipping (re-run with \
-             KAIFUU_REAL_SWEETIE_HD_PATH=/scratch/itotori-research/sweetie-hd/extracted)"
-        );
+    let Some(source_root) = real_corpus::game_root() else {
+        eprintln!("{}", real_corpus::skip_message("CLI patch real-bytes test"));
         return;
     };
-    let source_root = PathBuf::from(root);
-    let source_seen_path = resolve_seen_path(&source_root);
+    let source_seen_path = real_corpus::seen_txt_path().expect("resolved root has Seen.txt");
     let source_seen_bytes = fs::read(&source_seen_path).expect("read source Seen.txt");
     let source_seen_hash_before = sha256_hex(&source_seen_bytes);
 
@@ -151,7 +129,7 @@ fn cli_patch_engine_reallive_writes_patched_seen_txt_under_writable_target() {
     );
 
     // ---- Acceptance: target Seen.txt exists and is non-empty. ----
-    let target_seen_path = resolve_seen_path(&target_root);
+    let target_seen_path = target_root.join("REALLIVEDATA").join("Seen.txt");
     let target_seen_bytes = fs::read(&target_seen_path).expect("read target Seen.txt");
     assert!(
         !target_seen_bytes.is_empty(),

@@ -21,10 +21,12 @@
 //! must not approve completion until that happens.
 //!
 //! Until the second corpus is staged this test is `#[ignore]`-gated and
-//! only runs when `KAIFUU_REAL_SWEETIE_HD_PATH` is set (the same env
+//! only runs when `ITOTORI_REAL_GAME_ROOT` is set (the same env
 //! var KAIFUU-188 uses, so a single export drives both projects).
 
-use std::env;
+#[path = "support/real_corpus.rs"]
+mod real_corpus;
+
 use std::fs;
 use std::path::PathBuf;
 
@@ -32,7 +34,6 @@ use utsushi_reallive::{REAL_SCENE_DIRECTORY_BYTE_LEN, RealSceneIndex};
 
 /// Relative path under the Sweetie HD extraction root that holds the
 /// raw `Seen.txt` envelope.
-const SWEETIE_HD_RELATIVE_PATH: &str = "オシオキSweetie＋Sweets!! HD_DL版/REALLIVEDATA/Seen.txt";
 
 /// Sweetie HD is the only RealLive corpus currently staged, so its
 /// populated-slot count is the alpha-gate anchor. Mirrors the
@@ -53,13 +54,13 @@ const SWEETIE_HD_FIRST_SCENE_BYTE_LEN: u32 = 0x5fa;
 const SWEETIE_HD_LAST_SCENE_ID: u16 = 9999;
 
 #[test]
-#[ignore = "real-bytes; requires KAIFUU_REAL_SWEETIE_HD_PATH env var"]
+#[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
 fn scene_index_real_bytes_parses_sweetie_hd_seen_txt_into_198_populated_scene_entries() {
-    let Some(seen_path) = sweetie_hd_seen_txt_path() else {
+    let Some(seen_path) = real_seen_txt_path() else {
         eprintln!(
-            "KAIFUU_REAL_SWEETIE_HD_PATH unset; skipping Sweetie HD real-bytes test for \
+            "ITOTORI_REAL_GAME_ROOT unset; skipping Sweetie HD real-bytes test for \
              utsushi-reallive (no silent pass: re-run with \
-             KAIFUU_REAL_SWEETIE_HD_PATH=/scratch/itotori-research/sweetie-hd/extracted)",
+             ITOTORI_REAL_GAME_ROOT=/path/to/reallive-game-root)",
         );
         return;
     };
@@ -160,8 +161,6 @@ fn scene_index_real_bytes_parses_sweetie_hd_seen_txt_into_198_populated_scene_en
     }
 }
 
-fn sweetie_hd_seen_txt_path() -> Option<PathBuf> {
-    let root = env::var_os("KAIFUU_REAL_SWEETIE_HD_PATH")?;
-    let root = PathBuf::from(root);
-    Some(root.join(SWEETIE_HD_RELATIVE_PATH))
+fn real_seen_txt_path() -> Option<PathBuf> {
+    real_corpus::seen_txt_path()
 }

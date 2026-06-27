@@ -12,10 +12,13 @@
 //! g00 sprite requires UTSUSHI-146q to land first and is gated as a
 //! follow-up test." A third entrypoint
 //! (`graphics_pipeline_honours_sweetie_hd_gameexe_screen_size`) is
-//! env-gated on `KAIFUU_REAL_SWEETIE_HD_PATH` and pins the real-bytes
+//! env-gated on `ITOTORI_REAL_GAME_ROOT` and pins the real-bytes
 //! `SCREENSIZE_MOD=999,1280,720` round-trip through
 //! [`utsushi_reallive::SyscallDispatcher::screen_size`] +
 //! [`utsushi_reallive::RenderPass::new`].
+
+#[path = "support/real_corpus.rs"]
+mod real_corpus;
 
 use std::fs;
 use std::path::PathBuf;
@@ -30,7 +33,6 @@ use utsushi_reallive::{
 /// extraction root. Mirrors the existing
 /// `gameexe_real_bytes.rs` / `syscall_routes_real_sweetie_hd.rs`
 /// constant.
-const SWEETIE_HD_TITLE_DIR: &str = "オシオキSweetie＋Sweets!! HD_DL版";
 
 /// Acceptance: allocating 256 objects on a single plane succeeds; the
 /// 257th allocation on that plane is typed-rejected; populating the
@@ -191,11 +193,11 @@ fn render_wipe_solid_colour_deterministic_png() {
 /// "render pass observes the `SCREENSIZE_MOD=999,1280,720` Gameexe
 /// value and emits a 1280x720 buffer" acceptance criterion.
 #[test]
-#[ignore = "requires KAIFUU_REAL_SWEETIE_HD_PATH; opt in with --include-ignored"]
+#[ignore = "requires ITOTORI_REAL_GAME_ROOT; opt in with --include-ignored"]
 fn graphics_pipeline_honours_sweetie_hd_gameexe_screen_size() {
-    let Some(gameexe_path) = sweetie_hd_gameexe_path() else {
+    let Some(gameexe_path) = real_gameexe_ini_path() else {
         eprintln!(
-            "KAIFUU_REAL_SWEETIE_HD_PATH not set — graphics_pipeline_honours_sweetie_hd_gameexe_screen_size \
+            "ITOTORI_REAL_GAME_ROOT not set — graphics_pipeline_honours_sweetie_hd_gameexe_screen_size \
              skipped (run with --include-ignored to enable)"
         );
         return;
@@ -234,14 +236,6 @@ fn graphics_pipeline_honours_sweetie_hd_gameexe_screen_size() {
     assert_eq!(&bytes[20..24], &720u32.to_be_bytes());
 }
 
-fn sweetie_hd_gameexe_path() -> Option<PathBuf> {
-    let root = std::env::var_os("KAIFUU_REAL_SWEETIE_HD_PATH")?;
-    let mut path = PathBuf::from(root);
-    path.push(SWEETIE_HD_TITLE_DIR);
-    path.push("REALLIVEDATA");
-    path.push("Gameexe.ini");
-    if !path.exists() {
-        return None;
-    }
-    Some(path)
+fn real_gameexe_ini_path() -> Option<PathBuf> {
+    real_corpus::gameexe_ini_path()
 }

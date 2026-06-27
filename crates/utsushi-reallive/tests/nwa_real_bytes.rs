@@ -2,7 +2,7 @@
 //!
 //! Pins the decoder against Sweetie HD's `REALLIVEDATA/bgm/ASA.nwa`
 //! (18,317,046 bytes) and `REALLIVEDATA/wav/CHIME.nwa`. Mirrors the
-//! `g00_real_bytes.rs` env-gating pattern (`KAIFUU_REAL_SWEETIE_HD_PATH`
+//! `g00_real_bytes.rs` env-gating pattern (`ITOTORI_REAL_GAME_ROOT`
 //! must be set for the `#[ignore]`-gated cases to execute).
 //!
 //! # Acceptance criteria pinned here
@@ -43,7 +43,9 @@
 //! second-corpus follow-up tracked as a known gap. The commit message
 //! records the single-corpus posture explicitly.
 
-use std::env;
+#[path = "support/real_corpus.rs"]
+mod real_corpus;
+
 use std::fs;
 use std::path::PathBuf;
 
@@ -53,13 +55,10 @@ use utsushi_reallive::{
 
 /// Title directory under the Sweetie HD extraction root. Mirrors the
 /// existing `gameexe_real_bytes.rs` / `g00_real_bytes.rs` constants.
-const SWEETIE_HD_TITLE_DIR: &str = "オシオキSweetie＋Sweets!! HD_DL版";
 
 /// Relative path under the title dir to the `bgm/` corpus.
-const SWEETIE_HD_BGM_RELATIVE: &str = "REALLIVEDATA/bgm";
 
 /// Relative path under the title dir to the `wav/` corpus.
-const SWEETIE_HD_WAV_RELATIVE: &str = "REALLIVEDATA/wav";
 
 /// File name of the UTSUSHI-217 spec-pinned ASA.nwa fixture.
 const ASA_NWA: &str = "ASA.nwa";
@@ -83,39 +82,29 @@ const ASA_NWA_UNCOMPRESSED_BYTE_SIZE_REAL: u32 = 33_866_972;
 const ASA_NWA_UNCOMPRESSED_BYTE_SIZE_SPEC: u32 = 33_818_820;
 
 /// Resolve the Sweetie HD `bgm/` directory under
-/// `KAIFUU_REAL_SWEETIE_HD_PATH`.
-fn sweetie_hd_bgm_dir() -> Option<PathBuf> {
-    let root = env::var_os("KAIFUU_REAL_SWEETIE_HD_PATH")?;
-    Some(
-        PathBuf::from(root)
-            .join(SWEETIE_HD_TITLE_DIR)
-            .join(SWEETIE_HD_BGM_RELATIVE),
-    )
+/// `ITOTORI_REAL_GAME_ROOT`.
+fn real_bgm_dir() -> Option<PathBuf> {
+    real_corpus::reallivedata_subdir("bgm")
 }
 
 /// Resolve the Sweetie HD `wav/` directory.
-fn sweetie_hd_wav_dir() -> Option<PathBuf> {
-    let root = env::var_os("KAIFUU_REAL_SWEETIE_HD_PATH")?;
-    Some(
-        PathBuf::from(root)
-            .join(SWEETIE_HD_TITLE_DIR)
-            .join(SWEETIE_HD_WAV_RELATIVE),
-    )
+fn real_wav_dir() -> Option<PathBuf> {
+    real_corpus::reallivedata_subdir("wav")
 }
 
 #[test]
-#[ignore = "real-bytes; requires KAIFUU_REAL_SWEETIE_HD_PATH env var"]
+#[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
 // The test name is the UTSUSHI-217 spec verification handle quoted
 // verbatim (`cargo test -p utsushi-reallive nwa_asa_decodes_33M_frames`).
 // The `M` is upper-case because the spec quotes "33M" as the
 // human-readable order-of-magnitude shorthand for the frame count.
 #[allow(non_snake_case)]
 fn nwa_asa_decodes_33M_frames() {
-    let Some(bgm_dir) = sweetie_hd_bgm_dir() else {
+    let Some(bgm_dir) = real_bgm_dir() else {
         eprintln!(
-            "KAIFUU_REAL_SWEETIE_HD_PATH unset; skipping Sweetie HD real-bytes test for \
+            "ITOTORI_REAL_GAME_ROOT unset; skipping Sweetie HD real-bytes test for \
              utsushi-reallive NWA ASA.nwa decode (no silent pass: re-run with \
-             KAIFUU_REAL_SWEETIE_HD_PATH=/scratch/itotori-research/sweetie-hd/extracted)",
+             ITOTORI_REAL_GAME_ROOT=/path/to/reallive-game-root)",
         );
         return;
     };
@@ -204,11 +193,11 @@ fn nwa_asa_decodes_33M_frames() {
 }
 
 #[test]
-#[ignore = "real-bytes; requires KAIFUU_REAL_SWEETIE_HD_PATH env var"]
+#[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
 fn nwa_chime_decodes_raw_pcm_header() {
-    let Some(wav_dir) = sweetie_hd_wav_dir() else {
+    let Some(wav_dir) = real_wav_dir() else {
         eprintln!(
-            "KAIFUU_REAL_SWEETIE_HD_PATH unset; skipping Sweetie HD real-bytes test for \
+            "ITOTORI_REAL_GAME_ROOT unset; skipping Sweetie HD real-bytes test for \
              utsushi-reallive NWA CHIME.nwa decode (no silent pass)",
         );
         return;
@@ -246,12 +235,12 @@ fn nwa_real_bytes_skips_when_env_unset() {
     // print a diagnostic and return. This test makes the skip
     // explicit so the CI run records the "skipped, not silently
     // passed" semantics.
-    if env::var_os("KAIFUU_REAL_SWEETIE_HD_PATH").is_some() {
+    if real_corpus::game_root().is_some() {
         return;
     }
     eprintln!(
-        "KAIFUU_REAL_SWEETIE_HD_PATH not set — NWA real-bytes tests are #[ignore]-gated and \
-         only run with KAIFUU_REAL_SWEETIE_HD_PATH set.",
+        "ITOTORI_REAL_GAME_ROOT not set — NWA real-bytes tests are #[ignore]-gated and \
+         only run with ITOTORI_REAL_GAME_ROOT set.",
     );
 }
 

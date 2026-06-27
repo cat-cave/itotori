@@ -12,6 +12,9 @@
 //! test emits a visible-skip via `eprintln!` and returns OK — silent
 //! pass is explicitly forbidden by the spec node's audit-focus list.
 
+#[path = "support/real_corpus.rs"]
+mod real_corpus;
+
 use std::env;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -120,27 +123,16 @@ fn extract_last_quoted(value: &str) -> Option<String> {
 
 #[test]
 fn composite_asset_package_real_bytes_sweetie_hd_realivedata() {
-    let env_path = match env::var("KAIFUU_REAL_SWEETIE_HD_PATH") {
-        Ok(value) => PathBuf::from(value),
-        Err(_) => {
-            // Visible-skip per UTSUSHI-222 acceptance criteria.
-            assert!(env::var("KAIFUU_REAL_SWEETIE_HD_PATH").is_err());
-            eprintln!(
-                "SKIP composite_asset_package_real_bytes_sweetie_hd_realivedata: \
-                 KAIFUU_REAL_SWEETIE_HD_PATH is unset; \
-                 multi-engine validation needs both KAIFUU_REAL_SWEETIE_HD_PATH and \
-                 KAIFUU_REAL_LUST_MEMORY_PATH to confirm cross-engine genericity"
-            );
-            return;
-        }
+    let Some(realivedata) = real_corpus::reallivedata_dir() else {
+        // Visible-skip per UTSUSHI-222 acceptance criteria.
+        eprintln!(
+            "SKIP composite_asset_package_real_bytes_sweetie_hd_realivedata: {}; \
+             multi-engine validation needs both ITOTORI_REAL_GAME_ROOT and \
+             KAIFUU_REAL_LUST_MEMORY_PATH to confirm cross-engine genericity",
+            real_corpus::skip_message("RealLive composite asset package test")
+        );
+        return;
     };
-
-    let realivedata = locate_subdir(&env_path, "REALLIVEDATA").unwrap_or_else(|| {
-        panic!(
-            "KAIFUU_REAL_SWEETIE_HD_PATH set but REALLIVEDATA directory not found under root; \
-             expected a Sweetie HD installation tree"
-        )
-    });
 
     let gameexe_path = realivedata.join("Gameexe.ini");
     let gameexe_bytes =
@@ -281,7 +273,7 @@ fn composite_asset_package_real_bytes_lust_memory_www_data_system_json() {
             eprintln!(
                 "SKIP composite_asset_package_real_bytes_lust_memory_www_data_system_json: \
                  KAIFUU_REAL_LUST_MEMORY_PATH is unset; \
-                 multi-engine validation needs both KAIFUU_REAL_SWEETIE_HD_PATH and \
+                 multi-engine validation needs both ITOTORI_REAL_GAME_ROOT and \
                  KAIFUU_REAL_LUST_MEMORY_PATH to confirm cross-engine genericity"
             );
             return;

@@ -1,7 +1,7 @@
 //! KAIFUU-210 real-bytes integration test for the v0.2 BridgeBundle
 //! producer.
 //!
-//! Reads Sweetie HD scene 1 from `KAIFUU_REAL_SWEETIE_HD_PATH`, runs the
+//! Reads Sweetie HD scene 1 from `ITOTORI_REAL_GAME_ROOT`, runs the
 //! `kaifuu_reallive::produce_bundle` end-to-end, and asserts the
 //! resulting bundle satisfies the KAIFUU-210 acceptance criteria:
 //!
@@ -14,10 +14,12 @@
 //! - `provenance.byteRange` is anchored against the scene 1 blob's file
 //!   offset (`0x13880`).
 //!
-//! The test is env-gated; without `KAIFUU_REAL_SWEETIE_HD_PATH` it
+//! The test is env-gated; without `ITOTORI_REAL_GAME_ROOT` it
 //! emits an explicit skip notice and returns (no silent pass).
 
-use std::env;
+#[path = "support/real_corpus.rs"]
+mod real_corpus;
+
 use std::fs;
 use std::path::PathBuf;
 
@@ -27,28 +29,24 @@ use kaifuu_reallive::{
     produce_bundle,
 };
 
-const SWEETIE_HD_RELATIVE_PATH: &str = "オシオキSweetie＋Sweets!! HD_DL版/REALLIVEDATA/Seen.txt";
-const SWEETIE_HD_GAMEEXE_PATH: &str = "オシオキSweetie＋Sweets!! HD_DL版/REALLIVEDATA/Gameexe.ini";
 const SWEETIE_HD_GAME_ID: &str = "sweetie-hd";
 const SWEETIE_HD_SOURCE_PROFILE_ID: &str = "kaifuu-reallive-sweetie-hd";
 
-fn sweetie_hd_seen_txt_path() -> Option<PathBuf> {
-    let root = env::var_os("KAIFUU_REAL_SWEETIE_HD_PATH")?;
-    Some(PathBuf::from(root).join(SWEETIE_HD_RELATIVE_PATH))
+fn real_seen_txt_path() -> Option<PathBuf> {
+    real_corpus::seen_txt_path()
 }
 
-fn sweetie_hd_gameexe_path() -> Option<PathBuf> {
-    let root = env::var_os("KAIFUU_REAL_SWEETIE_HD_PATH")?;
-    Some(PathBuf::from(root).join(SWEETIE_HD_GAMEEXE_PATH))
+fn real_gameexe_ini_path() -> Option<PathBuf> {
+    real_corpus::gameexe_ini_path()
 }
 
 #[test]
-#[ignore = "real-bytes; requires KAIFUU_REAL_SWEETIE_HD_PATH env var"]
+#[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
 fn produces_v02_bridge_bundle_from_sweetie_hd_scene_1_real_bytes() {
-    let Some(seen_path) = sweetie_hd_seen_txt_path() else {
+    let Some(seen_path) = real_seen_txt_path() else {
         eprintln!(
-            "KAIFUU_REAL_SWEETIE_HD_PATH unset; skipping (re-run with \
-             KAIFUU_REAL_SWEETIE_HD_PATH=/scratch/itotori-research/sweetie-hd/extracted)"
+            "ITOTORI_REAL_GAME_ROOT unset; skipping (re-run with \
+             ITOTORI_REAL_GAME_ROOT=/path/to/reallive-game-root)"
         );
         return;
     };
@@ -89,7 +87,7 @@ fn produces_v02_bridge_bundle_from_sweetie_hd_scene_1_real_bytes() {
     // Parse Gameexe.ini for NAMAE entries (the file is best-effort —
     // empty inventory still satisfies the test if Sweetie HD's
     // Gameexe.ini is unavailable for any reason).
-    let gameexe_bytes = sweetie_hd_gameexe_path()
+    let gameexe_bytes = real_gameexe_ini_path()
         .and_then(|path| fs::read(path).ok())
         .unwrap_or_default();
     let gameexe_inventory = parse_gameexe_inventory(&gameexe_bytes);

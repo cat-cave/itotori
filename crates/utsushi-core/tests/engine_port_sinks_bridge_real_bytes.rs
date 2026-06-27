@@ -1,5 +1,5 @@
 //! Real-bytes-shaped integration test for the UTSUSHI-224 sinks-bridge
-//! path on `EnginePort`. Gated on the `KAIFUU_REAL_SWEETIE_HD_PATH`
+//! path on `EnginePort`. Gated on the `ITOTORI_REAL_GAME_ROOT`
 //! environment variable. When the env var is unset, the test prints an
 //! audit-focus visible skip and exits clean — matching the no-optionality
 //! rule for environment-coupled tests.
@@ -17,7 +17,9 @@
 //! bytecode; it only proves the substrate is the surface a real port
 //! would push observation evidence through.
 
-use std::env;
+#[path = "support/real_corpus.rs"]
+mod real_corpus;
+
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
@@ -29,7 +31,6 @@ use utsushi_core::{
     SinkResult, SinkSet, TextLine, TextSurfaceSink,
 };
 
-const ENV_VAR: &str = "KAIFUU_REAL_SWEETIE_HD_PATH";
 const REQUIRED_TICKS: usize = 10;
 
 struct RecordedTextSink(Mutex<Vec<TextLine>>);
@@ -257,22 +258,13 @@ impl EnginePort for MinimalRealLiveSkeletonPort {
 
 #[test]
 fn engine_port_sinks_bridge_real_bytes_pushes_text_and_frame_for_ten_ticks() {
-    let extracted_root_path = match env::var(ENV_VAR) {
-        Ok(value) => PathBuf::from(value),
-        Err(_) => {
-            eprintln!(
-                "{ENV_VAR} is unset; skipping engine_port_sinks_bridge_real_bytes (audit-focus visible skip)"
-            );
-            return;
-        }
-    };
-
-    if !extracted_root_path.is_dir() {
+    let Some(extracted_root_path) = real_corpus::game_root() else {
         eprintln!(
-            "{ENV_VAR} points to a non-directory; skipping engine_port_sinks_bridge_real_bytes"
+            "{} (audit-focus visible skip)",
+            real_corpus::skip_message("engine_port_sinks_bridge_real_bytes")
         );
         return;
-    }
+    };
 
     let mut port = MinimalRealLiveSkeletonPort::new(extracted_root_path);
     // Build a managed artifact root in a temp dir so the capture path

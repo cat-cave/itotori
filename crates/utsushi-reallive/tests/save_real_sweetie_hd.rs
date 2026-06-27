@@ -2,7 +2,7 @@
 //! format against Sweetie HD's `SAVEDATA/` directory.
 //!
 //! This file is **env-gated**: the assertions only run when the
-//! environment variable `KAIFUU_REAL_SWEETIE_HD_PATH` is set, pointing
+//! environment variable `ITOTORI_REAL_GAME_ROOT` is set, pointing
 //! at the audit-grade Sweetie HD extraction root (the parent of the
 //! game-title directory, e.g.
 //! `/scratch/itotori-research/sweetie-hd/extracted`). The presence of
@@ -22,7 +22,7 @@
 //!   calls. The audit grep `tests/save_real_sweetie_hd.rs` keeps this
 //!   invariant pinned.
 //!
-//!   In addition, the test does **not** accept a `KAIFUU_REAL_SWEETIE_HD_PATH`
+//!   In addition, the test does **not** accept a `ITOTORI_REAL_GAME_ROOT`
 //!   override that points at a writable directory — every read goes
 //!   through the path the audit doc declares, with no fall-back.
 //!
@@ -43,6 +43,9 @@
 //! - `cargo test -p utsushi-reallive save_reads_avg_global_save`
 //! - `cargo test -p utsushi-reallive save_read_flags_decodes_title`
 
+#[path = "support/real_corpus.rs"]
+mod real_corpus;
+
 use std::fs;
 use std::path::PathBuf;
 
@@ -53,7 +56,6 @@ use utsushi_reallive::{
 
 /// Default name of the Sweetie HD title directory inside the
 /// extraction root.
-const SWEETIE_HD_TITLE_DIR: &str = "オシオキSweetie＋Sweets!! HD_DL版";
 
 /// Documented Sweetie HD `REALLIVE.sav` size (audit doc § J).
 const SWEETIE_HD_SYSTEM_SAVE_BYTES: usize = 24_876;
@@ -72,19 +74,14 @@ const SWEETIE_HD_READ_FLAGS_BYTES: usize = 44_495;
 const SWEETIE_HD_TITLE_UTF8: &str = "オシオキSweetie＋Sweets!! HD Edition\u{3000}";
 
 fn resolve_savedata_path(file_name: &str) -> Option<PathBuf> {
-    let root = std::env::var_os("KAIFUU_REAL_SWEETIE_HD_PATH")?;
-    let mut path = PathBuf::from(root);
-    path.push(SWEETIE_HD_TITLE_DIR);
-    path.push("SAVEDATA");
-    path.push(file_name);
-    Some(path)
+    real_corpus::save_file_path(file_name)
 }
 
 fn load_or_skip(file_name: &str) -> Option<Vec<u8>> {
     let path = resolve_savedata_path(file_name)?;
     let bytes = fs::read(&path).unwrap_or_else(|err| {
         panic!(
-            "KAIFUU_REAL_SWEETIE_HD_PATH is set but SAVEDATA/{file_name} could not be read at {}: {err}",
+            "ITOTORI_REAL_GAME_ROOT is set but SAVEDATA/{file_name} could not be read at {}: {err}",
             path.display(),
         )
     });
@@ -97,7 +94,9 @@ fn load_or_skip(file_name: &str) -> Option<Vec<u8>> {
 
 fn verify_system_save() {
     let Some(bytes) = load_or_skip("REALLIVE.sav") else {
-        eprintln!("KAIFUU_REAL_SWEETIE_HD_PATH not set — verify_system_save is a no-op.");
+        eprintln!(
+            "ITOTORI_REAL_GAME_ROOT not set or no SAVEDATA file found — verify_system_save is a no-op."
+        );
         return;
     };
     assert_eq!(
@@ -165,7 +164,9 @@ fn save_real_sweetie_hd_system_save_round_trips() {
 
 fn verify_global_save() {
     let Some(bytes) = load_or_skip("save999.sav") else {
-        eprintln!("KAIFUU_REAL_SWEETIE_HD_PATH not set — verify_global_save is a no-op.");
+        eprintln!(
+            "ITOTORI_REAL_GAME_ROOT not set or no SAVEDATA file found — verify_global_save is a no-op."
+        );
         return;
     };
     assert_eq!(bytes.len(), SWEETIE_HD_GLOBAL_SAVE_BYTES);
@@ -207,7 +208,9 @@ fn save_real_sweetie_hd_global_save_round_trips() {
 
 fn verify_read_flags() {
     let Some(bytes) = load_or_skip("read.sav") else {
-        eprintln!("KAIFUU_REAL_SWEETIE_HD_PATH not set — verify_read_flags is a no-op.");
+        eprintln!(
+            "ITOTORI_REAL_GAME_ROOT not set or no SAVEDATA file found — verify_read_flags is a no-op."
+        );
         return;
     };
     assert_eq!(bytes.len(), SWEETIE_HD_READ_FLAGS_BYTES);

@@ -16,9 +16,11 @@
 //!    text before any unknown stops it.
 //!
 //! The test is `#[ignore]`-gated. Pass `--include-ignored` and set
-//! `KAIFUU_REAL_SWEETIE_HD_PATH` to run it.
+//! `ITOTORI_REAL_GAME_ROOT` to run it.
 
-use std::env;
+#[path = "support/real_corpus.rs"]
+mod real_corpus;
+
 use std::path::PathBuf;
 
 use utsushi_reallive::{
@@ -29,22 +31,19 @@ use utsushi_reallive::{
 /// Relative path under the Sweetie HD extraction root that holds the
 /// raw `Seen.txt` envelope. Mirrors the UTSUSHI-201..UTSUSHI-209
 /// real-bytes integration tests in this crate.
-const SWEETIE_HD_RELATIVE_PATH: &str = "オシオキSweetie＋Sweets!! HD_DL版/REALLIVEDATA/Seen.txt";
 
-fn sweetie_hd_seen_txt_path() -> Option<PathBuf> {
-    let root = env::var_os("KAIFUU_REAL_SWEETIE_HD_PATH")?;
-    let root = PathBuf::from(root);
-    Some(root.join(SWEETIE_HD_RELATIVE_PATH))
+fn real_seen_txt_path() -> Option<PathBuf> {
+    real_corpus::seen_txt_path()
 }
 
 #[test]
-#[ignore = "real-bytes; requires KAIFUU_REAL_SWEETIE_HD_PATH env var"]
+#[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
 fn sweetie_hd_scene_one_replay_emits_textline() {
-    let Some(seen_path) = sweetie_hd_seen_txt_path() else {
+    let Some(seen_path) = real_seen_txt_path() else {
         eprintln!(
-            "KAIFUU_REAL_SWEETIE_HD_PATH unset; skipping UTSUSHI-220 real-bytes Sweetie HD \
+            "ITOTORI_REAL_GAME_ROOT unset; skipping UTSUSHI-220 real-bytes Sweetie HD \
              scene-1 replay test (no silent pass: re-run with \
-             KAIFUU_REAL_SWEETIE_HD_PATH=/scratch/itotori-research/sweetie-hd/extracted)",
+             ITOTORI_REAL_GAME_ROOT=/path/to/reallive-game-root)",
         );
         return;
     };
@@ -145,10 +144,10 @@ fn sweetie_hd_scene_one_replay_emits_textline() {
 }
 
 #[test]
-#[ignore = "real-bytes; requires KAIFUU_REAL_SWEETIE_HD_PATH env var"]
+#[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
 fn sweetie_hd_scene_one_replay_is_byte_deterministic() {
-    let Some(seen_path) = sweetie_hd_seen_txt_path() else {
-        eprintln!("KAIFUU_REAL_SWEETIE_HD_PATH unset; skipping UTSUSHI-220 byte-determinism test",);
+    let Some(seen_path) = real_seen_txt_path() else {
+        eprintln!("ITOTORI_REAL_GAME_ROOT unset; skipping UTSUSHI-220 byte-determinism test",);
         return;
     };
 
@@ -180,10 +179,10 @@ fn sweetie_hd_scene_one_replay_is_byte_deterministic() {
 }
 
 #[test]
-#[ignore = "real-bytes; requires KAIFUU_REAL_SWEETIE_HD_PATH env var"]
+#[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
 fn sweetie_hd_scene_one_snapshot_round_trips() {
-    let Some(seen_path) = sweetie_hd_seen_txt_path() else {
-        eprintln!("KAIFUU_REAL_SWEETIE_HD_PATH unset; skipping UTSUSHI-220 snapshot identity test",);
+    let Some(seen_path) = real_seen_txt_path() else {
+        eprintln!("ITOTORI_REAL_GAME_ROOT unset; skipping UTSUSHI-220 snapshot identity test",);
         return;
     };
 

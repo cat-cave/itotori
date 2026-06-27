@@ -8,7 +8,7 @@
 //!
 //! The single real RealLive corpus currently staged is Sweetie HD; the
 //! test is `#[ignore]`-gated and reads its asset root from
-//! `KAIFUU_REAL_SWEETIE_HD_PATH`. The acceptance bounds match the
+//! `ITOTORI_REAL_GAME_ROOT`. The acceptance bounds match the
 //! UTSUSHI-205 spec node: ≥17 of 20 (85 %) of the Expression elements
 //! must parse without any [`utsushi_reallive::ExpressionWarning`]; the
 //! remaining ≤3 may emit `UnknownOperator` warnings against the
@@ -20,8 +20,10 @@
 //! expression AST kinds + evaluation outcomes are emitted via
 //! `eprintln!` so CI logs preserve the trace for follow-up nodes.
 
+#[path = "support/real_corpus.rs"]
+mod real_corpus;
+
 use std::collections::BTreeMap;
-use std::env;
 use std::fs;
 use std::path::PathBuf;
 
@@ -35,7 +37,6 @@ use utsushi_reallive::{
 /// raw `Seen.txt` envelope. Mirrors
 /// `tests/bytecode_element_real_bytes.rs` so a change to the
 /// upstream fixture surfaces in both tests.
-const SWEETIE_HD_RELATIVE_PATH: &str = "オシオキSweetie＋Sweets!! HD_DL版/REALLIVEDATA/Seen.txt";
 
 /// Documented Expression-element count for scene #0001. Pinned by the
 /// UTSUSHI-204 real-bytes test ("20 Expressions" in the per-variant
@@ -47,13 +48,13 @@ const SCENE_ONE_EXPECTED_EXPRESSION_COUNT: usize = 20;
 const MIN_CLEAN_PARSE_COUNT: usize = 17;
 
 #[test]
-#[ignore = "real-bytes; requires KAIFUU_REAL_SWEETIE_HD_PATH env var"]
+#[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
 fn scene1_expression_elements_parse_and_evaluate() {
-    let Some(seen_path) = sweetie_hd_seen_txt_path() else {
+    let Some(seen_path) = real_seen_txt_path() else {
         eprintln!(
-            "KAIFUU_REAL_SWEETIE_HD_PATH unset; skipping Sweetie HD real-bytes test for \
+            "ITOTORI_REAL_GAME_ROOT unset; skipping Sweetie HD real-bytes test for \
              utsushi-reallive expression parser/evaluator (no silent pass: re-run with \
-             KAIFUU_REAL_SWEETIE_HD_PATH=/scratch/itotori-research/sweetie-hd/extracted)",
+             ITOTORI_REAL_GAME_ROOT=/path/to/reallive-game-root)",
         );
         return;
     };
@@ -259,8 +260,6 @@ fn expr_variant_name(node: &ExprNode) -> &'static str {
     }
 }
 
-fn sweetie_hd_seen_txt_path() -> Option<PathBuf> {
-    let root = env::var_os("KAIFUU_REAL_SWEETIE_HD_PATH")?;
-    let root = PathBuf::from(root);
-    Some(root.join(SWEETIE_HD_RELATIVE_PATH))
+fn real_seen_txt_path() -> Option<PathBuf> {
+    real_corpus::seen_txt_path()
 }

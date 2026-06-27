@@ -1,7 +1,7 @@
 //! KAIFUU-211 real-bytes integration test for the bundle-driven
 //! patchback driver (`apply_translated_bundle`).
 //!
-//! Loads Sweetie HD scene 1 from `KAIFUU_REAL_SWEETIE_HD_PATH`, runs
+//! Loads Sweetie HD scene 1 from `ITOTORI_REAL_GAME_ROOT`, runs
 //! `kaifuu_reallive::produce_bundle` to get the canonical source-side
 //! bundle, **synthesises** a translated bundle by replacing every
 //! unit's `target.text` with a known en-US sentinel string, applies
@@ -17,10 +17,12 @@
 //! - The original source byte slice is unchanged (returned `Vec<u8>`
 //!   is a fresh allocation).
 //!
-//! Env-gated; without `KAIFUU_REAL_SWEETIE_HD_PATH` it prints an
+//! Env-gated; without `ITOTORI_REAL_GAME_ROOT` it prints an
 //! explicit skip notice and returns (no silent pass).
 
-use std::env;
+#[path = "support/real_corpus.rs"]
+mod real_corpus;
+
 use std::fs;
 use std::path::PathBuf;
 
@@ -31,8 +33,6 @@ use kaifuu_reallive::{
 };
 use serde_json::Value;
 
-const SWEETIE_HD_RELATIVE_PATH: &str = "オシオキSweetie＋Sweets!! HD_DL版/REALLIVEDATA/Seen.txt";
-const SWEETIE_HD_GAMEEXE_PATH: &str = "オシオキSweetie＋Sweets!! HD_DL版/REALLIVEDATA/Gameexe.ini";
 const SWEETIE_HD_GAME_ID: &str = "sweetie-hd";
 const SWEETIE_HD_SOURCE_PROFILE_ID: &str = "kaifuu-reallive-sweetie-hd";
 
@@ -59,23 +59,21 @@ const EN_SENTINEL: &str = "「[EN] hello world from kaifuu-211」";
 /// to find at the patched offset.
 const EN_SENTINEL_SJIS_PREFIX: &[u8] = &[0x81, 0x75];
 
-fn sweetie_hd_seen_txt_path() -> Option<PathBuf> {
-    let root = env::var_os("KAIFUU_REAL_SWEETIE_HD_PATH")?;
-    Some(PathBuf::from(root).join(SWEETIE_HD_RELATIVE_PATH))
+fn real_seen_txt_path() -> Option<PathBuf> {
+    real_corpus::seen_txt_path()
 }
 
-fn sweetie_hd_gameexe_path() -> Option<PathBuf> {
-    let root = env::var_os("KAIFUU_REAL_SWEETIE_HD_PATH")?;
-    Some(PathBuf::from(root).join(SWEETIE_HD_GAMEEXE_PATH))
+fn real_gameexe_ini_path() -> Option<PathBuf> {
+    real_corpus::gameexe_ini_path()
 }
 
 #[test]
-#[ignore = "real-bytes; requires KAIFUU_REAL_SWEETIE_HD_PATH env var"]
+#[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
 fn patches_sweetie_hd_scene_1_with_en_us_sentinel_and_round_trips_archive() {
-    let Some(seen_path) = sweetie_hd_seen_txt_path() else {
+    let Some(seen_path) = real_seen_txt_path() else {
         eprintln!(
-            "KAIFUU_REAL_SWEETIE_HD_PATH unset; skipping (re-run with \
-             KAIFUU_REAL_SWEETIE_HD_PATH=/scratch/itotori-research/sweetie-hd/extracted)"
+            "ITOTORI_REAL_GAME_ROOT unset; skipping (re-run with \
+             ITOTORI_REAL_GAME_ROOT=/path/to/reallive-game-root)"
         );
         return;
     };
@@ -115,7 +113,7 @@ fn patches_sweetie_hd_scene_1_with_en_us_sentinel_and_round_trips_archive() {
         .expect("AVG32 decompression must succeed");
 
     // Build the v0.2 source bundle (KAIFUU-210 producer).
-    let gameexe_bytes = sweetie_hd_gameexe_path()
+    let gameexe_bytes = real_gameexe_ini_path()
         .and_then(|path| fs::read(path).ok())
         .unwrap_or_default();
     let gameexe_inventory = parse_gameexe_inventory(&gameexe_bytes);
@@ -281,10 +279,10 @@ fn patches_sweetie_hd_scene_1_with_en_us_sentinel_and_round_trips_archive() {
 }
 
 #[test]
-#[ignore = "real-bytes; requires KAIFUU_REAL_SWEETIE_HD_PATH env var"]
+#[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
 fn provenance_mismatch_byte_range_emits_typed_error_on_real_bytes() {
-    let Some(seen_path) = sweetie_hd_seen_txt_path() else {
-        eprintln!("KAIFUU_REAL_SWEETIE_HD_PATH unset; skipping");
+    let Some(seen_path) = real_seen_txt_path() else {
+        eprintln!("ITOTORI_REAL_GAME_ROOT unset; skipping");
         return;
     };
     let seen_bytes = fs::read(&seen_path).expect("read Seen.txt");
@@ -306,7 +304,7 @@ fn provenance_mismatch_byte_range_emits_typed_error_on_real_bytes() {
         ..(header.bytecode_offset + header.bytecode_compressed_size) as usize];
     let decompressed =
         decompress_avg32(bytecode, header.bytecode_uncompressed_size as usize).expect("decompress");
-    let gameexe_bytes = sweetie_hd_gameexe_path()
+    let gameexe_bytes = real_gameexe_ini_path()
         .and_then(|path| fs::read(path).ok())
         .unwrap_or_default();
     let gameexe_inventory = parse_gameexe_inventory(&gameexe_bytes);
@@ -354,10 +352,10 @@ fn provenance_mismatch_byte_range_emits_typed_error_on_real_bytes() {
 }
 
 #[test]
-#[ignore = "real-bytes; requires KAIFUU_REAL_SWEETIE_HD_PATH env var"]
+#[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
 fn missing_target_payload_surfaces_typed_schema_invalid_on_real_bytes() {
-    let Some(seen_path) = sweetie_hd_seen_txt_path() else {
-        eprintln!("KAIFUU_REAL_SWEETIE_HD_PATH unset; skipping");
+    let Some(seen_path) = real_seen_txt_path() else {
+        eprintln!("ITOTORI_REAL_GAME_ROOT unset; skipping");
         return;
     };
     let _ = fs::read(&seen_path).expect("read Seen.txt");
@@ -378,7 +376,7 @@ fn missing_target_payload_surfaces_typed_schema_invalid_on_real_bytes() {
         ..(header.bytecode_offset + header.bytecode_compressed_size) as usize];
     let decompressed =
         decompress_avg32(bytecode, header.bytecode_uncompressed_size as usize).expect("decompress");
-    let gameexe_bytes = sweetie_hd_gameexe_path()
+    let gameexe_bytes = real_gameexe_ini_path()
         .and_then(|path| fs::read(path).ok())
         .unwrap_or_default();
     let gameexe_inventory = parse_gameexe_inventory(&gameexe_bytes);

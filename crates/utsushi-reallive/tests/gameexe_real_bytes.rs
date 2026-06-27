@@ -2,7 +2,7 @@
 //! [`utsushi_reallive::Gameexe`].
 //!
 //! This file is **env-gated**: the assertions only run when the
-//! environment variable `KAIFUU_REAL_SWEETIE_HD_PATH` is set, pointing
+//! environment variable `ITOTORI_REAL_GAME_ROOT` is set, pointing
 //! at the audit-grade Sweetie HD extraction root (the parent of the
 //! game-title directory, e.g.
 //! `/scratch/itotori-research/sweetie-hd/extracted`). The presence of
@@ -25,32 +25,25 @@
 //!   second DAG-spec verification filter. Matches the
 //!   `gameexe_dotted_path_lookup` name.
 
+#[path = "support/real_corpus.rs"]
+mod real_corpus;
+
 use std::fs;
 use std::path::PathBuf;
 
 use utsushi_reallive::{Gameexe, GameexeValue, SyscomVisibility};
 
-/// Default name of the Sweetie HD title directory inside the
-/// extraction root. Held as a `const` so an audit grep can find the
-/// hard-coded title without scanning bodies.
-const SWEETIE_HD_TITLE_DIR: &str = "オシオキSweetie＋Sweets!! HD_DL版";
-
-/// Resolve `$KAIFUU_REAL_SWEETIE_HD_PATH/<title>/REALLIVEDATA/Gameexe.ini`
-/// or return `None` if the env var is absent.
+/// Resolve `Gameexe.ini` from the generic RealLive corpus root or
+/// return `None` if the input is absent.
 fn resolve_gameexe_path() -> Option<PathBuf> {
-    let root = std::env::var_os("KAIFUU_REAL_SWEETIE_HD_PATH")?;
-    let mut path = PathBuf::from(root);
-    path.push(SWEETIE_HD_TITLE_DIR);
-    path.push("REALLIVEDATA");
-    path.push("Gameexe.ini");
-    Some(path)
+    real_corpus::gameexe_ini_path()
 }
 
 fn load_or_skip() -> Option<Vec<u8>> {
     let path = resolve_gameexe_path()?;
     let bytes = fs::read(&path).unwrap_or_else(|err| {
         panic!(
-            "KAIFUU_REAL_SWEETIE_HD_PATH is set but Gameexe.ini at {} could not be read: {err}",
+            "ITOTORI_REAL_GAME_ROOT is set but Gameexe.ini at {} could not be read: {err}",
             path.display(),
         )
     });
@@ -63,7 +56,7 @@ fn load_or_skip() -> Option<Vec<u8>> {
 fn verify_sweetie_hd_known_values() {
     let Some(bytes) = load_or_skip() else {
         eprintln!(
-            "KAIFUU_REAL_SWEETIE_HD_PATH not set — verify_sweetie_hd_known_values \
+            "ITOTORI_REAL_GAME_ROOT not set or no REALLIVEDATA directory found — verify_sweetie_hd_known_values \
              is a no-op."
         );
         return;
@@ -204,7 +197,7 @@ fn verify_sweetie_hd_known_values() {
 fn verify_dotted_path_lookup() {
     let Some(bytes) = load_or_skip() else {
         eprintln!(
-            "KAIFUU_REAL_SWEETIE_HD_PATH not set — verify_dotted_path_lookup \
+            "ITOTORI_REAL_GAME_ROOT not set or no REALLIVEDATA directory found — verify_dotted_path_lookup \
              is a no-op."
         );
         return;
@@ -281,28 +274,28 @@ fn verify_dotted_path_lookup() {
 
 /// Worktree-prompt filter: `cargo test ... gameexe_real_bytes ...`.
 #[test]
-#[ignore = "requires KAIFUU_REAL_SWEETIE_HD_PATH; opt in with --include-ignored"]
+#[ignore = "requires ITOTORI_REAL_GAME_ROOT; opt in with --include-ignored"]
 fn gameexe_real_bytes_sweetie_hd_known_values() {
     verify_sweetie_hd_known_values();
 }
 
 /// Worktree-prompt filter: `cargo test ... gameexe_real_bytes ...`.
 #[test]
-#[ignore = "requires KAIFUU_REAL_SWEETIE_HD_PATH; opt in with --include-ignored"]
+#[ignore = "requires ITOTORI_REAL_GAME_ROOT; opt in with --include-ignored"]
 fn gameexe_real_bytes_dotted_path_lookup() {
     verify_dotted_path_lookup();
 }
 
 /// DAG-spec filter: `cargo test ... gameexe_sweetie_hd_known_values`.
 #[test]
-#[ignore = "requires KAIFUU_REAL_SWEETIE_HD_PATH; opt in with --include-ignored"]
+#[ignore = "requires ITOTORI_REAL_GAME_ROOT; opt in with --include-ignored"]
 fn gameexe_sweetie_hd_known_values() {
     verify_sweetie_hd_known_values();
 }
 
 /// DAG-spec filter: `cargo test ... gameexe_dotted_path_lookup`.
 #[test]
-#[ignore = "requires KAIFUU_REAL_SWEETIE_HD_PATH; opt in with --include-ignored"]
+#[ignore = "requires ITOTORI_REAL_GAME_ROOT; opt in with --include-ignored"]
 fn gameexe_dotted_path_lookup() {
     verify_dotted_path_lookup();
 }
