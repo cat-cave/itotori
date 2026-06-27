@@ -110,17 +110,13 @@ describe("UTSUSHI-228 parseLocalizeProjectPairPolicy", () => {
   it("rejects an object without policyId", () => {
     const preset = loadPreset() as Record<string, unknown>;
     delete preset.policyId;
-    expect(() => parseLocalizeProjectPairPolicy(preset)).toThrow(
-      LocalizeProjectPairPolicyError,
-    );
+    expect(() => parseLocalizeProjectPairPolicy(preset)).toThrow(LocalizeProjectPairPolicyError);
   });
 
   it("rejects an object with an empty enUsSentinel", () => {
     const preset = loadPreset() as Record<string, unknown>;
     preset.enUsSentinel = "";
-    expect(() => parseLocalizeProjectPairPolicy(preset)).toThrow(
-      LocalizeProjectPairPolicyError,
-    );
+    expect(() => parseLocalizeProjectPairPolicy(preset)).toThrow(LocalizeProjectPairPolicyError);
   });
 
   it("rejects when a stage pair drifts from the top-level pair", () => {
@@ -132,9 +128,7 @@ describe("UTSUSHI-228 parseLocalizeProjectPairPolicy", () => {
     preset.stages.translation.primary = {
       pair: { modelId: "anthropic/claude-sonnet-4", providerId: "anthropic" },
     };
-    expect(() => parseLocalizeProjectPairPolicy(preset)).toThrow(
-      LocalizeProjectPairPolicyError,
-    );
+    expect(() => parseLocalizeProjectPairPolicy(preset)).toThrow(LocalizeProjectPairPolicyError);
   });
 
   it("rejects non-object input", () => {
@@ -142,9 +136,7 @@ describe("UTSUSHI-228 parseLocalizeProjectPairPolicy", () => {
       LocalizeProjectPairPolicyError,
     );
     expect(() => parseLocalizeProjectPairPolicy(null)).toThrow(LocalizeProjectPairPolicyError);
-    expect(() => parseLocalizeProjectPairPolicy([1, 2, 3])).toThrow(
-      LocalizeProjectPairPolicyError,
-    );
+    expect(() => parseLocalizeProjectPairPolicy([1, 2, 3])).toThrow(LocalizeProjectPairPolicyError);
   });
 
   it("rejects v0.1 schemaVersion with PairPolicyVersionMismatchError (ITOTORI-234 / ITOTORI-238 no-legacy-compat)", () => {
