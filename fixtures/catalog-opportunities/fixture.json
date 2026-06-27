@@ -960,7 +960,7 @@
           {
             "catalogSource": "steam",
             "sourceId": "STEAMOPP010",
-            "externalIdKind": "platform_product"
+            "externalIdKind": "store_product"
           }
         ],
         "dlsiteDemandFacts": {
@@ -4456,7 +4456,7 @@
           {
             "catalogSource": "steam",
             "sourceId": "STEAMOPP010",
-            "externalIdKind": "platform_product"
+            "externalIdKind": "store_product"
           }
         ],
         "engineName": "rpg-maker-mv-mz",
@@ -4652,7 +4652,7 @@
               {
                 "catalogSource": "steam",
                 "sourceId": "STEAMOPP010",
-                "externalIdKind": "platform_product"
+                "externalIdKind": "store_product"
               }
             ]
           }
