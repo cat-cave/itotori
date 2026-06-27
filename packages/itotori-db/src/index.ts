@@ -46,6 +46,9 @@ export {
   catalogSourceRecordKindValues,
   catalogSourceValues,
   catalogTranslationPortabilityValues,
+  engineCapabilityEvidenceKindValues,
+  engineCapabilityEvidenceSourceValues,
+  engineCapabilityEvidenceStatusValues,
   glossaryReviewItemStateValues,
   contextArtifactCategoryValues,
   contextArtifactStatusValues,
@@ -84,6 +87,9 @@ export type {
   CatalogSource,
   CatalogSourceRecordKind,
   CatalogTranslationPortability,
+  EngineCapabilityEvidenceKind,
+  EngineCapabilityEvidenceSource,
+  EngineCapabilityEvidenceStatus,
   GlossaryReviewItemState,
   ContextArtifactCategory,
   ContextArtifactStatus,
@@ -729,12 +735,19 @@ export type {
 } from "./repositories/audit-finding-repository.js";
 export type { AuditFindingRecord, AuditFindingSeverity, AuditFindingStatus } from "./schema.js";
 export {
+  capabilityEvidenceLabelValues,
   EngineCapabilityReportRepository,
   EngineCapabilityReportShapeError,
 } from "./repositories/engine-capability-report-repository.js";
 export type {
   AdapterCapabilityMatrixRecord,
+  CapabilityEvidenceInput,
+  CapabilityEvidenceLabel,
   CapabilityLevelStatusInput,
+  EngineCapabilityEvidenceByLevel,
+  EngineCapabilityEvidenceRow,
+  EngineCapabilityEvidenceSplit,
+  EngineCapabilityReadinessRecord,
   EngineCapabilityReportRow,
 } from "./repositories/engine-capability-report-repository.js";
 export { capabilityLevelValues, capabilityLevelStatusKindValues } from "./schema.js";

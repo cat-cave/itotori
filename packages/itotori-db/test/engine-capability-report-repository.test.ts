@@ -2,7 +2,11 @@ import { describe, expect, it } from "vitest";
 import { sql } from "drizzle-orm";
 import {
   type AdapterCapabilityMatrixRecord,
+  capabilityEvidenceLabelValues,
   capabilityLevelValues,
+  engineCapabilityEvidenceKindValues,
+  engineCapabilityEvidenceSourceValues,
+  engineCapabilityEvidenceStatusValues,
   EngineCapabilityReportRepository,
   EngineCapabilityReportShapeError,
 } from "../src/index.js";
@@ -107,6 +111,176 @@ describe("EngineCapabilityReportRepository", () => {
         limitations: ["narrower than before"],
       });
       expect(round?.patch).toEqual({ kind: "unsupported", reason: "regressed" });
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("attaches public fixture and private-local aggregate evidence to the same adapter separately", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      const repo = new EngineCapabilityReportRepository(context.db);
+      await repo.writeMatrix(localActor, {
+        adapterId: "kaifuu.rpg_maker_mv_mz",
+        identify: { kind: "supported" },
+        inventory: { kind: "partial", limitations: ["fixture inventory surfaces only"] },
+        extract: { kind: "unsupported", reason: "public fixture does not prove extraction" },
+        patch: { kind: "unsupported", reason: "public fixture does not prove patching" },
+      });
+
+      const publicEvidence = await repo.recordCapabilityEvidence(localActor, {
+        adapterId: "kaifuu.rpg_maker_mv_mz",
+        level: capabilityLevelValues.identify,
+        evidenceSource: engineCapabilityEvidenceSourceValues.publicFixture,
+        evidenceKind: engineCapabilityEvidenceKindValues.adapterMatrix,
+        schemaVersion: "catalog.capability_evidence.v0.1",
+        status: engineCapabilityEvidenceStatusValues.present,
+        aggregateCounts: { fixture_rows: 4 },
+        evidenceLabels: [
+          capabilityEvidenceLabelValues.adapterCapabilityMatrix,
+          capabilityEvidenceLabelValues.publicFixtureMatrix,
+        ],
+        limitations: ["fixture support matrix only"],
+        publicFixtureId: "rpg-maker-mv-mz-key-validation-success-v0.1",
+      });
+      const privateEvidence = await repo.recordCapabilityEvidence(localActor, {
+        adapterId: "kaifuu.rpg_maker_mv_mz",
+        level: capabilityLevelValues.identify,
+        evidenceSource: engineCapabilityEvidenceSourceValues.privateLocalAggregate,
+        evidenceKind: engineCapabilityEvidenceKindValues.localCorpusSidecar,
+        schemaVersion: "catalog.local_corpus_engine_evidence.v0.1",
+        status: engineCapabilityEvidenceStatusValues.partial,
+        aggregateCounts: {
+          marker_kinds: 3,
+          encrypted_asset_extensions: 2,
+          file_kind_counts: 9,
+        },
+        evidenceLabels: [
+          capabilityEvidenceLabelValues.localCorpusMarkerEvidence,
+          capabilityEvidenceLabelValues.encryptedAssetExtension,
+          capabilityEvidenceLabelValues.systemJsonLayout,
+        ],
+        limitations: ["aggregate marker evidence only; no adapter execution claimed"],
+      });
+
+      const readiness = await repo.readCapabilityReadiness("kaifuu.rpg_maker_mv_mz");
+      expect(readiness?.matrix.extract).toEqual({
+        kind: "unsupported",
+        reason: "public fixture does not prove extraction",
+      });
+      expect(readiness?.evidenceByLevel.identify.publicFixture).toMatchObject([
+        {
+          engineCapabilityEvidenceId: publicEvidence.engineCapabilityEvidenceId,
+          evidenceSource: engineCapabilityEvidenceSourceValues.publicFixture,
+          publicFixtureId: "rpg-maker-mv-mz-key-validation-success-v0.1",
+        },
+      ]);
+      expect(readiness?.evidenceByLevel.identify.privateLocalAggregate).toMatchObject([
+        {
+          engineCapabilityEvidenceId: privateEvidence.engineCapabilityEvidenceId,
+          evidenceSource: engineCapabilityEvidenceSourceValues.privateLocalAggregate,
+          publicFixtureId: null,
+          aggregateCounts: {
+            marker_kinds: 3,
+            encrypted_asset_extensions: 2,
+            file_kind_counts: 9,
+          },
+        },
+      ]);
+
+      const listed = await repo.listMatricesWithEvidence();
+      expect(listed.map((entry) => entry.adapterId)).toContain("kaifuu.rpg_maker_mv_mz");
+      const listedMvMz = listed.find((entry) => entry.adapterId === "kaifuu.rpg_maker_mv_mz");
+      expect(listedMvMz?.evidenceByLevel.identify.publicFixture).toHaveLength(1);
+      expect(listedMvMz?.evidenceByLevel.identify.privateLocalAggregate).toHaveLength(1);
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("private-local aggregate evidence cannot upgrade unsupported matrix support", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      const repo = new EngineCapabilityReportRepository(context.db);
+      await repo.writeMatrix(localActor, {
+        adapterId: "kaifuu.mv_mz.aggregate_only",
+        identify: { kind: "unsupported", reason: "no public adapter fixture support" },
+        inventory: { kind: "unsupported", reason: "no public adapter fixture support" },
+        extract: { kind: "unsupported", reason: "no public adapter fixture support" },
+        patch: { kind: "unsupported", reason: "no public adapter fixture support" },
+      });
+      await repo.recordCapabilityEvidence(localActor, {
+        adapterId: "kaifuu.mv_mz.aggregate_only",
+        level: capabilityLevelValues.identify,
+        evidenceSource: engineCapabilityEvidenceSourceValues.privateLocalAggregate,
+        evidenceKind: engineCapabilityEvidenceKindValues.localCorpusSidecar,
+        schemaVersion: "catalog.local_corpus_engine_evidence.v0.1",
+        status: engineCapabilityEvidenceStatusValues.present,
+        aggregateCounts: { marker_kinds: 4, encrypted_asset_extensions: 2 },
+        evidenceLabels: [
+          capabilityEvidenceLabelValues.localEngineMarkerCount,
+          capabilityEvidenceLabelValues.mvMzMarkerEvidence,
+        ],
+        limitations: ["aggregate marker evidence only; support matrix unchanged"],
+      });
+
+      expect(
+        await repo.isAdapterUsable("kaifuu.mv_mz.aggregate_only", capabilityLevelValues.identify),
+      ).toBe(false);
+      expect(await repo.adaptersSupporting(capabilityLevelValues.identify)).not.toContain(
+        "kaifuu.mv_mz.aggregate_only",
+      );
+      const readiness = await repo.readCapabilityReadiness("kaifuu.mv_mz.aggregate_only");
+      expect(readiness?.matrix.identify).toEqual({
+        kind: "unsupported",
+        reason: "no public adapter fixture support",
+      });
+      expect(readiness?.evidenceByLevel.identify.privateLocalAggregate).toHaveLength(1);
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("rejects private-local leakage-shaped evidence before persistence", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      const repo = new EngineCapabilityReportRepository(context.db);
+      const base = {
+        adapterId: "kaifuu.rpg_maker_mv_mz",
+        level: capabilityLevelValues.identify,
+        evidenceSource: engineCapabilityEvidenceSourceValues.privateLocalAggregate,
+        evidenceKind: engineCapabilityEvidenceKindValues.localCorpusSidecar,
+        schemaVersion: "catalog.local_corpus_engine_evidence.v0.1",
+        status: engineCapabilityEvidenceStatusValues.partial,
+        aggregateCounts: { marker_kinds: 1 },
+        evidenceLabels: [capabilityEvidenceLabelValues.localCorpusMarkerEvidence],
+        limitations: ["aggregate marker evidence only"],
+      } as const;
+
+      await expect(
+        repo.recordCapabilityEvidence(localActor, {
+          ...base,
+          limitations: ["found in /home/example/private/Game.rpgmvp"],
+        }),
+      ).rejects.toBeInstanceOf(EngineCapabilityReportShapeError);
+      await expect(
+        repo.recordCapabilityEvidence(localActor, {
+          ...base,
+          limitations: ["SECRET_KEY was present in rawText"],
+        }),
+      ).rejects.toBeInstanceOf(EngineCapabilityReportShapeError);
+      await expect(
+        repo.recordCapabilityEvidence(localActor, {
+          ...base,
+          aggregateCounts: { pathHash_abcdefabcdefabcdefabcdefabcdefab: 1 },
+        }),
+      ).rejects.toBeInstanceOf(EngineCapabilityReportShapeError);
+      await expect(
+        repo.recordCapabilityEvidence(localActor, {
+          ...base,
+          rawSignals: [{ blob: "marker" }],
+        } as never),
+      ).rejects.toBeInstanceOf(EngineCapabilityReportShapeError);
     } finally {
       await context.close();
     }

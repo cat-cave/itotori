@@ -3167,6 +3167,34 @@ export const capabilityLevelStatusKindValues = {
 export type CapabilityLevelStatusKind =
   (typeof capabilityLevelStatusKindValues)[keyof typeof capabilityLevelStatusKindValues];
 
+export const engineCapabilityEvidenceSourceValues = {
+  publicFixture: "public_fixture",
+  privateLocalAggregate: "private_local_aggregate",
+} as const;
+
+export type EngineCapabilityEvidenceSource =
+  (typeof engineCapabilityEvidenceSourceValues)[keyof typeof engineCapabilityEvidenceSourceValues];
+
+export const engineCapabilityEvidenceKindValues = {
+  adapterMatrix: "adapter_matrix",
+  localCorpusSidecar: "local_corpus_sidecar",
+  keyValidation: "key_validation",
+  engineMarkerCount: "engine_marker_count",
+} as const;
+
+export type EngineCapabilityEvidenceKind =
+  (typeof engineCapabilityEvidenceKindValues)[keyof typeof engineCapabilityEvidenceKindValues];
+
+export const engineCapabilityEvidenceStatusValues = {
+  present: "present",
+  partial: "partial",
+  missing: "missing",
+  unknown: "unknown",
+} as const;
+
+export type EngineCapabilityEvidenceStatus =
+  (typeof engineCapabilityEvidenceStatusValues)[keyof typeof engineCapabilityEvidenceStatusValues];
+
 export const engineCapabilityReports = pgTable(
   "itotori_engine_capability_reports",
   {
@@ -3184,6 +3212,41 @@ export const engineCapabilityReports = pgTable(
   (table) => [
     index("itotori_engine_capability_reports_adapter_idx").on(table.adapterId),
     index("itotori_engine_capability_reports_level_idx").on(table.level, table.statusKind),
+  ],
+);
+
+export const engineCapabilityEvidence = pgTable(
+  "itotori_engine_capability_evidence",
+  {
+    engineCapabilityEvidenceId: text("engine_capability_evidence_id").primaryKey(),
+    adapterId: text("adapter_id").notNull(),
+    level: text("level").$type<CapabilityLevel>().notNull(),
+    evidenceSource: text("evidence_source").$type<EngineCapabilityEvidenceSource>().notNull(),
+    evidenceKind: text("evidence_kind").$type<EngineCapabilityEvidenceKind>().notNull(),
+    schemaVersion: text("schema_version").notNull(),
+    status: text("status").$type<EngineCapabilityEvidenceStatus>().notNull(),
+    aggregateCounts: jsonb("aggregate_counts")
+      .$type<Record<string, number>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    evidenceLabels: jsonb("evidence_labels")
+      .$type<string[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    limitations: jsonb("limitations")
+      .$type<string[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    publicFixtureId: text("public_fixture_id"),
+    reportedAt: timestamp("reported_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("itotori_engine_capability_evidence_adapter_idx").on(table.adapterId),
+    index("itotori_engine_capability_evidence_level_idx").on(table.adapterId, table.level),
+    index("itotori_engine_capability_evidence_source_idx").on(
+      table.evidenceSource,
+      table.evidenceKind,
+    ),
   ],
 );
 

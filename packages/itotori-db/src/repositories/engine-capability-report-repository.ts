@@ -4,8 +4,15 @@ import { type AuthorizationActor, permissionValues, requirePermission } from "..
 import {
   type CapabilityLevel,
   type CapabilityLevelStatusKind,
+  type EngineCapabilityEvidenceKind,
+  type EngineCapabilityEvidenceSource,
+  type EngineCapabilityEvidenceStatus,
   capabilityLevelStatusKindValues,
   capabilityLevelValues,
+  engineCapabilityEvidence,
+  engineCapabilityEvidenceKindValues,
+  engineCapabilityEvidenceSourceValues,
+  engineCapabilityEvidenceStatusValues,
   engineCapabilityReports,
 } from "../schema.js";
 import { createUuid7 } from "./event-queue-repository.js";
@@ -39,6 +46,69 @@ export type EngineCapabilityReportRow = {
   limitations: string[];
   reason: string | null;
   reportedAt: Date;
+};
+
+export const capabilityEvidenceLabelValues = {
+  adapterCapabilityMatrix: "adapter_capability_matrix",
+  publicFixtureMatrix: "public_fixture_matrix",
+  publicFixtureKeyValidation: "public_fixture_key_validation",
+  rpgmakerMvMetadata: "rpgmaker_mv_metadata",
+  rpgmakerMzMetadata: "rpgmaker_mz_metadata",
+  encryptedAssetExtension: "encrypted_asset_extension",
+  systemJsonLayout: "system_json_layout",
+  localEngineMarkerCount: "local_engine_marker_count",
+  localExtensionCount: "local_extension_count",
+  localFileKindCount: "local_file_kind_count",
+  localCorpusMarkerEvidence: "local_corpus_marker_evidence",
+  mvMzMarkerEvidence: "mv_mz_marker_evidence",
+} as const;
+
+export type CapabilityEvidenceLabel =
+  (typeof capabilityEvidenceLabelValues)[keyof typeof capabilityEvidenceLabelValues];
+
+export type CapabilityEvidenceInput = {
+  adapterId: string;
+  level: CapabilityLevel;
+  evidenceSource: EngineCapabilityEvidenceSource;
+  evidenceKind: EngineCapabilityEvidenceKind;
+  schemaVersion: string;
+  status: EngineCapabilityEvidenceStatus;
+  aggregateCounts?: Record<string, number>;
+  evidenceLabels?: CapabilityEvidenceLabel[];
+  limitations?: string[];
+  publicFixtureId?: string | null;
+  reportedAt?: Date;
+};
+
+export type EngineCapabilityEvidenceRow = {
+  engineCapabilityEvidenceId: string;
+  adapterId: string;
+  level: CapabilityLevel;
+  evidenceSource: EngineCapabilityEvidenceSource;
+  evidenceKind: EngineCapabilityEvidenceKind;
+  schemaVersion: string;
+  status: EngineCapabilityEvidenceStatus;
+  aggregateCounts: Record<string, number>;
+  evidenceLabels: CapabilityEvidenceLabel[];
+  limitations: string[];
+  publicFixtureId: string | null;
+  reportedAt: Date;
+};
+
+export type EngineCapabilityEvidenceSplit = {
+  publicFixture: EngineCapabilityEvidenceRow[];
+  privateLocalAggregate: EngineCapabilityEvidenceRow[];
+};
+
+export type EngineCapabilityEvidenceByLevel = Record<
+  CapabilityLevel,
+  EngineCapabilityEvidenceSplit
+>;
+
+export type EngineCapabilityReadinessRecord = {
+  adapterId: string;
+  matrix: AdapterCapabilityMatrixRecord;
+  evidenceByLevel: EngineCapabilityEvidenceByLevel;
 };
 
 export class EngineCapabilityReportShapeError extends Error {
@@ -79,6 +149,50 @@ function assertStatusShape(status: CapabilityLevelStatusInput, label: string): v
 function statusFor(matrix: AdapterCapabilityMatrixRecord, level: CapabilityLevel) {
   return matrix[level];
 }
+
+const allowedEvidenceLabels = new Set<string>(Object.values(capabilityEvidenceLabelValues));
+const evidenceInputKeys = new Set([
+  "adapterId",
+  "level",
+  "evidenceSource",
+  "evidenceKind",
+  "schemaVersion",
+  "status",
+  "aggregateCounts",
+  "evidenceLabels",
+  "limitations",
+  "publicFixtureId",
+  "reportedAt",
+]);
+
+const privateLocalEvidenceKinds = new Set<string>([
+  engineCapabilityEvidenceKindValues.localCorpusSidecar,
+  engineCapabilityEvidenceKindValues.engineMarkerCount,
+]);
+
+const privateLocalLeakagePatterns: Array<{ pattern: RegExp; label: string }> = [
+  {
+    pattern: /(^|[\s"'`])(?:\/(?:home|users|tmp|var|scratch|mnt|volumes)\b|~\/|[a-z]:[\\/]|file:)/i,
+    label: "local path",
+  },
+  {
+    pattern:
+      /\b[^\s\\/]+\.(?:rpgmvp|rpgmvo|rpgmvm|png|jpg|jpeg|json|txt|ks|xp3|exe|dll|ini|sav|zip|rar|7z)\b/i,
+    label: "filename",
+  },
+  { pattern: /\bscreen\s*shot|screenshot\w*/i, label: "screenshot name" },
+  { pattern: /\braw[_ -]?text\b/i, label: "raw text" },
+  {
+    pattern: /\b(?:secret|secret_key|raw[_ -]?key|key[_ -]?material|decryption[_ -]?key)\b/i,
+    label: "key material",
+  },
+  {
+    pattern: /\b(?:path[_ -]?hash|local[_ -]?scan[_ -]?entry[_ -]?id|entry[_ -]?id)(?:\b|_)/i,
+    label: "path hash or local entry id",
+  },
+  { pattern: /\b[a-f0-9]{32,}\b/i, label: "raw hash" },
+  { pattern: /\b(?:raw[_ -]?signal|signal[_ -]?blob|signals?)\b/i, label: "raw signal blob" },
+];
 
 export class EngineCapabilityReportRepository {
   constructor(private readonly db: ItotoriDatabase) {}
@@ -136,6 +250,36 @@ export class EngineCapabilityReportRepository {
       }
       return inserted;
     });
+  }
+
+  async recordCapabilityEvidence(
+    actor: AuthorizationActor,
+    input: CapabilityEvidenceInput,
+  ): Promise<EngineCapabilityEvidenceRow> {
+    await requirePermission(this.db, actor, permissionValues.projectImport);
+    const value = normalizeCapabilityEvidenceInput(input);
+    const rows = await this.db
+      .insert(engineCapabilityEvidence)
+      .values({
+        engineCapabilityEvidenceId: createUuid7(),
+        adapterId: value.adapterId,
+        level: value.level,
+        evidenceSource: value.evidenceSource,
+        evidenceKind: value.evidenceKind,
+        schemaVersion: value.schemaVersion,
+        status: value.status,
+        aggregateCounts: value.aggregateCounts,
+        evidenceLabels: value.evidenceLabels,
+        limitations: value.limitations,
+        publicFixtureId: value.publicFixtureId,
+        reportedAt: value.reportedAt,
+      })
+      .returning();
+    const row = rows[0];
+    if (!row) {
+      throw new EngineCapabilityReportShapeError("Capability evidence insert returned no row");
+    }
+    return toEvidenceRow(row);
   }
 
   async readMatrix(adapterId: string): Promise<AdapterCapabilityMatrixRecord | null> {
@@ -199,6 +343,40 @@ export class EngineCapabilityReportRepository {
     return matrices;
   }
 
+  async listMatricesWithEvidence(): Promise<EngineCapabilityReadinessRecord[]> {
+    const matrices = await this.listMatrices();
+    const readModels: EngineCapabilityReadinessRecord[] = [];
+    for (const matrix of matrices) {
+      const readiness = await this.readCapabilityReadiness(matrix.adapterId);
+      if (readiness !== null) {
+        readModels.push(readiness);
+      }
+    }
+    return readModels;
+  }
+
+  async readCapabilityReadiness(
+    adapterId: string,
+  ): Promise<EngineCapabilityReadinessRecord | null> {
+    const matrix = await this.readMatrix(adapterId);
+    if (matrix === null) {
+      return null;
+    }
+    const evidenceRows = await this.db
+      .select()
+      .from(engineCapabilityEvidence)
+      .where(eq(engineCapabilityEvidence.adapterId, adapterId));
+    const evidenceByLevel = emptyEvidenceByLevel();
+    for (const row of evidenceRows.map(toEvidenceRow).sort(compareEvidenceRows)) {
+      evidenceBucket(evidenceByLevel[row.level], row.evidenceSource).push(row);
+    }
+    return {
+      adapterId,
+      matrix,
+      evidenceByLevel,
+    };
+  }
+
   /**
    * Strict gate: returns true iff the adapter's status at `level` is
    * `supported`. Partial does NOT count.
@@ -245,4 +423,217 @@ function toRow(raw: typeof engineCapabilityReports.$inferSelect): EngineCapabili
     reason: raw.reason ?? null,
     reportedAt: raw.reportedAt,
   };
+}
+
+function normalizeCapabilityEvidenceInput(
+  input: CapabilityEvidenceInput,
+): Required<CapabilityEvidenceInput> {
+  validateCapabilityEvidenceInput(input);
+  return {
+    adapterId: input.adapterId,
+    level: input.level,
+    evidenceSource: input.evidenceSource,
+    evidenceKind: input.evidenceKind,
+    schemaVersion: input.schemaVersion,
+    status: input.status,
+    aggregateCounts: input.aggregateCounts ?? {},
+    evidenceLabels: input.evidenceLabels ?? [],
+    limitations: input.limitations ?? [],
+    publicFixtureId: input.publicFixtureId ?? null,
+    reportedAt: input.reportedAt ?? new Date(),
+  };
+}
+
+function validateCapabilityEvidenceInput(input: CapabilityEvidenceInput): void {
+  for (const key of Object.keys(input as Record<string, unknown>)) {
+    if (!evidenceInputKeys.has(key)) {
+      throw new EngineCapabilityReportShapeError(
+        `CapabilityEvidence.${key}: unsupported field; raw evidence blobs are not accepted`,
+      );
+    }
+  }
+  if (typeof input.adapterId !== "string" || input.adapterId.trim().length === 0) {
+    throw new EngineCapabilityReportShapeError("CapabilityEvidence.adapterId must be non-empty");
+  }
+  if (!Object.values(capabilityLevelValues).includes(input.level)) {
+    throw new EngineCapabilityReportShapeError(`CapabilityEvidence.level is not supported`);
+  }
+  if (!Object.values(engineCapabilityEvidenceSourceValues).includes(input.evidenceSource)) {
+    throw new EngineCapabilityReportShapeError(
+      `CapabilityEvidence.evidenceSource is not supported`,
+    );
+  }
+  if (!Object.values(engineCapabilityEvidenceKindValues).includes(input.evidenceKind)) {
+    throw new EngineCapabilityReportShapeError(`CapabilityEvidence.evidenceKind is not supported`);
+  }
+  if (!Object.values(engineCapabilityEvidenceStatusValues).includes(input.status)) {
+    throw new EngineCapabilityReportShapeError(`CapabilityEvidence.status is not supported`);
+  }
+  if (typeof input.schemaVersion !== "string" || input.schemaVersion.trim().length === 0) {
+    throw new EngineCapabilityReportShapeError(
+      "CapabilityEvidence.schemaVersion must be non-empty",
+    );
+  }
+  validateAggregateCounts(input.aggregateCounts ?? {});
+  validateEvidenceLabels(input.evidenceLabels ?? []);
+  validateStringArray(input.limitations ?? [], "limitations");
+  if (input.publicFixtureId != null && input.publicFixtureId.trim().length === 0) {
+    throw new EngineCapabilityReportShapeError(
+      "CapabilityEvidence.publicFixtureId must be non-empty when provided",
+    );
+  }
+  if (
+    input.evidenceSource !== engineCapabilityEvidenceSourceValues.publicFixture &&
+    input.publicFixtureId != null
+  ) {
+    throw new EngineCapabilityReportShapeError(
+      "CapabilityEvidence.publicFixtureId is only valid for public_fixture evidence",
+    );
+  }
+  if (
+    input.evidenceSource === engineCapabilityEvidenceSourceValues.privateLocalAggregate &&
+    !privateLocalEvidenceKinds.has(input.evidenceKind)
+  ) {
+    throw new EngineCapabilityReportShapeError(
+      "CapabilityEvidence.private_local_aggregate only accepts aggregate local evidence kinds",
+    );
+  }
+  if (input.evidenceSource === engineCapabilityEvidenceSourceValues.privateLocalAggregate) {
+    assertNoPrivateLocalLeakage(input);
+  }
+}
+
+function validateAggregateCounts(counts: Record<string, number>): void {
+  if (!isPlainRecord(counts)) {
+    throw new EngineCapabilityReportShapeError(
+      "CapabilityEvidence.aggregateCounts must be an object",
+    );
+  }
+  for (const [key, value] of Object.entries(counts)) {
+    if (typeof key !== "string" || key.trim().length === 0) {
+      throw new EngineCapabilityReportShapeError(
+        "CapabilityEvidence.aggregateCounts keys must be non-empty strings",
+      );
+    }
+    if (!Number.isInteger(value) || value < 0 || !Number.isFinite(value)) {
+      throw new EngineCapabilityReportShapeError(
+        `CapabilityEvidence.aggregateCounts.${key} must be a finite non-negative integer`,
+      );
+    }
+  }
+}
+
+function validateEvidenceLabels(labels: CapabilityEvidenceLabel[]): void {
+  validateStringArray(labels, "evidenceLabels");
+  for (const label of labels) {
+    if (!allowedEvidenceLabels.has(label)) {
+      throw new EngineCapabilityReportShapeError(
+        `CapabilityEvidence.evidenceLabels contains unsupported label ${label}`,
+      );
+    }
+  }
+}
+
+function validateStringArray(values: string[], fieldName: string): void {
+  if (!Array.isArray(values)) {
+    throw new EngineCapabilityReportShapeError(`CapabilityEvidence.${fieldName} must be an array`);
+  }
+  for (const value of values) {
+    if (typeof value !== "string" || value.trim().length === 0) {
+      throw new EngineCapabilityReportShapeError(
+        `CapabilityEvidence.${fieldName} must contain only non-empty strings`,
+      );
+    }
+  }
+}
+
+function assertNoPrivateLocalLeakage(input: CapabilityEvidenceInput): void {
+  const strings = [
+    input.adapterId,
+    input.schemaVersion,
+    input.publicFixtureId ?? "",
+    ...Object.keys(input.aggregateCounts ?? {}),
+    ...(input.evidenceLabels ?? []),
+    ...(input.limitations ?? []),
+  ];
+  for (const value of strings) {
+    for (const { pattern, label } of privateLocalLeakagePatterns) {
+      if (pattern.test(value)) {
+        throw new EngineCapabilityReportShapeError(
+          `CapabilityEvidence.private_local_aggregate rejects ${label}`,
+        );
+      }
+    }
+  }
+}
+
+function isPlainRecord(value: unknown): value is Record<string, number> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function toEvidenceRow(
+  raw: typeof engineCapabilityEvidence.$inferSelect,
+): EngineCapabilityEvidenceRow {
+  return {
+    engineCapabilityEvidenceId: raw.engineCapabilityEvidenceId,
+    adapterId: raw.adapterId,
+    level: raw.level,
+    evidenceSource: raw.evidenceSource,
+    evidenceKind: raw.evidenceKind,
+    schemaVersion: raw.schemaVersion,
+    status: raw.status,
+    aggregateCounts: raw.aggregateCounts ?? {},
+    evidenceLabels: (raw.evidenceLabels ?? []) as CapabilityEvidenceLabel[],
+    limitations: raw.limitations ?? [],
+    publicFixtureId: raw.publicFixtureId ?? null,
+    reportedAt: raw.reportedAt,
+  };
+}
+
+function emptyEvidenceByLevel(): EngineCapabilityEvidenceByLevel {
+  return {
+    identify: emptyEvidenceSplit(),
+    inventory: emptyEvidenceSplit(),
+    extract: emptyEvidenceSplit(),
+    patch: emptyEvidenceSplit(),
+  };
+}
+
+function emptyEvidenceSplit(): EngineCapabilityEvidenceSplit {
+  return {
+    publicFixture: [],
+    privateLocalAggregate: [],
+  };
+}
+
+function evidenceBucket(
+  split: EngineCapabilityEvidenceSplit,
+  source: EngineCapabilityEvidenceSource,
+): EngineCapabilityEvidenceRow[] {
+  if (source === engineCapabilityEvidenceSourceValues.publicFixture) {
+    return split.publicFixture;
+  }
+  return split.privateLocalAggregate;
+}
+
+function compareEvidenceRows(
+  left: EngineCapabilityEvidenceRow,
+  right: EngineCapabilityEvidenceRow,
+): number {
+  const levelOrder = Object.values(capabilityLevelValues);
+  const sourceOrder = Object.values(engineCapabilityEvidenceSourceValues);
+  const levelDiff = levelOrder.indexOf(left.level) - levelOrder.indexOf(right.level);
+  if (levelDiff !== 0) {
+    return levelDiff;
+  }
+  const sourceDiff =
+    sourceOrder.indexOf(left.evidenceSource) - sourceOrder.indexOf(right.evidenceSource);
+  if (sourceDiff !== 0) {
+    return sourceDiff;
+  }
+  const kindDiff = left.evidenceKind.localeCompare(right.evidenceKind);
+  if (kindDiff !== 0) {
+    return kindDiff;
+  }
+  return left.engineCapabilityEvidenceId.localeCompare(right.engineCapabilityEvidenceId);
 }

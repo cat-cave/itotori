@@ -240,6 +240,10 @@ export const migrations = [
     id: "0045_reviewer_queue_deferred",
     file: "0045_reviewer_queue_deferred.sql",
   },
+  {
+    id: "0046_engine_capability_evidence",
+    file: "0046_engine_capability_evidence.sql",
+  },
 ] as const;
 
 function migrationPath(file: string): string {
