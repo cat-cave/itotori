@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   adapterBadge,
+  capabilityLevelOrder,
+  summarizeCapabilityEvidence,
   type AdapterCapabilitySummary,
   toSummary,
 } from "../src/services/engine-capability-report.js";
@@ -102,5 +104,105 @@ describe("renderEngineCapabilityRows", () => {
   it("renders an empty-copy panel when no matrices are recorded", () => {
     const html = renderEngineCapabilityRows([]);
     expect(html).toContain("No engine capability reports recorded yet.");
+  });
+
+  it("separates public fixture support from private-local aggregate evidence", () => {
+    const row = toSummary(
+      {
+        adapterId: "kaifuu.rpg_maker_mv_mz",
+        identify: { kind: "supported" },
+        inventory: { kind: "unsupported", reason: "fixture is identify-only" },
+        extract: { kind: "unsupported", reason: "fixture is identify-only" },
+        patch: { kind: "unsupported", reason: "fixture is identify-only" },
+      },
+      [
+        {
+          adapterId: "kaifuu.rpg_maker_mv_mz",
+          evidenceSource: "public_fixture",
+          evidenceKind: "adapter_matrix",
+          publicFixtureId: "rpg-maker-mv-mz-key-validation-success-v0.1",
+          level: "identify",
+          status: "present",
+        },
+        {
+          adapterId: "kaifuu.rpg_maker_mv_mz",
+          evidenceSource: "private_local_aggregate",
+          evidenceKind: "local_corpus_sidecar",
+          level: "identify",
+          status: "present",
+          evidenceLabels: [
+            "rpgmaker_mv_metadata",
+            "encrypted_asset_extension",
+            "/home/private/game/System.json",
+          ],
+          aggregateCounts: {
+            corpusCount: 1,
+            entryCount: 12,
+            markerCount: 3,
+            pathHash: 1,
+          },
+          limitations: [
+            "local scan marker evidence only; no adapter execution claimed",
+            "SECRET_KEY=/home/private/key.txt",
+          ],
+        },
+      ],
+    );
+
+    expect(row.badge).toBe("identify_only");
+    expect(row.extract.kind).toBe("unsupported");
+    expect(row.evidence.publicFixture.present).toBe(true);
+    expect(row.evidence.privateLocalAggregate.present).toBe(true);
+    expect(row.evidence.privateLocalAggregate.entryCount).toBe(12);
+    expect(row.evidence.privateLocalAggregate.markerKinds).toEqual([
+      "encrypted_asset_extension",
+      "rpgmaker_mv_metadata",
+    ]);
+
+    const html = renderEngineCapabilityRows([row]);
+    expect(html).toContain("Public fixture support");
+    expect(html).toContain("Private-local aggregate evidence");
+    expect(html).toContain("Public fixture evidence");
+    expect(html).toContain("Private-local aggregate (12)");
+    expect(html).not.toContain("/home/private");
+    expect(html).not.toContain("System.json");
+    expect(html).not.toContain("SECRET_KEY");
+    expect(html).not.toContain("pathHash");
+  });
+});
+
+describe("summarizeCapabilityEvidence", () => {
+  it("defaults every evidence level to unknown", () => {
+    const summary = summarizeCapabilityEvidence("kaifuu.empty", []);
+    for (const level of capabilityLevelOrder) {
+      expect(summary.publicFixture.levels[level]).toBe("unknown");
+      expect(summary.privateLocalAggregate.levels[level]).toBe("unknown");
+    }
+  });
+
+  it("keeps private-local evidence as a sidecar instead of upgrading strict support", () => {
+    const row = toSummary(
+      {
+        adapterId: "kaifuu.rpg_maker_mv_mz",
+        identify: { kind: "supported" },
+        inventory: { kind: "unsupported", reason: "public fixture does not inventory" },
+        extract: { kind: "unsupported", reason: "public fixture does not extract" },
+        patch: { kind: "unsupported", reason: "public fixture does not patch" },
+      },
+      [
+        {
+          evidenceSource: "private_local_aggregate",
+          level: "extract",
+          status: "present",
+          evidenceLabels: ["encrypted_asset_extension"],
+          aggregateCounts: { corpusCount: 2, entryCount: 8 },
+        },
+      ],
+    );
+
+    expect(row.badge).toBe("identify_only");
+    expect(row.extract.kind).toBe("unsupported");
+    expect(row.evidence.privateLocalAggregate.levels.extract).toBe("present");
+    expect(row.evidence.privateLocalAggregate.corpusCount).toBe(2);
   });
 });

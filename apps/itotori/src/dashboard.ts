@@ -18,6 +18,7 @@ import {
   styleGuideBuilderStyles,
   type StyleGuideBuilderContext,
 } from "./style-guide-builder.js";
+import type { AdapterCapabilityEvidenceSummary } from "./services/engine-capability-report.js";
 
 export type DashboardEndpoints = {
   projects: string;
@@ -1155,6 +1156,7 @@ export type EngineCapabilityRow = {
     limitations?: string[];
   };
   patch: { kind: "supported" | "partial" | "unsupported"; reason?: string; limitations?: string[] };
+  evidence?: AdapterCapabilityEvidenceSummary;
 };
 
 export function renderEngineCapabilityRows(rows: ReadonlyArray<EngineCapabilityRow>): string {
@@ -1175,6 +1177,8 @@ export function renderEngineCapabilityRows(rows: ReadonlyArray<EngineCapabilityR
           <td>${renderEngineStatus(row.inventory)}</td>
           <td>${renderEngineStatus(row.extract)}</td>
           <td>${renderEngineStatus(row.patch)}</td>
+          <td>${renderPublicFixtureEvidence(row.evidence)}</td>
+          <td>${renderPrivateLocalAggregateEvidence(row.evidence)}</td>
         </tr>
       `,
     )
@@ -1192,6 +1196,8 @@ export function renderEngineCapabilityRows(rows: ReadonlyArray<EngineCapabilityR
             <th>Inventory</th>
             <th>Extract</th>
             <th>Patch</th>
+            <th>Public fixture support</th>
+            <th>Private-local aggregate evidence</th>
           </tr>
         </thead>
         <tbody>${body}</tbody>
@@ -1225,4 +1231,85 @@ function renderEngineStatus(status: EngineCapabilityRow["identify"]): string {
       return `<span class="badge badge-critical" title="${escapeHtml(detail)}">Unsupported</span>`;
     }
   }
+}
+
+function renderPublicFixtureEvidence(evidence: AdapterCapabilityEvidenceSummary | undefined) {
+  const publicFixture = (evidence ?? emptyDashboardCapabilityEvidence()).publicFixture;
+  if (!publicFixture.present) {
+    return `<span class="muted">No public fixture evidence</span>`;
+  }
+  const detailParts = [
+    publicFixture.fixtureIds.length > 0
+      ? `fixtures=${publicFixture.fixtureIds.join(", ")}`
+      : undefined,
+    publicFixture.evidenceKinds.length > 0
+      ? `kinds=${publicFixture.evidenceKinds.join(", ")}`
+      : undefined,
+    publicFixture.limitations.length > 0
+      ? `limitations=${publicFixture.limitations.join("; ")}`
+      : undefined,
+  ].filter((part): part is string => part !== undefined);
+  const title = detailParts.length > 0 ? ` title="${escapeHtml(detailParts.join(" | "))}"` : "";
+  return `<span class="badge badge-neutral"${title}>Public fixture evidence</span>`;
+}
+
+function renderPrivateLocalAggregateEvidence(
+  evidence: AdapterCapabilityEvidenceSummary | undefined,
+) {
+  const privateLocal = (evidence ?? emptyDashboardCapabilityEvidence()).privateLocalAggregate;
+  if (!privateLocal.present) {
+    return `<span class="muted">No private-local aggregate evidence</span>`;
+  }
+  const counts = [
+    `corpora=${privateLocal.corpusCount}`,
+    `entries=${privateLocal.entryCount}`,
+    ...Object.entries(privateLocal.aggregateCounts)
+      .filter(([key]) => key !== "corpusCount" && key !== "entryCount")
+      .map(([key, value]) => `${key}=${value}`),
+  ];
+  const details = [
+    counts.join(" "),
+    privateLocal.markerKinds.length > 0 ? `labels=${privateLocal.markerKinds.join(", ")}` : "",
+    privateLocal.limitations.length > 0
+      ? `limitations=${privateLocal.limitations.join("; ")}`
+      : "",
+  ]
+    .filter((part) => part.length > 0)
+    .join(" | ");
+  const label =
+    privateLocal.entryCount > 0
+      ? `Private-local aggregate (${privateLocal.entryCount})`
+      : "Private-local aggregate";
+  return `<span class="badge badge-neutral" title="${escapeHtml(details)}">${escapeHtml(label)}</span>`;
+}
+
+function emptyDashboardCapabilityEvidence(): AdapterCapabilityEvidenceSummary {
+  return {
+    publicFixture: {
+      present: false,
+      fixtureIds: [],
+      evidenceKinds: [],
+      levels: {
+        identify: "unknown",
+        inventory: "unknown",
+        extract: "unknown",
+        patch: "unknown",
+      },
+      limitations: [],
+    },
+    privateLocalAggregate: {
+      present: false,
+      corpusCount: 0,
+      entryCount: 0,
+      markerKinds: [],
+      aggregateCounts: {},
+      levels: {
+        identify: "unknown",
+        inventory: "unknown",
+        extract: "unknown",
+        patch: "unknown",
+      },
+      limitations: [],
+    },
+  };
 }
