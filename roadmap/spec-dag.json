@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "exported_at": "2026-06-27T19:20:22.147Z",
+  "exported_at": "2026-06-27T19:23:19.838Z",
   "registries": {
     "groups": [
       {
@@ -28598,19 +28598,19 @@
       "title": "Generalize localize workflow command surface",
       "kind": "audit-fix",
       "milestone": "alpha",
-      "status": "ready",
+      "status": "claimed",
       "priority": "P1",
       "estimate_points": 1,
       "risk": "medium",
-      "owner": null,
-      "branch": null,
+      "owner": "orchestrator-generalize-localize-workflow-command-surface",
+      "branch": "spec/generalize-localize-workflow-command-surface",
       "spec": "Repo-wide generalization audit 2026-06-27 found that the active app/suite localization workflow is title-specific by command, filename, environment contract, artifact root, schema id, and preset naming (`localize-sweetie-hd-stage`, `suite/scripts/localize-sweetie-hd`, `KAIFUU_REAL_SWEETIE_HD_PATH`, `artifacts/localize-sweetie-hd`, `itotori.localize-sweetie-hd.*`). Replace those runtime/operator surfaces with project-generic localization workflow names driven by a project config while preserving the Sweetie HD alpha target as data.",
       "acceptance": "Sweetie HD alpha still runs through a generic localize-project/localize-real-game command using an explicit project config. Runtime command names, suite script paths, artifact roots, schema ids, preset names, and logs no longer encode `sweetie-hd` or `localize-sweetie-hd` except in migration or historical documentation allowlists. The generic dry-run prints the equivalent four-phase plan without provider calls.",
       "validation": null,
       "context": null,
       "created_at": "2026-06-27T18:49:18.117Z",
-      "updated_at": "2026-06-27T18:49:18.117Z",
-      "claimed_at": null,
+      "updated_at": "2026-06-27T19:23:16.140Z",
+      "claimed_at": "2026-06-27T19:23:16.140Z",
       "done_at": null,
       "group_name": "alpha-integration",
       "status_reason": null,
