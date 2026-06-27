@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "exported_at": "2026-06-27T00:36:42.478Z",
+  "exported_at": "2026-06-27T00:40:33.077Z",
   "registries": {
     "groups": [
       {
@@ -6905,19 +6905,19 @@
       "title": "Playtest feedback intake",
       "kind": "feature",
       "milestone": "alpha",
-      "status": "ready",
+      "status": "claimed",
       "priority": "P1",
       "estimate_points": 1,
       "risk": "medium",
-      "owner": null,
-      "branch": null,
+      "owner": "orchestrator-itotori-024",
+      "branch": "spec/itotori-024",
       "spec": "Ingest human feedback from playable or runtime-reviewed drafts into the same triage queue, starting with manual/imported playtest reports before external community integrations.\n\nDeliverables:\n- Manual playtest feedback intake\n- Screenshot/save/context attachment handling\n- Duplicate grouping\n- Triage integration",
       "acceptance": "- Feedback can include screenshots, save/context, and line references\n- Style preference disputes are labeled distinctly\n- Duplicate reports aggregate evidence\n- Feedback enters the same decision and triage workflows as QA findings",
       "validation": null,
       "context": null,
       "created_at": "2026-06-26T02:53:54.836Z",
-      "updated_at": "2026-06-26T02:53:54.836Z",
-      "claimed_at": null,
+      "updated_at": "2026-06-27T00:39:56.221Z",
+      "claimed_at": "2026-06-27T00:39:56.221Z",
       "done_at": null,
       "group_name": "feedback",
       "status_reason": "Re-tier 2026-06-24: kept alpha under the new 4-tier framework (single-game Sweetie HD e2e set per docs/proposals/dag-retier-2026-06-24.md).",
