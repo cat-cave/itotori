@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "exported_at": "2026-06-27T19:25:37.380Z",
+  "exported_at": "2026-06-27T20:25:32.371Z",
   "registries": {
     "groups": [
       {
@@ -28598,7 +28598,7 @@
       "title": "Generalize localize workflow command surface",
       "kind": "audit-fix",
       "milestone": "alpha",
-      "status": "claimed",
+      "status": "done",
       "priority": "P1",
       "estimate_points": 1,
       "risk": "medium",
@@ -28609,11 +28609,11 @@
       "validation": null,
       "context": null,
       "created_at": "2026-06-27T18:49:18.117Z",
-      "updated_at": "2026-06-27T19:25:32.275Z",
+      "updated_at": "2026-06-27T20:24:58.027Z",
       "claimed_at": "2026-06-27T19:23:16.140Z",
-      "done_at": null,
+      "done_at": "2026-06-27T20:24:58.027Z",
       "group_name": "alpha-integration",
-      "status_reason": "[2026-06-27T19:25:32.275Z] ORCHESTRATOR 2026-06-27: Claim notification to ntfy was not sent because prior tool policy rejected external disclosure of project workflow metadata. Proceeding with durable qd/main claim state instead.",
+      "status_reason": "[2026-06-27T19:25:32.275Z] ORCHESTRATOR 2026-06-27: Claim notification to ntfy was not sent because prior tool policy rejected external disclosure of project workflow metadata. Proceeding with durable qd/main claim state instead.\n[2026-06-27T20:18:31.977Z] ORCHESTRATOR 2026-06-27: Resolved P1 finding d62a27c5-c55b-4565-a514-0bf347acd134 by merging subagent repair commit e0d92c4 via main merge 92cd6b5. Focused verification passed on main: DATABASE_URL=postgres://itotori:itotori@127.0.0.1:55433/itotori pnpm --filter @itotori/db exec vitest run --dir test authorization-matrix.test.ts -> 139 passed.",
       "check_command": null,
       "ci_command": null,
       "projects": ["itotori", "suite", "kaifuu", "utsushi"],
@@ -39992,6 +39992,21 @@
       "suggested_fix": "Add a future suite workflow slice that either extends just localize-sweetie-hd or adds a companion recipe to generate telemetry summary and run verify-artifacts.mjs against the latest run directory.",
       "created_at": "2026-06-27T18:16:23.405Z",
       "resolved_at": null
+    },
+    {
+      "id": "d62a27c5-c55b-4565-a514-0bf347acd134",
+      "node_id": "generalize-localize-workflow-command-surface",
+      "run_id": null,
+      "severity": "P1",
+      "status": "resolved",
+      "title": "CI authorization matrix misses model ledger cost-kind gate",
+      "path": null,
+      "line": null,
+      "evidence": "qd ci run failed on 2026-06-27: packages/itotori-db test/authorization-matrix.test.ts expected model-ledger-repository.ts:countCostKindsByPair:catalogRead but sourcePermissionGates() did not detect it. Log: .qd/logs/ci-generalize-localize-workflow-command-surface-2026-06-27T20-06-46-972Z.log",
+      "expected": null,
+      "suggested_fix": null,
+      "created_at": "2026-06-27T20:11:13.964Z",
+      "resolved_at": "2026-06-27T20:18:22.033Z"
     }
   ],
   "runs": [
@@ -41938,6 +41953,78 @@
       "finished_at": "2026-06-27T19:20:17.704Z",
       "summary": "Merge recorded with squash at commit f9ca459",
       "log_path": null
+    },
+    {
+      "id": "50976475-c2d8-4d72-98c7-80fc962cf31d",
+      "node_id": "generalize-localize-workflow-command-surface",
+      "kind": "implement",
+      "status": "completed",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-27T20:02:49.452Z",
+      "finished_at": "2026-06-27T20:02:49.452Z",
+      "summary": "Merged generic localization workflow command surface into main. App CLI now uses localize-project-stage, suite runner/just recipe/presets/artifacts use localize-project, old localize-sweetie-hd schema/command strings are gone, dry-run preserves the four-phase alpha plan, and project/policy mismatch validation covers the generic runner.",
+      "log_path": null
+    },
+    {
+      "id": "250c1570-e496-445c-9140-00c73de0c807",
+      "node_id": "generalize-localize-workflow-command-surface",
+      "kind": "check",
+      "status": "passed",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-27T20:03:49.538Z",
+      "finished_at": "2026-06-27T20:04:26.516Z",
+      "summary": "check command passed: nix develop --command bash -lc 'just check'",
+      "log_path": "/home/trevor/projects/itotori/.qd/logs/check-generalize-localize-workflow-command-surface-2026-06-27T20-03-49-538Z.log"
+    },
+    {
+      "id": "33960215-46f4-48b8-ad82-e3c963d746be",
+      "node_id": "generalize-localize-workflow-command-surface",
+      "kind": "ci",
+      "status": "failed",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-27T20:06:46.972Z",
+      "finished_at": "2026-06-27T20:10:43.926Z",
+      "summary": "ci command failed: nix develop --command bash -lc 'just ci'",
+      "log_path": "/home/trevor/projects/itotori/.qd/logs/ci-generalize-localize-workflow-command-surface-2026-06-27T20-06-46-972Z.log"
+    },
+    {
+      "id": "541e8fc7-512f-4d93-b25b-f61709d74885",
+      "node_id": "generalize-localize-workflow-command-surface",
+      "kind": "check",
+      "status": "passed",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-27T20:18:42.393Z",
+      "finished_at": "2026-06-27T20:19:19.857Z",
+      "summary": "check command passed: nix develop --command bash -lc 'just check'",
+      "log_path": "/home/trevor/projects/itotori/.qd/logs/check-generalize-localize-workflow-command-surface-2026-06-27T20-18-42-393Z.log"
+    },
+    {
+      "id": "a0960cf9-b1d3-4554-8aca-f20299e1b533",
+      "node_id": "generalize-localize-workflow-command-surface",
+      "kind": "ci",
+      "status": "passed",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-27T20:19:28.481Z",
+      "finished_at": "2026-06-27T20:24:45.111Z",
+      "summary": "ci command passed: nix develop --command bash -lc 'just ci'",
+      "log_path": "/home/trevor/projects/itotori/.qd/logs/ci-generalize-localize-workflow-command-surface-2026-06-27T20-19-28-481Z.log"
+    },
+    {
+      "id": "9f357608-0be4-47b5-b60b-424e9770c9af",
+      "node_id": "generalize-localize-workflow-command-surface",
+      "kind": "merge",
+      "status": "recorded",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-27T20:24:58.027Z",
+      "finished_at": "2026-06-27T20:24:58.027Z",
+      "summary": "Merge recorded with squash at commit 92cd6b5",
+      "log_path": null
     }
   ],
   "node_notes": [
@@ -42150,6 +42237,12 @@
       "node_id": "generalize-localize-workflow-command-surface",
       "text": "ORCHESTRATOR 2026-06-27: Claim notification to ntfy was not sent because prior tool policy rejected external disclosure of project workflow metadata. Proceeding with durable qd/main claim state instead.",
       "created_at": "2026-06-27T19:25:32.275Z"
+    },
+    {
+      "id": "771a868c-1a59-410d-ac22-a514626704c2",
+      "node_id": "generalize-localize-workflow-command-surface",
+      "text": "ORCHESTRATOR 2026-06-27: Resolved P1 finding d62a27c5-c55b-4565-a514-0bf347acd134 by merging subagent repair commit e0d92c4 via main merge 92cd6b5. Focused verification passed on main: DATABASE_URL=postgres://itotori:itotori@127.0.0.1:55433/itotori pnpm --filter @itotori/db exec vitest run --dir test authorization-matrix.test.ts -> 139 passed.",
+      "created_at": "2026-06-27T20:18:31.977Z"
     }
   ]
 }
