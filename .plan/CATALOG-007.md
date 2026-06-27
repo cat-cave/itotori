@@ -458,4 +458,3 @@ Coordination contract:
 - Promoting local marker evidence to extract or patch support.
 - Changing the local scanner's existing redaction policy unless an integration
   test reveals a concrete leak.
-
