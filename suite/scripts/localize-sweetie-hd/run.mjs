@@ -560,6 +560,7 @@ async function main() {
   // Emit a one-line run summary so callers can scrape it.
   const summary = {
     runDir,
+    project: args.project,
     sceneId,
     pair: policy.pair,
     enUsSentinel: policy.enUsSentinel,

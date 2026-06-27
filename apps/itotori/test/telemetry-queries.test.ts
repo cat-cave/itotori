@@ -22,7 +22,7 @@ import type {
   SumCostByProjectWindow,
 } from "@itotori/db";
 import { LedgerTelemetryQuery, TelemetryQueryError } from "../src/telemetry/queries-impl.js";
-import { renderTextSummary } from "../src/telemetry/cli.js";
+import { renderTextSummary, runTelemetrySummaryCli } from "../src/telemetry/cli.js";
 import {
   TELEMETRY_UNKNOWN_MODEL_SENTINEL,
   buildPairKey,
@@ -810,6 +810,7 @@ describe("telemetry CLI renderTextSummary — ITOTORI-233", () => {
           unenforcedCount: 0,
           allInvocationsZdrEnforced: true,
           byPair: {},
+          rows: [],
         },
         costKind: {
           invocationCount: 10,
@@ -824,6 +825,95 @@ describe("telemetry CLI renderTextSummary — ITOTORI-233", () => {
     expect(lines).toContain("zdr_enforced_count=10 invocation_count=10 all_zdr_enforced=true");
     expect(lines).toContain(
       "billed_cost_kind_count=10 non_billed_cost_kind_count=0 all_cost_kinds_billed=true",
+    );
+  });
+
+  it("writes project/window metadata and per-pair post-run evidence to JSON", async () => {
+    const pair = buildPairKey(PAIR_C_MODEL, PAIR_C_PROVIDER);
+    let written: unknown;
+    await runTelemetrySummaryCli(
+      {
+        actor: FIXED_ACTOR,
+        projectId: PROJECT_ID,
+        from: FULL_WINDOW.from,
+        to: FULL_WINDOW.to,
+        outputPath: "/tmp/telemetry-summary.json",
+        groupByDay: false,
+        format: "json",
+      },
+      {
+        telemetry: {
+          async sumByPair() {
+            return {
+              byPair: {
+                [pair]: {
+                  totalCostUsd: "0.00000100",
+                  totalTokensIn: 10,
+                  totalTokensOut: 5,
+                  avgLatencyMs: 100,
+                  p95LatencyMs: 100,
+                  invocationCount: 1,
+                  cacheHitCount: 0,
+                  totalCacheReadTokens: 0,
+                  totalCacheWriteTokens: 0,
+                  cacheSavingsUsd: "0.00000000",
+                },
+              },
+              totalCostUsd: "0.00000100",
+              cacheSavingsUsd: "0.00000000",
+            };
+          },
+          async topPairsByCost() {
+            return [];
+          },
+          async pairRanking() {
+            return [];
+          },
+          async countZdrEnforcedCallsByPair() {
+            return [{ pair, invocationCount: 1, zdrEnforcedCount: 1 }];
+          },
+          async countCostKindsByPair() {
+            return [
+              {
+                pair,
+                costKind: "billed" as const,
+                invocationCount: 1,
+                amountMicrosUsd: 1,
+              },
+            ];
+          },
+          async countCacheHitsByPair() {
+            return [];
+          },
+        },
+        writeJson: (_path, value) => {
+          written = value;
+        },
+        stdoutWrite: () => undefined,
+      },
+    );
+
+    expect(written).toMatchObject({
+      metadata: {
+        projectId: PROJECT_ID,
+        window: {
+          from: FULL_WINDOW.from.toISOString(),
+          to: FULL_WINDOW.to.toISOString(),
+        },
+      },
+      postRunEvidence: {
+        zdr: {
+          invocationCount: 1,
+          rows: [{ pair, invocationCount: 1, zdrEnforcedCount: 1 }],
+        },
+        costKind: {
+          invocationCount: 1,
+          rows: [{ pair, costKind: "billed", invocationCount: 1, amountMicrosUsd: 1 }],
+        },
+      },
+    });
+    expect((written as { metadata: { generatedAt: string } }).metadata.generatedAt).toMatch(
+      /^\d{4}-\d{2}-\d{2}T/u,
     );
   });
 });

@@ -49,6 +49,7 @@ export type TelemetrySummaryPostRunEvidence = {
         readonly unenforcedCount: number;
       }
     >;
+    readonly rows: TelemetryZdrEnforcedRow[];
   };
   readonly costKind: {
     readonly invocationCount: number;
@@ -68,6 +69,14 @@ export type TelemetrySummaryPostRunEvidence = {
 };
 
 export type TelemetrySummaryCliOutput = TelemetrySummaryByPair & {
+  readonly metadata: {
+    readonly projectId: string;
+    readonly window: {
+      readonly from: string;
+      readonly to: string;
+    };
+    readonly generatedAt: string;
+  };
   readonly postRunEvidence: TelemetrySummaryPostRunEvidence;
 };
 
@@ -92,6 +101,14 @@ export async function runTelemetrySummaryCli(
     }),
   ]);
   const output: TelemetrySummaryCliOutput = {
+    metadata: {
+      projectId: args.projectId,
+      window: {
+        from: args.from.toISOString(),
+        to: args.to.toISOString(),
+      },
+      generatedAt: new Date().toISOString(),
+    },
     ...summary,
     postRunEvidence: buildPostRunEvidence(zdrRows, costKindRows),
   };
@@ -243,6 +260,7 @@ function buildPostRunEvidence(
       unenforcedCount: invocationCount - zdrEnforcedCount,
       allInvocationsZdrEnforced: invocationCount > 0 && invocationCount === zdrEnforcedCount,
       byPair: zdrByPair,
+      rows: [...zdrRows],
     },
     costKind: {
       invocationCount: costKindInvocationCount,
