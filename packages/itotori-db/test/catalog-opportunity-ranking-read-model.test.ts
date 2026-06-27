@@ -183,24 +183,9 @@ describe("catalogOpportunityRanking read model", () => {
     try {
       const repo = new ItotoriCatalogRepository(context.db);
       const capabilityRepo = new EngineCapabilityReportRepository(context.db);
-      const presentProvenance = await provenance(
-        repo,
-        21,
-        catalogSourceValues.dlsite,
-        "RJOPP021",
-      );
-      const partialProvenance = await provenance(
-        repo,
-        22,
-        catalogSourceValues.dlsite,
-        "RJOPP022",
-      );
-      const missingProvenance = await provenance(
-        repo,
-        23,
-        catalogSourceValues.dlsite,
-        "RJOPP023",
-      );
+      const presentProvenance = await provenance(repo, 21, catalogSourceValues.dlsite, "RJOPP021");
+      const partialProvenance = await provenance(repo, 22, catalogSourceValues.dlsite, "RJOPP022");
+      const missingProvenance = await provenance(repo, 23, catalogSourceValues.dlsite, "RJOPP023");
       const extractOnlyProvenance = await provenance(
         repo,
         24,
@@ -522,7 +507,10 @@ async function recordExtractAdapterMatrixCapability(
 
 async function recordOpportunityCatalog(
   repo: ItotoriCatalogRepository,
-  provenance: Record<"dlsite1" | "dlsite2" | "vndb" | "conflict" | "localPrivate", CatalogSourceProvenanceRecord>,
+  provenance: Record<
+    "dlsite1" | "dlsite2" | "vndb" | "conflict" | "localPrivate",
+    CatalogSourceProvenanceRecord
+  >,
 ): Promise<{
   tieAlpha: string;
   tieBeta: string;
@@ -536,8 +524,14 @@ async function recordOpportunityCatalog(
   const conflict = uuid(104);
   const conflictId = uuid(900);
 
-  await repo.upsertWork(localActor, opportunityWorkInput(tieAlpha, "Alpha tie candidate", provenance.dlsite1, "RJOPP001"));
-  await repo.upsertWork(localActor, opportunityWorkInput(tieBeta, "Beta tie candidate", provenance.dlsite2, "RJOPP002"));
+  await repo.upsertWork(
+    localActor,
+    opportunityWorkInput(tieAlpha, "Alpha tie candidate", provenance.dlsite1, "RJOPP001"),
+  );
+  await repo.upsertWork(
+    localActor,
+    opportunityWorkInput(tieBeta, "Beta tie candidate", provenance.dlsite2, "RJOPP002"),
+  );
   await repo.upsertWork(localActor, {
     workId: partial,
     canonicalTitle: "Partial adapter candidate",
@@ -549,7 +543,9 @@ async function recordOpportunityCatalog(
       engineProvenanceId: provenance.vndb.sourceProvenanceId,
     },
     externalIds: [externalId(203, provenance.vndb, "vOppPartial")],
-    languageStatuses: [languageStatus(403, catalogLanguageStatusValues.fanPartial, provenance.vndb)],
+    languageStatuses: [
+      languageStatus(403, catalogLanguageStatusValues.fanPartial, provenance.vndb),
+    ],
     demandFacts: [
       demandFact(540, provenance.vndb, "vOppPartial", catalogDemandFactKindValues.ratingSummary, {
         count: 300,
@@ -632,27 +628,63 @@ function opportunityWorkInput(
       engineProvenanceId: provenanceRecord.sourceProvenanceId,
     },
     externalIds: [externalId(Number(sourceId.slice(-3)) + 200, provenanceRecord, sourceId)],
-    releases: [release(Number(sourceId.slice(-3)) + 300, provenanceRecord, sourceId, canonicalTitle)],
+    releases: [
+      release(Number(sourceId.slice(-3)) + 300, provenanceRecord, sourceId, canonicalTitle),
+    ],
     languageStatuses: [
-      languageStatus(Number(sourceId.slice(-3)) + 400, catalogLanguageStatusValues.none, provenanceRecord),
+      languageStatus(
+        Number(sourceId.slice(-3)) + 400,
+        catalogLanguageStatusValues.none,
+        provenanceRecord,
+      ),
     ],
     demandFacts: [
-      demandFact(Number(sourceId.slice(-3)) + 500, provenanceRecord, sourceId, catalogDemandFactKindValues.dlCount, {
-        count: 12_000,
-      }),
-      demandFact(Number(sourceId.slice(-3)) + 510, provenanceRecord, sourceId, catalogDemandFactKindValues.wishlistCount, {
-        count: 7_000,
-      }),
-      demandFact(Number(sourceId.slice(-3)) + 520, provenanceRecord, sourceId, catalogDemandFactKindValues.rank, {
-        rank: 8,
-      }),
-      demandFact(Number(sourceId.slice(-3)) + 530, provenanceRecord, sourceId, catalogDemandFactKindValues.ratingSummary, {
-        average: 4.6,
-        count: 500,
-      }),
-      demandFact(Number(sourceId.slice(-3)) + 540, provenanceRecord, sourceId, catalogDemandFactKindValues.workType, {
-        workType: "RPG",
-      }),
+      demandFact(
+        Number(sourceId.slice(-3)) + 500,
+        provenanceRecord,
+        sourceId,
+        catalogDemandFactKindValues.dlCount,
+        {
+          count: 12_000,
+        },
+      ),
+      demandFact(
+        Number(sourceId.slice(-3)) + 510,
+        provenanceRecord,
+        sourceId,
+        catalogDemandFactKindValues.wishlistCount,
+        {
+          count: 7_000,
+        },
+      ),
+      demandFact(
+        Number(sourceId.slice(-3)) + 520,
+        provenanceRecord,
+        sourceId,
+        catalogDemandFactKindValues.rank,
+        {
+          rank: 8,
+        },
+      ),
+      demandFact(
+        Number(sourceId.slice(-3)) + 530,
+        provenanceRecord,
+        sourceId,
+        catalogDemandFactKindValues.ratingSummary,
+        {
+          average: 4.6,
+          count: 500,
+        },
+      ),
+      demandFact(
+        Number(sourceId.slice(-3)) + 540,
+        provenanceRecord,
+        sourceId,
+        catalogDemandFactKindValues.workType,
+        {
+          workType: "RPG",
+        },
+      ),
     ],
   };
 }
@@ -680,7 +712,10 @@ function opportunityWorkInputWithEngine(
 async function recordOpportunityProvenance(
   repo: ItotoriCatalogRepository,
 ): Promise<
-  Record<"dlsite1" | "dlsite2" | "vndb" | "conflict" | "localPrivate", CatalogSourceProvenanceRecord>
+  Record<
+    "dlsite1" | "dlsite2" | "vndb" | "conflict" | "localPrivate",
+    CatalogSourceProvenanceRecord
+  >
 > {
   const dlsite1 = await provenance(repo, 1, catalogSourceValues.dlsite, "RJOPP001");
   const dlsite2 = await provenance(repo, 2, catalogSourceValues.dlsite, "RJOPP002");

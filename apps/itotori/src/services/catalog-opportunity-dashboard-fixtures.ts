@@ -124,10 +124,7 @@ function dashboardSeedRow(value: unknown, label: string): CatalogOpportunityDash
   };
 }
 
-function dashboardSeedFactor(
-  value: unknown,
-  label: string,
-): CatalogOpportunityDashboardSeedFactor {
+function dashboardSeedFactor(value: unknown, label: string): CatalogOpportunityDashboardSeedFactor {
   const factor = asRecord(value, label);
   return {
     factor: assertString(factor.factor, `${label}.factor`),

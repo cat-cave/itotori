@@ -247,10 +247,7 @@ function localOwnershipValue(value: CatalogOpportunityLocalOwnershipSignal): num
   }
 }
 
-function demandValue(
-  value: CatalogOpportunityDemandSignal,
-  ratingAverage: number | null,
-): number {
+function demandValue(value: CatalogOpportunityDemandSignal, ratingAverage: number | null): number {
   return Math.min(1, demandBucketValue(value) + ratingAverageDemandBonus(ratingAverage));
 }
 

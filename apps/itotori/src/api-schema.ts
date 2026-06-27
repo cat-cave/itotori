@@ -320,11 +320,7 @@ export function assertCatalogOpportunityRankingReadModel(
     "weightsVersion",
     "rows",
   ]);
-  assertLiteral(
-    model.schemaVersion,
-    "catalog.opportunity_ranking.v0.1",
-    `${label}.schemaVersion`,
-  );
+  assertLiteral(model.schemaVersion, "catalog.opportunity_ranking.v0.1", `${label}.schemaVersion`);
   assertPublicOpportunityString(model.targetLanguage, `${label}.targetLanguage`);
   assertDateLike(model.generatedAt, `${label}.generatedAt`);
   assertPublicOpportunityString(model.weightsVersion, `${label}.weightsVersion`);

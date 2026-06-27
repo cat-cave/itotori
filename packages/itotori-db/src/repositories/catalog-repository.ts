@@ -2295,8 +2295,7 @@ async function readCatalogOpportunityRanking(
         dlsiteDemand: demandFacts.demandBucket as CatalogOpportunityDemandSignal,
         dlsiteRatingAverage: demandFacts.ratingAverage,
         dlsiteWorkType: opportunityWorkTypeSignal(demandFacts.workType),
-        platformLanguageConflict:
-          demotions.length > 0 ? "open_platform_language_conflict" : "none",
+        platformLanguageConflict: demotions.length > 0 ? "open_platform_language_conflict" : "none",
         marketPrevalence,
         adapterReadiness: opportunityAdapterReadiness(readiness),
         runtimeEvidenceReadiness: runtimeEvidenceReadiness.status,
@@ -3156,7 +3155,9 @@ function opportunityDemandFacts(
         ratingCount = maxNullable(ratingCount, numberRecordValue(fact.factValue, "count"));
         break;
       case catalogDemandFactKindValues.workType:
-        workType = stringRecordValue(fact.factValue, "workType") ?? stringRecordValue(fact.factValue, "value");
+        workType =
+          stringRecordValue(fact.factValue, "workType") ??
+          stringRecordValue(fact.factValue, "value");
         break;
       default:
         break;
@@ -3211,11 +3212,10 @@ function capabilityEvidenceCountsByAdapter(
     if (!isRuntimeReadinessEvidence(row)) {
       continue;
     }
-    const existing =
-      byAdapter.get(row.adapterId) ?? {
-        publicFixtureEvidenceCount: 0,
-        privateLocalAggregateEvidenceCount: 0,
-      };
+    const existing = byAdapter.get(row.adapterId) ?? {
+      publicFixtureEvidenceCount: 0,
+      privateLocalAggregateEvidenceCount: 0,
+    };
     if (row.evidenceSource === engineCapabilityEvidenceSourceValues.publicFixture) {
       existing.publicFixtureEvidenceCount += evidenceWeight;
     }

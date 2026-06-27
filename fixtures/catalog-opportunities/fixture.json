@@ -16,12 +16,7 @@
       "demoted": "candidate has useful public metadata but an open platform-language conflict applies",
       "excluded": "candidate has an official or complete existing English translation status"
     },
-    "tieBreaks": [
-      "decision_order",
-      "score_desc",
-      "canonicalTitle_asc",
-      "workId_asc"
-    ],
+    "tieBreaks": ["decision_order", "score_desc", "canonicalTitle_asc", "workId_asc"],
     "factorOrder": [
       "translation_completeness",
       "local_ownership",
@@ -166,9 +161,7 @@
               "level": "extract_patch",
               "evidenceKind": "adapter_matrix",
               "status": "supported",
-              "limitations": [
-                "synthetic encrypted suffix fixture only"
-              ]
+              "limitations": ["synthetic encrypted suffix fixture only"]
             }
           ],
           "privateLocalAggregate": [
@@ -181,10 +174,7 @@
                 "file_kind.script": 18,
                 "file_kind.image": 9
               },
-              "limitations": [
-                "aggregate counts only",
-                "no filenames or raw paths"
-              ]
+              "limitations": ["aggregate counts only", "no filenames or raw paths"]
             }
           ]
         },
@@ -264,9 +254,7 @@
               "level": "extract_patch",
               "evidenceKind": "adapter_matrix",
               "status": "supported",
-              "limitations": [
-                "synthetic XP3-like byte strings only"
-              ]
+              "limitations": ["synthetic XP3-like byte strings only"]
             }
           ],
           "privateLocalAggregate": [
@@ -279,10 +267,7 @@
                 "readiness.extract_supported": 3,
                 "readiness.patch_supported": 3
               },
-              "limitations": [
-                "aggregate readiness only",
-                "no archive member names"
-              ]
+              "limitations": ["aggregate readiness only", "no archive member names"]
             }
           ]
         },
@@ -362,9 +347,7 @@
               "level": "extract_patch",
               "evidenceKind": "adapter_matrix",
               "status": "supported",
-              "limitations": [
-                "synthetic Wolf-like archive signal only"
-              ]
+              "limitations": ["synthetic Wolf-like archive signal only"]
             }
           ],
           "privateLocalAggregate": [
@@ -377,9 +360,7 @@
                 "readiness.extract_supported": 2,
                 "readiness.patch_supported": 2
               },
-              "limitations": [
-                "aggregate counts only"
-              ]
+              "limitations": ["aggregate counts only"]
             }
           ]
         },
@@ -459,9 +440,7 @@
               "level": "extract_only",
               "evidenceKind": "adapter_matrix",
               "status": "partial",
-              "limitations": [
-                "patch support is not claimed by public fixture"
-              ]
+              "limitations": ["patch support is not claimed by public fixture"]
             }
           ],
           "privateLocalAggregate": [
@@ -473,9 +452,7 @@
                 "marker.rgss3_project": 2,
                 "readiness.extract_supported": 2
               },
-              "limitations": [
-                "aggregate marker counts only"
-              ]
+              "limitations": ["aggregate marker counts only"]
             }
           ]
         },
@@ -555,9 +532,7 @@
               "level": "extract_patch",
               "evidenceKind": "adapter_matrix",
               "status": "supported",
-              "limitations": [
-                "synthetic command syntax coverage only"
-              ]
+              "limitations": ["synthetic command syntax coverage only"]
             }
           ],
           "privateLocalAggregate": []
@@ -638,9 +613,7 @@
               "level": "extract_only",
               "evidenceKind": "adapter_matrix",
               "status": "partial",
-              "limitations": [
-                "secondary-key and patch workflows are outside this public fixture"
-              ]
+              "limitations": ["secondary-key and patch workflows are outside this public fixture"]
             }
           ],
           "privateLocalAggregate": [
@@ -652,9 +625,7 @@
                 "marker.siglus_container": 2,
                 "helper.required": 2
               },
-              "limitations": [
-                "no helper logs or key material"
-              ]
+              "limitations": ["no helper logs or key material"]
             }
           ]
         },
@@ -734,9 +705,7 @@
               "level": "identify",
               "evidenceKind": "adapter_matrix",
               "status": "identify_only",
-              "limitations": [
-                "public fixture does not claim extract or patch support"
-              ]
+              "limitations": ["public fixture does not claim extract or patch support"]
             }
           ],
           "privateLocalAggregate": []
@@ -817,9 +786,7 @@
               "level": "extract_patch",
               "evidenceKind": "adapter_matrix",
               "status": "supported",
-              "limitations": [
-                "synthetic encrypted suffix fixture only"
-              ]
+              "limitations": ["synthetic encrypted suffix fixture only"]
             }
           ],
           "privateLocalAggregate": [
@@ -830,9 +797,7 @@
               "aggregateCounts": {
                 "marker.rpgmaker_mv_metadata": 1
               },
-              "limitations": [
-                "aggregate counts only"
-              ]
+              "limitations": ["aggregate counts only"]
             }
           ]
         },
@@ -912,9 +877,7 @@
               "level": "identify",
               "evidenceKind": "adapter_matrix",
               "status": "identify_only",
-              "limitations": [
-                "public fixture does not claim extract or patch support"
-              ]
+              "limitations": ["public fixture does not claim extract or patch support"]
             }
           ],
           "privateLocalAggregate": []
@@ -998,9 +961,7 @@
             "kind": "official_english_platform_language_conflict",
             "platform": "steam",
             "status": "open",
-            "evidenceRefs": [
-              "public:platform-language-conflicts:steam:STEAMOPP010"
-            ],
+            "evidenceRefs": ["public:platform-language-conflicts:steam:STEAMOPP010"],
             "explanationCode": "official_english_conflict"
           }
         ],
@@ -1011,9 +972,7 @@
               "level": "extract_patch",
               "evidenceKind": "adapter_matrix",
               "status": "supported",
-              "limitations": [
-                "synthetic encrypted suffix fixture only"
-              ]
+              "limitations": ["synthetic encrypted suffix fixture only"]
             }
           ],
           "privateLocalAggregate": [
@@ -1024,9 +983,7 @@
               "aggregateCounts": {
                 "marker.rpgmaker_mv_metadata": 3
               },
-              "limitations": [
-                "aggregate counts only"
-              ]
+              "limitations": ["aggregate counts only"]
             }
           ]
         },
@@ -1112,9 +1069,7 @@
             "weight": 30,
             "rawValue": 1,
             "weightedScore": 30,
-            "evidenceRefs": [
-              "translation_status:en-US:none"
-            ],
+            "evidenceRefs": ["translation_status:en-US:none"],
             "explanationCode": "translation_completeness:no_english"
           },
           {
@@ -1122,9 +1077,7 @@
             "weight": 8,
             "rawValue": 1,
             "weightedScore": 8,
-            "evidenceRefs": [
-              "local_evidence_count:5"
-            ],
+            "evidenceRefs": ["local_evidence_count:5"],
             "explanationCode": "local_ownership:owned"
           },
           {
@@ -1132,9 +1085,7 @@
             "weight": 20,
             "rawValue": 1,
             "weightedScore": 20,
-            "evidenceRefs": [
-              "dlsite:RJOPP001"
-            ],
+            "evidenceRefs": ["dlsite:RJOPP001"],
             "explanationCode": "dlsite_demand:very_high:rating_high"
           },
           {
@@ -1150,10 +1101,7 @@
             "weight": 8,
             "rawValue": 1,
             "weightedScore": 8,
-            "evidenceRefs": [
-              "local_evidence_count:5",
-              "source_id_count:1"
-            ],
+            "evidenceRefs": ["local_evidence_count:5", "source_id_count:1"],
             "explanationCode": "market_prevalence:public_and_local_aggregate"
           },
           {
@@ -1161,9 +1109,7 @@
             "weight": 18,
             "rawValue": 1,
             "weightedScore": 18,
-            "evidenceRefs": [
-              "kaifuu.rpg-maker-mv-mz"
-            ],
+            "evidenceRefs": ["kaifuu.rpg-maker-mv-mz"],
             "explanationCode": "adapter_readiness:patch_supported"
           },
           {
@@ -1182,9 +1128,7 @@
             "weight": 0,
             "rawValue": 1,
             "weightedScore": 0,
-            "evidenceRefs": [
-              "work_type:RPG"
-            ],
+            "evidenceRefs": ["work_type:RPG"],
             "explanationCode": "dlsite_work_type:rpg"
           },
           {
@@ -1192,9 +1136,7 @@
             "weight": -20,
             "rawValue": 0,
             "weightedScore": 0,
-            "evidenceRefs": [
-              "translation_status:en-US:none"
-            ],
+            "evidenceRefs": ["translation_status:en-US:none"],
             "explanationCode": "existing_translation_status:none"
           },
           {
@@ -1202,10 +1144,7 @@
             "weight": 10,
             "rawValue": 1,
             "weightedScore": 10,
-            "evidenceRefs": [
-              "demand_bucket:very_high",
-              "pool:no_english"
-            ],
+            "evidenceRefs": ["demand_bucket:very_high", "pool:no_english"],
             "explanationCode": "benchmark_usefulness:high"
           },
           {
@@ -1300,9 +1239,7 @@
             "weight": 30,
             "rawValue": 1,
             "weightedScore": 30,
-            "evidenceRefs": [
-              "translation_status:en-US:none"
-            ],
+            "evidenceRefs": ["translation_status:en-US:none"],
             "explanationCode": "translation_completeness:no_english"
           },
           {
@@ -1310,9 +1247,7 @@
             "weight": 8,
             "rawValue": 0,
             "weightedScore": 0,
-            "evidenceRefs": [
-              "local_evidence_count:4"
-            ],
+            "evidenceRefs": ["local_evidence_count:4"],
             "explanationCode": "local_ownership:unknown"
           },
           {
@@ -1320,9 +1255,7 @@
             "weight": 20,
             "rawValue": 0.85,
             "weightedScore": 17,
-            "evidenceRefs": [
-              "dlsite:RJOPP002"
-            ],
+            "evidenceRefs": ["dlsite:RJOPP002"],
             "explanationCode": "dlsite_demand:high:rating_high"
           },
           {
@@ -1338,10 +1271,7 @@
             "weight": 8,
             "rawValue": 1,
             "weightedScore": 8,
-            "evidenceRefs": [
-              "local_evidence_count:4",
-              "source_id_count:1"
-            ],
+            "evidenceRefs": ["local_evidence_count:4", "source_id_count:1"],
             "explanationCode": "market_prevalence:public_and_local_aggregate"
           },
           {
@@ -1349,9 +1279,7 @@
             "weight": 18,
             "rawValue": 1,
             "weightedScore": 18,
-            "evidenceRefs": [
-              "kaifuu.kirikiri-xp3"
-            ],
+            "evidenceRefs": ["kaifuu.kirikiri-xp3"],
             "explanationCode": "adapter_readiness:patch_supported"
           },
           {
@@ -1370,9 +1298,7 @@
             "weight": 0,
             "rawValue": 0.5,
             "weightedScore": 0,
-            "evidenceRefs": [
-              "work_type:ADV"
-            ],
+            "evidenceRefs": ["work_type:ADV"],
             "explanationCode": "dlsite_work_type:game"
           },
           {
@@ -1380,9 +1306,7 @@
             "weight": -20,
             "rawValue": 0,
             "weightedScore": 0,
-            "evidenceRefs": [
-              "translation_status:en-US:none"
-            ],
+            "evidenceRefs": ["translation_status:en-US:none"],
             "explanationCode": "existing_translation_status:none"
           },
           {
@@ -1390,10 +1314,7 @@
             "weight": 10,
             "rawValue": 1,
             "weightedScore": 10,
-            "evidenceRefs": [
-              "demand_bucket:high",
-              "pool:no_english"
-            ],
+            "evidenceRefs": ["demand_bucket:high", "pool:no_english"],
             "explanationCode": "benchmark_usefulness:high"
           },
           {
@@ -1488,9 +1409,7 @@
             "weight": 30,
             "rawValue": 1,
             "weightedScore": 30,
-            "evidenceRefs": [
-              "translation_status:en-US:none"
-            ],
+            "evidenceRefs": ["translation_status:en-US:none"],
             "explanationCode": "translation_completeness:no_english"
           },
           {
@@ -1498,9 +1417,7 @@
             "weight": 8,
             "rawValue": 0,
             "weightedScore": 0,
-            "evidenceRefs": [
-              "local_evidence_count:3"
-            ],
+            "evidenceRefs": ["local_evidence_count:3"],
             "explanationCode": "local_ownership:unknown"
           },
           {
@@ -1508,9 +1425,7 @@
             "weight": 20,
             "rawValue": 0.8,
             "weightedScore": 16,
-            "evidenceRefs": [
-              "dlsite:RJOPP003"
-            ],
+            "evidenceRefs": ["dlsite:RJOPP003"],
             "explanationCode": "dlsite_demand:high:rating_positive"
           },
           {
@@ -1526,10 +1441,7 @@
             "weight": 8,
             "rawValue": 1,
             "weightedScore": 8,
-            "evidenceRefs": [
-              "local_evidence_count:3",
-              "source_id_count:1"
-            ],
+            "evidenceRefs": ["local_evidence_count:3", "source_id_count:1"],
             "explanationCode": "market_prevalence:public_and_local_aggregate"
           },
           {
@@ -1537,9 +1449,7 @@
             "weight": 18,
             "rawValue": 1,
             "weightedScore": 18,
-            "evidenceRefs": [
-              "kaifuu.wolf-rpg-editor"
-            ],
+            "evidenceRefs": ["kaifuu.wolf-rpg-editor"],
             "explanationCode": "adapter_readiness:patch_supported"
           },
           {
@@ -1558,9 +1468,7 @@
             "weight": 0,
             "rawValue": 1,
             "weightedScore": 0,
-            "evidenceRefs": [
-              "work_type:RPG"
-            ],
+            "evidenceRefs": ["work_type:RPG"],
             "explanationCode": "dlsite_work_type:rpg"
           },
           {
@@ -1568,9 +1476,7 @@
             "weight": -20,
             "rawValue": 0,
             "weightedScore": 0,
-            "evidenceRefs": [
-              "translation_status:en-US:none"
-            ],
+            "evidenceRefs": ["translation_status:en-US:none"],
             "explanationCode": "existing_translation_status:none"
           },
           {
@@ -1578,10 +1484,7 @@
             "weight": 10,
             "rawValue": 1,
             "weightedScore": 10,
-            "evidenceRefs": [
-              "demand_bucket:high",
-              "pool:no_english"
-            ],
+            "evidenceRefs": ["demand_bucket:high", "pool:no_english"],
             "explanationCode": "benchmark_usefulness:high"
           },
           {
@@ -1676,9 +1579,7 @@
             "weight": 30,
             "rawValue": 0.75,
             "weightedScore": 22.5,
-            "evidenceRefs": [
-              "translation_status:en-US:mtl"
-            ],
+            "evidenceRefs": ["translation_status:en-US:mtl"],
             "explanationCode": "translation_completeness:mtl_only"
           },
           {
@@ -1686,9 +1587,7 @@
             "weight": 8,
             "rawValue": 1,
             "weightedScore": 8,
-            "evidenceRefs": [
-              "local_evidence_count:2"
-            ],
+            "evidenceRefs": ["local_evidence_count:2"],
             "explanationCode": "local_ownership:owned"
           },
           {
@@ -1696,9 +1595,7 @@
             "weight": 20,
             "rawValue": 0.8,
             "weightedScore": 16,
-            "evidenceRefs": [
-              "dlsite:RJOPP004"
-            ],
+            "evidenceRefs": ["dlsite:RJOPP004"],
             "explanationCode": "dlsite_demand:high:rating_positive"
           },
           {
@@ -1714,10 +1611,7 @@
             "weight": 8,
             "rawValue": 1,
             "weightedScore": 8,
-            "evidenceRefs": [
-              "local_evidence_count:2",
-              "source_id_count:1"
-            ],
+            "evidenceRefs": ["local_evidence_count:2", "source_id_count:1"],
             "explanationCode": "market_prevalence:public_and_local_aggregate"
           },
           {
@@ -1725,9 +1619,7 @@
             "weight": 18,
             "rawValue": 0.75,
             "weightedScore": 13.5,
-            "evidenceRefs": [
-              "kaifuu.rgss3-vx-ace"
-            ],
+            "evidenceRefs": ["kaifuu.rgss3-vx-ace"],
             "explanationCode": "adapter_readiness:extract_supported"
           },
           {
@@ -1746,9 +1638,7 @@
             "weight": 0,
             "rawValue": 1,
             "weightedScore": 0,
-            "evidenceRefs": [
-              "work_type:RPG"
-            ],
+            "evidenceRefs": ["work_type:RPG"],
             "explanationCode": "dlsite_work_type:rpg"
           },
           {
@@ -1756,9 +1646,7 @@
             "weight": -20,
             "rawValue": 0.1,
             "weightedScore": -2,
-            "evidenceRefs": [
-              "translation_status:en-US:mtl"
-            ],
+            "evidenceRefs": ["translation_status:en-US:mtl"],
             "explanationCode": "existing_translation_status:mtl"
           },
           {
@@ -1766,10 +1654,7 @@
             "weight": 10,
             "rawValue": 0.6,
             "weightedScore": 6,
-            "evidenceRefs": [
-              "demand_bucket:high",
-              "pool:mtl_only"
-            ],
+            "evidenceRefs": ["demand_bucket:high", "pool:mtl_only"],
             "explanationCode": "benchmark_usefulness:medium"
           },
           {
@@ -1864,9 +1749,7 @@
             "weight": 30,
             "rawValue": 1,
             "weightedScore": 30,
-            "evidenceRefs": [
-              "translation_status:en-US:none"
-            ],
+            "evidenceRefs": ["translation_status:en-US:none"],
             "explanationCode": "translation_completeness:no_english"
           },
           {
@@ -1874,9 +1757,7 @@
             "weight": 8,
             "rawValue": 0,
             "weightedScore": 0,
-            "evidenceRefs": [
-              "local_evidence_count:2"
-            ],
+            "evidenceRefs": ["local_evidence_count:2"],
             "explanationCode": "local_ownership:unknown"
           },
           {
@@ -1884,9 +1765,7 @@
             "weight": 20,
             "rawValue": 0.5,
             "weightedScore": 10,
-            "evidenceRefs": [
-              "dlsite:RJOPP006"
-            ],
+            "evidenceRefs": ["dlsite:RJOPP006"],
             "explanationCode": "dlsite_demand:medium:rating_positive"
           },
           {
@@ -1902,10 +1781,7 @@
             "weight": 8,
             "rawValue": 1,
             "weightedScore": 8,
-            "evidenceRefs": [
-              "local_evidence_count:2",
-              "source_id_count:1"
-            ],
+            "evidenceRefs": ["local_evidence_count:2", "source_id_count:1"],
             "explanationCode": "market_prevalence:public_and_local_aggregate"
           },
           {
@@ -1913,9 +1789,7 @@
             "weight": 18,
             "rawValue": 0.75,
             "weightedScore": 13.5,
-            "evidenceRefs": [
-              "kaifuu.siglus"
-            ],
+            "evidenceRefs": ["kaifuu.siglus"],
             "explanationCode": "adapter_readiness:extract_supported"
           },
           {
@@ -1934,9 +1808,7 @@
             "weight": 0,
             "rawValue": 0.5,
             "weightedScore": 0,
-            "evidenceRefs": [
-              "work_type:ADV"
-            ],
+            "evidenceRefs": ["work_type:ADV"],
             "explanationCode": "dlsite_work_type:game"
           },
           {
@@ -1944,9 +1816,7 @@
             "weight": -20,
             "rawValue": 0,
             "weightedScore": 0,
-            "evidenceRefs": [
-              "translation_status:en-US:none"
-            ],
+            "evidenceRefs": ["translation_status:en-US:none"],
             "explanationCode": "existing_translation_status:none"
           },
           {
@@ -1954,10 +1824,7 @@
             "weight": 10,
             "rawValue": 1,
             "weightedScore": 10,
-            "evidenceRefs": [
-              "demand_bucket:medium",
-              "pool:no_english"
-            ],
+            "evidenceRefs": ["demand_bucket:medium", "pool:no_english"],
             "explanationCode": "benchmark_usefulness:high"
           },
           {
@@ -2052,9 +1919,7 @@
             "weight": 30,
             "rawValue": 1,
             "weightedScore": 30,
-            "evidenceRefs": [
-              "translation_status:en-US:none"
-            ],
+            "evidenceRefs": ["translation_status:en-US:none"],
             "explanationCode": "translation_completeness:no_english"
           },
           {
@@ -2070,9 +1935,7 @@
             "weight": 20,
             "rawValue": 0.8,
             "weightedScore": 16,
-            "evidenceRefs": [
-              "dlsite:RJOPP007"
-            ],
+            "evidenceRefs": ["dlsite:RJOPP007"],
             "explanationCode": "dlsite_demand:high:rating_positive"
           },
           {
@@ -2088,10 +1951,7 @@
             "weight": 8,
             "rawValue": 0.7,
             "weightedScore": 5.6,
-            "evidenceRefs": [
-              "local_evidence_count:0",
-              "source_id_count:1"
-            ],
+            "evidenceRefs": ["local_evidence_count:0", "source_id_count:1"],
             "explanationCode": "market_prevalence:public_only"
           },
           {
@@ -2099,9 +1959,7 @@
             "weight": 18,
             "rawValue": 0.2,
             "weightedScore": 3.6,
-            "evidenceRefs": [
-              "kaifuu.unity"
-            ],
+            "evidenceRefs": ["kaifuu.unity"],
             "explanationCode": "adapter_readiness:identify_supported"
           },
           {
@@ -2120,9 +1978,7 @@
             "weight": 0,
             "rawValue": 0.5,
             "weightedScore": 0,
-            "evidenceRefs": [
-              "work_type:SLG"
-            ],
+            "evidenceRefs": ["work_type:SLG"],
             "explanationCode": "dlsite_work_type:game"
           },
           {
@@ -2130,9 +1986,7 @@
             "weight": -20,
             "rawValue": 0,
             "weightedScore": 0,
-            "evidenceRefs": [
-              "translation_status:en-US:none"
-            ],
+            "evidenceRefs": ["translation_status:en-US:none"],
             "explanationCode": "existing_translation_status:none"
           },
           {
@@ -2140,10 +1994,7 @@
             "weight": 10,
             "rawValue": 1,
             "weightedScore": 10,
-            "evidenceRefs": [
-              "demand_bucket:high",
-              "pool:no_english"
-            ],
+            "evidenceRefs": ["demand_bucket:high", "pool:no_english"],
             "explanationCode": "benchmark_usefulness:high"
           },
           {
@@ -2151,9 +2002,7 @@
             "weight": 0,
             "rawValue": 1,
             "weightedScore": 0,
-            "evidenceRefs": [
-              "public_evidence:incomplete"
-            ],
+            "evidenceRefs": ["public_evidence:incomplete"],
             "explanationCode": "unknown_evidence:present"
           }
         ],
@@ -2240,9 +2089,7 @@
             "weight": 30,
             "rawValue": 0.65,
             "weightedScore": 19.5,
-            "evidenceRefs": [
-              "translation_status:en-US:fan_partial"
-            ],
+            "evidenceRefs": ["translation_status:en-US:fan_partial"],
             "explanationCode": "translation_completeness:fan_partial"
           },
           {
@@ -2258,9 +2105,7 @@
             "weight": 20,
             "rawValue": 0.5,
             "weightedScore": 10,
-            "evidenceRefs": [
-              "dlsite:RJOPP005"
-            ],
+            "evidenceRefs": ["dlsite:RJOPP005"],
             "explanationCode": "dlsite_demand:medium:rating_positive"
           },
           {
@@ -2276,10 +2121,7 @@
             "weight": 8,
             "rawValue": 0.7,
             "weightedScore": 5.6,
-            "evidenceRefs": [
-              "local_evidence_count:0",
-              "source_id_count:1"
-            ],
+            "evidenceRefs": ["local_evidence_count:0", "source_id_count:1"],
             "explanationCode": "market_prevalence:public_only"
           },
           {
@@ -2287,9 +2129,7 @@
             "weight": 18,
             "rawValue": 1,
             "weightedScore": 18,
-            "evidenceRefs": [
-              "kaifuu.tyranoscript"
-            ],
+            "evidenceRefs": ["kaifuu.tyranoscript"],
             "explanationCode": "adapter_readiness:patch_supported"
           },
           {
@@ -2308,9 +2148,7 @@
             "weight": 0,
             "rawValue": 0.5,
             "weightedScore": 0,
-            "evidenceRefs": [
-              "work_type:ADV"
-            ],
+            "evidenceRefs": ["work_type:ADV"],
             "explanationCode": "dlsite_work_type:game"
           },
           {
@@ -2318,9 +2156,7 @@
             "weight": -20,
             "rawValue": 0.25,
             "weightedScore": -5,
-            "evidenceRefs": [
-              "translation_status:en-US:fan_partial"
-            ],
+            "evidenceRefs": ["translation_status:en-US:fan_partial"],
             "explanationCode": "existing_translation_status:fan_partial"
           },
           {
@@ -2328,10 +2164,7 @@
             "weight": 10,
             "rawValue": 0.6,
             "weightedScore": 6,
-            "evidenceRefs": [
-              "demand_bucket:medium",
-              "pool:fan_partial"
-            ],
+            "evidenceRefs": ["demand_bucket:medium", "pool:fan_partial"],
             "explanationCode": "benchmark_usefulness:medium"
           },
           {
@@ -2426,9 +2259,7 @@
             "weight": 30,
             "rawValue": 0.75,
             "weightedScore": 22.5,
-            "evidenceRefs": [
-              "translation_status:en-US:mtl"
-            ],
+            "evidenceRefs": ["translation_status:en-US:mtl"],
             "explanationCode": "translation_completeness:mtl_only"
           },
           {
@@ -2436,9 +2267,7 @@
             "weight": 8,
             "rawValue": -0.5,
             "weightedScore": -4,
-            "evidenceRefs": [
-              "local_evidence_count:1"
-            ],
+            "evidenceRefs": ["local_evidence_count:1"],
             "explanationCode": "local_ownership:not_owned"
           },
           {
@@ -2446,9 +2275,7 @@
             "weight": 20,
             "rawValue": 0.2,
             "weightedScore": 4,
-            "evidenceRefs": [
-              "dlsite:RJOPP008"
-            ],
+            "evidenceRefs": ["dlsite:RJOPP008"],
             "explanationCode": "dlsite_demand:low:rating_positive"
           },
           {
@@ -2464,10 +2291,7 @@
             "weight": 8,
             "rawValue": 1,
             "weightedScore": 8,
-            "evidenceRefs": [
-              "local_evidence_count:1",
-              "source_id_count:1"
-            ],
+            "evidenceRefs": ["local_evidence_count:1", "source_id_count:1"],
             "explanationCode": "market_prevalence:public_and_local_aggregate"
           },
           {
@@ -2475,9 +2299,7 @@
             "weight": 18,
             "rawValue": 1,
             "weightedScore": 18,
-            "evidenceRefs": [
-              "kaifuu.rpg-maker-mv-mz"
-            ],
+            "evidenceRefs": ["kaifuu.rpg-maker-mv-mz"],
             "explanationCode": "adapter_readiness:patch_supported"
           },
           {
@@ -2496,9 +2318,7 @@
             "weight": 0,
             "rawValue": 1,
             "weightedScore": 0,
-            "evidenceRefs": [
-              "work_type:RPG"
-            ],
+            "evidenceRefs": ["work_type:RPG"],
             "explanationCode": "dlsite_work_type:rpg"
           },
           {
@@ -2506,9 +2326,7 @@
             "weight": -20,
             "rawValue": 0.1,
             "weightedScore": -2,
-            "evidenceRefs": [
-              "translation_status:en-US:mtl"
-            ],
+            "evidenceRefs": ["translation_status:en-US:mtl"],
             "explanationCode": "existing_translation_status:mtl"
           },
           {
@@ -2516,10 +2334,7 @@
             "weight": 10,
             "rawValue": 0.25,
             "weightedScore": 2.5,
-            "evidenceRefs": [
-              "demand_bucket:low",
-              "pool:mtl_only"
-            ],
+            "evidenceRefs": ["demand_bucket:low", "pool:mtl_only"],
             "explanationCode": "benchmark_usefulness:low"
           },
           {
@@ -2614,9 +2429,7 @@
             "weight": 30,
             "rawValue": 0.65,
             "weightedScore": 19.5,
-            "evidenceRefs": [
-              "translation_status:en-US:fan_partial"
-            ],
+            "evidenceRefs": ["translation_status:en-US:fan_partial"],
             "explanationCode": "translation_completeness:fan_partial"
           },
           {
@@ -2632,9 +2445,7 @@
             "weight": 20,
             "rawValue": 0.15,
             "weightedScore": 3,
-            "evidenceRefs": [
-              "dlsite:RJOPP009"
-            ],
+            "evidenceRefs": ["dlsite:RJOPP009"],
             "explanationCode": "dlsite_demand:low:rating_neutral"
           },
           {
@@ -2650,10 +2461,7 @@
             "weight": 8,
             "rawValue": 0.7,
             "weightedScore": 5.6,
-            "evidenceRefs": [
-              "local_evidence_count:0",
-              "source_id_count:1"
-            ],
+            "evidenceRefs": ["local_evidence_count:0", "source_id_count:1"],
             "explanationCode": "market_prevalence:public_only"
           },
           {
@@ -2661,9 +2469,7 @@
             "weight": 18,
             "rawValue": 0.2,
             "weightedScore": 3.6,
-            "evidenceRefs": [
-              "kaifuu.unity"
-            ],
+            "evidenceRefs": ["kaifuu.unity"],
             "explanationCode": "adapter_readiness:identify_supported"
           },
           {
@@ -2682,9 +2488,7 @@
             "weight": 0,
             "rawValue": 0.5,
             "weightedScore": 0,
-            "evidenceRefs": [
-              "work_type:SLG"
-            ],
+            "evidenceRefs": ["work_type:SLG"],
             "explanationCode": "dlsite_work_type:game"
           },
           {
@@ -2692,9 +2496,7 @@
             "weight": -20,
             "rawValue": 0.25,
             "weightedScore": -5,
-            "evidenceRefs": [
-              "translation_status:en-US:fan_partial"
-            ],
+            "evidenceRefs": ["translation_status:en-US:fan_partial"],
             "explanationCode": "existing_translation_status:fan_partial"
           },
           {
@@ -2702,10 +2504,7 @@
             "weight": 10,
             "rawValue": 0.25,
             "weightedScore": 2.5,
-            "evidenceRefs": [
-              "demand_bucket:low",
-              "pool:fan_partial"
-            ],
+            "evidenceRefs": ["demand_bucket:low", "pool:fan_partial"],
             "explanationCode": "benchmark_usefulness:low"
           },
           {
@@ -2713,9 +2512,7 @@
             "weight": 0,
             "rawValue": 1,
             "weightedScore": 0,
-            "evidenceRefs": [
-              "public_evidence:incomplete"
-            ],
+            "evidenceRefs": ["public_evidence:incomplete"],
             "explanationCode": "unknown_evidence:present"
           }
         ],
@@ -2821,9 +2618,7 @@
             "weight": 30,
             "rawValue": 1,
             "weightedScore": 30,
-            "evidenceRefs": [
-              "translation_status:en-US:none"
-            ],
+            "evidenceRefs": ["translation_status:en-US:none"],
             "explanationCode": "translation_completeness:no_english"
           },
           {
@@ -2831,9 +2626,7 @@
             "weight": 8,
             "rawValue": 1,
             "weightedScore": 8,
-            "evidenceRefs": [
-              "local_evidence_count:5"
-            ],
+            "evidenceRefs": ["local_evidence_count:5"],
             "explanationCode": "local_ownership:owned"
           },
           {
@@ -2841,9 +2634,7 @@
             "weight": 20,
             "rawValue": 1,
             "weightedScore": 20,
-            "evidenceRefs": [
-              "dlsite:RJOPP001"
-            ],
+            "evidenceRefs": ["dlsite:RJOPP001"],
             "explanationCode": "dlsite_demand:very_high:rating_high"
           },
           {
@@ -2859,10 +2650,7 @@
             "weight": 8,
             "rawValue": 1,
             "weightedScore": 8,
-            "evidenceRefs": [
-              "local_evidence_count:5",
-              "source_id_count:1"
-            ],
+            "evidenceRefs": ["local_evidence_count:5", "source_id_count:1"],
             "explanationCode": "market_prevalence:public_and_local_aggregate"
           },
           {
@@ -2870,9 +2658,7 @@
             "weight": 18,
             "rawValue": 1,
             "weightedScore": 18,
-            "evidenceRefs": [
-              "kaifuu.rpg-maker-mv-mz"
-            ],
+            "evidenceRefs": ["kaifuu.rpg-maker-mv-mz"],
             "explanationCode": "adapter_readiness:patch_supported"
           },
           {
@@ -2891,9 +2677,7 @@
             "weight": 0,
             "rawValue": 1,
             "weightedScore": 0,
-            "evidenceRefs": [
-              "work_type:RPG"
-            ],
+            "evidenceRefs": ["work_type:RPG"],
             "explanationCode": "dlsite_work_type:rpg"
           },
           {
@@ -2901,9 +2685,7 @@
             "weight": -20,
             "rawValue": 0,
             "weightedScore": 0,
-            "evidenceRefs": [
-              "translation_status:en-US:none"
-            ],
+            "evidenceRefs": ["translation_status:en-US:none"],
             "explanationCode": "existing_translation_status:none"
           },
           {
@@ -2911,10 +2693,7 @@
             "weight": 10,
             "rawValue": 1,
             "weightedScore": 10,
-            "evidenceRefs": [
-              "demand_bucket:very_high",
-              "pool:no_english"
-            ],
+            "evidenceRefs": ["demand_bucket:very_high", "pool:no_english"],
             "explanationCode": "benchmark_usefulness:high"
           },
           {
@@ -3009,9 +2788,7 @@
             "weight": 30,
             "rawValue": 1,
             "weightedScore": 30,
-            "evidenceRefs": [
-              "translation_status:en-US:none"
-            ],
+            "evidenceRefs": ["translation_status:en-US:none"],
             "explanationCode": "translation_completeness:no_english"
           },
           {
@@ -3019,9 +2796,7 @@
             "weight": 8,
             "rawValue": 0,
             "weightedScore": 0,
-            "evidenceRefs": [
-              "local_evidence_count:4"
-            ],
+            "evidenceRefs": ["local_evidence_count:4"],
             "explanationCode": "local_ownership:unknown"
           },
           {
@@ -3029,9 +2804,7 @@
             "weight": 20,
             "rawValue": 0.85,
             "weightedScore": 17,
-            "evidenceRefs": [
-              "dlsite:RJOPP002"
-            ],
+            "evidenceRefs": ["dlsite:RJOPP002"],
             "explanationCode": "dlsite_demand:high:rating_high"
           },
           {
@@ -3047,10 +2820,7 @@
             "weight": 8,
             "rawValue": 1,
             "weightedScore": 8,
-            "evidenceRefs": [
-              "local_evidence_count:4",
-              "source_id_count:1"
-            ],
+            "evidenceRefs": ["local_evidence_count:4", "source_id_count:1"],
             "explanationCode": "market_prevalence:public_and_local_aggregate"
           },
           {
@@ -3058,9 +2828,7 @@
             "weight": 18,
             "rawValue": 1,
             "weightedScore": 18,
-            "evidenceRefs": [
-              "kaifuu.kirikiri-xp3"
-            ],
+            "evidenceRefs": ["kaifuu.kirikiri-xp3"],
             "explanationCode": "adapter_readiness:patch_supported"
           },
           {
@@ -3079,9 +2847,7 @@
             "weight": 0,
             "rawValue": 0.5,
             "weightedScore": 0,
-            "evidenceRefs": [
-              "work_type:ADV"
-            ],
+            "evidenceRefs": ["work_type:ADV"],
             "explanationCode": "dlsite_work_type:game"
           },
           {
@@ -3089,9 +2855,7 @@
             "weight": -20,
             "rawValue": 0,
             "weightedScore": 0,
-            "evidenceRefs": [
-              "translation_status:en-US:none"
-            ],
+            "evidenceRefs": ["translation_status:en-US:none"],
             "explanationCode": "existing_translation_status:none"
           },
           {
@@ -3099,10 +2863,7 @@
             "weight": 10,
             "rawValue": 1,
             "weightedScore": 10,
-            "evidenceRefs": [
-              "demand_bucket:high",
-              "pool:no_english"
-            ],
+            "evidenceRefs": ["demand_bucket:high", "pool:no_english"],
             "explanationCode": "benchmark_usefulness:high"
           },
           {
@@ -3197,9 +2958,7 @@
             "weight": 30,
             "rawValue": 1,
             "weightedScore": 30,
-            "evidenceRefs": [
-              "translation_status:en-US:none"
-            ],
+            "evidenceRefs": ["translation_status:en-US:none"],
             "explanationCode": "translation_completeness:no_english"
           },
           {
@@ -3207,9 +2966,7 @@
             "weight": 8,
             "rawValue": 0,
             "weightedScore": 0,
-            "evidenceRefs": [
-              "local_evidence_count:3"
-            ],
+            "evidenceRefs": ["local_evidence_count:3"],
             "explanationCode": "local_ownership:unknown"
           },
           {
@@ -3217,9 +2974,7 @@
             "weight": 20,
             "rawValue": 0.8,
             "weightedScore": 16,
-            "evidenceRefs": [
-              "dlsite:RJOPP003"
-            ],
+            "evidenceRefs": ["dlsite:RJOPP003"],
             "explanationCode": "dlsite_demand:high:rating_positive"
           },
           {
@@ -3235,10 +2990,7 @@
             "weight": 8,
             "rawValue": 1,
             "weightedScore": 8,
-            "evidenceRefs": [
-              "local_evidence_count:3",
-              "source_id_count:1"
-            ],
+            "evidenceRefs": ["local_evidence_count:3", "source_id_count:1"],
             "explanationCode": "market_prevalence:public_and_local_aggregate"
           },
           {
@@ -3246,9 +2998,7 @@
             "weight": 18,
             "rawValue": 1,
             "weightedScore": 18,
-            "evidenceRefs": [
-              "kaifuu.wolf-rpg-editor"
-            ],
+            "evidenceRefs": ["kaifuu.wolf-rpg-editor"],
             "explanationCode": "adapter_readiness:patch_supported"
           },
           {
@@ -3267,9 +3017,7 @@
             "weight": 0,
             "rawValue": 1,
             "weightedScore": 0,
-            "evidenceRefs": [
-              "work_type:RPG"
-            ],
+            "evidenceRefs": ["work_type:RPG"],
             "explanationCode": "dlsite_work_type:rpg"
           },
           {
@@ -3277,9 +3025,7 @@
             "weight": -20,
             "rawValue": 0,
             "weightedScore": 0,
-            "evidenceRefs": [
-              "translation_status:en-US:none"
-            ],
+            "evidenceRefs": ["translation_status:en-US:none"],
             "explanationCode": "existing_translation_status:none"
           },
           {
@@ -3287,10 +3033,7 @@
             "weight": 10,
             "rawValue": 1,
             "weightedScore": 10,
-            "evidenceRefs": [
-              "demand_bucket:high",
-              "pool:no_english"
-            ],
+            "evidenceRefs": ["demand_bucket:high", "pool:no_english"],
             "explanationCode": "benchmark_usefulness:high"
           },
           {
@@ -3385,9 +3128,7 @@
             "weight": 30,
             "rawValue": 0.75,
             "weightedScore": 22.5,
-            "evidenceRefs": [
-              "translation_status:en-US:mtl"
-            ],
+            "evidenceRefs": ["translation_status:en-US:mtl"],
             "explanationCode": "translation_completeness:mtl_only"
           },
           {
@@ -3395,9 +3136,7 @@
             "weight": 8,
             "rawValue": 1,
             "weightedScore": 8,
-            "evidenceRefs": [
-              "local_evidence_count:2"
-            ],
+            "evidenceRefs": ["local_evidence_count:2"],
             "explanationCode": "local_ownership:owned"
           },
           {
@@ -3405,9 +3144,7 @@
             "weight": 20,
             "rawValue": 0.8,
             "weightedScore": 16,
-            "evidenceRefs": [
-              "dlsite:RJOPP004"
-            ],
+            "evidenceRefs": ["dlsite:RJOPP004"],
             "explanationCode": "dlsite_demand:high:rating_positive"
           },
           {
@@ -3423,10 +3160,7 @@
             "weight": 8,
             "rawValue": 1,
             "weightedScore": 8,
-            "evidenceRefs": [
-              "local_evidence_count:2",
-              "source_id_count:1"
-            ],
+            "evidenceRefs": ["local_evidence_count:2", "source_id_count:1"],
             "explanationCode": "market_prevalence:public_and_local_aggregate"
           },
           {
@@ -3434,9 +3168,7 @@
             "weight": 18,
             "rawValue": 0.75,
             "weightedScore": 13.5,
-            "evidenceRefs": [
-              "kaifuu.rgss3-vx-ace"
-            ],
+            "evidenceRefs": ["kaifuu.rgss3-vx-ace"],
             "explanationCode": "adapter_readiness:extract_supported"
           },
           {
@@ -3455,9 +3187,7 @@
             "weight": 0,
             "rawValue": 1,
             "weightedScore": 0,
-            "evidenceRefs": [
-              "work_type:RPG"
-            ],
+            "evidenceRefs": ["work_type:RPG"],
             "explanationCode": "dlsite_work_type:rpg"
           },
           {
@@ -3465,9 +3195,7 @@
             "weight": -20,
             "rawValue": 0.1,
             "weightedScore": -2,
-            "evidenceRefs": [
-              "translation_status:en-US:mtl"
-            ],
+            "evidenceRefs": ["translation_status:en-US:mtl"],
             "explanationCode": "existing_translation_status:mtl"
           },
           {
@@ -3475,10 +3203,7 @@
             "weight": 10,
             "rawValue": 0.6,
             "weightedScore": 6,
-            "evidenceRefs": [
-              "demand_bucket:high",
-              "pool:mtl_only"
-            ],
+            "evidenceRefs": ["demand_bucket:high", "pool:mtl_only"],
             "explanationCode": "benchmark_usefulness:medium"
           },
           {
@@ -3573,9 +3298,7 @@
             "weight": 30,
             "rawValue": 1,
             "weightedScore": 30,
-            "evidenceRefs": [
-              "translation_status:en-US:none"
-            ],
+            "evidenceRefs": ["translation_status:en-US:none"],
             "explanationCode": "translation_completeness:no_english"
           },
           {
@@ -3583,9 +3306,7 @@
             "weight": 8,
             "rawValue": 0,
             "weightedScore": 0,
-            "evidenceRefs": [
-              "local_evidence_count:2"
-            ],
+            "evidenceRefs": ["local_evidence_count:2"],
             "explanationCode": "local_ownership:unknown"
           },
           {
@@ -3593,9 +3314,7 @@
             "weight": 20,
             "rawValue": 0.5,
             "weightedScore": 10,
-            "evidenceRefs": [
-              "dlsite:RJOPP006"
-            ],
+            "evidenceRefs": ["dlsite:RJOPP006"],
             "explanationCode": "dlsite_demand:medium:rating_positive"
           },
           {
@@ -3611,10 +3330,7 @@
             "weight": 8,
             "rawValue": 1,
             "weightedScore": 8,
-            "evidenceRefs": [
-              "local_evidence_count:2",
-              "source_id_count:1"
-            ],
+            "evidenceRefs": ["local_evidence_count:2", "source_id_count:1"],
             "explanationCode": "market_prevalence:public_and_local_aggregate"
           },
           {
@@ -3622,9 +3338,7 @@
             "weight": 18,
             "rawValue": 0.75,
             "weightedScore": 13.5,
-            "evidenceRefs": [
-              "kaifuu.siglus"
-            ],
+            "evidenceRefs": ["kaifuu.siglus"],
             "explanationCode": "adapter_readiness:extract_supported"
           },
           {
@@ -3643,9 +3357,7 @@
             "weight": 0,
             "rawValue": 0.5,
             "weightedScore": 0,
-            "evidenceRefs": [
-              "work_type:ADV"
-            ],
+            "evidenceRefs": ["work_type:ADV"],
             "explanationCode": "dlsite_work_type:game"
           },
           {
@@ -3653,9 +3365,7 @@
             "weight": -20,
             "rawValue": 0,
             "weightedScore": 0,
-            "evidenceRefs": [
-              "translation_status:en-US:none"
-            ],
+            "evidenceRefs": ["translation_status:en-US:none"],
             "explanationCode": "existing_translation_status:none"
           },
           {
@@ -3663,10 +3373,7 @@
             "weight": 10,
             "rawValue": 1,
             "weightedScore": 10,
-            "evidenceRefs": [
-              "demand_bucket:medium",
-              "pool:no_english"
-            ],
+            "evidenceRefs": ["demand_bucket:medium", "pool:no_english"],
             "explanationCode": "benchmark_usefulness:high"
           },
           {
@@ -3761,9 +3468,7 @@
             "weight": 30,
             "rawValue": 1,
             "weightedScore": 30,
-            "evidenceRefs": [
-              "translation_status:en-US:none"
-            ],
+            "evidenceRefs": ["translation_status:en-US:none"],
             "explanationCode": "translation_completeness:no_english"
           },
           {
@@ -3779,9 +3484,7 @@
             "weight": 20,
             "rawValue": 0.8,
             "weightedScore": 16,
-            "evidenceRefs": [
-              "dlsite:RJOPP007"
-            ],
+            "evidenceRefs": ["dlsite:RJOPP007"],
             "explanationCode": "dlsite_demand:high:rating_positive"
           },
           {
@@ -3797,10 +3500,7 @@
             "weight": 8,
             "rawValue": 0.7,
             "weightedScore": 5.6,
-            "evidenceRefs": [
-              "local_evidence_count:0",
-              "source_id_count:1"
-            ],
+            "evidenceRefs": ["local_evidence_count:0", "source_id_count:1"],
             "explanationCode": "market_prevalence:public_only"
           },
           {
@@ -3808,9 +3508,7 @@
             "weight": 18,
             "rawValue": 0.2,
             "weightedScore": 3.6,
-            "evidenceRefs": [
-              "kaifuu.unity"
-            ],
+            "evidenceRefs": ["kaifuu.unity"],
             "explanationCode": "adapter_readiness:identify_supported"
           },
           {
@@ -3829,9 +3527,7 @@
             "weight": 0,
             "rawValue": 0.5,
             "weightedScore": 0,
-            "evidenceRefs": [
-              "work_type:SLG"
-            ],
+            "evidenceRefs": ["work_type:SLG"],
             "explanationCode": "dlsite_work_type:game"
           },
           {
@@ -3839,9 +3535,7 @@
             "weight": -20,
             "rawValue": 0,
             "weightedScore": 0,
-            "evidenceRefs": [
-              "translation_status:en-US:none"
-            ],
+            "evidenceRefs": ["translation_status:en-US:none"],
             "explanationCode": "existing_translation_status:none"
           },
           {
@@ -3849,10 +3543,7 @@
             "weight": 10,
             "rawValue": 1,
             "weightedScore": 10,
-            "evidenceRefs": [
-              "demand_bucket:high",
-              "pool:no_english"
-            ],
+            "evidenceRefs": ["demand_bucket:high", "pool:no_english"],
             "explanationCode": "benchmark_usefulness:high"
           },
           {
@@ -3860,9 +3551,7 @@
             "weight": 0,
             "rawValue": 1,
             "weightedScore": 0,
-            "evidenceRefs": [
-              "public_evidence:incomplete"
-            ],
+            "evidenceRefs": ["public_evidence:incomplete"],
             "explanationCode": "unknown_evidence:present"
           }
         ],
@@ -3949,9 +3638,7 @@
             "weight": 30,
             "rawValue": 0.65,
             "weightedScore": 19.5,
-            "evidenceRefs": [
-              "translation_status:en-US:fan_partial"
-            ],
+            "evidenceRefs": ["translation_status:en-US:fan_partial"],
             "explanationCode": "translation_completeness:fan_partial"
           },
           {
@@ -3967,9 +3654,7 @@
             "weight": 20,
             "rawValue": 0.5,
             "weightedScore": 10,
-            "evidenceRefs": [
-              "dlsite:RJOPP005"
-            ],
+            "evidenceRefs": ["dlsite:RJOPP005"],
             "explanationCode": "dlsite_demand:medium:rating_positive"
           },
           {
@@ -3985,10 +3670,7 @@
             "weight": 8,
             "rawValue": 0.7,
             "weightedScore": 5.6,
-            "evidenceRefs": [
-              "local_evidence_count:0",
-              "source_id_count:1"
-            ],
+            "evidenceRefs": ["local_evidence_count:0", "source_id_count:1"],
             "explanationCode": "market_prevalence:public_only"
           },
           {
@@ -3996,9 +3678,7 @@
             "weight": 18,
             "rawValue": 1,
             "weightedScore": 18,
-            "evidenceRefs": [
-              "kaifuu.tyranoscript"
-            ],
+            "evidenceRefs": ["kaifuu.tyranoscript"],
             "explanationCode": "adapter_readiness:patch_supported"
           },
           {
@@ -4017,9 +3697,7 @@
             "weight": 0,
             "rawValue": 0.5,
             "weightedScore": 0,
-            "evidenceRefs": [
-              "work_type:ADV"
-            ],
+            "evidenceRefs": ["work_type:ADV"],
             "explanationCode": "dlsite_work_type:game"
           },
           {
@@ -4027,9 +3705,7 @@
             "weight": -20,
             "rawValue": 0.25,
             "weightedScore": -5,
-            "evidenceRefs": [
-              "translation_status:en-US:fan_partial"
-            ],
+            "evidenceRefs": ["translation_status:en-US:fan_partial"],
             "explanationCode": "existing_translation_status:fan_partial"
           },
           {
@@ -4037,10 +3713,7 @@
             "weight": 10,
             "rawValue": 0.6,
             "weightedScore": 6,
-            "evidenceRefs": [
-              "demand_bucket:medium",
-              "pool:fan_partial"
-            ],
+            "evidenceRefs": ["demand_bucket:medium", "pool:fan_partial"],
             "explanationCode": "benchmark_usefulness:medium"
           },
           {
@@ -4135,9 +3808,7 @@
             "weight": 30,
             "rawValue": 0.75,
             "weightedScore": 22.5,
-            "evidenceRefs": [
-              "translation_status:en-US:mtl"
-            ],
+            "evidenceRefs": ["translation_status:en-US:mtl"],
             "explanationCode": "translation_completeness:mtl_only"
           },
           {
@@ -4145,9 +3816,7 @@
             "weight": 8,
             "rawValue": -0.5,
             "weightedScore": -4,
-            "evidenceRefs": [
-              "local_evidence_count:1"
-            ],
+            "evidenceRefs": ["local_evidence_count:1"],
             "explanationCode": "local_ownership:not_owned"
           },
           {
@@ -4155,9 +3824,7 @@
             "weight": 20,
             "rawValue": 0.2,
             "weightedScore": 4,
-            "evidenceRefs": [
-              "dlsite:RJOPP008"
-            ],
+            "evidenceRefs": ["dlsite:RJOPP008"],
             "explanationCode": "dlsite_demand:low:rating_positive"
           },
           {
@@ -4173,10 +3840,7 @@
             "weight": 8,
             "rawValue": 1,
             "weightedScore": 8,
-            "evidenceRefs": [
-              "local_evidence_count:1",
-              "source_id_count:1"
-            ],
+            "evidenceRefs": ["local_evidence_count:1", "source_id_count:1"],
             "explanationCode": "market_prevalence:public_and_local_aggregate"
           },
           {
@@ -4184,9 +3848,7 @@
             "weight": 18,
             "rawValue": 1,
             "weightedScore": 18,
-            "evidenceRefs": [
-              "kaifuu.rpg-maker-mv-mz"
-            ],
+            "evidenceRefs": ["kaifuu.rpg-maker-mv-mz"],
             "explanationCode": "adapter_readiness:patch_supported"
           },
           {
@@ -4205,9 +3867,7 @@
             "weight": 0,
             "rawValue": 1,
             "weightedScore": 0,
-            "evidenceRefs": [
-              "work_type:RPG"
-            ],
+            "evidenceRefs": ["work_type:RPG"],
             "explanationCode": "dlsite_work_type:rpg"
           },
           {
@@ -4215,9 +3875,7 @@
             "weight": -20,
             "rawValue": 0.1,
             "weightedScore": -2,
-            "evidenceRefs": [
-              "translation_status:en-US:mtl"
-            ],
+            "evidenceRefs": ["translation_status:en-US:mtl"],
             "explanationCode": "existing_translation_status:mtl"
           },
           {
@@ -4225,10 +3883,7 @@
             "weight": 10,
             "rawValue": 0.25,
             "weightedScore": 2.5,
-            "evidenceRefs": [
-              "demand_bucket:low",
-              "pool:mtl_only"
-            ],
+            "evidenceRefs": ["demand_bucket:low", "pool:mtl_only"],
             "explanationCode": "benchmark_usefulness:low"
           },
           {
@@ -4323,9 +3978,7 @@
             "weight": 30,
             "rawValue": 0.65,
             "weightedScore": 19.5,
-            "evidenceRefs": [
-              "translation_status:en-US:fan_partial"
-            ],
+            "evidenceRefs": ["translation_status:en-US:fan_partial"],
             "explanationCode": "translation_completeness:fan_partial"
           },
           {
@@ -4341,9 +3994,7 @@
             "weight": 20,
             "rawValue": 0.15,
             "weightedScore": 3,
-            "evidenceRefs": [
-              "dlsite:RJOPP009"
-            ],
+            "evidenceRefs": ["dlsite:RJOPP009"],
             "explanationCode": "dlsite_demand:low:rating_neutral"
           },
           {
@@ -4359,10 +4010,7 @@
             "weight": 8,
             "rawValue": 0.7,
             "weightedScore": 5.6,
-            "evidenceRefs": [
-              "local_evidence_count:0",
-              "source_id_count:1"
-            ],
+            "evidenceRefs": ["local_evidence_count:0", "source_id_count:1"],
             "explanationCode": "market_prevalence:public_only"
           },
           {
@@ -4370,9 +4018,7 @@
             "weight": 18,
             "rawValue": 0.2,
             "weightedScore": 3.6,
-            "evidenceRefs": [
-              "kaifuu.unity"
-            ],
+            "evidenceRefs": ["kaifuu.unity"],
             "explanationCode": "adapter_readiness:identify_supported"
           },
           {
@@ -4391,9 +4037,7 @@
             "weight": 0,
             "rawValue": 0.5,
             "weightedScore": 0,
-            "evidenceRefs": [
-              "work_type:SLG"
-            ],
+            "evidenceRefs": ["work_type:SLG"],
             "explanationCode": "dlsite_work_type:game"
           },
           {
@@ -4401,9 +4045,7 @@
             "weight": -20,
             "rawValue": 0.25,
             "weightedScore": -5,
-            "evidenceRefs": [
-              "translation_status:en-US:fan_partial"
-            ],
+            "evidenceRefs": ["translation_status:en-US:fan_partial"],
             "explanationCode": "existing_translation_status:fan_partial"
           },
           {
@@ -4411,10 +4053,7 @@
             "weight": 10,
             "rawValue": 0.25,
             "weightedScore": 2.5,
-            "evidenceRefs": [
-              "demand_bucket:low",
-              "pool:fan_partial"
-            ],
+            "evidenceRefs": ["demand_bucket:low", "pool:fan_partial"],
             "explanationCode": "benchmark_usefulness:low"
           },
           {
@@ -4422,9 +4061,7 @@
             "weight": 0,
             "rawValue": 1,
             "weightedScore": 0,
-            "evidenceRefs": [
-              "public_evidence:incomplete"
-            ],
+            "evidenceRefs": ["public_evidence:incomplete"],
             "explanationCode": "unknown_evidence:present"
           }
         ],
@@ -4505,9 +4142,7 @@
             "weight": 30,
             "rawValue": 0.1,
             "weightedScore": 3,
-            "evidenceRefs": [
-              "translation_status:en-US:official_full"
-            ],
+            "evidenceRefs": ["translation_status:en-US:official_full"],
             "explanationCode": "translation_completeness:conflict"
           },
           {
@@ -4515,9 +4150,7 @@
             "weight": 8,
             "rawValue": 1,
             "weightedScore": 8,
-            "evidenceRefs": [
-              "local_evidence_count:3"
-            ],
+            "evidenceRefs": ["local_evidence_count:3"],
             "explanationCode": "local_ownership:owned"
           },
           {
@@ -4525,9 +4158,7 @@
             "weight": 20,
             "rawValue": 1,
             "weightedScore": 20,
-            "evidenceRefs": [
-              "dlsite:RJOPP010"
-            ],
+            "evidenceRefs": ["dlsite:RJOPP010"],
             "explanationCode": "dlsite_demand:very_high:rating_high"
           },
           {
@@ -4535,9 +4166,7 @@
             "weight": -60,
             "rawValue": 1,
             "weightedScore": -60,
-            "evidenceRefs": [
-              "019ed161-0000-7000-8000-000000000110:demotion:1"
-            ],
+            "evidenceRefs": ["019ed161-0000-7000-8000-000000000110:demotion:1"],
             "explanationCode": "platform_language_conflict:open_platform_language_conflict"
           },
           {
@@ -4545,10 +4174,7 @@
             "weight": 8,
             "rawValue": 1,
             "weightedScore": 8,
-            "evidenceRefs": [
-              "local_evidence_count:3",
-              "source_id_count:2"
-            ],
+            "evidenceRefs": ["local_evidence_count:3", "source_id_count:2"],
             "explanationCode": "market_prevalence:public_and_local_aggregate"
           },
           {
@@ -4556,9 +4182,7 @@
             "weight": 18,
             "rawValue": 1,
             "weightedScore": 18,
-            "evidenceRefs": [
-              "kaifuu.rpg-maker-mv-mz"
-            ],
+            "evidenceRefs": ["kaifuu.rpg-maker-mv-mz"],
             "explanationCode": "adapter_readiness:patch_supported"
           },
           {
@@ -4577,9 +4201,7 @@
             "weight": 0,
             "rawValue": 1,
             "weightedScore": 0,
-            "evidenceRefs": [
-              "work_type:RPG"
-            ],
+            "evidenceRefs": ["work_type:RPG"],
             "explanationCode": "dlsite_work_type:rpg"
           },
           {
@@ -4587,9 +4209,7 @@
             "weight": -20,
             "rawValue": 0,
             "weightedScore": 0,
-            "evidenceRefs": [
-              "translation_status:en-US:official_full"
-            ],
+            "evidenceRefs": ["translation_status:en-US:official_full"],
             "explanationCode": "existing_translation_status:none"
           },
           {
@@ -4597,10 +4217,7 @@
             "weight": 10,
             "rawValue": 0,
             "weightedScore": 0,
-            "evidenceRefs": [
-              "demand_bucket:very_high",
-              "pool:conflict"
-            ],
+            "evidenceRefs": ["demand_bucket:very_high", "pool:conflict"],
             "explanationCode": "benchmark_usefulness:none"
           },
           {

@@ -60,7 +60,8 @@ describe("catalog opportunity dashboard seed fixture", () => {
 
   it("rejects private leakage in the full expected default read model", () => {
     const fixture = JSON.parse(readFileSync(catalogOpportunityFixtureUrl, "utf8"));
-    fixture.expectedDefaultReadModel.rows[0].provenance[0].fixtureId = "/scratch/private-story-title";
+    fixture.expectedDefaultReadModel.rows[0].provenance[0].fixtureId =
+      "/scratch/private-story-title";
     const fixturePath = join(mkdtempSync(join(tmpdir(), "catalog-opportunity-")), "fixture.json");
     writeFileSync(fixturePath, JSON.stringify(fixture), "utf8");
 
