@@ -951,9 +951,9 @@ mod tests {
 
     fn opts_for_test() -> BridgeOpts<'static> {
         BridgeOpts {
-            game_id: "sweetie-hd",
-            game_version: "1.0.0",
-            source_profile_id: "kaifuu-reallive-sweetie-hd",
+            game_id: "synthetic-bridge-test",
+            game_version: "test",
+            source_profile_id: "kaifuu-reallive-synthetic-bridge-test",
             source_locale: "ja-JP",
             scene_blob_file_offset: 0x13880,
             extractor_name: "kaifuu-reallive-bridge",
