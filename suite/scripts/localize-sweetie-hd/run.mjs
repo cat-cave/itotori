@@ -58,10 +58,15 @@ import process from "node:process";
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolvePath(HERE, "../../..");
 const PAIR_POLICY_PATH = join(REPO_ROOT, "presets", "localize-sweetie-hd.pair-policy.json");
+const DEFAULT_PROJECT_METADATA_PATH = join(
+  REPO_ROOT,
+  "presets",
+  "localize-sweetie-hd.project-metadata.json",
+);
 
 function usage() {
   return [
-    "usage: node suite/scripts/localize-sweetie-hd/run.mjs --project <NAME> [--dry-run] [--scene <N>] [--unit-index <N>] [--provider-kind <live|fake>]",
+    "usage: node suite/scripts/localize-sweetie-hd/run.mjs --project <NAME> [--dry-run] [--scene <N>] [--unit-index <N>] [--provider-kind <live|fake>] [--project-metadata <PATH>]",
     "",
     "Required env (unless --dry-run):",
     "  OPENROUTER_API_KEY              live OpenRouter key for the (modelId, providerId) pair",
@@ -74,6 +79,7 @@ function usage() {
     "  --scene <N>                     scene id passed to kaifuu extract / utsushi replay-validate (default 1)",
     "  --unit-index <N>                bridge unit index to translate (default 0)",
     "  --provider-kind <live|fake>     forwarded to the agentic-loop stage; fake requires ITOTORI_ALLOW_FAKE_LOCALIZE_PROVIDER=1",
+    `  --project-metadata <PATH>       project identity metadata for extraction (default ${DEFAULT_PROJECT_METADATA_PATH})`,
   ].join("\n");
 }
 
@@ -84,6 +90,7 @@ function parseArgs(argv) {
     scene: 1,
     unitIndex: 0,
     providerKind: undefined,
+    projectMetadataPath: DEFAULT_PROJECT_METADATA_PATH,
   };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
@@ -121,6 +128,12 @@ function parseArgs(argv) {
         if (value !== "live" && value !== "fake")
           throw new Error(`--provider-kind '${value}' must be 'live' or 'fake'`);
         args.providerKind = value;
+        break;
+      }
+      case "--project-metadata": {
+        const value = argv[++i];
+        if (value === undefined) throw new Error("--project-metadata requires a value");
+        args.projectMetadataPath = resolvePath(value);
         break;
       }
       case "-h":
@@ -251,6 +264,64 @@ function loadPairPolicy() {
   return parsed;
 }
 
+function requireMetadataString(record, key, metadataPath) {
+  const value = record[key];
+  if (typeof value !== "string" || value.trim().length === 0) {
+    throw new Error(`project metadata at ${metadataPath} missing required string '${key}'`);
+  }
+  return value;
+}
+
+function loadProjectMetadata(metadataPath) {
+  if (!existsSync(metadataPath)) {
+    throw new Error(
+      `project metadata file missing at ${metadataPath}; the driver does NOT default RealLive bridge identity metadata`,
+    );
+  }
+  const raw = readFileSync(metadataPath, "utf8");
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (error) {
+    throw new Error(`project metadata JSON parse failed at ${metadataPath}: ${error.message}`);
+  }
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    throw new Error(`project metadata at ${metadataPath} must be a JSON object`);
+  }
+  const EXPECTED_SCHEMA = "itotori.localize-sweetie-hd.project-metadata.v0";
+  if (parsed.schemaVersion !== EXPECTED_SCHEMA) {
+    throw new Error(
+      `project metadata at ${metadataPath} has schemaVersion='${String(parsed.schemaVersion)}'; expected '${EXPECTED_SCHEMA}'`,
+    );
+  }
+  if (
+    typeof parsed.reallive !== "object" ||
+    parsed.reallive === null ||
+    Array.isArray(parsed.reallive)
+  ) {
+    throw new Error(`project metadata at ${metadataPath} missing required object 'reallive'`);
+  }
+  return {
+    gameId: requireMetadataString(parsed.reallive, "game_id", metadataPath),
+    gameVersion: requireMetadataString(parsed.reallive, "game_version", metadataPath),
+    sourceProfileId: requireMetadataString(parsed.reallive, "source_profile_id", metadataPath),
+    sourceLocale: requireMetadataString(parsed.reallive, "source_locale", metadataPath),
+  };
+}
+
+function realliveIdentityArgs(projectMetadata) {
+  return [
+    "--game-id",
+    projectMetadata.gameId,
+    "--game-version",
+    projectMetadata.gameVersion,
+    "--source-profile-id",
+    projectMetadata.sourceProfileId,
+    "--source-locale",
+    projectMetadata.sourceLocale,
+  ];
+}
+
 // ITOTORI-234 / ITOTORI-238 — deterministic seed derivation matching
 // packages/localization-bridge-schema/src/pair-policy.v0.3.ts
 // (`deriveDefaultSeed`). Duplicated inline because the driver does not
@@ -366,6 +437,7 @@ function printDryRunPlan(plan, postures) {
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const policy = loadPairPolicy();
+  const projectMetadata = loadProjectMetadata(args.projectMetadataPath);
   const sentinelSubstring = policy.enUsSentinel;
   const sceneId = policy.sceneId ?? args.scene;
   const ts = isoTimestampUtc();
@@ -415,7 +487,7 @@ async function main() {
   if (dryRun) {
     printDryRunPlan(
       [
-        `cargo run -p kaifuu-cli -- extract --engine reallive --scene ${sceneId} --bundle-output ${bridgeBundlePath}`,
+        `cargo run -p kaifuu-cli -- extract --engine reallive --game-root <KAIFUU_REAL_SWEETIE_HD_PATH> --game-id ${projectMetadata.gameId} --game-version ${projectMetadata.gameVersion} --source-profile-id ${projectMetadata.sourceProfileId} --source-locale ${projectMetadata.sourceLocale} --scene ${sceneId} --bundle-output ${bridgeBundlePath}`,
         `node apps/itotori/dist/cli.js localize-sweetie-hd-stage --bridge ${bridgeBundlePath} --pair-policy ${PAIR_POLICY_PATH} --unit-index ${args.unitIndex} --output ${agenticLoopBundlePath} --translated-bundle-output ${translatedBundlePath} --patch-report-output ${patchReportPath} --provider-run-artifacts-dir ${providerRunArtifactsDir}`,
         `cargo run -p kaifuu-cli -- patch --engine reallive --source <KAIFUU_REAL_SWEETIE_HD_PATH> --target <TARGET> --bundle ${translatedBundlePath} --force`,
         `cargo run -p utsushi-cli -- replay-validate --engine reallive --seen <TARGET>/REALLIVEDATA/Seen.txt --scene ${sceneId} --expect-textline-contains ${sentinelSubstring} --print-replay-log ${replayLogPath}`,
@@ -446,6 +518,7 @@ async function main() {
     "reallive",
     "--game-root",
     gameRoot,
+    ...realliveIdentityArgs(projectMetadata),
     "--scene",
     String(sceneId),
     "--bundle-output",
@@ -562,6 +635,12 @@ async function main() {
     runDir,
     project: args.project,
     sceneId,
+    sourceGame: {
+      gameId: projectMetadata.gameId,
+      gameVersion: projectMetadata.gameVersion,
+      sourceProfileId: projectMetadata.sourceProfileId,
+    },
+    sourceLocale: projectMetadata.sourceLocale,
     pair: policy.pair,
     enUsSentinel: policy.enUsSentinel,
     sourceSeenSha256: sourceSeenSha256Before,
