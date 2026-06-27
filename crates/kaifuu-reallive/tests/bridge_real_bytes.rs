@@ -29,6 +29,8 @@ use kaifuu_reallive::{
 
 const SWEETIE_HD_RELATIVE_PATH: &str = "オシオキSweetie＋Sweets!! HD_DL版/REALLIVEDATA/Seen.txt";
 const SWEETIE_HD_GAMEEXE_PATH: &str = "オシオキSweetie＋Sweets!! HD_DL版/REALLIVEDATA/Gameexe.ini";
+const SWEETIE_HD_GAME_ID: &str = "sweetie-hd";
+const SWEETIE_HD_SOURCE_PROFILE_ID: &str = "kaifuu-reallive-sweetie-hd";
 
 fn sweetie_hd_seen_txt_path() -> Option<PathBuf> {
     let root = env::var_os("KAIFUU_REAL_SWEETIE_HD_PATH")?;
@@ -105,9 +107,9 @@ fn produces_v02_bridge_bundle_from_sweetie_hd_scene_1_real_bytes() {
 
     // Walk the bridge producer.
     let opts = BridgeOpts {
-        game_id: "sweetie-hd",
+        game_id: SWEETIE_HD_GAME_ID,
         game_version: "1.0.0",
-        source_profile_id: "kaifuu-reallive-sweetie-hd",
+        source_profile_id: SWEETIE_HD_SOURCE_PROFILE_ID,
         source_locale: "ja-JP",
         scene_blob_file_offset: entry.byte_offset,
         extractor_name: "kaifuu-reallive-bridge",

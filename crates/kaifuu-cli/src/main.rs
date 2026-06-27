@@ -68,8 +68,7 @@ fn run_with_args_and_registry(
             // routes through the kaifuu-reallive bridge producer rather
             // than the registry adapter surface. The `game_dir` positional
             // is optional under --engine reallive — if absent we read
-            // `KAIFUU_REAL_SWEETIE_HD_PATH` to locate the Sweetie HD
-            // extracted root.
+            // `KAIFUU_REAL_SWEETIE_HD_PATH` as a test-fixture convenience.
             if let Some(engine) = flag_optional(&args, "--engine")
                 && engine == "reallive"
             {
@@ -284,11 +283,11 @@ fn run_with_args_and_registry(
 
 /// KAIFUU-210 — `extract --engine reallive --scene <N> --bundle-output <PATH>`.
 ///
-/// Loads the Sweetie HD SEEN.TXT envelope from
-/// `KAIFUU_REAL_SWEETIE_HD_PATH` (or `--game-root <PATH>`), resolves
-/// scene `N` via the 10,000-slot directory, decompresses its AVG32 LZSS
-/// payload using kaifuu-reallive's `decompress_avg32`, walks the
-/// decompressed bytecode into the v0.2 BridgeBundle via
+/// Loads the RealLive SEEN.TXT envelope from `--game-root <PATH>` (or
+/// `KAIFUU_REAL_SWEETIE_HD_PATH` for explicit real-bytes fixture runs),
+/// resolves scene `N` via the 10,000-slot directory, decompresses its
+/// AVG32 LZSS payload using kaifuu-reallive's `decompress_avg32`, walks
+/// the decompressed bytecode into the v0.2 BridgeBundle via
 /// `kaifuu_reallive::produce_bundle`, and writes the JSON bundle to
 /// `--bundle-output`.
 fn run_extract_reallive_bundle(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
@@ -297,6 +296,10 @@ fn run_extract_reallive_bundle(args: &[String]) -> Result<(), Box<dyn std::error
         gameexe::parse_gameexe_inventory, parse_archive, produce_bundle,
     };
 
+    let game_id = required_reallive_metadata_flag(args, "--game-id")?;
+    let game_version = required_reallive_metadata_flag(args, "--game-version")?;
+    let source_profile_id = required_reallive_metadata_flag(args, "--source-profile-id")?;
+    let source_locale = required_reallive_metadata_flag(args, "--source-locale")?;
     let bundle_output = PathBuf::from(flag(args, "--bundle-output")?);
     let scene_id: u16 =
         flag(args, "--scene")?
@@ -372,10 +375,10 @@ fn run_extract_reallive_bundle(args: &[String]) -> Result<(), Box<dyn std::error
     let gameexe_inventory = parse_gameexe_inventory(&gameexe_bytes);
 
     let opts = BridgeOpts {
-        game_id: "sweetie-hd",
-        game_version: "1.0.0",
-        source_profile_id: "kaifuu-reallive-sweetie-hd",
-        source_locale: "ja-JP",
+        game_id,
+        game_version,
+        source_profile_id,
+        source_locale,
         scene_blob_file_offset: entry.byte_offset,
         extractor_name: "kaifuu-reallive-bridge",
         extractor_version: "0.1.0",
@@ -2137,6 +2140,21 @@ fn positional(args: &[String], index: usize) -> Result<&str, Box<dyn std::error:
 
 fn flag<'a>(args: &'a [String], name: &str) -> Result<&'a str, Box<dyn std::error::Error>> {
     flag_optional(args, name).ok_or_else(|| format!("missing flag {name}").into())
+}
+
+fn required_reallive_metadata_flag<'a>(
+    args: &'a [String],
+    name: &str,
+) -> Result<&'a str, Box<dyn std::error::Error>> {
+    let value = flag_optional(args, name).ok_or_else(|| {
+        format!("missing RealLive bridge metadata flag {name}; pass --game-id, --game-version, --source-profile-id, and --source-locale")
+    })?;
+    if value.trim().is_empty() || value.starts_with("--") {
+        return Err(
+            format!("RealLive bridge metadata flag {name} must have a non-empty value").into(),
+        );
+    }
+    Ok(value)
 }
 
 fn parse_u32_flag(args: &[String], name: &str) -> Result<u32, Box<dyn std::error::Error>> {

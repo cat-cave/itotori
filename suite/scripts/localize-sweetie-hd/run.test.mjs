@@ -14,9 +14,11 @@
 // Linux-only (the driver is Linux-only by design).
 
 import { spawnSync } from "node:child_process";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { dirname, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import assert from "node:assert/strict";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -34,6 +36,24 @@ function runDriver(args, env = {}) {
   });
 }
 
+function writeProjectMetadata(fields) {
+  const dir = mkdtempSync(join(tmpdir(), "itotori-project-metadata-"));
+  const path = join(dir, "project-metadata.json");
+  writeFileSync(
+    path,
+    `${JSON.stringify(
+      {
+        schemaVersion: "itotori.localize-sweetie-hd.project-metadata.v0",
+        projectId: "test-project",
+        reallive: fields,
+      },
+      null,
+      2,
+    )}\n`,
+  );
+  return { dir, path };
+}
+
 test("--dry-run --project ... exits 0 and prints per-phase commands", () => {
   const result = runDriver(["--dry-run", "--project", "sweetie-hd-alpha-1"]);
   assert.equal(result.status, 0, `stderr: ${result.stderr}`);
@@ -43,6 +63,18 @@ test("--dry-run --project ... exits 0 and prints per-phase commands", () => {
   assert.ok(
     result.stdout.includes("kaifuu-cli"),
     `dry-run plan must mention kaifuu-cli; got:\n${result.stdout}`,
+  );
+  assert.equal(
+    (result.stdout.match(/\(planned\) \$ /gu) ?? []).length,
+    4,
+    `dry-run plan must preserve the four-phase command shape; got:\n${result.stdout}`,
+  );
+  assert.ok(
+    result.stdout.includes("--game-id sweetie-hd") &&
+      result.stdout.includes("--game-version 1.0.0") &&
+      result.stdout.includes("--source-profile-id kaifuu-reallive-sweetie-hd") &&
+      result.stdout.includes("--source-locale ja-JP"),
+    `dry-run extract command must pass RealLive identity metadata from the project preset; got:\n${result.stdout}`,
   );
   assert.ok(
     result.stdout.includes("localize-sweetie-hd-stage"),
@@ -94,6 +126,57 @@ test("--dry-run --project ... exits 0 and prints per-phase commands", () => {
   assert.ok(
     /stage repair\.primary: zdr=true seed=\d+/u.test(result.stdout),
     `dry-run plan must surface zdr+seed for repair.primary; got:\n${result.stdout}`,
+  );
+});
+
+test("--dry-run --project-metadata forwards caller-supplied RealLive identity flags", () => {
+  const metadata = writeProjectMetadata({
+    game_id: "fixture-reallive-game",
+    game_version: "2026.06.test",
+    source_profile_id: "fixture-reallive-profile",
+    source_locale: "ja-JP-x-test",
+  });
+  try {
+    const result = runDriver([
+      "--dry-run",
+      "--project",
+      "fixture-alpha",
+      "--project-metadata",
+      metadata.path,
+    ]);
+    assert.equal(result.status, 0, `stderr: ${result.stderr}`);
+    assert.ok(
+      result.stdout.includes("--game-id fixture-reallive-game") &&
+        result.stdout.includes("--game-version 2026.06.test") &&
+        result.stdout.includes("--source-profile-id fixture-reallive-profile") &&
+        result.stdout.includes("--source-locale ja-JP-x-test"),
+      `dry-run extract command must use caller-supplied project metadata; got:\n${result.stdout}`,
+    );
+  } finally {
+    rmSync(metadata.dir, { recursive: true, force: true });
+  }
+});
+
+test("missing project metadata exits before extraction/env validation", () => {
+  const missingPath = join(
+    tmpdir(),
+    `itotori-missing-project-metadata-${process.pid}-${Date.now()}.json`,
+  );
+  const result = runDriver([
+    "--dry-run",
+    "--project",
+    "sweetie-hd-alpha-1",
+    "--project-metadata",
+    missingPath,
+  ]);
+  assert.notEqual(result.status, 0);
+  assert.ok(
+    result.stderr.includes("project metadata file missing"),
+    `stderr should mention missing project metadata; got:\n${result.stderr}`,
+  );
+  assert.ok(
+    !result.stderr.includes("OPENROUTER_API_KEY"),
+    `metadata validation should happen before env validation; got:\n${result.stderr}`,
   );
 });
 

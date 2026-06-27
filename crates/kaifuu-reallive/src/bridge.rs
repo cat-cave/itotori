@@ -632,7 +632,10 @@ fn build_bundle_json(
     units: &[ProtoUnit],
     opts: &BridgeOpts<'_>,
 ) -> Value {
-    let bundle_namespace = format!("reallive-scene-{scene_id:04}");
+    let bundle_namespace = format!(
+        "reallive-bridge:game-id={}:source-profile-id={}:scene={scene_id:04}",
+        opts.game_id, opts.source_profile_id
+    );
     let scene_blob_hash = sha256_canonical(scene_bytes);
     let revision_id = deterministic_uuid7(&bundle_namespace, "scene-revision");
 
@@ -951,9 +954,9 @@ mod tests {
 
     fn opts_for_test() -> BridgeOpts<'static> {
         BridgeOpts {
-            game_id: "sweetie-hd",
-            game_version: "1.0.0",
-            source_profile_id: "kaifuu-reallive-sweetie-hd",
+            game_id: "synthetic-bridge-test",
+            game_version: "test",
+            source_profile_id: "kaifuu-reallive-synthetic-bridge-test",
             source_locale: "ja-JP",
             scene_blob_file_offset: 0x13880,
             extractor_name: "kaifuu-reallive-bridge",

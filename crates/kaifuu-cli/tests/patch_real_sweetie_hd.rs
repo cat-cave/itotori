@@ -92,6 +92,14 @@ fn cli_patch_engine_reallive_writes_patched_seen_txt_under_writable_target() {
         .arg(tmp.path().join("scene-1-source.json"))
         .arg("--game-root")
         .arg(&source_root)
+        .arg("--game-id")
+        .arg("sweetie-hd")
+        .arg("--game-version")
+        .arg("1.0.0")
+        .arg("--source-profile-id")
+        .arg("kaifuu-reallive-sweetie-hd")
+        .arg("--source-locale")
+        .arg("ja-JP")
         .output()
         .expect("kaifuu-cli extract must run");
     assert!(
