@@ -2,7 +2,7 @@
 //! dispatch.
 //!
 //! Reads scene 1 from Sweetie HD's `REALLIVEDATA/Seen.txt` at
-//! `$KAIFUU_REAL_SWEETIE_HD_PATH`, runs the AVG32 LZSS + 256-byte XOR
+//! `$ITOTORI_REAL_GAME_ROOT`, runs the AVG32 LZSS + 256-byte XOR
 //! decompression inline (the decompressor is a per-this-node helper —
 //! see `examples/probe_scene_1_encryption.rs` for the full probe), then
 //! dispatches the plaintext bytecode through the new
@@ -43,22 +43,22 @@
 //! The recognition rate is reported via `eprintln!` so the orchestration
 //! report can quote it directly.
 
-use std::env;
+#[path = "support/real_corpus.rs"]
+mod real_corpus;
+
 use std::fs;
 use std::path::PathBuf;
 
 use kaifuu_reallive::{REALLIVE_SEEN_TXT_DIRECTORY_BYTE_LEN, RealLiveOpcode, parse_real_bytecode};
 
-const SWEETIE_HD_RELATIVE_PATH: &str = "オシオキSweetie＋Sweets!! HD_DL版/REALLIVEDATA/Seen.txt";
-
 #[test]
-#[ignore = "real-bytes; requires KAIFUU_REAL_SWEETIE_HD_PATH env var"]
+#[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
 fn dispatches_sweetie_hd_scene_1_with_at_least_90_percent_opcode_recognition() {
-    let Some(seen_path) = sweetie_hd_seen_txt_path() else {
+    let Some(seen_path) = real_seen_txt_path() else {
         eprintln!(
-            "KAIFUU_REAL_SWEETIE_HD_PATH unset; skipping Sweetie HD scene-1 dispatch test \
+            "ITOTORI_REAL_GAME_ROOT unset; skipping Sweetie HD scene-1 dispatch test \
              (no silent pass: re-run with \
-             KAIFUU_REAL_SWEETIE_HD_PATH=/scratch/itotori-research/sweetie-hd/extracted)"
+             ITOTORI_REAL_GAME_ROOT=/path/to/reallive-game-root)"
         );
         return;
     };
@@ -269,10 +269,8 @@ fn dispatches_sweetie_hd_scene_1_with_at_least_90_percent_opcode_recognition() {
     );
 }
 
-fn sweetie_hd_seen_txt_path() -> Option<PathBuf> {
-    let root = env::var_os("KAIFUU_REAL_SWEETIE_HD_PATH")?;
-    let root = PathBuf::from(root);
-    Some(root.join(SWEETIE_HD_RELATIVE_PATH))
+fn real_seen_txt_path() -> Option<PathBuf> {
+    real_corpus::seen_txt_path()
 }
 
 /// AVG32 256-byte XOR mask applied to the LZSS compressed stream.

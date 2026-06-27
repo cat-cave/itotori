@@ -1,6 +1,6 @@
 //! Scene-1 encryption-mechanism probe for Sweetie HD.
 //!
-//! Reads `Seen.txt` at `$KAIFUU_REAL_SWEETIE_HD_PATH` (or falls back to the
+//! Reads `Seen.txt` under `$ITOTORI_REAL_GAME_ROOT` (or falls back to the
 //! canonical `/scratch/itotori-research/...` mount), isolates scene #0001's
 //! compressed bytecode payload, applies the rlvm-documented AVG32 LZSS+XOR
 //! decompression (no second-level XOR), and reports:
@@ -18,6 +18,9 @@
 
 use std::env;
 use std::fs;
+use std::path::{Path, PathBuf};
+
+const REAL_GAME_ROOT_ENV: &str = "ITOTORI_REAL_GAME_ROOT";
 
 /// AVG32 256-byte XOR mask used on the LZSS compressed stream itself.
 /// Constant; restated in our own words from rlvm `compression.cc`'s
@@ -182,14 +185,44 @@ fn hex_row(bytes: &[u8]) -> String {
         .join(" ")
 }
 
+fn resolve_seen_path(root: &Path) -> PathBuf {
+    let direct = root.join("REALLIVEDATA").join("Seen.txt");
+    if direct.is_file() {
+        return direct;
+    }
+    let data_root = root.join("Seen.txt");
+    if root
+        .file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| name.eq_ignore_ascii_case("REALLIVEDATA"))
+        && data_root.is_file()
+    {
+        return data_root;
+    }
+    if let Ok(entries) = fs::read_dir(root) {
+        let matches = entries
+            .flatten()
+            .map(|entry| entry.path().join("REALLIVEDATA").join("Seen.txt"))
+            .filter(|candidate| candidate.is_file())
+            .collect::<Vec<_>>();
+        if matches.len() == 1 {
+            return matches[0].clone();
+        }
+    }
+    direct
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let path = env::var("KAIFUU_REAL_SWEETIE_HD_PATH").unwrap_or_else(|_| {
-        "/scratch/itotori-research/sweetie-hd/extracted/\
-         オシオキSweetie＋Sweets!! HD_DL版/REALLIVEDATA/Seen.txt"
-            .to_string()
-    });
+    let path = env::var_os(REAL_GAME_ROOT_ENV)
+        .map(|root| resolve_seen_path(&PathBuf::from(root)))
+        .unwrap_or_else(|| {
+            PathBuf::from(
+                "/scratch/itotori-research/sweetie-hd/extracted/\
+                 オシオキSweetie＋Sweets!! HD_DL版/REALLIVEDATA/Seen.txt",
+            )
+        });
     println!("=== Sweetie HD scene #0001 encryption-mechanism probe ===");
-    println!("seen_path: {path}");
+    println!("seen_path: {}", path.display());
     let bytes = fs::read(&path)?;
     println!("file_bytes: {}", bytes.len());
 

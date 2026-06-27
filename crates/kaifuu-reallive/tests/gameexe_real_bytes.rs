@@ -14,27 +14,27 @@
 //! retroactive validation is welcome but not blocking.
 //!
 //! Env-gating: this test reads bytes only when
-//! `KAIFUU_REAL_SWEETIE_HD_PATH` is set; otherwise it prints a skip
+//! `ITOTORI_REAL_GAME_ROOT` is set; otherwise it prints a skip
 //! message and returns (so the test is a no-op on environments without
 //! the corpus staged).
 
+#[path = "support/real_corpus.rs"]
+mod real_corpus;
+
 use std::collections::HashMap;
-use std::env;
 use std::fs;
 use std::path::PathBuf;
 
 use kaifuu_reallive::{GameexeKeyFamily, GameexeKeyTreatment, parse_gameexe_inventory};
 
-const SWEETIE_HD_RELATIVE_PATH: &str = "オシオキSweetie＋Sweets!! HD_DL版/REALLIVEDATA/Gameexe.ini";
-
 #[test]
-#[ignore = "real-bytes; requires KAIFUU_REAL_SWEETIE_HD_PATH env var"]
+#[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
 fn classifies_sweetie_hd_gameexe_ini_to_at_least_ninety_percent_coverage() {
-    let Some(ini_path) = sweetie_hd_gameexe_ini_path() else {
+    let Some(ini_path) = real_gameexe_ini_path() else {
         eprintln!(
-            "KAIFUU_REAL_SWEETIE_HD_PATH unset; skipping Sweetie HD Gameexe.ini real-bytes \
+            "ITOTORI_REAL_GAME_ROOT unset; skipping Sweetie HD Gameexe.ini real-bytes \
              test (no silent pass: re-run with \
-             KAIFUU_REAL_SWEETIE_HD_PATH=/scratch/itotori-research/sweetie-hd/extracted)"
+             ITOTORI_REAL_GAME_ROOT=/path/to/reallive-game-root)"
         );
         return;
     };
@@ -276,8 +276,6 @@ fn family_label(family: &GameexeKeyFamily) -> &'static str {
     }
 }
 
-fn sweetie_hd_gameexe_ini_path() -> Option<PathBuf> {
-    let root = env::var_os("KAIFUU_REAL_SWEETIE_HD_PATH")?;
-    let root = PathBuf::from(root);
-    Some(root.join(SWEETIE_HD_RELATIVE_PATH))
+fn real_gameexe_ini_path() -> Option<PathBuf> {
+    real_corpus::gameexe_ini_path()
 }

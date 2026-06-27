@@ -19,10 +19,12 @@
 //! semantic acceptance.
 //!
 //! The test is `#[ignore]`-gated. Pass `--include-ignored` and set
-//! `KAIFUU_REAL_SWEETIE_HD_PATH` to run it.
+//! `ITOTORI_REAL_GAME_ROOT` to run it.
+
+#[path = "support/real_corpus.rs"]
+mod real_corpus;
 
 use std::collections::BTreeMap;
-use std::env;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -37,8 +39,6 @@ use utsushi_reallive::{
     Scene, SceneHeader, StepOutcome, StrRuntime, SysRuntime, Vm, decode_bytecode_stream,
     register_mem_rlops, register_str_rlops, register_sys_rlops,
 };
-
-const SWEETIE_HD_RELATIVE_PATH: &str = "オシオキSweetie＋Sweets!! HD_DL版/REALLIVEDATA/Seen.txt";
 
 /// Step budget — pinned to 400 so the walk reaches past the scene-1
 /// preamble while still terminating deterministically.
@@ -63,10 +63,8 @@ impl TextSurfaceSink for CollectingSink {
     }
 }
 
-fn sweetie_hd_seen_txt_path() -> Option<PathBuf> {
-    let root = env::var_os("KAIFUU_REAL_SWEETIE_HD_PATH")?;
-    let root = PathBuf::from(root);
-    Some(root.join(SWEETIE_HD_RELATIVE_PATH))
+fn real_seen_txt_path() -> Option<PathBuf> {
+    real_corpus::seen_txt_path()
 }
 
 /// Real-bytes histogram observation. Pins three things:
@@ -80,13 +78,13 @@ fn sweetie_hd_seen_txt_path() -> Option<PathBuf> {
 ///    documents the corpus's sparse `module_str` / `module_mem` /
 ///    `module_sys` density).
 #[test]
-#[ignore = "real-bytes; requires KAIFUU_REAL_SWEETIE_HD_PATH env var"]
+#[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
 fn str_mem_sys_registries_dispatch_against_sweetie_hd_scene_one() {
-    let Some(seen_path) = sweetie_hd_seen_txt_path() else {
+    let Some(seen_path) = real_seen_txt_path() else {
         eprintln!(
-            "KAIFUU_REAL_SWEETIE_HD_PATH unset; skipping Sweetie HD real-bytes test \
+            "ITOTORI_REAL_GAME_ROOT unset; skipping Sweetie HD real-bytes test \
              for UTSUSHI-212 (str/mem/sys families). Re-run with \
-             KAIFUU_REAL_SWEETIE_HD_PATH=/scratch/itotori-research/sweetie-hd/extracted",
+             ITOTORI_REAL_GAME_ROOT=/path/to/reallive-game-root",
         );
         return;
     };

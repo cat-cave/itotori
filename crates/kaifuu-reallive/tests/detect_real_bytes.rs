@@ -1,6 +1,6 @@
 //! KAIFUU-189 real-bytes integration test for the RealLive `REALLIVEDATA/`
 //! detector. Walks the depth-N descent against the actual Sweetie HD
-//! installation tree under `$KAIFUU_REAL_SWEETIE_HD_PATH` and confirms
+//! installation tree under `$ITOTORI_REAL_GAME_ROOT` and confirms
 //! that the resolved path ends with `REALLIVEDATA` on disk. A
 //! synthetic-positive companion test exercises depth-2 descent against
 //! author-controlled bytes (`tmp/parent/REALLIVEDATA/Seen.txt`), and a
@@ -37,16 +37,17 @@
 //! This three-state shape is the KAIFUU-189 "no silent zero-state"
 //! contract; the test enforces all three outcomes.
 
+#[path = "support/real_corpus.rs"]
+mod real_corpus;
+
 use std::env;
 use std::fs;
 use std::path::PathBuf;
 
 use kaifuu_reallive::{
-    REALLIVE_DATA_DIR_NAME, RealLiveDetectError, detect_reallive_data_dir,
-    detect_reallive_data_dir_with_max_depth,
+    REALLIVE_DATA_DIR_NAME, REALLIVE_DETECTOR_DEFAULT_MAX_DEPTH, RealLiveDetectError,
+    detect_reallive_data_dir, detect_reallive_data_dir_with_max_depth,
 };
-
-const SWEETIE_HD_ENV_VAR: &str = "KAIFUU_REAL_SWEETIE_HD_PATH";
 
 fn unique_temp_dir(label: &str) -> PathBuf {
     let dir = env::temp_dir().join(format!(
@@ -63,16 +64,18 @@ fn unique_temp_dir(label: &str) -> PathBuf {
 }
 
 #[test]
-#[ignore = "real-bytes; requires KAIFUU_REAL_SWEETIE_HD_PATH env var"]
+#[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
 fn detects_reallivedata_under_sweetie_hd_root_with_resolved_path() {
-    let Some(env_path) = env::var_os(SWEETIE_HD_ENV_VAR).map(PathBuf::from) else {
+    let Some(env_path) = env::var_os(real_corpus::REAL_GAME_ROOT_ENV).map(PathBuf::from) else {
         // Visible skip — KAIFUU-189 "no silent zero-state" requires the
         // operator to observe that the real-bytes assertion did not run.
         eprintln!(
             "SKIP detects_reallivedata_under_sweetie_hd_root_with_resolved_path: \
-             {SWEETIE_HD_ENV_VAR} is unset; re-run with \
-             {SWEETIE_HD_ENV_VAR}=/scratch/itotori-research/sweetie-hd/extracted \
-             to exercise the depth-N descent against the actual install tree"
+             {} is unset; re-run with \
+             {}=/path/to/reallive-game-root \
+             to exercise the depth-N descent against the actual install tree",
+            real_corpus::REAL_GAME_ROOT_ENV,
+            real_corpus::REAL_GAME_ROOT_ENV
         );
         return;
     };
@@ -81,10 +84,11 @@ fn detects_reallivedata_under_sweetie_hd_root_with_resolved_path() {
         .expect("readable Sweetie HD root must not error")
         .unwrap_or_else(|| {
             panic!(
-                "{SWEETIE_HD_ENV_VAR} set to {} but depth-N descent failed to locate \
+                "{} set to {} but depth-N descent failed to locate \
                  a REALLIVEDATA/ subdirectory; the audit (\
                  docs/audits/real-bytes-validation-2026-06-24.md §2.1) confirms it \
-                 ships under <root>/<JP title subdir>/REALLIVEDATA/",
+                 ships under <root>/REALLIVEDATA or <root>/<one child>/REALLIVEDATA/",
+                real_corpus::REAL_GAME_ROOT_ENV,
                 env_path.display()
             )
         });
@@ -127,16 +131,32 @@ fn detects_reallivedata_under_sweetie_hd_root_with_resolved_path() {
         env_path.display()
     );
 
-    // Acceptance #4: search depth on Sweetie HD is exactly 2 (the JP
-    // title subdir, then REALLIVEDATA). If the install tree changes
-    // shape we want a loud test failure, not a silent pass at a
-    // different depth.
+    // Acceptance #4: search depth reports the relative directory depth
+    // of the resolved REALLIVEDATA marker. Direct roots
+    // (`<game>/REALLIVEDATA`) and shallow wrapper roots
+    // (`<parent>/<game>/REALLIVEDATA`) are both valid generic fixture
+    // shapes.
+    let expected_search_depth = evidence
+        .reallive_data_path
+        .strip_prefix(&env_path)
+        .unwrap_or_else(|_| {
+            panic!(
+                "resolved REALLIVEDATA path {} must be relative to input root {}",
+                evidence.reallive_data_path.display(),
+                env_path.display()
+            )
+        })
+        .components()
+        .count();
     assert_eq!(
-        evidence.search_depth, 2,
-        "Sweetie HD REALLIVEDATA must be at depth 2 from the install root \
-         (root/<JP title subdir>/REALLIVEDATA); KAIFUU-189 audit references \
-         this exact shape. Got depth {}.",
-        evidence.search_depth
+        evidence.search_depth, expected_search_depth,
+        "reported search depth must match the resolved REALLIVEDATA path depth from the input root"
+    );
+    assert!(
+        evidence.search_depth <= REALLIVE_DETECTOR_DEFAULT_MAX_DEPTH,
+        "reported search depth {} must stay within the detector's default bound {}",
+        evidence.search_depth,
+        REALLIVE_DETECTOR_DEFAULT_MAX_DEPTH
     );
 
     // Acceptance #5: corroborating bytes — Seen.txt must live inside

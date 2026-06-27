@@ -6,7 +6,7 @@
 //!
 //! The `_real_bytes` companion test (in `engine_port_sinks_bridge_real_bytes.rs`)
 //! exercises the same path against the Sweetie HD VFS layout when
-//! `KAIFUU_REAL_SWEETIE_HD_PATH` is set.
+//! `ITOTORI_REAL_GAME_ROOT` is set.
 
 use std::sync::{Arc, Mutex};
 

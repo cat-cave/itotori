@@ -26,7 +26,9 @@
 //!    `.nwa` extension and routed under Sweetie HD's
 //!    `REALLIVEDATA/bgm/`) lands on the real `ASA.nwa` file.
 
-use std::env;
+#[path = "support/real_corpus.rs"]
+mod real_corpus;
+
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -36,41 +38,28 @@ use utsushi_reallive::{
     Gameexe, KoePlayOp, RLOperation, Vm,
 };
 
-const SWEETIE_HD_TITLE_DIR: &str = "オシオキSweetie＋Sweets!! HD_DL版";
-const SWEETIE_HD_GAMEEXE_RELATIVE: &str = "REALLIVEDATA/Gameexe.ini";
-const SWEETIE_HD_BGM_RELATIVE: &str = "REALLIVEDATA/bgm";
 const ASA_NWA: &str = "ASA.nwa";
 
-fn sweetie_hd_gameexe_path() -> Option<PathBuf> {
-    let root = env::var_os("KAIFUU_REAL_SWEETIE_HD_PATH")?;
-    Some(
-        PathBuf::from(root)
-            .join(SWEETIE_HD_TITLE_DIR)
-            .join(SWEETIE_HD_GAMEEXE_RELATIVE),
-    )
+fn real_gameexe_ini_path() -> Option<PathBuf> {
+    real_corpus::gameexe_ini_path()
 }
 
-fn sweetie_hd_bgm_dir() -> Option<PathBuf> {
-    let root = env::var_os("KAIFUU_REAL_SWEETIE_HD_PATH")?;
-    Some(
-        PathBuf::from(root)
-            .join(SWEETIE_HD_TITLE_DIR)
-            .join(SWEETIE_HD_BGM_RELATIVE),
-    )
+fn real_bgm_dir() -> Option<PathBuf> {
+    real_corpus::reallivedata_subdir("bgm")
 }
 
 fn load_sweetie_hd_gameexe() -> Option<Arc<Gameexe>> {
-    let path = sweetie_hd_gameexe_path()?;
+    let path = real_gameexe_ini_path()?;
     let bytes = fs::read(&path).ok()?;
     Gameexe::parse(&bytes).ok().map(Arc::new)
 }
 
 #[test]
-#[ignore = "real-bytes; requires KAIFUU_REAL_SWEETIE_HD_PATH env var"]
+#[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
 fn koe_play_resolves_through_namae_table() {
     let Some(gameexe) = load_sweetie_hd_gameexe() else {
         eprintln!(
-            "KAIFUU_REAL_SWEETIE_HD_PATH unset or Gameexe.ini missing; skipping \
+            "ITOTORI_REAL_GAME_ROOT unset or Gameexe.ini missing; skipping \
              koe_play_resolves_through_namae_table",
         );
         return;
@@ -157,11 +146,11 @@ fn koe_play_resolves_through_namae_table() {
 }
 
 #[test]
-#[ignore = "real-bytes; requires KAIFUU_REAL_SWEETIE_HD_PATH env var"]
+#[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
 fn bgm_play_resolves_through_foldname_bgm() {
     let Some(gameexe) = load_sweetie_hd_gameexe() else {
         eprintln!(
-            "KAIFUU_REAL_SWEETIE_HD_PATH unset or Gameexe.ini missing; skipping \
+            "ITOTORI_REAL_GAME_ROOT unset or Gameexe.ini missing; skipping \
              bgm_play_resolves_through_foldname_bgm",
         );
         return;
@@ -202,16 +191,16 @@ fn bgm_play_resolves_through_foldname_bgm() {
 }
 
 #[test]
-#[ignore = "real-bytes; requires KAIFUU_REAL_SWEETIE_HD_PATH env var"]
+#[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
 fn bgm_play_asset_id_resolves_against_real_asa_nwa_path() {
     let Some(gameexe) = load_sweetie_hd_gameexe() else {
         eprintln!(
-            "KAIFUU_REAL_SWEETIE_HD_PATH unset; skipping \
+            "ITOTORI_REAL_GAME_ROOT unset; skipping \
              bgm_play_asset_id_resolves_against_real_asa_nwa_path",
         );
         return;
     };
-    let Some(bgm_dir) = sweetie_hd_bgm_dir() else {
+    let Some(bgm_dir) = real_bgm_dir() else {
         return;
     };
     let emitter = Arc::new(AudioEventEmitter::new());
@@ -250,11 +239,11 @@ fn bgm_play_asset_id_resolves_against_real_asa_nwa_path() {
 
 #[test]
 fn audio_rlop_real_bytes_skips_when_env_unset() {
-    if env::var_os("KAIFUU_REAL_SWEETIE_HD_PATH").is_some() {
+    if real_corpus::game_root().is_some() {
         return;
     }
     eprintln!(
-        "KAIFUU_REAL_SWEETIE_HD_PATH not set — audio RLOperation real-bytes tests are \
-         #[ignore]-gated and only run with KAIFUU_REAL_SWEETIE_HD_PATH set.",
+        "ITOTORI_REAL_GAME_ROOT not set — audio RLOperation real-bytes tests are \
+         #[ignore]-gated and only run with ITOTORI_REAL_GAME_ROOT set.",
     );
 }

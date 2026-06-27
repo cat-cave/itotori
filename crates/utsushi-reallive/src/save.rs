@@ -47,7 +47,7 @@
 //! - **Writing to the read-only research mount must be banned at the
 //!   test layer.** The real-bytes test in
 //!   `tests/save_real_sweetie_hd.rs` reads the Sweetie HD save bytes
-//!   from `$KAIFUU_REAL_SWEETIE_HD_PATH` (mode 0444, dr-x------) but
+//!   from `$ITOTORI_REAL_GAME_ROOT` (mode 0444, dr-x------) but
 //!   the test source has **no** `fs::write` / `fs::create_dir_all` /
 //!   `OpenOptions::write` calls — the audit grep
 //!   `tests/save_real_sweetie_hd.rs` keeps the "no writes against the

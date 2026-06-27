@@ -4,7 +4,7 @@
 //! Pins the decoder against Sweetie HD's `REALLIVEDATA/koe/z0001.ovk`
 //! (337,086 bytes, 2 entries — the canonical UTSUSHI-217 spec fixture).
 //! Mirrors the `g00_real_bytes.rs` env-gating pattern
-//! (`KAIFUU_REAL_SWEETIE_HD_PATH` must be set).
+//! (`ITOTORI_REAL_GAME_ROOT` must be set).
 //!
 //! # Acceptance criteria pinned here
 //!
@@ -33,14 +33,13 @@
 //! single-corpus posture its sibling parsers (UTSUSHI-216 g00 etc.)
 //! landed; the commit message records the gap explicitly.
 
-use std::env;
+#[path = "support/real_corpus.rs"]
+mod real_corpus;
+
 use std::fs;
 use std::path::PathBuf;
 
 use utsushi_reallive::{OGG_PAGE_MAGIC, OVK_ENTRY_BYTE_LEN, OvkDecodeError, decode_ovk};
-
-const SWEETIE_HD_TITLE_DIR: &str = "オシオキSweetie＋Sweets!! HD_DL版";
-const SWEETIE_HD_KOE_RELATIVE: &str = "REALLIVEDATA/koe";
 
 /// File name of the UTSUSHI-217 spec-pinned z0001.ovk fixture.
 const Z0001_OVK: &str = "z0001.ovk";
@@ -76,23 +75,18 @@ const Z0001_ENTRY1_SAMPLE_NUM: u32 = 52;
 /// docstring for the full reconciliation.
 const Z0001_SPEC_ENTRY1_QUOTED_LENGTH: u32 = 183_476;
 
-fn sweetie_hd_koe_dir() -> Option<PathBuf> {
-    let root = env::var_os("KAIFUU_REAL_SWEETIE_HD_PATH")?;
-    Some(
-        PathBuf::from(root)
-            .join(SWEETIE_HD_TITLE_DIR)
-            .join(SWEETIE_HD_KOE_RELATIVE),
-    )
+fn real_koe_dir() -> Option<PathBuf> {
+    real_corpus::reallivedata_subdir("koe")
 }
 
 #[test]
-#[ignore = "real-bytes; requires KAIFUU_REAL_SWEETIE_HD_PATH env var"]
+#[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
 fn ovk_z0001_two_entries() {
-    let Some(koe_dir) = sweetie_hd_koe_dir() else {
+    let Some(koe_dir) = real_koe_dir() else {
         eprintln!(
-            "KAIFUU_REAL_SWEETIE_HD_PATH unset; skipping Sweetie HD real-bytes test for \
+            "ITOTORI_REAL_GAME_ROOT unset; skipping Sweetie HD real-bytes test for \
              utsushi-reallive OVK z0001.ovk decode (no silent pass: re-run with \
-             KAIFUU_REAL_SWEETIE_HD_PATH=/scratch/itotori-research/sweetie-hd/extracted)",
+             ITOTORI_REAL_GAME_ROOT=/path/to/reallive-game-root)",
         );
         return;
     };
@@ -184,12 +178,12 @@ fn ovk_z0001_two_entries() {
 
 #[test]
 fn ovk_real_bytes_skips_when_env_unset() {
-    if env::var_os("KAIFUU_REAL_SWEETIE_HD_PATH").is_some() {
+    if real_corpus::game_root().is_some() {
         return;
     }
     eprintln!(
-        "KAIFUU_REAL_SWEETIE_HD_PATH not set — OVK real-bytes tests are #[ignore]-gated and \
-         only run with KAIFUU_REAL_SWEETIE_HD_PATH set.",
+        "ITOTORI_REAL_GAME_ROOT not set — OVK real-bytes tests are #[ignore]-gated and \
+         only run with ITOTORI_REAL_GAME_ROOT set.",
     );
 }
 

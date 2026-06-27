@@ -469,7 +469,7 @@ newNodes.push({
     "Same-change deletion of any synthetic-fixture bridge-emission caller for RealLive (no-legacy-compat)",
   ],
   acceptanceCriteria: [
-    "KAIFUU_REAL_SWEETIE_HD_PATH=<path> cargo run -p kaifuu-cli -- extract --engine reallive --scene 1 --bundle-output /tmp/sweetie-hd-scene-1.bridge.json writes a schema-valid BridgeBundle with schemaVersion == 'localization-bridge-schema/v0.2'",
+    "ITOTORI_REAL_GAME_ROOT=<path> cargo run -p kaifuu-cli -- extract --engine reallive --scene 1 --bundle-output /tmp/sweetie-hd-scene-1.bridge.json writes a schema-valid BridgeBundle with schemaVersion == 'localization-bridge-schema/v0.2'",
     "units[] length matches the textout+choice element count from UTSUSHI-204's decoded stream for scene 1",
     "First text unit's source.text Shift-JIS-decodes non-empty; speaker resolved via NAMAE for at least one unit",
     "At least one protected span of kind reallive.kidoku is emitted; provenance.byteRange anchored against the text-display opcode body inside scene 1's scene blob (anchored at file offset 0x13880)",
@@ -600,7 +600,7 @@ newNodes.push({
     "--dry-run flag that prints per-step commands and exits 0 without any LLM call",
   ],
   acceptanceCriteria: [
-    "With OPENROUTER_API_KEY, KAIFUU_REAL_SWEETIE_HD_PATH, and TARGET writable path set, just localize-sweetie-hd --project sweetie-hd-alpha-1 exits 0 and produces under artifacts/localize-sweetie-hd/<timestamp>/: bridge-bundle.json, agentic-loop-bundle.v0.json, patch-report.json, replay-log.json",
+    "With OPENROUTER_API_KEY, ITOTORI_REAL_GAME_ROOT, and TARGET writable path set, just localize-sweetie-hd --project sweetie-hd-alpha-1 exits 0 and produces under artifacts/localize-sweetie-hd/<timestamp>/: bridge-bundle.json, agentic-loop-bundle.v0.json, patch-report.json, replay-log.json",
     "Every artifact's (modelId, providerId) field (where applicable) matches a pair from presets/localize-sweetie-hd.pair-policy.json byte-for-byte",
     "replay-log.json contains at least one TextLine event whose body contains the en-US substring wired from the pair-policy",
     "--dry-run prints per-step commands and exits 0 with zero ProviderRunRecords written to the ledger",

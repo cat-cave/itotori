@@ -63,7 +63,7 @@ const NODES = [
       "`AssetArchiveReader` trait (sealed) with empty default impl set",
       "Case-folded directory index built lazily on first resolve, cached per source",
       "Old single-path resolver fully removed from `utsushi-core::vfs` (no shim)",
-      "Integration test loading the RealLive Sweetie HD asset layout via `KAIFUU_REAL_SWEETIE_HD_PATH` env-gated test",
+      "Integration test loading the RealLive Sweetie HD asset layout via `ITOTORI_REAL_GAME_ROOT` env-gated test",
       "Integration test loading the MV/MZ Lust Memory `www/data/` layout via `KAIFUU_REAL_LUST_MEMORY_PATH` env-gated test",
     ],
     acceptanceCriteria: [
@@ -81,7 +81,7 @@ const NODES = [
       {
         type: "command",
         value:
-          "KAIFUU_REAL_SWEETIE_HD_PATH=/scratch/itotori-research/sweetie-hd/extracted KAIFUU_REAL_LUST_MEMORY_PATH=/scratch/itotori-research/rpg-maker-mv-mz/extracted cargo test -p utsushi-core composite_asset_package_real_bytes -- --include-ignored",
+          "ITOTORI_REAL_GAME_ROOT=/scratch/itotori-research/sweetie-hd/extracted KAIFUU_REAL_LUST_MEMORY_PATH=/scratch/itotori-research/rpg-maker-mv-mz/extracted cargo test -p utsushi-core composite_asset_package_real_bytes -- --include-ignored",
       },
       {
         type: "command",
@@ -153,7 +153,7 @@ const NODES = [
       "`Runner::tick` drains all three sinks per tick via the new accessor; ordering documented",
       "`ObservationHookEvent` enum + every variant + every match arm referencing it deleted from the workspace",
       "`utsushi-fixture` migrated to implement `EnginePort` via the new sinks-bridge path; its tests pass against the new trait without referencing the old enum",
-      "`KAIFUU_REAL_SWEETIE_HD_PATH`-gated test demonstrating a thin RealLive-shaped port pushing TextSurfaceSink + FrameArtifactSink events during a 10-tick run",
+      "`ITOTORI_REAL_GAME_ROOT`-gated test demonstrating a thin RealLive-shaped port pushing TextSurfaceSink + FrameArtifactSink events during a 10-tick run",
       "Equivalent test exercising `utsushi-fixture` to prove the substrate has ≥2 distinct production consumers (per the alpha gate)",
     ],
     acceptanceCriteria: [
@@ -180,7 +180,7 @@ const NODES = [
       {
         type: "command",
         value:
-          "KAIFUU_REAL_SWEETIE_HD_PATH=/scratch/itotori-research/sweetie-hd/extracted cargo test -p utsushi-core engine_port_sinks_bridge_real_bytes -- --include-ignored",
+          "ITOTORI_REAL_GAME_ROOT=/scratch/itotori-research/sweetie-hd/extracted cargo test -p utsushi-core engine_port_sinks_bridge_real_bytes -- --include-ignored",
       },
     ],
     auditFocus: [
@@ -221,7 +221,7 @@ const NODES = [
       {
         type: "command",
         value:
-          "KAIFUU_REAL_SWEETIE_HD_PATH=/scratch/itotori-research/sweetie-hd/extracted cargo test -p utsushi-core input_area_hit_real_bytes -- --include-ignored",
+          "ITOTORI_REAL_GAME_ROOT=/scratch/itotori-research/sweetie-hd/extracted cargo test -p utsushi-core input_area_hit_real_bytes -- --include-ignored",
       },
       {
         type: "manual",
@@ -268,7 +268,7 @@ const NODES = [
       {
         type: "command",
         value:
-          "KAIFUU_REAL_SWEETIE_HD_PATH=/scratch/itotori-research/sweetie-hd/extracted cargo test -p utsushi-core layer_composition_real_bytes -- --include-ignored",
+          "ITOTORI_REAL_GAME_ROOT=/scratch/itotori-research/sweetie-hd/extracted cargo test -p utsushi-core layer_composition_real_bytes -- --include-ignored",
       },
       {
         type: "manual",

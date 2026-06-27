@@ -32,6 +32,7 @@ use kaifuu_delta::{SourceProvenance, apply_delta, create_delta};
 mod binary_patch_smoke;
 
 const APPLY_REPORT_FILE_NAME: &str = "patch-result.json";
+const REAL_GAME_ROOT_ENV: &str = "ITOTORI_REAL_GAME_ROOT";
 
 fn main() {
     if let Err(error) = run() {
@@ -68,7 +69,8 @@ fn run_with_args_and_registry(
             // routes through the kaifuu-reallive bridge producer rather
             // than the registry adapter surface. The `game_dir` positional
             // is optional under --engine reallive — if absent we read
-            // `KAIFUU_REAL_SWEETIE_HD_PATH` as a test-fixture convenience.
+            // `ITOTORI_REAL_GAME_ROOT` as a generic real-corpus fixture
+            // convenience.
             if let Some(engine) = flag_optional(&args, "--engine")
                 && engine == "reallive"
             {
@@ -284,7 +286,7 @@ fn run_with_args_and_registry(
 /// KAIFUU-210 — `extract --engine reallive --scene <N> --bundle-output <PATH>`.
 ///
 /// Loads the RealLive SEEN.TXT envelope from `--game-root <PATH>` (or
-/// `KAIFUU_REAL_SWEETIE_HD_PATH` for explicit real-bytes fixture runs),
+/// `ITOTORI_REAL_GAME_ROOT` for explicit real-bytes fixture runs),
 /// resolves scene `N` via the 10,000-slot directory, decompresses its
 /// AVG32 LZSS payload using kaifuu-reallive's `decompress_avg32`, walks
 /// the decompressed bytecode into the v0.2 BridgeBundle via
@@ -309,17 +311,18 @@ fn run_extract_reallive_bundle(args: &[String]) -> Result<(), Box<dyn std::error
             })?;
     let game_root = match flag_optional(args, "--game-root") {
         Some(value) => PathBuf::from(value),
-        None => match std::env::var_os("KAIFUU_REAL_SWEETIE_HD_PATH") {
+        None => match std::env::var_os(REAL_GAME_ROOT_ENV) {
             Some(value) => PathBuf::from(value),
             None => {
                 return Err(
-                    "--game-root <PATH> or KAIFUU_REAL_SWEETIE_HD_PATH env var required".into(),
+                    format!("--game-root <PATH> or {REAL_GAME_ROOT_ENV} env var required").into(),
                 );
             }
         },
     };
 
-    let seen_path = resolve_reallive_seen_path(&game_root)?;
+    let resolved_game_root = resolve_reallive_game_root(&game_root)?;
+    let seen_path = resolved_game_root.join("REALLIVEDATA").join("Seen.txt");
     let seen_bytes = fs::read(&seen_path).map_err(|err| -> Box<dyn std::error::Error> {
         format!("failed to read {}: {err}", seen_path.display()).into()
     })?;
@@ -370,7 +373,7 @@ fn run_extract_reallive_bundle(args: &[String]) -> Result<(), Box<dyn std::error
             format!("kaifuu.reallive.decompress: {err}").into()
         })?;
 
-    let gameexe_path = game_root_gameexe_path(&game_root);
+    let gameexe_path = game_root_gameexe_path(&resolved_game_root);
     let gameexe_bytes = fs::read(&gameexe_path).unwrap_or_default();
     let gameexe_inventory = parse_gameexe_inventory(&gameexe_bytes);
 
@@ -566,31 +569,62 @@ fn make_writable(path: &Path) -> io::Result<()> {
 }
 
 fn resolve_reallive_seen_path(game_root: &Path) -> Result<PathBuf, Box<dyn std::error::Error>> {
-    // Walk the game root for a `REALLIVEDATA/Seen.txt` payload. Sweetie
-    // HD extracts the game into a top-level
-    // `オシオキSweetie＋Sweets!! HD_DL版/REALLIVEDATA/Seen.txt`.
-    let direct = game_root.join("REALLIVEDATA").join("Seen.txt");
-    if direct.is_file() {
-        return Ok(direct);
-    }
-    if let Ok(entries) = fs::read_dir(game_root) {
-        for entry in entries.flatten() {
-            let candidate = entry.path().join("REALLIVEDATA").join("Seen.txt");
-            if candidate.is_file() {
-                return Ok(candidate);
-            }
+    Ok(resolve_reallive_game_root(game_root)?
+        .join("REALLIVEDATA")
+        .join("Seen.txt"))
+}
+
+fn resolve_reallive_game_root(game_root: &Path) -> Result<PathBuf, Box<dyn std::error::Error>> {
+    let mut current = game_root.to_path_buf();
+    let mut visited = 0usize;
+    loop {
+        let direct = current.join("REALLIVEDATA");
+        if direct.is_dir() {
+            return Ok(current);
         }
+        if visited >= 4 {
+            break;
+        }
+
+        let child_roots = fs::read_dir(&current)
+            .map(|entries| {
+                entries
+                    .flatten()
+                    .map(|entry| entry.path())
+                    .filter(|path| path.is_dir())
+                    .filter(|path| path.join("REALLIVEDATA").is_dir())
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        if child_roots.len() == 1 {
+            return Ok(child_roots[0].clone());
+        }
+
+        let children = fs::read_dir(&current)
+            .map(|entries| {
+                entries
+                    .flatten()
+                    .map(|entry| entry.path())
+                    .filter(|path| path.is_dir())
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        if children.len() != 1 {
+            break;
+        }
+        current = children[0].clone();
+        visited += 1;
     }
+
     Err(format!(
-        "REALLIVEDATA/Seen.txt not found under {}",
+        "REALLIVEDATA/Seen.txt not found under {}; pass --game-root or {REAL_GAME_ROOT_ENV} pointing at a RealLive game root",
         game_root.display()
     )
     .into())
 }
 
 fn game_root_gameexe_path(game_root: &Path) -> PathBuf {
-    // Sweetie HD ships Gameexe.ini under `REALLIVEDATA/Gameexe.ini`
-    // (alongside Seen.txt). Older RealLive titles can ship it at the
+    // RealLive titles can ship Gameexe.ini alongside Seen.txt or at the
     // game root. Probe both shapes.
     let candidates = [
         game_root.join("REALLIVEDATA").join("Gameexe.ini"),

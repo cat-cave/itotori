@@ -7,7 +7,7 @@
 //! - `cargo test -p utsushi-reallive syscall_routes_match_sweetie_hd`
 //! - `cargo test -p utsushi-reallive mouseactioncall_hot_region_dispatches`
 //!
-//! The first entrypoint is env-gated on `KAIFUU_REAL_SWEETIE_HD_PATH`
+//! The first entrypoint is env-gated on `ITOTORI_REAL_GAME_ROOT`
 //! and verifies the dispatcher loads against the real Sweetie HD
 //! `Gameexe.ini`. The second entrypoint is synthetic and exercises the
 //! pixel-space hot-region predicate documented in
@@ -15,6 +15,9 @@
 //! `MOUSEACTIONCALL.000.AREA=1232,0,1279,719` rectangle.
 //!
 //! Linux-only: no `Command::new`, no Wine, no Windows helper.
+
+#[path = "support/real_corpus.rs"]
+mod real_corpus;
 
 use std::fs;
 use std::path::PathBuf;
@@ -24,25 +27,15 @@ use utsushi_reallive::{
     Gameexe, SYSCALL_KIND_COUNT, SyscallDispatcher, SyscallRouteKind, WBCALL_SLOT_COUNT,
 };
 
-/// Default name of the Sweetie HD title directory inside the
-/// extraction root. Mirrors the existing
-/// `gameexe_real_bytes.rs` constant.
-const SWEETIE_HD_TITLE_DIR: &str = "オシオキSweetie＋Sweets!! HD_DL版";
-
 fn resolve_gameexe_path() -> Option<PathBuf> {
-    let root = std::env::var_os("KAIFUU_REAL_SWEETIE_HD_PATH")?;
-    let mut path = PathBuf::from(root);
-    path.push(SWEETIE_HD_TITLE_DIR);
-    path.push("REALLIVEDATA");
-    path.push("Gameexe.ini");
-    Some(path)
+    real_corpus::gameexe_ini_path()
 }
 
 fn load_sweetie_hd_gameexe() -> Option<Gameexe> {
     let path = resolve_gameexe_path()?;
     let bytes = fs::read(&path).unwrap_or_else(|err| {
         panic!(
-            "KAIFUU_REAL_SWEETIE_HD_PATH is set but Gameexe.ini at {} could not be read: {err}",
+            "ITOTORI_REAL_GAME_ROOT is set but Gameexe.ini at {} could not be read: {err}",
             path.display(),
         )
     });
@@ -183,14 +176,14 @@ fn verify_syscall_routes_match_section_h(gameexe: &Gameexe) {
 }
 
 /// DAG-spec filter `cargo test ... syscall_routes_match_sweetie_hd`.
-/// Env-gated on `KAIFUU_REAL_SWEETIE_HD_PATH` so the harness can
+/// Env-gated on `ITOTORI_REAL_GAME_ROOT` so the harness can
 /// also run without the corpus.
 #[test]
-#[ignore = "requires KAIFUU_REAL_SWEETIE_HD_PATH; opt in with --include-ignored"]
+#[ignore = "requires ITOTORI_REAL_GAME_ROOT; opt in with --include-ignored"]
 fn syscall_routes_match_sweetie_hd() {
     let Some(gameexe) = load_sweetie_hd_gameexe() else {
         eprintln!(
-            "KAIFUU_REAL_SWEETIE_HD_PATH not set — syscall_routes_match_sweetie_hd \
+            "ITOTORI_REAL_GAME_ROOT not set or no REALLIVEDATA directory found — syscall_routes_match_sweetie_hd \
              is a no-op."
         );
         return;

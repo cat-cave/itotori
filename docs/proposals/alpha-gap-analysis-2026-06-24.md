@@ -519,7 +519,7 @@ stderr otherwise.
 
 ### LOCALIZE-NEW-Aend — End-to-end `just localize-sweetie-hd` [alpha]
 
-`just localize-sweetie-hd KAIFUU_REAL_SWEETIE_HD_PATH=<readonly>
+`just localize-sweetie-hd ITOTORI_REAL_GAME_ROOT=<readonly>
 TARGET=<writable>` chains `kaifuu-cli extract` (-Aaa) →
 `itotori:agentic-loop-smoke` (-Cloop) → `kaifuu-cli patch` (-Apatch) →
 `utsushi-reallive replay-and-verify` (-Areplay). Each step's artifact

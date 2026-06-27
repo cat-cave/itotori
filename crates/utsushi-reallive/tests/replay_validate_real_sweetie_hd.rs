@@ -4,7 +4,7 @@
 //! Three test bodies:
 //!
 //! 1. **`patched_sweetie_hd_replay_contains_en_us_sentinel`** —
-//!    env-gated on `KAIFUU_REAL_SWEETIE_HD_PATH`. Loads the real
+//!    env-gated on `ITOTORI_REAL_GAME_ROOT`. Loads the real
 //!    Sweetie HD `Seen.txt`, runs the KAIFUU-210 producer to build a
 //!    v0.2 BridgeBundle, **synthesises** a translated bundle by
 //!    replacing every unit's `target.text` with the en-US sentinel
@@ -35,6 +35,9 @@
 //!
 //! Linux-only: no `Command::new`, no Wine, no Windows helper.
 
+#[path = "support/real_corpus.rs"]
+mod real_corpus;
+
 use std::env;
 use std::fs;
 use std::path::PathBuf;
@@ -51,13 +54,9 @@ use utsushi_reallive::{
 
 /// Relative path under the Sweetie HD extraction root that holds the
 /// raw `Seen.txt` envelope. Mirrors UTSUSHI-220's real-bytes test.
-const SWEETIE_HD_SEEN_RELATIVE_PATH: &str =
-    "オシオキSweetie＋Sweets!! HD_DL版/REALLIVEDATA/Seen.txt";
 /// Relative path under the Sweetie HD extraction root that holds the
 /// Gameexe.ini sidecar (used by the KAIFUU-210 producer for NAMAE
 /// resolution).
-const SWEETIE_HD_GAMEEXE_RELATIVE_PATH: &str =
-    "オシオキSweetie＋Sweets!! HD_DL版/REALLIVEDATA/Gameexe.ini";
 
 /// English-language sentinel used by the regression-sentinel
 /// assertion. The leading `「` (SJIS `0x81 0x75`) is required so the
@@ -76,14 +75,12 @@ const EN_US_SENTINEL: &str = "「STELLA-ALPHA-EN-US-SENTINEL」";
 /// the patched-copy match and the original-copy no-match arms.
 const EN_US_SENTINEL_SUBSTR: &str = "STELLA-ALPHA-EN-US-SENTINEL";
 
-fn sweetie_hd_seen_txt_path() -> Option<PathBuf> {
-    let root = env::var_os("KAIFUU_REAL_SWEETIE_HD_PATH")?;
-    Some(PathBuf::from(root).join(SWEETIE_HD_SEEN_RELATIVE_PATH))
+fn real_seen_txt_path() -> Option<PathBuf> {
+    real_corpus::seen_txt_path()
 }
 
-fn sweetie_hd_gameexe_path() -> Option<PathBuf> {
-    let root = env::var_os("KAIFUU_REAL_SWEETIE_HD_PATH")?;
-    Some(PathBuf::from(root).join(SWEETIE_HD_GAMEEXE_RELATIVE_PATH))
+fn real_gameexe_ini_path() -> Option<PathBuf> {
+    real_corpus::gameexe_ini_path()
 }
 
 /// Build a patched `Seen.txt` whose scene 1 carries the en-US
@@ -105,7 +102,7 @@ fn patch_sweetie_hd_with_sentinel(seen_bytes: &[u8]) -> Vec<u8> {
     let decompressed = decompress_avg32(bytecode, header.bytecode_uncompressed_size as usize)
         .expect("AVG32 decompression must succeed");
 
-    let gameexe_bytes = sweetie_hd_gameexe_path()
+    let gameexe_bytes = real_gameexe_ini_path()
         .and_then(|path| fs::read(path).ok())
         .unwrap_or_default();
     let gameexe_inventory = parse_gameexe_inventory(&gameexe_bytes);
@@ -142,13 +139,13 @@ fn patch_sweetie_hd_with_sentinel(seen_bytes: &[u8]) -> Vec<u8> {
 }
 
 #[test]
-#[ignore = "real-bytes; requires KAIFUU_REAL_SWEETIE_HD_PATH env var"]
+#[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
 fn patched_sweetie_hd_replay_contains_en_us_sentinel() {
-    let Some(seen_path) = sweetie_hd_seen_txt_path() else {
+    let Some(seen_path) = real_seen_txt_path() else {
         eprintln!(
-            "KAIFUU_REAL_SWEETIE_HD_PATH unset; skipping UTSUSHI-227 real-bytes Sweetie HD \
+            "ITOTORI_REAL_GAME_ROOT unset; skipping UTSUSHI-227 real-bytes Sweetie HD \
              patched-replay validation (no silent pass: re-run with \
-             KAIFUU_REAL_SWEETIE_HD_PATH=/scratch/itotori-research/sweetie-hd/extracted)",
+             ITOTORI_REAL_GAME_ROOT=/path/to/reallive-game-root)",
         );
         return;
     };

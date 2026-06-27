@@ -26,7 +26,9 @@
 //! the multi-game gap. The commit message records the single-corpus
 //! posture explicitly.
 
-use std::env;
+#[path = "support/real_corpus.rs"]
+mod real_corpus;
+
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -42,19 +44,12 @@ use utsushi_reallive::{
     RLOperation, RenderPass, RlopRegistry, Vm, WipeColour, register_grp_rlops, register_obj_rlops,
 };
 
-const SWEETIE_HD_TITLE_DIR: &str = "オシオキSweetie＋Sweets!! HD_DL版";
-const SWEETIE_HD_G00_RELATIVE: &str = "REALLIVEDATA/g00";
 const BG01A1_FILENAME: &str = "BG01A1.g00";
 const BG01A1_WIDTH: u32 = 1280;
 const BG01A1_HEIGHT: u32 = 720;
 
-fn sweetie_hd_g00_dir() -> Option<PathBuf> {
-    let root = env::var_os("KAIFUU_REAL_SWEETIE_HD_PATH")?;
-    Some(
-        PathBuf::from(root)
-            .join(SWEETIE_HD_TITLE_DIR)
-            .join(SWEETIE_HD_G00_RELATIVE),
-    )
+fn real_g00_dir() -> Option<PathBuf> {
+    real_corpus::reallivedata_subdir("g00")
 }
 
 /// Synthetic [`AssetPackage`] that resolves `g00/<NAME>.g00` against a
@@ -225,13 +220,13 @@ fn alloc_dc_produces_observable_state_snapshot_mutation() {
 }
 
 #[test]
-#[ignore = "real-bytes; requires KAIFUU_REAL_SWEETIE_HD_PATH env var"]
+#[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
 fn grp_openbg_bg01a1_registers_bg_plane() {
-    let Some(g00_dir) = sweetie_hd_g00_dir() else {
+    let Some(g00_dir) = real_g00_dir() else {
         eprintln!(
-            "KAIFUU_REAL_SWEETIE_HD_PATH unset; skipping Sweetie HD real-bytes test for \
+            "ITOTORI_REAL_GAME_ROOT unset; skipping Sweetie HD real-bytes test for \
              UTSUSHI-215 grp.openBg(BG01A1.g00) (no silent pass: re-run with \
-             KAIFUU_REAL_SWEETIE_HD_PATH=/scratch/itotori-research/sweetie-hd/extracted)",
+             ITOTORI_REAL_GAME_ROOT=/path/to/reallive-game-root)",
         );
         return;
     };

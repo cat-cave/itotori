@@ -19,9 +19,11 @@
 //! test.
 //!
 //! Until the second corpus is staged this test is `#[ignore]`-gated
-//! and only runs when `KAIFUU_REAL_SWEETIE_HD_PATH` is set.
+//! and only runs when `ITOTORI_REAL_GAME_ROOT` is set.
 
-use std::env;
+#[path = "support/real_corpus.rs"]
+mod real_corpus;
+
 use std::fs;
 use std::path::PathBuf;
 
@@ -32,7 +34,6 @@ use utsushi_reallive::{
 
 /// Relative path under the Sweetie HD extraction root that holds the
 /// raw `Seen.txt` envelope.
-const SWEETIE_HD_RELATIVE_PATH: &str = "オシオキSweetie＋Sweets!! HD_DL版/REALLIVEDATA/Seen.txt";
 
 /// Documented decompressed-output values for Sweetie HD scene #0001.
 /// Sourced from
@@ -45,7 +46,7 @@ const SWEETIE_HD_SCENE_ONE_BYTECODE_UNCOMPRESSED_SIZE: u32 = 1660;
 ///
 /// The UTSUSHI-204 dag node lists "≤ 200, ≥ 50 elements based on the
 /// 1660-byte size and typical RealLive density" as a target. The
-/// real-bytes evidence under [`SWEETIE_HD_RELATIVE_PATH`] produces
+/// real-bytes evidence under `REALLIVEDATA/Seen.txt` produces
 /// 235 elements: 145 MetaLines (matching the 146 `0x0a` opener bytes
 /// the encryption-mechanism research counted), 35 Commands (one less
 /// than the 36 `0x23` opener bytes the same research counted), 20
@@ -58,13 +59,13 @@ const ELEMENT_COUNT_MIN: usize = 50;
 const ELEMENT_COUNT_MAX: usize = 300;
 
 #[test]
-#[ignore = "real-bytes; requires KAIFUU_REAL_SWEETIE_HD_PATH env var"]
+#[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
 fn scene1_element_stream_partition_and_first_command_header() {
-    let Some(seen_path) = sweetie_hd_seen_txt_path() else {
+    let Some(seen_path) = real_seen_txt_path() else {
         eprintln!(
-            "KAIFUU_REAL_SWEETIE_HD_PATH unset; skipping Sweetie HD real-bytes test for \
+            "ITOTORI_REAL_GAME_ROOT unset; skipping Sweetie HD real-bytes test for \
              utsushi-reallive bytecode-element decoder (no silent pass: re-run with \
-             KAIFUU_REAL_SWEETIE_HD_PATH=/scratch/itotori-research/sweetie-hd/extracted)",
+             ITOTORI_REAL_GAME_ROOT=/path/to/reallive-game-root)",
         );
         return;
     };
@@ -320,8 +321,6 @@ fn scene1_element_stream_partition_and_first_command_header() {
     );
 }
 
-fn sweetie_hd_seen_txt_path() -> Option<PathBuf> {
-    let root = env::var_os("KAIFUU_REAL_SWEETIE_HD_PATH")?;
-    let root = PathBuf::from(root);
-    Some(root.join(SWEETIE_HD_RELATIVE_PATH))
+fn real_seen_txt_path() -> Option<PathBuf> {
+    real_corpus::seen_txt_path()
 }
