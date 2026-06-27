@@ -26,10 +26,12 @@
  *   - OPENROUTER_API_KEY is REQUIRED unless `--dry-run`. No fallback to
  *     RecordedModelProvider. If OPENROUTER_LIVE=1 is set but the API
  *     key is missing the driver fails loudly (no silent downgrade).
- *   - `LOCALIZE_PROJECT_SOURCE_PATH` is REQUIRED unless `--dry-run`.
+ *   - A source root is REQUIRED unless `--dry-run`: either
+ *     LOCALIZE_PROJECT_SOURCE_PATH, ITOTORI_REAL_CORPUS_MANIFEST, or
+ *     ITOTORI_REAL_GAME_ROOT.
  *   - `TARGET` env var is REQUIRED unless `--dry-run`. The driver
  *     refuses to write inside the source tree.
- *   - The source `<LOCALIZE_PROJECT_SOURCE_PATH>/REALLIVEDATA/Seen.txt`
+ *   - The resolved source `REALLIVEDATA/Seen.txt`
  *     is sha256-checked before AND after the run; any drift fails the
  *     command.
  *   - `--dry-run` prints the per-step commands and exits 0 without
@@ -63,18 +65,23 @@ const DEFAULT_PROJECT_METADATA_PATH = join(
   "presets",
   "localize-project.project-metadata.json",
 );
+const REAL_CORPUS_MANIFEST_SCHEMA = "itotori.real-corpus-manifest.v0";
+const REAL_CORPUS_ENGINE = "reallive";
 
 function usage() {
   return [
-    "usage: node suite/scripts/localize-project/run.mjs --project <NAME> [--dry-run] [--scene <N>] [--unit-index <N>] [--provider-kind <live|fake>] [--project-metadata <PATH>] [--pair-policy <PATH>]",
+    "usage: node suite/scripts/localize-project/run.mjs --project <NAME> [--corpus <ID>] [--dry-run] [--scene <N>] [--unit-index <N>] [--provider-kind <live|fake>] [--project-metadata <PATH>] [--pair-policy <PATH>]",
     "",
     "Required env (unless --dry-run):",
     "  OPENROUTER_API_KEY              live OpenRouter key for the (modelId, providerId) pair",
-    "  LOCALIZE_PROJECT_SOURCE_PATH     readonly path to the extracted project source root",
+    "  ITOTORI_REAL_CORPUS_MANIFEST     local manifest with corpora[].{corpusId,projectId,engine,root}",
+    "  ITOTORI_REAL_GAME_ROOT           fallback readonly path for a single selected corpus",
+    "  LOCALIZE_PROJECT_SOURCE_PATH     direct readonly project source root (still supported)",
     "  TARGET                          writable path for the patched copy (must NOT alias source)",
     "",
     "Flags:",
     "  --project <NAME>                project config id; must match loaded metadata projectId and pair-policy policyId",
+    "  --corpus <ID>                   corpus id inside ITOTORI_REAL_CORPUS_MANIFEST (default: unique corpus for project/engine)",
     "  --dry-run                       print per-phase commands and exit 0 without invoking an LLM",
     "  --scene <N>                     scene id passed to kaifuu extract / utsushi replay-validate (default 1)",
     "  --unit-index <N>                bridge unit index to translate (default 0)",
@@ -87,6 +94,7 @@ function usage() {
 function parseArgs(argv) {
   const args = {
     project: undefined,
+    corpus: undefined,
     dryRun: false,
     scene: 1,
     unitIndex: 0,
@@ -101,6 +109,12 @@ function parseArgs(argv) {
         const value = argv[++i];
         if (value === undefined) throw new Error("--project requires a value");
         args.project = value;
+        break;
+      }
+      case "--corpus": {
+        const value = argv[++i];
+        if (value === undefined) throw new Error("--corpus requires a value");
+        args.corpus = value;
         break;
       }
       case "--dry-run":
@@ -280,6 +294,16 @@ function requireMetadataString(record, key, metadataPath) {
   return value;
 }
 
+function requireManifestString(record, key, manifestPath, entryLabel) {
+  const value = record[key];
+  if (typeof value !== "string" || value.trim().length === 0) {
+    throw new Error(
+      `real corpus manifest at ${manifestPath} ${entryLabel} missing required string '${key}'`,
+    );
+  }
+  return value;
+}
+
 function loadProjectMetadata(metadataPath) {
   if (!existsSync(metadataPath)) {
     throw new Error(
@@ -331,6 +355,154 @@ function validateProjectSelection(requestedProject, projectMetadata, pairPolicy)
       `--project '${requestedProject}' does not match loaded project config (${mismatches.join(", ")})`,
     );
   }
+}
+
+function loadRealCorpusManifest(manifestPath) {
+  if (!existsSync(manifestPath)) {
+    throw new Error(
+      `real corpus manifest missing at ${manifestPath}; set ITOTORI_REAL_CORPUS_MANIFEST to a local JSON file with schemaVersion='${REAL_CORPUS_MANIFEST_SCHEMA}' and corpora[].{corpusId,projectId,engine,root}`,
+    );
+  }
+  const raw = readFileSync(manifestPath, "utf8");
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (error) {
+    throw new Error(`real corpus manifest JSON parse failed at ${manifestPath}: ${error.message}`);
+  }
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    throw new Error(`real corpus manifest at ${manifestPath} must be a JSON object`);
+  }
+  if (parsed.schemaVersion !== REAL_CORPUS_MANIFEST_SCHEMA) {
+    throw new Error(
+      `real corpus manifest at ${manifestPath} has schemaVersion='${String(parsed.schemaVersion)}'; expected '${REAL_CORPUS_MANIFEST_SCHEMA}'`,
+    );
+  }
+  if (!Array.isArray(parsed.corpora)) {
+    throw new Error(`real corpus manifest at ${manifestPath} missing required array 'corpora'`);
+  }
+  const corpora = parsed.corpora.map((entry, index) => {
+    const entryLabel = `corpora[${index}]`;
+    if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
+      throw new Error(`real corpus manifest at ${manifestPath} ${entryLabel} must be an object`);
+    }
+    const sourceLocale = entry.sourceLocale;
+    if (sourceLocale !== undefined && (typeof sourceLocale !== "string" || sourceLocale.length === 0)) {
+      throw new Error(
+        `real corpus manifest at ${manifestPath} ${entryLabel} sourceLocale must be a non-empty string when present`,
+      );
+    }
+    return {
+      corpusId: requireManifestString(entry, "corpusId", manifestPath, entryLabel),
+      projectId: requireManifestString(entry, "projectId", manifestPath, entryLabel),
+      engine: requireManifestString(entry, "engine", manifestPath, entryLabel),
+      root: requireManifestString(entry, "root", manifestPath, entryLabel),
+      sourceLocale,
+    };
+  });
+  return { schemaVersion: parsed.schemaVersion, corpora };
+}
+
+function selectRealCorpusFromManifest(manifest, manifestPath, selection) {
+  const projectMatches = manifest.corpora.filter(
+    (corpus) => corpus.projectId === selection.projectId && corpus.engine === selection.engine,
+  );
+  const matches =
+    selection.corpusId === undefined
+      ? projectMatches
+      : projectMatches.filter((corpus) => corpus.corpusId === selection.corpusId);
+  if (matches.length === 0) {
+    const corpusClause =
+      selection.corpusId === undefined ? "" : `, corpusId='${selection.corpusId}'`;
+    throw new Error(
+      `ITOTORI_REAL_CORPUS_MANIFEST did not contain a corpus for projectId='${selection.projectId}'${corpusClause}, engine='${selection.engine}'; expected corpora[].{corpusId,projectId,engine,root}`,
+    );
+  }
+  if (matches.length > 1) {
+    const ids = matches.map((corpus) => corpus.corpusId).join(", ");
+    throw new Error(
+      `ITOTORI_REAL_CORPUS_MANIFEST has multiple corpora for projectId='${selection.projectId}', engine='${selection.engine}' (${ids}); pass --corpus <ID> to select one`,
+    );
+  }
+  const selected = matches[0];
+  if (
+    selected.sourceLocale !== undefined &&
+    selected.sourceLocale !== selection.sourceLocale
+  ) {
+    throw new Error(
+      `ITOTORI_REAL_CORPUS_MANIFEST selected corpus '${selected.corpusId}' has sourceLocale='${selected.sourceLocale}', but project metadata requires '${selection.sourceLocale}'`,
+    );
+  }
+  return {
+    envName: "ITOTORI_REAL_CORPUS_MANIFEST",
+    root: selected.root,
+    placeholder: "<ITOTORI_REAL_CORPUS_MANIFEST root>",
+    dryRunLabel: `ITOTORI_REAL_CORPUS_MANIFEST corpusId=${selected.corpusId} projectId=${selected.projectId} engine=${selected.engine} root=<ITOTORI_REAL_CORPUS_MANIFEST root>`,
+    manifestPath,
+    corpus: selected,
+  };
+}
+
+function missingRealCorpusSourceMessage() {
+  return [
+    "real corpus source root is required unless --dry-run",
+    `set ITOTORI_REAL_CORPUS_MANIFEST to a local JSON descriptor with schemaVersion='${REAL_CORPUS_MANIFEST_SCHEMA}' and corpora[].{corpusId,projectId,engine,root},`,
+    "or set ITOTORI_REAL_GAME_ROOT for a single-corpus local run,",
+    "or set LOCALIZE_PROJECT_SOURCE_PATH to a direct source root",
+  ].join(" ");
+}
+
+function resolveRealCorpusSource({ dryRun, projectMetadata, corpusId }) {
+  const manifestPath = process.env.ITOTORI_REAL_CORPUS_MANIFEST;
+  if (manifestPath !== undefined && manifestPath.length > 0) {
+    const manifest = loadRealCorpusManifest(manifestPath);
+    return selectRealCorpusFromManifest(manifest, manifestPath, {
+      projectId: projectMetadata.projectId,
+      corpusId,
+      engine: REAL_CORPUS_ENGINE,
+      sourceLocale: projectMetadata.sourceLocale,
+    });
+  }
+
+  const gameRoot = process.env.ITOTORI_REAL_GAME_ROOT;
+  if (gameRoot !== undefined && gameRoot.length > 0) {
+    return {
+      envName: "ITOTORI_REAL_GAME_ROOT",
+      root: gameRoot,
+      placeholder: "<ITOTORI_REAL_GAME_ROOT>",
+      dryRunLabel: `ITOTORI_REAL_GAME_ROOT single corpus root=<ITOTORI_REAL_GAME_ROOT> projectId=${projectMetadata.projectId} engine=${REAL_CORPUS_ENGINE}`,
+      corpus: {
+        corpusId: corpusId ?? projectMetadata.projectId,
+        projectId: projectMetadata.projectId,
+        engine: REAL_CORPUS_ENGINE,
+        root: gameRoot,
+        sourceLocale: projectMetadata.sourceLocale,
+      },
+    };
+  }
+
+  const directSourceRoot = process.env.LOCALIZE_PROJECT_SOURCE_PATH;
+  if (directSourceRoot !== undefined && directSourceRoot.length > 0) {
+    return {
+      envName: "LOCALIZE_PROJECT_SOURCE_PATH",
+      root: directSourceRoot,
+      placeholder: "<LOCALIZE_PROJECT_SOURCE_PATH>",
+      dryRunLabel: "LOCALIZE_PROJECT_SOURCE_PATH direct source root=<LOCALIZE_PROJECT_SOURCE_PATH>",
+    };
+  }
+
+  if (dryRun) {
+    return {
+      envName: undefined,
+      root: undefined,
+      placeholder:
+        "<ITOTORI_REAL_CORPUS_MANIFEST root|ITOTORI_REAL_GAME_ROOT|LOCALIZE_PROJECT_SOURCE_PATH>",
+      dryRunLabel:
+        "unresolved source root; live run requires ITOTORI_REAL_CORPUS_MANIFEST, ITOTORI_REAL_GAME_ROOT, or LOCALIZE_PROJECT_SOURCE_PATH",
+    };
+  }
+
+  throw new Error(missingRealCorpusSourceMessage());
 }
 
 function realliveIdentityArgs(projectMetadata) {
@@ -400,13 +572,11 @@ function ensureWritableTargetDistinctFromSource(sourceRoot, targetRoot) {
   const sourceAbs = resolvePath(sourceRoot);
   const targetAbs = resolvePath(targetRoot);
   if (sourceAbs === targetAbs) {
-    throw new Error(
-      `TARGET (${targetAbs}) must not alias LOCALIZE_PROJECT_SOURCE_PATH (${sourceAbs})`,
-    );
+    throw new Error(`TARGET (${targetAbs}) must not alias resolved source root (${sourceAbs})`);
   }
   if (targetAbs.startsWith(sourceAbs + "/") || sourceAbs.startsWith(targetAbs + "/")) {
     throw new Error(
-      `TARGET (${targetAbs}) must not nest with LOCALIZE_PROJECT_SOURCE_PATH (${sourceAbs}); pick a fully-disjoint path`,
+      `TARGET (${targetAbs}) must not nest with resolved source root (${sourceAbs}); pick a fully-disjoint path`,
     );
   }
 }
@@ -423,10 +593,11 @@ function runCommand(command, args, env = process.env, options = {}) {
   }
 }
 
-function printDryRunPlan(plan, postures) {
+function printDryRunPlan(plan, postures, realCorpusSource) {
   process.stdout.write(
     "[localize-project] --dry-run plan (no LLM calls; 0 ProviderRunRecords would be written):\n",
   );
+  process.stdout.write(`[localize-project] Real corpus source: ${realCorpusSource.dryRunLabel}\n`);
   // ITOTORI-227 — the OpenRouter privacy posture is part of the dry-run
   // plan so the operator can confirm the account-level ZDR setting is
   // asserted and every non-public request body will carry
@@ -497,10 +668,12 @@ async function main() {
     }
   }
 
-  const gameRoot = process.env.LOCALIZE_PROJECT_SOURCE_PATH;
-  if (!dryRun && (gameRoot === undefined || gameRoot.length === 0)) {
-    throw new Error("LOCALIZE_PROJECT_SOURCE_PATH must be set unless --dry-run");
-  }
+  const realCorpusSource = resolveRealCorpusSource({
+    dryRun,
+    projectMetadata,
+    corpusId: args.corpus,
+  });
+  const gameRoot = realCorpusSource.root;
   const targetRoot = process.env.TARGET;
   if (!dryRun && (targetRoot === undefined || targetRoot.length === 0)) {
     throw new Error("TARGET (writable path for the patched copy) must be set unless --dry-run");
@@ -512,12 +685,13 @@ async function main() {
   if (dryRun) {
     printDryRunPlan(
       [
-        `cargo run -p kaifuu-cli -- extract --engine reallive --game-root <LOCALIZE_PROJECT_SOURCE_PATH> --game-id ${projectMetadata.gameId} --game-version ${projectMetadata.gameVersion} --source-profile-id ${projectMetadata.sourceProfileId} --source-locale ${projectMetadata.sourceLocale} --scene ${sceneId} --bundle-output ${bridgeBundlePath}`,
+        `cargo run -p kaifuu-cli -- extract --engine reallive --game-root ${realCorpusSource.placeholder} --game-id ${projectMetadata.gameId} --game-version ${projectMetadata.gameVersion} --source-profile-id ${projectMetadata.sourceProfileId} --source-locale ${projectMetadata.sourceLocale} --scene ${sceneId} --bundle-output ${bridgeBundlePath}`,
         `node apps/itotori/dist/cli.js localize-project-stage --bridge ${bridgeBundlePath} --pair-policy ${args.pairPolicyPath} --unit-index ${args.unitIndex} --output ${agenticLoopBundlePath} --translated-bundle-output ${translatedBundlePath} --patch-report-output ${patchReportPath} --provider-run-artifacts-dir ${providerRunArtifactsDir}`,
-        `cargo run -p kaifuu-cli -- patch --engine reallive --source <LOCALIZE_PROJECT_SOURCE_PATH> --target <TARGET> --bundle ${translatedBundlePath} --force`,
+        `cargo run -p kaifuu-cli -- patch --engine reallive --source ${realCorpusSource.placeholder} --target <TARGET> --bundle ${translatedBundlePath} --force`,
         `cargo run -p utsushi-cli -- replay-validate --engine reallive --seen <TARGET>/REALLIVEDATA/Seen.txt --scene ${sceneId} --expect-textline-contains ${sentinelSubstring} --print-replay-log ${replayLogPath}`,
       ],
       flattenPostures(policy),
+      realCorpusSource,
     );
     return;
   }

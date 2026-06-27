@@ -66,6 +66,23 @@ function writePairPolicy(projectId) {
   return { dir, path };
 }
 
+function writeRealCorpusManifest(corpora) {
+  const dir = mkdtempSync(join(tmpdir(), "itotori-real-corpus-manifest-"));
+  const path = join(dir, "real-corpus-manifest.local.json");
+  writeFileSync(
+    path,
+    `${JSON.stringify(
+      {
+        schemaVersion: "itotori.real-corpus-manifest.v0",
+        corpora,
+      },
+      null,
+      2,
+    )}\n`,
+  );
+  return { dir, path };
+}
+
 test("--dry-run --project ... exits 0 and prints per-phase commands", () => {
   const result = runDriver(["--dry-run", "--project", "sweetie-hd-alpha-1"]);
   assert.equal(result.status, 0, `stderr: ${result.stderr}`);
@@ -181,6 +198,120 @@ test("--dry-run can use caller-supplied non-Sweetie project configs", () => {
   } finally {
     rmSync(metadata.dir, { recursive: true, force: true });
     rmSync(policy.dir, { recursive: true, force: true });
+  }
+});
+
+test("--dry-run resolves ITOTORI_REAL_CORPUS_MANIFEST by project, corpus, and engine", () => {
+  const metadata = writeProjectMetadata("fixture-alpha", {
+    game_id: "fixture-reallive-game",
+    game_version: "2026.06.test",
+    source_profile_id: "fixture-reallive-profile",
+    source_locale: "ja-JP-x-test",
+  });
+  const policy = writePairPolicy("fixture-alpha");
+  const privateRoot = join(tmpdir(), `itotori-private-root-${process.pid}-manifest-selection`);
+  const directSourceRoot = join(tmpdir(), `itotori-direct-source-root-${process.pid}`);
+  const manifest = writeRealCorpusManifest([
+    {
+      corpusId: "wrong-engine-corpus",
+      projectId: "fixture-alpha",
+      engine: "not-reallive",
+      root: join(privateRoot, "wrong-engine"),
+      sourceLocale: "ja-JP-x-test",
+    },
+    {
+      corpusId: "fixture-corpus",
+      projectId: "fixture-alpha",
+      engine: "reallive",
+      root: privateRoot,
+      sourceLocale: "ja-JP-x-test",
+    },
+  ]);
+  try {
+    const result = runDriver(
+      [
+        "--dry-run",
+        "--project",
+        "fixture-alpha",
+        "--corpus",
+        "fixture-corpus",
+        "--project-metadata",
+        metadata.path,
+        "--pair-policy",
+        policy.path,
+      ],
+      {
+        ITOTORI_REAL_CORPUS_MANIFEST: manifest.path,
+        LOCALIZE_PROJECT_SOURCE_PATH: directSourceRoot,
+      },
+    );
+    assert.equal(result.status, 0, `stderr: ${result.stderr}`);
+    assert.ok(
+      result.stdout.includes(
+        "ITOTORI_REAL_CORPUS_MANIFEST corpusId=fixture-corpus projectId=fixture-alpha engine=reallive root=<ITOTORI_REAL_CORPUS_MANIFEST root>",
+      ),
+      `dry-run plan must report the selected corpus without printing its root; got:\n${result.stdout}`,
+    );
+    assert.ok(
+      result.stdout.includes("--game-root <ITOTORI_REAL_CORPUS_MANIFEST root>"),
+      `dry-run extract command must use the manifest root placeholder; got:\n${result.stdout}`,
+    );
+    assert.ok(
+      result.stdout.includes("--source <ITOTORI_REAL_CORPUS_MANIFEST root>"),
+      `dry-run patch command must use the manifest root placeholder; got:\n${result.stdout}`,
+    );
+    assert.ok(
+      !result.stdout.includes("<LOCALIZE_PROJECT_SOURCE_PATH>") &&
+        !result.stdout.includes(directSourceRoot),
+      `manifest descriptor must take precedence over direct source env without leaking it; got:\n${result.stdout}`,
+    );
+  } finally {
+    rmSync(metadata.dir, { recursive: true, force: true });
+    rmSync(policy.dir, { recursive: true, force: true });
+    rmSync(manifest.dir, { recursive: true, force: true });
+  }
+});
+
+test("missing source root diagnostic names the generic descriptor/root shape", () => {
+  const result = runDriver(["--project", "sweetie-hd-alpha-1"], {
+    OPENROUTER_API_KEY: "test-key",
+  });
+  assert.notEqual(result.status, 0);
+  assert.ok(
+    result.stderr.includes("real corpus source root is required unless --dry-run"),
+    `stderr should describe the missing generic real-corpus source; got:\n${result.stderr}`,
+  );
+  assert.ok(
+    result.stderr.includes("ITOTORI_REAL_CORPUS_MANIFEST") &&
+      result.stderr.includes("corpora[].{corpusId,projectId,engine,root}") &&
+      result.stderr.includes("ITOTORI_REAL_GAME_ROOT") &&
+      result.stderr.includes("LOCALIZE_PROJECT_SOURCE_PATH"),
+    `stderr should name the generic descriptor/root contract; got:\n${result.stderr}`,
+  );
+});
+
+test("dry-run manifest resolution does not leak private corpus roots", () => {
+  const privateRoot = join(tmpdir(), `itotori-private-root-${process.pid}-do-not-leak`);
+  const manifest = writeRealCorpusManifest([
+    {
+      corpusId: "sweetie-hd-alpha-1",
+      projectId: "sweetie-hd-alpha-1",
+      engine: "reallive",
+      root: privateRoot,
+      sourceLocale: "ja-JP",
+    },
+  ]);
+  try {
+    const result = runDriver(["--dry-run", "--project", "sweetie-hd-alpha-1"], {
+      ITOTORI_REAL_CORPUS_MANIFEST: manifest.path,
+    });
+    assert.equal(result.status, 0, `stderr: ${result.stderr}`);
+    assert.ok(
+      !result.stdout.includes(privateRoot) && !result.stderr.includes(privateRoot),
+      `dry-run output must not leak the private root; stdout:\n${result.stdout}\nstderr:\n${result.stderr}`,
+    );
+  } finally {
+    rmSync(manifest.dir, { recursive: true, force: true });
   }
 });
 
