@@ -50,7 +50,15 @@ fn cli_extract_engine_reallive_scene_1_writes_schema_valid_v02_bundle() {
         .arg("--bundle-output")
         .arg(&bundle_out)
         .arg("--game-root")
-        .arg(&game_root);
+        .arg(&game_root)
+        .arg("--game-id")
+        .arg("sweetie-hd")
+        .arg("--game-version")
+        .arg("1.0.0")
+        .arg("--source-profile-id")
+        .arg("kaifuu-reallive-sweetie-hd")
+        .arg("--source-locale")
+        .arg("ja-JP");
     let output = cmd.output().expect("kaifuu-cli must run");
     assert!(
         output.status.success(),

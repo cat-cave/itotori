@@ -33,6 +33,8 @@ use serde_json::Value;
 
 const SWEETIE_HD_RELATIVE_PATH: &str = "オシオキSweetie＋Sweets!! HD_DL版/REALLIVEDATA/Seen.txt";
 const SWEETIE_HD_GAMEEXE_PATH: &str = "オシオキSweetie＋Sweets!! HD_DL版/REALLIVEDATA/Gameexe.ini";
+const SWEETIE_HD_GAME_ID: &str = "sweetie-hd";
+const SWEETIE_HD_SOURCE_PROFILE_ID: &str = "kaifuu-reallive-sweetie-hd";
 
 /// English-language sentinel used by the round-trip assertion.
 ///
@@ -119,9 +121,9 @@ fn patches_sweetie_hd_scene_1_with_en_us_sentinel_and_round_trips_archive() {
     let gameexe_inventory = parse_gameexe_inventory(&gameexe_bytes);
 
     let opts = BridgeOpts {
-        game_id: "sweetie-hd",
+        game_id: SWEETIE_HD_GAME_ID,
         game_version: "1.0.0",
-        source_profile_id: "kaifuu-reallive-sweetie-hd",
+        source_profile_id: SWEETIE_HD_SOURCE_PROFILE_ID,
         source_locale: "ja-JP",
         scene_blob_file_offset: entry.byte_offset,
         extractor_name: "kaifuu-reallive-bridge",
@@ -309,9 +311,9 @@ fn provenance_mismatch_byte_range_emits_typed_error_on_real_bytes() {
         .unwrap_or_default();
     let gameexe_inventory = parse_gameexe_inventory(&gameexe_bytes);
     let opts = BridgeOpts {
-        game_id: "sweetie-hd",
+        game_id: SWEETIE_HD_GAME_ID,
         game_version: "1.0.0",
-        source_profile_id: "kaifuu-reallive-sweetie-hd",
+        source_profile_id: SWEETIE_HD_SOURCE_PROFILE_ID,
         source_locale: "ja-JP",
         scene_blob_file_offset: entry.byte_offset,
         extractor_name: "kaifuu-reallive-bridge",
@@ -381,9 +383,9 @@ fn missing_target_payload_surfaces_typed_schema_invalid_on_real_bytes() {
         .unwrap_or_default();
     let gameexe_inventory = parse_gameexe_inventory(&gameexe_bytes);
     let opts = BridgeOpts {
-        game_id: "sweetie-hd",
+        game_id: SWEETIE_HD_GAME_ID,
         game_version: "1.0.0",
-        source_profile_id: "kaifuu-reallive-sweetie-hd",
+        source_profile_id: SWEETIE_HD_SOURCE_PROFILE_ID,
         source_locale: "ja-JP",
         scene_blob_file_offset: entry.byte_offset,
         extractor_name: "kaifuu-reallive-bridge",
