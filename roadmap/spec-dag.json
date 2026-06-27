@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "exported_at": "2026-06-27T04:58:33.630Z",
+  "exported_at": "2026-06-27T06:28:46.883Z",
   "registries": {
     "groups": [
       {
@@ -2372,7 +2372,7 @@
       "title": "Benchmark seed finder",
       "kind": "feature",
       "milestone": "real-game-testing-ready",
-      "status": "claimed",
+      "status": "done",
       "priority": "P1",
       "estimate_points": 1,
       "risk": "medium",
@@ -2383,9 +2383,9 @@
       "validation": null,
       "context": null,
       "created_at": "2026-06-26T02:53:54.595Z",
-      "updated_at": "2026-06-27T04:58:14.554Z",
+      "updated_at": "2026-06-27T06:28:33.882Z",
       "claimed_at": "2026-06-27T04:57:00.748Z",
-      "done_at": null,
+      "done_at": "2026-06-27T06:28:33.882Z",
       "group_name": "catalog",
       "status_reason": "Re-tier 2026-06-24: moved from alpha to real-game-testing-ready — the old \"alpha\" framing was renamed; substance unchanged. See docs/proposals/dag-retier-2026-06-24.md. | Re-tier 2026-06-24: pruned 1 dependsOn edge(s) that crossed the new tier boundary [KAIFUU-053(alpha)]; per docs/proposals/dag-retier-2026-06-24.md §6.\n[2026-06-27T04:58:14.554Z] Milestone notification skipped: external ntfy disclosure of node/branch status was rejected by execution policy; no notification was sent.",
       "check_command": null,
@@ -41121,6 +41121,66 @@
       "started_at": "2026-06-27T04:54:37.628Z",
       "finished_at": "2026-06-27T04:54:37.628Z",
       "summary": "Merge recorded with squash at commit 3bdffcee8812dd3237a0a7ce315769b461107cdb",
+      "log_path": null
+    },
+    {
+      "id": "3ce0464a-7e91-4492-b2b5-fa0b4fc53d12",
+      "node_id": "CATALOG-004",
+      "kind": "check",
+      "status": "passed",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-27T06:12:30.288Z",
+      "finished_at": "2026-06-27T06:13:06.896Z",
+      "summary": "check command passed: nix develop --command bash -lc 'just check'",
+      "log_path": "/home/trevor/projects/itotori/.qd/logs/check-CATALOG-004-2026-06-27T06-12-30-288Z.log"
+    },
+    {
+      "id": "44060a92-315a-4873-b758-b479f46522b2",
+      "node_id": "CATALOG-004",
+      "kind": "ci",
+      "status": "failed",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-27T06:13:16.438Z",
+      "finished_at": "2026-06-27T06:16:57.980Z",
+      "summary": "ci command failed: nix develop --command bash -lc 'just ci'",
+      "log_path": "/home/trevor/projects/itotori/.qd/logs/ci-CATALOG-004-2026-06-27T06-13-16-438Z.log"
+    },
+    {
+      "id": "f1e817ab-33d5-433f-bf37-bb87f828d93d",
+      "node_id": "CATALOG-004",
+      "kind": "check",
+      "status": "passed",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-27T06:22:32.115Z",
+      "finished_at": "2026-06-27T06:23:07.530Z",
+      "summary": "check command passed: nix develop --command bash -lc 'just check'",
+      "log_path": "/home/trevor/projects/itotori/.qd/logs/check-CATALOG-004-2026-06-27T06-22-32-115Z.log"
+    },
+    {
+      "id": "0be9941c-5065-467a-a7aa-a5daa8ecbd70",
+      "node_id": "CATALOG-004",
+      "kind": "ci",
+      "status": "passed",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-27T06:23:18.322Z",
+      "finished_at": "2026-06-27T06:28:03.551Z",
+      "summary": "ci command passed: nix develop --command bash -lc 'just ci'",
+      "log_path": "/home/trevor/projects/itotori/.qd/logs/ci-CATALOG-004-2026-06-27T06-23-18-322Z.log"
+    },
+    {
+      "id": "0f96060c-5a31-4e2b-8e62-016b3cdd8eca",
+      "node_id": "CATALOG-004",
+      "kind": "merge",
+      "status": "recorded",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-27T06:28:33.882Z",
+      "finished_at": "2026-06-27T06:28:33.882Z",
+      "summary": "Merge recorded with squash at commit 34a7264972cb5452f1ef685ef55dedaac0271448",
       "log_path": null
     }
   ],
