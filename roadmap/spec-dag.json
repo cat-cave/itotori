@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "exported_at": "2026-06-27T20:30:28.782Z",
+  "exported_at": "2026-06-27T20:33:23.241Z",
   "registries": {
     "groups": [
       {
@@ -28942,19 +28942,19 @@
       "title": "Add advisory guard for title-specific game references",
       "kind": "feature",
       "milestone": null,
-      "status": "ready",
+      "status": "claimed",
       "priority": "P2",
       "estimate_points": 1,
       "risk": "medium",
-      "owner": null,
-      "branch": null,
+      "owner": "orchestrator-add-title-reference-guardrail-advisory",
+      "branch": "spec/add-title-reference-guardrail-advisory",
       "spec": "Add an advisory scanner for concrete game title/vendor/slug tokens and title-derived env vars outside allowed planning records. The first pass must report current violations without failing CI so cleanup nodes can proceed with a visible baseline. The scanner should cover tracked filenames and file contents, skip .env files, and keep temporary audit artifacts out of the enforced path until their findings are converted into DAG work.",
       "acceptance": "A script such as scripts/validate-no-specific-game-references.mjs scans git-tracked paths and contents for configured forbidden tokens. Report mode exits zero and prints grouped violations with paths. Tests use synthetic fake title/vendor tokens rather than real commercial names. The allowlist is explicit and limited to roadmap/planning records plus documented temporary audit artifacts. The guard is not wired as an enforced just check gate until cleanup nodes have removed product-surface violations.",
       "validation": null,
       "context": null,
       "created_at": "2026-06-27T20:30:20.284Z",
-      "updated_at": "2026-06-27T20:30:20.284Z",
-      "claimed_at": null,
+      "updated_at": "2026-06-27T20:33:13.778Z",
+      "claimed_at": "2026-06-27T20:33:13.778Z",
       "done_at": null,
       "group_name": null,
       "status_reason": null,
