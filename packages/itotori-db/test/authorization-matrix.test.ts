@@ -1138,6 +1138,12 @@ describe("repository permission gate matrix", () => {
         },
         {
           "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriCatalogRepository.catalogOpportunityRanking",
+          "requiredPermission": "catalog.read",
+          "successFixture": "catalog-opportunity-ranking-read-model.test.ts read model coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
           "mutation": "ItotoriCatalogRepository.catalogBenchmarkSeedFinder",
           "requiredPermission": "catalog.read",
           "successFixture": "catalog-benchmark-seed-finder.test.ts read model coverage",
