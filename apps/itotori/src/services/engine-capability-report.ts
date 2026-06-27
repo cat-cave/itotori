@@ -69,19 +69,30 @@ export type AdapterCapabilityEvidenceInput = {
   evidenceLabels?: string[];
   markerKinds?: string[];
   limitations?: string[];
-  publicFixtureId?: string;
-  fixtureId?: string;
+  publicFixtureId?: string | null;
+  fixtureId?: string | null;
 };
+
+type AdapterCapabilityEvidenceSplitInput = {
+  publicFixture?: ReadonlyArray<AdapterCapabilityEvidenceInput>;
+  privateLocalAggregate?: ReadonlyArray<AdapterCapabilityEvidenceInput>;
+};
+
+type AdapterCapabilityEvidenceByLevelInput = Partial<
+  Record<CapabilityLevel, AdapterCapabilityEvidenceSplitInput>
+>;
 
 type AdapterMatrixWithEvidence =
   | AdapterCapabilityMatrixRecord
   | {
       matrix: AdapterCapabilityMatrixRecord;
       evidence?: ReadonlyArray<AdapterCapabilityEvidenceInput>;
+      evidenceByLevel?: AdapterCapabilityEvidenceByLevelInput;
     }
   | (AdapterCapabilityMatrixRecord & {
       evidence?: ReadonlyArray<AdapterCapabilityEvidenceInput>;
       capabilityEvidence?: ReadonlyArray<AdapterCapabilityEvidenceInput>;
+      evidenceByLevel?: AdapterCapabilityEvidenceByLevelInput;
     });
 
 type EngineCapabilityEvidenceRepositoryPort = {
@@ -230,7 +241,10 @@ export function summarizeCapabilityEvidence(
     if (source === "public_fixture") {
       summary.publicFixture.present ||= status === "present" || status === "partial";
       appendSafeString(summary.publicFixture.evidenceKinds, row.evidenceKind ?? row.kind);
-      appendSafeString(summary.publicFixture.fixtureIds, row.publicFixtureId ?? row.fixtureId);
+      appendSafeString(
+        summary.publicFixture.fixtureIds,
+        row.publicFixtureId ?? row.fixtureId ?? undefined,
+      );
       appendSafeTexts(summary.publicFixture.limitations, row.limitations);
       if (row.level !== undefined) {
         summary.publicFixture.levels[row.level] = status;
@@ -259,16 +273,65 @@ function matrixAndEvidenceFromRepository(row: AdapterMatrixWithEvidence): {
   evidence: ReadonlyArray<AdapterCapabilityEvidenceInput>;
 } {
   if ("matrix" in row) {
-    return { matrix: row.matrix, evidence: row.evidence ?? [] };
+    return {
+      matrix: row.matrix,
+      evidence: evidenceFromRepositoryRow(row.evidence, row.evidenceByLevel),
+    };
   }
   const evidenceRow = row as AdapterCapabilityMatrixRecord & {
     evidence?: ReadonlyArray<AdapterCapabilityEvidenceInput>;
     capabilityEvidence?: ReadonlyArray<AdapterCapabilityEvidenceInput>;
+    evidenceByLevel?: AdapterCapabilityEvidenceByLevelInput;
   };
   return {
     matrix: row,
-    evidence: evidenceRow.evidence ?? evidenceRow.capabilityEvidence ?? [],
+    evidence: evidenceFromRepositoryRow(
+      evidenceRow.evidence ?? evidenceRow.capabilityEvidence,
+      evidenceRow.evidenceByLevel,
+    ),
   };
+}
+
+function evidenceFromRepositoryRow(
+  evidence: ReadonlyArray<AdapterCapabilityEvidenceInput> | undefined,
+  evidenceByLevel: AdapterCapabilityEvidenceByLevelInput | undefined,
+): AdapterCapabilityEvidenceInput[] {
+  return [...(evidence ?? []), ...flattenEvidenceByLevel(evidenceByLevel)];
+}
+
+function flattenEvidenceByLevel(
+  evidenceByLevel: AdapterCapabilityEvidenceByLevelInput | undefined,
+): AdapterCapabilityEvidenceInput[] {
+  if (evidenceByLevel === undefined) {
+    return [];
+  }
+  const evidence: AdapterCapabilityEvidenceInput[] = [];
+  for (const level of capabilityLevelOrder) {
+    const split = evidenceByLevel[level];
+    if (split === undefined) {
+      continue;
+    }
+    evidence.push(
+      ...evidenceRowsForBucket(split.publicFixture, level, "public_fixture"),
+      ...evidenceRowsForBucket(split.privateLocalAggregate, level, "private_local_aggregate"),
+    );
+  }
+  return evidence;
+}
+
+function evidenceRowsForBucket(
+  rows: ReadonlyArray<AdapterCapabilityEvidenceInput> | undefined,
+  level: CapabilityLevel,
+  source: AdapterCapabilityEvidenceSource,
+): AdapterCapabilityEvidenceInput[] {
+  if (rows === undefined) {
+    return [];
+  }
+  return rows.map((row) => ({
+    ...row,
+    level: row.level ?? level,
+    evidenceSource: row.evidenceSource ?? row.source ?? source,
+  }));
 }
 
 function emptyEvidenceLevels(): CapabilityEvidenceLevels {
@@ -341,11 +404,12 @@ function mergeAggregateCounts(
   counts: Record<string, unknown> = {},
 ) {
   for (const [key, value] of Object.entries(counts)) {
-    if (!isAllowedAggregateCountKey(key) || !isFiniteNonNegativeInteger(value)) {
+    if (!isSafeAggregateCountKey(key) || !isFiniteNonNegativeInteger(value)) {
       continue;
     }
     const numericValue = Number(value);
-    target[key] = (target[key] ?? 0) + numericValue;
+    const normalizedKey = normalizeAggregateCountKey(key);
+    target[normalizedKey] = (target[normalizedKey] ?? 0) + numericValue;
   }
 }
 
@@ -355,15 +419,23 @@ function isFiniteNonNegativeInteger(value: unknown): value is number {
   );
 }
 
-function isAllowedAggregateCountKey(value: string): boolean {
-  return [
-    "corpusCount",
-    "entryCount",
-    "markerCount",
-    "encryptedAssetCount",
-    "systemJsonCount",
-    "fileKindCount",
-  ].includes(value);
+function normalizeAggregateCountKey(value: string): string {
+  const compactKey = value.replace(/[_.:-]/g, "").toLowerCase();
+  switch (compactKey) {
+    case "corpuscount":
+    case "corpus":
+    case "corpora":
+      return "corpusCount";
+    case "entrycount":
+    case "entries":
+      return "entryCount";
+    default:
+      return value;
+  }
+}
+
+function isSafeAggregateCountKey(value: string): boolean {
+  return /^[a-zA-Z][a-zA-Z0-9_.:-]{0,95}$/.test(value) && !looksLikePrivateLeak(value);
 }
 
 function isSafePublicEvidenceToken(value: string): boolean {
@@ -394,7 +466,7 @@ function looksLikePrivateLeak(value: string): boolean {
     /[a-z]:\\/i,
     /\\\\[^\\]+\\/,
     /\bfile:/i,
-    /\b(pathHash|localScanEntryId|scanEntryId|rawText|rawSignal|signalBlob|SECRET_KEY)\b/i,
+    /\b(path[_.-]?hash|localScanEntryId|scanEntryId|rawText|rawSignal|signalBlob|SECRET_KEY)\b/i,
     /\b(screenshot|screen-shot|helper log|helper dump)\b/i,
     /\.(?:rpgmvp|rpgmvm|rpgmvo|rpgmvu)\b/i,
     /\b[\w.-]+\.(?:json|png|jpe?g|webp|ogg|m4a|txt)\b/i,
