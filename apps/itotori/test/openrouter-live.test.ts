@@ -16,8 +16,15 @@
 // `just check` does NOT run it; it has to be invoked explicitly with
 // `pnpm exec vitest run apps/itotori/test/openrouter-live.test.ts`.
 
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { DEV_PAIR, OpenRouterModelProvider } from "../src/providers/index.js";
+import {
+  DEV_PAIR,
+  LocalProviderRunArtifactRecorder,
+  OpenRouterModelProvider,
+} from "../src/providers/index.js";
 import type { ModelInvocationRequest } from "../src/providers/types.js";
 
 const LIVE_ENABLED =
@@ -41,6 +48,9 @@ describe("ITOTORI-221 — live OpenRouter ModelProvider invocation", () => {
       // Default env var name + cost cap + rate limit. The live call
       // costs ~$0.001 against the $1 default cap.
       costCapUsd: 0.05,
+      artifactRecorder: new LocalProviderRunArtifactRecorder(
+        mkdtempSync(join(tmpdir(), "itotori-openrouter-live-provider-runs-")),
+      ),
     });
 
     const request: ModelInvocationRequest = {

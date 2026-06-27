@@ -75,6 +75,7 @@ describe("AccountZdrAssertionError (ITOTORI-227)", () => {
             OPENROUTER_API_KEY: "sk-test",
             OPENROUTER_ZDR_ACCOUNT_ASSERTED: "1",
           },
+          artifactRecorder: memoryRecorder(),
         }),
     ).not.toThrow();
   });
@@ -118,6 +119,7 @@ describe("OpenRouterModelProvider wire-level provider.zdr posture (ITOTORI-227)"
       httpClient: fetchMock,
       costCapUsd: 1.0,
       rateLimitPerSec: 1000,
+      artifactRecorder: memoryRecorder(),
     });
 
     await provider.invoke(
@@ -136,6 +138,7 @@ describe("OpenRouterModelProvider wire-level provider.zdr posture (ITOTORI-227)"
       httpClient: fetchMock,
       costCapUsd: 1.0,
       rateLimitPerSec: 1000,
+      artifactRecorder: memoryRecorder(),
     });
 
     await provider.invoke(
@@ -154,6 +157,7 @@ describe("OpenRouterModelProvider wire-level provider.zdr posture (ITOTORI-227)"
       httpClient: fetchMock,
       costCapUsd: 1.0,
       rateLimitPerSec: 1000,
+      artifactRecorder: memoryRecorder(),
     });
 
     await provider.invoke(zdrPostureRequest("deepseek/deepseek-v4-flash", "fireworks", "public"));

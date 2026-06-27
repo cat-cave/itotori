@@ -25,6 +25,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   alternateCapabilitiesAsModelCapabilities,
   AlphaRerunBlockedExternal,
+  LocalizeSweetieHdMissingProviderRunArtifactsDirectoryError,
   LocalizeSweetieHdPairPolicyError,
   LocalizeSweetieHdRefusedFakeError,
   parseLocalizeSweetieHdPairPolicy,
@@ -211,6 +212,25 @@ describe("UTSUSHI-228 runLocalizeSweetieHdStageCommand", () => {
         process.env.ITOTORI_ALLOW_FAKE_LOCALIZE_PROVIDER = prevAllow;
       }
     }
+  });
+
+  it("refuses the real live OpenRouter path without a provider-run artifact directory", async () => {
+    const reads = new Map<string, unknown>([
+      ["bridge.json", loadSmokeBridge()],
+      ["pair-policy.json", loadPreset()],
+    ]);
+    const { io } = ioFixture(reads);
+    await expect(
+      runLocalizeSweetieHdStageCommand({
+        bridgePath: "bridge.json",
+        pairPolicyPath: "pair-policy.json",
+        outputPath: "out/agentic-loop-bundle.v0.json",
+        translatedBundleOutputPath: "out/translated-bridge.json",
+        patchReportOutputPath: "out/patch-report.json",
+        io,
+        actor: { userId: "test" },
+      }),
+    ).rejects.toBeInstanceOf(LocalizeSweetieHdMissingProviderRunArtifactsDirectoryError);
   });
 
   it("writes all three artifacts, embeds the sentinel, and pins every invocation to the policy pair (fake provider, opt-in)", async () => {
@@ -619,9 +639,10 @@ describe("ITOTORI-238 failover orchestration", () => {
 
   it("wires a persistent provider-run artifact recorder into the live provider path", async () => {
     const smokeBridge = loadSmokeBridge() as {
-      units: ReadonlyArray<{ bridgeUnitId: string }>;
+      units: ReadonlyArray<{ bridgeUnitId: string; sourceText?: string }>;
     };
     const firstBridgeUnitId = smokeBridge.units[0]?.bridgeUnitId ?? "test-unit";
+    const firstSourceText = smokeBridge.units[0]?.sourceText;
     const reads = new Map<string, unknown>([
       ["bridge.json", smokeBridge],
       ["pair-policy.json", loadPreset()],
@@ -682,16 +703,29 @@ describe("ITOTORI-238 failover orchestration", () => {
     expect(sawRecorder).toBe(true);
     expect(runDirectories).toHaveLength(invocationCount);
 
-    const firstArtifact = JSON.parse(
-      readFileSync(
-        join(providerRunArtifactDirectory, runDirectories[0]!.name, "provider-run.json"),
-        "utf8",
-      ),
-    ) as ProviderRunArtifact;
-    expect(firstArtifact.schemaVersion).toBe("itotori.provider-run.v0");
-    expect(firstArtifact.run.routingPosture.zdr).toBe(true);
-    expect(firstArtifact.run.cost.amountMicrosUsd).toBe(0);
-    expect(firstArtifact.request.rawTextCaptured).toBe(false);
+    for (const runDirectory of runDirectories) {
+      const artifact = JSON.parse(
+        readFileSync(
+          join(providerRunArtifactDirectory, runDirectory.name, "provider-run.json"),
+          "utf8",
+        ),
+      ) as ProviderRunArtifact;
+      expect(artifact.schemaVersion).toBe("itotori.provider-run.v0");
+      expect(artifact.run.routingPosture.zdr).toBe(true);
+      expect(artifact.run.routingPosture.data_collection).toBe("deny");
+      expect(artifact.run.usageResponseJson).toEqual({ _fake_no_billing: true });
+      expect(artifact.run.cost.amountMicrosUsd).toBe(0);
+      expect(artifact.request.rawTextCaptured).toBe(false);
+
+      const serialized = JSON.stringify(artifact);
+      expect(serialized).not.toContain("draftText");
+      expect(serialized).not.toContain("test working translation");
+      expect(serialized).not.toContain("OPENROUTER_API_KEY");
+      expect(serialized).not.toContain("sk-or-");
+      if (firstSourceText !== undefined) {
+        expect(serialized).not.toContain(firstSourceText);
+      }
+    }
   });
 
   it("unknown-error-no-failover: a non-429 ModelProviderError surfaces immediately (silent provider swap forbidden)", async () => {

@@ -24,10 +24,13 @@ import {
   DEV_PAIR,
   ModelProviderError,
   OpenRouterCostCapError,
+  OpenRouterMissingArtifactRecorderError,
   OpenRouterMissingApiKeyError,
   OpenRouterModelProvider,
   openRouterDefaultCapabilities,
   type ModelInvocationRequest,
+  type ProviderRunArtifact,
+  type ProviderRunArtifactRecorder,
 } from "../src/providers/index.js";
 
 function baseRequest(overrides: Partial<ModelInvocationRequest> = {}): ModelInvocationRequest {
@@ -94,6 +97,16 @@ function successResponse(opts: {
   });
 }
 
+function memoryRecorder(): ProviderRunArtifactRecorder & { artifacts: ProviderRunArtifact[] } {
+  const artifacts: ProviderRunArtifact[] = [];
+  return {
+    artifacts,
+    recordProviderRun: async (artifact: ProviderRunArtifact) => {
+      artifacts.push(artifact);
+    },
+  };
+}
+
 describe("OpenRouterModelProvider — env + construction", () => {
   // ITOTORI-227 — every live-path test passes
   // OPENROUTER_ZDR_ACCOUNT_ASSERTED=1 so the account-wide ZDR assertion
@@ -127,8 +140,19 @@ describe("OpenRouterModelProvider — env + construction", () => {
       apiKeyEnvVar: "MY_CUSTOM_KEY",
       env: { MY_CUSTOM_KEY: "abc-123", OPENROUTER_ZDR_ACCOUNT_ASSERTED: "1" },
       httpClient: vi.fn() as unknown as typeof fetch,
+      artifactRecorder: memoryRecorder(),
     });
     expect(provider.apiKeyEnvVar).toBe("MY_CUSTOM_KEY");
+  });
+
+  it("refuses live construction without a provider-run artifact recorder", () => {
+    expect(
+      () =>
+        new OpenRouterModelProvider({
+          env: { OPENROUTER_API_KEY: "abc", OPENROUTER_ZDR_ACCOUNT_ASSERTED: "1" },
+          httpClient: vi.fn() as unknown as typeof fetch,
+        }),
+    ).toThrow(OpenRouterMissingArtifactRecorderError);
   });
 
   it("registers DEV_PAIR + known production pairs into the CapabilityGuard at construction", () => {
@@ -137,6 +161,7 @@ describe("OpenRouterModelProvider — env + construction", () => {
       env: { OPENROUTER_API_KEY: "abc", OPENROUTER_ZDR_ACCOUNT_ASSERTED: "1" },
       capabilityGuard: guard,
       httpClient: vi.fn() as unknown as typeof fetch,
+      artifactRecorder: memoryRecorder(),
     });
     expect(guard.has(DEV_PAIR.modelId, DEV_PAIR.providerId)).toBe(true);
     const registered = guard.registeredPairs();
@@ -164,6 +189,7 @@ describe("OpenRouterModelProvider — request shape (ITOTORI-220 pair pin)", () 
       env: { OPENROUTER_API_KEY: "abc", OPENROUTER_ZDR_ACCOUNT_ASSERTED: "1" },
       httpClient: fetchMock,
       capabilityGuard: new CapabilityGuard(),
+      artifactRecorder: memoryRecorder(),
     });
     await provider.invoke(baseRequest());
     expect(observedBody?.provider.only).toEqual([DEV_PAIR.providerId]);
@@ -179,6 +205,7 @@ describe("OpenRouterModelProvider — request shape (ITOTORI-220 pair pin)", () 
       env: { OPENROUTER_API_KEY: "abc", OPENROUTER_ZDR_ACCOUNT_ASSERTED: "1" },
       httpClient: fetchMock,
       capabilityGuard: new CapabilityGuard(),
+      artifactRecorder: memoryRecorder(),
     });
     const error = await provider.invoke(baseRequest()).catch((e: unknown) => e);
     expect(error).toBeInstanceOf(ModelProviderError);
@@ -201,6 +228,7 @@ describe("OpenRouterModelProvider — request shape (ITOTORI-220 pair pin)", () 
       env: { OPENROUTER_API_KEY: "abc", OPENROUTER_ZDR_ACCOUNT_ASSERTED: "1" },
       httpClient: fetchMock,
       capabilityGuard: new CapabilityGuard(),
+      artifactRecorder: memoryRecorder(),
     });
     const result = await provider.invoke(baseRequest());
     expect(result.providerRun.status).toBe("succeeded");
@@ -218,6 +246,7 @@ describe("OpenRouterModelProvider — request shape (ITOTORI-220 pair pin)", () 
       env: { OPENROUTER_API_KEY: "abc", OPENROUTER_ZDR_ACCOUNT_ASSERTED: "1" },
       httpClient: fetchMock,
       capabilityGuard: new CapabilityGuard(),
+      artifactRecorder: memoryRecorder(),
     });
     const error = await provider.invoke(baseRequest()).catch((e: unknown) => e);
     expect(error).toBeInstanceOf(ModelProviderError);
@@ -239,9 +268,63 @@ describe("OpenRouterModelProvider — request shape (ITOTORI-220 pair pin)", () 
       env: { OPENROUTER_API_KEY: "sk-or-1234", OPENROUTER_ZDR_ACCOUNT_ASSERTED: "1" },
       httpClient: fetchMock,
       capabilityGuard: new CapabilityGuard(),
+      artifactRecorder: memoryRecorder(),
     });
     await provider.invoke(baseRequest());
     expect(observedAuth).toBe("Bearer sk-or-1234");
+  });
+
+  it("records routingPosture and usageResponseJson without raw prompt, response, or API-key leakage", async () => {
+    const recorder = memoryRecorder();
+    const rawPrompt = "RAW_PROMPT_SHOULD_NOT_LEAK";
+    const rawResponse = "RAW_RESPONSE_SHOULD_NOT_LEAK";
+    const apiKey = "sk-or-secret-should-not-leak";
+    const fetchMock = vi.fn(async () =>
+      new Response(
+        JSON.stringify({
+          id: "gen-artifact-redaction",
+          model: DEV_PAIR.modelId,
+          provider: DEV_PAIR.providerId,
+          choices: [
+            {
+              finish_reason: "stop",
+              message: { role: "assistant", content: rawResponse },
+            },
+          ],
+          usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15, cost: 0.000006 },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    ) as unknown as typeof fetch;
+    const provider = new OpenRouterModelProvider({
+      env: { OPENROUTER_API_KEY: apiKey, OPENROUTER_ZDR_ACCOUNT_ASSERTED: "1" },
+      httpClient: fetchMock,
+      capabilityGuard: new CapabilityGuard(),
+      artifactRecorder: recorder,
+    });
+
+    await provider.invoke(baseRequest({ messages: [{ role: "user", content: rawPrompt }] }));
+
+    expect(recorder.artifacts).toHaveLength(1);
+    const artifact = recorder.artifacts[0]!;
+    expect(artifact.run.routingPosture).toMatchObject({
+      only: [DEV_PAIR.providerId],
+      allow_fallbacks: false,
+      data_collection: "deny",
+    });
+    expect(artifact.run.usageResponseJson).toMatchObject({
+      prompt_tokens: 10,
+      completion_tokens: 5,
+      total_tokens: 15,
+      cost: 0.000006,
+    });
+    expect(artifact.request.rawTextCaptured).toBe(false);
+    const serialized = JSON.stringify(artifact);
+    expect(serialized).not.toContain(rawPrompt);
+    expect(serialized).not.toContain(rawResponse);
+    expect(serialized).not.toContain(apiKey);
+    expect(serialized).not.toContain("Authorization");
+    expect(serialized).not.toContain("Bearer");
   });
 });
 
@@ -261,6 +344,7 @@ describe("OpenRouterModelProvider — per-process cost cap", () => {
       costCapUsd: 1.0,
       rateLimitPerSec: 1000, // effectively unlimited for this test
       capabilityGuard: new CapabilityGuard(),
+      artifactRecorder: memoryRecorder(),
     });
     await provider.invoke(baseRequest());
     await provider.invoke(baseRequest());
@@ -286,6 +370,7 @@ describe("OpenRouterModelProvider — per-process cost cap", () => {
       costCapUsd: 1.0,
       rateLimitPerSec: 1000,
       capabilityGuard: new CapabilityGuard(),
+      artifactRecorder: memoryRecorder(),
     });
     await provider.invoke(baseRequest());
     expect(provider.totalSpentUsd()).toBeCloseTo(1.0, 5);
@@ -313,6 +398,7 @@ describe("OpenRouterModelProvider — token-bucket rate limit", () => {
       now,
       sleep,
       capabilityGuard: new CapabilityGuard(),
+      artifactRecorder: memoryRecorder(),
     });
     await provider.invoke(baseRequest());
     await provider.invoke(baseRequest());
@@ -351,6 +437,7 @@ describe("OpenRouterModelProvider — ITOTORI-225 real-cost contract", () => {
         env: { OPENROUTER_API_KEY: "abc", OPENROUTER_ZDR_ACCOUNT_ASSERTED: "1" },
         httpClient: fetchMock,
         capabilityGuard: new CapabilityGuard(),
+        artifactRecorder: memoryRecorder(),
       });
       const result = await provider.invoke(baseRequest());
       expect(result.providerRun.cost).toEqual({
@@ -390,6 +477,7 @@ describe("OpenRouterModelProvider — ITOTORI-225 real-cost contract", () => {
       env: { OPENROUTER_API_KEY: "abc", OPENROUTER_ZDR_ACCOUNT_ASSERTED: "1" },
       httpClient: fetchMock,
       capabilityGuard: new CapabilityGuard(),
+      artifactRecorder: memoryRecorder(),
     });
     const error = await provider.invoke(baseRequest()).catch((e: unknown) => e);
     expect(error).toBeInstanceOf(ModelProviderError);
@@ -421,6 +509,7 @@ describe("OpenRouterModelProvider — ITOTORI-225 real-cost contract", () => {
       env: { OPENROUTER_API_KEY: "abc", OPENROUTER_ZDR_ACCOUNT_ASSERTED: "1" },
       httpClient: fetchMock,
       capabilityGuard: new CapabilityGuard(),
+      artifactRecorder: memoryRecorder(),
     });
     await expect(provider.invoke(baseRequest())).rejects.toMatchObject({
       code: "provider_response_invalid",
@@ -450,6 +539,7 @@ describe("OpenRouterModelProvider — ITOTORI-225 real-cost contract", () => {
       env: { OPENROUTER_API_KEY: "abc", OPENROUTER_ZDR_ACCOUNT_ASSERTED: "1" },
       httpClient: fetchMock,
       capabilityGuard: new CapabilityGuard(),
+      artifactRecorder: memoryRecorder(),
     });
     await expect(provider.invoke(baseRequest())).rejects.toMatchObject({
       code: "provider_response_invalid",
@@ -475,6 +565,7 @@ describe("OpenRouterModelProvider — ITOTORI-233 cache-aware annotations", () =
       env: { OPENROUTER_API_KEY: "abc", OPENROUTER_ZDR_ACCOUNT_ASSERTED: "1" },
       httpClient: fetchMock,
       capabilityGuard: new CapabilityGuard(),
+      artifactRecorder: memoryRecorder(),
     });
     const result = await provider.invoke(baseRequest());
     expect(result.providerRun.tokenUsage.cacheReadTokens).toBe(7);
@@ -492,6 +583,7 @@ describe("OpenRouterModelProvider — ITOTORI-233 cache-aware annotations", () =
       env: { OPENROUTER_API_KEY: "abc", OPENROUTER_ZDR_ACCOUNT_ASSERTED: "1" },
       httpClient: fetchMock,
       capabilityGuard: new CapabilityGuard(),
+      artifactRecorder: memoryRecorder(),
     });
     const result = await provider.invoke(baseRequest());
     expect(result.providerRun.cost.amountMicrosUsd).toBe(5);
@@ -506,6 +598,7 @@ describe("OpenRouterModelProvider — ITOTORI-233 cache-aware annotations", () =
       env: { OPENROUTER_API_KEY: "abc", OPENROUTER_ZDR_ACCOUNT_ASSERTED: "1" },
       httpClient: fetchMock,
       capabilityGuard: new CapabilityGuard(),
+      artifactRecorder: memoryRecorder(),
     });
     const result = await provider.invoke(baseRequest());
     expect(result.providerRun.cost.cacheDiscountMicrosUsd).toBe(0);
@@ -519,6 +612,7 @@ describe("OpenRouterModelProvider — ITOTORI-233 cache-aware annotations", () =
       env: { OPENROUTER_API_KEY: "abc", OPENROUTER_ZDR_ACCOUNT_ASSERTED: "1" },
       httpClient: fetchMock,
       capabilityGuard: new CapabilityGuard(),
+      artifactRecorder: memoryRecorder(),
     });
     const result = await provider.invoke(baseRequest());
     expect(result.providerRun.cost.cacheDiscountMicrosUsd).toBe(0);
@@ -544,6 +638,7 @@ describe("OpenRouterModelProvider — ITOTORI-233 cache-aware annotations", () =
       costCapUsd: 1.0,
       rateLimitPerSec: 1000,
       capabilityGuard: new CapabilityGuard(),
+      artifactRecorder: memoryRecorder(),
     });
     await provider.invoke(baseRequest());
     await provider.invoke(baseRequest());
@@ -622,6 +717,7 @@ describe("OpenRouterModelProvider — ITOTORI-237 descriptorForPair", () => {
       env: { OPENROUTER_API_KEY: "abc", OPENROUTER_ZDR_ACCOUNT_ASSERTED: "1" },
       httpClient: vi.fn() as unknown as typeof fetch,
       capabilityGuard: new CapabilityGuard(),
+      artifactRecorder: memoryRecorder(),
     });
     const descriptor = provider.descriptorForPair(DEV_PAIR);
     expect(descriptor.capabilities.structuredOutputs.jsonSchema).toBe("supported");
@@ -638,6 +734,7 @@ describe("OpenRouterModelProvider — ITOTORI-237 descriptorForPair", () => {
       env: { OPENROUTER_API_KEY: "abc", OPENROUTER_ZDR_ACCOUNT_ASSERTED: "1" },
       httpClient: vi.fn() as unknown as typeof fetch,
       capabilityGuard: new CapabilityGuard(),
+      artifactRecorder: memoryRecorder(),
     });
     const descriptor = provider.descriptorForPair({
       modelId: "some/random-model",
@@ -661,6 +758,7 @@ describe("OpenRouterModelProvider — ITOTORI-237 descriptorForPair", () => {
       env: { OPENROUTER_API_KEY: "abc", OPENROUTER_ZDR_ACCOUNT_ASSERTED: "1" },
       httpClient: vi.fn() as unknown as typeof fetch,
       capabilityGuard: new CapabilityGuard(),
+      artifactRecorder: memoryRecorder(),
     });
     // Read the per-pair descriptor first — must not mutate class state.
     provider.descriptorForPair(DEV_PAIR);

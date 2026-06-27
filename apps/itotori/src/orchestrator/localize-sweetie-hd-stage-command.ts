@@ -197,6 +197,15 @@ export class LocalizeSweetieHdRefusedFakeError extends Error {
   }
 }
 
+export class LocalizeSweetieHdMissingProviderRunArtifactsDirectoryError extends Error {
+  constructor() {
+    super(
+      "localize-sweetie-hd-stage refused: live OpenRouter provider construction requires --provider-run-artifacts-dir so provider-run artifacts are persisted under the run artifact directory",
+    );
+    this.name = "LocalizeSweetieHdMissingProviderRunArtifactsDirectoryError";
+  }
+}
+
 /**
  * ITOTORI-238 — raised when the primary pair returned HTTP 429 AND
  * every declared alternate has also been exhausted (or none were
@@ -588,6 +597,13 @@ export async function runLocalizeSweetieHdStageCommand(
   if (providerKind === "fake" && process.env.ITOTORI_ALLOW_FAKE_LOCALIZE_PROVIDER !== "1") {
     throw new LocalizeSweetieHdRefusedFakeError();
   }
+  if (
+    providerKind === "live" &&
+    args.providerRunArtifactDirectory === undefined &&
+    args.liveFactoryOverride === undefined
+  ) {
+    throw new LocalizeSweetieHdMissingProviderRunArtifactsDirectoryError();
+  }
   const artifactRecorder =
     providerKind === "live" && args.providerRunArtifactDirectory !== undefined
       ? new LocalProviderRunArtifactRecorder(args.providerRunArtifactDirectory)
@@ -767,9 +783,12 @@ function liveOpenRouterFactory(opts: {
   let provider: OpenRouterModelProvider | undefined;
   return ({ stage, agentLabel, pair }) => {
     if (provider === undefined) {
+      if (opts.artifactRecorder === undefined) {
+        throw new LocalizeSweetieHdMissingProviderRunArtifactsDirectoryError();
+      }
       provider = new OpenRouterModelProvider({
         costCapUsd: opts.costCapUsd,
-        ...(opts.artifactRecorder === undefined ? {} : { artifactRecorder: opts.artifactRecorder }),
+        artifactRecorder: opts.artifactRecorder,
       });
     }
     return new SentinelInjectingProviderWrapper({

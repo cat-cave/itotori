@@ -38,6 +38,7 @@ export {
 } from "./local-openai-compatible.js";
 export {
   OpenRouterCostCapError,
+  OpenRouterMissingArtifactRecorderError,
   OpenRouterMissingApiKeyError,
   OpenRouterModelProvider,
   OpenRouterProvider,

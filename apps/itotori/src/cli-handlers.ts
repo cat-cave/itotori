@@ -365,6 +365,17 @@ async function runLocalizeSweetieHdStage(
   const providerKindRaw = optionalFlag(args, "--provider-kind");
   const costCapUsdRaw = optionalFlag(args, "--cost-cap-usd");
   const providerRunArtifactDirectory = optionalFlag(args, "--provider-run-artifacts-dir");
+  const providerKind = providerKindRaw ?? "live";
+  if (providerKind !== "live" && providerKind !== "fake") {
+    throw new Error(
+      `localize-sweetie-hd-stage refused: --provider-kind '${providerKind}' must be 'live' or 'fake'`,
+    );
+  }
+  if (providerKind === "live" && providerRunArtifactDirectory === undefined) {
+    throw new Error(
+      "localize-sweetie-hd-stage refused: --provider-run-artifacts-dir is required when --provider-kind is live",
+    );
+  }
 
   const callArgs: LocalizeSweetieHdStageArgs = {
     bridgePath,
@@ -400,12 +411,7 @@ async function runLocalizeSweetieHdStage(
     callArgs.maxRepairAttempts = parsed;
   }
   if (providerKindRaw !== undefined) {
-    if (providerKindRaw !== "live" && providerKindRaw !== "fake") {
-      throw new Error(
-        `localize-sweetie-hd-stage refused: --provider-kind '${providerKindRaw}' must be 'live' or 'fake'`,
-      );
-    }
-    callArgs.providerKind = providerKindRaw;
+    callArgs.providerKind = providerKind;
   }
   if (costCapUsdRaw !== undefined) {
     const parsed = Number.parseFloat(costCapUsdRaw);

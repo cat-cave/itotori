@@ -1455,6 +1455,15 @@ export class OpenRouterMissingApiKeyError extends Error {
   }
 }
 
+export class OpenRouterMissingArtifactRecorderError extends Error {
+  constructor() {
+    super(
+      "OpenRouterModelProvider live construction requires a provider-run artifact recorder; pass a persistent recorder so live routing posture and usage metadata are auditably persisted",
+    );
+    this.name = "OpenRouterMissingArtifactRecorderError";
+  }
+}
+
 export class OpenRouterCostCapError extends Error {
   constructor(
     readonly capUsd: number,
@@ -1486,7 +1495,7 @@ export type OpenRouterModelProviderOptions = {
   sleep?: (ms: number) => Promise<void>;
   /** Optional override for the capability guard registration target. */
   capabilityGuard?: CapabilityGuard;
-  /** Optional artifact recorder; defaults to a no-op in-memory recorder. */
+  /** Required artifact recorder for live construction. */
   artifactRecorder?: { recordProviderRun(artifact: ProviderRunArtifact): Promise<void> };
   /**
    * Optional override of the underlying base URL (test-only; production
@@ -1504,16 +1513,6 @@ export type OpenRouterModelProviderOptions = {
    */
   providerName?: string;
 };
-
-// In-memory no-op artifact recorder. Real callers wire a persistent
-// recorder via the artifacts module; the live-mode provider needs one
-// to satisfy the underlying OpenRouterProvider's ProviderLiveRunOptions
-// shape even when artifact persistence is handled elsewhere.
-class NoopArtifactRecorder {
-  async recordProviderRun(_artifact: ProviderRunArtifact): Promise<void> {
-    return undefined;
-  }
-}
 
 type TokenBucketDeps = {
   now: () => number;
@@ -1620,7 +1619,10 @@ export class OpenRouterModelProvider implements ModelProvider {
       throw new OpenRouterMissingApiKeyError(this.apiKeyEnvVar);
     }
 
-    const recorder = options.artifactRecorder ?? new NoopArtifactRecorder();
+    const recorder = options.artifactRecorder;
+    if (recorder === undefined) {
+      throw new OpenRouterMissingArtifactRecorderError();
+    }
     const now = options.now ?? (() => Date.now());
     const sleep =
       options.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
