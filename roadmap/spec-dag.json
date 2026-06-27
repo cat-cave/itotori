@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "exported_at": "2026-06-27T02:11:31.212Z",
+  "exported_at": "2026-06-27T02:16:23.447Z",
   "registries": {
     "groups": [
       {
@@ -2328,19 +2328,19 @@
       "title": "Local corpus scanner and redacted sidecar writer",
       "kind": "feature",
       "milestone": "real-game-testing-ready",
-      "status": "ready",
+      "status": "claimed",
       "priority": "P1",
       "estimate_points": 1,
       "risk": "medium",
-      "owner": null,
-      "branch": null,
+      "owner": "orchestrator-catalog-003",
+      "branch": "spec/catalog-003",
       "spec": "Turn the private local game library scan into a first-class local workflow that records owned corpus inventory, engine evidence, archive/install state, and redacted sidecars without committing private assets.\n\nDeliverables:\n- Local scan command or service\n- Redacted sidecar schema\n- Archive/install-state model\n- Private-local aggregate report renderer",
       "acceptance": "- The scanner distinguishes source archives, installed games, collection members, editions, and sidecar metadata\n- Sidecars record stable local ids, owned flag, engine/readiness evidence, aggregate counts, hashes, and tool versions without raw text, private paths, keys, screenshots, or story filenames\n- Sidecars emit versioned engine evidence compatible with current Kaifuu detection output\n- Capability merge into catalog readiness records is owned by KAIFUU-053 and CATALOG-007\n- Absence of private local corpora never affects public CI",
       "validation": null,
       "context": null,
       "created_at": "2026-06-26T02:53:54.593Z",
-      "updated_at": "2026-06-26T02:53:54.593Z",
-      "claimed_at": null,
+      "updated_at": "2026-06-27T02:16:10.423Z",
+      "claimed_at": "2026-06-27T02:16:10.423Z",
       "done_at": null,
       "group_name": "catalog",
       "status_reason": "Re-tier 2026-06-24: moved from alpha to real-game-testing-ready — the old \"alpha\" framing was renamed; substance unchanged. See docs/proposals/dag-retier-2026-06-24.md. | Re-tier 2026-06-24: pruned 1 dependsOn edge(s) that crossed the new tier boundary [KAIFUU-053(alpha)]; per docs/proposals/dag-retier-2026-06-24.md §6.",
