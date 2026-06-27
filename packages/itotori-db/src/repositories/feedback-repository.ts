@@ -439,8 +439,7 @@ export class ItotoriFeedbackRepository implements ItotoriFeedbackRepositoryPort 
       sourceRevisionId,
       feedbackType: row.feedbackType as FeedbackType,
       triageLabel: labelFromRow(row.triageLabel) ?? feedbackTriageLabelValues.needsContext,
-      contextStatus:
-        contextFromRow(row.contextStatus) ?? feedbackContextStatusValues.needsContext,
+      contextStatus: contextFromRow(row.contextStatus) ?? feedbackContextStatusValues.needsContext,
       reporterNote: row.reporterNote,
       context: sanitizeFeedbackContext(row.context),
       attachments,

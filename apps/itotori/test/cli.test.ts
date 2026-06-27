@@ -160,10 +160,7 @@ describe("ManualFeedbackImportService", () => {
       reportCount: 2,
     };
     const importManualFeedback = vi
-      .fn<
-        [AuthorizationActor, ManualFeedbackImportInput],
-        Promise<ManualFeedbackImportResult>
-      >()
+      .fn<[AuthorizationActor, ManualFeedbackImportInput], Promise<ManualFeedbackImportResult>>()
       .mockResolvedValueOnce(manualFeedbackResultFixture)
       .mockResolvedValueOnce(duplicateResult);
     const loadManualFeedbackReviewerQueueContext = vi.fn(async () => ({

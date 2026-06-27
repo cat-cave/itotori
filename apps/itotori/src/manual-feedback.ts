@@ -48,10 +48,7 @@ export class ManualFeedbackImportService {
       result.feedbackReportId,
       result.feedbackEvidenceId,
     );
-    if (
-      context === null ||
-      context.contextStatus !== feedbackContextStatusValues.contextualized
-    ) {
+    if (context === null || context.contextStatus !== feedbackContextStatusValues.contextualized) {
       return;
     }
     const queueContext = sanitizeReviewerQueueRecord(context.context);
