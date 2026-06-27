@@ -4,7 +4,7 @@ import { accessSync, constants, existsSync, realpathSync } from "node:fs";
 import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import {
   auditLifecycleGateResult,
   disposeAuditRunInSnapshot,
@@ -50,6 +50,10 @@ and an audit-visible rationale summary.`);
       recordMissing: Boolean(options["record-missing"]),
       json: args.includes("--json"),
     });
+  }
+
+  if (isRoadmapSpecDagExport(root, commandArgs)) {
+    return runRealThenCanonicalizeSpecDag(realQd, args, root);
   }
 
   return runReal(realQd, args);
@@ -133,6 +137,45 @@ function runReal(realQd, args) {
   });
   if (result.error) throw result.error;
   process.exit(result.status ?? 1);
+}
+
+function runRealThenCanonicalizeSpecDag(realQd, args, root) {
+  const result = spawnSync(realQd.command, [...realQd.args, ...args], {
+    stdio: "inherit",
+    env: process.env,
+  });
+  if (result.error) throw result.error;
+  if (result.status !== 0) process.exit(result.status ?? 1);
+
+  canonicalizeSpecDagExport(root);
+  process.exit(0);
+}
+
+export function isRoadmapSpecDagExport(root, commandArgs) {
+  if (commandArgs[0] !== "export") return false;
+  const outPath = exportOutPath(commandArgs);
+  if (!outPath) return false;
+  return path.resolve(root, outPath) === path.resolve(root, "roadmap", "spec-dag.json");
+}
+
+function exportOutPath(commandArgs) {
+  for (let index = 1; index < commandArgs.length; index += 1) {
+    const arg = commandArgs[index];
+    if (arg === "--out") return commandArgs[index + 1];
+    if (arg.startsWith("--out=")) return arg.slice("--out=".length);
+  }
+  return null;
+}
+
+function canonicalizeSpecDagExport(root) {
+  const specDagPath = path.join(root, "roadmap", "spec-dag.json");
+  const result = spawnSync("pnpm", ["exec", "vp", "check", "--fix", "--no-lint", specDagPath], {
+    cwd: root,
+    stdio: "inherit",
+    env: process.env,
+  });
+  if (result.error) throw result.error;
+  if (result.status !== 0) process.exit(result.status ?? 1);
 }
 
 function captureJson(realQd, args) {
@@ -247,7 +290,9 @@ function runChecked(realQd, args, options = {}) {
   }
 }
 
-main().catch((error) => {
-  console.error(error instanceof Error ? error.message : String(error));
-  process.exit(1);
-});
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((error) => {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  });
+}

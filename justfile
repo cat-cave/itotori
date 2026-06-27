@@ -12,6 +12,7 @@ dashboard:
 
 check:
     pnpm exec vp check
+    node scripts/qd-wrapper.test.mjs
     node scripts/qd-lifecycle.test.mjs
     node scripts/spec-dag-issues.test.mjs
     node scripts/spec-dag-lifecycle.test.mjs
