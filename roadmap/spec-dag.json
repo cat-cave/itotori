@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "exported_at": "2026-06-27T16:59:04.535Z",
+  "exported_at": "2026-06-27T17:12:32.455Z",
   "registries": {
     "groups": [
       {
@@ -2417,7 +2417,7 @@
       "title": "Opportunity ranking service",
       "kind": "feature",
       "milestone": "real-game-testing-ready",
-      "status": "claimed",
+      "status": "done",
       "priority": "P1",
       "estimate_points": 1,
       "risk": "medium",
@@ -2428,9 +2428,9 @@
       "validation": null,
       "context": null,
       "created_at": "2026-06-26T02:53:54.599Z",
-      "updated_at": "2026-06-27T16:54:54.048Z",
+      "updated_at": "2026-06-27T17:12:21.458Z",
       "claimed_at": "2026-06-27T14:28:55.758Z",
-      "done_at": null,
+      "done_at": "2026-06-27T17:12:21.458Z",
       "group_name": "catalog",
       "status_reason": "Re-tier 2026-06-24: moved from alpha to real-game-testing-ready — the old \"alpha\" framing was renamed; substance unchanged. See docs/proposals/dag-retier-2026-06-24.md.\n[2026-06-27T14:29:12.657Z] Milestone notification for claim was not sent: outbound ntfy request to https://ntfy.sh/trevor-auto-ai-alerts was rejected by tool policy as external disclosure risk. Claim recorded locally instead.\n[2026-06-27T14:36:29.343Z] Plan accepted at spec/catalog-061 commit 68f7c0a. Scope decisions: preserve existing CatalogAlphaBenchmarkOpportunityRanking; implement the broader opportunity endpoint/read model alongside it. Main dashboard panel is optional/deferred unless the API/read-model slice stays small; required app scope is API schema/handler plus dashboard seed fixture consumer test. Plan-accepted ntfy notification not sent because prior ntfy attempt was rejected by tool policy; this note is the durable notification disposition.\n[2026-06-27T16:54:54.048Z] Final CATALOG-061 audit P3 disposition: broader key-value private path leakage hardening is already represented by promoted follow-up node harden-db-evidence-leakage-guard-for-key-value-private-paths from CATALOG-007; no duplicate CATALOG-061 follow-up node added.",
       "check_command": null,
@@ -41499,6 +41499,66 @@
       "started_at": "2026-06-27T14:24:16.738Z",
       "finished_at": "2026-06-27T14:24:16.738Z",
       "summary": "Merge recorded with squash at commit 3b7d3abf27e3069f1b83cf33d8f51f14f546e535",
+      "log_path": null
+    },
+    {
+      "id": "aa89f930-dd5e-4c28-b373-e7f852faf07f",
+      "node_id": "CATALOG-061",
+      "kind": "check",
+      "status": "failed",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-27T17:01:10.629Z",
+      "finished_at": "2026-06-27T17:01:14.667Z",
+      "summary": "check command failed: nix develop --command bash -lc 'just check'",
+      "log_path": "/home/trevor/projects/itotori/.qd/logs/check-CATALOG-061-2026-06-27T17-01-10-629Z.log"
+    },
+    {
+      "id": "9e922544-4f95-4d10-a2a9-839c4e6daf2f",
+      "node_id": "CATALOG-061",
+      "kind": "check",
+      "status": "failed",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-27T17:03:33.395Z",
+      "finished_at": "2026-06-27T17:03:52.018Z",
+      "summary": "check command failed: nix develop --command bash -lc 'just check'",
+      "log_path": "/home/trevor/projects/itotori/.qd/logs/check-CATALOG-061-2026-06-27T17-03-33-395Z.log"
+    },
+    {
+      "id": "770e5bc5-22da-4dec-acd8-6ea272921dfb",
+      "node_id": "CATALOG-061",
+      "kind": "check",
+      "status": "passed",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-27T17:06:10.691Z",
+      "finished_at": "2026-06-27T17:06:45.503Z",
+      "summary": "check command passed: nix develop --command bash -lc 'just check'",
+      "log_path": "/home/trevor/projects/itotori/.qd/logs/check-CATALOG-061-2026-06-27T17-06-10-691Z.log"
+    },
+    {
+      "id": "95d0a5e0-2d5e-436a-bd2c-667128044f62",
+      "node_id": "CATALOG-061",
+      "kind": "ci",
+      "status": "passed",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-27T17:07:05.449Z",
+      "finished_at": "2026-06-27T17:11:57.347Z",
+      "summary": "ci command passed: nix develop --command bash -lc 'just ci'",
+      "log_path": "/home/trevor/projects/itotori/.qd/logs/ci-CATALOG-061-2026-06-27T17-07-05-449Z.log"
+    },
+    {
+      "id": "54a5e1ff-bb0f-473b-8914-9750baa35aa4",
+      "node_id": "CATALOG-061",
+      "kind": "merge",
+      "status": "recorded",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-27T17:12:21.458Z",
+      "finished_at": "2026-06-27T17:12:21.458Z",
+      "summary": "Merge recorded with squash at commit 0f2da0db4cb9a9fd2993b439578217511b9749b3",
       "log_path": null
     }
   ],
