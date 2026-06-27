@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "exported_at": "2026-06-27T01:34:11.199Z",
+  "exported_at": "2026-06-27T02:11:31.212Z",
   "registries": {
     "groups": [
       {
@@ -7677,7 +7677,7 @@
       "title": "Style dispute adjudication workflow",
       "kind": "feature",
       "milestone": "alpha",
-      "status": "claimed",
+      "status": "done",
       "priority": "P1",
       "estimate_points": 1,
       "risk": "medium",
@@ -7688,9 +7688,9 @@
       "validation": null,
       "context": null,
       "created_at": "2026-06-26T02:53:54.880Z",
-      "updated_at": "2026-06-27T01:34:00.577Z",
+      "updated_at": "2026-06-27T02:09:19.251Z",
       "claimed_at": "2026-06-27T01:34:00.577Z",
-      "done_at": null,
+      "done_at": "2026-06-27T02:09:19.251Z",
       "group_name": "feedback",
       "status_reason": "Re-tier 2026-06-24: kept alpha under the new 4-tier framework (single-game Sweetie HD e2e set per docs/proposals/dag-retier-2026-06-24.md).",
       "check_command": null,
@@ -40892,6 +40892,90 @@
       "started_at": "2026-06-27T01:29:16.173Z",
       "finished_at": "2026-06-27T01:29:16.173Z",
       "summary": "Merge recorded with squash",
+      "log_path": null
+    },
+    {
+      "id": "2aab046b-4eff-4e5a-9182-7bb9f189193d",
+      "node_id": "ITOTORI-042",
+      "kind": "implement",
+      "status": "completed",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-27T01:58:42.385Z",
+      "finished_at": "2026-06-27T01:58:42.385Z",
+      "summary": "Style-dispute manual feedback now enters the style adjudication lane, preserves rejection rationale metadata, suppresses legacy duplicate style disputes, and carries affected bridge units into style-update reruns.",
+      "log_path": null
+    },
+    {
+      "id": "39edf6b0-b790-4fc1-a523-9d74f6a9e8cc",
+      "node_id": "ITOTORI-042",
+      "kind": "audit",
+      "status": "completed",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-27T01:58:56.137Z",
+      "finished_at": "2026-06-27T02:11:21.203Z",
+      "summary": "Read-only audit found two P1 issues that were fixed; follow-up audit found no blocking P0/P1 issues.",
+      "log_path": null
+    },
+    {
+      "id": "639e743b-36d2-44d2-b2f0-2ed8e9f5a78b",
+      "node_id": "ITOTORI-042",
+      "kind": "check",
+      "status": "failed",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-27T02:02:07.056Z",
+      "finished_at": "2026-06-27T02:02:10.126Z",
+      "summary": "check command failed: nix develop --command bash -lc 'pnpm exec vp check && node scripts/audit-no-hardcoded-cost.mjs && just fixtures-validate && just impl-map-schema-validate && node scripts/verify-toolchain-policy.mjs && pnpm exec vp run ts:typecheck && cargo fmt --check && cargo check --workspace'",
+      "log_path": "/home/trevor/projects/itotori/.qd/logs/check-ITOTORI-042-2026-06-27T02-02-07-056Z.log"
+    },
+    {
+      "id": "551dd67f-cb4a-49a9-9cb3-93094bbfa835",
+      "node_id": "ITOTORI-042",
+      "kind": "implement",
+      "status": "completed",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-27T02:03:13.333Z",
+      "finished_at": "2026-06-27T02:03:13.333Z",
+      "summary": "Style-dispute manual feedback now enters the style adjudication lane, preserves rejection rationale metadata, suppresses legacy duplicate style disputes, carries affected bridge units into style-update reruns, and the formatting issue from the first qd check was repaired.",
+      "log_path": null
+    },
+    {
+      "id": "d5cdc20d-8e2d-483e-b005-f0e1331b881a",
+      "node_id": "ITOTORI-042",
+      "kind": "check",
+      "status": "passed",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-27T02:03:34.986Z",
+      "finished_at": "2026-06-27T02:03:58.243Z",
+      "summary": "check command passed: nix develop --command bash -lc 'pnpm exec vp check && node scripts/audit-no-hardcoded-cost.mjs && just fixtures-validate && just impl-map-schema-validate && node scripts/verify-toolchain-policy.mjs && pnpm exec vp run ts:typecheck && cargo fmt --check && cargo check --workspace'",
+      "log_path": "/home/trevor/projects/itotori/.qd/logs/check-ITOTORI-042-2026-06-27T02-03-34-986Z.log"
+    },
+    {
+      "id": "9ad5ab5a-9d58-4e67-b86a-e64ad315fa6d",
+      "node_id": "ITOTORI-042",
+      "kind": "ci",
+      "status": "passed",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-27T02:04:16.402Z",
+      "finished_at": "2026-06-27T02:08:45.962Z",
+      "summary": "ci command passed: nix develop --command bash -lc 'pnpm exec vp check && node scripts/audit-no-hardcoded-cost.mjs && just fixtures-validate && just impl-map-schema-validate && node scripts/verify-toolchain-policy.mjs && pnpm exec vp run ts:typecheck && cargo fmt --check && cargo check --workspace && just build && just db-migrate && just test && cargo clippy --workspace --all-targets --all-features -- -D warnings && cargo deny check'",
+      "log_path": "/home/trevor/projects/itotori/.qd/logs/ci-ITOTORI-042-2026-06-27T02-04-16-402Z.log"
+    },
+    {
+      "id": "b24f82a1-4f8c-41c8-b9cf-429e6267f1fd",
+      "node_id": "ITOTORI-042",
+      "kind": "merge",
+      "status": "recorded",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-27T02:09:19.251Z",
+      "finished_at": "2026-06-27T02:09:19.251Z",
+      "summary": "Merge recorded with squash at commit 6a231f0896181eeb7fc03280a4ebfa1ae58a0fe3",
       "log_path": null
     }
   ],
