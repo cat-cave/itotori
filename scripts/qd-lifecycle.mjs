@@ -49,7 +49,9 @@ export function disposeAuditRunInSnapshot(
     throw new Error("qd snapshot must include runs[]");
   }
   if (!DISPOSED_AUDIT_STATUSES.has(status)) {
-    throw new Error(`audit dispose status must be one of ${[...DISPOSED_AUDIT_STATUSES].join(", ")}`);
+    throw new Error(
+      `audit dispose status must be one of ${[...DISPOSED_AUDIT_STATUSES].join(", ")}`,
+    );
   }
   if (!rationale || !rationale.trim()) {
     throw new Error("audit dispose requires a non-empty rationale");

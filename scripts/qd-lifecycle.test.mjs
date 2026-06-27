@@ -23,11 +23,7 @@ const nodeShowWithRunningAudit = {
 
 test("qd gate rejects a node with a running audit run", async () => {
   const runningAudits = runningAuditRunsFromNodeShow(nodeShowWithRunningAudit);
-  const result = auditLifecycleGateResult(
-    "CATALOG-003",
-    { ok: true, blocking: [] },
-    runningAudits,
-  );
+  const result = auditLifecycleGateResult("CATALOG-003", { ok: true, blocking: [] }, runningAudits);
 
   assert.equal(result.ok, false);
   assert.equal(result.code, "runningAuditRuns");

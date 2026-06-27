@@ -40,7 +40,7 @@ and an audit-visible rationale summary.`);
     const action = commandArgs[1];
     const nodeId = commandArgs[2];
     const options = parseOptions(commandArgs.slice(3));
-    const status = action === "supersede" ? "superseded" : options.status ?? "cancelled";
+    const status = action === "supersede" ? "superseded" : (options.status ?? "cancelled");
     return disposeAuditRun(realQd, root, globalArgs, {
       nodeId,
       runId: options["run-id"],
@@ -94,7 +94,10 @@ function findRealQd() {
     const candidate = path.join(dir, "qd");
     try {
       accessSync(candidate, constants.X_OK);
-      if (realpathSync(candidate) !== ownRealPath && realpathSync(candidate) !== realpathSync(path.join(repoRoot, "bin", "qd"))) {
+      if (
+        realpathSync(candidate) !== ownRealPath &&
+        realpathSync(candidate) !== realpathSync(path.join(repoRoot, "bin", "qd"))
+      ) {
         return { command: candidate, args: [] };
       }
     } catch {
@@ -124,7 +127,10 @@ function parseOptions(args) {
 }
 
 function runReal(realQd, args) {
-  const result = spawnSync(realQd.command, [...realQd.args, ...args], { stdio: "inherit", env: process.env });
+  const result = spawnSync(realQd.command, [...realQd.args, ...args], {
+    stdio: "inherit",
+    env: process.env,
+  });
   if (result.error) throw result.error;
   process.exit(result.status ?? 1);
 }
@@ -167,7 +173,8 @@ function gateWithAuditLifecycle(realQd, globalArgs, nodeId, originalArgs) {
 }
 
 async function disposeAuditRun(realQd, root, globalArgs, options) {
-  if (!options.nodeId) throw new Error("usage: qd audit dispose <node> --run-id <id> --rationale <text>");
+  if (!options.nodeId)
+    throw new Error("usage: qd audit dispose <node> --run-id <id> --rationale <text>");
   if (!options.runId) throw new Error("qd audit dispose requires --run-id");
 
   const snapshot = await loadSnapshot(realQd, root, globalArgs);
