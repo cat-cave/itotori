@@ -1897,9 +1897,7 @@ async function readCatalogBenchmarkSeedFinder(
       : await db
           .select()
           .from(catalogSourceProvenance)
-          .where(
-            inArray(catalogSourceProvenance.sourceProvenanceId, Array.from(provenanceIds)),
-          );
+          .where(inArray(catalogSourceProvenance.sourceProvenanceId, Array.from(provenanceIds)));
 
   const provenanceById = new Map(
     provenanceRows.map((row) => [row.sourceProvenanceId, sourceProvenanceFromRow(row)]),
@@ -1930,7 +1928,10 @@ async function readCatalogBenchmarkSeedFinder(
         localOwnership: "unknown" as const,
         localEvidenceCount: 0,
       };
-      if (filter.localOwnership !== null && filter.localOwnership !== localOwnership.localOwnership) {
+      if (
+        filter.localOwnership !== null &&
+        filter.localOwnership !== localOwnership.localOwnership
+      ) {
         continue;
       }
 
@@ -1975,9 +1976,9 @@ async function readCatalogBenchmarkSeedFinder(
           originalLanguage: work.originalLanguage,
           sourceIds,
           completenessPool: pool,
-          translationStatuses: work.statuses.map(benchmarkTranslationStatus).sort(
-            compareBenchmarkTranslationStatuses,
-          ),
+          translationStatuses: work.statuses
+            .map(benchmarkTranslationStatus)
+            .sort(compareBenchmarkTranslationStatuses),
           localOwnership: localOwnership.localOwnership,
           localEvidenceCount: localOwnership.localEvidenceCount,
           demandBucket,
@@ -2089,7 +2090,9 @@ function assertBenchmarkSeedFinderFilter(
     minCapabilityLevel: filter.minCapabilityLevel ?? null,
     demandBucket: filter.demandBucket ?? null,
     translationCompleteness:
-      translationCompleteness === null ? null : uniqueCatalogLanguageStatuses(translationCompleteness),
+      translationCompleteness === null
+        ? null
+        : uniqueCatalogLanguageStatuses(translationCompleteness),
     provenanceRequired: filter.provenanceRequired ?? false,
     localOwnership: filter.localOwnership ?? null,
     includeDemoted: filter.includeDemoted ?? false,

@@ -312,9 +312,7 @@ async function recordSeedFinderCatalog(
       engineProvenanceId: provenance.dlsiteMtl.sourceProvenanceId,
     },
     externalIds: [externalId(203, provenance.dlsiteMtl, "RJSEED003")],
-    languageStatuses: [
-      languageStatus(403, catalogLanguageStatusValues.mtl, provenance.dlsiteMtl),
-    ],
+    languageStatuses: [languageStatus(403, catalogLanguageStatusValues.mtl, provenance.dlsiteMtl)],
     demandFacts: [
       demandFact(504, provenance.dlsiteMtl, "RJSEED003", catalogDemandFactKindValues.rank, {
         rank: 44,
@@ -426,11 +424,23 @@ async function recordSeedFinderCatalog(
     ],
   });
 
-  return { noEnglishOwned, fanPartialIdentifyOnly, mtlPartialExtract, conflict, conflictId, unrecorded };
+  return {
+    noEnglishOwned,
+    fanPartialIdentifyOnly,
+    mtlPartialExtract,
+    conflict,
+    conflictId,
+    unrecorded,
+  };
 }
 
-async function recordSeedFinderProvenance(repo: ItotoriCatalogRepository): Promise<
-  Record<"dlsite" | "vndb" | "dlsiteMtl" | "conflict" | "localPrivate", CatalogSourceProvenanceRecord>
+async function recordSeedFinderProvenance(
+  repo: ItotoriCatalogRepository,
+): Promise<
+  Record<
+    "dlsite" | "vndb" | "dlsiteMtl" | "conflict" | "localPrivate",
+    CatalogSourceProvenanceRecord
+  >
 > {
   const dlsite = await provenance(repo, 1, catalogSourceValues.dlsite, "RJSEED001", {
     fixtureId: "catalog-benchmark-seeds/dlsite/RJSEED001.json",
