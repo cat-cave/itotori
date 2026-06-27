@@ -91,6 +91,7 @@ import {
   OpenRouterModelProvider,
   openRouterDefaultCapabilities,
 } from "../providers/openrouter.js";
+import { LocalProviderRunArtifactRecorder } from "../providers/artifacts.js";
 import { FakeModelProvider } from "../providers/fake.js";
 import { globalCapabilityGuard, type CapabilityGuard } from "../providers/capability-guard.js";
 import { ModelProviderError } from "../providers/types.js";
@@ -99,6 +100,7 @@ import type {
   ModelInvocationRequest,
   ModelInvocationResult,
   ModelProvider,
+  ProviderRunArtifactRecorder,
 } from "../providers/types.js";
 import {
   runAgenticLoopForUnit,
@@ -150,6 +152,13 @@ export type LocalizeSweetieHdStageArgs = {
    */
   costCapUsd?: number;
   /**
+   * Optional directory where live OpenRouter provider-run artifacts are
+   * persisted as one `provider-run.json` per invocation. The suite
+   * driver sets this to its run directory so acceptance can audit the
+   * request routing/ZDR/cost posture after the run.
+   */
+  providerRunArtifactDirectory?: string;
+  /**
    * ITOTORI-238 — test-only seam. When provided, the test factory
    * REPLACES `liveOpenRouterFactory` so a test can inject a primary
    * provider that throws a typed `provider_http_error` (status 429)
@@ -157,7 +166,10 @@ export type LocalizeSweetieHdStageArgs = {
    * never passes this; the failover code path runs against real
    * OpenRouter providers.
    */
-  liveFactoryOverride?: (pair: PairPolicyV03["pair"]) => AgenticLoopProviderFactory;
+  liveFactoryOverride?: (
+    pair: PairPolicyV03["pair"],
+    options: { artifactRecorder: ProviderRunArtifactRecorder | undefined },
+  ) => AgenticLoopProviderFactory;
 };
 
 export class LocalizeSweetieHdMissingApiKeyError extends Error {
@@ -576,6 +588,10 @@ export async function runLocalizeSweetieHdStageCommand(
   if (providerKind === "fake" && process.env.ITOTORI_ALLOW_FAKE_LOCALIZE_PROVIDER !== "1") {
     throw new LocalizeSweetieHdRefusedFakeError();
   }
+  const artifactRecorder =
+    providerKind === "live" && args.providerRunArtifactDirectory !== undefined
+      ? new LocalProviderRunArtifactRecorder(args.providerRunArtifactDirectory)
+      : undefined;
 
   const policy: AgenticLoopPolicy = {
     projectId: bridge.bridgeId,
@@ -616,10 +632,11 @@ export async function runLocalizeSweetieHdStageCommand(
         providerKind === "fake"
           ? sentinelFakeFactory(unit, policy, enUsSentinel)
           : args.liveFactoryOverride !== undefined
-            ? args.liveFactoryOverride(pair)
+            ? args.liveFactoryOverride(pair, { artifactRecorder })
             : liveOpenRouterFactory({
                 enUsSentinel,
                 costCapUsd: args.costCapUsd ?? DEFAULT_COST_CAP_USD,
+                artifactRecorder,
               }),
     },
     ...policyV03.alternateProviders.map((alternate) => {
@@ -632,10 +649,11 @@ export async function runLocalizeSweetieHdStageCommand(
           providerKind === "fake"
             ? sentinelFakeFactory(unit, policy, enUsSentinel)
             : args.liveFactoryOverride !== undefined
-              ? args.liveFactoryOverride(altPair)
+              ? args.liveFactoryOverride(altPair, { artifactRecorder })
               : liveOpenRouterFactory({
                   enUsSentinel,
                   costCapUsd: args.costCapUsd ?? DEFAULT_COST_CAP_USD,
+                  artifactRecorder,
                 }),
       };
     }),
@@ -739,6 +757,7 @@ export async function runLocalizeSweetieHdStageCommand(
 function liveOpenRouterFactory(opts: {
   enUsSentinel: string;
   costCapUsd: number;
+  artifactRecorder: ProviderRunArtifactRecorder | undefined;
 }): AgenticLoopProviderFactory {
   // Constructed once so the per-process cost cap + token bucket are
   // shared across every stage's invocation. Throws
@@ -750,6 +769,7 @@ function liveOpenRouterFactory(opts: {
     if (provider === undefined) {
       provider = new OpenRouterModelProvider({
         costCapUsd: opts.costCapUsd,
+        ...(opts.artifactRecorder === undefined ? {} : { artifactRecorder: opts.artifactRecorder }),
       });
     }
     return new SentinelInjectingProviderWrapper({

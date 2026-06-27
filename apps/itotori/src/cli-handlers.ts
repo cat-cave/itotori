@@ -354,6 +354,7 @@ async function runLocalizeSweetieHdStage(
   //   --provider-kind <live|fake>              default live; fake requires
   //                                            ITOTORI_ALLOW_FAKE_LOCALIZE_PROVIDER=1
   //   --cost-cap-usd <decimal>                 default 0.5
+  //   --provider-run-artifacts-dir <PATH>      persist live provider-run artifacts here
   const bridgePath = requiredFlag(args, "--bridge");
   const pairPolicyPath = requiredFlag(args, "--pair-policy");
   const outputPath = requiredFlag(args, "--output");
@@ -363,6 +364,7 @@ async function runLocalizeSweetieHdStage(
   const maxRepairAttemptsRaw = optionalFlag(args, "--max-repair-attempts");
   const providerKindRaw = optionalFlag(args, "--provider-kind");
   const costCapUsdRaw = optionalFlag(args, "--cost-cap-usd");
+  const providerRunArtifactDirectory = optionalFlag(args, "--provider-run-artifacts-dir");
 
   const callArgs: LocalizeSweetieHdStageArgs = {
     bridgePath,
@@ -413,6 +415,9 @@ async function runLocalizeSweetieHdStage(
       );
     }
     callArgs.costCapUsd = parsed;
+  }
+  if (providerRunArtifactDirectory !== undefined) {
+    callArgs.providerRunArtifactDirectory = providerRunArtifactDirectory;
   }
   await runLocalizeSweetieHdStageCommand(callArgs);
 }

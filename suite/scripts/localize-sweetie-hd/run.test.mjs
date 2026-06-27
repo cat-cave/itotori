@@ -49,6 +49,11 @@ test("--dry-run --project ... exits 0 and prints per-phase commands", () => {
     `dry-run plan must mention the agentic-loop stage; got:\n${result.stdout}`,
   );
   assert.ok(
+    result.stdout.includes("--provider-run-artifacts-dir") &&
+      result.stdout.includes("provider-runs"),
+    `dry-run plan must persist provider-run artifacts under the run dir; got:\n${result.stdout}`,
+  );
+  assert.ok(
     result.stdout.includes("patch --engine reallive"),
     `dry-run plan must mention the kaifuu patch step; got:\n${result.stdout}`,
   );

@@ -156,6 +156,30 @@ function sha256OfFile(path) {
   return hash.digest("hex");
 }
 
+function countProviderRunArtifacts(providerRunArtifactsDir) {
+  if (!existsSync(providerRunArtifactsDir)) return 0;
+  let count = 0;
+  for (const entry of readdirSync(providerRunArtifactsDir, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const artifactPath = join(providerRunArtifactsDir, entry.name, "provider-run.json");
+    if (existsSync(artifactPath)) count += 1;
+  }
+  return count;
+}
+
+function countAgenticLoopInvocations(agenticLoopBundlePath) {
+  const raw = JSON.parse(readFileSync(agenticLoopBundlePath, "utf8"));
+  if (typeof raw !== "object" || raw === null || !Array.isArray(raw.stages)) {
+    throw new Error(`agentic-loop bundle at ${agenticLoopBundlePath} has no stages array`);
+  }
+  return raw.stages.reduce((sum, stage) => {
+    if (typeof stage !== "object" || stage === null || !Array.isArray(stage.invocations)) {
+      return sum;
+    }
+    return sum + stage.invocations.length;
+  }, 0);
+}
+
 function copyDirRecursive(srcDir, dstDir) {
   mkdirSync(dstDir, { recursive: true });
   for (const entry of readdirSync(srcDir, { withFileTypes: true })) {
@@ -353,6 +377,7 @@ async function main() {
   const translatedBundlePath = join(runDir, "translated-bridge.json");
   const patchReportPath = join(runDir, "patch-report.json");
   const replayLogPath = join(runDir, "replay-log.json");
+  const providerRunArtifactsDir = join(runDir, "provider-runs");
 
   const dryRun = args.dryRun;
 
@@ -391,7 +416,7 @@ async function main() {
     printDryRunPlan(
       [
         `cargo run -p kaifuu-cli -- extract --engine reallive --scene ${sceneId} --bundle-output ${bridgeBundlePath}`,
-        `node apps/itotori/dist/cli.js localize-sweetie-hd-stage --bridge ${bridgeBundlePath} --pair-policy ${PAIR_POLICY_PATH} --unit-index ${args.unitIndex} --output ${agenticLoopBundlePath} --translated-bundle-output ${translatedBundlePath} --patch-report-output ${patchReportPath}`,
+        `node apps/itotori/dist/cli.js localize-sweetie-hd-stage --bridge ${bridgeBundlePath} --pair-policy ${PAIR_POLICY_PATH} --unit-index ${args.unitIndex} --output ${agenticLoopBundlePath} --translated-bundle-output ${translatedBundlePath} --patch-report-output ${patchReportPath} --provider-run-artifacts-dir ${providerRunArtifactsDir}`,
         `cargo run -p kaifuu-cli -- patch --engine reallive --source <KAIFUU_REAL_SWEETIE_HD_PATH> --target <TARGET> --bundle ${translatedBundlePath} --force`,
         `cargo run -p utsushi-cli -- replay-validate --engine reallive --seen <TARGET>/REALLIVEDATA/Seen.txt --scene ${sceneId} --expect-textline-contains ${sentinelSubstring} --print-replay-log ${replayLogPath}`,
       ],
@@ -443,11 +468,26 @@ async function main() {
     translatedBundlePath,
     "--patch-report-output",
     patchReportPath,
+    "--provider-run-artifacts-dir",
+    providerRunArtifactsDir,
   ];
   if (args.providerKind !== undefined) {
     stageArgs.push("--provider-kind", args.providerKind);
   }
   runCommand("node", stageArgs);
+
+  if (args.providerKind !== "fake") {
+    const expectedInvocationCount = countAgenticLoopInvocations(agenticLoopBundlePath);
+    const providerRunArtifactCount = countProviderRunArtifacts(providerRunArtifactsDir);
+    if (providerRunArtifactCount < expectedInvocationCount) {
+      throw new Error(
+        `provider-run artifact evidence incomplete: expected at least ${expectedInvocationCount} provider-run artifact(s) for agentic-loop invocations, found ${providerRunArtifactCount} under ${providerRunArtifactsDir}`,
+      );
+    }
+    process.stdout.write(
+      `[localize-sweetie-hd] provider-run artifacts: ${providerRunArtifactCount} persisted under ${providerRunArtifactsDir}\n`,
+    );
+  }
 
   // ----------------- Phase 3: kaifuu patch -----------------------
   // Re-resolve target writability + copy the source tree to TARGET.
@@ -529,6 +569,7 @@ async function main() {
       agenticLoopBundle: agenticLoopBundlePath,
       patchReport: patchReportPath,
       replayLog: replayLogPath,
+      providerRunArtifacts: providerRunArtifactsDir,
     },
   };
   writeFileSync(join(runDir, "run-summary.json"), `${JSON.stringify(summary, null, 2)}\n`);

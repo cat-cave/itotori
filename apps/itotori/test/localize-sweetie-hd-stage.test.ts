@@ -16,9 +16,10 @@
 //   - The synthesised patch-report.json carries the (modelId,
 //     providerId) pair byte-for-byte.
 
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, readdirSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
-import { dirname, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -47,6 +48,7 @@ import {
   type ModelInvocationRequest,
   type ModelInvocationResult,
   type ProviderDescriptor,
+  type ProviderRunArtifact,
   type ProviderRunRecord,
 } from "../src/providers/types.js";
 import { FakeModelProvider } from "../src/providers/fake.js";
@@ -520,6 +522,31 @@ function workingSentinelFactory(
     });
 }
 
+function providerRunArtifactFromInvocation(
+  request: ModelInvocationRequest,
+  result: ModelInvocationResult,
+): ProviderRunArtifact {
+  return {
+    schemaVersion: "itotori.provider-run.v0",
+    run: result.providerRun,
+    request: {
+      messageCount: request.messages.length,
+      inputClassification: request.inputClassification,
+      requestedModelId: request.modelId,
+      structuredOutputMode: request.structuredOutput?.mode ?? "none",
+      toolCount: request.tools?.length ?? 0,
+      rawTextCaptured: false,
+      prompt: request.prompt,
+      ...(request.preset === undefined ? {} : { providerPreset: request.preset }),
+    },
+    response: {
+      finishReason: result.finishReason,
+      contentLength: result.content?.length ?? 0,
+      toolCallCount: result.toolCalls.length,
+    },
+  };
+}
+
 describe("ITOTORI-238 failover orchestration", () => {
   it("failover-on-429: adopts the next declared alternate when the primary returns http_429", async () => {
     const prevAllow = process.env.ITOTORI_ALLOW_FAKE_LOCALIZE_PROVIDER;
@@ -588,6 +615,86 @@ describe("ITOTORI-238 failover orchestration", () => {
         process.env.ITOTORI_ALLOW_FAKE_LOCALIZE_PROVIDER = prevAllow;
       }
     }
+  });
+
+  it("wires a persistent provider-run artifact recorder into the live provider path", async () => {
+    const smokeBridge = loadSmokeBridge() as {
+      units: ReadonlyArray<{ bridgeUnitId: string }>;
+    };
+    const firstBridgeUnitId = smokeBridge.units[0]?.bridgeUnitId ?? "test-unit";
+    const reads = new Map<string, unknown>([
+      ["bridge.json", smokeBridge],
+      ["pair-policy.json", loadPreset()],
+    ]);
+    const { io } = ioFixture(reads);
+    const providerRunArtifactDirectory = mkdtempSync(
+      join(tmpdir(), "itotori-localize-provider-runs-"),
+    );
+    let sawRecorder = false;
+
+    const liveFactoryOverride = (
+      pair: { modelId: string; providerId: string },
+      options: {
+        artifactRecorder:
+          | { recordProviderRun(artifact: ProviderRunArtifact): Promise<void> }
+          | undefined;
+      },
+    ): AgenticLoopProviderFactory => {
+      const delegateFactory = workingSentinelFactory(
+        pair,
+        "STELLA-ALPHA-EN-US-SENTINEL",
+        firstBridgeUnitId,
+      );
+      return (input) => {
+        const delegate = delegateFactory(input);
+        return {
+          descriptor: delegate.descriptor,
+          invoke: async (request: ModelInvocationRequest): Promise<ModelInvocationResult> => {
+            const result = await delegate.invoke(request);
+            if (options.artifactRecorder !== undefined) {
+              sawRecorder = true;
+              await options.artifactRecorder.recordProviderRun(
+                providerRunArtifactFromInvocation(request, result),
+              );
+            }
+            return result;
+          },
+        };
+      };
+    };
+
+    const bundle = await runLocalizeSweetieHdStageCommand({
+      bridgePath: "bridge.json",
+      pairPolicyPath: "pair-policy.json",
+      outputPath: "out/agentic-loop-bundle.v0.json",
+      translatedBundleOutputPath: "out/translated-bridge.json",
+      patchReportOutputPath: "out/patch-report.json",
+      providerRunArtifactDirectory,
+      liveFactoryOverride,
+      io,
+      actor: { userId: "test" },
+    });
+
+    const invocationCount = bundle.stages.reduce(
+      (sum, stage) => sum + stage.invocations.length,
+      0,
+    );
+    const runDirectories = readdirSync(providerRunArtifactDirectory, {
+      withFileTypes: true,
+    }).filter((entry) => entry.isDirectory());
+    expect(sawRecorder).toBe(true);
+    expect(runDirectories).toHaveLength(invocationCount);
+
+    const firstArtifact = JSON.parse(
+      readFileSync(
+        join(providerRunArtifactDirectory, runDirectories[0]!.name, "provider-run.json"),
+        "utf8",
+      ),
+    ) as ProviderRunArtifact;
+    expect(firstArtifact.schemaVersion).toBe("itotori.provider-run.v0");
+    expect(firstArtifact.run.routingPosture.zdr).toBe(true);
+    expect(firstArtifact.run.cost.amountMicrosUsd).toBe(0);
+    expect(firstArtifact.request.rawTextCaptured).toBe(false);
   });
 
   it("unknown-error-no-failover: a non-429 ModelProviderError surfaces immediately (silent provider swap forbidden)", async () => {
