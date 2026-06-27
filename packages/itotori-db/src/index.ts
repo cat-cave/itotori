@@ -173,6 +173,7 @@ export type {
   ManualFeedbackImportInput,
   ManualFeedbackImportResult,
   ManualFeedbackLineReference,
+  ManualFeedbackReviewerQueueContext,
   ManualFeedbackRuntimeArtifactAttachment,
   ManualFeedbackSaveContextAttachment,
   ManualFeedbackScreenshotAttachment,
