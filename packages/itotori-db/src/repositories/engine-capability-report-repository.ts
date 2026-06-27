@@ -170,7 +170,7 @@ const privateLocalEvidenceKinds = new Set<string>([
   engineCapabilityEvidenceKindValues.engineMarkerCount,
 ]);
 
-const privateLocalLeakagePatterns: Array<{ pattern: RegExp; label: string }> = [
+const evidenceLeakagePatterns: Array<{ pattern: RegExp; label: string }> = [
   {
     pattern: /(^|[\s"'`])(?:\/(?:home|users|tmp|var|scratch|mnt|volumes)\b|~\/|[a-z]:[\\/]|file:)/i,
     label: "local path",
@@ -498,9 +498,7 @@ function validateCapabilityEvidenceInput(input: CapabilityEvidenceInput): void {
       "CapabilityEvidence.private_local_aggregate only accepts aggregate local evidence kinds",
     );
   }
-  if (input.evidenceSource === engineCapabilityEvidenceSourceValues.privateLocalAggregate) {
-    assertNoPrivateLocalLeakage(input);
-  }
+  assertNoEvidenceLeakage(input);
 }
 
 function validateAggregateCounts(counts: Record<string, number>): void {
@@ -547,7 +545,7 @@ function validateStringArray(values: string[], fieldName: string): void {
   }
 }
 
-function assertNoPrivateLocalLeakage(input: CapabilityEvidenceInput): void {
+function assertNoEvidenceLeakage(input: CapabilityEvidenceInput): void {
   const strings = [
     input.adapterId,
     input.schemaVersion,
@@ -557,11 +555,9 @@ function assertNoPrivateLocalLeakage(input: CapabilityEvidenceInput): void {
     ...(input.limitations ?? []),
   ];
   for (const value of strings) {
-    for (const { pattern, label } of privateLocalLeakagePatterns) {
+    for (const { pattern, label } of evidenceLeakagePatterns) {
       if (pattern.test(value)) {
-        throw new EngineCapabilityReportShapeError(
-          `CapabilityEvidence.private_local_aggregate rejects ${label}`,
-        );
+        throw new EngineCapabilityReportShapeError(`CapabilityEvidence rejects ${label}`);
       }
     }
   }

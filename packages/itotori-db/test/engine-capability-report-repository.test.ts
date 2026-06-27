@@ -32,7 +32,92 @@ function fullSupportedMatrix(adapterId: string): AdapterCapabilityMatrixRecord {
   };
 }
 
-describe("EngineCapabilityReportRepository", () => {
+function repositoryWithAuthorizedStub(): EngineCapabilityReportRepository {
+  const db = {
+    select: () => ({
+      from: () => ({
+        where: () => ({
+          limit: async () => [{ permission: "project.import" }],
+        }),
+      }),
+    }),
+    insert: () => {
+      throw new Error("invalid evidence should be rejected before persistence");
+    },
+  } as never;
+  return new EngineCapabilityReportRepository(db);
+}
+
+function publicFixtureEvidenceInput(
+  overrides: Record<string, unknown> = {},
+): CapabilityEvidenceInput {
+  return {
+    adapterId: "kaifuu.rpg_maker_mv_mz",
+    level: capabilityLevelValues.identify,
+    evidenceSource: engineCapabilityEvidenceSourceValues.publicFixture,
+    evidenceKind: engineCapabilityEvidenceKindValues.adapterMatrix,
+    schemaVersion: "catalog.capability_evidence.v0.1",
+    status: engineCapabilityEvidenceStatusValues.present,
+    aggregateCounts: { fixture_rows: 1 },
+    evidenceLabels: [capabilityEvidenceLabelValues.publicFixtureMatrix],
+    limitations: ["fixture support matrix only"],
+    publicFixtureId: "rpg-maker-mv-mz-key-validation-success-v0.1",
+    ...overrides,
+  } as CapabilityEvidenceInput;
+}
+
+function privateLocalAggregateEvidenceInput(
+  overrides: Record<string, unknown> = {},
+): CapabilityEvidenceInput {
+  return {
+    adapterId: "kaifuu.rpg_maker_mv_mz",
+    level: capabilityLevelValues.identify,
+    evidenceSource: engineCapabilityEvidenceSourceValues.privateLocalAggregate,
+    evidenceKind: engineCapabilityEvidenceKindValues.localCorpusSidecar,
+    schemaVersion: "catalog.local_corpus_engine_evidence.v0.1",
+    status: engineCapabilityEvidenceStatusValues.partial,
+    aggregateCounts: { marker_kinds: 1 },
+    evidenceLabels: [capabilityEvidenceLabelValues.localCorpusMarkerEvidence],
+    limitations: ["aggregate marker evidence only"],
+    ...overrides,
+  } as CapabilityEvidenceInput;
+}
+
+describe("EngineCapabilityReportRepository evidence input validation", () => {
+  it("rejects leakage-shaped public and private evidence before persistence", async () => {
+    const sourceInputs = [publicFixtureEvidenceInput, privateLocalAggregateEvidenceInput];
+    const leakageCases: Record<string, unknown>[] = [
+      { adapterId: "/tmp/private/kaifuu" },
+      { schemaVersion: "catalog.rawText.v0.1" },
+      { aggregateCounts: { pathHash_abcdefabcdefabcdefabcdefabcdefab: 1 } },
+      { evidenceLabels: ["rawText"] },
+      { limitations: ["found in /home/example/private/Game.rpgmvp"] },
+      { limitations: ["SECRET_KEY was present in rawText"] },
+      { limitations: ["screenshot_capture.png was present"] },
+      { limitations: ["localScanEntryId entry_123 was present"] },
+      { rawSignals: [{ blob: "marker" }] },
+    ];
+
+    for (const makeInput of sourceInputs) {
+      for (const overrides of leakageCases) {
+        await expect(
+          repositoryWithAuthorizedStub().recordCapabilityEvidence(localActor, makeInput(overrides)),
+        ).rejects.toBeInstanceOf(EngineCapabilityReportShapeError);
+      }
+    }
+  });
+
+  it("rejects public fixture ids with scan-entry leakage before persistence", async () => {
+    await expect(
+      repositoryWithAuthorizedStub().recordCapabilityEvidence(
+        localActor,
+        publicFixtureEvidenceInput({ publicFixtureId: "localScanEntryId_123" }),
+      ),
+    ).rejects.toBeInstanceOf(EngineCapabilityReportShapeError);
+  });
+});
+
+describe.skipIf(!process.env.DATABASE_URL)("EngineCapabilityReportRepository", () => {
   it("upserts a full matrix and round-trips through readMatrix", async () => {
     const context = await isolatedMigratedContext();
     try {
