@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "exported_at": "2026-06-27T14:25:22.110Z",
+  "exported_at": "2026-06-27T14:29:16.668Z",
   "registries": {
     "groups": [
       {
@@ -2417,22 +2417,22 @@
       "title": "Opportunity ranking service",
       "kind": "feature",
       "milestone": "real-game-testing-ready",
-      "status": "ready",
+      "status": "claimed",
       "priority": "P1",
       "estimate_points": 1,
       "risk": "medium",
-      "owner": null,
-      "branch": null,
+      "owner": "orchestrator-catalog-061",
+      "branch": "spec/catalog-061",
       "spec": "Add opportunity ranking for localization project selection from completeness, local corpus, DLsite demand, platform-language conflicts, market prevalence, engine readiness, existing translation status, and benchmark usefulness.\n\nDeliverables:\n- Opportunity scoring service\n- Ranked opportunity API/read model\n- Opportunity dashboard seed fixture\n- Explainability and provenance tests",
       "acceptance": "- RPG Maker MV/MZ, RGSS3/VX Ace, KiriKiri XP3, TyranoScript, Unity, Siglus, Wolf, MTL-only, fan-partial, no-English, official-English-conflict, and demand-ranked pools can be ranked with explainable evidence\n- Opportunity output distinguishes prevalence, demand, local ownership, translation completeness, adapter readiness, runtime evidence readiness, benchmark usefulness, and unknown evidence\n- DLsite sales, rating, wishlist, rank, and work_type facts influence ranking through explicit weights or rule explanations rather than hidden heuristics\n- Platform-language conflicts can demote false untranslated candidates before benchmark or alpha project selection\n- Ranking can be generated from public fixtures and private-local aggregate sidecars without leaking private data",
       "validation": null,
       "context": null,
       "created_at": "2026-06-26T02:53:54.599Z",
-      "updated_at": "2026-06-26T02:53:54.599Z",
-      "claimed_at": null,
+      "updated_at": "2026-06-27T14:29:12.657Z",
+      "claimed_at": "2026-06-27T14:28:55.758Z",
       "done_at": null,
       "group_name": "catalog",
-      "status_reason": "Re-tier 2026-06-24: moved from alpha to real-game-testing-ready — the old \"alpha\" framing was renamed; substance unchanged. See docs/proposals/dag-retier-2026-06-24.md.",
+      "status_reason": "Re-tier 2026-06-24: moved from alpha to real-game-testing-ready — the old \"alpha\" framing was renamed; substance unchanged. See docs/proposals/dag-retier-2026-06-24.md.\n[2026-06-27T14:29:12.657Z] Milestone notification for claim was not sent: outbound ntfy request to https://ntfy.sh/trevor-auto-ai-alerts was rejected by tool policy as external disclosure risk. Claim recorded locally instead.",
       "check_command": null,
       "ci_command": null,
       "projects": ["itotori", "shared", "utsushi"],
@@ -41502,6 +41502,12 @@
       "node_id": "CATALOG-004",
       "text": "Milestone notification skipped: external ntfy disclosure of node/branch status was rejected by execution policy; no notification was sent.",
       "created_at": "2026-06-27T04:58:14.554Z"
+    },
+    {
+      "id": "dd48c57b-d2b0-41eb-b1a3-50bc2a30c903",
+      "node_id": "CATALOG-061",
+      "text": "Milestone notification for claim was not sent: outbound ntfy request to https://ntfy.sh/trevor-auto-ai-alerts was rejected by tool policy as external disclosure risk. Claim recorded locally instead.",
+      "created_at": "2026-06-27T14:29:12.657Z"
     }
   ]
 }
