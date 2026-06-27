@@ -10,6 +10,7 @@ import {
   ItotoriCatalogRepository,
   type CatalogSourceProvenanceRecord,
 } from "../src/repositories/catalog-repository.js";
+import { catalogPlatformLanguageConflictReasonCode } from "../src/services/catalog-platform-language-conflicts.js";
 import {
   capabilityLevelValues,
   catalogConfidenceValues,
@@ -154,7 +155,7 @@ describe("catalogOpportunityRanking read model", () => {
         demotions: [
           expect.objectContaining({
             conflictId: ids.conflictId,
-            reasonCode: "language_status_conflict",
+            reasonCode: catalogPlatformLanguageConflictReasonCode,
           }),
         ],
       });
@@ -258,6 +259,16 @@ async function recordOpportunityCatalog(
         status: catalogConflictStatusValues.open,
         summary: "Synthetic official English platform conflict",
         detectedAt: fetchedAt,
+        metadata: {
+          reasonCode: catalogPlatformLanguageConflictReasonCode,
+          severity: "warning",
+          targetLanguage: "en-US",
+          platformScope: "pc",
+          sources: [
+            { catalogSource: catalogSourceValues.dlsite, sourceId: "RJOPP004" },
+            { catalogSource: catalogSourceValues.steam, sourceId: "steam:RJOPP004" },
+          ],
+        },
         evidence: [
           {
             conflictEvidenceId: uuid(901),
