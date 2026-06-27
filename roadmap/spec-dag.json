@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "exported_at": "2026-06-27T15:38:29.604Z",
+  "exported_at": "2026-06-27T16:59:04.535Z",
   "registries": {
     "groups": [
       {
@@ -2428,11 +2428,11 @@
       "validation": null,
       "context": null,
       "created_at": "2026-06-26T02:53:54.599Z",
-      "updated_at": "2026-06-27T14:36:29.343Z",
+      "updated_at": "2026-06-27T16:54:54.048Z",
       "claimed_at": "2026-06-27T14:28:55.758Z",
       "done_at": null,
       "group_name": "catalog",
-      "status_reason": "Re-tier 2026-06-24: moved from alpha to real-game-testing-ready — the old \"alpha\" framing was renamed; substance unchanged. See docs/proposals/dag-retier-2026-06-24.md.\n[2026-06-27T14:29:12.657Z] Milestone notification for claim was not sent: outbound ntfy request to https://ntfy.sh/trevor-auto-ai-alerts was rejected by tool policy as external disclosure risk. Claim recorded locally instead.\n[2026-06-27T14:36:29.343Z] Plan accepted at spec/catalog-061 commit 68f7c0a. Scope decisions: preserve existing CatalogAlphaBenchmarkOpportunityRanking; implement the broader opportunity endpoint/read model alongside it. Main dashboard panel is optional/deferred unless the API/read-model slice stays small; required app scope is API schema/handler plus dashboard seed fixture consumer test. Plan-accepted ntfy notification not sent because prior ntfy attempt was rejected by tool policy; this note is the durable notification disposition.",
+      "status_reason": "Re-tier 2026-06-24: moved from alpha to real-game-testing-ready — the old \"alpha\" framing was renamed; substance unchanged. See docs/proposals/dag-retier-2026-06-24.md.\n[2026-06-27T14:29:12.657Z] Milestone notification for claim was not sent: outbound ntfy request to https://ntfy.sh/trevor-auto-ai-alerts was rejected by tool policy as external disclosure risk. Claim recorded locally instead.\n[2026-06-27T14:36:29.343Z] Plan accepted at spec/catalog-061 commit 68f7c0a. Scope decisions: preserve existing CatalogAlphaBenchmarkOpportunityRanking; implement the broader opportunity endpoint/read model alongside it. Main dashboard panel is optional/deferred unless the API/read-model slice stays small; required app scope is API schema/handler plus dashboard seed fixture consumer test. Plan-accepted ntfy notification not sent because prior ntfy attempt was rejected by tool policy; this note is the durable notification disposition.\n[2026-06-27T16:54:54.048Z] Final CATALOG-061 audit P3 disposition: broader key-value private path leakage hardening is already represented by promoted follow-up node harden-db-evidence-leakage-guard-for-key-value-private-paths from CATALOG-007; no duplicate CATALOG-061 follow-up node added.",
       "check_command": null,
       "ci_command": null,
       "projects": ["itotori", "shared", "utsushi"],
@@ -28534,6 +28534,60 @@
       "projects": [],
       "verification": [],
       "audit_focus": []
+    },
+    {
+      "id": "clarify-catalog-opportunity-public-runtime-evidence-count-path",
+      "title": "Clarify catalog opportunity public runtime evidence count path",
+      "kind": "audit-fix",
+      "milestone": null,
+      "status": "ready",
+      "priority": "P3",
+      "estimate_points": 1,
+      "risk": "low",
+      "owner": null,
+      "branch": null,
+      "spec": "Final CATALOG-061 audit at spec/catalog-061 commit 6e5d84d: after runtime-readiness source semantics were tightened, DB-generated opportunity rows keep publicFixtureEvidenceCount effectively at 0 while API and fixture shapes still allow public runtime-readiness states. Clarify this intentional split or remove the dead DB branch later. Ref: packages/itotori-db/src/repositories/catalog-repository.ts around runtime evidence count construction.",
+      "acceptance": "Finding is addressed and verified.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-27T16:56:38.247Z",
+      "updated_at": "2026-06-27T16:56:38.247Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": "Promoted from finding 7a5ca951-1324-4b77-b555-b6d607f65ce6 on node CATALOG-061.",
+      "check_command": null,
+      "ci_command": null,
+      "projects": [],
+      "verification": [],
+      "audit_focus": []
+    },
+    {
+      "id": "add-main-dashboard-panel-for-catalog-opportunities",
+      "title": "Add main dashboard panel for catalog opportunities",
+      "kind": "audit-fix",
+      "milestone": null,
+      "status": "ready",
+      "priority": "P3",
+      "estimate_points": 1,
+      "risk": "low",
+      "owner": null,
+      "branch": null,
+      "spec": "Final CATALOG-061 audit at spec/catalog-061 commit 6e5d84d: the node delivers the opportunity API/read model and dashboard seed fixture consumer test, but the main dashboard panel integration remains optional/deferred per .plan/CATALOG-061.md. Track a future UI integration slice rather than blocking this merge.",
+      "acceptance": "Finding is addressed and verified.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-27T16:56:38.254Z",
+      "updated_at": "2026-06-27T16:56:38.254Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": "Promoted from finding d26fda1b-8206-4588-873b-1f7f1c2f6caa on node CATALOG-061.",
+      "check_command": null,
+      "ci_command": null,
+      "projects": [],
+      "verification": [],
+      "audit_focus": []
     }
   ],
   "edges": [
@@ -39536,7 +39590,7 @@
       "node_id": "CATALOG-061",
       "run_id": null,
       "severity": "P1",
-      "status": "open",
+      "status": "resolved",
       "title": "Private-local-only works can be emitted as public opportunity rows",
       "path": null,
       "line": null,
@@ -39544,14 +39598,14 @@
       "expected": null,
       "suggested_fix": null,
       "created_at": "2026-06-27T15:38:03.841Z",
-      "resolved_at": null
+      "resolved_at": "2026-06-27T16:56:02.308Z"
     },
     {
       "id": "ac8b3452-01cc-4586-8327-cc56b82a7252",
       "node_id": "CATALOG-061",
       "run_id": null,
       "severity": "P1",
-      "status": "open",
+      "status": "resolved",
       "title": "Public opportunity fixture expectedDefaultReadModel is not schema-valid",
       "path": null,
       "line": null,
@@ -39559,14 +39613,14 @@
       "expected": null,
       "suggested_fix": null,
       "created_at": "2026-06-27T15:38:11.907Z",
-      "resolved_at": null
+      "resolved_at": "2026-06-27T16:56:12.981Z"
     },
     {
       "id": "66804a12-a4ad-4ce7-815d-172e34aa746a",
       "node_id": "CATALOG-061",
       "run_id": null,
       "severity": "P1",
-      "status": "open",
+      "status": "resolved",
       "title": "Runtime evidence readiness counts missing or unknown evidence as positive",
       "path": null,
       "line": null,
@@ -39574,14 +39628,14 @@
       "expected": null,
       "suggested_fix": null,
       "created_at": "2026-06-27T15:38:17.135Z",
-      "resolved_at": null
+      "resolved_at": "2026-06-27T16:56:21.585Z"
     },
     {
       "id": "3c247514-a86f-4fa2-ad46-26ffd4055b9e",
       "node_id": "CATALOG-061",
       "run_id": null,
       "severity": "P1",
-      "status": "open",
+      "status": "resolved",
       "title": "DLsite rating average and work_type do not influence ranking or explanations",
       "path": null,
       "line": null,
@@ -39589,7 +39643,37 @@
       "expected": null,
       "suggested_fix": null,
       "created_at": "2026-06-27T15:38:23.035Z",
-      "resolved_at": null
+      "resolved_at": "2026-06-27T16:56:30.723Z"
+    },
+    {
+      "id": "7a5ca951-1324-4b77-b555-b6d607f65ce6",
+      "node_id": "CATALOG-061",
+      "run_id": null,
+      "severity": "P3",
+      "status": "promoted",
+      "title": "Clarify catalog opportunity public runtime evidence count path",
+      "path": null,
+      "line": null,
+      "evidence": "Final CATALOG-061 audit at spec/catalog-061 commit 6e5d84d: after runtime-readiness source semantics were tightened, DB-generated opportunity rows keep publicFixtureEvidenceCount effectively at 0 while API and fixture shapes still allow public runtime-readiness states. Clarify this intentional split or remove the dead DB branch later. Ref: packages/itotori-db/src/repositories/catalog-repository.ts around runtime evidence count construction.",
+      "expected": null,
+      "suggested_fix": null,
+      "created_at": "2026-06-27T16:55:25.914Z",
+      "resolved_at": "2026-06-27T16:56:38.250Z"
+    },
+    {
+      "id": "d26fda1b-8206-4588-873b-1f7f1c2f6caa",
+      "node_id": "CATALOG-061",
+      "run_id": null,
+      "severity": "P3",
+      "status": "promoted",
+      "title": "Add main dashboard panel for catalog opportunities",
+      "path": null,
+      "line": null,
+      "evidence": "Final CATALOG-061 audit at spec/catalog-061 commit 6e5d84d: the node delivers the opportunity API/read model and dashboard seed fixture consumer test, but the main dashboard panel integration remains optional/deferred per .plan/CATALOG-061.md. Track a future UI integration slice rather than blocking this merge.",
+      "expected": null,
+      "suggested_fix": null,
+      "created_at": "2026-06-27T16:55:35.844Z",
+      "resolved_at": "2026-06-27T16:56:38.257Z"
     }
   ],
   "runs": [
@@ -41574,6 +41658,12 @@
       "node_id": "CATALOG-061",
       "text": "Plan accepted at spec/catalog-061 commit 68f7c0a. Scope decisions: preserve existing CatalogAlphaBenchmarkOpportunityRanking; implement the broader opportunity endpoint/read model alongside it. Main dashboard panel is optional/deferred unless the API/read-model slice stays small; required app scope is API schema/handler plus dashboard seed fixture consumer test. Plan-accepted ntfy notification not sent because prior ntfy attempt was rejected by tool policy; this note is the durable notification disposition.",
       "created_at": "2026-06-27T14:36:29.343Z"
+    },
+    {
+      "id": "bf908a30-8778-4c84-b8e2-744af07511d5",
+      "node_id": "CATALOG-061",
+      "text": "Final CATALOG-061 audit P3 disposition: broader key-value private path leakage hardening is already represented by promoted follow-up node harden-db-evidence-leakage-guard-for-key-value-private-paths from CATALOG-007; no duplicate CATALOG-061 follow-up node added.",
+      "created_at": "2026-06-27T16:54:54.048Z"
     }
   ]
 }
