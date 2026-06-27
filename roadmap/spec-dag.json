@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "exported_at": "2026-06-27T04:29:18.937Z",
+  "exported_at": "2026-06-27T04:54:46.550Z",
   "registries": {
     "groups": [
       {
@@ -27837,7 +27837,7 @@
       "title": "Adopt qdcli as the sole orchestration surface",
       "kind": "feature",
       "milestone": "continuous",
-      "status": "claimed",
+      "status": "done",
       "priority": "P0",
       "estimate_points": 1,
       "risk": "medium",
@@ -27848,9 +27848,9 @@
       "validation": null,
       "context": null,
       "created_at": "2026-06-26T10:24:28.703Z",
-      "updated_at": "2026-06-26T10:24:28.703Z",
+      "updated_at": "2026-06-27T04:54:37.628Z",
       "claimed_at": "2026-06-27T00:00:00.000Z",
-      "done_at": null,
+      "done_at": "2026-06-27T04:54:37.628Z",
       "group_name": "roadmap-infra",
       "status_reason": null,
       "check_command": null,
@@ -41073,6 +41073,54 @@
       "started_at": "2026-06-27T04:29:05.233Z",
       "finished_at": "2026-06-27T04:29:05.233Z",
       "summary": "Merge recorded with squash at commit 1be6e3550eabb2359943c990e1a7e4e49ec9738c",
+      "log_path": null
+    },
+    {
+      "id": "e35031f4-4928-4f92-90af-0fbc3206b4e5",
+      "node_id": "ITOTORI-300",
+      "kind": "implement",
+      "status": "completed",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-27T04:47:49.371Z",
+      "finished_at": "2026-06-27T04:47:49.371Z",
+      "summary": "Merged qd export gate repair on main. Acceptance evidence: just roadmap-validate passed, just check passed after delegated export-format repair, focused audit workers found no P0/P1 blockers, and qd check/CI commands route through the canonical repo gates.",
+      "log_path": null
+    },
+    {
+      "id": "5ca49bbc-7cd0-46bc-9678-296ee1ba75d6",
+      "node_id": "ITOTORI-300",
+      "kind": "check",
+      "status": "passed",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-27T04:48:29.767Z",
+      "finished_at": "2026-06-27T04:49:05.434Z",
+      "summary": "check command passed: nix develop --command bash -lc 'just check'",
+      "log_path": "/home/trevor/projects/itotori/.qd/logs/check-ITOTORI-300-2026-06-27T04-48-29-767Z.log"
+    },
+    {
+      "id": "d6245290-d61d-4062-bde2-fc633f32c816",
+      "node_id": "ITOTORI-300",
+      "kind": "ci",
+      "status": "passed",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-27T04:49:19.823Z",
+      "finished_at": "2026-06-27T04:54:23.684Z",
+      "summary": "ci command passed: nix develop --command bash -lc 'just ci'",
+      "log_path": "/home/trevor/projects/itotori/.qd/logs/ci-ITOTORI-300-2026-06-27T04-49-19-823Z.log"
+    },
+    {
+      "id": "e0435174-ea9d-43a4-8f12-05e0feb11b58",
+      "node_id": "ITOTORI-300",
+      "kind": "merge",
+      "status": "recorded",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-27T04:54:37.628Z",
+      "finished_at": "2026-06-27T04:54:37.628Z",
+      "summary": "Merge recorded with squash at commit 3bdffcee8812dd3237a0a7ce315769b461107cdb",
       "log_path": null
     }
   ],
