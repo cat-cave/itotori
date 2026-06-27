@@ -289,6 +289,20 @@ async function requireApiPermission(
 
 function parseCatalogOpportunityRankingFilter(search = ""): CatalogOpportunityRankingFilter {
   const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
+  assertKnownQueryParams(
+    params,
+    [
+      "targetLanguage",
+      "includeDemoted",
+      "limit",
+      "engine",
+      "pool",
+      "minCapabilityLevel",
+      "localOwnership",
+      "demandBucket",
+    ],
+    "catalog opportunity",
+  );
   const filter: CatalogOpportunityRankingFilter = {};
   const targetLanguage = params.get("targetLanguage");
   if (targetLanguage !== null) {
@@ -562,6 +576,19 @@ function listParam(params: URLSearchParams, key: string): string[] {
     .flatMap((value) => value.split(","))
     .map((value) => value.trim())
     .filter((value) => value.length > 0);
+}
+
+function assertKnownQueryParams(
+  params: URLSearchParams,
+  allowedKeys: readonly string[],
+  label: string,
+): void {
+  const allowed = new Set(allowedKeys);
+  for (const key of params.keys()) {
+    if (!allowed.has(key)) {
+      throw new ApiValidationError(`unknown ${label} query parameter: ${key}`);
+    }
+  }
 }
 
 function apiMutationGate(

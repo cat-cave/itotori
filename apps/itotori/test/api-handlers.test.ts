@@ -408,6 +408,10 @@ describe("Itotori API handlers", () => {
       query: "?demandBucket=viral",
       error: /demandBucket/u,
     },
+    {
+      query: "?targetLanguage=en-US&typo=1",
+      error: /unknown catalog opportunity query parameter: typo/u,
+    },
   ])("rejects malformed catalog opportunity query $query", async ({ query, error }) => {
     const services = serviceFixture();
 

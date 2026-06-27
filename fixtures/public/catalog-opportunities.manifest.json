@@ -24,8 +24,8 @@
       "path": "fixtures/catalog-opportunities/fixture.json",
       "role": "benchmark-input",
       "mediaType": "application/json",
-      "sha256": "a38896e65ea260cb70f19102c62b70a67cbdc7edbcd5415d5cbdebef2672593d",
-      "bytes": 51344,
+      "sha256": "f1b9f7e1ce29941fb2d9e39b2d6a8f106bc5fb63b457006462161f8d971dec36",
+      "bytes": 96669,
       "redistributable": true
     }
   ],

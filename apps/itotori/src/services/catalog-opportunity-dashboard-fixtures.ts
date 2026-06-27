@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { assertCatalogOpportunityRankingReadModel } from "../api-schema.js";
 
 const catalogOpportunityFixtureUrl = new URL(
   "../../../../fixtures/catalog-opportunities/fixture.json",
@@ -43,16 +44,23 @@ export function loadCatalogOpportunityDashboardSeedFixture(
     "fixture.schemaVersion",
   );
   const fixtureId = assertString(fixture.fixtureId, "fixture.fixtureId");
-  const targetLanguage = assertString(fixture.targetLanguage, "fixture.targetLanguage");
-  const generatedAt = assertString(fixture.generatedAt, "fixture.generatedAt");
-  assertDateLike(generatedAt, "fixture.generatedAt");
 
   const readModel = asRecord(fixture.expectedDefaultReadModel, "fixture.expectedDefaultReadModel");
-  assertStringLiteral(
-    readModel.schemaVersion,
-    "catalog.opportunity_ranking.v0.1",
-    "fixture.expectedDefaultReadModel.schemaVersion",
+  assertCatalogOpportunityRankingReadModel(readModel, "fixture.expectedDefaultReadModel");
+  assertFixtureOutputHasNoForbiddenPrivateSubstrings(
+    readModel,
+    fixture.publicLeakagePolicy,
+    "catalog opportunity expected default read model",
   );
+  const targetLanguage = assertString(
+    readModel.targetLanguage,
+    "fixture.expectedDefaultReadModel.targetLanguage",
+  );
+  const generatedAt = assertString(
+    readModel.generatedAt,
+    "fixture.expectedDefaultReadModel.generatedAt",
+  );
+  assertDateLike(generatedAt, "fixture.expectedDefaultReadModel.generatedAt");
   const rows = asArray(readModel.rows, "fixture.expectedDefaultReadModel.rows").map(
     (rowValue, index): CatalogOpportunityDashboardSeedRow =>
       dashboardSeedRow(rowValue, `fixture.expectedDefaultReadModel.rows[${index}]`),
@@ -84,7 +92,10 @@ function dashboardSeedRow(value: unknown, label: string): CatalogOpportunityDash
     canonicalTitle: assertString(row.canonicalTitle, `${label}.canonicalTitle`),
     engineName: assertNullableString(row.engineName, `${label}.engineName`),
     completenessPool: assertString(row.completenessPool, `${label}.completenessPool`),
-    demandBucket: assertString(row.demandBucket, `${label}.demandBucket`),
+    demandBucket: assertString(
+      asRecord(row.demandFacts, `${label}.demandFacts`).demandBucket,
+      `${label}.demandFacts.demandBucket`,
+    ),
     decision: assertDecision(row.decision, `${label}.decision`),
     score: assertFiniteNumber(row.score, `${label}.score`),
     topFactors: factorRows
@@ -126,7 +137,7 @@ function demotionCodes(value: unknown, label: string): string[] {
 }
 
 function assertFixtureOutputHasNoForbiddenPrivateSubstrings(
-  seed: CatalogOpportunityDashboardSeedFixture,
+  value: unknown,
   policyValue: unknown,
   label: string,
 ): void {
@@ -137,7 +148,7 @@ function assertFixtureOutputHasNoForbiddenPrivateSubstrings(
   ).map((entry, index) =>
     assertString(entry, `fixture.publicLeakagePolicy.forbiddenPrivateSubstrings[${index}]`),
   );
-  const serialized = JSON.stringify(seed);
+  const serialized = JSON.stringify(value);
   for (const substring of forbidden) {
     if (substring.length > 0 && serialized.includes(substring)) {
       throw new Error(`${label} must not include forbidden private substring ${substring}`);
