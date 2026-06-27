@@ -56,8 +56,7 @@ export class ManualFeedbackImportService {
     }
     const queueContext = sanitizeReviewerQueueRecord(context.context);
     const queueAttachments = sanitizeReviewerQueueAttachments(context.attachments);
-    const isStyleDispute =
-      context.triageLabel === feedbackTriageLabelValues.styleDisputeCandidate;
+    const isStyleDispute = context.triageLabel === feedbackTriageLabelValues.styleDisputeCandidate;
     const styleDisputeKey = isStyleDispute ? context.feedbackReportId : undefined;
     const affectedBridgeUnitIds = bridgeUnitIdsFromContext(queueContext);
     const affectedUnitMetadata =
