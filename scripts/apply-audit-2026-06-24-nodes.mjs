@@ -59,8 +59,7 @@ function validateAgainstSchema(dag, schema, label) {
 // New nodes
 // -----------------------------------------------------------------------------
 
-const REALLIVEDATA_PATH_NOTE =
-  "Sweetie HD root: <reallive-game-root>/REALLIVEDATA/";
+const REALLIVEDATA_PATH_NOTE = "Sweetie HD root: <reallive-game-root>/REALLIVEDATA/";
 
 /** @type {Array<object>} */
 const NEW_NODES = [

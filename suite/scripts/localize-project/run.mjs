@@ -387,7 +387,10 @@ function loadRealCorpusManifest(manifestPath) {
       throw new Error(`real corpus manifest at ${manifestPath} ${entryLabel} must be an object`);
     }
     const sourceLocale = entry.sourceLocale;
-    if (sourceLocale !== undefined && (typeof sourceLocale !== "string" || sourceLocale.length === 0)) {
+    if (
+      sourceLocale !== undefined &&
+      (typeof sourceLocale !== "string" || sourceLocale.length === 0)
+    ) {
       throw new Error(
         `real corpus manifest at ${manifestPath} ${entryLabel} sourceLocale must be a non-empty string when present`,
       );
@@ -425,10 +428,7 @@ function selectRealCorpusFromManifest(manifest, manifestPath, selection) {
     );
   }
   const selected = matches[0];
-  if (
-    selected.sourceLocale !== undefined &&
-    selected.sourceLocale !== selection.sourceLocale
-  ) {
+  if (selected.sourceLocale !== undefined && selected.sourceLocale !== selection.sourceLocale) {
     throw new Error(
       `ITOTORI_REAL_CORPUS_MANIFEST selected corpus '${selected.corpusId}' has sourceLocale='${selected.sourceLocale}', but project metadata requires '${selection.sourceLocale}'`,
     );
