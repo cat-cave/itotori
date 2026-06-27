@@ -55,9 +55,9 @@ import {
 } from "./agents/character-relationship/index.js";
 import { runAgenticLoopSmokeCommand } from "./orchestrator/agentic-loop-smoke-command.js";
 import {
-  runLocalizeSweetieHdStageCommand,
-  type LocalizeSweetieHdStageArgs,
-} from "./orchestrator/localize-sweetie-hd-stage-command.js";
+  runLocalizeProjectStageCommand,
+  type LocalizeProjectStageArgs,
+} from "./orchestrator/localize-project-stage-command.js";
 import { runExportPatchV2Command } from "./patch-export/index.js";
 import {
   parseTelemetrySummaryCliFlags,
@@ -153,8 +153,8 @@ export async function runItotoriCliCommand(
     case "agentic-loop-smoke":
       await runAgenticLoopSmoke(args, dependencies);
       break;
-    case "localize-sweetie-hd-stage":
-      await runLocalizeSweetieHdStage(args, dependencies);
+    case "localize-project-stage":
+      await runLocalizeProjectStage(args, dependencies);
       break;
     case "export-patch":
       await runExportPatch(args, dependencies);
@@ -337,11 +337,11 @@ async function runAgenticLoopSmoke(
   });
 }
 
-async function runLocalizeSweetieHdStage(
+async function runLocalizeProjectStage(
   args: string[],
   dependencies: ItotoriCliDependencies,
 ): Promise<void> {
-  // UTSUSHI-228 — live-LLM agentic-loop stage of the localize-sweetie-hd
+  // UTSUSHI-228 — live-LLM agentic-loop stage of the localize-project
   // recipe. Required flags (no defaulting):
   //   --bridge <PATH>                          bridge-bundle.json (v0.2)
   //   --pair-policy <PATH>                     pair-policy JSON
@@ -368,16 +368,16 @@ async function runLocalizeSweetieHdStage(
   const providerKind = providerKindRaw ?? "live";
   if (providerKind !== "live" && providerKind !== "fake") {
     throw new Error(
-      `localize-sweetie-hd-stage refused: --provider-kind '${providerKind}' must be 'live' or 'fake'`,
+      `localize-project-stage refused: --provider-kind '${providerKind}' must be 'live' or 'fake'`,
     );
   }
   if (providerKind === "live" && providerRunArtifactDirectory === undefined) {
     throw new Error(
-      "localize-sweetie-hd-stage refused: --provider-run-artifacts-dir is required when --provider-kind is live",
+      "localize-project-stage refused: --provider-run-artifacts-dir is required when --provider-kind is live",
     );
   }
 
-  const callArgs: LocalizeSweetieHdStageArgs = {
+  const callArgs: LocalizeProjectStageArgs = {
     bridgePath,
     pairPolicyPath,
     outputPath,
@@ -396,7 +396,7 @@ async function runLocalizeSweetieHdStage(
     const parsed = Number.parseInt(unitIndexRaw, 10);
     if (!Number.isFinite(parsed) || parsed < 0) {
       throw new Error(
-        `localize-sweetie-hd-stage refused: --unit-index '${unitIndexRaw}' must be a non-negative integer`,
+        `localize-project-stage refused: --unit-index '${unitIndexRaw}' must be a non-negative integer`,
       );
     }
     callArgs.unitIndex = parsed;
@@ -405,7 +405,7 @@ async function runLocalizeSweetieHdStage(
     const parsed = Number.parseInt(maxRepairAttemptsRaw, 10);
     if (!Number.isFinite(parsed) || parsed < 0) {
       throw new Error(
-        `localize-sweetie-hd-stage refused: --max-repair-attempts '${maxRepairAttemptsRaw}' must be a non-negative integer`,
+        `localize-project-stage refused: --max-repair-attempts '${maxRepairAttemptsRaw}' must be a non-negative integer`,
       );
     }
     callArgs.maxRepairAttempts = parsed;
@@ -417,7 +417,7 @@ async function runLocalizeSweetieHdStage(
     const parsed = Number.parseFloat(costCapUsdRaw);
     if (!Number.isFinite(parsed) || parsed <= 0) {
       throw new Error(
-        `localize-sweetie-hd-stage refused: --cost-cap-usd '${costCapUsdRaw}' must be a positive number`,
+        `localize-project-stage refused: --cost-cap-usd '${costCapUsdRaw}' must be a positive number`,
       );
     }
     callArgs.costCapUsd = parsed;
@@ -425,7 +425,7 @@ async function runLocalizeSweetieHdStage(
   if (providerRunArtifactDirectory !== undefined) {
     callArgs.providerRunArtifactDirectory = providerRunArtifactDirectory;
   }
-  await runLocalizeSweetieHdStageCommand(callArgs);
+  await runLocalizeProjectStageCommand(callArgs);
 }
 
 async function runExportPatch(args: string[], dependencies: ItotoriCliDependencies): Promise<void> {

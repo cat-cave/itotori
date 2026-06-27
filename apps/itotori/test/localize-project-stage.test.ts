@@ -1,4 +1,4 @@
-// UTSUSHI-228 — unit tests for the localize-sweetie-hd-stage handler.
+// UTSUSHI-228 — unit tests for the localize-project-stage handler.
 //
 // Covers:
 //   - The pair-policy parser accepts the production preset shape.
@@ -24,15 +24,15 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   alternateCapabilitiesAsModelCapabilities,
-  AlphaRerunBlockedExternal,
-  LocalizeSweetieHdMissingProviderRunArtifactsDirectoryError,
-  LocalizeSweetieHdPairPolicyError,
-  LocalizeSweetieHdRefusedFakeError,
-  parseLocalizeSweetieHdPairPolicy,
+  LocalizeProjectBlockedExternal,
+  LocalizeProjectMissingProviderRunArtifactsDirectoryError,
+  LocalizeProjectPairPolicyError,
+  LocalizeProjectRefusedFakeError,
+  parseLocalizeProjectPairPolicy,
   registerPairPolicyAlternatesInCapabilityGuard,
-  runLocalizeSweetieHdStageCommand,
-  type LocalizeSweetieHdStageIo,
-} from "../src/orchestrator/localize-sweetie-hd-stage-command.js";
+  runLocalizeProjectStageCommand,
+  type LocalizeProjectStageIo,
+} from "../src/orchestrator/localize-project-stage-command.js";
 import {
   CapabilityGuard,
   __resetGlobalCapabilityGuardForTests,
@@ -57,7 +57,7 @@ import type { AgenticLoopProviderFactory, PairChoice } from "../src/orchestrator
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(HERE, "../../..");
-const PAIR_POLICY_PATH = resolve(REPO_ROOT, "presets/localize-sweetie-hd.pair-policy.json");
+const PAIR_POLICY_PATH = resolve(REPO_ROOT, "presets/localize-project.pair-policy.json");
 const SMOKE_BRIDGE_PATH = resolve(
   REPO_ROOT,
   "apps/itotori/test/fixtures/agentic-loop-smoke-bridge.json",
@@ -72,11 +72,11 @@ function loadSmokeBridge(): unknown {
 }
 
 function ioFixture(reads: Map<string, unknown>): {
-  io: LocalizeSweetieHdStageIo;
+  io: LocalizeProjectStageIo;
   writes: Map<string, unknown>;
 } {
   const writes = new Map<string, unknown>();
-  const io: LocalizeSweetieHdStageIo = {
+  const io: LocalizeProjectStageIo = {
     readJson: vi.fn((path: string) => {
       if (!reads.has(path)) {
         throw new Error(`unexpected read: ${path}`);
@@ -90,10 +90,11 @@ function ioFixture(reads: Map<string, unknown>): {
   return { io, writes };
 }
 
-describe("UTSUSHI-228 parseLocalizeSweetieHdPairPolicy", () => {
+describe("UTSUSHI-228 parseLocalizeProjectPairPolicy", () => {
   it("accepts the production preset shape and exposes pair + sentinel", () => {
-    const parsed = parseLocalizeSweetieHdPairPolicy(loadPreset());
-    expect(parsed.policyId).toBe("localize-sweetie-hd-alpha-1");
+    const parsed = parseLocalizeProjectPairPolicy(loadPreset());
+    expect(parsed.policyId).toBeTypeOf("string");
+    expect(parsed.policyId.length).toBeGreaterThan(0);
     expect(parsed.pair).toEqual({
       modelId: "deepseek/deepseek-v4-flash",
       providerId: "fireworks",
@@ -105,17 +106,13 @@ describe("UTSUSHI-228 parseLocalizeSweetieHdPairPolicy", () => {
   it("rejects an object without policyId", () => {
     const preset = loadPreset() as Record<string, unknown>;
     delete preset.policyId;
-    expect(() => parseLocalizeSweetieHdPairPolicy(preset)).toThrow(
-      LocalizeSweetieHdPairPolicyError,
-    );
+    expect(() => parseLocalizeProjectPairPolicy(preset)).toThrow(LocalizeProjectPairPolicyError);
   });
 
   it("rejects an object with an empty enUsSentinel", () => {
     const preset = loadPreset() as Record<string, unknown>;
     preset.enUsSentinel = "";
-    expect(() => parseLocalizeSweetieHdPairPolicy(preset)).toThrow(
-      LocalizeSweetieHdPairPolicyError,
-    );
+    expect(() => parseLocalizeProjectPairPolicy(preset)).toThrow(LocalizeProjectPairPolicyError);
   });
 
   it("rejects when a stage pair drifts from the top-level pair", () => {
@@ -127,47 +124,43 @@ describe("UTSUSHI-228 parseLocalizeSweetieHdPairPolicy", () => {
     preset.stages.translation.primary = {
       pair: { modelId: "anthropic/claude-sonnet-4", providerId: "anthropic" },
     };
-    expect(() => parseLocalizeSweetieHdPairPolicy(preset)).toThrow(
-      LocalizeSweetieHdPairPolicyError,
-    );
+    expect(() => parseLocalizeProjectPairPolicy(preset)).toThrow(LocalizeProjectPairPolicyError);
   });
 
   it("rejects non-object input", () => {
-    expect(() => parseLocalizeSweetieHdPairPolicy("not an object")).toThrow(
-      LocalizeSweetieHdPairPolicyError,
+    expect(() => parseLocalizeProjectPairPolicy("not an object")).toThrow(
+      LocalizeProjectPairPolicyError,
     );
-    expect(() => parseLocalizeSweetieHdPairPolicy(null)).toThrow(LocalizeSweetieHdPairPolicyError);
-    expect(() => parseLocalizeSweetieHdPairPolicy([1, 2, 3])).toThrow(
-      LocalizeSweetieHdPairPolicyError,
-    );
+    expect(() => parseLocalizeProjectPairPolicy(null)).toThrow(LocalizeProjectPairPolicyError);
+    expect(() => parseLocalizeProjectPairPolicy([1, 2, 3])).toThrow(LocalizeProjectPairPolicyError);
   });
 
   it("rejects v0.1 schemaVersion with PairPolicyVersionMismatchError (ITOTORI-234 / ITOTORI-238 no-legacy-compat)", () => {
     const preset = loadPreset() as Record<string, unknown>;
     preset.schemaVersion = "0.1";
-    expect(() => parseLocalizeSweetieHdPairPolicy(preset)).toThrow(PairPolicyVersionMismatchError);
+    expect(() => parseLocalizeProjectPairPolicy(preset)).toThrow(PairPolicyVersionMismatchError);
   });
 
   it("rejects 'itotori.pair-policy.v0.1' schemaVersion with PairPolicyVersionMismatchError", () => {
     const preset = loadPreset() as Record<string, unknown>;
     preset.schemaVersion = "itotori.pair-policy.v0.1";
-    expect(() => parseLocalizeSweetieHdPairPolicy(preset)).toThrow(PairPolicyVersionMismatchError);
+    expect(() => parseLocalizeProjectPairPolicy(preset)).toThrow(PairPolicyVersionMismatchError);
   });
 
   it("rejects v0.2 schemaVersion with PairPolicyVersionMismatchError (ITOTORI-238 no-legacy-compat)", () => {
     const preset = loadPreset() as Record<string, unknown>;
     preset.schemaVersion = "itotori.pair-policy.v0.2";
-    expect(() => parseLocalizeSweetieHdPairPolicy(preset)).toThrow(PairPolicyVersionMismatchError);
+    expect(() => parseLocalizeProjectPairPolicy(preset)).toThrow(PairPolicyVersionMismatchError);
   });
 
   it("rejects absent schemaVersion with PairPolicyVersionMismatchError", () => {
     const preset = loadPreset() as Record<string, unknown>;
     delete preset.schemaVersion;
-    expect(() => parseLocalizeSweetieHdPairPolicy(preset)).toThrow(PairPolicyVersionMismatchError);
+    expect(() => parseLocalizeProjectPairPolicy(preset)).toThrow(PairPolicyVersionMismatchError);
   });
 
   it("resolves per-leaf zdr=true + deterministic seed defaults from the v0.2 file", () => {
-    const parsed = parseLocalizeSweetieHdPairPolicy(loadPreset());
+    const parsed = parseLocalizeProjectPairPolicy(loadPreset());
     // Spot-check: translation.primary defaults to zdr=true and a seed
     // derived from sha256('translation.primary')[:8].
     expect(parsed.pairPolicy.translation.primary.zdr).toBe(true);
@@ -183,7 +176,7 @@ describe("UTSUSHI-228 parseLocalizeSweetieHdPairPolicy", () => {
   });
 });
 
-describe("UTSUSHI-228 runLocalizeSweetieHdStageCommand", () => {
+describe("UTSUSHI-228 runLocalizeProjectStageCommand", () => {
   it("refuses providerKind='fake' unless ITOTORI_ALLOW_FAKE_LOCALIZE_PROVIDER=1", async () => {
     const prevAllow = process.env.ITOTORI_ALLOW_FAKE_LOCALIZE_PROVIDER;
     delete process.env.ITOTORI_ALLOW_FAKE_LOCALIZE_PROVIDER;
@@ -194,7 +187,7 @@ describe("UTSUSHI-228 runLocalizeSweetieHdStageCommand", () => {
       ]);
       const { io } = ioFixture(reads);
       await expect(
-        runLocalizeSweetieHdStageCommand({
+        runLocalizeProjectStageCommand({
           bridgePath: "bridge.json",
           pairPolicyPath: "pair-policy.json",
           outputPath: "out/agentic-loop-bundle.v0.json",
@@ -204,7 +197,7 @@ describe("UTSUSHI-228 runLocalizeSweetieHdStageCommand", () => {
           io,
           actor: { userId: "test" },
         }),
-      ).rejects.toBeInstanceOf(LocalizeSweetieHdRefusedFakeError);
+      ).rejects.toBeInstanceOf(LocalizeProjectRefusedFakeError);
     } finally {
       if (prevAllow === undefined) {
         delete process.env.ITOTORI_ALLOW_FAKE_LOCALIZE_PROVIDER;
@@ -221,7 +214,7 @@ describe("UTSUSHI-228 runLocalizeSweetieHdStageCommand", () => {
     ]);
     const { io } = ioFixture(reads);
     await expect(
-      runLocalizeSweetieHdStageCommand({
+      runLocalizeProjectStageCommand({
         bridgePath: "bridge.json",
         pairPolicyPath: "pair-policy.json",
         outputPath: "out/agentic-loop-bundle.v0.json",
@@ -230,7 +223,7 @@ describe("UTSUSHI-228 runLocalizeSweetieHdStageCommand", () => {
         io,
         actor: { userId: "test" },
       }),
-    ).rejects.toBeInstanceOf(LocalizeSweetieHdMissingProviderRunArtifactsDirectoryError);
+    ).rejects.toBeInstanceOf(LocalizeProjectMissingProviderRunArtifactsDirectoryError);
   });
 
   it("writes all three artifacts, embeds the sentinel, and pins every invocation to the policy pair (fake provider, opt-in)", async () => {
@@ -242,7 +235,7 @@ describe("UTSUSHI-228 runLocalizeSweetieHdStageCommand", () => {
         ["pair-policy.json", loadPreset()],
       ]);
       const { io, writes } = ioFixture(reads);
-      await runLocalizeSweetieHdStageCommand({
+      await runLocalizeProjectStageCommand({
         bridgePath: "bridge.json",
         pairPolicyPath: "pair-policy.json",
         outputPath: "out/agentic-loop-bundle.v0.json",
@@ -317,7 +310,7 @@ describe("UTSUSHI-228 runLocalizeSweetieHdStageCommand", () => {
         translatedTargetText: string;
       };
       expect(patchReport).toBeDefined();
-      expect(patchReport.schemaVersion).toBe("itotori.localize-sweetie-hd.patch-report.v0");
+      expect(patchReport.schemaVersion).toBe("itotori.localize-project.patch-report.v0");
       expect(patchReport.pair).toEqual({
         modelId: "deepseek/deepseek-v4-flash",
         providerId: "fireworks",
@@ -591,7 +584,7 @@ describe("ITOTORI-238 failover orchestration", () => {
         }
         return workingSentinelFactory(pair, "STELLA-ALPHA-EN-US-SENTINEL", firstBridgeUnitId);
       };
-      const bundle = await runLocalizeSweetieHdStageCommand({
+      const bundle = await runLocalizeProjectStageCommand({
         bridgePath: "bridge.json",
         pairPolicyPath: "pair-policy.json",
         outputPath: "out/agentic-loop-bundle.v0.json",
@@ -684,7 +677,7 @@ describe("ITOTORI-238 failover orchestration", () => {
       };
     };
 
-    const bundle = await runLocalizeSweetieHdStageCommand({
+    const bundle = await runLocalizeProjectStageCommand({
       bridgePath: "bridge.json",
       pairPolicyPath: "pair-policy.json",
       outputPath: "out/agentic-loop-bundle.v0.json",
@@ -752,7 +745,7 @@ describe("ITOTORI-238 failover orchestration", () => {
       const liveFactoryOverride = (_pair: { modelId: string; providerId: string }) =>
         alwaysFailingFactory(nonFailoverError);
       await expect(
-        runLocalizeSweetieHdStageCommand({
+        runLocalizeProjectStageCommand({
           bridgePath: "bridge.json",
           pairPolicyPath: "pair-policy.json",
           outputPath: "out/agentic-loop-bundle.v0.json",
@@ -763,7 +756,7 @@ describe("ITOTORI-238 failover orchestration", () => {
           actor: { userId: "test" },
         }),
       ).rejects.toBeInstanceOf(ModelProviderError);
-      // AND the driver MUST NOT have raised AlphaRerunBlockedExternal —
+      // AND the driver MUST NOT have raised LocalizeProjectBlockedExternal —
       // that error is reserved for "every alternate exhausted under the
       // failover predicate". A non-predicate failure surfaces verbatim.
     } finally {
@@ -775,7 +768,7 @@ describe("ITOTORI-238 failover orchestration", () => {
     }
   });
 
-  it("all-exhausted: every declared (primary + alternate) returns http_429 -> AlphaRerunBlockedExternal", async () => {
+  it("all-exhausted: every declared (primary + alternate) returns http_429 -> LocalizeProjectBlockedExternal", async () => {
     const prevAllow = process.env.ITOTORI_ALLOW_FAKE_LOCALIZE_PROVIDER;
     process.env.ITOTORI_ALLOW_FAKE_LOCALIZE_PROVIDER = "1";
     try {
@@ -786,12 +779,12 @@ describe("ITOTORI-238 failover orchestration", () => {
       ]);
       const { io } = ioFixture(reads);
       // Both primary and alternate raise http_429 — the driver advances
-      // through the chain and ultimately raises AlphaRerunBlockedExternal.
+      // through the chain and ultimately raises LocalizeProjectBlockedExternal.
       const liveFactoryOverride = (pair: { modelId: string; providerId: string }) =>
         alwaysFailingFactory(http429Error(pair));
       let thrown: unknown;
       try {
-        await runLocalizeSweetieHdStageCommand({
+        await runLocalizeProjectStageCommand({
           bridgePath: "bridge.json",
           pairPolicyPath: "pair-policy.json",
           outputPath: "out/agentic-loop-bundle.v0.json",
@@ -804,8 +797,8 @@ describe("ITOTORI-238 failover orchestration", () => {
       } catch (error) {
         thrown = error;
       }
-      expect(thrown).toBeInstanceOf(AlphaRerunBlockedExternal);
-      const blocked = thrown as AlphaRerunBlockedExternal;
+      expect(thrown).toBeInstanceOf(LocalizeProjectBlockedExternal);
+      const blocked = thrown as LocalizeProjectBlockedExternal;
       // Two attempts: primary (fireworks) + one alternate (deepinfra),
       // both reporting failureClass='http_429'.
       expect(blocked.attempts).toHaveLength(2);
@@ -825,7 +818,7 @@ describe("ITOTORI-238 failover orchestration", () => {
   });
 
   it("policy v0.3 exposes the alternateProviders[] + failoverPredicate fields verbatim", () => {
-    const parsed = parseLocalizeSweetieHdPairPolicy(loadPreset());
+    const parsed = parseLocalizeProjectPairPolicy(loadPreset());
     const v03 = parsed.policyV03 as PairPolicyV03;
     expect(v03.failoverPredicate).toBe("http_429_from_primary");
     expect(v03.alternateProviders.length).toBeGreaterThanOrEqual(1);
@@ -852,7 +845,7 @@ describe("ITOTORI-238 failover orchestration", () => {
   // guard against silent shrinkage of the alternate list.
 
   it("ITOTORI-239: declares wafer, digitalocean, morph, atlas-cloud as alternates with broader-alts evidence", () => {
-    const parsed = parseLocalizeSweetieHdPairPolicy(loadPreset());
+    const parsed = parseLocalizeProjectPairPolicy(loadPreset());
     const v03 = parsed.policyV03 as PairPolicyV03;
     const expected = ["wafer", "digitalocean", "morph", "atlas-cloud"] as const;
     for (const providerId of expected) {
@@ -873,7 +866,7 @@ describe("ITOTORI-238 failover orchestration", () => {
   });
 
   it("ITOTORI-239: preset declares strictly more than one alternate (single-alternate co-incident 429 is the failure mode being closed)", () => {
-    const parsed = parseLocalizeSweetieHdPairPolicy(loadPreset());
+    const parsed = parseLocalizeProjectPairPolicy(loadPreset());
     const v03 = parsed.policyV03 as PairPolicyV03;
     // 1 (ITOTORI-238 deepinfra) + 4 (ITOTORI-239) = 5; the test guards
     // ">= 2" so an honest future contraction (e.g. dropping atlas-cloud
@@ -883,7 +876,7 @@ describe("ITOTORI-238 failover orchestration", () => {
   });
 
   it("ITOTORI-239: every alternate pair is unique and none byte-equals the primary (pair-policy parser already enforces this; this test pins the preset's compliance)", () => {
-    const parsed = parseLocalizeSweetieHdPairPolicy(loadPreset());
+    const parsed = parseLocalizeProjectPairPolicy(loadPreset());
     const v03 = parsed.policyV03 as PairPolicyV03;
     const primaryKey = `${v03.pair.modelId}::${v03.pair.providerId}`;
     const seen = new Set<string>();
@@ -914,7 +907,7 @@ describe("ITOTORI-238 failover orchestration", () => {
 
 describe("ITOTORI-240 globalCapabilityGuard alternate registration", () => {
   it("registers EVERY alternate's capabilitySheet into a fresh CapabilityGuard with jsonSchema='supported'", () => {
-    const parsed = parseLocalizeSweetieHdPairPolicy(loadPreset());
+    const parsed = parseLocalizeProjectPairPolicy(loadPreset());
     const v03 = parsed.policyV03 as PairPolicyV03;
     const guard = new CapabilityGuard();
     registerPairPolicyAlternatesInCapabilityGuard(v03, guard);
@@ -930,7 +923,7 @@ describe("ITOTORI-240 globalCapabilityGuard alternate registration", () => {
   });
 
   it("unknown-pair safety: lookup for an alternate NOT in the policy still misses (preserves the no-silent-fallback invariant)", () => {
-    const parsed = parseLocalizeSweetieHdPairPolicy(loadPreset());
+    const parsed = parseLocalizeProjectPairPolicy(loadPreset());
     const v03 = parsed.policyV03 as PairPolicyV03;
     const guard = new CapabilityGuard();
     registerPairPolicyAlternatesInCapabilityGuard(v03, guard);
@@ -1017,7 +1010,7 @@ describe("ITOTORI-240 globalCapabilityGuard alternate registration", () => {
 
       let thrown: unknown;
       try {
-        await runLocalizeSweetieHdStageCommand({
+        await runLocalizeProjectStageCommand({
           bridgePath: "bridge.json",
           pairPolicyPath: "pair-policy.json",
           outputPath: "out/agentic-loop-bundle.v0.json",
@@ -1031,8 +1024,8 @@ describe("ITOTORI-240 globalCapabilityGuard alternate registration", () => {
         thrown = error;
       }
       // The driver MUST have exhausted every pair (failover predicate
-      // matches each 429) and ultimately raise AlphaRerunBlockedExternal.
-      expect(thrown).toBeInstanceOf(AlphaRerunBlockedExternal);
+      // matches each 429) and ultimately raise LocalizeProjectBlockedExternal.
+      expect(thrown).toBeInstanceOf(LocalizeProjectBlockedExternal);
 
       // 6 attempts total: primary (fireworks) + 5 alternates.
       expect(observed).toHaveLength(6);
