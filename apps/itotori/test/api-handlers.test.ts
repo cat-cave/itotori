@@ -310,12 +310,13 @@ describe("Itotori API handlers", () => {
     },
     {
       query:
-        "?targetLanguage=en-US&pools=conflict&pools=unknown&minCapabilityLevel=extract&demandBucket=very_high&provenanceRequired=true&localOwnership=owned&includeDemoted=true&limit=25",
+        "?targetLanguage=en-US&pools=conflict&pools=unknown&minCapabilityLevel=extract&demandBucket=very_high&translationCompleteness=none,mtl&translationCompleteness=unknown&provenanceRequired=true&localOwnership=owned&includeDemoted=true&limit=25",
       filter: {
         targetLanguage: "en-US",
         pools: ["conflict", "unknown"],
         minCapabilityLevel: "extract",
         demandBucket: "very_high",
+        translationCompleteness: ["none", "mtl", "unknown"],
         provenanceRequired: true,
         localOwnership: "owned",
         includeDemoted: true,
@@ -351,6 +352,10 @@ describe("Itotori API handlers", () => {
     {
       query: "?provenanceRequired=yes",
       error: /provenanceRequired/u,
+    },
+    {
+      query: "?translationCompleteness=official_partial",
+      error: /translationCompleteness/u,
     },
     {
       query: "?localOwnership=local_path",
@@ -423,7 +428,210 @@ describe("Itotori API handlers", () => {
       },
       error: /payloadHash/u,
     },
+    {
+      name: "private title string",
+      body: {
+        ...catalogBenchmarkSeedsFixture,
+        rows: [
+          {
+            ...catalogBenchmarkSeedsFixture.rows[0]!,
+            canonicalTitle: "private-story-title",
+          },
+        ],
+      },
+      error: /canonicalTitle/u,
+    },
+    {
+      name: "private source id string",
+      body: {
+        ...catalogBenchmarkSeedsFixture,
+        rows: [
+          {
+            ...catalogBenchmarkSeedsFixture.rows[0]!,
+            sourceIds: [
+              {
+                ...catalogBenchmarkSeedsFixture.rows[0]!.sourceIds[0]!,
+                sourceId: "file:/home/private/RJSEED001.zip/story.ks",
+              },
+            ],
+          },
+        ],
+      },
+      error: /sourceId/u,
+    },
+    {
+      name: "private fixture id string",
+      body: {
+        ...catalogBenchmarkSeedsFixture,
+        rows: [
+          {
+            ...catalogBenchmarkSeedsFixture.rows[0]!,
+            provenance: [
+              {
+                ...catalogBenchmarkSeedsFixture.rows[0]!.provenance[0]!,
+                fixtureId: "catalog-benchmark-seeds/private-title.zip/member.json",
+              },
+            ],
+          },
+        ],
+      },
+      error: /fixtureId/u,
+    },
+    {
+      name: "private explanation code string",
+      body: {
+        ...catalogBenchmarkSeedsFixture,
+        rows: [
+          {
+            ...catalogBenchmarkSeedsFixture.rows[0]!,
+            explanationCodes: ["demoted_open_conflict:/tmp/private/archive.zip/member.ks"],
+          },
+        ],
+      },
+      error: /explanationCodes/u,
+    },
   ])("does not expose private catalog benchmark seed $name fields", async ({ body, error }) => {
+    const services = serviceFixture();
+    services.catalogRepository.catalogBenchmarkSeedFinder.mockResolvedValueOnce(body);
+
+    const response = await handleItotoriApiRequest(
+      { method: "GET", pathname: "/api/catalog/benchmark-seeds" },
+      services,
+    );
+
+    expect(response.statusCode).toBe(500);
+    expect(response.body).toMatchObject({ code: "internal_error" });
+    expect(response.body.error).toMatch(error);
+  });
+
+  it.each([
+    {
+      name: "catalog source",
+      body: {
+        ...catalogBenchmarkSeedsFixture,
+        rows: [
+          {
+            ...catalogBenchmarkSeedsFixture.rows[0]!,
+            sourceIds: [
+              {
+                ...catalogBenchmarkSeedsFixture.rows[0]!.sourceIds[0]!,
+                catalogSource: "unsupported_source",
+              },
+            ],
+          },
+        ],
+      },
+      error: /catalogSource/u,
+    },
+    {
+      name: "external id kind",
+      body: {
+        ...catalogBenchmarkSeedsFixture,
+        rows: [
+          {
+            ...catalogBenchmarkSeedsFixture.rows[0]!,
+            sourceIds: [
+              {
+                ...catalogBenchmarkSeedsFixture.rows[0]!.sourceIds[0]!,
+                externalIdKind: "private_archive_member",
+              },
+            ],
+          },
+        ],
+      },
+      error: /externalIdKind/u,
+    },
+    {
+      name: "translation status",
+      body: {
+        ...catalogBenchmarkSeedsFixture,
+        rows: [
+          {
+            ...catalogBenchmarkSeedsFixture.rows[0]!,
+            translationStatuses: [
+              {
+                ...catalogBenchmarkSeedsFixture.rows[0]!.translationStatuses[0]!,
+                status: "partial",
+              },
+            ],
+          },
+        ],
+      },
+      error: /status/u,
+    },
+    {
+      name: "translation confidence",
+      body: {
+        ...catalogBenchmarkSeedsFixture,
+        rows: [
+          {
+            ...catalogBenchmarkSeedsFixture.rows[0]!,
+            translationStatuses: [
+              {
+                ...catalogBenchmarkSeedsFixture.rows[0]!.translationStatuses[0]!,
+                confidence: "certain",
+              },
+            ],
+          },
+        ],
+      },
+      error: /confidence/u,
+    },
+    {
+      name: "translation status scope",
+      body: {
+        ...catalogBenchmarkSeedsFixture,
+        rows: [
+          {
+            ...catalogBenchmarkSeedsFixture.rows[0]!,
+            translationStatuses: [
+              {
+                ...catalogBenchmarkSeedsFixture.rows[0]!.translationStatuses[0]!,
+                statusScope: "archive_member",
+              },
+            ],
+          },
+        ],
+      },
+      error: /statusScope/u,
+    },
+    {
+      name: "provenance source record kind",
+      body: {
+        ...catalogBenchmarkSeedsFixture,
+        rows: [
+          {
+            ...catalogBenchmarkSeedsFixture.rows[0]!,
+            provenance: [
+              {
+                ...catalogBenchmarkSeedsFixture.rows[0]!.provenance[0]!,
+                sourceRecordKind: "local_scan",
+              },
+            ],
+          },
+        ],
+      },
+      error: /sourceRecordKind/u,
+    },
+    {
+      name: "provenance redaction class",
+      body: {
+        ...catalogBenchmarkSeedsFixture,
+        rows: [
+          {
+            ...catalogBenchmarkSeedsFixture.rows[0]!,
+            provenance: [
+              {
+                ...catalogBenchmarkSeedsFixture.rows[0]!.provenance[0]!,
+                redactionClass: "private_corpus",
+              },
+            ],
+          },
+        ],
+      },
+      error: /redactionClass/u,
+    },
+  ])("rejects non-public catalog benchmark seed enum-shaped $name", async ({ body, error }) => {
     const services = serviceFixture();
     services.catalogRepository.catalogBenchmarkSeedFinder.mockResolvedValueOnce(body);
 

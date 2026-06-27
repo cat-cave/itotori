@@ -4,6 +4,7 @@ import {
   catalogCandidateMatchStatusValues,
   catalogCompletenessPoolValues,
   catalogConflictStatusValues,
+  catalogLanguageStatusValues,
   catalogSourceValues,
   type CapabilityLevel,
   type CatalogBenchmarkDemandBucket,
@@ -18,6 +19,7 @@ import {
   type CatalogConflictReviewReadModel,
   type CatalogConflictReviewSeverity,
   type CatalogConflictReviewStatus,
+  type CatalogLanguageStatus,
   type CatalogSource,
   type DashboardDecisionReadModel,
   type Permission,
@@ -336,6 +338,16 @@ function parseCatalogBenchmarkSeedFinderFilter(search = ""): CatalogBenchmarkSee
   const demandBucket = params.get("demandBucket");
   if (demandBucket !== null) {
     filter.demandBucket = enumParam(demandBucket, catalogBenchmarkDemandBuckets, "demandBucket");
+  }
+  const translationCompleteness = listParam(params, "translationCompleteness");
+  if (translationCompleteness.length > 0) {
+    filter.translationCompleteness = translationCompleteness.map((status) =>
+      enumParam(
+        status,
+        Object.values(catalogLanguageStatusValues) as CatalogLanguageStatus[],
+        "translationCompleteness",
+      ),
+    );
   }
   const provenanceRequired = params.get("provenanceRequired");
   if (provenanceRequired !== null) {

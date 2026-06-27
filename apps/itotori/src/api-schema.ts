@@ -1,12 +1,28 @@
 import type {
+  CatalogConfidence,
   CatalogBenchmarkSeedFinderReadModel,
   CatalogCompletenessBenchmarkPools,
   CatalogConflictReviewReadModel,
+  CatalogExternalIdKind,
+  CatalogLanguageStatus,
+  CatalogLanguageStatusScope,
+  CatalogRawContentRedactionClass,
+  CatalogSource,
+  CatalogSourceRecordKind,
   DashboardDecisionReadModel,
   ProjectCostReport,
   ProjectDashboardStatus,
   RuntimeDashboardStatus,
   TerminologySearchReadModel,
+} from "@itotori/db";
+import {
+  catalogConfidenceValues,
+  catalogExternalIdKindValues,
+  catalogLanguageStatusScopeValues,
+  catalogLanguageStatusValues,
+  catalogRawContentRedactionClassValues,
+  catalogSourceRecordKindValues,
+  catalogSourceValues,
 } from "@itotori/db";
 import {
   assertBenchmarkReportV02,
@@ -318,9 +334,9 @@ export function assertCatalogBenchmarkSeedFinderReadModel(
       "seedRank",
       "explanationCodes",
     ]);
-    assertString(row.workId, `${rowLabel}.workId`);
-    assertString(row.canonicalTitle, `${rowLabel}.canonicalTitle`);
-    assertNullableString(row.originalLanguage, `${rowLabel}.originalLanguage`);
+    assertPublicBenchmarkSeedString(row.workId, `${rowLabel}.workId`);
+    assertPublicBenchmarkSeedString(row.canonicalTitle, `${rowLabel}.canonicalTitle`);
+    assertNullablePublicBenchmarkSeedString(row.originalLanguage, `${rowLabel}.originalLanguage`);
     assertCatalogBenchmarkSeedSourceIds(row.sourceIds, `${rowLabel}.sourceIds`);
     assertEnum(
       row.completenessPool,
@@ -353,7 +369,7 @@ export function assertCatalogBenchmarkSeedFinderReadModel(
     if (row.seedRank !== null) {
       assertNonNegativeInteger(row.seedRank, `${rowLabel}.seedRank`);
     }
-    assertStringArray(row.explanationCodes, `${rowLabel}.explanationCodes`);
+    assertPublicBenchmarkSeedStringArray(row.explanationCodes, `${rowLabel}.explanationCodes`);
   }
 }
 
@@ -365,9 +381,20 @@ function assertCatalogBenchmarkSeedSourceIds(value: unknown, label: string): voi
       "sourceId",
       "externalIdKind",
     ]);
-    assertString(sourceId.catalogSource, `${label}[${index}].catalogSource`);
-    assertString(sourceId.sourceId, `${label}[${index}].sourceId`);
-    assertString(sourceId.externalIdKind, `${label}[${index}].externalIdKind`);
+    assertEnum(
+      sourceId.catalogSource,
+      Object.values(catalogSourceValues) as CatalogSource[],
+      `${label}[${index}].catalogSource`,
+    );
+    if (sourceId.catalogSource === catalogSourceValues.localCorpus) {
+      throw new Error(`${label}[${index}].catalogSource must not expose local corpus sources`);
+    }
+    assertPublicBenchmarkSeedString(sourceId.sourceId, `${label}[${index}].sourceId`);
+    assertEnum(
+      sourceId.externalIdKind,
+      Object.values(catalogExternalIdKindValues) as CatalogExternalIdKind[],
+      `${label}[${index}].externalIdKind`,
+    );
   }
 }
 
@@ -381,11 +408,23 @@ function assertCatalogBenchmarkSeedTranslationStatuses(value: unknown, label: st
       "statusScope",
       "platform",
     ]);
-    assertString(status.language, `${label}[${index}].language`);
-    assertString(status.status, `${label}[${index}].status`);
-    assertString(status.confidence, `${label}[${index}].confidence`);
-    assertString(status.statusScope, `${label}[${index}].statusScope`);
-    assertNullableString(status.platform, `${label}[${index}].platform`);
+    assertPublicBenchmarkSeedString(status.language, `${label}[${index}].language`);
+    assertEnum(
+      status.status,
+      Object.values(catalogLanguageStatusValues) as CatalogLanguageStatus[],
+      `${label}[${index}].status`,
+    );
+    assertEnum(
+      status.confidence,
+      Object.values(catalogConfidenceValues) as CatalogConfidence[],
+      `${label}[${index}].confidence`,
+    );
+    assertEnum(
+      status.statusScope,
+      Object.values(catalogLanguageStatusScopeValues) as CatalogLanguageStatusScope[],
+      `${label}[${index}].statusScope`,
+    );
+    assertNullablePublicBenchmarkSeedString(status.platform, `${label}[${index}].platform`);
   }
 }
 
@@ -399,7 +438,7 @@ function assertCatalogBenchmarkSeedReadiness(value: unknown, label: string): voi
     "helper",
     "runtime",
   ]);
-  assertNullableString(readiness.adapterId, `${label}.adapterId`);
+  assertNullablePublicBenchmarkSeedString(readiness.adapterId, `${label}.adapterId`);
   for (const level of ["identify", "inventory", "extract", "patch", "helper", "runtime"] as const) {
     assertEnum(
       readiness[level],
@@ -420,12 +459,73 @@ function assertCatalogBenchmarkSeedProvenance(value: unknown, label: string): vo
       "fixtureId",
       "redactionClass",
     ]);
-    assertString(entry.catalogSource, `${label}[${index}].catalogSource`);
-    assertString(entry.sourceId, `${label}[${index}].sourceId`);
-    assertString(entry.sourceRecordKind, `${label}[${index}].sourceRecordKind`);
-    assertNullableString(entry.sourceVersion, `${label}[${index}].sourceVersion`);
-    assertNullableString(entry.fixtureId, `${label}[${index}].fixtureId`);
-    assertString(entry.redactionClass, `${label}[${index}].redactionClass`);
+    assertEnum(
+      entry.catalogSource,
+      Object.values(catalogSourceValues) as CatalogSource[],
+      `${label}[${index}].catalogSource`,
+    );
+    if (entry.catalogSource === catalogSourceValues.localCorpus) {
+      throw new Error(`${label}[${index}].catalogSource must not expose local corpus sources`);
+    }
+    assertPublicBenchmarkSeedString(entry.sourceId, `${label}[${index}].sourceId`);
+    assertEnum(
+      entry.sourceRecordKind,
+      [
+        catalogSourceRecordKindValues.recordedFixture,
+        catalogSourceRecordKindValues.importerRequest,
+      ] as CatalogSourceRecordKind[],
+      `${label}[${index}].sourceRecordKind`,
+    );
+    assertNullablePublicBenchmarkSeedString(
+      entry.sourceVersion,
+      `${label}[${index}].sourceVersion`,
+    );
+    assertNullablePublicBenchmarkSeedString(entry.fixtureId, `${label}[${index}].fixtureId`);
+    assertEnum(
+      entry.redactionClass,
+      Object.values(catalogRawContentRedactionClassValues) as CatalogRawContentRedactionClass[],
+      `${label}[${index}].redactionClass`,
+    );
+    if (entry.redactionClass === catalogRawContentRedactionClassValues.privateCorpus) {
+      throw new Error(`${label}[${index}].redactionClass must not expose private corpus data`);
+    }
+  }
+}
+
+function assertPublicBenchmarkSeedString(value: unknown, label: string): asserts value is string {
+  assertString(value, label);
+  assertNoBenchmarkSeedPrivateLeakage(value, label);
+}
+
+function assertNullablePublicBenchmarkSeedString(
+  value: unknown,
+  label: string,
+): asserts value is string | null {
+  assertNullableString(value, label);
+  if (value !== null) {
+    assertNoBenchmarkSeedPrivateLeakage(value, label);
+  }
+}
+
+function assertPublicBenchmarkSeedStringArray(value: unknown, label: string): void {
+  const entries = asArray(value, label);
+  for (const [index, entry] of entries.entries()) {
+    assertPublicBenchmarkSeedString(entry, `${label}[${index}]`);
+  }
+}
+
+const benchmarkSeedPrivateLeakagePatterns = [
+  /(?:^|[ "'=])file:/iu,
+  /(?:^|[ "'=])\/(?:home|tmp|var|scratch|private)(?:\/|$)/iu,
+  /[A-Z]:\\/u,
+  /\.(?:zip|7z|rar|tar|gz|ks)(?:$|[\\/!?#:])/iu,
+  /private[-_ ](?:title|path|corpus)/iu,
+  /(?:rawPayloadSecret|local-scan-entry-secret|private-story-title|private_path_hash|path_hash)/iu,
+] as const;
+
+function assertNoBenchmarkSeedPrivateLeakage(value: string, label: string): void {
+  if (benchmarkSeedPrivateLeakagePatterns.some((pattern) => pattern.test(value))) {
+    throw new Error(`${label} must not expose private response data`);
   }
 }
 
