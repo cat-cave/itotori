@@ -17,6 +17,7 @@ import {
   reviewerQueueItemStateValues,
   type ReviewerQueueItemRecord,
 } from "@itotori/db";
+import type { ReviewerQueueDecisionContextRefs } from "./action-service.js";
 import {
   reviewerBatchPreviewStatusValues,
   type BatchPreviewItem,
@@ -53,13 +54,41 @@ function makeItem(
     observationEventIds: isRuntime ? [`observation-${reviewItemId}-1`] : null,
     artifactHashes: isRuntime ? [`sha256:${reviewItemId}-bytes`] : null,
     payload: {},
-    metadata: {},
+    metadata: { contextRefs: fixtureDecisionContextRefs(reviewItemId) },
     createdByUserId: null,
     assignedToUserId: null,
     createdAt: fixtureCreatedAt,
     updatedAt: fixtureCreatedAt,
     resolvedAt: state === reviewerQueueItemStateValues.pending ? null : fixtureCreatedAt,
     ...overrides,
+  };
+}
+
+export function fixtureDecisionContextRefs(reviewItemId: string): ReviewerQueueDecisionContextRefs {
+  return {
+    source: {
+      bridgeUnitId: `bridge-unit-${reviewItemId}`,
+      sourceUnitKey: `scene.001.${reviewItemId}`,
+      sourceRevisionId: fixtureSourceRevisionId,
+    },
+    draft: {
+      draftId: `draft-${reviewItemId}`,
+      draftAttemptId: `draft-attempt-${reviewItemId}`,
+    },
+    runtime: {
+      runtimeTargetId: `runtime-target-${reviewItemId}`,
+      observationEventIds: [`observation-${reviewItemId}-1`],
+      artifactHashes: [`sha256:${reviewItemId}-runtime`],
+    },
+    style: {
+      styleGuidePolicyVersionId: `style-policy-${reviewItemId}`,
+    },
+    glossary: {
+      termIds: [`term-${reviewItemId}`],
+    },
+    qa: {
+      findingIds: [`finding-${reviewItemId}`],
+    },
   };
 }
 
@@ -127,31 +156,37 @@ export function fixtureDraftStateChangeConsequence(reviewItemId: string): Review
 
 export function fixturePendingQaItem(
   reviewItemId = "reviewer-queue-083-qa-1",
+  overrides: Partial<ReviewerQueueItemRecord> = {},
 ): ReviewerQueueItemRecord {
   return makeItem(
     reviewItemId,
     reviewerQueueItemKindValues.qa,
     reviewerQueueItemStateValues.pending,
+    overrides,
   );
 }
 
 export function fixturePendingGlossaryItem(
   reviewItemId = "reviewer-queue-083-glossary-1",
+  overrides: Partial<ReviewerQueueItemRecord> = {},
 ): ReviewerQueueItemRecord {
   return makeItem(
     reviewItemId,
     reviewerQueueItemKindValues.glossary,
     reviewerQueueItemStateValues.pending,
+    overrides,
   );
 }
 
 export function fixturePendingRuntimeEvidenceItem(
   reviewItemId = "reviewer-queue-083-runtime-1",
+  overrides: Partial<ReviewerQueueItemRecord> = {},
 ): ReviewerQueueItemRecord {
   return makeItem(
     reviewItemId,
     reviewerQueueItemKindValues.runtimeEvidence,
     reviewerQueueItemStateValues.pending,
+    overrides,
   );
 }
 

@@ -102,14 +102,50 @@ function makeActionStub(): {
   const service: ReviewerQueueActionServicePort = {
     approve: vi.fn(async (_actor, input) => record("approve", input.reviewItemId)),
     reject: vi.fn(async (_actor, input) => record("reject", input.reviewItemId)),
+    defer: vi.fn(async (_actor, input) => record("defer", input.reviewItemId)),
+    escalate: vi.fn(async (_actor, input) => record("escalate", input.reviewItemId)),
     requestRepair: vi.fn(async (_actor, input) => record("requestRepair", input.reviewItemId)),
     updateGlossary: vi.fn(async (_actor, input) => record("updateGlossary", input.reviewItemId)),
     updateStyle: vi.fn(async (_actor, input) => record("updateStyle", input.reviewItemId)),
     importRuntimeFeedback: vi.fn(async (_actor, input) =>
       record("importRuntimeFeedback", input.reviewItemId),
     ),
+    applyPreparedBatch: vi.fn(async (_actor, inputs) =>
+      inputs.map((input) => {
+        const result = record(methodForAction(input.action), input.reviewItemId);
+        result.transition.action = input.action;
+        result.transition.metadata = input.metadata ?? {};
+        result.transition.affectedArtifactIds = input.affectedArtifactIds ?? [];
+        return result;
+      }),
+    ),
   };
   return { service, calls };
+}
+
+function methodForAction(action: ReviewerQueueActionInput["action"]): string {
+  switch (action) {
+    case reviewerQueueActionValues.approve:
+      return "approve";
+    case reviewerQueueActionValues.reject:
+      return "reject";
+    case reviewerQueueActionValues.defer:
+      return "defer";
+    case reviewerQueueActionValues.escalate:
+      return "escalate";
+    case reviewerQueueActionValues.requestRepair:
+      return "requestRepair";
+    case reviewerQueueActionValues.updateGlossary:
+      return "updateGlossary";
+    case reviewerQueueActionValues.updateStyle:
+      return "updateStyle";
+    case reviewerQueueActionValues.importRuntimeFeedback:
+      return "importRuntimeFeedback";
+    default: {
+      const exhaustive: never = action;
+      return exhaustive;
+    }
+  }
 }
 
 const approvePayload: BatchActionPayloadResolver = () => ({ kind: "approve" });
@@ -247,27 +283,19 @@ describe("ReviewerBatchActionService — atomic pre-flight", () => {
 });
 
 describe("ReviewerBatchActionService — per-item dispatch surfaces repository diagnostics", () => {
-  it("captures a ReviewerQueueRepositoryError thrown by the action service as a per-item refusal", async () => {
+  it("captures a ReviewerQueueRepositoryError from the atomic batch as an all-item refusal", async () => {
     const qa1 = fixturePendingQaItem("reviewer-queue-083-qa-1");
     const qa2 = fixturePendingQaItem("reviewer-queue-083-qa-2");
     const previewService = new ReviewerBatchPreviewService(
       makeResolver({ [qa1.reviewItemId]: qa1, [qa2.reviewItemId]: qa2 }),
     );
     const { service: actionService } = makeActionStub();
-    let count = 0;
-    actionService.approve = vi.fn(async (_a, input) => {
-      count += 1;
-      if (count === 1) {
-        return makeResult(input.reviewItemId);
-      }
-      // Simulate a concurrent move on the second item: the preview
-      // saw it pending, but by the time we dispatched another writer
-      // had moved it.
-      throw new ReviewerQueueRepositoryError(
+    vi.mocked(actionService.applyPreparedBatch).mockRejectedValueOnce(
+      new ReviewerQueueRepositoryError(
         "reviewer_queue_item_invalid_transition",
-        `reviewer queue item ${input.reviewItemId} state changed concurrently; please retry with a fresh fetch`,
-      );
-    });
+        "reviewer queue item state changed concurrently; please retry with a fresh fetch",
+      ),
+    );
     const executor = new ReviewerBatchActionService({
       previewService,
       actionService,
@@ -287,11 +315,15 @@ describe("ReviewerBatchActionService — per-item dispatch surfaces repository d
       fixtureBatchPermissionView(),
     );
 
+    expect(result.refusedAll).toBe(true);
     expect(result.appliedAll).toBe(false);
-    expect(result.applied[0]?.kind).toBe("applied");
-    expect(result.applied[1]?.kind === "refused" && result.applied[1].status).toBe(
-      reviewerBatchPreviewStatusValues.invalidTransition,
-    );
+    expect(result.applied.map((entry) => entry.kind)).toEqual(["refused", "refused"]);
+    expect(
+      result.applied.every(
+        (entry) =>
+          entry.kind === "refused" && entry.code === "reviewer_queue_item_invalid_transition",
+      ),
+    ).toBe(true);
   });
 });
 
@@ -301,7 +333,7 @@ describe("ReviewerBatchActionService — payload resolver dispatch", () => {
     const previewService = new ReviewerBatchPreviewService(
       makeResolver({ [item.reviewItemId]: item }),
     );
-    const { service: actionService } = makeActionStub();
+    const { service: actionService, calls } = makeActionStub();
     const executor = new ReviewerBatchActionService({
       previewService,
       actionService,
@@ -325,7 +357,8 @@ describe("ReviewerBatchActionService — payload resolver dispatch", () => {
     );
 
     expect(result.appliedAll).toBe(true);
-    expect(actionService.updateGlossary).toHaveBeenCalledTimes(1);
+    expect(actionService.applyPreparedBatch).toHaveBeenCalledTimes(1);
+    expect(calls.map((call) => call.method)).toEqual(["updateGlossary"]);
   });
 
   it("dispatches importRuntimeFeedback with evidence tier + observation events", async () => {
@@ -333,7 +366,7 @@ describe("ReviewerBatchActionService — payload resolver dispatch", () => {
     const previewService = new ReviewerBatchPreviewService(
       makeResolver({ [item.reviewItemId]: item }),
     );
-    const { service: actionService } = makeActionStub();
+    const { service: actionService, calls } = makeActionStub();
     const executor = new ReviewerBatchActionService({
       previewService,
       actionService,
@@ -358,7 +391,211 @@ describe("ReviewerBatchActionService — payload resolver dispatch", () => {
     );
 
     expect(result.appliedAll).toBe(true);
-    expect(actionService.importRuntimeFeedback).toHaveBeenCalledTimes(1);
+    expect(actionService.applyPreparedBatch).toHaveBeenCalledTimes(1);
+    expect(calls.map((call) => call.method)).toEqual(["importRuntimeFeedback"]);
+  });
+
+  it("dispatches defer with a defer reason", async () => {
+    const item = fixturePendingQaItem("reviewer-queue-083-defer-1");
+    const previewService = new ReviewerBatchPreviewService(
+      makeResolver({ [item.reviewItemId]: item }),
+    );
+    const { service: actionService, calls } = makeActionStub();
+    const executor = new ReviewerBatchActionService({
+      previewService,
+      actionService,
+      resolvePayload: () => ({
+        kind: "defer",
+        deferReason: "needs owner review",
+      }),
+    });
+
+    const result = await executor.execute(
+      actor,
+      {
+        action: reviewerQueueActionValues.defer,
+        actorUserId: actor.userId,
+        selections: [
+          { reviewItemId: item.reviewItemId, expectedSourceRevisionId: item.sourceRevisionId },
+        ],
+      },
+      fixtureBatchPermissionView(),
+    );
+
+    expect(result.appliedAll).toBe(true);
+    expect(calls.map((call) => call.method)).toEqual(["defer"]);
+  });
+
+  it("refuses context-free batch decisions before action dispatch", async () => {
+    const item = fixturePendingQaItem("reviewer-queue-083-context-free", {
+      metadata: {},
+    });
+    const previewService = new ReviewerBatchPreviewService(
+      makeResolver({ [item.reviewItemId]: item }),
+    );
+    const { service: actionService } = makeActionStub();
+    const executor = new ReviewerBatchActionService({
+      previewService,
+      actionService,
+      resolvePayload: approvePayload,
+    });
+
+    const result = await executor.execute(
+      actor,
+      {
+        action: reviewerQueueActionValues.approve,
+        actorUserId: actor.userId,
+        selections: [
+          { reviewItemId: item.reviewItemId, expectedSourceRevisionId: item.sourceRevisionId },
+        ],
+      },
+      fixtureBatchPermissionView(),
+    );
+
+    expect(result.refusedAll).toBe(true);
+    expect(result.applied[0]).toMatchObject({
+      kind: "refused",
+      status: reviewerBatchPreviewStatusValues.invalidInput,
+      code: "reviewer_queue_item_invalid_input",
+    });
+    expect(actionService.approve).not.toHaveBeenCalled();
+  });
+
+  it("fails closed before dispatch when a later batch item lacks context refs", async () => {
+    const valid = fixturePendingQaItem("reviewer-queue-083-context-valid");
+    const missingContext = fixturePendingQaItem("reviewer-queue-083-context-missing", {
+      metadata: {},
+    });
+    const previewService = new ReviewerBatchPreviewService(
+      makeResolver({
+        [valid.reviewItemId]: valid,
+        [missingContext.reviewItemId]: missingContext,
+      }),
+    );
+    const { service: actionService, calls } = makeActionStub();
+    const executor = new ReviewerBatchActionService({
+      previewService,
+      actionService,
+      resolvePayload: approvePayload,
+    });
+
+    const result = await executor.execute(
+      actor,
+      {
+        action: reviewerQueueActionValues.approve,
+        actorUserId: actor.userId,
+        selections: [
+          { reviewItemId: valid.reviewItemId, expectedSourceRevisionId: valid.sourceRevisionId },
+          {
+            reviewItemId: missingContext.reviewItemId,
+            expectedSourceRevisionId: missingContext.sourceRevisionId,
+          },
+        ],
+      },
+      fixtureBatchPermissionView(),
+    );
+
+    expect(result.refusedAll).toBe(true);
+    expect(result.appliedAll).toBe(false);
+    expect(calls).toEqual([]);
+    expect(result.applied.map((entry) => entry.kind)).toEqual(["refused", "refused"]);
+    expect(result.applied[1]).toMatchObject({
+      status: reviewerBatchPreviewStatusValues.invalidInput,
+      code: "reviewer_queue_item_invalid_input",
+    });
+  });
+
+  it("refuses the whole batch when atomic repository dispatch rejects", async () => {
+    const first = fixturePendingQaItem("reviewer-queue-083-atomic-first");
+    const second = fixturePendingQaItem("reviewer-queue-083-atomic-second");
+    const previewService = new ReviewerBatchPreviewService(
+      makeResolver({
+        [first.reviewItemId]: first,
+        [second.reviewItemId]: second,
+      }),
+    );
+    const { service: actionService, calls } = makeActionStub();
+    vi.mocked(actionService.applyPreparedBatch).mockRejectedValueOnce(
+      new ReviewerQueueRepositoryError(
+        "reviewer_queue_item_stale_revision",
+        "reviewer queue item changed before atomic batch commit",
+      ),
+    );
+    const executor = new ReviewerBatchActionService({
+      previewService,
+      actionService,
+      resolvePayload: approvePayload,
+    });
+
+    const result = await executor.execute(
+      actor,
+      {
+        action: reviewerQueueActionValues.approve,
+        actorUserId: actor.userId,
+        selections: [
+          {
+            reviewItemId: first.reviewItemId,
+            expectedSourceRevisionId: first.sourceRevisionId,
+          },
+          {
+            reviewItemId: second.reviewItemId,
+            expectedSourceRevisionId: second.sourceRevisionId,
+          },
+        ],
+      },
+      fixtureBatchPermissionView(),
+    );
+
+    expect(result.refusedAll).toBe(true);
+    expect(result.appliedAll).toBe(false);
+    expect(calls).toEqual([]);
+    expect(result.applied).toHaveLength(2);
+    expect(result.applied).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "refused",
+          reviewItemId: first.reviewItemId,
+          code: "reviewer_queue_item_stale_revision",
+        }),
+        expect.objectContaining({
+          kind: "refused",
+          reviewItemId: second.reviewItemId,
+          code: "reviewer_queue_item_stale_revision",
+        }),
+      ]),
+    );
+  });
+
+  it("dispatches escalate with a target reviewer", async () => {
+    const item = fixturePendingQaItem("reviewer-queue-083-escalate-1");
+    const previewService = new ReviewerBatchPreviewService(
+      makeResolver({ [item.reviewItemId]: item }),
+    );
+    const { service: actionService, calls } = makeActionStub();
+    const executor = new ReviewerBatchActionService({
+      previewService,
+      actionService,
+      resolvePayload: () => ({
+        kind: "escalate",
+        escalationReason: "ambiguous cultural reference",
+        escalationTarget: "senior-reviewer",
+      }),
+    });
+
+    const result = await executor.execute(
+      actor,
+      {
+        action: reviewerQueueActionValues.escalate,
+        actorUserId: actor.userId,
+        selections: [
+          { reviewItemId: item.reviewItemId, expectedSourceRevisionId: item.sourceRevisionId },
+        ],
+      },
+      fixtureBatchPermissionView(),
+    );
+
+    expect(result.appliedAll).toBe(true);
+    expect(calls.map((call) => call.method)).toEqual(["escalate"]);
   });
 
   it("refuses when the payload kind does not match the preview action", async () => {
@@ -450,6 +687,25 @@ function makeAtomicActionRepo(plannedJobs: JobQueueInput[]): ItotoriReviewerQueu
         actionResult.transition.affectedArtifactIds = input.affectedArtifactIds ?? [];
         plannedJobs.push(...(await planJobs(actionResult)));
         return { actionResult, jobs: [] };
+      },
+    ),
+    applyActionsAndEnqueueJobs: vi.fn(
+      async (
+        actor: AuthorizationActor,
+        inputs: readonly ReviewerQueueActionInput[],
+        planJobs: ReviewerQueueActionJobPlanner,
+      ) => {
+        const actionResults: ReviewerQueueActionResult[] = [];
+        for (const input of inputs) {
+          const actionResult = makeResult(input.reviewItemId);
+          actionResult.transition.action = input.action;
+          actionResult.transition.actorUserId = actor.userId;
+          actionResult.transition.metadata = input.metadata ?? {};
+          actionResult.transition.affectedArtifactIds = input.affectedArtifactIds ?? [];
+          plannedJobs.push(...(await planJobs(actionResult)));
+          actionResults.push(actionResult);
+        }
+        return { actionResults, jobs: [] };
       },
     ),
     getItem: vi.fn(),

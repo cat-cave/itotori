@@ -240,6 +240,37 @@ describe.skipIf(!process.env.DATABASE_URL)("ItotoriReviewerQueueRepository", () 
     }
   });
 
+  it("applyAction defer transitions pending → deferred without resolving the item", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      await seedProjectScope(context);
+      const repo = new ItotoriReviewerQueueRepository(context.db);
+      const item = await repo.createItem(localActor, {
+        ...baseCreate("qa"),
+        sourceItemRef: "qa-finding-defer-1",
+      });
+
+      const result = await repo.applyAction(localActor, {
+        reviewItemId: item.reviewItemId,
+        action: reviewerQueueActionValues.defer,
+        actorUserId: localUserId,
+        expectedSourceRevisionId: sourceRevisionId,
+        diagnostics: [{ code: "reviewer_deferred", message: "waiting for owner review" }],
+        metadata: { deferReason: "waiting for owner review" },
+      });
+
+      expect(result.item.state).toBe(reviewerQueueItemStateValues.deferred);
+      expect(result.item.resolvedAt).toBeNull();
+      expect(result.transition.action).toBe(reviewerQueueActionValues.defer);
+      expect(result.transition.nextState).toBe(reviewerQueueItemStateValues.deferred);
+      expect(result.transition.diagnostics).toEqual([
+        { code: "reviewer_deferred", message: "waiting for owner review" },
+      ]);
+    } finally {
+      await context.close();
+    }
+  });
+
   it("applyAction rejects stale-source decisions without partial writes", async () => {
     const context = await isolatedMigratedContext();
     try {
@@ -260,6 +291,39 @@ describe.skipIf(!process.env.DATABASE_URL)("ItotoriReviewerQueueRepository", () 
       });
 
       // Item state must remain pending; no transition was logged.
+      const reloaded = await repo.getItem(localActor, item.reviewItemId);
+      expect(reloaded?.state).toBe(reviewerQueueItemStateValues.pending);
+      const transitions = await repo.loadTransitionsByItem(localActor, item.reviewItemId);
+      expect(transitions).toHaveLength(0);
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("applyAction rejects stale-lease decisions without partial writes", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      await seedProjectScope(context);
+      const repo = new ItotoriReviewerQueueRepository(context.db);
+      const item = await repo.createItem(localActor, {
+        ...baseCreate("qa"),
+        sourceItemRef: "qa-finding-lease-1",
+        metadata: { leaseId: "lease-current" },
+      });
+
+      await expect(
+        repo.applyAction(localActor, {
+          reviewItemId: item.reviewItemId,
+          action: reviewerQueueActionValues.approve,
+          actorUserId: localUserId,
+          expectedSourceRevisionId: sourceRevisionId,
+          expectedLeaseId: "lease-stale",
+        }),
+      ).rejects.toMatchObject({
+        name: "ReviewerQueueRepositoryError",
+        code: "reviewer_queue_item_stale_lease",
+      });
+
       const reloaded = await repo.getItem(localActor, item.reviewItemId);
       expect(reloaded?.state).toBe(reviewerQueueItemStateValues.pending);
       const transitions = await repo.loadTransitionsByItem(localActor, item.reviewItemId);
@@ -311,6 +375,61 @@ describe.skipIf(!process.env.DATABASE_URL)("ItotoriReviewerQueueRepository", () 
         where project_id = ${projectId}
       `);
       expect(counts.rows[0]).toMatchObject({ job_count: 0 });
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("applyActionsAndEnqueueJobs rolls back all reviewer transitions when a later action is stale", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      await seedProjectScope(context);
+      const repo = new ItotoriReviewerQueueRepository(context.db);
+      const first = await repo.createItem(localActor, {
+        ...baseCreate("qa"),
+        sourceItemRef: "qa-finding-batch-1",
+      });
+      const second = await repo.createItem(localActor, {
+        ...baseCreate("style"),
+        sourceItemRef: "style-finding-batch-2",
+      });
+
+      await expect(
+        repo.applyActionsAndEnqueueJobs(
+          localActor,
+          [
+            {
+              reviewItemId: first.reviewItemId,
+              action: reviewerQueueActionValues.approve,
+              actorUserId: localUserId,
+              expectedSourceRevisionId: sourceRevisionId,
+            },
+            {
+              reviewItemId: second.reviewItemId,
+              action: reviewerQueueActionValues.approve,
+              actorUserId: localUserId,
+              expectedSourceRevisionId: supersedingSourceRevisionId,
+            },
+          ],
+          () => [],
+        ),
+      ).rejects.toMatchObject({
+        name: "ReviewerQueueRepositoryError",
+        code: "reviewer_queue_item_stale_revision",
+      });
+
+      await expect(repo.getItem(localActor, first.reviewItemId)).resolves.toMatchObject({
+        state: reviewerQueueItemStateValues.pending,
+        resolvedAt: null,
+      });
+      await expect(repo.getItem(localActor, second.reviewItemId)).resolves.toMatchObject({
+        state: reviewerQueueItemStateValues.pending,
+        resolvedAt: null,
+      });
+      await expect(repo.loadTransitionsByItem(localActor, first.reviewItemId)).resolves.toEqual([]);
+      await expect(repo.loadTransitionsByItem(localActor, second.reviewItemId)).resolves.toEqual(
+        [],
+      );
     } finally {
       await context.close();
     }

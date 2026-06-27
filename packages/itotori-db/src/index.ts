@@ -694,6 +694,7 @@ export type {
   ItotoriReviewerQueueRepositoryPort,
   LoadReviewerQueueItemsOptions,
   ReviewerQueueActionAndJobsResult,
+  ReviewerQueueBatchActionAndJobsResult,
   ReviewerQueueActionInput,
   ReviewerQueueActionJobPlanner,
   ReviewerQueueActionResult,

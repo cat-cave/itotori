@@ -38,6 +38,11 @@ import { buildReviewerTriggeredRerunJobInputs } from "./repair-rerun-scheduler.j
 export type ReviewerQueueActionServicePort = {
   approve(actor: AuthorizationActor, input: ApproveActionInput): Promise<ReviewerQueueActionResult>;
   reject(actor: AuthorizationActor, input: RejectActionInput): Promise<ReviewerQueueActionResult>;
+  defer(actor: AuthorizationActor, input: DeferActionInput): Promise<ReviewerQueueActionResult>;
+  escalate(
+    actor: AuthorizationActor,
+    input: EscalateActionInput,
+  ): Promise<ReviewerQueueActionResult>;
   requestRepair(
     actor: AuthorizationActor,
     input: RequestRepairActionInput,
@@ -54,9 +59,39 @@ export type ReviewerQueueActionServicePort = {
     actor: AuthorizationActor,
     input: ImportRuntimeFeedbackActionInput,
   ): Promise<ReviewerQueueActionResult>;
+  applyPreparedBatch(
+    actor: AuthorizationActor,
+    inputs: readonly ReviewerQueueActionInput[],
+  ): Promise<ReviewerQueueActionResult[]>;
 };
 
 export type ReviewerQueueActionServiceDeps = Record<string, never>;
+
+export type ReviewerQueueDecisionContextRefs = {
+  source: {
+    bridgeUnitId: string;
+    sourceUnitKey: string;
+    sourceRevisionId: string;
+  };
+  draft: {
+    draftId: string;
+    draftAttemptId: string;
+  };
+  runtime: {
+    runtimeTargetId: string;
+    observationEventIds: string[];
+    artifactHashes: string[];
+  };
+  style: {
+    styleGuidePolicyVersionId: string;
+  };
+  glossary: {
+    termIds: string[];
+  };
+  qa: {
+    findingIds: string[];
+  };
+};
 
 /**
  * Shared shape every action carries. `expectedSourceRevisionId` lets the
@@ -67,14 +102,25 @@ export type ReviewerQueueActionCommonInput = {
   reviewItemId: string;
   actorUserId: string;
   expectedSourceRevisionId: string;
+  expectedLeaseId?: string;
   affectedArtifactIds?: string[];
   diagnostics?: ReviewerQueueDiagnostic[];
   metadata?: Record<string, unknown>;
+  contextRefs?: ReviewerQueueDecisionContextRefs;
 };
 
 export type ApproveActionInput = ReviewerQueueActionCommonInput;
 
 export type RejectActionInput = ReviewerQueueActionCommonInput;
+
+export type DeferActionInput = ReviewerQueueActionCommonInput & {
+  deferReason: string;
+};
+
+export type EscalateActionInput = ReviewerQueueActionCommonInput & {
+  escalationReason: string;
+  escalationTarget: string;
+};
 
 export type RequestRepairActionInput = ReviewerQueueActionCommonInput & {
   /**
@@ -137,6 +183,34 @@ export class ReviewerQueueActionService implements ReviewerQueueActionServicePor
     return this.applyActionAndSchedule(
       actor,
       buildActionInput(input, reviewerQueueActionValues.reject),
+    );
+  }
+
+  async defer(
+    actor: AuthorizationActor,
+    input: DeferActionInput,
+  ): Promise<ReviewerQueueActionResult> {
+    assertNonEmpty("deferReason", input.deferReason);
+    return this.applyActionAndSchedule(
+      actor,
+      buildActionInput(input, reviewerQueueActionValues.defer, {
+        deferReason: input.deferReason,
+      }),
+    );
+  }
+
+  async escalate(
+    actor: AuthorizationActor,
+    input: EscalateActionInput,
+  ): Promise<ReviewerQueueActionResult> {
+    assertNonEmpty("escalationReason", input.escalationReason);
+    assertNonEmpty("escalationTarget", input.escalationTarget);
+    return this.applyActionAndSchedule(
+      actor,
+      buildActionInput(input, reviewerQueueActionValues.escalate, {
+        escalationReason: input.escalationReason,
+        escalationTarget: input.escalationTarget,
+      }),
     );
   }
 
@@ -215,6 +289,18 @@ export class ReviewerQueueActionService implements ReviewerQueueActionServicePor
     );
     return result.actionResult;
   }
+
+  async applyPreparedBatch(
+    actor: AuthorizationActor,
+    inputs: readonly ReviewerQueueActionInput[],
+  ): Promise<ReviewerQueueActionResult[]> {
+    const result = await this.repository.applyActionsAndEnqueueJobs(
+      actor,
+      inputs,
+      buildReviewerTriggeredRerunJobInputs,
+    );
+    return result.actionResults;
+  }
 }
 
 /**
@@ -225,16 +311,18 @@ export class ReviewerQueueActionService implements ReviewerQueueActionServicePor
  * so per-action context (repair hint, glossary term id, etc.) is
  * preserved alongside the reviewer's free-form metadata.
  */
-function buildActionInput(
+export function buildReviewerQueueActionInput(
   common: ReviewerQueueActionCommonInput,
   action: ReviewerQueueAction,
   metadataExtension?: Record<string, unknown>,
 ): ReviewerQueueActionInput {
+  assertDecisionContextRefs(common.contextRefs);
   const result: ReviewerQueueActionInput = {
     reviewItemId: common.reviewItemId,
     action,
     actorUserId: common.actorUserId,
     expectedSourceRevisionId: common.expectedSourceRevisionId,
+    ...(common.expectedLeaseId === undefined ? {} : { expectedLeaseId: common.expectedLeaseId }),
   };
   if (common.affectedArtifactIds !== undefined) {
     result.affectedArtifactIds = common.affectedArtifactIds;
@@ -243,10 +331,14 @@ function buildActionInput(
     result.diagnostics = common.diagnostics;
   }
   if (common.metadata !== undefined || metadataExtension !== undefined) {
-    result.metadata = { ...common.metadata, ...metadataExtension };
+    result.metadata = { ...common.metadata, contextRefs: common.contextRefs, ...metadataExtension };
+  } else {
+    result.metadata = { contextRefs: common.contextRefs };
   }
   return result;
 }
+
+const buildActionInput = buildReviewerQueueActionInput;
 
 /**
  * Type-narrow helper for callers that want to ensure a record is
@@ -287,6 +379,29 @@ function assertNonEmptyArray(field: string, value: ReadonlyArray<string>): void 
       );
     }
   }
+}
+
+function assertDecisionContextRefs(value: ReviewerQueueDecisionContextRefs | undefined): void {
+  if (value === undefined) {
+    throw new ReviewerQueueActionServiceInputError(
+      "contextRefs",
+      "contextRefs must include source, draft, runtime, style, glossary, and QA refs",
+    );
+  }
+  assertNonEmpty("contextRefs.source.bridgeUnitId", value.source.bridgeUnitId);
+  assertNonEmpty("contextRefs.source.sourceUnitKey", value.source.sourceUnitKey);
+  assertNonEmpty("contextRefs.source.sourceRevisionId", value.source.sourceRevisionId);
+  assertNonEmpty("contextRefs.draft.draftId", value.draft.draftId);
+  assertNonEmpty("contextRefs.draft.draftAttemptId", value.draft.draftAttemptId);
+  assertNonEmpty("contextRefs.runtime.runtimeTargetId", value.runtime.runtimeTargetId);
+  assertNonEmptyArray("contextRefs.runtime.observationEventIds", value.runtime.observationEventIds);
+  assertNonEmptyArray("contextRefs.runtime.artifactHashes", value.runtime.artifactHashes);
+  assertNonEmpty(
+    "contextRefs.style.styleGuidePolicyVersionId",
+    value.style.styleGuidePolicyVersionId,
+  );
+  assertNonEmptyArray("contextRefs.glossary.termIds", value.glossary.termIds);
+  assertNonEmptyArray("contextRefs.qa.findingIds", value.qa.findingIds);
 }
 
 export class ReviewerQueueActionServiceInputError extends Error {

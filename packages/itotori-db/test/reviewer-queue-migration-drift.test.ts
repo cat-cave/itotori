@@ -255,6 +255,39 @@ describe.skipIf(!process.env.DATABASE_URL)("reviewer queue migration drift", () 
     }
   });
 
+  it("deferred rows are non-terminal and keep resolved_at null", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      await seedProjectScope(context);
+      await context.pool.query(
+        `insert into itotori_reviewer_queue_items
+           (review_item_id, project_id, locale_branch_id, source_revision_id,
+            item_kind, source_item_ref, summary, state)
+         values ($1, $2, $3, $4, $5, $6, $7, $8)`,
+        [
+          "reviewer-queue-drift-deferred",
+          projectId,
+          localeBranchId,
+          sourceRevisionId,
+          "qa",
+          "deferred-ref",
+          "summary",
+          "deferred",
+        ],
+      );
+
+      const rows = await context.pool.query(
+        `select state, resolved_at
+           from itotori_reviewer_queue_items
+          where review_item_id = $1`,
+        ["reviewer-queue-drift-deferred"],
+      );
+      expect(rows.rows[0]).toMatchObject({ state: "deferred", resolved_at: null });
+    } finally {
+      await context.close();
+    }
+  });
+
   it("registers the foreign key from transitions back to items", async () => {
     const context = await isolatedMigratedContext();
     try {

@@ -69,6 +69,19 @@ describe("validateReviewerQueueTransition — allowed", () => {
       expect(result.nextState).toBe(reviewerQueueItemStateValues.inReview);
     }
   });
+
+  it("allows defer from pending into the deferred state", () => {
+    const result = validateReviewerQueueTransition({
+      item: makeItem(),
+      action: reviewerQueueActionValues.defer,
+      expectedSourceRevisionId: "source-revision-test",
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.nextState).toBe(reviewerQueueItemStateValues.deferred);
+      expect(result.priorState).toBe(reviewerQueueItemStateValues.pending);
+    }
+  });
 });
 
 describe("validateReviewerQueueTransition — refusal taxonomy", () => {
@@ -148,6 +161,9 @@ describe("validateReviewerQueueTransition — exported constants", () => {
     );
     expect(reviewerQueueActionToNextState[reviewerQueueActionValues.reject]).toBe(
       reviewerQueueItemStateValues.rejected,
+    );
+    expect(reviewerQueueActionToNextState[reviewerQueueActionValues.defer]).toBe(
+      reviewerQueueItemStateValues.deferred,
     );
     expect(reviewerQueueActionToNextState[reviewerQueueActionValues.requestRepair]).toBe(
       reviewerQueueItemStateValues.repairRequested,

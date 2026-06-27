@@ -518,6 +518,7 @@ function mapRefusalCodeToStatus(
 ): ReviewerBatchPreviewStatus {
   switch (code) {
     case "reviewer_queue_item_invalid_input":
+    case "reviewer_queue_item_stale_lease":
       return reviewerBatchPreviewStatusValues.invalidInput;
     case "reviewer_queue_item_invalid_transition":
       return reviewerBatchPreviewStatusValues.invalidTransition;

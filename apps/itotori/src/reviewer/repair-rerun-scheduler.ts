@@ -214,6 +214,8 @@ function reasonCodesForAction(action: ReviewerQueueAction): ReviewerTriggeredRer
       ];
     case reviewerQueueActionValues.approve:
     case reviewerQueueActionValues.reject:
+    case reviewerQueueActionValues.defer:
+    case reviewerQueueActionValues.escalate:
       return [];
     default:
       return assertNever(action);

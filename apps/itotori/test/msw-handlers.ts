@@ -10,6 +10,7 @@ import {
   dashboardStatusFixture,
   runtimeStatusFixture,
 } from "./api-fixtures.js";
+import { reviewQueueDashboardFixtures } from "../src/reviewer/index.js";
 
 export const itotoriApiMswHandlers = [
   http.get("http://itotori.test/api/projects/status", () =>
@@ -17,6 +18,9 @@ export const itotoriApiMswHandlers = [
   ),
   http.get("http://itotori.test/api/projects/decisions", () =>
     apiJson("projects.decisions", dashboardDecisionsFixture),
+  ),
+  http.get("http://itotori.test/api/reviewer/queue-fixture", () =>
+    HttpResponse.json(reviewQueueDashboardFixtures()),
   ),
   http.get("http://itotori.test/api/projects/cost", () =>
     apiJson("projects.cost", costReportFixture),

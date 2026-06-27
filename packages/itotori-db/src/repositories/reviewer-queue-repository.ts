@@ -51,12 +51,15 @@ export const reviewerQueueItemStateList: ReadonlyArray<ReviewerQueueItemState> =
   reviewerQueueItemStateValues.accepted,
   reviewerQueueItemStateValues.rejected,
   reviewerQueueItemStateValues.repairRequested,
+  reviewerQueueItemStateValues.deferred,
   reviewerQueueItemStateValues.escalated,
 ];
 
 export const reviewerQueueActionList: ReadonlyArray<ReviewerQueueAction> = [
   reviewerQueueActionValues.approve,
   reviewerQueueActionValues.reject,
+  reviewerQueueActionValues.defer,
+  reviewerQueueActionValues.escalate,
   reviewerQueueActionValues.requestRepair,
   reviewerQueueActionValues.updateGlossary,
   reviewerQueueActionValues.updateStyle,
@@ -75,6 +78,7 @@ export const reviewerQueueRepositoryErrorCodes = [
   "reviewer_queue_item_invalid_input",
   "reviewer_queue_item_invalid_transition",
   "reviewer_queue_item_stale_revision",
+  "reviewer_queue_item_stale_lease",
   "reviewer_queue_item_duplicate",
   "reviewer_queue_item_runtime_evidence_invariant",
 ] as const;
@@ -128,6 +132,7 @@ export type ReviewerQueueActionInput = {
   action: ReviewerQueueAction;
   actorUserId: string;
   expectedSourceRevisionId: string;
+  expectedLeaseId?: string;
   affectedArtifactIds?: string[];
   diagnostics?: ReviewerQueueDiagnostic[];
   metadata?: Record<string, unknown>;
@@ -156,6 +161,11 @@ export type ReviewerQueueActionAndJobsResult = {
   jobs: JobQueueRecord[];
 };
 
+export type ReviewerQueueBatchActionAndJobsResult = {
+  actionResults: ReviewerQueueActionResult[];
+  jobs: JobQueueRecord[];
+};
+
 export type LoadReviewerQueueItemsOptions = {
   stateFilter?: ReviewerQueueItemState;
   kindFilter?: ReviewerQueueItemKind;
@@ -175,6 +185,11 @@ export interface ItotoriReviewerQueueRepositoryPort {
     input: ReviewerQueueActionInput,
     planJobs: ReviewerQueueActionJobPlanner,
   ): Promise<ReviewerQueueActionAndJobsResult>;
+  applyActionsAndEnqueueJobs(
+    actor: AuthorizationActor,
+    inputs: readonly ReviewerQueueActionInput[],
+    planJobs: ReviewerQueueActionJobPlanner,
+  ): Promise<ReviewerQueueBatchActionAndJobsResult>;
   getItem(actor: AuthorizationActor, reviewItemId: string): Promise<ReviewerQueueItemRecord | null>;
   loadItemsByBranch(
     actor: AuthorizationActor,
@@ -205,14 +220,20 @@ export const reviewerQueueAllowedTransitions: ReadonlyArray<
   [reviewerQueueItemStateValues.pending, reviewerQueueItemStateValues.accepted],
   [reviewerQueueItemStateValues.pending, reviewerQueueItemStateValues.rejected],
   [reviewerQueueItemStateValues.pending, reviewerQueueItemStateValues.repairRequested],
+  [reviewerQueueItemStateValues.pending, reviewerQueueItemStateValues.deferred],
   [reviewerQueueItemStateValues.pending, reviewerQueueItemStateValues.escalated],
   [reviewerQueueItemStateValues.inReview, reviewerQueueItemStateValues.accepted],
   [reviewerQueueItemStateValues.inReview, reviewerQueueItemStateValues.rejected],
   [reviewerQueueItemStateValues.inReview, reviewerQueueItemStateValues.repairRequested],
+  [reviewerQueueItemStateValues.inReview, reviewerQueueItemStateValues.deferred],
   [reviewerQueueItemStateValues.inReview, reviewerQueueItemStateValues.escalated],
   [reviewerQueueItemStateValues.repairRequested, reviewerQueueItemStateValues.pending],
   [reviewerQueueItemStateValues.repairRequested, reviewerQueueItemStateValues.accepted],
   [reviewerQueueItemStateValues.repairRequested, reviewerQueueItemStateValues.rejected],
+  [reviewerQueueItemStateValues.deferred, reviewerQueueItemStateValues.pending],
+  [reviewerQueueItemStateValues.deferred, reviewerQueueItemStateValues.accepted],
+  [reviewerQueueItemStateValues.deferred, reviewerQueueItemStateValues.rejected],
+  [reviewerQueueItemStateValues.deferred, reviewerQueueItemStateValues.escalated],
   [reviewerQueueItemStateValues.escalated, reviewerQueueItemStateValues.accepted],
   [reviewerQueueItemStateValues.escalated, reviewerQueueItemStateValues.rejected],
 ];
@@ -231,6 +252,8 @@ export const reviewerQueueActionToNextState: Readonly<
 > = {
   [reviewerQueueActionValues.approve]: reviewerQueueItemStateValues.accepted,
   [reviewerQueueActionValues.reject]: reviewerQueueItemStateValues.rejected,
+  [reviewerQueueActionValues.defer]: reviewerQueueItemStateValues.deferred,
+  [reviewerQueueActionValues.escalate]: reviewerQueueItemStateValues.escalated,
   [reviewerQueueActionValues.requestRepair]: reviewerQueueItemStateValues.repairRequested,
   [reviewerQueueActionValues.updateGlossary]: reviewerQueueItemStateValues.accepted,
   [reviewerQueueActionValues.updateStyle]: reviewerQueueItemStateValues.accepted,
@@ -249,6 +272,8 @@ export const reviewerQueueActionAllowedKinds: Readonly<
 > = {
   [reviewerQueueActionValues.approve]: reviewerQueueItemKindList,
   [reviewerQueueActionValues.reject]: reviewerQueueItemKindList,
+  [reviewerQueueActionValues.defer]: reviewerQueueItemKindList,
+  [reviewerQueueActionValues.escalate]: reviewerQueueItemKindList,
   [reviewerQueueActionValues.requestRepair]: [
     reviewerQueueItemKindValues.qa,
     reviewerQueueItemKindValues.runtimeEvidence,
@@ -447,6 +472,40 @@ export class ItotoriReviewerQueueRepository implements ItotoriReviewerQueueRepos
     });
   }
 
+  async applyActionsAndEnqueueJobs(
+    actor: AuthorizationActor,
+    inputs: readonly ReviewerQueueActionInput[],
+    planJobs: ReviewerQueueActionJobPlanner,
+  ): Promise<ReviewerQueueBatchActionAndJobsResult> {
+    await requirePermission(this.db, actor, permissionValues.queueManage);
+    if (inputs.length === 0) {
+      throw new ReviewerQueueRepositoryError(
+        "reviewer_queue_item_invalid_input",
+        "batch action requires at least one reviewer queue item",
+      );
+    }
+    for (const input of inputs) {
+      assertActionInputShape(input);
+    }
+
+    return this.db.transaction(async (tx) => {
+      const actionResults: ReviewerQueueActionResult[] = [];
+      const jobs: JobQueueRecord[] = [];
+      for (const input of inputs) {
+        const actionResult = await applyActionInTransaction(tx, input);
+        const jobInputs = await planJobs(actionResult);
+        jobs.push(
+          ...(await ItotoriEventQueueRepository.enqueueJobsInTransaction(
+            tx as unknown as QueueSqlExecutor,
+            jobInputs,
+          )),
+        );
+        actionResults.push(actionResult);
+      }
+      return { actionResults, jobs };
+    });
+  }
+
   async getItem(
     actor: AuthorizationActor,
     reviewItemId: string,
@@ -522,6 +581,22 @@ async function applyActionInTransaction(
   // Shared with the ITOTORI-083 batch preview: same input yields the
   // same diagnostic before this transaction writes anything.
   const existingItem = rowToItem(existing);
+  if (input.expectedLeaseId !== undefined) {
+    const currentLeaseId =
+      typeof existingItem.metadata.leaseId === "string" ? existingItem.metadata.leaseId : null;
+    if (currentLeaseId !== input.expectedLeaseId) {
+      throw new ReviewerQueueRepositoryError(
+        "reviewer_queue_item_stale_lease",
+        `reviewer action targeted lease=${input.expectedLeaseId} but item ${input.reviewItemId} is on lease=${currentLeaseId ?? "none"}`,
+        [
+          {
+            code: "reviewer_queue_item_stale_lease",
+            message: `current lease_id=${currentLeaseId ?? "none"}`,
+          },
+        ],
+      );
+    }
+  }
   const validation = validateReviewerQueueTransition({
     item: existingItem,
     action: input.action,

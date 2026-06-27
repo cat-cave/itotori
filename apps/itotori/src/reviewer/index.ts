@@ -1,16 +1,20 @@
 // ITOTORI-081 / ITOTORI-082 — public surface of the reviewer API.
 
 export {
+  buildReviewerQueueActionInput,
   ReviewerQueueActionService,
   ReviewerQueueActionServiceInputError,
   isRuntimeEvidenceItem,
 } from "./action-service.js";
 export type {
   ApproveActionInput,
+  DeferActionInput,
+  EscalateActionInput,
   ImportRuntimeFeedbackActionInput,
   RejectActionInput,
   RequestRepairActionInput,
   ReviewerQueueActionCommonInput,
+  ReviewerQueueDecisionContextRefs,
   ReviewerQueueActionServiceDeps,
   ReviewerQueueActionServicePort,
   UpdateGlossaryActionInput,
@@ -177,3 +181,13 @@ export {
   itotori083FixtureProjectId,
   itotori083FixtureSourceRevisionId,
 } from "./batch-fixtures.js";
+
+export {
+  itotori023DashboardFixtureIds,
+  reviewQueueDashboardFixtures,
+} from "./review-queue-dashboard-fixtures.js";
+export type {
+  ReviewerQueueDashboardFixtureDecision,
+  ReviewerQueueDashboardFixtures,
+  ReviewerQueueDashboardFixtureState,
+} from "./review-queue-dashboard-fixtures.js";

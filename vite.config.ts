@@ -66,6 +66,11 @@ export default defineConfig({
         dependsOn: ["ts:build"],
         cache: false,
       },
+      "itotori:review-queue-fixture": {
+        command: "node apps/itotori/dist/cli.js review-queue-fixture",
+        dependsOn: ["ts:build"],
+        cache: false,
+      },
       "style-guide:live-provider-smoke": {
         command: "node apps/itotori/dist/style-guide-provider-smoke.js --live",
         dependsOn: ["ts:build"],

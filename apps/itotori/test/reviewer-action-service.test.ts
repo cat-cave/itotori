@@ -27,10 +27,36 @@ import {
   isRuntimeEvidenceItem,
   ReviewerQueueActionService,
   ReviewerQueueActionServiceInputError,
+  type ReviewerQueueDecisionContextRefs,
   reviewerTriggeredRerunJobNameValues,
 } from "../src/reviewer/index.js";
 
 const actor: AuthorizationActor = { userId: "local-user" };
+const decisionContextRefs: ReviewerQueueDecisionContextRefs = {
+  source: {
+    bridgeUnitId: "bridge-unit-fixture",
+    sourceUnitKey: "scene.001.line.001",
+    sourceRevisionId: "source-revision-fixture",
+  },
+  draft: {
+    draftId: "draft-fixture",
+    draftAttemptId: "draft-attempt-fixture",
+  },
+  runtime: {
+    runtimeTargetId: "runtime-target-fixture",
+    observationEventIds: ["observation-fixture-1"],
+    artifactHashes: ["sha256:runtime-fixture"],
+  },
+  style: {
+    styleGuidePolicyVersionId: "style-guide-version-fixture",
+  },
+  glossary: {
+    termIds: ["term-fixture"],
+  },
+  qa: {
+    findingIds: ["qa-finding-fixture"],
+  },
+};
 
 function itemFixture(overrides: Partial<ReviewerQueueItemRecord> = {}): ReviewerQueueItemRecord {
   return {
@@ -83,6 +109,7 @@ function makeStubRepo(): {
   repo: ItotoriReviewerQueueRepositoryPort;
   applyAction: ReturnType<typeof vi.fn>;
   applyActionAndEnqueueJobs: ReturnType<typeof vi.fn>;
+  applyActionsAndEnqueueJobs: ReturnType<typeof vi.fn>;
   plannedJobs: JobQueueInput[];
 } {
   const applyAction = vi.fn<
@@ -96,9 +123,13 @@ function makeStubRepo(): {
         state:
           input.action === reviewerQueueActionValues.requestRepair
             ? reviewerQueueItemStateValues.repairRequested
-            : input.action === reviewerQueueActionValues.reject
-              ? reviewerQueueItemStateValues.rejected
-              : reviewerQueueItemStateValues.accepted,
+            : input.action === reviewerQueueActionValues.defer
+              ? reviewerQueueItemStateValues.deferred
+              : input.action === reviewerQueueActionValues.escalate
+                ? reviewerQueueItemStateValues.escalated
+                : input.action === reviewerQueueActionValues.reject
+                  ? reviewerQueueItemStateValues.rejected
+                  : reviewerQueueItemStateValues.accepted,
       }),
       transition: transitionFixture({
         reviewItemId: input.reviewItemId,
@@ -119,15 +150,29 @@ function makeStubRepo(): {
     plannedJobs.push(...(await planJobs(actionResult)));
     return { actionResult, jobs: [] };
   });
+  const applyActionsAndEnqueueJobs = vi.fn<
+    [AuthorizationActor, readonly ReviewerQueueActionInput[], ReviewerQueueActionJobPlanner],
+    Promise<{ actionResults: ReviewerQueueActionResult[]; jobs: [] }>
+  >();
+  applyActionsAndEnqueueJobs.mockImplementation(async (actor, inputs, planJobs) => {
+    const actionResults: ReviewerQueueActionResult[] = [];
+    for (const input of inputs) {
+      const actionResult = await applyAction(actor, input);
+      plannedJobs.push(...(await planJobs(actionResult)));
+      actionResults.push(actionResult);
+    }
+    return { actionResults, jobs: [] };
+  });
   const repo: ItotoriReviewerQueueRepositoryPort = {
     createItem: vi.fn(),
     applyAction,
     applyActionAndEnqueueJobs,
+    applyActionsAndEnqueueJobs,
     getItem: vi.fn(),
     loadItemsByBranch: vi.fn(),
     loadTransitionsByItem: vi.fn(),
   };
-  return { repo, applyAction, applyActionAndEnqueueJobs, plannedJobs };
+  return { repo, applyAction, applyActionAndEnqueueJobs, applyActionsAndEnqueueJobs, plannedJobs };
 }
 
 describe("ReviewerQueueActionService", () => {
@@ -139,6 +184,7 @@ describe("ReviewerQueueActionService", () => {
       reviewItemId: "reviewer-queue-1",
       actorUserId: "local-user",
       expectedSourceRevisionId: "source-revision-fixture",
+      contextRefs: decisionContextRefs,
       metadata: { reviewerNote: "looks good" },
     });
 
@@ -148,7 +194,7 @@ describe("ReviewerQueueActionService", () => {
       action: reviewerQueueActionValues.approve,
       reviewItemId: "reviewer-queue-1",
       expectedSourceRevisionId: "source-revision-fixture",
-      metadata: { reviewerNote: "looks good" },
+      metadata: { reviewerNote: "looks good", contextRefs: decisionContextRefs },
     });
   });
 
@@ -160,9 +206,72 @@ describe("ReviewerQueueActionService", () => {
       reviewItemId: "reviewer-queue-2",
       actorUserId: "local-user",
       expectedSourceRevisionId: "source-revision-fixture",
+      contextRefs: decisionContextRefs,
     });
 
     expect(applyAction.mock.calls[0]![1]!.action).toBe(reviewerQueueActionValues.reject);
+  });
+
+  it("defer dispatches the defer action with no rerun jobs", async () => {
+    const { repo, applyAction, plannedJobs } = makeStubRepo();
+    const service = new ReviewerQueueActionService(repo);
+
+    const result = await service.defer(actor, {
+      reviewItemId: "reviewer-queue-defer",
+      actorUserId: "local-user",
+      expectedSourceRevisionId: "source-revision-fixture",
+      contextRefs: decisionContextRefs,
+      deferReason: "needs bilingual owner review",
+    });
+
+    expect(result.item.state).toBe(reviewerQueueItemStateValues.deferred);
+    expect(applyAction.mock.calls[0]![1]!.action).toBe(reviewerQueueActionValues.defer);
+    expect(applyAction.mock.calls[0]![1]!.metadata).toMatchObject({
+      deferReason: "needs bilingual owner review",
+      contextRefs: decisionContextRefs,
+    });
+    expect(plannedJobs).toHaveLength(0);
+  });
+
+  it("escalate dispatches the escalate action with no rerun jobs", async () => {
+    const { repo, applyAction, plannedJobs } = makeStubRepo();
+    const service = new ReviewerQueueActionService(repo);
+
+    const result = await service.escalate(actor, {
+      reviewItemId: "reviewer-queue-escalate",
+      actorUserId: "local-user",
+      expectedSourceRevisionId: "source-revision-fixture",
+      contextRefs: decisionContextRefs,
+      escalationReason: "ambiguous tone",
+      escalationTarget: "owner-review",
+    });
+
+    expect(result.item.state).toBe(reviewerQueueItemStateValues.escalated);
+    expect(applyAction.mock.calls[0]![1]!.action).toBe(reviewerQueueActionValues.escalate);
+    expect(applyAction.mock.calls[0]![1]!.metadata).toMatchObject({
+      escalationReason: "ambiguous tone",
+      escalationTarget: "owner-review",
+      contextRefs: decisionContextRefs,
+    });
+    expect(plannedJobs).toHaveLength(0);
+  });
+
+  it("refuses context-free decisions before repository mutation", async () => {
+    const { repo, applyActionAndEnqueueJobs } = makeStubRepo();
+    const service = new ReviewerQueueActionService(repo);
+
+    await expect(
+      service.approve(actor, {
+        reviewItemId: "reviewer-queue-context-free",
+        actorUserId: "local-user",
+        expectedSourceRevisionId: "source-revision-fixture",
+      }),
+    ).rejects.toMatchObject({
+      name: "ReviewerQueueActionServiceInputError",
+      field: "contextRefs",
+    });
+
+    expect(applyActionAndEnqueueJobs).not.toHaveBeenCalled();
   });
 
   it("requestRepair refuses an empty repairHint", async () => {
@@ -187,6 +296,7 @@ describe("ReviewerQueueActionService", () => {
       reviewItemId: "reviewer-queue-4",
       actorUserId: "local-user",
       expectedSourceRevisionId: "source-revision-fixture",
+      contextRefs: decisionContextRefs,
       repairHint: "re-translate with tighter glossary",
       metadata: { reviewerNote: "needs glossary" },
     });
@@ -194,6 +304,7 @@ describe("ReviewerQueueActionService", () => {
     expect(applyAction.mock.calls[0]![1]!.metadata).toMatchObject({
       repairHint: "re-translate with tighter glossary",
       reviewerNote: "needs glossary",
+      contextRefs: decisionContextRefs,
     });
   });
 
@@ -205,6 +316,7 @@ describe("ReviewerQueueActionService", () => {
       reviewItemId: "reviewer-queue-rerun",
       actorUserId: "local-user",
       expectedSourceRevisionId: "source-revision-fixture",
+      contextRefs: decisionContextRefs,
       repairHint: "targeted repair",
     });
 
@@ -256,6 +368,7 @@ describe("ReviewerQueueActionService", () => {
         reviewItemId: "reviewer-queue-stale",
         actorUserId: "local-user",
         expectedSourceRevisionId: "source-revision-old",
+        contextRefs: decisionContextRefs,
         repairHint: "targeted repair",
       }),
     ).rejects.toBeInstanceOf(ReviewerQueueRepositoryError);
@@ -296,6 +409,7 @@ describe("ReviewerQueueActionService", () => {
       reviewItemId: "reviewer-queue-6",
       actorUserId: "local-user",
       expectedSourceRevisionId: "source-revision-fixture",
+      contextRefs: decisionContextRefs,
       styleGuideVersionId: "style-version-1",
       ruleLabel: "Honorifics: keep -san suffix",
     });
@@ -304,6 +418,7 @@ describe("ReviewerQueueActionService", () => {
     expect(applyAction.mock.calls[0]![1]!.metadata).toMatchObject({
       styleGuideVersionId: "style-version-1",
       ruleLabel: "Honorifics: keep -san suffix",
+      contextRefs: decisionContextRefs,
     });
   });
 
@@ -342,6 +457,7 @@ describe("ReviewerQueueActionService", () => {
       reviewItemId: "reviewer-queue-8",
       actorUserId: "local-user",
       expectedSourceRevisionId: "source-revision-fixture",
+      contextRefs: decisionContextRefs,
       evidenceTier: "tier-3-recording",
       observationEventIds: ["event-1", "event-2"],
       artifactHashes: ["sha256:a", "sha256:b"],
@@ -354,6 +470,7 @@ describe("ReviewerQueueActionService", () => {
       evidenceTier: "tier-3-recording",
       observationEventIds: ["event-1", "event-2"],
       artifactHashes: ["sha256:a", "sha256:b"],
+      contextRefs: decisionContextRefs,
     });
   });
 

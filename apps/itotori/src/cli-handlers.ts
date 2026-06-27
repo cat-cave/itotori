@@ -65,6 +65,7 @@ import {
   type TelemetrySummaryCliDeps,
 } from "./telemetry/cli.js";
 import type { TelemetryQuery } from "./telemetry/queries.js";
+import { runReviewQueueFixtureCommand } from "./reviewer/review-queue-fixture-command.js";
 
 export type JsonFileStore = {
   readJson(path: string): unknown;
@@ -214,9 +215,26 @@ export async function runItotoriCliCommand(
     case "telemetry-summary":
       await runTelemetrySummaryHandler(args, dependencies);
       break;
+    case "review-queue-fixture":
+      await runReviewQueueFixtureHandler(args, dependencies);
+      break;
     default:
       throw new Error(`unknown itotori command: ${String(command)}`);
   }
+}
+
+async function runReviewQueueFixtureHandler(
+  args: string[],
+  dependencies: ItotoriCliDependencies,
+): Promise<void> {
+  const outputPath = optionalFlag(args, "--output");
+  await runReviewQueueFixtureCommand({
+    ...(outputPath === undefined ? {} : { outputPath }),
+    writeJson: (path, value) => dependencies.io.writeJson(path, value),
+    log: (message) => {
+      process.stdout.write(`${message}\n`);
+    },
+  });
 }
 
 async function runTelemetrySummaryHandler(

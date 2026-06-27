@@ -4116,6 +4116,7 @@ export const reviewerQueueItemStateValues = {
   accepted: "accepted",
   rejected: "rejected",
   repairRequested: "repair_requested",
+  deferred: "deferred",
   escalated: "escalated",
 } as const;
 
@@ -4130,6 +4131,8 @@ export type ReviewerQueueItemState =
 export const reviewerQueueActionValues = {
   approve: "approve",
   reject: "reject",
+  defer: "defer",
+  escalate: "escalate",
   requestRepair: "request_repair",
   updateGlossary: "update_glossary",
   updateStyle: "update_style",

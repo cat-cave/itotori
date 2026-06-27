@@ -32,6 +32,8 @@
 //    writes.
 
 import {
+  reviewerQueueActionValues,
+  type ReviewerQueueActionInput,
   type ReviewerQueueAction,
   type ReviewerQueueActionResult,
   type ReviewerQueueDiagnostic,
@@ -40,7 +42,11 @@ import {
   ReviewerQueueRepositoryError,
 } from "@itotori/db";
 import type { AuthorizationActor } from "@itotori/db";
-import type { ReviewerQueueActionServicePort } from "./action-service.js";
+import type {
+  ReviewerQueueActionServicePort,
+  ReviewerQueueDecisionContextRefs,
+} from "./action-service.js";
+import { buildReviewerQueueActionInput } from "./action-service.js";
 import {
   reviewerBatchPreviewStatusValues,
   type BatchPreviewItem,
@@ -106,6 +112,13 @@ export type BatchActionPayloadResolver = (item: ReviewerQueueItemRecord) => Batc
 export type BatchActionPayload =
   | { kind: "approve"; metadata?: Record<string, unknown> }
   | { kind: "reject"; metadata?: Record<string, unknown> }
+  | { kind: "defer"; deferReason: string; metadata?: Record<string, unknown> }
+  | {
+      kind: "escalate";
+      escalationReason: string;
+      escalationTarget: string;
+      metadata?: Record<string, unknown>;
+    }
   | {
       kind: "requestRepair";
       repairHint: string;
@@ -205,112 +218,298 @@ export class ReviewerBatchActionService implements ReviewerBatchActionServicePor
       };
     }
 
-    const outcomes: BatchExecuteOutcome[] = [];
+    const contextRefRefusals = preflightDecisionContextRefs(preview.items);
+    if (contextRefRefusals !== null) {
+      return {
+        request,
+        preview,
+        applied: contextRefRefusals,
+        refusedAll: true,
+        appliedAll: false,
+      };
+    }
+
+    const preparedActions: Array<{
+      entry: BatchPreviewItem;
+      input: ReviewerQueueActionInput;
+    }> = [];
     for (const entry of preview.items) {
       const item = entry.item;
       if (item === null) {
         // Defensive: preview.allAllowed should already have caught
-        // this. Treat as a skip so the dashboard still gets a row.
-        outcomes.push(previewToRefused(entry));
-        continue;
+        // this. Refuse the whole batch before any writes.
+        return {
+          request,
+          preview,
+          applied: preview.items.map((row) => previewToRefused(row)),
+          refusedAll: true,
+          appliedAll: false,
+        };
       }
       const payload = this.deps.resolvePayload(item);
-      try {
-        const result = await dispatchAction(actor, this.deps.actionService, item, entry, payload);
-        outcomes.push({
-          kind: "applied",
-          reviewItemId: item.reviewItemId,
-          result,
-        });
-      } catch (error) {
-        if (error instanceof ReviewerQueueRepositoryError) {
-          outcomes.push({
-            kind: "refused",
-            reviewItemId: item.reviewItemId,
-            status: mapErrorCodeToStatus(error.code),
-            code: error.code,
-            message: error.message,
-            diagnostics: error.diagnostics,
-          });
-          continue;
-        }
-        throw error;
-      }
+      preparedActions.push({
+        entry,
+        input: buildPreparedActionInput(actor, item, entry, payload),
+      });
     }
 
-    const appliedAll = outcomes.every((entry) => entry.kind === "applied");
+    let results: ReviewerQueueActionResult[];
+    try {
+      results = await this.deps.actionService.applyPreparedBatch(
+        actor,
+        preparedActions.map((entry) => entry.input),
+      );
+    } catch (error) {
+      if (error instanceof ReviewerQueueRepositoryError) {
+        return {
+          request,
+          preview,
+          applied: preview.items.map((entry) => repositoryErrorToRefused(entry, error)),
+          refusedAll: true,
+          appliedAll: false,
+        };
+      }
+      throw error;
+    }
+
     return {
       request,
       preview,
-      applied: outcomes,
-      refusedAll: outcomes.every((entry) => entry.kind === "refused"),
-      appliedAll,
+      applied: results.map((result, index) => ({
+        kind: "applied" as const,
+        reviewItemId: preparedActions[index]?.entry.reviewItemId ?? result.item.reviewItemId,
+        result,
+      })),
+      refusedAll: false,
+      appliedAll: true,
     };
   }
 }
 
-async function dispatchAction(
+function preflightDecisionContextRefs(
+  items: readonly BatchPreviewItem[],
+): BatchExecuteOutcome[] | null {
+  const invalidIds = new Set<string>();
+  for (const entry of items) {
+    if (
+      entry.item !== null &&
+      !isDecisionContextRefs((entry.item.metadata as { contextRefs?: unknown }).contextRefs)
+    ) {
+      invalidIds.add(entry.reviewItemId);
+    }
+  }
+  if (invalidIds.size === 0) {
+    return null;
+  }
+  return items.map((entry) => {
+    if (!invalidIds.has(entry.reviewItemId)) {
+      return previewToRefused(entry);
+    }
+    return {
+      kind: "refused" as const,
+      reviewItemId: entry.reviewItemId,
+      status: reviewerBatchPreviewStatusValues.invalidInput,
+      code: "reviewer_queue_item_invalid_input" as const,
+      message: `reviewer queue item ${entry.reviewItemId} is missing typed decision context refs`,
+      diagnostics: [
+        {
+          code: "reviewer_batch_missing_context_refs",
+          message:
+            "batch reviewer actions require source, draft, runtime, style, glossary, and QA context refs before mutation",
+        },
+      ],
+    };
+  });
+}
+
+function buildPreparedActionInput(
   actor: AuthorizationActor,
-  actionService: ReviewerQueueActionServicePort,
   item: ReviewerQueueItemRecord,
   preview: BatchPreviewItem,
   payload: BatchActionPayload,
-): Promise<ReviewerQueueActionResult> {
+): ReviewerQueueActionInput {
   const common = {
     reviewItemId: item.reviewItemId,
     actorUserId: actor.userId,
     expectedSourceRevisionId: preview.expectedSourceRevisionId,
+    contextRefs: contextRefsFromItem(item),
   };
   switch (payload.kind) {
     case "approve":
       assertActionMatches(preview.action, "approve");
-      return actionService.approve(actor, {
-        ...common,
-        ...(payload.metadata === undefined ? {} : { metadata: payload.metadata }),
-      });
+      return buildReviewerQueueActionInput(
+        {
+          ...common,
+          ...(payload.metadata === undefined ? {} : { metadata: payload.metadata }),
+        },
+        reviewerQueueActionValues.approve,
+      );
     case "reject":
       assertActionMatches(preview.action, "reject");
-      return actionService.reject(actor, {
-        ...common,
-        ...(payload.metadata === undefined ? {} : { metadata: payload.metadata }),
-      });
+      return buildReviewerQueueActionInput(
+        {
+          ...common,
+          ...(payload.metadata === undefined ? {} : { metadata: payload.metadata }),
+        },
+        reviewerQueueActionValues.reject,
+      );
+    case "defer":
+      assertActionMatches(preview.action, "defer");
+      assertNonEmptyPayload("deferReason", payload.deferReason);
+      return buildReviewerQueueActionInput(
+        {
+          ...common,
+          ...(payload.metadata === undefined ? {} : { metadata: payload.metadata }),
+        },
+        reviewerQueueActionValues.defer,
+        { deferReason: payload.deferReason },
+      );
+    case "escalate":
+      assertActionMatches(preview.action, "escalate");
+      assertNonEmptyPayload("escalationReason", payload.escalationReason);
+      assertNonEmptyPayload("escalationTarget", payload.escalationTarget);
+      return buildReviewerQueueActionInput(
+        {
+          ...common,
+          ...(payload.metadata === undefined ? {} : { metadata: payload.metadata }),
+        },
+        reviewerQueueActionValues.escalate,
+        {
+          escalationReason: payload.escalationReason,
+          escalationTarget: payload.escalationTarget,
+        },
+      );
     case "requestRepair":
       assertActionMatches(preview.action, "request_repair");
-      return actionService.requestRepair(actor, {
-        ...common,
-        repairHint: payload.repairHint,
-        ...(payload.metadata === undefined ? {} : { metadata: payload.metadata }),
-      });
+      assertNonEmptyPayload("repairHint", payload.repairHint);
+      return buildReviewerQueueActionInput(
+        {
+          ...common,
+          ...(payload.metadata === undefined ? {} : { metadata: payload.metadata }),
+        },
+        reviewerQueueActionValues.requestRepair,
+        { repairHint: payload.repairHint },
+      );
     case "updateGlossary":
       assertActionMatches(preview.action, "update_glossary");
-      return actionService.updateGlossary(actor, {
-        ...common,
-        termId: payload.termId,
-        approvedTranslation: payload.approvedTranslation,
-        ...(payload.metadata === undefined ? {} : { metadata: payload.metadata }),
-      });
+      assertNonEmptyPayload("termId", payload.termId);
+      assertNonEmptyPayload("approvedTranslation", payload.approvedTranslation);
+      return buildReviewerQueueActionInput(
+        {
+          ...common,
+          ...(payload.metadata === undefined ? {} : { metadata: payload.metadata }),
+        },
+        reviewerQueueActionValues.updateGlossary,
+        {
+          termId: payload.termId,
+          approvedTranslation: payload.approvedTranslation,
+        },
+      );
     case "updateStyle":
       assertActionMatches(preview.action, "update_style");
-      return actionService.updateStyle(actor, {
-        ...common,
-        styleGuideVersionId: payload.styleGuideVersionId,
-        ruleLabel: payload.ruleLabel,
-        ...(payload.metadata === undefined ? {} : { metadata: payload.metadata }),
-      });
+      assertNonEmptyPayload("styleGuideVersionId", payload.styleGuideVersionId);
+      assertNonEmptyPayload("ruleLabel", payload.ruleLabel);
+      return buildReviewerQueueActionInput(
+        {
+          ...common,
+          ...(payload.metadata === undefined ? {} : { metadata: payload.metadata }),
+        },
+        reviewerQueueActionValues.updateStyle,
+        {
+          styleGuideVersionId: payload.styleGuideVersionId,
+          ruleLabel: payload.ruleLabel,
+        },
+      );
     case "importRuntimeFeedback":
       assertActionMatches(preview.action, "import_runtime_feedback");
-      return actionService.importRuntimeFeedback(actor, {
-        ...common,
-        evidenceTier: payload.evidenceTier,
-        observationEventIds: payload.observationEventIds,
-        artifactHashes: payload.artifactHashes,
-        ...(payload.metadata === undefined ? {} : { metadata: payload.metadata }),
-      });
+      assertNonEmptyPayload("evidenceTier", payload.evidenceTier);
+      assertNonEmptyPayloadArray("observationEventIds", payload.observationEventIds);
+      assertNonEmptyPayloadArray("artifactHashes", payload.artifactHashes);
+      return buildReviewerQueueActionInput(
+        {
+          ...common,
+          ...(payload.metadata === undefined ? {} : { metadata: payload.metadata }),
+        },
+        reviewerQueueActionValues.importRuntimeFeedback,
+        {
+          evidenceTier: payload.evidenceTier,
+          observationEventIds: payload.observationEventIds,
+          artifactHashes: payload.artifactHashes,
+        },
+      );
     default: {
       const exhaustive: never = payload;
       throw new Error(`unhandled batch action payload: ${JSON.stringify(exhaustive)}`);
     }
   }
+}
+
+function assertNonEmptyPayload(field: string, value: string): void {
+  if (typeof value !== "string" || value.length === 0) {
+    throw new ReviewerBatchActionServiceInputError(field, `${field} must be a non-empty string`);
+  }
+}
+
+function assertNonEmptyPayloadArray(field: string, value: ReadonlyArray<string>): void {
+  if (!Array.isArray(value) || value.length === 0 || !value.every(isNonEmptyString)) {
+    throw new ReviewerBatchActionServiceInputError(
+      field,
+      `${field} must contain only non-empty strings`,
+    );
+  }
+}
+
+function repositoryErrorToRefused(
+  entry: BatchPreviewItem,
+  error: ReviewerQueueRepositoryError,
+): BatchExecuteOutcome {
+  return {
+    kind: "refused",
+    reviewItemId: entry.reviewItemId,
+    status: mapErrorCodeToStatus(error.code),
+    code: error.code,
+    message: error.message,
+    diagnostics: error.diagnostics,
+  };
+}
+
+function contextRefsFromItem(item: ReviewerQueueItemRecord): ReviewerQueueDecisionContextRefs {
+  const contextRefs = (item.metadata as { contextRefs?: unknown }).contextRefs;
+  if (!isDecisionContextRefs(contextRefs)) {
+    throw new ReviewerBatchActionServiceInputError(
+      "contextRefs",
+      `reviewer queue item ${item.reviewItemId} is missing typed decision context refs`,
+    );
+  }
+  return contextRefs;
+}
+
+function isDecisionContextRefs(value: unknown): value is ReviewerQueueDecisionContextRefs {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const record = value as ReviewerQueueDecisionContextRefs;
+  return (
+    isNonEmptyString(record.source?.bridgeUnitId) &&
+    isNonEmptyString(record.source?.sourceUnitKey) &&
+    isNonEmptyString(record.source?.sourceRevisionId) &&
+    isNonEmptyString(record.draft?.draftId) &&
+    isNonEmptyString(record.draft?.draftAttemptId) &&
+    isNonEmptyString(record.runtime?.runtimeTargetId) &&
+    isNonEmptyStringArray(record.runtime?.observationEventIds) &&
+    isNonEmptyStringArray(record.runtime?.artifactHashes) &&
+    isNonEmptyString(record.style?.styleGuidePolicyVersionId) &&
+    isNonEmptyStringArray(record.glossary?.termIds) &&
+    isNonEmptyStringArray(record.qa?.findingIds)
+  );
+}
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === "string" && value.length > 0;
+}
+
+function isNonEmptyStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.length > 0 && value.every(isNonEmptyString);
 }
 
 function assertActionMatches(previewAction: ReviewerQueueAction, expected: ReviewerQueueAction) {
@@ -371,6 +570,7 @@ function mapErrorCodeToStatus(code: ReviewerQueueRepositoryErrorCode): ReviewerB
     case "reviewer_queue_item_not_found":
       return reviewerBatchPreviewStatusValues.notFound;
     case "reviewer_queue_item_invalid_input":
+    case "reviewer_queue_item_stale_lease":
       return reviewerBatchPreviewStatusValues.invalidInput;
     case "reviewer_queue_item_invalid_transition":
       return reviewerBatchPreviewStatusValues.invalidTransition;
