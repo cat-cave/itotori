@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "exported_at": "2026-06-27T23:18:12.744Z",
+  "exported_at": "2026-06-27T23:21:44.914Z",
   "registries": {
     "groups": [
       {
@@ -3421,19 +3421,19 @@
       "title": "Platform-assisted helper execution command",
       "kind": "feature",
       "milestone": "real-game-testing-ready",
-      "status": "ready",
+      "status": "claimed",
       "priority": "P1",
       "estimate_points": 1,
       "risk": "medium",
-      "owner": null,
-      "branch": null,
+      "owner": "orchestrator-kaifuu-064",
+      "branch": "spec/kaifuu-064-helper-execution",
       "spec": "Implement the bounded helper execution command that runs only allowlisted Wine or Windows helper profiles and emits redacted HelperResult artifacts.\n\nDeliverables:\n- `kaifuu helper run --profile fixtures/kaifuu/helper/allowlisted-profile.json --out artifacts/kaifuu/helper-result.json` command contract\n- Allowlist policy for helper executable hash, version, method, timeout, arguments, and output schema\n- Fixture adapters for unavailable platform, denied helper, timeout, success with keyRef, and redacted failure\n- Execution report with helper id, platform, bounded runtime, redaction summary, and semantic diagnostics",
       "acceptance": "- Only hash-pinned allowlisted helper profiles can execute; arbitrary commands and shell strings are rejected.\n- Timeouts, unavailable hosts, denied helpers, and malformed outputs return typed diagnostics.\n- Helper reports persist key refs and redacted summaries only, never raw keys, helper dumps, decrypted scripts, or private paths.\n- The same command can run in public stub mode and private-local platform-assisted mode.",
       "validation": null,
       "context": null,
       "created_at": "2026-06-26T02:53:54.657Z",
-      "updated_at": "2026-06-26T02:53:54.657Z",
-      "claimed_at": null,
+      "updated_at": "2026-06-27T23:21:32.763Z",
+      "claimed_at": "2026-06-27T23:21:32.763Z",
       "done_at": null,
       "group_name": "kaifuu-core",
       "status_reason": "Re-tier 2026-06-24: moved from alpha to real-game-testing-ready — the old \"alpha\" framing was renamed; substance unchanged. See docs/proposals/dag-retier-2026-06-24.md. | Re-tier 2026-06-24: pruned 2 dependsOn edge(s) that crossed the new tier boundary [KAIFUU-090(beta), KAIFUU-129(beta)]; per docs/proposals/dag-retier-2026-06-24.md §6.",
