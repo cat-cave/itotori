@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "exported_at": "2026-06-26T23:32:28.548Z",
+  "exported_at": "2026-06-27T00:36:42.478Z",
   "registries": {
     "groups": [
       {
@@ -6853,7 +6853,7 @@
       "title": "Reviewer queue fixture command",
       "kind": "feature",
       "milestone": "alpha",
-      "status": "claimed",
+      "status": "done",
       "priority": "P1",
       "estimate_points": 1,
       "risk": "medium",
@@ -6864,11 +6864,11 @@
       "validation": null,
       "context": null,
       "created_at": "2026-06-26T02:53:54.834Z",
-      "updated_at": "2026-06-26T23:32:24.509Z",
+      "updated_at": "2026-06-27T00:35:41.670Z",
       "claimed_at": "2026-06-26T23:32:24.509Z",
-      "done_at": null,
+      "done_at": "2026-06-27T00:35:41.670Z",
       "group_name": "dashboard",
-      "status_reason": "Re-tier 2026-06-24: kept alpha under the new 4-tier framework (single-game Sweetie HD e2e set per docs/proposals/dag-retier-2026-06-24.md).",
+      "status_reason": "Re-tier 2026-06-24: kept alpha under the new 4-tier framework (single-game Sweetie HD e2e set per docs/proposals/dag-retier-2026-06-24.md).\n[2026-06-27T00:35:00.457Z] Implemented reviewer queue fixture command and dashboard/MSW fixtures. Verification 2026-06-26: qd fast gate passed; focused app tests passed (4 files, 47 tests); DB-backed reviewer tests passed (3 files, 35 tests); review-queue fixture command passed and emitted persisted rerunRequestIds matching jobIds; re-audit found no P0/P1 after atomic batch and rerun-id fixes.",
       "check_command": null,
       "ci_command": null,
       "projects": ["itotori"],
@@ -28370,6 +28370,46 @@
       "projects": [],
       "verification": [],
       "audit_focus": []
+    },
+    {
+      "id": "ITOTORI-241",
+      "title": "Style-guide live smoke requires OpenRouter ZDR account assertion",
+      "kind": "audit-fix",
+      "milestone": "alpha",
+      "status": "ready",
+      "priority": "P2",
+      "estimate_points": 1,
+      "risk": "low",
+      "owner": null,
+      "branch": null,
+      "spec": "apps/itotori/src/style-guide-provider-smoke.ts currently permits an opted-in live OpenRouter style-guide smoke with ITOTORI_STYLE_GUIDE_LIVE_PROVIDER_SMOKE=1 and OPENROUTER_API_KEY, then constructs OpenRouterProvider directly. The canonical OpenRouter posture requires OPENROUTER_ZDR_ACCOUNT_ASSERTED=1 before any live OpenRouter fetch. Route this smoke through OpenRouterModelProvider or call assertOpenRouterZdrAccount(env) before constructing OpenRouterProvider.",
+      "acceptance": "With ITOTORI_STYLE_GUIDE_LIVE_PROVIDER_SMOKE=1 and OPENROUTER_API_KEY set but OPENROUTER_ZDR_ACCOUNT_ASSERTED missing, the style-guide live smoke refuses before fetch with a semantic diagnostic. All opted-in OpenRouter live smoke paths either use OpenRouterModelProvider or explicitly enforce assertOpenRouterZdrAccount(env). A regression test proves no fetch is attempted without the account assertion.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-27T00:36:33.040Z",
+      "updated_at": "2026-06-27T00:36:33.040Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": "agent-runtime",
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "projects": ["itotori"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/app test -- style-guide"
+        },
+        {
+          "type": "command",
+          "value": "pnpm exec vp check apps/itotori/src/style-guide-provider-smoke.ts"
+        }
+      ],
+      "audit_focus": [
+        "Live OpenRouter smoke path bypassing OPENROUTER_ZDR_ACCOUNT_ASSERTED",
+        "Test stubs that assert an error after fetch instead of before fetch",
+        "Raw OpenRouterProvider construction reintroduced in opted-in live smoke paths"
+      ]
     }
   ],
   "edges": [
@@ -40685,6 +40725,42 @@
       "finished_at": "2026-06-26T23:28:53.282Z",
       "summary": "Merge recorded with squash at commit bb8669f",
       "log_path": null
+    },
+    {
+      "id": "9b014dbe-62a4-4c31-b04e-ee158f7d932e",
+      "node_id": "ITOTORI-023",
+      "kind": "implement",
+      "status": "completed",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-27T00:35:10.652Z",
+      "finished_at": "2026-06-27T00:35:10.652Z",
+      "summary": "Reviewer queue fixture command landed on main at 83921a1. Adds persisted fixture artifact generation, deferred/escalated queue states, atomic batch execution, dashboard/MSW fixtures, stale-lease and context-ref negative coverage, and durable rerun request ids from persisted job ids.",
+      "log_path": null
+    },
+    {
+      "id": "dfdc2f60-60c6-4c60-b2f5-d55b6a8648ed",
+      "node_id": "ITOTORI-023",
+      "kind": "ci",
+      "status": "passed",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-27T00:35:24.813Z",
+      "finished_at": "2026-06-27T00:35:24.813Z",
+      "summary": "Local verification passed on main 83921a1: qd fast gate; app typecheck; db typecheck; app focused Vitest 47/47; DB reviewer tests 35/35; pnpm exec vp run itotori:review-queue-fixture; git diff --check; auditor recheck no P0/P1.\nEvidence: external_id=local-itotori-023-83921a1-20260626",
+      "log_path": null
+    },
+    {
+      "id": "ce825511-dfa4-4e3d-8d9e-1b52ced9071b",
+      "node_id": "ITOTORI-023",
+      "kind": "merge",
+      "status": "recorded",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-27T00:35:41.670Z",
+      "finished_at": "2026-06-27T00:35:41.670Z",
+      "summary": "Merge recorded with squash at commit 83921a1",
+      "log_path": null
     }
   ],
   "node_notes": [
@@ -40819,6 +40895,12 @@
       "node_id": "ITOTORI-084",
       "text": "Implemented reviewer-triggered rerun scheduling via atomic reviewer action + job-chain enqueue. ReviewerQueueActionService now routes actions through applyActionAndEnqueueJobs; DB transaction applies transition, plans full draft-repair -> QA-replay -> export-regeneration -> runtime-validation chain, and enqueues all jobs with dependencies/idempotency. Added DB migration for depends_on_job_ids, dependency-aware claim gating, production batch-path coverage, rollback coverage for mid-chain enqueue failure, and payload assertions for targeting/runtime evidence. Verification passed: app/db typecheck; app Vitest reviewer-action-service, reviewer-repair-rerun-scheduler, reviewer-batch-execute; DB-backed @itotori/db tests with --require-database reviewer-queue-repository, event-queue-repository, authorization-matrix (156 Vitest tests + permission harness); vp check; audit-no-hardcoded-cost; fixtures-validate; impl-map-schema-validate; verify-toolchain-policy; vp run ts:typecheck; cargo fmt --check; cargo check --workspace. Focused audit found no P0/P1; prior P1 findings 4c8e04e4-e80d-4dc1-bb21-57cb6223b0b7 and 2e6fdc54-3b65-4650-bde3-a5ad4139e088 resolved.",
       "created_at": "2026-06-26T23:26:31.397Z"
+    },
+    {
+      "id": "8aaf8de7-bce8-439d-92ce-97dd43e13a63",
+      "node_id": "ITOTORI-023",
+      "text": "Implemented reviewer queue fixture command and dashboard/MSW fixtures. Verification 2026-06-26: qd fast gate passed; focused app tests passed (4 files, 47 tests); DB-backed reviewer tests passed (3 files, 35 tests); review-queue fixture command passed and emitted persisted rerunRequestIds matching jobIds; re-audit found no P0/P1 after atomic batch and rerun-id fixes.",
+      "created_at": "2026-06-27T00:35:00.457Z"
     }
   ]
 }
