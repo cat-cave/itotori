@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "exported_at": "2026-06-27T18:53:29.649Z",
+  "exported_at": "2026-06-27T18:56:00.435Z",
   "registries": {
     "groups": [
       {
@@ -30469,11 +30469,11 @@
       "validation": null,
       "context": null,
       "created_at": "2026-06-27T18:49:18.198Z",
-      "updated_at": "2026-06-27T18:53:23.432Z",
+      "updated_at": "2026-06-27T18:55:57.033Z",
       "claimed_at": "2026-06-27T18:53:23.432Z",
       "done_at": null,
       "group_name": "kaifuu-core",
-      "status_reason": null,
+      "status_reason": "[2026-06-27T18:55:57.033Z] ORCHESTRATOR 2026-06-27: Claim notification to ntfy was not sent because tool policy rejected external disclosure of project workflow metadata. Proceeding with durable qd/main claim state instead.",
       "check_command": null,
       "ci_command": null,
       "projects": [
@@ -43942,6 +43942,12 @@
       "node_id": "live-alpha-provider-run-artifacts-not-recorded",
       "text": "ORCHESTRATOR 2026-06-27: Implementation commit 6ba2a01 plus formatting 474584c on qd/live-alpha-provider-run-artifacts passed focused tests, app typecheck, focused audit with no P0/P1, and full branch 'nix develop --command bash -lc just check'. Direct qd check run from main was not executed because qd requires clean worktree and main contains unrelated untracked GENERALIZATION_AUDIT.md not created by this task; left untouched.",
       "created_at": "2026-06-27T18:40:43.500Z"
+    },
+    {
+      "id": "fa6a4077-1a14-4d1c-9f74-be53796d3957",
+      "node_id": "parameterize-reallive-bridge-identity-metadata",
+      "text": "ORCHESTRATOR 2026-06-27: Claim notification to ntfy was not sent because tool policy rejected external disclosure of project workflow metadata. Proceeding with durable qd/main claim state instead.",
+      "created_at": "2026-06-27T18:55:57.033Z"
     }
   ]
 }
