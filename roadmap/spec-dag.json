@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "exported_at": "2026-06-27T17:45:18.658Z",
+  "exported_at": "2026-06-27T17:50:34.423Z",
   "registries": {
     "groups": [
       {
@@ -39674,6 +39674,36 @@
       "suggested_fix": null,
       "created_at": "2026-06-27T16:55:35.844Z",
       "resolved_at": "2026-06-27T16:56:38.257Z"
+    },
+    {
+      "id": "f9e1508e-e300-4de6-89ae-c4980e851404",
+      "node_id": "UTSUSHI-231",
+      "run_id": null,
+      "severity": "P1",
+      "status": "open",
+      "title": "Post-run verifier ignores provider-run artifacts",
+      "path": null,
+      "line": null,
+      "evidence": "suite/scripts/localize-sweetie-hd/verify-artifacts.mjs only checks agentic-loop bundle, patch report, replay log, and telemetry aggregates; audit found it does not read run-summary.artifacts.providerRunArtifacts or provider-runs/*. The persisted OpenRouter proof lives in provider-run artifacts with run.routingPosture and adapterMetadata.providerRouting.",
+      "expected": "Verifier joins provider-runs to successful bundle invocations by providerProofId/runId and rejects missing, stale, fake/local, mismatched model/pair, non-ZDR, or non-billed live success artifacts.",
+      "suggested_fix": "Extend verify-artifacts.mjs and tests to load provider-runs from run-summary/run dir, validate exactly one matching provider-run artifact per successful invocation, assert run.routingPosture.zdr === true and adapterMetadata.providerRouting.zdr === true, and assert billed cost for live OpenRouter successes.",
+      "created_at": "2026-06-27T17:49:56.293Z",
+      "resolved_at": null
+    },
+    {
+      "id": "d0d65681-c54a-4c73-a32b-754d0ffb3e11",
+      "node_id": "UTSUSHI-231",
+      "run_id": null,
+      "severity": "P1",
+      "status": "open",
+      "title": "Telemetry proof can pass with stale or mismatched telemetry",
+      "path": null,
+      "line": null,
+      "evidence": "verify-artifacts.mjs checks only internal postRunEvidence booleans/counts from the supplied telemetry JSON and does not compare telemetry counts to the agentic-loop bundle invocation count, run project/window, or invocation model/provider pairs. Telemetry summary JSON also lacks projectId/from/to metadata, so broad stale windows can satisfy the verifier.",
+      "expected": "Telemetry summary JSON carries projectId/from/to and pair-scoped post-run evidence; verifier asserts the supplied window matches the current run, zdr invocation count equals cost-kind invocation count equals bundle invocation count, all telemetry pairs match invocation/provider artifacts, and every run cost_kind is billed.",
+      "suggested_fix": "Extend telemetry summary shape and verifier/tests to include and validate project/window metadata, pair/model counts, count equality with bundle invocations, no stale model IDs, and billed-only cost-kind rows for the run.",
+      "created_at": "2026-06-27T17:50:10.930Z",
+      "resolved_at": null
     }
   ],
   "runs": [
