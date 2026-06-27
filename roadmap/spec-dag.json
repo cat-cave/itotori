@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "exported_at": "2026-06-27T14:36:34.982Z",
+  "exported_at": "2026-06-27T15:38:29.604Z",
   "registries": {
     "groups": [
       {
@@ -39530,6 +39530,66 @@
       "suggested_fix": null,
       "created_at": "2026-06-27T14:25:00.649Z",
       "resolved_at": "2026-06-27T14:25:04.786Z"
+    },
+    {
+      "id": "b148f366-3deb-42e2-ac26-13263512dd26",
+      "node_id": "CATALOG-061",
+      "run_id": null,
+      "severity": "P1",
+      "status": "open",
+      "title": "Private-local-only works can be emitted as public opportunity rows",
+      "path": null,
+      "line": null,
+      "evidence": "Audit: readCatalogOpportunityRanking can emit workId/canonicalTitle/originalLanguage/engineName/local aggregate fields for works with only private/local provenance after filtering private provenance from the row. Public opportunity rows must require public source/provenance or avoid identity leakage. Refs: packages/itotori-db/src/repositories/catalog-repository.ts around readCatalogOpportunityRanking/build rows; .plan/CATALOG-061.md private-local aggregate constraints.",
+      "expected": null,
+      "suggested_fix": null,
+      "created_at": "2026-06-27T15:38:03.841Z",
+      "resolved_at": null
+    },
+    {
+      "id": "ac8b3452-01cc-4586-8327-cc56b82a7252",
+      "node_id": "CATALOG-061",
+      "run_id": null,
+      "severity": "P1",
+      "status": "open",
+      "title": "Public opportunity fixture expectedDefaultReadModel is not schema-valid",
+      "path": null,
+      "line": null,
+      "evidence": "Audit: fixtures/catalog-opportunities/fixture.json expectedDefaultReadModel rows omit required catalog.opportunity_ranking.v0.1 fields such as originalLanguage, sourceIds, readiness, runtimeEvidenceReadiness, translationStatuses, demandFacts, localOwnership, marketPrevalence, provenance, and demotions. API schema would reject it, so the public expected-output artifact is only compact presentation data.",
+      "expected": null,
+      "suggested_fix": null,
+      "created_at": "2026-06-27T15:38:11.907Z",
+      "resolved_at": null
+    },
+    {
+      "id": "66804a12-a4ad-4ce7-815d-172e34aa746a",
+      "node_id": "CATALOG-061",
+      "run_id": null,
+      "severity": "P1",
+      "status": "open",
+      "title": "Runtime evidence readiness counts missing or unknown evidence as positive",
+      "path": null,
+      "line": null,
+      "evidence": "Audit: engine_capability_evidence.status can be present, partial, missing, or unknown, but opportunity readiness groups rows by evidenceSource and ignores status. Missing/unknown evidence can produce public_fixture/private_local_aggregate/public_and_aggregate runtime readiness and score positively. Tests only seed present evidence.",
+      "expected": null,
+      "suggested_fix": null,
+      "created_at": "2026-06-27T15:38:17.135Z",
+      "resolved_at": null
+    },
+    {
+      "id": "3c247514-a86f-4fa2-ad46-26ffd4055b9e",
+      "node_id": "CATALOG-061",
+      "run_id": null,
+      "severity": "P1",
+      "status": "open",
+      "title": "DLsite rating average and work_type do not influence ranking or explanations",
+      "path": null,
+      "line": null,
+      "evidence": "Audit: CATALOG-061 plan requires DLsite sales/downloads, rating, wishlist, rank, and work_type to influence ranking through explicit weights or rule explanations. Current bucket/scoring uses dlCount, wishlistCount, bestRank, ratingCount, but ratingAverage and workType are only copied into output/evidence refs and tests only assert presence.",
+      "expected": null,
+      "suggested_fix": null,
+      "created_at": "2026-06-27T15:38:23.035Z",
+      "resolved_at": null
     }
   ],
   "runs": [
