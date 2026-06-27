@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "exported_at": "2026-06-27T06:37:55.596Z",
+  "exported_at": "2026-06-27T14:25:22.110Z",
   "registries": {
     "groups": [
       {
@@ -2550,7 +2550,7 @@
       "title": "MV/MZ local corpus readiness integration",
       "kind": "feature",
       "milestone": "real-game-testing-ready",
-      "status": "claimed",
+      "status": "done",
       "priority": "P1",
       "estimate_points": 1,
       "risk": "medium",
@@ -2561,9 +2561,9 @@
       "validation": null,
       "context": null,
       "created_at": "2026-06-26T02:53:54.612Z",
-      "updated_at": "2026-06-27T06:32:10.159Z",
+      "updated_at": "2026-06-27T14:24:16.738Z",
       "claimed_at": "2026-06-27T06:32:10.159Z",
-      "done_at": null,
+      "done_at": "2026-06-27T14:24:16.738Z",
       "group_name": "catalog",
       "status_reason": "Re-tier 2026-06-24: moved from alpha to real-game-testing-ready — the old \"alpha\" framing was renamed; substance unchanged. See docs/proposals/dag-retier-2026-06-24.md. | Re-tier 2026-06-24: pruned 2 dependsOn edge(s) that crossed the new tier boundary [KAIFUU-007(beta), KAIFUU-053(alpha)]; per docs/proposals/dag-retier-2026-06-24.md §6.",
       "check_command": null,
@@ -28507,6 +28507,33 @@
         "OpenRouter max_price drift",
         "Hidden cost cap semantics"
       ]
+    },
+    {
+      "id": "harden-db-evidence-leakage-guard-for-key-value-private-paths",
+      "title": "Harden DB evidence leakage guard for key-value private paths",
+      "kind": "audit-fix",
+      "milestone": null,
+      "status": "ready",
+      "priority": "P3",
+      "estimate_points": 1,
+      "risk": "low",
+      "owner": null,
+      "branch": null,
+      "spec": "Final CATALOG-007 audit noted the DB evidence leakage guard catches private roots at string starts, whitespace, and quoted boundaries, but may miss key-value strings such as source=/private/corpus. No P0/P1 impact; add focused hardening when convenient.",
+      "acceptance": "Finding is addressed and verified.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-27T14:25:04.783Z",
+      "updated_at": "2026-06-27T14:25:04.783Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": "Promoted from finding e3badaa2-3335-4f01-a0d3-73f68e52c953 on node CATALOG-007.",
+      "check_command": null,
+      "ci_command": null,
+      "projects": [],
+      "verification": [],
+      "audit_focus": []
     }
   ],
   "edges": [
@@ -39488,6 +39515,21 @@
       "suggested_fix": null,
       "created_at": "2026-06-26T23:04:21.786Z",
       "resolved_at": "2026-06-26T23:26:21.898Z"
+    },
+    {
+      "id": "e3badaa2-3335-4f01-a0d3-73f68e52c953",
+      "node_id": "CATALOG-007",
+      "run_id": null,
+      "severity": "P3",
+      "status": "promoted",
+      "title": "Harden DB evidence leakage guard for key-value private paths",
+      "path": null,
+      "line": null,
+      "evidence": "Final CATALOG-007 audit noted the DB evidence leakage guard catches private roots at string starts, whitespace, and quoted boundaries, but may miss key-value strings such as source=/private/corpus. No P0/P1 impact; add focused hardening when convenient.",
+      "expected": null,
+      "suggested_fix": null,
+      "created_at": "2026-06-27T14:25:00.649Z",
+      "resolved_at": "2026-06-27T14:25:04.786Z"
     }
   ],
   "runs": [
@@ -41265,6 +41307,54 @@
       "started_at": "2026-06-27T06:28:33.882Z",
       "finished_at": "2026-06-27T06:28:33.882Z",
       "summary": "Merge recorded with squash at commit 34a7264972cb5452f1ef685ef55dedaac0271448",
+      "log_path": null
+    },
+    {
+      "id": "4f5e7e3e-1c45-45d9-85b7-1be7fd35c51f",
+      "node_id": "CATALOG-007",
+      "kind": "check",
+      "status": "passed",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-27T14:04:54.254Z",
+      "finished_at": "2026-06-27T14:05:32.303Z",
+      "summary": "check command passed: nix develop --command bash -lc 'just check'",
+      "log_path": "/home/trevor/projects/itotori/.qd/logs/check-CATALOG-007-2026-06-27T14-04-54-254Z.log"
+    },
+    {
+      "id": "cdab145e-f2db-4ac0-8d46-e013aeef2375",
+      "node_id": "CATALOG-007",
+      "kind": "check",
+      "status": "passed",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-27T14:06:15.089Z",
+      "finished_at": "2026-06-27T14:06:50.635Z",
+      "summary": "check command passed: nix develop --command bash -lc 'just check'",
+      "log_path": "/home/trevor/projects/itotori/.qd/logs/check-CATALOG-007-2026-06-27T14-06-15-089Z.log"
+    },
+    {
+      "id": "b361872c-a745-4f7d-ac8a-a661bd33a57e",
+      "node_id": "CATALOG-007",
+      "kind": "ci",
+      "status": "passed",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-27T14:16:30.063Z",
+      "finished_at": "2026-06-27T14:22:00.335Z",
+      "summary": "ci command passed: nix develop --command bash -lc 'just ci'",
+      "log_path": "/home/trevor/projects/itotori/.qd/logs/ci-CATALOG-007-2026-06-27T14-16-30-063Z.log"
+    },
+    {
+      "id": "62a45eff-6e31-4027-940a-9ad6b55ed3da",
+      "node_id": "CATALOG-007",
+      "kind": "merge",
+      "status": "recorded",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-27T14:24:16.738Z",
+      "finished_at": "2026-06-27T14:24:16.738Z",
+      "summary": "Merge recorded with squash at commit 3b7d3abf27e3069f1b83cf33d8f51f14f546e535",
       "log_path": null
     }
   ],
