@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "exported_at": "2026-06-27T04:54:46.550Z",
+  "exported_at": "2026-06-27T04:57:09.535Z",
   "registries": {
     "groups": [
       {
@@ -2372,19 +2372,19 @@
       "title": "Benchmark seed finder",
       "kind": "feature",
       "milestone": "real-game-testing-ready",
-      "status": "ready",
+      "status": "claimed",
       "priority": "P1",
       "estimate_points": 1,
       "risk": "medium",
-      "owner": null,
-      "branch": null,
+      "owner": "orchestrator-catalog-004",
+      "branch": "spec/catalog-004",
       "spec": "Expose readiness-aware benchmark seed queries from catalog, local corpus, alpha recorded importer evidence, engine readiness, and existing translation status so alpha benchmark and quality runs can select credible corpora.\n\nDeliverables:\n- Benchmark seed finder queries\n- Readiness-aware benchmark fixture set\n- Private-local aggregate-safe benchmark seed output\n- Benchmark seed API/read model fixture",
       "acceptance": "- Benchmark seeds distinguish local ownership, translation completeness, CATALOG-011 recorded importer provenance, DLsite demand evidence, engine readiness, and benchmark usefulness\n- Seed records distinguish identify, inventory, extract, patch, helper, and runtime capability levels instead of flattening engine readiness into one boolean\n- MTL-only, fan-partial, no-English, conflict, demand-ranked, and readiness-filtered pools can be selected from public fixtures, recorded importer fixtures, and private-local aggregate sidecars\n- Benchmark seed output can be generated without leaking private paths, filenames, story text, or raw corpus records\n- The cost and quality benchmark flow can select corpora by capability level, readiness, demand bucket, and translation completeness instead of arbitrary fixture availability",
       "validation": null,
       "context": null,
       "created_at": "2026-06-26T02:53:54.595Z",
-      "updated_at": "2026-06-26T02:53:54.595Z",
-      "claimed_at": null,
+      "updated_at": "2026-06-27T04:57:00.748Z",
+      "claimed_at": "2026-06-27T04:57:00.748Z",
       "done_at": null,
       "group_name": "catalog",
       "status_reason": "Re-tier 2026-06-24: moved from alpha to real-game-testing-ready — the old \"alpha\" framing was renamed; substance unchanged. See docs/proposals/dag-retier-2026-06-24.md. | Re-tier 2026-06-24: pruned 1 dependsOn edge(s) that crossed the new tier boundary [KAIFUU-053(alpha)]; per docs/proposals/dag-retier-2026-06-24.md §6.",
