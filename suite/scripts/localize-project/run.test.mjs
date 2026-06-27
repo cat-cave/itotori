@@ -14,7 +14,7 @@
 // Linux-only (the driver is Linux-only by design).
 
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
@@ -23,6 +23,8 @@ import assert from "node:assert/strict";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const DRIVER_PATH = resolve(HERE, "run.mjs");
+const REPO_ROOT = resolve(HERE, "../../..");
+const DEFAULT_PAIR_POLICY_PATH = resolve(REPO_ROOT, "presets/localize-project.pair-policy.json");
 
 function runDriver(args, env = {}) {
   // The driver inherits PATH / NODE etc. from the caller. We
@@ -36,7 +38,7 @@ function runDriver(args, env = {}) {
   });
 }
 
-function writeProjectMetadata(fields) {
+function writeProjectMetadata(projectId, fields) {
   const dir = mkdtempSync(join(tmpdir(), "itotori-project-metadata-"));
   const path = join(dir, "project-metadata.json");
   writeFileSync(
@@ -44,13 +46,23 @@ function writeProjectMetadata(fields) {
     `${JSON.stringify(
       {
         schemaVersion: "itotori.localize-project.project-metadata.v0",
-        projectId: "test-project",
+        projectId,
         reallive: fields,
       },
       null,
       2,
     )}\n`,
   );
+  return { dir, path };
+}
+
+function writePairPolicy(projectId) {
+  const dir = mkdtempSync(join(tmpdir(), "itotori-pair-policy-"));
+  const path = join(dir, "pair-policy.json");
+  const policy = JSON.parse(readFileSync(DEFAULT_PAIR_POLICY_PATH, "utf8"));
+  policy.policyId = projectId;
+  policy.enUsSentinel = "FIXTURE-ALPHA-EN-US-SENTINEL";
+  writeFileSync(path, `${JSON.stringify(policy, null, 2)}\n`);
   return { dir, path };
 }
 
@@ -109,10 +121,10 @@ test("--dry-run --project ... exits 0 and prints per-phase commands", () => {
     `dry-run plan must declare the per-stage provider.zdr posture; got:\n${result.stdout}`,
   );
   // ITOTORI-234 — every leaf must surface its zdr + seed posture so the
-  // operator can confirm the v0.2 pair-policy resolved as expected
+  // operator can confirm the v0.3 pair-policy resolved as expected
   // before the live run fires.
   assert.ok(
-    result.stdout.includes("Per-stage posture (ITOTORI-234 v0.2"),
+    result.stdout.includes("Per-stage posture (ITOTORI-234 v0.3"),
     `dry-run plan must declare the ITOTORI-234 per-stage posture block; got:\n${result.stdout}`,
   );
   assert.ok(
@@ -129,13 +141,14 @@ test("--dry-run --project ... exits 0 and prints per-phase commands", () => {
   );
 });
 
-test("--dry-run --project-metadata forwards caller-supplied RealLive identity flags", () => {
-  const metadata = writeProjectMetadata({
+test("--dry-run can use caller-supplied non-Sweetie project configs", () => {
+  const metadata = writeProjectMetadata("fixture-alpha", {
     game_id: "fixture-reallive-game",
     game_version: "2026.06.test",
     source_profile_id: "fixture-reallive-profile",
     source_locale: "ja-JP-x-test",
   });
+  const policy = writePairPolicy("fixture-alpha");
   try {
     const result = runDriver([
       "--dry-run",
@@ -143,6 +156,8 @@ test("--dry-run --project-metadata forwards caller-supplied RealLive identity fl
       "fixture-alpha",
       "--project-metadata",
       metadata.path,
+      "--pair-policy",
+      policy.path,
     ]);
     assert.equal(result.status, 0, `stderr: ${result.stderr}`);
     assert.ok(
@@ -152,9 +167,98 @@ test("--dry-run --project-metadata forwards caller-supplied RealLive identity fl
         result.stdout.includes("--source-locale ja-JP-x-test"),
       `dry-run extract command must use caller-supplied project metadata; got:\n${result.stdout}`,
     );
+    assert.ok(
+      result.stdout.includes("--pair-policy ") &&
+        result.stdout.includes(policy.path) &&
+        result.stdout.includes("FIXTURE-ALPHA-EN-US-SENTINEL"),
+      `dry-run plan must use caller-supplied pair-policy; got:\n${result.stdout}`,
+    );
+    assert.ok(
+      !result.stdout.includes("--game-id sweetie-hd") &&
+        !result.stdout.includes("kaifuu-reallive-sweetie-hd"),
+      `custom dry-run plan must not relabel default Sweetie metadata; got:\n${result.stdout}`,
+    );
   } finally {
     rmSync(metadata.dir, { recursive: true, force: true });
+    rmSync(policy.dir, { recursive: true, force: true });
   }
+});
+
+test("--dry-run --project rejects a loaded project config mismatch", () => {
+  const result = runDriver(["--dry-run", "--project", "different-project"]);
+  assert.notEqual(result.status, 0);
+  assert.ok(
+    result.stderr.includes("--project 'different-project' does not match loaded project config") &&
+      result.stderr.includes("sweetie-hd-alpha-1"),
+    `stderr should identify the project config mismatch; got:\n${result.stderr}`,
+  );
+});
+
+test("--dry-run --project-metadata rejects metadata projectId mismatch", () => {
+  const metadata = writeProjectMetadata("other-fixture-alpha", {
+    game_id: "fixture-reallive-game",
+    game_version: "2026.06.test",
+    source_profile_id: "fixture-reallive-profile",
+    source_locale: "ja-JP-x-test",
+  });
+  const policy = writePairPolicy("fixture-alpha");
+  try {
+    const result = runDriver([
+      "--dry-run",
+      "--project",
+      "fixture-alpha",
+      "--project-metadata",
+      metadata.path,
+      "--pair-policy",
+      policy.path,
+    ]);
+    assert.notEqual(result.status, 0);
+    assert.ok(
+      result.stderr.includes("metadata projectId='other-fixture-alpha'"),
+      `stderr should identify the metadata project mismatch; got:\n${result.stderr}`,
+    );
+  } finally {
+    rmSync(metadata.dir, { recursive: true, force: true });
+    rmSync(policy.dir, { recursive: true, force: true });
+  }
+});
+
+test("--dry-run --pair-policy rejects pair-policy policyId mismatch", () => {
+  const metadata = writeProjectMetadata("fixture-alpha", {
+    game_id: "fixture-reallive-game",
+    game_version: "2026.06.test",
+    source_profile_id: "fixture-reallive-profile",
+    source_locale: "ja-JP-x-test",
+  });
+  const policy = writePairPolicy("other-fixture-alpha");
+  try {
+    const result = runDriver([
+      "--dry-run",
+      "--project",
+      "fixture-alpha",
+      "--project-metadata",
+      metadata.path,
+      "--pair-policy",
+      policy.path,
+    ]);
+    assert.notEqual(result.status, 0);
+    assert.ok(
+      result.stderr.includes("pair-policy policyId='other-fixture-alpha'"),
+      `stderr should identify the pair-policy project mismatch; got:\n${result.stderr}`,
+    );
+  } finally {
+    rmSync(metadata.dir, { recursive: true, force: true });
+    rmSync(policy.dir, { recursive: true, force: true });
+  }
+});
+
+test("dry-run output does not mention stale ITOTORI-234 schema wording", () => {
+  const result = runDriver(["--dry-run", "--project", "sweetie-hd-alpha-1"]);
+  assert.equal(result.status, 0, `stderr: ${result.stderr}`);
+  assert.ok(
+    !result.stdout.includes(`ITOTORI-234 ${"v0.2"}`),
+    `dry-run plan must not mention stale schema wording; got:\n${result.stdout}`,
+  );
 });
 
 test("missing project metadata exits before extraction/env validation", () => {

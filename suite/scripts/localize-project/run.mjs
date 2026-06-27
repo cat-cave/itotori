@@ -57,7 +57,7 @@ import process from "node:process";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolvePath(HERE, "../../..");
-const PAIR_POLICY_PATH = join(REPO_ROOT, "presets", "localize-project.pair-policy.json");
+const DEFAULT_PAIR_POLICY_PATH = join(REPO_ROOT, "presets", "localize-project.pair-policy.json");
 const DEFAULT_PROJECT_METADATA_PATH = join(
   REPO_ROOT,
   "presets",
@@ -66,7 +66,7 @@ const DEFAULT_PROJECT_METADATA_PATH = join(
 
 function usage() {
   return [
-    "usage: node suite/scripts/localize-project/run.mjs --project <NAME> [--dry-run] [--scene <N>] [--unit-index <N>] [--provider-kind <live|fake>] [--project-metadata <PATH>]",
+    "usage: node suite/scripts/localize-project/run.mjs --project <NAME> [--dry-run] [--scene <N>] [--unit-index <N>] [--provider-kind <live|fake>] [--project-metadata <PATH>] [--pair-policy <PATH>]",
     "",
     "Required env (unless --dry-run):",
     "  OPENROUTER_API_KEY              live OpenRouter key for the (modelId, providerId) pair",
@@ -74,12 +74,13 @@ function usage() {
     "  TARGET                          writable path for the patched copy (must NOT alias source)",
     "",
     "Flags:",
-    "  --project <NAME>                project label baked into the run directory name",
+    "  --project <NAME>                project config id; must match loaded metadata projectId and pair-policy policyId",
     "  --dry-run                       print per-phase commands and exit 0 without invoking an LLM",
     "  --scene <N>                     scene id passed to kaifuu extract / utsushi replay-validate (default 1)",
     "  --unit-index <N>                bridge unit index to translate (default 0)",
     "  --provider-kind <live|fake>     forwarded to the agentic-loop stage; fake requires ITOTORI_ALLOW_FAKE_LOCALIZE_PROVIDER=1",
     `  --project-metadata <PATH>       project identity metadata for extraction (default ${DEFAULT_PROJECT_METADATA_PATH})`,
+    `  --pair-policy <PATH>            pair-policy config for the agentic-loop stage (default ${DEFAULT_PAIR_POLICY_PATH})`,
   ].join("\n");
 }
 
@@ -91,6 +92,7 @@ function parseArgs(argv) {
     unitIndex: 0,
     providerKind: undefined,
     projectMetadataPath: DEFAULT_PROJECT_METADATA_PATH,
+    pairPolicyPath: DEFAULT_PAIR_POLICY_PATH,
   };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
@@ -134,6 +136,12 @@ function parseArgs(argv) {
         const value = argv[++i];
         if (value === undefined) throw new Error("--project-metadata requires a value");
         args.projectMetadataPath = resolvePath(value);
+        break;
+      }
+      case "--pair-policy": {
+        const value = argv[++i];
+        if (value === undefined) throw new Error("--pair-policy requires a value");
+        args.pairPolicyPath = resolvePath(value);
         break;
       }
       case "-h":
@@ -227,21 +235,21 @@ function resolveReallivedataSeen(gameRoot) {
   throw new Error(`REALLIVEDATA/Seen.txt not found under ${gameRoot}`);
 }
 
-function loadPairPolicy() {
-  if (!existsSync(PAIR_POLICY_PATH)) {
+function loadPairPolicy(pairPolicyPath) {
+  if (!existsSync(pairPolicyPath)) {
     throw new Error(
-      `pair-policy file missing at ${PAIR_POLICY_PATH}; the driver does NOT default — this is by design`,
+      `pair-policy file missing at ${pairPolicyPath}; the driver does NOT default — this is by design`,
     );
   }
-  const raw = readFileSync(PAIR_POLICY_PATH, "utf8");
+  const raw = readFileSync(pairPolicyPath, "utf8");
   let parsed;
   try {
     parsed = JSON.parse(raw);
   } catch (error) {
-    throw new Error(`pair-policy JSON parse failed at ${PAIR_POLICY_PATH}: ${error.message}`);
+    throw new Error(`pair-policy JSON parse failed at ${pairPolicyPath}: ${error.message}`);
   }
   if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-    throw new Error(`pair-policy at ${PAIR_POLICY_PATH} must be a JSON object`);
+    throw new Error(`pair-policy at ${pairPolicyPath} must be a JSON object`);
   }
   // ITOTORI-234 / ITOTORI-238 — v0.3 forcing function: reject v0.1 /
   // v0.2 / absent schema version inputs at the driver boundary.
@@ -252,13 +260,13 @@ function loadPairPolicy() {
   const EXPECTED_SCHEMA = "itotori.pair-policy.v0.3";
   if (parsed.schemaVersion !== EXPECTED_SCHEMA) {
     throw new Error(
-      `pair-policy at ${PAIR_POLICY_PATH} has schemaVersion='${String(parsed.schemaVersion)}'; expected '${EXPECTED_SCHEMA}' (v0.1 and v0.2 files are no longer accepted — ITOTORI-238 no-legacy-compat)`,
+      `pair-policy at ${pairPolicyPath} has schemaVersion='${String(parsed.schemaVersion)}'; expected '${EXPECTED_SCHEMA}' (v0.1 and v0.2 files are no longer accepted — ITOTORI-238 no-legacy-compat)`,
     );
   }
   const requiredKeys = ["policyId", "pair", "enUsSentinel", "sceneId", "stages"];
   for (const key of requiredKeys) {
     if (!(key in parsed)) {
-      throw new Error(`pair-policy at ${PAIR_POLICY_PATH} missing required key '${key}'`);
+      throw new Error(`pair-policy at ${pairPolicyPath} missing required key '${key}'`);
     }
   }
   return parsed;
@@ -302,11 +310,27 @@ function loadProjectMetadata(metadataPath) {
     throw new Error(`project metadata at ${metadataPath} missing required object 'reallive'`);
   }
   return {
+    projectId: requireMetadataString(parsed, "projectId", metadataPath),
     gameId: requireMetadataString(parsed.reallive, "game_id", metadataPath),
     gameVersion: requireMetadataString(parsed.reallive, "game_version", metadataPath),
     sourceProfileId: requireMetadataString(parsed.reallive, "source_profile_id", metadataPath),
     sourceLocale: requireMetadataString(parsed.reallive, "source_locale", metadataPath),
   };
+}
+
+function validateProjectSelection(requestedProject, projectMetadata, pairPolicy) {
+  const mismatches = [];
+  if (projectMetadata.projectId !== requestedProject) {
+    mismatches.push(`metadata projectId='${projectMetadata.projectId}'`);
+  }
+  if (pairPolicy.policyId !== requestedProject) {
+    mismatches.push(`pair-policy policyId='${pairPolicy.policyId}'`);
+  }
+  if (mismatches.length > 0) {
+    throw new Error(
+      `--project '${requestedProject}' does not match loaded project config (${mismatches.join(", ")})`,
+    );
+  }
 }
 
 function realliveIdentityArgs(projectMetadata) {
@@ -415,13 +439,13 @@ function printDryRunPlan(plan, postures) {
   process.stdout.write(
     "[localize-project] Per-stage provider.zdr posture: true (all non-public input classifications)\n",
   );
-  // ITOTORI-234 — the v0.2 pair-policy carries per-stage zdr + seed
+  // ITOTORI-234 — the v0.3 pair-policy carries per-stage zdr + seed
   // postures resolved at parse time. Emit one line per leaf so the
   // operator can confirm the (zdr, seed) pair the orchestrator will
   // pass into every invocation. Acceptance criterion #1: this block
   // is what the test asserts on.
   process.stdout.write(
-    "[localize-project] Per-stage posture (ITOTORI-234 v0.2 — leafPath: zdr=<bool> seed=<int>):\n",
+    "[localize-project] Per-stage posture (ITOTORI-234 v0.3 — leafPath: zdr=<bool> seed=<int>):\n",
   );
   for (const posture of postures) {
     process.stdout.write(
@@ -436,8 +460,9 @@ function printDryRunPlan(plan, postures) {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
-  const policy = loadPairPolicy();
+  const policy = loadPairPolicy(args.pairPolicyPath);
   const projectMetadata = loadProjectMetadata(args.projectMetadataPath);
+  validateProjectSelection(args.project, projectMetadata, policy);
   const sentinelSubstring = policy.enUsSentinel;
   const sceneId = policy.sceneId ?? args.scene;
   const ts = isoTimestampUtc();
@@ -488,7 +513,7 @@ async function main() {
     printDryRunPlan(
       [
         `cargo run -p kaifuu-cli -- extract --engine reallive --game-root <LOCALIZE_PROJECT_SOURCE_PATH> --game-id ${projectMetadata.gameId} --game-version ${projectMetadata.gameVersion} --source-profile-id ${projectMetadata.sourceProfileId} --source-locale ${projectMetadata.sourceLocale} --scene ${sceneId} --bundle-output ${bridgeBundlePath}`,
-        `node apps/itotori/dist/cli.js localize-project-stage --bridge ${bridgeBundlePath} --pair-policy ${PAIR_POLICY_PATH} --unit-index ${args.unitIndex} --output ${agenticLoopBundlePath} --translated-bundle-output ${translatedBundlePath} --patch-report-output ${patchReportPath} --provider-run-artifacts-dir ${providerRunArtifactsDir}`,
+        `node apps/itotori/dist/cli.js localize-project-stage --bridge ${bridgeBundlePath} --pair-policy ${args.pairPolicyPath} --unit-index ${args.unitIndex} --output ${agenticLoopBundlePath} --translated-bundle-output ${translatedBundlePath} --patch-report-output ${patchReportPath} --provider-run-artifacts-dir ${providerRunArtifactsDir}`,
         `cargo run -p kaifuu-cli -- patch --engine reallive --source <LOCALIZE_PROJECT_SOURCE_PATH> --target <TARGET> --bundle ${translatedBundlePath} --force`,
         `cargo run -p utsushi-cli -- replay-validate --engine reallive --seen <TARGET>/REALLIVEDATA/Seen.txt --scene ${sceneId} --expect-textline-contains ${sentinelSubstring} --print-replay-log ${replayLogPath}`,
       ],
@@ -532,7 +557,7 @@ async function main() {
     "--bridge",
     bridgeBundlePath,
     "--pair-policy",
-    PAIR_POLICY_PATH,
+    args.pairPolicyPath,
     "--unit-index",
     String(args.unitIndex),
     "--output",

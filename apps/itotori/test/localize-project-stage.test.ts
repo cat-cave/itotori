@@ -16,7 +16,7 @@
 //   - The synthesised patch-report.json carries the (modelId,
 //     providerId) pair byte-for-byte.
 
-import { existsSync, mkdtempSync, readFileSync, readdirSync } from "node:fs";
+import { mkdtempSync, readFileSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { dirname, join, resolve } from "node:path";
@@ -57,11 +57,7 @@ import type { AgenticLoopProviderFactory, PairChoice } from "../src/orchestrator
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(HERE, "../../..");
-const GENERIC_PAIR_POLICY_PATH = resolve(REPO_ROOT, "presets/localize-project.pair-policy.json");
-const LEGACY_POLICY_SLUG = ["localize", "sweetie", "hd"].join("-");
-const PAIR_POLICY_PATH = existsSync(GENERIC_PAIR_POLICY_PATH)
-  ? GENERIC_PAIR_POLICY_PATH
-  : resolve(REPO_ROOT, "presets", `${LEGACY_POLICY_SLUG}.pair-policy.json`);
+const PAIR_POLICY_PATH = resolve(REPO_ROOT, "presets/localize-project.pair-policy.json");
 const SMOKE_BRIDGE_PATH = resolve(
   REPO_ROOT,
   "apps/itotori/test/fixtures/agentic-loop-smoke-bridge.json",
