@@ -4651,8 +4651,7 @@
             "sourceIds": [
               {
                 "catalogSource": "steam",
-                "sourceId": "STEAMOPP010",
-                "externalIdKind": "store_product"
+                "sourceId": "STEAMOPP010"
               }
             ]
           }
