@@ -8,31 +8,44 @@
 > is the 6-item list at the top of the readiness doc, not the totality of
 > nodes labelled `ALPHA-*` in the DAG.
 
-The implementation roadmap is a directed acyclic graph of PR-sized specs in
-`roadmap/spec-dag.json`. The graph is intentionally machine-readable because the
-expected development mode is orchestration by an agent that can claim ready
-nodes, launch planning and implementation workers, run audits, and merge only
-when the spec is actually complete. The central orchestrator operating contract
-is documented in [orchestration-operating-model.md](orchestration-operating-model.md).
+The implementation roadmap is a directed acyclic graph of PR-sized specs. The
+canonical committed file is `roadmap/spec-dag.json` in **qd export shape**
+(`schema_version`, `registries`, `nodes`, `edges`, `findings`, `runs`, and
+`node_notes`). qd owns live orchestration state; `just roadmap-validate` is the
+repo-local validator for the committed export. The older repo-native
+`schemaVersion: "0.1.0"` node shape remains supported only as an internal
+normalization and test-fixture shape for `scripts/spec-dag.mjs`.
+
+The graph is intentionally machine-readable because the expected development
+mode is orchestration by an agent that can claim ready nodes, launch planning
+and implementation workers, run audits, and merge only when the spec is actually
+complete. The central orchestrator operating contract is documented in
+[orchestration-operating-model.md](orchestration-operating-model.md).
 
 ## Commands
 
 ```sh
 just roadmap-validate
-just roadmap-ready
-just roadmap-pop
-node scripts/spec-dag.mjs show ITOTORI-019
-node scripts/spec-dag.mjs ready --project kaifuu --target alpha --json
+qd doctor --json
+qd status --json
+qd ready --json
+qd node show ITOTORI-300 --full
+qd claim ITOTORI-300 --agent orchestrator --branch spec/itotori-300
+qd check run ITOTORI-300
+qd ci run ITOTORI-300
 node scripts/spec-dag.mjs sync-issues --dry-run
-node scripts/spec-dag.mjs claim UNIV-009 --owner orchestrator --json
-node scripts/spec-dag.mjs worktree UNIV-009 --json
-node scripts/spec-dag.mjs ingest-audit roadmap/examples/audit-report.example.json --json
-node scripts/spec-dag.mjs complete UNIV-009 --audit path/to/audit-report.json --json
-node scripts/spec-dag.mjs graph > .tmp/spec-dag.dot
 ```
 
-`just check` also runs `node scripts/spec-dag.mjs validate`, so broken node ids,
-missing dependencies, invalid priorities, and cycles fail CI.
+`just check` runs the roadmap validator tests and `node scripts/spec-dag.mjs
+validate`. `.qd/config.toml` delegates qd `check_command` to `just check` and
+qd `ci_command` to `just ci`, so qd checks, local checks, and CI all include the
+same roadmap gate.
+
+For qd export shape, `node scripts/spec-dag.mjs validate` checks the qd export
+schema version, registries, duplicate node ids, qd status/priority shape,
+placeholder spec/acceptance/audit-focus text, edge references, self-edges, and
+cycles. When a legacy native fixture is passed directly to `validateDag()`, the
+older JSON schema and semantic checks still apply.
 
 ## GitHub Issue Sync
 

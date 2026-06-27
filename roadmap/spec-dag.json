@@ -27836,28 +27836,41 @@
       "id": "ITOTORI-300",
       "title": "Adopt qdcli as the sole orchestration surface",
       "kind": "feature",
-      "milestone": null,
-      "status": "ready",
-      "priority": "P2",
+      "milestone": "continuous",
+      "status": "claimed",
+      "priority": "P0",
       "estimate_points": 1,
       "risk": "medium",
-      "owner": null,
-      "branch": null,
-      "spec": "test spec",
-      "acceptance": "test acc",
+      "owner": "Codex repair worker",
+      "branch": "spec/itotori-300",
+      "spec": "Restore the roadmap gate after qdcli adoption made roadmap/spec-dag.json a qd export. The repo must have one declared canonical roadmap shape, qd check/CI must run the same roadmap validation that just check trusts, and legacy spec-dag validator entry points must not reject the committed qd export.\n\nDeliverables:\n- scripts/spec-dag.mjs qd export validation path for roadmap/spec-dag.json\n- justfile and .qd/config.toml gate wiring that includes just roadmap-validate through just check/just ci\n- docs/spec-dag.md, docs/orchestration-operating-model.md, and docs/worktree-lifecycle.md updates naming qd export as canonical",
+      "acceptance": "- just roadmap-validate passes from the spec/itotori-300 worktree\n- just check passes, or any residual failure is unrelated to roadmap validation and recorded with exact output\n- qd check_command and ci_command invoke the canonical repo gate instead of duplicating a validator-free command list\n- ITOTORI-300 no longer contains placeholder spec, acceptance, verification, or audit-focus text",
       "validation": null,
       "context": null,
       "created_at": "2026-06-26T10:24:28.703Z",
       "updated_at": "2026-06-26T10:24:28.703Z",
-      "claimed_at": null,
+      "claimed_at": "2026-06-27T00:00:00.000Z",
       "done_at": null,
-      "group_name": null,
+      "group_name": "roadmap-infra",
       "status_reason": null,
       "check_command": null,
       "ci_command": null,
       "projects": ["itotori"],
-      "verification": [],
-      "audit_focus": ["test focus"]
+      "verification": [
+        {
+          "type": "command",
+          "value": "just roadmap-validate"
+        },
+        {
+          "type": "command",
+          "value": "just check"
+        }
+      ],
+      "audit_focus": [
+        "qd export shape accepted without bypassing roadmap validation",
+        "legacy spec-DAG shape not documented as the current canonical source",
+        "qd check/CI command drift from just check/just ci"
+      ]
     },
     {
       "id": "SHARED-300",

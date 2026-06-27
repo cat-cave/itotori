@@ -314,29 +314,31 @@ test("completion validates the hypothetical DAG before writing or retiring the l
 });
 
 test("CLI lifecycle defaults are dry-run and do not create lock, worktree, or follow-up files", () => {
-  const dagPath = resolve(repoRoot, "roadmap/spec-dag.json");
-  const before = readFileSync(dagPath, "utf8");
-  const dag = JSON.parse(before);
-  const node = firstReadyPlannedNode(dag);
-  const dir = mkdtempSync(join(tmpdir(), "spec-dag-cli-dry-run-"));
-  const lockDir = join(dir, "claims");
-  const worktree = join(dir, "worktree");
-  const reportPath = join(dir, "audit-report.json");
-  const followUpsPath = join(dir, "follow-ups.json");
-  writeFileSync(reportPath, `${JSON.stringify(sampleAuditReportForNode(node), null, 2)}\n`);
+  withRepoDagRestored(() => {
+    const dagPath = resolve(repoRoot, "roadmap/spec-dag.json");
+    const before = readFileSync(dagPath, "utf8");
+    const dag = JSON.parse(before);
+    const node = firstReadyPlannedNode(dag);
+    const dir = mkdtempSync(join(tmpdir(), "spec-dag-cli-dry-run-"));
+    const lockDir = join(dir, "claims");
+    const worktree = join(dir, "worktree");
+    const reportPath = join(dir, "audit-report.json");
+    const followUpsPath = join(dir, "follow-ups.json");
+    writeFileSync(reportPath, `${JSON.stringify(sampleAuditReportForNode(node), null, 2)}\n`);
 
-  runSpecDag(["claim", node.id, "--owner", "dry-run-test", "--lock-dir", lockDir]);
-  assert.equal(existsSync(defaultClaimLockPath(lockDir, node.id)), false);
+    runSpecDag(["claim", node.id, "--owner", "dry-run-test", "--lock-dir", lockDir]);
+    assert.equal(existsSync(defaultClaimLockPath(lockDir, node.id)), false);
 
-  runSpecDag(["worktree", node.id, "--worktree", worktree]);
-  assert.equal(existsSync(worktree), false);
+    runSpecDag(["worktree", node.id, "--worktree", worktree]);
+    assert.equal(existsSync(worktree), false);
 
-  runSpecDag(["ingest-audit", reportPath]);
-  assert.equal(existsSync(followUpsPath), false);
+    runSpecDag(["ingest-audit", reportPath]);
+    assert.equal(existsSync(followUpsPath), false);
 
-  runSpecDag(["complete", node.id, "--audit", reportPath, "--lock-dir", lockDir]);
-  assert.equal(existsSync(defaultClaimLockPath(lockDir, node.id)), false);
-  assert.equal(readFileSync(dagPath, "utf8"), before);
+    runSpecDag(["complete", node.id, "--audit", reportPath, "--lock-dir", lockDir]);
+    assert.equal(existsSync(defaultClaimLockPath(lockDir, node.id)), false);
+    assert.equal(readFileSync(dagPath, "utf8"), before);
+  });
 });
 
 test("CLI claim --apply creates a lock and in_progress DAG claim", () => {
@@ -548,7 +550,56 @@ test("completion bookkeeping refuses unrecorded P2/P3 follow-ups", () => {
 function sampleDag(nodeOverrides = {}) {
   return {
     schemaVersion: "0.1.0",
+    metadata: {
+      generatedFrom: "spec-dag-lifecycle.test.mjs",
+      currentBaseline: "fixture",
+      priorityDefinitions: {
+        P0: "blocks current merge",
+        P1: "blocks alpha readiness",
+        P2: "important follow-up",
+        P3: "batched follow-up",
+      },
+      statusDefinitions: {
+        complete: "verified and merged",
+        planned: "ready when dependencies complete",
+        in_progress: "claimed by a worker",
+        blocked: "waiting on named input",
+        cancelled: "replaced or intentionally dropped",
+      },
+    },
     nodes: [
+      {
+        id: "ALPHA-005",
+        title: "Alpha readiness milestone fixture",
+        status: "complete",
+        priority: "P1",
+        target: "alpha",
+        projects: ["suite"],
+        parallelGroup: "milestone",
+        dependsOn: [],
+        summary: "Fixture alpha readiness milestone.",
+        deliverables: ["Alpha readiness fixture"],
+        acceptanceCriteria: ["The fixture milestone exists for alpha path validation"],
+        verification: [{ type: "command", value: "node scripts/spec-dag.mjs validate" }],
+        auditFocus: ["Fixture validity"],
+      },
+      {
+        id: "RGT-005",
+        title: "Real-game-testing-ready milestone fixture",
+        status: "complete",
+        priority: "P1",
+        target: "real-game-testing-ready",
+        projects: ["suite"],
+        parallelGroup: "milestone",
+        dependsOn: [],
+        summary: "Fixture real-game-testing-ready milestone.",
+        deliverables: ["RGT readiness fixture"],
+        acceptanceCriteria: [
+          "The fixture milestone exists for real-game-testing-ready path validation",
+        ],
+        verification: [{ type: "command", value: "node scripts/spec-dag.mjs validate" }],
+        auditFocus: ["Fixture validity"],
+      },
       {
         id: "UNIV-002",
         title: "Dependency",
@@ -569,7 +620,7 @@ function sampleDag(nodeOverrides = {}) {
         title: "Orchestrator lifecycle CLI",
         status: "planned",
         priority: "P1",
-        target: "alpha",
+        target: "continuous",
         projects: ["universal"],
         parallelGroup: "roadmap-infra",
         dependsOn: ["UNIV-002"],
@@ -585,27 +636,27 @@ function sampleDag(nodeOverrides = {}) {
         title: "Incomplete dependency example",
         status: "planned",
         priority: "P1",
-        target: "alpha",
+        target: "continuous",
         projects: ["universal"],
         parallelGroup: "roadmap-infra",
         dependsOn: ["UNIV-009"],
         summary: "Node used to prove completion cannot skip dependencies.",
         deliverables: ["Dependency guard"],
         acceptanceCriteria: ["Completion refuses incomplete dependencies"],
-        verification: [{ type: "manual", value: "Reviewed" }],
+        verification: [{ type: "command", value: "node scripts/spec-dag-lifecycle.test.mjs" }],
         auditFocus: ["Completion dependency safety"],
       },
       {
         id: "UNIV-011",
-        title: "Existing planned follow-up",
+        title: "Existing lifecycle task",
         status: "planned",
         priority: "P3",
         target: "continuous",
         projects: ["universal"],
         parallelGroup: "roadmap-infra",
         dependsOn: ["UNIV-009"],
-        summary: "Existing follow-up node.",
-        deliverables: ["Docs"],
+        summary: "Existing lifecycle task used for append-only audit finding tests.",
+        deliverables: ["Lifecycle docs"],
         acceptanceCriteria: ["Existing criterion"],
         verification: [{ type: "manual", value: "Reviewed" }],
         auditFocus: ["Follow-up handling"],
@@ -651,6 +702,7 @@ function withRepoDagRestored(fn) {
   const dagPath = resolve(repoRoot, "roadmap/spec-dag.json");
   const before = readFileSync(dagPath, "utf8");
   try {
+    writeFileSync(dagPath, `${JSON.stringify(sampleDag(), null, 2)}\n`);
     fn();
   } finally {
     writeFileSync(dagPath, before);

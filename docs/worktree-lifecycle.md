@@ -6,9 +6,11 @@ branches and worktrees. It complements
 defines the higher-level authority model, audit policy, provider policy, and
 merge gate.
 
-The source of truth for roadmap state is `roadmap/spec-dag.json`. Worktrees are
-temporary execution environments. Chat history, local notes outside the repo,
-and uncommitted files are not durable state.
+qd is the live source of truth for roadmap state. The committed
+`roadmap/spec-dag.json` file is the qd export shape used for review,
+validation, and branch coordination. Worktrees are temporary execution
+environments. Chat history, local notes outside the repo, and uncommitted files
+are not durable state.
 
 ## Safety Invariants
 
@@ -124,52 +126,18 @@ If any command shows uncommitted, untracked, or unknown state, stop and assign
 cleanup to the owning worker or record the node as blocked. Do not delete the
 worktree just because the branch name looks stale.
 
-The CLI can prepare the same checks and state transitions:
+qd owns node claims and lifecycle state:
 
 ```sh
-node scripts/spec-dag.mjs claim UNIV-003 --owner orchestrator --json
-node scripts/spec-dag.mjs claim UNIV-003 --owner orchestrator --apply
-node scripts/spec-dag.mjs worktree UNIV-003 --json
-node scripts/spec-dag.mjs worktree UNIV-003 --apply
+qd ready --json
+qd node show UNIV-003 --full
+qd claim UNIV-003 --agent orchestrator --branch spec/univ-003
+just roadmap-validate
 ```
 
-`claim` is the concurrency gate. With `--apply`, it creates
-`/tmp/itotori-spec-dag-claims/<repo-hash>/<NODE-ID>.json` with atomic file
-creation before updating `roadmap/spec-dag.json`. Lock files live in `/tmp`
-(not `/scratch/worktrees/`) because they are ephemeral coordination metadata
-that must not survive reboots — a stale lock from before a crash is
-misleading; `--force-stale` recovery handles intentional resurrection. The
-repo hash is derived from
-`git rev-parse --git-common-dir`, so worktrees for the same repository share the
-same lock namespace. If another process already created the lock, the second
-claim fails instead of racing to write `in_progress` metadata. The lock is a
-local filesystem guard; the durable ownership record is still the DAG update
-committed and coordinated through the normal branch workflow.
-
-Claim lock removal is never implicit during claim. It is allowed only through
-one of these explicit lifecycle events:
-
-- `node scripts/spec-dag.mjs claim <NODE-ID> --owner <OWNER> --release --apply`
-  removes the lock only when the lock metadata owner matches `--owner`. If the
-  DAG node is still `in_progress`, the DAG claim fields are cleared only when
-  the active DAG owner, branch, and worktree match the release request.
-- `node scripts/spec-dag.mjs claim <NODE-ID> --owner <OWNER> --force-stale --apply`
-  may remove an abandoned lock only when its `claimedAt` age is at least
-  `staleAfterHours` (default: 24). After removing the stale lock, the command
-  immediately reacquires the new claim with atomic file creation; if the DAG
-  still contains the stale `in_progress` owner/branch/worktree from that lock,
-  those fields are cleared before the new claim is written.
-- `node scripts/spec-dag.mjs complete <NODE-ID> --audit REPORT.json --apply`
-  removes the completed node's claim lock only after the completion DAG update
-  succeeds.
-
-Do not delete files from the claim-lock directory by hand unless the equivalent
-owner, stale-age, or completion condition above has already been verified and
-recorded in durable project notes.
-
-`worktree` is also dry-run by default. With `--apply`, it runs
-`git worktree add -b <branch> <path> <base>`. The command does not invent random
-suffixes for branch or path collisions.
+`qd claim` is the concurrency gate. It records the owning agent and branch in
+qd state; the branch or export commit then makes that state durable for review.
+Do not recreate the old `scripts/spec-dag.mjs claim/worktree` lock workflow.
 
 ## Lifecycle
 
@@ -178,26 +146,24 @@ suffixes for branch or path collisions.
 1. Read ready work:
 
    ```sh
-   just roadmap-ready
-   node scripts/spec-dag.mjs show UNIV-003
+   qd ready --json
+   qd node show UNIV-003 --full
    ```
 
-2. Confirm dependencies are complete and the node is still `planned`.
+2. Confirm dependencies are satisfied and the node is still `ready`.
 3. Choose the exact owner string and canonical branch/worktree names for the
    claim. The owner may be a human, orchestrator, or agent id, but it must be
    stable enough for another worker to know who owns the branch.
 4. Run the collision checks for `spec/<node-id-lower>`.
-5. Re-read `roadmap/spec-dag.json` immediately before creating the branch and
-   worktree. If the node is no longer `planned`, or is already `in_progress`
-   with a different `owner`, `branch`, or `worktree`, stop. The existing DAG
-   claim owns the node; do not create a second worktree or resolve the collision
-   with a random suffix.
+5. Re-read qd state immediately before creating the branch and worktree. If the
+   node is no longer `ready`, or is already claimed by a different owner or
+   branch, stop. The existing qd claim owns the node; do not create a second
+   worktree or resolve the collision with a random suffix.
 6. Create the primary branch and worktree from an up-to-date `main` using the
    chosen names:
 
    ```sh
-   node scripts/spec-dag.mjs worktree UNIV-003 --json
-   node scripts/spec-dag.mjs worktree UNIV-003 --apply
+   qd claim UNIV-003 --agent "Worker UNIV-003" --branch spec/univ-003
    ```
 
    If branch or worktree creation fails, do not continue on an ad hoc branch.
@@ -212,35 +178,26 @@ suffixes for branch or path collisions.
    git worktree add -b spec/univ-003 /scratch/worktrees/itotori-spec-univ-003 main
    ```
 
-7. In the new worktree, claim the node with the lifecycle CLI. Dry-run first:
+7. In the new worktree, verify the qd claim and roadmap export:
 
    ```sh
-   node scripts/spec-dag.mjs claim UNIV-003 --owner "Worker UNIV-003" --json
-   node scripts/spec-dag.mjs claim UNIV-003 --owner "Worker UNIV-003" --apply
+   qd node show UNIV-003 --full
+   just roadmap-validate
    ```
 
-   The apply form creates an atomic claim lock shared across the repo's
-   worktrees and writes schema-valid `in_progress` metadata. If the lock already
-   exists, stop and inspect the owning claim instead of creating another branch
-   or worktree. If the owning claim is abandoned, release it with matching owner
-   metadata or recover it with `--force-stale` after the configured stale age;
-   both forms are dry-run unless `--apply` is present.
-
-8. Re-read `roadmap/spec-dag.json`. The claimed node should now have
-   schema-valid metadata like:
+8. Re-read `roadmap/spec-dag.json`. The claimed qd-exported node should now
+   have reviewable metadata like:
 
    ```json
    {
-     "status": "in_progress",
+     "status": "claimed",
      "owner": "Worker UNIV-003",
-     "branch": "spec/univ-003",
-     "worktree": "/scratch/worktrees/itotori-spec-univ-003"
+     "branch": "spec/univ-003"
    }
    ```
 
-   The schema requires `owner` plus at least one of `branch` or `worktree`; the
-   lifecycle CLI uses both. Do not set `status: "in_progress"` alone. Run
-   `node scripts/spec-dag.mjs validate` after the edit.
+   Do not set `status: "claimed"` without an owner. Run `just
+roadmap-validate` after the edit or export.
 
 9. Commit the claim metadata before planning, implementation, or delegation:
 

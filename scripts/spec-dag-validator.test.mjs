@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { validateDag } from "./spec-dag.mjs";
+import { normalizeDag, validateDag } from "./spec-dag.mjs";
 
 test("accepts an implementable node with runnable verification and concrete outputs", () => {
   const errors = errorsFor(
@@ -512,6 +512,53 @@ test("rejects sprint scheduling language inside allowed text fields", () => {
   );
 });
 
+test("accepts qd export shape as the canonical roadmap file shape", () => {
+  const errors = validateDag(qdExportFixture()).errors;
+
+  assert.deepEqual(errors, []);
+
+  const normalized = normalizeDag(qdExportFixture());
+  assert.equal(normalized.schemaVersion, "0.1.0");
+  assert.deepEqual(normalized.nodes[1], {
+    id: "ITOTORI-300",
+    title: "Validate qd export roadmap gate",
+    status: "planned",
+    priority: "P0",
+    target: "continuous",
+    projects: ["itotori"],
+    parallelGroup: "roadmap-infra",
+    dependsOn: ["UNIV-000"],
+    summary: "Make qd export the canonical roadmap/spec-dag.json shape.",
+    deliverables: ["scripts/spec-dag.mjs qd export validator"],
+    acceptanceCriteria: ["just roadmap-validate passes on qd export JSON"],
+    verification: [{ type: "command", value: "just roadmap-validate" }],
+    auditFocus: ["qd check/CI gate drift"],
+  });
+});
+
+test("rejects qd export placeholder spec, acceptance, and audit-focus text", () => {
+  const dag = qdExportFixture({
+    spec: "test spec",
+    acceptance: "test acc",
+    audit_focus: ["test focus"],
+  });
+
+  const errors = validateDag(dag).errors;
+
+  assertError(errors, "ITOTORI-300 spec is placeholder text: test spec");
+  assertError(errors, "ITOTORI-300 acceptance is placeholder text: test acc");
+  assertError(errors, "ITOTORI-300 audit_focus[0] is placeholder text: test focus");
+});
+
+test("rejects qd export edges that reference missing nodes", () => {
+  const dag = qdExportFixture();
+  dag.edges.push({ from_node: "MISSING-001", to_node: "ITOTORI-300", type: "requires" });
+
+  const errors = validateDag(dag).errors;
+
+  assertError(errors, "edge MISSING-001 -> ITOTORI-300 references unknown from_node MISSING-001");
+});
+
 function errorsFor(...nodes) {
   return validateDag(dagFixture(nodes)).errors;
 }
@@ -601,5 +648,65 @@ function nodeFixture(overrides = {}) {
     verification: [{ type: "command", value: "node scripts/spec-dag-validator.test.mjs" }],
     auditFocus: ["Validator false positives", "Validator false negatives"],
     ...overrides,
+  };
+}
+
+function qdExportFixture(overrides = {}) {
+  return {
+    schema_version: 1,
+    exported_at: "2026-06-27T00:00:00.000Z",
+    registries: {
+      groups: [{ name: "baseline" }, { name: "roadmap-infra" }],
+      projects: [{ name: "universal" }, { name: "itotori" }],
+      milestones: [
+        { name: "baseline", rank: 0 },
+        { name: "continuous", rank: 4 },
+      ],
+    },
+    nodes: [
+      {
+        id: "UNIV-000",
+        title: "Baseline",
+        kind: "feature",
+        milestone: "baseline",
+        status: "done",
+        priority: "P0",
+        owner: null,
+        branch: null,
+        spec: "Committed baseline.\n\nDeliverables:\n- Baseline gate",
+        acceptance: "- Baseline verification passes",
+        group_name: "baseline",
+        status_reason: null,
+        check_command: null,
+        ci_command: null,
+        projects: ["universal"],
+        verification: [{ type: "command", value: "just check" }],
+        audit_focus: ["Baseline drift"],
+      },
+      {
+        id: "ITOTORI-300",
+        title: "Validate qd export roadmap gate",
+        kind: "feature",
+        milestone: "continuous",
+        status: "ready",
+        priority: "P0",
+        owner: null,
+        branch: null,
+        spec: "Make qd export the canonical roadmap/spec-dag.json shape.\n\nDeliverables:\n- scripts/spec-dag.mjs qd export validator",
+        acceptance: "- just roadmap-validate passes on qd export JSON",
+        group_name: "roadmap-infra",
+        status_reason: null,
+        check_command: null,
+        ci_command: null,
+        projects: ["itotori"],
+        verification: [{ type: "command", value: "just roadmap-validate" }],
+        audit_focus: ["qd check/CI gate drift"],
+        ...overrides,
+      },
+    ],
+    edges: [{ from_node: "UNIV-000", to_node: "ITOTORI-300", type: "requires" }],
+    findings: [],
+    runs: [],
+    node_notes: [],
   };
 }

@@ -1,9 +1,10 @@
 # Orchestration Operating Model
 
 This document is the operating contract for central orchestrator agents working
-from `roadmap/spec-dag.json`. It explains what the orchestrator owns, what it
-must delegate, and how audit, CI, model-provider, cost, and worktree decisions
-should be handled without relying on chat history.
+from qd and the committed `roadmap/spec-dag.json` qd export. It explains what
+the orchestrator owns, what it must delegate, and how audit, CI,
+model-provider, cost, and worktree decisions should be handled without relying
+on chat history.
 
 ## Milestone Framework (2026-06-24)
 
@@ -55,11 +56,16 @@ framework into per-node `target` retagging.
 
 ## Source Of Truth
 
-`roadmap/spec-dag.json` is the source of truth for roadmap state. The
-orchestrator should derive ready work from the DAG instead of private notes,
-chat context, local TODO files, or memory.
+qd is the live orchestration ledger. The committed source/export is
+`roadmap/spec-dag.json` in qd export shape and must pass `just
+roadmap-validate`. The orchestrator should derive ready work from qd and the
+validated export instead of private notes, chat context, local TODO files, or
+memory.
 
-A spec is ready when it is `planned` and all `dependsOn` nodes are `complete`.
+A spec is ready when qd reports it as `ready` and all dependency edges are
+satisfied. The validator normalizes qd `ready` to the legacy internal
+`planned` state and qd `done` to `complete` only for compatibility with older
+read-only helper code.
 A spec can be marked `complete` only after its implementation has been merged
 into `main` and:
 
@@ -76,7 +82,8 @@ clear verification, and orchestrator trust, not activity.
 
 The central orchestrator stays high-level. It owns the delivery loop:
 
-1. Maintain the DAG and treat it as the canonical backlog.
+1. Maintain qd and the committed qd export, treating them as the canonical
+   backlog.
 2. Select ready specs according to priority, target, dependencies, and safe
    parallelism.
 3. Create, name, track, and prune worktrees for active branches.
@@ -133,23 +140,22 @@ test implementation, and spec implementation belong to workers.
 
 ## Spec Lifecycle
 
-1. Read ready nodes with `just roadmap-ready` or
-   `node scripts/spec-dag.mjs pop --json`.
+1. Read ready nodes with `qd ready --json`.
 2. Pick one node, considering P0/P1 priority, alpha readiness pressure,
    dependency unlocks, and worktree capacity.
-3. Create a branch and worktree scoped to that node while the node is still
-   `planned`.
-4. Commit schema-valid `in_progress` metadata with `owner` plus `branch` or
-   `worktree`, then push or merge the claim according to the coordination
-   workflow before work starts.
+3. Claim it with `qd claim <NODE-ID> --agent <OWNER> --branch <BRANCH>`, then
+   create a branch and worktree scoped to that node.
+4. Export or update qd state as required by the branch workflow, then run
+   `just roadmap-validate` before treating the state change as valid.
 5. Ask a planning worker for an implementation plan tied to the node's
    deliverables, acceptance criteria, verification, and audit focus.
 6. Review the plan for scope, missing dependencies, test strategy, and unsafe
    assumptions.
 7. Assign implementation to worker agents. Give each worker a narrow scope,
    expected commands, and artifact expectations.
-8. Run the node's verification commands, `just check`, or the stronger CI gate
-   required by the node.
+8. Run the node's verification commands, `qd check run <NODE-ID>`, or the
+   stronger `qd ci run <NODE-ID>` gate required by the node. qd delegates these
+   to `just check` and `just ci`, so roadmap validation is included.
 9. Assign audit workers. Include the diff, plan, test evidence, known risks,
    and the node's `auditFocus`.
 10. Resolve findings according to severity.
