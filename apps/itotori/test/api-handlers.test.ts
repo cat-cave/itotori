@@ -23,6 +23,7 @@ import { ItotoriProjectWorkflowService } from "../src/services/project-workflow.
 import {
   benchmarkReportFixture,
   bridgeFixture,
+  catalogBenchmarkSeedsFixture,
   catalogCompletenessFixture,
   catalogConflictReviewFixture,
   costReportFixture,
@@ -150,6 +151,10 @@ describe("Itotori API handlers", () => {
       { method: "GET", pathname: "/api/catalog/completeness" },
       services,
     );
+    const catalogBenchmarkSeeds = await handleItotoriApiRequest(
+      { method: "GET", pathname: "/api/catalog/benchmark-seeds" },
+      services,
+    );
     const terminologySearch = await handleItotoriApiRequest(
       {
         method: "GET",
@@ -199,6 +204,7 @@ describe("Itotori API handlers", () => {
     expect(decisions).toEqual({ statusCode: 200, body: dashboardDecisionsFixture });
     expect(catalogConflicts).toEqual({ statusCode: 200, body: catalogConflictReviewFixture });
     expect(catalogCompleteness).toEqual({ statusCode: 200, body: catalogCompletenessFixture });
+    expect(catalogBenchmarkSeeds).toEqual({ statusCode: 200, body: catalogBenchmarkSeedsFixture });
     expect(terminologySearch).toEqual({ statusCode: 200, body: terminologySearchFixture });
     expect(services.projectWorkflow.getDashboardStatus).toHaveBeenCalledTimes(2);
     expect(services.projectWorkflow.getRuntimeStatus).toHaveBeenCalledTimes(2);
@@ -208,6 +214,7 @@ describe("Itotori API handlers", () => {
     expect(services.projectWorkflow.getDashboardDecisions).toHaveBeenCalledTimes(1);
     expect(services.catalogRepository.catalogConflictReview).toHaveBeenCalledWith({});
     expect(services.catalogRepository.catalogCompletenessBenchmarkPools).toHaveBeenCalledWith({});
+    expect(services.catalogRepository.catalogBenchmarkSeedFinder).toHaveBeenCalledWith({});
     expect(services.terminologyRepository.searchTerms).toHaveBeenCalledWith({
       localeBranchId: "locale-1",
       query: "Hero",
@@ -290,6 +297,144 @@ describe("Itotori API handlers", () => {
       filter,
     );
     expect(services.authorization.requirePermission).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    {
+      query: "?targetLanguage=en-US",
+      filter: { targetLanguage: "en-US" },
+    },
+    {
+      query: "?pools=no_english,mtl_only",
+      filter: { pools: ["no_english", "mtl_only"] },
+    },
+    {
+      query:
+        "?targetLanguage=en-US&pools=conflict&pools=unknown&minCapabilityLevel=extract&demandBucket=very_high&provenanceRequired=true&localOwnership=owned&includeDemoted=true&limit=25",
+      filter: {
+        targetLanguage: "en-US",
+        pools: ["conflict", "unknown"],
+        minCapabilityLevel: "extract",
+        demandBucket: "very_high",
+        provenanceRequired: true,
+        localOwnership: "owned",
+        includeDemoted: true,
+        limit: 25,
+      },
+    },
+  ])("passes catalog benchmark seed filter $query to the read model", async ({ query, filter }) => {
+    const services = serviceFixture();
+
+    const response = await handleItotoriApiRequest(
+      { method: "GET", pathname: "/api/catalog/benchmark-seeds", search: query },
+      services,
+    );
+
+    expect(response).toEqual({ statusCode: 200, body: catalogBenchmarkSeedsFixture });
+    expect(services.catalogRepository.catalogBenchmarkSeedFinder).toHaveBeenCalledWith(filter);
+    expect(services.authorization.requirePermission).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    {
+      query: "?targetLanguage=",
+      error: /targetLanguage/u,
+    },
+    {
+      query: "?pools=official_full",
+      error: /pools/u,
+    },
+    {
+      query: "?minCapabilityLevel=runtime",
+      error: /minCapabilityLevel/u,
+    },
+    {
+      query: "?provenanceRequired=yes",
+      error: /provenanceRequired/u,
+    },
+    {
+      query: "?localOwnership=local_path",
+      error: /localOwnership/u,
+    },
+    {
+      query: "?includeDemoted=1",
+      error: /includeDemoted/u,
+    },
+    {
+      query: "?limit=0",
+      error: /limit/u,
+    },
+  ])("rejects malformed catalog benchmark seed query $query", async ({ query, error }) => {
+    const services = serviceFixture();
+
+    const response = await handleItotoriApiRequest(
+      { method: "GET", pathname: "/api/catalog/benchmark-seeds", search: query },
+      services,
+    );
+
+    expect(response.statusCode).toBe(400);
+    expect(response.body).toMatchObject({ code: "bad_request" });
+    expect(response.body.error).toMatch(error);
+    expect(services.catalogRepository.catalogBenchmarkSeedFinder).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    {
+      name: "local path",
+      body: {
+        ...catalogBenchmarkSeedsFixture,
+        rows: [{ ...catalogBenchmarkSeedsFixture.rows[0]!, localPath: "/home/local/game" }],
+      },
+      error: /localPath/u,
+    },
+    {
+      name: "raw payload",
+      body: {
+        ...catalogBenchmarkSeedsFixture,
+        rows: [
+          {
+            ...catalogBenchmarkSeedsFixture.rows[0]!,
+            provenance: [
+              {
+                ...catalogBenchmarkSeedsFixture.rows[0]!.provenance[0]!,
+                rawPayload: { private: true },
+              },
+            ],
+          },
+        ],
+      },
+      error: /rawPayload/u,
+    },
+    {
+      name: "payload hash",
+      body: {
+        ...catalogBenchmarkSeedsFixture,
+        rows: [
+          {
+            ...catalogBenchmarkSeedsFixture.rows[0]!,
+            provenance: [
+              {
+                ...catalogBenchmarkSeedsFixture.rows[0]!.provenance[0]!,
+                payloadHash: "sha256:fixture",
+              },
+            ],
+          },
+        ],
+      },
+      error: /payloadHash/u,
+    },
+  ])("does not expose private catalog benchmark seed $name fields", async ({ body, error }) => {
+    const services = serviceFixture();
+    services.catalogRepository.catalogBenchmarkSeedFinder.mockResolvedValueOnce(body);
+
+    const response = await handleItotoriApiRequest(
+      { method: "GET", pathname: "/api/catalog/benchmark-seeds" },
+      services,
+    );
+
+    expect(response.statusCode).toBe(500);
+    expect(response.body).toMatchObject({ code: "internal_error" });
+    expect(response.body.error).toMatch(error);
   });
 
   it.each([
@@ -1123,6 +1268,7 @@ function serviceFixture(): ItotoriApiServices {
     catalogRepository: {
       catalogConflictReview: vi.fn(async () => catalogConflictReviewFixture),
       catalogCompletenessBenchmarkPools: vi.fn(async () => catalogCompletenessFixture),
+      catalogBenchmarkSeedFinder: vi.fn(async () => catalogBenchmarkSeedsFixture),
     },
     terminologyRepository: {
       searchTerms: vi.fn(async () => terminologySearchFixture),

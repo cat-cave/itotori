@@ -1,9 +1,15 @@
 import {
   AuthorizationError,
+  capabilityLevelValues,
   catalogCandidateMatchStatusValues,
   catalogCompletenessPoolValues,
   catalogConflictStatusValues,
   catalogSourceValues,
+  type CapabilityLevel,
+  type CatalogBenchmarkDemandBucket,
+  type CatalogBenchmarkLocalOwnership,
+  type CatalogBenchmarkSeedFinderFilter,
+  type CatalogBenchmarkSeedFinderReadModel,
   permissionValues,
   type CatalogCompletenessBenchmarkPools,
   type CatalogCompletenessPool,
@@ -82,6 +88,9 @@ export type ItotoriApiServices = {
     catalogCompletenessBenchmarkPools(
       filter?: CatalogCompletenessPoolFilter,
     ): Promise<CatalogCompletenessBenchmarkPools>;
+    catalogBenchmarkSeedFinder(
+      filter?: CatalogBenchmarkSeedFinderFilter,
+    ): Promise<CatalogBenchmarkSeedFinderReadModel>;
   };
   terminologyRepository: {
     searchTerms(input: TerminologySearchInput): Promise<TerminologySearchReadModel>;
@@ -165,6 +174,15 @@ async function routeItotoriApiRequest(
     );
   }
 
+  if (request.method === "GET" && request.pathname === "/api/catalog/benchmark-seeds") {
+    return ok(
+      "catalog.benchmarkSeeds",
+      await services.catalogRepository.catalogBenchmarkSeedFinder(
+        parseCatalogBenchmarkSeedFinderFilter(request.search),
+      ),
+    );
+  }
+
   if (request.method === "GET" && request.pathname === "/api/terminology/search") {
     return ok(
       "terminology.search",
@@ -179,6 +197,7 @@ async function routeItotoriApiRequest(
     request.pathname === "/api/hello/status" ||
     request.pathname === "/api/catalog/conflicts" ||
     request.pathname === "/api/catalog/completeness" ||
+    request.pathname === "/api/catalog/benchmark-seeds" ||
     request.pathname === "/api/terminology/search"
   ) {
     return methodNotAllowed(["GET"]);
@@ -268,6 +287,79 @@ function parseCatalogCompletenessPoolFilter(search = ""): CatalogCompletenessPoo
       Object.values(catalogCompletenessPoolValues) as CatalogCompletenessPool[],
       "pool",
     );
+  }
+  return filter;
+}
+
+const catalogBenchmarkDemandBuckets: CatalogBenchmarkDemandBucket[] = [
+  "none",
+  "low",
+  "medium",
+  "high",
+  "very_high",
+];
+
+const catalogBenchmarkLocalOwnershipValues: CatalogBenchmarkLocalOwnership[] = [
+  "owned",
+  "not_owned",
+  "unknown",
+];
+
+function parseCatalogBenchmarkSeedFinderFilter(search = ""): CatalogBenchmarkSeedFinderFilter {
+  const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
+  const filter: CatalogBenchmarkSeedFinderFilter = {};
+  const targetLanguage = params.get("targetLanguage");
+  if (targetLanguage !== null) {
+    if (targetLanguage.trim().length === 0) {
+      throw new ApiValidationError("targetLanguage must be non-empty");
+    }
+    filter.targetLanguage = targetLanguage;
+  }
+  const pools = listParam(params, "pools");
+  if (pools.length > 0) {
+    filter.pools = pools.map((pool) =>
+      enumParam(
+        pool,
+        Object.values(catalogCompletenessPoolValues) as CatalogCompletenessPool[],
+        "pools",
+      ),
+    );
+  }
+  const minCapabilityLevel = params.get("minCapabilityLevel");
+  if (minCapabilityLevel !== null) {
+    filter.minCapabilityLevel = enumParam(
+      minCapabilityLevel,
+      Object.values(capabilityLevelValues) as CapabilityLevel[],
+      "minCapabilityLevel",
+    );
+  }
+  const demandBucket = params.get("demandBucket");
+  if (demandBucket !== null) {
+    filter.demandBucket = enumParam(demandBucket, catalogBenchmarkDemandBuckets, "demandBucket");
+  }
+  const provenanceRequired = params.get("provenanceRequired");
+  if (provenanceRequired !== null) {
+    filter.provenanceRequired = booleanParam(provenanceRequired, "provenanceRequired");
+  }
+  const localOwnership = params.get("localOwnership");
+  if (localOwnership !== null) {
+    filter.localOwnership = enumParam(
+      localOwnership,
+      catalogBenchmarkLocalOwnershipValues,
+      "localOwnership",
+    );
+  }
+  const includeDemoted = params.get("includeDemoted");
+  if (includeDemoted !== null) {
+    filter.includeDemoted = booleanParam(includeDemoted, "includeDemoted");
+  }
+  const limit = params.get("limit");
+  if (limit !== null) {
+    const parsedLimit = Number(limit);
+    if (!Number.isInteger(parsedLimit) || parsedLimit < 1 || parsedLimit > 500) {
+      throw new ApiValidationError("limit must be an integer from 1 through 500");
+    }
+    filter.limit = parsedLimit;
   }
   return filter;
 }
@@ -370,6 +462,21 @@ function enumParam<T extends string>(value: string, allowed: readonly T[], label
   return value as T;
 }
 
+function booleanParam(value: string, label: string): boolean {
+  if (value !== "true" && value !== "false") {
+    throw new ApiValidationError(`${label} must be true or false`);
+  }
+  return value === "true";
+}
+
+function listParam(params: URLSearchParams, key: string): string[] {
+  return params
+    .getAll(key)
+    .flatMap((value) => value.split(","))
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0);
+}
+
 function apiMutationGate(
   mutation: string,
   permissionKey: keyof typeof permissionValues,
@@ -386,6 +493,10 @@ function ok(routeId: "catalog.conflicts", body: CatalogConflictReviewReadModel):
 function ok(
   routeId: "catalog.completeness",
   body: CatalogCompletenessBenchmarkPools,
+): ApiJsonResponse;
+function ok(
+  routeId: "catalog.benchmarkSeeds",
+  body: CatalogBenchmarkSeedFinderReadModel,
 ): ApiJsonResponse;
 function ok(routeId: "terminology.search", body: TerminologySearchReadModel): ApiJsonResponse;
 function ok(routeId: "projects.status", body: ProjectDashboardStatus): ApiJsonResponse;

@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import type {
+  CatalogBenchmarkSeedFinderReadModel,
   CatalogCompletenessBenchmarkPools,
   CatalogConflictReviewReadModel,
   DashboardDecisionReadModel,
@@ -410,6 +411,66 @@ export const catalogCompletenessFixture: CatalogCompletenessBenchmarkPools = {
       { status: "mtl", factCount: 1, sourceIds: [{ catalogSource: "egs", sourceId: "egs-mtl" }] },
     ],
   },
+};
+
+export const catalogBenchmarkSeedsFixture: CatalogBenchmarkSeedFinderReadModel = {
+  schemaVersion: "catalog.benchmark_seed_finder.v0.1",
+  targetLanguage: "en-US",
+  generatedAt: new Date("2026-06-17T00:03:00.000Z"),
+  rows: [
+    {
+      workId: "work-seed",
+      canonicalTitle: "Benchmark Seed Fixture",
+      originalLanguage: "ja-JP",
+      sourceIds: [
+        {
+          catalogSource: "dlsite",
+          sourceId: "RJSEED001",
+          externalIdKind: "store_product",
+        },
+      ],
+      completenessPool: "no_english",
+      translationStatuses: [
+        {
+          language: "en-US",
+          status: "none",
+          confidence: "high",
+          statusScope: "work",
+          platform: null,
+        },
+      ],
+      localOwnership: "owned",
+      localEvidenceCount: 1,
+      demandBucket: "very_high",
+      readiness: {
+        adapterId: "adapter-seed",
+        identify: "supported",
+        inventory: "supported",
+        extract: "supported",
+        patch: "partial",
+        helper: "unknown",
+        runtime: "unsupported",
+      },
+      provenance: [
+        {
+          catalogSource: "dlsite",
+          sourceId: "RJSEED001",
+          sourceRecordKind: "recorded_fixture",
+          sourceVersion: "fixture-2026-06-17",
+          fixtureId: "catalog-benchmark-seeds/dlsite/RJSEED001.json",
+          redactionClass: "public_metadata",
+        },
+      ],
+      decision: "seed",
+      rank: 1,
+      seedRank: 1,
+      explanationCodes: [
+        "pool:no_english",
+        "demand_bucket:very_high",
+        "local_ownership:owned",
+      ],
+    },
+  ],
 };
 
 export const dashboardDecisionsFixture: DashboardDecisionReadModel = {

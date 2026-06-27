@@ -1,4 +1,5 @@
 import type {
+  CatalogBenchmarkSeedFinderReadModel,
   CatalogCompletenessBenchmarkPools,
   CatalogConflictReviewReadModel,
   DashboardDecisionReadModel,
@@ -38,6 +39,7 @@ import type {
 } from "./services/project-workflow.js";
 
 export type ItotoriApiRouteId =
+  | "catalog.benchmarkSeeds"
   | "catalog.completeness"
   | "catalog.conflicts"
   | "terminology.search"
@@ -69,6 +71,8 @@ export type ApiDashboardDecisionsResponse = DashboardDecisionReadModel;
 export type ApiCatalogConflictReviewResponse = CatalogConflictReviewReadModel;
 
 export type ApiCatalogCompletenessResponse = CatalogCompletenessBenchmarkPools;
+
+export type ApiCatalogBenchmarkSeedsResponse = CatalogBenchmarkSeedFinderReadModel;
 
 export type ApiTerminologySearchResponse = TerminologySearchReadModel;
 
@@ -121,6 +125,7 @@ export type ApiRuntimeEvidenceRequest = {
 export type ApiRuntimeEvidenceResponse = RuntimeIngestResult;
 
 export type ItotoriApiResponseBody =
+  | ApiCatalogBenchmarkSeedsResponse
   | ApiCatalogCompletenessResponse
   | ApiCatalogConflictReviewResponse
   | ApiTerminologySearchResponse
@@ -228,6 +233,9 @@ export function assertItotoriApiResponse(
   value: unknown,
 ): asserts value is ItotoriApiResponseBody {
   switch (routeId) {
+    case "catalog.benchmarkSeeds":
+      assertCatalogBenchmarkSeedFinderReadModel(value);
+      return;
     case "catalog.completeness":
       assertCatalogCompletenessBenchmarkPools(value);
       return;
@@ -270,6 +278,161 @@ export function assertItotoriApiResponse(
     case "runtimeEvidence.ingest":
       assertRuntimeEvidenceResponse(value);
       return;
+  }
+}
+
+export function assertCatalogBenchmarkSeedFinderReadModel(
+  value: unknown,
+  label = "CatalogBenchmarkSeedFinderReadModel",
+): asserts value is CatalogBenchmarkSeedFinderReadModel {
+  const model = asStrictRecord(value, label, [
+    "schemaVersion",
+    "targetLanguage",
+    "generatedAt",
+    "rows",
+  ]);
+  assertLiteral(
+    model.schemaVersion,
+    "catalog.benchmark_seed_finder.v0.1",
+    `${label}.schemaVersion`,
+  );
+  assertString(model.targetLanguage, `${label}.targetLanguage`);
+  assertDateLike(model.generatedAt, `${label}.generatedAt`);
+  const rows = asArray(model.rows, `${label}.rows`);
+  for (const [index, rowValue] of rows.entries()) {
+    const rowLabel = `${label}.rows[${index}]`;
+    const row = asStrictRecord(rowValue, rowLabel, [
+      "workId",
+      "canonicalTitle",
+      "originalLanguage",
+      "sourceIds",
+      "completenessPool",
+      "translationStatuses",
+      "localOwnership",
+      "localEvidenceCount",
+      "demandBucket",
+      "readiness",
+      "provenance",
+      "decision",
+      "rank",
+      "seedRank",
+      "explanationCodes",
+    ]);
+    assertString(row.workId, `${rowLabel}.workId`);
+    assertString(row.canonicalTitle, `${rowLabel}.canonicalTitle`);
+    assertNullableString(row.originalLanguage, `${rowLabel}.originalLanguage`);
+    assertCatalogBenchmarkSeedSourceIds(row.sourceIds, `${rowLabel}.sourceIds`);
+    assertEnum(
+      row.completenessPool,
+      ["mtl_only", "fan_partial", "no_english", "unknown", "conflict"] as const,
+      `${rowLabel}.completenessPool`,
+    );
+    assertCatalogBenchmarkSeedTranslationStatuses(
+      row.translationStatuses,
+      `${rowLabel}.translationStatuses`,
+    );
+    assertEnum(
+      row.localOwnership,
+      ["owned", "not_owned", "unknown"] as const,
+      `${rowLabel}.localOwnership`,
+    );
+    assertNonNegativeInteger(row.localEvidenceCount, `${rowLabel}.localEvidenceCount`);
+    assertEnum(
+      row.demandBucket,
+      ["none", "low", "medium", "high", "very_high"] as const,
+      `${rowLabel}.demandBucket`,
+    );
+    assertCatalogBenchmarkSeedReadiness(row.readiness, `${rowLabel}.readiness`);
+    assertCatalogBenchmarkSeedProvenance(row.provenance, `${rowLabel}.provenance`);
+    assertEnum(
+      row.decision,
+      ["seed", "candidate", "demoted", "excluded"] as const,
+      `${rowLabel}.decision`,
+    );
+    assertNonNegativeInteger(row.rank, `${rowLabel}.rank`);
+    if (row.seedRank !== null) {
+      assertNonNegativeInteger(row.seedRank, `${rowLabel}.seedRank`);
+    }
+    assertStringArray(row.explanationCodes, `${rowLabel}.explanationCodes`);
+  }
+}
+
+function assertCatalogBenchmarkSeedSourceIds(value: unknown, label: string): void {
+  const sourceIds = asArray(value, label);
+  for (const [index, sourceIdValue] of sourceIds.entries()) {
+    const sourceId = asStrictRecord(sourceIdValue, `${label}[${index}]`, [
+      "catalogSource",
+      "sourceId",
+      "externalIdKind",
+    ]);
+    assertString(sourceId.catalogSource, `${label}[${index}].catalogSource`);
+    assertString(sourceId.sourceId, `${label}[${index}].sourceId`);
+    assertString(sourceId.externalIdKind, `${label}[${index}].externalIdKind`);
+  }
+}
+
+function assertCatalogBenchmarkSeedTranslationStatuses(value: unknown, label: string): void {
+  const statuses = asArray(value, label);
+  for (const [index, statusValue] of statuses.entries()) {
+    const status = asStrictRecord(statusValue, `${label}[${index}]`, [
+      "language",
+      "status",
+      "confidence",
+      "statusScope",
+      "platform",
+    ]);
+    assertString(status.language, `${label}[${index}].language`);
+    assertString(status.status, `${label}[${index}].status`);
+    assertString(status.confidence, `${label}[${index}].confidence`);
+    assertString(status.statusScope, `${label}[${index}].statusScope`);
+    assertNullableString(status.platform, `${label}[${index}].platform`);
+  }
+}
+
+function assertCatalogBenchmarkSeedReadiness(value: unknown, label: string): void {
+  const readiness = asStrictRecord(value, label, [
+    "adapterId",
+    "identify",
+    "inventory",
+    "extract",
+    "patch",
+    "helper",
+    "runtime",
+  ]);
+  assertNullableString(readiness.adapterId, `${label}.adapterId`);
+  for (const level of [
+    "identify",
+    "inventory",
+    "extract",
+    "patch",
+    "helper",
+    "runtime",
+  ] as const) {
+    assertEnum(
+      readiness[level],
+      ["supported", "partial", "unsupported", "unknown"] as const,
+      `${label}.${level}`,
+    );
+  }
+}
+
+function assertCatalogBenchmarkSeedProvenance(value: unknown, label: string): void {
+  const provenance = asArray(value, label);
+  for (const [index, provenanceValue] of provenance.entries()) {
+    const entry = asStrictRecord(provenanceValue, `${label}[${index}]`, [
+      "catalogSource",
+      "sourceId",
+      "sourceRecordKind",
+      "sourceVersion",
+      "fixtureId",
+      "redactionClass",
+    ]);
+    assertString(entry.catalogSource, `${label}[${index}].catalogSource`);
+    assertString(entry.sourceId, `${label}[${index}].sourceId`);
+    assertString(entry.sourceRecordKind, `${label}[${index}].sourceRecordKind`);
+    assertNullableString(entry.sourceVersion, `${label}[${index}].sourceVersion`);
+    assertNullableString(entry.fixtureId, `${label}[${index}].fixtureId`);
+    assertString(entry.redactionClass, `${label}[${index}].redactionClass`);
   }
 }
 
@@ -1260,6 +1423,20 @@ function asRecord(value: unknown, label: string): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
+function asStrictRecord(
+  value: unknown,
+  label: string,
+  allowedKeys: readonly string[],
+): Record<string, unknown> {
+  const record = asRecord(value, label);
+  for (const key of Object.keys(record)) {
+    if (!allowedKeys.includes(key)) {
+      throw new Error(`${label}.${key} is not part of the public API response`);
+    }
+  }
+  return record;
+}
+
 function asArray(value: unknown, label: string): unknown[] {
   if (!Array.isArray(value)) {
     throw new Error(`${label} must be an array`);
@@ -1270,6 +1447,16 @@ function asArray(value: unknown, label: string): unknown[] {
 function assertString(value: unknown, label: string): asserts value is string {
   if (typeof value !== "string" || value.length === 0) {
     throw new Error(`${label} must be a non-empty string`);
+  }
+}
+
+function assertLiteral<T extends string>(
+  value: unknown,
+  expected: T,
+  label: string,
+): asserts value is T {
+  if (value !== expected) {
+    throw new Error(`${label} must be ${expected}`);
   }
 }
 
