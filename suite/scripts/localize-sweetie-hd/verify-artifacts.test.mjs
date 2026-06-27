@@ -249,19 +249,16 @@ function createFixture(options = {}) {
     },
   });
 
-  const providerArtifacts =
-    options.providerArtifacts ??
-    [deepMerge(providerRunArtifact(), options.providerArtifactPatch ?? {})];
+  const providerArtifacts = options.providerArtifacts ?? [
+    deepMerge(providerRunArtifact(), options.providerArtifactPatch ?? {}),
+  ];
   for (const artifact of providerArtifacts) {
     const artifactRunDir = join(providerRunArtifactsDir, artifact.run.runId);
     mkdirSync(artifactRunDir, { recursive: true });
     writeJson(join(artifactRunDir, "provider-run.json"), artifact);
   }
 
-  writeJson(
-    telemetrySummaryPath,
-    deepMerge(telemetrySummary(), options.telemetryPatch ?? {}),
-  );
+  writeJson(telemetrySummaryPath, deepMerge(telemetrySummary(), options.telemetryPatch ?? {}));
 
   return {
     root,

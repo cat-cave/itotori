@@ -148,7 +148,9 @@ function assertInteger(value, label) {
 
 function readProviderRunArtifacts(providerRunArtifactsDir) {
   if (!existsSync(providerRunArtifactsDir)) {
-    throw new Error(`required artifact missing: providerRunArtifacts at ${providerRunArtifactsDir}`);
+    throw new Error(
+      `required artifact missing: providerRunArtifacts at ${providerRunArtifactsDir}`,
+    );
   }
   const artifacts = [];
   for (const entry of readdirSync(providerRunArtifactsDir, { withFileTypes: true })) {
@@ -171,12 +173,7 @@ function providerRunStartedAtMs(providerRun, label) {
 }
 
 function verifyProviderRunArtifacts(args) {
-  const {
-    providerRunArtifactsDir,
-    invocations,
-    expectedModelId,
-    expectedProviderId,
-  } = args;
+  const { providerRunArtifactsDir, invocations, expectedModelId, expectedProviderId } = args;
   const artifacts = readProviderRunArtifacts(providerRunArtifactsDir);
   if (artifacts.length === 0) {
     throw new Error("provider-run artifact evidence missing");
@@ -241,15 +238,23 @@ function verifyProviderRunArtifacts(args) {
   for (const [runId, { path, artifact, run }] of artifactByRunId.entries()) {
     const invocation = expectedByRunId.get(runId);
     const provider = assertObject(run.provider, `provider-run artifact ${path}.run.provider`);
-    if (provider.providerFamily !== "openrouter" || provider.endpointFamily !== "openrouter-chat-completions") {
+    if (
+      provider.providerFamily !== "openrouter" ||
+      provider.endpointFamily !== "openrouter-chat-completions"
+    ) {
       throw new Error(
         `provider-run artifact ${runId} is not a live OpenRouter artifact: providerFamily=${String(provider.providerFamily)} endpointFamily=${String(provider.endpointFamily)}`,
       );
     }
     if (run.status !== "succeeded") {
-      throw new Error(`provider-run artifact ${runId} status is not succeeded: ${String(run.status)}`);
+      throw new Error(
+        `provider-run artifact ${runId} status is not succeeded: ${String(run.status)}`,
+      );
     }
-    if (provider.requestedModelId !== expectedModelId || provider.actualModelId !== expectedModelId) {
+    if (
+      provider.requestedModelId !== expectedModelId ||
+      provider.actualModelId !== expectedModelId
+    ) {
       throw new Error(
         `provider-run artifact ${runId} model mismatch: expected ${expectedModelId}, requested=${String(provider.requestedModelId)} actual=${String(provider.actualModelId)}`,
       );
@@ -266,7 +271,10 @@ function verifyProviderRunArtifacts(args) {
       );
     }
     const cost = assertObject(run.cost, `provider-run artifact ${path}.run.cost`);
-    if (cost.costKind !== "billed" || assertInteger(cost.amountMicrosUsd, `${path}.run.cost.amountMicrosUsd`) <= 0) {
+    if (
+      cost.costKind !== "billed" ||
+      assertInteger(cost.amountMicrosUsd, `${path}.run.cost.amountMicrosUsd`) <= 0
+    ) {
       throw new Error(
         `provider-run artifact ${runId} has non-billed live success cost: costKind=${String(cost.costKind)} amountMicrosUsd=${String(cost.amountMicrosUsd)}`,
       );
@@ -281,7 +289,11 @@ function verifyProviderRunArtifacts(args) {
     if (routingPosture.allow_fallbacks !== false) {
       throw new Error(`provider-run artifact ${runId} did not pin allow_fallbacks=false`);
     }
-    if (!Array.isArray(routingPosture.only) || routingPosture.only.length !== 1 || routingPosture.only[0] !== expectedProviderId) {
+    if (
+      !Array.isArray(routingPosture.only) ||
+      routingPosture.only.length !== 1 ||
+      routingPosture.only[0] !== expectedProviderId
+    ) {
       throw new Error(
         `provider-run artifact ${runId} routing provider mismatch: expected only=[${expectedProviderId}]`,
       );
@@ -307,7 +319,10 @@ function verifyProviderRunArtifacts(args) {
 
 function telemetryMetadata(telemetrySummary) {
   const metadata = assertObject(telemetrySummary.metadata, "telemetry-summary.metadata");
-  const projectId = assertNonEmptyString(metadata.projectId, "telemetry-summary.metadata.projectId");
+  const projectId = assertNonEmptyString(
+    metadata.projectId,
+    "telemetry-summary.metadata.projectId",
+  );
   const window = assertObject(metadata.window, "telemetry-summary.metadata.window");
   const from = assertNonEmptyString(window.from, "telemetry-summary.metadata.window.from");
   const to = assertNonEmptyString(window.to, "telemetry-summary.metadata.window.to");
@@ -344,12 +359,18 @@ function assertPairCountsMatch(rows, expectedCounts, label, rowCountKey) {
   for (const row of rows) {
     const rowObject = assertObject(row, `${label}.row`);
     const key = assertNonEmptyString(rowObject.pair, `${label}.row.pair`);
-    actualCounts.set(key, (actualCounts.get(key) ?? 0) + assertInteger(rowObject[rowCountKey], `${label}.row.${rowCountKey}`));
+    actualCounts.set(
+      key,
+      (actualCounts.get(key) ?? 0) +
+        assertInteger(rowObject[rowCountKey], `${label}.row.${rowCountKey}`),
+    );
   }
   const expectedKeys = Array.from(expectedCounts.keys()).sort();
   const actualKeys = Array.from(actualCounts.keys()).sort();
   if (JSON.stringify(actualKeys) !== JSON.stringify(expectedKeys)) {
-    throw new Error(`${label} pair rows mismatch: expected ${expectedKeys.join(",")}, got ${actualKeys.join(",")}`);
+    throw new Error(
+      `${label} pair rows mismatch: expected ${expectedKeys.join(",")}, got ${actualKeys.join(",")}`,
+    );
   }
   for (const key of expectedKeys) {
     if (actualCounts.get(key) !== expectedCounts.get(key)) {
