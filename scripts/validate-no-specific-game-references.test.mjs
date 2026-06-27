@@ -75,6 +75,35 @@ test("honors explicit allowlist entries without broadening to neighbors", () => 
   });
 });
 
+test("default allowlist covers only intended advisory record paths", () => {
+  withTempGitRepo((repo) => {
+    const allowlistedPaths = [
+      "roadmap/record.md",
+      ".plan/record.md",
+      "docs/audits/record.md",
+      "GENERALIZATION_AUDIT.md",
+    ];
+    const neighborPaths = [
+      "docs/architecture.md",
+      "docs/audits-neighbor/record.md",
+      "GENERALIZATION_AUDIT.md.bak",
+    ];
+
+    for (const path of [...allowlistedPaths, ...neighborPaths]) {
+      writeRepoFile(repo, path, "Moonlit Fixture appears in a synthetic fixture.\n");
+    }
+    git(repo, ["add", ...allowlistedPaths, ...neighborPaths]);
+
+    const result = scanRepo(repo);
+
+    assert.equal(result.skippedAllowlistedFileCount, allowlistedPaths.length);
+    assert.deepEqual(
+      result.violations.map((violation) => violation.path).sort(),
+      [...neighborPaths].sort(),
+    );
+  });
+});
+
 test("skips env files before path or content matching and does not read them", () => {
   withTempGitRepo((repo) => {
     writeRepoFile(repo, ".env.moonlit-fixture", "MOONLIT_FIXTURE_PATH=/secret\n");
@@ -147,7 +176,7 @@ test("renderReport prints no-violation summaries", () => {
   assert.match(report, /no forbidden title\/vendor references found/u);
 });
 
-function scanRepo(repo, allowlist = []) {
+function scanRepo(repo, allowlist) {
   return scanFiles({
     root: repo,
     files: listTrackedFiles(repo),
