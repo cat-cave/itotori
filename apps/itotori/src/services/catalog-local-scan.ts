@@ -3,6 +3,10 @@ import { lstat, readdir, readFile, stat } from "node:fs/promises";
 import { extname, join, resolve, sep } from "node:path";
 
 export const catalogLocalScanSchemaVersion = "catalog.local_corpus_sidecar.v0.1" as const;
+export const catalogLocalDetectionSchemaVersion =
+  "catalog.local_corpus_detection.v0.1" as const;
+export const catalogLocalArchiveDetectionSchemaVersion =
+  "catalog.local_corpus_archive_detection.v0.1" as const;
 export const catalogLocalEngineEvidenceSchemaVersion =
   "catalog.local_corpus_engine_evidence.v0.1" as const;
 export const catalogLocalScannerName = "itotori-local-corpus-scanner" as const;
@@ -131,13 +135,15 @@ export type CatalogLocalKaifuuArchiveDetectionRow = {
 };
 
 export type CatalogLocalKaifuuDetectionReport = {
-  schemaVersion: "0.1.0";
+  schemaVersion: typeof catalogLocalDetectionSchemaVersion;
+  schemaDialect: "itotori_local_corpus_detection";
   gameDir: typeof kaifuuRedactedDetectionGameDir;
   status: "matched" | "unknown";
   detections: CatalogLocalKaifuuDetectionResult[];
   warnings: string[];
   archiveDetection: {
-    schemaVersion: "0.1.0";
+    schemaVersion: typeof catalogLocalArchiveDetectionSchemaVersion;
+    schemaDialect: "itotori_local_corpus_archive_detection";
     status: "matched" | "unknown";
     evidencePolicy: typeof kaifuuArchiveDetectionEvidencePolicy;
     rows: CatalogLocalKaifuuArchiveDetectionRow[];
@@ -147,7 +153,7 @@ export type CatalogLocalKaifuuDetectionReport = {
 export type CatalogLocalEngineEvidence = {
   schemaVersion: typeof catalogLocalEngineEvidenceSchemaVersion;
   producer: typeof catalogLocalScannerName;
-  kaifuuDetectionSchemaVersion: "0.1.0";
+  localDetectionSchemaVersion: typeof catalogLocalDetectionSchemaVersion;
   adapterId: string;
   engineName: string;
   engineSource: "local_scan";
@@ -852,7 +858,8 @@ function kaifuuDetectionReport(
 ): CatalogLocalKaifuuDetectionReport {
   const archiveMatched = rows.some((row) => row.detected);
   return {
-    schemaVersion: "0.1.0",
+    schemaVersion: catalogLocalDetectionSchemaVersion,
+    schemaDialect: "itotori_local_corpus_detection",
     gameDir: kaifuuRedactedDetectionGameDir,
     status: "unknown",
     detections: [],
@@ -862,7 +869,8 @@ function kaifuuDetectionReport(
         ]
       : ["no registered adapter matched this directory"],
     archiveDetection: {
-      schemaVersion: "0.1.0",
+      schemaVersion: catalogLocalArchiveDetectionSchemaVersion,
+      schemaDialect: "itotori_local_corpus_archive_detection",
       status: archiveMatched ? "matched" : "unknown",
       evidencePolicy: kaifuuArchiveDetectionEvidencePolicy,
       rows,
@@ -881,7 +889,7 @@ function localEngineEvidenceForRows(
   return {
     schemaVersion: catalogLocalEngineEvidenceSchemaVersion,
     producer: catalogLocalScannerName,
-    kaifuuDetectionSchemaVersion: "0.1.0",
+    localDetectionSchemaVersion: catalogLocalDetectionSchemaVersion,
     adapterId: `local-scan:${primaryRow.engineFamily}`,
     engineName: primaryRow.engineFamily,
     engineSource: "local_scan",

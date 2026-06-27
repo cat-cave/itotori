@@ -74,7 +74,8 @@ describe("catalog local scanner", () => {
       packageKind: "loose_files",
       installState: "installed",
       engineDetection: {
-        schemaVersion: "0.1.0",
+        schemaVersion: "catalog.local_corpus_detection.v0.1",
+        schemaDialect: "itotori_local_corpus_detection",
         gameDir: "[redacted-local-game-dir]",
         status: "unknown",
         detections: [],
@@ -82,7 +83,8 @@ describe("catalog local scanner", () => {
           expect.stringContaining("no registered extraction adapter matched this directory"),
         ],
         archiveDetection: {
-          schemaVersion: "0.1.0",
+          schemaVersion: "catalog.local_corpus_archive_detection.v0.1",
+          schemaDialect: "itotori_local_corpus_archive_detection",
           status: "matched",
           evidencePolicy: expect.stringContaining("aggregate-only"),
           rows: [
@@ -118,6 +120,7 @@ describe("catalog local scanner", () => {
       localEngineEvidence: {
         schemaVersion: "catalog.local_corpus_engine_evidence.v0.1",
         producer: "itotori-local-corpus-scanner",
+        localDetectionSchemaVersion: "catalog.local_corpus_detection.v0.1",
         adapterId: "local-scan:rpg_maker_mv_mz",
         engineName: "rpg_maker_mv_mz",
         engineSource: "local_scan",
@@ -153,6 +156,8 @@ describe("catalog local scanner", () => {
     expect(serialized).not.toContain("kaifuu.rpgmaker_mv");
     expect(serialized).not.toContain("kaifuu.renpy");
     expect(serialized).not.toContain("kaifuu.rpgmaker_vx_ace");
+    expect(serialized).not.toContain('"schemaVersion":"0.1.0"');
+    expect(serialized).not.toContain("kaifuuDetectionSchemaVersion");
     expect(serialized).not.toContain(bareSha256(`root:${root}`));
     expect(serialized).not.toContain(bareSha256("root-label:synthetic-private-fixture"));
     expect(serialized).not.toContain(
@@ -197,6 +202,39 @@ describe("catalog local scanner", () => {
         now: fixedClock(),
       }),
     ).rejects.toThrow(/requires --hash-key or ITOTORI_LOCAL_CORPUS_HASH_KEY/u);
+  });
+
+  it("labels local archive detection rows so canonical Kaifuu 0.1.0 consumers cannot accept them", async () => {
+    const root = await syntheticCatalogRoot();
+
+    const report = await scanCatalogLocalRoot({
+      rootPath: root,
+      owned: true,
+      rootLabel: "synthetic-private-fixture",
+      hashKey: localHashKey,
+      now: fixedClock(),
+    });
+
+    const archiveDetection = report.entries
+      .map((entry) => entry.engineDetection?.archiveDetection)
+      .find((candidate) =>
+        candidate?.rows.some(
+          (row) =>
+            row.engineFamily === "rpg_maker_vx_ace" ||
+            row.signals.some((signal) => !canonicalKaifuuArchiveDetectionSignals.has(signal)),
+        ),
+      );
+
+    expect(archiveDetection).toBeDefined();
+    expect(archiveDetection?.schemaVersion).toBe("catalog.local_corpus_archive_detection.v0.1");
+    expect(archiveDetection?.schemaDialect).toBe("itotori_local_corpus_archive_detection");
+    expect(isCanonicalKaifuuArchiveDetectionV010(archiveDetection)).toBe(false);
+    expect(
+      isCanonicalKaifuuArchiveDetectionV010({
+        ...archiveDetection,
+        schemaVersion: "0.1.0",
+      }),
+    ).toBe(false);
   });
 
   it("rejects symlink scan roots while continuing to skip internal symlinks", async () => {
@@ -352,4 +390,52 @@ function hmacSha256(key: string, scope: string, value: string): string {
     .update("\0")
     .update(value)
     .digest("hex")}`;
+}
+
+const canonicalKaifuuArchiveEngineFamilies = new Set([
+  "kiri_kiri_xp3",
+  "siglus",
+  "reallive",
+  "rpg_maker_mv_mz",
+  "wolf_rpg_editor",
+  "bgi_ethornell",
+  "renpy",
+  "unknown",
+]);
+
+const canonicalKaifuuArchiveDetectionSignals = new Set([
+  "compressed",
+  "encrypted",
+  "packed",
+  "protected",
+  "missing_key",
+  "helper_required",
+  "unknown_variant",
+]);
+
+function isCanonicalKaifuuArchiveDetectionV010(value: unknown): boolean {
+  if (value === null || typeof value !== "object") {
+    return false;
+  }
+  const record = value as Record<string, unknown>;
+  if (record.schemaVersion !== "0.1.0" || !Array.isArray(record.rows)) {
+    return false;
+  }
+  return record.rows.every(isCanonicalKaifuuArchiveDetectionRowV010);
+}
+
+function isCanonicalKaifuuArchiveDetectionRowV010(value: unknown): boolean {
+  if (value === null || typeof value !== "object") {
+    return false;
+  }
+  const row = value as Record<string, unknown>;
+  return (
+    typeof row.engineFamily === "string" &&
+    canonicalKaifuuArchiveEngineFamilies.has(row.engineFamily) &&
+    Array.isArray(row.signals) &&
+    row.signals.every(
+      (signal) =>
+        typeof signal === "string" && canonicalKaifuuArchiveDetectionSignals.has(signal),
+    )
+  );
 }
