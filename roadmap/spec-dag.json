@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "exported_at": "2026-06-27T04:57:09.535Z",
+  "exported_at": "2026-06-27T04:58:33.630Z",
   "registries": {
     "groups": [
       {
@@ -2383,11 +2383,11 @@
       "validation": null,
       "context": null,
       "created_at": "2026-06-26T02:53:54.595Z",
-      "updated_at": "2026-06-27T04:57:00.748Z",
+      "updated_at": "2026-06-27T04:58:14.554Z",
       "claimed_at": "2026-06-27T04:57:00.748Z",
       "done_at": null,
       "group_name": "catalog",
-      "status_reason": "Re-tier 2026-06-24: moved from alpha to real-game-testing-ready — the old \"alpha\" framing was renamed; substance unchanged. See docs/proposals/dag-retier-2026-06-24.md. | Re-tier 2026-06-24: pruned 1 dependsOn edge(s) that crossed the new tier boundary [KAIFUU-053(alpha)]; per docs/proposals/dag-retier-2026-06-24.md §6.",
+      "status_reason": "Re-tier 2026-06-24: moved from alpha to real-game-testing-ready — the old \"alpha\" framing was renamed; substance unchanged. See docs/proposals/dag-retier-2026-06-24.md. | Re-tier 2026-06-24: pruned 1 dependsOn edge(s) that crossed the new tier boundary [KAIFUU-053(alpha)]; per docs/proposals/dag-retier-2026-06-24.md §6.\n[2026-06-27T04:58:14.554Z] Milestone notification skipped: external ntfy disclosure of node/branch status was rejected by execution policy; no notification was sent.",
       "check_command": null,
       "ci_command": null,
       "projects": ["itotori", "shared"],
@@ -41262,6 +41262,12 @@
       "node_id": "ITOTORI-023",
       "text": "Implemented reviewer queue fixture command and dashboard/MSW fixtures. Verification 2026-06-26: qd fast gate passed; focused app tests passed (4 files, 47 tests); DB-backed reviewer tests passed (3 files, 35 tests); review-queue fixture command passed and emitted persisted rerunRequestIds matching jobIds; re-audit found no P0/P1 after atomic batch and rerun-id fixes.",
       "created_at": "2026-06-27T00:35:00.457Z"
+    },
+    {
+      "id": "385ffb36-5b54-4c9b-8e5a-8188600f5376",
+      "node_id": "CATALOG-004",
+      "text": "Milestone notification skipped: external ntfy disclosure of node/branch status was rejected by execution policy; no notification was sent.",
+      "created_at": "2026-06-27T04:58:14.554Z"
     }
   ]
 }
