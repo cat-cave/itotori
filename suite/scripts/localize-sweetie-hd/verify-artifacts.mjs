@@ -448,9 +448,7 @@ function verifyTelemetry(args) {
       ? Math.max(...providerRunEndedAtMs)
       : Math.max(...providerRunStartedAtMs);
   if (metadata.generatedAtMs < freshnessFloorMs) {
-    throw new Error(
-      "telemetry summary generatedAt is stale relative to provider-run timestamps",
-    );
+    throw new Error("telemetry summary generatedAt is stale relative to provider-run timestamps");
   }
   if (JSON.stringify(telemetrySummary).includes(OLD_MODEL_ID)) {
     throw new Error(`telemetry summary contains stale modelId ${OLD_MODEL_ID}`);
