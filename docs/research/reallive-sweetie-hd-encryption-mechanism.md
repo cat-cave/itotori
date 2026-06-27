@@ -112,7 +112,7 @@ decompressed[0..64] (after LZSS + AVG32 mask, NO second-level XOR):
 
 The probe source is `crates/kaifuu-reallive/examples/probe_scene_1_encryption.rs`.
 Run with `direnv exec . cargo run --release --example probe_scene_1_encryption`.
-Optional `KAIFUU_REAL_SWEETIE_HD_PATH` env var overrides the input path.
+Optional `ITOTORI_REAL_GAME_ROOT` env var overrides the input path.
 
 ## 4. Evidence
 
@@ -222,7 +222,7 @@ placeholders.
   `xor_2_pass = None` for Sukara-branch titles. Embed the documented 256-byte
   AVG32 mask as a `const`.
 - **Acceptance criteria (real-bytes assertions):**
-  1. Given Sweetie HD's `Seen.txt` at `$KAIFUU_REAL_SWEETIE_HD_PATH`, the
+  1. Given Sweetie HD's `Seen.txt` at `$ITOTORI_REAL_GAME_ROOT`, the
      decompressor invoked on scene 1's compressed payload
      (file offsets `0x13a54..0x13e7a`, 1062 bytes) with `xor_2_pass = None`
      produces exactly 1660 bytes. [Sweetie HD ground truth: matches
@@ -237,7 +237,7 @@ placeholders.
   5. The 8-byte preamble at the start of the compressed input, XOR'd against
      `AVG32_XOR_MASK[0..8]`, yields `(0x426, 0x67c)` as a `u32 LE` pair —
      proving the mask and preamble shape are correctly modelled.
-- **Test gating:** `KAIFUU_REAL_SWEETIE_HD_PATH` env var; if unset, the
+- **Test gating:** `ITOTORI_REAL_GAME_ROOT` env var; if unset, the
   test is skipped (matching the gating pattern in
   `crates/kaifuu-reallive/tests/`).
 - **Rationale:** cited from this doc (§4) and rlvm
@@ -264,7 +264,7 @@ placeholders.
   4. Header carries `use_xor_2 = false` for Sukara-branch
      `compiler_version=110002` (defaulting against rlvm's pessimistic
      `use_xor_2 = true` choice; see §1 of this doc).
-- **Test gating:** `KAIFUU_REAL_SWEETIE_HD_PATH` env var.
+- **Test gating:** `ITOTORI_REAL_GAME_ROOT` env var.
 
 ### 5.3 `KAIFUU-NEW-N3` — BytecodeElement decoder, real-bytes structural walk
 
@@ -284,7 +284,7 @@ Command(type=1, id=5, opcode=120, argc=0, overload=0), $`.
      `CommandElement` with the exact field tuple above.
   3. Walking the entire 1660-byte stream produces no
      `unrecognised-opener-byte` errors.
-- **Test gating:** `KAIFUU_REAL_SWEETIE_HD_PATH` env var.
+- **Test gating:** `ITOTORI_REAL_GAME_ROOT` env var.
 
 ### 5.4 `KAIFUU-NEW-N4` — Drop overly-pessimistic `use_xor_2` branch for Sukara
 
@@ -302,7 +302,7 @@ Option<XorKeySchedule>`. Sukara branch (`regname` containing
      decompressor invoked with that schedule produces a valid bytecode
      stream as in §5.1.
 - **Test gating:** unit test that does not require the real bytes, plus
-  an integration test that does (`KAIFUU_REAL_SWEETIE_HD_PATH`).
+  an integration test that does (`ITOTORI_REAL_GAME_ROOT`).
 
 ### 5.5 (Out-of-scope; do not mint as a research node)
 

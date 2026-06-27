@@ -248,7 +248,7 @@ as` casts are all either (a) in the `spec-dag-dashboard` client-side
    claimed (all claimed within the last 8 hours; not stale), 0 open
    P0/P1 findings (per `qd status --json`).
 9. **`#[ignore]` + env-gate pattern is consistent** across all
-   real-bytes tests (`KAIFUU_REAL_SWEETIE_HD_PATH` is the single
+   real-bytes tests (`ITOTORI_REAL_GAME_ROOT` is the single
    variable; the unset-env error message is identical across all 11
    real-bytes test files I sampled).
 10. **No CI parity gaps observed.** Every env-gated test path I

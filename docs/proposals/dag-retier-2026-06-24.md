@@ -302,7 +302,7 @@ Option<&Xor2Pass>)`, restated from rlvm `compression.cc::Decompress`
   256-byte AVG32 mask as `const`. Delete synthetic-envelope
   compressed path in same change (no-legacy-compat).
 - **Acceptance criteria (observable):**
-  1. With `KAIFUU_REAL_SWEETIE_HD_PATH=...`, decompressor on
+  1. With `ITOTORI_REAL_GAME_ROOT=...`, decompressor on
      scene-1's compressed payload (offsets `0x13a54..0x13e7a`, 1062
      bytes, `xor_2_pass=None`) produces exactly 1660 bytes.
   2. First 16 output bytes are

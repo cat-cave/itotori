@@ -1193,7 +1193,7 @@ After §4 nodes land:
   declaring "I have logged into OR's dashboard, confirmed ZDR-only is
   on for every model group I might route to, and accept that this
   process refuses to start without that assertion".
-- `KAIFUU_REAL_SWEETIE_HD_PATH=<source>` — unchanged.
+- `ITOTORI_REAL_GAME_ROOT=<source>` — unchanged.
 - `TARGET=<writable-target>` — unchanged.
 - `ITOTORI_LIVE_PROVIDER=1` — unchanged (mirrors the smoke command's refusal).
 

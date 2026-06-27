@@ -176,7 +176,7 @@ hello-agentic-loop: build
 # replay driver produces at least one TextLine event and writes
 # byte-deterministic JSON without touching the vault. The real-bytes
 # variant ships as `tests/replay_scene_real_bytes.rs` and is run
-# separately with KAIFUU_REAL_SWEETIE_HD_PATH set; see the spec
+# separately with ITOTORI_REAL_GAME_ROOT set; see the spec
 # verification block.
 hello-replay:
     cargo test -p utsushi-reallive --test replay_scene_synthetic -- --nocapture
@@ -188,7 +188,7 @@ hello-replay:
 # sweetie-hd` binary surface match without touching the vault. The
 # real-bytes variant lives in the same integration test file
 # (`tests/replay_validate_real_sweetie_hd.rs`) under the env-gated
-# ignored test; run it separately with KAIFUU_REAL_SWEETIE_HD_PATH set
+# ignored test; run it separately with ITOTORI_REAL_GAME_ROOT set
 # per the spec verification block.
 hello-replay-validate:
     cargo test -p utsushi-reallive --test replay_validate_real_sweetie_hd -- --nocapture
