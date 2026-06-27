@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "exported_at": "2026-06-27T14:29:16.668Z",
+  "exported_at": "2026-06-27T14:36:34.982Z",
   "registries": {
     "groups": [
       {
@@ -2428,11 +2428,11 @@
       "validation": null,
       "context": null,
       "created_at": "2026-06-26T02:53:54.599Z",
-      "updated_at": "2026-06-27T14:29:12.657Z",
+      "updated_at": "2026-06-27T14:36:29.343Z",
       "claimed_at": "2026-06-27T14:28:55.758Z",
       "done_at": null,
       "group_name": "catalog",
-      "status_reason": "Re-tier 2026-06-24: moved from alpha to real-game-testing-ready — the old \"alpha\" framing was renamed; substance unchanged. See docs/proposals/dag-retier-2026-06-24.md.\n[2026-06-27T14:29:12.657Z] Milestone notification for claim was not sent: outbound ntfy request to https://ntfy.sh/trevor-auto-ai-alerts was rejected by tool policy as external disclosure risk. Claim recorded locally instead.",
+      "status_reason": "Re-tier 2026-06-24: moved from alpha to real-game-testing-ready — the old \"alpha\" framing was renamed; substance unchanged. See docs/proposals/dag-retier-2026-06-24.md.\n[2026-06-27T14:29:12.657Z] Milestone notification for claim was not sent: outbound ntfy request to https://ntfy.sh/trevor-auto-ai-alerts was rejected by tool policy as external disclosure risk. Claim recorded locally instead.\n[2026-06-27T14:36:29.343Z] Plan accepted at spec/catalog-061 commit 68f7c0a. Scope decisions: preserve existing CatalogAlphaBenchmarkOpportunityRanking; implement the broader opportunity endpoint/read model alongside it. Main dashboard panel is optional/deferred unless the API/read-model slice stays small; required app scope is API schema/handler plus dashboard seed fixture consumer test. Plan-accepted ntfy notification not sent because prior ntfy attempt was rejected by tool policy; this note is the durable notification disposition.",
       "check_command": null,
       "ci_command": null,
       "projects": ["itotori", "shared", "utsushi"],
@@ -41508,6 +41508,12 @@
       "node_id": "CATALOG-061",
       "text": "Milestone notification for claim was not sent: outbound ntfy request to https://ntfy.sh/trevor-auto-ai-alerts was rejected by tool policy as external disclosure risk. Claim recorded locally instead.",
       "created_at": "2026-06-27T14:29:12.657Z"
+    },
+    {
+      "id": "5d18cee5-ea5e-4a6c-839e-88e6130f3111",
+      "node_id": "CATALOG-061",
+      "text": "Plan accepted at spec/catalog-061 commit 68f7c0a. Scope decisions: preserve existing CatalogAlphaBenchmarkOpportunityRanking; implement the broader opportunity endpoint/read model alongside it. Main dashboard panel is optional/deferred unless the API/read-model slice stays small; required app scope is API schema/handler plus dashboard seed fixture consumer test. Plan-accepted ntfy notification not sent because prior ntfy attempt was rejected by tool policy; this note is the durable notification disposition.",
+      "created_at": "2026-06-27T14:36:29.343Z"
     }
   ]
 }
