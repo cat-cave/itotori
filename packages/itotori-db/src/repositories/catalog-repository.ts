@@ -43,6 +43,7 @@ import {
   catalogSourceValues,
   engineCapabilityReports,
   engineCapabilityEvidence,
+  engineCapabilityEvidenceKindValues,
   engineCapabilityEvidenceSourceValues,
   engineCapabilityEvidenceStatusValues,
   catalogWorks,
@@ -3207,6 +3208,9 @@ function capabilityEvidenceCountsByAdapter(
     if (evidenceWeight === 0) {
       continue;
     }
+    if (!isRuntimeReadinessEvidence(row)) {
+      continue;
+    }
     const existing =
       byAdapter.get(row.adapterId) ?? {
         publicFixtureEvidenceCount: 0,
@@ -3221,6 +3225,16 @@ function capabilityEvidenceCountsByAdapter(
     byAdapter.set(row.adapterId, existing);
   }
   return byAdapter;
+}
+
+function isRuntimeReadinessEvidence(row: typeof engineCapabilityEvidence.$inferSelect): boolean {
+  if (row.evidenceSource !== engineCapabilityEvidenceSourceValues.privateLocalAggregate) {
+    return false;
+  }
+  return (
+    row.evidenceKind === engineCapabilityEvidenceKindValues.localCorpusSidecar ||
+    row.evidenceKind === engineCapabilityEvidenceKindValues.engineMarkerCount
+  );
 }
 
 function opportunityRuntimeEvidenceWeight(

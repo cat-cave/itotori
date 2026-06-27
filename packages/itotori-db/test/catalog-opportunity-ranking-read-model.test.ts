@@ -75,8 +75,8 @@ describe("catalogOpportunityRanking read model", () => {
         localEvidenceCount: 1,
         marketPrevalence: "public_and_local_aggregate",
         runtimeEvidenceReadiness: {
-          status: "public_and_aggregate",
-          publicFixtureEvidenceCount: 1,
+          status: "private_local_aggregate",
+          publicFixtureEvidenceCount: 0,
           privateLocalAggregateEvidenceCount: 1,
         },
       });
@@ -98,7 +98,7 @@ describe("catalogOpportunityRanking read model", () => {
           "adapter_readiness:patch_supported",
           "dlsite_demand:very_high:rating_high",
           "dlsite_work_type:rpg",
-          "runtime_evidence_readiness:public_and_aggregate",
+          "runtime_evidence_readiness:private_local_aggregate",
           "translation_completeness:no_english",
           "unknown_evidence:none",
         ]),
@@ -178,7 +178,7 @@ describe("catalogOpportunityRanking read model", () => {
     }
   });
 
-  it("does not count missing or unknown runtime evidence as readiness", async () => {
+  it("does not count missing, unknown, or extract-only adapter matrix evidence as runtime readiness", async () => {
     const context = await isolatedMigratedContext();
     try {
       const repo = new ItotoriCatalogRepository(context.db);
@@ -201,10 +201,17 @@ describe("catalogOpportunityRanking read model", () => {
         catalogSourceValues.dlsite,
         "RJOPP023",
       );
+      const extractOnlyProvenance = await provenance(
+        repo,
+        24,
+        catalogSourceValues.dlsite,
+        "RJOPP024",
+      );
 
       await recordRuntimeEvidenceCapability(capabilityRepo, "runtime-present-engine", "present");
       await recordRuntimeEvidenceCapability(capabilityRepo, "runtime-partial-engine", "partial");
       await recordRuntimeEvidenceCapability(capabilityRepo, "runtime-missing-engine", "missing");
+      await recordExtractAdapterMatrixCapability(capabilityRepo, "extract-adapter-matrix-engine");
       await capabilityRepo.recordCapabilityEvidence(localActor, {
         adapterId: "runtime-missing-engine",
         level: capabilityLevelValues.extract,
@@ -246,21 +253,37 @@ describe("catalogOpportunityRanking read model", () => {
           "runtime-missing-engine",
         ),
       );
+      await repo.upsertWork(
+        localActor,
+        opportunityWorkInputWithEngine(
+          uuid(124),
+          "Extract adapter matrix only",
+          extractOnlyProvenance,
+          "RJOPP024",
+          "extract-adapter-matrix-engine",
+        ),
+      );
 
       const model = await repo.catalogOpportunityRanking(localActor, { limit: 20 });
       const present = requiredTestRow(model.rows, uuid(121));
       const partial = requiredTestRow(model.rows, uuid(122));
       const missing = requiredTestRow(model.rows, uuid(123));
+      const extractOnly = requiredTestRow(model.rows, uuid(124));
 
       expect(present.runtimeEvidenceReadiness).toMatchObject({
-        status: "public_fixture",
-        publicFixtureEvidenceCount: 1,
+        status: "private_local_aggregate",
+        privateLocalAggregateEvidenceCount: 1,
       });
       expect(partial.runtimeEvidenceReadiness).toMatchObject({
-        status: "partial_public_fixture",
-        publicFixtureEvidenceCount: 0.5,
+        status: "partial_private_local_aggregate",
+        privateLocalAggregateEvidenceCount: 0.5,
       });
       expect(missing.runtimeEvidenceReadiness).toMatchObject({
+        status: "unknown",
+        publicFixtureEvidenceCount: 0,
+        privateLocalAggregateEvidenceCount: 0,
+      });
+      expect(extractOnly.runtimeEvidenceReadiness).toMatchObject({
         status: "unknown",
         publicFixtureEvidenceCount: 0,
         privateLocalAggregateEvidenceCount: 0,
@@ -270,7 +293,9 @@ describe("catalogOpportunityRanking read model", () => {
       );
       expect(factorScore(partial, "runtime_evidence_readiness")).toBeGreaterThan(0);
       expect(factorScore(missing, "runtime_evidence_readiness")).toBe(0);
+      expect(factorScore(extractOnly, "runtime_evidence_readiness")).toBe(0);
       expect(missing.explanationCodes).toContain("runtime_evidence_readiness:unknown");
+      expect(extractOnly.explanationCodes).toContain("runtime_evidence_readiness:unknown");
     } finally {
       await context.close();
     }
@@ -460,13 +485,36 @@ async function recordRuntimeEvidenceCapability(
   await repo.recordCapabilityEvidence(localActor, {
     adapterId,
     level: capabilityLevelValues.extract,
+    evidenceSource: engineCapabilityEvidenceSourceValues.privateLocalAggregate,
+    evidenceKind: engineCapabilityEvidenceKindValues.localCorpusSidecar,
+    schemaVersion: "catalog.local_corpus_engine_evidence.v0.1",
+    status,
+    aggregateCounts: {
+      marker_kinds: status === engineCapabilityEvidenceStatusValues.missing ? 0 : 1,
+    },
+    evidenceLabels: [capabilityEvidenceLabelValues.localCorpusMarkerEvidence],
+  });
+}
+
+async function recordExtractAdapterMatrixCapability(
+  repo: EngineCapabilityReportRepository,
+  adapterId: string,
+): Promise<void> {
+  await repo.writeMatrix(localActor, {
+    adapterId,
+    identify: { kind: "supported" },
+    inventory: { kind: "supported" },
+    extract: { kind: "supported" },
+    patch: { kind: "supported" },
+  });
+  await repo.recordCapabilityEvidence(localActor, {
+    adapterId,
+    level: capabilityLevelValues.extract,
     evidenceSource: engineCapabilityEvidenceSourceValues.publicFixture,
     evidenceKind: engineCapabilityEvidenceKindValues.adapterMatrix,
     schemaVersion: "catalog.capability_evidence.v0.1",
-    status,
-    aggregateCounts: {
-      fixture_rows: status === engineCapabilityEvidenceStatusValues.missing ? 0 : 1,
-    },
+    status: engineCapabilityEvidenceStatusValues.present,
+    aggregateCounts: { fixture_rows: 1 },
     evidenceLabels: [capabilityEvidenceLabelValues.publicFixtureMatrix],
     publicFixtureId: `catalog-opportunity-ranking-${adapterId}`,
   });
