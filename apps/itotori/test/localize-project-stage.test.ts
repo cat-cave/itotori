@@ -355,6 +355,25 @@ function presetWithAlternates(altProviders: ReadonlyArray<string>): unknown {
   return preset;
 }
 
+function presetWithStageMaxPriceUsd(maxPriceUsd: number): unknown {
+  const preset = loadPreset() as Record<string, unknown>;
+  const stages = preset.stages;
+  if (typeof stages !== "object" || stages === null || Array.isArray(stages)) {
+    throw new Error("test preset missing stages object");
+  }
+  for (const stageGroup of Object.values(stages)) {
+    if (typeof stageGroup !== "object" || stageGroup === null || Array.isArray(stageGroup)) {
+      continue;
+    }
+    for (const leaf of Object.values(stageGroup)) {
+      if (typeof leaf === "object" && leaf !== null && !Array.isArray(leaf)) {
+        (leaf as Record<string, unknown>).maxPriceUsd = maxPriceUsd;
+      }
+    }
+  }
+  return preset;
+}
+
 /**
  * Build a ModelProviderError carrying a 429 errorClass so the driver's
  * `matchesFailoverPredicate` recognises it as the configured failover
@@ -719,6 +738,60 @@ describe("ITOTORI-238 failover orchestration", () => {
         expect(serialized).not.toContain(firstSourceText);
       }
     }
+  });
+
+  it("threads each stage maxPriceUsd into model invocation requests", async () => {
+    const smokeBridge = loadSmokeBridge() as {
+      units: ReadonlyArray<{ bridgeUnitId: string }>;
+    };
+    const firstBridgeUnitId = smokeBridge.units[0]?.bridgeUnitId ?? "test-unit";
+    const tinyCapUsd = 0.000001;
+    const reads = new Map<string, unknown>([
+      ["bridge.json", smokeBridge],
+      ["pair-policy.json", presetWithStageMaxPriceUsd(tinyCapUsd)],
+    ]);
+    const { io } = ioFixture(reads);
+    const seenMaxPrices: number[] = [];
+
+    const liveFactoryOverride = (
+      pair: { modelId: string; providerId: string },
+      _options: {
+        artifactRecorder:
+          | { recordProviderRun(artifact: ProviderRunArtifact): Promise<void> }
+          | undefined;
+      },
+    ): AgenticLoopProviderFactory => {
+      const delegateFactory = workingSentinelFactory(
+        pair,
+        "STELLA-ALPHA-EN-US-SENTINEL",
+        firstBridgeUnitId,
+      );
+      return (input) => {
+        const delegate = delegateFactory(input);
+        return {
+          descriptor: delegate.descriptor,
+          invoke: async (request: ModelInvocationRequest): Promise<ModelInvocationResult> => {
+            seenMaxPrices.push(request.maxPriceUsd ?? Number.NaN);
+            return delegate.invoke(request);
+          },
+        };
+      };
+    };
+
+    const bundle = await runLocalizeProjectStageCommand({
+      bridgePath: "bridge.json",
+      pairPolicyPath: "pair-policy.json",
+      outputPath: "out/agentic-loop-bundle.v0.json",
+      translatedBundleOutputPath: "out/translated-bridge.json",
+      patchReportOutputPath: "out/patch-report.json",
+      liveFactoryOverride,
+      io,
+      actor: { userId: "test" },
+    });
+
+    const invocationCount = bundle.stages.reduce((sum, stage) => sum + stage.invocations.length, 0);
+    expect(seenMaxPrices).toHaveLength(invocationCount);
+    expect(seenMaxPrices.every((value) => value === tinyCapUsd)).toBe(true);
   });
 
   it("unknown-error-no-failover: a non-429 ModelProviderError surfaces immediately (silent provider swap forbidden)", async () => {

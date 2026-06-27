@@ -201,6 +201,12 @@ export type StagePostureV03 = {
   zdr: boolean;
   fallbackModels: string[];
   seed: number;
+  /**
+   * Per-stage maximum USD charge for one invocation. OpenRouter-backed
+   * callers translate this to `provider.max_price.request` and also
+   * enforce it locally after invocation by comparing the provider's
+   * reported `usage.cost` to this cap.
+   */
   maxPriceUsd: number;
 };
 
