@@ -66,6 +66,7 @@ import {
 } from "./telemetry/cli.js";
 import type { TelemetryQuery } from "./telemetry/queries.js";
 import { runReviewQueueFixtureCommand } from "./reviewer/review-queue-fixture-command.js";
+import { scanCatalogLocalRoot } from "./services/catalog-local-scan.js";
 
 export type JsonFileStore = {
   readJson(path: string): unknown;
@@ -181,6 +182,10 @@ export async function runItotoriCliCommand(
       break;
     case "catalog-resolve-fixture":
       await runCatalogResolveFixture(args, dependencies);
+      break;
+    case "catalog-local-corpus-scan":
+    case "catalog-local-scan":
+      await runCatalogLocalScan(args, dependencies);
       break;
     case "style-guide-fixture-flow":
       await runStyleGuideFixtureFlow(args, dependencies);
@@ -581,6 +586,28 @@ async function runCatalogResolveFixture(
   dependencies.io.writeJson(outputPath, artifact);
 }
 
+async function runCatalogLocalScan(
+  args: string[],
+  dependencies: ItotoriCliDependencies,
+): Promise<void> {
+  const rootPath = requiredFlag(args, "--root");
+  const outputPath = requiredFlag(args, "--output");
+  const rootLabel = optionalFlag(args, "--root-label");
+  const ownedRaw = optionalFlag(args, "--owned");
+  const maxDepthRaw = optionalFlag(args, "--max-depth");
+  const hashKey = optionalFlag(args, "--hash-key") ?? process.env.ITOTORI_LOCAL_CORPUS_HASH_KEY;
+  const report = await scanCatalogLocalRoot({
+    rootPath,
+    ...(rootLabel === undefined ? {} : { rootLabel }),
+    ...(ownedRaw === undefined ? {} : { owned: parseBooleanFlag(ownedRaw, "--owned") }),
+    ...(maxDepthRaw === undefined
+      ? {}
+      : { maxDepth: parseNonNegativeInteger(maxDepthRaw, "--max-depth") }),
+    ...(hashKey === undefined ? {} : { hashKey }),
+  });
+  dependencies.io.writeJson(outputPath, report);
+}
+
 async function runStyleGuideFixtureFlow(
   args: string[],
   dependencies: ItotoriCliDependencies,
@@ -614,6 +641,24 @@ function optionalFlag(args: string[], name: string): string | undefined {
   const index = args.indexOf(name);
   const value = args[index + 1];
   return index >= 0 && value ? value : undefined;
+}
+
+function parseBooleanFlag(value: string, name: string): boolean {
+  if (value === "true") {
+    return true;
+  }
+  if (value === "false") {
+    return false;
+  }
+  throw new Error(`${name} must be true or false`);
+}
+
+function parseNonNegativeInteger(value: string, name: string): number {
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isInteger(parsed) || parsed < 0 || String(parsed) !== value) {
+    throw new Error(`${name} must be a non-negative integer`);
+  }
+  return parsed;
 }
 
 function readProject(io: JsonFileStore, path: string): ProjectState {
