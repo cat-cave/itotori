@@ -331,6 +331,51 @@ export class OpenRouterProvider implements ModelProvider {
         mismatchAdapterMetadata,
       );
     }
+    const maxPriceUsd = request.maxPriceUsd;
+    if (maxPriceUsd !== undefined) {
+      const maxPriceMicrosUsd = maxPriceUsdToMicros(maxPriceUsd);
+      const actualMicrosUsd = normalized.cost.amountMicrosUsd ?? 0;
+      if (actualMicrosUsd > maxPriceMicrosUsd) {
+        const metadata = {
+          ...adapterMetadata(body, providerRouting),
+          localMaxPriceUsd: maxPriceUsd,
+          actualCostUsd: actualMicrosUsd / 1_000_000,
+        } as JsonObject;
+        const run = buildProviderRunRecord({
+          descriptor: this.descriptor,
+          request,
+          requestedModelId,
+          startedAt,
+          status: "failed",
+          actualModelId: normalized.actualModelId,
+          upstreamProvider: normalized.upstreamProvider,
+          routeSettingsHash,
+          errorClasses: ["cost_cap_exceeded"],
+          tokenUsage: normalized.tokenUsage,
+          routingPosture,
+          usageResponseJson: extractUsageResponseJson(body, "_cost_cap_exceeded"),
+        });
+        await this.live.artifactRecorder.recordProviderRun(
+          buildArtifact({
+            request,
+            run,
+            rawCapture: this.live.rawCapture,
+            error: {
+              class: "cost_cap_exceeded",
+              message: `OpenRouter response cost $${(actualMicrosUsd / 1_000_000).toFixed(6)} exceeded pair-policy maxPriceUsd $${maxPriceUsd.toFixed(6)}`,
+            },
+            adapterMetadata: metadata,
+          }),
+        );
+        throw new ModelProviderError(
+          `OpenRouter response cost $${(actualMicrosUsd / 1_000_000).toFixed(6)} exceeded pair-policy maxPriceUsd $${maxPriceUsd.toFixed(6)}`,
+          "cost_cap_exceeded",
+          false,
+          run,
+          metadata,
+        );
+      }
+    }
     const run = buildProviderRunRecord({
       descriptor: this.descriptor,
       request,
@@ -529,6 +574,9 @@ function buildOpenRouterProviderRouting(
   }
   if (routing.maxPrice !== undefined) {
     provider.max_price = routing.maxPrice;
+  } else if (request.maxPriceUsd !== undefined) {
+    maxPriceUsdToDecimalString(request.maxPriceUsd);
+    provider.max_price = { request: request.maxPriceUsd };
   }
   return provider as JsonObject;
 }
@@ -644,6 +692,21 @@ function dataCollectionForRequest(
     return "deny";
   }
   return requested ?? "deny";
+}
+
+function maxPriceUsdToDecimalString(value: number): string {
+  if (!Number.isFinite(value) || value < 0) {
+    throw new ModelProviderError(
+      `maxPriceUsd must be a finite non-negative number, got ${String(value)}`,
+      "configuration_error",
+      false,
+    );
+  }
+  return value.toFixed(12).replace(/0+$/u, "").replace(/\.$/u, "");
+}
+
+function maxPriceUsdToMicros(value: number): number {
+  return decimalUsdStringToMicros(maxPriceUsdToDecimalString(value));
 }
 
 function isPrivateInput(inputClassification: ProviderInputClassification): boolean {

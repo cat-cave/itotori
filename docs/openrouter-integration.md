@@ -223,6 +223,11 @@ For every non-public-input call:
 }
 ```
 
+When a pair-policy stage leaf sets `maxPriceUsd`, itotori sends the value
+as `provider.max_price.request` and also enforces it locally after the
+response by refusing any completed invocation whose reported `usage.cost`
+exceeds that stage cap.
+
 Rationale per knob:
 
 - `only: [providerTag]` — pins the upstream to a single catalog-verified

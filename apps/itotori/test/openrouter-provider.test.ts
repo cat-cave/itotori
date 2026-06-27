@@ -51,7 +51,7 @@ function baseRequest(overrides: Partial<ModelInvocationRequest> = {}): ModelInvo
 
 function successResponse(opts: {
   upstreamProvider?: string;
-  usageCost?: number;
+  usageCost?: number | string;
   modelId?: string;
   cachedTokens?: number;
   cacheWriteTokens?: number;
@@ -197,6 +197,26 @@ describe("OpenRouterModelProvider — request shape (ITOTORI-220 pair pin)", () 
     expect(observedBody?.model).toBe(DEV_PAIR.modelId);
   });
 
+  it("sends request maxPriceUsd as provider.max_price.request", async () => {
+    let observedBody:
+      | {
+          provider: { max_price?: { request?: number } };
+        }
+      | undefined;
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      observedBody = JSON.parse(String(init?.body ?? "{}"));
+      return successResponse({ usageCost: 0.000001 });
+    }) as unknown as typeof fetch;
+    const provider = new OpenRouterModelProvider({
+      env: { OPENROUTER_API_KEY: "abc", OPENROUTER_ZDR_ACCOUNT_ASSERTED: "1" },
+      httpClient: fetchMock,
+      capabilityGuard: new CapabilityGuard(),
+      artifactRecorder: memoryRecorder(),
+    });
+    await provider.invoke(baseRequest({ maxPriceUsd: 0.000002 }));
+    expect(observedBody?.provider.max_price).toEqual({ request: 0.000002 });
+  });
+
   it("throws ModelProviderError code='pair_mismatch' when the upstream provider differs", async () => {
     const fetchMock = vi.fn(async () =>
       successResponse({ upstreamProvider: "deepinfra" }),
@@ -330,6 +350,31 @@ describe("OpenRouterModelProvider — request shape (ITOTORI-220 pair pin)", () 
 });
 
 describe("OpenRouterModelProvider — per-process cost cap", () => {
+  it("raises cost_cap_exceeded when reported usage.cost exceeds request maxPriceUsd", async () => {
+    const recorder = memoryRecorder();
+    const fetchMock = vi.fn(async () =>
+      successResponse({ usageCost: 0.000003 }),
+    ) as unknown as typeof fetch;
+    const provider = new OpenRouterModelProvider({
+      env: { OPENROUTER_API_KEY: "abc", OPENROUTER_ZDR_ACCOUNT_ASSERTED: "1" },
+      httpClient: fetchMock,
+      rateLimitPerSec: 1000,
+      capabilityGuard: new CapabilityGuard(),
+      artifactRecorder: recorder,
+    });
+    const error = await provider
+      .invoke(baseRequest({ maxPriceUsd: 0.000001 }))
+      .catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(ModelProviderError);
+    if (error instanceof ModelProviderError) {
+      expect(error.code).toBe("cost_cap_exceeded");
+      expect(error.message).toContain("maxPriceUsd");
+      expect(error.providerRun?.errorClasses).toContain("cost_cap_exceeded");
+    }
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(recorder.artifacts[0]?.error?.class).toBe("cost_cap_exceeded");
+  });
+
   it("raises OpenRouterCostCapError when cumulative spend exceeds the cap (third call blocked, no HTTP fired)", async () => {
     // Three calls each reporting $0.60 → after 2 the cumulative is
     // $1.20 which is already over the explicit $1 cap configured

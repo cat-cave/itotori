@@ -648,7 +648,10 @@ export async function runLocalizeProjectStageCommand(
         providerKind === "fake"
           ? sentinelFakeFactory(unit, policy, enUsSentinel)
           : args.liveFactoryOverride !== undefined
-            ? args.liveFactoryOverride(pair, { artifactRecorder })
+            ? withStagePostureInjectionFactory(
+                args.liveFactoryOverride(pair, { artifactRecorder }),
+                enUsSentinel,
+              )
             : liveOpenRouterFactory({
                 enUsSentinel,
                 costCapUsd: args.costCapUsd ?? DEFAULT_COST_CAP_USD,
@@ -665,7 +668,10 @@ export async function runLocalizeProjectStageCommand(
           providerKind === "fake"
             ? sentinelFakeFactory(unit, policy, enUsSentinel)
             : args.liveFactoryOverride !== undefined
-              ? args.liveFactoryOverride(altPair, { artifactRecorder })
+              ? withStagePostureInjectionFactory(
+                  args.liveFactoryOverride(altPair, { artifactRecorder }),
+                  enUsSentinel,
+                )
               : liveOpenRouterFactory({
                   enUsSentinel,
                   costCapUsd: args.costCapUsd ?? DEFAULT_COST_CAP_USD,
@@ -797,13 +803,27 @@ function liveOpenRouterFactory(opts: {
       agentLabel,
       // ITOTORI-234 — the factory now receives a full StagePostureV03
       // (pair + zdr + fallbackModels + seed + maxPriceUsd). The wrapper
-      // only needs the bare (modelId, providerId) for its diagnostic
-      // surface; the orchestrator's bundle is what surfaces the full
-      // posture per invocation.
-      pair: { modelId: pair.pair.modelId, providerId: pair.pair.providerId },
+      // preserves the full posture so maxPriceUsd reaches the
+      // OpenRouter request as provider.max_price and remains locally
+      // enforceable after the provider reports usage.cost.
+      pair,
       sentinel: opts.enUsSentinel,
     });
   };
+}
+
+function withStagePostureInjectionFactory(
+  factory: AgenticLoopProviderFactory,
+  enUsSentinel: string,
+): AgenticLoopProviderFactory {
+  return ({ stage, agentLabel, pair }) =>
+    new SentinelInjectingProviderWrapper({
+      inner: factory({ stage, agentLabel, pair }),
+      stage,
+      agentLabel,
+      pair,
+      sentinel: enUsSentinel,
+    });
 }
 
 /**
@@ -821,10 +841,10 @@ class SentinelInjectingProviderWrapper implements ModelProvider {
   readonly descriptor: ModelProvider["descriptor"];
   constructor(
     private readonly opts: {
-      inner: OpenRouterModelProvider;
+      inner: ModelProvider;
       stage: string;
       agentLabel: string;
-      pair: { modelId: string; providerId: string };
+      pair: StagePostureV03;
       sentinel: string;
     },
   ) {
@@ -834,7 +854,7 @@ class SentinelInjectingProviderWrapper implements ModelProvider {
     // (modelId, providerId) at construction, so the descriptor is
     // pair-specific from the moment the agent receives it. Unknown
     // pairs fall back to the safe defaults inside `descriptorForPair`.
-    this.descriptor = opts.inner.descriptorForPair(opts.pair);
+    this.descriptor = descriptorForStagePair(opts.inner, opts.pair.pair);
   }
   async invoke(request: ModelInvocationRequest): Promise<ModelInvocationResult> {
     const isTranslation = request.taskKind === "draft_translation";
@@ -849,8 +869,28 @@ class SentinelInjectingProviderWrapper implements ModelProvider {
           return message;
         })
       : request.messages;
-    return this.opts.inner.invoke({ ...request, messages });
+    return this.opts.inner.invoke({
+      ...request,
+      messages,
+      maxPriceUsd: this.opts.pair.maxPriceUsd,
+    });
   }
+}
+
+function descriptorForStagePair(
+  provider: ModelProvider,
+  pair: { modelId: string; providerId: string },
+): ModelProvider["descriptor"] {
+  const candidate = provider as ModelProvider & {
+    descriptorForPair?: (pair: {
+      modelId: string;
+      providerId: string;
+    }) => ModelProvider["descriptor"];
+  };
+  if (typeof candidate.descriptorForPair === "function") {
+    return candidate.descriptorForPair(pair);
+  }
+  return provider.descriptor;
 }
 
 /**

@@ -274,6 +274,13 @@ export type ModelInvocationRequest = {
   tools?: ModelTool[];
   toolChoice?: ModelToolChoice;
   generation?: ModelGenerationOptions;
+  /**
+   * Per-invocation USD cap from pair-policy stage posture. OpenRouter
+   * adapters mirror this to `provider.max_price.request` and also
+   * reject any completed response whose reported `usage.cost` exceeds
+   * the same cap.
+   */
+  maxPriceUsd?: number;
   fallbackModels?: string[];
   preset?: ProviderPresetReference;
   prompt: PromptPresetReference;
@@ -493,6 +500,7 @@ export class ModelProviderError extends Error {
     readonly code:
       | "capability_unsupported"
       | "configuration_error"
+      | "cost_cap_exceeded"
       | "pair_mismatch"
       | "provider_http_error"
       | "provider_response_invalid",
