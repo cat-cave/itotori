@@ -29,7 +29,7 @@
         "translationCompleteness": "fan_partial",
         "localOwnership": "unknown",
         "localEvidenceCount": 0,
-        "demandFacts": [{ "kind": "dl_count", "count": 1400 }]
+        "demandFacts": [{ "kind": "rating_summary", "count": 320 }]
       },
       {
         "workId": "019ed104-0000-7000-8000-000000000103",
@@ -133,8 +133,12 @@
         "seedRank": 1,
         "explanationCodes": [
           "demand_bucket:very_high",
+          "extract_readiness_supported",
           "helper_readiness_unknown",
+          "identify_readiness_supported",
+          "inventory_readiness_supported",
           "local_ownership:owned",
+          "patch_readiness_supported",
           "pool:no_english",
           "runtime_readiness_unknown"
         ]
@@ -172,8 +176,12 @@
         "seedRank": 2,
         "explanationCodes": [
           "demand_bucket:none",
+          "extract_readiness_supported",
           "helper_readiness_unknown",
+          "identify_readiness_supported",
+          "inventory_readiness_supported",
           "local_ownership:not_owned",
+          "patch_readiness_supported",
           "pool:no_english",
           "runtime_readiness_unknown",
           "unrecorded_or_local_only"
@@ -227,8 +235,12 @@
         "seedRank": null,
         "explanationCodes": [
           "demand_bucket:high",
+          "extract_readiness_partial",
           "helper_readiness_unknown",
+          "identify_readiness_supported",
+          "inventory_readiness_supported",
           "local_ownership:unknown",
+          "patch_readiness_unsupported",
           "pool:mtl_only",
           "runtime_readiness_unknown"
         ]
@@ -281,8 +293,12 @@
         "seedRank": null,
         "explanationCodes": [
           "demand_bucket:medium",
+          "extract_readiness_unsupported",
           "helper_readiness_unknown",
+          "identify_readiness_supported",
+          "inventory_readiness_unsupported",
           "local_ownership:unknown",
+          "patch_readiness_unsupported",
           "pool:fan_partial",
           "runtime_readiness_unknown"
         ]

@@ -131,6 +131,14 @@ describe("catalogBenchmarkSeedFinder", () => {
           patch: "unsupported",
         }),
       });
+      expect(fanPartial.explanationCodes).toEqual(
+        expect.arrayContaining([
+          "extract_readiness_unsupported",
+          "identify_readiness_supported",
+          "inventory_readiness_unsupported",
+          "patch_readiness_unsupported",
+        ]),
+      );
 
       const mtlPartial = requiredTestRow(
         readModel.rows.filter((row) => row.workId === ids.mtlPartialExtract),
@@ -317,8 +325,9 @@ async function recordSeedFinderCatalog(
       languageStatus(402, catalogLanguageStatusValues.fanPartial, provenance.vndb),
     ],
     demandFacts: [
-      demandFact(503, provenance.vndb, "vSeedFan", catalogDemandFactKindValues.dlCount, {
-        count: 1_400,
+      demandFact(503, provenance.vndb, "vSeedFan", catalogDemandFactKindValues.ratingSummary, {
+        count: 320,
+        mean: 4.2,
       }),
     ],
   });

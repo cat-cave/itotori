@@ -2543,10 +2543,20 @@ function demandBucketForFacts(
   if (dlCount >= 10_000 || wishlistCount >= 5_000 || (bestRank !== null && bestRank <= 10)) {
     return "very_high";
   }
-  if (dlCount >= 3_000 || wishlistCount >= 1_000 || (bestRank !== null && bestRank <= 50)) {
+  if (
+    dlCount >= 3_000 ||
+    wishlistCount >= 1_000 ||
+    (bestRank !== null && bestRank <= 50) ||
+    ratingCount >= 1_000
+  ) {
     return "high";
   }
-  if (dlCount >= 1_000 || wishlistCount >= 250 || (bestRank !== null && bestRank <= 200)) {
+  if (
+    dlCount >= 1_000 ||
+    wishlistCount >= 250 ||
+    (bestRank !== null && bestRank <= 200) ||
+    ratingCount >= 250
+  ) {
     return "medium";
   }
   return "low";
@@ -2627,8 +2637,7 @@ function benchmarkExplanationCodes(input: {
     `pool:${input.pool}`,
     `demand_bucket:${input.demandBucket}`,
     `local_ownership:${input.localOwnership}`,
-    "helper_readiness_unknown",
-    "runtime_readiness_unknown",
+    ...benchmarkReadinessExplanationCodes(input.readiness.readiness),
   ];
   if (input.provenance.length === 0) {
     codes.push("unrecorded_or_local_only");
@@ -2655,6 +2664,17 @@ function benchmarkExplanationCodes(input: {
     }
   }
   return uniqueStrings(codes);
+}
+
+function benchmarkReadinessExplanationCodes(readiness: CatalogBenchmarkSeedReadiness): string[] {
+  return [
+    `identify_readiness_${readiness.identify}`,
+    `inventory_readiness_${readiness.inventory}`,
+    `extract_readiness_${readiness.extract}`,
+    `patch_readiness_${readiness.patch}`,
+    `helper_readiness_${readiness.helper}`,
+    `runtime_readiness_${readiness.runtime}`,
+  ];
 }
 
 function benchmarkDecision(
