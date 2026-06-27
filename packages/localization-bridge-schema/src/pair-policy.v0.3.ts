@@ -6,7 +6,7 @@
 //
 //   1. `alternateProviders` (default `[]`) — an ORDERED list of
 //      fully-declared `(modelId, providerId)` pairs WITH per-pair
-//      capabilitySheets that the localize-sweetie-hd driver may failover
+//      capabilitySheets that the localize-project driver may failover
 //      to AT MOST ONCE per primary 429. Each entry is the complete
 //      contract — modelId, providerId, capabilitySheet — so adopting an
 //      alternate is a commit-visible change (no implicit provider
@@ -252,7 +252,7 @@ export type PairPolicyV03 = {
   alternateProviders: ReadonlyArray<PairPolicyV03Alternate>;
   /**
    * The failover-predicate literal. Default
-   * `"http_429_from_primary"`. The localize-sweetie-hd driver
+   * `"http_429_from_primary"`. The localize-project driver
    * advances to the next alternate ONLY when this predicate matches
    * the failure on the primary pair; any other failure surfaces
    * immediately.
@@ -700,7 +700,7 @@ function parseAlternateCapabilitySheet(
 
   const supportsStructuredOutputJsonSchema = requireBool("supportsStructuredOutputJsonSchema");
   // Refuse adopting an alternate whose capability sheet declares
-  // structured-outputs unsupported. The localize-sweetie-hd QA stages
+  // structured-outputs unsupported. The generic localization QA stages
   // (styleAdherence / semanticDrift / etc.) all use
   // response_format: { type: "json_schema" }; an alternate without
   // that axis would cause the QA stages to fail on adoption. Refusing
