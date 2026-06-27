@@ -192,9 +192,7 @@ export function scanFiles({
 export function renderReport(result) {
   const lines = [];
   const count = result.violations.length;
-  lines.push(
-    `specific-game-reference advisory: ${count} violation${count === 1 ? "" : "s"} found`,
-  );
+  lines.push(`specific-game-reference advisory: ${count} violation${count === 1 ? "" : "s"} found`);
   lines.push(
     `scanned ${result.scannedFileCount} tracked file${result.scannedFileCount === 1 ? "" : "s"}; skipped ${result.skippedAllowlistedFileCount} allowlisted and ${result.skippedEnvFileCount} env file${result.skippedEnvFileCount === 1 ? "" : "s"}`,
   );
@@ -266,7 +264,8 @@ function rangesOverlap(left, right) {
 }
 
 function printHelp() {
-  process.stdout.write(`usage: node scripts/validate-no-specific-game-references.mjs [--mode report|check] [--root PATH] [--token TOKEN...]
+  process.stdout
+    .write(`usage: node scripts/validate-no-specific-game-references.mjs [--mode report|check] [--root PATH] [--token TOKEN...]
 
 Modes:
   report  Print grouped violations and exit 0. Default; advisory-only.
