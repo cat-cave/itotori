@@ -2149,7 +2149,7 @@ fn required_reallive_metadata_flag<'a>(
     let value = flag_optional(args, name).ok_or_else(|| {
         format!("missing RealLive bridge metadata flag {name}; pass --game-id, --game-version, --source-profile-id, and --source-locale")
     })?;
-    if value.is_empty() || value.starts_with("--") {
+    if value.trim().is_empty() || value.starts_with("--") {
         return Err(
             format!("RealLive bridge metadata flag {name} must have a non-empty value").into(),
         );

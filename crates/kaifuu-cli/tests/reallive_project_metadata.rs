@@ -148,6 +148,15 @@ fn reallive_project_metadata_flags_produce_distinct_bridge_metadata() {
     );
     assert_eq!(value_b["sourceLocale"], "en-US");
     assert_ne!(
+        value_a["bridgeId"], value_b["bridgeId"],
+        "bridge id must be scoped by caller-supplied metadata"
+    );
+    assert_ne!(
+        value_a["sourceGame"]["sourceProfileRevision"]["revisionId"],
+        value_b["sourceGame"]["sourceProfileRevision"]["revisionId"],
+        "source profile revision id must be scoped by caller-supplied metadata"
+    );
+    assert_ne!(
         value_a["sourceGame"]["sourceProfileRevision"]["value"],
         value_b["sourceGame"]["sourceProfileRevision"]["value"],
         "source profile hash must follow caller-supplied source profile id"
@@ -190,5 +199,29 @@ fn reallive_project_metadata_missing_flag_fails_before_writing_bundle() {
     assert!(
         !bundle_out.exists(),
         "bundle output must not be written when metadata is incomplete"
+    );
+}
+
+#[test]
+fn reallive_project_metadata_whitespace_flag_fails_before_writing_bundle() {
+    let tmp = tempfile::tempdir().expect("tmp dir");
+    let bundle_out = tmp.path().join("whitespace-metadata.bridge.json");
+
+    let output = run_extract(
+        &tmp.path().join("does-not-need-to-exist"),
+        &bundle_out,
+        "synthetic-whitespace",
+        "   ",
+        "kaifuu-reallive-synthetic-whitespace",
+        "ja-JP",
+    );
+
+    assert!(
+        !output.status.success(),
+        "whitespace metadata must fail extraction"
+    );
+    assert!(
+        !bundle_out.exists(),
+        "bundle output must not be written when metadata is whitespace-only"
     );
 }

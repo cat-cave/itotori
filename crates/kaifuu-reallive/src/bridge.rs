@@ -632,7 +632,10 @@ fn build_bundle_json(
     units: &[ProtoUnit],
     opts: &BridgeOpts<'_>,
 ) -> Value {
-    let bundle_namespace = format!("reallive-scene-{scene_id:04}");
+    let bundle_namespace = format!(
+        "reallive-bridge:game-id={}:source-profile-id={}:scene={scene_id:04}",
+        opts.game_id, opts.source_profile_id
+    );
     let scene_blob_hash = sha256_canonical(scene_bytes);
     let revision_id = deterministic_uuid7(&bundle_namespace, "scene-revision");
 
