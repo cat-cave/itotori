@@ -277,6 +277,12 @@ const repositoryPermissionGateMatrix = [
     (repo) => repo.catalogAlphaBenchmarkOpportunityRanking(deniedActor),
   ),
   catalogGate(
+    "catalogOpportunityRanking",
+    "catalogRead",
+    "catalog-opportunity-ranking-read-model.test.ts read model coverage",
+    (repo) => repo.catalogOpportunityRanking(deniedActor, { limit: 20 }),
+  ),
+  catalogGate(
     "catalogBenchmarkSeedFinder",
     "catalogRead",
     "catalog-benchmark-seed-finder.test.ts read model coverage",
