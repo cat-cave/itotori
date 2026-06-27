@@ -279,22 +279,23 @@ describe("OpenRouterModelProvider — request shape (ITOTORI-220 pair pin)", () 
     const rawPrompt = "RAW_PROMPT_SHOULD_NOT_LEAK";
     const rawResponse = "RAW_RESPONSE_SHOULD_NOT_LEAK";
     const apiKey = "sk-or-secret-should-not-leak";
-    const fetchMock = vi.fn(async () =>
-      new Response(
-        JSON.stringify({
-          id: "gen-artifact-redaction",
-          model: DEV_PAIR.modelId,
-          provider: DEV_PAIR.providerId,
-          choices: [
-            {
-              finish_reason: "stop",
-              message: { role: "assistant", content: rawResponse },
-            },
-          ],
-          usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15, cost: 0.000006 },
-        }),
-        { status: 200, headers: { "Content-Type": "application/json" } },
-      ),
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            id: "gen-artifact-redaction",
+            model: DEV_PAIR.modelId,
+            provider: DEV_PAIR.providerId,
+            choices: [
+              {
+                finish_reason: "stop",
+                message: { role: "assistant", content: rawResponse },
+              },
+            ],
+            usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15, cost: 0.000006 },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
     ) as unknown as typeof fetch;
     const provider = new OpenRouterModelProvider({
       env: { OPENROUTER_API_KEY: apiKey, OPENROUTER_ZDR_ACCOUNT_ASSERTED: "1" },
