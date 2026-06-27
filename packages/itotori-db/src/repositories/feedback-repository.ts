@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import type { ItotoriDatabase } from "../connection.js";
 import { type AuthorizationActor, permissionValues, requirePermission } from "../authorization.js";
 import {
@@ -8,6 +8,7 @@ import {
   feedbackReportEvidence,
   feedbackReports,
   feedbackSources,
+  sourceBundles,
 } from "../schema.js";
 
 export const feedbackSourceKindValues = {
@@ -167,11 +168,31 @@ export type ManualFeedbackImportResult = {
   duplicate: boolean;
 };
 
+export type ManualFeedbackReviewerQueueContext = {
+  feedbackReportId: string;
+  feedbackEvidenceId: string;
+  projectId: string;
+  localeBranchId: string;
+  sourceRevisionId: string;
+  feedbackType: FeedbackType;
+  triageLabel: FeedbackTriageLabel;
+  contextStatus: FeedbackContextStatus;
+  reporterNote: string;
+  context: Record<string, unknown>;
+  attachments: unknown[];
+  affectedArtifactIds: string[];
+};
+
 export interface ItotoriFeedbackRepositoryPort {
   importManualFeedback(
     actor: AuthorizationActor,
     input: ManualFeedbackImportInput,
   ): Promise<ManualFeedbackImportResult>;
+  loadManualFeedbackReviewerQueueContext(
+    actor: AuthorizationActor,
+    feedbackReportId: string,
+    feedbackEvidenceId: string,
+  ): Promise<ManualFeedbackReviewerQueueContext | null>;
 }
 
 export class ItotoriFeedbackRepository implements ItotoriFeedbackRepositoryPort {
@@ -360,6 +381,71 @@ export class ItotoriFeedbackRepository implements ItotoriFeedbackRepositoryPort 
         duplicate,
       };
     });
+  }
+
+  async loadManualFeedbackReviewerQueueContext(
+    actor: AuthorizationActor,
+    feedbackReportId: string,
+    feedbackEvidenceId: string,
+  ): Promise<ManualFeedbackReviewerQueueContext | null> {
+    await requirePermission(this.db, actor, permissionValues.feedbackImport);
+    const rows = await this.db
+      .select({
+        feedbackReportId: feedbackReports.feedbackReportId,
+        feedbackEvidenceId: feedbackReportEvidence.feedbackEvidenceId,
+        projectId: feedbackReports.projectId,
+        localeBranchId: feedbackReports.localeBranchId,
+        sourceBundleId: feedbackReports.sourceBundleId,
+        feedbackType: feedbackReports.feedbackType,
+        triageLabel: feedbackReports.triageLabel,
+        contextStatus: feedbackReports.contextStatus,
+        reporterNote: feedbackReports.reporterNote,
+        context: feedbackReportEvidence.contextSignals,
+        attachments: feedbackReportEvidence.attachments,
+      })
+      .from(feedbackReports)
+      .innerJoin(
+        feedbackReportEvidence,
+        eq(feedbackReportEvidence.feedbackReportId, feedbackReports.feedbackReportId),
+      )
+      .where(
+        and(
+          eq(feedbackReports.feedbackReportId, feedbackReportId),
+          eq(feedbackReportEvidence.feedbackEvidenceId, feedbackEvidenceId),
+        ),
+      )
+      .limit(1);
+    const row = rows[0];
+    if (row === undefined || row.localeBranchId === null || row.sourceBundleId === null) {
+      return null;
+    }
+
+    const bundleRows = await this.db
+      .select({ sourceRevisionId: sourceBundles.sourceBundleRevisionId })
+      .from(sourceBundles)
+      .where(eq(sourceBundles.sourceBundleId, row.sourceBundleId))
+      .limit(1);
+    const sourceRevisionId = bundleRows[0]?.sourceRevisionId;
+    if (sourceRevisionId === undefined) {
+      return null;
+    }
+
+    const attachments = sanitizeFeedbackAttachments(row.attachments);
+    return {
+      feedbackReportId: row.feedbackReportId,
+      feedbackEvidenceId: row.feedbackEvidenceId,
+      projectId: row.projectId,
+      localeBranchId: row.localeBranchId,
+      sourceRevisionId,
+      feedbackType: row.feedbackType as FeedbackType,
+      triageLabel: labelFromRow(row.triageLabel) ?? feedbackTriageLabelValues.needsContext,
+      contextStatus:
+        contextFromRow(row.contextStatus) ?? feedbackContextStatusValues.needsContext,
+      reporterNote: row.reporterNote,
+      context: sanitizeFeedbackContext(row.context),
+      attachments,
+      affectedArtifactIds: artifactIdsFromAttachments(attachments),
+    };
   }
 }
 
@@ -995,6 +1081,78 @@ function parseAttachment(value: unknown, context: string): ManualFeedbackAttachm
   }
 }
 
+function sanitizeFeedbackContext(context: Record<string, unknown>): Record<string, unknown> {
+  return sanitizeRecord(context, feedbackContextOmittedKeys);
+}
+
+function sanitizeFeedbackAttachments(attachments: unknown[]): unknown[] {
+  return attachments
+    .map((attachment) => {
+      if (!isRecord(attachment)) {
+        return null;
+      }
+      return compactRecord({
+        attachmentKind: attachment.attachmentKind,
+        attachmentId: attachment.attachmentId,
+        artifactId: attachment.artifactId,
+        hash: attachment.hash,
+        caption: attachment.caption,
+        capturePosition: attachment.capturePosition,
+        evidenceTier: attachment.evidenceTier,
+        contextToken: attachment.contextToken,
+        routeRef: attachment.routeRef,
+        sceneRef: attachment.sceneRef,
+        createdAt: attachment.createdAt,
+        contextKind: attachment.contextKind,
+        contextId: attachment.contextId,
+        speakerRef: attachment.speakerRef,
+        runtimeArtifactId: attachment.runtimeArtifactId,
+      });
+    })
+    .filter((attachment): attachment is Record<string, unknown> => attachment !== null);
+}
+
+function artifactIdsFromAttachments(attachments: unknown[]): string[] {
+  const artifactIds = new Set<string>();
+  for (const attachment of attachments) {
+    if (!isRecord(attachment) || typeof attachment.artifactId !== "string") {
+      continue;
+    }
+    artifactIds.add(attachment.artifactId);
+  }
+  return [...artifactIds];
+}
+
+function sanitizeRecord(
+  value: Record<string, unknown>,
+  omittedKeys: ReadonlySet<string>,
+): Record<string, unknown> {
+  const sanitized: Record<string, unknown> = {};
+  for (const [key, entry] of Object.entries(value)) {
+    if (omittedKeys.has(key)) {
+      continue;
+    }
+    if (Array.isArray(entry)) {
+      const nested = entry
+        .map((item) => (isRecord(item) ? sanitizeRecord(item, omittedKeys) : item))
+        .filter((item) => !isRecord(item) || Object.keys(item).length > 0);
+      if (nested.length > 0) {
+        sanitized[key] = nested;
+      }
+      continue;
+    }
+    if (isRecord(entry)) {
+      const nested = sanitizeRecord(entry, omittedKeys);
+      if (Object.keys(nested).length > 0) {
+        sanitized[key] = nested;
+      }
+      continue;
+    }
+    sanitized[key] = entry;
+  }
+  return compactRecord(sanitized);
+}
+
 function requireRecord(value: unknown, context: string): Record<string, unknown> {
   if (!isRecord(value)) {
     throw new Error(`${context} must be an object`);
@@ -1005,6 +1163,18 @@ function requireRecord(value: unknown, context: string): Record<string, unknown>
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
+
+const feedbackContextOmittedKeys = new Set([
+  "uri",
+  "fileUri",
+  "path",
+  "filePath",
+  "localPath",
+  "sourceLocation",
+  "quotedText",
+  "visibleText",
+  "metadata",
+]);
 
 function requiredString(record: Record<string, unknown>, field: string): string {
   const value = record[fieldName(field)];

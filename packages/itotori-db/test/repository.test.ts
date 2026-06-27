@@ -32,6 +32,7 @@ import {
   feedbackReportEvidence,
   feedbackReports,
   feedbackSources,
+  sourceBundles,
   userPermissionGrants,
 } from "../src/schema.js";
 import { isolatedMigratedContext } from "./db-test-context.js";
@@ -3159,6 +3160,113 @@ describe("ItotoriProjectRepository", () => {
         triageLabel: feedbackTriageLabelValues.styleDisputeCandidate,
         reportCount: 1,
       });
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("loads sanitized reviewer queue context for contextual feedback from the imported source bundle", async () => {
+    const context = await migratedContext();
+    try {
+      const repo = new ItotoriProjectRepository(context.db);
+      const feedbackRepo = new ItotoriFeedbackRepository(context.db);
+      await repo.reset(localActor);
+      await repo.importSourceBundle(localActor, projectFixture());
+
+      const result = await feedbackRepo.importManualFeedback(
+        localActor,
+        manualFeedbackFixture({
+          lineReference: {
+            bridgeUnitId: "bridge-unit-test",
+            sourceUnitKey: "hello.scene.001.line.001",
+            path: "/private/tmp/source.json",
+            line: 1,
+            sourceLocation: {
+              fileUri: "file:///private/tmp/source.json",
+              localPath: "/private/tmp/source.json",
+            },
+            quotedText: "raw captured line",
+          },
+          attachments: [
+            {
+              attachmentKind: "screenshot",
+              artifactId: "feedback-private-screenshot",
+              uri: "private://captures/formal-tone.png",
+              hash: "sha256:private-screenshot",
+              caption: "message window with formal protagonist line",
+              capturePosition: "hello.scene.001:frame001",
+              evidenceTier: "E2",
+              metadata: { localPath: "/private/tmp/formal-tone.png" },
+            },
+            {
+              attachmentKind: "save_context",
+              contextToken: "fixture-save-before-line",
+              routeRef: "hello-route",
+              sceneRef: "hello.scene.001",
+              uri: "private://saves/formal-tone.sav",
+            },
+          ],
+        }),
+      );
+
+      const bundle = await context.db
+        .select({ sourceRevisionId: sourceBundles.sourceBundleRevisionId })
+        .from(sourceBundles)
+        .where(eq(sourceBundles.sourceBundleId, "bridge-test"))
+        .limit(1);
+      const queueContext = await feedbackRepo.loadManualFeedbackReviewerQueueContext(
+        localActor,
+        result.feedbackReportId,
+        result.feedbackEvidenceId,
+      );
+
+      expect(queueContext).toMatchObject({
+        feedbackReportId: result.feedbackReportId,
+        feedbackEvidenceId: result.feedbackEvidenceId,
+        projectId: "project-test",
+        localeBranchId: "locale-en-us",
+        sourceRevisionId: bundle[0]?.sourceRevisionId,
+        feedbackType: feedbackTypeValues.stylePreference,
+        triageLabel: feedbackTriageLabelValues.styleDisputeCandidate,
+        contextStatus: feedbackContextStatusValues.contextualized,
+        affectedArtifactIds: ["feedback-private-screenshot"],
+      });
+      expect(queueContext?.context).toMatchObject({
+        lineReference: {
+          bridgeUnitId: "bridge-unit-test",
+          sourceUnitKey: "hello.scene.001.line.001",
+          line: 1,
+        },
+        attachmentSignals: [
+          {
+            attachmentKind: "screenshot",
+            artifactId: "feedback-private-screenshot",
+            hash: "sha256:private-screenshot",
+          },
+          {
+            attachmentKind: "save_context",
+            contextToken: "fixture-save-before-line",
+          },
+        ],
+      });
+      expect(queueContext?.attachments).toEqual([
+        expect.objectContaining({
+          attachmentKind: "screenshot",
+          artifactId: "feedback-private-screenshot",
+          hash: "sha256:private-screenshot",
+          evidenceTier: "E2",
+        }),
+        expect.objectContaining({
+          attachmentKind: "save_context",
+          contextToken: "fixture-save-before-line",
+          routeRef: "hello-route",
+          sceneRef: "hello.scene.001",
+        }),
+      ]);
+      expect(JSON.stringify(queueContext)).not.toContain("private://");
+      expect(JSON.stringify(queueContext)).not.toContain("/private/tmp");
+      expect(JSON.stringify(queueContext)).not.toContain("file:///private");
+      expect(JSON.stringify(queueContext)).not.toContain("raw captured line");
     } finally {
       await context.close();
     }

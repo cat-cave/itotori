@@ -11,6 +11,7 @@ import {
   ItotoriCatalogRepository,
   ItotoriModelLedgerRepository,
   ItotoriProjectRepository,
+  ItotoriReviewerQueueRepository,
   ItotoriSceneSummaryRepository,
   ItotoriStyleGuideFixtureFlowService,
   ItotoriStyleGuideRepository,
@@ -229,6 +230,7 @@ export async function withDatabaseItotoriServices<T>(
     }
     const projectRepository = new ItotoriProjectRepository(context.db);
     const feedbackRepository = new ItotoriFeedbackRepository(context.db);
+    const reviewerQueueRepository = new ItotoriReviewerQueueRepository(context.db);
     const modelLedgerRepository = new ItotoriModelLedgerRepository(context.db);
     const catalogRepository = new ItotoriCatalogRepository(context.db);
     const catalogCrawlerRepository = new ItotoriCatalogCrawlerRepository(context.db);
@@ -263,7 +265,11 @@ export async function withDatabaseItotoriServices<T>(
         modelLedgerRepository,
         translationMemoryService,
       ),
-      manualFeedback: new ManualFeedbackImportService(feedbackRepository, localUserActor),
+      manualFeedback: new ManualFeedbackImportService(
+        feedbackRepository,
+        localUserActor,
+        reviewerQueueRepository,
+      ),
       catalogRepository: {
         catalogConflictReview: (filter) =>
           catalogRepository.catalogConflictReview(localUserActor, filter),
