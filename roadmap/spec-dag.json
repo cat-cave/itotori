@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "exported_at": "2026-06-27T18:20:19.011Z",
+  "exported_at": "2026-06-27T18:26:11.895Z",
   "registries": {
     "groups": [
       {
@@ -28429,19 +28429,19 @@
       "title": "Live alpha path must persist provider-run artifacts",
       "kind": "audit-fix",
       "milestone": "alpha",
-      "status": "ready",
+      "status": "claimed",
       "priority": "P1",
       "estimate_points": 1,
       "risk": "medium",
-      "owner": null,
-      "branch": null,
+      "owner": "orchestrator-live-alpha-provider-artifacts",
+      "branch": "qd/live-alpha-provider-run-artifacts",
       "spec": "Broad audit 2026-06-27 found that OpenRouterProvider.invoke requires live opt-in with a provider-run artifact recorder, but OpenRouterModelProvider makes artifactRecorder optional and defaults to NoopArtifactRecorder. The localize-sweetie-hd live factory constructs OpenRouterModelProvider with only costCapUsd, so successful live alpha runs can omit provider-run artifacts carrying routing posture and usageResponseJson evidence. Evidence: apps/itotori/src/providers/openrouter.ts around OpenRouterProvider live recorder requirement and NoopArtifactRecorder fallback; apps/itotori/src/orchestrator/localize-sweetie-hd-stage-command.ts constructs the live provider without a persistent recorder; packages/localization-bridge-schema/src/agentic-loop-bundle.ts keeps summary telemetry/providerProofId but not the full provider-run artifact.",
       "acceptance": "Live localize-sweetie-hd/OpenRouterModelProvider path either wires a persistent ProviderRunArtifactRecorder under the run artifact directory or refuses live construction without one. Regression tests assert each live invocation writes provider-run artifacts containing routingPosture and usageResponseJson, without raw prompt/response or secret leakage.",
       "validation": null,
       "context": null,
       "created_at": "2026-06-27T06:37:32.455Z",
-      "updated_at": "2026-06-27T06:37:32.455Z",
-      "claimed_at": null,
+      "updated_at": "2026-06-27T18:25:50.283Z",
+      "claimed_at": "2026-06-27T18:25:50.283Z",
       "done_at": null,
       "group_name": "agent-runtime",
       "status_reason": null,
