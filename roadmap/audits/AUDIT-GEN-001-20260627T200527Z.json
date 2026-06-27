@@ -1,0 +1,33 @@
+{
+  "$schema": "../audit-report.schema.json",
+  "schemaVersion": "0.1.0",
+  "reportId": "AUDIT-GEN-001-20260627T200527Z",
+  "generatedAt": "2026-06-27T20:05:27Z",
+  "spec": {
+    "id": "GEN-001",
+    "title": "Generalize localize workflow command surface",
+    "branch": "spec/generalize-localize-workflow-command-surface",
+    "worktree": "/scratch/worktrees/itotori-spec-generalize-localize-workflow-command-surface",
+    "commit": "f32a355"
+  },
+  "auditor": {
+    "name": "Pasteur the 2nd",
+    "kind": "orchestration"
+  },
+  "humanSummary": {
+    "outcome": "pass",
+    "text": "Read-only acceptance audit for qd node generalize-localize-workflow-command-surface at commit f32a355 found no blocking command-surface issues. The app CLI dispatches localize-project-stage, exact search found no localize-sweetie-hd or itotori.localize-sweetie-hd strings in apps/itotori/src or apps/itotori/test, suite and recipe surfaces use localize-project, --project is validated against loaded config before environment validation, and dry-run posture wording now references ITOTORI-234 v0.3. Non-blocking follow-ups were identified for audit-hygiene debt in a negative test assertion and for title-specific default project metadata that remains as alpha target data.",
+    "counts": {
+      "P0": 0,
+      "P1": 0,
+      "P2": 0,
+      "P3": 0
+    }
+  },
+  "orchestration": {
+    "completionDecision": "complete_allowed",
+    "blockingFindingIds": [],
+    "followUpFindingIds": []
+  },
+  "findings": []
+}
