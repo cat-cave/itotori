@@ -15,7 +15,7 @@
     "translationCompleteness": "fan_partial",
     "externalIdKind": "store_product"
   },
-  "demandFacts": [{ "kind": "dl_count", "count": 1400 }],
+  "demandFacts": [{ "kind": "rating_summary", "count": 320, "mean": 4.2 }],
   "publicNotes": [
     "Synthetic public-only source metadata for benchmark seed finder provenance.",
     "No raw catalog payload, private file path, archive member, or local corpus title is included."

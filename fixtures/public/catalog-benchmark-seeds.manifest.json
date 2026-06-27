@@ -56,8 +56,8 @@
       "path": "fixtures/catalog-benchmark-seeds/vndb/vSeedFan.json",
       "role": "metadata",
       "mediaType": "application/json",
-      "sha256": "6e27f34d93c4e431b07446316691c44db71bce177a2b6c50ba719891170d05f2",
-      "bytes": 890,
+      "sha256": "3085a0d7a68e9578f21914462fae811ade79efe09a1f4b49f4813aa8351fa0b3",
+      "bytes": 908,
       "redistributable": true
     }
   ],
