@@ -24,7 +24,7 @@ test("verify-artifacts proves provider-run, telemetry, ZDR, billed cost, sentine
 
   assert.equal(result.status, 0, childOutput(result));
   const report = result.report;
-  assert.equal(report.schemaVersion, "itotori.localize-sweetie-hd.post-run-verification.v0");
+  assert.equal(report.schemaVersion, "itotori.localize-project.post-run-verification.v0");
   assert.equal(report.patchReportPair.modelId, MODEL_ID);
   assert.equal(report.agenticLoopZdrEnforcedCount, 1);
   assert.equal(report.providerRunArtifactCount, 1);
@@ -337,7 +337,7 @@ function agenticLoopBundle() {
 
 function patchReport() {
   return {
-    schemaVersion: "itotori.localize-sweetie-hd.patch-report.v0",
+    schemaVersion: "itotori.localize-project.patch-report.v0",
     pair: { modelId: MODEL_ID, providerId: PROVIDER_ID },
     enUsSentinel: SENTINEL,
   };

@@ -43,7 +43,7 @@ function writeProjectMetadata(fields) {
     path,
     `${JSON.stringify(
       {
-        schemaVersion: "itotori.localize-sweetie-hd.project-metadata.v0",
+        schemaVersion: "itotori.localize-project.project-metadata.v0",
         projectId: "test-project",
         reallive: fields,
       },
@@ -77,7 +77,7 @@ test("--dry-run --project ... exits 0 and prints per-phase commands", () => {
     `dry-run extract command must pass RealLive identity metadata from the project preset; got:\n${result.stdout}`,
   );
   assert.ok(
-    result.stdout.includes("localize-sweetie-hd-stage"),
+    result.stdout.includes("localize-project-stage"),
     `dry-run plan must mention the agentic-loop stage; got:\n${result.stdout}`,
   );
   assert.ok(
@@ -193,15 +193,15 @@ test("--help exits 0 with the usage string", () => {
   const result = runDriver(["--help"]);
   assert.equal(result.status, 0);
   assert.ok(
-    result.stdout.includes("just localize-sweetie-hd") ||
-      result.stdout.includes("localize-sweetie-hd/run.mjs"),
+    result.stdout.includes("just localize-project") ||
+      result.stdout.includes("localize-project/run.mjs"),
     `--help must print the usage line; got:\n${result.stdout}`,
   );
 });
 
 test("missing OPENROUTER_API_KEY without --dry-run exits non-zero", () => {
   const result = runDriver(["--project", "sweetie-hd-alpha-1"], {
-    // Deliberately omit OPENROUTER_API_KEY, KAIFUU_REAL_SWEETIE_HD_PATH,
+    // Deliberately omit OPENROUTER_API_KEY, LOCALIZE_PROJECT_SOURCE_PATH,
     // and TARGET so the driver hits its first env-validation rejection.
   });
   assert.notEqual(result.status, 0);
