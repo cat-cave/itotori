@@ -1,0 +1,33 @@
+{
+  "$schema": "../audit-report.schema.json",
+  "schemaVersion": "0.1.0",
+  "reportId": "AUDIT-GEN-002-20260627T210425Z",
+  "generatedAt": "2026-06-27T21:04:25Z",
+  "spec": {
+    "id": "GEN-002",
+    "title": "Add advisory guard for title-specific game references",
+    "branch": "spec/add-title-reference-guardrail-advisory",
+    "worktree": "/scratch/worktrees/itotori-spec-add-title-reference-guardrail-advisory",
+    "commit": "b584b88908070ecd5bd5613192f6cfc50f8c039e"
+  },
+  "auditor": {
+    "name": "Lagrange the 2nd",
+    "kind": "orchestration"
+  },
+  "humanSummary": {
+    "outcome": "pass",
+    "text": "Read-only acceptance audit for qd node add-title-reference-guardrail-advisory found no blocking issues. The scanner uses git ls-files, scans filenames and file contents, skips .env paths before filename/content matching, exits zero in report mode, and is not wired into just check. A non-blocking test gap around built-in allowlist entries was repaired before merge; the final main commit passes node tests, advisory report mode, and qd check.",
+    "counts": {
+      "P0": 0,
+      "P1": 0,
+      "P2": 0,
+      "P3": 0
+    }
+  },
+  "orchestration": {
+    "completionDecision": "complete_allowed",
+    "blockingFindingIds": [],
+    "followUpFindingIds": []
+  },
+  "findings": []
+}
