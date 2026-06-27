@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "exported_at": "2026-06-27T06:28:46.883Z",
+  "exported_at": "2026-06-27T06:32:26.384Z",
   "registries": {
     "groups": [
       {
@@ -2550,19 +2550,19 @@
       "title": "MV/MZ local corpus readiness integration",
       "kind": "feature",
       "milestone": "real-game-testing-ready",
-      "status": "ready",
+      "status": "claimed",
       "priority": "P1",
       "estimate_points": 1,
       "risk": "medium",
-      "owner": null,
-      "branch": null,
+      "owner": "orchestrator-catalog-007",
+      "branch": "spec/catalog-007",
       "spec": "Attach local corpus sidecar evidence to MV/MZ capability/readiness records after the public fixture adapter and scanner both exist, without blocking the adapter itself.\n\nDeliverables:\n- MV/MZ local readiness sidecar mapping\n- Capability evidence merge fixture\n- Private-local aggregate-safe renderer\n- Dashboard/read-model integration test",
       "acceptance": "- MV/MZ public fixture adapter can complete without private or local corpus scanning\n- Local corpus sidecars can attach MV/MZ capability evidence after scanner and adapter outputs exist\n- Readiness output distinguishes public fixture support from private-local aggregate evidence\n- No private paths, filenames, raw text, keys, or screenshots are persisted to committed paths",
       "validation": null,
       "context": null,
       "created_at": "2026-06-26T02:53:54.612Z",
-      "updated_at": "2026-06-26T02:53:54.612Z",
-      "claimed_at": null,
+      "updated_at": "2026-06-27T06:32:10.159Z",
+      "claimed_at": "2026-06-27T06:32:10.159Z",
       "done_at": null,
       "group_name": "catalog",
       "status_reason": "Re-tier 2026-06-24: moved from alpha to real-game-testing-ready — the old \"alpha\" framing was renamed; substance unchanged. See docs/proposals/dag-retier-2026-06-24.md. | Re-tier 2026-06-24: pruned 2 dependsOn edge(s) that crossed the new tier boundary [KAIFUU-007(beta), KAIFUU-053(alpha)]; per docs/proposals/dag-retier-2026-06-24.md §6.",
