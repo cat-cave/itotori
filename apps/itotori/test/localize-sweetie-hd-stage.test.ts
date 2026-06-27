@@ -675,10 +675,7 @@ describe("ITOTORI-238 failover orchestration", () => {
       actor: { userId: "test" },
     });
 
-    const invocationCount = bundle.stages.reduce(
-      (sum, stage) => sum + stage.invocations.length,
-      0,
-    );
+    const invocationCount = bundle.stages.reduce((sum, stage) => sum + stage.invocations.length, 0);
     const runDirectories = readdirSync(providerRunArtifactDirectory, {
       withFileTypes: true,
     }).filter((entry) => entry.isDirectory());

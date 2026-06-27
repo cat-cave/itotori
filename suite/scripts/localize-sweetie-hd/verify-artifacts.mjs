@@ -50,7 +50,9 @@ function parseArgs(argv) {
   }
   if (args.runDir === undefined) throw new Error(`--run-dir is required\n\n${usage()}`);
   if (args.telemetrySummaryPath === undefined) {
-    throw new Error(`--telemetry-summary is required to prove cost_kind and ZDR counts\n\n${usage()}`);
+    throw new Error(
+      `--telemetry-summary is required to prove cost_kind and ZDR counts\n\n${usage()}`,
+    );
   }
   return args;
 }
@@ -93,7 +95,9 @@ function assertNonEmptyString(value, label) {
 
 function artifactPaths(runDir) {
   const runSummaryPath = join(runDir, "run-summary.json");
-  const runSummary = existsSync(runSummaryPath) ? assertObject(readJson(runSummaryPath), "run-summary") : {};
+  const runSummary = existsSync(runSummaryPath)
+    ? assertObject(readJson(runSummaryPath), "run-summary")
+    : {};
   const artifacts = assertObject(runSummary.artifacts ?? {}, "run-summary.artifacts");
   return {
     runSummary: runSummaryPath,
@@ -121,7 +125,10 @@ function findSentinelTextLines(replayLog, sentinel) {
 }
 
 function verifyTelemetry(telemetrySummary) {
-  const evidence = assertObject(telemetrySummary.postRunEvidence, "telemetry-summary.postRunEvidence");
+  const evidence = assertObject(
+    telemetrySummary.postRunEvidence,
+    "telemetry-summary.postRunEvidence",
+  );
   const zdr = assertObject(evidence.zdr, "telemetry-summary.postRunEvidence.zdr");
   const costKind = assertObject(evidence.costKind, "telemetry-summary.postRunEvidence.costKind");
 
@@ -181,7 +188,9 @@ function verify(args) {
   }
   const nonZdrInvocations = invocations.filter((invocation) => invocation.zdr !== true);
   if (nonZdrInvocations.length > 0) {
-    throw new Error(`agentic-loop-bundle has ${nonZdrInvocations.length} invocation(s) with zdr != true`);
+    throw new Error(
+      `agentic-loop-bundle has ${nonZdrInvocations.length} invocation(s) with zdr != true`,
+    );
   }
 
   const pair = assertObject(patchReport.pair, "patch-report.pair");

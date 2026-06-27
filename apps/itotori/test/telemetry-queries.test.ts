@@ -821,9 +821,7 @@ describe("telemetry CLI renderTextSummary — ITOTORI-233", () => {
         },
       },
     );
-    expect(lines).toContain(
-      "zdr_enforced_count=10 invocation_count=10 all_zdr_enforced=true",
-    );
+    expect(lines).toContain("zdr_enforced_count=10 invocation_count=10 all_zdr_enforced=true");
     expect(lines).toContain(
       "billed_cost_kind_count=10 non_billed_cost_kind_count=0 all_cost_kinds_billed=true",
     );
