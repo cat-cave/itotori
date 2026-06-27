@@ -352,6 +352,7 @@ export class OpenRouterProvider implements ModelProvider {
           routeSettingsHash,
           errorClasses: ["cost_cap_exceeded"],
           tokenUsage: normalized.tokenUsage,
+          cost: normalized.cost,
           routingPosture,
           usageResponseJson: extractUsageResponseJson(body, "_cost_cap_exceeded"),
         });
@@ -993,19 +994,26 @@ function extractCacheDiscountMicros(usage: Record<string, unknown>): number {
  *     (filtering out symbols / undefined leaves) via {@link jsonValueOrUndefined};
  *     numbers, strings, booleans, arrays, and nested objects survive verbatim.
  *
- *   - On a FAILED call (`failureMarker` is a sentinel like `_http_error` /
- *     `_response_invalid` / `_pair_mismatch`) we deliberately STRIP the
- *     upstream `cost` field before persisting. Failed runs are tagged
- *     zero-cost (see `buildProviderRunRecord`); if we kept the upstream
- *     `cost` here, the partial-NULL CHECK would fire and reject the row
- *     (cost_amount=0 ≠ usage.cost). The typed sentinel key documents WHY
- *     the row carries no `cost`.
+ *   - On most FAILED calls (`failureMarker` is a sentinel like
+ *     `_http_error` / `_response_invalid` / `_pair_mismatch`) we
+ *     deliberately STRIP the upstream `cost` field before persisting.
+ *     Those failed runs are tagged zero-cost (see
+ *     `buildProviderRunRecord`); if we kept the upstream `cost` here,
+ *     the partial-NULL CHECK would fire and reject the row (cost_amount=0
+ *     ≠ usage.cost). `_cost_cap_exceeded` is the exception: OpenRouter
+ *     already completed and billed that response, so the failed audit row
+ *     must retain the upstream cost.
  *
  * The returned object is always shaped: caller never sees `undefined`.
  */
 function extractUsageResponseJson(
   body: unknown,
-  failureMarker: "_http_error" | "_response_invalid" | "_pair_mismatch" | null,
+  failureMarker:
+    | "_http_error"
+    | "_response_invalid"
+    | "_pair_mismatch"
+    | "_cost_cap_exceeded"
+    | null,
 ): JsonObject {
   const usageBlock = isRecord(body) && isRecord(body.usage) ? body.usage : undefined;
   if (usageBlock === undefined) {
@@ -1022,8 +1030,9 @@ function extractUsageResponseJson(
   const json: JsonObject = {};
   for (const [key, value] of Object.entries(usageBlock)) {
     // Failure-path strip: never persist upstream `cost` on a zero-cost
-    // failure row; the CHECK would reject the equality.
-    if (failureMarker !== null && key === "cost") {
+    // failure row; the CHECK would reject the equality. Cost-cap failures
+    // are already billed, so they retain `cost`.
+    if (failureMarker !== null && failureMarker !== "_cost_cap_exceeded" && key === "cost") {
       continue;
     }
     const converted = jsonValueOrUndefined(value);
@@ -1170,11 +1179,13 @@ function buildProviderRunRecord(input: {
   // upstream value normalizeOpenRouterCost extracted); the DB CHECK
   // (migration 0041) enforces the equality within 1e-9 USD.
   //
-  // For failure paths (HTTP error, response-invalid, pair mismatch)
-  // we still surface whatever `usage` shape the response carried (or
-  // an empty `{}` when there was no body at all) — but those runs are
-  // tagged zero-cost, so the absence of a `cost` key in the JSON is
-  // honest and the CHECK does not fire on them.
+  // For zero-cost failure paths (HTTP error, response-invalid, pair
+  // mismatch) we still surface whatever `usage` shape the response
+  // carried (or an empty `{}` when there was no body at all) — but
+  // those runs are tagged zero-cost, so the absence of a `cost` key in
+  // the JSON is honest and the CHECK does not fire on them. Cost-cap
+  // failures are different: OpenRouter completed and billed the
+  // response, so callers pass `cost` and retain `usage.cost`.
   usageResponseJson: JsonObject;
 }): ProviderRunRecord {
   const completedAt = new Date();
@@ -1205,11 +1216,11 @@ function buildProviderRunRecord(input: {
     fallbackUsed: fallbackPlan.length > 1 && input.actualModelId !== input.requestedModelId,
     fallbackPlan,
     tokenUsage: input.tokenUsage,
-    // ITOTORI-225 — failed runs incurred no upstream charge; record them
-    // as zero-cost rather than the deprecated 'unknown'. Successful runs
-    // always carry an `input.cost` because normalizeOpenRouterCost
-    // throws on missing usage.cost rather than returning a fallback.
-    cost: input.status === "succeeded" && input.cost ? input.cost : ZERO_COST,
+    // ITOTORI-225 — zero-cost failures record ZERO_COST rather than the
+    // deprecated 'unknown'. Some failed audit rows, such as
+    // cost_cap_exceeded, still incurred an upstream bill and pass
+    // `input.cost` so accounting remains exact.
+    cost: input.cost ?? ZERO_COST,
     routingPosture: input.routingPosture,
     usageResponseJson: input.usageResponseJson,
     prompt: input.request.prompt,
@@ -1758,9 +1769,16 @@ export class OpenRouterModelProvider implements ModelProvider {
     // until the bucket has a token.
     await this.bucket.acquire();
 
-    const result = await this.inner.invoke(request);
-    this.recordSpend(result);
-    return result;
+    try {
+      const result = await this.inner.invoke(request);
+      this.recordSpend(result);
+      return result;
+    } catch (error) {
+      if (error instanceof ModelProviderError && error.providerRun !== undefined) {
+        this.recordRunSpend(error.providerRun);
+      }
+      throw error;
+    }
   }
 
   /** Currently spent USD against the per-process cap. */
@@ -1774,7 +1792,11 @@ export class OpenRouterModelProvider implements ModelProvider {
   }
 
   private recordSpend(result: ModelInvocationResult): void {
-    const cost = result.providerRun.cost;
+    this.recordRunSpend(result.providerRun);
+  }
+
+  private recordRunSpend(run: ProviderRunRecord): void {
+    const cost = run.cost;
     if (cost.amountMicrosUsd === undefined) {
       return;
     }

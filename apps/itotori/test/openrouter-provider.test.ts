@@ -370,9 +370,30 @@ describe("OpenRouterModelProvider — per-process cost cap", () => {
       expect(error.code).toBe("cost_cap_exceeded");
       expect(error.message).toContain("maxPriceUsd");
       expect(error.providerRun?.errorClasses).toContain("cost_cap_exceeded");
+      expect(error.providerRun?.cost).toEqual({
+        costKind: "billed",
+        currency: "USD",
+        amountMicrosUsd: 3,
+        cacheDiscountMicrosUsd: 0,
+      });
+      expect(error.providerRun?.usageResponseJson).toMatchObject({
+        cost: 0.000003,
+        _cost_cap_exceeded: true,
+      });
     }
     expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(provider.totalSpentUsd()).toBeCloseTo(0.000003, 6);
     expect(recorder.artifacts[0]?.error?.class).toBe("cost_cap_exceeded");
+    expect(recorder.artifacts[0]?.run.cost).toEqual({
+      costKind: "billed",
+      currency: "USD",
+      amountMicrosUsd: 3,
+      cacheDiscountMicrosUsd: 0,
+    });
+    expect(recorder.artifacts[0]?.run.usageResponseJson).toMatchObject({
+      cost: 0.000003,
+      _cost_cap_exceeded: true,
+    });
   });
 
   it("raises OpenRouterCostCapError when cumulative spend exceeds the cap (third call blocked, no HTTP fired)", async () => {
