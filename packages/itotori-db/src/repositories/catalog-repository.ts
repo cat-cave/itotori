@@ -81,6 +81,23 @@ import {
   catalogOpportunityWeightsVersion,
   scoreCatalogOpportunity,
 } from "../services/catalog-opportunity-ranking.js";
+export type {
+  CatalogOpportunityAdapterReadinessSignal,
+  CatalogOpportunityBenchmarkUsefulnessSignal,
+  CatalogOpportunityCompletenessSignal,
+  CatalogOpportunityConflictSignal,
+  CatalogOpportunityDecision,
+  CatalogOpportunityDemandSignal,
+  CatalogOpportunityExistingTranslationSignal,
+  CatalogOpportunityFactor,
+  CatalogOpportunityFactorName,
+  CatalogOpportunityLocalOwnershipSignal,
+  CatalogOpportunityMarketPrevalenceSignal,
+  CatalogOpportunityRuntimeEvidenceSignal,
+  CatalogOpportunityScoreBreakdown,
+  CatalogOpportunityScoreInput,
+  CatalogOpportunityUnknownEvidenceSignal,
+} from "../services/catalog-opportunity-ranking.js";
 
 export type CatalogJsonRecord = Record<string, unknown>;
 export type CatalogDateInput = string | Date;
