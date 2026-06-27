@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "exported_at": "2026-06-27T17:50:34.423Z",
+  "exported_at": "2026-06-27T18:17:17.963Z",
   "registries": {
     "groups": [
       {
@@ -26701,11 +26701,11 @@
       "validation": null,
       "context": null,
       "created_at": "2026-06-26T02:53:56.226Z",
-      "updated_at": "2026-06-27T17:44:54.080Z",
+      "updated_at": "2026-06-27T18:17:09.187Z",
       "claimed_at": "2026-06-26T05:40:58.913Z",
       "done_at": null,
       "group_name": "alpha-integration",
-      "status_reason": "Per docs/audits/openrouter-wiring-audit-2026-06-25.md §4-7 (alpha closer rerun); cost-audit acceptance criterion added per §3 N1 retroactive section ('every cost_kind === billed').\n[2026-06-26T05:45:41.069Z] BLOCKED-EXTERNAL 2026-06-26 05:43Z: Fireworks upstream rate-limit on deepseek/deepseek-v4-flash returned HTTP 429 ('temporarily rate-limited upstream … provider_name: Fireworks, is_byok: false'). The pair-policy correctly pins allow_fallbacks:false per ZDR/strict-pair posture so no other provider can route. Source sha256 invariant held. ZDR assertion required OPENROUTER_ZDR_ACCOUNT_ASSERTED=1 (per ITOTORI-227 loud-fail design) — worked. Two artifact dirs at artifacts/localize-sweetie-hd/20260626T054[222|347]Z-sweetie-hd-alpha-1/ contain only bridge-bundle.json (phase 1 succeeded). Retry later when Fireworks throttling clears.\n[2026-06-26T06:50:43.492Z] BLOCKED-CODE 2026-06-26 06:49Z: pair-check at openrouter.ts:270-273 strict-equality fails on Fireworks-routed response ('Fireworks' vs 'fireworks' slug). Fireworks rate-limit has cleared. Fix tracked by ITOTORI-236. Retry once ITOTORI-236 merges.\n[2026-06-26T07:45:55.458Z] ATTEMPT-3 2026-06-26 07:40Z: FAILED-CODE at speaker-label pre-flight (provider.descriptor.capabilities.structuredOutputs.jsonSchema='untested'). The real gate is descriptor-vs-globalCapabilityGuard wiring; tracked by ITOTORI-237. Prior 429/pair_mismatch chars were stale builds. NO http fires; refusal is pre-flight.\n[2026-06-26T08:17:25.101Z] ATTEMPT-4 2026-06-26 08:15Z: 429 again on first OR invocation. ITOTORI-236/237 fixes NOT exercised — never reached. Pattern of repeated 429s suggests Fireworks deepseek-v4-flash quota issue at the marketplace level, not a transient outage. Defer retry to later when rate-limit window resets.\n[2026-06-26T13:26:09.003Z] ATTEMPT-5 2026-06-26 ~08:50Z: sub-agent died on weekly-limit reset before any work; no actual attempt.\n[2026-06-26T15:17:57.171Z] ATTEMPT-6 2026-06-26 15:16Z: 429 again. 3 of 6 attempts blocked by Fireworks 429 on deepseek-v4-flash. Structural quota issue. Worker recommends pair-policy alternate-provider widening (ITOTORI-238 minted).\n[2026-06-26T17:41:24.736Z] ATTEMPT-8 17:38Z: failover swept 4 alternates (fireworks/deepinfra/wafer/digitalocean all 429) then halted at morph with speaker-label refusal (capability_guard untested for morph). atlas-cloud not reached. ITOTORI-239 added pair-policy entries with capabilitySheet but didn't register them via ITOTORI-237 descriptorForPair seam. Minted ITOTORI-240.\n[2026-06-26T21:46:51.414Z] UNBLOCKED 2026-06-26 21:46Z: ITOTORI-240 alternate capability guard registration is merged into main and integrated main verification passed. Next qd driver step is to retry just localize-sweetie-hd --project sweetie-hd-alpha-1 from current main with provider secrets supplied only through process environment, then record artifacts or the next blocker.\n[2026-06-26T21:52:09.905Z] ATTEMPT-9-PREFLIGHT 2026-06-26 21:51Z: main pushed to origin at 3fc27f2. Live just localize-sweetie-hd --project sweetie-hd-alpha-1 was not executed because the tool approval policy rejected the external-provider run as possible project/corpus content export without explicit user approval. Safe offline preflight passed: nix develop --command bash -lc 'just localize-sweetie-hd --dry-run --project sweetie-hd-alpha-1' built bridge-schema/db/app and printed the four-phase plan with 'DRY-RUN: 0 LLM calls would be made.' Dry-run also reported OPENROUTER_ZDR_ACCOUNT_ASSERTED=MISSING, so a future approved live retry needs that process env assertion set, plus OPENROUTER_API_KEY, KAIFUU_REAL_SWEETIE_HD_PATH, and TARGET from the invoking environment. No provider call was made in this attempt.\n[2026-06-27T17:23:42.149Z] ORCHESTRATOR 2026-06-27: Current main 9595eb9 is clean and qd gate has no blocking findings via direct qd. Created local qd/UTSUSHI-231 integration branch from main because claimed branch ref was missing. Delegated two isolated worker branches for potential acceptance gaps before a live retry: worker/utsushi-231-provider-recording (provider-run/ZDR/cost evidence persistence) and worker/utsushi-231-telemetry-verifier (post-run telemetry/artifact verifier). Live retry is not runnable from this orchestrator shell because OPENROUTER_API_KEY, OPENROUTER_ZDR_ACCOUNT_ASSERTED, KAIFUU_REAL_SWEETIE_HD_PATH, and TARGET are not present in process env; do not read .env.\n[2026-06-27T17:44:54.080Z] ORCHESTRATOR 2026-06-27: Integrated worker commits on qd/UTSUSHI-231 in /scratch/worktrees/itotori-qd-utsushi-231: f26f67d provider-run artifact persistence, c7a09fd telemetry evidence verifier, 7aef05d formatting-only repair. Focused checks passed: app localize-sweetie-hd-stage vitest 24 tests, app telemetry-queries vitest 24 tests, app/db typecheck, suite run.test 5 tests (escalated due sandbox spawnSync EPERM), suite verify-artifacts.test, model-ledger repository vitest 14 tests with tracked DATABASE_URL postgres://itotori:itotori@127.0.0.1:55433/itotori. Full integration 'nix develop --command bash -lc just check' passed in qd worktree. qd check run from scratch worktree failed before executing with prepare failed: no such table: findings; qd bookkeeping must run from initialized main checkout or qd store repair.",
+      "status_reason": "Per docs/audits/openrouter-wiring-audit-2026-06-25.md §4-7 (alpha closer rerun); cost-audit acceptance criterion added per §3 N1 retroactive section ('every cost_kind === billed').\n[2026-06-26T05:45:41.069Z] BLOCKED-EXTERNAL 2026-06-26 05:43Z: Fireworks upstream rate-limit on deepseek/deepseek-v4-flash returned HTTP 429 ('temporarily rate-limited upstream … provider_name: Fireworks, is_byok: false'). The pair-policy correctly pins allow_fallbacks:false per ZDR/strict-pair posture so no other provider can route. Source sha256 invariant held. ZDR assertion required OPENROUTER_ZDR_ACCOUNT_ASSERTED=1 (per ITOTORI-227 loud-fail design) — worked. Two artifact dirs at artifacts/localize-sweetie-hd/20260626T054[222|347]Z-sweetie-hd-alpha-1/ contain only bridge-bundle.json (phase 1 succeeded). Retry later when Fireworks throttling clears.\n[2026-06-26T06:50:43.492Z] BLOCKED-CODE 2026-06-26 06:49Z: pair-check at openrouter.ts:270-273 strict-equality fails on Fireworks-routed response ('Fireworks' vs 'fireworks' slug). Fireworks rate-limit has cleared. Fix tracked by ITOTORI-236. Retry once ITOTORI-236 merges.\n[2026-06-26T07:45:55.458Z] ATTEMPT-3 2026-06-26 07:40Z: FAILED-CODE at speaker-label pre-flight (provider.descriptor.capabilities.structuredOutputs.jsonSchema='untested'). The real gate is descriptor-vs-globalCapabilityGuard wiring; tracked by ITOTORI-237. Prior 429/pair_mismatch chars were stale builds. NO http fires; refusal is pre-flight.\n[2026-06-26T08:17:25.101Z] ATTEMPT-4 2026-06-26 08:15Z: 429 again on first OR invocation. ITOTORI-236/237 fixes NOT exercised — never reached. Pattern of repeated 429s suggests Fireworks deepseek-v4-flash quota issue at the marketplace level, not a transient outage. Defer retry to later when rate-limit window resets.\n[2026-06-26T13:26:09.003Z] ATTEMPT-5 2026-06-26 ~08:50Z: sub-agent died on weekly-limit reset before any work; no actual attempt.\n[2026-06-26T15:17:57.171Z] ATTEMPT-6 2026-06-26 15:16Z: 429 again. 3 of 6 attempts blocked by Fireworks 429 on deepseek-v4-flash. Structural quota issue. Worker recommends pair-policy alternate-provider widening (ITOTORI-238 minted).\n[2026-06-26T17:41:24.736Z] ATTEMPT-8 17:38Z: failover swept 4 alternates (fireworks/deepinfra/wafer/digitalocean all 429) then halted at morph with speaker-label refusal (capability_guard untested for morph). atlas-cloud not reached. ITOTORI-239 added pair-policy entries with capabilitySheet but didn't register them via ITOTORI-237 descriptorForPair seam. Minted ITOTORI-240.\n[2026-06-26T21:46:51.414Z] UNBLOCKED 2026-06-26 21:46Z: ITOTORI-240 alternate capability guard registration is merged into main and integrated main verification passed. Next qd driver step is to retry just localize-sweetie-hd --project sweetie-hd-alpha-1 from current main with provider secrets supplied only through process environment, then record artifacts or the next blocker.\n[2026-06-26T21:52:09.905Z] ATTEMPT-9-PREFLIGHT 2026-06-26 21:51Z: main pushed to origin at 3fc27f2. Live just localize-sweetie-hd --project sweetie-hd-alpha-1 was not executed because the tool approval policy rejected the external-provider run as possible project/corpus content export without explicit user approval. Safe offline preflight passed: nix develop --command bash -lc 'just localize-sweetie-hd --dry-run --project sweetie-hd-alpha-1' built bridge-schema/db/app and printed the four-phase plan with 'DRY-RUN: 0 LLM calls would be made.' Dry-run also reported OPENROUTER_ZDR_ACCOUNT_ASSERTED=MISSING, so a future approved live retry needs that process env assertion set, plus OPENROUTER_API_KEY, KAIFUU_REAL_SWEETIE_HD_PATH, and TARGET from the invoking environment. No provider call was made in this attempt.\n[2026-06-27T17:23:42.149Z] ORCHESTRATOR 2026-06-27: Current main 9595eb9 is clean and qd gate has no blocking findings via direct qd. Created local qd/UTSUSHI-231 integration branch from main because claimed branch ref was missing. Delegated two isolated worker branches for potential acceptance gaps before a live retry: worker/utsushi-231-provider-recording (provider-run/ZDR/cost evidence persistence) and worker/utsushi-231-telemetry-verifier (post-run telemetry/artifact verifier). Live retry is not runnable from this orchestrator shell because OPENROUTER_API_KEY, OPENROUTER_ZDR_ACCOUNT_ASSERTED, KAIFUU_REAL_SWEETIE_HD_PATH, and TARGET are not present in process env; do not read .env.\n[2026-06-27T17:44:54.080Z] ORCHESTRATOR 2026-06-27: Integrated worker commits on qd/UTSUSHI-231 in /scratch/worktrees/itotori-qd-utsushi-231: f26f67d provider-run artifact persistence, c7a09fd telemetry evidence verifier, 7aef05d formatting-only repair. Focused checks passed: app localize-sweetie-hd-stage vitest 24 tests, app telemetry-queries vitest 24 tests, app/db typecheck, suite run.test 5 tests (escalated due sandbox spawnSync EPERM), suite verify-artifacts.test, model-ledger repository vitest 14 tests with tracked DATABASE_URL postgres://itotori:itotori@127.0.0.1:55433/itotori. Full integration 'nix develop --command bash -lc just check' passed in qd worktree. qd check run from scratch worktree failed before executing with prepare failed: no such table: findings; qd bookkeeping must run from initialized main checkout or qd store repair.\n[2026-06-27T18:16:55.077Z] P2 disposition 2026-06-27: Finding e9815e5e-321f-48ee-8110-c7a41b546f54 (driver provider artifact check remains count-only) is represented as a non-blocking future suite-hardening follow-up. It does not block this preparatory merge because verify-artifacts.mjs now performs strong provider-run validation for UTSUSHI-231 live evidence; qd gate has no P0/P1 blockers.\n[2026-06-27T18:17:09.187Z] P2 disposition 2026-06-27: Finding a044add0-dcaa-4ead-97f1-4fec418fac39 (main localize recipe does not automatically emit telemetry/verifier artifacts) is represented as a non-blocking future workflow follow-up. It does not block this preparatory merge because the post-run command shape is explicit and verify-artifacts.mjs can validate telemetry-summary.json + provider-run artifacts after the live run; qd gate has no P0/P1 blockers.",
       "check_command": null,
       "ci_command": null,
       "projects": ["suite"],
@@ -39680,7 +39680,7 @@
       "node_id": "UTSUSHI-231",
       "run_id": null,
       "severity": "P1",
-      "status": "open",
+      "status": "resolved",
       "title": "Post-run verifier ignores provider-run artifacts",
       "path": null,
       "line": null,
@@ -39688,14 +39688,14 @@
       "expected": "Verifier joins provider-runs to successful bundle invocations by providerProofId/runId and rejects missing, stale, fake/local, mismatched model/pair, non-ZDR, or non-billed live success artifacts.",
       "suggested_fix": "Extend verify-artifacts.mjs and tests to load provider-runs from run-summary/run dir, validate exactly one matching provider-run artifact per successful invocation, assert run.routingPosture.zdr === true and adapterMetadata.providerRouting.zdr === true, and assert billed cost for live OpenRouter successes.",
       "created_at": "2026-06-27T17:49:56.293Z",
-      "resolved_at": null
+      "resolved_at": "2026-06-27T18:15:43.531Z"
     },
     {
       "id": "d0d65681-c54a-4c73-a32b-754d0ffb3e11",
       "node_id": "UTSUSHI-231",
       "run_id": null,
       "severity": "P1",
-      "status": "open",
+      "status": "resolved",
       "title": "Telemetry proof can pass with stale or mismatched telemetry",
       "path": null,
       "line": null,
@@ -39703,6 +39703,36 @@
       "expected": "Telemetry summary JSON carries projectId/from/to and pair-scoped post-run evidence; verifier asserts the supplied window matches the current run, zdr invocation count equals cost-kind invocation count equals bundle invocation count, all telemetry pairs match invocation/provider artifacts, and every run cost_kind is billed.",
       "suggested_fix": "Extend telemetry summary shape and verifier/tests to include and validate project/window metadata, pair/model counts, count equality with bundle invocations, no stale model IDs, and billed-only cost-kind rows for the run.",
       "created_at": "2026-06-27T17:50:10.930Z",
+      "resolved_at": "2026-06-27T18:15:53.669Z"
+    },
+    {
+      "id": "e9815e5e-321f-48ee-8110-c7a41b546f54",
+      "node_id": "UTSUSHI-231",
+      "run_id": null,
+      "severity": "P2",
+      "status": "open",
+      "title": "Strengthen localize driver provider artifact validation beyond count-only",
+      "path": null,
+      "line": null,
+      "evidence": "Final re-audit: suite/scripts/localize-sweetie-hd/run.mjs still counts provider-runs/*/provider-run.json and only checks artifact count >= invocation count after the stage. The offline verifier now performs strong ID/content validation, but run.mjs itself can still miss stale, duplicate, mismatched, fake/local, non-ZDR, or non-billed artifacts.",
+      "expected": "Driver-side provider artifact validation either calls the same strong verifier logic after telemetry exists or validates providerProofId/runId, live OpenRouter provenance, model/provider pairs, ZDR routing posture, and billed successful live costs instead of only count >= invocation count.",
+      "suggested_fix": "Add a future suite-hardening slice that shares provider-run validation with verify-artifacts.mjs or replaces the count-only check in run.mjs with equivalent ID/content validation.",
+      "created_at": "2026-06-27T18:16:10.122Z",
+      "resolved_at": null
+    },
+    {
+      "id": "a044add0-dcaa-4ead-97f1-4fec418fac39",
+      "node_id": "UTSUSHI-231",
+      "run_id": null,
+      "severity": "P2",
+      "status": "open",
+      "title": "Make Sweetie HD localize workflow self-proving with telemetry and verifier outputs",
+      "path": null,
+      "line": null,
+      "evidence": "Final re-audit: just localize-sweetie-hd still only builds and runs suite/scripts/localize-sweetie-hd/run.mjs. The main recipe does not automatically run telemetry-summary or verify-artifacts.mjs, so a successful live workflow can still omit telemetry-summary.json and post-run-verification.json unless the orchestrator manually runs the post-run commands.",
+      "expected": "The Sweetie HD workflow exposes an explicit post-run recipe or self-proving command path that captures telemetry-summary.json and post-run-verification.json for the run, or prints durable exact post-run commands with run start/end/project metadata.",
+      "suggested_fix": "Add a future suite workflow slice that either extends just localize-sweetie-hd or adds a companion recipe to generate telemetry summary and run verify-artifacts.mjs against the latest run directory.",
+      "created_at": "2026-06-27T18:16:23.405Z",
       "resolved_at": null
     }
   ],
@@ -41766,6 +41796,18 @@
       "node_id": "UTSUSHI-231",
       "text": "ORCHESTRATOR 2026-06-27: Integrated worker commits on qd/UTSUSHI-231 in /scratch/worktrees/itotori-qd-utsushi-231: f26f67d provider-run artifact persistence, c7a09fd telemetry evidence verifier, 7aef05d formatting-only repair. Focused checks passed: app localize-sweetie-hd-stage vitest 24 tests, app telemetry-queries vitest 24 tests, app/db typecheck, suite run.test 5 tests (escalated due sandbox spawnSync EPERM), suite verify-artifacts.test, model-ledger repository vitest 14 tests with tracked DATABASE_URL postgres://itotori:itotori@127.0.0.1:55433/itotori. Full integration 'nix develop --command bash -lc just check' passed in qd worktree. qd check run from scratch worktree failed before executing with prepare failed: no such table: findings; qd bookkeeping must run from initialized main checkout or qd store repair.",
       "created_at": "2026-06-27T17:44:54.080Z"
+    },
+    {
+      "id": "7f6c8fd4-155a-48de-9417-4294ba7f94ea",
+      "node_id": "UTSUSHI-231",
+      "text": "P2 disposition 2026-06-27: Finding e9815e5e-321f-48ee-8110-c7a41b546f54 (driver provider artifact check remains count-only) is represented as a non-blocking future suite-hardening follow-up. It does not block this preparatory merge because verify-artifacts.mjs now performs strong provider-run validation for UTSUSHI-231 live evidence; qd gate has no P0/P1 blockers.",
+      "created_at": "2026-06-27T18:16:55.077Z"
+    },
+    {
+      "id": "b9c5aca6-0528-497c-8fd1-55d6c4473d81",
+      "node_id": "UTSUSHI-231",
+      "text": "P2 disposition 2026-06-27: Finding a044add0-dcaa-4ead-97f1-4fec418fac39 (main localize recipe does not automatically emit telemetry/verifier artifacts) is represented as a non-blocking future workflow follow-up. It does not block this preparatory merge because the post-run command shape is explicit and verify-artifacts.mjs can validate telemetry-summary.json + provider-run artifacts after the live run; qd gate has no P0/P1 blockers.",
+      "created_at": "2026-06-27T18:17:09.187Z"
     }
   ]
 }
