@@ -9361,6 +9361,46 @@ pub struct HelperProcessRunResult {
     pub stderr: HelperProcessOutputSummary,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HelperProcessCapturedOutput {
+    bytes: Vec<u8>,
+    byte_count: u64,
+    truncated: bool,
+}
+
+impl HelperProcessCapturedOutput {
+    fn from_captured(output: &HelperCapturedOutput) -> Self {
+        Self {
+            bytes: output.bytes.clone(),
+            byte_count: output.byte_count,
+            truncated: output.truncated,
+        }
+    }
+
+    pub fn bytes(&self) -> &[u8] {
+        &self.bytes
+    }
+
+    pub fn byte_count(&self) -> u64 {
+        self.byte_count
+    }
+
+    pub fn captured_byte_count(&self) -> u64 {
+        self.bytes.len() as u64
+    }
+
+    pub fn truncated(&self) -> bool {
+        self.truncated
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HelperProcessRunWithOutput {
+    pub report: HelperProcessRunResult,
+    pub stdout: HelperProcessCapturedOutput,
+    pub stderr: HelperProcessCapturedOutput,
+}
+
 impl HelperProcessRunResult {
     pub fn redacted_for_report(&self) -> Self {
         Self {
@@ -9434,30 +9474,37 @@ pub fn run_registered_bounded_helper_process(
     entry: &HelperRegistryEntry,
     request: RegisteredBoundedHelperProcessRequest<'_>,
 ) -> HelperProcessRunResult {
+    run_registered_bounded_helper_process_with_output(entry, request).report
+}
+
+pub fn run_registered_bounded_helper_process_with_output(
+    entry: &HelperRegistryEntry,
+    request: RegisteredBoundedHelperProcessRequest<'_>,
+) -> HelperProcessRunWithOutput {
     let policy_timeout_ms = entry
         .execution_policy
         .max_runtime_seconds
         .saturating_mul(1000);
     let effective_timeout_ms = request.timeout_ms.min(policy_timeout_ms).max(1);
     if entry.execution_policy.mode != HelperExecutionMode::LocalProcess {
-        return helper_process_gate_failure(
+        return helper_process_run_with_empty_output(helper_process_gate_failure(
             entry,
             &request,
             effective_timeout_ms,
             SEMANTIC_HELPER_EXECUTION_DISALLOWED,
             "executionPolicy.mode",
             "helper registry execution policy must be local_process for process launch",
-        );
+        ));
     }
     if request.required_capabilities.is_empty() {
-        return helper_process_gate_failure(
+        return helper_process_run_with_empty_output(helper_process_gate_failure(
             entry,
             &request,
             effective_timeout_ms,
             SEMANTIC_HELPER_REGISTRY_MISSING_CAPABILITY,
             "capabilities",
             "helper process launch requires at least one registered helper capability",
-        );
+        ));
     }
 
     let validation = entry.validate_binary_launch(HelperBinaryLaunchValidationRequest {
@@ -9470,26 +9517,26 @@ pub fn run_registered_bounded_helper_process(
     });
     if validation.status == OperationStatus::Failed {
         if let Some(diagnostic) = validation.diagnostics.first() {
-            return helper_process_gate_failure(
+            return helper_process_run_with_empty_output(helper_process_gate_failure(
                 entry,
                 &request,
                 effective_timeout_ms,
                 &diagnostic.code,
                 &diagnostic.field,
                 &diagnostic.message,
-            );
+            ));
         }
-        return helper_process_gate_failure(
+        return helper_process_run_with_empty_output(helper_process_gate_failure(
             entry,
             &request,
             effective_timeout_ms,
             SEMANTIC_HELPER_UNAVAILABLE,
             "allowlistEntryId",
             "helper binary launch validation failed",
-        );
+        ));
     }
 
-    run_bounded_helper_process(BoundedHelperProcessRequest {
+    run_bounded_helper_process_with_output(BoundedHelperProcessRequest {
         helper_id: request.helper_id,
         executable_path: request.executable_path,
         timeout_ms: effective_timeout_ms,
@@ -9498,7 +9545,14 @@ pub fn run_registered_bounded_helper_process(
     })
 }
 
+#[cfg(test)]
 fn run_bounded_helper_process(request: BoundedHelperProcessRequest<'_>) -> HelperProcessRunResult {
+    run_bounded_helper_process_with_output(request).report
+}
+
+fn run_bounded_helper_process_with_output(
+    request: BoundedHelperProcessRequest<'_>,
+) -> HelperProcessRunWithOutput {
     let started = Instant::now();
     let timeout_ms = request.timeout_ms.max(1);
     let mut execution = HelperExecutionSummary {
@@ -9513,7 +9567,7 @@ fn run_bounded_helper_process(request: BoundedHelperProcessRequest<'_>) -> Helpe
 
     if !fs::metadata(request.executable_path).is_ok_and(|metadata| metadata.is_file()) {
         execution.duration_ms = Some(elapsed_millis_u32(started));
-        return helper_process_report(HelperProcessReport {
+        return helper_process_run_with_empty_output(helper_process_report(HelperProcessReport {
             helper_id: request.helper_id,
             status: OperationStatus::Failed,
             diagnostic: helper_process_diagnostic(
@@ -9528,7 +9582,7 @@ fn run_bounded_helper_process(request: BoundedHelperProcessRequest<'_>) -> Helpe
             terminated: false,
             stdout: HelperProcessOutputSummary::empty(),
             stderr: HelperProcessOutputSummary::empty(),
-        });
+        }));
     }
 
     let mut command = Command::new(request.executable_path);
@@ -9549,22 +9603,24 @@ fn run_bounded_helper_process(request: BoundedHelperProcessRequest<'_>) -> Helpe
         Ok(child) => child,
         Err(_) => {
             execution.duration_ms = Some(elapsed_millis_u32(started));
-            return helper_process_report(HelperProcessReport {
-                helper_id: request.helper_id,
-                status: OperationStatus::Failed,
-                diagnostic: helper_process_diagnostic(
-                    SEMANTIC_HELPER_UNAVAILABLE,
-                    "executable",
-                    "helper process could not be started",
-                ),
-                execution,
-                exit_code: None,
-                timed_out: false,
-                cancelled: false,
-                terminated: false,
-                stdout: HelperProcessOutputSummary::empty(),
-                stderr: HelperProcessOutputSummary::empty(),
-            });
+            return helper_process_run_with_empty_output(helper_process_report(
+                HelperProcessReport {
+                    helper_id: request.helper_id,
+                    status: OperationStatus::Failed,
+                    diagnostic: helper_process_diagnostic(
+                        SEMANTIC_HELPER_UNAVAILABLE,
+                        "executable",
+                        "helper process could not be started",
+                    ),
+                    execution,
+                    exit_code: None,
+                    timed_out: false,
+                    cancelled: false,
+                    terminated: false,
+                    stdout: HelperProcessOutputSummary::empty(),
+                    stderr: HelperProcessOutputSummary::empty(),
+                },
+            ));
         }
     };
 
@@ -9664,7 +9720,7 @@ fn run_bounded_helper_process(request: BoundedHelperProcessRequest<'_>) -> Helpe
         );
     }
 
-    helper_process_report(HelperProcessReport {
+    let report = helper_process_report(HelperProcessReport {
         helper_id: request.helper_id,
         status,
         diagnostic,
@@ -9675,7 +9731,23 @@ fn run_bounded_helper_process(request: BoundedHelperProcessRequest<'_>) -> Helpe
         terminated,
         stdout: stdout_summary,
         stderr: stderr_summary,
-    })
+    });
+    HelperProcessRunWithOutput {
+        report,
+        stdout: HelperProcessCapturedOutput::from_captured(&stdout.output),
+        stderr: HelperProcessCapturedOutput::from_captured(&stderr.output),
+    }
+}
+
+fn helper_process_run_with_empty_output(
+    report: HelperProcessRunResult,
+) -> HelperProcessRunWithOutput {
+    let empty = HelperCapturedOutput::default();
+    HelperProcessRunWithOutput {
+        report,
+        stdout: HelperProcessCapturedOutput::from_captured(&empty),
+        stderr: HelperProcessCapturedOutput::from_captured(&empty),
+    }
 }
 
 fn helper_process_gate_failure(

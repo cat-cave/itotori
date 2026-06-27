@@ -9,7 +9,7 @@ use kaifuu_core::{
     HELPER_REGISTRY_SCHEMA_VERSION, HELPER_RESULT_SCHEMA_VERSION, HelperBinaryLaunchDiagnostic,
     HelperBinaryLaunchValidationRequest, HelperBinaryLaunchValidationResult, HelperCapability,
     HelperExecutionFilesystemAccess, HelperExecutionMode, HelperProcessCancelToken,
-    HelperProcessRunResult, HelperRedactionStatus, HelperRegistryEntry,
+    HelperProcessRunResult, HelperProcessRunWithOutput, HelperRedactionStatus, HelperRegistryEntry,
     HelperRegistryInvocationRequest, HelperResult, KaifuuResult, LocalKeyImportRequest,
     LocalKeyImportSource, LocalSecretDirectoryStore, PartialAdapterCommand,
     PartialAdapterDiagnostic, PartialAdapterInventory, PartialAdapterReport,
@@ -25,9 +25,9 @@ use kaifuu_core::{
     parse_helper_capability, parse_hex_bytes, plain_xp3_writer_capability,
     promote_staged_directory_no_clobber, read_json, read_plain_xp3_archive,
     redact_for_log_or_report, redact_report_value, replace_plain_xp3_entry_payload,
-    run_registered_bounded_helper_process, run_round_trip_golden,
-    run_siglus_known_key_parser_boundary_smoke, sha256_hash_bytes, stable_json,
-    unpack_plain_xp3_to_directory, validate_helper_registry_entry_value,
+    run_registered_bounded_helper_process, run_registered_bounded_helper_process_with_output,
+    run_round_trip_golden, run_siglus_known_key_parser_boundary_smoke, sha256_hash_bytes,
+    stable_json, unpack_plain_xp3_to_directory, validate_helper_registry_entry_value,
     validate_helper_result_value, validate_offset_map_value, validate_profile_value,
     validate_rpg_maker_mv_mz_fixture_key, write_json, xp3_profile_proof,
 };
@@ -1394,7 +1394,7 @@ fn run_helper_run_local_process(
         .map(helper_cancel_token_after_ms)
         .transpose()?;
 
-    let process = run_registered_bounded_helper_process(
+    let process = run_registered_bounded_helper_process_with_output(
         &entry,
         RegisteredBoundedHelperProcessRequest {
             helper_id: &helper_id,
@@ -1409,10 +1409,10 @@ fn run_helper_run_local_process(
         },
     );
 
-    let result = if process.status == kaifuu_core::OperationStatus::Passed {
+    let result = if process.report.status == kaifuu_core::OperationStatus::Passed {
         helper_run_result_from_process_stdout(args, &entry, &helper_id, &process)?
     } else {
-        helper_run_result_from_process_failure(args, &entry, &helper_id, &process)?
+        helper_run_result_from_process_failure(args, &entry, &helper_id, &process.report)?
     };
     let failed = result.diagnostic.code != kaifuu_core::HelperDiagnosticCode::Success;
     atomic_write_text(output, &result.stable_json()?)?;
@@ -1438,9 +1438,10 @@ fn helper_run_result_from_process_stdout(
     args: &[String],
     entry: &HelperRegistryEntry,
     helper_id: &str,
-    process: &HelperProcessRunResult,
+    process: &HelperProcessRunWithOutput,
 ) -> Result<HelperResult, Box<dyn std::error::Error>> {
-    let value = match serde_json::from_str::<serde_json::Value>(&process.stdout.redacted_text) {
+    let report = &process.report;
+    let value = match serde_json::from_slice::<serde_json::Value>(process.stdout.bytes()) {
         Ok(value) => value,
         Err(_) => {
             return helper_run_diagnostic_result(
@@ -1448,16 +1449,16 @@ fn helper_run_result_from_process_stdout(
                 Some(entry),
                 helper_id,
                 &entry.helper_version,
-                &process.execution.platform,
-                process.execution.timeout_ms,
+                &report.execution.platform,
+                report.execution.timeout_ms,
                 "validation_failed",
                 "kaifuu.helper_malformed_output: helper stdout was not a valid redacted HelperResult JSON document",
-                &process.stdout.redacted_sha256,
-                Some(process),
+                &helper_run_redacted_captured_hash(process.stdout.bytes()),
+                Some(report),
             );
         }
     };
-    let result = match normalize_helper_result_value(&value) {
+    let mut result = match normalize_helper_result_value(&value) {
         Ok(result) => result,
         Err(_) => {
             return helper_run_diagnostic_result(
@@ -1465,15 +1466,17 @@ fn helper_run_result_from_process_stdout(
                 Some(entry),
                 helper_id,
                 &entry.helper_version,
-                &process.execution.platform,
-                process.execution.timeout_ms,
+                &report.execution.platform,
+                report.execution.timeout_ms,
                 "validation_failed",
                 "kaifuu.helper_malformed_output: helper stdout failed the HelperResult contract",
-                &process.stdout.redacted_sha256,
-                Some(process),
+                &helper_run_redacted_captured_hash(process.stdout.bytes()),
+                Some(report),
             );
         }
     };
+    result.execution.filesystem_access = report.execution.filesystem_access;
+    result.execution.network_access = report.execution.network_access;
     if result.helper.helper_id != entry.helper_id
         || result.helper.helper_version != entry.helper_version
     {
@@ -1482,12 +1485,12 @@ fn helper_run_result_from_process_stdout(
             Some(entry),
             helper_id,
             &entry.helper_version,
-            &process.execution.platform,
-            process.execution.timeout_ms,
+            &report.execution.platform,
+            report.execution.timeout_ms,
             "helper_authorization_denied",
             "helper output provenance did not match the selected hash-pinned profile",
-            &process.stdout.redacted_sha256,
-            Some(process),
+            &helper_run_redacted_captured_hash(process.stdout.bytes()),
+            Some(report),
         );
     }
     Ok(result)
@@ -1547,13 +1550,17 @@ fn helper_run_diagnostic_result(
     } else {
         "platformHelper"
     };
-    let network_access = entry
-        .map(|entry| entry.execution_policy.network_access)
-        .or_else(|| process.map(|process| process.execution.network_access))
+    let network_access = process
+        .map(|process| process.execution.network_access)
+        .or_else(|| entry.map(|entry| entry.execution_policy.network_access))
         .unwrap_or(false);
-    let filesystem_access = entry
-        .map(|entry| helper_result_filesystem_access(entry.execution_policy.filesystem_access))
-        .or_else(|| process.map(|process| process.execution.filesystem_access))
+    let filesystem_access = process
+        .map(|process| process.execution.filesystem_access)
+        .or_else(|| {
+            entry.map(|entry| {
+                helper_result_filesystem_access(entry.execution_policy.filesystem_access)
+            })
+        })
         .unwrap_or(HelperExecutionFilesystemAccess::LocalGameReadOnly);
     let duration_ms = process
         .and_then(|process| process.execution.duration_ms)
@@ -1639,6 +1646,12 @@ fn helper_run_redacted_log_hash(process: &HelperProcessRunResult) -> String {
         "terminated": process.terminated
     });
     sha256_hash_bytes(summary.to_string().as_bytes())
+}
+
+fn helper_run_redacted_captured_hash(bytes: &[u8]) -> String {
+    let text = String::from_utf8_lossy(bytes);
+    let redacted = redact_for_log_or_report(&text);
+    sha256_hash_bytes(redacted.as_bytes())
 }
 
 fn helper_cancel_token_after_ms(
@@ -2910,6 +2923,7 @@ printf 'not-json /home/dev/private-game 00112233445566778899aabbccddeeff'
                 .contains("kaifuu.helper_malformed_output")
         );
         assert_eq!(report["redaction"]["status"], "redacted");
+        assert_eq!(report["execution"]["filesystemAccess"], "hostInherited");
         assert!(report.get("stdout").is_none());
         assert!(report.get("stderr").is_none());
         let serialized = fs::read_to_string(&output).unwrap();
@@ -2920,6 +2934,98 @@ printf 'not-json /home/dev/private-game 00112233445566778899aabbccddeeff'
         ] {
             assert!(!serialized.contains(forbidden), "{forbidden} leaked");
         }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn helper_run_local_success_parses_full_stdout_before_summary_truncation() {
+        let root = temp_dir("helper-run-local-long-success");
+        let helper = root.join("helper-stub");
+        let output = root.join("helper-result.json");
+        let long_message = "fixture-helper-success ".repeat(80);
+        let helper_result = serde_json::json!({
+            "schemaVersion": "0.1.0",
+            "fixtureId": "kaifuu-helper-long-success",
+            "helperResultId": "helper-result-kaifuu-helper-long-success",
+            "profileId": "019ed000-0000-7000-8000-profile00086",
+            "helper": {
+                "helperId": "kaifuu.fixture.process-stub",
+                "helperVersion": "0.1.0",
+                "helperKind": "staticParser"
+            },
+            "capabilityLevel": "staticAnalysis",
+            "execution": {
+                "mode": "inProcess",
+                "platform": "fixture-static",
+                "bounded": true,
+                "timeoutMs": 1000,
+                "durationMs": 0,
+                "networkAccess": false,
+                "filesystemAccess": "none"
+            },
+            "diagnostic": {
+                "code": "success",
+                "message": long_message
+            },
+            "redaction": {
+                "status": "redacted",
+                "redactedLogHash": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+            },
+            "secretRefs": [
+                {
+                    "requirementId": "fixture-long-success-key",
+                    "secretRef": "local-secret:fixture/helper/long-success-key",
+                    "materialKind": "fixedBytes",
+                    "bytes": 16,
+                    "validation": {
+                        "method": "fixtureRoundTripProof",
+                        "proofHash": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+                    }
+                }
+            ],
+            "proofHashes": [
+                {
+                    "method": "fixtureRoundTripProof",
+                    "proofHash": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+                }
+            ]
+        });
+        let helper_result_text = serde_json::to_string_pretty(&helper_result).unwrap();
+        assert!(
+            helper_result_text.len() > 1024,
+            "fixture must exceed HelperProcessOutputSummary.redactedText limit"
+        );
+        write_executable_stub(
+            &helper,
+            &format!(
+                r#"#!/bin/sh
+cat <<'JSON'
+{helper_result_text}
+JSON
+"#
+            ),
+        );
+        let registry = write_process_helper_registry_entry(&root, &helper);
+
+        run_with_args(allowlisted_helper_run_args(&registry, &helper, &output)).unwrap();
+
+        let report: serde_json::Value = read_json(&output).unwrap();
+        assert_eq!(report["diagnostic"]["code"], "success");
+        assert_eq!(
+            report["secretRefs"][0]["secretRef"],
+            "local-secret:fixture/helper/long-success-key"
+        );
+        assert_eq!(
+            report["proofHashes"][0]["proofHash"],
+            "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+        );
+        assert_eq!(report["execution"]["filesystemAccess"], "hostInherited");
+        assert!(report.get("stdout").is_none());
+        assert!(report.get("stderr").is_none());
+        assert_eq!(
+            validate_helper_result_value(&report).status,
+            OperationStatus::Passed
+        );
     }
 
     #[test]
