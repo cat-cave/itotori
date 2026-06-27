@@ -385,7 +385,7 @@ function assertCatalogOpportunityRow(value: unknown, label: string): void {
     ["owned", "not_owned", "unknown"] as const,
     `${label}.localOwnership`,
   );
-  assertNonNegativeInteger(row.localEvidenceCount, `${label}.localEvidenceCount`);
+  assertNonNegativeNumber(row.localEvidenceCount, `${label}.localEvidenceCount`);
   assertEnum(
     row.marketPrevalence,
     [
@@ -420,15 +420,18 @@ function assertCatalogOpportunityRuntimeEvidenceReadiness(value: unknown, label:
       "public_and_aggregate",
       "public_fixture",
       "private_local_aggregate",
+      "partial_public_and_aggregate",
+      "partial_public_fixture",
+      "partial_private_local_aggregate",
       "unknown",
     ] as CatalogOpportunityRuntimeEvidenceSignal[],
     `${label}.status`,
   );
-  assertNonNegativeInteger(
+  assertNonNegativeNumber(
     readiness.publicFixtureEvidenceCount,
     `${label}.publicFixtureEvidenceCount`,
   );
-  assertNonNegativeInteger(
+  assertNonNegativeNumber(
     readiness.privateLocalAggregateEvidenceCount,
     `${label}.privateLocalAggregateEvidenceCount`,
   );

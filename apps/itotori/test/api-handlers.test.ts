@@ -427,6 +427,45 @@ describe("Itotori API handlers", () => {
     ]);
   });
 
+  it("accepts catalog opportunity rows with partial runtime evidence readiness and fractional evidence counts", async () => {
+    const services = serviceFixture();
+    const readinessStates = [
+      {
+        status: "partial_public_and_aggregate",
+        publicFixtureEvidenceCount: 0.5,
+        privateLocalAggregateEvidenceCount: 0.5,
+      },
+      {
+        status: "partial_public_fixture",
+        publicFixtureEvidenceCount: 0.5,
+        privateLocalAggregateEvidenceCount: 0,
+      },
+      {
+        status: "partial_private_local_aggregate",
+        publicFixtureEvidenceCount: 0,
+        privateLocalAggregateEvidenceCount: 0.5,
+      },
+    ];
+    const body = {
+      ...catalogOpportunitiesFixture,
+      rows: readinessStates.map((runtimeEvidenceReadiness, index) => ({
+        ...catalogOpportunitiesFixture.rows[0]!,
+        rank: index + 1,
+        workId: `work-opportunity-partial-${index + 1}`,
+        localEvidenceCount: 0.5,
+        runtimeEvidenceReadiness,
+      })),
+    } as unknown as typeof catalogOpportunitiesFixture;
+    services.catalogRepository.catalogOpportunityRanking.mockResolvedValueOnce(body);
+
+    const response = await handleItotoriApiRequest(
+      { method: "GET", pathname: "/api/catalog/opportunities" },
+      services,
+    );
+
+    expect(response).toEqual({ statusCode: 200, body });
+  });
+
   it.each([
     {
       query: "?targetLanguage=",
