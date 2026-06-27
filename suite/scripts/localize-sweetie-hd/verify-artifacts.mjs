@@ -172,6 +172,19 @@ function providerRunStartedAtMs(providerRun, label) {
   return parsed;
 }
 
+function providerRunEndedAtMs(providerRun, label) {
+  for (const field of ["completedAt", "endedAt", "endAt", "finishedAt"]) {
+    if (providerRun[field] === undefined) continue;
+    const endedAt = assertNonEmptyString(providerRun[field], `${label}.run.${field}`);
+    const parsed = Date.parse(endedAt);
+    if (!Number.isFinite(parsed)) {
+      throw new Error(`${label}.run.${field} must be an ISO timestamp`);
+    }
+    return parsed;
+  }
+  return undefined;
+}
+
 function verifyProviderRunArtifacts(args) {
   const { providerRunArtifactsDir, invocations, expectedModelId, expectedProviderId } = args;
   const artifacts = readProviderRunArtifacts(providerRunArtifactsDir);
@@ -235,6 +248,7 @@ function verifyProviderRunArtifacts(args) {
   }
 
   const runStartedAtMs = [];
+  const runEndedAtMs = [];
   for (const [runId, { path, artifact, run }] of artifactByRunId.entries()) {
     const invocation = expectedByRunId.get(runId);
     const provider = assertObject(run.provider, `provider-run artifact ${path}.run.provider`);
@@ -309,11 +323,16 @@ function verifyProviderRunArtifacts(args) {
       );
     }
     runStartedAtMs.push(providerRunStartedAtMs(run, `provider-run artifact ${path}`));
+    const endedAtMs = providerRunEndedAtMs(run, `provider-run artifact ${path}`);
+    if (endedAtMs !== undefined) {
+      runEndedAtMs.push(endedAtMs);
+    }
   }
 
   return {
     artifacts,
     runStartedAtMs,
+    runEndedAtMs,
   };
 }
 
@@ -338,7 +357,15 @@ function telemetryMetadata(telemetrySummary) {
   if (!Number.isFinite(Date.parse(generatedAt))) {
     throw new Error("telemetry-summary.metadata.generatedAt must be an ISO timestamp");
   }
-  return { projectId, from, to, fromMs, toMs };
+  return {
+    projectId,
+    from,
+    to,
+    fromMs,
+    toMs,
+    generatedAt,
+    generatedAtMs: Date.parse(generatedAt),
+  };
 }
 
 function countsByPair(invocations) {
@@ -402,6 +429,7 @@ function verifyTelemetry(args) {
     expectedPairCounts,
     expectedModelId,
     providerRunStartedAtMs,
+    providerRunEndedAtMs,
     expectedProjectId,
   } = args;
   const metadata = telemetryMetadata(telemetrySummary);
@@ -414,6 +442,15 @@ function verifyTelemetry(args) {
     if (startedAtMs < metadata.fromMs || startedAtMs > metadata.toMs) {
       throw new Error("telemetry window does not cover provider-run timestamps");
     }
+  }
+  const freshnessFloorMs =
+    providerRunEndedAtMs.length > 0
+      ? Math.max(...providerRunEndedAtMs)
+      : Math.max(...providerRunStartedAtMs);
+  if (metadata.generatedAtMs < freshnessFloorMs) {
+    throw new Error(
+      "telemetry summary generatedAt is stale relative to provider-run timestamps",
+    );
   }
   if (JSON.stringify(telemetrySummary).includes(OLD_MODEL_ID)) {
     throw new Error(`telemetry summary contains stale modelId ${OLD_MODEL_ID}`);
@@ -578,6 +615,7 @@ export function verify(args) {
     expectedPairCounts: countsByPair(invocations),
     expectedModelId: modelId,
     providerRunStartedAtMs: providerProof.runStartedAtMs,
+    providerRunEndedAtMs: providerProof.runEndedAtMs,
     expectedProjectId:
       typeof runSummary.project === "string" && runSummary.project.length > 0
         ? runSummary.project

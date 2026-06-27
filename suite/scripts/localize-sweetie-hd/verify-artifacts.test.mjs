@@ -129,6 +129,43 @@ test("verify-artifacts rejects stale telemetry windows", () => {
   assert.match(childOutput(result), /telemetry window does not cover provider-run timestamps/u);
 });
 
+test("verify-artifacts rejects telemetry summaries generated before provider-run completion", () => {
+  const fixture = createFixture({
+    telemetryPatch: {
+      metadata: {
+        generatedAt: "2026-06-27T12:00:00.500Z",
+      },
+    },
+  });
+  const result = runVerifier(fixture);
+
+  assert.notEqual(result.status, 0);
+  assert.match(
+    childOutput(result),
+    /telemetry summary generatedAt is stale relative to provider-run timestamps/u,
+  );
+});
+
+test("verify-artifacts rejects telemetry summaries generated before provider-run start when no end timestamp exists", () => {
+  const providerArtifact = providerRunArtifact();
+  delete providerArtifact.run.completedAt;
+  const fixture = createFixture({
+    providerArtifacts: [providerArtifact],
+    telemetryPatch: {
+      metadata: {
+        generatedAt: "2026-06-27T11:59:59.999Z",
+      },
+    },
+  });
+  const result = runVerifier(fixture);
+
+  assert.notEqual(result.status, 0);
+  assert.match(
+    childOutput(result),
+    /telemetry summary generatedAt is stale relative to provider-run timestamps/u,
+  );
+});
+
 test("verify-artifacts rejects telemetry rows with stale model IDs", () => {
   const stalePair = `${OLD_MODEL_ID}:${PROVIDER_ID}`;
   const fixture = createFixture({
