@@ -37,7 +37,7 @@
           export COREPACK_HOME="$PWD/.corepack"
           mkdir -p "$COREPACK_HOME/bin"
           corepack enable --install-directory "$COREPACK_HOME/bin" pnpm 2>/dev/null || true
-          export PATH="$COREPACK_HOME/bin:$PATH"
+          export PATH="$PWD/bin:$COREPACK_HOME/bin:$PATH"
           echo "itotori devshell — rust $(rustc --version | cut -d\  -f2), node $(node -v); CARGO_TARGET_DIR=$CARGO_TARGET_DIR"
         '';
       };

@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "exported_at": "2026-06-27T02:16:23.447Z",
+  "exported_at": "2026-06-27T04:09:40.351Z",
   "registries": {
     "groups": [
       {
@@ -40989,6 +40989,18 @@
       "started_at": "2026-06-27T02:09:19.251Z",
       "finished_at": "2026-06-27T02:09:19.251Z",
       "summary": "Merge recorded with squash at commit 6a231f0896181eeb7fc03280a4ebfa1ae58a0fe3",
+      "log_path": null
+    },
+    {
+      "id": "7ffce8d8-729b-4b4f-900a-0cea996a1096",
+      "node_id": "CATALOG-003",
+      "kind": "audit",
+      "status": "cancelled",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-27T01:14:26.229Z",
+      "finished_at": "2026-06-27T04:09:31.567Z",
+      "summary": "Audit run cancelled: Stale audit worker run was left open after CATALOG-003 had already been completed and merged; closing it as abandoned lifecycle state so gate decisions cannot ignore unfinished audits.",
       "log_path": null
     }
   ],
