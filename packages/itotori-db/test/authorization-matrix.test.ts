@@ -120,6 +120,16 @@ const repositoryPermissionGateMatrix = [
         to: new Date("2026-06-30T00:00:00Z"),
       }),
   ),
+  modelLedgerGate(
+    "countCostKindsByPair",
+    "catalogRead",
+    "model-ledger-repository.test.ts cost kind count coverage",
+    (repo) =>
+      repo.countCostKindsByPair(deniedActor, "project-denied", {
+        from: new Date("2026-06-01T00:00:00Z"),
+        to: new Date("2026-06-30T00:00:00Z"),
+      }),
+  ),
   queueGate(
     "appendOutboxEvent",
     "queueManage",
@@ -973,6 +983,12 @@ describe("repository permission gate matrix", () => {
           "mutation": "ItotoriModelLedgerRepository.countZdrEnforcedByPair",
           "requiredPermission": "catalog.read",
           "successFixture": "model-ledger-repository.test.ts ZDR-enforced count coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriModelLedgerRepository.countCostKindsByPair",
+          "requiredPermission": "catalog.read",
+          "successFixture": "model-ledger-repository.test.ts cost kind count coverage",
         },
         {
           "denialFixture": "missing permission actor user-without-required-permission",
