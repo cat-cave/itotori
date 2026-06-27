@@ -8169,22 +8169,22 @@ wait
     }
 
     /// KAIFUU-038 multi-game validation — exercise the proof against real
-    /// KiriKiri XP3 bytes when the engine-research scratch directory is
-    /// populated. Following the "multi-game validation" memory rule and
+    /// KiriKiri XP3 bytes when optional corpus roots are configured.
+    /// Following the "multi-game validation" memory rule and
     /// the spec's `KiriKiri research-only anchor; no vendored decryption
     /// code` load-bearing rule: this test reads, classifies, and emits
     /// the redacted proof; it never decrypts, never extracts, and never
     /// claims patch-back on archives whose index cannot be inventoried by
     /// the KAIFUU-095 plain reader.
     ///
-    /// The test no-ops when the real-bytes corpus is not mounted (CI
-    /// without /scratch/itotori-research/) — public CI is satisfied by
-    /// the synthetic fixtures above.
+    /// The test no-ops when `ITOTORI_REAL_GAME_ROOT_KIRIKIRI_PLAIN`
+    /// and `ITOTORI_REAL_GAME_ROOT_KIRIKIRI_ENCRYPTED` are unset; public
+    /// CI is satisfied by the synthetic fixtures above.
     #[test]
     fn xp3_profile_proof_command_real_bytes_kirikiri_corpus_when_available() {
-        // Two real KiriKiri games. Both wear the XP3 plain magic, but the
-        // KAIFUU-095 plain inventory reader only handles flag=0 (plain
-        // index encoding) and rejects everything else as
+        // Two optional real KiriKiri game roots. Both wear the XP3 plain
+        // magic, but the KAIFUU-095 plain inventory reader only handles
+        // flag=0 (plain index encoding) and rejects everything else as
         // UnsupportedEncrypted. In practice these games carry compressed
         // or encrypted directories, so the proof routes them to the
         // `Encrypted` taxonomy and refuses to claim patch_back. This is
@@ -8192,21 +8192,25 @@ wait
         // produce a patch_back capability claim.
         let real_cases: &[(&str, &str)] = &[
             (
-                "/scratch/itotori-research/kirikiri-plain/extracted/Cum on! Bukkake Ranch! ver.1.03e [English-Uncen]/data.xp3",
-                "kaifuu-real-kirikiri-bukkake-ranch",
+                "ITOTORI_REAL_GAME_ROOT_KIRIKIRI_PLAIN",
+                "kaifuu-real-kirikiri-plain-corpus",
             ),
             (
-                "/scratch/itotori-research/kirikiri-encrypted/extracted/How to Raise a Wolf Girl/data.xp3",
-                "kaifuu-real-kirikiri-wolf-girl",
+                "ITOTORI_REAL_GAME_ROOT_KIRIKIRI_ENCRYPTED",
+                "kaifuu-real-kirikiri-encrypted-corpus",
             ),
         ];
 
         let mut exercised = 0u32;
-        for (archive_path, fixture_id) in real_cases {
-            let archive = Path::new(archive_path);
-            if !archive.is_file() {
+        for (env_var, fixture_id) in real_cases {
+            let Some(game_root) = std::env::var_os(env_var) else {
                 continue;
-            }
+            };
+            let archive = PathBuf::from(game_root).join("data.xp3");
+            assert!(
+                archive.is_file(),
+                "{env_var} must point to a KiriKiri game root containing data.xp3"
+            );
             exercised += 1;
 
             let root = temp_dir(&format!("xp3-real-bytes-{fixture_id}"));
@@ -8214,7 +8218,7 @@ wait
             // real archive — the proof's path validator rejects absolute
             // paths so we must hand it a relative archive reference.
             let archive_link = root.join("archive.xp3");
-            std::os::unix::fs::symlink(archive, &archive_link).unwrap();
+            std::os::unix::fs::symlink(&archive, &archive_link).unwrap();
             let fixture_path = root.join("fixture.json");
             let fixture_body = serde_json::json!({
                 "schemaVersion": "0.1.0",
@@ -8240,7 +8244,7 @@ wait
             // archive whose index the KAIFUU-095 reader cannot inventory.
             assert_ne!(
                 report["patchCapabilityLevel"], "patch_back",
-                "real-bytes archive {archive_path} must never claim patch_back"
+                "configured real-bytes archive must never claim patch_back"
             );
             // Patch-write attempted is always false — the proof never
             // writes patched bytes.
@@ -8251,15 +8255,17 @@ wait
 
             // The absolute path must not be echoed in the report.
             let serialized = fs::read_to_string(&output).unwrap();
-            assert!(
-                !serialized.contains(*archive_path),
-                "real-bytes absolute path leaked into report: {serialized}"
-            );
+            if let Some(archive_path) = archive.to_str() {
+                assert!(
+                    !serialized.contains(archive_path),
+                    "configured real-bytes archive path leaked into report"
+                );
+            }
 
             let _ = fs::remove_dir_all(root);
         }
 
-        // Public CI without the scratch corpus is fine — the synthetic
+        // Public CI without the optional corpus is fine — the synthetic
         // tests cover correctness; this test only adds *additional* signal
         // when real bytes are available. Logging via println!() makes the
         // exercised count visible in `cargo test -- --nocapture`.
@@ -8744,34 +8750,35 @@ wait
     }
 
     /// KAIFUU-039 multi-game validation — exercise the proof against
-    /// real RPG Maker MV/MZ media bytes when the engine-research scratch
-    /// directory is populated. Following the "multi-game validation"
+    /// real RPG Maker MV/MZ media bytes when an optional corpus root is
+    /// configured. Following the "multi-game validation"
     /// memory rule and the spec's research-only anchor (commercial
     /// product; no vendored decryption code, no key extraction): the
     /// test reads, classifies, and emits the redacted readiness report;
     /// it never decrypts, never extracts, and never claims patch_back
     /// or script capability on real bytes.
     ///
-    /// The test no-ops when the real-bytes corpus is not mounted
-    /// (public CI without /scratch/itotori-research/) — the synthetic
-    /// fixtures above are the load-bearing correctness coverage.
+    /// The test no-ops when `ITOTORI_REAL_GAME_ROOT_RPG_MAKER_MV_MZ`
+    /// is unset; the synthetic fixtures above are the load-bearing
+    /// correctness coverage.
     #[test]
     fn encrypted_media_proof_command_real_bytes_rpgmaker_corpus_when_available() {
-        let real_root =
-            Path::new("/scratch/itotori-research/rpg-maker-mv-mz/extracted/LustMemory/www");
-        if !real_root.is_dir() {
-            println!("KAIFUU-039 real-bytes corpus not mounted; skipping");
+        let Some(real_root) = std::env::var_os("ITOTORI_REAL_GAME_ROOT_RPG_MAKER_MV_MZ") else {
+            println!("KAIFUU-039 ITOTORI_REAL_GAME_ROOT_RPG_MAKER_MV_MZ unset; skipping");
             return;
-        }
+        };
+        let real_root = PathBuf::from(real_root);
+        assert!(
+            real_root.is_dir(),
+            "ITOTORI_REAL_GAME_ROOT_RPG_MAKER_MV_MZ must point to an RPG Maker MV/MZ www root"
+        );
         let title_asset = real_root.join("img/sv_actors/Actor1_1.rpgmvp");
         let theme_asset = real_root.join("audio/bgm/Battle1.rpgmvo");
         let system_json = real_root.join("data/System.json");
-        // If any of the expected real-bytes anchors is missing, no-op
-        // rather than fail public CI.
-        if !title_asset.is_file() || !theme_asset.is_file() || !system_json.is_file() {
-            println!("KAIFUU-039 real-bytes corpus partial; skipping");
-            return;
-        }
+        assert!(
+            title_asset.is_file() && theme_asset.is_file() && system_json.is_file(),
+            "ITOTORI_REAL_GAME_ROOT_RPG_MAKER_MV_MZ is missing required RPG Maker MV/MZ anchors"
+        );
 
         let root = temp_dir("encrypted-media-real-bytes");
         // The proof's path validator rejects absolute paths so we
@@ -8791,7 +8798,7 @@ wait
         let fixture_path = root.join("fixture.json");
         let fixture_body = serde_json::json!({
             "schemaVersion": "0.1.0",
-            "fixtureId": "kaifuu-real-rpgmaker-lust-memory",
+            "fixtureId": "kaifuu-real-rpgmaker-mv-mz-corpus",
             "profileId": "019ed000-0000-7000-8000-000000039999",
             "gameDir": "game",
             "assets": [
@@ -8853,16 +8860,17 @@ wait
 
         // Absolute real-bytes path must not leak into the report.
         let serialized = fs::read_to_string(&output).unwrap();
-        assert!(
-            !serialized.contains("/scratch/itotori-research"),
-            "real-bytes absolute path leaked into report: {serialized}",
-        );
+        if let Some(real_root_text) = real_root.to_str() {
+            assert!(
+                !serialized.contains(real_root_text),
+                "configured real-bytes root leaked into report",
+            );
+        }
 
         // The encryption key from real-bytes System.json must not leak
-        // into the report (we only emit the proof hash). Real-bytes
-        // LustMemory System.json uses `d41d8cd98f00b204e9800998ecf8427e`
-        // (the MD5 of empty string) as a permissive placeholder — but
-        // any 32-hex token would be unsafe to surface.
+        // into the report (we only emit the proof hash). Some real
+        // corpora use permissive placeholder keys, but any
+        // 32-hex token would be unsafe to surface.
         if let Ok(system_json_text) = fs::read_to_string(&system_json)
             && let Ok(value) = serde_json::from_str::<serde_json::Value>(&system_json_text)
             && let Some(real_key) = value.get("encryptionKey").and_then(|v| v.as_str())
@@ -8873,7 +8881,7 @@ wait
             );
         }
 
-        println!("KAIFUU-039 real-bytes corpus exercised LustMemory");
+        println!("KAIFUU-039 real-bytes corpus exercised configured RPG Maker MV/MZ root");
         let _ = fs::remove_dir_all(root);
     }
 }

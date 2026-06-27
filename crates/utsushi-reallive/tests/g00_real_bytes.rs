@@ -39,8 +39,7 @@
 //! (`docs/orchestration-operating-model.md`), a parser that targets a
 //! real engine substrate must be exercised against at least two real
 //! corpora before its node is merged-complete. Sweetie HD is the only
-//! RealLive title currently staged under
-//! `/scratch/itotori-research/`. The g00 module mirrors the pattern
+//! RealLive title currently staged. The g00 module mirrors the pattern
 //! its UTSUSHI-201/202/203 sibling parsers landed: real-bytes pinned
 //! against the only staged corpus today, with the second-corpus
 //! follow-up tracked as a known gap. The commit message records the

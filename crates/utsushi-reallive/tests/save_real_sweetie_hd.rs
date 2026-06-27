@@ -4,8 +4,7 @@
 //! This file is **env-gated**: the assertions only run when the
 //! environment variable `ITOTORI_REAL_GAME_ROOT` is set, pointing
 //! at the audit-grade Sweetie HD extraction root (the parent of the
-//! game-title directory, e.g.
-//! `/scratch/itotori-research/sweetie-hd/extracted`). The presence of
+//! game-title directory). The presence of
 //! that env var is the same gate used elsewhere in the workspace for
 //! "real Shift-JIS save bytes are available locally".
 //!

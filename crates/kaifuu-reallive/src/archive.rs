@@ -3,8 +3,8 @@
 //! This module parses the **real RealLive 10,000-slot fixed-offset-table
 //! envelope** used by every RealLive title since AVG32, as documented at
 //! `docs/research/reallive-engine.md` §C and confirmed against the
-//! Sweetie HD `REALLIVEDATA/Seen.txt` bytes at
-//! `/scratch/itotori-research/sweetie-hd/extracted` per
+//! Sweetie HD `REALLIVEDATA/Seen.txt` bytes supplied via
+//! `ITOTORI_REAL_GAME_ROOT` per
 //! `docs/audits/real-bytes-validation-2026-06-24.md` §2.8.
 //!
 //! Layout (KAIFUU-188):

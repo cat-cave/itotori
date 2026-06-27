@@ -180,7 +180,7 @@ const NODES = [
       {
         type: "command",
         value:
-          "ITOTORI_REAL_GAME_ROOT=/scratch/itotori-research/sweetie-hd/extracted cargo test -p utsushi-core engine_port_sinks_bridge_real_bytes -- --include-ignored",
+          "ITOTORI_REAL_GAME_ROOT=<reallive-game-root> cargo test -p utsushi-core engine_port_sinks_bridge_real_bytes -- --include-ignored",
       },
     ],
     auditFocus: [
@@ -221,12 +221,12 @@ const NODES = [
       {
         type: "command",
         value:
-          "ITOTORI_REAL_GAME_ROOT=/scratch/itotori-research/sweetie-hd/extracted cargo test -p utsushi-core input_area_hit_real_bytes -- --include-ignored",
+          "ITOTORI_REAL_GAME_ROOT=<reallive-game-root> cargo test -p utsushi-core input_area_hit_real_bytes -- --include-ignored",
       },
       {
         type: "manual",
         value:
-          "Second RealLive title sourced and staged at /scratch/itotori-research/<game>/extracted before completion can be approved",
+          "Second RealLive title sourced and supplied via ITOTORI_REAL_GAME_ROOT_SECOND_REALLIVE before completion can be approved",
       },
     ],
     auditFocus: [
@@ -268,7 +268,7 @@ const NODES = [
       {
         type: "command",
         value:
-          "ITOTORI_REAL_GAME_ROOT=/scratch/itotori-research/sweetie-hd/extracted cargo test -p utsushi-core layer_composition_real_bytes -- --include-ignored",
+          "ITOTORI_REAL_GAME_ROOT=<reallive-game-root> cargo test -p utsushi-core layer_composition_real_bytes -- --include-ignored",
       },
       {
         type: "manual",

@@ -58,8 +58,8 @@ Encrypted-suffix coverage:
 
 ## Real-bytes corpus (optional)
 
-When `/scratch/itotori-research/rpg-maker-mv-mz/extracted/<game>/www/`
-is mounted, the CLI test
+When `ITOTORI_REAL_GAME_ROOT_RPG_MAKER_MV_MZ` points at a real RPG Maker
+MV/MZ `www/` root, the CLI test
 `encrypted_media_proof_command_real_bytes_rpgmaker_corpus_when_available`
 walks the corpus and asserts that:
 

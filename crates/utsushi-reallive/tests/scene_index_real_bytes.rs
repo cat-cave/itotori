@@ -1,8 +1,8 @@
 //! UTSUSHI-201 real-bytes integration test for the `utsushi-reallive`
 //! 10,000-slot `Seen.txt` directory parser.
 //!
-//! Anchors the parser against the Sweetie HD corpus (the only RealLive
-//! corpus currently staged under `/scratch/itotori-research/`) and
+//! Anchors the parser against the Sweetie HD corpus supplied via
+//! `ITOTORI_REAL_GAME_ROOT` and
 //! re-uses the format invariants documented in
 //! `docs/research/reallive-engine.md` §D plus
 //! `docs/audits/real-bytes-validation-2026-06-24.md` §2.8.

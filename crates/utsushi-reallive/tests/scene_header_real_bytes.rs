@@ -1,8 +1,8 @@
 //! UTSUSHI-202 real-bytes integration test for the `utsushi-reallive`
 //! 0x1d0-byte scene header decoder.
 //!
-//! Pins the typed header parser against the Sweetie HD corpus (the only
-//! RealLive corpus currently staged under `/scratch/itotori-research/`)
+//! Pins the typed header parser against the Sweetie HD corpus supplied
+//! via `ITOTORI_REAL_GAME_ROOT`
 //! using the documented field values from
 //! `docs/research/reallive-engine.md` §D plus the directory offsets
 //! confirmed by UTSUSHI-201's

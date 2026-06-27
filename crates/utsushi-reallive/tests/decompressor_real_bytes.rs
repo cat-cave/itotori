@@ -1,8 +1,8 @@
 //! UTSUSHI-203 real-bytes integration test for the AVG32 LZSS + XOR
 //! scene decompressor.
 //!
-//! Pins the decompressor against the Sweetie HD corpus (the only
-//! RealLive corpus currently staged under `/scratch/itotori-research/`)
+//! Pins the decompressor against the Sweetie HD corpus supplied via
+//! `ITOTORI_REAL_GAME_ROOT`
 //! using the documented decompressed-output values from
 //! `docs/research/reallive-sweetie-hd-encryption-mechanism.md`
 //! (outcome A: no second-level XOR for Sukara-branch titles).

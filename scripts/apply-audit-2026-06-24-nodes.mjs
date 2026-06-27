@@ -60,7 +60,7 @@ function validateAgainstSchema(dag, schema, label) {
 // -----------------------------------------------------------------------------
 
 const REALLIVEDATA_PATH_NOTE =
-  "Sweetie HD root: /scratch/itotori-research/sweetie-hd/extracted/オシオキSweetie＋Sweets!! HD_DL版/REALLIVEDATA/";
+  "Sweetie HD root: <reallive-game-root>/REALLIVEDATA/";
 
 /** @type {Array<object>} */
 const NEW_NODES = [
@@ -96,7 +96,7 @@ const NEW_NODES = [
       {
         type: "command",
         value:
-          "KAIFUU_PROBE_SEEN_TXT=/scratch/itotori-research/sweetie-hd/extracted/オシオキSweetie＋Sweets!! HD_DL版/REALLIVEDATA/Seen.txt direnv exec . cargo run -p kaifuu-reallive --example probe_real_bytes",
+          "KAIFUU_PROBE_SEEN_TXT=<reallive-game-root>/REALLIVEDATA/Seen.txt direnv exec . cargo run -p kaifuu-reallive --example probe_real_bytes",
       },
     ],
     auditFocus: [
@@ -136,7 +136,7 @@ const NEW_NODES = [
       {
         type: "command",
         value:
-          "direnv exec . cargo run -p kaifuu-cli -- detect '/scratch/itotori-research/sweetie-hd/extracted/オシオキSweetie＋Sweets!! HD_DL版' --output /tmp/itotori-probes/detect-root.json",
+          "direnv exec . cargo run -p kaifuu-cli -- detect '<reallive-game-root>' --output /tmp/itotori-probes/detect-root.json",
       },
     ],
     auditFocus: [
@@ -254,7 +254,7 @@ const NEW_NODES = [
       {
         type: "command",
         value:
-          "direnv exec . cargo run -p kaifuu-cli -- detect '/scratch/itotori-research/sweetie-hd/extracted/オシオキSweetie＋Sweets!! HD_DL版' --output /tmp/itotori-probes/detect-root.json",
+          "direnv exec . cargo run -p kaifuu-cli -- detect '<reallive-game-root>' --output /tmp/itotori-probes/detect-root.json",
       },
     ],
     auditFocus: [
@@ -294,7 +294,7 @@ const NEW_NODES = [
       {
         type: "command",
         value:
-          "direnv exec . cargo run -p kaifuu-cli -- extract '/scratch/itotori-research/sweetie-hd/extracted/オシオキSweetie＋Sweets!! HD_DL版/REALLIVEDATA' --output /tmp/itotori-probes/extract.json",
+          "direnv exec . cargo run -p kaifuu-cli -- extract '<reallive-game-root>/REALLIVEDATA' --output /tmp/itotori-probes/extract.json",
       },
     ],
     auditFocus: [
@@ -334,7 +334,7 @@ const NEW_NODES = [
       {
         type: "command",
         value:
-          "direnv exec . cargo run -p utsushi-cli -- trace '/scratch/itotori-research/sweetie-hd/extracted/オシオキSweetie＋Sweets!! HD_DL版' --output /tmp/itotori-probes/utsushi-trace.json",
+          "direnv exec . cargo run -p utsushi-cli -- trace '<reallive-game-root>' --output /tmp/itotori-probes/utsushi-trace.json",
       },
     ],
     auditFocus: [
@@ -374,7 +374,7 @@ const NEW_NODES = [
       {
         type: "command",
         value:
-          "direnv exec . cargo run -p utsushi-cli -- capture '/scratch/itotori-research/sweetie-hd/extracted/オシオキSweetie＋Sweets!! HD_DL版' --adapter utsushi-browser --output /tmp/itotori-probes/utsushi-browser.json",
+          "direnv exec . cargo run -p utsushi-cli -- capture '<reallive-game-root>' --adapter utsushi-browser --output /tmp/itotori-probes/utsushi-browser.json",
       },
     ],
     auditFocus: [

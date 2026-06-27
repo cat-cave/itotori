@@ -2,8 +2,7 @@
 //! stream decoder.
 //!
 //! Pins [`utsushi_reallive::decode_bytecode_stream`] against the
-//! Sweetie HD corpus (the only RealLive corpus currently staged under
-//! `/scratch/itotori-research/`). The full UTSUSHI-201 →
+//! Sweetie HD corpus supplied via `ITOTORI_REAL_GAME_ROOT`. The full UTSUSHI-201 →
 //! UTSUSHI-202 → UTSUSHI-203 → UTSUSHI-204 chain is exercised
 //! end-to-end so that a regression earlier in the chain surfaces here
 //! as a chain-level diagnostic.
