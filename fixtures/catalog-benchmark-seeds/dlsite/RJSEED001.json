@@ -1,0 +1,23 @@
+{
+  "schemaVersion": "catalog.recorded_source_fixture.v0.1",
+  "fixtureId": "catalog-benchmark-seeds/dlsite/RJSEED001.json",
+  "sourceVersion": "catalog-benchmark-seed-fixture-v1",
+  "catalogSource": "dlsite",
+  "sourceId": "RJSEED001",
+  "sourceRecordKind": "recorded_fixture",
+  "redactionClass": "public_metadata",
+  "synthetic": true,
+  "work": {
+    "workId": "019ed104-0000-7000-8000-000000000101",
+    "canonicalTitle": "Benchmark no-English owned",
+    "originalLanguage": "ja-JP",
+    "engineName": "rpg-maker-mv",
+    "translationCompleteness": "none",
+    "externalIdKind": "store_product"
+  },
+  "demandFacts": [{ "kind": "dl_count", "count": 18420 }],
+  "publicNotes": [
+    "Synthetic public-only source metadata for benchmark seed finder provenance.",
+    "No raw storefront payload, private file path, archive member, or local corpus title is included."
+  ]
+}

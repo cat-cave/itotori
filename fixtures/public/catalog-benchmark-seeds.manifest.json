@@ -27,17 +27,49 @@
       "sha256": "d04d92291cdd7d170bde66c03022dfa430fc24e181505de7fdae8161ec3bc0ef",
       "bytes": 9606,
       "redistributable": true
+    },
+    {
+      "path": "fixtures/catalog-benchmark-seeds/dlsite/RJSEED001.json",
+      "role": "metadata",
+      "mediaType": "application/json",
+      "sha256": "45d9d811e9ac5e96076742c153299bf0aa64434b335cdc78f7fea85479d15216",
+      "bytes": 876,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/catalog-benchmark-seeds/dlsite/RJSEED003.json",
+      "role": "metadata",
+      "mediaType": "application/json",
+      "sha256": "2e00c7a9e76501d68160c609e82a6c7a7620b3bc750ec8d4c6aa2e7ab378b107",
+      "bytes": 888,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/catalog-benchmark-seeds/dlsite/RJSEED004.json",
+      "role": "metadata",
+      "mediaType": "application/json",
+      "sha256": "c8d47aec846410e942738af3000347e410ab912cede346913c6bc21db5658cb7",
+      "bytes": 917,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/catalog-benchmark-seeds/vndb/vSeedFan.json",
+      "role": "metadata",
+      "mediaType": "application/json",
+      "sha256": "6e27f34d93c4e431b07446316691c44db71bce177a2b6c50ba719891170d05f2",
+      "bytes": 890,
+      "redistributable": true
     }
   ],
   "aggregateStats": {
-    "files": 1,
+    "files": 5,
     "textUnits": 0,
     "sourceTextUtf16CodeUnits": 0,
     "protectedSpans": 0,
     "sourceLocales": ["ja-JP"],
     "targetLocales": ["en-US"],
     "engineKinds": ["rpg-maker-mv", "identify-only-engine", "partial-extract-engine"],
-    "notes": "Covers seed, candidate, demoted conflict, provenance-required exclusion, local ownership aggregation, readiness ranking, and public leakage policy."
+    "notes": "Covers seed, candidate, demoted conflict, provenance-required exclusion, local ownership aggregation, readiness ranking, per-source public metadata fixtures, and public leakage policy."
   },
   "benchmarkUse": {
     "allowedInPublicCi": true,

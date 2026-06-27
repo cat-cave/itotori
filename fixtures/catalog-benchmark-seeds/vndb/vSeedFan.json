@@ -1,0 +1,23 @@
+{
+  "schemaVersion": "catalog.recorded_source_fixture.v0.1",
+  "fixtureId": "catalog-benchmark-seeds/vndb/vSeedFan.json",
+  "sourceVersion": "catalog-benchmark-seed-fixture-v1",
+  "catalogSource": "vndb",
+  "sourceId": "vSeedFan",
+  "sourceRecordKind": "recorded_fixture",
+  "redactionClass": "public_metadata",
+  "synthetic": true,
+  "work": {
+    "workId": "019ed104-0000-7000-8000-000000000102",
+    "canonicalTitle": "Benchmark fan partial identify-only",
+    "originalLanguage": "ja-JP",
+    "engineName": "identify-only-engine",
+    "translationCompleteness": "fan_partial",
+    "externalIdKind": "store_product"
+  },
+  "demandFacts": [{ "kind": "dl_count", "count": 1400 }],
+  "publicNotes": [
+    "Synthetic public-only source metadata for benchmark seed finder provenance.",
+    "No raw catalog payload, private file path, archive member, or local corpus title is included."
+  ]
+}

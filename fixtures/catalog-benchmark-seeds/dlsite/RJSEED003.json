@@ -1,0 +1,23 @@
+{
+  "schemaVersion": "catalog.recorded_source_fixture.v0.1",
+  "fixtureId": "catalog-benchmark-seeds/dlsite/RJSEED003.json",
+  "sourceVersion": "catalog-benchmark-seed-fixture-v1",
+  "catalogSource": "dlsite",
+  "sourceId": "RJSEED003",
+  "sourceRecordKind": "recorded_fixture",
+  "redactionClass": "public_metadata",
+  "synthetic": true,
+  "work": {
+    "workId": "019ed104-0000-7000-8000-000000000103",
+    "canonicalTitle": "Benchmark MTL partial extract",
+    "originalLanguage": "ja-JP",
+    "engineName": "partial-extract-engine",
+    "translationCompleteness": "mtl",
+    "externalIdKind": "store_product"
+  },
+  "demandFacts": [{ "kind": "rank", "rank": 44 }],
+  "publicNotes": [
+    "Synthetic public-only source metadata for benchmark seed finder candidate coverage.",
+    "No raw storefront payload, private file path, archive member, or local corpus title is included."
+  ]
+}

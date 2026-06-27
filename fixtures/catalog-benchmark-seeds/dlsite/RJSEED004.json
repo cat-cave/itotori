@@ -1,0 +1,26 @@
+{
+  "schemaVersion": "catalog.recorded_source_fixture.v0.1",
+  "fixtureId": "catalog-benchmark-seeds/dlsite/RJSEED004.json",
+  "sourceVersion": "catalog-benchmark-seed-fixture-v1",
+  "catalogSource": "dlsite",
+  "sourceId": "RJSEED004",
+  "sourceRecordKind": "recorded_fixture",
+  "redactionClass": "public_metadata",
+  "synthetic": true,
+  "work": {
+    "workId": "019ed104-0000-7000-8000-000000000104",
+    "canonicalTitle": "Benchmark demoted open conflict",
+    "originalLanguage": "ja-JP",
+    "engineName": "rpg-maker-mv",
+    "translationCompleteness": "none",
+    "externalIdKind": "store_product"
+  },
+  "coverage": {
+    "openConflict": true,
+    "expectedDefaultDecision": "demoted"
+  },
+  "publicNotes": [
+    "Synthetic public-only source metadata for benchmark seed finder demotion coverage.",
+    "No raw storefront payload, private file path, archive member, or local corpus title is included."
+  ]
+}
