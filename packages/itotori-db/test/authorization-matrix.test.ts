@@ -276,6 +276,12 @@ const repositoryPermissionGateMatrix = [
     "catalog-recorded-importers.test.ts alpha benchmark opportunity ranking coverage",
     (repo) => repo.catalogAlphaBenchmarkOpportunityRanking(deniedActor),
   ),
+  catalogGate(
+    "catalogBenchmarkSeedFinder",
+    "catalogRead",
+    "catalog-benchmark-seed-finder.test.ts read model coverage",
+    (repo) => repo.catalogBenchmarkSeedFinder(deniedActor),
+  ),
   catalogCrawlerGate(
     "getCheckpoint",
     "catalogRead",
@@ -1117,6 +1123,12 @@ describe("repository permission gate matrix", () => {
           "mutation": "ItotoriCatalogRepository.catalogAlphaBenchmarkOpportunityRanking",
           "requiredPermission": "catalog.read",
           "successFixture": "catalog-recorded-importers.test.ts alpha benchmark opportunity ranking coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriCatalogRepository.catalogBenchmarkSeedFinder",
+          "requiredPermission": "catalog.read",
+          "successFixture": "catalog-benchmark-seed-finder.test.ts read model coverage",
         },
         {
           "denialFixture": "missing permission actor user-without-required-permission",
