@@ -3,6 +3,10 @@ import type { ItotoriDatabase } from "../connection.js";
 import { type AuthorizationActor, permissionValues, requirePermission } from "../authorization.js";
 import { createUuid7 } from "./event-queue-repository.js";
 import {
+  type CapabilityLevel,
+  type CapabilityLevelStatusKind,
+  capabilityLevelStatusKindValues,
+  capabilityLevelValues,
   catalogConfidenceValues,
   catalogCandidateMatches,
   catalogCandidateMatchStatusValues,
@@ -37,6 +41,7 @@ import {
   catalogSourceProvenance,
   catalogSourceRecordKindValues,
   catalogSourceValues,
+  engineCapabilityReports,
   catalogWorks,
   type CatalogConfidence,
   type CatalogCandidateMatchStatus,
@@ -715,6 +720,84 @@ export type CatalogAlphaBenchmarkOpportunityRankingFilter = {
   includeDemoted?: boolean;
 };
 
+export type CatalogBenchmarkDemandBucket = "none" | "low" | "medium" | "high" | "very_high";
+
+export type CatalogBenchmarkLocalOwnership = "owned" | "not_owned" | "unknown";
+
+export type CatalogBenchmarkSeedReadinessLevel = CapabilityLevelStatusKind | "unknown";
+
+export type CatalogBenchmarkSeedFinderDecision = "seed" | "candidate" | "demoted" | "excluded";
+
+export type CatalogBenchmarkSeedFinderFilter = {
+  targetLanguage?: string;
+  pools?: CatalogCompletenessPool[];
+  minCapabilityLevel?: CapabilityLevel;
+  demandBucket?: CatalogBenchmarkDemandBucket;
+  translationCompleteness?: CatalogLanguageStatus[];
+  provenanceRequired?: boolean;
+  localOwnership?: CatalogBenchmarkLocalOwnership;
+  includeDemoted?: boolean;
+  limit?: number;
+};
+
+export type CatalogBenchmarkSeedSourceId = {
+  catalogSource: CatalogSource;
+  sourceId: string;
+  externalIdKind: CatalogExternalIdKind;
+};
+
+export type CatalogBenchmarkSeedTranslationStatus = {
+  language: string;
+  status: CatalogLanguageStatus;
+  confidence: CatalogConfidence;
+  statusScope: CatalogLanguageStatusScope;
+  platform: string | null;
+};
+
+export type CatalogBenchmarkSeedReadiness = {
+  adapterId: string | null;
+  identify: CatalogBenchmarkSeedReadinessLevel;
+  inventory: CatalogBenchmarkSeedReadinessLevel;
+  extract: CatalogBenchmarkSeedReadinessLevel;
+  patch: CatalogBenchmarkSeedReadinessLevel;
+  helper: CatalogBenchmarkSeedReadinessLevel;
+  runtime: CatalogBenchmarkSeedReadinessLevel;
+};
+
+export type CatalogBenchmarkSeedProvenanceSummary = {
+  catalogSource: CatalogSource;
+  sourceId: string;
+  sourceRecordKind: CatalogSourceRecordKind;
+  sourceVersion: string | null;
+  fixtureId: string | null;
+  redactionClass: CatalogRawContentRedactionClass;
+};
+
+export type CatalogBenchmarkSeedRow = {
+  workId: string;
+  canonicalTitle: string;
+  originalLanguage: string | null;
+  sourceIds: CatalogBenchmarkSeedSourceId[];
+  completenessPool: CatalogCompletenessPool;
+  translationStatuses: CatalogBenchmarkSeedTranslationStatus[];
+  localOwnership: CatalogBenchmarkLocalOwnership;
+  localEvidenceCount: number;
+  demandBucket: CatalogBenchmarkDemandBucket;
+  readiness: CatalogBenchmarkSeedReadiness;
+  provenance: CatalogBenchmarkSeedProvenanceSummary[];
+  decision: CatalogBenchmarkSeedFinderDecision;
+  rank: number;
+  seedRank: number | null;
+  explanationCodes: string[];
+};
+
+export type CatalogBenchmarkSeedFinderReadModel = {
+  schemaVersion: "catalog.benchmark_seed_finder.v0.1";
+  targetLanguage: string;
+  generatedAt: Date;
+  rows: CatalogBenchmarkSeedRow[];
+};
+
 export interface ItotoriCatalogRepositoryPort {
   recordSourceProvenance(
     actor: AuthorizationActor,
@@ -763,6 +846,10 @@ export interface ItotoriCatalogRepositoryPort {
     actor: AuthorizationActor,
     filter?: CatalogAlphaBenchmarkOpportunityRankingFilter,
   ): Promise<CatalogAlphaBenchmarkOpportunityRanking>;
+  catalogBenchmarkSeedFinder(
+    actor: AuthorizationActor,
+    filter?: CatalogBenchmarkSeedFinderFilter,
+  ): Promise<CatalogBenchmarkSeedFinderReadModel>;
 }
 
 const catalogSources = Object.values(catalogSourceValues) as CatalogSource[];
@@ -815,6 +902,18 @@ const catalogCandidateMatchStatuses = Object.values(
 const catalogCompletenessPools = Object.values(
   catalogCompletenessPoolValues,
 ) as CatalogCompletenessPool[];
+const benchmarkDemandBuckets: CatalogBenchmarkDemandBucket[] = [
+  "none",
+  "low",
+  "medium",
+  "high",
+  "very_high",
+];
+const benchmarkLocalOwnershipValues: CatalogBenchmarkLocalOwnership[] = [
+  "owned",
+  "not_owned",
+  "unknown",
+];
 
 export class ItotoriCatalogRepository implements ItotoriCatalogRepositoryPort {
   constructor(private readonly db: ItotoriDatabase) {}
@@ -1430,6 +1529,14 @@ export class ItotoriCatalogRepository implements ItotoriCatalogRepositoryPort {
       assertAlphaBenchmarkOpportunityRankingFilter(filter),
     );
   }
+
+  async catalogBenchmarkSeedFinder(
+    actor: AuthorizationActor,
+    filter: CatalogBenchmarkSeedFinderFilter = {},
+  ): Promise<CatalogBenchmarkSeedFinderReadModel> {
+    await requirePermission(this.db, actor, permissionValues.catalogRead);
+    return readCatalogBenchmarkSeedFinder(this.db, assertBenchmarkSeedFinderFilter(filter));
+  }
 }
 
 async function readCatalogConflictReview(db: ItotoriDatabase): Promise<CatalogConflictReviewRow[]> {
@@ -1741,6 +1848,175 @@ async function readCatalogAlphaBenchmarkOpportunityRanking(
   };
 }
 
+async function readCatalogBenchmarkSeedFinder(
+  db: ItotoriDatabase,
+  filter: NormalizedBenchmarkSeedFinderFilter,
+): Promise<CatalogBenchmarkSeedFinderReadModel> {
+  const [pools, workRows, externalIdRows, demandFactRows, localScanEntryRows, capabilityRows] =
+    await Promise.all([
+      readCatalogCompletenessBenchmarkPools(db, { targetLanguage: filter.targetLanguage }),
+      db.select().from(catalogWorks),
+      db.select().from(catalogExternalIds),
+      db.select().from(catalogDemandFacts),
+      db
+        .select({
+          workId: catalogLocalScanEntries.workId,
+          owned: catalogLocalScanEntries.owned,
+        })
+        .from(catalogLocalScanEntries),
+      db.select().from(engineCapabilityReports),
+    ]);
+
+  const provenanceIds = new Set<string>();
+  for (const work of Object.values(pools.pools).flat()) {
+    for (const status of work.statuses) {
+      if (status.sourceProvenanceId !== null) {
+        provenanceIds.add(status.sourceProvenanceId);
+      }
+    }
+  }
+  for (const externalId of externalIdRows) {
+    if (externalId.sourceProvenanceId !== null) {
+      provenanceIds.add(externalId.sourceProvenanceId);
+    }
+  }
+  for (const demandFact of demandFactRows) {
+    if (demandFact.sourceProvenanceId !== null) {
+      provenanceIds.add(demandFact.sourceProvenanceId);
+    }
+  }
+  for (const work of workRows) {
+    if (work.engineProvenanceId !== null) {
+      provenanceIds.add(work.engineProvenanceId);
+    }
+  }
+
+  const provenanceRows =
+    provenanceIds.size === 0
+      ? []
+      : await db
+          .select()
+          .from(catalogSourceProvenance)
+          .where(
+            inArray(catalogSourceProvenance.sourceProvenanceId, Array.from(provenanceIds)),
+          );
+
+  const provenanceById = new Map(
+    provenanceRows.map((row) => [row.sourceProvenanceId, sourceProvenanceFromRow(row)]),
+  );
+  const workById = new Map(workRows.map((row) => [row.workId, row]));
+  const externalIdsByWorkId = groupBy(externalIdRows, (row) => row.workId);
+  const demandFactsByWorkId = groupBy(demandFactRows, (row) => row.workId);
+  const localOwnershipByWorkId = localOwnershipByWork(localScanEntryRows);
+  const capabilityByAdapterId = capabilityReportsByAdapter(capabilityRows);
+
+  const drafts: DraftCatalogBenchmarkSeedRow[] = [];
+  const seenWorkIds = new Set<string>();
+  for (const pool of catalogCompletenessPools) {
+    if (filter.pools !== null && !filter.pools.includes(pool)) {
+      continue;
+    }
+    for (const work of pools.pools[pool]) {
+      if (seenWorkIds.has(work.workId)) {
+        continue;
+      }
+      seenWorkIds.add(work.workId);
+
+      if (!translationCompletenessMatches(work, filter.translationCompleteness)) {
+        continue;
+      }
+
+      const localOwnership = localOwnershipByWorkId.get(work.workId) ?? {
+        localOwnership: "unknown" as const,
+        localEvidenceCount: 0,
+      };
+      if (filter.localOwnership !== null && filter.localOwnership !== localOwnership.localOwnership) {
+        continue;
+      }
+
+      const demandBucket = demandBucketForFacts(demandFactsByWorkId.get(work.workId) ?? []);
+      if (filter.demandBucket !== null && filter.demandBucket !== demandBucket) {
+        continue;
+      }
+
+      const sourceIds = benchmarkSourceIds(externalIdsByWorkId.get(work.workId) ?? []);
+      const provenance = benchmarkProvenanceSummaries(
+        work,
+        externalIdsByWorkId.get(work.workId) ?? [],
+        demandFactsByWorkId.get(work.workId) ?? [],
+        workById.get(work.workId)?.engineProvenanceId ?? null,
+        provenanceById,
+      );
+      const readiness = readinessForWork(
+        workById.get(work.workId)?.engineName ?? null,
+        capabilityByAdapterId,
+      );
+      const explanationCodes = benchmarkExplanationCodes({
+        pool,
+        work,
+        demandBucket,
+        localOwnership: localOwnership.localOwnership,
+        provenance,
+        readiness,
+        minCapabilityLevel: filter.minCapabilityLevel,
+        provenanceRequired: filter.provenanceRequired,
+        conflictRequested: filter.pools?.includes(catalogCompletenessPoolValues.conflict) ?? false,
+      });
+      const decision = benchmarkDecision(explanationCodes, readiness, filter.minCapabilityLevel);
+
+      if (!filter.includeDemoted && (decision === "demoted" || decision === "excluded")) {
+        continue;
+      }
+
+      drafts.push({
+        row: {
+          workId: work.workId,
+          canonicalTitle: work.canonicalTitle,
+          originalLanguage: work.originalLanguage,
+          sourceIds,
+          completenessPool: pool,
+          translationStatuses: work.statuses.map(benchmarkTranslationStatus).sort(
+            compareBenchmarkTranslationStatuses,
+          ),
+          localOwnership: localOwnership.localOwnership,
+          localEvidenceCount: localOwnership.localEvidenceCount,
+          demandBucket,
+          readiness: readiness.readiness,
+          provenance,
+          decision,
+          rank: 0,
+          seedRank: null,
+          explanationCodes,
+        },
+        sortScore: benchmarkSortScore({
+          pool,
+          decision,
+          demandBucket,
+          localOwnership: localOwnership.localOwnership,
+          readiness: readiness.readiness,
+        }),
+      });
+    }
+  }
+
+  const sorted = drafts.sort(compareBenchmarkSeedDrafts).slice(0, filter.limit);
+  let seedRank = 0;
+  const rows = sorted.map(({ row }, index) => {
+    if (row.decision === "seed") {
+      seedRank += 1;
+      return { ...row, rank: index + 1, seedRank };
+    }
+    return { ...row, rank: index + 1 };
+  });
+
+  return {
+    schemaVersion: "catalog.benchmark_seed_finder.v0.1",
+    targetLanguage: filter.targetLanguage,
+    generatedAt: new Date(),
+    rows,
+  };
+}
+
 function assertCompletenessPoolFilter(
   filter: CatalogCompletenessPoolFilter,
 ): NormalizedCompletenessPoolFilter {
@@ -1768,6 +2044,56 @@ function assertAlphaBenchmarkOpportunityRankingFilter(
         ? "en-US"
         : requiredString(filter.targetLanguage, "targetLanguage"),
     includeDemoted: filter.includeDemoted ?? true,
+  };
+}
+
+function assertBenchmarkSeedFinderFilter(
+  filter: CatalogBenchmarkSeedFinderFilter,
+): NormalizedBenchmarkSeedFinderFilter {
+  const targetLanguage =
+    filter.targetLanguage === undefined
+      ? "en-US"
+      : requiredString(filter.targetLanguage, "targetLanguage");
+  const pools = filter.pools ?? null;
+  if (pools !== null) {
+    for (const pool of pools) {
+      assertEnumValue(pool, catalogCompletenessPools, "pools[]");
+    }
+  }
+  if (filter.minCapabilityLevel !== undefined) {
+    assertEnumValue(
+      filter.minCapabilityLevel,
+      Object.values(capabilityLevelValues),
+      "minCapabilityLevel",
+    );
+  }
+  if (filter.demandBucket !== undefined) {
+    assertEnumValue(filter.demandBucket, benchmarkDemandBuckets, "demandBucket");
+  }
+  const translationCompleteness = filter.translationCompleteness ?? null;
+  if (translationCompleteness !== null) {
+    for (const status of translationCompleteness) {
+      assertEnumValue(status, catalogLanguageStatusEnums, "translationCompleteness[]");
+    }
+  }
+  if (filter.localOwnership !== undefined) {
+    assertEnumValue(filter.localOwnership, benchmarkLocalOwnershipValues, "localOwnership");
+  }
+  const limit = filter.limit ?? 50;
+  if (!Number.isInteger(limit) || limit < 1 || limit > 500) {
+    throw new Error("limit must be an integer from 1 to 500");
+  }
+  return {
+    targetLanguage,
+    pools: pools === null ? null : uniqueBenchmarkPools(pools),
+    minCapabilityLevel: filter.minCapabilityLevel ?? null,
+    demandBucket: filter.demandBucket ?? null,
+    translationCompleteness:
+      translationCompleteness === null ? null : uniqueCatalogLanguageStatuses(translationCompleteness),
+    provenanceRequired: filter.provenanceRequired ?? false,
+    localOwnership: filter.localOwnership ?? null,
+    includeDemoted: filter.includeDemoted ?? false,
+    limit,
   };
 }
 
@@ -1973,6 +2299,470 @@ function hasSharedSourceId(
 
 function sourceIdKey(sourceId: CatalogConflictReviewSourceId): string {
   return `${sourceId.catalogSource}:${sourceId.sourceId}`;
+}
+
+type DraftCatalogBenchmarkSeedRow = {
+  row: CatalogBenchmarkSeedRow;
+  sortScore: number;
+};
+
+type CatalogBenchmarkReadinessResult = {
+  readiness: CatalogBenchmarkSeedReadiness;
+};
+
+function groupBy<T, K>(rows: T[], keyFor: (row: T) => K): Map<K, T[]> {
+  const grouped = new Map<K, T[]>();
+  for (const row of rows) {
+    const key = keyFor(row);
+    const existing = grouped.get(key) ?? [];
+    existing.push(row);
+    grouped.set(key, existing);
+  }
+  return grouped;
+}
+
+function translationCompletenessMatches(
+  work: CatalogCompletenessPoolWork,
+  statuses: CatalogLanguageStatus[] | null,
+): boolean {
+  if (statuses === null) {
+    return true;
+  }
+  return work.statuses.some((status) => statuses.includes(status.status));
+}
+
+function benchmarkSourceIds(
+  externalIds: (typeof catalogExternalIds.$inferSelect)[],
+): CatalogBenchmarkSeedSourceId[] {
+  const byKey = new Map<string, CatalogBenchmarkSeedSourceId>();
+  for (const externalId of externalIds) {
+    if (externalId.catalogSource === catalogSourceValues.localCorpus) {
+      continue;
+    }
+    const sourceId = {
+      catalogSource: externalId.catalogSource as CatalogSource,
+      sourceId: externalId.sourceId,
+      externalIdKind: externalId.externalIdKind as CatalogExternalIdKind,
+    };
+    byKey.set(
+      `${sourceId.catalogSource}:${sourceId.sourceId}:${sourceId.externalIdKind}`,
+      sourceId,
+    );
+  }
+  return Array.from(byKey.values()).sort(compareBenchmarkSourceIds);
+}
+
+function compareBenchmarkSourceIds(
+  left: CatalogBenchmarkSeedSourceId,
+  right: CatalogBenchmarkSeedSourceId,
+): number {
+  return (
+    left.catalogSource.localeCompare(right.catalogSource) ||
+    left.sourceId.localeCompare(right.sourceId) ||
+    left.externalIdKind.localeCompare(right.externalIdKind)
+  );
+}
+
+function benchmarkTranslationStatus(
+  status: CatalogCompletenessStatusFact,
+): CatalogBenchmarkSeedTranslationStatus {
+  return {
+    language: status.language,
+    status: status.status,
+    confidence: status.confidence,
+    statusScope: status.statusScope,
+    platform: status.platform,
+  };
+}
+
+function compareBenchmarkTranslationStatuses(
+  left: CatalogBenchmarkSeedTranslationStatus,
+  right: CatalogBenchmarkSeedTranslationStatus,
+): number {
+  return (
+    left.language.localeCompare(right.language) ||
+    left.status.localeCompare(right.status) ||
+    left.statusScope.localeCompare(right.statusScope) ||
+    (left.platform ?? "").localeCompare(right.platform ?? "")
+  );
+}
+
+function benchmarkProvenanceSummaries(
+  work: CatalogCompletenessPoolWork,
+  externalIds: (typeof catalogExternalIds.$inferSelect)[],
+  demandFacts: (typeof catalogDemandFacts.$inferSelect)[],
+  engineProvenanceId: string | null,
+  provenanceById: Map<string, CatalogSourceProvenanceRecord>,
+): CatalogBenchmarkSeedProvenanceSummary[] {
+  const provenanceIds = new Set<string>();
+  for (const status of work.statuses) {
+    if (status.sourceProvenanceId !== null) {
+      provenanceIds.add(status.sourceProvenanceId);
+    }
+  }
+  for (const externalId of externalIds) {
+    if (externalId.sourceProvenanceId !== null) {
+      provenanceIds.add(externalId.sourceProvenanceId);
+    }
+  }
+  for (const demandFact of demandFacts) {
+    if (demandFact.sourceProvenanceId !== null) {
+      provenanceIds.add(demandFact.sourceProvenanceId);
+    }
+  }
+  if (engineProvenanceId !== null) {
+    provenanceIds.add(engineProvenanceId);
+  }
+
+  const summaries = Array.from(provenanceIds)
+    .map((id) => provenanceById.get(id) ?? null)
+    .filter((record): record is CatalogSourceProvenanceRecord => record !== null)
+    .filter(isPublicBenchmarkProvenance)
+    .map(benchmarkProvenanceSummaryFromRecord);
+  return uniqueBenchmarkProvenanceSummaries(summaries);
+}
+
+function isPublicBenchmarkProvenance(record: CatalogSourceProvenanceRecord): boolean {
+  if (record.catalogSource === catalogSourceValues.localCorpus) {
+    return false;
+  }
+  if (record.sourceRecordKind === catalogSourceRecordKindValues.localScan) {
+    return false;
+  }
+  if (record.rawContentRedactionClass === catalogRawContentRedactionClassValues.privateCorpus) {
+    return false;
+  }
+  return (
+    record.sourceRecordKind === catalogSourceRecordKindValues.recordedFixture ||
+    record.sourceRecordKind === catalogSourceRecordKindValues.importerRequest
+  );
+}
+
+function benchmarkProvenanceSummaryFromRecord(
+  record: CatalogSourceProvenanceRecord,
+): CatalogBenchmarkSeedProvenanceSummary {
+  return {
+    catalogSource: record.catalogSource,
+    sourceId: record.sourceId,
+    sourceRecordKind: record.sourceRecordKind,
+    sourceVersion: record.sourceVersion,
+    fixtureId: stringMetadata(record.metadata, "fixtureId"),
+    redactionClass: record.rawContentRedactionClass,
+  };
+}
+
+function uniqueBenchmarkProvenanceSummaries(
+  summaries: CatalogBenchmarkSeedProvenanceSummary[],
+): CatalogBenchmarkSeedProvenanceSummary[] {
+  const byKey = new Map<string, CatalogBenchmarkSeedProvenanceSummary>();
+  for (const summary of summaries) {
+    byKey.set(
+      `${summary.catalogSource}:${summary.sourceRecordKind}:${summary.sourceId}:${summary.sourceVersion ?? ""}:${summary.redactionClass}`,
+      summary,
+    );
+  }
+  return Array.from(byKey.values()).sort(compareBenchmarkProvenanceSummaries);
+}
+
+function compareBenchmarkProvenanceSummaries(
+  left: CatalogBenchmarkSeedProvenanceSummary,
+  right: CatalogBenchmarkSeedProvenanceSummary,
+): number {
+  return (
+    left.catalogSource.localeCompare(right.catalogSource) ||
+    left.sourceId.localeCompare(right.sourceId) ||
+    left.sourceRecordKind.localeCompare(right.sourceRecordKind) ||
+    (left.sourceVersion ?? "").localeCompare(right.sourceVersion ?? "")
+  );
+}
+
+function localOwnershipByWork(
+  rows: { workId: string | null; owned: boolean }[],
+): Map<string, { localOwnership: CatalogBenchmarkLocalOwnership; localEvidenceCount: number }> {
+  const aggregate = new Map<string, { count: number; ownedCount: number }>();
+  for (const row of rows) {
+    if (row.workId === null) {
+      continue;
+    }
+    const existing = aggregate.get(row.workId) ?? { count: 0, ownedCount: 0 };
+    existing.count += 1;
+    if (row.owned) {
+      existing.ownedCount += 1;
+    }
+    aggregate.set(row.workId, existing);
+  }
+
+  const result = new Map<
+    string,
+    { localOwnership: CatalogBenchmarkLocalOwnership; localEvidenceCount: number }
+  >();
+  for (const [workId, row] of aggregate) {
+    result.set(workId, {
+      localOwnership: row.ownedCount > 0 ? "owned" : "not_owned",
+      localEvidenceCount: row.count,
+    });
+  }
+  return result;
+}
+
+function demandBucketForFacts(
+  facts: (typeof catalogDemandFacts.$inferSelect)[],
+): CatalogBenchmarkDemandBucket {
+  let dlCount = 0;
+  let wishlistCount = 0;
+  let bestRank: number | null = null;
+  let ratingCount = 0;
+  for (const fact of facts) {
+    switch (fact.factKind) {
+      case catalogDemandFactKindValues.dlCount:
+        dlCount = Math.max(dlCount, numberRecordValue(fact.factValue, "count") ?? 0);
+        break;
+      case catalogDemandFactKindValues.wishlistCount:
+        wishlistCount = Math.max(wishlistCount, numberRecordValue(fact.factValue, "count") ?? 0);
+        break;
+      case catalogDemandFactKindValues.rank: {
+        const rank = numberRecordValue(fact.factValue, "rank");
+        if (rank !== null) {
+          bestRank = bestRank === null ? rank : Math.min(bestRank, rank);
+        }
+        break;
+      }
+      case catalogDemandFactKindValues.ratingSummary:
+        ratingCount = Math.max(ratingCount, numberRecordValue(fact.factValue, "count") ?? 0);
+        break;
+      default:
+        break;
+    }
+  }
+  if (dlCount === 0 && wishlistCount === 0 && bestRank === null && ratingCount === 0) {
+    return facts.length === 0 ? "none" : "low";
+  }
+  if (dlCount >= 10_000 || wishlistCount >= 5_000 || (bestRank !== null && bestRank <= 10)) {
+    return "very_high";
+  }
+  if (dlCount >= 3_000 || wishlistCount >= 1_000 || (bestRank !== null && bestRank <= 50)) {
+    return "high";
+  }
+  if (dlCount >= 1_000 || wishlistCount >= 250 || (bestRank !== null && bestRank <= 200)) {
+    return "medium";
+  }
+  return "low";
+}
+
+function numberRecordValue(record: CatalogJsonRecord, key: string): number | null {
+  const value = record[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function capabilityReportsByAdapter(
+  rows: (typeof engineCapabilityReports.$inferSelect)[],
+): Map<string, Map<CapabilityLevel, CapabilityLevelStatusKind>> {
+  const byAdapter = new Map<string, Map<CapabilityLevel, CapabilityLevelStatusKind>>();
+  for (const row of rows) {
+    const adapterRows = byAdapter.get(row.adapterId) ?? new Map();
+    adapterRows.set(row.level, row.statusKind);
+    byAdapter.set(row.adapterId, adapterRows);
+  }
+  return byAdapter;
+}
+
+function readinessForWork(
+  engineName: string | null,
+  capabilityByAdapterId: Map<string, Map<CapabilityLevel, CapabilityLevelStatusKind>>,
+): CatalogBenchmarkReadinessResult {
+  const adapterId = benchmarkAdapterIdForEngine(engineName, capabilityByAdapterId);
+  const adapterRows = adapterId === null ? null : (capabilityByAdapterId.get(adapterId) ?? null);
+  const level = (capabilityLevel: CapabilityLevel): CatalogBenchmarkSeedReadinessLevel =>
+    adapterRows?.get(capabilityLevel) ?? "unknown";
+  return {
+    readiness: {
+      adapterId,
+      identify: level(capabilityLevelValues.identify),
+      inventory: level(capabilityLevelValues.inventory),
+      extract: level(capabilityLevelValues.extract),
+      patch: level(capabilityLevelValues.patch),
+      helper: "unknown",
+      runtime: "unknown",
+    },
+  };
+}
+
+function benchmarkAdapterIdForEngine(
+  engineName: string | null,
+  capabilityByAdapterId: Map<string, Map<CapabilityLevel, CapabilityLevelStatusKind>>,
+): string | null {
+  if (engineName === null || capabilityByAdapterId.size === 0) {
+    return null;
+  }
+  const normalizedEngine = normalizeBenchmarkAdapterKey(engineName);
+  const adapterIds = Array.from(capabilityByAdapterId.keys()).sort();
+  return (
+    adapterIds.find((adapterId) => normalizeBenchmarkAdapterKey(adapterId) === normalizedEngine) ??
+    adapterIds.find((adapterId) =>
+      normalizeBenchmarkAdapterKey(adapterId).startsWith(normalizedEngine),
+    ) ??
+    null
+  );
+}
+
+function normalizeBenchmarkAdapterKey(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/gu, "");
+}
+
+function benchmarkExplanationCodes(input: {
+  pool: CatalogCompletenessPool;
+  work: CatalogCompletenessPoolWork;
+  demandBucket: CatalogBenchmarkDemandBucket;
+  localOwnership: CatalogBenchmarkLocalOwnership;
+  provenance: CatalogBenchmarkSeedProvenanceSummary[];
+  readiness: CatalogBenchmarkReadinessResult;
+  minCapabilityLevel: CapabilityLevel | null;
+  provenanceRequired: boolean;
+  conflictRequested: boolean;
+}): string[] {
+  const codes = [
+    `pool:${input.pool}`,
+    `demand_bucket:${input.demandBucket}`,
+    `local_ownership:${input.localOwnership}`,
+    "helper_readiness_unknown",
+    "runtime_readiness_unknown",
+  ];
+  if (input.provenance.length === 0) {
+    codes.push("unrecorded_or_local_only");
+  }
+  if (input.provenanceRequired && input.provenance.length === 0) {
+    codes.push("excluded_provenance_required");
+  }
+  if (input.readiness.readiness.adapterId === null) {
+    codes.push("readiness_adapter_unknown");
+  }
+  if (input.minCapabilityLevel !== null) {
+    const status = input.readiness.readiness[input.minCapabilityLevel];
+    if (status !== capabilityLevelStatusKindValues.supported) {
+      codes.push(`excluded_min_capability_${input.minCapabilityLevel}_${status}`);
+    }
+  }
+  if (input.work.conflicts.length > 0) {
+    if (input.conflictRequested) {
+      codes.push("conflict_pool_requested");
+    } else {
+      for (const conflict of input.work.conflicts) {
+        codes.push(`demoted_open_conflict:${conflict.conflictId}`);
+      }
+    }
+  }
+  return uniqueStrings(codes);
+}
+
+function benchmarkDecision(
+  explanationCodes: string[],
+  readiness: CatalogBenchmarkReadinessResult,
+  minCapabilityLevel: CapabilityLevel | null,
+): CatalogBenchmarkSeedFinderDecision {
+  if (explanationCodes.some((code) => code.startsWith("excluded_"))) {
+    return "excluded";
+  }
+  if (explanationCodes.some((code) => code.startsWith("demoted_"))) {
+    return "demoted";
+  }
+  if (minCapabilityLevel !== null) {
+    return readiness.readiness[minCapabilityLevel] === capabilityLevelStatusKindValues.supported
+      ? "seed"
+      : "excluded";
+  }
+  return readiness.readiness.extract === capabilityLevelStatusKindValues.supported
+    ? "seed"
+    : "candidate";
+}
+
+function benchmarkSortScore(input: {
+  pool: CatalogCompletenessPool;
+  decision: CatalogBenchmarkSeedFinderDecision;
+  demandBucket: CatalogBenchmarkDemandBucket;
+  localOwnership: CatalogBenchmarkLocalOwnership;
+  readiness: CatalogBenchmarkSeedReadiness;
+}): number {
+  return (
+    benchmarkDecisionWeight(input.decision) +
+    alphaBenchmarkPoolBaseScore(input.pool) * 10 +
+    benchmarkDemandBucketWeight(input.demandBucket) +
+    benchmarkLocalOwnershipWeight(input.localOwnership) +
+    benchmarkReadinessWeight(input.readiness)
+  );
+}
+
+function benchmarkDecisionWeight(decision: CatalogBenchmarkSeedFinderDecision): number {
+  switch (decision) {
+    case "seed":
+      return 10_000;
+    case "candidate":
+      return 5_000;
+    case "demoted":
+      return 1_000;
+    case "excluded":
+      return 0;
+  }
+}
+
+function benchmarkDemandBucketWeight(bucket: CatalogBenchmarkDemandBucket): number {
+  switch (bucket) {
+    case "very_high":
+      return 500;
+    case "high":
+      return 300;
+    case "medium":
+      return 150;
+    case "low":
+      return 50;
+    case "none":
+      return 0;
+  }
+}
+
+function benchmarkLocalOwnershipWeight(ownership: CatalogBenchmarkLocalOwnership): number {
+  switch (ownership) {
+    case "owned":
+      return 75;
+    case "unknown":
+      return 0;
+    case "not_owned":
+      return -50;
+  }
+}
+
+function benchmarkReadinessWeight(readiness: CatalogBenchmarkSeedReadiness): number {
+  if (readiness.patch === capabilityLevelStatusKindValues.supported) {
+    return 120;
+  }
+  if (readiness.extract === capabilityLevelStatusKindValues.supported) {
+    return 100;
+  }
+  if (readiness.inventory === capabilityLevelStatusKindValues.supported) {
+    return 50;
+  }
+  if (readiness.identify === capabilityLevelStatusKindValues.supported) {
+    return 25;
+  }
+  return 0;
+}
+
+function compareBenchmarkSeedDrafts(
+  left: DraftCatalogBenchmarkSeedRow,
+  right: DraftCatalogBenchmarkSeedRow,
+): number {
+  return (
+    right.sortScore - left.sortScore ||
+    left.row.canonicalTitle.localeCompare(right.row.canonicalTitle) ||
+    left.row.workId.localeCompare(right.row.workId)
+  );
+}
+
+function uniqueBenchmarkPools(pools: CatalogCompletenessPool[]): CatalogCompletenessPool[] {
+  return catalogCompletenessPools.filter((pool) => pools.includes(pool));
+}
+
+function uniqueCatalogLanguageStatuses(statuses: CatalogLanguageStatus[]): CatalogLanguageStatus[] {
+  return catalogLanguageStatusEnums.filter((status) => statuses.includes(status));
 }
 
 function compareAlphaBenchmarkOpportunities(
@@ -3311,6 +4101,18 @@ type NormalizedCompletenessPoolFilter = {
 type NormalizedAlphaBenchmarkOpportunityRankingFilter = {
   targetLanguage: string;
   includeDemoted: boolean;
+};
+
+type NormalizedBenchmarkSeedFinderFilter = {
+  targetLanguage: string;
+  pools: CatalogCompletenessPool[] | null;
+  minCapabilityLevel: CapabilityLevel | null;
+  demandBucket: CatalogBenchmarkDemandBucket | null;
+  translationCompleteness: CatalogLanguageStatus[] | null;
+  provenanceRequired: boolean;
+  localOwnership: CatalogBenchmarkLocalOwnership | null;
+  includeDemoted: boolean;
+  limit: number;
 };
 
 function assertLocalScanInput(input: CatalogLocalScanInput): NormalizedLocalScanInput {
