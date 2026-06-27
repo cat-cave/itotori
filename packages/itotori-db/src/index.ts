@@ -429,6 +429,7 @@ export type {
   CatalogOpportunityScoreBreakdown,
   CatalogOpportunityScoreInput,
   CatalogOpportunityUnknownEvidenceSignal,
+  CatalogOpportunityWorkTypeSignal,
   CatalogDemandFactInput,
   CatalogDemandFactRecord,
   CatalogCandidateMatchInput,

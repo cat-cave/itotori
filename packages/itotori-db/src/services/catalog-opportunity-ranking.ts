@@ -8,6 +8,7 @@ export const catalogOpportunityFactorValues = {
   marketPrevalence: "market_prevalence",
   adapterReadiness: "adapter_readiness",
   runtimeEvidenceReadiness: "runtime_evidence_readiness",
+  dlsiteWorkType: "dlsite_work_type",
   existingTranslationStatus: "existing_translation_status",
   benchmarkUsefulness: "benchmark_usefulness",
   unknownEvidence: "unknown_evidence",
@@ -26,6 +27,8 @@ export type CatalogOpportunityCompletenessSignal =
   | "conflict";
 
 export type CatalogOpportunityDemandSignal = "none" | "low" | "medium" | "high" | "very_high";
+
+export type CatalogOpportunityWorkTypeSignal = "rpg" | "game" | "non_game" | "unknown";
 
 export type CatalogOpportunityLocalOwnershipSignal = "owned" | "not_owned" | "unknown";
 
@@ -50,6 +53,9 @@ export type CatalogOpportunityRuntimeEvidenceSignal =
   | "public_and_aggregate"
   | "public_fixture"
   | "private_local_aggregate"
+  | "partial_public_and_aggregate"
+  | "partial_public_fixture"
+  | "partial_private_local_aggregate"
   | "unknown";
 
 export type CatalogOpportunityExistingTranslationSignal =
@@ -67,6 +73,8 @@ export type CatalogOpportunityScoreInput = {
   translationCompleteness: CatalogOpportunityCompletenessSignal;
   localOwnership: CatalogOpportunityLocalOwnershipSignal;
   dlsiteDemand: CatalogOpportunityDemandSignal;
+  dlsiteRatingAverage?: number | null;
+  dlsiteWorkType?: CatalogOpportunityWorkTypeSignal;
   platformLanguageConflict: CatalogOpportunityConflictSignal;
   marketPrevalence: CatalogOpportunityMarketPrevalenceSignal;
   adapterReadiness: CatalogOpportunityAdapterReadinessSignal;
@@ -115,8 +123,8 @@ export function scoreCatalogOpportunity(
     factor(
       catalogOpportunityFactorValues.dlsiteDemand,
       20,
-      demandValue(input.dlsiteDemand),
-      `dlsite_demand:${input.dlsiteDemand}`,
+      demandValue(input.dlsiteDemand, input.dlsiteRatingAverage ?? null),
+      demandExplanationCode(input.dlsiteDemand, input.dlsiteRatingAverage ?? null),
       input,
     ),
     factor(
@@ -145,6 +153,13 @@ export function scoreCatalogOpportunity(
       6,
       runtimeEvidenceValue(input.runtimeEvidenceReadiness),
       `runtime_evidence_readiness:${input.runtimeEvidenceReadiness}`,
+      input,
+    ),
+    factor(
+      catalogOpportunityFactorValues.dlsiteWorkType,
+      0,
+      workTypeValue(input.dlsiteWorkType ?? "unknown"),
+      `dlsite_work_type:${input.dlsiteWorkType ?? "unknown"}`,
       input,
     ),
     factor(
@@ -232,7 +247,14 @@ function localOwnershipValue(value: CatalogOpportunityLocalOwnershipSignal): num
   }
 }
 
-function demandValue(value: CatalogOpportunityDemandSignal): number {
+function demandValue(
+  value: CatalogOpportunityDemandSignal,
+  ratingAverage: number | null,
+): number {
+  return Math.min(1, demandBucketValue(value) + ratingAverageDemandBonus(ratingAverage));
+}
+
+function demandBucketValue(value: CatalogOpportunityDemandSignal): number {
   switch (value) {
     case "very_high":
       return 1;
@@ -245,6 +267,45 @@ function demandValue(value: CatalogOpportunityDemandSignal): number {
     case "none":
       return 0;
   }
+}
+
+function ratingAverageDemandBonus(ratingAverage: number | null): number {
+  if (ratingAverage === null) {
+    return 0;
+  }
+  if (ratingAverage >= 4.5) {
+    return 0.1;
+  }
+  if (ratingAverage >= 4) {
+    return 0.05;
+  }
+  if (ratingAverage > 0 && ratingAverage < 3) {
+    return -0.1;
+  }
+  return 0;
+}
+
+function demandExplanationCode(
+  demand: CatalogOpportunityDemandSignal,
+  ratingAverage: number | null,
+): string {
+  if (ratingAverage === null) {
+    return `dlsite_demand:${demand}:rating_unknown`;
+  }
+  return `dlsite_demand:${demand}:rating_${ratingAverageBucket(ratingAverage)}`;
+}
+
+function ratingAverageBucket(ratingAverage: number): "high" | "positive" | "low" | "neutral" {
+  if (ratingAverage >= 4.5) {
+    return "high";
+  }
+  if (ratingAverage >= 4) {
+    return "positive";
+  }
+  if (ratingAverage > 0 && ratingAverage < 3) {
+    return "low";
+  }
+  return "neutral";
 }
 
 function marketPrevalenceValue(value: CatalogOpportunityMarketPrevalenceSignal): number {
@@ -287,6 +348,24 @@ function runtimeEvidenceValue(value: CatalogOpportunityRuntimeEvidenceSignal): n
       return 0.7;
     case "private_local_aggregate":
       return 0.55;
+    case "partial_public_and_aggregate":
+      return 0.5;
+    case "partial_public_fixture":
+      return 0.35;
+    case "partial_private_local_aggregate":
+      return 0.25;
+    case "unknown":
+      return 0;
+  }
+}
+
+function workTypeValue(value: CatalogOpportunityWorkTypeSignal): number {
+  switch (value) {
+    case "rpg":
+      return 1;
+    case "game":
+      return 0.5;
+    case "non_game":
     case "unknown":
       return 0;
   }

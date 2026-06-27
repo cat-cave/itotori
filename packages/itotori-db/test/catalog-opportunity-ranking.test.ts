@@ -15,6 +15,8 @@ describe("scoreCatalogOpportunity", () => {
       translationCompleteness: "no_english",
       localOwnership: "owned",
       dlsiteDemand: "very_high",
+      dlsiteRatingAverage: 4.6,
+      dlsiteWorkType: "rpg",
       platformLanguageConflict: "none",
       marketPrevalence: "public_and_local_aggregate",
       adapterReadiness: "patch_supported",
@@ -37,11 +39,12 @@ describe("scoreCatalogOpportunity", () => {
     expect(score.explanationCodes).toEqual([
       "translation_completeness:no_english",
       "local_ownership:owned",
-      "dlsite_demand:very_high",
+      "dlsite_demand:very_high:rating_high",
       "platform_language_conflict:none",
       "market_prevalence:public_and_local_aggregate",
       "adapter_readiness:patch_supported",
       "runtime_evidence_readiness:public_and_aggregate",
+      "dlsite_work_type:rpg",
       "existing_translation_status:none",
       "benchmark_usefulness:high",
       "unknown_evidence:present",
@@ -56,6 +59,35 @@ describe("scoreCatalogOpportunity", () => {
         evidenceRefs: ["language-status-1"],
       }),
     );
+    expect(score.factors).toContainEqual(
+      expect.objectContaining({
+        factor: "dlsite_work_type",
+        weight: 0,
+        rawValue: 1,
+        weightedScore: 0,
+      }),
+    );
+  });
+
+  it("uses ratingAverage inside the DLsite demand contribution and keeps workType diagnostic", () => {
+    const unrated = scoreCatalogOpportunity({
+      ...candidateInput(),
+      dlsiteDemand: "medium",
+      dlsiteRatingAverage: null,
+      dlsiteWorkType: "unknown",
+    });
+    const highlyRated = scoreCatalogOpportunity({
+      ...candidateInput(),
+      dlsiteDemand: "medium",
+      dlsiteRatingAverage: 4.6,
+      dlsiteWorkType: "rpg",
+    });
+
+    expect(factorScore(highlyRated.factors, "dlsite_demand")).toBeGreaterThan(
+      factorScore(unrated.factors, "dlsite_demand"),
+    );
+    expect(factorScore(highlyRated.factors, "dlsite_work_type")).toBe(0);
+    expect(highlyRated.explanationCodes).toContain("dlsite_work_type:rpg");
   });
 
   it("demotes platform-language conflicts before they can be treated as candidates", () => {

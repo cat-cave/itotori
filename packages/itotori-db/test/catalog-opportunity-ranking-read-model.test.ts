@@ -6,6 +6,7 @@ import {
   EngineCapabilityReportRepository,
 } from "../src/repositories/engine-capability-report-repository.js";
 import {
+  type CatalogOpportunityFactorName,
   type CatalogOpportunityRankingReadModel,
   ItotoriCatalogRepository,
   type CatalogSourceProvenanceRecord,
@@ -29,6 +30,7 @@ import {
   engineCapabilityEvidenceKindValues,
   engineCapabilityEvidenceSourceValues,
   engineCapabilityEvidenceStatusValues,
+  type EngineCapabilityEvidenceStatus,
 } from "../src/schema.js";
 import { isolatedMigratedContext } from "./db-test-context.js";
 
@@ -86,6 +88,7 @@ describe("catalogOpportunityRanking read model", () => {
         "market_prevalence",
         "adapter_readiness",
         "runtime_evidence_readiness",
+        "dlsite_work_type",
         "existing_translation_status",
         "benchmark_usefulness",
         "unknown_evidence",
@@ -93,7 +96,8 @@ describe("catalogOpportunityRanking read model", () => {
       expect(alpha.explanationCodes).toEqual(
         expect.arrayContaining([
           "adapter_readiness:patch_supported",
-          "dlsite_demand:very_high",
+          "dlsite_demand:very_high:rating_high",
+          "dlsite_work_type:rpg",
           "runtime_evidence_readiness:public_and_aggregate",
           "translation_completeness:no_english",
           "unknown_evidence:none",
@@ -173,6 +177,234 @@ describe("catalogOpportunityRanking read model", () => {
       await context.close();
     }
   });
+
+  it("does not count missing or unknown runtime evidence as readiness", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      const repo = new ItotoriCatalogRepository(context.db);
+      const capabilityRepo = new EngineCapabilityReportRepository(context.db);
+      const presentProvenance = await provenance(
+        repo,
+        21,
+        catalogSourceValues.dlsite,
+        "RJOPP021",
+      );
+      const partialProvenance = await provenance(
+        repo,
+        22,
+        catalogSourceValues.dlsite,
+        "RJOPP022",
+      );
+      const missingProvenance = await provenance(
+        repo,
+        23,
+        catalogSourceValues.dlsite,
+        "RJOPP023",
+      );
+
+      await recordRuntimeEvidenceCapability(capabilityRepo, "runtime-present-engine", "present");
+      await recordRuntimeEvidenceCapability(capabilityRepo, "runtime-partial-engine", "partial");
+      await recordRuntimeEvidenceCapability(capabilityRepo, "runtime-missing-engine", "missing");
+      await capabilityRepo.recordCapabilityEvidence(localActor, {
+        adapterId: "runtime-missing-engine",
+        level: capabilityLevelValues.extract,
+        evidenceSource: engineCapabilityEvidenceSourceValues.privateLocalAggregate,
+        evidenceKind: engineCapabilityEvidenceKindValues.localCorpusSidecar,
+        schemaVersion: "catalog.local_corpus_engine_evidence.v0.1",
+        status: engineCapabilityEvidenceStatusValues.unknown,
+        aggregateCounts: { marker_kinds: 0 },
+        evidenceLabels: [capabilityEvidenceLabelValues.localCorpusMarkerEvidence],
+      });
+
+      await repo.upsertWork(
+        localActor,
+        opportunityWorkInputWithEngine(
+          uuid(121),
+          "Present runtime evidence",
+          presentProvenance,
+          "RJOPP021",
+          "runtime-present-engine",
+        ),
+      );
+      await repo.upsertWork(
+        localActor,
+        opportunityWorkInputWithEngine(
+          uuid(122),
+          "Partial runtime evidence",
+          partialProvenance,
+          "RJOPP022",
+          "runtime-partial-engine",
+        ),
+      );
+      await repo.upsertWork(
+        localActor,
+        opportunityWorkInputWithEngine(
+          uuid(123),
+          "Missing runtime evidence",
+          missingProvenance,
+          "RJOPP023",
+          "runtime-missing-engine",
+        ),
+      );
+
+      const model = await repo.catalogOpportunityRanking(localActor, { limit: 20 });
+      const present = requiredTestRow(model.rows, uuid(121));
+      const partial = requiredTestRow(model.rows, uuid(122));
+      const missing = requiredTestRow(model.rows, uuid(123));
+
+      expect(present.runtimeEvidenceReadiness).toMatchObject({
+        status: "public_fixture",
+        publicFixtureEvidenceCount: 1,
+      });
+      expect(partial.runtimeEvidenceReadiness).toMatchObject({
+        status: "partial_public_fixture",
+        publicFixtureEvidenceCount: 0.5,
+      });
+      expect(missing.runtimeEvidenceReadiness).toMatchObject({
+        status: "unknown",
+        publicFixtureEvidenceCount: 0,
+        privateLocalAggregateEvidenceCount: 0,
+      });
+      expect(factorScore(present, "runtime_evidence_readiness")).toBeGreaterThan(
+        factorScore(partial, "runtime_evidence_readiness"),
+      );
+      expect(factorScore(partial, "runtime_evidence_readiness")).toBeGreaterThan(0);
+      expect(factorScore(missing, "runtime_evidence_readiness")).toBe(0);
+      expect(missing.explanationCodes).toContain("runtime_evidence_readiness:unknown");
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("does not emit public opportunity rows for private-local-only works", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      const repo = new ItotoriCatalogRepository(context.db);
+      const capabilityRepo = new EngineCapabilityReportRepository(context.db);
+      const provenance = await recordOpportunityProvenance(repo);
+      await recordOpportunityCapability(capabilityRepo);
+      const privateOnlyWorkId = uuid(130);
+
+      await repo.upsertWork(localActor, {
+        workId: privateOnlyWorkId,
+        canonicalTitle: "PRIVATE_LOCAL_ONLY_SENTINEL_TITLE",
+        originalLanguage: "ja-JP",
+        engine: {
+          engineName: "rpg-maker-mv",
+          engineSource: catalogEngineSourceValues.localScan,
+          engineConfidence: catalogConfidenceValues.medium,
+          engineProvenanceId: provenance.localPrivate.sourceProvenanceId,
+        },
+        languageStatuses: [
+          languageStatus(430, catalogLanguageStatusValues.none, provenance.localPrivate),
+        ],
+      });
+      await repo.recordLocalScan(localActor, {
+        localScanId: uuid(730),
+        scanRootLabel: "private local opportunity fixture",
+        scanRootPathHash: hash("/home/private/private-local-only-root"),
+        scannerName: "catalog-opportunity-ranking-test",
+        scannerVersion: "0.0.0",
+        startedAt: fetchedAt,
+        completedAt: "2026-06-27T12:04:00.000Z",
+        entries: [
+          {
+            ...localScanEntry(
+              731,
+              privateOnlyWorkId,
+              provenance.localPrivate,
+              "/home/private/PRIVATE_LOCAL_ONLY_SENTINEL_TITLE.zip/story.ks",
+            ),
+            metadata: {
+              title: "PRIVATE_LOCAL_ONLY_SENTINEL_TITLE",
+              rawText: "PRIVATE_LOCAL_ONLY_SENTINEL_BODY",
+            },
+          },
+        ],
+      });
+
+      const model = await repo.catalogOpportunityRanking(localActor, {
+        includeDemoted: true,
+        limit: 20,
+      });
+      const payload = JSON.stringify(model);
+      expect(model.rows.map((row) => row.workId)).not.toContain(privateOnlyWorkId);
+      expect(payload).not.toContain("PRIVATE_LOCAL_ONLY_SENTINEL_TITLE");
+      expect(payload).not.toContain("PRIVATE_LOCAL_ONLY_SENTINEL_BODY");
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("scopes platform-language conflict demotion to the requested target language", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      const repo = new ItotoriCatalogRepository(context.db);
+      const capabilityRepo = new EngineCapabilityReportRepository(context.db);
+      await recordOpportunityCapability(capabilityRepo);
+      const publicProvenance = await provenance(repo, 24, catalogSourceValues.dlsite, "RJOPP024");
+      const workId = uuid(124);
+      const conflictId = uuid(924);
+      const input = opportunityWorkInputWithEngine(
+        workId,
+        "Off-target conflict candidate",
+        publicProvenance,
+        "RJOPP024",
+        "rpg-maker-mv",
+      );
+
+      await repo.upsertWork(localActor, {
+        ...input,
+        languageStatuses: [
+          ...(input.languageStatuses ?? []),
+          {
+            ...languageStatus(425, catalogLanguageStatusValues.none, publicProvenance),
+            language: "fr-FR",
+          },
+        ],
+        conflicts: [
+          {
+            conflictId,
+            conflictKind: catalogConflictKindValues.languageStatus,
+            status: catalogConflictStatusValues.open,
+            summary: "Synthetic French platform conflict",
+            detectedAt: fetchedAt,
+            metadata: {
+              reasonCode: catalogPlatformLanguageConflictReasonCode,
+              severity: "warning",
+              targetLanguage: "fr-FR",
+              platformScope: "pc",
+            },
+          },
+        ],
+      });
+
+      const englishModel = await repo.catalogOpportunityRanking(localActor, {
+        targetLanguage: "en-US",
+        limit: 20,
+      });
+      const englishRow = requiredTestRow(englishModel.rows, workId);
+      expect(englishRow.decision).toBe("candidate");
+      expect(englishRow.demotions).toEqual([]);
+      expect(englishRow.explanationCodes).toContain("platform_language_conflict:none");
+
+      const frenchModel = await repo.catalogOpportunityRanking(localActor, {
+        targetLanguage: "fr-FR",
+        includeDemoted: true,
+        limit: 20,
+      });
+      const frenchRow = requiredTestRow(frenchModel.rows, workId);
+      expect(frenchRow.decision).toBe("demoted");
+      expect(frenchRow.demotions).toEqual([
+        expect.objectContaining({
+          conflictId,
+          reasonCode: catalogPlatformLanguageConflictReasonCode,
+        }),
+      ]);
+    } finally {
+      await context.close();
+    }
+  });
 });
 
 async function recordOpportunityCapability(repo: EngineCapabilityReportRepository): Promise<void> {
@@ -210,6 +442,33 @@ async function recordOpportunityCapability(repo: EngineCapabilityReportRepositor
     status: engineCapabilityEvidenceStatusValues.present,
     aggregateCounts: { marker_kinds: 2 },
     evidenceLabels: [capabilityEvidenceLabelValues.localCorpusMarkerEvidence],
+  });
+}
+
+async function recordRuntimeEvidenceCapability(
+  repo: EngineCapabilityReportRepository,
+  adapterId: string,
+  status: EngineCapabilityEvidenceStatus,
+): Promise<void> {
+  await repo.writeMatrix(localActor, {
+    adapterId,
+    identify: { kind: "supported" },
+    inventory: { kind: "supported" },
+    extract: { kind: "supported" },
+    patch: { kind: "supported" },
+  });
+  await repo.recordCapabilityEvidence(localActor, {
+    adapterId,
+    level: capabilityLevelValues.extract,
+    evidenceSource: engineCapabilityEvidenceSourceValues.publicFixture,
+    evidenceKind: engineCapabilityEvidenceKindValues.adapterMatrix,
+    schemaVersion: "catalog.capability_evidence.v0.1",
+    status,
+    aggregateCounts: {
+      fixture_rows: status === engineCapabilityEvidenceStatusValues.missing ? 0 : 1,
+    },
+    evidenceLabels: [capabilityEvidenceLabelValues.publicFixtureMatrix],
+    publicFixtureId: `catalog-opportunity-ranking-${adapterId}`,
   });
 }
 
@@ -347,6 +606,26 @@ function opportunityWorkInput(
         workType: "RPG",
       }),
     ],
+  };
+}
+
+function opportunityWorkInputWithEngine(
+  workId: string,
+  canonicalTitle: string,
+  provenanceRecord: CatalogSourceProvenanceRecord,
+  sourceId: string,
+  engineName: string,
+): Parameters<ItotoriCatalogRepository["upsertWork"]>[1] {
+  const input = opportunityWorkInput(workId, canonicalTitle, provenanceRecord, sourceId);
+  if (input.engine === undefined) {
+    throw new Error("opportunityWorkInput should include engine metadata");
+  }
+  return {
+    ...input,
+    engine: {
+      ...input.engine,
+      engineName,
+    },
   };
 }
 
@@ -506,6 +785,17 @@ function requiredTestRow(
     throw new Error(`expected opportunity row ${workId}`);
   }
   return row;
+}
+
+function factorScore(
+  row: CatalogOpportunityRankingReadModel["rows"][number],
+  factorName: CatalogOpportunityFactorName,
+): number {
+  const factor = row.factorBreakdown.find((entry) => entry.factor === factorName);
+  if (factor === undefined) {
+    throw new Error(`expected factor ${factorName}`);
+  }
+  return factor.weightedScore;
 }
 
 function expectSerializedSafe(readModel: CatalogOpportunityRankingReadModel): void {

@@ -44,6 +44,7 @@ import {
   engineCapabilityReports,
   engineCapabilityEvidence,
   engineCapabilityEvidenceSourceValues,
+  engineCapabilityEvidenceStatusValues,
   catalogWorks,
   type CatalogConfidence,
   type CatalogCandidateMatchStatus,
@@ -78,9 +79,11 @@ import {
   type CatalogOpportunityMarketPrevalenceSignal,
   type CatalogOpportunityRuntimeEvidenceSignal,
   type CatalogOpportunityUnknownEvidenceSignal,
+  type CatalogOpportunityWorkTypeSignal,
   catalogOpportunityWeightsVersion,
   scoreCatalogOpportunity,
 } from "../services/catalog-opportunity-ranking.js";
+import { catalogPlatformLanguageConflictReasonCode } from "../services/catalog-platform-language-conflicts.js";
 export type {
   CatalogOpportunityAdapterReadinessSignal,
   CatalogOpportunityBenchmarkUsefulnessSignal,
@@ -97,6 +100,7 @@ export type {
   CatalogOpportunityScoreBreakdown,
   CatalogOpportunityScoreInput,
   CatalogOpportunityUnknownEvidenceSignal,
+  CatalogOpportunityWorkTypeSignal,
 } from "../services/catalog-opportunity-ranking.js";
 
 export type CatalogJsonRecord = Record<string, unknown>;
@@ -2141,6 +2145,7 @@ async function readCatalogOpportunityRanking(
     localScanEntryRows,
     capabilityRows,
     capabilityEvidenceRows,
+    rawConflictRows,
   ] = await Promise.all([
     readCatalogCompletenessBenchmarkPools(db, { targetLanguage: filter.targetLanguage }),
     readCatalogConflictReview(db),
@@ -2155,6 +2160,12 @@ async function readCatalogOpportunityRanking(
       .from(catalogLocalScanEntries),
     db.select().from(engineCapabilityReports),
     db.select().from(engineCapabilityEvidence),
+    db
+      .select({
+        conflictId: catalogConflicts.conflictId,
+        metadata: catalogConflicts.metadata,
+      })
+      .from(catalogConflicts),
   ]);
 
   const provenanceIds = new Set<string>();
@@ -2198,11 +2209,19 @@ async function readCatalogOpportunityRanking(
   const localOwnershipByWorkId = localOwnershipByWork(localScanEntryRows);
   const capabilityByAdapterId = capabilityReportsByAdapter(capabilityRows);
   const evidenceByAdapterId = capabilityEvidenceCountsByAdapter(capabilityEvidenceRows);
+  const rawConflictMetadataById = new Map(
+    rawConflictRows.map((row) => [row.conflictId, row.metadata]),
+  );
   const openLanguageConflictsByWorkId = groupBy(
     conflictRows.filter(
       (row) =>
         row.conflictKind === catalogConflictKindValues.languageStatus &&
-        row.status === catalogConflictStatusValues.open,
+        row.status === catalogConflictStatusValues.open &&
+        catalogOpportunityConflictAppliesToTargetLanguage(
+          row,
+          rawConflictMetadataById,
+          filter.targetLanguage,
+        ),
     ),
     (row) => row.catalogRecordId,
   );
@@ -2256,6 +2275,9 @@ async function readCatalogOpportunityRanking(
         workRecord?.engineProvenanceId ?? null,
         provenanceById,
       );
+      if (!hasPublicOpportunityIdentity(sourceIds, provenance)) {
+        continue;
+      }
       const demotions = (openLanguageConflictsByWorkId.get(work.workId) ?? [])
         .map(catalogOpportunityDemotionFromConflict)
         .sort(compareCatalogOpportunityDemotions);
@@ -2270,6 +2292,8 @@ async function readCatalogOpportunityRanking(
         translationCompleteness: opportunityCompletenessSignal(pool),
         localOwnership: localOwnership.localOwnership,
         dlsiteDemand: demandFacts.demandBucket as CatalogOpportunityDemandSignal,
+        dlsiteRatingAverage: demandFacts.ratingAverage,
+        dlsiteWorkType: opportunityWorkTypeSignal(demandFacts.workType),
         platformLanguageConflict:
           demotions.length > 0 ? "open_platform_language_conflict" : "none",
         marketPrevalence,
@@ -2285,6 +2309,10 @@ async function readCatalogOpportunityRanking(
               ? [`local_evidence_count:${localOwnership.localEvidenceCount}`]
               : [],
           dlsite_demand: opportunityDemandEvidenceRefs(demandFacts),
+          dlsite_work_type:
+            demandFacts.workType === null
+              ? ["work_type:unknown"]
+              : [`work_type:${demandFacts.workType}`],
           platform_language_conflict: demotions
             .map((demotion) => demotion.conflictId)
             .filter((conflictId): conflictId is string => conflictId !== null),
@@ -3175,20 +3203,36 @@ function capabilityEvidenceCountsByAdapter(
 ): Map<string, CatalogOpportunityEvidenceCounts> {
   const byAdapter = new Map<string, CatalogOpportunityEvidenceCounts>();
   for (const row of rows) {
+    const evidenceWeight = opportunityRuntimeEvidenceWeight(row.status);
+    if (evidenceWeight === 0) {
+      continue;
+    }
     const existing =
       byAdapter.get(row.adapterId) ?? {
         publicFixtureEvidenceCount: 0,
         privateLocalAggregateEvidenceCount: 0,
       };
     if (row.evidenceSource === engineCapabilityEvidenceSourceValues.publicFixture) {
-      existing.publicFixtureEvidenceCount += 1;
+      existing.publicFixtureEvidenceCount += evidenceWeight;
     }
     if (row.evidenceSource === engineCapabilityEvidenceSourceValues.privateLocalAggregate) {
-      existing.privateLocalAggregateEvidenceCount += 1;
+      existing.privateLocalAggregateEvidenceCount += evidenceWeight;
     }
     byAdapter.set(row.adapterId, existing);
   }
   return byAdapter;
+}
+
+function opportunityRuntimeEvidenceWeight(
+  status: (typeof engineCapabilityEvidence.$inferSelect)["status"],
+): number {
+  if (status === engineCapabilityEvidenceStatusValues.present) {
+    return 1;
+  }
+  if (status === engineCapabilityEvidenceStatusValues.partial) {
+    return 0.5;
+  }
+  return 0;
 }
 
 function opportunityRuntimeEvidenceReadiness(
@@ -3196,13 +3240,23 @@ function opportunityRuntimeEvidenceReadiness(
 ): CatalogOpportunityRuntimeEvidenceReadiness {
   const publicFixtureEvidenceCount = counts?.publicFixtureEvidenceCount ?? 0;
   const privateLocalAggregateEvidenceCount = counts?.privateLocalAggregateEvidenceCount ?? 0;
+  const hasPublicFixtureEvidence = publicFixtureEvidenceCount > 0;
+  const hasPrivateLocalAggregateEvidence = privateLocalAggregateEvidenceCount > 0;
+  const hasCompletePublicFixtureEvidence = publicFixtureEvidenceCount >= 1;
+  const hasCompletePrivateLocalAggregateEvidence = privateLocalAggregateEvidenceCount >= 1;
   const status: CatalogOpportunityRuntimeEvidenceSignal =
-    publicFixtureEvidenceCount > 0 && privateLocalAggregateEvidenceCount > 0
-      ? "public_and_aggregate"
-      : publicFixtureEvidenceCount > 0
-        ? "public_fixture"
-        : privateLocalAggregateEvidenceCount > 0
-          ? "private_local_aggregate"
+    hasPublicFixtureEvidence && hasPrivateLocalAggregateEvidence
+      ? hasCompletePublicFixtureEvidence && hasCompletePrivateLocalAggregateEvidence
+        ? "public_and_aggregate"
+        : "partial_public_and_aggregate"
+      : hasPublicFixtureEvidence
+        ? hasCompletePublicFixtureEvidence
+          ? "public_fixture"
+          : "partial_public_fixture"
+        : hasPrivateLocalAggregateEvidence
+          ? hasCompletePrivateLocalAggregateEvidence
+            ? "private_local_aggregate"
+            : "partial_private_local_aggregate"
           : "unknown";
   return {
     status,
@@ -3242,6 +3296,32 @@ function opportunityCompletenessSignal(
     case catalogCompletenessPoolValues.conflict:
       return "conflict";
   }
+}
+
+function opportunityWorkTypeSignal(workType: string | null): CatalogOpportunityWorkTypeSignal {
+  if (workType === null) {
+    return "unknown";
+  }
+  const normalized = workType.toLowerCase().replace(/[^a-z0-9]+/gu, "");
+  if (normalized.includes("rpg")) {
+    return "rpg";
+  }
+  if (
+    normalized.includes("game") ||
+    normalized.includes("adv") ||
+    normalized.includes("slg") ||
+    normalized.includes("act")
+  ) {
+    return "game";
+  }
+  return "non_game";
+}
+
+function hasPublicOpportunityIdentity(
+  sourceIds: CatalogBenchmarkSeedSourceId[],
+  provenance: CatalogBenchmarkSeedProvenanceSummary[],
+): boolean {
+  return sourceIds.length > 0 || provenance.length > 0;
 }
 
 function opportunityAdapterReadiness(
@@ -3346,6 +3426,21 @@ function catalogOpportunityDemotionFromConflict(
     severity: row.severity,
     sourceIds: row.sourceIds,
   };
+}
+
+function catalogOpportunityConflictAppliesToTargetLanguage(
+  row: CatalogConflictReviewRow,
+  rawConflictMetadataById: Map<string, CatalogJsonRecord>,
+  targetLanguage: string,
+): boolean {
+  if (row.reasonCode !== catalogPlatformLanguageConflictReasonCode) {
+    return false;
+  }
+  if (row.conflictId === null) {
+    return false;
+  }
+  const metadata = rawConflictMetadataById.get(row.conflictId);
+  return metadata !== undefined && stringMetadata(metadata, "targetLanguage") === targetLanguage;
 }
 
 function compareCatalogOpportunityDemotions(
