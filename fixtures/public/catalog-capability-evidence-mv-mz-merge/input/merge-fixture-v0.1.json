@@ -1,0 +1,64 @@
+{
+  "schemaVersion": "catalog.capability_evidence_merge_fixture.v0.1",
+  "publicFixture": {
+    "fixtureId": "catalog-capability-evidence-mv-mz-public-matrix",
+    "matrix": {
+      "adapterId": "kaifuu.rpg-maker-mv-mz",
+      "identify": {
+        "kind": "supported"
+      },
+      "inventory": {
+        "kind": "unsupported",
+        "reason": "public synthetic fixture records identify-only MV/MZ matrix support"
+      },
+      "extract": {
+        "kind": "unsupported",
+        "reason": "public synthetic fixture does not claim extraction support"
+      },
+      "patch": {
+        "kind": "unsupported",
+        "reason": "public synthetic fixture does not claim patch support"
+      }
+    },
+    "evidence": [
+      {
+        "level": "identify",
+        "evidenceSource": "public_fixture",
+        "evidenceKind": "adapter_matrix",
+        "status": "present",
+        "evidenceLabels": ["rpg_maker_mv_mz_public_fixture_matrix"],
+        "limitations": [
+          "public synthetic fixture matrix only; private-local aggregate evidence is attached separately"
+        ]
+      }
+    ]
+  },
+  "privateLocalAggregate": {
+    "localEngineEvidence": {
+      "schemaVersion": "catalog.local_corpus_engine_evidence.v0.1",
+      "producer": "itotori-local-corpus-scanner",
+      "localDetectionSchemaVersion": "catalog.local_corpus_detection.v0.1",
+      "adapterId": "local-scan:rpg_maker_mv_mz",
+      "engineName": "rpg_maker_mv_mz",
+      "engineSource": "local_scan",
+      "engineConfidence": "high",
+      "readiness": {
+        "identify": "partial",
+        "inventory": "unknown",
+        "extract": "unknown",
+        "patch": "unknown"
+      },
+      "evidence": {
+        "markerKinds": ["rpgmaker_mv_metadata"],
+        "extensionCounts": {
+          ".json": 3,
+          "unknown_extension": 2
+        },
+        "fileKindCounts": {
+          "image": 1,
+          "script": 3
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,55 @@
+{
+  "$schema": "./manifest.schema.json",
+  "schemaVersion": "0.1.0",
+  "fixture": {
+    "id": "catalog-capability-evidence-mv-mz-merge",
+    "title": "Catalog MV/MZ Capability Evidence Merge Fixture",
+    "kind": "synthetic",
+    "summary": "Synthetic public fixture demonstrating MV/MZ public adapter matrix evidence merged with private-local aggregate sidecar evidence as separate readiness inputs.",
+    "sourceLocale": "ja-JP",
+    "targetLocales": [],
+    "publicRedistribution": "allowed",
+    "license": {
+      "spdx": "CC0-1.0",
+      "evidence": "Hand-authored synthetic JSON with aggregate counts only; contains no private-local corpus paths, filenames, keys, screenshots, or raw text."
+    },
+    "provenance": {
+      "author": "Itotori fixture authors",
+      "creationMethod": "Hand-authored public synthetic merge fixture for CATALOG-007 mapper tests.",
+      "rawAssetPolicy": "contains-no-copyrighted-game-assets"
+    }
+  },
+  "files": [
+    {
+      "path": "fixtures/public/catalog-capability-evidence-mv-mz-merge/input/merge-fixture-v0.1.json",
+      "role": "metadata",
+      "mediaType": "application/json",
+      "sha256": "c1c0e2a92f8e2654c58de165ab0cef60b646b6360cf80ccf8cc473af4b22cdec",
+      "bytes": 1927,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/public/catalog-capability-evidence-mv-mz-merge/expected/readiness-merge-v0.1.json",
+      "role": "expected-output",
+      "mediaType": "application/json",
+      "sha256": "cd0880a312c4f25db115dcd45a229688016c6143ead6994255f6455eb9baa421",
+      "bytes": 2313,
+      "redistributable": true
+    }
+  ],
+  "aggregateStats": {
+    "files": 2,
+    "textUnits": 0,
+    "sourceTextUtf16CodeUnits": 0,
+    "protectedSpans": 0,
+    "sourceLocales": ["ja-JP"],
+    "targetLocales": [],
+    "engineKinds": ["rpg-maker-mv-mz-synthetic-capability-evidence"],
+    "notes": "Synthetic aggregate evidence only; public fixture support and private-local aggregate evidence remain separate."
+  },
+  "benchmarkUse": {
+    "allowedInPublicCi": true,
+    "allowedInPublicReports": true,
+    "reportingLabel": "public:catalog-capability-evidence-mv-mz-merge"
+  }
+}

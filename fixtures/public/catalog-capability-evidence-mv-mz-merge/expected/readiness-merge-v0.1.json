@@ -1,0 +1,64 @@
+{
+  "schemaVersion": "catalog.capability_evidence_readiness.v0.1",
+  "adapterId": "kaifuu.rpg-maker-mv-mz",
+  "matrix": {
+    "adapterId": "kaifuu.rpg-maker-mv-mz",
+    "identify": {
+      "kind": "supported"
+    },
+    "inventory": {
+      "kind": "unsupported",
+      "reason": "public synthetic fixture records identify-only MV/MZ matrix support"
+    },
+    "extract": {
+      "kind": "unsupported",
+      "reason": "public synthetic fixture does not claim extraction support"
+    },
+    "patch": {
+      "kind": "unsupported",
+      "reason": "public synthetic fixture does not claim patch support"
+    }
+  },
+  "supportEvidence": {
+    "publicFixture": [
+      {
+        "level": "identify",
+        "evidenceSource": "public_fixture",
+        "evidenceKind": "adapter_matrix",
+        "status": "present",
+        "evidenceLabels": ["rpg_maker_mv_mz_public_fixture_matrix"],
+        "limitations": [
+          "public synthetic fixture matrix only; private-local aggregate evidence is attached separately"
+        ],
+        "schemaVersion": "catalog.capability_evidence_input.v0.1",
+        "adapterId": "kaifuu.rpg-maker-mv-mz",
+        "fixtureId": "catalog-capability-evidence-mv-mz-public-matrix"
+      }
+    ],
+    "privateLocalAggregate": [
+      {
+        "schemaVersion": "catalog.capability_evidence_input.v0.1",
+        "adapterId": "kaifuu.rpg-maker-mv-mz",
+        "level": "identify",
+        "evidenceSource": "private_local_aggregate",
+        "evidenceKind": "local_corpus_sidecar",
+        "sourceAdapterId": "local-scan:rpg_maker_mv_mz",
+        "sourceSchemaVersion": "catalog.local_corpus_engine_evidence.v0.1",
+        "status": "partial",
+        "aggregateCounts": {
+          "extension.json": 3,
+          "extension.unknown_extension": 2,
+          "file_kind.image": 1,
+          "file_kind.script": 3,
+          "marker.rpgmaker_mv_metadata": 1
+        },
+        "evidenceLabels": ["rpgmaker_mv_metadata"],
+        "limitations": [
+          "private-local aggregate marker evidence only; no public fixture support claimed",
+          "local scan marker evidence does not claim adapter execution, extraction, inventory, decryption, or patch support",
+          "local readiness identify=partial; inventory=unknown; extract=unknown; patch=unknown"
+        ]
+      }
+    ]
+  }
+}
