@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "exported_at": "2026-06-27T18:43:10.745Z",
+  "exported_at": "2026-06-27T18:49:48.413Z",
   "registries": {
     "groups": [
       {
@@ -34,6 +34,10 @@
       {
         "name": "dashboard",
         "created_at": "2026-06-25T20:01:45.767Z"
+      },
+      {
+        "name": "documentation",
+        "created_at": "2026-06-27T18:49:37.549Z"
       },
       {
         "name": "engine-adapters",
@@ -28588,6 +28592,242 @@
       "projects": [],
       "verification": [],
       "audit_focus": []
+    },
+    {
+      "id": "generalize-localize-workflow-command-surface",
+      "title": "Generalize localize workflow command surface",
+      "kind": "audit-fix",
+      "milestone": "alpha",
+      "status": "ready",
+      "priority": "P1",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "Repo-wide generalization audit 2026-06-27 found that the active app/suite localization workflow is title-specific by command, filename, environment contract, artifact root, schema id, and preset naming (`localize-sweetie-hd-stage`, `suite/scripts/localize-sweetie-hd`, `KAIFUU_REAL_SWEETIE_HD_PATH`, `artifacts/localize-sweetie-hd`, `itotori.localize-sweetie-hd.*`). Replace those runtime/operator surfaces with project-generic localization workflow names driven by a project config while preserving the Sweetie HD alpha target as data.",
+      "acceptance": "Sweetie HD alpha still runs through a generic localize-project/localize-real-game command using an explicit project config. Runtime command names, suite script paths, artifact roots, schema ids, preset names, and logs no longer encode `sweetie-hd` or `localize-sweetie-hd` except in migration or historical documentation allowlists. The generic dry-run prints the equivalent four-phase plan without provider calls.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-27T18:49:18.117Z",
+      "updated_at": "2026-06-27T18:49:18.117Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": "alpha-integration",
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "projects": ["itotori", "suite", "kaifuu", "utsushi"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/app test -- localize"
+        },
+        {
+          "type": "command",
+          "value": "node suite/scripts/localize-project/run.mjs --dry-run --project sweetie-hd-alpha-1"
+        },
+        {
+          "type": "command",
+          "value": "rg -n 'localize-sweetie-hd|itotori\\.localize-sweetie-hd' apps suite justfile presets packages"
+        },
+        {
+          "type": "command",
+          "value": "just check"
+        }
+      ],
+      "audit_focus": [
+        "Title slug survives in runtime command names, schema ids, logs, or artifact root",
+        "Generic runner loses the existing alpha four-phase dry-run behavior",
+        "Project-specific details move from config data back into code"
+      ]
+    },
+    {
+      "id": "parameterize-reallive-bridge-identity-metadata",
+      "title": "Parameterize RealLive bridge identity metadata",
+      "kind": "audit-fix",
+      "milestone": "alpha",
+      "status": "ready",
+      "priority": "P1",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "Repo-wide generalization audit 2026-06-27 found that `kaifuu-cli extract --engine reallive` hard-codes bridge identity metadata such as `game_id: \"sweetie-hd\"` and `source_profile_id: \"kaifuu-reallive-sweetie-hd\"` in runtime code. Make bridge identity caller-supplied metadata from explicit CLI flags or a project config instead of executable constants.",
+      "acceptance": "RealLive extraction requires or loads `game_id`, `game_version`, `source_profile_id`, and `source_locale` from caller-supplied metadata. Extracting two synthetic/project descriptors produces distinct bridge metadata without code changes. Missing metadata fails loudly unless an explicit test fixture default is used.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-27T18:49:18.198Z",
+      "updated_at": "2026-06-27T18:49:18.198Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": "kaifuu-core",
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "projects": ["kaifuu", "shared", "suite"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-cli reallive_project_metadata"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-reallive bridge"
+        },
+        {
+          "type": "command",
+          "value": "rg -n 'game_id: \"sweetie-hd\"|source_profile_id: \"kaifuu-reallive-sweetie-hd\"' crates/kaifuu-cli crates/kaifuu-reallive"
+        },
+        {
+          "type": "command",
+          "value": "just check"
+        }
+      ],
+      "audit_focus": [
+        "Bridge metadata remains executable constant",
+        "Missing metadata silently falls back to Sweetie HD",
+        "Suite driver cannot pass project metadata through extraction"
+      ]
+    },
+    {
+      "id": "introduce-generic-real-corpus-fixture-descriptor",
+      "title": "Introduce generic real-corpus fixture descriptor",
+      "kind": "audit-fix",
+      "milestone": "beta",
+      "status": "ready",
+      "priority": "P2",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "Repo-wide generalization audit 2026-06-27 found that `KAIFUU_REAL_SWEETIE_HD_PATH` is acceptable in ignored alpha evidence tests but should not remain the shared product/workflow environment contract. Introduce a generic real-corpus descriptor or manifest that can select Sweetie HD as one named corpus entry and later support game 2 without minting one env var per title.",
+      "acceptance": "Ignored real-byte tests and suite workflows can select a corpus by engine/project id through a generic descriptor such as `ITOTORI_REAL_CORPUS_MANIFEST` or `ITOTORI_REAL_GAME_ROOT`. `KAIFUU_REAL_SWEETIE_HD_PATH` is removed from active product workflow commands or retained only as a documented backward-compatible alias. Missing descriptor diagnostics are generic and name the expected descriptor shape.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-27T18:49:18.290Z",
+      "updated_at": "2026-06-27T18:49:18.290Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": "quality-foundation",
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "projects": ["suite", "kaifuu", "utsushi"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test --workspace"
+        },
+        {
+          "type": "command",
+          "value": "node suite/scripts/localize-project/run.mjs --dry-run --project sweetie-hd-alpha-1"
+        },
+        {
+          "type": "command",
+          "value": "rg -n 'KAIFUU_REAL_SWEETIE_HD_PATH' suite crates docs apps"
+        },
+        {
+          "type": "command",
+          "value": "just check"
+        }
+      ],
+      "audit_focus": [
+        "One env var per title pattern persists",
+        "Ignored real-byte tests become impossible to run for the alpha target",
+        "Descriptor leaks private paths into committed artifacts"
+      ]
+    },
+    {
+      "id": "retire-title-specific-utsushi-replay-binary",
+      "title": "Retire title-specific Utsushi replay binary",
+      "kind": "audit-fix",
+      "milestone": "real-game-testing-ready",
+      "status": "ready",
+      "priority": "P2",
+      "estimate_points": 1,
+      "risk": "low",
+      "owner": null,
+      "branch": null,
+      "spec": "Repo-wide generalization audit 2026-06-27 found that Utsushi already has a generic `utsushi-cli replay-validate --engine reallive` path, but also exposes the title-specific `replay-validate-sweetie-hd` binary. Retire or deprecate the title-specific binary in favor of the generic replay validator.",
+      "acceptance": "`just hello-replay-validate`, suite dry-runs, and active docs use only `utsushi-cli replay-validate --engine reallive`. The title-specific binary is removed or clearly deprecated outside historical roadmap/audit references. Generic replay validator help/tests cover the alpha replay path.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-27T18:49:18.384Z",
+      "updated_at": "2026-06-27T18:49:18.384Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": "runtime-adapters",
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "projects": ["utsushi", "suite"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-reallive replay"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-cli replay_validate"
+        },
+        {
+          "type": "command",
+          "value": "rg -n 'replay-validate-sweetie-hd|replay_validate_sweetie_hd' crates suite justfile docs"
+        },
+        {
+          "type": "command",
+          "value": "just check"
+        }
+      ],
+      "audit_focus": [
+        "Runtime binary surface remains title-specific",
+        "Generic replay validator loses alpha path coverage",
+        "Docs continue to instruct use of title-specific binary"
+      ]
+    },
+    {
+      "id": "document-title-reference-allowlist-for-active-docs",
+      "title": "Document title-reference allowlist for active docs",
+      "kind": "audit-fix",
+      "milestone": "continuous",
+      "status": "ready",
+      "priority": "P3",
+      "estimate_points": 1,
+      "risk": "low",
+      "owner": null,
+      "branch": null,
+      "spec": "Repo-wide generalization audit 2026-06-27 found that title references are appropriate in roadmap, audits, and alpha evidence records, but active architecture/operator docs should not teach future agents to create title-specific commands, env vars, or artifact schemas. Add an explicit allowlist policy and clean active docs after generic workflow naming lands.",
+      "acceptance": "The repo documents where title references are allowed: roadmap, historical audits, private operator notes, and explicit alpha proof target records. Active product/operator docs describe generic project runners, generic real-corpus descriptors, and generic engine/runtime surfaces. A documented grep/review command distinguishes allowlisted historical references from active guidance.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-27T18:49:37.643Z",
+      "updated_at": "2026-06-27T18:49:37.643Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": "documentation",
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "projects": ["suite", "itotori", "kaifuu", "utsushi"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "rg -i 'sweetie|oshioki|KAIFUU_REAL_SWEETIE_HD_PATH' README.md docs suite apps crates"
+        },
+        {
+          "type": "command",
+          "value": "just roadmap-validate"
+        },
+        {
+          "type": "command",
+          "value": "just check"
+        }
+      ],
+      "audit_focus": [
+        "Active docs still instruct title-specific commands or env vars",
+        "Historical evidence references are removed instead of allowlisted",
+        "Allowlist is too broad to prevent copy-forward"
+      ]
     }
   ],
   "edges": [
@@ -38832,6 +39072,24 @@
       "to_node": "UTSUSHI-231",
       "type": "requires",
       "created_at": "2026-06-26T02:54:05.182Z"
+    },
+    {
+      "from_node": "parameterize-reallive-bridge-identity-metadata",
+      "to_node": "generalize-localize-workflow-command-surface",
+      "type": "requires",
+      "created_at": "2026-06-27T18:49:37.754Z"
+    },
+    {
+      "from_node": "parameterize-reallive-bridge-identity-metadata",
+      "to_node": "introduce-generic-real-corpus-fixture-descriptor",
+      "type": "requires",
+      "created_at": "2026-06-27T18:49:37.843Z"
+    },
+    {
+      "from_node": "generalize-localize-workflow-command-surface",
+      "to_node": "document-title-reference-allowlist-for-active-docs",
+      "type": "requires",
+      "created_at": "2026-06-27T18:49:37.930Z"
     }
   ],
   "findings": [
