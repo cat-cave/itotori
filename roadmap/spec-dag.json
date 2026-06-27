@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "exported_at": "2026-06-27T22:42:13.670Z",
+  "exported_at": "2026-06-27T23:10:06.697Z",
   "registries": {
     "groups": [
       {
@@ -28393,7 +28393,7 @@
       "title": "Style-guide live smoke requires OpenRouter ZDR account assertion",
       "kind": "audit-fix",
       "milestone": "alpha",
-      "status": "claimed",
+      "status": "done",
       "priority": "P2",
       "estimate_points": 1,
       "risk": "low",
@@ -28404,11 +28404,11 @@
       "validation": null,
       "context": null,
       "created_at": "2026-06-27T00:36:33.040Z",
-      "updated_at": "2026-06-27T22:41:58.012Z",
+      "updated_at": "2026-06-27T23:09:59.307Z",
       "claimed_at": "2026-06-27T22:41:58.012Z",
-      "done_at": null,
+      "done_at": "2026-06-27T23:09:59.307Z",
       "group_name": "agent-runtime",
-      "status_reason": null,
+      "status_reason": "[2026-06-27T23:04:51.930Z] 2026-06-27 CI failure was diagnosed as stale shared Cargo target cache metadata, not source regression: utsushi-core tests read compile-time CARGO_MANIFEST_DIR from deleted /scratch/worktrees/itotori-repair-real-corpus-generalization-audit. Remediation applied: nix develop --command cargo clean -p utsushi-core, then nix develop --command cargo test -p utsushi-core --lib passed (634 passed, 5 ignored). Rerunning qd ci.",
       "check_command": null,
       "ci_command": null,
       "projects": ["itotori"],
@@ -42397,6 +42397,90 @@
       "finished_at": "2026-06-27T22:36:21.546Z",
       "summary": "Merge recorded with squash at commit 3304254f382c8244362eac40c8e170b222f84b76",
       "log_path": null
+    },
+    {
+      "id": "f7637da1-4efe-4bf8-bdb5-7cc1f6f997df",
+      "node_id": "ITOTORI-241",
+      "kind": "implement",
+      "status": "completed",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-27T22:48:49.406Z",
+      "finished_at": "2026-06-27T22:48:49.406Z",
+      "summary": "Implementation landed on main at 710f618: live style-guide OpenRouter smoke now calls assertOpenRouterZdrAccount before provider construction/fetch, with a regression test proving opted-in live mode with API key but missing OPENROUTER_ZDR_ACCOUNT_ASSERTED throws AccountZdrAssertionError and does not call fetch. Worker verification passed: pnpm --filter @itotori/app test -- style-guide; pnpm exec vp check apps/itotori/src/style-guide-provider-smoke.ts; git diff --check. Independent audit found no blocking findings.",
+      "log_path": null
+    },
+    {
+      "id": "9c2ac075-b6fc-4087-8280-e2c67fc5b5e1",
+      "node_id": "ITOTORI-241",
+      "kind": "check",
+      "status": "failed",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-27T22:49:12.295Z",
+      "finished_at": "2026-06-27T22:49:16.875Z",
+      "summary": "check command failed: nix develop --command bash -lc 'just check'",
+      "log_path": "/home/trevor/projects/itotori/.qd/logs/check-ITOTORI-241-2026-06-27T22-49-12-295Z.log"
+    },
+    {
+      "id": "75c82253-0bfc-441d-b1b0-0fb3bdc80d88",
+      "node_id": "ITOTORI-241",
+      "kind": "implement",
+      "status": "completed",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-27T22:52:58.601Z",
+      "finished_at": "2026-06-27T22:52:58.601Z",
+      "summary": "Repair for qd check formatter failure landed at 16b5a81: formatted roadmap/spec-dag.json only. Verification passed in worker worktree: pnpm exec vp check --no-error-on-unmatched-pattern roadmap/spec-dag.json; git diff --check.",
+      "log_path": null
+    },
+    {
+      "id": "e410fb10-c2cc-4feb-8bd8-ff140f0201b4",
+      "node_id": "ITOTORI-241",
+      "kind": "check",
+      "status": "passed",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-27T22:53:06.845Z",
+      "finished_at": "2026-06-27T22:53:44.241Z",
+      "summary": "check command passed: nix develop --command bash -lc 'just check'",
+      "log_path": "/home/trevor/projects/itotori/.qd/logs/check-ITOTORI-241-2026-06-27T22-53-06-845Z.log"
+    },
+    {
+      "id": "f7907820-5ed6-4940-baa6-3107db499487",
+      "node_id": "ITOTORI-241",
+      "kind": "ci",
+      "status": "failed",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-27T22:53:52.886Z",
+      "finished_at": "2026-06-27T22:57:59.207Z",
+      "summary": "ci command failed: nix develop --command bash -lc 'just ci'",
+      "log_path": "/home/trevor/projects/itotori/.qd/logs/ci-ITOTORI-241-2026-06-27T22-53-52-886Z.log"
+    },
+    {
+      "id": "04501e3f-08a3-4079-85be-979526d699b6",
+      "node_id": "ITOTORI-241",
+      "kind": "ci",
+      "status": "passed",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-27T23:04:59.430Z",
+      "finished_at": "2026-06-27T23:09:49.541Z",
+      "summary": "ci command passed: nix develop --command bash -lc 'just ci'",
+      "log_path": "/home/trevor/projects/itotori/.qd/logs/ci-ITOTORI-241-2026-06-27T23-04-59-430Z.log"
+    },
+    {
+      "id": "b079b990-c62b-48e3-a12f-3e1df470ff5e",
+      "node_id": "ITOTORI-241",
+      "kind": "merge",
+      "status": "recorded",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-27T23:09:59.307Z",
+      "finished_at": "2026-06-27T23:09:59.307Z",
+      "summary": "Merge recorded with squash at commit 16b5a816860b4b82785f510a9305fb69b0a33d9e",
+      "log_path": null
     }
   ],
   "node_notes": [
@@ -42633,6 +42717,12 @@
       "node_id": "UTSUSHI-231",
       "text": "ORCHESTRATOR 2026-06-27: Current process env still lacks OPENROUTER_API_KEY, OPENROUTER_ZDR_ACCOUNT_ASSERTED, ITOTORI_REAL_GAME_ROOT/LOCALIZE_PROJECT_SOURCE_PATH, TARGET, and DATABASE_URL; /scratch/itotori-research/sweetie-hd exists locally. Per provider policy and worktree playbook, do not read .env. Live alpha validation remains the next UTSUSHI-231 action once the owner exports env into the process or runs from an environment where it is already loaded.",
       "created_at": "2026-06-27T22:40:46.392Z"
+    },
+    {
+      "id": "0e93a47e-c6ab-462f-a69b-349d2cd9800c",
+      "node_id": "ITOTORI-241",
+      "text": "2026-06-27 CI failure was diagnosed as stale shared Cargo target cache metadata, not source regression: utsushi-core tests read compile-time CARGO_MANIFEST_DIR from deleted /scratch/worktrees/itotori-repair-real-corpus-generalization-audit. Remediation applied: nix develop --command cargo clean -p utsushi-core, then nix develop --command cargo test -p utsushi-core --lib passed (634 passed, 5 ignored). Rerunning qd ci.",
+      "created_at": "2026-06-27T23:04:51.930Z"
     }
   ]
 }
