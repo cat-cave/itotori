@@ -175,23 +175,22 @@ const publicFixtureEvidenceKinds = new Set<string>([
   engineCapabilityEvidenceKindValues.keyValidation,
 ]);
 
-const privateLocalEvidenceLabels = new Set<string>([
-  capabilityEvidenceLabelValues.localEngineMarkerCount,
-  capabilityEvidenceLabelValues.localExtensionCount,
-  capabilityEvidenceLabelValues.localFileKindCount,
-  capabilityEvidenceLabelValues.localCorpusMarkerEvidence,
-  capabilityEvidenceLabelValues.mvMzMarkerEvidence,
-]);
-
 const publicFixtureEvidenceLabels = new Set<string>([
   capabilityEvidenceLabelValues.adapterCapabilityMatrix,
   capabilityEvidenceLabelValues.publicFixtureMatrix,
   capabilityEvidenceLabelValues.publicFixtureKeyValidation,
 ]);
 
+const privateLocalEvidenceLabels = new Set<string>(
+  Object.values(capabilityEvidenceLabelValues).filter(
+    (label) => !publicFixtureEvidenceLabels.has(label),
+  ),
+);
+
 const evidenceLeakagePatterns: Array<{ pattern: RegExp; label: string }> = [
   {
-    pattern: /(^|[\s"'`])(?:\/(?:home|users|tmp|var|scratch|mnt|volumes)\b|~\/|[a-z]:[\\/]|file:)/i,
+    pattern:
+      /(^|[\s"'`])(?:\/(?:home|users|tmp|var|scratch|mnt|volumes|private)\b|~\/|[a-z]:[\\/]|file:)/i,
     label: "local path",
   },
   {

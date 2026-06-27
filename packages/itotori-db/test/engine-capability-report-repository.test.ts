@@ -24,6 +24,24 @@ import { isolatedMigratedContext } from "./db-test-context.js";
 
 const localActor = { userId: "local-user" } as const;
 
+const publicFixtureLabelValues = [
+  capabilityEvidenceLabelValues.adapterCapabilityMatrix,
+  capabilityEvidenceLabelValues.publicFixtureMatrix,
+  capabilityEvidenceLabelValues.publicFixtureKeyValidation,
+];
+
+const privateLocalEvidenceLabelValues = [
+  capabilityEvidenceLabelValues.rpgmakerMvMetadata,
+  capabilityEvidenceLabelValues.rpgmakerMzMetadata,
+  capabilityEvidenceLabelValues.encryptedAssetExtension,
+  capabilityEvidenceLabelValues.systemJsonLayout,
+  capabilityEvidenceLabelValues.localEngineMarkerCount,
+  capabilityEvidenceLabelValues.localExtensionCount,
+  capabilityEvidenceLabelValues.localFileKindCount,
+  capabilityEvidenceLabelValues.localCorpusMarkerEvidence,
+  capabilityEvidenceLabelValues.mvMzMarkerEvidence,
+];
+
 function fullSupportedMatrix(adapterId: string): AdapterCapabilityMatrixRecord {
   return {
     adapterId,
@@ -123,20 +141,13 @@ describe("EngineCapabilityReportRepository evidence input validation", () => {
       repositoryWithCapturingStub().recordCapabilityEvidence(
         localActor,
         privateLocalAggregateEvidenceInput({
-          evidenceKind: engineCapabilityEvidenceKindValues.engineMarkerCount,
-          evidenceLabels: [
-            capabilityEvidenceLabelValues.localEngineMarkerCount,
-            capabilityEvidenceLabelValues.mvMzMarkerEvidence,
-          ],
+          evidenceLabels: privateLocalEvidenceLabelValues,
         }),
       ),
     ).resolves.toMatchObject({
       evidenceSource: engineCapabilityEvidenceSourceValues.privateLocalAggregate,
-      evidenceKind: engineCapabilityEvidenceKindValues.engineMarkerCount,
-      evidenceLabels: [
-        capabilityEvidenceLabelValues.localEngineMarkerCount,
-        capabilityEvidenceLabelValues.mvMzMarkerEvidence,
-      ],
+      evidenceKind: engineCapabilityEvidenceKindValues.localCorpusSidecar,
+      evidenceLabels: privateLocalEvidenceLabelValues,
     });
   });
 
@@ -148,6 +159,7 @@ describe("EngineCapabilityReportRepository evidence input validation", () => {
       { aggregateCounts: { pathHash_abcdefabcdefabcdefabcdefabcdefab: 1 } },
       { evidenceLabels: ["rawText"] },
       { limitations: ["found in /home/example/private/Game.rpgmvp"] },
+      { limitations: ["found in /private/example/Game.rpgmvp"] },
       { limitations: ["SECRET_KEY was present in rawText"] },
       { limitations: ["screenshot_capture.png was present"] },
       { limitations: ["localScanEntryId entry_123 was present"] },
@@ -161,6 +173,28 @@ describe("EngineCapabilityReportRepository evidence input validation", () => {
         ).rejects.toBeInstanceOf(EngineCapabilityReportShapeError);
       }
     }
+  });
+
+  it("rejects /private rooted values on persisted evidence surfaces", async () => {
+    const sourceInputs = [publicFixtureEvidenceInput, privateLocalAggregateEvidenceInput];
+
+    for (const makeInput of sourceInputs) {
+      for (const overrides of [
+        { limitations: ["aggregate source was /private/corpus/mv/System.json"] },
+        { aggregateCounts: { "/private/corpus/mv/system_json_layout": 1 } },
+      ]) {
+        await expect(
+          repositoryWithAuthorizedStub().recordCapabilityEvidence(localActor, makeInput(overrides)),
+        ).rejects.toBeInstanceOf(EngineCapabilityReportShapeError);
+      }
+    }
+
+    await expect(
+      repositoryWithAuthorizedStub().recordCapabilityEvidence(
+        localActor,
+        publicFixtureEvidenceInput({ publicFixtureId: "/private/corpus/fixture-a" }),
+      ),
+    ).rejects.toBeInstanceOf(EngineCapabilityReportShapeError);
   });
 
   it("rejects path-hash-shaped aggregate keys for public and private evidence", async () => {
@@ -194,6 +228,22 @@ describe("EngineCapabilityReportRepository evidence input validation", () => {
         publicFixtureEvidenceInput({ publicFixtureId: "localScanEntryId_123" }),
       ),
     ).rejects.toBeInstanceOf(EngineCapabilityReportShapeError);
+  });
+
+  it("rejects every private-local evidence label on public fixture evidence", async () => {
+    const currentPrivateLabelVocabulary = Object.values(capabilityEvidenceLabelValues).filter(
+      (label) => !publicFixtureLabelValues.includes(label),
+    );
+    expect(privateLocalEvidenceLabelValues).toEqual(currentPrivateLabelVocabulary);
+
+    for (const label of privateLocalEvidenceLabelValues) {
+      await expect(
+        repositoryWithAuthorizedStub().recordCapabilityEvidence(
+          localActor,
+          publicFixtureEvidenceInput({ evidenceLabels: [label] }),
+        ),
+      ).rejects.toBeInstanceOf(EngineCapabilityReportShapeError);
+    }
   });
 
   it("rejects source/kind and source/label vocabulary mismatches before persistence", async () => {
