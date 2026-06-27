@@ -464,11 +464,7 @@ export const catalogBenchmarkSeedsFixture: CatalogBenchmarkSeedFinderReadModel =
       decision: "seed",
       rank: 1,
       seedRank: 1,
-      explanationCodes: [
-        "pool:no_english",
-        "demand_bucket:very_high",
-        "local_ownership:owned",
-      ],
+      explanationCodes: ["pool:no_english", "demand_bucket:very_high", "local_ownership:owned"],
     },
   ],
 };

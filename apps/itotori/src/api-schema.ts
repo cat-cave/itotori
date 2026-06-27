@@ -400,14 +400,7 @@ function assertCatalogBenchmarkSeedReadiness(value: unknown, label: string): voi
     "runtime",
   ]);
   assertNullableString(readiness.adapterId, `${label}.adapterId`);
-  for (const level of [
-    "identify",
-    "inventory",
-    "extract",
-    "patch",
-    "helper",
-    "runtime",
-  ] as const) {
+  for (const level of ["identify", "inventory", "extract", "patch", "helper", "runtime"] as const) {
     assertEnum(
       readiness[level],
       ["supported", "partial", "unsupported", "unknown"] as const,
