@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "exported_at": "2026-06-27T20:25:32.371Z",
+  "exported_at": "2026-06-27T20:30:28.782Z",
   "registries": {
     "groups": [
       {
@@ -28828,6 +28828,150 @@
         "Historical evidence references are removed instead of allowlisted",
         "Allowlist is too broad to prevent copy-forward"
       ]
+    },
+    {
+      "id": "generalize-real-byte-corpus-inputs",
+      "title": "Replace title-specific real-byte env vars with generic corpus inputs",
+      "kind": "feature",
+      "milestone": null,
+      "status": "ready",
+      "priority": "P2",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "The Generalization audit found KAIFUU_REAL_SWEETIE_HD_PATH and title-derived path contracts across suite, Kaifuu, and Utsushi. Replace title-specific env var names and direct real-byte path contracts with generic engine/project corpus inputs such as LOCALIZE_PROJECT_SOURCE_PATH, ITOTORI_REALLIVE_FIXTURE_ROOT, or descriptor-driven fixture roots. Keep concrete alpha target identity in operator/roadmap data, not runtime or test env names.",
+      "acceptance": "No committed suite, Kaifuu, or Utsushi runtime/test env var name contains the alpha title slug. Kaifuu extract either requires --game-root or a generic config/env fallback. Real-byte tests load source roots through generic corpus descriptors or generic engine fixture env names. Error/help text for these paths is title-agnostic. Existing real-byte tests remain skipped/ignored when the generic fixture input is absent and pass when provided.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-27T20:26:24.430Z",
+      "updated_at": "2026-06-27T20:26:24.430Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "projects": ["kaifuu", "utsushi", "suite"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "rg -n 'KAIFUU_REAL_SWEETIE_HD_PATH|SWEETIE_HD_PATH' --glob '!roadmap/**' --glob '!.env*' ."
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-cli -p kaifuu-reallive -p utsushi-reallive --no-run"
+        }
+      ],
+      "audit_focus": []
+    },
+    {
+      "id": "generalize-utsushi-replay-validator-surface",
+      "title": "Rename Utsushi RealLive replay validator to engine-generic surface",
+      "kind": "feature",
+      "milestone": null,
+      "status": "cancelled",
+      "priority": "P2",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "The Generalization audit found Utsushi replay validation exposed as a title-specific binary/test surface (, , and real_sweetie_hd test names). Rename the binary, help output, test filenames, and test function names to engine-generic RealLive replay validation surfaces while preserving behavior through explicit engine/source/scene flags.",
+      "acceptance": "No Utsushi binary name, source filename, test filename, test function name, help output, or public command string contains , , or  outside roadmap/planning records. Existing replay validation behavior remains available through a generic command such as utsushi-cli replay-validate --engine reallive or replay-validate-reallive. Tests cover the renamed help/command surface and replay behavior.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-27T20:26:38.541Z",
+      "updated_at": "2026-06-27T20:27:17.874Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "projects": ["utsushi"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "rg -n 'replay-validate-sweetie-hd|replay_validate_sweetie_hd|real_sweetie_hd' crates/utsushi-reallive crates/utsushi-cli --glob '!.env*'"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-reallive"
+        }
+      ],
+      "audit_focus": []
+    },
+    {
+      "id": "generalize-utsushi-reallive-replay-surface",
+      "title": "Rename Utsushi RealLive replay validator to engine-generic surface",
+      "kind": "feature",
+      "milestone": null,
+      "status": "ready",
+      "priority": "P2",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "The Generalization audit found Utsushi replay validation exposed as a title-specific binary/test surface: replay-validate-sweetie-hd, replay_validate_sweetie_hd, and real_sweetie_hd test names. Rename the binary, help output, test filenames, and test function names to engine-generic RealLive replay validation surfaces while preserving behavior through explicit engine/source/scene flags.",
+      "acceptance": "No Utsushi binary name, source filename, test filename, test function name, help output, or public command string contains sweetie-hd, sweetie_hd, or replay-validate-sweetie-hd outside roadmap/planning records. Existing replay validation behavior remains available through a generic command such as utsushi-cli replay-validate --engine reallive or replay-validate-reallive. Tests cover the renamed help/command surface and replay behavior.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-27T20:30:04.975Z",
+      "updated_at": "2026-06-27T20:30:04.975Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "projects": ["utsushi"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "rg -n 'replay-validate-sweetie-hd|replay_validate_sweetie_hd|real_sweetie_hd' crates/utsushi-reallive crates/utsushi-cli --glob '!.env*'"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-reallive"
+        }
+      ],
+      "audit_focus": []
+    },
+    {
+      "id": "add-title-reference-guardrail-advisory",
+      "title": "Add advisory guard for title-specific game references",
+      "kind": "feature",
+      "milestone": null,
+      "status": "ready",
+      "priority": "P2",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "Add an advisory scanner for concrete game title/vendor/slug tokens and title-derived env vars outside allowed planning records. The first pass must report current violations without failing CI so cleanup nodes can proceed with a visible baseline. The scanner should cover tracked filenames and file contents, skip .env files, and keep temporary audit artifacts out of the enforced path until their findings are converted into DAG work.",
+      "acceptance": "A script such as scripts/validate-no-specific-game-references.mjs scans git-tracked paths and contents for configured forbidden tokens. Report mode exits zero and prints grouped violations with paths. Tests use synthetic fake title/vendor tokens rather than real commercial names. The allowlist is explicit and limited to roadmap/planning records plus documented temporary audit artifacts. The guard is not wired as an enforced just check gate until cleanup nodes have removed product-surface violations.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-27T20:30:20.284Z",
+      "updated_at": "2026-06-27T20:30:20.284Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "projects": ["universal", "shared"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "node --test scripts/validate-no-specific-game-references.test.mjs"
+        },
+        {
+          "type": "command",
+          "value": "node scripts/validate-no-specific-game-references.mjs --mode report"
+        }
+      ],
+      "audit_focus": []
     }
   ],
   "edges": [
