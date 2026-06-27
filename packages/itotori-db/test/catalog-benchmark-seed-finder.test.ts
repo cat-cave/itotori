@@ -1,8 +1,10 @@
 import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { localUserId, type AuthorizationActor } from "../src/authorization.js";
 import { EngineCapabilityReportRepository } from "../src/repositories/engine-capability-report-repository.js";
 import {
+  type CatalogBenchmarkSeedFinderReadModel,
   ItotoriCatalogRepository,
   type CatalogSourceProvenanceRecord,
 } from "../src/repositories/catalog-repository.js";
@@ -26,6 +28,17 @@ import { isolatedMigratedContext } from "./db-test-context.js";
 
 const localActor: AuthorizationActor = { userId: localUserId };
 const fetchedAt = "2026-06-27T12:00:00.000Z";
+const publicSeedFinderFixture = JSON.parse(
+  readFileSync(
+    new URL("../../../fixtures/catalog-benchmark-seeds/fixture.json", import.meta.url),
+    "utf8",
+  ),
+) as {
+  expectedDefaultReadModel: Omit<CatalogBenchmarkSeedFinderReadModel, "generatedAt"> & {
+    generatedAt: string;
+  };
+  publicLeakagePolicy: { forbiddenSubstrings: string[] };
+};
 
 describe("catalogBenchmarkSeedFinder", () => {
   it("returns readiness-aware aggregate-safe benchmark seeds with deterministic ranking and filters", async () => {
@@ -39,6 +52,12 @@ describe("catalogBenchmarkSeedFinder", () => {
 
       const readModel = await repo.catalogBenchmarkSeedFinder(localActor, { limit: 20 });
       expect(readModel.schemaVersion).toBe("catalog.benchmark_seed_finder.v0.1");
+      expect(
+        normalizeBenchmarkSeedReadModel(
+          readModel,
+          publicSeedFinderFixture.expectedDefaultReadModel.generatedAt,
+        ),
+      ).toEqual(publicSeedFinderFixture.expectedDefaultReadModel);
       expect(readModel.rows.map((row) => row.workId)).toContain(ids.noEnglishOwned);
       expect(readModel.rows.map((row) => row.workId)).toContain(ids.fanPartialIdentifyOnly);
       expect(readModel.rows.map((row) => row.workId)).toContain(ids.mtlPartialExtract);
@@ -203,6 +222,9 @@ describe("catalogBenchmarkSeedFinder", () => {
       );
 
       const publicPayload = JSON.stringify(withDemotions);
+      for (const forbidden of publicSeedFinderFixture.publicLeakagePolicy.forbiddenSubstrings) {
+        expect(publicPayload).not.toContain(forbidden);
+      }
       expect(publicPayload).not.toMatch(/\/home|\/tmp|[A-Z]:\\\\|file:|\.zip/u);
       expect(publicPayload).not.toContain("private-story-title");
       expect(publicPayload).not.toContain("local-scan-entry-secret");
@@ -581,4 +603,14 @@ function requiredTestRow<T>(rows: T[], label: string): T {
     throw new Error(`expected ${label}`);
   }
   return row;
+}
+
+function normalizeBenchmarkSeedReadModel(
+  readModel: CatalogBenchmarkSeedFinderReadModel,
+  generatedAt: string,
+): unknown {
+  return {
+    ...JSON.parse(JSON.stringify(readModel)),
+    generatedAt,
+  };
 }

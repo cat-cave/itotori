@@ -1,0 +1,305 @@
+{
+  "schemaVersion": "catalog.benchmark_seed_finder.fixture.v0.1",
+  "fixtureId": "catalog-benchmark-seeds-catalog-004",
+  "generatedAt": "2026-06-27T12:05:00.000Z",
+  "reviewNotes": [
+    "Synthetic fixture only; no private corpus text, local paths, payload hashes, or raw payload content is included.",
+    "Local ownership is represented as aggregate owned/not-owned evidence counts only.",
+    "Expected output is deterministic after generatedAt is normalized by the fixture test."
+  ],
+  "targetLanguage": "en-US",
+  "inputSummary": {
+    "sourceVersion": "catalog-benchmark-seed-fixture-v1",
+    "works": [
+      {
+        "workId": "019ed104-0000-7000-8000-000000000101",
+        "catalogSource": "dlsite",
+        "sourceId": "RJSEED001",
+        "engineName": "rpg-maker-mv",
+        "translationCompleteness": "none",
+        "localOwnership": "owned",
+        "localEvidenceCount": 2,
+        "demandFacts": [{ "kind": "dl_count", "count": 18420 }]
+      },
+      {
+        "workId": "019ed104-0000-7000-8000-000000000102",
+        "catalogSource": "vndb",
+        "sourceId": "vSeedFan",
+        "engineName": "identify-only-engine",
+        "translationCompleteness": "fan_partial",
+        "localOwnership": "unknown",
+        "localEvidenceCount": 0,
+        "demandFacts": [{ "kind": "dl_count", "count": 1400 }]
+      },
+      {
+        "workId": "019ed104-0000-7000-8000-000000000103",
+        "catalogSource": "dlsite",
+        "sourceId": "RJSEED003",
+        "engineName": "partial-extract-engine",
+        "translationCompleteness": "mtl",
+        "localOwnership": "unknown",
+        "localEvidenceCount": 0,
+        "demandFacts": [{ "kind": "rank", "rank": 44 }]
+      },
+      {
+        "workId": "019ed104-0000-7000-8000-000000000104",
+        "catalogSource": "dlsite",
+        "sourceId": "RJSEED004",
+        "engineName": "rpg-maker-mv",
+        "translationCompleteness": "none",
+        "localOwnership": "unknown",
+        "localEvidenceCount": 0,
+        "openConflict": true
+      },
+      {
+        "workId": "019ed104-0000-7000-8000-000000000105",
+        "catalogSource": "local_corpus",
+        "sourceId": "local-private-source",
+        "engineName": "rpg-maker-mv",
+        "translationCompleteness": "none",
+        "localOwnership": "not_owned",
+        "localEvidenceCount": 1,
+        "redactionClass": "private_corpus"
+      }
+    ],
+    "filters": [
+      {
+        "name": "default",
+        "filter": { "limit": 20 },
+        "expectedWorkIds": [
+          "019ed104-0000-7000-8000-000000000101",
+          "019ed104-0000-7000-8000-000000000105",
+          "019ed104-0000-7000-8000-000000000103",
+          "019ed104-0000-7000-8000-000000000102"
+        ]
+      },
+      {
+        "name": "provenance required with demotions",
+        "filter": { "provenanceRequired": true, "includeDemoted": true, "limit": 20 },
+        "expectedExcludedWorkIds": ["019ed104-0000-7000-8000-000000000105"]
+      }
+    ]
+  },
+  "expectedDefaultReadModel": {
+    "schemaVersion": "catalog.benchmark_seed_finder.v0.1",
+    "targetLanguage": "en-US",
+    "generatedAt": "2026-06-27T12:05:00.000Z",
+    "rows": [
+      {
+        "workId": "019ed104-0000-7000-8000-000000000101",
+        "canonicalTitle": "Benchmark no-English owned",
+        "originalLanguage": "ja-JP",
+        "sourceIds": [
+          {
+            "catalogSource": "dlsite",
+            "sourceId": "RJSEED001",
+            "externalIdKind": "store_product"
+          }
+        ],
+        "completenessPool": "no_english",
+        "translationStatuses": [
+          {
+            "language": "en-US",
+            "status": "none",
+            "confidence": "high",
+            "statusScope": "work",
+            "platform": null
+          }
+        ],
+        "localOwnership": "owned",
+        "localEvidenceCount": 2,
+        "demandBucket": "very_high",
+        "readiness": {
+          "adapterId": "rpg-maker-mv",
+          "identify": "supported",
+          "inventory": "supported",
+          "extract": "supported",
+          "patch": "supported",
+          "helper": "unknown",
+          "runtime": "unknown"
+        },
+        "provenance": [
+          {
+            "catalogSource": "dlsite",
+            "sourceId": "RJSEED001",
+            "sourceRecordKind": "recorded_fixture",
+            "sourceVersion": "catalog-benchmark-seed-fixture-v1",
+            "fixtureId": "catalog-benchmark-seeds/dlsite/RJSEED001.json",
+            "redactionClass": "public_metadata"
+          }
+        ],
+        "decision": "seed",
+        "rank": 1,
+        "seedRank": 1,
+        "explanationCodes": [
+          "pool:no_english",
+          "demand_bucket:very_high",
+          "local_ownership:owned",
+          "helper_readiness_unknown",
+          "runtime_readiness_unknown"
+        ]
+      },
+      {
+        "workId": "019ed104-0000-7000-8000-000000000105",
+        "canonicalTitle": "Benchmark unrecorded local-only",
+        "originalLanguage": "ja-JP",
+        "sourceIds": [],
+        "completenessPool": "no_english",
+        "translationStatuses": [
+          {
+            "language": "en-US",
+            "status": "none",
+            "confidence": "low",
+            "statusScope": "work",
+            "platform": null
+          }
+        ],
+        "localOwnership": "not_owned",
+        "localEvidenceCount": 1,
+        "demandBucket": "none",
+        "readiness": {
+          "adapterId": "rpg-maker-mv",
+          "identify": "supported",
+          "inventory": "supported",
+          "extract": "supported",
+          "patch": "supported",
+          "helper": "unknown",
+          "runtime": "unknown"
+        },
+        "provenance": [],
+        "decision": "seed",
+        "rank": 2,
+        "seedRank": 2,
+        "explanationCodes": [
+          "pool:no_english",
+          "demand_bucket:none",
+          "local_ownership:not_owned",
+          "helper_readiness_unknown",
+          "runtime_readiness_unknown",
+          "unrecorded_or_local_only"
+        ]
+      },
+      {
+        "workId": "019ed104-0000-7000-8000-000000000103",
+        "canonicalTitle": "Benchmark MTL partial extract",
+        "originalLanguage": "ja-JP",
+        "sourceIds": [
+          {
+            "catalogSource": "dlsite",
+            "sourceId": "RJSEED003",
+            "externalIdKind": "store_product"
+          }
+        ],
+        "completenessPool": "mtl_only",
+        "translationStatuses": [
+          {
+            "language": "en-US",
+            "status": "mtl",
+            "confidence": "high",
+            "statusScope": "work",
+            "platform": null
+          }
+        ],
+        "localOwnership": "unknown",
+        "localEvidenceCount": 0,
+        "demandBucket": "high",
+        "readiness": {
+          "adapterId": "partial-extract-engine",
+          "identify": "supported",
+          "inventory": "supported",
+          "extract": "partial",
+          "patch": "unsupported",
+          "helper": "unknown",
+          "runtime": "unknown"
+        },
+        "provenance": [
+          {
+            "catalogSource": "dlsite",
+            "sourceId": "RJSEED003",
+            "sourceRecordKind": "recorded_fixture",
+            "sourceVersion": "catalog-benchmark-seed-fixture-v1",
+            "fixtureId": "catalog-benchmark-seeds/dlsite/RJSEED003.json",
+            "redactionClass": "public_metadata"
+          }
+        ],
+        "decision": "candidate",
+        "rank": 3,
+        "seedRank": null,
+        "explanationCodes": [
+          "pool:mtl_only",
+          "demand_bucket:high",
+          "local_ownership:unknown",
+          "helper_readiness_unknown",
+          "runtime_readiness_unknown"
+        ]
+      },
+      {
+        "workId": "019ed104-0000-7000-8000-000000000102",
+        "canonicalTitle": "Benchmark fan partial identify-only",
+        "originalLanguage": "ja-JP",
+        "sourceIds": [
+          {
+            "catalogSource": "vndb",
+            "sourceId": "vSeedFan",
+            "externalIdKind": "store_product"
+          }
+        ],
+        "completenessPool": "fan_partial",
+        "translationStatuses": [
+          {
+            "language": "en-US",
+            "status": "fan_partial",
+            "confidence": "high",
+            "statusScope": "work",
+            "platform": null
+          }
+        ],
+        "localOwnership": "unknown",
+        "localEvidenceCount": 0,
+        "demandBucket": "medium",
+        "readiness": {
+          "adapterId": "identify-only-engine",
+          "identify": "supported",
+          "inventory": "unsupported",
+          "extract": "unsupported",
+          "patch": "unsupported",
+          "helper": "unknown",
+          "runtime": "unknown"
+        },
+        "provenance": [
+          {
+            "catalogSource": "vndb",
+            "sourceId": "vSeedFan",
+            "sourceRecordKind": "recorded_fixture",
+            "sourceVersion": "catalog-benchmark-seed-fixture-v1",
+            "fixtureId": "catalog-benchmark-seeds/vndb/vSeedFan.json",
+            "redactionClass": "public_metadata"
+          }
+        ],
+        "decision": "candidate",
+        "rank": 4,
+        "seedRank": null,
+        "explanationCodes": [
+          "pool:fan_partial",
+          "demand_bucket:medium",
+          "local_ownership:unknown",
+          "helper_readiness_unknown",
+          "runtime_readiness_unknown"
+        ]
+      }
+    ]
+  },
+  "publicLeakagePolicy": {
+    "forbiddenSubstrings": [
+      "/home",
+      "/tmp",
+      "C:\\",
+      "file:",
+      ".zip",
+      "private-story-title",
+      "local-scan-entry-secret",
+      "path_hash",
+      "rawPayloadSecret"
+    ]
+  }
+}

@@ -1,0 +1,47 @@
+{
+  "$schema": "./manifest.schema.json",
+  "schemaVersion": "0.1.0",
+  "fixture": {
+    "id": "catalog-benchmark-seeds",
+    "title": "Catalog Benchmark Seed Finder Fixtures",
+    "kind": "synthetic",
+    "summary": "Synthetic public fixture input and expected read-model output for deterministic alpha benchmark seed finder ranking, filtering, and leakage checks.",
+    "sourceLocale": "ja-JP",
+    "targetLocales": ["en-US"],
+    "publicRedistribution": "allowed",
+    "license": {
+      "spdx": "CC0-1.0",
+      "evidence": "Hand-authored synthetic catalog records, aggregate local ownership evidence, capability readiness, and expected read-model output; no third-party raw assets."
+    },
+    "provenance": {
+      "author": "Itotori contributors",
+      "creationMethod": "Hand-authored synthetic query and expected-output bundle for CATALOG-004 benchmark seed finder verification.",
+      "rawAssetPolicy": "contains-no-copyrighted-game-assets"
+    }
+  },
+  "files": [
+    {
+      "path": "fixtures/catalog-benchmark-seeds/fixture.json",
+      "role": "benchmark-input",
+      "mediaType": "application/json",
+      "sha256": "c5439910c1f3d0fe2fc99b4b3383913be38ac3bc30f56481b45ca3271b6b52c3",
+      "bytes": 9606,
+      "redistributable": true
+    }
+  ],
+  "aggregateStats": {
+    "files": 1,
+    "textUnits": 0,
+    "sourceTextUtf16CodeUnits": 0,
+    "protectedSpans": 0,
+    "sourceLocales": ["ja-JP"],
+    "targetLocales": ["en-US"],
+    "engineKinds": ["rpg-maker-mv", "identify-only-engine", "partial-extract-engine"],
+    "notes": "Covers seed, candidate, demoted conflict, provenance-required exclusion, local ownership aggregation, readiness ranking, and public leakage policy."
+  },
+  "benchmarkUse": {
+    "allowedInPublicCi": true,
+    "allowedInPublicReports": true,
+    "reportingLabel": "public:catalog-benchmark-seeds"
+  }
+}
