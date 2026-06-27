@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "exported_at": "2026-06-27T18:56:00.435Z",
+  "exported_at": "2026-06-27T19:20:22.147Z",
   "registries": {
     "groups": [
       {
@@ -28646,7 +28646,7 @@
       "title": "Parameterize RealLive bridge identity metadata",
       "kind": "audit-fix",
       "milestone": "alpha",
-      "status": "claimed",
+      "status": "done",
       "priority": "P1",
       "estimate_points": 1,
       "risk": "medium",
@@ -28657,9 +28657,9 @@
       "validation": null,
       "context": null,
       "created_at": "2026-06-27T18:49:18.198Z",
-      "updated_at": "2026-06-27T18:55:57.033Z",
+      "updated_at": "2026-06-27T19:20:17.704Z",
       "claimed_at": "2026-06-27T18:53:23.432Z",
-      "done_at": null,
+      "done_at": "2026-06-27T19:20:17.704Z",
       "group_name": "kaifuu-core",
       "status_reason": "[2026-06-27T18:55:57.033Z] ORCHESTRATOR 2026-06-27: Claim notification to ntfy was not sent because tool policy rejected external disclosure of project workflow metadata. Proceeding with durable qd/main claim state instead.",
       "check_command": null,
@@ -41913,6 +41913,30 @@
       "started_at": "2026-06-27T18:42:57.861Z",
       "finished_at": "2026-06-27T18:42:57.861Z",
       "summary": "Merge recorded with squash at commit 474584cece9ca4dedcf1af140ea87450f2b968ee",
+      "log_path": null
+    },
+    {
+      "id": "c12bd508-f6c1-4074-8f9f-85d525382d84",
+      "node_id": "parameterize-reallive-bridge-identity-metadata",
+      "kind": "ci",
+      "status": "passed",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-27T19:20:11.761Z",
+      "finished_at": "2026-06-27T19:20:11.761Z",
+      "summary": "Merged to main f9ca459 after focused metadata tests, suite dry-run tests, audits, repair, and final just check passed.\nEvidence: external_id=f9ca459",
+      "log_path": null
+    },
+    {
+      "id": "2a007e04-0e5e-42cb-83fd-dca8c331fcb2",
+      "node_id": "parameterize-reallive-bridge-identity-metadata",
+      "kind": "merge",
+      "status": "recorded",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-27T19:20:17.704Z",
+      "finished_at": "2026-06-27T19:20:17.704Z",
+      "summary": "Merge recorded with squash at commit f9ca459",
       "log_path": null
     }
   ],
