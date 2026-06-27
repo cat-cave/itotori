@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "exported_at": "2026-06-27T01:29:27.225Z",
+  "exported_at": "2026-06-27T01:34:11.199Z",
   "registries": {
     "groups": [
       {
@@ -7677,19 +7677,19 @@
       "title": "Style dispute adjudication workflow",
       "kind": "feature",
       "milestone": "alpha",
-      "status": "ready",
+      "status": "claimed",
       "priority": "P1",
       "estimate_points": 1,
       "risk": "medium",
-      "owner": null,
-      "branch": null,
+      "owner": "orchestrator-itotori-042",
+      "branch": "spec/itotori-042",
       "spec": "Add explicit accept, reject, defer, and style-guide-amendment handling for controversial localization feedback.\n\nDeliverables:\n- Style dispute state machine\n- Decision rationale capture\n- Style-guide amendment flow\n- Duplicate unresolved-feedback suppression",
       "acceptance": "- Style feedback can be accepted, rejected, deferred, or converted into a style-guide amendment\n- Rejected feedback keeps rationale and does not reappear as unresolved QA\n- Accepted style changes trigger affected reruns",
       "validation": null,
       "context": null,
       "created_at": "2026-06-26T02:53:54.880Z",
-      "updated_at": "2026-06-26T02:53:54.880Z",
-      "claimed_at": null,
+      "updated_at": "2026-06-27T01:34:00.577Z",
+      "claimed_at": "2026-06-27T01:34:00.577Z",
       "done_at": null,
       "group_name": "feedback",
       "status_reason": "Re-tier 2026-06-24: kept alpha under the new 4-tier framework (single-game Sweetie HD e2e set per docs/proposals/dag-retier-2026-06-24.md).",
