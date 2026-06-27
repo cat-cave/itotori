@@ -21,6 +21,7 @@ import type {
 import {
   buildPairKey,
   type TelemetryCacheRow,
+  type TelemetryCostKindRow,
   type TelemetryPairKey,
   type TelemetryPairRanking,
   type TelemetryPairSummary,
@@ -241,6 +242,31 @@ export class LedgerTelemetryQuery implements TelemetryQuery {
       pair: buildPairKey(row.modelId, row.providerId),
       invocationCount: row.invocationCount,
       zdrEnforcedCount: row.zdrEnforcedCount,
+    }));
+  }
+
+  async countCostKindsByPair(
+    actor: AuthorizationActor,
+    projectId: string,
+    window: TelemetryWindow,
+  ): Promise<TelemetryCostKindRow[]> {
+    if (this.modelLedger === undefined) {
+      throw new TelemetryQueryError(
+        "telemetry_query_invalid_input",
+        "countCostKindsByPair requires an ItotoriModelLedgerRepositoryPort at construction",
+      );
+    }
+    const rows = await this.modelLedger.countCostKindsByPair(actor, projectId, window);
+    const sorted = [...rows].sort((a, b) => {
+      const aKey = `${buildPairKey(a.modelId, a.providerId)}:${a.costKind}`;
+      const bKey = `${buildPairKey(b.modelId, b.providerId)}:${b.costKind}`;
+      return aKey.localeCompare(bKey);
+    });
+    return sorted.map((row) => ({
+      pair: buildPairKey(row.modelId, row.providerId),
+      costKind: row.costKind,
+      invocationCount: row.invocationCount,
+      amountMicrosUsd: row.amountMicrosUsd,
     }));
   }
 

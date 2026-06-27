@@ -199,6 +199,19 @@ export type ProviderRunZdrCountWindow = {
   readonly to: Date;
 };
 
+export type ProviderRunCostKindCountRow = {
+  modelId: string;
+  providerId: string;
+  costKind: ProviderCostKind;
+  invocationCount: number;
+  amountMicrosUsd: number;
+};
+
+export type ProviderRunCostKindCountWindow = {
+  readonly from: Date;
+  readonly to: Date;
+};
+
 export interface ItotoriModelLedgerRepositoryPort {
   recordProviderRun(
     actor: AuthorizationActor,
@@ -217,6 +230,18 @@ export interface ItotoriModelLedgerRepositoryPort {
     projectId: string,
     window: ProviderRunZdrCountWindow,
   ): Promise<ProviderRunZdrCountRow[]>;
+  /**
+   * UTSUSHI-231 — count provider runs per (modelId, providerId,
+   * costKind) over the same post-run telemetry window. The alpha
+   * closer must prove every live invocation was billed, so the
+   * telemetry-summary artifact needs the raw cost-kind split rather
+   * than only the rolled-up USD total.
+   */
+  countCostKindsByPair(
+    actor: AuthorizationActor,
+    projectId: string,
+    window: ProviderRunCostKindCountWindow,
+  ): Promise<ProviderRunCostKindCountRow[]>;
 }
 
 const costKinds = Object.values(providerCostKindValues) as ProviderCostKind[];
@@ -372,6 +397,39 @@ export class ItotoriModelLedgerRepository implements ItotoriModelLedgerRepositor
       providerId: String(row.provider_id),
       invocationCount: Number(row.invocation_count ?? 0),
       zdrEnforcedCount: Number(row.zdr_enforced_count ?? 0),
+    }));
+  }
+
+  async countCostKindsByPair(
+    actor: AuthorizationActor,
+    projectId: string,
+    window: ProviderRunCostKindCountWindow,
+  ): Promise<ProviderRunCostKindCountRow[]> {
+    await requirePermission(this.db, actor, permissionValues.catalogRead);
+    if (window.from.getTime() > window.to.getTime()) {
+      throw new Error("countCostKindsByPair window.from must not be after window.to");
+    }
+    const result = await this.db.execute(sql`
+      select
+        pr.requested_model_id as model_id,
+        pr.provider_id,
+        cle.cost_kind,
+        count(*)::int as invocation_count,
+        coalesce(sum(cle.amount_micros_usd), 0)::text as amount_micros_usd
+      from ${providerRuns} pr
+      join ${costLedgerEntries} cle on cle.provider_run_id = pr.provider_run_id
+      where pr.project_id = ${projectId}
+        and pr.started_at >= ${window.from}
+        and pr.started_at <= ${window.to}
+      group by pr.requested_model_id, pr.provider_id, cle.cost_kind
+      order by pr.requested_model_id asc, pr.provider_id asc, cle.cost_kind asc
+    `);
+    return (result.rows as Array<Record<string, unknown>>).map((row) => ({
+      modelId: String(row.model_id),
+      providerId: String(row.provider_id),
+      costKind: asCostKind(row.cost_kind),
+      invocationCount: Number(row.invocation_count ?? 0),
+      amountMicrosUsd: Number(row.amount_micros_usd ?? 0),
     }));
   }
 

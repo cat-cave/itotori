@@ -567,6 +567,41 @@ describe("ItotoriModelLedgerRepository", () => {
     }
   });
 
+  it("counts cost kinds by pair over a post-run window", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      const projectRepository = new ItotoriProjectRepository(context.db);
+      await projectRepository.importSourceBundle(localActor, projectFixture());
+      const ledger = new ItotoriModelLedgerRepository(context.db);
+
+      await ledger.recordProviderRun(localActor, runInput("run-cost-kind-billed", "billed", 150));
+      await ledger.recordProviderRun(localActor, runInput("run-cost-kind-zero", "zero", 0));
+
+      const rows = await ledger.countCostKindsByPair(localActor, "project-test", {
+        from: new Date("2026-06-01T00:00:00Z"),
+        to: new Date("2026-06-30T23:59:59Z"),
+      });
+      expect(rows).toEqual([
+        expect.objectContaining({
+          modelId: "itotori-fake-draft-v0",
+          providerId: expect.any(String),
+          costKind: "billed",
+          invocationCount: 1,
+          amountMicrosUsd: 150,
+        }),
+        expect.objectContaining({
+          modelId: "itotori-fake-draft-v0",
+          providerId: expect.any(String),
+          costKind: "zero",
+          invocationCount: 1,
+          amountMicrosUsd: 0,
+        }),
+      ]);
+    } finally {
+      await context.close();
+    }
+  });
+
   it("rejects prompt preset drift for an existing preset id and version", async () => {
     const context = await isolatedMigratedContext();
     try {

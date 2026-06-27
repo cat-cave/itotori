@@ -502,8 +502,19 @@ describe("LedgerTelemetryQuery.countZdrEnforcedCallsByPair (ITOTORI-230)", () =>
     zdrEnforcedCount: number;
   };
 
+  type CostKindCountRow = {
+    modelId: string;
+    providerId: string;
+    costKind: "billed" | "zero";
+    invocationCount: number;
+    amountMicrosUsd: number;
+  };
+
   class StubModelLedgerPort {
-    constructor(private readonly rows: ZdrCountRow[]) {}
+    constructor(
+      private readonly rows: ZdrCountRow[],
+      private readonly costKindRows: CostKindCountRow[] = [],
+    ) {}
     // Type-erased: we only use countZdrEnforcedByPair on this port.
     async recordProviderRun(): Promise<never> {
       throw new Error("stub does not implement recordProviderRun");
@@ -513,6 +524,9 @@ describe("LedgerTelemetryQuery.countZdrEnforcedCallsByPair (ITOTORI-230)", () =>
     }
     async countZdrEnforcedByPair(): Promise<ZdrCountRow[]> {
       return this.rows;
+    }
+    async countCostKindsByPair(): Promise<CostKindCountRow[]> {
+      return this.costKindRows;
     }
   }
 
@@ -581,6 +595,35 @@ describe("LedgerTelemetryQuery.countZdrEnforcedCallsByPair (ITOTORI-230)", () =>
     await expect(
       query.countZdrEnforcedCallsByPair(FIXED_ACTOR, PROJECT_ID, WINDOW),
     ).rejects.toThrow(TelemetryQueryError);
+  });
+
+  it("returns cost-kind counts per pair from the model-ledger port", async () => {
+    const modelLedger = new StubModelLedgerPort(
+      [],
+      [
+        {
+          modelId: "deepseek-ai/deepseek-v3.2-exp",
+          providerId: "fireworks",
+          costKind: "billed",
+          invocationCount: 12,
+          amountMicrosUsd: 3456,
+        },
+      ],
+    );
+    const query = new LedgerTelemetryQuery(
+      new StubLedgerPort(buildSeed()),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      modelLedger as any,
+    );
+    const rows = await query.countCostKindsByPair(FIXED_ACTOR, PROJECT_ID, WINDOW);
+    expect(rows).toEqual([
+      {
+        pair: buildPairKey("deepseek-ai/deepseek-v3.2-exp", "fireworks"),
+        costKind: "billed",
+        invocationCount: 12,
+        amountMicrosUsd: 3456,
+      },
+    ]);
   });
 });
 
@@ -746,6 +789,44 @@ describe("telemetry CLI renderTextSummary — ITOTORI-233", () => {
       to: new Date("1990-01-02T00:00:00Z"),
     });
     expect(lines).toContain("cache_savings_usd=0.00000000");
+  });
+
+  it("prints post-run ZDR and billed cost-kind evidence when supplied", () => {
+    const lines = renderTextSummary(
+      {
+        byPair: {},
+        totalCostUsd: "0.00000000",
+        cacheSavingsUsd: "0.00000000",
+      },
+      {
+        projectId: PROJECT_ID,
+        from: FULL_WINDOW.from,
+        to: FULL_WINDOW.to,
+      },
+      {
+        zdr: {
+          invocationCount: 10,
+          zdrEnforcedCount: 10,
+          unenforcedCount: 0,
+          allInvocationsZdrEnforced: true,
+          byPair: {},
+        },
+        costKind: {
+          invocationCount: 10,
+          billedCount: 10,
+          nonBilledCount: 0,
+          allInvocationsBilled: true,
+          byPair: {},
+          rows: [],
+        },
+      },
+    );
+    expect(lines).toContain(
+      "zdr_enforced_count=10 invocation_count=10 all_zdr_enforced=true",
+    );
+    expect(lines).toContain(
+      "billed_cost_kind_count=10 non_billed_cost_kind_count=0 all_cost_kinds_billed=true",
+    );
   });
 });
 

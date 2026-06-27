@@ -157,6 +157,13 @@ export type TelemetryZdrEnforcedRow = {
   readonly zdrEnforcedCount: number;
 };
 
+export type TelemetryCostKindRow = {
+  readonly pair: TelemetryPairKey;
+  readonly costKind: "billed" | "zero";
+  readonly invocationCount: number;
+  readonly amountMicrosUsd: number;
+};
+
 /**
  * ITOTORI-233 — per-(modelId, providerId) cache hit / savings row.
  * `cacheHitCount` is the number of invocations where the response
@@ -218,6 +225,18 @@ export interface TelemetryQuery {
     projectId: string,
     window: TelemetryWindow,
   ): Promise<TelemetryZdrEnforcedRow[]>;
+
+  /**
+   * UTSUSHI-231 — per-(modelId, providerId, costKind) counts over the
+   * window. Post-run acceptance requires proving every live invocation
+   * used the real billed-cost path, so this surface exposes the raw
+   * cost-kind split from the model ledger.
+   */
+  countCostKindsByPair(
+    actor: AuthorizationActor,
+    projectId: string,
+    window: TelemetryWindow,
+  ): Promise<TelemetryCostKindRow[]>;
 
   /**
    * ITOTORI-233 — per-(modelId, providerId) cache hit / savings count

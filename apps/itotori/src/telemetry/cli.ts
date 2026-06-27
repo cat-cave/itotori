@@ -11,10 +11,12 @@
 
 import type { AuthorizationActor } from "@itotori/db";
 import type {
+  TelemetryCostKindRow,
   TelemetryPairKey,
   TelemetryPairSummary,
   TelemetryQuery,
   TelemetrySummaryByPair,
+  TelemetryZdrEnforcedRow,
 } from "./queries.js";
 
 export type TelemetrySummaryCliArgs = {
@@ -33,6 +35,42 @@ export type TelemetrySummaryCliDeps = {
   readonly stdoutWrite: (line: string) => void;
 };
 
+export type TelemetrySummaryPostRunEvidence = {
+  readonly zdr: {
+    readonly invocationCount: number;
+    readonly zdrEnforcedCount: number;
+    readonly unenforcedCount: number;
+    readonly allInvocationsZdrEnforced: boolean;
+    readonly byPair: Record<
+      TelemetryPairKey,
+      {
+        readonly invocationCount: number;
+        readonly zdrEnforcedCount: number;
+        readonly unenforcedCount: number;
+      }
+    >;
+  };
+  readonly costKind: {
+    readonly invocationCount: number;
+    readonly billedCount: number;
+    readonly nonBilledCount: number;
+    readonly allInvocationsBilled: boolean;
+    readonly byPair: Record<
+      TelemetryPairKey,
+      {
+        readonly billed: number;
+        readonly zero: number;
+        readonly amountMicrosUsd: number;
+      }
+    >;
+    readonly rows: TelemetryCostKindRow[];
+  };
+};
+
+export type TelemetrySummaryCliOutput = TelemetrySummaryByPair & {
+  readonly postRunEvidence: TelemetrySummaryPostRunEvidence;
+};
+
 export async function runTelemetrySummaryCli(
   args: TelemetrySummaryCliArgs,
   deps: TelemetrySummaryCliDeps,
@@ -43,15 +81,33 @@ export async function runTelemetrySummaryCli(
     { from: args.from, to: args.to },
     { groupByDay: args.groupByDay },
   );
-
-  deps.writeJson(args.outputPath, summary);
-
-  if (args.format === "text") {
-    for (const line of renderTextSummary(summary, {
-      projectId: args.projectId,
+  const [zdrRows, costKindRows] = await Promise.all([
+    deps.telemetry.countZdrEnforcedCallsByPair(args.actor, args.projectId, {
       from: args.from,
       to: args.to,
-    })) {
+    }),
+    deps.telemetry.countCostKindsByPair(args.actor, args.projectId, {
+      from: args.from,
+      to: args.to,
+    }),
+  ]);
+  const output: TelemetrySummaryCliOutput = {
+    ...summary,
+    postRunEvidence: buildPostRunEvidence(zdrRows, costKindRows),
+  };
+
+  deps.writeJson(args.outputPath, output);
+
+  if (args.format === "text") {
+    for (const line of renderTextSummary(
+      summary,
+      {
+        projectId: args.projectId,
+        from: args.from,
+        to: args.to,
+      },
+      output.postRunEvidence,
+    )) {
       deps.stdoutWrite(`${line}\n`);
     }
   }
@@ -66,6 +122,7 @@ export type TextSummaryHeader = {
 export function renderTextSummary(
   summary: TelemetrySummaryByPair,
   header: TextSummaryHeader,
+  evidence?: TelemetrySummaryPostRunEvidence,
 ): string[] {
   const lines: string[] = [];
   lines.push(
@@ -82,6 +139,14 @@ export function renderTextSummary(
   // The line is always emitted (zero when no caching hit landed in the
   // window) so the dashboard can render a deterministic row.
   lines.push(`cache_savings_usd=${summary.cacheSavingsUsd}`);
+  if (evidence !== undefined) {
+    lines.push(
+      `zdr_enforced_count=${evidence.zdr.zdrEnforcedCount} invocation_count=${evidence.zdr.invocationCount} all_zdr_enforced=${evidence.zdr.allInvocationsZdrEnforced}`,
+    );
+    lines.push(
+      `billed_cost_kind_count=${evidence.costKind.billedCount} non_billed_cost_kind_count=${evidence.costKind.nonBilledCount} all_cost_kinds_billed=${evidence.costKind.allInvocationsBilled}`,
+    );
+  }
   lines.push("");
   lines.push(
     "pair | invocations | cost_usd | cache_hits | cache_savings_usd | tokens_in | tokens_out | avg_latency_ms | p95_latency_ms",
@@ -124,6 +189,70 @@ export function renderTextSummary(
     }
   }
   return lines;
+}
+
+function buildPostRunEvidence(
+  zdrRows: ReadonlyArray<TelemetryZdrEnforcedRow>,
+  costKindRows: ReadonlyArray<TelemetryCostKindRow>,
+): TelemetrySummaryPostRunEvidence {
+  const zdrByPair: TelemetrySummaryPostRunEvidence["zdr"]["byPair"] = {};
+  let invocationCount = 0;
+  let zdrEnforcedCount = 0;
+  for (const row of zdrRows) {
+    const unenforcedCount = row.invocationCount - row.zdrEnforcedCount;
+    zdrByPair[row.pair] = {
+      invocationCount: row.invocationCount,
+      zdrEnforcedCount: row.zdrEnforcedCount,
+      unenforcedCount,
+    };
+    invocationCount += row.invocationCount;
+    zdrEnforcedCount += row.zdrEnforcedCount;
+  }
+
+  type MutableCostKindPairSummary = {
+    billed: number;
+    zero: number;
+    amountMicrosUsd: number;
+  };
+  const costByPair: Record<TelemetryPairKey, MutableCostKindPairSummary> = {};
+  let costKindInvocationCount = 0;
+  let billedCount = 0;
+  let nonBilledCount = 0;
+  for (const row of costKindRows) {
+    const existing = costByPair[row.pair] ?? {
+      billed: 0,
+      zero: 0,
+      amountMicrosUsd: 0,
+    };
+    if (row.costKind === "billed") {
+      existing.billed += row.invocationCount;
+      billedCount += row.invocationCount;
+    } else {
+      existing.zero += row.invocationCount;
+      nonBilledCount += row.invocationCount;
+    }
+    existing.amountMicrosUsd += row.amountMicrosUsd;
+    costByPair[row.pair] = existing;
+    costKindInvocationCount += row.invocationCount;
+  }
+
+  return {
+    zdr: {
+      invocationCount,
+      zdrEnforcedCount,
+      unenforcedCount: invocationCount - zdrEnforcedCount,
+      allInvocationsZdrEnforced: invocationCount > 0 && invocationCount === zdrEnforcedCount,
+      byPair: zdrByPair,
+    },
+    costKind: {
+      invocationCount: costKindInvocationCount,
+      billedCount,
+      nonBilledCount,
+      allInvocationsBilled: costKindInvocationCount > 0 && nonBilledCount === 0,
+      byPair: costByPair,
+      rows: [...costKindRows],
+    },
+  };
 }
 
 export function parseTelemetrySummaryCliFlags(args: ReadonlyArray<string>): {
