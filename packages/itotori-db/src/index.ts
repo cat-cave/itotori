@@ -408,6 +408,12 @@ export type {
   CatalogBenchmarkSeedRow,
   CatalogBenchmarkSeedSourceId,
   CatalogBenchmarkSeedTranslationStatus,
+  CatalogOpportunityDemandFacts,
+  CatalogOpportunityDemotion,
+  CatalogOpportunityRankingFilter,
+  CatalogOpportunityRankingReadModel,
+  CatalogOpportunityRow,
+  CatalogOpportunityRuntimeEvidenceReadiness,
   CatalogDemandFactInput,
   CatalogDemandFactRecord,
   CatalogCandidateMatchInput,
@@ -450,6 +456,28 @@ export type {
   CatalogWorkSnapshot,
   ItotoriCatalogRepositoryPort,
 } from "./repositories/catalog-repository.js";
+export {
+  catalogOpportunityFactorValues,
+  catalogOpportunityWeightsVersion,
+  scoreCatalogOpportunity,
+} from "./services/catalog-opportunity-ranking.js";
+export type {
+  CatalogOpportunityAdapterReadinessSignal,
+  CatalogOpportunityBenchmarkUsefulnessSignal,
+  CatalogOpportunityCompletenessSignal,
+  CatalogOpportunityConflictSignal,
+  CatalogOpportunityDecision,
+  CatalogOpportunityDemandSignal,
+  CatalogOpportunityExistingTranslationSignal,
+  CatalogOpportunityFactor,
+  CatalogOpportunityFactorName,
+  CatalogOpportunityLocalOwnershipSignal,
+  CatalogOpportunityMarketPrevalenceSignal,
+  CatalogOpportunityRuntimeEvidenceSignal,
+  CatalogOpportunityScoreBreakdown,
+  CatalogOpportunityScoreInput,
+  CatalogOpportunityUnknownEvidenceSignal,
+} from "./services/catalog-opportunity-ranking.js";
 export { InMemoryCatalogCrawlerRepository } from "./repositories/catalog-crawler-memory-repository.js";
 export { ItotoriCatalogCrawlerRepository } from "./repositories/catalog-crawler-repository.js";
 export type {

@@ -42,6 +42,8 @@ import {
   catalogSourceRecordKindValues,
   catalogSourceValues,
   engineCapabilityReports,
+  engineCapabilityEvidence,
+  engineCapabilityEvidenceSourceValues,
   catalogWorks,
   type CatalogConfidence,
   type CatalogCandidateMatchStatus,
@@ -66,6 +68,19 @@ import {
   type CatalogTranslationPortability,
   catalogTranslationPortabilityValues,
 } from "../schema.js";
+import {
+  type CatalogOpportunityAdapterReadinessSignal,
+  type CatalogOpportunityCompletenessSignal,
+  type CatalogOpportunityDemandSignal,
+  type CatalogOpportunityDecision,
+  type CatalogOpportunityExistingTranslationSignal,
+  type CatalogOpportunityFactor,
+  type CatalogOpportunityMarketPrevalenceSignal,
+  type CatalogOpportunityRuntimeEvidenceSignal,
+  type CatalogOpportunityUnknownEvidenceSignal,
+  catalogOpportunityWeightsVersion,
+  scoreCatalogOpportunity,
+} from "../services/catalog-opportunity-ranking.js";
 
 export type CatalogJsonRecord = Record<string, unknown>;
 export type CatalogDateInput = string | Date;
@@ -798,6 +813,72 @@ export type CatalogBenchmarkSeedFinderReadModel = {
   rows: CatalogBenchmarkSeedRow[];
 };
 
+export type CatalogOpportunityRankingFilter = {
+  targetLanguage?: string;
+  includeDemoted?: boolean;
+  limit?: number;
+  engine?: string;
+  pool?: CatalogCompletenessPool;
+  minCapabilityLevel?: CapabilityLevel;
+  localOwnership?: CatalogBenchmarkLocalOwnership;
+  demandBucket?: CatalogBenchmarkDemandBucket;
+};
+
+export type CatalogOpportunityDemandFacts = {
+  demandBucket: CatalogBenchmarkDemandBucket;
+  dlCount: number | null;
+  ratingAverage: number | null;
+  ratingCount: number | null;
+  wishlistCount: number | null;
+  bestRank: number | null;
+  workType: string | null;
+};
+
+export type CatalogOpportunityRuntimeEvidenceReadiness = {
+  status: CatalogOpportunityRuntimeEvidenceSignal;
+  publicFixtureEvidenceCount: number;
+  privateLocalAggregateEvidenceCount: number;
+};
+
+export type CatalogOpportunityDemotion = {
+  reasonCode: string;
+  conflictId: string | null;
+  severity: CatalogConflictReviewSeverity;
+  sourceIds: CatalogConflictReviewSourceId[];
+};
+
+export type CatalogOpportunityRow = {
+  rank: number;
+  workId: string;
+  canonicalTitle: string;
+  originalLanguage: string | null;
+  sourceIds: CatalogBenchmarkSeedSourceId[];
+  engineName: string | null;
+  adapterId: string | null;
+  readiness: CatalogBenchmarkSeedReadiness;
+  runtimeEvidenceReadiness: CatalogOpportunityRuntimeEvidenceReadiness;
+  completenessPool: CatalogCompletenessPool;
+  translationStatuses: CatalogBenchmarkSeedTranslationStatus[];
+  demandFacts: CatalogOpportunityDemandFacts;
+  localOwnership: CatalogBenchmarkLocalOwnership;
+  localEvidenceCount: number;
+  marketPrevalence: CatalogOpportunityMarketPrevalenceSignal;
+  decision: CatalogOpportunityDecision;
+  score: number;
+  factorBreakdown: CatalogOpportunityFactor[];
+  explanationCodes: string[];
+  provenance: CatalogBenchmarkSeedProvenanceSummary[];
+  demotions: CatalogOpportunityDemotion[];
+};
+
+export type CatalogOpportunityRankingReadModel = {
+  schemaVersion: "catalog.opportunity_ranking.v0.1";
+  targetLanguage: string;
+  generatedAt: Date;
+  weightsVersion: typeof catalogOpportunityWeightsVersion;
+  rows: CatalogOpportunityRow[];
+};
+
 export interface ItotoriCatalogRepositoryPort {
   recordSourceProvenance(
     actor: AuthorizationActor,
@@ -850,6 +931,10 @@ export interface ItotoriCatalogRepositoryPort {
     actor: AuthorizationActor,
     filter?: CatalogBenchmarkSeedFinderFilter,
   ): Promise<CatalogBenchmarkSeedFinderReadModel>;
+  catalogOpportunityRanking(
+    actor: AuthorizationActor,
+    filter?: CatalogOpportunityRankingFilter,
+  ): Promise<CatalogOpportunityRankingReadModel>;
 }
 
 const catalogSources = Object.values(catalogSourceValues) as CatalogSource[];
@@ -1537,6 +1622,14 @@ export class ItotoriCatalogRepository implements ItotoriCatalogRepositoryPort {
     await requirePermission(this.db, actor, permissionValues.catalogRead);
     return readCatalogBenchmarkSeedFinder(this.db, assertBenchmarkSeedFinderFilter(filter));
   }
+
+  async catalogOpportunityRanking(
+    actor: AuthorizationActor,
+    filter: CatalogOpportunityRankingFilter = {},
+  ): Promise<CatalogOpportunityRankingReadModel> {
+    await requirePermission(this.db, actor, permissionValues.catalogRead);
+    return readCatalogOpportunityRanking(this.db, assertCatalogOpportunityRankingFilter(filter));
+  }
 }
 
 async function readCatalogConflictReview(db: ItotoriDatabase): Promise<CatalogConflictReviewRow[]> {
@@ -2018,6 +2111,229 @@ async function readCatalogBenchmarkSeedFinder(
   };
 }
 
+async function readCatalogOpportunityRanking(
+  db: ItotoriDatabase,
+  filter: NormalizedCatalogOpportunityRankingFilter,
+): Promise<CatalogOpportunityRankingReadModel> {
+  const [
+    pools,
+    conflictRows,
+    workRows,
+    externalIdRows,
+    demandFactRows,
+    localScanEntryRows,
+    capabilityRows,
+    capabilityEvidenceRows,
+  ] = await Promise.all([
+    readCatalogCompletenessBenchmarkPools(db, { targetLanguage: filter.targetLanguage }),
+    readCatalogConflictReview(db),
+    db.select().from(catalogWorks),
+    db.select().from(catalogExternalIds),
+    db.select().from(catalogDemandFacts),
+    db
+      .select({
+        workId: catalogLocalScanEntries.workId,
+        owned: catalogLocalScanEntries.owned,
+      })
+      .from(catalogLocalScanEntries),
+    db.select().from(engineCapabilityReports),
+    db.select().from(engineCapabilityEvidence),
+  ]);
+
+  const provenanceIds = new Set<string>();
+  for (const work of Object.values(pools.pools).flat()) {
+    for (const status of work.statuses) {
+      if (status.sourceProvenanceId !== null) {
+        provenanceIds.add(status.sourceProvenanceId);
+      }
+    }
+  }
+  for (const externalId of externalIdRows) {
+    if (externalId.sourceProvenanceId !== null) {
+      provenanceIds.add(externalId.sourceProvenanceId);
+    }
+  }
+  for (const demandFact of demandFactRows) {
+    if (demandFact.sourceProvenanceId !== null) {
+      provenanceIds.add(demandFact.sourceProvenanceId);
+    }
+  }
+  for (const work of workRows) {
+    if (work.engineProvenanceId !== null) {
+      provenanceIds.add(work.engineProvenanceId);
+    }
+  }
+
+  const provenanceRows =
+    provenanceIds.size === 0
+      ? []
+      : await db
+          .select()
+          .from(catalogSourceProvenance)
+          .where(inArray(catalogSourceProvenance.sourceProvenanceId, Array.from(provenanceIds)));
+
+  const provenanceById = new Map(
+    provenanceRows.map((row) => [row.sourceProvenanceId, sourceProvenanceFromRow(row)]),
+  );
+  const workById = new Map(workRows.map((row) => [row.workId, row]));
+  const externalIdsByWorkId = groupBy(externalIdRows, (row) => row.workId);
+  const demandFactsByWorkId = groupBy(demandFactRows, (row) => row.workId);
+  const localOwnershipByWorkId = localOwnershipByWork(localScanEntryRows);
+  const capabilityByAdapterId = capabilityReportsByAdapter(capabilityRows);
+  const evidenceByAdapterId = capabilityEvidenceCountsByAdapter(capabilityEvidenceRows);
+  const openLanguageConflictsByWorkId = groupBy(
+    conflictRows.filter(
+      (row) =>
+        row.conflictKind === catalogConflictKindValues.languageStatus &&
+        row.status === catalogConflictStatusValues.open,
+    ),
+    (row) => row.catalogRecordId,
+  );
+
+  const drafts: DraftCatalogOpportunityRow[] = [];
+  const seenWorkIds = new Set<string>();
+  for (const pool of catalogCompletenessPools) {
+    if (filter.pool !== null && filter.pool !== pool) {
+      continue;
+    }
+    for (const work of pools.pools[pool]) {
+      if (seenWorkIds.has(work.workId)) {
+        continue;
+      }
+      seenWorkIds.add(work.workId);
+
+      const workRecord = workById.get(work.workId);
+      const engineName = workRecord?.engineName ?? null;
+      if (filter.engine !== null && engineName !== filter.engine) {
+        continue;
+      }
+      const readiness = readinessForWork(engineName, capabilityByAdapterId).readiness;
+      if (
+        filter.minCapabilityLevel !== null &&
+        readiness[filter.minCapabilityLevel] !== capabilityLevelStatusKindValues.supported
+      ) {
+        continue;
+      }
+
+      const localOwnership = localOwnershipByWorkId.get(work.workId) ?? {
+        localOwnership: "unknown" as const,
+        localEvidenceCount: 0,
+      };
+      if (
+        filter.localOwnership !== null &&
+        filter.localOwnership !== localOwnership.localOwnership
+      ) {
+        continue;
+      }
+
+      const demandFacts = opportunityDemandFacts(demandFactsByWorkId.get(work.workId) ?? []);
+      if (filter.demandBucket !== null && filter.demandBucket !== demandFacts.demandBucket) {
+        continue;
+      }
+
+      const sourceIds = benchmarkSourceIds(externalIdsByWorkId.get(work.workId) ?? []);
+      const provenance = benchmarkProvenanceSummaries(
+        work,
+        externalIdsByWorkId.get(work.workId) ?? [],
+        demandFactsByWorkId.get(work.workId) ?? [],
+        workRecord?.engineProvenanceId ?? null,
+        provenanceById,
+      );
+      const demotions = (openLanguageConflictsByWorkId.get(work.workId) ?? [])
+        .map(catalogOpportunityDemotionFromConflict)
+        .sort(compareCatalogOpportunityDemotions);
+      const runtimeEvidenceReadiness = opportunityRuntimeEvidenceReadiness(
+        readiness.adapterId === null ? null : evidenceByAdapterId.get(readiness.adapterId),
+      );
+      const marketPrevalence = opportunityMarketPrevalence(
+        sourceIds,
+        localOwnership.localEvidenceCount,
+      );
+      const score = scoreCatalogOpportunity({
+        translationCompleteness: opportunityCompletenessSignal(pool),
+        localOwnership: localOwnership.localOwnership,
+        dlsiteDemand: demandFacts.demandBucket as CatalogOpportunityDemandSignal,
+        platformLanguageConflict:
+          demotions.length > 0 ? "open_platform_language_conflict" : "none",
+        marketPrevalence,
+        adapterReadiness: opportunityAdapterReadiness(readiness),
+        runtimeEvidenceReadiness: runtimeEvidenceReadiness.status,
+        existingTranslationStatus: opportunityExistingTranslationStatus(work.statuses),
+        benchmarkUsefulness: opportunityBenchmarkUsefulness(pool, demandFacts.demandBucket),
+        unknownEvidence: opportunityUnknownEvidence(readiness, provenance),
+        evidenceRefs: {
+          translation_completeness: work.statuses.map((status) => status.languageStatusId),
+          local_ownership:
+            localOwnership.localEvidenceCount > 0
+              ? [`local_evidence_count:${localOwnership.localEvidenceCount}`]
+              : [],
+          dlsite_demand: opportunityDemandEvidenceRefs(demandFacts),
+          platform_language_conflict: demotions
+            .map((demotion) => demotion.conflictId)
+            .filter((conflictId): conflictId is string => conflictId !== null),
+          market_prevalence: [
+            `source_id_count:${sourceIds.length}`,
+            `local_evidence_count:${localOwnership.localEvidenceCount}`,
+          ],
+          adapter_readiness: readiness.adapterId === null ? [] : [readiness.adapterId],
+          runtime_evidence_readiness: [
+            `public_fixture_evidence_count:${runtimeEvidenceReadiness.publicFixtureEvidenceCount}`,
+            `private_local_aggregate_evidence_count:${runtimeEvidenceReadiness.privateLocalAggregateEvidenceCount}`,
+          ],
+          existing_translation_status: work.statuses.map((status) => status.languageStatusId),
+          benchmark_usefulness: [`pool:${pool}`, `demand_bucket:${demandFacts.demandBucket}`],
+          unknown_evidence: provenance.length === 0 ? ["public_provenance:missing"] : [],
+        },
+      });
+
+      if (!filter.includeDemoted && score.decision !== "candidate") {
+        continue;
+      }
+
+      drafts.push({
+        row: {
+          rank: 0,
+          workId: work.workId,
+          canonicalTitle: work.canonicalTitle,
+          originalLanguage: work.originalLanguage,
+          sourceIds,
+          engineName,
+          adapterId: readiness.adapterId,
+          readiness,
+          runtimeEvidenceReadiness,
+          completenessPool: pool,
+          translationStatuses: work.statuses
+            .map(benchmarkTranslationStatus)
+            .sort(compareBenchmarkTranslationStatuses),
+          demandFacts,
+          localOwnership: localOwnership.localOwnership,
+          localEvidenceCount: localOwnership.localEvidenceCount,
+          marketPrevalence,
+          decision: score.decision,
+          score: score.score,
+          factorBreakdown: score.factors,
+          explanationCodes: score.explanationCodes,
+          provenance,
+          demotions,
+        },
+      });
+    }
+  }
+
+  const rows = drafts
+    .sort(compareCatalogOpportunityDrafts)
+    .slice(0, filter.limit)
+    .map(({ row }, index) => ({ ...row, rank: index + 1 }));
+
+  return {
+    schemaVersion: "catalog.opportunity_ranking.v0.1",
+    targetLanguage: filter.targetLanguage,
+    generatedAt: new Date(),
+    weightsVersion: catalogOpportunityWeightsVersion,
+    rows,
+  };
+}
+
 function assertCompletenessPoolFilter(
   filter: CatalogCompletenessPoolFilter,
 ): NormalizedCompletenessPoolFilter {
@@ -2097,6 +2413,45 @@ function assertBenchmarkSeedFinderFilter(
     localOwnership: filter.localOwnership ?? null,
     includeDemoted: filter.includeDemoted ?? false,
     limit,
+  };
+}
+
+function assertCatalogOpportunityRankingFilter(
+  filter: CatalogOpportunityRankingFilter,
+): NormalizedCatalogOpportunityRankingFilter {
+  const targetLanguage =
+    filter.targetLanguage === undefined
+      ? "en-US"
+      : requiredString(filter.targetLanguage, "targetLanguage");
+  if (filter.pool !== undefined) {
+    assertEnumValue(filter.pool, catalogCompletenessPools, "pool");
+  }
+  if (filter.minCapabilityLevel !== undefined) {
+    assertEnumValue(
+      filter.minCapabilityLevel,
+      Object.values(capabilityLevelValues),
+      "minCapabilityLevel",
+    );
+  }
+  if (filter.localOwnership !== undefined) {
+    assertEnumValue(filter.localOwnership, benchmarkLocalOwnershipValues, "localOwnership");
+  }
+  if (filter.demandBucket !== undefined) {
+    assertEnumValue(filter.demandBucket, benchmarkDemandBuckets, "demandBucket");
+  }
+  const limit = filter.limit ?? 50;
+  if (!Number.isInteger(limit) || limit < 1 || limit > 500) {
+    throw new Error("limit must be an integer from 1 to 500");
+  }
+  return {
+    targetLanguage,
+    includeDemoted: filter.includeDemoted ?? false,
+    limit,
+    engine: filter.engine === undefined ? null : requiredString(filter.engine, "engine"),
+    pool: filter.pool ?? null,
+    minCapabilityLevel: filter.minCapabilityLevel ?? null,
+    localOwnership: filter.localOwnership ?? null,
+    demandBucket: filter.demandBucket ?? null,
   };
 }
 
@@ -2307,6 +2662,15 @@ function sourceIdKey(sourceId: CatalogConflictReviewSourceId): string {
 type DraftCatalogBenchmarkSeedRow = {
   row: CatalogBenchmarkSeedRow;
   sortScore: number;
+};
+
+type DraftCatalogOpportunityRow = {
+  row: CatalogOpportunityRow;
+};
+
+type CatalogOpportunityEvidenceCounts = {
+  publicFixtureEvidenceCount: number;
+  privateLocalAggregateEvidenceCount: number;
 };
 
 type CatalogBenchmarkReadinessResult = {
@@ -2712,6 +3076,292 @@ function benchmarkSortScore(input: {
     benchmarkLocalOwnershipWeight(input.localOwnership) +
     benchmarkReadinessWeight(input.readiness)
   );
+}
+
+function opportunityDemandFacts(
+  facts: (typeof catalogDemandFacts.$inferSelect)[],
+): CatalogOpportunityDemandFacts {
+  let dlCount: number | null = null;
+  let wishlistCount: number | null = null;
+  let bestRank: number | null = null;
+  let ratingAverage: number | null = null;
+  let ratingCount: number | null = null;
+  let workType: string | null = null;
+  for (const fact of facts) {
+    switch (fact.factKind) {
+      case catalogDemandFactKindValues.dlCount:
+        dlCount = maxNullable(dlCount, numberRecordValue(fact.factValue, "count"));
+        break;
+      case catalogDemandFactKindValues.wishlistCount:
+        wishlistCount = maxNullable(wishlistCount, numberRecordValue(fact.factValue, "count"));
+        break;
+      case catalogDemandFactKindValues.rank: {
+        const rank = numberRecordValue(fact.factValue, "rank");
+        if (rank !== null) {
+          bestRank = bestRank === null ? rank : Math.min(bestRank, rank);
+        }
+        break;
+      }
+      case catalogDemandFactKindValues.ratingSummary:
+        ratingAverage = maxNullable(
+          ratingAverage,
+          numberRecordValue(fact.factValue, "average") ?? numberRecordValue(fact.factValue, "mean"),
+        );
+        ratingCount = maxNullable(ratingCount, numberRecordValue(fact.factValue, "count"));
+        break;
+      case catalogDemandFactKindValues.workType:
+        workType = stringRecordValue(fact.factValue, "workType") ?? stringRecordValue(fact.factValue, "value");
+        break;
+      default:
+        break;
+    }
+  }
+  return {
+    demandBucket: demandBucketForFacts(facts),
+    dlCount,
+    ratingAverage,
+    ratingCount,
+    wishlistCount,
+    bestRank,
+    workType,
+  };
+}
+
+function maxNullable(left: number | null, right: number | null): number | null {
+  if (left === null) {
+    return right;
+  }
+  if (right === null) {
+    return left;
+  }
+  return Math.max(left, right);
+}
+
+function stringRecordValue(record: CatalogJsonRecord, key: string): string | null {
+  const value = record[key];
+  return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+function opportunityDemandEvidenceRefs(facts: CatalogOpportunityDemandFacts): string[] {
+  return [
+    facts.dlCount === null ? null : `dl_count:${facts.dlCount}`,
+    facts.ratingAverage === null ? null : `rating_average:${facts.ratingAverage}`,
+    facts.ratingCount === null ? null : `rating_count:${facts.ratingCount}`,
+    facts.wishlistCount === null ? null : `wishlist_count:${facts.wishlistCount}`,
+    facts.bestRank === null ? null : `best_rank:${facts.bestRank}`,
+    facts.workType === null ? null : `work_type:${facts.workType}`,
+  ].filter((value): value is string => value !== null);
+}
+
+function capabilityEvidenceCountsByAdapter(
+  rows: (typeof engineCapabilityEvidence.$inferSelect)[],
+): Map<string, CatalogOpportunityEvidenceCounts> {
+  const byAdapter = new Map<string, CatalogOpportunityEvidenceCounts>();
+  for (const row of rows) {
+    const existing =
+      byAdapter.get(row.adapterId) ?? {
+        publicFixtureEvidenceCount: 0,
+        privateLocalAggregateEvidenceCount: 0,
+      };
+    if (row.evidenceSource === engineCapabilityEvidenceSourceValues.publicFixture) {
+      existing.publicFixtureEvidenceCount += 1;
+    }
+    if (row.evidenceSource === engineCapabilityEvidenceSourceValues.privateLocalAggregate) {
+      existing.privateLocalAggregateEvidenceCount += 1;
+    }
+    byAdapter.set(row.adapterId, existing);
+  }
+  return byAdapter;
+}
+
+function opportunityRuntimeEvidenceReadiness(
+  counts: CatalogOpportunityEvidenceCounts | null | undefined,
+): CatalogOpportunityRuntimeEvidenceReadiness {
+  const publicFixtureEvidenceCount = counts?.publicFixtureEvidenceCount ?? 0;
+  const privateLocalAggregateEvidenceCount = counts?.privateLocalAggregateEvidenceCount ?? 0;
+  const status: CatalogOpportunityRuntimeEvidenceSignal =
+    publicFixtureEvidenceCount > 0 && privateLocalAggregateEvidenceCount > 0
+      ? "public_and_aggregate"
+      : publicFixtureEvidenceCount > 0
+        ? "public_fixture"
+        : privateLocalAggregateEvidenceCount > 0
+          ? "private_local_aggregate"
+          : "unknown";
+  return {
+    status,
+    publicFixtureEvidenceCount,
+    privateLocalAggregateEvidenceCount,
+  };
+}
+
+function opportunityMarketPrevalence(
+  sourceIds: CatalogBenchmarkSeedSourceId[],
+  localEvidenceCount: number,
+): CatalogOpportunityMarketPrevalenceSignal {
+  if (sourceIds.length > 0 && localEvidenceCount > 0) {
+    return "public_and_local_aggregate";
+  }
+  if (sourceIds.length > 0) {
+    return "public_only";
+  }
+  if (localEvidenceCount > 0) {
+    return "local_aggregate_only";
+  }
+  return "unknown";
+}
+
+function opportunityCompletenessSignal(
+  pool: CatalogCompletenessPool,
+): CatalogOpportunityCompletenessSignal {
+  switch (pool) {
+    case catalogCompletenessPoolValues.noEnglish:
+      return "no_english";
+    case catalogCompletenessPoolValues.mtlOnly:
+      return "mtl_only";
+    case catalogCompletenessPoolValues.fanPartial:
+      return "fan_partial";
+    case catalogCompletenessPoolValues.unknown:
+      return "unknown";
+    case catalogCompletenessPoolValues.conflict:
+      return "conflict";
+  }
+}
+
+function opportunityAdapterReadiness(
+  readiness: CatalogBenchmarkSeedReadiness,
+): CatalogOpportunityAdapterReadinessSignal {
+  if (readiness.patch === capabilityLevelStatusKindValues.supported) {
+    return "patch_supported";
+  }
+  if (readiness.extract === capabilityLevelStatusKindValues.supported) {
+    return "extract_supported";
+  }
+  if (readiness.inventory === capabilityLevelStatusKindValues.supported) {
+    return "inventory_supported";
+  }
+  if (readiness.identify === capabilityLevelStatusKindValues.supported) {
+    return "identify_supported";
+  }
+  if (
+    readiness.identify === capabilityLevelStatusKindValues.partial ||
+    readiness.inventory === capabilityLevelStatusKindValues.partial ||
+    readiness.extract === capabilityLevelStatusKindValues.partial ||
+    readiness.patch === capabilityLevelStatusKindValues.partial
+  ) {
+    return "partial";
+  }
+  if (
+    readiness.identify === capabilityLevelStatusKindValues.unsupported ||
+    readiness.inventory === capabilityLevelStatusKindValues.unsupported ||
+    readiness.extract === capabilityLevelStatusKindValues.unsupported ||
+    readiness.patch === capabilityLevelStatusKindValues.unsupported
+  ) {
+    return "unsupported";
+  }
+  return "unknown";
+}
+
+function opportunityExistingTranslationStatus(
+  statuses: CatalogCompletenessStatusFact[],
+): CatalogOpportunityExistingTranslationSignal {
+  const statusValues = statuses.map((status) => status.status);
+  if (
+    statusValues.includes(catalogLanguageStatusValues.officialFull) ||
+    statusValues.includes(catalogLanguageStatusValues.fanFull)
+  ) {
+    return "official_or_complete";
+  }
+  if (statusValues.includes(catalogLanguageStatusValues.fanPartial)) {
+    return "fan_partial";
+  }
+  if (statusValues.includes(catalogLanguageStatusValues.mtl)) {
+    return "mtl";
+  }
+  if (statusValues.includes(catalogLanguageStatusValues.none)) {
+    return "none";
+  }
+  return "unknown";
+}
+
+function opportunityBenchmarkUsefulness(
+  pool: CatalogCompletenessPool,
+  demandBucket: CatalogBenchmarkDemandBucket,
+): "high" | "medium" | "low" | "none" {
+  if (pool === catalogCompletenessPoolValues.noEnglish && demandBucket !== "none") {
+    return "high";
+  }
+  if (
+    (pool === catalogCompletenessPoolValues.mtlOnly ||
+      pool === catalogCompletenessPoolValues.fanPartial) &&
+    (demandBucket === "very_high" || demandBucket === "high" || demandBucket === "medium")
+  ) {
+    return "medium";
+  }
+  if (pool === catalogCompletenessPoolValues.unknown || demandBucket === "low") {
+    return "low";
+  }
+  return "none";
+}
+
+function opportunityUnknownEvidence(
+  readiness: CatalogBenchmarkSeedReadiness,
+  provenance: CatalogBenchmarkSeedProvenanceSummary[],
+): CatalogOpportunityUnknownEvidenceSignal {
+  if (
+    provenance.length === 0 ||
+    readiness.adapterId === null ||
+    readiness.identify === "unknown" ||
+    readiness.inventory === "unknown" ||
+    readiness.extract === "unknown" ||
+    readiness.patch === "unknown"
+  ) {
+    return "present";
+  }
+  return "none";
+}
+
+function catalogOpportunityDemotionFromConflict(
+  row: CatalogConflictReviewRow,
+): CatalogOpportunityDemotion {
+  return {
+    reasonCode: row.reasonCode,
+    conflictId: row.conflictId,
+    severity: row.severity,
+    sourceIds: row.sourceIds,
+  };
+}
+
+function compareCatalogOpportunityDemotions(
+  left: CatalogOpportunityDemotion,
+  right: CatalogOpportunityDemotion,
+): number {
+  return (
+    left.reasonCode.localeCompare(right.reasonCode) ||
+    (left.conflictId ?? "").localeCompare(right.conflictId ?? "")
+  );
+}
+
+function compareCatalogOpportunityDrafts(
+  left: DraftCatalogOpportunityRow,
+  right: DraftCatalogOpportunityRow,
+): number {
+  return (
+    opportunityDecisionOrder(left.row.decision) - opportunityDecisionOrder(right.row.decision) ||
+    right.row.score - left.row.score ||
+    left.row.canonicalTitle.localeCompare(right.row.canonicalTitle) ||
+    left.row.workId.localeCompare(right.row.workId)
+  );
+}
+
+function opportunityDecisionOrder(decision: CatalogOpportunityDecision): number {
+  switch (decision) {
+    case "candidate":
+      return 0;
+    case "demoted":
+      return 1;
+    case "excluded":
+      return 2;
+  }
 }
 
 function benchmarkDecisionWeight(decision: CatalogBenchmarkSeedFinderDecision): number {
@@ -4136,6 +4786,17 @@ type NormalizedBenchmarkSeedFinderFilter = {
   localOwnership: CatalogBenchmarkLocalOwnership | null;
   includeDemoted: boolean;
   limit: number;
+};
+
+type NormalizedCatalogOpportunityRankingFilter = {
+  targetLanguage: string;
+  includeDemoted: boolean;
+  limit: number;
+  engine: string | null;
+  pool: CatalogCompletenessPool | null;
+  minCapabilityLevel: CapabilityLevel | null;
+  localOwnership: CatalogBenchmarkLocalOwnership | null;
+  demandBucket: CatalogBenchmarkDemandBucket | null;
 };
 
 function assertLocalScanInput(input: CatalogLocalScanInput): NormalizedLocalScanInput {
