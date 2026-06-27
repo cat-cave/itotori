@@ -1,11 +1,19 @@
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import {
+  type CapabilityEvidenceInput as DbCapabilityEvidenceInput,
+  capabilityEvidenceLabelValues,
+  engineCapabilityEvidenceKindValues,
+  engineCapabilityEvidenceSourceValues,
+  engineCapabilityEvidenceStatusValues,
+} from "@itotori/db";
 import { describe, expect, it } from "vitest";
 import {
   type CatalogCapabilityEvidenceMergeInput,
   type CatalogCapabilityEvidenceReadiness,
   catalogCapabilityEvidenceInputSchemaVersion,
   catalogPublicRpgMakerMvMzAdapterId,
+  mapLocalCapabilityEvidenceToDbInput,
   mapLocalEngineEvidenceToCapabilityEvidence,
   mergeCapabilityEvidenceFixture,
 } from "../src/services/catalog-local-capability-evidence.js";
@@ -43,6 +51,75 @@ describe("catalog local capability evidence mapper", () => {
     expect(mapped.every((entry) => entry.level === "identify")).toBe(true);
     expect(JSON.stringify(mapped)).not.toContain("supported");
     expect(JSON.stringify(mapped)).not.toContain("public_fixture");
+  });
+
+  it("translates mapped MV/MZ local sidecar evidence into DB-approved capability input", () => {
+    const [mapped] = mapLocalEngineEvidenceToCapabilityEvidence(localMvMzEvidence());
+    const dbInput = mapLocalCapabilityEvidenceToDbInput(mapped);
+    const expected = {
+      schemaVersion: catalogCapabilityEvidenceInputSchemaVersion,
+      adapterId: catalogPublicRpgMakerMvMzAdapterId,
+      level: "identify",
+      evidenceSource: engineCapabilityEvidenceSourceValues.privateLocalAggregate,
+      evidenceKind: engineCapabilityEvidenceKindValues.localCorpusSidecar,
+      status: engineCapabilityEvidenceStatusValues.partial,
+      aggregateCounts: {
+        local_extension_count: 3,
+        local_file_kind_count: 3,
+        local_marker_count: 1,
+      },
+      evidenceLabels: [
+        capabilityEvidenceLabelValues.localCorpusMarkerEvidence,
+        capabilityEvidenceLabelValues.localEngineMarkerCount,
+        capabilityEvidenceLabelValues.localExtensionCount,
+        capabilityEvidenceLabelValues.localFileKindCount,
+        capabilityEvidenceLabelValues.mvMzMarkerEvidence,
+        capabilityEvidenceLabelValues.rpgmakerMvMetadata,
+      ],
+      limitations: [
+        "private-local aggregate marker evidence only; no public fixture support claimed",
+        "local scan marker evidence does not claim adapter execution, extraction, inventory, decryption, or patch support",
+        "local readiness identify=partial; inventory=unknown; extract=unknown; patch=unknown",
+      ],
+    } satisfies DbCapabilityEvidenceInput;
+
+    expect(dbInput).toEqual(expected);
+    expect(Object.keys(dbInput).sort()).toEqual([
+      "adapterId",
+      "aggregateCounts",
+      "evidenceKind",
+      "evidenceLabels",
+      "evidenceSource",
+      "level",
+      "limitations",
+      "schemaVersion",
+      "status",
+    ]);
+    expect(Object.keys(dbInput.aggregateCounts ?? {}).every((key) => !key.includes("."))).toBe(
+      true,
+    );
+
+    const serialized = JSON.stringify(dbInput);
+    for (const forbidden of [
+      "sourceAdapterId",
+      "sourceSchemaVersion",
+      "extension.json",
+      "file_kind.script",
+      "/home",
+      "/tmp",
+      "C:\\",
+      "file:",
+      ".rpgmvp",
+      "SECRET_KEY",
+      "screenshot",
+      "pathHash",
+      "localScanEntryId",
+      "rawText",
+      "filename",
+      "keyMaterial",
+    ]) {
+      expect(serialized).not.toContain(forbidden);
+    }
   });
 
   it("rejects non-MV/MZ local scanner evidence", () => {
@@ -106,6 +183,30 @@ describe("catalog local capability evidence mapper", () => {
     ]) {
       expect(serialized).not.toContain(forbidden);
     }
+  });
+
+  it("loads the public-only merge fixture without private/local corpus scanning", async () => {
+    const input = await readJson<CatalogCapabilityEvidenceMergeInput>(
+      "fixtures/public/catalog-capability-evidence-mv-mz-merge/input/merge-public-only-v0.1.json",
+    );
+    const expected = await readJson<CatalogCapabilityEvidenceReadiness>(
+      "fixtures/public/catalog-capability-evidence-mv-mz-merge/expected/readiness-public-only-v0.1.json",
+    );
+
+    expect("privateLocalAggregate" in input).toBe(false);
+
+    const merged = mergeCapabilityEvidenceFixture(input);
+
+    expect(merged).toEqual(expected);
+    expect(merged.matrix.identify.kind).toBe("supported");
+    expect(merged.matrix.extract.kind).toBe("unsupported");
+    expect(merged.matrix.patch.kind).toBe("unsupported");
+    expect(merged.supportEvidence.publicFixture).toHaveLength(1);
+    expect(merged.supportEvidence.privateLocalAggregate).toEqual([]);
+
+    const serialized = JSON.stringify(merged);
+    expect(serialized).not.toContain("local-scan:rpg_maker_mv_mz");
+    expect(serialized).not.toContain("catalog.local_corpus_engine_evidence.v0.1");
   });
 });
 

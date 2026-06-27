@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { sql } from "drizzle-orm";
 import {
   type AdapterCapabilityMatrixRecord,
+  type CapabilityEvidenceInput,
   capabilityEvidenceLabelValues,
   capabilityLevelValues,
   engineCapabilityEvidenceKindValues,
@@ -193,6 +194,92 @@ describe("EngineCapabilityReportRepository", () => {
       const listedMvMz = listed.find((entry) => entry.adapterId === "kaifuu.rpg_maker_mv_mz");
       expect(listedMvMz?.evidenceByLevel.identify.publicFixture).toHaveLength(1);
       expect(listedMvMz?.evidenceByLevel.identify.privateLocalAggregate).toHaveLength(1);
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("round-trips DB-approved mapped MV/MZ local sidecar evidence input", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      const repo = new EngineCapabilityReportRepository(context.db);
+      await repo.writeMatrix(localActor, {
+        adapterId: "kaifuu.rpg-maker-mv-mz",
+        identify: { kind: "supported" },
+        inventory: { kind: "unsupported", reason: "public fixture does not prove inventory" },
+        extract: { kind: "unsupported", reason: "public fixture does not prove extraction" },
+        patch: { kind: "unsupported", reason: "public fixture does not prove patching" },
+      });
+
+      const input = {
+        adapterId: "kaifuu.rpg-maker-mv-mz",
+        level: capabilityLevelValues.identify,
+        evidenceSource: engineCapabilityEvidenceSourceValues.privateLocalAggregate,
+        evidenceKind: engineCapabilityEvidenceKindValues.localCorpusSidecar,
+        schemaVersion: "catalog.capability_evidence_input.v0.1",
+        status: engineCapabilityEvidenceStatusValues.partial,
+        aggregateCounts: {
+          local_extension_count: 5,
+          local_file_kind_count: 4,
+          local_marker_count: 1,
+        },
+        evidenceLabels: [
+          capabilityEvidenceLabelValues.localCorpusMarkerEvidence,
+          capabilityEvidenceLabelValues.localEngineMarkerCount,
+          capabilityEvidenceLabelValues.localExtensionCount,
+          capabilityEvidenceLabelValues.localFileKindCount,
+          capabilityEvidenceLabelValues.mvMzMarkerEvidence,
+          capabilityEvidenceLabelValues.rpgmakerMvMetadata,
+        ],
+        limitations: [
+          "private-local aggregate marker evidence only; no public fixture support claimed",
+          "local scan marker evidence does not claim adapter execution, extraction, inventory, decryption, or patch support",
+          "local readiness identify=partial; inventory=unknown; extract=unknown; patch=unknown",
+        ],
+      } satisfies CapabilityEvidenceInput;
+
+      const row = await repo.recordCapabilityEvidence(localActor, input);
+      expect(row).toMatchObject(input);
+
+      const readiness = await repo.readCapabilityReadiness("kaifuu.rpg-maker-mv-mz");
+      expect(readiness?.matrix.extract).toEqual({
+        kind: "unsupported",
+        reason: "public fixture does not prove extraction",
+      });
+      expect(readiness?.matrix.patch).toEqual({
+        kind: "unsupported",
+        reason: "public fixture does not prove patching",
+      });
+      expect(readiness?.evidenceByLevel.identify.privateLocalAggregate).toMatchObject([
+        {
+          engineCapabilityEvidenceId: row.engineCapabilityEvidenceId,
+          aggregateCounts: input.aggregateCounts,
+          evidenceLabels: input.evidenceLabels,
+          publicFixtureId: null,
+        },
+      ]);
+
+      const serialized = JSON.stringify(input);
+      for (const forbidden of [
+        "sourceAdapterId",
+        "sourceSchemaVersion",
+        "extension.json",
+        "file_kind.script",
+        "/home",
+        "/tmp",
+        "C:\\",
+        "file:",
+        ".rpgmvp",
+        "SECRET_KEY",
+        "screenshot",
+        "pathHash",
+        "localScanEntryId",
+        "rawText",
+        "filename",
+        "keyMaterial",
+      ]) {
+        expect(serialized).not.toContain(forbidden);
+      }
     } finally {
       await context.close();
     }

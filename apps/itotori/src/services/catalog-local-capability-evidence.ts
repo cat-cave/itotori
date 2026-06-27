@@ -1,7 +1,13 @@
 import {
   type AdapterCapabilityMatrixRecord,
+  type CapabilityEvidenceInput as DbCapabilityEvidenceInput,
+  type CapabilityEvidenceLabel,
   type CapabilityLevel,
+  capabilityEvidenceLabelValues,
   capabilityLevelValues,
+  engineCapabilityEvidenceKindValues,
+  engineCapabilityEvidenceSourceValues,
+  engineCapabilityEvidenceStatusValues,
 } from "@itotori/db";
 import {
   type CatalogLocalEngineEvidence,
@@ -67,7 +73,7 @@ export type CatalogCapabilityEvidenceMergeInput = {
     matrix: AdapterCapabilityMatrixRecord;
     evidence: Omit<CatalogPublicFixtureCapabilityEvidence, "schemaVersion" | "adapterId">[];
   };
-  privateLocalAggregate: {
+  privateLocalAggregate?: {
     localEngineEvidence: CatalogLocalEngineEvidence;
   };
 };
@@ -151,6 +157,39 @@ export function mapLocalEngineEvidenceToCapabilityEvidence(
   ];
 }
 
+export function mapLocalCapabilityEvidenceToDbInput(
+  evidence: CatalogCapabilityEvidenceInput,
+): DbCapabilityEvidenceInput {
+  if (
+    evidence.adapterId !== catalogPublicRpgMakerMvMzAdapterId ||
+    evidence.evidenceSource !== "private_local_aggregate" ||
+    evidence.evidenceKind !== "local_corpus_sidecar"
+  ) {
+    throw new CatalogLocalCapabilityEvidenceError(
+      "only mapped MV/MZ private-local sidecar evidence can be persisted",
+    );
+  }
+
+  return {
+    adapterId: evidence.adapterId,
+    level: evidence.level,
+    evidenceSource: engineCapabilityEvidenceSourceValues.privateLocalAggregate,
+    evidenceKind: engineCapabilityEvidenceKindValues.localCorpusSidecar,
+    schemaVersion: evidence.schemaVersion,
+    status: dbEvidenceStatus(evidence.status),
+    aggregateCounts: dbApprovedAggregateCounts(evidence.aggregateCounts),
+    evidenceLabels: [
+      capabilityEvidenceLabelValues.localCorpusMarkerEvidence,
+      capabilityEvidenceLabelValues.localEngineMarkerCount,
+      capabilityEvidenceLabelValues.localExtensionCount,
+      capabilityEvidenceLabelValues.localFileKindCount,
+      capabilityEvidenceLabelValues.mvMzMarkerEvidence,
+      ...evidence.evidenceLabels.map(dbEvidenceLabel),
+    ],
+    limitations: evidence.limitations,
+  };
+}
+
 export function mergeCapabilityEvidenceFixture(
   input: CatalogCapabilityEvidenceMergeInput,
 ): CatalogCapabilityEvidenceReadiness {
@@ -165,9 +204,9 @@ export function mergeCapabilityEvidenceFixture(
     );
   }
 
-  const privateLocalAggregate = mapLocalEngineEvidenceToCapabilityEvidence(
-    input.privateLocalAggregate.localEngineEvidence,
-  );
+  const privateLocalAggregate = input.privateLocalAggregate?.localEngineEvidence
+    ? mapLocalEngineEvidenceToCapabilityEvidence(input.privateLocalAggregate.localEngineEvidence)
+    : [];
   const publicFixture = input.publicFixture.evidence.map((evidence) => ({
     ...evidence,
     schemaVersion: catalogCapabilityEvidenceInputSchemaVersion,
@@ -184,6 +223,45 @@ export function mergeCapabilityEvidenceFixture(
       privateLocalAggregate,
     },
   };
+}
+
+function dbEvidenceStatus(
+  status: CatalogCapabilityEvidenceStatus,
+): DbCapabilityEvidenceInput["status"] {
+  switch (status) {
+    case "present":
+      return engineCapabilityEvidenceStatusValues.present;
+    case "partial":
+      return engineCapabilityEvidenceStatusValues.partial;
+    case "missing":
+      return engineCapabilityEvidenceStatusValues.missing;
+    case "unknown":
+      return engineCapabilityEvidenceStatusValues.unknown;
+  }
+}
+
+function dbEvidenceLabel(label: string): CapabilityEvidenceLabel {
+  if (label === "rpgmaker_mv_metadata") {
+    return capabilityEvidenceLabelValues.rpgmakerMvMetadata;
+  }
+  throw new CatalogLocalCapabilityEvidenceError(
+    `cannot persist unsupported evidence label ${label}`,
+  );
+}
+
+function dbApprovedAggregateCounts(counts: Record<string, number>): Record<string, number> {
+  return sortRecord({
+    local_extension_count: sumAggregateCounts(counts, "extension."),
+    local_file_kind_count: sumAggregateCounts(counts, "file_kind."),
+    local_marker_count: sumAggregateCounts(counts, "marker."),
+  });
+}
+
+function sumAggregateCounts(counts: Record<string, number>, prefix: string): number {
+  return Object.entries(counts).reduce(
+    (total, [key, value]) => (key.startsWith(prefix) ? total + value : total),
+    0,
+  );
 }
 
 function assertKnownRpgMakerMvMzLocalEvidence(evidence: CatalogLocalEngineEvidence): void {

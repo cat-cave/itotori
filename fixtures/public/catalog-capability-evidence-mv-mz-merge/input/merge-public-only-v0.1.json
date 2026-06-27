@@ -1,0 +1,36 @@
+{
+  "schemaVersion": "catalog.capability_evidence_merge_fixture.v0.1",
+  "publicFixture": {
+    "fixtureId": "catalog-capability-evidence-mv-mz-public-matrix",
+    "matrix": {
+      "adapterId": "kaifuu.rpg-maker-mv-mz",
+      "identify": {
+        "kind": "supported"
+      },
+      "inventory": {
+        "kind": "unsupported",
+        "reason": "public synthetic fixture records identify-only MV/MZ matrix support"
+      },
+      "extract": {
+        "kind": "unsupported",
+        "reason": "public synthetic fixture does not claim extraction support"
+      },
+      "patch": {
+        "kind": "unsupported",
+        "reason": "public synthetic fixture does not claim patch support"
+      }
+    },
+    "evidence": [
+      {
+        "level": "identify",
+        "evidenceSource": "public_fixture",
+        "evidenceKind": "adapter_matrix",
+        "status": "present",
+        "evidenceLabels": ["rpg_maker_mv_mz_public_fixture_matrix"],
+        "limitations": [
+          "public synthetic fixture matrix only; no private-local aggregate sidecar is required"
+        ]
+      }
+    ]
+  }
+}
