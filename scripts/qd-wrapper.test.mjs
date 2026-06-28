@@ -12,7 +12,11 @@ import {
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { isRoadmapSpecDagExport } from "./qd-wrapper.mjs";
+import {
+  isCiRecordPass,
+  isRoadmapSpecDagExport,
+  validateCiRecordPassEvidence,
+} from "./qd-wrapper.mjs";
 
 const root = path.resolve("/repo");
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
@@ -42,6 +46,130 @@ test("does not canonicalize unrelated qd exports", () => {
   assert.equal(isRoadmapSpecDagExport(root, ["export", "--json"]), false);
   assert.equal(isRoadmapSpecDagExport(root, ["export", "--out", "roadmap/other.json"]), false);
   assert.equal(isRoadmapSpecDagExport(root, ["node", "show", "ITOTORI-300", "--json"]), false);
+});
+
+test("detects qd ci record-pass commands", () => {
+  assert.equal(isCiRecordPass(["ci", "record-pass", "ITOTORI-300"]), true);
+  assert.equal(isCiRecordPass(["ci", "run", "ITOTORI-300"]), false);
+  assert.equal(isCiRecordPass(["check", "run", "ITOTORI-300"]), false);
+});
+
+test("accepts durable qd ci record-pass URL and external id evidence", () => {
+  assert.doesNotThrow(() =>
+    validateCiRecordPassEvidence(root, [
+      "ci",
+      "record-pass",
+      "ITOTORI-300",
+      "--summary",
+      "Covered by integrated CI.",
+      "--url",
+      "https://github.com/cat-cave/itotori/actions/runs/123",
+    ]),
+  );
+  assert.doesNotThrow(() =>
+    validateCiRecordPassEvidence(root, [
+      "ci",
+      "record-pass",
+      "ITOTORI-300",
+      "--summary=Covered by integrated CI.",
+      "--external-id=github-actions:123",
+    ]),
+  );
+});
+
+test("accepts existing repo-relative qd ci record-pass evidence files", () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "qd-wrapper-record-pass-"));
+  const evidencePath = path.join(dir, "docs", "qd-ci-evidence", "wave.md");
+  mkdirSync(path.dirname(evidencePath), { recursive: true });
+  writeFileSync(evidencePath, "CI summary\n");
+
+  assert.doesNotThrow(() =>
+    validateCiRecordPassEvidence(dir, [
+      "ci",
+      "record-pass",
+      "ITOTORI-300",
+      "--summary",
+      "Covered by integrated CI.",
+      "--log-path",
+      "docs/qd-ci-evidence/wave.md",
+    ]),
+  );
+});
+
+test("rejects local-only qd ci record-pass log paths", () => {
+  assert.throws(
+    () =>
+      validateCiRecordPassEvidence(root, [
+        "ci",
+        "record-pass",
+        "ITOTORI-300",
+        "--summary",
+        "Covered by integrated CI.",
+        "--log-path",
+        "/home/trevor/projects/itotori/.qd/logs/ci-ITOTORI-300.log",
+      ]),
+    /repo-relative/u,
+  );
+
+  assert.throws(
+    () =>
+      validateCiRecordPassEvidence(root, [
+        "ci",
+        "record-pass",
+        "ITOTORI-300",
+        "--summary",
+        "Covered by integrated CI.",
+        "--log-path",
+        ".qd/logs/ci-ITOTORI-300.log",
+      ]),
+    /local-only \.qd/u,
+  );
+});
+
+test("rejects stale or gitignored qd ci record-pass evidence paths", () => {
+  assert.throws(
+    () =>
+      validateCiRecordPassEvidence(root, [
+        "ci",
+        "record-pass",
+        "ITOTORI-300",
+        "--summary",
+        "Covered by integrated CI.",
+        "--log-path",
+        "docs/qd-ci-evidence/missing.md",
+      ]),
+    /does not exist/u,
+  );
+
+  assert.throws(
+    () =>
+      validateCiRecordPassEvidence(root, [
+        "ci",
+        "record-pass",
+        "ITOTORI-300",
+        "--summary",
+        "Covered by integrated CI.",
+        "--log-path",
+        "artifacts/qd-ci/run.log",
+      ]),
+    /gitignored artifacts/u,
+  );
+});
+
+test("rejects record-pass summaries that cite local qd logs", () => {
+  assert.throws(
+    () =>
+      validateCiRecordPassEvidence(root, [
+        "ci",
+        "record-pass",
+        "ITOTORI-300",
+        "--summary",
+        "Covered by integrated CI.\nEvidence: log_path=.qd/logs/ci-ITOTORI-300.log",
+        "--external-id",
+        "github-actions:123",
+      ]),
+    /must not cite local-only \.qd\/logs paths/u,
+  );
 });
 
 test("canonicalizes direct qd export to roadmap spec DAG", () => {

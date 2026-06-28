@@ -393,6 +393,44 @@ qd merge UNIV-003
 just roadmap-validate
 ```
 
+When a completed node reuses an already-passed integrated CI run, record that
+reuse with `qd ci record-pass` rather than rerunning CI in every worker
+worktree. The evidence must survive a fresh read-only audit checkout that only
+has committed files plus the exported `roadmap/spec-dag.json`.
+
+Portable record-pass evidence is one of:
+
+- `--url <https://...>` for a GitHub Actions run, CI dashboard run, PR check, or
+  other externally durable page;
+- `--external-id <provider:run-id>` when the CI system has a stable lookup id
+  but no useful public URL;
+- `--log-path docs/qd-ci-evidence/<name>.md` or another existing
+  repo-relative, checked-in summary artifact.
+
+Do not use `.qd/logs/...`, an absolute path from the main checkout, or
+`artifacts/...` for reused CI evidence. `.qd/logs` and `artifacts` are local
+worktree state and will be missing in detached audit lanes. The repo wrapper
+rejects `qd ci record-pass` when `--log-path` is absolute, points into `.qd`,
+points into ignored `artifacts`, or names a missing file; it also rejects
+summaries that paste local `.qd/logs` paths.
+
+Examples:
+
+```sh
+qd ci record-pass UNIV-003 \
+  --summary "Covered by GitHub CI after commit <sha>; includes just qd-full-ci." \
+  --url "https://github.com/cat-cave/itotori/actions/runs/<run-id>"
+
+qd ci record-pass UNIV-003 \
+  --summary "Covered by the integrated CI wave after commits <sha-list>; see tracked summary." \
+  --log-path docs/qd-ci-evidence/<wave-id>.md
+```
+
+After `qd export --out roadmap/spec-dag.json`, auditors in a fresh worktree can
+inspect `runs[]` in the committed export. URL and external-id evidence appears
+in the exported run `summary`; repo-relative artifact evidence appears in
+`log_path` and must resolve inside the checkout.
+
 The qd record must have:
 
 - no open P0/P1 audit findings;

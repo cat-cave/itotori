@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { randomUUID } from "node:crypto";
-import { accessSync, constants, existsSync, realpathSync } from "node:fs";
+import { accessSync, constants, existsSync, realpathSync, statSync } from "node:fs";
 import { copyFile, cp, mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
@@ -52,6 +52,10 @@ and an audit-visible rationale summary.`);
       recordMissing: Boolean(options["record-missing"]),
       json: args.includes("--json"),
     });
+  }
+
+  if (isCiRecordPass(commandArgs)) {
+    validateCiRecordPassEvidence(root, commandArgs);
   }
 
   if (isRoadmapSpecDagExport(root, commandArgs)) {
@@ -119,7 +123,12 @@ function parseOptions(args) {
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
     if (!arg.startsWith("--")) continue;
-    const key = arg.slice(2);
+    const equalsIndex = arg.indexOf("=");
+    const key = equalsIndex >= 0 ? arg.slice(2, equalsIndex) : arg.slice(2);
+    if (equalsIndex >= 0) {
+      options[key] = arg.slice(equalsIndex + 1);
+      continue;
+    }
     if (key === "json" || key === "record-missing") {
       options[key] = true;
       continue;
@@ -158,6 +167,97 @@ export function isRoadmapSpecDagExport(root, commandArgs) {
   const outPath = exportOutPath(commandArgs);
   if (!outPath) return false;
   return path.resolve(root, outPath) === path.resolve(root, "roadmap", "spec-dag.json");
+}
+
+export function isCiRecordPass(commandArgs) {
+  return commandArgs[0] === "ci" && commandArgs[1] === "record-pass";
+}
+
+export function validateCiRecordPassEvidence(root, commandArgs) {
+  const options = parseOptions(commandArgs.slice(3));
+  const evidence = [
+    options["log-path"] ? "--log-path" : null,
+    options.url ? "--url" : null,
+    options["external-id"] ? "--external-id" : null,
+  ].filter(Boolean);
+
+  if (evidence.length === 0) {
+    throw new Error(
+      "qd ci record-pass requires durable evidence: --url, --external-id, or --log-path",
+    );
+  }
+  if (evidence.length > 1) {
+    throw new Error(
+      `qd ci record-pass must use exactly one evidence option, got ${evidence.join(", ")}`,
+    );
+  }
+
+  if (options.url) validateEvidenceUrl(options.url);
+  if (options["log-path"]) validateEvidenceLogPath(root, options["log-path"]);
+  validateRecordPassSummary(options.summary);
+}
+
+function validateEvidenceUrl(value) {
+  let parsed;
+  try {
+    parsed = new URL(value);
+  } catch {
+    throw new Error(`qd ci record-pass --url must be an absolute HTTP(S) URL: ${value}`);
+  }
+  if (!["http:", "https:"].includes(parsed.protocol)) {
+    throw new Error(`qd ci record-pass --url must use http or https: ${value}`);
+  }
+}
+
+function validateEvidenceLogPath(root, value) {
+  if (looksLikeUrl(value)) {
+    throw new Error("qd ci record-pass URL evidence must use --url, not --log-path");
+  }
+  if (path.isAbsolute(value)) {
+    throw new Error(
+      `qd ci record-pass --log-path must be repo-relative so qd export is portable: ${value}`,
+    );
+  }
+
+  const normalized = normalizeRepoRelativePath(value);
+  if (!normalized || normalized === "." || normalized.startsWith("../")) {
+    throw new Error(`qd ci record-pass --log-path must stay inside the repo: ${value}`);
+  }
+  if (normalized === ".qd" || normalized.startsWith(".qd/")) {
+    throw new Error("qd ci record-pass --log-path must not point at local-only .qd state");
+  }
+  if (normalized === "artifacts" || normalized.startsWith("artifacts/")) {
+    throw new Error(
+      "qd ci record-pass --log-path must not point at gitignored artifacts/; use docs/qd-ci-evidence/ or --url",
+    );
+  }
+
+  const resolved = path.resolve(root, normalized);
+  if (!existsSync(resolved)) {
+    throw new Error(`qd ci record-pass --log-path evidence file does not exist: ${normalized}`);
+  }
+  if (!statSync(resolved).isFile()) {
+    throw new Error(`qd ci record-pass --log-path evidence is not a file: ${normalized}`);
+  }
+}
+
+function validateRecordPassSummary(summary) {
+  if (!summary) return;
+  const localQdLogPattern =
+    /(?:^|[\s=])(?:\.qd\/logs\/|\/[^\s]*\/\.qd\/logs\/|[A-Za-z]:[\\/][^\s]*[\\/]\.qd[\\/]logs[\\/])/u;
+  if (localQdLogPattern.test(summary)) {
+    throw new Error(
+      "qd ci record-pass --summary must not cite local-only .qd/logs paths; use --url, --external-id, or repo-relative evidence",
+    );
+  }
+}
+
+function normalizeRepoRelativePath(value) {
+  return path.posix.normalize(value.replaceAll(path.win32.sep, path.posix.sep));
+}
+
+function looksLikeUrl(value) {
+  return /^[a-z][a-z0-9+.-]*:/iu.test(value);
 }
 
 function exportOutPath(commandArgs) {
