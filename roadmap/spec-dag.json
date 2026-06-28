@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "exported_at": "2026-06-28T03:06:18.815Z",
+  "exported_at": "2026-06-28T03:24:45.227Z",
   "registries": {
     "groups": [
       {
@@ -29284,7 +29284,7 @@
       "title": "Make affected Rust gates cover matching crates",
       "kind": "feature",
       "milestone": null,
-      "status": "claimed",
+      "status": "done",
       "priority": "P1",
       "estimate_points": 1,
       "risk": "medium",
@@ -29295,9 +29295,9 @@
       "validation": null,
       "context": null,
       "created_at": "2026-06-28T01:52:09.859Z",
-      "updated_at": "2026-06-28T03:06:05.151Z",
+      "updated_at": "2026-06-28T03:24:41.350Z",
       "claimed_at": "2026-06-28T03:06:05.151Z",
-      "done_at": null,
+      "done_at": "2026-06-28T03:24:41.350Z",
       "group_name": null,
       "status_reason": null,
       "check_command": null,
@@ -43570,6 +43570,54 @@
       "agent": null,
       "started_at": "2026-06-28T03:02:36.881Z",
       "finished_at": "2026-06-28T03:02:36.881Z",
+      "summary": "Merge recorded with squash",
+      "log_path": null
+    },
+    {
+      "id": "c0b76f30-570a-4abf-8297-92132005e76b",
+      "node_id": "make-affected-rust-gates-cover-matching-crates",
+      "kind": "implement",
+      "status": "completed",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-28T03:18:33.232Z",
+      "finished_at": "2026-06-28T03:18:33.232Z",
+      "summary": "Affected Rust gates now cover every matching workspace crate. ci-kaifuu includes all crates/kaifuu-* packages, ci-utsushi includes all crates/utsushi-* packages, affectedTasks is exported for direct tests, and a new affected verifier parses Cargo workspace members/package names plus justfile cargo package lists to fail when matching crates are uncovered. Verified with node --test scripts/affected.test.mjs, focused vp check, spec DAG validate, nix develop --command just ci-kaifuu, and nix develop --command just ci-utsushi.",
+      "log_path": null
+    },
+    {
+      "id": "c4abea83-c13e-4694-9fdf-60669302b12a",
+      "node_id": "make-affected-rust-gates-cover-matching-crates",
+      "kind": "check",
+      "status": "passed",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-28T03:18:56.247Z",
+      "finished_at": "2026-06-28T03:19:22.728Z",
+      "summary": "check command passed: nix develop --command bash -lc 'just check'",
+      "log_path": "/home/trevor/projects/itotori/.qd/logs/check-make-affected-rust-gates-cover-matching-crates-2026-06-28T03-18-56-247Z.log"
+    },
+    {
+      "id": "491e3a00-7f7c-4465-bde2-d10d1a566832",
+      "node_id": "make-affected-rust-gates-cover-matching-crates",
+      "kind": "ci",
+      "status": "passed",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-28T03:20:21.693Z",
+      "finished_at": "2026-06-28T03:24:33.379Z",
+      "summary": "ci command passed: nix develop --command bash -lc 'just ci'",
+      "log_path": "/home/trevor/projects/itotori/.qd/logs/ci-make-affected-rust-gates-cover-matching-crates-2026-06-28T03-20-21-693Z.log"
+    },
+    {
+      "id": "041628ed-1f6a-43b8-b8f2-7c5cc718c5cf",
+      "node_id": "make-affected-rust-gates-cover-matching-crates",
+      "kind": "merge",
+      "status": "recorded",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-28T03:24:41.350Z",
+      "finished_at": "2026-06-28T03:24:41.350Z",
       "summary": "Merge recorded with squash",
       "log_path": null
     }
