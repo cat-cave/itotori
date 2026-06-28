@@ -295,6 +295,32 @@ describe("ReviewerBatchPreviewService — refusal paths (shared validator)", () 
     expect(preview.aggregate.notFound).toBe(1);
   });
 
+  it("surfaces the missing item permission gate according to manage access", async () => {
+    const service = new ReviewerBatchPreviewService(stubResolver({}).resolver);
+    const request: ReviewerBatchActionRequest = {
+      action: reviewerQueueActionValues.approve,
+      actorUserId: "local-user",
+      selections: [
+        {
+          reviewItemId: "reviewer-queue-083-missing-1",
+          expectedSourceRevisionId: itotori083FixtureSourceRevisionId,
+        },
+      ],
+    };
+
+    const managerPreview = await service.preview(
+      request,
+      fixtureBatchPermissionView({ canManageQueue: true }),
+    );
+    const readOnlyPreview = await service.preview(
+      request,
+      fixtureBatchPermissionView({ canManageQueue: false }),
+    );
+
+    expect(managerPreview.items[0]?.requiredPermission).toBe("queue.manage");
+    expect(readOnlyPreview.items[0]?.requiredPermission).toBe("queue.read");
+  });
+
   it("flags duplicate selections so the dashboard never silently collapses them", async () => {
     const item = fixturePendingQaItem();
     const stub = stubResolver({ items: { [item.reviewItemId]: item } });

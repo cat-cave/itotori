@@ -473,7 +473,7 @@ function notFoundRow(
     expectedSourceRevisionId: selection.expectedSourceRevisionId,
     status: reviewerBatchPreviewStatusValues.notFound,
     action,
-    requiredPermission: canManage ? "queue.manage" : "queue.manage",
+    requiredPermission: canManage ? "queue.manage" : "queue.read",
     item: null,
     priorState: null,
     nextState: null,
