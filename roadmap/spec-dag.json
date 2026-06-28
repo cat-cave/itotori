@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "exported_at": "2026-06-28T01:40:27.378Z",
+  "exported_at": "2026-06-28T01:57:00.639Z",
   "registries": {
     "groups": [
       {
@@ -28989,9 +28989,9 @@
       "validation": null,
       "context": null,
       "created_at": "2026-06-28T01:13:39.547Z",
-      "updated_at": "2026-06-28T01:40:17.573Z",
+      "updated_at": "2026-06-28T01:56:35.950Z",
       "claimed_at": "2026-06-28T01:27:10.902Z",
-      "done_at": "2026-06-28T01:40:17.573Z",
+      "done_at": "2026-06-28T01:56:35.950Z",
       "group_name": null,
       "status_reason": "Promoted from finding a146bf91-9e0d-4598-9ac7-821be4fa6b60 on node ITOTORI-089.",
       "check_command": null,
@@ -29025,6 +29025,398 @@
       "ci_command": null,
       "projects": [],
       "verification": [],
+      "audit_focus": []
+    },
+    {
+      "id": "retire-legacy-spec-dag-lifecycle-mutation-commands",
+      "title": "Retire legacy spec-dag lifecycle mutation commands",
+      "kind": "feature",
+      "milestone": null,
+      "status": "ready",
+      "priority": "P1",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "Disable or qd-delegate legacy scripts/spec-dag.mjs lifecycle mutation commands that can write non-qd status fields into roadmap/spec-dag.json. Docs must stop instructing operators to use spec-dag worktree/claim/ingest-audit/complete for live qd state, and any remaining compatibility path must validate qd export shape before writing.",
+      "acceptance": "Legacy spec-dag lifecycle mutation commands cannot corrupt the canonical qd export; docs point operators to qd claim/complete/gate/check/ci/merge; tests prove legacy apply paths either refuse qd-export state or delegate safely to qd-native state; node scripts/spec-dag.mjs validate and qd export formatting pass.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-28T01:50:35.600Z",
+      "updated_at": "2026-06-28T01:50:35.600Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "projects": ["universal"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "node scripts/spec-dag-lifecycle.test.mjs"
+        },
+        {
+          "type": "command",
+          "value": "node scripts/spec-dag.mjs validate"
+        }
+      ],
+      "audit_focus": []
+    },
+    {
+      "id": "make-qd-audit-disposition-non-destructive",
+      "title": "Make qd audit disposition non-destructive",
+      "kind": "feature",
+      "milestone": null,
+      "status": "ready",
+      "priority": "P1",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "Replace destructive qd-wrapper audit disposition behavior that deletes .qd database files before validating replacement state. Audit disposition must be atomic, reversible, and guarded by an exclusive qd lock or qd-native command.",
+      "acceptance": "Audit disposition never unlinks the live .qd database before a replacement import validates; failed disposition restores the original qd database; tests cover failure before import, failure after temp import validation, and successful export canonicalization; qd check/gate lifecycle tests pass.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-28T01:50:56.844Z",
+      "updated_at": "2026-06-28T01:50:56.844Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "projects": ["universal"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "node scripts/qd-wrapper.test.mjs"
+        },
+        {
+          "type": "command",
+          "value": "node scripts/qd-lifecycle.test.mjs"
+        }
+      ],
+      "audit_focus": []
+    },
+    {
+      "id": "harden-reallive-patch-target-canonicalization",
+      "title": "Harden RealLive patch target canonicalization",
+      "kind": "feature",
+      "milestone": null,
+      "status": "ready",
+      "priority": "P1",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "Reject source/target aliasing, symlink targets, and nested canonical source/target paths before any copy or write in the localize-project suite runner and kaifuu-cli patch path. The post-write source hash check remains defense-in-depth, not the first protection.",
+      "acceptance": "Suite runner canonicalizes existing source and target parent paths before invoking patch; kaifuu-cli patch rejects canonical source/target equality and nesting before copying; target-root symlink and source-alias regression tests fail before output mutation; real-corpus path redaction remains intact in diagnostics.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-28T01:51:07.698Z",
+      "updated_at": "2026-06-28T01:51:07.698Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "projects": ["kaifuu", "itotori"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test --workspace partial_apply_refuses"
+        },
+        {
+          "type": "command",
+          "value": "node --test suite/scripts/localize-project/run.test.mjs"
+        }
+      ],
+      "audit_focus": []
+    },
+    {
+      "id": "redact-live-real-corpus-paths-in-localize-project",
+      "title": "Redact live real-corpus paths in localize-project",
+      "kind": "feature",
+      "milestone": null,
+      "status": "ready",
+      "priority": "P1",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "Add a live-command and diagnostic redaction layer for localize-project and Kaifuu patch execution so private game roots, source paths, target paths, and Seen.txt paths do not appear in stdout/stderr or persisted suite artifacts.",
+      "acceptance": "Live localize-project command display redacts gameRoot/source/target paths; Kaifuu patch read/write/source-mutation diagnostics redact private roots; fake live subprocess tests prove private root and target strings do not appear in stdout/stderr; dry-run leakage tests continue to pass.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-28T01:51:19.757Z",
+      "updated_at": "2026-06-28T01:51:19.757Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "projects": ["itotori", "kaifuu"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "node --test suite/scripts/localize-project/run.test.mjs"
+        },
+        {
+          "type": "command",
+          "value": "cargo test --workspace patch_command"
+        }
+      ],
+      "audit_focus": []
+    },
+    {
+      "id": "redact-catalog-completeness-conflict-source-identities",
+      "title": "Redact catalog completeness conflict source identities",
+      "kind": "feature",
+      "milestone": null,
+      "status": "ready",
+      "priority": "P1",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "Sanitize catalog completeness and conflict read models before public API exposure so localCorpus/privateCorpus source identities and private redaction provenance are omitted or represented only as aggregate counts.",
+      "acceptance": "Completeness and conflict APIs omit local/private catalogSource/sourceId/sourceRecordKind values; shared public-source sanitizer is covered by repository and API schema negative fixtures; existing public provenance remains available; no private path/source identity strings appear in serialized responses.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-28T01:51:33.051Z",
+      "updated_at": "2026-06-28T01:51:33.051Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "projects": ["itotori"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/db test -- catalog-repository.test.ts"
+        },
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/app test -- api-handlers.test.ts"
+        }
+      ],
+      "audit_focus": []
+    },
+    {
+      "id": "gate-project-status-and-cost-reads",
+      "title": "Gate project status and cost reads",
+      "kind": "feature",
+      "milestone": null,
+      "status": "ready",
+      "priority": "P1",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "Thread actor/permission checks through project status, project list, and project cost read paths. Split unprivileged dashboard summaries from privileged provider/model/run ledger details and translation-memory target text.",
+      "acceptance": "GET /api/projects, /api/projects/status, and /api/projects/cost require an explicit read permission or return a redacted public summary; privileged cost report access is actor-checked in workflow/repository layers; unauthorized tests prove provider/model/routing internals and TM targetText are not exposed.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-28T01:51:44.822Z",
+      "updated_at": "2026-06-28T01:51:44.822Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "projects": ["itotori"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/app test -- api-handlers.test.ts"
+        },
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/db test -- model-ledger-repository.test.ts"
+        }
+      ],
+      "audit_focus": []
+    },
+    {
+      "id": "gate-runtime-status-reads-and-redact-evidence-previews",
+      "title": "Gate runtime status reads and redact evidence previews",
+      "kind": "feature",
+      "milestone": null,
+      "status": "ready",
+      "priority": "P1",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "Add actor-gated runtime status read methods and redacted summary responses so runtime evidence text previews, finding messages, artifact URIs, and hashes are not exposed through unauthenticated /api/runtime/v0.2/status reads.",
+      "acceptance": "Runtime status API requires project-scoped read permission for detailed evidence; unprivileged responses omit observedText/promptText previews, finding free text, and managed artifact URIs; workflow and repository tests enforce actor propagation; API schema rejects leakage-shaped runtime status fixtures.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-28T01:51:58.527Z",
+      "updated_at": "2026-06-28T01:51:58.527Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "projects": ["itotori"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/app test -- api-handlers.test.ts"
+        },
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/db test -- project-repository.test.ts"
+        }
+      ],
+      "audit_focus": []
+    },
+    {
+      "id": "make-affected-rust-gates-cover-matching-crates",
+      "title": "Make affected Rust gates cover matching crates",
+      "kind": "feature",
+      "milestone": null,
+      "status": "ready",
+      "priority": "P1",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "Make scripts/affected.mjs and just ci-kaifuu/ci-utsushi conservative for every matching Rust workspace crate. A change under crates/kaifuu-* or crates/utsushi-* must run a gate that actually builds/tests that crate.",
+      "acceptance": "ci-kaifuu and ci-utsushi cover all matching workspace members or affected.mjs emits crate-specific cargo commands; a verifier parses Cargo.toml workspace members and fails if any crates/kaifuu-* or crates/utsushi-* member is uncovered; affected tests prove kaifuu-reallive, kaifuu-vault-source, utsushi-reallive, and utsushi-siglus changes are gated.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-28T01:52:09.859Z",
+      "updated_at": "2026-06-28T01:52:09.859Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "projects": ["universal", "kaifuu", "utsushi"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "node --test scripts/affected.test.mjs"
+        },
+        {
+          "type": "command",
+          "value": "just ci-kaifuu"
+        },
+        {
+          "type": "command",
+          "value": "just ci-utsushi"
+        }
+      ],
+      "audit_focus": []
+    },
+    {
+      "id": "canonicalize-audit-dispose-roadmap-exports",
+      "title": "Canonicalize audit-dispose roadmap exports",
+      "kind": "feature",
+      "milestone": null,
+      "status": "ready",
+      "priority": "P2",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "Ensure the qd wrapper audit-dispose flow runs the same roadmap/spec-dag.json canonicalization and validation path used by normal qd export interception.",
+      "acceptance": "Audit-dispose export invokes canonicalizeSpecDagExport or equivalent after writing roadmap/spec-dag.json; dispose-flow regression tests cover canonical ordering/formatting; node scripts/spec-dag.mjs validate and vp check on roadmap/spec-dag.json pass.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-28T01:52:22.361Z",
+      "updated_at": "2026-06-28T01:52:22.361Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "projects": ["universal"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "node scripts/qd-wrapper.test.mjs"
+        },
+        {
+          "type": "command",
+          "value": "node scripts/spec-dag.mjs validate"
+        }
+      ],
+      "audit_focus": []
+    },
+    {
+      "id": "count-public-fixture-evidence-in-opportunity-readiness",
+      "title": "Count public fixture evidence in opportunity readiness",
+      "kind": "feature",
+      "milestone": null,
+      "status": "ready",
+      "priority": "P2",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "Fix catalog opportunity runtime readiness aggregation so public_fixture adapter-matrix and key-validation evidence contributes to publicFixtureEvidenceCount and public_fixture readiness instead of being rejected by the private-local-only predicate.",
+      "acceptance": "Public-only and mixed public/private opportunity fixtures increment publicFixtureEvidenceCount; readiness explanations include public_fixture when public evidence exists; private-local aggregate behavior is unchanged; catalog opportunity read-model tests cover the split predicates.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-28T01:52:32.124Z",
+      "updated_at": "2026-06-28T01:52:32.124Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "projects": ["itotori"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/db test -- catalog-opportunity-ranking-read-model.test.ts"
+        }
+      ],
+      "audit_focus": []
+    },
+    {
+      "id": "make-compose-db-defaults-safe-for-parallel-worktrees",
+      "title": "Make compose DB defaults safe for parallel worktrees",
+      "kind": "feature",
+      "milestone": null,
+      "status": "ready",
+      "priority": "P2",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "Avoid fixed-port and shared-database hazards when multiple worktrees run just db-up/db-reset concurrently. Compose project names are already per-worktree; host ports and DATABASE_URL defaults must also be unique or fail loud.",
+      "acceptance": "Two distinct worktree basenames produce distinct default Postgres host ports or require explicit DATABASE_URL; db-up in one worktree cannot cause another worktree's db-reset to truncate its DB; compose-config tests cover distinct worktree identities and fixed-port override behavior.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-28T01:52:46.385Z",
+      "updated_at": "2026-06-28T01:52:46.385Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "projects": ["universal", "itotori"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "node --test scripts/itotori-db-compose-config.test.mjs"
+        }
+      ],
       "audit_focus": []
     }
   ],
@@ -40265,6 +40657,171 @@
       "suggested_fix": null,
       "created_at": "2026-06-28T01:13:25.737Z",
       "resolved_at": "2026-06-28T01:13:39.553Z"
+    },
+    {
+      "id": "7e509617-f271-4e81-9412-88faef8209e4",
+      "node_id": "expose-benchmark-seed-adapterids-through-catalog-api-filters",
+      "run_id": null,
+      "severity": "P1",
+      "status": "resolved",
+      "title": "Retire legacy spec-dag lifecycle commands that can corrupt qd export",
+      "path": null,
+      "line": null,
+      "evidence": "Broad qd/process audit at cfd5ab2: roadmap/spec-dag.json is qd export shape, but docs/spec-dag.md still instructs operators to use node scripts/spec-dag.mjs worktree/claim/ingest-audit/complete; scripts/spec-dag-lifecycle.mjs writes legacy status values in_progress/complete and camelCase statusReason/blockedBy into the canonical qd export, conflicting with qd statuses ready/claimed/working/done and status_reason validation.",
+      "expected": null,
+      "suggested_fix": null,
+      "created_at": "2026-06-28T01:47:46.789Z",
+      "resolved_at": "2026-06-28T01:52:58.539Z"
+    },
+    {
+      "id": "58da40c3-288f-48e9-832d-53ccdc4da4aa",
+      "node_id": "expose-benchmark-seed-adapterids-through-catalog-api-filters",
+      "run_id": null,
+      "severity": "P1",
+      "status": "resolved",
+      "title": "Make audit disposition non-destructive for live qd databases",
+      "path": null,
+      "line": null,
+      "evidence": "Broad qd/process audit at cfd5ab2: scripts/qd-wrapper.mjs audit dispose loads a snapshot, then removeLocalDatabase unlinks .qd/qd.db, .qd/qd.db-wal, and .qd/qd.db-shm before qd import has proven a replacement valid. qd is documented as the live orchestration ledger; audit disposition should be atomic/reversible and should not delete live DB files before validation and exclusive locking.",
+      "expected": null,
+      "suggested_fix": null,
+      "created_at": "2026-06-28T01:48:00.197Z",
+      "resolved_at": "2026-06-28T01:53:08.539Z"
+    },
+    {
+      "id": "fc3af907-0846-459c-aadb-b1e325fdc2b4",
+      "node_id": "expose-benchmark-seed-adapterids-through-catalog-api-filters",
+      "run_id": null,
+      "severity": "P1",
+      "status": "resolved",
+      "title": "Reject real-game patch source/target aliases before writes",
+      "path": null,
+      "line": null,
+      "evidence": "Broad alpha/generalization audit at cfd5ab2: suite/scripts/localize-project/run.mjs uses resolvePath string checks, always delegates patching with --force, and crates/kaifuu-cli/src/main.rs copies source to target and writes patched Seen.txt before re-hashing the source. Source/target aliasing, symlink targets, and nested canonical paths must be rejected before any copy or write to protect real corpora.",
+      "expected": null,
+      "suggested_fix": null,
+      "created_at": "2026-06-28T01:48:10.135Z",
+      "resolved_at": "2026-06-28T01:53:18.025Z"
+    },
+    {
+      "id": "b842cc53-b6ca-47dd-9699-5773e8d2ad80",
+      "node_id": "expose-benchmark-seed-adapterids-through-catalog-api-filters",
+      "run_id": null,
+      "severity": "P1",
+      "status": "resolved",
+      "title": "Redact private corpus paths from live localize-project logs",
+      "path": null,
+      "line": null,
+      "evidence": "Broad alpha/generalization audit at cfd5ab2: suite/scripts/localize-project/run.mjs prints full command lines containing raw gameRoot/source/target/Seen.txt paths, and failure paths in the suite runner and kaifuu-cli print raw private paths. Existing leakage coverage is dry-run only. Live stdout/stderr and artifacts must use corpus IDs, env placeholders, hashes, or redacted labels for private corpus and target roots.",
+      "expected": null,
+      "suggested_fix": null,
+      "created_at": "2026-06-28T01:48:23.415Z",
+      "resolved_at": "2026-06-28T01:53:27.585Z"
+    },
+    {
+      "id": "004555c6-9bfc-4270-87d5-6ff4f1e2adeb",
+      "node_id": "expose-benchmark-seed-adapterids-through-catalog-api-filters",
+      "run_id": null,
+      "severity": "P1",
+      "status": "resolved",
+      "title": "Redact private source identities from catalog completeness/conflict APIs",
+      "path": null,
+      "line": null,
+      "evidence": "Broad API/security audit at cfd5ab2: catalog completeness/conflict read models collect all provenance IDs and return catalogSource/sourceId/sourceRecordKind/rawContentRedactionClass without filtering; API schema only type-checks those fields. Existing tests include localCorpus/privateCorpus provenance. Public catalog read models should omit local/private source IDs or expose only aggregate counts.",
+      "expected": null,
+      "suggested_fix": null,
+      "created_at": "2026-06-28T01:48:35.263Z",
+      "resolved_at": "2026-06-28T01:53:38.489Z"
+    },
+    {
+      "id": "a6430eba-8df4-4d72-bde8-b3674ceef3ac",
+      "node_id": "expose-benchmark-seed-adapterids-through-catalog-api-filters",
+      "run_id": null,
+      "severity": "P1",
+      "status": "resolved",
+      "title": "Gate project status and cost reads behind permissions",
+      "path": null,
+      "line": null,
+      "evidence": "Broad API/security audit at cfd5ab2: GET /api/projects/status, /api/projects/cost, and /api/projects route directly to project workflow without requireApiPermission; project read workflow methods pass without an actor; getProjectCostReport has no requirePermission and selects provider/model/routing fields plus translation-memory targetText. Cost/status reads should require a read permission and split redacted dashboard summaries from privileged ledger details.",
+      "expected": null,
+      "suggested_fix": null,
+      "created_at": "2026-06-28T01:48:47.840Z",
+      "resolved_at": "2026-06-28T01:53:47.292Z"
+    },
+    {
+      "id": "466d989a-b614-44fb-ade7-b40e6e20138f",
+      "node_id": "expose-benchmark-seed-adapterids-through-catalog-api-filters",
+      "run_id": null,
+      "severity": "P1",
+      "status": "resolved",
+      "title": "Gate runtime status reads and redact runtime evidence previews",
+      "path": null,
+      "line": null,
+      "evidence": "Broad API/security audit at cfd5ab2: /api/runtime/v0.2/status is an unauthenticated GET path, workflow passes through without actor, and repository getRuntimeStatus returns observed/prompt text previews, finding messages, and artifact uri/hash. Runtime evidence reads should require project-scoped read permission; unprivileged summaries must redact text previews and managed artifact URIs.",
+      "expected": null,
+      "suggested_fix": null,
+      "created_at": "2026-06-28T01:48:58.397Z",
+      "resolved_at": "2026-06-28T01:53:56.961Z"
+    },
+    {
+      "id": "d4bdaf86-cc4e-44fa-8309-981f3aa009ae",
+      "node_id": "expose-benchmark-seed-adapterids-through-catalog-api-filters",
+      "run_id": null,
+      "severity": "P1",
+      "status": "resolved",
+      "title": "Make affected Rust gates cover all matching workspace crates",
+      "path": null,
+      "line": null,
+      "evidence": "Broad CI/dev-infra audit at cfd5ab2: scripts/affected.mjs maps every crates/kaifuu-* change to just ci-kaifuu and every crates/utsushi-* change to just ci-utsushi, but justfile ci-kaifuu omits kaifuu-reallive and kaifuu-vault-source, while ci-utsushi omits utsushi-reallive and utsushi-siglus despite those being workspace members. Affected output must be conservative and run a gate that covers the changed crate.",
+      "expected": null,
+      "suggested_fix": null,
+      "created_at": "2026-06-28T01:49:11.413Z",
+      "resolved_at": "2026-06-28T01:54:14.264Z"
+    },
+    {
+      "id": "177455ac-7c52-4194-986c-ae96e5589469",
+      "node_id": "expose-benchmark-seed-adapterids-through-catalog-api-filters",
+      "run_id": null,
+      "severity": "P2",
+      "status": "resolved",
+      "title": "Canonicalize roadmap export after audit disposition",
+      "path": null,
+      "line": null,
+      "evidence": "Broad qd/process audit at cfd5ab2: normal qd export --out roadmap/spec-dag.json is wrapper-canonicalized, but scripts/qd-wrapper.mjs audit dispose calls the real qd export directly after import, bypassing canonicalizeSpecDagExport. Every wrapper path that writes roadmap/spec-dag.json should use the same canonicalization and validation path.",
+      "expected": null,
+      "suggested_fix": null,
+      "created_at": "2026-06-28T01:49:22.116Z",
+      "resolved_at": "2026-06-28T01:54:23.950Z"
+    },
+    {
+      "id": "850401f2-932f-45e3-904b-dc3231f9746c",
+      "node_id": "expose-benchmark-seed-adapterids-through-catalog-api-filters",
+      "run_id": null,
+      "severity": "P2",
+      "status": "resolved",
+      "title": "Count public fixture evidence in opportunity runtime readiness",
+      "path": null,
+      "line": null,
+      "evidence": "Broad API/security audit at cfd5ab2: catalog opportunity aggregation has a branch to count public_fixture evidence, but the predicate rejects every non-private_local_aggregate row first, so public fixture adapter-matrix/key-validation evidence cannot contribute to publicFixtureEvidenceCount/readiness even though tests and fixtures treat public fixture evidence as valid input.",
+      "expected": null,
+      "suggested_fix": null,
+      "created_at": "2026-06-28T01:49:33.766Z",
+      "resolved_at": "2026-06-28T01:54:32.539Z"
+    },
+    {
+      "id": "fc49febc-8c2d-44a9-87a9-56558a33edd5",
+      "node_id": "expose-benchmark-seed-adapterids-through-catalog-api-filters",
+      "run_id": null,
+      "severity": "P2",
+      "status": "resolved",
+      "title": "Make compose DB defaults safe for parallel worktrees",
+      "path": null,
+      "line": null,
+      "evidence": "Broad CI/dev-infra audit at cfd5ab2: justfile defaults every worktree to 127.0.0.1:55433; scripts/itotori-db-compose-env.mjs derives per-worktree compose project names but still publishes the fixed parsed port; docker-compose.yml publishes that host port; db-reset truncates shared tables. just db-up in two worktrees should not collide or share/reset the same DB by default.",
+      "expected": null,
+      "suggested_fix": null,
+      "created_at": "2026-06-28T01:49:45.969Z",
+      "resolved_at": "2026-06-28T01:54:45.162Z"
     }
   ],
   "runs": [
@@ -42881,6 +43438,42 @@
       "agent": null,
       "started_at": "2026-06-28T01:40:17.573Z",
       "finished_at": "2026-06-28T01:40:17.573Z",
+      "summary": "Merge recorded with squash at commit 3e94d8235c3999947ab2730dfb7a242796cdb6e7",
+      "log_path": null
+    },
+    {
+      "id": "08a09179-322c-45f6-a17e-a959ab82c239",
+      "node_id": "expose-benchmark-seed-adapterids-through-catalog-api-filters",
+      "kind": "audit",
+      "status": "running",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-28T01:42:04.949Z",
+      "finished_at": null,
+      "summary": null,
+      "log_path": null
+    },
+    {
+      "id": "635619fd-18f5-417a-a6a0-46f2390f1316",
+      "node_id": "expose-benchmark-seed-adapterids-through-catalog-api-filters",
+      "kind": "ci",
+      "status": "passed",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-28T01:56:23.774Z",
+      "finished_at": "2026-06-28T01:56:23.774Z",
+      "summary": "Broad audit follow-up bookkeeping only; implementation CI already passed at /home/trevor/projects/itotori/.qd/logs/ci-expose-benchmark-seed-adapterids-through-catalog-api-filters-2026-06-28T01-35-46-790Z.log before the audit wave. No code changes since commit 3e94d8235c3999947ab2730dfb7a242796cdb6e7.\nEvidence: log_path=/home/trevor/projects/itotori/.qd/logs/ci-expose-benchmark-seed-adapterids-through-catalog-api-filters-2026-06-28T01-35-46-790Z.log",
+      "log_path": "/home/trevor/projects/itotori/.qd/logs/ci-expose-benchmark-seed-adapterids-through-catalog-api-filters-2026-06-28T01-35-46-790Z.log"
+    },
+    {
+      "id": "453a3415-7993-4f73-a4bb-8bbd6f0038be",
+      "node_id": "expose-benchmark-seed-adapterids-through-catalog-api-filters",
+      "kind": "merge",
+      "status": "recorded",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-28T01:56:35.950Z",
+      "finished_at": "2026-06-28T01:56:35.950Z",
       "summary": "Merge recorded with squash at commit 3e94d8235c3999947ab2730dfb7a242796cdb6e7",
       "log_path": null
     }
