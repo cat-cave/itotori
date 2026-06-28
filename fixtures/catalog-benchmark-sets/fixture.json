@@ -1,0 +1,109 @@
+{
+  "schemaVersion": "itotori.benchmark_set_selector.fixture.v0.1",
+  "fixtureId": "itotori-089-catalog-004-benchmark-set-selector",
+  "sourceFixtureIds": ["catalog-benchmark-seeds-catalog-004"],
+  "selectedAt": "2026-06-27T12:10:00.000Z",
+  "runParameters": {
+    "parameterSetId": "itotori-089-repeatable-run-v1",
+    "benchmarkProfileId": "catalog-004-alpha-benchmark",
+    "providerFamily": "recorded-fixture",
+    "modelId": "recorded-fixture/itotori-lqa-1",
+    "maxSeeds": 10,
+    "batchSize": 2,
+    "temperature": 0,
+    "maxOutputTokens": 2048,
+    "evaluatorIds": ["qa.semantic-drift", "qa.unresolved-terminology"],
+    "notes": [
+      "Synthetic public selector fixture.",
+      "Run parameters are persisted without private corpus paths, local file names, story text, or raw records."
+    ]
+  },
+  "cases": [
+    {
+      "name": "no-english-pool",
+      "capabilityFilters": {
+        "requiredCapabilities": ["identify", "inventory", "extract", "patch"],
+        "adapterIds": ["rpg-maker-mv"],
+        "pools": ["no_english"],
+        "translationCompleteness": ["none"],
+        "provenanceRequired": false
+      },
+      "expectedWorkIds": [
+        "019ed104-0000-7000-8000-000000000101",
+        "019ed104-0000-7000-8000-000000000105"
+      ],
+      "expectedPrivateAggregateWorkIds": ["019ed104-0000-7000-8000-000000000105"]
+    },
+    {
+      "name": "fan-partial-pool",
+      "capabilityFilters": {
+        "requiredCapabilities": ["identify"],
+        "adapterIds": ["identify-only-engine"],
+        "pools": ["fan_partial"],
+        "translationCompleteness": ["fan_partial"],
+        "includeCandidateSeeds": true
+      },
+      "expectedWorkIds": ["019ed104-0000-7000-8000-000000000102"]
+    },
+    {
+      "name": "mtl-only-pool",
+      "capabilityFilters": {
+        "requiredCapabilities": ["identify", "inventory"],
+        "adapterIds": ["partial-extract-engine"],
+        "pools": ["mtl_only"],
+        "translationCompleteness": ["mtl"],
+        "includeCandidateSeeds": true
+      },
+      "expectedWorkIds": ["019ed104-0000-7000-8000-000000000103"]
+    },
+    {
+      "name": "conflict-pool",
+      "capabilityFilters": {
+        "requiredCapabilities": ["identify", "extract"],
+        "adapterIds": ["rpg-maker-mv"],
+        "pools": ["conflict"],
+        "translationCompleteness": ["none"]
+      },
+      "expectedWorkIds": ["019ed104-0000-7000-8000-000000000104"]
+    },
+    {
+      "name": "readiness-filtered-extract-patch",
+      "capabilityFilters": {
+        "requiredCapabilities": ["extract", "patch"],
+        "adapterIds": ["rpg-maker-mv"],
+        "pools": ["no_english", "fan_partial", "mtl_only"],
+        "translationCompleteness": ["none", "fan_partial", "mtl"]
+      },
+      "expectedWorkIds": [
+        "019ed104-0000-7000-8000-000000000101",
+        "019ed104-0000-7000-8000-000000000105"
+      ],
+      "expectedPrivateAggregateWorkIds": ["019ed104-0000-7000-8000-000000000105"]
+    },
+    {
+      "name": "provenance-required",
+      "capabilityFilters": {
+        "requiredCapabilities": ["extract", "patch"],
+        "adapterIds": ["rpg-maker-mv"],
+        "pools": ["no_english"],
+        "translationCompleteness": ["none"],
+        "provenanceRequired": true
+      },
+      "expectedWorkIds": ["019ed104-0000-7000-8000-000000000101"]
+    }
+  ],
+  "publicLeakagePolicy": {
+    "forbiddenSubstrings": [
+      "/home/",
+      "/tmp/",
+      "file:",
+      ".zip",
+      "path_hash",
+      "filename",
+      "localScanId",
+      "rawPayloadSecret",
+      "private-story-title",
+      "local-scan-entry-secret"
+    ]
+  }
+}
