@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "exported_at": "2026-06-28T12:19:52.888Z",
+  "exported_at": "2026-06-28T12:47:58.592Z",
   "registries": {
     "groups": [
       {
@@ -30920,7 +30920,7 @@
       "title": "Wire asset-decisions HTTP API behind the DB service",
       "kind": "feature",
       "milestone": null,
-      "status": "claimed",
+      "status": "done",
       "priority": "P2",
       "estimate_points": 1,
       "risk": "medium",
@@ -30931,9 +30931,9 @@
       "validation": null,
       "context": null,
       "created_at": "2026-06-28T11:44:21.697Z",
-      "updated_at": "2026-06-28T12:19:32.161Z",
+      "updated_at": "2026-06-28T12:46:31.466Z",
       "claimed_at": "2026-06-28T12:19:32.161Z",
-      "done_at": null,
+      "done_at": "2026-06-28T12:46:31.466Z",
       "group_name": null,
       "status_reason": null,
       "check_command": null,
@@ -31104,7 +31104,7 @@
       "title": "Repair portable qd CI evidence backfill detection",
       "kind": "feature",
       "milestone": null,
-      "status": "claimed",
+      "status": "done",
       "priority": "P2",
       "estimate_points": 1,
       "risk": "medium",
@@ -31115,9 +31115,9 @@
       "validation": null,
       "context": null,
       "created_at": "2026-06-28T11:44:58.612Z",
-      "updated_at": "2026-06-28T12:19:32.001Z",
+      "updated_at": "2026-06-28T12:46:31.372Z",
       "claimed_at": "2026-06-28T12:19:32.001Z",
-      "done_at": null,
+      "done_at": "2026-06-28T12:46:31.372Z",
       "group_name": null,
       "status_reason": null,
       "check_command": null,
@@ -42841,7 +42841,7 @@
       "node_id": "repair-portable-qd-ci-evidence-backfill-detection",
       "run_id": null,
       "severity": "P1",
-      "status": "open",
+      "status": "resolved",
       "title": "Portable qd CI evidence backfill misses local-log reuse records",
       "path": null,
       "line": null,
@@ -42849,7 +42849,7 @@
       "expected": null,
       "suggested_fix": null,
       "created_at": "2026-06-28T11:45:28.270Z",
-      "resolved_at": null
+      "resolved_at": "2026-06-28T12:34:18.371Z"
     },
     {
       "id": "0534ddd8-e5d4-455d-b2e7-96e6cd744e14",
@@ -42871,7 +42871,7 @@
       "node_id": "wire-asset-decisions-http-api",
       "run_id": null,
       "severity": "P1",
-      "status": "open",
+      "status": "resolved",
       "title": "Asset-decisions SPA fetches unregistered API routes",
       "path": null,
       "line": null,
@@ -42879,7 +42879,7 @@
       "expected": null,
       "suggested_fix": null,
       "created_at": "2026-06-28T11:45:39.788Z",
-      "resolved_at": null
+      "resolved_at": "2026-06-28T12:34:18.522Z"
     },
     {
       "id": "2c15e192-b2fb-4d4e-a6a0-44411fb38b94",
@@ -47558,6 +47558,114 @@
       "started_at": "2026-06-28T12:15:29.873Z",
       "finished_at": "2026-06-28T12:15:29.873Z",
       "summary": "Merge recorded with squash at commit 76ed3ca",
+      "log_path": null
+    },
+    {
+      "id": "1225e5c9-da45-4bf6-a762-fe9a723ac303",
+      "node_id": "wire-asset-decisions-http-api",
+      "kind": "implement",
+      "status": "completed",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-28T12:34:31.101Z",
+      "finished_at": "2026-06-28T12:34:31.101Z",
+      "summary": "Integrated commit 75e1cd9 with formatting follow-up 1302f53. Focused verification passed: pnpm --filter @itotori/app test -- api-handlers.test.ts, pnpm --filter @itotori/app typecheck, changed-file vp check, and git diff --check.",
+      "log_path": null
+    },
+    {
+      "id": "be6dc0b2-e145-40ec-b7e6-8e22b401eaab",
+      "node_id": "wire-asset-decisions-http-api",
+      "kind": "check",
+      "status": "passed",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-28T12:34:31.119Z",
+      "finished_at": "2026-06-28T12:35:00.833Z",
+      "summary": "check command passed: nix develop --command bash -lc 'just check'",
+      "log_path": "/home/trevor/projects/itotori/.qd/logs/check-wire-asset-decisions-http-api-2026-06-28T12-34-31-119Z.log"
+    },
+    {
+      "id": "40f5c875-65b5-4f72-9c58-dc01336a3097",
+      "node_id": "wire-asset-decisions-http-api",
+      "kind": "ci",
+      "status": "failed",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-28T12:35:00.850Z",
+      "finished_at": "2026-06-28T12:39:05.764Z",
+      "summary": "ci command failed: nix develop --command bash -lc 'just qd-full-ci'",
+      "log_path": "/home/trevor/projects/itotori/.qd/logs/ci-wire-asset-decisions-http-api-2026-06-28T12-35-00-850Z.log"
+    },
+    {
+      "id": "a18281e8-069b-4f8c-9e92-56fa86b473fd",
+      "node_id": "wire-asset-decisions-http-api",
+      "kind": "implement",
+      "status": "completed",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-28T12:41:19.397Z",
+      "finished_at": "2026-06-28T12:41:19.397Z",
+      "summary": "Integrated asset-decision read API in 75e1cd9, formatting follow-up 1302f53, and authorization matrix repair f217e28. Focused verification passed after repair: changed-file vp check, pnpm --filter @itotori/app test -- api-handlers.test.ts, pnpm --filter @itotori/app typecheck, and git diff --check.",
+      "log_path": null
+    },
+    {
+      "id": "496320d6-49e7-46f1-a155-3d37029d8cf7",
+      "node_id": "wire-asset-decisions-http-api",
+      "kind": "check",
+      "status": "passed",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-28T12:41:19.421Z",
+      "finished_at": "2026-06-28T12:41:50.071Z",
+      "summary": "check command passed: nix develop --command bash -lc 'just check'",
+      "log_path": "/home/trevor/projects/itotori/.qd/logs/check-wire-asset-decisions-http-api-2026-06-28T12-41-19-421Z.log"
+    },
+    {
+      "id": "71d0398d-698a-4fd8-a852-2a1ed0b71de1",
+      "node_id": "wire-asset-decisions-http-api",
+      "kind": "ci",
+      "status": "passed",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-28T12:41:50.092Z",
+      "finished_at": "2026-06-28T12:46:12.758Z",
+      "summary": "ci command passed: nix develop --command bash -lc 'just qd-full-ci'",
+      "log_path": "/home/trevor/projects/itotori/.qd/logs/ci-wire-asset-decisions-http-api-2026-06-28T12-41-50-092Z.log"
+    },
+    {
+      "id": "686c0cfb-bb1e-44a6-bad1-d2802fddd2b4",
+      "node_id": "repair-portable-qd-ci-evidence-backfill-detection",
+      "kind": "ci",
+      "status": "passed",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-28T12:46:25.028Z",
+      "finished_at": "2026-06-28T12:46:25.028Z",
+      "summary": "Covered by full qd CI on current main including portable evidence fix 9f99d73, asset API commits 75e1cd9/1302f53/f217e28, and qd check plus qd-full-ci from wire-asset-decisions-http-api.\nEvidence: external_id=local-qdfullci:wire-asset-decisions-http-api:2026-06-28T12-41-50Z",
+      "log_path": null
+    },
+    {
+      "id": "7c202f8e-5bea-438a-bf67-d05ed61c9fc2",
+      "node_id": "repair-portable-qd-ci-evidence-backfill-detection",
+      "kind": "merge",
+      "status": "recorded",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-28T12:46:31.372Z",
+      "finished_at": "2026-06-28T12:46:31.372Z",
+      "summary": "Merge recorded with squash at commit 9f99d73",
+      "log_path": null
+    },
+    {
+      "id": "07d21d0b-96d8-43bf-bf5e-8811b82a636c",
+      "node_id": "wire-asset-decisions-http-api",
+      "kind": "merge",
+      "status": "recorded",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-28T12:46:31.466Z",
+      "finished_at": "2026-06-28T12:46:31.466Z",
+      "summary": "Merge recorded with squash at commit f217e28",
       "log_path": null
     }
   ],
