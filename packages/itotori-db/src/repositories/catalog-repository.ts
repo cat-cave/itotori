@@ -773,6 +773,7 @@ export type CatalogBenchmarkSeedFinderFilter = {
   targetLanguage?: string;
   pools?: CatalogCompletenessPool[];
   minCapabilityLevel?: CapabilityLevel;
+  requiredCapabilities?: CapabilityLevel[];
   adapterIds?: string[];
   demandBucket?: CatalogBenchmarkDemandBucket;
   translationCompleteness?: CatalogLanguageStatus[];
@@ -2096,10 +2097,16 @@ async function readCatalogBenchmarkSeedFinder(
         provenance,
         readiness,
         minCapabilityLevel: filter.minCapabilityLevel,
+        requiredCapabilities: filter.requiredCapabilities,
         provenanceRequired: filter.provenanceRequired,
         conflictRequested: filter.pools?.includes(catalogCompletenessPoolValues.conflict) ?? false,
       });
-      const decision = benchmarkDecision(explanationCodes, readiness, filter.minCapabilityLevel);
+      const decision = benchmarkDecision(
+        explanationCodes,
+        readiness,
+        filter.minCapabilityLevel,
+        filter.requiredCapabilities,
+      );
 
       if (!filter.includeDemoted && (decision === "demoted" || decision === "excluded")) {
         continue;
@@ -2450,6 +2457,12 @@ function assertBenchmarkSeedFinderFilter(
       "minCapabilityLevel",
     );
   }
+  const requiredCapabilities = filter.requiredCapabilities ?? null;
+  if (requiredCapabilities !== null) {
+    for (const capability of requiredCapabilities) {
+      assertEnumValue(capability, Object.values(capabilityLevelValues), "requiredCapabilities[]");
+    }
+  }
   const adapterIds = filter.adapterIds ?? null;
   if (adapterIds !== null) {
     for (const adapterId of adapterIds) {
@@ -2476,6 +2489,8 @@ function assertBenchmarkSeedFinderFilter(
     targetLanguage,
     pools: pools === null ? null : uniqueBenchmarkPools(pools),
     minCapabilityLevel: filter.minCapabilityLevel ?? null,
+    requiredCapabilities:
+      requiredCapabilities === null ? [] : uniqueCapabilityLevels(requiredCapabilities),
     adapterIds: adapterIds === null ? null : uniqueStrings(adapterIds),
     demandBucket: filter.demandBucket ?? null,
     translationCompleteness:
@@ -3100,6 +3115,7 @@ function benchmarkExplanationCodes(input: {
   provenance: CatalogBenchmarkSeedProvenanceSummary[];
   readiness: CatalogBenchmarkReadinessResult;
   minCapabilityLevel: CapabilityLevel | null;
+  requiredCapabilities: CapabilityLevel[];
   provenanceRequired: boolean;
   conflictRequested: boolean;
 }): string[] {
@@ -3122,6 +3138,12 @@ function benchmarkExplanationCodes(input: {
     const status = input.readiness.readiness[input.minCapabilityLevel];
     if (status !== capabilityLevelStatusKindValues.supported) {
       codes.push(`excluded_min_capability_${input.minCapabilityLevel}_${status}`);
+    }
+  }
+  for (const capability of input.requiredCapabilities) {
+    const status = input.readiness.readiness[capability];
+    if (status !== capabilityLevelStatusKindValues.supported) {
+      codes.push(`excluded_required_capability_${capability}_${status}`);
     }
   }
   if (input.work.conflicts.length > 0) {
@@ -3151,6 +3173,7 @@ function benchmarkDecision(
   explanationCodes: string[],
   readiness: CatalogBenchmarkReadinessResult,
   minCapabilityLevel: CapabilityLevel | null,
+  requiredCapabilities: CapabilityLevel[],
 ): CatalogBenchmarkSeedFinderDecision {
   if (explanationCodes.some((code) => code.startsWith("excluded_"))) {
     return "excluded";
@@ -3160,6 +3183,13 @@ function benchmarkDecision(
   }
   if (minCapabilityLevel !== null) {
     return readiness.readiness[minCapabilityLevel] === capabilityLevelStatusKindValues.supported
+      ? "seed"
+      : "excluded";
+  }
+  if (requiredCapabilities.length > 0) {
+    return requiredCapabilities.every(
+      (capability) => readiness.readiness[capability] === capabilityLevelStatusKindValues.supported,
+    )
       ? "seed"
       : "excluded";
   }
@@ -3626,6 +3656,11 @@ function uniqueBenchmarkPools(pools: CatalogCompletenessPool[]): CatalogComplete
 
 function uniqueCatalogLanguageStatuses(statuses: CatalogLanguageStatus[]): CatalogLanguageStatus[] {
   return catalogLanguageStatusEnums.filter((status) => statuses.includes(status));
+}
+
+function uniqueCapabilityLevels(levels: CapabilityLevel[]): CapabilityLevel[] {
+  const capabilityLevels = Object.values(capabilityLevelValues) as CapabilityLevel[];
+  return capabilityLevels.filter((level) => levels.includes(level));
 }
 
 function compareAlphaBenchmarkOpportunities(
@@ -5060,6 +5095,7 @@ type NormalizedBenchmarkSeedFinderFilter = {
   targetLanguage: string;
   pools: CatalogCompletenessPool[] | null;
   minCapabilityLevel: CapabilityLevel | null;
+  requiredCapabilities: CapabilityLevel[];
   adapterIds: string[] | null;
   demandBucket: CatalogBenchmarkDemandBucket | null;
   translationCompleteness: CatalogLanguageStatus[] | null;

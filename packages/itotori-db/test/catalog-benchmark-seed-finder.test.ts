@@ -175,6 +175,37 @@ describe("catalogBenchmarkSeedFinder", () => {
         limit: 20,
       });
       expect(noEnglish.rows.every((row) => row.completenessPool === "no_english")).toBe(true);
+
+      const patchOnlyBait = await recordPatchOnlyCapabilityBait(repo, provenance.dlsite);
+      const strictCapabilityWindow = await repo.catalogBenchmarkSeedFinder(localActor, {
+        pools: ["no_english"],
+        minCapabilityLevel: capabilityLevelValues.patch,
+        requiredCapabilities: [capabilityLevelValues.inventory, capabilityLevelValues.patch],
+        adapterIds: ["patch-only-engine", "rpg-maker-mv"],
+        limit: 1,
+      });
+      expect(strictCapabilityWindow.rows.map((row) => row.workId)).toEqual([ids.noEnglishOwned]);
+      expect(strictCapabilityWindow.rows.map((row) => row.workId)).not.toContain(patchOnlyBait);
+
+      const patchOnlyDiagnostics = await repo.catalogBenchmarkSeedFinder(localActor, {
+        pools: ["no_english"],
+        minCapabilityLevel: capabilityLevelValues.patch,
+        requiredCapabilities: [capabilityLevelValues.inventory, capabilityLevelValues.patch],
+        adapterIds: ["patch-only-engine"],
+        includeDemoted: true,
+        limit: 20,
+      });
+      expect(
+        requiredTestRow(
+          patchOnlyDiagnostics.rows.filter((row) => row.workId === patchOnlyBait),
+          "patch-only capability bait",
+        ),
+      ).toMatchObject({
+        decision: "excluded",
+        explanationCodes: expect.arrayContaining([
+          "excluded_required_capability_inventory_unsupported",
+        ]),
+      });
     } finally {
       await context.close();
     }
@@ -347,6 +378,13 @@ async function recordCapabilityMatrices(repo: EngineCapabilityReportRepository):
     extract: { kind: "unsupported", reason: "beta extractor not available" },
     patch: { kind: "unsupported", reason: "beta patcher not available" },
   });
+  await repo.writeMatrix(localActor, {
+    adapterId: "patch-only-engine",
+    identify: { kind: "supported" },
+    inventory: { kind: "unsupported", reason: "inventory fixture unavailable" },
+    extract: { kind: "supported" },
+    patch: { kind: "supported" },
+  });
 }
 
 async function recordAmbiguousAdapterWork(
@@ -366,6 +404,54 @@ async function recordAmbiguousAdapterWork(
     },
     externalIds: [externalId(206, provenanceRecord, "RJAMBIG")],
     languageStatuses: [languageStatus(406, catalogLanguageStatusValues.none, provenanceRecord)],
+  });
+  return workId;
+}
+
+async function recordPatchOnlyCapabilityBait(
+  repo: ItotoriCatalogRepository,
+  provenanceRecord: CatalogSourceProvenanceRecord,
+): Promise<string> {
+  const workId = uuid(107);
+  await repo.upsertWork(localActor, {
+    workId,
+    canonicalTitle: "AAA Benchmark patch-only bait",
+    originalLanguage: "ja-JP",
+    engine: {
+      engineName: "patch-only-engine",
+      engineSource: catalogEngineSourceValues.manual,
+      engineConfidence: catalogConfidenceValues.high,
+      engineProvenanceId: provenanceRecord.sourceProvenanceId,
+    },
+    externalIds: [externalId(207, provenanceRecord, "RJPATCHBAIT")],
+    languageStatuses: [languageStatus(407, catalogLanguageStatusValues.none, provenanceRecord)],
+    demandFacts: [
+      demandFact(507, provenanceRecord, "RJPATCHBAIT", catalogDemandFactKindValues.dlCount, {
+        count: 50_000,
+      }),
+    ],
+  });
+  await repo.recordLocalScan(localActor, {
+    localScanId: uuid(800),
+    scanRootLabel: "benchmark patch-only bait fixture",
+    scanRootPathHash: hash("/home/private/patch-only-bait-root"),
+    scannerName: "catalog-benchmark-seed-test",
+    scannerVersion: "0.0.0",
+    startedAt: fetchedAt,
+    completedAt: "2026-06-27T12:04:00.000Z",
+    entries: [
+      {
+        localScanEntryId: uuid(801),
+        workId,
+        pathHash: hash("/home/private/RJPATCHBAIT.zip/story.ks"),
+        pathRedactionClass: catalogPathRedactionClassValues.privatePathHash,
+        owned: true,
+        engineName: "patch-only-engine",
+        engineSource: catalogEngineSourceValues.localScan,
+        engineConfidence: catalogConfidenceValues.high,
+        sourceProvenanceId: provenanceRecord.sourceProvenanceId,
+      },
+    ],
   });
   return workId;
 }

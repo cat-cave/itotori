@@ -282,6 +282,7 @@ export function toCatalogBenchmarkSeedFinderFilter(
   const minCapabilityLevel = highestCapabilityLevel(capabilityFilters.requiredCapabilities);
   if (minCapabilityLevel !== null) {
     filter.minCapabilityLevel = minCapabilityLevel;
+    filter.requiredCapabilities = capabilityFilters.requiredCapabilities;
   }
   if (capabilityFilters.adapterIds.length > 0) {
     filter.adapterIds = capabilityFilters.adapterIds;

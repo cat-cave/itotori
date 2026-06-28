@@ -114,6 +114,11 @@ describe("benchmark set selector", () => {
     expect(filter).toMatchObject({
       targetLanguage: "en-US",
       minCapabilityLevel: capabilityLevelValues.patch,
+      requiredCapabilities: [
+        capabilityLevelValues.identify,
+        capabilityLevelValues.inventory,
+        capabilityLevelValues.patch,
+      ],
       adapterIds: ["rpg-maker-mv"],
       pools: ["no_english"],
       translationCompleteness: ["none"],
