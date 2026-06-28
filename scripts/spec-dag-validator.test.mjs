@@ -551,35 +551,59 @@ test("rejects qd export placeholder spec, acceptance, and audit-focus text", () 
 });
 
 test("rejects active qd audit-fix nodes with generic acceptance and empty evidence", () => {
-  const errors = validateDag(
-    qdExportFixture({
-      kind: "audit-fix",
-      acceptance: "Finding is addressed and verified.",
-      verification: [],
-      audit_focus: [],
-    }),
-  ).errors;
+  for (const status of ["ready", "claimed", "working", "review", "fixing", "ci", "mergeable"]) {
+    const errors = validateDag(qdPromotedAuditFixExport({ status })).errors;
+
+    assertError(
+      errors,
+      "report-id-is-a-constant-per-kind-index-pair-not-per-run audit-fix acceptance is generic: Finding is addressed and verified.",
+      status,
+    );
+    assertError(
+      errors,
+      "report-id-is-a-constant-per-kind-index-pair-not-per-run audit-fix verification must have at least one entry",
+      status,
+    );
+    assertError(
+      errors,
+      "report-id-is-a-constant-per-kind-index-pair-not-per-run audit-fix audit_focus must have at least one entry",
+      status,
+    );
+  }
+});
+
+test("rejects active qd audit-fix nodes with omitted evidence arrays", () => {
+  const dag = qdPromotedAuditFixExport({
+    status: "review",
+    acceptance:
+      "- The regression fixture fails before the parser repair and passes after the repair",
+  });
+  delete dag.nodes[1].verification;
+  delete dag.nodes[1].audit_focus;
+
+  const errors = validateDag(dag).errors;
 
   assertError(
     errors,
-    "ITOTORI-300 audit-fix acceptance is generic: Finding is addressed and verified.",
+    "report-id-is-a-constant-per-kind-index-pair-not-per-run audit-fix verification must have at least one entry",
   );
-  assertError(errors, "ITOTORI-300 audit-fix verification must have at least one entry");
-  assertError(errors, "ITOTORI-300 audit-fix audit_focus must have at least one entry");
+  assertError(
+    errors,
+    "report-id-is-a-constant-per-kind-index-pair-not-per-run audit-fix audit_focus must have at least one entry",
+  );
 });
 
-test("rejects claimed qd audit-fix nodes with empty audit focus", () => {
-  const errors = validateDag(
-    qdExportFixture({
-      kind: "audit-fix",
-      status: "claimed",
-      acceptance:
-        "- The regression fixture fails before the parser repair and passes after the repair",
-      audit_focus: [],
-    }),
-  ).errors;
+test("accepts done and cancelled qd audit-fix nodes with historical generic evidence", () => {
+  for (const status of ["done", "cancelled"]) {
+    const errors = validateDag(
+      qdPromotedAuditFixExport({
+        status,
+        status_reason: status === "cancelled" ? "Replaced by a concrete qd node." : null,
+      }),
+    ).errors;
 
-  assertError(errors, "ITOTORI-300 audit-fix audit_focus must have at least one entry");
+    assert.deepEqual(errors, [], status);
+  }
 });
 
 test("rejects qd export alpha command verification that names missing recipes and tasks", () => {
@@ -850,4 +874,31 @@ function qdExportFixture(overrides = {}) {
     runs: [],
     node_notes: [],
   };
+}
+
+function qdPromotedAuditFixExport(overrides = {}) {
+  const dag = qdExportFixture();
+  const id = "report-id-is-a-constant-per-kind-index-pair-not-per-run";
+  dag.nodes[1] = {
+    id,
+    title: "Report id is a constant per kind/index pair, not per run",
+    kind: "audit-fix",
+    milestone: null,
+    status: "ready",
+    priority: "P3",
+    owner: null,
+    branch: null,
+    spec: "apps/itotori/src/benchmark-report.ts: report ids are derived from kind/index only, so multiple runs can collide.",
+    acceptance: "Finding is addressed and verified.",
+    group_name: null,
+    status_reason: null,
+    check_command: null,
+    ci_command: null,
+    projects: [],
+    verification: [],
+    audit_focus: [],
+    ...overrides,
+  };
+  dag.edges = [{ from_node: "UNIV-000", to_node: id, type: "requires" }];
+  return dag;
 }
