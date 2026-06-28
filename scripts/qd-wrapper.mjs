@@ -253,19 +253,7 @@ async function disposeAuditRun(realQd, root, globalArgs, options) {
       validateStagedDisposition(realQd, stagedRoot, options, run);
 
       await installValidatedDatabase(root, stagedRoot, operationDir, async () => {
-        const roadmapPath = path.join(root, "roadmap", "spec-dag.json");
-        if (existsSync(roadmapPath)) {
-          const tempRoadmapPath = path.join(operationDir, "spec-dag.json");
-          runChecked(
-            realQd,
-            [...globalArgs, "export", "--out", path.relative(root, tempRoadmapPath)],
-            {
-              quiet: options.json,
-            },
-          );
-          canonicalizeSpecDagFile(root, tempRoadmapPath);
-          await rename(tempRoadmapPath, roadmapPath);
-        }
+        await replaceRoadmapSpecDagExport(realQd, root, globalArgs, operationDir, options);
       });
 
       const result = { ok: true, nodeId: options.nodeId, run, recordedMissing };
@@ -275,6 +263,27 @@ async function disposeAuditRun(realQd, root, globalArgs, options) {
       await rm(operationDir, { recursive: true, force: true });
     }
   });
+}
+
+async function replaceRoadmapSpecDagExport(realQd, root, globalArgs, operationDir, options) {
+  const roadmapPath = path.join(root, "roadmap", "spec-dag.json");
+  if (!existsSync(roadmapPath)) return;
+
+  const tempRoadmapPath = path.join(operationDir, "spec-dag.json");
+  const backupRoadmapPath = path.join(operationDir, "original-spec-dag.json");
+  await copyAndVerifyFile(roadmapPath, backupRoadmapPath);
+
+  try {
+    runChecked(realQd, [...globalArgs, "export", "--out", path.relative(root, tempRoadmapPath)], {
+      quiet: options.json,
+    });
+    await rename(tempRoadmapPath, roadmapPath);
+    canonicalizeSpecDagExport(root);
+  } catch (error) {
+    await copyFile(backupRoadmapPath, roadmapPath);
+    await rm(tempRoadmapPath, { force: true });
+    throw error;
+  }
 }
 
 async function loadSnapshot(realQd, root, globalArgs) {

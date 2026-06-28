@@ -134,12 +134,15 @@ test("audit disposition imports into staging, validates, then replaces live qd d
     createDispositionFixture({
       withRoadmap: true,
     });
-  writeCanonicalizingPnpm(path.join(fakeBinDir, "pnpm"));
+  const pnpmArgsPath = path.join(fakeBinDir, "pnpm-args.txt");
+  const roadmapPath = path.join(repoRoot, "roadmap", "spec-dag.json");
+  writeCanonicalizingPnpm(path.join(fakeBinDir, "pnpm"), pnpmArgsPath);
 
   const result = runDispose(repoRoot, fakeQdPath, {
     PATH: `${fakeBinDir}${path.delimiter}${process.env.PATH ?? ""}`,
     QD_FAKE_LOG: logPath,
     EXPECT_LIVE_DB_PATH: expectedLiveDbPath,
+    UNFORMATTED_LIVE_EXPORT: "1",
   });
 
   assert.equal(result.status, 0, [result.stderr, result.stdout].filter(Boolean).join("\n"));
@@ -147,10 +150,18 @@ test("audit disposition imports into staging, validates, then replaces live qd d
   assert.equal(finalSnapshot.runs[0].status, "cancelled");
   assert.match(finalSnapshot.runs[0].summary, /stale audit run/u);
 
-  const exportedSnapshot = JSON.parse(
-    readFileSync(path.join(repoRoot, "roadmap", "spec-dag.json"), "utf8"),
-  );
+  const roadmapContent = readFileSync(roadmapPath, "utf8");
+  const exportedSnapshot = JSON.parse(roadmapContent);
   assert.equal(exportedSnapshot.runs[0].status, "cancelled");
+  assert.equal(roadmapContent, `${JSON.stringify(exportedSnapshot, null, 2)}\n`);
+  assert.deepEqual(readFileSync(pnpmArgsPath, "utf8").split("\n"), [
+    "exec",
+    "vp",
+    "check",
+    "--fix",
+    "--no-lint",
+    roadmapPath,
+  ]);
 
   assert.deepEqual(readLog(logPath), [
     "live-export-json",
@@ -477,7 +488,16 @@ if [ "$command" = "export" ] && [ -n "$out" ]; then
   fi
   out_path="$(resolve_under_root "$out")"
   mkdir -p "\${out_path%/*}"
-  cp "$root/.qd/qd.db" "$out_path"
+  if [ "\${UNFORMATTED_LIVE_EXPORT:-}" = "1" ]; then
+    node -e '
+const fs = require("node:fs");
+const [source, target] = process.argv.slice(1);
+const raw = fs.readFileSync(source, "utf8");
+fs.writeFileSync(target, JSON.stringify(JSON.parse(raw)));
+' "$root/.qd/qd.db" "$out_path"
+  else
+    cp "$root/.qd/qd.db" "$out_path"
+  fi
   if [ "\${MAKE_ROADMAP_READONLY_AFTER_EXPORT:-}" = "1" ]; then
     chmod a-w "$LIVE_ROOT/roadmap"
   fi
@@ -490,12 +510,14 @@ exit 2
   chmodSync(fakeQdPath, 0o755);
 }
 
-function writeCanonicalizingPnpm(fakePnpmPath) {
+function writeCanonicalizingPnpm(fakePnpmPath, argsPath = null) {
   writeFileSync(
     fakePnpmPath,
     `#!/usr/bin/env node
 import { readFileSync, writeFileSync } from "node:fs";
 
+const argsPath = ${JSON.stringify(argsPath)};
+if (argsPath) writeFileSync(argsPath, process.argv.slice(2).join("\\n"));
 const target = process.argv.at(-1);
 const json = JSON.parse(readFileSync(target, "utf8"));
 writeFileSync(target, \`\${JSON.stringify(json, null, 2)}\\n\`);
