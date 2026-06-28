@@ -90,20 +90,20 @@ audit command. Caches are only accelerators.
 
 ## Gate Matrix
 
-| Gate                     | Project or surface                 | Required checks                                                                                                                   |
-| ------------------------ | ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| `just check`             | Whole repo baseline                | Vite+ config check, roadmap validation, fixture manifest validation, localize-project node tests, toolchain policy, TypeScript typecheck, Rust fmt, Rust check |
-| `just build`             | Whole repo build                   | Vite+ TypeScript/web build and Cargo workspace build                                                                              |
-| `just test`              | Whole repo tests                   | Vite+ TypeScript/web tests and Cargo workspace tests                                                                              |
-| `just ci`                | Full CI                            | `check`, `build`, database migration, `test`, strict clippy, cargo-deny                                                           |
-| `just schema`            | Shared bridge schema               | Schema typecheck, tests, and build                                                                                                |
-| `just ci-itotori`        | Itotori app and DB package         | DB typecheck/test/build, app typecheck/test/build                                                                                 |
-| `just ci-kaifuu`         | Kaifuu Rust crates                 | Tests for all `crates/kaifuu-*` workspace crates                                                                                  |
-| `just ci-utsushi`        | Utsushi Rust crates and web review | Runtime web review typecheck/test/build, tests for all `crates/utsushi-*` workspace crates                                        |
-| `just fixtures-validate` | Public fixture manifests           | Public manifest JSON Schema validation plus raw fixture hash and byte-count checks                                                |
-| `just localize-project-test` | Localize-project suite scripts  | Node test suite for `suite/scripts/localize-project/*.test.mjs`                                                                  |
-| `just hello`             | End-to-end fixture pipeline        | Build, DB migrate/reset, Kaifuu extract/patch/diff/apply/verify, Utsushi trace/capture/smoke, Itotori runtime ingest              |
-| `just roadmap-validate`  | Roadmap data and audit schemas     | Spec DAG and audit report schema/example validation                                                                               |
+| Gate                         | Project or surface                 | Required checks                                                                                                                                                |
+| ---------------------------- | ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `just check`                 | Whole repo baseline                | Vite+ config check, roadmap validation, fixture manifest validation, localize-project node tests, toolchain policy, TypeScript typecheck, Rust fmt, Rust check |
+| `just build`                 | Whole repo build                   | Vite+ TypeScript/web build and Cargo workspace build                                                                                                           |
+| `just test`                  | Whole repo tests                   | Vite+ TypeScript/web tests and Cargo workspace tests                                                                                                           |
+| `just ci`                    | Full CI                            | `check`, `build`, database migration, `test`, strict clippy, cargo-deny                                                                                        |
+| `just schema`                | Shared bridge schema               | Schema typecheck, tests, and build                                                                                                                             |
+| `just ci-itotori`            | Itotori app and DB package         | DB typecheck/test/build, app typecheck/test/build                                                                                                              |
+| `just ci-kaifuu`             | Kaifuu Rust crates                 | Tests for all `crates/kaifuu-*` workspace crates                                                                                                               |
+| `just ci-utsushi`            | Utsushi Rust crates and web review | Runtime web review typecheck/test/build, tests for all `crates/utsushi-*` workspace crates                                                                     |
+| `just fixtures-validate`     | Public fixture manifests           | Public manifest JSON Schema validation plus raw fixture hash and byte-count checks                                                                             |
+| `just localize-project-test` | Localize-project suite scripts     | Node test suite for `suite/scripts/localize-project/*.test.mjs`                                                                                                |
+| `just hello`                 | End-to-end fixture pipeline        | Build, DB migrate/reset, Kaifuu extract/patch/diff/apply/verify, Utsushi trace/capture/smoke, Itotori runtime ingest                                           |
+| `just roadmap-validate`      | Roadmap data and audit schemas     | Spec DAG and audit report schema/example validation                                                                                                            |
 
 Before merge, rely on CI workflow results, not only affected output. For local
 parallel work, run `just affected` first, then run every printed recipe.
