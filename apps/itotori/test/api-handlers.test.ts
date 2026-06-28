@@ -316,11 +316,16 @@ describe("Itotori API handlers", () => {
       filter: { pools: ["no_english", "mtl_only"] },
     },
     {
+      query: "?adapterIds=kaifuu.rpg-maker-mv-mz,kaifuu.reallive",
+      filter: { adapterIds: ["kaifuu.rpg-maker-mv-mz", "kaifuu.reallive"] },
+    },
+    {
       query:
-        "?targetLanguage=en-US&pools=conflict&pools=unknown&minCapabilityLevel=extract&demandBucket=very_high&translationCompleteness=none,mtl&translationCompleteness=unknown&provenanceRequired=true&localOwnership=owned&includeDemoted=true&limit=25",
+        "?targetLanguage=en-US&pools=conflict&pools=unknown&adapterIds=kaifuu.rpg-maker-mv-mz&adapterIds=kaifuu.reallive&minCapabilityLevel=extract&demandBucket=very_high&translationCompleteness=none,mtl&translationCompleteness=unknown&provenanceRequired=true&localOwnership=owned&includeDemoted=true&limit=25",
       filter: {
         targetLanguage: "en-US",
         pools: ["conflict", "unknown"],
+        adapterIds: ["kaifuu.rpg-maker-mv-mz", "kaifuu.reallive"],
         minCapabilityLevel: "extract",
         demandBucket: "very_high",
         translationCompleteness: ["none", "mtl", "unknown"],
@@ -341,6 +346,18 @@ describe("Itotori API handlers", () => {
     expect(response).toEqual({ statusCode: 200, body: catalogBenchmarkSeedsFixture });
     expect(services.catalogRepository.catalogBenchmarkSeedFinder).toHaveBeenCalledWith(filter);
     expect(services.authorization.requirePermission).not.toHaveBeenCalled();
+  });
+
+  it("normalizes empty catalog benchmark seed adapterIds query values like other list filters", async () => {
+    const services = serviceFixture();
+
+    const response = await handleItotoriApiRequest(
+      { method: "GET", pathname: "/api/catalog/benchmark-seeds", search: "?adapterIds=, %20 ," },
+      services,
+    );
+
+    expect(response).toEqual({ statusCode: 200, body: catalogBenchmarkSeedsFixture });
+    expect(services.catalogRepository.catalogBenchmarkSeedFinder).toHaveBeenCalledWith({});
   });
 
   it("accepts catalog benchmark seed rows with partial runtime evidence readiness and fractional evidence counts", async () => {

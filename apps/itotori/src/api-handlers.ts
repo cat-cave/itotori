@@ -416,6 +416,10 @@ function parseCatalogBenchmarkSeedFinderFilter(search = ""): CatalogBenchmarkSee
       ),
     );
   }
+  const adapterIds = listParam(params, "adapterIds");
+  if (adapterIds.length > 0) {
+    filter.adapterIds = adapterIds;
+  }
   const minCapabilityLevel = params.get("minCapabilityLevel");
   if (minCapabilityLevel !== null) {
     filter.minCapabilityLevel = enumParam(
