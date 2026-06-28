@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "exported_at": "2026-06-28T03:02:46.206Z",
+  "exported_at": "2026-06-28T03:06:18.815Z",
   "registries": {
     "groups": [
       {
@@ -29284,19 +29284,19 @@
       "title": "Make affected Rust gates cover matching crates",
       "kind": "feature",
       "milestone": null,
-      "status": "ready",
+      "status": "claimed",
       "priority": "P1",
       "estimate_points": 1,
       "risk": "medium",
-      "owner": null,
-      "branch": null,
+      "owner": "orchestrator-affected-rust-gates",
+      "branch": "repair/affected-rust-gates-cover-crates",
       "spec": "Make scripts/affected.mjs and just ci-kaifuu/ci-utsushi conservative for every matching Rust workspace crate. A change under crates/kaifuu-* or crates/utsushi-* must run a gate that actually builds/tests that crate.",
       "acceptance": "ci-kaifuu and ci-utsushi cover all matching workspace members or affected.mjs emits crate-specific cargo commands; a verifier parses Cargo.toml workspace members and fails if any crates/kaifuu-* or crates/utsushi-* member is uncovered; affected tests prove kaifuu-reallive, kaifuu-vault-source, utsushi-reallive, and utsushi-siglus changes are gated.",
       "validation": null,
       "context": null,
       "created_at": "2026-06-28T01:52:09.859Z",
-      "updated_at": "2026-06-28T01:52:09.859Z",
-      "claimed_at": null,
+      "updated_at": "2026-06-28T03:06:05.151Z",
+      "claimed_at": "2026-06-28T03:06:05.151Z",
       "done_at": null,
       "group_name": null,
       "status_reason": null,
