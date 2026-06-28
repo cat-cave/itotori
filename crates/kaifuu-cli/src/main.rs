@@ -463,11 +463,7 @@ fn run_patch_reallive_bundle(args: &[String]) -> Result<(), Box<dyn std::error::
     let source_seen_path = resolve_reallive_seen_path(&source_root)?;
     let source_seen_bytes =
         fs::read(&source_seen_path).map_err(|err| -> Box<dyn std::error::Error> {
-            format!(
-                "failed to read source Seen.txt {}: {err}",
-                source_seen_path.display()
-            )
-            .into()
+            reallive_patch_read_source_error(&source_seen_path, &err).into()
         })?;
     let source_seen_hash = sha256_hash_bytes(&source_seen_bytes);
 
@@ -485,11 +481,7 @@ fn run_patch_reallive_bundle(args: &[String]) -> Result<(), Box<dyn std::error::
         apply_translated_bundle(&source_seen_bytes, &translated, &PatchbackOpts::shift_jis())
             .map_err(|err| -> Box<dyn std::error::Error> { format!("{err}").into() })?;
     fs::write(&target_seen_path, &patched).map_err(|err| -> Box<dyn std::error::Error> {
-        format!(
-            "failed to write patched Seen.txt {}: {err}",
-            target_seen_path.display()
-        )
-        .into()
+        reallive_patch_write_target_error(&target_seen_path, &err).into()
     })?;
 
     // Readonly-source sha256 invariant: re-read the source and assert
@@ -498,14 +490,39 @@ fn run_patch_reallive_bundle(args: &[String]) -> Result<(), Box<dyn std::error::
     let post_source_bytes = fs::read(&source_seen_path)?;
     let post_source_hash = sha256_hash_bytes(&post_source_bytes);
     if post_source_hash != source_seen_hash {
-        return Err(format!(
-            "kaifuu.reallive.patchback_source_mutated: source Seen.txt at {} \
-             changed from {source_seen_hash} to {post_source_hash} during the patch step",
-            source_seen_path.display(),
+        return Err(reallive_patch_source_mutated_error(
+            &source_seen_path,
+            &source_seen_hash,
+            &post_source_hash,
         )
         .into());
     }
     Ok(())
+}
+
+fn local_path_for_diagnostic(path: &Path) -> String {
+    redact_for_log_or_report(&path.display().to_string())
+}
+
+fn reallive_patch_read_source_error(path: &Path, error: &io::Error) -> String {
+    format!(
+        "failed to read source Seen.txt {}: {error}",
+        local_path_for_diagnostic(path)
+    )
+}
+
+fn reallive_patch_write_target_error(path: &Path, error: &io::Error) -> String {
+    format!(
+        "failed to write patched Seen.txt {}: {error}",
+        local_path_for_diagnostic(path)
+    )
+}
+
+fn reallive_patch_source_mutated_error(path: &Path, before: &str, after: &str) -> String {
+    format!(
+        "kaifuu.reallive.patchback_source_mutated: source Seen.txt at {} changed from {before} to {after} during the patch step",
+        local_path_for_diagnostic(path),
+    )
 }
 
 /// Recursively copy `src` into `dst` and make every copied file
@@ -2869,6 +2886,37 @@ mod tests {
         assert!(report.get("stdout").is_none());
         assert!(report.get("stderr").is_none());
         assert!(validate_helper_result_value(&report).failures.is_empty());
+    }
+
+    #[test]
+    fn reallive_patch_read_write_and_source_mutation_diagnostics_redact_private_paths() {
+        let source_seen = PathBuf::from("/home/dev/private-game/REALLIVEDATA/Seen.txt");
+        let target_seen = PathBuf::from("/home/dev/private-target/REALLIVEDATA/Seen.txt");
+        let read_error = reallive_patch_read_source_error(
+            &source_seen,
+            &io::Error::new(io::ErrorKind::PermissionDenied, "denied"),
+        );
+        let write_error = reallive_patch_write_target_error(
+            &target_seen,
+            &io::Error::new(io::ErrorKind::PermissionDenied, "denied"),
+        );
+        let source_mutated_error =
+            reallive_patch_source_mutated_error(&source_seen, "before-hash", "after-hash");
+
+        for rendered in [read_error, write_error, source_mutated_error] {
+            assert!(
+                rendered.contains("[REDACTED:kaifuu.secret_redacted]"),
+                "diagnostic should carry a redaction token: {rendered}"
+            );
+            assert!(
+                !rendered.contains("/home/dev/private"),
+                "diagnostic leaked a private root: {rendered}"
+            );
+            assert!(
+                rendered.contains("Seen.txt"),
+                "diagnostic should preserve the public Seen.txt context: {rendered}"
+            );
+        }
     }
 
     #[cfg(unix)]

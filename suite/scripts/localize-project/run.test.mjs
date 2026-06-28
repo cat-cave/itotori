@@ -14,7 +14,7 @@
 // Linux-only (the driver is Linux-only by design).
 
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
@@ -179,6 +179,86 @@ function writeProviderProofFixture({ artifactRunId = "openrouter-proof-1" } = {}
 
 function writeJson(path, value) {
   writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+}
+
+function prependPath(dir) {
+  return `${dir}${process.platform === "win32" ? ";" : ":"}${process.env.PATH}`;
+}
+
+function writeExecutable(path, content) {
+  writeFileSync(path, content);
+  chmodSync(path, 0o700);
+}
+
+function writeFakeLiveCommandBins(dir) {
+  const cargoPath = join(dir, "cargo");
+  const nodePath = join(dir, "node");
+  writeExecutable(
+    cargoPath,
+    `#!/bin/sh
+printf 'fake cargo stdout: %s\\n' "$*"
+printf 'fake cargo stderr: %s\\n' "$*" >&2
+previous=''
+source=''
+target=''
+bundle_output=''
+replay_log=''
+for arg in "$@"; do
+  case "$previous" in
+    --source) source="$arg" ;;
+    --target) target="$arg" ;;
+    --bundle-output) bundle_output="$arg" ;;
+    --print-replay-log) replay_log="$arg" ;;
+  esac
+  previous="$arg"
+done
+if [ -n "$bundle_output" ]; then
+  mkdir -p "$(dirname "$bundle_output")"
+  printf '{"schemaVersion":"fake.extract"}\\n' > "$bundle_output"
+fi
+case " $* " in
+  *" patch "*)
+    mkdir -p "$target/REALLIVEDATA"
+    cp "$source/REALLIVEDATA/Seen.txt" "$target/REALLIVEDATA/Seen.txt"
+    ;;
+esac
+if [ -n "$replay_log" ]; then
+  mkdir -p "$(dirname "$replay_log")"
+  printf '{"schemaVersion":"fake.replay"}\\n' > "$replay_log"
+fi
+`,
+  );
+  writeExecutable(
+    nodePath,
+    `#!/bin/sh
+printf 'fake node stdout: %s\\n' "$*"
+printf 'fake node stderr: %s\\n' "$*" >&2
+previous=''
+agentic_output=''
+translated_output=''
+patch_report=''
+for arg in "$@"; do
+  case "$previous" in
+    --output) agentic_output="$arg" ;;
+    --translated-bundle-output) translated_output="$arg" ;;
+    --patch-report-output) patch_report="$arg" ;;
+  esac
+  previous="$arg"
+done
+if [ -n "$agentic_output" ]; then
+  mkdir -p "$(dirname "$agentic_output")"
+  printf '{"stages":[]}\\n' > "$agentic_output"
+fi
+if [ -n "$translated_output" ]; then
+  mkdir -p "$(dirname "$translated_output")"
+  printf '{"schemaVersion":"fake.translated"}\\n' > "$translated_output"
+fi
+if [ -n "$patch_report" ]; then
+  mkdir -p "$(dirname "$patch_report")"
+  printf '{"schemaVersion":"fake.patch-report"}\\n' > "$patch_report"
+fi
+`,
+  );
 }
 
 test("--dry-run --project ... exits 0 and prints per-phase commands", () => {
@@ -493,6 +573,67 @@ test("dry-run manifest resolution does not leak private corpus roots", () => {
     );
   } finally {
     rmSync(manifest.dir, { recursive: true, force: true });
+  }
+});
+
+test("live fake subprocess output redacts private source, target, and Seen.txt paths", () => {
+  const metadata = writeProjectMetadata("fixture-alpha", {
+    game_id: "fixture-reallive-game",
+    game_version: "2026.06.test",
+    source_profile_id: "fixture-reallive-profile",
+    source_locale: "ja-JP-x-test",
+  });
+  const policy = writePairPolicy("fixture-alpha");
+  const work = mkdtempSync(join(tmpdir(), "itotori-live-redaction-"));
+  const fakeBin = join(work, "bin");
+  const sourceRoot = join(work, "private-live-source-root");
+  const targetRoot = join(work, "private-live-target-root");
+  const sourceSeen = join(sourceRoot, "REALLIVEDATA", "Seen.txt");
+  const targetSeen = join(targetRoot, "REALLIVEDATA", "Seen.txt");
+  mkdirSync(join(sourceRoot, "REALLIVEDATA"), { recursive: true });
+  mkdirSync(fakeBin, { recursive: true });
+  writeFileSync(sourceSeen, "synthetic source seen bytes\n");
+  writeFakeLiveCommandBins(fakeBin);
+
+  try {
+    const result = runDriver(
+      [
+        "--project",
+        "fixture-alpha",
+        "--project-metadata",
+        metadata.path,
+        "--pair-policy",
+        policy.path,
+        "--provider-kind",
+        "fake",
+      ],
+      {
+        PATH: prependPath(fakeBin),
+        OPENROUTER_API_KEY: "test-key",
+        ITOTORI_REAL_GAME_ROOT: sourceRoot,
+        TARGET: targetRoot,
+        ITOTORI_ALLOW_FAKE_LOCALIZE_PROVIDER: "1",
+      },
+    );
+    assert.equal(result.status, 0, `stdout:\n${result.stdout}\nstderr:\n${result.stderr}`);
+    const combined = `${result.stdout}\n${result.stderr}`;
+    for (const forbidden of [sourceRoot, targetRoot, sourceSeen, targetSeen]) {
+      assert.ok(
+        !combined.includes(forbidden),
+        `live output leaked private path ${forbidden}; stdout:\n${result.stdout}\nstderr:\n${result.stderr}`,
+      );
+    }
+    assert.ok(
+      combined.includes("--game-root <ITOTORI_REAL_GAME_ROOT>") &&
+        combined.includes("--source <ITOTORI_REAL_GAME_ROOT>") &&
+        combined.includes("--target <TARGET>") &&
+        combined.includes("--seen <TARGET>/REALLIVEDATA/Seen.txt"),
+      `live command display must use placeholders; got stdout:\n${result.stdout}\nstderr:\n${result.stderr}`,
+    );
+  } finally {
+    rmSync(metadata.dir, { recursive: true, force: true });
+    rmSync(policy.dir, { recursive: true, force: true });
+    rmSync(work, { recursive: true, force: true });
   }
 });
 

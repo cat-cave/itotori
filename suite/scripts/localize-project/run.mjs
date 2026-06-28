@@ -199,6 +199,24 @@ function sha256OfFile(path) {
   return hash.digest("hex");
 }
 
+function escapeRegExp(text) {
+  return text.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+}
+
+function buildPathRedactor(rules) {
+  const normalized = rules
+    .filter((rule) => rule !== undefined && rule.path !== undefined && rule.path.length > 0)
+    .map((rule) => ({ path: String(rule.path), replacement: String(rule.replacement) }))
+    .sort((a, b) => b.path.length - a.path.length);
+  return (text) => {
+    let redacted = String(text);
+    for (const rule of normalized) {
+      redacted = redacted.replace(new RegExp(escapeRegExp(rule.path), "gu"), rule.replacement);
+    }
+    return redacted;
+  };
+}
+
 function copyDirRecursive(srcDir, dstDir) {
   mkdirSync(dstDir, { recursive: true });
   for (const entry of readdirSync(srcDir, { withFileTypes: true })) {
@@ -653,28 +671,45 @@ function flattenPostures(policy) {
   return out;
 }
 
-function ensureWritableTargetDistinctFromSource(sourceRoot, targetRoot) {
+function ensureWritableTargetDistinctFromSource(sourceRoot, targetRoot, redact = (text) => text) {
   const sourceAbs = resolvePath(sourceRoot);
   const targetAbs = resolvePath(targetRoot);
   if (sourceAbs === targetAbs) {
-    throw new Error(`TARGET (${targetAbs}) must not alias resolved source root (${sourceAbs})`);
+    throw new Error(
+      redact(`TARGET (${targetAbs}) must not alias resolved source root (${sourceAbs})`),
+    );
   }
   if (targetAbs.startsWith(sourceAbs + "/") || sourceAbs.startsWith(targetAbs + "/")) {
     throw new Error(
-      `TARGET (${targetAbs}) must not nest with resolved source root (${sourceAbs}); pick a fully-disjoint path`,
+      redact(
+        `TARGET (${targetAbs}) must not nest with resolved source root (${sourceAbs}); pick a fully-disjoint path`,
+      ),
     );
   }
 }
 
 function runCommand(command, args, env = process.env, options = {}) {
+  const { redact = (text) => text, ...spawnOptions } = options;
   const printable = `${command} ${args.join(" ")}`;
-  process.stdout.write(`[localize-project] $ ${printable}\n`);
-  const result = spawnSync(command, args, { stdio: "inherit", env, ...options });
+  const printableRedacted = redact(printable);
+  process.stdout.write(`[localize-project] $ ${printableRedacted}\n`);
+  const result = spawnSync(command, args, {
+    encoding: "utf8",
+    maxBuffer: 64 * 1024 * 1024,
+    env,
+    ...spawnOptions,
+  });
+  if (result.stdout !== undefined && result.stdout.length > 0) {
+    process.stdout.write(redact(result.stdout));
+  }
+  if (result.stderr !== undefined && result.stderr.length > 0) {
+    process.stderr.write(redact(result.stderr));
+  }
   if (result.error) {
-    throw new Error(`command failed to start: ${printable}: ${result.error.message}`);
+    throw new Error(`command failed to start: ${printableRedacted}: ${result.error.message}`);
   }
   if (result.status !== 0) {
-    throw new Error(`command exited with status ${result.status}: ${printable}`);
+    throw new Error(`command exited with status ${result.status}: ${printableRedacted}`);
   }
 }
 
@@ -775,11 +810,15 @@ async function main() {
   });
   const gameRoot = realCorpusSource.root;
   const targetRoot = process.env.TARGET;
+  const livePathRedactor = buildPathRedactor([
+    { path: gameRoot, replacement: realCorpusSource.placeholder },
+    { path: targetRoot, replacement: "<TARGET>" },
+  ]);
   if (!dryRun && (targetRoot === undefined || targetRoot.length === 0)) {
     throw new Error("TARGET (writable path for the patched copy) must be set unless --dry-run");
   }
   if (!dryRun) {
-    ensureWritableTargetDistinctFromSource(gameRoot, targetRoot);
+    ensureWritableTargetDistinctFromSource(gameRoot, targetRoot, livePathRedactor);
   }
 
   if (dryRun) {
@@ -800,6 +839,13 @@ async function main() {
 
   // Capture source sha256 BEFORE any work.
   const sourceSeenPath = resolveReallivedataSeen(gameRoot);
+  const sourceSeenPlaceholder = `${realCorpusSource.placeholder}/REALLIVEDATA/Seen.txt`;
+  const targetPlaceholder = "<TARGET>";
+  const liveCommandRedactor = buildPathRedactor([
+    { path: sourceSeenPath, replacement: sourceSeenPlaceholder },
+    { path: gameRoot, replacement: realCorpusSource.placeholder },
+    { path: targetRoot, replacement: targetPlaceholder },
+  ]);
   const sourceSeenSha256Before = sha256OfFile(sourceSeenPath);
   process.stdout.write(
     `[localize-project] source Seen.txt sha256 (pre): ${sourceSeenSha256Before}\n`,
@@ -822,7 +868,7 @@ async function main() {
     String(sceneId),
     "--bundle-output",
     bridgeBundlePath,
-  ]);
+  ], process.env, { redact: liveCommandRedactor });
 
   // -------------- Phase 2: agentic loop (live LLM) ----------------
   const stageArgs = [
@@ -846,7 +892,7 @@ async function main() {
   if (args.providerKind !== undefined) {
     stageArgs.push("--provider-kind", args.providerKind);
   }
-  runCommand("node", stageArgs);
+  runCommand("node", stageArgs, process.env, { redact: liveCommandRedactor });
 
   if (args.providerKind !== "fake") {
     const providerProof = verifyProviderRunArtifactsAfterStage({
@@ -882,10 +928,16 @@ async function main() {
     "--bundle",
     translatedBundlePath,
     "--force",
-  ]);
+  ], process.env, { redact: liveCommandRedactor });
 
   // --------------- Phase 4: replay-validate ----------------------
   const targetSeenPath = resolveReallivedataSeen(targetRoot);
+  const liveReplayRedactor = buildPathRedactor([
+    { path: sourceSeenPath, replacement: sourceSeenPlaceholder },
+    { path: targetSeenPath, replacement: `${targetPlaceholder}/REALLIVEDATA/Seen.txt` },
+    { path: gameRoot, replacement: realCorpusSource.placeholder },
+    { path: targetRoot, replacement: targetPlaceholder },
+  ]);
   runCommand("cargo", [
     "run",
     "-p",
@@ -903,7 +955,7 @@ async function main() {
     sentinelSubstring,
     "--print-replay-log",
     replayLogPath,
-  ]);
+  ], process.env, { redact: liveReplayRedactor });
 
   // ---- Readonly-source invariant: re-hash + assert no drift. ----
   const sourceSeenSha256After = sha256OfFile(sourceSeenPath);
@@ -912,7 +964,9 @@ async function main() {
   );
   if (sourceSeenSha256Before !== sourceSeenSha256After) {
     throw new Error(
-      `kaifuu.reallive.source_mutated: source Seen.txt at ${sourceSeenPath} changed during the run (pre=${sourceSeenSha256Before}, post=${sourceSeenSha256After})`,
+      liveCommandRedactor(
+        `kaifuu.reallive.source_mutated: source Seen.txt at ${sourceSeenPath} changed during the run (pre=${sourceSeenSha256Before}, post=${sourceSeenSha256After})`,
+      ),
     );
   }
 
