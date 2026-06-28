@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "exported_at": "2026-06-28T02:30:07.728Z",
+  "exported_at": "2026-06-28T02:34:33.050Z",
   "registries": {
     "groups": [
       {
@@ -29068,19 +29068,19 @@
       "title": "Make qd audit disposition non-destructive",
       "kind": "feature",
       "milestone": null,
-      "status": "ready",
+      "status": "claimed",
       "priority": "P1",
       "estimate_points": 1,
       "risk": "medium",
-      "owner": null,
-      "branch": null,
+      "owner": "orchestrator-qd-audit-disposition",
+      "branch": "repair/qd-audit-disposition-non-destructive",
       "spec": "Replace destructive qd-wrapper audit disposition behavior that deletes .qd database files before validating replacement state. Audit disposition must be atomic, reversible, and guarded by an exclusive qd lock or qd-native command.",
       "acceptance": "Audit disposition never unlinks the live .qd database before a replacement import validates; failed disposition restores the original qd database; tests cover failure before import, failure after temp import validation, and successful export canonicalization; qd check/gate lifecycle tests pass.",
       "validation": null,
       "context": null,
       "created_at": "2026-06-28T01:50:56.844Z",
-      "updated_at": "2026-06-28T01:50:56.844Z",
-      "claimed_at": null,
+      "updated_at": "2026-06-28T02:34:25.242Z",
+      "claimed_at": "2026-06-28T02:34:25.242Z",
       "done_at": null,
       "group_name": null,
       "status_reason": null,
