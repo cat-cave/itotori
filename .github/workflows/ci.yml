@@ -8,20 +8,6 @@ on:
 jobs:
   ci:
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:18
-        env:
-          POSTGRES_USER: itotori
-          POSTGRES_PASSWORD: itotori
-          POSTGRES_DB: itotori
-        ports:
-          - 55433:5432
-        options: >-
-          --health-cmd "pg_isready -U itotori -d itotori"
-          --health-interval 2s
-          --health-timeout 2s
-          --health-retries 30
     env:
       DATABASE_URL: postgres://itotori:itotori@127.0.0.1:55433/itotori
     steps:
@@ -42,4 +28,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: cargo install cargo-deny --locked
       - run: sudo snap install just --classic
+      - run: just db-up
+      - run: just db-wait
       - run: just ci
+      - run: just db-down
+        if: always()

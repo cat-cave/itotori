@@ -1,5 +1,6 @@
 set shell := ["bash", "-eu", "-o", "pipefail", "-c"]
 export DATABASE_URL := env_var_or_default('DATABASE_URL', 'postgres://itotori:itotori@127.0.0.1:55433/itotori')
+export COMPOSE_DISABLE_ENV_FILE := '1'
 
 install:
     pnpm install
@@ -12,6 +13,7 @@ dashboard:
 
 check:
     pnpm exec vp check
+    node --test scripts/itotori-db-compose-config.test.mjs
     node scripts/qd-wrapper.test.mjs
     node scripts/qd-lifecycle.test.mjs
     node scripts/spec-dag-issues.test.mjs

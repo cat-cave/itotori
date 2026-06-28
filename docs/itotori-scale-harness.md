@@ -69,10 +69,17 @@ COMPOSE_PROJECT_NAME=itotori
 
 These are no-secret public CI defaults. `just db-up` writes
 `.tmp/itotori-db/compose.env` from `DATABASE_URL`, then starts the `postgres` service with the
-matching host port, database name, user, and password. Set a unique `DATABASE_URL` host port and
-`COMPOSE_PROJECT_NAME` when running parallel worktrees so both port bindings and Docker resource
-names do not collide. If `COMPOSE_PROJECT_NAME` is unset locally, the generated compose env derives
-a disposable project name from the worktree directory.
+matching host port, database name, user, and password. The recipes set
+`COMPOSE_DISABLE_ENV_FILE=1` so Compose does not implicitly load `.env`; the generated compose env
+file is the only env file used for this disposable database. Set a unique `DATABASE_URL` host port
+and `COMPOSE_PROJECT_NAME` when running parallel worktrees so both port bindings and Docker resource
+names do not collide. If `COMPOSE_PROJECT_NAME` is unset locally, the generated compose env derives a
+disposable project name from the worktree directory.
+
+The compose service passes Postgres runtime server settings instead of initdb-only flags:
+`max_connections=400` and `shared_buffers=512MB`. The buffer value keeps the same 4x ratio from
+Postgres' default 128MB as the connection increase from the default 100, so a container recreate
+retains the tuning without depending on persisted database initialization state.
 
 The database recipes are:
 

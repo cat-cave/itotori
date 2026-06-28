@@ -2,6 +2,14 @@ name: ${COMPOSE_PROJECT_NAME:-itotori}
 services:
   postgres:
     image: postgres:18
+    command:
+      # 400 is 4x Postgres' default max_connections; keep shared_buffers at the
+      # same 4x ratio from the default 128MB so recreates retain the tuning.
+      - postgres
+      - -c
+      - max_connections=400
+      - -c
+      - shared_buffers=512MB
     environment:
       POSTGRES_USER: ${ITOTORI_DB_USER:-itotori}
       POSTGRES_PASSWORD: ${ITOTORI_DB_PASSWORD:-itotori}

@@ -41,6 +41,12 @@ default is `postgres://itotori:itotori@127.0.0.1:55433/itotori`, with
 `COMPOSE_PROJECT_NAME` is unset locally, `just db-up` derives one from the
 worktree directory.
 
+The local compose Postgres service uses runtime server flags, not initdb-only
+settings: `max_connections=400` and `shared_buffers=512MB`. `shared_buffers`
+tracks the same 4x increase from Postgres' default 128MB as the connection cap
+increase from the default 100, so recreating the container keeps the intended
+capacity without relying on persisted initialization state.
+
 ```sh
 just db-up
 just db-wait
