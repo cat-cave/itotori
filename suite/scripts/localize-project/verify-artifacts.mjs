@@ -3,7 +3,7 @@
 
 import { createHash } from "node:crypto";
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join, resolve as resolvePath } from "node:path";
+import { isAbsolute, join, relative, resolve as resolvePath, sep } from "node:path";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
 
@@ -94,6 +94,16 @@ function assertNonEmptyString(value, label) {
   return value;
 }
 
+function resolveRunRelativePath(runDir, value, fallback) {
+  if (typeof value !== "string" || value.length === 0) return fallback;
+  return isAbsolute(value) ? value : resolvePath(runDir, value);
+}
+
+function portableRelativePath(fromDir, path) {
+  const rel = relative(fromDir, path);
+  return (rel === "" ? "." : rel).split(sep).join("/");
+}
+
 function artifactPaths(runDir) {
   const runSummaryPath = join(runDir, "run-summary.json");
   const runSummary = existsSync(runSummaryPath)
@@ -103,10 +113,22 @@ function artifactPaths(runDir) {
   return {
     runSummary: runSummaryPath,
     runSummaryObject: runSummary,
-    agenticLoopBundle: artifacts.agenticLoopBundle ?? join(runDir, "agentic-loop-bundle.v0.json"),
-    patchReport: artifacts.patchReport ?? join(runDir, "patch-report.json"),
-    replayLog: artifacts.replayLog ?? join(runDir, "replay-log.json"),
-    providerRunArtifacts: artifacts.providerRunArtifacts ?? join(runDir, "provider-runs"),
+    agenticLoopBundle: resolveRunRelativePath(
+      runDir,
+      artifacts.agenticLoopBundle,
+      join(runDir, "agentic-loop-bundle.v0.json"),
+    ),
+    patchReport: resolveRunRelativePath(
+      runDir,
+      artifacts.patchReport,
+      join(runDir, "patch-report.json"),
+    ),
+    replayLog: resolveRunRelativePath(runDir, artifacts.replayLog, join(runDir, "replay-log.json")),
+    providerRunArtifacts: resolveRunRelativePath(
+      runDir,
+      artifacts.providerRunArtifacts,
+      join(runDir, "provider-runs"),
+    ),
   };
 }
 
@@ -660,11 +682,19 @@ export function verify(args) {
   if (existsSync(paths.runSummary)) {
     artifactSha256.runSummary = sha256OfFile(paths.runSummary);
   }
+  const portableArtifacts = {
+    agenticLoopBundle: portableRelativePath(runDir, paths.agenticLoopBundle),
+    patchReport: portableRelativePath(runDir, paths.patchReport),
+    replayLog: portableRelativePath(runDir, paths.replayLog),
+    providerRunArtifacts: portableRelativePath(runDir, paths.providerRunArtifacts),
+    runSummary: portableRelativePath(runDir, paths.runSummary),
+    telemetrySummary: portableRelativePath(runDir, telemetrySummaryPath),
+  };
 
   return {
     schemaVersion: "itotori.localize-project.post-run-verification.v0",
     verifiedAt: new Date().toISOString(),
-    runDir,
+    runDir: ".",
     expectedModelId: args.expectedModelId,
     patchReportPair: { modelId, providerId },
     enUsSentinel: sentinel,
@@ -673,12 +703,13 @@ export function verify(args) {
     providerRunArtifactCount: providerProof.artifacts.length,
     replaySentinelTextLineCount: sentinelTextLines.length,
     telemetryProof,
+    artifacts: portableArtifacts,
     artifactSha256,
     reproducibleChecks: {
       artifactSha256Algorithm: "sha256",
       verifierInputs: {
-        runDir,
-        telemetrySummary: telemetrySummaryPath,
+        runDir: ".",
+        telemetrySummary: portableArtifacts.telemetrySummary,
         expectedModelId: args.expectedModelId,
       },
     },

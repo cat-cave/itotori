@@ -191,6 +191,15 @@ function writeJson(path, value) {
   writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, "utf8");
 }
 
+function assertNoPrivateOrAbsolutePaths(value, forbiddenRoots) {
+  const serialized = JSON.stringify(value);
+  assert.doesNotMatch(serialized, /\/(?:home|scratch|Users)(?:\/|$)/u);
+  assert.doesNotMatch(serialized, /[A-Za-z]:[\\/]/u);
+  for (const root of forbiddenRoots) {
+    assert.ok(!serialized.includes(root), `JSON leaked private root ${root}`);
+  }
+}
+
 function prependPath(dir) {
   return `${dir}${process.platform === "win32" ? ";" : ":"}${process.env.PATH}`;
 }
@@ -640,6 +649,20 @@ test("live fake subprocess output redacts private source, target, and Seen.txt p
         combined.includes("--seen <TARGET>/REALLIVEDATA/Seen.txt"),
       `live command display must use placeholders; got stdout:\n${result.stdout}\nstderr:\n${result.stderr}`,
     );
+
+    const runDirMatch = result.stdout.match(/\[localize-project\] SUCCESS .+ run dir: (.+)$/mu);
+    assert.ok(runDirMatch, `stdout should include success run dir; got:\n${result.stdout}`);
+    const runDir = runDirMatch[1].trim();
+    const summary = JSON.parse(readFileSync(join(runDir, "run-summary.json"), "utf8"));
+    assert.match(summary.runDir, /^artifacts\/localize-project\/\d{8}T\d{6}Z-fixture-alpha$/u);
+    assert.deepEqual(summary.artifacts, {
+      bridgeBundle: "bridge-bundle.json",
+      agenticLoopBundle: "agentic-loop-bundle.v0.json",
+      patchReport: "patch-report.json",
+      replayLog: "replay-log.json",
+      providerRunArtifacts: "provider-runs",
+    });
+    assertNoPrivateOrAbsolutePaths(summary, [work, sourceRoot, targetRoot, sourceSeen, targetSeen]);
   } finally {
     rmSync(metadata.dir, { recursive: true, force: true });
     rmSync(policy.dir, { recursive: true, force: true });

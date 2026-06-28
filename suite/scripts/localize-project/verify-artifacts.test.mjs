@@ -32,6 +32,21 @@ test("verify-artifacts proves provider-run, telemetry, ZDR, billed cost, sentine
   assert.equal(report.telemetryProof.metadata.projectId, PROJECT_ID);
   assert.equal(report.replaySentinelTextLineCount, 1);
   assert.match(report.artifactSha256.patchReport, /^[a-f0-9]{64}$/u);
+  assert.deepEqual(report.artifacts, {
+    agenticLoopBundle: "agentic-loop-bundle.v0.json",
+    patchReport: "patch-report.json",
+    replayLog: "replay-log.json",
+    providerRunArtifacts: "provider-runs",
+    runSummary: "run-summary.json",
+    telemetrySummary: "../telemetry-summary.json",
+  });
+  assert.equal(report.runDir, ".");
+  assert.equal(report.reproducibleChecks.verifierInputs.runDir, ".");
+  assert.equal(
+    report.reproducibleChecks.verifierInputs.telemetrySummary,
+    "../telemetry-summary.json",
+  );
+  assertNoPrivateOrAbsolutePaths(report, [fixture.root, fixture.runDir]);
 });
 
 test("verify-artifacts rejects missing provider-run artifact evidence", () => {
@@ -279,10 +294,10 @@ function createFixture(options = {}) {
   writeJson(runSummaryPath, {
     project: PROJECT_ID,
     artifacts: {
-      agenticLoopBundle: agenticLoopBundlePath,
-      patchReport: patchReportPath,
-      replayLog: replayLogPath,
-      providerRunArtifacts: providerRunArtifactsDir,
+      agenticLoopBundle: "agentic-loop-bundle.v0.json",
+      patchReport: "patch-report.json",
+      replayLog: "replay-log.json",
+      providerRunArtifacts: "provider-runs",
     },
   });
 
@@ -518,4 +533,13 @@ function isPlainObject(value) {
 
 function writeJson(path, value) {
   writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+}
+
+function assertNoPrivateOrAbsolutePaths(value, forbiddenRoots) {
+  const serialized = JSON.stringify(value);
+  assert.doesNotMatch(serialized, /\/(?:home|scratch|Users)(?:\/|$)/u);
+  assert.doesNotMatch(serialized, /[A-Za-z]:[\\/]/u);
+  for (const root of forbiddenRoots) {
+    assert.ok(!serialized.includes(root), `JSON leaked private root ${root}`);
+  }
 }

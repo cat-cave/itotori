@@ -246,6 +246,15 @@ function pathIsInsideRoot(path, root) {
   return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
 }
 
+function portableRelativePath(fromDir, path) {
+  const rel = relative(fromDir, path);
+  return (rel === "" ? "." : rel).split(sep).join("/");
+}
+
+function repoRelativePath(path) {
+  return portableRelativePath(REPO_ROOT, path);
+}
+
 function canonicalExistingPrefix(path) {
   const absolute = resolvePath(path);
   const { root } = parse(absolute);
@@ -1077,7 +1086,7 @@ async function main() {
 
   // Emit a one-line run summary so callers can scrape it.
   const summary = {
-    runDir,
+    runDir: repoRelativePath(runDir),
     project: args.project,
     sceneId,
     sourceGame: {
@@ -1090,11 +1099,11 @@ async function main() {
     enUsSentinel: policy.enUsSentinel,
     sourceSeenSha256: sourceSeenSha256Before,
     artifacts: {
-      bridgeBundle: bridgeBundlePath,
-      agenticLoopBundle: agenticLoopBundlePath,
-      patchReport: patchReportPath,
-      replayLog: replayLogPath,
-      providerRunArtifacts: providerRunArtifactsDir,
+      bridgeBundle: portableRelativePath(runDir, bridgeBundlePath),
+      agenticLoopBundle: portableRelativePath(runDir, agenticLoopBundlePath),
+      patchReport: portableRelativePath(runDir, patchReportPath),
+      replayLog: portableRelativePath(runDir, replayLogPath),
+      providerRunArtifacts: portableRelativePath(runDir, providerRunArtifactsDir),
     },
   };
   writeFileSync(join(runDir, "run-summary.json"), `${JSON.stringify(summary, null, 2)}\n`);
