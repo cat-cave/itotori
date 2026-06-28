@@ -895,7 +895,6 @@ export function assertCatalogBenchmarkSeedFinderReadModel(
       "localEvidenceCount",
       "demandBucket",
       "readiness",
-      "runtimeEvidenceReadiness",
       "provenance",
       "decision",
       "rank",
@@ -927,12 +926,6 @@ export function assertCatalogBenchmarkSeedFinderReadModel(
       `${rowLabel}.demandBucket`,
     );
     assertCatalogBenchmarkSeedReadiness(row.readiness, `${rowLabel}.readiness`);
-    if (row.runtimeEvidenceReadiness !== undefined) {
-      assertCatalogBenchmarkSeedRuntimeEvidenceReadiness(
-        row.runtimeEvidenceReadiness,
-        `${rowLabel}.runtimeEvidenceReadiness`,
-      );
-    }
     assertCatalogBenchmarkSeedProvenance(row.provenance, `${rowLabel}.provenance`);
     assertEnum(
       row.decision,
@@ -1020,23 +1013,6 @@ function assertCatalogBenchmarkSeedReadiness(value: unknown, label: string): voi
       `${label}.${level}`,
     );
   }
-}
-
-function assertCatalogBenchmarkSeedRuntimeEvidenceReadiness(value: unknown, label: string): void {
-  assertEnum(
-    value,
-    [
-      "public_and_aggregate",
-      "public_fixture",
-      "private_local_aggregate",
-      "partial_public_and_aggregate",
-      "partial_public_fixture",
-      "partial_private_local_aggregate",
-      "none",
-      "unknown",
-    ] as const,
-    label,
-  );
 }
 
 function assertCatalogBenchmarkSeedProvenance(value: unknown, label: string): void {

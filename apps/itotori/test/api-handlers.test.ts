@@ -700,23 +700,16 @@ describe("Itotori API handlers", () => {
     expect(services.catalogRepository.catalogBenchmarkSeedFinder).toHaveBeenCalledWith({});
   });
 
-  it("accepts catalog benchmark seed rows with partial runtime evidence readiness and fractional evidence counts", async () => {
+  it("rejects catalog benchmark seed rows that include runtime evidence readiness", async () => {
     const services = serviceFixture();
-    const readinessStates = [
-      "partial_public_and_aggregate",
-      "partial_public_fixture",
-      "partial_private_local_aggregate",
-    ];
     const body = {
       ...catalogBenchmarkSeedsFixture,
-      rows: readinessStates.map((runtimeEvidenceReadiness, index) => ({
-        ...catalogBenchmarkSeedsFixture.rows[0]!,
-        workId: `work-seed-${index + 1}`,
-        localEvidenceCount: 0.5,
-        runtimeEvidenceReadiness,
-        rank: index + 1,
-        seedRank: index + 1,
-      })),
+      rows: [
+        {
+          ...catalogBenchmarkSeedsFixture.rows[0]!,
+          runtimeEvidenceReadiness: "partial_public_and_aggregate",
+        },
+      ],
     } as unknown as typeof catalogBenchmarkSeedsFixture;
     services.catalogRepository.catalogBenchmarkSeedFinder.mockResolvedValueOnce(body);
 
@@ -725,7 +718,9 @@ describe("Itotori API handlers", () => {
       services,
     );
 
-    expect(response).toEqual({ statusCode: 200, body });
+    expect(response.statusCode).toBe(500);
+    expect(response.body).toMatchObject({ code: "internal_error" });
+    expect(response.body.error).toMatch(/runtimeEvidenceReadiness/u);
   });
 
   it.each([
