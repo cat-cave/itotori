@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "exported_at": "2026-06-28T01:57:00.639Z",
+  "exported_at": "2026-06-28T02:00:04.276Z",
   "registries": {
     "groups": [
       {
@@ -29032,19 +29032,19 @@
       "title": "Retire legacy spec-dag lifecycle mutation commands",
       "kind": "feature",
       "milestone": null,
-      "status": "ready",
+      "status": "claimed",
       "priority": "P1",
       "estimate_points": 1,
       "risk": "medium",
-      "owner": null,
-      "branch": null,
+      "owner": "orchestrator-retire-spec-dag-lifecycle",
+      "branch": "repair/retire-spec-dag-lifecycle",
       "spec": "Disable or qd-delegate legacy scripts/spec-dag.mjs lifecycle mutation commands that can write non-qd status fields into roadmap/spec-dag.json. Docs must stop instructing operators to use spec-dag worktree/claim/ingest-audit/complete for live qd state, and any remaining compatibility path must validate qd export shape before writing.",
       "acceptance": "Legacy spec-dag lifecycle mutation commands cannot corrupt the canonical qd export; docs point operators to qd claim/complete/gate/check/ci/merge; tests prove legacy apply paths either refuse qd-export state or delegate safely to qd-native state; node scripts/spec-dag.mjs validate and qd export formatting pass.",
       "validation": null,
       "context": null,
       "created_at": "2026-06-28T01:50:35.600Z",
-      "updated_at": "2026-06-28T01:50:35.600Z",
-      "claimed_at": null,
+      "updated_at": "2026-06-28T01:59:53.551Z",
+      "claimed_at": "2026-06-28T01:59:53.551Z",
       "done_at": null,
       "group_name": null,
       "status_reason": null,
