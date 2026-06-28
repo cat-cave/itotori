@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "exported_at": "2026-06-28T09:32:03.204Z",
+  "exported_at": "2026-06-28T09:45:28.456Z",
   "registries": {
     "groups": [
       {
@@ -29888,11 +29888,11 @@
       "validation": null,
       "context": "Promoted finding a044add0-dcaa-4ead-97f1-4fec418fac39 from UTSUSHI-231.",
       "created_at": "2026-06-28T03:33:48.830Z",
-      "updated_at": "2026-06-28T03:33:48.830Z",
+      "updated_at": "2026-06-28T09:40:33.693Z",
       "claimed_at": null,
       "done_at": null,
       "group_name": "alpha-integration",
-      "status_reason": "Promoted from finding a044add0-dcaa-4ead-97f1-4fec418fac39 on node UTSUSHI-231.",
+      "status_reason": "Promoted from finding a044add0-dcaa-4ead-97f1-4fec418fac39 on node UTSUSHI-231.\n[2026-06-28T09:40:33.693Z] BROAD AUDIT 2026-06-28 dashboard/benchmark wave: this ready node is stale as written because UTSUSHI-231 now uses generic just localize-project --project sweetie-hd-alpha-1 plus telemetry-summary.json and post-run-verification.json under artifacts/localize-project/RUN_DIR. Next action should rewrite this node to generic localize-project post-run automation or cancel it as superseded by UTSUSHI-231; do not implement old localize-sweetie-hd wording.",
       "check_command": null,
       "ci_command": null,
       "projects": ["suite"],
@@ -30063,11 +30063,11 @@
       "validation": null,
       "context": null,
       "created_at": "2026-06-28T03:34:40.018Z",
-      "updated_at": "2026-06-28T08:21:37.826Z",
+      "updated_at": "2026-06-28T09:40:24.192Z",
       "claimed_at": null,
       "done_at": null,
       "group_name": null,
-      "status_reason": "[2026-06-28T05:32:23.293Z] BROAD AUDIT 2026-06-28: confirmed still active. .qd/config.toml uses nix develop --command bash -lc 'just check' and 'just qd-full-ci', but just qd-import still sets plain 'just check'/'just qd-full-ci'. This can recreate qd check drift after a rebuild; keep config preservation and tests in acceptance.\n[2026-06-28T08:21:37.826Z] BROAD AUDIT 2026-06-28 safety/privacy wave: fresh audit worktree had zero-byte .qd/qd.db and qd --root status/node show failed with 'no such table: nodes'. Current just qd-import path removes live .qd DB files before validated import, and qd-wrapper fallback refuses roadmap/spec-dag.json when an unusable .qd/qd.db merely exists. Keep this node active as the repair for read-only worktree qd hydration and transactional state rebuild.",
+      "status_reason": "[2026-06-28T05:32:23.293Z] BROAD AUDIT 2026-06-28: confirmed still active. .qd/config.toml uses nix develop --command bash -lc 'just check' and 'just qd-full-ci', but just qd-import still sets plain 'just check'/'just qd-full-ci'. This can recreate qd check drift after a rebuild; keep config preservation and tests in acceptance.\n[2026-06-28T08:21:37.826Z] BROAD AUDIT 2026-06-28 safety/privacy wave: fresh audit worktree had zero-byte .qd/qd.db and qd --root status/node show failed with 'no such table: nodes'. Current just qd-import path removes live .qd DB files before validated import, and qd-wrapper fallback refuses roadmap/spec-dag.json when an unusable .qd/qd.db merely exists. Keep this node active as the repair for read-only worktree qd hydration and transactional state rebuild.\n[2026-06-28T09:40:24.192Z] BROAD AUDIT 2026-06-28 dashboard/benchmark wave: confirmed still active. just qd-import removes live .qd DB files before validation, can recreate plain just check/just qd-full-ci config instead of committed nix-wrapped commands, and wrapper fallback refuses roadmap hydration when an unusable .qd/qd.db exists. Add corrupt/zero-byte .qd/qd.db recovery and config preservation coverage to acceptance.",
       "check_command": null,
       "ci_command": null,
       "projects": ["universal"],
@@ -30527,6 +30527,286 @@
         {
           "type": "command",
           "value": "node scripts/spec-dag.mjs validate"
+        }
+      ],
+      "audit_focus": []
+    },
+    {
+      "id": "backfill-portable-qd-ci-evidence-current-export",
+      "title": "Backfill portable qd CI evidence in current export",
+      "kind": "feature",
+      "milestone": null,
+      "status": "ready",
+      "priority": "P2",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "Rewrite or supplement existing qd run records that cite local .qd/logs paths so current roadmap/spec-dag.json is auditable from a fresh worktree. Existing reused CI records must use durable external ids, URLs, or checked-in repo-relative evidence instead of local log paths or summaries that paste .qd/logs.",
+      "acceptance": "roadmap/spec-dag.json contains no reused/covered-by CI evidence that references .qd/logs or absolute checkout paths; reused CI run records have log_path null, a URL/external id in summary, or a repo-relative checked-in evidence file; add validator/test coverage that fails on non-portable reused CI evidence; qd export and node scripts/spec-dag.mjs validate pass.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-28T09:40:57.515Z",
+      "updated_at": "2026-06-28T09:44:16.068Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": "[2026-06-28T09:44:16.068Z] Broad-audit repair for finding e2ed6a6f-736c-4ecf-85bb-1c34d94024fc. Scope is current exported qd run/evidence portability, not just future record-pass validation.",
+      "check_command": null,
+      "ci_command": null,
+      "projects": ["universal"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "node scripts/spec-dag.mjs validate"
+        }
+      ],
+      "audit_focus": []
+    },
+    {
+      "id": "normalize-openrouter-provider-slug-name-matching",
+      "title": "Normalize OpenRouter provider slug/name matching for alternates",
+      "kind": "feature",
+      "milestone": null,
+      "status": "ready",
+      "priority": "P2",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "Add evidence-backed provider slug/name matching for every localize-project OpenRouter alternate, including atlas-cloud returning AtlasCloud, without weakening genuine provider swap detection.",
+      "acceptance": "Mocked localize-project provider success for atlas-cloud/AtlasCloud passes pair validation; Fireworks-pinned responses from an unrelated provider still fail; every providerId in presets/localize-project.pair-policy.json has test coverage for returned provider name/slug matching; app tests and typecheck pass.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-28T09:41:09.312Z",
+      "updated_at": "2026-06-28T09:44:19.771Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": "[2026-06-28T09:44:19.771Z] Broad-audit repair for finding 4c361285-7437-4180-9da3-5781bf003aac. Keep qdcli/agent harness assumptions out of the fix; this is provider normalization inside the app.",
+      "check_command": null,
+      "ci_command": null,
+      "projects": ["itotori"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/app test -- provider-abstraction.test.ts localize-project-stage.test.ts"
+        },
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/app typecheck"
+        }
+      ],
+      "audit_focus": []
+    },
+    {
+      "id": "redact-provider-run-error-messages-private-inputs",
+      "title": "Redact provider-run error messages for private inputs",
+      "kind": "feature",
+      "milestone": null,
+      "status": "ready",
+      "priority": "P2",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "Stop persisting unsanitized upstream HTTP error text into provider-run artifacts for private_corpus or localize-project private inputs. Persist status/class/retryability and sanitized bounded diagnostics only.",
+      "acceptance": "A mocked provider error containing a private path, prompt fragment, token-like string, and project title does not appear in provider-run.json; status code, provider id, retryability, and sanitized error class remain auditable; existing non-private diagnostics remain useful; app provider tests pass.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-28T09:41:17.823Z",
+      "updated_at": "2026-06-28T09:44:33.736Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": "[2026-06-28T09:44:33.736Z] Broad-audit repair for finding 50702ea8-d222-4fe4-b843-1a8f34f5bb63. The fix should preserve useful operator diagnostics while preventing raw upstream messages from being persisted for private provider invocations.",
+      "check_command": null,
+      "ci_command": null,
+      "projects": ["itotori"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/app test -- provider-abstraction.test.ts"
+        },
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/app typecheck"
+        }
+      ],
+      "audit_focus": []
+    },
+    {
+      "id": "recover-stale-qd-audit-disposition-locks",
+      "title": "Recover stale qd audit disposition locks",
+      "kind": "feature",
+      "milestone": null,
+      "status": "ready",
+      "priority": "P2",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "Add stale-lock recovery to scripts/qd-wrapper.mjs audit disposition locking, using owner metadata, PID liveness, malformed-owner handling, age/force semantics, while preserving live lock refusal and transactional DB safety.",
+      "acceptance": "Tests cover live lock refusal, dead-PID lock recovery, empty/malformed owner recovery, optional force behavior, and no live qd database mutation until staged replacement validates; node scripts/qd-wrapper.test.mjs passes.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-28T09:41:24.802Z",
+      "updated_at": "2026-06-28T09:45:17.430Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": "[2026-06-28T09:45:17.430Z] Broad-audit repair for finding bdec04c0-f159-4f07-99af-8c8f9c9d2d50. Preserve live-lock refusal, but recover clearly stale, malformed, or dead-owner locks so audit disposition cannot wedge future qd work.",
+      "check_command": null,
+      "ci_command": null,
+      "projects": ["universal"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "node scripts/qd-wrapper.test.mjs"
+        }
+      ],
+      "audit_focus": []
+    },
+    {
+      "id": "wire-reviewer-queue-dashboard-api-routes",
+      "title": "Wire reviewer queue dashboard and routes to API-backed data",
+      "kind": "feature",
+      "milestone": null,
+      "status": "ready",
+      "priority": "P2",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "Replace fixture/static reviewer route wiring with typed API-backed reviewer queue data. Add real reviewer queue read endpoints/services, surface queue state on the dashboard, and load reviewer detail/batch data through permission-aware API paths.",
+      "acceptance": "Dashboard shows real pending/resolved/deferred/escalated/batch-applied queue rows; granted queue.read loads /reviewer-queue/:id evidence through API-backed data; denied read avoids evidence fetch; batch preview consumes dashboard selections and does not start from hard-coded empty selections; app tests and typecheck pass.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-28T09:41:32.381Z",
+      "updated_at": "2026-06-28T09:44:52.840Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": "[2026-06-28T09:44:52.840Z] Broad-audit repair for finding ae2be41d-d70c-4b22-bcbb-36ba9ff9ea62. This should move the integrated reviewer dashboard/detail/batch paths off static fixtures and onto the existing API/read-model path with tests for empty and populated DB-backed states.",
+      "check_command": null,
+      "ci_command": null,
+      "projects": ["itotori"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/app test -- reviewer"
+        },
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/app typecheck"
+        }
+      ],
+      "audit_focus": []
+    },
+    {
+      "id": "reject-unknown-benchmark-seed-query-params",
+      "title": "Reject unknown benchmark seed finder query params",
+      "kind": "feature",
+      "milestone": null,
+      "status": "ready",
+      "priority": "P2",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "Make /api/catalog/benchmark-seeds reject unknown query parameters consistently with adjacent catalog opportunity parsing.",
+      "acceptance": "?typo=1 on /api/catalog/benchmark-seeds returns 400; all documented benchmark seed filters still parse; regression tests cover unknown parameter rejection and existing valid query behavior.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-28T09:41:42.112Z",
+      "updated_at": "2026-06-28T09:45:00.113Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": "[2026-06-28T09:45:00.113Z] Broad-audit repair for finding aa264ce3-a98e-476e-aeea-1a84348a81a6. Match the stricter catalog opportunity query parser behavior so typos do not silently return unfiltered benchmark seed data.",
+      "check_command": null,
+      "ci_command": null,
+      "projects": ["itotori"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/app test -- api-handlers.test.ts"
+        },
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/app typecheck"
+        }
+      ],
+      "audit_focus": []
+    },
+    {
+      "id": "align-benchmark-seed-api-schema-read-model",
+      "title": "Align benchmark seed API schema with DB read model",
+      "kind": "feature",
+      "milestone": null,
+      "status": "ready",
+      "priority": "P2",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "Make benchmark seed API response validation, tests, repository type, and repository output agree on whether runtimeEvidenceReadiness is part of CatalogBenchmarkSeedRow.",
+      "acceptance": "Either runtimeEvidenceReadiness is intentionally added to CatalogBenchmarkSeedRow and repository output, or it is removed from benchmark seed API guard/tests; type, repository output, API guard, fixtures, and tests agree on one shape; api handler tests and db typecheck pass.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-28T09:41:49.259Z",
+      "updated_at": "2026-06-28T09:45:07.298Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": "[2026-06-28T09:45:07.298Z] Broad-audit repair for finding e6e45cb1-f680-493b-926c-bfd107ade935. Tighten the public API guard to the DB read model instead of accepting optional fields that no repository returns.",
+      "check_command": null,
+      "ci_command": null,
+      "projects": ["itotori"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/app test -- api-handlers.test.ts"
+        },
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/db typecheck"
+        }
+      ],
+      "audit_focus": []
+    },
+    {
+      "id": "make-localize-project-proof-artifacts-path-portable",
+      "title": "Make localize-project proof artifacts path-portable",
+      "kind": "feature",
+      "milestone": null,
+      "status": "ready",
+      "priority": "P2",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "Make suite/scripts/localize-project run-summary.json and post-run-verification.json portable by recording repo-relative or run-relative paths only. Proof artifacts must not expose absolute checkout roots such as /home, /scratch, /Users, or drive-letter paths while still preserving enough context for auditors to locate artifacts inside the run directory.",
+      "acceptance": "Tests reject absolute paths in run-summary.json and post-run-verification.json; generated localize-project proof artifacts use relative paths for runDir, artifact, telemetry, and verifier references; current localize-project run and artifact-verifier tests pass.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-28T09:44:04.324Z",
+      "updated_at": "2026-06-28T09:45:12.484Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": "[2026-06-28T09:45:12.484Z] Broad-audit repair for finding 939e0c32-5873-47af-967a-b0fd5e130415. Keep proof artifacts useful from any checkout by using paths relative to the run directory or repository root, and add tests that reject absolute private roots.",
+      "check_command": null,
+      "ci_command": null,
+      "projects": ["itotori"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "node --test suite/scripts/localize-project/run.test.mjs"
+        },
+        {
+          "type": "command",
+          "value": "node --test suite/scripts/localize-project/verify-artifacts.test.mjs"
         }
       ],
       "audit_focus": []
@@ -42024,6 +42304,126 @@
       "suggested_fix": null,
       "created_at": "2026-06-28T08:20:04.340Z",
       "resolved_at": "2026-06-28T08:42:09.079Z"
+    },
+    {
+      "id": "e2ed6a6f-736c-4ecf-85bb-1c34d94024fc",
+      "node_id": "make-qd-ci-evidence-portable-across-worktrees",
+      "run_id": null,
+      "severity": "P1",
+      "status": "open",
+      "title": "Current qd export still contains non-portable reused CI evidence",
+      "path": null,
+      "line": null,
+      "evidence": "Broad audit 2026-06-28 at 538edbc found roadmap/spec-dag.json still contains historical reused CI records with local .qd/logs log_path and summaries, despite docs/worktree-lifecycle.md requiring portable URL, external-id, or checked-in repo-relative evidence. Wrapper now blocks future bad record-pass calls, but current export/backlog evidence remains non-portable for fresh audit worktrees.",
+      "expected": null,
+      "suggested_fix": null,
+      "created_at": "2026-06-28T09:39:23.052Z",
+      "resolved_at": null
+    },
+    {
+      "id": "4c361285-7437-4180-9da3-5781bf003aac",
+      "node_id": "UTSUSHI-231",
+      "run_id": null,
+      "severity": "P1",
+      "status": "open",
+      "title": "atlas-cloud alternate can fail OpenRouter provider pair validation",
+      "path": null,
+      "line": null,
+      "evidence": "Broad audit 2026-06-28 at 538edbc found presets/localize-project.pair-policy.json declares providerId atlas-cloud while evidence says OpenRouter returns body.provider='AtlasCloud'. apps/itotori/src/providers/openrouter.ts accepts lowercase equality or OPENROUTER_KNOWN_PROVIDERS entries, but atlas-cloud is not registered and atlas-cloud != atlascloud. Pair mismatch is hard non-429 failure, so UTSUSHI-231 can still block after earlier alternates even if AtlasCloud succeeds.",
+      "expected": null,
+      "suggested_fix": null,
+      "created_at": "2026-06-28T09:39:32.479Z",
+      "resolved_at": null
+    },
+    {
+      "id": "50702ea8-d222-4fe4-b843-1a8f34f5bb63",
+      "node_id": "UTSUSHI-231",
+      "run_id": null,
+      "severity": "P2",
+      "status": "open",
+      "title": "Provider-run artifacts persist upstream HTTP error messages verbatim",
+      "path": null,
+      "line": null,
+      "evidence": "Broad audit 2026-06-28 at 538edbc found apps/itotori/src/providers/openrouter.ts writes error.message from providerErrorMessage(response body) into failed provider-run artifacts, and providerErrorMessage returns body.error.message unchanged. Tests assert raw upstream messages are preserved. For private_corpus invocations, upstream errors could echo prompt snippets, private paths, or title/corpus details into persisted provider artifacts.",
+      "expected": null,
+      "suggested_fix": null,
+      "created_at": "2026-06-28T09:39:42.058Z",
+      "resolved_at": null
+    },
+    {
+      "id": "ae2be41d-d70c-4b22-bcbb-36ba9ff9ea62",
+      "node_id": "route-file-contains-rendering-helpers-renderloading-rendererror-",
+      "run_id": null,
+      "severity": "P2",
+      "status": "open",
+      "title": "Reviewer dashboard and routes remain fixture/static-wired in integrated app",
+      "path": null,
+      "line": null,
+      "evidence": "Broad audit 2026-06-28 at 538edbc found apps/itotori/src/dashboard.ts exposes projects/status/decisions/cost/runtime but no reviewer queue data, while apps/itotori/src/main.ts wires reviewer routes with static authorization/no grants and static loaders. The only reviewer dashboard endpoint is MSW-only test fixture. Operators cannot reach real DB-backed queue review/detail/batch flows through the integrated dashboard.",
+      "expected": null,
+      "suggested_fix": null,
+      "created_at": "2026-06-28T09:39:52.101Z",
+      "resolved_at": null
+    },
+    {
+      "id": "aa264ce3-a98e-476e-aeea-1a84348a81a6",
+      "node_id": "avoid-high-volume-false-positives-from-benchmark-set-mincapabili",
+      "run_id": null,
+      "severity": "P3",
+      "status": "open",
+      "title": "Benchmark seed API silently ignores unknown query parameters",
+      "path": null,
+      "line": null,
+      "evidence": "Broad audit 2026-06-28 at 538edbc found parseCatalogBenchmarkSeedFinderFilter in apps/itotori/src/api-handlers.ts reads supported params but never calls assertKnownQueryParams, unlike adjacent catalog opportunity parsing. Misspelled benchmark seed filters can return valid-looking unfiltered seed data.",
+      "expected": null,
+      "suggested_fix": null,
+      "created_at": "2026-06-28T09:40:00.117Z",
+      "resolved_at": null
+    },
+    {
+      "id": "e6e45cb1-f680-493b-926c-bfd107ade935",
+      "node_id": "avoid-high-volume-false-positives-from-benchmark-set-mincapabili",
+      "run_id": null,
+      "severity": "P3",
+      "status": "open",
+      "title": "Benchmark seed API guard accepts runtimeEvidenceReadiness absent from DB read model",
+      "path": null,
+      "line": null,
+      "evidence": "Broad audit 2026-06-28 at 538edbc found CatalogBenchmarkSeedRow and repository output do not include runtimeEvidenceReadiness, but apps/itotori/src/api-schema.ts allowlists optional runtimeEvidenceReadiness for benchmark seed rows and api-handler tests explicitly accept it. Public API contract is looser than typed repository output.",
+      "expected": null,
+      "suggested_fix": null,
+      "created_at": "2026-06-28T09:40:10.540Z",
+      "resolved_at": null
+    },
+    {
+      "id": "939e0c32-5873-47af-967a-b0fd5e130415",
+      "node_id": "UTSUSHI-231",
+      "run_id": null,
+      "severity": "P3",
+      "status": "open",
+      "title": "localize-project proof artifacts contain absolute checkout paths",
+      "path": null,
+      "line": null,
+      "evidence": "Broad audit 2026-06-28 at 538edbc found suite/scripts/localize-project/run.mjs writes run-summary.json with absolute runDir and artifact paths, and verify-artifacts.mjs writes post-run-verification.json with absolute runDir/telemetrySummary paths. These alpha proof artifacts should be portable and not leak usernames/worktree layout.",
+      "expected": null,
+      "suggested_fix": null,
+      "created_at": "2026-06-28T09:40:16.924Z",
+      "resolved_at": null
+    },
+    {
+      "id": "bdec04c0-f159-4f07-99af-8c8f9c9d2d50",
+      "node_id": "recover-stale-qd-audit-disposition-locks",
+      "run_id": null,
+      "severity": "P2",
+      "status": "open",
+      "title": "Audit disposition lock has no stale-lock recovery",
+      "path": null,
+      "line": null,
+      "evidence": "Broad audit 2026-06-28 at 538edbc found scripts/qd-wrapper.mjs creates .qd/audit-disposition.lock and aborts on EEXIST without owner metadata, PID/age checks, malformed-lock recovery, or force semantics. A crashed audit disposition can block follow-up audit recovery indefinitely even though live-lock refusal is still needed.",
+      "expected": null,
+      "suggested_fix": null,
+      "created_at": "2026-06-28T09:44:10.202Z",
+      "resolved_at": null
     }
   ],
   "runs": [
@@ -46360,6 +46760,66 @@
       "node_id": "strict-catalog-completeness-conflict-api-shapes",
       "text": "Source finding b0916460-228f-4d3f-aaa6-5613e0134b96 from broad safety/privacy audit 2026-06-28: completeness/conflict API guards use permissive records and return original objects, so extra private fields can serialize.",
       "created_at": "2026-06-28T08:23:38.028Z"
+    },
+    {
+      "id": "dc7af1fe-bcd3-4180-a7c6-8659f79b29ed",
+      "node_id": "replace-qd-import-with-transactional-state-rebuild",
+      "text": "BROAD AUDIT 2026-06-28 dashboard/benchmark wave: confirmed still active. just qd-import removes live .qd DB files before validation, can recreate plain just check/just qd-full-ci config instead of committed nix-wrapped commands, and wrapper fallback refuses roadmap hydration when an unusable .qd/qd.db exists. Add corrupt/zero-byte .qd/qd.db recovery and config preservation coverage to acceptance.",
+      "created_at": "2026-06-28T09:40:24.192Z"
+    },
+    {
+      "id": "ba883d8b-cd9a-408c-919f-9d334d434008",
+      "node_id": "make-sweetie-hd-localize-workflow-self-proving-with-telemetry-an",
+      "text": "BROAD AUDIT 2026-06-28 dashboard/benchmark wave: this ready node is stale as written because UTSUSHI-231 now uses generic just localize-project --project sweetie-hd-alpha-1 plus telemetry-summary.json and post-run-verification.json under artifacts/localize-project/RUN_DIR. Next action should rewrite this node to generic localize-project post-run automation or cancel it as superseded by UTSUSHI-231; do not implement old localize-sweetie-hd wording.",
+      "created_at": "2026-06-28T09:40:33.693Z"
+    },
+    {
+      "id": "65931b1f-5361-4e89-ab4f-68b2d184a824",
+      "node_id": "backfill-portable-qd-ci-evidence-current-export",
+      "text": "Broad-audit repair for finding e2ed6a6f-736c-4ecf-85bb-1c34d94024fc. Scope is current exported qd run/evidence portability, not just future record-pass validation.",
+      "created_at": "2026-06-28T09:44:16.068Z"
+    },
+    {
+      "id": "6b131602-b818-426f-bec9-fcd6f799f50d",
+      "node_id": "normalize-openrouter-provider-slug-name-matching",
+      "text": "Broad-audit repair for finding 4c361285-7437-4180-9da3-5781bf003aac. Keep qdcli/agent harness assumptions out of the fix; this is provider normalization inside the app.",
+      "created_at": "2026-06-28T09:44:19.771Z"
+    },
+    {
+      "id": "f3e3306a-c20d-4889-943b-4c8f2a3faa17",
+      "node_id": "redact-provider-run-error-messages-private-inputs",
+      "text": "Broad-audit repair for finding 50702ea8-d222-4fe4-b843-1a8f34f5bb63. The fix should preserve useful operator diagnostics while preventing raw upstream messages from being persisted for private provider invocations.",
+      "created_at": "2026-06-28T09:44:33.736Z"
+    },
+    {
+      "id": "4b19026c-bcff-42e2-b439-66e48e3c6d75",
+      "node_id": "wire-reviewer-queue-dashboard-api-routes",
+      "text": "Broad-audit repair for finding ae2be41d-d70c-4b22-bcbb-36ba9ff9ea62. This should move the integrated reviewer dashboard/detail/batch paths off static fixtures and onto the existing API/read-model path with tests for empty and populated DB-backed states.",
+      "created_at": "2026-06-28T09:44:52.840Z"
+    },
+    {
+      "id": "df39d738-0560-46b5-85ef-c300ebfbfa81",
+      "node_id": "reject-unknown-benchmark-seed-query-params",
+      "text": "Broad-audit repair for finding aa264ce3-a98e-476e-aeea-1a84348a81a6. Match the stricter catalog opportunity query parser behavior so typos do not silently return unfiltered benchmark seed data.",
+      "created_at": "2026-06-28T09:45:00.113Z"
+    },
+    {
+      "id": "f489ee6e-8b75-4fa4-9d2d-11bc91a89d09",
+      "node_id": "align-benchmark-seed-api-schema-read-model",
+      "text": "Broad-audit repair for finding e6e45cb1-f680-493b-926c-bfd107ade935. Tighten the public API guard to the DB read model instead of accepting optional fields that no repository returns.",
+      "created_at": "2026-06-28T09:45:07.298Z"
+    },
+    {
+      "id": "5419eebb-eb76-464e-988e-d9cc4eabaee0",
+      "node_id": "make-localize-project-proof-artifacts-path-portable",
+      "text": "Broad-audit repair for finding 939e0c32-5873-47af-967a-b0fd5e130415. Keep proof artifacts useful from any checkout by using paths relative to the run directory or repository root, and add tests that reject absolute private roots.",
+      "created_at": "2026-06-28T09:45:12.484Z"
+    },
+    {
+      "id": "eea132d0-1095-4ffb-801a-bb2e0e60c947",
+      "node_id": "recover-stale-qd-audit-disposition-locks",
+      "text": "Broad-audit repair for finding bdec04c0-f159-4f07-99af-8c8f9c9d2d50. Preserve live-lock refusal, but recover clearly stale, malformed, or dead-owner locks so audit disposition cannot wedge future qd work.",
+      "created_at": "2026-06-28T09:45:17.430Z"
     }
   ]
 }
