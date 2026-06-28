@@ -358,7 +358,9 @@ export function verifyProviderRunArtifactEvidence(args) {
   const modelId = assertNonEmptyString(pair.modelId, "patch-report.pair.modelId");
   const providerId = assertNonEmptyString(pair.providerId, "patch-report.pair.providerId");
   if (args.expectedModelId !== undefined && modelId !== args.expectedModelId) {
-    throw new Error(`patch-report modelId mismatch: expected ${args.expectedModelId}, got ${modelId}`);
+    throw new Error(
+      `patch-report modelId mismatch: expected ${args.expectedModelId}, got ${modelId}`,
+    );
   }
   if (args.expectedProviderId !== undefined && providerId !== args.expectedProviderId) {
     throw new Error(

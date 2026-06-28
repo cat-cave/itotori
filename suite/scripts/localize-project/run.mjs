@@ -852,23 +852,28 @@ async function main() {
   );
 
   // ------------------- Phase 1: kaifuu extract --------------------
-  runCommand("cargo", [
-    "run",
-    "-p",
-    "kaifuu-cli",
-    "--quiet",
-    "--",
-    "extract",
-    "--engine",
-    "reallive",
-    "--game-root",
-    gameRoot,
-    ...realliveIdentityArgs(projectMetadata),
-    "--scene",
-    String(sceneId),
-    "--bundle-output",
-    bridgeBundlePath,
-  ], process.env, { redact: liveCommandRedactor });
+  runCommand(
+    "cargo",
+    [
+      "run",
+      "-p",
+      "kaifuu-cli",
+      "--quiet",
+      "--",
+      "extract",
+      "--engine",
+      "reallive",
+      "--game-root",
+      gameRoot,
+      ...realliveIdentityArgs(projectMetadata),
+      "--scene",
+      String(sceneId),
+      "--bundle-output",
+      bridgeBundlePath,
+    ],
+    process.env,
+    { redact: liveCommandRedactor },
+  );
 
   // -------------- Phase 2: agentic loop (live LLM) ----------------
   const stageArgs = [
@@ -912,23 +917,28 @@ async function main() {
   // the source tree, but it expects target to be empty (unless --force).
   // We let kaifuu-cli do the copying so the writable-mode bumping is
   // owned in one place; that's why we don't pre-copy here.
-  runCommand("cargo", [
-    "run",
-    "-p",
-    "kaifuu-cli",
-    "--quiet",
-    "--",
-    "patch",
-    "--engine",
-    "reallive",
-    "--source",
-    gameRoot,
-    "--target",
-    targetRoot,
-    "--bundle",
-    translatedBundlePath,
-    "--force",
-  ], process.env, { redact: liveCommandRedactor });
+  runCommand(
+    "cargo",
+    [
+      "run",
+      "-p",
+      "kaifuu-cli",
+      "--quiet",
+      "--",
+      "patch",
+      "--engine",
+      "reallive",
+      "--source",
+      gameRoot,
+      "--target",
+      targetRoot,
+      "--bundle",
+      translatedBundlePath,
+      "--force",
+    ],
+    process.env,
+    { redact: liveCommandRedactor },
+  );
 
   // --------------- Phase 4: replay-validate ----------------------
   const targetSeenPath = resolveReallivedataSeen(targetRoot);
@@ -938,24 +948,29 @@ async function main() {
     { path: gameRoot, replacement: realCorpusSource.placeholder },
     { path: targetRoot, replacement: targetPlaceholder },
   ]);
-  runCommand("cargo", [
-    "run",
-    "-p",
-    "utsushi-cli",
-    "--quiet",
-    "--",
-    "replay-validate",
-    "--engine",
-    "reallive",
-    "--seen",
-    targetSeenPath,
-    "--scene",
-    String(sceneId),
-    "--expect-textline-contains",
-    sentinelSubstring,
-    "--print-replay-log",
-    replayLogPath,
-  ], process.env, { redact: liveReplayRedactor });
+  runCommand(
+    "cargo",
+    [
+      "run",
+      "-p",
+      "utsushi-cli",
+      "--quiet",
+      "--",
+      "replay-validate",
+      "--engine",
+      "reallive",
+      "--seen",
+      targetSeenPath,
+      "--scene",
+      String(sceneId),
+      "--expect-textline-contains",
+      sentinelSubstring,
+      "--print-replay-log",
+      replayLogPath,
+    ],
+    process.env,
+    { redact: liveReplayRedactor },
+  );
 
   // ---- Readonly-source invariant: re-hash + assert no drift. ----
   const sourceSeenSha256After = sha256OfFile(sourceSeenPath);
