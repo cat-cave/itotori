@@ -18,8 +18,6 @@ import type {
   ProjectCostReport,
   ProjectDashboardStatus,
   ReviewerQueueAction,
-  ReviewerQueueItemRecord,
-  ReviewerQueueTransitionRecord,
   RuntimeDashboardStatus,
   TerminologySearchReadModel,
 } from "@itotori/db";

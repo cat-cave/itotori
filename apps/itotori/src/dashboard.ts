@@ -992,10 +992,6 @@ function formatDataPolicy(run: ProjectCostReport["recentRuns"][number]): string 
   return escapeHtml(`${zdr}; ${dataCollection}`);
 }
 
-function stringValue(value: unknown): string | undefined {
-  return typeof value === "string" && value.length > 0 ? value : undefined;
-}
-
 function formatDiff(diff: ProjectDashboardStatus["importStatus"]["units"], total: number): string {
   return `${total} (${diff.added} new / ${diff.updated} updated / ${diff.removed} removed)`;
 }
