@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "exported_at": "2026-06-28T02:00:04.276Z",
+  "exported_at": "2026-06-28T02:30:07.728Z",
   "registries": {
     "groups": [
       {
@@ -29032,7 +29032,7 @@
       "title": "Retire legacy spec-dag lifecycle mutation commands",
       "kind": "feature",
       "milestone": null,
-      "status": "claimed",
+      "status": "done",
       "priority": "P1",
       "estimate_points": 1,
       "risk": "medium",
@@ -29043,9 +29043,9 @@
       "validation": null,
       "context": null,
       "created_at": "2026-06-28T01:50:35.600Z",
-      "updated_at": "2026-06-28T01:59:53.551Z",
+      "updated_at": "2026-06-28T02:29:58.270Z",
       "claimed_at": "2026-06-28T01:59:53.551Z",
-      "done_at": null,
+      "done_at": "2026-06-28T02:29:58.270Z",
       "group_name": null,
       "status_reason": null,
       "check_command": null,
@@ -43475,6 +43475,54 @@
       "started_at": "2026-06-28T01:56:35.950Z",
       "finished_at": "2026-06-28T01:56:35.950Z",
       "summary": "Merge recorded with squash at commit 3e94d8235c3999947ab2730dfb7a242796cdb6e7",
+      "log_path": null
+    },
+    {
+      "id": "63833f08-bd99-4a9c-9c40-4a36d868db03",
+      "node_id": "retire-legacy-spec-dag-lifecycle-mutation-commands",
+      "kind": "implement",
+      "status": "completed",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-28T02:23:30.295Z",
+      "finished_at": "2026-06-28T02:23:30.295Z",
+      "summary": "Retired legacy spec-dag lifecycle apply paths on canonical qd exports. Added early refusal for claim, worktree, ingest-audit, and complete --apply paths; updated tests and playbooks to route lifecycle and DAG updates through qd. Verified with node scripts/spec-dag-lifecycle.test.mjs, node scripts/spec-dag.mjs validate, git diff --check, and focused pnpm exec vp check.",
+      "log_path": null
+    },
+    {
+      "id": "f0ac2d91-22df-4a7e-9af6-2a01b99787ff",
+      "node_id": "retire-legacy-spec-dag-lifecycle-mutation-commands",
+      "kind": "check",
+      "status": "passed",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-28T02:23:55.596Z",
+      "finished_at": "2026-06-28T02:24:20.526Z",
+      "summary": "check command passed: nix develop --command bash -lc 'just check'",
+      "log_path": "/home/trevor/projects/itotori/.qd/logs/check-retire-legacy-spec-dag-lifecycle-mutation-commands-2026-06-28T02-23-55-596Z.log"
+    },
+    {
+      "id": "5e21c2af-bd55-4d92-98ab-20beef980989",
+      "node_id": "retire-legacy-spec-dag-lifecycle-mutation-commands",
+      "kind": "ci",
+      "status": "passed",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-28T02:25:33.841Z",
+      "finished_at": "2026-06-28T02:29:37.563Z",
+      "summary": "ci command passed: nix develop --command bash -lc 'just ci'",
+      "log_path": "/home/trevor/projects/itotori/.qd/logs/ci-retire-legacy-spec-dag-lifecycle-mutation-commands-2026-06-28T02-25-33-841Z.log"
+    },
+    {
+      "id": "5c5fc74f-cdee-40dc-aa4c-c1e73d2793ca",
+      "node_id": "retire-legacy-spec-dag-lifecycle-mutation-commands",
+      "kind": "merge",
+      "status": "recorded",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-28T02:29:58.270Z",
+      "finished_at": "2026-06-28T02:29:58.270Z",
+      "summary": "Merge recorded with squash",
       "log_path": null
     }
   ],
