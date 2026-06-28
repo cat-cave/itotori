@@ -19,6 +19,7 @@
 import {
   reviewerBatchPreviewStatusValues,
   type BatchPreviewItem,
+  type ReviewerBatchActionRequest,
   type ReviewerBatchConsequence,
   type ReviewerBatchPreview,
   type ReviewerBatchPreviewStatus,
@@ -43,6 +44,34 @@ export function renderReviewerBatchPreviewView(preview: ReviewerBatchPreview): s
     return renderDeniedView(preview);
   }
   return renderReadyView(preview);
+}
+
+export function renderReviewerBatchLoadingView(request: ReviewerBatchActionRequest): string {
+  return `
+    <main class="itotori-shell reviewer-batch" data-state="loading"
+      data-action="${escapeHtml(request.action)}">
+      <p role="status">
+        Previewing batch <code>${escapeHtml(request.action)}</code> over
+        ${request.selections.length}
+        ${request.selections.length === 1 ? "selection" : "selections"}…
+      </p>
+    </main>
+  `;
+}
+
+export function renderReviewerBatchErrorView(
+  request: ReviewerBatchActionRequest,
+  error: unknown,
+): string {
+  const message = error instanceof Error ? error.message : String(error);
+  return `
+    <main class="itotori-shell reviewer-batch" data-state="error"
+      data-action="${escapeHtml(request.action)}">
+      <h1>Batch preview unavailable</h1>
+      <p role="alert">Could not preview batch action <code>${escapeHtml(request.action)}</code>.</p>
+      <pre>${escapeHtml(message)}</pre>
+    </main>
+  `;
 }
 
 function renderDeniedView(preview: ReviewerBatchPreview): string {

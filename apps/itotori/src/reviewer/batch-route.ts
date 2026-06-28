@@ -12,7 +12,11 @@
 // `queue.read` alone (no manage required), execution must refuse
 // without `queue.manage`.
 
-import { renderReviewerBatchPreviewView } from "./batch-view.js";
+import {
+  renderReviewerBatchErrorView,
+  renderReviewerBatchLoadingView,
+  renderReviewerBatchPreviewView,
+} from "./batch-view.js";
 import type {
   ReviewerBatchActionRequest,
   ReviewerBatchPermissionView,
@@ -44,12 +48,12 @@ export async function renderReviewerBatchRoute(
   request: ReviewerBatchActionRequest,
   deps: ReviewerBatchRouteDeps,
 ): Promise<void> {
-  renderLoading(root, request);
+  root.innerHTML = renderReviewerBatchLoadingView(request);
   try {
     const preview = await loadReviewerBatchPreview(request, deps);
     root.innerHTML = renderReviewerBatchPreviewView(preview);
   } catch (error) {
-    renderError(root, request, error);
+    root.innerHTML = renderReviewerBatchErrorView(request, error);
   }
 }
 
@@ -70,38 +74,4 @@ export async function confirmReviewerBatch(
   deps: ReviewerBatchConfirmDeps,
 ): Promise<ReviewerBatchExecuteResult> {
   return deps.actionService.execute(deps.actor, request, deps.permission);
-}
-
-function renderLoading(root: HTMLElement, request: ReviewerBatchActionRequest): void {
-  root.innerHTML = `
-    <main class="itotori-shell reviewer-batch" data-state="loading"
-      data-action="${escapeHtml(request.action)}">
-      <p role="status">
-        Previewing batch <code>${escapeHtml(request.action)}</code> over
-        ${request.selections.length}
-        ${request.selections.length === 1 ? "selection" : "selections"}…
-      </p>
-    </main>
-  `;
-}
-
-function renderError(root: HTMLElement, request: ReviewerBatchActionRequest, error: unknown): void {
-  const message = error instanceof Error ? error.message : String(error);
-  root.innerHTML = `
-    <main class="itotori-shell reviewer-batch" data-state="error"
-      data-action="${escapeHtml(request.action)}">
-      <h1>Batch preview unavailable</h1>
-      <p role="alert">Could not preview batch action <code>${escapeHtml(request.action)}</code>.</p>
-      <pre>${escapeHtml(message)}</pre>
-    </main>
-  `;
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
 }
