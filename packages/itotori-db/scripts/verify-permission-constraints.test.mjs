@@ -1,13 +1,9 @@
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { fileURLToPath } from "node:url";
-
-const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const verifierPath = path.join(packageRoot, "scripts/verify-permission-constraints.mjs");
+import { verifyPermissionConstraintDrift } from "./verify-permission-constraints.mjs";
 
 const permissions = [
   ["projectImport", "project.import"],
@@ -197,17 +193,24 @@ async function createFixture({
 }
 
 function runVerifier(fixture) {
-  const result = spawnSync(process.execPath, [verifierPath], {
-    encoding: "utf8",
-    env: {
-      ...process.env,
-      ITOTORI_DB_PERMISSION_AUTHORIZATION_PATH: fixture.authorizationPath,
-      ITOTORI_DB_PERMISSION_MIGRATIONS_DIR: fixture.migrationsDir,
-      ITOTORI_DB_PERMISSION_MIGRATIONS_SOURCE_PATH: fixture.migrationsSourcePath,
-    },
-  });
-  assert.ifError(result.error);
-  return result;
+  const stdout = [];
+  const originalLog = console.log;
+  console.log = (...args) => {
+    stdout.push(args.join(" "));
+  };
+
+  try {
+    verifyPermissionConstraintDrift(fixture);
+    return { status: 0, stdout: stdout.join("\n"), stderr: "" };
+  } catch (error) {
+    return {
+      status: 1,
+      stdout: stdout.join("\n"),
+      stderr: error instanceof Error ? error.message : String(error),
+    };
+  } finally {
+    console.log = originalLog;
+  }
 }
 
 function authorizationSource() {

@@ -3,34 +3,30 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const authorizationPath =
-  process.env.ITOTORI_DB_PERMISSION_AUTHORIZATION_PATH ??
-  path.join(packageRoot, "src/authorization.ts");
-const migrationsDir =
-  process.env.ITOTORI_DB_PERMISSION_MIGRATIONS_DIR ?? path.join(packageRoot, "migrations");
-const migrationsSourcePath =
-  process.env.ITOTORI_DB_PERMISSION_MIGRATIONS_SOURCE_PATH ??
-  path.join(packageRoot, "src/migrations.ts");
+const scriptPath = fileURLToPath(import.meta.url);
+const packageRoot = path.resolve(path.dirname(scriptPath), "..");
 const permissionConstraintName = "itotori_user_permission_grants_permission_check";
 const permissionGrantsTableName = "itotori_user_permission_grants";
 
-try {
-  verifyPermissionConstraintDrift();
-} catch (error) {
-  console.error(error instanceof Error ? error.message : String(error));
-  process.exit(1);
+if (process.argv[1] !== undefined && path.resolve(process.argv[1]) === scriptPath) {
+  try {
+    verifyPermissionConstraintDrift();
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  }
 }
 
-function verifyPermissionConstraintDrift() {
-  const source = readFileSync(authorizationPath, "utf8");
+export function verifyPermissionConstraintDrift(options = {}) {
+  const paths = permissionVerifierPaths(options);
+  const source = readFileSync(paths.authorizationPath, "utf8");
   const permissionValues = parsePermissionValues(source);
   const allPermissions = parseAllPermissions(source, permissionValues);
-  const latestConstraint = latestMigrationPermissionConstraint();
+  const latestConstraint = latestMigrationPermissionConstraint(paths);
 
   if (latestConstraint === undefined) {
     throw new Error(
-      `permission constraint drift: no registered ${permissionConstraintName} found for ${permissionGrantsTableName} in ${relativePath(migrationsDir)}`,
+      `permission constraint drift: no registered ${permissionConstraintName} found for ${permissionGrantsTableName} in ${relativePath(paths.migrationsDir)}`,
     );
   }
 
@@ -44,6 +40,23 @@ function verifyPermissionConstraintDrift() {
   console.log(
     `permission constraint drift check ok: ${latestConstraint.file} matches ${allPermissions.values.length} TypeScript permissions`,
   );
+}
+
+function permissionVerifierPaths({ authorizationPath, migrationsDir, migrationsSourcePath }) {
+  return {
+    authorizationPath:
+      authorizationPath ??
+      process.env.ITOTORI_DB_PERMISSION_AUTHORIZATION_PATH ??
+      path.join(packageRoot, "src/authorization.ts"),
+    migrationsDir:
+      migrationsDir ??
+      process.env.ITOTORI_DB_PERMISSION_MIGRATIONS_DIR ??
+      path.join(packageRoot, "migrations"),
+    migrationsSourcePath:
+      migrationsSourcePath ??
+      process.env.ITOTORI_DB_PERMISSION_MIGRATIONS_SOURCE_PATH ??
+      path.join(packageRoot, "src/migrations.ts"),
+  };
 }
 
 function parsePermissionValues(source) {
@@ -118,12 +131,12 @@ function parseAllPermissions(source, permissionValues) {
   return { keys, values };
 }
 
-function latestMigrationPermissionConstraint() {
-  const migrations = registeredMigrationFiles();
+function latestMigrationPermissionConstraint(paths) {
+  const migrations = registeredMigrationFiles(paths.migrationsSourcePath);
   let latest;
 
   for (const file of migrations) {
-    const sql = readFileSync(path.join(migrationsDir, file), "utf8");
+    const sql = readFileSync(path.join(paths.migrationsDir, file), "utf8");
     for (const constraint of extractPermissionConstraintLists(sql)) {
       latest = { file, ...constraint };
     }
@@ -132,10 +145,10 @@ function latestMigrationPermissionConstraint() {
   return latest;
 }
 
-function registeredMigrationFiles() {
+function registeredMigrationFiles(migrationsSourcePath) {
   const source = readFileSync(migrationsSourcePath, "utf8");
-  const body = requiredConstArrayBody(source, "migrations");
-  const entries = migrationEntryBodies(body);
+  const body = requiredConstArrayBody(source, "migrations", migrationsSourcePath);
+  const entries = migrationEntryBodies(body, migrationsSourcePath);
 
   if (entries.length === 0) {
     throw new Error(
@@ -176,7 +189,7 @@ function registeredMigrationFiles() {
   return files;
 }
 
-function requiredConstArrayBody(source, variableName) {
+function requiredConstArrayBody(source, variableName, migrationsSourcePath) {
   const declarationPattern = new RegExp(
     `\\bconst\\s+${escapeRegExp(variableName)}\\s*=\\s*\\[`,
     "gu",
@@ -230,7 +243,7 @@ function isIgnoredJavaScriptPosition(source, position) {
   return false;
 }
 
-function migrationEntryBodies(body) {
+function migrationEntryBodies(body, migrationsSourcePath) {
   const entries = [];
   let index = 0;
 
