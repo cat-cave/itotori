@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "exported_at": "2026-06-27T23:21:44.914Z",
+  "exported_at": "2026-06-28T00:07:21.805Z",
   "registries": {
     "groups": [
       {
@@ -3421,7 +3421,7 @@
       "title": "Platform-assisted helper execution command",
       "kind": "feature",
       "milestone": "real-game-testing-ready",
-      "status": "claimed",
+      "status": "done",
       "priority": "P1",
       "estimate_points": 1,
       "risk": "medium",
@@ -3432,9 +3432,9 @@
       "validation": null,
       "context": null,
       "created_at": "2026-06-26T02:53:54.657Z",
-      "updated_at": "2026-06-27T23:21:32.763Z",
+      "updated_at": "2026-06-28T00:07:11.757Z",
       "claimed_at": "2026-06-27T23:21:32.763Z",
-      "done_at": null,
+      "done_at": "2026-06-28T00:07:11.757Z",
       "group_name": "kaifuu-core",
       "status_reason": "Re-tier 2026-06-24: moved from alpha to real-game-testing-ready — the old \"alpha\" framing was renamed; substance unchanged. See docs/proposals/dag-retier-2026-06-24.md. | Re-tier 2026-06-24: pruned 2 dependsOn edge(s) that crossed the new tier boundary [KAIFUU-090(beta), KAIFUU-129(beta)]; per docs/proposals/dag-retier-2026-06-24.md §6.",
       "check_command": null,
@@ -42528,6 +42528,90 @@
       "started_at": "2026-06-27T23:18:05.299Z",
       "finished_at": "2026-06-27T23:18:05.299Z",
       "summary": "Merge recorded with squash at commit b276580cb02f3d0119c42b6ce2b089cd6547fac0",
+      "log_path": null
+    },
+    {
+      "id": "9064b3b0-a87f-4047-8463-8ec41fd270c2",
+      "node_id": "KAIFUU-064",
+      "kind": "implement",
+      "status": "completed",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-27T23:49:43.490Z",
+      "finished_at": "2026-06-27T23:49:43.490Z",
+      "summary": "Implemented bounded platform-assisted helper execution command on main at fa2f773. Added kaifuu helper run --profile <fixture|registry-entry.json> --out <helper-result.json>; public stub mode uses fixture_helper_registry, local guarded mode reuses hash-pinned allowlist and bounded process execution. Arbitrary command/shell/argv/env flags are rejected; output is normalized to HelperResult without persisting raw stdout/stderr/process dumps/private paths. Audit P1 repairs landed: local success parses full captured stdout bytes before redaction/truncation, and local HelperResult access flags are taken from actual process run summary. Verification passed on main: nix develop --command cargo test -p kaifuu-cli helper_run --no-fail-fast; nix develop --command cargo test -p kaifuu-core helper_process --no-fail-fast; nix develop --command cargo test -p kaifuu-core; nix develop --command cargo test -p kaifuu-cli; git diff --check HEAD~2..HEAD. Independent re-audit found no P0/P1 blockers; residual P2/P3 concern is helper-authored execution metadata oddity / optional extra networkAccess assertion.",
+      "log_path": null
+    },
+    {
+      "id": "323c6457-1e9d-4ae6-a2d9-d3e9d208bf41",
+      "node_id": "KAIFUU-064",
+      "kind": "check",
+      "status": "passed",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-27T23:50:00.648Z",
+      "finished_at": "2026-06-27T23:50:51.735Z",
+      "summary": "check command passed: nix develop --command bash -lc 'just check'",
+      "log_path": "/home/trevor/projects/itotori/.qd/logs/check-KAIFUU-064-2026-06-27T23-50-00-648Z.log"
+    },
+    {
+      "id": "750bddb7-29ea-4171-b8f1-c4fc567df311",
+      "node_id": "KAIFUU-064",
+      "kind": "ci",
+      "status": "failed",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-27T23:51:00.784Z",
+      "finished_at": "2026-06-27T23:56:18.631Z",
+      "summary": "ci command failed: nix develop --command bash -lc 'just ci'",
+      "log_path": "/home/trevor/projects/itotori/.qd/logs/ci-KAIFUU-064-2026-06-27T23-51-00-784Z.log"
+    },
+    {
+      "id": "fc09f104-fe50-469f-ba0f-9ed7d9736336",
+      "node_id": "KAIFUU-064",
+      "kind": "implement",
+      "status": "completed",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-28T00:01:18.231Z",
+      "finished_at": "2026-06-28T00:01:18.231Z",
+      "summary": "Implemented platform-assisted helper execution command via subagent branch spec/kaifuu-064-helper-execution. Added bounded allowlisted helper run flow, public stub/private local-process modes, typed denied/unavailable/timeout/malformed diagnostics, redacted persisted HelperResult artifacts, and focused tests. Repaired audit P1 issues around full stdout parsing and actual execution access semantics, then repaired CI clippy too_many_arguments by grouping diagnostic context without adding allows. Verified cargo fmt, focused helper tests, kaifuu-core tests, kaifuu-cli tests, targeted clippy, qd gate/check; full qd ci rerun pending.",
+      "log_path": null
+    },
+    {
+      "id": "de076d11-5fbd-4649-9282-e021be9b2087",
+      "node_id": "KAIFUU-064",
+      "kind": "check",
+      "status": "passed",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-28T00:01:37.462Z",
+      "finished_at": "2026-06-28T00:02:13.783Z",
+      "summary": "check command passed: nix develop --command bash -lc 'just check'",
+      "log_path": "/home/trevor/projects/itotori/.qd/logs/check-KAIFUU-064-2026-06-28T00-01-37-462Z.log"
+    },
+    {
+      "id": "de15faa3-5920-4b1f-a19e-73e964fe64da",
+      "node_id": "KAIFUU-064",
+      "kind": "ci",
+      "status": "passed",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-28T00:02:24.756Z",
+      "finished_at": "2026-06-28T00:06:54.239Z",
+      "summary": "ci command passed: nix develop --command bash -lc 'just ci'",
+      "log_path": "/home/trevor/projects/itotori/.qd/logs/ci-KAIFUU-064-2026-06-28T00-02-24-756Z.log"
+    },
+    {
+      "id": "f93ba38b-c7c8-404e-b34f-91abf333f83e",
+      "node_id": "KAIFUU-064",
+      "kind": "merge",
+      "status": "recorded",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-28T00:07:11.757Z",
+      "finished_at": "2026-06-28T00:07:11.757Z",
+      "summary": "Merge recorded with squash at commit 76e1e1659a24f2f2035289fac5d657c38418f4fe",
       "log_path": null
     }
   ],
