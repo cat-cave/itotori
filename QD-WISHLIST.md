@@ -197,6 +197,24 @@ branch/worktree safety:
 Desired qd behavior: native worktree and branch association checks, plus safe
 status and cleanup commands.
 
+### Read-Only Or Temporary DB Mode For Audit Worktrees
+
+Detached audit worktrees often need qd status, gate, and node inspection while
+remaining read-only and without initializing or writing their own `.qd`
+database. The current accepted repo-side fallback is to read committed
+`roadmap/spec-dag.json` in the audit worktree and run read-only qd commands
+against an initialized main checkout:
+
+```sh
+qd --root <main-checkout> node show NODE --full
+qd --root <main-checkout> gate NODE
+```
+
+Desired qd behavior: native read-only mode, or an isolated temporary database
+mode rebuilt from the committed export, so audit workers can inspect qd state
+without writable `.qd` state in the audit lane and without repo-specific wrapper
+requirements.
+
 ## Feature Requests
 
 ### 1. Native Export Canonicalization Hooks
@@ -931,7 +949,8 @@ The smallest high-impact set:
 7. Compact filtered node/milestone listing.
 8. Native P2/P3 finding disposition or promotion.
 9. State repair/reconcile commands for live DB vs committed export.
-10. Agent-agnostic assignment records.
+10. Read-only or temporary DB mode for detached audit worktrees.
+11. Agent-agnostic assignment records.
 
 With those, this repository would have little reason to keep a local qd wrapper.
 

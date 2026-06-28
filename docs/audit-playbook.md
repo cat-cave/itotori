@@ -19,6 +19,32 @@ orchestration invariants. `validate-audit-report` applies the same schema and
 semantic checks to actual audit artifacts before orchestration consumes them. qd
 owns live audit disposition, lifecycle gates, and exported roadmap state.
 
+## Read-Only Audit qd Access
+
+Detached or read-only audit worktrees may not have a writable initialized
+`.qd` database. In those lanes, use committed `roadmap/spec-dag.json` as the
+local audit reference, and run read-only qd inspection commands against an
+initialized main checkout:
+
+```sh
+qd --root <main-checkout> node show <NODE-ID> --full
+qd --root <main-checkout> gate <NODE-ID>
+```
+
+For example, on the primary local clone this may be:
+
+```sh
+qd --root /home/trevor/projects/itotori node show <NODE-ID> --full
+```
+
+Audit workers must not mutate qd state from audit lanes. Do not run qd claim,
+completion, audit disposition, finding resolution, export, or other state
+writers from a detached/read-only audit worktree. Mutations and finding
+resolution remain orchestrator-owned operations from the initialized main
+checkout. If qd needs isolated temporary database support for true read-only
+worktree operation, that is upstream qdcli work, not a repo wrapper
+requirement.
+
 ## Report Contract
 
 An audit report has:

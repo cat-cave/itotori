@@ -264,6 +264,29 @@ audit worktrees when auditors need an isolated checkout:
 git worktree add --detach /scratch/worktrees/itotori-audit-univ-003-docs spec/univ-003
 ```
 
+Detached audit lanes are read-only with respect to qd state. If the audit
+worktree does not have a writable initialized `.qd` database, auditors use the
+committed `roadmap/spec-dag.json` in the audited branch plus read-only qd
+inspection against an initialized main checkout:
+
+```sh
+qd --root <main-checkout> node show UNIV-003 --full
+qd --root <main-checkout> gate UNIV-003
+```
+
+Example:
+
+```sh
+qd --root /home/trevor/projects/itotori node show UNIV-003 --full
+```
+
+Do not mutate qd state from audit worktrees. Audit workers must not run qd
+claim, completion, audit disposition, finding resolution, export, or other
+state-writing commands from detached/read-only lanes. The orchestrator owns
+mutations and finding resolution from the initialized main checkout. Isolated
+temporary database support for read-only qd commands belongs upstream in qdcli,
+not in a repo-local wrapper.
+
 Auditors inspect:
 
 - diff against `main`;
