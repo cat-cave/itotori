@@ -1969,7 +1969,11 @@ function assertPublicCatalogSource(value: string, label: string): void {
 }
 
 function assertPublicCatalogSourceRecordKind(value: string, label: string): void {
-  assertEnum(value, Object.values(catalogSourceRecordKindValues) as CatalogSourceRecordKind[], label);
+  assertEnum(
+    value,
+    Object.values(catalogSourceRecordKindValues) as CatalogSourceRecordKind[],
+    label,
+  );
   if (value === catalogSourceRecordKindValues.localScan) {
     throw new Error(`${label} must not expose local scan sources`);
   }

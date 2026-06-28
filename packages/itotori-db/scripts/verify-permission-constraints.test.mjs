@@ -35,7 +35,10 @@ test("ignores unregistered migration files", async () => {
 
     assert.notEqual(result.status, 0);
     assert.match(result.stderr, /missing from 0001_permissions\.sql:\d+ permission constraint/);
-    assert.doesNotMatch(result.stderr, /9999_unregistered_permissions\.sql:\d+ permission constraint/);
+    assert.doesNotMatch(
+      result.stderr,
+      /9999_unregistered_permissions\.sql:\d+ permission constraint/,
+    );
   } finally {
     await rm(fixture.root, { recursive: true, force: true });
   }
@@ -56,7 +59,10 @@ test("ignores commented-out migration registry entries", async () => {
 
     assert.notEqual(result.status, 0);
     assert.match(result.stderr, /missing from 0001_permissions\.sql:\d+ permission constraint/);
-    assert.doesNotMatch(result.stderr, /9999_unregistered_permissions\.sql:\d+ permission constraint/);
+    assert.doesNotMatch(
+      result.stderr,
+      /9999_unregistered_permissions\.sql:\d+ permission constraint/,
+    );
   } finally {
     await rm(fixture.root, { recursive: true, force: true });
   }

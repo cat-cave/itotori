@@ -1804,7 +1804,9 @@ async function readCatalogCompletenessBenchmarkPools(
   const sourcesById = new Map(
     sourceRows
       .map((row) => [row.sourceProvenanceId, sourceSummaryFromRow(row)] as const)
-      .filter((entry): entry is readonly [string, CatalogCompletenessSourceSummary] => entry[1] !== null),
+      .filter(
+        (entry): entry is readonly [string, CatalogCompletenessSourceSummary] => entry[1] !== null,
+      ),
   );
 
   const statusesByWorkId = new Map<string, (typeof catalogLanguageStatuses.$inferSelect)[]>();
@@ -2620,19 +2622,21 @@ function sourceIdsForCompletenessWork(
   facts: CatalogCompletenessStatusFact[],
   externalIds: (typeof catalogExternalIds.$inferSelect)[],
 ): CatalogConflictReviewSourceId[] {
-  return uniqueSourceIds([
-    ...facts
-      .map((fact) =>
-        fact.source === null
-          ? null
-          : { catalogSource: fact.source.catalogSource, sourceId: fact.source.sourceId },
-      )
-      .filter((sourceId): sourceId is CatalogConflictReviewSourceId => sourceId !== null),
-    ...externalIds.map((externalId) => ({
-      catalogSource: externalId.catalogSource as CatalogSource,
-      sourceId: externalId.sourceId,
-    })),
-  ].filter(isPublicSourceId));
+  return uniqueSourceIds(
+    [
+      ...facts
+        .map((fact) =>
+          fact.source === null
+            ? null
+            : { catalogSource: fact.source.catalogSource, sourceId: fact.source.sourceId },
+        )
+        .filter((sourceId): sourceId is CatalogConflictReviewSourceId => sourceId !== null),
+      ...externalIds.map((externalId) => ({
+        catalogSource: externalId.catalogSource as CatalogSource,
+        sourceId: externalId.sourceId,
+      })),
+    ].filter(isPublicSourceId),
+  );
 }
 
 type DraftCatalogAlphaBenchmarkOpportunity = {
@@ -3787,8 +3791,7 @@ function catalogConflictReviewRowFromCandidate(
     ...targetExactLinkRefs.map((ref) =>
       ref.sourceProvenanceId === null ? undefined : provenanceById.get(ref.sourceProvenanceId),
     ),
-  ]
-    .filter((record): record is CatalogSourceProvenanceRecord => record !== undefined);
+  ].filter((record): record is CatalogSourceProvenanceRecord => record !== undefined);
   const publicTargetExactLinkRefs = targetExactLinkRefs.filter(isPublicSourceId);
   const provenance = rawProvenance
     .filter((record) => !isPrivateSourceProvenance(record))
