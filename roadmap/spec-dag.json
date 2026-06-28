@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "exported_at": "2026-06-28T11:05:50.027Z",
+  "exported_at": "2026-06-28T11:12:41.971Z",
   "registries": {
     "groups": [
       {
@@ -30708,19 +30708,19 @@
       "title": "Reject unknown benchmark seed finder query params",
       "kind": "feature",
       "milestone": null,
-      "status": "ready",
+      "status": "claimed",
       "priority": "P2",
       "estimate_points": 1,
       "risk": "medium",
-      "owner": null,
-      "branch": null,
+      "owner": "orchestrator-benchmark-qd-wave",
+      "branch": "worker/reject-benchmark-seed-query-params",
       "spec": "Make /api/catalog/benchmark-seeds reject unknown query parameters consistently with adjacent catalog opportunity parsing.",
       "acceptance": "?typo=1 on /api/catalog/benchmark-seeds returns 400; all documented benchmark seed filters still parse; regression tests cover unknown parameter rejection and existing valid query behavior.",
       "validation": null,
       "context": null,
       "created_at": "2026-06-28T09:41:42.112Z",
-      "updated_at": "2026-06-28T09:45:00.113Z",
-      "claimed_at": null,
+      "updated_at": "2026-06-28T11:12:37.131Z",
+      "claimed_at": "2026-06-28T11:12:37.131Z",
       "done_at": null,
       "group_name": null,
       "status_reason": "[2026-06-28T09:45:00.113Z] Broad-audit repair for finding aa264ce3-a98e-476e-aeea-1a84348a81a6. Match the stricter catalog opportunity query parser behavior so typos do not silently return unfiltered benchmark seed data.",
@@ -30807,6 +30807,74 @@
         {
           "type": "command",
           "value": "node --test suite/scripts/localize-project/verify-artifacts.test.mjs"
+        }
+      ],
+      "audit_focus": []
+    },
+    {
+      "id": "scope-qd-stats-snapshot-to-milestone",
+      "title": "Scope qd stats and snapshot status to milestone filters",
+      "kind": "feature",
+      "milestone": null,
+      "status": "claimed",
+      "priority": "P2",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": "orchestrator-benchmark-qd-wave",
+      "branch": "worker/scope-qd-milestone-stats",
+      "spec": "Fix qd stats --json --milestone <name> and qd snapshot --json --milestone <name> so the status/ready/stats portions are milestone-scoped consistently with criticalPath/eta. The command output must not mix global counts with filtered critical-path data.",
+      "acceptance": "Regression tests prove alpha-scoped stats and snapshot output report only alpha nodes/ready counts while unfiltered output remains global; criticalPath/eta stay milestone-scoped; resolve finding 1a333f8d-9994-472d-8127-e0f190fd0c3a.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-28T11:10:02.262Z",
+      "updated_at": "2026-06-28T11:12:37.018Z",
+      "claimed_at": "2026-06-28T11:12:37.018Z",
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "projects": ["universal"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "node scripts/qd-cli-milestone-scope.test.mjs"
+        }
+      ],
+      "audit_focus": []
+    },
+    {
+      "id": "tighten-benchmark-seed-runtime-evidence-schema",
+      "title": "Tighten benchmark seed runtime evidence schema",
+      "kind": "feature",
+      "milestone": null,
+      "status": "claimed",
+      "priority": "P2",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": "orchestrator-benchmark-qd-wave",
+      "branch": "worker/tighten-benchmark-seed-schema",
+      "spec": "Remove runtimeEvidenceReadiness from the benchmark seed finder API contract unless the repository read model emits it. The public validator and fixtures must match CatalogBenchmarkSeedRow exactly so API tests fail on extra runtimeEvidenceReadiness in benchmark seed rows.",
+      "acceptance": "assertCatalogBenchmarkSeedFinderReadModel rejects benchmark seed rows containing runtimeEvidenceReadiness; api-handler tests and fixtures no longer accept or emit that field for /api/catalog/benchmark-seeds; catalog opportunity runtimeEvidenceReadiness remains unchanged; resolve finding e6e45cb1-f680-493b-926c-bfd107ade935.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-28T11:12:19.958Z",
+      "updated_at": "2026-06-28T11:12:37.261Z",
+      "claimed_at": "2026-06-28T11:12:37.261Z",
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "projects": ["itotori"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/app test -- api-handlers.test.ts"
+        },
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/app typecheck"
         }
       ],
       "audit_focus": []
@@ -42355,7 +42423,7 @@
       "node_id": "route-file-contains-rendering-helpers-renderloading-rendererror-",
       "run_id": null,
       "severity": "P2",
-      "status": "open",
+      "status": "resolved",
       "title": "Reviewer dashboard and routes remain fixture/static-wired in integrated app",
       "path": null,
       "line": null,
@@ -42363,7 +42431,7 @@
       "expected": null,
       "suggested_fix": null,
       "created_at": "2026-06-28T09:39:52.101Z",
-      "resolved_at": null
+      "resolved_at": "2026-06-28T11:09:14.557Z"
     },
     {
       "id": "aa264ce3-a98e-476e-aeea-1a84348a81a6",
