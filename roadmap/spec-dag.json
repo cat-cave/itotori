@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "exported_at": "2026-06-28T12:47:58.592Z",
+  "exported_at": "2026-06-28T12:52:54.467Z",
   "registries": {
     "groups": [
       {
@@ -29877,19 +29877,19 @@
       "title": "Make Sweetie HD localize workflow self-proving with telemetry and verifier outputs",
       "kind": "audit-fix",
       "milestone": "alpha",
-      "status": "ready",
+      "status": "claimed",
       "priority": "P2",
       "estimate_points": 1,
       "risk": "medium",
-      "owner": null,
-      "branch": null,
+      "owner": "orchestrator-alpha-workflow",
+      "branch": "spec/make-sweetie-hd-localize-workflow-self-proving-with-telemetry-an",
       "spec": "Final re-audit: just localize-sweetie-hd still only builds and runs suite/scripts/localize-sweetie-hd/run.mjs. The main recipe does not automatically run telemetry-summary or verify-artifacts.mjs, so a successful live workflow can still omit telemetry-summary.json and post-run-verification.json unless the orchestrator manually runs the post-run commands.\n\nAdd a future suite workflow slice that either extends just localize-sweetie-hd or adds a companion recipe to generate telemetry summary and run verify-artifacts.mjs against the latest run directory.",
       "acceptance": "The Sweetie HD workflow exposes an explicit post-run recipe or self-proving command path that captures telemetry-summary.json and post-run-verification.json for the run, or prints durable exact post-run commands with run start/end/project metadata.",
       "validation": null,
       "context": "Promoted finding a044add0-dcaa-4ead-97f1-4fec418fac39 from UTSUSHI-231.",
       "created_at": "2026-06-28T03:33:48.830Z",
-      "updated_at": "2026-06-28T09:40:33.693Z",
-      "claimed_at": null,
+      "updated_at": "2026-06-28T12:52:50.312Z",
+      "claimed_at": "2026-06-28T12:52:50.312Z",
       "done_at": null,
       "group_name": "alpha-integration",
       "status_reason": "Promoted from finding a044add0-dcaa-4ead-97f1-4fec418fac39 on node UTSUSHI-231.\n[2026-06-28T09:40:33.693Z] BROAD AUDIT 2026-06-28 dashboard/benchmark wave: this ready node is stale as written because UTSUSHI-231 now uses generic just localize-project --project sweetie-hd-alpha-1 plus telemetry-summary.json and post-run-verification.json under artifacts/localize-project/RUN_DIR. Next action should rewrite this node to generic localize-project post-run automation or cancel it as superseded by UTSUSHI-231; do not implement old localize-sweetie-hd wording.",
