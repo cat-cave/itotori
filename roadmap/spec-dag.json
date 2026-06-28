@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "exported_at": "2026-06-28T08:11:10.828Z",
+  "exported_at": "2026-06-28T08:24:28.134Z",
   "registries": {
     "groups": [
       {
@@ -30063,11 +30063,11 @@
       "validation": null,
       "context": null,
       "created_at": "2026-06-28T03:34:40.018Z",
-      "updated_at": "2026-06-28T05:32:23.293Z",
+      "updated_at": "2026-06-28T08:21:37.826Z",
       "claimed_at": null,
       "done_at": null,
       "group_name": null,
-      "status_reason": "[2026-06-28T05:32:23.293Z] BROAD AUDIT 2026-06-28: confirmed still active. .qd/config.toml uses nix develop --command bash -lc 'just check' and 'just qd-full-ci', but just qd-import still sets plain 'just check'/'just qd-full-ci'. This can recreate qd check drift after a rebuild; keep config preservation and tests in acceptance.",
+      "status_reason": "[2026-06-28T05:32:23.293Z] BROAD AUDIT 2026-06-28: confirmed still active. .qd/config.toml uses nix develop --command bash -lc 'just check' and 'just qd-full-ci', but just qd-import still sets plain 'just check'/'just qd-full-ci'. This can recreate qd check drift after a rebuild; keep config preservation and tests in acceptance.\n[2026-06-28T08:21:37.826Z] BROAD AUDIT 2026-06-28 safety/privacy wave: fresh audit worktree had zero-byte .qd/qd.db and qd --root status/node show failed with 'no such table: nodes'. Current just qd-import path removes live .qd DB files before validated import, and qd-wrapper fallback refuses roadmap/spec-dag.json when an unusable .qd/qd.db merely exists. Keep this node active as the repair for read-only worktree qd hydration and transactional state rebuild.",
       "check_command": null,
       "ci_command": null,
       "projects": ["universal"],
@@ -30236,6 +30236,294 @@
       "ci_command": null,
       "projects": ["universal"],
       "verification": [
+        {
+          "type": "command",
+          "value": "node scripts/spec-dag.mjs validate"
+        }
+      ],
+      "audit_focus": []
+    },
+    {
+      "id": "harden-reallive-target-tree-symlink-preflight",
+      "title": "Reject nested target symlinks before RealLive patch writes",
+      "kind": "feature",
+      "milestone": null,
+      "status": "claimed",
+      "priority": "P2",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": "worker-target-tree-symlink-preflight",
+      "branch": "repair/target-tree-symlink-preflight",
+      "spec": "Harden the localize-project and kaifuu-cli RealLive patch path so an existing TARGET tree cannot contain symlink entries or symlink components that redirect copy/write operations outside TARGET. The readonly-source hash check remains defense-in-depth after preflight, not the primary protection.",
+      "acceptance": "kaifuu-cli patch rejects TARGET/REALLIVEDATA or any existing target-side path component that is a symlink before copy/write; suite localize-project rejects the same class before invoking patch; regression tests cover nested TARGET symlink to SOURCE/REALLIVEDATA and to another writable directory; diagnostics remain redacted; existing target-root symlink and source alias/nesting tests still pass.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-28T08:20:39.672Z",
+      "updated_at": "2026-06-28T08:23:46.804Z",
+      "claimed_at": "2026-06-28T08:23:46.804Z",
+      "done_at": null,
+      "group_name": null,
+      "status_reason": "[2026-06-28T08:23:10.071Z] Source finding 9b1f09d2-2efa-45e8-b595-e9eedcb9abae from broad safety/privacy audit 2026-06-28: nested TARGET symlinks can redirect RealLive patch writes outside TARGET before source-hash detection.",
+      "check_command": null,
+      "ci_command": null,
+      "projects": [],
+      "verification": [
+        {
+          "type": "command",
+          "value": "node --test suite/scripts/localize-project/run.test.mjs"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-cli patch_command_rejects"
+        }
+      ],
+      "audit_focus": []
+    },
+    {
+      "id": "harden-permission-verifier-strict-sql-in-list",
+      "title": "Reject non-string expressions in permission SQL constraint",
+      "kind": "feature",
+      "milestone": null,
+      "status": "claimed",
+      "priority": "P2",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": "worker-permission-sql-strictness",
+      "branch": "repair/permission-sql-strictness",
+      "spec": "Make the permission migration drift verifier enforce a narrow SQL IN-list grammar so the named grants-table permission check cannot include arbitrary expressions in addition to the expected string literals.",
+      "acceptance": "Verifier rejects a registered migration where permission in (...) contains the bare permission expression or any other non-string token after expected literals; verifier still accepts the canonical registered constraint; block-comment and line-comment regressions still pass; diagnostics identify the source migration and invalid list content without dumping unrelated SQL.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-28T08:20:51.577Z",
+      "updated_at": "2026-06-28T08:23:55.403Z",
+      "claimed_at": "2026-06-28T08:23:55.403Z",
+      "done_at": null,
+      "group_name": null,
+      "status_reason": "[2026-06-28T08:23:19.819Z] Source finding 6d4098f7-346d-4ec6-8bce-68f1cbc6ed4e from broad safety/privacy audit 2026-06-28: verifier accepts expected quoted permissions plus bare SQL expression permission in the IN list.",
+      "check_command": null,
+      "ci_command": null,
+      "projects": [],
+      "verification": [
+        {
+          "type": "command",
+          "value": "node --test packages/itotori-db/scripts/verify-permission-constraints.test.mjs"
+        },
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/db test"
+        }
+      ],
+      "audit_focus": []
+    },
+    {
+      "id": "count-public-fixture-runtime-evidence-readiness",
+      "title": "Count public fixture runtime evidence in catalog readiness",
+      "kind": "feature",
+      "milestone": null,
+      "status": "claimed",
+      "priority": "P2",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": "worker-public-fixture-readiness",
+      "branch": "repair/public-fixture-readiness",
+      "spec": "Fix catalog opportunity runtime evidence aggregation so valid public_fixture evidence contributes to publicFixtureEvidenceCount and mixed public/private evidence reports the correct readiness source mix.",
+      "acceptance": "DB-backed catalog opportunity tests cover public-only runtime evidence, private-only aggregate evidence, and mixed public/private evidence; publicFixtureEvidenceCount increments for valid public_fixture readiness rows; privateLocalAggregateEvidenceCount remains correct; opportunity evidence refs and readiness scoring reflect the corrected counts.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-28T08:21:03.352Z",
+      "updated_at": "2026-06-28T08:24:07.179Z",
+      "claimed_at": "2026-06-28T08:24:07.179Z",
+      "done_at": null,
+      "group_name": null,
+      "status_reason": "[2026-06-28T08:23:29.750Z] Source finding 3e44d5fc-cbf6-4cd5-8319-63e787df657e from broad safety/privacy audit 2026-06-28: public_fixture runtime readiness evidence is filtered out before counting, making publicFixtureEvidenceCount unreachable.",
+      "check_command": null,
+      "ci_command": null,
+      "projects": [],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/db test -- catalog-repository.test.ts"
+        },
+        {
+          "type": "command",
+          "value": "node scripts/spec-dag.mjs validate"
+        }
+      ],
+      "audit_focus": []
+    },
+    {
+      "id": "strict-catalog-completeness-conflict-api-shapes",
+      "title": "Reject extra fields in catalog completeness and conflict API shapes",
+      "kind": "feature",
+      "milestone": null,
+      "status": "claimed",
+      "priority": "P2",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": "worker-strict-catalog-api-shapes",
+      "branch": "repair/strict-catalog-api-shapes",
+      "spec": "Harden public catalog API response validation so completeness and conflict read models reject unknown fields instead of validating permissively and returning the original object with possible private metadata.",
+      "acceptance": "Completeness and conflict API schema guards use strict record validation or construct sanitized public objects; negative API fixtures with extra localPath/rawPayload/private metadata fields fail as internal_error before serialization; existing valid completeness/conflict fixtures still pass; benchmark seed and opportunity strictness behavior remains unchanged.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-28T08:21:14.683Z",
+      "updated_at": "2026-06-28T08:24:16.748Z",
+      "claimed_at": "2026-06-28T08:24:16.748Z",
+      "done_at": null,
+      "group_name": null,
+      "status_reason": "[2026-06-28T08:23:38.028Z] Source finding b0916460-228f-4d3f-aaa6-5613e0134b96 from broad safety/privacy audit 2026-06-28: completeness/conflict API guards use permissive records and return original objects, so extra private fields can serialize.",
+      "check_command": null,
+      "ci_command": null,
+      "projects": [],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/app test -- api-handlers.test.ts"
+        },
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/app typecheck"
+        }
+      ],
+      "audit_focus": []
+    },
+    {
+      "id": "make-qd-ci-evidence-portable-across-worktrees",
+      "title": "Make qd CI evidence portable across audit worktrees",
+      "kind": "feature",
+      "milestone": null,
+      "status": "ready",
+      "priority": "P2",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "Persist qd CI evidence in a form that read-only audit worktrees can inspect after roadmap export, instead of recording only local .qd/logs paths that may not exist outside the main checkout.",
+      "acceptance": "Completed qd nodes that reuse an integrated CI run expose durable evidence through an exportable relative artifact, checked-in summary, or external URL; qd export preserves enough evidence metadata for auditors in a fresh worktree; tests or docs cover record-pass reuse semantics and stale/missing log path detection.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-28T08:21:48.872Z",
+      "updated_at": "2026-06-28T08:21:48.872Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "projects": [],
+      "verification": [
+        {
+          "type": "command",
+          "value": "qd export --status done --json"
+        },
+        {
+          "type": "command",
+          "value": "node scripts/spec-dag.mjs validate"
+        }
+      ],
+      "audit_focus": []
+    },
+    {
+      "id": "cleanup-qd-full-ci-generated-compose-env",
+      "title": "Remove qd-full-ci generated compose env files on exit",
+      "kind": "feature",
+      "milestone": null,
+      "status": "ready",
+      "priority": "P2",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "Harden scripts/qd-full-ci.mjs so wrapper-owned temporary compose env files under .tmp/itotori-db are removed after CI teardown, while explicit user-supplied ITOTORI_DB_COMPOSE_ENV_PATH overrides are preserved.",
+      "acceptance": "qd-full-ci deletes the generated .tmp/itotori-db/qd-full-ci-*.env file on success and failure after docker compose down; explicit external compose env override paths are not deleted; tests cover success, failure, and override preservation; no DATABASE_URL-derived password remains in wrapper-owned .tmp env files after CI exits.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-28T08:22:01.969Z",
+      "updated_at": "2026-06-28T08:22:01.969Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "projects": [],
+      "verification": [
+        {
+          "type": "command",
+          "value": "node --test scripts/qd-full-ci.test.mjs"
+        },
+        {
+          "type": "command",
+          "value": "nix develop --command bash -lc 'just qd-full-ci'"
+        }
+      ],
+      "audit_focus": []
+    },
+    {
+      "id": "hash-cargo-target-dir-by-worktree-root",
+      "title": "Hash Cargo target dirs by full worktree root",
+      "kind": "feature",
+      "milestone": null,
+      "status": "cancelled",
+      "priority": "P2",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "Refine per-worktree Rust build cache isolation so CARGO_TARGET_DIR includes a short hash of the canonical worktree root, not only the sanitized basename, and document cleanup ownership.",
+      "acceptance": "Two worktrees with the same basename under different parents derive distinct CARGO_TARGET_DIR values; main checkout keeps a stable target dir; AGENTS.md documents the hash scheme and safe cleanup command; tests or shellcheckable examples cover same-basename collision prevention.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-28T08:22:13.205Z",
+      "updated_at": "2026-06-28T08:22:37.059Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "projects": [],
+      "verification": [
+        {
+          "type": "command",
+          "value": "nix develop --command bash -lc 'printf %s '"
+        },
+        {
+          "type": "command",
+          "value": "node scripts/spec-dag.mjs validate"
+        }
+      ],
+      "audit_focus": []
+    },
+    {
+      "id": "hash-cargo-target-dir-by-worktree-root-v2",
+      "title": "Hash Cargo target dirs by full worktree root",
+      "kind": "feature",
+      "milestone": null,
+      "status": "ready",
+      "priority": "P2",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "Refine per-worktree Rust build cache isolation so CARGO_TARGET_DIR includes a short hash of the canonical worktree root, not only the sanitized basename, and document cleanup ownership.",
+      "acceptance": "Two worktrees with the same basename under different parents derive distinct CARGO_TARGET_DIR values; main checkout keeps a stable target dir; AGENTS.md documents the hash scheme and safe cleanup command; tests or shellcheckable examples cover same-basename collision prevention.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-28T08:22:47.881Z",
+      "updated_at": "2026-06-28T08:22:47.881Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "projects": [],
+      "verification": [
+        {
+          "type": "command",
+          "value": "rg -n 'CARGO_TARGET_DIR|target-' flake.nix AGENTS.md"
+        },
         {
           "type": "command",
           "value": "node scripts/spec-dag.mjs validate"
@@ -41676,6 +41964,66 @@
       "suggested_fix": null,
       "created_at": "2026-06-28T05:31:56.289Z",
       "resolved_at": "2026-06-28T06:07:35.159Z"
+    },
+    {
+      "id": "9b1f09d2-2efa-45e8-b595-e9eedcb9abae",
+      "node_id": "harden-reallive-patch-target-canonicalization",
+      "run_id": null,
+      "severity": "P1",
+      "status": "open",
+      "title": "Nested target symlinks can redirect patch writes outside TARGET",
+      "path": null,
+      "line": null,
+      "evidence": "Broad audit 2026-06-28: suite/scripts/localize-project/run.mjs rejects a symlink only at TARGET root before invoking kaifuu-cli patch --force, and crates/kaifuu-cli/src/main.rs validate_patch_target_root/copy_directory_tree also reject only source symlinks and the target root. If an existing TARGET contains REALLIVEDATA -> SOURCE/REALLIVEDATA or another writable path, fs::create_dir_all/fs::copy/fs::write can follow that target-side symlink and mutate the readonly source or write outside TARGET before the post-write source-hash invariant detects it. Expected fix: reject symlink components/entries under existing TARGET before copying, or copy into a new symlink-free staging tree and promote with no-clobber semantics; add tests for TARGET/REALLIVEDATA symlink to source and to another directory.",
+      "expected": null,
+      "suggested_fix": null,
+      "created_at": "2026-06-28T08:19:25.585Z",
+      "resolved_at": null
+    },
+    {
+      "id": "6d4098f7-346d-4ec6-8bce-68f1cbc6ed4e",
+      "node_id": "SHARED-030",
+      "run_id": null,
+      "severity": "P1",
+      "status": "open",
+      "title": "Permission verifier accepts non-string SQL expressions in IN list",
+      "path": null,
+      "line": null,
+      "evidence": "Broad audit 2026-06-28: packages/itotori-db/scripts/verify-permission-constraints.mjs captures permission in (...) and extractSqlStrings only reads quoted strings. It does not reject leftover SQL tokens. A constraint whose list contains all expected quoted permissions plus the bare expression permission would pass the verifier while allowing arbitrary permissions because permission IN (..., permission) is always true for the row value. Expected fix: make the SQL list parser strict so, after valid string literals, commas, and whitespace are consumed, no tokens remain; add regression fixture for bare permission or other non-string expressions in the permission list.",
+      "expected": null,
+      "suggested_fix": null,
+      "created_at": "2026-06-28T08:19:40.473Z",
+      "resolved_at": null
+    },
+    {
+      "id": "3e44d5fc-cbf6-4cd5-8319-63e787df657e",
+      "node_id": "redact-catalog-completeness-conflict-source-identities",
+      "run_id": null,
+      "severity": "P1",
+      "status": "open",
+      "title": "Public fixture runtime evidence is never counted in opportunity readiness",
+      "path": null,
+      "line": null,
+      "evidence": "Broad audit 2026-06-28: packages/itotori-db/src/repositories/catalog-repository.ts capabilityEvidenceCountsByAdapter calls isRuntimeReadinessEvidence before counting evidence. isRuntimeReadinessEvidence currently returns false for every evidenceSource other than private_local_aggregate, making the later public_fixture branch unreachable. Impact: public fixture runtime evidence contributes publicFixtureEvidenceCount: 0 and can downgrade adapter readiness evidence in catalog opportunities. Expected fix: classify valid public_fixture runtime evidence kinds as readiness evidence, preserve private aggregate counts, and add DB-backed regression coverage for public-only and mixed public/private evidence.",
+      "expected": null,
+      "suggested_fix": null,
+      "created_at": "2026-06-28T08:19:51.948Z",
+      "resolved_at": null
+    },
+    {
+      "id": "b0916460-228f-4d3f-aaa6-5613e0134b96",
+      "node_id": "redact-catalog-completeness-conflict-source-identities",
+      "run_id": null,
+      "severity": "P1",
+      "status": "open",
+      "title": "Completeness and conflict API guards allow extra private fields through",
+      "path": null,
+      "line": null,
+      "evidence": "Broad audit 2026-06-28: apps/itotori/src/api-handlers.ts validates API payloads but returns the original object, and apps/itotori/src/api-schema.ts uses permissive asRecord for catalog completeness and conflict read-model structures. Unknown keys such as localPath, rawPayload, payloadHash, or private scan metadata can survive validation and serialize on /api/catalog/completeness or /api/catalog/conflicts. Expected fix: use strict record/object validation for these response shapes or sanitize to a constructed public response, and add negative API fixtures proving extra fields cause internal_error before serialization.",
+      "expected": null,
+      "suggested_fix": null,
+      "created_at": "2026-06-28T08:20:04.340Z",
+      "resolved_at": null
     }
   ],
   "runs": [
@@ -45586,6 +45934,36 @@
       "node_id": "UTSUSHI-231",
       "text": "PREFLIGHT 2026-06-28: qd gate UTSUSHI-231 passed with no blocking findings. Offline dry-run passed via nix develop --command bash -lc 'just localize-project --dry-run --project sweetie-hd-alpha-1'; it built schema/db/app, printed the generic artifacts/localize-project/<timestamp>-sweetie-hd-alpha-1 plan, and reported DRY-RUN: 0 LLM calls would be made. Current orchestrator process env still lacks OPENROUTER_API_KEY, OPENROUTER_ZDR_ACCOUNT_ASSERTED, ITOTORI_REAL_CORPUS_MANIFEST/ITOTORI_REAL_GAME_ROOT/LOCALIZE_PROJECT_SOURCE_PATH, TARGET, and DATABASE_URL; do not read .env. Next live action requires those values supplied to the process environment, then run localize-project, telemetry-summary, and verify-artifacts for the produced RUN_DIR.",
       "created_at": "2026-06-28T06:20:10.071Z"
+    },
+    {
+      "id": "84a2b9cf-9302-4d77-b844-71ed3fe2d06b",
+      "node_id": "replace-qd-import-with-transactional-state-rebuild",
+      "text": "BROAD AUDIT 2026-06-28 safety/privacy wave: fresh audit worktree had zero-byte .qd/qd.db and qd --root status/node show failed with 'no such table: nodes'. Current just qd-import path removes live .qd DB files before validated import, and qd-wrapper fallback refuses roadmap/spec-dag.json when an unusable .qd/qd.db merely exists. Keep this node active as the repair for read-only worktree qd hydration and transactional state rebuild.",
+      "created_at": "2026-06-28T08:21:37.826Z"
+    },
+    {
+      "id": "7dc41f55-4812-4f05-b024-5d84f88cbe1e",
+      "node_id": "harden-reallive-target-tree-symlink-preflight",
+      "text": "Source finding 9b1f09d2-2efa-45e8-b595-e9eedcb9abae from broad safety/privacy audit 2026-06-28: nested TARGET symlinks can redirect RealLive patch writes outside TARGET before source-hash detection.",
+      "created_at": "2026-06-28T08:23:10.071Z"
+    },
+    {
+      "id": "34663a2f-5775-4eb9-95c1-affa22761596",
+      "node_id": "harden-permission-verifier-strict-sql-in-list",
+      "text": "Source finding 6d4098f7-346d-4ec6-8bce-68f1cbc6ed4e from broad safety/privacy audit 2026-06-28: verifier accepts expected quoted permissions plus bare SQL expression permission in the IN list.",
+      "created_at": "2026-06-28T08:23:19.819Z"
+    },
+    {
+      "id": "f1d6a03c-9e9b-49d3-bd43-64260ad99f6f",
+      "node_id": "count-public-fixture-runtime-evidence-readiness",
+      "text": "Source finding 3e44d5fc-cbf6-4cd5-8319-63e787df657e from broad safety/privacy audit 2026-06-28: public_fixture runtime readiness evidence is filtered out before counting, making publicFixtureEvidenceCount unreachable.",
+      "created_at": "2026-06-28T08:23:29.750Z"
+    },
+    {
+      "id": "3da4a8e1-c48f-45b0-ad8f-f4ba5edee3e6",
+      "node_id": "strict-catalog-completeness-conflict-api-shapes",
+      "text": "Source finding b0916460-228f-4d3f-aaa6-5613e0134b96 from broad safety/privacy audit 2026-06-28: completeness/conflict API guards use permissive records and return original objects, so extra private fields can serialize.",
+      "created_at": "2026-06-28T08:23:38.028Z"
     }
   ]
 }
