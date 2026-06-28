@@ -140,6 +140,7 @@ export type {
 export {
   parseReviewerBatchRoute,
   reviewerBatchRoutePathRegex,
+  renderReviewerBatchExecuteView,
   renderReviewerBatchPreviewView,
 } from "./batch-view.js";
 

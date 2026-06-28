@@ -7,6 +7,8 @@ import {
   renderReviewerBatchRoute,
   renderReviewerDetailView,
   type ReviewerBatchActionRequest,
+  type ReviewerBatchActionServicePort,
+  type ReviewerBatchExecuteResult,
   type ReviewerBatchPermissionView,
   type ReviewerBatchPreview,
   type ReviewerBatchPreviewServicePort,
@@ -27,6 +29,11 @@ if (assetDecisionsParams !== null) {
   await renderReviewerBatchRoute(root, request, {
     permission: optimisticBatchPermission(request.actorUserId),
     previewService: makeApiBatchPreviewService(),
+    confirm: {
+      permission: optimisticBatchPermission(request.actorUserId),
+      actionService: makeApiBatchActionService(),
+      actor: { userId: request.actorUserId },
+    },
   });
 } else if (reviewerDetailParams !== null) {
   root.innerHTML = `
@@ -93,6 +100,24 @@ function makeApiBatchPreviewService(): ReviewerBatchPreviewServicePort {
       const body = await response.json();
       assertItotoriApiResponse("reviewer.batchPreview", body);
       return body as ReviewerBatchPreview;
+    },
+  };
+}
+
+function makeApiBatchActionService(): ReviewerBatchActionServicePort {
+  return {
+    execute: async (_actor, request) => {
+      const response = await fetch("/api/reviewer/queue/batch-confirm", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(request),
+      });
+      if (!response.ok) {
+        throw new Error(`failed to confirm reviewer batch: ${response.status}`);
+      }
+      const body = await response.json();
+      assertItotoriApiResponse("reviewer.batchExecute", body);
+      return body as ReviewerBatchExecuteResult;
     },
   };
 }

@@ -9,8 +9,11 @@ import {
   fixtureEmptyPreview,
   fixtureMixedPreview,
   parseReviewerBatchRoute,
+  renderReviewerBatchExecuteView,
   renderReviewerBatchPreviewView,
   reviewerBatchPreviewStatusValues,
+  type BatchExecuteOutcome,
+  type ReviewerBatchExecuteResult,
   type ReviewerBatchPreview,
 } from "../src/reviewer/index.js";
 
@@ -127,5 +130,58 @@ describe("renderReviewerBatchPreviewView — defensive escaping", () => {
     const html = renderReviewerBatchPreviewView(preview);
     expect(html).not.toContain("<script>alert(1)</script>");
     expect(html).toContain("&lt;script&gt;");
+  });
+});
+
+describe("renderReviewerBatchExecuteView", () => {
+  it("renders applied and refused execution outcomes", () => {
+    const preview = fixtureAllAllowedPreview();
+    const first = preview.items[0]!;
+    const result: ReviewerBatchExecuteResult = {
+      request: preview.request,
+      preview,
+      applied: [
+        {
+          kind: "applied",
+          reviewItemId: first.reviewItemId,
+          result: {
+            item: first.item!,
+            transition: {
+              transitionId: `transition-${first.reviewItemId}`,
+              reviewItemId: first.reviewItemId,
+              localeBranchId: first.item!.localeBranchId,
+              sourceRevisionId: first.item!.sourceRevisionId,
+              itemKind: first.item!.itemKind,
+              action: preview.request.action,
+              priorState: first.priorState!,
+              nextState: first.nextState!,
+              actorUserId: preview.request.actorUserId,
+              affectedArtifactIds: [],
+              diagnostics: [],
+              metadata: { batchActionId: "batch-action-view-test" },
+              createdAt: new Date(),
+            },
+          },
+        },
+        {
+          kind: "refused",
+          reviewItemId: "reviewer-queue-refused",
+          status: reviewerBatchPreviewStatusValues.staleRevision,
+          code: "reviewer_queue_item_stale_revision",
+          message: "source revision changed",
+          diagnostics: [],
+        } satisfies BatchExecuteOutcome,
+      ],
+      refusedAll: false,
+      appliedAll: false,
+    };
+
+    const root = renderInto(renderReviewerBatchExecuteView(result));
+
+    expect(root.querySelector('[data-state="executed"]')).not.toBeNull();
+    expect(root.querySelectorAll('[data-execute-result="applied"]')).toHaveLength(1);
+    expect(root.querySelectorAll('[data-execute-result="refused"]')).toHaveLength(1);
+    expect(root.textContent).toContain("1 applied, 1 refused");
+    expect(root.textContent).toContain("source revision changed");
   });
 });

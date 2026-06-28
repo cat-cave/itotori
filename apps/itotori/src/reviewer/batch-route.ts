@@ -13,6 +13,7 @@
 // without `queue.manage`.
 
 import {
+  renderReviewerBatchExecuteView,
   renderReviewerBatchErrorView,
   renderReviewerBatchLoadingView,
   renderReviewerBatchPreviewView,
@@ -34,6 +35,7 @@ export { reviewerBatchRoutePathRegex } from "./batch-view.js";
 export type ReviewerBatchRouteDeps = {
   permission: ReviewerBatchPermissionView;
   previewService: ReviewerBatchPreviewServicePort;
+  confirm?: ReviewerBatchConfirmDeps;
 };
 
 export async function loadReviewerBatchPreview(
@@ -52,6 +54,9 @@ export async function renderReviewerBatchRoute(
   try {
     const preview = await loadReviewerBatchPreview(request, deps);
     root.innerHTML = renderReviewerBatchPreviewView(preview);
+    if (deps.confirm !== undefined) {
+      bindReviewerBatchConfirm(root, request, deps.confirm);
+    }
   } catch (error) {
     root.innerHTML = renderReviewerBatchErrorView(request, error);
   }
@@ -74,4 +79,28 @@ export async function confirmReviewerBatch(
   deps: ReviewerBatchConfirmDeps,
 ): Promise<ReviewerBatchExecuteResult> {
   return deps.actionService.execute(deps.actor, request, deps.permission);
+}
+
+function bindReviewerBatchConfirm(
+  root: HTMLElement,
+  request: ReviewerBatchActionRequest,
+  deps: ReviewerBatchConfirmDeps,
+): void {
+  const confirm = root.querySelector<HTMLButtonElement>('button[data-batch-action="confirm"]');
+  if (confirm === null || confirm.disabled) {
+    return;
+  }
+  confirm.addEventListener("click", () => {
+    void (async () => {
+      confirm.disabled = true;
+      confirm.setAttribute("aria-disabled", "true");
+      confirm.textContent = "Confirming...";
+      try {
+        const result = await confirmReviewerBatch(request, deps);
+        root.innerHTML = renderReviewerBatchExecuteView(result);
+      } catch (error) {
+        root.innerHTML = renderReviewerBatchErrorView(request, error);
+      }
+    })();
+  });
 }

@@ -69,6 +69,7 @@ import type {
 } from "./reviewer/api-service.js";
 import { reviewerQueueDashboardStateValues } from "./reviewer/api-service.js";
 import type { ReviewerBatchActionRequest, ReviewerBatchPreview } from "./reviewer/batch-preview.js";
+import type { ReviewerBatchExecuteResult } from "./reviewer/batch-execute.js";
 import type { ReviewerDetailContext } from "./reviewer/detail-fixtures.js";
 
 export type ItotoriApiRouteId =
@@ -79,6 +80,7 @@ export type ItotoriApiRouteId =
   | "reviewer.queue"
   | "reviewer.detail"
   | "reviewer.batchPreview"
+  | "reviewer.batchExecute"
   | "terminology.search"
   | "projects.list"
   | "projects.status"
@@ -122,6 +124,10 @@ export type ApiReviewerDetailResponse = ReviewerDetailContext;
 export type ApiReviewerBatchPreviewRequest = ReviewerBatchActionRequest;
 
 export type ApiReviewerBatchPreviewResponse = ReviewerBatchPreview;
+
+export type ApiReviewerBatchExecuteRequest = ReviewerBatchActionRequest;
+
+export type ApiReviewerBatchExecuteResponse = ReviewerBatchExecuteResult;
 
 export type ApiProjectImportRequest = {
   bridge: BridgeBundle | BridgeBundleV02;
@@ -179,6 +185,7 @@ export type ItotoriApiResponseBody =
   | ApiReviewerQueueDashboardResponse
   | ApiReviewerDetailResponse
   | ApiReviewerBatchPreviewResponse
+  | ApiReviewerBatchExecuteResponse
   | ApiTerminologySearchResponse
   | ApiProjectsResponse
   | ProjectDashboardStatus
@@ -321,6 +328,10 @@ export function parseReviewerBatchPreviewRequest(body: unknown): ApiReviewerBatc
   });
 }
 
+export function parseReviewerBatchExecuteRequest(body: unknown): ApiReviewerBatchExecuteRequest {
+  return parseReviewerBatchActionRequestBody(body, "ApiReviewerBatchExecuteRequest");
+}
+
 export function assertItotoriApiResponse(
   routeId: ItotoriApiRouteId,
   value: unknown,
@@ -346,6 +357,9 @@ export function assertItotoriApiResponse(
       return;
     case "reviewer.batchPreview":
       assertReviewerBatchPreview(value);
+      return;
+    case "reviewer.batchExecute":
+      assertReviewerBatchExecuteResult(value);
       return;
     case "terminology.search":
       assertTerminologySearchReadModel(value);
@@ -509,6 +523,41 @@ function assertReviewerBatchActionRequest(value: unknown, label: string): void {
   }
 }
 
+function parseReviewerBatchActionRequestBody(
+  body: unknown,
+  label: string,
+): ReviewerBatchActionRequest {
+  return parseRequest(label, () => {
+    const request = asStrictRecord(body, label, ["action", "actorUserId", "selections"]);
+    assertEnum(
+      request.action,
+      reviewerQueueActionList as readonly ReviewerQueueAction[],
+      `${label}.action`,
+    );
+    assertString(request.actorUserId, `${label}.actorUserId`);
+    const selections = asArray(request.selections, `${label}.selections`).map((value, index) => {
+      const selection = asStrictRecord(value, `${label}.selections[${index}]`, [
+        "reviewItemId",
+        "expectedSourceRevisionId",
+      ]);
+      assertString(selection.reviewItemId, `${label}.selections[${index}].reviewItemId`);
+      assertString(
+        selection.expectedSourceRevisionId,
+        `${label}.selections[${index}].expectedSourceRevisionId`,
+      );
+      return {
+        reviewItemId: selection.reviewItemId,
+        expectedSourceRevisionId: selection.expectedSourceRevisionId,
+      };
+    });
+    return {
+      action: request.action,
+      actorUserId: request.actorUserId,
+      selections,
+    };
+  });
+}
+
 function assertReviewerDetailContext(
   value: unknown,
   label = "ReviewerDetailContext",
@@ -572,6 +621,88 @@ function assertReviewerBatchPreview(
   }
   assertBoolean(preview.allAllowed, `${label}.allAllowed`);
   assertBoolean(preview.permissionDenied, `${label}.permissionDenied`);
+}
+
+function assertReviewerBatchExecuteResult(
+  value: unknown,
+  label = "ReviewerBatchExecuteResult",
+): asserts value is ReviewerBatchExecuteResult {
+  const result = asStrictRecord(value, label, [
+    "request",
+    "preview",
+    "applied",
+    "refusedAll",
+    "appliedAll",
+  ]);
+  assertReviewerBatchActionRequest(result.request, `${label}.request`);
+  assertReviewerBatchPreview(result.preview, `${label}.preview`);
+  const applied = asArray(result.applied, `${label}.applied`);
+  for (const [index, entryValue] of applied.entries()) {
+    assertReviewerBatchExecuteOutcome(entryValue, `${label}.applied[${index}]`);
+  }
+  assertBoolean(result.refusedAll, `${label}.refusedAll`);
+  assertBoolean(result.appliedAll, `${label}.appliedAll`);
+}
+
+function assertReviewerBatchExecuteOutcome(value: unknown, label: string): void {
+  const outcome = asRecord(value, label);
+  assertEnum(outcome.kind, ["applied", "refused"] as const, `${label}.kind`);
+  if (outcome.kind === "applied") {
+    const applied = asStrictRecord(value, label, ["kind", "reviewItemId", "result"]);
+    assertString(applied.reviewItemId, `${label}.reviewItemId`);
+    assertReviewerQueueActionResult(applied.result, `${label}.result`);
+    return;
+  }
+  const refused = asStrictRecord(value, label, [
+    "kind",
+    "reviewItemId",
+    "status",
+    "code",
+    "message",
+    "diagnostics",
+  ]);
+  assertString(refused.reviewItemId, `${label}.reviewItemId`);
+  assertString(refused.status, `${label}.status`);
+  assertString(refused.code, `${label}.code`);
+  assertString(refused.message, `${label}.message`);
+  asArray(refused.diagnostics, `${label}.diagnostics`);
+}
+
+function assertReviewerQueueActionResult(value: unknown, label: string): void {
+  const result = asStrictRecord(value, label, ["item", "transition"]);
+  assertReviewerQueueItemRecord(result.item, `${label}.item`);
+  assertReviewerQueueTransitionRecord(result.transition, `${label}.transition`);
+}
+
+function assertReviewerQueueTransitionRecord(value: unknown, label: string): void {
+  const transition = asStrictRecord(value, label, [
+    "transitionId",
+    "reviewItemId",
+    "localeBranchId",
+    "sourceRevisionId",
+    "itemKind",
+    "action",
+    "priorState",
+    "nextState",
+    "actorUserId",
+    "affectedArtifactIds",
+    "diagnostics",
+    "metadata",
+    "createdAt",
+  ]);
+  assertString(transition.transitionId, `${label}.transitionId`);
+  assertString(transition.reviewItemId, `${label}.reviewItemId`);
+  assertString(transition.localeBranchId, `${label}.localeBranchId`);
+  assertString(transition.sourceRevisionId, `${label}.sourceRevisionId`);
+  assertEnum(transition.itemKind, reviewerQueueItemKindList, `${label}.itemKind`);
+  assertEnum(transition.action, reviewerQueueActionList as readonly ReviewerQueueAction[], `${label}.action`);
+  assertEnum(transition.priorState, reviewerQueueItemStateList, `${label}.priorState`);
+  assertEnum(transition.nextState, reviewerQueueItemStateList, `${label}.nextState`);
+  assertString(transition.actorUserId, `${label}.actorUserId`);
+  assertStringArray(transition.affectedArtifactIds, `${label}.affectedArtifactIds`);
+  asArray(transition.diagnostics, `${label}.diagnostics`);
+  asRecord(transition.metadata, `${label}.metadata`);
+  assertDateLike(transition.createdAt, `${label}.createdAt`);
 }
 
 function assertReviewerQueueItemRecord(value: unknown, label: string): void {

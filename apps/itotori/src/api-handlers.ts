@@ -40,12 +40,14 @@ import {
   parseRecordBenchmarkRequest,
   parseRecordDecisionRequest,
   parseRecordFindingRequest,
+  parseReviewerBatchExecuteRequest,
   parseReviewerBatchPreviewRequest,
   parseRuntimeEvidenceRequest,
   type ApiDraftBranchResponse,
   type ApiErrorResponse,
   type ApiProjectImportResponse,
   type ApiProjectsResponse,
+  type ApiReviewerBatchExecuteResponse,
   type ApiReviewerBatchPreviewResponse,
   type ApiReviewerDetailResponse,
   type ApiReviewerQueueDashboardResponse,
@@ -269,6 +271,19 @@ async function routeItotoriApiRequest(
     );
   }
 
+  if (request.method === "POST" && request.pathname === "/api/reviewer/queue/batch-confirm") {
+    const body = parseReviewerBatchExecuteRequest(request.body);
+    const permission = await resolveApiReviewerQueuePermissionView(services, body.actorUserId);
+    return ok(
+      "reviewer.batchExecute",
+      await services.reviewerQueue.executeBatch({
+        actor: { userId: body.actorUserId },
+        request: body,
+        permission,
+      }),
+    );
+  }
+
   if (
     request.pathname === "/api/projects/status" ||
     request.pathname === "/api/projects/decisions" ||
@@ -281,9 +296,11 @@ async function routeItotoriApiRequest(
     request.pathname === "/api/terminology/search" ||
     request.pathname === "/api/reviewer/queue" ||
     request.pathname === "/api/reviewer/queue/batch-preview" ||
+    request.pathname === "/api/reviewer/queue/batch-confirm" ||
     reviewerDetailRoute !== null
   ) {
-    return request.pathname === "/api/reviewer/queue/batch-preview"
+    return request.pathname === "/api/reviewer/queue/batch-preview" ||
+      request.pathname === "/api/reviewer/queue/batch-confirm"
       ? methodNotAllowed(["POST"])
       : methodNotAllowed(["GET"]);
   }
@@ -803,6 +820,10 @@ function ok(routeId: "reviewer.detail", body: ApiReviewerDetailResponse): ApiJso
 function ok(
   routeId: "reviewer.batchPreview",
   body: ApiReviewerBatchPreviewResponse,
+): ApiJsonResponse;
+function ok(
+  routeId: "reviewer.batchExecute",
+  body: ApiReviewerBatchExecuteResponse,
 ): ApiJsonResponse;
 function ok(routeId: "terminology.search", body: TerminologySearchReadModel): ApiJsonResponse;
 function ok(routeId: "projects.status", body: ProjectDashboardStatus): ApiJsonResponse;

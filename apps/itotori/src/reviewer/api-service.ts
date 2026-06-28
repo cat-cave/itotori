@@ -1,6 +1,7 @@
 import {
   reviewerQueueActionValues,
   reviewerQueueItemStateValues,
+  type AuthorizationActor,
   type ReviewerQueueAction,
   type ReviewerQueueItemRecord,
   type ReviewerQueueItemState,
@@ -18,6 +19,13 @@ import {
   type ReviewerBatchConsequenceResolverPort,
   type ReviewerBatchPreview,
 } from "./batch-preview.js";
+import {
+  ReviewerBatchActionService,
+  type BatchActionPayload,
+  type BatchActionPayloadResolver,
+  type ReviewerBatchExecuteResult,
+} from "./batch-execute.js";
+import type { ReviewerQueueActionServicePort } from "./action-service.js";
 
 export const reviewerQueueDashboardStateValues = {
   pending: "pending",
@@ -72,6 +80,7 @@ export type ReviewerQueueReadRepositoryPort = {
 
 export type ReviewerQueueApiServiceDeps = {
   repository: ReviewerQueueReadRepositoryPort;
+  actionService?: ReviewerQueueActionServicePort;
   evidenceLoader?: ReviewerDetailEvidenceLoaderPort;
   consequenceResolver?: ReviewerBatchConsequenceResolverPort;
   now?: () => Date;
@@ -90,6 +99,11 @@ export type ReviewerQueueApiServicePort = {
     request: ReviewerBatchActionRequest;
     permission: ReviewerQueuePermissionView;
   }): Promise<ReviewerBatchPreview>;
+  executeBatch(input: {
+    actor: AuthorizationActor;
+    request: ReviewerBatchActionRequest;
+    permission: ReviewerQueuePermissionView;
+  }): Promise<ReviewerBatchExecuteResult>;
 };
 
 export class ReviewerQueueApiService implements ReviewerQueueApiServicePort {
@@ -160,6 +174,23 @@ export class ReviewerQueueApiService implements ReviewerQueueApiServicePort {
     return service.preview(input.request, input.permission);
   }
 
+  async executeBatch(input: {
+    actor: AuthorizationActor;
+    request: ReviewerBatchActionRequest;
+    permission: ReviewerQueuePermissionView;
+  }): Promise<ReviewerBatchExecuteResult> {
+    if (this.deps.actionService === undefined) {
+      throw new Error("reviewer batch execution requires an action service");
+    }
+    const batchActionId = `batch-action-${this.now().toISOString().replace(/[^0-9A-Za-z]/gu, "")}`;
+    const service = new ReviewerBatchActionService({
+      previewService: new ReviewerBatchPreviewService(this.consequenceResolver),
+      actionService: this.deps.actionService,
+      resolvePayload: defaultBatchPayloadResolver(input.request.action, batchActionId),
+    });
+    return service.execute(input.actor, input.request, input.permission);
+  }
+
   private async dashboardRow(item: ReviewerQueueItemRecord): Promise<ReviewerQueueDashboardRow> {
     const transitions = await this.deps.repository.loadTransitionsByItem(item.reviewItemId);
     const latestTransition = transitions.at(-1) ?? null;
@@ -218,6 +249,82 @@ function defaultConsequenceResolver(
     loadItem: (reviewItemId) => repository.getItem(reviewItemId),
     resolveConsequences: async () => [],
   };
+}
+
+function defaultBatchPayloadResolver(
+  action: ReviewerQueueAction,
+  batchActionId: string,
+): BatchActionPayloadResolver {
+  return (item) => defaultBatchPayload(action, item, batchActionId);
+}
+
+function defaultBatchPayload(
+  action: ReviewerQueueAction,
+  item: ReviewerQueueItemRecord,
+  batchActionId: string,
+): BatchActionPayload {
+  const metadata = { batchActionId };
+  switch (action) {
+    case reviewerQueueActionValues.approve:
+      return { kind: "approve", metadata };
+    case reviewerQueueActionValues.reject:
+      return { kind: "reject", metadata };
+    case reviewerQueueActionValues.defer:
+      return { kind: "defer", deferReason: "batch deferred by reviewer", metadata };
+    case reviewerQueueActionValues.escalate:
+      return {
+        kind: "escalate",
+        escalationReason: "batch escalated by reviewer",
+        escalationTarget: "senior-reviewer",
+        metadata,
+      };
+    case reviewerQueueActionValues.requestRepair:
+      return { kind: "requestRepair", repairHint: "batch repair requested", metadata };
+    case reviewerQueueActionValues.updateGlossary:
+      return {
+        kind: "updateGlossary",
+        termId: firstContextRef(item, "glossary") ?? item.reviewItemId,
+        approvedTranslation: stringMetadata(item.metadata, "approvedTranslation") ?? "batch-approved",
+        metadata,
+      };
+    case reviewerQueueActionValues.updateStyle:
+      return {
+        kind: "updateStyle",
+        styleGuideVersionId: firstContextRef(item, "style") ?? item.reviewItemId,
+        ruleLabel: stringMetadata(item.metadata, "ruleLabel") ?? "batch-approved style rule",
+        metadata,
+      };
+    case reviewerQueueActionValues.importRuntimeFeedback:
+      return {
+        kind: "importRuntimeFeedback",
+        evidenceTier: item.evidenceTier ?? "batch-runtime-evidence",
+        observationEventIds: item.observationEventIds ?? [item.reviewItemId],
+        artifactHashes: item.artifactHashes ?? [item.reviewItemId],
+        metadata,
+      };
+    default: {
+      const exhaustive: never = action;
+      throw new Error(`unhandled reviewer batch action: ${exhaustive as string}`);
+    }
+  }
+}
+
+function firstContextRef(item: ReviewerQueueItemRecord, kind: "glossary" | "style"): string | null {
+  const contextRefs = (item.metadata as { contextRefs?: unknown }).contextRefs;
+  if (!contextRefs || typeof contextRefs !== "object") {
+    return null;
+  }
+  const record = contextRefs as {
+    glossary?: { termIds?: unknown };
+    style?: { styleGuidePolicyVersionId?: unknown };
+  };
+  if (kind === "glossary") {
+    const termIds = record.glossary?.termIds;
+    return Array.isArray(termIds) && typeof termIds[0] === "string" ? termIds[0] : null;
+  }
+  return typeof record.style?.styleGuidePolicyVersionId === "string"
+    ? record.style.styleGuidePolicyVersionId
+    : null;
 }
 
 function dashboardStateFor(

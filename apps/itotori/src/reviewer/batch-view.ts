@@ -24,6 +24,7 @@ import {
   type ReviewerBatchPreview,
   type ReviewerBatchPreviewStatus,
 } from "./batch-preview.js";
+import type { BatchExecuteOutcome, ReviewerBatchExecuteResult } from "./batch-execute.js";
 
 export const reviewerBatchRoutePathRegex = /^\/reviewer-queue\/batch$/u;
 
@@ -44,6 +45,36 @@ export function renderReviewerBatchPreviewView(preview: ReviewerBatchPreview): s
     return renderDeniedView(preview);
   }
   return renderReadyView(preview);
+}
+
+export function renderReviewerBatchExecuteView(result: ReviewerBatchExecuteResult): string {
+  return `
+    ${reviewerBatchStyles()}
+    <main class="itotori-shell reviewer-batch" data-state="executed"
+      data-action="${escapeHtml(result.request.action)}"
+      data-applied-all="${result.appliedAll ? "true" : "false"}"
+      data-refused-all="${result.refusedAll ? "true" : "false"}">
+      <header class="shell-header">
+        <div>
+          <p class="eyebrow">Reviewer batch result</p>
+          <h1>${escapeHtml(executeHeadline(result))}</h1>
+          <p class="subhead">
+            Action <code>${escapeHtml(result.request.action)}</code> processed
+            ${result.applied.length}
+            ${result.applied.length === 1 ? "selection" : "selections"}.
+          </p>
+        </div>
+      </header>
+      <section class="aggregate-banner" aria-label="Batch execution summary"
+        data-all-allowed="${result.appliedAll ? "true" : "false"}">
+        <h2>${result.applied.filter((entry) => entry.kind === "applied").length} applied, ${
+          result.applied.filter((entry) => entry.kind === "refused").length
+        } refused</h2>
+        <p class="subhead">${escapeHtml(executeSummary(result))}</p>
+      </section>
+      ${renderExecutionTable(result)}
+    </main>
+  `;
 }
 
 export function renderReviewerBatchLoadingView(request: ReviewerBatchActionRequest): string {
@@ -210,6 +241,70 @@ function renderItemsTable(preview: ReviewerBatchPreview): string {
       </table>
     </section>
   `;
+}
+
+function renderExecutionTable(result: ReviewerBatchExecuteResult): string {
+  const rows = result.applied.map((entry) => renderExecutionRow(entry)).join("");
+  return `
+    <section class="panel" aria-label="Per-item execution results" data-panel-id="execution-results">
+      <table>
+        <thead>
+          <tr>
+            <th scope="col">Review item</th>
+            <th scope="col">Result</th>
+            <th scope="col">Next state</th>
+            <th scope="col">Transition</th>
+            <th scope="col">Message</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </section>
+  `;
+}
+
+function renderExecutionRow(entry: BatchExecuteOutcome): string {
+  if (entry.kind === "applied") {
+    return `
+      <tr data-review-item-id="${escapeHtml(entry.reviewItemId)}" data-execute-result="applied">
+        <td><code>${escapeHtml(entry.reviewItemId)}</code></td>
+        <td>${statusBadge(reviewerBatchPreviewStatusValues.allowed)}</td>
+        <td>${escapeHtml(entry.result.transition.nextState)}</td>
+        <td><code>${escapeHtml(entry.result.transition.transitionId)}</code></td>
+        <td>Applied ${escapeHtml(entry.result.transition.action)}</td>
+      </tr>
+    `;
+  }
+  return `
+    <tr data-review-item-id="${escapeHtml(entry.reviewItemId)}" data-execute-result="refused"
+      data-status="${escapeHtml(entry.status)}">
+      <td><code>${escapeHtml(entry.reviewItemId)}</code></td>
+      <td>${statusBadge(entry.status)}</td>
+      <td><span class="empty-copy">-</span></td>
+      <td><code>${escapeHtml(entry.code)}</code></td>
+      <td>${escapeHtml(entry.message)}</td>
+    </tr>
+  `;
+}
+
+function executeHeadline(result: ReviewerBatchExecuteResult): string {
+  if (result.appliedAll) {
+    return "Batch applied";
+  }
+  if (result.refusedAll) {
+    return "Batch refused";
+  }
+  return "Batch completed with refusals";
+}
+
+function executeSummary(result: ReviewerBatchExecuteResult): string {
+  if (result.appliedAll) {
+    return "Every selected item was mutated through the reviewer action service.";
+  }
+  if (result.refusedAll) {
+    return "No rows were mutated; refusals fail closed before execution.";
+  }
+  return "Some rows applied and some rows refused; review the per-item results.";
 }
 
 function renderItemRow(entry: BatchPreviewItem): string {

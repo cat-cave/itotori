@@ -107,6 +107,36 @@ describe("renderReviewerBatchRoute — DOM integration", () => {
     expect(root.querySelector('[data-state="error"]')).not.toBeNull();
     expect(root.textContent).toContain("preview service offline");
   });
+
+  it("wires the Confirm button to execution and renders per-item results", async () => {
+    const preview = fixtureAllAllowedPreview();
+    const actor: AuthorizationActor = { userId: "local-user" };
+    const fakeResult = makeExecuteResult(preview, actor);
+    const previewService: ReviewerBatchPreviewServicePort = {
+      preview: async () => preview,
+    };
+    const actionService: ReviewerBatchActionServicePort = {
+      execute: async () => fakeResult,
+    };
+    const root = document.createElement("div");
+
+    await renderReviewerBatchRoute(root, preview.request, {
+      permission: fixtureBatchPermissionView(),
+      previewService,
+      confirm: {
+        permission: fixtureBatchPermissionView(),
+        actionService,
+        actor,
+      },
+    });
+    root.querySelector<HTMLButtonElement>('button[data-batch-action="confirm"]')?.click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(root.querySelector('[data-state="executed"]')).not.toBeNull();
+    expect(root.querySelectorAll('[data-execute-result="applied"]')).toHaveLength(
+      preview.items.length,
+    );
+  });
 });
 
 describe("confirmReviewerBatch", () => {
@@ -154,3 +184,39 @@ describe("confirmReviewerBatch", () => {
     expect(result).toBe(fakeResult);
   });
 });
+
+function makeExecuteResult(
+  preview: ReviewerBatchPreview,
+  actor: AuthorizationActor,
+): ReviewerBatchExecuteResult {
+  return {
+    request: preview.request,
+    preview,
+    applied: preview.items.map(
+      (entry): BatchExecuteOutcome => ({
+        kind: "applied",
+        reviewItemId: entry.reviewItemId,
+        result: {
+          item: entry.item!,
+          transition: {
+            transitionId: `t-${entry.reviewItemId}`,
+            reviewItemId: entry.reviewItemId,
+            localeBranchId: entry.item!.localeBranchId,
+            sourceRevisionId: entry.item!.sourceRevisionId,
+            itemKind: entry.item!.itemKind,
+            action: preview.request.action,
+            priorState: entry.priorState!,
+            nextState: entry.nextState!,
+            actorUserId: actor.userId,
+            affectedArtifactIds: [],
+            diagnostics: [],
+            metadata: { batchActionId: "batch-action-route-test" },
+            createdAt: new Date(),
+          },
+        },
+      }),
+    ),
+    refusedAll: false,
+    appliedAll: true,
+  };
+}

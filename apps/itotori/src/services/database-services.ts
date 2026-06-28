@@ -70,6 +70,7 @@ import {
   ReviewerQueueApiService,
   type ReviewerQueueApiServicePort,
 } from "../reviewer/api-service.js";
+import { ReviewerQueueActionService } from "../reviewer/action-service.js";
 import {
   ItotoriProjectWorkflowService,
   type ItotoriProjectWorkflowPort,
@@ -306,6 +307,7 @@ export async function withDatabaseItotoriServices<T>(
             reviewerQueueRepository.loadTransitionsByItem(localUserActor, reviewItemId),
           getItem: (reviewItemId) => reviewerQueueRepository.getItem(localUserActor, reviewItemId),
         },
+        actionService: new ReviewerQueueActionService(reviewerQueueRepository),
       }),
       exactSearch: {
         refreshDocuments: (input) => exactSearchRepository.refreshDocuments(localUserActor, input),

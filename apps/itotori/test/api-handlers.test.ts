@@ -22,8 +22,11 @@ import {
 } from "../src/api-handlers.js";
 import { ItotoriProjectWorkflowService } from "../src/services/project-workflow.js";
 import {
+  fixtureAllAllowedPreview,
   readyContextFixture,
   reviewQueueDashboardFixtures,
+  reviewerBatchPreviewStatusValues,
+  type ReviewerBatchExecuteResult,
   type ReviewerQueueDashboardReadModel,
 } from "../src/reviewer/index.js";
 import {
@@ -78,7 +81,10 @@ const readOnlyProjectWorkflowServices = new Set<keyof ItotoriApiServices["projec
   "getCostReport",
 ]);
 
-const readOnlyPostApiRoutes = new Set(["POST /api/reviewer/queue/batch-preview"]);
+const readOnlyPostApiRoutes = new Set([
+  "POST /api/reviewer/queue/batch-preview",
+  "POST /api/reviewer/queue/batch-confirm",
+]);
 
 const apiMutationPermissionMatrix = [
   apiGate("bridgeImport", post("/api/imports/bridge", { bridge: bridgeFixture }), "importBridge"),
@@ -237,8 +243,18 @@ describe("Itotori API handlers", () => {
     expect(services.authorization.requirePermission).not.toHaveBeenCalled();
   });
 
-  it("routes reviewer queue dashboard, detail, and batch preview through typed services", async () => {
+  it("routes reviewer queue dashboard, detail, batch preview, and batch confirm through typed services", async () => {
     const services = serviceFixture();
+    const batchBody = {
+      action: reviewerQueueActionValues.approve,
+      actorUserId: "reviewer-user",
+      selections: [
+        {
+          reviewItemId: "reviewer-queue-1",
+          expectedSourceRevisionId: "source-revision-1",
+        },
+      ],
+    };
 
     const dashboard = await handleItotoriApiRequest(
       {
@@ -260,16 +276,15 @@ describe("Itotori API handlers", () => {
       {
         method: "POST",
         pathname: "/api/reviewer/queue/batch-preview",
-        body: {
-          action: reviewerQueueActionValues.approve,
-          actorUserId: "reviewer-user",
-          selections: [
-            {
-              reviewItemId: "reviewer-queue-1",
-              expectedSourceRevisionId: "source-revision-1",
-            },
-          ],
-        },
+        body: batchBody,
+      },
+      services,
+    );
+    const confirm = await handleItotoriApiRequest(
+      {
+        method: "POST",
+        pathname: "/api/reviewer/queue/batch-confirm",
+        body: batchBody,
       },
       services,
     );
@@ -306,6 +321,12 @@ describe("Itotori API handlers", () => {
         ],
       }),
     });
+    expect(confirm.statusCode).toBe(200);
+    expect(confirm.body).toMatchObject({
+      request: expect.objectContaining({ actorUserId: "reviewer-user" }),
+      appliedAll: true,
+      refusedAll: false,
+    });
     expect(services.reviewerQueue.loadDashboard).toHaveBeenCalledWith(
       expect.objectContaining({
         localeBranchId: "locale-1",
@@ -314,6 +335,61 @@ describe("Itotori API handlers", () => {
     );
     expect(services.reviewerQueue.loadDetailContext).toHaveBeenCalledTimes(1);
     expect(services.reviewerQueue.previewBatch).toHaveBeenCalledTimes(1);
+    expect(services.reviewerQueue.executeBatch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actor: { userId: "reviewer-user" },
+        request: batchBody,
+        permission: expect.objectContaining({
+          actorUserId: "reviewer-user",
+          canReadQueue: true,
+          canManageQueue: true,
+        }),
+      }),
+    );
+  });
+
+  it("returns a closed reviewer batch refusal when queue.manage is denied", async () => {
+    const services = serviceFixture();
+    vi.mocked(services.authorization.requirePermission).mockImplementation(async (permission) => {
+      if (permission === permissionValues.queueManage) {
+        throw new AuthorizationError({ userId: "missing-manage" }, permission);
+      }
+    });
+
+    const response = await handleItotoriApiRequest(
+      {
+        method: "POST",
+        pathname: "/api/reviewer/queue/batch-confirm",
+        body: {
+          action: reviewerQueueActionValues.approve,
+          actorUserId: "missing-manage",
+          selections: [
+            {
+              reviewItemId: "reviewer-queue-1",
+              expectedSourceRevisionId: "source-revision-1",
+            },
+          ],
+        },
+      },
+      services,
+    );
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toMatchObject({
+      refusedAll: true,
+      appliedAll: false,
+      applied: [
+        expect.objectContaining({
+          kind: "refused",
+          status: reviewerBatchPreviewStatusValues.permissionDeniedManage,
+        }),
+      ],
+    });
+    expect(services.reviewerQueue.executeBatch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        permission: expect.objectContaining({ canManageQueue: false }),
+      }),
+    );
   });
 
   it("returns denied reviewer detail without calling the evidence-backed detail service", async () => {
@@ -2169,7 +2245,79 @@ function serviceFixture(): ItotoriApiServices {
         allAllowed: false,
         permissionDenied: !permission.canReadQueue,
       })),
+      executeBatch: vi.fn(async ({ request, permission }) =>
+        makeApiBatchExecuteResult(request, permission),
+      ),
     },
+  };
+}
+
+function makeApiBatchExecuteResult(
+  request: Parameters<ItotoriApiServices["reviewerQueue"]["executeBatch"]>[0]["request"],
+  permission: Parameters<ItotoriApiServices["reviewerQueue"]["executeBatch"]>[0]["permission"],
+): ReviewerBatchExecuteResult {
+  const preview = {
+    ...fixtureAllAllowedPreview(),
+    request,
+    permission,
+    allAllowed: permission.canManageQueue,
+    permissionDenied: !permission.canReadQueue,
+  };
+  if (!permission.canManageQueue) {
+    const denialReason =
+      permission.denialReasons.find((reason) => reason.includes(permissionValues.queueManage)) ??
+      `user ${permission.actorUserId} is missing permission queue.manage`;
+    return {
+      request,
+      preview,
+      applied: request.selections.map((selection) => ({
+        kind: "refused" as const,
+        reviewItemId: selection.reviewItemId,
+        status: reviewerBatchPreviewStatusValues.permissionDeniedManage,
+        code: "reviewer_batch_skipped" as const,
+        message: denialReason,
+        diagnostics: [
+          {
+            code: "reviewer_batch_permission_denied_manage",
+            message: denialReason,
+          },
+        ],
+      })),
+      refusedAll: true,
+      appliedAll: false,
+    };
+  }
+  const item = fixtureAllAllowedPreview().items[0]?.item;
+  if (item === null || item === undefined) {
+    throw new Error("fixtureAllAllowedPreview must include an item");
+  }
+  return {
+    request,
+    preview,
+    applied: request.selections.map((selection) => ({
+      kind: "applied" as const,
+      reviewItemId: selection.reviewItemId,
+      result: {
+        item: { ...item, reviewItemId: selection.reviewItemId },
+        transition: {
+          transitionId: `transition-${selection.reviewItemId}`,
+          reviewItemId: selection.reviewItemId,
+          localeBranchId: item.localeBranchId,
+          sourceRevisionId: selection.expectedSourceRevisionId,
+          itemKind: item.itemKind,
+          action: request.action,
+          priorState: item.state,
+          nextState: "accepted",
+          actorUserId: request.actorUserId,
+          affectedArtifactIds: [],
+          diagnostics: [],
+          metadata: { batchActionId: "batch-action-api-test" },
+          createdAt: new Date("2026-01-01T00:00:00.000Z"),
+        },
+      },
+    })),
+    refusedAll: false,
+    appliedAll: true,
   };
 }
 
