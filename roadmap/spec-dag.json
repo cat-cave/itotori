@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "exported_at": "2026-06-28T04:04:40.969Z",
+  "exported_at": "2026-06-28T04:08:43.930Z",
   "registries": {
     "groups": [
       {
@@ -29574,19 +29574,19 @@
       "title": "Make local qd CI own DB lifecycle safely across worktrees",
       "kind": "feature",
       "milestone": null,
-      "status": "ready",
+      "status": "claimed",
       "priority": "P1",
       "estimate_points": 1,
       "risk": "medium",
-      "owner": null,
-      "branch": null,
+      "owner": "orchestrator-ci-db-parallel-safe",
+      "branch": "repair/ci-db-parallel-safe",
       "spec": "Add a local qd/full-CI wrapper that owns db-up, db-wait, and db-down, and avoids fixed-port collisions between parallel worktrees. The GitHub workflow manages compose, but qd ci currently runs just ci directly and can collide on the default database port.",
       "acceptance": "Running qd CI from two worktrees either derives distinct database ports or fails before starting with a clear diagnostic; the local full-CI command starts and stops its own database stack; failure leaves no orphaned compose stack.",
       "validation": null,
       "context": null,
       "created_at": "2026-06-28T03:34:25.968Z",
-      "updated_at": "2026-06-28T03:34:25.968Z",
-      "claimed_at": null,
+      "updated_at": "2026-06-28T04:08:32.310Z",
+      "claimed_at": "2026-06-28T04:08:32.310Z",
       "done_at": null,
       "group_name": null,
       "status_reason": null,
