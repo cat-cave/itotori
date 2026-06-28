@@ -70,17 +70,9 @@ test("qd full CI tears down the compose stack when CI fails", () => {
   const fixture = createWrapperFixture();
   const result = spawnSync(process.execPath, [scriptPath], {
     cwd: fixture.repoRoot,
-    env: {
-      ...process.env,
-      PATH: `${fixture.binDir}${path.delimiter}${process.env.PATH ?? ""}`,
-      DATABASE_URL: "postgres://itotori:itotori@127.0.0.1:55433/itotori",
-      ITOTORI_QD_DB_PORT_BASE: "61200",
-      ITOTORI_QD_DB_PORT_SPAN: "10",
-      ITOTORI_QD_DB_LOCK_DIR: fixture.lockDir,
-      ITOTORI_QD_DB_SKIP_PORT_PROBE: "1",
+    env: createWrapperEnv(fixture, {
       JUST_FAKE_FAIL_CI: "1",
-      JUST_FAKE_LOG: fixture.logPath,
-    },
+    }),
     encoding: "utf8",
   });
 
@@ -105,6 +97,61 @@ test("qd full CI tears down the compose stack when CI fails", () => {
     );
   }
 });
+
+test("qd full CI honors an explicit compose env path override in wrapper subprocesses", () => {
+  const fixture = createWrapperFixture();
+  const composeEnvPath = ".tmp/itotori-db/custom-wrapper.env";
+  const result = spawnSync(process.execPath, [scriptPath], {
+    cwd: fixture.repoRoot,
+    env: createWrapperEnv(fixture, {
+      ITOTORI_DB_COMPOSE_ENV_PATH: composeEnvPath,
+    }),
+    encoding: "utf8",
+  });
+
+  assert.equal(result.status, 0, [result.stdout, result.stderr].filter(Boolean).join("\n"));
+  const calls = readFileSync(fixture.logPath, "utf8")
+    .trim()
+    .split("\n")
+    .map((line) => JSON.parse(line));
+  assert.deepEqual(
+    calls.map((call) => call.args.join(" ")),
+    ["db-up", "db-wait", "ci", "db-down"],
+  );
+  for (const call of calls) {
+    assert.equal(call.env.ITOTORI_DB_COMPOSE_ENV_PATH, composeEnvPath);
+  }
+});
+
+const qdWrapperEnvKeys = [
+  "COMPOSE_DISABLE_ENV_FILE",
+  "COMPOSE_PROJECT_NAME",
+  "DATABASE_URL",
+  "ITOTORI_DB_COMPOSE_ENV_PATH",
+  "ITOTORI_QD_DB_LOCK_DIR",
+  "ITOTORI_QD_DB_PORT",
+  "ITOTORI_QD_DB_PORT_BASE",
+  "ITOTORI_QD_DB_PORT_SPAN",
+  "ITOTORI_QD_DB_SKIP_PORT_PROBE",
+  "ITOTORI_QD_FULL_CI",
+];
+
+function createWrapperEnv(fixture, overrides = {}) {
+  const env = { ...process.env };
+  for (const key of qdWrapperEnvKeys) delete env[key];
+
+  return {
+    ...env,
+    PATH: `${fixture.binDir}${path.delimiter}${process.env.PATH ?? ""}`,
+    DATABASE_URL: "postgres://itotori:itotori@127.0.0.1:55433/itotori",
+    ITOTORI_QD_DB_PORT_BASE: "61200",
+    ITOTORI_QD_DB_PORT_SPAN: "10",
+    ITOTORI_QD_DB_LOCK_DIR: fixture.lockDir,
+    ITOTORI_QD_DB_SKIP_PORT_PROBE: "1",
+    JUST_FAKE_LOG: fixture.logPath,
+    ...overrides,
+  };
+}
 
 function createWrapperFixture() {
   const dir = mkdtempSync(path.join(os.tmpdir(), "qd-full-ci-"));
