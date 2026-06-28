@@ -907,20 +907,6 @@ function normalizeUsage(value: unknown): TokenUsage {
  * allow-list (call_3 returned HTTP 404 ZDR envelope); the math is still
  * correct because the value flows verbatim through
  * `decimalUsdStringToMicros` whenever a provider DOES surface it.
- *
- * The endpoint-pricing fallback path (recompute spend from per-token
- * prices advertised in `openrouter_metadata.endpoints`) survives in the
- * codebase via {@link normalizeOpenRouterCostFromEndpointPricing}. The
- * 2026-06-25 audit's "keep + fix" verdict per ITOTORI-224 (the
- * `X-OpenRouter-Metadata: enabled` header IS supported, per call_1 vs
- * call_2 diff) — KEEP + DOCUMENT branch was selected for ITOTORI-233:
- * the path is NOT wired into the active normalizer because `usage.cost`
- * is the canonical source of truth (cost-audit §1.2: "must be read as
- * the source of truth, never recomputed"), but it is preserved as a
- * documented sanity-check seam for a future reconciler that wants to
- * cross-validate `usage.cost` against the endpoint pricing block; see
- * the doc-comment on `normalizeOpenRouterCostFromEndpointPricing` for
- * the activation criteria.
  */
 function normalizeOpenRouterCost(response: Record<string, unknown>): ProviderCost {
   const usage = isRecord(response.usage) ? response.usage : undefined;
@@ -1089,78 +1075,6 @@ function jsonValueOrUndefined(value: unknown): JsonValue | undefined {
   return undefined;
 }
 
-/**
- * ITOTORI-233 — endpoint-pricing recompute path, KEEP + DOCUMENT.
- *
- * 2026-06-25 audit verdict (docs/audits/openrouter-wiring-audit-2026-06-25.md
- * §3-E + §4-5): the `X-OpenRouter-Metadata: enabled` header IS empirically
- * supported (call_1 vs call_2 diff in
- * docs/openrouter-integration-evidence/2026-06-25.json shows the
- * `openrouter_metadata.endpoints[]` block only surfaces when the header is
- * present), and itotori sends the header by default (see
- * `this.fetchImpl` headers above). The path is therefore NOT dead code —
- * it CAN fire — but it is intentionally NOT wired into the active
- * normalizer because:
- *
- *   1. `usage.cost` is the canonical real-cost contract per
- *      docs/openrouter-integration.md §5.2 (resolved DOC-AMBIGUOUS-6 /
- *      cost-audit §1.2: "must be read as the source of truth, never
- *      recomputed"). Wiring a recompute-from-endpoint-pricing fallback
- *      in front of an error would let a future regression silently
- *      replace the authoritative billed amount with a per-token-pricing
- *      estimate that does NOT account for `cache_discount`, BYOK
- *      adjustments, or upstream renegotiations.
- *   2. The math here also predates ITOTORI-233's cache-aware posture:
- *      it does not subtract cached tokens at the implicit-cache
- *      discount rate. Activating it without first folding
- *      `pricing.input_cache_read` / `pricing.input_cache_write` into
- *      the calculation would double-count the discount.
- *
- * Activation criteria (for a future reconciler that wants to
- * cross-validate `usage.cost` against the endpoint pricing block — NOT
- * for use as a fallback in front of `normalizeOpenRouterCost`):
- *
- *   (a) The selected endpoint's `pricing.prompt` / `pricing.completion`
- *       are present and non-negative decimal strings.
- *   (b) `tokenUsage.promptTokens` / `tokenUsage.completionTokens` are
- *       both populated (a successful OR response always carries them).
- *   (c) When `tokenUsage.cacheReadTokens > 0`, the calculation MUST
- *       subtract `cacheReadTokens * pricing.input_cache_read` and add
- *       `cacheWriteTokens * pricing.input_cache_write` so the
- *       recomputed value compares cleanly against `usage.cost` which
- *       is already net of `cache_discount` (DOC-AMBIGUOUS-6 / §5.3).
- *
- * The function below implements (a) + (b) but NOT (c). Wiring it as a
- * cross-validator would require extending it; doing that here without
- * a consuming caller would just be speculative speccing. The path
- * survives so a future reconciler (likely ITOTORI-235's
- * generation-lookup variant) can extend and call it.
- */
-function normalizeOpenRouterCostFromEndpointPricing(
-  response: Record<string, unknown>,
-  tokenUsage: TokenUsage,
-): ProviderCost | undefined {
-  const endpointPricing = selectedOpenRouterPricing(response);
-  const promptPriceUsd = finiteNonNegativeNumber(endpointPricing?.prompt);
-  const completionPriceUsd = finiteNonNegativeNumber(endpointPricing?.completion);
-  if (
-    promptPriceUsd !== undefined &&
-    completionPriceUsd !== undefined &&
-    tokenUsage.promptTokens !== undefined &&
-    tokenUsage.completionTokens !== undefined
-  ) {
-    return {
-      costKind: "billed",
-      currency: "USD",
-      amountMicrosUsd: usdToMicros(
-        tokenUsage.promptTokens * promptPriceUsd + tokenUsage.completionTokens * completionPriceUsd,
-      ),
-      pricingSnapshotId: "openrouter_response_endpoint_pricing",
-    };
-  }
-  return undefined;
-}
-
 function buildProviderRunRecord(input: {
   descriptor: ProviderDescriptor;
   request: ModelInvocationRequest;
@@ -1320,11 +1234,6 @@ function selectedOpenRouterEndpoint(body: unknown): Record<string, unknown> | un
   return endpoints.available.find(
     (endpoint) => isRecord(endpoint) && endpoint.selected === true,
   ) as Record<string, unknown> | undefined;
-}
-
-function selectedOpenRouterPricing(body: unknown): Record<string, unknown> | undefined {
-  const selectedEndpoint = selectedOpenRouterEndpoint(body);
-  return isRecord(selectedEndpoint?.pricing) ? selectedEndpoint.pricing : undefined;
 }
 
 /**
@@ -1531,23 +1440,6 @@ function assignNumber<T extends object, K extends keyof T>(
   if (typeof value === "number" && Number.isFinite(value)) {
     target[key] = value as T[K];
   }
-}
-
-function finiteNonNegativeNumber(value: unknown): number | undefined {
-  if (typeof value === "number" && Number.isFinite(value) && value >= 0) {
-    return value;
-  }
-  if (typeof value === "string" && value.trim() !== "") {
-    const parsed = Number(value);
-    if (Number.isFinite(parsed) && parsed >= 0) {
-      return parsed;
-    }
-  }
-  return undefined;
-}
-
-function usdToMicros(value: number): number {
-  return Math.round(value * 1_000_000);
 }
 
 function isJsonValue(value: unknown): value is JsonValue {
