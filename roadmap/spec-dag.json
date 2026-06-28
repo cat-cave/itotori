@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "exported_at": "2026-06-28T04:40:16.701Z",
+  "exported_at": "2026-06-28T05:22:20.094Z",
   "registries": {
     "groups": [
       {
@@ -29546,7 +29546,7 @@
       "title": "Normalize alpha qd verification commands",
       "kind": "feature",
       "milestone": null,
-      "status": "claimed",
+      "status": "done",
       "priority": "P1",
       "estimate_points": 1,
       "risk": "medium",
@@ -29557,9 +29557,9 @@
       "validation": null,
       "context": null,
       "created_at": "2026-06-28T03:34:19.012Z",
-      "updated_at": "2026-06-28T04:40:13.003Z",
+      "updated_at": "2026-06-28T05:22:15.741Z",
       "claimed_at": "2026-06-28T04:40:13.003Z",
-      "done_at": null,
+      "done_at": "2026-06-28T05:22:15.741Z",
       "group_name": null,
       "status_reason": null,
       "check_command": null,
@@ -44236,6 +44236,42 @@
       "agent": null,
       "started_at": "2026-06-28T04:37:36.004Z",
       "finished_at": "2026-06-28T04:37:36.004Z",
+      "summary": "Merge recorded with squash at commit HEAD",
+      "log_path": null
+    },
+    {
+      "id": "3a626e3d-9b35-49d9-a2f1-a4912eac3d41",
+      "node_id": "qd-alpha-verify-commands",
+      "kind": "check",
+      "status": "passed",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-28T05:15:41.923Z",
+      "finished_at": "2026-06-28T05:16:09.006Z",
+      "summary": "check command passed: nix develop --command bash -lc 'just check'",
+      "log_path": "/home/trevor/projects/itotori/.qd/logs/check-qd-alpha-verify-commands-2026-06-28T05-15-41-923Z.log"
+    },
+    {
+      "id": "2ed1b876-9574-4e0c-8afc-aeca5d738447",
+      "node_id": "qd-alpha-verify-commands",
+      "kind": "ci",
+      "status": "passed",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-28T05:16:23.326Z",
+      "finished_at": "2026-06-28T05:20:47.464Z",
+      "summary": "ci command passed: nix develop --command bash -lc 'just qd-full-ci'",
+      "log_path": "/home/trevor/projects/itotori/.qd/logs/ci-qd-alpha-verify-commands-2026-06-28T05-16-23-326Z.log"
+    },
+    {
+      "id": "fd73617c-d53c-466c-9c91-2eb6569207b9",
+      "node_id": "qd-alpha-verify-commands",
+      "kind": "merge",
+      "status": "recorded",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-28T05:22:15.741Z",
+      "finished_at": "2026-06-28T05:22:15.741Z",
       "summary": "Merge recorded with squash at commit HEAD",
       "log_path": null
     }
