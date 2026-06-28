@@ -1334,7 +1334,8 @@ function selectedOpenRouterPricing(body: unknown): Record<string, unknown> | und
  * check on every legitimate routed call.
  *
  * Entries cover the providers itotori's dev-pair table reaches for
- * (see dev-pair.ts). Unknown providers fall through to the
+ * (see dev-pair.ts) plus the evidence-backed providerIds declared in
+ * presets/localize-project.pair-policy.json. Unknown providers fall through to the
  * case-insensitive comparison in `openRouterProviderIdsMatch` — still
  * safer than the historical strict-equality path and the registry is
  * additive: register new pairs here as they're empirically observed.
@@ -1348,6 +1349,10 @@ const OPENROUTER_KNOWN_PROVIDERS: ReadonlyArray<{
   { slug: "google-vertex", name: "Google Vertex" },
   { slug: "openai", name: "OpenAI" },
   { slug: "deepinfra", name: "DeepInfra" },
+  { slug: "wafer", name: "Wafer" },
+  { slug: "digitalocean", name: "DigitalOcean" },
+  { slug: "morph", name: "Morph" },
+  { slug: "atlas-cloud", name: "AtlasCloud" },
 ]);
 
 /**

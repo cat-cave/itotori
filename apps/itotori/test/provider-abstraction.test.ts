@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it, vi } from "vitest";
 import {
   AccountZdrAssertionError,
@@ -14,6 +17,13 @@ import {
   type ProviderRunArtifact,
   type ProviderRunArtifactRecorder,
 } from "../src/providers/index.js";
+
+const HERE = dirname(fileURLToPath(import.meta.url));
+const REPO_ROOT = resolve(HERE, "../../..");
+const LOCALIZE_PROJECT_PAIR_POLICY_PATH = resolve(
+  REPO_ROOT,
+  "presets/localize-project.pair-policy.json",
+);
 
 describe("provider capabilities", () => {
   it("selects only explicitly supported structured-output modes", () => {
@@ -282,6 +292,96 @@ describe("OpenRouterProvider", () => {
       }),
     });
     expect(recorder.artifacts[0]?.adapterMetadata).toHaveProperty("openrouterMetadata");
+  });
+
+  it("accepts evidence-backed localize-project provider slug/name pairs", async () => {
+    const coveredProviderIds = new Set(
+      LOCALIZE_PROJECT_PROVIDER_NAME_FIXTURES.map((fixture) => fixture.providerId),
+    );
+    expect([...coveredProviderIds].sort()).toEqual(loadLocalizeProjectProviderIds());
+
+    for (const fixture of LOCALIZE_PROJECT_PROVIDER_NAME_FIXTURES) {
+      const recorder = memoryRecorder();
+      const fetchMock = vi.fn(async () =>
+        jsonResponse({
+          id: `gen-${fixture.providerId}`,
+          model: "deepseek/deepseek-v4-flash",
+          provider: fixture.observedProviderName,
+          choices: [
+            {
+              finish_reason: "stop",
+              message: {
+                role: "assistant",
+                content: '{"targetText":"Hello, {player}."}',
+              },
+            },
+          ],
+          usage: {
+            prompt_tokens: 11,
+            completion_tokens: 7,
+            total_tokens: 18,
+            cost: 0.000019,
+          },
+        }),
+      ) as unknown as typeof fetch;
+      const provider = new OpenRouterProvider({
+        modelId: "deepseek/deepseek-v4-flash",
+        apiKey: "test-key",
+        fetch: fetchMock,
+        capabilities: openRouterCapabilitiesForPrivateInputs(),
+        live: { enabled: true, artifactRecorder: recorder, rawCapture: "disabled" },
+      });
+
+      const result = await provider.invoke(
+        jsonSchemaRequest("deepseek/deepseek-v4-flash", fixture.providerId),
+      );
+
+      expect(result.providerRun.status).toBe("succeeded");
+      expect(result.providerRun.provider).toMatchObject({
+        requestedProviderId: fixture.providerId,
+        upstreamProvider: fixture.observedProviderName,
+      });
+      expect(recorder.artifacts).toHaveLength(1);
+    }
+  });
+
+  it("still rejects a Fireworks-pinned response from an unrelated provider", async () => {
+    const fetchMock = vi.fn(async () =>
+      jsonResponse({
+        id: "gen-fireworks-routed-elsewhere",
+        model: "deepseek/deepseek-v4-flash",
+        provider: "AtlasCloud",
+        choices: [
+          {
+            finish_reason: "stop",
+            message: {
+              role: "assistant",
+              content: '{"targetText":"Hello, {player}."}',
+            },
+          },
+        ],
+        usage: {
+          prompt_tokens: 11,
+          completion_tokens: 7,
+          total_tokens: 18,
+          cost: 0.000019,
+        },
+      }),
+    ) as unknown as typeof fetch;
+    const provider = new OpenRouterProvider({
+      modelId: "deepseek/deepseek-v4-flash",
+      apiKey: "test-key",
+      fetch: fetchMock,
+      capabilities: openRouterCapabilitiesForPrivateInputs(),
+      live: { enabled: true, artifactRecorder: memoryRecorder(), rawCapture: "disabled" },
+    });
+
+    await expect(
+      provider.invoke(jsonSchemaRequest("deepseek/deepseek-v4-flash", "fireworks")),
+    ).rejects.toMatchObject({
+      code: "pair_mismatch",
+      message: expect.stringContaining("AtlasCloud"),
+    });
   });
 
   it("throws provider errors carrying failed run records", async () => {
@@ -859,6 +959,41 @@ describe("FakeModelProvider", () => {
     expect(generate).not.toHaveBeenCalled();
   });
 });
+
+const LOCALIZE_PROJECT_PROVIDER_NAME_FIXTURES = [
+  { providerId: "fireworks", observedProviderName: "Fireworks" },
+  { providerId: "deepinfra", observedProviderName: "DeepInfra" },
+  { providerId: "wafer", observedProviderName: "Wafer" },
+  { providerId: "digitalocean", observedProviderName: "DigitalOcean" },
+  { providerId: "morph", observedProviderName: "Morph" },
+  { providerId: "atlas-cloud", observedProviderName: "AtlasCloud" },
+] as const;
+
+function loadLocalizeProjectProviderIds(): string[] {
+  const parsed = JSON.parse(readFileSync(LOCALIZE_PROJECT_PAIR_POLICY_PATH, "utf8")) as unknown;
+  const providerIds = new Set<string>();
+  collectProviderIds(parsed, providerIds);
+  return [...providerIds].sort();
+}
+
+function collectProviderIds(value: unknown, providerIds: Set<string>): void {
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      collectProviderIds(item, providerIds);
+    }
+    return;
+  }
+  if (typeof value !== "object" || value === null) {
+    return;
+  }
+  for (const [key, child] of Object.entries(value)) {
+    if (key === "providerId" && typeof child === "string") {
+      providerIds.add(child);
+      continue;
+    }
+    collectProviderIds(child, providerIds);
+  }
+}
 
 /**
  * ITOTORI-227 — minimal request fixture for the wire-level provider.zdr
