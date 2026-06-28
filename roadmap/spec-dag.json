@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "exported_at": "2026-06-28T06:07:45.523Z",
+  "exported_at": "2026-06-28T06:14:49.734Z",
   "registries": {
     "groups": [
       {
@@ -41427,7 +41427,7 @@
       "node_id": "UNIV-009",
       "run_id": null,
       "severity": "P1",
-      "status": "open",
+      "status": "resolved",
       "title": "qd read commands require writable .qd database in read-only audit worktrees",
       "path": null,
       "line": null,
@@ -41435,7 +41435,7 @@
       "expected": null,
       "suggested_fix": null,
       "created_at": "2026-06-28T00:18:50.649Z",
-      "resolved_at": null
+      "resolved_at": "2026-06-28T06:14:42.006Z"
     },
     {
       "id": "1a333f8d-9994-472d-8127-e0f190fd0c3a",
