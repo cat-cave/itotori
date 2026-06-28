@@ -52,8 +52,8 @@ use std::fs;
 use std::path::PathBuf;
 
 use utsushi_reallive::{
-    GlobalSave, ReadFlags, SystemSave, GLOBAL_SAVE_MAGIC, SWEETIE_HD_COMPILER_VERSION,
-    SYSTEM_SAVE_MAGIC,
+    GLOBAL_SAVE_MAGIC, GlobalSave, ReadFlags, SWEETIE_HD_COMPILER_VERSION, SYSTEM_SAVE_MAGIC,
+    SystemSave,
 };
 
 // Default name of the Sweetie HD title directory inside the

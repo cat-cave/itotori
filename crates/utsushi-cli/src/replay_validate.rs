@@ -313,7 +313,10 @@ mod tests {
             "--expect-textline-contains".into(),
             "STELLA-ALPHA-EN-US-SENTINEL".into(),
             "--print-replay-log".into(),
-            missing_seen_path.with_extension("json").display().to_string(),
+            missing_seen_path
+                .with_extension("json")
+                .display()
+                .to_string(),
         ];
 
         let err = run_replay_validate_command(&args)
