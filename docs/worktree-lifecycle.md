@@ -22,9 +22,11 @@ are not durable state.
 - Inspect dirty and untracked files before removing a worktree.
 - Do not treat untracked files as disposable until the owning worker, branch,
   and node state have been checked.
-- Never read, print, copy, or commit `.env` or `.env.*` files. Worktrees may
-  consume secrets only as process environment variables already provided by the
-  invoking shell or user.
+- Never print, copy into artifacts, stage, or commit `.env`, `.env.*`, secret
+  values, private corpora, or copyrighted local material. Approved local/live
+  workflows may explicitly load scoped local-only env or secret files for the
+  intended validation work, but diagnostics must name variables without dumping
+  values.
 - Keep raw provider logs, secret-bearing output, local caches, and large
   generated artifacts out of git.
 - A blocked node must have both explicit DAG state and a durable reason record.
@@ -65,10 +67,12 @@ git worktree list --porcelain
 ```
 
 Before any command that displays paths from a worktree, load and use these
-helpers. They detect tracked, staged, or untracked env filenames silently, stop
-with a generic message, and filter env path patterns out of displayed status or
-diff output. Do not replace them with raw `git status --untracked-files=all` or
-raw untracked-file path listings.
+helpers. They detect tracked or staged env filenames silently, stop with a
+generic message, and filter env path patterns out of displayed status or diff
+output. Untracked or ignored local env files may exist for approved workflows;
+do not list them in status, diff, cleanup, or audit output. Do not replace these
+helpers with raw `git status --untracked-files=all` or raw untracked-file path
+listings.
 
 ```sh
 env_path_guard() {
@@ -81,11 +85,6 @@ env_path_guard() {
 
   if git -C "$repo" diff --cached --name-only -z | rg -z -q '(^|/)\.env(\.|$)'; then
     echo "staged env file detected; stop"
-    exit 1
-  fi
-
-  if git -C "$repo" ls-files --others --exclude-standard -z | rg -z -q '(^|/)\.env(\.|$)'; then
-    echo "untracked env file detected; stop"
     exit 1
   fi
 }
@@ -250,8 +249,10 @@ Implementation workers write only in their assigned worktree and scope.
   merge them back into the primary spec branch only after checking their write
   sets are disjoint.
 - Keep generated output in ignored paths such as `.tmp/`.
-- Do not read or print `.env` files. If a command needs a secret, require the
-  user or runner to provide it as process environment.
+- Do not print `.env` files, secret values, private corpus text, or copyrighted
+  local material. If a command needs a secret, use process environment or an
+  approved launcher/env-check command that explicitly reads a requested
+  local-only env file and masks values.
 - Before handing off, run the node verification commands that are relevant to
   the edited scope and summarize failures with exact command output.
 
@@ -331,8 +332,8 @@ For P2/P3 findings:
 Before merge, the orchestrator verifies:
 
 - `safe_worktree_status .` reports a clean tree or only intentionally retained
-  non-secret untracked files; if the env guard reports an env file, stop without
-  printing the path;
+  non-secret untracked files; untracked or ignored env files remain omitted from
+  output;
 - no `.env` or `.env.*` path is tracked or staged;
 - diff matches the node deliverables and does not include unrelated refactors;
 - all required verification commands passed;
@@ -355,11 +356,6 @@ fi
 
 if git diff --cached --name-only -z | rg -z -q '(^|/)\.env(\.|$)'; then
   echo "staged env file detected; stop"
-  exit 1
-fi
-
-if git ls-files --others --exclude-standard -z | rg -z -q '(^|/)\.env(\.|$)'; then
-  echo "untracked env file detected; stop"
   exit 1
 fi
 ```

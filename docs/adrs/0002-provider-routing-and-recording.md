@@ -60,13 +60,17 @@ local inference servers, or any other live credential.
 
 ## Secret Handling Rules
 
-`.env` may contain a limited OpenRouter key for a developer or runner, but
-agents, docs, scripts, tests, and application code must not read, print,
-display, expose, or commit `.env`.
+`.env` or other local-only secret files may contain a limited OpenRouter key for
+a developer or runner, but agents, docs, scripts, tests, and application code
+must not print, display, expose, artifact, stage, or commit secret files or
+values.
 
 Provider credentials may be supplied only through one of these channels:
 
 - Process environment that the user or invoking shell has already loaded.
+- Approved local/live launchers that explicitly read a requested local-only env
+  or secret file, mask values, and hydrate only scoped allowlisted variables
+  before provider construction.
 - Explicit local-only config under an ignored path such as `.tmp/`.
 - A secret manager used by a deployment environment, once deployment exists.
 
@@ -74,11 +78,12 @@ Provider credentials must not be supplied through committed config, test
 fixtures, prompt presets, roadmap nodes, audit reports, markdown examples, URL
 query strings, or provider run artifacts.
 
-Repository code must not auto-load `.env` with `dotenv` or equivalent behavior.
-If a live run needs a missing secret, the command should fail with a message
-asking the owner to export the secret or run from an environment where it is
-already loaded. The failure message must not print secret names together with
-surrounding environment dumps.
+Provider and application internals must not implicitly auto-load a project
+`.env` with `dotenv` or equivalent behavior. Approved local/live launchers may
+explicitly load scoped env files before invoking provider code. If a live run
+needs a missing secret, the command should fail with a message asking the owner
+to export the secret or run an approved env-check/load command. The failure
+message must not print secret names together with surrounding environment dumps.
 
 When OpenRouter keys are used, they should be limited, rotatable, and scoped to
 cheap experiment budgets. A leaked or over-permissive key is a security incident,
@@ -318,9 +323,10 @@ provider transcripts.
 Before merging provider-related work:
 
 1. Confirm `just check` and public CI pass without live provider credentials.
-2. Confirm code and scripts do not read `.env` or auto-load `.env` files.
-3. Confirm live provider paths require an explicit opt-in flag or local-only
-   config.
+2. Confirm provider/application internals do not implicitly read or auto-load
+   `.env` files.
+3. Confirm live provider paths require an explicit opt-in flag, process env, or
+   approved local-only env/config loader.
 4. Confirm raw prompt logging is disabled by default and visibly labeled when
    enabled.
 5. Confirm OpenRouter runs record route identity and capability facts instead

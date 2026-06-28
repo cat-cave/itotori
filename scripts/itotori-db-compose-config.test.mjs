@@ -30,7 +30,7 @@ test("GitHub workflows use the local db compose path for Postgres parity", () =>
   }
 });
 
-test("db recipes disable implicit .env loading", () => {
+test("db recipes use explicit compose env files without project-global .env leakage", () => {
   assert.match(justfile, /export COMPOSE_DISABLE_ENV_FILE := '1'\n/u);
   assert.match(
     justfile,

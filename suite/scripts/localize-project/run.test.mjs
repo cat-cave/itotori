@@ -670,6 +670,75 @@ test("live fake subprocess output redacts private source, target, and Seen.txt p
   }
 });
 
+test("--env-file explicitly loads scoped live env without printing values", () => {
+  const metadata = writeProjectMetadata("fixture-alpha", {
+    game_id: "fixture-reallive-game",
+    game_version: "2026.06.test",
+    source_profile_id: "fixture-reallive-profile",
+    source_locale: "ja-JP-x-test",
+  });
+  const policy = writePairPolicy("fixture-alpha");
+  const work = mkdtempSync(join(tmpdir(), "itotori-env-file-live-"));
+  const fakeBin = join(work, "bin");
+  const sourceRoot = join(work, "private-env-source-root");
+  const targetRoot = join(work, "private-env-target-root");
+  const envFilePath = join(work, ".env.localize-project");
+  const sourceSeen = join(sourceRoot, "REALLIVEDATA", "Seen.txt");
+  const secretValue = "sk-or-v1-fake-localize-secret";
+  mkdirSync(join(sourceRoot, "REALLIVEDATA"), { recursive: true });
+  mkdirSync(fakeBin, { recursive: true });
+  writeFileSync(sourceSeen, "synthetic source seen bytes\n");
+  writeFileSync(
+    envFilePath,
+    [
+      `OPENROUTER_API_KEY=${secretValue}`,
+      `ITOTORI_REAL_GAME_ROOT=${sourceRoot}`,
+      `TARGET=${targetRoot}`,
+      "ITOTORI_ALLOW_FAKE_LOCALIZE_PROVIDER=1",
+      "IGNORED_VALID_KEY=ignored-value",
+      "",
+    ].join("\n"),
+  );
+  writeFakeLiveCommandBins(fakeBin);
+
+  try {
+    const result = runDriver(
+      [
+        "--project",
+        "fixture-alpha",
+        "--project-metadata",
+        metadata.path,
+        "--pair-policy",
+        policy.path,
+        "--provider-kind",
+        "fake",
+        "--env-file",
+        envFilePath,
+      ],
+      {
+        PATH: prependPath(fakeBin),
+      },
+    );
+    assert.equal(result.status, 0, `stdout:\n${result.stdout}\nstderr:\n${result.stderr}`);
+    const combined = `${result.stdout}\n${result.stderr}`;
+    for (const forbidden of [secretValue, sourceRoot, targetRoot, envFilePath]) {
+      assert.ok(
+        !combined.includes(forbidden),
+        `explicit env-file run leaked ${forbidden}; stdout:\n${result.stdout}\nstderr:\n${result.stderr}`,
+      );
+    }
+    assert.ok(
+      combined.includes("--game-root <ITOTORI_REAL_GAME_ROOT>") &&
+        combined.includes("--target <TARGET>"),
+      `explicit env-file run should still redact hydrated paths; got stdout:\n${result.stdout}\nstderr:\n${result.stderr}`,
+    );
+  } finally {
+    rmSync(metadata.dir, { recursive: true, force: true });
+    rmSync(policy.dir, { recursive: true, force: true });
+    rmSync(work, { recursive: true, force: true });
+  }
+});
+
 test("live run rejects target-root symlink before output mutation", () => {
   const metadata = writeProjectMetadata("fixture-alpha", {
     game_id: "fixture-reallive-game",

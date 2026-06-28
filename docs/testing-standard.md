@@ -351,7 +351,7 @@ Allowed in CI:
 
 Not allowed in CI:
 
-- Reading provider credentials from `.env`.
+- Reading provider credentials from `.env` or local secret files.
 - Failing because a provider key is absent.
 - Calling OpenRouter, OpenAI, Anthropic, Google, model routers, storefronts, or
   other remote APIs.
@@ -360,9 +360,10 @@ Not allowed in CI:
   payloads into committed paths.
 
 Live provider experiments are opt-in local work under the provider policy in
-`docs/orchestration-operating-model.md`. They must use credentials already
-loaded by the user, record provider/model/cost metadata in ignored artifacts, and
-commit only sanitized summaries or public fixtures.
+`docs/orchestration-operating-model.md`. They may use credentials already loaded
+by the user or explicitly loaded from approved local-only env sources, record
+provider/model/cost metadata in ignored artifacts, and commit only sanitized
+summaries or public fixtures.
 
 ## Review Checklist
 

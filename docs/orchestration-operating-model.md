@@ -213,12 +213,14 @@ endpoint, prompt logging, structured-output fallback, and recorded-fixture rules
 are defined in [ADR 0002](adrs/0002-provider-routing-and-recording.md). This
 section is the operating summary for orchestrated work.
 
-Live agent experiments may use provider keys already loaded into the process
-environment by the user or invoking shell. Keys must never be committed,
-printed, pasted into logs, or exposed in audit output. Do not read, print,
-display, expose, or commit `.env`, and do not instruct agents to inspect `.env`
-contents. If a needed secret is missing, ask the owner to export it or run the
-command from an environment where it is already loaded.
+Live agent experiments may use scoped provider keys already loaded into the
+process environment by the user or invoking shell, or explicitly loaded by an
+approved local/live launcher from a requested local-only env or secret file.
+Keys must never be committed, printed, pasted into logs, published, artifacted,
+or exposed in audit output. Diagnostics may name required variables, but must
+not dump values or surrounding environment contents. If a needed secret is
+missing, ask the owner to export it or run an approved env-check/load command
+for the scoped local file.
 
 Prefer cheap, light, modern models for Itotori agent experiments before using
 frontier models. Good candidates include:

@@ -69,10 +69,22 @@ const DEFAULT_ALPHA_TARGET_DATA_PATH = join(
 );
 const REAL_CORPUS_MANIFEST_SCHEMA = "itotori.real-corpus-manifest.v0";
 const REAL_CORPUS_ENGINE = "reallive";
+const LOCAL_ENV_FILE_ENV_VAR = "ITOTORI_LOCAL_ENV_FILE";
+const LOCAL_ENV_ALLOWLIST = new Set([
+  "OPENROUTER_API_KEY",
+  "OPENROUTER_LIVE",
+  "OPENROUTER_ZDR_ACCOUNT_ASSERTED",
+  "OPENROUTER_ZDR_DOWNGRADE",
+  "ITOTORI_ALLOW_FAKE_LOCALIZE_PROVIDER",
+  "ITOTORI_REAL_CORPUS_MANIFEST",
+  "ITOTORI_REAL_GAME_ROOT",
+  "LOCALIZE_PROJECT_SOURCE_PATH",
+  "TARGET",
+]);
 
 function usage() {
   return [
-    "usage: node suite/scripts/localize-project/run.mjs --project <NAME> [--corpus <ID>] [--dry-run] [--scene <N>] [--unit-index <N>] [--provider-kind <live|fake>] [--target-data <PATH>] [--project-metadata <PATH>] [--pair-policy <PATH>]",
+    "usage: node suite/scripts/localize-project/run.mjs --project <NAME> [--corpus <ID>] [--dry-run] [--scene <N>] [--unit-index <N>] [--provider-kind <live|fake>] [--env-file <PATH>] [--target-data <PATH>] [--project-metadata <PATH>] [--pair-policy <PATH>]",
     "",
     "Required env (unless --dry-run):",
     "  OPENROUTER_API_KEY              live OpenRouter key for the (modelId, providerId) pair",
@@ -88,6 +100,7 @@ function usage() {
     "  --scene <N>                     scene id passed to kaifuu extract / utsushi replay-validate (default 1)",
     "  --unit-index <N>                bridge unit index to translate (default 0)",
     "  --provider-kind <live|fake>     forwarded to the agentic-loop stage; fake requires ITOTORI_ALLOW_FAKE_LOCALIZE_PROVIDER=1",
+    `  --env-file <PATH>               explicitly load allowlisted local env keys (or set ${LOCAL_ENV_FILE_ENV_VAR})`,
     `  --target-data <PATH>            allowlisted alpha target data used when metadata/policy paths are omitted (default ${DEFAULT_ALPHA_TARGET_DATA_PATH})`,
     "  --project-metadata <PATH>       caller-supplied project identity metadata for extraction",
     "  --pair-policy <PATH>            caller-supplied pair-policy config for the agentic-loop stage",
@@ -102,6 +115,7 @@ function parseArgs(argv) {
     scene: 1,
     unitIndex: 0,
     providerKind: undefined,
+    envFilePath: undefined,
     targetDataPath: DEFAULT_ALPHA_TARGET_DATA_PATH,
     projectMetadataPath: undefined,
     pairPolicyPath: undefined,
@@ -150,6 +164,12 @@ function parseArgs(argv) {
         args.providerKind = value;
         break;
       }
+      case "--env-file": {
+        const value = argv[++i];
+        if (value === undefined) throw new Error("--env-file requires a value");
+        args.envFilePath = resolvePath(value);
+        break;
+      }
       case "--target-data": {
         const value = argv[++i];
         if (value === undefined) throw new Error("--target-data requires a value");
@@ -181,6 +201,72 @@ function parseArgs(argv) {
     throw new Error(`--project is required\n\n${usage()}`);
   }
   return args;
+}
+
+function parseLocalEnvValue(rawValue, lineNo) {
+  const trimmed = rawValue.trim();
+  if (trimmed.length >= 2) {
+    const quote = trimmed[0];
+    if (quote === `"` || quote === "'") {
+      if (!trimmed.endsWith(quote)) {
+        throw new Error(`local env file line ${lineNo} has an unterminated quoted value`);
+      }
+      const inner = trimmed.slice(1, -1);
+      if (quote === "'") return inner;
+      return inner.replace(/\\([nrt"\\])/gu, (_match, escaped) => {
+        switch (escaped) {
+          case "n":
+            return "\n";
+          case "r":
+            return "\r";
+          case "t":
+            return "\t";
+          default:
+            return escaped;
+        }
+      });
+    }
+  }
+  return trimmed;
+}
+
+function loadExplicitLocalEnvFile(path) {
+  let content;
+  try {
+    content = readFileSync(path, "utf8");
+  } catch (error) {
+    if (error?.code === "ENOENT") {
+      throw new Error("explicit local env file was requested but does not exist");
+    }
+    throw new Error("explicit local env file was requested but could not be read");
+  }
+
+  const lines = content.split(/\r?\n/u);
+  for (let index = 0; index < lines.length; index++) {
+    const lineNo = index + 1;
+    const rawLine = lines[index];
+    if (rawLine.includes("\0")) {
+      throw new Error(`local env file line ${lineNo} contains an unsafe NUL byte`);
+    }
+    const line = rawLine.trim();
+    if (line.length === 0 || line.startsWith("#")) continue;
+    const equalsIndex = line.indexOf("=");
+    if (equalsIndex <= 0) {
+      throw new Error(`local env file line ${lineNo} must be KEY=value`);
+    }
+    const key = line.slice(0, equalsIndex).trim();
+    if (!/^[A-Z][A-Z0-9_]*$/u.test(key)) {
+      throw new Error(`local env file line ${lineNo} has an invalid key name`);
+    }
+    if (!LOCAL_ENV_ALLOWLIST.has(key)) continue;
+    const value = parseLocalEnvValue(line.slice(equalsIndex + 1), lineNo);
+    if (value.includes("\0")) {
+      throw new Error(`local env file line ${lineNo} contains an unsafe NUL byte`);
+    }
+    if (process.env[key] === undefined) {
+      process.env[key] = value;
+    }
+  }
 }
 
 function isoTimestampUtc(now = new Date()) {
@@ -854,6 +940,11 @@ export function verifyProviderRunArtifactsAfterStage({
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
+  const requestedEnvFilePath =
+    args.envFilePath ?? (process.env[LOCAL_ENV_FILE_ENV_VAR] || undefined);
+  if (requestedEnvFilePath !== undefined) {
+    loadExplicitLocalEnvFile(resolvePath(requestedEnvFilePath));
+  }
   const { pairPolicy: policy, pairPolicyPath, projectMetadata } = loadProjectConfig(args);
   validateProjectSelection(args.project, projectMetadata, policy);
   const sentinelSubstring = policy.enUsSentinel;

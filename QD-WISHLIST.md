@@ -191,7 +191,7 @@ branch/worktree safety:
 - disjoint worker/repair/audit worktrees;
 - no duplicate checkout of the same branch;
 - inspect dirty/untracked state before cleanup;
-- never read or display `.env` files;
+- never display, stage, export, commit, or log `.env` files or secret values;
 - commit claim/export state durably.
 
 Desired qd behavior: native worktree and branch association checks, plus safe
@@ -642,8 +642,10 @@ Desired behavior:
 ### 16. Secret And Path Hygiene
 
 Motivation: qd is often used by agents. Agents must not accidentally reveal
-secret-bearing paths or env contents. The repository playbook explicitly forbids
-reading or printing `.env` and `.env.*`.
+secret-bearing paths or env contents. The repository playbook forbids printing,
+staging, exporting, committing, or logging `.env`, `.env.*`, and secret values;
+approved env-check/load commands may read explicitly requested local env files
+and must mask values.
 
 Suggested features:
 
@@ -657,15 +659,15 @@ Policy config:
 
 ```toml
 [secrets]
-forbidden_path_globs = [".env", ".env.*", "**/.env", "**/.env.*"]
+sensitive_path_globs = [".env", ".env.*", "**/.env", "**/.env.*"]
 masked_env = ["OPENROUTER_API_KEY", "DATABASE_URL"]
 ```
 
 Desired behavior:
 
 - qd can check presence/absence of required env vars without printing values;
-- qd status/diff helpers filter forbidden path names;
-- qd refuses to stage/export/print secret-bearing files unless explicitly
+- qd status/diff helpers filter sensitive path names;
+- qd refuses to stage/export/print secret-bearing files or values unless explicitly
   overridden by a human.
 
 ### 17. Project Policy Hooks
@@ -963,7 +965,7 @@ qd should not:
 - choose AI models;
 - know chat thread state;
 - know vendor-specific agent protocols;
-- read `.env`;
+- print, stage, export, commit, or log `.env` files or secret values;
 - own project-specific implementation logic;
 - replace CI systems;
 - replace human review.

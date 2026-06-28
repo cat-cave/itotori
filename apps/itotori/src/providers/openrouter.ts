@@ -1470,7 +1470,9 @@ function isJsonValue(value: unknown): value is JsonValue {
 // requires for a production-tier seam:
 //
 //   1. Reads `OPENROUTER_API_KEY` from `process.env` at construction.
-//      Never touches `.env` on disk: that's the shell / direnv's job.
+//      This provider does not parse env files directly; shells, direnv,
+//      secret managers, or approved local/live launchers must hydrate the
+//      process environment first.
 //      Missing key → `OpenRouterMissingApiKeyError` at construction,
 //      not on first invoke, so the failure is loud and traceable to the
 //      starting process.
@@ -1494,7 +1496,7 @@ export class OpenRouterMissingApiKeyError extends Error {
   constructor(readonly envVarName: string) {
     super(
       `OpenRouterModelProvider requires environment variable ${envVarName} to be set at construction; ` +
-        `it reads from process.env directly and never opens a .env file`,
+        `it reads from process.env directly and does not parse env files itself`,
     );
     this.name = "OpenRouterMissingApiKeyError";
   }

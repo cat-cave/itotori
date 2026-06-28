@@ -223,9 +223,12 @@ hello-replay-validate:
 #   ITOTORI_REAL_GAME_ROOT           simple single-corpus fallback
 #   LOCALIZE_PROJECT_SOURCE_PATH     direct readonly source root fallback
 #   TARGET                          writable path for the patched copy
+# These may already be in the process environment, or loaded explicitly with
+# --env-file <PATH> / ITOTORI_LOCAL_ENV_FILE from a local-only ignored file.
 #
 # Usage:
 #   just localize-project --project sweetie-hd-alpha-1
+#   just localize-project --project sweetie-hd-alpha-1 --env-file .env.localize-project
 #   just localize-project --dry-run --project sweetie-hd-alpha-1
 localize-project *ARGS:
     pnpm --filter @itotori/localization-bridge-schema build
