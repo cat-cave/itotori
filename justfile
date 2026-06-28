@@ -16,6 +16,7 @@ check:
     node --test scripts/itotori-db-compose-config.test.mjs
     node scripts/qd-wrapper.test.mjs
     node scripts/qd-lifecycle.test.mjs
+    node --test scripts/affected.test.mjs
     node scripts/spec-dag-issues.test.mjs
     node scripts/spec-dag-lifecycle.test.mjs
     node scripts/spec-dag-validator.test.mjs
@@ -72,13 +73,13 @@ ci-itotori:
     pnpm --filter @itotori/app build
 
 ci-kaifuu:
-    cargo test -p kaifuu-core -p kaifuu-delta -p kaifuu-engine-fixture -p kaifuu-cli
+    cargo test -p kaifuu-core -p kaifuu-delta -p kaifuu-engine-fixture -p kaifuu-reallive -p kaifuu-cli -p kaifuu-vault-source
 
 ci-utsushi:
     pnpm --filter @itotori/runtime-web-review typecheck
     pnpm --filter @itotori/runtime-web-review test
     pnpm --filter @itotori/runtime-web-review build
-    cargo test -p utsushi-core -p utsushi-fixture -p utsushi-cli
+    cargo test -p utsushi-core -p utsushi-fixture -p utsushi-reallive -p utsushi-siglus -p utsushi-cli
 
 schema:
     pnpm --filter @itotori/localization-bridge-schema typecheck

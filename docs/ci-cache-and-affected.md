@@ -96,8 +96,8 @@ audit command. Caches are only accelerators.
 | `just ci`                | Full CI                            | `check`, `build`, database migration, `test`, strict clippy, cargo-deny                                                           |
 | `just schema`            | Shared bridge schema               | Schema typecheck, tests, and build                                                                                                |
 | `just ci-itotori`        | Itotori app and DB package         | DB typecheck/test/build, app typecheck/test/build                                                                                 |
-| `just ci-kaifuu`         | Kaifuu Rust crates                 | Tests for core, delta, fixture engine, and CLI crates                                                                             |
-| `just ci-utsushi`        | Utsushi Rust crates and web review | Runtime web review typecheck/test/build, tests for core, fixture, and CLI crates                                                  |
+| `just ci-kaifuu`         | Kaifuu Rust crates                 | Tests for all `crates/kaifuu-*` workspace crates                                                                                  |
+| `just ci-utsushi`        | Utsushi Rust crates and web review | Runtime web review typecheck/test/build, tests for all `crates/utsushi-*` workspace crates                                        |
 | `just fixtures-validate` | Public fixture manifests           | Public manifest JSON Schema validation plus raw fixture hash and byte-count checks                                                |
 | `just hello`             | End-to-end fixture pipeline        | Build, DB migrate/reset, Kaifuu extract/patch/diff/apply/verify, Utsushi trace/capture/smoke, Itotori runtime ingest              |
 | `just roadmap-validate`  | Roadmap data and audit schemas     | Spec DAG and audit report schema/example validation                                                                               |

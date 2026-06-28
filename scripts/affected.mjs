@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 
 function git(args) {
   try {
@@ -16,12 +17,6 @@ function git(args) {
 function gitLines(args) {
   return git(args).split("\n").filter(Boolean);
 }
-
-const changed = new Set([
-  ...gitLines(["diff", "--name-only", "HEAD"]),
-  ...gitLines(["ls-files", "--others", "--exclude-standard"]),
-]);
-const tasks = new Set();
 
 const taskOrder = [
   "ci",
@@ -50,18 +45,18 @@ const broadRootFiles = new Set([
   "vite.config.ts",
 ]);
 
-function add(...names) {
+function add(tasks, ...names) {
   for (const name of names) {
     tasks.add(name);
   }
 }
 
-function addAllProjectGates() {
-  add("schema", "ci-itotori", "ci-kaifuu", "ci-utsushi");
+function addAllProjectGates(tasks) {
+  add(tasks, "schema", "ci-itotori", "ci-kaifuu", "ci-utsushi");
 }
 
-function addFixtureGates() {
-  add("fixtures-validate", "hello");
+function addFixtureGates(tasks) {
+  add(tasks, "fixtures-validate", "hello");
 }
 
 function isDocsOnly(path) {
@@ -72,56 +67,69 @@ function isRootPath(path) {
   return !path.includes("/");
 }
 
-for (const rawPath of changed) {
-  const path = rawPath.replaceAll("\\", "/");
+export function affectedTasks(changedPaths) {
+  const tasks = new Set();
 
-  if (
-    broadRootFiles.has(path) ||
-    (isRootPath(path) && !isDocsOnly(path)) ||
-    path.startsWith(".github/") ||
-    path.startsWith("scripts/")
-  ) {
-    add("ci");
-  } else if (path.startsWith("roadmap/")) {
-    add("roadmap-validate");
-  } else if (path.startsWith("packages/localization-bridge-schema/")) {
-    addAllProjectGates();
-    add("hello");
-  } else if (path.startsWith("fixtures/") || path.startsWith("packages/test-fixtures/")) {
-    addFixtureGates();
-  } else if (path.startsWith("apps/itotori/") || path.startsWith("packages/itotori-db/")) {
-    add("ci-itotori");
-  } else if (path.startsWith("apps/runtime-web-review/")) {
-    add("ci-utsushi");
-  } else if (path.startsWith("crates/kaifuu-")) {
-    add("ci-kaifuu");
-  } else if (path.startsWith("crates/utsushi-")) {
-    add("ci-utsushi");
-  } else if (!isDocsOnly(path)) {
-    add("check");
+  for (const rawPath of changedPaths) {
+    const path = rawPath.replaceAll("\\", "/");
+
+    if (
+      broadRootFiles.has(path) ||
+      (isRootPath(path) && !isDocsOnly(path)) ||
+      path.startsWith(".github/") ||
+      path.startsWith("scripts/")
+    ) {
+      add(tasks, "ci");
+    } else if (path.startsWith("roadmap/")) {
+      add(tasks, "roadmap-validate");
+    } else if (path.startsWith("packages/localization-bridge-schema/")) {
+      addAllProjectGates(tasks);
+      add(tasks, "hello");
+    } else if (path.startsWith("fixtures/") || path.startsWith("packages/test-fixtures/")) {
+      addFixtureGates(tasks);
+    } else if (path.startsWith("apps/itotori/") || path.startsWith("packages/itotori-db/")) {
+      add(tasks, "ci-itotori");
+    } else if (path.startsWith("apps/runtime-web-review/")) {
+      add(tasks, "ci-utsushi");
+    } else if (path.startsWith("crates/kaifuu-")) {
+      add(tasks, "ci-kaifuu");
+    } else if (path.startsWith("crates/utsushi-")) {
+      add(tasks, "ci-utsushi");
+    } else if (!isDocsOnly(path)) {
+      add(tasks, "check");
+    }
+  }
+
+  if (tasks.has("ci")) {
+    tasks.delete("check");
+    tasks.delete("schema");
+    tasks.delete("ci-itotori");
+    tasks.delete("ci-kaifuu");
+    tasks.delete("ci-utsushi");
+    tasks.delete("roadmap-validate");
+  }
+
+  if (tasks.has("check")) {
+    tasks.delete("roadmap-validate");
+  }
+
+  return taskOrder.filter((task) => tasks.has(task));
+}
+
+function main() {
+  const changed = new Set([
+    ...gitLines(["diff", "--name-only", "HEAD"]),
+    ...gitLines(["ls-files", "--others", "--exclude-standard"]),
+  ]);
+  const tasks = affectedTasks(changed);
+
+  if (tasks.length === 0) {
+    console.log("No affected task detected. Run `just ci` for a full check.");
+  } else {
+    console.log(tasks.map((task) => `just ${task}`).join("\n"));
   }
 }
 
-if (tasks.has("ci")) {
-  tasks.delete("check");
-  tasks.delete("schema");
-  tasks.delete("ci-itotori");
-  tasks.delete("ci-kaifuu");
-  tasks.delete("ci-utsushi");
-  tasks.delete("roadmap-validate");
-}
-
-if (tasks.has("check")) {
-  tasks.delete("roadmap-validate");
-}
-
-if (tasks.size === 0) {
-  console.log("No affected task detected. Run `just ci` for a full check.");
-} else {
-  console.log(
-    taskOrder
-      .filter((task) => tasks.has(task))
-      .map((task) => `just ${task}`)
-      .join("\n"),
-  );
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  main();
 }
