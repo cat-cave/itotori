@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "exported_at": "2026-06-28T03:24:45.227Z",
+  "exported_at": "2026-06-28T03:35:24.831Z",
   "registries": {
     "groups": [
       {
@@ -29418,6 +29418,428 @@
         }
       ],
       "audit_focus": []
+    },
+    {
+      "id": "probe-temp-node",
+      "title": "probe",
+      "kind": "feature",
+      "milestone": null,
+      "status": "cancelled",
+      "priority": "P2",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "probe",
+      "acceptance": "probe",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-28T03:33:23.619Z",
+      "updated_at": "2026-06-28T03:33:28.877Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "projects": ["universal"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "true"
+        }
+      ],
+      "audit_focus": []
+    },
+    {
+      "id": "strengthen-localize-driver-provider-artifact-validation-beyond-c",
+      "title": "Strengthen localize driver provider artifact validation beyond count-only",
+      "kind": "audit-fix",
+      "milestone": null,
+      "status": "ready",
+      "priority": "P2",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "Final re-audit: suite/scripts/localize-sweetie-hd/run.mjs still counts provider-runs/*/provider-run.json and only checks artifact count >= invocation count after the stage. The offline verifier now performs strong ID/content validation, but run.mjs itself can still miss stale, duplicate, mismatched, fake/local, non-ZDR, or non-billed artifacts.\n\nAdd a future suite-hardening slice that shares provider-run validation with verify-artifacts.mjs or replaces the count-only check in run.mjs with equivalent ID/content validation.",
+      "acceptance": "Driver-side provider artifact validation either calls the same strong verifier logic after telemetry exists or validates providerProofId/runId, live OpenRouter provenance, model/provider pairs, ZDR routing posture, and billed successful live costs instead of only count >= invocation count.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-28T03:33:48.825Z",
+      "updated_at": "2026-06-28T03:33:48.825Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": "Promoted from finding e9815e5e-321f-48ee-8110-c7a41b546f54 on node UTSUSHI-231.",
+      "check_command": null,
+      "ci_command": null,
+      "projects": [],
+      "verification": [],
+      "audit_focus": []
+    },
+    {
+      "id": "make-sweetie-hd-localize-workflow-self-proving-with-telemetry-an",
+      "title": "Make Sweetie HD localize workflow self-proving with telemetry and verifier outputs",
+      "kind": "audit-fix",
+      "milestone": null,
+      "status": "ready",
+      "priority": "P2",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "Final re-audit: just localize-sweetie-hd still only builds and runs suite/scripts/localize-sweetie-hd/run.mjs. The main recipe does not automatically run telemetry-summary or verify-artifacts.mjs, so a successful live workflow can still omit telemetry-summary.json and post-run-verification.json unless the orchestrator manually runs the post-run commands.\n\nAdd a future suite workflow slice that either extends just localize-sweetie-hd or adds a companion recipe to generate telemetry summary and run verify-artifacts.mjs against the latest run directory.",
+      "acceptance": "The Sweetie HD workflow exposes an explicit post-run recipe or self-proving command path that captures telemetry-summary.json and post-run-verification.json for the run, or prints durable exact post-run commands with run start/end/project metadata.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-28T03:33:48.830Z",
+      "updated_at": "2026-06-28T03:33:48.830Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": "Promoted from finding a044add0-dcaa-4ead-97f1-4fec418fac39 on node UTSUSHI-231.",
+      "check_command": null,
+      "ci_command": null,
+      "projects": [],
+      "verification": [],
+      "audit_focus": []
+    },
+    {
+      "id": "suite-ci-localize-project-tests",
+      "title": "Run localize-project suite tests in CI and affected gates",
+      "kind": "feature",
+      "milestone": null,
+      "status": "ready",
+      "priority": "P1",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "Wire suite/scripts/localize-project node tests into the standard check or test surface, and route changes under suite/scripts/localize-project through an affected gate that runs those tests. Today full CI and affected suite changes can miss this validation.",
+      "acceptance": "A change to suite/scripts/localize-project/run.mjs or verify-artifacts.mjs causes the affected gate to run the localize-project node tests; full CI runs the same tests; the gate fails on a seeded localize-project test failure.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-28T03:34:12.612Z",
+      "updated_at": "2026-06-28T03:34:12.612Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "projects": ["itotori", "universal"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "node --test suite/scripts/localize-project/*.test.mjs"
+        }
+      ],
+      "audit_focus": []
+    },
+    {
+      "id": "qd-alpha-verify-commands",
+      "title": "Normalize alpha qd verification commands",
+      "kind": "feature",
+      "milestone": null,
+      "status": "ready",
+      "priority": "P1",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "Refresh alpha node verification commands so they name existing recipes and executable tasks. Replace stale localize-sweetie-hd and openrouter-live-smoke task references, and make ignored real-byte tests use explicit include-ignored command forms.",
+      "acceptance": "Every alpha verification command referenced by qd exists in this repo; real-byte Rust verification commands include the exact ignored-test invocation needed to run them; node validation rejects stale alpha command references.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-28T03:34:19.012Z",
+      "updated_at": "2026-06-28T03:34:19.012Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "projects": ["universal", "itotori", "kaifuu", "utsushi"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "node scripts/spec-dag.mjs validate"
+        }
+      ],
+      "audit_focus": []
+    },
+    {
+      "id": "ci-db-parallel-safe",
+      "title": "Make local qd CI own DB lifecycle safely across worktrees",
+      "kind": "feature",
+      "milestone": null,
+      "status": "ready",
+      "priority": "P1",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "Add a local qd/full-CI wrapper that owns db-up, db-wait, and db-down, and avoids fixed-port collisions between parallel worktrees. The GitHub workflow manages compose, but qd ci currently runs just ci directly and can collide on the default database port.",
+      "acceptance": "Running qd CI from two worktrees either derives distinct database ports or fails before starting with a clear diagnostic; the local full-CI command starts and stops its own database stack; failure leaves no orphaned compose stack.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-28T03:34:25.968Z",
+      "updated_at": "2026-06-28T03:34:25.968Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "projects": ["universal", "itotori"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "just db-up"
+        },
+        {
+          "type": "command",
+          "value": "just db-wait"
+        },
+        {
+          "type": "command",
+          "value": "just db-down"
+        }
+      ],
+      "audit_focus": []
+    },
+    {
+      "id": "retire-legacy-roadmap-read-surfaces",
+      "title": "Retire legacy roadmap ready and pop read surfaces",
+      "kind": "feature",
+      "milestone": null,
+      "status": "ready",
+      "priority": "P2",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "Remove or qd-delegate leftover roadmap-ready, roadmap-pop, roadmap:ready, and spec-dag ready/pop surfaces that survived the qd migration. Keep validator and issue-sync exceptions, but stop teaching operators to inspect or choose work through the legacy roadmap commands.",
+      "acceptance": "Searching README, docs, justfile, and package scripts for roadmap-ready, roadmap-pop, roadmap:ready, spec-dag.mjs ready, and spec-dag.mjs pop returns no legacy operational surfaces except explicit qd-delegating replacements; just check remains green.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-28T03:34:33.845Z",
+      "updated_at": "2026-06-28T03:34:33.845Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "projects": ["universal"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "rg -n 'roadmap-ready|roadmap-pop|roadmap:ready|spec-dag.mjs ready|spec-dag.mjs pop' README.md docs justfile package.json"
+        },
+        {
+          "type": "command",
+          "value": "just check"
+        }
+      ],
+      "audit_focus": []
+    },
+    {
+      "id": "replace-qd-import-with-transactional-state-rebuild",
+      "title": "Make qd import rebuild transactional and config-preserving",
+      "kind": "feature",
+      "milestone": null,
+      "status": "ready",
+      "priority": "P2",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "Replace the destructive qd-import recipe that unlinks live .qd database files with a staged rebuild flow. The flow must validate import before swapping state and preserve committed qd config, including nix-wrapped check and CI commands.",
+      "acceptance": "The qd import rebuild path never removes the live database before a validated replacement exists; failed rebuild leaves the prior database usable; qd config after rebuild matches committed .qd/config.toml for check and CI commands; read-only audit hydration is documented.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-28T03:34:40.018Z",
+      "updated_at": "2026-06-28T03:34:40.018Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "projects": ["universal"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "qd config show"
+        },
+        {
+          "type": "command",
+          "value": "node scripts/spec-dag.mjs validate"
+        }
+      ],
+      "audit_focus": []
+    },
+    {
+      "id": "export-captureoutcome-through-substrate-facade",
+      "title": "Export CaptureOutcome through the substrate facade",
+      "kind": "feature",
+      "milestone": null,
+      "status": "ready",
+      "priority": "P2",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "Re-export CaptureOutcome through utsushi_core::substrate and update RealLive, Siglus, and relevant tests to import it through the facade instead of the crate root. This closes a facade reach-around that contradicts the stable substrate import boundary.",
+      "acceptance": "No RealLive or Siglus production code imports CaptureOutcome from utsushi_core crate root; facade conformance tests cover CaptureOutcome availability through utsushi_core::substrate; cargo test for utsushi-core, utsushi-reallive, and utsushi-siglus passes.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-28T03:34:49.453Z",
+      "updated_at": "2026-06-28T03:34:49.453Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "projects": ["utsushi", "universal"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-core -p utsushi-reallive -p utsushi-siglus"
+        }
+      ],
+      "audit_focus": []
+    },
+    {
+      "id": "route-utsushi-replay-through-engine-port-registry",
+      "title": "Route utsushi replay commands through the engine registry",
+      "kind": "feature",
+      "milestone": null,
+      "status": "ready",
+      "priority": "P2",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "Move utsushi-cli replay and replay-validate behind an engine-port or runtime-adapter registry capability instead of direct utsushi_reallive imports and reallive-only branches. Unsupported engines should fail through registry capability diagnostics.",
+      "acceptance": "Adding a second replay-capable engine does not require editing a reallive-only branch in utsushi-cli replay code; replay and replay-validate use registry-dispatched capability selection; unsupported engines emit structured registry diagnostics; utsushi-cli tests pass.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-28T03:34:56.055Z",
+      "updated_at": "2026-06-28T03:34:56.055Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "projects": ["utsushi", "universal"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-cli"
+        }
+      ],
+      "audit_focus": []
+    },
+    {
+      "id": "reallive-bridge-second-corpus-protected-span-calibration",
+      "title": "Validate RealLive protected-span extraction on a second corpus",
+      "kind": "feature",
+      "milestone": null,
+      "status": "ready",
+      "priority": "P2",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "Keep Sweetie HD support, but require a second RealLive corpus pass before claiming RealLive-general protected-span coverage. The bridge protected-span scanner should document which rules are RealLive documented and which are title-calibrated.",
+      "acceptance": "Protected-span extraction has a second RealLive fixture or documented corpus result; Sweetie-specific vocabulary is isolated as alpha-target data or explicitly documented as title-calibrated; KAIFUU bridge tests show no regression for Sweetie HD scene 1.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-28T03:35:02.263Z",
+      "updated_at": "2026-06-28T03:35:02.263Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "projects": ["kaifuu", "universal"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-reallive"
+        }
+      ],
+      "audit_focus": []
+    },
+    {
+      "id": "move-sweetie-alpha-presets-to-explicit-target-data",
+      "title": "Make Sweetie alpha presets explicit target data",
+      "kind": "feature",
+      "milestone": null,
+      "status": "ready",
+      "priority": "P3",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "Keep Sweetie HD as the alpha validation target, but stop making Sweetie-specific metadata look like the implicit generic localize-project default. The generic runner should require explicit project metadata and pair policy or use neutral examples.",
+      "acceptance": "Sweetie-specific project metadata remains available as allowlisted alpha target data; generic localize-project docs and defaults do not imply Sweetie HD is the normal project shape; non-Sweetie metadata tests continue to pass.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-28T03:35:09.563Z",
+      "updated_at": "2026-06-28T03:35:09.563Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "projects": ["itotori", "universal"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "node --test suite/scripts/localize-project/run.test.mjs"
+        }
+      ],
+      "audit_focus": []
+    },
+    {
+      "id": "triage-qd-wishlist-into-qd-nodes",
+      "title": "Triage QD wishlist repo actions into qd nodes",
+      "kind": "feature",
+      "milestone": null,
+      "status": "ready",
+      "priority": "P3",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "Convert repo-actionable QD-WISHLIST wrapper-removal prerequisites into qd nodes, or mark each item as upstream-only or non-repo work. This keeps qd as the operational backlog instead of leaving process work only in the wishlist document.",
+      "acceptance": "Every item in the QD-WISHLIST minimum wrapper-removal set has a qd node id, an upstream-only disposition, or a non-repo disposition; the document links those dispositions; qd status remains valid after export.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-28T03:35:15.422Z",
+      "updated_at": "2026-06-28T03:35:15.422Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "projects": ["universal"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "node scripts/spec-dag.mjs validate"
+        }
+      ],
+      "audit_focus": []
     }
   ],
   "edges": [
@@ -40558,7 +40980,7 @@
       "node_id": "UTSUSHI-231",
       "run_id": null,
       "severity": "P2",
-      "status": "open",
+      "status": "promoted",
       "title": "Strengthen localize driver provider artifact validation beyond count-only",
       "path": null,
       "line": null,
@@ -40566,14 +40988,14 @@
       "expected": "Driver-side provider artifact validation either calls the same strong verifier logic after telemetry exists or validates providerProofId/runId, live OpenRouter provenance, model/provider pairs, ZDR routing posture, and billed successful live costs instead of only count >= invocation count.",
       "suggested_fix": "Add a future suite-hardening slice that shares provider-run validation with verify-artifacts.mjs or replaces the count-only check in run.mjs with equivalent ID/content validation.",
       "created_at": "2026-06-27T18:16:10.122Z",
-      "resolved_at": null
+      "resolved_at": "2026-06-28T03:33:48.828Z"
     },
     {
       "id": "a044add0-dcaa-4ead-97f1-4fec418fac39",
       "node_id": "UTSUSHI-231",
       "run_id": null,
       "severity": "P2",
-      "status": "open",
+      "status": "promoted",
       "title": "Make Sweetie HD localize workflow self-proving with telemetry and verifier outputs",
       "path": null,
       "line": null,
@@ -40581,7 +41003,7 @@
       "expected": "The Sweetie HD workflow exposes an explicit post-run recipe or self-proving command path that captures telemetry-summary.json and post-run-verification.json for the run, or prints durable exact post-run commands with run start/end/project metadata.",
       "suggested_fix": "Add a future suite workflow slice that either extends just localize-sweetie-hd or adds a companion recipe to generate telemetry summary and run verify-artifacts.mjs against the latest run directory.",
       "created_at": "2026-06-27T18:16:23.405Z",
-      "resolved_at": null
+      "resolved_at": "2026-06-28T03:33:48.832Z"
     },
     {
       "id": "d62a27c5-c55b-4565-a514-0bf347acd134",
