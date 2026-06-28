@@ -112,12 +112,92 @@ describe("benchmark set selector", () => {
     expect(filter).toMatchObject({
       targetLanguage: "en-US",
       minCapabilityLevel: capabilityLevelValues.patch,
+      adapterIds: ["rpg-maker-mv"],
       pools: ["no_english"],
       translationCompleteness: ["none"],
       provenanceRequired: true,
       includeDemoted: false,
       limit: 500,
     });
+  });
+
+  it("keeps public manifest hashes stable when a private-local-only title changes", () => {
+    const readModel = catalog004ReadModelWithConflict();
+    const mutated = catalog004ReadModelWithConflict();
+    const privateOnlyRow = mutated.rows.find(
+      (row) => row.workId === "019ed104-0000-7000-8000-000000000105",
+    );
+    if (privateOnlyRow === undefined) {
+      throw new Error("expected private-local-only fixture row");
+    }
+    privateOnlyRow.canonicalTitle = "Dictionary oracle bait private title";
+
+    const baseline = selectBenchmarkSet(readModel, {
+      targetLocale: "en-US",
+      selectedAt: selectorFixture.selectedAt,
+      sourceFixtureIds: selectorFixture.sourceFixtureIds,
+      runParameters: selectorFixture.runParameters,
+      capabilityFilters: selectorFixture.cases[0]!.capabilityFilters,
+    });
+    const afterPrivateTitleChange = selectBenchmarkSet(mutated, {
+      targetLocale: "en-US",
+      selectedAt: selectorFixture.selectedAt,
+      sourceFixtureIds: selectorFixture.sourceFixtureIds,
+      runParameters: selectorFixture.runParameters,
+      capabilityFilters: selectorFixture.cases[0]!.capabilityFilters,
+    });
+
+    expect(afterPrivateTitleChange.manifestId).toBe(baseline.manifestId);
+    expect(afterPrivateTitleChange.selectionProvenance.manifestHash).toBe(
+      baseline.selectionProvenance.manifestHash,
+    );
+    expect(afterPrivateTitleChange.selectionProvenance.sourceReadModelHash).toBe(
+      baseline.selectionProvenance.sourceReadModelHash,
+    );
+    expect(JSON.stringify(afterPrivateTitleChange)).not.toContain("Dictionary oracle bait");
+    expect(afterPrivateTitleChange).toEqual(baseline);
+  });
+
+  it("requires every requested capability rather than only the highest rung", () => {
+    const readModel = catalog004ReadModelWithConflict();
+    readModel.rows.push({
+      ...readModel.rows[0]!,
+      workId: "019ed104-0000-7000-8000-000000000777",
+      sourceIds: [
+        {
+          catalogSource: "dlsite",
+          sourceId: "RJMULTICAP",
+          externalIdKind: "store_product",
+        },
+      ],
+      readiness: {
+        adapterId: "multi-cap-negative",
+        identify: "supported",
+        inventory: "unsupported",
+        extract: "supported",
+        patch: "supported",
+        helper: "unknown",
+        runtime: "unknown",
+      },
+      rank: 0,
+      seedRank: 0,
+      explanationCodes: ["extract_readiness_supported", "patch_readiness_supported"],
+    });
+
+    const manifest = selectBenchmarkSet(readModel, {
+      targetLocale: "en-US",
+      selectedAt: selectorFixture.selectedAt,
+      runParameters: { ...selectorFixture.runParameters, maxSeeds: 20 },
+      capabilityFilters: {
+        requiredCapabilities: [capabilityLevelValues.inventory, capabilityLevelValues.patch],
+        adapterIds: ["multi-cap-negative"],
+        pools: ["no_english"],
+        translationCompleteness: ["none"],
+      },
+    });
+
+    expect(manifest.sourceSeedIds).not.toContain("019ed104-0000-7000-8000-000000000777");
+    expect(manifest.selectedSeeds).toEqual([]);
   });
 
   it("requires explicit adapter ids for capability-filtered manifests", () => {

@@ -243,6 +243,72 @@ describe("catalogBenchmarkSeedFinder", () => {
       await context.close();
     }
   });
+
+  it("uses explicit adapter ids to avoid ambiguous normalized-prefix readiness matches", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      const repo = new ItotoriCatalogRepository(context.db);
+      const capabilityRepo = new EngineCapabilityReportRepository(context.db);
+      const provenance = await recordSeedFinderProvenance(repo);
+      await recordCapabilityMatrices(capabilityRepo);
+      const ambiguousWorkId = await recordAmbiguousAdapterWork(repo, provenance.dlsite);
+
+      const unscoped = await repo.catalogBenchmarkSeedFinder(localActor, {
+        pools: ["no_english"],
+        minCapabilityLevel: capabilityLevelValues.extract,
+        limit: 20,
+      });
+      expect(
+        requiredTestRow(
+          unscoped.rows.filter((row) => row.workId === ambiguousWorkId),
+          "unscoped ambiguous adapter row",
+        ).readiness,
+      ).toMatchObject({ adapterId: "ambiguous-engine-alpha", extract: "supported" });
+
+      const betaScoped = await repo.catalogBenchmarkSeedFinder(localActor, {
+        pools: ["no_english"],
+        minCapabilityLevel: capabilityLevelValues.extract,
+        adapterIds: ["ambiguous-engine-beta"],
+        includeDemoted: true,
+        limit: 20,
+      });
+      expect(
+        requiredTestRow(
+          betaScoped.rows.filter((row) => row.workId === ambiguousWorkId),
+          "beta-scoped ambiguous adapter row",
+        ),
+      ).toMatchObject({
+        decision: "excluded",
+        readiness: expect.objectContaining({
+          adapterId: "ambiguous-engine-beta",
+          extract: "unsupported",
+        }),
+      });
+
+      const stillAmbiguous = await repo.catalogBenchmarkSeedFinder(localActor, {
+        pools: ["no_english"],
+        minCapabilityLevel: capabilityLevelValues.extract,
+        adapterIds: ["ambiguous-engine-alpha", "ambiguous-engine-beta"],
+        includeDemoted: true,
+        limit: 20,
+      });
+      expect(
+        requiredTestRow(
+          stillAmbiguous.rows.filter((row) => row.workId === ambiguousWorkId),
+          "multi-adapter ambiguous row",
+        ),
+      ).toMatchObject({
+        decision: "excluded",
+        readiness: expect.objectContaining({ adapterId: null, extract: "unknown" }),
+        explanationCodes: expect.arrayContaining([
+          "readiness_adapter_unknown",
+          "excluded_min_capability_extract_unknown",
+        ]),
+      });
+    } finally {
+      await context.close();
+    }
+  });
 });
 
 async function recordCapabilityMatrices(repo: EngineCapabilityReportRepository): Promise<void> {
@@ -267,6 +333,41 @@ async function recordCapabilityMatrices(repo: EngineCapabilityReportRepository):
     extract: { kind: "partial", limitations: ["text archives require manual split"] },
     patch: { kind: "unsupported", reason: "patch fixture unavailable" },
   });
+  await repo.writeMatrix(localActor, {
+    adapterId: "ambiguous-engine-alpha",
+    identify: { kind: "supported" },
+    inventory: { kind: "supported" },
+    extract: { kind: "supported" },
+    patch: { kind: "supported" },
+  });
+  await repo.writeMatrix(localActor, {
+    adapterId: "ambiguous-engine-beta",
+    identify: { kind: "supported" },
+    inventory: { kind: "supported" },
+    extract: { kind: "unsupported", reason: "beta extractor not available" },
+    patch: { kind: "unsupported", reason: "beta patcher not available" },
+  });
+}
+
+async function recordAmbiguousAdapterWork(
+  repo: ItotoriCatalogRepository,
+  provenanceRecord: CatalogSourceProvenanceRecord,
+): Promise<string> {
+  const workId = uuid(106);
+  await repo.upsertWork(localActor, {
+    workId,
+    canonicalTitle: "Benchmark ambiguous adapter",
+    originalLanguage: "ja-JP",
+    engine: {
+      engineName: "ambiguous-engine",
+      engineSource: catalogEngineSourceValues.manual,
+      engineConfidence: catalogConfidenceValues.medium,
+      engineProvenanceId: provenanceRecord.sourceProvenanceId,
+    },
+    externalIds: [externalId(206, provenanceRecord, "RJAMBIG")],
+    languageStatuses: [languageStatus(406, catalogLanguageStatusValues.none, provenanceRecord)],
+  });
+  return workId;
 }
 
 async function recordSeedFinderCatalog(

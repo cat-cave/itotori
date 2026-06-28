@@ -769,6 +769,7 @@ export type CatalogBenchmarkSeedFinderFilter = {
   targetLanguage?: string;
   pools?: CatalogCompletenessPool[];
   minCapabilityLevel?: CapabilityLevel;
+  adapterIds?: string[];
   demandBucket?: CatalogBenchmarkDemandBucket;
   translationCompleteness?: CatalogLanguageStatus[];
   provenanceRequired?: boolean;
@@ -2066,6 +2067,7 @@ async function readCatalogBenchmarkSeedFinder(
       const readiness = readinessForWork(
         workById.get(work.workId)?.engineName ?? null,
         capabilityByAdapterId,
+        filter.adapterIds,
       );
       const explanationCodes = benchmarkExplanationCodes({
         pool,
@@ -2429,6 +2431,12 @@ function assertBenchmarkSeedFinderFilter(
       "minCapabilityLevel",
     );
   }
+  const adapterIds = filter.adapterIds ?? null;
+  if (adapterIds !== null) {
+    for (const adapterId of adapterIds) {
+      requiredString(adapterId, "adapterIds[]");
+    }
+  }
   if (filter.demandBucket !== undefined) {
     assertEnumValue(filter.demandBucket, benchmarkDemandBuckets, "demandBucket");
   }
@@ -2449,6 +2457,7 @@ function assertBenchmarkSeedFinderFilter(
     targetLanguage,
     pools: pools === null ? null : uniqueBenchmarkPools(pools),
     minCapabilityLevel: filter.minCapabilityLevel ?? null,
+    adapterIds: adapterIds === null ? null : uniqueStrings(adapterIds),
     demandBucket: filter.demandBucket ?? null,
     translationCompleteness:
       translationCompleteness === null
@@ -2991,8 +3000,9 @@ function capabilityReportsByAdapter(
 function readinessForWork(
   engineName: string | null,
   capabilityByAdapterId: Map<string, Map<CapabilityLevel, CapabilityLevelStatusKind>>,
+  explicitAdapterIds: string[] | null = null,
 ): CatalogBenchmarkReadinessResult {
-  const adapterId = benchmarkAdapterIdForEngine(engineName, capabilityByAdapterId);
+  const adapterId = benchmarkAdapterIdForEngine(engineName, capabilityByAdapterId, explicitAdapterIds);
   const adapterRows = adapterId === null ? null : (capabilityByAdapterId.get(adapterId) ?? null);
   const level = (capabilityLevel: CapabilityLevel): CatalogBenchmarkSeedReadinessLevel =>
     adapterRows?.get(capabilityLevel) ?? "unknown";
@@ -3012,14 +3022,32 @@ function readinessForWork(
 function benchmarkAdapterIdForEngine(
   engineName: string | null,
   capabilityByAdapterId: Map<string, Map<CapabilityLevel, CapabilityLevelStatusKind>>,
+  explicitAdapterIds: string[] | null = null,
 ): string | null {
   if (engineName === null || capabilityByAdapterId.size === 0) {
     return null;
   }
   const normalizedEngine = normalizeBenchmarkAdapterKey(engineName);
-  const adapterIds = Array.from(capabilityByAdapterId.keys()).sort();
+  const adapterIds =
+    explicitAdapterIds === null
+      ? Array.from(capabilityByAdapterId.keys()).sort()
+      : explicitAdapterIds.filter((adapterId) => capabilityByAdapterId.has(adapterId)).sort();
+  if (adapterIds.length === 0) {
+    return null;
+  }
+  const exactAdapterId = adapterIds.find(
+    (adapterId) => normalizeBenchmarkAdapterKey(adapterId) === normalizedEngine,
+  );
+  if (exactAdapterId !== undefined) {
+    return exactAdapterId;
+  }
+  if (explicitAdapterIds !== null) {
+    const prefixMatches = adapterIds.filter((adapterId) =>
+      normalizeBenchmarkAdapterKey(adapterId).startsWith(normalizedEngine),
+    );
+    return prefixMatches.length === 1 ? prefixMatches[0]! : null;
+  }
   return (
-    adapterIds.find((adapterId) => normalizeBenchmarkAdapterKey(adapterId) === normalizedEngine) ??
     adapterIds.find((adapterId) =>
       normalizeBenchmarkAdapterKey(adapterId).startsWith(normalizedEngine),
     ) ??
@@ -4906,6 +4934,7 @@ type NormalizedBenchmarkSeedFinderFilter = {
   targetLanguage: string;
   pools: CatalogCompletenessPool[] | null;
   minCapabilityLevel: CapabilityLevel | null;
+  adapterIds: string[] | null;
   demandBucket: CatalogBenchmarkDemandBucket | null;
   translationCompleteness: CatalogLanguageStatus[] | null;
   provenanceRequired: boolean;

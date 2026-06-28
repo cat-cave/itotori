@@ -280,6 +280,9 @@ export function toCatalogBenchmarkSeedFinderFilter(
   if (minCapabilityLevel !== null) {
     filter.minCapabilityLevel = minCapabilityLevel;
   }
+  if (capabilityFilters.adapterIds.length > 0) {
+    filter.adapterIds = capabilityFilters.adapterIds;
+  }
   if (capabilityFilters.demandBucket !== null) {
     filter.demandBucket = capabilityFilters.demandBucket;
   }
@@ -310,12 +313,7 @@ export function selectBenchmarkSet(
     selectedSeedFromRow(row, targetLocale, index + 1),
   );
   const sourceSeedIds = selectedSeeds.map((seed) => seed.seedId);
-  const sourceReadModelHash = sha256Stable({
-    schemaVersion: readModel.schemaVersion,
-    targetLanguage: readModel.targetLanguage,
-    generatedAt: dateToIso(readModel.generatedAt),
-    rows: readModel.rows,
-  });
+  const sourceReadModelHash = publicSafeSourceReadModelHash(readModel);
   const manifestHashBody = {
     targetLocale,
     sourceSeedIds,
@@ -662,6 +660,60 @@ function selectedSeedFromRow(
             localEvidenceCount: row.localEvidenceCount,
           }
         : null,
+  };
+}
+
+function publicSafeSourceReadModelHash(readModel: CatalogBenchmarkSeedFinderReadModel): string {
+  return sha256Stable({
+    schemaVersion: readModel.schemaVersion,
+    targetLanguage: readModel.targetLanguage,
+    generatedAt: dateToIso(readModel.generatedAt),
+    rows: readModel.rows.map(publicSafeSourceReadModelRow),
+  });
+}
+
+function publicSafeSourceReadModelRow(row: CatalogBenchmarkSeedRow): unknown {
+  return {
+    workId: row.workId,
+    originalLanguage: row.originalLanguage,
+    sourceIds: row.sourceIds
+      .map((sourceId) => ({
+        catalogSource: sourceId.catalogSource,
+        sourceId: sourceId.sourceId,
+        externalIdKind: sourceId.externalIdKind,
+      }))
+      .sort((left, right) =>
+        compareSourceIds(
+          { catalogSource: left.catalogSource, sourceId: left.sourceId },
+          { catalogSource: right.catalogSource, sourceId: right.sourceId },
+        ),
+      ),
+    completenessPool: row.completenessPool,
+    translationStatuses: row.translationStatuses
+      .map((status) => ({
+        language: status.language,
+        status: status.status,
+        confidence: status.confidence,
+        statusScope: status.statusScope,
+        platform: status.platform,
+      }))
+      .sort((left, right) =>
+        left.language.localeCompare(right.language) ||
+        left.status.localeCompare(right.status) ||
+        String(left.platform ?? "").localeCompare(String(right.platform ?? "")),
+      ),
+    localOwnership: row.localOwnership,
+    localEvidenceCount: row.localEvidenceCount,
+    demandBucket: row.demandBucket,
+    readiness: row.readiness,
+    provenance: row.provenance
+      .filter((provenance) => provenance.redactionClass !== catalogRawContentRedactionClassValues.privateCorpus)
+      .map(redactedProvenance)
+      .sort(compareProvenance),
+    decision: row.decision,
+    rank: row.rank,
+    seedRank: row.seedRank,
+    explanationCodes: [...row.explanationCodes].sort(),
   };
 }
 
