@@ -15,6 +15,7 @@ const scriptPath = fileURLToPath(import.meta.url);
 const repoRoot = path.resolve(path.dirname(scriptPath), "..");
 const qdDatabaseFiles = ["qd.db", "qd.db-wal", "qd.db-shm"];
 const auditDispositionLockName = "audit-disposition.lock";
+const auditDispositionUnknownOwnerStaleMs = 15 * 60 * 1000;
 
 async function main() {
   const args = process.argv.slice(2);
@@ -50,6 +51,7 @@ and an audit-visible rationale summary.`);
       rationale: options.rationale ?? options.summary,
       startedAt: options["started-at"],
       recordMissing: Boolean(options["record-missing"]),
+      force: Boolean(options.force),
       json: args.includes("--json"),
     });
   }
@@ -129,7 +131,7 @@ function parseOptions(args) {
       options[key] = arg.slice(equalsIndex + 1);
       continue;
     }
-    if (key === "json" || key === "record-missing") {
+    if (key === "json" || key === "record-missing" || key === "force") {
       options[key] = true;
       continue;
     }
@@ -362,7 +364,7 @@ async function disposeAuditRun(realQd, root, globalArgs, options) {
     } finally {
       await rm(operationDir, { recursive: true, force: true });
     }
-  });
+  }, { force: Boolean(options.force) });
 }
 
 async function replaceRoadmapSpecDagExport(realQd, root, globalArgs, operationDir, options) {
@@ -397,26 +399,128 @@ async function loadSnapshot(realQd, root, globalArgs) {
   }
 }
 
-async function withAuditDispositionLock(root, callback) {
+async function withAuditDispositionLock(root, callback, options = {}) {
   const lockPath = path.join(root, ".qd", auditDispositionLockName);
-  try {
-    await mkdir(lockPath);
-  } catch (error) {
-    if (error?.code === "EEXIST") {
-      throw new Error(`qd audit disposition lock already exists: ${lockPath}`);
-    }
-    throw error;
-  }
+  await acquireAuditDispositionLock(lockPath, options);
 
   try {
     await writeFile(
       path.join(lockPath, "owner.json"),
-      `${JSON.stringify({ pid: process.pid, created_at: new Date().toISOString() }, null, 2)}\n`,
+      `${JSON.stringify(
+        { pid: process.pid, created_at: new Date().toISOString(), command: "qd audit dispose" },
+        null,
+        2,
+      )}\n`,
       "utf8",
     );
     return await callback();
   } finally {
     await rm(lockPath, { recursive: true, force: true });
+  }
+}
+
+async function acquireAuditDispositionLock(lockPath, options) {
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      await mkdir(lockPath);
+      return;
+    } catch (error) {
+      if (error?.code !== "EEXIST") throw error;
+      await recoverAuditDispositionLock(lockPath, options);
+    }
+  }
+
+  throw new Error(`qd audit disposition lock already exists: ${lockPath}`);
+}
+
+async function recoverAuditDispositionLock(lockPath, options) {
+  const owner = await readAuditDispositionLockOwner(lockPath);
+
+  if (owner.pid) {
+    if (isProcessLive(owner.pid)) {
+      throw new Error(
+        `qd audit disposition lock already exists: ${lockPath} (held by live process ${owner.pid})`,
+      );
+    }
+    await rm(lockPath, { recursive: true, force: true });
+    return;
+  }
+
+  if (!options.force && owner.ageMs < auditDispositionUnknownOwnerStaleMs) {
+    throw new Error(
+      `qd audit disposition lock already exists: ${lockPath} (${owner.description}; use --force only after confirming no qd audit disposition is active)`,
+    );
+  }
+
+  await rm(lockPath, { recursive: true, force: true });
+}
+
+async function readAuditDispositionLockOwner(lockPath) {
+  const ownerPath = path.join(lockPath, "owner.json");
+  let raw;
+  try {
+    raw = await readFile(ownerPath, "utf8");
+  } catch (error) {
+    if (error?.code !== "ENOENT") {
+      return {
+        description: `owner metadata could not be read: ${error.message}`,
+        ageMs: auditDispositionLockAgeMs(lockPath),
+      };
+    }
+    return {
+      description: "owner metadata is missing",
+      ageMs: auditDispositionLockAgeMs(lockPath),
+    };
+  }
+
+  if (raw.trim() === "") {
+    return {
+      description: "owner metadata is empty",
+      ageMs: auditDispositionLockAgeMs(lockPath),
+    };
+  }
+
+  let owner;
+  try {
+    owner = JSON.parse(raw);
+  } catch {
+    return {
+      description: "owner metadata is malformed",
+      ageMs: auditDispositionLockAgeMs(lockPath),
+    };
+  }
+
+  const ageMs = auditDispositionLockAgeMs(lockPath, owner.created_at);
+  if (!Number.isSafeInteger(owner.pid) || owner.pid <= 0) {
+    return {
+      description: "owner metadata has no valid pid",
+      ageMs,
+    };
+  }
+
+  return { pid: owner.pid, ageMs };
+}
+
+function auditDispositionLockAgeMs(lockPath, createdAt = null) {
+  if (typeof createdAt === "string") {
+    const createdMs = Date.parse(createdAt);
+    if (Number.isFinite(createdMs)) return Math.max(0, Date.now() - createdMs);
+  }
+
+  try {
+    return Math.max(0, Date.now() - statSync(lockPath).mtimeMs);
+  } catch {
+    return 0;
+  }
+}
+
+function isProcessLive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    if (error?.code === "ESRCH") return false;
+    return true;
   }
 }
 

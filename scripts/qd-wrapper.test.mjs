@@ -3,10 +3,13 @@ import test from "node:test";
 import { spawnSync } from "node:child_process";
 import {
   chmodSync,
+  closeSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
+  openSync,
   readFileSync,
+  utimesSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -314,6 +317,88 @@ test("audit disposition lock acquisition failure leaves qd database untouched", 
   assert.equal(existsSync(logPath), false);
 });
 
+test("audit disposition refuses a lock owned by a live process", () => {
+  const { repoRoot, fakeQdPath, logPath, expectedLiveDbPath, originalDb } =
+    createDispositionFixture();
+  writeAuditDispositionLock(repoRoot, {
+    pid: process.pid,
+    created_at: new Date().toISOString(),
+  });
+
+  const result = runDispose(repoRoot, fakeQdPath, {
+    QD_FAKE_LOG: logPath,
+    EXPECT_LIVE_DB_PATH: expectedLiveDbPath,
+  });
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /held by live process/u);
+  assert.deepEqual(readDatabaseFiles(repoRoot), originalDb);
+  assert.equal(existsSync(logPath), false);
+});
+
+test("audit disposition recovers a lock owned by a dead process", () => {
+  const { repoRoot, fakeQdPath, logPath, expectedLiveDbPath } = createDispositionFixture();
+  writeAuditDispositionLock(repoRoot, {
+    pid: deadPid(),
+    created_at: new Date().toISOString(),
+  });
+
+  const result = runDispose(repoRoot, fakeQdPath, {
+    QD_FAKE_LOG: logPath,
+    EXPECT_LIVE_DB_PATH: expectedLiveDbPath,
+  });
+
+  assert.equal(result.status, 0, [result.stderr, result.stdout].filter(Boolean).join("\n"));
+  assert.equal(existsSync(path.join(repoRoot, ".qd", "audit-disposition.lock")), false);
+  assert.deepEqual(readLog(logPath), ["live-export-json", "import", "stage-export-json"]);
+});
+
+test("audit disposition recovers stale locks with empty or malformed owner metadata", () => {
+  for (const ownerContent of ["", "{not json"]) {
+    const { repoRoot, fakeQdPath, logPath, expectedLiveDbPath } = createDispositionFixture();
+    writeAuditDispositionLock(repoRoot, ownerContent, { stale: true });
+
+    const result = runDispose(repoRoot, fakeQdPath, {
+      QD_FAKE_LOG: logPath,
+      EXPECT_LIVE_DB_PATH: expectedLiveDbPath,
+    });
+
+    assert.equal(result.status, 0, [result.stderr, result.stdout].filter(Boolean).join("\n"));
+    assert.equal(existsSync(path.join(repoRoot, ".qd", "audit-disposition.lock")), false);
+    assert.deepEqual(readLog(logPath), ["live-export-json", "import", "stage-export-json"]);
+  }
+});
+
+test("audit disposition requires force for young locks with unknown owner metadata", () => {
+  const { repoRoot, fakeQdPath, logPath, expectedLiveDbPath, originalDb } =
+    createDispositionFixture();
+  writeAuditDispositionLock(repoRoot, "{not json");
+
+  const refused = runDispose(repoRoot, fakeQdPath, {
+    QD_FAKE_LOG: logPath,
+    EXPECT_LIVE_DB_PATH: expectedLiveDbPath,
+  });
+
+  assert.notEqual(refused.status, 0);
+  assert.match(refused.stderr, /use --force/u);
+  assert.deepEqual(readDatabaseFiles(repoRoot), originalDb);
+  assert.equal(existsSync(logPath), false);
+
+  const forced = runDispose(
+    repoRoot,
+    fakeQdPath,
+    {
+      QD_FAKE_LOG: logPath,
+      EXPECT_LIVE_DB_PATH: expectedLiveDbPath,
+    },
+    ["--force"],
+  );
+
+  assert.equal(forced.status, 0, [forced.stderr, forced.stdout].filter(Boolean).join("\n"));
+  assert.equal(existsSync(path.join(repoRoot, ".qd", "audit-disposition.lock")), false);
+  assert.deepEqual(readLog(logPath), ["live-export-json", "import", "stage-export-json"]);
+});
+
 test("audit disposition rolls back qd database and roadmap when canonicalization fails", () => {
   const { repoRoot, fakeQdPath, fakeBinDir, logPath, expectedLiveDbPath, originalDb } =
     createDispositionFixture({
@@ -467,34 +552,67 @@ function createDispositionFixture({ withRoadmap = false } = {}) {
   };
 }
 
-function runDispose(repoRoot, fakeQdPath, env = {}) {
-  return spawnSync(
-    process.execPath,
-    [
-      wrapperPath,
-      "--root",
-      repoRoot,
-      "audit",
-      "dispose",
-      "CATALOG-003",
-      "--run-id",
-      runningAuditRun.id,
-      "--rationale",
-      "stale audit run",
-    ],
-    {
-      cwd: repoRoot,
-      env: {
-        ...process.env,
-        ...env,
-        LIVE_ROOT: repoRoot,
-        LIVE_DB_PATH: path.join(repoRoot, ".qd", "qd.db"),
-        INITIAL_SNAPSHOT: JSON.stringify({ runs: [runningAuditRun] }),
-        QD_REAL_BIN: fakeQdPath,
+function runDispose(repoRoot, fakeQdPath, env = {}, extraArgs = []) {
+  const stderrPath = path.join(path.dirname(repoRoot), `dispose-stderr-${process.hrtime.bigint()}`);
+  const stderrFd = openSync(stderrPath, "w");
+  let result;
+  try {
+    result = spawnSync(
+      process.execPath,
+      [
+        wrapperPath,
+        "--root",
+        repoRoot,
+        "audit",
+        "dispose",
+        "CATALOG-003",
+        "--run-id",
+        runningAuditRun.id,
+        "--rationale",
+        "stale audit run",
+        ...extraArgs,
+      ],
+      {
+        cwd: repoRoot,
+        env: {
+          ...process.env,
+          ...env,
+          LIVE_ROOT: repoRoot,
+          LIVE_DB_PATH: path.join(repoRoot, ".qd", "qd.db"),
+          INITIAL_SNAPSHOT: JSON.stringify({ runs: [runningAuditRun] }),
+          QD_REAL_BIN: fakeQdPath,
+        },
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", stderrFd],
       },
-      encoding: "utf8",
-    },
+    );
+  } finally {
+    closeSync(stderrFd);
+  }
+  result.stderr = readFileSync(stderrPath, "utf8");
+  return result;
+}
+
+function writeAuditDispositionLock(repoRoot, owner, { stale = false } = {}) {
+  const lockPath = path.join(repoRoot, ".qd", "audit-disposition.lock");
+  mkdirSync(lockPath);
+  const ownerPath = path.join(lockPath, "owner.json");
+  writeFileSync(
+    ownerPath,
+    typeof owner === "string" ? owner : `${JSON.stringify(owner, null, 2)}\n`,
   );
+
+  if (stale) {
+    const old = new Date("2000-01-01T00:00:00.000Z");
+    utimesSync(ownerPath, old, old);
+    utimesSync(lockPath, old, old);
+  }
+}
+
+function deadPid() {
+  const result = spawnSync(process.execPath, ["-e", "process.exit(0)"]);
+  assert.equal(result.status, 0);
+  return result.pid;
 }
 
 function readDatabaseFiles(repoRoot) {
