@@ -550,6 +550,38 @@ test("rejects qd export placeholder spec, acceptance, and audit-focus text", () 
   assertError(errors, "ITOTORI-300 audit_focus[0] is placeholder text: test focus");
 });
 
+test("rejects active qd audit-fix nodes with generic acceptance and empty evidence", () => {
+  const errors = validateDag(
+    qdExportFixture({
+      kind: "audit-fix",
+      acceptance: "Finding is addressed and verified.",
+      verification: [],
+      audit_focus: [],
+    }),
+  ).errors;
+
+  assertError(
+    errors,
+    "ITOTORI-300 audit-fix acceptance is generic: Finding is addressed and verified.",
+  );
+  assertError(errors, "ITOTORI-300 audit-fix verification must have at least one entry");
+  assertError(errors, "ITOTORI-300 audit-fix audit_focus must have at least one entry");
+});
+
+test("rejects claimed qd audit-fix nodes with empty audit focus", () => {
+  const errors = validateDag(
+    qdExportFixture({
+      kind: "audit-fix",
+      status: "claimed",
+      acceptance:
+        "- The regression fixture fails before the parser repair and passes after the repair",
+      audit_focus: [],
+    }),
+  ).errors;
+
+  assertError(errors, "ITOTORI-300 audit-fix audit_focus must have at least one entry");
+});
+
 test("rejects qd export alpha command verification that names missing recipes and tasks", () => {
   const errors = validateDag(
     qdExportFixture({

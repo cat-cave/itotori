@@ -78,6 +78,8 @@ const qdStatusMap = {
 };
 const qdAllowedStatuses = new Set(Object.keys(qdStatusMap));
 const qdPlaceholderTextPattern = /^(?:test(?:\s+(?:spec|acc|acceptance|focus))?|todo|tbd)$/iu;
+const qdActiveAuditFixStatuses = new Set(["ready", "claimed", "working"]);
+const qdGenericAuditFixAcceptancePattern = /^finding is addressed and verified\.$/iu;
 const justfilePath = resolve(root, "justfile");
 const viteConfigPath = resolve(root, "vite.config.ts");
 
@@ -577,6 +579,7 @@ function validateQdNode(node, index, errors) {
   }
   validateQdVerification(node, errors);
   validateQdStringArray(node, "audit_focus", errors);
+  validateQdActiveAuditFixNode(node, displayId, errors);
   for (const [field, value] of [
     ["title", node.title],
     ["spec", node.spec],
@@ -595,6 +598,24 @@ function validateQdNode(node, index, errors) {
   }
   if (node.status === "blocked" && typeof node.status_reason !== "string") {
     errors.push(`${displayId} blocked nodes require status_reason`);
+  }
+}
+
+function validateQdActiveAuditFixNode(node, displayId, errors) {
+  if (node.kind !== "audit-fix" || !qdActiveAuditFixStatuses.has(node.status)) {
+    return;
+  }
+  if (
+    typeof node.acceptance === "string" &&
+    qdGenericAuditFixAcceptancePattern.test(node.acceptance.trim())
+  ) {
+    errors.push(`${displayId} audit-fix acceptance is generic: ${node.acceptance}`);
+  }
+  if (Array.isArray(node.verification) && node.verification.length === 0) {
+    errors.push(`${displayId} audit-fix verification must have at least one entry`);
+  }
+  if (Array.isArray(node.audit_focus) && node.audit_focus.length === 0) {
+    errors.push(`${displayId} audit-fix audit_focus must have at least one entry`);
   }
 }
 
