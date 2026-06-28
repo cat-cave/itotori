@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "exported_at": "2026-06-28T12:52:54.467Z",
+  "exported_at": "2026-06-28T13:01:52.406Z",
   "registries": {
     "groups": [
       {
@@ -31205,6 +31205,33 @@
           "value": "node scripts/spec-dag.mjs validate"
         }
       ],
+      "audit_focus": []
+    },
+    {
+      "id": "relax-scoped-secret-consumption-policy",
+      "title": "Relax scoped local secret consumption policy",
+      "kind": "feature",
+      "milestone": null,
+      "status": "claimed",
+      "priority": "P2",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": "orchestrator-secret-policy",
+      "branch": "spec/relax-scoped-secret-consumption-policy",
+      "spec": "Replace repo guidance and enforcement that treats any local secret consumption as forbidden with a practical policy: scoped, budgeted secrets may be loaded and used by intended local/live validation workflows, while secret values must not be printed, committed, persisted in artifacts, or exposed beyond the intended provider/tool boundary. Align playbooks, wrapper guards, tests, and localize-project workflow language so alpha validation can actually use OPENROUTER and private local corpus credentials safely.",
+      "acceptance": "Repo docs and tests distinguish using scoped local secrets from leaking secrets; .env files remain uncommitted and unprinted, but workflows may load/use approved local env sources for intended commands; UTSUSHI-231/localize-project instructions no longer require impossible pre-supplied process env only; guardrails focus on redaction, artifact hygiene, provider scope, budget/ZDR assertions, and no secret value disclosure; qd export and roadmap validation pass.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-28T13:01:37.384Z",
+      "updated_at": "2026-06-28T13:01:43.391Z",
+      "claimed_at": "2026-06-28T13:01:43.391Z",
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "projects": ["universal"],
+      "verification": [],
       "audit_focus": []
     }
   ],
