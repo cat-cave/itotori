@@ -128,11 +128,14 @@ The manifest is local-only and must not be committed. Its shape is:
 ```
 
 Selection is by project id, optional corpus id, and engine id. For
-`suite/scripts/localize-project/run.mjs`, `--project` selects the project
-metadata and pair-policy, `--corpus` may disambiguate multiple manifest entries
-for that project, and the engine is the workflow engine. The selected `root`
-must be a read-only source tree for the run and is treated as private local
-state.
+`suite/scripts/localize-project/run.mjs`, `--project` selects either an
+explicit alpha target-data record or caller-supplied `--project-metadata` plus
+`--pair-policy`. The committed alpha target-data allowlist currently includes
+`sweetie-hd-alpha-1`; that record exists for the named alpha vertical and is not
+the generic shape for future projects. `--corpus` may disambiguate multiple
+manifest entries for that project, and the engine is the workflow engine. The
+selected `root` must be a read-only source tree for the run and is treated as
+private local state.
 
 For a one-off single-corpus run, operators may set:
 

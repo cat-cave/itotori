@@ -209,14 +209,17 @@ hello-replay-validate:
 
 # UTSUSHI-228 — alpha closer. Wraps every other alpha node into one
 # command: kaifuu extract -> itotori live agentic loop -> kaifuu patch
-# -> utsushi replay-validate. The driver hard-fails if
-# OPENROUTER_API_KEY, LOCALIZE_PROJECT_SOURCE_PATH, or TARGET is unset
-# (no fallback to the recorded provider). Pass --dry-run to print the
-# per-phase commands without invoking any LLM.
+# -> utsushi replay-validate. The driver hard-fails if OPENROUTER_API_KEY,
+# a corpus source root, or TARGET is unset (no fallback to the recorded
+# provider). Pass --dry-run to print the per-phase commands without invoking
+# any LLM. Sweetie HD is selected by its explicit alpha target-data record,
+# not by a generic project-metadata default.
 #
 # Required env (unless --dry-run):
 #   OPENROUTER_API_KEY              live OpenRouter key
-#   LOCALIZE_PROJECT_SOURCE_PATH     readonly extracted project source root
+#   ITOTORI_REAL_CORPUS_MANIFEST     preferred local corpus descriptor
+#   ITOTORI_REAL_GAME_ROOT           simple single-corpus fallback
+#   LOCALIZE_PROJECT_SOURCE_PATH     direct readonly source root fallback
 #   TARGET                          writable path for the patched copy
 #
 # Usage:

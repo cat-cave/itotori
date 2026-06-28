@@ -1,0 +1,16 @@
+{
+  "schemaVersion": "itotori.localize-project.alpha-target-data.v0",
+  "targets": [
+    {
+      "projectId": "sweetie-hd-alpha-1",
+      "description": "Allowlisted alpha target data for the Sweetie HD RealLive vertical. This is an explicit target record, not the generic localize-project default shape.",
+      "pairPolicyPath": "presets/localize-project.pair-policy.json",
+      "reallive": {
+        "game_id": "sweetie-hd",
+        "game_version": "1.0.0",
+        "source_profile_id": "kaifuu-reallive-sweetie-hd",
+        "source_locale": "ja-JP"
+      }
+    }
+  ]
+}

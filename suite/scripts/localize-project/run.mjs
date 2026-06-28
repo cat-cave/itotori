@@ -53,24 +53,23 @@ import {
   readdirSync,
   chmodSync,
 } from "node:fs";
-import { dirname, join, resolve as resolvePath } from "node:path";
+import { dirname, isAbsolute, join, resolve as resolvePath } from "node:path";
 import { fileURLToPath } from "node:url";
 import process from "node:process";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolvePath(HERE, "../../..");
-const DEFAULT_PAIR_POLICY_PATH = join(REPO_ROOT, "presets", "localize-project.pair-policy.json");
-const DEFAULT_PROJECT_METADATA_PATH = join(
+const DEFAULT_ALPHA_TARGET_DATA_PATH = join(
   REPO_ROOT,
   "presets",
-  "localize-project.project-metadata.json",
+  "localize-project.alpha-target-data.json",
 );
 const REAL_CORPUS_MANIFEST_SCHEMA = "itotori.real-corpus-manifest.v0";
 const REAL_CORPUS_ENGINE = "reallive";
 
 function usage() {
   return [
-    "usage: node suite/scripts/localize-project/run.mjs --project <NAME> [--corpus <ID>] [--dry-run] [--scene <N>] [--unit-index <N>] [--provider-kind <live|fake>] [--project-metadata <PATH>] [--pair-policy <PATH>]",
+    "usage: node suite/scripts/localize-project/run.mjs --project <NAME> [--corpus <ID>] [--dry-run] [--scene <N>] [--unit-index <N>] [--provider-kind <live|fake>] [--target-data <PATH>] [--project-metadata <PATH>] [--pair-policy <PATH>]",
     "",
     "Required env (unless --dry-run):",
     "  OPENROUTER_API_KEY              live OpenRouter key for the (modelId, providerId) pair",
@@ -86,8 +85,9 @@ function usage() {
     "  --scene <N>                     scene id passed to kaifuu extract / utsushi replay-validate (default 1)",
     "  --unit-index <N>                bridge unit index to translate (default 0)",
     "  --provider-kind <live|fake>     forwarded to the agentic-loop stage; fake requires ITOTORI_ALLOW_FAKE_LOCALIZE_PROVIDER=1",
-    `  --project-metadata <PATH>       project identity metadata for extraction (default ${DEFAULT_PROJECT_METADATA_PATH})`,
-    `  --pair-policy <PATH>            pair-policy config for the agentic-loop stage (default ${DEFAULT_PAIR_POLICY_PATH})`,
+    `  --target-data <PATH>            allowlisted alpha target data used when metadata/policy paths are omitted (default ${DEFAULT_ALPHA_TARGET_DATA_PATH})`,
+    "  --project-metadata <PATH>       caller-supplied project identity metadata for extraction",
+    "  --pair-policy <PATH>            caller-supplied pair-policy config for the agentic-loop stage",
   ].join("\n");
 }
 
@@ -99,8 +99,9 @@ function parseArgs(argv) {
     scene: 1,
     unitIndex: 0,
     providerKind: undefined,
-    projectMetadataPath: DEFAULT_PROJECT_METADATA_PATH,
-    pairPolicyPath: DEFAULT_PAIR_POLICY_PATH,
+    targetDataPath: DEFAULT_ALPHA_TARGET_DATA_PATH,
+    projectMetadataPath: undefined,
+    pairPolicyPath: undefined,
   };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
@@ -144,6 +145,12 @@ function parseArgs(argv) {
         if (value !== "live" && value !== "fake")
           throw new Error(`--provider-kind '${value}' must be 'live' or 'fake'`);
         args.providerKind = value;
+        break;
+      }
+      case "--target-data": {
+        const value = argv[++i];
+        if (value === undefined) throw new Error("--target-data requires a value");
+        args.targetDataPath = resolvePath(value);
         break;
       }
       case "--project-metadata": {
@@ -294,6 +301,29 @@ function requireMetadataString(record, key, metadataPath) {
   return value;
 }
 
+function parseProjectMetadataRecord(parsed, metadataPath) {
+  const EXPECTED_SCHEMA = "itotori.localize-project.project-metadata.v0";
+  if (parsed.schemaVersion !== EXPECTED_SCHEMA) {
+    throw new Error(
+      `project metadata at ${metadataPath} has schemaVersion='${String(parsed.schemaVersion)}'; expected '${EXPECTED_SCHEMA}'`,
+    );
+  }
+  if (
+    typeof parsed.reallive !== "object" ||
+    parsed.reallive === null ||
+    Array.isArray(parsed.reallive)
+  ) {
+    throw new Error(`project metadata at ${metadataPath} missing required object 'reallive'`);
+  }
+  return {
+    projectId: requireMetadataString(parsed, "projectId", metadataPath),
+    gameId: requireMetadataString(parsed.reallive, "game_id", metadataPath),
+    gameVersion: requireMetadataString(parsed.reallive, "game_version", metadataPath),
+    sourceProfileId: requireMetadataString(parsed.reallive, "source_profile_id", metadataPath),
+    sourceLocale: requireMetadataString(parsed.reallive, "source_locale", metadataPath),
+  };
+}
+
 function requireManifestString(record, key, manifestPath, entryLabel) {
   const value = record[key];
   if (typeof value !== "string" || value.trim().length === 0) {
@@ -320,26 +350,104 @@ function loadProjectMetadata(metadataPath) {
   if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
     throw new Error(`project metadata at ${metadataPath} must be a JSON object`);
   }
-  const EXPECTED_SCHEMA = "itotori.localize-project.project-metadata.v0";
-  if (parsed.schemaVersion !== EXPECTED_SCHEMA) {
+  return parseProjectMetadataRecord(parsed, metadataPath);
+}
+
+function requireTargetDataString(record, key, targetDataPath, entryLabel) {
+  const value = record[key];
+  if (typeof value !== "string" || value.trim().length === 0) {
     throw new Error(
-      `project metadata at ${metadataPath} has schemaVersion='${String(parsed.schemaVersion)}'; expected '${EXPECTED_SCHEMA}'`,
+      `alpha target data at ${targetDataPath} ${entryLabel} missing required string '${key}'`,
     );
   }
-  if (
-    typeof parsed.reallive !== "object" ||
-    parsed.reallive === null ||
-    Array.isArray(parsed.reallive)
-  ) {
-    throw new Error(`project metadata at ${metadataPath} missing required object 'reallive'`);
+  return value;
+}
+
+function resolveTargetPresetPath(pathValue) {
+  if (isAbsolute(pathValue)) return pathValue;
+  return resolvePath(REPO_ROOT, pathValue);
+}
+
+function loadAlphaTargetData(targetDataPath) {
+  if (!existsSync(targetDataPath)) {
+    throw new Error(`alpha target data file missing at ${targetDataPath}`);
   }
-  return {
-    projectId: requireMetadataString(parsed, "projectId", metadataPath),
-    gameId: requireMetadataString(parsed.reallive, "game_id", metadataPath),
-    gameVersion: requireMetadataString(parsed.reallive, "game_version", metadataPath),
-    sourceProfileId: requireMetadataString(parsed.reallive, "source_profile_id", metadataPath),
-    sourceLocale: requireMetadataString(parsed.reallive, "source_locale", metadataPath),
-  };
+  const raw = readFileSync(targetDataPath, "utf8");
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (error) {
+    throw new Error(`alpha target data JSON parse failed at ${targetDataPath}: ${error.message}`);
+  }
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    throw new Error(`alpha target data at ${targetDataPath} must be a JSON object`);
+  }
+  const EXPECTED_SCHEMA = "itotori.localize-project.alpha-target-data.v0";
+  if (parsed.schemaVersion !== EXPECTED_SCHEMA) {
+    throw new Error(
+      `alpha target data at ${targetDataPath} has schemaVersion='${String(parsed.schemaVersion)}'; expected '${EXPECTED_SCHEMA}'`,
+    );
+  }
+  if (!Array.isArray(parsed.targets)) {
+    throw new Error(`alpha target data at ${targetDataPath} missing required array 'targets'`);
+  }
+  const targets = parsed.targets.map((target, index) => {
+    const entryLabel = `targets[${index}]`;
+    if (typeof target !== "object" || target === null || Array.isArray(target)) {
+      throw new Error(`alpha target data at ${targetDataPath} ${entryLabel} must be an object`);
+    }
+    const projectId = requireTargetDataString(target, "projectId", targetDataPath, entryLabel);
+    const pairPolicyPathValue = requireTargetDataString(
+      target,
+      "pairPolicyPath",
+      targetDataPath,
+      entryLabel,
+    );
+    const metadata = parseProjectMetadataRecord(
+      {
+        schemaVersion: "itotori.localize-project.project-metadata.v0",
+        projectId,
+        reallive: target.reallive,
+      },
+      `${targetDataPath} ${entryLabel}`,
+    );
+    return {
+      projectId,
+      pairPolicyPath: resolveTargetPresetPath(pairPolicyPathValue),
+      metadata,
+    };
+  });
+  return { schemaVersion: parsed.schemaVersion, targets };
+}
+
+function selectAlphaTarget(targetData, targetDataPath, requestedProject) {
+  const matches = targetData.targets.filter((target) => target.projectId === requestedProject);
+  if (matches.length === 0) {
+    throw new Error(
+      `alpha target data at ${targetDataPath} has no target for --project '${requestedProject}'; pass --project-metadata and --pair-policy for a caller-supplied project`,
+    );
+  }
+  if (matches.length > 1) {
+    throw new Error(
+      `alpha target data at ${targetDataPath} has multiple targets for --project '${requestedProject}'`,
+    );
+  }
+  return matches[0];
+}
+
+function loadProjectConfig(args) {
+  let target;
+  if (args.projectMetadataPath === undefined || args.pairPolicyPath === undefined) {
+    const targetData = loadAlphaTargetData(args.targetDataPath);
+    target = selectAlphaTarget(targetData, args.targetDataPath, args.project);
+  }
+  const projectMetadata =
+    args.projectMetadataPath === undefined
+      ? target.metadata
+      : loadProjectMetadata(args.projectMetadataPath);
+  const pairPolicyPath = args.pairPolicyPath ?? target.pairPolicyPath;
+  const pairPolicy = loadPairPolicy(pairPolicyPath);
+  return { pairPolicy, pairPolicyPath, projectMetadata };
 }
 
 function validateProjectSelection(requestedProject, projectMetadata, pairPolicy) {
@@ -631,8 +739,7 @@ function printDryRunPlan(plan, postures, realCorpusSource) {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
-  const policy = loadPairPolicy(args.pairPolicyPath);
-  const projectMetadata = loadProjectMetadata(args.projectMetadataPath);
+  const { pairPolicy: policy, pairPolicyPath, projectMetadata } = loadProjectConfig(args);
   validateProjectSelection(args.project, projectMetadata, policy);
   const sentinelSubstring = policy.enUsSentinel;
   const sceneId = policy.sceneId ?? args.scene;
@@ -686,7 +793,7 @@ async function main() {
     printDryRunPlan(
       [
         `cargo run -p kaifuu-cli -- extract --engine reallive --game-root ${realCorpusSource.placeholder} --game-id ${projectMetadata.gameId} --game-version ${projectMetadata.gameVersion} --source-profile-id ${projectMetadata.sourceProfileId} --source-locale ${projectMetadata.sourceLocale} --scene ${sceneId} --bundle-output ${bridgeBundlePath}`,
-        `node apps/itotori/dist/cli.js localize-project-stage --bridge ${bridgeBundlePath} --pair-policy ${args.pairPolicyPath} --unit-index ${args.unitIndex} --output ${agenticLoopBundlePath} --translated-bundle-output ${translatedBundlePath} --patch-report-output ${patchReportPath} --provider-run-artifacts-dir ${providerRunArtifactsDir}`,
+        `node apps/itotori/dist/cli.js localize-project-stage --bridge ${bridgeBundlePath} --pair-policy ${pairPolicyPath} --unit-index ${args.unitIndex} --output ${agenticLoopBundlePath} --translated-bundle-output ${translatedBundlePath} --patch-report-output ${patchReportPath} --provider-run-artifacts-dir ${providerRunArtifactsDir}`,
         `cargo run -p kaifuu-cli -- patch --engine reallive --source ${realCorpusSource.placeholder} --target <TARGET> --bundle ${translatedBundlePath} --force`,
         `cargo run -p utsushi-cli -- replay-validate --engine reallive --seen <TARGET>/REALLIVEDATA/Seen.txt --scene ${sceneId} --expect-textline-contains ${sentinelSubstring} --print-replay-log ${replayLogPath}`,
       ],
@@ -731,7 +838,7 @@ async function main() {
     "--bridge",
     bridgeBundlePath,
     "--pair-policy",
-    args.pairPolicyPath,
+    pairPolicyPath,
     "--unit-index",
     String(args.unitIndex),
     "--output",

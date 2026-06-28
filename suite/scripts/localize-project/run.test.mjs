@@ -25,6 +25,10 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const DRIVER_PATH = resolve(HERE, "run.mjs");
 const REPO_ROOT = resolve(HERE, "../../..");
 const DEFAULT_PAIR_POLICY_PATH = resolve(REPO_ROOT, "presets/localize-project.pair-policy.json");
+const DEFAULT_ALPHA_TARGET_DATA_PATH = resolve(
+  REPO_ROOT,
+  "presets/localize-project.alpha-target-data.json",
+);
 
 function runDriver(args, env = {}) {
   // The driver inherits PATH / NODE etc. from the caller. We
@@ -75,6 +79,23 @@ function writeRealCorpusManifest(corpora) {
       {
         schemaVersion: "itotori.real-corpus-manifest.v0",
         corpora,
+      },
+      null,
+      2,
+    )}\n`,
+  );
+  return { dir, path };
+}
+
+function writeAlphaTargetData(targets) {
+  const dir = mkdtempSync(join(tmpdir(), "itotori-alpha-target-data-"));
+  const path = join(dir, "alpha-target-data.json");
+  writeFileSync(
+    path,
+    `${JSON.stringify(
+      {
+        schemaVersion: "itotori.localize-project.alpha-target-data.v0",
+        targets,
       },
       null,
       2,
@@ -158,6 +179,24 @@ test("--dry-run --project ... exits 0 and prints per-phase commands", () => {
   );
 });
 
+test("Sweetie metadata is loaded from explicit alpha target data, not a generic metadata preset", () => {
+  const result = runDriver(["--dry-run", "--project", "sweetie-hd-alpha-1"]);
+  assert.equal(result.status, 0, `stderr: ${result.stderr}`);
+  assert.ok(
+    result.stdout.includes(`--pair-policy ${DEFAULT_PAIR_POLICY_PATH}`),
+    `dry-run plan must resolve Sweetie's allowlisted target pair-policy; got:\n${result.stdout}`,
+  );
+  assert.ok(
+    result.stdout.includes("--game-id sweetie-hd") &&
+      result.stdout.includes("--source-profile-id kaifuu-reallive-sweetie-hd"),
+    `dry-run plan must keep Sweetie metadata available through target data; got:\n${result.stdout}`,
+  );
+  assert.ok(
+    !result.stdout.includes("localize-project.project-metadata.json"),
+    `dry-run plan must not depend on the retired generic Sweetie metadata preset; got:\n${result.stdout}`,
+  );
+});
+
 test("--dry-run can use caller-supplied non-Sweetie project configs", () => {
   const metadata = writeProjectMetadata("fixture-alpha", {
     game_id: "fixture-reallive-game",
@@ -198,6 +237,51 @@ test("--dry-run can use caller-supplied non-Sweetie project configs", () => {
   } finally {
     rmSync(metadata.dir, { recursive: true, force: true });
     rmSync(policy.dir, { recursive: true, force: true });
+  }
+});
+
+test("--dry-run can use caller-supplied non-Sweetie alpha target data", () => {
+  const policy = writePairPolicy("fixture-alpha");
+  const targetData = writeAlphaTargetData([
+    {
+      projectId: "fixture-alpha",
+      pairPolicyPath: policy.path,
+      reallive: {
+        game_id: "fixture-target-game",
+        game_version: "2026.06.target",
+        source_profile_id: "fixture-target-profile",
+        source_locale: "ja-JP-x-target",
+      },
+    },
+  ]);
+  try {
+    const result = runDriver([
+      "--dry-run",
+      "--project",
+      "fixture-alpha",
+      "--target-data",
+      targetData.path,
+    ]);
+    assert.equal(result.status, 0, `stderr: ${result.stderr}`);
+    assert.ok(
+      result.stdout.includes("--game-id fixture-target-game") &&
+        result.stdout.includes("--game-version 2026.06.target") &&
+        result.stdout.includes("--source-profile-id fixture-target-profile") &&
+        result.stdout.includes("--source-locale ja-JP-x-target"),
+      `dry-run extract command must use caller-supplied target metadata; got:\n${result.stdout}`,
+    );
+    assert.ok(
+      result.stdout.includes(`--pair-policy ${policy.path}`),
+      `dry-run plan must use the target's pair-policy path; got:\n${result.stdout}`,
+    );
+    assert.ok(
+      !result.stdout.includes("--game-id sweetie-hd") &&
+        !result.stdout.includes("kaifuu-reallive-sweetie-hd"),
+      `non-Sweetie target data must not inherit Sweetie metadata; got:\n${result.stdout}`,
+    );
+  } finally {
+    rmSync(policy.dir, { recursive: true, force: true });
+    rmSync(targetData.dir, { recursive: true, force: true });
   }
 });
 
@@ -315,13 +399,18 @@ test("dry-run manifest resolution does not leak private corpus roots", () => {
   }
 });
 
-test("--dry-run --project rejects a loaded project config mismatch", () => {
+test("--dry-run --project rejects projects missing from alpha target data", () => {
   const result = runDriver(["--dry-run", "--project", "different-project"]);
   assert.notEqual(result.status, 0);
   assert.ok(
-    result.stderr.includes("--project 'different-project' does not match loaded project config") &&
-      result.stderr.includes("sweetie-hd-alpha-1"),
-    `stderr should identify the project config mismatch; got:\n${result.stderr}`,
+    result.stderr.includes(`alpha target data at ${DEFAULT_ALPHA_TARGET_DATA_PATH}`) &&
+      result.stderr.includes("has no target for --project 'different-project'") &&
+      result.stderr.includes("pass --project-metadata and --pair-policy"),
+    `stderr should identify the missing target-data record; got:\n${result.stderr}`,
+  );
+  assert.ok(
+    !result.stdout.includes("--game-id sweetie-hd"),
+    `unknown projects must not fall back to Sweetie metadata; got:\n${result.stdout}`,
   );
 });
 
