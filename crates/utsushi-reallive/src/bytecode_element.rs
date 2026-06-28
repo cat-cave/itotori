@@ -16,7 +16,7 @@
 //! The table below is derived from Haeleth's RLDEV documentation
 //! (`docs/research/reallive-engine.md` §E) and re-tested against the
 //! Sweetie HD scene #0001 decompressed bytes
-//! (`docs/research/reallive-sweetie-hd-encryption-mechanism.md` §4.2)
+//! (`RealLive encryption research notes` §4.2)
 //! before being encoded here:
 //!
 //! | Lead byte          | Element                               | Body shape                       |

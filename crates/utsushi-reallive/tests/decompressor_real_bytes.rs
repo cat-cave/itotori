@@ -4,7 +4,7 @@
 //! Pins the decompressor against the Sweetie HD corpus supplied via
 //! `ITOTORI_REAL_GAME_ROOT`
 //! using the documented decompressed-output values from
-//! `docs/research/reallive-sweetie-hd-encryption-mechanism.md`
+//! `RealLive encryption research notes`
 //! (outcome A: no second-level XOR for Sukara-branch titles).
 //!
 //! **Multi-game validation status.** Per the itotori operating model
@@ -34,13 +34,13 @@ use utsushi_reallive::{
 // raw `Seen.txt` envelope.
 
 /// Documented decompressed-output values for Sweetie HD scene #0001.
-/// Sourced from `docs/research/reallive-sweetie-hd-encryption-mechanism.md` §1.
+/// Sourced from `RealLive encryption research notes` §1.
 const SWEETIE_HD_SCENE_ONE_BYTECODE_COMPRESSED_SIZE: u32 = 1062;
 const SWEETIE_HD_SCENE_ONE_BYTECODE_UNCOMPRESSED_SIZE: u32 = 1660;
 
 /// First 8 bytes of the decompressed bytecode payload for Sweetie HD
 /// scene #0001. Sourced verbatim from
-/// `docs/research/reallive-sweetie-hd-encryption-mechanism.md` §1 and
+/// `RealLive encryption research notes` §1 and
 /// re-confirmed by the kaifuu-reallive `probe_scene_1_encryption`
 /// example (read-only reference; we do **not** depend on
 /// `kaifuu-reallive` for any code path).
@@ -49,7 +49,7 @@ const SWEETIE_HD_SCENE_ONE_DECOMPRESSED_FIRST_EIGHT_BYTES: [u8; 8] =
 
 #[test]
 #[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
-fn scene1_decompressor_matches_sweetie_hd_outcome_a() {
+fn scene1_decompressor_matches_reallive_real_bytes_outcome_a() {
     let Some(seen_path) = real_seen_txt_path() else {
         eprintln!(
             "ITOTORI_REAL_GAME_ROOT unset; skipping Sweetie HD real-bytes test for \
@@ -99,11 +99,11 @@ fn scene1_decompressor_matches_sweetie_hd_outcome_a() {
     );
     assert_eq!(
         header.bytecode_compressed_size, SWEETIE_HD_SCENE_ONE_BYTECODE_COMPRESSED_SIZE,
-        "compressed-size pin (docs/research/reallive-sweetie-hd-encryption-mechanism.md §1)",
+        "compressed-size pin (RealLive encryption research notes §1)",
     );
     assert_eq!(
         header.bytecode_uncompressed_size, SWEETIE_HD_SCENE_ONE_BYTECODE_UNCOMPRESSED_SIZE,
-        "uncompressed-size pin (docs/research/reallive-sweetie-hd-encryption-mechanism.md §1)",
+        "uncompressed-size pin (RealLive encryption research notes §1)",
     );
 
     // Slice the compressed bytecode payload out of the scene blob.
@@ -129,7 +129,7 @@ fn scene1_decompressor_matches_sweetie_hd_outcome_a() {
     // the compressed-stream 8-byte preamble XOR'd with `AVG32_XOR_MASK[0..8]`
     // yields the LE u32 pair (1062, 1660). This is the two-step
     // self-consistency check from
-    // `docs/research/reallive-sweetie-hd-encryption-mechanism.md` §4.1.
+    // `RealLive encryption research notes` §4.1.
     let preamble: [u8; AVG32_COMPRESSED_PREAMBLE_LEN] =
         std::array::from_fn(|i| compressed[i] ^ AVG32_XOR_MASK[i]);
     let preamble_lo = u32::from_le_bytes([preamble[0], preamble[1], preamble[2], preamble[3]]);
@@ -138,13 +138,13 @@ fn scene1_decompressor_matches_sweetie_hd_outcome_a() {
         preamble_lo, SWEETIE_HD_SCENE_ONE_BYTECODE_COMPRESSED_SIZE,
         "preamble[0..4] ^ AVG32_XOR_MASK[0..4] must yield bytecode_compressed_size (1062) — \
          self-consistency check from \
-         docs/research/reallive-sweetie-hd-encryption-mechanism.md §4.1",
+         RealLive encryption research notes §4.1",
     );
     assert_eq!(
         preamble_hi, SWEETIE_HD_SCENE_ONE_BYTECODE_UNCOMPRESSED_SIZE,
         "preamble[4..8] ^ AVG32_XOR_MASK[4..8] must yield bytecode_uncompressed_size (1660) — \
          self-consistency check from \
-         docs/research/reallive-sweetie-hd-encryption-mechanism.md §4.1",
+         RealLive encryption research notes §4.1",
     );
 
     // Decompress. Outcome A: xor2_key = None for Sukara-branch titles.
@@ -161,7 +161,7 @@ fn scene1_decompressor_matches_sweetie_hd_outcome_a() {
     // emits the Xor2NotApplied warning per the alpha-gate "no silent skip"
     // contract. This is the correct, documented choice for Sukara-branch
     // titles — outcome A in
-    // docs/research/reallive-sweetie-hd-encryption-mechanism.md.
+    // RealLive encryption research notes.
     assert_eq!(
         warnings.len(),
         1,
@@ -189,7 +189,7 @@ fn scene1_decompressor_matches_sweetie_hd_outcome_a() {
         &decompressed[..8],
         &SWEETIE_HD_SCENE_ONE_DECOMPRESSED_FIRST_EIGHT_BYTES,
         "first 8 bytes of decompressed output must match the documented prefix \
-         (docs/research/reallive-sweetie-hd-encryption-mechanism.md §1): \
+         (RealLive encryption research notes §1): \
          0a 02 00 0a 03 00 21 00",
     );
 

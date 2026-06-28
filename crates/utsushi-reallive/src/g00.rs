@@ -4,7 +4,7 @@
 //! `g00` image container family. Sweetie HD's `$GAME/REALLIVEDATA/g00/`
 //! ships 2,450 files; a corpus-wide lead-byte histogram (see the
 //! integration test
-//! `tests/g00_real_bytes.rs::g00_corpus_histogram_sweetie_hd_2450_files`)
+//! `tests/g00_real_bytes.rs::g00_corpus_histogram_real_bytes_2450_files`)
 //! observes 2,145 type-0 files, 305 type-2 files, and zero type-1 files
 //! in this corpus.
 //!

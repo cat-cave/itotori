@@ -55,7 +55,7 @@ const SWEETIE_HD_LAST_SCENE_ID: u16 = 9999;
 
 #[test]
 #[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
-fn scene_index_real_bytes_parses_sweetie_hd_seen_txt_into_198_populated_scene_entries() {
+fn scene_index_real_bytes_parses_reallive_real_bytes_seen_txt_into_198_populated_scene_entries() {
     let Some(seen_path) = real_seen_txt_path() else {
         eprintln!(
             "ITOTORI_REAL_GAME_ROOT unset; skipping Sweetie HD real-bytes test for \

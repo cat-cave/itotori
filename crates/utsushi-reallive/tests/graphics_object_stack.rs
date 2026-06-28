@@ -11,7 +11,7 @@
 //! acceptable for the stack mechanics; the render pass against a real
 //! g00 sprite requires UTSUSHI-146q to land first and is gated as a
 //! follow-up test." A third entrypoint
-//! (`graphics_pipeline_honours_sweetie_hd_gameexe_screen_size`) is
+//! (`graphics_pipeline_honours_reallive_real_bytes_gameexe_screen_size`) is
 //! env-gated on `ITOTORI_REAL_GAME_ROOT` and pins the real-bytes
 //! `SCREENSIZE_MOD=999,1280,720` round-trip through
 //! [`utsushi_reallive::SyscallDispatcher::screen_size`] +
@@ -31,7 +31,7 @@ use utsushi_reallive::{
 
 // Default name of the Sweetie HD title directory inside the
 // extraction root. Mirrors the existing
-// `gameexe_real_bytes.rs` / `syscall_routes_real_sweetie_hd.rs`
+// `gameexe_real_bytes.rs` / `syscall_routes_real_bytes.rs`
 // constant.
 
 /// Acceptance: allocating 256 objects on a single plane succeeds; the
@@ -194,10 +194,10 @@ fn render_wipe_solid_colour_deterministic_png() {
 /// value and emits a 1280x720 buffer" acceptance criterion.
 #[test]
 #[ignore = "requires ITOTORI_REAL_GAME_ROOT; opt in with --include-ignored"]
-fn graphics_pipeline_honours_sweetie_hd_gameexe_screen_size() {
+fn graphics_pipeline_honours_reallive_real_bytes_gameexe_screen_size() {
     let Some(gameexe_path) = real_gameexe_ini_path() else {
         eprintln!(
-            "ITOTORI_REAL_GAME_ROOT not set — graphics_pipeline_honours_sweetie_hd_gameexe_screen_size \
+            "ITOTORI_REAL_GAME_ROOT not set — graphics_pipeline_honours_reallive_real_bytes_gameexe_screen_size \
              skipped (run with --include-ignored to enable)"
         );
         return;

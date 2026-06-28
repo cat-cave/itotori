@@ -48,7 +48,7 @@ fn real_bgm_dir() -> Option<PathBuf> {
     real_corpus::reallivedata_subdir("bgm")
 }
 
-fn load_sweetie_hd_gameexe() -> Option<Arc<Gameexe>> {
+fn load_reallive_real_bytes_gameexe() -> Option<Arc<Gameexe>> {
     let path = real_gameexe_ini_path()?;
     let bytes = fs::read(&path).ok()?;
     Gameexe::parse(&bytes).ok().map(Arc::new)
@@ -57,7 +57,7 @@ fn load_sweetie_hd_gameexe() -> Option<Arc<Gameexe>> {
 #[test]
 #[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
 fn koe_play_resolves_through_namae_table() {
-    let Some(gameexe) = load_sweetie_hd_gameexe() else {
+    let Some(gameexe) = load_reallive_real_bytes_gameexe() else {
         eprintln!(
             "ITOTORI_REAL_GAME_ROOT unset or Gameexe.ini missing; skipping \
              koe_play_resolves_through_namae_table",
@@ -148,7 +148,7 @@ fn koe_play_resolves_through_namae_table() {
 #[test]
 #[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
 fn bgm_play_resolves_through_foldname_bgm() {
-    let Some(gameexe) = load_sweetie_hd_gameexe() else {
+    let Some(gameexe) = load_reallive_real_bytes_gameexe() else {
         eprintln!(
             "ITOTORI_REAL_GAME_ROOT unset or Gameexe.ini missing; skipping \
              bgm_play_resolves_through_foldname_bgm",
@@ -193,7 +193,7 @@ fn bgm_play_resolves_through_foldname_bgm() {
 #[test]
 #[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
 fn bgm_play_asset_id_resolves_against_real_asa_nwa_path() {
-    let Some(gameexe) = load_sweetie_hd_gameexe() else {
+    let Some(gameexe) = load_reallive_real_bytes_gameexe() else {
         eprintln!(
             "ITOTORI_REAL_GAME_ROOT unset; skipping \
              bgm_play_asset_id_resolves_against_real_asa_nwa_path",

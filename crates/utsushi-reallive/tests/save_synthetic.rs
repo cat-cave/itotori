@@ -44,7 +44,7 @@ const SWEETIE_HD_READ_FLAGS_BYTES: usize = 44_495;
 
 /// Sweetie HD title bytes embedded at offset 0x18 of `read.sav`. The
 /// 38-byte Shift-JIS string before the null terminator.
-fn sweetie_hd_title_bytes() -> Vec<u8> {
+fn reallive_real_bytes_title_bytes() -> Vec<u8> {
     vec![
         0x83, 0x49, 0x83, 0x56, 0x83, 0x49, 0x83, 0x4c, 0x53, 0x77, 0x65, 0x65, 0x74, 0x69, 0x65,
         0x81, 0x7b, 0x53, 0x77, 0x65, 0x65, 0x74, 0x73, 0x21, 0x21, 0x20, 0x48, 0x44, 0x20, 0x45,
@@ -151,7 +151,7 @@ fn save_reads_avg_global_save_decode_rejects_wrong_magic() {
 
 #[test]
 fn save_read_flags_decodes_title_round_trips_shift_jis_bytes() {
-    let title_bytes = sweetie_hd_title_bytes();
+    let title_bytes = reallive_real_bytes_title_bytes();
     let payload_bytes = SWEETIE_HD_READ_FLAGS_BYTES - 0x18 - title_bytes.len() - 1;
     let bytes = SaveRoundTrip::synthetic_read_flags(&title_bytes, payload_bytes);
     let flags = ReadFlags::decode(&bytes).expect("synthetic read flags must decode");
@@ -170,7 +170,7 @@ fn save_read_flags_decodes_title_preserves_non_utf8_bytes_verbatim() {
     // Acceptance criterion: the Shift-JIS title decode round-trips.
     // Use bytes that are NOT valid UTF-8 directly to prove the raw-byte
     // round-trip path doesn't lose anything.
-    let title_bytes = sweetie_hd_title_bytes();
+    let title_bytes = reallive_real_bytes_title_bytes();
     let bytes = SaveRoundTrip::synthetic_read_flags(&title_bytes, 16);
     let flags = ReadFlags::decode(&bytes).expect("decode");
     // Re-encoding must reproduce the input verbatim — including every
@@ -195,7 +195,7 @@ fn save_read_flags_decodes_title_accepts_ascii_title() {
 // =====================================================================
 
 #[test]
-fn save_preamble_round_trips_sweetie_hd_shaped_values() {
+fn save_preamble_round_trips_reallive_real_bytes_shaped_values() {
     let preamble = AvgSavePreamble {
         leading_u32: SWEETIE_HD_SYSTEM_SAVE_BYTES as u32,
         compiler_version: SWEETIE_HD_COMPILER_VERSION,

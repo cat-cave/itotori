@@ -46,11 +46,11 @@
 //!
 //! - **Writing to the read-only research mount must be banned at the
 //!   test layer.** The real-bytes test in
-//!   `tests/save_real_sweetie_hd.rs` reads the Sweetie HD save bytes
+//!   `tests/save_real_bytes.rs` reads the Sweetie HD save bytes
 //!   from `$ITOTORI_REAL_GAME_ROOT` (mode 0444, dr-x------) but
 //!   the test source has **no** `fs::write` / `fs::create_dir_all` /
 //!   `OpenOptions::write` calls — the audit grep
-//!   `tests/save_real_sweetie_hd.rs` keeps the "no writes against the
+//!   `tests/save_real_bytes.rs` keeps the "no writes against the
 //!   research mount" invariant pinned.
 //! - **Endianness flips between read and write.** Both directions use
 //!   little-endian; the [`AvgSavePreamble::encode`] / `decode` pair is

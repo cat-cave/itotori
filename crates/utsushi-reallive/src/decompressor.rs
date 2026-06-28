@@ -17,12 +17,12 @@
 //!    against the post-LZSS bytes. For Sweetie HD (and any other
 //!    Sukara-branch title carrying compiler version `110002`) the caller
 //!    passes `None` per outcome A in
-//!    [`docs/research/reallive-sweetie-hd-encryption-mechanism.md`].
+//!    the RealLive encryption research notes.
 //!
 //! # Outcome A (Sukara-branch / compiler version 110002)
 //!
 //! The encryption-mechanism research probe under
-//! `docs/research/reallive-sweetie-hd-encryption-mechanism.md` proved
+//! `RealLive encryption research notes` proved
 //! the rlvm `scenario.cc::Header` heuristic ("if compiler_version ==
 //! 110002 then enable second-level XOR") is overly pessimistic for the
 //! Sukara-branch HD remasters. Sweetie HD's scene #0001 decompresses
@@ -59,7 +59,7 @@ pub const AVG32_XOR_MASK_LEN: usize = 256;
 /// the first 8 mask slots yield the LE `u32` pair
 /// `(bytecode_compressed_size, bytecode_uncompressed_size)` — see the
 /// self-consistency check in
-/// `docs/research/reallive-sweetie-hd-encryption-mechanism.md` §4.1.
+/// `RealLive encryption research notes` §4.1.
 pub const AVG32_COMPRESSED_PREAMBLE_LEN: usize = 8;
 
 /// Byte length of the optional second-level XOR key.
@@ -228,7 +228,7 @@ pub enum DecompressWarning {
     ///
     /// For Sukara-branch HD remasters (Sweetie HD and siblings) this is
     /// the correct call — outcome A in
-    /// `docs/research/reallive-sweetie-hd-encryption-mechanism.md`
+    /// `RealLive encryption research notes`
     /// proves the rlvm branch is overly pessimistic for these titles.
     /// The warning fires so that downstream code (and audit tooling)
     /// can see the deliberate choice was made; it is never silent.
@@ -247,7 +247,7 @@ impl std::fmt::Display for DecompressWarning {
                 "utsushi.reallive.decompress.xor2_not_applied: compiler_version={compiler_version} \
                  historically requested a second-level XOR pass; xor2_key=None was supplied \
                  (outcome A for Sukara-branch titles — see \
-                 docs/research/reallive-sweetie-hd-encryption-mechanism.md)",
+                 RealLive encryption research notes)",
             ),
         }
     }
@@ -282,7 +282,7 @@ impl AvgDecompressor {
     /// When `xor2_key` is `Some`, the 16-byte key is XOR'd cyclically
     /// against the post-LZSS output. When it is `None`, the second-level
     /// XOR is intentionally skipped — see the
-    /// [`docs/research/reallive-sweetie-hd-encryption-mechanism.md`]
+    /// RealLive encryption research notes
     /// outcome A note above for why this is the correct choice for
     /// Sukara-branch titles.
     ///

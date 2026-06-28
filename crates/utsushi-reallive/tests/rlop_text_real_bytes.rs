@@ -64,7 +64,7 @@ fn real_seen_txt_path() -> Option<PathBuf> {
 
 #[test]
 #[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
-fn sweetie_hd_scene_one_emits_at_least_one_text_line_through_sink() {
+fn reallive_real_bytes_scene_one_emits_at_least_one_text_line_through_sink() {
     let Some(seen_path) = real_seen_txt_path() else {
         eprintln!(
             "ITOTORI_REAL_GAME_ROOT unset; skipping Sweetie HD real-bytes test for \

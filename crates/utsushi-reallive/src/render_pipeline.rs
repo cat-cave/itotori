@@ -556,7 +556,7 @@ mod tests {
     use super::*;
     use crate::graphics_objects::{GraphicsObject, WipeColour};
 
-    fn sweetie_hd_screen_size() -> ScreenSize {
+    fn reallive_real_bytes_screen_size() -> ScreenSize {
         ScreenSize {
             mode: 999,
             width: 1280,
@@ -633,8 +633,8 @@ mod tests {
     }
 
     #[test]
-    fn render_pass_honours_sweetie_hd_screen_size() {
-        let pass = RenderPass::new(sweetie_hd_screen_size()).expect("non-zero screen");
+    fn render_pass_honours_reallive_real_bytes_screen_size() {
+        let pass = RenderPass::new(reallive_real_bytes_screen_size()).expect("non-zero screen");
         assert_eq!(pass.width(), 1280);
         assert_eq!(pass.height(), 720);
     }

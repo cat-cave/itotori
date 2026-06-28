@@ -449,7 +449,7 @@ impl SyscallDispatcher {
 
     /// Number of *kind-distinct* routes the dispatcher carries. Pinned
     /// against [`SYSCALL_KIND_COUNT`] for Sweetie HD by the acceptance
-    /// test (`syscall_routes_match_sweetie_hd`).
+    /// test (`syscall_routes_match_reallive_real_bytes`).
     pub fn route_count(&self) -> usize {
         let mut seen = [false; SYSCALL_KIND_COUNT];
         for route in &self.routes {
@@ -658,7 +658,7 @@ mod tests {
         Gameexe::parse(&bytes).expect("synthetic gameexe must parse")
     }
 
-    fn sweetie_hd_lines_14_28() -> &'static str {
+    fn reallive_real_bytes_lines_14_28() -> &'static str {
         // Lines 14-28 of Sweetie HD's Gameexe.ini per § H; the
         // dispatcher must boot against this exact prefix without
         // an unrelated SCREENSIZE_MOD / SEEN_START / CAPTION
@@ -692,12 +692,12 @@ mod tests {
     }
 
     #[test]
-    fn dispatcher_reports_eight_kinds_for_sweetie_hd_shape() {
+    fn dispatcher_reports_eight_kinds_for_reallive_real_bytes_shape() {
         // EXAFTERCALL_MOD=0 disables the exaftercall route, so 7
         // kinds present (not 8). Flip the mod to 1 to test the
         // full 8.
-        let mut text =
-            sweetie_hd_lines_14_28().replace("#EXAFTERCALL_MOD=0\r\n", "#EXAFTERCALL_MOD=1\r\n");
+        let mut text = reallive_real_bytes_lines_14_28()
+            .replace("#EXAFTERCALL_MOD=0\r\n", "#EXAFTERCALL_MOD=1\r\n");
         text.push_str("");
         let gx = parse_gameexe(&text);
         let dispatcher = SyscallDispatcher::from_gameexe(&gx).expect("build");
@@ -709,8 +709,8 @@ mod tests {
 
     #[test]
     fn dispatcher_resolves_documented_scene_entrypoint_pairs() {
-        let mut text =
-            sweetie_hd_lines_14_28().replace("#EXAFTERCALL_MOD=0\r\n", "#EXAFTERCALL_MOD=1\r\n");
+        let mut text = reallive_real_bytes_lines_14_28()
+            .replace("#EXAFTERCALL_MOD=0\r\n", "#EXAFTERCALL_MOD=1\r\n");
         text.push_str("");
         let gx = parse_gameexe(&text);
         let dispatcher = SyscallDispatcher::from_gameexe(&gx).expect("build");
@@ -750,8 +750,8 @@ mod tests {
 
     #[test]
     fn cancelcall_mod_zero_disables_route_entirely() {
-        let text =
-            sweetie_hd_lines_14_28().replace("#CANCELCALL_MOD=1\r\n", "#CANCELCALL_MOD=0\r\n");
+        let text = reallive_real_bytes_lines_14_28()
+            .replace("#CANCELCALL_MOD=1\r\n", "#CANCELCALL_MOD=0\r\n");
         let gx = parse_gameexe(&text);
         let dispatcher = SyscallDispatcher::from_gameexe(&gx).expect("build");
         assert!(
@@ -770,11 +770,11 @@ mod tests {
     }
 
     #[test]
-    fn exaftercall_mod_zero_in_real_sweetie_hd_disables_route() {
+    fn exaftercall_mod_zero_in_real_bytes_disables_route() {
         // The Sweetie HD Gameexe.ini carries `EXAFTERCALL_MOD=0`,
         // so by default the dispatcher does NOT include
         // `exaftercall`.
-        let gx = parse_gameexe(sweetie_hd_lines_14_28());
+        let gx = parse_gameexe(reallive_real_bytes_lines_14_28());
         let dispatcher = SyscallDispatcher::from_gameexe(&gx).expect("build");
         assert!(
             dispatcher
@@ -790,7 +790,7 @@ mod tests {
     fn mouseactioncall_hot_region_pixel_dispatches() {
         // AREA = 1232,0,1279,719. (1250, 300) is inside.
         // (100, 100) is outside.
-        let gx = parse_gameexe(sweetie_hd_lines_14_28());
+        let gx = parse_gameexe(reallive_real_bytes_lines_14_28());
         let dispatcher = SyscallDispatcher::from_gameexe(&gx).expect("build");
         let inside = dispatcher
             .route_for_pointer_pixel(1250, 300)
@@ -809,7 +809,7 @@ mod tests {
 
     #[test]
     fn mouseactioncall_input_event_normalized_round_trips_to_pixel() {
-        let gx = parse_gameexe(sweetie_hd_lines_14_28());
+        let gx = parse_gameexe(reallive_real_bytes_lines_14_28());
         let dispatcher = SyscallDispatcher::from_gameexe(&gx).expect("build");
         // (x=1250 / 1279, y=300/719) → normalized coords for the
         // pixel-space (1250, 300) point.
@@ -836,7 +836,7 @@ mod tests {
 
     #[test]
     fn malformed_route_pair_surfaces_typed_error() {
-        let mut text = sweetie_hd_lines_14_28().to_string();
+        let mut text = reallive_real_bytes_lines_14_28().to_string();
         text = text.replace("#CANCELCALL=9999,10\r\n", "#CANCELCALL=oops\r\n");
         let gx = parse_gameexe(&text);
         match SyscallDispatcher::from_gameexe(&gx) {
@@ -850,7 +850,7 @@ mod tests {
 
     #[test]
     fn missing_mouse_area_surfaces_typed_error() {
-        let mut text = sweetie_hd_lines_14_28().to_string();
+        let mut text = reallive_real_bytes_lines_14_28().to_string();
         text = text.replace("#MOUSEACTIONCALL.000.AREA=1232,0,1279,719\r\n", "");
         let gx = parse_gameexe(&text);
         match SyscallDispatcher::from_gameexe(&gx) {
@@ -864,7 +864,7 @@ mod tests {
 
     #[test]
     fn invoke_routes_through_farcall_op_pushes_far_call_frame() {
-        let gx = parse_gameexe(sweetie_hd_lines_14_28());
+        let gx = parse_gameexe(reallive_real_bytes_lines_14_28());
         let dispatcher = SyscallDispatcher::from_gameexe(&gx).expect("build");
         let route = dispatcher
             .route_for_kind(SyscallRouteKind::Cancel)
@@ -887,7 +887,7 @@ mod tests {
         // Drive a roundtrip: invoke a route, then dispatch `rtl`,
         // and assert the VM lands back at the supplied return
         // (scene, pc).
-        let gx = parse_gameexe(sweetie_hd_lines_14_28());
+        let gx = parse_gameexe(reallive_real_bytes_lines_14_28());
         let dispatcher = SyscallDispatcher::from_gameexe(&gx).expect("build");
         let route = dispatcher
             .route_for_kind(SyscallRouteKind::SystemcallSave)
@@ -909,8 +909,8 @@ mod tests {
 
     #[test]
     fn input_event_save_load_routes_to_named_kinds() {
-        let mut text =
-            sweetie_hd_lines_14_28().replace("#EXAFTERCALL_MOD=0\r\n", "#EXAFTERCALL_MOD=1\r\n");
+        let mut text = reallive_real_bytes_lines_14_28()
+            .replace("#EXAFTERCALL_MOD=0\r\n", "#EXAFTERCALL_MOD=1\r\n");
         text.push_str("");
         let gx = parse_gameexe(&text);
         let dispatcher = SyscallDispatcher::from_gameexe(&gx).expect("build");

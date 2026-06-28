@@ -4,7 +4,7 @@
 //! Two named entrypoints match the verification commands pinned in the
 //! UTSUSHI-213 spec node:
 //!
-//! - `cargo test -p utsushi-reallive syscall_routes_match_sweetie_hd`
+//! - `cargo test -p utsushi-reallive syscall_routes_match_reallive_real_bytes`
 //! - `cargo test -p utsushi-reallive mouseactioncall_hot_region_dispatches`
 //!
 //! The first entrypoint is env-gated on `ITOTORI_REAL_GAME_ROOT`
@@ -31,7 +31,7 @@ fn resolve_gameexe_path() -> Option<PathBuf> {
     real_corpus::gameexe_ini_path()
 }
 
-fn load_sweetie_hd_gameexe() -> Option<Gameexe> {
+fn load_reallive_real_bytes_gameexe() -> Option<Gameexe> {
     let path = resolve_gameexe_path()?;
     let bytes = fs::read(&path).unwrap_or_else(|err| {
         panic!(
@@ -44,7 +44,7 @@ fn load_sweetie_hd_gameexe() -> Option<Gameexe> {
 
 /// Build a synthetic `Gameexe.ini` byte slice for the parts of
 /// § H the spec exercises. Used by every non-env-gated test below.
-fn synthetic_sweetie_hd_section_h() -> Vec<u8> {
+fn synthetic_reallive_real_bytes_section_h() -> Vec<u8> {
     let text = concat!(
         "#CANCELCALL_MOD=1\r\n",
         "#CANCELCALL=9999,10\r\n",
@@ -175,15 +175,15 @@ fn verify_syscall_routes_match_section_h(gameexe: &Gameexe) {
     assert_eq!(screen.height, 720);
 }
 
-/// DAG-spec filter `cargo test ... syscall_routes_match_sweetie_hd`.
+/// DAG-spec filter `cargo test ... syscall_routes_match_reallive_real_bytes`.
 /// Env-gated on `ITOTORI_REAL_GAME_ROOT` so the harness can
 /// also run without the corpus.
 #[test]
 #[ignore = "requires ITOTORI_REAL_GAME_ROOT; opt in with --include-ignored"]
-fn syscall_routes_match_sweetie_hd() {
-    let Some(gameexe) = load_sweetie_hd_gameexe() else {
+fn syscall_routes_match_reallive_real_bytes() {
+    let Some(gameexe) = load_reallive_real_bytes_gameexe() else {
         eprintln!(
-            "ITOTORI_REAL_GAME_ROOT not set or no REALLIVEDATA directory found — syscall_routes_match_sweetie_hd \
+            "ITOTORI_REAL_GAME_ROOT not set or no REALLIVEDATA directory found — syscall_routes_match_reallive_real_bytes \
              is a no-op."
         );
         return;
@@ -194,8 +194,8 @@ fn syscall_routes_match_sweetie_hd() {
 /// Synthetic mirror of the env-gated test above. The dispatcher must
 /// load against a § H-shaped Gameexe slice without the corpus.
 #[test]
-fn syscall_routes_match_sweetie_hd_synthetic() {
-    let gameexe = Gameexe::parse(&synthetic_sweetie_hd_section_h())
+fn syscall_routes_match_reallive_real_bytes_synthetic() {
+    let gameexe = Gameexe::parse(&synthetic_reallive_real_bytes_section_h())
         .expect("synthetic Gameexe slice must parse");
     verify_syscall_routes_match_section_h(&gameexe);
 }
@@ -211,7 +211,7 @@ fn syscall_routes_match_sweetie_hd_synthetic() {
 /// the normalized → pixel round-trip via `SCREENSIZE_MOD`).
 #[test]
 fn mouseactioncall_hot_region_dispatches() {
-    let gameexe = Gameexe::parse(&synthetic_sweetie_hd_section_h())
+    let gameexe = Gameexe::parse(&synthetic_reallive_real_bytes_section_h())
         .expect("synthetic Gameexe slice must parse");
     let dispatcher = SyscallDispatcher::from_gameexe(&gameexe).expect("dispatcher must build");
 
@@ -286,7 +286,7 @@ fn mouseactioncall_hot_region_dispatches() {
 /// filter: `cargo test ... syscall_routes ...`.
 #[test]
 fn syscall_routes_synthetic_eight_kinds_pinned() {
-    let gameexe = Gameexe::parse(&synthetic_sweetie_hd_section_h())
+    let gameexe = Gameexe::parse(&synthetic_reallive_real_bytes_section_h())
         .expect("synthetic Gameexe slice must parse");
     let dispatcher = SyscallDispatcher::from_gameexe(&gameexe).expect("dispatcher must build");
     // With EXAFTERCALL_MOD=1 the synthetic shape carries all 8 kinds.

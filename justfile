@@ -200,11 +200,11 @@ hello-replay:
 # `utsushi-cli replay-validate --engine reallive` surface match
 # without touching the vault. The
 # real-bytes variant lives in the same integration test file
-# (`tests/replay_validate_real_sweetie_hd.rs`) under the env-gated
+# (`tests/replay_validate_reallive.rs`) under the env-gated
 # ignored test; run it separately with ITOTORI_REAL_GAME_ROOT set
 # per the spec verification block.
 hello-replay-validate:
-    cargo test -p utsushi-reallive --test replay_validate_real_sweetie_hd -- --nocapture
+    cargo test -p utsushi-reallive --test replay_validate_reallive -- --nocapture
     cargo run -p utsushi-cli -- replay-validate --help
 
 # UTSUSHI-228 — alpha closer. Wraps every other alpha node into one

@@ -14,7 +14,7 @@
 //! The `(module_type, module_id)` pair the Sweetie HD corpus exhibits
 //! for the message-control submodule is `(1, 5)` — verified at byte
 //! offset `0x001e` of scene 1 (see
-//! `docs/research/reallive-sweetie-hd-encryption-mechanism.md` §4.2,
+//! `RealLive encryption research notes` §4.2,
 //! "[10] @0x001e Command type=1 id=5 opcode=120"). That pair is pinned
 //! here as [`MSG_MODULE_TYPE`] / [`MSG_MODULE_ID`].
 //!

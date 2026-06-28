@@ -20,7 +20,7 @@
 //!   read-only) but the regression itself would land. To catch the
 //!   regression at **review** time, this file deliberately contains
 //!   **zero** `fs::write` / `fs::create_dir_all` / `OpenOptions::write`
-//!   calls. The audit grep `tests/save_real_sweetie_hd.rs` keeps this
+//!   calls. The audit grep `tests/save_real_bytes.rs` keeps this
 //!   invariant pinned.
 //!
 //!   The test consumes `ITOTORI_REAL_GAME_ROOT` only as a read source;
@@ -96,7 +96,7 @@ fn load_required(file_name: &str) -> Vec<u8> {
 }
 
 #[test]
-fn save_real_sweetie_hd_real_bytes_are_ignored_without_private_corpus() {
+fn save_real_bytes_are_ignored_without_private_corpus() {
     if real_corpus::game_root().is_some() {
         return;
     }
@@ -163,13 +163,13 @@ fn verify_system_save() {
 
 #[test]
 #[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
-fn save_reads_avg_system_save_real_sweetie_hd_bytes() {
+fn save_reads_avg_system_save_real_bytes() {
     verify_system_save();
 }
 
 #[test]
 #[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
-fn save_real_sweetie_hd_system_save_round_trips() {
+fn save_real_bytes_system_save_round_trips() {
     verify_system_save();
 }
 
@@ -204,13 +204,13 @@ fn verify_global_save() {
 
 #[test]
 #[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
-fn save_reads_avg_global_save_real_sweetie_hd_bytes() {
+fn save_reads_avg_global_save_real_bytes() {
     verify_global_save();
 }
 
 #[test]
 #[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
-fn save_real_sweetie_hd_global_save_round_trips() {
+fn save_real_bytes_global_save_round_trips() {
     verify_global_save();
 }
 
@@ -244,12 +244,12 @@ fn verify_read_flags() {
 
 #[test]
 #[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
-fn save_read_flags_decodes_title_real_sweetie_hd_bytes() {
+fn save_read_flags_decodes_title_real_bytes() {
     verify_read_flags();
 }
 
 #[test]
 #[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
-fn save_real_sweetie_hd_read_flags_round_trips() {
+fn save_real_bytes_read_flags_round_trips() {
     verify_read_flags();
 }

@@ -9,7 +9,7 @@
 //! The substring-source contract (acceptance criterion #1 — regression
 //! sentinel) is the caller's: pick a substring unique to the patched
 //! copy. The integration test
-//! `crates/utsushi-reallive/tests/replay_validate_real_sweetie_hd.rs`
+//! `crates/utsushi-reallive/tests/replay_validate_reallive.rs`
 //! validates the contract by running the validator on both the
 //! patched and the original copy and asserting only the patched copy
 //! matches.

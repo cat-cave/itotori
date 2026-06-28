@@ -229,7 +229,7 @@ fn nwa_chime_decodes_raw_pcm_header() {
 
 #[test]
 fn nwa_real_bytes_skips_when_env_unset() {
-    // Mirrors the `gameexe_real_bytes.rs::verify_sweetie_hd_known_values_skips_when_env_unset`
+    // Mirrors the `gameexe_real_bytes.rs::verify_real_bytes_known_values_skips_when_env_unset`
     // pattern: when the env var is unset, the real-bytes tests above
     // print a diagnostic and return. This test makes the skip
     // explicit so the CI run records the "skipped, not silently

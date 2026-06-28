@@ -36,7 +36,7 @@ use utsushi_reallive::{
 
 /// Documented decompressed-output values for Sweetie HD scene #0001.
 /// Sourced from
-/// `docs/research/reallive-sweetie-hd-encryption-mechanism.md` §1 and
+/// `RealLive encryption research notes` §1 and
 /// re-validated by the UTSUSHI-203 real-bytes test.
 const SWEETIE_HD_SCENE_ONE_BYTECODE_UNCOMPRESSED_SIZE: u32 = 1660;
 
@@ -175,7 +175,7 @@ fn scene1_element_stream_partition_and_first_command_header() {
         first_ok,
         "first element must be MetaLine{{line_number: 2}} or \
          MetaEntrypoint{{entrypoint_index: 0}} per the research doc \
-         (docs/research/reallive-sweetie-hd-encryption-mechanism.md §4.2); got {first:?}",
+         (RealLive encryption research notes §4.2); got {first:?}",
     );
 
     // -- Partition invariant (acceptance criterion #1) --
@@ -282,7 +282,7 @@ fn scene1_element_stream_partition_and_first_command_header() {
     assert_eq!(
         first_command_offset, 0x001e,
         "first Command element must sit at byte_offset 0x001e per the research doc \
-         (docs/research/reallive-sweetie-hd-encryption-mechanism.md §4.2)",
+         (RealLive encryption research notes §4.2)",
     );
     assert_eq!(
         first_command_len, 8,

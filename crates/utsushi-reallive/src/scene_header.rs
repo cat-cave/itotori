@@ -403,7 +403,7 @@ mod tests {
 
     /// Build a synthetic header that mirrors the documented Sweetie HD
     /// scene #0001 values. Used as the round-trip baseline.
-    fn sweetie_hd_scene_one_synthetic() -> SceneHeader {
+    fn reallive_real_bytes_scene_one_synthetic() -> SceneHeader {
         let mut entrypoint_table: Vec<EntrypointEntry> = Vec::with_capacity(ENTRYPOINT_TABLE_LEN);
         // Per docs/research/reallive-engine.md §D, the on-disk lattice
         // for Sweetie HD scene #0001 carries `0x00000003` at slot 0
@@ -467,7 +467,7 @@ mod tests {
 
     #[test]
     fn round_trip_encode_decode_is_byte_exact() {
-        let header = sweetie_hd_scene_one_synthetic();
+        let header = reallive_real_bytes_scene_one_synthetic();
         let encoded = header.encode();
         assert_eq!(
             encoded.len(),
@@ -485,7 +485,7 @@ mod tests {
 
     #[test]
     fn out_of_profile_compiler_version_emits_warning_and_still_parses() {
-        let mut header = sweetie_hd_scene_one_synthetic();
+        let mut header = reallive_real_bytes_scene_one_synthetic();
         header.compiler_version = 0xDEAD_BEEF;
         let encoded = header.encode();
         let (decoded, warnings) = SceneHeader::parse(&encoded)
@@ -513,7 +513,7 @@ mod tests {
             COMPILER_VERSION_1_10,
             COMPILER_VERSION_1_1110,
         ] {
-            let mut header = sweetie_hd_scene_one_synthetic();
+            let mut header = reallive_real_bytes_scene_one_synthetic();
             header.compiler_version = version;
             let encoded = header.encode();
             let (_decoded, warnings) =
@@ -527,7 +527,7 @@ mod tests {
 
     #[test]
     fn entrypoint_table_has_exactly_one_hundred_slots() {
-        let header = sweetie_hd_scene_one_synthetic();
+        let header = reallive_real_bytes_scene_one_synthetic();
         let encoded = header.encode();
         let (decoded, _warnings) = SceneHeader::parse(&encoded).expect("synthetic parses");
         assert_eq!(

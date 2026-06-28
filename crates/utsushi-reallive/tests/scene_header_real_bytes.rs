@@ -63,7 +63,7 @@ const SWEETIE_HD_SCENE_ONE_Z_MINUS_TWO: u32 = 3;
 
 #[test]
 #[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
-fn scene1_header_matches_sweetie_hd() {
+fn scene1_header_matches_reallive_real_bytes() {
     let Some(seen_path) = real_seen_txt_path() else {
         eprintln!(
             "ITOTORI_REAL_GAME_ROOT unset; skipping Sweetie HD real-bytes test for \

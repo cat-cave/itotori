@@ -17,9 +17,9 @@
 //! - `cargo test -p utsushi-reallive gameexe_real_bytes ...` — the
 //!   verification command in the worktree dispatch prompt. Matches the
 //!   `gameexe_real_bytes_*` names.
-//! - `cargo test -p utsushi-reallive gameexe_sweetie_hd_known_values`
+//! - `cargo test -p utsushi-reallive gameexe_known_values`
 //!   — the first DAG-spec verification filter. Matches the
-//!   `gameexe_sweetie_hd_known_values` name.
+//!   `gameexe_known_values` name.
 //! - `cargo test -p utsushi-reallive gameexe_dotted_path_lookup` — the
 //!   second DAG-spec verification filter. Matches the
 //!   `gameexe_dotted_path_lookup` name.
@@ -52,10 +52,10 @@ fn load_or_skip() -> Option<Vec<u8>> {
 /// Body of the "known values" assertion suite. Held private so two
 /// `#[test]` entrypoints (one per cargo-filter substring the spec
 /// names) can call it without forking the assertion list.
-fn verify_sweetie_hd_known_values() {
+fn verify_real_bytes_known_values() {
     let Some(bytes) = load_or_skip() else {
         eprintln!(
-            "ITOTORI_REAL_GAME_ROOT not set or no REALLIVEDATA directory found — verify_sweetie_hd_known_values \
+            "ITOTORI_REAL_GAME_ROOT not set or no REALLIVEDATA directory found — verify_real_bytes_known_values \
              is a no-op."
         );
         return;
@@ -274,8 +274,8 @@ fn verify_dotted_path_lookup() {
 /// Worktree-prompt filter: `cargo test ... gameexe_real_bytes ...`.
 #[test]
 #[ignore = "requires ITOTORI_REAL_GAME_ROOT; opt in with --include-ignored"]
-fn gameexe_real_bytes_sweetie_hd_known_values() {
-    verify_sweetie_hd_known_values();
+fn gameexe_real_bytes_known_values() {
+    verify_real_bytes_known_values();
 }
 
 /// Worktree-prompt filter: `cargo test ... gameexe_real_bytes ...`.
@@ -285,11 +285,11 @@ fn gameexe_real_bytes_dotted_path_lookup() {
     verify_dotted_path_lookup();
 }
 
-/// DAG-spec filter: `cargo test ... gameexe_sweetie_hd_known_values`.
+/// DAG-spec filter: `cargo test ... gameexe_known_values`.
 #[test]
 #[ignore = "requires ITOTORI_REAL_GAME_ROOT; opt in with --include-ignored"]
-fn gameexe_sweetie_hd_known_values() {
-    verify_sweetie_hd_known_values();
+fn gameexe_known_values() {
+    verify_real_bytes_known_values();
 }
 
 /// DAG-spec filter: `cargo test ... gameexe_dotted_path_lookup`.

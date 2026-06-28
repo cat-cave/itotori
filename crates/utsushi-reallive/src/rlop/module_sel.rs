@@ -26,7 +26,7 @@
 //! The choice family lives at `(module_type=1, module_id=5)` per the
 //! Sweetie HD scene 1 byte observation that pinned `(1, 5, opcode=120)`
 //! at offset `0x001e` as a `select_w`-shaped Command (see
-//! `docs/research/reallive-sweetie-hd-encryption-mechanism.md` §4.2).
+//! `RealLive encryption research notes` §4.2).
 //! The four canonical opcodes are pinned at the small-block layout
 //! `0x0000..=0x0003` (matching the rlvm `module_sel.cc` registration
 //! shape — re-derived clean-room from RLDEV docs, not vendored). The

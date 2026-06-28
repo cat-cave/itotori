@@ -19,7 +19,7 @@
 //! - `selbtn_styling_surfaces_on_emitted_choice_lines`: when the
 //!   Gameexe carries `#SELBTN.000.000 = "value"`, the choice line for
 //!   index 0 includes the SELBTN suffix in its `text_surface` tag.
-//! - `register_sel_rlops_covers_every_variant_and_sweetie_hd_alias`:
+//! - `register_sel_rlops_covers_every_variant_and_reallive_real_bytes_alias`:
 //!   the helper populates every canonical variant plus the
 //!   Sweetie-HD-observed `select_w` opcode alias.
 
@@ -274,7 +274,7 @@ fn selbtn_styling_surfaces_on_emitted_choice_lines() {
 // ---------------------------------------------------------------------
 
 #[test]
-fn register_sel_rlops_covers_every_variant_and_sweetie_hd_alias() {
+fn register_sel_rlops_covers_every_variant_and_reallive_real_bytes_alias() {
     let (_sink, runtime) = build_runtime(None);
     let mut registry = RlopRegistry::new();
     let count = register_sel_rlops(&mut registry, runtime);

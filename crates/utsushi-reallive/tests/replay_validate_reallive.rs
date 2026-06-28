@@ -3,7 +3,7 @@
 //!
 //! Three test bodies:
 //!
-//! 1. **`patched_sweetie_hd_replay_contains_en_us_sentinel`** —
+//! 1. **`patched_reallive_real_bytes_replay_contains_en_us_sentinel`** —
 //!    env-gated on `ITOTORI_REAL_GAME_ROOT`. Loads the real
 //!    Sweetie HD `Seen.txt`, runs the KAIFUU-210 producer to build a
 //!    v0.2 BridgeBundle, **synthesises** a translated bundle by
@@ -85,7 +85,7 @@ fn real_gameexe_ini_path() -> Option<PathBuf> {
 
 /// Build a patched `Seen.txt` whose scene 1 carries the en-US
 /// sentinel in every Textout body. Returns the patched bytes.
-fn patch_sweetie_hd_with_sentinel(seen_bytes: &[u8]) -> Vec<u8> {
+fn patch_reallive_real_bytes_with_sentinel(seen_bytes: &[u8]) -> Vec<u8> {
     let index = parse_archive(seen_bytes).expect("real Seen.txt envelope must parse");
     let entry = index
         .entries
@@ -108,9 +108,9 @@ fn patch_sweetie_hd_with_sentinel(seen_bytes: &[u8]) -> Vec<u8> {
     let gameexe_inventory = parse_gameexe_inventory(&gameexe_bytes);
 
     let opts = BridgeOpts {
-        game_id: "sweetie-hd",
+        game_id: "reallive",
         game_version: "1.0.0",
-        source_profile_id: "kaifuu-reallive-sweetie-hd",
+        source_profile_id: "kaifuu-reallive-real-bytes",
         source_locale: "ja-JP",
         scene_blob_file_offset: entry.byte_offset,
         extractor_name: "kaifuu-reallive-bridge",
@@ -140,7 +140,7 @@ fn patch_sweetie_hd_with_sentinel(seen_bytes: &[u8]) -> Vec<u8> {
 
 #[test]
 #[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
-fn patched_sweetie_hd_replay_contains_en_us_sentinel() {
+fn patched_reallive_real_bytes_replay_contains_en_us_sentinel() {
     let Some(seen_path) = real_seen_txt_path() else {
         eprintln!(
             "ITOTORI_REAL_GAME_ROOT unset; skipping UTSUSHI-227 real-bytes Sweetie HD \
@@ -200,7 +200,7 @@ fn patched_sweetie_hd_replay_contains_en_us_sentinel() {
     let _ = fs::remove_dir_all(&tmp_dir);
     fs::create_dir_all(&tmp_dir).expect("mkdir tmp");
     let patched_path = tmp_dir.join("Seen.txt");
-    let patched_bytes = patch_sweetie_hd_with_sentinel(&seen_bytes);
+    let patched_bytes = patch_reallive_real_bytes_with_sentinel(&seen_bytes);
     fs::write(&patched_path, &patched_bytes).expect("write patched Seen.txt");
 
     eprintln!(

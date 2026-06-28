@@ -22,7 +22,7 @@
 //!    typed warning rather than a hard failure (the warning is the
 //!    audit-traceable surface for the
 //!    "LZSS distance encoding regression" audit-focus item).
-//! 2. `g00_corpus_histogram_sweetie_hd_2450_files` — directory-wide
+//! 2. `g00_corpus_histogram_real_bytes_2450_files` — directory-wide
 //!    histogram across all 2,450 `.g00` files emits a typed
 //!    `G00CorpusHistogram` and a `Vec<G00Warning>` containing one
 //!    `NoTypeNInCorpus` entry per documented type that is absent in
@@ -156,7 +156,7 @@ fn g00_type0_back_decodes() {
 
 #[test]
 #[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
-fn g00_corpus_histogram_sweetie_hd_2450_files() {
+fn g00_corpus_histogram_real_bytes_2450_files() {
     let Some(g00_dir) = real_g00_dir() else {
         eprintln!(
             "ITOTORI_REAL_GAME_ROOT unset; skipping Sweetie HD real-bytes test for \
@@ -337,7 +337,7 @@ fn g00_type2_btn000_decodes_header_and_regions() {
 
 #[test]
 fn g00_corpus_histogram_no_path_set_documents_skip() {
-    // Mirror the `gameexe_real_bytes.rs::verify_sweetie_hd_known_values_skips_when_env_unset`
+    // Mirror the `gameexe_real_bytes.rs::verify_real_bytes_known_values_skips_when_env_unset`
     // pattern: when the env var is unset, the real-bytes tests above
     // print a diagnostic and return. This test makes the skip
     // explicit so the CI run records the "skipped, not silently
