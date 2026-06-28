@@ -22,7 +22,11 @@ test("GitHub workflows use the local db compose path for Postgres parity", () =>
     assert.doesNotMatch(workflow, /^\s+services:\n\s+postgres:/mu, `${name} uses a GH service`);
     assert.match(workflow, /- run: just db-up\n/u, `${name} starts the compose db`);
     assert.match(workflow, /- run: just db-wait\n/u, `${name} waits for the compose db`);
-    assert.match(workflow, /- run: just db-down\n\s+if: always\(\)\n/u, `${name} tears down the compose db`);
+    assert.match(
+      workflow,
+      /- run: just db-down\n\s+if: always\(\)\n/u,
+      `${name} tears down the compose db`,
+    );
   }
 });
 
