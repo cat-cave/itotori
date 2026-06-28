@@ -907,6 +907,10 @@ describe("Itotori API handlers", () => {
       query: "?limit=0",
       error: /limit/u,
     },
+    {
+      query: "?typo=1",
+      error: /unknown catalog benchmark seed query parameter: typo/u,
+    },
   ])("rejects malformed catalog benchmark seed query $query", async ({ query, error }) => {
     const services = serviceFixture();
 

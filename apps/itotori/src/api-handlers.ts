@@ -560,6 +560,22 @@ const catalogBenchmarkLocalOwnershipValues: CatalogBenchmarkLocalOwnership[] = [
 
 function parseCatalogBenchmarkSeedFinderFilter(search = ""): CatalogBenchmarkSeedFinderFilter {
   const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
+  assertKnownQueryParams(
+    params,
+    [
+      "targetLanguage",
+      "pools",
+      "adapterIds",
+      "minCapabilityLevel",
+      "demandBucket",
+      "translationCompleteness",
+      "provenanceRequired",
+      "localOwnership",
+      "includeDemoted",
+      "limit",
+    ],
+    "catalog benchmark seed",
+  );
   const filter: CatalogBenchmarkSeedFinderFilter = {};
   const targetLanguage = params.get("targetLanguage");
   if (targetLanguage !== null) {
