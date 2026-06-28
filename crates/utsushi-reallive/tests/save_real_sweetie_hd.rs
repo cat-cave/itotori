@@ -1,12 +1,14 @@
 //! UTSUSHI-218 — real-bytes integration test for the AVG-derived save
 //! format against Sweetie HD's `SAVEDATA/` directory.
 //!
-//! This file is **env-gated**: the assertions only run when the
-//! environment variable `ITOTORI_REAL_GAME_ROOT` is set, pointing
-//! at the audit-grade Sweetie HD extraction root (the parent of the
-//! game-title directory). The presence of
-//! that env var is the same gate used elsewhere in the workspace for
-//! "real Shift-JIS save bytes are available locally".
+//! This file is **opt-in and env-gated**: the private-corpus assertions
+//! are `#[ignore]`-gated and only run with `--include-ignored` when the
+//! environment variable `ITOTORI_REAL_GAME_ROOT` is set, pointing at
+//! the audit-grade Sweetie HD extraction root (the parent of the
+//! game-title directory). The presence of that env var is the same gate
+//! used elsewhere in the workspace for "real Shift-JIS save bytes are
+//! available locally". Public CI therefore records these assertions as
+//! ignored instead of passing them with zero real-byte coverage.
 //!
 //! # Audit focus
 //!
@@ -21,9 +23,10 @@
 //!   calls. The audit grep `tests/save_real_sweetie_hd.rs` keeps this
 //!   invariant pinned.
 //!
-//!   In addition, the test does **not** accept a `ITOTORI_REAL_GAME_ROOT`
-//!   override that points at a writable directory — every read goes
-//!   through the path the audit doc declares, with no fall-back.
+//!   The test consumes `ITOTORI_REAL_GAME_ROOT` only as a read source;
+//!   it does not reject writable local copies. Write-safety is pinned by
+//!   the absence of write/open-for-write calls in this file, not by a
+//!   runtime path-permission guard.
 //!
 //! - **Endianness flips between read and write.** Both directions go
 //!   through `u32::from_le_bytes` / `u32::to_le_bytes`; a regression
@@ -49,8 +52,8 @@ use std::fs;
 use std::path::PathBuf;
 
 use utsushi_reallive::{
-    GLOBAL_SAVE_MAGIC, GlobalSave, ReadFlags, SWEETIE_HD_COMPILER_VERSION, SYSTEM_SAVE_MAGIC,
-    SystemSave,
+    GlobalSave, ReadFlags, SystemSave, GLOBAL_SAVE_MAGIC, SWEETIE_HD_COMPILER_VERSION,
+    SYSTEM_SAVE_MAGIC,
 };
 
 // Default name of the Sweetie HD title directory inside the
@@ -76,15 +79,32 @@ fn resolve_savedata_path(file_name: &str) -> Option<PathBuf> {
     real_corpus::save_file_path(file_name)
 }
 
-fn load_or_skip(file_name: &str) -> Option<Vec<u8>> {
-    let path = resolve_savedata_path(file_name)?;
+fn load_required(file_name: &str) -> Vec<u8> {
+    let path = resolve_savedata_path(file_name).unwrap_or_else(|| {
+        panic!(
+            "Sweetie HD real-bytes assertion requires ITOTORI_REAL_GAME_ROOT to point at a \
+             RealLive game root containing SAVEDATA/{file_name}; this test is #[ignore]-gated \
+             so missing private inputs must not report success"
+        )
+    });
     let bytes = fs::read(&path).unwrap_or_else(|err| {
         panic!(
             "ITOTORI_REAL_GAME_ROOT is set but SAVEDATA/{file_name} could not be read at {}: {err}",
             path.display(),
         )
     });
-    Some(bytes)
+    bytes
+}
+
+#[test]
+fn save_real_sweetie_hd_real_bytes_are_ignored_without_private_corpus() {
+    if real_corpus::game_root().is_some() {
+        return;
+    }
+    eprintln!(
+        "ITOTORI_REAL_GAME_ROOT not set — Sweetie HD save real-bytes tests are \
+         #[ignore]-gated and only run with ITOTORI_REAL_GAME_ROOT set.",
+    );
 }
 
 // ---------------------------------------------------------------------
@@ -92,12 +112,7 @@ fn load_or_skip(file_name: &str) -> Option<Vec<u8>> {
 // ---------------------------------------------------------------------
 
 fn verify_system_save() {
-    let Some(bytes) = load_or_skip("REALLIVE.sav") else {
-        eprintln!(
-            "ITOTORI_REAL_GAME_ROOT not set or no SAVEDATA file found — verify_system_save is a no-op."
-        );
-        return;
-    };
+    let bytes = load_required("REALLIVE.sav");
     assert_eq!(
         bytes.len(),
         SWEETIE_HD_SYSTEM_SAVE_BYTES,
@@ -148,11 +163,13 @@ fn verify_system_save() {
 }
 
 #[test]
+#[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
 fn save_reads_avg_system_save_real_sweetie_hd_bytes() {
     verify_system_save();
 }
 
 #[test]
+#[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
 fn save_real_sweetie_hd_system_save_round_trips() {
     verify_system_save();
 }
@@ -162,12 +179,7 @@ fn save_real_sweetie_hd_system_save_round_trips() {
 // ---------------------------------------------------------------------
 
 fn verify_global_save() {
-    let Some(bytes) = load_or_skip("save999.sav") else {
-        eprintln!(
-            "ITOTORI_REAL_GAME_ROOT not set or no SAVEDATA file found — verify_global_save is a no-op."
-        );
-        return;
-    };
+    let bytes = load_required("save999.sav");
     assert_eq!(bytes.len(), SWEETIE_HD_GLOBAL_SAVE_BYTES);
 
     let save = GlobalSave::decode(&bytes).expect("save999.sav must decode");
@@ -192,11 +204,13 @@ fn verify_global_save() {
 }
 
 #[test]
+#[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
 fn save_reads_avg_global_save_real_sweetie_hd_bytes() {
     verify_global_save();
 }
 
 #[test]
+#[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
 fn save_real_sweetie_hd_global_save_round_trips() {
     verify_global_save();
 }
@@ -206,12 +220,7 @@ fn save_real_sweetie_hd_global_save_round_trips() {
 // ---------------------------------------------------------------------
 
 fn verify_read_flags() {
-    let Some(bytes) = load_or_skip("read.sav") else {
-        eprintln!(
-            "ITOTORI_REAL_GAME_ROOT not set or no SAVEDATA file found — verify_read_flags is a no-op."
-        );
-        return;
-    };
+    let bytes = load_required("read.sav");
     assert_eq!(bytes.len(), SWEETIE_HD_READ_FLAGS_BYTES);
 
     let flags = ReadFlags::decode(&bytes).expect("read.sav must decode");
@@ -235,11 +244,13 @@ fn verify_read_flags() {
 }
 
 #[test]
+#[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
 fn save_read_flags_decodes_title_real_sweetie_hd_bytes() {
     verify_read_flags();
 }
 
 #[test]
+#[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
 fn save_real_sweetie_hd_read_flags_round_trips() {
     verify_read_flags();
 }
