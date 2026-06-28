@@ -77,6 +77,62 @@ The validator checks the JSON Schema, confirms that referenced files stay inside
 the repository and outside `fixtures/private-local/`, and verifies the recorded
 SHA-256 and byte counts.
 
+## Title Reference Allowlist For Active Docs
+
+Title references are allowed only when the surrounding record needs the specific
+title as evidence or historical context:
+
+- roadmap and planning records that name an explicit target;
+- historical audits, proposals, and captured evidence;
+- private operator notes that stay local and are not committed;
+- explicit alpha proof target records.
+
+Active product and operator docs must teach generic surfaces instead:
+
+- project runners such as `suite/scripts/localize-project/run.mjs`, selected by
+  project metadata or target-data records;
+- real-corpus descriptors such as `ITOTORI_REAL_CORPUS_MANIFEST`;
+- engine/runtime artifact surfaces such as bridge bundles, patch reports, replay
+  logs, runtime evidence, and provider-run records;
+- placeholder corpus labels and local paths, never a new title-specific command,
+  environment variable, preset name, artifact directory, or schema version.
+
+When a named alpha target already exists, docs may mention it as an allowlisted
+target record, but new reusable instructions should still point to the generic
+runner and descriptor. Do not create future surfaces shaped like
+`localize-<title>`, `<TITLE>_REAL_GAME_ROOT`, `artifacts/localize-<title>/`, or
+`<title>-alpha` unless the document is itself the explicit proof target record
+or a historical audit.
+
+Review title-specific references with this command before publishing active
+guidance:
+
+```sh
+rg -n --hidden \
+  --glob '!.git/**' \
+  --glob '!docs/audits/**' \
+  --glob '!docs/proposals/**' \
+  --glob '!docs/research/**' \
+  --glob '!docs/openrouter-integration-evidence/**' \
+  --glob '!**/*.test.*' \
+  --glob '!crates/**/tests/**' \
+  -e 'Sweetie HD|Oshioki|localize-sweetie-hd|ITOTORI_REAL_GAME_ROOT|artifacts/localize-sweetie|presets/localize-sweetie|sweetie-hd-alpha' \
+  README.md docs suite apps crates
+```
+
+Classify every hit before editing it:
+
+- **Allowed historical/evidence:** hits that return when the historical/test
+  globs above are removed, including `docs/audits/**`, `docs/proposals/**`,
+  `docs/research/**`, `docs/openrouter-integration-evidence/**`, committed
+  evidence JSON, and code/tests that preserve existing alpha proof behavior.
+- **Allowed explicit target:** a roadmap/planning or alpha proof target record
+  whose purpose is to name the specific target.
+- **Needs cleanup:** active README/operator/product docs that teach future
+  workers to add or use title-specific commands, environment variables, preset
+  names, artifact directories, or schema versions instead of the generic project
+  runner, corpus descriptor, and engine/runtime artifact surfaces above.
+
 ## Private Local Corpora
 
 Private corpora are local inputs for adapters, benchmarks, and credibility

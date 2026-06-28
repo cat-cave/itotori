@@ -8,7 +8,7 @@ The suite has three first-class subprojects:
 - **Kaifuu**: deterministic game extraction, patching, verification, and `.kaifuu` delta packages.
 - **Utsushi**: validation runtimes for trace, replay, capture, screenshots, and runtime evidence.
 
-The current scaffold is a functional DB-backed path. The hello-world fixture is the deterministic bootstrap that exercises the intended end-to-end contract across all three projects without copyrighted bytes; the first real-engine vertical is `ALPHA-006` (Sukara's _Oshioki Sweetie HD Remaster + Sweets fandisc_ on RealLive, sourced from `/archive/vault/`).
+The current scaffold is a functional DB-backed path. The hello-world fixture is the deterministic bootstrap that exercises the intended end-to-end contract across all three projects without copyrighted bytes; the first real-engine vertical is the explicit alpha proof target `ALPHA-006`, sourced from `/archive/vault/`.
 
 ## Quickstart
 
@@ -19,7 +19,7 @@ just ci
 just hello
 ```
 
-`just hello` remains the deterministic bootstrap path against Postgres-backed Itotori state; it proves the contract end-to-end on a synthetic fixture. The first real-engine alpha vertical is tracked under `ALPHA-006` and sourced from `/archive/vault/` per [docs/itotori-vault-source-adapter.md](docs/itotori-vault-source-adapter.md).
+`just hello` remains the deterministic bootstrap path against Postgres-backed Itotori state; it proves the contract end-to-end on a synthetic fixture. Future real-corpus docs should teach generic project runners and corpus descriptors, not new title-specific commands, environment variables, artifact schemas, or preset names. The title-reference allowlist and review command live in [docs/fixtures-and-corpora.md](docs/fixtures-and-corpora.md#title-reference-allowlist-for-active-docs).
 
 1. Kaifuu extracts `fixtures/hello-game` into a `BridgeBundle`.
 2. Itotori imports the bridge, creates a fake `ja-JP -> en-US` draft, and exports `PatchExport`.
@@ -53,8 +53,7 @@ Vite+ and Vite Task are the high-level TypeScript/web workspace surface. Cargo r
 ## Status
 
 This repository is scaffolded for DAG-driven development from the DB-backed hello
-world toward `ALPHA-006`, the named first real-engine vertical (Sukara's
-_Oshioki Sweetie HD Remaster + Sweets fandisc_ on RealLive).
+world toward `ALPHA-006`, the explicit first real-engine alpha proof target.
 
 The canonical roadmap is tracked as machine-readable data in `roadmap/spec-dag.json`.
 Use `just roadmap-validate`, `just roadmap-ready`, and `just roadmap-pop` to inspect

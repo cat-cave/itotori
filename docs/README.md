@@ -36,6 +36,10 @@ human adjudication requirements are documented in
 Binary game data ingest from `/archive/vault/` (managed by the vault-curation
 sibling project) is contracted in
 [itotori-vault-source-adapter.md](itotori-vault-source-adapter.md).
+Active docs must use generic project runners, generic real-corpus descriptors,
+and generic engine/runtime artifact surfaces. The title-reference allowlist and
+grep review command live in
+[fixtures-and-corpora.md](fixtures-and-corpora.md#title-reference-allowlist-for-active-docs).
 Kaifuu engine fixture sourcing, reference citation, and unsupported variant
 policy lives in [kaifuu-fixture-policy.md](kaifuu-fixture-policy.md).
 Kaifuu archive, encryption, key, helper, and unknown-variant detector rows are
@@ -55,10 +59,10 @@ The implementation roadmap lives in [spec-dag.md](spec-dag.md) and
 [orchestration-operating-model.md](orchestration-operating-model.md) and the
 [agent worktree lifecycle](worktree-lifecycle.md).
 `SHARED-025` has landed the alpha proof manifest contract. `ALPHA-006` is the
-first real-engine vertical (Sukara's _Oshioki Sweetie HD Remaster + Sweets
-fandisc_ on RealLive, sourced from `/archive/vault/` via the vault-source
-adapter). `ALPHA-007` is the public alpha-proof workflow command, and
-`ALPHA-009` retires the hello-world fixture gate in favor of that alpha proof.
+explicit first real-engine alpha proof target, sourced from `/archive/vault/`
+via the vault-source adapter. `ALPHA-007` is the public generic alpha-proof
+workflow command, and `ALPHA-009` retires the hello-world fixture gate in favor
+of that alpha proof.
 Provider credentials, routing, logging, and recording policy is defined in
 [ADR 0002](adrs/0002-provider-routing-and-recording.md).
 Search and indexing infrastructure, including exact indexes, pgvector handling,
