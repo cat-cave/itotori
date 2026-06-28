@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "exported_at": "2026-06-28T05:46:56.579Z",
+  "exported_at": "2026-06-28T05:58:59.739Z",
   "registries": {
     "groups": [
       {
@@ -26819,7 +26819,7 @@
       "id": "choice-index-misalignment-when-args-contain-non-bytes-variants",
       "title": "Choice-index misalignment when args contain non-Bytes variants",
       "kind": "audit-fix",
-      "milestone": null,
+      "milestone": "alpha",
       "status": "ready",
       "priority": "P3",
       "estimate_points": 1,
@@ -26827,26 +26827,34 @@
       "owner": null,
       "branch": null,
       "spec": "crates/utsushi-reallive/src/rlop/module_sel.rs:383-407 — when an ExprValue::Int arg appears mid-list, `continue` skips it from the stored `choices` Vec but the emitted `text_surface = \"choice:<idx>\"` uses the original argument index. A user pick maps cleanly to `set_store` (which the code does correctly) but the queued `SelectLongOp::choices()` no longer aligns with the index. Real-bytes RealLive `select_*` always pass Shift-JIS Bytes so this path is synthetic-test-only; still worth flagging as a follow-up cleanup.",
-      "acceptance": "Finding is addressed and verified.",
+      "acceptance": "- Resolve promoted P3 audit finding a0f86455-30d4-4965-b0dc-9e887ef140f7 from UTSUSHI-211: Choice-index misalignment when args contain non-Bytes variants\n- Preserve the parent node acceptance and prevent the original evidence from recurring.",
       "validation": null,
-      "context": null,
+      "context": "Promoted finding a0f86455-30d4-4965-b0dc-9e887ef140f7 from UTSUSHI-211.",
       "created_at": "2026-06-26T04:24:35.160Z",
       "updated_at": "2026-06-26T04:24:35.160Z",
       "claimed_at": null,
       "done_at": null,
-      "group_name": null,
-      "status_reason": null,
+      "group_name": "runtime-adapters",
+      "status_reason": "Promoted from finding a0f86455-30d4-4965-b0dc-9e887ef140f7 on node UTSUSHI-211.",
       "check_command": null,
       "ci_command": null,
-      "projects": [],
-      "verification": [],
-      "audit_focus": []
+      "projects": ["utsushi"],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Focused re-audit of promoted finding a0f86455-30d4-4965-b0dc-9e887ef140f7 from UTSUSHI-211: Choice-index misalignment when args contain non-Bytes variants"
+        }
+      ],
+      "audit_focus": [
+        "Promoted finding a0f86455-30d4-4965-b0dc-9e887ef140f7 from UTSUSHI-211: Choice-index misalignment when args contain non-Bytes variants",
+        "Original evidence no longer true: crates/utsushi-reallive/src/rlop/module_sel.rs:383-407 — when an ExprValue::Int arg appears mid-list, `continue` skips it from the stored `choices` Vec but the emitted `text_surface = \"choice:<idx>\"` uses the original argument index. A user pick maps cleanly to `set_store` (which the code does correctly) but the queued `SelectLongOp::choices()` no longer aligns with the index. Real-bytes RealLive `select_*` always pass Shift-JIS Bytes so this path is synthetic-test-only; still worth flagging as a follow-up cleanup."
+      ]
     },
     {
       "id": "ac-2-literal-wording-deducts-cache-discount-before-refusing-and-",
       "title": "AC#2 literal wording (\"deducts cache discount before refusing\") and implementation (does NOT subtract — treats usage.cost as already-net) point opposite directions; orchestrator should reconcile the AC text with the DOC-AMBIGUOUS-6 / §5.3 treaty before merge so a future reader doesn't read AC#2 as \"current code is wrong.\"",
       "kind": "audit-fix",
-      "milestone": null,
+      "milestone": "alpha",
       "status": "ready",
       "priority": "P3",
       "estimate_points": 1,
@@ -26854,26 +26862,34 @@
       "owner": null,
       "branch": null,
       "spec": "apps/itotori/src/providers/openrouter.ts:1615-1631 — recordSpend adds cost.amountMicrosUsd verbatim and explicitly comments \"we do NOT subtract cost.cacheDiscountMicrosUsd again — that would double-count the discount\"; spec acceptance #2 reads \"Per-process cost cap deducts cache discount before refusing a new call.\" docs/openrouter-integration.md:374-379 anchors the no-subtract posture (\"treat usage.cost as authoritative billed cost; never recompute\"). Implementation is correct per the doc treaty; only the AC text reads ambiguously.",
-      "acceptance": "Finding is addressed and verified.",
+      "acceptance": "- Resolve promoted P3 audit finding c2ba1834-386a-48fa-9133-067d382c3f88 from ITOTORI-233: AC#2 literal wording (\"deducts cache discount before refusing\") and implementation (does NOT subtract — treats usage.cost as already-net) point opposite directions; orchestrator should reconcile the AC text with the DOC-AMBIGUOUS-6 / §5.3 treaty before merge so a future reader doesn't read AC#2 as \"current code is wrong.\"\n- Preserve the parent node acceptance and prevent the original evidence from recurring.",
       "validation": null,
-      "context": null,
+      "context": "Promoted finding c2ba1834-386a-48fa-9133-067d382c3f88 from ITOTORI-233.",
       "created_at": "2026-06-26T05:01:27.540Z",
       "updated_at": "2026-06-26T05:01:27.540Z",
       "claimed_at": null,
       "done_at": null,
-      "group_name": null,
-      "status_reason": null,
+      "group_name": "agent-runtime",
+      "status_reason": "Promoted from finding c2ba1834-386a-48fa-9133-067d382c3f88 on node ITOTORI-233.",
       "check_command": null,
       "ci_command": null,
-      "projects": [],
-      "verification": [],
-      "audit_focus": []
+      "projects": ["itotori"],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Focused re-audit of promoted finding c2ba1834-386a-48fa-9133-067d382c3f88 from ITOTORI-233: AC#2 literal wording (\"deducts cache discount before refusing\") and implementation (does NOT subtract — treats usage.cost as already-net) point opposite directions; orchestrator should reconcile the AC text with the DOC-AMBIGUOUS-6 / §5.3 treaty before merge so a future reader doesn't read AC#2 as \"current code is wrong.\""
+        }
+      ],
+      "audit_focus": [
+        "Promoted finding c2ba1834-386a-48fa-9133-067d382c3f88 from ITOTORI-233: AC#2 literal wording (\"deducts cache discount before refusing\") and implementation (does NOT subtract — treats usage.cost as already-net) point opposite directions; orchestrator should reconcile the AC text with the DOC-AMBIGUOUS-6 / §5.3 treaty before merge so a future reader doesn't read AC#2 as \"current code is wrong.\"",
+        "Original evidence no longer true: apps/itotori/src/providers/openrouter.ts:1615-1631 — recordSpend adds cost.amountMicrosUsd verbatim and explicitly comments \"we do NOT subtract cost.cacheDiscountMicrosUsd again — that would double-count the discount\"; spec acceptance #2 reads \"Per-process cost cap deducts cache discount before refusing a new call.\" docs/openrouter-integration.md:374-379 anchors the no-subtract posture (\"treat usage.cost as authoritative billed cost; never recompute\"). Implementation is correct per the doc treaty; only the AC text reads ambiguously."
+      ]
     },
     {
       "id": "stale-doc-comment-on-adaptercapabilities-level-matrix-still-refe",
       "title": "Stale doc comment on AdapterCapabilities::level_matrix still references deleted with_level_matrix builder",
       "kind": "audit-fix",
-      "milestone": null,
+      "milestone": "alpha",
       "status": "ready",
       "priority": "P2",
       "estimate_points": 1,
@@ -26881,20 +26897,28 @@
       "owner": null,
       "branch": null,
       "spec": "crates/kaifuu-core/src/lib.rs:381-385 — field doc says 'When `new` is called without `with_level_matrix`, this is conservatively derived from `reports` via [`AdapterCapabilityMatrix::derive_from_reports`]. Detectors should declare it explicitly...' This contradicts the new invariant from the constructor docstring at lib.rs:396-408 ('every adapter MUST declare its 4-rung AdapterCapabilityMatrix at construction. There is no silent fallback'). The `with_level_matrix` builder has been deleted; there is no longer a 'without with_level_matrix' construction path. The conservative-derivation description is also misleading now that the matrix is a required constructor arg.",
-      "acceptance": "Finding is addressed and verified.",
+      "acceptance": "- Resolve promoted P2 audit finding 8d26ed46-5e80-4c45-b1a7-4929f5f2ee47 from KAIFUU-053: Stale doc comment on AdapterCapabilities::level_matrix still references deleted with_level_matrix builder\n- Preserve the parent node acceptance and prevent the original evidence from recurring.",
       "validation": null,
-      "context": null,
+      "context": "Promoted finding 8d26ed46-5e80-4c45-b1a7-4929f5f2ee47 from KAIFUU-053.",
       "created_at": "2026-06-26T05:06:00.855Z",
       "updated_at": "2026-06-26T05:06:00.855Z",
       "claimed_at": null,
       "done_at": null,
-      "group_name": null,
-      "status_reason": null,
+      "group_name": "kaifuu-core",
+      "status_reason": "Promoted from finding 8d26ed46-5e80-4c45-b1a7-4929f5f2ee47 on node KAIFUU-053.",
       "check_command": null,
       "ci_command": null,
-      "projects": [],
-      "verification": [],
-      "audit_focus": []
+      "projects": ["kaifuu", "shared", "itotori"],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Focused re-audit of promoted finding 8d26ed46-5e80-4c45-b1a7-4929f5f2ee47 from KAIFUU-053: Stale doc comment on AdapterCapabilities::level_matrix still references deleted with_level_matrix builder"
+        }
+      ],
+      "audit_focus": [
+        "Promoted finding 8d26ed46-5e80-4c45-b1a7-4929f5f2ee47 from KAIFUU-053: Stale doc comment on AdapterCapabilities::level_matrix still references deleted with_level_matrix builder",
+        "Original evidence no longer true: crates/kaifuu-core/src/lib.rs:381-385 — field doc says 'When `new` is called without `with_level_matrix`, this is conservatively derived from `reports` via [`AdapterCapabilityMatrix::derive_from_reports`]. Detectors should declare it explicitly...' This contradicts the new invariant from the constructor docstring at lib.rs:396-408 ('every adapter MUST declare its 4-rung AdapterCapabilityMatrix at construction. There is no silent fallback'). The `with_level_matrix` builder has been deleted; there is no longer a 'without with_level_matrix' construction path. The conservative-derivation description is also misleading now that the matrix is a required constructor arg."
+      ]
     },
     {
       "id": "INFRA-001",
@@ -26932,7 +26956,7 @@
       "id": "recordoutcome-throws-repairjobserviceerror-with-the-wrong-code-f",
       "title": "recordOutcome throws RepairJobServiceError with the wrong `code` field ('missing_pair') when the actual problem is 'job not in-flight'",
       "kind": "audit-fix",
-      "milestone": null,
+      "milestone": "alpha",
       "status": "ready",
       "priority": "P2",
       "estimate_points": 1,
@@ -26940,26 +26964,34 @@
       "owner": null,
       "branch": null,
       "spec": "apps/itotori/src/orchestrator/repair/repair-job-service.ts:172-176 — code:\"missing_pair\" is hard-coded for the not-in-flight branch; the typed code is one of the three the class advertises, and a caller switching on err.code would mis-route the error. The message text is correct but the structured code is wrong. The RepairJobServiceError union should add an 'unknown_job_id' (or 'not_in_flight') variant and be used here.",
-      "acceptance": "Finding is addressed and verified.",
+      "acceptance": "- Resolve promoted P2 audit finding c0560d8e-0825-4c9e-b644-307efe8a23af from ITOTORI-038: recordOutcome throws RepairJobServiceError with the wrong `code` field ('missing_pair') when the actual problem is 'job not in-flight'\n- Preserve the parent node acceptance and prevent the original evidence from recurring.",
       "validation": null,
-      "context": null,
+      "context": "Promoted finding c0560d8e-0825-4c9e-b644-307efe8a23af from ITOTORI-038.",
       "created_at": "2026-06-26T05:38:27.828Z",
       "updated_at": "2026-06-26T05:38:27.828Z",
       "claimed_at": null,
       "done_at": null,
-      "group_name": null,
-      "status_reason": null,
+      "group_name": "translation-loop",
+      "status_reason": "Promoted from finding c0560d8e-0825-4c9e-b644-307efe8a23af on node ITOTORI-038.",
       "check_command": null,
       "ci_command": null,
-      "projects": [],
-      "verification": [],
-      "audit_focus": []
+      "projects": ["itotori"],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Focused re-audit of promoted finding c0560d8e-0825-4c9e-b644-307efe8a23af from ITOTORI-038: recordOutcome throws RepairJobServiceError with the wrong `code` field ('missing_pair') when the actual problem is 'job not in-flight'"
+        }
+      ],
+      "audit_focus": [
+        "Promoted finding c0560d8e-0825-4c9e-b644-307efe8a23af from ITOTORI-038: recordOutcome throws RepairJobServiceError with the wrong `code` field ('missing_pair') when the actual problem is 'job not in-flight'",
+        "Original evidence no longer true: apps/itotori/src/orchestrator/repair/repair-job-service.ts:172-176 — code:\"missing_pair\" is hard-coded for the not-in-flight branch; the typed code is one of the three the class advertises, and a caller switching on err.code would mis-route the error. The message text is correct but the structured code is wrong. The RepairJobServiceError union should add an 'unknown_job_id' (or 'not_in_flight') variant and be used here."
+      ]
     },
     {
       "id": "drop-silently-no-ops-on-unknown-jobids-no-history-event-recorded",
       "title": "drop() silently no-ops on unknown jobIds; no history event recorded for a typo'd drop call",
       "kind": "audit-fix",
-      "milestone": null,
+      "milestone": "alpha",
       "status": "ready",
       "priority": "P2",
       "estimate_points": 1,
@@ -26967,26 +26999,34 @@
       "owner": null,
       "branch": null,
       "spec": "apps/itotori/src/orchestrator/repair/repair-job-service.ts:189-199 — if the jobId is neither queued nor in-flight, the function returns without throwing AND without appending a history event. A future caller that mistypes a job id loses the operation silently. Acceptable for a skeleton, but a typed 'unknown_job_id' error (or an explicit job_dropped event with reason='unknown_job_id') would close the silent-failure mode.",
-      "acceptance": "Finding is addressed and verified.",
+      "acceptance": "- Resolve promoted P2 audit finding 1c93b876-a5b8-45fd-82c1-bf0878e14af6 from ITOTORI-038: drop() silently no-ops on unknown jobIds; no history event recorded for a typo'd drop call\n- Preserve the parent node acceptance and prevent the original evidence from recurring.",
       "validation": null,
-      "context": null,
+      "context": "Promoted finding 1c93b876-a5b8-45fd-82c1-bf0878e14af6 from ITOTORI-038.",
       "created_at": "2026-06-26T05:38:27.833Z",
       "updated_at": "2026-06-26T05:38:27.833Z",
       "claimed_at": null,
       "done_at": null,
-      "group_name": null,
-      "status_reason": null,
+      "group_name": "translation-loop",
+      "status_reason": "Promoted from finding 1c93b876-a5b8-45fd-82c1-bf0878e14af6 on node ITOTORI-038.",
       "check_command": null,
       "ci_command": null,
-      "projects": [],
-      "verification": [],
-      "audit_focus": []
+      "projects": ["itotori"],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Focused re-audit of promoted finding 1c93b876-a5b8-45fd-82c1-bf0878e14af6 from ITOTORI-038: drop() silently no-ops on unknown jobIds; no history event recorded for a typo'd drop call"
+        }
+      ],
+      "audit_focus": [
+        "Promoted finding 1c93b876-a5b8-45fd-82c1-bf0878e14af6 from ITOTORI-038: drop() silently no-ops on unknown jobIds; no history event recorded for a typo'd drop call",
+        "Original evidence no longer true: apps/itotori/src/orchestrator/repair/repair-job-service.ts:189-199 — if the jobId is neither queued nor in-flight, the function returns without throwing AND without appending a history event. A future caller that mistypes a job id loses the operation silently. Acceptable for a skeleton, but a typed 'unknown_job_id' error (or an explicit job_dropped event with reason='unknown_job_id') would close the silent-failure mode."
+      ]
     },
     {
       "id": "parentjobid-is-accepted-verbatim-without-verifying-the-parent-ex",
       "title": "parentJobId is accepted verbatim without verifying the parent exists in this service's history",
       "kind": "audit-fix",
-      "milestone": null,
+      "milestone": "alpha",
       "status": "ready",
       "priority": "P2",
       "estimate_points": 1,
@@ -26994,26 +27034,34 @@
       "owner": null,
       "branch": null,
       "spec": "apps/itotori/src/orchestrator/repair/repair-job-service.ts:117-148 — enqueue() copies input.parentJobId onto the RepairJob without checking it points at a job this service ever saw. A typo or a stale id silently breaks the repair-chain provenance the parentJobId field is supposed to provide (types.ts:163-164 doc-comment claims the chain lets the dashboard 'render the repair tree without re-walking the trigger log' — but the chain may dangle).",
-      "acceptance": "Finding is addressed and verified.",
+      "acceptance": "- Resolve promoted P2 audit finding 232b93c5-f4bf-4f60-a433-0a6b1bcbf69b from ITOTORI-038: parentJobId is accepted verbatim without verifying the parent exists in this service's history\n- Preserve the parent node acceptance and prevent the original evidence from recurring.",
       "validation": null,
-      "context": null,
+      "context": "Promoted finding 232b93c5-f4bf-4f60-a433-0a6b1bcbf69b from ITOTORI-038.",
       "created_at": "2026-06-26T05:38:27.838Z",
       "updated_at": "2026-06-26T05:38:27.838Z",
       "claimed_at": null,
       "done_at": null,
-      "group_name": null,
-      "status_reason": null,
+      "group_name": "translation-loop",
+      "status_reason": "Promoted from finding 232b93c5-f4bf-4f60-a433-0a6b1bcbf69b on node ITOTORI-038.",
       "check_command": null,
       "ci_command": null,
-      "projects": [],
-      "verification": [],
-      "audit_focus": []
+      "projects": ["itotori"],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Focused re-audit of promoted finding 232b93c5-f4bf-4f60-a433-0a6b1bcbf69b from ITOTORI-038: parentJobId is accepted verbatim without verifying the parent exists in this service's history"
+        }
+      ],
+      "audit_focus": [
+        "Promoted finding 232b93c5-f4bf-4f60-a433-0a6b1bcbf69b from ITOTORI-038: parentJobId is accepted verbatim without verifying the parent exists in this service's history",
+        "Original evidence no longer true: apps/itotori/src/orchestrator/repair/repair-job-service.ts:117-148 — enqueue() copies input.parentJobId onto the RepairJob without checking it points at a job this service ever saw. A typo or a stale id silently breaks the repair-chain provenance the parentJobId field is supposed to provide (types.ts:163-164 doc-comment claims the chain lets the dashboard 'render the repair tree without re-walking the trigger log' — but the chain may dangle)."
+      ]
     },
     {
       "id": "human-decision-project-scope-returns-affectedbridgeunitids-downs",
       "title": "human_decision project scope returns affectedBridgeUnitIds: [] — downstream loops over the array will rerun nothing instead of everything",
       "kind": "audit-fix",
-      "milestone": null,
+      "milestone": "alpha",
       "status": "ready",
       "priority": "P3",
       "estimate_points": 1,
@@ -27021,26 +27069,34 @@
       "owner": null,
       "branch": null,
       "spec": "apps/itotori/src/orchestrator/repair/affected-work-selector.ts:138-147 — when scope.kind === 'project' the selector returns affectedBridgeUnitIds: []. The contract is that consumers must check affectedScope === 'project' separately and enumerate the project from elsewhere. A naive consumer that iterates affectedBridgeUnitIds will silently no-op. Documented behavior, but is a footgun the skeleton could close by either (a) requiring the human decision to enumerate units explicitly, or (b) widening the AffectedWorkSelection type so 'project' is a distinct variant.",
-      "acceptance": "Finding is addressed and verified.",
+      "acceptance": "- Resolve promoted P3 audit finding d5743e7b-b67c-4d7e-a8ad-540b9e755ca4 from ITOTORI-038: human_decision project scope returns affectedBridgeUnitIds: [] — downstream loops over the array will rerun nothing instead of everything\n- Preserve the parent node acceptance and prevent the original evidence from recurring.",
       "validation": null,
-      "context": null,
+      "context": "Promoted finding d5743e7b-b67c-4d7e-a8ad-540b9e755ca4 from ITOTORI-038.",
       "created_at": "2026-06-26T05:38:27.841Z",
       "updated_at": "2026-06-26T05:38:27.841Z",
       "claimed_at": null,
       "done_at": null,
-      "group_name": null,
-      "status_reason": null,
+      "group_name": "translation-loop",
+      "status_reason": "Promoted from finding d5743e7b-b67c-4d7e-a8ad-540b9e755ca4 on node ITOTORI-038.",
       "check_command": null,
       "ci_command": null,
-      "projects": [],
-      "verification": [],
-      "audit_focus": []
+      "projects": ["itotori"],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Focused re-audit of promoted finding d5743e7b-b67c-4d7e-a8ad-540b9e755ca4 from ITOTORI-038: human_decision project scope returns affectedBridgeUnitIds: [] — downstream loops over the array will rerun nothing instead of everything"
+        }
+      ],
+      "audit_focus": [
+        "Promoted finding d5743e7b-b67c-4d7e-a8ad-540b9e755ca4 from ITOTORI-038: human_decision project scope returns affectedBridgeUnitIds: [] — downstream loops over the array will rerun nothing instead of everything",
+        "Original evidence no longer true: apps/itotori/src/orchestrator/repair/affected-work-selector.ts:138-147 — when scope.kind === 'project' the selector returns affectedBridgeUnitIds: []. The contract is that consumers must check affectedScope === 'project' separately and enumerate the project from elsewhere. A naive consumer that iterates affectedBridgeUnitIds will silently no-op. Documented behavior, but is a footgun the skeleton could close by either (a) requiring the human decision to enumerate units explicitly, or (b) widening the AffectedWorkSelection type so 'project' is a distinct variant."
+      ]
     },
     {
       "id": "deterministic-jobid-minting-collides-across-distinct-service-ins",
       "title": "Deterministic jobId minting collides across distinct service instances when the same trigger arrives at the same counter slot",
       "kind": "audit-fix",
-      "milestone": null,
+      "milestone": "alpha",
       "status": "ready",
       "priority": "P3",
       "estimate_points": 1,
@@ -27048,26 +27104,34 @@
       "owner": null,
       "branch": null,
       "spec": "apps/itotori/src/orchestrator/repair/repair-job-service.ts:238-245 — the seed is `${trigger.trigger}|${triggerStableKey(trigger)}|${counter}` and the counter resets to 0 on every new RepairJobService instance. Two services that ingest overlapping triggers in parallel produce identical jobIds. The test 'mints stable job ids deterministic in trigger + counter' relies on this for replay determinism, but a future caller merging histories from two services will see jobId collisions. Either add a service-instance entropy seed OR document the single-service-per-process invariant in the public RepairJobService docs.",
-      "acceptance": "Finding is addressed and verified.",
+      "acceptance": "- Resolve promoted P3 audit finding 59a30080-0294-49b0-a504-ae602c07bbdf from ITOTORI-038: Deterministic jobId minting collides across distinct service instances when the same trigger arrives at the same counter slot\n- Preserve the parent node acceptance and prevent the original evidence from recurring.",
       "validation": null,
-      "context": null,
+      "context": "Promoted finding 59a30080-0294-49b0-a504-ae602c07bbdf from ITOTORI-038.",
       "created_at": "2026-06-26T05:38:27.845Z",
       "updated_at": "2026-06-26T05:38:27.845Z",
       "claimed_at": null,
       "done_at": null,
-      "group_name": null,
-      "status_reason": null,
+      "group_name": "translation-loop",
+      "status_reason": "Promoted from finding 59a30080-0294-49b0-a504-ae602c07bbdf on node ITOTORI-038.",
       "check_command": null,
       "ci_command": null,
-      "projects": [],
-      "verification": [],
-      "audit_focus": []
+      "projects": ["itotori"],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Focused re-audit of promoted finding 59a30080-0294-49b0-a504-ae602c07bbdf from ITOTORI-038: Deterministic jobId minting collides across distinct service instances when the same trigger arrives at the same counter slot"
+        }
+      ],
+      "audit_focus": [
+        "Promoted finding 59a30080-0294-49b0-a504-ae602c07bbdf from ITOTORI-038: Deterministic jobId minting collides across distinct service instances when the same trigger arrives at the same counter slot",
+        "Original evidence no longer true: apps/itotori/src/orchestrator/repair/repair-job-service.ts:238-245 — the seed is `${trigger.trigger}|${triggerStableKey(trigger)}|${counter}` and the counter resets to 0 on every new RepairJobService instance. Two services that ingest overlapping triggers in parallel produce identical jobIds. The test 'mints stable job ids deterministic in trigger + counter' relies on this for replay determinism, but a future caller merging histories from two services will see jobId collisions. Either add a service-instance entropy seed OR document the single-service-per-process invariant in the public RepairJobService docs."
+      ]
     },
     {
       "id": "history-snapshot-returned-by-repairhistory-shares-the-same-repai",
       "title": "history snapshot returned by repairHistory() shares the same RepairJob reference embedded in job_enqueued events; a caller that mutates the returned job retroactively edits history",
       "kind": "audit-fix",
-      "milestone": null,
+      "milestone": "alpha",
       "status": "ready",
       "priority": "P3",
       "estimate_points": 1,
@@ -27075,26 +27139,34 @@
       "owner": null,
       "branch": null,
       "spec": "apps/itotori/src/orchestrator/repair/repair-job-service.ts:146 (push embeds the same job object the caller received) + line 215 (history.slice() shallow-copies the array but not the events). TypeScript's readonly types prevent normal mutation, but the structural append-only guarantee relies on the type system, not on the runtime. Append-only-history claim in the spec would be more robust with structuredClone on push or freeze on emit.",
-      "acceptance": "Finding is addressed and verified.",
+      "acceptance": "- Resolve promoted P3 audit finding e2dbd780-60ef-4086-9ce5-b391e2b01031 from ITOTORI-038: history snapshot returned by repairHistory() shares the same RepairJob reference embedded in job_enqueued events; a caller that mutates the returned job retroactively edits history\n- Preserve the parent node acceptance and prevent the original evidence from recurring.",
       "validation": null,
-      "context": null,
+      "context": "Promoted finding e2dbd780-60ef-4086-9ce5-b391e2b01031 from ITOTORI-038.",
       "created_at": "2026-06-26T05:38:27.849Z",
       "updated_at": "2026-06-26T05:38:27.849Z",
       "claimed_at": null,
       "done_at": null,
-      "group_name": null,
-      "status_reason": null,
+      "group_name": "translation-loop",
+      "status_reason": "Promoted from finding e2dbd780-60ef-4086-9ce5-b391e2b01031 on node ITOTORI-038.",
       "check_command": null,
       "ci_command": null,
-      "projects": [],
-      "verification": [],
-      "audit_focus": []
+      "projects": ["itotori"],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Focused re-audit of promoted finding e2dbd780-60ef-4086-9ce5-b391e2b01031 from ITOTORI-038: history snapshot returned by repairHistory() shares the same RepairJob reference embedded in job_enqueued events; a caller that mutates the returned job retroactively edits history"
+        }
+      ],
+      "audit_focus": [
+        "Promoted finding e2dbd780-60ef-4086-9ce5-b391e2b01031 from ITOTORI-038: history snapshot returned by repairHistory() shares the same RepairJob reference embedded in job_enqueued events; a caller that mutates the returned job retroactively edits history",
+        "Original evidence no longer true: apps/itotori/src/orchestrator/repair/repair-job-service.ts:146 (push embeds the same job object the caller received) + line 215 (history.slice() shallow-copies the array but not the events). TypeScript's readonly types prevent normal mutation, but the structural append-only guarantee relies on the type system, not on the runtime. Append-only-history claim in the spec would be more robust with structuredClone on push or freeze on emit."
+      ]
     },
     {
       "id": "assertseverity-runtime-guard-for-missing-enum-entries-is-dead-co",
       "title": "assertSeverity runtime guard for missing enum entries is dead code (the order table is Record<RepairJobSeverity, number>, so TS rejects missing keys at compile time)",
       "kind": "audit-fix",
-      "milestone": null,
+      "milestone": "alpha",
       "status": "ready",
       "priority": "P3",
       "estimate_points": 1,
@@ -27102,26 +27174,34 @@
       "owner": null,
       "branch": null,
       "spec": "apps/itotori/src/orchestrator/repair/repair-job-service.ts:271-281 — the for-of loop over REPAIR_JOB_SEVERITIES checks each known severity is in `order`, but the Record type already forces this at the type level. The loop runs on every enqueue and never trips. Minor gold-plating; remove or convert to a static once-at-construction assertion.",
-      "acceptance": "Finding is addressed and verified.",
+      "acceptance": "- Resolve promoted P3 audit finding 916f1416-5ebe-488e-a7b9-12659322921c from ITOTORI-038: assertSeverity runtime guard for missing enum entries is dead code (the order table is Record<RepairJobSeverity, number>, so TS rejects missing keys at compile time)\n- Preserve the parent node acceptance and prevent the original evidence from recurring.",
       "validation": null,
-      "context": null,
+      "context": "Promoted finding 916f1416-5ebe-488e-a7b9-12659322921c from ITOTORI-038.",
       "created_at": "2026-06-26T05:38:27.854Z",
       "updated_at": "2026-06-26T05:38:27.854Z",
       "claimed_at": null,
       "done_at": null,
-      "group_name": null,
-      "status_reason": null,
+      "group_name": "translation-loop",
+      "status_reason": "Promoted from finding 916f1416-5ebe-488e-a7b9-12659322921c on node ITOTORI-038.",
       "check_command": null,
       "ci_command": null,
-      "projects": [],
-      "verification": [],
-      "audit_focus": []
+      "projects": ["itotori"],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Focused re-audit of promoted finding 916f1416-5ebe-488e-a7b9-12659322921c from ITOTORI-038: assertSeverity runtime guard for missing enum entries is dead code (the order table is Record<RepairJobSeverity, number>, so TS rejects missing keys at compile time)"
+        }
+      ],
+      "audit_focus": [
+        "Promoted finding 916f1416-5ebe-488e-a7b9-12659322921c from ITOTORI-038: assertSeverity runtime guard for missing enum entries is dead code (the order table is Record<RepairJobSeverity, number>, so TS rejects missing keys at compile time)",
+        "Original evidence no longer true: apps/itotori/src/orchestrator/repair/repair-job-service.ts:271-281 — the for-of loop over REPAIR_JOB_SEVERITIES checks each known severity is in `order`, but the Record type already forces this at the type level. The loop runs on every enqueue and never trips. Minor gold-plating; remove or convert to a static once-at-construction assertion."
+      ]
     },
     {
       "id": "fixture-repair-loop-deliverable-is-realized-as-an-in-file-test-f",
       "title": "Fixture repair loop deliverable is realized as an in-file test fixture, not a JSON fixture under fixtures/",
       "kind": "audit-fix",
-      "milestone": null,
+      "milestone": "alpha",
       "status": "ready",
       "priority": "P3",
       "estimate_points": 1,
@@ -27129,26 +27209,34 @@
       "owner": null,
       "branch": null,
       "spec": "apps/itotori/test/repair-job-service.test.ts:410-526 — the 'ITOTORI-038 fixture repair loop' describe block builds synthetic triggers inline. There is no fixtures/repair-* file (find fixtures/ apps/itotori/test/fixtures/ -name '*repair*' returns nothing). Verification config lists 'Repair-loop fixture review' as the manual check, so an in-test fixture is plausibly sufficient for a skeleton, but a real on-disk fixture would let downstream nodes (e.g. ITOTORI-222's repair stage) replay the exact trigger set without re-instantiating the service.",
-      "acceptance": "Finding is addressed and verified.",
+      "acceptance": "- Resolve promoted P3 audit finding babab893-a0da-42fe-8ff0-33e505a7acf4 from ITOTORI-038: Fixture repair loop deliverable is realized as an in-file test fixture, not a JSON fixture under fixtures/\n- Preserve the parent node acceptance and prevent the original evidence from recurring.",
       "validation": null,
-      "context": null,
+      "context": "Promoted finding babab893-a0da-42fe-8ff0-33e505a7acf4 from ITOTORI-038.",
       "created_at": "2026-06-26T05:38:27.858Z",
       "updated_at": "2026-06-26T05:38:27.858Z",
       "claimed_at": null,
       "done_at": null,
-      "group_name": null,
-      "status_reason": null,
+      "group_name": "translation-loop",
+      "status_reason": "Promoted from finding babab893-a0da-42fe-8ff0-33e505a7acf4 on node ITOTORI-038.",
       "check_command": null,
       "ci_command": null,
-      "projects": [],
-      "verification": [],
-      "audit_focus": []
+      "projects": ["itotori"],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Focused re-audit of promoted finding babab893-a0da-42fe-8ff0-33e505a7acf4 from ITOTORI-038: Fixture repair loop deliverable is realized as an in-file test fixture, not a JSON fixture under fixtures/"
+        }
+      ],
+      "audit_focus": [
+        "Promoted finding babab893-a0da-42fe-8ff0-33e505a7acf4 from ITOTORI-038: Fixture repair loop deliverable is realized as an in-file test fixture, not a JSON fixture under fixtures/",
+        "Original evidence no longer true: apps/itotori/test/repair-job-service.test.ts:410-526 — the 'ITOTORI-038 fixture repair loop' describe block builds synthetic triggers inline. There is no fixtures/repair-* file (find fixtures/ apps/itotori/test/fixtures/ -name '*repair*' returns nothing). Verification config lists 'Repair-loop fixture review' as the manual check, so an in-test fixture is plausibly sufficient for a skeleton, but a real on-disk fixture would let downstream nodes (e.g. ITOTORI-222's repair stage) replay the exact trigger set without re-instantiating the service."
+      ]
     },
     {
       "id": "importruntimefeedback-contract-docstring-claims-persisted-vs-sup",
       "title": "importRuntimeFeedback contract docstring claims persisted-vs-supplied evidenceTier comparison, but implementation only does shape checks",
       "kind": "audit-fix",
-      "milestone": null,
+      "milestone": "alpha",
       "status": "ready",
       "priority": "P2",
       "estimate_points": 1,
@@ -27156,26 +27244,34 @@
       "owner": null,
       "branch": null,
       "spec": "apps/itotori/src/reviewer/action-service.ts:104-115,183-202 — docstring 'the service asserts the supplied value matches the persisted value on the item. This is the explicit hand-off contract that prevents runtime evidence feedback from losing its tier' is not enforced; importRuntimeFeedback() only calls assertNonEmpty/assertNonEmptyArray and never fetches the item to compare against persisted evidenceTier/observationEventIds/artifactHashes. A caller can supply a different tier than the persisted one and the transition metadata records the mismatched value (the item row remains correct due to the SQL discriminant).",
-      "acceptance": "Finding is addressed and verified.",
+      "acceptance": "- Resolve promoted P2 audit finding 5983ff00-dd81-46ea-a132-56fd41921e2a from ITOTORI-081: importRuntimeFeedback contract docstring claims persisted-vs-supplied evidenceTier comparison, but implementation only does shape checks\n- Preserve the parent node acceptance and prevent the original evidence from recurring.",
       "validation": null,
-      "context": null,
+      "context": "Promoted finding 5983ff00-dd81-46ea-a132-56fd41921e2a from ITOTORI-081.",
       "created_at": "2026-06-26T06:27:47.380Z",
       "updated_at": "2026-06-26T06:27:47.380Z",
       "claimed_at": null,
       "done_at": null,
-      "group_name": null,
-      "status_reason": null,
+      "group_name": "dashboard",
+      "status_reason": "Promoted from finding 5983ff00-dd81-46ea-a132-56fd41921e2a on node ITOTORI-081.",
       "check_command": null,
       "ci_command": null,
-      "projects": [],
-      "verification": [],
-      "audit_focus": []
+      "projects": ["itotori"],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Focused re-audit of promoted finding 5983ff00-dd81-46ea-a132-56fd41921e2a from ITOTORI-081: importRuntimeFeedback contract docstring claims persisted-vs-supplied evidenceTier comparison, but implementation only does shape checks"
+        }
+      ],
+      "audit_focus": [
+        "Promoted finding 5983ff00-dd81-46ea-a132-56fd41921e2a from ITOTORI-081: importRuntimeFeedback contract docstring claims persisted-vs-supplied evidenceTier comparison, but implementation only does shape checks",
+        "Original evidence no longer true: apps/itotori/src/reviewer/action-service.ts:104-115,183-202 — docstring 'the service asserts the supplied value matches the persisted value on the item. This is the explicit hand-off contract that prevents runtime evidence feedback from losing its tier' is not enforced; importRuntimeFeedback() only calls assertNonEmpty/assertNonEmptyArray and never fetches the item to compare against persisted evidenceTier/observationEventIds/artifactHashes. A caller can supply a different tier than the persisted one and the transition metadata records the mismatched value (the item row remains correct due to the SQL discriminant)."
+      ]
     },
     {
       "id": "allowed-transition-graph-silently-drops-repair-requested-in-revi",
       "title": "Allowed-transition graph silently drops repair_requested -> in_review and in_review -> pending (un-claim)",
       "kind": "audit-fix",
-      "milestone": null,
+      "milestone": "alpha",
       "status": "ready",
       "priority": "P3",
       "estimate_points": 1,
@@ -27183,26 +27279,34 @@
       "owner": null,
       "branch": null,
       "spec": "packages/itotori-db/src/repositories/reviewer-queue-repository.ts:176-192 — repair_requested can go to {pending, accepted, rejected} but not back to in_review; in_review has no path back to pending (cannot un-claim). Design choice, but unstated in spec; reviewer who claims an item and then needs to release it has no path other than escalate/accept/reject.",
-      "acceptance": "Finding is addressed and verified.",
+      "acceptance": "- Resolve promoted P3 audit finding 15cc5e0b-f2ee-4495-89a0-911463ccb5ad from ITOTORI-081: Allowed-transition graph silently drops repair_requested -> in_review and in_review -> pending (un-claim)\n- Preserve the parent node acceptance and prevent the original evidence from recurring.",
       "validation": null,
-      "context": null,
+      "context": "Promoted finding 15cc5e0b-f2ee-4495-89a0-911463ccb5ad from ITOTORI-081.",
       "created_at": "2026-06-26T06:27:47.384Z",
       "updated_at": "2026-06-26T06:27:47.384Z",
       "claimed_at": null,
       "done_at": null,
-      "group_name": null,
-      "status_reason": null,
+      "group_name": "dashboard",
+      "status_reason": "Promoted from finding 15cc5e0b-f2ee-4495-89a0-911463ccb5ad on node ITOTORI-081.",
       "check_command": null,
       "ci_command": null,
-      "projects": [],
-      "verification": [],
-      "audit_focus": []
+      "projects": ["itotori"],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Focused re-audit of promoted finding 15cc5e0b-f2ee-4495-89a0-911463ccb5ad from ITOTORI-081: Allowed-transition graph silently drops repair_requested -> in_review and in_review -> pending (un-claim)"
+        }
+      ],
+      "audit_focus": [
+        "Promoted finding 15cc5e0b-f2ee-4495-89a0-911463ccb5ad from ITOTORI-081: Allowed-transition graph silently drops repair_requested -> in_review and in_review -> pending (un-claim)",
+        "Original evidence no longer true: packages/itotori-db/src/repositories/reviewer-queue-repository.ts:176-192 — repair_requested can go to {pending, accepted, rejected} but not back to in_review; in_review has no path back to pending (cannot un-claim). Design choice, but unstated in spec; reviewer who claims an item and then needs to release it has no path other than escalate/accept/reject."
+      ]
     },
     {
       "id": "optimistic-lock-collision-returned-as-invalid-transition-obscure",
       "title": "Optimistic-lock collision returned as invalid_transition obscures concurrency from the dashboard",
       "kind": "audit-fix",
-      "milestone": null,
+      "milestone": "alpha",
       "status": "ready",
       "priority": "P3",
       "estimate_points": 1,
@@ -27210,26 +27314,34 @@
       "owner": null,
       "branch": null,
       "spec": "packages/itotori-db/src/repositories/reviewer-queue-repository.ts:396-405 — when the UPDATE WHERE state=existing.state matches 0 rows (concurrent transition), the repo throws reviewer_queue_item_invalid_transition rather than a distinct concurrency code. Caller cannot distinguish 'someone else won the race; retry' from 'genuinely illegal edge'. Not a partial-state bug (the SELECT/UPDATE/INSERT are inside a tx and the UPDATE simply didn't match), but the conflated error code reduces the diagnostic precision the spec wanted ('Denied, stale, duplicate, and invalid-transition actions return semantic diagnostics').",
-      "acceptance": "Finding is addressed and verified.",
+      "acceptance": "- Resolve promoted P3 audit finding 92d6a367-550d-475f-a9c2-c06d033da005 from ITOTORI-081: Optimistic-lock collision returned as invalid_transition obscures concurrency from the dashboard\n- Preserve the parent node acceptance and prevent the original evidence from recurring.",
       "validation": null,
-      "context": null,
+      "context": "Promoted finding 92d6a367-550d-475f-a9c2-c06d033da005 from ITOTORI-081.",
       "created_at": "2026-06-26T06:27:47.387Z",
       "updated_at": "2026-06-26T06:27:47.387Z",
       "claimed_at": null,
       "done_at": null,
-      "group_name": null,
-      "status_reason": null,
+      "group_name": "dashboard",
+      "status_reason": "Promoted from finding 92d6a367-550d-475f-a9c2-c06d033da005 on node ITOTORI-081.",
       "check_command": null,
       "ci_command": null,
-      "projects": [],
-      "verification": [],
-      "audit_focus": []
+      "projects": ["itotori"],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Focused re-audit of promoted finding 92d6a367-550d-475f-a9c2-c06d033da005 from ITOTORI-081: Optimistic-lock collision returned as invalid_transition obscures concurrency from the dashboard"
+        }
+      ],
+      "audit_focus": [
+        "Promoted finding 92d6a367-550d-475f-a9c2-c06d033da005 from ITOTORI-081: Optimistic-lock collision returned as invalid_transition obscures concurrency from the dashboard",
+        "Original evidence no longer true: packages/itotori-db/src/repositories/reviewer-queue-repository.ts:396-405 — when the UPDATE WHERE state=existing.state matches 0 rows (concurrent transition), the repo throws reviewer_queue_item_invalid_transition rather than a distinct concurrency code. Caller cannot distinguish 'someone else won the race; retry' from 'genuinely illegal edge'. Not a partial-state bug (the SELECT/UPDATE/INSERT are inside a tx and the UPDATE simply didn't match), but the conflated error code reduces the diagnostic precision the spec wanted ('Denied, stale, duplicate, and invalid-transition actions return semantic diagnostics')."
+      ]
     },
     {
       "id": "spec-doc-comment-promises-typed-error-on-lzss-length-mismatch-bu",
       "title": "Spec doc-comment promises 'typed error' on LZSS length mismatch but implementation surfaces a warning + partial buffer",
       "kind": "audit-fix",
-      "milestone": null,
+      "milestone": "alpha",
       "status": "ready",
       "priority": "P2",
       "estimate_points": 1,
@@ -27237,26 +27349,34 @@
       "owner": null,
       "branch": null,
       "spec": "crates/utsushi-reallive/src/g00.rs:83-85 (doc says 'surfaces a typed error rather than silently truncating') vs g00.rs:929-993 (lzss_decode_classic breaks the loop on EOF and returns Ok((partial_buffer, Some(G00Warning::PayloadLengthMismatch)))). The unit test lzss_classic_short_stream_emits_length_warning_not_silent_pass at g00.rs:1119-1144 confirms the warning behavior, but the prose contract reads as Err. Tighten one or the other so doc, audit-focus item, and behavior agree.",
-      "acceptance": "Finding is addressed and verified.",
+      "acceptance": "- Resolve promoted P2 audit finding 24b9b63e-8e53-4099-8ff5-19c0174e481c from UTSUSHI-216: Spec doc-comment promises 'typed error' on LZSS length mismatch but implementation surfaces a warning + partial buffer\n- Preserve the parent node acceptance and prevent the original evidence from recurring.",
       "validation": null,
-      "context": null,
+      "context": "Promoted finding 24b9b63e-8e53-4099-8ff5-19c0174e481c from UTSUSHI-216.",
       "created_at": "2026-06-26T06:43:46.070Z",
       "updated_at": "2026-06-26T06:43:46.070Z",
       "claimed_at": null,
       "done_at": null,
-      "group_name": null,
-      "status_reason": null,
+      "group_name": "runtime-adapters",
+      "status_reason": "Promoted from finding 24b9b63e-8e53-4099-8ff5-19c0174e481c on node UTSUSHI-216.",
       "check_command": null,
       "ci_command": null,
-      "projects": [],
-      "verification": [],
-      "audit_focus": []
+      "projects": ["utsushi"],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Focused re-audit of promoted finding 24b9b63e-8e53-4099-8ff5-19c0174e481c from UTSUSHI-216: Spec doc-comment promises 'typed error' on LZSS length mismatch but implementation surfaces a warning + partial buffer"
+        }
+      ],
+      "audit_focus": [
+        "Promoted finding 24b9b63e-8e53-4099-8ff5-19c0174e481c from UTSUSHI-216: Spec doc-comment promises 'typed error' on LZSS length mismatch but implementation surfaces a warning + partial buffer",
+        "Original evidence no longer true: crates/utsushi-reallive/src/g00.rs:83-85 (doc says 'surfaces a typed error rather than silently truncating') vs g00.rs:929-993 (lzss_decode_classic breaks the loop on EOF and returns Ok((partial_buffer, Some(G00Warning::PayloadLengthMismatch)))). The unit test lzss_classic_short_stream_emits_length_warning_not_silent_pass at g00.rs:1119-1144 confirms the warning behavior, but the prose contract reads as Err. Tighten one or the other so doc, audit-focus item, and behavior agree."
+      ]
     },
     {
       "id": "g00decodeerror-unexpectedendofstream-variant-is-defined-and-disp",
       "title": "G00DecodeError::UnexpectedEndOfStream variant is defined and Displayed but is never constructed",
       "kind": "audit-fix",
-      "milestone": null,
+      "milestone": "alpha",
       "status": "ready",
       "priority": "P3",
       "estimate_points": 1,
@@ -27264,26 +27384,34 @@
       "owner": null,
       "branch": null,
       "spec": "crates/utsushi-reallive/src/g00.rs:362-369 (variant) and g00.rs:422-431 (Display arm). The LZSS decoder treats input exhaustion as a warning at g00.rs:931-935 / 946-948 / 955-957 and breaks; no code path raises UnexpectedEndOfStream. Either wire a hard-error path for the mid-token EOF case or drop the variant.",
-      "acceptance": "Finding is addressed and verified.",
+      "acceptance": "- Resolve promoted P3 audit finding a4f247f8-1a44-408a-bf80-8c842af4a714 from UTSUSHI-216: G00DecodeError::UnexpectedEndOfStream variant is defined and Displayed but is never constructed\n- Preserve the parent node acceptance and prevent the original evidence from recurring.",
       "validation": null,
-      "context": null,
+      "context": "Promoted finding a4f247f8-1a44-408a-bf80-8c842af4a714 from UTSUSHI-216.",
       "created_at": "2026-06-26T06:43:46.074Z",
       "updated_at": "2026-06-26T06:43:46.074Z",
       "claimed_at": null,
       "done_at": null,
-      "group_name": null,
-      "status_reason": null,
+      "group_name": "runtime-adapters",
+      "status_reason": "Promoted from finding a4f247f8-1a44-408a-bf80-8c842af4a714 on node UTSUSHI-216.",
       "check_command": null,
       "ci_command": null,
-      "projects": [],
-      "verification": [],
-      "audit_focus": []
+      "projects": ["utsushi"],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Focused re-audit of promoted finding a4f247f8-1a44-408a-bf80-8c842af4a714 from UTSUSHI-216: G00DecodeError::UnexpectedEndOfStream variant is defined and Displayed but is never constructed"
+        }
+      ],
+      "audit_focus": [
+        "Promoted finding a4f247f8-1a44-408a-bf80-8c842af4a714 from UTSUSHI-216: G00DecodeError::UnexpectedEndOfStream variant is defined and Displayed but is never constructed",
+        "Original evidence no longer true: crates/utsushi-reallive/src/g00.rs:362-369 (variant) and g00.rs:422-431 (Display arm). The LZSS decoder treats input exhaustion as a warning at g00.rs:931-935 / 946-948 / 955-957 and breaks; no code path raises UnexpectedEndOfStream. Either wire a hard-error path for the mid-token EOF case or drop the variant."
+      ]
     },
     {
       "id": "g00decodeerror-outputoverflow-is-unreachable-because-the-back-re",
       "title": "G00DecodeError::OutputOverflow is unreachable because the back-reference inner loop breaks at dst.len() >= uncompressed_size",
       "kind": "audit-fix",
-      "milestone": null,
+      "milestone": "alpha",
       "status": "ready",
       "priority": "P3",
       "estimate_points": 1,
@@ -27291,26 +27419,34 @@
       "owner": null,
       "branch": null,
       "spec": "crates/utsushi-reallive/src/g00.rs:962-971 inner loop breaks on >= ; g00.rs:975-981 post-loop check fires on > only. The break guarantees dst.len() == uncompressed_size, so the check is dead. Either drop the variant or relax the inner break so the defensive check has a real path.",
-      "acceptance": "Finding is addressed and verified.",
+      "acceptance": "- Resolve promoted P3 audit finding e5bea81b-2698-4dd0-9e8a-44c5a71f0517 from UTSUSHI-216: G00DecodeError::OutputOverflow is unreachable because the back-reference inner loop breaks at dst.len() >= uncompressed_size\n- Preserve the parent node acceptance and prevent the original evidence from recurring.",
       "validation": null,
-      "context": null,
+      "context": "Promoted finding e5bea81b-2698-4dd0-9e8a-44c5a71f0517 from UTSUSHI-216.",
       "created_at": "2026-06-26T06:43:46.078Z",
       "updated_at": "2026-06-26T06:43:46.078Z",
       "claimed_at": null,
       "done_at": null,
-      "group_name": null,
-      "status_reason": null,
+      "group_name": "runtime-adapters",
+      "status_reason": "Promoted from finding e5bea81b-2698-4dd0-9e8a-44c5a71f0517 on node UTSUSHI-216.",
       "check_command": null,
       "ci_command": null,
-      "projects": [],
-      "verification": [],
-      "audit_focus": []
+      "projects": ["utsushi"],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Focused re-audit of promoted finding e5bea81b-2698-4dd0-9e8a-44c5a71f0517 from UTSUSHI-216: G00DecodeError::OutputOverflow is unreachable because the back-reference inner loop breaks at dst.len() >= uncompressed_size"
+        }
+      ],
+      "audit_focus": [
+        "Promoted finding e5bea81b-2698-4dd0-9e8a-44c5a71f0517 from UTSUSHI-216: G00DecodeError::OutputOverflow is unreachable because the back-reference inner loop breaks at dst.len() >= uncompressed_size",
+        "Original evidence no longer true: crates/utsushi-reallive/src/g00.rs:962-971 inner loop breaks on >= ; g00.rs:975-981 post-loop check fires on > only. The break guarantees dst.len() == uncompressed_size, so the check is dead. Either drop the variant or relax the inner break so the defensive check has a real path."
+      ]
     },
     {
       "id": "parse-lzss-section-silently-clamps-a-malformed-compressed-size-8",
       "title": "parse_lzss_section silently clamps a malformed compressed_size < 8 into a 0-byte payload",
       "kind": "audit-fix",
-      "milestone": null,
+      "milestone": "alpha",
       "status": "ready",
       "priority": "P3",
       "estimate_points": 1,
@@ -27318,26 +27454,34 @@
       "owner": null,
       "branch": null,
       "spec": "crates/utsushi-reallive/src/g00.rs:849-868: declared_payload_end = preamble_off + compressed_size; payload_end = declared_payload_end.min(input.len()).max(payload_start). When compressed_size < 8 (i.e. declared_payload_end < payload_start), .max(payload_start) hides the malformed header and produces an empty payload that decodes to PayloadLengthMismatch warning instead of a typed TruncatedHeader / malformed-size error.",
-      "acceptance": "Finding is addressed and verified.",
+      "acceptance": "- Resolve promoted P3 audit finding 1bc6c1d2-0369-4781-8a6e-c54fcd7f1f6c from UTSUSHI-216: parse_lzss_section silently clamps a malformed compressed_size < 8 into a 0-byte payload\n- Preserve the parent node acceptance and prevent the original evidence from recurring.",
       "validation": null,
-      "context": null,
+      "context": "Promoted finding 1bc6c1d2-0369-4781-8a6e-c54fcd7f1f6c from UTSUSHI-216.",
       "created_at": "2026-06-26T06:43:46.081Z",
       "updated_at": "2026-06-26T06:43:46.081Z",
       "claimed_at": null,
       "done_at": null,
-      "group_name": null,
-      "status_reason": null,
+      "group_name": "runtime-adapters",
+      "status_reason": "Promoted from finding 1bc6c1d2-0369-4781-8a6e-c54fcd7f1f6c on node UTSUSHI-216.",
       "check_command": null,
       "ci_command": null,
-      "projects": [],
-      "verification": [],
-      "audit_focus": []
+      "projects": ["utsushi"],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Focused re-audit of promoted finding 1bc6c1d2-0369-4781-8a6e-c54fcd7f1f6c from UTSUSHI-216: parse_lzss_section silently clamps a malformed compressed_size < 8 into a 0-byte payload"
+        }
+      ],
+      "audit_focus": [
+        "Promoted finding 1bc6c1d2-0369-4781-8a6e-c54fcd7f1f6c from UTSUSHI-216: parse_lzss_section silently clamps a malformed compressed_size < 8 into a 0-byte payload",
+        "Original evidence no longer true: crates/utsushi-reallive/src/g00.rs:849-868: declared_payload_end = preamble_off + compressed_size; payload_end = declared_payload_end.min(input.len()).max(payload_start). When compressed_size < 8 (i.e. declared_payload_end < payload_start), .max(payload_start) hides the malformed header and produces an empty payload that decodes to PayloadLengthMismatch warning instead of a typed TruncatedHeader / malformed-size error."
+      ]
     },
     {
       "id": "type-2-decode-does-not-pad-truncate-decoded-pixel-buffer-to-widt",
       "title": "Type-2 decode does not pad/truncate decoded pixel buffer to width*height*4 (asymmetric with type-0)",
       "kind": "audit-fix",
-      "milestone": null,
+      "milestone": "alpha",
       "status": "ready",
       "priority": "P3",
       "estimate_points": 1,
@@ -27345,20 +27489,28 @@
       "owner": null,
       "branch": null,
       "spec": "crates/utsushi-reallive/src/g00.rs:807-816 (decode_type2 returns raw lzss output as pixels_rgba). decode_type0 at g00.rs:647-651 calls pad_or_truncate to width*height*4. Documented as 'type-2 may be an atlas of regions, not a flat canvas' (g00.rs:274-279) so semantically intentional, but the asymmetry is worth noting since acceptance criterion 3 only pins regions usability and the audit-focus 'BGR-as-RGB silently' check skips any 1-3 byte tail via chunks_exact_mut(4).",
-      "acceptance": "Finding is addressed and verified.",
+      "acceptance": "- Resolve promoted P3 audit finding 65c7433f-8458-4131-8317-d53c540c74f3 from UTSUSHI-216: Type-2 decode does not pad/truncate decoded pixel buffer to width*height*4 (asymmetric with type-0)\n- Preserve the parent node acceptance and prevent the original evidence from recurring.",
       "validation": null,
-      "context": null,
+      "context": "Promoted finding 65c7433f-8458-4131-8317-d53c540c74f3 from UTSUSHI-216.",
       "created_at": "2026-06-26T06:43:46.084Z",
       "updated_at": "2026-06-26T06:43:46.084Z",
       "claimed_at": null,
       "done_at": null,
-      "group_name": null,
-      "status_reason": null,
+      "group_name": "runtime-adapters",
+      "status_reason": "Promoted from finding 65c7433f-8458-4131-8317-d53c540c74f3 on node UTSUSHI-216.",
       "check_command": null,
       "ci_command": null,
-      "projects": [],
-      "verification": [],
-      "audit_focus": []
+      "projects": ["utsushi"],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Focused re-audit of promoted finding 65c7433f-8458-4131-8317-d53c540c74f3 from UTSUSHI-216: Type-2 decode does not pad/truncate decoded pixel buffer to width*height*4 (asymmetric with type-0)"
+        }
+      ],
+      "audit_focus": [
+        "Promoted finding 65c7433f-8458-4131-8317-d53c540c74f3 from UTSUSHI-216: Type-2 decode does not pad/truncate decoded pixel buffer to width*height*4 (asymmetric with type-0)",
+        "Original evidence no longer true: crates/utsushi-reallive/src/g00.rs:807-816 (decode_type2 returns raw lzss output as pixels_rgba). decode_type0 at g00.rs:647-651 calls pad_or_truncate to width*height*4. Documented as 'type-2 may be an atlas of regions, not a flat canvas' (g00.rs:274-279) so semantically intentional, but the asymmetry is worth noting since acceptance criterion 3 only pins regions usability and the audit-focus 'BGR-as-RGB silently' check skips any 1-3 byte tail via chunks_exact_mut(4)."
+      ]
     },
     {
       "id": "ITOTORI-236",
@@ -27400,7 +27552,7 @@
       "id": "missing-screensize-mod-silently-disables-pointer-dispatch-syscal",
       "title": "Missing SCREENSIZE_MOD silently disables pointer dispatch — SYSCALL_MISSING_SCREEN_SIZE_CODE never emitted",
       "kind": "audit-fix",
-      "milestone": null,
+      "milestone": "alpha",
       "status": "ready",
       "priority": "P2",
       "estimate_points": 1,
@@ -27408,26 +27560,34 @@
       "owner": null,
       "branch": null,
       "spec": "crates/utsushi-reallive/src/syscall.rs:87-91 (constant declared with doc 'emitted when SCREENSIZE_MOD is missing') and crates/utsushi-reallive/src/syscall.rs:507-511 (route_for_input_event uses `let screen = self.screen_size?;` which returns None silently). The Pointer match arm never logs/warns/errors when screen_size is None — pointer events vanish without diagnostic. Constant SYSCALL_MISSING_SCREEN_SIZE_CODE is `pub` and re-exported from lib.rs:177-181 but no call site emits it. grep returns one hit (the declaration).",
-      "acceptance": "Finding is addressed and verified.",
+      "acceptance": "- Resolve promoted P2 audit finding 3b890cc5-6ba4-4fa3-b517-dac15d7d9cec from UTSUSHI-213: Missing SCREENSIZE_MOD silently disables pointer dispatch — SYSCALL_MISSING_SCREEN_SIZE_CODE never emitted\n- Preserve the parent node acceptance and prevent the original evidence from recurring.",
       "validation": null,
-      "context": null,
+      "context": "Promoted finding 3b890cc5-6ba4-4fa3-b517-dac15d7d9cec from UTSUSHI-213.",
       "created_at": "2026-06-26T07:41:01.757Z",
       "updated_at": "2026-06-26T07:41:01.757Z",
       "claimed_at": null,
       "done_at": null,
-      "group_name": null,
-      "status_reason": null,
+      "group_name": "runtime-adapters",
+      "status_reason": "Promoted from finding 3b890cc5-6ba4-4fa3-b517-dac15d7d9cec on node UTSUSHI-213.",
       "check_command": null,
       "ci_command": null,
-      "projects": [],
-      "verification": [],
-      "audit_focus": []
+      "projects": ["utsushi"],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Focused re-audit of promoted finding 3b890cc5-6ba4-4fa3-b517-dac15d7d9cec from UTSUSHI-213: Missing SCREENSIZE_MOD silently disables pointer dispatch — SYSCALL_MISSING_SCREEN_SIZE_CODE never emitted"
+        }
+      ],
+      "audit_focus": [
+        "Promoted finding 3b890cc5-6ba4-4fa3-b517-dac15d7d9cec from UTSUSHI-213: Missing SCREENSIZE_MOD silently disables pointer dispatch — SYSCALL_MISSING_SCREEN_SIZE_CODE never emitted",
+        "Original evidence no longer true: crates/utsushi-reallive/src/syscall.rs:87-91 (constant declared with doc 'emitted when SCREENSIZE_MOD is missing') and crates/utsushi-reallive/src/syscall.rs:507-511 (route_for_input_event uses `let screen = self.screen_size?;` which returns None silently). The Pointer match arm never logs/warns/errors when screen_size is None — pointer events vanish without diagnostic. Constant SYSCALL_MISSING_SCREEN_SIZE_CODE is `pub` and re-exported from lib.rs:177-181 but no call site emits it. grep returns one hit (the declaration)."
+      ]
     },
     {
       "id": "mouseactioncall-namespace-scan-breaks-on-first-gap-after-index-0",
       "title": "MOUSEACTIONCALL namespace scan breaks on first gap after index 0 — non-contiguous indices silently dropped",
       "kind": "audit-fix",
-      "milestone": null,
+      "milestone": "alpha",
       "status": "ready",
       "priority": "P2",
       "estimate_points": 1,
@@ -27435,26 +27595,34 @@
       "owner": null,
       "branch": null,
       "spec": "crates/utsushi-reallive/src/syscall.rs:377-379: `if index > 0 && gameexe.get(&area_key).is_none() { break; }` — the comment at 372-376 claims 'the namespace is enumerated by checking each slot, not by trusting a last index sentinel', but the break statement is exactly a last-index sentinel. A Gameexe with MOUSEACTIONCALL.000.SEEN and MOUSEACTIONCALL.002.SEEN (gap at 001) would silently drop MOUSEACTIONCALL.002 because index=1 has neither SEEN nor AREA. Sweetie HD is contiguous so the regression is not observable in the corpus, but the audit-focus pin 'pretends to pass' is at risk for sister RealLive titles.",
-      "acceptance": "Finding is addressed and verified.",
+      "acceptance": "- Resolve promoted P2 audit finding fb6bc91d-fb3b-421f-a370-e1a35c54282a from UTSUSHI-213: MOUSEACTIONCALL namespace scan breaks on first gap after index 0 — non-contiguous indices silently dropped\n- Preserve the parent node acceptance and prevent the original evidence from recurring.",
       "validation": null,
-      "context": null,
+      "context": "Promoted finding fb6bc91d-fb3b-421f-a370-e1a35c54282a from UTSUSHI-213.",
       "created_at": "2026-06-26T07:41:01.762Z",
       "updated_at": "2026-06-26T07:41:01.762Z",
       "claimed_at": null,
       "done_at": null,
-      "group_name": null,
-      "status_reason": null,
+      "group_name": "runtime-adapters",
+      "status_reason": "Promoted from finding fb6bc91d-fb3b-421f-a370-e1a35c54282a on node UTSUSHI-213.",
       "check_command": null,
       "ci_command": null,
-      "projects": [],
-      "verification": [],
-      "audit_focus": []
+      "projects": ["utsushi"],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Focused re-audit of promoted finding fb6bc91d-fb3b-421f-a370-e1a35c54282a from UTSUSHI-213: MOUSEACTIONCALL namespace scan breaks on first gap after index 0 — non-contiguous indices silently dropped"
+        }
+      ],
+      "audit_focus": [
+        "Promoted finding fb6bc91d-fb3b-421f-a370-e1a35c54282a from UTSUSHI-213: MOUSEACTIONCALL namespace scan breaks on first gap after index 0 — non-contiguous indices silently dropped",
+        "Original evidence no longer true: crates/utsushi-reallive/src/syscall.rs:377-379: `if index > 0 && gameexe.get(&area_key).is_none() { break; }` — the comment at 372-376 claims 'the namespace is enumerated by checking each slot, not by trusting a last index sentinel', but the break statement is exactly a last-index sentinel. A Gameexe with MOUSEACTIONCALL.000.SEEN and MOUSEACTIONCALL.002.SEEN (gap at 001) would silently drop MOUSEACTIONCALL.002 because index=1 has neither SEEN nor AREA. Sweetie HD is contiguous so the regression is not observable in the corpus, but the audit-focus pin 'pretends to pass' is at risk for sister RealLive titles."
+      ]
     },
     {
       "id": "wbcall-hard-capped-at-8-slots-reallive-titles-declaring-wbcall-0",
       "title": "WBCALL hard-capped at 8 slots — RealLive titles declaring WBCALL.008+ would be silently ignored",
       "kind": "audit-fix",
-      "milestone": null,
+      "milestone": "alpha",
       "status": "ready",
       "priority": "P3",
       "estimate_points": 1,
@@ -27462,26 +27630,34 @@
       "owner": null,
       "branch": null,
       "spec": "crates/utsushi-reallive/src/syscall.rs:96 (`WBCALL_SLOT_COUNT: u8 = 8`) and 419 (`for index in 0..WBCALL_SLOT_COUNT`). Sweetie HD declares WBCALL.000-007 exactly so the cap matches the corpus, but RLDEV documents WBCALL as a larger namespace (≤64). No diagnostic emitted if WBCALL.008+ keys are present. Acceptable for alpha (Sweetie HD only) but worth flagging for the ≥2-game beta multi-game-validation rule.",
-      "acceptance": "Finding is addressed and verified.",
+      "acceptance": "- Resolve promoted P3 audit finding 771e9d0a-7ccb-4472-844b-0eca18a03686 from UTSUSHI-213: WBCALL hard-capped at 8 slots — RealLive titles declaring WBCALL.008+ would be silently ignored\n- Preserve the parent node acceptance and prevent the original evidence from recurring.",
       "validation": null,
-      "context": null,
+      "context": "Promoted finding 771e9d0a-7ccb-4472-844b-0eca18a03686 from UTSUSHI-213.",
       "created_at": "2026-06-26T07:41:01.766Z",
       "updated_at": "2026-06-26T07:41:01.766Z",
       "claimed_at": null,
       "done_at": null,
-      "group_name": null,
-      "status_reason": null,
+      "group_name": "runtime-adapters",
+      "status_reason": "Promoted from finding 771e9d0a-7ccb-4472-844b-0eca18a03686 on node UTSUSHI-213.",
       "check_command": null,
       "ci_command": null,
-      "projects": [],
-      "verification": [],
-      "audit_focus": []
+      "projects": ["utsushi"],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Focused re-audit of promoted finding 771e9d0a-7ccb-4472-844b-0eca18a03686 from UTSUSHI-213: WBCALL hard-capped at 8 slots — RealLive titles declaring WBCALL.008+ would be silently ignored"
+        }
+      ],
+      "audit_focus": [
+        "Promoted finding 771e9d0a-7ccb-4472-844b-0eca18a03686 from UTSUSHI-213: WBCALL hard-capped at 8 slots — RealLive titles declaring WBCALL.008+ would be silently ignored",
+        "Original evidence no longer true: crates/utsushi-reallive/src/syscall.rs:96 (`WBCALL_SLOT_COUNT: u8 = 8`) and 419 (`for index in 0..WBCALL_SLOT_COUNT`). Sweetie HD declares WBCALL.000-007 exactly so the cap matches the corpus, but RLDEV documents WBCALL as a larger namespace (≤64). No diagnostic emitted if WBCALL.008+ keys are present. Acceptable for alpha (Sweetie HD only) but worth flagging for the ≥2-game beta multi-game-validation rule."
+      ]
     },
     {
       "id": "invoke-debug-assert-fallback-path-silently-advances-on-unexpecte",
       "title": "invoke() debug_assert fallback path silently advances on unexpected FarcallOp outcome",
       "kind": "audit-fix",
-      "milestone": null,
+      "milestone": "alpha",
       "status": "ready",
       "priority": "P3",
       "estimate_points": 1,
@@ -27489,26 +27665,34 @@
       "owner": null,
       "branch": null,
       "spec": "crates/utsushi-reallive/src/syscall.rs:556-572: if FarcallOp.dispatch returns something other than DispatchOutcome::FarCall, the debug_assert fires only in debug builds; in release the outcome is still forwarded to apply_dispatch_outcome. Given the inline-constructed args are always 4 well-typed ExprValue::Int values, FarcallOp cannot currently return Advance, so the branch is dead today. Risk surfaces if a future FarcallOp variant adds a typed failure mode — release builds would silently swallow it.",
-      "acceptance": "Finding is addressed and verified.",
+      "acceptance": "- Resolve promoted P3 audit finding 55d48548-ba44-4f8f-a3f7-c6aff632570e from UTSUSHI-213: invoke() debug_assert fallback path silently advances on unexpected FarcallOp outcome\n- Preserve the parent node acceptance and prevent the original evidence from recurring.",
       "validation": null,
-      "context": null,
+      "context": "Promoted finding 55d48548-ba44-4f8f-a3f7-c6aff632570e from UTSUSHI-213.",
       "created_at": "2026-06-26T07:41:01.769Z",
       "updated_at": "2026-06-26T07:41:01.769Z",
       "claimed_at": null,
       "done_at": null,
-      "group_name": null,
-      "status_reason": null,
+      "group_name": "runtime-adapters",
+      "status_reason": "Promoted from finding 55d48548-ba44-4f8f-a3f7-c6aff632570e on node UTSUSHI-213.",
       "check_command": null,
       "ci_command": null,
-      "projects": [],
-      "verification": [],
-      "audit_focus": []
+      "projects": ["utsushi"],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Focused re-audit of promoted finding 55d48548-ba44-4f8f-a3f7-c6aff632570e from UTSUSHI-213: invoke() debug_assert fallback path silently advances on unexpected FarcallOp outcome"
+        }
+      ],
+      "audit_focus": [
+        "Promoted finding 55d48548-ba44-4f8f-a3f7-c6aff632570e from UTSUSHI-213: invoke() debug_assert fallback path silently advances on unexpected FarcallOp outcome",
+        "Original evidence no longer true: crates/utsushi-reallive/src/syscall.rs:556-572: if FarcallOp.dispatch returns something other than DispatchOutcome::FarCall, the debug_assert fires only in debug builds; in release the outcome is still forwarded to apply_dispatch_outcome. Given the inline-constructed args are always 4 well-typed ExprValue::Int values, FarcallOp cannot currently return Advance, so the branch is dead today. Risk surfaces if a future FarcallOp variant adds a typed failure mode — release builds would silently swallow it."
+      ]
     },
     {
       "id": "entry-count-with-exaftercall-mod-0-not-directly-asserted-only-ki",
       "title": "entry_count with EXAFTERCALL_MOD=0 not directly asserted (only kind-count for the real bytes path)",
       "kind": "audit-fix",
-      "milestone": null,
+      "milestone": "alpha",
       "status": "ready",
       "priority": "P3",
       "estimate_points": 1,
@@ -27516,20 +27700,28 @@
       "owner": null,
       "branch": null,
       "spec": "crates/utsushi-reallive/src/syscall.rs:694-708 asserts entry_count=15 only when EXAFTERCALL_MOD=1. The real-bytes (and synthetic-mirror) path with EXAFTERCALL_MOD=0 asserts route_count = SYSCALL_KIND_COUNT - 1 (= 7 kinds) but does not pin entry_count = 14. A regression that double-adds a route in the EXAFTERCALL=0 case would slip through. Minor — the kind-count assertion is the load-bearing acceptance check.",
-      "acceptance": "Finding is addressed and verified.",
+      "acceptance": "- Resolve promoted P3 audit finding a40f61e5-a3d9-4e61-89a7-ca31de827f3e from UTSUSHI-213: entry_count with EXAFTERCALL_MOD=0 not directly asserted (only kind-count for the real bytes path)\n- Preserve the parent node acceptance and prevent the original evidence from recurring.",
       "validation": null,
-      "context": null,
+      "context": "Promoted finding a40f61e5-a3d9-4e61-89a7-ca31de827f3e from UTSUSHI-213.",
       "created_at": "2026-06-26T07:41:01.773Z",
       "updated_at": "2026-06-26T07:41:01.773Z",
       "claimed_at": null,
       "done_at": null,
-      "group_name": null,
-      "status_reason": null,
+      "group_name": "runtime-adapters",
+      "status_reason": "Promoted from finding a40f61e5-a3d9-4e61-89a7-ca31de827f3e on node UTSUSHI-213.",
       "check_command": null,
       "ci_command": null,
-      "projects": [],
-      "verification": [],
-      "audit_focus": []
+      "projects": ["utsushi"],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Focused re-audit of promoted finding a40f61e5-a3d9-4e61-89a7-ca31de827f3e from UTSUSHI-213: entry_count with EXAFTERCALL_MOD=0 not directly asserted (only kind-count for the real bytes path)"
+        }
+      ],
+      "audit_focus": [
+        "Promoted finding a40f61e5-a3d9-4e61-89a7-ca31de827f3e from UTSUSHI-213: entry_count with EXAFTERCALL_MOD=0 not directly asserted (only kind-count for the real bytes path)",
+        "Original evidence no longer true: crates/utsushi-reallive/src/syscall.rs:694-708 asserts entry_count=15 only when EXAFTERCALL_MOD=1. The real-bytes (and synthetic-mirror) path with EXAFTERCALL_MOD=0 asserts route_count = SYSCALL_KIND_COUNT - 1 (= 7 kinds) but does not pin entry_count = 14. A regression that double-adds a route in the EXAFTERCALL=0 case would slip through. Minor — the kind-count assertion is the load-bearing acceptance check."
+      ]
     },
     {
       "id": "ITOTORI-237",
@@ -27575,7 +27767,7 @@
       "id": "missing-engine-specific-boundary-notes-for-utsushi-212-utsushi-2",
       "title": "Missing engine-specific boundary notes for UTSUSHI-212, UTSUSHI-214, UTSUSHI-215",
       "kind": "audit-fix",
-      "milestone": null,
+      "milestone": "alpha",
       "status": "ready",
       "priority": "P2",
       "estimate_points": 1,
@@ -27583,26 +27775,34 @@
       "owner": null,
       "branch": null,
       "spec": "docs/research/reallive-engine.md:992-1037 §M.3 enumerates boundary notes for UTSUSHI-201/203/207/209/211/216/217/218 but omits UTSUSHI-212 (string/memory ops with Shift-JIS hantozen/Uppercase semantics, rng/SnapshotStore round-trip — RealLive-specific Shift-JIS half/full-width conversions per RLDEV), UTSUSHI-214 (rlvm-derived 256-graphics-object stack model), and UTSUSHI-215 (rlvm module_grp / module_obj_* opcode catalogue: allocDC, wipe, shake, fade, objAlloc, objSetPos byte-codes). Each of these UTSUSHI-2xx node specs (qd node show UTSUSHI-212/214/215) carries ACs that name RealLive-specific byte layouts / opcode names which would break under a Siglus reuse claim. AC3 wording: 'Any UTSUSHI-200..UTSUSHI-220 node whose acceptance criterion would break under a Siglus reuse claim emits a documented engine-specific boundary note'.",
-      "acceptance": "Finding is addressed and verified.",
+      "acceptance": "- Resolve promoted P2 audit finding 15a1e806-66d6-49bc-875a-a4137851ebba from UTSUSHI-221: Missing engine-specific boundary notes for UTSUSHI-212, UTSUSHI-214, UTSUSHI-215\n- Preserve the parent node acceptance and prevent the original evidence from recurring.",
       "validation": null,
-      "context": null,
+      "context": "Promoted finding 15a1e806-66d6-49bc-875a-a4137851ebba from UTSUSHI-221.",
       "created_at": "2026-06-26T07:51:18.702Z",
       "updated_at": "2026-06-26T07:51:18.702Z",
       "claimed_at": null,
       "done_at": null,
-      "group_name": null,
-      "status_reason": null,
+      "group_name": "runtime-adapters",
+      "status_reason": "Promoted from finding 15a1e806-66d6-49bc-875a-a4137851ebba on node UTSUSHI-221.",
       "check_command": null,
       "ci_command": null,
-      "projects": [],
-      "verification": [],
-      "audit_focus": []
+      "projects": ["utsushi"],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Focused re-audit of promoted finding 15a1e806-66d6-49bc-875a-a4137851ebba from UTSUSHI-221: Missing engine-specific boundary notes for UTSUSHI-212, UTSUSHI-214, UTSUSHI-215"
+        }
+      ],
+      "audit_focus": [
+        "Promoted finding 15a1e806-66d6-49bc-875a-a4137851ebba from UTSUSHI-221: Missing engine-specific boundary notes for UTSUSHI-212, UTSUSHI-214, UTSUSHI-215",
+        "Original evidence no longer true: docs/research/reallive-engine.md:992-1037 §M.3 enumerates boundary notes for UTSUSHI-201/203/207/209/211/216/217/218 but omits UTSUSHI-212 (string/memory ops with Shift-JIS hantozen/Uppercase semantics, rng/SnapshotStore round-trip — RealLive-specific Shift-JIS half/full-width conversions per RLDEV), UTSUSHI-214 (rlvm-derived 256-graphics-object stack model), and UTSUSHI-215 (rlvm module_grp / module_obj_* opcode catalogue: allocDC, wipe, shake, fade, objAlloc, objSetPos byte-codes). Each of these UTSUSHI-2xx node specs (qd node show UTSUSHI-212/214/215) carries ACs that name RealLive-specific byte layouts / opcode names which would break under a Siglus reuse claim. AC3 wording: 'Any UTSUSHI-200..UTSUSHI-220 node whose acceptance criterion would break under a Siglus reuse claim emits a documented engine-specific boundary note'."
+      ]
     },
     {
       "id": "m-1-reusable-anchors-cite-substrate-types-not-consumed-by-the-in",
       "title": "M.1 'Reusable' anchors cite substrate types not consumed by the inline Siglus scaffold",
       "kind": "audit-fix",
-      "milestone": null,
+      "milestone": "alpha",
       "status": "ready",
       "priority": "P2",
       "estimate_points": 1,
@@ -27610,26 +27810,34 @@
       "owner": null,
       "branch": null,
       "spec": "docs/research/reallive-engine.md:910-948 §M.1 table names SnapshotStore, TextSurfaceSink, AudioEventSink, FrameArtifactSink, Inspectable, Restorable, ReplayLog, LogicalClockTick, StateTree, StatePath, ChoiceIndex as substrate-facade carriers proving reusability. crates/utsushi-reallive/tests/cross_engine_facade_only_imports.rs:62-67 inline Siglus scaffold imports only the bare scaffold-contract subset (no SnapshotStore, no TextSurfaceSink, no Inspectable/Restorable, no ReplayLog, no StateTree/StatePath, no ChoiceIndex). The audit-prompt criterion 'verify each reusable anchor in Appendix M.1 cites a concrete substrate type the inline Siglus scaffold imports' is therefore strictly satisfied only for: AssetPackage, EnginePort, PortManifest, REQUIRED_LIFECYCLE_STAGES, SinkSet, EvidenceTier, FidelityTier, LifecycleStage, PortCapability. Substrate facade DOES export the deeper anchors (verified at crates/utsushi-core/src/substrate.rs:28-48), so the reusability claim holds at the substrate-API surface, but it is proven by RealLive's consumption + facade existence rather than by inline-Siglus consumption. The §M.4 'scaffold-contract level' caveat and the test's SUBSET-not-EQUALS posture (cross_engine_facade_only_imports.rs:580-594) disclose this stance honestly.",
-      "acceptance": "Finding is addressed and verified.",
+      "acceptance": "- Resolve promoted P2 audit finding 38b0e2a9-db62-478f-8df1-a3185c014894 from UTSUSHI-221: M.1 'Reusable' anchors cite substrate types not consumed by the inline Siglus scaffold\n- Preserve the parent node acceptance and prevent the original evidence from recurring.",
       "validation": null,
-      "context": null,
+      "context": "Promoted finding 38b0e2a9-db62-478f-8df1-a3185c014894 from UTSUSHI-221.",
       "created_at": "2026-06-26T07:51:18.708Z",
       "updated_at": "2026-06-26T07:51:18.708Z",
       "claimed_at": null,
       "done_at": null,
-      "group_name": null,
-      "status_reason": null,
+      "group_name": "runtime-adapters",
+      "status_reason": "Promoted from finding 38b0e2a9-db62-478f-8df1-a3185c014894 on node UTSUSHI-221.",
       "check_command": null,
       "ci_command": null,
-      "projects": [],
-      "verification": [],
-      "audit_focus": []
+      "projects": ["utsushi"],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Focused re-audit of promoted finding 38b0e2a9-db62-478f-8df1-a3185c014894 from UTSUSHI-221: M.1 'Reusable' anchors cite substrate types not consumed by the inline Siglus scaffold"
+        }
+      ],
+      "audit_focus": [
+        "Promoted finding 38b0e2a9-db62-478f-8df1-a3185c014894 from UTSUSHI-221: M.1 'Reusable' anchors cite substrate types not consumed by the inline Siglus scaffold",
+        "Original evidence no longer true: docs/research/reallive-engine.md:910-948 §M.1 table names SnapshotStore, TextSurfaceSink, AudioEventSink, FrameArtifactSink, Inspectable, Restorable, ReplayLog, LogicalClockTick, StateTree, StatePath, ChoiceIndex as substrate-facade carriers proving reusability. crates/utsushi-reallive/tests/cross_engine_facade_only_imports.rs:62-67 inline Siglus scaffold imports only the bare scaffold-contract subset (no SnapshotStore, no TextSurfaceSink, no Inspectable/Restorable, no ReplayLog, no StateTree/StatePath, no ChoiceIndex). The audit-prompt criterion 'verify each reusable anchor in Appendix M.1 cites a concrete substrate type the inline Siglus scaffold imports' is therefore strictly satisfied only for: AssetPackage, EnginePort, PortManifest, REQUIRED_LIFECYCLE_STAGES, SinkSet, EvidenceTier, FidelityTier, LifecycleStage, PortCapability. Substrate facade DOES export the deeper anchors (verified at crates/utsushi-core/src/substrate.rs:28-48), so the reusability claim holds at the substrate-API surface, but it is proven by RealLive's consumption + facade existence rather than by inline-Siglus consumption. The §M.4 'scaffold-contract level' caveat and the test's SUBSET-not-EQUALS posture (cross_engine_facade_only_imports.rs:580-594) disclose this stance honestly."
+      ]
     },
     {
       "id": "inline-siglus-scaffold-is-inert-by-design-second-engine-family-i",
       "title": "Inline Siglus scaffold is inert by design — 'second engine family' is contract-level only",
       "kind": "audit-fix",
-      "milestone": null,
+      "milestone": "alpha",
       "status": "ready",
       "priority": "P3",
       "estimate_points": 1,
@@ -27637,26 +27845,34 @@
       "owner": null,
       "branch": null,
       "spec": "crates/utsushi-reallive/tests/cross_engine_facade_only_imports.rs:80-87, 162-166: scaffold is single-file, lifecycle methods all return EnginePortError::Lifecycle{Unimplemented}, MANIFEST.limitations explicitly says 'every lifecycle method returns a typed Lifecycle error' and 'Real Siglus VM behaviour is out of alpha scope'. Per feedback_multi_game_validation.md, substrate work means ≥2 engine families with ≥2 real games per family. The inline scaffold satisfies the ≥2-families requirement only at the scaffold-contract level; no Siglus real-bytes evidence is exercised. The spec explicitly acknowledges this is intentional ('the alpha tier targets a single engine family, RealLive against Sweetie HD; the full Siglus VM stays research-only') and the substrate-API extensibility claim is the load-bearing one for UTSUSHI-221.",
-      "acceptance": "Finding is addressed and verified.",
+      "acceptance": "- Resolve promoted P3 audit finding 63ba8fa4-3322-47a5-aae7-bd144acae084 from UTSUSHI-221: Inline Siglus scaffold is inert by design — 'second engine family' is contract-level only\n- Preserve the parent node acceptance and prevent the original evidence from recurring.",
       "validation": null,
-      "context": null,
+      "context": "Promoted finding 63ba8fa4-3322-47a5-aae7-bd144acae084 from UTSUSHI-221.",
       "created_at": "2026-06-26T07:51:18.713Z",
       "updated_at": "2026-06-26T07:51:18.713Z",
       "claimed_at": null,
       "done_at": null,
-      "group_name": null,
-      "status_reason": null,
+      "group_name": "runtime-adapters",
+      "status_reason": "Promoted from finding 63ba8fa4-3322-47a5-aae7-bd144acae084 on node UTSUSHI-221.",
       "check_command": null,
       "ci_command": null,
-      "projects": [],
-      "verification": [],
-      "audit_focus": []
+      "projects": ["utsushi"],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Focused re-audit of promoted finding 63ba8fa4-3322-47a5-aae7-bd144acae084 from UTSUSHI-221: Inline Siglus scaffold is inert by design — 'second engine family' is contract-level only"
+        }
+      ],
+      "audit_focus": [
+        "Promoted finding 63ba8fa4-3322-47a5-aae7-bd144acae084 from UTSUSHI-221: Inline Siglus scaffold is inert by design — 'second engine family' is contract-level only",
+        "Original evidence no longer true: crates/utsushi-reallive/tests/cross_engine_facade_only_imports.rs:80-87, 162-166: scaffold is single-file, lifecycle methods all return EnginePortError::Lifecycle{Unimplemented}, MANIFEST.limitations explicitly says 'every lifecycle method returns a typed Lifecycle error' and 'Real Siglus VM behaviour is out of alpha scope'. Per feedback_multi_game_validation.md, substrate work means ≥2 engine families with ≥2 real games per family. The inline scaffold satisfies the ≥2-families requirement only at the scaffold-contract level; no Siglus real-bytes evidence is exercised. The spec explicitly acknowledges this is intentional ('the alpha tier targets a single engine family, RealLive against Sweetie HD; the full Siglus VM stays research-only') and the substrate-API extensibility claim is the load-bearing one for UTSUSHI-221."
+      ]
     },
     {
       "id": "appendix-m-2-mentions-module-jmp-under-m-2-table-but-no-m-3-boun",
       "title": "Appendix M.2 mentions 'module_jmp' under M.2 table but no M.3 boundary note pin",
       "kind": "audit-fix",
-      "milestone": null,
+      "milestone": "alpha",
       "status": "ready",
       "priority": "P3",
       "estimate_points": 1,
@@ -27664,26 +27880,34 @@
       "owner": null,
       "branch": null,
       "spec": "docs/research/reallive-engine.md §M.2 row 'UTSUSHI-210 module_jmp (control-flow)' lists goto_if/goto_unless/goto_on/gosub/farcall as RealLive-only opcode byte-codes, but §M.3 has no UTSUSHI-210 boundary-note entry. UTSUSHI-210 ACs naming these opcode bytes would break under a Siglus reuse claim per the same AC3 wording.",
-      "acceptance": "Finding is addressed and verified.",
+      "acceptance": "- Resolve promoted P3 audit finding 82285831-ab3d-4760-b174-fb70822b5512 from UTSUSHI-221: Appendix M.2 mentions 'module_jmp' under M.2 table but no M.3 boundary note pin\n- Preserve the parent node acceptance and prevent the original evidence from recurring.",
       "validation": null,
-      "context": null,
+      "context": "Promoted finding 82285831-ab3d-4760-b174-fb70822b5512 from UTSUSHI-221.",
       "created_at": "2026-06-26T07:51:18.716Z",
       "updated_at": "2026-06-26T07:51:18.716Z",
       "claimed_at": null,
       "done_at": null,
-      "group_name": null,
-      "status_reason": null,
+      "group_name": "runtime-adapters",
+      "status_reason": "Promoted from finding 82285831-ab3d-4760-b174-fb70822b5512 on node UTSUSHI-221.",
       "check_command": null,
       "ci_command": null,
-      "projects": [],
-      "verification": [],
-      "audit_focus": []
+      "projects": ["utsushi"],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Focused re-audit of promoted finding 82285831-ab3d-4760-b174-fb70822b5512 from UTSUSHI-221: Appendix M.2 mentions 'module_jmp' under M.2 table but no M.3 boundary note pin"
+        }
+      ],
+      "audit_focus": [
+        "Promoted finding 82285831-ab3d-4760-b174-fb70822b5512 from UTSUSHI-221: Appendix M.2 mentions 'module_jmp' under M.2 table but no M.3 boundary note pin",
+        "Original evidence no longer true: docs/research/reallive-engine.md §M.2 row 'UTSUSHI-210 module_jmp (control-flow)' lists goto_if/goto_unless/goto_on/gosub/farcall as RealLive-only opcode byte-codes, but §M.3 has no UTSUSHI-210 boundary-note entry. UTSUSHI-210 ACs naming these opcode bytes would break under a Siglus reuse claim per the same AC3 wording."
+      ]
     },
     {
       "id": "appendix-m-2-mentions-utsushi-213-system-call-dispatch-but-no-m-",
       "title": "Appendix M.2 mentions UTSUSHI-213 system-call dispatch but no M.3 boundary note pin",
       "kind": "audit-fix",
-      "milestone": null,
+      "milestone": "alpha",
       "status": "ready",
       "priority": "P3",
       "estimate_points": 1,
@@ -27691,20 +27915,28 @@
       "owner": null,
       "branch": null,
       "spec": "docs/research/reallive-engine.md §M.2 row 'UTSUSHI-213 system-call dispatch' notes RealLive-only (9999, 10)-style scene-id+entrypoint Gameexe convention, but §M.3 has no UTSUSHI-213 boundary-note entry. UTSUSHI-213 ACs would break under Siglus reuse.",
-      "acceptance": "Finding is addressed and verified.",
+      "acceptance": "- Resolve promoted P3 audit finding 0d27aa23-5deb-4ed4-84b3-ee4e0fc23e91 from UTSUSHI-221: Appendix M.2 mentions UTSUSHI-213 system-call dispatch but no M.3 boundary note pin\n- Preserve the parent node acceptance and prevent the original evidence from recurring.",
       "validation": null,
-      "context": null,
+      "context": "Promoted finding 0d27aa23-5deb-4ed4-84b3-ee4e0fc23e91 from UTSUSHI-221.",
       "created_at": "2026-06-26T07:51:18.720Z",
       "updated_at": "2026-06-26T07:51:18.720Z",
       "claimed_at": null,
       "done_at": null,
-      "group_name": null,
-      "status_reason": null,
+      "group_name": "runtime-adapters",
+      "status_reason": "Promoted from finding 0d27aa23-5deb-4ed4-84b3-ee4e0fc23e91 on node UTSUSHI-221.",
       "check_command": null,
       "ci_command": null,
-      "projects": [],
-      "verification": [],
-      "audit_focus": []
+      "projects": ["utsushi"],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Focused re-audit of promoted finding 0d27aa23-5deb-4ed4-84b3-ee4e0fc23e91 from UTSUSHI-221: Appendix M.2 mentions UTSUSHI-213 system-call dispatch but no M.3 boundary note pin"
+        }
+      ],
+      "audit_focus": [
+        "Promoted finding 0d27aa23-5deb-4ed4-84b3-ee4e0fc23e91 from UTSUSHI-221: Appendix M.2 mentions UTSUSHI-213 system-call dispatch but no M.3 boundary note pin",
+        "Original evidence no longer true: docs/research/reallive-engine.md §M.2 row 'UTSUSHI-213 system-call dispatch' notes RealLive-only (9999, 10)-style scene-id+entrypoint Gameexe convention, but §M.3 has no UTSUSHI-213 boundary-note entry. UTSUSHI-213 ACs would break under Siglus reuse."
+      ]
     },
     {
       "id": "KAIFUU-238",
@@ -27742,7 +27974,7 @@
       "id": "acceptance-criterion-s-status-partial-field-is-missing-from-the-",
       "title": "Acceptance criterion's `status: partial` field is missing from the envelope",
       "kind": "audit-fix",
-      "milestone": null,
+      "milestone": "alpha",
       "status": "ready",
       "priority": "P2",
       "estimate_points": 1,
@@ -27750,26 +27982,34 @@
       "owner": null,
       "branch": null,
       "spec": "Spec acceptance #3: `kaifuu verify <Sweetie HD>` ... \"exits 0 with `status: partial`\". PartialAdapterReport (crates/kaifuu-core/src/lib.rs:13388-13402) has no `status` field; the envelope encodes partial-ness via the boolean `partial: true` plus `detected: false` (test assertions match this at crates/kaifuu-cli/tests/partial_extract.rs:225-227). Functionally equivalent for dashboard ingestion but literal acceptance language is unmet.",
-      "acceptance": "Finding is addressed and verified.",
+      "acceptance": "- Resolve promoted P2 audit finding f5e6b73d-8a46-431c-973e-c9dfe96824c6 from KAIFUU-193: Acceptance criterion's `status: partial` field is missing from the envelope\n- Preserve the parent node acceptance and prevent the original evidence from recurring.",
       "validation": null,
-      "context": null,
+      "context": "Promoted finding f5e6b73d-8a46-431c-973e-c9dfe96824c6 from KAIFUU-193.",
       "created_at": "2026-06-26T07:59:17.684Z",
       "updated_at": "2026-06-26T07:59:17.684Z",
       "claimed_at": null,
       "done_at": null,
-      "group_name": null,
-      "status_reason": null,
+      "group_name": "kaifuu-core",
+      "status_reason": "Promoted from finding f5e6b73d-8a46-431c-973e-c9dfe96824c6 on node KAIFUU-193.",
       "check_command": null,
       "ci_command": null,
-      "projects": [],
-      "verification": [],
-      "audit_focus": []
+      "projects": ["kaifuu"],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Focused re-audit of promoted finding f5e6b73d-8a46-431c-973e-c9dfe96824c6 from KAIFUU-193: Acceptance criterion's `status: partial` field is missing from the envelope"
+        }
+      ],
+      "audit_focus": [
+        "Promoted finding f5e6b73d-8a46-431c-973e-c9dfe96824c6 from KAIFUU-193: Acceptance criterion's `status: partial` field is missing from the envelope",
+        "Original evidence no longer true: Spec acceptance #3: `kaifuu verify <Sweetie HD>` ... \"exits 0 with `status: partial`\". PartialAdapterReport (crates/kaifuu-core/src/lib.rs:13388-13402) has no `status` field; the envelope encodes partial-ness via the boolean `partial: true` plus `detected: false` (test assertions match this at crates/kaifuu-cli/tests/partial_extract.rs:225-227). Functionally equivalent for dashboard ingestion but literal acceptance language is unmet."
+      ]
     },
     {
       "id": "report-id-is-a-constant-per-kind-index-pair-not-per-run",
       "title": "report_id is a constant per kind/index pair, not per-run",
       "kind": "audit-fix",
-      "milestone": null,
+      "milestone": "alpha",
       "status": "ready",
       "priority": "P3",
       "estimate_points": 1,
@@ -27777,20 +28017,28 @@
       "owner": null,
       "branch": null,
       "spec": "crates/kaifuu-core/src/lib.rs:13510 — `report_id: deterministic_id(\"kaifuu-partial-adapter\", 193)` always returns the same string (`deterministic_id` at lib.rs:14944 is purely a function of inputs). Schema-stable but not unique-per-run; dashboard de-duplication by reportId would collapse independent partial runs. Consistent with existing project patterns elsewhere in the codebase.",
-      "acceptance": "Finding is addressed and verified.",
+      "acceptance": "- Resolve promoted P3 audit finding 1641f73a-78e2-48e9-88fc-16f660c2aa76 from KAIFUU-193: report_id is a constant per kind/index pair, not per-run\n- Preserve the parent node acceptance and prevent the original evidence from recurring.",
       "validation": null,
-      "context": null,
+      "context": "Promoted finding 1641f73a-78e2-48e9-88fc-16f660c2aa76 from KAIFUU-193.",
       "created_at": "2026-06-26T07:59:17.690Z",
       "updated_at": "2026-06-26T07:59:17.690Z",
       "claimed_at": null,
       "done_at": null,
-      "group_name": null,
-      "status_reason": null,
+      "group_name": "kaifuu-core",
+      "status_reason": "Promoted from finding 1641f73a-78e2-48e9-88fc-16f660c2aa76 on node KAIFUU-193.",
       "check_command": null,
       "ci_command": null,
-      "projects": [],
-      "verification": [],
-      "audit_focus": []
+      "projects": ["kaifuu"],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Focused re-audit of promoted finding 1641f73a-78e2-48e9-88fc-16f660c2aa76 from KAIFUU-193: report_id is a constant per kind/index pair, not per-run"
+        }
+      ],
+      "audit_focus": [
+        "Promoted finding 1641f73a-78e2-48e9-88fc-16f660c2aa76 from KAIFUU-193: report_id is a constant per kind/index pair, not per-run",
+        "Original evidence no longer true: crates/kaifuu-core/src/lib.rs:13510 — `report_id: deterministic_id(\"kaifuu-partial-adapter\", 193)` always returns the same string (`deterministic_id` at lib.rs:14944 is purely a function of inputs). Schema-stable but not unique-per-run; dashboard de-duplication by reportId would collapse independent partial runs. Consistent with existing project patterns elsewhere in the codebase."
+      ]
     },
     {
       "id": "TEST-001",
@@ -27953,7 +28201,7 @@
       "id": "spec-acceptance-text-writes-shift-jis-title-trailing-space-as-u-",
       "title": "Spec acceptance text writes Shift-JIS title trailing space as \\u{8140} but implementation/test use \\u{3000}",
       "kind": "audit-fix",
-      "milestone": null,
+      "milestone": "alpha",
       "status": "ready",
       "priority": "P2",
       "estimate_points": 1,
@@ -27961,26 +28209,34 @@
       "owner": null,
       "branch": null,
       "spec": "Spec acceptance criterion writes `\"オシオキSweetie＋Sweets!! HD Edition\\u{8140}\"`. The literal codepoint U+8140 is a Han ideograph (腀), which would be wrong. The two bytes `81 40` are the Shift-JIS encoding of U+3000 IDEOGRAPHIC SPACE; the implementation correctly decodes via encoding_rs::SHIFT_JIS to `\\u{3000}` (src/save.rs:411-413 doc comment + tests/save_real_sweetie_hd.rs:72 + tests/save_synthetic.rs:57). The implementation is correct; the spec text is wrong/misleading. The acceptance assertion as literally worded would fail, but the spirit (round-trip of the Shift-JIS title) is met. Recommend amending the spec text rather than the code.",
-      "acceptance": "Finding is addressed and verified.",
+      "acceptance": "- Resolve promoted P2 audit finding f3337527-0809-473e-8639-5b346736e43c from UTSUSHI-218: Spec acceptance text writes Shift-JIS title trailing space as \\u{8140} but implementation/test use \\u{3000}\n- Preserve the parent node acceptance and prevent the original evidence from recurring.",
       "validation": null,
-      "context": null,
+      "context": "Promoted finding f3337527-0809-473e-8639-5b346736e43c from UTSUSHI-218.",
       "created_at": "2026-06-26T10:52:09.684Z",
       "updated_at": "2026-06-26T10:52:09.684Z",
       "claimed_at": null,
       "done_at": null,
-      "group_name": null,
-      "status_reason": null,
+      "group_name": "runtime-adapters",
+      "status_reason": "Promoted from finding f3337527-0809-473e-8639-5b346736e43c on node UTSUSHI-218.",
       "check_command": null,
       "ci_command": null,
-      "projects": [],
-      "verification": [],
-      "audit_focus": []
+      "projects": ["utsushi"],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Focused re-audit of promoted finding f3337527-0809-473e-8639-5b346736e43c from UTSUSHI-218: Spec acceptance text writes Shift-JIS title trailing space as \\u{8140} but implementation/test use \\u{3000}"
+        }
+      ],
+      "audit_focus": [
+        "Promoted finding f3337527-0809-473e-8639-5b346736e43c from UTSUSHI-218: Spec acceptance text writes Shift-JIS title trailing space as \\u{8140} but implementation/test use \\u{3000}",
+        "Original evidence no longer true: Spec acceptance criterion writes `\"オシオキSweetie＋Sweets!! HD Edition\\u{8140}\"`. The literal codepoint U+8140 is a Han ideograph (腀), which would be wrong. The two bytes `81 40` are the Shift-JIS encoding of U+3000 IDEOGRAPHIC SPACE; the implementation correctly decodes via encoding_rs::SHIFT_JIS to `\\u{3000}` (src/save.rs:411-413 doc comment + tests/save_real_sweetie_hd.rs:72 + tests/save_synthetic.rs:57). The implementation is correct; the spec text is wrong/misleading. The acceptance assertion as literally worded would fail, but the spirit (round-trip of the Shift-JIS title) is met. Recommend amending the spec text rather than the code."
+      ]
     },
     {
       "id": "real-bytes-test-silently-no-ops-when-kaifuu-real-sweetie-hd-path",
       "title": "Real-bytes test silently no-ops when KAIFUU_REAL_SWEETIE_HD_PATH unset",
       "kind": "audit-fix",
-      "milestone": null,
+      "milestone": "alpha",
       "status": "ready",
       "priority": "P2",
       "estimate_points": 1,
@@ -27988,26 +28244,34 @@
       "owner": null,
       "branch": null,
       "spec": "tests/save_real_sweetie_hd.rs:83-92 (load_or_skip) returns None when the env var is absent and the test bodies eprintln + return Ok. The three spec verification commands (`cargo test -p utsushi-reallive save_reads_avg_system_save` etc.) will report `passed` even with zero assertions executed. CI that does not set the env will produce false-green coverage. This is consistent with existing real-bytes test patterns in the crate (e.g. replay_validate_real_sweetie_hd.rs) but worth pinning explicitly.",
-      "acceptance": "Finding is addressed and verified.",
+      "acceptance": "- Resolve promoted P2 audit finding 2d356184-9143-43a5-b395-470c3cc183dc from UTSUSHI-218: Real-bytes test silently no-ops when KAIFUU_REAL_SWEETIE_HD_PATH unset\n- Preserve the parent node acceptance and prevent the original evidence from recurring.",
       "validation": null,
-      "context": null,
+      "context": "Promoted finding 2d356184-9143-43a5-b395-470c3cc183dc from UTSUSHI-218.",
       "created_at": "2026-06-26T10:52:09.689Z",
       "updated_at": "2026-06-26T10:52:09.689Z",
       "claimed_at": null,
       "done_at": null,
-      "group_name": null,
-      "status_reason": null,
+      "group_name": "runtime-adapters",
+      "status_reason": "Promoted from finding 2d356184-9143-43a5-b395-470c3cc183dc on node UTSUSHI-218.",
       "check_command": null,
       "ci_command": null,
-      "projects": [],
-      "verification": [],
-      "audit_focus": []
+      "projects": ["utsushi"],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Focused re-audit of promoted finding 2d356184-9143-43a5-b395-470c3cc183dc from UTSUSHI-218: Real-bytes test silently no-ops when KAIFUU_REAL_SWEETIE_HD_PATH unset"
+        }
+      ],
+      "audit_focus": [
+        "Promoted finding 2d356184-9143-43a5-b395-470c3cc183dc from UTSUSHI-218: Real-bytes test silently no-ops when KAIFUU_REAL_SWEETIE_HD_PATH unset",
+        "Original evidence no longer true: tests/save_real_sweetie_hd.rs:83-92 (load_or_skip) returns None when the env var is absent and the test bodies eprintln + return Ok. The three spec verification commands (`cargo test -p utsushi-reallive save_reads_avg_system_save` etc.) will report `passed` even with zero assertions executed. CI that does not set the env will produce false-green coverage. This is consistent with existing real-bytes test patterns in the crate (e.g. replay_validate_real_sweetie_hd.rs) but worth pinning explicitly."
+      ]
     },
     {
       "id": "doc-claims-writable-path-kaifuu-real-sweetie-hd-path-override-is",
       "title": "Doc claims writable-path KAIFUU_REAL_SWEETIE_HD_PATH override is rejected, but no runtime check exists",
       "kind": "audit-fix",
-      "milestone": null,
+      "milestone": "alpha",
       "status": "ready",
       "priority": "P2",
       "estimate_points": 1,
@@ -28015,26 +28279,34 @@
       "owner": null,
       "branch": null,
       "spec": "tests/save_real_sweetie_hd.rs:25-27 doc-comment states 'the test does not accept a KAIFUU_REAL_SWEETIE_HD_PATH override that points at a writable directory — every read goes through the path the audit doc declares, with no fall-back.' However, resolve_savedata_path (line 74) just consumes the env var as-is without any writability check or path equality assertion. Since the test has zero write calls, the practical risk is nil, but the doc-vs-code mismatch is a maintainability hazard.",
-      "acceptance": "Finding is addressed and verified.",
+      "acceptance": "- Resolve promoted P2 audit finding 7f02d8d1-f600-4df4-9d4c-02ae8ef5edd3 from UTSUSHI-218: Doc claims writable-path KAIFUU_REAL_SWEETIE_HD_PATH override is rejected, but no runtime check exists\n- Preserve the parent node acceptance and prevent the original evidence from recurring.",
       "validation": null,
-      "context": null,
+      "context": "Promoted finding 7f02d8d1-f600-4df4-9d4c-02ae8ef5edd3 from UTSUSHI-218.",
       "created_at": "2026-06-26T10:52:09.692Z",
       "updated_at": "2026-06-26T10:52:09.692Z",
       "claimed_at": null,
       "done_at": null,
-      "group_name": null,
-      "status_reason": null,
+      "group_name": "runtime-adapters",
+      "status_reason": "Promoted from finding 7f02d8d1-f600-4df4-9d4c-02ae8ef5edd3 on node UTSUSHI-218.",
       "check_command": null,
       "ci_command": null,
-      "projects": [],
-      "verification": [],
-      "audit_focus": []
+      "projects": ["utsushi"],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Focused re-audit of promoted finding 7f02d8d1-f600-4df4-9d4c-02ae8ef5edd3 from UTSUSHI-218: Doc claims writable-path KAIFUU_REAL_SWEETIE_HD_PATH override is rejected, but no runtime check exists"
+        }
+      ],
+      "audit_focus": [
+        "Promoted finding 7f02d8d1-f600-4df4-9d4c-02ae8ef5edd3 from UTSUSHI-218: Doc claims writable-path KAIFUU_REAL_SWEETIE_HD_PATH override is rejected, but no runtime check exists",
+        "Original evidence no longer true: tests/save_real_sweetie_hd.rs:25-27 doc-comment states 'the test does not accept a KAIFUU_REAL_SWEETIE_HD_PATH override that points at a writable directory — every read goes through the path the audit doc declares, with no fall-back.' However, resolve_savedata_path (line 74) just consumes the env var as-is without any writability check or path equality assertion. Since the test has zero write calls, the practical risk is nil, but the doc-vs-code mismatch is a maintainability hazard."
+      ]
     },
     {
       "id": "evidencetier-import-in-test-bypasses-the-substrate-facade",
       "title": "EvidenceTier import in test bypasses the substrate facade",
       "kind": "audit-fix",
-      "milestone": null,
+      "milestone": "alpha",
       "status": "ready",
       "priority": "P3",
       "estimate_points": 1,
@@ -28042,26 +28314,34 @@
       "owner": null,
       "branch": null,
       "spec": "tests/save_synthetic.rs:25 uses `use utsushi_core::EvidenceTier;` (root path) rather than `utsushi_core::substrate::EvidenceTier`. EvidenceTier is re-exported via the substrate facade (utsushi-core/src/substrate.rs:93) so the facade-discipline rule is satisfied logically but the import-site grep would flag it. lib.rs documents a known exception for CaptureOutcome with a written justification; EvidenceTier here has no such justification.",
-      "acceptance": "Finding is addressed and verified.",
+      "acceptance": "- Resolve promoted P3 audit finding 41b816e1-94f7-4eb8-b0a5-271760a8002e from UTSUSHI-218: EvidenceTier import in test bypasses the substrate facade\n- Preserve the parent node acceptance and prevent the original evidence from recurring.",
       "validation": null,
-      "context": null,
+      "context": "Promoted finding 41b816e1-94f7-4eb8-b0a5-271760a8002e from UTSUSHI-218.",
       "created_at": "2026-06-26T10:52:09.695Z",
       "updated_at": "2026-06-26T10:52:09.695Z",
       "claimed_at": null,
       "done_at": null,
-      "group_name": null,
-      "status_reason": null,
+      "group_name": "runtime-adapters",
+      "status_reason": "Promoted from finding 41b816e1-94f7-4eb8-b0a5-271760a8002e on node UTSUSHI-218.",
       "check_command": null,
       "ci_command": null,
-      "projects": [],
-      "verification": [],
-      "audit_focus": []
+      "projects": ["utsushi"],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Focused re-audit of promoted finding 41b816e1-94f7-4eb8-b0a5-271760a8002e from UTSUSHI-218: EvidenceTier import in test bypasses the substrate facade"
+        }
+      ],
+      "audit_focus": [
+        "Promoted finding 41b816e1-94f7-4eb8-b0a5-271760a8002e from UTSUSHI-218: EvidenceTier import in test bypasses the substrate facade",
+        "Original evidence no longer true: tests/save_synthetic.rs:25 uses `use utsushi_core::EvidenceTier;` (root path) rather than `utsushi_core::substrate::EvidenceTier`. EvidenceTier is re-exported via the substrate facade (utsushi-core/src/substrate.rs:93) so the facade-discipline rule is satisfied logically but the import-site grep would flag it. lib.rs documents a known exception for CaptureOutcome with a written justification; EvidenceTier here has no such justification."
+      ]
     },
     {
       "id": "globalsave-readflags-do-not-validate-file-size-against-any-cross",
       "title": "GlobalSave / ReadFlags do not validate file size against any cross-check (by design)",
       "kind": "audit-fix",
-      "milestone": null,
+      "milestone": "alpha",
       "status": "ready",
       "priority": "P3",
       "estimate_points": 1,
@@ -28069,26 +28349,34 @@
       "owner": null,
       "branch": null,
       "spec": "src/save.rs:366-380 GlobalSave::decode and 423-440 ReadFlags::decode skip the leading_u32-vs-bytes.len() cross-check. The doc-comment (src/save.rs:355-358) explains that leading_u32 for these formats is a per-format constant (0xA4 / 0x98) not a file size, so the SystemSave check would not apply. This is correct behaviour, but means the audit-focus 'silently truncating slots' protection covers only SystemSave; GlobalSave/ReadFlags rely on the magic-string termination check for slot-end safety. A truncation that severs the payload but leaves the null-terminated magic intact would decode silently. Recommend documenting this asymmetry in the audit-focus pin.",
-      "acceptance": "Finding is addressed and verified.",
+      "acceptance": "- Resolve promoted P3 audit finding 1ae48816-0ddf-4d71-8dbb-e3ed09d9ffe1 from UTSUSHI-218: GlobalSave / ReadFlags do not validate file size against any cross-check (by design)\n- Preserve the parent node acceptance and prevent the original evidence from recurring.",
       "validation": null,
-      "context": null,
+      "context": "Promoted finding 1ae48816-0ddf-4d71-8dbb-e3ed09d9ffe1 from UTSUSHI-218.",
       "created_at": "2026-06-26T10:52:09.698Z",
       "updated_at": "2026-06-26T10:52:09.698Z",
       "claimed_at": null,
       "done_at": null,
-      "group_name": null,
-      "status_reason": null,
+      "group_name": "runtime-adapters",
+      "status_reason": "Promoted from finding 1ae48816-0ddf-4d71-8dbb-e3ed09d9ffe1 on node UTSUSHI-218.",
       "check_command": null,
       "ci_command": null,
-      "projects": [],
-      "verification": [],
-      "audit_focus": []
+      "projects": ["utsushi"],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Focused re-audit of promoted finding 1ae48816-0ddf-4d71-8dbb-e3ed09d9ffe1 from UTSUSHI-218: GlobalSave / ReadFlags do not validate file size against any cross-check (by design)"
+        }
+      ],
+      "audit_focus": [
+        "Promoted finding 1ae48816-0ddf-4d71-8dbb-e3ed09d9ffe1 from UTSUSHI-218: GlobalSave / ReadFlags do not validate file size against any cross-check (by design)",
+        "Original evidence no longer true: src/save.rs:366-380 GlobalSave::decode and 423-440 ReadFlags::decode skip the leading_u32-vs-bytes.len() cross-check. The doc-comment (src/save.rs:355-358) explains that leading_u32 for these formats is a per-format constant (0xA4 / 0x98) not a file size, so the SystemSave check would not apply. This is correct behaviour, but means the audit-focus 'silently truncating slots' protection covers only SystemSave; GlobalSave/ReadFlags rely on the magic-string termination check for slot-end safety. A truncation that severs the payload but leaves the null-terminated magic intact would decode silently. Recommend documenting this asymmetry in the audit-focus pin."
+      ]
     },
     {
       "id": "supportboundary-text-always-emitted-as-redacted-in-the-proof-rep",
       "title": "supportBoundary text always emitted as [REDACTED] in the proof report due to '/' tokens tripping local-absolute-path heuristic",
       "kind": "audit-fix",
-      "milestone": null,
+      "milestone": "beta",
       "status": "ready",
       "priority": "P2",
       "estimate_points": 1,
@@ -28096,26 +28384,34 @@
       "owner": null,
       "branch": null,
       "spec": "XP3_PROFILE_PROOF_SUPPORT_BOUNDARY (crates/kaifuu-core/src/lib.rs:5419) contains the substring ' / extract / patch_back'. When passed through redact_for_log_or_report() the slash tokens (' /', '/ ') are picked up by text_contains_local_absolute_path() -> is_local_absolute_path() (starts_with('/')), causing the entire boundary string to be replaced with '[REDACTED:kaifuu.secret_redacted]'. Reproduced by running `kaifuu xp3 profile-proof` against fixtures/kaifuu/kirikiri/xp3-profile.json: supportBoundary in the resulting proof.json is `[REDACTED:kaifuu.secret_redacted]`. This silently strips public-safe boundary text from every proof and weakens the spec acceptance criterion 'The proof report includes ... semantic remediation' — consumers cannot read the boundary. Suggested fix: rewrite the constant without lone '/' tokens (e.g. 'detect, extract, patch_back'), or run support_boundary through a non-redacting copy.",
-      "acceptance": "Finding is addressed and verified.",
+      "acceptance": "- Resolve promoted P2 audit finding 554de332-8cd9-4cae-a666-e7af04513236 from KAIFUU-038: supportBoundary text always emitted as [REDACTED] in the proof report due to '/' tokens tripping local-absolute-path heuristic\n- Preserve the parent node acceptance and prevent the original evidence from recurring.",
       "validation": null,
-      "context": null,
+      "context": "Promoted finding 554de332-8cd9-4cae-a666-e7af04513236 from KAIFUU-038.",
       "created_at": "2026-06-26T14:53:19.733Z",
       "updated_at": "2026-06-26T14:53:19.733Z",
       "claimed_at": null,
       "done_at": null,
-      "group_name": null,
+      "group_name": "engine-research",
       "status_reason": "Promoted from finding 554de332-8cd9-4cae-a666-e7af04513236 on node KAIFUU-038.",
       "check_command": null,
       "ci_command": null,
-      "projects": [],
-      "verification": [],
-      "audit_focus": []
+      "projects": ["kaifuu"],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Focused re-audit of promoted finding 554de332-8cd9-4cae-a666-e7af04513236 from KAIFUU-038: supportBoundary text always emitted as [REDACTED] in the proof report due to '/' tokens tripping local-absolute-path heuristic"
+        }
+      ],
+      "audit_focus": [
+        "Promoted finding 554de332-8cd9-4cae-a666-e7af04513236 from KAIFUU-038: supportBoundary text always emitted as [REDACTED] in the proof report due to '/' tokens tripping local-absolute-path heuristic",
+        "Original evidence no longer true: XP3_PROFILE_PROOF_SUPPORT_BOUNDARY (crates/kaifuu-core/src/lib.rs:5419) contains the substring ' / extract / patch_back'. When passed through redact_for_log_or_report() the slash tokens (' /', '/ ') are picked up by text_contains_local_absolute_path() -> is_local_absolute_path() (starts_with('/')), causing the entire boundary string to be replaced with '[REDACTED:kaifuu.secret_redacted]'. Reproduced by running `kaifuu xp3 profile-proof` against fixtures/kaifuu/kirikiri/xp3-profile.json: supportBoundary in the resulting proof.json is `[REDACTED:kaifuu.secret_redacted]`. This silently strips public-safe boundary text from every proof and weakens the spec acceptance criterion 'The proof report includes ... semantic remediation' — consumers cannot read the boundary. Suggested fix: rewrite the constant without lone '/' tokens (e.g. 'detect, extract, patch_back'), or run support_boundary through a non-redacting copy."
+      ]
     },
     {
       "id": "xp3-patch-capability-overclaim-message-and-xp3-crypt-profile-mis",
       "title": "xp3.patch_capability.overclaim message and xp3.crypt_profile.missing message are redacted, hiding the human-readable failure reason from the report",
       "kind": "audit-fix",
-      "milestone": null,
+      "milestone": "beta",
       "status": "ready",
       "priority": "P2",
       "estimate_points": 1,
@@ -28123,20 +28419,28 @@
       "owner": null,
       "branch": null,
       "spec": "Diagnostic messages such as 'fixture declared patch_back but only plain XP3 may claim extract or patch_back' (lib.rs:5985) and 'encrypted XP3 fixtures must declare a crypt profile' (lib.rs:6107) survive the redactor for synthetic fixtures, but for real-bytes runs the same messages emerge as '[REDACTED:kaifuu.secret_redacted]' in the final report (see /scratch real-bytes Bukkake Ranch proof). The cause is the same slash-tokenisation heuristic firing on words like 'patch_back' adjacent to '/' tokens that appear earlier in the input via redact_for_log_or_report. Net effect: the proof communicates only the diagnostic code and remediation; the message field is opaque. Not a leak risk, but an information-quality issue that hides the routing reason from consumers.",
-      "acceptance": "Finding is addressed and verified.",
+      "acceptance": "- Resolve promoted P2 audit finding 6097f8ed-40d8-4aa7-aa77-b8213146b675 from KAIFUU-038: xp3.patch_capability.overclaim message and xp3.crypt_profile.missing message are redacted, hiding the human-readable failure reason from the report\n- Preserve the parent node acceptance and prevent the original evidence from recurring.",
       "validation": null,
-      "context": null,
+      "context": "Promoted finding 6097f8ed-40d8-4aa7-aa77-b8213146b675 from KAIFUU-038.",
       "created_at": "2026-06-26T14:53:19.737Z",
       "updated_at": "2026-06-26T14:53:19.737Z",
       "claimed_at": null,
       "done_at": null,
-      "group_name": null,
+      "group_name": "engine-research",
       "status_reason": "Promoted from finding 6097f8ed-40d8-4aa7-aa77-b8213146b675 on node KAIFUU-038.",
       "check_command": null,
       "ci_command": null,
-      "projects": [],
-      "verification": [],
-      "audit_focus": []
+      "projects": ["kaifuu"],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Focused re-audit of promoted finding 6097f8ed-40d8-4aa7-aa77-b8213146b675 from KAIFUU-038: xp3.patch_capability.overclaim message and xp3.crypt_profile.missing message are redacted, hiding the human-readable failure reason from the report"
+        }
+      ],
+      "audit_focus": [
+        "Promoted finding 6097f8ed-40d8-4aa7-aa77-b8213146b675 from KAIFUU-038: xp3.patch_capability.overclaim message and xp3.crypt_profile.missing message are redacted, hiding the human-readable failure reason from the report",
+        "Original evidence no longer true: Diagnostic messages such as 'fixture declared patch_back but only plain XP3 may claim extract or patch_back' (lib.rs:5985) and 'encrypted XP3 fixtures must declare a crypt profile' (lib.rs:6107) survive the redactor for synthetic fixtures, but for real-bytes runs the same messages emerge as '[REDACTED:kaifuu.secret_redacted]' in the final report (see /scratch real-bytes Bukkake Ranch proof). The cause is the same slash-tokenisation heuristic firing on words like 'patch_back' adjacent to '/' tokens that appear earlier in the input via redact_for_log_or_report. Net effect: the proof communicates only the diagnostic code and remediation; the message field is opaque. Not a leak risk, but an information-quality issue that hides the routing reason from consumers."
+      ]
     },
     {
       "id": "ITOTORI-238",
@@ -28236,7 +28540,7 @@
       "id": "closed-taxonomy-collapses-queue-read-denial-into-permission-deni",
       "title": "Closed taxonomy collapses queue.read denial into permission_denied_manage status",
       "kind": "audit-fix",
-      "milestone": null,
+      "milestone": "alpha",
       "status": "ready",
       "priority": "P2",
       "estimate_points": 1,
@@ -28244,26 +28548,34 @@
       "owner": null,
       "branch": null,
       "spec": "apps/itotori/src/reviewer/batch-preview.ts:381 buildDeniedPreview sets status=permissionDeniedManage with requiredPermission=\"queue.read\" and diagnostic code reviewer_batch_permission_denied_read. The closed status enum (reviewerBatchPreviewStatusValues, lines 89-98) lacks a permissionDeniedRead member; the single permissionDeniedManage value is overloaded to mean two distinct denials (read vs. manage). Downstream consumers cannot distinguish a read-gate refusal from a manage-gate refusal by status alone, weakening the closed-taxonomy guarantee for per-item diagnostics.",
-      "acceptance": "Finding is addressed and verified.",
+      "acceptance": "- Resolve promoted P2 audit finding 6d07ff54-66df-4674-987e-390e887ba5a9 from ITOTORI-083: Closed taxonomy collapses queue.read denial into permission_denied_manage status\n- Preserve the parent node acceptance and prevent the original evidence from recurring.",
       "validation": null,
-      "context": null,
+      "context": "Promoted finding 6d07ff54-66df-4674-987e-390e887ba5a9 from ITOTORI-083.",
       "created_at": "2026-06-26T17:48:56.313Z",
       "updated_at": "2026-06-26T17:48:56.313Z",
       "claimed_at": null,
       "done_at": null,
-      "group_name": null,
+      "group_name": "dashboard",
       "status_reason": "Promoted from finding 6d07ff54-66df-4674-987e-390e887ba5a9 on node ITOTORI-083.",
       "check_command": null,
       "ci_command": null,
-      "projects": [],
-      "verification": [],
-      "audit_focus": []
+      "projects": ["itotori"],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Focused re-audit of promoted finding 6d07ff54-66df-4674-987e-390e887ba5a9 from ITOTORI-083: Closed taxonomy collapses queue.read denial into permission_denied_manage status"
+        }
+      ],
+      "audit_focus": [
+        "Promoted finding 6d07ff54-66df-4674-987e-390e887ba5a9 from ITOTORI-083: Closed taxonomy collapses queue.read denial into permission_denied_manage status",
+        "Original evidence no longer true: apps/itotori/src/reviewer/batch-preview.ts:381 buildDeniedPreview sets status=permissionDeniedManage with requiredPermission=\"queue.read\" and diagnostic code reviewer_batch_permission_denied_read. The closed status enum (reviewerBatchPreviewStatusValues, lines 89-98) lacks a permissionDeniedRead member; the single permissionDeniedManage value is overloaded to mean two distinct denials (read vs. manage). Downstream consumers cannot distinguish a read-gate refusal from a manage-gate refusal by status alone, weakening the closed-taxonomy guarantee for per-item diagnostics."
+      ]
     },
     {
       "id": "atomicity-claim-weaker-than-no-partial-writes-per-item-dispatch-",
       "title": "Atomicity claim weaker than \"no partial writes\": per-item dispatch loop can leave items 1..N-1 applied if item N races",
       "kind": "audit-fix",
-      "milestone": null,
+      "milestone": "alpha",
       "status": "ready",
       "priority": "P2",
       "estimate_points": 1,
@@ -28271,26 +28583,34 @@
       "owner": null,
       "branch": null,
       "spec": "apps/itotori/src/reviewer/batch-execute.ts:208-239 dispatches one action per selection in a sequential loop. Each per-item dispatch is itself a single-row DB transaction, but inter-item atomicity is NOT guaranteed: if item k throws ReviewerQueueRepositoryError mid-loop (e.g., concurrent move, repository-level refusal), items 0..k-1 are already persisted. apps/itotori/test/reviewer-batch-execute.test.ts:210-256 explicitly asserts this behavior (result.applied[0]?.kind === \"applied\" alongside result.applied[1] refused). The header comment (batch-execute.ts:1-19) admits this and frames it as acceptable, but the focus item demands \"fully apply OR fully rollback\" — there is no rollback path for already-written transitions on a mid-loop refusal.",
-      "acceptance": "Finding is addressed and verified.",
+      "acceptance": "- Resolve promoted P2 audit finding 476e7c27-f097-4a48-9aa6-5a335ef95231 from ITOTORI-083: Atomicity claim weaker than \"no partial writes\": per-item dispatch loop can leave items 1..N-1 applied if item N races\n- Preserve the parent node acceptance and prevent the original evidence from recurring.",
       "validation": null,
-      "context": null,
+      "context": "Promoted finding 476e7c27-f097-4a48-9aa6-5a335ef95231 from ITOTORI-083.",
       "created_at": "2026-06-26T17:48:56.318Z",
       "updated_at": "2026-06-26T17:48:56.318Z",
       "claimed_at": null,
       "done_at": null,
-      "group_name": null,
+      "group_name": "dashboard",
       "status_reason": "Promoted from finding 476e7c27-f097-4a48-9aa6-5a335ef95231 on node ITOTORI-083.",
       "check_command": null,
       "ci_command": null,
-      "projects": [],
-      "verification": [],
-      "audit_focus": []
+      "projects": ["itotori"],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Focused re-audit of promoted finding 476e7c27-f097-4a48-9aa6-5a335ef95231 from ITOTORI-083: Atomicity claim weaker than \"no partial writes\": per-item dispatch loop can leave items 1..N-1 applied if item N races"
+        }
+      ],
+      "audit_focus": [
+        "Promoted finding 476e7c27-f097-4a48-9aa6-5a335ef95231 from ITOTORI-083: Atomicity claim weaker than \"no partial writes\": per-item dispatch loop can leave items 1..N-1 applied if item N races",
+        "Original evidence no longer true: apps/itotori/src/reviewer/batch-execute.ts:208-239 dispatches one action per selection in a sequential loop. Each per-item dispatch is itself a single-row DB transaction, but inter-item atomicity is NOT guaranteed: if item k throws ReviewerQueueRepositoryError mid-loop (e.g., concurrent move, repository-level refusal), items 0..k-1 are already persisted. apps/itotori/test/reviewer-batch-execute.test.ts:210-256 explicitly asserts this behavior (result.applied[0]?.kind === \"applied\" alongside result.applied[1] refused). The header comment (batch-execute.ts:1-19) admits this and frames it as acceptable, but the focus item demands \"fully apply OR fully rollback\" — there is no rollback path for already-written transitions on a mid-loop refusal."
+      ]
     },
     {
       "id": "route-file-contains-rendering-helpers-renderloading-rendererror-",
       "title": "Route file contains rendering helpers (renderLoading/renderError), violating route/view split",
       "kind": "audit-fix",
-      "milestone": null,
+      "milestone": "alpha",
       "status": "ready",
       "priority": "P3",
       "estimate_points": 1,
@@ -28298,26 +28618,34 @@
       "owner": null,
       "branch": null,
       "spec": "apps/itotori/src/reviewer/batch-route.ts:75-98 defines renderLoading() and renderError() which emit raw HTML directly into the root element, alongside their own escapeHtml() helper (lines 100-107). The focus item requires \"parsing in batch-route, rendering in batch-view; no rendering in route, no parsing in view\". The loading shell and error pane should live in batch-view.ts next to renderReviewerBatchPreviewView and the shared escapeHtml. Currently the route owns three independent rendering surfaces and a duplicate escapeHtml.",
-      "acceptance": "Finding is addressed and verified.",
+      "acceptance": "- Resolve promoted P3 audit finding 0da3fd59-fca2-4363-bb2b-c1f7686baf08 from ITOTORI-083: Route file contains rendering helpers (renderLoading/renderError), violating route/view split\n- Preserve the parent node acceptance and prevent the original evidence from recurring.",
       "validation": null,
-      "context": null,
+      "context": "Promoted finding 0da3fd59-fca2-4363-bb2b-c1f7686baf08 from ITOTORI-083.",
       "created_at": "2026-06-26T17:48:56.322Z",
       "updated_at": "2026-06-26T17:48:56.322Z",
       "claimed_at": null,
       "done_at": null,
-      "group_name": null,
+      "group_name": "dashboard",
       "status_reason": "Promoted from finding 0da3fd59-fca2-4363-bb2b-c1f7686baf08 on node ITOTORI-083.",
       "check_command": null,
       "ci_command": null,
-      "projects": [],
-      "verification": [],
-      "audit_focus": []
+      "projects": ["itotori"],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Focused re-audit of promoted finding 0da3fd59-fca2-4363-bb2b-c1f7686baf08 from ITOTORI-083: Route file contains rendering helpers (renderLoading/renderError), violating route/view split"
+        }
+      ],
+      "audit_focus": [
+        "Promoted finding 0da3fd59-fca2-4363-bb2b-c1f7686baf08 from ITOTORI-083: Route file contains rendering helpers (renderLoading/renderError), violating route/view split",
+        "Original evidence no longer true: apps/itotori/src/reviewer/batch-route.ts:75-98 defines renderLoading() and renderError() which emit raw HTML directly into the root element, alongside their own escapeHtml() helper (lines 100-107). The focus item requires \"parsing in batch-route, rendering in batch-view; no rendering in route, no parsing in view\". The loading shell and error pane should live in batch-view.ts next to renderReviewerBatchPreviewView and the shared escapeHtml. Currently the route owns three independent rendering surfaces and a duplicate escapeHtml."
+      ]
     },
     {
       "id": "dead-ternary-in-notfoundrow-ignores-canmanage-parameter",
       "title": "Dead ternary in notFoundRow ignores canManage parameter",
       "kind": "audit-fix",
-      "milestone": null,
+      "milestone": "alpha",
       "status": "ready",
       "priority": "P3",
       "estimate_points": 1,
@@ -28325,20 +28653,28 @@
       "owner": null,
       "branch": null,
       "spec": "apps/itotori/src/reviewer/batch-preview.ts:476 requiredPermission: canManage ? \"queue.manage\" : \"queue.manage\" — both branches return the identical string, so the canManage argument is unused. Either the branch should differentiate (e.g. queue.read for the can-manage-false case to mirror buildDeniedPreview) or the parameter should be dropped. Cosmetic but signals the read/manage required-permission distinction was not fully thought through here.",
-      "acceptance": "Finding is addressed and verified.",
+      "acceptance": "- Resolve promoted P3 audit finding 7d409841-3375-4058-add2-482ae31474ae from ITOTORI-083: Dead ternary in notFoundRow ignores canManage parameter\n- Preserve the parent node acceptance and prevent the original evidence from recurring.",
       "validation": null,
-      "context": null,
+      "context": "Promoted finding 7d409841-3375-4058-add2-482ae31474ae from ITOTORI-083.",
       "created_at": "2026-06-26T17:48:56.326Z",
       "updated_at": "2026-06-26T17:48:56.326Z",
       "claimed_at": null,
       "done_at": null,
-      "group_name": null,
+      "group_name": "dashboard",
       "status_reason": "Promoted from finding 7d409841-3375-4058-add2-482ae31474ae on node ITOTORI-083.",
       "check_command": null,
       "ci_command": null,
-      "projects": [],
-      "verification": [],
-      "audit_focus": []
+      "projects": ["itotori"],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Focused re-audit of promoted finding 7d409841-3375-4058-add2-482ae31474ae from ITOTORI-083: Dead ternary in notFoundRow ignores canManage parameter"
+        }
+      ],
+      "audit_focus": [
+        "Promoted finding 7d409841-3375-4058-add2-482ae31474ae from ITOTORI-083: Dead ternary in notFoundRow ignores canManage parameter",
+        "Original evidence no longer true: apps/itotori/src/reviewer/batch-preview.ts:476 requiredPermission: canManage ? \"queue.manage\" : \"queue.manage\" — both branches return the identical string, so the canManage argument is unused. Either the branch should differentiate (e.g. queue.read for the can-manage-false case to mirror buildDeniedPreview) or the parameter should be dropped. Cosmetic but signals the read/manage required-permission distinction was not fully thought through here."
+      ]
     },
     {
       "id": "INFRA-002",
@@ -28375,7 +28711,7 @@
       "id": "harden-xp3-unpacked-payload-materialization-against-symlink-trav",
       "title": "Harden XP3 unpacked payload materialization against symlink traversal",
       "kind": "audit-fix",
-      "milestone": null,
+      "milestone": "beta",
       "status": "ready",
       "priority": "P2",
       "estimate_points": 1,
@@ -28383,20 +28719,28 @@
       "owner": null,
       "branch": null,
       "spec": "Focused audit follow-up: replace_plain_xp3_entry_payload and pack_plain_xp3_from_directory validate manifest-controlled relative path strings before fs::write/fs::read, but the local validate_safe_relative_path helper does not canonicalize/materialize paths. Prior traversal P1 is fixed, but symlink-aware materialization would further harden unpacked directory handling without blocking KAIFUU-098 acceptance.",
-      "acceptance": "Finding is addressed and verified.",
+      "acceptance": "- Resolve promoted P2 audit finding 70a979c0-227a-4618-b147-af685067abf1 from KAIFUU-098: Harden XP3 unpacked payload materialization against symlink traversal\n- Preserve the parent node acceptance and prevent the original evidence from recurring.",
       "validation": null,
-      "context": null,
+      "context": "Promoted finding 70a979c0-227a-4618-b147-af685067abf1 from KAIFUU-098.",
       "created_at": "2026-06-26T21:48:17.378Z",
       "updated_at": "2026-06-26T21:48:17.378Z",
       "claimed_at": null,
       "done_at": null,
-      "group_name": null,
+      "group_name": "engine-adapters",
       "status_reason": "Promoted from finding 70a979c0-227a-4618-b147-af685067abf1 on node KAIFUU-098.",
       "check_command": null,
       "ci_command": null,
-      "projects": [],
-      "verification": [],
-      "audit_focus": []
+      "projects": ["kaifuu"],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Focused re-audit of promoted finding 70a979c0-227a-4618-b147-af685067abf1 from KAIFUU-098: Harden XP3 unpacked payload materialization against symlink traversal"
+        }
+      ],
+      "audit_focus": [
+        "Promoted finding 70a979c0-227a-4618-b147-af685067abf1 from KAIFUU-098: Harden XP3 unpacked payload materialization against symlink traversal",
+        "Original evidence no longer true: Focused audit follow-up: replace_plain_xp3_entry_payload and pack_plain_xp3_from_directory validate manifest-controlled relative path strings before fs::write/fs::read, but the local validate_safe_relative_path helper does not canonicalize/materialize paths. Prior traversal P1 is fixed, but symlink-aware materialization would further harden unpacked directory handling without blocking KAIFUU-098 acceptance."
+      ]
     },
     {
       "id": "ITOTORI-241",
@@ -28526,7 +28870,7 @@
       "id": "harden-db-evidence-leakage-guard-for-key-value-private-paths",
       "title": "Harden DB evidence leakage guard for key-value private paths",
       "kind": "audit-fix",
-      "milestone": null,
+      "milestone": "real-game-testing-ready",
       "status": "ready",
       "priority": "P3",
       "estimate_points": 1,
@@ -28534,26 +28878,34 @@
       "owner": null,
       "branch": null,
       "spec": "Final CATALOG-007 audit noted the DB evidence leakage guard catches private roots at string starts, whitespace, and quoted boundaries, but may miss key-value strings such as source=/private/corpus. No P0/P1 impact; add focused hardening when convenient.",
-      "acceptance": "Finding is addressed and verified.",
+      "acceptance": "- Resolve promoted P3 audit finding e3badaa2-3335-4f01-a0d3-73f68e52c953 from CATALOG-007: Harden DB evidence leakage guard for key-value private paths\n- Preserve the parent node acceptance and prevent the original evidence from recurring.",
       "validation": null,
-      "context": null,
+      "context": "Promoted finding e3badaa2-3335-4f01-a0d3-73f68e52c953 from CATALOG-007.",
       "created_at": "2026-06-27T14:25:04.783Z",
       "updated_at": "2026-06-27T14:25:04.783Z",
       "claimed_at": null,
       "done_at": null,
-      "group_name": null,
+      "group_name": "catalog",
       "status_reason": "Promoted from finding e3badaa2-3335-4f01-a0d3-73f68e52c953 on node CATALOG-007.",
       "check_command": null,
       "ci_command": null,
-      "projects": [],
-      "verification": [],
-      "audit_focus": []
+      "projects": ["itotori", "kaifuu", "shared"],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Focused re-audit of promoted finding e3badaa2-3335-4f01-a0d3-73f68e52c953 from CATALOG-007: Harden DB evidence leakage guard for key-value private paths"
+        }
+      ],
+      "audit_focus": [
+        "Promoted finding e3badaa2-3335-4f01-a0d3-73f68e52c953 from CATALOG-007: Harden DB evidence leakage guard for key-value private paths",
+        "Original evidence no longer true: Final CATALOG-007 audit noted the DB evidence leakage guard catches private roots at string starts, whitespace, and quoted boundaries, but may miss key-value strings such as source=/private/corpus. No P0/P1 impact; add focused hardening when convenient."
+      ]
     },
     {
       "id": "clarify-catalog-opportunity-public-runtime-evidence-count-path",
       "title": "Clarify catalog opportunity public runtime evidence count path",
       "kind": "audit-fix",
-      "milestone": null,
+      "milestone": "real-game-testing-ready",
       "status": "ready",
       "priority": "P3",
       "estimate_points": 1,
@@ -28561,26 +28913,34 @@
       "owner": null,
       "branch": null,
       "spec": "Final CATALOG-061 audit at spec/catalog-061 commit 6e5d84d: after runtime-readiness source semantics were tightened, DB-generated opportunity rows keep publicFixtureEvidenceCount effectively at 0 while API and fixture shapes still allow public runtime-readiness states. Clarify this intentional split or remove the dead DB branch later. Ref: packages/itotori-db/src/repositories/catalog-repository.ts around runtime evidence count construction.",
-      "acceptance": "Finding is addressed and verified.",
+      "acceptance": "- Resolve promoted P3 audit finding 7a5ca951-1324-4b77-b555-b6d607f65ce6 from CATALOG-061: Clarify catalog opportunity public runtime evidence count path\n- Preserve the parent node acceptance and prevent the original evidence from recurring.",
       "validation": null,
-      "context": null,
+      "context": "Promoted finding 7a5ca951-1324-4b77-b555-b6d607f65ce6 from CATALOG-061.",
       "created_at": "2026-06-27T16:56:38.247Z",
       "updated_at": "2026-06-27T16:56:38.247Z",
       "claimed_at": null,
       "done_at": null,
-      "group_name": null,
+      "group_name": "catalog",
       "status_reason": "Promoted from finding 7a5ca951-1324-4b77-b555-b6d607f65ce6 on node CATALOG-061.",
       "check_command": null,
       "ci_command": null,
-      "projects": [],
-      "verification": [],
-      "audit_focus": []
+      "projects": ["itotori", "shared", "utsushi"],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Focused re-audit of promoted finding 7a5ca951-1324-4b77-b555-b6d607f65ce6 from CATALOG-061: Clarify catalog opportunity public runtime evidence count path"
+        }
+      ],
+      "audit_focus": [
+        "Promoted finding 7a5ca951-1324-4b77-b555-b6d607f65ce6 from CATALOG-061: Clarify catalog opportunity public runtime evidence count path",
+        "Original evidence no longer true: Final CATALOG-061 audit at spec/catalog-061 commit 6e5d84d: after runtime-readiness source semantics were tightened, DB-generated opportunity rows keep publicFixtureEvidenceCount effectively at 0 while API and fixture shapes still allow public runtime-readiness states. Clarify this intentional split or remove the dead DB branch later. Ref: packages/itotori-db/src/repositories/catalog-repository.ts around runtime evidence count construction."
+      ]
     },
     {
       "id": "add-main-dashboard-panel-for-catalog-opportunities",
       "title": "Add main dashboard panel for catalog opportunities",
       "kind": "audit-fix",
-      "milestone": null,
+      "milestone": "real-game-testing-ready",
       "status": "ready",
       "priority": "P3",
       "estimate_points": 1,
@@ -28588,20 +28948,28 @@
       "owner": null,
       "branch": null,
       "spec": "Final CATALOG-061 audit at spec/catalog-061 commit 6e5d84d: the node delivers the opportunity API/read model and dashboard seed fixture consumer test, but the main dashboard panel integration remains optional/deferred per .plan/CATALOG-061.md. Track a future UI integration slice rather than blocking this merge.",
-      "acceptance": "Finding is addressed and verified.",
+      "acceptance": "- Resolve promoted P3 audit finding d26fda1b-8206-4588-873b-1f7f1c2f6caa from CATALOG-061: Add main dashboard panel for catalog opportunities\n- Preserve the parent node acceptance and prevent the original evidence from recurring.",
       "validation": null,
-      "context": null,
+      "context": "Promoted finding d26fda1b-8206-4588-873b-1f7f1c2f6caa from CATALOG-061.",
       "created_at": "2026-06-27T16:56:38.254Z",
       "updated_at": "2026-06-27T16:56:38.254Z",
       "claimed_at": null,
       "done_at": null,
-      "group_name": null,
+      "group_name": "catalog",
       "status_reason": "Promoted from finding d26fda1b-8206-4588-873b-1f7f1c2f6caa on node CATALOG-061.",
       "check_command": null,
       "ci_command": null,
-      "projects": [],
-      "verification": [],
-      "audit_focus": []
+      "projects": ["itotori", "shared", "utsushi"],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Focused re-audit of promoted finding d26fda1b-8206-4588-873b-1f7f1c2f6caa from CATALOG-061: Add main dashboard panel for catalog opportunities"
+        }
+      ],
+      "audit_focus": [
+        "Promoted finding d26fda1b-8206-4588-873b-1f7f1c2f6caa from CATALOG-061: Add main dashboard panel for catalog opportunities",
+        "Original evidence no longer true: Final CATALOG-061 audit at spec/catalog-061 commit 6e5d84d: the node delivers the opportunity API/read model and dashboard seed fixture consumer test, but the main dashboard panel integration remains optional/deferred per .plan/CATALOG-061.md. Track a future UI integration slice rather than blocking this merge."
+      ]
     },
     {
       "id": "generalize-localize-workflow-command-surface",
@@ -29014,7 +29382,7 @@
       "id": "avoid-high-volume-false-positives-from-benchmark-set-mincapabili",
       "title": "Avoid high-volume false positives from benchmark set minCapability prefilter",
       "kind": "audit-fix",
-      "milestone": null,
+      "milestone": "real-game-testing-ready",
       "status": "ready",
       "priority": "P3",
       "estimate_points": 1,
@@ -29022,20 +29390,28 @@
       "owner": null,
       "branch": null,
       "spec": "ITOTORI-089 re-audit at cf23180 found final selection correctly requires every required capability, but toCatalogBenchmarkSeedFinderFilter still collapses multiple requiredCapabilities to the highest minCapabilityLevel for source read-model prefiltering. In a high-volume corpus, false-positive rows could consume the read-model limit before final selector filtering.",
-      "acceptance": "Finding is addressed and verified.",
+      "acceptance": "- Resolve promoted P3 audit finding d0260085-99b4-4dcb-a2c9-c967c507beb3 from ITOTORI-089: Avoid high-volume false positives from benchmark set minCapability prefilter\n- Preserve the parent node acceptance and prevent the original evidence from recurring.",
       "validation": null,
-      "context": null,
+      "context": "Promoted finding d0260085-99b4-4dcb-a2c9-c967c507beb3 from ITOTORI-089.",
       "created_at": "2026-06-28T01:13:39.551Z",
       "updated_at": "2026-06-28T01:13:39.551Z",
       "claimed_at": null,
       "done_at": null,
-      "group_name": null,
+      "group_name": "benchmarks",
       "status_reason": "Promoted from finding d0260085-99b4-4dcb-a2c9-c967c507beb3 on node ITOTORI-089.",
       "check_command": null,
       "ci_command": null,
-      "projects": [],
-      "verification": [],
-      "audit_focus": []
+      "projects": ["itotori"],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Focused re-audit of promoted finding d0260085-99b4-4dcb-a2c9-c967c507beb3 from ITOTORI-089: Avoid high-volume false positives from benchmark set minCapability prefilter"
+        }
+      ],
+      "audit_focus": [
+        "Promoted finding d0260085-99b4-4dcb-a2c9-c967c507beb3 from ITOTORI-089: Avoid high-volume false positives from benchmark set minCapability prefilter",
+        "Original evidence no longer true: ITOTORI-089 re-audit at cf23180 found final selection correctly requires every required capability, but toCatalogBenchmarkSeedFinderFilter still collapses multiple requiredCapabilities to the highest minCapabilityLevel for source read-model prefiltering. In a high-volume corpus, false-positive rows could consume the read-model limit before final selector filtering."
+      ]
     },
     {
       "id": "retire-legacy-spec-dag-lifecycle-mutation-commands",
@@ -29465,7 +29841,7 @@
       "id": "strengthen-localize-driver-provider-artifact-validation-beyond-c",
       "title": "Strengthen localize driver provider artifact validation beyond count-only",
       "kind": "audit-fix",
-      "milestone": null,
+      "milestone": "alpha",
       "status": "ready",
       "priority": "P2",
       "estimate_points": 1,
@@ -29475,24 +29851,32 @@
       "spec": "Final re-audit: suite/scripts/localize-sweetie-hd/run.mjs still counts provider-runs/*/provider-run.json and only checks artifact count >= invocation count after the stage. The offline verifier now performs strong ID/content validation, but run.mjs itself can still miss stale, duplicate, mismatched, fake/local, non-ZDR, or non-billed artifacts.\n\nAdd a future suite-hardening slice that shares provider-run validation with verify-artifacts.mjs or replaces the count-only check in run.mjs with equivalent ID/content validation.",
       "acceptance": "Driver-side provider artifact validation either calls the same strong verifier logic after telemetry exists or validates providerProofId/runId, live OpenRouter provenance, model/provider pairs, ZDR routing posture, and billed successful live costs instead of only count >= invocation count.",
       "validation": null,
-      "context": null,
+      "context": "Promoted finding e9815e5e-321f-48ee-8110-c7a41b546f54 from UTSUSHI-231.",
       "created_at": "2026-06-28T03:33:48.825Z",
       "updated_at": "2026-06-28T05:32:10.386Z",
       "claimed_at": null,
       "done_at": null,
-      "group_name": null,
+      "group_name": "alpha-integration",
       "status_reason": "Promoted from finding e9815e5e-321f-48ee-8110-c7a41b546f54 on node UTSUSHI-231.\n[2026-06-28T05:32:10.386Z] BROAD AUDIT 2026-06-28: also cover tracked ignored provider artifact hygiene. Quality audit found artifacts/openrouter-live-smoke/2026-06-25.json is tracked despite artifacts/ being ignored and contains a captured OpenRouter request/response envelope. Acceptance should include removing or sanitizing tracked live-provider artifacts, documenting any committed artifact allowlist, and adding a check that fails on tracked ignored live/provider artifacts.",
       "check_command": null,
       "ci_command": null,
-      "projects": [],
-      "verification": [],
-      "audit_focus": []
+      "projects": ["suite"],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Focused re-audit of promoted finding e9815e5e-321f-48ee-8110-c7a41b546f54 from UTSUSHI-231: Strengthen localize driver provider artifact validation beyond count-only"
+        }
+      ],
+      "audit_focus": [
+        "Promoted finding e9815e5e-321f-48ee-8110-c7a41b546f54 from UTSUSHI-231: Strengthen localize driver provider artifact validation beyond count-only",
+        "Original evidence no longer true: Final re-audit: suite/scripts/localize-sweetie-hd/run.mjs still counts provider-runs/*/provider-run.json and only checks artifact count >= invocation count after the stage. The offline verifier now performs strong ID/content validation, but run.mjs itself can still miss stale, duplicate, mismatched, fake/local, non-ZDR, or non-billed artifacts."
+      ]
     },
     {
       "id": "make-sweetie-hd-localize-workflow-self-proving-with-telemetry-an",
       "title": "Make Sweetie HD localize workflow self-proving with telemetry and verifier outputs",
       "kind": "audit-fix",
-      "milestone": null,
+      "milestone": "alpha",
       "status": "ready",
       "priority": "P2",
       "estimate_points": 1,
@@ -29502,18 +29886,26 @@
       "spec": "Final re-audit: just localize-sweetie-hd still only builds and runs suite/scripts/localize-sweetie-hd/run.mjs. The main recipe does not automatically run telemetry-summary or verify-artifacts.mjs, so a successful live workflow can still omit telemetry-summary.json and post-run-verification.json unless the orchestrator manually runs the post-run commands.\n\nAdd a future suite workflow slice that either extends just localize-sweetie-hd or adds a companion recipe to generate telemetry summary and run verify-artifacts.mjs against the latest run directory.",
       "acceptance": "The Sweetie HD workflow exposes an explicit post-run recipe or self-proving command path that captures telemetry-summary.json and post-run-verification.json for the run, or prints durable exact post-run commands with run start/end/project metadata.",
       "validation": null,
-      "context": null,
+      "context": "Promoted finding a044add0-dcaa-4ead-97f1-4fec418fac39 from UTSUSHI-231.",
       "created_at": "2026-06-28T03:33:48.830Z",
       "updated_at": "2026-06-28T03:33:48.830Z",
       "claimed_at": null,
       "done_at": null,
-      "group_name": null,
+      "group_name": "alpha-integration",
       "status_reason": "Promoted from finding a044add0-dcaa-4ead-97f1-4fec418fac39 on node UTSUSHI-231.",
       "check_command": null,
       "ci_command": null,
-      "projects": [],
-      "verification": [],
-      "audit_focus": []
+      "projects": ["suite"],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Focused re-audit of promoted finding a044add0-dcaa-4ead-97f1-4fec418fac39 from UTSUSHI-231: Make Sweetie HD localize workflow self-proving with telemetry and verifier outputs"
+        }
+      ],
+      "audit_focus": [
+        "Promoted finding a044add0-dcaa-4ead-97f1-4fec418fac39 from UTSUSHI-231: Make Sweetie HD localize workflow self-proving with telemetry and verifier outputs",
+        "Original evidence no longer true: Final re-audit: just localize-sweetie-hd still only builds and runs suite/scripts/localize-sweetie-hd/run.mjs. The main recipe does not automatically run telemetry-summary or verify-artifacts.mjs, so a successful live workflow can still omit telemetry-summary.json and post-run-verification.json unless the orchestrator manually runs the post-run commands."
+      ]
     },
     {
       "id": "suite-ci-localize-project-tests",
