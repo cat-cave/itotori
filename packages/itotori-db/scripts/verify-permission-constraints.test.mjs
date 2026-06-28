@@ -166,6 +166,54 @@ test("accepts the registered named grants-table constraint", async () => {
   }
 });
 
+test("rejects bare permission tokens in the registered permission list", async () => {
+  const fixture = await createFixture({
+    registeredMigrations: {
+      "0001_permissions.sql": namedGrantsConstraintSqlWithList(
+        `${sqlStringList(allPermissionValues)}, permission`,
+      ),
+    },
+  });
+
+  try {
+    const result = runVerifier(fixture);
+
+    assert.notEqual(result.status, 0);
+    assert.match(
+      result.stderr,
+      /0001_permissions\.sql:\d+ permission constraint permission in \(\.\.\.\) list must contain only SQL string literals separated by commas/,
+    );
+    assert.match(
+      result.stderr,
+      /invalid permission in \(\.\.\.\) list: 'project\.import'.*, permission/,
+    );
+    assert.doesNotMatch(result.stderr, /drop constraint if exists/u);
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
+test("rejects other non-string tokens in the registered permission list", async () => {
+  const fixture = await createFixture({
+    registeredMigrations: {
+      "0001_permissions.sql": namedGrantsConstraintSqlWithList(
+        `${sqlStringList(allPermissionValues)}, 42`,
+      ),
+    },
+  });
+
+  try {
+    const result = runVerifier(fixture);
+
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /0001_permissions\.sql:\d+ permission constraint/);
+    assert.match(result.stderr, /invalid permission in \(\.\.\.\) list: 'project\.import'.*, 42/);
+    assert.doesNotMatch(result.stderr, /drop constraint if exists/u);
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
 async function createFixture({
   registeredMigrations,
   unregisteredMigrations = {},
@@ -257,13 +305,17 @@ ${commentedOutEntries}
 }
 
 function namedGrantsConstraintSql(values) {
+  return namedGrantsConstraintSqlWithList(sqlStringList(values));
+}
+
+function namedGrantsConstraintSqlWithList(list) {
   return `
     alter table itotori_user_permission_grants
       drop constraint if exists itotori_user_permission_grants_permission_check;
 
     alter table itotori_user_permission_grants
       add constraint itotori_user_permission_grants_permission_check check (
-        permission in (${sqlStringList(values)})
+        permission in (${list})
       );
   `;
 }

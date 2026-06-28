@@ -137,7 +137,7 @@ function latestMigrationPermissionConstraint(paths) {
 
   for (const file of migrations) {
     const sql = readFileSync(path.join(paths.migrationsDir, file), "utf8");
-    for (const constraint of extractPermissionConstraintLists(sql)) {
+    for (const constraint of extractPermissionConstraintLists(sql, file)) {
       latest = { file, ...constraint };
     }
   }
@@ -433,7 +433,7 @@ function stripJavaScriptComments(source) {
   return stripped;
 }
 
-function extractPermissionConstraintLists(sql) {
+function extractPermissionConstraintLists(sql, file) {
   const constraints = [];
   const searchableSql = stripSqlComments(sql);
   const namedConstraintPattern =
@@ -443,9 +443,10 @@ function extractPermissionConstraintLists(sql) {
     if (list === undefined) {
       continue;
     }
+    const line = lineNumberAt(searchableSql, match.index);
     constraints.push({
-      line: lineNumberAt(searchableSql, match.index),
-      permissions: extractSqlStrings(list),
+      line,
+      permissions: extractSqlStrings(list, `${file}:${line} permission constraint`),
     });
   }
   return constraints;
@@ -558,18 +559,83 @@ function lineNumberAt(source, index) {
   return line;
 }
 
-function extractSqlStrings(sqlList) {
+function extractSqlStrings(sqlList, sourceLabel) {
   const values = [];
-  for (const match of sqlList.matchAll(/'((?:''|[^'])*)'/gu)) {
-    const value = match[1];
-    if (value !== undefined) {
-      values.push(value.replaceAll("''", "'"));
+  let index = 0;
+  let needsValue = true;
+
+  while (index < sqlList.length) {
+    index = skipSqlListWhitespace(sqlList, index);
+    if (index >= sqlList.length) {
+      break;
     }
+
+    if (!needsValue) {
+      if (sqlList[index] !== ",") {
+        throw invalidSqlStringListError(sqlList, sourceLabel);
+      }
+      index += 1;
+      needsValue = true;
+      continue;
+    }
+
+    if (sqlList[index] !== "'") {
+      throw invalidSqlStringListError(sqlList, sourceLabel);
+    }
+
+    const literalEnd = sqlSingleQuotedStringLiteralEnd(sqlList, index);
+    if (literalEnd === undefined) {
+      throw invalidSqlStringListError(sqlList, sourceLabel);
+    }
+
+    values.push(sqlList.slice(index + 1, literalEnd - 1).replaceAll("''", "'"));
+    index = literalEnd;
+    needsValue = false;
+  }
+
+  if (needsValue && values.length > 0) {
+    throw invalidSqlStringListError(sqlList, sourceLabel);
   }
   if (values.length === 0) {
-    throw new Error("permission constraint drift: permission check contains no SQL string values");
+    throw new Error(
+      `permission constraint drift: ${sourceLabel} permission in (...) list contains no SQL string values`,
+    );
   }
   return values;
+}
+
+function skipSqlListWhitespace(source, index) {
+  let current = index;
+  while (/\s/u.test(source[current] ?? "")) {
+    current += 1;
+  }
+  return current;
+}
+
+function sqlSingleQuotedStringLiteralEnd(source, index) {
+  let current = index + 1;
+
+  while (current < source.length) {
+    const char = source[current];
+    if (char === "'" && source[current + 1] === "'") {
+      current += 2;
+    } else if (char === "'") {
+      return current + 1;
+    } else {
+      current += 1;
+    }
+  }
+
+  return undefined;
+}
+
+function invalidSqlStringListError(sqlList, sourceLabel) {
+  return new Error(
+    [
+      `permission constraint drift: ${sourceLabel} permission in (...) list must contain only SQL string literals separated by commas`,
+      `invalid permission in (...) list: ${formatSqlSnippet(sqlList)}`,
+    ].join("\n"),
+  );
 }
 
 function requiredExportLiteralBody(source, variableName, open, close) {
@@ -642,6 +708,10 @@ function duplicates(values) {
 
 function formatValues(values) {
   return values.map((value) => `'${value}'`).join(", ");
+}
+
+function formatSqlSnippet(value) {
+  return value.trim().replaceAll(/\s+/gu, " ");
 }
 
 function relativePath(filePath) {
