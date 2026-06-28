@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "exported_at": "2026-06-28T05:32:30.888Z",
+  "exported_at": "2026-06-28T05:46:56.579Z",
   "registries": {
     "groups": [
       {
@@ -26695,7 +26695,7 @@
     },
     {
       "id": "UTSUSHI-231",
-      "title": "suite: re-run localize-sweetie-hd end-to-end after ITOTORI-226..233; capture replay-log proving ZDR posture",
+      "title": "suite: run localize-project alpha validation for project sweetie-hd-alpha-1",
       "kind": "feature",
       "milestone": "alpha",
       "status": "claimed",
@@ -26704,18 +26704,18 @@
       "risk": "medium",
       "owner": "orchestrator-utsushi-231",
       "branch": "qd/UTSUSHI-231",
-      "spec": "Re-execute just localize-sweetie-hd --project sweetie-hd-alpha-1 against the corrected slug + new ZDR posture + posture-aware ledger + cache-aware cost math. Capture artifacts/localize-sweetie-hd/<timestamp>/ with all four files (bridge-bundle, agentic-loop-bundle, patch-report, replay-log) AND the new routing_posture in the agentic-loop-bundle invocation records. The acceptance criterion lifts the corrective deltas from in-progress to 'demonstrably end-to-end'.\n\nDeliverables:\n- artifacts/localize-sweetie-hd/<2026-06-25-rerun>/\n- docs/openrouter-integration.md: appended evidence cite for the rerun",
-      "acceptance": "- agentic-loop-bundle.v0.json invocation records carry routingPosture.zdr === true on every entry\n- Recorded patch-report.json contains the corrected modelId\n- replay-log.json has the en-US sentinel TextLine (same UTSUSHI-228 contract)\n- Ledger after the run shows zdrEnforcedCount == invocationCount over the run window\n- Ledger after the run shows every cost_kind === 'billed' (no 'provider_estimate', no 'unknown')",
-      "validation": null,
-      "context": null,
+      "spec": "Run the generic just localize-project --project sweetie-hd-alpha-1 alpha validation from main. Capture artifacts under artifacts/localize-project/RUN_DIR. Generate telemetry-summary.json and post-run-verification.json under that generic run dir.",
+      "acceptance": "Run exits 0, writes run-summary.json, provider-run artifacts, telemetry-summary.json, and post-run-verification.json under artifacts/localize-project/RUN_DIR, and proves ZDR posture plus billed cost-kind for every invocation.",
+      "validation": "",
+      "context": "",
       "created_at": "2026-06-26T02:53:56.226Z",
-      "updated_at": "2026-06-28T00:19:23.318Z",
+      "updated_at": "2026-06-28T05:46:51.722Z",
       "claimed_at": "2026-06-26T05:40:58.913Z",
       "done_at": null,
       "group_name": "alpha-integration",
-      "status_reason": "Per docs/audits/openrouter-wiring-audit-2026-06-25.md §4-7 (alpha closer rerun); cost-audit acceptance criterion added per §3 N1 retroactive section ('every cost_kind === billed').\n[2026-06-26T05:45:41.069Z] BLOCKED-EXTERNAL 2026-06-26 05:43Z: Fireworks upstream rate-limit on deepseek/deepseek-v4-flash returned HTTP 429 ('temporarily rate-limited upstream … provider_name: Fireworks, is_byok: false'). The pair-policy correctly pins allow_fallbacks:false per ZDR/strict-pair posture so no other provider can route. Source sha256 invariant held. ZDR assertion required OPENROUTER_ZDR_ACCOUNT_ASSERTED=1 (per ITOTORI-227 loud-fail design) — worked. Two artifact dirs at artifacts/localize-sweetie-hd/20260626T054[222|347]Z-sweetie-hd-alpha-1/ contain only bridge-bundle.json (phase 1 succeeded). Retry later when Fireworks throttling clears.\n[2026-06-26T06:50:43.492Z] BLOCKED-CODE 2026-06-26 06:49Z: pair-check at openrouter.ts:270-273 strict-equality fails on Fireworks-routed response ('Fireworks' vs 'fireworks' slug). Fireworks rate-limit has cleared. Fix tracked by ITOTORI-236. Retry once ITOTORI-236 merges.\n[2026-06-26T07:45:55.458Z] ATTEMPT-3 2026-06-26 07:40Z: FAILED-CODE at speaker-label pre-flight (provider.descriptor.capabilities.structuredOutputs.jsonSchema='untested'). The real gate is descriptor-vs-globalCapabilityGuard wiring; tracked by ITOTORI-237. Prior 429/pair_mismatch chars were stale builds. NO http fires; refusal is pre-flight.\n[2026-06-26T08:17:25.101Z] ATTEMPT-4 2026-06-26 08:15Z: 429 again on first OR invocation. ITOTORI-236/237 fixes NOT exercised — never reached. Pattern of repeated 429s suggests Fireworks deepseek-v4-flash quota issue at the marketplace level, not a transient outage. Defer retry to later when rate-limit window resets.\n[2026-06-26T13:26:09.003Z] ATTEMPT-5 2026-06-26 ~08:50Z: sub-agent died on weekly-limit reset before any work; no actual attempt.\n[2026-06-26T15:17:57.171Z] ATTEMPT-6 2026-06-26 15:16Z: 429 again. 3 of 6 attempts blocked by Fireworks 429 on deepseek-v4-flash. Structural quota issue. Worker recommends pair-policy alternate-provider widening (ITOTORI-238 minted).\n[2026-06-26T17:41:24.736Z] ATTEMPT-8 17:38Z: failover swept 4 alternates (fireworks/deepinfra/wafer/digitalocean all 429) then halted at morph with speaker-label refusal (capability_guard untested for morph). atlas-cloud not reached. ITOTORI-239 added pair-policy entries with capabilitySheet but didn't register them via ITOTORI-237 descriptorForPair seam. Minted ITOTORI-240.\n[2026-06-26T21:46:51.414Z] UNBLOCKED 2026-06-26 21:46Z: ITOTORI-240 alternate capability guard registration is merged into main and integrated main verification passed. Next qd driver step is to retry just localize-sweetie-hd --project sweetie-hd-alpha-1 from current main with provider secrets supplied only through process environment, then record artifacts or the next blocker.\n[2026-06-26T21:52:09.905Z] ATTEMPT-9-PREFLIGHT 2026-06-26 21:51Z: main pushed to origin at 3fc27f2. Live just localize-sweetie-hd --project sweetie-hd-alpha-1 was not executed because the tool approval policy rejected the external-provider run as possible project/corpus content export without explicit user approval. Safe offline preflight passed: nix develop --command bash -lc 'just localize-sweetie-hd --dry-run --project sweetie-hd-alpha-1' built bridge-schema/db/app and printed the four-phase plan with 'DRY-RUN: 0 LLM calls would be made.' Dry-run also reported OPENROUTER_ZDR_ACCOUNT_ASSERTED=MISSING, so a future approved live retry needs that process env assertion set, plus OPENROUTER_API_KEY, KAIFUU_REAL_SWEETIE_HD_PATH, and TARGET from the invoking environment. No provider call was made in this attempt.\n[2026-06-27T17:23:42.149Z] ORCHESTRATOR 2026-06-27: Current main 9595eb9 is clean and qd gate has no blocking findings via direct qd. Created local qd/UTSUSHI-231 integration branch from main because claimed branch ref was missing. Delegated two isolated worker branches for potential acceptance gaps before a live retry: worker/utsushi-231-provider-recording (provider-run/ZDR/cost evidence persistence) and worker/utsushi-231-telemetry-verifier (post-run telemetry/artifact verifier). Live retry is not runnable from this orchestrator shell because OPENROUTER_API_KEY, OPENROUTER_ZDR_ACCOUNT_ASSERTED, KAIFUU_REAL_SWEETIE_HD_PATH, and TARGET are not present in process env; do not read .env.\n[2026-06-27T17:44:54.080Z] ORCHESTRATOR 2026-06-27: Integrated worker commits on qd/UTSUSHI-231 in /scratch/worktrees/itotori-qd-utsushi-231: f26f67d provider-run artifact persistence, c7a09fd telemetry evidence verifier, 7aef05d formatting-only repair. Focused checks passed: app localize-sweetie-hd-stage vitest 24 tests, app telemetry-queries vitest 24 tests, app/db typecheck, suite run.test 5 tests (escalated due sandbox spawnSync EPERM), suite verify-artifacts.test, model-ledger repository vitest 14 tests with tracked DATABASE_URL postgres://itotori:itotori@127.0.0.1:55433/itotori. Full integration 'nix develop --command bash -lc just check' passed in qd worktree. qd check run from scratch worktree failed before executing with prepare failed: no such table: findings; qd bookkeeping must run from initialized main checkout or qd store repair.\n[2026-06-27T18:16:55.077Z] P2 disposition 2026-06-27: Finding e9815e5e-321f-48ee-8110-c7a41b546f54 (driver provider artifact check remains count-only) is represented as a non-blocking future suite-hardening follow-up. It does not block this preparatory merge because verify-artifacts.mjs now performs strong provider-run validation for UTSUSHI-231 live evidence; qd gate has no P0/P1 blockers.\n[2026-06-27T18:17:09.187Z] P2 disposition 2026-06-27: Finding a044add0-dcaa-4ead-97f1-4fec418fac39 (main localize recipe does not automatically emit telemetry/verifier artifacts) is represented as a non-blocking future workflow follow-up. It does not block this preparatory merge because the post-run command shape is explicit and verify-artifacts.mjs can validate telemetry-summary.json + provider-run artifacts after the live run; qd gate has no P0/P1 blockers.\n[2026-06-27T18:20:09.923Z] ORCHESTRATOR 2026-06-27: Preparatory UTSUSHI-231 evidence hardening merged and pushed to main at d368ca7. qd gate is clean with no P0/P1 blockers; P2 follow-ups e9815e5e and a044add0 are recorded for future suite/workflow hardening. just check passed on the integration branch before merge. UTSUSHI-231 remains claimed/not complete because the live Sweetie HD run has not executed; this orchestrator shell still lacks OPENROUTER_API_KEY, OPENROUTER_ZDR_ACCOUNT_ASSERTED, KAIFUU_REAL_SWEETIE_HD_PATH, and TARGET.\n[2026-06-27T22:40:46.392Z] ORCHESTRATOR 2026-06-27: Current process env still lacks OPENROUTER_API_KEY, OPENROUTER_ZDR_ACCOUNT_ASSERTED, ITOTORI_REAL_GAME_ROOT/LOCALIZE_PROJECT_SOURCE_PATH, TARGET, and DATABASE_URL; /scratch/itotori-research/sweetie-hd exists locally. Per provider policy and worktree playbook, do not read .env. Live alpha validation remains the next UTSUSHI-231 action once the owner exports env into the process or runs from an environment where it is already loaded.\n[2026-06-28T00:19:23.318Z] AUDIT 2026-06-28: post-wave alpha-readiness audit confirms this remains the substantive alpha-validation blocker. The code verifier path exists, but live private-local evidence is still missing: Sweetie HD localize run plus replay/telemetry proof with ZDR true on every provider invocation, corrected modelId, cost_kind=billed, en-US sentinel in replay log, and telemetry counts matching invocations. qd/orchestration audit also noted the node remains claimed while waiting on live env/run execution; if no owner-run retry is imminent, convert to explicit blocked state per docs/worktree-lifecycle.md.",
-      "check_command": null,
-      "ci_command": null,
+      "status_reason": "2026-06-28 text repair: UTSUSHI-231 is the generic localize-project alpha validation for project id sweetie-hd-alpha-1. Obsolete localize-sweetie-hd labels are historical only and are not acceptance. Current blocker is live env and private corpus path supplied through process environment; do not read .env.\n[2026-06-28T05:46:51.722Z] TEXT REPAIR 2026-06-28: status/spec/acceptance now describe the generic localize-project run for project sweetie-hd-alpha-1 and artifacts/localize-project/RUN_DIR. Historical live-run blockers remain relevant context: 2026-06-26 provider 429s and pair/capability guard failures were addressed by ITOTORI-236, ITOTORI-237, ITOTORI-240, ITOTORI-238, and ITOTORI-239; 2026-06-27 evidence hardening added provider-run persistence plus telemetry verifier support. Current blocker remains executing the live run from a process with required env supplied without reading .env.",
+      "check_command": "",
+      "ci_command": "",
       "projects": ["suite"],
       "verification": [
         {
@@ -26724,13 +26724,19 @@
         },
         {
           "type": "command",
-          "value": "node apps/itotori/dist/cli.js telemetry-summary --project sweetie-hd-alpha-1 --from <run-start-iso> --to <run-end-iso> --output artifacts/localize-project/<run-dir>/telemetry-summary.json"
+          "value": "node apps/itotori/dist/cli.js telemetry-summary --project sweetie-hd-alpha-1 --from RUN_START_ISO --to RUN_END_ISO --output artifacts/localize-project/RUN_DIR/telemetry-summary.json"
+        },
+        {
+          "type": "command",
+          "value": "node suite/scripts/localize-project/verify-artifacts.mjs --run-dir artifacts/localize-project/RUN_DIR --telemetry-summary artifacts/localize-project/RUN_DIR/telemetry-summary.json --output artifacts/localize-project/RUN_DIR/post-run-verification.json"
         }
       ],
       "audit_focus": [
-        "Run re-uses a stale recorded bundle (no live call)",
-        "routing_posture defaulted to true without actually being sent",
-        "Ledger row's cost_kind quietly slipped back to provider_estimate"
+        "Current acceptance accidentally points at an obsolete command or artifact root instead of localize-project",
+        "Run reuses stale recorded, fake, or local provider evidence instead of live provider-run artifacts",
+        "ZDR posture is asserted without matching provider-run artifact and telemetry proof",
+        "Telemetry summary window is stale broad or mismatched to project sweetie-hd-alpha-1 and the current run",
+        "Cost kind slips from billed to provider_estimate unknown or any other non-billed value"
       ]
     },
     {
@@ -41254,7 +41260,7 @@
       "node_id": "UTSUSHI-231",
       "run_id": null,
       "severity": "P1",
-      "status": "open",
+      "status": "resolved",
       "title": "Active alpha validation node still names obsolete localize-sweetie-hd artifacts",
       "path": null,
       "line": null,
@@ -41262,7 +41268,7 @@
       "expected": null,
       "suggested_fix": null,
       "created_at": "2026-06-28T05:31:48.996Z",
-      "resolved_at": null
+      "resolved_at": "2026-06-28T05:46:12.510Z"
     },
     {
       "id": "15989a38-e393-46fc-bbfd-b77959fd45cf",
@@ -44576,6 +44582,12 @@
       "node_id": "replace-qd-import-with-transactional-state-rebuild",
       "text": "BROAD AUDIT 2026-06-28: confirmed still active. .qd/config.toml uses nix develop --command bash -lc 'just check' and 'just qd-full-ci', but just qd-import still sets plain 'just check'/'just qd-full-ci'. This can recreate qd check drift after a rebuild; keep config preservation and tests in acceptance.",
       "created_at": "2026-06-28T05:32:23.293Z"
+    },
+    {
+      "id": "c82342b0-744d-4287-9957-0ae1c8d304d8",
+      "node_id": "UTSUSHI-231",
+      "text": "TEXT REPAIR 2026-06-28: status/spec/acceptance now describe the generic localize-project run for project sweetie-hd-alpha-1 and artifacts/localize-project/RUN_DIR. Historical live-run blockers remain relevant context: 2026-06-26 provider 429s and pair/capability guard failures were addressed by ITOTORI-236, ITOTORI-237, ITOTORI-240, ITOTORI-238, and ITOTORI-239; 2026-06-27 evidence hardening added provider-run persistence plus telemetry verifier support. Current blocker remains executing the live run from a process with required env supplied without reading .env.",
+      "created_at": "2026-06-28T05:46:51.722Z"
     }
   ]
 }
