@@ -38,8 +38,8 @@ test("ignores unregistered migration files", async () => {
     const result = runVerifier(fixture);
 
     assert.notEqual(result.status, 0);
-    assert.match(result.stderr, /missing from 0001_permissions\.sql permission constraint/);
-    assert.doesNotMatch(result.stderr, /9999_unregistered_permissions\.sql permission constraint/);
+    assert.match(result.stderr, /missing from 0001_permissions\.sql:\d+ permission constraint/);
+    assert.doesNotMatch(result.stderr, /9999_unregistered_permissions\.sql:\d+ permission constraint/);
   } finally {
     await rm(fixture.root, { recursive: true, force: true });
   }
@@ -59,8 +59,8 @@ test("ignores commented-out migration registry entries", async () => {
     const result = runVerifier(fixture);
 
     assert.notEqual(result.status, 0);
-    assert.match(result.stderr, /missing from 0001_permissions\.sql permission constraint/);
-    assert.doesNotMatch(result.stderr, /9999_unregistered_permissions\.sql permission constraint/);
+    assert.match(result.stderr, /missing from 0001_permissions\.sql:\d+ permission constraint/);
+    assert.doesNotMatch(result.stderr, /9999_unregistered_permissions\.sql:\d+ permission constraint/);
   } finally {
     await rm(fixture.root, { recursive: true, force: true });
   }
@@ -89,10 +89,58 @@ test("requires the named permission constraint on the grants table", async () =>
     const result = runVerifier(fixture);
 
     assert.notEqual(result.status, 0);
-    assert.match(result.stderr, /missing from 0001_permissions\.sql permission constraint/);
+    assert.match(result.stderr, /missing from 0001_permissions\.sql:\d+ permission constraint/);
     assert.doesNotMatch(
       result.stderr,
-      /0002_unrelated_permission_check\.sql permission constraint/,
+      /0002_unrelated_permission_check\.sql:\d+ permission constraint/,
+    );
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
+test("ignores block-commented named grants-table constraints", async () => {
+  const fixture = await createFixture({
+    registeredMigrations: {
+      "0001_permissions.sql": namedGrantsConstraintSql(stalePermissionValues),
+      "0002_commented_exact_permission_check.sql": blockComment(
+        namedGrantsConstraintSql(allPermissionValues),
+      ),
+    },
+  });
+
+  try {
+    const result = runVerifier(fixture);
+
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /missing from 0001_permissions\.sql:\d+ permission constraint/);
+    assert.doesNotMatch(
+      result.stderr,
+      /0002_commented_exact_permission_check\.sql:\d+ permission constraint/,
+    );
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
+test("ignores line-commented named grants-table constraints", async () => {
+  const fixture = await createFixture({
+    registeredMigrations: {
+      "0001_permissions.sql": namedGrantsConstraintSql(stalePermissionValues),
+      "0002_commented_exact_permission_check.sql": lineComment(
+        namedGrantsConstraintSql(allPermissionValues),
+      ),
+    },
+  });
+
+  try {
+    const result = runVerifier(fixture);
+
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /missing from 0001_permissions\.sql:\d+ permission constraint/);
+    assert.doesNotMatch(
+      result.stderr,
+      /0002_commented_exact_permission_check\.sql:\d+ permission constraint/,
     );
   } finally {
     await rm(fixture.root, { recursive: true, force: true });
@@ -209,6 +257,14 @@ function namedGrantsConstraintSql(values) {
         permission in (${sqlStringList(values)})
       );
   `;
+}
+
+function blockComment(sql) {
+  return `/*${sql}*/`;
+}
+
+function lineComment(sql) {
+  return `-- ${sql.replaceAll(/\s+/gu, " ").trim()}\n`;
 }
 
 function sqlStringList(values) {

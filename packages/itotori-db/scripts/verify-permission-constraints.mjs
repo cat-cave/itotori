@@ -38,7 +38,7 @@ function verifyPermissionConstraintDrift() {
     expected: allPermissions.values,
     actual: latestConstraint.permissions,
     expectedLabel: "TypeScript allPermissions",
-    actualLabel: `${latestConstraint.file} permission constraint`,
+    actualLabel: `${latestConstraint.file}:${latestConstraint.line} permission constraint`,
   });
 
   console.log(
@@ -124,8 +124,8 @@ function latestMigrationPermissionConstraint() {
 
   for (const file of migrations) {
     const sql = readFileSync(path.join(migrationsDir, file), "utf8");
-    for (const permissions of extractPermissionConstraintLists(sql)) {
-      latest = { file, permissions };
+    for (const constraint of extractPermissionConstraintLists(sql)) {
+      latest = { file, ...constraint };
     }
   }
 
@@ -422,16 +422,127 @@ function stripJavaScriptComments(source) {
 
 function extractPermissionConstraintLists(sql) {
   const constraints = [];
+  const searchableSql = stripSqlComments(sql);
   const namedConstraintPattern =
     /\balter\s+table\s+(?:if\s+exists\s+)?(?:only\s+)?itotori_user_permission_grants\s+add\s+constraint\s+itotori_user_permission_grants_permission_check\s+check\s*\(\s*permission\s+in\s*\(([\s\S]*?)\)\s*\)\s*;/giu;
-  for (const match of sql.matchAll(namedConstraintPattern)) {
+  for (const match of searchableSql.matchAll(namedConstraintPattern)) {
     const list = match[1];
     if (list === undefined) {
       continue;
     }
-    constraints.push(extractSqlStrings(list));
+    constraints.push({
+      line: lineNumberAt(searchableSql, match.index),
+      permissions: extractSqlStrings(list),
+    });
   }
   return constraints;
+}
+
+function stripSqlComments(source) {
+  let stripped = "";
+  let index = 0;
+
+  while (index < source.length) {
+    const char = source[index];
+    const next = source[index + 1];
+    if (char === "-" && next === "-") {
+      const commentEnd = skipSqlLineComment(source, index);
+      stripped += maskComment(source.slice(index, commentEnd));
+      index = commentEnd;
+    } else if (char === "/" && next === "*") {
+      const commentEnd = skipSqlBlockComment(source, index);
+      stripped += maskComment(source.slice(index, commentEnd));
+      index = commentEnd;
+    } else if (char === "'") {
+      const literalEnd = skipSqlSingleQuotedString(source, index);
+      stripped += source.slice(index, literalEnd);
+      index = literalEnd;
+    } else if (char === '"') {
+      const literalEnd = skipSqlDoubleQuotedString(source, index);
+      stripped += source.slice(index, literalEnd);
+      index = literalEnd;
+    } else {
+      const dollarQuote = sqlDollarQuoteDelimiterAt(source, index);
+      if (dollarQuote !== undefined) {
+        const literalEnd = skipSqlDollarQuotedString(source, index, dollarQuote);
+        stripped += source.slice(index, literalEnd);
+        index = literalEnd;
+      } else {
+        stripped += char;
+        index += 1;
+      }
+    }
+  }
+
+  return stripped;
+}
+
+function skipSqlLineComment(source, index) {
+  const lineEnd = source.indexOf("\n", index + 2);
+  return lineEnd === -1 ? source.length : lineEnd;
+}
+
+function skipSqlBlockComment(source, index) {
+  const commentEnd = source.indexOf("*/", index + 2);
+  return commentEnd === -1 ? source.length : commentEnd + 2;
+}
+
+function skipSqlSingleQuotedString(source, index) {
+  let current = index + 1;
+
+  while (current < source.length) {
+    const char = source[current];
+    if (char === "'" && source[current + 1] === "'") {
+      current += 2;
+    } else if (char === "'") {
+      return current + 1;
+    } else {
+      current += 1;
+    }
+  }
+
+  return source.length;
+}
+
+function skipSqlDoubleQuotedString(source, index) {
+  let current = index + 1;
+
+  while (current < source.length) {
+    const char = source[current];
+    if (char === '"' && source[current + 1] === '"') {
+      current += 2;
+    } else if (char === '"') {
+      return current + 1;
+    } else {
+      current += 1;
+    }
+  }
+
+  return source.length;
+}
+
+function sqlDollarQuoteDelimiterAt(source, index) {
+  const match = /^\$[A-Za-z_][A-Za-z0-9_]*\$|^\$\$/u.exec(source.slice(index));
+  return match?.[0];
+}
+
+function skipSqlDollarQuotedString(source, index, delimiter) {
+  const literalEnd = source.indexOf(delimiter, index + delimiter.length);
+  return literalEnd === -1 ? source.length : literalEnd + delimiter.length;
+}
+
+function maskComment(comment) {
+  return comment.replace(/[^\n]/gu, " ");
+}
+
+function lineNumberAt(source, index) {
+  let line = 1;
+  for (let current = 0; current < index; current += 1) {
+    if (source[current] === "\n") {
+      line += 1;
+    }
+  }
+  return line;
 }
 
 function extractSqlStrings(sqlList) {
