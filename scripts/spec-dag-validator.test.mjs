@@ -583,6 +583,11 @@ test("rejects qd export alpha P0/P1 app test passthrough commands", () => {
           type: "command",
           value: "pnpm --filter @itotori/app test -- apps/itotori/test/openrouter-live.test.ts",
         },
+        {
+          type: "command",
+          value:
+            "pnpm --filter @itotori/app exec vitest run apps/itotori/test/openrouter-live.test.ts",
+        },
       ],
     }),
   ).errors;
@@ -598,6 +603,10 @@ test("rejects qd export alpha P0/P1 app test passthrough commands", () => {
   assertError(
     errors,
     "ITOTORI-300 verification[1] @itotori/app test path must be package-relative, not root-relative apps/itotori/test/openrouter-live.test.ts",
+  );
+  assertError(
+    errors,
+    "ITOTORI-300 verification[2] @itotori/app test path must be package-relative, not root-relative apps/itotori/test/openrouter-live.test.ts",
   );
 });
 

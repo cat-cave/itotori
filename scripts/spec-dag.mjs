@@ -1578,21 +1578,27 @@ function rootRelativeItotoriAppTestPaths(command) {
   const paths = [];
   for (const segment of commandSegments(command)) {
     const tokens = shellWords(segment);
-    let index = skipEnvAssignments(tokens, 0);
-    if (!isPnpmItotoriAppTestCommand(tokens, index)) {
+    const index = skipEnvAssignments(tokens, 0);
+    const pathStart = itotoriAppTestPathStart(tokens, index);
+    if (pathStart === undefined) {
       continue;
     }
-    const passthroughIndex = tokens.indexOf("--", index);
-    if (passthroughIndex === -1) {
-      continue;
-    }
-    for (const token of tokens.slice(passthroughIndex + 1)) {
+    for (const token of tokens.slice(pathStart)) {
       if (token.startsWith("apps/itotori/test/")) {
         paths.push(token);
       }
     }
   }
   return paths;
+}
+
+function itotoriAppTestPathStart(tokens, index) {
+  if (isPnpmItotoriAppTestCommand(tokens, index)) {
+    const passthroughIndex = tokens.indexOf("--", index);
+    return passthroughIndex === -1 ? undefined : passthroughIndex + 1;
+  }
+  const execVitestRun = pnpmItotoriAppExecVitestRunAt(tokens, index);
+  return execVitestRun?.nextIndex;
 }
 
 function isPnpmItotoriAppTestCommand(tokens, start) {
@@ -1602,6 +1608,23 @@ function isPnpmItotoriAppTestCommand(tokens, start) {
 
   const filter = itotoriAppFilterAt(tokens, start + 1);
   return filter !== undefined && tokens[filter.nextIndex] === "test";
+}
+
+function pnpmItotoriAppExecVitestRunAt(tokens, start) {
+  if (tokens[start] !== "pnpm") {
+    return undefined;
+  }
+
+  const filter = itotoriAppFilterAt(tokens, start + 1);
+  if (filter === undefined) {
+    return undefined;
+  }
+
+  const index = filter.nextIndex;
+  if (tokens[index] === "exec" && tokens[index + 1] === "vitest" && tokens[index + 2] === "run") {
+    return { nextIndex: index + 3 };
+  }
+  return undefined;
 }
 
 function itotoriAppFilterAt(tokens, index) {
