@@ -31,9 +31,12 @@
         };
         shellHook = ''
           # Heavy/churny build artifacts live on the fast RAID0 scratch, not the boot drive.
-          worktree_basename="''${PWD##*/}"
-          worktree_name="$(printf "%s" "$worktree_basename" | tr -c 'A-Za-z0-9._-' '_')"
-          export CARGO_TARGET_DIR="/scratch/cache/itotori/target-$worktree_name"
+          worktree_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd -P)"
+          worktree_root="$(cd "$worktree_root" && pwd -P)"
+          worktree_basename="''${worktree_root##*/}"
+          worktree_name="$(printf "%s" "$worktree_basename" | ${pkgs.coreutils}/bin/tr -c 'A-Za-z0-9._-' '_')"
+          worktree_hash="$(printf "%s" "$worktree_root" | ${pkgs.coreutils}/bin/sha256sum | ${pkgs.coreutils}/bin/cut -c1-12)"
+          export CARGO_TARGET_DIR="/scratch/cache/itotori/target-$worktree_name-$worktree_hash"
           export PNPM_HOME="/scratch/cache/itotori/pnpm-store"
           # Per-project pnpm (package.json: pnpm@10.17.1) via corepack into a writable dir.
           export COREPACK_HOME="$PWD/.corepack"
