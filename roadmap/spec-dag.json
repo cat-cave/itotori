@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "exported_at": "2026-06-28T13:28:44.230Z",
+  "exported_at": "2026-06-28T13:34:48.703Z",
   "registries": {
     "groups": [
       {
@@ -31239,7 +31239,7 @@
       "title": "Revise roadmap credential-use posture",
       "kind": "feature",
       "milestone": null,
-      "status": "blocked",
+      "status": "done",
       "priority": "P2",
       "estimate_points": 1,
       "risk": "medium",
@@ -31250,9 +31250,9 @@
       "validation": null,
       "context": null,
       "created_at": "2026-06-28T13:23:43.606Z",
-      "updated_at": "2026-06-28T13:28:12.855Z",
+      "updated_at": "2026-06-28T13:34:39.806Z",
       "claimed_at": "2026-06-28T13:23:52.707Z",
-      "done_at": null,
+      "done_at": "2026-06-28T13:34:39.806Z",
       "group_name": null,
       "status_reason": "[2026-06-28T13:27:36.709Z] AUDIT RESULT 2026-06-28: Parallel qd auditors found credential-posture corrections needed on UTSUSHI-231, ITOTORI-221, text-repair-utsushi-228-localize-project-wording, make-sweetie-hd-localize-workflow-self-proving-with-telemetry-an, KAIFUU-036, and KAIFUU-069. Notes were added to those nodes. Auditors did not flag ITOTORI-028, ITOTORI-095, ITOTORI-009, ITOTORI-031, SHARED-025, or the generalization/corpus descriptor nodes, whose no-live-credentials wording is scoped to CI/public fixtures rather than blocking intended alpha/live validation.",
       "check_command": null,
@@ -47817,6 +47817,54 @@
       "finished_at": "2026-06-28T13:28:12.855Z",
       "summary": "check command failed: nix develop --command bash -lc 'just check'",
       "log_path": "/home/trevor/projects/itotori/.qd/logs/check-revise-roadmap-credential-use-posture-2026-06-28T13-28-08-011Z.log"
+    },
+    {
+      "id": "f165633f-d314-4dc0-8d43-3c27eab78bb0",
+      "node_id": "revise-roadmap-credential-use-posture",
+      "kind": "implement",
+      "status": "completed",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-28T13:29:10.140Z",
+      "finished_at": "2026-06-28T13:29:10.140Z",
+      "summary": "Audited roadmap credential-use posture with two parallel qd auditors. Added qd notes correcting stale process-env-only and do-not-read-.env language on UTSUSHI-231, clarified ITOTORI-221 constructor-boundary wording, attached corrected scope to UTSUSHI-228 text repair and localize-project post-run automation, and clarified private-local/live validation posture for KAIFUU-036 and KAIFUU-069.",
+      "log_path": null
+    },
+    {
+      "id": "74e53b71-cb5d-4268-8d6f-8b59c6dfe747",
+      "node_id": "revise-roadmap-credential-use-posture",
+      "kind": "check",
+      "status": "passed",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-28T13:29:35.000Z",
+      "finished_at": "2026-06-28T13:30:07.907Z",
+      "summary": "check command passed: nix develop --command bash -lc 'just check'",
+      "log_path": "/home/trevor/projects/itotori/.qd/logs/check-revise-roadmap-credential-use-posture-2026-06-28T13-29-35-000Z.log"
+    },
+    {
+      "id": "22cebd29-5ed9-4b56-a745-edfcb4a8f769",
+      "node_id": "revise-roadmap-credential-use-posture",
+      "kind": "ci",
+      "status": "passed",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-28T13:30:07.923Z",
+      "finished_at": "2026-06-28T13:34:31.128Z",
+      "summary": "ci command passed: nix develop --command bash -lc 'just qd-full-ci'",
+      "log_path": "/home/trevor/projects/itotori/.qd/logs/ci-revise-roadmap-credential-use-posture-2026-06-28T13-30-07-923Z.log"
+    },
+    {
+      "id": "34de6fbd-74e9-45e2-bfd8-80b3dc7033e5",
+      "node_id": "revise-roadmap-credential-use-posture",
+      "kind": "merge",
+      "status": "recorded",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-28T13:34:39.806Z",
+      "finished_at": "2026-06-28T13:34:39.806Z",
+      "summary": "Merge recorded with squash at commit 2dec59f",
+      "log_path": null
     }
   ],
   "node_notes": [
