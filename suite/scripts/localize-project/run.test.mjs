@@ -14,7 +14,7 @@
 // Linux-only (the driver is Linux-only by design).
 
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
@@ -29,6 +29,9 @@ const DEFAULT_ALPHA_TARGET_DATA_PATH = resolve(
   REPO_ROOT,
   "presets/localize-project.alpha-target-data.json",
 );
+const { verifyProviderRunArtifactsAfterStage } = await import(DRIVER_PATH);
+const MODEL_ID = "deepseek/deepseek-v4-flash";
+const PROVIDER_ID = "fireworks";
 
 function runDriver(args, env = {}) {
   // The driver inherits PATH / NODE etc. from the caller. We
@@ -102,6 +105,80 @@ function writeAlphaTargetData(targets) {
     )}\n`,
   );
   return { dir, path };
+}
+
+function writeProviderProofFixture({ artifactRunId = "openrouter-proof-1" } = {}) {
+  const root = mkdtempSync(join(tmpdir(), "itotori-driver-provider-proof-"));
+  const runDir = join(root, "run");
+  const providerRunArtifactsDir = join(runDir, "provider-runs");
+  const providerRunDir = join(providerRunArtifactsDir, artifactRunId);
+  mkdirSync(providerRunDir, { recursive: true });
+
+  const agenticLoopBundlePath = join(runDir, "agentic-loop-bundle.v0.json");
+  const patchReportPath = join(runDir, "patch-report.json");
+  writeJson(agenticLoopBundlePath, {
+    schemaVersion: "itotori.agentic-loop-bundle.v2",
+    stages: [
+      {
+        stageName: "translation",
+        outcome: "accepted",
+        invocations: [
+          {
+            invocationId: "translation:primary:openrouter-proof-1",
+            pair: { modelId: MODEL_ID, providerId: PROVIDER_ID },
+            providerProofId: "openrouter-proof-1",
+            costUsd: "0.00000100",
+            zdr: true,
+          },
+        ],
+      },
+    ],
+  });
+  writeJson(patchReportPath, {
+    schemaVersion: "itotori.localize-project.patch-report.v0",
+    pair: { modelId: MODEL_ID, providerId: PROVIDER_ID },
+    enUsSentinel: "FIXTURE-ALPHA-EN-US-SENTINEL",
+  });
+  writeJson(join(providerRunDir, "provider-run.json"), {
+    schemaVersion: "itotori.provider-run.v0",
+    run: {
+      runId: artifactRunId,
+      startedAt: "2026-06-27T12:00:00.000Z",
+      completedAt: "2026-06-27T12:00:01.000Z",
+      status: "succeeded",
+      provider: {
+        providerFamily: "openrouter",
+        endpointFamily: "openrouter-chat-completions",
+        requestedModelId: MODEL_ID,
+        requestedProviderId: PROVIDER_ID,
+        actualModelId: MODEL_ID,
+      },
+      cost: {
+        costKind: "billed",
+        amountMicrosUsd: 1,
+      },
+      routingPosture: {
+        only: [PROVIDER_ID],
+        allow_fallbacks: false,
+        data_collection: "deny",
+        zdr: true,
+      },
+    },
+    request: {
+      requestedModelId: MODEL_ID,
+    },
+  });
+
+  return {
+    root,
+    agenticLoopBundlePath,
+    patchReportPath,
+    providerRunArtifactsDir,
+  };
+}
+
+function writeJson(path, value) {
+  writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, "utf8");
 }
 
 test("--dry-run --project ... exits 0 and prints per-phase commands", () => {
@@ -372,6 +449,26 @@ test("missing source root diagnostic names the generic descriptor/root shape", (
       result.stderr.includes("LOCALIZE_PROJECT_SOURCE_PATH"),
     `stderr should name the generic descriptor/root contract; got:\n${result.stderr}`,
   );
+});
+
+test("driver provider artifact proof rejects count-only runId mismatches", () => {
+  const fixture = writeProviderProofFixture({
+    artifactRunId: "openrouter-proof-stale",
+  });
+  try {
+    assert.throws(
+      () =>
+        verifyProviderRunArtifactsAfterStage({
+          agenticLoopBundlePath: fixture.agenticLoopBundlePath,
+          patchReportPath: fixture.patchReportPath,
+          providerRunArtifactsDir: fixture.providerRunArtifactsDir,
+          expectedPair: { modelId: MODEL_ID, providerId: PROVIDER_ID },
+        }),
+      /missing provider-run artifact for providerProofId\/runId openrouter-proof-1/u,
+    );
+  } finally {
+    rmSync(fixture.root, { recursive: true, force: true });
+  }
 });
 
 test("dry-run manifest resolution does not leak private corpus roots", () => {

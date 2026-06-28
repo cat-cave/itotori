@@ -19,6 +19,8 @@ check:
     node scripts/qd-wrapper.test.mjs
     node scripts/qd-lifecycle.test.mjs
     node --test scripts/affected.test.mjs
+    node --test scripts/validate-tracked-artifact-hygiene.test.mjs
+    node scripts/validate-tracked-artifact-hygiene.mjs --mode check
     just localize-project-test
     node scripts/spec-dag-issues.test.mjs
     node scripts/spec-dag-lifecycle.test.mjs

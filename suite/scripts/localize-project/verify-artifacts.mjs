@@ -336,6 +336,59 @@ function verifyProviderRunArtifacts(args) {
   };
 }
 
+export function verifyProviderRunArtifactEvidence(args) {
+  const agenticLoopBundlePath = resolvePath(args.agenticLoopBundlePath);
+  const patchReportPath = resolvePath(args.patchReportPath);
+  const providerRunArtifactsDir = resolvePath(args.providerRunArtifactsDir);
+
+  const agenticLoopBundle = assertObject(readJson(agenticLoopBundlePath), "agentic-loop-bundle");
+  const patchReport = assertObject(readJson(patchReportPath), "patch-report");
+  const invocations = collectInvocations(agenticLoopBundle);
+  if (invocations.length === 0) {
+    throw new Error("agentic-loop-bundle must contain at least one invocation");
+  }
+  const nonZdrInvocations = invocations.filter((invocation) => invocation.zdr !== true);
+  if (nonZdrInvocations.length > 0) {
+    throw new Error(
+      `agentic-loop-bundle has ${nonZdrInvocations.length} invocation(s) with zdr != true`,
+    );
+  }
+
+  const pair = assertObject(patchReport.pair, "patch-report.pair");
+  const modelId = assertNonEmptyString(pair.modelId, "patch-report.pair.modelId");
+  const providerId = assertNonEmptyString(pair.providerId, "patch-report.pair.providerId");
+  if (args.expectedModelId !== undefined && modelId !== args.expectedModelId) {
+    throw new Error(`patch-report modelId mismatch: expected ${args.expectedModelId}, got ${modelId}`);
+  }
+  if (args.expectedProviderId !== undefined && providerId !== args.expectedProviderId) {
+    throw new Error(
+      `patch-report providerId mismatch: expected ${args.expectedProviderId}, got ${providerId}`,
+    );
+  }
+  if (modelId === OLD_MODEL_ID || JSON.stringify(patchReport).includes(OLD_MODEL_ID)) {
+    throw new Error(`patch-report contains stale modelId ${OLD_MODEL_ID}`);
+  }
+
+  const providerProof = verifyProviderRunArtifacts({
+    providerRunArtifactsDir,
+    invocations,
+    expectedModelId: modelId,
+    expectedProviderId: providerId,
+  });
+
+  return {
+    agenticLoopBundle,
+    patchReport,
+    invocations,
+    modelId,
+    providerId,
+    providerRunArtifactCount: providerProof.artifacts.length,
+    artifacts: providerProof.artifacts,
+    runStartedAtMs: providerProof.runStartedAtMs,
+    runEndedAtMs: providerProof.runEndedAtMs,
+  };
+}
+
 function telemetryMetadata(telemetrySummary) {
   const metadata = assertObject(telemetrySummary.metadata, "telemetry-summary.metadata");
   const projectId = assertNonEmptyString(
@@ -566,34 +619,17 @@ export function verify(args) {
     throw new Error(`required telemetry summary missing: ${telemetrySummaryPath}`);
   }
 
-  const agenticLoopBundle = assertObject(readJson(paths.agenticLoopBundle), "agentic-loop-bundle");
-  const patchReport = assertObject(readJson(paths.patchReport), "patch-report");
   const replayLog = assertObject(readJson(paths.replayLog), "replay-log");
   const telemetrySummary = assertObject(readJson(telemetrySummaryPath), "telemetry-summary");
   const runSummary = assertObject(paths.runSummaryObject, "run-summary");
 
-  const invocations = collectInvocations(agenticLoopBundle);
-  if (invocations.length === 0) {
-    throw new Error("agentic-loop-bundle must contain at least one invocation");
-  }
-  const nonZdrInvocations = invocations.filter((invocation) => invocation.zdr !== true);
-  if (nonZdrInvocations.length > 0) {
-    throw new Error(
-      `agentic-loop-bundle has ${nonZdrInvocations.length} invocation(s) with zdr != true`,
-    );
-  }
-
-  const pair = assertObject(patchReport.pair, "patch-report.pair");
-  const modelId = assertNonEmptyString(pair.modelId, "patch-report.pair.modelId");
-  const providerId = assertNonEmptyString(pair.providerId, "patch-report.pair.providerId");
-  if (modelId !== args.expectedModelId) {
-    throw new Error(
-      `patch-report modelId mismatch: expected ${args.expectedModelId}, got ${modelId}`,
-    );
-  }
-  if (modelId === OLD_MODEL_ID || JSON.stringify(patchReport).includes(OLD_MODEL_ID)) {
-    throw new Error(`patch-report contains stale modelId ${OLD_MODEL_ID}`);
-  }
+  const providerProof = verifyProviderRunArtifactEvidence({
+    agenticLoopBundlePath: paths.agenticLoopBundle,
+    patchReportPath: paths.patchReport,
+    providerRunArtifactsDir: paths.providerRunArtifacts,
+    expectedModelId: args.expectedModelId,
+  });
+  const { patchReport, invocations, modelId, providerId } = providerProof;
 
   const sentinel = assertNonEmptyString(patchReport.enUsSentinel, "patch-report.enUsSentinel");
   const sentinelTextLines = findSentinelTextLines(replayLog, sentinel);
@@ -601,12 +637,6 @@ export function verify(args) {
     throw new Error(`replay-log contains no text_line bodyUtf8 with sentinel ${sentinel}`);
   }
 
-  const providerProof = verifyProviderRunArtifacts({
-    providerRunArtifactsDir: paths.providerRunArtifacts,
-    invocations,
-    expectedModelId: modelId,
-    expectedProviderId: providerId,
-  });
   const telemetryProof = verifyTelemetry({
     telemetrySummary,
     expectedInvocationCount: invocations.length,
@@ -637,7 +667,7 @@ export function verify(args) {
     patchReportPair: { modelId, providerId },
     enUsSentinel: sentinel,
     invocationCount: invocations.length,
-    agenticLoopZdrEnforcedCount: invocations.length - nonZdrInvocations.length,
+    agenticLoopZdrEnforcedCount: invocations.length,
     providerRunArtifactCount: providerProof.artifacts.length,
     replaySentinelTextLineCount: sentinelTextLines.length,
     telemetryProof,

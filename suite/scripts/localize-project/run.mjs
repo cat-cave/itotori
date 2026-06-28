@@ -54,8 +54,9 @@ import {
   chmodSync,
 } from "node:fs";
 import { dirname, isAbsolute, join, resolve as resolvePath } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import process from "node:process";
+import { verifyProviderRunArtifactEvidence } from "./verify-artifacts.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolvePath(HERE, "../../..");
@@ -196,30 +197,6 @@ function sha256OfFile(path) {
   const hash = createHash("sha256");
   hash.update(bytes);
   return hash.digest("hex");
-}
-
-function countProviderRunArtifacts(providerRunArtifactsDir) {
-  if (!existsSync(providerRunArtifactsDir)) return 0;
-  let count = 0;
-  for (const entry of readdirSync(providerRunArtifactsDir, { withFileTypes: true })) {
-    if (!entry.isDirectory()) continue;
-    const artifactPath = join(providerRunArtifactsDir, entry.name, "provider-run.json");
-    if (existsSync(artifactPath)) count += 1;
-  }
-  return count;
-}
-
-function countAgenticLoopInvocations(agenticLoopBundlePath) {
-  const raw = JSON.parse(readFileSync(agenticLoopBundlePath, "utf8"));
-  if (typeof raw !== "object" || raw === null || !Array.isArray(raw.stages)) {
-    throw new Error(`agentic-loop bundle at ${agenticLoopBundlePath} has no stages array`);
-  }
-  return raw.stages.reduce((sum, stage) => {
-    if (typeof stage !== "object" || stage === null || !Array.isArray(stage.invocations)) {
-      return sum;
-    }
-    return sum + stage.invocations.length;
-  }, 0);
 }
 
 function copyDirRecursive(srcDir, dstDir) {
@@ -737,6 +714,22 @@ function printDryRunPlan(plan, postures, realCorpusSource) {
   process.stdout.write("[localize-project] DRY-RUN: 0 LLM calls would be made.\n");
 }
 
+export function verifyProviderRunArtifactsAfterStage({
+  agenticLoopBundlePath,
+  patchReportPath,
+  providerRunArtifactsDir,
+  expectedPair,
+}) {
+  const pair = expectedPair ?? {};
+  return verifyProviderRunArtifactEvidence({
+    agenticLoopBundlePath,
+    patchReportPath,
+    providerRunArtifactsDir,
+    expectedModelId: pair.modelId,
+    expectedProviderId: pair.providerId,
+  });
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const { pairPolicy: policy, pairPolicyPath, projectMetadata } = loadProjectConfig(args);
@@ -856,15 +849,14 @@ async function main() {
   runCommand("node", stageArgs);
 
   if (args.providerKind !== "fake") {
-    const expectedInvocationCount = countAgenticLoopInvocations(agenticLoopBundlePath);
-    const providerRunArtifactCount = countProviderRunArtifacts(providerRunArtifactsDir);
-    if (providerRunArtifactCount < expectedInvocationCount) {
-      throw new Error(
-        `provider-run artifact evidence incomplete: expected at least ${expectedInvocationCount} provider-run artifact(s) for agentic-loop invocations, found ${providerRunArtifactCount} under ${providerRunArtifactsDir}`,
-      );
-    }
+    const providerProof = verifyProviderRunArtifactsAfterStage({
+      agenticLoopBundlePath,
+      patchReportPath,
+      providerRunArtifactsDir,
+      expectedPair: policy.pair,
+    });
     process.stdout.write(
-      `[localize-project] provider-run artifacts: ${providerRunArtifactCount} persisted under ${providerRunArtifactsDir}\n`,
+      `[localize-project] provider-run artifacts: ${providerProof.providerRunArtifactCount} verified for ${providerProof.invocations.length} live invocation(s) under ${providerRunArtifactsDir}\n`,
     );
   }
 
@@ -962,7 +954,9 @@ async function main() {
   process.stdout.write(`[localize-project] SUCCESS — run dir: ${runDir}\n`);
 }
 
-main().catch((error) => {
-  process.stderr.write(`[localize-project] FAILED: ${error.message}\n`);
-  process.exit(1);
-});
+if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((error) => {
+    process.stderr.write(`[localize-project] FAILED: ${error.message}\n`);
+    process.exit(1);
+  });
+}
