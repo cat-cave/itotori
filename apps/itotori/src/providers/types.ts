@@ -456,6 +456,9 @@ export type ProviderRunArtifact = {
   error?: {
     class: string;
     message: string;
+    statusCode?: number;
+    retryable?: boolean;
+    providerErrorClass?: string;
   };
   adapterMetadata?: JsonObject;
 };

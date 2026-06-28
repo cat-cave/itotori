@@ -163,10 +163,10 @@ export class OpenRouterProvider implements ModelProvider {
           request,
           run,
           rawCapture: this.live.rawCapture,
-          error: {
-            class: "provider_http_error",
-            message: providerExceptionMessage(error),
-          },
+          error: providerNetworkErrorArtifact({
+            error,
+            inputClassification: request.inputClassification,
+          }),
           adapterMetadata: metadata,
         }),
       );
@@ -200,22 +200,25 @@ export class OpenRouterProvider implements ModelProvider {
         // ledger row is still object-shaped and traceable.
         usageResponseJson: extractUsageResponseJson(body, "_http_error"),
       });
+      const retryable = response.status >= 500 || response.status === 429;
       await this.live.artifactRecorder.recordProviderRun(
         buildArtifact({
           request,
           run,
           rawCapture: this.live.rawCapture,
-          error: {
-            class: "provider_http_error",
-            message: providerErrorMessage(body, response.status),
-          },
+          error: providerHttpErrorArtifact({
+            body,
+            status: response.status,
+            retryable,
+            inputClassification: request.inputClassification,
+          }),
           adapterMetadata: metadata,
         }),
       );
       throw new ModelProviderError(
         `OpenRouter request failed with HTTP ${response.status}`,
         "provider_http_error",
-        response.status >= 500 || response.status === 429,
+        retryable,
         run,
         metadata,
       );
@@ -1402,6 +1405,77 @@ function providerErrorMessage(body: unknown, status: number): string {
     return body.error.message;
   }
   return `HTTP ${status}`;
+}
+
+const MAX_PROVIDER_ERROR_MESSAGE_LENGTH = 512;
+const MAX_PROVIDER_ERROR_CLASS_LENGTH = 96;
+
+function providerNetworkErrorArtifact(input: {
+  error: unknown;
+  inputClassification: ProviderInputClassification;
+}): ProviderRunArtifact["error"] {
+  const privateInput = isPrivateInput(input.inputClassification);
+  const message = privateInput
+    ? "OpenRouter request failed before response"
+    : boundedDiagnosticMessage(providerExceptionMessage(input.error));
+  return {
+    class: "provider_http_error",
+    message,
+    retryable: true,
+    providerErrorClass: "network_error",
+  };
+}
+
+function providerHttpErrorArtifact(input: {
+  body: unknown;
+  status: number;
+  retryable: boolean;
+  inputClassification: ProviderInputClassification;
+}): ProviderRunArtifact["error"] {
+  const providerErrorClass = providerSafeErrorClass(input.body) ?? `http_${input.status}`;
+  const privateInput = isPrivateInput(input.inputClassification);
+  const message = privateInput
+    ? `OpenRouter HTTP ${input.status} (${providerErrorClass})`
+    : boundedDiagnosticMessage(providerErrorMessage(input.body, input.status));
+
+  return {
+    class: "provider_http_error",
+    message,
+    statusCode: input.status,
+    retryable: input.retryable,
+    providerErrorClass,
+  };
+}
+
+function providerSafeErrorClass(body: unknown): string | undefined {
+  if (!isRecord(body) || !isRecord(body.error)) {
+    return undefined;
+  }
+  return sanitizedDiagnosticClass(
+    optionalString(body.error.code) ?? optionalString(body.error.type),
+  );
+}
+
+function sanitizedDiagnosticClass(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+  if (trimmed.length > MAX_PROVIDER_ERROR_CLASS_LENGTH) {
+    return undefined;
+  }
+  if (!/^[A-Za-z0-9][A-Za-z0-9_.:]*$/u.test(trimmed)) {
+    return undefined;
+  }
+  return trimmed;
+}
+
+function boundedDiagnosticMessage(value: string): string {
+  const normalized = value.replace(/\s+/gu, " ").trim();
+  if (normalized.length <= MAX_PROVIDER_ERROR_MESSAGE_LENGTH) {
+    return normalized;
+  }
+  return `${normalized.slice(0, MAX_PROVIDER_ERROR_MESSAGE_LENGTH - 3)}...`;
 }
 
 function providerExceptionMessage(error: unknown): string {

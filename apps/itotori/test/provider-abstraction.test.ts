@@ -412,7 +412,115 @@ describe("OpenRouterProvider", () => {
     expect(recorder.artifacts[0]?.run.status).toBe("failed");
     expect(recorder.artifacts[0]?.error).toMatchObject({
       class: "provider_http_error",
-      message: "rate limited",
+      message: "OpenRouter HTTP 429 (http_429)",
+      statusCode: 429,
+      retryable: true,
+      providerErrorClass: "http_429",
+    });
+  });
+
+  it("redacts upstream HTTP error text from private provider-run artifacts", async () => {
+    const privatePath = "/Users/trevor/private-client/ja-JP/game.po";
+    const promptFragment = "preserve the moon-gate honorific exactly";
+    const tokenLikeString = "sk-or-v1-private-token-1234567890abcdef";
+    const projectTitle = "Project Violet Harbor";
+    const recorder = memoryRecorder();
+    const fetchMock = vi.fn(async () => {
+      return jsonResponse(
+        {
+          error: {
+            code: "rate_limit_exceeded",
+            message:
+              `429 for ${privatePath}; prompt '${promptFragment}'; ` +
+              `token ${tokenLikeString}; project ${projectTitle}`,
+          },
+        },
+        429,
+      );
+    }) as unknown as typeof fetch;
+    const provider = new OpenRouterProvider({
+      modelId: "openai/gpt-4o-mini",
+      apiKey: "test-key",
+      fetch: fetchMock,
+      capabilities: openRouterCapabilitiesForPrivateInputs(),
+      live: { enabled: true, artifactRecorder: recorder, rawCapture: "disabled" },
+    });
+
+    await expect(
+      provider.invoke({
+        ...jsonSchemaRequest(),
+        messages: [
+          {
+            role: "user",
+            content: `Translate ${projectTitle}: ${promptFragment} from ${privatePath}`,
+          },
+        ],
+      }),
+    ).rejects.toMatchObject({
+      code: "provider_http_error",
+      retryable: true,
+      providerRun: expect.objectContaining({
+        status: "failed",
+        errorClasses: ["http_429"],
+        provider: expect.objectContaining({
+          requestedProviderId: "OpenAI",
+        }),
+      }),
+    });
+
+    expect(recorder.artifacts).toHaveLength(1);
+    expect(recorder.artifacts[0]?.error).toMatchObject({
+      class: "provider_http_error",
+      message: "OpenRouter HTTP 429 (rate_limit_exceeded)",
+      statusCode: 429,
+      retryable: true,
+      providerErrorClass: "rate_limit_exceeded",
+    });
+    const serializedArtifact = JSON.stringify(recorder.artifacts[0]);
+    expect(serializedArtifact).not.toContain(privatePath);
+    expect(serializedArtifact).not.toContain(promptFragment);
+    expect(serializedArtifact).not.toContain(tokenLikeString);
+    expect(serializedArtifact).not.toContain(projectTitle);
+  });
+
+  it("keeps bounded upstream HTTP error text for public provider-run artifacts", async () => {
+    const recorder = memoryRecorder();
+    const fetchMock = vi.fn(async () => {
+      return jsonResponse(
+        {
+          error: {
+            code: "quota_exceeded",
+            message: "quota exhausted for public fixture",
+          },
+        },
+        402,
+      );
+    }) as unknown as typeof fetch;
+    const provider = new OpenRouterProvider({
+      modelId: "openai/gpt-4o-mini",
+      apiKey: "test-key",
+      fetch: fetchMock,
+      capabilities: openRouterCapabilitiesForPrivateInputs(),
+      live: { enabled: true, artifactRecorder: recorder, rawCapture: "disabled" },
+    });
+
+    await expect(
+      provider.invoke({
+        ...jsonSchemaRequest(),
+        inputClassification: "public",
+      }),
+    ).rejects.toMatchObject({
+      code: "provider_http_error",
+      retryable: false,
+    });
+
+    expect(recorder.artifacts).toHaveLength(1);
+    expect(recorder.artifacts[0]?.error).toMatchObject({
+      class: "provider_http_error",
+      message: "quota exhausted for public fixture",
+      statusCode: 402,
+      retryable: false,
+      providerErrorClass: "quota_exceeded",
     });
   });
 
