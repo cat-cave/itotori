@@ -33,17 +33,16 @@
 //!   ORIGINAL unpatched copy. This module does not enforce that — the
 //!   integration test does, by running the validator on both copies
 //!   and asserting the original returns `NoMatch`. The contract is
-//!   documented in `--help` of the binary.
+//!   documented in `utsushi-cli replay-validate --help`.
 //!
 //! # Public surface
 //!
 //! - [`ReplayValidation`] — typed match/no-match outcome with sampling
 //!   detail for the no-match path.
-//! - [`validate_replay_contains`] — the driver function used by the bin
-//!   + the integration test.
-//! - [`run_replay_validate`] — used by the
-//!   `utsushi-cli replay-validate` subcommand to avoid duplicating the
-//!   match/print path.
+//! - [`validate_replay_contains`] — the path-based driver function used
+//!   by the integration test and command-line wrapper.
+//! - [`validate_log_contains`] — used by `utsushi-cli replay-validate`
+//!   to share the match/no-match logic with tests.
 
 use std::path::Path;
 
@@ -55,9 +54,9 @@ use crate::replay::{ReplayError, ReplayEvent, ReplayLog, ReplayOpts, replay_scen
 pub const NO_MATCH_SAMPLE_BODIES_CAP: usize = 8;
 
 /// Maximum byte length of an individual sample body in the `NoMatch`
-/// arm. The caller already has the full ReplayLog via the bin's
-/// `--print-replay-log` flag; this cap keeps the printable diagnostic
-/// terse without truncating evidence.
+/// arm. The caller can request the full ReplayLog through the generic
+/// CLI's `--print-replay-log` flag; this cap keeps the printable
+/// diagnostic terse without truncating evidence.
 pub const NO_MATCH_SAMPLE_BODY_BYTE_CAP: usize = 256;
 
 /// Typed result of [`validate_replay_contains`].
@@ -94,7 +93,7 @@ pub enum ReplayValidation {
 }
 
 impl ReplayValidation {
-    /// Convenience predicate for the bin's exit-code path.
+    /// Convenience predicate for CLI exit-code paths.
     pub fn matched(&self) -> bool {
         matches!(self, ReplayValidation::Matched { .. })
     }

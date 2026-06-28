@@ -196,15 +196,16 @@ hello-replay:
 # UTSUSHI-227: patched-Seen.txt replay-and-verify smoke. Runs the
 # synthetic + validator integration tests through `cargo test` (no real
 # bytes required) so a fresh-clone reviewer can verify the
-# `validate_replay_contains` library API and the `replay-validate-
-# sweetie-hd` binary surface match without touching the vault. The
+# `validate_replay_contains` library API and the generic
+# `utsushi-cli replay-validate --engine reallive` surface match
+# without touching the vault. The
 # real-bytes variant lives in the same integration test file
 # (`tests/replay_validate_real_sweetie_hd.rs`) under the env-gated
 # ignored test; run it separately with ITOTORI_REAL_GAME_ROOT set
 # per the spec verification block.
 hello-replay-validate:
     cargo test -p utsushi-reallive --test replay_validate_real_sweetie_hd -- --nocapture
-    cargo run -p utsushi-reallive --bin replay-validate-sweetie-hd -- --help
+    cargo run -p utsushi-cli -- replay-validate --help
 
 # UTSUSHI-228 — alpha closer. Wraps every other alpha node into one
 # command: kaifuu extract -> itotori live agentic loop -> kaifuu patch
