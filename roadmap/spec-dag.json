@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "exported_at": "2026-06-28T04:08:43.930Z",
+  "exported_at": "2026-06-28T04:37:40.333Z",
   "registries": {
     "groups": [
       {
@@ -29574,7 +29574,7 @@
       "title": "Make local qd CI own DB lifecycle safely across worktrees",
       "kind": "feature",
       "milestone": null,
-      "status": "claimed",
+      "status": "done",
       "priority": "P1",
       "estimate_points": 1,
       "risk": "medium",
@@ -29585,9 +29585,9 @@
       "validation": null,
       "context": null,
       "created_at": "2026-06-28T03:34:25.968Z",
-      "updated_at": "2026-06-28T04:08:32.310Z",
-      "claimed_at": "2026-06-28T04:08:32.310Z",
-      "done_at": null,
+      "updated_at": "2026-06-28T04:37:36.004Z",
+      "claimed_at": "2026-06-28T04:32:31.389Z",
+      "done_at": "2026-06-28T04:37:36.004Z",
       "group_name": null,
       "status_reason": null,
       "check_command": null,
@@ -44161,6 +44161,78 @@
       "started_at": "2026-06-28T04:04:36.807Z",
       "finished_at": "2026-06-28T04:04:36.807Z",
       "summary": "Merge recorded with squash",
+      "log_path": null
+    },
+    {
+      "id": "325dd734-da5d-47ce-a768-3db4f0a20142",
+      "node_id": "ci-db-parallel-safe",
+      "kind": "check",
+      "status": "failed",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-28T04:24:28.261Z",
+      "finished_at": "2026-06-28T04:24:32.985Z",
+      "summary": "check command failed: nix develop --command bash -lc 'just check'",
+      "log_path": "/home/trevor/projects/itotori/.qd/logs/check-ci-db-parallel-safe-2026-06-28T04-24-28-261Z.log"
+    },
+    {
+      "id": "e9132f9c-4273-4e9c-8b54-d2a4915f4341",
+      "node_id": "ci-db-parallel-safe",
+      "kind": "check",
+      "status": "failed",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-28T04:26:23.383Z",
+      "finished_at": "2026-06-28T04:26:29.075Z",
+      "summary": "check command failed: nix develop --command bash -lc 'just check'",
+      "log_path": "/home/trevor/projects/itotori/.qd/logs/check-ci-db-parallel-safe-2026-06-28T04-26-23-383Z.log"
+    },
+    {
+      "id": "b2f22418-706d-4479-a8d6-a81ed11bf05c",
+      "node_id": "ci-db-parallel-safe",
+      "kind": "check",
+      "status": "passed",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-28T04:29:09.290Z",
+      "finished_at": "2026-06-28T04:29:37.011Z",
+      "summary": "check command passed: nix develop --command bash -lc 'just check'",
+      "log_path": "/home/trevor/projects/itotori/.qd/logs/check-ci-db-parallel-safe-2026-06-28T04-29-09-290Z.log"
+    },
+    {
+      "id": "9a9eb77a-5c16-42e1-b7a3-aee42d662709",
+      "node_id": "ci-db-parallel-safe",
+      "kind": "ci",
+      "status": "failed",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-28T04:29:46.697Z",
+      "finished_at": "2026-06-28T04:29:57.040Z",
+      "summary": "ci command failed: nix develop --command bash -lc 'just qd-full-ci'",
+      "log_path": "/home/trevor/projects/itotori/.qd/logs/ci-ci-db-parallel-safe-2026-06-28T04-29-46-697Z.log"
+    },
+    {
+      "id": "c239fd1d-9971-4c6e-8e39-12053a166285",
+      "node_id": "ci-db-parallel-safe",
+      "kind": "ci",
+      "status": "passed",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-28T04:32:46.138Z",
+      "finished_at": "2026-06-28T04:37:12.164Z",
+      "summary": "ci command passed: nix develop --command bash -lc 'just qd-full-ci'",
+      "log_path": "/home/trevor/projects/itotori/.qd/logs/ci-ci-db-parallel-safe-2026-06-28T04-32-46-138Z.log"
+    },
+    {
+      "id": "502a4de6-f0ad-4012-ac49-085d6cdbbcd6",
+      "node_id": "ci-db-parallel-safe",
+      "kind": "merge",
+      "status": "recorded",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-28T04:37:36.004Z",
+      "finished_at": "2026-06-28T04:37:36.004Z",
+      "summary": "Merge recorded with squash at commit HEAD",
       "log_path": null
     }
   ],
