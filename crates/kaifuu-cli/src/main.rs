@@ -140,6 +140,7 @@ fn run_with_args_and_registry(
             let game_dir = PathBuf::from(positional(&args, 1)?);
             let patch = PathBuf::from(flag(&args, "--patch")?);
             let output = PathBuf::from(flag(&args, "--output")?);
+            validate_patch_target_root(&game_dir, &output, "patch output directory")?;
             let patch_export: PatchExport = read_json(&patch)?;
             let adapter = registered_adapter_for_game(registry, &game_dir)?;
             let preflight = adapter
@@ -430,6 +431,8 @@ fn run_patch_reallive_bundle(args: &[String]) -> Result<(), Box<dyn std::error::
     let bundle_path = PathBuf::from(flag(args, "--bundle")?);
     let force = flag_optional(args, "--force").is_some();
 
+    validate_patch_target_root(&source_root, &target_root, "patch target directory")?;
+
     // Refuse to overwrite a non-empty target without --force. The error
     // code is the documented patchback_target_nonempty Fatal from
     // KAIFUU-211.
@@ -543,9 +546,9 @@ fn copy_directory_tree(src: &Path, dst: &Path) -> Result<(), Box<dyn std::error:
     while let Some((src_dir, dst_dir)) = stack.pop() {
         for entry in fs::read_dir(&src_dir)? {
             let entry = entry?;
-            let metadata = entry.metadata()?;
+            let metadata = entry.file_type()?;
             let dst_entry = dst_dir.join(entry.file_name());
-            if metadata.file_type().is_symlink() {
+            if metadata.is_symlink() {
                 return Err(format!(
                     "kaifuu.reallive.patchback_source_symlink: refusing to follow symlink at {}",
                     entry.path().display()
@@ -2440,6 +2443,56 @@ fn default_apply_report_output(output: &Path) -> KaifuuResult<PathBuf> {
     Ok(output
         .with_file_name(format!("{output_name}.kaifuu"))
         .join(APPLY_REPORT_FILE_NAME))
+}
+
+fn validate_patch_target_root(
+    source_root: &Path,
+    target_root: &Path,
+    target_label: &str,
+) -> KaifuuResult<()> {
+    let source_root_lexical = lexical_absolute_path(source_root)?;
+    let target_root_lexical = lexical_absolute_path(target_root)?;
+    match fs::symlink_metadata(&target_root_lexical) {
+        Ok(metadata) if metadata.file_type().is_symlink() => {
+            return Err(format!(
+                "{target_label} must not be a symlink: {}",
+                redact_for_log_or_report(&target_root.display().to_string())
+            )
+            .into());
+        }
+        Ok(_) => {}
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error.into()),
+    }
+
+    let source_root_canonical = fs::canonicalize(source_root).map_err(|_| {
+        format!(
+            "source game directory must be readable before patching: {}",
+            redact_for_log_or_report(&source_root.display().to_string())
+        )
+    })?;
+    let target_root_canonical = canonical_existing_prefix(target_root)?;
+
+    if source_root_lexical == target_root_lexical || source_root_canonical == target_root_canonical
+    {
+        return Err(format!(
+            "{target_label} must not alias source game directory: {}",
+            redact_for_log_or_report(&target_root.display().to_string())
+        )
+        .into());
+    }
+    if path_is_inside_root(&target_root_lexical, &source_root_lexical)
+        || path_is_inside_root(&source_root_lexical, &target_root_lexical)
+        || path_is_inside_root(&target_root_canonical, &source_root_canonical)
+        || path_is_inside_root(&source_root_canonical, &target_root_canonical)
+    {
+        return Err(format!(
+            "{target_label} must not nest with source game directory; pick a fully-disjoint path: {}",
+            redact_for_log_or_report(&target_root.display().to_string())
+        )
+        .into());
+    }
+    Ok(())
 }
 
 fn validate_apply_report_output(
@@ -6499,6 +6552,149 @@ wait
         assert!(!output_dir.join("adapter-output.txt").exists());
         assert!(!output_dir.join("patch-result.json").exists());
         assert_no_patch_staging_entries(&root, "patched-output");
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn patch_command_rejects_output_symlink_before_staging_or_adapter_write() {
+        use std::os::unix::fs as unix_fs;
+
+        let root = temp_dir("patch-output-target-symlink");
+        let game_dir = root.join("game");
+        fs::create_dir_all(&game_dir).unwrap();
+        let patch_export_path = empty_patch_export(&root, 83);
+        let output_dir = root.join("patched-output");
+        let linked_target = root.join("linked-target");
+        fs::create_dir(&linked_target).unwrap();
+        unix_fs::symlink(&linked_target, &output_dir).unwrap();
+        let registry =
+            patch_filesystem_failure_registry(PatchFilesystemFailureMode::SuccessfulWrite);
+
+        let result = run_with_args_and_registry(
+            [
+                "patch",
+                game_dir.to_str().unwrap(),
+                "--patch",
+                patch_export_path.to_str().unwrap(),
+                "--output",
+                output_dir.to_str().unwrap(),
+            ]
+            .iter()
+            .map(|arg| arg.to_string())
+            .collect(),
+            &registry,
+        );
+
+        let error = result.unwrap_err().to_string();
+        assert!(
+            error.contains("patch output directory must not be a symlink"),
+            "{error}"
+        );
+        assert!(fs::read_dir(&linked_target).unwrap().next().is_none());
+        assert_no_patch_staging_entries(&root, "patched-output");
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn patch_command_rejects_nested_output_before_staging_or_adapter_write() {
+        let root = temp_dir("patch-output-nested-source");
+        let game_dir = root.join("game");
+        fs::create_dir_all(&game_dir).unwrap();
+        let patch_export_path = empty_patch_export(&root, 84);
+        let output_dir = game_dir.join("patched-output");
+        let registry =
+            patch_filesystem_failure_registry(PatchFilesystemFailureMode::SuccessfulWrite);
+
+        let result = run_with_args_and_registry(
+            [
+                "patch",
+                game_dir.to_str().unwrap(),
+                "--patch",
+                patch_export_path.to_str().unwrap(),
+                "--output",
+                output_dir.to_str().unwrap(),
+            ]
+            .iter()
+            .map(|arg| arg.to_string())
+            .collect(),
+            &registry,
+        );
+
+        let error = result.unwrap_err().to_string();
+        assert!(
+            error.contains("patch output directory must not nest with source game directory"),
+            "{error}"
+        );
+        assert!(!output_dir.exists());
+        assert!(!game_dir.join("adapter-output.txt").exists());
+        assert_no_patch_staging_entries(&game_dir, "patched-output");
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn patch_command_rejects_canonical_source_alias_and_nesting_before_output_mutation() {
+        use std::os::unix::fs as unix_fs;
+
+        let root = temp_dir("patch-output-canonical-source");
+        let game_dir = root.join("game");
+        let game_link = root.join("game-link");
+        fs::create_dir_all(&game_dir).unwrap();
+        unix_fs::symlink(&game_dir, &game_link).unwrap();
+        let patch_export_path = empty_patch_export(&root, 85);
+        let registry =
+            patch_filesystem_failure_registry(PatchFilesystemFailureMode::SuccessfulWrite);
+
+        let alias_result = run_with_args_and_registry(
+            [
+                "patch",
+                game_link.to_str().unwrap(),
+                "--patch",
+                patch_export_path.to_str().unwrap(),
+                "--output",
+                game_dir.to_str().unwrap(),
+            ]
+            .iter()
+            .map(|arg| arg.to_string())
+            .collect(),
+            &registry,
+        );
+        let alias_error = alias_result.unwrap_err().to_string();
+        assert!(
+            alias_error.contains("patch output directory must not alias source game directory"),
+            "{alias_error}"
+        );
+
+        let nested_output = game_dir.join("patched-output");
+        let nested_result = run_with_args_and_registry(
+            [
+                "patch",
+                game_link.to_str().unwrap(),
+                "--patch",
+                patch_export_path.to_str().unwrap(),
+                "--output",
+                nested_output.to_str().unwrap(),
+            ]
+            .iter()
+            .map(|arg| arg.to_string())
+            .collect(),
+            &registry,
+        );
+        let nested_error = nested_result.unwrap_err().to_string();
+        assert!(
+            nested_error
+                .contains("patch output directory must not nest with source game directory"),
+            "{nested_error}"
+        );
+
+        assert!(!game_dir.join("adapter-output.txt").exists());
+        assert!(!nested_output.exists());
+        assert_no_patch_staging_entries(&root, "game");
+        assert_no_patch_staging_entries(&game_dir, "patched-output");
 
         let _ = fs::remove_dir_all(root);
     }

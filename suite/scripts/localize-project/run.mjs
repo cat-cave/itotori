@@ -46,14 +46,16 @@ import { createHash } from "node:crypto";
 import {
   copyFileSync,
   existsSync,
+  lstatSync,
   mkdirSync,
   readFileSync,
+  realpathSync,
   statSync,
   writeFileSync,
   readdirSync,
   chmodSync,
 } from "node:fs";
-import { dirname, isAbsolute, join, resolve as resolvePath } from "node:path";
+import { dirname, isAbsolute, join, parse, relative, resolve as resolvePath, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import process from "node:process";
 import { verifyProviderRunArtifactEvidence } from "./verify-artifacts.mjs";
@@ -237,6 +239,32 @@ function copyDirRecursive(srcDir, dstDir) {
       }
     }
   }
+}
+
+function pathIsInsideRoot(path, root) {
+  const rel = relative(root, path);
+  return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
+}
+
+function canonicalExistingPrefix(path) {
+  const absolute = resolvePath(path);
+  const { root } = parse(absolute);
+  const parts = absolute.slice(root.length).split(sep).filter(Boolean);
+  let current = root;
+  let canonicalPrefix = root;
+  let consumed = 0;
+  for (const [index, part] of parts.entries()) {
+    current = join(current, part);
+    try {
+      lstatSync(current);
+      canonicalPrefix = realpathSync(current);
+      consumed = index + 1;
+    } catch (error) {
+      if (error?.code === "ENOENT") break;
+      throw error;
+    }
+  }
+  return resolvePath(canonicalPrefix, ...parts.slice(consumed));
 }
 
 function resolveReallivedataSeen(gameRoot) {
@@ -674,12 +702,33 @@ function flattenPostures(policy) {
 function ensureWritableTargetDistinctFromSource(sourceRoot, targetRoot, redact = (text) => text) {
   const sourceAbs = resolvePath(sourceRoot);
   const targetAbs = resolvePath(targetRoot);
-  if (sourceAbs === targetAbs) {
+  try {
+    if (lstatSync(targetAbs).isSymbolicLink()) {
+      throw new Error(redact(`TARGET (${targetAbs}) must not be a symlink`));
+    }
+  } catch (error) {
+    if (error?.code !== "ENOENT") throw error;
+  }
+
+  let sourceCanonical;
+  let targetCanonical;
+  try {
+    sourceCanonical = realpathSync(sourceAbs);
+    targetCanonical = canonicalExistingPrefix(targetAbs);
+  } catch {
+    throw new Error(redact("failed to canonicalize source/TARGET paths before patching"));
+  }
+  if (sourceAbs === targetAbs || sourceCanonical === targetCanonical) {
     throw new Error(
       redact(`TARGET (${targetAbs}) must not alias resolved source root (${sourceAbs})`),
     );
   }
-  if (targetAbs.startsWith(sourceAbs + "/") || sourceAbs.startsWith(targetAbs + "/")) {
+  if (
+    pathIsInsideRoot(targetAbs, sourceAbs) ||
+    pathIsInsideRoot(sourceAbs, targetAbs) ||
+    pathIsInsideRoot(targetCanonical, sourceCanonical) ||
+    pathIsInsideRoot(sourceCanonical, targetCanonical)
+  ) {
     throw new Error(
       redact(
         `TARGET (${targetAbs}) must not nest with resolved source root (${sourceAbs}); pick a fully-disjoint path`,

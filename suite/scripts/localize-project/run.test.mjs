@@ -14,7 +14,17 @@
 // Linux-only (the driver is Linux-only by design).
 
 import { spawnSync } from "node:child_process";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
@@ -630,6 +640,140 @@ test("live fake subprocess output redacts private source, target, and Seen.txt p
         combined.includes("--seen <TARGET>/REALLIVEDATA/Seen.txt"),
       `live command display must use placeholders; got stdout:\n${result.stdout}\nstderr:\n${result.stderr}`,
     );
+  } finally {
+    rmSync(metadata.dir, { recursive: true, force: true });
+    rmSync(policy.dir, { recursive: true, force: true });
+    rmSync(work, { recursive: true, force: true });
+  }
+});
+
+test("live run rejects target-root symlink before output mutation", () => {
+  const metadata = writeProjectMetadata("fixture-alpha", {
+    game_id: "fixture-reallive-game",
+    game_version: "2026.06.test",
+    source_profile_id: "fixture-reallive-profile",
+    source_locale: "ja-JP-x-test",
+  });
+  const policy = writePairPolicy("fixture-alpha");
+  const work = mkdtempSync(join(tmpdir(), "itotori-target-symlink-"));
+  const sourceRoot = join(work, "private-source-root");
+  const targetRoot = join(work, "private-target-link");
+  const linkedTarget = join(work, "private-linked-target");
+  const sourceSeen = join(sourceRoot, "REALLIVEDATA", "Seen.txt");
+  mkdirSync(join(sourceRoot, "REALLIVEDATA"), { recursive: true });
+  mkdirSync(linkedTarget);
+  writeFileSync(sourceSeen, "synthetic source seen bytes\n");
+  symlinkSync(linkedTarget, targetRoot);
+
+  try {
+    const result = runDriver(
+      [
+        "--project",
+        "fixture-alpha",
+        "--project-metadata",
+        metadata.path,
+        "--pair-policy",
+        policy.path,
+        "--provider-kind",
+        "fake",
+      ],
+      {
+        OPENROUTER_API_KEY: "test-key",
+        ITOTORI_REAL_GAME_ROOT: sourceRoot,
+        TARGET: targetRoot,
+        ITOTORI_ALLOW_FAKE_LOCALIZE_PROVIDER: "1",
+      },
+    );
+    assert.notEqual(result.status, 0);
+    assert.ok(
+      result.stderr.includes("TARGET (<TARGET>) must not be a symlink"),
+      `stderr should reject the target symlink with placeholders; got:\n${result.stderr}`,
+    );
+    const combined = `${result.stdout}\n${result.stderr}`;
+    for (const forbidden of [sourceRoot, targetRoot, linkedTarget]) {
+      assert.ok(!combined.includes(forbidden), `diagnostic leaked private path ${forbidden}`);
+    }
+    assert.equal(readFileSync(sourceSeen, "utf8"), "synthetic source seen bytes\n");
+    assert.deepEqual(readdirSync(linkedTarget), []);
+  } finally {
+    rmSync(metadata.dir, { recursive: true, force: true });
+    rmSync(policy.dir, { recursive: true, force: true });
+    rmSync(work, { recursive: true, force: true });
+  }
+});
+
+test("live run rejects canonical source alias and nested target before output mutation", () => {
+  const metadata = writeProjectMetadata("fixture-alpha", {
+    game_id: "fixture-reallive-game",
+    game_version: "2026.06.test",
+    source_profile_id: "fixture-reallive-profile",
+    source_locale: "ja-JP-x-test",
+  });
+  const policy = writePairPolicy("fixture-alpha");
+  const work = mkdtempSync(join(tmpdir(), "itotori-target-canonical-"));
+  const sourceRoot = join(work, "private-source-root");
+  const sourceLink = join(work, "private-source-link");
+  const sourceSeen = join(sourceRoot, "REALLIVEDATA", "Seen.txt");
+  mkdirSync(join(sourceRoot, "REALLIVEDATA"), { recursive: true });
+  writeFileSync(sourceSeen, "synthetic source seen bytes\n");
+  symlinkSync(sourceRoot, sourceLink);
+
+  try {
+    const aliasResult = runDriver(
+      [
+        "--project",
+        "fixture-alpha",
+        "--project-metadata",
+        metadata.path,
+        "--pair-policy",
+        policy.path,
+        "--provider-kind",
+        "fake",
+      ],
+      {
+        OPENROUTER_API_KEY: "test-key",
+        ITOTORI_REAL_GAME_ROOT: sourceLink,
+        TARGET: sourceRoot,
+        ITOTORI_ALLOW_FAKE_LOCALIZE_PROVIDER: "1",
+      },
+    );
+    assert.notEqual(aliasResult.status, 0);
+    assert.ok(
+      aliasResult.stderr.includes("TARGET (<TARGET>) must not alias resolved source root"),
+      `stderr should reject canonical source aliasing; got:\n${aliasResult.stderr}`,
+    );
+
+    const nestedTarget = join(sourceRoot, "nested-target");
+    const nestedResult = runDriver(
+      [
+        "--project",
+        "fixture-alpha",
+        "--project-metadata",
+        metadata.path,
+        "--pair-policy",
+        policy.path,
+        "--provider-kind",
+        "fake",
+      ],
+      {
+        OPENROUTER_API_KEY: "test-key",
+        ITOTORI_REAL_GAME_ROOT: sourceLink,
+        TARGET: nestedTarget,
+        ITOTORI_ALLOW_FAKE_LOCALIZE_PROVIDER: "1",
+      },
+    );
+    assert.notEqual(nestedResult.status, 0);
+    assert.ok(
+      nestedResult.stderr.includes("TARGET (<TARGET>) must not nest with resolved source root"),
+      `stderr should reject canonical source/target nesting; got:\n${nestedResult.stderr}`,
+    );
+
+    const combined = `${aliasResult.stdout}\n${aliasResult.stderr}\n${nestedResult.stdout}\n${nestedResult.stderr}`;
+    for (const forbidden of [sourceRoot, sourceLink, nestedTarget]) {
+      assert.ok(!combined.includes(forbidden), `diagnostic leaked private path ${forbidden}`);
+    }
+    assert.equal(readFileSync(sourceSeen, "utf8"), "synthetic source seen bytes\n");
+    assert.ok(!existsSync(nestedTarget), "nested target must not be created");
   } finally {
     rmSync(metadata.dir, { recursive: true, force: true });
     rmSync(policy.dir, { recursive: true, force: true });
