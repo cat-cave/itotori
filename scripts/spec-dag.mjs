@@ -64,6 +64,9 @@ const requiredNodeFields = [
 const optionalNodeFields = ["statusReason", "issue", "branch", "worktree", "owner", "blockedBy"];
 
 const qdExportSchemaVersion = 1;
+const legacyRoadmapWriterCommands = new Set(["claim", "ingest-audit", "complete"]);
+const qdExportLifecycleRefusal =
+  "legacy spec-dag lifecycle --apply is disabled for qd export state; use qd claim/complete/gate/check/ci/merge and re-export roadmap/spec-dag.json";
 const qdStatusMap = {
   ready: "planned",
   claimed: "in_progress",
@@ -245,6 +248,7 @@ function runCli(argv) {
   }
 
   try {
+    assertNoQdExportLifecycleApply(command, args, rawDag);
     switch (command) {
       case "validate":
         printValidationSummary(dag, validation);
@@ -286,6 +290,22 @@ function runCli(argv) {
     console.error(error.message);
     process.exit(1);
   }
+}
+
+export function assertNoQdExportLifecycleApply(command, args, rawDag) {
+  if (
+    legacyRoadmapWriterCommands.has(command) &&
+    legacyRoadmapWriterApplyRequested(command, args) &&
+    isQdExportDag(rawDag)
+  ) {
+    throw new Error(qdExportLifecycleRefusal);
+  }
+}
+
+function legacyRoadmapWriterApplyRequested(command, args) {
+  return (
+    args.includes("--apply") || (command === "ingest-audit" && args.includes("--apply-follow-ups"))
+  );
 }
 
 function isMainModule() {

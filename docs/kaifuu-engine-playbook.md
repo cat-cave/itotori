@@ -53,13 +53,11 @@ For primary spec work, follow the lifecycle commands rather than inventing a
 branch name:
 
 ```sh
-just roadmap-ready
-node scripts/spec-dag.mjs show <NODE-ID>
-node scripts/spec-dag.mjs worktree <NODE-ID> --json
-node scripts/spec-dag.mjs worktree <NODE-ID> --apply
-node scripts/spec-dag.mjs claim <NODE-ID> --owner "<OWNER>" --json
-node scripts/spec-dag.mjs claim <NODE-ID> --owner "<OWNER>" --apply
-node scripts/spec-dag.mjs validate
+qd ready --json
+qd node show <NODE-ID> --full
+qd claim <NODE-ID> --agent "<OWNER>" --branch spec/<node-id-lower>
+git worktree add -b spec/<node-id-lower> /scratch/worktrees/itotori-spec-<node-id-lower> main
+just roadmap-validate
 git diff --check
 git add roadmap/spec-dag.json
 git commit -m "chore(roadmap): claim <NODE-ID>"
@@ -67,8 +65,8 @@ git commit -m "chore(roadmap): claim <NODE-ID>"
 ```
 
 Do not start implementation, planning, or delegation until the claim has been
-validated and committed, then published or merged as durable DAG ownership. If
-the claim cannot be made durable, return the node to `planned` before further
+validated and committed, then published or merged as durable qd ownership. If
+the claim cannot be made durable, return the node to `ready` before further
 work.
 
 For parallel adapter workers, use disjoint worker branches and worktrees as

@@ -15,6 +15,9 @@ import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
 
 const priorityRank = { P0: 0, P1: 1, P2: 2, P3: 3 };
+const qdExportLifecycleRefusal =
+  "legacy spec-dag lifecycle --apply is disabled for qd export state; use qd claim/complete/gate/check/ci/merge and re-export roadmap/spec-dag.json";
+
 export function defaultBranchForNode(nodeId) {
   return `spec/${nodeId.toLowerCase()}`;
 }
@@ -112,12 +115,13 @@ export function applyClaim({
   forceStale = false,
   staleAfterHours = 24,
 }) {
+  const initialDag = readJson(dagPath);
+  assertLegacyLifecycleWritableDag(initialDag, "claim");
   mkdirSync(lockDir, { recursive: true });
   const lockPath = defaultClaimLockPath(lockDir, nodeId);
   const staleCandidate = forceStale ? readClaimLock(lockPath) : undefined;
   if (staleCandidate) {
-    const dag = readJson(dagPath);
-    const node = requireNode(dag, nodeId);
+    const node = requireNode(initialDag, nodeId);
     if (node.status === "in_progress") {
       assertActiveClaimMatches(node, {
         owner: staleCandidate.owner,
@@ -141,6 +145,7 @@ export function applyClaim({
   let lockCommitted = false;
   try {
     const dag = readJson(dagPath);
+    assertLegacyLifecycleWritableDag(dag, "claim");
     if (staleLock) {
       clearMatchingStaleDagClaim(dag, staleLock);
     }
@@ -173,6 +178,7 @@ export function applyClaim({
 export function applyClaimRelease({ dagPath, lockDir, nodeId, owner, branch, worktree }) {
   const lockPath = defaultClaimLockPath(lockDir, nodeId);
   const dag = readJson(dagPath);
+  assertLegacyLifecycleWritableDag(dag, "claim --release");
   const plan = createClaimReleasePlan(dag, nodeId, {
     apply: true,
     owner,
@@ -302,6 +308,7 @@ export function createAuditIngestionPlan(dag, report, options = {}) {
 
 export function applyAuditIngestionPlan({ dagPath, plan, applyFollowUps = false }) {
   const dag = readJson(dagPath);
+  assertLegacyLifecycleWritableDag(dag, "ingest-audit");
   if (plan.nodePatch) {
     applyNodePatchInMemory(dag, plan.specId, plan.nodePatch);
   }
@@ -371,6 +378,7 @@ export function applyCompletionPlan({ dagPath, plan, validateDag }) {
     throw new Error(plan.refusalReason);
   }
   const dag = readJson(dagPath);
+  assertLegacyLifecycleWritableDag(dag, "complete");
   assertNodeIsSafelyCompletable(dag, plan.nodeId);
   const node = requireNode(dag, plan.nodeId);
   if (plan.lockPath) {
@@ -411,6 +419,20 @@ function appendExistingNodeUpdate(dag, update) {
   if (Array.isArray(update.auditFocus) && update.auditFocus.length > 0) {
     node.auditFocus = uniqueStrings([...node.auditFocus, ...update.auditFocus]);
   }
+}
+
+function assertLegacyLifecycleWritableDag(dag, action) {
+  if (isQdExportDag(dag)) {
+    throw new Error(`${action} refused: ${qdExportLifecycleRefusal}`);
+  }
+}
+
+function isQdExportDag(value) {
+  return isRecord(value) && "schema_version" in value;
+}
+
+function isRecord(value) {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
 function nodeFromProposedDagNode(proposedNode, assignedIds) {

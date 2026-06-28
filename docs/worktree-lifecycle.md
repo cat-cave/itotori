@@ -167,7 +167,7 @@ Do not recreate the old `scripts/spec-dag.mjs claim/worktree` lock workflow.
    ```
 
    If branch or worktree creation fails, do not continue on an ad hoc branch.
-   Reconcile the stale branch/worktree collision or leave the node `planned`
+   Reconcile the stale branch/worktree collision or leave the node `ready`
    until the collision is resolved.
 
    Manual equivalent:
@@ -210,10 +210,10 @@ roadmap-validate` after the edit or export.
    When coordination happens through a shared remote or protected integration
    branch, push the claim branch or merge the claim commit according to that
    workflow before treating the node as owned. If the claim cannot be committed
-   or published, move the node back to `planned` before any further work. The
+   or published, move the node back to `ready` before any further work. The
    branch/worktree is only the place where the claim is prepared; the durable
-   claim is the committed DAG update. The lifecycle must never rely on an
-   uncommitted `in_progress` DAG edit as the claim record.
+   claim is the committed qd update. The lifecycle must never rely on an
+   uncommitted legacy `in_progress` DAG edit as the claim record.
 
 ### 2. Plan
 
@@ -349,19 +349,30 @@ merge with unresolved evidence.
 
 ### 7. Mark Complete
 
-Mark the node `complete` only after the implementation is merged into `main` and
-the merged result satisfies the merge gate. Completion is a DAG update, not a
-worker handoff.
+Record qd completion only after the implementation satisfies the completion
+criteria, and record qd merge only after the real git/GitHub merge lands. qd
+state is the lifecycle source of truth; do not use
+`node scripts/spec-dag.mjs complete --apply` against `roadmap/spec-dag.json`.
 
-The completion update must include:
+The completion and merge flow is:
 
-- `status: "complete"` for the node;
+```sh
+qd complete UNIV-003 --summary "Implemented and verified <summary>."
+qd gate UNIV-003
+qd check run UNIV-003
+qd ci run UNIV-003
+# merge through the repo's real git/GitHub workflow
+qd merge UNIV-003
+just roadmap-validate
+```
+
+The qd record must have:
+
 - no open P0/P1 audit findings;
 - durable disposition for P2/P3 findings;
 - verification evidence from the merged branch or a clearly equivalent local
   run;
-- removal of the local claim lock by `complete --apply` after the DAG write
-  succeeds.
+- a passing qd check/CI gate before qd merge.
 
 If the merged result cannot be trusted, leave the node non-complete and record
 the blocker instead.
@@ -373,23 +384,20 @@ specific external state changes or a blocking decision is made.
 
 Blocked state requires two durable records:
 
-1. `roadmap/spec-dag.json` sets a schema-valid blocked state:
+1. qd records and exports a schema-valid blocked state:
 
    ```json
    {
      "status": "blocked",
-     "statusReason": "Awaiting maintainer decision on shared worktree ownership.",
-     "blockedBy": "human:maintainer",
+     "status_reason": "Awaiting maintainer decision on shared worktree ownership.",
      "owner": "Worker UNIV-003",
-     "branch": "spec/univ-003",
-     "worktree": "/scratch/worktrees/itotori-spec-univ-003"
+     "branch": "spec/univ-003"
    }
    ```
 
-   `statusReason` and `blockedBy` are required DAG fields for blocked nodes.
-   Keep `owner`, `branch`, and `worktree` when active local state still exists so
-   another worker can find the claim. A separate note without these DAG fields is
-   not schema-valid.
+   `status_reason` is required for blocked qd-exported nodes. Keep `owner` and
+   `branch` when active local state still exists so another worker can find the
+   claim. A separate note without qd state is not enough.
 
 2. A reason record exists in an audit report, PR/issue description, or tracked
    `roadmap/blocks/<node-id-lower>.md` file.
@@ -406,9 +414,9 @@ The reason record must include:
 - whether the worktree should remain, be archived, or be pruned;
 - date recorded.
 
-When unblocked, move the node back to `in_progress` with valid `owner` plus
-`branch` or `worktree`, or back to `planned` after clearing stale claim fields.
-Remove or update stale `statusReason` and `blockedBy`, update or remove the
+When unblocked, use qd to move the node back to an active `working`/`claimed`
+state with valid `owner` and `branch`, or back to `ready` after clearing stale
+claim fields. Remove or update stale `status_reason`, update or remove the
 reason record, and rerun collision checks before resuming work.
 
 ## Cleanup

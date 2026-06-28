@@ -1,11 +1,10 @@
 import assert from "node:assert/strict";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
-import { spawnSync } from "node:child_process";
+import { join } from "node:path";
 import test from "node:test";
-import { fileURLToPath } from "node:url";
 import {
+  applyAuditIngestionPlan,
   applyClaim,
   applyClaimRelease,
   applyCompletionPlan,
@@ -13,8 +12,7 @@ import {
   createCompletionPlan,
   defaultClaimLockPath,
 } from "./spec-dag-lifecycle.mjs";
-
-const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+import { assertNoQdExportLifecycleApply } from "./spec-dag.mjs";
 
 test("atomic claim locks prevent two agents claiming the same node", () => {
   const dir = mkdtempSync(join(tmpdir(), "spec-dag-claim-"));
@@ -313,162 +311,108 @@ test("completion validates the hypothetical DAG before writing or retiring the l
   assert.equal(readFileSync(dagPath, "utf8"), `${JSON.stringify(dag, null, 2)}\n`);
 });
 
-test("CLI lifecycle defaults are dry-run and do not create lock, worktree, or follow-up files", () => {
-  withRepoDagRestored(() => {
-    const dagPath = resolve(repoRoot, "roadmap/spec-dag.json");
-    const before = readFileSync(dagPath, "utf8");
-    const dag = JSON.parse(before);
-    const node = firstReadyPlannedNode(dag);
-    const dir = mkdtempSync(join(tmpdir(), "spec-dag-cli-dry-run-"));
-    const lockDir = join(dir, "claims");
-    const worktree = join(dir, "worktree");
-    const reportPath = join(dir, "audit-report.json");
-    const followUpsPath = join(dir, "follow-ups.json");
-    writeFileSync(reportPath, `${JSON.stringify(sampleAuditReportForNode(node), null, 2)}\n`);
+test("legacy lifecycle apply helpers refuse qd export state without side effects", () => {
+  const dir = mkdtempSync(join(tmpdir(), "spec-dag-qd-refusal-"));
+  const dagPath = join(dir, "spec-dag.json");
+  const lockDir = join(dir, "claims");
+  const qdDag = sampleQdExportDag();
+  const before = `${JSON.stringify(qdDag, null, 2)}\n`;
+  writeFileSync(dagPath, before);
 
-    runSpecDag(["claim", node.id, "--owner", "dry-run-test", "--lock-dir", lockDir]);
-    assert.equal(existsSync(defaultClaimLockPath(lockDir, node.id)), false);
+  assert.throws(
+    () =>
+      applyClaim({
+        dagPath,
+        lockDir,
+        nodeId: "UNIV-009",
+        owner: "agent-a",
+        branch: "spec/univ-009",
+        worktree: "/scratch/worktrees/itotori-spec-univ-009",
+      }),
+    /legacy spec-dag lifecycle --apply is disabled for qd export state/,
+  );
+  assert.equal(existsSync(defaultClaimLockPath(lockDir, "UNIV-009")), false);
 
-    runSpecDag(["worktree", node.id, "--worktree", worktree]);
-    assert.equal(existsSync(worktree), false);
+  mkdirSync(lockDir, { recursive: true });
+  writeFileSync(
+    defaultClaimLockPath(lockDir, "UNIV-009"),
+    `${JSON.stringify(
+      {
+        nodeId: "UNIV-009",
+        owner: "agent-a",
+        branch: "spec/univ-009",
+        worktree: "/scratch/worktrees/itotori-spec-univ-009",
+        claimedAt: "2026-06-16T12:00:00.000Z",
+      },
+      null,
+      2,
+    )}\n`,
+  );
+  assert.throws(
+    () =>
+      applyClaimRelease({
+        dagPath,
+        lockDir,
+        nodeId: "UNIV-009",
+        owner: "agent-a",
+        branch: "spec/univ-009",
+        worktree: "/scratch/worktrees/itotori-spec-univ-009",
+      }),
+    /claim --release refused: legacy spec-dag lifecycle --apply is disabled/,
+  );
+  assert.equal(existsSync(defaultClaimLockPath(lockDir, "UNIV-009")), true);
 
-    runSpecDag(["ingest-audit", reportPath]);
-    assert.equal(existsSync(followUpsPath), false);
+  assert.throws(
+    () =>
+      applyAuditIngestionPlan({
+        dagPath,
+        plan: {
+          specId: "UNIV-009",
+          nodePatch: {
+            status: "blocked",
+            statusReason: "Legacy blocked state must not enter qd export.",
+            blockedBy: "audit:fixture",
+          },
+          followUps: { draftNodes: [], existingNodeUpdates: [] },
+        },
+      }),
+    /ingest-audit refused: legacy spec-dag lifecycle --apply is disabled/,
+  );
 
-    runSpecDag(["complete", node.id, "--audit", reportPath, "--lock-dir", lockDir]);
-    assert.equal(existsSync(defaultClaimLockPath(lockDir, node.id)), false);
-    assert.equal(readFileSync(dagPath, "utf8"), before);
-  });
+  assert.throws(
+    () =>
+      applyCompletionPlan({
+        dagPath,
+        plan: {
+          canApply: true,
+          nodeId: "UNIV-009",
+          nodePatch: { status: "complete" },
+          clearsClaimFields: ["owner", "branch", "worktree", "statusReason", "blockedBy"],
+        },
+      }),
+    /complete refused: legacy spec-dag lifecycle --apply is disabled/,
+  );
+  assert.equal(readFileSync(dagPath, "utf8"), before);
 });
 
-test("CLI claim --apply creates a lock and in_progress DAG claim", () => {
-  withRepoDagRestored(() => {
-    const dagPath = resolve(repoRoot, "roadmap/spec-dag.json");
-    const dag = JSON.parse(readFileSync(dagPath, "utf8"));
-    const node = firstReadyPlannedNode(dag);
-    const dir = mkdtempSync(join(tmpdir(), "spec-dag-cli-claim-apply-"));
-    const lockDir = join(dir, "claims");
+test("CLI lifecycle guard refuses qd export roadmap writer apply flags", () => {
+  const qdDag = sampleQdExportDag();
+  const cases = [
+    ["claim", ["UNIV-009", "--owner", "cli-qd-refusal", "--apply"]],
+    ["ingest-audit", ["missing-audit-report.json", "--apply"]],
+    ["ingest-audit", ["missing-audit-report.json", "--apply-follow-ups"]],
+    ["complete", ["UNIV-009", "--audit", "missing-audit-report.json", "--apply"]],
+  ];
 
-    runSpecDag(["claim", node.id, "--owner", "cli-claim-test", "--lock-dir", lockDir, "--apply"]);
-
-    assert.equal(existsSync(defaultClaimLockPath(lockDir, node.id)), true);
-    const updatedDag = JSON.parse(readFileSync(dagPath, "utf8"));
-    const updatedNode = updatedDag.nodes.find((candidate) => candidate.id === node.id);
-    assert.equal(updatedNode.status, "in_progress");
-    assert.equal(updatedNode.owner, "cli-claim-test");
-  });
-});
-
-test("CLI claim --release --apply removes the lock and clears DAG claim metadata", () => {
-  withRepoDagRestored(() => {
-    const dagPath = resolve(repoRoot, "roadmap/spec-dag.json");
-    const dag = JSON.parse(readFileSync(dagPath, "utf8"));
-    const node = firstReadyPlannedNode(dag);
-    const dir = mkdtempSync(join(tmpdir(), "spec-dag-cli-claim-release-"));
-    const lockDir = join(dir, "claims");
-
-    runSpecDag(["claim", node.id, "--owner", "cli-release-test", "--lock-dir", lockDir, "--apply"]);
-    runSpecDag([
-      "claim",
-      node.id,
-      "--owner",
-      "cli-release-test",
-      "--lock-dir",
-      lockDir,
-      "--release",
-      "--apply",
-    ]);
-
-    assert.equal(existsSync(defaultClaimLockPath(lockDir, node.id)), false);
-    const updatedDag = JSON.parse(readFileSync(dagPath, "utf8"));
-    const updatedNode = updatedDag.nodes.find((candidate) => candidate.id === node.id);
-    assert.equal(updatedNode.status, "planned");
-    assert.equal("owner" in updatedNode, false);
-    assert.equal("branch" in updatedNode, false);
-    assert.equal("worktree" in updatedNode, false);
-  });
-});
-
-test("CLI claim --force-stale --apply recovers an expired matching lock", () => {
-  withRepoDagRestored(() => {
-    const dagPath = resolve(repoRoot, "roadmap/spec-dag.json");
-    const dag = JSON.parse(readFileSync(dagPath, "utf8"));
-    const node = firstReadyPlannedNode(dag);
-    const dir = mkdtempSync(join(tmpdir(), "spec-dag-cli-force-stale-"));
-    const lockDir = join(dir, "claims");
-
-    runSpecDag([
-      "claim",
-      node.id,
-      "--owner",
-      "cli-stale-a",
-      "--lock-dir",
-      lockDir,
-      "--stale-after-hours",
-      "1",
-      "--apply",
-    ]);
-    const lockPath = defaultClaimLockPath(lockDir, node.id);
-    const lock = JSON.parse(readFileSync(lockPath, "utf8"));
-    writeFileSync(
-      lockPath,
-      `${JSON.stringify({ ...lock, claimedAt: "2000-01-01T00:00:00.000Z" }, null, 2)}\n`,
+  for (const [command, args] of cases) {
+    assert.throws(
+      () => assertNoQdExportLifecycleApply(command, args, qdDag),
+      /legacy spec-dag lifecycle --apply is disabled for qd export state/,
     );
-    runSpecDag([
-      "claim",
-      node.id,
-      "--owner",
-      "cli-stale-b",
-      "--lock-dir",
-      lockDir,
-      "--force-stale",
-      "--stale-after-hours",
-      "1",
-      "--apply",
-    ]);
-
-    const updatedDag = JSON.parse(readFileSync(dagPath, "utf8"));
-    const updatedNode = updatedDag.nodes.find((candidate) => candidate.id === node.id);
-    assert.equal(updatedNode.status, "in_progress");
-    assert.equal(updatedNode.owner, "cli-stale-b");
-    const updatedLock = JSON.parse(readFileSync(lockPath, "utf8"));
-    assert.equal(updatedLock.owner, "cli-stale-b");
-  });
-});
-
-test("CLI complete --apply completes only an active claimed node and retires its lock", () => {
-  withRepoDagRestored(() => {
-    const dagPath = resolve(repoRoot, "roadmap/spec-dag.json");
-    const dag = JSON.parse(readFileSync(dagPath, "utf8"));
-    const node = firstReadyPlannedNode(dag);
-    const dir = mkdtempSync(join(tmpdir(), "spec-dag-cli-complete-"));
-    const lockDir = join(dir, "claims");
-    const reportPath = join(dir, "audit-report.json");
-
-    runSpecDag([
-      "claim",
-      node.id,
-      "--owner",
-      "cli-complete-test",
-      "--lock-dir",
-      lockDir,
-      "--apply",
-    ]);
-    const claimedDag = JSON.parse(readFileSync(dagPath, "utf8"));
-    const claimedNode = claimedDag.nodes.find((candidate) => candidate.id === node.id);
-    writeFileSync(
-      reportPath,
-      `${JSON.stringify(sampleAuditReportForNode(claimedNode), null, 2)}\n`,
-    );
-
-    runSpecDag(["complete", node.id, "--audit", reportPath, "--lock-dir", lockDir, "--apply"]);
-
-    assert.equal(existsSync(defaultClaimLockPath(lockDir, node.id)), false);
-    const updatedDag = JSON.parse(readFileSync(dagPath, "utf8"));
-    const updatedNode = updatedDag.nodes.find((candidate) => candidate.id === node.id);
-    assert.equal(updatedNode.status, "complete");
-    assert.equal("owner" in updatedNode, false);
-  });
+  }
+  assert.doesNotThrow(() =>
+    assertNoQdExportLifecycleApply("worktree", ["UNIV-009", "--apply"], qdDag),
+  );
 });
 
 test("P0 and P1 audit findings keep the node in blocked repair state", () => {
@@ -665,6 +609,36 @@ function sampleDag(nodeOverrides = {}) {
   };
 }
 
+function sampleQdExportDag() {
+  return {
+    schema_version: 1,
+    registries: {
+      milestones: [{ name: "continuous" }],
+      groups: [{ name: "roadmap-infra" }],
+      projects: [{ name: "universal" }],
+    },
+    nodes: [
+      {
+        id: "UNIV-009",
+        title: "Orchestrator lifecycle CLI",
+        status: "ready",
+        priority: "P1",
+        milestone: "continuous",
+        projects: ["universal"],
+        group_name: "roadmap-infra",
+        spec: "Implement orchestration lifecycle tooling.\n\nDeliverables:\n- Claim\n- Audit ingestion",
+        acceptance: "- Two agents cannot claim the same node",
+        verification: [{ type: "command", value: "node scripts/spec-dag-lifecycle.test.mjs" }],
+        audit_focus: ["Race conditions in claims"],
+      },
+    ],
+    edges: [],
+    findings: [],
+    runs: [],
+    node_notes: [],
+  };
+}
+
 function writeClaimLock(lockDir, node) {
   mkdirSync(lockDir, { recursive: true });
   writeFileSync(
@@ -683,43 +657,6 @@ function writeClaimLock(lockDir, node) {
       2,
     )}\n`,
   );
-}
-
-function firstReadyPlannedNode(dag) {
-  const ids = new Map(dag.nodes.map((node) => [node.id, node]));
-  const node = dag.nodes.find(
-    (candidate) =>
-      candidate.status === "planned" &&
-      candidate.dependsOn.every((dependency) => ids.get(dependency)?.status === "complete"),
-  );
-  if (!node) {
-    throw new Error("test fixture requires at least one ready planned DAG node");
-  }
-  return node;
-}
-
-function withRepoDagRestored(fn) {
-  const dagPath = resolve(repoRoot, "roadmap/spec-dag.json");
-  const before = readFileSync(dagPath, "utf8");
-  try {
-    writeFileSync(dagPath, `${JSON.stringify(sampleDag(), null, 2)}\n`);
-    fn();
-  } finally {
-    writeFileSync(dagPath, before);
-  }
-}
-
-function runSpecDag(args) {
-  const result = spawnSync(process.execPath, ["scripts/spec-dag.mjs", ...args], {
-    cwd: repoRoot,
-    encoding: "utf8",
-  });
-  assert.equal(
-    result.status,
-    0,
-    `spec-dag ${args.join(" ")} failed\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`,
-  );
-  return result;
 }
 
 function sampleAuditReportForNode(node) {

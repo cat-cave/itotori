@@ -10,15 +10,14 @@ Run:
 ```sh
 just roadmap-validate
 node scripts/spec-dag.mjs validate-audit-report path/to/audit-report.json
-node scripts/spec-dag.mjs ingest-audit path/to/audit-report.json --json
+qd gate <NODE-ID>
 ```
 
 `just roadmap-validate` validates the spec DAG, compiles the audit report
 schema, validates committed audit report examples, and checks report-level
 orchestration invariants. `validate-audit-report` applies the same schema and
-semantic checks to actual audit artifacts before orchestration consumes them.
-`ingest-audit` performs those checks and then renders the lifecycle effect as a
-dry-run plan by default.
+semantic checks to actual audit artifacts before orchestration consumes them. qd
+owns live audit disposition, lifecycle gates, and exported roadmap state.
 
 ## Report Contract
 
@@ -92,33 +91,26 @@ P2 and P3 findings must be convertible:
 7. Add verification strong enough for the new acceptance criteria.
 8. Add audit focus that would catch the original issue if it regressed.
 
-The orchestrator assigns the final node id, inserts the draft into
-`roadmap/spec-dag.json`, and reruns `just roadmap-validate`.
-
-`node scripts/spec-dag.mjs ingest-audit REPORT.json` automates the conversion
-surface:
-
-- P0/P1 findings produce a `blocked` repair-state patch for the audited node,
-  with `blockedBy: "audit:<reportId>"` and a status reason naming the blocking
-  finding ids.
-- `draft_new_dag_node` P2/P3 findings produce planned node drafts with
-  deterministic next ids for the requested prefix.
-- `append_to_existing_dag_node` P2/P3 findings produce append payloads for the
-  target planned node.
-- `--follow-ups FILE` writes the generated follow-up payload as JSON.
-- `--apply` updates the audited node's repair state; `--apply-follow-ups`
-  explicitly also writes generated follow-up changes into `roadmap/spec-dag.json`.
+The orchestrator assigns final node ids through qd-native DAG updates, exports
+the roadmap, and reruns `just roadmap-validate`. The legacy
+`node scripts/spec-dag.mjs ingest-audit REPORT.json --json` dry-run remains
+available only as a compatibility aid for inspecting old audit payloads. Do not
+use `ingest-audit --apply` or `--apply-follow-ups` against the canonical qd
+export.
 
 Completion bookkeeping is separate:
 
 ```sh
-node scripts/spec-dag.mjs complete UNIV-009 --audit path/to/audit-report.json --json
+qd complete UNIV-009 --summary "Audit-clean and verified."
+qd gate UNIV-009
+qd check run UNIV-009
+qd ci run UNIV-009
 ```
 
-The command never merges git branches and never grants merge authority. It
-refuses completion while P0/P1 findings remain. If the report has P2/P3
-findings, `--apply` also requires `--follow-ups-recorded` so findings are not
-lost outside the DAG or another durable artifact.
+qd completion and gates never replace the repo's real git/GitHub merge. P0/P1
+findings must be repaired before `qd gate`, `qd check run`, and `qd ci run`
+can pass. P2/P3 findings must be represented in qd or another durable artifact
+before merge.
 
 ## Reviewer Checklist
 

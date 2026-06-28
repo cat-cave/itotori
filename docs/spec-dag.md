@@ -196,40 +196,40 @@ The short lifecycle below is a summary. Use
 authoritative operating model for orchestrator responsibilities, delegation,
 provider policy, cost discipline, and worktree hygiene.
 
-1. Run `just roadmap-ready` or `node scripts/spec-dag.mjs pop --json`.
-2. Create the branch and worktree with
-   `node scripts/spec-dag.mjs worktree NODE-ID`. The default is a dry run;
-   `--apply` runs `git worktree add`.
-3. In the new worktree, claim the node with
-   `node scripts/spec-dag.mjs claim NODE-ID --owner OWNER`. The default is a dry
-   run. `--apply` creates an atomic claim lock in the shared `/tmp`
-   repo-derived lock namespace and updates the node to schema-valid
-   `in_progress` metadata with `owner`, `branch`, and `worktree`.
-4. Launch a spec-planning agent to turn the node into an implementation plan.
-5. Launch one or more implementation agents in separate worktrees only when
+1. Run `qd ready --json` and inspect the chosen node with
+   `qd node show NODE-ID --full`.
+2. Claim ownership with
+   `qd claim NODE-ID --agent OWNER --branch spec/<node-id-lower>`, then create
+   the matching git branch and worktree through the repo's normal worktree
+   process.
+3. Launch a spec-planning agent to turn the node into an implementation plan.
+4. Launch one or more implementation agents in separate worktrees only when
    their write scopes are disjoint.
-6. Run local checks required by the node's `verification` list.
-7. Launch audit agents for architecture, correctness, tests, performance, and
+5. Run local checks required by the node's `verification` list.
+6. Launch audit agents for architecture, correctness, tests, performance, and
    UX where relevant.
-8. Ingest audit JSON with `node scripts/spec-dag.mjs ingest-audit REPORT.json`.
-   P0/P1 findings produce a blocked repair patch; P2/P3 findings produce draft
-   DAG nodes or append payloads.
-9. Convert P2/P3 findings into new DAG nodes or add them to existing planned
+7. Record audit results in qd. P0/P1 findings block `qd gate`, `qd check run`,
+   and `qd ci run` until repaired. P2/P3 findings produce new qd nodes or
+   durable updates to existing qd work.
+8. Convert P2/P3 findings into new DAG nodes or add them to existing planned
    nodes unless the finding is already inside the active node's deliverables,
    acceptance criteria, and verification scope; is explicitly assigned to a
    worker before merge; and is recorded durably in a tracked and committed
    branch note file, audit report artifact, DAG node/update, PR
    comment/description, or commit message.
-10. Prepare completion bookkeeping with
-    `node scripts/spec-dag.mjs complete NODE-ID --audit REPORT.json`, but merge
-    only after CI is green, P0/P1 findings are gone, acceptance criteria
-    are met, and the orchestrator trusts the result.
-11. After the implementation is merged into `main`, mark the node `complete`
-    only when the merged result is verified and audit-clean for P0/P1.
+9. Record completion readiness with `qd complete NODE-ID --summary "..."`, then
+   run the lifecycle gates: `qd gate NODE-ID`, `qd check run NODE-ID`, and
+   `qd ci run NODE-ID`.
+10. Merge through the repo's real git/GitHub workflow only after CI is green,
+    P0/P1 findings are gone, acceptance criteria are met, and the orchestrator
+    trusts the result.
+11. After the implementation is merged into `main`, record the qd merge with
+    `qd merge NODE-ID`.
 
-The lifecycle commands are default-safe: they print dry-run plans unless
-`--apply` is supplied. They never grant merge authority or run a git merge.
-Humans or an orchestrator still merge only after CI and audit gates.
+The legacy `scripts/spec-dag.mjs claim`, `worktree`, `ingest-audit`, and
+`complete` commands are retained only for dry-run compatibility and native
+fixture tests. Their `--apply` paths refuse canonical qd export state and must
+not be used for live lifecycle state.
 
 ## Parallelism
 
