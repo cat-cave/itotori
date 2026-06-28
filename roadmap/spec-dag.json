@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "exported_at": "2026-06-28T00:20:04.782Z",
+  "exported_at": "2026-06-28T00:23:32.183Z",
   "registries": {
     "groups": [
       {
@@ -28335,19 +28335,19 @@
       "title": "Bake max_connections=400 into db-compose-env to prevent pg pool exhaustion under parallel worktree CI",
       "kind": "feature",
       "milestone": null,
-      "status": "ready",
+      "status": "claimed",
       "priority": "P1",
       "estimate_points": 1,
       "risk": "medium",
-      "owner": null,
-      "branch": null,
+      "owner": "orchestrator-infra-002",
+      "branch": "infra/infra-002-db-max-connections",
       "spec": "Shared postgres container itotori-itotori_postgres_1 ships with default max_connections=100. Workers running just ci in parallel across worktrees each spin ~10-15 vitest forks, each with its own pg pool. 3 parallel worktrees easily overflow → FATAL 53300 too many clients → workers spin retrying. Patched live to 400 on 2026-06-26 ~18:08Z but the value will reset on next container recreate. Fix: update scripts/itotori-db-compose-env.mjs (or wherever the pg service config lives) to set max_connections via POSTGRES_INITDB_ARGS or docker-compose command override. Also raise shared_buffers proportionally.",
       "acceptance": "After db-compose down + up, SHOW max_connections returns ≥ 400. Workers running just ci across 3+ worktrees in parallel no longer hit 53300 too many clients FATAL.",
       "validation": null,
       "context": null,
       "created_at": "2026-06-26T18:14:26.911Z",
-      "updated_at": "2026-06-26T18:14:26.911Z",
-      "claimed_at": null,
+      "updated_at": "2026-06-28T00:23:24.141Z",
+      "claimed_at": "2026-06-28T00:23:24.141Z",
       "done_at": null,
       "group_name": null,
       "status_reason": null,
