@@ -64,7 +64,7 @@ const requiredNodeFields = [
 const optionalNodeFields = ["statusReason", "issue", "branch", "worktree", "owner", "blockedBy"];
 
 const qdExportSchemaVersion = 1;
-const legacyRoadmapWriterCommands = new Set(["claim", "ingest-audit", "complete"]);
+const legacyLifecycleApplyCommands = new Set(["claim", "worktree", "ingest-audit", "complete"]);
 const qdExportLifecycleRefusal =
   "legacy spec-dag lifecycle --apply is disabled for qd export state; use qd claim/complete/gate/check/ci/merge and re-export roadmap/spec-dag.json";
 const qdStatusMap = {
@@ -294,15 +294,15 @@ function runCli(argv) {
 
 export function assertNoQdExportLifecycleApply(command, args, rawDag) {
   if (
-    legacyRoadmapWriterCommands.has(command) &&
-    legacyRoadmapWriterApplyRequested(command, args) &&
+    legacyLifecycleApplyCommands.has(command) &&
+    legacyLifecycleApplyRequested(command, args) &&
     isQdExportDag(rawDag)
   ) {
     throw new Error(qdExportLifecycleRefusal);
   }
 }
 
-function legacyRoadmapWriterApplyRequested(command, args) {
+function legacyLifecycleApplyRequested(command, args) {
   return (
     args.includes("--apply") || (command === "ingest-audit" && args.includes("--apply-follow-ups"))
   );
@@ -1959,7 +1959,8 @@ function printWorktreeUsage() {
   console.log(`usage: spec-dag worktree NODE-ID [--apply] [--json]
 
 Prepares the canonical git worktree command for a DAG node. Without --apply it
-prints the command sequence only. With --apply it runs git worktree add.
+prints the command sequence only. With --apply it runs git worktree add only for
+legacy native DAG fixtures; canonical qd export state refuses --apply.
 
 Options:
   --base REF           default: main

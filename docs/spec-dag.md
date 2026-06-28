@@ -271,7 +271,13 @@ but the orchestrator should be stricter.
 
 ## Updating The DAG
 
-When adding a node:
+Make DAG changes through qd-native graph operations, then regenerate
+`roadmap/spec-dag.json` with `qd export --out roadmap/spec-dag.json` and run
+`just roadmap-validate`. The committed roadmap file is a generated qd export for
+review and CI; do not hand-edit it for live lifecycle state, claims,
+completion, or follow-up planning.
+
+When adding a node through qd:
 
 1. Use a stable id with the owning prefix.
 2. Keep it PR-reviewable.
@@ -285,18 +291,19 @@ When adding a node:
 7. Include concrete verification commands or tests.
 8. Do not add estimated hours, days, points, or sizing fields.
 9. Include audit focus areas specific enough for a reviewer to find bugs.
-10. Run `just roadmap-validate`.
+10. Export the roadmap and run `just roadmap-validate`.
 
 When an audit finds issues:
 
 - P0/P1: create a repair plan, assign worker implementation in the active spec
   branch, then re-audit.
-- P2/P3: add a new planned node or amend an existing planned node with the
-  finding's acceptance criteria unless the finding is already inside the active
-  node's deliverables, acceptance criteria, and verification scope and is
-  explicitly assigned to a worker before merge with a durable disposition record
-  in an audit report artifact, DAG node/update, tracked and committed branch
-  note file, PR comment/description, or commit message.
+- P2/P3: use qd-native DAG updates to add a new planned node or amend an
+  existing planned node with the finding's acceptance criteria unless the
+  finding is already inside the active node's deliverables, acceptance
+  criteria, and verification scope and is explicitly assigned to a worker before
+  merge with a durable disposition record in an audit report artifact, DAG
+  node/update, tracked and committed branch note file, PR comment/description,
+  or commit message.
 
 Do not mark a node complete because the code was written. Mark it complete only
 after the implementation is merged into `main`, verified, and audit-clean for

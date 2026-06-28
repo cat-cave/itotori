@@ -395,10 +395,11 @@ test("legacy lifecycle apply helpers refuse qd export state without side effects
   assert.equal(readFileSync(dagPath, "utf8"), before);
 });
 
-test("CLI lifecycle guard refuses qd export roadmap writer apply flags", () => {
+test("CLI lifecycle guard refuses qd export legacy apply flags", () => {
   const qdDag = sampleQdExportDag();
   const cases = [
     ["claim", ["UNIV-009", "--owner", "cli-qd-refusal", "--apply"]],
+    ["worktree", ["UNIV-009", "--apply"]],
     ["ingest-audit", ["missing-audit-report.json", "--apply"]],
     ["ingest-audit", ["missing-audit-report.json", "--apply-follow-ups"]],
     ["complete", ["UNIV-009", "--audit", "missing-audit-report.json", "--apply"]],
@@ -410,9 +411,7 @@ test("CLI lifecycle guard refuses qd export roadmap writer apply flags", () => {
       /legacy spec-dag lifecycle --apply is disabled for qd export state/,
     );
   }
-  assert.doesNotThrow(() =>
-    assertNoQdExportLifecycleApply("worktree", ["UNIV-009", "--apply"], qdDag),
-  );
+  assert.doesNotThrow(() => assertNoQdExportLifecycleApply("worktree", ["UNIV-009"], qdDag));
 });
 
 test("P0 and P1 audit findings keep the node in blocked repair state", () => {

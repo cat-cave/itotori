@@ -178,15 +178,17 @@ Do not recreate the old `scripts/spec-dag.mjs claim/worktree` lock workflow.
    git worktree add -b spec/univ-003 /scratch/worktrees/itotori-spec-univ-003 main
    ```
 
-7. In the new worktree, verify the qd claim and roadmap export:
+7. In the new worktree, verify the qd claim and regenerate the roadmap export
+   from qd:
 
    ```sh
    qd node show UNIV-003 --full
+   qd export --out roadmap/spec-dag.json
    just roadmap-validate
    ```
 
-8. Re-read `roadmap/spec-dag.json`. The claimed qd-exported node should now
-   have reviewable metadata like:
+8. Review the generated `roadmap/spec-dag.json` diff only after qd exports it.
+   The claimed node should have reviewable qd-exported metadata like:
 
    ```json
    {
@@ -196,10 +198,12 @@ Do not recreate the old `scripts/spec-dag.mjs claim/worktree` lock workflow.
    }
    ```
 
-   Do not set `status: "claimed"` without an owner. Run `just
-roadmap-validate` after the edit or export.
+   Do not hand-edit `roadmap/spec-dag.json` to set `status`, `owner`,
+   `branch`, or any other lifecycle field. If the claim metadata is wrong, fix
+   qd state first, export again, and rerun `just roadmap-validate`.
 
-9. Commit the claim metadata before planning, implementation, or delegation:
+9. Commit the generated qd export before planning, implementation, or
+   delegation:
 
    ```sh
    git -C /scratch/worktrees/itotori-spec-univ-003 diff --check
