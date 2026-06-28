@@ -17,6 +17,9 @@ import type {
   DashboardDecisionReadModel,
   ProjectCostReport,
   ProjectDashboardStatus,
+  ReviewerQueueAction,
+  ReviewerQueueItemRecord,
+  ReviewerQueueTransitionRecord,
   RuntimeDashboardStatus,
   TerminologySearchReadModel,
 } from "@itotori/db";
@@ -28,6 +31,9 @@ import {
   catalogRawContentRedactionClassValues,
   catalogSourceRecordKindValues,
   catalogSourceValues,
+  reviewerQueueActionList,
+  reviewerQueueItemKindList,
+  reviewerQueueItemStateList,
 } from "@itotori/db";
 import {
   assertBenchmarkReportV02,
@@ -58,12 +64,26 @@ import type {
   ProjectState,
   RuntimeIngestResult,
 } from "./services/project-workflow.js";
+import type {
+  ReviewerQueueDashboardReadModel,
+  ReviewerQueueDashboardRow,
+  ReviewerQueueDashboardState,
+} from "./reviewer/api-service.js";
+import { reviewerQueueDashboardStateValues } from "./reviewer/api-service.js";
+import type {
+  ReviewerBatchActionRequest,
+  ReviewerBatchPreview,
+} from "./reviewer/batch-preview.js";
+import type { ReviewerDetailContext } from "./reviewer/detail-fixtures.js";
 
 export type ItotoriApiRouteId =
   | "catalog.benchmarkSeeds"
   | "catalog.completeness"
   | "catalog.conflicts"
   | "catalog.opportunities"
+  | "reviewer.queue"
+  | "reviewer.detail"
+  | "reviewer.batchPreview"
   | "terminology.search"
   | "projects.list"
   | "projects.status"
@@ -99,6 +119,14 @@ export type ApiCatalogBenchmarkSeedsResponse = CatalogBenchmarkSeedFinderReadMod
 export type ApiCatalogOpportunitiesResponse = CatalogOpportunityRankingReadModel;
 
 export type ApiTerminologySearchResponse = TerminologySearchReadModel;
+
+export type ApiReviewerQueueDashboardResponse = ReviewerQueueDashboardReadModel;
+
+export type ApiReviewerDetailResponse = ReviewerDetailContext;
+
+export type ApiReviewerBatchPreviewRequest = ReviewerBatchActionRequest;
+
+export type ApiReviewerBatchPreviewResponse = ReviewerBatchPreview;
 
 export type ApiProjectImportRequest = {
   bridge: BridgeBundle | BridgeBundleV02;
@@ -153,6 +181,9 @@ export type ItotoriApiResponseBody =
   | ApiCatalogCompletenessResponse
   | ApiCatalogConflictReviewResponse
   | ApiCatalogOpportunitiesResponse
+  | ApiReviewerQueueDashboardResponse
+  | ApiReviewerDetailResponse
+  | ApiReviewerBatchPreviewResponse
   | ApiTerminologySearchResponse
   | ApiProjectsResponse
   | ProjectDashboardStatus
@@ -253,6 +284,49 @@ export function parseRuntimeEvidenceRequest(body: unknown): ApiRuntimeEvidenceRe
   });
 }
 
+export function parseReviewerBatchPreviewRequest(body: unknown): ApiReviewerBatchPreviewRequest {
+  return parseRequest("ApiReviewerBatchPreviewRequest", () => {
+    const request = asStrictRecord(body, "ApiReviewerBatchPreviewRequest", [
+      "action",
+      "actorUserId",
+      "selections",
+    ]);
+    assertEnum(
+      request.action,
+      reviewerQueueActionList as readonly ReviewerQueueAction[],
+      "ApiReviewerBatchPreviewRequest.action",
+    );
+    assertString(request.actorUserId, "ApiReviewerBatchPreviewRequest.actorUserId");
+    const selections = asArray(
+      request.selections,
+      "ApiReviewerBatchPreviewRequest.selections",
+    ).map((value, index) => {
+      const selection = asStrictRecord(
+        value,
+        `ApiReviewerBatchPreviewRequest.selections[${index}]`,
+        ["reviewItemId", "expectedSourceRevisionId"],
+      );
+      assertString(
+        selection.reviewItemId,
+        `ApiReviewerBatchPreviewRequest.selections[${index}].reviewItemId`,
+      );
+      assertString(
+        selection.expectedSourceRevisionId,
+        `ApiReviewerBatchPreviewRequest.selections[${index}].expectedSourceRevisionId`,
+      );
+      return {
+        reviewItemId: selection.reviewItemId,
+        expectedSourceRevisionId: selection.expectedSourceRevisionId,
+      };
+    });
+    return {
+      action: request.action,
+      actorUserId: request.actorUserId,
+      selections,
+    };
+  });
+}
+
 export function assertItotoriApiResponse(
   routeId: ItotoriApiRouteId,
   value: unknown,
@@ -269,6 +343,15 @@ export function assertItotoriApiResponse(
       return;
     case "catalog.opportunities":
       assertCatalogOpportunityRankingReadModel(value);
+      return;
+    case "reviewer.queue":
+      assertReviewerQueueDashboardReadModel(value);
+      return;
+    case "reviewer.detail":
+      assertReviewerDetailContext(value);
+      return;
+    case "reviewer.batchPreview":
+      assertReviewerBatchPreview(value);
       return;
     case "terminology.search":
       assertTerminologySearchReadModel(value);
@@ -306,6 +389,249 @@ export function assertItotoriApiResponse(
     case "runtimeEvidence.ingest":
       assertRuntimeEvidenceResponse(value);
       return;
+  }
+}
+
+export function assertReviewerQueueDashboardReadModel(
+  value: unknown,
+  label = "ReviewerQueueDashboardReadModel",
+): asserts value is ReviewerQueueDashboardReadModel {
+  const model = asStrictRecord(value, label, [
+    "schemaVersion",
+    "localeBranchId",
+    "generatedAt",
+    "permission",
+    "rows",
+    "aggregate",
+    "defaultBatchRequest",
+  ]);
+  assertLiteral(model.schemaVersion, "reviewer.queue_dashboard.v0.1", `${label}.schemaVersion`);
+  assertString(model.localeBranchId, `${label}.localeBranchId`);
+  assertDateLike(model.generatedAt, `${label}.generatedAt`);
+  assertReviewerQueuePermissionView(model.permission, `${label}.permission`);
+  const rows = asArray(model.rows, `${label}.rows`);
+  for (const [index, row] of rows.entries()) {
+    assertReviewerQueueDashboardRow(row, `${label}.rows[${index}]`);
+  }
+  assertReviewerQueueDashboardAggregate(model.aggregate, `${label}.aggregate`);
+  assertReviewerBatchActionRequest(model.defaultBatchRequest, `${label}.defaultBatchRequest`);
+}
+
+function assertReviewerQueueDashboardRow(
+  value: unknown,
+  label: string,
+): asserts value is ReviewerQueueDashboardRow {
+  const row = asStrictRecord(value, label, [
+    "reviewItemId",
+    "projectId",
+    "localeBranchId",
+    "sourceRevisionId",
+    "itemKind",
+    "sourceItemRef",
+    "summary",
+    "priority",
+    "state",
+    "dashboardState",
+    "lastAction",
+    "batchActionId",
+    "findingId",
+    "decisionId",
+    "detailPath",
+    "selectedForBatch",
+    "createdAt",
+    "updatedAt",
+    "resolvedAt",
+  ]);
+  assertString(row.reviewItemId, `${label}.reviewItemId`);
+  assertString(row.projectId, `${label}.projectId`);
+  assertString(row.localeBranchId, `${label}.localeBranchId`);
+  assertString(row.sourceRevisionId, `${label}.sourceRevisionId`);
+  assertEnum(row.itemKind, reviewerQueueItemKindList, `${label}.itemKind`);
+  assertString(row.sourceItemRef, `${label}.sourceItemRef`);
+  assertString(row.summary, `${label}.summary`);
+  assertNonNegativeInteger(row.priority, `${label}.priority`);
+  assertEnum(row.state, reviewerQueueItemStateList, `${label}.state`);
+  assertEnum(
+    row.dashboardState,
+    Object.values(reviewerQueueDashboardStateValues) as ReviewerQueueDashboardState[],
+    `${label}.dashboardState`,
+  );
+  assertNullableReviewerQueueAction(row.lastAction, `${label}.lastAction`);
+  assertNullableString(row.batchActionId, `${label}.batchActionId`);
+  assertNullableString(row.findingId, `${label}.findingId`);
+  assertNullableString(row.decisionId, `${label}.decisionId`);
+  assertString(row.detailPath, `${label}.detailPath`);
+  assertBoolean(row.selectedForBatch, `${label}.selectedForBatch`);
+  assertDateLike(row.createdAt, `${label}.createdAt`);
+  assertDateLike(row.updatedAt, `${label}.updatedAt`);
+  assertNullableDateLike(row.resolvedAt, `${label}.resolvedAt`);
+}
+
+function assertReviewerQueueDashboardAggregate(value: unknown, label: string): void {
+  const aggregate = asStrictRecord(value, label, [
+    "pending",
+    "resolved",
+    "deferred",
+    "escalated",
+    "batch_applied",
+  ]);
+  for (const state of Object.values(reviewerQueueDashboardStateValues)) {
+    assertNonNegativeInteger(aggregate[state], `${label}.${state}`);
+  }
+}
+
+function assertReviewerQueuePermissionView(value: unknown, label: string): void {
+  const permission = asStrictRecord(value, label, [
+    "actorUserId",
+    "canReadQueue",
+    "canManageQueue",
+    "denialReasons",
+  ]);
+  assertString(permission.actorUserId, `${label}.actorUserId`);
+  assertBoolean(permission.canReadQueue, `${label}.canReadQueue`);
+  assertBoolean(permission.canManageQueue, `${label}.canManageQueue`);
+  assertStringArray(permission.denialReasons, `${label}.denialReasons`);
+}
+
+function assertReviewerBatchActionRequest(value: unknown, label: string): void {
+  const request = asStrictRecord(value, label, ["action", "actorUserId", "selections"]);
+  assertEnum(
+    request.action,
+    reviewerQueueActionList as readonly ReviewerQueueAction[],
+    `${label}.action`,
+  );
+  assertString(request.actorUserId, `${label}.actorUserId`);
+  const selections = asArray(request.selections, `${label}.selections`);
+  for (const [index, selectionValue] of selections.entries()) {
+    const selection = asStrictRecord(selectionValue, `${label}.selections[${index}]`, [
+      "reviewItemId",
+      "expectedSourceRevisionId",
+    ]);
+    assertString(selection.reviewItemId, `${label}.selections[${index}].reviewItemId`);
+    assertString(
+      selection.expectedSourceRevisionId,
+      `${label}.selections[${index}].expectedSourceRevisionId`,
+    );
+  }
+}
+
+function assertReviewerDetailContext(
+  value: unknown,
+  label = "ReviewerDetailContext",
+): asserts value is ReviewerDetailContext {
+  const context = asStrictRecord(value, label, [
+    "reviewItemId",
+    "permission",
+    "item",
+    "source",
+    "draft",
+    "policy",
+    "glossary",
+    "qaFindings",
+    "runtimeEvidence",
+    "rationaleRefs",
+    "transitions",
+    "diagnostics",
+  ]);
+  assertString(context.reviewItemId, `${label}.reviewItemId`);
+  assertReviewerQueuePermissionView(context.permission, `${label}.permission`);
+  if (context.item !== null) {
+    assertReviewerQueueItemRecord(context.item, `${label}.item`);
+  }
+  asArray(context.glossary, `${label}.glossary`);
+  asArray(context.qaFindings, `${label}.qaFindings`);
+  asArray(context.runtimeEvidence, `${label}.runtimeEvidence`);
+  asArray(context.rationaleRefs, `${label}.rationaleRefs`);
+  asArray(context.transitions, `${label}.transitions`);
+  asArray(context.diagnostics, `${label}.diagnostics`);
+}
+
+function assertReviewerBatchPreview(
+  value: unknown,
+  label = "ReviewerBatchPreview",
+): asserts value is ReviewerBatchPreview {
+  const preview = asStrictRecord(value, label, [
+    "request",
+    "permission",
+    "items",
+    "aggregate",
+    "allAllowed",
+    "permissionDenied",
+  ]);
+  assertReviewerBatchActionRequest(preview.request, `${label}.request`);
+  assertReviewerQueuePermissionView(preview.permission, `${label}.permission`);
+  asArray(preview.items, `${label}.items`);
+  const aggregate = asStrictRecord(preview.aggregate, `${label}.aggregate`, [
+    "total",
+    "allowed",
+    "denied",
+    "stale",
+    "notFound",
+    "duplicate",
+    "runtimeEvidenceInvariant",
+    "invalidInput",
+    "invalidTransition",
+    "permissionDeniedManage",
+  ]);
+  for (const key of Object.keys(aggregate)) {
+    assertNonNegativeInteger(aggregate[key], `${label}.aggregate.${key}`);
+  }
+  assertBoolean(preview.allAllowed, `${label}.allAllowed`);
+  assertBoolean(preview.permissionDenied, `${label}.permissionDenied`);
+}
+
+function assertReviewerQueueItemRecord(value: unknown, label: string): void {
+  const item = asStrictRecord(value, label, [
+    "reviewItemId",
+    "projectId",
+    "localeBranchId",
+    "sourceRevisionId",
+    "itemKind",
+    "sourceItemRef",
+    "state",
+    "priority",
+    "summary",
+    "affectedArtifactIds",
+    "evidenceTier",
+    "observationEventIds",
+    "artifactHashes",
+    "payload",
+    "metadata",
+    "createdByUserId",
+    "assignedToUserId",
+    "createdAt",
+    "updatedAt",
+    "resolvedAt",
+  ]);
+  assertString(item.reviewItemId, `${label}.reviewItemId`);
+  assertString(item.projectId, `${label}.projectId`);
+  assertString(item.localeBranchId, `${label}.localeBranchId`);
+  assertString(item.sourceRevisionId, `${label}.sourceRevisionId`);
+  assertEnum(item.itemKind, reviewerQueueItemKindList, `${label}.itemKind`);
+  assertString(item.sourceItemRef, `${label}.sourceItemRef`);
+  assertEnum(item.state, reviewerQueueItemStateList, `${label}.state`);
+  assertNonNegativeInteger(item.priority, `${label}.priority`);
+  assertString(item.summary, `${label}.summary`);
+  assertStringArray(item.affectedArtifactIds, `${label}.affectedArtifactIds`);
+  assertNullableString(item.evidenceTier, `${label}.evidenceTier`);
+  if (item.observationEventIds !== null) {
+    assertStringArray(item.observationEventIds, `${label}.observationEventIds`);
+  }
+  if (item.artifactHashes !== null) {
+    assertStringArray(item.artifactHashes, `${label}.artifactHashes`);
+  }
+  asRecord(item.payload, `${label}.payload`);
+  asRecord(item.metadata, `${label}.metadata`);
+  assertNullableString(item.createdByUserId, `${label}.createdByUserId`);
+  assertNullableString(item.assignedToUserId, `${label}.assignedToUserId`);
+  assertDateLike(item.createdAt, `${label}.createdAt`);
+  assertDateLike(item.updatedAt, `${label}.updatedAt`);
+  assertNullableDateLike(item.resolvedAt, `${label}.resolvedAt`);
+}
+
+function assertNullableReviewerQueueAction(value: unknown, label: string): void {
+  if (value !== null) {
+    assertEnum(value, reviewerQueueActionList as readonly ReviewerQueueAction[], label);
   }
 }
 
@@ -2108,6 +2434,12 @@ function assertDateLike(value: unknown, label: string): void {
   const date = value instanceof Date ? value : typeof value === "string" ? new Date(value) : null;
   if (date === null || Number.isNaN(date.getTime())) {
     throw new Error(`${label} must be a date`);
+  }
+}
+
+function assertNullableDateLike(value: unknown, label: string): void {
+  if (value !== null) {
+    assertDateLike(value, label);
   }
 }
 

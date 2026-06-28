@@ -12,6 +12,7 @@ const dashboardEndpoints: DashboardEndpoints = {
   projects: "http://itotori.test/api/projects",
   status: "http://itotori.test/api/projects/status",
   decisions: "http://itotori.test/api/projects/decisions",
+  reviewerQueue: "http://itotori.test/api/reviewer/queue",
   cost: "http://itotori.test/api/projects/cost",
   runtime: "http://itotori.test/api/runtime/v0.2/status",
 };
@@ -47,6 +48,7 @@ describe("Itotori dashboard", () => {
     expect(root.textContent).toContain("Glossary");
     expect(root.textContent).toContain("Jobs");
     expect(root.textContent).toContain("QA findings");
+    expect(root.textContent).toContain("Reviewer queue");
     expect(root.textContent).toContain("Runtime evidence");
     expect(root.textContent).toContain("Benchmarks");
 
@@ -62,6 +64,20 @@ describe("Itotori dashboard", () => {
     const qaFindings = root.querySelector('[aria-label="QA findings"]');
     expect(qaFindings?.textContent).toContain("Project-level findings");
     expect(qaFindings?.textContent).toContain("Runtime validation");
+
+    const reviewerQueue = root.querySelector('[aria-label="Reviewer queue"]');
+    expect(reviewerQueue?.textContent).toContain("Pending");
+    expect(reviewerQueue?.textContent).toContain("Resolved");
+    expect(reviewerQueue?.textContent).toContain("Deferred");
+    expect(reviewerQueue?.textContent).toContain("Escalated");
+    expect(reviewerQueue?.textContent).toContain("Batch applied");
+    expect(reviewerQueue?.textContent).toContain("ITOTORI-023 pending decision");
+    expect(reviewerQueue?.textContent).toContain("ITOTORI-023 batch_applied decision");
+    const selected = reviewerQueue?.querySelectorAll('input[name="selection"]:checked');
+    expect(selected?.length).toBe(1);
+    expect((selected?.item(0) as HTMLInputElement | undefined)?.value).toContain(
+      "@source-revision-itotori-023",
+    );
 
     const projectFindingCell = root
       .querySelector('[aria-label="Projects"] tbody tr')

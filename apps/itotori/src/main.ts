@@ -5,15 +5,15 @@ import {
   parseReviewerBatchRoute,
   parseReviewerDetailRoute,
   renderReviewerBatchRoute,
-  renderReviewerDetailRoute,
-  ReviewerBatchPreviewService,
+  renderReviewerDetailView,
   type ReviewerBatchActionRequest,
-  type ReviewerBatchConsequenceResolverPort,
-  type ReviewerDetailEvidenceLoaderPort,
-  type ReviewerDetailEvidencePayload,
+  type ReviewerBatchPermissionView,
+  type ReviewerBatchPreview,
+  type ReviewerBatchPreviewServicePort,
+  type ReviewerDetailContext,
 } from "./reviewer/index.js";
-import { resolveReviewerQueuePermissionView, type ItotoriAuthorizationPort } from "./auth.js";
-import { AuthorizationError, reviewerQueueActionValues, type Permission } from "@itotori/db";
+import { assertItotoriApiResponse } from "./api-schema.js";
+import { reviewerQueueActionList, reviewerQueueActionValues } from "@itotori/db";
 
 const root = document.querySelector<HTMLDivElement>("#app")!;
 
@@ -23,93 +23,88 @@ const reviewerBatchHit = parseReviewerBatchRoute(window.location.pathname);
 if (assetDecisionsParams !== null) {
   await renderAssetDecisionsRoute(root, assetDecisionsParams);
 } else if (reviewerBatchHit !== null) {
-  // ITOTORI-083 — the SPA bootstrap resolves the actor's reviewer
-  // queue permission view and renders the batch preview. The browser
-  // shell has no real backend selection state today, so the request is
-  // synthesized from the URL search params with `action=approve` +
-  // empty selections; the renderer surfaces the empty-selection fixture
-  // until a future spec wires a real dashboard checkbox state into the
-  // request. `requirePermission` stays in `auth.ts`.
-  const localActorUserId = "local-user";
-  const authorization = makeStaticAuthorization(localActorUserId, []);
-  const permission = await resolveReviewerQueuePermissionView(authorization, localActorUserId);
-  const previewService = new ReviewerBatchPreviewService(makeStaticConsequenceResolver());
-  const request: ReviewerBatchActionRequest = {
-    action: reviewerQueueActionValues.approve,
-    actorUserId: localActorUserId,
-    selections: [],
-  };
+  const request = reviewerBatchRequestFromSearch(window.location.search);
   await renderReviewerBatchRoute(root, request, {
-    permission,
-    previewService,
+    permission: optimisticBatchPermission(request.actorUserId),
+    previewService: makeApiBatchPreviewService(),
   });
 } else if (reviewerDetailParams !== null) {
-  // ITOTORI-082 — the SPA bootstrap resolves the actor's reviewer
-  // queue permission view via the auth port, then passes it to the
-  // detail route. The detail route never calls `requirePermission`
-  // itself (the API mutation permission matrix audit confines those
-  // calls to `auth.ts` / `api-handlers.ts`). The browser shell has no
-  // grants today, so the route will render the denial UI until a
-  // future spec wires a real evidence loader and a grant-aware
-  // authorization port.
-  const localActorUserId = "local-user";
-  const authorization = makeStaticAuthorization(localActorUserId, []);
-  const permission = await resolveReviewerQueuePermissionView(authorization, localActorUserId);
-  const evidenceLoader = makeStaticEvidenceLoader();
-  await renderReviewerDetailRoute(root, reviewerDetailParams, {
-    permission,
-    evidenceLoader,
-  });
+  root.innerHTML = `
+    <main class="itotori-shell" data-state="loading">Loading reviewer item...</main>
+  `;
+  const context = await fetchReviewerDetailContext(reviewerDetailParams.reviewItemId);
+  root.innerHTML = renderReviewerDetailView(context);
 } else if (window.location.pathname === "/style-guide-builder") {
   await renderStyleGuideBuilderRoute(root);
 } else {
   await renderDashboard(root);
 }
 
-function makeStaticAuthorization(
-  actorUserId: string,
-  grantedPermissions: Permission[],
-): ItotoriAuthorizationPort {
-  const granted = new Set<Permission>(grantedPermissions);
+function reviewerBatchRequestFromSearch(search: string): ReviewerBatchActionRequest {
+  const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
+  const actionParam = params.get("action");
+  const action =
+    actionParam !== null && isReviewerQueueAction(actionParam)
+      ? actionParam
+      : reviewerQueueActionValues.approve;
+  const actorUserId = params.get("actorUserId") ?? "local-user";
   return {
-    requirePermission: async (permission) => {
-      if (!granted.has(permission)) {
-        throw new AuthorizationError({ userId: actorUserId }, permission);
+    action,
+    actorUserId,
+    selections: params.getAll("selection").map(parseBatchSelectionParam),
+  };
+}
+
+function isReviewerQueueAction(value: string): value is ReviewerBatchActionRequest["action"] {
+  return (reviewerQueueActionList as readonly string[]).includes(value);
+}
+
+function parseBatchSelectionParam(value: string): ReviewerBatchActionRequest["selections"][number] {
+  const separator = value.lastIndexOf("@");
+  if (separator <= 0 || separator === value.length - 1) {
+    throw new Error("batch selection must be encoded as reviewItemId@sourceRevisionId");
+  }
+  return {
+    reviewItemId: value.slice(0, separator),
+    expectedSourceRevisionId: value.slice(separator + 1),
+  };
+}
+
+function optimisticBatchPermission(actorUserId: string): ReviewerBatchPermissionView {
+  return {
+    actorUserId,
+    canReadQueue: true,
+    canManageQueue: false,
+    denialReasons: [],
+  };
+}
+
+function makeApiBatchPreviewService(): ReviewerBatchPreviewServicePort {
+  return {
+    preview: async (request) => {
+      const response = await fetch("/api/reviewer/queue/batch-preview", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(request),
+      });
+      if (!response.ok) {
+        throw new Error(`failed to load reviewer batch preview: ${response.status}`);
       }
+      const body = await response.json();
+      assertItotoriApiResponse("reviewer.batchPreview", body);
+      return body as ReviewerBatchPreview;
     },
   };
 }
 
-function makeStaticConsequenceResolver(): ReviewerBatchConsequenceResolverPort {
-  // The browser-side bootstrap has no DB, so every batch preview
-  // resolves to an empty per-item set. The renderer still surfaces
-  // every requested id with its diagnostic — never silently empty.
-  return {
-    loadItem: async (_id) => null,
-    resolveConsequences: async (_input) => [],
-  };
-}
-
-function makeStaticEvidenceLoader(): ReviewerDetailEvidenceLoaderPort {
-  // The browser-side bootstrap has no DB; the loader returns an empty
-  // payload so the detail page renders the "missing context"
-  // diagnostics if it is ever reached. (It will not be reached given
-  // the static authorization denies queue.read, but the implementation
-  // is kept honest so the renderer never silently shows an empty
-  // section.)
-  return {
-    loadItem: async (_reviewItemId) => null,
-    loadTransitions: async (_reviewItemId) => [],
-    loadDetailEvidence: async (_item): Promise<ReviewerDetailEvidencePayload> => ({
-      loadedSourceRevisionId: "",
-      source: null,
-      draft: null,
-      policy: null,
-      glossary: [],
-      qaFindings: [],
-      runtimeEvidence: [],
-      rationaleRefs: [],
-      diagnostics: [],
-    }),
-  };
+async function fetchReviewerDetailContext(reviewItemId: string): Promise<ReviewerDetailContext> {
+  const response = await fetch(
+    `/api/reviewer/queue/${encodeURIComponent(reviewItemId)}/detail`,
+  );
+  if (!response.ok) {
+    throw new Error(`failed to load reviewer detail: ${response.status}`);
+  }
+  const body = await response.json();
+  assertItotoriApiResponse("reviewer.detail", body);
+  return body as ReviewerDetailContext;
 }

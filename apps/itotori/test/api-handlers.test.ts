@@ -5,6 +5,7 @@ import {
   ItotoriProjectRepository,
   localUserId,
   permissionValues,
+  reviewerQueueActionValues,
   type Permission,
   type ProjectCostReport,
 } from "@itotori/db";
@@ -20,6 +21,11 @@ import {
   type ItotoriApiServices,
 } from "../src/api-handlers.js";
 import { ItotoriProjectWorkflowService } from "../src/services/project-workflow.js";
+import {
+  readyContextFixture,
+  reviewQueueDashboardFixtures,
+  type ReviewerQueueDashboardReadModel,
+} from "../src/reviewer/index.js";
 import {
   benchmarkReportFixture,
   bridgeFixture,
@@ -71,6 +77,8 @@ const readOnlyProjectWorkflowServices = new Set<keyof ItotoriApiServices["projec
   "getRuntimeStatus",
   "getCostReport",
 ]);
+
+const readOnlyPostApiRoutes = new Set(["POST /api/reviewer/queue/batch-preview"]);
 
 const apiMutationPermissionMatrix = [
   apiGate("bridgeImport", post("/api/imports/bridge", { bridge: bridgeFixture }), "importBridge"),
@@ -227,6 +235,113 @@ describe("Itotori API handlers", () => {
       query: "Hero",
     });
     expect(services.authorization.requirePermission).not.toHaveBeenCalled();
+  });
+
+  it("routes reviewer queue dashboard, detail, and batch preview through typed services", async () => {
+    const services = serviceFixture();
+
+    const dashboard = await handleItotoriApiRequest(
+      {
+        method: "GET",
+        pathname: "/api/reviewer/queue",
+        search: "?localeBranchId=locale-1&actorUserId=reviewer-user",
+      },
+      services,
+    );
+    const detail = await handleItotoriApiRequest(
+      {
+        method: "GET",
+        pathname: "/api/reviewer/queue/reviewer-queue-1/detail",
+        search: "?actorUserId=reviewer-user",
+      },
+      services,
+    );
+    const preview = await handleItotoriApiRequest(
+      {
+        method: "POST",
+        pathname: "/api/reviewer/queue/batch-preview",
+        body: {
+          action: reviewerQueueActionValues.approve,
+          actorUserId: "reviewer-user",
+          selections: [
+            {
+              reviewItemId: "reviewer-queue-1",
+              expectedSourceRevisionId: "source-revision-1",
+            },
+          ],
+        },
+      },
+      services,
+    );
+
+    expect(dashboard.statusCode).toBe(200);
+    expect(dashboard.body).toMatchObject({
+      schemaVersion: "reviewer.queue_dashboard.v0.1",
+      localeBranchId: "locale-1",
+      aggregate: expect.objectContaining({
+        pending: 1,
+        resolved: 1,
+        deferred: 1,
+        escalated: 1,
+        batch_applied: 1,
+      }),
+    });
+    expect(detail.statusCode).toBe(200);
+    expect(detail.body).toMatchObject({
+      reviewItemId: "reviewer-queue-1",
+      permission: expect.objectContaining({
+        actorUserId: "reviewer-user",
+        canReadQueue: true,
+      }),
+    });
+    expect(preview.statusCode).toBe(200);
+    expect(preview.body).toMatchObject({
+      request: expect.objectContaining({
+        actorUserId: "reviewer-user",
+        selections: [
+          {
+            reviewItemId: "reviewer-queue-1",
+            expectedSourceRevisionId: "source-revision-1",
+          },
+        ],
+      }),
+    });
+    expect(services.reviewerQueue.loadDashboard).toHaveBeenCalledWith(
+      expect.objectContaining({
+        localeBranchId: "locale-1",
+        permission: expect.objectContaining({ actorUserId: "reviewer-user" }),
+      }),
+    );
+    expect(services.reviewerQueue.loadDetailContext).toHaveBeenCalledTimes(1);
+    expect(services.reviewerQueue.previewBatch).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns denied reviewer detail without calling the evidence-backed detail service", async () => {
+    const services = serviceFixture();
+    vi.mocked(services.authorization.requirePermission).mockImplementation(async (permission) => {
+      if (permission === permissionValues.queueRead) {
+        throw new AuthorizationError({ userId: "missing-read" }, permission);
+      }
+    });
+
+    const response = await handleItotoriApiRequest(
+      {
+        method: "GET",
+        pathname: "/api/reviewer/queue/reviewer-queue-denied/detail",
+        search: "?actorUserId=missing-read",
+      },
+      services,
+    );
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toMatchObject({
+      reviewItemId: "reviewer-queue-denied",
+      permission: expect.objectContaining({
+        actorUserId: "missing-read",
+        canReadQueue: false,
+      }),
+    });
+    expect(services.reviewerQueue.loadDetailContext).not.toHaveBeenCalled();
   });
 
   it("passes the requested runtime run id to the runtime status read model", async () => {
@@ -1728,7 +1843,11 @@ function sourceApiPermissionGateIds(): ApiMutationPermissionGateId[] {
       if (callName === "requireApiPermission") {
         gateIds.push(apiGateIdFromCall(node));
       }
-      if (callName === "requirePermission" && !isInsideFunction(node, "requireApiPermission")) {
+      if (
+        callName === "requirePermission" &&
+        !isInsideFunction(node, "requireApiPermission") &&
+        !isInsideFunction(node, "tryApiPermission")
+      ) {
         throw new Error(
           `undeclared API permission call at ${sourceLocation(sourceFile, node)}; route permission gates must use apiMutationPermissionGates and requireApiPermission`,
         );
@@ -1846,6 +1965,9 @@ function mutationRoutesForNode(
 ): ApiMutationRoute[] {
   const services = mutatingProjectWorkflowCalls(node);
   if (services.length === 0) {
+    if (readOnlyPostApiRoutes.has(route)) {
+      return [];
+    }
     throw new Error(
       `POST API route ${route} has no mutating projectWorkflow call at ${sourceLocation(sourceFile, node)}; add an explicit readonly exception if this route is intentionally non-mutating`,
     );
@@ -2017,6 +2139,91 @@ function serviceFixture(): ItotoriApiServices {
     },
     terminologyRepository: {
       searchTerms: vi.fn(async () => terminologySearchFixture),
+    },
+    reviewerQueue: {
+      loadDashboard: vi.fn(async ({ localeBranchId, permission }) => ({
+        ...reviewerQueueDashboardApiFixture(),
+        localeBranchId,
+        permission,
+      })),
+      loadDetailContext: vi.fn(async ({ reviewItemId, permission }) => ({
+        ...readyContextFixture(),
+        reviewItemId,
+        permission,
+      })),
+      previewBatch: vi.fn(async ({ request, permission }) => ({
+        request,
+        permission,
+        items: [],
+        aggregate: {
+          total: 0,
+          allowed: 0,
+          denied: 0,
+          stale: 0,
+          notFound: 0,
+          duplicate: 0,
+          runtimeEvidenceInvariant: 0,
+          invalidInput: 0,
+          invalidTransition: 0,
+          permissionDeniedManage: 0,
+        },
+        allAllowed: false,
+        permissionDenied: !permission.canReadQueue,
+      })),
+    },
+  };
+}
+
+function reviewerQueueDashboardApiFixture(): ReviewerQueueDashboardReadModel {
+  const fixtures = reviewQueueDashboardFixtures();
+  const rows = fixtures.decisions.map((decision) => ({
+    reviewItemId: decision.item.reviewItemId,
+    projectId: decision.item.projectId,
+    localeBranchId: decision.item.localeBranchId,
+    sourceRevisionId: decision.item.sourceRevisionId,
+    itemKind: decision.item.itemKind,
+    sourceItemRef: decision.item.sourceItemRef,
+    summary: decision.item.summary,
+    priority: decision.item.priority,
+    state: decision.item.state,
+    dashboardState: decision.dashboardState,
+    lastAction: decision.lastAction,
+    batchActionId: decision.batchActionId,
+    findingId: decision.findingId,
+    decisionId: decision.decisionId,
+    detailPath: `/reviewer-queue/${encodeURIComponent(decision.item.reviewItemId)}`,
+    selectedForBatch: decision.dashboardState === "pending",
+    createdAt: decision.item.createdAt,
+    updatedAt: decision.item.updatedAt,
+    resolvedAt: decision.item.resolvedAt,
+  }));
+  return {
+    schemaVersion: "reviewer.queue_dashboard.v0.1",
+    localeBranchId: "locale-1",
+    generatedAt: new Date("2026-06-26T00:00:00Z"),
+    permission: {
+      actorUserId: "reviewer-user",
+      canReadQueue: true,
+      canManageQueue: true,
+      denialReasons: [],
+    },
+    rows,
+    aggregate: {
+      pending: rows.filter((row) => row.dashboardState === "pending").length,
+      resolved: rows.filter((row) => row.dashboardState === "resolved").length,
+      deferred: rows.filter((row) => row.dashboardState === "deferred").length,
+      escalated: rows.filter((row) => row.dashboardState === "escalated").length,
+      batch_applied: rows.filter((row) => row.dashboardState === "batch_applied").length,
+    },
+    defaultBatchRequest: {
+      action: reviewerQueueActionValues.approve,
+      actorUserId: "reviewer-user",
+      selections: rows
+        .filter((row) => row.selectedForBatch)
+        .map((row) => ({
+          reviewItemId: row.reviewItemId,
+          expectedSourceRevisionId: row.sourceRevisionId,
+        })),
     },
   };
 }

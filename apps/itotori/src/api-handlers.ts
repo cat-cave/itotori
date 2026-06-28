@@ -40,11 +40,15 @@ import {
   parseRecordBenchmarkRequest,
   parseRecordDecisionRequest,
   parseRecordFindingRequest,
+  parseReviewerBatchPreviewRequest,
   parseRuntimeEvidenceRequest,
   type ApiDraftBranchResponse,
   type ApiErrorResponse,
   type ApiProjectImportResponse,
   type ApiProjectsResponse,
+  type ApiReviewerBatchPreviewResponse,
+  type ApiReviewerDetailResponse,
+  type ApiReviewerQueueDashboardResponse,
   type ItotoriApiResponseBody,
   type ItotoriApiRouteId,
 } from "./api-schema.js";
@@ -55,6 +59,12 @@ import type {
   ItotoriProjectWorkflowPort,
   RuntimeIngestResult,
 } from "./services/project-workflow.js";
+import {
+  deniedContextFixture,
+  reviewerDetailDiagnosticCodeValues,
+} from "./reviewer/detail-fixtures.js";
+import type { ReviewerQueueApiServicePort } from "./reviewer/api-service.js";
+import type { ReviewerQueuePermissionView } from "./auth.js";
 
 export type ApiMutationPermissionGate = {
   mutation: string;
@@ -102,6 +112,7 @@ export type ItotoriApiServices = {
   terminologyRepository: {
     searchTerms(input: TerminologySearchInput): Promise<TerminologySearchReadModel>;
   };
+  reviewerQueue: ReviewerQueueApiServicePort;
   projectWorkflow: Pick<
     ItotoriProjectWorkflowPort,
     | "getDashboardStatus"
@@ -206,6 +217,58 @@ async function routeItotoriApiRequest(
     );
   }
 
+  if (request.method === "GET" && request.pathname === "/api/reviewer/queue") {
+    const permission = await resolveApiReviewerQueuePermissionView(
+      services,
+      parseActorUserIdQuery(request.search),
+    );
+    if (!permission.canReadQueue) {
+      throw new AuthorizationError({ userId: permission.actorUserId }, permissionValues.queueRead);
+    }
+    const localeBranchId =
+      parseReviewerQueueDashboardQuery(request.search).localeBranchId ??
+      (await services.projectWorkflow.getDashboardStatus()).selectedLocaleBranchId;
+    if (localeBranchId === null) {
+      throw new ApiValidationError(
+        "reviewer queue dashboard requires localeBranchId when no dashboard branch is selected",
+      );
+    }
+    return ok(
+      "reviewer.queue",
+      await services.reviewerQueue.loadDashboard({ localeBranchId, permission }),
+    );
+  }
+
+  const reviewerDetailRoute = parseReviewerDetailApiRoute(request.pathname);
+  if (request.method === "GET" && reviewerDetailRoute !== null) {
+    const permission = await resolveApiReviewerQueuePermissionView(
+      services,
+      parseActorUserIdQuery(request.search),
+    );
+    if (!permission.canReadQueue) {
+      return ok(
+        "reviewer.detail",
+        deniedReviewerDetailApiResponse(reviewerDetailRoute.reviewItemId, permission),
+      );
+    }
+    return ok(
+      "reviewer.detail",
+      await services.reviewerQueue.loadDetailContext({
+        reviewItemId: reviewerDetailRoute.reviewItemId,
+        permission,
+      }),
+    );
+  }
+
+  if (request.method === "POST" && request.pathname === "/api/reviewer/queue/batch-preview") {
+    const body = parseReviewerBatchPreviewRequest(request.body);
+    const permission = await resolveApiReviewerQueuePermissionView(services, body.actorUserId);
+    return ok(
+      "reviewer.batchPreview",
+      await services.reviewerQueue.previewBatch({ request: body, permission }),
+    );
+  }
+
   if (
     request.pathname === "/api/projects/status" ||
     request.pathname === "/api/projects/decisions" ||
@@ -215,9 +278,14 @@ async function routeItotoriApiRequest(
     request.pathname === "/api/catalog/completeness" ||
     request.pathname === "/api/catalog/benchmark-seeds" ||
     request.pathname === "/api/catalog/opportunities" ||
-    request.pathname === "/api/terminology/search"
+    request.pathname === "/api/terminology/search" ||
+    request.pathname === "/api/reviewer/queue" ||
+    request.pathname === "/api/reviewer/queue/batch-preview" ||
+    reviewerDetailRoute !== null
   ) {
-    return methodNotAllowed(["GET"]);
+    return request.pathname === "/api/reviewer/queue/batch-preview"
+      ? methodNotAllowed(["POST"])
+      : methodNotAllowed(["GET"]);
   }
 
   if (request.method === "POST" && request.pathname === "/api/imports/bridge") {
@@ -285,6 +353,100 @@ async function requireApiPermission(
   gate: ApiMutationPermissionGate,
 ): Promise<void> {
   await services.authorization.requirePermission(gate.permission);
+}
+
+async function resolveApiReviewerQueuePermissionView(
+  services: ItotoriApiServices,
+  actorUserId = "local-user",
+): Promise<ReviewerQueuePermissionView> {
+  const [canReadQueue, readDenial] = await tryApiPermission(services, permissionValues.queueRead);
+  const [canManageQueue, manageDenial] = await tryApiPermission(
+    services,
+    permissionValues.queueManage,
+  );
+  const denialReasons: string[] = [];
+  if (readDenial !== null) {
+    denialReasons.push(readDenial);
+  }
+  if (manageDenial !== null) {
+    denialReasons.push(manageDenial);
+  }
+  return {
+    actorUserId,
+    canReadQueue,
+    canManageQueue,
+    denialReasons,
+  };
+}
+
+async function tryApiPermission(
+  services: ItotoriApiServices,
+  permission: Permission,
+): Promise<[boolean, string | null]> {
+  try {
+    await services.authorization.requirePermission(permission);
+    return [true, null];
+  } catch (error) {
+    if (error instanceof AuthorizationError) {
+      return [false, error.message];
+    }
+    throw error;
+  }
+}
+
+function deniedReviewerDetailApiResponse(
+  reviewItemId: string,
+  permission: ReviewerQueuePermissionView,
+): ApiReviewerDetailResponse {
+  const denialReason =
+    permission.denialReasons.find((reason) => reason.includes(permissionValues.queueRead)) ??
+    permission.denialReasons[0] ??
+    `user ${permission.actorUserId} is missing permission queue.read`;
+  return {
+    ...deniedContextFixture(permission.actorUserId),
+    reviewItemId,
+    permission: {
+      ...permission,
+      denialReasons:
+        permission.denialReasons.length === 0 ? [denialReason] : permission.denialReasons,
+    },
+    diagnostics: [
+      {
+        code: reviewerDetailDiagnosticCodeValues.permissionDenied,
+        message: denialReason,
+      },
+    ],
+  };
+}
+
+function parseActorUserIdQuery(search = ""): string | undefined {
+  const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
+  const actorUserId = params.get("actorUserId");
+  if (actorUserId === null) {
+    return undefined;
+  }
+  if (actorUserId.trim().length === 0) {
+    throw new ApiValidationError("actorUserId must be non-empty");
+  }
+  return actorUserId;
+}
+
+function parseReviewerQueueDashboardQuery(search = ""): { localeBranchId: string | null } {
+  const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
+  assertKnownQueryParams(params, ["localeBranchId", "actorUserId"], "reviewer queue dashboard");
+  const localeBranchId = params.get("localeBranchId");
+  if (localeBranchId !== null && localeBranchId.trim().length === 0) {
+    throw new ApiValidationError("localeBranchId must be non-empty");
+  }
+  return { localeBranchId };
+}
+
+function parseReviewerDetailApiRoute(pathname: string): { reviewItemId: string } | null {
+  const match = /^\/api\/reviewer\/queue\/([^/]+)\/detail$/u.exec(pathname);
+  if (match === null || match[1] === undefined || match[1].length === 0) {
+    return null;
+  }
+  return { reviewItemId: decodeURIComponent(match[1]) };
 }
 
 function parseCatalogOpportunityRankingFilter(search = ""): CatalogOpportunityRankingFilter {
@@ -619,6 +781,15 @@ function ok(
 function ok(
   routeId: "catalog.opportunities",
   body: CatalogOpportunityRankingReadModel,
+): ApiJsonResponse;
+function ok(
+  routeId: "reviewer.queue",
+  body: ApiReviewerQueueDashboardResponse,
+): ApiJsonResponse;
+function ok(routeId: "reviewer.detail", body: ApiReviewerDetailResponse): ApiJsonResponse;
+function ok(
+  routeId: "reviewer.batchPreview",
+  body: ApiReviewerBatchPreviewResponse,
 ): ApiJsonResponse;
 function ok(routeId: "terminology.search", body: TerminologySearchReadModel): ApiJsonResponse;
 function ok(routeId: "projects.status", body: ProjectDashboardStatus): ApiJsonResponse;

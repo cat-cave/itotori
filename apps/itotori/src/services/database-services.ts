@@ -67,6 +67,10 @@ import {
 } from "../auth.js";
 import { ManualFeedbackImportService, type ManualFeedbackImportPort } from "../manual-feedback.js";
 import {
+  ReviewerQueueApiService,
+  type ReviewerQueueApiServicePort,
+} from "../reviewer/api-service.js";
+import {
   ItotoriProjectWorkflowService,
   type ItotoriProjectWorkflowPort,
 } from "./project-workflow.js";
@@ -95,6 +99,7 @@ export type ItotoriApplicationServices = {
   terminologyRepository: {
     searchTerms(input: TerminologySearchInput): Promise<TerminologySearchReadModel>;
   };
+  reviewerQueue: ReviewerQueueApiServicePort;
   exactSearch: {
     refreshDocuments(
       input: RefreshExactSearchDocumentsInput,
@@ -293,6 +298,15 @@ export async function withDatabaseItotoriServices<T>(
       terminologyRepository: {
         searchTerms: (input) => terminologyRepository.searchTerms(localUserActor, input),
       },
+      reviewerQueue: new ReviewerQueueApiService({
+        repository: {
+          loadItemsByBranch: (localeBranchId) =>
+            reviewerQueueRepository.loadItemsByBranch(localUserActor, localeBranchId),
+          loadTransitionsByItem: (reviewItemId) =>
+            reviewerQueueRepository.loadTransitionsByItem(localUserActor, reviewItemId),
+          getItem: (reviewItemId) => reviewerQueueRepository.getItem(localUserActor, reviewItemId),
+        },
+      }),
       exactSearch: {
         refreshDocuments: (input) => exactSearchRepository.refreshDocuments(localUserActor, input),
         searchExact: (input) => exactSearchRepository.searchExact(localUserActor, input),

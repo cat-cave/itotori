@@ -9,6 +9,7 @@ import {
   assertDashboardDecisionReadModel,
   assertItotoriApiResponse,
   assertProjectDashboardStatus,
+  assertReviewerQueueDashboardReadModel,
   type ApiProjectsResponse,
   type ItotoriApiRouteId,
 } from "./api-schema.js";
@@ -19,11 +20,16 @@ import {
   type StyleGuideBuilderContext,
 } from "./style-guide-builder.js";
 import type { AdapterCapabilityEvidenceSummary } from "./services/engine-capability-report.js";
+import type {
+  ReviewerQueueDashboardReadModel,
+  ReviewerQueueDashboardRow,
+} from "./reviewer/index.js";
 
 export type DashboardEndpoints = {
   projects: string;
   status: string;
   decisions: string;
+  reviewerQueue: string;
   cost: string;
   runtime: string;
 };
@@ -34,6 +40,7 @@ type DashboardReadRouteId =
   | "projects.list"
   | "projects.status"
   | "projects.decisions"
+  | "reviewer.queue"
   | "projects.cost"
   | "runtime.status";
 
@@ -41,6 +48,7 @@ type DashboardReadResponses = {
   "projects.list": ApiProjectsResponse;
   "projects.status": ProjectDashboardStatus;
   "projects.decisions": DashboardDecisionReadModel;
+  "reviewer.queue": ReviewerQueueDashboardReadModel;
   "projects.cost": ProjectCostReport;
   "runtime.status": RuntimeDashboardStatus;
 };
@@ -51,6 +59,7 @@ type DashboardData =
       projects: ProjectDashboardStatus[];
       status: ProjectDashboardStatus;
       decisions: DashboardDecisionReadModel;
+      reviewerQueue: ReviewerQueueDashboardReadModel;
       cost: ProjectCostReport;
       runtime: RuntimeDashboardStatus;
       styleGuide: StyleGuideBuilderContext;
@@ -64,6 +73,7 @@ const defaultDashboardEndpoints: DashboardEndpoints = {
   projects: "/api/projects",
   status: "/api/projects/status",
   decisions: "/api/projects/decisions",
+  reviewerQueue: "/api/reviewer/queue",
   cost: "/api/projects/cost",
   runtime: "/api/runtime/v0.2/status",
 };
@@ -101,6 +111,16 @@ export async function fetchDashboardData(
     fetchApi("runtime.status", endpoints.runtime),
   ]);
   assertDecisionReadMatchesStatus(status, decisions);
+  const reviewerQueueEndpoint = withQueryParam(
+    endpoints.reviewerQueue,
+    "localeBranchId",
+    status.selectedLocaleBranchId,
+  );
+  const reviewerQueue =
+    status.selectedLocaleBranchId === null
+      ? emptyReviewerQueue(status.projectId)
+      : await fetchApi("reviewer.queue", reviewerQueueEndpoint);
+  assertReviewerQueueDashboardReadModel(reviewerQueue);
   const styleGuide = await loadStyleGuideContext(styleGuideInputFromStatus(status));
 
   return {
@@ -108,6 +128,7 @@ export async function fetchDashboardData(
     projects: projectsResponse.projects,
     status,
     decisions,
+    reviewerQueue,
     cost,
     runtime,
     styleGuide,
@@ -205,7 +226,7 @@ function renderWorkbench(
   data: Extract<DashboardData, { state: "ready" }>,
 ): void {
   const { status, cost, runtime, projects } = data;
-  const { decisions, styleGuide } = data;
+  const { decisions, reviewerQueue, styleGuide } = data;
   root.innerHTML = `
     ${dashboardStyles()}
     ${styleGuideBuilderStyles()}
@@ -233,6 +254,7 @@ function renderWorkbench(
         ${navLink("Glossary", "glossary")}
         ${navLink("Jobs", "jobs")}
         ${navLink("QA findings", "qa-findings")}
+        ${navLink("Reviewer queue", "reviewer-queue")}
         ${navLink("Pending decisions", "pending-decisions")}
         ${navLink("Runtime evidence", "runtime-evidence")}
         ${navLink("Benchmarks", "benchmarks")}
@@ -254,6 +276,7 @@ function renderWorkbench(
         ${renderGlossary()}
         ${renderJobs(cost)}
         ${renderQaFindings(decisions)}
+        ${renderReviewerQueue(reviewerQueue)}
         ${renderRuntimeEvidence(runtime)}
         ${renderBenchmarks(cost, status)}
         ${renderCost(cost)}
@@ -433,6 +456,87 @@ function renderQaFindings(decisions: DashboardDecisionReadModel): string {
       </table>
     `,
   );
+}
+
+function renderReviewerQueue(queue: ReviewerQueueDashboardReadModel): string {
+  const rows = queue.rows.map(renderReviewerQueueRow).join("");
+  if (queue.rows.length === 0) {
+    return panel(
+      "reviewer-queue",
+      "Reviewer queue",
+      emptyText("No reviewer queue items were returned by the API."),
+    );
+  }
+  const selectedRows = queue.rows.filter((row) => row.selectedForBatch);
+  return panel(
+    "reviewer-queue",
+    "Reviewer queue",
+    `
+      <dl class="metric-list metric-list-compact">
+        <div><dt>Pending</dt><dd>${queue.aggregate.pending}</dd></div>
+        <div><dt>Resolved</dt><dd>${queue.aggregate.resolved}</dd></div>
+        <div><dt>Deferred</dt><dd>${queue.aggregate.deferred}</dd></div>
+        <div><dt>Escalated</dt><dd>${queue.aggregate.escalated}</dd></div>
+        <div><dt>Batch applied</dt><dd>${queue.aggregate.batch_applied}</dd></div>
+      </dl>
+      <form action="/reviewer-queue/batch" method="get" class="queue-batch-form">
+        <input
+          type="hidden"
+          name="action"
+          value="${escapeHtml(queue.defaultBatchRequest.action)}"
+        />
+        <input
+          type="hidden"
+          name="actorUserId"
+          value="${escapeHtml(queue.permission.actorUserId)}"
+        />
+        <table>
+          <thead>
+            <tr>
+              <th>Batch</th>
+              <th>State</th>
+              <th>Item</th>
+              <th>Kind</th>
+              <th>Last action</th>
+              <th>Batch id</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+        <button type="submit"${selectedRows.length === 0 ? ' disabled aria-disabled="true"' : ""}>
+          Preview batch
+        </button>
+      </form>
+    `,
+  );
+}
+
+function renderReviewerQueueRow(row: ReviewerQueueDashboardRow): string {
+  const selectionValue = `${row.reviewItemId}@${row.sourceRevisionId}`;
+  return `
+    <tr
+      data-review-item-id="${escapeHtml(row.reviewItemId)}"
+      data-dashboard-state="${escapeHtml(row.dashboardState)}"
+    >
+      <td>
+        <input
+          type="checkbox"
+          name="selection"
+          value="${escapeHtml(selectionValue)}"
+          ${row.selectedForBatch ? "checked" : ""}
+          aria-label="Select ${escapeHtml(row.summary)}"
+        />
+      </td>
+      <td>${statusBadge(row.dashboardState)}</td>
+      <td>
+        <a href="${escapeHtml(row.detailPath)}">${escapeHtml(row.summary)}</a>
+        <div><code>${escapeHtml(row.reviewItemId)}</code></div>
+      </td>
+      <td>${escapeHtml(row.itemKind)}</td>
+      <td>${escapeHtml(row.lastAction ?? "none")}</td>
+      <td>${escapeHtml(row.batchActionId ?? "none")}</td>
+    </tr>
+  `;
 }
 
 function renderRuntimeEvidence(runtime: RuntimeDashboardStatus): string {
@@ -751,11 +855,55 @@ function resolveDashboardEndpoints(config: DashboardEndpointConfig): DashboardEn
       projects: `${origin}/api/projects`,
       status: `${origin}/api/projects/status`,
       decisions: `${origin}/api/projects/decisions`,
+      reviewerQueue: `${origin}/api/reviewer/queue`,
       cost: `${origin}/api/projects/cost`,
       runtime: `${origin}/api/runtime/v0.2/status`,
     };
   }
   return { ...defaultDashboardEndpoints, ...config };
+}
+
+function emptyReviewerQueue(projectId: string): ReviewerQueueDashboardReadModel {
+  return {
+    schemaVersion: "reviewer.queue_dashboard.v0.1",
+    localeBranchId: projectId,
+    generatedAt: new Date(),
+    permission: {
+      actorUserId: "local-user",
+      canReadQueue: true,
+      canManageQueue: false,
+      denialReasons: [],
+    },
+    rows: [],
+    aggregate: {
+      pending: 0,
+      resolved: 0,
+      deferred: 0,
+      escalated: 0,
+      batch_applied: 0,
+    },
+    defaultBatchRequest: {
+      action: "approve",
+      actorUserId: "local-user",
+      selections: [],
+    },
+  };
+}
+
+function withQueryParam(endpoint: string, key: string, value: string | null): string {
+  if (value === null) {
+    return endpoint;
+  }
+  const base =
+    typeof window === "undefined" || window.location.href === "about:blank"
+      ? "http://itotori.test"
+      : window.location.href;
+  const url = new URL(endpoint, base);
+  url.searchParams.set(key, value);
+  if (endpoint.startsWith("http://") || endpoint.startsWith("https://")) {
+    return url.toString();
+  }
+  return `${url.pathname}${url.search}`;
 }
 
 function styleGuideInputFromStatus(status: ProjectDashboardStatus) {

@@ -151,6 +151,20 @@ export {
 export type { ReviewerBatchConfirmDeps, ReviewerBatchRouteDeps } from "./batch-route.js";
 
 export {
+  ReviewerQueueApiService,
+  reviewerQueueDashboardStateValues,
+} from "./api-service.js";
+export type {
+  ReviewerQueueApiServiceDeps,
+  ReviewerQueueApiServicePort,
+  ReviewerQueueDashboardAggregate,
+  ReviewerQueueDashboardReadModel,
+  ReviewerQueueDashboardRow,
+  ReviewerQueueDashboardState,
+  ReviewerQueueReadRepositoryPort,
+} from "./api-service.js";
+
+export {
   fixtureAcceptedItem,
   fixtureAllAllowedPreview,
   fixtureAllowedGlossaryRow,
