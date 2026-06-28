@@ -432,6 +432,7 @@ fn run_patch_reallive_bundle(args: &[String]) -> Result<(), Box<dyn std::error::
     let force = flag_optional(args, "--force").is_some();
 
     validate_patch_target_root(&source_root, &target_root, "patch target directory")?;
+    reject_reallive_target_tree_symlinks(&target_root)?;
 
     // Refuse to overwrite a non-empty target without --force. The error
     // code is the documented patchback_target_nonempty Fatal from
@@ -526,6 +527,46 @@ fn reallive_patch_source_mutated_error(path: &Path, before: &str, after: &str) -
         "kaifuu.reallive.patchback_source_mutated: source Seen.txt at {} changed from {before} to {after} during the patch step",
         local_path_for_diagnostic(path),
     )
+}
+
+fn reject_reallive_target_tree_symlinks(
+    target_root: &Path,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let root_metadata = match fs::symlink_metadata(target_root) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(error.into()),
+    };
+    if root_metadata.file_type().is_symlink() {
+        return Err(format!(
+            "kaifuu.reallive.patchback_target_symlink: target tree must not contain symlinks before patching: {}",
+            local_path_for_diagnostic(target_root)
+        )
+        .into());
+    }
+    if !root_metadata.is_dir() {
+        return Ok(());
+    }
+
+    let mut stack = vec![target_root.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        for entry in fs::read_dir(&dir)? {
+            let entry = entry?;
+            let path = entry.path();
+            let metadata = fs::symlink_metadata(&path)?;
+            if metadata.file_type().is_symlink() {
+                return Err(format!(
+                    "kaifuu.reallive.patchback_target_symlink: target tree must not contain symlinks before patching: {}",
+                    local_path_for_diagnostic(&path)
+                )
+                .into());
+            }
+            if metadata.is_dir() {
+                stack.push(path);
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Recursively copy `src` into `dst` and make every copied file
@@ -6695,6 +6736,138 @@ wait
         assert!(!nested_output.exists());
         assert_no_patch_staging_entries(&root, "game");
         assert_no_patch_staging_entries(&game_dir, "patched-output");
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn patch_command_rejects_reallive_target_reallivedata_symlink_to_source_before_copy_or_write() {
+        use std::os::unix::fs as unix_fs;
+
+        let root = temp_dir("patch-reallive-target-data-symlink-source");
+        let source_root = root.join("private-source-root");
+        let source_data = source_root.join("REALLIVEDATA");
+        let target_root = root.join("private-target-root");
+        let target_data = target_root.join("REALLIVEDATA");
+        let bundle_path = root.join("missing-translated-bundle.json");
+        fs::create_dir_all(&source_data).unwrap();
+        fs::create_dir_all(&target_root).unwrap();
+        fs::write(
+            source_data.join("Seen.txt"),
+            b"synthetic source seen bytes\n",
+        )
+        .unwrap();
+        unix_fs::symlink(&source_data, &target_data).unwrap();
+
+        let result = run_patch_reallive_bundle(
+            &[
+                "patch",
+                "--engine",
+                "reallive",
+                "--source",
+                source_root.to_str().unwrap(),
+                "--target",
+                target_root.to_str().unwrap(),
+                "--bundle",
+                bundle_path.to_str().unwrap(),
+                "--force",
+            ]
+            .iter()
+            .map(|arg| arg.to_string())
+            .collect::<Vec<_>>(),
+        );
+
+        let error = result.unwrap_err().to_string();
+        assert!(
+            error.contains("kaifuu.reallive.patchback_target_symlink"),
+            "{error}"
+        );
+        assert!(
+            error.contains(kaifuu_core::SEMANTIC_SECRET_REDACTED),
+            "{error}"
+        );
+        for forbidden in [
+            source_root.to_string_lossy(),
+            source_data.to_string_lossy(),
+            target_root.to_string_lossy(),
+            target_data.to_string_lossy(),
+        ] {
+            assert!(
+                !error.contains(forbidden.as_ref()),
+                "diagnostic leaked private path {forbidden}: {error}"
+            );
+        }
+        assert_eq!(
+            fs::read(source_data.join("Seen.txt")).unwrap(),
+            b"synthetic source seen bytes\n"
+        );
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn patch_command_rejects_reallive_nested_target_symlink_to_writable_dir_before_copy_or_write() {
+        use std::os::unix::fs as unix_fs;
+
+        let root = temp_dir("patch-reallive-target-data-symlink-writable");
+        let source_root = root.join("private-source-root");
+        let target_root = root.join("private-target-root");
+        let linked_writable = root.join("private-linked-writable");
+        let bundle_path = root.join("missing-translated-bundle.json");
+        fs::create_dir_all(source_root.join("REALLIVEDATA")).unwrap();
+        fs::create_dir_all(&target_root).unwrap();
+        fs::create_dir_all(&linked_writable).unwrap();
+        fs::write(
+            source_root.join("REALLIVEDATA/Seen.txt"),
+            b"synthetic source seen bytes\n",
+        )
+        .unwrap();
+        unix_fs::symlink(&linked_writable, target_root.join("REALLIVEDATA")).unwrap();
+
+        let result = run_patch_reallive_bundle(
+            &[
+                "patch",
+                "--engine",
+                "reallive",
+                "--source",
+                source_root.to_str().unwrap(),
+                "--target",
+                target_root.to_str().unwrap(),
+                "--bundle",
+                bundle_path.to_str().unwrap(),
+                "--force",
+            ]
+            .iter()
+            .map(|arg| arg.to_string())
+            .collect::<Vec<_>>(),
+        );
+
+        let error = result.unwrap_err().to_string();
+        assert!(
+            error.contains("kaifuu.reallive.patchback_target_symlink"),
+            "{error}"
+        );
+        assert!(
+            error.contains(kaifuu_core::SEMANTIC_SECRET_REDACTED),
+            "{error}"
+        );
+        for forbidden in [
+            source_root.to_string_lossy(),
+            target_root.to_string_lossy(),
+            linked_writable.to_string_lossy(),
+        ] {
+            assert!(
+                !error.contains(forbidden.as_ref()),
+                "diagnostic leaked private path {forbidden}: {error}"
+            );
+        }
+        assert_eq!(
+            fs::read(source_root.join("REALLIVEDATA/Seen.txt")).unwrap(),
+            b"synthetic source seen bytes\n"
+        );
+        assert!(fs::read_dir(&linked_writable).unwrap().next().is_none());
 
         let _ = fs::remove_dir_all(root);
     }

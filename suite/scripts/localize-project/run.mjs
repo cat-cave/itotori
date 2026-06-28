@@ -735,6 +735,35 @@ function ensureWritableTargetDistinctFromSource(sourceRoot, targetRoot, redact =
       ),
     );
   }
+  rejectTargetTreeSymlinks(targetAbs, redact);
+}
+
+function rejectTargetTreeSymlinks(targetRoot, redact = (text) => text) {
+  let rootStat;
+  try {
+    rootStat = lstatSync(targetRoot);
+  } catch (error) {
+    if (error?.code === "ENOENT") return;
+    throw error;
+  }
+  if (rootStat.isSymbolicLink()) {
+    throw new Error(redact(`TARGET (${targetRoot}) tree must not contain symlinks`));
+  }
+  if (!rootStat.isDirectory()) return;
+
+  const stack = [targetRoot];
+  while (stack.length > 0) {
+    const dir = stack.pop();
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const path = join(dir, entry.name);
+      if (entry.isSymbolicLink()) {
+        throw new Error(redact(`TARGET (${targetRoot}) tree must not contain symlinks: ${path}`));
+      }
+      if (entry.isDirectory()) {
+        stack.push(path);
+      }
+    }
+  }
 }
 
 function runCommand(command, args, env = process.env, options = {}) {

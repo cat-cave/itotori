@@ -702,6 +702,125 @@ test("live run rejects target-root symlink before output mutation", () => {
   }
 });
 
+test("live run rejects nested target REALLIVEDATA symlink to source before output mutation", () => {
+  const metadata = writeProjectMetadata("fixture-alpha", {
+    game_id: "fixture-reallive-game",
+    game_version: "2026.06.test",
+    source_profile_id: "fixture-reallive-profile",
+    source_locale: "ja-JP-x-test",
+  });
+  const policy = writePairPolicy("fixture-alpha");
+  const work = mkdtempSync(join(tmpdir(), "itotori-target-data-symlink-source-"));
+  const fakeBin = join(work, "bin");
+  const sourceRoot = join(work, "private-source-root");
+  const targetRoot = join(work, "private-target-root");
+  const sourceData = join(sourceRoot, "REALLIVEDATA");
+  const sourceSeen = join(sourceData, "Seen.txt");
+  const targetData = join(targetRoot, "REALLIVEDATA");
+  mkdirSync(sourceData, { recursive: true });
+  mkdirSync(targetRoot, { recursive: true });
+  mkdirSync(fakeBin, { recursive: true });
+  writeFileSync(sourceSeen, "synthetic source seen bytes\n");
+  symlinkSync(sourceData, targetData);
+  writeFakeLiveCommandBins(fakeBin);
+
+  try {
+    const result = runDriver(
+      [
+        "--project",
+        "fixture-alpha",
+        "--project-metadata",
+        metadata.path,
+        "--pair-policy",
+        policy.path,
+        "--provider-kind",
+        "fake",
+      ],
+      {
+        PATH: prependPath(fakeBin),
+        OPENROUTER_API_KEY: "test-key",
+        ITOTORI_REAL_GAME_ROOT: sourceRoot,
+        TARGET: targetRoot,
+        ITOTORI_ALLOW_FAKE_LOCALIZE_PROVIDER: "1",
+      },
+    );
+    assert.notEqual(result.status, 0);
+    assert.ok(
+      result.stderr.includes("TARGET (<TARGET>) tree must not contain symlinks"),
+      `stderr should reject nested target symlink with placeholders; got:\n${result.stderr}`,
+    );
+    const combined = `${result.stdout}\n${result.stderr}`;
+    for (const forbidden of [sourceRoot, targetRoot, sourceData, targetData]) {
+      assert.ok(!combined.includes(forbidden), `diagnostic leaked private path ${forbidden}`);
+    }
+    assert.equal(readFileSync(sourceSeen, "utf8"), "synthetic source seen bytes\n");
+  } finally {
+    rmSync(metadata.dir, { recursive: true, force: true });
+    rmSync(policy.dir, { recursive: true, force: true });
+    rmSync(work, { recursive: true, force: true });
+  }
+});
+
+test("live run rejects nested target symlink to writable directory before output mutation", () => {
+  const metadata = writeProjectMetadata("fixture-alpha", {
+    game_id: "fixture-reallive-game",
+    game_version: "2026.06.test",
+    source_profile_id: "fixture-reallive-profile",
+    source_locale: "ja-JP-x-test",
+  });
+  const policy = writePairPolicy("fixture-alpha");
+  const work = mkdtempSync(join(tmpdir(), "itotori-target-data-symlink-writable-"));
+  const fakeBin = join(work, "bin");
+  const sourceRoot = join(work, "private-source-root");
+  const targetRoot = join(work, "private-target-root");
+  const linkedWritable = join(work, "private-linked-writable");
+  const sourceSeen = join(sourceRoot, "REALLIVEDATA", "Seen.txt");
+  mkdirSync(join(sourceRoot, "REALLIVEDATA"), { recursive: true });
+  mkdirSync(targetRoot, { recursive: true });
+  mkdirSync(linkedWritable, { recursive: true });
+  mkdirSync(fakeBin, { recursive: true });
+  writeFileSync(sourceSeen, "synthetic source seen bytes\n");
+  symlinkSync(linkedWritable, join(targetRoot, "REALLIVEDATA"));
+  writeFakeLiveCommandBins(fakeBin);
+
+  try {
+    const result = runDriver(
+      [
+        "--project",
+        "fixture-alpha",
+        "--project-metadata",
+        metadata.path,
+        "--pair-policy",
+        policy.path,
+        "--provider-kind",
+        "fake",
+      ],
+      {
+        PATH: prependPath(fakeBin),
+        OPENROUTER_API_KEY: "test-key",
+        ITOTORI_REAL_GAME_ROOT: sourceRoot,
+        TARGET: targetRoot,
+        ITOTORI_ALLOW_FAKE_LOCALIZE_PROVIDER: "1",
+      },
+    );
+    assert.notEqual(result.status, 0);
+    assert.ok(
+      result.stderr.includes("TARGET (<TARGET>) tree must not contain symlinks"),
+      `stderr should reject nested target symlink with placeholders; got:\n${result.stderr}`,
+    );
+    const combined = `${result.stdout}\n${result.stderr}`;
+    for (const forbidden of [sourceRoot, targetRoot, linkedWritable]) {
+      assert.ok(!combined.includes(forbidden), `diagnostic leaked private path ${forbidden}`);
+    }
+    assert.equal(readFileSync(sourceSeen, "utf8"), "synthetic source seen bytes\n");
+    assert.deepEqual(readdirSync(linkedWritable), []);
+  } finally {
+    rmSync(metadata.dir, { recursive: true, force: true });
+    rmSync(policy.dir, { recursive: true, force: true });
+    rmSync(work, { recursive: true, force: true });
+  }
+});
+
 test("live run rejects canonical source alias and nested target before output mutation", () => {
   const metadata = writeProjectMetadata("fixture-alpha", {
     game_id: "fixture-reallive-game",
