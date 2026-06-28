@@ -1,5 +1,7 @@
 import {
+  AssetLocalizationDecisionRepositoryError,
   AuthorizationError,
+  assetLocalizationDecisionAssetKindList,
   capabilityLevelValues,
   catalogCandidateMatchStatusValues,
   catalogCompletenessPoolValues,
@@ -7,6 +9,9 @@ import {
   catalogLanguageStatusValues,
   catalogSourceValues,
   type CapabilityLevel,
+  type AssetDecisionRecord,
+  type AssetLocalizationDecisionAssetKind,
+  type CandidateAssetRecord,
   type CatalogBenchmarkDemandBucket,
   type CatalogBenchmarkLocalOwnership,
   type CatalogBenchmarkSeedFinderFilter,
@@ -45,6 +50,8 @@ import {
   parseRuntimeEvidenceRequest,
   type ApiDraftBranchResponse,
   type ApiErrorResponse,
+  type ApiAssetDecisionsResponse,
+  type ApiCandidateAssetsResponse,
   type ApiProjectImportResponse,
   type ApiProjectsResponse,
   type ApiReviewerBatchExecuteResponse,
@@ -115,6 +122,18 @@ export type ItotoriApiServices = {
     searchTerms(input: TerminologySearchInput): Promise<TerminologySearchReadModel>;
   };
   reviewerQueue: ReviewerQueueApiServicePort;
+  assetDecisions: {
+    loadActiveDecisions(
+      projectId: string,
+      localeBranchId: string,
+      opts?: { kindFilter?: AssetLocalizationDecisionAssetKind },
+    ): Promise<AssetDecisionRecord[]>;
+    loadCandidateAssets(
+      projectId: string,
+      localeBranchId: string,
+      opts?: { kindFilter?: AssetLocalizationDecisionAssetKind },
+    ): Promise<CandidateAssetRecord[]>;
+  };
   projectWorkflow: Pick<
     ItotoriProjectWorkflowPort,
     | "getDashboardStatus"
@@ -219,6 +238,27 @@ async function routeItotoriApiRequest(
     );
   }
 
+  const assetDecisionRoute = parseAssetDecisionApiRoute(request.pathname);
+  if (request.method === "GET" && assetDecisionRoute !== null) {
+    const filter = parseAssetDecisionReadFilter(request.search);
+    if (assetDecisionRoute.resource === "active") {
+      return ok("assetDecisions.active", {
+        decisions: await services.assetDecisions.loadActiveDecisions(
+          assetDecisionRoute.projectId,
+          assetDecisionRoute.localeBranchId,
+          filter,
+        ),
+      });
+    }
+    return ok("assetDecisions.candidates", {
+      candidateAssets: await services.assetDecisions.loadCandidateAssets(
+        assetDecisionRoute.projectId,
+        assetDecisionRoute.localeBranchId,
+        filter,
+      ),
+    });
+  }
+
   if (request.method === "GET" && request.pathname === "/api/reviewer/queue") {
     const permission = await resolveApiReviewerQueuePermissionView(
       services,
@@ -294,6 +334,7 @@ async function routeItotoriApiRequest(
     request.pathname === "/api/catalog/benchmark-seeds" ||
     request.pathname === "/api/catalog/opportunities" ||
     request.pathname === "/api/terminology/search" ||
+    assetDecisionRoute !== null ||
     request.pathname === "/api/reviewer/queue" ||
     request.pathname === "/api/reviewer/queue/batch-preview" ||
     request.pathname === "/api/reviewer/queue/batch-confirm" ||
@@ -464,6 +505,52 @@ function parseReviewerDetailApiRoute(pathname: string): { reviewItemId: string }
     return null;
   }
   return { reviewItemId: decodeURIComponent(match[1]) };
+}
+
+function parseAssetDecisionApiRoute(pathname: string): {
+  projectId: string;
+  localeBranchId: string;
+  resource: "active" | "candidates";
+} | null {
+  const match =
+    /^\/api\/projects\/([^/]+)\/locale-branches\/([^/]+)\/asset-decisions(?:\/(candidates))?$/u.exec(
+      pathname,
+    );
+  if (match === null || match[1] === undefined || match[2] === undefined) {
+    return null;
+  }
+  return {
+    projectId: decodeApiPathSegment(match[1], "projectId"),
+    localeBranchId: decodeApiPathSegment(match[2], "localeBranchId"),
+    resource: match[3] === "candidates" ? "candidates" : "active",
+  };
+}
+
+function decodeApiPathSegment(raw: string, label: string): string {
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(raw);
+  } catch {
+    throw new ApiValidationError(`${label} must be URL-encoded`);
+  }
+  if (decoded.trim().length === 0 || decoded.includes("/")) {
+    throw new ApiValidationError(`${label} path segment must be non-empty and contain no slash`);
+  }
+  return decoded;
+}
+
+function parseAssetDecisionReadFilter(search = ""): {
+  kindFilter?: AssetLocalizationDecisionAssetKind;
+} {
+  const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
+  assertKnownQueryParams(params, ["assetKind"], "asset decisions");
+  const assetKind = params.get("assetKind");
+  if (assetKind === null) {
+    return {};
+  }
+  return {
+    kindFilter: enumParam(assetKind, assetLocalizationDecisionAssetKindList, "assetKind"),
+  };
 }
 
 function parseCatalogOpportunityRankingFilter(search = ""): CatalogOpportunityRankingFilter {
@@ -802,6 +889,11 @@ function apiMutationGate(
 }
 
 function ok(routeId: "projects.list", body: ApiProjectsResponse): ApiJsonResponse;
+function ok(routeId: "assetDecisions.active", body: ApiAssetDecisionsResponse): ApiJsonResponse;
+function ok(
+  routeId: "assetDecisions.candidates",
+  body: ApiCandidateAssetsResponse,
+): ApiJsonResponse;
 function ok(routeId: "catalog.conflicts", body: CatalogConflictReviewReadModel): ApiJsonResponse;
 function ok(
   routeId: "catalog.completeness",
@@ -855,6 +947,12 @@ function errorResponse(error: unknown): ApiJsonResponse {
   }
   if (error instanceof AuthorizationError) {
     return errorBody(403, "forbidden", error.message);
+  }
+  if (
+    error instanceof AssetLocalizationDecisionRepositoryError &&
+    error.code === "asset_decision_not_found"
+  ) {
+    return errorBody(404, "not_found", error.message);
   }
   return errorBody(500, "internal_error", error instanceof Error ? error.message : String(error));
 }

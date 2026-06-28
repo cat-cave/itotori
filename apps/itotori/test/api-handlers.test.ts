@@ -1,11 +1,14 @@
 import { readdirSync, readFileSync } from "node:fs";
 import * as ts from "typescript";
 import {
+  AssetLocalizationDecisionRepositoryError,
   AuthorizationError,
   ItotoriProjectRepository,
+  assetLocalizationDecisionAssetKindValues,
   localUserId,
   permissionValues,
   reviewerQueueActionValues,
+  type CandidateAssetRecord,
   type Permission,
   type ProjectCostReport,
 } from "@itotori/db";
@@ -21,6 +24,7 @@ import {
   type ItotoriApiServices,
 } from "../src/api-handlers.js";
 import { ItotoriProjectWorkflowService } from "../src/services/project-workflow.js";
+import { translateTextFixture } from "../src/asset-decisions/decision-fixtures.js";
 import {
   fixtureAllAllowedPreview,
   readyContextFixture,
@@ -50,6 +54,18 @@ import {
 } from "./api-fixtures.js";
 
 const deniedActor = { userId: "api-user-without-required-permission" };
+
+const assetDecisionApiFixture = translateTextFixture({
+  projectId: "project-1",
+  localeBranchId: "locale-1",
+  assetRef: { kind: "bridgeAssetRef", ref: "asset-image-1", assetKey: "cg/title.png" },
+});
+
+const candidateAssetApiFixture: CandidateAssetRecord = {
+  assetRef: { kind: "bridgeAssetRef", ref: "asset-image-2", assetKey: "cg/menu.png" },
+  assetKind: assetLocalizationDecisionAssetKindValues.uiArt,
+  displayLabel: "cg/menu.png",
+};
 
 type ApiMutationPermissionGateId = keyof typeof apiMutationPermissionGates;
 type MutatingProjectWorkflowService = Exclude<
@@ -434,6 +450,117 @@ describe("Itotori API handlers", () => {
 
     expect(response).toEqual({ statusCode: 200, body: runtimeStatusFixture });
     expect(services.projectWorkflow.getRuntimeStatus).toHaveBeenCalledWith("runtime-older");
+  });
+
+  it("routes asset-decision active and candidate reads through typed services", async () => {
+    const services = serviceFixture();
+
+    const active = await handleItotoriApiRequest(
+      {
+        method: "GET",
+        pathname: "/api/projects/project-1/locale-branches/locale-1/asset-decisions",
+      },
+      services,
+    );
+    const candidates = await handleItotoriApiRequest(
+      {
+        method: "GET",
+        pathname: "/api/projects/project-1/locale-branches/locale-1/asset-decisions/candidates",
+        search: "?assetKind=ui_art",
+      },
+      services,
+    );
+
+    expect(active).toEqual({ statusCode: 200, body: { decisions: [assetDecisionApiFixture] } });
+    expect(candidates).toEqual({
+      statusCode: 200,
+      body: { candidateAssets: [candidateAssetApiFixture] },
+    });
+    expect(services.assetDecisions.loadActiveDecisions).toHaveBeenCalledWith(
+      "project-1",
+      "locale-1",
+      {},
+    );
+    expect(services.assetDecisions.loadCandidateAssets).toHaveBeenCalledWith(
+      "project-1",
+      "locale-1",
+      { kindFilter: "ui_art" },
+    );
+  });
+
+  it.each([
+    {
+      name: "encoded slash in project id",
+      pathname: "/api/projects/project%2Fbad/locale-branches/locale-1/asset-decisions",
+      search: "",
+      error: /projectId/u,
+    },
+    {
+      name: "unknown query parameter",
+      pathname: "/api/projects/project-1/locale-branches/locale-1/asset-decisions",
+      search: "?typo=1",
+      error: /unknown asset decisions query parameter: typo/u,
+    },
+    {
+      name: "unknown asset kind",
+      pathname: "/api/projects/project-1/locale-branches/locale-1/asset-decisions/candidates",
+      search: "?assetKind=script",
+      error: /assetKind/u,
+    },
+  ])("rejects malformed asset-decision reads: $name", async ({ pathname, search, error }) => {
+    const services = serviceFixture();
+
+    const response = await handleItotoriApiRequest(
+      { method: "GET", pathname, search },
+      services,
+    );
+
+    expect(response.statusCode).toBe(400);
+    expect(response.body).toMatchObject({ code: "bad_request" });
+    expect(response.body.error).toMatch(error);
+    expect(services.assetDecisions.loadActiveDecisions).not.toHaveBeenCalled();
+    expect(services.assetDecisions.loadCandidateAssets).not.toHaveBeenCalled();
+  });
+
+  it("returns forbidden when asset-decision read permissions are denied", async () => {
+    const services = serviceFixture();
+    services.assetDecisions.loadActiveDecisions.mockRejectedValueOnce(
+      new AuthorizationError(deniedActor, permissionValues.catalogRead),
+    );
+
+    const response = await handleItotoriApiRequest(
+      {
+        method: "GET",
+        pathname: "/api/projects/project-1/locale-branches/locale-1/asset-decisions",
+      },
+      services,
+    );
+
+    expect(response.statusCode).toBe(403);
+    expect(response.body).toMatchObject({ code: "forbidden" });
+    expect(services.assetDecisions.loadActiveDecisions).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns not found when the asset-decision project branch does not exist", async () => {
+    const services = serviceFixture();
+    services.assetDecisions.loadCandidateAssets.mockRejectedValueOnce(
+      new AssetLocalizationDecisionRepositoryError(
+        "asset_decision_not_found",
+        "locale branch missing-locale was not found for project project-1",
+      ),
+    );
+
+    const response = await handleItotoriApiRequest(
+      {
+        method: "GET",
+        pathname: "/api/projects/project-1/locale-branches/missing-locale/asset-decisions/candidates",
+      },
+      services,
+    );
+
+    expect(response.statusCode).toBe(404);
+    expect(response.body).toMatchObject({ code: "not_found" });
+    expect(services.assetDecisions.loadCandidateAssets).toHaveBeenCalledTimes(1);
   });
 
   it.each([
@@ -2248,6 +2375,10 @@ function serviceFixture(): ItotoriApiServices {
       executeBatch: vi.fn(async ({ request, permission }) =>
         makeApiBatchExecuteResult(request, permission),
       ),
+    },
+    assetDecisions: {
+      loadActiveDecisions: vi.fn(async () => [assetDecisionApiFixture]),
+      loadCandidateAssets: vi.fn(async () => [candidateAssetApiFixture]),
     },
   };
 }

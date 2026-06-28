@@ -1,11 +1,13 @@
 import { randomUUID } from "node:crypto";
-import { and, desc, eq, isNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
 import type { ItotoriDatabase } from "../connection.js";
 import { type AuthorizationActor, permissionValues, requirePermission } from "../authorization.js";
 import {
   assetLocalizationDecisionAssetKindValues,
   assetLocalizationDecisionPolicyValues,
   assetLocalizationDecisions,
+  assets,
+  localeBranches,
   type AssetLocalizationDecisionAssetKind,
   type AssetLocalizationDecisionAssetRef,
   type AssetLocalizationDecisionPolicy,
@@ -75,6 +77,12 @@ export type LoadActiveDecisionsOptions = {
   kindFilter?: AssetLocalizationDecisionAssetKind;
 };
 
+export type CandidateAssetRecord = {
+  assetRef: AssetLocalizationDecisionAssetRef;
+  assetKind: AssetLocalizationDecisionAssetKind;
+  displayLabel?: string;
+};
+
 export interface ItotoriAssetLocalizationDecisionRepositoryPort {
   recordDecision(
     actor: AuthorizationActor,
@@ -90,6 +98,12 @@ export interface ItotoriAssetLocalizationDecisionRepositoryPort {
     localeBranchId: string,
     opts?: LoadActiveDecisionsOptions,
   ): Promise<AssetDecisionRecord[]>;
+  loadCandidateAssets(
+    actor: AuthorizationActor,
+    projectId: string,
+    localeBranchId: string,
+    opts?: LoadActiveDecisionsOptions,
+  ): Promise<CandidateAssetRecord[]>;
   loadDecisionHistory(
     actor: AuthorizationActor,
     projectId: string,
@@ -208,6 +222,7 @@ export class ItotoriAssetLocalizationDecisionRepository implements ItotoriAssetL
     opts?: LoadActiveDecisionsOptions,
   ): Promise<AssetDecisionRecord[]> {
     await requirePermission(this.db, actor, permissionValues.catalogRead);
+    await this.requireLocaleBranch(projectId, localeBranchId);
 
     const conditions = [
       eq(assetLocalizationDecisions.projectId, projectId),
@@ -223,6 +238,48 @@ export class ItotoriAssetLocalizationDecisionRepository implements ItotoriAssetL
       .where(and(...conditions))
       .orderBy(desc(assetLocalizationDecisions.decidedAt));
     return rows.map(rowToRecord);
+  }
+
+  async loadCandidateAssets(
+    actor: AuthorizationActor,
+    projectId: string,
+    localeBranchId: string,
+    opts?: LoadActiveDecisionsOptions,
+  ): Promise<CandidateAssetRecord[]> {
+    await requirePermission(this.db, actor, permissionValues.catalogRead);
+    const branch = await this.requireLocaleBranch(projectId, localeBranchId);
+    const active = await this.loadActiveDecisions(actor, projectId, localeBranchId);
+    const activeRefs = new Set(active.map((decision) => decision.assetRef.ref));
+    const assetRows = await this.db
+      .select({
+        assetId: assets.assetId,
+        assetKey: assets.assetKey,
+        assetKind: assets.assetKind,
+        path: assets.path,
+      })
+      .from(assets)
+      .where(
+        and(eq(assets.projectId, projectId), eq(assets.sourceBundleId, branch.sourceBundleId)),
+      )
+      .orderBy(asc(assets.assetKey));
+
+    const candidates: CandidateAssetRecord[] = [];
+    for (const row of assetRows) {
+      const assetKind = bridgeAssetKindToDecisionAssetKind(row.assetKind);
+      if (assetKind === null || (opts?.kindFilter !== undefined && assetKind !== opts.kindFilter)) {
+        continue;
+      }
+      if (activeRefs.has(row.assetId)) {
+        continue;
+      }
+      const candidate: CandidateAssetRecord = {
+        assetRef: { kind: "bridgeAssetRef", ref: row.assetId, assetKey: row.assetKey },
+        assetKind,
+        displayLabel: row.path ?? row.assetKey,
+      };
+      candidates.push(candidate);
+    }
+    return candidates;
   }
 
   async loadDecisionHistory(
@@ -281,6 +338,30 @@ export class ItotoriAssetLocalizationDecisionRepository implements ItotoriAssetL
       return null;
     }
     return rowToRecord(row);
+  }
+
+  private async requireLocaleBranch(
+    projectId: string,
+    localeBranchId: string,
+  ): Promise<{ sourceBundleId: string }> {
+    const rows = await this.db
+      .select({ sourceBundleId: localeBranches.sourceBundleId })
+      .from(localeBranches)
+      .where(
+        and(
+          eq(localeBranches.projectId, projectId),
+          eq(localeBranches.localeBranchId, localeBranchId),
+        ),
+      )
+      .limit(1);
+    const row = rows[0];
+    if (row === undefined) {
+      throw new AssetLocalizationDecisionRepositoryError(
+        "asset_decision_not_found",
+        `locale branch ${localeBranchId} was not found for project ${projectId}`,
+      );
+    }
+    return row;
   }
 }
 
@@ -365,6 +446,26 @@ function rowToRecord(row: typeof assetLocalizationDecisions.$inferSelect): Asset
     supersededByDecisionId: row.supersededByDecisionId,
     createdAt: row.createdAt,
   };
+}
+
+function bridgeAssetKindToDecisionAssetKind(
+  assetKind: string,
+): AssetLocalizationDecisionAssetKind | null {
+  switch (assetKind) {
+    case "image":
+      return assetLocalizationDecisionAssetKindValues.imageWithText;
+    case "ui_texture":
+      return assetLocalizationDecisionAssetKindValues.uiArt;
+    case "font":
+      return assetLocalizationDecisionAssetKindValues.font;
+    case "video":
+      return assetLocalizationDecisionAssetKindValues.video;
+    case "text":
+    case "metadata":
+      return assetLocalizationDecisionAssetKindValues.doNotTranslate;
+    default:
+      return null;
+  }
 }
 
 export { assetLocalizationDecisionAssetKindValues, assetLocalizationDecisionPolicyValues };

@@ -42,6 +42,9 @@ import {
   type SearchExactToolResult,
   type StyleGuideFixtureFlowInput,
   type StyleGuideFixtureFlowResult,
+  type AssetDecisionRecord,
+  type AssetLocalizationDecisionAssetKind,
+  type CandidateAssetRecord,
 } from "@itotori/db";
 import {
   EngineCapabilityReportService,
@@ -127,7 +130,18 @@ export type ItotoriApplicationServices = {
     defaultContextWindowTokens: number;
   };
   engineCapabilityReports: EngineCapabilityReportPort;
-  assetDecisions: AssetDecisionsCliPort;
+  assetDecisions: Omit<AssetDecisionsCliPort, "loadActiveDecisions"> & {
+    loadActiveDecisions(
+      projectId: string,
+      localeBranchId: string,
+      opts?: { kindFilter?: AssetLocalizationDecisionAssetKind },
+    ): Promise<AssetDecisionRecord[]>;
+    loadCandidateAssets(
+      projectId: string,
+      localeBranchId: string,
+      opts?: { kindFilter?: AssetLocalizationDecisionAssetKind },
+    ): Promise<CandidateAssetRecord[]>;
+  };
   /**
    * ITOTORI-223 — per-(modelId, providerId) telemetry query surface
    * over the draft-attempt provider ledger.
@@ -354,8 +368,20 @@ export async function withDatabaseItotoriServices<T>(
         localUserActor,
       ),
       assetDecisions: {
-        loadActiveDecisions: (projectId, localeBranchId) =>
-          assetDecisionRepository.loadActiveDecisions(localUserActor, projectId, localeBranchId),
+        loadActiveDecisions: (projectId, localeBranchId, opts) =>
+          assetDecisionRepository.loadActiveDecisions(
+            localUserActor,
+            projectId,
+            localeBranchId,
+            opts,
+          ),
+        loadCandidateAssets: (projectId, localeBranchId, opts) =>
+          assetDecisionRepository.loadCandidateAssets(
+            localUserActor,
+            projectId,
+            localeBranchId,
+            opts,
+          ),
         recordDecision: (input) => assetDecisionRepository.recordDecision(localUserActor, input),
       },
       telemetry: {

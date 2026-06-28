@@ -702,6 +702,7 @@ export {
 } from "./repositories/asset-localization-decision-repository.js";
 export type {
   AssetDecisionRecord,
+  CandidateAssetRecord,
   ItotoriAssetLocalizationDecisionRepositoryPort,
   LoadActiveDecisionsOptions,
   RecordAssetDecisionInput,

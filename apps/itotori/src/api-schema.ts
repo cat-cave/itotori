@@ -1,4 +1,7 @@
 import type {
+  AssetDecisionRecord,
+  AssetLocalizationDecisionAssetKind,
+  CandidateAssetRecord,
   CatalogConfidence,
   CatalogBenchmarkSeedFinderReadModel,
   CatalogCompletenessBenchmarkPools,
@@ -22,6 +25,8 @@ import type {
   TerminologySearchReadModel,
 } from "@itotori/db";
 import {
+  assetLocalizationDecisionAssetKindList,
+  assetLocalizationDecisionPolicyList,
   catalogConfidenceValues,
   catalogExternalIdKindValues,
   catalogLanguageStatusScopeValues,
@@ -73,6 +78,8 @@ import type { ReviewerBatchExecuteResult } from "./reviewer/batch-execute.js";
 import type { ReviewerDetailContext } from "./reviewer/detail-fixtures.js";
 
 export type ItotoriApiRouteId =
+  | "assetDecisions.active"
+  | "assetDecisions.candidates"
   | "catalog.benchmarkSeeds"
   | "catalog.completeness"
   | "catalog.conflicts"
@@ -129,6 +136,14 @@ export type ApiReviewerBatchExecuteRequest = ReviewerBatchActionRequest;
 
 export type ApiReviewerBatchExecuteResponse = ReviewerBatchExecuteResult;
 
+export type ApiAssetDecisionsResponse = {
+  decisions: AssetDecisionRecord[];
+};
+
+export type ApiCandidateAssetsResponse = {
+  candidateAssets: CandidateAssetRecord[];
+};
+
 export type ApiProjectImportRequest = {
   bridge: BridgeBundle | BridgeBundleV02;
 };
@@ -178,6 +193,8 @@ export type ApiRuntimeEvidenceRequest = {
 export type ApiRuntimeEvidenceResponse = RuntimeIngestResult;
 
 export type ItotoriApiResponseBody =
+  | ApiAssetDecisionsResponse
+  | ApiCandidateAssetsResponse
   | ApiCatalogBenchmarkSeedsResponse
   | ApiCatalogCompletenessResponse
   | ApiCatalogConflictReviewResponse
@@ -337,6 +354,12 @@ export function assertItotoriApiResponse(
   value: unknown,
 ): asserts value is ItotoriApiResponseBody {
   switch (routeId) {
+    case "assetDecisions.active":
+      assertApiAssetDecisionsResponse(value);
+      return;
+    case "assetDecisions.candidates":
+      assertApiCandidateAssetsResponse(value);
+      return;
     case "catalog.benchmarkSeeds":
       assertCatalogBenchmarkSeedFinderReadModel(value);
       return;
@@ -398,6 +421,85 @@ export function assertItotoriApiResponse(
       assertRuntimeEvidenceResponse(value);
       return;
   }
+}
+
+function assertApiAssetDecisionsResponse(
+  value: unknown,
+  label = "ApiAssetDecisionsResponse",
+): asserts value is ApiAssetDecisionsResponse {
+  const response = asStrictRecord(value, label, ["decisions"]);
+  const decisions = asArray(response.decisions, `${label}.decisions`);
+  for (const [index, decision] of decisions.entries()) {
+    assertAssetDecisionRecord(decision, `${label}.decisions[${index}]`);
+  }
+}
+
+function assertApiCandidateAssetsResponse(
+  value: unknown,
+  label = "ApiCandidateAssetsResponse",
+): asserts value is ApiCandidateAssetsResponse {
+  const response = asStrictRecord(value, label, ["candidateAssets"]);
+  const candidateAssets = asArray(response.candidateAssets, `${label}.candidateAssets`);
+  for (const [index, candidate] of candidateAssets.entries()) {
+    assertCandidateAssetRecord(candidate, `${label}.candidateAssets[${index}]`);
+  }
+}
+
+function assertAssetDecisionRecord(
+  value: unknown,
+  label: string,
+): asserts value is AssetDecisionRecord {
+  const record = asStrictRecord(value, label, [
+    "decisionId",
+    "projectId",
+    "localeBranchId",
+    "assetRef",
+    "assetKind",
+    "decisionPolicy",
+    "decisionRationale",
+    "decidedByUserId",
+    "decidedAt",
+    "supersededAt",
+    "supersededByDecisionId",
+    "createdAt",
+  ]);
+  assertString(record.decisionId, `${label}.decisionId`);
+  assertString(record.projectId, `${label}.projectId`);
+  assertString(record.localeBranchId, `${label}.localeBranchId`);
+  assertAssetRef(record.assetRef, `${label}.assetRef`);
+  assertAssetDecisionKind(record.assetKind, `${label}.assetKind`);
+  assertEnum(record.decisionPolicy, assetLocalizationDecisionPolicyList, `${label}.decisionPolicy`);
+  assertNullableString(record.decisionRationale, `${label}.decisionRationale`);
+  assertNullableString(record.decidedByUserId, `${label}.decidedByUserId`);
+  assertDateLike(record.decidedAt, `${label}.decidedAt`);
+  assertNullableDateLike(record.supersededAt, `${label}.supersededAt`);
+  assertNullableString(record.supersededByDecisionId, `${label}.supersededByDecisionId`);
+  assertDateLike(record.createdAt, `${label}.createdAt`);
+}
+
+function assertCandidateAssetRecord(
+  value: unknown,
+  label: string,
+): asserts value is CandidateAssetRecord {
+  const record = asStrictRecord(value, label, ["assetRef", "assetKind", "displayLabel"]);
+  assertAssetRef(record.assetRef, `${label}.assetRef`);
+  assertAssetDecisionKind(record.assetKind, `${label}.assetKind`);
+  if (record.displayLabel !== undefined) {
+    assertString(record.displayLabel, `${label}.displayLabel`);
+  }
+}
+
+function assertAssetRef(value: unknown, label: string): void {
+  const assetRef = asRecord(value, label);
+  assertString(assetRef.kind, `${label}.kind`);
+  assertString(assetRef.ref, `${label}.ref`);
+}
+
+function assertAssetDecisionKind(
+  value: unknown,
+  label: string,
+): asserts value is AssetLocalizationDecisionAssetKind {
+  assertEnum(value, assetLocalizationDecisionAssetKindList, label);
 }
 
 export function assertReviewerQueueDashboardReadModel(
