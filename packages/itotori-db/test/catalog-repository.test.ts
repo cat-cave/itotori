@@ -2,11 +2,16 @@ import { createHash } from "node:crypto";
 import { eq, sql } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import { localUserId, permissionValues, type AuthorizationActor } from "../src/authorization.js";
+import type { ItotoriDatabase } from "../src/connection.js";
 import {
+  type CatalogOpportunityFactorName,
+  type CatalogOpportunityRow,
   ItotoriCatalogRepository,
   type CatalogSourceProvenanceRecord,
 } from "../src/repositories/catalog-repository.js";
 import {
+  capabilityLevelStatusKindValues,
+  capabilityLevelValues,
   catalogConflictKindValues,
   catalogConflictSubjectKindValues,
   catalogConfidenceValues,
@@ -35,6 +40,11 @@ import {
   catalogSourceRecordKindValues,
   catalogSourceValues,
   catalogWorks,
+  engineCapabilityEvidence,
+  engineCapabilityEvidenceKindValues,
+  engineCapabilityEvidenceSourceValues,
+  engineCapabilityEvidenceStatusValues,
+  engineCapabilityReports,
   userPermissionGrants,
 } from "../src/schema.js";
 import { isolatedMigratedContext } from "./db-test-context.js";
@@ -1603,6 +1613,126 @@ describe("ItotoriCatalogRepository", () => {
     }
   });
 
+  it("counts public fixture and private aggregate runtime evidence in opportunity ranking", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      const repo = new ItotoriCatalogRepository(context.db);
+      const publicProvenance = await provenance(repo, 810, catalogSourceValues.dlsite, "RJRT810");
+      const privateProvenance = await provenance(repo, 811, catalogSourceValues.dlsite, "RJRT811");
+      const mixedProvenance = await provenance(repo, 812, catalogSourceValues.dlsite, "RJRT812");
+
+      await recordRuntimeReadinessCapabilityEvidence(context.db, {
+        adapterId: "public-fixture-runtime-engine",
+        idBase: 8100,
+        publicFixture: true,
+        privateLocalAggregate: false,
+      });
+      await recordRuntimeReadinessCapabilityEvidence(context.db, {
+        adapterId: "private-aggregate-runtime-engine",
+        idBase: 8200,
+        publicFixture: false,
+        privateLocalAggregate: true,
+      });
+      await recordRuntimeReadinessCapabilityEvidence(context.db, {
+        adapterId: "mixed-runtime-engine",
+        idBase: 8300,
+        publicFixture: true,
+        privateLocalAggregate: true,
+      });
+
+      await repo.upsertWork(
+        localActor,
+        runtimeReadinessWorkInput({
+          workId: uuid(810),
+          title: "Public fixture runtime readiness",
+          provenance: publicProvenance,
+          sourceId: "RJRT810",
+          adapterId: "public-fixture-runtime-engine",
+          languageStatusId: uuid(8810),
+        }),
+      );
+      await repo.upsertWork(
+        localActor,
+        runtimeReadinessWorkInput({
+          workId: uuid(811),
+          title: "Private aggregate runtime readiness",
+          provenance: privateProvenance,
+          sourceId: "RJRT811",
+          adapterId: "private-aggregate-runtime-engine",
+          languageStatusId: uuid(8811),
+        }),
+      );
+      await repo.upsertWork(
+        localActor,
+        runtimeReadinessWorkInput({
+          workId: uuid(812),
+          title: "Mixed runtime readiness",
+          provenance: mixedProvenance,
+          sourceId: "RJRT812",
+          adapterId: "mixed-runtime-engine",
+          languageStatusId: uuid(8812),
+        }),
+      );
+
+      const model = await repo.catalogOpportunityRanking(localActor, {
+        includeDemoted: true,
+        limit: 20,
+      });
+      const publicOnly = requiredOpportunityRow(model.rows, uuid(810));
+      const privateOnly = requiredOpportunityRow(model.rows, uuid(811));
+      const mixed = requiredOpportunityRow(model.rows, uuid(812));
+
+      expect(publicOnly.runtimeEvidenceReadiness).toEqual({
+        status: "public_fixture",
+        publicFixtureEvidenceCount: 1,
+        privateLocalAggregateEvidenceCount: 0,
+      });
+      expect(privateOnly.runtimeEvidenceReadiness).toEqual({
+        status: "private_local_aggregate",
+        publicFixtureEvidenceCount: 0,
+        privateLocalAggregateEvidenceCount: 1,
+      });
+      expect(mixed.runtimeEvidenceReadiness).toEqual({
+        status: "public_and_aggregate",
+        publicFixtureEvidenceCount: 1,
+        privateLocalAggregateEvidenceCount: 1,
+      });
+
+      expect(runtimeEvidenceFactor(publicOnly)).toMatchObject({
+        weightedScore: 4.2,
+        evidenceRefs: [
+          "private_local_aggregate_evidence_count:0",
+          "public_fixture_evidence_count:1",
+        ],
+        explanationCode: "runtime_evidence_readiness:public_fixture",
+      });
+      expect(runtimeEvidenceFactor(privateOnly)).toMatchObject({
+        weightedScore: 3.3,
+        evidenceRefs: [
+          "private_local_aggregate_evidence_count:1",
+          "public_fixture_evidence_count:0",
+        ],
+        explanationCode: "runtime_evidence_readiness:private_local_aggregate",
+      });
+      expect(runtimeEvidenceFactor(mixed)).toMatchObject({
+        weightedScore: 6,
+        evidenceRefs: [
+          "private_local_aggregate_evidence_count:1",
+          "public_fixture_evidence_count:1",
+        ],
+        explanationCode: "runtime_evidence_readiness:public_and_aggregate",
+      });
+      expect(runtimeEvidenceFactor(mixed).weightedScore).toBeGreaterThan(
+        runtimeEvidenceFactor(publicOnly).weightedScore,
+      );
+      expect(runtimeEvidenceFactor(mixed).weightedScore).toBeGreaterThan(
+        runtimeEvidenceFactor(privateOnly).weightedScore,
+      );
+    } finally {
+      await context.close();
+    }
+  });
+
   it("rejects catalog writes and reads without catalog permissions", async () => {
     const context = await isolatedMigratedContext();
     try {
@@ -1657,6 +1787,100 @@ async function recordWorkWithRelease(
       },
     ],
   });
+}
+
+async function recordRuntimeReadinessCapabilityEvidence(
+  db: ItotoriDatabase,
+  input: {
+    adapterId: string;
+    idBase: number;
+    publicFixture: boolean;
+    privateLocalAggregate: boolean;
+  },
+): Promise<void> {
+  await db.insert(engineCapabilityReports).values(
+    Object.values(capabilityLevelValues).map((level, index) => ({
+      engineCapabilityReportId: uuid(input.idBase + index),
+      adapterId: input.adapterId,
+      level,
+      statusKind: capabilityLevelStatusKindValues.supported,
+      limitations: [],
+      reason: null,
+    })),
+  );
+
+  const evidenceRows: (typeof engineCapabilityEvidence.$inferInsert)[] = [];
+  if (input.publicFixture) {
+    evidenceRows.push({
+      engineCapabilityEvidenceId: uuid(input.idBase + 10),
+      adapterId: input.adapterId,
+      level: capabilityLevelValues.extract,
+      evidenceSource: engineCapabilityEvidenceSourceValues.publicFixture,
+      evidenceKind: engineCapabilityEvidenceKindValues.keyValidation,
+      schemaVersion: "catalog.capability_evidence.v0.1",
+      status: engineCapabilityEvidenceStatusValues.present,
+      aggregateCounts: { fixture_rows: 1 },
+      evidenceLabels: [],
+      limitations: [],
+      publicFixtureId: `${input.adapterId}-runtime-fixture`,
+    });
+  }
+  if (input.privateLocalAggregate) {
+    evidenceRows.push({
+      engineCapabilityEvidenceId: uuid(input.idBase + 11),
+      adapterId: input.adapterId,
+      level: capabilityLevelValues.extract,
+      evidenceSource: engineCapabilityEvidenceSourceValues.privateLocalAggregate,
+      evidenceKind: engineCapabilityEvidenceKindValues.localCorpusSidecar,
+      schemaVersion: "catalog.local_corpus_engine_evidence.v0.1",
+      status: engineCapabilityEvidenceStatusValues.present,
+      aggregateCounts: { marker_kinds: 1 },
+      evidenceLabels: [],
+      limitations: [],
+      publicFixtureId: null,
+    });
+  }
+  await db.insert(engineCapabilityEvidence).values(evidenceRows);
+}
+
+function runtimeReadinessWorkInput(input: {
+  workId: string;
+  title: string;
+  provenance: CatalogSourceProvenanceRecord;
+  sourceId: string;
+  adapterId: string;
+  languageStatusId: string;
+}): Parameters<ItotoriCatalogRepository["upsertWork"]>[1] {
+  return {
+    workId: input.workId,
+    canonicalTitle: input.title,
+    originalLanguage: "ja-JP",
+    engine: {
+      engineName: input.adapterId,
+      engineSource: catalogEngineSourceValues.manual,
+      engineConfidence: catalogConfidenceValues.high,
+      engineProvenanceId: input.provenance.sourceProvenanceId,
+    },
+    externalIds: [
+      {
+        externalIdId: `${input.workId}:dlsite`,
+        catalogSource: catalogSourceValues.dlsite,
+        sourceId: input.sourceId,
+        externalIdKind: catalogExternalIdKindValues.storeProduct,
+        sourceProvenanceId: input.provenance.sourceProvenanceId,
+      },
+    ],
+    languageStatuses: [
+      {
+        languageStatusId: input.languageStatusId,
+        language: "en-US",
+        status: catalogLanguageStatusValues.none,
+        sourceProvenanceId: input.provenance.sourceProvenanceId,
+        confidence: catalogConfidenceValues.high,
+        observedAt: fetchedAt,
+      },
+    ],
+  };
 }
 
 async function recordFixtureProvenance(repo: ItotoriCatalogRepository): Promise<{
@@ -1738,4 +1962,28 @@ function requiredTestRow<T>(rows: T[], label: string): T {
     throw new Error(`expected ${label}`);
   }
   return row;
+}
+
+function requiredOpportunityRow(
+  rows: CatalogOpportunityRow[],
+  workId: string,
+): CatalogOpportunityRow {
+  const row = rows.find((candidate) => candidate.workId === workId);
+  if (row === undefined) {
+    throw new Error(`expected opportunity row ${workId}`);
+  }
+  return row;
+}
+
+function runtimeEvidenceFactor(
+  row: CatalogOpportunityRow,
+): CatalogOpportunityRow["factorBreakdown"][number] {
+  const factor = row.factorBreakdown.find(
+    (entry) =>
+      entry.factor === ("runtime_evidence_readiness" satisfies CatalogOpportunityFactorName),
+  );
+  if (factor === undefined) {
+    throw new Error("expected runtime evidence readiness factor");
+  }
+  return factor;
 }

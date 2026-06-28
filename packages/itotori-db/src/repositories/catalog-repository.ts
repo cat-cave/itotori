@@ -3289,13 +3289,16 @@ function capabilityEvidenceCountsByAdapter(
 }
 
 function isRuntimeReadinessEvidence(row: typeof engineCapabilityEvidence.$inferSelect): boolean {
-  if (row.evidenceSource !== engineCapabilityEvidenceSourceValues.privateLocalAggregate) {
-    return false;
+  if (row.evidenceSource === engineCapabilityEvidenceSourceValues.publicFixture) {
+    return row.evidenceKind === engineCapabilityEvidenceKindValues.keyValidation;
   }
-  return (
-    row.evidenceKind === engineCapabilityEvidenceKindValues.localCorpusSidecar ||
-    row.evidenceKind === engineCapabilityEvidenceKindValues.engineMarkerCount
-  );
+  if (row.evidenceSource === engineCapabilityEvidenceSourceValues.privateLocalAggregate) {
+    return (
+      row.evidenceKind === engineCapabilityEvidenceKindValues.localCorpusSidecar ||
+      row.evidenceKind === engineCapabilityEvidenceKindValues.engineMarkerCount
+    );
+  }
+  return false;
 }
 
 function opportunityRuntimeEvidenceWeight(
