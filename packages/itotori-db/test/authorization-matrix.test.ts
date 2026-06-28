@@ -797,6 +797,12 @@ const repositoryPermissionGateMatrix = [
     (repo) => repo.loadActiveDecisions(deniedActor, "project", "locale"),
   ),
   assetLocalizationDecisionGate(
+    "loadCandidateAssets",
+    "catalogRead",
+    "asset-localization-decision-repository.test.ts load candidate assets coverage",
+    (repo) => repo.loadCandidateAssets(deniedActor, "project", "locale"),
+  ),
+  assetLocalizationDecisionGate(
     "loadDecisionHistory",
     "catalogRead",
     "asset-localization-decision-repository.test.ts load decision history coverage",
@@ -1637,6 +1643,12 @@ describe("repository permission gate matrix", () => {
           "mutation": "ItotoriAssetLocalizationDecisionRepository.loadActiveDecisions",
           "requiredPermission": "catalog.read",
           "successFixture": "asset-localization-decision-repository.test.ts load active decisions coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriAssetLocalizationDecisionRepository.loadCandidateAssets",
+          "requiredPermission": "catalog.read",
+          "successFixture": "asset-localization-decision-repository.test.ts load candidate assets coverage",
         },
         {
           "denialFixture": "missing permission actor user-without-required-permission",
