@@ -26,6 +26,7 @@ const taskOrder = [
   "ci-kaifuu",
   "ci-utsushi",
   "fixtures-validate",
+  "localize-project-test",
   "hello",
   "roadmap-validate",
 ];
@@ -87,6 +88,8 @@ export function affectedTasks(changedPaths) {
       add(tasks, "hello");
     } else if (path.startsWith("fixtures/") || path.startsWith("packages/test-fixtures/")) {
       addFixtureGates(tasks);
+    } else if (path.startsWith("suite/scripts/localize-project/")) {
+      add(tasks, "localize-project-test");
     } else if (path.startsWith("apps/itotori/") || path.startsWith("packages/itotori-db/")) {
       add(tasks, "ci-itotori");
     } else if (path.startsWith("apps/runtime-web-review/")) {
@@ -106,10 +109,12 @@ export function affectedTasks(changedPaths) {
     tasks.delete("ci-itotori");
     tasks.delete("ci-kaifuu");
     tasks.delete("ci-utsushi");
+    tasks.delete("localize-project-test");
     tasks.delete("roadmap-validate");
   }
 
   if (tasks.has("check")) {
+    tasks.delete("localize-project-test");
     tasks.delete("roadmap-validate");
   }
 

@@ -87,3 +87,28 @@ test("affected routes representative utsushi crate changes to ci-utsushi", () =>
   assert.deepEqual(affectedTasks(["crates/utsushi-reallive/src/lib.rs"]), ["ci-utsushi"]);
   assert.deepEqual(affectedTasks(["crates/utsushi-siglus/src/lib.rs"]), ["ci-utsushi"]);
 });
+
+test("affected routes localize-project suite script changes to its node test gate", () => {
+  assert.deepEqual(affectedTasks(["suite/scripts/localize-project/run.mjs"]), [
+    "localize-project-test",
+  ]);
+  assert.deepEqual(affectedTasks(["suite/scripts/localize-project/verify-artifacts.mjs"]), [
+    "localize-project-test",
+  ]);
+  assert.deepEqual(
+    affectedTasks(["suite/scripts/localize-project/run.mjs", "unowned-tooling/file.txt"]),
+    ["check"],
+  );
+});
+
+test("check gate runs localize-project node tests", () => {
+  const justfile = readFileSync("justfile", "utf8");
+  const checkBody = parseJustRecipeBody(justfile, "check");
+  const localizeProjectTestBody = parseJustRecipeBody(justfile, "localize-project-test");
+
+  assert.match(checkBody, /^\s*just localize-project-test$/m);
+  assert.match(
+    localizeProjectTestBody,
+    /^\s*node --test suite\/scripts\/localize-project\/\*\.test\.mjs$/m,
+  );
+});

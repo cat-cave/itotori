@@ -17,6 +17,7 @@ check:
     node scripts/qd-wrapper.test.mjs
     node scripts/qd-lifecycle.test.mjs
     node --test scripts/affected.test.mjs
+    just localize-project-test
     node scripts/spec-dag-issues.test.mjs
     node scripts/spec-dag-lifecycle.test.mjs
     node scripts/spec-dag-validator.test.mjs
@@ -38,6 +39,9 @@ fixtures-validate:
 test:
     pnpm exec vp run ts:test
     cargo test --workspace
+
+localize-project-test:
+    node --test suite/scripts/localize-project/*.test.mjs
 
 build:
     pnpm exec vp run ts:build

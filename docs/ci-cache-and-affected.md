@@ -21,6 +21,7 @@ Affected detection must be conservative:
 | `crates/kaifuu-*`                                                                   | `just ci-kaifuu`                                                                    |
 | `apps/runtime-web-review/`, `crates/utsushi-*`                                      | `just ci-utsushi`                                                                   |
 | `fixtures/`, `packages/test-fixtures/`                                              | `just fixtures-validate`, `just hello`                                              |
+| `suite/scripts/localize-project/`                                                   | `just localize-project-test`                                                        |
 | `roadmap/`                                                                          | `just roadmap-validate`                                                             |
 | Unknown non-documentation paths                                                     | `just check`                                                                        |
 | Documentation-only paths                                                            | No affected task, unless the worker or reviewer asks for a broader gate             |
@@ -51,8 +52,9 @@ human and CI command surface, while `vite.config.ts` defines the Vite+ task grap
 
 Cache hits may skip repeated deterministic work, but they must never suppress
 required validation. `just check` still runs `pnpm exec vp check`, root policy
-validation, TypeScript typecheck, `cargo fmt --check`, and `cargo check
---workspace`. If Vite+ cannot prove a task is current, the task must run.
+validation, localize-project node tests, TypeScript typecheck, `cargo fmt
+--check`, and `cargo check --workspace`. If Vite+ cannot prove a task is
+current, the task must run.
 
 ## Rust Cache Policy
 
@@ -90,7 +92,7 @@ audit command. Caches are only accelerators.
 
 | Gate                     | Project or surface                 | Required checks                                                                                                                   |
 | ------------------------ | ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| `just check`             | Whole repo baseline                | Vite+ config check, roadmap validation, fixture manifest validation, toolchain policy, TypeScript typecheck, Rust fmt, Rust check |
+| `just check`             | Whole repo baseline                | Vite+ config check, roadmap validation, fixture manifest validation, localize-project node tests, toolchain policy, TypeScript typecheck, Rust fmt, Rust check |
 | `just build`             | Whole repo build                   | Vite+ TypeScript/web build and Cargo workspace build                                                                              |
 | `just test`              | Whole repo tests                   | Vite+ TypeScript/web tests and Cargo workspace tests                                                                              |
 | `just ci`                | Full CI                            | `check`, `build`, database migration, `test`, strict clippy, cargo-deny                                                           |
@@ -99,6 +101,7 @@ audit command. Caches are only accelerators.
 | `just ci-kaifuu`         | Kaifuu Rust crates                 | Tests for all `crates/kaifuu-*` workspace crates                                                                                  |
 | `just ci-utsushi`        | Utsushi Rust crates and web review | Runtime web review typecheck/test/build, tests for all `crates/utsushi-*` workspace crates                                        |
 | `just fixtures-validate` | Public fixture manifests           | Public manifest JSON Schema validation plus raw fixture hash and byte-count checks                                                |
+| `just localize-project-test` | Localize-project suite scripts  | Node test suite for `suite/scripts/localize-project/*.test.mjs`                                                                  |
 | `just hello`             | End-to-end fixture pipeline        | Build, DB migrate/reset, Kaifuu extract/patch/diff/apply/verify, Utsushi trace/capture/smoke, Itotori runtime ingest              |
 | `just roadmap-validate`  | Roadmap data and audit schemas     | Spec DAG and audit report schema/example validation                                                                               |
 
