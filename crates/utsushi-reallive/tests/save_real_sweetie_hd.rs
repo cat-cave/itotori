@@ -87,13 +87,12 @@ fn load_required(file_name: &str) -> Vec<u8> {
              so missing private inputs must not report success"
         )
     });
-    let bytes = fs::read(&path).unwrap_or_else(|err| {
+    fs::read(&path).unwrap_or_else(|err| {
         panic!(
             "ITOTORI_REAL_GAME_ROOT is set but SAVEDATA/{file_name} could not be read at {}: {err}",
             path.display(),
         )
-    });
-    bytes
+    })
 }
 
 #[test]
