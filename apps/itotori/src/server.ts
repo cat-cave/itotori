@@ -266,7 +266,11 @@ function isRuntimeDashboardRoute(pathname: string): boolean {
 }
 
 function isItotoriDashboardRoute(pathname: string): boolean {
-  return pathname === "/style-guide-builder";
+  return (
+    pathname === "/style-guide-builder" ||
+    /^\/reviewer-queue\/(?:batch|[^/]+)$/u.test(pathname) ||
+    /^\/projects\/[^/]+\/locale-branches\/[^/]+\/asset-decisions(?:\/batch)?$/u.test(pathname)
+  );
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {

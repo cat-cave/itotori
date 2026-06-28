@@ -161,6 +161,33 @@ describe("Itotori server API contracts", () => {
         expect(styleGuideBuilderResponse.headers.get("content-type")).toBe("text/html");
         await expect(styleGuideBuilderResponse.text()).resolves.toBe("itotori dashboard");
 
+        for (const pathname of [
+          "/reviewer-queue/batch",
+          "/reviewer-queue/reviewer-queue-1",
+          "/projects/project-1/locale-branches/locale-1/asset-decisions",
+          "/projects/project-1/locale-branches/locale-1/asset-decisions/batch",
+        ]) {
+          const dashboardResponse = await fetch(`${origin}${pathname}`);
+          expect(dashboardResponse.status).toBe(200);
+          expect(dashboardResponse.headers.get("content-type")).toBe("text/html");
+          await expect(dashboardResponse.text()).resolves.toBe("itotori dashboard");
+        }
+
+        for (const pathname of [
+          "/reviewer-queue",
+          "/reviewer-queue/batch/",
+          "/reviewer-queue/reviewer-queue-1/extra",
+          "/reviewer-queue/reviewer-queue-1/%2e%2e",
+          "/projects/project-1/locale-branches/locale-1/asset-decisions/",
+          "/projects/project-1/locale-branches/locale-1/asset-decisions/extra",
+          "/projects/project-1/locale-branches/locale-1/asset-decisions/%2e%2e",
+          "/projects/project-1/locale-branches/locale-1",
+        ]) {
+          const notFoundResponse = await fetch(`${origin}${pathname}`);
+          expect(notFoundResponse.status).toBe(404);
+          await expect(notFoundResponse.text()).resolves.toBe("not found");
+        }
+
         const assetResponse = await fetch(`${origin}/assets/runtime.js`);
         expect(assetResponse.status).toBe(200);
         expect(assetResponse.headers.get("content-type")).toBe("text/javascript");
