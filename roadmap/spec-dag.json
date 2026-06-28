@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "exported_at": "2026-06-28T00:41:05.900Z",
+  "exported_at": "2026-06-28T00:44:08.814Z",
   "registries": {
     "groups": [
       {
@@ -12443,19 +12443,19 @@
       "title": "Benchmark set selector and run schema",
       "kind": "feature",
       "milestone": "real-game-testing-ready",
-      "status": "ready",
+      "status": "claimed",
       "priority": "P1",
       "estimate_points": 1,
       "risk": "medium",
-      "owner": null,
-      "branch": null,
+      "owner": "orchestrator-itotori-089",
+      "branch": "spec/itotori-089-benchmark-set-selector",
       "spec": "Persist benchmark corpus selection, run parameters, target locale, capability filters, and provenance for repeatable benchmark runs.\n\nDeliverables:\n- Benchmark set manifest schema\n- Capability-filtered seed selector\n- Run-parameter persistence fixture\n- Selection provenance tests",
       "acceptance": "- A benchmark set manifest records source seed ids, target locale, capability-level filters, run parameters, and selection provenance\n- Selector fixtures cover MTL-only, fan-partial, no-English, conflict, and readiness-filtered pools from CATALOG-004 output\n- Rerunning selection with the same fixture inputs produces a stable manifest or a documented drift diagnostic\n- Private-local aggregate seeds can be represented without private paths, filenames, story text, or raw corpus records",
       "validation": null,
       "context": null,
       "created_at": "2026-06-26T02:53:55.157Z",
-      "updated_at": "2026-06-26T02:53:55.157Z",
-      "claimed_at": null,
+      "updated_at": "2026-06-28T00:43:50.234Z",
+      "claimed_at": "2026-06-28T00:43:50.234Z",
       "done_at": null,
       "group_name": "benchmarks",
       "status_reason": "Re-tier 2026-06-24: moved from alpha to real-game-testing-ready — the old \"alpha\" framing was renamed; substance unchanged. See docs/proposals/dag-retier-2026-06-24.md.",
