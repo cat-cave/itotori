@@ -271,16 +271,11 @@ upgrade:
     node scripts/verify-toolchain-policy.mjs
 
 # Rebuild the local qd sqlite cache from the committed qd export.
-# Drop + recreate so the cache reflects the current roadmap/spec-dag.json exactly.
+# The repo qd wrapper stages and validates the replacement before swapping it in.
 qd-import:
-    rm -f .qd/qd.db .qd/qd.db-wal .qd/qd.db-shm
-    qd setup
-    qd config set check-command --value "just check"
-    qd config set ci-command --value "just qd-full-ci"
-    qd config set merge-strategy --value "squash"
-    qd import --from roadmap/spec-dag.json
+    ./bin/qd import --from roadmap/spec-dag.json
     just roadmap-validate
-    qd doctor --json
+    ./bin/qd doctor --json
 
 qd-export:
     qd export --out roadmap/spec-dag.json

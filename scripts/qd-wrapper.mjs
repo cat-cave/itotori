@@ -1,7 +1,18 @@
 #!/usr/bin/env node
 import { randomUUID } from "node:crypto";
-import { accessSync, constants, existsSync, realpathSync, statSync } from "node:fs";
-import { copyFile, cp, mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
+import { accessSync, constants, existsSync, realpathSync, statSync, writeSync } from "node:fs";
+import {
+  copyFile,
+  cp,
+  mkdir,
+  mkdtemp,
+  readFile,
+  readdir,
+  rename,
+  rm,
+  writeFile,
+} from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -23,7 +34,7 @@ async function main() {
   const realQd = findRealQd();
 
   if (commandArgs[0] === "gate" && commandArgs[1]) {
-    return gateWithAuditLifecycle(realQd, globalArgs, commandArgs[1], args);
+    return gateWithAuditLifecycle(realQd, root, globalArgs, commandArgs, args);
   }
 
   if (commandArgs[0] === "audit" && (!commandArgs[1] || commandArgs[1] === "--help")) {
@@ -64,11 +75,15 @@ and an audit-visible rationale summary.`);
     return runRealThenCanonicalizeSpecDag(realQd, args, root);
   }
 
-  if (isMilestoneScopedJsonSummary(commandArgs)) {
-    return runMilestoneScopedJsonSummary(realQd, globalArgs, commandArgs);
+  if (isRoadmapSpecDagImport(root, commandArgs)) {
+    return rebuildQdStateFromRoadmapExport(realQd, root, { json: args.includes("--json") });
   }
 
-  return runReal(realQd, args);
+  if (isMilestoneScopedJsonSummary(commandArgs)) {
+    return runMilestoneScopedJsonSummaryWithHydration(realQd, root, globalArgs, commandArgs);
+  }
+
+  return runRealWithReadOnlyHydration(realQd, args, root, globalArgs, commandArgs);
 }
 
 function parseGlobalArgs(args) {
@@ -156,6 +171,33 @@ function runReal(realQd, args) {
   process.exit(result.status ?? 1);
 }
 
+async function runRealWithReadOnlyHydration(realQd, args, root, globalArgs, commandArgs) {
+  if (!isReadOnlyHydratableCommand(commandArgs)) return runReal(realQd, args);
+
+  const result = spawnSync(realQd.command, [...realQd.args, ...args], {
+    stdio: ["ignore", "pipe", "pipe"],
+    encoding: "utf8",
+    maxBuffer: 64 * 1024 * 1024,
+    env: process.env,
+  });
+  if (result.error) throw result.error;
+  if (result.status === 0) {
+    if (result.stdout) writeSync(1, result.stdout);
+    if (result.stderr) writeSync(2, result.stderr);
+    process.exit(0);
+  }
+
+  if (isUnusableQdDatabaseError([result.stderr, result.stdout].filter(Boolean).join("\n"))) {
+    return withReadOnlyHydratedRoot(realQd, root, async (hydratedRoot) =>
+      runReal(realQd, [...globalArgsForRoot(hydratedRoot), ...commandArgs]),
+    );
+  }
+
+  if (result.stdout) writeSync(1, result.stdout);
+  if (result.stderr) writeSync(2, result.stderr);
+  process.exit(result.status ?? 1);
+}
+
 function runRealThenCanonicalizeSpecDag(realQd, args, root) {
   const result = spawnSync(realQd.command, [...realQd.args, ...args], {
     stdio: "inherit",
@@ -173,6 +215,14 @@ export function isRoadmapSpecDagExport(root, commandArgs) {
   const outPath = exportOutPath(commandArgs);
   if (!outPath) return false;
   return path.resolve(root, outPath) === path.resolve(root, "roadmap", "spec-dag.json");
+}
+
+export function isRoadmapSpecDagImport(root, commandArgs) {
+  if (commandArgs[0] !== "import") return false;
+  if (hasFlag(commandArgs, "--dry-run")) return false;
+  const fromPath = importFromPath(commandArgs);
+  if (!fromPath) return false;
+  return path.resolve(root, fromPath) === path.resolve(root, "roadmap", "spec-dag.json");
 }
 
 export function isCiRecordPass(commandArgs) {
@@ -275,6 +325,15 @@ function exportOutPath(commandArgs) {
   return null;
 }
 
+function importFromPath(commandArgs) {
+  for (let index = 1; index < commandArgs.length; index += 1) {
+    const arg = commandArgs[index];
+    if (arg === "--from") return commandArgs[index + 1];
+    if (arg.startsWith("--from=")) return arg.slice("--from=".length);
+  }
+  return null;
+}
+
 function canonicalizeSpecDagExport(root) {
   const specDagPath = path.join(root, "roadmap", "spec-dag.json");
   canonicalizeSpecDagFile(root, specDagPath);
@@ -305,6 +364,17 @@ function captureJson(realQd, args) {
     throw new Error(detail || `qd ${args.join(" ")} failed with exit ${result.status}`);
   }
   return JSON.parse(result.stdout);
+}
+
+async function runMilestoneScopedJsonSummaryWithHydration(realQd, root, globalArgs, commandArgs) {
+  try {
+    return runMilestoneScopedJsonSummary(realQd, globalArgs, commandArgs);
+  } catch (error) {
+    if (!isUnusableQdDatabaseError(error)) throw error;
+    return withReadOnlyHydratedRoot(realQd, root, async (hydratedRoot) =>
+      runMilestoneScopedJsonSummary(realQd, globalArgsForRoot(hydratedRoot), commandArgs),
+    );
+  }
 }
 
 function runMilestoneScopedJsonSummary(realQd, globalArgs, commandArgs) {
@@ -394,8 +464,25 @@ function estimatePoints(node) {
   return Number.isFinite(value) ? value : 1;
 }
 
-function gateWithAuditLifecycle(realQd, globalArgs, nodeId, originalArgs) {
+async function gateWithAuditLifecycle(realQd, root, globalArgs, commandArgs, originalArgs) {
+  try {
+    return gateWithAuditLifecycleForRoot(realQd, globalArgs, commandArgs, originalArgs);
+  } catch (error) {
+    if (!isUnusableQdDatabaseError(error)) throw error;
+    return withReadOnlyHydratedRoot(realQd, root, async (hydratedRoot) =>
+      gateWithAuditLifecycleForRoot(
+        realQd,
+        globalArgsForRoot(hydratedRoot),
+        commandArgs,
+        originalArgs,
+      ),
+    );
+  }
+}
+
+function gateWithAuditLifecycleForRoot(realQd, globalArgs, commandArgs, originalArgs) {
   const json = originalArgs.includes("--json");
+  const nodeId = commandArgs[1];
   const nodeShow = captureJson(realQd, [...globalArgs, "node", "show", nodeId, "--full", "--json"]);
   const runningAudits = runningAuditRunsFromNodeShow(nodeShow);
 
@@ -414,7 +501,36 @@ function gateWithAuditLifecycle(realQd, globalArgs, nodeId, originalArgs) {
     process.exit(1);
   }
 
-  return runReal(realQd, originalArgs);
+  return runReal(realQd, [...globalArgs, ...commandArgs]);
+}
+
+async function rebuildQdStateFromRoadmapExport(realQd, root, options = {}) {
+  const operationDir = path.join(root, ".tmp", "qd-import", randomUUID());
+  const stagedRoot = path.join(operationDir, "staged-root");
+  const sourcePath = path.join(root, "roadmap", "spec-dag.json");
+
+  try {
+    await prepareStagedRoot(root, stagedRoot);
+    runChecked(realQd, ["--root", stagedRoot, "import", "--from", sourcePath], {
+      quiet: options.json,
+    });
+    validateStagedRoadmapImport(realQd, stagedRoot);
+    runChecked(realQd, ["--root", stagedRoot, "doctor", "--json"], { quiet: true });
+
+    await installValidatedDatabase(root, stagedRoot, operationDir, async () => {});
+
+    if (options.json) writeSync(1, `${JSON.stringify({ ok: true, source: "roadmap/spec-dag.json" })}\n`);
+    else writeSync(1, "Rebuilt qd state from roadmap/spec-dag.json\n");
+  } finally {
+    await rm(operationDir, { recursive: true, force: true });
+  }
+}
+
+function validateStagedRoadmapImport(realQd, stagedRoot) {
+  const stagedSnapshot = captureJson(realQd, ["--root", stagedRoot, "export", "--json"]);
+  if (!stagedSnapshot || !Array.isArray(stagedSnapshot.nodes)) {
+    throw new Error("staged qd import did not export a nodes array");
+  }
 }
 
 async function disposeAuditRun(realQd, root, globalArgs, options) {
@@ -488,7 +604,9 @@ async function loadSnapshot(realQd, root, globalArgs) {
   try {
     return captureJson(realQd, [...globalArgs, "export", "--json"]);
   } catch (error) {
-    if (existsSync(path.join(root, ".qd", "qd.db"))) throw error;
+    if (existsSync(path.join(root, ".qd", "qd.db")) && !isUnusableQdDatabaseError(error)) {
+      throw error;
+    }
     const exportPath = path.join(root, "roadmap", "spec-dag.json");
     if (!existsSync(exportPath)) throw error;
     return JSON.parse(await readFile(exportPath, "utf8"));
@@ -633,6 +751,24 @@ async function prepareStagedRoot(root, stagedRoot) {
   }
 }
 
+async function withReadOnlyHydratedRoot(realQd, root, callback) {
+  const operationDir = await mkdtemp(path.join(tmpdir(), "itotori-qd-readonly-"));
+  const stagedRoot = path.join(operationDir, "staged-root");
+  const sourcePath = path.join(root, "roadmap", "spec-dag.json");
+
+  try {
+    if (!existsSync(sourcePath)) {
+      throw new Error("cannot hydrate read-only qd state: roadmap/spec-dag.json does not exist");
+    }
+    await prepareStagedRoot(root, stagedRoot);
+    runChecked(realQd, ["--root", stagedRoot, "import", "--from", sourcePath], { quiet: true });
+    validateStagedRoadmapImport(realQd, stagedRoot);
+    return await callback(stagedRoot);
+  } finally {
+    await rm(operationDir, { recursive: true, force: true });
+  }
+}
+
 function validateStagedDisposition(realQd, stagedRoot, options, expectedRun) {
   const stagedSnapshot = captureJson(realQd, ["--root", stagedRoot, "export", "--json"]);
   const stagedRun = Array.isArray(stagedSnapshot?.runs)
@@ -730,10 +866,32 @@ function runChecked(realQd, args, options = {}) {
     let detail = "";
     if (options.quiet) {
       detail = [result.stderr, result.stdout].filter(Boolean).join("\n").trim();
-      if (detail) console.error(detail);
+      if (detail) writeSync(2, `${detail}\n`);
     }
     throw new Error(detail || `qd ${args.join(" ")} failed with exit ${result.status}`);
   }
+}
+
+function globalArgsForRoot(root) {
+  return ["--root", root];
+}
+
+function isReadOnlyHydratableCommand(commandArgs) {
+  const [command, subcommand] = commandArgs;
+  if (["status", "ready", "stats", "snapshot", "critical-path", "doctor"].includes(command)) {
+    return true;
+  }
+  if (command === "export") return hasFlag(commandArgs, "--json");
+  if (command === "node" && ["show", "list"].includes(subcommand)) return true;
+  if (command === "gate") return Boolean(subcommand);
+  return false;
+}
+
+function isUnusableQdDatabaseError(error) {
+  const message = error instanceof Error ? error.message : String(error ?? "");
+  return /(?:no such table|database disk image is malformed|file is not a database|unable to open database file|attempt to write a readonly database|readonly database|read-only file system|no such file or directory).*?(?:qd\.db|nodes|sqlite|database)?/isu.test(
+    message,
+  );
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
