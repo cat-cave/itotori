@@ -510,10 +510,7 @@ describe("Itotori API handlers", () => {
   ])("rejects malformed asset-decision reads: $name", async ({ pathname, search, error }) => {
     const services = serviceFixture();
 
-    const response = await handleItotoriApiRequest(
-      { method: "GET", pathname, search },
-      services,
-    );
+    const response = await handleItotoriApiRequest({ method: "GET", pathname, search }, services);
 
     expect(response.statusCode).toBe(400);
     expect(response.body).toMatchObject({ code: "bad_request" });
@@ -553,7 +550,8 @@ describe("Itotori API handlers", () => {
     const response = await handleItotoriApiRequest(
       {
         method: "GET",
-        pathname: "/api/projects/project-1/locale-branches/missing-locale/asset-decisions/candidates",
+        pathname:
+          "/api/projects/project-1/locale-branches/missing-locale/asset-decisions/candidates",
       },
       services,
     );

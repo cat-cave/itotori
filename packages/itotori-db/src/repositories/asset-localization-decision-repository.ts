@@ -258,9 +258,7 @@ export class ItotoriAssetLocalizationDecisionRepository implements ItotoriAssetL
         path: assets.path,
       })
       .from(assets)
-      .where(
-        and(eq(assets.projectId, projectId), eq(assets.sourceBundleId, branch.sourceBundleId)),
-      )
+      .where(and(eq(assets.projectId, projectId), eq(assets.sourceBundleId, branch.sourceBundleId)))
       .orderBy(asc(assets.assetKey));
 
     const candidates: CandidateAssetRecord[] = [];
