@@ -1350,21 +1350,21 @@ fn run_helper_run_local_process(
     let registry_validation = validate_helper_registry_entry_value(&registry_value);
     if registry_validation.status == kaifuu_core::OperationStatus::Failed {
         let registry_validation = registry_validation.redacted_for_report();
-        let result = helper_run_diagnostic_result(
+        let result = helper_run_diagnostic_result(HelperRunDiagnosticContext {
             args,
-            None,
-            &registry_validation
+            entry: None,
+            helper_id: &registry_validation
                 .helper_id
                 .clone()
                 .unwrap_or_else(|| "kaifuu.helper.unknown".to_string()),
             helper_version,
             platform,
             timeout_ms,
-            "helper_authorization_denied",
-            "helper registry validation failed",
-            "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
-            None,
-        )?;
+            diagnostic_code: "helper_authorization_denied",
+            message: "helper registry validation failed",
+            redacted_log_hash: "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            process: None,
+        })?;
         atomic_write_text(output, &result.stable_json()?)?;
         return Err(format!(
             "{}: {}",
@@ -1444,35 +1444,35 @@ fn helper_run_result_from_process_stdout(
     let value = match serde_json::from_slice::<serde_json::Value>(process.stdout.bytes()) {
         Ok(value) => value,
         Err(_) => {
-            return helper_run_diagnostic_result(
+            return helper_run_diagnostic_result(HelperRunDiagnosticContext {
                 args,
-                Some(entry),
+                entry: Some(entry),
                 helper_id,
-                &entry.helper_version,
-                &report.execution.platform,
-                report.execution.timeout_ms,
-                "validation_failed",
-                "kaifuu.helper_malformed_output: helper stdout was not a valid redacted HelperResult JSON document",
-                &helper_run_redacted_captured_hash(process.stdout.bytes()),
-                Some(report),
-            );
+                helper_version: &entry.helper_version,
+                platform: &report.execution.platform,
+                timeout_ms: report.execution.timeout_ms,
+                diagnostic_code: "validation_failed",
+                message: "kaifuu.helper_malformed_output: helper stdout was not a valid redacted HelperResult JSON document",
+                redacted_log_hash: &helper_run_redacted_captured_hash(process.stdout.bytes()),
+                process: Some(report),
+            });
         }
     };
     let mut result = match normalize_helper_result_value(&value) {
         Ok(result) => result,
         Err(_) => {
-            return helper_run_diagnostic_result(
+            return helper_run_diagnostic_result(HelperRunDiagnosticContext {
                 args,
-                Some(entry),
+                entry: Some(entry),
                 helper_id,
-                &entry.helper_version,
-                &report.execution.platform,
-                report.execution.timeout_ms,
-                "validation_failed",
-                "kaifuu.helper_malformed_output: helper stdout failed the HelperResult contract",
-                &helper_run_redacted_captured_hash(process.stdout.bytes()),
-                Some(report),
-            );
+                helper_version: &entry.helper_version,
+                platform: &report.execution.platform,
+                timeout_ms: report.execution.timeout_ms,
+                diagnostic_code: "validation_failed",
+                message: "kaifuu.helper_malformed_output: helper stdout failed the HelperResult contract",
+                redacted_log_hash: &helper_run_redacted_captured_hash(process.stdout.bytes()),
+                process: Some(report),
+            });
         }
     };
     result.execution.filesystem_access = report.execution.filesystem_access;
@@ -1480,18 +1480,18 @@ fn helper_run_result_from_process_stdout(
     if result.helper.helper_id != entry.helper_id
         || result.helper.helper_version != entry.helper_version
     {
-        return helper_run_diagnostic_result(
+        return helper_run_diagnostic_result(HelperRunDiagnosticContext {
             args,
-            Some(entry),
+            entry: Some(entry),
             helper_id,
-            &entry.helper_version,
-            &report.execution.platform,
-            report.execution.timeout_ms,
-            "helper_authorization_denied",
-            "helper output provenance did not match the selected hash-pinned profile",
-            &helper_run_redacted_captured_hash(process.stdout.bytes()),
-            Some(report),
-        );
+            helper_version: &entry.helper_version,
+            platform: &report.execution.platform,
+            timeout_ms: report.execution.timeout_ms,
+            diagnostic_code: "helper_authorization_denied",
+            message: "helper output provenance did not match the selected hash-pinned profile",
+            redacted_log_hash: &helper_run_redacted_captured_hash(process.stdout.bytes()),
+            process: Some(report),
+        });
     }
     Ok(result)
 }
@@ -1504,18 +1504,18 @@ fn helper_run_result_from_process_failure(
 ) -> Result<HelperResult, Box<dyn std::error::Error>> {
     let diagnostic_code = helper_result_code_for_process_diagnostic(&process.diagnostic.code);
     let redacted_log_hash = helper_run_redacted_log_hash(process);
-    helper_run_diagnostic_result(
+    helper_run_diagnostic_result(HelperRunDiagnosticContext {
         args,
-        Some(entry),
+        entry: Some(entry),
         helper_id,
-        &entry.helper_version,
-        &process.execution.platform,
-        process.execution.timeout_ms,
+        helper_version: &entry.helper_version,
+        platform: &process.execution.platform,
+        timeout_ms: process.execution.timeout_ms,
         diagnostic_code,
-        &process.diagnostic.code,
-        &redacted_log_hash,
-        Some(process),
-    )
+        message: &process.diagnostic.code,
+        redacted_log_hash: &redacted_log_hash,
+        process: Some(process),
+    })
 }
 
 fn helper_result_code_for_process_diagnostic(code: &str) -> &'static str {
@@ -1530,69 +1530,81 @@ fn helper_result_code_for_process_diagnostic(code: &str) -> &'static str {
     }
 }
 
-fn helper_run_diagnostic_result(
-    args: &[String],
-    entry: Option<&HelperRegistryEntry>,
-    helper_id: &str,
-    helper_version: &str,
-    platform: &str,
+struct HelperRunDiagnosticContext<'a> {
+    args: &'a [String],
+    entry: Option<&'a HelperRegistryEntry>,
+    helper_id: &'a str,
+    helper_version: &'a str,
+    platform: &'a str,
     timeout_ms: u32,
-    diagnostic_code: &str,
-    message: &str,
-    redacted_log_hash: &str,
-    process: Option<&HelperProcessRunResult>,
+    diagnostic_code: &'a str,
+    message: &'a str,
+    redacted_log_hash: &'a str,
+    process: Option<&'a HelperProcessRunResult>,
+}
+
+fn helper_run_diagnostic_result(
+    context: HelperRunDiagnosticContext<'_>,
 ) -> Result<HelperResult, Box<dyn std::error::Error>> {
-    let fixture_id = helper_run_fixture_id(args);
-    let capability_level = flag_optional(args, "--capability-level").unwrap_or("wineLocal");
-    let helper_kind = flag_optional(args, "--helper-kind").unwrap_or("wineLocalWindowsHelper");
+    let fixture_id = helper_run_fixture_id(context.args);
+    let capability_level = flag_optional(context.args, "--capability-level").unwrap_or("wineLocal");
+    let helper_kind =
+        flag_optional(context.args, "--helper-kind").unwrap_or("wineLocalWindowsHelper");
     let execution_mode = if helper_kind == "remoteWindowsHelper" {
         "remoteHelper"
     } else {
         "platformHelper"
     };
-    let network_access = process
+    let network_access = context
+        .process
         .map(|process| process.execution.network_access)
-        .or_else(|| entry.map(|entry| entry.execution_policy.network_access))
+        .or_else(|| {
+            context
+                .entry
+                .map(|entry| entry.execution_policy.network_access)
+        })
         .unwrap_or(false);
-    let filesystem_access = process
+    let filesystem_access = context
+        .process
         .map(|process| process.execution.filesystem_access)
         .or_else(|| {
-            entry.map(|entry| {
+            context.entry.map(|entry| {
                 helper_result_filesystem_access(entry.execution_policy.filesystem_access)
             })
         })
         .unwrap_or(HelperExecutionFilesystemAccess::LocalGameReadOnly);
-    let duration_ms = process
+    let duration_ms = context
+        .process
         .and_then(|process| process.execution.duration_ms)
         .unwrap_or(0)
-        .min(timeout_ms);
+        .min(context.timeout_ms);
     let value = serde_json::json!({
         "schemaVersion": HELPER_RESULT_SCHEMA_VERSION,
         "fixtureId": fixture_id,
         "helperResultId": format!("helper-result-{fixture_id}"),
-        "profileId": helper_run_profile_id(args),
+        "profileId": helper_run_profile_id(context.args),
         "helper": {
-            "helperId": helper_id,
-            "helperVersion": helper_version,
+            "helperId": context.helper_id,
+            "helperVersion": context.helper_version,
             "helperKind": helper_kind
         },
         "capabilityLevel": capability_level,
         "execution": {
             "mode": execution_mode,
-            "platform": platform,
+            "platform": context.platform,
             "bounded": true,
-            "timeoutMs": timeout_ms.max(1),
+            "timeoutMs": context.timeout_ms.max(1),
             "durationMs": duration_ms,
             "networkAccess": network_access,
             "filesystemAccess": filesystem_access
         },
         "diagnostic": {
-            "code": diagnostic_code,
-            "message": message
+            "code": context.diagnostic_code,
+            "message": context.message
         },
         "redaction": {
             "status": "redacted",
-            "redactedLogHash": redacted_log_hash
+            "redactedLogHash": context.redacted_log_hash
         },
         "secretRefs": [],
         "proofHashes": []
