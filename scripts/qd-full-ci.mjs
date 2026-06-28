@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, realpathSync } from "node:fs";
+import { existsSync, realpathSync, rmSync } from "node:fs";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import net from "node:net";
 import os from "node:os";
@@ -43,9 +43,13 @@ async function main() {
     teardown = () => {
       if (!dbAttempted || exiting) return 0;
       exiting = true;
-      const result = runJust(root, childEnv, ["db-down"]);
-      exiting = false;
-      return result.status ?? 1;
+      try {
+        const result = runJust(root, childEnv, ["db-down"]);
+        return result.status ?? 1;
+      } finally {
+        exiting = false;
+        removeOwnedComposeEnv(root, settings);
+      }
     };
 
     installSignalHandlers(teardown);
@@ -237,6 +241,7 @@ export function buildDbSettings(root, port, env = process.env) {
   const composeProjectName = `itotori-qdfullci-${rootSlug || "worktree"}-${rootHash}-${port}`;
   return {
     composeEnvPath: qdComposeEnvPath(root, rootHash, port, env),
+    ownsComposeEnvPath: ownsQdComposeEnvPath(root, env),
     composeProjectName,
     databaseUrl,
   };
@@ -250,6 +255,16 @@ function qdComposeEnvPath(root, rootHash, port, env) {
 
 function isDefaultComposeEnvPath(root, value) {
   return path.resolve(root, value) === path.resolve(root, defaultComposeEnvPath);
+}
+
+function ownsQdComposeEnvPath(root, env) {
+  const value = env.ITOTORI_DB_COMPOSE_ENV_PATH;
+  return !value || isDefaultComposeEnvPath(root, value);
+}
+
+function removeOwnedComposeEnv(root, settings) {
+  if (!settings.ownsComposeEnvPath) return;
+  rmSync(path.resolve(root, settings.composeEnvPath), { force: true });
 }
 
 function databaseUrlWithPort(value, port) {

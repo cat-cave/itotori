@@ -1,6 +1,13 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  writeFileSync,
+} from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -44,6 +51,7 @@ test("honors a non-default compose env path override for qd full CI", () => {
   });
 
   assert.equal(settings.composeEnvPath, ".tmp/itotori-db/custom-compose.env");
+  assert.equal(settings.ownsComposeEnvPath, false);
 });
 
 test("port reservation fails early with a clear diagnostic when the range is unavailable", async () => {
@@ -77,10 +85,7 @@ test("qd full CI tears down the compose stack when CI fails", () => {
   });
 
   assert.equal(result.status, 42, [result.stdout, result.stderr].filter(Boolean).join("\n"));
-  const calls = readFileSync(fixture.logPath, "utf8")
-    .trim()
-    .split("\n")
-    .map((line) => JSON.parse(line));
+  const calls = readJustCalls(fixture);
   assert.deepEqual(
     calls.map((call) => call.args.join(" ")),
     ["db-up", "db-wait", "ci", "db-down"],
@@ -96,11 +101,34 @@ test("qd full CI tears down the compose stack when CI fails", () => {
       /^\.tmp\/itotori-db\/qd-full-ci-[a-f0-9]{10}-6120\d\.env$/u,
     );
   }
+
+  const composeEnvPath = path.join(fixture.repoRoot, calls[0].env.ITOTORI_DB_COMPOSE_ENV_PATH);
+  assert.equal(existsSync(composeEnvPath), false);
+});
+
+test("qd full CI deletes generated compose env files after successful CI", () => {
+  const fixture = createWrapperFixture();
+  const result = spawnSync(process.execPath, [scriptPath], {
+    cwd: fixture.repoRoot,
+    env: createWrapperEnv(fixture),
+    encoding: "utf8",
+  });
+
+  assert.equal(result.status, 0, [result.stdout, result.stderr].filter(Boolean).join("\n"));
+  const calls = readJustCalls(fixture);
+  assert.deepEqual(
+    calls.map((call) => call.args.join(" ")),
+    ["db-up", "db-wait", "ci", "db-down"],
+  );
+
+  const composeEnvPath = path.join(fixture.repoRoot, calls[0].env.ITOTORI_DB_COMPOSE_ENV_PATH);
+  assert.equal(existsSync(composeEnvPath), false);
+  assert.equal(readFileSync(fixture.composeEnvAuditPath, "utf8").includes("itotori:itotori"), true);
 });
 
 test("qd full CI honors an explicit compose env path override in wrapper subprocesses", () => {
   const fixture = createWrapperFixture();
-  const composeEnvPath = ".tmp/itotori-db/custom-wrapper.env";
+  const composeEnvPath = path.join(fixture.dir, "custom-wrapper.env");
   const result = spawnSync(process.execPath, [scriptPath], {
     cwd: fixture.repoRoot,
     env: createWrapperEnv(fixture, {
@@ -110,10 +138,7 @@ test("qd full CI honors an explicit compose env path override in wrapper subproc
   });
 
   assert.equal(result.status, 0, [result.stdout, result.stderr].filter(Boolean).join("\n"));
-  const calls = readFileSync(fixture.logPath, "utf8")
-    .trim()
-    .split("\n")
-    .map((line) => JSON.parse(line));
+  const calls = readJustCalls(fixture);
   assert.deepEqual(
     calls.map((call) => call.args.join(" ")),
     ["db-up", "db-wait", "ci", "db-down"],
@@ -121,6 +146,8 @@ test("qd full CI honors an explicit compose env path override in wrapper subproc
   for (const call of calls) {
     assert.equal(call.env.ITOTORI_DB_COMPOSE_ENV_PATH, composeEnvPath);
   }
+  assert.equal(existsSync(composeEnvPath), true);
+  assert.equal(readFileSync(composeEnvPath, "utf8").includes("itotori:itotori"), true);
 });
 
 const qdWrapperEnvKeys = [
@@ -148,6 +175,7 @@ function createWrapperEnv(fixture, overrides = {}) {
     ITOTORI_QD_DB_PORT_SPAN: "10",
     ITOTORI_QD_DB_LOCK_DIR: fixture.lockDir,
     ITOTORI_QD_DB_SKIP_PORT_PROBE: "1",
+    JUST_FAKE_COMPOSE_ENV_AUDIT: fixture.composeEnvAuditPath,
     JUST_FAKE_LOG: fixture.logPath,
     ...overrides,
   };
@@ -159,6 +187,7 @@ function createWrapperFixture() {
   const binDir = path.join(dir, "bin");
   const lockDir = path.join(dir, "locks");
   const logPath = path.join(dir, "just.log");
+  const composeEnvAuditPath = path.join(dir, "compose-env-audit.log");
   const fakeJustPath = path.join(binDir, "just");
 
   mkdirSync(path.join(repoRoot, ".qd"), { recursive: true });
@@ -167,7 +196,8 @@ function createWrapperFixture() {
   writeFileSync(
     fakeJustPath,
     `#!/usr/bin/env node
-import { appendFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
+import path from "node:path";
 
 const args = process.argv.slice(2);
 appendFileSync(process.env.JUST_FAKE_LOG, \`\${JSON.stringify({
@@ -178,10 +208,23 @@ appendFileSync(process.env.JUST_FAKE_LOG, \`\${JSON.stringify({
     ITOTORI_DB_COMPOSE_ENV_PATH: process.env.ITOTORI_DB_COMPOSE_ENV_PATH,
   },
 })}\\n\`);
+if (args[0] === "db-up") {
+  mkdirSync(path.dirname(process.env.ITOTORI_DB_COMPOSE_ENV_PATH), { recursive: true });
+  const content = \`DATABASE_URL=\${process.env.DATABASE_URL}\\n\`;
+  writeFileSync(process.env.ITOTORI_DB_COMPOSE_ENV_PATH, content);
+  writeFileSync(process.env.JUST_FAKE_COMPOSE_ENV_AUDIT, content);
+}
 if (args[0] === "ci" && process.env.JUST_FAKE_FAIL_CI) process.exit(42);
 `,
   );
   chmodSync(fakeJustPath, 0o755);
 
-  return { binDir, lockDir, logPath, repoRoot };
+  return { binDir, composeEnvAuditPath, dir, lockDir, logPath, repoRoot };
+}
+
+function readJustCalls(fixture) {
+  return readFileSync(fixture.logPath, "utf8")
+    .trim()
+    .split("\n")
+    .map((line) => JSON.parse(line));
 }
