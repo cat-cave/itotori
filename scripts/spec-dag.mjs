@@ -78,6 +78,8 @@ const qdStatusMap = {
 };
 const qdAllowedStatuses = new Set(Object.keys(qdStatusMap));
 const qdPlaceholderTextPattern = /^(?:test(?:\s+(?:spec|acc|acceptance|focus))?|todo|tbd)$/iu;
+const justfilePath = resolve(root, "justfile");
+const viteConfigPath = resolve(root, "vite.config.ts");
 
 const priorityRank = { P0: 0, P1: 1, P2: 2, P3: 3 };
 const targetRank = {
@@ -437,6 +439,7 @@ function validateQdExportDag(value) {
   for (const cycle of findCycles(normalizedDag.nodes, normalizedIds)) {
     errors.push(`cycle detected: ${cycle.join(" -> ")}`);
   }
+  errors.push(...validateAlphaCommandReferences(normalizedDag.nodes));
 
   return { errors };
 }
@@ -1358,6 +1361,226 @@ function validateAlphaPriorityCommandVerification(node, errors) {
       );
     }
   }
+}
+
+function validateAlphaCommandReferences(nodes) {
+  const errors = [];
+  const justRecipes = loadJustRecipeNames();
+  const vpTasks = loadVpTaskNames();
+
+  for (const node of nodes) {
+    if (node.target !== "alpha" || !["P0", "P1"].includes(node.priority)) {
+      continue;
+    }
+    const verification = Array.isArray(node.verification) ? node.verification : [];
+    for (const [index, entry] of verification.entries()) {
+      if (!isRecord(entry) || entry.type !== "command" || typeof entry.value !== "string") {
+        continue;
+      }
+      const command = entry.value;
+      for (const recipe of referencedJustRecipes(command)) {
+        if (!justRecipes.has(recipe)) {
+          errors.push(
+            `${node.id} verification[${index}] references missing just recipe ${recipe}: ${command}`,
+          );
+        }
+      }
+      for (const task of referencedVpTasks(command)) {
+        if (!vpTasks.has(task)) {
+          errors.push(
+            `${node.id} verification[${index}] references missing vp task ${task}: ${command}`,
+          );
+        }
+      }
+      if (
+        commandIncludesFlag(command, "--include-ignored") &&
+        !isExplicitIgnoredCargoTest(command)
+      ) {
+        errors.push(
+          `${node.id} verification[${index}] include-ignored command must name an exact cargo integration test target and test filter: ${command}`,
+        );
+      }
+    }
+  }
+
+  return errors;
+}
+
+function loadJustRecipeNames() {
+  let text;
+  try {
+    text = readFileSync(justfilePath, "utf8");
+  } catch {
+    return new Set();
+  }
+
+  const recipes = new Set();
+  for (const match of text.matchAll(/^([A-Za-z0-9_-]+)(?:\s+[^:=\n]+)?\s*:/gmu)) {
+    recipes.add(match[1]);
+  }
+  return recipes;
+}
+
+function loadVpTaskNames() {
+  let text;
+  try {
+    text = readFileSync(viteConfigPath, "utf8");
+  } catch {
+    return new Set();
+  }
+
+  const tasksBlock = extractObjectBlock(text, "tasks");
+  if (tasksBlock === undefined) {
+    return new Set();
+  }
+
+  const tasks = new Set();
+  for (const match of tasksBlock.matchAll(
+    /(?:^|[\s,])(?:"([^"]+)"|'([^']+)'|([A-Za-z0-9_-]+))\s*:\s*\{/gmu,
+  )) {
+    tasks.add(match[1] ?? match[2] ?? match[3]);
+  }
+  return tasks;
+}
+
+function extractObjectBlock(text, propertyName) {
+  const propertyPattern = new RegExp(String.raw`\b${propertyName}\s*:\s*\{`, "u");
+  const match = propertyPattern.exec(text);
+  if (!match) {
+    return undefined;
+  }
+  const start = match.index + match[0].lastIndexOf("{");
+  let depth = 0;
+  let quote = "";
+  let escaped = false;
+  for (let index = start; index < text.length; index += 1) {
+    const char = text[index];
+    if (quote) {
+      if (escaped) {
+        escaped = false;
+      } else if (char === "\\") {
+        escaped = true;
+      } else if (char === quote) {
+        quote = "";
+      }
+      continue;
+    }
+    if (char === '"' || char === "'" || char === "`") {
+      quote = char;
+      continue;
+    }
+    if (char === "{") {
+      depth += 1;
+    } else if (char === "}") {
+      depth -= 1;
+      if (depth === 0) {
+        return text.slice(start + 1, index);
+      }
+    }
+  }
+  return undefined;
+}
+
+function referencedJustRecipes(command) {
+  const recipes = [];
+  for (const segment of commandSegments(command)) {
+    const tokens = shellWords(segment);
+    let index = skipEnvAssignments(tokens, 0);
+    if (tokens[index] === "direnv" && tokens[index + 1] === "exec") {
+      index += 3;
+      index = skipEnvAssignments(tokens, index);
+    }
+    if (tokens[index] === "just" && typeof tokens[index + 1] === "string") {
+      recipes.push(tokens[index + 1]);
+    }
+  }
+  return recipes;
+}
+
+function referencedVpTasks(command) {
+  const tasks = [];
+  for (const segment of commandSegments(command)) {
+    const tokens = shellWords(segment);
+    let index = skipEnvAssignments(tokens, 0);
+    if (tokens[index] === "pnpm" && tokens[index + 1] === "exec" && tokens[index + 2] === "vp") {
+      index += 3;
+    } else if (tokens[index] === "vp") {
+      index += 1;
+    } else {
+      continue;
+    }
+    if (tokens[index] !== "run") {
+      continue;
+    }
+    index += 1;
+    while (tokens[index]?.startsWith("-")) {
+      index += 1;
+    }
+    if (typeof tokens[index] === "string") {
+      tasks.push(tokens[index]);
+    }
+  }
+  return tasks;
+}
+
+function isExplicitIgnoredCargoTest(command) {
+  for (const segment of commandSegments(command)) {
+    const tokens = shellWords(segment);
+    let index = skipEnvAssignments(tokens, 0);
+    if (tokens[index] === "direnv" && tokens[index + 1] === "exec") {
+      index += 3;
+      index = skipEnvAssignments(tokens, index);
+    }
+    const cargoIndex = tokens.indexOf("cargo", index);
+    if (cargoIndex === -1 || tokens[cargoIndex + 1] !== "test") {
+      continue;
+    }
+    const separatorIndex = tokens.indexOf("--", cargoIndex + 2);
+    if (separatorIndex === -1 || !tokens.slice(separatorIndex + 1).includes("--include-ignored")) {
+      continue;
+    }
+    const testTargetIndex = tokens.indexOf("--test", cargoIndex + 2);
+    if (testTargetIndex === -1 || testTargetIndex > separatorIndex - 2) {
+      return false;
+    }
+    const testTarget = tokens[testTargetIndex + 1];
+    const testFilter = tokens[testTargetIndex + 2];
+    return isRustIdentifier(testTarget) && isRustTestFilter(testFilter);
+  }
+  return false;
+}
+
+function commandIncludesFlag(command, flag) {
+  return shellWords(command).includes(flag);
+}
+
+function commandSegments(command) {
+  return command
+    .split(/\s+(?:&&|\|\||;)\s+/u)
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+}
+
+function shellWords(value) {
+  return [...value.matchAll(/"([^"\\]*(?:\\.[^"\\]*)*)"|'([^']*)'|(\S+)/gu)].map(
+    (match) => match[1] ?? match[2] ?? match[3],
+  );
+}
+
+function skipEnvAssignments(tokens, start) {
+  let index = start;
+  while (/^[A-Z_][A-Z0-9_]*=/u.test(tokens[index] ?? "")) {
+    index += 1;
+  }
+  return index;
+}
+
+function isRustIdentifier(value) {
+  return typeof value === "string" && /^[a-z_][a-z0-9_]*$/u.test(value);
+}
+
+function isRustTestFilter(value) {
+  return typeof value === "string" && /^[a-z_][a-z0-9_:]*$/u.test(value);
 }
 
 function validateNoTimeEstimateText(node, errors) {

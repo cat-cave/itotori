@@ -9767,11 +9767,11 @@
         },
         {
           "type": "command",
-          "value": "just alpha-proof"
+          "value": "just localize-project --dry-run --project sweetie-hd-alpha-1"
         },
         {
           "type": "command",
-          "value": "pnpm exec vp run alpha:validate-artifact-linkage"
+          "value": "just localize-project-test"
         },
         {
           "type": "command",
@@ -12753,11 +12753,11 @@
         },
         {
           "type": "command",
-          "value": "pnpm exec vp run alpha:public-fixture"
+          "value": "just hello"
         },
         {
           "type": "command",
-          "value": "pnpm exec vp run alpha:validate-artifact-linkage"
+          "value": "just fixtures-validate"
         },
         {
           "type": "command",
@@ -12850,15 +12850,15 @@
       "verification": [
         {
           "type": "command",
-          "value": "pnpm exec vp run alpha:public-fixture"
+          "value": "just hello"
         },
         {
           "type": "command",
-          "value": "just alpha-proof"
+          "value": "just fixtures-validate"
         },
         {
           "type": "command",
-          "value": "pnpm exec vp run alpha:validate-artifact-linkage"
+          "value": "just schema"
         },
         {
           "type": "command",
@@ -22889,7 +22889,11 @@
         },
         {
           "type": "command",
-          "value": "KAIFUU_REAL_SWEETIE_HD_PATH=/scratch/itotori-research/sweetie-hd/extracted KAIFUU_REAL_LUST_MEMORY_PATH=/scratch/itotori-research/rpg-maker-mv-mz/extracted direnv exec . cargo test -p utsushi-core composite_asset_package_real_bytes -- --include-ignored"
+          "value": "ITOTORI_REAL_GAME_ROOT=/scratch/itotori-research/sweetie-hd/extracted direnv exec . cargo test -p utsushi-core --test composite_asset_package_real_bytes composite_asset_package_real_bytes_sweetie_hd_realivedata -- --include-ignored"
+        },
+        {
+          "type": "command",
+          "value": "ITOTORI_REAL_GAME_ROOT_RPG_MAKER_MV_MZ=/scratch/itotori-research/rpg-maker-mv-mz/extracted direnv exec . cargo test -p utsushi-core --test composite_asset_package_real_bytes composite_asset_package_real_bytes_lust_memory_www_data_system_json -- --include-ignored"
         },
         {
           "type": "command",
@@ -22934,7 +22938,7 @@
         },
         {
           "type": "command",
-          "value": "cargo test -p utsushi-core snapshot_envelope_real_shapes -- --include-ignored"
+          "value": "cargo test -p utsushi-core --test snapshot_envelope reallive_sweetie_hd_scene_1_round_trips_byte_equal_through_medium_envelope -- --include-ignored"
         },
         {
           "type": "command",
@@ -22987,7 +22991,7 @@
         },
         {
           "type": "command",
-          "value": "KAIFUU_REAL_SWEETIE_HD_PATH=/scratch/itotori-research/sweetie-hd/extracted direnv exec . cargo test -p utsushi-core engine_port_sinks_bridge_real_bytes -- --include-ignored"
+          "value": "ITOTORI_REAL_GAME_ROOT=/scratch/itotori-research/sweetie-hd/extracted direnv exec . cargo test -p utsushi-core --test engine_port_sinks_bridge_real_bytes engine_port_sinks_bridge_real_bytes_pushes_text_and_frame_for_ten_ticks -- --include-ignored"
         }
       ],
       "audit_focus": [
@@ -25815,7 +25819,7 @@
         },
         {
           "type": "command",
-          "value": "OPENROUTER_LIVE=1 pnpm exec vp run itotori:openrouter-live-smoke"
+          "value": "ITOTORI_LIVE_PROVIDER=1 pnpm --filter @itotori/app test -- apps/itotori/test/openrouter-live.test.ts"
         },
         {
           "type": "command",
@@ -25860,7 +25864,7 @@
         },
         {
           "type": "command",
-          "value": "pnpm exec vp run itotori:agentic-loop-smoke --bridge fixtures/bridge-bundles/sweetie-hd-scene-1.bridge.json --unit-index 0 --pair-policy presets/localize-sweetie-hd.pair-policy.json"
+          "value": "pnpm exec vp run itotori:agentic-loop-smoke --bridge apps/itotori/test/fixtures/agentic-loop-smoke-bridge.json --unit-index 0 --pair-policy apps/itotori/test/fixtures/agentic-loop-smoke-pair-policy.json"
         },
         {
           "type": "command",
@@ -26080,11 +26084,11 @@
       "verification": [
         {
           "type": "command",
-          "value": "just localize-sweetie-hd --dry-run --project sweetie-hd-alpha-1"
+          "value": "just localize-project --dry-run --project sweetie-hd-alpha-1"
         },
         {
           "type": "command",
-          "value": "OPENROUTER_LIVE=1 just localize-sweetie-hd --project sweetie-hd-alpha-1"
+          "value": "just localize-project --project sweetie-hd-alpha-1"
         },
         {
           "type": "command",
@@ -26308,7 +26312,7 @@
         },
         {
           "type": "command",
-          "value": "OPENROUTER_LIVE=1 pnpm exec vp run itotori:openrouter-live-smoke"
+          "value": "ITOTORI_LIVE_PROVIDER=1 pnpm --filter @itotori/app test -- apps/itotori/test/openrouter-live.test.ts"
         }
       ],
       "audit_focus": [
@@ -26352,7 +26356,7 @@
         },
         {
           "type": "command",
-          "value": "just localize-sweetie-hd --dry-run --project sweetie-hd-alpha-1"
+          "value": "just localize-project --dry-run --project sweetie-hd-alpha-1"
         }
       ],
       "audit_focus": [
@@ -26477,7 +26481,7 @@
         },
         {
           "type": "command",
-          "value": "pnpm exec vp run itotori:telemetry-summary --since 2026-06-01"
+          "value": "pnpm --filter @itotori/app test -- apps/itotori/test/telemetry-queries.test.ts"
         }
       ],
       "audit_focus": [
@@ -26513,7 +26517,7 @@
       "verification": [
         {
           "type": "command",
-          "value": "pnpm -F itotori test -- localize-sweetie-hd"
+          "value": "pnpm --filter @itotori/app test -- apps/itotori/test/localize-project-stage.test.ts"
         },
         {
           "type": "command",
@@ -26600,7 +26604,7 @@
         },
         {
           "type": "command",
-          "value": "OPENROUTER_LIVE=1 pnpm exec vp run itotori:openrouter-live-smoke"
+          "value": "ITOTORI_LIVE_PROVIDER=1 pnpm --filter @itotori/app test -- apps/itotori/test/openrouter-live.test.ts"
         }
       ],
       "audit_focus": [
@@ -26637,11 +26641,11 @@
       "verification": [
         {
           "type": "command",
-          "value": "pnpm --filter @itotori/app test -- orchestrator/localize-sweetie-hd"
+          "value": "pnpm --filter @itotori/app test -- apps/itotori/test/localize-project-stage.test.ts"
         },
         {
           "type": "command",
-          "value": "just localize-sweetie-hd --dry-run --project sweetie-hd-alpha-1"
+          "value": "just localize-project --dry-run --project sweetie-hd-alpha-1"
         }
       ],
       "audit_focus": [
@@ -26716,11 +26720,11 @@
       "verification": [
         {
           "type": "command",
-          "value": "just localize-sweetie-hd --project sweetie-hd-alpha-1"
+          "value": "just localize-project --project sweetie-hd-alpha-1"
         },
         {
           "type": "command",
-          "value": "pnpm exec vp run itotori:telemetry-summary --since <run-start>"
+          "value": "node apps/itotori/dist/cli.js telemetry-summary --project sweetie-hd-alpha-1 --from <run-start-iso> --to <run-end-iso> --output artifacts/localize-project/<run-dir>/telemetry-summary.json"
         }
       ],
       "audit_focus": [
@@ -27381,7 +27385,7 @@
         },
         {
           "type": "command",
-          "value": "just localize-sweetie-hd --project sweetie-hd-alpha-1"
+          "value": "just localize-project --project sweetie-hd-alpha-1"
         }
       ],
       "audit_focus": []
@@ -27556,7 +27560,7 @@
         },
         {
           "type": "command",
-          "value": "just localize-sweetie-hd --project sweetie-hd-alpha-1"
+          "value": "just localize-project --project sweetie-hd-alpha-1"
         }
       ],
       "audit_focus": []
@@ -28155,11 +28159,11 @@
       "verification": [
         {
           "type": "command",
-          "value": "pnpm --filter @itotori/app test -- localize-sweetie-hd-stage"
+          "value": "pnpm --filter @itotori/app test -- localize-project-stage"
         },
         {
           "type": "command",
-          "value": "just localize-sweetie-hd --project sweetie-hd-alpha-1"
+          "value": "just localize-project --project sweetie-hd-alpha-1"
         }
       ],
       "audit_focus": [
@@ -28455,7 +28459,7 @@
       "verification": [
         {
           "type": "command",
-          "value": "pnpm --filter @itotori/app test -- apps/itotori/test/localize-sweetie-hd-stage.test.ts apps/itotori/test/openrouter-provider.test.ts apps/itotori/test/provider-abstraction.test.ts"
+          "value": "pnpm --filter @itotori/app test -- apps/itotori/test/localize-project-stage.test.ts apps/itotori/test/openrouter-provider.test.ts apps/itotori/test/provider-abstraction.test.ts"
         },
         {
           "type": "command",
@@ -28495,7 +28499,7 @@
       "verification": [
         {
           "type": "command",
-          "value": "pnpm --filter @itotori/app test -- apps/itotori/test/localize-sweetie-hd-stage.test.ts apps/itotori/test/openrouter-provider.test.ts"
+          "value": "pnpm --filter @itotori/app test -- apps/itotori/test/localize-project-stage.test.ts apps/itotori/test/openrouter-provider.test.ts"
         },
         {
           "type": "command",

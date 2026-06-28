@@ -550,6 +550,70 @@ test("rejects qd export placeholder spec, acceptance, and audit-focus text", () 
   assertError(errors, "ITOTORI-300 audit_focus[0] is placeholder text: test focus");
 });
 
+test("rejects qd export alpha command verification that names missing recipes and tasks", () => {
+  const errors = validateDag(
+    qdExportFixture({
+      milestone: "alpha",
+      priority: "P1",
+      verification: [
+        { type: "command", value: "just missing-alpha-recipe --dry-run" },
+        { type: "command", value: "pnpm exec vp run alpha:missing-task" },
+      ],
+    }),
+  ).errors;
+
+  assertError(
+    errors,
+    "ITOTORI-300 verification[0] references missing just recipe missing-alpha-recipe",
+  );
+  assertError(errors, "ITOTORI-300 verification[1] references missing vp task alpha:missing-task");
+});
+
+test("rejects qd export alpha include-ignored cargo commands without exact test target and filter", () => {
+  const errors = validateDag(
+    qdExportFixture({
+      milestone: "alpha",
+      priority: "P1",
+      verification: [
+        {
+          type: "command",
+          value:
+            "cargo test -p utsushi-core composite_asset_package_real_bytes -- --include-ignored",
+        },
+      ],
+    }),
+  ).errors;
+
+  assertError(
+    errors,
+    "ITOTORI-300 verification[0] include-ignored command must name an exact cargo integration test target and test filter",
+  );
+});
+
+test("accepts qd export alpha commands that name existing recipes, tasks, and exact ignored tests", () => {
+  const errors = validateDag(
+    qdExportFixture({
+      milestone: "alpha",
+      priority: "P1",
+      verification: [
+        { type: "command", value: "just localize-project --dry-run --project sweetie-hd-alpha-1" },
+        {
+          type: "command",
+          value:
+            "pnpm exec vp run itotori:agentic-loop-smoke --bridge apps/itotori/test/fixtures/agentic-loop-smoke-bridge.json --unit-index 0 --pair-policy apps/itotori/test/fixtures/agentic-loop-smoke-pair-policy.json",
+        },
+        {
+          type: "command",
+          value:
+            "ITOTORI_REAL_GAME_ROOT=/scratch/itotori-research/sweetie-hd/extracted direnv exec . cargo test -p utsushi-core --test engine_port_sinks_bridge_real_bytes engine_port_sinks_bridge_real_bytes_pushes_text_and_frame_for_ten_ticks -- --include-ignored",
+        },
+      ],
+    }),
+  ).errors;
+
+  assert.deepEqual(errors, []);
+});
+
 test("rejects qd export edges that reference missing nodes", () => {
   const dag = qdExportFixture();
   dag.edges.push({ from_node: "MISSING-001", to_node: "ITOTORI-300", type: "requires" });
