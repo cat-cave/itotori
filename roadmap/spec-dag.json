@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "exported_at": "2026-06-28T00:23:32.183Z",
+  "exported_at": "2026-06-28T00:41:05.900Z",
   "registries": {
     "groups": [
       {
@@ -28335,7 +28335,7 @@
       "title": "Bake max_connections=400 into db-compose-env to prevent pg pool exhaustion under parallel worktree CI",
       "kind": "feature",
       "milestone": null,
-      "status": "claimed",
+      "status": "done",
       "priority": "P1",
       "estimate_points": 1,
       "risk": "medium",
@@ -28346,9 +28346,9 @@
       "validation": null,
       "context": null,
       "created_at": "2026-06-26T18:14:26.911Z",
-      "updated_at": "2026-06-28T00:23:24.141Z",
+      "updated_at": "2026-06-28T00:40:48.539Z",
       "claimed_at": "2026-06-28T00:23:24.141Z",
-      "done_at": null,
+      "done_at": "2026-06-28T00:40:48.539Z",
       "group_name": null,
       "status_reason": null,
       "check_command": null,
@@ -42642,6 +42642,54 @@
       "started_at": "2026-06-28T00:07:11.757Z",
       "finished_at": "2026-06-28T00:07:11.757Z",
       "summary": "Merge recorded with squash at commit 76e1e1659a24f2f2035289fac5d657c38418f4fe",
+      "log_path": null
+    },
+    {
+      "id": "e7fc0796-ce43-402b-b03b-77db2237f67f",
+      "node_id": "INFRA-002",
+      "kind": "implement",
+      "status": "completed",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-28T00:35:00.040Z",
+      "finished_at": "2026-06-28T00:35:00.040Z",
+      "summary": "Implemented durable local Postgres connection tuning via subagent branch infra/infra-002-db-max-connections. docker-compose.yml now starts postgres with runtime flags max_connections=400 and shared_buffers=512MB, avoiding initdb-only behavior. GitHub CI/hello workflows now use just db-up/db-wait/db-down for parity with local compose. justfile disables implicit .env loading for compose and wires scripts/itotori-db-compose-config.test.mjs into just check. Docs updated in scale harness and Itotori subproject notes. Worker verified focused test, compose config, live alternate-port db recreate/query returning 400 and 512MB, and diff hygiene. Orchestrator verified node --test scripts/itotori-db-compose-config.test.mjs, git diff --check, and nix develop --command just check.",
+      "log_path": null
+    },
+    {
+      "id": "c7c9c3d8-8a0f-4e9b-a07d-b38ffdb95c5a",
+      "node_id": "INFRA-002",
+      "kind": "check",
+      "status": "passed",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-28T00:35:20.810Z",
+      "finished_at": "2026-06-28T00:35:57.441Z",
+      "summary": "check command passed: nix develop --command bash -lc 'just check'",
+      "log_path": "/home/trevor/projects/itotori/.qd/logs/check-INFRA-002-2026-06-28T00-35-20-810Z.log"
+    },
+    {
+      "id": "bc83ca94-33ff-4e17-b9d9-42d2fd849cb7",
+      "node_id": "INFRA-002",
+      "kind": "ci",
+      "status": "passed",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-28T00:36:05.966Z",
+      "finished_at": "2026-06-28T00:40:25.275Z",
+      "summary": "ci command passed: nix develop --command bash -lc 'just ci'",
+      "log_path": "/home/trevor/projects/itotori/.qd/logs/ci-INFRA-002-2026-06-28T00-36-05-966Z.log"
+    },
+    {
+      "id": "9340edce-3008-410d-a22b-083425e050a4",
+      "node_id": "INFRA-002",
+      "kind": "merge",
+      "status": "recorded",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-28T00:40:48.539Z",
+      "finished_at": "2026-06-28T00:40:48.539Z",
+      "summary": "Merge recorded with squash at commit 4e384d94bbb2e505e11f4bd1a9f733e7d52f01f5",
       "log_path": null
     }
   ],
