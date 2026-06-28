@@ -150,10 +150,7 @@ export {
 } from "./batch-route.js";
 export type { ReviewerBatchConfirmDeps, ReviewerBatchRouteDeps } from "./batch-route.js";
 
-export {
-  ReviewerQueueApiService,
-  reviewerQueueDashboardStateValues,
-} from "./api-service.js";
+export { ReviewerQueueApiService, reviewerQueueDashboardStateValues } from "./api-service.js";
 export type {
   ReviewerQueueApiServiceDeps,
   ReviewerQueueApiServicePort,

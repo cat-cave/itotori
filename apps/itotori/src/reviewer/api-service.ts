@@ -163,8 +163,9 @@ export class ReviewerQueueApiService implements ReviewerQueueApiServicePort {
   private async dashboardRow(item: ReviewerQueueItemRecord): Promise<ReviewerQueueDashboardRow> {
     const transitions = await this.deps.repository.loadTransitionsByItem(item.reviewItemId);
     const latestTransition = transitions.at(-1) ?? null;
-    const batchActionId = stringMetadata(item.metadata, "batchActionId")
-      ?? stringMetadata(latestTransition?.metadata, "batchActionId");
+    const batchActionId =
+      stringMetadata(item.metadata, "batchActionId") ??
+      stringMetadata(latestTransition?.metadata, "batchActionId");
     const dashboardState = dashboardStateFor(item.state, batchActionId);
     return {
       reviewItemId: item.reviewItemId,
@@ -270,10 +271,7 @@ function aggregateRows(rows: ReviewerQueueDashboardRow[]): ReviewerQueueDashboar
   return aggregate;
 }
 
-function stringMetadata(
-  metadata: Record<string, unknown> | undefined,
-  key: string,
-): string | null {
+function stringMetadata(metadata: Record<string, unknown> | undefined, key: string): string | null {
   const value = metadata?.[key];
   return typeof value === "string" && value.length > 0 ? value : null;
 }

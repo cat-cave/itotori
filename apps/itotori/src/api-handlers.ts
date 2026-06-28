@@ -782,10 +782,7 @@ function ok(
   routeId: "catalog.opportunities",
   body: CatalogOpportunityRankingReadModel,
 ): ApiJsonResponse;
-function ok(
-  routeId: "reviewer.queue",
-  body: ApiReviewerQueueDashboardResponse,
-): ApiJsonResponse;
+function ok(routeId: "reviewer.queue", body: ApiReviewerQueueDashboardResponse): ApiJsonResponse;
 function ok(routeId: "reviewer.detail", body: ApiReviewerDetailResponse): ApiJsonResponse;
 function ok(
   routeId: "reviewer.batchPreview",

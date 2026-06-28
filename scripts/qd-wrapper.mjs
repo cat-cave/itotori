@@ -330,41 +330,45 @@ async function disposeAuditRun(realQd, root, globalArgs, options) {
     throw new Error("usage: qd audit dispose <node> --run-id <id> --rationale <text>");
   if (!options.runId) throw new Error("qd audit dispose requires --run-id");
 
-  await withAuditDispositionLock(root, async () => {
-    const operationDir = path.join(root, ".tmp", "qd-lifecycle", randomUUID());
-    const stagedRoot = path.join(operationDir, "staged-root");
+  await withAuditDispositionLock(
+    root,
+    async () => {
+      const operationDir = path.join(root, ".tmp", "qd-lifecycle", randomUUID());
+      const stagedRoot = path.join(operationDir, "staged-root");
 
-    try {
-      const snapshot = await loadSnapshot(realQd, root, globalArgs);
-      const { run, recordedMissing } = disposeAuditRunInSnapshot(snapshot, {
-        nodeId: options.nodeId,
-        runId: options.runId,
-        status: options.status,
-        rationale: options.rationale,
-        startedAt: options.startedAt,
-        recordMissing: options.recordMissing,
-      });
+      try {
+        const snapshot = await loadSnapshot(realQd, root, globalArgs);
+        const { run, recordedMissing } = disposeAuditRunInSnapshot(snapshot, {
+          nodeId: options.nodeId,
+          runId: options.runId,
+          status: options.status,
+          rationale: options.rationale,
+          startedAt: options.startedAt,
+          recordMissing: options.recordMissing,
+        });
 
-      await prepareStagedRoot(root, stagedRoot);
-      const tempPath = path.join(stagedRoot, "snapshot.json");
-      await writeFile(tempPath, `${JSON.stringify(snapshot, null, 2)}\n`, "utf8");
+        await prepareStagedRoot(root, stagedRoot);
+        const tempPath = path.join(stagedRoot, "snapshot.json");
+        await writeFile(tempPath, `${JSON.stringify(snapshot, null, 2)}\n`, "utf8");
 
-      runChecked(realQd, ["--root", stagedRoot, "import", "--from", "snapshot.json"], {
-        quiet: options.json,
-      });
-      validateStagedDisposition(realQd, stagedRoot, options, run);
+        runChecked(realQd, ["--root", stagedRoot, "import", "--from", "snapshot.json"], {
+          quiet: options.json,
+        });
+        validateStagedDisposition(realQd, stagedRoot, options, run);
 
-      await installValidatedDatabase(root, stagedRoot, operationDir, async () => {
-        await replaceRoadmapSpecDagExport(realQd, root, globalArgs, operationDir, options);
-      });
+        await installValidatedDatabase(root, stagedRoot, operationDir, async () => {
+          await replaceRoadmapSpecDagExport(realQd, root, globalArgs, operationDir, options);
+        });
 
-      const result = { ok: true, nodeId: options.nodeId, run, recordedMissing };
-      if (options.json) console.log(JSON.stringify(result, null, 2));
-      else console.log(`Disposed audit run ${run.id} for ${options.nodeId} as ${run.status}`);
-    } finally {
-      await rm(operationDir, { recursive: true, force: true });
-    }
-  }, { force: Boolean(options.force) });
+        const result = { ok: true, nodeId: options.nodeId, run, recordedMissing };
+        if (options.json) console.log(JSON.stringify(result, null, 2));
+        else console.log(`Disposed audit run ${run.id} for ${options.nodeId} as ${run.status}`);
+      } finally {
+        await rm(operationDir, { recursive: true, force: true });
+      }
+    },
+    { force: Boolean(options.force) },
+  );
 }
 
 async function replaceRoadmapSpecDagExport(realQd, root, globalArgs, operationDir, options) {

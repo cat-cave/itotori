@@ -70,10 +70,7 @@ import type {
   ReviewerQueueDashboardState,
 } from "./reviewer/api-service.js";
 import { reviewerQueueDashboardStateValues } from "./reviewer/api-service.js";
-import type {
-  ReviewerBatchActionRequest,
-  ReviewerBatchPreview,
-} from "./reviewer/batch-preview.js";
+import type { ReviewerBatchActionRequest, ReviewerBatchPreview } from "./reviewer/batch-preview.js";
 import type { ReviewerDetailContext } from "./reviewer/detail-fixtures.js";
 
 export type ItotoriApiRouteId =
@@ -297,28 +294,27 @@ export function parseReviewerBatchPreviewRequest(body: unknown): ApiReviewerBatc
       "ApiReviewerBatchPreviewRequest.action",
     );
     assertString(request.actorUserId, "ApiReviewerBatchPreviewRequest.actorUserId");
-    const selections = asArray(
-      request.selections,
-      "ApiReviewerBatchPreviewRequest.selections",
-    ).map((value, index) => {
-      const selection = asStrictRecord(
-        value,
-        `ApiReviewerBatchPreviewRequest.selections[${index}]`,
-        ["reviewItemId", "expectedSourceRevisionId"],
-      );
-      assertString(
-        selection.reviewItemId,
-        `ApiReviewerBatchPreviewRequest.selections[${index}].reviewItemId`,
-      );
-      assertString(
-        selection.expectedSourceRevisionId,
-        `ApiReviewerBatchPreviewRequest.selections[${index}].expectedSourceRevisionId`,
-      );
-      return {
-        reviewItemId: selection.reviewItemId,
-        expectedSourceRevisionId: selection.expectedSourceRevisionId,
-      };
-    });
+    const selections = asArray(request.selections, "ApiReviewerBatchPreviewRequest.selections").map(
+      (value, index) => {
+        const selection = asStrictRecord(
+          value,
+          `ApiReviewerBatchPreviewRequest.selections[${index}]`,
+          ["reviewItemId", "expectedSourceRevisionId"],
+        );
+        assertString(
+          selection.reviewItemId,
+          `ApiReviewerBatchPreviewRequest.selections[${index}].reviewItemId`,
+        );
+        assertString(
+          selection.expectedSourceRevisionId,
+          `ApiReviewerBatchPreviewRequest.selections[${index}].expectedSourceRevisionId`,
+        );
+        return {
+          reviewItemId: selection.reviewItemId,
+          expectedSourceRevisionId: selection.expectedSourceRevisionId,
+        };
+      },
+    );
     return {
       action: request.action,
       actorUserId: request.actorUserId,

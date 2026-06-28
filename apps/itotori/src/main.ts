@@ -98,9 +98,7 @@ function makeApiBatchPreviewService(): ReviewerBatchPreviewServicePort {
 }
 
 async function fetchReviewerDetailContext(reviewItemId: string): Promise<ReviewerDetailContext> {
-  const response = await fetch(
-    `/api/reviewer/queue/${encodeURIComponent(reviewItemId)}/detail`,
-  );
+  const response = await fetch(`/api/reviewer/queue/${encodeURIComponent(reviewItemId)}/detail`);
   if (!response.ok) {
     throw new Error(`failed to load reviewer detail: ${response.status}`);
   }
