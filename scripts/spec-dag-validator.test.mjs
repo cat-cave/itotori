@@ -569,6 +569,38 @@ test("rejects qd export alpha command verification that names missing recipes an
   assertError(errors, "ITOTORI-300 verification[1] references missing vp task alpha:missing-task");
 });
 
+test("rejects qd export alpha P0/P1 app test passthrough commands", () => {
+  const errors = validateDag(
+    qdExportFixture({
+      milestone: "alpha",
+      priority: "P1",
+      verification: [
+        {
+          type: "command",
+          value: "pnpm --filter @itotori/app test -- test/openrouter-live.test.ts",
+        },
+        {
+          type: "command",
+          value: "pnpm --filter @itotori/app test -- apps/itotori/test/openrouter-live.test.ts",
+        },
+      ],
+    }),
+  ).errors;
+
+  assertError(
+    errors,
+    'ITOTORI-300 verification[0] must use "pnpm --filter @itotori/app exec vitest run" instead of package "test --" passthrough',
+  );
+  assertError(
+    errors,
+    'ITOTORI-300 verification[1] must use "pnpm --filter @itotori/app exec vitest run" instead of package "test --" passthrough',
+  );
+  assertError(
+    errors,
+    "ITOTORI-300 verification[1] @itotori/app test path must be package-relative, not root-relative apps/itotori/test/openrouter-live.test.ts",
+  );
+});
+
 test("rejects qd export alpha include-ignored cargo commands without exact test target and filter", () => {
   const errors = validateDag(
     qdExportFixture({
@@ -601,6 +633,10 @@ test("accepts qd export alpha commands that name existing recipes, tasks, and ex
           type: "command",
           value:
             "pnpm exec vp run itotori:agentic-loop-smoke --bridge apps/itotori/test/fixtures/agentic-loop-smoke-bridge.json --unit-index 0 --pair-policy apps/itotori/test/fixtures/agentic-loop-smoke-pair-policy.json",
+        },
+        {
+          type: "command",
+          value: "pnpm --filter @itotori/app exec vitest run test/localize-project-stage.test.ts",
         },
         {
           type: "command",

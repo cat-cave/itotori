@@ -1369,7 +1369,7 @@ function validateAlphaCommandReferences(nodes) {
   const vpTasks = loadVpTaskNames();
 
   for (const node of nodes) {
-    if (node.target !== "alpha" || !["P0", "P1"].includes(node.priority)) {
+    if (node.target !== "alpha") {
       continue;
     }
     const verification = Array.isArray(node.verification) ? node.verification : [];
@@ -1398,6 +1398,19 @@ function validateAlphaCommandReferences(nodes) {
       ) {
         errors.push(
           `${node.id} verification[${index}] include-ignored command must name an exact cargo integration test target and test filter: ${command}`,
+        );
+      }
+      if (
+        ["P0", "P1"].includes(node.priority) &&
+        isPnpmItotoriAppPackageTestWithPassthrough(command)
+      ) {
+        errors.push(
+          `${node.id} verification[${index}] must use "pnpm --filter @itotori/app exec vitest run" instead of package "test --" passthrough: ${command}`,
+        );
+      }
+      for (const path of rootRelativeItotoriAppTestPaths(command)) {
+        errors.push(
+          `${node.id} verification[${index}] @itotori/app test path must be package-relative, not root-relative ${path}: ${command}`,
         );
       }
     }
@@ -1548,6 +1561,69 @@ function isExplicitIgnoredCargoTest(command) {
     return isRustIdentifier(testTarget) && isRustTestFilter(testFilter);
   }
   return false;
+}
+
+function isPnpmItotoriAppPackageTestWithPassthrough(command) {
+  for (const segment of commandSegments(command)) {
+    const tokens = shellWords(segment);
+    const index = skipEnvAssignments(tokens, 0);
+    if (isPnpmItotoriAppTestCommand(tokens, index) && tokens.includes("--")) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function rootRelativeItotoriAppTestPaths(command) {
+  const paths = [];
+  for (const segment of commandSegments(command)) {
+    const tokens = shellWords(segment);
+    let index = skipEnvAssignments(tokens, 0);
+    if (!isPnpmItotoriAppTestCommand(tokens, index)) {
+      continue;
+    }
+    const passthroughIndex = tokens.indexOf("--", index);
+    if (passthroughIndex === -1) {
+      continue;
+    }
+    for (const token of tokens.slice(passthroughIndex + 1)) {
+      if (token.startsWith("apps/itotori/test/")) {
+        paths.push(token);
+      }
+    }
+  }
+  return paths;
+}
+
+function isPnpmItotoriAppTestCommand(tokens, start) {
+  if (tokens[start] !== "pnpm") {
+    return false;
+  }
+
+  const filter = itotoriAppFilterAt(tokens, start + 1);
+  return filter !== undefined && tokens[filter.nextIndex] === "test";
+}
+
+function itotoriAppFilterAt(tokens, index) {
+  if (tokens[index] === "--filter" && isItotoriAppFilterValue(tokens[index + 1])) {
+    return { nextIndex: index + 2 };
+  }
+  if (tokens[index] === "-F" && isItotoriAppFilterValue(tokens[index + 1])) {
+    return { nextIndex: index + 2 };
+  }
+  const filterValue = tokens[index]?.match(/^--filter=(.+)$/u)?.[1];
+  if (filterValue !== undefined && isItotoriAppFilterValue(filterValue)) {
+    return { nextIndex: index + 1 };
+  }
+  const shortFilterValue = tokens[index]?.match(/^-F(.+)$/u)?.[1];
+  if (shortFilterValue !== undefined && isItotoriAppFilterValue(shortFilterValue)) {
+    return { nextIndex: index + 1 };
+  }
+  return undefined;
+}
+
+function isItotoriAppFilterValue(value) {
+  return value === "@itotori/app" || value === "itotori";
 }
 
 function commandIncludesFlag(command, flag) {

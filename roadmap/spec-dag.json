@@ -25774,7 +25774,7 @@
         },
         {
           "type": "command",
-          "value": "pnpm --filter @itotori/app test -- providers/pair"
+          "value": "pnpm --filter @itotori/app exec vitest run test/model-provider-pair.test.ts"
         },
         {
           "type": "command",
@@ -25815,11 +25815,11 @@
       "verification": [
         {
           "type": "command",
-          "value": "pnpm --filter @itotori/app test -- providers/openrouter"
+          "value": "pnpm --filter @itotori/app exec vitest run test/openrouter-provider.test.ts"
         },
         {
           "type": "command",
-          "value": "ITOTORI_LIVE_PROVIDER=1 pnpm --filter @itotori/app test -- apps/itotori/test/openrouter-live.test.ts"
+          "value": "ITOTORI_LIVE_PROVIDER=1 pnpm --filter @itotori/app exec vitest run test/openrouter-live.test.ts"
         },
         {
           "type": "command",
@@ -25860,7 +25860,7 @@
       "verification": [
         {
           "type": "command",
-          "value": "pnpm --filter @itotori/app test -- agents/orchestrator"
+          "value": "pnpm --filter @itotori/app exec vitest run test/agentic-loop.test.ts"
         },
         {
           "type": "command",
@@ -25905,7 +25905,7 @@
       "verification": [
         {
           "type": "command",
-          "value": "pnpm --filter @itotori/app test -- agents/cost"
+          "value": "pnpm --filter @itotori/app exec vitest run test/openrouter-provider.test.ts"
         },
         {
           "type": "command",
@@ -26254,11 +26254,11 @@
       "verification": [
         {
           "type": "command",
-          "value": "pnpm -F itotori test -- openrouter-provider"
+          "value": "pnpm --filter @itotori/app exec vitest run test/openrouter-provider.test.ts"
         },
         {
           "type": "command",
-          "value": "pnpm -F itotori test -- telemetry-queries"
+          "value": "pnpm --filter @itotori/app exec vitest run test/telemetry-queries.test.ts"
         },
         {
           "type": "command",
@@ -26312,7 +26312,7 @@
         },
         {
           "type": "command",
-          "value": "ITOTORI_LIVE_PROVIDER=1 pnpm --filter @itotori/app test -- apps/itotori/test/openrouter-live.test.ts"
+          "value": "ITOTORI_LIVE_PROVIDER=1 pnpm --filter @itotori/app exec vitest run test/openrouter-live.test.ts"
         }
       ],
       "audit_focus": [
@@ -26348,7 +26348,7 @@
       "verification": [
         {
           "type": "command",
-          "value": "pnpm --filter @itotori/app test -- providers"
+          "value": "pnpm --filter @itotori/app exec vitest run test/openrouter-provider.test.ts test/provider-abstraction.test.ts test/model-provider-pair.test.ts"
         },
         {
           "type": "command",
@@ -26393,11 +26393,11 @@
       "verification": [
         {
           "type": "command",
-          "value": "pnpm -F itotori test -- recorded"
+          "value": "pnpm --filter @itotori/app exec vitest run test/recorded-cost-replay.test.ts"
         },
         {
           "type": "command",
-          "value": "pnpm -F itotori test -- draft-attempt-recorder"
+          "value": "pnpm --filter @itotori/app exec vitest run test/draft-attempt-recorder.test.ts"
         }
       ],
       "audit_focus": [
@@ -26433,11 +26433,11 @@
       "verification": [
         {
           "type": "command",
-          "value": "pnpm -F itotori test -- agentic-loop"
+          "value": "pnpm --filter @itotori/app exec vitest run test/agentic-loop.test.ts"
         },
         {
           "type": "command",
-          "value": "pnpm -F itotori test -- agentic-loop-smoke"
+          "value": "pnpm --filter @itotori/app exec vitest run test/cli.test.ts"
         }
       ],
       "audit_focus": [
@@ -26473,7 +26473,7 @@
       "verification": [
         {
           "type": "command",
-          "value": "pnpm --filter @itotori/app test -- telemetry"
+          "value": "pnpm --filter @itotori/app exec vitest run test/openrouter-provider.test.ts"
         },
         {
           "type": "command",
@@ -26481,7 +26481,7 @@
         },
         {
           "type": "command",
-          "value": "pnpm --filter @itotori/app test -- apps/itotori/test/telemetry-queries.test.ts"
+          "value": "pnpm --filter @itotori/app exec vitest run test/telemetry-queries.test.ts"
         }
       ],
       "audit_focus": [
@@ -26517,11 +26517,11 @@
       "verification": [
         {
           "type": "command",
-          "value": "pnpm --filter @itotori/app test -- apps/itotori/test/localize-project-stage.test.ts"
+          "value": "pnpm --filter @itotori/app exec vitest run test/localize-project-stage.test.ts"
         },
         {
           "type": "command",
-          "value": "pnpm -F itotori test -- openrouter-provider"
+          "value": "pnpm --filter @itotori/app exec vitest run test/openrouter-provider.test.ts"
         }
       ],
       "audit_focus": [
@@ -26596,15 +26596,15 @@
       "verification": [
         {
           "type": "command",
-          "value": "pnpm --filter @itotori/app test -- providers/openrouter"
+          "value": "pnpm --filter @itotori/app exec vitest run test/openrouter-provider.test.ts"
         },
         {
           "type": "command",
-          "value": "pnpm --filter @itotori/app test -- telemetry-queries"
+          "value": "pnpm --filter @itotori/app exec vitest run test/telemetry-queries.test.ts"
         },
         {
           "type": "command",
-          "value": "ITOTORI_LIVE_PROVIDER=1 pnpm --filter @itotori/app test -- apps/itotori/test/openrouter-live.test.ts"
+          "value": "ITOTORI_LIVE_PROVIDER=1 pnpm --filter @itotori/app exec vitest run test/openrouter-live.test.ts"
         }
       ],
       "audit_focus": [
@@ -26641,7 +26641,7 @@
       "verification": [
         {
           "type": "command",
-          "value": "pnpm --filter @itotori/app test -- apps/itotori/test/localize-project-stage.test.ts"
+          "value": "pnpm --filter @itotori/app exec vitest run test/localize-project-stage.test.ts"
         },
         {
           "type": "command",
@@ -28159,7 +28159,7 @@
       "verification": [
         {
           "type": "command",
-          "value": "pnpm --filter @itotori/app test -- localize-project-stage"
+          "value": "pnpm --filter @itotori/app exec vitest run test/localize-project-stage.test.ts"
         },
         {
           "type": "command",
@@ -28459,7 +28459,7 @@
       "verification": [
         {
           "type": "command",
-          "value": "pnpm --filter @itotori/app test -- apps/itotori/test/localize-project-stage.test.ts apps/itotori/test/openrouter-provider.test.ts apps/itotori/test/provider-abstraction.test.ts"
+          "value": "pnpm --filter @itotori/app exec vitest run test/localize-project-stage.test.ts test/openrouter-provider.test.ts test/provider-abstraction.test.ts"
         },
         {
           "type": "command",
@@ -28499,7 +28499,7 @@
       "verification": [
         {
           "type": "command",
-          "value": "pnpm --filter @itotori/app test -- apps/itotori/test/localize-project-stage.test.ts apps/itotori/test/openrouter-provider.test.ts"
+          "value": "pnpm --filter @itotori/app exec vitest run test/localize-project-stage.test.ts test/openrouter-provider.test.ts"
         },
         {
           "type": "command",
@@ -28624,7 +28624,7 @@
       "verification": [
         {
           "type": "command",
-          "value": "pnpm --filter @itotori/app test -- localize"
+          "value": "pnpm --filter @itotori/app exec vitest run test/localize-project-stage.test.ts"
         },
         {
           "type": "command",
