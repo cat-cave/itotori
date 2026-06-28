@@ -29,6 +29,23 @@ test("derives worktree-specific local db settings", () => {
   assert.notEqual(first.composeEnvPath, second.composeEnvPath);
 });
 
+test("ignores the justfile default compose env path for qd full CI", () => {
+  const root = "/scratch/worktrees/itotori-node-default-env";
+  const settings = buildDbSettings(root, 61234, {
+    ITOTORI_DB_COMPOSE_ENV_PATH: ".tmp/itotori-db/compose.env",
+  });
+
+  assert.match(settings.composeEnvPath, /^\.tmp\/itotori-db\/qd-full-ci-[a-f0-9]{10}-61234\.env$/u);
+});
+
+test("honors a non-default compose env path override for qd full CI", () => {
+  const settings = buildDbSettings("/scratch/worktrees/itotori-node-custom-env", 61235, {
+    ITOTORI_DB_COMPOSE_ENV_PATH: ".tmp/itotori-db/custom-compose.env",
+  });
+
+  assert.equal(settings.composeEnvPath, ".tmp/itotori-db/custom-compose.env");
+});
+
 test("port reservation fails early with a clear diagnostic when the range is unavailable", async () => {
   const lockDir = mkdtempSync(path.join(os.tmpdir(), "itotori-port-locks-"));
   const occupiedLock = path.join(lockDir, "61111.lock");

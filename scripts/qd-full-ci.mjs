@@ -9,6 +9,7 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const defaultDatabaseUrl = "postgres://itotori:itotori@127.0.0.1:55433/itotori";
+const defaultComposeEnvPath = path.join(".tmp", "itotori-db", "compose.env");
 const defaultPortBase = 55433;
 const defaultPortSpan = 2000;
 const scriptPath = fileURLToPath(import.meta.url);
@@ -235,12 +236,20 @@ export function buildDbSettings(root, port, env = process.env) {
     .replace(/^-+/u, "");
   const composeProjectName = `itotori-qdfullci-${rootSlug || "worktree"}-${rootHash}-${port}`;
   return {
-    composeEnvPath:
-      env.ITOTORI_DB_COMPOSE_ENV_PATH ||
-      path.join(".tmp", "itotori-db", `qd-full-ci-${rootHash}-${port}.env`),
+    composeEnvPath: qdComposeEnvPath(root, rootHash, port, env),
     composeProjectName,
     databaseUrl,
   };
+}
+
+function qdComposeEnvPath(root, rootHash, port, env) {
+  const value = env.ITOTORI_DB_COMPOSE_ENV_PATH;
+  if (value && !isDefaultComposeEnvPath(root, value)) return value;
+  return path.join(".tmp", "itotori-db", `qd-full-ci-${rootHash}-${port}.env`);
+}
+
+function isDefaultComposeEnvPath(root, value) {
+  return path.resolve(root, value) === path.resolve(root, defaultComposeEnvPath);
 }
 
 function databaseUrlWithPort(value, port) {
