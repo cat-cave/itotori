@@ -45625,8 +45625,8 @@
       "agent": null,
       "started_at": "2026-06-28T01:56:23.774Z",
       "finished_at": "2026-06-28T01:56:23.774Z",
-      "summary": "Broad audit follow-up bookkeeping only; implementation CI already passed at /home/trevor/projects/itotori/.qd/logs/ci-expose-benchmark-seed-adapterids-through-catalog-api-filters-2026-06-28T01-35-46-790Z.log before the audit wave. No code changes since commit 3e94d8235c3999947ab2730dfb7a242796cdb6e7.\nEvidence: log_path=/home/trevor/projects/itotori/.qd/logs/ci-expose-benchmark-seed-adapterids-through-catalog-api-filters-2026-06-28T01-35-46-790Z.log",
-      "log_path": "/home/trevor/projects/itotori/.qd/logs/ci-expose-benchmark-seed-adapterids-through-catalog-api-filters-2026-06-28T01-35-46-790Z.log"
+      "summary": "Broad audit follow-up bookkeeping only; implementation CI already passed at external_id=local-qdfullci:expose-benchmark-seed-adapterids-through-catalog-api-filters:2026-06-28T01-35-46Z before the audit wave. No code changes since commit 3e94d8235c3999947ab2730dfb7a242796cdb6e7.\nEvidence: external_id=local-qdfullci:expose-benchmark-seed-adapterids-through-catalog-api-filters:2026-06-28T01-35-46Z",
+      "log_path": null
     },
     {
       "id": "453a3415-7993-4f73-a4bb-8bbd6f0038be",
@@ -46549,8 +46549,8 @@
       "agent": null,
       "started_at": "2026-06-28T08:10:18.801Z",
       "finished_at": "2026-06-28T08:10:18.801Z",
-      "summary": "Safety wave qd full CI passed after catalog redaction integration; focused app API handlers passed and DB catalog command passed with verifier preflight.\nEvidence: log_path=.qd/logs/ci-harden-reallive-patch-target-canonicalization-2026-06-28T08-05-27-638Z.log",
-      "log_path": ".qd/logs/ci-harden-reallive-patch-target-canonicalization-2026-06-28T08-05-27-638Z.log"
+      "summary": "Safety wave qd full CI passed after catalog redaction integration; focused app API handlers passed and DB catalog command passed with verifier preflight.\nEvidence: external_id=local-qdfullci:harden-reallive-patch-target-canonicalization:2026-06-28T08-05-27Z",
+      "log_path": null
     },
     {
       "id": "0492bc5d-ff78-4ac2-af42-195c5cbeae05",
@@ -46573,8 +46573,8 @@
       "agent": null,
       "started_at": "2026-06-28T08:10:38.989Z",
       "finished_at": "2026-06-28T08:10:38.989Z",
-      "summary": "Safety wave qd full CI passed after SQL-comment-aware permission verifier integration; verifier regressions passed in full DB test preflight.\nEvidence: log_path=.qd/logs/ci-harden-reallive-patch-target-canonicalization-2026-06-28T08-05-27-638Z.log",
-      "log_path": ".qd/logs/ci-harden-reallive-patch-target-canonicalization-2026-06-28T08-05-27-638Z.log"
+      "summary": "Safety wave qd full CI passed after SQL-comment-aware permission verifier integration; verifier regressions passed in full DB test preflight.\nEvidence: external_id=local-qdfullci:harden-reallive-patch-target-canonicalization:2026-06-28T08-05-27Z",
+      "log_path": null
     },
     {
       "id": "17236fe9-95dc-4ff6-ab4d-fa79291bbc49",
@@ -46669,8 +46669,8 @@
       "agent": null,
       "started_at": "2026-06-28T08:40:42.947Z",
       "finished_at": "2026-06-28T08:40:42.947Z",
-      "summary": "Repair batch qd full CI passed after SQL strictness integration; verifier regressions passed under full DB test preflight.\nEvidence: log_path=.qd/logs/ci-harden-reallive-target-tree-symlink-preflight-2026-06-28T08-35-58-264Z.log",
-      "log_path": ".qd/logs/ci-harden-reallive-target-tree-symlink-preflight-2026-06-28T08-35-58-264Z.log"
+      "summary": "Repair batch qd full CI passed after SQL strictness integration; verifier regressions passed under full DB test preflight.\nEvidence: external_id=local-qdfullci:harden-reallive-target-tree-symlink-preflight:2026-06-28T08-35-58Z",
+      "log_path": null
     },
     {
       "id": "18f36d0e-bb20-46d9-9172-bf988eb2f8ed",
@@ -46693,8 +46693,8 @@
       "agent": null,
       "started_at": "2026-06-28T08:41:02.786Z",
       "finished_at": "2026-06-28T08:41:02.786Z",
-      "summary": "Repair batch qd full CI passed after public fixture readiness integration; DB package tests ran with disposable Postgres.\nEvidence: log_path=.qd/logs/ci-harden-reallive-target-tree-symlink-preflight-2026-06-28T08-35-58-264Z.log",
-      "log_path": ".qd/logs/ci-harden-reallive-target-tree-symlink-preflight-2026-06-28T08-35-58-264Z.log"
+      "summary": "Repair batch qd full CI passed after public fixture readiness integration; DB package tests ran with disposable Postgres.\nEvidence: external_id=local-qdfullci:harden-reallive-target-tree-symlink-preflight:2026-06-28T08-35-58Z",
+      "log_path": null
     },
     {
       "id": "0f93a959-b94e-41ec-a4ed-0dc135e65750",
@@ -46717,8 +46717,8 @@
       "agent": null,
       "started_at": "2026-06-28T08:41:24.286Z",
       "finished_at": "2026-06-28T08:41:24.286Z",
-      "summary": "Repair batch qd full CI passed after strict catalog API shape integration; app API handler tests passed.\nEvidence: log_path=.qd/logs/ci-harden-reallive-target-tree-symlink-preflight-2026-06-28T08-35-58-264Z.log",
-      "log_path": ".qd/logs/ci-harden-reallive-target-tree-symlink-preflight-2026-06-28T08-35-58-264Z.log"
+      "summary": "Repair batch qd full CI passed after strict catalog API shape integration; app API handler tests passed.\nEvidence: external_id=local-qdfullci:harden-reallive-target-tree-symlink-preflight:2026-06-28T08-35-58Z",
+      "log_path": null
     },
     {
       "id": "590996d7-4770-4193-9ca5-1922f33a758d",

@@ -45,6 +45,59 @@ test("backfills local qd log evidence on covered CI reuse runs to external ids",
   assert.deepEqual(validateDag(dag).errors, []);
 });
 
+test("backfills current passed-CI reuse wording that cites local qd logs", () => {
+  const dag = qdExportFixture();
+  dag.runs.push(
+    {
+      id: "00000000-0000-4000-8000-000000000010",
+      node_id: "ITOTORI-300",
+      kind: "ci",
+      status: "passed",
+      worktree_path: null,
+      agent: null,
+      started_at: "2026-06-28T09:00:25.766Z",
+      finished_at: "2026-06-28T09:00:25.766Z",
+      summary:
+        "Broad audit follow-up bookkeeping only; implementation CI already passed at /home/trevor/projects/itotori/.qd/logs/ci-expose-benchmark-seed-adapterids-through-catalog-api-filters-2026-06-28T01-35-46-790Z.log before the audit wave.\nEvidence: log_path=/home/trevor/projects/itotori/.qd/logs/ci-expose-benchmark-seed-adapterids-through-catalog-api-filters-2026-06-28T01-35-46-790Z.log",
+      log_path:
+        "/home/trevor/projects/itotori/.qd/logs/ci-expose-benchmark-seed-adapterids-through-catalog-api-filters-2026-06-28T01-35-46-790Z.log",
+    },
+    {
+      id: "00000000-0000-4000-8000-000000000011",
+      node_id: "ITOTORI-300",
+      kind: "ci",
+      status: "passed",
+      worktree_path: null,
+      agent: null,
+      started_at: "2026-06-28T09:00:25.766Z",
+      finished_at: "2026-06-28T09:00:25.766Z",
+      summary:
+        "Safety wave qd full CI passed after catalog redaction integration; focused app API handlers passed.\nEvidence: log_path=.qd/logs/ci-harden-reallive-patch-target-canonicalization-2026-06-28T08-05-27-638Z.log",
+      log_path:
+        ".qd/logs/ci-harden-reallive-patch-target-canonicalization-2026-06-28T08-05-27-638Z.log",
+    },
+  );
+
+  const result = backfillPortableQdCiEvidence(dag);
+
+  assert.equal(result.changed.length, 2);
+  assert.equal(
+    result.changed[0].external_id,
+    "local-qdfullci:expose-benchmark-seed-adapterids-through-catalog-api-filters:2026-06-28T01-35-46Z",
+  );
+  assert.equal(
+    result.changed[1].external_id,
+    "local-qdfullci:harden-reallive-patch-target-canonicalization:2026-06-28T08-05-27Z",
+  );
+  assert.equal(
+    dag.runs[0].summary,
+    "Broad audit follow-up bookkeeping only; implementation CI already passed at external_id=local-qdfullci:expose-benchmark-seed-adapterids-through-catalog-api-filters:2026-06-28T01-35-46Z before the audit wave.\nEvidence: external_id=local-qdfullci:expose-benchmark-seed-adapterids-through-catalog-api-filters:2026-06-28T01-35-46Z",
+  );
+  assert.equal(dag.runs[0].log_path, null);
+  assert.equal(dag.runs[1].log_path, null);
+  assert.deepEqual(validateDag(dag).errors, []);
+});
+
 test("applies backfill to export text without reformatting unrelated JSON", () => {
   const before =
     '{"runs":[{"summary":"Covered by integrated qd-full-ci wave.\\nEvidence: log_path=.qd/logs/ci-wave-2026-06-28T09-00-25-766Z.log","log_path":".qd/logs/ci-wave-2026-06-28T09-00-25-766Z.log","projects":["itotori","kaifuu"]}]}\n';

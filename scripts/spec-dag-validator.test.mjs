@@ -642,6 +642,44 @@ test("rejects qd export CI reuse evidence that cites local qd log paths", () => 
   );
 });
 
+test("rejects qd export passed-CI reuse wording that cites local qd log paths", () => {
+  const dag = qdExportFixture();
+  dag.runs.push(
+    qdCiReuseRunFixture({
+      summary:
+        "Broad audit follow-up bookkeeping only; implementation CI already passed at /home/trevor/projects/itotori/.qd/logs/ci-expose-benchmark-seed-adapterids-through-catalog-api-filters-2026-06-28T01-35-46-790Z.log before the audit wave.\nEvidence: log_path=/home/trevor/projects/itotori/.qd/logs/ci-expose-benchmark-seed-adapterids-through-catalog-api-filters-2026-06-28T01-35-46-790Z.log",
+      log_path:
+        "/home/trevor/projects/itotori/.qd/logs/ci-expose-benchmark-seed-adapterids-through-catalog-api-filters-2026-06-28T01-35-46-790Z.log",
+    }),
+    qdCiReuseRunFixture({
+      node_id: "UNIV-000",
+      summary:
+        "Safety wave qd full CI passed after catalog redaction integration; focused app API handlers passed.\nEvidence: log_path=.qd/logs/ci-harden-reallive-patch-target-canonicalization-2026-06-28T08-05-27-638Z.log",
+      log_path:
+        ".qd/logs/ci-harden-reallive-patch-target-canonicalization-2026-06-28T08-05-27-638Z.log",
+    }),
+  );
+
+  const errors = validateDag(dag).errors;
+
+  assertError(
+    errors,
+    "runs[0] ITOTORI-300 ci reuse evidence log_path must be repo-relative, not absolute",
+  );
+  assertError(
+    errors,
+    "runs[0] ITOTORI-300 ci reuse evidence summary must not cite local-only .qd/logs paths",
+  );
+  assertError(
+    errors,
+    "runs[1] UNIV-000 ci reuse evidence log_path must not point at local-only .qd state",
+  );
+  assertError(
+    errors,
+    "runs[1] UNIV-000 ci reuse evidence summary must not cite local-only .qd/logs paths",
+  );
+});
+
 test("accepts qd export CI reuse evidence recorded as an external id", () => {
   const dag = qdExportFixture();
   dag.runs.push(

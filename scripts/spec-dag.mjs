@@ -93,7 +93,7 @@ const qdActiveAuditFixStatuses = new Set([
 ]);
 const qdGenericAuditFixAcceptancePattern = /^finding is addressed and verified\.$/iu;
 const qdCiReuseSummaryPattern =
-  /\b(?:covered by|covered-by|reused|reuse|record-pass|integrated .*?\bci\b|integrated .*?\bqd-full-ci\b)\b/iu;
+  /\b(?:covered by|covered-by|reused|reuse|record-pass|(?:implementation\s+)?ci already passed|(?:qd\s+)?full[- ]ci passed|integrated .*?\bci\b|integrated .*?\bqd-full-ci\b)\b/iu;
 const qdLocalLogPathPattern =
   /(?:^|[\s=])(?:\.qd\/logs\/|\/[^\s]*\/\.qd\/logs\/|[A-Za-z]:[\\/][^\s]*[\\/]\.qd[\\/]logs[\\/])/u;
 const qdEvidenceLogPathPattern = /(?:^|\n)Evidence:\s*log_path=([^\s]+)/iu;

@@ -7,11 +7,13 @@ import { validateDag } from "./spec-dag.mjs";
 const defaultRoadmapPath = "roadmap/spec-dag.json";
 const localQdLogPathPattern =
   /(?:^|[\s=])(?<path>\.qd\/logs\/|\/[^\s]*\/\.qd\/logs\/|[A-Za-z]:[\\/][^\s]*[\\/]\.qd[\\/]logs[\\/])(?<tail>[^\s]*)/u;
+const localQdLogPathReferencePattern =
+  /(^|[\s=])(\.qd\/logs\/[^\s]*|\/[^\s]*\/\.qd\/logs\/[^\s]*|[A-Za-z]:[\\/][^\s]*[\\/]\.qd[\\/]logs[\\/][^\s]*)/giu;
 const evidenceLogPathLinePattern = /^Evidence:\s*log_path=(?<path>\S+)\s*$/imu;
 const ciLogBasenamePattern =
   /^ci-(?<slug>.+)-(?<date>\d{4}-\d{2}-\d{2})T(?<time>\d{2})-(?<minute>\d{2})-(?<second>\d{2})(?:-\d{3})?Z\.log$/u;
 const qdCiReuseSummaryPattern =
-  /\b(?:covered by|covered-by|reused|reuse|record-pass|integrated .*?\bci\b|integrated .*?\bqd-full-ci\b)\b/iu;
+  /\b(?:covered by|covered-by|reused|reuse|record-pass|(?:implementation\s+)?ci already passed|(?:qd\s+)?full[- ]ci passed|integrated .*?\bci\b|integrated .*?\bqd-full-ci\b)\b/iu;
 
 function main(argv) {
   const options = parseArgs(argv);
@@ -71,7 +73,7 @@ export function backfillPortableQdCiEvidence(dag) {
     }
     const summary = run.summary;
     const externalId = externalIdForLogPath(logPath);
-    run.summary = rewriteEvidenceLine(run.summary, externalId);
+    run.summary = rewritePortableEvidenceSummary(run.summary, externalId);
     run.log_path = null;
     changed.push({
       index,
@@ -152,12 +154,23 @@ function exportedLogPath(run) {
   return run.summary.match(evidenceLogPathLinePattern)?.groups?.path ?? null;
 }
 
+function rewritePortableEvidenceSummary(summary, externalId) {
+  return replaceLocalQdLogPathReferences(rewriteEvidenceLine(summary, externalId), externalId);
+}
+
 function rewriteEvidenceLine(summary, externalId) {
   const replacement = `Evidence: external_id=${externalId}`;
   if (evidenceLogPathLinePattern.test(summary)) {
     return summary.replace(evidenceLogPathLinePattern, replacement);
   }
   return `${summary.trimEnd()}\n${replacement}`;
+}
+
+function replaceLocalQdLogPathReferences(summary, externalId) {
+  return summary.replace(
+    localQdLogPathReferencePattern,
+    (_match, prefix) => `${prefix}external_id=${externalId}`,
+  );
 }
 
 function externalIdForLogPath(logPath) {
