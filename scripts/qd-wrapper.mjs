@@ -519,7 +519,8 @@ async function rebuildQdStateFromRoadmapExport(realQd, root, options = {}) {
 
     await installValidatedDatabase(root, stagedRoot, operationDir, async () => {});
 
-    if (options.json) writeSync(1, `${JSON.stringify({ ok: true, source: "roadmap/spec-dag.json" })}\n`);
+    if (options.json)
+      writeSync(1, `${JSON.stringify({ ok: true, source: "roadmap/spec-dag.json" })}\n`);
     else writeSync(1, "Rebuilt qd state from roadmap/spec-dag.json\n");
   } finally {
     await rm(operationDir, { recursive: true, force: true });

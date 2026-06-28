@@ -182,7 +182,9 @@ export class ReviewerQueueApiService implements ReviewerQueueApiServicePort {
     if (this.deps.actionService === undefined) {
       throw new Error("reviewer batch execution requires an action service");
     }
-    const batchActionId = `batch-action-${this.now().toISOString().replace(/[^0-9A-Za-z]/gu, "")}`;
+    const batchActionId = `batch-action-${this.now()
+      .toISOString()
+      .replace(/[^0-9A-Za-z]/gu, "")}`;
     const service = new ReviewerBatchActionService({
       previewService: new ReviewerBatchPreviewService(this.consequenceResolver),
       actionService: this.deps.actionService,
@@ -284,7 +286,8 @@ function defaultBatchPayload(
       return {
         kind: "updateGlossary",
         termId: firstContextRef(item, "glossary") ?? item.reviewItemId,
-        approvedTranslation: stringMetadata(item.metadata, "approvedTranslation") ?? "batch-approved",
+        approvedTranslation:
+          stringMetadata(item.metadata, "approvedTranslation") ?? "batch-approved",
         metadata,
       };
     case reviewerQueueActionValues.updateStyle:

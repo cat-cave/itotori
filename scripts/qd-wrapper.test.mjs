@@ -282,7 +282,10 @@ test("qd import rebuild recovers a zero-byte qd database without rewriting confi
 
   assert.equal(result.status, 0, [result.stderr, result.stdout].filter(Boolean).join("\n"));
   const finalSnapshot = JSON.parse(readFileSync(path.join(repoRoot, ".qd", "qd.db"), "utf8"));
-  assert.deepEqual(finalSnapshot.nodes.map((node) => node.id), ["UNIV-003"]);
+  assert.deepEqual(
+    finalSnapshot.nodes.map((node) => node.id),
+    ["UNIV-003"],
+  );
   assert.equal(readFileSync(path.join(repoRoot, ".qd", "qd.db-wal"), "utf8"), "replacement wal\n");
   assert.equal(readFileSync(path.join(repoRoot, ".qd", "qd.db-shm"), "utf8"), "replacement shm\n");
   assert.equal(readFileSync(path.join(repoRoot, ".qd", "config.toml"), "utf8"), originalConfig);

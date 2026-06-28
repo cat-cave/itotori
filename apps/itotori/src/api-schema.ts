@@ -695,7 +695,11 @@ function assertReviewerQueueTransitionRecord(value: unknown, label: string): voi
   assertString(transition.localeBranchId, `${label}.localeBranchId`);
   assertString(transition.sourceRevisionId, `${label}.sourceRevisionId`);
   assertEnum(transition.itemKind, reviewerQueueItemKindList, `${label}.itemKind`);
-  assertEnum(transition.action, reviewerQueueActionList as readonly ReviewerQueueAction[], `${label}.action`);
+  assertEnum(
+    transition.action,
+    reviewerQueueActionList as readonly ReviewerQueueAction[],
+    `${label}.action`,
+  );
   assertEnum(transition.priorState, reviewerQueueItemStateList, `${label}.priorState`);
   assertEnum(transition.nextState, reviewerQueueItemStateList, `${label}.nextState`);
   assertString(transition.actorUserId, `${label}.actorUserId`);
