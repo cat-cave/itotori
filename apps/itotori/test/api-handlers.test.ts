@@ -308,6 +308,14 @@ describe("Itotori API handlers", () => {
 
   it.each([
     {
+      name: "local path",
+      body: {
+        ...catalogConflictReviewFixture,
+        rows: [{ ...catalogConflictReviewFixture.rows[0]!, localPath: "/home/private/RJ010" }],
+      },
+      error: /localPath/u,
+    },
+    {
       name: "source id",
       body: {
         ...catalogConflictReviewFixture,
@@ -325,6 +333,42 @@ describe("Itotori API handlers", () => {
         ],
       },
       error: /sourceId/u,
+    },
+    {
+      name: "raw payload",
+      body: {
+        ...catalogConflictReviewFixture,
+        rows: [
+          {
+            ...catalogConflictReviewFixture.rows[0]!,
+            provenance: [
+              {
+                ...catalogConflictReviewFixture.rows[0]!.provenance[0]!,
+                rawPayload: { localPath: "/home/private/RJ010.json" },
+              },
+            ],
+          },
+        ],
+      },
+      error: /rawPayload/u,
+    },
+    {
+      name: "private metadata",
+      body: {
+        ...catalogConflictReviewFixture,
+        rows: [
+          {
+            ...catalogConflictReviewFixture.rows[0]!,
+            sourceIds: [
+              {
+                ...catalogConflictReviewFixture.rows[0]!.sourceIds[0]!,
+                privateMetadata: { scanner: "local-importer" },
+              },
+            ],
+          },
+        ],
+      },
+      error: /privateMetadata/u,
     },
     {
       name: "local catalog source",
@@ -362,6 +406,22 @@ describe("Itotori API handlers", () => {
 
   it.each([
     {
+      name: "local path",
+      body: {
+        ...catalogCompletenessFixture,
+        pools: {
+          ...catalogCompletenessFixture.pools,
+          mtl_only: [
+            {
+              ...catalogCompletenessFixture.pools.mtl_only[0]!,
+              localPath: "/home/private/catalog/work",
+            },
+          ],
+        },
+      },
+      error: /localPath/u,
+    },
+    {
       name: "status source id",
       body: {
         ...catalogCompletenessFixture,
@@ -384,6 +444,51 @@ describe("Itotori API handlers", () => {
         },
       },
       error: /sourceId/u,
+    },
+    {
+      name: "raw payload",
+      body: {
+        ...catalogCompletenessFixture,
+        pools: {
+          ...catalogCompletenessFixture.pools,
+          mtl_only: [
+            {
+              ...catalogCompletenessFixture.pools.mtl_only[0]!,
+              statuses: [
+                {
+                  ...catalogCompletenessFixture.pools.mtl_only[0]!.statuses[0]!,
+                  source: {
+                    ...catalogCompletenessFixture.pools.mtl_only[0]!.statuses[0]!.source!,
+                    rawPayload: { localPath: "/home/private/catalog/source.json" },
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      },
+      error: /rawPayload/u,
+    },
+    {
+      name: "private metadata",
+      body: {
+        ...catalogCompletenessFixture,
+        pools: {
+          ...catalogCompletenessFixture.pools,
+          mtl_only: [
+            {
+              ...catalogCompletenessFixture.pools.mtl_only[0]!,
+              statuses: [
+                {
+                  ...catalogCompletenessFixture.pools.mtl_only[0]!.statuses[0]!,
+                  privateMetadata: { scanner: "local-importer" },
+                },
+              ],
+            },
+          ],
+        },
+      },
+      error: /privateMetadata/u,
     },
     {
       name: "private redaction provenance",

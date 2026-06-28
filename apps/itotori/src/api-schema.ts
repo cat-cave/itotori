@@ -954,9 +954,15 @@ export function assertCatalogCompletenessBenchmarkPools(
   value: unknown,
   label = "CatalogCompletenessBenchmarkPools",
 ): asserts value is CatalogCompletenessBenchmarkPools {
-  const model = asRecord(value, label);
+  const model = asStrictRecord(value, label, ["targetLanguage", "pools", "publicReport"]);
   assertString(model.targetLanguage, `${label}.targetLanguage`);
-  const pools = asRecord(model.pools, `${label}.pools`);
+  const pools = asStrictRecord(model.pools, `${label}.pools`, [
+    "mtl_only",
+    "fan_partial",
+    "no_english",
+    "unknown",
+    "conflict",
+  ]);
   for (const poolName of [
     "mtl_only",
     "fan_partial",
@@ -966,7 +972,15 @@ export function assertCatalogCompletenessBenchmarkPools(
   ] as const) {
     const works = asArray(pools[poolName], `${label}.pools.${poolName}`);
     for (const [index, workValue] of works.entries()) {
-      const work = asRecord(workValue, `${label}.pools.${poolName}[${index}]`);
+      const work = asStrictRecord(workValue, `${label}.pools.${poolName}[${index}]`, [
+        "workId",
+        "canonicalTitle",
+        "originalLanguage",
+        "sourceIds",
+        "privateSourceCount",
+        "statuses",
+        "conflicts",
+      ]);
       assertString(work.workId, `${label}.pools.${poolName}[${index}].workId`);
       assertString(work.canonicalTitle, `${label}.pools.${poolName}[${index}].canonicalTitle`);
       assertNullableString(
@@ -983,10 +997,23 @@ export function assertCatalogCompletenessBenchmarkPools(
       );
       const statuses = asArray(work.statuses, `${label}.pools.${poolName}[${index}].statuses`);
       for (const [statusIndex, statusValue] of statuses.entries()) {
-        const status = asRecord(
-          statusValue,
-          `${label}.pools.${poolName}[${index}].statuses[${statusIndex}]`,
-        );
+        const statusLabel = `${label}.pools.${poolName}[${index}].statuses[${statusIndex}]`;
+        const status = asStrictRecord(statusValue, statusLabel, [
+          "languageStatusId",
+          "language",
+          "status",
+          "statusScope",
+          "platform",
+          "releaseId",
+          "sourceProvenanceId",
+          "source",
+          "privateSourceCount",
+          "confidence",
+          "observedAt",
+          "importedAt",
+          "parserVersion",
+          "rawContentRedactionClass",
+        ]);
         assertString(
           status.languageStatusId,
           `${label}.pools.${poolName}[${index}].statuses[${statusIndex}].languageStatusId`,
@@ -998,6 +1025,22 @@ export function assertCatalogCompletenessBenchmarkPools(
         assertString(
           status.status,
           `${label}.pools.${poolName}[${index}].statuses[${statusIndex}].status`,
+        );
+        assertString(
+          status.statusScope,
+          `${label}.pools.${poolName}[${index}].statuses[${statusIndex}].statusScope`,
+        );
+        assertNullableString(
+          status.platform,
+          `${label}.pools.${poolName}[${index}].statuses[${statusIndex}].platform`,
+        );
+        assertNullableString(
+          status.releaseId,
+          `${label}.pools.${poolName}[${index}].statuses[${statusIndex}].releaseId`,
+        );
+        assertNullableString(
+          status.sourceProvenanceId,
+          `${label}.pools.${poolName}[${index}].statuses[${statusIndex}].sourceProvenanceId`,
         );
         assertString(
           status.confidence,
@@ -1024,10 +1067,16 @@ export function assertCatalogCompletenessBenchmarkPools(
           `${label}.pools.${poolName}[${index}].statuses[${statusIndex}].rawContentRedactionClass`,
         );
         if (status.source !== null) {
-          const source = asRecord(
-            status.source,
-            `${label}.pools.${poolName}[${index}].statuses[${statusIndex}].source`,
-          );
+          const sourceLabel = `${label}.pools.${poolName}[${index}].statuses[${statusIndex}].source`;
+          const source = asStrictRecord(status.source, sourceLabel, [
+            "sourceProvenanceId",
+            "catalogSource",
+            "sourceRecordKind",
+            "sourceId",
+            "sourceVersion",
+            "fetchedAt",
+            "rawContentRedactionClass",
+          ]);
           assertString(
             source.sourceProvenanceId,
             `${label}.pools.${poolName}[${index}].statuses[${statusIndex}].source.sourceProvenanceId`,
@@ -1080,9 +1129,10 @@ export function assertCatalogCompletenessBenchmarkPools(
       }
       const conflicts = asArray(work.conflicts, `${label}.pools.${poolName}[${index}].conflicts`);
       for (const [conflictIndex, conflictValue] of conflicts.entries()) {
-        const conflict = asRecord(
+        const conflict = asStrictRecord(
           conflictValue,
           `${label}.pools.${poolName}[${index}].conflicts[${conflictIndex}]`,
+          ["conflictId", "status", "reasonCode", "sourceIds", "privateSourceCount"],
         );
         assertString(
           conflict.conflictId,
@@ -1107,7 +1157,15 @@ export function assertCatalogCompletenessBenchmarkPools(
       }
     }
   }
-  const publicReport = asRecord(model.publicReport, `${label}.publicReport`);
+  const publicReport = asStrictRecord(model.publicReport, `${label}.publicReport`, [
+    "schemaVersion",
+    "targetLanguage",
+    "generatedAt",
+    "totalWorkCount",
+    "conflictCount",
+    "pools",
+    "statuses",
+  ]);
   assertString(publicReport.schemaVersion, `${label}.publicReport.schemaVersion`);
   assertString(publicReport.targetLanguage, `${label}.publicReport.targetLanguage`);
   assertDateLike(publicReport.generatedAt, `${label}.publicReport.generatedAt`);
@@ -1115,7 +1173,11 @@ export function assertCatalogCompletenessBenchmarkPools(
   assertNonNegativeInteger(publicReport.conflictCount, `${label}.publicReport.conflictCount`);
   const reportPools = asArray(publicReport.pools, `${label}.publicReport.pools`);
   for (const [index, poolValue] of reportPools.entries()) {
-    const pool = asRecord(poolValue, `${label}.publicReport.pools[${index}]`);
+    const pool = asStrictRecord(poolValue, `${label}.publicReport.pools[${index}]`, [
+      "pool",
+      "workCount",
+      "sourceIds",
+    ]);
     assertString(pool.pool, `${label}.publicReport.pools[${index}].pool`);
     assertNonNegativeInteger(pool.workCount, `${label}.publicReport.pools[${index}].workCount`);
     assertConflictReviewSourceIds(
@@ -1125,7 +1187,11 @@ export function assertCatalogCompletenessBenchmarkPools(
   }
   const reportStatuses = asArray(publicReport.statuses, `${label}.publicReport.statuses`);
   for (const [index, statusValue] of reportStatuses.entries()) {
-    const status = asRecord(statusValue, `${label}.publicReport.statuses[${index}]`);
+    const status = asStrictRecord(statusValue, `${label}.publicReport.statuses[${index}]`, [
+      "status",
+      "factCount",
+      "sourceIds",
+    ]);
     assertString(status.status, `${label}.publicReport.statuses[${index}].status`);
     assertNonNegativeInteger(
       status.factCount,
@@ -1142,10 +1208,28 @@ export function assertCatalogConflictReviewReadModel(
   value: unknown,
   label = "CatalogConflictReviewReadModel",
 ): asserts value is CatalogConflictReviewReadModel {
-  const model = asRecord(value, label);
+  const model = asStrictRecord(value, label, ["rows"]);
   const rows = asArray(model.rows, `${label}.rows`);
   for (const [index, rowValue] of rows.entries()) {
-    const row = asRecord(rowValue, `${label}.rows[${index}]`);
+    const row = asStrictRecord(rowValue, `${label}.rows[${index}]`, [
+      "reviewId",
+      "catalogRecordId",
+      "conflictId",
+      "candidateIds",
+      "candidateCatalogIds",
+      "exactLinkRefs",
+      "fuzzyScores",
+      "sourceIds",
+      "provenance",
+      "privateSourceCount",
+      "severity",
+      "status",
+      "reasonCode",
+      "reasonDetail",
+      "conflictKind",
+      "detectedAt",
+      "resolution",
+    ]);
     assertString(row.reviewId, `${label}.rows[${index}].reviewId`);
     assertString(row.catalogRecordId, `${label}.rows[${index}].catalogRecordId`);
     assertNullableString(row.conflictId, `${label}.rows[${index}].conflictId`);
@@ -1167,7 +1251,12 @@ export function assertCatalogConflictReviewReadModel(
     assertNullableString(row.conflictKind, `${label}.rows[${index}].conflictKind`);
     assertDateLike(row.detectedAt, `${label}.rows[${index}].detectedAt`);
     if (row.resolution !== null) {
-      const resolution = asRecord(row.resolution, `${label}.rows[${index}].resolution`);
+      const resolution = asStrictRecord(row.resolution, `${label}.rows[${index}].resolution`, [
+        "reviewerId",
+        "action",
+        "resolvedAt",
+        "priorCandidateIds",
+      ]);
       assertString(resolution.reviewerId, `${label}.rows[${index}].resolution.reviewerId`);
       assertString(resolution.action, `${label}.rows[${index}].resolution.action`);
       assertDateLike(resolution.resolvedAt, `${label}.rows[${index}].resolution.resolvedAt`);
@@ -1908,7 +1997,7 @@ function assertStringArray(value: unknown, label: string): void {
 function assertConflictReviewSourceIds(value: unknown, label: string): void {
   const rows = asArray(value, label);
   for (const [index, rowValue] of rows.entries()) {
-    const row = asRecord(rowValue, `${label}[${index}]`);
+    const row = asStrictRecord(rowValue, `${label}[${index}]`, ["catalogSource", "sourceId"]);
     assertString(row.catalogSource, `${label}[${index}].catalogSource`);
     assertPublicCatalogSource(row.catalogSource, `${label}[${index}].catalogSource`);
     assertString(row.sourceId, `${label}[${index}].sourceId`);
@@ -1919,7 +2008,14 @@ function assertConflictReviewSourceIds(value: unknown, label: string): void {
 function assertConflictReviewExactLinkRefs(value: unknown, label: string): void {
   const rows = asArray(value, label);
   for (const [index, rowValue] of rows.entries()) {
-    const row = asRecord(rowValue, `${label}[${index}]`);
+    const row = asStrictRecord(rowValue, `${label}[${index}]`, [
+      "externalIdId",
+      "catalogSource",
+      "sourceId",
+      "externalIdKind",
+      "workId",
+      "sourceProvenanceId",
+    ]);
     assertString(row.externalIdId, `${label}[${index}].externalIdId`);
     assertString(row.catalogSource, `${label}[${index}].catalogSource`);
     assertPublicCatalogSource(row.catalogSource, `${label}[${index}].catalogSource`);
@@ -1934,7 +2030,12 @@ function assertConflictReviewExactLinkRefs(value: unknown, label: string): void 
 function assertConflictReviewFuzzyScores(value: unknown, label: string): void {
   const rows = asArray(value, label);
   for (const [index, rowValue] of rows.entries()) {
-    const row = asRecord(rowValue, `${label}[${index}]`);
+    const row = asStrictRecord(rowValue, `${label}[${index}]`, [
+      "candidateId",
+      "score",
+      "diagnosticCode",
+      "generatorVersion",
+    ]);
     assertString(row.candidateId, `${label}[${index}].candidateId`);
     assertNonNegativeInteger(row.score, `${label}[${index}].score`);
     assertString(row.diagnosticCode, `${label}[${index}].diagnosticCode`);
@@ -1945,7 +2046,14 @@ function assertConflictReviewFuzzyScores(value: unknown, label: string): void {
 function assertConflictReviewProvenance(value: unknown, label: string): void {
   const rows = asArray(value, label);
   for (const [index, rowValue] of rows.entries()) {
-    const row = asRecord(rowValue, `${label}[${index}]`);
+    const row = asStrictRecord(rowValue, `${label}[${index}]`, [
+      "sourceProvenanceId",
+      "catalogSource",
+      "sourceId",
+      "sourceRecordKind",
+      "payloadHash",
+      "fetchedAt",
+    ]);
     assertString(row.sourceProvenanceId, `${label}[${index}].sourceProvenanceId`);
     assertString(row.catalogSource, `${label}[${index}].catalogSource`);
     assertPublicCatalogSource(row.catalogSource, `${label}[${index}].catalogSource`);
