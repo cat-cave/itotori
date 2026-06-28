@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "exported_at": "2026-06-28T05:58:59.739Z",
+  "exported_at": "2026-06-28T06:07:45.523Z",
   "registries": {
     "groups": [
       {
@@ -41667,7 +41667,7 @@
       "node_id": "UNIV-009",
       "run_id": null,
       "severity": "P1",
-      "status": "open",
+      "status": "resolved",
       "title": "Promoted audit-fix nodes are ready but not implementable specs",
       "path": null,
       "line": null,
@@ -41675,7 +41675,7 @@
       "expected": null,
       "suggested_fix": null,
       "created_at": "2026-06-28T05:31:56.289Z",
-      "resolved_at": null
+      "resolved_at": "2026-06-28T06:07:35.159Z"
     }
   ],
   "runs": [
