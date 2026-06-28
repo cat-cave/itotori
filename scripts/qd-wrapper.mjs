@@ -64,6 +64,10 @@ and an audit-visible rationale summary.`);
     return runRealThenCanonicalizeSpecDag(realQd, args, root);
   }
 
+  if (isMilestoneScopedJsonSummary(commandArgs)) {
+    return runMilestoneScopedJsonSummary(realQd, globalArgs, commandArgs);
+  }
+
   return runReal(realQd, args);
 }
 
@@ -292,6 +296,7 @@ function captureJson(realQd, args) {
   const result = spawnSync(realQd.command, [...realQd.args, ...args], {
     stdio: ["ignore", "pipe", "pipe"],
     encoding: "utf8",
+    maxBuffer: 64 * 1024 * 1024,
     env: process.env,
   });
   if (result.error) throw result.error;
@@ -300,6 +305,93 @@ function captureJson(realQd, args) {
     throw new Error(detail || `qd ${args.join(" ")} failed with exit ${result.status}`);
   }
   return JSON.parse(result.stdout);
+}
+
+function runMilestoneScopedJsonSummary(realQd, globalArgs, commandArgs) {
+  const milestone = optionValue(commandArgs, "--milestone");
+  const output = captureJson(realQd, [...globalArgs, ...commandArgs]);
+  const exported = captureJson(realQd, [...globalArgs, "export", "--json"]);
+  const ready = captureJson(realQd, [...globalArgs, "ready", "--json"]);
+  applyMilestoneScopedJsonSummary(output, {
+    command: commandArgs[0],
+    exported,
+    ready,
+    milestone,
+  });
+
+  process.stdout.write(`${JSON.stringify(output, null, 2)}\n`);
+  process.exit(0);
+}
+
+export function applyMilestoneScopedJsonSummary(output, { command, exported, ready, milestone }) {
+  const scopedNodes = filterNodesByMilestone(exported.nodes ?? [], milestone);
+  const scopedReady = filterNodesByMilestone(Array.isArray(ready) ? ready : [], milestone);
+  const scopedStatus = milestoneScopedStatus(scopedNodes, scopedReady, exported.findings ?? []);
+
+  if (command === "stats") {
+    output.stats = scopedStatus;
+  } else {
+    output.status = scopedStatus;
+    output.ready = scopedReady;
+  }
+
+  return output;
+}
+
+export function isMilestoneScopedJsonSummary(commandArgs) {
+  if (!["stats", "snapshot"].includes(commandArgs[0])) return false;
+  return hasFlag(commandArgs, "--json") && optionValue(commandArgs, "--milestone") !== null;
+}
+
+function hasFlag(args, name) {
+  return args.some((arg) => arg === name);
+}
+
+function optionValue(args, name) {
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    if (arg === name) return args[index + 1] ?? null;
+    if (arg.startsWith(`${name}=`)) return arg.slice(name.length + 1);
+  }
+  return null;
+}
+
+function filterNodesByMilestone(nodes, milestone) {
+  return nodes.filter((node) => node?.milestone === milestone);
+}
+
+function milestoneScopedStatus(nodes, readyNodes, findings) {
+  const nodeIds = new Set(nodes.map((node) => node.id).filter(Boolean));
+  const byStatus = {};
+  let donePoints = 0;
+  let totalPoints = 0;
+
+  for (const node of nodes) {
+    byStatus[node.status] = (byStatus[node.status] ?? 0) + 1;
+    const points = estimatePoints(node);
+    totalPoints += points;
+    if (node.status === "done") donePoints += points;
+  }
+
+  return {
+    nodes: nodes.length,
+    ready: readyNodes.length,
+    byStatus,
+    donePoints,
+    totalPoints,
+    remainingPoints: totalPoints - donePoints,
+    openP0P1Findings: findings.filter(
+      (finding) =>
+        finding?.status === "open" &&
+        ["P0", "P1"].includes(finding.severity) &&
+        nodeIds.has(finding.node_id),
+    ).length,
+  };
+}
+
+function estimatePoints(node) {
+  const value = node.estimate_points ?? node.estimatePoints;
+  return Number.isFinite(value) ? value : 1;
 }
 
 function gateWithAuditLifecycle(realQd, globalArgs, nodeId, originalArgs) {
