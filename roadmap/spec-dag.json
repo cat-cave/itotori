@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "exported_at": "2026-06-28T05:22:20.094Z",
+  "exported_at": "2026-06-28T05:32:30.888Z",
   "registries": {
     "groups": [
       {
@@ -29471,11 +29471,11 @@
       "validation": null,
       "context": null,
       "created_at": "2026-06-28T03:33:48.825Z",
-      "updated_at": "2026-06-28T03:33:48.825Z",
+      "updated_at": "2026-06-28T05:32:10.386Z",
       "claimed_at": null,
       "done_at": null,
       "group_name": null,
-      "status_reason": "Promoted from finding e9815e5e-321f-48ee-8110-c7a41b546f54 on node UTSUSHI-231.",
+      "status_reason": "Promoted from finding e9815e5e-321f-48ee-8110-c7a41b546f54 on node UTSUSHI-231.\n[2026-06-28T05:32:10.386Z] BROAD AUDIT 2026-06-28: also cover tracked ignored provider artifact hygiene. Quality audit found artifacts/openrouter-live-smoke/2026-06-25.json is tracked despite artifacts/ being ignored and contains a captured OpenRouter request/response envelope. Acceptance should include removing or sanitizing tracked live-provider artifacts, documenting any committed artifact allowlist, and adding a check that fails on tracked ignored live/provider artifacts.",
       "check_command": null,
       "ci_command": null,
       "projects": [],
@@ -29665,11 +29665,11 @@
       "validation": null,
       "context": null,
       "created_at": "2026-06-28T03:34:40.018Z",
-      "updated_at": "2026-06-28T03:34:40.018Z",
+      "updated_at": "2026-06-28T05:32:23.293Z",
       "claimed_at": null,
       "done_at": null,
       "group_name": null,
-      "status_reason": null,
+      "status_reason": "[2026-06-28T05:32:23.293Z] BROAD AUDIT 2026-06-28: confirmed still active. .qd/config.toml uses nix develop --command bash -lc 'just check' and 'just qd-full-ci', but just qd-import still sets plain 'just check'/'just qd-full-ci'. This can recreate qd check drift after a rebuild; keep config preservation and tests in acceptance.",
       "check_command": null,
       "ci_command": null,
       "projects": ["universal"],
@@ -41248,6 +41248,36 @@
       "suggested_fix": null,
       "created_at": "2026-06-28T01:49:45.969Z",
       "resolved_at": "2026-06-28T01:54:45.162Z"
+    },
+    {
+      "id": "086ab47b-2293-4318-bab8-fddd69672444",
+      "node_id": "UTSUSHI-231",
+      "run_id": null,
+      "severity": "P1",
+      "status": "open",
+      "title": "Active alpha validation node still names obsolete localize-sweetie-hd artifacts",
+      "path": null,
+      "line": null,
+      "evidence": "Broad alpha audit 2026-06-28 at main c6a6522: UTSUSHI-231 title/spec still describe re-running localize-sweetie-hd and require artifacts/localize-sweetie-hd/<timestamp>/, while the actual generic driver writes artifacts/localize-project/<timestamp>-<project> from suite/scripts/localize-project/run.mjs. Verification commands were normalized to just localize-project --project sweetie-hd-alpha-1, so the node acceptance text now points reviewers at the wrong artifact root. Acceptance: update UTSUSHI-231 title/spec/deliverables/status notes to localize-project and artifacts/localize-project/<run-dir>/; keep Sweetie HD only as explicit project data; require telemetry and verifier outputs under the generic run dir.",
+      "expected": null,
+      "suggested_fix": null,
+      "created_at": "2026-06-28T05:31:48.996Z",
+      "resolved_at": null
+    },
+    {
+      "id": "15989a38-e393-46fc-bbfd-b77959fd45cf",
+      "node_id": "UNIV-009",
+      "run_id": null,
+      "severity": "P1",
+      "status": "open",
+      "title": "Promoted audit-fix nodes are ready but not implementable specs",
+      "path": null,
+      "line": null,
+      "evidence": "Broad orchestration audit 2026-06-28 at main c6a6522: active qd export includes many promoted audit-fix nodes with acceptance exactly 'Finding is addressed and verified.', empty verification, empty audit_focus, and null group/milestone. Example qd export around roadmap/spec-dag.json entry for report-id-is-a-constant-per-kind-index-pair-not-per-run. This violates docs/orchestration-operating-model.md observable-artifact anti-pattern and docs/spec-dag.md node verification expectations, so qd can offer vague unauditable work to parallel agents. Acceptance: qd finding promotion creates nodes with concrete acceptance, verification, project/group/milestone where applicable, and audit_focus; validator rejects generic acceptance and empty verification/audit_focus for active promoted nodes.",
+      "expected": null,
+      "suggested_fix": null,
+      "created_at": "2026-06-28T05:31:56.289Z",
+      "resolved_at": null
     }
   ],
   "runs": [
@@ -44534,6 +44564,18 @@
       "node_id": "document-title-reference-allowlist-for-active-docs",
       "text": "AUDIT 2026-06-28: generalization audit confirms this P3 remains the right tracking node. Active docs/presets still mention Sweetie/Oshioki/Sukara as alpha target data, while roadmap/audits/private evidence legitimately contain title references. Advisory scanner baseline is still noisy at roughly 1202 non-allowlisted hits across 1193 tracked files, so this needs a documented active-doc allowlist boundary before enforcement.",
       "created_at": "2026-06-28T00:19:47.387Z"
+    },
+    {
+      "id": "0313b358-0824-4574-a459-cac8c08048b2",
+      "node_id": "strengthen-localize-driver-provider-artifact-validation-beyond-c",
+      "text": "BROAD AUDIT 2026-06-28: also cover tracked ignored provider artifact hygiene. Quality audit found artifacts/openrouter-live-smoke/2026-06-25.json is tracked despite artifacts/ being ignored and contains a captured OpenRouter request/response envelope. Acceptance should include removing or sanitizing tracked live-provider artifacts, documenting any committed artifact allowlist, and adding a check that fails on tracked ignored live/provider artifacts.",
+      "created_at": "2026-06-28T05:32:10.386Z"
+    },
+    {
+      "id": "040ed5be-ce69-4a47-b5d9-4251c5a9a2a7",
+      "node_id": "replace-qd-import-with-transactional-state-rebuild",
+      "text": "BROAD AUDIT 2026-06-28: confirmed still active. .qd/config.toml uses nix develop --command bash -lc 'just check' and 'just qd-full-ci', but just qd-import still sets plain 'just check'/'just qd-full-ci'. This can recreate qd check drift after a rebuild; keep config preservation and tests in acceptance.",
+      "created_at": "2026-06-28T05:32:23.293Z"
     }
   ]
 }
