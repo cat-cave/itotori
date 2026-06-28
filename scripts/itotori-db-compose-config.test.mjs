@@ -41,9 +41,14 @@ test("db recipes disable implicit .env loading", () => {
 
 test("local qd CI uses the DB-owning full-CI wrapper", () => {
   assert.match(justfile, /^qd-full-ci:\n    node scripts\/qd-full-ci\.mjs/mu);
-  assert.match(justfile, /qd config set ci-command --value "just qd-full-ci"/u);
-  assert.match(
-    readFileSync(".qd/config.toml", "utf8"),
-    /ci_command = "nix develop --command bash -lc 'just qd-full-ci'"/u,
-  );
+
+  const qdImport = justfile.match(/^qd-import:\n(?<body>(?:    .+\n)+)/mu);
+  assert.notEqual(qdImport, null);
+  assert.match(qdImport.groups.body, /    \.\/bin\/qd import --from roadmap\/spec-dag\.json\n/u);
+  assert.doesNotMatch(qdImport.groups.body, /\.qd\/qd\.db/u);
+  assert.doesNotMatch(qdImport.groups.body, /qd config set/u);
+
+  const qdConfig = readFileSync(".qd/config.toml", "utf8");
+  assert.match(qdConfig, /check_command = "nix develop --command bash -lc 'just check'"/u);
+  assert.match(qdConfig, /ci_command = "nix develop --command bash -lc 'just qd-full-ci'"/u);
 });
