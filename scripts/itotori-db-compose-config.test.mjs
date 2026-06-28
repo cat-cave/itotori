@@ -36,10 +36,7 @@ test("db recipes disable implicit .env loading", () => {
     justfile,
     /export ITOTORI_DB_COMPOSE_ENV_PATH := env_var_or_default\('ITOTORI_DB_COMPOSE_ENV_PATH', '\.tmp\/itotori-db\/compose\.env'\)/u,
   );
-  assert.doesNotMatch(
-    justfile,
-    /docker compose(?! --env-file "\$ITOTORI_DB_COMPOSE_ENV_PATH")/u,
-  );
+  assert.doesNotMatch(justfile, /docker compose(?! --env-file "\$ITOTORI_DB_COMPOSE_ENV_PATH")/u);
 });
 
 test("local qd CI uses the DB-owning full-CI wrapper", () => {

@@ -5,11 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-import {
-  buildDbSettings,
-  dbPortCandidates,
-  reserveDbPort,
-} from "./qd-full-ci.mjs";
+import { buildDbSettings, dbPortCandidates, reserveDbPort } from "./qd-full-ci.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const scriptPath = path.join(scriptDir, "qd-full-ci.mjs");
@@ -85,10 +81,7 @@ test("qd full CI tears down the compose stack when CI fails", () => {
       call.env.DATABASE_URL,
       /^postgres:\/\/itotori:itotori@127\.0\.0\.1:6120\d\/itotori$/u,
     );
-    assert.match(
-      call.env.COMPOSE_PROJECT_NAME,
-      /^itotori-qdfullci-repo-[a-f0-9]{10}-6120\d$/u,
-    );
+    assert.match(call.env.COMPOSE_PROJECT_NAME, /^itotori-qdfullci-repo-[a-f0-9]{10}-6120\d$/u);
     assert.match(
       call.env.ITOTORI_DB_COMPOSE_ENV_PATH,
       /^\.tmp\/itotori-db\/qd-full-ci-[a-f0-9]{10}-6120\d\.env$/u,
