@@ -613,6 +613,7 @@ export type CatalogConflictReviewRow = {
   fuzzyScores: CatalogConflictReviewFuzzyScore[];
   sourceIds: CatalogConflictReviewSourceId[];
   provenance: CatalogConflictReviewProvenance[];
+  privateSourceCount: number;
   severity: CatalogConflictReviewSeverity;
   status: CatalogConflictReviewStatus;
   reasonCode: string;
@@ -668,6 +669,7 @@ export type CatalogCompletenessStatusFact = {
   releaseId: string | null;
   sourceProvenanceId: string | null;
   source: CatalogCompletenessSourceSummary | null;
+  privateSourceCount: number;
   confidence: CatalogConfidence;
   observedAt: Date;
   importedAt: Date;
@@ -680,6 +682,7 @@ export type CatalogCompletenessConflictSummary = {
   status: CatalogConflictStatus;
   reasonCode: string;
   sourceIds: CatalogConflictReviewSourceId[];
+  privateSourceCount: number;
 };
 
 export type CatalogCompletenessPoolWork = {
@@ -687,6 +690,7 @@ export type CatalogCompletenessPoolWork = {
   canonicalTitle: string;
   originalLanguage: string | null;
   sourceIds: CatalogConflictReviewSourceId[];
+  privateSourceCount: number;
   statuses: CatalogCompletenessStatusFact[];
   conflicts: CatalogCompletenessConflictSummary[];
 };
@@ -1798,7 +1802,9 @@ async function readCatalogCompletenessBenchmarkPools(
             inArray(catalogSourceProvenance.sourceProvenanceId, Array.from(sourceProvenanceIds)),
           );
   const sourcesById = new Map(
-    sourceRows.map((row) => [row.sourceProvenanceId, sourceSummaryFromRow(row)]),
+    sourceRows
+      .map((row) => [row.sourceProvenanceId, sourceSummaryFromRow(row)] as const)
+      .filter((entry): entry is readonly [string, CatalogCompletenessSourceSummary] => entry[1] !== null),
   );
 
   const statusesByWorkId = new Map<string, (typeof catalogLanguageStatuses.$inferSelect)[]>();
@@ -1840,17 +1846,28 @@ async function readCatalogCompletenessBenchmarkPools(
       statusFacts,
       externalIdsByWorkId.get(workRow.workId) ?? [],
     );
+    const privateExternalSourceCount = countPrivateSourceIds(
+      (externalIdsByWorkId.get(workRow.workId) ?? []).map((externalId) => ({
+        catalogSource: externalId.catalogSource as CatalogSource,
+        sourceId: externalId.sourceId,
+      })),
+    );
     const conflicts = (conflictsByWorkId.get(workRow.workId) ?? []).map((row) => ({
       conflictId: row.conflictId ?? row.reviewId,
       status: row.status as CatalogConflictStatus,
       reasonCode: row.reasonCode,
       sourceIds: row.sourceIds,
+      privateSourceCount: row.privateSourceCount,
     }));
     const poolWork: CatalogCompletenessPoolWork = {
       workId: workRow.workId,
       canonicalTitle: workRow.canonicalTitle,
       originalLanguage: workRow.originalLanguage,
       sourceIds,
+      privateSourceCount:
+        privateExternalSourceCount +
+        statusFacts.reduce((sum, status) => sum + status.privateSourceCount, 0) +
+        conflicts.reduce((sum, conflict) => sum + conflict.privateSourceCount, 0),
       statuses: statusFacts,
       conflicts,
     };
@@ -2558,6 +2575,8 @@ function completenessStatusFactFromRow(
   row: typeof catalogLanguageStatuses.$inferSelect,
   sourcesById: Map<string, CatalogCompletenessSourceSummary>,
 ): CatalogCompletenessStatusFact {
+  const source =
+    row.sourceProvenanceId === null ? null : (sourcesById.get(row.sourceProvenanceId) ?? null);
   return {
     languageStatusId: row.languageStatusId,
     language: row.language,
@@ -2565,20 +2584,25 @@ function completenessStatusFactFromRow(
     statusScope: row.statusScope as CatalogLanguageStatusScope,
     platform: row.platform,
     releaseId: row.releaseId,
-    sourceProvenanceId: row.sourceProvenanceId,
-    source:
-      row.sourceProvenanceId === null ? null : (sourcesById.get(row.sourceProvenanceId) ?? null),
+    sourceProvenanceId: source === null ? null : row.sourceProvenanceId,
+    source,
+    privateSourceCount: row.sourceProvenanceId !== null && source === null ? 1 : 0,
     confidence: row.confidence as CatalogConfidence,
     observedAt: row.observedAt,
     importedAt: row.importedAt,
     parserVersion: row.parserVersion,
-    rawContentRedactionClass: row.rawContentRedactionClass as CatalogRawContentRedactionClass,
+    rawContentRedactionClass: publicRawContentRedactionClass(
+      row.rawContentRedactionClass as CatalogRawContentRedactionClass,
+    ),
   };
 }
 
 function sourceSummaryFromRow(
   row: typeof catalogSourceProvenance.$inferSelect,
-): CatalogCompletenessSourceSummary {
+): CatalogCompletenessSourceSummary | null {
+  if (isPrivateSourceProvenance(row)) {
+    return null;
+  }
   return {
     sourceProvenanceId: row.sourceProvenanceId,
     catalogSource: row.catalogSource as CatalogSource,
@@ -2586,7 +2610,9 @@ function sourceSummaryFromRow(
     sourceId: row.sourceId,
     sourceVersion: row.sourceVersion,
     fetchedAt: row.fetchedAt,
-    rawContentRedactionClass: row.rawContentRedactionClass as CatalogRawContentRedactionClass,
+    rawContentRedactionClass: publicRawContentRedactionClass(
+      row.rawContentRedactionClass as CatalogRawContentRedactionClass,
+    ),
   };
 }
 
@@ -2606,7 +2632,7 @@ function sourceIdsForCompletenessWork(
       catalogSource: externalId.catalogSource as CatalogSource,
       sourceId: externalId.sourceId,
     })),
-  ]);
+  ].filter(isPublicSourceId));
 }
 
 type DraftCatalogAlphaBenchmarkOpportunity = {
@@ -3677,11 +3703,12 @@ function catalogConflictReviewRowFromConflict(
   provenanceById: Map<string, CatalogSourceProvenanceRecord>,
   exactLinkById: Map<string, CatalogConflictReviewExactLinkRef>,
 ): CatalogConflictReviewRow {
-  const exactLinkRefs = evidenceRows
+  const rawExactLinkRefs = evidenceRows
     .filter((evidence) => evidence.subjectKind === catalogConflictSubjectKindValues.externalId)
     .map((evidence) => exactLinkById.get(evidence.subjectId))
     .filter((ref): ref is CatalogConflictReviewExactLinkRef => ref !== undefined);
-  const provenance = [
+  const exactLinkRefs = rawExactLinkRefs.filter(isPublicSourceId);
+  const rawProvenance = [
     ...evidenceRows
       .map((evidence) =>
         evidence.sourceProvenanceId === null
@@ -3689,13 +3716,17 @@ function catalogConflictReviewRowFromConflict(
           : provenanceById.get(evidence.sourceProvenanceId),
       )
       .filter((record): record is CatalogSourceProvenanceRecord => record !== undefined),
-    ...exactLinkRefs
+    ...rawExactLinkRefs
       .map((ref) =>
         ref.sourceProvenanceId === null ? undefined : provenanceById.get(ref.sourceProvenanceId),
       )
       .filter((record): record is CatalogSourceProvenanceRecord => record !== undefined),
-  ].map(conflictReviewProvenanceFromRecord);
+  ];
+  const provenance = rawProvenance
+    .filter((record) => !isPrivateSourceProvenance(record))
+    .map(conflictReviewProvenanceFromRecord);
   const metadata = conflict.metadata;
+  const metadataSourceIdRows = metadataSourceIds(metadata);
   const priorCandidateIds = stringArrayMetadata(metadata, "priorCandidateIds");
   const candidateIds = uniqueStrings([
     ...priorCandidateIds,
@@ -3721,10 +3752,15 @@ function catalogConflictReviewRowFromConflict(
     fuzzyScores: [],
     sourceIds: uniqueSourceIds([
       ...exactLinkRefs,
-      ...metadataSourceIds(metadata),
+      ...metadataSourceIdRows.filter(isPublicSourceId),
       ...provenance.map(({ catalogSource, sourceId }) => ({ catalogSource, sourceId })),
     ]),
     provenance: uniqueProvenance(provenance),
+    privateSourceCount: countPrivateSourceIdentities(
+      rawExactLinkRefs,
+      metadataSourceIdRows,
+      rawProvenance,
+    ),
     severity: conflictSeverity(conflict, exactLinkRefs),
     status: conflict.status as CatalogConflictStatus,
     reasonCode: conflictReasonCode(conflict, exactLinkRefs),
@@ -3746,13 +3782,16 @@ function catalogConflictReviewRowFromCandidate(
     candidate.sourceProvenanceId === null
       ? undefined
       : provenanceById.get(candidate.sourceProvenanceId);
-  const provenance = [
+  const rawProvenance = [
     provenanceRecord,
     ...targetExactLinkRefs.map((ref) =>
       ref.sourceProvenanceId === null ? undefined : provenanceById.get(ref.sourceProvenanceId),
     ),
   ]
-    .filter((record): record is CatalogSourceProvenanceRecord => record !== undefined)
+    .filter((record): record is CatalogSourceProvenanceRecord => record !== undefined);
+  const publicTargetExactLinkRefs = targetExactLinkRefs.filter(isPublicSourceId);
+  const provenance = rawProvenance
+    .filter((record) => !isPrivateSourceProvenance(record))
     .map(conflictReviewProvenanceFromRecord);
   const fuzzyScores = sourcePeerRows
     .map(candidateMatchFromRow)
@@ -3763,6 +3802,10 @@ function catalogConflictReviewRowFromCandidate(
       generatorVersion: row.generatorVersion,
     }))
     .sort(compareFuzzyScores);
+  const candidateSourceId: CatalogConflictReviewSourceId = {
+    catalogSource: candidateRecord.sourceCatalogSource,
+    sourceId: candidateRecord.sourceId,
+  };
 
   return {
     reviewId: `catalog-candidate:${candidate.candidateId}`,
@@ -3770,14 +3813,18 @@ function catalogConflictReviewRowFromCandidate(
     conflictId: null,
     candidateIds: uniqueStrings(sourcePeerRows.map((row) => row.candidateId)),
     candidateCatalogIds: uniqueStrings(sourcePeerRows.map((row) => row.targetWorkId)),
-    exactLinkRefs: targetExactLinkRefs.sort(compareExactLinkRefs),
+    exactLinkRefs: publicTargetExactLinkRefs.sort(compareExactLinkRefs),
     fuzzyScores,
     sourceIds: uniqueSourceIds([
-      { catalogSource: candidateRecord.sourceCatalogSource, sourceId: candidateRecord.sourceId },
+      ...[candidateSourceId].filter(isPublicSourceId),
       ...provenance.map(({ catalogSource, sourceId }) => ({ catalogSource, sourceId })),
-      ...targetExactLinkRefs,
+      ...publicTargetExactLinkRefs,
     ]),
     provenance,
+    privateSourceCount: countPrivateSourceIdentities(
+      [candidateSourceId, ...targetExactLinkRefs],
+      rawProvenance,
+    ),
     severity: candidateSeverity(candidateRecord, sourcePeerRows),
     status: candidateRecord.status,
     reasonCode: candidateReasonCode(candidateRecord, sourcePeerRows),
@@ -3973,6 +4020,14 @@ function conflictReviewProvenanceFromRecord(
   };
 }
 
+function publicRawContentRedactionClass(
+  redactionClass: CatalogRawContentRedactionClass,
+): CatalogRawContentRedactionClass {
+  return redactionClass === catalogRawContentRedactionClassValues.privateCorpus
+    ? catalogRawContentRedactionClassValues.redacted
+    : redactionClass;
+}
+
 function exactLinkRefFromExternalIdRow(
   row: typeof catalogExternalIds.$inferSelect,
 ): CatalogConflictReviewExactLinkRef {
@@ -3998,6 +4053,68 @@ function uniqueSourceIds(
       `${right.catalogSource}:${right.sourceId}`,
     ),
   );
+}
+
+function isPublicSourceId(sourceId: CatalogConflictReviewSourceId): boolean {
+  return (
+    sourceId.catalogSource !== catalogSourceValues.localCorpus &&
+    !catalogPrivateSourceIdentityPatterns.some((pattern) => pattern.test(sourceId.sourceId))
+  );
+}
+
+function isPrivateSourceProvenance(
+  record: CatalogSourceProvenanceRecord | typeof catalogSourceProvenance.$inferSelect,
+): boolean {
+  return (
+    record.catalogSource === catalogSourceValues.localCorpus ||
+    record.sourceRecordKind === catalogSourceRecordKindValues.localScan ||
+    record.rawContentRedactionClass === catalogRawContentRedactionClassValues.privateCorpus ||
+    !isPublicSourceId({
+      catalogSource: record.catalogSource as CatalogSource,
+      sourceId: record.sourceId,
+    })
+  );
+}
+
+const catalogPrivateSourceIdentityPatterns = [
+  /(?:^|[ "'=])file:/iu,
+  /(?:^|[ "'=])\/(?:home|tmp|var|scratch|private)(?:\/|$)/iu,
+  /[A-Z]:\\/u,
+  /\.(?:zip|7z|rar|tar|gz|ks|xp3|wolf|rvdata2|rpgmvp|rpgmvm|rpgmvo)(?:$|[\\/!?#:])/iu,
+  /private[-_ ](?:title|path|corpus)/iu,
+  /(?:rawPayloadSecret|local-scan-entry-secret|private-story-title|private_path_hash|path_hash)/iu,
+] as const;
+
+function countPrivateSourceIds(sourceIds: CatalogConflictReviewSourceId[]): number {
+  const privateKeys = new Set<string>();
+  for (const sourceId of sourceIds) {
+    if (!isPublicSourceId(sourceId)) {
+      privateKeys.add(sourceIdKey(sourceId));
+    }
+  }
+  return privateKeys.size;
+}
+
+function countPrivateSourceIdentities(
+  ...sourceGroups: Array<Array<CatalogConflictReviewSourceId | CatalogSourceProvenanceRecord>>
+): number {
+  const privateKeys = new Set<string>();
+  for (const group of sourceGroups) {
+    if (Array.isArray(group)) {
+      for (const entry of group) {
+        if ("sourceRecordKind" in entry) {
+          if (isPrivateSourceProvenance(entry)) {
+            privateKeys.add(`${entry.catalogSource}:${entry.sourceRecordKind}:${entry.sourceId}`);
+          }
+        } else if (!isPublicSourceId(entry)) {
+          privateKeys.add(sourceIdKey(entry));
+        }
+      }
+    } else if (!isPublicSourceId(group)) {
+      privateKeys.add(sourceIdKey(group));
+    }
+  }
+  return privateKeys.size;
 }
 
 function uniqueProvenance(

@@ -338,6 +338,7 @@ export const catalogConflictReviewFixture: CatalogConflictReviewReadModel = {
           fetchedAt: new Date("2026-06-17T00:00:00.000Z"),
         },
       ],
+      privateSourceCount: 0,
       severity: "error",
       status: "open",
       reasonCode: "duplicate_external_id",
@@ -358,6 +359,7 @@ export const catalogCompletenessFixture: CatalogCompletenessBenchmarkPools = {
         canonicalTitle: "MTL Fixture",
         originalLanguage: "ja-JP",
         sourceIds: [{ catalogSource: "egs", sourceId: "egs-mtl" }],
+        privateSourceCount: 0,
         statuses: [
           {
             languageStatusId: "status-mtl",
@@ -376,6 +378,7 @@ export const catalogCompletenessFixture: CatalogCompletenessBenchmarkPools = {
               fetchedAt: new Date("2026-06-17T00:00:00.000Z"),
               rawContentRedactionClass: "public_metadata",
             },
+            privateSourceCount: 0,
             confidence: "medium",
             observedAt: new Date("2026-06-17T00:00:00.000Z"),
             importedAt: new Date("2026-06-17T00:01:00.000Z"),

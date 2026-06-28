@@ -1507,13 +1507,18 @@ describe("ItotoriCatalogRepository", () => {
           }),
           expect.objectContaining({
             languageStatusId: localSidecarStatusId,
-            rawContentRedactionClass: catalogRawContentRedactionClassValues.privateCorpus,
-            source: expect.objectContaining({
-              rawContentRedactionClass: catalogRawContentRedactionClassValues.privateCorpus,
-            }),
+            sourceProvenanceId: null,
+            rawContentRedactionClass: catalogRawContentRedactionClassValues.redacted,
+            source: null,
+            privateSourceCount: 1,
           }),
         ]),
       );
+      expect(conflictWork?.sourceIds).toEqual([
+        { catalogSource: catalogSourceValues.steam, sourceId: "steam-complete-002" },
+        { catalogSource: catalogSourceValues.vndb, sourceId: "v-complete-002" },
+      ]);
+      expect(conflictWork?.privateSourceCount).toBe(2);
       expect(conflictWork?.conflicts).toEqual([
         expect.objectContaining({
           conflictId: uuid(931),
@@ -1521,11 +1526,16 @@ describe("ItotoriCatalogRepository", () => {
           sourceIds: expect.arrayContaining([
             { catalogSource: catalogSourceValues.vndb, sourceId: "v-complete-002" },
             { catalogSource: catalogSourceValues.steam, sourceId: "steam-complete-002" },
-            { catalogSource: catalogSourceValues.localCorpus, sourceId: "local-complete-002" },
           ]),
+          privateSourceCount: 1,
         }),
       ]);
 
+      const poolsJson = JSON.stringify(pools);
+      expect(poolsJson).not.toContain("local-complete-002");
+      expect(poolsJson).not.toContain(catalogSourceValues.localCorpus);
+      expect(poolsJson).not.toContain(catalogSourceRecordKindValues.localScan);
+      expect(poolsJson).not.toContain(catalogRawContentRedactionClassValues.privateCorpus);
       const publicReportJson = JSON.stringify(pools.publicReport);
       expect(publicReportJson).not.toContain("PRIVATE_CORPUS_TEXT_SHOULD_NOT_APPEAR");
       expect(pools.publicReport.pools).toEqual(

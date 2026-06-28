@@ -977,6 +977,10 @@ export function assertCatalogCompletenessBenchmarkPools(
         work.sourceIds,
         `${label}.pools.${poolName}[${index}].sourceIds`,
       );
+      assertNonNegativeInteger(
+        work.privateSourceCount,
+        `${label}.pools.${poolName}[${index}].privateSourceCount`,
+      );
       const statuses = asArray(work.statuses, `${label}.pools.${poolName}[${index}].statuses`);
       for (const [statusIndex, statusValue] of statuses.entries()) {
         const status = asRecord(
@@ -1015,6 +1019,10 @@ export function assertCatalogCompletenessBenchmarkPools(
           status.rawContentRedactionClass,
           `${label}.pools.${poolName}[${index}].statuses[${statusIndex}].rawContentRedactionClass`,
         );
+        assertPublicCatalogRedactionClass(
+          status.rawContentRedactionClass,
+          `${label}.pools.${poolName}[${index}].statuses[${statusIndex}].rawContentRedactionClass`,
+        );
         if (status.source !== null) {
           const source = asRecord(
             status.source,
@@ -1028,11 +1036,23 @@ export function assertCatalogCompletenessBenchmarkPools(
             source.catalogSource,
             `${label}.pools.${poolName}[${index}].statuses[${statusIndex}].source.catalogSource`,
           );
+          assertPublicCatalogSource(
+            source.catalogSource,
+            `${label}.pools.${poolName}[${index}].statuses[${statusIndex}].source.catalogSource`,
+          );
           assertString(
             source.sourceRecordKind,
             `${label}.pools.${poolName}[${index}].statuses[${statusIndex}].source.sourceRecordKind`,
           );
+          assertPublicCatalogSourceRecordKind(
+            source.sourceRecordKind,
+            `${label}.pools.${poolName}[${index}].statuses[${statusIndex}].source.sourceRecordKind`,
+          );
           assertString(
+            source.sourceId,
+            `${label}.pools.${poolName}[${index}].statuses[${statusIndex}].source.sourceId`,
+          );
+          assertNoCatalogPrivateLeakage(
             source.sourceId,
             `${label}.pools.${poolName}[${index}].statuses[${statusIndex}].source.sourceId`,
           );
@@ -1048,7 +1068,15 @@ export function assertCatalogCompletenessBenchmarkPools(
             source.rawContentRedactionClass,
             `${label}.pools.${poolName}[${index}].statuses[${statusIndex}].source.rawContentRedactionClass`,
           );
+          assertPublicCatalogRedactionClass(
+            source.rawContentRedactionClass,
+            `${label}.pools.${poolName}[${index}].statuses[${statusIndex}].source.rawContentRedactionClass`,
+          );
         }
+        assertNonNegativeInteger(
+          status.privateSourceCount,
+          `${label}.pools.${poolName}[${index}].statuses[${statusIndex}].privateSourceCount`,
+        );
       }
       const conflicts = asArray(work.conflicts, `${label}.pools.${poolName}[${index}].conflicts`);
       for (const [conflictIndex, conflictValue] of conflicts.entries()) {
@@ -1071,6 +1099,10 @@ export function assertCatalogCompletenessBenchmarkPools(
         assertConflictReviewSourceIds(
           conflict.sourceIds,
           `${label}.pools.${poolName}[${index}].conflicts[${conflictIndex}].sourceIds`,
+        );
+        assertNonNegativeInteger(
+          conflict.privateSourceCount,
+          `${label}.pools.${poolName}[${index}].conflicts[${conflictIndex}].privateSourceCount`,
         );
       }
     }
@@ -1123,6 +1155,7 @@ export function assertCatalogConflictReviewReadModel(
     assertConflictReviewFuzzyScores(row.fuzzyScores, `${label}.rows[${index}].fuzzyScores`);
     assertConflictReviewSourceIds(row.sourceIds, `${label}.rows[${index}].sourceIds`);
     assertConflictReviewProvenance(row.provenance, `${label}.rows[${index}].provenance`);
+    assertNonNegativeInteger(row.privateSourceCount, `${label}.rows[${index}].privateSourceCount`);
     assertEnum(
       row.severity,
       ["error", "warning", "info"] as const,
@@ -1877,7 +1910,9 @@ function assertConflictReviewSourceIds(value: unknown, label: string): void {
   for (const [index, rowValue] of rows.entries()) {
     const row = asRecord(rowValue, `${label}[${index}]`);
     assertString(row.catalogSource, `${label}[${index}].catalogSource`);
+    assertPublicCatalogSource(row.catalogSource, `${label}[${index}].catalogSource`);
     assertString(row.sourceId, `${label}[${index}].sourceId`);
+    assertNoCatalogPrivateLeakage(row.sourceId, `${label}[${index}].sourceId`);
   }
 }
 
@@ -1887,7 +1922,9 @@ function assertConflictReviewExactLinkRefs(value: unknown, label: string): void 
     const row = asRecord(rowValue, `${label}[${index}]`);
     assertString(row.externalIdId, `${label}[${index}].externalIdId`);
     assertString(row.catalogSource, `${label}[${index}].catalogSource`);
+    assertPublicCatalogSource(row.catalogSource, `${label}[${index}].catalogSource`);
     assertString(row.sourceId, `${label}[${index}].sourceId`);
+    assertNoCatalogPrivateLeakage(row.sourceId, `${label}[${index}].sourceId`);
     assertString(row.externalIdKind, `${label}[${index}].externalIdKind`);
     assertString(row.workId, `${label}[${index}].workId`);
     assertNullableString(row.sourceProvenanceId, `${label}[${index}].sourceProvenanceId`);
@@ -1911,10 +1948,47 @@ function assertConflictReviewProvenance(value: unknown, label: string): void {
     const row = asRecord(rowValue, `${label}[${index}]`);
     assertString(row.sourceProvenanceId, `${label}[${index}].sourceProvenanceId`);
     assertString(row.catalogSource, `${label}[${index}].catalogSource`);
+    assertPublicCatalogSource(row.catalogSource, `${label}[${index}].catalogSource`);
     assertString(row.sourceId, `${label}[${index}].sourceId`);
+    assertNoCatalogPrivateLeakage(row.sourceId, `${label}[${index}].sourceId`);
     assertString(row.sourceRecordKind, `${label}[${index}].sourceRecordKind`);
+    assertPublicCatalogSourceRecordKind(
+      row.sourceRecordKind,
+      `${label}[${index}].sourceRecordKind`,
+    );
     assertNullableString(row.payloadHash, `${label}[${index}].payloadHash`);
     assertDateLike(row.fetchedAt, `${label}[${index}].fetchedAt`);
+  }
+}
+
+function assertPublicCatalogSource(value: string, label: string): void {
+  assertEnum(value, Object.values(catalogSourceValues) as CatalogSource[], label);
+  if (value === catalogSourceValues.localCorpus) {
+    throw new Error(`${label} must not expose local corpus sources`);
+  }
+}
+
+function assertPublicCatalogSourceRecordKind(value: string, label: string): void {
+  assertEnum(value, Object.values(catalogSourceRecordKindValues) as CatalogSourceRecordKind[], label);
+  if (value === catalogSourceRecordKindValues.localScan) {
+    throw new Error(`${label} must not expose local scan sources`);
+  }
+}
+
+function assertPublicCatalogRedactionClass(value: string, label: string): void {
+  assertEnum(
+    value,
+    Object.values(catalogRawContentRedactionClassValues) as CatalogRawContentRedactionClass[],
+    label,
+  );
+  if (value === catalogRawContentRedactionClassValues.privateCorpus) {
+    throw new Error(`${label} must not expose private corpus data`);
+  }
+}
+
+function assertNoCatalogPrivateLeakage(value: string, label: string): void {
+  if (benchmarkSeedPrivateLeakagePatterns.some((pattern) => pattern.test(value))) {
+    throw new Error(`${label} must not expose private response data`);
   }
 }
 

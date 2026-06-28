@@ -308,6 +308,126 @@ describe("Itotori API handlers", () => {
 
   it.each([
     {
+      name: "source id",
+      body: {
+        ...catalogConflictReviewFixture,
+        rows: [
+          {
+            ...catalogConflictReviewFixture.rows[0]!,
+            sourceIds: [
+              ...catalogConflictReviewFixture.rows[0]!.sourceIds,
+              {
+                catalogSource: "dlsite",
+                sourceId: "file:/home/private/RJ010.zip/story.ks",
+              },
+            ],
+          },
+        ],
+      },
+      error: /sourceId/u,
+    },
+    {
+      name: "local catalog source",
+      body: {
+        ...catalogConflictReviewFixture,
+        rows: [
+          {
+            ...catalogConflictReviewFixture.rows[0]!,
+            provenance: [
+              {
+                ...catalogConflictReviewFixture.rows[0]!.provenance[0]!,
+                catalogSource: "local_corpus",
+                sourceId: "local-conflict-secret",
+                sourceRecordKind: "local_scan",
+              },
+            ],
+          },
+        ],
+      },
+      error: /catalogSource/u,
+    },
+  ])("does not expose private catalog conflict $name fields", async ({ body, error }) => {
+    const services = serviceFixture();
+    services.catalogRepository.catalogConflictReview.mockResolvedValueOnce(body);
+
+    const response = await handleItotoriApiRequest(
+      { method: "GET", pathname: "/api/catalog/conflicts" },
+      services,
+    );
+
+    expect(response.statusCode).toBe(500);
+    expect(response.body).toMatchObject({ code: "internal_error" });
+    expect(response.body.error).toMatch(error);
+  });
+
+  it.each([
+    {
+      name: "status source id",
+      body: {
+        ...catalogCompletenessFixture,
+        pools: {
+          ...catalogCompletenessFixture.pools,
+          mtl_only: [
+            {
+              ...catalogCompletenessFixture.pools.mtl_only[0]!,
+              statuses: [
+                {
+                  ...catalogCompletenessFixture.pools.mtl_only[0]!.statuses[0]!,
+                  source: {
+                    ...catalogCompletenessFixture.pools.mtl_only[0]!.statuses[0]!.source!,
+                    sourceId: "/scratch/private/catalog/source.ks",
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      },
+      error: /sourceId/u,
+    },
+    {
+      name: "private redaction provenance",
+      body: {
+        ...catalogCompletenessFixture,
+        pools: {
+          ...catalogCompletenessFixture.pools,
+          mtl_only: [
+            {
+              ...catalogCompletenessFixture.pools.mtl_only[0]!,
+              statuses: [
+                {
+                  ...catalogCompletenessFixture.pools.mtl_only[0]!.statuses[0]!,
+                  rawContentRedactionClass: "private_corpus",
+                  source: {
+                    ...catalogCompletenessFixture.pools.mtl_only[0]!.statuses[0]!.source!,
+                    catalogSource: "local_corpus",
+                    sourceRecordKind: "local_scan",
+                    rawContentRedactionClass: "private_corpus",
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      },
+      error: /rawContentRedactionClass/u,
+    },
+  ])("does not expose private catalog completeness $name fields", async ({ body, error }) => {
+    const services = serviceFixture();
+    services.catalogRepository.catalogCompletenessBenchmarkPools.mockResolvedValueOnce(body);
+
+    const response = await handleItotoriApiRequest(
+      { method: "GET", pathname: "/api/catalog/completeness" },
+      services,
+    );
+
+    expect(response.statusCode).toBe(500);
+    expect(response.body).toMatchObject({ code: "internal_error" });
+    expect(response.body.error).toMatch(error);
+  });
+
+  it.each([
+    {
       query: "?targetLanguage=en-US",
       filter: { targetLanguage: "en-US" },
     },
