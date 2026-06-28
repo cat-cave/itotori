@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "exported_at": "2026-06-28T02:34:33.050Z",
+  "exported_at": "2026-06-28T03:02:46.206Z",
   "registries": {
     "groups": [
       {
@@ -29068,7 +29068,7 @@
       "title": "Make qd audit disposition non-destructive",
       "kind": "feature",
       "milestone": null,
-      "status": "claimed",
+      "status": "done",
       "priority": "P1",
       "estimate_points": 1,
       "risk": "medium",
@@ -29079,9 +29079,9 @@
       "validation": null,
       "context": null,
       "created_at": "2026-06-28T01:50:56.844Z",
-      "updated_at": "2026-06-28T02:34:25.242Z",
+      "updated_at": "2026-06-28T03:02:36.881Z",
       "claimed_at": "2026-06-28T02:34:25.242Z",
-      "done_at": null,
+      "done_at": "2026-06-28T03:02:36.881Z",
       "group_name": null,
       "status_reason": null,
       "check_command": null,
@@ -43522,6 +43522,54 @@
       "agent": null,
       "started_at": "2026-06-28T02:29:58.270Z",
       "finished_at": "2026-06-28T02:29:58.270Z",
+      "summary": "Merge recorded with squash",
+      "log_path": null
+    },
+    {
+      "id": "aa2949bd-5129-40f4-93bf-7004947443e6",
+      "node_id": "make-qd-audit-disposition-non-destructive",
+      "kind": "implement",
+      "status": "completed",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-28T02:56:56.196Z",
+      "finished_at": "2026-06-28T02:56:56.196Z",
+      "summary": "Made qd-wrapper audit disposition non-destructive. The wrapper now uses a repo-local disposition lock, stages qd import in a temp root, validates staged state before touching live DB files, backs up live qd.db files by verified copy, swaps only after validation, rolls back DB changes on failure, and exports/canonicalizes roadmap through a temp file. Added subprocess tests for import failure, staged validation failure, swap failure, live export failure, canonicalization failure, and roadmap rename failure.",
+      "log_path": null
+    },
+    {
+      "id": "28c61204-5634-40bb-8926-e94856ef4ca3",
+      "node_id": "make-qd-audit-disposition-non-destructive",
+      "kind": "check",
+      "status": "passed",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-28T02:57:16.141Z",
+      "finished_at": "2026-06-28T02:57:42.761Z",
+      "summary": "check command passed: nix develop --command bash -lc 'just check'",
+      "log_path": "/home/trevor/projects/itotori/.qd/logs/check-make-qd-audit-disposition-non-destructive-2026-06-28T02-57-16-141Z.log"
+    },
+    {
+      "id": "06962a0b-a4b7-4043-b80e-5551c44e1f7a",
+      "node_id": "make-qd-audit-disposition-non-destructive",
+      "kind": "ci",
+      "status": "passed",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-28T02:58:19.896Z",
+      "finished_at": "2026-06-28T03:02:25.600Z",
+      "summary": "ci command passed: nix develop --command bash -lc 'just ci'",
+      "log_path": "/home/trevor/projects/itotori/.qd/logs/ci-make-qd-audit-disposition-non-destructive-2026-06-28T02-58-19-896Z.log"
+    },
+    {
+      "id": "9cc9126a-98e4-4994-924c-c891880dd480",
+      "node_id": "make-qd-audit-disposition-non-destructive",
+      "kind": "merge",
+      "status": "recorded",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-28T03:02:36.881Z",
+      "finished_at": "2026-06-28T03:02:36.881Z",
       "summary": "Merge recorded with squash",
       "log_path": null
     }
