@@ -32,5 +32,21 @@ test("GitHub workflows use the local db compose path for Postgres parity", () =>
 
 test("db recipes disable implicit .env loading", () => {
   assert.match(justfile, /export COMPOSE_DISABLE_ENV_FILE := '1'\n/u);
-  assert.doesNotMatch(justfile, /docker compose(?! --env-file \.tmp\/itotori-db\/compose\.env)/u);
+  assert.match(
+    justfile,
+    /export ITOTORI_DB_COMPOSE_ENV_PATH := env_var_or_default\('ITOTORI_DB_COMPOSE_ENV_PATH', '\.tmp\/itotori-db\/compose\.env'\)/u,
+  );
+  assert.doesNotMatch(
+    justfile,
+    /docker compose(?! --env-file "\$ITOTORI_DB_COMPOSE_ENV_PATH")/u,
+  );
+});
+
+test("local qd CI uses the DB-owning full-CI wrapper", () => {
+  assert.match(justfile, /^qd-full-ci:\n    node scripts\/qd-full-ci\.mjs/mu);
+  assert.match(justfile, /qd config set ci-command --value "just qd-full-ci"/u);
+  assert.match(
+    readFileSync(".qd/config.toml", "utf8"),
+    /ci_command = "nix develop --command bash -lc 'just qd-full-ci'"/u,
+  );
 });

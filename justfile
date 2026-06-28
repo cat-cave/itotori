@@ -1,6 +1,7 @@
 set shell := ["bash", "-eu", "-o", "pipefail", "-c"]
 export DATABASE_URL := env_var_or_default('DATABASE_URL', 'postgres://itotori:itotori@127.0.0.1:55433/itotori')
 export COMPOSE_DISABLE_ENV_FILE := '1'
+export ITOTORI_DB_COMPOSE_ENV_PATH := env_var_or_default('ITOTORI_DB_COMPOSE_ENV_PATH', '.tmp/itotori-db/compose.env')
 
 install:
     pnpm install
@@ -14,6 +15,7 @@ dashboard:
 check:
     pnpm exec vp check
     node --test scripts/itotori-db-compose-config.test.mjs
+    node --test scripts/qd-full-ci.test.mjs
     node scripts/qd-wrapper.test.mjs
     node scripts/qd-lifecycle.test.mjs
     node --test scripts/affected.test.mjs
@@ -62,6 +64,9 @@ ci: check build db-migrate test
     cargo clippy --workspace --all-targets --all-features -- -D warnings
     cargo deny check
 
+qd-full-ci:
+    node scripts/qd-full-ci.mjs
+
 ci-itotori:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -100,15 +105,15 @@ contract-validate: contract-validate-ts contract-validate-rust
 
 db-up:
     node scripts/itotori-db-compose-env.mjs
-    docker compose --env-file .tmp/itotori-db/compose.env up -d postgres
+    docker compose --env-file "$ITOTORI_DB_COMPOSE_ENV_PATH" up -d postgres
 
 db-down:
     node scripts/itotori-db-compose-env.mjs
-    docker compose --env-file .tmp/itotori-db/compose.env down
+    docker compose --env-file "$ITOTORI_DB_COMPOSE_ENV_PATH" down
 
 db-wait:
     node scripts/itotori-db-compose-env.mjs
-    for i in {1..60}; do docker compose --env-file .tmp/itotori-db/compose.env exec -T postgres sh -c 'pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"' && exit 0; sleep 1; done; exit 1
+    for i in {1..60}; do docker compose --env-file "$ITOTORI_DB_COMPOSE_ENV_PATH" exec -T postgres sh -c 'pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"' && exit 0; sleep 1; done; exit 1
 
 db-cli-build:
     pnpm --filter @itotori/localization-bridge-schema build
@@ -265,7 +270,7 @@ qd-import:
     rm -f .qd/qd.db .qd/qd.db-wal .qd/qd.db-shm
     qd setup
     qd config set check-command --value "just check"
-    qd config set ci-command --value "just ci"
+    qd config set ci-command --value "just qd-full-ci"
     qd config set merge-strategy --value "squash"
     qd import --from roadmap/spec-dag.json
     just roadmap-validate

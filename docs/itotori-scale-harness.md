@@ -69,12 +69,24 @@ COMPOSE_PROJECT_NAME=itotori
 
 These are no-secret public CI defaults. `just db-up` writes
 `.tmp/itotori-db/compose.env` from `DATABASE_URL`, then starts the `postgres` service with the
-matching host port, database name, user, and password. The recipes set
-`COMPOSE_DISABLE_ENV_FILE=1` so Compose does not implicitly load `.env`; the generated compose env
-file is the only env file used for this disposable database. Set a unique `DATABASE_URL` host port
-and `COMPOSE_PROJECT_NAME` when running parallel worktrees so both port bindings and Docker resource
-names do not collide. If `COMPOSE_PROJECT_NAME` is unset locally, the generated compose env derives a
-disposable project name from the worktree directory.
+matching host port, database name, user, and password. Set
+`ITOTORI_DB_COMPOSE_ENV_PATH` to write and use a different compose env file. The
+recipes set `COMPOSE_DISABLE_ENV_FILE=1` so Compose does not implicitly load
+`.env`; the generated compose env file is the only env file used for this
+disposable database.
+
+For qd local CI, `just qd-full-ci` owns the database lifecycle around `just ci`.
+It derives a worktree-specific `DATABASE_URL` host port and `COMPOSE_PROJECT_NAME`,
+reserves the port before startup, writes a per-run compose env file, and always
+runs `just db-down` before exiting. If the local range is occupied, it fails with
+a diagnostic listing the blocked ports. Set `ITOTORI_QD_DB_PORT` for a specific
+port, or `ITOTORI_QD_DB_PORT_BASE` plus `ITOTORI_QD_DB_PORT_SPAN` for a custom
+range.
+
+For manual DB recipes in parallel worktrees, set a unique `DATABASE_URL` host
+port and `COMPOSE_PROJECT_NAME` so both port bindings and Docker resource names
+do not collide. If `COMPOSE_PROJECT_NAME` is unset locally, the generated compose
+env derives a disposable project name from the worktree directory.
 
 The compose service passes Postgres runtime server settings instead of initdb-only flags:
 `max_connections=400` and `shared_buffers=512MB`. The buffer value keeps the same 4x ratio from
@@ -88,6 +100,7 @@ just db-up
 just db-wait
 just db-migrate
 just db-reset
+just qd-full-ci
 ```
 
 When `DATABASE_URL` is intentionally unavailable, DB-only verification is deterministic:

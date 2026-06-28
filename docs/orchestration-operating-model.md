@@ -155,7 +155,8 @@ test implementation, and spec implementation belong to workers.
    expected commands, and artifact expectations.
 8. Run the node's verification commands, `qd check run <NODE-ID>`, or the
    stronger `qd ci run <NODE-ID>` gate required by the node. qd delegates these
-   to `just check` and `just ci`, so roadmap validation is included.
+   to `just check` and the local DB-owning `just qd-full-ci` wrapper, so roadmap
+   validation and the full `just ci` gate are included.
 9. Assign audit workers. Include the diff, plan, test evidence, known risks,
    and the node's `auditFocus`.
 10. Resolve findings according to severity.

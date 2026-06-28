@@ -38,8 +38,9 @@ node scripts/spec-dag.mjs sync-issues --dry-run
 
 `just check` runs the roadmap validator tests and `node scripts/spec-dag.mjs
 validate`. `.qd/config.toml` delegates qd `check_command` to `just check` and
-qd `ci_command` to `just ci`, so qd checks, local checks, and CI all include the
-same roadmap gate.
+qd `ci_command` to `just qd-full-ci`, which wraps `just ci` with a
+worktree-scoped disposable Postgres stack for local qd runs. qd checks, local
+checks, and CI all include the same roadmap gate.
 
 For qd export shape, `node scripts/spec-dag.mjs validate` checks the qd export
 schema version, registries, duplicate node ids, qd status/priority shape,

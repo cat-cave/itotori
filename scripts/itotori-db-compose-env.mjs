@@ -3,7 +3,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 const defaultDatabaseUrl = "postgres://itotori:itotori@127.0.0.1:55433/itotori";
-const outputPath = ".tmp/itotori-db/compose.env";
+const outputPath = process.env.ITOTORI_DB_COMPOSE_ENV_PATH || ".tmp/itotori-db/compose.env";
 
 const databaseUrl = process.env.DATABASE_URL || defaultDatabaseUrl;
 const parsed = new URL(databaseUrl);

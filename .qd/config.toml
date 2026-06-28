@@ -3,7 +3,7 @@
 schema_version = 1
 skills_dir = ".qd/skills"
 check_command = "nix develop --command bash -lc 'just check'"
-ci_command = "nix develop --command bash -lc 'just ci'"
+ci_command = "nix develop --command bash -lc 'just qd-full-ci'"
 ci_provider = "github"
 ci_repo = "cat-cave/itotori"
 ci_workflow = "ci.yml"

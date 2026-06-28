@@ -36,10 +36,14 @@ opaque retrieval store.
 
 Itotori DB-backed checks use `DATABASE_URL`. The local disposable Postgres
 default is `postgres://itotori:itotori@127.0.0.1:55433/itotori`, with
-`COMPOSE_PROJECT_NAME=itotori` as the no-secret public CI default. Use a unique
-`DATABASE_URL` host port and `COMPOSE_PROJECT_NAME` for parallel worktrees; when
-`COMPOSE_PROJECT_NAME` is unset locally, `just db-up` derives one from the
-worktree directory.
+`COMPOSE_PROJECT_NAME=itotori` as the no-secret public CI default. For qd local
+CI, use `qd ci run <NODE-ID>` or `just qd-full-ci`; that wrapper derives a
+worktree-specific host port and Compose project name, writes a per-run compose
+env file, starts Postgres, waits for readiness, runs `just ci`, and tears the
+stack down. If the derived port range is occupied, it fails before startup with
+the blocked ports listed. For manual parallel worktrees outside qd, set a unique
+`DATABASE_URL` host port and `COMPOSE_PROJECT_NAME`; when `COMPOSE_PROJECT_NAME`
+is unset locally, `just db-up` derives one from the worktree directory.
 
 The local compose Postgres service uses runtime server flags, not initdb-only
 settings: `max_connections=400` and `shared_buffers=512MB`. `shared_buffers`
@@ -52,6 +56,7 @@ just db-up
 just db-wait
 just db-migrate
 just db-reset
+just qd-full-ci
 just ci-itotori
 just itotori-scale-smoke
 ```
