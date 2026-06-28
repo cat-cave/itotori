@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-import { readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import { dirname, resolve } from "node:path";
+import { dirname, isAbsolute, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import {
   createIssueSyncPlan,
@@ -92,6 +92,12 @@ const qdActiveAuditFixStatuses = new Set([
   "mergeable",
 ]);
 const qdGenericAuditFixAcceptancePattern = /^finding is addressed and verified\.$/iu;
+const qdCiReuseSummaryPattern =
+  /\b(?:covered by|covered-by|reused|reuse|record-pass|integrated .*?\bci\b|integrated .*?\bqd-full-ci\b)\b/iu;
+const qdLocalLogPathPattern =
+  /(?:^|[\s=])(?:\.qd\/logs\/|\/[^\s]*\/\.qd\/logs\/|[A-Za-z]:[\\/][^\s]*[\\/]\.qd[\\/]logs[\\/])/u;
+const qdEvidenceLogPathPattern = /(?:^|\n)Evidence:\s*log_path=([^\s]+)/iu;
+const windowsAbsolutePathPattern = /^[A-Za-z]:[\\/]/u;
 const justfilePath = resolve(root, "justfile");
 const viteConfigPath = resolve(root, "vite.config.ts");
 
@@ -448,6 +454,7 @@ function validateQdExportDag(value) {
   for (const [index, edge] of edges.entries()) {
     validateQdEdge(edge, index, ids, errors);
   }
+  validateQdRuns(value.runs, errors);
   const normalizedDag = normalizeQdExportDag(value);
   const normalizedIds = new Map(normalizedDag.nodes.map((node) => [node.id, node]));
   for (const cycle of findCycles(normalizedDag.nodes, normalizedIds)) {
@@ -695,6 +702,107 @@ function validateQdEdge(edge, index, ids, errors) {
   if (edge.type !== undefined && edge.type !== "requires") {
     errors.push(`edge ${fromNode} -> ${toNode} type is invalid: ${edge.type}`);
   }
+}
+
+function validateQdRuns(runs, errors) {
+  if (runs === null || runs === undefined) {
+    return;
+  }
+  if (!Array.isArray(runs)) {
+    errors.push("runs must be an array when present");
+    return;
+  }
+
+  for (const [index, run] of runs.entries()) {
+    if (!isRecord(run)) {
+      errors.push(`runs[${index}] must be an object`);
+      continue;
+    }
+    validateQdRunPortableCiReuseEvidence(run, index, errors);
+  }
+}
+
+function validateQdRunPortableCiReuseEvidence(run, index, errors) {
+  if (!isQdCiReuseEvidenceRun(run)) {
+    return;
+  }
+
+  const display = `runs[${index}] ${run.node_id ?? "unknown-node"} ci reuse evidence`;
+  const logPath = run.log_path;
+  if (typeof logPath === "string" && logPath.length > 0) {
+    validatePortableQdCiEvidenceLogPath(display, logPath, errors);
+  }
+
+  const summary = typeof run.summary === "string" ? run.summary : "";
+  if (qdLocalLogPathPattern.test(summary)) {
+    errors.push(
+      `${display} summary must not cite local-only .qd/logs paths; use external_id, URL, or repo-relative checked-in evidence`,
+    );
+  }
+  const evidenceLogPath = summary.match(qdEvidenceLogPathPattern)?.[1];
+  if (evidenceLogPath) {
+    validatePortableQdCiEvidenceLogPath(
+      `${display} summary Evidence: log_path`,
+      evidenceLogPath,
+      errors,
+    );
+  }
+}
+
+function validatePortableQdCiEvidenceLogPath(display, value, errors) {
+  if (isAbsolute(value) || windowsAbsolutePathPattern.test(value)) {
+    errors.push(`${display} log_path must be repo-relative, not absolute: ${value}`);
+    return;
+  }
+  const normalized = normalizeRepoRelativePath(value);
+  if (!normalized || normalized === "." || normalized.startsWith("../")) {
+    errors.push(`${display} log_path must stay inside the repo: ${value}`);
+    return;
+  }
+  if (normalized === ".qd" || normalized.startsWith(".qd/")) {
+    errors.push(`${display} log_path must not point at local-only .qd state: ${value}`);
+    return;
+  }
+  if (normalized === "artifacts" || normalized.startsWith("artifacts/")) {
+    errors.push(`${display} log_path must not point at gitignored artifacts: ${value}`);
+    return;
+  }
+
+  const resolved = resolve(root, normalized);
+  if (!existsSync(resolved)) {
+    errors.push(`${display} log_path evidence file does not exist: ${normalized}`);
+    return;
+  }
+  if (!statSync(resolved).isFile()) {
+    errors.push(`${display} log_path evidence is not a file: ${normalized}`);
+  }
+}
+
+function isQdCiReuseEvidenceRun(run) {
+  return (
+    run.kind === "ci" &&
+    run.status === "passed" &&
+    typeof run.summary === "string" &&
+    qdCiReuseSummaryPattern.test(run.summary)
+  );
+}
+
+function normalizeRepoRelativePath(value) {
+  return value
+    .replaceAll("\\", "/")
+    .replace(/\/+/gu, "/")
+    .split("/")
+    .reduce((parts, part) => {
+      if (!part || part === ".") return parts;
+      if (part === "..") {
+        if (parts.length === 0 || parts.at(-1) === "..") parts.push(part);
+        else parts.pop();
+        return parts;
+      }
+      parts.push(part);
+      return parts;
+    }, [])
+    .join("/");
 }
 
 function validateAuditReportArtifacts(dagValue) {

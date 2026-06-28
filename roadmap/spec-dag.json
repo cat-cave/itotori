@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "exported_at": "2026-06-28T09:54:20.938Z",
+  "exported_at": "2026-06-28T10:13:20.445Z",
   "registries": {
     "groups": [
       {
@@ -45604,8 +45604,8 @@
       "agent": null,
       "started_at": "2026-06-28T06:50:46.035Z",
       "finished_at": "2026-06-28T06:50:46.035Z",
-      "summary": "Covered by integrated main qd-full-ci pass from retire-title-specific-utsushi-replay-binary after clippy fix ad73aa4; this run included cargo test --workspace and cargo clippy --workspace --all-targets --all-features -- -D warnings.\nEvidence: log_path=.qd/logs/ci-retire-title-specific-utsushi-replay-binary-2026-06-28T06-45-59-172Z.log",
-      "log_path": ".qd/logs/ci-retire-title-specific-utsushi-replay-binary-2026-06-28T06-45-59-172Z.log"
+      "summary": "Covered by integrated main qd-full-ci pass from retire-title-specific-utsushi-replay-binary after clippy fix ad73aa4; this run included cargo test --workspace and cargo clippy --workspace --all-targets --all-features -- -D warnings.\nEvidence: external_id=local-qdfullci:retire-title-specific-utsushi-replay-binary:2026-06-28T06-45-59Z",
+      "log_path": null
     },
     {
       "id": "12f59df4-b402-4a6d-977e-dd4506b905a9",
@@ -45616,8 +45616,8 @@
       "agent": null,
       "started_at": "2026-06-28T06:50:52.418Z",
       "finished_at": "2026-06-28T06:50:52.418Z",
-      "summary": "Covered by integrated main qd-full-ci pass from retire-title-specific-utsushi-replay-binary after clippy fix ad73aa4; this run included cargo test --workspace and cargo clippy --workspace --all-targets --all-features -- -D warnings.\nEvidence: log_path=.qd/logs/ci-retire-title-specific-utsushi-replay-binary-2026-06-28T06-45-59-172Z.log",
-      "log_path": ".qd/logs/ci-retire-title-specific-utsushi-replay-binary-2026-06-28T06-45-59-172Z.log"
+      "summary": "Covered by integrated main qd-full-ci pass from retire-title-specific-utsushi-replay-binary after clippy fix ad73aa4; this run included cargo test --workspace and cargo clippy --workspace --all-targets --all-features -- -D warnings.\nEvidence: external_id=local-qdfullci:retire-title-specific-utsushi-replay-binary:2026-06-28T06-45-59Z",
+      "log_path": null
     },
     {
       "id": "1472b4c8-7dfc-4c78-8210-3cfcfa6ecde7",
@@ -45628,8 +45628,8 @@
       "agent": null,
       "started_at": "2026-06-28T06:50:59.233Z",
       "finished_at": "2026-06-28T06:50:59.233Z",
-      "summary": "Covered by integrated main qd-full-ci pass from retire-title-specific-utsushi-replay-binary after clippy fix ad73aa4; this run included localize-project tests, TypeScript checks/builds, cargo tests, and clippy.\nEvidence: log_path=.qd/logs/ci-retire-title-specific-utsushi-replay-binary-2026-06-28T06-45-59-172Z.log",
-      "log_path": ".qd/logs/ci-retire-title-specific-utsushi-replay-binary-2026-06-28T06-45-59-172Z.log"
+      "summary": "Covered by integrated main qd-full-ci pass from retire-title-specific-utsushi-replay-binary after clippy fix ad73aa4; this run included localize-project tests, TypeScript checks/builds, cargo tests, and clippy.\nEvidence: external_id=local-qdfullci:retire-title-specific-utsushi-replay-binary:2026-06-28T06-45-59Z",
+      "log_path": null
     },
     {
       "id": "65f2aee1-906d-45c3-be80-558708fa3862",
@@ -45724,8 +45724,8 @@
       "agent": null,
       "started_at": "2026-06-28T07:20:20.865Z",
       "finished_at": "2026-06-28T07:20:20.865Z",
-      "summary": "Covered by the successful qd full-CI pass for this integrated wave. The pass ran configured just qd-full-ci after commits 663cd0f, 18f6ebe, 8e478ce, and eb02305 were on main, including localize-project tests, tracked artifact hygiene tests/check, TypeScript build/test, cargo test, clippy, and cargo deny.\nEvidence: log_path=/home/trevor/projects/itotori/.qd/logs/ci-redact-live-real-corpus-paths-in-localize-project-2026-06-28T07-15-26-935Z.log",
-      "log_path": "/home/trevor/projects/itotori/.qd/logs/ci-redact-live-real-corpus-paths-in-localize-project-2026-06-28T07-15-26-935Z.log"
+      "summary": "Covered by the successful qd full-CI pass for this integrated wave. The pass ran configured just qd-full-ci after commits 663cd0f, 18f6ebe, 8e478ce, and eb02305 were on main, including localize-project tests, tracked artifact hygiene tests/check, TypeScript build/test, cargo test, clippy, and cargo deny.\nEvidence: external_id=local-qdfullci:redact-live-real-corpus-paths-in-localize-project:2026-06-28T07-15-26Z",
+      "log_path": null
     },
     {
       "id": "fa419d16-9862-404f-8a6a-ff477de4a03d",
@@ -45748,8 +45748,8 @@
       "agent": null,
       "started_at": "2026-06-28T07:20:32.576Z",
       "finished_at": "2026-06-28T07:20:32.576Z",
-      "summary": "Covered by the successful qd full-CI pass for this integrated wave. The pass ran configured just qd-full-ci after commits 663cd0f, 18f6ebe, 8e478ce, and eb02305 were on main, including cargo test --workspace and clippy over the renamed Utsushi replay surface.\nEvidence: log_path=/home/trevor/projects/itotori/.qd/logs/ci-redact-live-real-corpus-paths-in-localize-project-2026-06-28T07-15-26-935Z.log",
-      "log_path": "/home/trevor/projects/itotori/.qd/logs/ci-redact-live-real-corpus-paths-in-localize-project-2026-06-28T07-15-26-935Z.log"
+      "summary": "Covered by the successful qd full-CI pass for this integrated wave. The pass ran configured just qd-full-ci after commits 663cd0f, 18f6ebe, 8e478ce, and eb02305 were on main, including cargo test --workspace and clippy over the renamed Utsushi replay surface.\nEvidence: external_id=local-qdfullci:redact-live-real-corpus-paths-in-localize-project:2026-06-28T07-15-26Z",
+      "log_path": null
     },
     {
       "id": "38789d1c-a75b-4ed7-a4ca-b15942102544",
@@ -45844,8 +45844,8 @@
       "agent": null,
       "started_at": "2026-06-28T07:39:13.140Z",
       "finished_at": "2026-06-28T07:39:13.140Z",
-      "summary": "Covered by the successful qd full-CI pass for this integrated wave. The pass ran configured just qd-full-ci after commits 5d5f661, 6a8dfdd, and f930b5f were on main, including qd-wrapper tests, spec DAG validation, formatting, TypeScript build/test, cargo test, clippy, and cargo deny.\nEvidence: log_path=/home/trevor/projects/itotori/.qd/logs/ci-INFRA-001-2026-06-28T07-33-16-726Z.log",
-      "log_path": "/home/trevor/projects/itotori/.qd/logs/ci-INFRA-001-2026-06-28T07-33-16-726Z.log"
+      "summary": "Covered by the successful qd full-CI pass for this integrated wave. The pass ran configured just qd-full-ci after commits 5d5f661, 6a8dfdd, and f930b5f were on main, including qd-wrapper tests, spec DAG validation, formatting, TypeScript build/test, cargo test, clippy, and cargo deny.\nEvidence: external_id=local-qdfullci:INFRA-001:2026-06-28T07-33-16Z",
+      "log_path": null
     },
     {
       "id": "57c1ff08-c880-4e4a-92b2-50733d6c5e13",
@@ -45868,8 +45868,8 @@
       "agent": null,
       "started_at": "2026-06-28T07:39:27.702Z",
       "finished_at": "2026-06-28T07:39:27.702Z",
-      "summary": "Covered by the successful qd full-CI pass for this integrated wave. The pass ran configured just qd-full-ci after commits 5d5f661, 6a8dfdd, and f930b5f were on main, including docs formatting, spec DAG validation, TypeScript build/test, cargo test, clippy, and cargo deny.\nEvidence: log_path=/home/trevor/projects/itotori/.qd/logs/ci-INFRA-001-2026-06-28T07-33-16-726Z.log",
-      "log_path": "/home/trevor/projects/itotori/.qd/logs/ci-INFRA-001-2026-06-28T07-33-16-726Z.log"
+      "summary": "Covered by the successful qd full-CI pass for this integrated wave. The pass ran configured just qd-full-ci after commits 5d5f661, 6a8dfdd, and f930b5f were on main, including docs formatting, spec DAG validation, TypeScript build/test, cargo test, clippy, and cargo deny.\nEvidence: external_id=local-qdfullci:INFRA-001:2026-06-28T07-33-16Z",
+      "log_path": null
     },
     {
       "id": "199d4a97-79f5-41ad-99af-031d9979a0f1",

@@ -606,6 +606,57 @@ test("accepts done and cancelled qd audit-fix nodes with historical generic evid
   }
 });
 
+test("rejects qd export CI reuse evidence that cites local qd log paths", () => {
+  const dag = qdExportFixture();
+  dag.runs.push(
+    qdCiReuseRunFixture({
+      summary:
+        "Covered by integrated qd-full-ci wave on main.\nEvidence: log_path=.qd/logs/ci-ITOTORI-300-2026-06-28T09-00-25-766Z.log",
+      log_path: ".qd/logs/ci-ITOTORI-300-2026-06-28T09-00-25-766Z.log",
+    }),
+    qdCiReuseRunFixture({
+      node_id: "UNIV-000",
+      summary:
+        "Covered by integrated qd-full-ci wave on main.\nEvidence: log_path=/home/trevor/projects/itotori/.qd/logs/ci-UNIV-000-2026-06-28T09-00-25-766Z.log",
+      log_path: "/home/trevor/projects/itotori/.qd/logs/ci-UNIV-000-2026-06-28T09-00-25-766Z.log",
+    }),
+  );
+
+  const errors = validateDag(dag).errors;
+
+  assertError(
+    errors,
+    "runs[0] ITOTORI-300 ci reuse evidence log_path must not point at local-only .qd state",
+  );
+  assertError(
+    errors,
+    "runs[0] ITOTORI-300 ci reuse evidence summary must not cite local-only .qd/logs paths",
+  );
+  assertError(
+    errors,
+    "runs[1] UNIV-000 ci reuse evidence log_path must be repo-relative, not absolute",
+  );
+  assertError(
+    errors,
+    "runs[1] UNIV-000 ci reuse evidence summary must not cite local-only .qd/logs paths",
+  );
+});
+
+test("accepts qd export CI reuse evidence recorded as an external id", () => {
+  const dag = qdExportFixture();
+  dag.runs.push(
+    qdCiReuseRunFixture({
+      summary:
+        "Covered by integrated qd-full-ci wave on main.\nEvidence: external_id=local-qdfullci:ITOTORI-300:2026-06-28T09-00-25Z",
+      log_path: null,
+    }),
+  );
+
+  const errors = validateDag(dag).errors;
+
+  assert.deepEqual(errors, []);
+});
+
 test("rejects qd export alpha command verification that names missing recipes and tasks", () => {
   const errors = validateDag(
     qdExportFixture({
@@ -901,4 +952,21 @@ function qdPromotedAuditFixExport(overrides = {}) {
   };
   dag.edges = [{ from_node: "UNIV-000", to_node: id, type: "requires" }];
   return dag;
+}
+
+function qdCiReuseRunFixture(overrides = {}) {
+  return {
+    id: "00000000-0000-4000-8000-000000000000",
+    node_id: "ITOTORI-300",
+    kind: "ci",
+    status: "passed",
+    worktree_path: null,
+    agent: null,
+    started_at: "2026-06-28T09:00:25.766Z",
+    finished_at: "2026-06-28T09:00:25.766Z",
+    summary:
+      "Covered by integrated qd-full-ci wave on main.\nEvidence: external_id=local-qdfullci:ITOTORI-300:2026-06-28T09-00-25Z",
+    log_path: null,
+    ...overrides,
+  };
 }
