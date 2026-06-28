@@ -80,7 +80,9 @@ describe("benchmark set selector", () => {
       expect(manifest.selectionProvenance.normalizedRunParameters).toEqual(
         selectorFixture.runParameters,
       );
-      expect(manifest.selectionProvenance.sourceFixtureIds).toEqual(selectorFixture.sourceFixtureIds);
+      expect(manifest.selectionProvenance.sourceFixtureIds).toEqual(
+        selectorFixture.sourceFixtureIds,
+      );
       assertBenchmarkSetManifest(manifest);
       assertBenchmarkSetManifestPublicSafe(manifest);
 

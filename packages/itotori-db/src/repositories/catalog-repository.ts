@@ -3002,7 +3002,11 @@ function readinessForWork(
   capabilityByAdapterId: Map<string, Map<CapabilityLevel, CapabilityLevelStatusKind>>,
   explicitAdapterIds: string[] | null = null,
 ): CatalogBenchmarkReadinessResult {
-  const adapterId = benchmarkAdapterIdForEngine(engineName, capabilityByAdapterId, explicitAdapterIds);
+  const adapterId = benchmarkAdapterIdForEngine(
+    engineName,
+    capabilityByAdapterId,
+    explicitAdapterIds,
+  );
   const adapterRows = adapterId === null ? null : (capabilityByAdapterId.get(adapterId) ?? null);
   const level = (capabilityLevel: CapabilityLevel): CatalogBenchmarkSeedReadinessLevel =>
     adapterRows?.get(capabilityLevel) ?? "unknown";
@@ -3050,8 +3054,7 @@ function benchmarkAdapterIdForEngine(
   return (
     adapterIds.find((adapterId) =>
       normalizeBenchmarkAdapterKey(adapterId).startsWith(normalizedEngine),
-    ) ??
-    null
+    ) ?? null
   );
 }
 

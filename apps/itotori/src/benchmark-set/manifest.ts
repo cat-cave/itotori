@@ -194,7 +194,10 @@ export const benchmarkSetManifestJsonSchema = {
         "includeCandidateSeeds",
       ],
       properties: {
-        requiredCapabilities: { type: "array", items: { enum: Object.values(capabilityLevelValues) } },
+        requiredCapabilities: {
+          type: "array",
+          items: { enum: Object.values(capabilityLevelValues) },
+        },
         adapterIds: { type: "array", items: { type: "string", minLength: 1 } },
         readiness: { const: "supported" },
         pools: { type: "array", items: { type: "string" } },
@@ -305,7 +308,9 @@ export function selectBenchmarkSet(
   assertDateLike(input.selectedAt, "selectedAt");
   assertRunParameters(input.runParameters);
   const capabilityFilters = normalizeCapabilityFilters(input.capabilityFilters);
-  const candidates = readModel.rows.filter((row) => rowMatchesCapabilityFilters(row, capabilityFilters));
+  const candidates = readModel.rows.filter((row) =>
+    rowMatchesCapabilityFilters(row, capabilityFilters),
+  );
   const selectedRows = candidates
     .sort(compareSeedRowsForManifest)
     .slice(0, input.runParameters.maxSeeds);
@@ -517,10 +522,7 @@ export function assertBenchmarkSetManifest(
   assertDateLike(provenance.selectedAt, `${label}.selectionProvenance.selectedAt`);
   assertString(provenance.manifestId, `${label}.selectionProvenance.manifestId`);
   assertString(provenance.manifestHash, `${label}.selectionProvenance.manifestHash`);
-  assertString(
-    provenance.sourceReadModelHash,
-    `${label}.selectionProvenance.sourceReadModelHash`,
-  );
+  assertString(provenance.sourceReadModelHash, `${label}.selectionProvenance.sourceReadModelHash`);
 }
 
 export function assertBenchmarkSetManifestPublicSafe(manifest: BenchmarkSetManifest): void {
@@ -549,7 +551,8 @@ export function assertBenchmarkSetManifestPublicSafe(manifest: BenchmarkSetManif
     if (seed.privateLocalAggregate !== null) {
       if (
         seed.privateLocalAggregate.representation !== "aggregate_only" ||
-        seed.privateLocalAggregate.redactionClass !== catalogRawContentRedactionClassValues.privateCorpus
+        seed.privateLocalAggregate.redactionClass !==
+          catalogRawContentRedactionClassValues.privateCorpus
       ) {
         throw new Error(`private-local seed ${seed.seedId} must be aggregate-only redacted`);
       }
@@ -566,7 +569,9 @@ function normalizeCapabilityFilters(
   const requiredCapabilities = sortedUnique(
     value.requiredCapabilities ?? defaultBenchmarkSetCapabilityFilters.requiredCapabilities,
   );
-  const adapterIds = sortedUnique(value.adapterIds ?? defaultBenchmarkSetCapabilityFilters.adapterIds);
+  const adapterIds = sortedUnique(
+    value.adapterIds ?? defaultBenchmarkSetCapabilityFilters.adapterIds,
+  );
   if (requiredCapabilities.length > 0 && adapterIds.length === 0) {
     throw new Error("benchmark set capability filters require explicit adapterIds");
   }
@@ -619,7 +624,9 @@ function rowMatchesCapabilityFilters(
   }
   if (
     filters.requiredCapabilities.length > 0 &&
-    !filters.requiredCapabilities.every((capability) => row.readiness[capability] === filters.readiness)
+    !filters.requiredCapabilities.every(
+      (capability) => row.readiness[capability] === filters.readiness,
+    )
   ) {
     return false;
   }
@@ -697,17 +704,21 @@ function publicSafeSourceReadModelRow(row: CatalogBenchmarkSeedRow): unknown {
         statusScope: status.statusScope,
         platform: status.platform,
       }))
-      .sort((left, right) =>
-        left.language.localeCompare(right.language) ||
-        left.status.localeCompare(right.status) ||
-        String(left.platform ?? "").localeCompare(String(right.platform ?? "")),
+      .sort(
+        (left, right) =>
+          left.language.localeCompare(right.language) ||
+          left.status.localeCompare(right.status) ||
+          String(left.platform ?? "").localeCompare(String(right.platform ?? "")),
       ),
     localOwnership: row.localOwnership,
     localEvidenceCount: row.localEvidenceCount,
     demandBucket: row.demandBucket,
     readiness: row.readiness,
     provenance: row.provenance
-      .filter((provenance) => provenance.redactionClass !== catalogRawContentRedactionClassValues.privateCorpus)
+      .filter(
+        (provenance) =>
+          provenance.redactionClass !== catalogRawContentRedactionClassValues.privateCorpus,
+      )
       .map(redactedProvenance)
       .sort(compareProvenance),
     decision: row.decision,
@@ -730,7 +741,10 @@ function redactedProvenance(
   };
 }
 
-function compareSeedRowsForManifest(left: CatalogBenchmarkSeedRow, right: CatalogBenchmarkSeedRow): number {
+function compareSeedRowsForManifest(
+  left: CatalogBenchmarkSeedRow,
+  right: CatalogBenchmarkSeedRow,
+): number {
   return (
     nullLast(left.seedRank, right.seedRank) ||
     left.rank - right.rank ||
@@ -740,7 +754,8 @@ function compareSeedRowsForManifest(left: CatalogBenchmarkSeedRow, right: Catalo
 
 function compareSourceIds(left: BenchmarkSetSourceId, right: BenchmarkSetSourceId): number {
   return (
-    left.catalogSource.localeCompare(right.catalogSource) || left.sourceId.localeCompare(right.sourceId)
+    left.catalogSource.localeCompare(right.catalogSource) ||
+    left.sourceId.localeCompare(right.sourceId)
   );
 }
 
@@ -780,17 +795,18 @@ const capabilityOrder: CapabilityLevel[] = [
 function highestCapabilityLevel(values: readonly CapabilityLevel[]): CapabilityLevel | null {
   let highest: CapabilityLevel | null = null;
   for (const value of values) {
-    if (
-      highest === null ||
-      capabilityOrder.indexOf(value) > capabilityOrder.indexOf(highest)
-    ) {
+    if (highest === null || capabilityOrder.indexOf(value) > capabilityOrder.indexOf(highest)) {
       highest = value;
     }
   }
   return highest;
 }
 
-function assertOnlyKeys(record: Record<string, unknown>, allowed: readonly string[], label: string): void {
+function assertOnlyKeys(
+  record: Record<string, unknown>,
+  allowed: readonly string[],
+  label: string,
+): void {
   const allowedSet = new Set(allowed);
   for (const key of Object.keys(record)) {
     if (!allowedSet.has(key)) {
@@ -799,7 +815,9 @@ function assertOnlyKeys(record: Record<string, unknown>, allowed: readonly strin
   }
 }
 
-function assertRunParameters(value: Record<string, unknown>): asserts value is BenchmarkSetRunParameters {
+function assertRunParameters(
+  value: Record<string, unknown>,
+): asserts value is BenchmarkSetRunParameters {
   assertString(value.parameterSetId, "runParameters.parameterSetId");
   assertString(value.benchmarkProfileId, "runParameters.benchmarkProfileId");
   assertString(value.providerFamily, "runParameters.providerFamily");
@@ -879,7 +897,11 @@ function assertStringArray(value: unknown, label: string): string[] {
   return asArray(value, label).map((entry, index) => assertString(entry, `${label}[${index}]`));
 }
 
-function assertLiteral<T extends string>(value: unknown, expected: T, label: string): asserts value is T {
+function assertLiteral<T extends string>(
+  value: unknown,
+  expected: T,
+  label: string,
+): asserts value is T {
   if (value !== expected) {
     throw new Error(`${label} must be '${expected}'`);
   }
