@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "exported_at": "2026-06-28T11:36:07.243Z",
+  "exported_at": "2026-06-28T11:46:55.737Z",
   "registries": {
     "groups": [
       {
@@ -26709,11 +26709,11 @@
       "validation": "",
       "context": "",
       "created_at": "2026-06-26T02:53:56.226Z",
-      "updated_at": "2026-06-28T06:20:10.071Z",
+      "updated_at": "2026-06-28T11:46:40.360Z",
       "claimed_at": "2026-06-26T05:40:58.913Z",
       "done_at": null,
       "group_name": "alpha-integration",
-      "status_reason": "2026-06-28 text repair: UTSUSHI-231 is the generic localize-project alpha validation for project id sweetie-hd-alpha-1. Obsolete localize-sweetie-hd labels are historical only and are not acceptance. Current blocker is live env and private corpus path supplied through process environment; do not read .env.\n[2026-06-28T05:46:51.722Z] TEXT REPAIR 2026-06-28: status/spec/acceptance now describe the generic localize-project run for project sweetie-hd-alpha-1 and artifacts/localize-project/RUN_DIR. Historical live-run blockers remain relevant context: 2026-06-26 provider 429s and pair/capability guard failures were addressed by ITOTORI-236, ITOTORI-237, ITOTORI-240, ITOTORI-238, and ITOTORI-239; 2026-06-27 evidence hardening added provider-run persistence plus telemetry verifier support. Current blocker remains executing the live run from a process with required env supplied without reading .env.\n[2026-06-28T06:20:10.071Z] PREFLIGHT 2026-06-28: qd gate UTSUSHI-231 passed with no blocking findings. Offline dry-run passed via nix develop --command bash -lc 'just localize-project --dry-run --project sweetie-hd-alpha-1'; it built schema/db/app, printed the generic artifacts/localize-project/<timestamp>-sweetie-hd-alpha-1 plan, and reported DRY-RUN: 0 LLM calls would be made. Current orchestrator process env still lacks OPENROUTER_API_KEY, OPENROUTER_ZDR_ACCOUNT_ASSERTED, ITOTORI_REAL_CORPUS_MANIFEST/ITOTORI_REAL_GAME_ROOT/LOCALIZE_PROJECT_SOURCE_PATH, TARGET, and DATABASE_URL; do not read .env. Next live action requires those values supplied to the process environment, then run localize-project, telemetry-summary, and verify-artifacts for the produced RUN_DIR.",
+      "status_reason": "2026-06-28 text repair: UTSUSHI-231 is the generic localize-project alpha validation for project id sweetie-hd-alpha-1. Obsolete localize-sweetie-hd labels are historical only and are not acceptance. Current blocker is live env and private corpus path supplied through process environment; do not read .env.\n[2026-06-28T05:46:51.722Z] TEXT REPAIR 2026-06-28: status/spec/acceptance now describe the generic localize-project run for project sweetie-hd-alpha-1 and artifacts/localize-project/RUN_DIR. Historical live-run blockers remain relevant context: 2026-06-26 provider 429s and pair/capability guard failures were addressed by ITOTORI-236, ITOTORI-237, ITOTORI-240, ITOTORI-238, and ITOTORI-239; 2026-06-27 evidence hardening added provider-run persistence plus telemetry verifier support. Current blocker remains executing the live run from a process with required env supplied without reading .env.\n[2026-06-28T06:20:10.071Z] PREFLIGHT 2026-06-28: qd gate UTSUSHI-231 passed with no blocking findings. Offline dry-run passed via nix develop --command bash -lc 'just localize-project --dry-run --project sweetie-hd-alpha-1'; it built schema/db/app, printed the generic artifacts/localize-project/<timestamp>-sweetie-hd-alpha-1 plan, and reported DRY-RUN: 0 LLM calls would be made. Current orchestrator process env still lacks OPENROUTER_API_KEY, OPENROUTER_ZDR_ACCOUNT_ASSERTED, ITOTORI_REAL_CORPUS_MANIFEST/ITOTORI_REAL_GAME_ROOT/LOCALIZE_PROJECT_SOURCE_PATH, TARGET, and DATABASE_URL; do not read .env. Next live action requires those values supplied to the process environment, then run localize-project, telemetry-summary, and verify-artifacts for the produced RUN_DIR.\n[2026-06-28T11:46:40.360Z] BROAD AUDIT 2026-06-28 after benchmark/qd cleanup wave: alpha status is 114 nodes total, 66 done, 47 ready, 1 claimed. The claimed node is still UTSUSHI-231. Current blocker remains executing the generic localize-project live run with env supplied to the process, then producing telemetry-summary.json and post-run-verification.json under artifacts/localize-project/RUN_DIR. No standalone GENERALIZATION_AUDIT.md remains tracked; generalization findings are encoded as qd nodes/finding follow-ups.",
       "check_command": "",
       "ci_command": "",
       "projects": ["suite"],
@@ -30052,19 +30052,19 @@
       "title": "Make qd import rebuild transactional and config-preserving",
       "kind": "feature",
       "milestone": null,
-      "status": "ready",
+      "status": "claimed",
       "priority": "P2",
       "estimate_points": 1,
       "risk": "medium",
-      "owner": null,
-      "branch": null,
+      "owner": "orchestrator-broad-audit-p1-wave",
+      "branch": "worker/transactional-qd-import",
       "spec": "Replace the destructive qd-import recipe that unlinks live .qd database files with a staged rebuild flow. The flow must validate import before swapping state and preserve committed qd config, including nix-wrapped check and CI commands.",
       "acceptance": "The qd import rebuild path never removes the live database before a validated replacement exists; failed rebuild leaves the prior database usable; qd config after rebuild matches committed .qd/config.toml for check and CI commands; read-only audit hydration is documented.",
       "validation": null,
       "context": null,
       "created_at": "2026-06-28T03:34:40.018Z",
-      "updated_at": "2026-06-28T09:40:24.192Z",
-      "claimed_at": null,
+      "updated_at": "2026-06-28T11:46:48.432Z",
+      "claimed_at": "2026-06-28T11:46:48.432Z",
       "done_at": null,
       "group_name": null,
       "status_reason": "[2026-06-28T05:32:23.293Z] BROAD AUDIT 2026-06-28: confirmed still active. .qd/config.toml uses nix develop --command bash -lc 'just check' and 'just qd-full-ci', but just qd-import still sets plain 'just check'/'just qd-full-ci'. This can recreate qd check drift after a rebuild; keep config preservation and tests in acceptance.\n[2026-06-28T08:21:37.826Z] BROAD AUDIT 2026-06-28 safety/privacy wave: fresh audit worktree had zero-byte .qd/qd.db and qd --root status/node show failed with 'no such table: nodes'. Current just qd-import path removes live .qd DB files before validated import, and qd-wrapper fallback refuses roadmap/spec-dag.json when an unusable .qd/qd.db merely exists. Keep this node active as the repair for read-only worktree qd hydration and transactional state rebuild.\n[2026-06-28T09:40:24.192Z] BROAD AUDIT 2026-06-28 dashboard/benchmark wave: confirmed still active. just qd-import removes live .qd DB files before validation, can recreate plain just check/just qd-full-ci config instead of committed nix-wrapped commands, and wrapper fallback refuses roadmap hydration when an unusable .qd/qd.db exists. Add corrupt/zero-byte .qd/qd.db recovery and config preservation coverage to acceptance.",
@@ -30875,6 +30875,334 @@
         {
           "type": "command",
           "value": "pnpm --filter @itotori/app typecheck"
+        }
+      ],
+      "audit_focus": []
+    },
+    {
+      "id": "fix-itotori-spa-fallback-routes",
+      "title": "Fix Itotori SPA fallback routes for reviewer and asset-decision pages",
+      "kind": "feature",
+      "milestone": null,
+      "status": "claimed",
+      "priority": "P2",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": "orchestrator-broad-audit-p1-wave",
+      "branch": "worker/fix-spa-fallback-routes",
+      "spec": "Extend the production Itotori dashboard fallback route detection so reviewer queue detail, reviewer batch, and asset-decision SPA paths serve the dashboard index instead of 404ing outside the dev server.",
+      "acceptance": "Server tests prove /reviewer-queue/batch, /reviewer-queue/:id, and /projects/:projectId/locale-branches/:localeBranchId/asset-decisions[/batch] serve webRoot/index.html; /api/*, runtime routes, static assets, traversal attempts, and unrelated paths keep current behavior.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-28T11:44:12.570Z",
+      "updated_at": "2026-06-28T11:46:48.540Z",
+      "claimed_at": "2026-06-28T11:46:48.540Z",
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "projects": ["itotori"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/app test -- server.test.ts"
+        },
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/app typecheck"
+        }
+      ],
+      "audit_focus": []
+    },
+    {
+      "id": "wire-asset-decisions-http-api",
+      "title": "Wire asset-decisions HTTP API behind the DB service",
+      "kind": "feature",
+      "milestone": null,
+      "status": "ready",
+      "priority": "P2",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "Add typed HTTP API routes for asset-decision page reads so the SPA endpoints it fetches are registered through the central API handler and backed by the existing database asset-decision service.",
+      "acceptance": "GET asset-decision and candidate-asset endpoints validate project/locale branch path shape, enforce permissions, return schema-checked read models, and have API tests for success, malformed path/query, denied access, and not-found behavior. The asset-decisions page no longer renders only API fetch errors in production.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-28T11:44:21.697Z",
+      "updated_at": "2026-06-28T11:44:21.697Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "projects": ["itotori"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/app test -- api-handlers.test.ts"
+        },
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/app typecheck"
+        }
+      ],
+      "audit_focus": []
+    },
+    {
+      "id": "wire-reviewer-batch-confirm-execution",
+      "title": "Wire reviewer batch confirm execution end to end",
+      "kind": "feature",
+      "milestone": null,
+      "status": "claimed",
+      "priority": "P2",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": "orchestrator-broad-audit-p1-wave",
+      "branch": "worker/reviewer-batch-confirm-execution",
+      "spec": "Add a queue-manage-gated reviewer batch execution API and browser confirm path so the reviewer batch preview page's Confirm control actually applies through ReviewerBatchActionService instead of stopping at read-only preview.",
+      "acceptance": "Preview remains queue.read-only; confirm requires queue.manage; stale revision and denied permission cases fail closed without partial writes; successful confirm mutates rows through ReviewerBatchActionService and renders applied/refused results; API and route/browser tests cover the flow.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-28T11:44:28.837Z",
+      "updated_at": "2026-06-28T11:46:48.729Z",
+      "claimed_at": "2026-06-28T11:46:48.729Z",
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "projects": ["itotori"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/app test -- reviewer"
+        },
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/app test -- api-handlers.test.ts"
+        },
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/app typecheck"
+        }
+      ],
+      "audit_focus": []
+    },
+    {
+      "id": "expose-required-capabilities-benchmark-seed-api",
+      "title": "Expose requiredCapabilities on benchmark seed finder API",
+      "kind": "feature",
+      "milestone": null,
+      "status": "ready",
+      "priority": "P2",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "Add HTTP query support for benchmark seed requiredCapabilities so API callers can use the repository and benchmark-set selector's exact capability filtering instead of only minCapabilityLevel.",
+      "acceptance": "The benchmark seed query parser accepts repeated and comma-list requiredCapabilities values, validates capability enums, forwards the array to the repository filter, preserves existing minCapabilityLevel behavior, rejects malformed values, and has API tests for valid/invalid cases.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-28T11:44:35.921Z",
+      "updated_at": "2026-06-28T11:44:35.921Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "projects": ["itotori"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/app test -- api-handlers.test.ts"
+        },
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/app typecheck"
+        }
+      ],
+      "audit_focus": []
+    },
+    {
+      "id": "make-catalog-read-query-validation-consistent",
+      "title": "Make catalog read query validation consistent",
+      "kind": "feature",
+      "milestone": null,
+      "status": "ready",
+      "priority": "P2",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "Apply the same unknown-query-parameter rejection used by catalog benchmark seed and opportunity parsers to catalog completeness and conflict read endpoints.",
+      "acceptance": "Unknown params on catalog completeness and conflict reads return 400 with specific diagnostics; documented params still parse; tests match benchmark/opportunity query validation behavior.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-28T11:44:44.201Z",
+      "updated_at": "2026-06-28T11:44:44.201Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "projects": ["itotori"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/app test -- api-handlers.test.ts"
+        },
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/app typecheck"
+        }
+      ],
+      "audit_focus": []
+    },
+    {
+      "id": "complete-milestone-scoped-qd-json-consistency",
+      "title": "Complete milestone-scoped qd JSON consistency",
+      "kind": "feature",
+      "milestone": null,
+      "status": "ready",
+      "priority": "P2",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "Harden the repo qd wrapper shim for stats/snapshot --json --milestone so all milestone-sensitive JSON fields are derived from one consistent export snapshot or explicitly filtered, rather than only replacing status/ready counts.",
+      "acceptance": "Regression tests prove snapshot.openFindings, ready nodes, P0/P1 counts, and status exclude other milestones; stats and snapshot keep criticalPath/eta milestone data; tests cover a single captured snapshot fixture so parallel qd mutations cannot mix moments.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-28T11:44:50.649Z",
+      "updated_at": "2026-06-28T11:44:50.649Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "projects": ["universal"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "node scripts/qd-cli-milestone-scope.test.mjs"
+        },
+        {
+          "type": "command",
+          "value": "node scripts/qd-wrapper.test.mjs"
+        }
+      ],
+      "audit_focus": []
+    },
+    {
+      "id": "repair-portable-qd-ci-evidence-backfill-detection",
+      "title": "Repair portable qd CI evidence backfill detection",
+      "kind": "feature",
+      "milestone": null,
+      "status": "ready",
+      "priority": "P2",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "Broaden portable CI evidence backfill and validation so passed CI records that reuse prior qd/full-CI evidence or cite .qd/logs are detected even when their summary wording differs from the original regex.",
+      "acceptance": "The backfill script identifies current export records with reused/covered-by qd CI evidence that cite .qd/logs or local qd log paths; roadmap/spec-dag.json has no reused passed-CI evidence referencing .qd/logs after backfill; validator rejects 'CI already passed' and 'qd full CI passed' local-log variants.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-28T11:44:58.612Z",
+      "updated_at": "2026-06-28T11:44:58.612Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "projects": ["universal"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "node scripts/backfill-portable-qd-ci-evidence.test.mjs"
+        },
+        {
+          "type": "command",
+          "value": "node scripts/spec-dag-validator.test.mjs"
+        },
+        {
+          "type": "command",
+          "value": "node scripts/spec-dag.mjs validate"
+        }
+      ],
+      "audit_focus": []
+    },
+    {
+      "id": "text-repair-utsushi-228-localize-project-wording",
+      "title": "Text-repair UTSUSHI-228 obsolete localize-sweetie-hd acceptance",
+      "kind": "feature",
+      "milestone": null,
+      "status": "ready",
+      "priority": "P2",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "Repair the completed UTSUSHI-228 qd text so title/spec/acceptance no longer direct operators to retired localize-sweetie-hd recipes, env names, preset paths, or artifacts/localize-sweetie-hd roots when verification has moved to generic localize-project.",
+      "acceptance": "UTSUSHI-228 text is either explicitly marked historical/superseded or rewritten to generic localize-project wording; verification and acceptance agree on artifacts/localize-project/RUN_DIR and project sweetie-hd-alpha-1; qd export validates.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-28T11:45:05.210Z",
+      "updated_at": "2026-06-28T11:45:05.210Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "projects": ["utsushi"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "node scripts/spec-dag.mjs validate"
+        }
+      ],
+      "audit_focus": []
+    },
+    {
+      "id": "make-title-reference-scanner-enforceable-after-classification",
+      "title": "Make title-reference scanner enforceable after cleanup classification",
+      "kind": "feature",
+      "milestone": null,
+      "status": "ready",
+      "priority": "P2",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "Classify and reduce title-specific reference scanner noise so it can become a crisp final generalization-purge gate instead of a broad advisory report with temporary root-report exemptions.",
+      "acceptance": "The scanner has a classified allowlist, no root GENERALIZATION_AUDIT.md temporary exemption, and an enforceable mode that fails only on active product/operator surfaces after expected historical/research references are classified; tests cover allowed historical references and forbidden active-surface references.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-28T11:45:12.270Z",
+      "updated_at": "2026-06-28T11:45:12.270Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "projects": ["universal"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "node scripts/validate-no-specific-game-references.test.mjs"
+        },
+        {
+          "type": "command",
+          "value": "node scripts/spec-dag.mjs validate"
         }
       ],
       "audit_focus": []
@@ -42492,6 +42820,171 @@
       "suggested_fix": null,
       "created_at": "2026-06-28T09:44:10.202Z",
       "resolved_at": "2026-06-28T11:04:07.861Z"
+    },
+    {
+      "id": "9bf509b8-e8d6-478f-922b-0b6f812cacca",
+      "node_id": "replace-qd-import-with-transactional-state-rebuild",
+      "run_id": null,
+      "severity": "P1",
+      "status": "open",
+      "title": "qd-import can destroy live qd state before validated replacement",
+      "path": null,
+      "line": null,
+      "evidence": "Broad audit 2026-06-28 at main 5ddd78b: justfile qd-import removes .qd/qd.db* before qd import has proven a replacement, then rewrites qd config to plain just check/just qd-full-ci instead of committed nix-wrapped commands. This can strand qd orchestration if import/setup fails and can recreate check/CI drift after rebuild.",
+      "expected": null,
+      "suggested_fix": null,
+      "created_at": "2026-06-28T11:45:20.215Z",
+      "resolved_at": null
+    },
+    {
+      "id": "814612f8-41b6-4f68-8207-e311f02dffb9",
+      "node_id": "repair-portable-qd-ci-evidence-backfill-detection",
+      "run_id": null,
+      "severity": "P1",
+      "status": "open",
+      "title": "Portable qd CI evidence backfill misses local-log reuse records",
+      "path": null,
+      "line": null,
+      "evidence": "Broad audit 2026-06-28 at main 5ddd78b: roadmap/spec-dag.json still contains reuse-style passed CI records with .qd/logs local paths despite backfill-portable-qd-ci-evidence-current-export being done. scripts/spec-dag.mjs and scripts/backfill-portable-qd-ci-evidence.mjs classify only a narrow reuse regex, and a dry run reported no records to backfill.",
+      "expected": null,
+      "suggested_fix": null,
+      "created_at": "2026-06-28T11:45:28.270Z",
+      "resolved_at": null
+    },
+    {
+      "id": "0534ddd8-e5d4-455d-b2e7-96e6cd744e14",
+      "node_id": "fix-itotori-spa-fallback-routes",
+      "run_id": null,
+      "severity": "P1",
+      "status": "open",
+      "title": "Production server 404s reviewer and asset-decision SPA routes",
+      "path": null,
+      "line": null,
+      "evidence": "Broad audit 2026-06-28 at main 5ddd78b: apps/itotori/src/main.ts dispatches asset decisions, reviewer batch, and reviewer detail routes, but apps/itotori/src/server.ts only treats /style-guide-builder as dashboard fallback. Dashboard navigation to /reviewer-queue/batch can therefore 404 outside dev fallback.",
+      "expected": null,
+      "suggested_fix": null,
+      "created_at": "2026-06-28T11:45:34.316Z",
+      "resolved_at": null
+    },
+    {
+      "id": "2b5d8b59-c9d4-43c3-aecb-3944b6e31f0c",
+      "node_id": "wire-asset-decisions-http-api",
+      "run_id": null,
+      "severity": "P1",
+      "status": "open",
+      "title": "Asset-decisions SPA fetches unregistered API routes",
+      "path": null,
+      "line": null,
+      "evidence": "Broad audit 2026-06-28 at main 5ddd78b: apps/itotori/src/asset-decisions/route.ts fetches /api/projects/:projectId/locale-branches/:localeBranchId/asset-decisions and /candidates, but the central API parser only accepts the existing two-segment project resources, so the page falls through to 404 in production.",
+      "expected": null,
+      "suggested_fix": null,
+      "created_at": "2026-06-28T11:45:39.788Z",
+      "resolved_at": null
+    },
+    {
+      "id": "2c15e192-b2fb-4d4e-a6a0-44411fb38b94",
+      "node_id": "wire-reviewer-batch-confirm-execution",
+      "run_id": null,
+      "severity": "P1",
+      "status": "open",
+      "title": "Reviewer batch Confirm control has no execution path",
+      "path": null,
+      "line": null,
+      "evidence": "Broad audit 2026-06-28 at main 5ddd78b: reviewer batch view renders a Confirm button, and batch-route has an execution helper, but main.ts wires only preview service and API handlers register only batch-preview. Browser/API execution is missing, so the confirm control cannot apply ReviewerBatchActionService mutations.",
+      "expected": null,
+      "suggested_fix": null,
+      "created_at": "2026-06-28T11:45:48.079Z",
+      "resolved_at": null
+    },
+    {
+      "id": "5c042746-7304-49b8-9ee5-616c2b9021fc",
+      "node_id": "complete-milestone-scoped-qd-json-consistency",
+      "run_id": null,
+      "severity": "P2",
+      "status": "open",
+      "title": "Milestone qd wrapper leaves snapshot fields partially global",
+      "path": null,
+      "line": null,
+      "evidence": "Broad audit 2026-06-28 at main 5ddd78b: scripts/qd-wrapper.mjs milestone summary shim only overwrites stats/status/ready and runs original command, export, and ready as separate reads. snapshot.openFindings and other milestone-sensitive fields can remain global or mixed across qd state changes.",
+      "expected": null,
+      "suggested_fix": null,
+      "created_at": "2026-06-28T11:45:54.132Z",
+      "resolved_at": null
+    },
+    {
+      "id": "569ace12-8fcd-4402-9ec5-07953685c780",
+      "node_id": "expose-required-capabilities-benchmark-seed-api",
+      "run_id": null,
+      "severity": "P2",
+      "status": "open",
+      "title": "Benchmark seed HTTP API cannot express requiredCapabilities",
+      "path": null,
+      "line": null,
+      "evidence": "Broad audit 2026-06-28 at main 5ddd78b: the DB benchmark seed filter and benchmark-set selector support requiredCapabilities, but apps/itotori/src/api-handlers.ts benchmark seed query allow-list/parser omit the HTTP parameter, leaving callers with only minCapabilityLevel.",
+      "expected": null,
+      "suggested_fix": null,
+      "created_at": "2026-06-28T11:46:02.758Z",
+      "resolved_at": null
+    },
+    {
+      "id": "24d2fd30-4553-4eed-be86-98683457945f",
+      "node_id": "make-catalog-read-query-validation-consistent",
+      "run_id": null,
+      "severity": "P2",
+      "status": "open",
+      "title": "Catalog conflict and completeness reads ignore unknown query params",
+      "path": null,
+      "line": null,
+      "evidence": "Broad audit 2026-06-28 at main 5ddd78b: benchmark seed and opportunity parsers call assertKnownQueryParams, but catalog completeness and conflict parsers do not. Typos such as targetLang can be silently ignored and return plausible partial results.",
+      "expected": null,
+      "suggested_fix": null,
+      "created_at": "2026-06-28T11:46:10.337Z",
+      "resolved_at": null
+    },
+    {
+      "id": "8f027faf-2395-4c0b-add1-5ae04da32836",
+      "node_id": "make-sweetie-hd-localize-workflow-self-proving-with-telemetry-an",
+      "run_id": null,
+      "severity": "P2",
+      "status": "open",
+      "title": "Self-proving workflow node still points at retired Sweetie-specific command",
+      "path": null,
+      "line": null,
+      "evidence": "Broad audit 2026-06-28 at main 5ddd78b: make-sweetie-hd-localize-workflow-self-proving-with-telemetry-an remains ready but its own status says old localize-sweetie-hd wording is stale. Current alpha validation uses generic just localize-project --project sweetie-hd-alpha-1 plus telemetry-summary and verify-artifacts under artifacts/localize-project/RUN_DIR.",
+      "expected": null,
+      "suggested_fix": null,
+      "created_at": "2026-06-28T11:46:17.345Z",
+      "resolved_at": null
+    },
+    {
+      "id": "9b04f517-850e-4bd0-9247-0d813499c9b6",
+      "node_id": "text-repair-utsushi-228-localize-project-wording",
+      "run_id": null,
+      "severity": "P2",
+      "status": "open",
+      "title": "UTSUSHI-228 text still names obsolete localize-sweetie-hd workflow",
+      "path": null,
+      "line": null,
+      "evidence": "Broad audit 2026-06-28 at main 5ddd78b: done alpha node UTSUSHI-228 still names just localize-sweetie-hd, KAIFUU_REAL_SWEETIE_HD_PATH, old preset paths, and artifacts/localize-sweetie-hd in title/spec/acceptance while verification has moved to generic just localize-project.",
+      "expected": null,
+      "suggested_fix": null,
+      "created_at": "2026-06-28T11:46:22.993Z",
+      "resolved_at": null
+    },
+    {
+      "id": "888f5231-defc-4c99-8a05-824c2aeee303",
+      "node_id": "make-title-reference-scanner-enforceable-after-classification",
+      "run_id": null,
+      "severity": "P3",
+      "status": "open",
+      "title": "Title-reference scanner is too noisy for final purge enforcement",
+      "path": null,
+      "line": null,
+      "evidence": "Broad audit 2026-06-28 at main 5ddd78b: validate-no-specific-game-references reported 1095 advisory violations and still allowlists root GENERALIZATION_AUDIT.md if present, so it is not a crisp enforceable final generalization-purge gate yet.",
+      "expected": null,
+      "suggested_fix": null,
+      "created_at": "2026-06-28T11:46:28.083Z",
+      "resolved_at": null
     }
   ],
   "runs": [
@@ -47272,6 +47765,12 @@
       "node_id": "recover-stale-qd-audit-disposition-locks",
       "text": "Broad-audit repair for finding bdec04c0-f159-4f07-99af-8c8f9c9d2d50. Preserve live-lock refusal, but recover clearly stale, malformed, or dead-owner locks so audit disposition cannot wedge future qd work.",
       "created_at": "2026-06-28T09:45:17.430Z"
+    },
+    {
+      "id": "83de05b4-5e6f-45e2-bd19-7a247294c410",
+      "node_id": "UTSUSHI-231",
+      "text": "BROAD AUDIT 2026-06-28 after benchmark/qd cleanup wave: alpha status is 114 nodes total, 66 done, 47 ready, 1 claimed. The claimed node is still UTSUSHI-231. Current blocker remains executing the generic localize-project live run with env supplied to the process, then producing telemetry-summary.json and post-run-verification.json under artifacts/localize-project/RUN_DIR. No standalone GENERALIZATION_AUDIT.md remains tracked; generalization findings are encoded as qd nodes/finding follow-ups.",
+      "created_at": "2026-06-28T11:46:40.360Z"
     }
   ]
 }
