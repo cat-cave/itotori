@@ -31,7 +31,10 @@ use kaifuu_core::{
     validate_helper_result_value, validate_offset_map_value, validate_profile_value,
     validate_rpg_maker_mv_mz_fixture_key, write_json, xp3_profile_proof,
 };
-use kaifuu_delta::{SourceProvenance, apply_delta, create_delta};
+use kaifuu_delta::{
+    ContractStageStatus, SourceProvenance, apply_delta, create_delta,
+    run_encrypted_xp3_contract_scaffold,
+};
 
 mod binary_patch_smoke;
 
@@ -1048,13 +1051,103 @@ fn run_xp3_command(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
                 None => println!("{json}"),
             }
         }
+        "contract-scaffold" => {
+            return run_xp3_contract_scaffold(args);
+        }
         _ => {
             return Err(
-                "usage: kaifuu xp3 <profile-proof|unpack|pack|replace|verify|writer-capability> ..."
+                "usage: kaifuu xp3 <profile-proof|unpack|pack|replace|verify|writer-capability|contract-scaffold> ..."
                     .into(),
             );
         }
     }
+    Ok(())
+}
+
+/// KAIFUU-171 — `kaifuu xp3 contract-scaffold --fixture <descriptor>
+/// [--output <report.json>]`.
+///
+/// Runs the end-to-end encrypted-XP3 contract scaffolding harness
+/// (`kaifuu_delta::run_encrypted_xp3_contract_scaffold`) against the synthetic
+/// public fixture, exercising detect -> key resolution -> extract -> patch ->
+/// verify -> delta-apply. Prints the not-a-retail-readiness-claim disclaimer
+/// and a per-stage PASS/FAIL summary to stdout, optionally writes the JSON
+/// report, and exits non-zero (with the drifting stages' semantic codes) if
+/// any contract stage drifted.
+fn run_xp3_contract_scaffold(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
+    let fixture = PathBuf::from(flag(args, "--fixture")?);
+
+    // Scratch space the harness owns. Use a caller-provided --work-dir when
+    // present, else a unique temp directory we clean up afterward.
+    let (work_dir, owns_work_dir) = match flag_optional(args, "--work-dir") {
+        Some(value) => (PathBuf::from(value), false),
+        None => {
+            let unique = format!(
+                "kaifuu-xp3-contract-scaffold-{}-{}",
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|elapsed| elapsed.as_nanos())
+                    .unwrap_or(0)
+            );
+            (std::env::temp_dir().join(unique), true)
+        }
+    };
+
+    let report = run_encrypted_xp3_contract_scaffold(&fixture, &work_dir)?;
+
+    if owns_work_dir {
+        let _ = fs::remove_dir_all(&work_dir);
+    }
+
+    // Disclaimer first — this harness is contract scaffolding, never a retail
+    // readiness claim.
+    println!("kaifuu xp3 contract-scaffold");
+    println!("{}", report.disclaimer);
+    for outcome in &report.stages {
+        let marker = match outcome.status {
+            ContractStageStatus::Passed => "PASS",
+            ContractStageStatus::Failed => "FAIL",
+        };
+        match &outcome.semantic_code {
+            Some(code) => println!(
+                "  [{marker}] {} (semantic: {code}) — {}",
+                outcome.stage.as_str(),
+                redact_for_log_or_report(&outcome.detail)
+            ),
+            None => println!(
+                "  [{marker}] {} — {}",
+                outcome.stage.as_str(),
+                redact_for_log_or_report(&outcome.detail)
+            ),
+        }
+    }
+
+    if let Some(output) = flag_optional(args, "--output") {
+        atomic_write_text(&PathBuf::from(output), &report.stable_json()?)?;
+    }
+
+    if report.status == kaifuu_core::OperationStatus::Failed {
+        let drift = report
+            .stages
+            .iter()
+            .filter(|outcome| outcome.status == ContractStageStatus::Failed)
+            .map(|outcome| {
+                format!(
+                    "{}:{}",
+                    outcome.stage.as_str(),
+                    outcome.semantic_code.as_deref().unwrap_or("unknown")
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
+        return Err(format!("encrypted-XP3 contract scaffold drift: {drift}").into());
+    }
+
+    println!(
+        "all {} contract stages passed (contract scaffolding only — not a retail readiness claim)",
+        report.stages.len()
+    );
     Ok(())
 }
 

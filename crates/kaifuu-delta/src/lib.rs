@@ -11,6 +11,16 @@ use kaifuu_core::{
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
+// KAIFUU-171 — end-to-end encrypted-XP3 contract scaffolding harness. Lives in
+// this crate because it is the only one that can reach both the kaifuu-core
+// XP3 contract functions and the delta apply contract.
+pub mod contract_scaffold;
+pub use contract_scaffold::{
+    CONTRACT_SCAFFOLD_STAGES, ContractStage, ContractStageOutcome, ContractStageStatus,
+    ENCRYPTED_XP3_CONTRACT_SCAFFOLD_DISCLAIMER, EncryptedXp3ContractScaffoldReport,
+    SEMANTIC_CONTRACT_SCAFFOLD_STAGE_DRIFT, run_encrypted_xp3_contract_scaffold,
+};
+
 // KAIFUU-238: schema bumped to 0.3.0 to add the required `sourceProvenance`
 // envelope that carries the KAIFUU-193 `partial: true` bit forward from the
 // originating extract envelope. Apply refuses any package whose

@@ -1,0 +1,79 @@
+{
+  "$schema": "./manifest.schema.json",
+  "schemaVersion": "0.1.0",
+  "fixture": {
+    "id": "kaifuu-encrypted-xp3-contract-scaffold",
+    "title": "Kaifuu Synthetic Encrypted-XP3 Contract Scaffolding",
+    "kind": "synthetic",
+    "summary": "Synthetic, public-redistributable encrypted-XP3 fixture that keeps the detect -> key resolution -> extract -> patch -> verify -> delta-apply contract surface continuously tested in public CI. Not a retail encrypted-XP3 readiness claim.",
+    "sourceLocale": "ja-JP",
+    "targetLocales": ["en-US"],
+    "publicRedistribution": "allowed",
+    "license": {
+      "spdx": "CC0-1.0",
+      "evidence": "Generated synthetic bytes and JSON authored in-repository by fixtures/generate-kaifuu-encrypted-xp3-contract-scaffold.mjs."
+    },
+    "provenance": {
+      "author": "Kaifuu fixture authors",
+      "creationMethod": "Deterministic generator writes a synthetic XP3-CRYPT envelope, a real plain inner XP3, a public fixture-only key manifest, and a harness descriptor. No retail bytes.",
+      "rawAssetPolicy": "contains-no-copyrighted-game-assets"
+    }
+  },
+  "files": [
+    {
+      "path": "fixtures/public/kaifuu-encrypted-xp3-contract-scaffold/contract-scaffold.fixture.json",
+      "role": "metadata",
+      "mediaType": "application/json",
+      "sha256": "824b549b6bc99c6dead1cf2d6b52eb877cde284a489787a999091b918ed2b8fb",
+      "bytes": 1226,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/public/kaifuu-encrypted-xp3-contract-scaffold/decrypted-inner.xp3",
+      "role": "asset",
+      "mediaType": "application/octet-stream",
+      "sha256": "5932ccf4aefcfb502cdebbff3f9185d1b4657a1faeafd1b971a7e50db866e24b",
+      "bytes": 270,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/public/kaifuu-encrypted-xp3-contract-scaffold/encrypted-envelope.xp3",
+      "role": "asset",
+      "mediaType": "application/octet-stream",
+      "sha256": "9b066b28d824e5a25a1695bd5420f060f28c67762b5ef9156d2095b881ad961f",
+      "bytes": 94,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/public/kaifuu-encrypted-xp3-contract-scaffold/keys/public-fixture-key-manifest.json",
+      "role": "metadata",
+      "mediaType": "application/json",
+      "sha256": "6ec7a1b19157c21e5e2cb2177866797aafd571cb8c9560ae3e9cb34003f1120b",
+      "bytes": 907,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/public/kaifuu-encrypted-xp3-contract-scaffold/README.md",
+      "role": "metadata",
+      "mediaType": "text/markdown",
+      "sha256": "6585c0819036466d5abb64b7d3ecccd559dc7c7eaeaea3cf3c52e9c1eaf562bc",
+      "bytes": 1790,
+      "redistributable": true
+    }
+  ],
+  "aggregateStats": {
+    "files": 5,
+    "textUnits": 0,
+    "sourceTextUtf16CodeUnits": 0,
+    "protectedSpans": 0,
+    "sourceLocales": ["ja-JP"],
+    "targetLocales": ["en-US"],
+    "engineKinds": ["kiri-kiri-xp3-synthetic-encrypted-contract-scaffold"],
+    "notes": "All bytes are generated fixture-only data. The encrypted envelope is an XP3-CRYPT marker; the decrypted inner archive is a real plain XP3. No retail game bytes, keys, or decrypted text."
+  },
+  "benchmarkUse": {
+    "allowedInPublicCi": true,
+    "allowedInPublicReports": true,
+    "reportingLabel": "public:kaifuu-encrypted-xp3-contract-scaffold"
+  }
+}

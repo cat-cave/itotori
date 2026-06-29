@@ -1,0 +1,29 @@
+{
+  "schemaVersion": "0.1.0",
+  "fixtureId": "kaifuu-encrypted-xp3-contract-scaffold",
+  "disclaimer": "CONTRACT SCAFFOLDING ONLY: this harness exercises the encrypted-XP3 contract surface against a fully synthetic, public-redistributable fixture. It does NOT decrypt, extract, or patch any retail KiriKiri/XP3 game, and it is NOT a claim of retail encrypted-XP3 readiness.",
+  "notRetailReadinessClaim": true,
+  "encryptedEnvelope": {
+    "path": "encrypted-envelope.xp3",
+    "archiveId": "kirikiri-xp3-encrypted-envelope",
+    "expectedClassification": "encrypted"
+  },
+  "decryptedInner": {
+    "path": "decrypted-inner.xp3",
+    "archiveId": "kirikiri-xp3-decrypted-inner",
+    "expectedClassification": "plain"
+  },
+  "cryptProfile": {
+    "cryptProfileId": "kirikiri-xp3-fixture-key-profile",
+    "keyRefRequirement": {
+      "requirementId": "kirikiri-xp3-key-profile",
+      "secretRef": "local-secret:fixture/kirikiri/xp3-archive-password",
+      "materialKind": "archivePassword"
+    }
+  },
+  "keyManifestPath": "keys/public-fixture-key-manifest.json",
+  "patch": {
+    "entryPath": "scenario/intro.ks",
+    "replacementUtf8": "*start\n[name show=\"Midori\"]\nThis is a synthetic public-fixture line.\n[r]\n"
+  }
+}
