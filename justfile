@@ -24,6 +24,7 @@ check:
     node scripts/spec-dag-lifecycle.test.mjs
     node scripts/spec-dag-validator.test.mjs
     node scripts/spec-dag.mjs validate
+    node --test scripts/audit-no-hardcoded-cost.test.mjs
     node scripts/audit-no-hardcoded-cost.mjs
     just fixtures-validate
     just impl-map-schema-validate
