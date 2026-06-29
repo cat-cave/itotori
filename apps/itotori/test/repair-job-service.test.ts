@@ -332,9 +332,14 @@ describe("RepairJobService.enqueue", () => {
 
   it("refuses severities below the configured minimum (default = p1)", () => {
     const service = makeService();
-    expect(() =>
-      service.enqueue({ trigger: qaTrigger({ severity: "p2" }), pair: PAIR }),
-    ).toThrowError(RepairJobServiceError);
+    let caught: unknown;
+    try {
+      service.enqueue({ trigger: qaTrigger({ severity: "p2" }), pair: PAIR });
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(RepairJobServiceError);
+    expect((caught as RepairJobServiceError).code).toBe("below_minimum_severity");
   });
 
   it("accepts p2 when minimumSeverity is widened explicitly", () => {

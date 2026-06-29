@@ -33,7 +33,6 @@ import {
   type RepairSceneIndex,
 } from "./affected-work-selector.js";
 import {
-  REPAIR_JOB_SEVERITIES,
   type RepairAffectedWork,
   type RepairEvent,
   type RepairJob,
@@ -288,23 +287,15 @@ function assertPair(pair: RepairProviderPair): void {
 }
 
 function assertSeverity(severity: RepairJobSeverity, minimum: RepairJobSeverity): void {
+  // `order` is keyed by `Record<RepairJobSeverity, number>`, so adding a
+  // severity to `REPAIR_JOB_SEVERITIES` without a rank here is a
+  // compile-time error. No runtime completeness guard is needed.
   const order: Record<RepairJobSeverity, number> = { p0: 0, p1: 1, p2: 2 };
   if (order[severity] > order[minimum]) {
     throw new RepairJobServiceError(
       "below_minimum_severity",
       `repair job refused: severity='${severity}' is below minimum='${minimum}'`,
     );
-  }
-  // Belt-and-suspenders: every enum value must appear in the order
-  // table. Adding a new severity without extending the table is a
-  // runtime error here AND a compile-time error at the type level.
-  for (const known of REPAIR_JOB_SEVERITIES) {
-    if (!(known in order)) {
-      throw new RepairJobServiceError(
-        "below_minimum_severity",
-        `repair job refused: severity table is missing '${known}'`,
-      );
-    }
   }
 }
 
