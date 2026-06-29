@@ -24321,12 +24321,12 @@
       "risk": "medium",
       "owner": "orchestrator-utsushi-218",
       "branch": "qd/UTSUSHI-218",
-      "spec": "Implement read + write of `REALLIVE.sav` (per-slot system save), `save999.sav` (global save), `read.sav` (per-line read flags). Format follows the AVG32-derived `SAVE_FORMAT=3` Gameexe declaration. Substrate `SnapshotStore` is the in-memory backing; on-disk serialiser is separate.\n\nDeliverables:\n- `SystemSave`, `GlobalSave`, `ReadFlags` typed readers/writers\n- AVG-derived `SAVE_FORMAT=3` serialiser keyed against magic strings (`AVG_SYSTEM_SAVE`, `AVG_GLOBAL_SAVE`)\n- Shift-JIS title decode (`オシオキSweetie＋Sweets!! HD Edition\\u{8140}`) round-trip\n- Synthetic round-trip producing byte-identical output\n- Read-only mount enforcement (writes to the research mount banned at the test layer)",
-      "acceptance": "- Reading `$GAME/SAVEDATA/REALLIVE.sav` produces a `SystemSave { magic: \"AVG_SYSTEM_SAVE\", slots: [...] }` with the declared file-size (24,876) cross-checked against the `2C 61 00 00` leading u32.\n- Reading `$GAME/SAVEDATA/save999.sav` produces a `GlobalSave { magic: \"AVG_GLOBAL_SAVE\", ... }`.\n- Reading `$GAME/SAVEDATA/read.sav` produces a `ReadFlags { title: \"オシオキSweetie＋Sweets!! HD Edition\\u{8140}\", ... }` (the Shift-JIS title decodes round-trip).\n- Writing a freshly-snapshotted save produces byte-identical output to a known synthetic fixture (round-trip).\n- The substrate `SnapshotStore` is used as the in-memory backing for save state; on-disk write is a separate serialiser.",
+      "spec": "Implement read + write of `REALLIVE.sav` (per-slot system save), `save999.sav` (global save), `read.sav` (per-line read flags). Format follows the AVG32-derived `SAVE_FORMAT=3` Gameexe declaration. Substrate `SnapshotStore` is the in-memory backing; on-disk serialiser is separate.\n\nDeliverables:\n- `SystemSave`, `GlobalSave`, `ReadFlags` typed readers/writers\n- AVG-derived `SAVE_FORMAT=3` serialiser keyed against magic strings (`AVG_SYSTEM_SAVE`, `AVG_GLOBAL_SAVE`)\n- Shift-JIS title decode (`オシオキSweetie＋Sweets!! HD Edition\\u{3000}`) round-trip\n- Synthetic round-trip producing byte-identical output\n- Read-only mount enforcement (writes to the research mount banned at the test layer)\n",
+      "acceptance": "- Reading `$GAME/SAVEDATA/REALLIVE.sav` produces a `SystemSave { magic: \"AVG_SYSTEM_SAVE\", slots: [...] }` with the declared file-size (24,876) cross-checked against the `2C 61 00 00` leading u32.\n- Reading `$GAME/SAVEDATA/save999.sav` produces a `GlobalSave { magic: \"AVG_GLOBAL_SAVE\", ... }`.\n- Reading `$GAME/SAVEDATA/read.sav` produces a `ReadFlags { title: \"オシオキSweetie＋Sweets!! HD Edition\\u{3000}\", ... }` (the Shift-JIS title decodes round-trip).\n- Writing a freshly-snapshotted save produces byte-identical output to a known synthetic fixture (round-trip).\n- The substrate `SnapshotStore` is used as the in-memory backing for save state; on-disk write is a separate serialiser.\n",
       "validation": null,
       "context": null,
       "created_at": "2026-06-26T02:53:55.930Z",
-      "updated_at": "2026-06-26T10:52:55.057Z",
+      "updated_at": "2026-06-29T13:21:52.383Z",
       "claimed_at": "2026-06-26T10:08:23.586Z",
       "done_at": "2026-06-26T10:52:55.057Z",
       "group_name": "runtime-adapters",
@@ -29114,19 +29114,19 @@
       "title": "assertSeverity runtime guard for missing enum entries is dead code (the order table is Record<RepairJobSeverity, number>, so TS rejects missing keys at compile time)",
       "kind": "audit-fix",
       "milestone": "alpha",
-      "status": "ready",
+      "status": "review",
       "priority": "P3",
       "estimate_points": 1,
       "risk": "low",
-      "owner": null,
-      "branch": null,
+      "owner": "impl-assertseverity-runtime-guard-for-missing-enum-entries-is-dead-co",
+      "branch": "qd/assertseverity-runtime-guard-for-missing-enum-entries-is-dead-co",
       "spec": "apps/itotori/src/orchestrator/repair/repair-job-service.ts:271-281 — the for-of loop over REPAIR_JOB_SEVERITIES checks each known severity is in `order`, but the Record type already forces this at the type level. The loop runs on every enqueue and never trips. Minor gold-plating; remove or convert to a static once-at-construction assertion.",
       "acceptance": "- Resolve promoted P3 audit finding 916f1416-5ebe-488e-a7b9-12659322921c from ITOTORI-038: assertSeverity runtime guard for missing enum entries is dead code (the order table is Record<RepairJobSeverity, number>, so TS rejects missing keys at compile time)\n- Preserve the parent node acceptance and prevent the original evidence from recurring.",
       "validation": null,
       "context": "Promoted finding 916f1416-5ebe-488e-a7b9-12659322921c from ITOTORI-038.",
       "created_at": "2026-06-26T05:38:27.854Z",
-      "updated_at": "2026-06-26T05:38:27.854Z",
-      "claimed_at": null,
+      "updated_at": "2026-06-29T13:26:56.785Z",
+      "claimed_at": "2026-06-29T13:17:54.478Z",
       "done_at": null,
       "group_name": "translation-loop",
       "status_reason": "Promoted from finding 916f1416-5ebe-488e-a7b9-12659322921c on node ITOTORI-038.",
@@ -30239,22 +30239,22 @@
       "title": "Spec acceptance text writes Shift-JIS title trailing space as \\u{8140} but implementation/test use \\u{3000}",
       "kind": "audit-fix",
       "milestone": "alpha",
-      "status": "ready",
+      "status": "review",
       "priority": "P2",
       "estimate_points": 1,
       "risk": "medium",
-      "owner": null,
-      "branch": null,
+      "owner": "impl-spec-acceptance-text-writes-shift-jis-title-trailing-space-as-u-",
+      "branch": "qd/spec-acceptance-text-writes-shift-jis-title-trailing-space-as-u-",
       "spec": "Spec acceptance criterion writes `\"オシオキSweetie＋Sweets!! HD Edition\\u{8140}\"`. The literal codepoint U+8140 is a Han ideograph (腀), which would be wrong. The two bytes `81 40` are the Shift-JIS encoding of U+3000 IDEOGRAPHIC SPACE; the implementation correctly decodes via encoding_rs::SHIFT_JIS to `\\u{3000}` (src/save.rs:411-413 doc comment + tests/save_real_sweetie_hd.rs:72 + tests/save_synthetic.rs:57). The implementation is correct; the spec text is wrong/misleading. The acceptance assertion as literally worded would fail, but the spirit (round-trip of the Shift-JIS title) is met. Recommend amending the spec text rather than the code.",
       "acceptance": "- Resolve promoted P2 audit finding f3337527-0809-473e-8639-5b346736e43c from UTSUSHI-218: Spec acceptance text writes Shift-JIS title trailing space as \\u{8140} but implementation/test use \\u{3000}\n- Preserve the parent node acceptance and prevent the original evidence from recurring.",
       "validation": null,
       "context": "Promoted finding f3337527-0809-473e-8639-5b346736e43c from UTSUSHI-218.",
       "created_at": "2026-06-26T10:52:09.684Z",
-      "updated_at": "2026-06-26T10:52:09.684Z",
-      "claimed_at": null,
+      "updated_at": "2026-06-29T13:22:11.451Z",
+      "claimed_at": "2026-06-29T13:17:54.782Z",
       "done_at": null,
       "group_name": "runtime-adapters",
-      "status_reason": "Promoted from finding f3337527-0809-473e-8639-5b346736e43c on node UTSUSHI-218.",
+      "status_reason": "Promoted from finding f3337527-0809-473e-8639-5b346736e43c on node UTSUSHI-218.\n[2026-06-29T13:22:11.451Z] Verification sign-off (manual): Investigate worker confirmed via iconv that SJIS 0x8140 decodes to U+3000 and code (save.rs + save_synthetic/save_real_bytes tests) already asserts \\u{3000}; the \\u{8140} typo was only in UTSUSHI-218 prose, now corrected.\nValue: Focused re-audit of promoted finding f3337527-0809-473e-8639-5b346736e43c from UTSUSHI-218: Spec acceptance text writes Shift-JIS title trailing space as \\u{8140} but implementation/test use \\u{3000}",
       "check_command": null,
       "ci_command": null,
       "blocked_by": null,
@@ -34193,7 +34193,7 @@
       "title": "Utsushi substrate slices (embed ABI, conformance, reference recorder, state-diff, runner) have zero non-test consumers",
       "kind": "audit-fix",
       "milestone": "continuous",
-      "status": "ready",
+      "status": "cancelled",
       "priority": "P1",
       "estimate_points": 1,
       "risk": "medium",
@@ -34204,7 +34204,7 @@
       "validation": null,
       "context": null,
       "created_at": "2026-06-29T05:14:14.877Z",
-      "updated_at": "2026-06-29T05:14:14.877Z",
+      "updated_at": "2026-06-29T13:26:34.802Z",
       "claimed_at": null,
       "done_at": null,
       "group_name": null,
@@ -34234,7 +34234,7 @@
       "title": "Utsushi CLI (product entry point) bypasses the EnginePort/Runner/Conformance substrate entirely",
       "kind": "audit-fix",
       "milestone": "real-game-testing-ready",
-      "status": "ready",
+      "status": "cancelled",
       "priority": "P1",
       "estimate_points": 1,
       "risk": "high",
@@ -34245,7 +34245,7 @@
       "validation": null,
       "context": null,
       "created_at": "2026-06-29T05:14:14.877Z",
-      "updated_at": "2026-06-29T05:14:14.877Z",
+      "updated_at": "2026-06-29T13:26:34.908Z",
       "claimed_at": null,
       "done_at": null,
       "group_name": null,
@@ -35138,6 +35138,284 @@
       ],
       "audit_focus": [
         "Non-Textout slot offset pointing at opcode header causing silent patch-back corruption on the legacy apply_patches path"
+      ]
+    },
+    {
+      "id": "utsushi-embed-abi-delete-unused",
+      "title": "Delete the embed ABI substrate slice (no production or host consumer)",
+      "kind": "feature",
+      "milestone": "continuous",
+      "status": "ready",
+      "priority": "P2",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "P1 decomposition (parent: utsushi-substrate-slices-no-production-consumer), slice = Embed ABI (UTSUSHI-024). Per-slice decision: DELETE. Evidence: embed_state()/embed_capabilities() and EmbedState/EmbedTrace/EmbedArtifactRef/EmbedSnapshotRef/EmbedCapability are referenced only in crates/utsushi-core/src/embed/{state,capability}.rs and their own #[cfg(test)] modules; full-repo grep finds no engine adapter, CLI subcommand, or product binary that calls embed_state/embed_capabilities. The slice's stated purpose ('host-readable snapshot of the substrate') has no agentic-host consumer on any milestone tier (real-game-testing-ready / alpha / beta / full). Per the anti-scaffolding and no-legacy-compat rules, remove the slice now rather than carry a deferred marker; if a host-embed consumer is later specced it returns evidence-first.\n\nDeliverables:\n- Delete crates/utsushi-core/src/embed/ (state.rs, capability.rs, artifact.rs, diagnostics.rs, redaction.rs, mod.rs) and its module declaration in lib.rs.\n- Remove the Embed ABI block from crates/utsushi-core/src/substrate.rs (EMBED_SCHEMA_VERSION, EmbedArtifactRef, EmbedCapability, EmbedCapabilityId, EmbedCapabilityStatus, EmbedError, EmbedSchemaVersion, EmbedSnapshotRef, EmbedState, EmbedTrace, EmbedTraceLine, embed_capabilities, embed_state) and the matching const-assertion pin.\n- Remove the Embed ABI row from docs/utsushi-substrate-facade.md section 2 and the EMBED_SCHEMA_VERSION row in section 3.\n- Drop any embed-only entries from the substrate conformance test (crates/utsushi-core/tests/substrate_conformance.rs).",
+      "acceptance": "rg -n 'EmbedState|EmbedTrace|embed_state|embed_capabilities|EMBED_SCHEMA_VERSION' crates docs returns no hits. cargo build -p utsushi-core and just ci are green. docs/utsushi-substrate-facade.md no longer lists an Embed ABI subsystem row.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-29T13:26:33.702Z",
+      "updated_at": "2026-06-29T13:26:33.702Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["utsushi"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "rg -n 'EmbedState|EmbedTrace|embed_state|embed_capabilities|EMBED_SCHEMA_VERSION' crates docs"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-core"
+        },
+        {
+          "type": "command",
+          "value": "just ci"
+        }
+      ],
+      "audit_focus": [
+        "Confirm no non-test consumer existed at deletion time (the slice was scaffolding without load)",
+        "No orphaned facade re-export or const-assertion pin left referencing the deleted embed symbols",
+        "Deletion is total (no #[deprecated] shim, no dual plumbing) per no-legacy-compat"
+      ]
+    },
+    {
+      "id": "utsushi-reference-recorder-reconcile-or-delete",
+      "title": "Reconcile the reference-recorder trace surface with ReplayLog/observation-hooks (delete the redundant one)",
+      "kind": "feature",
+      "milestone": "continuous",
+      "status": "ready",
+      "priority": "P2",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "P1 decomposition (parent: utsushi-substrate-slices-no-production-consumer), slice = Reference recorder (UTSUSHI-060/062: ReferenceRecorder, InMemoryReferenceRecorder, ReferenceTrace, RecordingTextSink). Per-slice decision: DECIDE then DELETE-or-WIRE, defaulting to DELETE. Evidence: these types are referenced only in crates/utsushi-core/src/recorder/* and tests; grep confirms the conformance check family does NOT consume ReferenceTrace (no ReferenceTrace/ReferenceRecorder hits under crates/utsushi-core/src/conformance), and the two shipping trace surfaces are utsushi_reallive::ReplayLog (CLI replay/replay-validate) and the fixture observation-hook events (CLI smoke). The reference recorder is therefore a third, orphaned trace surface with no consumer and no conformance golden role. Two parallel trace abstractions are not allowed (no-legacy-compat): pick the shipping ReplayLog/observation-hook surface and DELETE the reference recorder, UNLESS utsushi-cli-route-conformance-result wires a *ConformanceCheck whose golden input is a ReferenceTrace (in which case wire the recorder as that golden producer instead). Because that routing node was scoped to ReplayLog/ConformanceResult, the default outcome is DELETE.\n\nDeliverables:\n- Decision recorded in docs/utsushi-substrate-facade.md: ReplayLog + observation-hook events are the canonical reference-trace surface; ReferenceRecorder is removed.\n- Delete crates/utsushi-core/src/recorder/ (builder.rs, mod.rs, serialize.rs, sink_bridge.rs, trace.rs) and its lib.rs module declaration.\n- Remove the Reference recorder block from substrate.rs and its row from docs/utsushi-substrate-facade.md section 2 (and REFERENCE_TRACE_SCHEMA_VERSION from section 3).",
+      "acceptance": "Either rg -n 'ReferenceRecorder|InMemoryReferenceRecorder|ReferenceTrace|REFERENCE_TRACE_SCHEMA_VERSION' crates docs returns no hits (deleted), OR utsushi-cli-route-conformance-result emits a ConformanceResult artifact whose golden input is a ReferenceTrace produced by a non-test ReferenceRecorder call (wired). docs/utsushi-substrate-facade.md states which outcome was taken. just ci is green.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-29T13:26:33.702Z",
+      "updated_at": "2026-06-29T13:26:33.702Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["utsushi"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "rg -n 'ReferenceRecorder|InMemoryReferenceRecorder|ReferenceTrace|REFERENCE_TRACE_SCHEMA_VERSION' crates docs"
+        },
+        {
+          "type": "command",
+          "value": "rg -n 'ReplayLog|observationHookEvents' crates/utsushi-cli/src crates/utsushi-reallive/src"
+        },
+        {
+          "type": "command",
+          "value": "just ci"
+        }
+      ],
+      "audit_focus": [
+        "Exactly one canonical reference-trace surface remains after this lands (no two parallel trace abstractions)",
+        "If deleted: confirm no conformance golden silently depended on ReferenceTrace",
+        "Facade doc names the canonical trace surface explicitly"
+      ]
+    },
+    {
+      "id": "utsushi-runtime-canonical-path-decision",
+      "title": "Decide and document the canonical runtime path (RuntimeAdapterRegistry vs EnginePort/Runner)",
+      "kind": "feature",
+      "milestone": "continuous",
+      "status": "ready",
+      "priority": "P1",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "P2 decomposition (parent: utsushi-cli-bypasses-engineport-runner-substrate), node 1 of 4 and the gate for the rest. Establish the single canonical runtime architecture in writing before any code moves. Evidence of the current fork: (1) crates/utsushi-cli/src/main.rs drives capabilities/trace/capture/smoke through RuntimeAdapterRegistry + hand-rolled RuntimeAdapter impls (FixtureRuntimeAdapter, BrowserLaunchAdapter, NwjsLaunchAdapter); (2) replay.rs/replay_validate.rs drive utsushi_reallive::replay_scene directly, bypassing both abstractions; (3) the EnginePort/Runner/EnginePortAdapter/conformance substrate is implemented by FixtureEnginePort (real) and UtsushiReallivePort/UtsushiSiglusPort (stubs returning EnginePortError::Lifecycle on every method), and Runner only executes inside EnginePortAdapter::run (never instantiated in src) and tests. Key structural fact: EnginePortAdapter<P> already implements RuntimeAdapter (crates/utsushi-core/src/port/mod.rs:129), so the two are not symmetric competitors — RuntimeAdapter is the thin CLI dispatch seam and EnginePort/Runner is the canonical port substrate that should sit BEHIND it.\n\nDeliverables:\n- A new 'Canonical runtime path' section in docs/utsushi-substrate-facade.md asserting: EnginePort + Runner is the canonical engine-port substrate; the RuntimeAdapter registry is the thin CLI dispatch seam and every registered adapter is an EnginePortAdapter<SomePort>; hand-rolled RuntimeAdapter impls and the standalone reallive replay_scene CLI driver are the non-canonical paths to be folded in or deleted.\n- An explicit scope table naming, for each of the three current paths, the resolution node (utsushi-cli-route-conformance-result, utsushi-delete-parallel-runtime-adapter, utsushi-reallive-replay-through-port) and whether it is wire / delete / defer.\n- A cross-reference to UTSUSHI-154 (FixtureRuntimeAdapter becomes EnginePortAdapter<FixtureEnginePort>, the first product execution of Runner) and UTSUSHI-160 (first ConformanceManifest consumer).",
+      "acceptance": "docs/utsushi-substrate-facade.md contains a 'Canonical runtime path' section that (a) names EnginePort/Runner as canonical and RuntimeAdapter as the dispatch seam, (b) tabulates each of the three current runtime paths against its resolution node and a wire/delete/defer verdict, and (c) cross-references UTSUSHI-154 and UTSUSHI-160. No code change is required by this node.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-29T13:26:33.702Z",
+      "updated_at": "2026-06-29T13:26:33.702Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["utsushi"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "rg -n 'Canonical runtime path|EnginePortAdapter|dispatch seam' docs/utsushi-substrate-facade.md"
+        },
+        {
+          "type": "manual",
+          "value": "Confirm the scope table assigns every one of the three current runtime paths (RuntimeAdapterRegistry, EnginePort/Runner, reallive replay_scene) a resolution node and a wire/delete/defer verdict, with no fourth path left unmentioned."
+        }
+      ],
+      "audit_focus": [
+        "Exactly one path is declared canonical; the decision does not preserve both abstractions (no-legacy-compat)",
+        "The standalone reallive replay_scene CLI path is explicitly accounted for, not silently ignored",
+        "Decision is consistent with the existing EnginePortAdapter: RuntimeAdapter direction (adapter wraps port, not the reverse)"
+      ]
+    },
+    {
+      "id": "utsushi-cli-route-conformance-result",
+      "title": "Route a CLI subcommand through Runner + a ConformanceCheck emitting a ConformanceResult artifact",
+      "kind": "feature",
+      "milestone": "real-game-testing-ready",
+      "status": "ready",
+      "priority": "P1",
+      "estimate_points": 1,
+      "risk": "high",
+      "owner": null,
+      "branch": null,
+      "spec": "P2 decomposition node 2 of 4, and the convergent consumer for the P1 conformance-check + state-diff slices (parent: utsushi-substrate-slices-no-production-consumer). This is the load-bearing wire: it gives the conformance check family its first non-test (product-binary) consumer and makes Runner-produced RunnerObservation/RunnerOutcome flow into a CLI artifact. Builds on UTSUSHI-154 (which rebases FixtureRuntimeAdapter onto EnginePortAdapter<FixtureEnginePort> so Runner executes in the shipping CLI trace/capture/smoke path). On top of that foundation, route one CLI subcommand so it drives a port through Runner and evaluates a *ConformanceCheck, writing a ConformanceResult-schema JSON. Use the fixture port (FixtureEnginePort) as the first real subject, since the reallive/siglus ports are still unimplemented stubs. Covers these P1 slices: ConformanceManifest, ConformanceResult, TraceConformanceCheck/SnapshotConformanceCheck/the *ConformanceCheck family, cross_validate_results_against_manifest, and state-diff (diff_snapshots — whose only consumer is SnapshotConformanceCheck) by having the routed ConformanceResult exercise a snapshot diff.\n\nDeliverables:\n- A CLI subcommand (e.g. `utsushi conform --adapter <name> ... --output <path>`) that builds a ConformanceManifest, runs the adapter through Runner, evaluates at least one *ConformanceCheck (including a SnapshotConformanceCheck that calls diff_snapshots), and writes a ConformanceResult-schema JSON artifact via write_json.\n- crates/utsushi-cli/src imports EnginePort/Runner/ConformanceManifest/ConformanceResult (the substrate executes from the product binary, not a test).\n- An end-to-end test invoking the subcommand against the fixture source and asserting the ConformanceResult schema fields.",
+      "acceptance": "cargo run -p utsushi-cli -- conform --adapter <fixture> ... --output result.json writes a ConformanceResult-schema JSON whose contents include at least one ConformanceCheck outcome and one StateDiff (diff_snapshots) result. rg -n 'EnginePort|Runner|ConformanceManifest|ConformanceResult' crates/utsushi-cli/src is non-empty. rg -lw 'diff_snapshots|ConformanceManifest' crates/utsushi-cli/src returns a non-test src file. just ci is green.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-29T13:26:33.702Z",
+      "updated_at": "2026-06-29T13:26:33.702Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["utsushi"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "rg -n 'EnginePort|Runner|ConformanceManifest|ConformanceResult|diff_snapshots' crates/utsushi-cli/src"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-cli"
+        },
+        {
+          "type": "command",
+          "value": "just ci"
+        }
+      ],
+      "audit_focus": [
+        "ConformanceResult artifact is produced by the real product binary, not only an integration test (the P1 'non-test consumer' bar)",
+        "The routed path actually drives Runner (RunnerObservation/RunnerOutcome) rather than re-deriving results out of band",
+        "diff_snapshots / SnapshotConformanceCheck is genuinely exercised, not stubbed, so the state-diff slice gains a real consumer"
+      ]
+    },
+    {
+      "id": "utsushi-delete-parallel-runtime-adapter",
+      "title": "Delete the non-canonical hand-rolled RuntimeAdapter path superseded by EnginePortAdapter",
+      "kind": "feature",
+      "milestone": "continuous",
+      "status": "ready",
+      "priority": "P2",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "P2 decomposition node 3 of 4. Enforce no-legacy-compat once UTSUSHI-154 makes FixtureRuntimeAdapter an EnginePortAdapter<FixtureEnginePort>: delete the hand-rolled RuntimeAdapter impl for the fixture path so only the canonical EnginePort/Runner-backed adapter remains. Evidence: crates/utsushi-fixture/src/lib.rs:35-51 currently hand-rolls `impl RuntimeAdapter for FixtureRuntimeAdapter` (trace/capture/smoke) in parallel with crates/utsushi-fixture/src/engine_port.rs FixtureEnginePort; after UTSUSHI-154 the adapter must be a thin alias/newtype over EnginePortAdapter<FixtureEnginePort>, and the duplicate hand-rolled lifecycle code must be removed (not left behind a feature flag or #[deprecated]). The CLI registration in crates/utsushi-cli/src/main.rs:14-46 keeps registering FixtureRuntimeAdapter by the same NAME so trace/capture/smoke run unchanged through the canonical path.\n\nDeliverables:\n- Remove the hand-rolled `impl RuntimeAdapter for FixtureRuntimeAdapter` body in utsushi-fixture, leaving FixtureRuntimeAdapter as an alias/newtype delegating to EnginePortAdapter<FixtureEnginePort>.\n- No dual trace/capture/smoke implementation remains in the crate (the EnginePort lifecycle is the single source).\n- Existing utsushi-cli and utsushi-fixture goldens (smoke/trace/capture) pass unchanged through the canonical adapter.",
+      "acceptance": "rg -n 'impl RuntimeAdapter for FixtureRuntimeAdapter' crates/utsushi-fixture/src returns no hits (the hand-rolled impl is gone). cargo test -p utsushi-cli and cargo test -p utsushi-fixture pass with unchanged trace/capture/smoke goldens. just ci is green.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-29T13:26:33.702Z",
+      "updated_at": "2026-06-29T13:26:33.702Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["utsushi"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "rg -n 'impl RuntimeAdapter for FixtureRuntimeAdapter' crates/utsushi-fixture/src"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-fixture"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-cli"
+        }
+      ],
+      "audit_focus": [
+        "No parallel hand-rolled trace/capture/smoke lifecycle survives alongside the EnginePort one",
+        "Deletion lands in the same change-set posture as the EnginePortAdapter replacement (no shim window)",
+        "CLI behaviour and goldens are byte-stable through the canonical adapter"
+      ]
+    },
+    {
+      "id": "utsushi-reallive-replay-through-port",
+      "title": "Route the reallive replay CLI path through a real UtsushiReallivePort (deferred behind reallive port impl)",
+      "kind": "feature",
+      "milestone": "real-game-testing-ready",
+      "status": "ready",
+      "priority": "P2",
+      "estimate_points": 1,
+      "risk": "high",
+      "owner": null,
+      "branch": null,
+      "spec": "P2 decomposition node 4 of 4 — DEFER with rationale. The third runtime path is the standalone reallive VM driver: crates/utsushi-cli/src/replay.rs and replay_validate.rs call utsushi_reallive::{replay_scene, replay_until_first_pause, validate_log_contains} directly, bypassing EnginePort/Runner. The canonical-path decision says these should eventually run through UtsushiReallivePort::launch/observe driven by Runner. But UtsushiReallivePort is currently a stub (every lifecycle method returns EnginePortError::Lifecycle 'unimplemented: utsushi-reallive scaffold'), so the EnginePort replacement does not yet exist. no-legacy-compat forbids deleting the shipping replay_scene path before its replacement lands in the same change; therefore this node is DEFERRED until the reallive engine port is implemented (UTSUSHI-146 family). When that port is real, fold the replay/replay-validate driver into UtsushiReallivePort (replay_scene becomes the port's observe internals, surfaced through SinkSet/TextSurfaceSink) and delete the free-function CLI driver path in the same change.\n\nDeliverables (when unblocked):\n- UtsushiReallivePort::launch/observe drive the existing VM (replay_scene logic) and emit TextLine observations through its SinkSet.\n- utsushi-cli replay/replay-validate dispatch through Runner + EnginePortAdapter<UtsushiReallivePort> instead of the free functions.\n- The standalone utsushi_reallive::replay_scene/validate_log_contains free-function CLI entry is deleted in the same change.\n- Until then, this node records the defer rationale and the blocking dependency in docs/utsushi-substrate-facade.md.",
+      "acceptance": "While blocked: docs/utsushi-substrate-facade.md names the reallive replay_scene path as deferred and cites UTSUSHI-146 as the unblocking dependency. When delivered: rg -n 'replay_scene|validate_log_contains' crates/utsushi-cli/src returns no hits and the replay/replay-validate subcommands drive EnginePortAdapter<UtsushiReallivePort> through Runner (rg -n 'UtsushiReallivePort|Runner' crates/utsushi-cli/src non-empty), with replay/replay-validate goldens unchanged.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-29T13:26:33.702Z",
+      "updated_at": "2026-06-29T13:26:33.702Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["utsushi"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "rg -n 'replay_scene|validate_log_contains|UtsushiReallivePort|Runner' crates/utsushi-cli/src"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-reallive"
+        },
+        {
+          "type": "manual",
+          "value": "Confirm the reallive EnginePort is no longer a stub before claiming delivery; until then verify the defer rationale + UTSUSHI-146 dependency are recorded in the facade doc."
+        }
+      ],
+      "audit_focus": [
+        "The shipping replay path is not deleted before its EnginePort replacement exists (no broken-command window)",
+        "When delivered, replay_scene is internalised into the port rather than left as a parallel free-function entry",
+        "Defer rationale is honest and time-bounded by the named UTSUSHI-146 dependency, not open-ended"
       ]
     }
   ],
@@ -45401,6 +45679,42 @@
       "to_node": "document-title-reference-allowlist-for-active-docs",
       "type": "requires",
       "created_at": "2026-06-27T18:49:37.930Z"
+    },
+    {
+      "from_node": "utsushi-runtime-canonical-path-decision",
+      "to_node": "utsushi-cli-route-conformance-result",
+      "type": "requires",
+      "created_at": "2026-06-29T13:26:34.173Z"
+    },
+    {
+      "from_node": "UTSUSHI-154",
+      "to_node": "utsushi-cli-route-conformance-result",
+      "type": "requires",
+      "created_at": "2026-06-29T13:26:34.272Z"
+    },
+    {
+      "from_node": "utsushi-runtime-canonical-path-decision",
+      "to_node": "utsushi-delete-parallel-runtime-adapter",
+      "type": "requires",
+      "created_at": "2026-06-29T13:26:34.359Z"
+    },
+    {
+      "from_node": "UTSUSHI-154",
+      "to_node": "utsushi-delete-parallel-runtime-adapter",
+      "type": "requires",
+      "created_at": "2026-06-29T13:26:34.465Z"
+    },
+    {
+      "from_node": "utsushi-runtime-canonical-path-decision",
+      "to_node": "utsushi-reallive-replay-through-port",
+      "type": "requires",
+      "created_at": "2026-06-29T13:26:34.571Z"
+    },
+    {
+      "from_node": "utsushi-cli-route-conformance-result",
+      "to_node": "utsushi-reference-recorder-reconcile-or-delete",
+      "type": "requires",
+      "created_at": "2026-06-29T13:26:34.684Z"
     }
   ],
   "findings": [
@@ -58087,6 +58401,116 @@
       "finished_at": "2026-06-29T06:28:27.438Z",
       "summary": "Merge recorded with squash at commit 294e446",
       "log_path": null
+    },
+    {
+      "id": "6041e8ab-0cab-4f74-a797-ad6ac8b32ed8",
+      "node_id": "spec-acceptance-text-writes-shift-jis-title-trailing-space-as-u-",
+      "kind": "implement",
+      "status": "completed",
+      "command": null,
+      "provider": null,
+      "exit_code": null,
+      "git_sha": null,
+      "external_id": null,
+      "url": null,
+      "rationale": null,
+      "superseded_by": null,
+      "report_path": null,
+      "audit_kind": null,
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-29T13:22:11.184Z",
+      "finished_at": "2026-06-29T13:22:11.184Z",
+      "summary": "AC-text reconcile: UTSUSHI-218 spec+acceptance wrote the SJIS trailing space as \\u{8140} (腀) instead of \\u{3000} (full-width space); code was already correct (iconv: 0x8140 SJIS = U+3000). Fixed UTSUSHI-218 via qd node edit. No code change.",
+      "log_path": null
+    },
+    {
+      "id": "961a18d8-bd03-40f7-974e-94b08f252fc8",
+      "node_id": "spec-acceptance-text-writes-shift-jis-title-trailing-space-as-u-",
+      "kind": "audit",
+      "status": "passed",
+      "command": null,
+      "provider": null,
+      "exit_code": null,
+      "git_sha": null,
+      "external_id": null,
+      "url": null,
+      "rationale": null,
+      "superseded_by": null,
+      "report_path": ".tmp/audit-spec-acceptance-text-writes-shift-jis-title-trailing-space-as-u-.json",
+      "audit_kind": "general",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-29T13:22:11.271Z",
+      "finished_at": "2026-06-29T13:22:11.360Z",
+      "summary": "Audit passed from .tmp/audit-spec-acceptance-text-writes-shift-jis-title-trailing-space-as-u-.json",
+      "log_path": null
+    },
+    {
+      "id": "0fb89aab-0953-42be-949f-e1f411054844",
+      "node_id": "spec-acceptance-text-writes-shift-jis-title-trailing-space-as-u-",
+      "kind": "verification",
+      "status": "passed",
+      "command": "manual:Focused re-audit of promoted finding f3337527-0809-473e-8639-5b346736e43c from UTSUSHI-218: Spec acceptance text writes Shift-JIS title trailing space as \\u{8140} but implementation/test use \\u{3000}",
+      "provider": "sign-off",
+      "exit_code": null,
+      "git_sha": null,
+      "external_id": null,
+      "url": null,
+      "rationale": null,
+      "superseded_by": null,
+      "report_path": null,
+      "audit_kind": null,
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-29T13:22:11.457Z",
+      "finished_at": "2026-06-29T13:22:11.458Z",
+      "summary": "Investigate worker confirmed via iconv that SJIS 0x8140 decodes to U+3000 and code (save.rs + save_synthetic/save_real_bytes tests) already asserts \\u{3000}; the \\u{8140} typo was only in UTSUSHI-218 prose, now corrected.",
+      "log_path": null
+    },
+    {
+      "id": "30955df8-65ec-4d42-8ae7-a4b54004529d",
+      "node_id": "assertseverity-runtime-guard-for-missing-enum-entries-is-dead-co",
+      "kind": "implement",
+      "status": "completed",
+      "command": null,
+      "provider": null,
+      "exit_code": null,
+      "git_sha": null,
+      "external_id": null,
+      "url": null,
+      "rationale": null,
+      "superseded_by": null,
+      "report_path": null,
+      "audit_kind": null,
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-29T13:26:56.678Z",
+      "finished_at": "2026-06-29T13:26:56.678Z",
+      "summary": "Remove dead missing-enum completeness loop in assertSeverity (Record<RepairJobSeverity,number> is the compile-time guarantee); strengthen below-minimum test. Audit PASS clean.",
+      "log_path": null
+    },
+    {
+      "id": "57e64b48-fca9-4e07-a2ed-89bd545f5c04",
+      "node_id": "assertseverity-runtime-guard-for-missing-enum-entries-is-dead-co",
+      "kind": "audit",
+      "status": "passed",
+      "command": null,
+      "provider": null,
+      "exit_code": null,
+      "git_sha": null,
+      "external_id": null,
+      "url": null,
+      "rationale": null,
+      "superseded_by": null,
+      "report_path": ".tmp/audit-assertseverity-runtime-guard-for-missing-enum-entries-is-dead-co.json",
+      "audit_kind": "general",
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-29T13:26:56.782Z",
+      "finished_at": "2026-06-29T13:26:56.875Z",
+      "summary": "Audit passed from .tmp/audit-assertseverity-runtime-guard-for-missing-enum-entries-is-dead-co.json",
+      "log_path": null
     }
   ],
   "node_notes": [
@@ -58775,6 +59199,14 @@
       "node_id": "clarify-catalog-opportunity-public-runtime-evidence-count-path",
       "text": "Verification sign-off (manual): Audit PASS: no false advertisement (key_validation counts, adapter_matrix excluded by isRuntimeReadinessEvidence); boundary test discriminating; doc accurate. Evidence: .tmp/audit-clarify-catalog-opportunity-public-runtime-evidence-count-path.json\nValue: Focused re-audit of promoted finding 7a5ca951-1324-4b77-b555-b6d607f65ce6 from CATALOG-061: Clarify catalog opportunity public runtime evidence count path\nEvidence: .tmp/audit-clarify-catalog-opportunity-public-runtime-evidence-count-path.json",
       "created_at": "2026-06-29T04:52:27.155Z",
+      "kind": "note",
+      "evidence": null
+    },
+    {
+      "id": "53d2e5ee-fe57-4539-9839-bf44058659e0",
+      "node_id": "spec-acceptance-text-writes-shift-jis-title-trailing-space-as-u-",
+      "text": "Verification sign-off (manual): Investigate worker confirmed via iconv that SJIS 0x8140 decodes to U+3000 and code (save.rs + save_synthetic/save_real_bytes tests) already asserts \\u{3000}; the \\u{8140} typo was only in UTSUSHI-218 prose, now corrected.\nValue: Focused re-audit of promoted finding f3337527-0809-473e-8639-5b346736e43c from UTSUSHI-218: Spec acceptance text writes Shift-JIS title trailing space as \\u{8140} but implementation/test use \\u{3000}",
+      "created_at": "2026-06-29T13:22:11.451Z",
       "kind": "note",
       "evidence": null
     }
