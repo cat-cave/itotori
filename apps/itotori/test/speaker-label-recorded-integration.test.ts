@@ -180,7 +180,7 @@ function bundleFor(
         cost: ZERO_COST,
         // ITOTORI-230 — canonical alpha posture stand-in.
         routingPosture: {
-          only: [input.modelMetadata.providerId],
+          order: [input.modelMetadata.providerId],
           allow_fallbacks: false,
           data_collection: "deny",
           zdr: true,
@@ -254,7 +254,7 @@ describe("SpeakerLabelAgent + RecordedModelProvider integration", () => {
           cost: ZERO_COST,
           // ITOTORI-230 — canonical alpha posture stand-in.
           routingPosture: {
-            only: [input.modelMetadata.providerId],
+            order: [input.modelMetadata.providerId],
             allow_fallbacks: false,
             data_collection: "deny",
             zdr: true,
