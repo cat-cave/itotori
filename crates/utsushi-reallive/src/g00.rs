@@ -84,9 +84,11 @@
 //! payload falls **short** of `uncompressed_size` (input exhausted
 //! mid-stream), the decoder does not silently truncate: it returns the
 //! partial buffer paired with a structured [`G00Warning::PayloadLengthMismatch`]
-//! so downstream consumers observe the shortfall. When the payload
-//! **overruns** `uncompressed_size`, the decoder surfaces a typed
-//! [`G00DecodeError::OutputOverflow`] instead.
+//! so downstream consumers observe the shortfall. The payload can
+//! never **overrun** `uncompressed_size`: the decoder appends one byte
+//! at a time and stops the instant `dst.len()` reaches the declared
+//! size, so it is structurally impossible to emit more bytes than
+//! declared (see the invariant `debug_assert!` in `lzss_decode_classic`).
 //!
 //! # Clean-room provenance
 //!
@@ -371,17 +373,6 @@ pub enum G00DecodeError {
         /// Bytes actually emitted before the input was exhausted.
         emitted: usize,
     },
-    /// LZSS stream produced more bytes than the declared
-    /// `uncompressed_size`. The partial output is discarded before this
-    /// error surfaces so callers do not observe overshooting buffers.
-    OutputOverflow {
-        /// Sub-format whose LZSS stream overflowed.
-        g00_type: G00Type,
-        /// Bytes declared by the LZSS header.
-        declared_uncompressed_size: usize,
-        /// Bytes emitted at the moment the overflow was caught.
-        emitted: usize,
-    },
 }
 
 impl std::fmt::Display for G00DecodeError {
@@ -430,16 +421,6 @@ impl std::fmt::Display for G00DecodeError {
             } => write!(
                 formatter,
                 "utsushi.reallive.g00.unexpected_end_of_stream: \
-                 type={g00_type:?} declared_uncompressed_size={declared_uncompressed_size} \
-                 emitted={emitted}"
-            ),
-            G00DecodeError::OutputOverflow {
-                g00_type,
-                declared_uncompressed_size,
-                emitted,
-            } => write!(
-                formatter,
-                "utsushi.reallive.g00.output_overflow: \
                  type={g00_type:?} declared_uncompressed_size={declared_uncompressed_size} \
                  emitted={emitted}"
             ),
@@ -649,7 +630,7 @@ fn decode_type0(
         .saturating_mul(4);
 
     let (decoded, length_warning) =
-        lzss_decode_classic(section.payload, section.uncompressed_size, G00Type::RawBgr)?;
+        lzss_decode_classic(section.payload, section.uncompressed_size, G00Type::RawBgr);
     let mut bgra = pad_or_truncate(decoded, pixel_byte_count);
 
     bgra_to_rgba_in_place(&mut bgra);
@@ -689,7 +670,7 @@ fn decode_type1(
         section.payload,
         section.uncompressed_size,
         G00Type::PalettedLzss,
-    )?;
+    );
 
     if decoded.len() < required_decoded_len {
         return Err(G00DecodeError::DecodedBufferTooShort {
@@ -813,7 +794,7 @@ fn decode_type2(
         section.payload,
         section.uncompressed_size,
         G00Type::RegionedLzss,
-    )?;
+    );
 
     // Type-2 atlas: reorder BGRA to RGBA at the decode boundary.
     let mut pixels_rgba = decoded;
@@ -922,7 +903,7 @@ fn lzss_decode_classic(
     input: &[u8],
     uncompressed_size: usize,
     g00_type: G00Type,
-) -> Result<(Vec<u8>, Option<G00Warning>), G00DecodeError> {
+) -> (Vec<u8>, Option<G00Warning>) {
     let mut dst = Vec::with_capacity(uncompressed_size);
     let mut ring = vec![0u8; G00_LZSS_RING_BUFFER_LEN];
     let mut cursor: usize = G00_LZSS_INITIAL_CURSOR;
@@ -976,13 +957,22 @@ fn lzss_decode_classic(
         }
     }
 
-    if dst.len() > uncompressed_size {
-        return Err(G00DecodeError::OutputOverflow {
-            g00_type,
-            declared_uncompressed_size: uncompressed_size,
-            emitted: dst.len(),
-        });
-    }
+    // Invariant: `dst.len()` can reach but never exceed `uncompressed_size`,
+    // so the decoder cannot overrun the declared size. The outer loop only
+    // runs while `dst.len() < uncompressed_size`, and every byte is appended
+    // one at a time: the literal branch pushes exactly once per iteration, and
+    // the back-reference branch breaks the instant `dst.len() >= uncompressed_size`
+    // after each single-byte push. There is therefore no input that can drive
+    // `dst.len()` past `uncompressed_size` — a structural overflow guard here
+    // would be unreachable, so the invariant is pinned with a debug assertion
+    // instead of a runtime error path.
+    debug_assert!(
+        dst.len() <= uncompressed_size,
+        "lzss_decode_classic overshot uncompressed_size \
+         (dst.len()={}, uncompressed_size={})",
+        dst.len(),
+        uncompressed_size,
+    );
 
     let warning = if dst.len() != uncompressed_size {
         Some(G00Warning::PayloadLengthMismatch {
@@ -994,7 +984,7 @@ fn lzss_decode_classic(
         None
     };
 
-    Ok((dst, warning))
+    (dst, warning)
 }
 
 #[cfg(test)]
@@ -1098,8 +1088,7 @@ mod tests {
     fn lzss_classic_pure_literals_round_trip() {
         let plaintext: Vec<u8> = (0..16u8).collect();
         let encoded = encode_lzss_literals_only(&plaintext);
-        let (out, warning) =
-            lzss_decode_classic(&encoded, plaintext.len(), G00Type::RawBgr).expect("must decode");
+        let (out, warning) = lzss_decode_classic(&encoded, plaintext.len(), G00Type::RawBgr);
         assert_eq!(out, plaintext);
         assert!(warning.is_none(), "no length mismatch on clean round trip");
     }
@@ -1114,8 +1103,7 @@ mod tests {
         let literals = vec![0x10u8, 0x20, 0x30, 0x40];
         let encoded = encode_lzss_one_backref(&literals, G00_LZSS_INITIAL_CURSOR as u16, 4);
         let expected = vec![0x10, 0x20, 0x30, 0x40, 0x10, 0x20, 0x30, 0x40];
-        let (out, warning) =
-            lzss_decode_classic(&encoded, expected.len(), G00Type::RawBgr).expect("must decode");
+        let (out, warning) = lzss_decode_classic(&encoded, expected.len(), G00Type::RawBgr);
         assert_eq!(out, expected);
         assert!(warning.is_none());
     }
@@ -1130,8 +1118,7 @@ mod tests {
         // not silently truncate.
         let plaintext: Vec<u8> = (0..4u8).collect();
         let encoded = encode_lzss_literals_only(&plaintext);
-        let (out, warning) = lzss_decode_classic(&encoded, 100, G00Type::RawBgr)
-            .expect("over-declared size must surface warning, not error");
+        let (out, warning) = lzss_decode_classic(&encoded, 100, G00Type::RawBgr);
         assert!(out.len() < 100, "decoder must stop when input runs out");
         match warning {
             Some(G00Warning::PayloadLengthMismatch {
