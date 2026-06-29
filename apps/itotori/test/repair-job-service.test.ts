@@ -397,9 +397,17 @@ describe("RepairJobService outcome flow", () => {
 
   it("recordOutcome on an unclaimed jobId throws a typed error", () => {
     const service = makeService();
-    expect(() => service.recordOutcome("repair-job-unknown", "succeeded")).toThrowError(
-      RepairJobServiceError,
-    );
+    let caught: unknown;
+    try {
+      service.recordOutcome("repair-job-unknown", "succeeded");
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(RepairJobServiceError);
+    // The structured code must describe the actual problem (job not
+    // in-flight), not be mis-tagged as 'missing_pair' — a caller
+    // switching on err.code would otherwise mis-route the error.
+    expect((caught as RepairJobServiceError).code).toBe("not_in_flight");
   });
 });
 

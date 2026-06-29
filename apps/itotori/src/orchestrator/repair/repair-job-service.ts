@@ -68,7 +68,8 @@ export class RepairJobServiceError extends Error {
     public readonly code:
       | "missing_pair"
       | "below_minimum_severity"
-      | "scene_scope_requires_scene_index",
+      | "scene_scope_requires_scene_index"
+      | "not_in_flight",
     message: string,
   ) {
     super(message);
@@ -171,7 +172,7 @@ export class RepairJobService {
   recordOutcome(jobId: string, outcome: RepairJobOutcome): void {
     if (!this.inflight.has(jobId)) {
       throw new RepairJobServiceError(
-        "missing_pair",
+        "not_in_flight",
         `recordOutcome called for jobId='${jobId}' which is not in-flight`,
       );
     }
