@@ -64,9 +64,11 @@ impl InjectFailure {
 pub struct BinaryPatchSmokeConfig<'a> {
     /// Optional fixture directory. When supplied, the smoke reads
     /// `SEEN.TXT` from `<fixture>/SEEN.TXT` (overriding the synthetic
-    /// fixture builder); otherwise the smoke constructs a deterministic
-    /// 47-byte SEEN.TXT envelope and applies a fixed length-preserving
-    /// patch.
+    /// fixture builder); otherwise the smoke constructs the deterministic
+    /// real-shape SEEN.TXT envelope from [`build_synthetic_seen_txt`] (the
+    /// 80,000-byte 10,000-slot directory + one post-KAIFUU-191 scene) and
+    /// applies a fixed length-preserving patch to its Textout dialogue
+    /// slot.
     pub fixture_dir: Option<&'a Path>,
     pub output_dir: &'a Path,
     pub inject_failure: InjectFailure,
@@ -99,61 +101,115 @@ impl BinarySmokeOutcome {
     }
 }
 
-/// Build a deterministic synthetic SEEN.TXT envelope in the real RealLive
-/// 10,000-slot fixed-offset-table shape (KAIFUU-188). One scene is
-/// populated at slot 1 (`reallive:scene-0001`); its payload sits at file
-/// offset `0x0001_3880` (immediately after the 80,000-byte directory),
-/// mirroring Sweetie HD's first-scene layout.
+/// Byte length of the editable Textout dialogue run in the synthetic
+/// scene (`"あい"` = `82 A0 82 A2`). Both the builder and the
+/// length-preserving SlotEdit key on this so the smoke stays in lock-step
+/// when the fixture is regenerated.
+const SYNTHETIC_DIALOGUE_BYTE_LEN: u64 = 4;
+
+/// Build a deterministic synthetic SEEN.TXT envelope that is structurally
+/// faithful to real RealLive bytes (KAIFUU FIX-1).
+///
+/// Envelope: the real 10,000-slot fixed-offset directory (KAIFUU-188) —
+/// 80,000 bytes of `(u32_le offset, u32_le length)` pairs at file offset
+/// 0. One scene is populated at slot 1 (`reallive:scene-0001`); its
+/// payload sits at file offset `0x0001_3880` (= 80,000, immediately after
+/// the directory), mirroring Sweetie HD's first-scene layout. Slot 0 stays
+/// zeroed (reserved) so the envelope parser exercises its skip path.
+///
+/// Scene body: **post-KAIFUU-191 real opener-byte shape** decoded by
+/// `kaifuu_reallive::parse_scene`. The bytes are the *decompressed* scene
+/// bytecode the parser consumes — real Seen.txt scenes add an outer AVG32
+/// LZSS + XOR frame (8-byte preamble per
+/// `kaifuu_reallive::AVG32_COMPRESSED_PREAMBLE_LEN`, `0x1d0`-byte scene
+/// header) on top, and the length-preserving patch-back surface operates
+/// on this post-decompression layer (parser contract: "the caller owns
+/// AVG32 LZSS + XOR decompression"). The unit tests prove the body still
+/// round-trips byte-identically through `compress_avg32_literal` /
+/// `decompress_avg32`.
+///
+/// The body opens with a documented Meta run (MetaLine / MetaEntrypoint /
+/// MetaKidoku — the real Sweetie HD scene-1 prologue shape) and then
+/// exercises every alpha string role through real 8-byte `CommandElement`
+/// headers (`0x23`, module_type, module_id, opcode_u16_le, argc, overload,
+/// reserved) plus a bracketed `( arg , arg )` argument list:
+/// - `SetSpeaker`   — module_msg (id 3) opcode 3 → `CharacterTextDisplay`.
+/// - `Textout`      — inline Shift-JIS run `"あい"` (editable Dialogue).
+/// - `TextDisplay`  — module_msg (id 3) opcode 10 → `TextDisplay`.
+/// - `Choice`       — module_sel (id 5), argc=2, two Shift-JIS choices.
+/// - scene terminator — module_sys (id 4) opcode 17 → `End`.
+///
+/// The whole body decodes with **0 unknown opcodes**; no retail bytecode
+/// or text is copied — every byte is authored from the documented shape.
 pub fn build_synthetic_seen_txt() -> Vec<u8> {
-    // Scene blob: SetSpeaker("S") + TextDisplay("Hello!").
-    // String operand: 0x73 + u16 LE length + bytes.
-    fn string_operand(bytes: &[u8]) -> Vec<u8> {
-        let mut out = Vec::with_capacity(3 + bytes.len());
-        out.push(0x73);
-        out.extend_from_slice(&(bytes.len() as u16).to_le_bytes());
-        out.extend_from_slice(bytes);
-        out
+    // An 8-byte real `CommandElement` header (rlvm `bytecode.h:CommandElement`
+    // — research anchor only): `0x23`, module_type, module_id,
+    // opcode_u16_le (lo, hi), argc, overload, reserved.
+    fn command_header(module_type: u8, module_id: u8, opcode: u16, argc: u8) -> [u8; 8] {
+        let [op_lo, op_hi] = opcode.to_le_bytes();
+        [0x23, module_type, module_id, op_lo, op_hi, argc, 0x00, 0x00]
     }
-    fn instruction(opcode: u8, operands: &[&[u8]]) -> Vec<u8> {
-        let mut out = Vec::new();
-        out.push(0x23);
-        out.push(opcode);
-        out.push(operands.len() as u8);
-        for operand in operands {
-            out.extend_from_slice(operand);
-        }
-        out
-    }
-    let speaker = string_operand(b"S");
-    let dialogue = string_operand(b"Hello!");
-    let mut scene_blob = Vec::new();
-    scene_blob.extend_from_slice(&instruction(0x02, &[speaker.as_slice()]));
-    scene_blob.extend_from_slice(&instruction(0x01, &[dialogue.as_slice()]));
+
+    // module_type 1 = Kepago RLOperation namespace; module ids per the
+    // documented rlvm `module_*.cc` catalogue.
+    const MODULE_TYPE_KEPAGO: u8 = 1;
+    const MODULE_MSG: u8 = 3;
+    const MODULE_SEL: u8 = 5;
+    const MODULE_SYS: u8 = 4;
+
+    let mut scene = Vec::new();
+    // Meta prologue (real scene-1 opens with a MetaLine/MetaEntrypoint run).
+    scene.extend_from_slice(&[0x0A, 0x02, 0x00]); // MetaLine(2)
+    scene.extend_from_slice(&[0x21, 0x00, 0x00]); // MetaEntrypoint(0)
+    scene.extend_from_slice(&[0x40, 0x01, 0x00]); // MetaKidoku(1)
+    // SetSpeaker: module_msg opcode 3 → CharacterTextDisplay (argc 0).
+    scene.extend_from_slice(&command_header(MODULE_TYPE_KEPAGO, MODULE_MSG, 3, 0));
+    // Textout: inline Shift-JIS dialogue run "あい" (82 A0 82 A2). This is
+    // the single editable Dialogue slot the length-preserving smoke edits.
+    scene.extend_from_slice(&[0x82, 0xA0, 0x82, 0xA2]);
+    // TextDisplay: module_msg opcode 10 (in 1..=200, != 3) (argc 0).
+    scene.extend_from_slice(&command_header(MODULE_TYPE_KEPAGO, MODULE_MSG, 10, 0));
+    // Choice: module_sel, argc 2, bracketed `( "あ" , "い" )` argument list.
+    scene.extend_from_slice(&command_header(MODULE_TYPE_KEPAGO, MODULE_SEL, 0, 2));
+    scene.push(b'('); // 0x28
+    scene.extend_from_slice(&[0x82, 0xA0]); // choice 0 "あ"
+    scene.push(b','); // 0x2C arg separator
+    scene.extend_from_slice(&[0x82, 0xA2]); // choice 1 "い"
+    scene.push(b')'); // 0x29
+    // Scene terminator: module_sys opcode 17 → End (argc 0).
+    scene.extend_from_slice(&command_header(MODULE_TYPE_KEPAGO, MODULE_SYS, 17, 0));
 
     let directory_byte_len = kaifuu_reallive::REALLIVE_SEEN_TXT_DIRECTORY_BYTE_LEN as usize;
     let payload_offset = directory_byte_len as u32;
-    let mut archive = vec![0u8; directory_byte_len + scene_blob.len()];
-    // Slot 1: (offset = 0x13880, size = scene_blob.len()).
-    let slot1 = 8usize; // slot 1 lives at directory offset 8 (slot index × 8 bytes).
+    let mut archive = vec![0u8; directory_byte_len + scene.len()];
+    // Slot 1: (offset = 0x0001_3880, size = scene.len()). Slot N lives at
+    // directory byte offset N × 8; slot 0 stays zeroed (reserved).
+    let slot1 = 8usize;
     archive[slot1..slot1 + 4].copy_from_slice(&payload_offset.to_le_bytes());
-    archive[slot1 + 4..slot1 + 8].copy_from_slice(&(scene_blob.len() as u32).to_le_bytes());
-    archive[directory_byte_len..].copy_from_slice(&scene_blob);
+    archive[slot1 + 4..slot1 + 8].copy_from_slice(&(scene.len() as u32).to_le_bytes());
+    archive[directory_byte_len..].copy_from_slice(&scene);
     archive
 }
 
-/// Build a deterministic synthetic SlotEdit replacing the dialogue
-/// slot's text with a length-preserving translation.
+/// Build a deterministic synthetic SlotEdit replacing the editable Textout
+/// dialogue run (`"あい"`) with a length-preserving Shift-JIS translation
+/// (`"うえ"`, also 4 bytes). Both encode to `SYNTHETIC_DIALOGUE_BYTE_LEN`
+/// bytes so the patch stays length-preserving and the post-patch self-check
+/// re-parse keeps the scene table byte-identical.
 pub fn build_synthetic_slot_edit(scenes: &[Scene]) -> SlotEdit {
     let scene = &scenes[0];
     let dialogue_slot = scene
         .strings
         .iter()
-        .find(|s| s.byte_len == 6)
-        .expect("synthetic dialogue slot of 6 bytes");
+        .find(|s| {
+            s.semantic_role == kaifuu_reallive::StringSlotRole::Dialogue
+                && s.byte_len == SYNTHETIC_DIALOGUE_BYTE_LEN
+        })
+        .expect("synthetic Textout dialogue slot of 4 bytes");
     SlotEdit {
         scene_id: scene.scene_id.as_str().to_string(),
         slot_id: dialogue_slot.slot_id.as_str().to_string(),
-        replacement_text: "Bye!!!".to_string(),
+        replacement_text: "うえ".to_string(),
         length_policy: SlotEditLengthPolicy::LengthPreserving,
         expected_source_hash: None,
     }
@@ -579,9 +635,110 @@ mod tests {
         assert_eq!(index.entries.len(), 1);
     }
 
+    /// FIX-1 acceptance: the synthetic Seen.txt parses through the CURRENT
+    /// (post-KAIFUU-191) parser with **0 unknown opcodes** and exercises
+    /// the four target roles — Textout, TextDisplay, SetSpeaker
+    /// (`CharacterTextDisplay`), and Choice. This is the non-tautological
+    /// guard: it asserts real parser-shape facts, not just "the builder
+    /// returns bytes".
     #[test]
-    #[ignore = "KAIFUU-191: synthetic Seen.txt bytes use the pre-KAIFUU-191 0x23-opener shape; \
-                this test needs migration to the real opener-byte shape in a follow-up node"]
+    fn synthetic_seen_txt_decodes_four_roles_with_zero_unknown_opcodes() {
+        use kaifuu_reallive::{RealLiveOpcode, StringSlotRole, parse_scene};
+
+        let archive = build_synthetic_seen_txt();
+        let index = parse_archive(&archive).expect("envelope parses");
+        assert_eq!(index.entries.len(), 1, "one populated scene at slot 1");
+        let entry = &index.entries[0];
+        let blob = &archive[entry.byte_offset as usize
+            ..(entry.byte_offset + u64::from(entry.byte_len)) as usize];
+
+        // (1) Decode the real bytecode: ZERO unknown opcodes.
+        let opcodes = parse_scene(blob).expect("scene bytecode decodes");
+        let unknown: Vec<&RealLiveOpcode> =
+            opcodes.iter().filter(|o| !o.is_recognized()).collect();
+        assert!(
+            unknown.is_empty(),
+            "synthetic scene must decode with 0 unknown opcodes; found {unknown:?}"
+        );
+
+        // (2) All four target opcode variants are present.
+        assert!(
+            opcodes
+                .iter()
+                .any(|o| matches!(o, RealLiveOpcode::Textout { .. })),
+            "Textout role present"
+        );
+        assert!(
+            opcodes
+                .iter()
+                .any(|o| matches!(o, RealLiveOpcode::TextDisplay { .. })),
+            "TextDisplay role present"
+        );
+        assert!(
+            opcodes
+                .iter()
+                .any(|o| matches!(o, RealLiveOpcode::CharacterTextDisplay)),
+            "SetSpeaker (CharacterTextDisplay) role present"
+        );
+        assert!(
+            opcodes
+                .iter()
+                .any(|o| matches!(o, RealLiveOpcode::Choice { .. })),
+            "Choice role present"
+        );
+
+        // (3) Project into the Scene tree: the four string-slot roles flow
+        //     through to the inventory surface.
+        let scene = parse_scene_into_ast(blob, entry.scene_id, entry.byte_offset)
+            .scene
+            .expect("scene projects into the AST");
+        let has_role = |role: StringSlotRole| scene.strings.iter().any(|s| s.semantic_role == role);
+        assert!(
+            has_role(StringSlotRole::Dialogue),
+            "Dialogue slots (Textout + TextDisplay)"
+        );
+        assert!(
+            has_role(StringSlotRole::SpeakerName),
+            "SpeakerName slot (SetSpeaker)"
+        );
+        assert!(has_role(StringSlotRole::Choice), "Choice slots");
+    }
+
+    /// FIX-1 structural faithfulness: the synthetic decompressed scene
+    /// bytecode round-trips byte-identically through the real AVG32
+    /// LZSS + XOR compression framing, proving the body is compatible with
+    /// the outer frame a real Seen.txt adds (the smoke itself operates on
+    /// the post-decompression layer per the parser contract).
+    #[test]
+    fn synthetic_scene_round_trips_through_avg32_compression_framing() {
+        use kaifuu_reallive::{
+            AVG32_COMPRESSED_PREAMBLE_LEN, compress_avg32_literal, decompress_avg32, parse_scene,
+        };
+
+        let archive = build_synthetic_seen_txt();
+        let index = parse_archive(&archive).expect("envelope parses");
+        let entry = &index.entries[0];
+        let blob = &archive[entry.byte_offset as usize
+            ..(entry.byte_offset + u64::from(entry.byte_len)) as usize];
+
+        let compressed = compress_avg32_literal(blob).expect("AVG32 compresses");
+        assert!(
+            compressed.len() >= AVG32_COMPRESSED_PREAMBLE_LEN,
+            "compressed stream carries the 8-byte AVG32 preamble"
+        );
+        let decompressed = decompress_avg32(&compressed, blob.len()).expect("AVG32 decompresses");
+        assert_eq!(
+            decompressed, blob,
+            "AVG32 LZSS + XOR round-trips byte-identically"
+        );
+        assert_eq!(
+            parse_scene(&decompressed).expect("decompressed decodes").len(),
+            parse_scene(blob).expect("plaintext decodes").len(),
+            "decompressed bytecode decodes identically to the in-archive plaintext"
+        );
+    }
+
+    #[test]
     fn synthetic_seen_txt_round_trips_with_length_preserving_edit() {
         let archive = build_synthetic_seen_txt();
         let index = parse_archive(&archive).expect("parses");
@@ -590,5 +747,6 @@ mod tests {
         let patched =
             apply_patches(&archive, &index, &scenes, &[edit]).expect("synthetic edit applies");
         assert_eq!(patched.len(), archive.len(), "length-preserving");
+        assert_ne!(patched, archive, "the dialogue bytes actually changed");
     }
 }
