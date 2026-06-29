@@ -32052,7 +32052,7 @@
       "title": "Make Sweetie HD localize workflow self-proving with telemetry and verifier outputs",
       "kind": "audit-fix",
       "milestone": "alpha",
-      "status": "claimed",
+      "status": "cancelled",
       "priority": "P2",
       "estimate_points": 1,
       "risk": "medium",
@@ -32063,7 +32063,7 @@
       "validation": null,
       "context": "Promoted finding a044add0-dcaa-4ead-97f1-4fec418fac39 from UTSUSHI-231.",
       "created_at": "2026-06-28T03:33:48.830Z",
-      "updated_at": "2026-06-28T13:27:24.204Z",
+      "updated_at": "2026-06-29T15:01:25.178Z",
       "claimed_at": "2026-06-28T12:52:50.312Z",
       "done_at": null,
       "group_name": "alpha-integration",
@@ -35519,6 +35519,564 @@
       ],
       "audit_focus": [
         "Corpus-gated tests silently passing green when the real-bytes env var is unset"
+      ]
+    },
+    {
+      "id": "alpha-live-openrouter-call-unproven-and-dev-pair-unroutable",
+      "title": "Alpha live OpenRouter call has never succeeded; DEV_PAIR deepseek-v4-flash is 429-unroutable — record one real successful live invocation on a ZDR-allow-listed pair",
+      "kind": "audit-fix",
+      "milestone": "alpha",
+      "status": "ready",
+      "priority": "P0",
+      "estimate_points": 1,
+      "risk": "high",
+      "owner": null,
+      "branch": null,
+      "spec": "No live-mode OpenRouter invocation has ever succeeded anywhere in the repo: every artifacts/localize-project/* run is project=fixture-alpha (sourceGame.gameId=fixture-reallive-game), the newest agentic-loop-bundle.v0.json has 0 attempts, `find artifacts -name provider-runs` returns nothing, and no run-summary has mode=live or cost>0. The intended primary DEV_PAIR (deepseek-v4-flash) 429'd from BOTH fireworks AND deepinfra (ITOTORI-239 spec, retry 7), so the chosen pair is unroutable. The single most load-bearing alpha gate (a real LIVE OpenRouter call with cost read from the real response) is undemonstrated. This node tracks PROVING the live path end to end. Related but not duplicated: UTSUSHI-231 (live localize-project run, still ready) and ALPHA-008 (sanitized proof bundle) are the delivery vehicles; this node is the falsifiable live-proof gate they must satisfy. Because DEV_PAIR 429s, the acceptance explicitly permits selecting an ALTERNATE routable (model,provider) pair from the account-wide ZDR allow-list rather than blocking on deepseek-v4-flash.",
+      "acceptance": "A committed sanitized provider-run artifact under artifacts/localize-project/<run>/provider-runs/ records a REAL successful OpenRouter invocation: run-summary.json shows mode=live, the invocation record has costKind=billed and amountUsd>0 read verbatim from the response usage.cost, and the (model,provider) pair is recorded and is on the OpenRouter account-wide ZDR allow-list with routingPosture.zdr===true. `find artifacts/localize-project -path '*/provider-runs/*' -name '*.json'` returns the bundle and no fixture run can satisfy it. Because DEV_PAIR (deepseek-v4-flash) 429s on fireworks and deepinfra, an alternate ZDR-allow-listed (model,provider) pair MAY be selected and must be recorded as the routed pair. No raw prompt, raw response, or API key appears in any committed artifact.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-29T15:01:24.719Z",
+      "updated_at": "2026-06-29T15:01:24.719Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["itotori"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "find artifacts/localize-project -path '*/provider-runs/*' -name '*.json'"
+        },
+        {
+          "type": "manual",
+          "value": "Open the run-summary.json + provider-runs bundle for the run and confirm mode=live, costKind=billed, amountUsd>0 read verbatim from usage.cost, routingPosture.zdr===true, and a recorded ZDR-allow-listed (model,provider) pair (alternate to deepseek-v4-flash is permitted); confirm no prompt/response/secret leakage."
+        }
+      ],
+      "audit_focus": [
+        "No fixture or recorded-mode run may satisfy this — mode MUST be live with a real billed cost>0",
+        "Cost amountUsd must be read verbatim from the real response usage.cost, never estimated",
+        "Routed (model,provider) pair must be on the OpenRouter account-wide ZDR allow-list",
+        "DEV_PAIR deepseek-v4-flash is 429-unroutable on fireworks and deepinfra; alternate pair selection is permitted and the actual routed pair must be recorded",
+        "Provider-run artifact must not leak prompt body, raw response, or API key"
+      ]
+    },
+    {
+      "id": "cost-doc-comments-still-describe-pre-itotori-232-micros-cost-basis",
+      "title": "Cost-path comments/docstrings still name amountMicrosUsd as the cost-equality basis, contradicting the post-ITOTORI-232 amountUsd-authoritative body",
+      "kind": "audit-fix",
+      "milestone": "alpha",
+      "status": "ready",
+      "priority": "P1",
+      "estimate_points": 1,
+      "risk": "low",
+      "owner": null,
+      "branch": null,
+      "spec": "After ITOTORI-232, the verbatim decimal amountUsd is the authoritative cost compared at 1e-9 and amountMicrosUsd is a derived cap/telemetry mirror that CANNOT represent sub-micro costs (e.g. 0.00000602) — the ledger CHECK rejects the micros-rounded value. Four comment/doc sites still assert the obsolete micros-based contract and contradict their own code: (1) apps/itotori/src/providers/recorded.ts:34-36 module header ('usage.cost matching the captured ProviderCost.amountMicrosUsd'); (2) recorded.ts:652-656 docstring ('must equal ProviderCost.amountMicrosUsd to within 1e-9') vs body :692-699 comparing amountUsd; (3) apps/itotori/src/providers/types.ts:436-438 ProviderRunRecord doc asserting micros equality; (4) apps/itotori/src/providers/cost.ts:1-7 header ('we just convert it to integer micros'). These are the highest-reach cost-contract docs and invite reintroducing the sub-micro rounding loss the alpha cost gate forbids.",
+      "acceptance": "All four sites describe amountUsd (verbatim decimal) as authoritative within 1e-9 and amountMicrosUsd as derived/cap-only: recorded.ts:34-36 header, recorded.ts:652-656 docstring, types.ts:436-438 ProviderRunRecord doc, and cost.ts:1-7 header. `rg -n 'amountMicrosUsd' apps/itotori/src/providers/recorded.ts apps/itotori/src/providers/types.ts apps/itotori/src/providers/cost.ts` shows no remaining claim that micros is the cost comparison/equality basis (only derived/cap/telemetry mentions). The recorded cost verification test still passes.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-29T15:01:24.719Z",
+      "updated_at": "2026-06-29T15:01:24.719Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["itotori"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/app exec vitest run recorded"
+        },
+        {
+          "type": "command",
+          "value": "rg -n 'amountMicrosUsd' apps/itotori/src/providers/recorded.ts apps/itotori/src/providers/types.ts apps/itotori/src/providers/cost.ts"
+        }
+      ],
+      "audit_focus": [
+        "Cost-contract docs must match the amountUsd-authoritative body (post-ITOTORI-232)",
+        "No comment may invite reintroducing sub-micro rounding loss that the ledger CHECK rejects",
+        "Highest-reach type doc (types.ts) and module headers must carry the correct contract"
+      ]
+    },
+    {
+      "id": "dead-decompresserror-outputoverflow-variant-unreachable-twin-of-867aead",
+      "title": "Dead DecompressError::OutputOverflow variant with docs claiming it is emitted — unreachable twin of the g00 variant already removed in 867aead",
+      "kind": "audit-fix",
+      "milestone": "alpha",
+      "status": "ready",
+      "priority": "P1",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "crates/utsushi-reallive/src/decompressor.rs declares DecompressError::OutputOverflow (variant doc :142-145 says it 'is emitted', fn doc :296-299 says 'an output overflow ... produce a typed DecompressError') but the back-reference branch clips the final run (`let remaining = declared_uncompressed_size - dst.len(); for i in 0..remaining`) under loop guard `while dst.len() < declared_uncompressed_size`, so dst can reach but never exceed declared size. `rg OutputOverflow decompressor.rs` shows only the enum def (:145) and Display arm (:189) — no Err(...OutputOverflow) construction site exists. This is the same structural unreachability that commit 867aead deleted from the different enum G00DecodeError::OutputOverflow (tracked by done node g00decodeerror-outputoverflow-is-unreachable-because-the-back-re); that fix missed this twin. Dead code the no-dead-code/no-legacy rule rejects.",
+      "acceptance": "DecompressError::OutputOverflow variant (decompressor.rs ~:142-145) and its Display arm (~:189) are deleted; the 'an output overflow' phrasing is dropped from the decompress fn doc (~:296-299); a debug_assert!(dst.len() <= declared_uncompressed_size) plus a proof comment is added near the clip logic (~:398-419), mirroring 867aead. `rg -n OutputOverflow crates/utsushi-reallive/src/decompressor.rs` returns 0 hits and `cargo test -p utsushi-reallive` passes.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-29T15:01:24.719Z",
+      "updated_at": "2026-06-29T15:01:24.719Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["utsushi"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-reallive"
+        },
+        {
+          "type": "command",
+          "value": "rg -n OutputOverflow crates/utsushi-reallive/src/decompressor.rs"
+        }
+      ],
+      "audit_focus": [
+        "Confirm no Err(...OutputOverflow) construction site exists before deleting (truly dead)",
+        "Clip invariant dst.len() <= declared_uncompressed_size must hold and be pinned",
+        "Mirror the 867aead g00 fix; no-dead-code/no-legacy rule — comment must not claim an unemitted error"
+      ]
+    },
+    {
+      "id": "roadmap-acceptance-path-existence-lint-and-stale-qd-wrapper-test-ref",
+      "title": "Done node recover-stale-qd-audit-disposition-locks cites deleted scripts/qd-wrapper.test.mjs — re-point it and add a roadmap-lint that flags acceptance/verification paths absent from disk",
+      "kind": "audit-fix",
+      "milestone": null,
+      "status": "ready",
+      "priority": "P2",
+      "estimate_points": 1,
+      "risk": "low",
+      "owner": null,
+      "branch": null,
+      "spec": "The done node recover-stale-qd-audit-disposition-locks ends its acceptance with 'node scripts/qd-wrapper.test.mjs passes' and lists that as its only verification, but `find . -name qd-wrapper* -not -path '*/node_modules/*'` finds no such file — the wrapper and its test were removed in the wrapper-era to qdcli-native migration, leaving the completion claim unverifiable. Re-point the acceptance/verification to the surviving qdcli-native lock-recovery test (or the qd binary command) that actually exists, or mark the criterion explicitly historical. Additionally add a roadmap-lint to `node scripts/spec-dag.mjs validate` that flags any node whose acceptance/verification names a repo-relative path not present on disk — this also catches the stale presets/localize-sweetie-hd.pair-policy.json class (see attach_as_context: text-repair-utsushi-228-localize-project-wording).",
+      "acceptance": "No node verification or acceptance references scripts/qd-wrapper.test.mjs (`rg -n 'qd-wrapper.test.mjs' roadmap/spec-dag.json` returns 0); recover-stale-qd-audit-disposition-locks points at an on-disk qdcli-native lock-recovery test/command or is marked historical. `node scripts/spec-dag.mjs validate` newly FAILS when a node acceptance/verification names a repo-relative path absent from disk, and PASSES on the corrected DAG.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-29T15:01:24.719Z",
+      "updated_at": "2026-06-29T15:01:24.719Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["universal", "shared"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "node scripts/spec-dag.mjs validate"
+        },
+        {
+          "type": "command",
+          "value": "rg -n 'qd-wrapper.test.mjs' roadmap/spec-dag.json"
+        }
+      ],
+      "audit_focus": [
+        "Done-node acceptance must cite an artifact that exists (no acceptance-names-no-artifact)",
+        "New lint must catch both qd-wrapper.test.mjs and presets/localize-sweetie-hd.pair-policy.json absence",
+        "Do not reintroduce the deleted wrapper; qdcli-native only"
+      ]
+    },
+    {
+      "id": "substrate-facade-doc-advertises-deleted-embed-abi-symbols",
+      "title": "Substrate facade contract doc advertises deleted embed-ABI symbols and a removed const-assertion pin as the stable import surface",
+      "kind": "audit-fix",
+      "milestone": "alpha",
+      "status": "ready",
+      "priority": "P1",
+      "estimate_points": 1,
+      "risk": "low",
+      "owner": null,
+      "branch": null,
+      "spec": "docs/utsushi-substrate-facade.md lists EmbedState (:34), embed_state/embed_capabilities (:54), and EMBED_SCHEMA_VERSION (0.1.0-alpha) + EMBED_MAX_ARTIFACT_REFS (:99-101) under the §3 claim 'every schema version constant is pinned by a compile-time const-assertion'. `rg 'EmbedState\\b|EMBED_SCHEMA_VERSION|EMBED_MAX_ARTIFACT_REFS' crates/` returns NONE — commit b25757c deleted the embed state/envelope ABI and its pin. The facade now re-exports only EmbedCapability/EmbedCapabilityId/EmbedCapabilityStatus/EmbedError. This is the schema-authority doc the alpha RealLive port (then >=2-engine substrate) authors import through, so three named entry points do not compile and the §3 pinning guarantee is now false.",
+      "acceptance": "docs/utsushi-substrate-facade.md no longer names EmbedState, embed_state, embed_capabilities, EMBED_SCHEMA_VERSION, or EMBED_MAX_ARTIFACT_REFS; the Embed ABI section is reduced to the surviving EmbedCapability/EmbedCapabilityId/EmbedCapabilityStatus/EmbedError surface; the §3 const-assertion claim is removed or corrected to match reality. `rg -n 'EmbedState|EMBED_SCHEMA_VERSION|EMBED_MAX_ARTIFACT_REFS' docs/utsushi-substrate-facade.md` returns 0, and the substrate_conformance test is extended to assert every symbol named in the doc resolves in crates/utsushi-core/src/substrate.rs.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-29T15:01:24.719Z",
+      "updated_at": "2026-06-29T15:01:24.719Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["utsushi"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-core --test substrate_conformance"
+        },
+        {
+          "type": "command",
+          "value": "rg -n 'EmbedState|EMBED_SCHEMA_VERSION|EMBED_MAX_ARTIFACT_REFS' docs/utsushi-substrate-facade.md crates/"
+        }
+      ],
+      "audit_focus": [
+        "Every import symbol named in the facade doc must resolve in substrate.rs",
+        "§3 pinning guarantee must not assert a const-assertion that was removed (b25757c)",
+        "Conformance test must enforce doc<->facade symbol parity to prevent recurrence"
+      ]
+    },
+    {
+      "id": "runtime-artifacts-doc-names-deleted-observationhookevent",
+      "title": "utsushi-runtime-artifacts.md names deleted ObservationHookEvent as the 'Rust source of truth', contradicting project-readiness.md and UTSUSHI-224",
+      "kind": "audit-fix",
+      "milestone": "alpha",
+      "status": "ready",
+      "priority": "P2",
+      "estimate_points": 1,
+      "risk": "low",
+      "owner": null,
+      "branch": null,
+      "spec": "docs/utsushi-runtime-artifacts.md:64-80 (esp. :69) states 'The Rust source of truth is ObservationHookEvent in utsushi-core; events use schemaVersion 0.1.0-alpha.' `rg ObservationHookEvent crates/` returns zero hits; project-readiness.md:52 confirms UTSUSHI-224 deleted legacy ObservationHookEvent in favor of the EnginePort->substrate-sinks bridge. A reader wiring evidence ingestion targets a non-existent type instead of the sink contracts that replaced it.",
+      "acceptance": "docs/utsushi-runtime-artifacts.md:64-80 is rewritten to point at TextSurfaceSink/FrameArtifactSink/AudioEventSink and RuntimeEvidenceReportV02 instead of ObservationHookEvent. `rg -n 'ObservationHookEvent' docs/` returns hits only in explicitly-historical context (and `rg -n 'ObservationHookEvent' crates/` stays at 0), so no non-historical doc presents the deleted type as the live evidence source of truth.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-29T15:01:24.719Z",
+      "updated_at": "2026-06-29T15:01:24.719Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["utsushi"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "rg -n 'ObservationHookEvent' docs/ crates/"
+        },
+        {
+          "type": "manual",
+          "value": "Confirm docs/utsushi-runtime-artifacts.md section :64-80 now describes the TextSurfaceSink/FrameArtifactSink/AudioEventSink contracts and RuntimeEvidenceReportV02 as the source of truth."
+        }
+      ],
+      "audit_focus": [
+        "No non-historical doc may name the deleted ObservationHookEvent as the source of truth",
+        "Evidence-ingestion readers must be pointed at the surviving sink contracts",
+        "Doc must agree with project-readiness.md:52 and UTSUSHI-224"
+      ]
+    },
+    {
+      "id": "subprojects-utsushi-doc-mistiers-mv-mz-browser-launch-as-alpha",
+      "title": "subprojects-utsushi.md frames MV/MZ browser launch as an alpha capability, contradicting the redefined alpha (Sweetie HD/RealLive only)",
+      "kind": "audit-fix",
+      "milestone": "continuous",
+      "status": "ready",
+      "priority": "P2",
+      "estimate_points": 1,
+      "risk": "low",
+      "owner": null,
+      "branch": null,
+      "spec": "docs/subprojects-utsushi.md:224 ('The utsushi-browser adapter is the alpha runtime evidence path for MV/MZ.') and :232 ('Browser launch is a required capability for MV/MZ alpha.') contradict project-readiness.md:142 ('RPG Maker MV/MZ end-to-end on a real game is beta') and :149 ('Alpha is single-game (Sweetie HD on RealLive) by definition'). Labeling MV/MZ browser launch alpha-required mis-scopes the milestone and could make an orchestrator treat MV/MZ runtime work as alpha-blocking.",
+      "acceptance": "docs/subprojects-utsushi.md:224 and :232 no longer label MV/MZ browser launch as an alpha capability/requirement; they are re-labeled beta (e2e) / real-game-testing-ready (substrate-corpus), keeping any long-term-contract carve-out. `rg -n 'alpha' docs/subprojects-utsushi.md` shows no MV/MZ-browser-launch-as-alpha claim, consistent with project-readiness.md:142 and :149.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-29T15:01:24.719Z",
+      "updated_at": "2026-06-29T15:01:24.719Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["utsushi"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "rg -n 'alpha|MV/MZ|browser launch' docs/subprojects-utsushi.md"
+        },
+        {
+          "type": "manual",
+          "value": "Confirm :224 and :232 now tier MV/MZ browser launch as beta/real-game-testing-ready, matching project-readiness.md."
+        }
+      ],
+      "audit_focus": [
+        "Alpha = single-game Sweetie HD on RealLive; MV/MZ must not be labeled alpha-required",
+        "Doc must agree with the authoritative project-readiness.md milestone definitions",
+        "Do not delete the legitimate long-term MV/MZ contract carve-out"
+      ]
+    },
+    {
+      "id": "retier-itotori-238-239-240-onto-alpha-live-provider-chain",
+      "title": "Re-tier ITOTORI-238/239/240 (pair-policy/429-failover/capabilitySheet) from milestone=null to alpha to match the rest of the alpha live-provider chain",
+      "kind": "audit-fix",
+      "milestone": "alpha",
+      "status": "ready",
+      "priority": "P3",
+      "estimate_points": 1,
+      "risk": "low",
+      "owner": null,
+      "branch": null,
+      "spec": "ITOTORI-238 (pair-policy v0.3), ITOTORI-239 (429 failover / alternate-or-new primary), and ITOTORI-240 (capabilitySheet registration before failover) directly determine whether the alpha live OpenRouter call can route, yet carry milestone=null. The closely-coupled ITOTORI-226 (DEV_PAIR fix) and live-alpha-provider-run-artifacts-not-recorded are milestone=alpha. This inconsistent tiering distorts the alpha burndown and can make the alpha gate look closer than it is. (Note: these three are also flagged as done-while-acceptance-unmet — see reopen_or_followup; re-tiering is the orthogonal milestone-hygiene fix.)",
+      "acceptance": "`jq -r '.nodes[]|select(.id==\"ITOTORI-238\" or .id==\"ITOTORI-239\" or .id==\"ITOTORI-240\")|.milestone' roadmap/spec-dag.json` returns alpha for all three, OR each node carries node_notes documenting why it is continuous. `node scripts/spec-dag.mjs validate` passes.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-29T15:01:24.719Z",
+      "updated_at": "2026-06-29T15:01:24.719Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["itotori"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "jq -r '.nodes[]|select(.id==\"ITOTORI-238\" or .id==\"ITOTORI-239\" or .id==\"ITOTORI-240\")|.milestone' roadmap/spec-dag.json"
+        },
+        {
+          "type": "command",
+          "value": "node scripts/spec-dag.mjs validate"
+        }
+      ],
+      "audit_focus": [
+        "Alpha-blocking live-provider chain must be fully represented on the alpha path",
+        "Either re-tier to alpha or document the continuous rationale — no silent null",
+        "Tiering must be consistent with sibling ITOTORI-226 and live-alpha-provider-run-artifacts-not-recorded"
+      ]
+    },
+    {
+      "id": "utsushi-224-acceptance-names-phantom-port-skeleton-crate",
+      "title": "Done node UTSUSHI-224 acceptance names a non-existent crate (utsushi-reallive-port-skeleton); re-point to the real second consumer",
+      "kind": "audit-fix",
+      "milestone": "alpha",
+      "status": "ready",
+      "priority": "P3",
+      "estimate_points": 1,
+      "risk": "low",
+      "owner": null,
+      "branch": null,
+      "spec": "UTSUSHI-224 acceptance bullet 4 cites 'A second port impl in crates/utsushi-reallive-port-skeleton (or similar minimal crate) ... >=2 distinct production consumers.' That crate does not exist. The >=2-consumer substrate requirement IS satisfied — `rg 'impl .*EnginePort for' crates/ --glob '!*/tests/*'` shows three production impls (utsushi-fixture FixtureEnginePort, utsushi-reallive UtsushiReallivePort, utsushi-siglus UtsushiSiglusPort) — so only the literal crate path is stale and misleading to a future auditor verifying the substrate-no-consumer anti-pattern.",
+      "acceptance": "UTSUSHI-224 acceptance bullet 4 cites a real second consumer (utsushi-reallive UtsushiReallivePort) instead of crates/utsushi-reallive-port-skeleton; `rg -n 'utsushi-reallive-port-skeleton' roadmap/spec-dag.json` returns 0; the >=2-consumer claim still holds as shown by `rg -n 'impl .*EnginePort for' crates/ -g '!*/tests/*'` listing >=2 production impls.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-29T15:01:24.719Z",
+      "updated_at": "2026-06-29T15:01:24.719Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["utsushi"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "rg -n 'utsushi-reallive-port-skeleton' roadmap/spec-dag.json"
+        },
+        {
+          "type": "command",
+          "value": "rg -n 'impl .*EnginePort for' crates/ -g '!*/tests/*'"
+        }
+      ],
+      "audit_focus": [
+        "Done-node acceptance must cite a consumer that actually exists",
+        ">=2 production consumers must remain demonstrably true after the wording fix",
+        "Substrate-no-consumer anti-pattern check must be verifiable from the acceptance text"
+      ]
+    },
+    {
+      "id": "openrouter-integration-doc-stale-line-anchors",
+      "title": "openrouter-integration.md cites stale openrouter.ts line anchors as evidence — re-anchor by symbol name",
+      "kind": "audit-fix",
+      "milestone": "continuous",
+      "status": "ready",
+      "priority": "P3",
+      "estimate_points": 1,
+      "risk": "low",
+      "owner": null,
+      "branch": null,
+      "spec": "docs/openrouter-integration.md:556 cites 'endpoint-pricing-fallback path (openrouter.ts:721-738)' but those lines are now maxPriceUsd* helpers / routing-requirements; :605 cites 'token-bucket at 1 rps (openrouter.ts:1163, 1190)' but those lines build the cost ledger — TokenBucket/DEFAULT_RATE_LIMIT_PER_SEC live at ~1504-1698. Six commits (incl. d4eca47, ad59996) post-date the doc. Behavioral claims (1 rps, ZDR header) remain true; only the line refs no longer substantiate them.",
+      "acceptance": "docs/openrouter-integration.md:556 and :605 re-anchor by symbol name (the maxPriceUsd* helpers / routing-requirements fn; DEFAULT_RATE_LIMIT_PER_SEC / TokenBucket) instead of raw line numbers; the cited symbols resolve via `rg -n 'DEFAULT_RATE_LIMIT_PER_SEC|TokenBucket|maxPriceUsd' apps/itotori/src/providers/openrouter.ts`. Behavioral claims (1 rps, ZDR header) are unchanged.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-29T15:01:24.719Z",
+      "updated_at": "2026-06-29T15:01:24.719Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["itotori"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "rg -n 'DEFAULT_RATE_LIMIT_PER_SEC|TokenBucket|maxPriceUsd' apps/itotori/src/providers/openrouter.ts"
+        },
+        {
+          "type": "manual",
+          "value": "Confirm docs/openrouter-integration.md:556/:605 now reference symbol names that the rg above resolves, not stale line numbers."
+        }
+      ],
+      "audit_focus": [
+        "Evidence anchors must substantiate the claim they cite",
+        "Prefer symbol-name anchors over line numbers to survive refactors",
+        "Behavioral claims (1 rps, ZDR header) must remain accurate"
+      ]
+    },
+    {
+      "id": "subprojects-kaifuu-doc-patchback-path-stale",
+      "title": "subprojects-kaifuu.md points at patchback.rs which is now a directory module (patchback/mod.rs)",
+      "kind": "audit-fix",
+      "milestone": "continuous",
+      "status": "ready",
+      "priority": "P3",
+      "estimate_points": 1,
+      "risk": "low",
+      "owner": null,
+      "branch": null,
+      "spec": "docs/subprojects-kaifuu.md:253 references crates/kaifuu-reallive/src/patchback.rs; that file no longer exists — the code is crates/kaifuu-reallive/src/patchback/{mod.rs,bundle_driven.rs}. Low impact but breaks jump-to-file for the deterministic patch->verify core.",
+      "acceptance": "docs/subprojects-kaifuu.md:253 references crates/kaifuu-reallive/src/patchback/ (or patchback/mod.rs); `rg -n 'patchback\\.rs' docs/subprojects-kaifuu.md` returns 0 and `ls crates/kaifuu-reallive/src/patchback/` lists mod.rs.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-29T15:01:24.719Z",
+      "updated_at": "2026-06-29T15:01:24.719Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["kaifuu"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "rg -n 'patchback' docs/subprojects-kaifuu.md"
+        },
+        {
+          "type": "command",
+          "value": "ls crates/kaifuu-reallive/src/patchback/"
+        }
+      ],
+      "audit_focus": [
+        "Doc file pointers must resolve on disk",
+        "Reference the directory module, not the deleted single file"
+      ]
+    },
+    {
+      "id": "architecture-readme-phantom-vite-task-tool",
+      "title": "architecture.md and README.md present 'Vite Task' as a separate tool, contradicting the CI policy doc",
+      "kind": "audit-fix",
+      "milestone": "continuous",
+      "status": "ready",
+      "priority": "P3",
+      "estimate_points": 1,
+      "risk": "low",
+      "owner": null,
+      "branch": null,
+      "spec": "docs/architecture.md:43 and README.md:51 both say 'Vite+ and Vite Task provide ... command surface and cached task orchestration', but ci-cache-and-affected.md:40 states 'Vite+ is the TypeScript/web task orchestrator' (caching is a feature of Vite+). package.json has only vite-plus@^0.1.24; there is no 'Vite Task' package and no turbo/nx config. Two top-level orientation docs imply a nonexistent tool.",
+      "acceptance": "docs/architecture.md:43 and README.md:51 are normalized to 'Vite+ is the TypeScript/web task orchestrator' with no separate 'Vite Task' name; `rg -n 'Vite Task' docs/architecture.md README.md` returns 0, consistent with package.json listing only vite-plus.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-29T15:01:24.719Z",
+      "updated_at": "2026-06-29T15:01:24.719Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["universal"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "rg -n 'Vite Task' docs/architecture.md README.md"
+        },
+        {
+          "type": "command",
+          "value": "rg -n 'vite-plus|vite_plus' package.json"
+        }
+      ],
+      "audit_focus": [
+        "Orientation docs must not name a tool absent from package.json",
+        "Normalize to the authoritative ci-cache-and-affected.md framing (Vite+ only)"
+      ]
+    },
+    {
+      "id": "orchestration-operating-model-dead-doc-links",
+      "title": "orchestration-operating-model.md links docs/llms.md and docs/agents.md that do not exist in-repo",
+      "kind": "audit-fix",
+      "milestone": "continuous",
+      "status": "ready",
+      "priority": "P3",
+      "estimate_points": 1,
+      "risk": "low",
+      "owner": null,
+      "branch": null,
+      "spec": "docs/orchestration-operating-model.md:11-13 lists '- docs/llms.md — orchestrator bootstrap ...; - docs/agents.md — the 16-step agent protocol.' `ls docs/llms.md docs/agents.md` finds neither; they presumably mean qdcli's own repo docs but read as itotori-repo paths, so an orchestrator bootstrapping hits dead links. (The rest of this doc is correctly qdcli-native.)",
+      "acceptance": "docs/orchestration-operating-model.md:11-13 either resolve in-repo or are qualified as qdcli-repo paths with a resolving URL; if the files remain absent, the doc no longer presents docs/llms.md / docs/agents.md as itotori-repo paths. Verified by `ls docs/llms.md docs/agents.md` and inspecting the corrected references.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-29T15:01:24.719Z",
+      "updated_at": "2026-06-29T15:01:24.719Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["universal"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "ls docs/llms.md docs/agents.md"
+        },
+        {
+          "type": "command",
+          "value": "rg -n 'llms.md|agents.md' docs/orchestration-operating-model.md"
+        }
+      ],
+      "audit_focus": [
+        "Bootstrap doc links must resolve (in-repo path or qualified URL)",
+        "Do not present external qdcli-repo docs as itotori-repo paths"
       ]
     }
   ],
