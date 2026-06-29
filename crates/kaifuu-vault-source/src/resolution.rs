@@ -239,7 +239,7 @@ fn load_release_artifact_rows(
 fn map_query_err(_e: rusqlite::Error) -> VaultSourceError {
     VaultSourceError::CatalogSchemaUnsupported {
         observed: None,
-        supported: crate::error::SUPPORTED_SCHEMA_VERSION,
+        supported: crate::error::SUPPORTED_SCHEMA_VERSIONS,
     }
 }
 

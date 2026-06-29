@@ -41,9 +41,20 @@ pub const SEMANTIC_VAULT_CATALOG_EMBEDDED_MISMATCH: &str = "kaifuu.vault.catalog
 /// Semantic code for [`VaultSourceError::ScratchUnwritable`].
 pub const SEMANTIC_VAULT_SCRATCH_UNWRITABLE: &str = "kaifuu.vault.scratch_unwritable";
 
-/// Schema version this adapter knows how to read. Hard-pinned per the
-/// orchestrator's decision on Risk #3.
-pub const SUPPORTED_SCHEMA_VERSION: u32 = 1;
+/// Catalog `schema_version.version` values this adapter has been verified
+/// against and knows how to read.
+///
+/// - **v1** is exercised by the synthetic test fixtures
+///   (`tests/fixtures/synthetic-vault/seed.sql`).
+/// - **v3** is the live read-only `/archive/vault/catalog.db`. Every catalog
+///   query the adapter runs has been confirmed column- and type-compatible
+///   with the v3 schema (see `README.md` §Catalog schema support).
+///
+/// **v2 is intentionally excluded** — no v2 catalog exists to verify the
+/// adapter's queries against, and the project forbids blind widening. If a v2
+/// catalog ever needs support, inspect its schema and add `2` here only after
+/// confirming compatibility.
+pub const SUPPORTED_SCHEMA_VERSIONS: &[u32] = &[1, 3];
 
 /// The typed error surface for every vault-source operation.
 ///
@@ -76,13 +87,14 @@ pub enum VaultSourceError {
         source: rusqlite::Error,
     },
 
-    /// `schema_version.version` is missing or higher than this adapter supports.
-    #[error("catalog schema unsupported: observed={observed:?}, supported={supported}")]
+    /// `schema_version.version` is missing or not a version this adapter
+    /// has been verified against.
+    #[error("catalog schema unsupported: observed={observed:?}, supported={supported:?}")]
     CatalogSchemaUnsupported {
         /// Highest schema version observed in the `schema_version` table, if any.
         observed: Option<u32>,
-        /// Schema version this adapter pins to.
-        supported: u32,
+        /// Schema versions this adapter is verified against.
+        supported: &'static [u32],
     },
 
     /// Discovery returned zero releases for the claim.
@@ -295,7 +307,7 @@ mod tests {
                 "CatalogSchemaUnsupported",
                 VaultSourceError::CatalogSchemaUnsupported {
                     observed: Some(2),
-                    supported: SUPPORTED_SCHEMA_VERSION,
+                    supported: SUPPORTED_SCHEMA_VERSIONS,
                 },
             ),
             (

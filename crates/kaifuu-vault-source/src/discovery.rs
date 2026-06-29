@@ -308,8 +308,16 @@ fn load_candidate(conn: &Connection, rid: i64) -> Result<ReleaseCandidate, Vault
         )
         .is_ok();
 
+    // `DISTINCT` is required under catalog schema v3: v3 widened the
+    // `release_languages` primary key from `(release_id, language_code)` to
+    // include `kind` and `source`, so a single `(release_id, language_code)`
+    // pair can now appear in multiple rows. The adapter only cares about the
+    // distinct set of language codes for a release.
     let mut langs_stmt = conn
-        .prepare("SELECT language_code FROM release_languages WHERE release_id = ?1 ORDER BY 1")
+        .prepare(
+            "SELECT DISTINCT language_code FROM release_languages \
+             WHERE release_id = ?1 ORDER BY 1",
+        )
         .map_err(map_query_err)?;
     let langs = langs_stmt
         .query_map(rusqlite::params![rid], |r| r.get::<_, String>(0))
@@ -400,6 +408,6 @@ fn map_query_err(_e: rusqlite::Error) -> VaultSourceError {
     // when we cannot determine the version any more).
     VaultSourceError::CatalogSchemaUnsupported {
         observed: None,
-        supported: crate::error::SUPPORTED_SCHEMA_VERSION,
+        supported: crate::error::SUPPORTED_SCHEMA_VERSIONS,
     }
 }

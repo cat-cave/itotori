@@ -81,6 +81,46 @@ telemetry, findings sinks, and operator dashboards:
 - `kaifuu.vault.catalog_embedded_mismatch`
 - `kaifuu.vault.scratch_unwritable`
 
+## Catalog schema support
+
+The adapter reads the vault's `catalog.db` and pins the catalog
+`schema_version.version` values it has been verified against in
+`SUPPORTED_SCHEMA_VERSIONS` (`src/error.rs`). The verified set is
+**`{1, 3}`**:
+
+- **v1** — the schema the synthetic test fixtures
+  (`tests/fixtures/synthetic-vault/seed.sql`) are built on.
+- **v3** — the live read-only `/archive/vault/catalog.db`.
+
+**v2 is intentionally excluded.** No v2 catalog exists to verify the
+adapter's queries against, and the project forbids blind widening. A v3
+open is proven by the env-gated test
+`tests/live_vault_open_test.rs` (`#[ignore]`, run with
+`ITOTORI_VAULT_ROOT=/archive/vault`).
+
+### v1 → v3 diff for the columns this adapter reads
+
+The adapter touches a fixed set of tables/columns; every one of them
+exists and is type-compatible in both v1 and v3. v3 adds many new
+columns and tables that the adapter does not read. The only adapter-read
+change of behavioural significance is the widened `release_languages`
+primary key:
+
+| Table / view (columns the adapter reads)                                                                 | v1 → v3 status                                                                                                                                                                                                                                        |
+| -------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `schema_version` (`version`)                                                                             | unchanged                                                                                                                                                                                                                                             |
+| `works` (`id`, `canonical_title`)                                                                        | unchanged (other columns added, not read)                                                                                                                                                                                                             |
+| `work_titles` (`work_id`, `lang`, `title`)                                                               | unchanged                                                                                                                                                                                                                                             |
+| `producers` / `producer_identifiers` (`producer_id`, `source`, `kind`, `value`)                          | unchanged                                                                                                                                                                                                                                             |
+| `work_producers` (`work_id`, `producer_id`)                                                              | unchanged                                                                                                                                                                                                                                             |
+| `identifiers` (`work_id`, `source`, `kind`, `value`)                                                     | unchanged                                                                                                                                                                                                                                             |
+| `releases` (`id`, `work_id`, `edition_name`, `release_date`, `store`)                                    | read columns unchanged; v3 adds ~17 new columns (incl. `engine`, `version`, `dl_count`, …) the adapter does not read                                                                                                                                  |
+| `release_platforms` (`release_id`, `platform`)                                                           | unchanged (PK still `(release_id, platform)`)                                                                                                                                                                                                         |
+| `release_languages` (`release_id`, `language_code`)                                                      | **PK widened** from `(release_id, language_code)` to include `kind` and `source`; v3 adds `kind`, `is_mtl`, `evidence_path`, `source`. A `(release_id, language_code)` pair can now span multiple rows, so the language query uses `SELECT DISTINCT`. |
+| `artifacts` (`id`, `sha256`, `size_bytes`, `original_sha256`, `artifact_kind`, `vault_path`)             | read columns unchanged; `sha256` still effectively unique; v3 adds `release_id`, `canonical_sha256`, `canonical_id`, `containers_json`, `state` (not read)                                                                                            |
+| `release_artifacts` (`release_id`, `artifact_id`, `role`, `subpath`)                                     | unchanged                                                                                                                                                                                                                                             |
+| `facts` (`entity_type`, `entity_id`, `field`, `value`) + views `v_current_facts`, `v_facts_needs_review` | unchanged                                                                                                                                                                                                                                             |
+
 ## Local validation commands
 
 ```

@@ -10,7 +10,7 @@ use std::path::Path;
 
 use rusqlite::{Connection, OpenFlags};
 
-use crate::error::{SUPPORTED_SCHEMA_VERSION, VaultSourceError};
+use crate::error::{SUPPORTED_SCHEMA_VERSIONS, VaultSourceError};
 
 /// Open the catalog read-only.
 ///
@@ -35,7 +35,7 @@ pub fn open_catalog(catalog_path: &Path) -> Result<Connection, VaultSourceError>
 
 /// Probe the highest known schema version. Raises
 /// [`VaultSourceError::CatalogSchemaUnsupported`] when the table is empty or
-/// the observed version exceeds [`SUPPORTED_SCHEMA_VERSION`].
+/// the observed version is not in [`SUPPORTED_SCHEMA_VERSIONS`].
 pub fn probe_schema_version(conn: &Connection) -> Result<u32, VaultSourceError> {
     let observed: Option<u32> = conn
         .query_row("SELECT MAX(version) FROM schema_version", [], |row| {
@@ -43,13 +43,13 @@ pub fn probe_schema_version(conn: &Connection) -> Result<u32, VaultSourceError> 
         })
         .map_err(|_| VaultSourceError::CatalogSchemaUnsupported {
             observed: None,
-            supported: SUPPORTED_SCHEMA_VERSION,
+            supported: SUPPORTED_SCHEMA_VERSIONS,
         })?;
     match observed {
-        Some(v) if v == SUPPORTED_SCHEMA_VERSION => Ok(v),
+        Some(v) if SUPPORTED_SCHEMA_VERSIONS.contains(&v) => Ok(v),
         _ => Err(VaultSourceError::CatalogSchemaUnsupported {
             observed,
-            supported: SUPPORTED_SCHEMA_VERSION,
+            supported: SUPPORTED_SCHEMA_VERSIONS,
         }),
     }
 }
@@ -106,6 +106,28 @@ mod tests {
             err,
             VaultSourceError::CatalogSchemaUnsupported { observed: None, .. }
         ));
+    }
+
+    #[test]
+    fn probe_schema_version_accepts_v3() {
+        let tf = make_catalog_with_schema(Some(3));
+        let conn = open_catalog(tf.path()).unwrap();
+        assert_eq!(probe_schema_version(&conn).unwrap(), 3);
+    }
+
+    #[test]
+    fn probe_schema_version_rejects_unverified_v2() {
+        // v2 is intentionally not in SUPPORTED_SCHEMA_VERSIONS: no blind
+        // widening to a version whose schema we have not inspected.
+        let tf = make_catalog_with_schema(Some(2));
+        let conn = open_catalog(tf.path()).unwrap();
+        let err = probe_schema_version(&conn).unwrap_err();
+        match err {
+            VaultSourceError::CatalogSchemaUnsupported {
+                observed: Some(2), ..
+            } => {}
+            other => panic!("unexpected: {other:?}"),
+        }
     }
 
     #[test]
