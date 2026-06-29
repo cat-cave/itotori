@@ -326,11 +326,14 @@ mod tests {
                     EvidenceTier::E1,
                     "Records test runtime smoke validation dispatches.",
                 ),
-                RuntimeFeatureSupport::supported(
+                RuntimeFeatureSupport::partial(
                     RuntimePlaybackFeature::FrameCapture,
                     EvidenceTier::E2,
-                    "Frame capture is produced by the render-validate rasterizer surface as an \
-                     E2 screenshot artifact.",
+                    "Records test runtime capture dispatches without producing live engine frames.",
+                    vec![
+                        "Frame capture is a CLI dispatch test report, not a screenshot."
+                            .to_string(),
+                    ],
                 ),
                 RuntimeFeatureSupport::unsupported(
                     RuntimePlaybackFeature::BranchDiscovery,
@@ -344,11 +347,11 @@ mod tests {
                     RuntimePlaybackFeature::Snapshot,
                     "Snapshot save and restore are outside the CLI dispatch test adapter contract.",
                 ),
-                RuntimeFeatureSupport::supported(
+                RuntimeFeatureSupport::unsupported(
                     RuntimePlaybackFeature::Screenshot,
-                    EvidenceTier::E2,
-                    "Rasterized localized screenshots are produced by the render-validate \
-                     command and announced through the substrate frame sink at E2.",
+                    "Live screenshots are outside the CLI dispatch test adapter contract; \
+                     rasterized screenshots come from the separate render-validate command, \
+                     not this adapter's capture().",
                 ),
                 RuntimeFeatureSupport::unsupported(
                     RuntimePlaybackFeature::Recording,
