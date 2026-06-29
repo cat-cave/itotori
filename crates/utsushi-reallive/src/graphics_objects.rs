@@ -9,7 +9,7 @@
 //! The stack is **purely state**: the headless render-pipeline at
 //! [`crate::render_pipeline`] walks the stack, sorted by
 //! `(plane, layer_order)`, and rasterises a per-frame
-//! [`crate::render_pipeline::FrameEmission`] into a deterministic PNG
+//! [`crate::render_pipeline::Framebuffer`] into a deterministic PNG
 //! blob.
 //!
 //! # Slot capacity

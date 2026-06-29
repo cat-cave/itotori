@@ -22,12 +22,29 @@ mod real_corpus;
 
 use std::fs;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
 
+use utsushi_core::RuntimeArtifactRoot;
+use utsushi_core::substrate::EvidenceTier;
 use utsushi_reallive::{
     GRAPHICS_OBJECT_SLOT_COUNT, Gameexe, GraphicsObject, GraphicsObjectStack, GraphicsPlane,
-    GraphicsStackError, PNG_FILE_MAGIC, RGBA_BYTES_PER_PIXEL, RenderPass, SyscallDispatcher,
-    WipeColour,
+    GraphicsStackError, PNG_FILE_MAGIC, RGBA_BYTES_PER_PIXEL, RecordingFrameArtifactSink,
+    RenderPass, SyscallDispatcher, TextLayer, WipeColour,
 };
+
+/// Unique managed runtime-artifact root under the process temp dir.
+fn temp_artifact_root(tag: &str) -> RuntimeArtifactRoot {
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
+    let nonce = COUNTER.fetch_add(1, Ordering::Relaxed);
+    let dir = std::env::temp_dir().join(format!(
+        "utsushi-graphics-stack-{tag}-{}-{nonce}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&dir);
+    let root = RuntimeArtifactRoot::new(&dir);
+    root.prepare().expect("prepare managed artifact root");
+    root
+}
 
 // Default name of the Sweetie HD title directory inside the
 // extraction root. Mirrors the existing
@@ -94,22 +111,32 @@ fn graphics_object_stack_256_objects() {
     assert_eq!(reread.position.x, 320);
     assert_eq!(reread.position.y, 240);
 
-    // Acceptance criterion: render walks the populated stack to produce
-    // a deterministic PNG. The fg/bg planes carry image-backed objects
-    // (which are recorded but not yet rasterised at UTSUSHI-214; the
-    // render pass simply returns the initial framebuffer).
+    // Acceptance criterion: render walks the populated stack and emits a
+    // deterministic PNG through the substrate frame sink. The fg/bg
+    // planes carry image-backed objects, which are recorded but NEVER
+    // dereferenced into the framebuffer (copyright redaction).
     let mut pass = RenderPass::with_dimensions(1280, 720).expect("non-zero screen");
-    let emission_a = pass.render(&stack);
-    let emission_b = pass.render(&stack);
+    let text = TextLayer::localized(vec!["ALPHA".to_string()]);
+    let root = temp_artifact_root("stack-256");
+    let sink = RecordingFrameArtifactSink::new();
+    let a = pass
+        .emit_localized_screenshot(&stack, &text, &root, "stack-256", &sink)
+        .expect("emit a");
+    let b = pass
+        .emit_localized_screenshot(&stack, &text, &root, "stack-256", &sink)
+        .expect("emit b");
     // Same state → same artifact_id (deterministic SHA-256 of bytes).
-    assert_eq!(emission_a.artifact_id, emission_b.artifact_id);
-    assert_eq!(emission_a.width, 1280);
-    assert_eq!(emission_a.height, 720);
-    let bytes = pass
-        .artifact_store()
-        .get(&emission_a.artifact_id)
-        .expect("artifact retained");
+    assert_eq!(a.artifact_ref.artifact_id, b.artifact_ref.artifact_id);
+    assert_eq!(a.width, Some(1280));
+    assert_eq!(a.height, Some(720));
+    assert_eq!(a.evidence_tier, EvidenceTier::E2);
+    let bytes = fs::read(
+        root.artifact_path(&a.artifact_ref.uri)
+            .expect("artifact path"),
+    )
+    .expect("png on disk");
     assert_eq!(&bytes[..8], &PNG_FILE_MAGIC);
+    let _ = fs::remove_dir_all(root.path());
 }
 
 /// Acceptance: a wipe object (full-screen colour) renders to a
@@ -127,21 +154,37 @@ fn render_wipe_solid_colour_deterministic_png() {
         .set(GraphicsPlane::Foreground, 0, GraphicsObject::wipe(teal))
         .expect("set wipe");
 
-    let emission_a = pass_a.render(&stack);
-    let emission_b = pass_b.render(&stack);
+    let text = TextLayer::localized(vec!["WIPE".to_string()]);
+    let root_a = temp_artifact_root("wipe-a");
+    let root_b = temp_artifact_root("wipe-b");
+    let sink_a = RecordingFrameArtifactSink::new();
+    let sink_b = RecordingFrameArtifactSink::new();
+    let emission_a = pass_a
+        .emit_localized_screenshot(&stack, &text, &root_a, "wipe", &sink_a)
+        .expect("emit a");
+    let emission_b = pass_b
+        .emit_localized_screenshot(&stack, &text, &root_b, "wipe", &sink_b)
+        .expect("emit b");
 
     // The two passes must produce the **same** artifact_id (and
     // therefore the same PNG bytes) on identical input state — pinned
     // for the "byte-identical across runs" acceptance criterion.
-    assert_eq!(emission_a.artifact_id, emission_b.artifact_id);
-    let bytes_a = pass_a
-        .artifact_store()
-        .get(&emission_a.artifact_id)
-        .expect("retained a");
-    let bytes_b = pass_b
-        .artifact_store()
-        .get(&emission_b.artifact_id)
-        .expect("retained b");
+    assert_eq!(
+        emission_a.artifact_ref.artifact_id,
+        emission_b.artifact_ref.artifact_id
+    );
+    let bytes_a = fs::read(
+        root_a
+            .artifact_path(&emission_a.artifact_ref.uri)
+            .expect("path a"),
+    )
+    .expect("retained a");
+    let bytes_b = fs::read(
+        root_b
+            .artifact_path(&emission_b.artifact_ref.uri)
+            .expect("path b"),
+    )
+    .expect("retained b");
     assert_eq!(bytes_a, bytes_b);
     assert_eq!(&bytes_a[..8], &PNG_FILE_MAGIC);
 
@@ -162,14 +205,16 @@ fn render_wipe_solid_colour_deterministic_png() {
         );
     }
 
-    // Frame artifact metadata pins.
+    // Frame artifact metadata pins: announced at the substrate E2 floor
+    // as a `screenshot` artifact.
     assert_eq!(emission_a.frame_index, 0);
     assert_eq!(
         emission_a.evidence_tier,
-        utsushi_core::substrate::EvidenceTier::E1,
-        "UTSUSHI-214 spec pins evidence_tier=E1"
+        EvidenceTier::E2,
+        "ALPHA-006b emits through the substrate frame sink at E2"
     );
-    assert_eq!(emission_a.artifact_kind, "frame_capture");
+    assert_eq!(emission_a.artifact_ref.artifact_kind, "screenshot");
+    assert_eq!(sink_a.len(), 1);
 
     // Different state → different artifact_id (sanity check that the
     // determinism contract is one-way; identical state must not be
@@ -182,8 +227,15 @@ fn render_wipe_solid_colour_deterministic_png() {
             GraphicsObject::wipe(WipeColour::opaque_rgb(0xFE, 0xFE, 0xFE)),
         )
         .expect("set wipe");
-    let other = pass_a.render(&other_stack);
-    assert_ne!(other.artifact_id, emission_a.artifact_id);
+    let other = pass_a
+        .emit_localized_screenshot(&other_stack, &text, &root_a, "wipe", &sink_a)
+        .expect("emit other");
+    assert_ne!(
+        other.artifact_ref.artifact_id,
+        emission_a.artifact_ref.artifact_id
+    );
+    let _ = fs::remove_dir_all(root_a.path());
+    let _ = fs::remove_dir_all(root_b.path());
 }
 
 /// Real-bytes pin (env-gated): with the Sweetie HD `Gameexe.ini`
@@ -224,16 +276,23 @@ fn graphics_pipeline_honours_reallive_real_bytes_gameexe_screen_size() {
             GraphicsObject::wipe(WipeColour::BLACK),
         )
         .expect("set wipe");
-    let emission = pass.render(&stack);
-    assert_eq!(emission.width, 1280);
-    assert_eq!(emission.height, 720);
-    let bytes = pass
-        .artifact_store()
-        .get(&emission.artifact_id)
-        .expect("retained");
+    let text = TextLayer::localized(vec!["SCREENSIZE".to_string()]);
+    let root = temp_artifact_root("real-screen-size");
+    let sink = RecordingFrameArtifactSink::new();
+    let emission = pass
+        .emit_localized_screenshot(&stack, &text, &root, "screen-size", &sink)
+        .expect("emit");
+    assert_eq!(emission.width, Some(1280));
+    assert_eq!(emission.height, Some(720));
+    let bytes = fs::read(
+        root.artifact_path(&emission.artifact_ref.uri)
+            .expect("path"),
+    )
+    .expect("retained");
     // PNG IHDR at bytes 16..24 carries width/height big-endian.
     assert_eq!(&bytes[16..20], &1280u32.to_be_bytes());
     assert_eq!(&bytes[20..24], &720u32.to_be_bytes());
+    let _ = fs::remove_dir_all(root.path());
 }
 
 fn real_gameexe_ini_path() -> Option<PathBuf> {

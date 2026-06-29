@@ -206,13 +206,15 @@ pub mod syscall;
 // PNGs.
 pub mod graphics_objects;
 
-// UTSUSHI-214: headless render pipeline + deterministic PNG encoder.
-// Walks the [`graphics_objects::GraphicsObjectStack`], rasterises into
-// a `Framebuffer`, encodes a deterministic (no timestamp metadata)
-// PNG, and stores the bytes in an [`render_pipeline::InMemoryFrameArtifactStore`]
-// keyed by a SHA-256-derived `artifact_id`. The artifact-store is
-// intentionally byte-retaining so the audit-focus "stub `Vec` that
-// doesn't actually retain bytes" cannot apply.
+// UTSUSHI-214 / ALPHA-006b: headless render pipeline + localized text
+// layer + deterministic PNG encoder + substrate frame-artifact
+// emission. Walks the [`graphics_objects::GraphicsObjectStack`],
+// rasterises into a `Framebuffer`, paints the localized
+// [`render_pipeline::TextLayer`] (our translated text, never the source
+// g00 pixels), encodes a deterministic (no timestamp metadata) PNG,
+// writes it to a managed [`utsushi_core::RuntimeArtifactRoot`], and
+// announces it through the substrate
+// [`utsushi_core::substrate::FrameArtifactSink`] at `EvidenceTier::E2`.
 pub mod render_pipeline;
 
 // UTSUSHI-218: AVG-derived save format (`SAVE_FORMAT=3`). Typed
@@ -235,9 +237,9 @@ pub use graphics_objects::{
     GraphicsScale, GraphicsStackError, ImageRef, WipeColour,
 };
 pub use render_pipeline::{
-    FrameArtifactStoreError, FrameEmission, Framebuffer, InMemoryFrameArtifactStore, PNG_BIT_DEPTH,
-    PNG_COLOUR_TYPE_RGBA, PNG_FILE_MAGIC, RENDER_PIPELINE_ARTIFACT_MISS_CODE,
-    RENDER_PIPELINE_ZERO_SCREEN_SIZE_CODE, RGBA_BYTES_PER_PIXEL, RenderPass, RenderPassBuildError,
+    Framebuffer, PNG_BIT_DEPTH, PNG_COLOUR_TYPE_RGBA, PNG_FILE_MAGIC,
+    RENDER_PIPELINE_ZERO_SCREEN_SIZE_CODE, RGBA_BYTES_PER_PIXEL, RecordingFrameArtifactSink,
+    RenderEmitError, RenderPass, RenderPassBuildError, SCREENSHOT_ARTIFACT_KIND, TextLayer,
     adler32, crc32_ieee, encode_png_rgba_deterministic, sha256_hex,
 };
 

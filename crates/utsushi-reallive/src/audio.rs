@@ -199,11 +199,9 @@ pub enum AudioEventStoreError {
 /// In-process [`AudioEvent`] sink. Retains the typed events keyed by
 /// `event_id` and exposes a FIFO `drain_in_order` for replay.
 ///
-/// The store is the audible analogue of
-/// [`crate::render_pipeline::InMemoryFrameArtifactStore`] — it
-/// actually retains the per-emission payload (not just a counter) so
-/// the audit-focus item "AudioEvent payload missing voice-archive
-/// metadata" cannot apply.
+/// The store actually retains the per-emission payload (not just a
+/// counter) so the audit-focus item "AudioEvent payload missing
+/// voice-archive metadata" cannot apply.
 #[derive(Debug, Default)]
 pub struct InMemoryAudioEventStore {
     inner: Mutex<AudioEventStoreInner>,
