@@ -3291,6 +3291,21 @@ function opportunityDemandEvidenceRefs(facts: CatalogOpportunityDemandFacts): st
   ].filter((value): value is string => value !== null);
 }
 
+// Runtime-readiness evidence for opportunity ranking is an intentional source split, NOT a dead
+// branch. `publicFixtureEvidenceCount` is only incremented by `public_fixture` evidence whose kind
+// is `key_validation` (a genuine runtime check, e.g. validating decryption keys against a public
+// fixture). `public_fixture` `adapter_matrix` rows describe the static capability matrix and are
+// deliberately excluded here so a declared matrix cannot masquerade as runtime readiness.
+//
+// The current production producer (apps/itotori catalog-local-capability-evidence) only emits
+// `private_local_aggregate` sidecar evidence plus `public_fixture` `adapter_matrix` matrices, so
+// in production these counts keep `publicFixtureEvidenceCount` at 0 until a `key_validation`
+// public-fixture producer exists. The read-model intentionally still surfaces public runtime
+// readiness states because this query genuinely produces them once `key_validation` evidence is
+// present — locked end-to-end by catalog-repository.test.ts ("counts public fixture and private
+// aggregate runtime evidence in opportunity ranking") and the negative case ("public_fixture
+// adapter_matrix evidence is not runtime readiness"). The read-model therefore advertises no state
+// the DB path cannot emit.
 function capabilityEvidenceCountsByAdapter(
   rows: (typeof engineCapabilityEvidence.$inferSelect)[],
 ): Map<string, CatalogOpportunityEvidenceCounts> {

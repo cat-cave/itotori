@@ -1733,6 +1733,61 @@ describe("ItotoriCatalogRepository", () => {
     }
   });
 
+  it("does not count public_fixture adapter_matrix evidence as runtime readiness", async () => {
+    // Locks the intentional source split clarified in catalog-repository.ts: only
+    // `public_fixture` `key_validation` evidence increments publicFixtureEvidenceCount. A
+    // `public_fixture` `adapter_matrix` row (the static capability matrix, which is what the
+    // production catalog-local producer emits) must NOT advertise public runtime readiness, so the
+    // read-model never promises a state the production producer fabricates.
+    const context = await isolatedMigratedContext();
+    try {
+      const repo = new ItotoriCatalogRepository(context.db);
+      const matrixProvenance = await provenance(repo, 820, catalogSourceValues.dlsite, "RJRT820");
+
+      await recordRuntimeReadinessCapabilityEvidence(context.db, {
+        adapterId: "public-matrix-only-engine",
+        idBase: 8400,
+        publicFixture: true,
+        publicFixtureKind: engineCapabilityEvidenceKindValues.adapterMatrix,
+        privateLocalAggregate: false,
+      });
+
+      await repo.upsertWork(
+        localActor,
+        runtimeReadinessWorkInput({
+          workId: uuid(820),
+          title: "Public matrix only runtime readiness",
+          provenance: matrixProvenance,
+          sourceId: "RJRT820",
+          adapterId: "public-matrix-only-engine",
+          languageStatusId: uuid(8820),
+        }),
+      );
+
+      const model = await repo.catalogOpportunityRanking(localActor, {
+        includeDemoted: true,
+        limit: 20,
+      });
+      const matrixOnly = requiredOpportunityRow(model.rows, uuid(820));
+
+      expect(matrixOnly.runtimeEvidenceReadiness).toEqual({
+        status: "unknown",
+        publicFixtureEvidenceCount: 0,
+        privateLocalAggregateEvidenceCount: 0,
+      });
+      expect(runtimeEvidenceFactor(matrixOnly)).toMatchObject({
+        weightedScore: 0,
+        evidenceRefs: [
+          "private_local_aggregate_evidence_count:0",
+          "public_fixture_evidence_count:0",
+        ],
+        explanationCode: "runtime_evidence_readiness:unknown",
+      });
+    } finally {
+      await context.close();
+    }
+  });
+
   it("rejects catalog writes and reads without catalog permissions", async () => {
     const context = await isolatedMigratedContext();
     try {
@@ -1796,6 +1851,9 @@ async function recordRuntimeReadinessCapabilityEvidence(
     idBase: number;
     publicFixture: boolean;
     privateLocalAggregate: boolean;
+    publicFixtureKind?: (typeof engineCapabilityEvidenceKindValues)[
+      | "keyValidation"
+      | "adapterMatrix"];
   },
 ): Promise<void> {
   await db.insert(engineCapabilityReports).values(
@@ -1816,7 +1874,7 @@ async function recordRuntimeReadinessCapabilityEvidence(
       adapterId: input.adapterId,
       level: capabilityLevelValues.extract,
       evidenceSource: engineCapabilityEvidenceSourceValues.publicFixture,
-      evidenceKind: engineCapabilityEvidenceKindValues.keyValidation,
+      evidenceKind: input.publicFixtureKind ?? engineCapabilityEvidenceKindValues.keyValidation,
       schemaVersion: "catalog.capability_evidence.v0.1",
       status: engineCapabilityEvidenceStatusValues.present,
       aggregateCounts: { fixture_rows: 1 },
