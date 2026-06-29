@@ -649,13 +649,12 @@ mod tests {
         let index = parse_archive(&archive).expect("envelope parses");
         assert_eq!(index.entries.len(), 1, "one populated scene at slot 1");
         let entry = &index.entries[0];
-        let blob = &archive[entry.byte_offset as usize
-            ..(entry.byte_offset + u64::from(entry.byte_len)) as usize];
+        let blob = &archive
+            [entry.byte_offset as usize..(entry.byte_offset + u64::from(entry.byte_len)) as usize];
 
         // (1) Decode the real bytecode: ZERO unknown opcodes.
         let opcodes = parse_scene(blob).expect("scene bytecode decodes");
-        let unknown: Vec<&RealLiveOpcode> =
-            opcodes.iter().filter(|o| !o.is_recognized()).collect();
+        let unknown: Vec<&RealLiveOpcode> = opcodes.iter().filter(|o| !o.is_recognized()).collect();
         assert!(
             unknown.is_empty(),
             "synthetic scene must decode with 0 unknown opcodes; found {unknown:?}"
@@ -718,8 +717,8 @@ mod tests {
         let archive = build_synthetic_seen_txt();
         let index = parse_archive(&archive).expect("envelope parses");
         let entry = &index.entries[0];
-        let blob = &archive[entry.byte_offset as usize
-            ..(entry.byte_offset + u64::from(entry.byte_len)) as usize];
+        let blob = &archive
+            [entry.byte_offset as usize..(entry.byte_offset + u64::from(entry.byte_len)) as usize];
 
         let compressed = compress_avg32_literal(blob).expect("AVG32 compresses");
         assert!(
@@ -732,7 +731,9 @@ mod tests {
             "AVG32 LZSS + XOR round-trips byte-identically"
         );
         assert_eq!(
-            parse_scene(&decompressed).expect("decompressed decodes").len(),
+            parse_scene(&decompressed)
+                .expect("decompressed decodes")
+                .len(),
             parse_scene(blob).expect("plaintext decodes").len(),
             "decompressed bytecode decodes identically to the in-archive plaintext"
         );
