@@ -50,7 +50,9 @@ export {
 export {
   assertStructuredOutputModeSupported,
   selectStructuredOutputMode,
+  selectStructuredOutputRequest,
   supportForStructuredOutputMode,
+  type StructuredOutputSchemaSpec,
 } from "./structured-output.js";
 export type {
   CapabilitySupport,

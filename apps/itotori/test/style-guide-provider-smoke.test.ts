@@ -289,12 +289,16 @@ function jsonResponse(body: unknown, status = 200): Response {
 }
 
 function styleGuideLiveSmokeCapabilities(): ModelCapabilities {
+  // ITOTORI-241 — json_schema is unroutable under ZDR for the DEV_PAIR
+  // (HTTP 404); json_object is the proven-routable structured mode. The
+  // smoke's structured-mode selection reads this sheet.
   return {
     ...openRouterDefaultCapabilities,
     structuredOutputs: {
       ...openRouterDefaultCapabilities.structuredOutputs,
-      jsonSchema: "supported",
-      preferredModes: ["json_schema"],
+      jsonSchema: "unsupported",
+      jsonObject: "supported",
+      preferredModes: ["json_object"],
     },
   };
 }

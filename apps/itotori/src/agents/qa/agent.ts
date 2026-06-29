@@ -35,7 +35,7 @@ import {
   type StructuredQaFindingOutput,
 } from "@itotori/localization-bridge-schema";
 import { estimateTokens } from "../../batch-planner/token-estimator.js";
-import { supportForStructuredOutputMode } from "../../providers/structured-output.js";
+import { selectStructuredOutputRequest } from "../../providers/structured-output.js";
 import type {
   JsonObject,
   ModelInvocationRequest,
@@ -84,17 +84,10 @@ export class QaAgent {
     input: QaInvocationInput,
   ): Promise<QaInvocationResult> {
     this.assertInputWellFormed(input);
-    this.assertProviderSupportsStructuredOutput();
+    const structuredOutput = this.resolveStructuredOutput();
 
     const rendered = buildQaPrompt(input);
     const promptHashUsed = qaPromptHash(rendered);
-
-    const structuredOutput: StructuredOutputRequest = {
-      mode: "json_schema",
-      name: QA_DEFAULT_STRUCTURED_OUTPUT_NAME,
-      schema: STRUCTURED_QA_FINDING_OUTPUT_JSON_SCHEMA as unknown as JsonObject,
-      strict: true,
-    };
 
     const messages: ModelMessage[] = [
       { role: "system", content: rendered.systemText },
@@ -185,14 +178,26 @@ export class QaAgent {
     }
   }
 
-  private assertProviderSupportsStructuredOutput(): void {
+  /**
+   * ITOTORI-241 — select the ZDR-routable structured-output mode for the
+   * active pair instead of forcing json_schema. json_schema when the
+   * pair's ZDR providers advertise it, otherwise json_object (the
+   * proven-routable deterministic mode). Refuses with the typed capability
+   * error when the pair supports neither — never a silent degrade.
+   */
+  private resolveStructuredOutput(): StructuredOutputRequest {
     const capabilities = this.options.provider.descriptor.capabilities;
-    const support = supportForStructuredOutputMode(capabilities, "json_schema");
-    if (support !== "supported") {
+    try {
+      return selectStructuredOutputRequest(capabilities, {
+        name: QA_DEFAULT_STRUCTURED_OUTPUT_NAME,
+        schema: STRUCTURED_QA_FINDING_OUTPUT_JSON_SCHEMA as unknown as JsonObject,
+        strict: true,
+      });
+    } catch (error) {
       throw new QaProviderCapabilityError(
         this.options.provider.descriptor.providerName,
         this.options.provider.descriptor.family,
-        `structured output mode json_schema is ${support}`,
+        error instanceof Error ? error.message : String(error),
       );
     }
   }
