@@ -31,7 +31,9 @@ import {
   RepairJobService,
   RepairJobServiceError,
   selectAffectedWork,
+  type AffectedWorkSelection,
   type RepairAffectedScope,
+  type RepairAffectedWork,
   type RepairEvent,
   type RepairJob,
   type RepairJobOutcome,
@@ -42,6 +44,21 @@ import {
   type RepairTrigger,
   type RepairSceneIndex,
 } from "../src/orchestrator/repair/index.js";
+
+// A consumer that wants the concrete bridge-unit list MUST first branch on
+// the `affectedScope` discriminant: the `project` variant carries no list,
+// so reading one without narrowing is a compile error. This helper makes
+// that narrowing explicit in the unit-scoped assertions below.
+function unitsOf(work: RepairAffectedWork): readonly string[] {
+  if (work.affectedScope === "project") {
+    throw new Error("expected unit-scoped affected work but got project scope");
+  }
+  return work.affectedBridgeUnitIds;
+}
+
+function assertNeverScope(value: never): never {
+  throw new Error(`unexpected affected scope ${String(value)}`);
+}
 
 // ---------------------------------------------------------------------------
 // Fixtures + helpers
@@ -199,14 +216,14 @@ describe("selectAffectedWork", () => {
       qaTrigger({ bridgeUnitId: BRIDGE_UNIT_A, targetStage: "context" }),
     );
     expect(selection.affectedScope).toBe("bridge_units");
-    expect(selection.affectedBridgeUnitIds).toEqual([BRIDGE_UNIT_A]);
+    expect(unitsOf(selection)).toEqual([BRIDGE_UNIT_A]);
     expect(selection.pipelineStage).toBe("context");
   });
 
   it("protected-span violation always targets translation on one unit", () => {
     const selection = selectAffectedWork(spanTrigger({ bridgeUnitId: BRIDGE_UNIT_B }));
     expect(selection.pipelineStage).toBe("translation");
-    expect(selection.affectedBridgeUnitIds).toEqual([BRIDGE_UNIT_B]);
+    expect(unitsOf(selection)).toEqual([BRIDGE_UNIT_B]);
   });
 
   it("human decision: explicit bridge unit list is honored verbatim + deduped", () => {
@@ -219,13 +236,40 @@ describe("selectAffectedWork", () => {
       }),
     );
     expect(selection.affectedScope).toBe("bridge_units");
-    expect(selection.affectedBridgeUnitIds).toEqual([BRIDGE_UNIT_A, BRIDGE_UNIT_B]);
+    expect(unitsOf(selection)).toEqual([BRIDGE_UNIT_A, BRIDGE_UNIT_B]);
   });
 
-  it("human decision: project scope only reachable via explicit human opt-in", () => {
+  it("human decision: project scope is reachable only via explicit opt-in and omits the unit list", () => {
     const selection = selectAffectedWork(humanTrigger({ scope: { kind: "project" } }));
     expect(selection.affectedScope).toBe("project");
-    expect(selection.affectedBridgeUnitIds).toEqual([]);
+    // The project variant has NO `affectedBridgeUnitIds` field. The
+    // discriminated union makes "every unit in the project" structurally
+    // distinct from "[] = nothing affected", so a consumer cannot read an
+    // empty array and skip the rerun. (`selection.affectedBridgeUnitIds`
+    // does not type-check on the project variant.)
+    expect("affectedBridgeUnitIds" in selection).toBe(false);
+  });
+
+  it("a downstream consumer must enumerate project scope instead of treating it as empty", () => {
+    const projectUnits = [BRIDGE_UNIT_A, BRIDGE_UNIT_B, BRIDGE_UNIT_C];
+    // Models the orchestrator's repair stage resolving a selection into the
+    // concrete set of units to rerun. The `project` case CANNOT fall
+    // through to `[]`: the discriminant forces an explicit enumeration
+    // branch, which is the safety property finding d5743e7b asked for.
+    const unitsToRerun = (selection: AffectedWorkSelection): readonly string[] => {
+      switch (selection.affectedScope) {
+        case "project":
+          return projectUnits;
+        case "bridge_units":
+        case "scene":
+          return selection.affectedBridgeUnitIds;
+        default:
+          return assertNeverScope(selection);
+      }
+    };
+    const projectSelection = selectAffectedWork(humanTrigger({ scope: { kind: "project" } }));
+    expect(unitsToRerun(projectSelection)).toEqual(projectUnits);
+    expect(unitsToRerun(projectSelection)).not.toEqual([]);
   });
 
   it("human decision: scene scope expands via the SceneIndex", () => {
@@ -240,7 +284,7 @@ describe("selectAffectedWork", () => {
       sceneIndex,
     );
     expect(selection.affectedScope).toBe("scene");
-    expect(selection.affectedBridgeUnitIds).toEqual([BRIDGE_UNIT_A, BRIDGE_UNIT_B, BRIDGE_UNIT_C]);
+    expect(unitsOf(selection)).toEqual([BRIDGE_UNIT_A, BRIDGE_UNIT_B, BRIDGE_UNIT_C]);
   });
 
   it("empty human bridge_units scope is rejected", () => {
@@ -255,7 +299,7 @@ describe("selectAffectedWork", () => {
         scope: { kind: "scene", sceneId: "scene-001", bridgeUnitIds: [BRIDGE_UNIT_A] },
       }),
     );
-    expect(selection.affectedBridgeUnitIds).toEqual([BRIDGE_UNIT_A]);
+    expect(unitsOf(selection)).toEqual([BRIDGE_UNIT_A]);
   });
 });
 
@@ -268,7 +312,7 @@ describe("RepairJobService.enqueue", () => {
     const service = makeService();
     const job = service.enqueue({ trigger: qaTrigger({ severity: "p1" }), pair: PAIR });
     expect(job.pair).toEqual(PAIR);
-    expect(job.affectedBridgeUnitIds).toEqual([BRIDGE_UNIT_A]);
+    expect(unitsOf(job)).toEqual([BRIDGE_UNIT_A]);
     expect(job.affectedScope).toBe("bridge_units");
     expect(job.pipelineStage).toBe("translation");
     expect(job.severity).toBe("p1");
@@ -463,10 +507,10 @@ describe("ITOTORI-038 fixture repair loop", () => {
     // The human-scoped job expanded via the scene index without
     // widening past what the human declared.
     expect(humanJob.affectedScope).toBe("scene");
-    expect(humanJob.affectedBridgeUnitIds).toEqual([BRIDGE_UNIT_A, BRIDGE_UNIT_B]);
+    expect(unitsOf(humanJob)).toEqual([BRIDGE_UNIT_A, BRIDGE_UNIT_B]);
 
     // The QA-trigger job stayed narrow at one bridge unit.
-    expect(qaJob.affectedBridgeUnitIds).toEqual([BRIDGE_UNIT_A]);
+    expect(unitsOf(qaJob)).toEqual([BRIDGE_UNIT_A]);
 
     // Simulate the orchestrator's repair stage reporting outcomes:
     //   - QA job: repaired_then_accepted.

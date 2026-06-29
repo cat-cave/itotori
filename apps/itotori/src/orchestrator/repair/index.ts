@@ -11,6 +11,7 @@ export {
   REPAIR_JOB_TRIGGERS,
   REPAIR_PIPELINE_STAGES,
   type RepairAffectedScope,
+  type RepairAffectedWork,
   type RepairEvent,
   type RepairJob,
   type RepairJobOutcome,

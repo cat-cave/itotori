@@ -83,6 +83,26 @@ export const REPAIR_AFFECTED_SCOPES = ["bridge_units", "scene", "project"] as co
 export type RepairAffectedScope = (typeof REPAIR_AFFECTED_SCOPES)[number];
 
 /**
+ * Discriminated affected-work descriptor shared by the affected-work
+ * selector's output AND every `RepairJob`. The discriminant is
+ * `affectedScope`.
+ *
+ * The `project` variant deliberately carries NO `affectedBridgeUnitIds`
+ * field: a project-wide rerun has no finite, pre-enumerated unit list to
+ * hand downstream — the consumer MUST expand "every unit in the project"
+ * itself. By omitting the field (rather than shipping `[]`) the type makes
+ * "project scope" structurally distinct from "no work": a naive consumer
+ * that reads `.affectedBridgeUnitIds` without first branching on
+ * `affectedScope` is a COMPILE ERROR, so an empty array can never be
+ * mistaken for "nothing affected". This closes ITOTORI-038 finding
+ * d5743e7b.
+ */
+export type RepairAffectedWork =
+  | { affectedScope: "bridge_units"; affectedBridgeUnitIds: ReadonlyArray<Uuid7> }
+  | { affectedScope: "scene"; affectedBridgeUnitIds: ReadonlyArray<Uuid7> }
+  | { affectedScope: "project" };
+
+/**
  * The pinned `(modelId, providerId)` pair the rerun will use. Mirrors
  * the orchestrator's pair invariant from ITOTORI-222: every LLM
  * invocation declares both fields. The repair service refuses to
@@ -166,8 +186,6 @@ export type RepairJob = {
   jobId: string;
   trigger: RepairTrigger;
   pipelineStage: RepairPipelineStage;
-  affectedScope: RepairAffectedScope;
-  affectedBridgeUnitIds: ReadonlyArray<Uuid7>;
   /**
    * Pinned (modelId, providerId) pair the rerun MUST use. The pair is
    * supplied by the caller (typically derived from the active
@@ -185,7 +203,11 @@ export type RepairJob = {
    */
   priority: number;
   rationale: string;
-};
+  // The affected-work descriptor is a discriminated union (see
+  // `RepairAffectedWork`): `affectedScope: 'project'` carries NO
+  // `affectedBridgeUnitIds`, so an executor cannot read an empty array
+  // and silently skip a project-wide rerun.
+} & RepairAffectedWork;
 
 /**
  * Append-only event a `RepairJobService` emits per state transition.

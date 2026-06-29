@@ -21,7 +21,7 @@
 // the database directly.
 
 import type { Uuid7 } from "@itotori/localization-bridge-schema";
-import type { RepairAffectedScope, RepairPipelineStage, RepairTrigger } from "./types.js";
+import type { RepairAffectedWork, RepairPipelineStage, RepairTrigger } from "./types.js";
 
 /**
  * Scene-membership lookup. Production wires this to a repository view
@@ -52,9 +52,15 @@ export class AffectedWorkSelectorError extends Error {
   }
 }
 
-export type AffectedWorkSelection = {
-  affectedScope: RepairAffectedScope;
-  affectedBridgeUnitIds: ReadonlyArray<Uuid7>;
+/**
+ * The selector's result. It is the discriminated `RepairAffectedWork`
+ * descriptor plus the pipeline stage to rerun. Because `RepairAffectedWork`
+ * is a discriminated union, the `project` variant has NO
+ * `affectedBridgeUnitIds` field — a consumer is forced to branch on
+ * `affectedScope` before it can read a unit list, so an empty array can
+ * never be mistaken for "no work affected".
+ */
+export type AffectedWorkSelection = RepairAffectedWork & {
   pipelineStage: RepairPipelineStage;
 };
 
@@ -140,9 +146,14 @@ function selectFromHumanDecision(
       // that explicitly opts in. The selector never produces
       // `scope: 'project'` from a QA finding or a protected-span
       // violation — that would be over-broad invalidation.
+      //
+      // The project variant carries NO `affectedBridgeUnitIds`: there is
+      // no finite list to enumerate here, and emitting `[]` would let a
+      // naive consumer read "nothing affected" and skip the rerun. The
+      // discriminated return forces consumers to branch on
+      // `affectedScope === 'project'` and expand the project themselves.
       return {
         affectedScope: "project",
-        affectedBridgeUnitIds: [],
         pipelineStage: targetStage,
       };
     default:

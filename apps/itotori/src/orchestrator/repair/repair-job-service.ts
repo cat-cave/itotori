@@ -27,9 +27,14 @@
 // Production wiring layers an executor on top via `claimNext`.
 
 import { createHash } from "node:crypto";
-import { selectAffectedWork, type RepairSceneIndex } from "./affected-work-selector.js";
+import {
+  selectAffectedWork,
+  type AffectedWorkSelection,
+  type RepairSceneIndex,
+} from "./affected-work-selector.js";
 import {
   REPAIR_JOB_SEVERITIES,
+  type RepairAffectedWork,
   type RepairEvent,
   type RepairJob,
   type RepairJobOutcome,
@@ -131,8 +136,7 @@ export class RepairJobService {
       jobId,
       trigger: input.trigger,
       pipelineStage: selection.pipelineStage,
-      affectedScope: selection.affectedScope,
-      affectedBridgeUnitIds: selection.affectedBridgeUnitIds,
+      ...affectedWorkOf(selection),
       pair: { modelId: input.pair.modelId, providerId: input.pair.providerId },
       enqueuedAt,
       severity: input.trigger.severity,
@@ -243,6 +247,28 @@ export class RepairJobService {
     const seed = `${trigger.trigger}|${triggerStableKey(trigger)}|${counter}`;
     const digest = createHash("sha256").update(seed).digest("hex");
     return `repair-job-${digest.slice(0, 16)}`;
+  }
+}
+
+/**
+ * Project the discriminated affected-work descriptor out of a selection
+ * so it can be spread onto a `RepairJob`. The exhaustive switch keeps the
+ * `project` variant field-for-field distinct: it MUST NOT acquire an
+ * `affectedBridgeUnitIds` key, otherwise a downstream executor could read
+ * an empty array and skip the project-wide rerun.
+ */
+function affectedWorkOf(selection: AffectedWorkSelection): RepairAffectedWork {
+  switch (selection.affectedScope) {
+    case "bridge_units":
+    case "scene":
+      return {
+        affectedScope: selection.affectedScope,
+        affectedBridgeUnitIds: selection.affectedBridgeUnitIds,
+      };
+    case "project":
+      return { affectedScope: "project" };
+    default:
+      return assertNever(selection);
   }
 }
 
