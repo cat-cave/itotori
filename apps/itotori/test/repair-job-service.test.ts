@@ -458,6 +458,22 @@ describe("RepairJobService outcome flow", () => {
     // switching on err.code would otherwise mis-route the error.
     expect((caught as RepairJobServiceError).code).toBe("not_in_flight");
   });
+
+  it("drop() on an unknown jobId throws a typed error and records no history", () => {
+    const service = makeService();
+    let caught: unknown;
+    try {
+      service.drop("repair-job-typo", "human decision rescinded");
+    } catch (err) {
+      caught = err;
+    }
+    // A typo'd/stale jobId must produce an observable outcome — never a
+    // silent return that swallows the operation with no audit record.
+    expect(caught).toBeInstanceOf(RepairJobServiceError);
+    expect((caught as RepairJobServiceError).code).toBe("unknown_job_id");
+    // No spurious job_dropped event for a jobId that never existed.
+    expect(service.repairHistory()).toEqual([]);
+  });
 });
 
 // ---------------------------------------------------------------------------

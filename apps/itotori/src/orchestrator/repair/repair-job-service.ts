@@ -73,7 +73,8 @@ export class RepairJobServiceError extends Error {
       | "missing_pair"
       | "below_minimum_severity"
       | "scene_scope_requires_scene_index"
-      | "not_in_flight",
+      | "not_in_flight"
+      | "unknown_job_id",
     message: string,
   ) {
     super(message);
@@ -189,15 +190,23 @@ export class RepairJobService {
    * decides — out-of-band — that the trigger no longer applies (e.g.
    * the human decision was rescinded). The drop is recorded with a
    * reason so the audit trail can show why the job never ran.
+   *
+   * A jobId that is neither queued nor in-flight throws a typed
+   * `unknown_job_id` error — matching `recordOutcome`'s convention for
+   * unknown ids. Silently returning would let a typo'd/stale jobId
+   * swallow the operation with no record in the audit history.
    */
   drop(jobId: string, reason: string): void {
     const queueIdx = this.queue.findIndex((j) => j.jobId === jobId);
     if (queueIdx >= 0) {
       this.queue.splice(queueIdx, 1);
-    } else if (!this.inflight.has(jobId)) {
-      return;
-    } else {
+    } else if (this.inflight.has(jobId)) {
       this.inflight.delete(jobId);
+    } else {
+      throw new RepairJobServiceError(
+        "unknown_job_id",
+        `drop called for jobId='${jobId}' which is neither queued nor in-flight`,
+      );
     }
     this.history.push({ kind: "job_dropped", jobId, at: this.now(), reason });
   }
