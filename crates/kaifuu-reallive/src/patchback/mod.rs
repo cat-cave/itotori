@@ -10,8 +10,10 @@
 //!   future node ratifies offset rewriting against per-game evidence.
 //! - The planner asserts non-text byte invariants (instructions, opcode
 //!   openers, operand tags, control bytes inside StringSlots) are
-//!   byte-identical to the source on every patched scene. The KAIFUU-174
-//!   tests in `tests/patchback.rs` exercise these invariants.
+//!   byte-identical to the source on every patched scene. The
+//!   per-`PatchBackErrorCode` contract tests in the `tests` module at the
+//!   bottom of this file exercise each error path against the real
+//!   KAIFUU-191 bytecode parser.
 //!
 //! KAIFUU-211 adds [`bundle_driven`], the canonical Seen.txt patchback
 //! path that consumes a translated v0.2 BridgeBundle and re-emits the
@@ -542,4 +544,263 @@ fn verify_archive_round_trip(
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    //! Per-`PatchBackErrorCode` contract tests for the legacy
+    //! length-preserving [`apply_patches`] surface.
+    //!
+    //! Every test drives a real SEEN.TXT envelope (the 10,000-slot
+    //! fixed-offset directory, KAIFUU-188) whose single populated scene is
+    //! decompressed RealLive bytecode parsed by the real KAIFUU-191
+    //! decoder (`parse_real_bytecode` via [`parse_scene_into_ast`]). The
+    //! synthetic bytes are authored here from the documented bytecode
+    //! shape — no retail bytes, no `/archive/vault/` access. Each test
+    //! asserts a specific `PatchBackErrorCode` is returned for a specific
+    //! malformed [`SlotEdit`], pinning the error contract that the alpha
+    //! patch-back path depends on.
+
+    use super::*;
+    use kaifuu_core::SourceEncoding;
+
+    use crate::archive::{REALLIVE_SEEN_TXT_DIRECTORY_BYTE_LEN, scene_id_string};
+    use crate::ast::{Instruction, InstructionId, InstructionKind, SCHEMA_VERSION, StringSlotRole};
+    use crate::opcodes::NamedOpcode;
+    use crate::strings::make_slot;
+
+    /// Directory slot the single-scene fixtures populate. Slot 0 stays
+    /// zeroed (reserved) so the envelope parser exercises the skip path.
+    const SINGLE_SCENE_SLOT: u16 = 1;
+
+    /// Decompressed scene bytecode: a single Shift-JIS Textout run that
+    /// decodes to "あい" (`82 A0 82 A2`). The real parser projects this
+    /// into exactly one `TextDisplay` instruction carrying one editable
+    /// Dialogue [`StringSlot`].
+    fn dialogue_scene_blob() -> Vec<u8> {
+        encode_shift_jis_slot("あい").expect("hiragana encodes as Shift-JIS")
+    }
+
+    /// Wrap raw scene bytecode in the 10,000-slot fixed-offset envelope,
+    /// placing the payload immediately after the directory at
+    /// [`SINGLE_SCENE_SLOT`].
+    fn single_scene_archive(scene_bytes: &[u8]) -> Vec<u8> {
+        let directory_byte_len = REALLIVE_SEEN_TXT_DIRECTORY_BYTE_LEN as usize;
+        let payload_offset = directory_byte_len as u32;
+        let mut out = vec![0u8; directory_byte_len + scene_bytes.len()];
+        let slot_byte_offset = (SINGLE_SCENE_SLOT as usize) * 8;
+        out[slot_byte_offset..slot_byte_offset + 4].copy_from_slice(&payload_offset.to_le_bytes());
+        out[slot_byte_offset + 4..slot_byte_offset + 8]
+            .copy_from_slice(&(scene_bytes.len() as u32).to_le_bytes());
+        out[directory_byte_len..].copy_from_slice(scene_bytes);
+        out
+    }
+
+    /// Parse the envelope and project every populated scene through the
+    /// real KAIFUU-191 bytecode parser.
+    fn parse_archive_and_scenes(archive_bytes: &[u8]) -> (RealLiveSceneIndex, Vec<Scene>) {
+        let index = parse_archive(archive_bytes).expect("envelope must parse");
+        let scenes = index
+            .entries
+            .iter()
+            .map(|entry| {
+                let blob = &archive_bytes[entry.byte_offset as usize
+                    ..(entry.byte_offset + u64::from(entry.byte_len)) as usize];
+                parse_scene_into_ast(blob, entry.scene_id, entry.byte_offset)
+                    .scene
+                    .expect("scene bytecode must parse")
+            })
+            .collect();
+        (index, scenes)
+    }
+
+    /// Build the base "あい" dialogue archive plus its parsed index/scenes,
+    /// and return the single Dialogue slot id every error-path test edits.
+    fn dialogue_fixture() -> (Vec<u8>, RealLiveSceneIndex, Vec<Scene>, String, String) {
+        let archive = single_scene_archive(&dialogue_scene_blob());
+        let (index, scenes) = parse_archive_and_scenes(&archive);
+        let scene = &scenes[0];
+        let scene_id = scene.scene_id.clone();
+        let slot_id = scene
+            .strings
+            .iter()
+            .find(|slot| slot.semantic_role == StringSlotRole::Dialogue)
+            .expect("the Textout run yields a Dialogue slot")
+            .slot_id
+            .as_str()
+            .to_string();
+        (archive, index, scenes, scene_id, slot_id)
+    }
+
+    fn length_preserving_edit(scene_id: &str, slot_id: &str, replacement: &str) -> SlotEdit {
+        SlotEdit {
+            scene_id: scene_id.to_string(),
+            slot_id: slot_id.to_string(),
+            replacement_text: replacement.to_string(),
+            length_policy: SlotEditLengthPolicy::LengthPreserving,
+            expected_source_hash: None,
+        }
+    }
+
+    #[test]
+    fn round_trips_archive_byte_for_byte_with_empty_edit_list() {
+        let (archive, index, scenes, _scene_id, _slot_id) = dialogue_fixture();
+        let out = apply_patches(&archive, &index, &scenes, &[])
+            .expect("identity round trip must succeed");
+        assert_eq!(out, archive);
+    }
+
+    #[test]
+    fn writes_length_preserving_translation_without_corrupting_envelope() {
+        let (archive, index, scenes, scene_id, slot_id) = dialogue_fixture();
+        // "うえ" Shift-JIS-encodes to the same 4-byte budget as "あい".
+        let replacement = "うえ";
+        let edit = length_preserving_edit(&scene_id, &slot_id, replacement);
+        let out = apply_patches(&archive, &index, &scenes, &[edit]).expect("patch must succeed");
+
+        assert_eq!(
+            out.len(),
+            archive.len(),
+            "length-preserving keeps file size"
+        );
+        let slot_start = index.entries[0].byte_offset as usize;
+        let new_bytes = encode_shift_jis_slot(replacement).expect("encodes");
+        let slot_end = slot_start + new_bytes.len();
+        assert_eq!(&out[slot_start..slot_end], new_bytes.as_slice());
+        // Everything outside the edited slot is byte-identical.
+        assert_eq!(out[..slot_start], archive[..slot_start]);
+        assert_eq!(out[slot_end..], archive[slot_end..]);
+        assert_ne!(out, archive, "the dialogue bytes actually changed");
+    }
+
+    #[test]
+    fn rejects_length_changing_edit_with_offset_overflow() {
+        let (archive, index, scenes, scene_id, slot_id) = dialogue_fixture();
+        // "あ" encodes to 2 bytes against the 4-byte source budget.
+        let edit = length_preserving_edit(&scene_id, &slot_id, "あ");
+        let err = apply_patches(&archive, &index, &scenes, &[edit]).expect_err("must reject");
+        assert_eq!(err.code, PatchBackErrorCode::OffsetOverflow);
+        assert_eq!(err.code.as_str(), PATCHBACK_OFFSET_OVERFLOW_CODE);
+    }
+
+    #[test]
+    fn rejects_fixed_budget_policy_with_unsupported_length_policy() {
+        let (archive, index, scenes, scene_id, slot_id) = dialogue_fixture();
+        let edit = SlotEdit {
+            scene_id,
+            slot_id,
+            replacement_text: "あい".to_string(),
+            length_policy: SlotEditLengthPolicy::FixedBudget { max_bytes: 8 },
+            expected_source_hash: None,
+        };
+        let err = apply_patches(&archive, &index, &scenes, &[edit]).expect_err("must reject");
+        assert_eq!(err.code, PatchBackErrorCode::UnsupportedLengthPolicy);
+        assert_eq!(err.code.as_str(), PATCHBACK_UNSUPPORTED_LENGTH_POLICY_CODE);
+    }
+
+    #[test]
+    fn rejects_unknown_slot_id() {
+        let (archive, index, scenes, scene_id, _slot_id) = dialogue_fixture();
+        let edit = length_preserving_edit(
+            &scene_id,
+            "reallive:scene-0001:str-off-deadbeef-idx00",
+            "うえ",
+        );
+        let err = apply_patches(&archive, &index, &scenes, &[edit]).expect_err("must reject");
+        assert_eq!(err.code, PatchBackErrorCode::UnknownSlotId);
+        assert_eq!(err.code.as_str(), PATCHBACK_UNKNOWN_SLOT_ID_CODE);
+    }
+
+    #[test]
+    fn rejects_stale_source_hash() {
+        let (archive, index, scenes, scene_id, slot_id) = dialogue_fixture();
+        let edit = SlotEdit {
+            scene_id,
+            slot_id,
+            replacement_text: "うえ".to_string(),
+            length_policy: SlotEditLengthPolicy::LengthPreserving,
+            expected_source_hash: Some("sha256:0000000000000000".to_string()),
+        };
+        let err = apply_patches(&archive, &index, &scenes, &[edit]).expect_err("must reject");
+        assert_eq!(err.code, PatchBackErrorCode::StaleSourceHash);
+        assert_eq!(err.code.as_str(), PATCHBACK_STALE_SOURCE_HASH_CODE);
+    }
+
+    #[test]
+    fn rejects_unmappable_text_with_shift_jis_encode_failure() {
+        let (archive, index, scenes, scene_id, slot_id) = dialogue_fixture();
+        // The emoji is outside JIS X 0208, so Shift-JIS encoding fails.
+        let edit = length_preserving_edit(&scene_id, &slot_id, "あ😀");
+        let err = apply_patches(&archive, &index, &scenes, &[edit]).expect_err("must reject");
+        assert_eq!(err.code, PatchBackErrorCode::ShiftJisEncodeFailure);
+        assert_eq!(err.code.as_str(), PATCHBACK_SHIFT_JIS_ENCODE_FAILURE_CODE);
+    }
+
+    #[test]
+    fn rejects_self_inflicted_opener_injection_with_parser_regression() {
+        // The real parser bounds a Textout run by opener bytes, not by a
+        // length prefix. A same-length replacement that injects the `0x23`
+        // Command opener ("##あ" → 23 23 82 A0, four bytes like "あい")
+        // re-parses as a truncated Command, so the post-patch self-check
+        // re-parse fails — the parser-regression gate.
+        let (archive, index, scenes, scene_id, slot_id) = dialogue_fixture();
+        let edit = length_preserving_edit(&scene_id, &slot_id, "##あ");
+        assert_eq!(
+            encode_shift_jis_slot("##あ").expect("encodes").len(),
+            dialogue_scene_blob().len(),
+            "the injection must stay length-preserving so the regression gate is what fires",
+        );
+        let err = apply_patches(&archive, &index, &scenes, &[edit]).expect_err("must reject");
+        assert_eq!(err.code, PatchBackErrorCode::ParserRegression);
+        assert_eq!(err.code.as_str(), PATCHBACK_PARSER_REGRESSION_CODE);
+    }
+
+    #[test]
+    fn rejects_protected_span_loss() {
+        // The real KAIFUU-191 parser only emits editable slots from
+        // Shift-JIS Textout runs, which cannot carry the ASCII
+        // `\{N\}` name-placeholder shape (its bytes are never Shift-JIS
+        // lead bytes). We therefore hand-build the AST for a slot whose
+        // source bytes are a bare name placeholder and assert that a
+        // same-length replacement which drops the placeholder trips the
+        // protected-span-loss guard before the round-trip self-check.
+        let scene_blob = b"\\{0\\}HI".to_vec(); // 5C 7B 30 5C 7D 48 49
+        let archive = single_scene_archive(&scene_blob);
+        let index = parse_archive(&archive).expect("envelope must parse");
+
+        let (slot, slot_ref) = make_slot(
+            SINGLE_SCENE_SLOT,
+            0,
+            0,
+            &scene_blob,
+            StringSlotRole::Dialogue,
+            SourceEncoding::Binary,
+            0,
+        );
+        let instruction = Instruction {
+            instruction_id: InstructionId::for_scene(SINGLE_SCENE_SLOT, 0),
+            byte_offset: 0,
+            byte_len: scene_blob.len() as u64,
+            kind: InstructionKind::Named {
+                opcode: NamedOpcode::TextDisplay,
+            },
+            operands: vec![Operand::String {
+                slot_ref: slot_ref.clone(),
+            }],
+            string_slot_refs: vec![slot_ref],
+        };
+        let scene = Scene {
+            schema_version: SCHEMA_VERSION.to_string(),
+            scene_id: scene_id_string(SINGLE_SCENE_SLOT),
+            instructions: vec![instruction],
+            strings: vec![slot.clone()],
+        };
+
+        // "abcdefg" is the same 7 bytes but carries no placeholder span.
+        let edit = length_preserving_edit(&scene.scene_id, slot.slot_id.as_str(), "abcdefg");
+        let err = apply_patches(&archive, &index, std::slice::from_ref(&scene), &[edit])
+            .expect_err("must reject");
+        assert_eq!(err.code, PatchBackErrorCode::ProtectedSpanLost);
+        assert_eq!(err.code.as_str(), PATCHBACK_PROTECTED_SPAN_LOST_CODE);
+    }
 }
