@@ -139,19 +139,6 @@ pub enum DecompressError {
         /// Input position immediately after the token's bytes.
         position: usize,
     },
-    /// The decompressor produced more output bytes than the caller's
-    /// declared `uncompressed_size`. Emitted *before* the overflow byte
-    /// is appended so the partial output is never observed.
-    OutputOverflow {
-        /// Declared uncompressed size the caller passed.
-        declared_uncompressed_size: usize,
-        /// `dst.len()` at the moment the overflow was caught.
-        emitted: usize,
-        /// Number of additional bytes the token would have produced.
-        token_run_length: usize,
-        /// Input position immediately after the token's bytes.
-        position: usize,
-    },
     /// The decompressor finished consuming input without producing the
     /// declared number of bytes. The partial output is dropped so the
     /// caller cannot accidentally treat a short stream as a full scene.
@@ -185,17 +172,6 @@ impl std::fmt::Display for DecompressError {
                 "utsushi.reallive.decompress.back_reference_out_of_range: \
                  emitted={emitted} back_distance={back_distance} run_length={run_length} \
                  at input position {position}",
-            ),
-            DecompressError::OutputOverflow {
-                declared_uncompressed_size,
-                emitted,
-                token_run_length,
-                position,
-            } => write!(
-                formatter,
-                "utsushi.reallive.decompress.output_overflow: \
-                 declared_uncompressed_size={declared_uncompressed_size} emitted={emitted} \
-                 token_run_length={token_run_length} at input position {position}",
             ),
             DecompressError::UnexpectedEndOfStream {
                 declared_uncompressed_size,
@@ -294,9 +270,9 @@ impl AvgDecompressor {
     /// requested a second-level XOR.
     ///
     /// On success returns `Ok((decompressed, warnings))`. A truncated
-    /// input, an out-of-range back-reference, an output overflow, or an
-    /// end-of-stream shortfall all produce a typed
-    /// [`DecompressError`] — there is no `Ok(partial_buffer)` path.
+    /// input, an out-of-range back-reference, or an end-of-stream
+    /// shortfall all produce a typed [`DecompressError`] — there is no
+    /// `Ok(partial_buffer)` path.
     pub fn decompress(
         &self,
         compressed: &[u8],
@@ -421,6 +397,26 @@ impl AvgDecompressor {
 
             bit <<= 1;
         }
+
+        // Invariant: `dst.len()` can reach but never exceed
+        // `declared_uncompressed_size`, so the decoder cannot overrun the
+        // declared size. The loop only runs while
+        // `dst.len() < declared_uncompressed_size`; the literal branch
+        // pushes exactly one byte; and the back-reference branch either
+        // takes the clip path — pushing exactly `declared_uncompressed_size
+        // - dst.len()` bytes to land on the declared size — or the unclipped
+        // path, which only runs when `dst.len() + run_length <=
+        // declared_uncompressed_size`. No input can drive `dst.len()` past
+        // the declared size, so a runtime overflow guard here would be
+        // structurally unreachable; the invariant is pinned with a debug
+        // assertion instead of a typed error path.
+        debug_assert!(
+            dst.len() <= declared_uncompressed_size,
+            "AVG32 decompressor overshot declared_uncompressed_size \
+             (dst.len()={}, declared_uncompressed_size={})",
+            dst.len(),
+            declared_uncompressed_size,
+        );
 
         // Second-level XOR (optional). When the key is supplied we apply
         // it cyclically over the entire post-LZSS output. When it is
