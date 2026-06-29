@@ -1031,6 +1031,51 @@ surface generalises, the byte-layout does not).
   substrate `ChoiceIndex` input event and the `TextLine` with
   `kind=Choice` are reusable across engines.
 
+- **UTSUSHI-212** (string / memory / system-arithmetic ops) —
+  _Shift-JIS conversion tables RealLive-only; rng determinism via
+  substrate carries._ The acceptance criteria
+  "`Uppercase("ＡＢＣ")` returns `"ＡＢＣ"`" and "`hantozen("abc")`
+  returns `"ａｂｃ"` (full-width)" pin the RealLive `module_str`
+  half/full-width semantics — these are the documented Shift-JIS
+  hantozen/zentohan conversions per RLDEV and assume a Shift-JIS code
+  unit. Siglus strings are UTF-16LE and its width-conversion ops live
+  under a different opcode family with different IDs; the conversion
+  table does not transfer. The substrate carrier that DOES carry is the
+  rng-determinism path: `rnd` seeded from the substrate `LogicalClock`
+  and the rng-state round-trip through `SnapshotStore` are facade
+  surfaces a Siglus port reuses unchanged. The `module_str` /
+  `module_mem` opcode-table identifiers themselves are RealLive-only.
+
+- **UTSUSHI-214** (graphics object stack) — _rlvm 256-object stack
+  model RealLive-only; FrameArtifactSink carries._ The acceptance
+  criteria "allocating 256 objects … → deterministic PNG bytes" and
+  "the render pass observes `SCREENSIZE_MOD=999,1280,720`" pin the
+  rlvm-derived `GraphicsSystem` shape: a ~256-slot foreground+background
+  object stack with per-object `(position, scale, alpha, colour_tone,
+image_ref, layer_order)` state, and a RealLive Gameexe
+  `SCREENSIZE_MOD` convention. Siglus's compositor uses a different
+  object/layer model and a different framebuffer-dimension source. The
+  substrate carrier (`FrameArtifactSink` + the deterministic-PNG
+  `FrameArtifact` envelope carrying `frame_index`, `evidence_tier=E1`,
+  and a PNG `artifact_id`) is reusable across engines; the 256-object
+  stack model and the `SCREENSIZE_MOD` key are RealLive-only.
+
+- **UTSUSHI-215** (module*grp + module_obj graphics opcodes) —
+  \_RealLive-only opcode byte-codes; substrate VFS + render sink carry.*
+  The acceptance criteria naming the rlvm `module_grp` /
+  `module_obj_management` / `module_obj_fg_bg` opcode catalogue
+  (`allocDC`, `wipe`, `shake`, `fade`, `objAlloc`, `objSetPos`,
+  `objSetAlpha`, `objSetLayer`, etc.) pin RealLive's opcode-table
+  byte-codes, and "`openBg("BG01A1")` reads
+  `$GAME/REALLIVEDATA/g00/BG01A1.g00`" pins the RealLive
+  `REALLIVEDATA/g00` asset layout. Siglus's graphics machinery uses a
+  different opcode family and a different asset-tree layout; neither the
+  opcode IDs nor the path transfer. The substrate carriers that DO carry
+  are the VFS read path and the render/`state_snapshot` sink through
+  which mutations of the (RealLive) graphics object stack are observed —
+  a Siglus port reuses those facade surfaces but populates them from its
+  own opcode dispatch table.
+
 - **UTSUSHI-216** (g00 image decoder) — _RealLive-only._ g00 types 0,
   1, 2 with the type-2 region-list sub-format is a RealLive-exclusive
   asset format. A Siglus port carrying the substrate `FrameArtifactSink`
