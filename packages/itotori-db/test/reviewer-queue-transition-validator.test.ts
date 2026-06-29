@@ -146,6 +146,81 @@ describe("validateReviewerQueueTransition — refusal taxonomy", () => {
   });
 });
 
+describe("validateReviewerQueueTransition — by-design omitted edges (audit 15cc5e0b)", () => {
+  // The transition graph intentionally omits `repair_requested -> in_review`
+  // and `in_review -> pending`. These tests lock the intended REJECTION so
+  // the design choice stays stated and the original finding cannot recur.
+
+  it("rejects repair_requested -> in_review (repair re-runs re-queue, never auto-reassign)", () => {
+    const result = validateReviewerQueueTransition({
+      item: makeItem({ state: reviewerQueueItemStateValues.repairRequested }),
+      action: reviewerQueueActionValues.approve,
+      expectedSourceRevisionId: "source-revision-test",
+      forcedNextState: reviewerQueueItemStateValues.inReview,
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.code).toBe("reviewer_queue_item_invalid_transition");
+      expect(result.diagnostics[0]?.code).toBe("reviewer_queue_item_invalid_transition");
+      expect(result.message).toContain("from 'repair_requested' to 'in_review'");
+    }
+  });
+
+  it("rejects in_review -> pending (no silent un-claim; release goes through defer)", () => {
+    const result = validateReviewerQueueTransition({
+      item: makeItem({ state: reviewerQueueItemStateValues.inReview }),
+      action: reviewerQueueActionValues.approve,
+      expectedSourceRevisionId: "source-revision-test",
+      forcedNextState: reviewerQueueItemStateValues.pending,
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.code).toBe("reviewer_queue_item_invalid_transition");
+      expect(result.diagnostics[0]?.code).toBe("reviewer_queue_item_invalid_transition");
+      expect(result.message).toContain("from 'in_review' to 'pending'");
+    }
+  });
+
+  it("allows the auditable release path: in_review -> deferred via defer", () => {
+    const result = validateReviewerQueueTransition({
+      item: makeItem({ state: reviewerQueueItemStateValues.inReview }),
+      action: reviewerQueueActionValues.defer,
+      expectedSourceRevisionId: "source-revision-test",
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.nextState).toBe(reviewerQueueItemStateValues.deferred);
+      expect(result.priorState).toBe(reviewerQueueItemStateValues.inReview);
+    }
+  });
+
+  it("allows a deferred item to reopen into the pending pool: deferred -> pending", () => {
+    const result = validateReviewerQueueTransition({
+      item: makeItem({ state: reviewerQueueItemStateValues.deferred }),
+      action: reviewerQueueActionValues.approve,
+      expectedSourceRevisionId: "source-revision-test",
+      forcedNextState: reviewerQueueItemStateValues.pending,
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.nextState).toBe(reviewerQueueItemStateValues.pending);
+    }
+  });
+
+  it("allows the repair re-queue path: repair_requested -> pending", () => {
+    const result = validateReviewerQueueTransition({
+      item: makeItem({ state: reviewerQueueItemStateValues.repairRequested }),
+      action: reviewerQueueActionValues.approve,
+      expectedSourceRevisionId: "source-revision-test",
+      forcedNextState: reviewerQueueItemStateValues.pending,
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.nextState).toBe(reviewerQueueItemStateValues.pending);
+    }
+  });
+});
+
 describe("validateReviewerQueueTransition — exported constants", () => {
   it("exposes a non-empty closed list of allowed transitions", () => {
     expect(reviewerQueueAllowedTransitions.length).toBeGreaterThan(0);

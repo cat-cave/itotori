@@ -213,6 +213,34 @@ export interface ItotoriReviewerQueueRepositoryPort {
  * repository's `applyAction` share the SAME transition validator — the
  * preview must never disagree with execution (audit focus: "Consequence
  * preview disagreeing with execution").
+ *
+ * Two edges are INTENTIONALLY absent (audit focus 15cc5e0b-…: "Allowed-
+ * transition graph silently drops repair_requested -> in_review and
+ * in_review -> pending"). They are by-design omissions, not oversights;
+ * the validator rejects them with an explicit, typed
+ * `reviewer_queue_item_invalid_transition` diagnostic (never a silent
+ * drop). The reachability they would provide already exists via the
+ * documented two-hop paths below, so adding the direct edges would only
+ * let a reviewer skip an auditable step:
+ *
+ *   - `repair_requested -> in_review` is omitted because repair re-runs
+ *     follow a RE-QUEUE model, not an auto-reassign model. When the
+ *     agentic loop finishes a requested repair the item re-enters the
+ *     UNCLAIMED pool via `repair_requested -> pending`; it is not handed
+ *     back to whichever reviewer last held it. A reviewer reaches review
+ *     again only by re-claiming through the normal `pending -> in_review`
+ *     edge, so the re-claim is recorded as a fresh claim.
+ *
+ *   - `in_review -> pending` (a silent "un-claim") is omitted because
+ *     every state change is an auditable reviewer action recorded in the
+ *     append-only transition log; reverting straight to `pending` would
+ *     erase the fact that the item was ever claimed. A reviewer who needs
+ *     to RELEASE a claimed item does so with the `defer` action
+ *     (`in_review -> deferred`), and the deferred item reopens into the
+ *     pending pool via `deferred -> pending`. So a release path DOES
+ *     exist (contrary to the original finding's "no path other than
+ *     escalate/accept/reject") — it is just routed through the auditable
+ *     `deferred` state rather than a silent revert.
  */
 export const reviewerQueueAllowedTransitions: ReadonlyArray<
   readonly [ReviewerQueueItemState, ReviewerQueueItemState]
