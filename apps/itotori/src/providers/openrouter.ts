@@ -538,33 +538,6 @@ function buildOpenRouterRequestBody(
   return body as JsonObject;
 }
 
-/**
- * ITOTORI-241 — does this request require `provider.require_parameters:true`
- * on the wire? True whenever the body carries something a fallback provider
- * could silently ignore: a `response_format` (json_schema OR json_object),
- * a forced structured tool call, or any tools[].
- *
- * json_object is INCLUDED (was the audit-P2 gap): a `json_object` call
- * sends `response_format:{type:"json_object"}`, so with fallback ON it must
- * be confined to providers that honour `response_format` — otherwise the
- * agentic loop could degrade onto a provider that ignores it and returns
- * unconstrained prose. Including it ALSO removes the posture/wire drift:
- * `openRouterRoutingPostureFromBlock` defaults an absent `require_parameters`
- * to `true`, so omitting the field on the wire while recording it `true`
- * meant the ledger disagreed with the bytes that actually went out. Both
- * the wire and the recorded posture now carry `require_parameters:true` for
- * json_object. `plain_json` is intentionally excluded: it emits no
- * `response_format`, so there is nothing for a provider to ignore.
- */
-function structuredOutputRequiresStrictParameters(request: ModelInvocationRequest): boolean {
-  return (
-    request.structuredOutput?.mode === "json_schema" ||
-    request.structuredOutput?.mode === "json_object" ||
-    request.structuredOutput?.mode === "tool_call_arguments" ||
-    Boolean(request.tools?.length)
-  );
-}
-
 function buildOpenRouterProviderRouting(
   routing: OpenRouterProviderRouting,
   request: ModelInvocationRequest,
@@ -599,7 +572,11 @@ function buildOpenRouterProviderRouting(
   }
   // require_parameters mirrors the posture's typed value when strict
   // mode applies; otherwise we only emit if the caller asked.
-  if (structuredOutputRequiresStrictParameters(request)) {
+  const strictParametersRequired =
+    request.structuredOutput?.mode === "json_schema" ||
+    request.structuredOutput?.mode === "tool_call_arguments" ||
+    Boolean(request.tools?.length);
+  if (strictParametersRequired) {
     provider.require_parameters = true;
   } else if (routing.requireParameters !== undefined) {
     provider.require_parameters = routing.requireParameters;
@@ -653,15 +630,14 @@ function buildOpenRouterProviderRouting(
  *   - zdr: `true` by default for non-public inputs (ITOTORI-227); a
  *     caller override is honoured verbatim. `public` inputs default
  *     to `false` (no zdr on the wire) unless caller asks.
- *   - require_parameters: `true` whenever the request carries a
- *     `response_format` (json_schema OR json_object), a forced structured
- *     tool, or any tools — see `structuredOutputRequiresStrictParameters`;
- *     otherwise mirrors caller, defaulting to `true` per the canonical ZDR
- *     posture (docs/openrouter-integration.md §3) when the caller is
- *     silent. With fallback now ON this is load-bearing: it confines
- *     fallback to providers that actually support the request's tools /
- *     response_format so the agentic loop cannot silently degrade onto a
- *     provider that ignores them.
+ *   - require_parameters: `true` whenever strict structured output or
+ *     tool calls are in play; otherwise mirrors caller, defaulting to
+ *     `true` per the canonical ZDR posture (docs/openrouter-
+ *     integration.md §3) when the caller is silent. With fallback now
+ *     ON this is load-bearing: it confines fallback to providers that
+ *     actually support the request's tools / response_format so the
+ *     agentic loop cannot silently degrade onto a provider that ignores
+ *     them.
  */
 function buildOpenRouterRoutingPosture(
   routing: OpenRouterProviderRouting,
@@ -680,9 +656,11 @@ function buildOpenRouterRoutingPosture(
   // skips the field for public input; both are recoverable from the
   // posture + classification).
   const zdr = routing.zdr !== undefined ? routing.zdr : request.inputClassification !== "public";
-  const requireParameters = structuredOutputRequiresStrictParameters(request)
-    ? true
-    : (routing.requireParameters ?? true);
+  const strictParametersRequired =
+    request.structuredOutput?.mode === "json_schema" ||
+    request.structuredOutput?.mode === "tool_call_arguments" ||
+    Boolean(request.tools?.length);
+  const requireParameters = strictParametersRequired ? true : (routing.requireParameters ?? true);
   return {
     order,
     allow_fallbacks: true,
@@ -1821,10 +1799,10 @@ export class OpenRouterModelProvider implements ModelProvider {
    * field reflects the (modelId, providerId) sheet registered in the
    * provider's CapabilityGuard at construction.
    *
-   * Why this exists: the agentic-loop structured-mode selection (see
+   * Why this exists: the agentic-loop pre-flight check (see
    * `apps/itotori/src/agents/speaker-label/agent.ts`'s
-   * `resolveStructuredOutput`, which calls `selectStructuredOutputRequest`)
-   * reads `provider.descriptor.capabilities` directly. The class-level
+   * `assertProviderSupportsStructuredOutput`) reads
+   * `provider.descriptor.capabilities` directly. The class-level
    * `descriptor` falls back to `openRouterDefaultCapabilities` (safe but
    * `untested` for structured outputs), so without a per-pair lookup the
    * agent refuses even pairs that DO support structured outputs.

@@ -56,20 +56,13 @@
 //     your data policy"). We forgo implicit caching as the price of
 //     staying within ZDR; the preferred-provider + fallback posture is
 //     orthogonal to caching.
-//   - Structured output under ZDR. ITOTORI-241 live testing proved that
-//     `response_format: { type: "json_schema" }` (strict AND non-strict)
-//     is UNROUTABLE under ZDR for this pair: OpenRouter returns HTTP 404
-//     "No endpoints found that can handle the requested parameters"
-//     because no ZDR-allow-list provider for deepseek/deepseek-v4-flash
-//     advertises json_schema and `require_parameters: true` narrows the
-//     routable pool to empty. The proven-routable deterministic structured
-//     mode is `json_object` (HTTP 200 via Fireworks, billed $0.00001708).
-//     The capability sheet below therefore marks jsonSchema `unsupported`
-//     and jsonObject `supported`; the agentic loop selects json_object via
-//     selectStructuredOutputRequest. `provider.require_parameters: true`
-//     is still set on every structured request (including json_object,
-//     ITOTORI-241) so any ZDR fallback is confined to providers that
-//     honour `response_format` (openrouter-integration.md §4.2).
+//   - JSON-schema structured output. Catalog and live capture confirm
+//     `response_format: { type: "json_schema" }` is accepted by
+//     Fireworks-hosted deepseek-v4-flash at this slug; with fallback now
+//     ON, `provider.require_parameters: true` (set on every structured /
+//     tool request) confines any fallback to ZDR providers that also
+//     support `response_format` so the agentic loop cannot silently
+//     degrade onto one that ignores it (openrouter-integration.md §4.2).
 //
 // Other entries in the table cover the two production-tier pairs we
 // reach for when DEV_PAIR isn't appropriate (e.g. high-stakes manual
@@ -147,23 +140,11 @@ function buildPairCapabilityTable(): ReadonlyArray<PairCapabilityEntry> {
       modelCapabilities: {
         ...openRouterDefaultCapabilities,
         structuredOutputs: {
-          // ITOTORI-241 — `json_schema` is UNROUTABLE under ZDR for this
-          // pair. The live proof posted `response_format:{type:json_schema}`
-          // (strict AND non-strict) with the ZDR posture and OpenRouter
-          // returned HTTP 404 "No endpoints found that can handle the
-          // requested parameters": no ZDR-allow-list provider for
-          // deepseek/deepseek-v4-flash advertises json_schema, and
-          // `require_parameters:true` correctly narrows the routable pool
-          // to empty. So json_schema is `unsupported` for THIS (ZDR-routed)
-          // pair regardless of what the bare model can do off-ZDR. The
-          // proven-routable deterministic structured mode is `json_object`
-          // (served by Fireworks, billed $0.00001708 in the live proof);
-          // the agentic loop selects it via selectStructuredOutputRequest.
-          jsonSchema: "unsupported",
+          jsonSchema: "supported",
           jsonObject: "supported",
           toolCallArguments: "supported",
           plainJsonExtraction: "supported",
-          preferredModes: ["json_object", "tool_call_arguments", "plain_json"],
+          preferredModes: ["json_schema", "tool_call_arguments", "json_object", "plain_json"],
         },
         toolCalls: {
           support: "supported",

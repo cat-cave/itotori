@@ -12,7 +12,6 @@ import {
   assertOpenRouterZdrAccount,
   openRouterApiKeyFromEnv,
   openRouterDefaultCapabilities,
-  selectStructuredOutputRequest,
   type JsonObject,
   type ModelCapabilities,
   type ModelInvocationRequest,
@@ -190,13 +189,6 @@ export function parseStyleGuideSuggestionFromProviderResult(
 export function styleGuideSuggestionRequest(
   modelId: string,
   providerId: string = "deepseek",
-  // ITOTORI-241 — the smoke selects its structured mode from the active
-  // pair's capability sheet rather than forcing json_schema. Under ZDR the
-  // DEV_PAIR's providers don't advertise json_schema (HTTP 404), so the
-  // selection resolves to json_object — the proven-routable mode. Callers
-  // pass a sheet (the live runner uses styleGuideLiveSmokeCapabilities);
-  // the default mirrors that ZDR-correct sheet.
-  capabilities: ModelCapabilities = styleGuideLiveSmokeCapabilities(),
 ): ModelInvocationRequest {
   return {
     taskKind: "experiment",
@@ -242,11 +234,12 @@ export function styleGuideSuggestionRequest(
         }),
       },
     ],
-    structuredOutput: selectStructuredOutputRequest(capabilities, {
+    structuredOutput: {
+      mode: "json_schema",
       name: "itotori_style_guide_suggestion",
-      schema: styleGuideSuggestionJsonSchema(),
       strict: true,
-    }),
+      schema: styleGuideSuggestionJsonSchema(),
+    },
     generation: {
       temperature: 0,
       maxOutputTokens: 1600,
@@ -340,18 +333,12 @@ function assertSmokeFixture(value: StyleGuideProviderSmokeFixture): void {
 }
 
 function styleGuideLiveSmokeCapabilities(): ModelCapabilities {
-  // ITOTORI-241 — json_schema is UNROUTABLE under ZDR for the DEV_PAIR
-  // (HTTP 404 "No endpoints found that can handle the requested
-  // parameters"); json_object is the proven-routable deterministic mode
-  // (billed $0.00001708 in the live proof). The smoke's structured-mode
-  // selection reads this sheet, so the live smoke no longer 404s.
   return {
     ...openRouterDefaultCapabilities,
     structuredOutputs: {
       ...openRouterDefaultCapabilities.structuredOutputs,
-      jsonSchema: "unsupported",
-      jsonObject: "supported",
-      preferredModes: ["json_object"],
+      jsonSchema: "supported",
+      preferredModes: ["json_schema"],
     },
   };
 }

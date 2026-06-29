@@ -45,7 +45,7 @@ import {
   type TranslationDraft,
 } from "@itotori/localization-bridge-schema";
 import { estimateTokens } from "../../batch-planner/token-estimator.js";
-import { selectStructuredOutputRequest } from "../../providers/structured-output.js";
+import { supportForStructuredOutputMode } from "../../providers/structured-output.js";
 import { RecordedModelProvider } from "../../providers/recorded.js";
 import type {
   JsonObject,
@@ -98,10 +98,17 @@ export class TranslationAgent {
     input: TranslationInvocationInput,
   ): Promise<TranslationInvocationResult> {
     this.assertInputWellFormed(input);
-    const structuredOutput = this.resolveStructuredOutput();
+    this.assertProviderSupportsStructuredOutput();
 
     const rendered = buildTranslationPrompt(input);
     const promptHashUsed = translationPromptHash(rendered);
+
+    const structuredOutput: StructuredOutputRequest = {
+      mode: "json_schema",
+      name: TRANSLATION_DEFAULT_STRUCTURED_OUTPUT_NAME,
+      schema: STRUCTURED_TRANSLATION_DRAFT_OUTPUT_JSON_SCHEMA as unknown as JsonObject,
+      strict: true,
+    };
 
     const messages: ModelMessage[] = [
       { role: "system", content: rendered.systemText },
@@ -212,26 +219,14 @@ export class TranslationAgent {
     }
   }
 
-  /**
-   * ITOTORI-241 — select the ZDR-routable structured-output mode for the
-   * active pair instead of forcing json_schema. json_schema when the
-   * pair's ZDR providers advertise it, otherwise json_object (the
-   * proven-routable deterministic mode). Refuses with the typed capability
-   * error when the pair supports neither — never a silent degrade.
-   */
-  private resolveStructuredOutput(): StructuredOutputRequest {
+  private assertProviderSupportsStructuredOutput(): void {
     const capabilities = this.options.provider.descriptor.capabilities;
-    try {
-      return selectStructuredOutputRequest(capabilities, {
-        name: TRANSLATION_DEFAULT_STRUCTURED_OUTPUT_NAME,
-        schema: STRUCTURED_TRANSLATION_DRAFT_OUTPUT_JSON_SCHEMA as unknown as JsonObject,
-        strict: true,
-      });
-    } catch (error) {
+    const support = supportForStructuredOutputMode(capabilities, "json_schema");
+    if (support !== "supported") {
       throw new TranslationProviderCapabilityError(
         this.options.provider.descriptor.providerName,
         this.options.provider.descriptor.family,
-        error instanceof Error ? error.message : String(error),
+        `structured output mode json_schema is ${support}`,
       );
     }
   }

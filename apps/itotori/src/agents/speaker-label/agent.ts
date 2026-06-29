@@ -46,7 +46,7 @@ import {
   type SpeakerLabelUnknownReason,
 } from "@itotori/localization-bridge-schema";
 import { estimateTokens } from "../../batch-planner/token-estimator.js";
-import { selectStructuredOutputRequest } from "../../providers/structured-output.js";
+import { supportForStructuredOutputMode } from "../../providers/structured-output.js";
 import type {
   JsonObject,
   ModelInvocationRequest,
@@ -92,10 +92,17 @@ export class SpeakerLabelAgent {
     input: SpeakerLabelInvocationInput,
   ): Promise<SpeakerLabelInvocationResult> {
     this.assertInputWellFormed(input);
-    const structuredOutput = this.resolveStructuredOutput();
+    this.assertProviderSupportsStructuredOutput();
 
     const rendered = buildSpeakerLabelPrompt(input);
     const promptHashUsed = speakerLabelPromptHash(rendered);
+
+    const structuredOutput: StructuredOutputRequest = {
+      mode: "json_schema",
+      name: SPEAKER_LABEL_DEFAULT_STRUCTURED_OUTPUT_NAME,
+      schema: SPEAKER_LABEL_OUTPUT_JSON_SCHEMA as unknown as JsonObject,
+      strict: true,
+    };
 
     const messages: ModelMessage[] = [
       { role: "system", content: rendered.systemText },
@@ -198,27 +205,14 @@ export class SpeakerLabelAgent {
     }
   }
 
-  /**
-   * ITOTORI-241 — select the ZDR-routable structured-output mode for the
-   * active pair instead of forcing json_schema. The pair's capability
-   * sheet decides: json_schema when its ZDR providers advertise it,
-   * otherwise json_object (the proven-routable deterministic mode). A pair
-   * that supports neither is refused with the agent's typed capability
-   * error — never a silent degrade.
-   */
-  private resolveStructuredOutput(): StructuredOutputRequest {
+  private assertProviderSupportsStructuredOutput(): void {
     const capabilities = this.options.provider.descriptor.capabilities;
-    try {
-      return selectStructuredOutputRequest(capabilities, {
-        name: SPEAKER_LABEL_DEFAULT_STRUCTURED_OUTPUT_NAME,
-        schema: SPEAKER_LABEL_OUTPUT_JSON_SCHEMA as unknown as JsonObject,
-        strict: true,
-      });
-    } catch (error) {
+    const support = supportForStructuredOutputMode(capabilities, "json_schema");
+    if (support !== "supported") {
       throw new SpeakerLabelProviderCapabilityError(
         this.options.provider.descriptor.providerName,
         this.options.provider.descriptor.family,
-        error instanceof Error ? error.message : String(error),
+        `structured output mode json_schema is ${support}`,
       );
     }
   }

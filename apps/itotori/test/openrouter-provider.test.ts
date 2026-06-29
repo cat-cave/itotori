@@ -29,7 +29,6 @@ import {
   OpenRouterModelProvider,
   OpenRouterProvider,
   openRouterDefaultCapabilities,
-  selectStructuredOutputRequest,
   type ModelInvocationRequest,
   type ProviderRunArtifact,
   type ProviderRunArtifactRecorder,
@@ -257,93 +256,6 @@ describe("OpenRouterModelProvider — request shape (ITOTORI-220 pair pin)", () 
       require_parameters: true,
     });
     expect(observedBody?.response_format?.type).toBe("json_schema");
-  });
-
-  it("ITOTORI-241: a json_object request sets provider.require_parameters:true on the wire AND the recorded posture matches (no posture/wire drift)", async () => {
-    // Audit P2: json_object was NOT in the strict-parameters set, so the
-    // wire omitted provider.require_parameters while the recorded posture
-    // defaulted the absent field to `true` — the ledger disagreed with the
-    // bytes. With json_object now in `structuredOutputRequiresStrictParameters`
-    // the wire carries require_parameters:true AND the captured posture
-    // mirrors it. Asserting BOTH against the observed wire body is the
-    // drift regression guard.
-    let observedBody:
-      | {
-          provider: { require_parameters?: boolean };
-          response_format?: { type?: string };
-        }
-      | undefined;
-    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
-      observedBody = JSON.parse(String(init?.body ?? "{}"));
-      return successResponse({});
-    }) as unknown as typeof fetch;
-    const recorder = memoryRecorder();
-    const provider = new OpenRouterProvider({
-      modelId: DEV_PAIR.modelId,
-      apiKey: "abc",
-      fetch: fetchMock,
-      capabilities: {
-        ...openRouterDefaultCapabilities,
-        structuredOutputs: {
-          ...openRouterDefaultCapabilities.structuredOutputs,
-          jsonObject: "supported",
-          preferredModes: ["json_object"],
-        },
-      },
-      live: { enabled: true, artifactRecorder: recorder, rawCapture: "disabled" },
-    });
-    await provider.invoke(baseRequest({ structuredOutput: { mode: "json_object" } }));
-
-    // (a) wire carries require_parameters:true + the json_object response_format.
-    expect(observedBody?.provider.require_parameters).toBe(true);
-    expect(observedBody?.response_format).toEqual({ type: "json_object" });
-
-    // (b) recorded posture matches the wire — the drift is gone.
-    expect(recorder.artifacts).toHaveLength(1);
-    const recordedRequireParameters = recorder.artifacts[0]!.run.routingPosture.require_parameters;
-    expect(recordedRequireParameters).toBe(true);
-    expect(recordedRequireParameters).toBe(observedBody?.provider.require_parameters);
-  });
-
-  it("ITOTORI-241: agentic structured-mode selection falls back to json_object when the active pair's ZDR pool lacks json_schema", () => {
-    // The DEV_PAIR sheet registered at construction marks json_schema
-    // 'unsupported' (ZDR 404) and json_object 'supported'. The agentic
-    // loop's pair-driven selector must therefore resolve to json_object,
-    // never force the unroutable json_schema.
-    const provider = new OpenRouterModelProvider({
-      env: { OPENROUTER_API_KEY: "abc", OPENROUTER_ZDR_ACCOUNT_ASSERTED: "1" },
-      httpClient: vi.fn() as unknown as typeof fetch,
-      capabilityGuard: new CapabilityGuard(),
-      artifactRecorder: memoryRecorder(),
-    });
-    const capabilities = provider.descriptorForPair(DEV_PAIR).capabilities;
-    expect(capabilities.structuredOutputs.jsonSchema).toBe("unsupported");
-
-    const selected = selectStructuredOutputRequest(capabilities, {
-      name: "itotori_agentic_schema",
-      schema: { type: "object", additionalProperties: false, properties: {} },
-      strict: true,
-    });
-    expect(selected).toEqual({ mode: "json_object" });
-
-    // Contrast: a pair whose sheet validates json_schema as ZDR-supported
-    // still gets json_schema (selection is pair-driven, not hardcoded).
-    const jsonSchemaPair = selectStructuredOutputRequest(
-      {
-        ...capabilities,
-        structuredOutputs: {
-          ...capabilities.structuredOutputs,
-          jsonSchema: "supported",
-          preferredModes: ["json_schema", "json_object"],
-        },
-      },
-      {
-        name: "itotori_agentic_schema",
-        schema: { type: "object", additionalProperties: false, properties: {} },
-        strict: true,
-      },
-    );
-    expect(jsonSchemaPair.mode).toBe("json_schema");
   });
 
   it("sends request maxPriceUsd as provider.max_price.request", async () => {
@@ -956,7 +868,7 @@ describe("OpenRouterModelProvider — ITOTORI-237 descriptorForPair", () => {
   // reflect the per-(modelId, providerId) sheet registered in the
   // provider's CapabilityGuard at construction.
 
-  it("ITOTORI-241: returns a descriptor whose capabilities reflect the registered DEV_PAIR sheet (jsonSchema='unsupported' under ZDR, jsonObject='supported')", () => {
+  it("returns a descriptor whose capabilities reflect the registered DEV_PAIR sheet (jsonSchema='supported')", () => {
     const provider = new OpenRouterModelProvider({
       env: { OPENROUTER_API_KEY: "abc", OPENROUTER_ZDR_ACCOUNT_ASSERTED: "1" },
       httpClient: vi.fn() as unknown as typeof fetch,
@@ -964,10 +876,7 @@ describe("OpenRouterModelProvider — ITOTORI-237 descriptorForPair", () => {
       artifactRecorder: memoryRecorder(),
     });
     const descriptor = provider.descriptorForPair(DEV_PAIR);
-    // ITOTORI-241 — json_schema is unroutable under ZDR for this pair
-    // (HTTP 404); json_object is the proven-routable structured mode.
-    expect(descriptor.capabilities.structuredOutputs.jsonSchema).toBe("unsupported");
-    expect(descriptor.capabilities.structuredOutputs.jsonObject).toBe("supported");
+    expect(descriptor.capabilities.structuredOutputs.jsonSchema).toBe("supported");
     expect(descriptor.capabilities.toolCalls.support).toBe("supported");
     // The non-capabilities fields stay identical to the class-level descriptor.
     expect(descriptor.family).toBe(provider.descriptor.family);
