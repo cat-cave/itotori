@@ -384,6 +384,9 @@ fn dispatch_select(
         let bytes = match arg {
             ExprValue::Bytes(bytes) => bytes.clone(),
             ExprValue::Int(_) => {
+                // A skipped Int never becomes a stored choice, so the raw
+                // arg position `idx` is the only meaningful pointer to the
+                // offending arg in the source list.
                 runtime.record_warning(SelRuntimeWarning::ArgShapeMismatch {
                     variant,
                     choice_index: idx,
@@ -392,17 +395,23 @@ fn dispatch_select(
                 continue;
             }
         };
+        // The emitted `choice:<idx>` surface (and SELBTN styling) must use
+        // the stored `choices` Vec position, not the raw arg index: that
+        // Vec position is what `SelectLongOp::choose` / `set_store` index
+        // into when the user picks. With non-Bytes args interleaved the two
+        // diverge, so derive the index from the contiguous choices length.
+        let choice_index = choices.len();
         let text = match decode_shift_jis(&bytes) {
             Ok(text) => text,
             Err(()) => {
                 runtime.record_warning(SelRuntimeWarning::InvalidShiftJis {
                     variant,
-                    choice_index: idx,
+                    choice_index,
                 });
                 String::from_utf8_lossy(&bytes).into_owned()
             }
         };
-        runtime.emit_choice(variant, idx, text);
+        runtime.emit_choice(variant, choice_index, text);
         choices.push(bytes);
     }
     if args.is_empty() {
@@ -734,6 +743,71 @@ mod tests {
         let sink = Arc::new(CollectingSink::new());
         let runtime = SelRuntime::with_sink(sink);
         assert!(runtime.selbtn_style_suffix(0).is_none());
+    }
+
+    #[test]
+    fn interleaved_int_arg_keeps_emitted_index_aligned_with_choices_vec() {
+        // Args: Bytes("A"), Int(7), Bytes("B"). The Int is skipped from the
+        // stored `choices` Vec, so the two surviving choices occupy Vec
+        // positions 0 and 1. The emitted `choice:<idx>` surfaces must name
+        // those contiguous positions (0, 1) — NOT the raw arg indices
+        // (0, 2) — so a user pick routed through `SelectLongOp::choose` /
+        // `set_store` lands on the matching stored entry.
+        let sink = Arc::new(CollectingSink::new());
+        let runtime = Arc::new(SelRuntime::with_sink(
+            Arc::clone(&sink) as Arc<dyn TextSurfaceSink>
+        ));
+        let op = SelectOp::new(Arc::clone(&runtime));
+
+        let outcome = op.dispatch(
+            &mut Vm::new(1, 0),
+            &[
+                ExprValue::Bytes(b"A".to_vec()),
+                ExprValue::Int(7),
+                ExprValue::Bytes(b"B".to_vec()),
+            ],
+        );
+
+        // Emitted surfaces name the contiguous choices-Vec positions.
+        let lines = sink.lines.lock().expect("lock");
+        let surfaces: Vec<Option<&str>> = lines
+            .iter()
+            .map(|line| line.text_surface.as_deref())
+            .collect();
+        assert_eq!(
+            surfaces,
+            vec![Some("choice:0"), Some("choice:1")],
+            "emitted indices must be contiguous choices-Vec positions, not raw arg indices"
+        );
+        let texts: Vec<&str> = lines.iter().map(|line| line.text.as_str()).collect();
+        assert_eq!(texts, vec!["A", "B"]);
+
+        // The yielded SelectLongOp stores exactly the two Bytes choices, so
+        // index 1 (the emitted "choice:1") decodes back to "B".
+        let DispatchOutcome::Yield {
+            longop_id,
+            private_state,
+        } = outcome
+        else {
+            panic!("select must yield a longop");
+        };
+        let head = LongOp {
+            id: longop_id,
+            private_state,
+        };
+        let select = SelectLongOp::try_from_longop(&head).expect("decode select payload");
+        assert_eq!(select.choices(), &[b"A".to_vec(), b"B".to_vec()]);
+
+        // The skipped Int is reported against its raw arg position (1).
+        let warnings = runtime.take_warnings();
+        assert_eq!(
+            warnings,
+            vec![SelRuntimeWarning::ArgShapeMismatch {
+                variant: SelectVariant::Select,
+                choice_index: 1,
+                expected: "bytes",
+            }]
+        );
     }
 
     #[test]
