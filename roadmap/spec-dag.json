@@ -30548,7 +30548,7 @@
       "title": "Expand alternates or switch primary model — both fireworks and deepinfra 429 on deepseek-v4-flash",
       "kind": "feature",
       "milestone": null,
-      "status": "done",
+      "status": "cancelled",
       "priority": "P1",
       "estimate_points": 1,
       "risk": "medium",
@@ -30559,11 +30559,11 @@
       "validation": null,
       "context": null,
       "created_at": "2026-06-26T16:56:49.538Z",
-      "updated_at": "2026-06-29T15:49:59.702Z",
+      "updated_at": "2026-06-29T16:05:43.319Z",
       "claimed_at": "2026-06-26T16:56:49.823Z",
       "done_at": "2026-06-26T17:43:15.956Z",
       "group_name": null,
-      "status_reason": "[2026-06-29T15:49:59.702Z] FALSE-GREEN CORRECTION (2026-06-29, deep-audit-1 P1): this node is marked done but its acceptance requires a SUCCESSFUL live agentic-loop invocation (UTSUSHI-231 retry 8/9) that has NEVER occurred — zero live-mode provider-run evidence exists (deep-audit-1 P0). The repeated 429s this node chased by adding alternates / widening the failover chain were MISDIAGNOSED: root cause is the single-provider-pin + allow_fallbacks:false routing posture in openrouter.ts (buildOpenRouterRoutingPosture), which amplifies transient upstream rate-limits into hard failures. The authoritative fix is the routing-posture correction + live proof now in flight (worker ab39f1be: zdr+allow_fallbacks+order+require_parameters+tool_choice). DISPOSITION DEFERRED to that worker's result: if it proves a real live call, this node's live clause is re-validated against that evidence; if the routing fix obsoletes the alternate-chaining approach, this node is to be SUPERSEDED with its non-live deliverables (preset/capabilitySheet/unit-test) preserved. Until then this is a known false-green, not silently accepted.",
+      "status_reason": "SUPERSEDED by alpha-live-openrouter-call-unproven-and-dev-pair-unroutable (ITOTORI-241, merged 2026-06-29). False-green: acceptance required a SUCCESSFUL live agentic-loop invocation (UTSUSHI-231 retry 8/9) that never occurred. The merged routing fix PROVED the live ZDR call (Fireworks, billed $0.00001414/$0.00001708) on attempt=1 with NO fallback needed — confirming the 429s this node chased via more alternates were MISDIAGNOSED (transient upstream amplified by the now-deleted single-provider-pin). Alternate-chaining is obsolete; residual json_schema-unroutable concern re-homed to agentic-structured-output-json-schema-unroutable-under-zdr. Genuine non-live deliverable (pair-policy preset + capabilitySheet) remains in the codebase.",
       "check_command": null,
       "ci_command": null,
       "blocked_by": null,
@@ -30578,7 +30578,7 @@
       "title": "Register every pair-policy alternate capabilitySheet into globalCapabilityGuard so descriptorForPair returns supported",
       "kind": "feature",
       "milestone": null,
-      "status": "done",
+      "status": "cancelled",
       "priority": "P1",
       "estimate_points": 1,
       "risk": "medium",
@@ -30589,11 +30589,11 @@
       "validation": null,
       "context": null,
       "created_at": "2026-06-26T17:41:25.038Z",
-      "updated_at": "2026-06-29T15:49:59.814Z",
+      "updated_at": "2026-06-29T16:05:55.273Z",
       "claimed_at": "2026-06-26T20:59:44.875Z",
       "done_at": "2026-06-26T21:37:01.357Z",
       "group_name": null,
-      "status_reason": "[2026-06-26T20:34:21.546Z] 2026-06-26 orchestration note: two qd check attempts failed because repo qd config still pointed check-command at just check, and just check still invokes legacy scripts/spec-dag*.mjs validators against the qd-export-shaped roadmap/spec-dag.json. Focused ITOTORI-240 test passed separately. Updated qd check-command to the same broad local preflight minus obsolete spec-dag validators; larger docs/tooling cleanup remains ITOTORI-300.\n[2026-06-26T20:38:25.673Z] 2026-06-26 verification: focused subagent audit found no blocking findings. Checks: pnpm --filter @itotori/app test test/localize-sweetie-hd-stage.test.ts (23 passed), pnpm --filter @itotori/app typecheck (passed), git diff --check main...HEAD (passed). qd check run passed after check-command was corrected to enter nix develop; log .qd/logs/check-ITOTORI-240-2026-06-26T20-36-09-755Z.log.\n[2026-06-26T20:53:44.688Z] 2026-06-26 integration CI attempt on branch integration/itotori-240-verify failed in packages/itotori-db/test/catalog-recorded-importers.test.ts: CATALOG-011 spec text guard regex expects camelCase auditFocus, but current qd export uses snake_case audit_focus. CATALOG-011 node/spec text is present in qd and roadmap export. Assigned narrow test compatibility fix; not an ITOTORI-240 feature regression.\n[2026-06-26T21:05:33.469Z] 2026-06-26 integration verification passed on branch integration/itotori-240-verify at commit 84838a4: qd check run passed (.qd/logs/check-ITOTORI-240-2026-06-26T20-59-53-773Z.log) and full qd CI passed (.qd/logs/ci-ITOTORI-240-2026-06-26T21-00-26-076Z.log). qd marked node mergeable. main remains unmodified pending explicit merge approval.\n[2026-06-26T21:46:40.954Z] Integrated main gate passed after merge: pnpm exec vp check, audit-no-hardcoded-cost, fixtures-validate, impl-map-schema-validate, toolchain-policy, ts:typecheck, cargo fmt --check, cargo check --workspace, just build, just db-migrate, just test, cargo clippy --workspace --all-targets --all-features -D warnings, and cargo deny check all completed successfully on 2026-06-26.\n[2026-06-29T15:49:59.814Z] FALSE-GREEN CORRECTION (2026-06-29, deep-audit-1 P1): this node is marked done but its acceptance requires a SUCCESSFUL live agentic-loop invocation (UTSUSHI-231 retry 8/9) that has NEVER occurred — zero live-mode provider-run evidence exists (deep-audit-1 P0). The repeated 429s this node chased by adding alternates / widening the failover chain were MISDIAGNOSED: root cause is the single-provider-pin + allow_fallbacks:false routing posture in openrouter.ts (buildOpenRouterRoutingPosture), which amplifies transient upstream rate-limits into hard failures. The authoritative fix is the routing-posture correction + live proof now in flight (worker ab39f1be: zdr+allow_fallbacks+order+require_parameters+tool_choice). DISPOSITION DEFERRED to that worker's result: if it proves a real live call, this node's live clause is re-validated against that evidence; if the routing fix obsoletes the alternate-chaining approach, this node is to be SUPERSEDED with its non-live deliverables (preset/capabilitySheet/unit-test) preserved. Until then this is a known false-green, not silently accepted.",
+      "status_reason": "SUPERSEDED by alpha-live-openrouter-call-unproven-and-dev-pair-unroutable (ITOTORI-241, merged 2026-06-29). False-green: acceptance required a SUCCESSFUL live agentic-loop invocation (UTSUSHI-231 retry 8/9) that never occurred. The merged routing fix PROVED the live ZDR call (Fireworks, billed $0.00001414/$0.00001708) on attempt=1 with NO fallback needed — confirming the 429s this node chased via more alternates were MISDIAGNOSED (transient upstream amplified by the now-deleted single-provider-pin). Alternate-chaining is obsolete; residual json_schema-unroutable concern re-homed to agentic-structured-output-json-schema-unroutable-under-zdr. Genuine non-live deliverable (pair-policy preset + capabilitySheet) remains in the codebase.",
       "check_command": null,
       "ci_command": null,
       "blocked_by": null,
@@ -36183,6 +36183,391 @@
         }
       ],
       "audit_focus": []
+    },
+    {
+      "id": "alpha-006a-vault-sourcing",
+      "title": "ALPHA-006a: source the Sweetie HD alpha corpus through kaifuu-vault-source",
+      "kind": "feature",
+      "milestone": "alpha",
+      "status": "ready",
+      "priority": "P1",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "WHAT: Wire the existing-but-unwired `kaifuu-vault-source` adapter into the alpha extraction entrypoint so the Oshioki Sweetie HD corpus is resolved through the read-only vault (catalog.db by-sha -> 7z extract to /scratch -> REALLIVEDATA tree) per docs/itotori-vault-source-adapter.md, instead of an operator-supplied raw filesystem path.\n\nWHY: Re-measured on main, kaifuu-vault-source compiles as a workspace member but has ZERO non-test consumers (only its own crates/kaifuu-vault-source/tests/*.rs reference it). The alpha extract path (kaifuu-cli/src/main.rs:336 + resolve_reallive_seen_path main.rs:642-692, gated on ITOTORI_REAL_GAME_ROOT) hardcodes `<root>/REALLIVEDATA/Seen.txt` and never touches catalog.db/by-sha. Alpha must source through the curated read-only vault.\n\nSCOPE/NO-LEGACY: the alpha SOURCING entrypoint (the suite localize / e2e corpus resolution) must go through the adapter; the bespoke vault-bypassing corpus-discovery it used before is deleted in the same change. The shared `--game-root` raw-path helper that serves env-gated unit tests is a separate, legitimate surface and is intentionally NOT removed here.",
+      "acceptance": "- A non-test source file in a production crate imports kaifuu_vault_source (adapter is wired, not merely compiled).\n- The alpha extract resolves Sweetie HD by its catalog.db sha and yields a Seen.txt whose sha256 equals the bytes the prior REALLIVEDATA path produced -- proven against the real vault at /archive/vault, not a synthetic fixture.\n- catalog.db and /archive/vault artifacts are opened strictly read-only; all extraction output lands under /scratch only (no writes under /archive/vault).\n- kaifuu-vault-source build and its contract test-suite pass.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-29T16:04:04.008Z",
+      "updated_at": "2026-06-29T16:04:04.008Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": "engine-adapters",
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["kaifuu", "itotori"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "direnv exec . cargo build -p kaifuu-vault-source"
+        },
+        {
+          "type": "command",
+          "value": "direnv exec . cargo test -p kaifuu-vault-source"
+        },
+        {
+          "type": "command",
+          "value": "rg -q \"use kaifuu_vault_source\" --glob '!**/tests/**' --glob '!**/*_test.rs' --glob '!**/test*.rs' crates"
+        },
+        {
+          "type": "command",
+          "value": "ITOTORI_VAULT_ROOT=/archive/vault ITOTORI_REQUIRE_REAL_BYTES=1 direnv exec . cargo test -p kaifuu-cli vault_sourced_extract -- --ignored --nocapture"
+        }
+      ],
+      "audit_focus": [
+        "Adapter wired only in tests, not production path",
+        "Any write to /archive/vault (must be read-only)",
+        "Sha mismatch between vault-sourced and direct REALLIVEDATA bytes"
+      ]
+    },
+    {
+      "id": "alpha-006b-screenshot-rasterizer",
+      "title": "ALPHA-006b: rasterized + redacted scene-1 screenshot for render-validate",
+      "kind": "feature",
+      "milestone": "alpha",
+      "status": "ready",
+      "priority": "P1",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "WHAT: Make alpha render-validate emit an actual rasterized PNG screenshot of the localized Sweetie HD scene-1 text frame through the substrate frame sink (EvidenceTier >= E2), with a hard redaction guarantee that no copyrighted game-image (g00) pixels are embedded.\n\nWHY: Re-measured on main, render/replay validation is TEXT-ONLY: utsushi-cli/src/replay_validate.rs only asserts an expected substring appears in a captured ReplayEvent::TextLine; utsushi-cli/src/main.rs:324-350 explicitly declares Screenshot/Recording `unsupported` and frame capture a dispatch-report, not a screenshot. A real headless rasterizer exists (utsushi-reallive/src/render_pipeline.rs, UTSUSHI-214) but it is synthetic, unwired to the substrate FrameArtifactSink (it emits in-crate at E1), and its GraphicsObjectKind::Image branch is a deliberate no-op. Alpha needs a real frame artifact.\n\nNO-LEGACY: when the screenshot path replaces the text-only/dispatch-report capture stub for the alpha surface, the stubbed `unsupported` capture surface it supersedes is deleted, not left alongside.\n\nNON-COPYRIGHT: the redaction is structural -- the rasterizer must continue to NOT dereference copyrighted g00 bitmaps into the framebuffer; only our own translated text layer + synthetic fills are painted. The emitted PNG must provably contain none of the source g00 byte content.",
+      "acceptance": "- Running render-validate on real Sweetie HD scene 1 writes a deterministic PNG artifact to disk (a real, hashable file under the artifacts/scratch dir), announced through the substrate FrameArtifactSink at E2 or higher.\n- A test proves the emitted PNG embeds zero bytes from any source g00 asset (copyright-redaction), and that GraphicsObjectKind::Image is not dereferenced into the framebuffer.\n- The PNG renders the localized (English) text layer for scene 1, not the Japanese source.\n- The prior text-only/`unsupported` capture stub for the alpha surface is removed.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-29T16:04:04.008Z",
+      "updated_at": "2026-06-29T16:04:04.008Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": "runtime-adapters",
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["utsushi"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "direnv exec . cargo test -p utsushi-reallive"
+        },
+        {
+          "type": "command",
+          "value": "direnv exec . cargo test -p utsushi-cli"
+        },
+        {
+          "type": "command",
+          "value": "! rg -q 'Frame capture is a CLI dispatch test report' crates/utsushi-cli/src"
+        },
+        {
+          "type": "command",
+          "value": "ITOTORI_REAL_GAME_ROOT=\"/scratch/itotori-research/sweetie-hd/extracted/オシオキSweetie＋Sweets!! HD_DL版\" ITOTORI_REQUIRE_REAL_BYTES=1 direnv exec . cargo test -p utsushi-cli render_validate_screenshot -- --ignored --nocapture"
+        }
+      ],
+      "audit_focus": [
+        "Copyrighted g00 pixels leaking into the screenshot",
+        "Frame artifact emitted below E2 / not through substrate sink",
+        "Screenshot asserts nothing observable (tautological)"
+      ]
+    },
+    {
+      "id": "alpha-006c-patchback-byte-fidelity",
+      "title": "ALPHA-006c: prove bundle-driven patchback byte-correct + delete legacy apply_patches",
+      "kind": "feature",
+      "milestone": "alpha",
+      "status": "ready",
+      "priority": "P1",
+      "estimate_points": 1,
+      "risk": "high",
+      "owner": null,
+      "branch": null,
+      "spec": "WHAT (two coupled parts):\n1. BYTE-FIDELITY: prove the alpha patchback output is byte-correct, not merely smaller. Re-measured on main, the alpha patch test crates/kaifuu-cli/tests/patch_real_sweetie_hd.rs asserts only (a) patched Seen.txt non-empty + >=80,000-byte directory, (b) re-parses with same scene count, (c) source sha256 unchanged. It does NOT assert per-scene byte-identity. Add assertions that every NON-translated scene blob is byte-identical to source after patch, that translated scenes keep their opcode headers intact (only text-body bytes change), and that the patched scene re-decompiles with ZERO new unknown opcodes.\n2. NO-LEGACY DELETE: alpha uses the canonical bundle_driven::apply_translated_bundle (confirmed: kaifuu-cli/src/main.rs:488 via `patch --engine reallive`). The legacy `apply_patches`/`apply_slot_edit` surface (kaifuu-reallive/src/patchback/mod.rs:149,238; exported lib.rs:176) is still present and is structurally BROKEN for non-Textout roles (parser.rs sets byte_offset_within_scene to the opcode opener while byte_len=choice-text length, so apply_slot_edit splices over the opcode header). Per no-legacy-compat, delete apply_patches/apply_slot_edit, reroute the kaifuu-engine-fixture RealLive adapter (kaifuu-engine-fixture/src/lib.rs:4527) through bundle_driven, retire binary-patch-smoke's apply_patches use, and DELETE the already-#[ignore]'d broken test `synthetic_seen_txt_round_trips_with_length_preserving_edit` (binary_patch_smoke.rs:585). This subsumes candidate FIX-2.\n\nWHY: a 0.547x-shrink-only check cannot catch silent structural corruption; and keeping a known-buggy legacy splice path alongside the canonical one is exactly the dual plumbing no-legacy forbids.\n\nMULTI-GAME: byte-fidelity must hold on Sweetie HD AND a 2nd RealLive title (depends on fix-second-reallive-corpus).",
+      "acceptance": "- patch_real_sweetie_hd.rs (or a sibling real-bytes test) asserts: untranslated scenes byte-identical pre/post patch; translated scene opcode headers byte-identical (only text body differs); patched scene re-decompiles with 0 unknown opcodes.\n- `apply_patches` and `apply_slot_edit` no longer exist anywhere under crates/*/src; the kaifuu-engine-fixture RealLive patch adapter and binary-patch-smoke route through bundle_driven::apply_translated_bundle.\n- The broken `synthetic_seen_txt_round_trips_with_length_preserving_edit` test is deleted (not re-ignored).\n- Byte-fidelity passes on Sweetie HD and a 2nd RealLive title.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-29T16:04:04.008Z",
+      "updated_at": "2026-06-29T16:04:04.008Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": "engine-adapters",
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["kaifuu"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "! rg -q 'apply_patches|apply_slot_edit' crates/kaifuu-reallive/src crates/kaifuu-cli/src crates/kaifuu-engine-fixture/src"
+        },
+        {
+          "type": "command",
+          "value": "! rg -q 'synthetic_seen_txt_round_trips' crates"
+        },
+        {
+          "type": "command",
+          "value": "direnv exec . cargo build -p kaifuu-engine-fixture"
+        },
+        {
+          "type": "command",
+          "value": "direnv exec . cargo test -p kaifuu-reallive"
+        },
+        {
+          "type": "command",
+          "value": "ITOTORI_REAL_GAME_ROOT=\"/scratch/itotori-research/sweetie-hd/extracted/オシオキSweetie＋Sweets!! HD_DL版\" ITOTORI_REQUIRE_REAL_BYTES=1 direnv exec . cargo test -p kaifuu-cli --test patch_real_sweetie_hd -- --ignored --nocapture"
+        }
+      ],
+      "audit_focus": [
+        "Shrink-only check masking structural corruption",
+        "Legacy apply_patches surviving anywhere (no-legacy)",
+        "Byte-fidelity asserted on Sweetie HD only (multi-game gap)"
+      ]
+    },
+    {
+      "id": "alpha-006e-decompiler-100",
+      "title": "ALPHA-006e: RealLive decompiler to 100% (full ExpressionPiece eval, 0 unknown opcodes)",
+      "kind": "feature",
+      "milestone": "alpha",
+      "status": "ready",
+      "priority": "P1",
+      "estimate_points": 1,
+      "risk": "high",
+      "owner": null,
+      "branch": null,
+      "spec": "WHAT: Complete the kaifuu-reallive Command-argument / ExpressionPiece evaluator so real RealLive scene bytecode decompiles with ZERO unknown opcodes and full expression evaluation, and raise the test floor to demand it.\n\nWHY: Re-measured on main against the real Sweetie HD Seen.txt scene 1: total_opcodes=299, recognized=253, unknown=46 -> recognition_rate=84.62%. crates/kaifuu-reallive/tests/scene_1_dispatch_real_bytes.rs:258-265 asserts only `recognition_rate >= 0.75` -- a DEFECT floor that masks incomplete decompilation. The residual 46 unknown spans are dominated by byte-coalesced positions that cannot be aligned to a documented BytecodeElement boundary without a full ExpressionPiece evaluator (the comment at lines 246-257 admits this).\n\nNO-LEGACY: the >=0.75 floor and its rationalizing comment are deleted in the same change as the 100% assertion; no second relaxed threshold remains.\n\nMULTI-GAME: 100% (0 unknown) must hold on Sweetie HD AND a 2nd RealLive title (depends on fix-second-reallive-corpus); a single-game opcode catalogue does not generalize.",
+      "acceptance": "- On real Sweetie HD scene 1: unknown==0 / recognition_rate==100% via the full ExpressionPiece evaluator (every Unknown{opcode:0x23,...} span resolved to a typed BytecodeElement).\n- scene_1_dispatch_real_bytes.rs asserts unknown==0 (or recognition_rate==1.0); the `>= 0.75` floor and its excuse comment are gone.\n- The same 0-unknown result holds on a 2nd real RealLive title.\n- No new threshold relaxation (no 0.75/0.9 floor remains anywhere in that test).",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-29T16:04:04.008Z",
+      "updated_at": "2026-06-29T16:04:04.008Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": "engine-adapters",
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["kaifuu"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "! rg -q 'recognition_rate >= 0\\.|0\\.75|>= 0\\.9' crates/kaifuu-reallive/tests/scene_1_dispatch_real_bytes.rs"
+        },
+        {
+          "type": "command",
+          "value": "rg -q 'unknown == 0|recognition_rate == 1|assert_eq!\\(unknown, 0' crates/kaifuu-reallive/tests/scene_1_dispatch_real_bytes.rs"
+        },
+        {
+          "type": "command",
+          "value": "direnv exec . cargo test -p kaifuu-reallive"
+        },
+        {
+          "type": "command",
+          "value": "ITOTORI_REAL_GAME_ROOT=\"/scratch/itotori-research/sweetie-hd/extracted/オシオキSweetie＋Sweets!! HD_DL版\" ITOTORI_REQUIRE_REAL_BYTES=1 direnv exec . cargo test -p kaifuu-reallive --test scene_1_dispatch_real_bytes -- --ignored --nocapture"
+        }
+      ],
+      "audit_focus": [
+        "Relaxed floor masking residual unknown spans",
+        "100% claimed on one game only (multi-game gap)",
+        "ExpressionPiece eval stubbed rather than fully evaluated"
+      ]
+    },
+    {
+      "id": "alpha-006d-full-chain-e2e",
+      "title": "ALPHA-006d: Sweetie HD e2e (vault-extract -> 100%-decompile -> live-LLM localize -> byte-correct patch -> replay -> redacted screenshot)",
+      "kind": "feature",
+      "milestone": "alpha",
+      "status": "ready",
+      "priority": "P1",
+      "estimate_points": 1,
+      "risk": "high",
+      "owner": null,
+      "branch": null,
+      "spec": "WHAT: Integrate the alpha vertical end to end on real Sweetie HD bytes with exactly ONE live OpenRouter call. Re-wire the existing `just localize-sweetie-hd` chain (UTSUSHI-228, currently extract->translate->patch->replay-verify with text-only validation) to consume the new capabilities: source via kaifuu-vault-source (006a), decompile at 100%/0-unknown (006e), patch via byte-correct bundle_driven with the legacy path gone (006c), and render-validate to a redacted screenshot (006b).\n\nWHY: the chain exists but on main it does not use the vault, decompiles at only 84.62%, has unproven patch byte-fidelity, validates text-only, and the 'translate' stage must be a real ZDR-routed OpenRouter call (model+provider pair, /generation cost telemetry) rather than a recorded stub.\n\nThis is the integration hub's concrete leaf: it produces the full alpha artifact set from real bytes + one real LLM call.",
+      "acceptance": "- A single suite command runs the full chain on the real Sweetie HD corpus and writes an artifact bundle containing: vault-sourced Seen.txt (sha logged), decompiled bundle with 0 unknown opcodes, a localized bundle produced by exactly ONE live OpenRouter call (recorded model id + provider id pair, /generation cost + ZDR metadata), a byte-correct patched Seen.txt, a replay text-match log, and a redacted scene-1 screenshot PNG.\n- The live call is ZDR-routed and its real cost is recorded; the run fails closed if the provider is not ZDR.\n- Replay text-match confirms the localized English line; screenshot contains no copyrighted g00 pixels.\n- The chain consumes 006a/006b/006c/006e capabilities (no bypass back to the hardcoded path, the 84% decompile, the legacy patch, or text-only validation).",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-29T16:04:04.008Z",
+      "updated_at": "2026-06-29T16:04:04.008Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": "alpha-integration",
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["suite", "itotori", "utsushi", "kaifuu"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "direnv exec . cargo test -p kaifuu-cli && direnv exec . cargo test -p utsushi-cli"
+        },
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:test"
+        },
+        {
+          "type": "command",
+          "value": "ITOTORI_VAULT_ROOT=/archive/vault OPENROUTER_API_KEY=\"$OPENROUTER_API_KEY\" ITOTORI_REQUIRE_REAL_BYTES=1 direnv exec . just localize-sweetie-hd"
+        },
+        {
+          "type": "command",
+          "value": "test -f artifacts/sweetie-hd-alpha/scene-1.png && rg -q 'unknown[\"_ ]*opcodes?[\"_ :]*0|\"unknownOpcodes\":0' artifacts/sweetie-hd-alpha/decompile-report.json"
+        }
+      ],
+      "audit_focus": [
+        "Stubbed/recorded LLM call instead of a real ZDR-routed OpenRouter call",
+        "Cost/ZDR telemetry missing or fabricated",
+        "Chain silently bypassing 006a/006b/006c/006e",
+        "Artifacts asserted to exist but not actually written"
+      ]
+    },
+    {
+      "id": "fix-realistic-seen-txt-fixture",
+      "title": "FIX-1: structurally-faithful synthetic Seen.txt fixture (real opener-byte shape)",
+      "kind": "test",
+      "milestone": "alpha",
+      "status": "ready",
+      "priority": "P2",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "WHAT: Replace the unrealistic synthetic Seen.txt fixture/builder with one that is structurally faithful to real RealLive bytes: real post-KAIFUU-191 opcode opener-byte shape, real instruction/Command-arg layouts, real 10,000-slot 80,000-byte fixed-offset directory, and real AVG32 LZSS+XOR compression framing.\n\nWHY: Re-measured on main, the binary_patch_smoke synthetic Seen.txt uses the pre-KAIFUU-191 0x23-opener shape (its round-trip test is #[ignore]'d for exactly this reason, binary_patch_smoke.rs:583). The KAIFUU-173/188 fixtures (tests/fixtures/README.md) are honest envelope-shape smokes but their bytecode bodies do not mirror the real opcode distribution. A faithful fixture lets non-real-bytes tests exercise the true parser shape.\n\nNON-COPYRIGHT: authored from scratch from public RLDEV/format archaeology; real byte-counts/offsets/hashes of Sweetie HD MAY be referenced as numeric anchors, but NO verbatim retail bytecode or text is copied.",
+      "acceptance": "- A regenerable builder produces a synthetic Seen.txt whose opener-byte/Command-arg shapes parse through the current (post-KAIFUU-191) parser with 0 unknown opcodes and exercise Textout, Choice, TextDisplay, and SetSpeaker roles.\n- No verbatim retail bytecode/text is committed; only numeric offsets/counts/hashes reference real bytes.\n- The fixtures README documents the provenance (synthetic, CC0).",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-29T16:04:04.008Z",
+      "updated_at": "2026-06-29T16:04:04.008Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": "engine-adapters",
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["kaifuu"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "direnv exec . cargo test -p kaifuu-reallive"
+        },
+        {
+          "type": "command",
+          "value": "direnv exec . cargo test -p kaifuu-cli"
+        }
+      ],
+      "audit_focus": [
+        "Fixture still pre-KAIFUU-191 opener shape",
+        "Verbatim retail bytes copied into fixture",
+        "Tautological fixture test (asserts nothing about parser shape)"
+      ]
+    },
+    {
+      "id": "fix-realistic-g00-fixture",
+      "title": "FIX-3: structurally-faithful synthetic g00 fixture (real type-0/2 header shape)",
+      "kind": "test",
+      "milestone": "alpha",
+      "status": "ready",
+      "priority": "P2",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "WHAT: Author a structurally-faithful synthetic g00 image fixture (real type-0 and type-2 lead-byte/header/region shapes and compression framing) to back the rasterizer and g00 decoder tests, replacing any unrealistic placeholder bytes.\n\nWHY: utsushi-reallive g00 coverage leans on real-bytes tests (g00_real_bytes.rs, env-gated) plus thin in-module round-trips (g00.rs:1380). Alpha screenshot redaction (006b) needs a non-copyrighted, structurally-real g00 fixture to test the Image-no-op redaction path without retail assets.\n\nNON-COPYRIGHT: synthetic, authored from public g00 format archaeology; real header/region byte-counts MAY be referenced numerically; NO verbatim retail pixel data copied.",
+      "acceptance": "- A synthetic g00 fixture decodes through decode_g00 for both type-0 and type-2 with the real header/region structure and zero warnings on the structural path.\n- No verbatim retail g00 pixel bytes are committed.\n- The fixture is consumable by the 006b redaction test (proves Image-no-op without retail assets).",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-29T16:04:04.008Z",
+      "updated_at": "2026-06-29T16:04:04.008Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": "runtime-adapters",
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["utsushi"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "direnv exec . cargo test -p utsushi-reallive"
+        }
+      ],
+      "audit_focus": [
+        "Verbatim retail g00 pixels copied",
+        "Fixture header shape not matching real type-0/2",
+        "Redaction test made tautological by unrealistic fixture"
+      ]
+    },
+    {
+      "id": "fix-second-reallive-corpus",
+      "title": "FIX-4: source a 2nd real RealLive title via the vault for multi-game validation",
+      "kind": "infra",
+      "milestone": "alpha",
+      "status": "ready",
+      "priority": "P2",
+      "estimate_points": 1,
+      "risk": "high",
+      "owner": null,
+      "branch": null,
+      "spec": "WHAT: Identify and make available a SECOND real RealLive title (distinct from Oshioki Sweetie HD) via the kaifuu-vault-source adapter, and expose it to the real-bytes test harness (e.g. an ITOTORI_REAL_GAME_ROOT_2 corpus root) so multi-game validation can run.\n\nWHY: multi-game-validation is project law: engine-family behavior must validate against >=2 real RealLive games. On main, /scratch/itotori-research holds only sweetie-hd as a RealLive title (the others are kirikiri/rpg-maker). 006c byte-fidelity and 006e 100%-decompile both need a 2nd RealLive corpus to prove the Sweetie-HD opcode/Choice layout generalizes.\n\nNON-COPYRIGHT: the 2nd title's bytes stay read-only in the vault/scratch; nothing is copied into the repo.\n\nRISK: if the vault does not yet hold a 2nd RealLive title, this depends on the sibling vault-curation project ingesting one; flag and coordinate rather than fabricating a corpus.",
+      "acceptance": "- A 2nd real RealLive title is resolvable through kaifuu-vault-source and reachable by the real-bytes harness via a documented corpus-root env var.\n- The 2nd corpus is confirmed RealLive (REALLIVEDATA/Seen.txt present) and is NOT Sweetie HD (sha differs).\n- 006c and 006e acceptance commands can run against it.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-29T16:04:04.008Z",
+      "updated_at": "2026-06-29T16:04:04.008Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": "engine-research",
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["kaifuu", "itotori"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "direnv exec . cargo test -p kaifuu-vault-source"
+        },
+        {
+          "type": "command",
+          "value": "test -n \"$ITOTORI_REAL_GAME_ROOT_2\" && test -f \"$ITOTORI_REAL_GAME_ROOT_2/REALLIVEDATA/Seen.txt\""
+        }
+      ],
+      "audit_focus": [
+        "2nd corpus actually Sweetie HD again (no real 2nd game)",
+        "Bytes copied into repo (copyright)",
+        "Corpus not RealLive engine"
+      ]
     }
   ],
   "edges": [
@@ -46493,6 +46878,90 @@
       "to_node": "pair-mismatch-check-rejects-genuine-zdr-fallback",
       "type": "requires",
       "created_at": "2026-06-29T16:03:34.402Z"
+    },
+    {
+      "from_node": "fix-second-reallive-corpus",
+      "to_node": "alpha-006a-vault-sourcing",
+      "type": "requires",
+      "created_at": "2026-06-29T16:04:04.008Z"
+    },
+    {
+      "from_node": "alpha-006c-patchback-byte-fidelity",
+      "to_node": "fix-realistic-seen-txt-fixture",
+      "type": "requires",
+      "created_at": "2026-06-29T16:04:04.008Z"
+    },
+    {
+      "from_node": "alpha-006c-patchback-byte-fidelity",
+      "to_node": "fix-second-reallive-corpus",
+      "type": "requires",
+      "created_at": "2026-06-29T16:04:04.008Z"
+    },
+    {
+      "from_node": "alpha-006e-decompiler-100",
+      "to_node": "fix-second-reallive-corpus",
+      "type": "requires",
+      "created_at": "2026-06-29T16:04:04.008Z"
+    },
+    {
+      "from_node": "alpha-006b-screenshot-rasterizer",
+      "to_node": "fix-realistic-g00-fixture",
+      "type": "requires",
+      "created_at": "2026-06-29T16:04:04.008Z"
+    },
+    {
+      "from_node": "alpha-006d-full-chain-e2e",
+      "to_node": "alpha-006a-vault-sourcing",
+      "type": "requires",
+      "created_at": "2026-06-29T16:04:04.008Z"
+    },
+    {
+      "from_node": "alpha-006d-full-chain-e2e",
+      "to_node": "alpha-006b-screenshot-rasterizer",
+      "type": "requires",
+      "created_at": "2026-06-29T16:04:04.008Z"
+    },
+    {
+      "from_node": "alpha-006d-full-chain-e2e",
+      "to_node": "alpha-006c-patchback-byte-fidelity",
+      "type": "requires",
+      "created_at": "2026-06-29T16:04:04.008Z"
+    },
+    {
+      "from_node": "alpha-006d-full-chain-e2e",
+      "to_node": "alpha-006e-decompiler-100",
+      "type": "requires",
+      "created_at": "2026-06-29T16:04:04.008Z"
+    },
+    {
+      "from_node": "ALPHA-006",
+      "to_node": "alpha-006a-vault-sourcing",
+      "type": "requires",
+      "created_at": "2026-06-29T16:04:04.008Z"
+    },
+    {
+      "from_node": "ALPHA-006",
+      "to_node": "alpha-006b-screenshot-rasterizer",
+      "type": "requires",
+      "created_at": "2026-06-29T16:04:04.008Z"
+    },
+    {
+      "from_node": "ALPHA-006",
+      "to_node": "alpha-006c-patchback-byte-fidelity",
+      "type": "requires",
+      "created_at": "2026-06-29T16:04:04.008Z"
+    },
+    {
+      "from_node": "ALPHA-006",
+      "to_node": "alpha-006d-full-chain-e2e",
+      "type": "requires",
+      "created_at": "2026-06-29T16:04:04.008Z"
+    },
+    {
+      "from_node": "ALPHA-006",
+      "to_node": "alpha-006e-decompiler-100",
+      "type": "requires",
+      "created_at": "2026-06-29T16:04:04.008Z"
     }
   ],
   "findings": [
