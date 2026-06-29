@@ -98,6 +98,7 @@ export const reviewerBatchPreviewStatusValues = {
   permissionDeniedManage: "permission_denied_manage",
   invalidInput: "reviewer_queue_item_invalid_input",
   invalidTransition: "reviewer_queue_item_invalid_transition",
+  concurrentModification: "reviewer_queue_item_concurrent_modification",
   staleRevision: "reviewer_queue_item_stale_revision",
   runtimeEvidenceInvariant: "reviewer_queue_item_runtime_evidence_invariant",
 } as const;
@@ -194,6 +195,7 @@ export type ReviewerBatchPreview = {
     runtimeEvidenceInvariant: number;
     invalidInput: number;
     invalidTransition: number;
+    concurrentModification: number;
     permissionDeniedRead: number;
     permissionDeniedManage: number;
   };
@@ -418,6 +420,7 @@ function finalizePreview(
     runtimeEvidenceInvariant: 0,
     invalidInput: 0,
     invalidTransition: 0,
+    concurrentModification: 0,
     permissionDeniedRead: 0,
     permissionDeniedManage: 0,
   };
@@ -448,6 +451,10 @@ function finalizePreview(
         break;
       case reviewerBatchPreviewStatusValues.invalidTransition:
         aggregate.invalidTransition += 1;
+        aggregate.denied += 1;
+        break;
+      case reviewerBatchPreviewStatusValues.concurrentModification:
+        aggregate.concurrentModification += 1;
         aggregate.denied += 1;
         break;
       case reviewerBatchPreviewStatusValues.permissionDeniedRead:
@@ -533,6 +540,8 @@ function mapRefusalCodeToStatus(
       return reviewerBatchPreviewStatusValues.invalidInput;
     case "reviewer_queue_item_invalid_transition":
       return reviewerBatchPreviewStatusValues.invalidTransition;
+    case "reviewer_queue_item_concurrent_modification":
+      return reviewerBatchPreviewStatusValues.concurrentModification;
     case "reviewer_queue_item_stale_revision":
       return reviewerBatchPreviewStatusValues.staleRevision;
     case "reviewer_queue_item_runtime_evidence_invariant":

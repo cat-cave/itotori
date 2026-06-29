@@ -194,6 +194,8 @@ function renderAggregateBanner(preview: ReviewerBatchPreview): string {
   if (aggregate.invalidInput > 0) segments.push(`${aggregate.invalidInput} invalid input`);
   if (aggregate.invalidTransition > 0)
     segments.push(`${aggregate.invalidTransition} invalid transition`);
+  if (aggregate.concurrentModification > 0)
+    segments.push(`${aggregate.concurrentModification} concurrent modification`);
   if (aggregate.runtimeEvidenceInvariant > 0)
     segments.push(`${aggregate.runtimeEvidenceInvariant} runtime evidence invariant`);
   if (aggregate.permissionDeniedRead > 0)

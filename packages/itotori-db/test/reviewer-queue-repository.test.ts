@@ -12,13 +12,20 @@ import { describe, expect, it } from "vitest";
 import { localUserId, type AuthorizationActor } from "../src/authorization.js";
 import type { JobQueueInput } from "../src/repositories/event-queue-repository.js";
 import {
+  applyActionInTransaction,
   ItotoriReviewerQueueRepository,
+  type ReviewerQueueTransaction,
   reviewerQueueActionValues,
   reviewerQueueItemKindValues,
   reviewerQueueItemStateValues,
   ReviewerQueueRepositoryError,
 } from "../src/repositories/reviewer-queue-repository.js";
-import { jobIdempotencyPolicyValues, jobQueue, jobTaskTypeValues } from "../src/schema.js";
+import {
+  jobIdempotencyPolicyValues,
+  jobQueue,
+  jobTaskTypeValues,
+  reviewerQueueItems,
+} from "../src/schema.js";
 import { isolatedMigratedContext } from "./db-test-context.js";
 
 const localActor: AuthorizationActor = { userId: localUserId };
@@ -667,5 +674,132 @@ describe.skipIf(!process.env.DATABASE_URL)("ItotoriReviewerQueueRepository", () 
     );
     expect(error.name).toBe("ReviewerQueueRepositoryError");
     expect(error.code).toBe("reviewer_queue_item_invalid_transition");
+  });
+});
+
+// Optimistic-lock collision split. The 0-row UPDATE race is not
+// reproducible through a single-snapshot live transaction, so these
+// drive `applyActionInTransaction` with a stub transaction: the stub
+// lets the transition validate against the freshly-read row, then forces
+// the state-guarded UPDATE to match zero rows so we can assert how the
+// re-read disambiguates a concurrent move from a deleted row. No DB
+// required, so these run regardless of DATABASE_URL.
+type ReviewerQueueItemRow = typeof reviewerQueueItems.$inferSelect;
+
+function fakeItemRow(overrides: Partial<ReviewerQueueItemRow> = {}): ReviewerQueueItemRow {
+  return {
+    reviewItemId: "reviewer-queue-collision-1",
+    projectId,
+    localeBranchId,
+    sourceRevisionId,
+    itemKind: reviewerQueueItemKindValues.qa,
+    sourceItemRef: "qa-finding-collision-1",
+    state: reviewerQueueItemStateValues.pending,
+    priority: 0,
+    summary: "collision fixture",
+    affectedArtifactIds: ["artifact-collision-1"],
+    evidenceTier: null,
+    observationEventIds: null,
+    artifactHashes: null,
+    payload: {},
+    metadata: {},
+    createdByUserId: null,
+    assignedToUserId: null,
+    createdAt: new Date("2026-06-28T00:00:00.000Z"),
+    updatedAt: new Date("2026-06-28T00:00:00.000Z"),
+    resolvedAt: null,
+    ...overrides,
+  };
+}
+
+/**
+ * Stub transaction returning queued SELECT results in order and a fixed
+ * UPDATE result. `insert` throws — the paths under test never reach the
+ * transition-log write.
+ */
+function stubTransaction(opts: {
+  selectResults: ReviewerQueueItemRow[][];
+  updateResult: ReviewerQueueItemRow[];
+}): ReviewerQueueTransaction {
+  let selectCall = 0;
+  const selectBuilder = () => {
+    const result = opts.selectResults[selectCall++] ?? [];
+    const builder = {
+      from: () => builder,
+      where: () => builder,
+      limit: async () => result,
+    };
+    return builder;
+  };
+  const updateBuilder = () => {
+    const builder = {
+      set: () => builder,
+      where: () => builder,
+      returning: async () => opts.updateResult,
+    };
+    return builder;
+  };
+  return {
+    select: selectBuilder,
+    update: updateBuilder,
+    insert: () => {
+      throw new Error("stub transaction insert should not be reached");
+    },
+  } as unknown as ReviewerQueueTransaction;
+}
+
+const collisionActionInput = {
+  reviewItemId: "reviewer-queue-collision-1",
+  action: reviewerQueueActionValues.approve,
+  actorUserId: localUserId,
+  expectedSourceRevisionId: sourceRevisionId,
+} as const;
+
+describe("applyActionInTransaction optimistic-lock collision split", () => {
+  it("maps a 0-row UPDATE on a still-present row to reviewer_queue_item_concurrent_modification", async () => {
+    const tx = stubTransaction({
+      // 1st select: the action's own re-read (valid pending item).
+      // 2nd select: the post-0-row re-read confirming the row survives.
+      selectResults: [
+        [fakeItemRow()],
+        [fakeItemRow({ state: reviewerQueueItemStateValues.accepted })],
+      ],
+      updateResult: [],
+    });
+
+    await expect(applyActionInTransaction(tx, collisionActionInput)).rejects.toMatchObject({
+      name: "ReviewerQueueRepositoryError",
+      code: "reviewer_queue_item_concurrent_modification",
+    });
+  });
+
+  it("maps a 0-row UPDATE on a vanished row to reviewer_queue_item_not_found", async () => {
+    const tx = stubTransaction({
+      // 1st select reads the item; the post-0-row re-read finds nothing,
+      // so the row was deleted rather than concurrently moved.
+      selectResults: [[fakeItemRow()], []],
+      updateResult: [],
+    });
+
+    await expect(applyActionInTransaction(tx, collisionActionInput)).rejects.toMatchObject({
+      name: "ReviewerQueueRepositoryError",
+      code: "reviewer_queue_item_not_found",
+    });
+  });
+
+  it("still maps a genuinely illegal transition to reviewer_queue_item_invalid_transition", async () => {
+    // Item already accepted; approve → accepted is not an allowed edge, so
+    // the validator refuses before any UPDATE (the stub UPDATE/insert are
+    // never reached). This guards that the new concurrency code did not
+    // swallow the permanent-refusal path.
+    const tx = stubTransaction({
+      selectResults: [[fakeItemRow({ state: reviewerQueueItemStateValues.accepted })]],
+      updateResult: [fakeItemRow()],
+    });
+
+    await expect(applyActionInTransaction(tx, collisionActionInput)).rejects.toMatchObject({
+      name: "ReviewerQueueRepositoryError",
+      code: "reviewer_queue_item_invalid_transition",
+    });
   });
 });

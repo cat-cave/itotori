@@ -2365,6 +2365,7 @@ function serviceFixture(): ItotoriApiServices {
           runtimeEvidenceInvariant: 0,
           invalidInput: 0,
           invalidTransition: 0,
+          concurrentModification: 0,
           permissionDeniedRead: 0,
           permissionDeniedManage: 0,
         },

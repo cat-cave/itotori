@@ -77,6 +77,7 @@ export const reviewerQueueRepositoryErrorCodes = [
   "reviewer_queue_item_not_found",
   "reviewer_queue_item_invalid_input",
   "reviewer_queue_item_invalid_transition",
+  "reviewer_queue_item_concurrent_modification",
   "reviewer_queue_item_stale_revision",
   "reviewer_queue_item_stale_lease",
   "reviewer_queue_item_duplicate",
@@ -559,9 +560,17 @@ export class ItotoriReviewerQueueRepository implements ItotoriReviewerQueueRepos
   }
 }
 
-type ReviewerQueueTransaction = Pick<ItotoriDatabase, "select" | "update" | "insert">;
+export type ReviewerQueueTransaction = Pick<ItotoriDatabase, "select" | "update" | "insert">;
 
-async function applyActionInTransaction(
+/**
+ * Core of every reviewer action: re-reads the item under the caller's
+ * transaction, validates the transition, then writes the item row and
+ * transition log atomically. Exported so the optimistic-lock /
+ * concurrent-modification split can be unit-tested deterministically
+ * with a stub transaction (the 0-row UPDATE race is not reproducible
+ * through a single-snapshot live transaction).
+ */
+export async function applyActionInTransaction(
   tx: ReviewerQueueTransaction,
   input: ReviewerQueueActionInput,
 ): Promise<ReviewerQueueActionResult> {
@@ -639,9 +648,33 @@ async function applyActionInTransaction(
     .returning();
   const updated = updateRows[0];
   if (updated === undefined) {
+    // The transition was already validated against `existing` above, so a
+    // 0-row UPDATE means the optimistic-lock guard (state +
+    // source_revision) no longer matched: a concurrent writer either moved
+    // the row or deleted it between our SELECT and UPDATE. Re-read to tell
+    // the two apart so a deleted row is not mislabeled as a concurrency
+    // collision, and so callers can distinguish a retryable race from a
+    // permanently-illegal transition.
+    const recheckRows = await tx
+      .select()
+      .from(reviewerQueueItems)
+      .where(eq(reviewerQueueItems.reviewItemId, input.reviewItemId))
+      .limit(1);
+    if (recheckRows[0] === undefined) {
+      throw new ReviewerQueueRepositoryError(
+        "reviewer_queue_item_not_found",
+        `reviewer queue item ${input.reviewItemId} not found`,
+      );
+    }
     throw new ReviewerQueueRepositoryError(
-      "reviewer_queue_item_invalid_transition",
-      `reviewer queue item ${input.reviewItemId} state changed concurrently; please retry with a fresh fetch`,
+      "reviewer_queue_item_concurrent_modification",
+      `reviewer queue item ${input.reviewItemId} was modified concurrently (state or source_revision moved since it was read); please retry with a fresh fetch`,
+      [
+        {
+          code: "reviewer_queue_item_concurrent_modification",
+          message: `expected_prior_state=${existing.state} expected_source_revision_id=${input.expectedSourceRevisionId}`,
+        },
+      ],
     );
   }
 

@@ -547,6 +547,8 @@ function statusToErrorCode(
       return "reviewer_queue_item_invalid_input";
     case reviewerBatchPreviewStatusValues.invalidTransition:
       return "reviewer_queue_item_invalid_transition";
+    case reviewerBatchPreviewStatusValues.concurrentModification:
+      return "reviewer_queue_item_concurrent_modification";
     case reviewerBatchPreviewStatusValues.staleRevision:
       return "reviewer_queue_item_stale_revision";
     case reviewerBatchPreviewStatusValues.runtimeEvidenceInvariant:
@@ -575,6 +577,8 @@ function mapErrorCodeToStatus(code: ReviewerQueueRepositoryErrorCode): ReviewerB
       return reviewerBatchPreviewStatusValues.invalidInput;
     case "reviewer_queue_item_invalid_transition":
       return reviewerBatchPreviewStatusValues.invalidTransition;
+    case "reviewer_queue_item_concurrent_modification":
+      return reviewerBatchPreviewStatusValues.concurrentModification;
     case "reviewer_queue_item_stale_revision":
       return reviewerBatchPreviewStatusValues.staleRevision;
     case "reviewer_queue_item_runtime_evidence_invariant":

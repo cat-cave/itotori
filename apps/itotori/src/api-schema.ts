@@ -716,6 +716,7 @@ function assertReviewerBatchPreview(
     "runtimeEvidenceInvariant",
     "invalidInput",
     "invalidTransition",
+    "concurrentModification",
     "permissionDeniedRead",
     "permissionDeniedManage",
   ]);
