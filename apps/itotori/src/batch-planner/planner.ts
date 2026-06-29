@@ -34,11 +34,7 @@ import {
   styleRuleBody,
   termSnapshotToRef,
 } from "./context-pack.js";
-import {
-  computeTokenBudgetCap,
-  fallbackModelProfile,
-  resolveModelProfile,
-} from "./model-profiles.js";
+import { computeTokenBudgetCap } from "./model-profiles.js";
 import {
   groupBySceneBoundary,
   projectBridgeUnit,
@@ -65,9 +61,13 @@ export type PlanBatchesInput = {
    */
   agentSceneSummaries?: ReadonlyMap<string, SceneSummaryRef> | undefined;
   translationMemory?: TranslationMemoryQueryFn | undefined;
-  modelProfile?: BatchModelProfile | undefined;
-  maxTokensOverride?: number | undefined;
-  targetFillRatio?: number | undefined;
+  /**
+   * ITOTORI-220 — required. The planner does not invent a model: callers
+   * resolve a real, provider-pinned profile (see resolveModelProfile) and
+   * pass it here so every batch is attributed to a declared (modelId,
+   * providerId) pair.
+   */
+  modelProfile: BatchModelProfile;
   priorExampleLimit?: number | undefined;
   now?: (() => Date) | undefined;
 };
@@ -76,16 +76,10 @@ export const defaultPriorExampleLimit = 5;
 const nearCapWarningRatio = 0.95;
 
 export async function planBatches(input: PlanBatchesInput): Promise<PlanBatchesOutput> {
-  const profile =
-    input.modelProfile ??
-    resolveModelProfile({
-      targetFillRatio: input.targetFillRatio,
-      maxTokensOverride: input.maxTokensOverride,
-    });
   // Ensure tokenEstimatorId always reflects the running estimator, even when
   // a caller provides a stale override.
   const modelProfile: BatchModelProfile = {
-    ...profile,
+    ...input.modelProfile,
     tokenEstimatorId: tokenEstimatorIdV1,
   };
   const tokenBudgetCap = computeTokenBudgetCap(modelProfile);
@@ -507,5 +501,3 @@ function countSplitScenes(batches: Batch[]): number {
   }
   return scenesWithSplits.size;
 }
-
-export const _internalFallbackProfile = fallbackModelProfile;

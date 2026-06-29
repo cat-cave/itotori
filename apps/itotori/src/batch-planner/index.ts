@@ -3,7 +3,7 @@ export {
   builtinProfiles,
   computeTokenBudgetCap,
   defaultTargetFillRatio,
-  fallbackModelProfile,
+  ModelProviderPairUnresolvedError,
   resolveModelProfile,
 } from "./model-profiles.js";
 export {

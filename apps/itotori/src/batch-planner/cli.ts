@@ -92,14 +92,17 @@ export async function runPlanBatches(
   const modelProfile: BatchModelProfile = resolveModelProfile({
     modelId: input.modelId,
     providerId: input.providerId,
+    // ITOTORI-220 — only build a descriptor when a real modelId is named; we
+    // never synthesize a `"unknown"` defaultModelId. Without a modelId the
+    // resolver falls through and fails loud rather than sizing a phantom model.
     providerDescriptor:
-      input.providerFamily === undefined
+      input.providerFamily === undefined || input.modelId === undefined
         ? undefined
         : {
             family: input.providerFamily,
             endpointFamily: "chat-completions",
             providerName: input.providerFamily,
-            defaultModelId: input.modelId ?? "unknown",
+            defaultModelId: input.modelId,
             capabilities: {
               structuredOutputs: {
                 jsonSchema: "untested",

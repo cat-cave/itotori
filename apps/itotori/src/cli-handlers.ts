@@ -684,6 +684,10 @@ async function runPlanBatchesHandler(
   const locale = requiredFlag(args, "--locale");
   const outputPath = optionalFlag(args, "--output");
   const modelId = optionalFlag(args, "--model");
+  // ITOTORI-220 — the routing provider of the (modelId, providerId) pair. The
+  // planner refuses to size a named model without it rather than persisting an
+  // unknown-provider sentinel on every batch.
+  const providerId = optionalFlag(args, "--provider-id");
   const providerFamilyRaw = optionalFlag(args, "--provider");
   const maxTokensRaw = optionalFlag(args, "--max-tokens");
   const fillRatioRaw = optionalFlag(args, "--target-fill-ratio");
@@ -703,6 +707,7 @@ async function runPlanBatchesHandler(
         outputPath,
         locale,
         modelId,
+        providerId,
         providerFamily,
         maxTokens,
         targetFillRatio,

@@ -8,8 +8,8 @@ import {
   defaultPromptOverheadTokens,
   defaultTargetFillRatio,
   estimateTokens,
-  fallbackModelProfile,
   groupBySceneBoundary,
+  ModelProviderPairUnresolvedError,
   perUnitFrameOverheadTokens,
   planBatches,
   resolveModelProfile,
@@ -26,6 +26,20 @@ import {
 const projectId = "019ed018-0000-7000-8000-000000000001";
 const localeBranchId = "019ed018-0000-7000-8000-000000000002";
 const sourceRevisionId = "019ed018-0000-7000-8000-000000000003";
+
+// ITOTORI-220 — a real (modelId, providerId) pair for tests that exercise the
+// planner's structure rather than a specific model. The conservative sizing
+// numbers mirror the previous default so batch counts/budgets are unchanged.
+const sizingTestProfile: BatchModelProfile = {
+  providerFamily: "fake",
+  modelId: "itotori-fake-draft",
+  providerId: "fake-fixture",
+  contextWindowTokens: 128_000,
+  maxOutputTokens: 4096,
+  targetFillRatio: 0.5,
+  promptOverheadTokens: defaultPromptOverheadTokens,
+  tokenEstimatorId: tokenEstimatorIdV1,
+};
 
 function tinyBridge(): BridgeBundle {
   const baseSourceText = "勇者は王様に挨拶した";
@@ -142,17 +156,44 @@ describe("token estimator", () => {
 });
 
 describe("model profile resolution", () => {
-  it("returns the conservative fallback when nothing resolves", () => {
-    const profile = resolveModelProfile({});
-    expect(profile.contextWindowTokens).toBe(fallbackModelProfile.contextWindowTokens);
-    expect(profile.targetFillRatio).toBe(fallbackModelProfile.targetFillRatio);
-    expect(profile.tokenEstimatorId).toBe(tokenEstimatorIdV1);
+  it("throws rather than inventing a provider when nothing resolves", () => {
+    // ITOTORI-220 — no model named means no (modelId, providerId) pair to plan
+    // an invocation for; we fail loud instead of producing providerId:"unknown".
+    expect(() => resolveModelProfile({})).toThrow(ModelProviderPairUnresolvedError);
   });
 
-  it("uses a built-in profile when modelId matches", () => {
+  it("throws when a modelId is supplied without a resolvable providerId", () => {
+    // ITOTORI-220 — the core fail-loud guarantee: an unrecognized model with no
+    // providerId must throw a typed error naming the model, never silently
+    // resolve to providerId:"unknown".
+    expect(() => resolveModelProfile({ modelId: "some-uncatalogued-model" })).toThrow(
+      ModelProviderPairUnresolvedError,
+    );
+    try {
+      resolveModelProfile({ modelId: "some-uncatalogued-model" });
+      expect.unreachable("expected a thrown ModelProviderPairUnresolvedError");
+    } catch (error) {
+      expect(error).toBeInstanceOf(ModelProviderPairUnresolvedError);
+      expect((error as ModelProviderPairUnresolvedError).modelId).toBe("some-uncatalogued-model");
+    }
+  });
+
+  it("sizes an unrecognized model conservatively once a real provider is declared", () => {
+    const profile = resolveModelProfile({
+      modelId: "some-uncatalogued-model",
+      providerId: "openrouter-anthropic",
+    });
+    expect(profile.modelId).toBe("some-uncatalogued-model");
+    expect(profile.providerId).toBe("openrouter-anthropic");
+    expect(profile.providerId).not.toBe("unknown");
+    expect(profile.contextWindowTokens).toBe(128_000);
+  });
+
+  it("uses a built-in profile (with its pinned providerId) when modelId matches", () => {
     const seed = builtinProfiles[0]!;
     const profile = resolveModelProfile({ modelId: seed.modelId });
     expect(profile.modelId).toBe(seed.modelId);
+    expect(profile.providerId).toBe(seed.providerId);
     expect(profile.contextWindowTokens).toBe(seed.contextWindowTokens);
   });
 
@@ -160,6 +201,7 @@ describe("model profile resolution", () => {
     const override: BatchModelProfile = {
       providerFamily: "fake",
       modelId: "explicit",
+      providerId: "fake-fixture",
       contextWindowTokens: 64_000,
       maxOutputTokens: 1024,
       targetFillRatio: 0.6,
@@ -179,10 +221,11 @@ describe("model profile resolution", () => {
   });
 
   it("honors targetFillRatio override and rejects out-of-range values", () => {
-    const profile = resolveModelProfile({ targetFillRatio: 0.42 });
+    const modelId = builtinProfiles[0]!.modelId;
+    const profile = resolveModelProfile({ modelId, targetFillRatio: 0.42 });
     expect(profile.targetFillRatio).toBe(0.42);
-    expect(() => resolveModelProfile({ targetFillRatio: 0 })).toThrow();
-    expect(() => resolveModelProfile({ targetFillRatio: 1.5 })).toThrow();
+    expect(() => resolveModelProfile({ modelId, targetFillRatio: 0 })).toThrow();
+    expect(() => resolveModelProfile({ modelId, targetFillRatio: 1.5 })).toThrow();
   });
 
   it("computes the token budget cap as floor((ctx - overhead - maxOut) * ratio)", () => {
@@ -236,6 +279,7 @@ describe("planBatches tiny game", () => {
       bridgeBundle: bridge,
       glossary,
       styleGuide,
+      modelProfile: sizingTestProfile,
     });
     expect(result.batches).toHaveLength(1);
     const batch = result.batches[0]!;
@@ -263,6 +307,7 @@ describe("planBatches tiny game", () => {
     const profile: BatchModelProfile = {
       providerFamily: "fake",
       modelId: "tiny-test",
+      providerId: "fake-fixture",
       contextWindowTokens: 6000,
       maxOutputTokens: 512,
       targetFillRatio: 0.5,
@@ -292,6 +337,7 @@ describe("planBatches large game", () => {
     const profile: BatchModelProfile = {
       providerFamily: "fake",
       modelId: "tiny-test",
+      providerId: "fake-fixture",
       contextWindowTokens: 8000,
       maxOutputTokens: 256,
       targetFillRatio: 0.5,
@@ -318,6 +364,7 @@ describe("planBatches large game", () => {
     const profile: BatchModelProfile = {
       providerFamily: "fake",
       modelId: "wide-test",
+      providerId: "fake-fixture",
       contextWindowTokens: 200_000,
       maxOutputTokens: 1000,
       targetFillRatio: 0.7,
@@ -361,6 +408,7 @@ describe("planBatches glossary citation completeness", () => {
       locale: "en-US",
       bridgeBundle: bridge,
       glossary: glossaryFixture(),
+      modelProfile: sizingTestProfile,
     });
     const batch = result.batches[0]!;
     for (const term of batch.context.glossaryTerms) {
@@ -378,6 +426,7 @@ describe("planBatches glossary citation completeness", () => {
       locale: "en-US",
       bridgeBundle: bridge,
       glossary,
+      modelProfile: sizingTestProfile,
     });
     const batch = result.batches[0]!;
     for (const citation of batch.context.citationManifest.unitCitations) {
@@ -399,6 +448,7 @@ describe("planBatches style rule inclusion", () => {
       bridgeBundle: bridge,
       glossary: [],
       styleGuide: styleGuideFixture(),
+      modelProfile: sizingTestProfile,
     });
     const batch = result.batches[0]!;
     const ruleIds = batch.context.styleGuideRules.map((rule) => rule.ruleId).sort();
@@ -416,6 +466,7 @@ describe("planBatches character map degradation", () => {
       locale: "en-US",
       bridgeBundle: bridge,
       glossary: [],
+      modelProfile: sizingTestProfile,
     });
     const batch = result.batches[0]!;
     const refs = batch.context.characterRelationships;
@@ -445,6 +496,7 @@ describe("planBatches character map degradation", () => {
       bridgeBundle: bridge,
       glossary: [],
       characterMap,
+      modelProfile: sizingTestProfile,
     });
     const batch = result.batches[0]!;
     const ref = batch.context.characterRelationships.find((r) => r.canonicalName === "Hero");
@@ -474,6 +526,7 @@ describe("planBatches prior translation examples", () => {
       glossary: [],
       translationMemory: tm,
       priorExampleLimit: 3,
+      modelProfile: sizingTestProfile,
     });
     expect(calls.some((call) => call.speaker === "勇者")).toBe(true);
   });
@@ -489,6 +542,7 @@ describe("planBatches summary", () => {
       locale: "en-US",
       bridgeBundle: bridge,
       glossary: [],
+      modelProfile: sizingTestProfile,
     });
     expect(result.summary.unitsWithoutSceneCount).toBe(5);
     expect(result.summary.modelProfile.tokenEstimatorId).toBe(tokenEstimatorIdV1);
@@ -520,6 +574,7 @@ describe("planBatches scene summary token accounting", () => {
       bridgeBundle: bridge,
       glossary: [],
       sceneSummaries: summaries,
+      modelProfile: sizingTestProfile,
     });
     expect(result.batches).toHaveLength(1);
     // The scene summary lookup uses sceneId which the tinyBridge fixture

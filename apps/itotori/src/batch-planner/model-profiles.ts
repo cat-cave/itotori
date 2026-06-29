@@ -6,22 +6,39 @@ import { defaultPromptOverheadTokens } from "./token-estimator.js";
 export const defaultTargetFillRatio = 0.7;
 
 /**
- * Conservative fallback profile used when we cannot resolve a model. 128K
- * context with a 0.5 fill ratio is intentionally pessimistic — we'd rather
- * emit too many small batches than overflow an unknown model.
+ * ITOTORI-220 — thrown when a model is named (via modelId or a provider
+ * descriptor) but the caller did not declare which provider serves it.
+ * Mirrors providers/dev-pair.ts:DevPairUnknownError: every model invocation
+ * MUST carry a real (modelId, providerId) pair, so a missing provider is a
+ * loud failure rather than a silently persisted unknown-provider sentinel
+ * that would defeat per-pair attribution downstream.
  */
-export const fallbackModelProfile: BatchModelProfile = {
-  providerFamily: "fake",
-  modelId: "unknown",
-  // ITOTORI-220 — even the fallback declares a providerId; `unknown` is
-  // the explicit "we don't know" sentinel rather than missing.
-  providerId: "unknown",
+export class ModelProviderPairUnresolvedError extends Error {
+  constructor(readonly modelId: string) {
+    super(
+      `cannot resolve a model profile for modelId=${modelId}: no providerId was supplied. ` +
+        "Every batch invocation must declare a real (modelId, providerId) pair; " +
+        "pass an explicit providerId or a built-in profile that pins one.",
+    );
+    this.name = "ModelProviderPairUnresolvedError";
+  }
+}
+
+/**
+ * Conservative SIZING numbers used when a real (modelId, providerId) pair is
+ * supplied for a model we do not otherwise recognize. 128K context with a 0.5
+ * fill ratio is intentionally pessimistic — we'd rather emit too many small
+ * batches than overflow an unverified model. These are sizing-only fields:
+ * they carry no routing identity, so they can never stand in for a provider.
+ */
+const conservativeSizingDefaults = {
+  providerFamily: "fake" as ProviderFamily,
   contextWindowTokens: 128_000,
   maxOutputTokens: 4096,
   targetFillRatio: 0.5,
   promptOverheadTokens: defaultPromptOverheadTokens,
   tokenEstimatorId: tokenEstimatorIdV1,
-};
+} as const;
 
 export type BuiltinProfileSeed = {
   providerFamily: ProviderFamily;
@@ -102,9 +119,10 @@ type ResolveModelProfileInputOptional = {
   /** Optional explicit modelId when no override is supplied. */
   modelId: string | undefined;
   /**
-   * ITOTORI-220 — explicit providerId. Required when modelId is supplied
-   * without an override. Without it the resolver falls back to a sentinel
-   * that surfaces "we did not declare a provider here" loudly downstream.
+   * ITOTORI-220 — explicit providerId. Required whenever a model is named
+   * (modelId or descriptor) without an override; the resolver throws
+   * {@link ModelProviderPairUnresolvedError} when it is missing rather than
+   * inventing an unknown-provider sentinel.
    */
   providerId: string | undefined;
   /** Optional override for targetFillRatio. */
@@ -122,10 +140,17 @@ export type ResolveModelProfileInput = Partial<ResolveModelProfileInputOptional>
 
 /**
  * Resolution order, per §5.4 of the plan:
- *   1. Caller-supplied override.
+ *   1. Caller-supplied override (already a full, pinned profile).
  *   2. Provider descriptor's capabilities.contextWindowTokens.
- *   3. Built-in profile by modelId.
- *   4. Conservative fallback.
+ *   3. Built-in profile by modelId (carries its own pinned providerId).
+ *   4. Caller-supplied modelId we do not recognize — sized conservatively.
+ *
+ * ITOTORI-220 — there is no "conservative fallback" that invents a provider.
+ * Whenever a model is named (descriptor or modelId) but no providerId can be
+ * resolved, this throws {@link ModelProviderPairUnresolvedError} instead of
+ * persisting an unknown-provider sentinel. The result is persisted on
+ * every batch and read by the draft agent as its routing target, so a missing
+ * provider must fail loud rather than silently mis-attribute an invocation.
  *
  * All resolutions are pure; the caller persists the result on every batch
  * so audits can replay sizing decisions even after provider catalogs change.
@@ -139,14 +164,16 @@ export function resolveModelProfile(input: ResolveModelProfileInput): BatchModel
     input.providerDescriptor.capabilities.contextWindowTokens !== undefined &&
     input.providerDescriptor.capabilities.contextWindowTokens > 0
   ) {
+    const modelId = input.modelId ?? input.providerDescriptor.defaultModelId;
+    // Descriptors carry no provider routing target of their own (that's the
+    // request's job), so the caller MUST declare the providerId for the pair.
+    if (input.providerId === undefined) {
+      throw new ModelProviderPairUnresolvedError(modelId);
+    }
     base = {
       providerFamily: input.providerDescriptor.family,
-      modelId: input.modelId ?? input.providerDescriptor.defaultModelId,
-      // ITOTORI-220 — when resolving from a descriptor we use the caller's
-      // declared providerId; descriptors carry no provider routing target
-      // of their own (that's the request's job), so we surface the
-      // sentinel when the caller omitted it.
-      providerId: input.providerId ?? "unknown",
+      modelId,
+      providerId: input.providerId,
       contextWindowTokens: input.providerDescriptor.capabilities.contextWindowTokens,
       maxOutputTokens: input.providerDescriptor.capabilities.maxOutputTokens,
       targetFillRatio: defaultTargetFillRatio,
@@ -155,15 +182,25 @@ export function resolveModelProfile(input: ResolveModelProfileInput): BatchModel
     };
   } else if (input.modelId) {
     const match = builtinProfiles.find((profile) => profile.modelId === input.modelId);
-    base = match
-      ? { ...match }
-      : {
-          ...fallbackModelProfile,
-          modelId: input.modelId,
-          providerId: input.providerId ?? fallbackModelProfile.providerId,
-        };
+    if (match) {
+      base = { ...match };
+    } else {
+      // Unrecognized model: size conservatively, but still require the caller
+      // to declare the real provider — we never fabricate one.
+      if (input.providerId === undefined) {
+        throw new ModelProviderPairUnresolvedError(input.modelId);
+      }
+      base = {
+        ...conservativeSizingDefaults,
+        modelId: input.modelId,
+        providerId: input.providerId,
+      };
+    }
   } else {
-    base = { ...fallbackModelProfile };
+    // No override, no descriptor, no modelId: there is no model to plan an
+    // invocation for, and inventing a (modelId, providerId) pair would defeat
+    // the model-provider-pair law. Fail loud.
+    throw new ModelProviderPairUnresolvedError("(no model supplied)");
   }
 
   if (input.providerId !== undefined) {
