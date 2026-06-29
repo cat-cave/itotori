@@ -30559,11 +30559,11 @@
       "validation": null,
       "context": null,
       "created_at": "2026-06-26T16:56:49.538Z",
-      "updated_at": "2026-06-26T17:43:15.956Z",
+      "updated_at": "2026-06-29T15:49:59.702Z",
       "claimed_at": "2026-06-26T16:56:49.823Z",
       "done_at": "2026-06-26T17:43:15.956Z",
       "group_name": null,
-      "status_reason": null,
+      "status_reason": "[2026-06-29T15:49:59.702Z] FALSE-GREEN CORRECTION (2026-06-29, deep-audit-1 P1): this node is marked done but its acceptance requires a SUCCESSFUL live agentic-loop invocation (UTSUSHI-231 retry 8/9) that has NEVER occurred — zero live-mode provider-run evidence exists (deep-audit-1 P0). The repeated 429s this node chased by adding alternates / widening the failover chain were MISDIAGNOSED: root cause is the single-provider-pin + allow_fallbacks:false routing posture in openrouter.ts (buildOpenRouterRoutingPosture), which amplifies transient upstream rate-limits into hard failures. The authoritative fix is the routing-posture correction + live proof now in flight (worker ab39f1be: zdr+allow_fallbacks+order+require_parameters+tool_choice). DISPOSITION DEFERRED to that worker's result: if it proves a real live call, this node's live clause is re-validated against that evidence; if the routing fix obsoletes the alternate-chaining approach, this node is to be SUPERSEDED with its non-live deliverables (preset/capabilitySheet/unit-test) preserved. Until then this is a known false-green, not silently accepted.",
       "check_command": null,
       "ci_command": null,
       "blocked_by": null,
@@ -30589,11 +30589,11 @@
       "validation": null,
       "context": null,
       "created_at": "2026-06-26T17:41:25.038Z",
-      "updated_at": "2026-06-26T21:46:40.954Z",
+      "updated_at": "2026-06-29T15:49:59.814Z",
       "claimed_at": "2026-06-26T20:59:44.875Z",
       "done_at": "2026-06-26T21:37:01.357Z",
       "group_name": null,
-      "status_reason": "[2026-06-26T20:34:21.546Z] 2026-06-26 orchestration note: two qd check attempts failed because repo qd config still pointed check-command at just check, and just check still invokes legacy scripts/spec-dag*.mjs validators against the qd-export-shaped roadmap/spec-dag.json. Focused ITOTORI-240 test passed separately. Updated qd check-command to the same broad local preflight minus obsolete spec-dag validators; larger docs/tooling cleanup remains ITOTORI-300.\n[2026-06-26T20:38:25.673Z] 2026-06-26 verification: focused subagent audit found no blocking findings. Checks: pnpm --filter @itotori/app test test/localize-sweetie-hd-stage.test.ts (23 passed), pnpm --filter @itotori/app typecheck (passed), git diff --check main...HEAD (passed). qd check run passed after check-command was corrected to enter nix develop; log .qd/logs/check-ITOTORI-240-2026-06-26T20-36-09-755Z.log.\n[2026-06-26T20:53:44.688Z] 2026-06-26 integration CI attempt on branch integration/itotori-240-verify failed in packages/itotori-db/test/catalog-recorded-importers.test.ts: CATALOG-011 spec text guard regex expects camelCase auditFocus, but current qd export uses snake_case audit_focus. CATALOG-011 node/spec text is present in qd and roadmap export. Assigned narrow test compatibility fix; not an ITOTORI-240 feature regression.\n[2026-06-26T21:05:33.469Z] 2026-06-26 integration verification passed on branch integration/itotori-240-verify at commit 84838a4: qd check run passed (.qd/logs/check-ITOTORI-240-2026-06-26T20-59-53-773Z.log) and full qd CI passed (.qd/logs/ci-ITOTORI-240-2026-06-26T21-00-26-076Z.log). qd marked node mergeable. main remains unmodified pending explicit merge approval.\n[2026-06-26T21:46:40.954Z] Integrated main gate passed after merge: pnpm exec vp check, audit-no-hardcoded-cost, fixtures-validate, impl-map-schema-validate, toolchain-policy, ts:typecheck, cargo fmt --check, cargo check --workspace, just build, just db-migrate, just test, cargo clippy --workspace --all-targets --all-features -D warnings, and cargo deny check all completed successfully on 2026-06-26.",
+      "status_reason": "[2026-06-26T20:34:21.546Z] 2026-06-26 orchestration note: two qd check attempts failed because repo qd config still pointed check-command at just check, and just check still invokes legacy scripts/spec-dag*.mjs validators against the qd-export-shaped roadmap/spec-dag.json. Focused ITOTORI-240 test passed separately. Updated qd check-command to the same broad local preflight minus obsolete spec-dag validators; larger docs/tooling cleanup remains ITOTORI-300.\n[2026-06-26T20:38:25.673Z] 2026-06-26 verification: focused subagent audit found no blocking findings. Checks: pnpm --filter @itotori/app test test/localize-sweetie-hd-stage.test.ts (23 passed), pnpm --filter @itotori/app typecheck (passed), git diff --check main...HEAD (passed). qd check run passed after check-command was corrected to enter nix develop; log .qd/logs/check-ITOTORI-240-2026-06-26T20-36-09-755Z.log.\n[2026-06-26T20:53:44.688Z] 2026-06-26 integration CI attempt on branch integration/itotori-240-verify failed in packages/itotori-db/test/catalog-recorded-importers.test.ts: CATALOG-011 spec text guard regex expects camelCase auditFocus, but current qd export uses snake_case audit_focus. CATALOG-011 node/spec text is present in qd and roadmap export. Assigned narrow test compatibility fix; not an ITOTORI-240 feature regression.\n[2026-06-26T21:05:33.469Z] 2026-06-26 integration verification passed on branch integration/itotori-240-verify at commit 84838a4: qd check run passed (.qd/logs/check-ITOTORI-240-2026-06-26T20-59-53-773Z.log) and full qd CI passed (.qd/logs/ci-ITOTORI-240-2026-06-26T21-00-26-076Z.log). qd marked node mergeable. main remains unmodified pending explicit merge approval.\n[2026-06-26T21:46:40.954Z] Integrated main gate passed after merge: pnpm exec vp check, audit-no-hardcoded-cost, fixtures-validate, impl-map-schema-validate, toolchain-policy, ts:typecheck, cargo fmt --check, cargo check --workspace, just build, just db-migrate, just test, cargo clippy --workspace --all-targets --all-features -D warnings, and cargo deny check all completed successfully on 2026-06-26.\n[2026-06-29T15:49:59.814Z] FALSE-GREEN CORRECTION (2026-06-29, deep-audit-1 P1): this node is marked done but its acceptance requires a SUCCESSFUL live agentic-loop invocation (UTSUSHI-231 retry 8/9) that has NEVER occurred — zero live-mode provider-run evidence exists (deep-audit-1 P0). The repeated 429s this node chased by adding alternates / widening the failover chain were MISDIAGNOSED: root cause is the single-provider-pin + allow_fallbacks:false routing posture in openrouter.ts (buildOpenRouterRoutingPosture), which amplifies transient upstream rate-limits into hard failures. The authoritative fix is the routing-posture correction + live proof now in flight (worker ab39f1be: zdr+allow_fallbacks+order+require_parameters+tool_choice). DISPOSITION DEFERRED to that worker's result: if it proves a real live call, this node's live clause is re-validated against that evidence; if the routing fix obsoletes the alternate-chaining approach, this node is to be SUPERSEDED with its non-live deliverables (preset/capabilitySheet/unit-test) preserved. Until then this is a known false-green, not silently accepted.",
       "check_command": null,
       "ci_command": null,
       "blocked_by": null,
@@ -36113,6 +36113,76 @@
         }
       ],
       "audit_focus": ["Schema-version doc drift vs the const-assertion-pinned value"]
+    },
+    {
+      "id": "agentic-structured-output-json-schema-unroutable-under-zdr",
+      "title": "Agentic structured output unroutable under ZDR (json_schema 404) — route via json_object",
+      "kind": "feature",
+      "milestone": "alpha",
+      "status": "ready",
+      "priority": "P1",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "Live testing of the ITOTORI-241 routing fix surfaced that `response_format: json_schema` (strict AND non-strict) is UNROUTABLE under ZDR for deepseek/deepseek-v4-flash: OpenRouter returns HTTP 404 \"No endpoints found that can handle the requested parameters\" because no ZDR-allow-list provider for that model advertises json_schema support, and `require_parameters:true` correctly narrows the routable pool to empty. The proven-routable deterministic structured mode under ZDR is `json_object` (served by Fireworks, billed $0.00001708 in the live proof). The existing `style-guide-provider-smoke --live` path and any agentic structured-output call that force `json_schema` therefore 404 in live ZDR mode today. Evidence: alpha-live EVIDENCE.json finding_json_schema_unroutable. This pre-dates the routing change but is only observable live.\n",
+      "acceptance": "The agentic/structured-output path (style-guide + localization draft loop) uses a ZDR-routable structured mode (json_object) when the active pair's ZDR providers do not advertise json_schema — NO code path forces json_schema under require_parameters:true on a pair whose ZDR pool lacks it. A LIVE call exercising the agentic structured path succeeds under ZDR with real billed-cost evidence (costKind:billed, sanitized, no key) — i.e. style-guide-provider-smoke --live no longer 404s. If json_schema is used, it is gated on a per-pair capabilitySheet that is validated (not assumed) to have ZDR-provider support. Multi-game/multi-pair: the gating is pair-driven, not hardcoded to one provider. `pnpm --filter @itotori/app exec vitest run openrouter` green incl. a test asserting the structured-mode selection falls back to json_object when the pair's ZDR pool lacks json_schema.\n",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-29T15:56:39.738Z",
+      "updated_at": "2026-06-29T15:56:58.176Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["itotori"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/app exec vitest run openrouter"
+        }
+      ],
+      "audit_focus": []
+    },
+    {
+      "id": "pair-mismatch-check-rejects-genuine-zdr-fallback",
+      "title": "pair_mismatch check rejects genuine ZDR fallback — accept any ZDR-allow-list provider",
+      "kind": "feature",
+      "milestone": "alpha",
+      "status": "ready",
+      "priority": "P2",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "The ITOTORI-220/236 post-response check throws `pair_mismatch` when the upstream provider != requested order[0]. With the ITOTORI-241 routing fix now setting allow_fallbacks:true, a GENUINE ZDR fallback (preferred provider 429s -> OpenRouter routes to the next ZDR-allow-list provider) would be REJECTED by that check, so end-to-end 429-resilience is not actually realized — the live proof only worked because the preferred provider served attempt=1 (no fallback fired). Root fix: reframe the post-response invariant from \"upstream == order[0]\" to \"upstream ∈ ZDR allow-list (zdr:true enforces the privacy gate)\". Must NOT widen into a silent provider swap — ITOTORI-238 silent-swap-forbidden still holds: any fallback must be recorded in adapterMetadata.openrouterRouting (attempt/summary already persisted).\n",
+      "acceptance": "The post-response provider check ACCEPTS a response whose upstream provider is any member of the ZDR allow-list (privacy preserved via zdr:true), not only order[0]; it still REJECTS a non-ZDR-allow-list provider. A test simulates preferred-provider-429 -> fallback-to-second-ZDR-provider and asserts the response is accepted (no pair_mismatch throw) AND the fallback is recorded in adapterMetadata.openrouterRouting (attempt>1 / summary names the served provider) so the swap is auditable, not silent. The ITOTORI-238 silent-swap-forbidden invariant test still passes. `pnpm --filter @itotori/app exec vitest run openrouter` green.\n",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-29T15:56:39.873Z",
+      "updated_at": "2026-06-29T15:56:40.180Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["itotori"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/app exec vitest run openrouter"
+        }
+      ],
+      "audit_focus": []
     }
   ],
   "edges": [
@@ -46411,6 +46481,18 @@
       "to_node": "utsushi-reference-recorder-reconcile-or-delete",
       "type": "requires",
       "created_at": "2026-06-29T13:26:34.684Z"
+    },
+    {
+      "from_node": "agentic-structured-output-json-schema-unroutable-under-zdr",
+      "to_node": "alpha-live-openrouter-call-unproven-and-dev-pair-unroutable",
+      "type": "requires",
+      "created_at": "2026-06-29T15:56:40.064Z"
+    },
+    {
+      "from_node": "pair-mismatch-check-rejects-genuine-zdr-fallback",
+      "to_node": "alpha-live-openrouter-call-unproven-and-dev-pair-unroutable",
+      "type": "requires",
+      "created_at": "2026-06-29T15:56:40.280Z"
     }
   ],
   "findings": [
@@ -50750,22 +50832,22 @@
       "id": "6cdda0c7-d11a-4e8b-8d37-fd7cf005316a",
       "node_id": "ITOTORI-024",
       "kind": "audit",
-      "status": "running",
+      "status": "cancelled",
       "command": null,
       "provider": null,
       "exit_code": null,
       "git_sha": null,
       "external_id": null,
       "url": null,
-      "rationale": null,
+      "rationale": "Stale audit-worker run left open 2026-06-27; ITOTORI-024 lifecycle long settled. Closing so gate decisions ignore no unfinished audits.",
       "superseded_by": null,
       "report_path": null,
       "audit_kind": null,
       "worktree_path": null,
       "agent": null,
       "started_at": "2026-06-27T01:14:26.229Z",
-      "finished_at": null,
-      "summary": null,
+      "finished_at": "2026-06-29T15:44:42.845Z",
+      "summary": "dispose: Stale audit-worker run left open 2026-06-27; ITOTORI-024 lifecycle long settled. Closing so gate decisions ignore no unfinished audits.",
       "log_path": null
     },
     {
@@ -53016,22 +53098,22 @@
       "id": "08a09179-322c-45f6-a17e-a959ab82c239",
       "node_id": "expose-benchmark-seed-adapterids-through-catalog-api-filters",
       "kind": "audit",
-      "status": "running",
+      "status": "cancelled",
       "command": null,
       "provider": null,
       "exit_code": null,
       "git_sha": null,
       "external_id": null,
       "url": null,
-      "rationale": null,
+      "rationale": "Stale audit-worker run left open 2026-06-28; closing abandoned lifecycle state so gate decisions ignore no unfinished audits.",
       "superseded_by": null,
       "report_path": null,
       "audit_kind": null,
       "worktree_path": null,
       "agent": null,
       "started_at": "2026-06-28T01:42:04.949Z",
-      "finished_at": null,
-      "summary": null,
+      "finished_at": "2026-06-29T15:44:54.223Z",
+      "summary": "dispose: Stale audit-worker run left open 2026-06-28; closing abandoned lifecycle state so gate decisions ignore no unfinished audits.",
       "log_path": null
     },
     {
@@ -61785,6 +61867,22 @@
       "node_id": "openrouter-max-price-discarded-conversion-inert",
       "text": "Verification sign-off (manual): Audit PASS: max_price cap genuinely on-wire (provider.max_price.request documented); discarded-conversion cleaned up; pre-request validation preserved+tested.\nValue: Confirm openrouter-provider.test.ts asserts the emitted provider.max_price JSON against the shape documented in docs/openrouter-integration.md\nEvidence: .tmp/audit-openrouter-max-price-discarded-conversion-inert.json",
       "created_at": "2026-06-29T14:36:21.255Z",
+      "kind": "note",
+      "evidence": null
+    },
+    {
+      "id": "6d4249b2-dce3-4997-906c-122a5cbf3ba0",
+      "node_id": "ITOTORI-239",
+      "text": "FALSE-GREEN CORRECTION (2026-06-29, deep-audit-1 P1): this node is marked done but its acceptance requires a SUCCESSFUL live agentic-loop invocation (UTSUSHI-231 retry 8/9) that has NEVER occurred — zero live-mode provider-run evidence exists (deep-audit-1 P0). The repeated 429s this node chased by adding alternates / widening the failover chain were MISDIAGNOSED: root cause is the single-provider-pin + allow_fallbacks:false routing posture in openrouter.ts (buildOpenRouterRoutingPosture), which amplifies transient upstream rate-limits into hard failures. The authoritative fix is the routing-posture correction + live proof now in flight (worker ab39f1be: zdr+allow_fallbacks+order+require_parameters+tool_choice). DISPOSITION DEFERRED to that worker's result: if it proves a real live call, this node's live clause is re-validated against that evidence; if the routing fix obsoletes the alternate-chaining approach, this node is to be SUPERSEDED with its non-live deliverables (preset/capabilitySheet/unit-test) preserved. Until then this is a known false-green, not silently accepted.",
+      "created_at": "2026-06-29T15:49:59.702Z",
+      "kind": "note",
+      "evidence": null
+    },
+    {
+      "id": "dc067df7-b94b-4350-96e4-9964acc691e4",
+      "node_id": "ITOTORI-240",
+      "text": "FALSE-GREEN CORRECTION (2026-06-29, deep-audit-1 P1): this node is marked done but its acceptance requires a SUCCESSFUL live agentic-loop invocation (UTSUSHI-231 retry 8/9) that has NEVER occurred — zero live-mode provider-run evidence exists (deep-audit-1 P0). The repeated 429s this node chased by adding alternates / widening the failover chain were MISDIAGNOSED: root cause is the single-provider-pin + allow_fallbacks:false routing posture in openrouter.ts (buildOpenRouterRoutingPosture), which amplifies transient upstream rate-limits into hard failures. The authoritative fix is the routing-posture correction + live proof now in flight (worker ab39f1be: zdr+allow_fallbacks+order+require_parameters+tool_choice). DISPOSITION DEFERRED to that worker's result: if it proves a real live call, this node's live clause is re-validated against that evidence; if the routing fix obsoletes the alternate-chaining approach, this node is to be SUPERSEDED with its non-live deliverables (preset/capabilitySheet/unit-test) preserved. Until then this is a known false-green, not silently accepted.",
+      "created_at": "2026-06-29T15:49:59.814Z",
       "kind": "note",
       "evidence": null
     }
