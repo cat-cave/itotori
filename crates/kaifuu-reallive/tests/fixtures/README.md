@@ -60,18 +60,18 @@ KAIFUU FIX-1 binary-patch-smoke fixture (kaifuu-cli):
 - `crates/kaifuu-cli/src/binary_patch_smoke.rs::build_synthetic_seen_txt`
   — a **regenerable, in-code** synthetic Seen.txt (no on-disk bytes). It
   replaces the deleted pre-KAIFUU-191 `0x23 ('#') opener + named opcode
-  byte + operand-count` shape with the real post-KAIFUU-191 byte shape:
+byte + operand-count` shape with the real post-KAIFUU-191 byte shape:
   the 80,000-byte 10,000-slot fixed-offset directory (slot 1 populated,
   payload at `0x0001_3880`), a documented Meta prologue (MetaLine /
   MetaEntrypoint / MetaKidoku), and real 8-byte `CommandElement` headers
-  (`0x23`, module_type, module_id, opcode_u16_le, argc, overload,
+  (`0x23`, module*type, module_id, opcode_u16_le, argc, overload,
   reserved) plus a bracketed `( arg , arg )` `select` argument list. The
   scene exercises four string roles — Textout (inline Shift-JIS dialogue
   `"あい"`), TextDisplay (module_msg), SetSpeaker (module_msg opcode 3 →
   CharacterTextDisplay), and Choice (module_sel) — and decodes through the
   current parser with **0 unknown opcodes**
   (`synthetic_seen_txt_decodes_four_roles_with_zero_unknown_opcodes`).
-  The body is the *decompressed* scene bytecode the parser consumes; the
+  The body is the \_decompressed* scene bytecode the parser consumes; the
   unit tests prove it round-trips byte-identically through the real AVG32
   LZSS + XOR framing (`compress_avg32_literal` / `decompress_avg32`), the
   layer a real Seen.txt adds on top.
