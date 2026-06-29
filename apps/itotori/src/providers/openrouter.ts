@@ -277,23 +277,40 @@ export class OpenRouterProvider implements ModelProvider {
         metadata,
       );
     }
-    // ITOTORI-220 — post-response pair check. If the upstream provider
-    // that actually answered differs from the providerId we pinned, fail
-    // LOUDLY rather than accept the swap silently. We still record the
-    // artifact so audit can see the mismatch.
+    // ITOTORI-220 / ITOTORI-236 / ITOTORI-242 — post-response privacy-gate
+    // check. If the upstream provider that answered differs from the
+    // providerId we pinned, fail LOUDLY rather than accept the swap silently.
+    // We still record the artifact so audit can see the mismatch.
     //
     // ITOTORI-236 — `request.providerId` is the lowercase routing slug
-    // (e.g. `"fireworks"`) used in `provider.only`/`provider.order`, but
-    // `response.provider` is the TitleCase human-readable `provider_name`
-    // (e.g. `"Fireworks"`) per docs/openrouter-integration.md §9.2. A
-    // strict `===` here flagged every successful Fireworks-routed call as
-    // a `pair_mismatch`. The fix routes both ends through
-    // `openRouterProviderIdsMatch`, which checks the known slug↔name
-    // registry first and then falls back to case-insensitive comparison;
-    // a GENUINE mismatch (Fireworks pinned, OpenAI returned) still throws.
+    // (e.g. `"fireworks"`) used in `provider.order`, but `response.provider`
+    // is the TitleCase human-readable `provider_name` (e.g. `"Fireworks"`)
+    // per docs/openrouter-integration.md §9.2. A strict `===` flagged every
+    // successful Fireworks-routed call as a `pair_mismatch`. Both ends run
+    // through `openRouterProviderIdsMatch` (known slug↔name registry, then
+    // case-insensitive) so a slug↔name match on the PREFERRED provider is
+    // accepted.
+    //
+    // ITOTORI-242 — the invariant is NO LONGER "upstream == order[0]". With
+    // `allow_fallbacks:true` now on the wire (ITOTORI-241), a GENUINE ZDR
+    // fallback — the preferred provider 429s and OpenRouter routes to the
+    // NEXT ZDR-allow-list provider — is legitimate and MUST be accepted, or
+    // end-to-end 429-resilience is never realized. The reframed invariant is
+    // "upstream ∈ ZDR allow-list": membership is enforced by the privacy
+    // gate `zdr:true` (with zdr:true on the wire OpenRouter can only have
+    // served a ZDR-allow-list provider; otherwise it returns the 404 ZDR
+    // envelope). The swap is still NOT silently broadened — ITOTORI-238
+    // holds — because `isAcceptedZdrFallback` ALSO requires OpenRouter to
+    // have auditably recorded the fallback in the response's
+    // `openrouter_metadata` (attempt>1 / a multi-entry attempts list / a
+    // summary naming the served provider), which `adapterMetadata` mirrors
+    // verbatim onto `adapterMetadata.openrouterRouting`. A swap with no such
+    // record (silent), or a swap on a call that did NOT enforce zdr (the
+    // served provider is not confined to the allow-list), still throws.
     if (
       normalized.upstreamProvider !== undefined &&
-      !openRouterProviderIdsMatch(requestedProviderId, normalized.upstreamProvider)
+      !openRouterProviderIdsMatch(requestedProviderId, normalized.upstreamProvider) &&
+      !isAcceptedZdrFallback(routingPosture, body, normalized.upstreamProvider)
     ) {
       const metadata = adapterMetadata(body, providerRouting);
       const mismatchMetadata: OpenRouterProviderPairMismatchMetadata = {
@@ -1409,6 +1426,72 @@ function openRouterProviderIdsMatch(
     if ((requested === slug && observed === name) || (requested === name && observed === slug)) {
       return true;
     }
+  }
+  return false;
+}
+
+/**
+ * ITOTORI-242 — is this a GENUINE, auditable ZDR fallback that the
+ * post-response check must ACCEPT even though the served upstream differs
+ * from the preferred `order[0]`?
+ *
+ * Two conditions, BOTH required:
+ *
+ *   1. The privacy gate held: the call enforced `zdr:true` on the wire
+ *      (`routingPosture.zdr === true`). zdr:true confines OpenRouter's
+ *      entire routable/fallback pool to the account ZDR allow-list, so any
+ *      upstream that actually answered is a ZDR-allow-list member — that is
+ *      what "upstream ∈ ZDR allow-list" means post-response. Without it the
+ *      served provider is NOT bounded to the allow-list, so a swap is a
+ *      non-ZDR provider and must be REJECTED.
+ *
+ *   2. The fallback is auditable, not silent (ITOTORI-238): OpenRouter
+ *      recorded it in the response's `openrouter_metadata`. We do NOT
+ *      broaden the predicate into accepting an arbitrary provider that just
+ *      happens to differ from `order[0]` with no fallback record.
+ *
+ * Both must hold; either alone rejects.
+ */
+function isAcceptedZdrFallback(
+  routingPosture: OpenRouterRoutingPosture,
+  body: unknown,
+  upstreamProvider: string,
+): boolean {
+  if (routingPosture.zdr !== true) {
+    return false;
+  }
+  return openRouterFallbackRecorded(body, upstreamProvider);
+}
+
+/**
+ * ITOTORI-242 — did OpenRouter auditably record a provider fallback on this
+ * response? Reads the same `openrouter_metadata` that {@link adapterMetadata}
+ * mirrors onto `adapterMetadata.openrouterRouting`, so an accepted fallback
+ * is always traceable in the recorded ledger row.
+ *
+ * `attempt` is 1-indexed in the live shape: `attempt:1` is the preferred
+ * provider served directly (see the `strategy:"direct"` fixtures), so a
+ * genuine fallback to the next ZDR-allow-list provider is `attempt > 1`.
+ * Some routing strategies instead carry an `attempts` list (>1 entry ⇒ a
+ * fallback fired) or a human-readable `summary` naming the served upstream.
+ * Any one of these auditable signals satisfies the ITOTORI-238 invariant.
+ */
+function openRouterFallbackRecorded(body: unknown, upstreamProvider: string): boolean {
+  if (!isRecord(body) || !isRecord(body.openrouter_metadata)) {
+    return false;
+  }
+  const meta = body.openrouter_metadata;
+  if (typeof meta.attempt === "number" && Number.isFinite(meta.attempt) && meta.attempt > 1) {
+    return true;
+  }
+  if (Array.isArray(meta.attempts) && meta.attempts.length > 1) {
+    return true;
+  }
+  if (
+    typeof meta.summary === "string" &&
+    meta.summary.toLowerCase().includes(upstreamProvider.toLowerCase())
+  ) {
+    return true;
   }
   return false;
 }

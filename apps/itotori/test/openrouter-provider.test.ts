@@ -445,6 +445,127 @@ describe("OpenRouterModelProvider — request shape (ITOTORI-220 pair pin)", () 
     }
   });
 
+  it("ITOTORI-242: ACCEPTS a genuine ZDR fallback (preferred 429s → 2nd ZDR-allow-list provider) and records the swap in adapterMetadata.openrouterRouting", async () => {
+    // End-to-end 429-resilience: the preferred provider (order[0],
+    // DEV_PAIR.providerId='fireworks') 429s, OpenRouter routes to the NEXT
+    // ZDR-allow-list provider ('deepinfra'). The privacy gate held (this
+    // request enforces zdr:true — synthetic_public input), so the served
+    // upstream is a ZDR-allow-list member by construction. The post-response
+    // check must ACCEPT it — NOT throw pair_mismatch — and the swap must be
+    // auditable, not silent: OpenRouter's router metadata records the
+    // fallback (attempt>1 + a summary naming the served provider), mirrored
+    // verbatim onto adapterMetadata.openrouterRouting (ITOTORI-238).
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            id: "gen-zdr-fallback",
+            model: DEV_PAIR.modelId,
+            // Served by deepinfra, NOT the preferred 'fireworks'.
+            provider: "deepinfra",
+            choices: [{ finish_reason: "stop", message: { role: "assistant", content: "hi" } }],
+            usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15, cost: 0.001 },
+            openrouter_metadata: {
+              requested: DEV_PAIR.modelId,
+              strategy: "fallback",
+              // attempt is 1-indexed: attempt=1 is the preferred provider
+              // served directly; attempt=2 means OpenRouter advanced past
+              // the 429'd preferred provider to the next ZDR-allow-list one.
+              attempt: 2,
+              summary: "fireworks rate-limited (429); served by deepinfra",
+            },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+    ) as unknown as typeof fetch;
+    const recorder = memoryRecorder();
+    const provider = new OpenRouterModelProvider({
+      env: { OPENROUTER_API_KEY: "abc", OPENROUTER_ZDR_ACCOUNT_ASSERTED: "1" },
+      httpClient: fetchMock,
+      capabilityGuard: new CapabilityGuard(),
+      artifactRecorder: recorder,
+    });
+
+    const result = await provider.invoke(baseRequest());
+
+    // Accepted: no pair_mismatch throw, succeeded run, served by the
+    // fallback provider.
+    expect(result.providerRun.status).toBe("succeeded");
+    expect(result.providerRun.provider.requestedProviderId).toBe(DEV_PAIR.providerId);
+    expect(result.providerRun.provider.upstreamProvider).toBe("deepinfra");
+    // Auditable, not silent: the fallback is recorded in
+    // adapterMetadata.openrouterRouting (attempt>1 / summary names the
+    // served provider).
+    const routing = (result.adapterMetadata as Record<string, unknown>).openrouterRouting as
+      | { attempt?: number; summary?: string }
+      | undefined;
+    expect(routing?.attempt).toBe(2);
+    expect(routing?.summary).toContain("deepinfra");
+    // The recorded artifact carries the same auditable swap record.
+    expect(recorder.artifacts).toHaveLength(1);
+    expect(recorder.artifacts[0]?.adapterMetadata?.openrouterRouting).toMatchObject({
+      attempt: 2,
+    });
+  });
+
+  it("ITOTORI-242: still REJECTS a swap on a call that did NOT enforce zdr (non-ZDR-allow-list provider), even when a fallback is recorded", async () => {
+    // The privacy gate is zdr:true. For a `public` request zdr is NOT
+    // enforced on the wire, so OpenRouter's fallback pool is not confined to
+    // the ZDR allow-list — a swapped upstream is a non-ZDR provider and must
+    // still fail LOUDLY as pair_mismatch, even though the swap carries an
+    // auditable attempt>1 record.
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            id: "gen-non-zdr-swap",
+            model: DEV_PAIR.modelId,
+            provider: "deepinfra",
+            choices: [{ finish_reason: "stop", message: { role: "assistant", content: "hi" } }],
+            usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15, cost: 0.001 },
+            openrouter_metadata: { strategy: "fallback", attempt: 2 },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+    ) as unknown as typeof fetch;
+    const provider = new OpenRouterModelProvider({
+      env: { OPENROUTER_API_KEY: "abc", OPENROUTER_ZDR_ACCOUNT_ASSERTED: "1" },
+      httpClient: fetchMock,
+      capabilityGuard: new CapabilityGuard(),
+      artifactRecorder: memoryRecorder(),
+    });
+    const error = await provider
+      .invoke(baseRequest({ inputClassification: "public" }))
+      .catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(ModelProviderError);
+    if (error instanceof ModelProviderError) {
+      expect(error.code).toBe("pair_mismatch");
+      expect(error.message).toContain("deepinfra");
+    }
+  });
+
+  it("ITOTORI-238: still REJECTS a SILENT swap — zdr enforced but NO fallback recorded in openrouter_metadata (swap not auditable)", async () => {
+    // The silent-swap-forbidden invariant holds: even under zdr:true, a
+    // swapped upstream with NO router-metadata fallback record is a silent
+    // broadening and must fail LOUDLY. We do not accept an arbitrary
+    // provider that merely differs from order[0].
+    const fetchMock = vi.fn(async () =>
+      successResponse({ upstreamProvider: "deepinfra" }),
+    ) as unknown as typeof fetch;
+    const provider = new OpenRouterModelProvider({
+      env: { OPENROUTER_API_KEY: "abc", OPENROUTER_ZDR_ACCOUNT_ASSERTED: "1" },
+      httpClient: fetchMock,
+      capabilityGuard: new CapabilityGuard(),
+      artifactRecorder: memoryRecorder(),
+    });
+    const error = await provider.invoke(baseRequest()).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(ModelProviderError);
+    if (error instanceof ModelProviderError) {
+      expect(error.code).toBe("pair_mismatch");
+      expect(error.message).toContain("deepinfra");
+    }
+  });
+
   it("sends Bearer auth header populated from the resolved env API key", async () => {
     let observedAuth: string | undefined;
     const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
