@@ -46,13 +46,8 @@ const EXCLUDED_SYMBOLS: &[&str] = &[
     // Crate-private validators.
     "reject_unredacted_local_paths_public",
     "looks_like_local_path_public",
-    // Sink-payload-internal constants exposed through the accessor
-    // functions, not as raw constants.
-    "EMBED_MAX_ARTIFACT_REFS",
+    // Embed capability ceiling constant — internal, not on the facade.
     "EMBED_MAX_CAPABILITIES",
-    "EMBED_TRACE_MAX_LINES",
-    "EMBED_STATE_MAX_SERIALIZED_BYTES",
-    "EMBED_SNAPSHOT_CONTENT_HASH_HEX_LEN",
     // Snapshot-internal constants.
     "BYTES_HASH_HEX_LEN",
     "BYTES_SAMPLE_HEX_LEN",
@@ -165,20 +160,11 @@ const REQUIRED_SYMBOLS: &[&str] = &[
     "diff_snapshots",
     "restore_snapshot",
     "take_snapshot",
-    // Embed
-    "EMBED_SCHEMA_VERSION",
-    "EmbedArtifactRef",
+    // Embed capability surface
     "EmbedCapability",
     "EmbedCapabilityId",
     "EmbedCapabilityStatus",
     "EmbedError",
-    "EmbedSchemaVersion",
-    "EmbedSnapshotRef",
-    "EmbedState",
-    "EmbedTrace",
-    "EmbedTraceLine",
-    "embed_capabilities",
-    "embed_state",
     // Recorder
     "InMemoryReferenceRecorder",
     "REFERENCE_TRACE_SCHEMA_VERSION",

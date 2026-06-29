@@ -45,11 +45,7 @@ pub use conformance::{
     unsupported_snapshot_restore_result,
 };
 pub use embed::{
-    EMBED_MAX_ARTIFACT_REFS, EMBED_MAX_CAPABILITIES, EMBED_SCHEMA_VERSION,
-    EMBED_SNAPSHOT_CONTENT_HASH_HEX_LEN, EMBED_STATE_MAX_SERIALIZED_BYTES, EMBED_TRACE_MAX_LINES,
-    EmbedArtifactRef, EmbedCapability, EmbedCapabilityId, EmbedCapabilityStatus, EmbedError,
-    EmbedSchemaVersion, EmbedSnapshotRef, EmbedState, EmbedTrace, EmbedTraceLine,
-    embed_capabilities, embed_state,
+    EMBED_MAX_CAPABILITIES, EmbedCapability, EmbedCapabilityId, EmbedCapabilityStatus, EmbedError,
 };
 pub use input::{
     CLOCK_BACKTRACK_CODE, ChoiceIndex, INPUT_INVALID_PAYLOAD_CODE, INPUT_UNSUPPORTED_KIND_CODE,

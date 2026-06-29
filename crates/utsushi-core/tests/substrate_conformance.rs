@@ -34,14 +34,9 @@ use utsushi_core::substrate::{
     ConformanceAbiVersion,
     ConformanceManifest,
     ConformanceProfile,
-    // Schema constants
-    EMBED_SCHEMA_VERSION,
-    // Embed
+    // Embed capability surface
     EmbedCapability,
     EmbedCapabilityId,
-    EmbedSchemaVersion,
-    EmbedState,
-    EmbedTrace,
     // Evidence / fidelity tiers + observation payload types (re-exported through the facade)
     EvidenceTier,
     FidelityTier,
@@ -96,8 +91,6 @@ use utsushi_core::substrate::{
     VfsError,
     VfsResult,
     deterministic_json_bytes,
-    embed_capabilities,
-    embed_state,
     // Redaction
     reject_unredacted_local_paths,
     take_snapshot,
@@ -633,7 +626,6 @@ fn every_facade_exposed_schema_version_is_pinned() {
     assert_eq!(CONFORMANCE_SCHEMA_VERSION, "0.2.0-alpha");
     assert_eq!(SNAPSHOT_SCHEMA_VERSION, "0.2.0-alpha");
     assert_eq!(REPLAY_LOG_SCHEMA_VERSION, "0.1.0-alpha");
-    assert_eq!(EMBED_SCHEMA_VERSION, "0.1.0-alpha");
 }
 
 // ---------------------------------------------------------------------
@@ -660,37 +652,6 @@ fn source_tag_variant_set_is_engine_neutral() {
         assert!(!label.is_empty());
     }
     assert_eq!(all.len(), 4);
-}
-
-// ---------------------------------------------------------------------
-// §7.1 case 10 (additive): embed accessors round-trip via the facade.
-// Demonstrates that `embed_capabilities` and `embed_state` are
-// reachable through the facade.
-// ---------------------------------------------------------------------
-
-#[test]
-fn embed_accessors_reachable_through_the_facade() {
-    let capabilities = vec![EmbedCapability::supported(
-        EmbedCapabilityId::State,
-        EvidenceTier::E1,
-    )];
-    let value = embed_capabilities(&capabilities).expect("embed_capabilities serializes");
-    assert!(value.is_object() || value.is_array());
-
-    let state = EmbedState {
-        schema_version: EmbedSchemaVersion::current(),
-        adapter_id: "utsushi-fixture".to_string(),
-        adapter_version: "0.0.0".to_string(),
-        capabilities: vec![EmbedCapability::supported(
-            EmbedCapabilityId::State,
-            EvidenceTier::E1,
-        )],
-        trace: EmbedTrace::empty(),
-        current_snapshot: None,
-        artifact_refs: Vec::new(),
-    };
-    let value = embed_state(&state).expect("embed_state serializes");
-    assert!(value.is_object());
 }
 
 // ---------------------------------------------------------------------

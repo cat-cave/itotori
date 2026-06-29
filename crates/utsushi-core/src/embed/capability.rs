@@ -1,10 +1,9 @@
 //! Capability declaration for the WASM embed ABI substrate.
 //!
 //! The capability list is the canonical answer to "what observable surface
-//! does this embed expose?" The host MUST call [`embed_capabilities`] before
-//! invoking any read on [`super::state::EmbedState`]; a capability mismatch
-//! surfaces as [`super::diagnostics::EmbedError::CapabilityNotSupported`]
-//! rather than a silent missing field.
+//! does this embed expose?" A capability mismatch surfaces as
+//! [`super::diagnostics::EmbedError::CapabilityNotSupported`] rather than a
+//! silent missing field.
 //!
 //! Capability ids are an append-only typed enum. New variants are added at
 //! the end of [`EmbedCapabilityId`]; ordering is stable on both
@@ -12,17 +11,14 @@
 //! reshuffle preserves lexicographic order.
 
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 
 use crate::EvidenceTier;
 
 use super::diagnostics::EmbedError;
-use super::redaction::reject_redaction_violation;
 
-/// Maximum number of capabilities a single [`super::state::EmbedState`] (or a
-/// standalone [`embed_capabilities`] response) may carry. The pre-declared
-/// id enum has 5 variants today; the ceiling is loose so future ABI bumps
-/// have headroom.
+/// Maximum number of capabilities a single declaration list may carry. The
+/// pre-declared id enum has 5 variants today; the ceiling is loose so future
+/// ABI bumps have headroom.
 pub const EMBED_MAX_CAPABILITIES: usize = 32;
 
 /// Pre-declared, append-only capability ids. Engine ports cannot smuggle
@@ -34,11 +30,10 @@ pub const EMBED_MAX_CAPABILITIES: usize = 32;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum EmbedCapabilityId {
-    /// Embed can return a current [`super::state::EmbedState`] envelope at
-    /// all. Required for any envelope.
+    /// Embed can return a current state envelope at all. Required for any
+    /// envelope.
     State,
-    /// Embed can return a non-empty [`super::state::EmbedTrace`] lines
-    /// vector.
+    /// Embed can return a non-empty trace lines vector.
     Trace,
     /// Embed can return a non-null `current_snapshot` ref.
     Snapshot,
@@ -65,11 +60,10 @@ impl EmbedCapabilityId {
         }
     }
 
-    /// Total order key used by both [`embed_capabilities`] and
-    /// [`super::state::EmbedState::validate`] to assert a deterministic
-    /// listing. Primary key is the enum discriminant (`as u8`); secondary
-    /// key is the stable string form so a future enum reshuffle preserves
-    /// lexicographic order.
+    /// Total order key used by [`validate_capability_list`] to assert a
+    /// deterministic listing. Primary key is the enum discriminant
+    /// (`as u8`); secondary key is the stable string form so a future enum
+    /// reshuffle preserves lexicographic order.
     pub fn sort_key(self) -> (u8, &'static str) {
         (self as u8, self.as_str())
     }
@@ -104,10 +98,8 @@ impl EmbedCapabilityStatus {
     }
 }
 
-/// Single capability declaration. The host MUST consult the
-/// [`super::state::EmbedState::capabilities`] vector (or the standalone
-/// [`embed_capabilities`] response) for this id BEFORE invoking any read on
-/// the corresponding field.
+/// Single capability declaration. The host MUST consult the capability
+/// vector for this id BEFORE invoking any read on the corresponding field.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct EmbedCapability {
@@ -160,8 +152,7 @@ impl EmbedCapability {
         }
     }
 
-    /// Per-field validator. Called by [`super::state::EmbedState::validate`]
-    /// and by [`validate_capability_list`].
+    /// Per-field validator. Called by [`validate_capability_list`].
     pub fn validate(&self) -> Result<(), EmbedError> {
         match self.status {
             EmbedCapabilityStatus::Supported => {
@@ -250,25 +241,11 @@ pub fn validate_capability_list(capabilities: &[EmbedCapability]) -> Result<(), 
 }
 
 /// Sort a capability vector into the deterministic order asserted by
-/// [`validate_capability_list`]. Used by the substrate's
-/// [`embed_capabilities`] helper and re-exported for adapter-side callers
-/// that build a capability vector incrementally and want to canonicalise
-/// before serialization.
+/// [`validate_capability_list`]. Re-exported for adapter-side and recorder
+/// callers that build a capability vector incrementally and want to
+/// canonicalise before serialization.
 pub fn sort_capabilities(capabilities: &mut [EmbedCapability]) {
     capabilities.sort_by_key(|capability| capability.capability_id.sort_key());
-}
-
-/// Serialize a capability list as JSON. Validates the list end-to-end and
-/// runs the redaction filter on the serialized form before returning. This
-/// is the canonical "host calls embed_capabilities() and inspects the
-/// vector" entry point.
-pub fn embed_capabilities(capabilities: &[EmbedCapability]) -> Result<Value, EmbedError> {
-    validate_capability_list(capabilities)?;
-    let value = serde_json::to_value(capabilities).map_err(|err| EmbedError::Json {
-        reason: err.to_string(),
-    })?;
-    reject_redaction_violation("", &value)?;
-    Ok(value)
 }
 
 #[cfg(test)]
@@ -443,47 +420,6 @@ mod tests {
             EmbedError::CapabilitiesTooLarge { observed, ceiling }
                 if observed == EMBED_MAX_CAPABILITIES + 1 && ceiling == EMBED_MAX_CAPABILITIES
         ));
-    }
-
-    #[test]
-    fn embed_capability_limitations_with_host_path_fail_redaction() {
-        let list = vec![
-            EmbedCapability::supported(EmbedCapabilityId::State, EvidenceTier::E2),
-            EmbedCapability::partial(
-                EmbedCapabilityId::Trace,
-                EvidenceTier::E1,
-                vec!["see /home/leak/notes.md".to_string()],
-            ),
-        ];
-        let error = embed_capabilities(&list).expect_err("host path in limitation rejected");
-        assert!(matches!(
-            error,
-            EmbedError::RedactionViolation { field_path } if field_path.contains("limitations")
-        ));
-    }
-
-    #[test]
-    fn embed_capabilities_helper_returns_list_in_deterministic_order() {
-        let list = sample_sorted_list();
-        let first = embed_capabilities(&list).expect("first call ok");
-        let second = embed_capabilities(&list).expect("second call ok");
-        assert_eq!(first, second, "two calls return byte-identical JSON");
-        // Confirm the JSON form preserves the sorted order.
-        let array = first.as_array().expect("array");
-        let ids: Vec<&str> = array
-            .iter()
-            .map(|value| value["capabilityId"].as_str().expect("capability id"))
-            .collect();
-        assert_eq!(
-            ids,
-            vec![
-                "state",
-                "trace",
-                "snapshot",
-                "artifact_refs",
-                "deterministic_fixture"
-            ]
-        );
     }
 
     #[test]

@@ -48,12 +48,8 @@ pub use crate::snapshot::{
     StatePath, StateTree, StateValue, diff_snapshots, restore_snapshot, take_snapshot,
 };
 
-// --- Embed ABI (UTSUSHI-024) ------------------------------------------
-pub use crate::embed::{
-    EMBED_SCHEMA_VERSION, EmbedArtifactRef, EmbedCapability, EmbedCapabilityId,
-    EmbedCapabilityStatus, EmbedError, EmbedSchemaVersion, EmbedSnapshotRef, EmbedState,
-    EmbedTrace, EmbedTraceLine, embed_capabilities, embed_state,
-};
+// --- Embed capability surface (UTSUSHI-024) ---------------------------
+pub use crate::embed::{EmbedCapability, EmbedCapabilityId, EmbedCapabilityStatus, EmbedError};
 
 // --- Recorder + reference trace (UTSUSHI-060/062) ---------------------
 pub use crate::recorder::{
@@ -121,8 +117,6 @@ const _: () = {
     assert!(const_str_eq(SNAPSHOT_SCHEMA_VERSION, "0.2.0-alpha"));
     // Replay log schema (UTSUSHI-021).
     assert!(const_str_eq(REPLAY_LOG_SCHEMA_VERSION, "0.1.0-alpha"));
-    // Embed ABI schema (UTSUSHI-024).
-    assert!(const_str_eq(EMBED_SCHEMA_VERSION, "0.1.0-alpha"));
 
     // Engine-neutrality: `SourceTag` is the only engine-family axis and
     // its variant set must stay at exactly four engine-neutral values

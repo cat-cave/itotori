@@ -82,15 +82,15 @@ pub enum EmbedError {
     /// Adapter id failed shape validation (blank, whitespace, non-ASCII).
     InvalidAdapterId { observed: String },
 
-    /// `EmbedState::current_snapshot`'s adapter id does not equal the
-    /// envelope's `adapter_id`.
+    /// A snapshot ref's adapter id does not equal the envelope's
+    /// `adapter_id`.
     SnapshotAdapterIdMismatch { envelope: String, snapshot: String },
 
-    /// `EmbedSnapshotRef` failed shape validation (bad uuid, hash shape, size
+    /// A snapshot ref failed shape validation (bad uuid, hash shape, size
     /// over ceiling, evidence tier > E3).
     InvalidSnapshotRef { reason: String },
 
-    /// `EmbedArtifactRef` failed shape validation (URI not under managed
+    /// An artifact ref failed shape validation (URI not under managed
     /// prefix, traversal, scheme leak).
     InvalidArtifactRef { reason: String },
 
@@ -98,13 +98,13 @@ pub enum EmbedError {
     /// `looks_like_local_path`.
     RedactionViolation { field_path: String },
 
-    /// Envelope size exceeded `EMBED_STATE_MAX_SERIALIZED_BYTES`.
+    /// Envelope size exceeded its serialized-byte ceiling.
     EnvelopeTooLarge { size: usize, ceiling: usize },
 
-    /// Trace exceeded `EMBED_TRACE_MAX_LINES`.
+    /// Trace exceeded its maximum line count.
     TraceTooLarge { observed: usize, ceiling: usize },
 
-    /// Artifact ref list exceeded `EMBED_MAX_ARTIFACT_REFS`.
+    /// Artifact ref list exceeded its maximum length.
     ArtifactRefsTooLarge { observed: usize, ceiling: usize },
 
     /// Capability list exceeded `EMBED_MAX_CAPABILITIES`.
