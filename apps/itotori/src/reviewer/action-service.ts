@@ -14,8 +14,11 @@
 //   - updateStyle()             — approve a style item, recording the
 //                                 downstream style-guide edit that follows
 //   - importRuntimeFeedback()   — approve a runtime evidence / feedback
-//                                 item, preserving the Utsushi evidence
-//                                 tier verbatim onto the transition log
+//                                 item; for runtime-evidence items it
+//                                 asserts the supplied evidence tier and
+//                                 refs match the values persisted on the
+//                                 item before recording them verbatim
+//                                 onto the transition log
 //
 // The service is a thin typed shell over `ItotoriReviewerQueueRepository`.
 // It does NOT make LLM calls and carries no model/provider pair — pair
@@ -151,10 +154,15 @@ export type UpdateStyleActionInput = ReviewerQueueActionCommonInput & {
 
 export type ImportRuntimeFeedbackActionInput = ReviewerQueueActionCommonInput & {
   /**
-   * Utsushi evidence tier carried by the reviewer-queue item; the
-   * service asserts the supplied value matches the persisted value on
-   * the item. This is the explicit hand-off contract that prevents
-   * runtime evidence feedback from losing its tier (audit focus).
+   * Utsushi evidence tier for the import. For runtime-evidence items the
+   * tier (together with `observationEventIds` and `artifactHashes`) is
+   * persisted on the item row and is authoritative: the service fetches
+   * the item and asserts the supplied values match the persisted ones,
+   * throwing `ReviewerQueueActionServiceInputError` on mismatch. This is
+   * the explicit hand-off contract that prevents runtime evidence
+   * feedback from losing or rewriting its tier on the transition log
+   * (audit focus). Feedback-kind items carry no persisted tier, so the
+   * supplied value is recorded verbatim.
    */
   evidenceTier: string;
   /** Utsushi observation event ids being imported. */
@@ -264,6 +272,28 @@ export class ReviewerQueueActionService implements ReviewerQueueActionServicePor
     assertNonEmpty("evidenceTier", input.evidenceTier);
     assertNonEmptyArray("observationEventIds", input.observationEventIds);
     assertNonEmptyArray("artifactHashes", input.artifactHashes);
+    // Runtime-evidence items carry the Utsushi tier + observation/artifact
+    // refs persisted on the item row, and those are authoritative. Fetch
+    // the item and assert the supplied values match so a caller cannot
+    // record a different tier on the transition log than the item actually
+    // carries (the item row itself stays correct via the SQL discriminant,
+    // but the recorded feedback must not drift). Feedback-kind items carry
+    // no persisted tier, so the supplied values are recorded verbatim. A
+    // missing item is left to the repository's typed not-found error.
+    const item = await this.repository.getItem(actor, input.reviewItemId);
+    if (item !== null && isRuntimeEvidenceItem(item)) {
+      assertMatchesPersistedString("evidenceTier", input.evidenceTier, item.evidenceTier);
+      assertMatchesPersistedStringArray(
+        "observationEventIds",
+        input.observationEventIds,
+        item.observationEventIds,
+      );
+      assertMatchesPersistedStringArray(
+        "artifactHashes",
+        input.artifactHashes,
+        item.artifactHashes,
+      );
+    }
     // Persist the evidence tier + observation event ids + artifact
     // hashes verbatim onto the transition's metadata so the audit trail
     // captures what was imported, in addition to the persisted values
@@ -378,6 +408,31 @@ function assertNonEmptyArray(field: string, value: ReadonlyArray<string>): void 
         `${field} must contain only non-empty strings`,
       );
     }
+  }
+}
+
+function assertMatchesPersistedString(field: string, supplied: string, persisted: string): void {
+  if (supplied !== persisted) {
+    throw new ReviewerQueueActionServiceInputError(
+      field,
+      `${field} '${supplied}' does not match the persisted runtime-evidence value '${persisted}' on the item`,
+    );
+  }
+}
+
+function assertMatchesPersistedStringArray(
+  field: string,
+  supplied: ReadonlyArray<string>,
+  persisted: ReadonlyArray<string>,
+): void {
+  const matches =
+    supplied.length === persisted.length &&
+    supplied.every((entry, index) => entry === persisted[index]);
+  if (!matches) {
+    throw new ReviewerQueueActionServiceInputError(
+      field,
+      `${field} [${supplied.join(", ")}] does not match the persisted runtime-evidence value [${persisted.join(", ")}] on the item`,
+    );
   }
 }
 

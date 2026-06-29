@@ -123,6 +123,7 @@ function makeStubRepo(): {
   applyAction: ReturnType<typeof vi.fn>;
   applyActionAndEnqueueJobs: ReturnType<typeof vi.fn>;
   applyActionsAndEnqueueJobs: ReturnType<typeof vi.fn>;
+  getItem: ReturnType<typeof vi.fn>;
   plannedJobs: JobQueueInput[];
 } {
   const applyAction = vi.fn<
@@ -178,16 +179,31 @@ function makeStubRepo(): {
     }
     return { actionResults, jobs: [] };
   });
+  // Default to a feedback-kind item: feedback items carry no persisted
+  // evidence tier, so importRuntimeFeedback records the supplied values
+  // verbatim without a persisted-vs-supplied comparison. Runtime-evidence
+  // tests override this to exercise the enforcement path.
+  const getItem = vi.fn<[AuthorizationActor, string], Promise<ReviewerQueueItemRecord | null>>();
+  getItem.mockImplementation(async (_actor, reviewItemId) =>
+    itemFixture({ reviewItemId, itemKind: reviewerQueueItemKindValues.feedback }),
+  );
   const repo: ItotoriReviewerQueueRepositoryPort = {
     createItem: vi.fn(),
     applyAction,
     applyActionAndEnqueueJobs,
     applyActionsAndEnqueueJobs,
-    getItem: vi.fn(),
+    getItem,
     loadItemsByBranch: vi.fn(),
     loadTransitionsByItem: vi.fn(),
   };
-  return { repo, applyAction, applyActionAndEnqueueJobs, applyActionsAndEnqueueJobs, plannedJobs };
+  return {
+    repo,
+    applyAction,
+    applyActionAndEnqueueJobs,
+    applyActionsAndEnqueueJobs,
+    getItem,
+    plannedJobs,
+  };
 }
 
 describe("ReviewerQueueActionService", () => {
@@ -544,6 +560,132 @@ describe("ReviewerQueueActionService", () => {
       observationEventIds: ["event-1", "event-2"],
       artifactHashes: ["sha256:a", "sha256:b"],
       contextRefs: decisionContextRefs,
+    });
+  });
+
+  it("importRuntimeFeedback asserts the supplied evidence tier matches the persisted runtime-evidence item", async () => {
+    const { repo, getItem, applyActionAndEnqueueJobs } = makeStubRepo();
+    getItem.mockResolvedValue(
+      itemFixture({
+        reviewItemId: "reviewer-queue-runtime-mismatch",
+        itemKind: reviewerQueueItemKindValues.runtimeEvidence,
+        evidenceTier: "tier-2-trace",
+        observationEventIds: ["event-1"],
+        artifactHashes: ["sha256:a"],
+      }),
+    );
+    const service = new ReviewerQueueActionService(repo);
+
+    await expect(
+      service.importRuntimeFeedback(actor, {
+        reviewItemId: "reviewer-queue-runtime-mismatch",
+        actorUserId: "local-user",
+        expectedSourceRevisionId: "source-revision-fixture",
+        contextRefs: decisionContextRefs,
+        // Caller supplies a different (higher) tier than the item carries.
+        evidenceTier: "tier-3-recording",
+        observationEventIds: ["event-1"],
+        artifactHashes: ["sha256:a"],
+      }),
+    ).rejects.toMatchObject({
+      name: "ReviewerQueueActionServiceInputError",
+      field: "evidenceTier",
+    });
+
+    // The mismatch must be caught before any repository mutation so the
+    // transition log cannot record the wrong tier.
+    expect(applyActionAndEnqueueJobs).not.toHaveBeenCalled();
+  });
+
+  it("importRuntimeFeedback rejects observation/artifact refs that drift from the persisted runtime-evidence item", async () => {
+    const { repo, getItem, applyActionAndEnqueueJobs } = makeStubRepo();
+    getItem.mockResolvedValue(
+      itemFixture({
+        reviewItemId: "reviewer-queue-runtime-refs",
+        itemKind: reviewerQueueItemKindValues.runtimeEvidence,
+        evidenceTier: "tier-2-trace",
+        observationEventIds: ["event-1", "event-2"],
+        artifactHashes: ["sha256:a"],
+      }),
+    );
+    const service = new ReviewerQueueActionService(repo);
+
+    await expect(
+      service.importRuntimeFeedback(actor, {
+        reviewItemId: "reviewer-queue-runtime-refs",
+        actorUserId: "local-user",
+        expectedSourceRevisionId: "source-revision-fixture",
+        contextRefs: decisionContextRefs,
+        evidenceTier: "tier-2-trace",
+        observationEventIds: ["event-1"],
+        artifactHashes: ["sha256:a"],
+      }),
+    ).rejects.toMatchObject({
+      name: "ReviewerQueueActionServiceInputError",
+      field: "observationEventIds",
+    });
+
+    expect(applyActionAndEnqueueJobs).not.toHaveBeenCalled();
+  });
+
+  it("importRuntimeFeedback accepts a runtime-evidence import whose values match the persisted item", async () => {
+    const { repo, getItem, applyAction } = makeStubRepo();
+    getItem.mockResolvedValue(
+      itemFixture({
+        reviewItemId: "reviewer-queue-runtime-match",
+        itemKind: reviewerQueueItemKindValues.runtimeEvidence,
+        evidenceTier: "tier-2-trace",
+        observationEventIds: ["event-1", "event-2"],
+        artifactHashes: ["sha256:a", "sha256:b"],
+      }),
+    );
+    const service = new ReviewerQueueActionService(repo);
+
+    await service.importRuntimeFeedback(actor, {
+      reviewItemId: "reviewer-queue-runtime-match",
+      actorUserId: "local-user",
+      expectedSourceRevisionId: "source-revision-fixture",
+      contextRefs: decisionContextRefs,
+      evidenceTier: "tier-2-trace",
+      observationEventIds: ["event-1", "event-2"],
+      artifactHashes: ["sha256:a", "sha256:b"],
+    });
+
+    expect(applyAction.mock.calls[0]![1]!.metadata).toMatchObject({
+      evidenceTier: "tier-2-trace",
+      observationEventIds: ["event-1", "event-2"],
+      artifactHashes: ["sha256:a", "sha256:b"],
+    });
+  });
+
+  it("importRuntimeFeedback records a feedback-item tier verbatim without a persisted comparison", async () => {
+    const { repo, getItem, applyAction } = makeStubRepo();
+    // Feedback items carry no persisted evidence tier (null on the row).
+    getItem.mockResolvedValue(
+      itemFixture({
+        reviewItemId: "reviewer-queue-feedback-import",
+        itemKind: reviewerQueueItemKindValues.feedback,
+        evidenceTier: null,
+        observationEventIds: null,
+        artifactHashes: null,
+      }),
+    );
+    const service = new ReviewerQueueActionService(repo);
+
+    await service.importRuntimeFeedback(actor, {
+      reviewItemId: "reviewer-queue-feedback-import",
+      actorUserId: "local-user",
+      expectedSourceRevisionId: "source-revision-fixture",
+      contextRefs: decisionContextRefs,
+      evidenceTier: "batch-runtime-evidence",
+      observationEventIds: ["event-9"],
+      artifactHashes: ["sha256:z"],
+    });
+
+    expect(applyAction.mock.calls[0]![1]!.metadata).toMatchObject({
+      evidenceTier: "batch-runtime-evidence",
+      observationEventIds: ["event-9"],
+      artifactHashes: ["sha256:z"],
     });
   });
 
