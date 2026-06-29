@@ -249,6 +249,7 @@ fn mouseactioncall_hot_region_dispatches() {
     };
     let inside_route = dispatcher
         .route_for_input_event(&inside_normalized)
+        .expect("pointer dispatch must not error with a known screen size")
         .expect("normalized (1250, 300) must hit the route");
     assert!(matches!(
         inside_route.kind,
@@ -257,6 +258,7 @@ fn mouseactioncall_hot_region_dispatches() {
     assert!(
         dispatcher
             .route_for_input_event(&outside_normalized)
+            .expect("pointer dispatch must not error with a known screen size")
             .is_none(),
         "normalized (100, 100) must miss every hot region"
     );

@@ -225,8 +225,8 @@ pub mod save;
 pub use syscall::{
     HotRegion, SYSCALL_KIND_COUNT, SYSCALL_MISSING_SCREEN_SIZE_CODE,
     SYSCALL_MOUSE_AREA_MALFORMED_CODE, SYSCALL_ROUTE_MALFORMED_PAIR_CODE, ScreenSize,
-    SyscallDispatchBuildError, SyscallDispatcher, SyscallRoute, SyscallRouteKind,
-    WBCALL_SLOT_COUNT,
+    SyscallDispatchBuildError, SyscallDispatchError, SyscallDispatcher, SyscallRoute,
+    SyscallRouteKind, WBCALL_SLOT_COUNT,
 };
 
 pub use graphics_objects::{

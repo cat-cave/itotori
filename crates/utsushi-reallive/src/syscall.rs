@@ -298,6 +298,32 @@ pub enum SyscallDispatchBuildError {
     },
 }
 
+/// Typed error surfaced by [`SyscallDispatcher::route_for_input_event`]
+/// when an input event cannot be lowered to a route without the
+/// dispatcher guessing. Distinct from
+/// [`SyscallDispatchBuildError`]: that surfaces at build time from a
+/// malformed Gameexe shape, this surfaces at dispatch time from runtime
+/// state the build could not have caught.
+#[derive(Debug, Clone, Error, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", tag = "kind")]
+pub enum SyscallDispatchError {
+    /// A substrate [`InputEvent::Pointer`] arrived while at least one
+    /// `MOUSEACTIONCALL.NNN` hot-region route is registered, but
+    /// `SCREENSIZE_MOD` is missing or malformed so the normalized →
+    /// pixel-space conversion cannot run. The dispatcher refuses to
+    /// silently drop the pointer event — without this surface a stale
+    /// Gameexe missing its `SCREENSIZE_MOD` would vanish every pointer
+    /// hot-region dispatch with no diagnostic.
+    #[error(
+        "pointer event cannot be routed: SCREENSIZE_MOD is missing or malformed, so normalized coords cannot be lowered to pixel space ({code})"
+    )]
+    MissingScreenSize {
+        /// Stable diagnostic code (matches
+        /// [`SYSCALL_MISSING_SCREEN_SIZE_CODE`]).
+        code: String,
+    },
+}
+
 /// Typed dispatcher built from a parsed [`Gameexe`] tree. Holds the
 /// 15-route Sweetie HD table (7 named routes + 8 WBCALL slots; one
 /// MOUSEACTIONCALL slot) plus the screen size used by the pointer
@@ -487,12 +513,24 @@ impl SyscallDispatcher {
     /// - [`InputEvent::Pointer`] → first MOUSEACTIONCALL hot region the
     ///   normalized → pixel-space conversion lands inside.
     ///
-    /// Unrecognised events return `None`. `WBCALL` routes are
+    /// Unrecognised events return `Ok(None)`. `WBCALL` routes are
     /// addressed through [`Self::route_for_wbcall`] — they fire from
     /// engine-side window-button hits rather than substrate
     /// `InputEvent`s.
-    pub fn route_for_input_event(&self, event: &InputEvent) -> Option<&SyscallRoute> {
-        match event {
+    ///
+    /// # Errors
+    ///
+    /// - [`SyscallDispatchError::MissingScreenSize`] — a pointer event
+    ///   arrived while a `MOUSEACTIONCALL` hot-region route is
+    ///   registered but `SCREENSIZE_MOD` is missing or malformed, so
+    ///   the normalized → pixel conversion cannot run. The dispatcher
+    ///   surfaces the typed diagnostic rather than silently dropping
+    ///   the pointer event.
+    pub fn route_for_input_event(
+        &self,
+        event: &InputEvent,
+    ) -> Result<Option<&SyscallRoute>, SyscallDispatchError> {
+        let route = match event {
             InputEvent::Save { .. } => self.route_for_kind(SyscallRouteKind::SystemcallSave),
             InputEvent::Load { .. } => self.route_for_kind(SyscallRouteKind::SystemcallLoad),
             InputEvent::MenuSelect { target } if target.menu_id == "system" => {
@@ -505,12 +543,35 @@ impl SyscallDispatcher {
                 }
             }
             InputEvent::Pointer { x, y, .. } => {
-                let screen = self.screen_size?;
+                let Some(screen) = self.screen_size else {
+                    // `SCREENSIZE_MOD` is missing or malformed. If a
+                    // hot-region route is registered the pointer event
+                    // would otherwise vanish without a diagnostic — the
+                    // exact silent-skip the audit finding pins. Surface
+                    // the typed code instead of guessing a screen size.
+                    if self.has_pointer_route() {
+                        return Err(SyscallDispatchError::MissingScreenSize {
+                            code: SYSCALL_MISSING_SCREEN_SIZE_CODE.to_string(),
+                        });
+                    }
+                    // No hot-region route exists, so the missing screen
+                    // size disables nothing — the pointer genuinely has
+                    // no route to fire.
+                    return Ok(None);
+                };
                 let (x_px, y_px) = screen.pointer_to_pixel(*x, *y);
                 self.route_for_pointer_pixel(x_px, y_px)
             }
             _ => None,
-        }
+        };
+        Ok(route)
+    }
+
+    /// Whether the dispatch table carries at least one
+    /// `MOUSEACTIONCALL` hot-region route — i.e. a pointer event could
+    /// dispatch if the screen size were known.
+    fn has_pointer_route(&self) -> bool {
+        self.routes.iter().any(|route| route.area.is_some())
     }
 
     /// Match a pixel-space pointer-move against the registered
@@ -820,6 +881,7 @@ mod tests {
         };
         let route = dispatcher
             .route_for_input_event(&event)
+            .expect("pointer dispatch must not error with a known screen size")
             .expect("normalized pointer event must hit the route");
         assert!(matches!(
             route.kind,
@@ -831,7 +893,60 @@ mod tests {
             y: 0.5,
             button: utsushi_core::substrate::PointerButton::Primary,
         };
-        assert!(dispatcher.route_for_input_event(&off).is_none());
+        assert!(
+            dispatcher
+                .route_for_input_event(&off)
+                .expect("pointer dispatch must not error with a known screen size")
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn pointer_event_without_screen_size_emits_missing_diagnostic() {
+        // Drop SCREENSIZE_MOD but keep the MOUSEACTIONCALL hot region.
+        // A pointer event can no longer be lowered to pixel space, so
+        // the dispatcher must surface the typed missing-screen-size
+        // diagnostic rather than silently returning `None`.
+        let text =
+            reallive_real_bytes_lines_14_28().replace("#SCREENSIZE_MOD=999,1280,720\r\n", "");
+        let gx = parse_gameexe(&text);
+        let dispatcher = SyscallDispatcher::from_gameexe(&gx).expect("build");
+        assert!(
+            dispatcher.screen_size().is_none(),
+            "SCREENSIZE_MOD was removed — screen size must be absent"
+        );
+        let event = InputEvent::Pointer {
+            x: 0.5,
+            y: 0.5,
+            button: utsushi_core::substrate::PointerButton::Primary,
+        };
+        match dispatcher.route_for_input_event(&event) {
+            Err(SyscallDispatchError::MissingScreenSize { code }) => {
+                assert_eq!(code, SYSCALL_MISSING_SCREEN_SIZE_CODE);
+            }
+            other => panic!("expected MissingScreenSize diagnostic, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn pointer_event_without_screen_size_or_hot_region_returns_none() {
+        // No SCREENSIZE_MOD and no MOUSEACTIONCALL route: the missing
+        // screen size disables no pointer dispatch, so the honest
+        // answer is `Ok(None)` rather than a false-positive diagnostic.
+        let mut text = reallive_real_bytes_lines_14_28()
+            .replace("#SCREENSIZE_MOD=999,1280,720\r\n", "")
+            .replace("#MOUSEACTIONCALL.000.MOD=1\r\n", "")
+            .replace("#MOUSEACTIONCALL.000.SEEN=9999,30\r\n", "")
+            .replace("#MOUSEACTIONCALL.000.AREA=1232,0,1279,719\r\n", "");
+        text.push_str("");
+        let gx = parse_gameexe(&text);
+        let dispatcher = SyscallDispatcher::from_gameexe(&gx).expect("build");
+        let event = InputEvent::Pointer {
+            x: 0.5,
+            y: 0.5,
+            button: utsushi_core::substrate::PointerButton::Primary,
+        };
+        assert!(matches!(dispatcher.route_for_input_event(&event), Ok(None)));
     }
 
     #[test]
@@ -919,12 +1034,14 @@ mod tests {
         assert_eq!(
             dispatcher
                 .route_for_input_event(&save)
+                .expect("save dispatch must not error")
                 .map(|route| route.kind),
             Some(SyscallRouteKind::SystemcallSave),
         );
         assert_eq!(
             dispatcher
                 .route_for_input_event(&load)
+                .expect("load dispatch must not error")
                 .map(|route| route.kind),
             Some(SyscallRouteKind::SystemcallLoad),
         );
