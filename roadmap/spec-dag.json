@@ -36638,6 +36638,41 @@
         }
       ],
       "audit_focus": []
+    },
+    {
+      "id": "revalidate-failover-alternates-json-schema-under-zdr-posture",
+      "title": "Re-validate 5 failover alternates' json_schema support under ITOTORI-241 ZDR posture (evidence is pre-241 only-pin)",
+      "kind": "feature",
+      "milestone": "alpha",
+      "status": "ready",
+      "priority": "P2",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "The localize-sweetie-hd pair-policy preset's five failover alternates (deepinfra, wafer, digitalocean, morph, atlas-cloud) still declare supportsStructuredOutputJsonSchema:true, each backed by ITOTORI-238/239 evidence refs that probed json_schema HTTP 200 under the OLD `only`-pinned single-provider posture. Under the new ITOTORI-241 posture (zdr + allow_fallbacks + order + require_parameters:true), the routable pool is the ZDR allow-list and json_schema-advertising endpoints may be excluded — the alpha-live EVIDENCE.json showed json_schema 404s for deepseek-v4-flash even on Fireworks. The agentic-json_object node fixed the PRIMARY pair (DEV_PAIR/fireworks -> jsonSchema:unsupported) and the selection mechanism is fully pair-driven, but the 5 alternates' capabilitySheets were NOT re-validated and may now be overclaiming json_schema support. Re-probe each alternate's json_schema support under the ITOTORI-241 ZDR posture (real live calls, sanitized) and flip any that 404 to jsonSchema:unsupported; the selector already honors the flag with no code change.\n",
+      "acceptance": "- Each of the 5 failover alternates' supportsStructuredOutputJsonSchema flag reflects a REAL probe under the ITOTORI-241 ZDR posture (not the old only-pin evidence): a sanitized live result (billed cost, no key/prompt/response bytes) per alternate, or a documented unsupported.\n- Any alternate that 404s json_schema under ZDR is flipped to jsonSchema:unsupported in the pair-policy preset; its evidence ref updated to cite the ITOTORI-241-posture probe.\n- pnpm --filter @itotori/app exec vitest run openrouter green; the failover chain selects json_object for any alternate whose ZDR pool lacks json_schema.\n",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-29T20:58:48.769Z",
+      "updated_at": "2026-06-29T20:58:48.880Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["itotori"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/app exec vitest run openrouter"
+        }
+      ],
+      "audit_focus": []
     }
   ],
   "edges": [
