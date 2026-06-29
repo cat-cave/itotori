@@ -1113,9 +1113,11 @@ function buildProviderRunRecord(input: {
   // ITOTORI-232 — full `usage` block from the originating OR response,
   // mirrored verbatim onto the run so the recorder can persist it into
   // the ledger row. For LIVE OR successes this carries `cost` as a
-  // number equal to ProviderCost.amountMicrosUsd / 1_000_000 (the same
-  // upstream value normalizeOpenRouterCost extracted); the DB CHECK
-  // (migration 0041) enforces the equality within 1e-9 USD.
+  // number equal to ProviderCost.amountUsd (the authoritative full-
+  // precision decimal normalizeOpenRouterCost carried verbatim) within
+  // 1e-9 USD, which is what the DB CHECK (migration 0041) enforces.
+  // `amountMicrosUsd / 1_000_000` is NOT the equality/CHECK basis — it
+  // rounds to 1e-6 and is only a derived cap/telemetry mirror.
   //
   // For zero-cost failure paths (HTTP error, response-invalid, pair
   // mismatch) we still surface whatever `usage` shape the response
