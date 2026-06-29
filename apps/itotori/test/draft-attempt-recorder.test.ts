@@ -122,7 +122,10 @@ describe("DraftAttemptRecorder", () => {
     expect(entry.tokensIn).toBe(480);
     expect(entry.tokensOut).toBe(220);
     expect(entry.costUnit).toBe("usd");
-    expect(entry.costAmount).toBe("0.01250000");
+    // ITOTORI-232 — costAmount is the authoritative full-precision
+    // providerRun.cost.amountUsd, persisted verbatim (no trailing-zero
+    // padding from a separate costUsd string).
+    expect(entry.costAmount).toBe("0.0125");
     expect(entry.latencyMs).toBe(1200);
     expect(entry.fallbackChain).toEqual([]);
     expect(entry.isRecordedProvider).toBe(false);
@@ -143,7 +146,7 @@ describe("DraftAttemptRecorder", () => {
     expect(entry.fallbackChain[0]!.failureReason).toContain("provider_http_error");
     expect(entry.modelId).toBe("anthropic/claude-3.5-sonnet"); // modelProfile.modelId stays the requested model
     expect(entry.providerProofId).toBe("live:provider-run-fallback-01");
-    expect(entry.costAmount).toBe("0.00850000");
+    expect(entry.costAmount).toBe("0.0085");
   });
 
   it("recordedProviderFixture marks the entry as recorded and stamps a zero cost", async () => {
@@ -155,7 +158,9 @@ describe("DraftAttemptRecorder", () => {
     expect(entry.isRecordedProvider).toBe(true);
     expect(entry.recordedProviderBundleId).toBe("recorded-bundle-01");
     expect(entry.providerProofId).toBe("recorded:recorded-bundle-01");
-    expect(entry.costAmount).toBe("0.00000000");
+    // ITOTORI-232 — zero-cost row persists the canonical "0" (ZERO_COST
+    // shape), exempt from the cost-matches-usage CHECK (no usage.cost key).
+    expect(entry.costAmount).toBe("0");
     expect(entry.modelProviderFamily).toBe("recorded");
   });
 

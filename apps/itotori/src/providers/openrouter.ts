@@ -7,7 +7,12 @@ import {
   type ProviderRoutingCapabilityRequirement,
 } from "./capability-guard.js";
 import { knownPairs, type ModelProviderPair } from "./dev-pair.js";
-import { decimalUsdStringToMicros, usageCostToMicros, ZERO_COST } from "./cost.js";
+import {
+  decimalUsdStringToMicros,
+  usageCostToDecimalString,
+  usageCostToMicros,
+  ZERO_COST,
+} from "./cost.js";
 import {
   type JsonObject,
   type JsonValue,
@@ -920,6 +925,11 @@ function normalizeOpenRouterCost(response: Record<string, unknown>): ProviderCos
   const cost: ProviderCost = {
     costKind: "billed",
     currency: "USD",
+    // ITOTORI-232 — authoritative full-precision cost, the verbatim
+    // `usage.cost`. This is what the ledger persists and the
+    // migration-0041 CHECK validates; `amountMicrosUsd` below is the
+    // rounded informational mirror for the cap / telemetry only.
+    amountUsd: usageCostToDecimalString(usage.cost),
     amountMicrosUsd: usageCostToMicros(usage.cost),
     cacheDiscountMicrosUsd: extractCacheDiscountMicros(usage),
   };

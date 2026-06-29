@@ -136,6 +136,74 @@ describe.skipIf(!process.env.DATABASE_URL)("ItotoriDraftAttemptProviderLedgerRep
     }
   });
 
+  it("ITOTORI-232 — persists a sub-micro cost (0.00000602) at full precision; the cost-matches-usage CHECK passes", async () => {
+    // The DEV_PAIR (deepseek-v4-flash) real-evidence cost. `amountMicrosUsd`
+    // would round this to 6 micros = 0.000006 (a 2e-8 error) and the
+    // migration-0041 CHECK `abs(cost_amount - usage->>'cost') < 1e-9` would
+    // REJECT the row. Carrying the verbatim `usage.cost` decimal through
+    // `cost_amount` is what makes this insert legal.
+    const context = await isolatedMigratedContext();
+    try {
+      await provisionDraftJobFixtureProject(context.db, localActor);
+      const attemptId = await provisionDraftAttempt(context.db);
+      const repo = new ItotoriDraftAttemptProviderLedgerRepository(context.db);
+
+      const entry = await repo.recordLedgerEntry(localActor, {
+        ...baseLedgerInput(attemptId),
+        providerProofId: "provider-proof-submicro-01",
+        costAmount: "0.00000602",
+        usageResponseJson: {
+          prompt_tokens: 500,
+          completion_tokens: 200,
+          total_tokens: 700,
+          cost: 0.00000602,
+        },
+      });
+
+      // The row inserted (no RecordedCostMismatch / DB check_violation) and
+      // round-trips the full-precision decimal verbatim.
+      expect(entry.costAmount).toBe("0.00000602");
+      expect((entry.usageResponseJson as { cost: number }).cost).toBe(0.00000602);
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("ITOTORI-232 — a micros-ROUNDED cost (0.000006) for a sub-micro usage.cost is rejected by the DB CHECK", async () => {
+    // Negative control: the pre-fix behaviour persisted
+    // `amountMicrosUsd / 1e6` = 0.000006 against a real usage.cost of
+    // 0.00000602. The migration-0041 CHECK must refuse that row — this is
+    // the defect the full-precision `amountUsd` fix prevents.
+    const context = await isolatedMigratedContext();
+    try {
+      await provisionDraftJobFixtureProject(context.db, localActor);
+      const attemptId = await provisionDraftAttempt(context.db);
+      const repo = new ItotoriDraftAttemptProviderLedgerRepository(context.db);
+
+      let pgCode: string | undefined;
+      try {
+        await repo.recordLedgerEntry(localActor, {
+          ...baseLedgerInput(attemptId),
+          providerProofId: "provider-proof-rounded-01",
+          costAmount: "0.000006",
+          usageResponseJson: {
+            prompt_tokens: 500,
+            completion_tokens: 200,
+            total_tokens: 700,
+            cost: 0.00000602,
+          },
+        });
+      } catch (error) {
+        pgCode = pgErrorCodeOf(error);
+      }
+
+      // Postgres check_violation = 23514 (the cost-matches-usage CHECK).
+      expect(pgCode).toBe("23514");
+    } finally {
+      await context.close();
+    }
+  });
+
   it("ITOTORI-233 — round-trips cache_read_tokens / cache_write_tokens / cache_discount_micros_usd", async () => {
     const context = await isolatedMigratedContext();
     try {

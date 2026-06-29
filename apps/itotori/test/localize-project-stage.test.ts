@@ -431,7 +431,7 @@ function http429Error(pair: { modelId: string; providerId: string }): ModelProvi
     fallbackUsed: false,
     fallbackPlan: [pair.modelId],
     tokenUsage: { tokenCountSource: "unknown" },
-    cost: { costKind: "zero", currency: "USD", amountMicrosUsd: 0 },
+    cost: { costKind: "zero", currency: "USD", amountUsd: "0", amountMicrosUsd: 0 },
     routingPosture: localOnlyRoutingPosture(pair.providerId),
     usageResponseJson: { _http_error: 429 },
     prompt: {

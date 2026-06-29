@@ -65,16 +65,17 @@ function bundleWith(
   overrides: Partial<RecordedProviderBundle> = {},
 ): RecordedProviderBundle {
   // ITOTORI-232 — bundle schema v3 requires usageResponseJson on every
-  // response. For a billed capture we mirror the captured `cost` into
-  // `usageResponseJson.cost` (USD decimal) so the bundle-construction
-  // CHECK (assertUsageResponseMatchesCost) passes; for a zero-cost
-  // capture we omit the `cost` key so the partial-NULL CHECK exempts
-  // the ledger row on persist.
-  const declaredCostUsd = cost.amountMicrosUsd / 1_000_000;
+  // response. For a billed capture we mirror the captured FULL-PRECISION
+  // `cost.amountUsd` into `usageResponseJson.cost` (USD decimal) so the
+  // bundle-construction CHECK (assertUsageResponseMatchesCost) compares
+  // like-for-like and a sub-micro cost (0.00000602) round-trips intact;
+  // deriving it from rounded micros would re-introduce the very defect
+  // this suite guards against. For a zero-cost capture we omit the `cost`
+  // key so the partial-NULL CHECK exempts the ledger row on persist.
   const usageResponseJson =
     cost.costKind === "zero"
       ? { _synthetic_zero_cost: true }
-      : { prompt_tokens: 4, completion_tokens: 4, cost: declaredCostUsd };
+      : { prompt_tokens: 4, completion_tokens: 4, cost: Number(cost.amountUsd) };
   return {
     schemaVersion: RECORDED_PROVIDER_BUNDLE_SCHEMA_VERSION,
     bundleId: "itotori-228-cost-replay-bundle",
@@ -118,6 +119,11 @@ describe("ITOTORI-228 — RecordedModelProvider replays captured real cost", () 
     const capturedCost: ProviderCost = {
       costKind: "billed",
       currency: "USD",
+      // ITOTORI-232 — the AUTHORITATIVE full-precision cost. `amountMicrosUsd`
+      // rounds this sub-micro value to 6 (= 0.000006), a 2e-8 error that the
+      // ledger CHECK rejects; `amountUsd` carries the exact upstream decimal
+      // so the replayed-and-persisted row holds within 1e-9.
+      amountUsd: "0.00000602",
       amountMicrosUsd: capturedAmountMicrosUsd,
     };
     const request = baseRequest();
@@ -129,6 +135,9 @@ describe("ITOTORI-228 — RecordedModelProvider replays captured real cost", () 
 
     expect(result.providerRun.cost.costKind).toBe("billed");
     expect(result.providerRun.cost.amountMicrosUsd).toBe(capturedAmountMicrosUsd);
+    // The replayed cost carries the sub-micro tail verbatim — NOT the
+    // micros-rounded 0.000006.
+    expect(result.providerRun.cost.amountUsd).toBe("0.00000602");
     expect(result.providerRun.cost.currency).toBe("USD");
     // Sanity: the cost is NOT the pre-fix hardcoded zero shape.
     expect(result.providerRun.cost).not.toEqual({
@@ -156,6 +165,7 @@ describe("ITOTORI-228 — RecordedModelProvider replays captured real cost", () 
     const capturedCost: ProviderCost = {
       costKind: "billed",
       currency: "USD",
+      amountUsd: "0.012345",
       amountMicrosUsd: 12_345,
     };
     const request = baseRequest();
@@ -385,8 +395,8 @@ describe("ITOTORI-228 — RecordedModelProvider replays captured real cost", () 
         [keyFor(request)]: {
           content: "captured-response",
           finishReason: "stop",
-          // captured ProviderCost claims 10_000 micros = $0.01 USD …
-          cost: { costKind: "billed", currency: "USD", amountMicrosUsd: 10_000 },
+          // captured ProviderCost claims $0.01 USD …
+          cost: { costKind: "billed", currency: "USD", amountUsd: "0.01", amountMicrosUsd: 10_000 },
           routingPosture: {
             only: [request.providerId],
             allow_fallbacks: false,
@@ -413,12 +423,12 @@ describe("ITOTORI-228 — RecordedModelProvider replays captured real cost", () 
 
     const left: RecordedProviderBundle = bundleWith(
       request,
-      { costKind: "billed", currency: "USD", amountMicrosUsd: 100 },
+      { costKind: "billed", currency: "USD", amountUsd: "0.0001", amountMicrosUsd: 100 },
       { bundleId: "left-bundle" },
     );
     const right: RecordedProviderBundle = bundleWith(
       request,
-      { costKind: "billed", currency: "USD", amountMicrosUsd: 200 },
+      { costKind: "billed", currency: "USD", amountUsd: "0.0002", amountMicrosUsd: 200 },
       { bundleId: "right-bundle" },
     );
 
@@ -443,6 +453,7 @@ describe("ITOTORI-228 — RecordedModelProvider replays captured real cost", () 
     const cost: ProviderCost = {
       costKind: "billed",
       currency: "USD",
+      amountUsd: "0.000007",
       amountMicrosUsd: 7,
     };
     const left = bundleWith(request, cost, { bundleId: "left-bundle" });

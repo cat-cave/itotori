@@ -250,7 +250,7 @@ export class RecordedCostMismatchError extends Error {
 }
 
 function formatProviderCost(cost: ProviderCost): string {
-  return `costKind=${cost.costKind} amountMicrosUsd=${cost.amountMicrosUsd}`;
+  return `costKind=${cost.costKind} amountUsd=${cost.amountUsd} amountMicrosUsd=${cost.amountMicrosUsd}`;
 }
 
 /**
@@ -286,6 +286,7 @@ function providerCostsEqual(a: ProviderCost, b: ProviderCost): boolean {
   return (
     a.costKind === b.costKind &&
     a.currency === b.currency &&
+    a.amountUsd === b.amountUsd &&
     a.amountMicrosUsd === b.amountMicrosUsd &&
     a.pricingSnapshotId === b.pricingSnapshotId
   );
@@ -575,10 +576,26 @@ function assertResponseCostShape(bundleId: string, key: string, cost: unknown): 
       `response under key '${key}' has invalid amountMicrosUsd ${JSON.stringify(candidate.amountMicrosUsd)} (expected finite number)`,
     );
   }
+  // ITOTORI-232 — `amountUsd` is the authoritative full-precision cost the
+  // replayed run persists (and the migration-0041 CHECK validates). It MUST
+  // be a plain non-negative decimal string; pre-amountUsd bundles fail here
+  // rather than silently replaying a micros-rounded cost.
+  if (typeof candidate.amountUsd !== "string" || !/^\d+(\.\d+)?$/u.test(candidate.amountUsd)) {
+    throw new RecordedBundleSchemaMismatchError(
+      bundleId,
+      `response under key '${key}' has invalid amountUsd ${JSON.stringify(candidate.amountUsd)} (expected a non-negative decimal string)`,
+    );
+  }
   if (candidate.costKind === "zero" && candidate.amountMicrosUsd !== 0) {
     throw new RecordedBundleSchemaMismatchError(
       bundleId,
       `response under key '${key}' is costKind='zero' but amountMicrosUsd=${candidate.amountMicrosUsd} (zero-cost responses must have amountMicrosUsd=0)`,
+    );
+  }
+  if (candidate.costKind === "zero" && Number(candidate.amountUsd) !== 0) {
+    throw new RecordedBundleSchemaMismatchError(
+      bundleId,
+      `response under key '${key}' is costKind='zero' but amountUsd=${candidate.amountUsd} (zero-cost responses must have amountUsd "0")`,
     );
   }
 }
@@ -661,7 +678,7 @@ function assertUsageResponseMatchesCost(
     if (cost.costKind !== "zero") {
       throw new RecordedBundleSchemaMismatchError(
         bundleId,
-        `response under key '${key}' captured costKind='${cost.costKind}' with amountMicrosUsd=${cost.amountMicrosUsd} but its usageResponseJson has no 'cost' field; either populate usage.cost from the original LIVE response or re-capture as a zero-cost bundle`,
+        `response under key '${key}' captured costKind='${cost.costKind}' with amountUsd=${cost.amountUsd} but its usageResponseJson has no 'cost' field; either populate usage.cost from the original LIVE response or re-capture as a zero-cost bundle`,
       );
     }
     return;
@@ -672,14 +689,17 @@ function assertUsageResponseMatchesCost(
       `response under key '${key}' usageResponseJson.cost must be a finite non-negative number (got ${JSON.stringify(declaredCost)})`,
     );
   }
-  // The captured ProviderCost stores micros; the declared usage.cost is
-  // a decimal USD. Compare in USD with the same tight bound the DB CHECK
-  // uses.
-  const recordedCostUsd = cost.amountMicrosUsd / 1_000_000;
+  // ITOTORI-232 — compare the AUTHORITATIVE full-precision `amountUsd` (the
+  // value the ledger actually persists as `cost_amount`) against the
+  // declared usage.cost with the same tight bound the DB CHECK uses. Using
+  // `amountUsd` — not `amountMicrosUsd / 1e6` — is the fix: micros cannot
+  // represent sub-micro costs (`0.00000602`), so the old micros comparison
+  // spuriously failed this check on real cheap-model bundles.
+  const recordedCostUsd = Number(cost.amountUsd);
   if (Math.abs(recordedCostUsd - declaredCost) >= 1e-9) {
     throw new RecordedBundleSchemaMismatchError(
       bundleId,
-      `response under key '${key}' captured cost.amountMicrosUsd=${cost.amountMicrosUsd} (USD ${recordedCostUsd}) does not match usageResponseJson.cost=${declaredCost} within 1e-9 USD; the bundle would fail ITOTORI-232's ledger CHECK on replay-and-persist`,
+      `response under key '${key}' captured cost.amountUsd=${cost.amountUsd} does not match usageResponseJson.cost=${declaredCost} within 1e-9 USD; the bundle would fail ITOTORI-232's ledger CHECK on replay-and-persist`,
     );
   }
 }

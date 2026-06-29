@@ -94,7 +94,9 @@ export type {
 export { localOnlyRoutingPosture, ModelProviderError } from "./types.js";
 export {
   assertBilledCost,
+  decimalUsdStringCanonical,
   decimalUsdStringToMicros,
+  usageCostToDecimalString,
   usageCostToMicros,
   ZERO_COST,
 } from "./cost.js";

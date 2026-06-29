@@ -27,16 +27,10 @@ import type { TranslationInvocationResult } from "../agents/translation/shapes.j
 
 export type FallbackEntry = DraftAttemptFallbackChainEntry;
 
-export type DraftAttemptCostUsd = {
-  unit: string;
-  amount: string;
-};
-
 export type DraftAttemptRecorderArgs = {
   draftJobAttemptId: string;
   translationResult: TranslationInvocationResult;
   fallbackChain: ReadonlyArray<FallbackEntry>;
-  costUsd: DraftAttemptCostUsd;
   latencyMs: number;
   recordedProviderBundleId?: string;
   policyVersions?: DraftAttemptProviderLedgerPolicyVersions;
@@ -68,13 +62,17 @@ export class DraftAttemptRecorder {
     // metadata, fallback chain, and cost. The raw prompt body and the
     // raw response payload are NEVER referenced here.
     //
-    // ITOTORI-232 — usage_response_json is plumbed verbatim from the
-    // providerRun. Live OR runs and recorded replays carry the
-    // originating `usage` block (with a real `cost` field equal to
-    // costUsd.amount within 1e-9 USD); fake / local providers carry a
-    // typed sentinel without a `cost` key. The DB CHECK enforces the
-    // equality where applicable; callers cannot smuggle in a fake
-    // cost_amount without it being visible in the ledger row.
+    // ITOTORI-232 — the persisted cost is the AUTHORITATIVE full-precision
+    // `providerRun.cost.amountUsd` (the verbatim provider `usage.cost`),
+    // never a separately-computed string that could round to micros and
+    // lose the sub-micro tail cheap models bill. `usage_response_json` is
+    // plumbed verbatim from the same providerRun, so `cost_amount` and
+    // `usage_response_json->>'cost'` originate from one value and the
+    // migration-0041 CHECK holds by construction. Live OR runs and recorded
+    // replays carry a real `cost` field; fake / local providers carry a
+    // typed sentinel without a `cost` key (cost is `ZERO_COST`, amountUsd
+    // `"0"`), which the partial-NULL CHECK exempts.
+    const cost = providerRun.cost;
     const input: RecordLedgerEntryInput = {
       draftJobAttemptId: args.draftJobAttemptId,
       providerProofId,
@@ -94,8 +92,11 @@ export class DraftAttemptRecorder {
       contextArtifactRefs: [...(args.contextArtifactRefs ?? [])],
       tokensIn: result.tokensIn,
       tokensOut: result.tokensOut,
-      costUnit: args.costUsd.unit,
-      costAmount: args.costUsd.amount,
+      // cost_unit is the literal 'usd' (migration-0041 CHECK); ProviderCost
+      // carries the canonical uppercase "USD", lowercased here for the
+      // storage contract.
+      costUnit: cost.currency.toLowerCase(),
+      costAmount: cost.amountUsd,
       usageResponseJson: providerRun.usageResponseJson,
       // ITOTORI-233 — mirror prompt-caching annotations from the
       // ProviderRunRecord. The OR adapter populates `cacheReadTokens` /

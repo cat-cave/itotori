@@ -83,6 +83,9 @@ function fixtureProviderRun(overrides: Partial<ProviderRunRecord> = {}): Provide
     cost: {
       costKind: "billed",
       currency: "USD",
+      // ITOTORI-232 — authoritative full-precision cost; the recorder
+      // persists this verbatim as cost_amount. 0.0125 USD = 12_500 micros.
+      amountUsd: "0.0125",
       amountMicrosUsd: 12_500,
     },
     // ITOTORI-230 — canonical alpha posture for a fixture LIVE OR run.
@@ -93,9 +96,9 @@ function fixtureProviderRun(overrides: Partial<ProviderRunRecord> = {}): Provide
       zdr: true,
       require_parameters: true,
     },
-    // ITOTORI-232 — `cost` mirrors the captured ProviderCost
-    // (12_500 micros = 0.0125 USD). The fixture's costUsd field
-    // (0.01250000) matches, so the DB CHECK passes by construction.
+    // ITOTORI-232 — `cost.amountUsd` (0.0125) mirrors `usage.cost` below,
+    // so the recorder's cost_amount and usage_response_json->>'cost'
+    // originate from the same value and the DB CHECK passes by construction.
     usageResponseJson: {
       prompt_tokens: 480,
       completion_tokens: 220,
@@ -155,7 +158,6 @@ export function successfulAttemptFixture(
     draftJobAttemptId: FIXTURE_DRAFT_JOB_ATTEMPT_ID,
     translationResult: fixtureTranslationResult(providerRun),
     fallbackChain: [],
-    costUsd: { unit: "usd", amount: "0.01250000" },
     latencyMs: providerRun.latencyMs,
     policyVersions: { ...FIXTURE_POLICY_VERSIONS },
     contextArtifactRefs: [...FIXTURE_CONTEXT_REFS],
@@ -183,13 +185,13 @@ export function fallbackChainFixture(
     retryCount: 1,
     latencyMs: 2400,
     completedAt: "2026-06-23T12:00:02.400Z",
-    // ITOTORI-232 — fallback fixture's costUsd is 0.00850000; mirror
-    // the same value into providerRun.cost (8_500 micros) and
-    // usageResponseJson.cost so the DB CHECK and the recorder's
-    // plumbed usage_response_json carry the same upstream cost.
+    // ITOTORI-232 — fallback fixture's billed cost is 0.0085 USD; the
+    // authoritative `amountUsd` and `usageResponseJson.cost` carry the
+    // same upstream value so cost_amount mirrors it on persist.
     cost: {
       costKind: "billed",
       currency: "USD",
+      amountUsd: "0.0085",
       amountMicrosUsd: 8_500,
     },
     usageResponseJson: {
@@ -211,7 +213,6 @@ export function fallbackChainFixture(
     draftJobAttemptId: FIXTURE_DRAFT_JOB_ATTEMPT_ID,
     translationResult: fixtureTranslationResult(providerRun),
     fallbackChain,
-    costUsd: { unit: "usd", amount: "0.00850000" },
     latencyMs: providerRun.latencyMs,
     policyVersions: { ...FIXTURE_POLICY_VERSIONS },
     contextArtifactRefs: [...FIXTURE_CONTEXT_REFS],
@@ -244,6 +245,7 @@ export function recordedProviderFixture(
     cost: {
       costKind: "zero",
       currency: "USD",
+      amountUsd: "0",
       amountMicrosUsd: 0,
     },
     // ITOTORI-232 — synthetic recorded fixture never backed a real OR
@@ -261,7 +263,6 @@ export function recordedProviderFixture(
     draftJobAttemptId: FIXTURE_DRAFT_JOB_ATTEMPT_ID,
     translationResult: fixtureTranslationResult(providerRun, "recorded-bundle-01"),
     fallbackChain: [],
-    costUsd: { unit: "usd", amount: "0.00000000" },
     latencyMs: providerRun.latencyMs,
     recordedProviderBundleId: "recorded-bundle-01",
     policyVersions: { ...FIXTURE_POLICY_VERSIONS },

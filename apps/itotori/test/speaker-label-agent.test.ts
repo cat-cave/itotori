@@ -370,7 +370,7 @@ describe("SpeakerLabelAgent.invokeSpeakerLabel provider capability guard", () =>
           fallbackUsed: false,
           fallbackPlan: [request.modelId ?? descriptor.defaultModelId],
           tokenUsage: { tokenCountSource: "deterministic_counter" },
-          cost: { costKind: "zero", currency: "USD", amountMicrosUsd: 0 },
+          cost: { costKind: "zero", currency: "USD", amountUsd: "0", amountMicrosUsd: 0 },
           prompt: request.prompt,
         };
         return {

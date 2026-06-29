@@ -415,7 +415,7 @@ describe("ItotoriProjectWorkflowService", () => {
         providerRunId: "provider-run-failed",
         status: "failed",
         errorClasses: ["http_500"],
-        cost: { costKind: "zero", currency: "USD", amountMicrosUsd: 0 },
+        cost: { costKind: "zero", currency: "USD", amountUsd: "0", amountMicrosUsd: 0 },
       }),
     );
     expect(repository.saveDrafts).not.toHaveBeenCalled();
@@ -438,7 +438,7 @@ describe("ItotoriProjectWorkflowService", () => {
       expect.objectContaining({
         status: "failed",
         errorClasses: ["provider_response_invalid"],
-        cost: { costKind: "zero", currency: "USD", amountMicrosUsd: 0 },
+        cost: { costKind: "zero", currency: "USD", amountUsd: "0", amountMicrosUsd: 0 },
         provider: expect.objectContaining({
           providerFamily: "fake",
           requestedModelId: "itotori-fake-draft-v0",
@@ -480,7 +480,7 @@ describe("ItotoriProjectWorkflowService", () => {
         providerRunId: "provider-run-null-content",
         status: "failed",
         errorClasses: ["provider_response_invalid"],
-        cost: { costKind: "zero", currency: "USD", amountMicrosUsd: 0 },
+        cost: { costKind: "zero", currency: "USD", amountUsd: "0", amountMicrosUsd: 0 },
       }),
     );
     expect(repository.saveDrafts).not.toHaveBeenCalled();
@@ -1075,6 +1075,7 @@ function nullContentProvider(): ModelProvider {
       run.cost = {
         costKind: "zero",
         currency: "USD",
+        amountUsd: "0",
         amountMicrosUsd: 0,
       };
       return {
@@ -1114,6 +1115,7 @@ function failedProviderRun(request: ModelInvocationRequest, modelId: string): Pr
     cost: {
       costKind: "zero",
       currency: "USD",
+      amountUsd: "0",
       amountMicrosUsd: 0,
     },
     prompt: request.prompt,

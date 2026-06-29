@@ -344,6 +344,25 @@ export type TokenUsage = {
 export type ProviderCost = {
   costKind: "billed" | "zero";
   currency: "USD";
+  /**
+   * ITOTORI-232 — AUTHORITATIVE full-precision billed cost: the exact
+   * decimal-USD string the provider reported (OpenRouter `usage.cost`),
+   * carried VERBATIM. This — not `amountMicrosUsd` — is the value the
+   * ledger persists into
+   * `itotori_draft_attempt_provider_ledger.cost_amount`, and the value
+   * the migration-0041 CHECK compares against
+   * `usage_response_json->>'cost'` within 1e-9 USD.
+   *
+   * Why a string and not just micros: `amountMicrosUsd` rounds to 1e-6
+   * resolution and CANNOT represent the sub-micro costs cheap models
+   * actually bill (DEV_PAIR deepseek-v4-flash evidence: `usage.cost`
+   * `0.00000602`, which `amountMicrosUsd` would round to `0.000006`, a
+   * 2e-8 error that the ledger CHECK rejects). `amountMicrosUsd` is
+   * therefore a DERIVED, informational value for the cost cap, telemetry
+   * aggregates, and dashboards — it is NEVER the persisted ledger
+   * authority. For `costKind: 'zero'` this is the exact string `"0"`.
+   */
+  amountUsd: string;
   amountMicrosUsd: number;
   pricingSnapshotId?: string;
   /**

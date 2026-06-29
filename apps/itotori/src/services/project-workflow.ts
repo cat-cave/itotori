@@ -766,6 +766,7 @@ function failedProviderRunFromRun(run: ProviderRunRecord, errorClass: string): P
     cost: {
       costKind: "zero",
       currency: "USD",
+      amountUsd: "0",
       amountMicrosUsd: 0,
     },
   };
@@ -807,6 +808,7 @@ function failedProviderRunFromRequest(input: {
     cost: {
       costKind: "zero",
       currency: "USD",
+      amountUsd: "0",
       amountMicrosUsd: 0,
     },
     // ITOTORI-230 — the call never reached the wire (pre-fetch

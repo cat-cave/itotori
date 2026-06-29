@@ -373,6 +373,7 @@ describe("OpenRouterModelProvider — per-process cost cap", () => {
       expect(error.providerRun?.cost).toEqual({
         costKind: "billed",
         currency: "USD",
+        amountUsd: "0.000003",
         amountMicrosUsd: 3,
         cacheDiscountMicrosUsd: 0,
       });
@@ -387,6 +388,7 @@ describe("OpenRouterModelProvider — per-process cost cap", () => {
     expect(recorder.artifacts[0]?.run.cost).toEqual({
       costKind: "billed",
       currency: "USD",
+      amountUsd: "0.000003",
       amountMicrosUsd: 3,
       cacheDiscountMicrosUsd: 0,
     });
@@ -488,15 +490,21 @@ describe("OpenRouterModelProvider — ITOTORI-225 real-cost contract", () => {
   // string and an integer, plus the legacy floating-point form, and
   // assert that all three land as billed integers in micros.
   it("tags every successful response as billed with the exact upstream amount", async () => {
-    const cases: Array<{ cost: number | string; expectedMicros: number }> = [
-      { cost: 0.000019, expectedMicros: 19 },
-      { cost: "0.000006", expectedMicros: 6 },
-      { cost: 0, expectedMicros: 0 },
-      // Sub-micro values round-half-up rather than truncate to zero.
-      { cost: 0.00000049, expectedMicros: 0 },
-      { cost: 0.0000005, expectedMicros: 1 },
+    const cases: Array<{
+      cost: number | string;
+      expectedMicros: number;
+      expectedAmountUsd: string;
+    }> = [
+      { cost: 0.000019, expectedMicros: 19, expectedAmountUsd: "0.000019" },
+      { cost: "0.000006", expectedMicros: 6, expectedAmountUsd: "0.000006" },
+      { cost: 0, expectedMicros: 0, expectedAmountUsd: "0" },
+      // ITOTORI-232 — sub-micro values: `amountMicrosUsd` rounds (and can
+      // truncate to 0) but `amountUsd` carries the EXACT upstream decimal
+      // so the ledger persists full precision.
+      { cost: 0.00000049, expectedMicros: 0, expectedAmountUsd: "0.00000049" },
+      { cost: 0.0000005, expectedMicros: 1, expectedAmountUsd: "0.0000005" },
     ];
-    for (const { cost, expectedMicros } of cases) {
+    for (const { cost, expectedMicros, expectedAmountUsd } of cases) {
       const fetchMock = vi.fn(async () =>
         successResponse({ usageCost: cost as number }),
       ) as unknown as typeof fetch;
@@ -510,6 +518,7 @@ describe("OpenRouterModelProvider — ITOTORI-225 real-cost contract", () => {
       expect(result.providerRun.cost).toEqual({
         costKind: "billed",
         currency: "USD",
+        amountUsd: expectedAmountUsd,
         amountMicrosUsd: expectedMicros,
         // ITOTORI-233 — every cost mirror surfaces the cache discount;
         // these synthetic responses have no cost_details, so the

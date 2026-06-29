@@ -336,7 +336,7 @@ describe("TranslationAgent.invokeTranslation provider capability guard", () => {
           fallbackUsed: false,
           fallbackPlan: [request.modelId ?? descriptor.defaultModelId],
           tokenUsage: { tokenCountSource: "deterministic_counter" },
-          cost: { costKind: "zero", currency: "USD", amountMicrosUsd: 0 },
+          cost: { costKind: "zero", currency: "USD", amountUsd: "0", amountMicrosUsd: 0 },
           prompt: request.prompt,
         };
         return {
@@ -741,7 +741,7 @@ describe("TranslationAgent.invokeTranslation partial / fallback diagnostics", ()
           fallbackUsed: false,
           fallbackPlan: [request.modelId ?? "itotori-fake-translation-v0"],
           tokenUsage: { tokenCountSource: "deterministic_counter" },
-          cost: { costKind: "zero", currency: "USD", amountMicrosUsd: 0 },
+          cost: { costKind: "zero", currency: "USD", amountUsd: "0", amountMicrosUsd: 0 },
           prompt: request.prompt,
         };
         return {

@@ -79,6 +79,7 @@ export class FakeModelProvider implements ModelProvider {
       cost: {
         costKind: "zero",
         currency: "USD",
+        amountUsd: "0",
         amountMicrosUsd: 0,
       },
       // ITOTORI-230 — fake providers never leave the process so the

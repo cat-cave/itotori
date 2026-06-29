@@ -434,6 +434,7 @@ function buildRun(input: {
     cost: {
       costKind: "zero",
       currency: "USD",
+      amountUsd: "0",
       amountMicrosUsd: 0,
     },
     // ITOTORI-230 — local providers talk to localhost; no data leaves

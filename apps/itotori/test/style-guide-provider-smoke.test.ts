@@ -196,6 +196,7 @@ describe("style-guide provider smoke", () => {
     expect(result.providerRun.cost).toEqual({
       costKind: "billed",
       currency: "USD",
+      amountUsd: "0.000123",
       amountMicrosUsd: 123,
       // ITOTORI-233 — synthetic response has no usage.cost_details so
       // the cache discount lands as 0.
@@ -207,6 +208,7 @@ describe("style-guide provider smoke", () => {
           cost: {
             costKind: "billed",
             currency: "USD",
+            amountUsd: "0.000123",
             amountMicrosUsd: 123,
             cacheDiscountMicrosUsd: 0,
           },

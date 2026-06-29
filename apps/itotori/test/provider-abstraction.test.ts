@@ -260,6 +260,7 @@ describe("OpenRouterProvider", () => {
     expect(result.providerRun.cost).toEqual({
       costKind: "billed",
       currency: "USD",
+      amountUsd: "0.000019",
       amountMicrosUsd: 19,
       // ITOTORI-233 — synthetic response has no usage.cost_details so
       // the cache discount lands as 0.
@@ -403,7 +404,7 @@ describe("OpenRouterProvider", () => {
       providerRun: expect.objectContaining({
         status: "failed",
         errorClasses: ["http_429"],
-        cost: { costKind: "zero", currency: "USD", amountMicrosUsd: 0 },
+        cost: { costKind: "zero", currency: "USD", amountUsd: "0", amountMicrosUsd: 0 },
         prompt: expect.objectContaining({ presetId: "test-prompt-v1" }),
         providerPreset: expect.objectContaining({ slug: "openrouter/itotori-test" }),
       }),
@@ -545,7 +546,7 @@ describe("OpenRouterProvider", () => {
       providerRun: expect.objectContaining({
         status: "failed",
         errorClasses: ["provider_response_invalid"],
-        cost: { costKind: "zero", currency: "USD", amountMicrosUsd: 0 },
+        cost: { costKind: "zero", currency: "USD", amountUsd: "0", amountMicrosUsd: 0 },
         prompt: expect.objectContaining({ presetId: "test-prompt-v1" }),
       }),
     });
@@ -907,7 +908,7 @@ describe("LocalOpenAICompatibleProvider", () => {
       providerRun: expect.objectContaining({
         status: "failed",
         errorClasses: ["provider_response_invalid"],
-        cost: { costKind: "zero", currency: "USD", amountMicrosUsd: 0 },
+        cost: { costKind: "zero", currency: "USD", amountUsd: "0", amountMicrosUsd: 0 },
       }),
     });
     expect(recorder.artifacts).toHaveLength(1);
