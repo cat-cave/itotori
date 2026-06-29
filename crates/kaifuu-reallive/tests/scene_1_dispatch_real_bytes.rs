@@ -55,11 +55,7 @@ use kaifuu_reallive::{REALLIVE_SEEN_TXT_DIRECTORY_BYTE_LEN, RealLiveOpcode, pars
 #[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
 fn dispatches_sweetie_hd_scene_1_with_at_least_90_percent_opcode_recognition() {
     let Some(seen_path) = real_seen_txt_path() else {
-        eprintln!(
-            "ITOTORI_REAL_GAME_ROOT unset; skipping Sweetie HD scene-1 dispatch test \
-             (no silent pass: re-run with \
-             ITOTORI_REAL_GAME_ROOT=/path/to/reallive-game-root)"
-        );
+        real_corpus::skip_or_require_real_bytes("Sweetie HD scene-1 dispatch test");
         return;
     };
 

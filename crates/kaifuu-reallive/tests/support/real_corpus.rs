@@ -6,6 +6,11 @@ use std::path::{Path, PathBuf};
 
 pub const REAL_GAME_ROOT_ENV: &str = "ITOTORI_REAL_GAME_ROOT";
 
+/// Opt-in flag (`ITOTORI_REQUIRE_REAL_BYTES=1`) that turns an absent corpus
+/// from a skip into a hard failure, for contexts where real-bytes coverage is
+/// expected to actually run (e.g. CI that stages Sweetie HD).
+pub const REQUIRE_REAL_BYTES_ENV: &str = "ITOTORI_REQUIRE_REAL_BYTES";
+
 pub fn game_root() -> Option<PathBuf> {
     let root = PathBuf::from(env::var_os(REAL_GAME_ROOT_ENV)?);
     resolve_reallive_game_root(&root)
@@ -21,6 +26,35 @@ pub fn gameexe_ini_path() -> Option<PathBuf> {
 
 pub fn skip_message(test_name: &str) -> String {
     format!("{REAL_GAME_ROOT_ENV} unset or no REALLIVEDATA directory found; skipping {test_name}")
+}
+
+/// `true` when the operator demanded real-bytes coverage actually run, via
+/// `ITOTORI_REQUIRE_REAL_BYTES=1`.
+pub fn require_real_bytes() -> bool {
+    env::var_os(REQUIRE_REAL_BYTES_ENV).is_some_and(|value| value == "1")
+}
+
+/// Resolve the corpus-unavailable branch of an env-gated real-bytes test.
+///
+/// This is the single chokepoint for the "no silent pass" contract: a
+/// real-bytes test must never report a green PASS when it asserted nothing.
+///
+/// - With `ITOTORI_REQUIRE_REAL_BYTES=1` set, an absent corpus is a hard
+///   failure: this panics, naming the missing [`REAL_GAME_ROOT_ENV`], so the
+///   absence of real bytes can never masquerade as success.
+/// - Otherwise it emits an explicit, non-silent skip notice and returns; the
+///   caller then returns from the (already `#[ignore]`-d) test so the run
+///   reports it as ignored/skipped rather than passed.
+pub fn skip_or_require_real_bytes(test_name: &str) {
+    let detail = format!(
+        "{REAL_GAME_ROOT_ENV} unset; {test_name} did not exercise real bytes \
+         (re-run with {REAL_GAME_ROOT_ENV}=/path/to/reallive-game-root)"
+    );
+    assert!(
+        !require_real_bytes(),
+        "{REQUIRE_REAL_BYTES_ENV}=1 demands real-bytes coverage, but {detail}"
+    );
+    eprintln!("SKIP (no silent pass): {detail}");
 }
 
 fn file_in_reallivedata(name: &str) -> Option<PathBuf> {

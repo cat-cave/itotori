@@ -69,13 +69,9 @@ fn detects_reallivedata_under_sweetie_hd_root_with_resolved_path() {
     let Some(env_path) = env::var_os(real_corpus::REAL_GAME_ROOT_ENV).map(PathBuf::from) else {
         // Visible skip — KAIFUU-189 "no silent zero-state" requires the
         // operator to observe that the real-bytes assertion did not run.
-        eprintln!(
-            "SKIP detects_reallivedata_under_sweetie_hd_root_with_resolved_path: \
-             {} is unset; re-run with \
-             {}=/path/to/reallive-game-root \
-             to exercise the depth-N descent against the actual install tree",
-            real_corpus::REAL_GAME_ROOT_ENV,
-            real_corpus::REAL_GAME_ROOT_ENV
+        real_corpus::skip_or_require_real_bytes(
+            "detects_reallivedata_under_sweetie_hd_root_with_resolved_path \
+             (depth-N descent against the actual install tree)",
         );
         return;
     };

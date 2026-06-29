@@ -16,6 +16,8 @@
 //!
 //! The test is env-gated; without `ITOTORI_REAL_GAME_ROOT` it
 //! emits an explicit skip notice and returns (no silent pass).
+//! Set `ITOTORI_REQUIRE_REAL_BYTES=1` to turn the absent corpus
+//! into a hard failure instead of a skip.
 
 #[path = "support/real_corpus.rs"]
 mod real_corpus;
@@ -44,9 +46,8 @@ fn real_gameexe_ini_path() -> Option<PathBuf> {
 #[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
 fn produces_v02_bridge_bundle_from_sweetie_hd_scene_1_real_bytes() {
     let Some(seen_path) = real_seen_txt_path() else {
-        eprintln!(
-            "ITOTORI_REAL_GAME_ROOT unset; skipping (re-run with \
-             ITOTORI_REAL_GAME_ROOT=/path/to/reallive-game-root)"
+        real_corpus::skip_or_require_real_bytes(
+            "produces_v02_bridge_bundle_from_sweetie_hd_scene_1_real_bytes",
         );
         return;
     };

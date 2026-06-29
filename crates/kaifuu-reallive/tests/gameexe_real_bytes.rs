@@ -14,9 +14,10 @@
 //! retroactive validation is welcome but not blocking.
 //!
 //! Env-gating: this test reads bytes only when
-//! `ITOTORI_REAL_GAME_ROOT` is set; otherwise it prints a skip
-//! message and returns (so the test is a no-op on environments without
-//! the corpus staged).
+//! `ITOTORI_REAL_GAME_ROOT` is set; otherwise it prints an explicit
+//! skip notice and returns (no silent pass). Set
+//! `ITOTORI_REQUIRE_REAL_BYTES=1` to turn the absent corpus into a
+//! hard failure instead of a skip.
 
 #[path = "support/real_corpus.rs"]
 mod real_corpus;
@@ -31,11 +32,7 @@ use kaifuu_reallive::{GameexeKeyFamily, GameexeKeyTreatment, parse_gameexe_inven
 #[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
 fn classifies_sweetie_hd_gameexe_ini_to_at_least_ninety_percent_coverage() {
     let Some(ini_path) = real_gameexe_ini_path() else {
-        eprintln!(
-            "ITOTORI_REAL_GAME_ROOT unset; skipping Sweetie HD Gameexe.ini real-bytes \
-             test (no silent pass: re-run with \
-             ITOTORI_REAL_GAME_ROOT=/path/to/reallive-game-root)"
-        );
+        real_corpus::skip_or_require_real_bytes("Sweetie HD Gameexe.ini real-bytes test");
         return;
     };
 

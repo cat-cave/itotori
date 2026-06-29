@@ -18,7 +18,9 @@
 //!   is a fresh allocation).
 //!
 //! Env-gated; without `ITOTORI_REAL_GAME_ROOT` it prints an
-//! explicit skip notice and returns (no silent pass).
+//! explicit skip notice and returns (no silent pass). Set
+//! `ITOTORI_REQUIRE_REAL_BYTES=1` to turn the absent corpus into a
+//! hard failure instead of a skip.
 
 #[path = "support/real_corpus.rs"]
 mod real_corpus;
@@ -71,9 +73,8 @@ fn real_gameexe_ini_path() -> Option<PathBuf> {
 #[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
 fn patches_sweetie_hd_scene_1_with_en_us_sentinel_and_round_trips_archive() {
     let Some(seen_path) = real_seen_txt_path() else {
-        eprintln!(
-            "ITOTORI_REAL_GAME_ROOT unset; skipping (re-run with \
-             ITOTORI_REAL_GAME_ROOT=/path/to/reallive-game-root)"
+        real_corpus::skip_or_require_real_bytes(
+            "patches_sweetie_hd_scene_1_with_en_us_sentinel_and_round_trips_archive",
         );
         return;
     };
@@ -282,7 +283,9 @@ fn patches_sweetie_hd_scene_1_with_en_us_sentinel_and_round_trips_archive() {
 #[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
 fn provenance_mismatch_byte_range_emits_typed_error_on_real_bytes() {
     let Some(seen_path) = real_seen_txt_path() else {
-        eprintln!("ITOTORI_REAL_GAME_ROOT unset; skipping");
+        real_corpus::skip_or_require_real_bytes(
+            "provenance_mismatch_byte_range_emits_typed_error_on_real_bytes",
+        );
         return;
     };
     let seen_bytes = fs::read(&seen_path).expect("read Seen.txt");
@@ -355,7 +358,9 @@ fn provenance_mismatch_byte_range_emits_typed_error_on_real_bytes() {
 #[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
 fn missing_target_payload_surfaces_typed_schema_invalid_on_real_bytes() {
     let Some(seen_path) = real_seen_txt_path() else {
-        eprintln!("ITOTORI_REAL_GAME_ROOT unset; skipping");
+        real_corpus::skip_or_require_real_bytes(
+            "missing_target_payload_surfaces_typed_schema_invalid_on_real_bytes",
+        );
         return;
     };
     let _ = fs::read(&seen_path).expect("read Seen.txt");
