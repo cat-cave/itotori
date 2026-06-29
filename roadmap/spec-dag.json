@@ -34087,7 +34087,7 @@
       "validation": null,
       "context": null,
       "created_at": "2026-06-29T05:06:51.283Z",
-      "updated_at": "2026-06-29T05:06:52.221Z",
+      "updated_at": "2026-06-29T05:17:20.820Z",
       "claimed_at": "2026-06-29T05:06:52.221Z",
       "done_at": null,
       "group_name": null,
@@ -34101,7 +34101,7 @@
       "verification": [
         {
           "type": "command",
-          "value": "pnpm --filter @itotori/app test -- recorded"
+          "value": "pnpm --filter @itotori/app exec vitest run recorded"
         },
         {
           "type": "command",
