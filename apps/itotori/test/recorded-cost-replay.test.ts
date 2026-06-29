@@ -93,7 +93,7 @@ function bundleWith(
         // replay test asserts cost shape, not posture content. A real
         // capture would mirror the actual wire-level posture.
         routingPosture: {
-          only: [request.providerId],
+          order: [request.providerId],
           allow_fallbacks: false,
           data_collection: "deny",
           zdr: true,
@@ -259,13 +259,16 @@ describe("ITOTORI-228 — RecordedModelProvider replays captured real cost", () 
     );
   });
 
-  it("refuses a bundle whose routingPosture.allow_fallbacks is not literal false (ITOTORI-220 pin)", () => {
+  it("ITOTORI-241: refuses a bundle whose routingPosture.order is empty or whose allow_fallbacks is non-boolean", () => {
     const request = baseRequest();
-    const stale = {
+    // Empty `order` is rejected: a recorded posture must name at least the
+    // preferred provider it routed to. (The old invariant forbade
+    // allow_fallbacks:true; that is now a legal, expected live value.)
+    const emptyOrder = {
       schemaVersion: RECORDED_PROVIDER_BUNDLE_SCHEMA_VERSION,
-      bundleId: "bad-allow-fallbacks-bundle",
+      bundleId: "bad-order-bundle",
       capturedProviderFamily: "openrouter" as const,
-      capturedProviderName: "openrouter:bad-allow-fallbacks",
+      capturedProviderName: "openrouter:bad-order",
       capturedRequestedModelId: request.modelId,
       capturedProviderId: request.providerId,
       capturedActualModelId: request.modelId,
@@ -275,8 +278,7 @@ describe("ITOTORI-228 — RecordedModelProvider replays captured real cost", () 
           finishReason: "stop",
           cost: ZERO_COST,
           routingPosture: {
-            only: [request.providerId],
-            // allow_fallbacks: true is forbidden — pair pin requires false.
+            order: [],
             allow_fallbacks: true,
             data_collection: "deny",
             zdr: true,
@@ -285,8 +287,30 @@ describe("ITOTORI-228 — RecordedModelProvider replays captured real cost", () 
         },
       },
     } as unknown as RecordedProviderBundle;
+    expect(() => new RecordedModelProvider({ bundle: emptyOrder })).toThrow(
+      RecordedBundleSchemaMismatchError,
+    );
 
-    expect(() => new RecordedModelProvider({ bundle: stale })).toThrow(
+    // Non-boolean allow_fallbacks is rejected (it is now a real boolean).
+    const badFallbacks = {
+      ...emptyOrder,
+      bundleId: "bad-allow-fallbacks-bundle",
+      responses: {
+        [keyFor(request)]: {
+          content: "captured-response",
+          finishReason: "stop",
+          cost: ZERO_COST,
+          routingPosture: {
+            order: [request.providerId],
+            allow_fallbacks: "yes",
+            data_collection: "deny",
+            zdr: true,
+            require_parameters: true,
+          },
+        },
+      },
+    } as unknown as RecordedProviderBundle;
+    expect(() => new RecordedModelProvider({ bundle: badFallbacks })).toThrow(
       RecordedBundleSchemaMismatchError,
     );
   });
@@ -294,7 +318,7 @@ describe("ITOTORI-228 — RecordedModelProvider replays captured real cost", () 
   it("replays captured routingPosture verbatim onto the ProviderRunRecord", async () => {
     const request = baseRequest();
     const capturedPosture = {
-      only: [request.providerId],
+      order: [request.providerId],
       allow_fallbacks: false as const,
       data_collection: "deny" as const,
       zdr: true,
@@ -328,7 +352,7 @@ describe("ITOTORI-228 — RecordedModelProvider replays captured real cost", () 
           // fires; a valid posture is supplied so we exercise the cost
           // validation independently of the posture validation.
           routingPosture: {
-            only: [request.providerId],
+            order: [request.providerId],
             allow_fallbacks: false,
             data_collection: "deny",
             zdr: true,
@@ -362,7 +386,7 @@ describe("ITOTORI-228 — RecordedModelProvider replays captured real cost", () 
           finishReason: "stop",
           cost: ZERO_COST,
           routingPosture: {
-            only: [request.providerId],
+            order: [request.providerId],
             allow_fallbacks: false,
             data_collection: "deny",
             zdr: true,
@@ -398,7 +422,7 @@ describe("ITOTORI-228 — RecordedModelProvider replays captured real cost", () 
           // captured ProviderCost claims $0.01 USD …
           cost: { costKind: "billed", currency: "USD", amountUsd: "0.01", amountMicrosUsd: 10_000 },
           routingPosture: {
-            only: [request.providerId],
+            order: [request.providerId],
             allow_fallbacks: false,
             data_collection: "deny",
             zdr: true,

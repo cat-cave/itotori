@@ -1302,7 +1302,7 @@ const costReportFixture: ProjectCostReport = {
       totalTokens: 14,
       // ITOTORI-230 — fixture posture for a fake-provider draft run.
       routingPosture: {
-        only: ["itotori-fixture"],
+        order: ["itotori-fixture"],
         allow_fallbacks: false,
         data_collection: "deny",
         zdr: true,

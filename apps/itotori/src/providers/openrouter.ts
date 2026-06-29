@@ -36,8 +36,11 @@ import {
 } from "./types.js";
 
 export type OpenRouterProviderRouting = {
+  // ITOTORI-241 — `order` is provider PREFERENCE (not a hard pin). The
+  // old `only` field was removed with the allow_fallbacks=false pin: the
+  // ZDR allow-list (provider.zdr=true) now bounds the routable set, so
+  // there is no itotori-side `only` enumeration to keep in sync.
   order?: string[];
-  only?: string[];
   ignore?: string[];
   quantizations?: string[];
   sort?: "price" | "throughput" | "latency";
@@ -114,7 +117,10 @@ export class OpenRouterProvider implements ModelProvider {
     // ledger / recorded-bundle audit trail. Derived from the same
     // routing block we put on the wire (above), not synthesized
     // separately, so the two cannot drift.
-    const routingPosture = openRouterRoutingPostureFromBlock(providerRouting);
+    const routingPosture = openRouterRoutingPostureFromBlock(
+      providerRouting,
+      request.inputClassification,
+    );
     assertProviderInvocationSupported({
       descriptor: this.descriptor,
       request,
@@ -543,10 +549,19 @@ function buildOpenRouterProviderRouting(
   // disagreed with the wire would be worse than no posture at all.
   const posture = buildOpenRouterRoutingPosture(routing, request);
   const provider: Record<string, JsonValue> = {
-    only: posture.only,
     allow_fallbacks: posture.allow_fallbacks,
     data_collection: posture.data_collection,
   };
+  // ITOTORI-241 — emit `order` (provider PREFERENCE), never the old
+  // `only` hard pin. order[0] is the preferred upstream; with
+  // allow_fallbacks:true OpenRouter may route to another ZDR-allow-list
+  // provider when the preferred one is transiently unavailable. We do
+  // NOT enumerate `only`: zdr:true (below) is what enforces the
+  // allow-list, so the membership self-updates as the account ZDR set
+  // changes — no itotori-side provider registry to drift.
+  if (posture.order.length > 0) {
+    provider.order = posture.order;
+  }
   // ITOTORI-227 — posture.zdr is only emitted to the wire when the
   // call carries a privacy contract; public-input calls skip it.
   if (posture.zdr) {
@@ -565,9 +580,6 @@ function buildOpenRouterProviderRouting(
     provider.require_parameters = true;
   } else if (routing.requireParameters !== undefined) {
     provider.require_parameters = routing.requireParameters;
-  }
-  if (routing.order) {
-    provider.order = routing.order;
   }
   if (routing.ignore) {
     provider.ignore = routing.ignore;
@@ -604,8 +616,13 @@ function buildOpenRouterProviderRouting(
  * cannot drift.
  *
  * Why each field's value is what it is:
- *   - only: always `[request.providerId]` — the ITOTORI-220 pair pin.
- *   - allow_fallbacks: literal `false` — same reason.
+ *   - order: `[request.providerId, ...routing.order]` (de-duplicated) —
+ *     the ITOTORI-241 provider PREFERENCE. order[0] is the preferred
+ *     upstream; it is NOT a hard pin. `request.providerId` always leads
+ *     so the requested provider is tried first.
+ *   - allow_fallbacks: `true` — a transient upstream error on the
+ *     preferred provider must not fail the whole call. zdr:true confines
+ *     the fallback pool to the account ZDR allow-list.
  *   - data_collection: `"deny"` for any private input; mirrors
  *     `routing.dataCollection` for public input (defaults to `"deny"`).
  *     A caller-explicit `"allow"` for public inputs is honoured so the
@@ -616,22 +633,20 @@ function buildOpenRouterProviderRouting(
  *   - require_parameters: `true` whenever strict structured output or
  *     tool calls are in play; otherwise mirrors caller, defaulting to
  *     `true` per the canonical ZDR posture (docs/openrouter-
- *     integration.md §3) when the caller is silent.
+ *     integration.md §3) when the caller is silent. With fallback now
+ *     ON this is load-bearing: it confines fallback to providers that
+ *     actually support the request's tools / response_format so the
+ *     agentic loop cannot silently degrade onto a provider that ignores
+ *     them.
  */
 function buildOpenRouterRoutingPosture(
   routing: OpenRouterProviderRouting,
   request: ModelInvocationRequest,
 ): OpenRouterRoutingPosture {
-  // ITOTORI-220 — pin OpenRouter routing to the requested providerId. If
-  // the caller pre-supplied an `only` list, it MUST contain the request's
-  // providerId; we refuse to widen it for them.
-  if (routing.only !== undefined && !routing.only.includes(request.providerId)) {
-    throw new ModelProviderError(
-      `OpenRouter provider routing only=[${routing.only.join(",")}] does not include requested providerId '${request.providerId}'`,
-      "configuration_error",
-      false,
-    );
-  }
+  // ITOTORI-241 — provider PREFERENCE order. The requested providerId
+  // always leads; any caller-configured routing.order entries follow as
+  // additional preferences. De-duplicated, preserving first-seen order.
+  const order = [...new Set([request.providerId, ...(routing.order ?? [])])];
   const dataCollection = dataCollectionForRequest(
     routing.dataCollection,
     request.inputClassification,
@@ -647,8 +662,8 @@ function buildOpenRouterRoutingPosture(
     Boolean(request.tools?.length);
   const requireParameters = strictParametersRequired ? true : (routing.requireParameters ?? true);
   return {
-    only: [request.providerId],
-    allow_fallbacks: false,
+    order,
+    allow_fallbacks: true,
     data_collection: dataCollection,
     zdr,
     require_parameters: requireParameters,
@@ -665,18 +680,27 @@ function buildOpenRouterRoutingPosture(
  * `configuration_error` fires (the posture-derivation invariant is
  * violated, which would be a bug in `buildOpenRouterProviderRouting`).
  */
-function openRouterRoutingPostureFromBlock(block: JsonObject): OpenRouterRoutingPosture {
-  const only = block.only;
-  if (!Array.isArray(only) || !only.every((entry) => typeof entry === "string")) {
+function openRouterRoutingPostureFromBlock(
+  block: JsonObject,
+  inputClassification: ProviderInputClassification,
+): OpenRouterRoutingPosture {
+  const order = block.order;
+  // ITOTORI-241 — `order` (provider preference) is the canonical field;
+  // every entry must be a non-empty provider-slug string.
+  if (
+    !Array.isArray(order) ||
+    order.length === 0 ||
+    !order.every((entry) => typeof entry === "string" && entry.length > 0)
+  ) {
     throw new ModelProviderError(
-      "OpenRouter routing posture missing 'only' string array",
+      "OpenRouter routing posture 'order' must be a non-empty array of non-empty strings",
       "configuration_error",
       false,
     );
   }
-  if (block.allow_fallbacks !== false) {
+  if (typeof block.allow_fallbacks !== "boolean") {
     throw new ModelProviderError(
-      "OpenRouter routing posture must have allow_fallbacks=false",
+      "OpenRouter routing posture allow_fallbacks must be a boolean",
       "configuration_error",
       false,
     );
@@ -689,11 +713,22 @@ function openRouterRoutingPostureFromBlock(block: JsonObject): OpenRouterRouting
     );
   }
   const zdr = typeof block.zdr === "boolean" ? block.zdr : false;
+  // ITOTORI-241 — ZDR is the privacy gate. Any genuinely-private input
+  // (private_corpus / confidential) MUST carry zdr=true on the wire so
+  // fallback (now enabled) can never leak to a non-ZDR provider. This
+  // replaces the old allow_fallbacks=false invariant.
+  if (isPrivateInput(inputClassification) && zdr !== true) {
+    throw new ModelProviderError(
+      `OpenRouter routing posture must enforce zdr=true for non-public input (classification '${inputClassification}')`,
+      "configuration_error",
+      false,
+    );
+  }
   const requireParameters =
     typeof block.require_parameters === "boolean" ? block.require_parameters : true;
   return {
-    only: only as string[],
-    allow_fallbacks: false,
+    order: order as string[],
+    allow_fallbacks: block.allow_fallbacks,
     data_collection: block.data_collection,
     zdr,
     require_parameters: requireParameters,
@@ -1214,6 +1249,38 @@ function adapterMetadata(body: unknown, providerRouting: JsonObject): JsonObject
   };
   if (isRecord(body) && isJsonValue(body.openrouter_metadata)) {
     metadata.openrouterMetadata = body.openrouter_metadata;
+    // ITOTORI-241 — surface the router-metadata fallback-observability
+    // fields (`summary`, `attempts`) explicitly so they land in the
+    // recorded ledger as a first-class, queryable shape. With fallback
+    // now ON (allow_fallbacks:true), a future "429" report can read
+    // `adapterMetadata.openrouterRouting.attempts` to see whether
+    // OpenRouter fell back across the ZDR allow-list and which providers
+    // it tried. Absent on a standard chat-completions body (the X-
+    // OpenRouter-Metadata header is sent at request time, ~line 143);
+    // when present it is mirrored verbatim, never synthesized.
+    if (isRecord(body.openrouter_metadata)) {
+      const routing: Record<string, JsonValue> = {};
+      if (isJsonValue(body.openrouter_metadata.summary)) {
+        routing.summary = body.openrouter_metadata.summary;
+      }
+      // OpenRouter live chat-completions carry the fallback counter as
+      // `attempt` (singular, 0 = served by the preferred provider with no
+      // fallback). Some routing strategies also carry an `attempts` list;
+      // capture whichever is present so a "429" report can see whether
+      // fallback engaged and how many providers were tried.
+      if (isJsonValue(body.openrouter_metadata.attempt)) {
+        routing.attempt = body.openrouter_metadata.attempt;
+      }
+      if (isJsonValue(body.openrouter_metadata.attempts)) {
+        routing.attempts = body.openrouter_metadata.attempts;
+      }
+      if (isJsonValue(body.openrouter_metadata.strategy)) {
+        routing.strategy = body.openrouter_metadata.strategy;
+      }
+      if (Object.keys(routing).length > 0) {
+        metadata.openrouterRouting = routing;
+      }
+    }
   }
   return metadata as JsonObject;
 }

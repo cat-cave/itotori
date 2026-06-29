@@ -258,10 +258,10 @@ export function buildFocusedRecordedBundle(
     // would have produced" placeholder. A future LIVE capture against
     // OR must REPLACE this with the actual wire-level posture.
     routingPosture: {
-      only: [
+      order: [
         isFresh ? QA_CALIBRATION_FRESH_JUDGE_PROVIDER_ID : QA_CALIBRATION_ORIGINAL_PROVIDER_ID,
       ],
-      allow_fallbacks: false,
+      allow_fallbacks: true,
       data_collection: "deny",
       zdr: true,
       require_parameters: true,

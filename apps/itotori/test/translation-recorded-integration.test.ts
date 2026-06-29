@@ -183,8 +183,8 @@ function bundleFor(
         // synthesised bundle. A LIVE recapture would carry the actual
         // wire-level posture from the OR request body.
         routingPosture: {
-          only: [input.modelProfile.providerId],
-          allow_fallbacks: false,
+          order: [input.modelProfile.providerId],
+          allow_fallbacks: true,
           data_collection: "deny",
           zdr: true,
           require_parameters: true,
@@ -263,8 +263,8 @@ describe("TranslationAgent + RecordedModelProvider integration", () => {
           cost: ZERO_COST,
           // ITOTORI-230 — canonical alpha posture stand-in.
           routingPosture: {
-            only: [input.modelProfile.providerId],
-            allow_fallbacks: false,
+            order: [input.modelProfile.providerId],
+            allow_fallbacks: true,
             data_collection: "deny",
             zdr: true,
             require_parameters: true,

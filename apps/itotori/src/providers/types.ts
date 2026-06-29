@@ -72,20 +72,26 @@ export type RoutingCapabilities = {
  * mirrored on `RecordedProviderResponse` so an offline replay or audit
  * can prove the (a)+(b)+(c) ZDR posture without recapturing the wire.
  *
- * The five fields here are exactly the canonical shape from
+ * The fields here are the canonical shape from
  * docs/openrouter-integration.md §3 (Provider routing) and
  * docs/openrouter-integration-evidence/2026-06-25.json call_1:
  *   {
- *     only: [providerId],
- *     allow_fallbacks: false,
+ *     order: [preferredProviderId],  // preference, NOT a hard pin
+ *     allow_fallbacks: true,         // tolerate transient upstream errors
  *     data_collection: "deny",
  *     zdr: boolean,                  // true for non-public input
  *     require_parameters: boolean    // typically true; mirrors strict mode
  *   }
  *
- * `allow_fallbacks: false` is a literal-type discriminant: pinning a
- * (model, providerId) pair means the call refuses to swap providers
- * silently. Any other value would be an ITOTORI-220 violation.
+ * ITOTORI-241 — `order` + `allow_fallbacks: true` replaced the old
+ * `only: [providerId]` + `allow_fallbacks: false` hard pin. The pin made
+ * a 1-second transient upstream 429 on the single pinned provider a
+ * TOTAL failure even though the providers were not down. The reliable,
+ * live-proven shape treats the requested provider as a PREFERENCE
+ * (`order[0]`) and lets OpenRouter fall back across the account ZDR
+ * allow-list. `zdr: true` is what CONFINES that fallback to ZDR-only
+ * providers, so reliability is gained without weakening the privacy
+ * posture.
  *
  * `data_collection: "deny"` is the wire-level commitment that the
  * upstream provider will not retain the input for training. Combined
@@ -93,15 +99,30 @@ export type RoutingCapabilities = {
  * three-part posture audit needs to verify ZDR was in force.
  *
  * For non-OpenRouter providers (fake / local-openai-compatible /
- * recorded) the field is still required: there is no remote provider
- * to send data to in the local/fake case, so a `data_collection: "deny"`
- * + `zdr: true` posture is trivially correct (no data leaves the
- * boundary). Recorded replays carry the originally-captured posture
- * verbatim (see providers/recorded.ts).
+ * recorded) the fields are still required: there is no remote provider
+ * to send data to in the local/fake case, so `data_collection: "deny"`
+ * + `zdr: true` + `allow_fallbacks: false` (nothing to fall back to) is
+ * trivially correct. Recorded replays carry the originally-captured
+ * posture verbatim (see providers/recorded.ts).
  */
 export type OpenRouterRoutingPosture = {
-  only: string[];
-  allow_fallbacks: false;
+  /**
+   * ITOTORI-241 — provider PREFERENCE order. `order[0]` is the preferred
+   * upstream; with `allow_fallbacks: true` OpenRouter may route to any
+   * other provider in the ZDR allow-list when the preferred one is
+   * transiently unavailable. Local/fake providers carry their single
+   * provider here (with `allow_fallbacks: false`). Entries are
+   * non-empty provider-slug strings.
+   */
+  order: string[];
+  /**
+   * ITOTORI-241 — whether OpenRouter may fall back across the ZDR
+   * allow-list. `true` on every live OpenRouter call so a transient
+   * upstream error on the preferred provider does not fail the request.
+   * `false` only for providers that never make a remote call (fake /
+   * local-openai-compatible), where there is nothing to fall back to.
+   */
+  allow_fallbacks: boolean;
   /**
    * Wire-level data-collection commitment. For the canonical ZDR
    * posture this is `"deny"` (the alpha closer never carries anything
@@ -112,6 +133,12 @@ export type OpenRouterRoutingPosture = {
    * purpose.
    */
   data_collection: "deny" | "allow";
+  /**
+   * Zero-Data-Retention enforced on the wire (`provider.zdr=true`). With
+   * `allow_fallbacks: true` this is also what CONFINES fallback to the
+   * account ZDR allow-list, so a fallback can never leak to a non-ZDR
+   * provider. Telemetry filters on `routing_posture->>'zdr' = 'true'`.
+   */
   zdr: boolean;
   require_parameters: boolean;
 };
@@ -131,7 +158,7 @@ export type OpenRouterRoutingPosture = {
  */
 export function localOnlyRoutingPosture(providerId: string): OpenRouterRoutingPosture {
   return {
-    only: [providerId],
+    order: [providerId],
     allow_fallbacks: false,
     data_collection: "deny",
     zdr: true,
@@ -261,11 +288,13 @@ export type ModelInvocationRequest = {
   /** Required by ITOTORI-220 — no defaulting at the request seam. */
   modelId: string;
   /**
-   * Required by ITOTORI-220 — pinned upstream provider id. For OpenRouter
-   * this is the value passed to `provider: { only: [providerId] }` and
-   * the value that must equal `response.upstreamProvider` after the call.
-   * For local/recorded/fake providers this is a stable identifier like
-   * `local`, `recorded`, or `fake-fixture`.
+   * Required by ITOTORI-220 — the PREFERRED upstream provider id.
+   * ITOTORI-241: for OpenRouter this is passed as `provider.order[0]`
+   * (a preference, not a hard pin) and is the upstream OpenRouter routes
+   * to first; with `allow_fallbacks: true` a transiently-unavailable
+   * preferred provider may be replaced by another ZDR-allow-list
+   * provider. For local/recorded/fake providers this is a stable
+   * identifier like `local`, `recorded`, or `fake-fixture`.
    */
   providerId: string;
   messages: ModelMessage[];

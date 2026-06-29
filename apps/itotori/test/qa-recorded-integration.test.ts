@@ -153,8 +153,8 @@ function bundleFor(input: QaInvocationInput, findings: QaFinding[]): RecordedPro
         // ITOTORI-230 — canonical alpha posture stand-in for the
         // synthesised bundle.
         routingPosture: {
-          only: [input.modelProfile.providerId],
-          allow_fallbacks: false,
+          order: [input.modelProfile.providerId],
+          allow_fallbacks: true,
           data_collection: "deny",
           zdr: true,
           require_parameters: true,
@@ -229,8 +229,8 @@ describe("QaAgent + RecordedModelProvider integration", () => {
           cost: ZERO_COST,
           // ITOTORI-230 — canonical alpha posture stand-in.
           routingPosture: {
-            only: [input.modelProfile.providerId],
-            allow_fallbacks: false,
+            order: [input.modelProfile.providerId],
+            allow_fallbacks: true,
             data_collection: "deny",
             zdr: true,
             require_parameters: true,

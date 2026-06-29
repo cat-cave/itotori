@@ -911,8 +911,8 @@ describe("ITOTORI-238 failover orchestration", () => {
   // additional evidence-validated alternates so a co-incident 429 across
   // two providers cannot block the alpha gate. Each alternate added by
   // ITOTORI-239 was validated against Trevor's account on 2026-06-26 under
-  // a ~200-token translation prompt with provider.only=[<alt>] +
-  // provider.zdr=true + provider.allow_fallbacks=false + json_schema
+  // a ~200-token translation prompt with provider.order=[<alt>] +
+  // provider.zdr=true + provider.allow_fallbacks=true + json_schema
   // structured outputs; see docs/openrouter-integration-evidence/
   // 2026-06-26-itotori-239.json. The test below is the commit-visible
   // guard against silent shrinkage of the alternate list.

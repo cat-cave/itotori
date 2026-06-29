@@ -6,8 +6,8 @@
 //   - constructor reads OPENROUTER_API_KEY from process.env (default
 //     env var name; never reads .env)
 //   - missing env var raises OpenRouterMissingApiKeyError at construction
-//   - request body still pins provider: { only: [providerId],
-//     allow_fallbacks: false } per ITOTORI-220
+//   - request body sends provider: { order: [providerId],
+//     allow_fallbacks: true } per ITOTORI-241 (preference, not a pin)
 //   - mismatched upstream provider raises ModelProviderError
 //     { code: "pair_mismatch" }
 //   - per-process USD cost cap raises OpenRouterCostCapError BEFORE
@@ -27,6 +27,7 @@ import {
   OpenRouterMissingArtifactRecorderError,
   OpenRouterMissingApiKeyError,
   OpenRouterModelProvider,
+  OpenRouterProvider,
   openRouterDefaultCapabilities,
   type ModelInvocationRequest,
   type ProviderRunArtifact,
@@ -174,10 +175,10 @@ describe("OpenRouterModelProvider — env + construction", () => {
 });
 
 describe("OpenRouterModelProvider — request shape (ITOTORI-220 pair pin)", () => {
-  it("sends provider.only=[providerId] and allow_fallbacks=false in the request body", async () => {
+  it("ITOTORI-241: sends provider.order=[providerId] (preference) + allow_fallbacks=true, and never emits a hard `only` pin", async () => {
     let observedBody:
       | {
-          provider: { only: string[]; allow_fallbacks: boolean };
+          provider: { order?: string[]; only?: string[]; allow_fallbacks: boolean };
           model?: string;
         }
       | undefined;
@@ -192,9 +193,69 @@ describe("OpenRouterModelProvider — request shape (ITOTORI-220 pair pin)", () 
       artifactRecorder: memoryRecorder(),
     });
     await provider.invoke(baseRequest());
-    expect(observedBody?.provider.only).toEqual([DEV_PAIR.providerId]);
-    expect(observedBody?.provider.allow_fallbacks).toBe(false);
+    expect(observedBody?.provider.order).toEqual([DEV_PAIR.providerId]);
+    expect(observedBody?.provider.allow_fallbacks).toBe(true);
+    // The old hard pin must not survive: no `only` enumeration on the wire.
+    expect(observedBody?.provider.only).toBeUndefined();
     expect(observedBody?.model).toBe(DEV_PAIR.modelId);
+  });
+
+  it("ITOTORI-241: a structured (json_schema) request composes require_parameters:true with zdr:true + allow_fallbacks:true and sends response_format", async () => {
+    // With fallback now ON, require_parameters:true is load-bearing: it
+    // confines any ZDR-allow-list fallback to providers that actually
+    // support the requested response_format, so the structured-output
+    // path cannot silently degrade onto a provider that ignores it. We
+    // exercise the inner OpenRouterProvider directly with a
+    // json_schema-capable capability sheet (the wrapper's default sheet
+    // is `untested`, which is the capability guard's job to refuse).
+    let observedBody:
+      | {
+          provider: {
+            order?: string[];
+            allow_fallbacks?: boolean;
+            zdr?: boolean;
+            data_collection?: string;
+            require_parameters?: boolean;
+          };
+          response_format?: { type?: string };
+        }
+      | undefined;
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      observedBody = JSON.parse(String(init?.body ?? "{}"));
+      return successResponse({});
+    }) as unknown as typeof fetch;
+    const provider = new OpenRouterProvider({
+      modelId: DEV_PAIR.modelId,
+      apiKey: "abc",
+      fetch: fetchMock,
+      capabilities: {
+        ...openRouterDefaultCapabilities,
+        structuredOutputs: {
+          ...openRouterDefaultCapabilities.structuredOutputs,
+          jsonSchema: "supported",
+          preferredModes: ["json_schema"],
+        },
+      },
+      live: { enabled: true, artifactRecorder: memoryRecorder(), rawCapture: "disabled" },
+    });
+    await provider.invoke(
+      baseRequest({
+        structuredOutput: {
+          mode: "json_schema",
+          name: "itotori_test_schema",
+          strict: true,
+          schema: { type: "object", additionalProperties: false, properties: {} },
+        },
+      }),
+    );
+    expect(observedBody?.provider).toMatchObject({
+      order: [DEV_PAIR.providerId],
+      allow_fallbacks: true,
+      zdr: true,
+      data_collection: "deny",
+      require_parameters: true,
+    });
+    expect(observedBody?.response_format?.type).toBe("json_schema");
   });
 
   it("sends request maxPriceUsd as provider.max_price.request", async () => {
@@ -348,8 +409,8 @@ describe("OpenRouterModelProvider — request shape (ITOTORI-220 pair pin)", () 
     expect(recorder.artifacts).toHaveLength(1);
     const artifact = recorder.artifacts[0]!;
     expect(artifact.run.routingPosture).toMatchObject({
-      only: [DEV_PAIR.providerId],
-      allow_fallbacks: false,
+      order: [DEV_PAIR.providerId],
+      allow_fallbacks: true,
       data_collection: "deny",
     });
     expect(artifact.run.usageResponseJson).toMatchObject({

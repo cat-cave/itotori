@@ -90,8 +90,8 @@ function fixtureProviderRun(overrides: Partial<ProviderRunRecord> = {}): Provide
     },
     // ITOTORI-230 — canonical alpha posture for a fixture LIVE OR run.
     routingPosture: {
-      only: ["anthropic"],
-      allow_fallbacks: false,
+      order: ["anthropic"],
+      allow_fallbacks: true,
       data_collection: "deny",
       zdr: true,
       require_parameters: true,

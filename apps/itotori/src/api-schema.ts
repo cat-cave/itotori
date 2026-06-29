@@ -2021,7 +2021,7 @@ export function assertProjectCostReport(
       );
     }
     // ITOTORI-230 — every run row carries the captured OR routing
-    // posture (the `provider: { only, allow_fallbacks, data_collection,
+    // posture (the `provider: { order, allow_fallbacks, data_collection,
     // zdr, require_parameters }` block that hit the wire) on
     // `routing_posture`. Pre-migration rows carry the sentinel
     // `{_pre_itotori_230: true}`. We validate the field is present and

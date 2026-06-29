@@ -796,13 +796,14 @@ describe("OpenRouterProvider", () => {
 
     const requestBody = JSON.parse(String(fetchCalls[0]?.init?.body)) as {
       models?: string[];
-      provider: { only?: string[]; allow_fallbacks?: boolean };
+      provider: { order?: string[]; only?: string[]; allow_fallbacks?: boolean };
     };
     expect(requestBody.models).toEqual(["openai/gpt-4o-mini", "anthropic/claude-3-haiku"]);
     expect(requestBody.provider).toMatchObject({
-      only: ["Anthropic"],
-      allow_fallbacks: false,
+      order: ["Anthropic"],
+      allow_fallbacks: true,
     });
+    expect(requestBody.provider.only).toBeUndefined();
     expect(result.providerRun).toMatchObject({
       retryCount: 0,
       fallbackUsed: true,
@@ -819,8 +820,8 @@ describe("OpenRouterProvider", () => {
     });
     expect(recorder.artifacts[0]?.adapterMetadata).toMatchObject({
       providerRouting: expect.objectContaining({
-        only: ["Anthropic"],
-        allow_fallbacks: false,
+        order: ["Anthropic"],
+        allow_fallbacks: true,
       }),
       openrouterMetadata: expect.objectContaining({
         strategy: "fallback",

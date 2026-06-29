@@ -76,7 +76,7 @@ export const costReportFixture: ProjectCostReport = {
       // FakeModelProvider records the canonical localOnlyRoutingPosture
       // (zdr=true) since no data leaves the process.
       routingPosture: {
-        only: ["itotori-fixture"],
+        order: ["itotori-fixture"],
         allow_fallbacks: false,
         data_collection: "deny",
         zdr: true,
@@ -118,7 +118,7 @@ export const costReportFixture: ProjectCostReport = {
       // run. Matches the canonical alpha shape from
       // docs/openrouter-integration-evidence/2026-06-25.json.
       routingPosture: {
-        only: ["fixture-upstream"],
+        order: ["fixture-upstream"],
         allow_fallbacks: false,
         data_collection: "deny",
         zdr: true,

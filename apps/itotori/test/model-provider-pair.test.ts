@@ -7,7 +7,8 @@
 // is the load-bearing assertion suite for that contract:
 //
 //   1. ModelInvocationRequest carries providerId as a required field.
-//   2. OpenRouter emits provider: { only: [providerId] } at request time.
+//   2. OpenRouter emits provider: { order: [providerId] } (preference)
+//      with allow_fallbacks:true at request time (ITOTORI-241).
 //   3. OpenRouter post-response check throws ModelProviderError with
 //      code 'pair_mismatch' when the upstream provider differs.
 //   4. ModelProviderError carries a 'pair_mismatch' code variant.
@@ -67,8 +68,10 @@ describe("ITOTORI-220 — (modelId, providerId) pair contract", () => {
     expect(request.modelId).toBe("openai/gpt-4o-mini");
   });
 
-  it("OpenRouter request body emits provider.only=[providerId] and pins allow_fallbacks=false", async () => {
-    let observedBody: { provider: { only?: string[]; allow_fallbacks?: boolean } } | undefined;
+  it("ITOTORI-241: OpenRouter request body emits provider.order=[providerId] (preference) with allow_fallbacks=true and no `only` pin", async () => {
+    let observedBody:
+      | { provider: { order?: string[]; only?: string[]; allow_fallbacks?: boolean } }
+      | undefined;
     const recorder = {
       recordProviderRun: async () => undefined,
     };
@@ -99,8 +102,9 @@ describe("ITOTORI-220 — (modelId, providerId) pair contract", () => {
       live: { enabled: true, artifactRecorder: recorder, rawCapture: "disabled" },
     });
     await provider.invoke(baseRequest({ inputClassification: "synthetic_public" }));
-    expect(observedBody?.provider.only).toEqual(["OpenAI"]);
-    expect(observedBody?.provider.allow_fallbacks).toBe(false);
+    expect(observedBody?.provider.order).toEqual(["OpenAI"]);
+    expect(observedBody?.provider.allow_fallbacks).toBe(true);
+    expect(observedBody?.provider.only).toBeUndefined();
   });
 
   it("OpenRouter throws ModelProviderError code='pair_mismatch' when upstream provider differs", async () => {
@@ -215,8 +219,8 @@ describe("ITOTORI-220 — (modelId, providerId) pair contract", () => {
           // ITOTORI-230 — pair-contract test; canonical alpha posture
           // stand-in (no real LIVE call ever produced these bytes).
           routingPosture: {
-            only: ["OpenAI"],
-            allow_fallbacks: false,
+            order: ["OpenAI"],
+            allow_fallbacks: true,
             data_collection: "deny",
             zdr: true,
             require_parameters: true,

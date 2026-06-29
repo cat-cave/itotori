@@ -9,25 +9,39 @@
 // code, the choice is justified in this comment, and changes require a
 // real PR.
 //
-// Why deepseek/deepseek-v4-flash on `fireworks` (evidence-grounded
-// rewrite per ITOTORI-226; replaces the prior invented slug that was
-// never in OpenRouter's catalog — see
-// docs/audits/openrouter-wiring-audit-2026-06-25.md §3-A for the
-// audit-time identification):
+// Why deepseek/deepseek-v4-flash with `fireworks` as the PREFERRED
+// provider (ITOTORI-241 reframe of the ITOTORI-226 evidence-grounded
+// pair; replaces the prior invented slug that was never in OpenRouter's
+// catalog — see docs/audits/openrouter-wiring-audit-2026-06-25.md §3-A):
+//
+//   ITOTORI-241 — `providerId` is the PREFERRED provider (`order[0]`),
+//   NOT a hard pin. The live request now sends
+//   `provider: { order: ["fireworks"], zdr: true, allow_fallbacks: true,
+//   data_collection: "deny", require_parameters: <strict> }`. OpenRouter
+//   routes to Fireworks first; if Fireworks is transiently unavailable
+//   (e.g. a 1-second upstream 429) OpenRouter falls back across the
+//   account ZDR allow-list rather than failing the whole call. The
+//   fallback set is NOT enumerated here: `zdr: true` confines it to the
+//   account's ZDR-only providers, so it self-updates as that allow-list
+//   changes. `fireworks` is dated 2026-06-25 as the validated preferred
+//   provider (evidence below); revisiting the preference requires a real
+//   commit + fresh live capture.
+//
 //   - Catalog match. The OpenRouter catalog lookup at
 //     /api/v1/models/deepseek/deepseek-v4-flash/endpoints (captured at
 //     docs/openrouter-integration-evidence/2026-06-25.json,
 //     alphaPairCatalog) returns 18 endpoints; canonical slug is
 //     `deepseek/deepseek-v4-flash-20260423`. The `fireworks` endpoint IS
-//     in that list (tag='fireworks'). See also
-//     docs/openrouter-integration.md §9.3 for the canonical reference.
-//   - Provider pin verified live. The evidence file's call_1
+//     in that list (tag='fireworks') AND is in Trevor's ZDR allow-list.
+//     See also docs/openrouter-integration.md §9.3.
+//   - Preferred provider verified live. The evidence file's call_1
 //     (label `call_1_baseline_zdr_alpha_pair`) posted
-//     {model: "deepseek/deepseek-v4-flash",
-//      provider: { only: ["fireworks"], zdr: true, ... }}
+//     {model: "deepseek/deepseek-v4-flash", provider: { zdr: true, ... }}
 //     and received HTTP 200 with `body.provider === "Fireworks"` — i.e.
-//     the request actually routed to and was billed by Fireworks under
-//     the corrected slug. No fallback occurred (allow_fallbacks=false).
+//     the request routed to and was billed by Fireworks under the
+//     corrected slug. Under the ITOTORI-241 posture Fireworks remains
+//     order[0]; the difference is that a transient Fireworks outage now
+//     yields another ZDR-allow-list provider instead of a total failure.
 //   - Pricing on Fireworks (from the same alphaPairCatalog block):
 //     prompt $0.00000014/token (≈$0.14/Mtok), completion $0.00000028/
 //     token (≈$0.28/Mtok). A 4k-prompt+1k-completion QA call costs
@@ -39,15 +53,16 @@
 //     (deepseek_supports_implicit_caching === true) but is excluded
 //     from Trevor's ZDR allow-list — empirically proven by call_3 in
 //     the same evidence file (HTTP 404, "No endpoints found matching
-//     your data policy"). We accept no implicit caching as the price
-//     of staying within ZDR + a single deterministic provider pin.
+//     your data policy"). We forgo implicit caching as the price of
+//     staying within ZDR; the preferred-provider + fallback posture is
+//     orthogonal to caching.
 //   - JSON-schema structured output. Catalog and live capture confirm
 //     `response_format: { type: "json_schema" }` is accepted by
-//     Fireworks-hosted deepseek-v4-flash at this slug; the calls in
-//     the evidence file used plain prompts, but the catalog row's
-//     `supported_parameters` lists `response_format` and the
-//     openrouter-integration.md §4.2 path is the same one ITOTORI-220
-//     requires.
+//     Fireworks-hosted deepseek-v4-flash at this slug; with fallback now
+//     ON, `provider.require_parameters: true` (set on every structured /
+//     tool request) confines any fallback to ZDR providers that also
+//     support `response_format` so the agentic loop cannot silently
+//     degrade onto one that ignores it (openrouter-integration.md §4.2).
 //
 // Other entries in the table cover the two production-tier pairs we
 // reach for when DEV_PAIR isn't appropriate (e.g. high-stakes manual
@@ -63,6 +78,13 @@ import { openRouterDefaultCapabilities } from "./openrouter.js";
  * agent code. The audit check enforced by ITOTORI-221 (`git grep
  * -nE "'fireworks'|\"fireworks\""` outside this file) confirms there
  * are no provider id literals scattered across the agent surface.
+ *
+ * ITOTORI-241 — `providerId` is the PREFERRED provider (`order[0]` on
+ * the wire), not a hard pin. The orchestrator passes it as
+ * `request.providerId`; the OpenRouter provider maps it to
+ * `provider.order=[providerId]` with `allow_fallbacks: true` + `zdr:
+ * true`, so a transient Fireworks outage falls back across the account
+ * ZDR allow-list instead of failing the call.
  */
 export const DEV_PAIR: { readonly modelId: string; readonly providerId: string } = Object.freeze({
   modelId: "deepseek/deepseek-v4-flash",
@@ -143,12 +165,14 @@ function buildPairCapabilityTable(): ReadonlyArray<PairCapabilityEntry> {
         maxOutputTokens: 8_192,
         notes: [
           // ITOTORI-226 (2026-06-25): the slug correction landed; this
-          // capability sheet now describes the catalog-correct
-          // deepseek/deepseek-v4-flash pair pinned to Fireworks. Live
-          // evidence — call_1 in
+          // capability sheet describes the catalog-correct
+          // deepseek/deepseek-v4-flash pair with Fireworks as the
+          // PREFERRED provider. Live evidence — call_1 in
           //   docs/openrouter-integration-evidence/2026-06-25.json
           // — confirms HTTP 200 with body.provider === "Fireworks" under
-          // provider.only=["fireworks"] + provider.zdr=true.
+          // provider.zdr=true. ITOTORI-241 reframed the wire posture to
+          // provider.order=["fireworks"] + allow_fallbacks=true (no hard
+          // pin); ZDR confines any fallback to the account allow-list.
           // ITOTORI-224 owns the canonical doc + evidence capture; see
           // docs/openrouter-integration.md §9.3 for the catalog row.
           "ITOTORI-226 (2026-06-25): slug correction landed (deepseek/deepseek-v4-flash on fireworks). Live evidence: docs/openrouter-integration-evidence/2026-06-25.json call_1 (HTTP 200, body.provider === 'Fireworks'). Canonical doc: docs/openrouter-integration.md §9.3.",

@@ -121,7 +121,7 @@ export type RecordedProviderResponse = {
   cost: ProviderCost;
   /**
    * ITOTORI-230 — the original LIVE call's OR routing posture (the
-   * `provider: { only, allow_fallbacks, data_collection, zdr,
+   * `provider: { order, allow_fallbacks, data_collection, zdr,
    * require_parameters }` block that hit the wire). Mirrored verbatim
    * so an offline replay proves the three-part ZDR posture without
    * recapturing the wire. Required: a recorded bundle that lacks this
@@ -604,12 +604,12 @@ function assertResponseCostShape(bundleId: string, key: string, cost: unknown): 
 
 /**
  * ITOTORI-230 — validate the `routingPosture` shape on a recorded
- * response. The five required fields are exactly the canonical posture
- * from docs/openrouter-integration.md §3 and the live evidence at
+ * response. The required fields are the canonical posture from
+ * docs/openrouter-integration.md §3 and the live evidence at
  * docs/openrouter-integration-evidence/2026-06-25.json. Any deviation
- * (missing field, wrong type, `allow_fallbacks: true`) is a typed
- * `RecordedBundleSchemaMismatchError`, not a synthesis-with-fallback
- * site.
+ * (missing field, wrong type, non-boolean `allow_fallbacks`, empty
+ * `order`) is a typed `RecordedBundleSchemaMismatchError`, not a
+ * synthesis-with-fallback site.
  */
 function assertRoutingPostureShape(bundleId: string, key: string, posture: unknown): void {
   if (posture === null || typeof posture !== "object" || Array.isArray(posture)) {
@@ -619,16 +619,25 @@ function assertRoutingPostureShape(bundleId: string, key: string, posture: unkno
     );
   }
   const candidate = posture as Partial<OpenRouterRoutingPosture>;
-  if (!Array.isArray(candidate.only) || candidate.only.some((entry) => typeof entry !== "string")) {
+  // ITOTORI-241 — `order` (provider preference) replaced the old `only`
+  // hard pin. Entries must be non-empty provider-slug strings.
+  if (
+    !Array.isArray(candidate.order) ||
+    candidate.order.length === 0 ||
+    candidate.order.some((entry) => typeof entry !== "string" || entry.length === 0)
+  ) {
     throw new RecordedBundleSchemaMismatchError(
       bundleId,
-      `response under key '${key}' routingPosture.only must be a string array (got ${JSON.stringify(candidate.only)})`,
+      `response under key '${key}' routingPosture.order must be a non-empty array of non-empty strings (got ${JSON.stringify(candidate.order)})`,
     );
   }
-  if (candidate.allow_fallbacks !== false) {
+  // ITOTORI-241 — allow_fallbacks is now a real boolean (true for live
+  // OpenRouter calls so a transient upstream error does not fail the
+  // request; false only for providers that never make a remote call).
+  if (typeof candidate.allow_fallbacks !== "boolean") {
     throw new RecordedBundleSchemaMismatchError(
       bundleId,
-      `response under key '${key}' routingPosture.allow_fallbacks must be literal false (got ${JSON.stringify(candidate.allow_fallbacks)}); ITOTORI-220 pair pin requires no silent fallbacks`,
+      `response under key '${key}' routingPosture.allow_fallbacks must be a boolean (got ${JSON.stringify(candidate.allow_fallbacks)})`,
     );
   }
   if (candidate.data_collection !== "deny" && candidate.data_collection !== "allow") {
