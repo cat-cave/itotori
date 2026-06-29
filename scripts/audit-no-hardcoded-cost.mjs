@@ -61,16 +61,17 @@ const ALLOW_LIST = [
 // below) are skipped here. The legacy-enum / cost-tier patterns still
 // fire everywhere so a revived `unknown`/`provider_estimate` literal is
 // caught even inside a test. A path is cost-literal-exempt when it lives
-// under a `test/` tree or the top-level `fixtures/` tree, or is one of the
-// explicitly listed source-tree fixture modules below.
-const COST_FIXTURE_FILES = [
-  // Test-only recorder fixture: imported solely by
-  // apps/itotori/test/draft-attempt-recorder.test.ts. It hand-builds a
-  // ProviderRunRecord whose billed `amountMicrosUsd` / mirrored
-  // `usage.cost` / `costUsd` amount are synthetic by necessity (there is
-  // no live capture behind it). Not reachable from any production path.
-  "apps/itotori/src/draft/draft-attempt-fixtures.ts",
-];
+// under a `test/` tree or the top-level `fixtures/` tree.
+//
+// NB: no source-tree (`src/`) module is listed here. PROJECT LAW forbids a
+// fabricated cost literal in scanned production source, even in a "test
+// fixture". apps/itotori/src/draft/draft-attempt-fixtures.ts used to be
+// exempted here while it carried invented billed amounts; it now carries
+// only the canonical ZERO_COST sentinel, so it passes the audit with NO
+// exemption. A fixture that needs a non-zero billed cost must source it
+// from a captured recorded-bundle under the allow-listed
+// apps/itotori/test/fixtures/recorded-bundles/ tree, never from a literal.
+const COST_FIXTURE_FILES = [];
 
 function isCostFixturePath(path) {
   if (COST_FIXTURE_FILES.includes(path)) return true;

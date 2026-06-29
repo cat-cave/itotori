@@ -1,9 +1,19 @@
 // ITOTORI-077 - Draft attempt recorder fixtures.
 //
 // Three canonical shapes the recorder must round-trip cleanly:
-//  - successfulAttemptFixture: one model, no fallback, live cost.
+//  - successfulAttemptFixture: one model, no fallback.
 //  - fallbackChainFixture:     primary failed, fallback succeeded.
-//  - recordedProviderFixture:  recorded mode (no live cost; 0.00).
+//  - recordedProviderFixture:  recorded mode (recorded-bundle id present).
+//
+// PROJECT LAW (Trevor, 2026-06-25): a model cost is NEVER approximated or
+// fabricated — it is only ever the verbatim `usage.cost` of a real
+// OpenRouter call. These fixtures are SYNTHETIC: no live OR call was ever
+// taken to back them, so they carry the canonical `ZERO_COST` sentinel and
+// a `_synthetic_fixture` usage marker (no `cost` key) instead of an invented
+// dollar amount. This is the structurally honest mirror of "no real charge
+// was observed". A test that needs a non-zero billed cost must source it
+// from a captured recorded-bundle artifact under
+// apps/itotori/test/fixtures/recorded-bundles/, never from a literal here.
 
 import type {
   DraftAttemptFallbackChainEntry,
@@ -11,6 +21,7 @@ import type {
   DraftAttemptProviderLedgerPolicyVersions,
 } from "@itotori/db";
 import type { ProviderRunRecord, TokenUsage } from "../providers/types.js";
+import { ZERO_COST } from "../providers/cost.js";
 import type {
   TranslationInvocationModelMetadata,
   TranslationInvocationResult,
@@ -80,15 +91,12 @@ function fixtureProviderRun(overrides: Partial<ProviderRunRecord> = {}): Provide
     fallbackUsed: false,
     fallbackPlan: ["anthropic/claude-3.5-sonnet"],
     tokenUsage: fixtureTokenUsage(),
-    cost: {
-      costKind: "billed",
-      currency: "USD",
-      // ITOTORI-232 — authoritative full-precision cost; the recorder
-      // persists this verbatim as cost_amount. 0.0125 USD = 12_500 micros.
-      amountUsd: "0.0125",
-      amountMicrosUsd: 12_500,
-    },
-    // ITOTORI-230 — canonical alpha posture for a fixture LIVE OR run.
+    // PROJECT LAW: no fabricated cost. This synthetic fixture never backed a
+    // real OR call, so the only honest cost is the canonical ZERO_COST
+    // sentinel — never an invented dollar amount. The recorder persists
+    // `amountUsd` ("0") verbatim as cost_amount.
+    cost: { ...ZERO_COST },
+    // ITOTORI-230 — canonical alpha posture for a fixture OR run.
     routingPosture: {
       order: ["anthropic"],
       allow_fallbacks: true,
@@ -96,14 +104,14 @@ function fixtureProviderRun(overrides: Partial<ProviderRunRecord> = {}): Provide
       zdr: true,
       require_parameters: true,
     },
-    // ITOTORI-232 — `cost.amountUsd` (0.0125) mirrors `usage.cost` below,
-    // so the recorder's cost_amount and usage_response_json->>'cost'
-    // originate from the same value and the DB CHECK passes by construction.
+    // Synthetic fixture: no real OR call, so usage carries NO `cost` key.
+    // The partial-NULL migration-0041 CHECK exempts the row; the
+    // `_synthetic_fixture` marker documents WHY no billed-cost field exists.
     usageResponseJson: {
+      _synthetic_fixture: true,
       prompt_tokens: 480,
       completion_tokens: 220,
       total_tokens: 700,
-      cost: 0.0125,
     },
     prompt: {
       presetId: "itotori-translation-agent",
@@ -185,21 +193,9 @@ export function fallbackChainFixture(
     retryCount: 1,
     latencyMs: 2400,
     completedAt: "2026-06-23T12:00:02.400Z",
-    // ITOTORI-232 — fallback fixture's billed cost is 0.0085 USD; the
-    // authoritative `amountUsd` and `usageResponseJson.cost` carry the
-    // same upstream value so cost_amount mirrors it on persist.
-    cost: {
-      costKind: "billed",
-      currency: "USD",
-      amountUsd: "0.0085",
-      amountMicrosUsd: 8_500,
-    },
-    usageResponseJson: {
-      prompt_tokens: 480,
-      completion_tokens: 220,
-      total_tokens: 700,
-      cost: 0.0085,
-    },
+    // Cost + usage inherit the base synthetic ZERO_COST shape (no fabricated
+    // amount). The fallback fixture exercises the fallback-chain / actual-
+    // model plumbing, not a billed-cost value.
   });
   const fallbackChain: DraftAttemptFallbackChainEntry[] = [
     {
@@ -235,23 +231,15 @@ export function recordedProviderFixture(
       actualModelId: "anthropic/claude-3.5-sonnet",
       upstreamProvider: "anthropic",
     },
-    // ITOTORI-228 — recorded-mode fixture: the replayed providerRun.cost
-    // mirrors the captured `usage.cost`. This synthetic fixture stands
-    // in for a session that genuinely produced no charge upstream (no
-    // LIVE OR call was ever taken to back it), so `ZERO_COST` is the
-    // structurally honest mirror. A future re-record from a real LIVE
-    // capture will replace this with the actual `usage.cost` value the
-    // recorded-bundle response carries.
-    cost: {
-      costKind: "zero",
-      currency: "USD",
-      amountUsd: "0",
-      amountMicrosUsd: 0,
-    },
-    // ITOTORI-232 — synthetic recorded fixture never backed a real OR
-    // call, so usage carries no `cost` key. The partial-NULL CHECK
-    // exempts the row. The sentinel key documents WHY no billed-cost
-    // field exists ("the bundle was synthesised offline").
+    // ITOTORI-228 — recorded-mode fixture. Cost inherits the base synthetic
+    // ZERO_COST shape: this fixture stands in for a session that genuinely
+    // produced no charge upstream (no LIVE OR call was ever taken to back
+    // it), so `ZERO_COST` is the structurally honest mirror. A future
+    // re-record from a real LIVE capture will replace this with the actual
+    // `usage.cost` value the recorded-bundle response carries.
+    //
+    // The usage marker is recorded-specific so the offline-synthesis origin
+    // is self-documenting (no `cost` key → partial-NULL CHECK exempts the row).
     usageResponseJson: {
       _synthetic_recorded_fixture: true,
       prompt_tokens: 480,

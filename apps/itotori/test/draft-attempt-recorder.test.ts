@@ -122,10 +122,10 @@ describe("DraftAttemptRecorder", () => {
     expect(entry.tokensIn).toBe(480);
     expect(entry.tokensOut).toBe(220);
     expect(entry.costUnit).toBe("usd");
-    // ITOTORI-232 — costAmount is the authoritative full-precision
-    // providerRun.cost.amountUsd, persisted verbatim (no trailing-zero
-    // padding from a separate costUsd string).
-    expect(entry.costAmount).toBe("0.0125");
+    // PROJECT LAW: the synthetic fixture never backed a real OR call, so its
+    // cost is the canonical ZERO_COST sentinel ("0") — never a fabricated
+    // amount — persisted verbatim as cost_amount.
+    expect(entry.costAmount).toBe("0");
     expect(entry.latencyMs).toBe(1200);
     expect(entry.fallbackChain).toEqual([]);
     expect(entry.isRecordedProvider).toBe(false);
@@ -146,7 +146,8 @@ describe("DraftAttemptRecorder", () => {
     expect(entry.fallbackChain[0]!.failureReason).toContain("provider_http_error");
     expect(entry.modelId).toBe("anthropic/claude-3.5-sonnet"); // modelProfile.modelId stays the requested model
     expect(entry.providerProofId).toBe("live:provider-run-fallback-01");
-    expect(entry.costAmount).toBe("0.0085");
+    // PROJECT LAW: synthetic fixture → canonical ZERO_COST, no fabricated amount.
+    expect(entry.costAmount).toBe("0");
   });
 
   it("recordedProviderFixture marks the entry as recorded and stamps a zero cost", async () => {
@@ -211,9 +212,11 @@ describe("DraftAttemptRecorder", () => {
       byModel: true,
     });
 
-    // 0.01250000 + 0.00850000 + 0.00000000 = 0.02100000
-    expect(total.totalCost).toBe("0.02100000");
+    // All three fixtures are synthetic ZERO_COST: 0 + 0 + 0 = 0.00000000.
+    // (A non-zero aggregate would require sourcing real captured costs from
+    // a recorded-bundle artifact; PROJECT LAW forbids fabricating one here.)
+    expect(total.totalCost).toBe("0.00000000");
     expect(total.byModel).toBeDefined();
-    expect(total.byModel!["anthropic/claude-3.5-sonnet"]).toBe("0.02100000");
+    expect(total.byModel!["anthropic/claude-3.5-sonnet"]).toBe("0.00000000");
   });
 });
