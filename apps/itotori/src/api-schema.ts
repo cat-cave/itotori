@@ -716,6 +716,7 @@ function assertReviewerBatchPreview(
     "runtimeEvidenceInvariant",
     "invalidInput",
     "invalidTransition",
+    "permissionDeniedRead",
     "permissionDeniedManage",
   ]);
   for (const key of Object.keys(aggregate)) {

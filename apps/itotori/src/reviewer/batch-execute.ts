@@ -555,6 +555,7 @@ function statusToErrorCode(
       return "reviewer_queue_item_not_found";
     case reviewerBatchPreviewStatusValues.duplicateSelection:
       return "reviewer_queue_item_invalid_input";
+    case reviewerBatchPreviewStatusValues.permissionDeniedRead:
     case reviewerBatchPreviewStatusValues.permissionDeniedManage:
     case reviewerBatchPreviewStatusValues.allowed:
       return "reviewer_batch_skipped";

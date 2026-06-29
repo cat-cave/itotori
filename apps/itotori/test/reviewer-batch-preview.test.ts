@@ -90,6 +90,10 @@ describe("ReviewerBatchPreviewService — permission gate", () => {
     );
 
     expect(preview.permissionDenied).toBe(true);
+    expect(preview.items[0]?.status).toBe(reviewerBatchPreviewStatusValues.permissionDeniedRead);
+    expect(preview.aggregate.permissionDeniedRead).toBe(1);
+    expect(preview.aggregate.permissionDeniedManage).toBe(0);
+    expect(preview.items[0]?.diagnostics[0]?.code).toBe("reviewer_batch_permission_denied_read");
     expect(preview.items[0]?.diagnostics[0]?.message).toContain("queue.read");
     expect(preview.items[0]?.requiredPermission).toBe("queue.read");
 

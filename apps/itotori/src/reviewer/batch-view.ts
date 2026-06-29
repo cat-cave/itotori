@@ -196,6 +196,8 @@ function renderAggregateBanner(preview: ReviewerBatchPreview): string {
     segments.push(`${aggregate.invalidTransition} invalid transition`);
   if (aggregate.runtimeEvidenceInvariant > 0)
     segments.push(`${aggregate.runtimeEvidenceInvariant} runtime evidence invariant`);
+  if (aggregate.permissionDeniedRead > 0)
+    segments.push(`${aggregate.permissionDeniedRead} read denied`);
   if (aggregate.permissionDeniedManage > 0)
     segments.push(`${aggregate.permissionDeniedManage} permission denied`);
   return `
@@ -376,7 +378,8 @@ function statusBadge(status: ReviewerBatchPreviewStatus): string {
   const tone =
     status === reviewerBatchPreviewStatusValues.allowed
       ? "ok"
-      : status === reviewerBatchPreviewStatusValues.permissionDeniedManage
+      : status === reviewerBatchPreviewStatusValues.permissionDeniedManage ||
+          status === reviewerBatchPreviewStatusValues.permissionDeniedRead
         ? "neutral"
         : "critical";
   return `<span class="badge badge-${tone}" data-status="${escapeHtml(status)}">${escapeHtml(status)}</span>`;

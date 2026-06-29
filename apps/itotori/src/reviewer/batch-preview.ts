@@ -83,13 +83,18 @@ export type ReviewerBatchActionRequest = {
  * Per-item preview status. Matches the closed taxonomy of repository
  * refusal codes plus `allowed` (would succeed), `not_found` (item id
  * was not resolvable), `duplicate_selection` (the same review item id
- * appears twice in one request), and `permission_denied_manage` (the
- * actor can preview but lacks `queue.manage`, so execution would fail).
+ * appears twice in one request), `permission_denied_read` (the actor
+ * lacks `queue.read`, so even previewing is refused), and
+ * `permission_denied_manage` (the actor can preview but lacks
+ * `queue.manage`, so execution would fail). Read- and manage-gate
+ * denials are distinct members so downstream consumers can tell a
+ * preview refusal from a confirm refusal by status alone.
  */
 export const reviewerBatchPreviewStatusValues = {
   allowed: "allowed",
   notFound: "not_found",
   duplicateSelection: "duplicate_selection",
+  permissionDeniedRead: "permission_denied_read",
   permissionDeniedManage: "permission_denied_manage",
   invalidInput: "reviewer_queue_item_invalid_input",
   invalidTransition: "reviewer_queue_item_invalid_transition",
@@ -189,6 +194,7 @@ export type ReviewerBatchPreview = {
     runtimeEvidenceInvariant: number;
     invalidInput: number;
     invalidTransition: number;
+    permissionDeniedRead: number;
     permissionDeniedManage: number;
   };
   /**
@@ -378,7 +384,7 @@ function buildDeniedPreview(
   const items: BatchPreviewItem[] = request.selections.map((selection) => ({
     reviewItemId: selection.reviewItemId,
     expectedSourceRevisionId: selection.expectedSourceRevisionId,
-    status: reviewerBatchPreviewStatusValues.permissionDeniedManage,
+    status: reviewerBatchPreviewStatusValues.permissionDeniedRead,
     action: request.action,
     requiredPermission: "queue.read",
     item: null,
@@ -412,6 +418,7 @@ function finalizePreview(
     runtimeEvidenceInvariant: 0,
     invalidInput: 0,
     invalidTransition: 0,
+    permissionDeniedRead: 0,
     permissionDeniedManage: 0,
   };
   for (const entry of items) {
@@ -441,6 +448,10 @@ function finalizePreview(
         break;
       case reviewerBatchPreviewStatusValues.invalidTransition:
         aggregate.invalidTransition += 1;
+        aggregate.denied += 1;
+        break;
+      case reviewerBatchPreviewStatusValues.permissionDeniedRead:
+        aggregate.permissionDeniedRead += 1;
         aggregate.denied += 1;
         break;
       case reviewerBatchPreviewStatusValues.permissionDeniedManage:
