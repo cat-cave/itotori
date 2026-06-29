@@ -65,9 +65,11 @@ they exercise the runtime artifact store itself.
 
 Runtime reports may include `observationHookEvents`, an alpha envelope emitted
 by browser, NW-style, native, or engine hooks before proof-specific adapters add
-deeper evidence. The Rust source of truth is
-`ObservationHookEvent` in `utsushi-core`; events use
-`schemaVersion: "0.1.0-alpha"`.
+deeper evidence. The Rust source of truth is the
+`validate_observation_hook_event` bridge-contract validator in `kaifuu-core`
+(it validates each `RuntimeEvidenceReportV02.observationHookEvents[]` entry);
+events use `schemaVersion: "0.1.0-alpha"`, pinned by the
+`OBSERVATION_HOOK_SCHEMA_VERSION` constant.
 
 Each event carries common metadata:
 
