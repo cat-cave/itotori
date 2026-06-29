@@ -81,8 +81,12 @@
 //! is a working hypothesis pinned by the synthetic round-trip tests in
 //! `tests` and re-verified against Sweetie HD's `BACK.g00` header in
 //! `tests/g00_real_bytes.rs::g00_type0_back_decodes`. When the LZSS
-//! payload does **not** produce exactly `uncompressed_size` bytes, the
-//! decoder surfaces a typed error rather than silently truncating.
+//! payload falls **short** of `uncompressed_size` (input exhausted
+//! mid-stream), the decoder does not silently truncate: it returns the
+//! partial buffer paired with a structured [`G00Warning::PayloadLengthMismatch`]
+//! so downstream consumers observe the shortfall. When the payload
+//! **overruns** `uncompressed_size`, the decoder surfaces a typed
+//! [`G00DecodeError::OutputOverflow`] instead.
 //!
 //! # Clean-room provenance
 //!
