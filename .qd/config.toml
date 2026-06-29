@@ -13,3 +13,44 @@ require_clean_worktree = true
 clean_worktree_except = [".qd/", "artifacts/"]
 require_gate_before_ci = true
 require_ci_before_merge = true
+
+[export]
+default_out = ""
+canonicalize_command = "nix develop --command bash -lc 'pnpm exec vp check --fix --no-lint roadmap/spec-dag.json'"
+
+[hooks]
+pre_claim = ""
+post_claim = ""
+pre_check = ""
+post_check = ""
+pre_gate = ""
+post_export = ""
+pre_merge = ""
+post_merge = ""
+
+[check]
+timeout_seconds = 1200
+no_output_timeout_seconds = 300
+
+[ci]
+timeout_seconds = 3600
+no_output_timeout_seconds = 600
+
+[secrets]
+forbidden_path_globs = [".env", ".env.*", "**/.env", "**/.env.*"]
+masked_env = []
+
+[waves]
+broad_audit_every = 3
+deep_audit_every = 9
+
+[policy]
+require_audit_before_ci = true
+require_verification_before_ci = true
+require_p2_p3_disposition_before_merge = true
+require_merge_commit = true
+
+[worktree]
+base_dir = ".qd/worktrees"
+env_template = ""
+env_file = ".env"
