@@ -1,311 +1,95 @@
 # Spec DAG
 
-> **Alpha definition (2026-06-24).** The redefined alpha gates live at the top
-> of [`alpha-localization-project-readiness.md`](project-readiness.md).
-> References to the "alpha proof workflow" in this doc describe the
-> `ALPHA-007`/`ALPHA-009` workflow command and its hello-world succession —
-> mechanisms that support the redefined dogfood point. The alpha gate itself
-> is the 6-item list at the top of the readiness doc, not the totality of
-> nodes labelled `ALPHA-*` in the DAG.
+We use **qdcli** for the implementation roadmap. The DAG concepts (node shape,
+edges, status/priority, the qd export JSON schema, claim/check/ci/merge
+lifecycle, finding promotion) are documented in qdcli's own `docs/llms.md`,
+`docs/agents.md`, and its schema/import docs (`docs/import.md`). The
+orchestrator operating contract and itotori's DAG quality bars live in
+[`orchestration-operating-model.md`](orchestration-operating-model.md). This
+page keeps only the itotori-specific roadmap facts.
 
-The implementation roadmap is a directed acyclic graph of PR-sized specs. The
-canonical committed file is `roadmap/spec-dag.json` in **qd export shape**
-(`schema_version`, `registries`, `nodes`, `edges`, `findings`, `runs`, and
-`node_notes`). qd owns live orchestration state; `just roadmap-validate` is the
-repo-local validator for the committed export. The older repo-native
-`schemaVersion: "0.1.0"` node shape remains supported only as an internal
-normalization and test-fixture shape for `scripts/spec-dag.mjs`.
+> **Alpha definition.** The redefined alpha gates live at the top of
+> [`project-readiness.md`](project-readiness.md). The alpha gate is that 6-item
+> list, not the totality of nodes labelled `ALPHA-*` in the DAG.
 
-The graph is intentionally machine-readable because the expected development
-mode is orchestration by an agent that can claim ready nodes, launch planning
-and implementation workers, run audits, and merge only when the spec is actually
-complete. The central orchestrator operating contract is documented in
-[orchestration-operating-model.md](orchestration-operating-model.md).
+## Committed Export And Validation
 
-## Commands
+- The canonical committed roadmap is `roadmap/spec-dag.json` in **qd export
+  shape** (`schema_version`, `registries`, `nodes`, `edges`, `findings`, `runs`,
+  `node_notes`). qd owns live orchestration state; this file is the generated,
+  reviewable export. Do not hand-edit it for lifecycle state, claims, completion,
+  or follow-up planning — make DAG changes through qd, then regenerate it:
+
+  ```sh
+  qd export --out roadmap/spec-dag.json
+  just roadmap-validate
+  ```
+
+- `just roadmap-validate` (`node scripts/spec-dag.mjs validate`) is the
+  repo-local validator for the committed export: schema version, registries,
+  duplicate ids, status/priority shape, placeholder spec/acceptance/audit-focus
+  text, edge references, self-edges, and cycles.
+
+- `.qd/config.toml` delegates qd's `check_command` to `just check` and its
+  `ci_command` to `just qd-full-ci` (which wraps `just ci` with a
+  worktree-scoped disposable Postgres stack). So qd checks, `just check`, and CI
+  all include the same roadmap gate.
+
+## Import Mapping
+
+When migrating or rebuilding the qd cache from the committed roadmap, qd reads
+the field mapping at `roadmap/qd-import-map.json`:
 
 ```sh
-just roadmap-validate
-qd doctor --json
-qd status --json
-qd ready --json
-qd node show ITOTORI-300 --full
-qd claim ITOTORI-300 --agent orchestrator --branch spec/itotori-300
-qd check run ITOTORI-300
-qd ci run ITOTORI-300
-node scripts/spec-dag.mjs sync-issues --dry-run
+qd import --from roadmap/spec-dag.json --schema-mapping roadmap/qd-import-map.json
 ```
 
-`just check` runs the roadmap validator tests and `node scripts/spec-dag.mjs
-validate`. `.qd/config.toml` delegates qd `check_command` to `just check` and
-qd `ci_command` to `just qd-full-ci`, which wraps `just ci` with a
-worktree-scoped disposable Postgres stack for local qd runs. qd checks, local
-checks, and CI all include the same roadmap gate.
+`just qd-import` wraps this and reruns `just roadmap-validate` plus
+`qd doctor --json`.
 
-For qd export shape, `node scripts/spec-dag.mjs validate` checks the qd export
-schema version, registries, duplicate node ids, qd status/priority shape,
-placeholder spec/acceptance/audit-focus text, edge references, self-edges, and
-cycles. When a legacy native fixture is passed directly to `validateDag()`, the
-older JSON schema and semantic checks still apply.
+## itotori Registries
+
+itotori-specific values the DAG uses for scheduling and ownership:
+
+- **Projects** (`projects`): `universal`, `shared`, `itotori`, `kaifuu`,
+  `utsushi`, `suite`.
+- **Targets** (`target`): `baseline`, `alpha`, `continuous`. `target` is the
+  delivery horizon; `priority` (P0–P3) is the blocking strength. All non-complete
+  P1 alpha nodes must be ancestors of the final alpha-readiness node so the graph
+  cannot hide a required blocker off to the side.
+- **Parallel groups** (`parallelGroup`) — the itotori scheduler lanes:
+  `baseline`, `roadmap-infra`, `tooling`, `contracts`, `quality-foundation`,
+  `kaifuu-core`, `itotori-core`, `dashboard`, `policy`, `feedback`, `benchmarks`,
+  `catalog`, `qa`, `agent-runtime`, `translation-loop`, `context-agents`,
+  `engine-adapters`, `engine-research`, `utsushi-core`, `runtime-adapters`,
+  `alpha-integration`, `milestone`. Ready nodes from different lanes are good
+  parallel candidates; nodes in the same lane may parallelize only when their
+  write sets are disjoint. Add a lane only when it is a meaningful scheduler
+  lane, then update the schema and this list.
 
 ## GitHub Issue Sync
 
 `node scripts/spec-dag.mjs sync-issues` renders a deterministic GitHub issue
-sync plan from `roadmap/spec-dag.json`. The command is non-mutating by default:
-running it without flags is equivalent to `--dry-run`, and it performs no
-GitHub reads or writes. `--apply` is reserved for a future live writer and
-currently refuses safely after validation.
-
-Useful local modes:
+plan from `roadmap/spec-dag.json`. It is non-mutating by default (no GitHub
+reads/writes); `--apply` is reserved for a future live writer and currently
+refuses safely after validation.
 
 ```sh
 node scripts/spec-dag.mjs sync-issues --dry-run
 node scripts/spec-dag.mjs sync-issues --dry-run --node UNIV-002 --include-body
-node scripts/spec-dag.mjs sync-issues --dry-run --json
 node scripts/spec-dag.mjs sync-issues --dry-run --existing-issues .tmp/github-issues.json
 ```
 
-The optional `--existing-issues` file must be local JSON, either an array of
-issue objects or an object with an `issues` array. It is used only for
-deterministic matching. The matcher updates instead of creates when an existing
-issue has the hidden body marker `<!-- spec-dag-node: NODE-ID -->` or a title
-that starts with `[NODE-ID]`. Duplicate markers in that local export fail the
-dry run because a live writer would not know which issue to update.
-
-Every rendered issue body starts with:
+Every rendered body starts with a hidden marker so repeat syncs update the same
+issue instead of creating duplicates:
 
 ```md
 <!-- spec-dag-node: UNIV-002 -->
 <!-- spec-dag-sync-version: 1 -->
 ```
 
-The visible body includes the node summary, status, priority, target, projects,
-parallel group, dependencies, deliverables, acceptance criteria, verification,
-and audit focus. Completed nodes render acceptance criteria as checked boxes;
-all other statuses render unchecked boxes.
-
-The managed label taxonomy is:
-
-| Label form                | Meaning                        |
-| ------------------------- | ------------------------------ |
-| `spec-dag`                | Issue is managed from the DAG. |
-| `dag/priority:P1`         | Node priority.                 |
-| `dag/status:planned`      | Node lifecycle status.         |
-| `dag/target:alpha`        | Delivery target.               |
-| `dag/project:universal`   | Owning project or surface.     |
-| `dag/group:roadmap-infra` | Scheduler parallel group lane. |
-
-A future live writer must manage only the `spec-dag` label and labels with the
-`dag/priority:`, `dag/status:`, `dag/target:`, `dag/project:`, and `dag/group:`
-prefixes. Human labels outside that taxonomy must be preserved.
-
-## Node Shape
-
-Each node is a single PR-reviewable unit. A good node is large enough to justify
-planning, implementation, and audit, but small enough that a reviewer can reason
-about the diff without accepting a vague epic.
-
-Nodes are execution specs, not decision records. Product, strategy, and priority
-decisions are made before a node enters the DAG. A node must therefore produce a
-concrete implementation artifact such as code, schema, fixtures, generated
-reports, validators, dashboards, adapters, commands, docs tied to executable
-behavior, or tests. Avoid nodes whose main output is a feasibility report,
-recommendation, risk register, future DAG split, or choice between alternatives.
-If a report is necessary, the node should build the generator, schema,
-validation rules, and fixture inputs that make the report reproducible.
-
-Spec nodes must be implementable, PR-reviewable work. They are not decision
-makers, feasibility reports, or meta follow-up packs that only say more planning
-is needed. If follow-up work is real, split it into concrete nodes with owned
-artifacts and verification.
-
-Integration nodes must name the exact composed surfaces, artifacts, and commands
-they prove. Placeholder deliverables such as only "implementation", "fixtures",
-or "tests" are not enough, and acceptance criteria cannot stop at generic claims
-like "has concrete executable behavior" or "has schema validation." The node
-must say which behavior runs, which schemas or artifacts are produced, and which
-command or manual review proves the composed path.
-
-Baseline placeholder checks may exist only as temporary scaffolding. They should
-not be removed until a stronger integration proof exists, and their replacement
-node must name the exact artifact graph that becomes the new CI signal. For this
-suite, `ALPHA-009` is the handoff from the current DB-backed Hello World
-workflow to an alpha proof workflow that validates bridge, patch, provider,
-benchmark, runtime, dashboard/read-model, and SHARED-025 manifest linkage.
-After that handoff, the old Hello World workflow should be removed or collapsed
-into a compatibility alias for the alpha proof command so the suite has one
-required integration truth.
-
-Every node includes:
-
-- `id`: stable id such as `KAIFUU-007`.
-- `status`: `complete`, `planned`, `in_progress`, `blocked`, or `cancelled`.
-- `priority`: `P0` through `P3`.
-- `target`: `baseline`, `alpha`, or `continuous`.
-- `projects`: one or more of `universal`, `shared`, `itotori`, `kaifuu`,
-  `utsushi`, or `suite`.
-- `parallelGroup`: coarse work lane for scheduling.
-- `dependsOn`: node ids that must be complete first.
-- `deliverables`, `acceptanceCriteria`, typed `verification`, and `auditFocus`.
-
-Verification entries are objects so an orchestrator can distinguish runnable
-commands from manual review:
-
-```json
-{ "type": "command", "value": "just ci" }
-{ "type": "manual", "value": "Docs audit" }
-```
-
-Planned, in-progress, and blocked implementation nodes need at least one
-`command` verification entry unless the node is truly docs-only. Manual review
-can supplement a command, but it cannot be the only evidence for tests, fixture
-loops, or smoke behavior. Roadmap nodes also do not carry time estimates; use
-dependencies, priority, target, and runnable verification to express scheduling
-and readiness.
-
-The validator derives readiness from graph state: a `planned` node is ready when
-all dependencies are `complete`.
-
-`parallelGroup` is an enum rather than free text. Add a new group only when it
-represents a meaningful scheduler lane, then update both the schema and this doc.
-
-## Priority Semantics
-
-`target` is the delivery horizon. `priority` is the blocking strength. A node
-with `target: alpha` and `priority: P2` is alpha-adjacent work that should stay
-visible near the milestone, but it does not block alpha readiness unless a
-separate `P1` milestone node depends on it. All non-complete `P1` alpha nodes
-must be ancestors of the final alpha readiness node so the graph cannot hide a
-required blocker off to the side.
-
-`P0` means the current work cannot merge if it fails. These are core
-orchestration, data integrity, or hard alpha-readiness blocker issues.
-
-`P1` means required for alpha readiness or required by the owning spec's
-acceptance criteria. P1 audit findings block the owning spec until fixed.
-
-`P2` means important but not alpha-blocking. P2 audit findings should become new
-DAG nodes or be merged into an existing planned node.
-
-`P3` means exploratory. P3 findings are batched unless they uncover a real P0 or
-P1 risk.
-
-## Orchestration Lifecycle
-
-The short lifecycle below is a summary. Use
-[orchestration-operating-model.md](orchestration-operating-model.md) as the
-authoritative operating model for orchestrator responsibilities, delegation,
-provider policy, cost discipline, and worktree hygiene.
-
-1. Run `qd ready --json` and inspect the chosen node with
-   `qd node show NODE-ID --full`.
-2. Claim ownership with
-   `qd claim NODE-ID --agent OWNER --branch spec/<node-id-lower>`, then create
-   the matching git branch and worktree through the repo's normal worktree
-   process.
-3. Launch a spec-planning agent to turn the node into an implementation plan.
-4. Launch one or more implementation agents in separate worktrees only when
-   their write scopes are disjoint.
-5. Run local checks required by the node's `verification` list.
-6. Launch audit agents for architecture, correctness, tests, performance, and
-   UX where relevant.
-7. Record audit results in qd. P0/P1 findings block `qd gate`, `qd check run`,
-   and `qd ci run` until repaired. P2/P3 findings produce new qd nodes or
-   durable updates to existing qd work.
-8. Convert P2/P3 findings into new DAG nodes or add them to existing planned
-   nodes unless the finding is already inside the active node's deliverables,
-   acceptance criteria, and verification scope; is explicitly assigned to a
-   worker before merge; and is recorded durably in a tracked and committed
-   branch note file, audit report artifact, DAG node/update, PR
-   comment/description, or commit message.
-9. Record completion readiness with `qd complete NODE-ID --summary "..."`, then
-   run the lifecycle gates: `qd gate NODE-ID`, `qd check run NODE-ID`, and
-   `qd ci run NODE-ID`.
-10. Merge through the repo's real git/GitHub workflow only after CI is green,
-    P0/P1 findings are gone, acceptance criteria are met, and the orchestrator
-    trusts the result.
-11. After the implementation is merged into `main`, record the qd merge with
-    `qd merge NODE-ID`.
-
-The legacy `scripts/spec-dag.mjs claim`, `worktree`, `ingest-audit`, and
-`complete` commands are retained only for dry-run compatibility and native
-fixture tests. Their `--apply` paths refuse canonical qd export state and must
-not be used for live lifecycle state.
-
-## Parallelism
-
-The graph exposes ready parallel lanes derived from node dependencies:
-
-- `baseline`: already-completed scaffold and roadmap foundation nodes.
-- `roadmap-infra`: issue sync, worktree lifecycle, and audit templates.
-- `tooling`: toolchain, affected detection, CI, and cache work.
-- `contracts`: shared schemas and cross-language contract validation.
-- `quality-foundation`: fixtures, testing standards, corpora, quality taxonomy,
-  and scale harnesses.
-- `kaifuu-core`: adapter traits, round-trip harnesses, profiles, and deltas.
-- `itotori-core`: persistence, repositories, eventing, and APIs.
-- `dashboard`: web surfaces and human decision workflows.
-- `policy`: style, glossary, and asset decision policy workflows.
-- `feedback`: playtest and community feedback intake.
-- `benchmarks`: cost, quality, MTL baseline, and QA-agent evaluation.
-- `catalog`: cross-source work identity, local corpus inventory,
-  translation-completeness intelligence, edition mapping, and readiness-aware
-  opportunity ranking.
-- `qa`: deterministic QA, LLM QA, triage, and runtime-evidence QA.
-- `agent-runtime`: provider abstraction, model registry, agent/tool registry,
-  batch planning, and drafting.
-- `translation-loop`: drafting, patch export, repair, and rerun mechanics.
-- `context-agents`: focused context-producing agents.
-- `engine-adapters`: real extraction and patching adapters.
-- `engine-research`: fixture-backed format, profile, helper-boundary, and
-  parser-spike proof work that prepares engine adapters without becoming
-  notes-only research.
-- `utsushi-core`: runtime adapter traits, evidence ingestion, and artifacts.
-- `runtime-adapters`: pragmatic validation probes and future VM work.
-- `alpha-integration`: vertical slices that prove the suite is ready to start a
-  first real localization project.
-- `milestone`: alpha readiness definition and readiness hardening.
-
-Ready nodes from different groups are good candidates for parallel work. Ready
-nodes in the same group may still be parallel if their write sets are disjoint,
-but the orchestrator should be stricter.
-
-## Updating The DAG
-
-Make DAG changes through qd-native graph operations, then regenerate
-`roadmap/spec-dag.json` with `qd export --out roadmap/spec-dag.json` and run
-`just roadmap-validate`. The committed roadmap file is a generated qd export for
-review and CI; do not hand-edit it for live lifecycle state, claims,
-completion, or follow-up planning.
-
-When adding a node through qd:
-
-1. Use a stable id with the owning prefix.
-2. Keep it PR-reviewable.
-3. Make it implementable; do not use the DAG node to decide whether work should
-   exist.
-4. Do not add decision-maker, feasibility-report, or meta follow-up-pack nodes.
-5. For integration nodes, name exact composed surfaces, artifacts, commands, and
-   review evidence instead of placeholder deliverables or generic acceptance
-   wording.
-6. Add only real dependencies; avoid using dependencies as vague sequencing.
-7. Include concrete verification commands or tests.
-8. Do not add estimated hours, days, points, or sizing fields.
-9. Include audit focus areas specific enough for a reviewer to find bugs.
-10. Export the roadmap and run `just roadmap-validate`.
-
-When an audit finds issues:
-
-- P0/P1: create a repair plan, assign worker implementation in the active spec
-  branch, then re-audit.
-- P2/P3: use qd-native DAG updates to add a new planned node or amend an
-  existing planned node with the finding's acceptance criteria unless the
-  finding is already inside the active node's deliverables, acceptance
-  criteria, and verification scope and is explicitly assigned to a worker before
-  merge with a durable disposition record in an audit report artifact, DAG
-  node/update, tracked and committed branch note file, PR comment/description,
-  or commit message.
-
-Do not mark a node complete because the code was written. Mark it complete only
-after the implementation is merged into `main`, verified, and audit-clean for
-P0/P1.
+The matcher updates instead of creates when an existing issue has that marker or
+a title starting with `[NODE-ID]`. A future live writer must manage only the
+`spec-dag` label and labels with the `dag/priority:`, `dag/status:`,
+`dag/target:`, `dag/project:`, and `dag/group:` prefixes; human labels outside
+that taxonomy must be preserved.

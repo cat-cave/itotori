@@ -44,7 +44,8 @@ test("local qd CI uses the DB-owning full-CI wrapper", () => {
 
   const qdImport = justfile.match(/^qd-import:\n(?<body>(?:    .+\n)+)/mu);
   assert.notEqual(qdImport, null);
-  assert.match(qdImport.groups.body, /    \.\/bin\/qd import --from roadmap\/spec-dag\.json\n/u);
+  assert.match(qdImport.groups.body, /    qd import --from roadmap\/spec-dag\.json\n/u);
+  assert.doesNotMatch(qdImport.groups.body, /\.\/bin\/qd/u);
   assert.doesNotMatch(qdImport.groups.body, /\.qd\/qd\.db/u);
   assert.doesNotMatch(qdImport.groups.body, /qd config set/u);
 

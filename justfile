@@ -16,8 +16,6 @@ check:
     pnpm exec vp check
     node --test scripts/itotori-db-compose-config.test.mjs
     node --test scripts/qd-full-ci.test.mjs
-    node scripts/qd-wrapper.test.mjs
-    node scripts/qd-lifecycle.test.mjs
     node --test scripts/affected.test.mjs
     node --test scripts/validate-tracked-artifact-hygiene.test.mjs
     node scripts/validate-tracked-artifact-hygiene.mjs --mode check
@@ -274,11 +272,10 @@ upgrade:
     node scripts/verify-toolchain-policy.mjs
 
 # Rebuild the local qd sqlite cache from the committed qd export.
-# The repo qd wrapper stages and validates the replacement before swapping it in.
 qd-import:
-    ./bin/qd import --from roadmap/spec-dag.json
+    qd import --from roadmap/spec-dag.json
     just roadmap-validate
-    ./bin/qd doctor --json
+    qd doctor --json
 
 qd-export:
     qd export --out roadmap/spec-dag.json

@@ -45,7 +45,7 @@ crates/
 docs/
   architecture.md
   hello-world.md
-  roadmap-dag-prep.md
+  spec-dag.md
 ```
 
 Vite+ and Vite Task are the high-level TypeScript/web workspace surface. Cargo remains the Rust build and test authority. The root `justfile` orchestrates both.

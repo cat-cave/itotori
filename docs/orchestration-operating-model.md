@@ -1,257 +1,66 @@
 # Orchestration Operating Model
 
-This document is the operating contract for central orchestrator agents working
-from qd and the committed `roadmap/spec-dag.json` qd export. It explains what
-the orchestrator owns, what it must delegate, and how audit, CI,
-model-provider, cost, and worktree decisions should be handled without relying
-on chat history.
+We use **qdcli** (`https://github.com/cat-cave/qdcli`, executable `qd`) for all
+orchestration. qd is the live orchestration ledger and quality gate; the
+committed source of truth is `roadmap/spec-dag.json` (qd export shape, must pass
+`just roadmap-validate`).
 
-## Milestone Framework (2026-06-24)
+**For how to use qd, read qdcli's own docs — do not duplicate qd mechanics
+here:**
 
-This project has **no external timeline**. Eng-month/week/year cost framing
-is off-shape and must not appear in orchestrator outputs (audit reports,
-acceptance criteria, summary docs). The `project_no_timeline` standing rule
-is authoritative here (user auto-memory:
-`project_no_timeline.md`).
+- `docs/llms.md` — orchestrator bootstrap and the full delegate → audit → CI →
+  merge loop.
+- `docs/agents.md` — the 16-step agent protocol.
 
-**The four-tier framework** (authoritative tier definitions and per-tier
-acceptance criteria live in `docs/project-readiness.md`; this section is
-the orchestrator-facing operating summary):
+Generic qd mechanics (the orchestrator loop, `qd claim`/`audit`/`check`/`ci`/
+`merge`, assignments, waves, worktree/branch lifecycle, P0–P3 severity policy,
+gate and policy evaluation) live in those docs and are authoritative. This
+document keeps ONLY the itotori-specific operating rules that qd does not
+encode.
 
-1. **real-game-testing-ready** — building blocks present, parsing layer
-   validated against real bytes, workflow runs end-to-end with recorded
-   providers and fixture data, Rust port crate scaffolded, dashboard
-   reachable. Safe to attempt real runs in find-bugs mode. Output here is
-   throwaway.
-2. **alpha** — Oshioki Sweetie HD can be localized end-to-end on this Linux
-   machine: real-bytes extraction, live LLM call via OpenRouter with an
-   explicit (model, provider) pair, the FULL agentic loop fires, real
-   patchback, `utsushi-reallive` Linux replay, verifiable patch evidence.
-   Single-game by definition.
-3. **beta** — ≥2 games per intended engine localized e2e, including
-   encrypted variants. Multi-game-validation rule fully applies.
-4. **full release** — most games in most common engines, by non-technical
-   users, with rare bugs.
+## Milestone Framework
 
-**Rename note (2026-06-24).** This section was previously titled "Alpha
-Milestone Definition (2026-06-24)" and described "alpha = usable for
-dogfood". That framing has been renamed to **real-game-testing-ready**;
-alpha now means the stricter end-to-end Sweetie HD milestone above. The
-old "alpha = dogfood" wording is obsolete and is replaced cleanly here and
-in `docs/project-readiness.md`. Historical record of the redefinition that
-led to the rename: `docs/audits/alpha-scope-honesty.md` §D. Cross-ref the
-project memory at
-`~/.claude/projects/-home-trevor-projects-itotori/memory/` for the
-standing rules that govern every tier (`feedback_model_provider_pair`,
-`feedback_no_legacy_compat`, `feedback_multi_game_validation`,
-`feedback_investigation_not_in_dag`, `project_no_timeline`).
+Authoritative tier definitions and per-tier acceptance criteria live in
+[`docs/project-readiness.md`](project-readiness.md). This project has **no
+external timeline**; eng-month/week/year cost framing is off-shape and must not
+appear in orchestrator outputs.
 
-The native RealLive runtime port (`UTSUSHI-200..221`, 22 sub-nodes,
-`docs/research/reallive-engine-dag-proposal.md`) is the centerpiece of the
-alpha tier, not continuous. `UTSUSHI-200` (the scaffolding node) is
-real-game-testing-ready; the rest land at alpha tier on no external
-schedule. The DAG re-tier proposal at
-`docs/proposals/dag-retier-2026-06-24.md` translates the four-tier
-framework into per-node `target` retagging.
-
-## Source Of Truth
-
-qd is the live orchestration ledger. The committed source/export is
-`roadmap/spec-dag.json` in qd export shape and must pass `just
-roadmap-validate`. The orchestrator should derive ready work from qd and the
-validated export instead of private notes, chat context, local TODO files, or
-memory.
-
-A spec is ready when qd reports it as `ready` and all dependency edges are
-satisfied. The validator normalizes qd `ready` to the legacy internal
-`planned` state and qd `done` to `complete` only for compatibility with older
-read-only helper code.
-A spec can be marked `complete` only after its implementation has been merged
-into `main` and:
-
-- required local verification and CI are green;
-- audits have no open P0 or P1 findings;
-- acceptance criteria are satisfied by the merged implementation;
-- the orchestrator trusts the merged result enough to record completion.
-
-Do not mark a node `complete` because code exists, a worker says it is done, or
-only a subset of verification passed. Completion is a product of merge evidence,
-clear verification, and orchestrator trust, not activity.
-
-## Central Orchestrator Responsibilities
-
-The central orchestrator stays high-level. It owns the delivery loop:
-
-1. Maintain qd and the committed qd export, treating them as the canonical
-   backlog.
-2. Select ready specs according to priority, target, dependencies, and safe
-   parallelism.
-3. Create, name, track, and prune worktrees for active branches.
-4. Delegate planning to a planning worker or subagent.
-5. Delegate implementation to one or more implementation workers with explicit
-   scopes.
-6. Delegate audit to architecture, correctness, tests, performance, UX, or other
-   focused audit workers where relevant.
-7. Run or verify required local checks and CI.
-8. Decide whether P0/P1 findings are cleared and whether P2/P3 findings belong
-   in the active branch or the DAG.
-9. Merge only when the gate is satisfied.
-10. Update the DAG after merge and send milestone notifications for meaningful
-    lifecycle events.
-
-## Milestone Notifications
-
-Send milestone notifications to ntfy topic `trevor-auto-ai-alerts`. Use the
-literal topic URL; do not read `.env` or require secrets for ntfy:
-
-```sh
-curl -fsS -d "message" https://ntfy.sh/trevor-auto-ai-alerts
-```
-
-Notifications should be sparse and useful:
-
-- node claimed;
-- plan accepted;
-- implementation sent to audit;
-- merge blocked by P0/P1;
-- node merged;
-- node marked complete.
-
-Avoid notifying for routine polling or noisy intermediate logs. If network or
-ntfy delivery fails, record the missed notification and reason in a durable
-record: a tracked and committed branch note file, audit report artifact, DAG
-node/update, PR comment/description, or commit message. Then continue the
-orchestration flow. A notification failure does not justify reading `.env`.
-
-## Things The Orchestrator Must Not Do
-
-The central orchestrator must not personally write feature code, fix bugs, or
-implement specs. Its job is to route work, inspect evidence, and maintain the
-state machine.
-
-When an implementation is missing or broken, the orchestrator should create a
-clear assignment for a worker instead of patching it directly. This keeps the
-system honest: workers produce plans and diffs, audit workers evaluate them, and
-the orchestrator decides based on evidence.
-
-Small documentation, DAG bookkeeping, or roadmap metadata edits are acceptable
-when they are part of orchestrator state management. Feature code, bug fixes,
-test implementation, and spec implementation belong to workers.
-
-## Spec Lifecycle
-
-1. Read ready nodes with `qd ready --json`.
-2. Pick one node, considering P0/P1 priority, alpha readiness pressure,
-   dependency unlocks, and worktree capacity.
-3. Claim it with `qd claim <NODE-ID> --agent <OWNER> --branch <BRANCH>`, then
-   create a branch and worktree scoped to that node.
-4. Export or update qd state as required by the branch workflow, then run
-   `just roadmap-validate` before treating the state change as valid.
-5. Ask a planning worker for an implementation plan tied to the node's
-   deliverables, acceptance criteria, verification, and audit focus.
-6. Review the plan for scope, missing dependencies, test strategy, and unsafe
-   assumptions.
-7. Assign implementation to worker agents. Give each worker a narrow scope,
-   expected commands, and artifact expectations.
-8. Run the node's verification commands, `qd check run <NODE-ID>`, or the
-   stronger `qd ci run <NODE-ID>` gate required by the node. qd delegates these
-   to `just check` and the local DB-owning `just qd-full-ci` wrapper, so roadmap
-   validation and the full `just ci` gate are included.
-9. Assign audit workers. Include the diff, plan, test evidence, known risks,
-   and the node's `auditFocus`.
-10. Resolve findings according to severity.
-11. Merge into `main` only when verification is green, P0/P1 audit is clean,
-    acceptance criteria are met, and the orchestrator trusts the result.
-12. After merge, mark the DAG node `complete` when the completion criteria are
-    met, then prune merged or abandoned worktrees.
-
-## Audit Severity Loop
-
-P0 and P1 findings block merge. The orchestrator does not fix them directly.
-The required loop is:
-
-1. Convert each P0/P1 finding into a concrete repair plan.
-2. Assign the repair to an implementation worker.
-3. Run the relevant verification after the worker returns changes.
-4. Re-run the audit worker or an equivalent focused audit.
-5. Repeat until no P0/P1 findings remain or the node is blocked with an explicit
-   reason.
-
-P2 and P3 findings do not normally block merge. Insert them into the DAG as new
-planned nodes or attach them to an existing planned node with acceptance
-criteria. A P2/P3 finding may be handled before merge only when it is already
-inside the active node's deliverables, acceptance criteria, and verification
-scope, and is explicitly assigned to a worker as part of the active branch.
-When a worker fixes a P2/P3 finding before merge, record the disposition
-durably in at least one of: a tracked and committed branch note file, audit
-report artifact, DAG node/update, PR comment/description, or commit message.
-
-Do not let audit findings live only in chat. Findings either block the current
-node, become worker assignments with durable disposition records, or become DAG
-follow-up work.
-
-## Merge Gate
-
-The orchestrator should merge only when all of these are true:
-
-- required local verification and CI are green;
-- no P0/P1 audit findings remain;
-- P2/P3 findings are either fixed before merge with a durable disposition
-  record or represented in the DAG;
-- acceptance criteria and deliverables match the merged diff;
-- generated artifacts, credentials, and large local outputs are not committed;
-- the orchestrator trusts the result after reviewing worker output and audit
-  evidence.
-
-If the evidence is inconsistent, stale, or too weak, treat the node as not ready
-to merge even if commands pass.
+The one itotori fact the orchestrator must hold: **alpha = Oshioki Sweetie HD
+localized end-to-end on this Linux machine** — real-bytes extraction, a live LLM
+call via OpenRouter with an explicit (model, provider) pair, the FULL agentic
+loop, real patchback, `utsushi-reallive` Linux replay, and verifiable patch
+evidence. Single-game by definition; beta requires ≥2 games per engine.
 
 ## Provider And Model Policy
 
 The detailed provider boundary, secret handling, OpenRouter routing, local
 endpoint, prompt logging, structured-output fallback, and recorded-fixture rules
-are defined in [ADR 0002](adrs/0002-provider-routing-and-recording.md). This
-section is the operating summary for orchestrated work.
+are defined in [ADR 0002](adrs/0002-provider-routing-and-recording.md).
+itotori-specific rules:
 
-Live agent experiments may use scoped provider keys already loaded into the
-process environment by the user or invoking shell, or explicitly loaded by an
-approved local/live launcher from a requested local-only env or secret file.
-Keys must never be committed, printed, pasted into logs, published, artifacted,
-or exposed in audit output. Diagnostics may name required variables, but must
-not dump values or surrounding environment contents. If a needed secret is
-missing, ask the owner to export it or run an approved env-check/load command
-for the scoped local file.
-
-Prefer cheap, light, modern models for Itotori agent experiments before using
-frontier models. Good candidates include:
-
-- `inclusionai/ring-2.6-1t`;
-- `ibm-granite/granite-4.1-8b`;
-- `deepseek/deepseek-v4-flash`;
-- `deepseek/deepseek-v4-flash/pro`;
-- `inclusionai/ling-2.6-flash`;
-- `google/gemma-4-26b-a4b-it`;
-- `google/gemma-4-31b-it`;
-- `nvidia/nemotron-3-super-120b-a12b`;
-- similar low-cost current models with documented capability and pricing.
-
-The framework matters more than raw model status. Routing, retries, prompting,
-structured output, deterministic tools, context construction, and evidence loops
-should be improved before assuming a larger model is required. If cheap models
-look unusably weak, first suspect provider routing, prompt shape, structured
-output strategy, retry policy, missing tools, or orchestration design before
-blaming model size.
-
-CI must stay offline and fake-provider by default. Live provider calls must be
-opt-in and recorded as non-committed artifacts.
+- Every model invocation declares an explicit **(model id, provider id) pair** —
+  OpenRouter is a marketplace and providers are not equivalent.
+- Privacy is gated by **account-wide ZDR** on the OpenRouter account; leverage
+  OR's routing/policy infra rather than an itotori-side capabilities registry.
+- Prefer **cheap, light, modern models** before frontier models. Good
+  candidates: `inclusionai/ring-2.6-1t`, `ibm-granite/granite-4.1-8b`,
+  `deepseek/deepseek-v4-flash`, `deepseek/deepseek-v4-flash/pro`,
+  `inclusionai/ling-2.6-flash`, `google/gemma-4-26b-a4b-it`,
+  `google/gemma-4-31b-it`, `nvidia/nemotron-3-super-120b-a12b`, or similar
+  low-cost current models with documented capability and pricing. If cheap
+  models look weak, suspect provider routing, prompt shape, structured-output
+  strategy, retry policy, missing tools, or orchestration design before model
+  size.
+- CI stays offline and fake-provider by default. Live provider calls are opt-in
+  and recorded as non-committed artifacts.
 
 ## Cost Discipline
 
-Treat live model credit as scarce. For every live run, record provider, model,
-prompt preset, timestamp, token usage when available, estimated or billed cost,
-router settings, OpenRouter account/workspace logging and privacy states when
-OpenRouter is used, retry count, and the spec or experiment id that justified
-the run.
+Treat live model credit as scarce. **Cost is read from real calls, never
+approximated.** For every live run, record provider, model, prompt preset,
+timestamp, token usage when available, billed cost, router settings, OpenRouter
+account/workspace logging and privacy states, retry count, and the spec or
+experiment id that justified the run.
 
 Use recorded fixtures, fake providers, and deterministic tests for normal CI.
 Do not require live keys for `just check`, `just ci`, unit tests, or routine
@@ -262,48 +71,22 @@ Provider fallback decisions must be auditable. If a run silently switches model
 or provider, the run metadata is not trustworthy enough for benchmark or quality
 claims.
 
-## Worktree Hygiene
+## Milestone Notifications
 
-Worktrees are temporary execution environments, not archives. The orchestrator
-should keep disk usage reasonable:
+Send milestone notifications to ntfy topic `trevor-auto-ai-alerts`. Use the
+literal topic URL; do not read `.env` or require secrets for ntfy:
 
-- create one worktree per active branch or clearly disjoint worker scope;
-- name worktrees so the node id and owner are obvious;
-- prune worktrees after merge, cancellation, or abandonment;
-- remove large generated artifacts after their useful evidence has been
-  summarized or moved to an ignored location;
-- avoid keeping duplicate dependency caches or build outputs unless they are
-  intentionally shared by the toolchain;
-- inspect active worktrees before deleting anything that may contain unmerged
-  worker changes.
+```sh
+curl -fsS -d "message" https://ntfy.sh/trevor-auto-ai-alerts
+```
 
-When disk pressure appears, prune merged and abandoned worktrees before
-discarding useful evidence. Never treat untracked files as disposable until the
-owning worker or branch state has been checked.
-
-The detailed branch naming, claim, repair, merge, blocked-state, and cleanup
-checklists live in [worktree-lifecycle.md](worktree-lifecycle.md).
-
-## DAG Follow-Up Policy
-
-Use DAG nodes for real follow-up work. A good follow-up node has a stable id,
-clear acceptance criteria, verification, dependencies, and audit focus. Avoid
-creating vague nodes such as "clean up later" or "improve quality" without a
-testable outcome.
-
-Add a follow-up node when:
-
-- a P2/P3 audit finding is real and is outside the active node's deliverables,
-  acceptance criteria, or verification scope;
-- an experiment reveals provider, prompt, cost, or framework work that should be
-  reproducible;
-- worktree, CI, audit, or merge process gaps need tooling support;
-- a spec uncovers missing dependencies or sequencing that affects future
-  agents.
-
-Do not add a new DAG node when an existing planned node already covers the work.
-In that case, update the planned node only if the finding changes acceptance
-criteria or verification materially.
+Notifications should be sparse and useful: node claimed; plan accepted;
+implementation sent to audit; merge blocked by P0/P1; node merged; node marked
+complete. Avoid notifying for routine polling or noisy intermediate logs. If
+delivery fails, record the missed notification and reason in a durable record (a
+tracked branch note, audit report artifact, DAG node/update, PR comment, or
+commit message), then continue. A notification failure does not justify reading
+`.env`.
 
 ## DAG Anti-Patterns The Orchestrator And Audit Workers Must Reject
 

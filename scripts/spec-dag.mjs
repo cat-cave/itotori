@@ -63,7 +63,9 @@ const requiredNodeFields = [
 
 const optionalNodeFields = ["statusReason", "issue", "branch", "worktree", "owner", "blockedBy"];
 
-const qdExportSchemaVersion = 1;
+// qd 0.1.16 emits schema_version 2; earlier exports and test fixtures use 1.
+// Both share the same node/edge/registry/run shape this validator checks.
+const qdExportSchemaVersions = new Set([1, 2]);
 const legacyLifecycleApplyCommands = new Set(["claim", "worktree", "ingest-audit", "complete"]);
 const qdExportLifecycleRefusal =
   "legacy spec-dag lifecycle --apply is disabled for qd export state; use qd claim/complete/gate/check/ci/merge and re-export roadmap/spec-dag.json";
@@ -422,8 +424,8 @@ function isQdExportDag(value) {
 
 function validateQdExportDag(value) {
   const errors = [];
-  if (value.schema_version !== qdExportSchemaVersion) {
-    errors.push(`schema_version must be ${qdExportSchemaVersion}`);
+  if (!qdExportSchemaVersions.has(value.schema_version)) {
+    errors.push(`schema_version must be one of ${[...qdExportSchemaVersions].join(", ")}`);
   }
   if (!Array.isArray(value.nodes)) {
     return { errors: [...errors, "nodes must be an array"] };
