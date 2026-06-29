@@ -36189,7 +36189,7 @@
       "title": "ALPHA-006a: source the Sweetie HD alpha corpus through kaifuu-vault-source",
       "kind": "feature",
       "milestone": "alpha",
-      "status": "claimed",
+      "status": "blocked",
       "priority": "P1",
       "estimate_points": 1,
       "risk": "medium",
@@ -36200,16 +36200,16 @@
       "validation": null,
       "context": null,
       "created_at": "2026-06-29T16:04:04.008Z",
-      "updated_at": "2026-06-29T16:09:11.316Z",
+      "updated_at": "2026-06-29T16:32:47.942Z",
       "claimed_at": "2026-06-29T16:09:11.316Z",
       "done_at": null,
       "group_name": "engine-adapters",
       "status_reason": null,
       "check_command": null,
       "ci_command": null,
-      "blocked_by": null,
-      "blocked_reason": null,
-      "blocked_owner": null,
+      "blocked_by": "external",
+      "blocked_reason": "Wiring complete + verified (kaifuu-cli main.rs:42 first non-test consumer; read-only; ITOTORI_REAL_GAME_ROOT fallback deleted; commit e908f79 on branch). Headline sha-equality proof BLOCKED by two read-only vault-curation-owned blockers: (1) catalog schema drift — adapter pins v1, live /archive/vault/catalog.db is v3 -> handled by precursor kaifuu-vault-source-schema-v3-support (internal edge); (2) EXTERNAL: Oshioki Sweetie HD is not in the vault by-sha content store — it exists only as a by-id repack (content sha 3f337d5b), and its catalog artifacts.sha256 (5fafb7f0) is the original_sha256 of a download that no longer exists in by-sha, so materialize_by_sha fails ArtifactMissing. The sibling vault-curation project must promote Sweetie HD into by-sha under a catalog sha that matches the by-sha file. Direct-path reference Seen.txt sha256=903f538b (test asserts equality, passes once both clear).",
+      "blocked_owner": "vault-curation",
       "projects": ["kaifuu", "itotori"],
       "verification": [
         {
@@ -36568,6 +36568,41 @@
         "Bytes copied into repo (copyright)",
         "Corpus not RealLive engine"
       ]
+    },
+    {
+      "id": "kaifuu-vault-source-schema-v3-support",
+      "title": "Bump kaifuu-vault-source catalog schema support v1->v3 (adapter cannot open live vault)",
+      "kind": "feature",
+      "milestone": "alpha",
+      "status": "ready",
+      "priority": "P1",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "WHAT: Bump kaifuu-vault-source SUPPORTED_SCHEMA_VERSION from 1 to 3 (or accept a version range) after verifying the v3 catalog.db schema is query-compatible with the adapter's catalog queries.\n\nWHY: ALPHA-006a re-measured that the adapter pins SUPPORTED_SCHEMA_VERSION=1 with exact-match, but the live read-only /archive/vault/catalog.db is schema_version=3. VaultSource::open fails immediately with CatalogSchemaUnsupported{observed:3,supported:1} — the adapter cannot open the CURRENT vault at all, blocking every vault-sourced path (006a sha-equality proof, FIX-4 2nd corpus, 006d e2e).\n\nSCOPE: verify each column/table the adapter reads (works, releases, artifacts, by-sha/by-id stores) exists and is query-compatible in v3 vs v1; bump the supported version (exact 3, or a documented inclusive range) only after that verification. Do NOT widen blindly. This is necessary-but-not-sufficient for 006a (Sweetie HD by-sha promotion is a separate EXTERNAL vault-curation dependency).\n\nREAD-ONLY: /archive/vault opened strictly read-only; verification reads only.\n",
+      "acceptance": "- kaifuu-vault-source opens the live v3 /archive/vault/catalog.db without CatalogSchemaUnsupported (proven by an env-gated test that calls VaultSource::open against ITOTORI_VAULT_ROOT=/archive/vault and asserts Ok).\n- Every adapter catalog query verified column-compatible with v3 (documented: which tables/columns, v1 vs v3 diff).\n- SUPPORTED_SCHEMA_VERSION reflects the verified version(s); no blind widening.\n- cargo build + test -p kaifuu-vault-source pass; clippy/fmt clean.\n",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-29T16:32:26.006Z",
+      "updated_at": "2026-06-29T16:32:26.092Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["kaifuu"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "direnv exec . cargo test -p kaifuu-vault-source"
+        }
+      ],
+      "audit_focus": []
     }
   ],
   "edges": [
@@ -46956,6 +46991,12 @@
       "to_node": "ALPHA-006",
       "type": "requires",
       "created_at": "2026-06-29T16:07:36.303Z"
+    },
+    {
+      "from_node": "kaifuu-vault-source-schema-v3-support",
+      "to_node": "alpha-006a-vault-sourcing",
+      "type": "requires",
+      "created_at": "2026-06-29T16:32:26.280Z"
     }
   ],
   "findings": [
