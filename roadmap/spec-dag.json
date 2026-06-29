@@ -34070,6 +34070,888 @@
       "projects": [],
       "verification": [],
       "audit_focus": []
+    },
+    {
+      "id": "fix-cost-submicro-precision-ledger-reject",
+      "title": "Cost stored as integer micros cannot represent sub-micro OpenRouter costs (ledger CHECK rejects real cheap-model costs)",
+      "kind": "feature",
+      "milestone": "alpha",
+      "status": "claimed",
+      "priority": "P1",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": "impl-fix-cost-submicro-precision-ledger-reject",
+      "branch": "qd/fix-cost-submicro-precision-ledger-reject",
+      "spec": "apps/itotori/src/providers/cost.ts:46 — decimalUsdStringToMicros() rounds usage.cost to integer micros (1e-6 resolution). For the repo's own live evidence value 0.00000602 (docs/openrouter-integration-evidence/2026-06-25.json) it yields 6 micros = 0.000006 USD. recorded.ts:678 asserts |cost.amountMicrosUsd/1_000_000 - usageResponseJson.cost| < 1e-9 and migration 0041 enforces abs(cost_amount - (usage->>'cost')::numeric) < 1e-9. |0.000006 - 0.00000602| = 2e-8 = 20x the tolerance, so the bundle validator throws and/or the DB CHECK rejects the row. ProviderCost retains NO full-precision representation (only micros), so the loss is irreversible. Draft fixtures pass only because they use micro-exact round numbers (0.0125 = 12500 micros) — an author-fixture-masks-the-bug pattern; real cheap-model costs (DEV_PAIR deepseek-v4-flash) are sub-micro and will fail.\n\nThis is a defect in the merged implementation of ITOTORI-232 on the alpha live-LLM path (Oshioki Sweetie HD e2e with live OpenRouter). The types.ts:417-419 comment claims the micros↔cost equality \"holds by construction\" — it does not, because amountMicrosUsd has already rounded. Directly violates the project's \"cost is read from the real call, never approximated\" rule.",
+      "acceptance": "- The originating OpenRouter usage.cost is stored at full decimal precision (e.g. cost_amount written directly from the usage.cost string, or a nano/pico-USD integer field), so no sub-micro precision is lost between the real call and the ledger/recorded bundle.\n- ProviderCost (or the persisted row) carries enough precision that |stored - usage.cost| < 1e-9 for arbitrary real OpenRouter cost values, satisfying recorded.ts:678 and migration 0041's CHECK.\n- A test feeds usageResponseJson.cost = 0.00000602 through the recorder and asserts the row inserts and the DB CHECK passes (no RecordedCostMismatchError). Observable: the recorded-cost-replay test case with cost 0.00000602 succeeds instead of throwing.\n- No hardcoded/approximated cost is introduced; the no-hardcoded-cost guard stays green.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-29T05:06:51.283Z",
+      "updated_at": "2026-06-29T05:06:52.221Z",
+      "claimed_at": "2026-06-29T05:06:52.221Z",
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["itotori"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/app test -- recorded"
+        },
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/db test -- model-ledger"
+        }
+      ],
+      "audit_focus": [
+        "Sub-micro cost precision loss between real OpenRouter call and the ledger/recorded bundle"
+      ]
+    },
+    {
+      "id": "fix-hardcoded-cost-guard-misses-primary-shapes",
+      "title": "no-hardcoded-cost CI guard misses the repo's primary cost shapes (amountMicrosUsd, object-form, bare cost)",
+      "kind": "feature",
+      "milestone": null,
+      "status": "claimed",
+      "priority": "P1",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": "impl-fix-hardcoded-cost-guard-misses-primary-shapes",
+      "branch": "qd/fix-hardcoded-cost-guard-misses-primary-shapes",
+      "spec": "scripts/audit-no-hardcoded-cost.mjs:83 — the only hardcoded-cost pattern is /\\bcost[_]?[Uu]sd\\b\\s*:\\s*\\d/, which fires only on costUsd:/cost_usd: immediately followed by a digit. It does NOT catch `amountMicrosUsd: 12_500` (the canonical in-repo cost field, explicitly excluded by the lines 79-84 comment), `costUsd: { unit: \"usd\", amount: \"0.01250000\" }` (object form), or a bare `cost: 0.0125` inside a usageResponseJson literal. All three live shapes exist in tracked, scanned src (e.g. draft-attempt-fixtures.ts). The script also lists `.rs` in shouldScan but feeds it zero rust files (scope is `git ls-files apps packages scripts fixtures`).\n\nThe standing rule \"no hardcoded model cost anywhere, ever\" is enforced by this script in `just ci`. The gap means the rule is unenforced for the repo's own primary cost representation, giving false CI assurance — there is at least one live violation (fabricated fixture costs) that slips through it.",
+      "acceptance": "- FORBIDDEN_PATTERNS is extended to flag numeric or numeric-string literals assigned to amountMicrosUsd:, cost:, and amount: (object-form costUsd) outside the documented allow-list, in addition to the existing costUsd:/cost_usd: pattern.\n- A regression fixture proves each of the three previously-missed shapes is caught. Observable: `node scripts/audit-no-hardcoded-cost.mjs` exits 1 on a file containing `amountMicrosUsd: 12_500` (and on the object-form and bare `cost:` shapes).\n- The `.rs` scope inconsistency is resolved (either scan rust files or drop `.rs` from shouldScan), with the chosen behavior documented.\n- Any live violation the strengthened guard now surfaces in tracked src is either fixed or explicitly allow-listed with a rationale, so `just ci` passes.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-29T05:06:51.464Z",
+      "updated_at": "2026-06-29T05:06:52.540Z",
+      "claimed_at": "2026-06-29T05:06:52.540Z",
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["itotori"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "node scripts/audit-no-hardcoded-cost.mjs"
+        }
+      ],
+      "audit_focus": ["Cost-guard regex coverage gaps giving false CI assurance"]
+    },
+    {
+      "id": "reallive-patchback-contract-tests-cfg-any-disabled",
+      "title": "32 RealLive patch-back/inventory/smoke contract tests are compiled out via #![cfg(any())]",
+      "kind": "audit-fix",
+      "milestone": "real-game-testing-ready",
+      "status": "ready",
+      "priority": "P1",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "crates/kaifuu-reallive/tests/patchback.rs:23, smoke.rs:24, inventory.rs:21 each begin with `#![cfg(any())]` (always-false), compiling out 11+10+11 = 32 tests. patchback.rs is the only dedicated coverage of the exported apply_patches/SlotEdit error contracts (OffsetOverflow, UnsupportedLengthPolicy, UnknownSlotId, StaleSourceHash, ShiftJisEncodeFailure, ProtectedSpanLost). The module docstrings still claim the suites are active, and the replacement *_real_bytes.rs tests are all #[ignore], so on a stock `just ci` these production error contracts have effectively zero coverage. apply_patches is production surface (extract->patch->verify is the Kaifuu core promise); a regression in PatchBackErrorCode mapping ships green.",
+      "acceptance": "Add default-running unit tests (in crates/kaifuu-reallive/src/patchback/mod.rs) asserting each PatchBackErrorCode variant is returned for its trigger, OR migrate the byte builders and remove the #![cfg(any())] attribute. Observable: `cargo test -p kaifuu-reallive patchback` reports >0 tests run (not '0 filtered out'), and `rg -n 'cfg\\(any\\(\\)\\)' crates/kaifuu-reallive/tests` returns no hits.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-29T05:14:14.877Z",
+      "updated_at": "2026-06-29T05:14:14.877Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["kaifuu"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-reallive patchback 2>&1 | grep -E 'running [1-9][0-9]* test'"
+        },
+        {
+          "type": "command",
+          "value": "rg -n 'cfg\\(any\\(\\)\\)' crates/kaifuu-reallive/tests"
+        }
+      ],
+      "audit_focus": [
+        "Documented PatchBackErrorCode error contracts have zero default-running coverage; a mapping regression ships green"
+      ]
+    },
+    {
+      "id": "utsushi-substrate-slices-no-production-consumer",
+      "title": "Utsushi substrate slices (embed ABI, conformance, reference recorder, state-diff, runner) have zero non-test consumers",
+      "kind": "audit-fix",
+      "milestone": "continuous",
+      "status": "ready",
+      "priority": "P1",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "NEEDS DECOMPOSITION: this is a slice-by-slice wiring/defer decision, not a single bounded fix; the orchestrator should split it per slice before claiming. Full-repo grep confirms these substrate types are referenced only in utsushi-core/{src,tests} and */tests/, with no engine adapter or product binary driving them: EmbedState/EmbedTrace/embed_state/embed_capabilities (UTSUSHI-024); ConformanceManifest/ConformanceResult/TraceConformanceCheck/BranchConformanceCheck/FrameCaptureConformanceCheck/SnapshotConformanceCheck/RecordingConformanceCheck (UTSUSHI-025..030); ReferenceRecorder/ReferenceTrace/InMemoryReferenceRecorder; StateDiff/StateChange/diff_snapshots; RunnerCancellation/RunnerObservation/RunnerOutcome. These are the substrate's validation product surface yet validate nothing in any shipping flow — the 'substrate types with no production consumer' anti-pattern in docs/orchestration-operating-model.md §DAG Anti-Patterns. Note: the EnginePort/ConformanceManifest consumer slice is partially tracked by open nodes UTSUSHI-154 (fixture port adoption) and UTSUSHI-160 (first production engine port consumes ConformanceManifest); this node covers the remaining unowned slices (embed ABI, reference recorder, state-diff, runner).",
+      "acceptance": "Per slice, either land a non-test consumer or explicitly mark the slice deferred in docs/utsushi-substrate-facade.md with the import-line citation. Observable: for any slice claimed 'consumed', `rg -lw embed_state crates/utsushi-reallive/src crates/utsushi-siglus/src crates/utsushi-cli/src crates/utsushi-fixture/src` (substitute the slice symbol) returns a non-test src file; for any slice claimed 'deferred', docs/utsushi-substrate-facade.md names it.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-29T05:14:14.877Z",
+      "updated_at": "2026-06-29T05:14:14.877Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["utsushi"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "rg -lw 'embed_state|ConformanceManifest|ReferenceRecorder|diff_snapshots|RunnerObservation' crates/utsushi-reallive/src crates/utsushi-siglus/src crates/utsushi-cli/src crates/utsushi-fixture/src"
+        },
+        {
+          "type": "manual",
+          "value": "Re-audit each enumerated substrate slice: confirm it has either a non-test consumer or a deferred-marker in docs/utsushi-substrate-facade.md"
+        }
+      ],
+      "audit_focus": [
+        "Substrate validation surface that ships with no production consumer (scaffolding without load); audits may mistake it for shipping validation"
+      ]
+    },
+    {
+      "id": "utsushi-cli-bypasses-engineport-runner-substrate",
+      "title": "Utsushi CLI (product entry point) bypasses the EnginePort/Runner/Conformance substrate entirely",
+      "kind": "audit-fix",
+      "milestone": "real-game-testing-ready",
+      "status": "ready",
+      "priority": "P1",
+      "estimate_points": 1,
+      "risk": "high",
+      "owner": null,
+      "branch": null,
+      "spec": "NEEDS DECOMPOSITION: reconciling two parallel runtime abstractions is architectural; split into (a) decide canonical path and (b) route or delete the other before claiming. crates/utsushi-cli/src/main.rs:7 imports RuntimeAdapterRegistry/RuntimeOperation/RuntimeRequest (a separate core abstraction) and replay_validate.rs:21 drives utsushi_reallive::{replay_scene, validate_log_contains} directly. No EnginePort, Runner, or ConformanceManifest reference exists anywhere in utsushi-cli/src. There are two parallel runtime abstractions in utsushi-core — the RuntimeAdapterRegistry path (what ships) and the EnginePort/Runner/conformance substrate (UTSUSHI-020..120, implemented by reallive/siglus but never executed). The substrate's conformance checks validate nothing in the actual replay-validate flow; the implemented-but-unrun path is dead weight an auditor may mistake for shipping validation.",
+      "acceptance": "Route one CLI subcommand through Runner + a *ConformanceCheck producing a ConformanceResult-schema artifact, OR document in docs/utsushi-substrate-facade.md the two-path split and which is canonical (and delete the non-canonical path per the no-legacy-compat rule). Observable: either a `cargo run -p utsushi-cli -- replay-validate ...` invocation emits a ConformanceResult-schema JSON artifact, or `rg -n 'EnginePort|Runner|ConformanceManifest' crates/utsushi-cli/src` is non-empty.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-29T05:14:14.877Z",
+      "updated_at": "2026-06-29T05:14:14.877Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["utsushi"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "rg -n 'EnginePort|Runner|ConformanceManifest|ConformanceResult' crates/utsushi-cli/src"
+        },
+        {
+          "type": "manual",
+          "value": "Confirm docs/utsushi-substrate-facade.md names which of RuntimeAdapterRegistry vs EnginePort/Runner is canonical and that the other is wired or removed"
+        }
+      ],
+      "audit_focus": [
+        "Hidden runtime fork: implemented-but-unrun EnginePort/conformance substrate mistaken for the shipping validation path"
+      ]
+    },
+    {
+      "id": "draft-attempt-fixtures-hardcoded-costs-in-src",
+      "title": "Fabricated hardcoded model costs in tracked, scanned src/draft/draft-attempt-fixtures.ts",
+      "kind": "audit-fix",
+      "milestone": "alpha",
+      "status": "ready",
+      "priority": "P2",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "apps/itotori/src/draft/draft-attempt-fixtures.ts:86 `amountMicrosUsd: 12_500`, :103 `cost: 0.0125`, :158 `costUsd: {amount: \"0.01250000\"}`, :193 `amountMicrosUsd: 8_500`, :199 `cost: 0.0085`, :214 amount \"0.00850000\". The header calls these a 'live cost' but they are invented round numbers tied to no captured OpenRouter call (model anthropic/claude-3.5-sonnet, no recorded bundle). File is under src/ (NOT the allow-listed apps/itotori/test/fixtures/recorded-bundles/) and survives CI only because of the audit-no-hardcoded-cost.mjs regex gap. Directly violates the absolute 'no hardcoded model cost anywhere, ever' rule in scanned production source. Note: this is a live regression of the now-done ITOTORI-225 intent and is unblocked by the hardcoded-cost CI-guard tightening (already node-ified separately).",
+      "acceptance": "Source these costs from a captured recorded-bundle artifact, or move the file under apps/itotori/test/fixtures/recorded-bundles/ with a comment pinning the capture. Observable: after the tightened audit-no-hardcoded-cost.mjs regex lands, `node scripts/audit-no-hardcoded-cost.mjs` exits 0 and `rg -n 'amountMicrosUsd: 12_500|cost: 0.0125' apps/itotori/src/draft/draft-attempt-fixtures.ts` returns no hits.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-29T05:14:14.877Z",
+      "updated_at": "2026-06-29T05:14:14.877Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["itotori"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "rg -n 'amountMicrosUsd:|cost:|costUsd:' apps/itotori/src/draft/draft-attempt-fixtures.ts"
+        },
+        {
+          "type": "command",
+          "value": "node scripts/audit-no-hardcoded-cost.mjs"
+        }
+      ],
+      "audit_focus": [
+        "Hardcoded/fabricated model costs in scanned production src violating the no-hardcoded-cost rule"
+      ]
+    },
+    {
+      "id": "reallive-real-bytes-tests-silent-pass-env-unset",
+      "title": "RealLive real-bytes tests self-report PASS when ITOTORI_REAL_GAME_ROOT is unset, despite a 'no silent pass' comment",
+      "kind": "audit-fix",
+      "milestone": "real-game-testing-ready",
+      "status": "ready",
+      "priority": "P2",
+      "estimate_points": 1,
+      "risk": "low",
+      "owner": null,
+      "branch": null,
+      "spec": "crates/kaifuu-reallive/tests/scene_1_dispatch_real_bytes.rs:55 is `#[ignore = \"real-bytes; requires ITOTORI_REAL_GAME_ROOT\"]` then `let Some(seen_path) = real_seen_txt_path() else { eprintln!(\"...no silent pass...\"); return; };` — the early return reports the test as passed having asserted nothing. Same pattern across patchback_real_bytes.rs, bridge_real_bytes.rs, gameexe_real_bytes.rs, parse_archive_real_bytes.rs, detect_real_bytes.rs. Combined with the #![cfg(any())] disabled suites, the substantive parser/bridge/patchback validation against real Sweetie HD bytes is invisible-by-default and green when not executed; 'no silent pass' is contradicted by the control flow. Note: a prior fix (done node real-bytes-test-silently-no-ops-when-kaifuu-real-sweetie-hd-path) only pinned one utsushi-reallive save test under KAIFUU_REAL_SWEETIE_HD_PATH; this kaifuu-reallive family under ITOTORI_REAL_GAME_ROOT remains unaddressed.",
+      "acceptance": "Under an explicit ITOTORI_REQUIRE_REAL_BYTES=1 flag, make the unset-env branch panic/fail instead of returning. Observable: `ITOTORI_REQUIRE_REAL_BYTES=1 cargo test -p kaifuu-reallive -- --ignored` fails when ITOTORI_REAL_GAME_ROOT is unset, naming the missing corpus.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-29T05:14:14.877Z",
+      "updated_at": "2026-06-29T05:14:14.877Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["kaifuu"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "ITOTORI_REQUIRE_REAL_BYTES=1 cargo test -p kaifuu-reallive -- --ignored 2>&1 | grep -iE 'FAILED|panicked|REAL_GAME_ROOT'"
+        },
+        {
+          "type": "command",
+          "value": "rg -n 'no silent pass' crates/kaifuu-reallive/tests"
+        }
+      ],
+      "audit_focus": [
+        "False-green real-bytes coverage: env-unset early-return reports PASS with zero assertions"
+      ]
+    },
+    {
+      "id": "scene1-opcode-test-name-claims-90pct-asserts-75",
+      "title": "Test named '..._at_least_90_percent_opcode_recognition' asserts only >= 0.75",
+      "kind": "audit-fix",
+      "milestone": "continuous",
+      "status": "ready",
+      "priority": "P2",
+      "estimate_points": 1,
+      "risk": "low",
+      "owner": null,
+      "branch": null,
+      "spec": "crates/kaifuu-reallive/tests/scene_1_dispatch_real_bytes.rs:56 `fn dispatches_sweetie_hd_scene_1_with_at_least_90_percent_opcode_recognition` but the body asserts `recognition_rate >= 0.75` at :262; the inline comment (:250-261) concedes the real rate is ~84% and the 90% target 'requires a deeper ExpressionPiece evaluator'. A reader or grep auditing for the spec's 90% gate sees a passing test named for it while the enforced floor is 15 points lower — name/threshold drift advertising a guarantee the code does not enforce.",
+      "acceptance": "Rename the fn to encode the actually-asserted floor (e.g. ..._at_least_75_percent...), OR raise the assertion literal to >= 0.90. Observable: the numeric in the test fn name and the numeric in its `assert!`/`>=` literal agree, checkable via `rg -n 'percent_opcode_recognition|recognition_rate >=' crates/kaifuu-reallive/tests/scene_1_dispatch_real_bytes.rs`.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-29T05:14:14.877Z",
+      "updated_at": "2026-06-29T05:14:14.877Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["kaifuu"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "rg -n 'percent_opcode_recognition|recognition_rate >=' crates/kaifuu-reallive/tests/scene_1_dispatch_real_bytes.rs"
+        }
+      ],
+      "audit_focus": ["Test name advertises a 90% guarantee the assertion (0.75) does not enforce"]
+    },
+    {
+      "id": "kaifuu-cli-gameexe-read-unwrap-or-default-swallow",
+      "title": "Gameexe.ini read errors silently swallowed into empty inventory via unwrap_or_default in kaifuu CLI bridge",
+      "kind": "audit-fix",
+      "milestone": "real-game-testing-ready",
+      "status": "ready",
+      "priority": "P2",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "crates/kaifuu-cli/src/main.rs:388 `let gameexe_bytes = fs::read(&gameexe_path).unwrap_or_default();` then `parse_gameexe_inventory(&gameexe_bytes)`. Every other read in this fn is `?`-propagated or bounds-checked (lines 360-380); this one conflates file-absent / permission-denied / I/O-error / genuinely-empty into a zero-entry inventory with no diagnostic — producing a structurally-valid-but-wrong bundle that downstream patch-back trusts. Contradicts the codebase's no-silent-fallback posture.",
+      "acceptance": "Propagate the error (`fs::read(&gameexe_path)?` with a kaifuu.reallive.gameexe_unreadable context) or branch explicitly on ErrorKind::NotFound. Observable: running the bridge subcommand against a game root with `chmod 000 Gameexe.ini` exits non-zero with a named error instead of emitting an empty-inventory bundle.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-29T05:14:14.877Z",
+      "updated_at": "2026-06-29T05:14:14.877Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["kaifuu"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "rg -n 'unwrap_or_default' crates/kaifuu-cli/src/main.rs"
+        },
+        {
+          "type": "manual",
+          "value": "Run kaifuu bridge against a root with chmod 000 Gameexe.ini and confirm non-zero exit with a typed gameexe-unreadable error"
+        }
+      ],
+      "audit_focus": [
+        "Silent I/O-error fallback yields a wrong-but-valid inventory bundle that patch-back trusts"
+      ]
+    },
+    {
+      "id": "openrouter-max-price-discarded-conversion-inert",
+      "title": "OpenRouter provider.max_price built with a discarded conversion and a non-standard {request:...} key (possibly inert wire cap)",
+      "kind": "audit-fix",
+      "milestone": "alpha",
+      "status": "ready",
+      "priority": "P2",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "apps/itotori/src/providers/openrouter.ts:582 calls `maxPriceUsdToDecimalString(request.maxPriceUsd);` purely for its throw side-effect and discards the result; :583 then sets `provider.max_price = { request: request.maxPriceUsd }` to the raw number. The discarded conversion implies the decimal string was meant to be the wire value, and `{ request }` is a suspect shape. If OpenRouter ignores the unknown key, the on-wire price cap is inert and only the post-hoc cost_cap_exceeded reject (after the call is already billed) protects spend. Note: this is a correctness gap in the implementation produced by the now-done node pair-policy-max-price-not-enforced.",
+      "acceptance": "Assert the exact provider.max_price JSON emitted against docs/openrouter-integration.md in apps/itotori/test/openrouter-provider.test.ts, and either use the converted decimal string or remove the dead conversion call. Observable: a test asserts the serialized request body's provider.max_price equals the documented shape, and `node --test` over openrouter-provider.test.ts passes.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-29T05:14:14.877Z",
+      "updated_at": "2026-06-29T05:14:14.877Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["itotori"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "rg -n 'max_price|maxPriceUsdToDecimalString' apps/itotori/src/providers/openrouter.ts"
+        },
+        {
+          "type": "manual",
+          "value": "Confirm openrouter-provider.test.ts asserts the emitted provider.max_price JSON against the shape documented in docs/openrouter-integration.md"
+        }
+      ],
+      "audit_focus": [
+        "Wire price cap may be inert (unknown key + discarded conversion), leaving only post-billing cost-cap to protect spend"
+      ]
+    },
+    {
+      "id": "batch-planner-providerid-unknown-fallback",
+      "title": "Batch-planner resolves to providerId 'unknown' via ?? fallbacks, defeating the (model, provider) pair pin",
+      "kind": "audit-fix",
+      "milestone": "alpha",
+      "status": "ready",
+      "priority": "P2",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "apps/itotori/src/batch-planner/model-profiles.ts:18 `fallbackModelProfile.providerId: \"unknown\"`, :149 `providerId: input.providerId ?? \"unknown\"`, :163 `?? fallbackModelProfile.providerId`. A model profile can carry providerId:'unknown', persisted on every batch (the caller persists the result so audits can replay sizing decisions). It is reached through a soft `??` rather than a loud failure — exactly the 'provider not declared' state the model-provider-pair rule forbids. An unknown provider in persisted planning rows defeats per-pair attribution and undermines the pair-pin invariant.",
+      "acceptance": "Require an explicit providerId when a modelId/descriptor is supplied (throw, mirroring DevPairUnknownError), OR document+test that batch profiles are non-routing metadata never used to attribute a real invocation. Observable: `rg -n '\"unknown\"' apps/itotori/src/batch-planner/model-profiles.ts` returns no provider-fallback hits, or a test asserts a missing providerId throws.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-29T05:14:14.877Z",
+      "updated_at": "2026-06-29T05:14:14.877Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["itotori"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "rg -n 'providerId.*unknown|\"unknown\"' apps/itotori/src/batch-planner/model-profiles.ts"
+        },
+        {
+          "type": "manual",
+          "value": "Confirm a test proves a model profile with a modelId but no providerId throws, or that batch profiles are documented as non-routing metadata"
+        }
+      ],
+      "audit_focus": [
+        "Soft providerId:'unknown' fallback persisted in planning rows defeats (model,provider) pair attribution"
+      ]
+    },
+    {
+      "id": "g00-lzss-untrusted-size-vec-with-capacity-oom",
+      "title": "g00 LZSS decoder reserves Vec capacity from an untrusted u32 size field (allocation amplification / OOM)",
+      "kind": "audit-fix",
+      "milestone": "real-game-testing-ready",
+      "status": "ready",
+      "priority": "P2",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "crates/utsushi-reallive/src/g00.rs:926 `let mut dst = Vec::with_capacity(uncompressed_size);` where uncompressed_size is read directly from the file's LZSS preamble (parse_lzss_section, g00.rs:859, a u32 up to ~4.29 GB). utsushi reads attacker-controllable game bytes; a malformed g00 with a huge uncompressed_size triggers a multi-GB up-front allocation before any payload is read. The decode loop itself is correctly bounds-checked (OutputOverflow guard :979) — only the pre-allocation is unguarded. A single malformed asset can OOM/abort the validation tool before parsing begins.",
+      "acceptance": "Cap the reserve to min(uncompressed_size, input.len().saturating_mul(K)) or a hard ceiling. Observable: add a test feeding a 16-byte g00 with uncompressed_size=0xFFFFFFFF and assert it returns a typed G00DecodeError (not an abort/OOM); `cargo test -p utsushi-reallive g00` passes including this case.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-29T05:14:14.877Z",
+      "updated_at": "2026-06-29T05:14:14.877Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["utsushi"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "rg -n 'Vec::with_capacity' crates/utsushi-reallive/src/g00.rs"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-reallive g00"
+        }
+      ],
+      "audit_focus": [
+        "Unbounded pre-allocation from an untrusted size field on attacker-controllable bytes (OOM/abort before parse)"
+      ]
+    },
+    {
+      "id": "utsushi-siglus-manifest-capability-overclaim",
+      "title": "utsushi-siglus manifest over-claims four capabilities it cannot perform; suite is ~100% tautological",
+      "kind": "audit-fix",
+      "milestone": "beta",
+      "status": "ready",
+      "priority": "P2",
+      "estimate_points": 1,
+      "risk": "low",
+      "owner": null,
+      "branch": null,
+      "spec": "crates/utsushi-siglus/src/lib.rs:212-216 declares `capabilities: &[Launch, Observe, Capture, Shutdown]` and `evidence_tier_max: E1` while every lifecycle method (:256-263) returns `Err(unimplemented_lifecycle(...))`. Separately, tests/cross_engine_substrate_alignment.rs assert hardcoded MANIFEST constants equal hardcoded constants and that a scaffold returns the exact UNIMPLEMENTED_MESSAGE it is defined to return; substrate_conformance.rs is 'a compile-time test'; no real Siglus bytes are exercised. Per the operating model's >40% tautological-test rejection rule the suite is essentially all mirror tests, and the manifest is a claimed-support framing the implementation satisfies for none of the four capabilities. This is the standalone utsushi-siglus crate, distinct from the inline Siglus scaffold in utsushi-reallive tests (tracked by inline-siglus-scaffold-is-inert-by-design-...).",
+      "acceptance": "Set siglus `capabilities: &[]` (or a Scaffold marker) until a lifecycle method does real work; gate any non-empty capability behind a real-bytes Siglus test. Observable: `rg -n 'capabilities' crates/utsushi-siglus/src/lib.rs` shows an empty capability slice while launch still returns Unimplemented, OR a real-bytes Siglus test backs each declared capability.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-29T05:14:14.877Z",
+      "updated_at": "2026-06-29T05:14:14.877Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["utsushi"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "rg -n 'capabilities|unimplemented_lifecycle|UNIMPLEMENTED_MESSAGE' crates/utsushi-siglus/src/lib.rs"
+        },
+        {
+          "type": "manual",
+          "value": "Confirm utsushi-siglus declared capabilities match what a lifecycle method actually performs against real Siglus bytes"
+        }
+      ],
+      "audit_focus": [
+        "Capability manifest claims Launch/Observe/Capture/Shutdown while all lifecycle methods return Unimplemented; tautological suite"
+      ]
+    },
+    {
+      "id": "reallive-real-bytes-corpus-single-title-sweetie",
+      "title": "RealLive real-bytes corpus is concentrated on a single title (Sweetie HD), below the >=2 games/engine requirement",
+      "kind": "audit-fix",
+      "milestone": "beta",
+      "status": "ready",
+      "priority": "P2",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "crates/utsushi-reallive/tests has 15 *_real_bytes.rs files; SWEETIE_HD_* constants appear in 21 files (175 mentions). A second title appears only via gameexe_real_bytes.rs:81 (REGNAME HADASHI/OSHIOKIHD, 1 file). The decoders (g00 types 0/1/2, NWA, OVK, decompressor, bytecode, scene index/header) are validated against Sweetie HD bytes only. Violates the project's >=2-real-games-per-engine-family validation rule; format invariants inferred from one packer's output risk over-fitting.",
+      "acceptance": "Add a second RealLive title's bytes to at least the g00 + decompressor + scene-index real-bytes tests asserting documented values. Observable: each of those decoders' real-bytes tests references >=2 distinct title constants, checkable via `rg -n 'SWEETIE_HD|OSHIOKI|<second-title>' crates/utsushi-reallive/tests/g00_real_bytes.rs` showing >=2 title constants.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-29T05:14:14.877Z",
+      "updated_at": "2026-06-29T05:14:14.877Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["utsushi"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "rg -on 'SWEETIE_HD|OSHIOKI' crates/utsushi-reallive/tests | sed 's/:.*_//' | sort -u"
+        },
+        {
+          "type": "manual",
+          "value": "Confirm g00, decompressor, and scene-index real-bytes tests each exercise >=2 distinct RealLive titles"
+        }
+      ],
+      "audit_focus": [
+        "Single-title (Sweetie HD) corpus risks over-fitting format invariants to one packer; violates >=2-games-per-engine rule"
+      ]
+    },
+    {
+      "id": "operating-model-zero-substrate-consumers-stale",
+      "title": "Operating-model doc claim 'zero non-test substrate consumers outside utsushi-core' is factually stale",
+      "kind": "audit-fix",
+      "milestone": "continuous",
+      "status": "ready",
+      "priority": "P2",
+      "estimate_points": 1,
+      "risk": "low",
+      "owner": null,
+      "branch": null,
+      "spec": "docs/orchestration-operating-model.md:167 says 'The current substrate (UTSUSHI-020..120) is in a deferred state: zero non-test consumers exist outside utsushi-core.' Reality: utsushi-reallive production code consumes a substrate subset — lib.rs:105 (EnginePort/PortManifest/SinkSet/AssetPackage) + impl at :562; vm.rs:45 / var_banks.rs:42 (Inspectable/Restorable/StateTree/SnapshotError); replay.rs:42 (Snapshot/TextSurfaceSink/take_snapshot/restore_snapshot); rlop/module_{msg,str,sel}.rs (TextLine/TextSurfaceSink). The anti-pattern audit gate keys off this doc; a false premise means the gate mis-evaluates which slices are scaffolding vs consumed (see node utsushi-substrate-slices-no-production-consumer).",
+      "acceptance": "Update docs/orchestration-operating-model.md to list which substrate slices have production consumers (snapshot/sink/port) vs which remain deferred, citing the import lines. Observable: `rg -lw EnginePort crates/utsushi-reallive/src` is non-empty AND the doc no longer asserts 'zero non-test consumers'.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-29T05:14:14.877Z",
+      "updated_at": "2026-06-29T05:14:14.877Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["utsushi"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "rg -n 'zero non-test consumers' docs/orchestration-operating-model.md; rg -lw EnginePort crates/utsushi-reallive/src"
+        }
+      ],
+      "audit_focus": [
+        "Stale doc premise drives the anti-pattern gate to mis-evaluate which substrate slices are scaffolding vs consumed"
+      ]
+    },
+    {
+      "id": "reallive-opcode-arg-expression-byte-desync-pin",
+      "title": "Opcode arg/expression byte-framing desyncs on legal expression bytes, with no pinning/xfail test",
+      "kind": "audit-fix",
+      "milestone": "real-game-testing-ready",
+      "status": "ready",
+      "priority": "P2",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "crates/kaifuu-reallive/src/opcode.rs:377-403 arg-list loop treats raw bytes 0x2C and 0x29 as structural delimiters (`b')' => { closed = true; break; }`). The module itself documents (:290-304) that expression bodies legally contain 0x2C separators and 0xFF+4-byte int literals whose payload bytes can equal 0x28/0x29/0x2C. So a command whose argument is an int literal containing 0x29 terminates the arg list early, mis-sets `consumed`, and desyncs `pos` for the rest of the stream — inflating the Unknown count and potentially corrupting offsets used by patch-back. Disclosed as a 'follow-up node' but no xfail/regression test pins the known-bad scene positions; a future 'fix' could silently change framing with nothing red.",
+      "acceptance": "Add a test over the real Sweetie HD scene-1 decompressed stream asserting the exact byte offsets where framing currently desyncs (a known-unknown manifest), anchoring recognition to byte ranges not a single aggregate >= 0.75. Observable: `cargo test -p kaifuu-reallive` includes a test naming specific desync byte offsets that fails if framing changes.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-29T05:14:14.877Z",
+      "updated_at": "2026-06-29T05:14:14.877Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["kaifuu"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "rg -n 'closed = true|0x2C|expression' crates/kaifuu-reallive/src/opcode.rs"
+        },
+        {
+          "type": "manual",
+          "value": "Confirm a pinning test asserts exact desync byte offsets on the real scene-1 stream"
+        }
+      ],
+      "audit_focus": [
+        "Arg/expression mis-framing on legal expression bytes propagates forward, corrupting patch-back offsets, with no pinning test"
+      ]
+    },
+    {
+      "id": "vault-source-query-row-ok-swallows-sql-errors",
+      "title": "vault-source swallows SQL errors on optional fields into None / dropped candidates",
+      "kind": "audit-fix",
+      "milestone": "continuous",
+      "status": "ready",
+      "priority": "P3",
+      "estimate_points": 1,
+      "risk": "low",
+      "owner": null,
+      "branch": null,
+      "spec": "crates/kaifuu-vault-source/src/discovery.rs:223-237 (engine_version filter) and :284-300 (load_candidate) use `.query_row(...).ok()` — a real SQL error (corrupt DB, schema drift) is indistinguishable from 'fact absent', and at :233-237 a candidate whose engine_version query errors is silently dropped from the filtered set. A schema/DB-integrity problem manifests as 'release not resolved' rather than a typed DB error, hard to diagnose, and could silently exclude valid releases. Lower severity: facts are genuinely optional and the catalog is read-only.",
+      "acceptance": "Distinguish QueryReturnedNoRows (-> None) from other rusqlite::Error (-> propagate map_query_err). Observable: a test pointing the resolver at a DB with a dropped v_current_facts view returns VaultSourceError mentioning the DB, not ReleaseNotResolved.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-29T05:14:14.877Z",
+      "updated_at": "2026-06-29T05:14:14.877Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["kaifuu"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "rg -n 'query_row.*\\.ok\\(\\)' crates/kaifuu-vault-source/src/discovery.rs"
+        },
+        {
+          "type": "manual",
+          "value": "Confirm a test with a dropped v_current_facts view yields a DB-named VaultSourceError, not ReleaseNotResolved"
+        }
+      ],
+      "audit_focus": [
+        "SQL errors on optional fields collapse into 'fact absent', silently dropping candidates and masking DB integrity faults"
+      ]
+    },
+    {
+      "id": "graphics-rlops-discard-graphicsstackerror",
+      "title": "Graphics RLOps discard typed GraphicsStackError with `let _ =`, inconsistent with var_banks' no-silent-swallow flow",
+      "kind": "audit-fix",
+      "milestone": "continuous",
+      "status": "ready",
+      "priority": "P3",
+      "estimate_points": 1,
+      "risk": "low",
+      "owner": null,
+      "branch": null,
+      "spec": "crates/utsushi-reallive/src/rlop/module_obj.rs:793/826/912 and module_grp.rs:327/383/473/529/585/908 do `let _ = stack.set(...)` / `let _ = stack.clear(...)`. set/clear return Result<_, GraphicsStackError::SlotOutOfRange> (graphics_objects.rs:346/362). Currently unreachable (slot_index pre-validates 0..256), but the discard masks future divergence — directly opposite to var_banks.rs:402 which surfaces the analogous out-of-range as a typed VarBanksWarning. Two sibling modules treat the identical invariant oppositely.",
+      "acceptance": "Route GraphicsStackError into the runtime diagnostic sink (mirroring var_banks) or `debug_assert!(result.is_ok())`. Observable: a unit test forcing an out-of-range slot observes a diagnostic (not a silent no-op), and `rg -n 'let _ = stack\\.(set|clear)' crates/utsushi-reallive/src/rlop` returns no hits.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-29T05:14:14.877Z",
+      "updated_at": "2026-06-29T05:14:14.877Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["utsushi"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "rg -n 'let _ = stack\\.(set|clear)' crates/utsushi-reallive/src/rlop"
+        },
+        {
+          "type": "manual",
+          "value": "Confirm an out-of-range graphics slot surfaces a diagnostic mirroring var_banks rather than a silent discard"
+        }
+      ],
+      "audit_focus": [
+        "Sibling modules treat the identical 256-slot invariant oppositely; discarded GraphicsStackError hides future divergence"
+      ]
+    },
+    {
+      "id": "openrouter-cost-cap-nullish-zero-silent-pass",
+      "title": "Cost-cap comparison uses `?? 0`, a latent silent-pass on the spend guard if amount ever becomes absent",
+      "kind": "audit-fix",
+      "milestone": "alpha",
+      "status": "ready",
+      "priority": "P3",
+      "estimate_points": 1,
+      "risk": "low",
+      "owner": null,
+      "branch": null,
+      "spec": "apps/itotori/src/providers/openrouter.ts:340 `const actualMicrosUsd = normalized.cost.amountMicrosUsd ?? 0;` then compares `actualMicrosUsd > maxPriceMicrosUsd`. amountMicrosUsd is a required number (types.ts:344) so the `?? 0` is dead today, but if a future change yields an absent amount the cost-cap treats it as $0 and always passes — the opposite of fail-loud. Latent silent-undercount path on the spend guard.",
+      "acceptance": "Drop the `?? 0` (let a missing amount throw) or call assertBilledCost before comparing. Observable: a test feeding a cost with no amount throws rather than passing the cap, and `rg -n 'amountMicrosUsd \\?\\? 0' apps/itotori/src/providers/openrouter.ts` returns no hits.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-29T05:14:14.877Z",
+      "updated_at": "2026-06-29T05:14:14.877Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["itotori"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "rg -n 'amountMicrosUsd \\?\\? 0' apps/itotori/src/providers/openrouter.ts"
+        },
+        {
+          "type": "manual",
+          "value": "Confirm a test proves a missing cost amount throws instead of passing the cost cap"
+        }
+      ],
+      "audit_focus": [
+        "Latent `?? 0` on the spend guard treats a missing cost as $0 and always passes the cap"
+      ]
+    },
+    {
+      "id": "gameexe-parse-ok-drops-malformed-numeric-tokens",
+      "title": "gameexe.rs silently drops malformed numeric tokens via `.parse().ok()?`",
+      "kind": "audit-fix",
+      "milestone": "continuous",
+      "status": "ready",
+      "priority": "P3",
+      "estimate_points": 1,
+      "risk": "low",
+      "owner": null,
+      "branch": null,
+      "spec": "crates/utsushi-reallive/src/gameexe.rs:561/:574/:600-602 use `token.parse().ok()?` — a non-numeric value in an int/array/tuple entry makes the whole key silently resolve to None rather than a typed parse diagnostic. Consumers compound it: syscall.rs:704 then does `u32::try_from(...).ok()?` again. A missing key and a malformed key are indistinguishable to the caller. Contradicts utsushi's 'no silent fallback' posture; a corrupt Gameexe entry vanishes instead of surfacing a diagnostic in a validation tool.",
+      "acceptance": "Return a typed GameexeParseWarning { key, raw } collected into a warnings vec (mirroring VarBanksWarning). Observable: a test feeding `KEY = abc` asserts the warning is emitted (parsing a malformed int key yields a diagnostic, not a silent None).",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-29T05:14:14.877Z",
+      "updated_at": "2026-06-29T05:14:14.877Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["utsushi"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "rg -n 'parse\\(\\)\\.ok\\(\\)\\?' crates/utsushi-reallive/src/gameexe.rs"
+        },
+        {
+          "type": "manual",
+          "value": "Confirm parsing `KEY = abc` yields a typed GameexeParseWarning rather than a silent None"
+        }
+      ],
+      "audit_focus": [
+        "Malformed numeric Gameexe tokens silently vanish to None, indistinguishable from absent keys"
+      ]
+    },
+    {
+      "id": "avg32-xor-mask-duplicated-no-single-source",
+      "title": "256-byte AVG32_XOR_MASK constant copy-pasted across decompressor, compressor, and a test with no single source of truth",
+      "kind": "audit-fix",
+      "milestone": "continuous",
+      "status": "ready",
+      "priority": "P3",
+      "estimate_points": 1,
+      "risk": "low",
+      "owner": null,
+      "branch": null,
+      "spec": "crates/kaifuu-reallive/src/decompressor.rs:30, compressor.rs:38, and tests/scene_1_dispatch_real_bytes.rs:282 each define the same 256-byte mask (compressor :34-37 notes the duplication is deliberate). A transcription error in any copy diverges encode from decode (or test from production) and is only caught by round-trip tests that themselves use the encoder's copy — so the safety net shares one of the copies. Divergence risk for a load-bearing constant.",
+      "acceptance": "Expose one `pub(crate) const AVG32_XOR_MASK` and have compressor + tests reference it. Observable: `rg -c 'const AVG32_XOR_MASK' crates/kaifuu-reallive` shows a single definition.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-29T05:14:14.877Z",
+      "updated_at": "2026-06-29T05:14:14.877Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["kaifuu"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "rg -c 'const AVG32_XOR_MASK' crates/kaifuu-reallive"
+        }
+      ],
+      "audit_focus": [
+        "Triplicated load-bearing 256-byte mask; round-trip safety net shares one copy, hiding transcription divergence"
+      ]
+    },
+    {
+      "id": "protected-span-sjis-prefix-length-index-panic",
+      "title": "Protected-span detection indexes whole-slot decoded text by a prefix-decode length (unproven Shift-JIS prefix-stability invariant)",
+      "kind": "audit-fix",
+      "milestone": "continuous",
+      "status": "ready",
+      "priority": "P3",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "crates/kaifuu-reallive/src/protected_spans.rs:472-475 decoded_byte_offset_for_raw_offset computes `decoded_offset = decode_shift_jis_slot(&raw_bytes[..raw_offset]).text.len()`, then indexes decoded_text (decode of the whole slot) at :152/:170/:207/:224/:242/:317/:415/:444. This relies on decode(prefix).len() always equaling the byte position of that boundary inside decode(whole) — not guaranteed for lossy/replacement SJIS across a split double-byte pair, risking a str index panic (P0 if reachable) or wrong raw_text. Likely safe today (span starts are control bytes <0x20) but untested against adversarial bytes.",
+      "acceptance": "Add a unit test feeding detect_protected_spans a slot with a truncated SJIS lead byte immediately before a 0x1f color code and assert a typed result (no panic). Observable: `cargo test -p kaifuu-reallive protected_span` includes the adversarial-prefix case and passes without a char-boundary panic.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-29T05:14:14.877Z",
+      "updated_at": "2026-06-29T05:14:14.877Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["kaifuu"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-reallive protected_span"
+        },
+        {
+          "type": "manual",
+          "value": "Confirm a test feeds a truncated SJIS lead byte before a 0x1f color code and asserts no panic"
+        }
+      ],
+      "audit_focus": [
+        "Unproven SJIS prefix-length-equals-boundary invariant; a char-boundary index panic on adversarial bytes would be a crash"
+      ]
     }
   ],
   "edges": [
