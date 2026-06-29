@@ -24,18 +24,18 @@ contract drift loud at build time.
 
 ## 2. Subsystem entry points
 
-| Subsystem                     | Owning spec      | Canonical type / fn                                                         | Use when…                                             |
-| ----------------------------- | ---------------- | --------------------------------------------------------------------------- | ----------------------------------------------------- |
-| Runtime VFS                   | UTSUSHI-020      | `RuntimeVfs`, `AssetPackage`, `AssetId`                                     | You mount engine content for read.                    |
-| Logical clock                 | UTSUSHI-021      | `LogicalClock`, `LogicalClockTick`                                          | You advance deterministic time.                       |
-| Input + replay log            | UTSUSHI-021      | `InputEvent`, `ReplayLogBuilder`, `ReplayLog`                               | You record / replay a deterministic input stream.     |
-| Sinks (text / audio / frame)  | UTSUSHI-022      | `SinkSet`, `TextSurfaceSink`, `FrameArtifactSink`, `AudioEventSink`         | You emit observed runtime events.                     |
-| Snapshot primitives           | UTSUSHI-023      | `Inspectable`, `Restorable`, `take_snapshot`                                | You expose / restore controlled-playback state.       |
-| Embed ABI                     | UTSUSHI-024      | `EmbedState`, `embed_capabilities`, `embed_state`                           | You expose a host-readable snapshot of the substrate. |
-| Reference recorder            | UTSUSHI-060      | `ReferenceRecorder`, `InMemoryReferenceRecorder`                            | You produce a reference trace from a fixture run.     |
-| Conformance manifest + checks | UTSUSHI-025..030 | `ConformanceManifest`, `TraceConformanceCheck`, `RecordingConformanceCheck` | You declare or evaluate conformance.                  |
-| Port + observation hook       | UTSUSHI-025/056  | `PortManifest`, `EnginePort`, `LifecycleStage`                              | You expose an engine port to the runner.              |
-| Redaction policy              | UTSUSHI-056      | `reject_unredacted_local_paths`                                             | You sweep an outgoing artifact for host-path leakage. |
+| Subsystem                     | Owning spec      | Canonical type / fn                                                           | Use when…                                                |
+| ----------------------------- | ---------------- | ----------------------------------------------------------------------------- | -------------------------------------------------------- |
+| Runtime VFS                   | UTSUSHI-020      | `RuntimeVfs`, `AssetPackage`, `AssetId`                                       | You mount engine content for read.                       |
+| Logical clock                 | UTSUSHI-021      | `LogicalClock`, `LogicalClockTick`                                            | You advance deterministic time.                          |
+| Input + replay log            | UTSUSHI-021      | `InputEvent`, `ReplayLogBuilder`, `ReplayLog`                                 | You record / replay a deterministic input stream.        |
+| Sinks (text / audio / frame)  | UTSUSHI-022      | `SinkSet`, `TextSurfaceSink`, `FrameArtifactSink`, `AudioEventSink`           | You emit observed runtime events.                        |
+| Snapshot primitives           | UTSUSHI-023      | `Inspectable`, `Restorable`, `take_snapshot`                                  | You expose / restore controlled-playback state.          |
+| Embed capability surface      | UTSUSHI-024      | `EmbedCapability`, `EmbedCapabilityId`, `EmbedCapabilityStatus`, `EmbedError` | You declare the observable surface a host embed exposes. |
+| Reference recorder            | UTSUSHI-060      | `ReferenceRecorder`, `InMemoryReferenceRecorder`                              | You produce a reference trace from a fixture run.        |
+| Conformance manifest + checks | UTSUSHI-025..030 | `ConformanceManifest`, `TraceConformanceCheck`, `RecordingConformanceCheck`   | You declare or evaluate conformance.                     |
+| Port + observation hook       | UTSUSHI-025/056  | `PortManifest`, `EnginePort`, `LifecycleStage`                                | You expose an engine port to the runner.                 |
+| Redaction policy              | UTSUSHI-056      | `reject_unredacted_local_paths`                                               | You sweep an outgoing artifact for host-path leakage.    |
 
 The facade also re-exports the universal `EvidenceTier` and
 `FidelityTier` tier enums, plus `ObservationArtifactRef` /
@@ -51,7 +51,6 @@ compile-time const-assertion in `substrate.rs`:
 | -------------------------------- | ------------- | --------------- |
 | `REPLAY_LOG_SCHEMA_VERSION`      | `0.1.0-alpha` | UTSUSHI-021     |
 | `SNAPSHOT_SCHEMA_VERSION`        | `0.1.0-alpha` | UTSUSHI-023     |
-| `EMBED_SCHEMA_VERSION`           | `0.1.0-alpha` | UTSUSHI-024     |
 | `REFERENCE_TRACE_SCHEMA_VERSION` | `0.1.0-alpha` | UTSUSHI-060     |
 | `CONFORMANCE_SCHEMA_VERSION`     | `0.2.0-alpha` | UTSUSHI-026/028 |
 
@@ -96,9 +95,12 @@ to reach:
   `unsupported_snapshot_restore_result`.
 - Crate-private helpers: `reject_unredacted_local_paths_public`,
   `looks_like_local_path_public`.
-- Sink-payload-internal constants: `EMBED_MAX_ARTIFACT_REFS`,
-  `EMBED_MAX_CAPABILITIES` (the accessor functions
-  `embed_capabilities()` and `embed_state()` are exposed instead).
+- Embed capability helpers and bound consumed by the reference
+  recorder at finalize time: `sort_capabilities`,
+  `validate_capability_list`, `EMBED_MAX_CAPABILITIES`. The facade
+  re-exports the capability value types (`EmbedCapability` and its
+  id/status enums) instead; the recorder reaches these helpers at
+  their direct submodule path.
 
 When a downstream consumer demonstrates a need for one of these
 symbols, the correct response is to revise the facade — not to reach
