@@ -381,27 +381,28 @@ impl SyscallDispatcher {
             }
         }
 
-        // MOUSEACTIONCALL.NNN routes — enumerate the namespace.
+        // MOUSEACTIONCALL.NNN routes — enumerate the whole bounded
+        // namespace. `NNN` is a `u8` index (see
+        // [`SyscallRouteKind::MouseAction`]), so every addressable
+        // slot is `000..=255`; the scan walks all of them and simply
+        // skips absent slots rather than stopping at the first gap.
+        // This keeps sparse, non-contiguous tables (e.g. `000` and
+        // `002` present with `001` absent) fully discovered — the
+        // namespace is enumerated by checking each slot, never by
+        // trusting a "last index" sentinel.
         for index in 0..=u8::MAX {
             let seen_key = format!("MOUSEACTIONCALL.{index:03}.SEEN");
             let area_key = format!("MOUSEACTIONCALL.{index:03}.AREA");
             let mod_key = format!("MOUSEACTIONCALL.{index:03}.MOD");
             let Some(pair) = gameexe.get_int_pair(&seen_key) else {
                 // No SEEN at this index — check it really is absent
-                // (rather than malformed) and move on.
+                // (rather than malformed), then skip this slot and
+                // keep scanning the rest of the namespace.
                 if gameexe.get(&seen_key).is_some() {
                     return Err(SyscallDispatchBuildError::MalformedRoutePair {
                         code: SYSCALL_ROUTE_MALFORMED_PAIR_CODE.to_string(),
                         route_key: seen_key,
                     });
-                }
-                // Stop scanning after the first absent slot in the
-                // common case — the audit-focus pin "Failing to wire
-                // `_MOD` flags" requires the loop to make progress,
-                // but the namespace is enumerated by checking each
-                // slot, not by trusting a "last index" sentinel.
-                if index > 0 && gameexe.get(&area_key).is_none() {
-                    break;
                 }
                 continue;
             };
@@ -807,6 +808,37 @@ mod tests {
             assert_eq!(route.scene_id, want_scene, "{label} scene");
             assert_eq!(route.entrypoint, want_pc, "{label} entrypoint");
         }
+    }
+
+    #[test]
+    fn mouseactioncall_scan_discovers_non_contiguous_indices() {
+        // A sparse MOUSEACTIONCALL namespace: `000` and `002` are
+        // present but `001` is absent. The scan must not stop at the
+        // gap — both `000` and `002` have to be discovered, while the
+        // missing `001` stays unrouted.
+        let mut text = reallive_real_bytes_lines_14_28().to_string();
+        text.push_str("#MOUSEACTIONCALL.002.MOD=1\r\n");
+        text.push_str("#MOUSEACTIONCALL.002.SEEN=9999,32\r\n");
+        text.push_str("#MOUSEACTIONCALL.002.AREA=10,20,30,40\r\n");
+        let gx = parse_gameexe(&text);
+        let dispatcher = SyscallDispatcher::from_gameexe(&gx).expect("build");
+
+        let route0 = dispatcher
+            .route_for_kind(SyscallRouteKind::MouseAction { index: 0 })
+            .expect("index 000 must be discovered");
+        assert_eq!(route0.entrypoint, 30, "index 000 entrypoint");
+
+        let route2 = dispatcher
+            .route_for_kind(SyscallRouteKind::MouseAction { index: 2 })
+            .expect("index 002 must be discovered past the 001 gap");
+        assert_eq!(route2.entrypoint, 32, "index 002 entrypoint");
+
+        assert!(
+            dispatcher
+                .route_for_kind(SyscallRouteKind::MouseAction { index: 1 })
+                .is_none(),
+            "absent index 001 must stay unrouted",
+        );
     }
 
     #[test]
