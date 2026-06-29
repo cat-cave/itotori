@@ -37,6 +37,14 @@
           worktree_name="$(printf "%s" "$worktree_basename" | ${pkgs.coreutils}/bin/tr -c 'A-Za-z0-9._-' '_')"
           worktree_hash="$(printf "%s" "$worktree_root" | ${pkgs.coreutils}/bin/sha256sum | ${pkgs.coreutils}/bin/cut -c1-12)"
           export CARGO_TARGET_DIR="/scratch/cache/itotori/target-$worktree_name-$worktree_hash"
+          # Per-worktree Postgres host port (same canonical-root scheme as
+          # CARGO_TARGET_DIR) so concurrent worktrees never collide on
+          # `just db-up` / db-backed tests. An explicit DATABASE_URL (CI,
+          # operator) is left untouched.
+          if [ -z "''${DATABASE_URL:-}" ]; then
+            worktree_db_url="$(ITOTORI_DB_WORKTREE_ROOT="$worktree_root" ${pkgs.nodejs_24}/bin/node "$worktree_root/scripts/itotori-db-compose-env.mjs" --print-database-url 2>/dev/null || true)"
+            [ -n "$worktree_db_url" ] && export DATABASE_URL="$worktree_db_url"
+          fi
           export PNPM_HOME="/scratch/cache/itotori/pnpm-store"
           # Per-project pnpm (package.json: pnpm@10.17.1) via corepack into a writable dir.
           export COREPACK_HOME="$PWD/.corepack"
