@@ -121,3 +121,78 @@ The conformance release ABI version is owned by `ConformanceAbiVersion`
 (UTSUSHI-026) and is re-exported through this facade. The facade
 does NOT introduce a separate facade version constant; instead, the
 const-assertion block in `substrate.rs` is the structural pin.
+
+## 7. Canonical runtime path
+
+The runtime layer currently forks into two abstractions plus a
+free-function bypass. This section fixes the single canonical
+architecture so the dependent routing/delete nodes have one direction
+to migrate toward; no code change is required by the decision itself.
+
+**Decision: `EnginePort` + `Runner` is the canonical engine-port
+substrate. The `RuntimeAdapter` registry is the thin CLI dispatch
+seam, not a competing runtime.** These two are not symmetric
+competitors: `EnginePortAdapter<P>` already
+`impl RuntimeAdapter` (`crates/utsushi-core/src/port/mod.rs:129`),
+so the canonical shape is the port substrate sitting _behind_ the
+dispatch seam. Every adapter registered into
+`RuntimeAdapterRegistry` is — at the canonical endpoint — an
+`EnginePortAdapter<SomePort>`; the `RuntimeAdapter` trait stays only
+as the registry's dispatch interface (`descriptor`/`trace`/
+`capture`/`smoke_validate`). Hand-rolled `impl RuntimeAdapter` bodies
+that re-implement lifecycle logic in parallel with a port, and the
+standalone engine-VM `replay_scene` CLI driver, are the non-canonical
+paths to be folded in or deleted.
+
+Direction of the dependency is fixed: **the adapter wraps the port,
+never the reverse.** `Runner` drives an `EnginePort` through its
+lifecycle inside `EnginePortAdapter::run_lifecycle`; the seam never
+re-derives lifecycle behaviour of its own.
+
+### 7.1 No-legacy-compat endpoint
+
+At the canonical endpoint there is exactly one runtime path: CLI
+dispatch (`RuntimeAdapterRegistry`) → `EnginePortAdapter<P>` →
+`Runner` → `EnginePort`. The hand-rolled parallel adapters and the
+free-function replay driver are _deleted_ once their replacement is
+wired in the same change — not retained behind a feature flag,
+`#[deprecated]`, or dual plumbing.
+
+### 7.2 Scope table — the three current runtime paths
+
+| Current runtime path                                          | What it is today                                                                                                                                                                                                                                                                     | Resolution node                                                        | Verdict                                                                                                                                                                                                                                                                                                                                                                                           |
+| ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `RuntimeAdapterRegistry` + hand-rolled `RuntimeAdapter` impls | `crates/utsushi-cli/src/main.rs` drives capabilities/trace/capture/smoke through the registry; `FixtureRuntimeAdapter` (`crates/utsushi-fixture/src/lib.rs:51`) hand-rolls `impl RuntimeAdapter` in parallel with `FixtureEnginePort` (`crates/utsushi-fixture/src/engine_port.rs`). | `utsushi-delete-parallel-runtime-adapter`                              | **delete** — rebase `FixtureRuntimeAdapter` onto `EnginePortAdapter<FixtureEnginePort>` and delete the duplicate hand-rolled lifecycle body. The registry itself is the dispatch seam and is kept.                                                                                                                                                                                                |
+| `EnginePort` / `Runner` substrate                             | Implemented by `FixtureEnginePort` (real); `Runner` only executes inside `EnginePortAdapter::run` and tests, never instantiated by a product binary.                                                                                                                                 | `utsushi-cli-route-conformance-result`                                 | **wire** — give `Runner` + the `*ConformanceCheck` / `ConformanceManifest` family their first product-binary consumer via a routed CLI subcommand that writes a `ConformanceResult`.                                                                                                                                                                                                              |
+| Standalone engine-VM `replay_scene` CLI driver                | `crates/utsushi-cli/src/replay.rs` and `replay_validate.rs` call the engine-VM crate's `replay_scene` / `validate_log_contains` free functions directly, bypassing both abstractions.                                                                                                | engine-VM replay-routing node (P2 decomposition node 4 of this parent) | **defer** — that engine's port is still a stub (every lifecycle method returns `EnginePortError::Lifecycle`). no-legacy-compat forbids deleting the shipping `replay_scene` path before its replacement lands; blocked on the engine-VM port (UTSUSHI-146 family). Fold `replay_scene` into the port's `observe` internals and delete the free-function driver in the same change when unblocked. |
+
+The `BrowserLaunchAdapter` and `NwjsLaunchAdapter` hand-rolled
+adapters registered alongside `FixtureRuntimeAdapter` are sub-cases of
+the first row: each becomes an `EnginePortAdapter<SomePort>` once its
+engine port exists, and the hand-rolled body is deleted at that point.
+No fourth runtime path exists outside these three.
+
+### 7.3 Cross-references
+
+- **UTSUSHI-154** ("Fixture engine port adoption", UTSUSHI-103
+  Slice B) rebases `FixtureRuntimeAdapter` onto
+  `EnginePortAdapter<FixtureEnginePort>`, making the shipping CLI
+  trace/capture/smoke path the **first product execution of
+  `Runner`**. `utsushi-delete-parallel-runtime-adapter` then enforces
+  the no-legacy-compat deletion on top of it.
+- **UTSUSHI-160** ("First production engine port consumes
+  `ConformanceManifest`") is the first non-test consumer of the
+  conformance surface and the foundation
+  `utsushi-cli-route-conformance-result` builds on.
+
+### 7.4 Engine-neutrality note
+
+This document is held engine-neutral by the
+`facade_documentation_contains_no_engine_family_names` lint in
+`crates/utsushi-core/tests/substrate_conformance.rs` (see §4). The
+third runtime path and its resolution node are therefore named by
+**role** (engine-VM `replay_scene` driver; P2 decomposition node 4),
+not by the engine-specific crate, port type, or node id. The literal,
+engine-named node id and crate path live in `roadmap/spec-dag.json`
+(this parent's decomposition) and in that node's own spec, which are
+not subject to the neutrality lint.
