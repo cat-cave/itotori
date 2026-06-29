@@ -328,10 +328,12 @@ export type TokenUsage = {
 /**
  * ITOTORI-225 — `costKind` is `'billed' | 'zero'`, full stop.
  *
- * - `billed`: a real upstream charge. `amountMicrosUsd` is the exact spend
- *   reported by the provider (e.g. OpenRouter's `usage.cost`). Required.
+ * - `billed`: a real upstream charge. `amountUsd` carries the exact spend
+ *   reported by the provider (OpenRouter's `usage.cost`) verbatim;
+ *   `amountMicrosUsd` is a derived cap/telemetry mirror. Required.
  * - `zero`: no charge was incurred (recorded-fixture replays, deterministic
- *   local mocks, failed pre-billing requests). `amountMicrosUsd === 0`.
+ *   local mocks, failed pre-billing requests). `amountUsd === "0"` and
+ *   `amountMicrosUsd === 0`.
  *
  * No `unknown`. No `provider_estimate`. No `local_estimate`. The previous
  * enum existed because we were guessing; per the standing
@@ -434,9 +436,10 @@ export type ProviderRunRecord = {
    * within 1e-9 USD on every new row.
    *
    * For LIVE OR runs this MUST carry `cost` as a number (decimal USD)
-   * equal to `cost.amountMicrosUsd / 1_000_000` to within 1e-9; the OR
-   * adapter populates it from `responseBody.usage` verbatim so the
-   * equality holds by construction. Recorded replays mirror the bundle
+   * equal to `cost.amountUsd` (the authoritative full-precision decimal;
+   * `amountMicrosUsd` is only a derived cap/telemetry mirror) to within
+   * 1e-9; the OR adapter populates it from `responseBody.usage` verbatim
+   * so the equality holds by construction. Recorded replays mirror the bundle
    * verbatim (bundle schema v3). Fake / local providers that never bill
    * pass an object with no `cost` key (e.g. `{}` or a typed sentinel
    * like `{"_local": true}`); the partial-NULL CHECK exempts these.

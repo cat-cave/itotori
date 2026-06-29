@@ -33,7 +33,9 @@
 // Any future capture path (live OpenRouter run → on-disk bundle) MUST
 // write the response's `usage` block (with `cost`), the request's
 // `provider` block, AND the response's `usage.cost` matching the
-// captured ProviderCost.amountMicrosUsd into the bundle; refusing the
+// captured ProviderCost.amountUsd (the authoritative full-precision
+// decimal cost; amountMicrosUsd is only a derived cap/telemetry mirror)
+// into the bundle; refusing the
 // write when any are absent is the contractual forcing function and is
 // documented at the future-capture seam.
 
@@ -652,15 +654,19 @@ function assertRoutingPostureShape(bundleId: string, key: string, posture: unkno
 /**
  * ITOTORI-232 — verify the captured `usageResponseJson` is consistent with
  * the captured `ProviderCost` at bundle-construction time. If the bundle
- * carries a `usage.cost` field, it must equal `ProviderCost.amountMicrosUsd`
+ * carries a `usage.cost` field, it must equal `ProviderCost.amountUsd`
+ * (the authoritative full-precision decimal cost, parsed to a number)
  * to within 1e-9 USD (the same tolerance the DB CHECK enforces on persist).
+ * `amountMicrosUsd` is NOT the comparison basis — it rounds to 1e-6 and
+ * cannot represent the sub-micro costs the CHECK accepts; it is only a
+ * derived cap/telemetry mirror.
  * This catches a mis-recapture before replay; without it, a v3 bundle could
  * silently load and only fail at the ledger-write seam, where the failure
  * mode is less obvious.
  *
  * Zero-cost captures (genuinely-free or synthetic test fixtures) MAY omit
  * the `cost` key in usageResponseJson; the partial-NULL CHECK exempts
- * these. We accept `cost === 0` matching `amountMicrosUsd === 0`, and an
+ * these. We accept `cost === 0` matching a zero `amountUsd`, and an
  * absent `cost` key matching `costKind === 'zero'`, as the two truthful
  * representations of "no upstream charge".
  */

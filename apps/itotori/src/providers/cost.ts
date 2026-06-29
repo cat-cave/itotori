@@ -3,8 +3,11 @@
 // The cost-tier abstraction is gone (docs/audits/openrouter-cost-tracking-
 // audit-2026-06-25.md §3 N1). Every provider response carries a real
 // `usage.cost` (live evidence in docs/openrouter-integration-evidence/
-// 2026-06-25.json); we just convert it to integer micros and tag
-// `costKind: 'billed'`. No estimation paths. No `unknown` fallback.
+// 2026-06-25.json); we carry it VERBATIM as the authoritative full-
+// precision `amountUsd` and ALSO derive integer micros (`amountMicrosUsd`)
+// as a cap/telemetry mirror, tagging `costKind: 'billed'`. The decimal
+// `amountUsd` — not micros — is the value the ledger persists and the
+// 1e-9 cost CHECK compares. No estimation paths. No `unknown` fallback.
 
 import { ModelProviderError, type ProviderCost } from "./types.js";
 
