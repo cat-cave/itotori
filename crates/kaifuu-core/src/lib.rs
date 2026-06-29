@@ -378,11 +378,12 @@ impl CapabilityReport {
 pub struct AdapterCapabilities {
     pub adapter_id: String,
     pub reports: Vec<CapabilityReport>,
-    /// KAIFUU-053 capability ladder. When `new` is called without
-    /// `with_level_matrix`, this is conservatively derived from `reports`
-    /// via [`AdapterCapabilityMatrix::derive_from_reports`]. Detectors
-    /// should declare it explicitly so identify-only engines can never
-    /// bubble up to Extract/Patch from granular report drift.
+    /// KAIFUU-053 capability ladder. Every adapter MUST declare its 4-rung
+    /// matrix at construction via [`AdapterCapabilities::new`]; there is no
+    /// silent fallback that derives it from `reports`. This keeps identify-only
+    /// engines from bubbling up to Extract/Patch on granular report drift.
+    /// `normalize` uses [`AdapterCapabilityMatrix::derive_from_reports`] only as
+    /// a drift-check that the declared matrix never overclaims against `reports`.
     pub level_matrix: AdapterCapabilityMatrix,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub access_contract: Option<LayeredAccessCapabilityContract>,
