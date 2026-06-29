@@ -584,7 +584,14 @@ function buildOpenRouterProviderRouting(
   if (routing.maxPrice !== undefined) {
     provider.max_price = routing.maxPrice;
   } else if (request.maxPriceUsd !== undefined) {
-    maxPriceUsdToDecimalString(request.maxPriceUsd);
+    // OpenRouter's `provider.max_price.request` is the per-request USD
+    // ceiling (docs/openrouter-integration.md §3.2; OpenRouter
+    // provider-preferences `max_price: {prompt?, completion?, request?,
+    // image?}`). Validate the cap up-front so a malformed value fails
+    // before the request goes out, then emit the value VERBATIM as a JSON
+    // number — that is the documented, honoured wire shape; nothing is
+    // approximated or reformatted.
+    assertValidMaxPriceUsd(request.maxPriceUsd);
     provider.max_price = { request: request.maxPriceUsd };
   }
   return provider as JsonObject;
@@ -703,7 +710,7 @@ function dataCollectionForRequest(
   return requested ?? "deny";
 }
 
-function maxPriceUsdToDecimalString(value: number): string {
+function assertValidMaxPriceUsd(value: number): void {
   if (!Number.isFinite(value) || value < 0) {
     throw new ModelProviderError(
       `maxPriceUsd must be a finite non-negative number, got ${String(value)}`,
@@ -711,6 +718,10 @@ function maxPriceUsdToDecimalString(value: number): string {
       false,
     );
   }
+}
+
+function maxPriceUsdToDecimalString(value: number): string {
+  assertValidMaxPriceUsd(value);
   return value.toFixed(12).replace(/0+$/u, "").replace(/\.$/u, "");
 }
 

@@ -217,6 +217,25 @@ describe("OpenRouterModelProvider — request shape (ITOTORI-220 pair pin)", () 
     expect(observedBody?.provider.max_price).toEqual({ request: 0.000002 });
   });
 
+  it("rejects a malformed maxPriceUsd before any request fires", async () => {
+    // The cap is validated up-front (assertValidMaxPriceUsd) rather than
+    // via a discarded conversion: a non-finite / negative cap must throw a
+    // configuration_error and never reach the wire.
+    const fetchMock = vi.fn(async () =>
+      successResponse({ usageCost: 0.000001 }),
+    ) as unknown as typeof fetch;
+    const provider = new OpenRouterModelProvider({
+      env: { OPENROUTER_API_KEY: "abc", OPENROUTER_ZDR_ACCOUNT_ASSERTED: "1" },
+      httpClient: fetchMock,
+      capabilityGuard: new CapabilityGuard(),
+      artifactRecorder: memoryRecorder(),
+    });
+    await expect(provider.invoke(baseRequest({ maxPriceUsd: -1 }))).rejects.toMatchObject({
+      code: "configuration_error",
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("throws ModelProviderError code='pair_mismatch' when the upstream provider differs", async () => {
     const fetchMock = vi.fn(async () =>
       successResponse({ upstreamProvider: "deepinfra" }),
