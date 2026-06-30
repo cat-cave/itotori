@@ -49,8 +49,7 @@ use kaifuu_core::{BRIDGE_SCHEMA_VERSION_V02, BridgeBundleV02, BridgeContractVali
 
 use crate::gameexe::{GameexeInventoryReport, GameexeKeyFamily};
 use crate::opcode::{
-    RealLiveOpcode, RealLiveParseError, TextEncoding, is_translatable_textout,
-    parse_real_bytecode_spans,
+    RealLiveOpcode, RealLiveParseError, decode_dialogue_textout, parse_real_bytecode_spans,
 };
 
 /// Caller-supplied knobs for [`produce_bundle`].
@@ -261,62 +260,56 @@ fn collect_units(
                 });
                 inline_kidoku_seen = true;
             }
-            RealLiveOpcode::Textout {
-                raw_bytes,
-                encoding,
-            } if !is_translatable_textout(raw_bytes) => {
-                // Binary / non-printable catch-all run (rlvm reads the
-                // non-structural byte → Textout, but these bytes are an
-                // embedded data table, not readable Shift-JIS dialogue —
-                // e.g. Sweetie HD scene-1 op[72] = 214 bytes of periodic
-                // binary records). Surfacing it as a translatable unit
-                // would let patchback overwrite the table and corrupt the
-                // scene, so we DO NOT emit a unit and DO NOT consume an
+            RealLiveOpcode::Textout { raw_bytes, .. } => {
+                // `Textout` is the decoder's catch-all, not a semantic
+                // dialogue opcode: every non-structural byte run lands here,
+                // so a run is only a translatable dialogue unit when its
+                // bytes decode as readable Shift-JIS dialogue — valid decode
+                // AND no control bytes ([`decode_dialogue_textout`]). A
+                // binary / control-byte data run (e.g. a periodic-record
+                // table that sits after a 2nd MetaEntrypoint, or a low-byte
+                // block that decodes cleanly into C0 control characters)
+                // returns `None`: we DO NOT emit a unit and DO NOT consume an
                 // occurrence index. The patchback re-walk
-                // (collect_text_unit_positions) applies the SAME
-                // is_translatable_textout gate, so both paths skip the run
-                // identically and every later unit's occurrence_index stays
-                // aligned. Pending control markers are left intact so they
-                // carry forward to the next real dialogue unit; the cursor
-                // still advances by `width` below so the run's bytes are
-                // accounted for in provenance.
-            }
-            RealLiveOpcode::Textout {
-                raw_bytes,
-                encoding,
-            } => {
-                let decoded = decode_text_body(raw_bytes, *encoding);
-                let (control_prefix, prefix_spans) =
-                    build_control_prefix(&mut pending_markers, &decoded);
-                let (raw_speaker, name_token_spans) =
-                    extract_name_token_spans(&decoded, control_prefix.len() as u64);
-                let asset_ref_spans =
-                    extract_asset_ref_spans(&decoded, control_prefix.len() as u64);
-                let font_tone_spans =
-                    extract_font_tone_spans(&decoded, control_prefix.len() as u64);
-                let mut spans = prefix_spans;
-                spans.extend(name_token_spans);
-                spans.extend(asset_ref_spans);
-                spans.extend(font_tone_spans);
-                if let Some(ref speaker) = raw_speaker {
-                    last_speaker = Some(speaker.clone());
+                // (collect_text_unit_positions) applies the SAME predicate,
+                // so both paths skip the run identically and every later
+                // unit's occurrence_index stays aligned. Pending control
+                // markers are left intact so they carry forward to the next
+                // real dialogue unit; the cursor still advances by `width`
+                // below so the run's bytes are accounted for in provenance.
+                if let Some(decoded) = decode_dialogue_textout(raw_bytes) {
+                    let (control_prefix, prefix_spans) =
+                        build_control_prefix(&mut pending_markers, &decoded);
+                    let (raw_speaker, name_token_spans) =
+                        extract_name_token_spans(&decoded, control_prefix.len() as u64);
+                    let asset_ref_spans =
+                        extract_asset_ref_spans(&decoded, control_prefix.len() as u64);
+                    let font_tone_spans =
+                        extract_font_tone_spans(&decoded, control_prefix.len() as u64);
+                    let mut spans = prefix_spans;
+                    spans.extend(name_token_spans);
+                    spans.extend(asset_ref_spans);
+                    spans.extend(font_tone_spans);
+                    if let Some(ref speaker) = raw_speaker {
+                        last_speaker = Some(speaker.clone());
+                    }
+                    let unit = ProtoUnit {
+                        surface_kind: "dialogue",
+                        decoded_text: decoded,
+                        control_prefix,
+                        spans,
+                        raw_speaker: raw_speaker.or_else(|| last_speaker.clone()),
+                        decompressed_byte_offset: cursor,
+                        decompressed_byte_len: raw_bytes.len() as u64,
+                        voice_archive_id: None,
+                        voice_sample_id: None,
+                        occurrence_index: occurrence,
+                        choice_group_index: None,
+                        choice_option_index: None,
+                    };
+                    occurrence += 1;
+                    units.push(unit);
                 }
-                let unit = ProtoUnit {
-                    surface_kind: "dialogue",
-                    decoded_text: decoded,
-                    control_prefix,
-                    spans,
-                    raw_speaker: raw_speaker.or_else(|| last_speaker.clone()),
-                    decompressed_byte_offset: cursor,
-                    decompressed_byte_len: raw_bytes.len() as u64,
-                    voice_archive_id: None,
-                    voice_sample_id: None,
-                    occurrence_index: occurrence,
-                    choice_group_index: None,
-                    choice_option_index: None,
-                };
-                occurrence += 1;
-                units.push(unit);
             }
             RealLiveOpcode::TextDisplay { .. } => {
                 // TextDisplay carries no raw text body in the parsed
@@ -338,21 +331,24 @@ fn collect_units(
             RealLiveOpcode::Choice { choices } => {
                 for (option_index, choice) in choices.iter().enumerate() {
                     let choice_bytes = choice.bytes.as_slice();
-                    // An empty choice option is an interior `,,` segment
-                    // that carries no translatable body. The patchback
-                    // re-walk (collect_text_unit_positions) skips
-                    // zero-length options via its `arg_end > arg_start`
-                    // guard, so the producer MUST skip them too —
-                    // otherwise every later unit's occurrence_index
-                    // drifts by one per empty option and patchback
-                    // splices into the wrong unit (ProvenanceMismatch).
-                    // Skipping in both paths keeps each non-empty unit's
-                    // occurrence_index independent of how many empty
-                    // options precede it.
-                    if choice_bytes.is_empty() {
+                    // A choice option is a translatable unit only when its
+                    // bytes decode as readable Shift-JIS dialogue — valid
+                    // decode AND no control bytes (`decode_dialogue_textout`,
+                    // the same invariant the Textout path uses). `None`
+                    // covers BOTH an empty interior `,,` segment AND an
+                    // option that carries no static dialogue, e.g. an rlBabel
+                    // `###PRINT(<expr>)` runtime interpolation whose displayed
+                    // text is computed from a memory-bank variable at run time
+                    // (its body is compiled expression bytes, not text). Such
+                    // an option is NOT a translatable unit and must NOT
+                    // consume an occurrence index — the patchback re-walk
+                    // (collect_text_unit_positions) applies the SAME gate, so
+                    // both paths skip the identical options and every later
+                    // unit's occurrence_index stays aligned (no
+                    // ProvenanceMismatch).
+                    let Some(decoded) = decode_dialogue_textout(choice_bytes) else {
                         continue;
-                    }
-                    let decoded = decode_text_body(choice_bytes, TextEncoding::ShiftJisInlineRun);
+                    };
                     let (control_prefix, prefix_spans) =
                         build_control_prefix(&mut pending_markers, &decoded);
                     // Choice marker bytes inside the choice body
@@ -636,13 +632,6 @@ fn normalize_speaker(raw: &str, gameexe_inventory: &GameexeInventoryReport) -> S
         }
     }
     raw.to_string()
-}
-
-fn decode_text_body(raw: &[u8], _encoding: TextEncoding) -> String {
-    // Shift-JIS decode; replacement chars on invalid sequences keep the
-    // bridge contract honest without panicking on bad bytes.
-    let (decoded, _enc, _had_errors) = encoding_rs::SHIFT_JIS.decode(raw);
-    decoded.into_owned()
 }
 
 // ---------------------------------------------------------------------
@@ -1280,11 +1269,11 @@ mod tests {
         // Real bytes: the Sweetie HD scene-1 214-byte binary data block is
         // NOT translatable; a real scene-2011 Shift-JIS dialogue line IS.
         assert!(
-            !is_translatable_textout(SCENE1_BINARY_BLOCK_214B),
+            decode_dialogue_textout(SCENE1_BINARY_BLOCK_214B).is_none(),
             "the 214-byte periodic-binary data block must be excluded from translatable units"
         );
         assert!(
-            is_translatable_textout(SCENE2011_DIALOGUE_SJIS),
+            decode_dialogue_textout(SCENE2011_DIALOGUE_SJIS).is_some(),
             "a real Shift-JIS dialogue line must remain translatable (no false negative)"
         );
     }

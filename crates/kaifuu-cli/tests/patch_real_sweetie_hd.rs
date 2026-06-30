@@ -30,8 +30,8 @@ use std::path::PathBuf;
 use std::process::Command;
 
 use kaifuu_reallive::{
-    RealLiveOpcode, RealLiveSceneIndex, SceneEntry, SceneHeader, decompress_avg32,
-    encode_shift_jis_slot, is_translatable_textout, parse_real_bytecode,
+    RealLiveOpcode, RealLiveSceneIndex, SceneEntry, SceneHeader, decode_dialogue_textout,
+    decompress_avg32, encode_shift_jis_slot, parse_real_bytecode,
 };
 
 /// The dialogue scene the bootstrap extract targets (scene 1 is
@@ -248,7 +248,7 @@ fn cli_patch_engine_reallive_writes_patched_seen_txt_under_writable_target() {
                     raw_bytes: tgt_raw, ..
                 },
             ) => {
-                if is_translatable_textout(src_raw) {
+                if decode_dialogue_textout(src_raw).is_some() {
                     assert_eq!(
                         tgt_raw.as_slice(),
                         sentinel_sjis.as_slice(),

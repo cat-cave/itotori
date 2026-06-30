@@ -46,7 +46,7 @@ use crate::archive::{
 use crate::compressor::{CompressError, compress_avg32_literal};
 use crate::decompressor::decompress_avg32;
 use crate::encoding::{ShiftJisEncodeError, encode_shift_jis_slot};
-use crate::opcode::{RealLiveOpcode, is_translatable_textout, parse_real_bytecode};
+use crate::opcode::{RealLiveOpcode, decode_dialogue_textout, parse_real_bytecode};
 use crate::scene_header::{SCENE_HEADER_BYTE_LEN, SceneHeader, SceneHeaderError};
 
 /// Stable error codes published per the KAIFUU-211 acceptance criteria.
@@ -815,15 +815,15 @@ fn collect_text_unit_positions(
         let (new_pos, recorded) = advance_one_element(scene_id, decompressed, pos, op, lead)?;
         if let Some((surface_kind, start_byte, end_byte)) = recorded {
             // A Textout run is only a translatable unit when its bytes are
-            // readable Shift-JIS dialogue. Binary / non-printable catch-all
+            // readable Shift-JIS dialogue. Binary / control-byte catch-all
             // runs are NOT surfaced by the KAIFUU-210 producer
-            // (`collect_units` applies the same `is_translatable_textout`
+            // (`collect_units` applies the same `decode_dialogue_textout`
             // gate) and must NOT consume an occurrence index here either —
             // otherwise every later unit's occurrence_index would drift and
             // edits would splice into the wrong opcode. Skipping in both
             // paths keeps the binary run out of the edit plan, so it
             // survives patchback byte-identical.
-            if is_translatable_textout(&decompressed[start_byte..end_byte]) {
+            if decode_dialogue_textout(&decompressed[start_byte..end_byte]).is_some() {
                 out.push(TextUnitPosition {
                     occurrence_index: occurrence,
                     surface_kind,
@@ -845,7 +845,15 @@ fn collect_text_unit_positions(
             // correct only for the comma form and would mis-anchor every
             // `{ … }` select option.
             for choice in choices {
-                if choice.bytes.is_empty() {
+                // A choice option is a translatable unit only when its bytes
+                // decode as readable Shift-JIS dialogue (`decode_dialogue_textout`
+                // — valid decode AND no control bytes). `None` covers an empty
+                // interior `,,` segment AND a non-dialogue option such as an
+                // rlBabel `###PRINT(<expr>)` runtime interpolation (compiled
+                // expression bytes, not static text). The bridge producer
+                // (`collect_units`) applies the SAME gate, so both paths skip
+                // the identical options and the occurrence_index never drifts.
+                if decode_dialogue_textout(&choice.bytes).is_none() {
                     continue;
                 }
                 let start_byte = choice.byte_offset as usize;

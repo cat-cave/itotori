@@ -33,7 +33,7 @@ use std::path::PathBuf;
 
 use kaifuu_reallive::{
     BridgeOpts, BridgeProduceError, REALLIVE_SEEN_TXT_DIRECTORY_BYTE_LEN, RealLiveOpcode,
-    SceneHeader, decompress_avg32, gameexe::parse_gameexe_inventory, is_translatable_textout,
+    SceneHeader, decode_dialogue_textout, decompress_avg32, gameexe::parse_gameexe_inventory,
     parse_archive, parse_real_bytecode, produce_bundle,
 };
 
@@ -144,7 +144,7 @@ fn scene_1_all_textouts_are_binary_and_produce_no_translatable_units_real_bytes(
     );
     let translatable = textouts
         .iter()
-        .filter(|raw| is_translatable_textout(raw))
+        .filter(|raw| decode_dialogue_textout(raw).is_some())
         .count();
     eprintln!(
         "scene 1: {} Textout runs, {translatable} translatable",
@@ -161,7 +161,7 @@ fn scene_1_all_textouts_are_binary_and_produce_no_translatable_units_real_bytes(
         .find(|raw| raw.len() == 214)
         .expect("scene 1 must contain the 214-byte binary data block");
     assert!(
-        !is_translatable_textout(block_214),
+        decode_dialogue_textout(block_214).is_none(),
         "the 214-byte binary data block must be excluded from translatable units"
     );
 
@@ -237,21 +237,35 @@ fn dialogue_scene_surfaces_readable_sjis_textouts_as_translatable_units_real_byt
     let readable_textout_count = opcodes
         .iter()
         .filter(|op| match op {
-            RealLiveOpcode::Textout { raw_bytes, .. } => is_translatable_textout(raw_bytes),
+            RealLiveOpcode::Textout { raw_bytes, .. } => {
+                decode_dialogue_textout(raw_bytes).is_some()
+            }
             _ => false,
         })
         .count();
     let binary_textout_count = opcodes
         .iter()
         .filter(|op| match op {
-            RealLiveOpcode::Textout { raw_bytes, .. } => !is_translatable_textout(raw_bytes),
+            RealLiveOpcode::Textout { raw_bytes, .. } => {
+                decode_dialogue_textout(raw_bytes).is_none()
+            }
             _ => false,
         })
         .count();
     let choice_unit_count: usize = opcodes
         .iter()
         .filter_map(|op| match op {
-            RealLiveOpcode::Choice { choices } => Some(choices.len()),
+            // Only choice options whose bytes decode as readable Shift-JIS
+            // dialogue become translatable units; non-dialogue options (empty
+            // interior slots, or rlBabel `###PRINT(<expr>)` runtime
+            // interpolations) are excluded by the same gate the producer
+            // applies.
+            RealLiveOpcode::Choice { choices } => Some(
+                choices
+                    .iter()
+                    .filter(|c| decode_dialogue_textout(&c.bytes).is_some())
+                    .count(),
+            ),
             _ => None,
         })
         .sum();

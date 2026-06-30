@@ -33,9 +33,8 @@ use std::path::PathBuf;
 
 use kaifuu_reallive::{
     BridgeOpts, PatchbackOpts, REALLIVE_SEEN_TXT_DIRECTORY_BYTE_LEN, RealLiveOpcode, SceneHeader,
-    TranslatedBundleV02, apply_translated_bundle, decompress_avg32,
-    gameexe::parse_gameexe_inventory, is_translatable_textout, parse_archive, parse_real_bytecode,
-    produce_bundle,
+    TranslatedBundleV02, apply_translated_bundle, decode_dialogue_textout, decompress_avg32,
+    gameexe::parse_gameexe_inventory, parse_archive, parse_real_bytecode, produce_bundle,
 };
 
 const SWEETIE_HD_GAME_ID: &str = "sweetie-hd";
@@ -134,7 +133,9 @@ fn patches_dialogue_scene_with_en_us_sentinel_and_preserves_binary_runs_byte_ide
     let binary_runs: Vec<Vec<u8>> = original_opcodes
         .iter()
         .filter_map(|op| match op {
-            RealLiveOpcode::Textout { raw_bytes, .. } if !is_translatable_textout(raw_bytes) => {
+            RealLiveOpcode::Textout { raw_bytes, .. }
+                if decode_dialogue_textout(raw_bytes).is_none() =>
+            {
                 Some(raw_bytes.clone())
             }
             _ => None,
@@ -150,7 +151,7 @@ fn patches_dialogue_scene_with_en_us_sentinel_and_preserves_binary_runs_byte_ide
         .iter()
         .find_map(|op| match op {
             RealLiveOpcode::Textout { raw_bytes, .. }
-                if is_translatable_textout(raw_bytes) && raw_bytes.len() >= 4 =>
+                if decode_dialogue_textout(raw_bytes).is_some() && raw_bytes.len() >= 4 =>
             {
                 Some(raw_bytes.clone())
             }

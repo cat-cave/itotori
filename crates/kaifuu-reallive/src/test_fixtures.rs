@@ -1,5 +1,5 @@
 //! Real-bytes fixtures captured from Sweetie HD's `Seen.txt`, used by the
-//! `is_translatable_textout` surface-selection tests in [`crate::bridge`]
+//! `decode_dialogue_textout` surface-selection tests in [`crate::bridge`]
 //! and [`crate::patchback`].
 //!
 //! These are verbatim Textout-run bodies recovered by decompressing a real
@@ -14,9 +14,9 @@
 /// (the embedded data table that sits after a 2nd `MetaEntrypoint`). The
 /// catch-all decoder returns this as a single `Textout`, but the bytes are
 /// NOT readable Shift-JIS — `encoding_rs::SHIFT_JIS.decode` reports 26
-/// replacement characters — so `is_translatable_textout` excludes it.
-/// Surfacing it as a translatable unit would let patchback overwrite the
-/// table and corrupt the scene.
+/// replacement characters — so `decode_dialogue_textout` returns `None` and
+/// excludes it. Surfacing it as a translatable unit would let patchback
+/// overwrite the table and corrupt the scene.
 #[rustfmt::skip]
 pub(crate) const SCENE1_BINARY_BLOCK_214B: &[u8] = &[
     0x36, 0x63, 0x3f, 0x9a, 0xf4, 0xb3, 0xfd, 0xc8, 0x5a, 0x83, 0x0f, 0x77, 0x3a, 0x9d, 0x66, 0xc6,
@@ -36,13 +36,14 @@ pub(crate) const SCENE1_BINARY_BLOCK_214B: &[u8] = &[
 ];
 
 /// A real Sweetie HD scene-2011 dialogue Textout: `【和人】「‥‥‥‥！？」`
-/// (Shift-JIS, 24 bytes). It decodes cleanly (zero replacement characters),
-/// so `is_translatable_textout` surfaces it as a translatable unit. The
-/// `【和人】` speaker bracket also exercises the name-token span path. Its
-/// printable-character ratio is below 0.5 (it is mostly `‥` two-dot-leader
-/// ellipsis), which is exactly why the surface test gates on valid Shift-JIS
-/// decode rather than a printable-ratio threshold — a ratio gate would drop
-/// this real line as a false negative.
+/// (Shift-JIS, 24 bytes). It decodes cleanly (zero replacement characters)
+/// and carries no control bytes, so `decode_dialogue_textout` returns the
+/// decoded line and surfaces it as a translatable unit. The `【和人】` speaker
+/// bracket also exercises the name-token span path. The line is mostly `‥`
+/// two-dot-leader ellipsis, which is exactly why the surface test gates on a
+/// valid Shift-JIS decode plus a no-control-byte invariant rather than a
+/// printable-byte ratio — a ratio gate would drop this real line as a false
+/// negative.
 #[rustfmt::skip]
 pub(crate) const SCENE2011_DIALOGUE_SJIS: &[u8] = &[
     0x81, 0x79, 0x98, 0x61, 0x90, 0x6c, 0x81, 0x7a, 0x81, 0x75, 0x81, 0x64, 0x81, 0x64, 0x81, 0x64,
