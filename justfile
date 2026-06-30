@@ -185,6 +185,19 @@ hello-agentic-loop: build
     node apps/itotori/dist/cli.js agentic-loop-smoke --bridge apps/itotori/test/fixtures/agentic-loop-smoke-bridge.json --unit-index 0 --pair-policy apps/itotori/test/fixtures/agentic-loop-smoke-pair-policy.json --output .tmp/hello-agentic-loop/agentic-loop-bundle.json
     node scripts/print-agentic-loop-bundle-summary.mjs .tmp/hello-agentic-loop/agentic-loop-bundle.json
 
+# ITOTORI-116: public provider-proof harness in RECORDED mode (no creds).
+# Proves the draft + QA provider path with reject-before-record schema
+# validation, bounded schema-repair, a token/cost/latency ledger that
+# reconciles with the ITOTORI-100 route report, and a seeded QA oracle
+# scoring report. Emits a sanitized ProviderProofBundle (no raw
+# prompts/responses/keys). Opt-in live mode: `node apps/itotori/dist/cli.js
+# provider-proof --live` with ITOTORI_PROVIDER_PROOF_LIVE=1 + an exported
+# OPENROUTER_API_KEY + OPENROUTER_ZDR_ACCOUNT_ASSERTED=1.
+provider-proof: build
+    rm -rf .tmp/provider-proof
+    mkdir -p .tmp/provider-proof
+    node apps/itotori/dist/cli.js provider-proof --output .tmp/provider-proof/recorded-proof-bundle.json
+
 # UTSUSHI-220: alpha-defining e2e Sweetie HD scene-1 text-replay smoke.
 # Runs the synthetic replay_scene acceptance tests through `cargo test`
 # (no real bytes required) so a fresh-clone reviewer can verify the

@@ -56,6 +56,7 @@ import {
   type CharacterRelationshipCliDependencies,
 } from "./agents/character-relationship/index.js";
 import { runAgenticLoopSmokeCommand } from "./orchestrator/agentic-loop-smoke-command.js";
+import { providerProofSummary, runProviderProofCommand } from "./provider-proof/index.js";
 import {
   runLocalizeProjectStageCommand,
   type LocalizeProjectStageArgs,
@@ -193,6 +194,9 @@ export async function runItotoriCliCommand(
       break;
     case "localize-project-stage":
       await runLocalizeProjectStage(args, dependencies);
+      break;
+    case "provider-proof":
+      await runProviderProof(args, dependencies);
       break;
     case "export-patch":
       await runExportPatch(args, dependencies);
@@ -421,6 +425,39 @@ async function runAgenticLoopSmoke(
     },
     ...(draftArtifactOutputPath === undefined ? {} : { draftArtifactOutputPath }),
   });
+}
+
+async function runProviderProof(
+  args: string[],
+  dependencies: ItotoriCliDependencies,
+): Promise<void> {
+  // Recorded mode is the default (no credentials); `--live` opts in to a
+  // bounded real ZDR call. The OpenRouter key is read from the environment
+  // by the command and is NEVER passed on the CLI or printed.
+  const live = args.includes("--live");
+  const fixturePath = optionalFlag(args, "--fixture");
+  const outputPath = optionalFlag(args, "--output");
+  const maxRepairRaw = optionalFlag(args, "--max-repair-attempts");
+  const maxRepairAttempts =
+    maxRepairRaw === undefined ? undefined : Number.parseInt(maxRepairRaw, 10);
+  if (maxRepairAttempts !== undefined && !Number.isInteger(maxRepairAttempts)) {
+    throw new Error(
+      `provider-proof refused: --max-repair-attempts '${String(maxRepairRaw)}' must be an integer`,
+    );
+  }
+  const result = await runProviderProofCommand({
+    mode: live ? "live" : "recorded",
+    ...(fixturePath === undefined ? {} : { fixturePath }),
+    ...(maxRepairAttempts === undefined ? {} : { maxRepairAttempts }),
+  });
+  if (result.status === "skipped") {
+    process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+    return;
+  }
+  if (outputPath !== undefined) {
+    dependencies.io.writeJson(outputPath, result.bundle);
+  }
+  process.stdout.write(`${JSON.stringify(providerProofSummary(result.bundle), null, 2)}\n`);
 }
 
 async function runLocalizeProjectStage(

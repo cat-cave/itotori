@@ -1,0 +1,54 @@
+{
+  "$schema": "./manifest.schema.json",
+  "schemaVersion": "0.1.0",
+  "fixture": {
+    "id": "provider-proof",
+    "title": "Provider proof harness recorded fixtures",
+    "kind": "synthetic",
+    "summary": "Recorded draft + QA provider responses and the golden sanitized provider-proof bundle for the ITOTORI-116 public real-LLM proof harness. Carries synthetic structured outputs and hashes only; no raw prompts, responses, keys, or private corpus text.",
+    "sourceLocale": "ja-JP",
+    "targetLocales": ["en-US"],
+    "publicRedistribution": "allowed",
+    "license": {
+      "spdx": "CC0-1.0",
+      "evidence": "Synthetic content authored for the itotori provider-proof harness; contains no third-party or game assets."
+    },
+    "provenance": {
+      "author": "itotori ITOTORI-116",
+      "creationMethod": "hand-authored synthetic recorded provider responses + harness-generated golden bundle",
+      "rawAssetPolicy": "contains-no-copyrighted-game-assets"
+    }
+  },
+  "files": [
+    {
+      "path": "fixtures/provider-proof/recorded-proof-input.json",
+      "role": "benchmark-input",
+      "mediaType": "application/json",
+      "sha256": "cee8be6e419df131e4cb28adbc9d4c90869c8a10458e2af45eab266f33f94d15",
+      "bytes": 8031,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/provider-proof/expected-recorded-proof-bundle.json",
+      "role": "expected-output",
+      "mediaType": "application/json",
+      "sha256": "a8d41e732446319ba60da55d3254ced30b987a219ef96ea51ae0ac2daad92a73",
+      "bytes": 5391,
+      "redistributable": true
+    }
+  ],
+  "aggregateStats": {
+    "files": 2,
+    "textUnits": 1,
+    "sourceTextUtf16CodeUnits": 39,
+    "protectedSpans": 0,
+    "sourceLocales": ["ja-JP"],
+    "targetLocales": ["en-US"],
+    "notes": "Provider-proof harness fixtures: 1 synthetic source unit, draft (invalid-then-valid) + QA recorded responses, seeded QA oracle."
+  },
+  "benchmarkUse": {
+    "allowedInPublicCi": true,
+    "allowedInPublicReports": true,
+    "reportingLabel": "public:provider-proof"
+  }
+}
