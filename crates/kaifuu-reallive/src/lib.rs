@@ -162,7 +162,7 @@ pub use inventory::{
 pub use opcode::{
     COMMAND_HEADER_LEN, CommandArg, Expr, RealLiveOpcode, RealLiveParseError, TextEncoding,
     is_recognized_opener, is_shift_jis_textout_lead, is_structural_opener, is_translatable_textout,
-    parse_expression, parse_real_bytecode,
+    parse_expression, parse_real_bytecode, parse_real_bytecode_spans,
 };
 pub use opcodes::NamedOpcode;
 pub use parser::{parse_scene, parse_scene_into_ast};

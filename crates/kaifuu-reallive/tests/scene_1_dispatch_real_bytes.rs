@@ -49,7 +49,10 @@ mod real_corpus;
 use std::fs;
 use std::path::PathBuf;
 
-use kaifuu_reallive::{REALLIVE_SEEN_TXT_DIRECTORY_BYTE_LEN, RealLiveOpcode, parse_real_bytecode};
+use kaifuu_reallive::{
+    REALLIVE_SEEN_TXT_DIRECTORY_BYTE_LEN, RealLiveOpcode, parse_real_bytecode,
+    parse_real_bytecode_spans,
+};
 
 #[test]
 #[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
@@ -261,6 +264,200 @@ fn dispatches_sweetie_hd_scene_1_with_zero_unknown_opcodes_full_recognition() {
 
 fn real_seen_txt_path() -> Option<PathBuf> {
     real_corpus::seen_txt_path()
+}
+
+/// Resolve scene 1 from the real `Seen.txt` and run the AVG32 LZSS + XOR
+/// decompression, returning the plaintext bytecode stream — the same
+/// derivation the dispatch test above performs, factored out so the
+/// framing-offset pin can re-walk the identical bytes.
+fn decompressed_scene_1(seen_path: &PathBuf) -> Vec<u8> {
+    let bytes = fs::read(seen_path)
+        .unwrap_or_else(|err| panic!("failed to read {}: {err}", seen_path.display()));
+    let slot1_offset = u32::from_le_bytes([bytes[8], bytes[9], bytes[10], bytes[11]]) as usize;
+    let slot1_size = u32::from_le_bytes([bytes[12], bytes[13], bytes[14], bytes[15]]) as usize;
+    let blob = &bytes[slot1_offset..slot1_offset + slot1_size];
+    let bytecode_offset =
+        u32::from_le_bytes([blob[0x20], blob[0x21], blob[0x22], blob[0x23]]) as usize;
+    let bytecode_uncompressed =
+        u32::from_le_bytes([blob[0x24], blob[0x25], blob[0x26], blob[0x27]]) as usize;
+    let bytecode_compressed =
+        u32::from_le_bytes([blob[0x28], blob[0x29], blob[0x2a], blob[0x2b]]) as usize;
+    let compressed = &blob[bytecode_offset..bytecode_offset + bytecode_compressed];
+    decompress_avg32(compressed, bytecode_uncompressed)
+        .unwrap_or_else(|err| panic!("decompress failed: {err}"))
+}
+
+/// Pin the exact arg/expression byte-framing of real Sweetie HD scene 1.
+///
+/// # Why this test exists (the regression it guards)
+///
+/// `decode_command` / `parse_arg_list` once treated raw `0x29` (`)`) and
+/// `0x2C` (`,`) bytes as structural arg-list delimiters even when they
+/// were the payload of a `0xFF`-introduced i32 literal or sat inside a
+/// parenthesised sub-expression. A legal expression byte equal to a
+/// delimiter would close the arg list early, mis-set the consumed width,
+/// and desync the cursor for the rest of the stream — inflating the
+/// Unknown count and corrupting the byte offsets the patch-back re-walk
+/// depends on. The current decoder drives every arg/expression span off
+/// the real [`kaifuu_reallive::parse_expression`] evaluator (the single
+/// source of truth that [`parse_real_bytecode_spans`] exposes), so a
+/// delimiter-valued literal byte is consumed whole.
+///
+/// The mechanism has a synthetic unit pin
+/// (`command_arglist_int_literal_payload_with_delimiter_bytes_does_not_misterminate`
+/// in `opcode.rs`). This test is the **real-bytes** pin the audit asked
+/// for: it asserts the exact byte offset + width of every variable-width,
+/// arg/expression-framed element of scene 1, plus contiguous tiling of the
+/// whole 1660-byte stream. Any framing change — a re-introduced delimiter
+/// scan, a wrong expression width, a dropped goto pointer — shifts these
+/// offsets and turns the test red, instead of silently re-flowing the
+/// stream.
+///
+/// The pinned numbers are structural metadata (offsets / widths / element
+/// labels), not game content; regenerate them only when the decoder's
+/// framing legitimately changes.
+#[test]
+#[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
+fn scene_1_arg_expression_framing_offsets_are_pinned_byte_exact() {
+    let Some(seen_path) = real_seen_txt_path() else {
+        real_corpus::skip_or_require_real_bytes("Sweetie HD scene-1 framing-offset pin");
+        return;
+    };
+    let decompressed = decompressed_scene_1(&seen_path);
+
+    let spans = parse_real_bytecode_spans(&decompressed)
+        .expect("real scene-1 bytecode must decode under the spans walker");
+
+    // ---- Invariant 1: the spans tile [0, len) exactly, contiguously. ----
+    // A desync that double-counts or skips bytes breaks this before any
+    // golden comparison.
+    let mut offset = 0usize;
+    for (idx, (_op, width)) in spans.iter().enumerate() {
+        assert!(
+            *width > 0,
+            "element #{idx} at offset {offset} consumed zero bytes (framing would spin/desync)"
+        );
+        offset += *width;
+    }
+    assert_eq!(
+        offset,
+        decompressed.len(),
+        "decoded element widths must tile the whole {}-byte scene with no gap/overlap; \
+         summed to {offset}",
+        decompressed.len()
+    );
+    assert_eq!(
+        spans.len(),
+        210,
+        "scene-1 must decode to exactly 210 elements; a desync changes this count"
+    );
+
+    // ---- Invariant 2: the exact (offset, label, width) of every ----
+    // variable-width, arg/expression-framed element. Fixed-width 3-byte
+    // meta lines and 1-byte commas are covered by the tiling invariant
+    // above; the entries below are the commands (with bracketed arg
+    // lists / trailing goto pointers) and Expression elements whose spans
+    // are computed by the ExpressionPiece evaluator — i.e. exactly the
+    // framing the audit finding is about.
+    let golden: &[(usize, &str, usize)] = &[
+        (6, "meta_entrypoint", 3),
+        (30, "choice", 8),
+        (38, "expression", 14),
+        (193, "set_variable", 8),
+        (201, "set_variable", 8),
+        (209, "set_variable", 8),
+        (217, "set_variable", 8),
+        (225, "set_variable", 8),
+        (233, "set_variable", 8),
+        (241, "set_variable", 8),
+        (249, "set_variable", 8),
+        (257, "meta_entrypoint", 3),
+        (260, "textout", 22),
+        (283, "textout", 15),
+        (299, "textout", 214),
+        (517, "expression", 18),
+        (544, "set_variable", 16),
+        (566, "background", 22),
+        (591, "background", 22),
+        (619, "set_variable", 8),
+        (630, "set_variable", 16),
+        (652, "branch", 32),
+        (687, "expression", 18),
+        (711, "expression", 18),
+        (735, "expression", 18),
+        (756, "expression", 18),
+        (777, "expression", 18),
+        (798, "expression", 18),
+        (819, "expression", 18),
+        (840, "expression", 18),
+        (861, "expression", 18),
+        (885, "expression", 18),
+        (906, "expression", 18),
+        (930, "call", 16),
+        (958, "expression", 18),
+        (982, "expression", 18),
+        (1006, "expression", 18),
+        (1027, "expression", 18),
+        (1048, "expression", 18),
+        (1069, "expression", 18),
+        (1096, "set_variable", 16),
+        (1121, "background", 22),
+        (1158, "set_variable", 22),
+        (1180, "expression", 14),
+        (1197, "branch", 32),
+        (1232, "background", 24),
+        (1262, "voice_play", 22),
+        (1290, "voice_play", 8),
+        (1304, "background", 24),
+        (1334, "voice_play", 22),
+        (1362, "voice_play", 8),
+        (1373, "goto", 12),
+        (1397, "background", 26),
+        (1429, "voice_play", 22),
+        (1457, "voice_play", 8),
+        (1471, "background", 26),
+        (1503, "voice_play", 22),
+        (1531, "voice_play", 8),
+        (1551, "background", 22),
+        (1588, "call", 16),
+        (1613, "textout", 46),
+    ];
+
+    // Build the observed (offset, label, width) manifest for the same
+    // element classes the golden set covers.
+    let mut observed: Vec<(usize, &'static str, usize)> = Vec::new();
+    let mut pos = 0usize;
+    for (op, width) in &spans {
+        let label = op.label();
+        if label != "meta_line" && label != "comma" {
+            observed.push((pos, label, *width));
+        }
+        pos += *width;
+    }
+
+    assert_eq!(
+        observed.len(),
+        golden.len(),
+        "count of arg/expression-framed elements changed: observed {} vs pinned {}",
+        observed.len(),
+        golden.len()
+    );
+    for (i, (got, want)) in observed.iter().zip(golden.iter()).enumerate() {
+        assert_eq!(
+            (got.0, got.1, got.2),
+            (want.0, want.1, want.2),
+            "framing desync at element #{i}: decoded {got:?} but pinned {want:?} — \
+             arg/expression byte-framing changed (a legal expression byte may again be \
+             treated as a structural delimiter)"
+        );
+    }
+
+    // ---- Invariant 3: still 100% recognised (no Unknown bucket). ----
+    let unknown = spans.iter().filter(|(op, _)| !op.is_recognized()).count();
+    assert_eq!(
+        unknown, 0,
+        "framing pin must coincide with 100% recognition; got {unknown} Unknown elements"
+    );
 }
 
 /// AVG32 256-byte XOR mask applied to the LZSS compressed stream.
