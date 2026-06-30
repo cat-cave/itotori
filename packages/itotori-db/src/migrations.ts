@@ -248,6 +248,10 @@ export const migrations = [
     id: "0047_provider_id_pair_integrity",
     file: "0047_provider_id_pair_integrity.sql",
   },
+  {
+    id: "0048_catalog_conflict_unknown_kind",
+    file: "0048_catalog_conflict_unknown_kind.sql",
+  },
 ] as const;
 
 function migrationPath(file: string): string {

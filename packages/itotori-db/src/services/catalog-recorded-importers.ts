@@ -4,6 +4,7 @@ import type {
   CatalogConflictInput,
   CatalogDemandFactInput,
   CatalogExternalIdInput,
+  CatalogExternalIdRecord,
   CatalogJsonRecord,
   CatalogLanguageStatusInput,
   CatalogReleaseInput,
@@ -583,8 +584,7 @@ function parseSteamStorefrontResponse(
   const releaseYear = releaseDate === undefined ? undefined : yearFromDate(releaseDate);
   const languageParse = steamLanguageStatuses(data, appId, fixture, response);
   const languages = languageParse.statuses;
-  const originalLanguage =
-    languages.find((status) => status.language === "ja-JP")?.language ?? languages[0]?.language;
+  const originalLanguage = originalLanguageFromLanguageStatuses(languages);
   const packages = optionalArray(data, "packages") ?? [];
   const packageStatus = packages.length === 0 ? "no_packages_recorded" : "packages_recorded";
   const developers = stringArray(data, "developers");
@@ -640,6 +640,18 @@ function parseSteamStorefrontResponse(
   };
 }
 
+// Derive the work's original language from the language evidence the source
+// payload actually provides. Returns undefined when the payload carries no
+// language statuses so callers omit originalLanguage rather than fabricate one.
+function originalLanguageFromLanguageStatuses(
+  languageStatuses: readonly CatalogRecordedLanguageStatusFact[],
+): string | undefined {
+  return (
+    languageStatuses.find((status) => status.language === "ja-JP")?.language ??
+    languageStatuses[0]?.language
+  );
+}
+
 function parseIgdbPlatformResponse(
   fixture: CatalogRecordedPlatformFixture,
   response: CatalogRecordedPlatformResponse,
@@ -665,13 +677,14 @@ function parseIgdbPlatformResponse(
   const releases = igdbReleaseFacts(fixture, response, title);
   const languageStatuses = igdbLanguageStatusFacts(fixture, response);
   const externalIds = igdbExternalIds(fixture, response);
+  const originalLanguage = originalLanguageFromLanguageStatuses(languageStatuses);
 
   return {
     diagnostics: [],
     fact: {
       sourceId,
       canonicalTitle: title,
-      originalLanguage: "ja-JP",
+      ...(originalLanguage === undefined ? {} : { originalLanguage }),
       ...(firstReleaseYear === undefined ? {} : { firstReleaseYear }),
       externalIds,
       releases,
@@ -715,13 +728,14 @@ function parseWikidataPlatformResponse(
     .filter((platform): platform is string => platform !== null);
   const languageStatuses = wikidataLanguageStatusFacts(fixture, response, claims);
   const externalIds = wikidataExternalIds(fixture, response, payload);
+  const originalLanguage = originalLanguageFromLanguageStatuses(languageStatuses);
 
   return {
     diagnostics: [],
     fact: {
       sourceId,
       canonicalTitle: title,
-      originalLanguage: "ja-JP",
+      ...(originalLanguage === undefined ? {} : { originalLanguage }),
       ...(releaseYear === undefined ? {} : { firstReleaseYear: releaseYear }),
       titles: [
         ...new Set(
@@ -2096,29 +2110,29 @@ export function createCatalogRecordedImporterVerifier(
 ): CatalogCrawlerVerifyFactImportStep<CatalogRecordedImporterFact> {
   return async (context) => {
     const persistedIdentities: string[] = [];
-    for (const [index, fact] of context.facts.entries()) {
+    for (const fact of context.facts) {
       const snapshot = await options.catalogRepository.getWorkByExternalId(
         options.actor,
         context.adapter.catalogSource,
         fact.sourceId,
         catalogExternalIdKindValues.sourceRecord,
       );
+      // Locate the source record this import actually persisted via its import
+      // provenance metadata — NOT by filtering on the expected sourceId — so the
+      // identity reconstructed below reflects what is stored in the repository
+      // and the comparison against expectedFactIdentities can genuinely diverge.
       const sourceRecord = snapshot?.externalIds.find(
         (externalId) =>
           externalId.catalogSource === context.adapter.catalogSource &&
-          externalId.sourceId === fact.sourceId &&
-          externalId.externalIdKind === catalogExternalIdKindValues.sourceRecord,
+          externalId.externalIdKind === catalogExternalIdKindValues.sourceRecord &&
+          metadataString(externalId.metadata, "stableImportKey") === context.stableImportKey &&
+          metadataString(externalId.metadata, "importTransactionId") ===
+            context.importTransactionId,
       );
-      if (
-        snapshot === null ||
-        snapshot === undefined ||
-        sourceRecord === undefined ||
-        metadataString(sourceRecord.metadata, "stableImportKey") !== context.stableImportKey ||
-        metadataString(sourceRecord.metadata, "importTransactionId") !== context.importTransactionId
-      ) {
+      if (snapshot === null || snapshot === undefined || sourceRecord === undefined) {
         return null;
       }
-      persistedIdentities.push(context.expectedFactIdentities[index] ?? "");
+      persistedIdentities.push(persistedFactIdentity(sourceRecord));
     }
 
     if (!sameStringList(persistedIdentities, context.expectedFactIdentities)) {
@@ -2430,7 +2444,7 @@ function conflictInputs(
       ]);
     return {
       conflictId,
-      conflictKind: conflict.conflictKind ?? catalogConflictKindValues.languageStatus,
+      conflictKind: conflict.conflictKind ?? catalogConflictKindValues.unknown,
       status: conflict.status ?? catalogConflictStatusValues.open,
       summary: conflict.summary,
       detectedAt: conflict.detectedAt ?? context.step.fetchedAt,
@@ -2507,6 +2521,15 @@ function seedTargetInput(
     addedAt: context.step.fetchedAt,
     metadata: compactJson({ ...seedTarget?.metadata, ...importMetadata }),
   };
+}
+
+// Reconstruct a fact identity from a persisted external-id record read back
+// from the repository. Mirrors the runner's createExpectedFactIdentities for
+// storefrontFactImportContract.factIdentity = ["catalogSource", "sourceId"], so
+// the verifier compares persisted data against the expected identities instead
+// of comparing the expected identities to a copy of themselves.
+function persistedFactIdentity(record: CatalogExternalIdRecord): string {
+  return `catalogSource=${record.catalogSource}|sourceId=${record.sourceId}`;
 }
 
 function factImportProof(

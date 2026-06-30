@@ -324,6 +324,7 @@ export const catalogConflictKindValues = {
   release: "release",
   title: "title",
   engine: "engine",
+  unknown: "unknown",
 } as const;
 
 export type CatalogConflictKind =
