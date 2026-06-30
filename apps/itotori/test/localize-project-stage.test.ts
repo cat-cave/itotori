@@ -804,7 +804,7 @@ describe("ITOTORI-238 failover orchestration", () => {
         ["pair-policy.json", preset],
       ]);
       const { io } = ioFixture(reads);
-      // Build a non-429 error — pair_mismatch is one of the audit-focus 3
+      // Build a non-429 error — a non-429 provider_http_error is one of the
       // failure modes that MUST surface immediately rather than trigger
       // failover.
       const nonFailoverError = http429Error({

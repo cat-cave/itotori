@@ -346,7 +346,15 @@ describe("OpenRouterProvider", () => {
     }
   });
 
-  it("still rejects a Fireworks-pinned response from an unrelated provider", async () => {
+  it("ITOTORI-243: accepts a Fireworks-preferred request served by another ZDR-allow-list provider and records the served pair", async () => {
+    // The request is private_corpus, so zdr:true is enforced on the wire —
+    // OpenRouter could only have served a ZDR-allow-list provider. AtlasCloud
+    // is one such provider (it is in presets/localize-project.pair-policy.json's
+    // evidence-validated alternates), so a Fireworks-PREFERRED (order[0])
+    // request served by AtlasCloud is a valid ZDR serve. ITOTORI-243 removed
+    // the provider-identity throw: accept and record the served (model,
+    // providerId) pair + real billed cost, never reject.
+    const recorder = memoryRecorder();
     const fetchMock = vi.fn(async () =>
       jsonResponse({
         id: "gen-fireworks-routed-elsewhere",
@@ -374,15 +382,21 @@ describe("OpenRouterProvider", () => {
       apiKey: "test-key",
       fetch: fetchMock,
       capabilities: openRouterCapabilitiesForPrivateInputs(),
-      live: { enabled: true, artifactRecorder: memoryRecorder(), rawCapture: "disabled" },
+      live: { enabled: true, artifactRecorder: recorder, rawCapture: "disabled" },
     });
 
-    await expect(
-      provider.invoke(jsonSchemaRequest("deepseek/deepseek-v4-flash", "fireworks")),
-    ).rejects.toMatchObject({
-      code: "pair_mismatch",
-      message: expect.stringContaining("AtlasCloud"),
-    });
+    const result = await provider.invoke(
+      jsonSchemaRequest("deepseek/deepseek-v4-flash", "fireworks"),
+    );
+    expect(result.providerRun.status).toBe("succeeded");
+    expect(result.providerRun.provider.requestedProviderId).toBe("fireworks");
+    expect(result.providerRun.provider.upstreamProvider).toBe("AtlasCloud");
+    expect(result.providerRun.cost.costKind).toBe("billed");
+    expect(result.providerRun.cost.amountMicrosUsd).toBe(19);
+    // zdr:true posture recorded — the privacy gate that makes the served
+    // provider ZDR-eligible.
+    expect(result.providerRun.routingPosture.zdr).toBe(true);
+    expect(recorder.artifacts[0]?.run.provider.upstreamProvider).toBe("AtlasCloud");
   });
 
   it("throws provider errors carrying failed run records", async () => {
@@ -788,8 +802,8 @@ describe("OpenRouterProvider", () => {
     });
 
     const result = await provider.invoke({
-      // ITOTORI-220 — pin the providerId to the upstream that the mocked
-      // fixture returns so the post-response pair check accepts it.
+      // ITOTORI-243 — providerId leads the preference `order`; the mocked
+      // fixture's served provider is recorded as the served pair.
       ...jsonSchemaRequest("openai/gpt-4o-mini", "Anthropic"),
       fallbackModels: ["anthropic/claude-3-haiku"],
     });

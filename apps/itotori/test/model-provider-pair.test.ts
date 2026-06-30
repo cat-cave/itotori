@@ -9,9 +9,10 @@
 //   1. ModelInvocationRequest carries providerId as a required field.
 //   2. OpenRouter emits provider: { order: [providerId] } (preference)
 //      with allow_fallbacks:true at request time (ITOTORI-241).
-//   3. OpenRouter post-response check throws ModelProviderError with
-//      code 'pair_mismatch' when the upstream provider differs.
-//   4. ModelProviderError carries a 'pair_mismatch' code variant.
+//   3. ITOTORI-243 — OpenRouter records the served (model, providerId)
+//      pair from the response (any ZDR-allow-list provider OpenRouter
+//      routes to is a valid serve); there is no provider-identity pin and
+//      no `pair_mismatch` throw.
 //   5. Recorded bundle key includes (modelId, providerId, promptHash,
 //      inputClassification).
 //   6. CapabilityGuard keys lookups by (modelId, providerId), not modelId.
@@ -34,7 +35,7 @@ import {
   CapabilityGuardMissError,
   modelProviderPairKey,
 } from "../src/providers/capability-guard.js";
-import { ModelProviderError, type ModelInvocationRequest } from "../src/providers/types.js";
+import type { ModelInvocationRequest, ProviderRunArtifact } from "../src/providers/types.js";
 
 function baseRequest(overrides: Partial<ModelInvocationRequest> = {}): ModelInvocationRequest {
   return {
@@ -107,11 +108,16 @@ describe("ITOTORI-220 — (modelId, providerId) pair contract", () => {
     expect(observedBody?.provider.only).toBeUndefined();
   });
 
-  it("OpenRouter throws ModelProviderError code='pair_mismatch' when upstream provider differs", async () => {
-    const recorder = { recordProviderRun: async () => undefined };
+  it("ITOTORI-243: OpenRouter records the served (model, providerId) pair when the upstream provider differs from order[0]", async () => {
+    const artifacts: ProviderRunArtifact[] = [];
+    const recorder = {
+      recordProviderRun: async (artifact: ProviderRunArtifact) => {
+        artifacts.push(artifact);
+      },
+    };
     const fetchMock: typeof fetch = async () =>
       jsonResponse({
-        id: "gen-pair-mismatch",
+        id: "gen-served-pair",
         model: "openai/gpt-4o-mini",
         choices: [
           {
@@ -133,21 +139,16 @@ describe("ITOTORI-220 — (modelId, providerId) pair contract", () => {
       capabilities: openRouterDefaultCapabilities,
       live: { enabled: true, artifactRecorder: recorder, rawCapture: "disabled" },
     });
-    const error = await provider
-      .invoke(baseRequest({ providerId: "OpenAI" }))
-      .catch((e: unknown) => e);
-    expect(error).toBeInstanceOf(ModelProviderError);
-    if (error instanceof ModelProviderError) {
-      expect(error.code).toBe("pair_mismatch");
-      expect(error.message).toContain("Together");
-      expect(error.message).toContain("OpenAI");
-    }
-  });
-
-  it("ModelProviderError exposes 'pair_mismatch' as a typed code variant", () => {
-    const err = new ModelProviderError("test", "pair_mismatch", false);
-    expect(err.code).toBe("pair_mismatch");
-    expect(err.name).toBe("ModelProviderError");
+    // order[0] is 'OpenAI', OpenRouter served 'Together' (a ZDR-allow-list
+    // member by construction). ITOTORI-243: accept and record the served
+    // pair + real billed cost, never throw.
+    const result = await provider.invoke(baseRequest({ providerId: "OpenAI" }));
+    expect(result.providerRun.status).toBe("succeeded");
+    expect(result.providerRun.provider.requestedProviderId).toBe("OpenAI");
+    expect(result.providerRun.provider.upstreamProvider).toBe("Together");
+    expect(result.providerRun.cost.costKind).toBe("billed");
+    expect(result.providerRun.cost.amountMicrosUsd).toBe(3);
+    expect(artifacts[0]?.run.provider.upstreamProvider).toBe("Together");
   });
 
   it("Recorded bundle key combines modelId + providerId + promptHash + inputClassification", () => {

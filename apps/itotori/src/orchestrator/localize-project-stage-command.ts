@@ -29,7 +29,7 @@
 //     4. surfaces `LocalizeProjectBlockedExternal` when every alternate has
 //        been exhausted.
 //
-//   On ANY other failure (pair_mismatch, provider_response_invalid,
+//   On ANY other failure (provider_response_invalid,
 //   non-429 provider_http_error, capability_unsupported, etc.) the
 //   driver raises immediately — silent provider swap is forbidden
 //   (audit-focus 3).
@@ -523,7 +523,7 @@ export function registerPairPolicyAlternatesInCapabilityGuard(
  * `ModelProviderError` whose `code === "provider_http_error"` AND
  * whose `providerRun.errorClasses` includes `"http_429"`.
  *
- * Any other failure (pair_mismatch, provider_response_invalid,
+ * Any other failure (provider_response_invalid,
  * capability_unsupported, configuration_error, OR a non-429
  * provider_http_error) MUST return `false` so the caller surfaces
  * the error immediately. This is the audit-focus 3 invariant.

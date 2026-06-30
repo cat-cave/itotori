@@ -63,17 +63,6 @@ export type OpenRouterProviderOptions = {
   live: ProviderLiveRunOptions;
 };
 
-/**
- * ITOTORI-220 — typed payload thrown when the upstream provider that
- * answered does not match the providerId the request pinned. The metadata
- * shape lands in the artifact recorder so downstream audit can see both
- * the requested and the observed provider.
- */
-export type OpenRouterProviderPairMismatchMetadata = {
-  requestedProviderId: string;
-  observedUpstreamProvider: string | undefined;
-};
-
 export class OpenRouterProvider implements ModelProvider {
   readonly descriptor: ProviderDescriptor;
   private readonly baseUrl: string;
@@ -107,11 +96,11 @@ export class OpenRouterProvider implements ModelProvider {
     }
     const startedAt = new Date();
     const requestedModelId = request.modelId;
-    const requestedProviderId = request.providerId;
-    // ITOTORI-220 — pin OpenRouter to the requested provider id at request time.
-    // Merging with the routing-defined `only` is intentional: the request's
-    // providerId is authoritative and any pre-configured `only` list must
-    // either match or be tightened to it.
+    // ITOTORI-243 — request.providerId leads the provider PREFERENCE
+    // `order` (order[0]); it is NOT a hard pin. With `allow_fallbacks:true`
+    // + `zdr:true` on the wire, OpenRouter may serve ANY ZDR-allow-list
+    // provider, and whichever one actually answers is recorded as the
+    // served (model, providerId) pair below — there is no request-time pin.
     const providerRouting = buildOpenRouterProviderRouting(this.routing, request);
     // ITOTORI-230 — typed restatement of the same posture for the
     // ledger / recorded-bundle audit trail. Derived from the same
@@ -277,91 +266,25 @@ export class OpenRouterProvider implements ModelProvider {
         metadata,
       );
     }
-    // ITOTORI-220 / ITOTORI-236 / ITOTORI-242 — post-response privacy-gate
-    // check. If the upstream provider that answered differs from the
-    // providerId we pinned, fail LOUDLY rather than accept the swap silently.
-    // We still record the artifact so audit can see the mismatch.
-    //
-    // ITOTORI-236 — `request.providerId` is the lowercase routing slug
-    // (e.g. `"fireworks"`) used in `provider.order`, but `response.provider`
-    // is the TitleCase human-readable `provider_name` (e.g. `"Fireworks"`)
-    // per docs/openrouter-integration.md §9.2. A strict `===` flagged every
-    // successful Fireworks-routed call as a `pair_mismatch`. Both ends run
-    // through `openRouterProviderIdsMatch` (known slug↔name registry, then
-    // case-insensitive) so a slug↔name match on the PREFERRED provider is
-    // accepted.
-    //
-    // ITOTORI-242 — the invariant is NO LONGER "upstream == order[0]". With
-    // `allow_fallbacks:true` now on the wire (ITOTORI-241), a GENUINE ZDR
-    // fallback — the preferred provider 429s and OpenRouter routes to the
-    // NEXT ZDR-allow-list provider — is legitimate and MUST be accepted, or
-    // end-to-end 429-resilience is never realized. The reframed invariant is
-    // "upstream ∈ ZDR allow-list": membership is enforced by the privacy
-    // gate `zdr:true` (with zdr:true on the wire OpenRouter can only have
-    // served a ZDR-allow-list provider; otherwise it returns the 404 ZDR
-    // envelope). The swap is still NOT silently broadened — ITOTORI-238
-    // holds — because `isAcceptedZdrFallback` ALSO requires OpenRouter to
-    // have auditably recorded the fallback in the response's
-    // `openrouter_metadata` (attempt>1 / a multi-entry attempts list / a
-    // summary naming the served provider), which `adapterMetadata` mirrors
-    // verbatim onto `adapterMetadata.openrouterRouting`. A swap with no such
-    // record (silent), or a swap on a call that did NOT enforce zdr (the
-    // served provider is not confined to the allow-list), still throws.
-    if (
-      normalized.upstreamProvider !== undefined &&
-      !openRouterProviderIdsMatch(requestedProviderId, normalized.upstreamProvider) &&
-      !isAcceptedZdrFallback(routingPosture, body, normalized.upstreamProvider)
-    ) {
-      const metadata = adapterMetadata(body, providerRouting);
-      const mismatchMetadata: OpenRouterProviderPairMismatchMetadata = {
-        requestedProviderId,
-        observedUpstreamProvider: normalized.upstreamProvider,
-      };
-      const mismatchAdapterMetadata: JsonObject = {
-        ...metadata,
-        pairMismatch: {
-          requestedProviderId: mismatchMetadata.requestedProviderId,
-          observedUpstreamProvider: mismatchMetadata.observedUpstreamProvider ?? null,
-        },
-      };
-      const run = buildProviderRunRecord({
-        descriptor: this.descriptor,
-        request,
-        requestedModelId,
-        startedAt,
-        status: "failed",
-        actualModelId: normalized.actualModelId,
-        upstreamProvider: normalized.upstreamProvider,
-        routeSettingsHash,
-        errorClasses: ["pair_mismatch"],
-        tokenUsage: normalized.tokenUsage,
-        routingPosture,
-        // ITOTORI-232 — surface the upstream `usage` block; the
-        // pair-mismatch failure path tags the run zero-cost (see
-        // buildProviderRunRecord), so `cost_amount` is 0 — but we still
-        // capture whatever upstream charged the audit can review.
-        usageResponseJson: extractUsageResponseJson(body, "_pair_mismatch"),
-      });
-      await this.live.artifactRecorder.recordProviderRun(
-        buildArtifact({
-          request,
-          run,
-          rawCapture: this.live.rawCapture,
-          error: {
-            class: "pair_mismatch",
-            message: `OpenRouter routed to provider '${normalized.upstreamProvider}' but request pinned providerId '${requestedProviderId}'`,
-          },
-          adapterMetadata: mismatchAdapterMetadata,
-        }),
-      );
-      throw new ModelProviderError(
-        `OpenRouter routed to provider '${normalized.upstreamProvider}' but request pinned providerId '${requestedProviderId}'`,
-        "pair_mismatch",
-        false,
-        run,
-        mismatchAdapterMetadata,
-      );
-    }
+    // ITOTORI-243 — RECORD THE TRUTH, do not pin. There is no post-response
+    // provider-identity guard. The privacy gate is the REQUEST posture
+    // (`zdr:true` + `data_collection:deny`, enforced in
+    // `openRouterRoutingPostureFromBlock` for any private input): with
+    // `zdr:true` on the wire OpenRouter can only have served a ZDR-allow-list
+    // provider (otherwise it returns the 404 ZDR envelope), so whichever
+    // provider actually answered is a valid serve. Strict provider-pinning +
+    // a post-response provider-identity throw were a needless formality with
+    // no operational security — OpenRouter-side automatic fallback across the
+    // ZDR allow-list
+    // IS the resilience mechanism (UTSUSHI-231: SiliconFlow served when
+    // Fireworks was order[0]; that is a correct ZDR serve). The real served
+    // (model, providerId) pair — `normalized.actualModelId` /
+    // `normalized.upstreamProvider`, read verbatim from the response — and
+    // the real billed cost (`normalized.cost`, costKind:"billed" from
+    // `usage.cost`) flow straight into the succeeded run below. Any fallback
+    // OpenRouter performed is still auditable: `adapterMetadata` mirrors the
+    // response's `openrouter_metadata` (attempt / attempts / summary) onto
+    // `adapterMetadata.openrouterRouting`.
     const maxPriceUsd = request.maxPriceUsd;
     if (maxPriceUsd !== undefined) {
       const maxPriceMicrosUsd = maxPriceUsdToMicros(maxPriceUsd);
@@ -1079,7 +1002,7 @@ function extractCacheDiscountMicros(usage: Record<string, unknown>): number {
  *     numbers, strings, booleans, arrays, and nested objects survive verbatim.
  *
  *   - On most FAILED calls (`failureMarker` is a sentinel like
- *     `_http_error` / `_response_invalid` / `_pair_mismatch`) we
+ *     `_http_error` / `_response_invalid`) we
  *     deliberately STRIP the upstream `cost` field before persisting.
  *     Those failed runs are tagged zero-cost (see
  *     `buildProviderRunRecord`); if we kept the upstream `cost` here,
@@ -1092,12 +1015,7 @@ function extractCacheDiscountMicros(usage: Record<string, unknown>): number {
  */
 function extractUsageResponseJson(
   body: unknown,
-  failureMarker:
-    | "_http_error"
-    | "_response_invalid"
-    | "_pair_mismatch"
-    | "_cost_cap_exceeded"
-    | null,
+  failureMarker: "_http_error" | "_response_invalid" | "_cost_cap_exceeded" | null,
 ): JsonObject {
   const usageBlock = isRecord(body) && isRecord(body.usage) ? body.usage : undefined;
   if (usageBlock === undefined) {
@@ -1338,9 +1256,9 @@ function selectedOpenRouterProvider(body: unknown): string | undefined {
     return fromMetadata;
   }
   // Fallback: OpenRouter chat-completions echoes the actual upstream
-  // provider on the top-level `provider` field (string id). ITOTORI-220
-  // post-response pair check reads this when `openrouter_metadata` is
-  // absent (which is the live-mode default).
+  // provider on the top-level `provider` field (string id). ITOTORI-243
+  // records this as the served (model, providerId) pair when
+  // `openrouter_metadata` is absent (which is the live-mode default).
   if (isRecord(body)) {
     return optionalString(body.provider);
   }
@@ -1363,137 +1281,6 @@ function selectedOpenRouterEndpoint(body: unknown): Record<string, unknown> | un
   return endpoints.available.find(
     (endpoint) => isRecord(endpoint) && endpoint.selected === true,
   ) as Record<string, unknown> | undefined;
-}
-
-/**
- * ITOTORI-236 — known-provider registry mapping the lowercase routing
- * slug (the `tag` form used in `provider.only` / `provider.order`) to
- * the TitleCase human-readable `provider_name` that OpenRouter echoes
- * on the response body. Per docs/openrouter-integration.md §9.2 OR
- * carries both forms, so a strict `===` between the request slug and
- * the response provider name spuriously trips the ITOTORI-220 pair
- * check on every legitimate routed call.
- *
- * Entries cover the providers itotori's dev-pair table reaches for
- * (see dev-pair.ts) plus the evidence-backed providerIds declared in
- * presets/localize-project.pair-policy.json. Unknown providers fall through to the
- * case-insensitive comparison in `openRouterProviderIdsMatch` — still
- * safer than the historical strict-equality path and the registry is
- * additive: register new pairs here as they're empirically observed.
- */
-const OPENROUTER_KNOWN_PROVIDERS: ReadonlyArray<{
-  readonly slug: string;
-  readonly name: string;
-}> = Object.freeze([
-  { slug: "fireworks", name: "Fireworks" },
-  { slug: "anthropic", name: "Anthropic" },
-  { slug: "google-vertex", name: "Google Vertex" },
-  { slug: "openai", name: "OpenAI" },
-  { slug: "deepinfra", name: "DeepInfra" },
-  { slug: "wafer", name: "Wafer" },
-  { slug: "digitalocean", name: "DigitalOcean" },
-  { slug: "morph", name: "Morph" },
-  { slug: "atlas-cloud", name: "AtlasCloud" },
-]);
-
-/**
- * ITOTORI-236 — compare the request's lowercase routing slug against
- * the response's human-readable `provider_name`. Match semantics:
- *
- *   1. If both ends normalize (lowercase) equal → match.
- *   2. If the registry knows a (slug, name) pair where either field
- *      case-insensitively equals one input and the other field
- *      case-insensitively equals the other → match.
- *   3. Otherwise → mismatch (the load-bearing routing-swap signal).
- *
- * Case 1 alone would already be sufficient for the alpha-validation
- * fix; case 2 exists so a future OR rename like "Google Vertex AI"
- * vs slug `google-vertex` is still recognized as the same provider
- * without re-tripping the pair check.
- */
-function openRouterProviderIdsMatch(
-  requestedProviderId: string,
-  observedProviderName: string,
-): boolean {
-  const requested = requestedProviderId.toLowerCase();
-  const observed = observedProviderName.toLowerCase();
-  if (requested === observed) {
-    return true;
-  }
-  for (const entry of OPENROUTER_KNOWN_PROVIDERS) {
-    const slug = entry.slug.toLowerCase();
-    const name = entry.name.toLowerCase();
-    if ((requested === slug && observed === name) || (requested === name && observed === slug)) {
-      return true;
-    }
-  }
-  return false;
-}
-
-/**
- * ITOTORI-242 — is this a GENUINE, auditable ZDR fallback that the
- * post-response check must ACCEPT even though the served upstream differs
- * from the preferred `order[0]`?
- *
- * Two conditions, BOTH required:
- *
- *   1. The privacy gate held: the call enforced `zdr:true` on the wire
- *      (`routingPosture.zdr === true`). zdr:true confines OpenRouter's
- *      entire routable/fallback pool to the account ZDR allow-list, so any
- *      upstream that actually answered is a ZDR-allow-list member — that is
- *      what "upstream ∈ ZDR allow-list" means post-response. Without it the
- *      served provider is NOT bounded to the allow-list, so a swap is a
- *      non-ZDR provider and must be REJECTED.
- *
- *   2. The fallback is auditable, not silent (ITOTORI-238): OpenRouter
- *      recorded it in the response's `openrouter_metadata`. We do NOT
- *      broaden the predicate into accepting an arbitrary provider that just
- *      happens to differ from `order[0]` with no fallback record.
- *
- * Both must hold; either alone rejects.
- */
-function isAcceptedZdrFallback(
-  routingPosture: OpenRouterRoutingPosture,
-  body: unknown,
-  upstreamProvider: string,
-): boolean {
-  if (routingPosture.zdr !== true) {
-    return false;
-  }
-  return openRouterFallbackRecorded(body, upstreamProvider);
-}
-
-/**
- * ITOTORI-242 — did OpenRouter auditably record a provider fallback on this
- * response? Reads the same `openrouter_metadata` that {@link adapterMetadata}
- * mirrors onto `adapterMetadata.openrouterRouting`, so an accepted fallback
- * is always traceable in the recorded ledger row.
- *
- * `attempt` is 1-indexed in the live shape: `attempt:1` is the preferred
- * provider served directly (see the `strategy:"direct"` fixtures), so a
- * genuine fallback to the next ZDR-allow-list provider is `attempt > 1`.
- * Some routing strategies instead carry an `attempts` list (>1 entry ⇒ a
- * fallback fired) or a human-readable `summary` naming the served upstream.
- * Any one of these auditable signals satisfies the ITOTORI-238 invariant.
- */
-function openRouterFallbackRecorded(body: unknown, upstreamProvider: string): boolean {
-  if (!isRecord(body) || !isRecord(body.openrouter_metadata)) {
-    return false;
-  }
-  const meta = body.openrouter_metadata;
-  if (typeof meta.attempt === "number" && Number.isFinite(meta.attempt) && meta.attempt > 1) {
-    return true;
-  }
-  if (Array.isArray(meta.attempts) && meta.attempts.length > 1) {
-    return true;
-  }
-  if (
-    typeof meta.summary === "string" &&
-    meta.summary.toLowerCase().includes(upstreamProvider.toLowerCase())
-  ) {
-    return true;
-  }
-  return false;
 }
 
 async function safeJson(response: Response): Promise<unknown> {
@@ -1660,7 +1447,8 @@ function isJsonValue(value: unknown): value is JsonValue {
 //
 // Concrete live-LLM ModelProvider implementation. Wraps the existing
 // `OpenRouterProvider` (which handles the HTTP request shape, provider-
-// routing block, and the post-response pair check) and layers on three
+// routing block, and recording the served (model, providerId) pair) and
+// layers on three
 // new responsibilities the alpha-gap analysis (§3 ITOTORI-NEW-Bopen)
 // requires for a production-tier seam:
 //

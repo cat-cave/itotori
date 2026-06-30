@@ -8,8 +8,9 @@
 //   - missing env var raises OpenRouterMissingApiKeyError at construction
 //   - request body sends provider: { order: [providerId],
 //     allow_fallbacks: true } per ITOTORI-241 (preference, not a pin)
-//   - mismatched upstream provider raises ModelProviderError
-//     { code: "pair_mismatch" }
+//   - a ZDR-served provider that differs from order[0] is ACCEPTED
+//     (ITOTORI-243: no provider-identity pin) and its served (model,
+//     providerId) pair + real billed cost are recorded
 //   - per-process USD cost cap raises OpenRouterCostCapError BEFORE
 //     the HTTP request fires (third call mocked at $0.60 each so the
 //     cumulative >$1.00 cap rejects without a network hit)
@@ -385,23 +386,40 @@ describe("OpenRouterModelProvider — request shape (ITOTORI-220 pair pin)", () 
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("throws ModelProviderError code='pair_mismatch' when the upstream provider differs", async () => {
+  it("ITOTORI-243: ACCEPTS a ZDR-served provider that differs from order[0] and records the served pair + real billed cost", async () => {
+    // The privacy gate is the REQUEST posture (zdr:true, enforced for the
+    // synthetic_public default). With zdr:true on the wire OpenRouter can
+    // only serve a ZDR-allow-list provider, so a served upstream
+    // ('deepinfra') that differs from the preferred order[0]
+    // (DEV_PAIR.providerId='fireworks') is a VALID serve — there is no
+    // provider-identity pin and no throw. We record the truth: the served
+    // (model, providerId) pair and the real billed cost (usage.cost, NOT
+    // zeroed).
+    const recorder = memoryRecorder();
     const fetchMock = vi.fn(async () =>
-      successResponse({ upstreamProvider: "deepinfra" }),
+      successResponse({ upstreamProvider: "deepinfra", usageCost: 0.000042 }),
     ) as unknown as typeof fetch;
     const provider = new OpenRouterModelProvider({
       env: { OPENROUTER_API_KEY: "abc", OPENROUTER_ZDR_ACCOUNT_ASSERTED: "1" },
       httpClient: fetchMock,
       capabilityGuard: new CapabilityGuard(),
-      artifactRecorder: memoryRecorder(),
+      artifactRecorder: recorder,
     });
-    const error = await provider.invoke(baseRequest()).catch((e: unknown) => e);
-    expect(error).toBeInstanceOf(ModelProviderError);
-    if (error instanceof ModelProviderError) {
-      expect(error.code).toBe("pair_mismatch");
-      expect(error.message).toContain("deepinfra");
-      expect(error.message).toContain(DEV_PAIR.providerId);
-    }
+    const result = await provider.invoke(baseRequest());
+    // Accepted, not thrown: succeeded run served by the ZDR fallback provider.
+    expect(result.providerRun.status).toBe("succeeded");
+    expect(result.providerRun.provider.requestedProviderId).toBe(DEV_PAIR.providerId);
+    expect(result.providerRun.provider.actualModelId).toBe(DEV_PAIR.modelId);
+    // Served (model, providerId) pair recorded as the TRUTH.
+    expect(result.providerRun.provider.upstreamProvider).toBe("deepinfra");
+    // Real billed cost extracted from usage.cost — NOT zeroed by a
+    // rejection firing before cost extraction.
+    expect(result.providerRun.cost.costKind).toBe("billed");
+    expect(result.providerRun.cost.amountMicrosUsd).toBe(42);
+    // The recorded artifact carries the same served pair + billed cost.
+    expect(recorder.artifacts).toHaveLength(1);
+    expect(recorder.artifacts[0]?.run.provider.upstreamProvider).toBe("deepinfra");
+    expect(recorder.artifacts[0]?.run.cost.amountMicrosUsd).toBe(42);
   });
 
   it("ITOTORI-236: accepts TitleCase response.provider when request.providerId is the lowercase slug (Fireworks ↔ fireworks)", async () => {
@@ -424,25 +442,30 @@ describe("OpenRouterModelProvider — request shape (ITOTORI-220 pair pin)", () 
     expect(result.providerRun.provider.upstreamProvider).toBe("Fireworks");
   });
 
-  it("ITOTORI-236: still throws pair_mismatch on a GENUINE swap (request='fireworks' → response='OpenAI')", async () => {
-    // The fix must NOT relax the load-bearing routing-swap signal. A
-    // Fireworks-pinned request answered by OpenAI is still a hard fail.
+  it("ITOTORI-243: ACCEPTS any ZDR-served provider that differs from order[0] (request='fireworks' → response='OpenAI') and records the served pair", async () => {
+    // ITOTORI-243 product decision: strict provider-pinning + a
+    // post-response provider-identity throw were a needless formality with
+    // no operational security. ZDR (zdr:true on the wire) is the only
+    // privacy gate, so whichever provider OpenRouter routes to within the
+    // ZDR allow-list is a valid serve and is recorded as the served
+    // (model, providerId) pair — never rejected.
+    const recorder = memoryRecorder();
     const fetchMock = vi.fn(async () =>
-      successResponse({ upstreamProvider: "OpenAI" }),
+      successResponse({ upstreamProvider: "OpenAI", usageCost: 0.000007 }),
     ) as unknown as typeof fetch;
     const provider = new OpenRouterModelProvider({
       env: { OPENROUTER_API_KEY: "abc", OPENROUTER_ZDR_ACCOUNT_ASSERTED: "1" },
       httpClient: fetchMock,
       capabilityGuard: new CapabilityGuard(),
-      artifactRecorder: memoryRecorder(),
+      artifactRecorder: recorder,
     });
-    const error = await provider.invoke(baseRequest()).catch((e: unknown) => e);
-    expect(error).toBeInstanceOf(ModelProviderError);
-    if (error instanceof ModelProviderError) {
-      expect(error.code).toBe("pair_mismatch");
-      expect(error.message).toContain("OpenAI");
-      expect(error.message).toContain(DEV_PAIR.providerId);
-    }
+    const result = await provider.invoke(baseRequest());
+    expect(result.providerRun.status).toBe("succeeded");
+    expect(result.providerRun.provider.requestedProviderId).toBe(DEV_PAIR.providerId);
+    expect(result.providerRun.provider.upstreamProvider).toBe("OpenAI");
+    expect(result.providerRun.cost.costKind).toBe("billed");
+    expect(result.providerRun.cost.amountMicrosUsd).toBe(7);
+    expect(recorder.artifacts[0]?.run.provider.upstreamProvider).toBe("OpenAI");
   });
 
   it("ITOTORI-242: ACCEPTS a genuine ZDR fallback (preferred 429s → 2nd ZDR-allow-list provider) and records the swap in adapterMetadata.openrouterRouting", async () => {
@@ -508,17 +531,18 @@ describe("OpenRouterModelProvider — request shape (ITOTORI-220 pair pin)", () 
     });
   });
 
-  it("ITOTORI-242: still REJECTS a swap on a call that did NOT enforce zdr (non-ZDR-allow-list provider), even when a fallback is recorded", async () => {
-    // The privacy gate is zdr:true. For a `public` request zdr is NOT
-    // enforced on the wire, so OpenRouter's fallback pool is not confined to
-    // the ZDR allow-list — a swapped upstream is a non-ZDR provider and must
-    // still fail LOUDLY as pair_mismatch, even though the swap carries an
-    // auditable attempt>1 record.
+  it("ITOTORI-243: ACCEPTS a public-input serve from a provider differing from order[0] and records the served pair + real cost", async () => {
+    // For `public` input there is no privacy contract (zdr is not enforced
+    // on the wire), so any provider OpenRouter routes to is a valid serve.
+    // ITOTORI-243 removed the provider-identity throw entirely — we record
+    // the served (model, providerId) pair and the real billed cost rather
+    // than rejecting.
+    const recorder = memoryRecorder();
     const fetchMock = vi.fn(
       async () =>
         new Response(
           JSON.stringify({
-            id: "gen-non-zdr-swap",
+            id: "gen-public-serve",
             model: DEV_PAIR.modelId,
             provider: "deepinfra",
             choices: [{ finish_reason: "stop", message: { role: "assistant", content: "hi" } }],
@@ -532,38 +556,39 @@ describe("OpenRouterModelProvider — request shape (ITOTORI-220 pair pin)", () 
       env: { OPENROUTER_API_KEY: "abc", OPENROUTER_ZDR_ACCOUNT_ASSERTED: "1" },
       httpClient: fetchMock,
       capabilityGuard: new CapabilityGuard(),
-      artifactRecorder: memoryRecorder(),
+      artifactRecorder: recorder,
     });
-    const error = await provider
-      .invoke(baseRequest({ inputClassification: "public" }))
-      .catch((e: unknown) => e);
-    expect(error).toBeInstanceOf(ModelProviderError);
-    if (error instanceof ModelProviderError) {
-      expect(error.code).toBe("pair_mismatch");
-      expect(error.message).toContain("deepinfra");
-    }
+    const result = await provider.invoke(baseRequest({ inputClassification: "public" }));
+    expect(result.providerRun.status).toBe("succeeded");
+    expect(result.providerRun.provider.upstreamProvider).toBe("deepinfra");
+    expect(result.providerRun.cost.costKind).toBe("billed");
+    expect(result.providerRun.cost.amountMicrosUsd).toBe(1000);
+    expect(recorder.artifacts[0]?.run.provider.upstreamProvider).toBe("deepinfra");
   });
 
-  it("ITOTORI-238: still REJECTS a SILENT swap — zdr enforced but NO fallback recorded in openrouter_metadata (swap not auditable)", async () => {
-    // The silent-swap-forbidden invariant holds: even under zdr:true, a
-    // swapped upstream with NO router-metadata fallback record is a silent
-    // broadening and must fail LOUDLY. We do not accept an arbitrary
-    // provider that merely differs from order[0].
+  it("ITOTORI-243: ACCEPTS a serve from a differing provider even with NO fallback record in openrouter_metadata — records the served pair as the truth", async () => {
+    // ITOTORI-243 supersedes the ITOTORI-238 silent-swap throw. There is no
+    // longer a 'silent' swap to forbid: whatever provider answered IS
+    // recorded as the served (model, providerId) pair, so the record is
+    // always the truth regardless of whether OpenRouter emitted a fallback
+    // annotation. zdr:true (the privacy gate) still holds for this default
+    // synthetic_public request.
+    const recorder = memoryRecorder();
     const fetchMock = vi.fn(async () =>
-      successResponse({ upstreamProvider: "deepinfra" }),
+      successResponse({ upstreamProvider: "deepinfra", usageCost: 0.000009 }),
     ) as unknown as typeof fetch;
     const provider = new OpenRouterModelProvider({
       env: { OPENROUTER_API_KEY: "abc", OPENROUTER_ZDR_ACCOUNT_ASSERTED: "1" },
       httpClient: fetchMock,
       capabilityGuard: new CapabilityGuard(),
-      artifactRecorder: memoryRecorder(),
+      artifactRecorder: recorder,
     });
-    const error = await provider.invoke(baseRequest()).catch((e: unknown) => e);
-    expect(error).toBeInstanceOf(ModelProviderError);
-    if (error instanceof ModelProviderError) {
-      expect(error.code).toBe("pair_mismatch");
-      expect(error.message).toContain("deepinfra");
-    }
+    const result = await provider.invoke(baseRequest());
+    expect(result.providerRun.status).toBe("succeeded");
+    expect(result.providerRun.provider.upstreamProvider).toBe("deepinfra");
+    expect(result.providerRun.cost.costKind).toBe("billed");
+    expect(result.providerRun.cost.amountMicrosUsd).toBe(9);
+    expect(recorder.artifacts[0]?.run.provider.upstreamProvider).toBe("deepinfra");
   });
 
   it("sends Bearer auth header populated from the resolved env API key", async () => {

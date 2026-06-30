@@ -409,8 +409,8 @@ function providerRunArtifact() {
         amountMicrosUsd: 1,
       },
       routingPosture: {
-        only: [PROVIDER_ID],
-        allow_fallbacks: false,
+        order: [PROVIDER_ID],
+        allow_fallbacks: true,
         data_collection: "deny",
         zdr: true,
         require_parameters: true,

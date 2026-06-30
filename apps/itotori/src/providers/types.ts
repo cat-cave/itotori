@@ -543,10 +543,11 @@ export interface ModelProvider {
 }
 
 /**
- * ITOTORI-220 — `pair_mismatch` is raised when the upstream provider that
- * actually answered does not match the providerId the caller pinned. This
- * fails LOUDLY because silently accepting a different provider would
- * defeat the whole point of locking the (model, provider) pair.
+ * ITOTORI-243 — itotori no longer pins the served provider. The privacy
+ * gate is the REQUEST posture (`zdr:true` + `data_collection:deny`); any
+ * provider OpenRouter routes to within the ZDR allow-list is a valid serve,
+ * recorded as the served (model, providerId) pair. There is therefore no
+ * `pair_mismatch` code — provider-identity is no longer a failure axis.
  */
 export class ModelProviderError extends Error {
   constructor(
@@ -555,7 +556,6 @@ export class ModelProviderError extends Error {
       | "capability_unsupported"
       | "configuration_error"
       | "cost_cap_exceeded"
-      | "pair_mismatch"
       | "provider_http_error"
       | "provider_response_invalid",
     readonly retryable = false,

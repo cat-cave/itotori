@@ -319,19 +319,36 @@ function verifyProviderRunArtifacts(args) {
       run.routingPosture,
       `provider-run artifact ${path}.run.routingPosture`,
     );
+    // ITOTORI-243 — ZDR is THE gate. The privacy contract is enforced by
+    // the request posture (`zdr:true` + `data_collection:deny`): with
+    // `zdr:true` on the wire OpenRouter can only have served a ZDR-allow-list
+    // provider, so the served (model, providerId) pair recorded above is
+    // ZDR-eligible by construction. We assert that posture proof — NOT that
+    // the served provider equals a pinned `only`.
     if (routingPosture.zdr !== true) {
-      throw new Error(`provider-run artifact ${runId} missing ZDR routing proof`);
+      throw new Error(
+        `provider-run artifact ${runId} missing ZDR routing proof: the served provider's ZDR-eligibility gate (routingPosture.zdr=true) was not recorded`,
+      );
     }
-    if (routingPosture.allow_fallbacks !== false) {
-      throw new Error(`provider-run artifact ${runId} did not pin allow_fallbacks=false`);
+    // ITOTORI-243 — OpenRouter-side automatic fallback across the ZDR
+    // allow-list is the resilience mechanism, so the posture MUST carry
+    // `allow_fallbacks:true` (the old `allow_fallbacks=false` hard-pin is
+    // gone). order is provider PREFERENCE, not a hard pin: order[0] is the
+    // requested provider, but any ZDR-allow-list provider OpenRouter routes
+    // to is a valid serve.
+    if (routingPosture.allow_fallbacks !== true) {
+      throw new Error(
+        `provider-run artifact ${runId} did not enable OpenRouter fallback: expected allow_fallbacks=true`,
+      );
     }
     if (
-      !Array.isArray(routingPosture.only) ||
-      routingPosture.only.length !== 1 ||
-      routingPosture.only[0] !== expectedProviderId
+      !Array.isArray(routingPosture.order) ||
+      routingPosture.order.length === 0 ||
+      !routingPosture.order.every((entry) => typeof entry === "string" && entry.length > 0) ||
+      routingPosture.order[0] !== expectedProviderId
     ) {
       throw new Error(
-        `provider-run artifact ${runId} routing provider mismatch: expected only=[${expectedProviderId}]`,
+        `provider-run artifact ${runId} routing preference mismatch: expected order[0]=${expectedProviderId} (non-empty provider-preference array)`,
       );
     }
     if (routingPosture.data_collection !== "deny") {
