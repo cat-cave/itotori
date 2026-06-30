@@ -1061,6 +1061,409 @@ function sha256OfDataTree(dataDir) {
   return hash.digest("hex");
 }
 
+/**
+ * Real on-disk asset-inventory scan of an RPG Maker MV/MZ `data/` tree.
+ * Counts/hashes only — never copies or embeds raw asset bytes — so the
+ * inventory artifact is safe to persist next to the run. This is the
+ * inventory primitive that runs over the REAL corpus (no synthetic
+ * fixture engine, and NOT the registry `asset-inventory` command, which
+ * hard-errors on a corpus with no first-party registered adapter).
+ */
+function scanRpgMakerDataInventory(dataDir) {
+  let dataJsonFileCount = 0;
+  let runtimeSceneFileCount = 0;
+  let totalDataBytes = 0;
+  const walk = (dir) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (entry.isSymbolicLink()) {
+        throw new Error(`refusing to inventory symlink at ${join(dir, entry.name)}`);
+      }
+      const abs = join(dir, entry.name);
+      if (entry.isDirectory()) {
+        walk(abs);
+      } else if (entry.isFile()) {
+        if (entry.name.endsWith(".json")) {
+          dataJsonFileCount += 1;
+          totalDataBytes += statSync(abs).size;
+          if (RPG_MAKER_RUNTIME_SCENE_FILE.test(entry.name)) {
+            runtimeSceneFileCount += 1;
+          }
+        }
+      }
+    }
+  };
+  walk(dataDir);
+  return {
+    dataJsonFileCount,
+    runtimeSceneFileCount,
+    totalDataBytes,
+    dataTreeSha256: sha256OfDataTree(dataDir),
+  };
+}
+
+/**
+ * Wire the `kaifuu detect` detection primitive into the front of the run.
+ * `detect` exits 0 even when no first-party adapter matches (status
+ * `unknown`) — that is recorded as an INFORMATIONAL structured finding,
+ * not a silent skip. A non-zero exit (genuine detection failure) is
+ * surfaced by `runCommand` as a thrown error.
+ */
+function runKaifuuDetect({ gameRoot, outputPath, redact }) {
+  runCommand(
+    "cargo",
+    ["run", "-p", "kaifuu-cli", "--quiet", "--", "detect", gameRoot, "--output", outputPath],
+    process.env,
+    { redact },
+  );
+  const report = JSON.parse(readFileSync(outputPath, "utf8"));
+  const adapterIds = Array.isArray(report.detections)
+    ? report.detections.map((detection) => detection.adapterId).filter(Boolean)
+    : [];
+  return { status: report.status, adapterIds, warnings: report.warnings ?? [] };
+}
+
+/**
+ * Compose the identity-first inventory/readiness record. The run reports
+ * catalog / local-corpus / readiness identity HERE — before the extract
+ * (bridge-import) phase — so bridge import is no longer the first project
+ * fact. All anomalies become structured findings (never silent skips).
+ */
+function buildInventoryReadiness({ realCorpusSource, projectMetadata, detection, dataInventory }) {
+  const SOURCE_KIND_BY_ENV = {
+    ITOTORI_REAL_CORPUS_MANIFEST: "catalog-manifest",
+    ITOTORI_REAL_GAME_ROOT_RPG_MAKER_MV_MZ: "local-corpus",
+    ITOTORI_REAL_GAME_ROOT: "local-corpus",
+    LOCALIZE_PROJECT_SOURCE_PATH: "direct-source",
+  };
+  const sourceKind = SOURCE_KIND_BY_ENV[realCorpusSource.envName] ?? "unknown";
+  const corpus = realCorpusSource.corpus;
+  const localCorpus = {
+    sourceKind,
+    sourceEnv: realCorpusSource.envName ?? null,
+    corpusId: corpus?.corpusId ?? projectMetadata.projectId,
+    projectId: corpus?.projectId ?? projectMetadata.projectId,
+    engine: projectMetadata.engine,
+    sourceLocale: corpus?.sourceLocale ?? projectMetadata.sourceLocale,
+    // The on-disk root is NEVER embedded; only the env-var name + the
+    // redaction placeholder are recorded.
+    rootPlaceholder: realCorpusSource.placeholder,
+  };
+  const readiness = {
+    gameId: projectMetadata.gameId,
+    gameVersion: projectMetadata.gameVersion,
+    sourceProfileId: projectMetadata.sourceProfileId,
+    sourceLocale: projectMetadata.sourceLocale,
+    engine: projectMetadata.engine,
+  };
+  const findings = [];
+  if (detection.status !== "matched") {
+    findings.push({
+      code: "inventory.detection.no_first_party_adapter",
+      severity: "info",
+      message: `kaifuu detect status='${detection.status}' (probed adapters: ${detection.adapterIds.join(", ") || "none"}); RPG Maker MV/MZ uses a dedicated extract path, so an unmatched registry detection is expected and recorded as evidence, not a failure`,
+    });
+  }
+  if (dataInventory.runtimeSceneFileCount === 0) {
+    findings.push({
+      code: "inventory.runtime_scene.absent",
+      severity: "blocking",
+      message:
+        "no CommonEvents/Map*.json runtime scene file found under data/; the bounded runtime slice cannot be proven",
+    });
+  }
+  const blockingFindings = findings.filter((finding) => finding.severity === "blocking");
+  return {
+    schemaVersion: "itotori.localize-project.rpg-maker-mv-mz.inventory-readiness.v0",
+    identityFirst: true,
+    project: projectMetadata.projectId,
+    localCorpus,
+    readiness,
+    detection: { status: detection.status, adapterIds: detection.adapterIds },
+    assetInventory: dataInventory,
+    findings,
+    readinessVerdict: blockingFindings.length === 0 ? "ready" : "blocked",
+  };
+}
+
+/**
+ * Read the per-invocation billed cost + ZDR posture straight from the
+ * persisted provider-run artifacts (`run.cost.amountMicrosUsd` /
+ * `run.routingPosture.zdr`). Cost is NEVER approximated or hardcoded — it
+ * is summed from the real `usage.cost` the live OpenRouter calls reported.
+ */
+function summarizeProviderBilledCost(providerRunArtifactsDir) {
+  if (!existsSync(providerRunArtifactsDir)) {
+    return {
+      available: false,
+      invocationCount: 0,
+      billedMicrosUsd: 0,
+      billedUsd: "0.00000000",
+      zdrEnforcedCount: 0,
+    };
+  }
+  let invocationCount = 0;
+  let billedMicrosUsd = 0;
+  let zdrEnforcedCount = 0;
+  for (const entry of readdirSync(providerRunArtifactsDir, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const artifactPath = join(providerRunArtifactsDir, entry.name, "provider-run.json");
+    if (!existsSync(artifactPath)) continue;
+    const artifact = JSON.parse(readFileSync(artifactPath, "utf8"));
+    const run = artifact.run ?? {};
+    invocationCount += 1;
+    const cost = run.cost ?? {};
+    if (cost.costKind === "billed" && Number.isInteger(cost.amountMicrosUsd)) {
+      billedMicrosUsd += cost.amountMicrosUsd;
+    }
+    if (run.routingPosture?.zdr === true) {
+      zdrEnforcedCount += 1;
+    }
+  }
+  return {
+    available: invocationCount > 0,
+    invocationCount,
+    billedMicrosUsd,
+    billedUsd: (billedMicrosUsd / 1_000_000).toFixed(8),
+    zdrEnforcedCount,
+  };
+}
+
+/**
+ * Synthesize the structured feedback record from a completed iteration's
+ * runtime + patch + apply + cost evidence. This is the FEEDBACK half of
+ * the iterate cycle: every anomaly is a structured finding, and the
+ * verdict drives whether a rerun is recommended.
+ */
+function synthesizeRpgMakerFeedback({
+  iteration,
+  project,
+  boundedSlice,
+  runtimeEvidence,
+  patchReport,
+  applyReport,
+  costSummary,
+  priorVerdict,
+}) {
+  const findings = [];
+  if (runtimeEvidence.matched !== true) {
+    findings.push({
+      code: "runtime.sentinel.not_matched",
+      severity: "blocking",
+      message: `runtime trace (lines=${runtimeEvidence.lineCount}) did not contain the localized sentinel '${runtimeEvidence.expectTextlineContains}' (matchCode=${runtimeEvidence.matchCode})`,
+    });
+  } else {
+    findings.push({
+      code: "runtime.sentinel.confirmed",
+      severity: "info",
+      message: `localized sentinel confirmed in the runtime text trace (lines=${runtimeEvidence.lineCount})`,
+    });
+  }
+  const applyStatus =
+    applyReport?.status ?? applyReport?.result?.status ?? applyReport?.outcome ?? "unknown";
+  if (typeof applyStatus === "string" && /fail/iu.test(applyStatus)) {
+    findings.push({
+      code: "delta.apply.failed",
+      severity: "blocking",
+      message: `delta-apply reported status='${applyStatus}'`,
+    });
+  }
+  if (costSummary.available && costSummary.billedMicrosUsd <= 0) {
+    findings.push({
+      code: "cost.non_billed_live_success",
+      severity: "blocking",
+      message: "live invocations completed but no billed cost was recorded",
+    });
+  }
+  const blocking = findings.filter((finding) => finding.severity === "blocking");
+  const verdict = blocking.length === 0 ? "sentinel-confirmed-in-runtime" : "needs-iteration";
+  return {
+    schemaVersion: "itotori.localize-project.rpg-maker-mv-mz.feedback.v0",
+    iteration,
+    project,
+    boundedSlice,
+    runtime: {
+      matched: runtimeEvidence.matched,
+      lineCount: runtimeEvidence.lineCount,
+      matchCode: runtimeEvidence.matchCode,
+      expectTextlineContains: runtimeEvidence.expectTextlineContains,
+    },
+    patch: {
+      bridgeUnitId: patchReport?.bridgeUnitId ?? null,
+      unitCount: patchReport?.unitCount ?? null,
+    },
+    cost: costSummary,
+    findings,
+    verdict,
+    rerunRecommended: blocking.length > 0,
+    ...(priorVerdict === undefined ? {} : { priorVerdict }),
+  };
+}
+
+/**
+ * Run ONE bounded translate->patch->delta-apply->runtime iteration of the
+ * MV/MZ slice into `paths`. Shared by the initial run and the feedback-
+ * driven rerun so both exercise the identical composed loop. The bridge
+ * bundle + bounded unit index are produced once (extract) and reused, so
+ * a rerun re-bills only the single bounded translation slice.
+ */
+async function runRpgMakerSliceIteration({
+  iterationLabel,
+  paths,
+  args,
+  policy,
+  pairPolicyPath,
+  bridgeBundlePath,
+  sourceDataDir,
+  gameRoot,
+  unitIndex,
+  sceneFile,
+  sentinelSubstring,
+  runId,
+  redact,
+}) {
+  const stageArgs = [
+    join(REPO_ROOT, "apps", "itotori", "dist", "cli.js"),
+    "localize-project-stage",
+    "--bridge",
+    bridgeBundlePath,
+    "--pair-policy",
+    pairPolicyPath,
+    "--unit-index",
+    String(unitIndex),
+    "--engine-profile",
+    "rpg-maker-mv-mz",
+    "--output",
+    paths.agenticLoopBundlePath,
+    "--translated-bundle-output",
+    paths.translatedBundlePath,
+    "--patch-report-output",
+    paths.patchReportPath,
+    "--provider-run-artifacts-dir",
+    paths.providerRunArtifactsDir,
+  ];
+  if (args.providerKind !== undefined) {
+    stageArgs.push("--provider-kind", args.providerKind);
+  }
+  runCommand("node", stageArgs, process.env, { redact });
+
+  if (args.providerKind !== "fake") {
+    const providerProof = verifyProviderRunArtifactsAfterStage({
+      agenticLoopBundlePath: paths.agenticLoopBundlePath,
+      patchReportPath: paths.patchReportPath,
+      providerRunArtifactsDir: paths.providerRunArtifactsDir,
+      expectedPair: policy.pair,
+    });
+    process.stdout.write(
+      `[localize-project] [${iterationLabel}] provider-run artifacts: ${providerProof.providerRunArtifactCount} verified for ${providerProof.invocations.length} live invocation(s)\n`,
+    );
+  }
+
+  runCommand(
+    "cargo",
+    [
+      "run",
+      "-p",
+      "kaifuu-cli",
+      "--quiet",
+      "--",
+      "patch",
+      "--engine",
+      "rpgmaker",
+      "--source",
+      gameRoot,
+      "--bundle",
+      paths.translatedBundlePath,
+      "--delta-output",
+      paths.deltaPath,
+      "--patched-data-output",
+      paths.patchedDataDir,
+    ],
+    process.env,
+    { redact },
+  );
+
+  runCommand(
+    "cargo",
+    [
+      "run",
+      "-p",
+      "kaifuu-cli",
+      "--quiet",
+      "--",
+      "apply",
+      sourceDataDir,
+      "--patch",
+      paths.deltaPath,
+      "--output",
+      paths.appliedDataDir,
+      "--report-output",
+      paths.applyReportPath,
+    ],
+    process.env,
+    { redact },
+  );
+
+  const runtimeDataDir = join(paths.runtimeInputDir, "data");
+  mkdirSync(runtimeDataDir, { recursive: true });
+  copyFileSync(join(paths.appliedDataDir, sceneFile), join(runtimeDataDir, sceneFile));
+  runCommand(
+    "cargo",
+    [
+      "run",
+      "-p",
+      "utsushi-cli",
+      "--quiet",
+      "--",
+      "rpgmaker-mv-capture",
+      "--game-dir",
+      paths.runtimeInputDir,
+      "--artifact-root",
+      paths.runtimeArtifactsDir,
+      "--run-id",
+      runId,
+      "--expect-textline-contains",
+      sentinelSubstring,
+      "--output",
+      paths.runtimeEvidencePath,
+    ],
+    process.env,
+    { redact },
+  );
+
+  const runtimeEvidence = JSON.parse(readFileSync(paths.runtimeEvidencePath, "utf8"));
+  const patchReport = JSON.parse(readFileSync(paths.patchReportPath, "utf8"));
+  const applyReport = JSON.parse(readFileSync(paths.applyReportPath, "utf8"));
+  const costSummary =
+    args.providerKind === "fake"
+      ? {
+          available: false,
+          invocationCount: 0,
+          billedMicrosUsd: 0,
+          billedUsd: "0.00000000",
+          zdrEnforcedCount: 0,
+        }
+      : summarizeProviderBilledCost(paths.providerRunArtifactsDir);
+  return { runtimeEvidence, patchReport, applyReport, costSummary };
+}
+
+/** Build the per-iteration output-path set rooted at `iterationDir`. */
+function rpgMakerIterationPaths(iterationDir, topLevelPaths) {
+  if (topLevelPaths !== undefined) return topLevelPaths;
+  return {
+    agenticLoopBundlePath: join(iterationDir, "agentic-loop-bundle.v0.json"),
+    translatedBundlePath: join(iterationDir, "translated-bridge.json"),
+    patchReportPath: join(iterationDir, "patch-report.json"),
+    deltaPath: join(iterationDir, "patch.kaifuu"),
+    patchedDataDir: join(iterationDir, "patched-data"),
+    appliedDataDir: join(iterationDir, "delta-applied", "data"),
+    applyReportPath: join(iterationDir, "apply-report.json"),
+    runtimeInputDir: join(iterationDir, "runtime-input"),
+    runtimeArtifactsDir: join(iterationDir, "runtime-artifacts"),
+    runtimeEvidencePath: join(iterationDir, "runtime-evidence.json"),
+    providerRunArtifactsDir: join(iterationDir, "provider-runs"),
+  };
+}
+
 async function runRpgMakerMvMzPipeline(ctx) {
   const {
     args,
@@ -1080,14 +1483,27 @@ async function runRpgMakerMvMzPipeline(ctx) {
   } = ctx;
 
   const findingsPath = join(runDir, "extraction-findings.json");
-  const deltaPath = join(runDir, "patch.kaifuu");
-  const patchedDataDir = join(runDir, "patched-data");
-  const deltaAppliedDir = join(runDir, "delta-applied");
-  const appliedDataDir = join(deltaAppliedDir, "data");
-  const applyReportPath = join(runDir, "apply-report.json");
-  const runtimeInputDir = join(runDir, "runtime-input");
-  const runtimeArtifactsDir = join(runDir, "runtime-artifacts");
-  const runtimeEvidencePath = join(runDir, "runtime-evidence.json");
+  const detectionReportPath = join(runDir, "detection-report.json");
+  const inventoryReadinessPath = join(runDir, "inventory-readiness.json");
+  const feedbackPath = join(runDir, "feedback.json");
+  const rerunDir = join(runDir, "rerun");
+
+  // Iteration 1 writes the canonical top-level artifact names; the rerun
+  // writes the identical set under `rerun/`.
+  const initialPaths = {
+    agenticLoopBundlePath,
+    translatedBundlePath,
+    patchReportPath,
+    deltaPath: join(runDir, "patch.kaifuu"),
+    patchedDataDir: join(runDir, "patched-data"),
+    appliedDataDir: join(runDir, "delta-applied", "data"),
+    applyReportPath: join(runDir, "apply-report.json"),
+    runtimeInputDir: join(runDir, "runtime-input"),
+    runtimeArtifactsDir: join(runDir, "runtime-artifacts"),
+    runtimeEvidencePath: join(runDir, "runtime-evidence.json"),
+    providerRunArtifactsDir,
+  };
+  const rerunPaths = rpgMakerIterationPaths(rerunDir);
 
   const identityArgs = [
     "--game-id",
@@ -1102,13 +1518,23 @@ async function runRpgMakerMvMzPipeline(ctx) {
   const runId = `rpgmaker-mv-mz-${args.project}`;
 
   if (dryRun) {
+    process.stdout.write(
+      "[localize-project] MV/MZ full loop: inventory/readiness FRONT -> extract -> draft/QA -> patch -> delta-apply -> runtime -> feedback -> rerun (iterate cycle)\n",
+    );
     printDryRunPlan(
       [
+        `cargo run -p kaifuu-cli -- detect ${realCorpusSource.placeholder} --output ${detectionReportPath}`,
         `cargo run -p kaifuu-cli -- extract --engine rpgmaker --game-dir ${realCorpusSource.placeholder} ${identityArgs.join(" ")} --bundle-output ${bridgeBundlePath} --findings-output ${findingsPath}`,
         `node apps/itotori/dist/cli.js localize-project-stage --bridge ${bridgeBundlePath} --pair-policy ${pairPolicyPath} --unit-index <first-dialogue-scene-unit> --engine-profile rpg-maker-mv-mz --output ${agenticLoopBundlePath} --translated-bundle-output ${translatedBundlePath} --patch-report-output ${patchReportPath} --provider-run-artifacts-dir ${providerRunArtifactsDir}`,
-        `cargo run -p kaifuu-cli -- patch --engine rpgmaker --source ${realCorpusSource.placeholder} --bundle ${translatedBundlePath} --delta-output ${deltaPath} --patched-data-output ${patchedDataDir}`,
-        `cargo run -p kaifuu-cli -- apply ${realCorpusSource.placeholder}/data --patch ${deltaPath} --output ${appliedDataDir} --report-output ${applyReportPath}`,
-        `cargo run -p utsushi-cli -- rpgmaker-mv-capture --game-dir ${runtimeInputDir} --artifact-root ${runtimeArtifactsDir} --run-id ${runId} --expect-textline-contains ${sentinelSubstring} --output ${runtimeEvidencePath}`,
+        `cargo run -p kaifuu-cli -- patch --engine rpgmaker --source ${realCorpusSource.placeholder} --bundle ${translatedBundlePath} --delta-output ${initialPaths.deltaPath} --patched-data-output ${initialPaths.patchedDataDir}`,
+        `cargo run -p kaifuu-cli -- apply ${realCorpusSource.placeholder}/data --patch ${initialPaths.deltaPath} --output ${initialPaths.appliedDataDir} --report-output ${initialPaths.applyReportPath}`,
+        `cargo run -p utsushi-cli -- rpgmaker-mv-capture --game-dir ${initialPaths.runtimeInputDir} --artifact-root ${initialPaths.runtimeArtifactsDir} --run-id ${runId} --expect-textline-contains ${sentinelSubstring} --output ${initialPaths.runtimeEvidencePath}`,
+        `(in-driver) synthesize feedback -> ${feedbackPath}`,
+        `node apps/itotori/dist/cli.js localize-project-stage --bridge ${bridgeBundlePath} --pair-policy ${pairPolicyPath} --unit-index <first-dialogue-scene-unit> --engine-profile rpg-maker-mv-mz --output ${rerunPaths.agenticLoopBundlePath} --translated-bundle-output ${rerunPaths.translatedBundlePath} --patch-report-output ${rerunPaths.patchReportPath} --provider-run-artifacts-dir ${rerunPaths.providerRunArtifactsDir}`,
+        `cargo run -p kaifuu-cli -- patch --engine rpgmaker --source ${realCorpusSource.placeholder} --bundle ${rerunPaths.translatedBundlePath} --delta-output ${rerunPaths.deltaPath} --patched-data-output ${rerunPaths.patchedDataDir}`,
+        `cargo run -p kaifuu-cli -- apply ${realCorpusSource.placeholder}/data --patch ${rerunPaths.deltaPath} --output ${rerunPaths.appliedDataDir} --report-output ${rerunPaths.applyReportPath}`,
+        `cargo run -p utsushi-cli -- rpgmaker-mv-capture --game-dir ${rerunPaths.runtimeInputDir} --artifact-root ${rerunPaths.runtimeArtifactsDir} --run-id ${runId}-rerun --expect-textline-contains ${sentinelSubstring} --output ${rerunPaths.runtimeEvidencePath}`,
+        `(in-driver) synthesize rerun feedback -> ${join(rerunDir, "feedback.json")}`,
       ],
       flattenPostures(policy),
       realCorpusSource,
@@ -1126,8 +1552,52 @@ async function runRpgMakerMvMzPipeline(ctx) {
   }
   const redact = buildPathRedactor([{ path: gameRoot, replacement: realCorpusSource.placeholder }]);
 
+  // ============ Phase 0: inventory / readiness FRONT =============
+  // The run reports catalog / local-corpus / readiness identity HERE,
+  // before the extract (bridge-import) phase, so bridge import is no
+  // longer the first project fact. `kaifuu detect` is the real detection
+  // primitive over the real corpus; the asset inventory is a real on-disk
+  // data-tree scan (counts/hashes only). Anomalies are structured findings.
+  process.stdout.write(
+    "[localize-project] === inventory/readiness FRONT (corpus identity first) ===\n",
+  );
+  const detection = runKaifuuDetect({ gameRoot, outputPath: detectionReportPath, redact });
+  const dataInventory = scanRpgMakerDataInventory(sourceDataDir);
+  const inventoryReadiness = buildInventoryReadiness({
+    realCorpusSource,
+    projectMetadata,
+    detection,
+    dataInventory,
+  });
+  writeFileSync(inventoryReadinessPath, `${JSON.stringify(inventoryReadiness, null, 2)}\n`);
+  process.stdout.write(
+    `[localize-project] local-corpus identity: sourceKind=${inventoryReadiness.localCorpus.sourceKind} corpusId=${inventoryReadiness.localCorpus.corpusId} projectId=${inventoryReadiness.localCorpus.projectId} engine=${inventoryReadiness.localCorpus.engine} sourceLocale=${inventoryReadiness.localCorpus.sourceLocale}\n`,
+  );
+  process.stdout.write(
+    `[localize-project] readiness identity: gameId=${inventoryReadiness.readiness.gameId} gameVersion=${inventoryReadiness.readiness.gameVersion} sourceProfileId=${inventoryReadiness.readiness.sourceProfileId}\n`,
+  );
+  process.stdout.write(
+    `[localize-project] detection: status=${detection.status} (probed adapters: ${detection.adapterIds.join(", ") || "none"})\n`,
+  );
+  process.stdout.write(
+    `[localize-project] asset inventory (real www/data scan): dataJsonFiles=${dataInventory.dataJsonFileCount} runtimeSceneFiles=${dataInventory.runtimeSceneFileCount} totalDataBytes=${dataInventory.totalDataBytes} dataTreeSha256=${dataInventory.dataTreeSha256}\n`,
+  );
+  for (const finding of inventoryReadiness.findings) {
+    process.stdout.write(
+      `[localize-project] inventory finding [${finding.severity}] ${finding.code}: ${finding.message}\n`,
+    );
+  }
+  process.stdout.write(
+    `[localize-project] readiness verdict: ${inventoryReadiness.readinessVerdict} (identity reported BEFORE bridge import)\n`,
+  );
+  if (inventoryReadiness.readinessVerdict !== "ready") {
+    throw new Error(
+      `kaifuu.rpgmaker.readiness_blocked: inventory/readiness front recorded blocking finding(s); see ${inventoryReadinessPath}`,
+    );
+  }
+
   // Readonly-source invariant: hash the source data tree before any work.
-  const sourceTreeSha256Before = sha256OfDataTree(sourceDataDir);
+  const sourceTreeSha256Before = dataInventory.dataTreeSha256;
   process.stdout.write(
     `[localize-project] source www/data sha256 (pre): ${sourceTreeSha256Before}\n`,
   );
@@ -1163,125 +1633,82 @@ async function runRpgMakerMvMzPipeline(ctx) {
     `[localize-project] bounded slice: unit-index=${unitIndex} scene-file=${sceneFile} (of ${bridge.units.length} units)\n`,
   );
 
-  // -------------- Phase 2: agentic loop (live LLM) ----------------
-  const stageArgs = [
-    join(REPO_ROOT, "apps", "itotori", "dist", "cli.js"),
-    "localize-project-stage",
-    "--bridge",
-    bridgeBundlePath,
-    "--pair-policy",
+  // --------- Phases 2-5: bounded translate/QA/patch/delta/runtime --------
+  process.stdout.write("[localize-project] === iteration: initial ===\n");
+  const initial = await runRpgMakerSliceIteration({
+    iterationLabel: "initial",
+    paths: initialPaths,
+    args,
+    policy,
     pairPolicyPath,
-    "--unit-index",
-    String(unitIndex),
-    "--engine-profile",
-    "rpg-maker-mv-mz",
-    "--output",
-    agenticLoopBundlePath,
-    "--translated-bundle-output",
-    translatedBundlePath,
-    "--patch-report-output",
-    patchReportPath,
-    "--provider-run-artifacts-dir",
-    providerRunArtifactsDir,
-  ];
-  if (args.providerKind !== undefined) {
-    stageArgs.push("--provider-kind", args.providerKind);
-  }
-  runCommand("node", stageArgs, process.env, { redact });
+    bridgeBundlePath,
+    sourceDataDir,
+    gameRoot,
+    unitIndex,
+    sceneFile,
+    sentinelSubstring,
+    runId,
+    redact,
+  });
 
-  if (args.providerKind !== "fake") {
-    const providerProof = verifyProviderRunArtifactsAfterStage({
-      agenticLoopBundlePath,
-      patchReportPath,
-      providerRunArtifactsDir,
-      expectedPair: policy.pair,
-    });
-    process.stdout.write(
-      `[localize-project] provider-run artifacts: ${providerProof.providerRunArtifactCount} verified for ${providerProof.invocations.length} live invocation(s) under ${providerRunArtifactsDir}\n`,
-    );
-  }
-
-  // ----------- Phase 3: kaifuu patchback + .kaifuu delta ----------
-  runCommand(
-    "cargo",
-    [
-      "run",
-      "-p",
-      "kaifuu-cli",
-      "--quiet",
-      "--",
-      "patch",
-      "--engine",
-      "rpgmaker",
-      "--source",
-      gameRoot,
-      "--bundle",
-      translatedBundlePath,
-      "--delta-output",
-      deltaPath,
-      "--patched-data-output",
-      patchedDataDir,
-    ],
-    process.env,
-    { redact },
+  // ------------------- Phase 6: feedback synthesis ----------------
+  const boundedSlice = { unitIndex, sceneFile, totalUnits: bridge.units.length };
+  const feedback = synthesizeRpgMakerFeedback({
+    iteration: "initial",
+    project: args.project,
+    boundedSlice,
+    runtimeEvidence: initial.runtimeEvidence,
+    patchReport: initial.patchReport,
+    applyReport: initial.applyReport,
+    costSummary: initial.costSummary,
+  });
+  writeFileSync(feedbackPath, `${JSON.stringify(feedback, null, 2)}\n`);
+  process.stdout.write(
+    `[localize-project] feedback verdict: ${feedback.verdict} (findings=${feedback.findings.length}; billedUsd=${feedback.cost.billedUsd}, billedMicrosUsd=${feedback.cost.billedMicrosUsd}, zdrEnforced=${feedback.cost.zdrEnforcedCount}/${feedback.cost.invocationCount})\n`,
   );
 
-  // --------------- Phase 4: kaifuu delta-apply --------------------
-  // Reproduce the patched data tree from the `.kaifuu` package; this is
-  // the artifact the runtime consumes (proves the delta round-trips).
-  runCommand(
-    "cargo",
-    [
-      "run",
-      "-p",
-      "kaifuu-cli",
-      "--quiet",
-      "--",
-      "apply",
-      sourceDataDir,
-      "--patch",
-      deltaPath,
-      "--output",
-      appliedDataDir,
-      "--report-output",
-      applyReportPath,
-    ],
-    process.env,
-    { redact },
+  // ------------- Phase 7: feedback-driven rerun (iterate) ---------
+  // The iterate cycle: re-run the bounded slice (reusing the already
+  // extracted bridge bundle + bounded unit), re-derive feedback. This
+  // proves the loop closes and can iterate. Cost stays bounded — the
+  // rerun re-bills only the single bounded translation slice.
+  process.stdout.write(
+    `[localize-project] === iteration: rerun (feedback verdict=${feedback.verdict}) ===\n`,
+  );
+  mkdirSync(rerunDir, { recursive: true });
+  const rerun = await runRpgMakerSliceIteration({
+    iterationLabel: "rerun",
+    paths: rerunPaths,
+    args,
+    policy,
+    pairPolicyPath,
+    bridgeBundlePath,
+    sourceDataDir,
+    gameRoot,
+    unitIndex,
+    sceneFile,
+    sentinelSubstring,
+    runId: `${runId}-rerun`,
+    redact,
+  });
+  const rerunFeedback = synthesizeRpgMakerFeedback({
+    iteration: "rerun",
+    project: args.project,
+    boundedSlice,
+    runtimeEvidence: rerun.runtimeEvidence,
+    patchReport: rerun.patchReport,
+    applyReport: rerun.applyReport,
+    costSummary: rerun.costSummary,
+    priorVerdict: feedback.verdict,
+  });
+  const rerunFeedbackPath = join(rerunDir, "feedback.json");
+  writeFileSync(rerunFeedbackPath, `${JSON.stringify(rerunFeedback, null, 2)}\n`);
+  process.stdout.write(
+    `[localize-project] rerun feedback verdict: ${rerunFeedback.verdict} (findings=${rerunFeedback.findings.length}; billedUsd=${rerunFeedback.cost.billedUsd})\n`,
   );
 
-  // ----------- Phase 5: bounded runtime text-trace evidence -------
-  // The runner caps a single observation stream; replay the one patched
-  // scene file (which carries the localized surface) rather than the full
-  // corpus. The capture fails closed unless the sentinel lands in a line.
-  const runtimeDataDir = join(runtimeInputDir, "data");
-  mkdirSync(runtimeDataDir, { recursive: true });
-  copyFileSync(join(appliedDataDir, sceneFile), join(runtimeDataDir, sceneFile));
-  runCommand(
-    "cargo",
-    [
-      "run",
-      "-p",
-      "utsushi-cli",
-      "--quiet",
-      "--",
-      "rpgmaker-mv-capture",
-      "--game-dir",
-      runtimeInputDir,
-      "--artifact-root",
-      runtimeArtifactsDir,
-      "--run-id",
-      runId,
-      "--expect-textline-contains",
-      sentinelSubstring,
-      "--output",
-      runtimeEvidencePath,
-    ],
-    process.env,
-    { redact },
-  );
-
-  // Readonly-source invariant: re-hash + assert no drift.
+  // Readonly-source invariant: re-hash + assert no drift across both
+  // iterations.
   const sourceTreeSha256After = sha256OfDataTree(sourceDataDir);
   process.stdout.write(
     `[localize-project] source www/data sha256 (post): ${sourceTreeSha256After}\n`,
@@ -1293,25 +1720,36 @@ async function runRpgMakerMvMzPipeline(ctx) {
   }
 
   for (const artifact of [
+    detectionReportPath,
+    inventoryReadinessPath,
     bridgeBundlePath,
     findingsPath,
     agenticLoopBundlePath,
     translatedBundlePath,
     patchReportPath,
-    deltaPath,
-    applyReportPath,
-    runtimeEvidencePath,
+    initialPaths.deltaPath,
+    initialPaths.applyReportPath,
+    initialPaths.runtimeEvidencePath,
+    feedbackPath,
+    rerunPaths.agenticLoopBundlePath,
+    rerunPaths.patchReportPath,
+    rerunPaths.deltaPath,
+    rerunPaths.applyReportPath,
+    rerunPaths.runtimeEvidencePath,
+    rerunFeedbackPath,
   ]) {
     if (!existsSync(artifact)) {
       throw new Error(`expected artifact missing after successful run: ${artifact}`);
     }
   }
 
+  const totalBilledMicrosUsd =
+    initial.costSummary.billedMicrosUsd + rerun.costSummary.billedMicrosUsd;
   const summary = {
     runDir: repoRelativePath(runDir),
     project: args.project,
     engine: projectMetadata.engine,
-    boundedSlice: { unitIndex, sceneFile, totalUnits: bridge.units.length },
+    boundedSlice,
     sourceGame: {
       gameId: projectMetadata.gameId,
       gameVersion: projectMetadata.gameVersion,
@@ -1321,16 +1759,33 @@ async function runRpgMakerMvMzPipeline(ctx) {
     pair: policy.pair,
     enUsSentinel: policy.enUsSentinel,
     sourceDataTreeSha256: sourceTreeSha256Before,
+    localCorpusIdentity: inventoryReadiness.localCorpus,
+    readinessVerdict: inventoryReadiness.readinessVerdict,
+    loop: {
+      identityFirst: true,
+      iterations: [
+        { iteration: "initial", verdict: feedback.verdict, cost: initial.costSummary },
+        { iteration: "rerun", verdict: rerunFeedback.verdict, cost: rerun.costSummary },
+      ],
+      rerunCompleted: true,
+      totalBilledMicrosUsd,
+      totalBilledUsd: (totalBilledMicrosUsd / 1_000_000).toFixed(8),
+    },
     artifacts: {
+      detectionReport: portableRelativePath(runDir, detectionReportPath),
+      inventoryReadiness: portableRelativePath(runDir, inventoryReadinessPath),
       bridgeBundle: portableRelativePath(runDir, bridgeBundlePath),
       extractionFindings: portableRelativePath(runDir, findingsPath),
       agenticLoopBundle: portableRelativePath(runDir, agenticLoopBundlePath),
       translatedBundle: portableRelativePath(runDir, translatedBundlePath),
       patchReport: portableRelativePath(runDir, patchReportPath),
-      delta: portableRelativePath(runDir, deltaPath),
-      applyReport: portableRelativePath(runDir, applyReportPath),
-      runtimeEvidence: portableRelativePath(runDir, runtimeEvidencePath),
+      delta: portableRelativePath(runDir, initialPaths.deltaPath),
+      applyReport: portableRelativePath(runDir, initialPaths.applyReportPath),
+      runtimeEvidence: portableRelativePath(runDir, initialPaths.runtimeEvidencePath),
+      feedback: portableRelativePath(runDir, feedbackPath),
       providerRunArtifacts: portableRelativePath(runDir, providerRunArtifactsDir),
+      rerunRuntimeEvidence: portableRelativePath(runDir, rerunPaths.runtimeEvidencePath),
+      rerunFeedback: portableRelativePath(runDir, rerunFeedbackPath),
     },
   };
   writeFileSync(join(runDir, "run-summary.json"), `${JSON.stringify(summary, null, 2)}\n`);

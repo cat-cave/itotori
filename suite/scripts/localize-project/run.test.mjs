@@ -280,6 +280,184 @@ fi
   );
 }
 
+// Fake cargo/node bins for the RPG Maker MV/MZ full loop. The cargo fake
+// dispatches by subcommand (detect / extract / patch / apply /
+// rpgmaker-mv-capture) and writes only the artifacts each phase is
+// contracted to produce; it never touches the source www/data tree (so
+// the readonly-source sha256 invariant holds). The node fake reuses the
+// same stage-output shape as the RealLive fake.
+function writeFakeRpgMakerCommandBins(dir) {
+  writeExecutable(
+    join(dir, "cargo"),
+    `#!/bin/sh
+printf 'fake cargo: %s\\n' "$*" >&2
+prev=''
+out=''; bundle_out=''; findings_out=''; delta_out=''; patched_out=''; report_out=''; expect=''
+for arg in "$@"; do
+  case "$prev" in
+    --output) out="$arg" ;;
+    --bundle-output) bundle_out="$arg" ;;
+    --findings-output) findings_out="$arg" ;;
+    --delta-output) delta_out="$arg" ;;
+    --patched-data-output) patched_out="$arg" ;;
+    --report-output) report_out="$arg" ;;
+    --expect-textline-contains) expect="$arg" ;;
+  esac
+  prev="$arg"
+done
+case " $* " in
+  *" detect "*)
+    mkdir -p "$(dirname "$out")"
+    printf '{"schemaVersion":"0.1.0","status":"unknown","detections":[{"adapterId":"kaifuu.fixture","detected":false}],"warnings":[]}\\n' > "$out"
+    ;;
+  *" extract "*)
+    mkdir -p "$(dirname "$bundle_out")"
+    printf '{"schemaVersion":"0.2.0","units":[{"surfaceKind":"dialogue","sourceUnitKey":"rpgmaker:CommonEvents.json#/1/list/0/parameters/0","bridgeUnitId":"u-0"}]}\\n' > "$bundle_out"
+    if [ -n "$findings_out" ]; then mkdir -p "$(dirname "$findings_out")"; printf '{"schema":"kaifuu.rpgmaker.findings-census.v0","findings":[]}\\n' > "$findings_out"; fi
+    ;;
+  *" patch "*)
+    mkdir -p "$(dirname "$delta_out")"; printf 'FAKE-KAIFUU-DELTA\\n' > "$delta_out"
+    if [ -n "$patched_out" ]; then mkdir -p "$patched_out"; fi
+    ;;
+  *" apply "*)
+    mkdir -p "$out"; printf '{"schemaVersion":"fake","scene":"CommonEvents"}\\n' > "$out/CommonEvents.json"
+    if [ -n "$report_out" ]; then mkdir -p "$(dirname "$report_out")"; printf '{"status":"succeeded"}\\n' > "$report_out"; fi
+    ;;
+  *" rpgmaker-mv-capture "*)
+    mkdir -p "$(dirname "$out")"
+    printf '{"schema":"utsushi.rpgmaker-mv.runtime-evidence.v0","matched":true,"lineCount":3,"matchCode":"MATCH_OK","expectTextlineContains":"%s"}\\n' "$expect" > "$out"
+    ;;
+esac
+`,
+  );
+  writeExecutable(
+    join(dir, "node"),
+    `#!/bin/sh
+printf 'fake node: %s\\n' "$*" >&2
+prev=''
+agentic_output=''; translated_output=''; patch_report=''
+for arg in "$@"; do
+  case "$prev" in
+    --output) agentic_output="$arg" ;;
+    --translated-bundle-output) translated_output="$arg" ;;
+    --patch-report-output) patch_report="$arg" ;;
+  esac
+  prev="$arg"
+done
+if [ -n "$agentic_output" ]; then mkdir -p "$(dirname "$agentic_output")"; printf '{"stages":[]}\\n' > "$agentic_output"; fi
+if [ -n "$translated_output" ]; then mkdir -p "$(dirname "$translated_output")"; printf '{"schemaVersion":"fake.translated"}\\n' > "$translated_output"; fi
+if [ -n "$patch_report" ]; then mkdir -p "$(dirname "$patch_report")"; printf '{"schemaVersion":"itotori.localize-project.patch-report.v0","bridgeUnitId":"u-0","unitCount":1}\\n' > "$patch_report"; fi
+`,
+  );
+}
+
+test("RPG Maker MV/MZ full loop completes: inventory/readiness front, feedback, and rerun with the artifact set", () => {
+  const work = mkdtempSync(join(tmpdir(), "itotori-mvmz-fullloop-"));
+  const fakeBin = join(work, "bin");
+  const wwwRoot = join(work, "private-www");
+  const dataDir = join(wwwRoot, "data");
+  mkdirSync(dataDir, { recursive: true });
+  mkdirSync(fakeBin, { recursive: true });
+  // Real on-disk corpus surface the inventory scan + readonly sha256
+  // invariant operate over. The fake bins never mutate it.
+  writeFileSync(join(dataDir, "CommonEvents.json"), '{"jp":"こんにちは"}\n');
+  writeFileSync(join(dataDir, "System.json"), '{"title":"fixture"}\n');
+  writeFakeRpgMakerCommandBins(fakeBin);
+
+  try {
+    const result = runDriver(["--project", "lust-memory-alpha-1", "--provider-kind", "fake"], {
+      PATH: prependPath(fakeBin),
+      OPENROUTER_API_KEY: "test-key",
+      ITOTORI_REAL_GAME_ROOT_RPG_MAKER_MV_MZ: wwwRoot,
+      ITOTORI_ALLOW_FAKE_LOCALIZE_PROVIDER: "1",
+    });
+    assert.equal(result.status, 0, `stdout:\n${result.stdout}\nstderr:\n${result.stderr}`);
+
+    // Inventory/readiness FRONT precedes bridge import (the bounded-slice
+    // line is printed only after extract).
+    const frontIdx = result.stdout.indexOf("inventory/readiness FRONT (corpus identity first)");
+    const bridgeImportIdx = result.stdout.indexOf("bounded slice:");
+    assert.ok(
+      frontIdx >= 0 && bridgeImportIdx >= 0 && frontIdx < bridgeImportIdx,
+      `corpus identity must be reported BEFORE bridge import; got:\n${result.stdout}`,
+    );
+    assert.ok(
+      result.stdout.includes("local-corpus identity: sourceKind=local-corpus") &&
+        result.stdout.includes("readiness identity: gameId=lust-memory") &&
+        result.stdout.includes("detection: status=unknown"),
+      `front must report local-corpus + readiness + detection identity; got:\n${result.stdout}`,
+    );
+    assert.ok(
+      result.stdout.includes("readiness verdict: ready (identity reported BEFORE bridge import)"),
+      `front must declare the readiness verdict; got:\n${result.stdout}`,
+    );
+    // Feedback + rerun BACK.
+    assert.ok(
+      result.stdout.includes("feedback verdict: sentinel-confirmed-in-runtime") &&
+        result.stdout.includes("=== iteration: rerun") &&
+        result.stdout.includes("rerun feedback verdict:"),
+      `loop must produce feedback and a rerun; got:\n${result.stdout}`,
+    );
+
+    const runDirMatch = result.stdout.match(/\[localize-project\] SUCCESS .+ run dir: (.+)$/mu);
+    assert.ok(runDirMatch, `stdout should include success run dir; got:\n${result.stdout}`);
+    const runDir = runDirMatch[1].trim();
+
+    for (const rel of [
+      "detection-report.json",
+      "inventory-readiness.json",
+      "bridge-bundle.json",
+      "extraction-findings.json",
+      "agentic-loop-bundle.v0.json",
+      "patch-report.json",
+      "patch.kaifuu",
+      "apply-report.json",
+      "runtime-evidence.json",
+      "feedback.json",
+      "rerun/agentic-loop-bundle.v0.json",
+      "rerun/patch.kaifuu",
+      "rerun/runtime-evidence.json",
+      "rerun/feedback.json",
+      "run-summary.json",
+    ]) {
+      assert.ok(
+        existsSync(join(runDir, rel)),
+        `expected full-loop artifact missing: ${rel}\nstdout:\n${result.stdout}`,
+      );
+    }
+
+    const inventory = JSON.parse(readFileSync(join(runDir, "inventory-readiness.json"), "utf8"));
+    assert.equal(inventory.identityFirst, true);
+    assert.equal(inventory.localCorpus.sourceKind, "local-corpus");
+    assert.equal(inventory.localCorpus.engine, "rpg-maker-mv-mz");
+    assert.equal(inventory.readinessVerdict, "ready");
+    assert.equal(inventory.assetInventory.runtimeSceneFileCount, 1);
+    assertNoPrivateOrAbsolutePaths(inventory, [work, wwwRoot, fakeBin]);
+
+    const feedback = JSON.parse(readFileSync(join(runDir, "feedback.json"), "utf8"));
+    assert.equal(feedback.verdict, "sentinel-confirmed-in-runtime");
+    assert.equal(feedback.runtime.matched, true);
+    assert.ok(
+      feedback.findings.some((finding) => finding.code === "runtime.sentinel.confirmed"),
+      `feedback must record the structured runtime finding; got ${JSON.stringify(feedback.findings)}`,
+    );
+
+    const rerunFeedback = JSON.parse(readFileSync(join(runDir, "rerun", "feedback.json"), "utf8"));
+    assert.equal(rerunFeedback.iteration, "rerun");
+    assert.equal(rerunFeedback.priorVerdict, "sentinel-confirmed-in-runtime");
+
+    const summary = JSON.parse(readFileSync(join(runDir, "run-summary.json"), "utf8"));
+    assert.equal(summary.loop.rerunCompleted, true);
+    assert.equal(summary.loop.identityFirst, true);
+    assert.equal(summary.loop.iterations.length, 2);
+    assert.equal(summary.readinessVerdict, "ready");
+    assert.equal(summary.localCorpusIdentity.sourceKind, "local-corpus");
+    assertNoPrivateOrAbsolutePaths(summary, [work, wwwRoot, fakeBin]);
+  } finally {
+    rmSync(work, { recursive: true, force: true });
+  }
+});
+
 test("--dry-run --project ... exits 0 and prints per-phase commands", () => {
   const result = runDriver(["--dry-run", "--project", "sweetie-hd-alpha-1"]);
   assert.equal(result.status, 0, `stderr: ${result.stderr}`);
@@ -355,14 +533,30 @@ test("--dry-run --project ... exits 0 and prints per-phase commands", () => {
   );
 });
 
-test("--dry-run --project lust-memory-alpha-1 plans the RPG Maker MV/MZ five-phase loop", () => {
+test("--dry-run --project lust-memory-alpha-1 plans the RPG Maker MV/MZ full loop (inventory front + feedback/rerun back)", () => {
   const result = runDriver(["--dry-run", "--project", "lust-memory-alpha-1"]);
   assert.equal(result.status, 0, `stderr: ${result.stderr}`);
-  // Five phases: extract -> stage -> patch+delta -> delta-apply -> runtime.
+  // Full loop: detect(front) -> extract -> stage -> patch+delta ->
+  // delta-apply -> runtime -> feedback -> rerun(stage -> patch -> apply ->
+  // runtime) -> rerun feedback. 12 planned lines (10 external commands +
+  // 2 in-driver feedback syntheses).
   assert.equal(
     (result.stdout.match(/\(planned\) \$ /gu) ?? []).length,
-    5,
-    `MV/MZ dry-run plan must preserve the five-phase command shape; got:\n${result.stdout}`,
+    12,
+    `MV/MZ dry-run plan must preserve the full-loop command shape; got:\n${result.stdout}`,
+  );
+  // Inventory/readiness FRONT: detect must be the FIRST planned command,
+  // ahead of the extract (bridge-import) command.
+  const detectIndex = result.stdout.indexOf("kaifuu-cli -- detect");
+  const extractIndex = result.stdout.indexOf("extract --engine rpgmaker");
+  assert.ok(
+    detectIndex >= 0 && extractIndex >= 0 && detectIndex < extractIndex,
+    `MV/MZ dry-run must plan kaifuu detect (inventory/readiness front) BEFORE extract; got:\n${result.stdout}`,
+  );
+  assert.ok(
+    result.stdout.includes("inventory/readiness FRONT") &&
+      result.stdout.includes("feedback -> rerun"),
+    `MV/MZ dry-run must announce the inventory-front + feedback/rerun-back loop; got:\n${result.stdout}`,
   );
   // RPG Maker engine surfaces (NOT the RealLive Seen.txt path).
   assert.ok(
@@ -386,6 +580,14 @@ test("--dry-run --project lust-memory-alpha-1 plans the RPG Maker MV/MZ five-pha
     result.stdout.includes("rpgmaker-mv-capture") &&
       result.stdout.includes("--expect-textline-contains STELLA-MVMZ-EN-US-SENTINEL"),
     `MV/MZ dry-run must plan the text-trace runtime evidence step; got:\n${result.stdout}`,
+  );
+  // Feedback + rerun BACK: a synthesize-feedback step and a rerun-suffixed
+  // capture run must appear after the initial runtime evidence.
+  assert.ok(
+    result.stdout.includes("synthesize feedback") &&
+      result.stdout.includes("--run-id rpgmaker-mv-mz-lust-memory-alpha-1-rerun") &&
+      result.stdout.includes("synthesize rerun feedback"),
+    `MV/MZ dry-run must plan feedback synthesis + a rerun iteration; got:\n${result.stdout}`,
   );
   assert.ok(
     !result.stdout.includes("--engine reallive") &&
