@@ -166,6 +166,7 @@ pub mod mv_mz_readiness;
 mod offset_map;
 pub mod patch_transaction;
 pub mod registry;
+pub mod siglus_static_key;
 pub mod xp3_capability_profile;
 
 pub use registry::{AdapterCapabilityMatrix, CapabilityLevel, CapabilityLevelStatus};
@@ -185,6 +186,17 @@ pub use xp3_capability_profile::{
     Xp3CapabilityProfileFixtureEntry, Xp3CapabilityProfileReport, Xp3CapabilityProfileRequest,
     Xp3CapabilitySupportTier, Xp3CapabilityTuple, Xp3CapabilityVariant, derive_support_tier,
     generate_xp3_capability_profile,
+};
+
+pub use siglus_static_key::{
+    SEMANTIC_SIGLUS_STATIC_KEY_HELPER_MISMATCH, SEMANTIC_SIGLUS_STATIC_KEY_REGION_NOT_FOUND,
+    SEMANTIC_SIGLUS_STATIC_KEY_UNSUPPORTED_PACKER, SIGLUS_STATIC_KEY_HELPER_ID,
+    SIGLUS_STATIC_KEY_SCHEMA_VERSION, SIGLUS_STATIC_KEY_SUPPORT_BOUNDARY,
+    SiglusStaticKeyCapability, SiglusStaticKeyDeclaredHelper, SiglusStaticKeyEntryReport,
+    SiglusStaticKeyFinding, SiglusStaticKeyFixture, SiglusStaticKeyFixtureEntry,
+    SiglusStaticKeyOutcome, SiglusStaticKeyRef, SiglusStaticKeyReport, SiglusStaticKeyRequest,
+    SiglusStaticKeyStubInputs, SiglusStaticKeyStubScenario, build_siglus_static_key_stub,
+    discover_siglus_static_key,
 };
 
 pub use patch_transaction::{

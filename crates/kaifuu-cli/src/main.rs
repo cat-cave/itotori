@@ -1030,12 +1030,71 @@ fn run_siglus_command(args: &[String]) -> Result<(), Box<dyn std::error::Error>>
                 );
             }
         }
+        "static-key" => {
+            return run_siglus_static_key(args);
+        }
         _ => {
             return Err(
-                "usage: kaifuu siglus parser-boundary-smoke --scene <Scene.pck> --gameexe <Gameexe.dat> --key-request <helper-request.json> --output <report.json> [--variant parser-boundary-success|helper-required|missing-key|unsupported-opcode|out-of-profile]"
+                "usage: kaifuu siglus <parser-boundary-smoke|static-key> ...\n  parser-boundary-smoke --scene <Scene.pck> --gameexe <Gameexe.dat> --key-request <helper-request.json> --output <report.json> [--variant parser-boundary-success|helper-required|missing-key|unsupported-opcode|out-of-profile]\n  static-key --fixture <manifest.json> [--output <report.json>]"
                     .into(),
             );
         }
+    }
+    Ok(())
+}
+
+/// KAIFUU-069 — `kaifuu siglus static-key --fixture <manifest>
+/// [--output <report.json>]`.
+///
+/// Runs in-process Siglus static-key discovery for every entry in the manifest:
+/// each synthetic stub (or scoped local executable + `Gameexe.dat`) is
+/// statically analysed in-process — never shelled out — and any recovered
+/// candidate is validated against the `Gameexe.dat` known-plaintext header
+/// BEFORE a consumable secret-ref is published. Unsupported packers, protected
+/// executables, helper-provenance mismatches, missing key regions, and
+/// validation failures surface as structured findings. The redacted report
+/// (secret-refs + proof hashes only, never raw keys) is written to `--output`
+/// (or stdout); the command exits non-zero, listing each entry's blocking
+/// finding codes, when any entry fails.
+fn run_siglus_static_key(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
+    let fixture_path = PathBuf::from(flag(args, "--fixture")?);
+    let fixture: kaifuu_core::SiglusStaticKeyFixture = read_json(&fixture_path)?;
+    let fixture_dir = fixture_path
+        .parent()
+        .ok_or("fixture path must have a parent directory")?;
+    let fixture_file_name = fixture_path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or("fixture path must have a file name")?;
+    let report = kaifuu_core::discover_siglus_static_key(kaifuu_core::SiglusStaticKeyRequest {
+        fixture: &fixture,
+        fixture_dir,
+        fixture_file_name,
+    })?;
+    let redacted = report.redacted_for_report();
+    let json = redacted.stable_json()?;
+    match flag_optional(args, "--output") {
+        Some(output) => atomic_write_text(&PathBuf::from(output), &json)?,
+        None => println!("{json}"),
+    }
+    if redacted.status == kaifuu_core::OperationStatus::Failed {
+        let failures = redacted
+            .entries
+            .iter()
+            .filter(|entry| entry.status == kaifuu_core::OperationStatus::Failed)
+            .map(|entry| {
+                let codes = entry
+                    .findings
+                    .iter()
+                    .filter(|finding| finding.severity.is_blocking())
+                    .map(|finding| format!("{}:{}", finding.severity.as_str(), finding.code))
+                    .collect::<Vec<_>>()
+                    .join(",");
+                format!("{} [{}]", entry.entry_id, codes)
+            })
+            .collect::<Vec<_>>()
+            .join("; ");
+        return Err(format!("Siglus static-key discovery failed: {failures}").into());
     }
     Ok(())
 }

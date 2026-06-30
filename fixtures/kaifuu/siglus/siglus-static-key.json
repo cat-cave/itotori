@@ -1,0 +1,67 @@
+{
+  "schemaVersion": "0.1.0",
+  "capabilityId": "kaifuu-siglus-static-key",
+  "sourceNodeId": "KAIFUU-069",
+  "engineFamily": "siglus",
+  "entries": [
+    {
+      "entryId": "static-key-valid",
+      "requirementId": "siglus-secondary-key",
+      "secretRef": "local-secret:siglus-secondary-key",
+      "keyPurpose": "siglus-scene-pck-secondary-key",
+      "engineProfileId": "siglus-static-key-fixture",
+      "stub": "valid",
+      "expected": "validated"
+    },
+    {
+      "entryId": "static-key-wrong-key",
+      "requirementId": "siglus-secondary-key",
+      "secretRef": "local-secret:siglus-secondary-key",
+      "keyPurpose": "siglus-scene-pck-secondary-key",
+      "engineProfileId": "siglus-static-key-fixture",
+      "stub": "wrong_key",
+      "expected": "validation_failed"
+    },
+    {
+      "entryId": "static-key-unsupported-packer",
+      "requirementId": "siglus-secondary-key",
+      "secretRef": "local-secret:siglus-secondary-key",
+      "keyPurpose": "siglus-scene-pck-secondary-key",
+      "engineProfileId": "siglus-static-key-fixture",
+      "stub": "unsupported_packer",
+      "expected": "unsupported_packer"
+    },
+    {
+      "entryId": "static-key-protected-executable",
+      "requirementId": "siglus-secondary-key",
+      "secretRef": "local-secret:siglus-secondary-key",
+      "keyPurpose": "siglus-scene-pck-secondary-key",
+      "engineProfileId": "siglus-static-key-fixture",
+      "stub": "protected_executable",
+      "expected": "protected_executable"
+    },
+    {
+      "entryId": "static-key-no-key-region",
+      "requirementId": "siglus-secondary-key",
+      "secretRef": "local-secret:siglus-secondary-key",
+      "keyPurpose": "siglus-scene-pck-secondary-key",
+      "engineProfileId": "siglus-static-key-fixture",
+      "stub": "key_region_missing",
+      "expected": "key_region_not_found"
+    },
+    {
+      "entryId": "static-key-helper-mismatch",
+      "requirementId": "siglus-secondary-key",
+      "secretRef": "local-secret:siglus-secondary-key",
+      "keyPurpose": "siglus-scene-pck-secondary-key",
+      "engineProfileId": "siglus-static-key-fixture",
+      "stub": "valid",
+      "declaredHelper": {
+        "helperId": "external-siglus-extract",
+        "helperKind": "wineLocalWindowsHelper",
+        "executionMode": "platformHelper"
+      },
+      "expected": "helper_mismatch"
+    }
+  ]
+}
