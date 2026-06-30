@@ -1,0 +1,121 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/cat-cave/itotori/suite/scripts/itotori-fixture-iteration/schemas/fixture-iteration-result.schema.json",
+  "title": "Itotori Fixture Iteration Result Manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "generatedAt",
+    "command",
+    "scenario",
+    "expectedVerdict",
+    "fixtureId",
+    "projectId",
+    "localeBranchId",
+    "sourceRevision",
+    "sourceLocale",
+    "targetLocale",
+    "providerLedger",
+    "billedMicrosUsd",
+    "stages",
+    "emittedArtifacts",
+    "verdict",
+    "findingCount",
+    "blockingFindingCount",
+    "findings"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "itotori.fixture-iteration.result.v0" },
+    "generatedAt": { "type": "string", "minLength": 1 },
+    "command": { "const": "vp run itotori:fixture-iteration" },
+    "scenario": { "type": ["string", "null"] },
+    "expectedVerdict": {
+      "type": ["string", "null"],
+      "enum": ["accepted", "rejected", "repaired", "broken", null]
+    },
+    "fixtureId": { "type": ["string", "null"] },
+    "projectId": { "type": ["string", "null"] },
+    "localeBranchId": { "type": ["string", "null"] },
+    "sourceRevision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sourceBridgeId", "sourceBundleHash", "sourceRevisionId"],
+      "properties": {
+        "sourceBridgeId": { "type": ["string", "null"] },
+        "sourceBundleHash": { "type": ["string", "null"] },
+        "sourceRevisionId": { "type": ["string", "null"] }
+      }
+    },
+    "sourceLocale": { "type": ["string", "null"] },
+    "targetLocale": { "type": ["string", "null"] },
+    "providerLedger": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["uri", "hash"],
+      "properties": {
+        "uri": {
+          "type": "string",
+          "pattern": "^fixtures/(?!private-local/)(?!.*\\.\\.)[A-Za-z0-9._/-]+$"
+        },
+        "hash": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" }
+      }
+    },
+    "billedMicrosUsd": { "type": "integer", "minimum": 0 },
+    "stages": {
+      "type": "array",
+      "minItems": 7,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["stageId", "artifactId", "contentHash", "status", "providerProofId"],
+        "properties": {
+          "stageId": {
+            "type": "string",
+            "enum": ["import", "draft", "qa", "reviewer", "export", "feedback", "rerun"]
+          },
+          "artifactId": { "type": "string", "minLength": 1 },
+          "contentHash": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+          "status": { "type": "string", "minLength": 1 },
+          "providerProofId": { "type": ["string", "null"] }
+        }
+      }
+    },
+    "emittedArtifacts": {
+      "type": "array",
+      "minItems": 7,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["role", "path", "hash"],
+        "properties": {
+          "role": { "type": "string", "minLength": 1 },
+          "path": { "type": "string", "minLength": 1 },
+          "hash": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" }
+        }
+      }
+    },
+    "verdict": {
+      "type": "string",
+      "enum": ["accepted", "rejected", "repaired", "broken", "unvalidated"]
+    },
+    "findingCount": { "type": "integer", "minimum": 0 },
+    "blockingFindingCount": { "type": "integer", "minimum": 0 },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["code", "severity", "stageId", "artifactId", "remediation", "message"],
+        "properties": {
+          "code": { "type": "string", "minLength": 1 },
+          "severity": { "type": "string", "enum": ["blocking", "warn", "info"] },
+          "stageId": { "type": "string", "minLength": 1 },
+          "artifactId": { "type": "string", "minLength": 1 },
+          "remediation": { "type": "string", "minLength": 1 },
+          "message": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  }
+}

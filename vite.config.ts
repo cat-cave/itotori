@@ -113,6 +113,23 @@ export default defineConfig({
           "node --test suite/scripts/alpha-public-fixture/run.test.mjs suite/scripts/alpha-public-fixture/linkage.test.mjs",
         cache: false,
       },
+      // ITOTORI-095: run PUBLIC RECORDED inputs through one full Itotori
+      // iteration (import -> draft -> QA -> reviewer action -> export ->
+      // feedback import -> targeted rerun -> final result) and emit a
+      // schema-valid, hash-addressed FixtureIterationResult artifact per
+      // stage. Composes existing seams; recorded/public only, no creds, no DB.
+      "itotori:fixture-iteration": {
+        command: "node suite/scripts/itotori-fixture-iteration/run.mjs",
+        cache: false,
+      },
+      // ITOTORI-095: deterministic unit + integration tests covering the full
+      // iteration + per-stage schema-valid artifacts across all four recorded
+      // paths (success, QA rejection, runtime feedback, rerun repair).
+      "itotori:fixture-iteration-test": {
+        command:
+          "node --test suite/scripts/itotori-fixture-iteration/run.test.mjs suite/scripts/itotori-fixture-iteration/iteration.test.mjs",
+        cache: false,
+      },
     },
   },
 });
