@@ -43222,6 +43222,41 @@
         "crates/kaifuu-vault-source/src/metadata.rs",
         "docs (embedded-metadata.schema.json)"
       ]
+    },
+    {
+      "id": "correct-extraction-ok-skip-comment",
+      "title": "Correct inaccurate extraction.rs comment — sevenz fails loud (Err), does not return Ok-with-skips",
+      "kind": "audit-fix",
+      "milestone": "alpha",
+      "status": "ready",
+      "priority": "P3",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "VALIDATED against sevenz-rust2 0.21.1 source: our API decompress_file_with_extract_fn → decompress_impl → seven.for_each_entries(|e,r| extract_fn(...))? propagates the decode Err (Unsupported method) — it does NOT return Ok(()) with skipped folders. The by-id workers comment in crates/kaifuu-vault-source/src/extraction.rs (~line 33: the decode loop can return Ok(()) having skipped them) is a MISDIAGNOSIS: on a Delta+BCJ2 folder sevenz returns Err, which our Err(_e) => ExtractionFailed branch already surfaces loud; the ~11,219/19,903 partial tree observed was just the folders extracted BEFORE the first failing folder (side effect on disk), not an Ok-with-skips. Reframe verify_complete_extraction as cheap defense-in-depth (catches a hypothetical future Ok-with-missing), NOT the primary mechanism, and correct the comment to match reality. No behavior change needed (adapter already fails loud).",
+      "acceptance": "The extraction.rs comment accurately states sevenz-rust2 fails loud (Err) on an undecodable folder; verify_complete_extraction is documented as defense-in-depth; no false Ok-with-skips claim remains. just ci green.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-30T19:16:04.266Z",
+      "updated_at": "2026-06-30T19:16:04.266Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["kaifuu"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "just ci"
+        }
+      ],
+      "audit_focus": ["crates/kaifuu-vault-source/src/extraction.rs (decode-loop comment ~line 33)"]
     }
   ],
   "edges": [
