@@ -20,6 +20,7 @@
 //     orchestrator-mode "succeeded" outcome round-trips through the
 //     full event log.
 
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   AffectedWorkSelectorError,
@@ -159,6 +160,49 @@ function makeService(
     now: deterministicClock(),
     ...opts,
   });
+}
+
+// ---------------------------------------------------------------------------
+// On-disk fixture for the end-to-end repair-loop replay (ITOTORI-038).
+//
+// The trigger set the end-to-end audit-trail test replays lives at
+// fixtures/repair-loop/fixture.json — an on-disk deliverable, not an
+// inline literal — so downstream nodes (e.g. ITOTORI-222's repair stage)
+// can replay the exact (QA, protected-span, human-decision) trigger set
+// off disk without re-instantiating RepairJobService.
+// ---------------------------------------------------------------------------
+
+type RepairLoopFixtureEntry = {
+  name: string;
+  trigger: RepairTrigger;
+  expectedScope?: RepairAffectedScope;
+  expectedUnits?: ReadonlyArray<string>;
+  outcome: RepairJobOutcome;
+};
+
+type RepairLoopFixture = {
+  pair: RepairProviderPair;
+  sceneIndex: Record<string, ReadonlyArray<string>>;
+  triggers: ReadonlyArray<RepairLoopFixtureEntry>;
+  expectedDrainOrder: ReadonlyArray<string>;
+  expectedSeverityOrder: ReadonlyArray<RepairJobSeverity>;
+};
+
+function loadRepairLoopFixture(): RepairLoopFixture {
+  const fixture = JSON.parse(
+    readFileSync(new URL("../../../fixtures/repair-loop/fixture.json", import.meta.url), "utf8"),
+  ) as RepairLoopFixture;
+  // Revive the human-decision timestamp: JSON carries it as an ISO
+  // string, but RepairTriggerHumanDecision.decisionRecordedAt is a Date.
+  for (const entry of fixture.triggers) {
+    if (entry.trigger.trigger === "human_decision") {
+      entry.trigger = {
+        ...entry.trigger,
+        decisionRecordedAt: new Date(entry.trigger.decisionRecordedAt),
+      };
+    }
+  }
+  return fixture;
 }
 
 // ---------------------------------------------------------------------------
@@ -482,38 +526,26 @@ describe("RepairJobService outcome flow", () => {
 
 describe("ITOTORI-038 fixture repair loop", () => {
   it("QA finding → repair job → completion preserves audit history end-to-end", () => {
+    const fixture = loadRepairLoopFixture();
     const sceneIndex: RepairSceneIndex = {
-      bridgeUnitsInSceneOf: (seed) =>
-        seed === BRIDGE_UNIT_A ? [BRIDGE_UNIT_A, BRIDGE_UNIT_B] : [],
+      bridgeUnitsInSceneOf: (seed) => fixture.sceneIndex[seed] ?? [],
     };
     const service = makeService({ sceneIndex });
 
-    // Trigger 1: critical QA finding on bridge unit A.
-    const qaJob = service.enqueue({
-      trigger: qaTrigger({ severity: "p0", rationale: "glossary term swapped" }),
-      pair: PAIR,
-    });
-
-    // Trigger 2: protected-span violation on a different unit.
-    const spanJob = service.enqueue({
-      trigger: spanTrigger({ bridgeUnitId: BRIDGE_UNIT_C, severity: "p0" }),
-      pair: PAIR,
-    });
-
-    // Trigger 3: human reviewer requests scene-wide rerun seeded by unit A.
-    const humanJob = service.enqueue({
-      trigger: humanTrigger({
-        scope: {
-          kind: "scene",
-          sceneId: "scene-001",
-          bridgeUnitIds: [BRIDGE_UNIT_A],
-        },
-        severity: "p1",
-        targetStage: "translation",
-        rationale: "reviewer requested scene-wide refresh after style-guide update",
-      }),
-      pair: PAIR,
-    });
+    // Enqueue the on-disk trigger set in fixture order: a critical QA
+    // finding on unit A, a protected-span violation on a different unit,
+    // and a human reviewer's scene-wide rerun seeded by unit A.
+    const jobsByName = new Map<string, RepairJob>();
+    for (const entry of fixture.triggers) {
+      jobsByName.set(entry.name, service.enqueue({ trigger: entry.trigger, pair: fixture.pair }));
+    }
+    const jobFor = (name: string): RepairJob => {
+      const job = jobsByName.get(name);
+      if (job === undefined) {
+        throw new Error(`fixture names unknown trigger ${name}`);
+      }
+      return job;
+    };
 
     // Two p0 jobs go first in FIFO order; the human p1 lands last.
     const drained: RepairJob[] = [];
@@ -522,37 +554,37 @@ describe("ITOTORI-038 fixture repair loop", () => {
       if (next === undefined) break;
       drained.push(next);
     }
-    expect(drained.map((j) => j.jobId)).toEqual([qaJob.jobId, spanJob.jobId, humanJob.jobId]);
-    expect(drained.map((j) => j.severity)).toEqual(["p0", "p0", "p1"]);
+    expect(drained.map((j) => j.jobId)).toEqual(
+      fixture.expectedDrainOrder.map((name) => jobFor(name).jobId),
+    );
+    expect(drained.map((j) => j.severity)).toEqual([...fixture.expectedSeverityOrder]);
 
-    // The human-scoped job expanded via the scene index without
-    // widening past what the human declared.
-    expect(humanJob.affectedScope).toBe("scene");
-    expect(unitsOf(humanJob)).toEqual([BRIDGE_UNIT_A, BRIDGE_UNIT_B]);
+    // Each job's affected scope matches the fixture's recorded expectation:
+    // the human-scoped job expanded via the scene index without widening
+    // past what the human declared; the QA job stayed narrow at one unit.
+    for (const entry of fixture.triggers) {
+      if (entry.expectedScope === undefined) continue;
+      const job = jobFor(entry.name);
+      expect(job.affectedScope).toBe(entry.expectedScope);
+      if (entry.expectedUnits !== undefined) {
+        expect(unitsOf(job)).toEqual([...entry.expectedUnits]);
+      }
+    }
 
-    // The QA-trigger job stayed narrow at one bridge unit.
-    expect(unitsOf(qaJob)).toEqual([BRIDGE_UNIT_A]);
-
-    // Simulate the orchestrator's repair stage reporting outcomes:
-    //   - QA job: repaired_then_accepted.
+    // Replay the orchestrator's repair-stage outcomes from the fixture:
+    //   - QA job: succeeded (repaired then accepted).
     //   - Span job: deferred_to_human (cap exhausted).
     //   - Human job: no_change (already-clean reruns are noop).
-    service.recordOutcome(qaJob.jobId, "succeeded");
-    service.recordOutcome(spanJob.jobId, "deferred_to_human");
-    service.recordOutcome(humanJob.jobId, "no_change");
+    for (const entry of fixture.triggers) {
+      service.recordOutcome(jobFor(entry.name).jobId, entry.outcome);
+    }
 
     const history = service.repairHistory();
     const kinds = history.map((e) => e.kind);
     expect(kinds).toEqual([
-      "job_enqueued",
-      "job_enqueued",
-      "job_enqueued",
-      "job_started",
-      "job_started",
-      "job_started",
-      "job_completed",
-      "job_completed",
-      "job_completed",
+      ...fixture.triggers.map(() => "job_enqueued" as const),
+      ...fixture.triggers.map(() => "job_started" as const),
+      ...fixture.triggers.map(() => "job_completed" as const),
     ]);
     const completions = history.flatMap<RepairEvent>((event) =>
       event.kind === "job_completed" ? [event] : [],
@@ -563,14 +595,14 @@ describe("ITOTORI-038 fixture repair loop", () => {
         outcomeMap.set(event.jobId, event.outcome);
       }
     }
-    expect(outcomeMap.get(qaJob.jobId)).toBe("succeeded");
-    expect(outcomeMap.get(spanJob.jobId)).toBe("deferred_to_human");
-    expect(outcomeMap.get(humanJob.jobId)).toBe("no_change");
+    for (const entry of fixture.triggers) {
+      expect(outcomeMap.get(jobFor(entry.name).jobId)).toBe(entry.outcome);
+    }
 
     // Every job carries the pair verbatim — the audit can re-derive
     // (modelId, providerId) for every rerun without joining elsewhere.
     for (const job of drained) {
-      expect(job.pair).toEqual(PAIR);
+      expect(job.pair).toEqual(fixture.pair);
     }
   });
 

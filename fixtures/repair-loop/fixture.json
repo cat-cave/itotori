@@ -1,0 +1,69 @@
+{
+  "_doc": "ITOTORI-038 fixture repair loop — replayable trigger set for the end-to-end repair audit trail. On-disk so downstream nodes (e.g. ITOTORI-222's repair stage) can replay the exact (QA finding, protected-span violation, human-decision) trigger set without re-instantiating RepairJobService. Consumed by apps/itotori/test/repair-job-service.test.ts.",
+  "bridgeUnits": {
+    "A": "019ed079-0000-7000-8000-00000000aa01",
+    "B": "019ed079-0000-7000-8000-00000000aa02",
+    "C": "019ed079-0000-7000-8000-00000000aa03"
+  },
+  "pair": {
+    "modelId": "openai/gpt-5",
+    "providerId": "openrouter:openai"
+  },
+  "sceneIndex": {
+    "019ed079-0000-7000-8000-00000000aa01": [
+      "019ed079-0000-7000-8000-00000000aa01",
+      "019ed079-0000-7000-8000-00000000aa02"
+    ]
+  },
+  "triggers": [
+    {
+      "name": "qa",
+      "trigger": {
+        "trigger": "qa_finding",
+        "findingId": "019ed079-0000-7000-8000-00000000ff01",
+        "bridgeUnitId": "019ed079-0000-7000-8000-00000000aa01",
+        "severity": "p0",
+        "targetStage": "translation",
+        "rationale": "glossary term swapped"
+      },
+      "expectedScope": "bridge_units",
+      "expectedUnits": ["019ed079-0000-7000-8000-00000000aa01"],
+      "outcome": "succeeded"
+    },
+    {
+      "name": "span",
+      "trigger": {
+        "trigger": "protected_span_violation",
+        "violationId": "span-violation-001",
+        "bridgeUnitId": "019ed079-0000-7000-8000-00000000aa03",
+        "severity": "p0",
+        "rationale": "span_deleted on glossary term"
+      },
+      "outcome": "deferred_to_human"
+    },
+    {
+      "name": "human",
+      "trigger": {
+        "trigger": "human_decision",
+        "decisionId": "human-decision-001",
+        "decisionRecordedAt": "2026-06-24T12:00:00.000Z",
+        "scope": {
+          "kind": "scene",
+          "sceneId": "scene-001",
+          "bridgeUnitIds": ["019ed079-0000-7000-8000-00000000aa01"]
+        },
+        "severity": "p1",
+        "targetStage": "translation",
+        "rationale": "reviewer requested scene-wide refresh after style-guide update"
+      },
+      "expectedScope": "scene",
+      "expectedUnits": [
+        "019ed079-0000-7000-8000-00000000aa01",
+        "019ed079-0000-7000-8000-00000000aa02"
+      ],
+      "outcome": "no_change"
+    }
+  ],
+  "expectedDrainOrder": ["qa", "span", "human"],
+  "expectedSeverityOrder": ["p0", "p0", "p1"]
+}

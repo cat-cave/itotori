@@ -22,10 +22,9 @@
 //! - `cargo test -p utsushi-reallive save_reads_avg_global_save`
 //! - `cargo test -p utsushi-reallive save_read_flags_decodes_title`
 
-use utsushi_core::EvidenceTier;
 use utsushi_core::substrate::{
-    InMemorySnapshotStore, Inspectable, Snapshot, SnapshotRef, SnapshotRequest, SnapshotStore,
-    restore_snapshot, take_snapshot,
+    EvidenceTier, InMemorySnapshotStore, Inspectable, Snapshot, SnapshotRef, SnapshotRequest,
+    SnapshotStore, restore_snapshot, take_snapshot,
 };
 use utsushi_reallive::{
     AvgSavePreamble, GLOBAL_SAVE_MAGIC, GlobalSave, ReadFlags, SAVE_STATE_INSPECTABLE_ID,

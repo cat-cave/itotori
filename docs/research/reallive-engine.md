@@ -1024,6 +1024,23 @@ surface generalises, the byte-layout does not).
   A Siglus port reuses `TextSurfaceSink::emit_line` but populates it
   from a different opcode dispatch table.
 
+- **UTSUSHI-210** (`module_jmp` control-flow opcodes) — _RealLive-only
+  byte-codes; substrate call-stack snapshot carries._ The acceptance
+  criteria naming the `goto_if` / `goto_unless` / `goto_on` / `gosub` /
+  `farcall` opcode byte-codes (and the `farcall` cross-scene
+  `(scene_id, entrypoint)` addressing scheme) pin RealLive's
+  `module_jmp` opcode table. Siglus has structurally equivalent
+  control-flow operations (its VM descends from AVG32's) but different
+  opcode bytes and a different `farcall` addressing scheme; the byte-codes
+  do not transfer. The substrate carriers that DO carry are the
+  call-stack round-trip — `gosub` / `farcall` push frames that the
+  `SnapshotStore` + `Inspectable` / `Restorable` contract (§M.1,
+  UTSUSHI-208) snapshots engine-neutrally — and the conditional-jump
+  predicates, which reduce to the engine-local `ExprNode` AST (§M.1,
+  UTSUSHI-205) whose AVG32-derived grammar ports cleanly. A Siglus port
+  reuses those facade surfaces but populates them from its own
+  control-flow opcode dispatch table.
+
 - **UTSUSHI-211** (`select` / `select_s` / `select_w` family) —
   _RealLive-only opcodes; substrate ChoiceIndex carries._ Acceptance
   criteria naming the RealLive sel-module opcodes and the
@@ -1045,6 +1062,23 @@ surface generalises, the byte-layout does not).
   and the rng-state round-trip through `SnapshotStore` are facade
   surfaces a Siglus port reuses unchanged. The `module_str` /
   `module_mem` opcode-table identifiers themselves are RealLive-only.
+
+- **UTSUSHI-213** (system-call dispatch) — _RealLive-only Gameexe
+  route convention; substrate SnapshotStore + EnginePort lifecycle
+  carry._ The acceptance criteria naming the `9999,NN`-style
+  `(scene_id, entrypoint)` route addressing and the Gameexe dispatch-table
+  keys (`SYSTEMCALL_SAVE=9999,20`, `SYSTEMCALL_LOAD=9999,21`,
+  `CANCELCALL=9999,10`, the `WBCALL.NNN` window-button callbacks, etc.,
+  per §H) pin a RealLive-only Gameexe convention: the syscom handlers
+  live as real bytecode in scene `9999` and are reached through that
+  `(scene_id, entrypoint)` table. Siglus's equivalent routes through
+  dotted `Resource.txt` keys with a different routing shape; neither the
+  key names nor the scene-id convention transfer. The substrate carriers
+  that DO carry are the `SnapshotStore` backing the save/load syscom
+  routes (§M.1, UTSUSHI-208) and the `EnginePort` lifecycle stages
+  (Launch / Observe / Capture / Shutdown, §M.1 port-shape row) the
+  system-call surface plugs into — a Siglus port reuses those facade
+  surfaces but populates the dispatch table from its own config source.
 
 - **UTSUSHI-214** (graphics object stack) — _rlvm 256-object stack
   model RealLive-only; FrameArtifactSink carries._ The acceptance
