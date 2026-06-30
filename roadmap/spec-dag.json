@@ -36185,7 +36185,7 @@
       "title": "ALPHA-006a: source the Sweetie HD alpha corpus through kaifuu-vault-source",
       "kind": "feature",
       "milestone": "alpha",
-      "status": "blocked",
+      "status": "ready",
       "priority": "P1",
       "estimate_points": 1,
       "risk": "medium",
@@ -36196,16 +36196,16 @@
       "validation": null,
       "context": null,
       "created_at": "2026-06-29T16:04:04.008Z",
-      "updated_at": "2026-06-29T16:34:30.067Z",
+      "updated_at": "2026-06-30T16:36:40.674Z",
       "claimed_at": "2026-06-29T16:09:11.316Z",
       "done_at": null,
       "group_name": "engine-adapters",
-      "status_reason": "Wiring complete + verified (kaifuu-cli main.rs:42 first non-test consumer; read-only; ITOTORI_REAL_GAME_ROOT fallback deleted; commit e908f79 on branch). Headline sha-equality proof BLOCKED by two read-only vault-curation-owned blockers: (1) catalog schema drift — adapter pins v1, live /archive/vault/catalog.db is v3 -> handled by precursor kaifuu-vault-source-schema-v3-support (internal edge); (2) EXTERNAL: Oshioki Sweetie HD is not in the vault by-sha content store — it exists only as a by-id repack (content sha 3f337d5b), and its catalog artifacts.sha256 (5fafb7f0) is the original_sha256 of a download that no longer exists in by-sha, so materialize_by_sha fails ArtifactMissing. The sibling vault-curation project must promote Sweetie HD into by-sha under a catalog sha that matches the by-sha file. Direct-path reference Seen.txt sha256=903f538b (test asserts equality, passes once both clear).",
+      "status_reason": "Wiring complete + verified (kaifuu-cli main.rs:42 first non-test consumer; read-only; ITOTORI_REAL_GAME_ROOT fallback deleted; commit e908f79 on branch). Headline sha-equality proof BLOCKED by two read-only vault-curation-owned blockers: (1) catalog schema drift — adapter pins v1, live /archive/vault/catalog.db is v3 -> handled by precursor kaifuu-vault-source-schema-v3-support (internal edge); (2) EXTERNAL: Oshioki Sweetie HD is not in the vault by-sha content store — it exists only as a by-id repack (content sha 3f337d5b), and its catalog artifacts.sha256 (5fafb7f0) is the original_sha256 of a download that no longer exists in by-sha, so materialize_by_sha fails ArtifactMissing. The sibling vault-curation project must promote Sweetie HD into by-sha under a catalog sha that matches the by-sha file. Direct-path reference Seen.txt sha256=903f538b (test asserts equality, passes once both clear).\n[2026-06-30T16:36:40.674Z] Trevor provided a 2nd real RealLive title: Kanon (fan patch, rlBabel) at /scratch/itotori-research/kanon — genuine RealLive v1.2.6.8 tree (REALLIVE.EXE, GAMEEXE.INI, SEEN.TXT + SEENxxxx.TXT bytecode, G00/KOE/etc). Unblocks the RealLive multi-game chain.",
       "check_command": null,
       "ci_command": null,
-      "blocked_by": "external",
-      "blocked_reason": "Wiring complete + verified (kaifuu-cli main.rs:42 first non-test consumer; read-only; ITOTORI_REAL_GAME_ROOT fallback deleted; commit e908f79 on branch). Headline sha-equality proof BLOCKED by two read-only vault-curation-owned blockers: (1) catalog schema drift — adapter pins v1, live /archive/vault/catalog.db is v3 -> handled by precursor kaifuu-vault-source-schema-v3-support (internal edge); (2) EXTERNAL: Oshioki Sweetie HD is not in the vault by-sha content store — it exists only as a by-id repack (content sha 3f337d5b), and its catalog artifacts.sha256 (5fafb7f0) is the original_sha256 of a download that no longer exists in by-sha, so materialize_by_sha fails ArtifactMissing. The sibling vault-curation project must promote Sweetie HD into by-sha under a catalog sha that matches the by-sha file. Direct-path reference Seen.txt sha256=903f538b (test asserts equality, passes once both clear).",
-      "blocked_owner": "vault-curation",
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
       "projects": ["kaifuu", "itotori"],
       "verification": [
         {
@@ -42883,6 +42883,160 @@
         }
       ],
       "audit_focus": ["docs/subprojects-kaifuu.md:110", "crates/kaifuu-cli/src/main.rs"]
+    },
+    {
+      "id": "reallive-expr-eval-bank-refs",
+      "title": "RealLive expression evaluator: store-register / memory-bank reference forms",
+      "kind": "feature",
+      "milestone": "alpha",
+      "status": "ready",
+      "priority": "P1",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "DISCOVERED via Kanon 2nd-corpus multi-game recon (fix-second-reallive-corpus): the kaifuu-reallive expression evaluator fails with MalformedExpression on RealLive store-register / memory-bank reference bytes. Failing-byte frequencies across Kanon SEEN.TXT: 0x42 'B' (intB[]) x44, 0x43 'C' (intC[]) x15, 0x24 '$' x6, 0x53 'S' (strS[]) x1; Sweetie HD full archive also fails on 0x83. The evaluator was only ever exercised on Sweetie HD scene 1 (a trivial subset). Implement the full ExpressionPiece reference grammar (intA-G/intZ banks, strS/strM, store register, array index, $/\\ forms) per the rldev/rlvm reference, clean-room. NO floor relaxing.",
+      "acceptance": "kaifuu-reallive expression evaluator decodes ALL RealLive reference/bank forms (0x42/0x43/0x24/0x53/0x83 + the full intA-G/Z + strS/M grammar) with zero MalformedExpression across both Sweetie HD AND Kanon full archives; unit tests over the real failing spans; just ci green.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-30T16:54:26.697Z",
+      "updated_at": "2026-06-30T16:54:26.697Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["kaifuu"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "just ci"
+        }
+      ],
+      "audit_focus": [
+        "crates/kaifuu-reallive/src/opcode.rs ExpressionPiece evaluator",
+        "Kanon SEEN.TXT MalformedExpression spans (0x42/0x43/0x24/0x53)",
+        "Sweetie HD full-archive 0x83"
+      ]
+    },
+    {
+      "id": "reallive-command-module-catalogue",
+      "title": "RealLive command-module catalogue (module/opcode dispatch table)",
+      "kind": "feature",
+      "milestone": "alpha",
+      "status": "ready",
+      "priority": "P1",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "DISCOVERED via Kanon multi-game recon: the decompiler recognizes only the handful of commands present in Sweetie HD scene 1; the full archives carry hundreds of unknown (module_type,module_id,opcode) commands. Top Kanon signatures: (1,10,0)x245, (1,10,100)x233, (1,82,1004)x88, (1,60,2)x63, (1,82,1000)x34, (1,72,1000)x32, (1,82,1039)x31, (1,62,10)x26, (1,61,11)x23, (1,10,2)x19, + ids 20/22/30/31/81/84. Sweetie HD full archive: 1332 unknown commands. Build the RealLive command-module catalogue (module 1 system functions etc.) with correct arg-count/types, clean-room from the rldev/rlvm reference (NOT vendored). NO floor relaxing.",
+      "acceptance": "kaifuu-reallive recognizes the RealLive command-module catalogue such that zero Unknown commands remain across both Sweetie HD AND Kanon full archives; each module/opcode decodes to a typed command with correct args; tests over the real unknown tuples; just ci green.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-30T16:54:26.822Z",
+      "updated_at": "2026-06-30T16:54:26.822Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["kaifuu"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "just ci"
+        }
+      ],
+      "audit_focus": [
+        "crates/kaifuu-reallive/src/opcode.rs command dispatch",
+        "Kanon unknown (module,id,opcode) tuples",
+        "Sweetie HD 1332 unknown commands"
+      ]
+    },
+    {
+      "id": "reallive-full-archive-zero-unknown-gate",
+      "title": "RealLive 100%-decompile gate: full-archive zero-unknown on BOTH corpora (retire the scene-1 'full recognition' framing)",
+      "kind": "feature",
+      "milestone": "alpha",
+      "status": "ready",
+      "priority": "P1",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "HONESTY FIX + real 100% gate. The test crates/kaifuu-reallive/tests/scene_1_dispatch_real_bytes.rs (dispatches_sweetie_hd_scene_1_with_zero_unknown_opcodes_full_recognition) asserts 0 unknown on SCENE 1 ONLY but its name/docstring claim 'full recognition / 100% recognition' — masking that both real archives fail on ~98% of scenes (Sweetie HD 2/198 clean, Kanon 2/79 clean). Rename/reframe that test to a scene-1 PIN (no 'full recognition' claim), and make the multi_corpus_real_bytes harness (added by fix-second-reallive-corpus) ASSERT zero unknown opcodes + zero MalformedExpression across the FULL archives of BOTH Sweetie HD and Kanon. This is the real 100%-decompilation gate (project law).",
+      "acceptance": "scene_1 test reframed as a scene-1 pin (no full-recognition claim); multi_corpus_real_bytes asserts zero-unknown + zero-malformed across full Sweetie HD AND Kanon archives and PASSES; just ci green. (Depends on the expression-evaluator + command-catalogue nodes.)",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-30T16:54:26.921Z",
+      "updated_at": "2026-06-30T16:54:26.921Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["kaifuu"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "just ci"
+        }
+      ],
+      "audit_focus": [
+        "crates/kaifuu-reallive/tests/scene_1_dispatch_real_bytes.rs:59 misleading name",
+        "crates/kaifuu-reallive/tests/multi_corpus_real_bytes.rs honest gate"
+      ]
+    },
+    {
+      "id": "relax-reallive-2nd-corpus-layout-check",
+      "title": "Fix fix-second-reallive-corpus verification cmd for Kanon flat SEEN.TXT layout",
+      "kind": "feature",
+      "milestone": "alpha",
+      "status": "ready",
+      "priority": "P3",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "The fix-second-reallive-corpus node verification command #2 checks $ITOTORI_REAL_GAME_ROOT_2/REALLIVEDATA/Seen.txt, but Kanon (RealLive 1.2.6.8) has no REALLIVEDATA/ subdir — its archive is $ITOTORI_REAL_GAME_ROOT_2/SEEN.TXT at the root. The support/real_corpus.rs resolver already handles both layouts; relax the node's check command to accept the flat layout (or it reports a false absence).",
+      "acceptance": "fix-second-reallive-corpus verification accepts both the modern REALLIVEDATA/Seen.txt and flat SEEN.TXT layouts; no false-absence.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-30T16:54:27.032Z",
+      "updated_at": "2026-06-30T16:54:27.032Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["kaifuu"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "just ci"
+        }
+      ],
+      "audit_focus": [
+        "crates/kaifuu-reallive/tests/support/real_corpus.rs",
+        "fix-second-reallive-corpus verification cmd"
+      ]
     }
   ],
   "edges": [
@@ -53619,6 +53773,30 @@
       "to_node": "siglus-24-supersede-scaffold-audits",
       "type": "requires",
       "created_at": "2026-06-30T13:57:45.695Z"
+    },
+    {
+      "from_node": "reallive-expr-eval-bank-refs",
+      "to_node": "reallive-full-archive-zero-unknown-gate",
+      "type": "requires",
+      "created_at": "2026-06-30T16:54:27.130Z"
+    },
+    {
+      "from_node": "reallive-command-module-catalogue",
+      "to_node": "reallive-full-archive-zero-unknown-gate",
+      "type": "requires",
+      "created_at": "2026-06-30T16:54:27.238Z"
+    },
+    {
+      "from_node": "reallive-full-archive-zero-unknown-gate",
+      "to_node": "alpha-006e-multigame-validation",
+      "type": "requires",
+      "created_at": "2026-06-30T16:54:27.347Z"
+    },
+    {
+      "from_node": "reallive-full-archive-zero-unknown-gate",
+      "to_node": "alpha-006c-patchback-byte-fidelity",
+      "type": "requires",
+      "created_at": "2026-06-30T16:54:27.440Z"
     }
   ],
   "findings": [
@@ -89329,6 +89507,14 @@
       "created_at": "2026-06-30T16:16:27.008Z",
       "kind": "note",
       "evidence": null
+    },
+    {
+      "id": "8ef7d947-4cdc-4bca-b02b-6e79647e0a05",
+      "node_id": "alpha-006a-vault-sourcing",
+      "text": "Trevor provided a 2nd real RealLive title: Kanon (fan patch, rlBabel) at /scratch/itotori-research/kanon — genuine RealLive v1.2.6.8 tree (REALLIVE.EXE, GAMEEXE.INI, SEEN.TXT + SEENxxxx.TXT bytecode, G00/KOE/etc). Unblocks the RealLive multi-game chain.",
+      "created_at": "2026-06-30T16:36:40.674Z",
+      "kind": "retry",
+      "evidence": "/scratch/itotori-research/kanon/GAMEEXE.INI"
     }
   ],
   "assignments": [],
