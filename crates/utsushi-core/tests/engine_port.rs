@@ -976,6 +976,27 @@ fn synthetic_port_capture_writes_into_managed_artifact_root() {
 }
 
 #[test]
+fn synthetic_port_capture_without_artifact_root_is_rejected() {
+    let (_input_dir, input_root) = build_input_root();
+    let runner = Runner::new();
+    let mut port = ReferencePort::new();
+    // No `.with_artifact_root(...)`: capture containment cannot be enforced,
+    // so the runner must reject the request up front rather than silently
+    // skipping the containment guard.
+    let request = PortRequest::new(&input_root, "capture-run", RuntimeOperation::Capture);
+
+    let error = runner
+        .run_capture(&mut port, &request)
+        .expect_err("capture without a managed artifact root must be rejected");
+    match error {
+        EnginePortError::ArtifactRootMissing { stage } => {
+            assert_eq!(stage, LifecycleStage::Capture);
+        }
+        other => panic!("expected ArtifactRootMissing(Capture), got {other:?}"),
+    }
+}
+
+#[test]
 fn synthetic_port_shutdown_is_idempotent() {
     let mut port = ReferencePort::new();
     let first = port.shutdown().expect("first shutdown ok");

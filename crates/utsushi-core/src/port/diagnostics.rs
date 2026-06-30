@@ -51,6 +51,12 @@ pub enum EnginePortError {
     /// Port wrote a capture artifact outside the managed root.
     ArtifactRootViolation { artifact_uri: String },
 
+    /// Capture (or smoke-validate) was requested without a managed
+    /// artifact root, so capture containment cannot be enforced. The
+    /// runner rejects the request rather than silently skipping the
+    /// containment guard.
+    ArtifactRootMissing { stage: LifecycleStage },
+
     /// Capability declared as unsupported by the manifest or by the
     /// default trait impl.
     CapabilityUnsupported {
@@ -107,6 +113,11 @@ impl fmt::Display for EnginePortError {
             Self::ArtifactRootViolation { artifact_uri } => write!(
                 formatter,
                 "capture artifact uri {artifact_uri} is outside the managed root"
+            ),
+            Self::ArtifactRootMissing { stage } => write!(
+                formatter,
+                "lifecycle stage {} requested capture without a managed artifact root",
+                stage.as_str()
             ),
             Self::CapabilityUnsupported { capability, reason } => write!(
                 formatter,
@@ -215,8 +226,6 @@ impl std::error::Error for ManifestError {}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DriftKind {
-    /// Manifest declares it but the trait does not implement it.
-    DeclaredButUnimplemented,
     /// Trait implements it but the manifest does not declare it.
     UnclaimedImplementation,
 }
@@ -224,7 +233,6 @@ pub enum DriftKind {
 impl fmt::Display for DriftKind {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::DeclaredButUnimplemented => formatter.write_str("declared_but_unimplemented"),
             Self::UnclaimedImplementation => formatter.write_str("unclaimed_implementation"),
         }
     }
@@ -238,8 +246,6 @@ pub enum CapabilityReason {
     /// The port declared the capability as planned but the current build
     /// deliberately rejects calls.
     NotYetSupported,
-    /// The host environment does not support it.
-    HostUnavailable,
 }
 
 impl fmt::Display for CapabilityReason {
@@ -247,7 +253,6 @@ impl fmt::Display for CapabilityReason {
         match self {
             Self::DefaultUnimplemented => formatter.write_str("default_unimplemented"),
             Self::NotYetSupported => formatter.write_str("not_yet_supported"),
-            Self::HostUnavailable => formatter.write_str("host_unavailable"),
         }
     }
 }

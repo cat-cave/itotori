@@ -643,7 +643,7 @@ mod browser_detection {
     ) -> Result<ChromiumProbeOutcome, BrowserUnavailabilityReason> {
         // 1. Resolve a binary candidate against the configured/env/PATH/platform
         //    order documented in the descriptor limitation list.
-        let (program, source, candidates_tried) = match resolve_binary_candidate(configured) {
+        let (program, source) = match resolve_binary_candidate(configured) {
             Some(found) => found,
             None => {
                 // candidates_tried = configured + env probe + PATH candidates
@@ -664,7 +664,6 @@ mod browser_detection {
                 });
             }
         };
-        let _ = candidates_tried;
 
         // 2. Bounded version probe.
         let version = probe_version(&program).unwrap_or(ChromiumVersion::Unknown);
@@ -687,20 +686,20 @@ mod browser_detection {
 
     fn resolve_binary_candidate(
         configured: Option<&Path>,
-    ) -> Option<(PathBuf, BrowserDetectionLabel, usize)> {
+    ) -> Option<(PathBuf, BrowserDetectionLabel)> {
         if let Some(path) = configured {
             if is_launchable_file(path) {
-                return Some((path.to_path_buf(), BrowserDetectionLabel::Configured, 1));
+                return Some((path.to_path_buf(), BrowserDetectionLabel::Configured));
             }
             return None;
         }
         if let Ok(program) = env::var("UTSUSHI_BROWSER_BIN") {
             return resolve_program_candidate(&program)
-                .map(|path| (path, BrowserDetectionLabel::Environment, 1));
+                .map(|path| (path, BrowserDetectionLabel::Environment));
         }
         for candidate in BROWSER_CANDIDATES.iter() {
             if let Some(path) = resolve_program_candidate(candidate) {
-                return Some((path, BrowserDetectionLabel::Path, BROWSER_CANDIDATES.len()));
+                return Some((path, BrowserDetectionLabel::Path));
             }
         }
         for candidate in BROWSER_PLATFORM_PATHS.iter() {
@@ -708,7 +707,6 @@ mod browser_detection {
                 return Some((
                     PathBuf::from(*candidate),
                     BrowserDetectionLabel::PlatformPath,
-                    BROWSER_PLATFORM_PATHS.len(),
                 ));
             }
         }

@@ -226,10 +226,17 @@ impl Runner {
 
         let capture_outcome = if capture {
             request.cancellation.check(LifecycleStage::Capture)?;
+            // Containment is mandatory: a capture run with no managed
+            // artifact root cannot have its artifact path validated, so
+            // reject up front rather than letting an unvalidated
+            // CaptureOutcome flow into the report.
+            let Some(root) = request.artifact_root else {
+                return Err(EnginePortError::ArtifactRootMissing {
+                    stage: LifecycleStage::Capture,
+                });
+            };
             let outcome = port.capture(request)?;
-            if let Some(root) = request.artifact_root {
-                ensure_capture_within_root(root, &outcome)?;
-            }
+            ensure_capture_within_root(root, &outcome)?;
             Some(outcome)
         } else {
             None
@@ -355,13 +362,20 @@ fn ensure_capture_within_root(
         }
     })?;
     if let Some(path) = outcome.artifact_path.as_deref() {
+        let violation = || EnginePortError::ArtifactRootViolation {
+            artifact_uri: outcome.artifact_uri.clone(),
+        };
+        // A capture artifact that cannot be canonicalized (non-existent,
+        // broken symlink, ...) cannot be proven to live under the managed
+        // root. Treat the canonicalize failure itself as a containment
+        // violation rather than falling back to the unresolved path, which
+        // would let a missing/symlinked artifact defeat the starts_with
+        // guard below.
         let root_path = root.path();
-        let canonical_root = std::fs::canonicalize(root_path).unwrap_or_else(|_| root_path.into());
-        let canonical_artifact = std::fs::canonicalize(path).unwrap_or_else(|_| path.into());
+        let canonical_root = std::fs::canonicalize(root_path).map_err(|_| violation())?;
+        let canonical_artifact = std::fs::canonicalize(path).map_err(|_| violation())?;
         if !canonical_artifact.starts_with(&canonical_root) {
-            return Err(EnginePortError::ArtifactRootViolation {
-                artifact_uri: outcome.artifact_uri.clone(),
-            });
+            return Err(violation());
         }
     }
     Ok(())
@@ -405,5 +419,63 @@ mod tests {
     fn runner_supports_abi_version_one() {
         let runner = Runner::new();
         assert_eq!(runner.supported_abi_versions(), &[1]);
+    }
+
+    const SAMPLE_ARTIFACT_URI: &str =
+        "artifacts/utsushi/runtime/smoke-run-0001/screenshots/shot-00.png";
+
+    #[test]
+    fn ensure_capture_within_root_accepts_existing_artifact_under_root() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let root = RuntimeArtifactRoot::new(temp.path().to_path_buf());
+        root.prepare().expect("prepare managed root");
+        let path = root
+            .write_bytes(SAMPLE_ARTIFACT_URI, b"frame-bytes")
+            .expect("materialise artifact under root");
+        let outcome = CaptureOutcome::new(SAMPLE_ARTIFACT_URI).with_path(path);
+
+        ensure_capture_within_root(&root, &outcome)
+            .expect("artifact materialised under the managed root is contained");
+    }
+
+    #[test]
+    fn ensure_capture_within_root_rejects_unresolvable_artifact_path() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let root = RuntimeArtifactRoot::new(temp.path().to_path_buf());
+        root.prepare().expect("prepare managed root");
+        // A valid managed URI (string-level) but a path that does not exist
+        // on disk: canonicalize fails, which must surface as a containment
+        // violation rather than falling back to the unresolved path.
+        let outcome = CaptureOutcome::new(SAMPLE_ARTIFACT_URI)
+            .with_path(temp.path().join("smoke-run-0001/screenshots/shot-00.png"));
+
+        let error = ensure_capture_within_root(&root, &outcome)
+            .expect_err("non-existent artifact path must be a violation");
+        match error {
+            EnginePortError::ArtifactRootViolation { artifact_uri } => {
+                assert_eq!(artifact_uri, SAMPLE_ARTIFACT_URI);
+            }
+            other => panic!("expected ArtifactRootViolation, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn ensure_capture_within_root_rejects_artifact_materialised_outside_root() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let outside = tempfile::tempdir().expect("outside tempdir");
+        let root = RuntimeArtifactRoot::new(temp.path().to_path_buf());
+        root.prepare().expect("prepare managed root");
+        // A real file that lives OUTSIDE the managed root: canonicalize
+        // succeeds, but the starts_with(root) containment check fails.
+        let outside_path = outside.path().join("escaped.png");
+        std::fs::write(&outside_path, b"frame-bytes").expect("write outside artifact");
+        let outcome = CaptureOutcome::new(SAMPLE_ARTIFACT_URI).with_path(outside_path);
+
+        let error = ensure_capture_within_root(&root, &outcome)
+            .expect_err("artifact outside the managed root must be a violation");
+        assert!(matches!(
+            error,
+            EnginePortError::ArtifactRootViolation { .. }
+        ));
     }
 }

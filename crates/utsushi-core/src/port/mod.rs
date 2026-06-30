@@ -106,7 +106,10 @@ impl<P: EnginePort + 'static> EnginePortAdapter<P> {
         // only a `&Path`, while `PortRequest` expects a managed
         // `RuntimeArtifactRoot`. The fixture adoption in Slice B teaches
         // the legacy types how to hand one off; UTSUSHI-104+ will widen
-        // `RuntimeRequest` to carry a managed root directly.
+        // `RuntimeRequest` to carry a managed root directly. Until then the
+        // runner rejects Capture/SmokeValidation requests that reach it
+        // without a managed root (`EnginePortError::ArtifactRootMissing`)
+        // rather than silently skipping capture containment.
         let runner_outcome = match operation {
             RuntimeOperation::Trace => self.runner.run_trace(&mut *port, &port_request),
             RuntimeOperation::Capture => self.runner.run_capture(&mut *port, &port_request),
@@ -122,7 +125,7 @@ impl<P: EnginePort + 'static> EnginePortAdapter<P> {
         }
         .map_err(|error| -> Box<dyn std::error::Error> { Box::new(error) })?;
 
-        Ok(runner_outcome_to_value(&runner_outcome, operation))
+        runner_outcome_to_value(&runner_outcome, operation)
     }
 }
 
@@ -236,37 +239,38 @@ fn derive_capability_contract(
     )
 }
 
-fn runner_outcome_to_value(outcome: &RunnerOutcome, operation: RuntimeOperation) -> Value {
+fn runner_outcome_to_value(
+    outcome: &RunnerOutcome,
+    operation: RuntimeOperation,
+) -> UtsushiResult<Value> {
     // Surface every drained sink emission as a typed JSON payload. The
     // engine-port adapter's wire form is "list of sink-shaped observations"
     // rather than the legacy hook-envelope; each entry
     // names the sink kind so downstream consumers can route on it without
     // running the full RuntimeEvidenceReportV02 validator.
+    //
+    // A serialization failure on any payload is propagated as a typed
+    // error rather than silently dropping the observation: a dropped
+    // payload would hide a real observation from the report.
     let mut observations = Vec::new();
     for tick in &outcome.observations {
         for line in &tick.text {
-            if let Ok(value) = serde_json::to_value(line) {
-                observations.push(json!({
-                    "sink": "text_surface",
-                    "payload": value,
-                }));
-            }
+            observations.push(json!({
+                "sink": "text_surface",
+                "payload": serde_json::to_value(line)?,
+            }));
         }
         for frame in &tick.frames {
-            if let Ok(value) = serde_json::to_value(frame) {
-                observations.push(json!({
-                    "sink": "frame_artifact",
-                    "payload": value,
-                }));
-            }
+            observations.push(json!({
+                "sink": "frame_artifact",
+                "payload": serde_json::to_value(frame)?,
+            }));
         }
         for event in &tick.audio {
-            if let Ok(value) = serde_json::to_value(event) {
-                observations.push(json!({
-                    "sink": "audio_event",
-                    "payload": value,
-                }));
-            }
+            observations.push(json!({
+                "sink": "audio_event",
+                "payload": serde_json::to_value(event)?,
+            }));
         }
     }
     let captures = outcome
@@ -279,7 +283,7 @@ fn runner_outcome_to_value(outcome: &RunnerOutcome, operation: RuntimeOperation)
             })]
         })
         .unwrap_or_default();
-    json!({
+    Ok(json!({
         "schemaVersion": "0.2.0",
         "runtimeReportId": runtime_artifact_uri(outcome.manifest_id, crate::RuntimeArtifactKind::TraceLog, "engine-port-run")
             .ok(),
@@ -292,5 +296,72 @@ fn runner_outcome_to_value(outcome: &RunnerOutcome, operation: RuntimeOperation)
             PortShutdownStatus::Clean => "clean",
             PortShutdownStatus::AlreadyShutDown => "already_shut_down",
         },
-    })
+    }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::EvidenceTier;
+    use crate::sink::{AudioEvent, AudioEventKind, TextLine};
+
+    fn sample_text_line() -> TextLine {
+        TextLine {
+            line_id: "line-001".to_string(),
+            evidence_tier: EvidenceTier::E1,
+            text: "hello".to_string(),
+            speaker: None,
+            text_surface: None,
+            bridge_ref: None,
+            source_asset: None,
+        }
+    }
+
+    fn sample_audio_event() -> AudioEvent {
+        AudioEvent {
+            event_id: "audio-001".to_string(),
+            evidence_tier: EvidenceTier::E0,
+            event_kind: AudioEventKind::BgmStart,
+            cue_id: None,
+            source_asset: None,
+            bridge_ref: None,
+            frame_index: None,
+        }
+    }
+
+    #[test]
+    fn runner_outcome_to_value_surfaces_every_sink_payload_without_dropping() {
+        let outcome = RunnerOutcome {
+            manifest_id: "utsushi-test-port",
+            manifest_version: "0.0.0",
+            observations: vec![RunnerObservation {
+                text: vec![sample_text_line()],
+                frames: Vec::new(),
+                audio: vec![sample_audio_event()],
+            }],
+            capture: None,
+            shutdown: PortShutdownOutcome::clean(),
+        };
+
+        // The mapper now returns a typed Result and propagates any
+        // serialization failure instead of silently dropping a payload.
+        let value = runner_outcome_to_value(&outcome, RuntimeOperation::Trace)
+            .expect("serialisable sink payloads must map to Ok");
+        let observations = value["sinkObservations"]
+            .as_array()
+            .expect("sinkObservations array");
+        // Both the text and the audio payload must surface; a dropped
+        // observation would hide a real emission from the report.
+        assert_eq!(observations.len(), 2);
+        assert!(
+            observations
+                .iter()
+                .any(|entry| entry["sink"] == "text_surface")
+        );
+        assert!(
+            observations
+                .iter()
+                .any(|entry| entry["sink"] == "audio_event")
+        );
+    }
 }

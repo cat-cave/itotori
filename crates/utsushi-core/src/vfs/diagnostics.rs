@@ -271,7 +271,6 @@ pub enum AssetIdErrorReason {
     MissingScheme,
     EmptyPackage,
     BadPackageChar,
-    EmptyPath,
     EmptySegment,
     ParentSegment,
     DotSegment,
@@ -280,7 +279,6 @@ pub enum AssetIdErrorReason {
     BackslashSeparator,
     OverlongSegment,
     OverlongTotal,
-    NonNfc,
 }
 
 impl AssetIdErrorReason {
@@ -289,7 +287,6 @@ impl AssetIdErrorReason {
             Self::MissingScheme => "missing_scheme",
             Self::EmptyPackage => "empty_package",
             Self::BadPackageChar => "bad_package_char",
-            Self::EmptyPath => "empty_path",
             Self::EmptySegment => "empty_segment",
             Self::ParentSegment => "parent_segment",
             Self::DotSegment => "dot_segment",
@@ -298,7 +295,6 @@ impl AssetIdErrorReason {
             Self::BackslashSeparator => "backslash_separator",
             Self::OverlongSegment => "overlong_segment",
             Self::OverlongTotal => "overlong_total",
-            Self::NonNfc => "non_nfc",
         }
     }
 }

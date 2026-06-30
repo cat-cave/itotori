@@ -52,9 +52,6 @@ pub enum ImplMapError {
     FixtureByteCountZero {
         subsystem_id: SubsystemId,
     },
-    FixtureClassificationMissing {
-        subsystem_id: SubsystemId,
-    },
     FixtureKindOtherWithoutNotes {
         subsystem_id: SubsystemId,
     },
@@ -118,8 +115,6 @@ pub enum ImplMapError {
 pub enum ProvenanceField {
     Id,
     Hash,
-    ByteCount,
-    Classification,
 }
 
 impl ProvenanceField {
@@ -127,8 +122,6 @@ impl ProvenanceField {
         match self {
             Self::Id => "id",
             Self::Hash => "hash",
-            Self::ByteCount => "byteCount",
-            Self::Classification => "classification",
         }
     }
 }
@@ -236,11 +229,6 @@ impl fmt::Display for ImplMapError {
             Self::FixtureByteCountZero { subsystem_id } => write!(
                 formatter,
                 "subsystem {} fixture byte_count is zero",
-                redact_for_diagnostic(subsystem_id.as_str()),
-            ),
-            Self::FixtureClassificationMissing { subsystem_id } => write!(
-                formatter,
-                "subsystem {} fixture classification is missing",
                 redact_for_diagnostic(subsystem_id.as_str()),
             ),
             Self::FixtureKindOtherWithoutNotes { subsystem_id } => write!(
