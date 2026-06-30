@@ -48,7 +48,9 @@ use thiserror::Error;
 use kaifuu_core::{BRIDGE_SCHEMA_VERSION_V02, BridgeBundleV02, BridgeContractValidationError};
 
 use crate::gameexe::{GameexeInventoryReport, GameexeKeyFamily};
-use crate::opcode::{RealLiveOpcode, RealLiveParseError, TextEncoding, parse_real_bytecode};
+use crate::opcode::{
+    RealLiveOpcode, RealLiveParseError, TextEncoding, is_translatable_textout, parse_real_bytecode,
+};
 
 /// Caller-supplied knobs for [`produce_bundle`].
 ///
@@ -233,6 +235,26 @@ fn collect_units(
                     label: format!("<reallive.kidoku {mark}>"),
                 });
                 inline_kidoku_seen = true;
+            }
+            RealLiveOpcode::Textout {
+                raw_bytes,
+                encoding,
+            } if !is_translatable_textout(raw_bytes) => {
+                // Binary / non-printable catch-all run (rlvm reads the
+                // non-structural byte → Textout, but these bytes are an
+                // embedded data table, not readable Shift-JIS dialogue —
+                // e.g. Sweetie HD scene-1 op[72] = 214 bytes of periodic
+                // binary records). Surfacing it as a translatable unit
+                // would let patchback overwrite the table and corrupt the
+                // scene, so we DO NOT emit a unit and DO NOT consume an
+                // occurrence index. The patchback re-walk
+                // (collect_text_unit_positions) applies the SAME
+                // is_translatable_textout gate, so both paths skip the run
+                // identically and every later unit's occurrence_index stays
+                // aligned. Pending control markers are left intact so they
+                // carry forward to the next real dialogue unit; the cursor
+                // still advances by `width` below so the run's bytes are
+                // accounted for in provenance.
             }
             RealLiveOpcode::Textout {
                 raw_bytes,
@@ -1107,6 +1129,82 @@ mod tests {
                 (3, "dialogue".to_string()),
             ],
             "empty `,,` option must not consume an occurrence_index"
+        );
+    }
+
+    #[test]
+    fn predicate_classifies_real_binary_block_as_non_translatable_and_real_dialogue_as_translatable()
+     {
+        use crate::test_fixtures::{SCENE1_BINARY_BLOCK_214B, SCENE2011_DIALOGUE_SJIS};
+        // Real bytes: the Sweetie HD scene-1 214-byte binary data block is
+        // NOT translatable; a real scene-2011 Shift-JIS dialogue line IS.
+        assert!(
+            !is_translatable_textout(SCENE1_BINARY_BLOCK_214B),
+            "the 214-byte periodic-binary data block must be excluded from translatable units"
+        );
+        assert!(
+            is_translatable_textout(SCENE2011_DIALOGUE_SJIS),
+            "a real Shift-JIS dialogue line must remain translatable (no false negative)"
+        );
+    }
+
+    #[test]
+    fn binary_catch_all_textout_is_excluded_while_real_sjis_dialogue_is_surfaced() {
+        use crate::test_fixtures::{
+            SCENE1_BINARY_BLOCK_214B, SCENE2011_DIALOGUE_SJIS, SCENE2011_DIALOGUE_TEXT,
+        };
+        // A scene whose bytecode is [real dialogue Textout][MetaLine]
+        // [214-byte binary Textout][MetaLine]. Both runs parse as a single
+        // Textout each (verified against the live corpus). The bridge must
+        // surface ONLY the dialogue run as a translatable unit and drop the
+        // binary run entirely.
+        let mut bytecode: Vec<u8> = Vec::new();
+        bytecode.extend_from_slice(SCENE2011_DIALOGUE_SJIS);
+        bytecode.extend_from_slice(&[0x0a, 0x05, 0x00]); // MetaLine terminator
+        bytecode.extend_from_slice(SCENE1_BINARY_BLOCK_214B);
+        bytecode.extend_from_slice(&[0x0a, 0x06, 0x00]); // MetaLine terminator
+
+        // Sanity: the raw bytecode does parse as exactly two Textout runs,
+        // so the test is genuinely exercising the surface-selection split
+        // (not an artefact of the binary bytes fragmenting).
+        let opcodes = parse_real_bytecode(&bytecode).expect("bytecode parses");
+        let textouts: Vec<&[u8]> = opcodes
+            .iter()
+            .filter_map(|op| match op {
+                RealLiveOpcode::Textout { raw_bytes, .. } => Some(raw_bytes.as_slice()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            textouts.len(),
+            2,
+            "fixture must decode to exactly two Textout runs (dialogue + binary)"
+        );
+        assert_eq!(textouts[1], SCENE1_BINARY_BLOCK_214B);
+
+        let report = parse_gameexe_inventory(b"");
+        let produced = produce_bundle(1, &[0u8; 32], &bytecode, &report, &opts_for_test())
+            .expect("dialogue run must produce a bundle");
+
+        // Exactly one translatable unit (the dialogue); the binary run is
+        // excluded.
+        assert_eq!(
+            produced.bundle.units.len(),
+            1,
+            "only the readable Shift-JIS dialogue run is surfaced; the binary run is excluded"
+        );
+        let unit = &produced.bundle.units[0];
+        assert_eq!(unit.surface_kind, "dialogue");
+        assert!(
+            unit.source_text.contains(SCENE2011_DIALOGUE_TEXT),
+            "the surfaced unit must carry the decoded dialogue text; got {:?}",
+            unit.source_text
+        );
+        // No surfaced unit may carry the binary block's decoded form.
+        let (binary_decoded, _, _) = encoding_rs::SHIFT_JIS.decode(SCENE1_BINARY_BLOCK_214B);
+        assert!(
+            !unit.source_text.contains(binary_decoded.as_ref()),
+            "no translatable unit may carry the binary data block's bytes"
         );
     }
 }

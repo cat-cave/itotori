@@ -1,18 +1,19 @@
 //! KAIFUU-210 real-bytes integration test for the v0.2 BridgeBundle
-//! producer.
+//! producer, including the binary-vs-dialogue surface-selection split.
 //!
-//! Reads Sweetie HD scene 1 from `ITOTORI_REAL_GAME_ROOT`, runs the
-//! `kaifuu_reallive::produce_bundle` end-to-end, and asserts the
-//! resulting bundle satisfies the KAIFUU-210 acceptance criteria:
+//! Reads Sweetie HD from `ITOTORI_REAL_GAME_ROOT` and exercises two
+//! scenes:
 //!
-//! - `schemaVersion == "0.2.0"` (canonical v0.2 contract).
-//! - `units.len() > 0` and matches the
-//!   textout+choice element count from `parse_real_bytecode`.
-//! - First text unit's `sourceText` decodes non-empty Shift-JIS text.
-//! - At least one protected span carries `parsedName ==
-//!   "reallive.kidoku"`.
-//! - `provenance.byteRange` is a decompressed-bytecode-stream interval
-//!   (not a compressed file offset).
+//! - **Scene 1** is a system/boundary scene: every one of its Textout
+//!   runs is embedded binary data (the catch-all decoder returns them as
+//!   `Textout`, but they do not decode as Shift-JIS). The producer must
+//!   surface ZERO translatable units and return `NoTextUnits` — surfacing
+//!   any of them (e.g. the 214-byte op[72] data block) would let patchback
+//!   overwrite the table and corrupt the scene.
+//! - **Scene 2011** is a dialogue scene. The producer must surface exactly
+//!   the readable Shift-JIS Textout runs (plus choice options) as
+//!   translatable units — no false negatives — with decoded text, a
+//!   `reallive.kidoku` span, and NAMAE-resolved speakers.
 //!
 //! The test is env-gated; without `ITOTORI_REAL_GAME_ROOT` it
 //! emits an explicit skip notice and returns (no silent pass).
@@ -26,13 +27,15 @@ use std::fs;
 use std::path::PathBuf;
 
 use kaifuu_reallive::{
-    BridgeOpts, REALLIVE_SEEN_TXT_DIRECTORY_BYTE_LEN, RealLiveOpcode, SceneHeader,
-    decompress_avg32, gameexe::parse_gameexe_inventory, parse_archive, parse_real_bytecode,
-    produce_bundle,
+    BridgeOpts, BridgeProduceError, REALLIVE_SEEN_TXT_DIRECTORY_BYTE_LEN, RealLiveOpcode,
+    SceneHeader, decompress_avg32, gameexe::parse_gameexe_inventory, is_translatable_textout,
+    parse_archive, parse_real_bytecode, produce_bundle,
 };
 
 const SWEETIE_HD_GAME_ID: &str = "sweetie-hd";
 const SWEETIE_HD_SOURCE_PROFILE_ID: &str = "kaifuu-reallive-sweetie-hd";
+/// A known dialogue-bearing scene in Sweetie HD's `Seen.txt`.
+const DIALOGUE_SCENE_ID: u16 = 2011;
 
 fn real_seen_txt_path() -> Option<PathBuf> {
     real_corpus::seen_txt_path()
@@ -42,12 +45,59 @@ fn real_gameexe_ini_path() -> Option<PathBuf> {
     real_corpus::gameexe_ini_path()
 }
 
+/// Decompressed bytecode + parsed header for a scene id, plus the scene
+/// blob slice (needed by `produce_bundle`).
+struct SceneBytecode {
+    scene_blob: Vec<u8>,
+    decompressed: Vec<u8>,
+    header: SceneHeader,
+}
+
+fn scene_bytecode(seen_bytes: &[u8], scene_id: u16) -> SceneBytecode {
+    let index = parse_archive(seen_bytes).expect("real Seen.txt envelope must parse");
+    let entry = index
+        .entries
+        .iter()
+        .find(|entry| entry.scene_id == scene_id)
+        .unwrap_or_else(|| panic!("scene {scene_id} must exist in the directory"));
+    let blob_start = entry.byte_offset as usize;
+    let blob_end = blob_start + entry.byte_len as usize;
+    let scene_blob = seen_bytes[blob_start..blob_end].to_vec();
+    let header = SceneHeader::parse(&scene_blob).expect("scene header must parse");
+    let bytecode = &scene_blob[header.bytecode_offset as usize
+        ..(header.bytecode_offset + header.bytecode_compressed_size) as usize];
+    let decompressed = decompress_avg32(bytecode, header.bytecode_uncompressed_size as usize)
+        .expect("AVG32 decompression must succeed");
+    assert_eq!(
+        decompressed.len(),
+        header.bytecode_uncompressed_size as usize,
+        "decompressor must produce exactly bytecode_uncompressed_size bytes"
+    );
+    SceneBytecode {
+        scene_blob,
+        decompressed,
+        header,
+    }
+}
+
+fn bridge_opts(scene_kidoku_count: u32) -> BridgeOpts<'static> {
+    BridgeOpts {
+        game_id: SWEETIE_HD_GAME_ID,
+        game_version: "1.0.0",
+        source_profile_id: SWEETIE_HD_SOURCE_PROFILE_ID,
+        source_locale: "ja-JP",
+        extractor_name: "kaifuu-reallive-bridge",
+        extractor_version: "0.1.0",
+        scene_kidoku_count,
+    }
+}
+
 #[test]
 #[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
-fn produces_v02_bridge_bundle_from_sweetie_hd_scene_1_real_bytes() {
+fn scene_1_all_textouts_are_binary_and_produce_no_translatable_units_real_bytes() {
     let Some(seen_path) = real_seen_txt_path() else {
         real_corpus::skip_or_require_real_bytes(
-            "produces_v02_bridge_bundle_from_sweetie_hd_scene_1_real_bytes",
+            "scene_1_all_textouts_are_binary_and_produce_no_translatable_units_real_bytes",
         );
         return;
     };
@@ -58,7 +108,6 @@ fn produces_v02_bridge_bundle_from_sweetie_hd_scene_1_real_bytes() {
         "Seen.txt must carry the 10,000-slot directory"
     );
 
-    // Locate scene 1's blob bytes via parse_archive (KAIFUU-188).
     let index = parse_archive(&seen_bytes).expect("real Seen.txt envelope must parse");
     let entry = index
         .entries
@@ -69,25 +118,81 @@ fn produces_v02_bridge_bundle_from_sweetie_hd_scene_1_real_bytes() {
         entry.byte_offset, 0x13880,
         "scene 1 must sit at file offset 0x13880 immediately after the 80,000-byte directory"
     );
-    let blob_start = entry.byte_offset as usize;
-    let blob_end = blob_start + entry.byte_len as usize;
-    let scene_blob = &seen_bytes[blob_start..blob_end];
 
-    // Decompress via the kaifuu-reallive AVG32 decompressor.
-    let header = SceneHeader::parse(scene_blob).expect("scene header must parse");
-    let bytecode = &scene_blob[header.bytecode_offset as usize
-        ..(header.bytecode_offset + header.bytecode_compressed_size) as usize];
-    let decompressed = decompress_avg32(bytecode, header.bytecode_uncompressed_size as usize)
-        .expect("AVG32 decompression must succeed");
+    let scene = scene_bytecode(&seen_bytes, 1);
+    let opcodes = parse_real_bytecode(&scene.decompressed).expect("bytecode must decode");
+
+    // Every scene-1 Textout run is embedded binary data — none decode as
+    // Shift-JIS, so all are excluded from translatable units.
+    let textouts: Vec<&[u8]> = opcodes
+        .iter()
+        .filter_map(|op| match op {
+            RealLiveOpcode::Textout { raw_bytes, .. } => Some(raw_bytes.as_slice()),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        !textouts.is_empty(),
+        "scene 1 must contain at least one (binary) Textout run"
+    );
+    let translatable = textouts
+        .iter()
+        .filter(|raw| is_translatable_textout(raw))
+        .count();
+    eprintln!(
+        "scene 1: {} Textout runs, {translatable} translatable",
+        textouts.len()
+    );
     assert_eq!(
-        decompressed.len(),
-        header.bytecode_uncompressed_size as usize,
-        "decompressor must produce exactly bytecode_uncompressed_size bytes"
+        translatable, 0,
+        "every scene-1 Textout run must be binary (non-translatable); got {translatable} readable"
     );
 
-    // Parse Gameexe.ini for NAMAE entries (the file is best-effort —
-    // empty inventory still satisfies the test if Sweetie HD's
-    // Gameexe.ini is unavailable for any reason).
+    // The 214-byte op[72] data block in particular must be non-translatable.
+    let block_214 = textouts
+        .iter()
+        .find(|raw| raw.len() == 214)
+        .expect("scene 1 must contain the 214-byte binary data block");
+    assert!(
+        !is_translatable_textout(block_214),
+        "the 214-byte binary data block must be excluded from translatable units"
+    );
+
+    // The producer therefore refuses to emit an empty bundle: an all-binary
+    // scene surfaces NoTextUnits rather than corrupting-data units.
+    let gameexe_bytes = real_gameexe_ini_path()
+        .and_then(|path| fs::read(path).ok())
+        .unwrap_or_default();
+    let gameexe_inventory = parse_gameexe_inventory(&gameexe_bytes);
+    let opts = bridge_opts(scene.header.kidoku_count);
+    let err = produce_bundle(
+        1,
+        &scene.scene_blob,
+        &scene.decompressed,
+        &gameexe_inventory,
+        &opts,
+    )
+    .expect_err("an all-binary scene must not produce translatable units");
+    assert!(
+        matches!(err, BridgeProduceError::NoTextUnits { scene_id: 1, .. }),
+        "expected NoTextUnits for all-binary scene 1; got {err:?}"
+    );
+}
+
+#[test]
+#[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
+fn dialogue_scene_surfaces_readable_sjis_textouts_as_translatable_units_real_bytes() {
+    let Some(seen_path) = real_seen_txt_path() else {
+        real_corpus::skip_or_require_real_bytes(
+            "dialogue_scene_surfaces_readable_sjis_textouts_as_translatable_units_real_bytes",
+        );
+        return;
+    };
+    let seen_bytes = fs::read(&seen_path)
+        .unwrap_or_else(|err| panic!("failed to read {}: {err}", seen_path.display()));
+
+    let scene = scene_bytecode(&seen_bytes, DIALOGUE_SCENE_ID);
+
     let gameexe_bytes = real_gameexe_ini_path()
         .and_then(|path| fs::read(path).ok())
         .unwrap_or_default();
@@ -104,27 +209,37 @@ fn produces_v02_bridge_bundle_from_sweetie_hd_scene_1_real_bytes() {
         .count();
     eprintln!("Gameexe NAMAE entries observed: {namae_entries}");
 
-    // Walk the bridge producer.
-    let opts = BridgeOpts {
-        game_id: SWEETIE_HD_GAME_ID,
-        game_version: "1.0.0",
-        source_profile_id: SWEETIE_HD_SOURCE_PROFILE_ID,
-        source_locale: "ja-JP",
-        extractor_name: "kaifuu-reallive-bridge",
-        extractor_version: "0.1.0",
-        scene_kidoku_count: header.kidoku_count,
-    };
-    let produced = produce_bundle(1, scene_blob, &decompressed, &gameexe_inventory, &opts)
-        .expect("v0.2 bundle must build from real Sweetie HD scene 1");
+    let opts = bridge_opts(scene.header.kidoku_count);
+    let produced = produce_bundle(
+        DIALOGUE_SCENE_ID,
+        &scene.scene_blob,
+        &scene.decompressed,
+        &gameexe_inventory,
+        &opts,
+    )
+    .expect("v0.2 bundle must build from a dialogue scene");
 
     // ---- Acceptance: schemaVersion. ----
     assert_eq!(produced.bundle.schema_version, "0.2.0");
 
-    // ---- Acceptance: units.len matches textout+choice opcode count. ----
-    let opcodes = parse_real_bytecode(&decompressed).expect("bytecode must decode");
-    let textout_count = opcodes
+    // ---- Acceptance: units.len matches READABLE textout + choice count. ----
+    // The surface-selection split means only Textout runs that decode as
+    // Shift-JIS are surfaced; binary catch-all runs are excluded. The
+    // no-false-negative guarantee is that EVERY readable run is surfaced.
+    let opcodes = parse_real_bytecode(&scene.decompressed).expect("bytecode must decode");
+    let readable_textout_count = opcodes
         .iter()
-        .filter(|op| matches!(op, RealLiveOpcode::Textout { .. }))
+        .filter(|op| match op {
+            RealLiveOpcode::Textout { raw_bytes, .. } => is_translatable_textout(raw_bytes),
+            _ => false,
+        })
+        .count();
+    let binary_textout_count = opcodes
+        .iter()
+        .filter(|op| match op {
+            RealLiveOpcode::Textout { raw_bytes, .. } => !is_translatable_textout(raw_bytes),
+            _ => false,
+        })
         .count();
     let choice_unit_count: usize = opcodes
         .iter()
@@ -133,28 +248,39 @@ fn produces_v02_bridge_bundle_from_sweetie_hd_scene_1_real_bytes() {
             _ => None,
         })
         .sum();
-    let expected_units = textout_count + choice_unit_count;
+    let expected_units = readable_textout_count + choice_unit_count;
     eprintln!(
-        "scene 1 bridge units: produced={} expected={} (textout={textout_count}, choice_options={choice_unit_count})",
+        "scene {DIALOGUE_SCENE_ID} bridge units: produced={} expected={expected_units} \
+         (readable_textout={readable_textout_count}, binary_textout={binary_textout_count}, \
+         choice_options={choice_unit_count})",
         produced.bundle.units.len(),
-        expected_units,
     );
     assert!(
-        !produced.bundle.units.is_empty(),
-        "scene 1 must produce ≥1 bridge unit (no silent zero-state)"
+        readable_textout_count > 0,
+        "a dialogue scene must surface at least one readable Shift-JIS dialogue run"
+    );
+    assert!(
+        binary_textout_count > 0,
+        "the dialogue scene also carries binary catch-all runs (the exclusion path must be exercised)"
     );
     assert_eq!(
         produced.bundle.units.len(),
         expected_units,
-        "bridge unit count must equal Textout + Choice option count from parse_real_bytecode"
+        "bridge unit count must equal READABLE Textout + Choice option count (no false negatives, \
+         no surfaced binary)"
     );
 
-    // ---- Acceptance: first text unit's sourceText decodes non-empty. ----
+    // ---- Acceptance: every surfaced dialogue unit decodes to non-empty text. ----
+    // (No false-positive binary leaked into the translatable set.)
+    for unit in &produced.bundle.units {
+        if unit.surface_kind == "dialogue" {
+            assert!(
+                !unit.source_text.is_empty(),
+                "a surfaced dialogue unit must carry decoded Shift-JIS text"
+            );
+        }
+    }
     let first_unit = &produced.bundle.units[0];
-    assert!(
-        !first_unit.source_text.is_empty(),
-        "first unit must carry decoded Shift-JIS text; got empty"
-    );
     eprintln!(
         "first unit: sourceText (truncated)='{}' surfaceKind={}",
         first_unit.source_text.chars().take(40).collect::<String>(),
@@ -162,19 +288,14 @@ fn produces_v02_bridge_bundle_from_sweetie_hd_scene_1_real_bytes() {
     );
 
     // ---- Acceptance: at least one reallive.kidoku span. ----
-    let mut kidoku_span_count = 0usize;
-    let mut emitted_parsed_names: std::collections::BTreeSet<String> =
-        std::collections::BTreeSet::new();
     let units_array = produced.json["units"]
         .as_array()
         .expect("units must be an array");
+    let mut kidoku_span_count = 0usize;
+    let mut emitted_parsed_names: std::collections::BTreeSet<String> =
+        std::collections::BTreeSet::new();
 
     // ---- Acceptance: at least one unit's speaker resolved via NAMAE. ----
-    // Per the KAIFUU-210 acceptance criteria, NAMAE-driven speaker
-    // resolution must succeed for at least one unit when the NAMAE
-    // table is populated. If Gameexe.ini was unavailable
-    // (namae_entries == 0) we record a diagnostic instead of failing
-    // — that's a data shortfall, not a producer bug.
     if namae_entries > 0 {
         let resolved = units_array
             .iter()
@@ -216,9 +337,6 @@ fn produces_v02_bridge_bundle_from_sweetie_hd_scene_1_real_bytes() {
     );
 
     // ---- Acceptance: provenance byteRange is a decompressed-stream interval. ----
-    // The range is a position in the DECOMPRESSED bytecode (caller owns
-    // decompression), NOT a compressed file offset. It must sit inside
-    // the decompressed bytecode bounds — never anchored at 0x13880.
     let range = &produced.json["units"][0]["sourceLocation"]["range"];
     let start_byte = range["startByte"]
         .as_u64()
@@ -226,7 +344,7 @@ fn produces_v02_bridge_bundle_from_sweetie_hd_scene_1_real_bytes() {
     let end_byte = range["endByte"]
         .as_u64()
         .expect("range.endByte must be a u64");
-    let decompressed_len = decompressed.len() as u64;
+    let decompressed_len = scene.decompressed.len() as u64;
     assert!(
         start_byte < decompressed_len,
         "byteRange.startByte must be a decompressed-stream offset (< {decompressed_len}); got {start_byte}"

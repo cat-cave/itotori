@@ -123,6 +123,8 @@ pub mod patchback;
 pub mod protected_spans;
 pub mod scene_header;
 mod strings;
+#[cfg(test)]
+mod test_fixtures;
 
 pub use archive::{
     REALLIVE_SEEN_TXT_DIRECTORY_BYTE_LEN, REALLIVE_SEEN_TXT_SLOT_COUNT, RealLiveSceneIndex,
@@ -159,8 +161,8 @@ pub use inventory::{
 };
 pub use opcode::{
     COMMAND_HEADER_LEN, Expr, RealLiveOpcode, RealLiveParseError, TextEncoding,
-    is_recognized_opener, is_shift_jis_textout_lead, is_structural_opener, parse_expression,
-    parse_real_bytecode,
+    is_recognized_opener, is_shift_jis_textout_lead, is_structural_opener, is_translatable_textout,
+    parse_expression, parse_real_bytecode,
 };
 pub use opcodes::NamedOpcode;
 pub use parser::{parse_scene, parse_scene_into_ast};

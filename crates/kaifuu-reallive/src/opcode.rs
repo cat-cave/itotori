@@ -302,6 +302,60 @@ pub fn is_shift_jis_textout_lead(byte: u8) -> bool {
     (0x81..=0x9F).contains(&byte) || (0xE0..=0xFC).contains(&byte)
 }
 
+/// True if a Textout run's bytes are **readable Shift-JIS dialogue** (a
+/// real, translatable unit) rather than an embedded binary / non-printable
+/// data run that the catch-all decoder swept up.
+///
+/// # Why this predicate exists
+///
+/// rlvm's `BytecodeElement::Read` (mirrored by [`decode_element`]) treats
+/// every non-structural lead byte as the start of a Textout run. That is
+/// faithful to the engine, but it means a Textout opcode can carry one of
+/// two very different payloads:
+///
+/// 1. **Readable dialogue** — a Shift-JIS-encoded line the player sees and
+///    a translator must rewrite (e.g. `【和人】「‥‥‥‥！？」`).
+/// 2. **Embedded binary data** — a packed table the engine reads as raw
+///    bytes, never as text (e.g. Sweetie HD scene-1 op[72] = 214 bytes of
+///    periodic 21-byte records sitting after a 2nd `MetaEntrypoint`).
+///
+/// The bridge surfaces (1) as a translatable unit; a translate+patchback
+/// run rewrites those bytes. If (2) were also surfaced, patchback would
+/// overwrite the binary table and corrupt the scene. So the bridge — and
+/// the patchback re-walk that must stay index-aligned with it — share this
+/// single predicate to decide which Textout runs are translatable.
+///
+/// # The test: valid Shift-JIS decode
+///
+/// A run is translatable iff its bytes decode as Shift-JIS with **zero
+/// decode errors** (no `U+FFFD` replacement characters). This is a
+/// principled separator, not a fragile heuristic:
+///
+/// - Real dialogue is, by construction, valid Shift-JIS the engine renders
+///   verbatim — it always decodes cleanly.
+/// - A packed binary table is a stream of arbitrary bytes; periodic record
+///   layouts reliably hit byte sequences that are not valid Shift-JIS and
+///   force replacement characters.
+///
+/// Measured against Sweetie HD's full `Seen.txt` (the
+/// `bridge_real_bytes` corpus): of 3366 Textout runs, all 3279 readable
+/// dialogue lines decode cleanly (zero decode errors) — including
+/// ellipsis-heavy lines such as `【真理子】「‥‥‥‥」` whose printable-character
+/// ratio drops below 0.5 — while all 87 binary runs (every scene-1 run,
+/// the 214-byte block, and catch-all overruns like `２．…<binary>`) decode
+/// with errors. A printable-ratio gate would drop the ellipsis lines (a
+/// false negative on real dialogue); the valid-decode gate does not, which
+/// is why it is the one used here.
+///
+/// An empty run is not translatable.
+pub fn is_translatable_textout(raw_bytes: &[u8]) -> bool {
+    if raw_bytes.is_empty() {
+        return false;
+    }
+    let (_decoded, _encoding, had_errors) = encoding_rs::SHIFT_JIS.decode(raw_bytes);
+    !had_errors
+}
+
 /// True if `byte` is one of the seven structural BytecodeElement opener
 /// bytes (`0x00`, `0x0A`, `0x21`, `0x23`, `0x24`, `0x2C`, `0x40`).
 ///

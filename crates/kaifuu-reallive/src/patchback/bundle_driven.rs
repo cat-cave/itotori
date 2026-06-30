@@ -46,7 +46,7 @@ use crate::archive::{
 use crate::compressor::{CompressError, compress_avg32_literal};
 use crate::decompressor::decompress_avg32;
 use crate::encoding::{ShiftJisEncodeError, encode_shift_jis_slot};
-use crate::opcode::{RealLiveOpcode, parse_real_bytecode};
+use crate::opcode::{RealLiveOpcode, is_translatable_textout, parse_real_bytecode};
 use crate::scene_header::{SCENE_HEADER_BYTE_LEN, SceneHeader, SceneHeaderError};
 
 /// Stable error codes published per the KAIFUU-211 acceptance criteria.
@@ -799,13 +799,24 @@ fn collect_text_unit_positions(
         let lead = decompressed[pos];
         let (new_pos, recorded) = advance_one_element(scene_id, decompressed, pos, op, lead)?;
         if let Some((surface_kind, start_byte, end_byte)) = recorded {
-            out.push(TextUnitPosition {
-                occurrence_index: occurrence,
-                surface_kind,
-                start_byte,
-                end_byte,
-            });
-            occurrence += 1;
+            // A Textout run is only a translatable unit when its bytes are
+            // readable Shift-JIS dialogue. Binary / non-printable catch-all
+            // runs are NOT surfaced by the KAIFUU-210 producer
+            // (`collect_units` applies the same `is_translatable_textout`
+            // gate) and must NOT consume an occurrence index here either —
+            // otherwise every later unit's occurrence_index would drift and
+            // edits would splice into the wrong opcode. Skipping in both
+            // paths keeps the binary run out of the edit plan, so it
+            // survives patchback byte-identical.
+            if is_translatable_textout(&decompressed[start_byte..end_byte]) {
+                out.push(TextUnitPosition {
+                    occurrence_index: occurrence,
+                    surface_kind,
+                    start_byte,
+                    end_byte,
+                });
+                occurrence += 1;
+            }
         }
         if let RealLiveOpcode::Choice { choices } = op {
             // Each Choice contributes `choices.len()` units, one per
@@ -1305,6 +1316,89 @@ mod tests {
         assert_eq!(
             actual, expected,
             "trailing dialogue unit must splice at its own position with no drift"
+        );
+    }
+
+    #[test]
+    fn binary_catch_all_textout_survives_patchback_byte_identical_while_dialogue_is_translated() {
+        use crate::test_fixtures::{SCENE1_BINARY_BLOCK_214B, SCENE2011_DIALOGUE_SJIS};
+
+        // Scene bytecode: [real dialogue Textout][MetaLine]
+        // [214-byte binary Textout][MetaLine]. The producer surfaces only
+        // the dialogue unit; the binary run is excluded. A translate+
+        // patchback run must (a) rewrite the dialogue to the en-US sentinel
+        // and (b) leave the 214-byte binary block byte-identical — proving
+        // the excluded data table is never overwritten.
+        let mut plaintext: Vec<u8> = Vec::new();
+        plaintext.extend_from_slice(SCENE2011_DIALOGUE_SJIS); // occ 0 dialogue
+        plaintext.extend_from_slice(&[0x0a, 0x05, 0x00]); // MetaLine
+        plaintext.extend_from_slice(SCENE1_BINARY_BLOCK_214B); // binary — excluded
+        plaintext.extend_from_slice(&[0x0a, 0x06, 0x00]); // MetaLine
+
+        let blob = scene_blob_from_plaintext(&plaintext);
+        let archive = assemble_archive(&[(1, blob)]);
+
+        let opts = crate::bridge::BridgeOpts {
+            game_id: "synthetic",
+            game_version: "test",
+            source_profile_id: "synthetic-profile",
+            source_locale: "ja-JP",
+            extractor_name: "kaifuu-reallive-bridge",
+            extractor_version: "0.1.0",
+            scene_kidoku_count: 0,
+        };
+        let report = crate::gameexe::parse_gameexe_inventory(b"");
+        let produced = crate::produce_bundle(1, &[0u8; 32], &plaintext, &report, &opts)
+            .expect("bundle builds");
+
+        // Only the dialogue run surfaced (binary excluded).
+        assert_eq!(
+            produced.bundle.units.len(),
+            1,
+            "only the dialogue run is surfaced; the binary catch-all run is excluded"
+        );
+
+        // Translate the single dialogue unit to an en-US sentinel.
+        const SENTINEL: &str = "[EN] sentinel dialogue line";
+        let mut translated_value = produced.json.clone();
+        {
+            let units = translated_value["units"].as_array_mut().expect("units");
+            assert_eq!(units.len(), 1);
+            units[0]["target"] = json!({"locale": "en-US", "text": SENTINEL});
+        }
+        let translated =
+            TranslatedBundleV02::from_json(&translated_value).expect("translated parses");
+        let patched = apply_translated_bundle(&archive, &translated, &PatchbackOpts::shift_jis())
+            .expect("apply must succeed");
+
+        let new_decompressed = decompress_scene(&patched, 1);
+
+        // (a) The 214-byte binary data block survives byte-identical.
+        let binary_survives = new_decompressed
+            .windows(SCENE1_BINARY_BLOCK_214B.len())
+            .any(|window| window == SCENE1_BINARY_BLOCK_214B);
+        assert!(
+            binary_survives,
+            "the excluded 214-byte binary data block must survive patchback byte-identical"
+        );
+
+        // (b) The dialogue run was rewritten to the sentinel bytes.
+        let sentinel_sjis = encode_shift_jis_slot(SENTINEL).expect("sentinel encodes");
+        let sentinel_present = new_decompressed
+            .windows(sentinel_sjis.len())
+            .any(|window| window == sentinel_sjis.as_slice());
+        assert!(
+            sentinel_present,
+            "the translated dialogue must appear as the en-US sentinel bytes in the patched bytecode"
+        );
+
+        // (c) The original Japanese dialogue bytes are gone (replaced).
+        let original_dialogue_present = new_decompressed
+            .windows(SCENE2011_DIALOGUE_SJIS.len())
+            .any(|window| window == SCENE2011_DIALOGUE_SJIS);
+        assert!(
+            !original_dialogue_present,
+            "the original ja-JP dialogue bytes must no longer appear verbatim after patchback"
         );
     }
 
