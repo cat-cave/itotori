@@ -134,14 +134,17 @@ const SYNTHETIC_TARGET_TEXT: &str = "うえ";
 /// Build the synthetic scene's **decompressed** bytecode: the real
 /// post-KAIFUU-191 opener-byte shape decoded by
 /// `kaifuu_reallive::parse_scene`, exercising every alpha string role
-/// through real 8-byte `CommandElement` headers plus a bracketed
-/// `( arg , arg )` argument list:
+/// through real 8-byte `CommandElement` headers (plus, for the Choice
+/// role, the `module_sel` `SelectElement` `{ … }` block framing):
 /// - Meta prologue (MetaLine / MetaEntrypoint / MetaKidoku).
 /// - `SetSpeaker`   — module_msg (id 3) opcode 3 → `CharacterTextDisplay`.
 /// - `Textout`      — inline Shift-JIS run `"あい"` (the editable Dialogue
 ///   unit at occurrence 0).
 /// - `TextDisplay`  — module_msg (id 3) opcode 10 → `TextDisplay`.
-/// - `Choice`       — module_sel (id 5), argc=2, two Shift-JIS choices.
+/// - `Choice`       — module_sel (module_type 0, id 2) opcode 0 (`select_w`),
+///   decoded by `decode_select` as a `{ "あ" \n "い" \n }` select-block (NOT a
+///   flat `(...)` arg list): the `{`/`}` braces frame two Shift-JIS option
+///   runs, each closed by a `\n`+i16 line marker.
 /// - scene terminator — module_sys (id 4) opcode 17 → `End`.
 ///
 /// The whole body decodes with **0 unknown opcodes**; no retail bytecode
@@ -155,12 +158,19 @@ pub fn synthetic_scene_bytecode() -> Vec<u8> {
         [0x23, module_type, module_id, op_lo, op_hi, argc, 0x00, 0x00]
     }
 
-    // module_type 1 = Kepago RLOperation namespace; module ids per the
-    // documented rlvm `module_*.cc` catalogue.
+    // module_type 1 = Kepago RLOperation namespace (msg / sys); module ids
+    // per the documented rlvm `module_*.cc` catalogue. The select / Choice
+    // family lives in its own module_type 0, module_id 2 (rlvm `module_sel`:
+    // `select_w`/`select`/`select_s2`/`select_s` at opcodes 0..=3), and is
+    // framed as a `SelectElement` `{ … }` block, NOT a flat `(...)` arg list.
     const MODULE_TYPE_KEPAGO: u8 = 1;
+    const MODULE_TYPE_SEL: u8 = 0;
     const MODULE_MSG: u8 = 3;
-    const MODULE_SEL: u8 = 5;
+    const MODULE_SEL: u8 = 2;
     const MODULE_SYS: u8 = 4;
+    // SelectElement block braces (`{` `}`) consumed by `decode_select`.
+    const SELECT_BLOCK_OPEN: u8 = 0x7B;
+    const SELECT_BLOCK_CLOSE: u8 = 0x7D;
 
     let mut scene = Vec::new();
     // Meta prologue (real scene-1 opens with a MetaLine/MetaEntrypoint run).
@@ -174,13 +184,18 @@ pub fn synthetic_scene_bytecode() -> Vec<u8> {
     scene.extend_from_slice(&[0x82, 0xA0, 0x82, 0xA2]);
     // TextDisplay: module_msg opcode 10 (in 1..=200, != 3) (argc 0).
     scene.extend_from_slice(&command_header(MODULE_TYPE_KEPAGO, MODULE_MSG, 10, 0));
-    // Choice: module_sel, argc 2, bracketed `( "あ" , "い" )` argument list.
-    scene.extend_from_slice(&command_header(MODULE_TYPE_KEPAGO, MODULE_SEL, 0, 2));
-    scene.push(b'('); // 0x28
-    scene.extend_from_slice(&[0x82, 0xA0]); // choice 0 "あ"
-    scene.push(b','); // 0x2C arg separator
-    scene.extend_from_slice(&[0x82, 0xA2]); // choice 1 "い"
-    scene.push(b')'); // 0x29
+    // Choice: module_sel (module_type 0, id 2) opcode 0 (`select_w`), decoded
+    // by `decode_select` as a `{ "あ" \n "い" \n }` block. The 8-byte header is
+    // followed by the `{` block open, then per option the Shift-JIS option
+    // text plus a `\n`+i16 line marker, then the `}` block close. (argc is
+    // unused by the select-block decoder.)
+    scene.extend_from_slice(&command_header(MODULE_TYPE_SEL, MODULE_SEL, 0, 0));
+    scene.push(SELECT_BLOCK_OPEN); // 0x7B '{' block open
+    scene.extend_from_slice(&[0x82, 0xA0]); // option 0 "あ"
+    scene.extend_from_slice(&[0x0A, 0x00, 0x00]); // \n+i16 line marker
+    scene.extend_from_slice(&[0x82, 0xA2]); // option 1 "い"
+    scene.extend_from_slice(&[0x0A, 0x00, 0x00]); // \n+i16 line marker
+    scene.push(SELECT_BLOCK_CLOSE); // 0x7D '}' block close
     // Scene terminator: module_sys opcode 17 → End (argc 0).
     scene.extend_from_slice(&command_header(MODULE_TYPE_KEPAGO, MODULE_SYS, 17, 0));
     scene
