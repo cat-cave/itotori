@@ -43149,7 +43149,7 @@
     },
     {
       "id": "vault-7z-delta-bcj2-decoder",
-      "title": "Native 7z Delta+BCJ2 multi-coder support (vault by-id materialize for Kanon-class archives)",
+      "title": "Repro + report upstream sevenz-rust2 silent-skip of Kanon Delta+BCJ2 folders (codecs ARE claimed-supported)",
       "kind": "feature",
       "milestone": "alpha",
       "status": "ready",
@@ -43158,12 +43158,12 @@
       "risk": "medium",
       "owner": null,
       "branch": null,
-      "spec": "Surfaced by vault-adapter-by-id-resolution: the pure-Rust sevenz-rust2 0.21 decoder silently SKIPS 7z folders that use Delta+BCJ2 multi-coder chains — Kanon vault by-id archive: 11219/19903 entries skipped (incl SEEN.TXT + _vault/metadata.json). System 7z handles it but no-shell-out forbids it (own the full stack). extract_archive now surfaces this as typed ExtractionFailed (no partial tree). Implement Delta + BCJ2 (+ the BCJ x86/arm filters as needed) natively so vault by-id can materialize all titles incl Kanon.",
-      "acceptance": "Vault by-id materialize of Kanon (release 331) extracts the COMPLETE tree natively (no skipped entries; SEEN.TXT sha256 == 3f442b44…046c, matching the scratch corpus) with NO shell-out; a Delta+BCJ2 fixture archive round-trips; just ci green.",
+      "spec": "CORRECTION: BCJ2 decode is supported in sevenz-rust2 since 0.5.0 (2023-08-19) and Delta since 0.12.0 (2025-02-28); we are on the LATEST 0.21.1 (2026-06-23). So this is NOT a missing-codec gap — yet the vault-adapter-by-id worker observed Kanon vault by-id 7z silently SKIPPING 11219/19903 entries (incl SEEN.TXT) from Delta+BCJ2 multi-coder folders, with the decode loop returning Ok(()). That is very likely an UPSTREAM BUG: either (a) a defect decoding the specific Delta+BCJ2 multi-coder chain/ordering in this archive, or (b) the silent-skip-on-failure behavior itself (an unsupported/failing coder should ERROR, not return Ok with dropped entries — undocumented in the changelog). DO NOT reimplement codecs upstream already has. Steps: (1) extract Kanon by-id folder coder chain (sanitized: coder ids/flags only) to build a MINIMAL repro archive; (2) confirm sevenz-rust2 0.21.1 silently drops it; (3) file an upstream issue at hasenbanck/sevenz-rust2 with the repro; (4) if tractable, contribute a fix (decode the chain, or at minimum return Err on a coder it cannot fully process). Our verify_complete_extraction defense stays regardless (never ship a partial tree).",
+      "acceptance": "A minimal Delta+BCJ2 repro reproduces the silent skip on sevenz-rust2 0.21.1; an upstream issue is filed (link recorded); EITHER an upstream/contributed fix lands and Kanon by-id materializes complete (SEEN.TXT sha256 == 3f442b44…046c) OR, if upstream declines, a tracked decision on pin/patch/fork. itotori never ships a partial tree (verify_complete_extraction). just ci green.",
       "validation": null,
       "context": null,
       "created_at": "2026-06-30T18:39:49.690Z",
-      "updated_at": "2026-06-30T18:39:49.690Z",
+      "updated_at": "2026-06-30T18:42:16.125Z",
       "claimed_at": null,
       "done_at": null,
       "group_name": null,
@@ -43180,7 +43180,10 @@
           "value": "just ci"
         }
       ],
-      "audit_focus": ["crates/kaifuu-vault-source/src/extraction.rs"]
+      "audit_focus": [
+        "crates/kaifuu-vault-source/src/extraction.rs",
+        "sevenz-rust2 0.21.1 Delta+BCJ2 multi-coder folder decode"
+      ]
     },
     {
       "id": "vault-embedded-metadata-schema-reconcile",
