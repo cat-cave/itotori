@@ -157,6 +157,7 @@ pub mod contracts;
 pub mod mv_mz_encrypted_image;
 pub mod mv_mz_readiness;
 mod offset_map;
+pub mod packed_engine_readiness;
 pub mod patch_transaction;
 pub mod plain_xp3_smoke;
 pub mod registry;
@@ -195,6 +196,16 @@ pub use xp3_capability_profile::{
     Xp3CapabilityProfileFixtureEntry, Xp3CapabilityProfileReport, Xp3CapabilityProfileRequest,
     Xp3CapabilitySupportTier, Xp3CapabilityTuple, Xp3CapabilityVariant, derive_support_tier,
     generate_xp3_capability_profile,
+};
+
+pub use packed_engine_readiness::{
+    EngineProfileSpec, PACKED_ENGINE_PROFILE_GLOB, PACKED_ENGINE_READINESS_SCHEMA_VERSION,
+    PACKED_ENGINE_READINESS_SUPPORT_BOUNDARY, PACKED_READINESS_REPORT_SCHEMA_VERSION,
+    PackedContentEntry, PackedEngineFamily, PackedEngineReadinessProfile, PackedHelperRequirement,
+    PackedKeyRequirement, PackedReadinessEntryReport, PackedReadinessFinding,
+    PackedReadinessOutcome, PackedReadinessPosture, PackedReadinessValidationReport,
+    PackedTransformStack, derive_packed_readiness_outcome, recompute_content_hash,
+    validate_packed_engine_readiness_dir, validate_packed_engine_readiness_profile,
 };
 
 pub use siglus_static_key::{

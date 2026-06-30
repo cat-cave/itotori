@@ -1,0 +1,27 @@
+{
+  "schemaVersion": "0.1.0",
+  "profileId": "packed/kirikiri_xp3/negative/out_of_profile",
+  "fixtureId": "kirikiri-xp3-out-of-profile",
+  "sourceNodeId": "KAIFUU-103",
+  "engineFamily": "kirikiri_xp3",
+  "container": "siglus_pck",
+  "crypto": "null_key",
+  "codec": "utf16_text",
+  "surface": "archive_entry",
+  "patchBack": "repack_archive",
+  "declaredCapability": "extract",
+  "key": {
+    "status": "not_required"
+  },
+  "helper": {
+    "status": "not_required"
+  },
+  "content": [
+    {
+      "assetId": "data/scenario.ks",
+      "byteCount": 8192,
+      "contentSha256": "sha256:351634f2805d69a4ef69cee095cd590aa3828d1a9d5e6f988fcd93aaa388fe6d"
+    }
+  ],
+  "contentHash": "sha256:c19b472783eee254254aa5b318be397dd138763c7808262c2dba624bc881b571"
+}

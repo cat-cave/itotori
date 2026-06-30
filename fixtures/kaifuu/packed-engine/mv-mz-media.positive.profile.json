@@ -1,0 +1,29 @@
+{
+  "schemaVersion": "0.1.0",
+  "profileId": "packed/rpg_maker_mv_mz_media/positive",
+  "fixtureId": "mv-mz-media.positive",
+  "sourceNodeId": "KAIFUU-103",
+  "engineFamily": "rpg_maker_mv_mz_media",
+  "container": "project_asset",
+  "crypto": "rpg_maker_asset_xor",
+  "codec": "png_image",
+  "surface": "binary_offset",
+  "patchBack": "unsupported",
+  "declaredCapability": "identify",
+  "key": {
+    "status": "missing",
+    "keyRef": "local-secret:rpgmaker-mv-asset-key",
+    "requirementId": "rpgmaker.mv.encryption-key"
+  },
+  "helper": {
+    "status": "not_required"
+  },
+  "content": [
+    {
+      "assetId": "www/img/titles1/title.rpgmvp",
+      "byteCount": 16384,
+      "contentSha256": "sha256:5d16701464335b435f46286c3de604f2415bdefbb1e88375f1f59b8203cbfc98"
+    }
+  ],
+  "contentHash": "sha256:586d60eb801a99cdc92e4bb9afa31c79cfa67bb3c19ed056d8972a3580f28e95"
+}

@@ -1,0 +1,27 @@
+{
+  "schemaVersion": "0.1.0",
+  "profileId": "packed/bgi/negative/hash_mismatch",
+  "fixtureId": "bgi-hash-mismatch",
+  "sourceNodeId": "KAIFUU-103",
+  "engineFamily": "bgi",
+  "container": "archive",
+  "crypto": "null_key",
+  "codec": "shift_jis_text",
+  "surface": "archive_entry",
+  "patchBack": "repack_archive",
+  "declaredCapability": "inventory",
+  "key": {
+    "status": "not_required"
+  },
+  "helper": {
+    "status": "not_required"
+  },
+  "content": [
+    {
+      "assetId": "data01000.arc/_bp00001",
+      "byteCount": 6144,
+      "contentSha256": "sha256:d656de95e860ba8b8e48df19534848dd18d7d6bd5edf3c8116752f4ed7beccaa"
+    }
+  ],
+  "contentHash": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+}

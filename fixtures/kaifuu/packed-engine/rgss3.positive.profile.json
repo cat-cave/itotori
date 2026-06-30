@@ -1,0 +1,34 @@
+{
+  "schemaVersion": "0.1.0",
+  "profileId": "packed/rgss3/positive",
+  "fixtureId": "rgss3.positive",
+  "sourceNodeId": "KAIFUU-103",
+  "engineFamily": "rgss3",
+  "container": "rgssad",
+  "crypto": "xor",
+  "codec": "ruby_marshal",
+  "surface": "archive_entry",
+  "patchBack": "repack_archive",
+  "declaredCapability": "identify",
+  "key": {
+    "status": "resolved",
+    "keyRef": "local-secret:rgss3-header-xor-key",
+    "requirementId": "rgss3.rgssad.header-key"
+  },
+  "helper": {
+    "status": "not_required"
+  },
+  "content": [
+    {
+      "assetId": "Data/Map001.rvdata2",
+      "byteCount": 3072,
+      "contentSha256": "sha256:245050938f66840549e8f1778872e8490a58d196c060ea8319e504d3e83c47c8"
+    },
+    {
+      "assetId": "Data/System.rvdata2",
+      "byteCount": 768,
+      "contentSha256": "sha256:6e811f51a84b00902f18f88f607e5124f3a3d7f0db9b2c4a9c2a0f60cba166a5"
+    }
+  ],
+  "contentHash": "sha256:f0b6e0492e0d8bdad4aa7910ec7ce10776092fd053917314cede5615c6256bd2"
+}

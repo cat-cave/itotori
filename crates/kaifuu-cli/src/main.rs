@@ -8,21 +8,22 @@ use kaifuu_core::{
     EvidenceStatus, ExtractRequest, GameProfile, GoldenByteEquivalenceMode, GoldenHarnessRequest,
     HelperBinaryLaunchValidationRequest, HelperCapability, HelperRedactionStatus,
     HelperRegistryInvocationRequest, KaifuuResult, LocalKeyImportRequest, LocalKeyImportSource,
-    LocalSecretDirectoryStore, PartialAdapterCommand, PartialAdapterDiagnostic,
-    PartialAdapterInventory, PartialAdapterReport, PartialDiagnosticSeverity, PatchExport,
-    PatchPreflightRequest, PatchRequest, PatchResult, ProfileRequest, ProofHash,
-    RpgMakerMvMzFixtureKeyValidationRequest, SecretRef, SiglusParserBoundarySmokeRequest,
-    SiglusParserBoundarySmokeVariant, VerifyRequest, Xp3CapabilityProfileFixture,
-    Xp3CapabilityProfileRequest, Xp3ProfileProofFixture, Xp3ProfileProofRequest, atomic_write_text,
-    encode_xp3, encrypted_media_proof, fixture_helper_registry, generate_xp3_capability_profile,
-    normalize_helper_result_value, pack_plain_xp3_from_directory, parse_helper_capability,
-    parse_hex_bytes, plain_xp3_writer_capability, promote_staged_directory_no_clobber, read_json,
+    LocalSecretDirectoryStore, PackedReadinessValidationReport, PartialAdapterCommand,
+    PartialAdapterDiagnostic, PartialAdapterInventory, PartialAdapterReport,
+    PartialDiagnosticSeverity, PatchExport, PatchPreflightRequest, PatchRequest, PatchResult,
+    ProfileRequest, ProofHash, RpgMakerMvMzFixtureKeyValidationRequest, SecretRef,
+    SiglusParserBoundarySmokeRequest, SiglusParserBoundarySmokeVariant, VerifyRequest,
+    Xp3CapabilityProfileFixture, Xp3CapabilityProfileRequest, Xp3ProfileProofFixture,
+    Xp3ProfileProofRequest, atomic_write_text, encode_xp3, encrypted_media_proof,
+    fixture_helper_registry, generate_xp3_capability_profile, normalize_helper_result_value,
+    pack_plain_xp3_from_directory, parse_helper_capability, parse_hex_bytes,
+    plain_xp3_writer_capability, promote_staged_directory_no_clobber, read_json,
     read_plain_xp3_archive, redact_for_log_or_report, redact_report_value,
     replace_plain_xp3_entry_payload, run_plain_xp3_smoke_from_path, run_round_trip_golden,
     run_siglus_known_key_parser_boundary_smoke, sha256_hash_bytes, stable_json,
     unpack_plain_xp3_to_directory, validate_helper_registry_entry_value,
-    validate_helper_result_value, validate_offset_map_value, validate_profile_value,
-    validate_rpg_maker_mv_mz_fixture_key, write_json, xp3_profile_proof,
+    validate_helper_result_value, validate_offset_map_value, validate_packed_engine_readiness_dir,
+    validate_profile_value, validate_rpg_maker_mv_mz_fixture_key, write_json, xp3_profile_proof,
 };
 use kaifuu_delta::{
     ContractStageStatus, SourceProvenance, apply_delta, create_delta,
@@ -285,6 +286,9 @@ fn run_with_args_and_registry(
         Some("profile") => {
             run_profile_command(&args, registry)?;
         }
+        Some("readiness") => {
+            return run_readiness_command(&args);
+        }
         Some("capabilities") => {
             let output = PathBuf::from(flag(&args, "--output")?);
             let capabilities = registry
@@ -299,7 +303,7 @@ fn run_with_args_and_registry(
         }
         _ => {
             return Err(
-                "usage: kaifuu <detect|extract|asset-inventory|patch|diff|apply|verify|golden|offset-map|helper|helper-result|key-helper|helper-registry|key|siglus|rpgmaker|rpg-maker|xp3|profile|capabilities|binary-patch-smoke> ..."
+                "usage: kaifuu <detect|extract|asset-inventory|patch|diff|apply|verify|golden|offset-map|helper|helper-result|key-helper|helper-registry|key|siglus|rpgmaker|rpg-maker|xp3|profile|readiness|capabilities|binary-patch-smoke> ..."
                     .into(),
             );
         }
@@ -1324,6 +1328,69 @@ fn run_xp3_capability_profile(args: &[String]) -> Result<(), Box<dyn std::error:
             .collect::<Vec<_>>()
             .join("; ");
         return Err(format!("XP3 capability profile validation failed: {failures}").into());
+    }
+    Ok(())
+}
+
+/// KAIFUU-103 — `kaifuu readiness validate [--fixtures-dir <dir>]
+/// [--output <report.json>]`.
+///
+/// Reads every `*.profile.json` packed-engine readiness profile under
+/// `--fixtures-dir` (default `fixtures/kaifuu/packed-engine`), validates each
+/// against its engine family's transform/capability spec, and writes the
+/// aggregate report (profile id, fixture id, capability levels, helper ids,
+/// key refs, diagnostics, and content hashes) to `--output` (default
+/// `target/kaifuu/packed-readiness-validation.json`). Each profile's
+/// effective outcome is recomputed mechanically — a media transform, missing
+/// key, helper-gated key, or unavailable helper is a readiness-only posture
+/// that never claims extract/patch. The command exits non-zero, listing each
+/// inconsistent profile's blocking finding codes, when any profile fails
+/// validation.
+fn run_readiness_command(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
+    match positional(args, 1)? {
+        "validate" => run_readiness_validate(args),
+        other => Err(format!("usage: kaifuu readiness validate ...; got {other:?}").into()),
+    }
+}
+
+fn run_readiness_validate(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
+    let fixtures_dir = PathBuf::from(
+        flag_optional(args, "--fixtures-dir").unwrap_or("fixtures/kaifuu/packed-engine"),
+    );
+    let output = PathBuf::from(
+        flag_optional(args, "--output").unwrap_or("target/kaifuu/packed-readiness-validation.json"),
+    );
+    let report: PackedReadinessValidationReport =
+        validate_packed_engine_readiness_dir(&fixtures_dir)?;
+    let json = report.stable_json()?;
+    atomic_write_text(&output, &json)?;
+
+    println!(
+        "kaifuu readiness validate: status={:?} profiles={} profileReady={} readinessOnly={}",
+        report.status,
+        report.profile_count,
+        report.profile_ready_count,
+        report.readiness_only_count,
+    );
+
+    if report.status == kaifuu_core::OperationStatus::Failed {
+        let failures = report
+            .entries
+            .iter()
+            .filter(|entry| entry.status == kaifuu_core::OperationStatus::Failed)
+            .map(|entry| {
+                let codes = entry
+                    .findings
+                    .iter()
+                    .filter(|finding| finding.severity.is_blocking())
+                    .map(|finding| format!("{}:{}", finding.severity.as_str(), finding.code))
+                    .collect::<Vec<_>>()
+                    .join(",");
+                format!("{} [{}]", entry.profile_id, codes)
+            })
+            .collect::<Vec<_>>()
+            .join("; ");
+        return Err(format!("packed-engine readiness validation failed: {failures}").into());
     }
     Ok(())
 }

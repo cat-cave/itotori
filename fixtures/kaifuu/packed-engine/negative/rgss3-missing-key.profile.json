@@ -1,0 +1,27 @@
+{
+  "schemaVersion": "0.1.0",
+  "profileId": "packed/rgss3/negative/missing_key",
+  "fixtureId": "rgss3-missing-key",
+  "sourceNodeId": "KAIFUU-103",
+  "engineFamily": "rgss3",
+  "container": "rgssad",
+  "crypto": "xor",
+  "codec": "ruby_marshal",
+  "surface": "archive_entry",
+  "patchBack": "repack_archive",
+  "declaredCapability": "extract",
+  "key": {
+    "status": "not_required"
+  },
+  "helper": {
+    "status": "not_required"
+  },
+  "content": [
+    {
+      "assetId": "Data/Map001.rvdata2",
+      "byteCount": 3072,
+      "contentSha256": "sha256:245050938f66840549e8f1778872e8490a58d196c060ea8319e504d3e83c47c8"
+    }
+  ],
+  "contentHash": "sha256:2e7d1145c4a2447c62c1d6afece21d09b65a504914ce5e7eb33b30ab2cf66265"
+}

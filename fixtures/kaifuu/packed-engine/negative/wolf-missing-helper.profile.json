@@ -1,0 +1,29 @@
+{
+  "schemaVersion": "0.1.0",
+  "profileId": "packed/wolf/negative/missing_helper",
+  "fixtureId": "wolf-missing-helper",
+  "sourceNodeId": "KAIFUU-103",
+  "engineFamily": "wolf",
+  "container": "wolf_archive",
+  "crypto": "helper_gated",
+  "codec": "shift_jis_text",
+  "surface": "archive_entry",
+  "patchBack": "repack_archive",
+  "declaredCapability": "extract",
+  "key": {
+    "status": "helper_gated",
+    "keyRef": "local-secret:wolf-helper-key",
+    "requirementId": "wolf.archive.helper-key"
+  },
+  "helper": {
+    "status": "unavailable"
+  },
+  "content": [
+    {
+      "assetId": "Data.wolf/mps/map001.mps",
+      "byteCount": 2048,
+      "contentSha256": "sha256:86543d439e80715611d7480d833733680e8edc200387b7f53cec8c66b329a539"
+    }
+  ],
+  "contentHash": "sha256:26f35c386254ca078b1ecda374dd67bf8c09e1a4371ca34f6ba5eadea37d8e8e"
+}
