@@ -162,11 +162,19 @@ pub const STRING_RELOCATION_INVALID_SOURCE_BYTES: &str =
 pub const XP3_PLAIN_MAGIC: &[u8] = b"XP3\r\n \n\x1a\x8b\x67\x01";
 
 pub mod contracts;
+pub mod mv_mz_readiness;
 mod offset_map;
 pub mod patch_transaction;
 pub mod registry;
 
 pub use registry::{AdapterCapabilityMatrix, CapabilityLevel, CapabilityLevelStatus};
+
+pub use mv_mz_readiness::{
+    EncryptedMediaDiagnostic, EncryptedMediaKind, IdentityContainer, MvMzFixtureFile,
+    MvMzFixtureManifest, MvMzFixtureProfile, MvMzJsonTextSurface, MvMzNegativeFixture,
+    MvMzReadinessRecord, MvMzReadinessViolation, MvMzSurfaceRole, generate_mv_mz_fixture_tree,
+    mv_mz_fixture_manifest,
+};
 
 pub use patch_transaction::{
     DiagnosticSeverity, PatchTransaction, PatchTransactionConfig, PatchTransactionError,
