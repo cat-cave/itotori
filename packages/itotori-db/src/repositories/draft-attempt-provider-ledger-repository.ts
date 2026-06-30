@@ -127,9 +127,31 @@ export type SumCostByProjectOptions = {
   byProvider?: boolean | undefined;
 };
 
+/**
+ * One per-model cost bucket from {@link SumCostByProjectResult.byModel}.
+ *
+ * `modelId` is the underlying column value, returned RAW — nullable for
+ * pre-ITOTORI-077 rows where no model was attributed. The repository does
+ * NOT collapse a NULL `modelId` into an `"unknown"` string: doing so would
+ * silently merge NULL-attributed cost with any literal model literally
+ * named `"unknown"`. This mirrors {@link LedgerPairAggregateRow}, whose
+ * doc (the raw-nullable contract) makes the telemetry/query layer
+ * responsible for surfacing a typed sentinel when rendering a key.
+ */
+export type ByModelCostBucket = {
+  modelId: string | null;
+  totalCost: string;
+};
+
 export type SumCostByProjectResult = {
   totalCost: string;
-  byModel?: Record<string, string>;
+  /**
+   * Cost grouped by `model_id`, RAW-nullable (see {@link ByModelCostBucket}).
+   * An array — not a `Record` — because a `Record` cannot represent a NULL
+   * key distinctly from the literal string `"null"`/`"unknown"`. Ordered by
+   * descending cost.
+   */
+  byModel?: ByModelCostBucket[];
   byProvider?: Record<string, string>;
 };
 
@@ -383,12 +405,14 @@ export class ItotoriDraftAttemptProviderLedgerRepository implements ItotoriDraft
         .groupBy(draftAttemptProviderLedger.modelId)
         .orderBy(desc(sql`coalesce(sum(${draftAttemptProviderLedger.costAmount}), 0)`));
 
-      const byModel: Record<string, string> = {};
-      for (const row of byModelRows) {
-        const key = row.modelId ?? "unknown";
-        byModel[key] = row.amount;
-      }
-      result.byModel = byModel;
+      // Return the RAW nullable modelId per ByModelCostBucket's contract;
+      // never collapse NULL → "unknown" here (that would merge
+      // NULL-attributed cost with a literal model named "unknown"). The
+      // telemetry/query layer surfaces the sentinel, matching sumByPairAndDay.
+      result.byModel = byModelRows.map((row) => ({
+        modelId: row.modelId,
+        totalCost: row.amount,
+      }));
     }
 
     // ITOTORI-220 — provider-level cost aggregation. Mirrors `byModel`

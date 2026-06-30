@@ -8,6 +8,7 @@ import {
 } from "./capability-guard.js";
 import { knownPairs, type ModelProviderPair } from "./dev-pair.js";
 import {
+  assertBilledCost,
   decimalUsdStringToMicros,
   usageCostToDecimalString,
   usageCostToMicros,
@@ -317,7 +318,13 @@ export class OpenRouterProvider implements ModelProvider {
     const maxPriceUsd = request.maxPriceUsd;
     if (maxPriceUsd !== undefined) {
       const maxPriceMicrosUsd = maxPriceUsdToMicros(maxPriceUsd);
-      const actualMicrosUsd = normalized.cost.amountMicrosUsd ?? 0;
+      // Fail-closed on the spend guard. The old `?? 0` silently treated a
+      // missing `amountMicrosUsd` as $0, so an absent amount would compare
+      // `0 > cap` → false and ALWAYS pass the cap — the opposite of
+      // fail-loud (a latent silent-undercount path). `assertBilledCost`
+      // throws on a `billed` cost with no real amount; a genuine
+      // `costKind:"zero"` (free call) returns 0 and correctly passes.
+      const actualMicrosUsd = Number(assertBilledCost(normalized.cost));
       if (actualMicrosUsd > maxPriceMicrosUsd) {
         const metadata = {
           ...adapterMetadata(body, providerRouting),

@@ -451,10 +451,64 @@ describe.skipIf(!process.env.DATABASE_URL)("ItotoriDraftAttemptProviderLedgerRep
         byModel: true,
       });
       expect(grouped.totalCost).toBe("0.03500000");
-      expect(grouped.byModel).toEqual({
-        "anthropic/claude-3.5-sonnet": "0.03000000",
-        "openai/gpt-4o-mini": "0.00500000",
+      // byModel is a RAW-nullable array (ByModelCostBucket), ordered by
+      // descending cost — never a Record keyed on a collapsed sentinel.
+      expect(grouped.byModel).toEqual([
+        { modelId: "anthropic/claude-3.5-sonnet", totalCost: "0.03000000" },
+        { modelId: "openai/gpt-4o-mini", totalCost: "0.00500000" },
+      ]);
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("sumCostByProject byModel keeps a NULL modelId distinct from a literal 'unknown' model", async () => {
+    // Regression guard for the audit finding
+    // `sumcost-bymodel-collapses-null-modelid-into-unknown`: the byModel
+    // path used to collapse NULL → "unknown" inside the repository, silently
+    // merging NULL-attributed cost with any row whose model was literally
+    // named "unknown". The corrected behaviour returns the RAW nullable
+    // modelId so the two are DISTINCT buckets (sentinel applied downstream).
+    const context = await isolatedMigratedContext();
+    try {
+      await provisionDraftJobFixtureProject(context.db, localActor);
+      const attemptId = await provisionDraftAttempt(context.db);
+      const repo = new ItotoriDraftAttemptProviderLedgerRepository(context.db);
+
+      // A NULL-modelId row (no model attributed). modelId is omitted so
+      // the column is written NULL.
+      const nullModelInput = { ...baseLedgerInput(attemptId) } as RecordLedgerEntryInput & {
+        modelId?: string;
+      };
+      delete nullModelInput.modelId;
+      await repo.recordLedgerEntry(localActor, {
+        ...nullModelInput,
+        providerProofId: "proof-null-model",
+        costAmount: "0.01000000",
+        usageResponseJson: { prompt_tokens: 500, completion_tokens: 200, cost: 0.01 },
+      } as RecordLedgerEntryInput);
+      // A row whose model is LITERALLY the string "unknown".
+      await repo.recordLedgerEntry(localActor, {
+        ...baseLedgerInput(attemptId),
+        providerProofId: "proof-literal-unknown",
+        modelId: "unknown",
+        costAmount: "0.02000000",
+        usageResponseJson: { prompt_tokens: 500, completion_tokens: 200, cost: 0.02 },
       });
+
+      const window = {
+        from: new Date("2020-01-01T00:00:00Z"),
+        to: new Date("2099-01-01T00:00:00Z"),
+      };
+      const grouped = await repo.sumCostByProject(localActor, draftJobFixtureProjectId, window, {
+        byModel: true,
+      });
+
+      // Two distinct buckets — the buggy path would have merged them into a
+      // single "unknown" bucket of 0.03000000.
+      expect(grouped.byModel).toHaveLength(2);
+      expect(grouped.byModel).toContainEqual({ modelId: null, totalCost: "0.01000000" });
+      expect(grouped.byModel).toContainEqual({ modelId: "unknown", totalCost: "0.02000000" });
     } finally {
       await context.close();
     }

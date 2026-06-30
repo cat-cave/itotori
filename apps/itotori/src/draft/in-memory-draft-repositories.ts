@@ -325,14 +325,18 @@ export class InMemoryDraftAttemptProviderLedgerRepository implements ItotoriDraf
     const total = this.entries.reduce((acc, entry) => acc + Number(entry.costAmount), 0);
     const result: SumCostByProjectResult = { totalCost: total.toFixed(8) };
     if (opts?.byModel === true) {
-      const byModel: Record<string, number> = {};
+      // Mirror the DB-backed repository: group on the RAW nullable
+      // modelId, keeping a NULL bucket distinct from any literal model
+      // named "unknown" (ByModelCostBucket contract). A Map keys NULL
+      // distinctly from every string, so no sentinel collapse occurs.
+      const sums = new Map<string | null, number>();
       for (const entry of this.entries) {
-        const key = entry.modelId ?? "unknown";
-        byModel[key] = (byModel[key] ?? 0) + Number(entry.costAmount);
+        const key = entry.modelId ?? null;
+        sums.set(key, (sums.get(key) ?? 0) + Number(entry.costAmount));
       }
-      result.byModel = Object.fromEntries(
-        Object.entries(byModel).map(([k, v]) => [k, v.toFixed(8)]),
-      );
+      result.byModel = [...sums.entries()]
+        .sort(([, a], [, b]) => b - a)
+        .map(([modelId, cost]) => ({ modelId, totalCost: cost.toFixed(8) }));
     }
     // ITOTORI-220 — provider-level aggregation. Mirrors the DB-backed
     // repository so the in-memory fixture preserves typed parity.

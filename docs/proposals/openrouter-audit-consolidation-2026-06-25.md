@@ -427,7 +427,7 @@ Mint in this order; each entry is JSON-shaped for `scripts/spec-dag.mjs`.
   ],
   "acceptanceCriteria": [
     "Live call against deepseek-v4-flash (which supports implicit caching per prompt-caching.md) writes cache_discount and cached_input_tokens to the ledger",
-    "Per-process cost cap deducts cache discount before refusing a new call",
+    "Per-process cost cap charges the cache-DISCOUNTED `usage.cost` verbatim before refusing a new call. DOC-AMBIGUOUS-6 / docs/openrouter-integration.md §5.3 RESOLVED: OpenRouter already deducted `cache_discount` upstream, so `usage.cost` IS the post-discount billed amount; the cap consumes it as-is and never re-subtracts `cache_discount` (recordSpend would double-count the discount if it did). NOTE: this AC must NOT be read as 'subtract cache_discount from usage.cost again' — the current implementation (treat usage.cost as already-net) is CORRECT, not a defect.",
     "rg 'selectedOpenRouterPricing' in apps/itotori/src returns the expected result (kept-and-fixed OR deleted-as-dead based on ITOTORI-224 evidence)",
     "A live response with prompt_tokens_details.cached_tokens > 0 lands cache fields in the ledger row's usage_response_json",
     "apps/itotori/src/telemetry/cli.ts prints cache_savings_usd=<real> for the window"

@@ -893,6 +893,13 @@ mod tests {
         );
         // Seven kinds present (not 8).
         assert_eq!(dispatcher.route_count(), SYSCALL_KIND_COUNT - 1);
+        // Pin the *entry* count too, not only the kind count. The full
+        // EXAFTERCALL_MOD=1 shape has 15 entries (6 named scalar + 1
+        // MOUSEACTIONCALL + 8 WBCALL); disabling EXAFTERCALL drops exactly
+        // one named scalar route, so the real-bytes EXAFTERCALL_MOD=0 path
+        // must carry 14. The kind-count assertion alone would not catch a
+        // regression that double-adds a route in this MOD=0 case.
+        assert_eq!(dispatcher.entry_count(), 14);
     }
 
     #[test]

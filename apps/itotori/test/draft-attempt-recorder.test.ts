@@ -91,14 +91,16 @@ class InMemoryLedgerRepository implements ItotoriDraftAttemptProviderLedgerRepos
     const total = this.entries.reduce((acc, entry) => acc + Number(entry.costAmount), 0);
     const result: SumCostByProjectResult = { totalCost: total.toFixed(8) };
     if (opts?.byModel === true) {
-      const byModel: Record<string, number> = {};
+      // RAW nullable modelId per ByModelCostBucket; a Map keys NULL
+      // distinctly so it never collapses into a literal "unknown" model.
+      const sums = new Map<string | null, number>();
       for (const entry of this.entries) {
-        const key = entry.modelId ?? "unknown";
-        byModel[key] = (byModel[key] ?? 0) + Number(entry.costAmount);
+        const key = entry.modelId ?? null;
+        sums.set(key, (sums.get(key) ?? 0) + Number(entry.costAmount));
       }
-      result.byModel = Object.fromEntries(
-        Object.entries(byModel).map(([key, value]) => [key, value.toFixed(8)]),
-      );
+      result.byModel = [...sums.entries()]
+        .sort(([, a], [, b]) => b - a)
+        .map(([modelId, cost]) => ({ modelId, totalCost: cost.toFixed(8) }));
     }
     return result;
   }
@@ -217,6 +219,49 @@ describe("DraftAttemptRecorder", () => {
     // a recorded-bundle artifact; PROJECT LAW forbids fabricating one here.)
     expect(total.totalCost).toBe("0.00000000");
     expect(total.byModel).toBeDefined();
-    expect(total.byModel!["anthropic/claude-3.5-sonnet"]).toBe("0.00000000");
+    expect(total.byModel).toContainEqual({
+      modelId: "anthropic/claude-3.5-sonnet",
+      totalCost: "0.00000000",
+    });
+  });
+
+  it("byModel keeps a NULL modelId distinct from a literal model named 'unknown'", async () => {
+    // Regression guard for the audit finding
+    // `sumcost-bymodel-collapses-null-modelid-into-unknown`: the byModel
+    // path used to collapse NULL → "unknown" inside the repository, which
+    // silently MERGED NULL-attributed cost with any row whose model was
+    // literally named "unknown". The corrected behaviour returns the RAW
+    // nullable modelId (ByModelCostBucket) and leaves the sentinel to the
+    // telemetry layer — so the two are reported as DISTINCT buckets.
+    const repo = new InMemoryLedgerRepository();
+    const baseInput = (
+      providerProofId: string,
+      modelId: string | null,
+    ): RecordLedgerEntryInput => ({
+      draftJobAttemptId: DRAFT_ATTEMPT_FIXTURE_DRAFT_JOB_ATTEMPT_ID,
+      providerProofId,
+      providerId: "openrouter",
+      modelId: modelId ?? undefined,
+      promptHash: DRAFT_ATTEMPT_FIXTURE_PROMPT_HASH,
+      costUnit: "usd_micros",
+      costAmount: "0.00000000",
+      usageResponseJson: {},
+    });
+    // One row with NO model attributed (NULL) and one row whose model is
+    // literally the string "unknown".
+    await repo.recordLedgerEntry(FIXED_ACTOR, baseInput("proof-null", null));
+    await repo.recordLedgerEntry(FIXED_ACTOR, baseInput("proof-unknown", "unknown"));
+
+    const window: SumCostByProjectWindow = {
+      from: new Date("2020-01-01T00:00:00Z"),
+      to: new Date("2099-01-01T00:00:00Z"),
+    };
+    const total = await repo.sumCostByProject(FIXED_ACTOR, "project-draft-job", window, {
+      byModel: true,
+    });
+
+    expect(total.byModel).toHaveLength(2);
+    expect(total.byModel).toContainEqual({ modelId: null, totalCost: "0.00000000" });
+    expect(total.byModel).toContainEqual({ modelId: "unknown", totalCost: "0.00000000" });
   });
 });

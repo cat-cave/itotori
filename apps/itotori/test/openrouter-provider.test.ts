@@ -21,6 +21,7 @@
 
 import { describe, expect, it, vi } from "vitest";
 import {
+  assertBilledCost,
   CapabilityGuard,
   DEV_PAIR,
   ModelProviderError,
@@ -1114,6 +1115,35 @@ describe("OpenRouterModelProvider — ITOTORI-233 cache-aware annotations", () =
     // $0.6 per call (the authoritative `usage.cost`), NOT $0.3 (the
     // pre-discount nominal would yield $0.9 - $1.0 still under cap).
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("per-call maxPriceUsd cap fails closed: a billed cost with no amount throws instead of passing", () => {
+    // Regression guard for the audit finding
+    // `openrouter-cost-cap-nullish-zero-silent-pass`: the maxPriceUsd
+    // guard previously read `normalized.cost.amountMicrosUsd ?? 0`, so a
+    // future change that yielded an absent amount would compare `0 > cap`
+    // → false and ALWAYS pass the cap (silent undercount). The guard now
+    // delegates to `assertBilledCost`, which throws on a `billed` cost
+    // that carries no real amount — the fail-loud posture cost law
+    // requires. A genuine zero-cost call still passes (returns 0).
+    const billedWithNoAmount = {
+      costKind: "billed",
+      currency: "USD",
+      amountUsd: "0.5",
+      // amountMicrosUsd deliberately absent — the exact shape a future
+      // regression could produce.
+    } as unknown as Parameters<typeof assertBilledCost>[0];
+    expect(() => assertBilledCost(billedWithNoAmount)).toThrow();
+
+    // A real zero-cost (free) call is NOT a missing amount — it passes.
+    expect(
+      assertBilledCost({
+        costKind: "zero",
+        currency: "USD",
+        amountUsd: "0",
+        amountMicrosUsd: 0,
+      }),
+    ).toBe(0n);
   });
 });
 
