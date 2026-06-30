@@ -100,6 +100,34 @@ export function renderReadmeSafeAlphaSummary(report: AlphaReadinessReport): stri
   }
   lines.push("");
 
+  lines.push("## Provider proof bundle (real-call evidence)");
+  lines.push("");
+  if (report.providerProofBundle !== null) {
+    const bundle = report.providerProofBundle;
+    lines.push(
+      `- Bundle: \`${bundle.proofId}\` (mode: ${bundle.mode}, fixture: ${bundle.fixtureId})`,
+    );
+    lines.push(
+      `- ZDR posture: account ${bundle.zdr.accountAssertion}, per-request ${bundle.zdr.perRequestZdr ? "yes" : "no"}, ` +
+        `all ledger routes ZDR ${bundle.zdr.allLedgerRoutesZdr ? "yes" : "no"}.`,
+    );
+    for (const route of bundle.servedRoutes) {
+      lines.push(
+        `  - ${route.role}: served ${route.servedModel} @ ${route.servedProvider}; ` +
+          `fallback chain ${route.fallbackChain.join(" > ")} (fallback occurred: ${route.fallbackOccurred ? "yes" : "no"}).`,
+      );
+    }
+    for (const support of bundle.structuredOutputSupport) {
+      lines.push(
+        `  - ${support.role} structured-output mode ${support.mode}: accepted ${support.accepted ? "yes" : "no"}.`,
+      );
+    }
+    lines.push(`- Bundle cost total: ${bundle.totalCostUsd.toFixed(6)} USD.`);
+  } else {
+    lines.push("- Provider proof bundle: not supplied (see findings).");
+  }
+  lines.push("");
+
   lines.push("## Quality evidence");
   lines.push("");
   lines.push(`- Deterministic QA results: ${report.quality.deterministicQa.length}`);

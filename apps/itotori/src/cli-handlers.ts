@@ -56,7 +56,13 @@ import {
   type CharacterRelationshipCliDependencies,
 } from "./agents/character-relationship/index.js";
 import { runAgenticLoopSmokeCommand } from "./orchestrator/agentic-loop-smoke-command.js";
-import { providerProofSummary, runProviderProofCommand } from "./provider-proof/index.js";
+import {
+  buildAlphaProviderProofSummary,
+  providerProofSummary,
+  renderReadmeSafeProviderProofSummary,
+  runProviderProofCommand,
+  runRecordedProviderProof,
+} from "./provider-proof/index.js";
 import {
   rawMtlBaselineProofSummary,
   runRawMtlBaselineProofCommand,
@@ -201,6 +207,9 @@ export async function runItotoriCliCommand(
       break;
     case "provider-proof":
       await runProviderProof(args, dependencies);
+      break;
+    case "provider-proof-bundle":
+      await runProviderProofBundle(args, dependencies);
       break;
     case "raw-mtl-baseline-proof":
       await runRawMtlBaselineProof(args, dependencies);
@@ -465,6 +474,54 @@ async function runProviderProof(
     dependencies.io.writeJson(outputPath, result.bundle);
   }
   process.stdout.write(`${JSON.stringify(providerProofSummary(result.bundle), null, 2)}\n`);
+}
+
+async function runProviderProofBundle(
+  args: string[],
+  dependencies: ItotoriCliDependencies,
+): Promise<void> {
+  // ALPHA-008 — the sanitized provider-proof bundle command. Recorded mode is
+  // the default (no credentials, runs in public CI); `--live` opts in to a
+  // bounded real ZDR call. Emits the README-safe `AlphaProviderProofSummary`
+  // (routed provider/model, fallback chain, retry state, token/cost,
+  // data-policy flags, structured-output support) plus an optional Markdown
+  // render. The OpenRouter key is read from the env by the command, NEVER
+  // passed on the CLI or printed; no raw prompt/response/private text is
+  // emitted (the summary carries ids/hashes/counts/routing/cost only).
+  const live = args.includes("--live");
+  const fixturePath = optionalFlag(args, "--fixture");
+  const outputPath = optionalFlag(args, "--output");
+  const markdownOutputPath = optionalFlag(args, "--markdown-output");
+  const maxRepairRaw = optionalFlag(args, "--max-repair-attempts");
+  const maxRepairAttempts =
+    maxRepairRaw === undefined ? undefined : Number.parseInt(maxRepairRaw, 10);
+  if (maxRepairAttempts !== undefined && !Number.isInteger(maxRepairAttempts)) {
+    throw new Error(
+      `provider-proof-bundle refused: --max-repair-attempts '${String(maxRepairRaw)}' must be an integer`,
+    );
+  }
+  const result = await runProviderProofCommand({
+    mode: live ? "live" : "recorded",
+    ...(fixturePath === undefined ? {} : { fixturePath }),
+    ...(maxRepairAttempts === undefined ? {} : { maxRepairAttempts }),
+  });
+  if (result.status === "skipped") {
+    process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+    return;
+  }
+  const summary = buildAlphaProviderProofSummary(result.bundle);
+  if (outputPath !== undefined) {
+    dependencies.io.writeJson(outputPath, summary);
+  }
+  if (markdownOutputPath !== undefined) {
+    if (dependencies.io.writeText === undefined) {
+      throw new Error(
+        `provider-proof-bundle: the CLI file store cannot write the Markdown summary to ${markdownOutputPath}`,
+      );
+    }
+    dependencies.io.writeText(markdownOutputPath, renderReadmeSafeProviderProofSummary(summary));
+  }
+  process.stdout.write(`${JSON.stringify(summary, null, 2)}\n`);
 }
 
 async function runRawMtlBaselineProof(
@@ -1025,6 +1082,20 @@ async function runAlphaReadinessHandler(
     dependencies.io.writeJson(providerProofPath, experimentComposition.attachment);
   }
 
+  // ── ALPHA-008 — the real-call sanitized provider-proof bundle, consumed as
+  //    structured provider-support evidence. Recorded mode is credential-free
+  //    and deterministic so this runs in public CI; the summary carries only
+  //    ids/hashes/counts/routing/cost (no raw prompt/response/key/private text).
+  const proofResult = await runRecordedProviderProof();
+  if (proofResult.status !== "passed") {
+    throw new Error(
+      `alpha-readiness: recorded provider-proof did not pass (status='${proofResult.status}')`,
+    );
+  }
+  const providerProofSummaryBundle = buildAlphaProviderProofSummary(proofResult.bundle);
+  const providerProofBundleDir = `${outputDir}/provider-proof-bundle`;
+  dependencies.io.writeJson(`${providerProofBundleDir}/summary.json`, providerProofSummaryBundle);
+
   // ── Optional supplementary private-local aggregate: hash only, no contents. ─
   let privateLocalAggregate: AlphaReadinessPrivateLocalHandle | null = null;
   if (privateLocalPath !== undefined) {
@@ -1038,6 +1109,7 @@ async function runAlphaReadinessHandler(
     costQualityArtifact,
     experimentComposition,
     providerProofArtifactPath: providerProofPath,
+    providerProofSummary: providerProofSummaryBundle,
     generatedAt,
     privateLocalAggregate,
   });
@@ -1053,6 +1125,10 @@ async function runAlphaReadinessHandler(
     );
   }
   dependencies.io.writeText(summaryPath, renderReadmeSafeAlphaSummary(report));
+  dependencies.io.writeText(
+    `${providerProofBundleDir}/README.md`,
+    renderReadmeSafeProviderProofSummary(providerProofSummaryBundle),
+  );
   log(
     `alpha-readiness: decision=${report.decision} gates=${report.gates.length} failedGates=${report.failedGateIds.length}; wrote ${outputDir}/alpha-readiness-report.json`,
   );

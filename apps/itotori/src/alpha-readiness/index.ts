@@ -13,6 +13,7 @@ export {
   type AlphaReadinessGateId,
   type AlphaReadinessPrivateLocalHandle,
   type AlphaReadinessProviderProof,
+  type AlphaReadinessProviderProofBundle,
   type AlphaReadinessProviderProofReconciliation,
   type AlphaReadinessProviderRunCost,
   type AlphaReadinessQualityReport,

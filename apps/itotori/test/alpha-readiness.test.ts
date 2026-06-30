@@ -30,6 +30,11 @@ import {
   type AlphaReadinessCostQualityArtifact,
 } from "../src/alpha-readiness/index.js";
 import { runItotoriCliCommand, type ItotoriCliServices } from "../src/cli-handlers.js";
+import {
+  buildAlphaProviderProofSummary,
+  runRecordedProviderProof,
+} from "../src/provider-proof/index.js";
+import type { AlphaProviderProofSummary } from "@itotori/localization-bridge-schema";
 
 const repoRoot = new URL("../../../", import.meta.url);
 
@@ -106,6 +111,14 @@ function experimentComposition(): ReturnType<typeof composeExperimentBenchmarkRe
   });
 }
 
+async function recordedProviderProofSummary(): Promise<AlphaProviderProofSummary> {
+  const result = await runRecordedProviderProof();
+  if (result.status !== "passed") {
+    throw new Error("recorded provider-proof should pass");
+  }
+  return buildAlphaProviderProofSummary(result.bundle);
+}
+
 async function composeInput(
   overrides?: Partial<BenchmarkStagesPublicFixture>,
   inputOverrides?: Partial<AlphaReadinessComposeInput>,
@@ -119,6 +132,7 @@ async function composeInput(
     costQualityArtifact,
     experimentComposition: experimentComposition(),
     providerProofArtifactPath: PROVIDER_PROOF_PATH,
+    providerProofSummary: await recordedProviderProofSummary(),
     generatedAt: "2026-06-30T00:00:00.000Z",
     ...inputOverrides,
   };
@@ -140,7 +154,17 @@ describe("alpha readiness — public-fixture composition", () => {
       "cost-ledger-attributed",
       "quality-evidence-present",
       "provider-proof-reconciled",
+      "provider-proof-bundle-consumed",
     ]);
+
+    // ALPHA-008 — the real-call provider-proof bundle is consumed as evidence:
+    // structured output accepted for both roles, all served routes ZDR-enforced.
+    expect(report.providerProofBundle).not.toBeNull();
+    expect(report.providerProofBundle?.mode).toBe("recorded");
+    expect(report.providerProofBundle?.zdr.allLedgerRoutesZdr).toBe(true);
+    expect(
+      report.providerProofBundle?.structuredOutputSupport.every((entry) => entry.accepted),
+    ).toBe(true);
 
     // Links resolve to the harness-named report artifacts + the provider proof.
     expect(report.links.benchmarkSeedSelection.artifactPath).toBe(
@@ -277,6 +301,15 @@ describe("alpha readiness — failure stays visible", () => {
     expect(report.providerProof).toBeNull();
     expect(report.cost.providerProofReconciliation).toBeNull();
   });
+
+  it("fails the provider-proof-bundle gate when no real-call bundle is supplied", async () => {
+    const input = await composeInput();
+    const report = composeAlphaReadiness({ ...input, providerProofSummary: null });
+    expect(report.decision).toBe("fail");
+    expect(report.failedGateIds).toContain("provider-proof-bundle-consumed");
+    expect(report.providerProofBundle).toBeNull();
+    expect(report.findings.some((f) => f.kind === "provider_proof_bundle_missing")).toBe(true);
+  });
 });
 
 describe("alpha readiness — README-safe summary", () => {
@@ -300,6 +333,9 @@ describe("alpha readiness — README-safe summary", () => {
     // The MTL baseline + linked artifacts are cited.
     expect(summary).toContain("Raw MTL baseline included");
     expect(summary).toContain(`${BENCHMARK_DIR}/benchmark-set-selection.json`);
+    // ALPHA-008 — the real-call provider-proof bundle section is rendered.
+    expect(summary).toContain("Provider proof bundle (real-call evidence)");
+    expect(summary).toContain("structured-output mode");
   });
 });
 
@@ -349,6 +385,13 @@ describe("alpha readiness — CLI dispatch", () => {
       jsonWrites.has("artifacts/test/cli-alpha-readiness/provider-proof/attachment.json"),
     ).toBe(true);
     expect(textWrites.has("artifacts/test/cli-alpha-readiness/README-summary.md")).toBe(true);
+    // ALPHA-008 — the sanitized provider-proof bundle deliverables.
+    expect(
+      jsonWrites.has("artifacts/test/cli-alpha-readiness/provider-proof-bundle/summary.json"),
+    ).toBe(true);
+    expect(
+      textWrites.has("artifacts/test/cli-alpha-readiness/provider-proof-bundle/README.md"),
+    ).toBe(true);
   });
 
   it("escalates a failed benchmark run to a thrown error", async () => {

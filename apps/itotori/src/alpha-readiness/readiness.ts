@@ -27,6 +27,7 @@
 // restated verbatim from the validated provider-run records.
 
 import type {
+  AlphaProviderProofSummary,
   BenchmarkCountBucketV02,
   BenchmarkProviderRunV02,
   BenchmarkReportV02,
@@ -42,7 +43,7 @@ import type {
 } from "../experiment-report/index.js";
 import type { RenderedBenchmarkReports } from "../benchmark-stages/index.js";
 
-export const ALPHA_READINESS_REPORT_SCHEMA_VERSION = "itotori.alpha_readiness_report.v0.1" as const;
+export const ALPHA_READINESS_REPORT_SCHEMA_VERSION = "itotori.alpha_readiness_report.v0.2" as const;
 
 /** Convert integer micros-USD to USD. The ONLY permitted cost transform. */
 function microsToUsd(micros: number): number {
@@ -69,7 +70,8 @@ export type AlphaReadinessGateId =
   | "mtl-baseline-included"
   | "cost-ledger-attributed"
   | "quality-evidence-present"
-  | "provider-proof-reconciled";
+  | "provider-proof-reconciled"
+  | "provider-proof-bundle-consumed";
 
 /**
  * One pass/fail gate. `detail` states only facts derived from the composed
@@ -85,7 +87,8 @@ export type AlphaReadinessGate = {
 export type AlphaReadinessFindingKind =
   | "gate_failed"
   | "missing_benchmark_artifact"
-  | "experiment_composition_failed";
+  | "experiment_composition_failed"
+  | "provider_proof_bundle_missing";
 
 /** A structured failure that stays VISIBLE in the readiness output. */
 export type AlphaReadinessFinding = {
@@ -183,6 +186,41 @@ export type AlphaReadinessProviderProof = {
 };
 
 // ─────────────────────────────────────────────────────────────────────────
+// Provider proof BUNDLE section (ALPHA-008).
+//
+// The real-call sanitized provider-proof bundle, consumed as structured
+// EVIDENCE of provider support — routed (served) provider/model, the fallback
+// chain, the structured-output support per role, and the ZDR data-policy flags
+// — so alpha readiness no longer relies on a prose claim that "the provider
+// supports structured output under ZDR". Every value is restated from the
+// validated `AlphaProviderProofSummary`; no raw payload rides along.
+// ─────────────────────────────────────────────────────────────────────────
+
+export type AlphaReadinessProviderProofBundle = {
+  readonly proofId: string;
+  readonly mode: "recorded" | "live";
+  readonly fixtureId: string;
+  readonly servedRoutes: ReadonlyArray<{
+    readonly role: "draft" | "qa";
+    readonly servedModel: string;
+    readonly servedProvider: string;
+    readonly fallbackChain: readonly string[];
+    readonly fallbackOccurred: boolean;
+  }>;
+  readonly structuredOutputSupport: ReadonlyArray<{
+    readonly role: "draft" | "qa";
+    readonly mode: string;
+    readonly accepted: boolean;
+  }>;
+  readonly zdr: {
+    readonly accountAssertion: "asserted" | "recorded_fixture";
+    readonly perRequestZdr: boolean;
+    readonly allLedgerRoutesZdr: boolean;
+  };
+  readonly totalCostUsd: number;
+};
+
+// ─────────────────────────────────────────────────────────────────────────
 // Supplementary private-local section.
 // ─────────────────────────────────────────────────────────────────────────
 
@@ -233,6 +271,8 @@ export type AlphaReadinessReport = {
   readonly cost: AlphaReadinessCostReport;
   readonly quality: AlphaReadinessQualityReport;
   readonly providerProof: AlphaReadinessProviderProof | null;
+  /** ALPHA-008 — the real-call sanitized provider-proof bundle evidence. */
+  readonly providerProofBundle: AlphaReadinessProviderProofBundle | null;
   readonly supplementaryPrivateLocal: AlphaReadinessSupplementaryPrivateLocal;
   readonly findings: readonly AlphaReadinessFinding[];
 };
@@ -249,6 +289,12 @@ export type AlphaReadinessComposeInput = {
   readonly costQualityArtifact: AlphaReadinessCostQualityArtifact;
   /** The ITOTORI-039/100 provider experiment-report composition. */
   readonly experimentComposition: ExperimentReportComposition;
+  /**
+   * ALPHA-008 — the sanitized provider-proof bundle summary (recorded in
+   * public CI, opt-in live locally). Consumed as structured provider-support
+   * evidence; a missing bundle fails the provider-proof-bundle gate.
+   */
+  readonly providerProofSummary?: AlphaProviderProofSummary | null;
   /** On-disk path the provider-proof attachment was written to (for the link). */
   readonly providerProofArtifactPath: string;
   /** Caller-supplied for determinism — the composition never reads the clock. */
@@ -354,12 +400,49 @@ export function composeAlphaReadiness(input: AlphaReadinessComposeInput): AlphaR
     });
   }
 
+  // ── Gate: the real-call provider-proof bundle is consumed as evidence. ────
+  //    Replaces a prose claim about provider support: both roles must have
+  //    produced strict-schema-valid structured output and the served routes
+  //    must be ZDR-enforced.
+  const summary = input.providerProofSummary ?? null;
+  const bundleSection = buildProviderProofBundle(summary);
+  const acceptedRoles = new Set(
+    (summary?.structuredOutputSupport ?? [])
+      .filter((entry) => entry.accepted)
+      .map((entry) => entry.role),
+  );
+  const bundleOk =
+    summary !== null &&
+    summary.servedRoutes.length > 0 &&
+    acceptedRoles.has("draft") &&
+    acceptedRoles.has("qa") &&
+    summary.dataPolicy.allLedgerRoutesZdr;
+  const providerBundleGate: AlphaReadinessGate = {
+    id: "provider-proof-bundle-consumed",
+    title: "Provider-proof bundle consumed as structured-output evidence",
+    status: bundleOk ? "pass" : "fail",
+    detail:
+      bundleOk && summary !== null
+        ? `Bundle '${summary.proofId}' (${summary.mode}): structured output accepted for draft+QA across ${summary.servedRoutes.length} served route(s); all ZDR-enforced.`
+        : summary === null
+          ? "No provider-proof bundle supplied; alpha readiness requires real-call provider evidence, not a prose claim."
+          : `Provider-proof bundle '${summary.proofId}' incomplete: structured-output accepted roles=[${[...acceptedRoles].join(", ")}], servedRoutes=${summary.servedRoutes.length}, allRoutesZdr=${summary.dataPolicy.allLedgerRoutesZdr}.`,
+  };
+  if (!bundleOk) {
+    findings.push({
+      kind: "provider_proof_bundle_missing",
+      gateId: "provider-proof-bundle-consumed",
+      message: providerBundleGate.detail,
+    });
+  }
+
   const gates: AlphaReadinessGate[] = [
     benchmarkRunGate,
     mtlGate,
     costGate,
     qualityGate,
     providerGate,
+    providerBundleGate,
   ];
   for (const gate of gates) {
     if (gate.status === "fail") {
@@ -405,8 +488,40 @@ export function composeAlphaReadiness(input: AlphaReadinessComposeInput): AlphaR
     cost: buildCostReport(report, attachment),
     quality: buildQualityReport(rendered),
     providerProof: buildProviderProof(experimentComposition),
+    providerProofBundle: bundleSection,
     supplementaryPrivateLocal,
     findings,
+  };
+}
+
+function buildProviderProofBundle(
+  summary: AlphaProviderProofSummary | null,
+): AlphaReadinessProviderProofBundle | null {
+  if (summary === null) {
+    return null;
+  }
+  return {
+    proofId: summary.proofId,
+    mode: summary.mode,
+    fixtureId: summary.fixtureId,
+    servedRoutes: summary.servedRoutes.map((route) => ({
+      role: route.role,
+      servedModel: route.servedModel,
+      servedProvider: route.servedProvider,
+      fallbackChain: route.fallbackChain,
+      fallbackOccurred: route.fallbackOccurred,
+    })),
+    structuredOutputSupport: summary.structuredOutputSupport.map((entry) => ({
+      role: entry.role,
+      mode: entry.structuredOutputMode,
+      accepted: entry.accepted,
+    })),
+    zdr: {
+      accountAssertion: summary.dataPolicy.zdrAccountAssertion,
+      perRequestZdr: summary.dataPolicy.perRequestZdr,
+      allLedgerRoutesZdr: summary.dataPolicy.allLedgerRoutesZdr,
+    },
+    totalCostUsd: summary.cost.totalUsd,
   };
 }
 

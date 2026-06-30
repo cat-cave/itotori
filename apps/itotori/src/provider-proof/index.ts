@@ -17,6 +17,10 @@ export {
 } from "./harness.js";
 export { scoreQaAgainstOracle } from "./oracle.js";
 export {
+  buildAlphaProviderProofSummary,
+  renderReadmeSafeProviderProofSummary,
+} from "./alpha-proof-summary.js";
+export {
   PROVIDER_PROOF_LIVE_FLAG,
   PROVIDER_PROOF_LIVE_MAX_PRICE_USD,
   PROVIDER_PROOF_MODEL_ENV,

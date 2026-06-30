@@ -1,0 +1,143 @@
+{
+  "schemaVersion": "itotori.provider-proof-fixture.v0",
+  "fixtureId": "provider-proof-recorded-fallback-v0",
+  "sourceLocale": "ja-JP",
+  "targetLocale": "en-US",
+  "bridgeUnitId": "019ed064-0000-7000-8000-0000000000aa",
+  "seededDefects": [
+    {
+      "seededDefectId": "seed-tone-001",
+      "bridgeUnitId": "019ed064-0000-7000-8000-0000000000b1",
+      "category": "tone",
+      "severity": "minor"
+    },
+    {
+      "seededDefectId": "seed-mistranslation-001",
+      "bridgeUnitId": "019ed064-0000-7000-8000-0000000000b2",
+      "category": "mistranslation",
+      "severity": "major"
+    }
+  ],
+  "roles": {
+    "draft": {
+      "attempts": [
+        {
+          "content": "{\"schemaVersion\":\"itotori.structured-translation-draft-output.v1\",\"drafts\":[{\"bridgeUnitId\":\"019ed064-0000-7000-8000-0000000000aa\",\"sourceLocale\":\"ja-JP\",\"targetLocale\":\"en-US\",\"draftText\":\"Hello, traveler. The gate is now open.\",\"protectedSpanRefs\":[],\"citationRefs\":[],\"agentRationale\":\"draft accepted on the first attempt; preferred provider served\",\"confidenceFloor\":\"medium\"}]}",
+          "providerRun": {
+            "runId": "pp-fb-draft-attempt-0",
+            "taskKind": "draft_translation",
+            "startedAt": "1970-01-01T00:00:00.000Z",
+            "completedAt": "1970-01-01T00:00:00.000Z",
+            "latencyMs": 0,
+            "status": "succeeded",
+            "provider": {
+              "providerFamily": "openrouter",
+              "endpointFamily": "chat-completions",
+              "providerName": "openrouter",
+              "requestedModelId": "deepseek/deepseek-v4-flash",
+              "actualModelId": "deepseek/deepseek-v4-flash",
+              "requestedProviderId": "fireworks",
+              "upstreamProvider": "fireworks"
+            },
+            "structuredOutputMode": "json_object",
+            "retryCount": 0,
+            "errorClasses": [],
+            "fallbackUsed": false,
+            "fallbackPlan": ["deepseek/deepseek-v4-flash"],
+            "tokenUsage": {
+              "tokenCountSource": "deterministic_counter",
+              "promptTokens": 40,
+              "completionTokens": 28,
+              "totalTokens": 68
+            },
+            "cost": {
+              "costKind": "billed",
+              "currency": "USD",
+              "amountUsd": "0.000012",
+              "amountMicrosUsd": 12,
+              "cacheDiscountMicrosUsd": 0
+            },
+            "routingPosture": {
+              "order": ["fireworks", "deepinfra"],
+              "allow_fallbacks": true,
+              "data_collection": "deny",
+              "zdr": true,
+              "require_parameters": true
+            },
+            "usageResponseJson": {
+              "prompt_tokens": 40,
+              "completion_tokens": 28,
+              "total_tokens": 68,
+              "cost": 0.000012
+            },
+            "prompt": {
+              "presetId": "itotori-provider-proof-draft",
+              "templateVersion": "1.0.0",
+              "promptHash": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+            }
+          }
+        }
+      ]
+    },
+    "qa": {
+      "attempts": [
+        {
+          "content": "{\"schemaVersion\":\"itotori.structured-qa-finding-output.v1\",\"findings\":[{\"findingId\":\"019ed064-0000-7000-8000-0000000000f1\",\"bridgeUnitId\":\"019ed064-0000-7000-8000-0000000000b1\",\"severity\":\"minor\",\"category\":\"tone\",\"evidenceRefs\":[\"evidence-tone-001\"],\"recommendation\":\"warm the greeting register\",\"agentRationale\":\"the draft greeting reads colder than the seeded tone expectation\"}]}",
+          "providerRun": {
+            "runId": "pp-fb-qa-attempt-0",
+            "taskKind": "llm_qa",
+            "startedAt": "1970-01-01T00:00:00.000Z",
+            "completedAt": "1970-01-01T00:00:00.000Z",
+            "latencyMs": 0,
+            "status": "succeeded",
+            "provider": {
+              "providerFamily": "openrouter",
+              "endpointFamily": "chat-completions",
+              "providerName": "openrouter",
+              "requestedModelId": "deepseek/deepseek-v4-flash",
+              "actualModelId": "deepseek/deepseek-v4-flash",
+              "requestedProviderId": "fireworks",
+              "upstreamProvider": "deepinfra"
+            },
+            "structuredOutputMode": "json_object",
+            "retryCount": 0,
+            "errorClasses": [],
+            "fallbackUsed": true,
+            "fallbackPlan": ["deepseek/deepseek-v4-flash"],
+            "tokenUsage": {
+              "tokenCountSource": "deterministic_counter",
+              "promptTokens": 55,
+              "completionTokens": 33,
+              "totalTokens": 88
+            },
+            "cost": {
+              "costKind": "billed",
+              "currency": "USD",
+              "amountUsd": "0.000021",
+              "amountMicrosUsd": 21,
+              "cacheDiscountMicrosUsd": 0
+            },
+            "routingPosture": {
+              "order": ["fireworks", "deepinfra"],
+              "allow_fallbacks": true,
+              "data_collection": "deny",
+              "zdr": true,
+              "require_parameters": true
+            },
+            "usageResponseJson": {
+              "prompt_tokens": 55,
+              "completion_tokens": 33,
+              "total_tokens": 88,
+              "cost": 0.000021
+            },
+            "prompt": {
+              "presetId": "itotori-provider-proof-qa",
+              "templateVersion": "1.0.0",
+              "promptHash": "sha256:5555555555555555555555555555555555555555555555555555555555555555"
+            }
+          }
+        }
+      ]
+    }
+  }
+}
