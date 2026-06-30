@@ -582,6 +582,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "kaifuu-rpgmaker"
+version = "0.0.0"
+dependencies = [
+ "kaifuu-core",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "thiserror",
+]
+
+[[package]]
 name = "kaifuu-vault-source"
 version = "0.0.0"
 dependencies = [

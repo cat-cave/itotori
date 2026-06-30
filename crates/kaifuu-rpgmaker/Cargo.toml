@@ -1,0 +1,17 @@
+[package]
+name = "kaifuu-rpgmaker"
+version = "0.0.0"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Pure-Rust RPG Maker MV/MZ www/data/*.json text-extraction adapter: walks event-command lists and database surfaces, emits a localization-bridge v0.2 extraction bundle keyed by stable JSON-pointer surfaces. No shell-outs; deterministic."
+
+[dependencies]
+kaifuu-core = { path = "../kaifuu-core" }
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
