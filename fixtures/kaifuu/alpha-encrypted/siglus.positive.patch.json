@@ -5,8 +5,6 @@
   "sourceNodeId": "KAIFUU-104",
   "status": "passed",
   "patchBack": "repack_archive",
-  "touchedAssets": [
-    "scene/000.ss"
-  ],
+  "touchedAssets": ["scene/000.ss"],
   "outputHash": "sha256:a148cdf64c33a631e130a3d6f018cb219a138cd2a0726d579b339c1c4f21a2ed"
 }
