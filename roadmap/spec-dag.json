@@ -43037,6 +43037,41 @@
         "crates/kaifuu-reallive/tests/support/real_corpus.rs",
         "fix-second-reallive-corpus verification cmd"
       ]
+    },
+    {
+      "id": "harden-flaky-chromium-version-probe-test",
+      "title": "[flaky] Make browser chromium-version-mismatch test hermetic (races to CaptureFailed under full-suite load)",
+      "kind": "audit-fix",
+      "milestone": null,
+      "status": "ready",
+      "priority": "P2",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "crates/utsushi-fixture/src/launch_adapters.rs:1929 test browser_run_returns_chromium_version_mismatch_when_version_too_old passes 3/3 in isolation but intermittently fails under full qd-full-ci concurrency: asserts ChromiumVersionMismatch, gets CaptureFailed (the real Chromium version probe races/times out under parallel test load). Pre-existing flake (not introduced by fix-second-reallive-corpus/ITOTORI-118). Make the version-mismatch path hermetic — inject a fake probe outcome instead of shelling to a real browser, so the version-too-old branch is deterministic.",
+      "acceptance": "The chromium-version-mismatch test injects a deterministic probe outcome (no real browser shell-out in the version-mismatch path); passes reliably under full qd-full-ci concurrency (10x consecutive full-suite runs green); just ci green.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-30T17:09:11.749Z",
+      "updated_at": "2026-06-30T17:09:11.749Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["utsushi"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "just ci"
+        }
+      ],
+      "audit_focus": ["crates/utsushi-fixture/src/launch_adapters.rs:1929"]
     }
   ],
   "edges": [
