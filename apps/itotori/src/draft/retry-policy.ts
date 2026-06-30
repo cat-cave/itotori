@@ -243,12 +243,23 @@ function classifyProviderRateLimit(failure: {
 // ---------------------------------------------------------------------------
 
 /**
- * Schema-validation rules that indicate the model omitted a required
- * field (rather than a recoverable shape glitch). Rules in this set are
- * **non-retryable** per the spec — a re-emit will not fix them, and
- * we route them to manual triage.
+ * Schema-validation rules that indicate the model omitted (or emptied) a
+ * required field, rather than emitting a recoverable shape glitch. Rules
+ * in this set are **non-retryable** per the spec — a re-emit will not fix
+ * them, and we route them to manual triage:
+ *
+ *   - "required": the validator (translation-draft.ts) raises this when a
+ *     required field is genuinely absent from the object.
+ *   - "minLength": a required string was present but empty.
+ *
+ * NOTE: "type" is deliberately NOT in this set. The validator emits
+ * "type" only for a field that is present with the wrong type (a
+ * type-coercion glitch — e.g. a number where a string is expected),
+ * which is recoverable by re-emission and therefore retryable per the
+ * header spec (lines 13-18). Genuinely-missing fields are reported as
+ * "required", not "type".
  */
-const MISSING_REQUIRED_FIELD_RULES: ReadonlyArray<string> = ["required", "type", "minLength"];
+const MISSING_REQUIRED_FIELD_RULES: ReadonlyArray<string> = ["required", "minLength"];
 
 function isMissingRequiredFieldRule(rule: string): boolean {
   return MISSING_REQUIRED_FIELD_RULES.includes(rule);

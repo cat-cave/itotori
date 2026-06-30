@@ -177,6 +177,15 @@ export function assertStructuredTranslationDraftOutput(
       );
     }
   }
+  for (const key of ["schemaVersion", "drafts"]) {
+    if (!(key in record)) {
+      throw new TranslationDraftResponseValidationError(
+        key,
+        "required",
+        `missing required field ${key}`,
+      );
+    }
+  }
   if (record.schemaVersion !== STRUCTURED_TRANSLATION_DRAFT_OUTPUT_SCHEMA_VERSION) {
     throw new TranslationDraftResponseValidationError(
       "schemaVersion",
@@ -213,6 +222,15 @@ function assertDraft(value: unknown, label: string): asserts value is Translatio
         `${label}.${key}`,
         "additionalProperties",
         `unexpected property ${key}`,
+      );
+    }
+  }
+  for (const key of allowed) {
+    if (!(key in record)) {
+      throw new TranslationDraftResponseValidationError(
+        `${label}.${key}`,
+        "required",
+        `missing required field ${key}`,
       );
     }
   }
@@ -269,6 +287,15 @@ function assertProtectedSpanRef(value: unknown, label: string): asserts value is
         `${label}.${key}`,
         "additionalProperties",
         `unexpected property ${key}`,
+      );
+    }
+  }
+  for (const key of allowed) {
+    if (!(key in record)) {
+      throw new TranslationDraftResponseValidationError(
+        `${label}.${key}`,
+        "required",
+        `missing required field ${key}`,
       );
     }
   }

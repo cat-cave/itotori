@@ -322,9 +322,9 @@ describe("routeFailedAttempt", () => {
     const failure: DraftFailure = {
       kind: "schema_validation",
       error: new TranslationDraftResponseValidationError(
-        "drafts[0].draftText",
-        "type",
-        "expected string",
+        "drafts[0].confidenceFloor",
+        "required",
+        "missing required field confidenceFloor",
       ),
       attemptIndexCurrent: 0,
     };

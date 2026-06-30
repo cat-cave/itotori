@@ -32,7 +32,29 @@ function spanViolation(
 }
 
 describe("RetryPolicy.classify(schema_validation)", () => {
-  it("non-retryable when rule indicates a missing required field (type)", () => {
+  it("non-retryable when rule='required' (the model omitted a required field)", () => {
+    const policy = new RetryPolicy();
+    const failure: DraftFailure = {
+      kind: "schema_validation",
+      error: new TranslationDraftResponseValidationError(
+        "drafts[0].confidenceFloor",
+        "required",
+        "missing required field confidenceFloor",
+      ),
+      attemptIndexCurrent: 0,
+    };
+    const result = policy.classify(failure);
+    expect(result.retryable).toBe(false);
+    if (result.retryable === false) {
+      expect(result.terminalReason).toContain("drafts[0].confidenceFloor");
+      expect(result.terminalReason).toContain("required");
+    }
+  });
+
+  it("retryable when rule='type' (a present field has the wrong type — coercible)", () => {
+    // Regression: rule 'type' is a recoverable type-coercion glitch (e.g.
+    // a number where a string is expected), NOT a missing field. It must
+    // stay retryable per the header spec — a re-emit can fix the shape.
     const policy = new RetryPolicy();
     const failure: DraftFailure = {
       kind: "schema_validation",
@@ -44,10 +66,11 @@ describe("RetryPolicy.classify(schema_validation)", () => {
       attemptIndexCurrent: 0,
     };
     const result = policy.classify(failure);
-    expect(result.retryable).toBe(false);
-    if (result.retryable === false) {
-      expect(result.terminalReason).toContain("drafts[0].draftText");
-      expect(result.terminalReason).toContain("type");
+    expect(result.retryable).toBe(true);
+    if (result.retryable === true) {
+      expect(result.attemptIndexNext).toBe(1);
+      expect(result.repairHint).toContain("drafts[0].draftText");
+      expect(result.repairHint).toContain("type");
     }
   });
 

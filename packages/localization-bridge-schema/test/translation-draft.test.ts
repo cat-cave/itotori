@@ -75,6 +75,43 @@ describe("StructuredTranslationDraftOutput", () => {
     expect(() => assertStructuredTranslationDraftOutput(value)).toThrow(/confidenceFloor/);
   });
 
+  it("reports a genuinely-missing required field with rule 'required' (non-retryable)", () => {
+    // A missing field is unrecoverable by re-emission and must be reported
+    // as 'required' (not 'type'), so the RetryPolicy routes it to triage.
+    const value = validOutput({
+      drafts: [validDraft({ confidenceFloor: undefined })],
+    });
+    const draft = (value.drafts as Array<Record<string, unknown>>)[0]!;
+    delete draft.confidenceFloor;
+    try {
+      assertStructuredTranslationDraftOutput(value);
+      throw new Error("expected a validation error");
+    } catch (error) {
+      expect(error).toBeInstanceOf(TranslationDraftResponseValidationError);
+      if (error instanceof TranslationDraftResponseValidationError) {
+        expect(error.rule).toBe("required");
+        expect(error.path).toBe("drafts[0].confidenceFloor");
+      }
+    }
+  });
+
+  it("reports a present-but-wrong-type field with rule 'type' (retryable coercion)", () => {
+    // A field that is present with the wrong type is a recoverable
+    // coercion glitch — reported as 'type' so the RetryPolicy retries it.
+    try {
+      assertStructuredTranslationDraftOutput(
+        validOutput({ drafts: [validDraft({ draftText: 42 })] }),
+      );
+      throw new Error("expected a validation error");
+    } catch (error) {
+      expect(error).toBeInstanceOf(TranslationDraftResponseValidationError);
+      if (error instanceof TranslationDraftResponseValidationError) {
+        expect(error.rule).toBe("type");
+        expect(error.path).toBe("drafts[0].draftText");
+      }
+    }
+  });
+
   it("rejects unknown top-level properties", () => {
     expect(() =>
       assertStructuredTranslationDraftOutput({
