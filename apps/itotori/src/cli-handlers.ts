@@ -32,6 +32,7 @@ import {
 } from "./asset-decisions/cli.js";
 import { assertBridgeInput } from "./api-schema.js";
 import type { ManualFeedbackImportPort } from "./manual-feedback.js";
+import type { DraftFeedbackBatchInput, DraftFeedbackBatchPort } from "./draft-feedback/index.js";
 import type { ItotoriProjectWorkflowPort, ProjectState } from "./services/project-workflow.js";
 import type { PlanBatchesOutput } from "./batch-planner/index.js";
 import {
@@ -91,6 +92,7 @@ export type JsonFileStore = {
 export type ItotoriCliServices = {
   projectWorkflow: ItotoriProjectWorkflowPort;
   manualFeedback: ManualFeedbackImportPort;
+  draftFeedbackBatch: DraftFeedbackBatchPort;
   catalogExactExternalIdLinker: ItotoriCatalogExactExternalIdLinkerPort;
   catalogFuzzyCandidateGenerator: ItotoriCatalogFuzzyCandidateGeneratorPort;
   styleGuideFixtureFlow: {
@@ -188,6 +190,9 @@ export async function runItotoriCliCommand(
       break;
     case "import-feedback":
       await runImportFeedback(args, dependencies);
+      break;
+    case "import-feedback-batch":
+      await runImportFeedbackBatch(args, dependencies);
       break;
     case "catalog-link-exact":
       await runCatalogLinkExact(args, dependencies);
@@ -618,6 +623,19 @@ async function runImportFeedback(
   const feedback = dependencies.io.readJson(feedbackPath);
   const result = await dependencies.withServices((services) =>
     services.manualFeedback.importManualFeedback(feedback),
+  );
+  dependencies.io.writeJson(outputPath, result);
+}
+
+async function runImportFeedbackBatch(
+  args: string[],
+  dependencies: ItotoriCliDependencies,
+): Promise<void> {
+  const batchPath = requiredFlag(args, "--batch");
+  const outputPath = requiredFlag(args, "--output");
+  const batch = dependencies.io.readJson(batchPath) as DraftFeedbackBatchInput;
+  const result = await dependencies.withServices((services) =>
+    services.draftFeedbackBatch.submitBatch(batch),
   );
   dependencies.io.writeJson(outputPath, result);
 }

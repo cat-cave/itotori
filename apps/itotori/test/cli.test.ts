@@ -875,6 +875,16 @@ function servicesFixture(): ItotoriCliServices {
     manualFeedback: {
       importManualFeedback: vi.fn(async () => manualFeedbackResultFixture),
     },
+    draftFeedbackBatch: {
+      submitBatch: vi.fn(async () => ({
+        batchId: "draft-feedback-batch-fixture",
+        submittedCount: 0,
+        items: [],
+        repairCandidateReportIds: [],
+        decisionQueueReportIds: [],
+        affectedBridgeUnitIds: [],
+      })),
+    },
     catalogExactExternalIdLinker: {
       linkExactExternalIds: vi.fn(async () => exactLinkResultFixture),
     },

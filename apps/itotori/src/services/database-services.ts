@@ -69,6 +69,7 @@ import {
   type ItotoriAuthorizationPort,
 } from "../auth.js";
 import { ManualFeedbackImportService, type ManualFeedbackImportPort } from "../manual-feedback.js";
+import { DraftFeedbackBatchService, type DraftFeedbackBatchPort } from "../draft-feedback/index.js";
 import {
   ReviewerQueueApiService,
   type ReviewerQueueApiServicePort,
@@ -86,6 +87,7 @@ export type ItotoriApplicationServices = {
   authorization: ItotoriAuthorizationPort;
   projectWorkflow: ItotoriProjectWorkflowPort;
   manualFeedback: ManualFeedbackImportPort;
+  draftFeedbackBatch: DraftFeedbackBatchPort;
   catalogRepository: {
     catalogConflictReview(
       filter?: CatalogConflictReviewFilter,
@@ -286,6 +288,11 @@ export async function withDatabaseItotoriServices<T>(
       draftAttemptProviderLedgerRepository,
       modelLedgerRepository,
     );
+    const manualFeedbackService = new ManualFeedbackImportService(
+      feedbackRepository,
+      localUserActor,
+      reviewerQueueRepository,
+    );
     return await callback({
       authorization: new ItotoriAuthorizationService(context.db, localUserActor),
       projectWorkflow: new ItotoriProjectWorkflowService(
@@ -295,11 +302,8 @@ export async function withDatabaseItotoriServices<T>(
         modelLedgerRepository,
         translationMemoryService,
       ),
-      manualFeedback: new ManualFeedbackImportService(
-        feedbackRepository,
-        localUserActor,
-        reviewerQueueRepository,
-      ),
+      manualFeedback: manualFeedbackService,
+      draftFeedbackBatch: new DraftFeedbackBatchService(manualFeedbackService),
       catalogRepository: {
         catalogConflictReview: (filter) =>
           catalogRepository.catalogConflictReview(localUserActor, filter),
