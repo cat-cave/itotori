@@ -37139,7 +37139,7 @@
       "title": "[audit-2] Public-input calls send allow_fallbacks:true but the post-response pair check rejects any fallback",
       "kind": "audit-fix",
       "milestone": "alpha",
-      "status": "ready",
+      "status": "cancelled",
       "priority": "P3",
       "estimate_points": 1,
       "risk": "medium",
@@ -37150,7 +37150,7 @@
       "validation": null,
       "context": null,
       "created_at": "2026-06-30T01:54:34.761Z",
-      "updated_at": "2026-06-30T01:55:18.733Z",
+      "updated_at": "2026-06-30T03:21:11.273Z",
       "claimed_at": null,
       "done_at": null,
       "group_name": null,
@@ -37406,6 +37406,41 @@
         "No-legacy: the old buggy path is deleted, not flag-gated or dual-plumbed.",
         "The new test asserts the CORRECTED behavior on a real case, not a tautology."
       ]
+    },
+    {
+      "id": "telemetry-served-provider-breakdown-additive-to-bypair",
+      "title": "Add served-provider cost breakdown to telemetry-summary (byPair keys on requested; surface real served split)",
+      "kind": "feature",
+      "milestone": "alpha",
+      "status": "ready",
+      "priority": "P3",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "Follow-up from localize-project-stage-telemetry-ledger-empty-bypair (telemetry Option B): the telemetry byPair aggregation keys on the REQUESTED (modelId, providerId) pair (for verify-artifacts.mjs startsWith compat + because OR returns served strings that differ by casing/version, e.g. Fireworks vs fireworks, deepseek-v4-flash-20260423). The REAL SERVED provider (upstreamProvider) + served model snapshot are preserved per-invocation in the provider-run.json artifact (asserted by the verifier's ZDR + billed-cost checks), but the byPair SUMMARY does not surface served-provider breakdown. Per the model-provider-pair law (\"providers are not equivalent\") + Trevor's record-the-real-served-provider decision, cost/quality analysis benefits from a byServedPair view. Consider adding a served-provider breakdown to telemetry-summary (alongside the requested-pair byPair), normalizing served strings (case/version) to canonical provider ids, so a run that OR-fallback-served via DigitalOcean(6)+Fireworks(5) shows the real per-served-provider cost split. Does NOT replace the requested-pair byPair (verifier depends on it); ADDS a served view.\n",
+      "acceptance": "- telemetry-summary reports a served-provider breakdown (real served upstreamProvider per invocation, normalized to canonical ids) IN ADDITION to the requested-pair byPair, with real billed cost split per served provider (verbatim usage.cost, never approximated).\n- The existing verify-artifacts.mjs requested-pair byPair check still passes (served view is additive).\n- A test on a multi-served-provider run (e.g. fixture mirroring the UTSUSHI-231 DigitalOcean+Fireworks split) asserts the served breakdown sums to the total billed cost.\n",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-30T03:21:11.405Z",
+      "updated_at": "2026-06-30T03:21:11.498Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["itotori"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/app exec vitest run telemetry"
+        }
+      ],
+      "audit_focus": []
     }
   ],
   "edges": [
