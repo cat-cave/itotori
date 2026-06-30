@@ -163,9 +163,7 @@ function pairKey(pair) {
 // snapshot of it — never a different base model. `requestedModelId`
 // stays strict (we always request the canonical alias).
 function servedModelMatchesExpected(actualModelId, expectedModelId) {
-  return (
-    actualModelId === expectedModelId || actualModelId.startsWith(`${expectedModelId}-`)
-  );
+  return actualModelId === expectedModelId || actualModelId.startsWith(`${expectedModelId}-`);
 }
 
 function parseFiniteUsd(value, label) {
