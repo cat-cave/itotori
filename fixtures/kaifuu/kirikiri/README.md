@@ -30,6 +30,38 @@ private paths, or private keys. The plain archive is byte-identical to
 | `xp3-helper-required-profile.json`      | `helper_required`                  | `unsupported`    |
 | `xp3-protected-executable-profile.json` | `unsupported_protected_executable` | `unsupported`    |
 
+## Capability profile (KAIFUU-054)
+
+`xp3-capability-profile.json` is the aggregate **capability-profile manifest**
+consumed by `kaifuu xp3 capability-profile --fixture
+fixtures/kaifuu/kirikiri/xp3-capability-profile.json`. It is **generated** —
+never hand-authored — from the detector proof fixtures above, the KAIFUU-085
+key/helper results, the crypt-profile routing taxonomy, and the archive bytes.
+Each entry's capability tuple is recomputed from that evidence; the manifest's
+declared `expected` block only drives structured validation findings.
+
+THE LINE is mechanical, not prose: only **plain** XP3 enters the `claimed`
+tier (detect + extract + patch-back). Encrypted, helper-required,
+protected-executable, and universal-dump entries are `research`-tier routing
+diagnostics that can never advertise a patch-back claim. Plaintext `.ks`
+(`plain-script.ks`) is the `null_container` special case, explicitly **not**
+the commercial KiriKiri baseline.
+
+| Entry                         | Variant                | Support tier     |
+| ----------------------------- | ---------------------- | ---------------- |
+| `plaintext-ks-null-container` | `plaintext_ks`         | `null_container` |
+| `plain-xp3`                   | `plain_xp3`            | `claimed`        |
+| `encrypted-xp3`               | `encrypted_xp3`        | `research`       |
+| `helper-required-xp3`         | `helper_required_xp3`  | `research`       |
+| `protected-executable`        | `protected_executable` | `research`       |
+| `universal-dump`              | `universal_dump`       | `research`       |
+
+The generated report carries only counts and hashes (never raw archive bytes,
+keys, helper dumps, decrypted text, private archive names, or local paths). The
+validator emits structured findings — never a panic — on bad detector evidence,
+helper-requirement / keyRef-state / archive-hash mismatches, a patch-capability
+tuple mismatch, or a non-plain variant declaring a patch claim.
+
 ## Negative fixtures
 
 Negative fixtures under `negative/` intentionally trip blocking

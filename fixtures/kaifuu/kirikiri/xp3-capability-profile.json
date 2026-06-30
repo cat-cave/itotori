@@ -1,0 +1,99 @@
+{
+  "schemaVersion": "0.1.0",
+  "capabilityProfileId": "kaifuu-kirikiri-xp3-capability-profile",
+  "sourceNodeId": "KAIFUU-054",
+  "engineFamily": "kiri_kiri_xp3",
+  "entries": [
+    {
+      "entryId": "plaintext-ks-null-container",
+      "variant": "plaintext_ks",
+      "workflow": "plaintext-ks-null-container",
+      "plaintextSource": "plain-script.ks",
+      "expected": {
+        "supportTier": "null_container",
+        "patchCapability": "detect",
+        "helperRequirement": "not_required",
+        "cryptProfileStatus": "not_required",
+        "keyRefPresent": false,
+        "archiveHash": "sha256:bb6988203f92e5dd05f3101661331aba9ea0eaff9ece75c3732bdf69411127e6"
+      }
+    },
+    {
+      "entryId": "plain-xp3",
+      "variant": "plain_xp3",
+      "workflow": "plain-xp3-detect-extract-patchback",
+      "detectorFixture": "xp3-profile.json",
+      "expected": {
+        "supportTier": "claimed",
+        "classification": "plain",
+        "patchCapability": "patch_back",
+        "helperRequirement": "not_required",
+        "cryptProfileStatus": "not_required",
+        "keyRefPresent": false,
+        "archiveHash": "sha256:fb642b2532ebaa678517505c3173ea06ed5ccadd6658b2d2e92ea408a0196faa",
+        "entryCount": 3
+      }
+    },
+    {
+      "entryId": "encrypted-xp3",
+      "variant": "encrypted_xp3",
+      "workflow": "encrypted-xp3-routing-diagnostics",
+      "detectorFixture": "xp3-encrypted-profile.json",
+      "expected": {
+        "supportTier": "research",
+        "classification": "encrypted",
+        "patchCapability": "unsupported",
+        "helperRequirement": "not_required",
+        "cryptProfileStatus": "satisfied",
+        "keyRefPresent": true,
+        "archiveHash": "sha256:605192c9e412fa27de16469df6d5badd165797bc8f698a3a3d759fe8636558ca"
+      }
+    },
+    {
+      "entryId": "helper-required-xp3",
+      "variant": "helper_required_xp3",
+      "workflow": "helper-required-xp3-routing-diagnostics",
+      "detectorFixture": "xp3-helper-required-profile.json",
+      "helperResultFixture": "../../public/kaifuu-helper-results/xp3/helper-required.json",
+      "expected": {
+        "supportTier": "research",
+        "classification": "helper_required",
+        "patchCapability": "unsupported",
+        "helperRequirement": "required",
+        "cryptProfileStatus": "satisfied",
+        "keyRefPresent": true,
+        "archiveHash": "sha256:5d492696d0b90f37ce00ecf12542b5cd0559f601b1481edb1213d27673e0ca06"
+      }
+    },
+    {
+      "entryId": "protected-executable",
+      "variant": "protected_executable",
+      "workflow": "protected-executable-routing-diagnostics",
+      "detectorFixture": "xp3-protected-executable-profile.json",
+      "expected": {
+        "supportTier": "research",
+        "classification": "unsupported_protected_executable",
+        "patchCapability": "unsupported",
+        "helperRequirement": "not_required",
+        "cryptProfileStatus": "not_required",
+        "keyRefPresent": false,
+        "archiveHash": "sha256:03f07864aa2f7d7a77934b921ac125dcd91823d2e84636d6a8761806a6a14ed0"
+      }
+    },
+    {
+      "entryId": "universal-dump",
+      "variant": "universal_dump",
+      "workflow": "universal-dump-triage-research",
+      "detectorFixture": "xp3-encrypted-profile.json",
+      "expected": {
+        "supportTier": "research",
+        "classification": "encrypted",
+        "patchCapability": "unsupported",
+        "helperRequirement": "not_required",
+        "cryptProfileStatus": "satisfied",
+        "keyRefPresent": true,
+        "archiveHash": "sha256:605192c9e412fa27de16469df6d5badd165797bc8f698a3a3d759fe8636558ca"
+      }
+    }
+  ]
+}

@@ -166,6 +166,7 @@ pub mod mv_mz_readiness;
 mod offset_map;
 pub mod patch_transaction;
 pub mod registry;
+pub mod xp3_capability_profile;
 
 pub use registry::{AdapterCapabilityMatrix, CapabilityLevel, CapabilityLevelStatus};
 
@@ -174,6 +175,16 @@ pub use mv_mz_readiness::{
     MvMzFixtureManifest, MvMzFixtureProfile, MvMzJsonTextSurface, MvMzNegativeFixture,
     MvMzReadinessRecord, MvMzReadinessViolation, MvMzSurfaceRole, generate_mv_mz_fixture_tree,
     mv_mz_fixture_manifest,
+};
+
+pub use xp3_capability_profile::{
+    SEMANTIC_CAPABILITY_ENCRYPTED_PATCH_OVERCLAIM, SEMANTIC_CAPABILITY_EVIDENCE_MISMATCH,
+    XP3_CAPABILITY_PROFILE_SCHEMA_VERSION, XP3_CAPABILITY_PROFILE_SUPPORT_BOUNDARY,
+    Xp3CapabilityArchiveProfile, Xp3CapabilityFinding, Xp3CapabilityKeyHelperRequirement,
+    Xp3CapabilityProfileEntryReport, Xp3CapabilityProfileExpected, Xp3CapabilityProfileFixture,
+    Xp3CapabilityProfileFixtureEntry, Xp3CapabilityProfileReport, Xp3CapabilityProfileRequest,
+    Xp3CapabilitySupportTier, Xp3CapabilityTuple, Xp3CapabilityVariant, derive_support_tier,
+    generate_xp3_capability_profile,
 };
 
 pub use patch_transaction::{

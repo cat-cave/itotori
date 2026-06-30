@@ -19,15 +19,16 @@ use kaifuu_core::{
     SEMANTIC_HELPER_CANCELLED, SEMANTIC_HELPER_EXECUTION_DISALLOWED, SEMANTIC_HELPER_EXIT_FAILURE,
     SEMANTIC_HELPER_IO_FAILURE, SEMANTIC_HELPER_OUTPUT_OVERFLOW, SEMANTIC_HELPER_TIMEOUT,
     SEMANTIC_HELPER_UNAVAILABLE, SecretRef, SiglusParserBoundarySmokeRequest,
-    SiglusParserBoundarySmokeVariant, VerifyRequest, Xp3ProfileProofFixture,
-    Xp3ProfileProofRequest, atomic_write_text, encode_xp3, encrypted_media_proof,
-    fixture_helper_registry, normalize_helper_result_value, pack_plain_xp3_from_directory,
-    parse_helper_capability, parse_hex_bytes, plain_xp3_writer_capability,
-    promote_staged_directory_no_clobber, read_json, read_plain_xp3_archive,
-    redact_for_log_or_report, redact_report_value, replace_plain_xp3_entry_payload,
-    run_registered_bounded_helper_process, run_registered_bounded_helper_process_with_output,
-    run_round_trip_golden, run_siglus_known_key_parser_boundary_smoke, sha256_hash_bytes,
-    stable_json, unpack_plain_xp3_to_directory, validate_helper_registry_entry_value,
+    SiglusParserBoundarySmokeVariant, VerifyRequest, Xp3CapabilityProfileFixture,
+    Xp3CapabilityProfileRequest, Xp3ProfileProofFixture, Xp3ProfileProofRequest, atomic_write_text,
+    encode_xp3, encrypted_media_proof, fixture_helper_registry, generate_xp3_capability_profile,
+    normalize_helper_result_value, pack_plain_xp3_from_directory, parse_helper_capability,
+    parse_hex_bytes, plain_xp3_writer_capability, promote_staged_directory_no_clobber, read_json,
+    read_plain_xp3_archive, redact_for_log_or_report, redact_report_value,
+    replace_plain_xp3_entry_payload, run_registered_bounded_helper_process,
+    run_registered_bounded_helper_process_with_output, run_round_trip_golden,
+    run_siglus_known_key_parser_boundary_smoke, sha256_hash_bytes, stable_json,
+    unpack_plain_xp3_to_directory, validate_helper_registry_entry_value,
     validate_helper_result_value, validate_offset_map_value, validate_profile_value,
     validate_rpg_maker_mv_mz_fixture_key, write_json, xp3_profile_proof,
 };
@@ -1202,15 +1203,73 @@ fn run_xp3_command(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
                 None => println!("{json}"),
             }
         }
+        "capability-profile" => {
+            return run_xp3_capability_profile(args);
+        }
         "contract-scaffold" => {
             return run_xp3_contract_scaffold(args);
         }
         _ => {
             return Err(
-                "usage: kaifuu xp3 <profile-proof|unpack|pack|replace|verify|writer-capability|contract-scaffold> ..."
+                "usage: kaifuu xp3 <profile-proof|capability-profile|unpack|pack|replace|verify|writer-capability|contract-scaffold> ..."
                     .into(),
             );
         }
+    }
+    Ok(())
+}
+
+/// KAIFUU-054 — `kaifuu xp3 capability-profile --fixture <manifest>
+/// [--output <report.json>]`.
+///
+/// Generates (and inseparably validates) a KiriKiri XP3 capability profile
+/// from the manifest's detector / key-helper / crypt-profile / archive fixture
+/// evidence. The capability tuple of every entry is recomputed from evidence:
+/// only plain XP3 enters the `claimed` tier, encrypted / helper-required /
+/// protected-executable / universal-dump entries are `research`-tier routing
+/// diagnostics, and plaintext `.ks` is the `null_container` special case. The
+/// redacted report is written to `--output` (or stdout) and the command exits
+/// non-zero, listing each entry's blocking finding codes, when any entry fails
+/// validation against its evidence.
+fn run_xp3_capability_profile(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
+    let fixture_path = PathBuf::from(flag(args, "--fixture")?);
+    let fixture: Xp3CapabilityProfileFixture = read_json(&fixture_path)?;
+    let fixture_dir = fixture_path
+        .parent()
+        .ok_or("fixture path must have a parent directory")?;
+    let fixture_file_name = fixture_path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or("fixture path must have a file name")?;
+    let report = generate_xp3_capability_profile(Xp3CapabilityProfileRequest {
+        fixture: &fixture,
+        fixture_dir,
+        fixture_file_name,
+    })?;
+    let redacted = report.redacted_for_report();
+    let json = redacted.stable_json()?;
+    match flag_optional(args, "--output") {
+        Some(output) => atomic_write_text(&PathBuf::from(output), &json)?,
+        None => println!("{json}"),
+    }
+    if redacted.status == kaifuu_core::OperationStatus::Failed {
+        let failures = redacted
+            .entries
+            .iter()
+            .filter(|entry| entry.status == kaifuu_core::OperationStatus::Failed)
+            .map(|entry| {
+                let codes = entry
+                    .findings
+                    .iter()
+                    .filter(|finding| finding.severity.is_blocking())
+                    .map(|finding| format!("{}:{}", finding.severity.as_str(), finding.code))
+                    .collect::<Vec<_>>()
+                    .join(",");
+                format!("{} [{}]", entry.entry_id, codes)
+            })
+            .collect::<Vec<_>>()
+            .join("; ");
+        return Err(format!("XP3 capability profile validation failed: {failures}").into());
     }
     Ok(())
 }
