@@ -78273,6 +78273,28 @@
       "finished_at": "2026-06-30T07:18:45.927Z",
       "summary": "Merge recorded with squash at commit 2efa71f",
       "log_path": null
+    },
+    {
+      "id": "829b7803-4c45-474b-94d9-568757fb53b6",
+      "node_id": "a3c-ga3-053-47",
+      "kind": "verification",
+      "status": "failed",
+      "command": "! test -d packages/test-fixtures",
+      "provider": "local",
+      "exit_code": 1,
+      "git_sha": null,
+      "external_id": null,
+      "url": null,
+      "rationale": null,
+      "superseded_by": null,
+      "report_path": null,
+      "audit_kind": null,
+      "worktree_path": null,
+      "agent": null,
+      "started_at": "2026-06-30T07:19:08.517Z",
+      "finished_at": "2026-06-30T07:19:08.528Z",
+      "summary": "verification command failed: ! test -d packages/test-fixtures",
+      "log_path": null
     }
   ],
   "node_notes": [
