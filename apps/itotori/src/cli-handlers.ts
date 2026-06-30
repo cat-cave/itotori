@@ -72,6 +72,15 @@ import {
 } from "./telemetry/provider-run-artifact-source.js";
 import type { TelemetryQuery } from "./telemetry/queries.js";
 import { runReviewQueueFixtureCommand } from "./reviewer/review-queue-fixture-command.js";
+import {
+  DEFAULT_PUBLIC_BENCHMARK_REPORT_FIXTURE_PATH,
+  DEFAULT_PUBLIC_BENCHMARK_SEEDS_FIXTURE_PATH,
+  DEFAULT_PUBLIC_BENCHMARK_SETS_FIXTURE_PATH,
+  benchmarkSetReadModelFromSeedsFixture,
+  benchmarkSetSelectionInputFromSetsFixture,
+  buildPublicBenchmarkHarnessStages,
+  runBenchmarkHarnessCommand,
+} from "./benchmark-harness/index.js";
 import { scanCatalogLocalRoot } from "./services/catalog-local-scan.js";
 
 export type JsonFileStore = {
@@ -228,6 +237,9 @@ export async function runItotoriCliCommand(
       break;
     case "review-queue-fixture":
       await runReviewQueueFixtureHandler(args, dependencies);
+      break;
+    case "benchmark-harness-run":
+      await runBenchmarkHarnessHandler(args, dependencies);
       break;
     default:
       throw new Error(`unknown itotori command: ${String(command)}`);
@@ -688,6 +700,55 @@ async function runStyleGuideFixtureFlow(
     }),
   );
   dependencies.io.writeJson(outputPath, result);
+}
+
+async function runBenchmarkHarnessHandler(
+  args: string[],
+  dependencies: ItotoriCliDependencies,
+): Promise<void> {
+  // Public-fixture-only run: every input defaults to a checked-in public
+  // fixture, so the command completes with no private corpora and no live
+  // provider credentials.
+  const seedsPath =
+    optionalFlag(args, "--benchmark-seeds") ?? DEFAULT_PUBLIC_BENCHMARK_SEEDS_FIXTURE_PATH;
+  const setsPath =
+    optionalFlag(args, "--benchmark-sets") ?? DEFAULT_PUBLIC_BENCHMARK_SETS_FIXTURE_PATH;
+  const reportPath =
+    optionalFlag(args, "--benchmark-report") ?? DEFAULT_PUBLIC_BENCHMARK_REPORT_FIXTURE_PATH;
+  const outputDir = optionalFlag(args, "--output-dir") ?? "artifacts/itotori/benchmark-harness";
+
+  const benchmarkSetReadModel = benchmarkSetReadModelFromSeedsFixture(
+    dependencies.io.readJson(seedsPath),
+  );
+  const benchmarkSetSelectionInput = benchmarkSetSelectionInputFromSetsFixture(
+    dependencies.io.readJson(setsPath),
+    benchmarkSetReadModel.targetLanguage,
+  );
+  const stages = buildPublicBenchmarkHarnessStages({
+    benchmarkSetReadModel,
+    benchmarkSetSelectionInput,
+    benchmarkReport: dependencies.io.readJson(reportPath),
+  });
+
+  const manifest = await runBenchmarkHarnessCommand({
+    benchmarkRunId: "019ed026-0000-7000-8000-000000000001",
+    benchmarkName: "itotori-026 public-fixture benchmark harness run",
+    generatedAt: "2026-06-26T00:00:00.000Z",
+    outputDir,
+    stages,
+    io: { writeJson: (path, value) => dependencies.io.writeJson(path, value) },
+    log: (message) => {
+      process.stdout.write(`${message}\n`);
+    },
+  });
+
+  if (manifest.status === "failed") {
+    // The run manifest is already written with the visible failed stage;
+    // escalate to a non-zero exit so the failure is not masked by exit 0.
+    throw new Error(
+      `benchmark-harness run failed at stage '${manifest.failedStageId ?? "unknown"}'; see ${outputDir}/run-manifest.json`,
+    );
+  }
 }
 
 function requiredFlag(args: string[], name: string): string {
