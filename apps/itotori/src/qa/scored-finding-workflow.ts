@@ -164,6 +164,28 @@ function withAgentPromptVersion(
 // ---------------------------------------------------------------------------
 
 /**
+ * Thrown when a focused agent emits a finding on a bridge unit that is not
+ * in the workflow's input `units`. `byBridgeUnit` is built strictly from
+ * `input.units`, so a finding referencing an out-of-scope unit has no
+ * derived unit score. We refuse to invent a score for it (a perfect 1.0
+ * would silently DISCARD the finding's severity from the per-agent mean) —
+ * an out-of-scope reference is a contract violation upstream
+ * (`assertBridgeUnitsResolve`) and must fail loud, mirroring this module's
+ * "never silently drop a finding" convention.
+ */
+export class ScoredFindingUnitOutOfScopeError extends Error {
+  constructor(
+    public readonly agentName: FocusedQaAgentName,
+    public readonly bridgeUnitId: string,
+  ) {
+    super(
+      `scored-finding aggregation refused: focused agent '${agentName}' emitted a finding on bridge unit '${bridgeUnitId}' which is not in the workflow input units; the finding references an out-of-scope unit`,
+    );
+    this.name = "ScoredFindingUnitOutOfScopeError";
+  }
+}
+
+/**
  * Build the aggregate `ScoredFindingsReport` from per-agent invocation
  * results. Per-bridge-unit score = derived from ALL findings across ALL
  * agents that touched that unit. Per-agent score = mean of the unit
@@ -219,7 +241,13 @@ export function aggregateScoredFindings(
     }
     let sum = 0;
     for (const unitId of ratedUnitIds) {
-      sum += byBridgeUnit.get(unitId) ?? 1.0;
+      const unitScore = byBridgeUnit.get(unitId);
+      if (unitScore === undefined) {
+        // The finding references a unit outside input.units. Defaulting to
+        // a perfect 1.0 here would silently discard its severity; refuse.
+        throw new ScoredFindingUnitOutOfScopeError(entry.agentName, unitId);
+      }
+      sum += unitScore;
     }
     byAgent.set(entry.agentName, sum / ratedUnitIds.size);
   }

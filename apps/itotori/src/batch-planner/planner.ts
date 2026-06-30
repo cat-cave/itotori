@@ -206,6 +206,15 @@ type PackAccumulator = {
   speakerToUnits: Map<string, string[]>;
   unitCitations: BatchCitationUnit[];
   totalTokens: number;
+  /**
+   * Running total of the character-relationship card tokens contributed by
+   * the distinct speakers seen so far. Tracked here (rather than only at
+   * finalize time) so the pack-loop split decision can account for the
+   * character cards that finalizeBatch adds to the reported tokenEstimate —
+   * otherwise a finalized batch's tokenEstimate could exceed
+   * tokenBudgetCap by the character-card token count (GA3-002).
+   */
+  characterTokens: number;
 };
 
 function emptyAccumulator(preludeTokens: number): PackAccumulator {
@@ -215,7 +224,24 @@ function emptyAccumulator(preludeTokens: number): PackAccumulator {
     speakerToUnits: new Map(),
     unitCitations: [],
     totalTokens: preludeTokens,
+    characterTokens: 0,
   };
+}
+
+/**
+ * Tokens a single new speaker contributes to the batch's character-card
+ * block. Mirrors finalizeBatch's per-ref accounting exactly:
+ * `characterEntryText` is independent of which bridge units reference the
+ * speaker, so a one-entry map yields the same per-speaker token count that
+ * the full `buildCharacterRefs` pass produces. The sum of these deltas over
+ * every distinct speaker therefore equals finalizeBatch's `characterTokens`.
+ */
+function characterCardTokensForSpeaker(
+  characterMap: CharacterMapSnapshot | undefined,
+  speaker: string,
+): number {
+  const refs = buildCharacterRefs(characterMap, new Map([[speaker, []]]));
+  return refs.reduce((sum, ref) => sum + estimateTokens(characterEntryText(ref)), 0);
 }
 
 function packGroupIntoBatches(input: PackGroupInput): Batch[] {
@@ -225,19 +251,19 @@ function packGroupIntoBatches(input: PackGroupInput): Batch[] {
   const groupHasScene = input.group.sceneId !== undefined;
 
   for (const unit of input.group.units) {
-    const hits = glossaryHitsForUnit(input.glossary, unit);
-    const newGlossaryTokens = hits.reduce((acc2, term) => {
-      if (acc.glossaryById.has(term.termId)) {
-        return acc2;
-      }
-      return acc2 + estimateTokens(glossaryEntryText(termSnapshotToRef(term, [unit.bridgeUnitId])));
-    }, 0);
-    const speakerTokens =
-      unit.speaker && !acc.speakerToUnits.has(unit.speaker) ? estimateTokens(unit.speaker) : 0;
-    const unitTokens = estimateTokens(unit.sourceText) + perUnitFrameOverheadTokens;
-    const incremental = unitTokens + newGlossaryTokens + speakerTokens;
+    let deltas = computeUnitDeltas(acc, unit, input.glossary, input.characterMap);
 
-    if (acc.units.length > 0 && acc.totalTokens + incremental > input.tokenBudgetCap) {
+    // Split when adding this unit would push the batch's reported
+    // tokenEstimate over the cap. The estimate finalizeBatch reports is
+    // acc.totalTokens + acc.characterTokens, so the split check must
+    // include the incremental character-card tokens too (GA3-002) —
+    // otherwise a high-fill-ratio profile would let a finalized batch
+    // overflow by the character-card token count.
+    if (
+      acc.units.length > 0 &&
+      acc.totalTokens + acc.characterTokens + deltas.incremental + deltas.newCharacterTokens >
+        input.tokenBudgetCap
+    ) {
       batches.push(
         finalizeBatch({
           acc,
@@ -250,9 +276,13 @@ function packGroupIntoBatches(input: PackGroupInput): Batch[] {
         sceneSplitIndex += 1;
       }
       acc = emptyAccumulator(input.preludeTokens);
+      // Recompute deltas against the fresh accumulator: every glossary
+      // term / speaker is "new" again, so the incremental token counts
+      // (and the character-card tokens) differ from the pre-split values.
+      deltas = computeUnitDeltas(acc, unit, input.glossary, input.characterMap);
     }
 
-    addUnitToAccumulator(acc, unit, hits, incremental);
+    addUnitToAccumulator(acc, unit, deltas.hits, deltas.incremental, deltas.newCharacterTokens);
   }
 
   if (acc.units.length > 0) {
@@ -278,14 +308,52 @@ function packGroupIntoBatches(input: PackGroupInput): Batch[] {
   return batches;
 }
 
+type UnitDeltas = {
+  hits: TerminologyTermSnapshot[];
+  /** unit text + per-unit frame + new glossary + new raw-speaker tokens. */
+  incremental: number;
+  /** character-relationship card tokens contributed by a new speaker. */
+  newCharacterTokens: number;
+};
+
+/**
+ * Token deltas a unit adds to a SPECIFIC accumulator. "New" glossary terms,
+ * speakers, and character cards are those not already present in `acc`, so
+ * the result is only valid for the `acc` it was computed against — callers
+ * must recompute after starting a fresh batch.
+ */
+function computeUnitDeltas(
+  acc: PackAccumulator,
+  unit: PlannerUnit,
+  glossary: ReadonlyArray<TerminologyTermSnapshot>,
+  characterMap: CharacterMapSnapshot | undefined,
+): UnitDeltas {
+  const hits = glossaryHitsForUnit(glossary, unit);
+  const newGlossaryTokens = hits.reduce((sum, term) => {
+    if (acc.glossaryById.has(term.termId)) {
+      return sum;
+    }
+    return sum + estimateTokens(glossaryEntryText(termSnapshotToRef(term, [unit.bridgeUnitId])));
+  }, 0);
+  const isNewSpeaker = Boolean(unit.speaker) && !acc.speakerToUnits.has(unit.speaker as string);
+  const speakerTokens = isNewSpeaker ? estimateTokens(unit.speaker as string) : 0;
+  const newCharacterTokens = isNewSpeaker
+    ? characterCardTokensForSpeaker(characterMap, unit.speaker as string)
+    : 0;
+  const unitTokens = estimateTokens(unit.sourceText) + perUnitFrameOverheadTokens;
+  return { hits, incremental: unitTokens + newGlossaryTokens + speakerTokens, newCharacterTokens };
+}
+
 function addUnitToAccumulator(
   acc: PackAccumulator,
   unit: PlannerUnit,
   hits: TerminologyTermSnapshot[],
   incremental: number,
+  newCharacterTokens: number,
 ): void {
   acc.units.push(unit);
   acc.totalTokens += incremental;
+  acc.characterTokens += newCharacterTokens;
 
   const glossaryIds: string[] = [];
   for (const term of hits) {

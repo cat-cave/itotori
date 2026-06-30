@@ -35,6 +35,8 @@ import {
   aggregateScoredFindings,
   deriveBridgeUnitScore,
   PER_UNIT_MAX_SEVERITY_WEIGHT,
+  ScoredFindingUnitOutOfScopeError,
+  type ScoredQaPerAgentResult,
   REGRADE_DEFAULT_THRESHOLD,
   runFreshJudgeRegrade,
   QaFreshJudgeIndependenceError,
@@ -484,6 +486,51 @@ describe("score derivation from finding severity", () => {
     expect(report.scores.overall).toBe(1.0);
     expect(report.findings).toEqual([]);
     expect(report.callCount).toBe(0);
+  });
+
+  it("throws ScoredFindingUnitOutOfScopeError when a finding references a unit outside input.units", () => {
+    // A perfect 1.0 default for a missing byBridgeUnit entry would silently
+    // discard the finding's severity from the per-agent mean; the aggregator
+    // must fail loud instead (the finding referenced an out-of-scope unit).
+    const inScopeUnitId = "019ed079-0000-7000-8000-0000000inset1";
+    const outOfScopeUnitId = "019ed079-0000-7000-8000-00000outset1";
+    const perAgent = [
+      {
+        agentName: "semantic-drift",
+        invocation: {
+          agentName: "semantic-drift",
+          providerRunId: "run-out-of-scope",
+          findings: [
+            {
+              findingId: "019ed079-0000-7000-8000-test1ooscope1",
+              bridgeUnitId: outOfScopeUnitId,
+              severity: "critical" as const,
+              category: "semantic" as const,
+              evidenceRefs: ["t"],
+              recommendation: "r",
+              agentRationale: "r",
+            },
+          ],
+        },
+      },
+    ] as unknown as ScoredQaPerAgentResult[];
+
+    expect(() => aggregateScoredFindings(perAgent, [{ bridgeUnitId: inScopeUnitId }])).toThrow(
+      ScoredFindingUnitOutOfScopeError,
+    );
+    const err = (() => {
+      try {
+        aggregateScoredFindings(perAgent, [{ bridgeUnitId: inScopeUnitId }]);
+        return undefined;
+      } catch (e) {
+        return e;
+      }
+    })();
+    expect(err).toBeInstanceOf(ScoredFindingUnitOutOfScopeError);
+    if (err instanceof ScoredFindingUnitOutOfScopeError) {
+      expect(err.agentName).toBe("semantic-drift");
+      expect(err.bridgeUnitId).toBe(outOfScopeUnitId);
+    }
   });
 });
 

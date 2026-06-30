@@ -505,6 +505,97 @@ describe("planBatches character map degradation", () => {
   });
 });
 
+describe("planBatches character-card token accounting (GA3-002)", () => {
+  // Bridge with many DISTINCT speakers so every unit contributes a fresh
+  // character-relationship card to its batch. The cards are only added to
+  // the reported tokenEstimate in finalizeBatch, so a split check blind to
+  // them would let a finalized batch overflow tokenBudgetCap once the fill
+  // ratio leaves no headroom.
+  function distinctSpeakerBridge(unitCount: number): BridgeBundle {
+    return {
+      schemaVersion: "0.1.0",
+      bridgeId: "bridge-speakers",
+      sourceBundleHash: "hash-speakers",
+      sourceLocale: "ja-JP",
+      extractorName: "kaifuu-fixture",
+      extractorVersion: "0.0.0",
+      units: Array.from({ length: unitCount }, (_unused, index) => ({
+        bridgeUnitId: `unit-${index}`,
+        sourceUnitKey: `spk.scene.001.line.${String(index).padStart(3, "0")}`,
+        occurrenceId: `occ-${index}`,
+        sourceHash: `hash-${index}`,
+        sourceLocale: "ja-JP",
+        sourceText: "あいうえお",
+        speaker: `speaker-${index}`,
+        textSurface: "dialogue",
+        protectedSpans: [],
+        patchRef: {
+          assetId: "spk.json",
+          writeMode: "replace" as const,
+          sourceUnitKey: `spk.scene.001.line.${String(index).padStart(3, "0")}`,
+        },
+      })),
+    };
+  }
+
+  it("keeps every batch's tokenEstimate <= tokenBudgetCap at fillRatio ~1.0 with character cards", async () => {
+    const unitCount = 12;
+    const bridge = distinctSpeakerBridge(unitCount);
+    // Each speaker gets a substantial relationship note so the character
+    // cards dominate the per-unit token cost.
+    const characterMap: CharacterMapSnapshot = {
+      entries: Array.from({ length: unitCount }, (_unused, index) => ({
+        termId: `term-speaker-${index}`,
+        canonicalName: `Character ${index}`,
+        speakerKeys: [`speaker-${index}`],
+        relationshipNotes:
+          "A recurring party member with a long, detailed relationship history that " +
+          "consumes a meaningful number of context tokens when serialized into the card.",
+      })),
+    };
+    // fillRatio 1.0 leaves zero headroom: without counting character cards in
+    // the split decision, a finalized batch would overflow.
+    const profile: BatchModelProfile = {
+      providerFamily: "fake",
+      modelId: "tight-fill",
+      providerId: "fake-fixture",
+      contextWindowTokens: 500,
+      maxOutputTokens: 0,
+      targetFillRatio: 1.0,
+      promptOverheadTokens: 100,
+      tokenEstimatorId: tokenEstimatorIdV1,
+    };
+    const result = await planBatches({
+      projectId,
+      localeBranchId,
+      sourceRevisionId,
+      locale: "en-US",
+      bridgeBundle: bridge,
+      glossary: [],
+      characterMap,
+      modelProfile: profile,
+    });
+
+    const cap = computeTokenBudgetCap(profile);
+    // The tight cap forces a split across multiple batches.
+    expect(result.batches.length).toBeGreaterThan(1);
+    let sawCharacterCard = false;
+    for (const batch of result.batches) {
+      expect(batch.tokenBudgetCap).toBe(cap);
+      // The core GA3-002 invariant: the reported estimate never exceeds the
+      // cap, even though the character cards are added at finalize time.
+      expect(batch.tokenEstimate).toBeLessThanOrEqual(cap);
+      if (batch.context.characterRelationships.length > 0) {
+        sawCharacterCard = true;
+      }
+    }
+    expect(sawCharacterCard).toBe(true);
+    // Every unit is still placed exactly once across the batches.
+    const placed = result.batches.reduce((sum, batch) => sum + batch.units.length, 0);
+    expect(placed).toBe(unitCount);
+  });
+});
+
 describe("planBatches prior translation examples", () => {
   it("invokes translationMemory with speaker/scene/surfaceKind hints", async () => {
     const calls: Array<{ speaker?: string; sceneId?: string; surfaceKind?: string }> = [];

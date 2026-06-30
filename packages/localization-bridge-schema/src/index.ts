@@ -487,6 +487,12 @@ export const BENCHMARK_PROVIDER_FAMILIES = [
 ] as const;
 export type BenchmarkProviderFamilyV02 = (typeof BENCHMARK_PROVIDER_FAMILIES)[number];
 
+// NOTE: estimate/unknown kinds (provider_estimate, local_estimate, unknown)
+// apply ONLY to externally-benchmarked systems whose cost is genuinely
+// unknowable (e.g. third-party MTL services, local tools) — never to
+// itotori's own OpenRouter spend, which is always exact billed cost.
+// itotori spend is purged of these sentinels by ITOTORI-225 and must never
+// be approximated.
 export const BENCHMARK_COST_KINDS = [
   "billed",
   "provider_estimate",

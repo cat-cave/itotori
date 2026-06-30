@@ -4,6 +4,7 @@ export {
   aggregateScoredFindings,
   deriveBridgeUnitScore,
   PER_UNIT_MAX_SEVERITY_WEIGHT,
+  ScoredFindingUnitOutOfScopeError,
   ScoredFindingWorkflow,
   SEVERITY_WEIGHTS,
   severityWeight,

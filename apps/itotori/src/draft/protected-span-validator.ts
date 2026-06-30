@@ -87,10 +87,15 @@ export type DraftProtectedSpanValidationInput = {
  *                                AND the source text does not appear in
  *                                `draftText`). Retryable: prompt the model
  *                                to keep the span.
- *   - `span_moved`             — ref is present and the source text exists in
- *                                the draft, but at a different range than
- *                                declared in `draftProtectedSpanRefs`. The
- *                                draft text was edited after generation.
+ *   - `span_moved`             — the source text exists in the draft but its
+ *                                declared position is wrong or missing. Two
+ *                                sub-cases: (a) a ref IS present but points at
+ *                                a different range than where the source text
+ *                                actually appears (draft edited after
+ *                                generation); or (b) NO ref was declared yet
+ *                                the literal source text still appears in
+ *                                `draftText` at an undeclared position (the
+ *                                model kept the span but failed to declare it).
  *                                Retryable: re-emit with corrected positions.
  *   - `span_duplicated`        — source text appears more than once in the
  *                                draft for a kind that must appear exactly
@@ -383,12 +388,17 @@ export class DraftProtectedSpanValidator {
           evidence: { observedRanges },
         });
       } else {
+        // The literal IS present in draftText but no ref declares its
+        // position. This is NOT span_deleted (whose documented condition
+        // requires the source text to be absent); the span survived but its
+        // declaration is missing — a position/declaration problem, which is
+        // span_moved per its documented sub-case (b).
         violations.push({
-          kind: "span_deleted",
+          kind: "span_moved",
           spanRefId: sourceSpan.refId,
           spanKind: sourceSpan.spanKind,
           bridgeUnitId: input.sourceBridgeUnit.bridgeUnitId,
-          detail: `variable span '${sourceSpan.refId}' appears in draftText but was not declared in protectedSpanRefs`,
+          detail: `variable span '${sourceSpan.refId}' literal '${sourceSpan.sourceText}' appears in draftText at ${formatRanges(observedRanges)} but was not declared in protectedSpanRefs`,
           evidence: { observedRanges },
         });
       }

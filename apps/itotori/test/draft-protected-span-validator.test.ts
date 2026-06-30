@@ -81,6 +81,34 @@ describe("DraftProtectedSpanValidator", () => {
     expect(v.spanKind).toBe("variable");
   });
 
+  it("labels a present-but-undeclared variable literal as span_moved, not span_deleted (GA3-003)", () => {
+    // The variable literal IS present in draftText but no ref declares its
+    // position. span_deleted's documented condition requires the source text
+    // to be ABSENT, so this must NOT be span_deleted; it is a missing/wrong
+    // declaration of a surviving span → span_moved (documented sub-case b).
+    const validator = new DraftProtectedSpanValidator();
+    const result = validator.validate({
+      sourceBridgeUnit: validDraftFixture().sourceBridgeUnit,
+      draftText: "Welcome back, {player}!",
+      draftProtectedSpanRefs: [],
+      sourceProtectedSpans: [
+        { refId: "span-variable-player", sourceText: "{player}", spanKind: "variable" },
+      ],
+    });
+    expect(result.accepted).toBe(false);
+    expect(result.violations).toHaveLength(1);
+    const v = result.violations[0];
+    expect(v).toBeDefined();
+    if (v === undefined) return;
+    expect(v.kind).toBe("span_moved");
+    expect(v.spanRefId).toBe("span-variable-player");
+    expect(v.spanKind).toBe("variable");
+    // The literal was located in the draft (observedRanges non-empty) but no
+    // range was ever declared (declaredRange undefined).
+    expect(v.evidence.declaredRange).toBeUndefined();
+    expect(v.evidence.observedRanges).toEqual([{ startInDraft: 14, endInDraft: 22 }]);
+  });
+
   it("rejects spanDuplicatedDraftFixture with kind='span_duplicated'", () => {
     const validator = new DraftProtectedSpanValidator();
     const result = validator.validate(spanDuplicatedDraftFixture());

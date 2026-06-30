@@ -462,10 +462,14 @@ export async function runAgenticLoopForUnit(
     });
   }
 
-  // The four focused QA agents fire in parallel; the orchestrator
-  // wires a SHARED base provider per agent because each focused agent
-  // wraps a base QaAgent. Every QA invocation carries its own pinned
-  // pair from the policy.
+  // The four focused QA agents run SEQUENTIALLY here (one awaited
+  // invokeQaStage per loop iteration). Parallelism is deliberately
+  // avoided in this seam: every stage shares one memoized base provider,
+  // so firing the agents concurrently would only contend the shared
+  // token bucket without buying real wall-clock parallelism. The
+  // orchestrator wires a SHARED base provider per agent because each
+  // focused agent wraps a base QaAgent. Every QA invocation carries its
+  // own pinned pair from the policy.
   const qaStage = startStage("qa_findings");
   const qaInvocationResults: Array<{
     agentLabel: string;
