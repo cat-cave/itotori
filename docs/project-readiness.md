@@ -115,7 +115,12 @@ The multi-game-validation rule is the gate. Specifically:
    Today's intent set is RealLive, SiglusEngine, RPG Maker MV/MZ, plain
    KiriKiri/XP3 + KAG; expansions (TyranoScript, VX Ace/RGSS3,
    BGI/Ethornell, Unity/Unreal/Godot) are beta when their families clear
-   the rule, not before.
+   the rule, not before. **SiglusEngine is corpus-blocked:** the spec'd
+   `kaifuu-siglus` vertical exists (skeleton landed) but its real-bytes
+   chain is parked behind an external dependency — the only owned Siglus
+   titles are copy-protected DVD images that are unrealizable under the
+   no-Wine/no-shell-out/no-installer laws, so SiglusEngine beta is gated on
+   re-acquiring a realizable (download-edition) Siglus corpus (≥2 titles).
 4. **Cross-engine substrate generality demonstrated.** Substrate extensions
    M.1–M.5 and the substrate-sinks bridge work uniformly across families;
    no per-engine shim leaks into substrate code.
