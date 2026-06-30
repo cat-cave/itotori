@@ -10198,19 +10198,19 @@
       "title": "First real-engine end-to-end vertical slice",
       "kind": "feature",
       "milestone": "real-game-testing-ready",
-      "status": "ready",
+      "status": "claimed",
       "priority": "P1",
       "estimate_points": 1,
       "risk": "medium",
-      "owner": null,
-      "branch": null,
+      "owner": "orchestrator",
+      "branch": "spec/alpha-001",
       "spec": "Run the full Itotori/Kaifuu/Utsushi loop on a public or private-local RPG Maker MV/MZ full-surface fixture after inventory/readiness metadata is available, without relying on the synthetic fixture engine.\n\nDeliverables:\n- Real-engine fixture profile\n- Full run command\n- Dashboard evidence\n- Patch package",
       "acceptance": "- Inventory, readiness, extract, draft, QA, patch, delta apply, runtime evidence, feedback, and rerun all work for the MV/MZ fixture profile\n- No raw copyrighted assets are committed\n- All failures are structured findings\n- The run reports catalog/local-corpus/readiness identity when available instead of treating bridge import as the first project fact",
       "validation": null,
       "context": null,
       "created_at": "2026-06-26T02:53:54.982Z",
-      "updated_at": "2026-06-26T02:53:54.982Z",
-      "claimed_at": null,
+      "updated_at": "2026-06-30T07:52:03.766Z",
+      "claimed_at": "2026-06-30T07:52:03.766Z",
       "done_at": null,
       "group_name": "alpha-integration",
       "status_reason": "Re-tier 2026-06-24: moved from alpha to real-game-testing-ready — the old \"alpha\" framing was renamed; substance unchanged. See docs/proposals/dag-retier-2026-06-24.md. | Re-tier 2026-06-24: pruned 6 dependsOn edge(s) that crossed the new tier boundary [ITOTORI-028(alpha), KAIFUU-007(beta), UTSUSHI-006(beta), KAIFUU-053(alpha), UTSUSHI-102(beta), UTSUSHI-119(beta)]; per docs/proposals/dag-retier-2026-06-24.md §6.",
@@ -34511,19 +34511,19 @@
       "title": "g00 LZSS decoder reserves Vec capacity from an untrusted u32 size field (allocation amplification / OOM)",
       "kind": "audit-fix",
       "milestone": "real-game-testing-ready",
-      "status": "ready",
+      "status": "claimed",
       "priority": "P2",
       "estimate_points": 1,
       "risk": "medium",
-      "owner": null,
-      "branch": null,
+      "owner": "orchestrator",
+      "branch": "spec/rgt-engine-robustness",
       "spec": "crates/utsushi-reallive/src/g00.rs:926 `let mut dst = Vec::with_capacity(uncompressed_size);` where uncompressed_size is read directly from the file's LZSS preamble (parse_lzss_section, g00.rs:859, a u32 up to ~4.29 GB). utsushi reads attacker-controllable game bytes; a malformed g00 with a huge uncompressed_size triggers a multi-GB up-front allocation before any payload is read. The decode loop itself is correctly bounds-checked (OutputOverflow guard :979) — only the pre-allocation is unguarded. A single malformed asset can OOM/abort the validation tool before parsing begins.",
       "acceptance": "Cap the reserve to min(uncompressed_size, input.len().saturating_mul(K)) or a hard ceiling. Observable: add a test feeding a 16-byte g00 with uncompressed_size=0xFFFFFFFF and assert it returns a typed G00DecodeError (not an abort/OOM); `cargo test -p utsushi-reallive g00` passes including this case.",
       "validation": null,
       "context": null,
       "created_at": "2026-06-29T05:14:14.877Z",
-      "updated_at": "2026-06-29T05:14:14.877Z",
-      "claimed_at": null,
+      "updated_at": "2026-06-30T07:52:04.078Z",
+      "claimed_at": "2026-06-30T07:52:04.078Z",
       "done_at": null,
       "group_name": null,
       "status_reason": null,
@@ -34671,19 +34671,19 @@
       "title": "Opcode arg/expression byte-framing desyncs on legal expression bytes, with no pinning/xfail test",
       "kind": "audit-fix",
       "milestone": "real-game-testing-ready",
-      "status": "ready",
+      "status": "claimed",
       "priority": "P2",
       "estimate_points": 1,
       "risk": "medium",
-      "owner": null,
-      "branch": null,
+      "owner": "orchestrator",
+      "branch": "spec/rgt-engine-robustness",
       "spec": "crates/kaifuu-reallive/src/opcode.rs:377-403 arg-list loop treats raw bytes 0x2C and 0x29 as structural delimiters (`b')' => { closed = true; break; }`). The module itself documents (:290-304) that expression bodies legally contain 0x2C separators and 0xFF+4-byte int literals whose payload bytes can equal 0x28/0x29/0x2C. So a command whose argument is an int literal containing 0x29 terminates the arg list early, mis-sets `consumed`, and desyncs `pos` for the rest of the stream — inflating the Unknown count and potentially corrupting offsets used by patch-back. Disclosed as a 'follow-up node' but no xfail/regression test pins the known-bad scene positions; a future 'fix' could silently change framing with nothing red.",
       "acceptance": "Add a test over the real Sweetie HD scene-1 decompressed stream asserting the exact byte offsets where framing currently desyncs (a known-unknown manifest), anchoring recognition to byte ranges not a single aggregate >= 0.75. Observable: `cargo test -p kaifuu-reallive` includes a test naming specific desync byte offsets that fails if framing changes.",
       "validation": null,
       "context": null,
       "created_at": "2026-06-29T05:14:14.877Z",
-      "updated_at": "2026-06-29T05:14:14.877Z",
-      "claimed_at": null,
+      "updated_at": "2026-06-30T07:52:04.193Z",
+      "claimed_at": "2026-06-30T07:52:04.193Z",
       "done_at": null,
       "group_name": null,
       "status_reason": null,
@@ -39983,6 +39983,162 @@
         }
       ],
       "audit_focus": []
+    },
+    {
+      "id": "kaifuu-rpgmaker-mvmz-text-extraction-adapter",
+      "title": "Kaifuu RPG Maker MV/MZ data/*.json text-extraction adapter (real, not synthetic)",
+      "kind": "feature",
+      "milestone": "real-game-testing-ready",
+      "status": "ready",
+      "priority": "P1",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "WHY: ALPHA-001 (RPG Maker MV/MZ e2e vertical slice) is blocked — the only real extract registry is the synthetic fixture engine (kaifuu-engine-fixture), which ALPHA-001 forbids; RealLive is the only real text extractor. RPG Maker MV/MZ has detection + key-validation + asset-package round-trip but NO text extractor.\nWHAT: Build a real RPG Maker MV/MZ extraction adapter that walks www/data/*.json event-command lists (codes 401/101/102/105/122/355/356 + Actors/System/etc. name/desc surfaces), extracts translatable strings keyed by stable JSON-pointer surfaces, and emits a localization-bridge extraction bundle. Deterministic, no shell-outs. Precedent shape: crates/kaifuu-reallive bridge. Real corpus: /scratch/itotori-research/rpg-maker-mv-mz/extracted/LustMemory/www/ (READ-ONLY; ITOTORI_REAL_GAME_ROOT_RPG_MAKER_MV_MZ).",
+      "acceptance": "- A real (non-synthetic) RPG Maker MV/MZ extraction adapter walks www/data/*.json and emits a bridge extraction bundle of translatable strings keyed by stable JSON-pointer surfaces.\n- 100% / no-silent-skip: every translatable event-command/name/desc surface is extracted; unknown command codes are STRUCTURED FINDINGS, not silent drops.\n- Env-gated real-bytes test against the LustMemory corpus extracts a non-trivial unit count; no synthetic-fixture-engine reliance.\n- No copyrighted bytes/text in committed code or reports (counts/pointers/hashes only).",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-30T07:57:44.307Z",
+      "updated_at": "2026-06-30T07:57:44.307Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["kaifuu"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "direnv exec . cargo test -p kaifuu-core"
+        }
+      ],
+      "audit_focus": [
+        "Unknown event-command codes silently dropped vs structured finding",
+        "Synthetic-fixture-engine reliance (forbidden)",
+        "JSON-pointer surface keys unstable across re-extract"
+      ]
+    },
+    {
+      "id": "kaifuu-rpgmaker-mvmz-patchback-delta-producer",
+      "title": "Kaifuu RPG Maker MV/MZ patchback + .kaifuu delta producer",
+      "kind": "feature",
+      "milestone": "real-game-testing-ready",
+      "status": "ready",
+      "priority": "P1",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "WHY: ALPHA-001 needs to write reviewed MV/MZ translations back. No RPG Maker patchback/delta producer exists (only RealLive's). WHAT: write drafts back to www/data/*.json at the SAME JSON-pointer surfaces the extraction adapter keyed, byte-careful (preserve structure/encoding), and produce the .kaifuu delta package; verify round-trip. Depends on the extraction adapter.",
+      "acceptance": "- Translated drafts are written back to www/data/*.json at the extraction adapter's pointer surfaces; a .kaifuu delta package is produced.\n- Round-trip byte-equality on UNTRANSLATED input (no spurious diffs); a translated patch changes only the targeted string surfaces.\n- Env-gated real-bytes test on the LustMemory corpus; no copyrighted text in reports.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-30T07:57:44.307Z",
+      "updated_at": "2026-06-30T07:57:44.307Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["kaifuu"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "direnv exec . cargo test -p kaifuu-core"
+        }
+      ],
+      "audit_focus": [
+        "Patchback alters non-targeted JSON (spurious structural diff)",
+        "Encoding/escaping corruption of MV/MZ JSON",
+        "Delta not byte-reversible"
+      ]
+    },
+    {
+      "id": "utsushi-rpgmaker-mv-runtime-port-crate",
+      "title": "Utsushi utsushi-rpgmaker-mv runtime port crate (impl-map names it; crate missing)",
+      "kind": "feature",
+      "milestone": "real-game-testing-ready",
+      "status": "ready",
+      "priority": "P1",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "WHY: ALPHA-001's loop needs runtime evidence/feedback/rerun for MV/MZ, but no utsushi MV port crate exists — RpgmakerMv->'utsushi-ln-mv' is only an impl-map enum/string (port/impl_map/validator.rs:699) and a fixture declares `cargo test -p utsushi-ln-mv` for a non-existent crate. WHAT: build the utsushi-rpgmaker-mv (utsushi-ln-mv) runtime port crate implementing EnginePort + the Inspectable/snapshot surface so runtime evidence/feedback/rerun close the MV/MZ loop. Precedent: crates/utsushi-reallive. NOT an inert scaffold — a real port.",
+      "acceptance": "- crates/utsushi-rpgmaker-mv (or utsushi-ln-mv) exists + implements EnginePort with the Inspectable/snapshot surface (not Lifecycle::Unimplemented stubs).\n- The fixture's `cargo test -p utsushi-ln-mv` (or the renamed crate) resolves + passes; substrate conformance holds.\n- Runtime evidence (trace/replay/capture as applicable) runs against an MV/MZ run; honest about which surfaces are exercised.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-30T07:57:44.307Z",
+      "updated_at": "2026-06-30T07:57:44.307Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["utsushi"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "direnv exec . cargo build --workspace"
+        }
+      ],
+      "audit_focus": [
+        "Inert-scaffold (Lifecycle::Unimplemented) masquerading as a real port",
+        "impl-map name vs actual crate mismatch",
+        "Substrate conformance bypassed"
+      ]
+    },
+    {
+      "id": "itotori-rpgmaker-mvmz-vertical-slice-wiring",
+      "title": "Itotori RPG Maker MV/MZ vertical-slice run wiring (compose the loop)",
+      "kind": "feature",
+      "milestone": "alpha",
+      "status": "ready",
+      "priority": "P1",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "WHY: ALPHA-001 capstone needs the full MV/MZ loop wired: inventory->readiness->extract->draft->QA->patch->delta-apply->runtime->feedback->rerun, on the real LustMemory corpus, without the synthetic engine. Detection/inventory/readiness primitives already work on the corpus; this composes them with the 3 new adapters (extraction, patchback, runtime port). WHAT: wire the MV/MZ profile into the localize-project/suite run + the real-engine fixture profile + dashboard evidence deliverables.",
+      "acceptance": "- A suite command runs the full MV/MZ loop on the LustMemory corpus producing the deliverable artifact set (extraction bundle, draft, QA, patch, delta, runtime evidence) — real, sanitized.\n- No synthetic-fixture-engine reliance; the served (model,provider) + real billed cost recorded for any LLM calls (ZDR).\n- Depends on the 3 new MV/MZ adapter nodes.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-30T07:57:44.307Z",
+      "updated_at": "2026-06-30T07:57:44.307Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["itotori", "suite"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/app exec tsc --noEmit"
+        }
+      ],
+      "audit_focus": [
+        "Synthetic engine reliance",
+        "Stubbed/recorded LLM instead of real ZDR call",
+        "Artifacts asserted but not written"
+      ]
     }
   ],
   "edges": [
@@ -50395,6 +50551,54 @@
       "to_node": "alpha-006e-multigame-validation",
       "type": "requires",
       "created_at": "2026-06-30T03:26:22.725Z"
+    },
+    {
+      "from_node": "kaifuu-rpgmaker-mvmz-text-extraction-adapter",
+      "to_node": "kaifuu-rpgmaker-mvmz-patchback-delta-producer",
+      "type": "requires",
+      "created_at": "2026-06-30T07:57:44.393Z"
+    },
+    {
+      "from_node": "kaifuu-rpgmaker-mvmz-text-extraction-adapter",
+      "to_node": "itotori-rpgmaker-mvmz-vertical-slice-wiring",
+      "type": "requires",
+      "created_at": "2026-06-30T07:57:44.486Z"
+    },
+    {
+      "from_node": "kaifuu-rpgmaker-mvmz-patchback-delta-producer",
+      "to_node": "itotori-rpgmaker-mvmz-vertical-slice-wiring",
+      "type": "requires",
+      "created_at": "2026-06-30T07:57:44.574Z"
+    },
+    {
+      "from_node": "utsushi-rpgmaker-mv-runtime-port-crate",
+      "to_node": "itotori-rpgmaker-mvmz-vertical-slice-wiring",
+      "type": "requires",
+      "created_at": "2026-06-30T07:57:44.689Z"
+    },
+    {
+      "from_node": "kaifuu-rpgmaker-mvmz-text-extraction-adapter",
+      "to_node": "ALPHA-001",
+      "type": "requires",
+      "created_at": "2026-06-30T07:57:44.797Z"
+    },
+    {
+      "from_node": "kaifuu-rpgmaker-mvmz-patchback-delta-producer",
+      "to_node": "ALPHA-001",
+      "type": "requires",
+      "created_at": "2026-06-30T07:57:44.884Z"
+    },
+    {
+      "from_node": "utsushi-rpgmaker-mv-runtime-port-crate",
+      "to_node": "ALPHA-001",
+      "type": "requires",
+      "created_at": "2026-06-30T07:57:44.995Z"
+    },
+    {
+      "from_node": "itotori-rpgmaker-mvmz-vertical-slice-wiring",
+      "to_node": "ALPHA-001",
+      "type": "requires",
+      "created_at": "2026-06-30T07:57:45.101Z"
     }
   ],
   "findings": [
