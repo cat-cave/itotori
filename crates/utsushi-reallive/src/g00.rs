@@ -277,12 +277,16 @@ pub struct G00Image {
     pub width: u32,
     /// Height in pixels, from the `u16 LE` header field at offset 3.
     pub height: u32,
-    /// Decoded pixel buffer in RGBA8 byte order. For types 0 and 1
-    /// the length is `width * height * 4`; for type 2 the length is
-    /// the LZSS-decoded byte count (the type-2 canvas may be a
-    /// concatenation of region atlases rather than a flat
-    /// `width*height` surface — see
-    /// [`G00Image::pixels_rgba_byte_len_full_canvas`]).
+    /// Decoded pixel buffer in RGBA8 byte order. For every type the
+    /// length is exactly `width * height * 4`: types 0 and 2 pad or
+    /// truncate the LZSS-decoded payload to that flat-canvas size at the
+    /// decode boundary (type 2's region table indexes sub-rectangles
+    /// *into* this flat `width*height` surface — see
+    /// [`G00Image::pixels_rgba_byte_len_full_canvas`]), and type 1
+    /// expands one RGBA tuple per palette index. A short LZSS payload
+    /// is zero-padded to the canvas size *and* surfaces a typed
+    /// [`G00Warning::PayloadLengthMismatch`], so the size is never a
+    /// silent mismatch.
     pub pixels_rgba: Vec<u8>,
     /// Region table from the on-disk type-2 record. Empty for types 0
     /// and 1.
@@ -789,6 +793,9 @@ fn decode_type2(
     }
 
     let section = parse_lzss_section(input, lzss_preamble_off, G00Type::RegionedLzss)?;
+    let pixel_byte_count = (width as usize)
+        .saturating_mul(height as usize)
+        .saturating_mul(4);
 
     let (decoded, length_warning) = lzss_decode_classic(
         section.payload,
@@ -796,8 +803,17 @@ fn decode_type2(
         G00Type::RegionedLzss,
     );
 
-    // Type-2 atlas: reorder BGRA to RGBA at the decode boundary.
-    let mut pixels_rgba = decoded;
+    // Pad/truncate the decoded payload to exactly `width * height * 4`
+    // before the BGRA->RGBA reorder, symmetric with `decode_type0`
+    // (UTSUSHI-216 promoted finding 65c7433f). A short or over-long
+    // type-2 stream must yield a deterministic `width * height * 4`
+    // pixel buffer — never a silent wrong-size buffer whose 1-3 byte
+    // tail `bgra_to_rgba_in_place`'s `chunks_exact_mut(4)` would leave
+    // unreordered (the audit-focus "BGR treated as RGB silently" case).
+    // A genuinely short LZSS stream still surfaces a typed
+    // `PayloadLengthMismatch` warning from `lzss_decode_classic`, so the
+    // length adjustment is observable, not silent.
+    let mut pixels_rgba = pad_or_truncate(decoded, pixel_byte_count);
     bgra_to_rgba_in_place(&mut pixels_rgba);
 
     let mut warnings = Vec::new();

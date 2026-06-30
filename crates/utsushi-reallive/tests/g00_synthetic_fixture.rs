@@ -23,7 +23,9 @@ use g00_synthetic::{
     SYNTHETIC_TYPE2_REGION_COUNT, SYNTHETIC_TYPE2_STEM, SYNTHETIC_TYPE2_WIDTH, synthetic_type0_g00,
     synthetic_type2_g00, write_synthetic_g00_dir,
 };
-use utsushi_reallive::{G00Type, GraphicsObject, GraphicsObjectKind, ImageRef, decode_g00};
+use utsushi_reallive::{
+    G00Type, G00Warning, GraphicsObject, GraphicsObjectKind, ImageRef, decode_g00,
+};
 
 /// Retail Sweetie HD canvas dimensions, pinned here purely so the
 /// synthetic fixtures can assert they are NOT those dimensions. These
@@ -133,6 +135,62 @@ fn synthetic_type2_decodes_with_real_regions_zero_warnings() {
     assert!(
         image.width != RETAIL_BTN000_WIDTH || image.height != RETAIL_BTN000_HEIGHT,
         "synthetic fixture must not share retail btn000.g00 dimensions",
+    );
+}
+
+#[test]
+fn malformed_short_type2_stream_pads_to_canvas_and_warns_not_silent() {
+    // UTSUSHI-216 promoted finding 65c7433f: type-2 decode must pad or
+    // truncate the LZSS-decoded payload to exactly `width * height * 4`,
+    // symmetric with type-0 — a malformed/short stream must NOT yield a
+    // silent wrong-size buffer. Author the malformed input from the
+    // FIX-3 synthetic fixture (no retail pixels): take the well-formed
+    // type-2 blob and lop off the tail of its LZSS payload so the stream
+    // decodes short.
+    let mut bytes = synthetic_type2_g00();
+
+    // Header prefix up to and including the 8-byte LZSS preamble:
+    // 5-byte g00 preamble + 4-byte region_count + region table
+    // (24 bytes/record) + 8-byte (compressed_size, uncompressed_size).
+    let header_prefix = 5 + 4 + (SYNTHETIC_TYPE2_REGION_COUNT as usize) * 24 + 8;
+    // Keep the full header + only the first 2 payload bytes, dropping the
+    // rest of the LZSS stream. The decoder will exhaust its input long
+    // before reaching the declared uncompressed_size.
+    assert!(
+        bytes.len() > header_prefix + 2,
+        "synthetic type-2 fixture must carry an LZSS payload to truncate",
+    );
+    bytes.truncate(header_prefix + 2);
+
+    let (image, warnings) =
+        decode_g00(&bytes).expect("malformed-short type-2 must still decode to a sized buffer");
+
+    assert_eq!(image.g00_type, G00Type::RegionedLzss);
+    let expected_len = (SYNTHETIC_TYPE2_WIDTH as usize) * (SYNTHETIC_TYPE2_HEIGHT as usize) * 4;
+    assert_eq!(
+        image.pixels_rgba.len(),
+        expected_len,
+        "a short type-2 stream must be padded to exactly width*height*4 \
+         (deterministic), not left as a silent wrong-size buffer",
+    );
+    // The buffer is a whole number of RGBA pixels, so the BGRA->RGBA
+    // reorder's chunks_exact_mut(4) leaves no unreordered tail.
+    assert!(
+        image.pixels_rgba.len().is_multiple_of(4),
+        "padded buffer must be a whole number of RGBA pixels",
+    );
+
+    // The length adjustment is observable: a typed PayloadLengthMismatch
+    // warning is surfaced for the truncated stream — not silent.
+    assert!(
+        warnings.iter().any(|w| matches!(
+            w,
+            G00Warning::PayloadLengthMismatch {
+                g00_type: G00Type::RegionedLzss,
+                ..
+            }
+        )),
+        "short type-2 stream must surface a typed PayloadLengthMismatch warning; got: {warnings:?}",
     );
 }
 
