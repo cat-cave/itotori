@@ -103,9 +103,18 @@ impl GraphicsScale {
     };
 }
 
-/// Alpha in `0..=255` (rlvm-public convention). `0` = fully transparent
-/// (object contributes nothing to the framebuffer), `255` = fully
-/// opaque.
+/// Alpha in `0..=255` (rlvm-public convention). `0` = fully
+/// transparent, `255` = fully opaque.
+///
+/// **Recorded state only; not applied by the UTSUSHI-214 render pass.**
+/// Like [`GraphicsColourTone`] and [`GraphicsScale`], the render pass at
+/// [`crate::render_pipeline`] stores the alpha faithfully on each object
+/// but does NOT blend it into the framebuffer:
+/// [`crate::render_pipeline::RenderPass::paint_object`] fills a `Wipe`
+/// object at full opacity regardless of this value (a `Wipe` with
+/// `alpha = TRANSPARENT` still fully fills the framebuffer). Object-level
+/// alpha blending lands with the graphics RLOperation family at
+/// UTSUSHI-215+.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GraphicsAlpha(pub u8);

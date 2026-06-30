@@ -71,6 +71,13 @@ use utsushi_core::{RuntimeArtifactKind, RuntimeArtifactRoot, runtime_artifact_ur
 pub const RENDER_PIPELINE_ZERO_SCREEN_SIZE_CODE: &str =
     "utsushi.reallive.render_pipeline.zero_screen_size";
 
+/// Stable diagnostic code emitted by
+/// [`RenderPass::emit_localized_screenshot`] when a non-empty localized
+/// [`TextLayer`] paints ZERO framebuffer pixels — the load-bearing guard
+/// that keeps a localized-screenshot proof from being vacuous.
+pub const RENDER_PIPELINE_BLANK_LOCALIZED_TEXT_CODE: &str =
+    "utsushi.reallive.render_pipeline.blank_localized_text";
+
 /// PNG file-magic. Pinned so the deterministic-encoder test can assert
 /// the prefix without inlining the magic in the test itself.
 pub const PNG_FILE_MAGIC: [u8; 8] = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
@@ -346,6 +353,22 @@ pub enum RenderEmitError {
     /// Building the managed runtime-artifact URI failed.
     #[error("runtime artifact uri build failed: {0}")]
     UriBuild(String),
+    /// A non-empty localized [`TextLayer`] painted ZERO framebuffer
+    /// pixels (off-screen origin, all-whitespace, or a glyph-less
+    /// layer), so the emitted PNG would carry no localized text and the
+    /// E2 screenshot would be a vacuous localization/redaction proof.
+    /// The emit path refuses to announce it rather than discard the
+    /// painted-pixel count [`Framebuffer::draw_text`] returns.
+    #[error(
+        "non-empty localized text layer painted zero pixels \
+         ({char_count} chars across {line_count} lines); refusing to emit a \
+         vacuous localized screenshot ({code})"
+    )]
+    BlankLocalizedText {
+        code: String,
+        char_count: usize,
+        line_count: usize,
+    },
 }
 
 /// The headless render pipeline. Owns a per-pass `frame_index`
@@ -420,15 +443,20 @@ impl RenderPass {
     }
 
     /// Rasterise `stack`, then paint the localized `text` layer on top.
-    /// This is the frame the screenshot emission encodes.
+    /// This is the frame the screenshot emission encodes. Returns the
+    /// framebuffer **and** the count of localized-text pixels
+    /// [`Framebuffer::draw_text`] painted, so the emission path can prove
+    /// the localized layer actually drew something rather than discarding
+    /// the count (a blank layer is a vacuous-evidence regression the
+    /// caller must reject).
     pub fn rasterise_with_text(
         &self,
         stack: &GraphicsObjectStack,
         text: &TextLayer,
-    ) -> Framebuffer {
+    ) -> (Framebuffer, u64) {
         let mut framebuffer = self.rasterise(stack);
-        framebuffer.draw_text(text);
-        framebuffer
+        let text_pixels = framebuffer.draw_text(text);
+        (framebuffer, text_pixels)
     }
 
     /// Rasterise `stack` + the localized `text` layer, encode the
@@ -440,6 +468,13 @@ impl RenderPass {
     /// Only the synthetic [`GraphicsObjectKind::Wipe`] fills and the
     /// localized `text` layer reach the framebuffer; the emitted PNG
     /// embeds zero source-asset bytes.
+    ///
+    /// NON-VACUOUS LOCALIZATION PROOF: a non-empty `text` layer that
+    /// paints ZERO framebuffer pixels (off-screen origin, all-whitespace,
+    /// or a glyph-less layer) is rejected with
+    /// [`RenderEmitError::BlankLocalizedText`] **before** any PNG is
+    /// written or any frame announced, so an E2 localized screenshot can
+    /// never be emitted with zero localized-text pixels painted.
     pub fn emit_localized_screenshot(
         &mut self,
         stack: &GraphicsObjectStack,
@@ -448,7 +483,16 @@ impl RenderPass {
         run_id: &str,
         sink: &dyn FrameArtifactSink,
     ) -> Result<FrameArtifact, RenderEmitError> {
-        let framebuffer = self.rasterise_with_text(stack, text);
+        let (framebuffer, text_pixels) = self.rasterise_with_text(stack, text);
+        // A non-empty localized text layer MUST paint pixels; otherwise
+        // the screenshot is a vacuous localization/redaction proof.
+        if text.char_count() > 0 && text_pixels == 0 {
+            return Err(RenderEmitError::BlankLocalizedText {
+                code: RENDER_PIPELINE_BLANK_LOCALIZED_TEXT_CODE.to_string(),
+                char_count: text.char_count(),
+                line_count: text.lines.len(),
+            });
+        }
         let png_bytes = encode_png_rgba_deterministic(&framebuffer);
         let artifact_id = sha256_hex(&png_bytes);
 
@@ -855,6 +899,96 @@ mod tests {
     }
 
     #[test]
+    fn emit_rejects_offscreen_origin_zero_text_screenshot() {
+        // A non-empty localized layer whose origin is entirely
+        // off-screen paints ZERO text pixels. The emit path MUST refuse
+        // it rather than announce a vacuous E2 localization proof.
+        let mut pass = RenderPass::with_dimensions(64, 32).expect("non-zero screen");
+        let stack = wipe_stack(WipeColour::opaque_rgb(0x10, 0x20, 0x30));
+        let mut text = TextLayer::localized(vec!["HELLO".to_string()]);
+        text.origin_x = 10_000;
+        text.origin_y = 10_000;
+        let root = temp_artifact_root("emit-offscreen-zero-text");
+        let sink = RecordingFrameArtifactSink::new();
+
+        // Pre-condition: this layer genuinely paints nothing.
+        let (_, painted) = pass.rasterise_with_text(&stack, &text);
+        assert_eq!(painted, 0, "off-screen origin must paint zero pixels");
+
+        let result = pass.emit_localized_screenshot(&stack, &text, &root, "zero-text", &sink);
+        assert!(matches!(
+            result,
+            Err(RenderEmitError::BlankLocalizedText { char_count: 5, .. })
+        ));
+        // No frame announced and the frame index did not advance, so no
+        // vacuous screenshot leaked into the substrate.
+        assert!(sink.is_empty());
+        assert_eq!(pass.next_frame_index(), 0);
+        let _ = std::fs::remove_dir_all(root.path());
+    }
+
+    #[test]
+    fn emit_rejects_all_whitespace_zero_text_screenshot() {
+        // An all-whitespace localized layer has chars but paints nothing
+        // (space is the BLANK glyph); it must be rejected too.
+        let mut pass = RenderPass::with_dimensions(128, 48).expect("non-zero screen");
+        let stack = wipe_stack(WipeColour::BLACK);
+        let text = TextLayer::localized(vec!["   ".to_string()]);
+        let root = temp_artifact_root("emit-whitespace-zero-text");
+        let sink = RecordingFrameArtifactSink::new();
+
+        let (_, painted) = pass.rasterise_with_text(&stack, &text);
+        assert_eq!(painted, 0, "all-whitespace must paint zero pixels");
+
+        let result = pass.emit_localized_screenshot(&stack, &text, &root, "ws", &sink);
+        assert!(matches!(
+            result,
+            Err(RenderEmitError::BlankLocalizedText { char_count: 3, .. })
+        ));
+        assert!(sink.is_empty());
+        let _ = std::fs::remove_dir_all(root.path());
+    }
+
+    #[test]
+    fn emit_accepts_real_text_that_paints_pixels() {
+        // Control case: the same guard lets a real localized layer
+        // through, so the rejection above is not a blanket refusal.
+        let mut pass = RenderPass::with_dimensions(128, 48).expect("non-zero screen");
+        let stack = wipe_stack(WipeColour::BLACK);
+        let text = TextLayer::localized(vec!["HELLO".to_string()]);
+        let root = temp_artifact_root("emit-real-text");
+        let sink = RecordingFrameArtifactSink::new();
+        pass.emit_localized_screenshot(&stack, &text, &root, "real", &sink)
+            .expect("real localized text emits");
+        assert_eq!(sink.len(), 1);
+        let _ = std::fs::remove_dir_all(root.path());
+    }
+
+    #[test]
+    fn alpha_transparent_wipe_still_fully_fills_framebuffer() {
+        // GraphicsAlpha is recorded state only; paint_object does NOT
+        // blend object-level alpha. A Wipe whose object alpha is
+        // TRANSPARENT still fully fills the framebuffer with the wipe
+        // colour — this asserts the doc-matches-code corrected behavior.
+        use crate::graphics_objects::GraphicsAlpha;
+        let pass = RenderPass::with_dimensions(2, 2).expect("non-zero screen");
+        let mut stack = GraphicsObjectStack::new();
+        let mut wipe = GraphicsObject::wipe(WipeColour::opaque_rgb(0x11, 0x22, 0x33));
+        wipe.alpha = GraphicsAlpha::TRANSPARENT;
+        stack
+            .set(GraphicsPlane::Foreground, 0, wipe)
+            .expect("set wipe");
+        let fb = pass.rasterise(&stack);
+        for chunk in fb.pixels().chunks(RGBA_BYTES_PER_PIXEL) {
+            assert_eq!(
+                chunk,
+                &[0x11, 0x22, 0x33, 0xFF],
+                "object-level alpha must NOT be applied by paint_object"
+            );
+        }
+    }
+
+    #[test]
     fn two_emissions_with_same_state_produce_byte_identical_pngs() {
         let mut pass_a = RenderPass::with_dimensions(48, 24).expect("non-zero screen");
         let mut pass_b = RenderPass::with_dimensions(48, 24).expect("non-zero screen");
@@ -882,7 +1016,10 @@ mod tests {
 
     #[test]
     fn frame_index_advances_per_emission() {
-        let mut pass = RenderPass::with_dimensions(16, 16).expect("non-zero screen");
+        // Framebuffer must be large enough for the default text origin
+        // (16, 16) + scale-4 glyph to actually paint, otherwise the
+        // non-vacuous-localization guard (correctly) rejects the emit.
+        let mut pass = RenderPass::with_dimensions(64, 64).expect("non-zero screen");
         let stack = wipe_stack(WipeColour::BLACK);
         let text = TextLayer::localized(vec!["X".to_string()]);
         let root = temp_artifact_root("frame-index");
