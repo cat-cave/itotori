@@ -29,10 +29,14 @@
 //!   text unit before the next text from a different speaker slot is
 //!   attached to the preceding text unit's `runtimeExpectation.traceKey`
 //!   payload as a `z<NNNN>` archive id.
-//! - Provenance: each unit's `sourceLocation.range` is anchored against
-//!   the **scene blob file offset** (Sweetie HD scene 1 = `0x13880`), so
-//!   downstream patchback (KAIFUU-211) can write back without
-//!   recomputing the decompressed offset.
+//! - Provenance: each unit's `sourceLocation.range` is anchored in the
+//!   **decompressed bytecode stream** — the same space
+//!   [`parse_real_bytecode`] and the KAIFUU-211 patchback re-walk
+//!   operate in ("caller owns decompression"). The owning scene is
+//!   identified by its scene id (`containerKey` / `sourceUnitKey`),
+//!   never by adding a decompressed cursor to a compressed file offset:
+//!   that earlier mixing pushed any unit whose decompressed offset
+//!   exceeded its scene's compressed `byte_len` into a *later* scene.
 //!
 //! Empty scene → typed [`BridgeProduceError::EmptyScene`] (no silent
 //! `Ok(empty bundle)`).
@@ -60,10 +64,6 @@ pub struct BridgeOpts<'a> {
     pub source_profile_id: &'a str,
     /// Source locale tag for the decoded text (`"ja-JP"` for Sweetie HD).
     pub source_locale: &'a str,
-    /// Absolute file offset of the scene blob inside the SEEN.TXT
-    /// envelope. Used as the byte-range anchor in
-    /// `sourceLocation.range`. Sweetie HD scene 1 sits at `0x13880`.
-    pub scene_blob_file_offset: u64,
     /// Extractor name embedded in `extractor.name`.
     pub extractor_name: &'a str,
     /// Extractor version embedded in `extractor.version`.
@@ -290,6 +290,20 @@ fn collect_units(
             }
             RealLiveOpcode::Choice { choices } => {
                 for (option_index, choice_bytes) in choices.iter().enumerate() {
+                    // An empty choice option is an interior `,,` segment
+                    // that carries no translatable body. The patchback
+                    // re-walk (collect_text_unit_positions) skips
+                    // zero-length options via its `arg_end > arg_start`
+                    // guard, so the producer MUST skip them too —
+                    // otherwise every later unit's occurrence_index
+                    // drifts by one per empty option and patchback
+                    // splices into the wrong unit (ProvenanceMismatch).
+                    // Skipping in both paths keeps each non-empty unit's
+                    // occurrence_index independent of how many empty
+                    // options precede it.
+                    if choice_bytes.is_empty() {
+                        continue;
+                    }
                     let decoded = decode_text_body(choice_bytes, TextEncoding::ShiftJisInlineRun);
                     let (control_prefix, prefix_spans) =
                         build_control_prefix(&mut pending_markers, &decoded);
@@ -784,11 +798,17 @@ fn build_unit_json(
         }));
     }
 
-    let scene_blob_file_start = opts
-        .scene_blob_file_offset
-        .saturating_add(unit.decompressed_byte_offset);
-    let scene_blob_file_end =
-        scene_blob_file_start.saturating_add(unit.decompressed_byte_len.max(1));
+    // `range` is a DECOMPRESSED-bytecode-stream interval — the only
+    // honest per-unit coordinate, since a unit has no fixed offset
+    // inside the LZSS-compressed scene blob. We must NOT add the scene's
+    // compressed file offset here: a unit whose decompressed offset
+    // exceeds its scene's compressed `byte_len` would then resolve into
+    // a later scene during patchback. The owning scene is recovered from
+    // `containerKey` / `sourceUnitKey` (its scene id), not from this
+    // range.
+    let unit_decompressed_start = unit.decompressed_byte_offset;
+    let unit_decompressed_end =
+        unit_decompressed_start.saturating_add(unit.decompressed_byte_len.max(1));
 
     let source_location = json!({
         "containerKey": format!("reallive:scene-{scene_id:04}"),
@@ -799,8 +819,8 @@ fn build_unit_json(
             format!("{:04}", unit.occurrence_index),
         ],
         "range": {
-            "startByte": scene_blob_file_start,
-            "endByte": scene_blob_file_end,
+            "startByte": unit_decompressed_start,
+            "endByte": unit_decompressed_end,
         },
     });
 
@@ -958,7 +978,6 @@ mod tests {
             game_version: "test",
             source_profile_id: "kaifuu-reallive-synthetic-bridge-test",
             source_locale: "ja-JP",
-            scene_blob_file_offset: 0x13880,
             extractor_name: "kaifuu-reallive-bridge",
             extractor_version: "0.1.0",
             scene_kidoku_count: 0,
@@ -1017,16 +1036,77 @@ mod tests {
     }
 
     #[test]
-    fn provenance_byte_range_is_anchored_against_scene_blob_file_offset() {
+    fn provenance_byte_range_is_a_decompressed_stream_interval_not_a_file_offset() {
+        // The first (and only) text unit starts at decompressed offset 0.
+        // The range must be a pure decompressed-stream interval — NOT
+        // anchored at any scene blob file offset (the prior bug added the
+        // file offset, which pushed deep units into a later scene during
+        // patchback).
         let bytecode = &[0x83, 0x6E, 0x0a, 0x05, 0x00];
         let report = parse_gameexe_inventory(b"");
         let produced = produce_bundle(1, &[0u8; 32], bytecode, &report, &opts_for_test())
             .expect("textout must produce a dialogue unit");
         let range = &produced.json["units"][0]["sourceLocation"]["range"];
         let start = range["startByte"].as_u64().expect("startByte u64");
+        let end = range["endByte"].as_u64().expect("endByte u64");
+        assert_eq!(
+            start, 0,
+            "first unit must start at decompressed offset 0, not a file offset; got {start:#x}"
+        );
         assert!(
-            start >= 0x13880,
-            "byte range must be anchored at scene blob file offset (0x13880); got {start:#x}"
+            end > start && end <= bytecode.len() as u64,
+            "range must be a positive-width interval inside the decompressed bytecode; got {start}..{end}"
+        );
+    }
+
+    #[test]
+    fn empty_choice_option_does_not_drift_occurrence_index_of_later_units() {
+        // Bytecode: Textout(ハ), Choice("A",,"B"), Textout(ニ).
+        // The empty `,,` option must NOT consume an occurrence_index, so
+        // every later unit keeps the same occurrence the patchback
+        // re-walk (collect_text_unit_positions) assigns.
+        //
+        // COMMAND header (8 bytes): 0x23, module_type=1, module_id=SEL(5),
+        // opcode=0x0000, argc=0, overload=0, reserved=0; then `(A,,B)`.
+        let mut bytecode: Vec<u8> = Vec::new();
+        bytecode.extend_from_slice(&[0x83, 0x6E]); // Textout "ハ" -> occ 0
+        bytecode.extend_from_slice(&[0x23, 0x01, 0x05, 0x00, 0x00, 0x00, 0x00, 0x00]);
+        bytecode.extend_from_slice(b"(A,,B)"); // option A -> occ 1, empty skipped, B -> occ 2
+        bytecode.extend_from_slice(&[0x83, 0x70]); // Textout "ニ" -> occ 3
+        bytecode.extend_from_slice(&[0x0a, 0x05, 0x00]); // MetaLine terminator
+
+        let report = parse_gameexe_inventory(b"");
+        let produced = produce_bundle(1, &[0u8; 32], &bytecode, &report, &opts_for_test())
+            .expect("scene with empty choice option must produce units");
+
+        // Producer occurrence indices, in encounter order, parsed from
+        // the canonical sourceUnitKey `reallive:scene-NNNN#OOOO`.
+        let producer: Vec<(usize, String)> = produced
+            .bundle
+            .units
+            .iter()
+            .map(|u| {
+                let occ = u
+                    .source_unit_key
+                    .split('#')
+                    .nth(1)
+                    .and_then(|s| s.parse::<usize>().ok())
+                    .expect("occurrence in sourceUnitKey");
+                (occ, u.surface_kind.clone())
+            })
+            .collect();
+
+        // Exactly four units (the empty option emitted none), and the
+        // trailing dialogue unit sits at occurrence 3 (no drift).
+        assert_eq!(
+            producer,
+            vec![
+                (0, "dialogue".to_string()),
+                (1, "choice_label".to_string()),
+                (2, "choice_label".to_string()),
+                (3, "dialogue".to_string()),
+            ],
+            "empty `,,` option must not consume an occurrence_index"
         );
     }
 }

@@ -68,7 +68,6 @@ fn patch_with_sentinel(seen_bytes: &[u8]) -> Vec<u8> {
         game_version: "1.0.0",
         source_profile_id: "kaifuu-reallive-real-bytes",
         source_locale: "ja-JP",
-        scene_blob_file_offset: entry.byte_offset,
         extractor_name: "kaifuu-reallive-bridge",
         extractor_version: "0.1.0",
         scene_kidoku_count: header.kidoku_count,

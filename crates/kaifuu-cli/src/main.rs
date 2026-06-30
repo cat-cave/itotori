@@ -393,7 +393,6 @@ fn run_extract_reallive_bundle(args: &[String]) -> Result<(), Box<dyn std::error
         game_version,
         source_profile_id,
         source_locale,
-        scene_blob_file_offset: entry.byte_offset,
         extractor_name: "kaifuu-reallive-bridge",
         extractor_version: "0.1.0",
         scene_kidoku_count: header.kidoku_count,

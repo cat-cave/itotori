@@ -11,8 +11,8 @@
 //! - First text unit's `sourceText` decodes non-empty Shift-JIS text.
 //! - At least one protected span carries `parsedName ==
 //!   "reallive.kidoku"`.
-//! - `provenance.byteRange` is anchored against the scene 1 blob's file
-//!   offset (`0x13880`).
+//! - `provenance.byteRange` is a decompressed-bytecode-stream interval
+//!   (not a compressed file offset).
 //!
 //! The test is env-gated; without `ITOTORI_REAL_GAME_ROOT` it
 //! emits an explicit skip notice and returns (no silent pass).
@@ -110,7 +110,6 @@ fn produces_v02_bridge_bundle_from_sweetie_hd_scene_1_real_bytes() {
         game_version: "1.0.0",
         source_profile_id: SWEETIE_HD_SOURCE_PROFILE_ID,
         source_locale: "ja-JP",
-        scene_blob_file_offset: entry.byte_offset,
         extractor_name: "kaifuu-reallive-bridge",
         extractor_version: "0.1.0",
         scene_kidoku_count: header.kidoku_count,
@@ -216,7 +215,10 @@ fn produces_v02_bridge_bundle_from_sweetie_hd_scene_1_real_bytes() {
         "at least one reallive.kidoku protected span must be emitted; observed kinds: {emitted_parsed_names:?}"
     );
 
-    // ---- Acceptance: provenance byteRange anchored at file offset 0x13880. ----
+    // ---- Acceptance: provenance byteRange is a decompressed-stream interval. ----
+    // The range is a position in the DECOMPRESSED bytecode (caller owns
+    // decompression), NOT a compressed file offset. It must sit inside
+    // the decompressed bytecode bounds — never anchored at 0x13880.
     let range = &produced.json["units"][0]["sourceLocation"]["range"];
     let start_byte = range["startByte"]
         .as_u64()
@@ -224,16 +226,16 @@ fn produces_v02_bridge_bundle_from_sweetie_hd_scene_1_real_bytes() {
     let end_byte = range["endByte"]
         .as_u64()
         .expect("range.endByte must be a u64");
+    let decompressed_len = decompressed.len() as u64;
     assert!(
-        start_byte >= 0x13880,
-        "provenance.byteRange must be anchored at scene 1's blob file offset (0x13880); got {start_byte:#x}"
+        start_byte < decompressed_len,
+        "byteRange.startByte must be a decompressed-stream offset (< {decompressed_len}); got {start_byte}"
     );
     assert!(
-        end_byte > start_byte,
-        "byteRange must be a positive-width interval"
+        end_byte > start_byte && end_byte <= decompressed_len,
+        "byteRange must be a positive-width interval inside the decompressed bytecode; got {start_byte}..{end_byte}"
     );
     eprintln!(
-        "first unit byte range: {start_byte:#x}..{end_byte:#x} (anchored at scene blob 0x{:x})",
-        entry.byte_offset
+        "first unit decompressed byte range: {start_byte}..{end_byte} (decompressed len {decompressed_len})"
     );
 }

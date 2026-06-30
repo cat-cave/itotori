@@ -283,9 +283,11 @@ impl TranslatedBundleV02 {
 ///
 /// 1. Parse the source Seen.txt envelope via [`parse_archive`].
 /// 2. Walk every `bundle.targets[i]` paired with its source `bundle.source.units[i]`.
-///    Resolve each unit's `(scene_id, decompressed_byte_offset,
-///    decompressed_byte_len)` from `sourceLocation.range` minus the
-///    owning scene's `byte_offset`.
+///    Resolve each unit's `(scene_id, occurrence_index)` from its
+///    `sourceUnitKey` (`reallive:scene-NNNN#OOOO`); the scene id selects
+///    the owning archive entry. The `sourceLocation.range` is a
+///    decompressed-stream interval and is not used for scene
+///    attribution.
 /// 3. Group edits by scene.
 /// 4. For each modified scene:
 ///    - Decompress its bytecode via [`decompress_avg32`].
@@ -462,12 +464,14 @@ fn resolve_edit(
         });
     }
 
-    // Pull (startByte, endByte) from the source-location range. The
-    // KAIFUU-210 producer pinned the start at the scene blob's file
-    // offset plus an approximate decompressed-byte cursor. We use only
-    // the file-offset half to identify which scene owns the unit;
-    // the exact in-bytecode position is recovered by re-walking
-    // [`parse_real_bytecode`] in [`patch_scene_blob`].
+    // Pull (startByte, endByte) from the source-location range. Per the
+    // KAIFUU-210 producer the range is a DECOMPRESSED-bytecode-stream
+    // interval — a single coordinate space. It is NOT used to identify
+    // the owning scene (a decompressed offset has no meaning across the
+    // compressed file layout); we keep it only for a positive-width
+    // sanity check and typed-error context. The exact in-bytecode
+    // position is recovered by re-walking [`parse_real_bytecode`] in
+    // [`patch_scene_blob`], keyed on `occurrence_index`.
     let range = unit
         .source_location
         .get("range")
@@ -505,43 +509,42 @@ fn resolve_edit(
         });
     }
 
-    // Locate the scene whose `byte_offset .. byte_offset + byte_len`
-    // strictly contains `start_byte`.
-    let (scene_entry_index, _entry) = scene_index
-        .entries
-        .iter()
-        .enumerate()
-        .find(|(_, entry)| {
-            let scene_start = entry.byte_offset;
-            let scene_end = scene_start + u64::from(entry.byte_len);
-            start_byte >= scene_start && start_byte < scene_end
-        })
+    // Identify the owning scene AND the unit's occurrence index from the
+    // v0.2 sourceUnitKey shape `reallive:scene-NNNN#OOOO`. The scene id
+    // is the only honest scene key: it is invariant under the
+    // decompressed/compressed coordinate split, so a unit deep in the
+    // decompressed stream always resolves to its true scene (the prior
+    // file-offset-containment path mis-resolved such units into a later
+    // scene). `occurrence_index` is the authoritative in-scene
+    // positioning key.
+    let (scene_id, occurrence_index) = parse_scene_and_occurrence(&unit.source_unit_key)
         .ok_or_else(|| PatchbackError::ProvenanceMismatch {
             bridge_unit_id: target.bridge_unit_id.clone(),
             start_byte,
             end_byte,
             reason: format!(
-                "no scene in archive directory contains startByte {start_byte:#x} \
-                 (archive has {scene_count} populated scenes)",
-                scene_count = scene_index.entries.len()
+                "sourceUnitKey {key:?} does not match the canonical \
+                     `reallive:scene-NNNN#OOOO` shape",
+                key = unit.source_unit_key
             ),
         })?;
 
-    // Parse the occurrence index out of the v0.2 sourceUnitKey shape
-    // `reallive:scene-NNNN#OOOO`. This is the authoritative
-    // unit-positioning key per the KAIFUU-210 producer's surface.
-    let occurrence_index = parse_occurrence_index(&unit.source_unit_key).ok_or_else(|| {
-        PatchbackError::ProvenanceMismatch {
+    // Locate the scene entry whose slot id matches the unit's scene id.
+    let (scene_entry_index, _entry) = scene_index
+        .entries
+        .iter()
+        .enumerate()
+        .find(|(_, entry)| entry.scene_id == scene_id)
+        .ok_or_else(|| PatchbackError::ProvenanceMismatch {
             bridge_unit_id: target.bridge_unit_id.clone(),
             start_byte,
             end_byte,
             reason: format!(
-                "sourceUnitKey {key:?} does not match the canonical \
-                 `reallive:scene-NNNN#OOOO` shape",
-                key = unit.source_unit_key
+                "no scene {scene_id:04} in archive directory \
+                 (archive has {scene_count} populated scenes)",
+                scene_count = scene_index.entries.len()
             ),
-        }
-    })?;
+        })?;
 
     // Encode the target text per the named PatchbackOpts policy.
     let new_textout_bytes = match opts.target_encoding {
@@ -564,14 +567,16 @@ fn resolve_edit(
     })
 }
 
-/// Parse the occurrence index out of a v0.2 `sourceUnitKey`. Returns
-/// `None` if the key does not match the canonical
-/// `reallive:scene-NNNN#OOOO` shape.
-fn parse_occurrence_index(key: &str) -> Option<usize> {
-    // `reallive:scene-{scene_id:04}#{occ:04}`. We pull the suffix
-    // after the literal `#`.
-    let (_, occurrence_str) = key.split_once('#')?;
-    occurrence_str.parse::<usize>().ok()
+/// Parse the `(scene_id, occurrence_index)` pair out of a v0.2
+/// `sourceUnitKey`. Returns `None` if the key does not match the
+/// canonical `reallive:scene-NNNN#OOOO` shape.
+fn parse_scene_and_occurrence(key: &str) -> Option<(u16, usize)> {
+    // `reallive:scene-{scene_id:04}#{occ:04}`.
+    let rest = key.strip_prefix("reallive:scene-")?;
+    let (scene_str, occurrence_str) = rest.split_once('#')?;
+    let scene_id = scene_str.parse::<u16>().ok()?;
+    let occurrence_index = occurrence_str.parse::<usize>().ok()?;
+    Some((scene_id, occurrence_index))
 }
 
 /// Re-emit a scene blob with the given edits applied.
@@ -1198,17 +1203,179 @@ mod tests {
     }
 
     #[test]
-    fn provenance_byte_range_outside_any_scene_emits_typed_mismatch_error() {
+    fn unit_naming_a_scene_absent_from_the_archive_emits_typed_mismatch_error() {
         let SyntheticArchive { archive, .. } = build_synthetic_archive();
-        // Point the byte range at file offset 0 (inside the directory,
-        // not any scene).
-        let bundle_json = make_bundle_json(0, 0, 4, "Hi!!");
+        // Scene attribution is by scene id (from sourceUnitKey), not by
+        // byte containment. Name a scene the archive does not contain.
+        let mut bundle_json = make_bundle_json(REALLIVE_SEEN_TXT_DIRECTORY_BYTE_LEN, 0, 2, "Hi");
+        bundle_json["units"][0]["sourceUnitKey"] = serde_json::json!("reallive:scene-9999#0000");
+        bundle_json["units"][0]["patchRef"]["sourceUnitKey"] =
+            serde_json::json!("reallive:scene-9999#0000");
         let bundle = TranslatedBundleV02::from_json(&bundle_json).expect("bundle parses");
         let err = apply_translated_bundle(&archive, &bundle, &PatchbackOpts::shift_jis())
-            .expect_err("must reject out-of-scene byte range");
+            .expect_err("must reject a unit naming an absent scene");
         assert!(
             matches!(err, PatchbackError::ProvenanceMismatch { .. }),
             "expected ProvenanceMismatch, got {err:?}"
+        );
+    }
+
+    /// Assemble a Seen.txt archive from `(scene_id, scene_blob)` pairs,
+    /// laid out sequentially after the 80,000-byte directory.
+    fn assemble_archive(scenes: &[(u16, Vec<u8>)]) -> Vec<u8> {
+        let mut directory = vec![0u8; REALLIVE_SEEN_TXT_DIRECTORY_BYTE_LEN as usize];
+        let mut payload: Vec<u8> = Vec::new();
+        let mut cursor = REALLIVE_SEEN_TXT_DIRECTORY_BYTE_LEN;
+        for (scene_id, blob) in scenes {
+            let slot = *scene_id as usize * 8;
+            directory[slot..slot + 4].copy_from_slice(&(cursor as u32).to_le_bytes());
+            directory[slot + 4..slot + 8].copy_from_slice(&(blob.len() as u32).to_le_bytes());
+            payload.extend_from_slice(blob);
+            cursor += blob.len() as u64;
+        }
+        let mut archive = directory;
+        archive.extend_from_slice(&payload);
+        archive
+    }
+
+    /// Build one scene blob (`header || compressed-bytecode`) from
+    /// decompressed plaintext bytecode.
+    fn scene_blob_from_plaintext(plaintext: &[u8]) -> Vec<u8> {
+        let compressed = compress_avg32_literal(plaintext).expect("compress scene");
+        let mut header = vec![0u8; SCENE_HEADER_BYTE_LEN];
+        header[0..4].copy_from_slice(&(SCENE_HEADER_BYTE_LEN as u32).to_le_bytes());
+        header[4..8].copy_from_slice(&110_002u32.to_le_bytes());
+        header[0x20..0x24].copy_from_slice(&(SCENE_HEADER_BYTE_LEN as u32).to_le_bytes());
+        header[0x24..0x28].copy_from_slice(&(plaintext.len() as u32).to_le_bytes());
+        header[0x28..0x2c].copy_from_slice(&(compressed.len() as u32).to_le_bytes());
+        let mut blob = header;
+        blob.extend_from_slice(&compressed);
+        blob
+    }
+
+    /// Decompress a scene's bytecode out of an assembled archive.
+    fn decompress_scene(archive: &[u8], scene_id: u16) -> Vec<u8> {
+        let index = parse_archive(archive).expect("archive parses");
+        let entry = index
+            .entries
+            .iter()
+            .find(|e| e.scene_id == scene_id)
+            .expect("scene present");
+        let blob = &archive
+            [entry.byte_offset as usize..(entry.byte_offset + u64::from(entry.byte_len)) as usize];
+        let header = SceneHeader::parse(blob).expect("header");
+        let bc_start = header.bytecode_offset as usize;
+        let bc_end = bc_start + header.bytecode_compressed_size as usize;
+        decompress_avg32(
+            &blob[bc_start..bc_end],
+            header.bytecode_uncompressed_size as usize,
+        )
+        .expect("decompress")
+    }
+
+    #[test]
+    fn deep_decompressed_offset_resolves_to_owning_scene_not_a_later_scene() {
+        // BUG-2 regression: a unit whose decompressed range would land
+        // inside a LATER scene's file extent must still resolve to its
+        // own scene (by scene id), and patch only that scene.
+        //
+        // Two identical scenes; scene 1 owns the edited unit but its
+        // range startByte is deliberately set inside scene 2's file
+        // range (simulating a deep decompressed offset under the old
+        // file-offset-mixing bug).
+        let plaintext = vec![0x83u8, 0x6E, 0x0A, 0x05, 0x00];
+        let blob1 = scene_blob_from_plaintext(&plaintext);
+        let blob2 = scene_blob_from_plaintext(&plaintext);
+        let scene2_file_offset = REALLIVE_SEEN_TXT_DIRECTORY_BYTE_LEN + blob1.len() as u64;
+        let archive = assemble_archive(&[(1, blob1), (2, blob2)]);
+
+        // Range startByte lands inside scene 2's file extent; under the
+        // old containment logic this mis-resolved to scene 2.
+        let bundle_json = make_bundle_json(scene2_file_offset, 0, 2, "Hi");
+        let bundle = TranslatedBundleV02::from_json(&bundle_json).expect("bundle parses");
+        let patched = apply_translated_bundle(&archive, &bundle, &PatchbackOpts::shift_jis())
+            .expect("must resolve to owning scene 1 and apply");
+
+        // Scene 1 was patched (now starts with SJIS "Hi"); scene 2 is
+        // byte-identical to its original decompressed bytecode.
+        let scene1 = decompress_scene(&patched, 1);
+        let scene2 = decompress_scene(&patched, 2);
+        let hi = encode_shift_jis_slot("Hi").expect("encode");
+        assert!(
+            scene1.starts_with(&hi),
+            "scene 1 must carry the edit; got {scene1:02x?}"
+        );
+        assert_eq!(
+            scene2, plaintext,
+            "scene 2 must be untouched (the edit must not bleed into a later scene)"
+        );
+    }
+
+    #[test]
+    fn empty_choice_option_keeps_later_unit_splice_aligned_end_to_end() {
+        // BUG-1 regression: a scene with an empty `,,` choice option plus
+        // a trailing dialogue unit. The producer and the patchback
+        // re-walk must agree on occurrence_index for every unit, so the
+        // trailing unit splices correctly with NO ProvenanceMismatch.
+        //
+        // Bytecode: Textout(ハ), Choice("A",,"B"), Textout(ニ), MetaLine.
+        let mut plaintext: Vec<u8> = Vec::new();
+        plaintext.extend_from_slice(&[0x83, 0x6E]); // occ 0 dialogue
+        plaintext.extend_from_slice(&[0x23, 0x01, 0x05, 0x00, 0x00, 0x00, 0x00, 0x00]);
+        plaintext.extend_from_slice(b"(A,,B)"); // occ 1 "A", empty skip, occ 2 "B"
+        plaintext.extend_from_slice(&[0x83, 0x70]); // occ 3 dialogue
+        plaintext.extend_from_slice(&[0x0a, 0x05, 0x00]);
+
+        let blob = scene_blob_from_plaintext(&plaintext);
+        let archive = assemble_archive(&[(1, blob)]);
+
+        let opts = crate::bridge::BridgeOpts {
+            game_id: "synthetic",
+            game_version: "test",
+            source_profile_id: "synthetic-profile",
+            source_locale: "ja-JP",
+            extractor_name: "kaifuu-reallive-bridge",
+            extractor_version: "0.1.0",
+            scene_kidoku_count: 0,
+        };
+        let report = crate::gameexe::parse_gameexe_inventory(b"");
+        let produced = crate::produce_bundle(1, &[0u8; 32], &plaintext, &report, &opts)
+            .expect("bundle builds");
+
+        // Four units, occurrences 0..3 with no gap (empty option emitted
+        // none).
+        assert_eq!(produced.bundle.units.len(), 4);
+
+        // Translate each unit to a distinct 1-byte ASCII target.
+        let targets = ["a", "b", "c", "d"];
+        let mut translated_value = produced.json.clone();
+        {
+            let units = translated_value["units"].as_array_mut().expect("units");
+            for (i, unit) in units.iter_mut().enumerate() {
+                unit["target"] = serde_json::json!({"locale": "en-US", "text": targets[i]});
+            }
+        }
+        let translated =
+            TranslatedBundleV02::from_json(&translated_value).expect("translated parses");
+        let patched = apply_translated_bundle(&archive, &translated, &PatchbackOpts::shift_jis())
+            .expect("apply must succeed (no occurrence drift)");
+
+        // Correct-unit splice: every edit landed at its true position.
+        let expected: Vec<u8> = vec![
+            0x61, // occ0 -> "a"
+            0x23, 0x01, 0x05, 0x00, 0x00, 0x00, 0x00, 0x00, // command header
+            0x28, // '('
+            0x62, // occ1 -> "b"
+            0x2c, 0x2c, // ",,"
+            0x63, // occ2 -> "c"
+            0x29, // ')'
+            0x64, // occ3 -> "d"
+            0x0a, 0x05, 0x00, // MetaLine
+        ];
+        let actual = decompress_scene(&patched, 1);
+        assert_eq!(
+            actual, expected,
+            "trailing dialogue unit must splice at its own position with no drift"
         );
     }
 

@@ -124,7 +124,6 @@ fn patches_sweetie_hd_scene_1_with_en_us_sentinel_and_round_trips_archive() {
         game_version: "1.0.0",
         source_profile_id: SWEETIE_HD_SOURCE_PROFILE_ID,
         source_locale: "ja-JP",
-        scene_blob_file_offset: entry.byte_offset,
         extractor_name: "kaifuu-reallive-bridge",
         extractor_version: "0.1.0",
         scene_kidoku_count: header.kidoku_count,
@@ -290,9 +289,9 @@ fn provenance_mismatch_byte_range_emits_typed_error_on_real_bytes() {
     };
     let seen_bytes = fs::read(&seen_path).expect("read Seen.txt");
 
-    // Take the produced bundle and corrupt one unit's sourceLocation
-    // range to point at file offset 0 (inside the 80,000-byte
-    // directory) — guaranteed not to match any scene.
+    // Take the produced bundle and corrupt one unit's sourceUnitKey to
+    // an occurrence index that the scene's bytecode re-walk cannot
+    // resolve, forcing a typed provenance mismatch.
     let index = parse_archive(&seen_bytes).expect("envelope parses");
     let entry = index
         .entries
@@ -316,7 +315,6 @@ fn provenance_mismatch_byte_range_emits_typed_error_on_real_bytes() {
         game_version: "1.0.0",
         source_profile_id: SWEETIE_HD_SOURCE_PROFILE_ID,
         source_locale: "ja-JP",
-        scene_blob_file_offset: entry.byte_offset,
         extractor_name: "kaifuu-reallive-bridge",
         extractor_version: "0.1.0",
         scene_kidoku_count: header.kidoku_count,
@@ -335,12 +333,11 @@ fn provenance_mismatch_byte_range_emits_typed_error_on_real_bytes() {
                 "text": EN_SENTINEL,
             });
         }
-        // Corrupt the first unit's byte range to point at file offset
-        // 0 (inside the directory).
-        units[0]["sourceLocation"]["range"] = serde_json::json!({
-            "startByte": 0u64,
-            "endByte": 8u64,
-        });
+        // Corrupt the first unit's occurrence index to one the scene's
+        // bytecode re-walk cannot resolve (scene 1 exists; occurrence
+        // 99999 does not).
+        units[0]["sourceUnitKey"] = serde_json::json!("reallive:scene-0001#99999");
+        units[0]["patchRef"]["sourceUnitKey"] = serde_json::json!("reallive:scene-0001#99999");
     }
     let translated =
         TranslatedBundleV02::from_json(&translated_value).expect("translated bundle parses");
@@ -390,7 +387,6 @@ fn missing_target_payload_surfaces_typed_schema_invalid_on_real_bytes() {
         game_version: "1.0.0",
         source_profile_id: SWEETIE_HD_SOURCE_PROFILE_ID,
         source_locale: "ja-JP",
-        scene_blob_file_offset: entry.byte_offset,
         extractor_name: "kaifuu-reallive-bridge",
         extractor_version: "0.1.0",
         scene_kidoku_count: header.kidoku_count,
