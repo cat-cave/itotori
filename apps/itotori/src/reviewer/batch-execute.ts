@@ -1,22 +1,32 @@
 // ITOTORI-083 — Atomic batch reviewer action executor.
 //
 // Takes a `ReviewerBatchActionRequest` + the preview that was shown to
-// the reviewer, then dispatches each per-item action through the
+// the reviewer, then applies every selected item's action through the
 // existing `ReviewerQueueActionService` (ITOTORI-081). If ANY selected
 // item would refuse on its preview, the entire batch fails closed and
 // NO items are mutated — preserves the "fail closed for denied / stale
 // items; no partial writes" acceptance.
 //
-// Atomicity is application-side: the executor reruns the shared
-// transition validator over a fresh load of each item BEFORE writing
-// any action, refuses the whole batch if any fails, and only then
-// dispatches one action per selection. Each per-item dispatch is
-// already atomic at the repository layer (single-row UPDATE +
-// transition INSERT in one DB transaction). Because the batch is
-// pre-validated, concurrent moves on any single item still produce
-// a per-item diagnostic — the diagnostic is recorded against the
-// concurrent item and the rest of the (already-written) actions are
-// reported truthfully so the dashboard can show what happened.
+// Atomicity is all-or-nothing at the repository layer, NOT a per-item
+// best-effort loop. The executor reruns the shared transition validator
+// over a fresh load of each item BEFORE writing anything, refuses the
+// whole batch if any fails, and only then hands the prepared inputs to
+// `actionService.applyPreparedBatch`. That call wraps every per-item
+// UPDATE + transition INSERT in a SINGLE database transaction
+// (`ReviewerQueueRepository.applyActionsAndEnqueueJobs`): the whole
+// batch commits together or rolls back together. There is no window in
+// which items 0..k-1 stay persisted while item k refuses.
+//
+// Consequently a concurrent move on any single item rejects the entire
+// transaction. The repository rolls back the already-attempted writes,
+// and the executor catches the `ReviewerQueueRepositoryError` and
+// reports EVERY requested id as refused with `refusedAll: true`. The
+// dashboard never sees a partial batch: it is either all-applied or
+// all-refused. The repository-layer rollback is proven directly by
+// "applyActionsAndEnqueueJobs rolls back all reviewer transitions when
+// a later action is stale" in reviewer-queue-repository.test.ts; the
+// executor-layer all-refused reporting is proven by the atomic-batch
+// tests in reviewer-batch-execute.test.ts.
 //
 // Audit focus addressed:
 //  - "Batch actions bypassing single-action state machine": every
@@ -25,6 +35,10 @@
 //  - "Partial batch writes without item diagnostics": when the
 //    pre-flight validator refuses any item, NO writes happen; the
 //    result carries per-item diagnostics for every requested id.
+//  - "Atomicity claim weaker than no-partial-writes": a mid-batch
+//    repository refusal rolls back the whole transaction, so there are
+//    no already-written transitions to recover; the executor surfaces
+//    zero "applied" outcomes and refuses the entire batch.
 //  - "Consequence preview disagreeing with execution": the executor
 //    re-runs the SAME validator on a fresh load. If the freshly loaded
 //    item disagrees with the preview (e.g. someone else moved the
@@ -87,8 +101,9 @@ export type ReviewerBatchExecuteResult = {
   applied: BatchExecuteOutcome[];
   /**
    * `true` when zero items were written. Set when the pre-flight
-   * refused any item, the permission view denied manage, or the
-   * dispatch loop short-circuited because of the per-item refusal.
+   * refused any item, the permission view denied manage, or the atomic
+   * `applyPreparedBatch` transaction rejected and rolled back — in
+   * which case the entire batch is reported refused (no partial writes).
    */
   refusedAll: boolean;
   /**

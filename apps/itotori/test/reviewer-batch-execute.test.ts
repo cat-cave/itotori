@@ -1,10 +1,13 @@
 // ITOTORI-083 — Atomic batch execution tests.
 //
 // The executor calls the preview service first; if any item refuses,
-// NO writes happen. Otherwise per-item dispatch through the existing
-// ReviewerQueueActionService (ITOTORI-081). Each dispatch is observed
-// via a stub action service so failure modes (concurrent move,
-// permission denial, etc.) can be simulated.
+// NO writes happen. Otherwise the prepared inputs are applied as a
+// single atomic batch through ReviewerQueueActionService.applyPreparedBatch
+// (ITOTORI-081), which the repository runs in one DB transaction. The
+// batch is all-or-nothing: a mid-batch refusal rolls back every write
+// and the executor reports the whole batch as refused — there are no
+// partial writes. Failure modes (concurrent move, permission denial,
+// etc.) are simulated via a stub action service.
 
 import { describe, expect, it, vi } from "vitest";
 import {
@@ -324,6 +327,67 @@ describe("ReviewerBatchActionService — per-item dispatch surfaces repository d
           entry.kind === "refused" && entry.code === "reviewer_queue_item_invalid_transition",
       ),
     ).toBe(true);
+  });
+
+  // Atomicity-claim re-audit: the finding warned that a per-item dispatch
+  // loop could leave items 1..N-1 applied if item N races. The executor now
+  // hands the whole batch to the repository's single-transaction
+  // applyPreparedBatch, so a race on the LAST item rolls the entire batch
+  // back. The executor must surface ZERO "applied" outcomes — no partial
+  // writes leak to the dashboard.
+  it("surfaces no partial writes when the final item of the batch races", async () => {
+    const items = [
+      fixturePendingQaItem("reviewer-queue-083-race-1"),
+      fixturePendingQaItem("reviewer-queue-083-race-2"),
+      fixturePendingQaItem("reviewer-queue-083-race-3"),
+    ] as const;
+    const previewService = new ReviewerBatchPreviewService(
+      makeResolver(Object.fromEntries(items.map((item) => [item.reviewItemId, item]))),
+    );
+    const { service: actionService, calls } = makeActionStub();
+    // The atomic batch rejects because the final item moved concurrently;
+    // the repository transaction rolls back the earlier per-item writes.
+    vi.mocked(actionService.applyPreparedBatch).mockRejectedValueOnce(
+      new ReviewerQueueRepositoryError(
+        "reviewer_queue_item_concurrent_modification",
+        "reviewer queue item reviewer-queue-083-race-3 moved before the batch committed",
+      ),
+    );
+    const executor = new ReviewerBatchActionService({
+      previewService,
+      actionService,
+      resolvePayload: approvePayload,
+    });
+
+    const result = await executor.execute(
+      actor,
+      {
+        action: reviewerQueueActionValues.approve,
+        actorUserId: actor.userId,
+        selections: items.map((item) => ({
+          reviewItemId: item.reviewItemId,
+          expectedSourceRevisionId: item.sourceRevisionId,
+        })),
+      },
+      fixtureBatchPermissionView(),
+    );
+
+    expect(result.refusedAll).toBe(true);
+    expect(result.appliedAll).toBe(false);
+    // No "applied" outcome leaks: items 1..N-1 are NOT reported as written.
+    expect(result.applied.some((entry) => entry.kind === "applied")).toBe(false);
+    expect(result.applied.map((entry) => entry.reviewItemId)).toEqual(
+      items.map((item) => item.reviewItemId),
+    );
+    expect(
+      result.applied.every(
+        (entry) =>
+          entry.kind === "refused" && entry.code === "reviewer_queue_item_concurrent_modification",
+      ),
+    ).toBe(true);
+    // Single atomic dispatch — no per-item single-action fallback writes.
+    expect(calls).toEqual([]);
+    expect(actionService.applyPreparedBatch).toHaveBeenCalledTimes(1);
   });
 });
 
