@@ -28,15 +28,20 @@
 //!   (SiglusExtract, GARbro, Visual Arts's own engine-evolution notes)
 //!   and re-tested against bytes from a real Siglus title before being
 //!   encoded. No source expression is copied from any of those projects.
-//! - `siglus_rs` (`https://github.com/CommitteeOfZero/siglus_rs`) is a
-//!   **research anchor only**. Its license is GPL-3 and is incompatible
-//!   with itotori's distribution posture if linked or derived. This
-//!   crate does NOT depend on `siglus_rs`, does NOT include `siglus_rs`
-//!   headers, does NOT copy `siglus_rs`'s structure layouts, and does
-//!   NOT mechanically translate `siglus_rs` code into Rust. If a
-//!   hypothesis about Siglus's format was confirmed by reading
-//!   `siglus_rs`, the hypothesis is re-derived and re-tested against a
-//!   real Siglus title's bytes before being encoded here.
+//! - `xmoezzz/siglus_rs` (`https://github.com/xmoezzz/siglus_rs`) is a
+//!   **research anchor only**, licensed **MPL-2.0**. This crate does NOT
+//!   depend on `siglus_rs`, does NOT include `siglus_rs` headers, does
+//!   NOT copy `siglus_rs`'s structure layouts, and does NOT mechanically
+//!   translate `siglus_rs` code into Rust. If a hypothesis about
+//!   Siglus's format was confirmed by reading `siglus_rs`, the
+//!   hypothesis is re-derived and re-tested against a real Siglus
+//!   title's bytes before being encoded here.
+//! - `bluecookies/siglus-decompile`
+//!   (`https://github.com/bluecookies/siglus-decompile`) is the clearest
+//!   Siglus bytecode reference but states **no license** → treated as
+//!   **all-rights-reserved, documentation-only**. `SiglusExtract`
+//!   (xmoezzz) is **GPLv3**. None of these is vendored, linked, or
+//!   mechanically translated.
 //! - rlvm and xclannad are explicitly out of scope for this crate. The
 //!   Siglus port targets Siglus — sibling engines get sibling port
 //!   crates so cross-engine bleed is impossible at the crate-graph
@@ -128,12 +133,19 @@ pub const UNIMPLEMENTED_MESSAGE: &str = "unimplemented: utsushi-siglus scaffold"
 /// it passes the substrate's
 /// [`utsushi_core::substrate::reject_unredacted_local_paths`] filter
 /// verbatim.
+///
+/// Correctness note: an earlier repo statement mis-attributed the
+/// project to the wrong repository owner under an incorrect license. The
+/// accurate provenance, enforced here and by the siglus-25 audit-fix
+/// node, is `xmoezzz/siglus_rs` under MPL-2.0.
 pub const SIGLUS_RS_RESEARCH_ANCHOR_BOUNDARY_STATEMENT: &str = concat!(
-    "siglus_rs (https://github.com/CommitteeOfZero/siglus_rs) is a research anchor only. ",
-    "utsushi-siglus does not depend on siglus_rs, does not include siglus_rs headers, ",
-    "does not copy siglus_rs's structure layouts, and does not mechanically translate ",
-    "siglus_rs code into Rust. Format hypotheses are re-derived and re-tested against ",
-    "publicly-archived Siglus format documentation and a real Siglus title's bytes before being encoded.",
+    "xmoezzz/siglus_rs (https://github.com/xmoezzz/siglus_rs, MPL-2.0) is a research anchor only. ",
+    "bluecookies/siglus-decompile (https://github.com/bluecookies/siglus-decompile) is the clearest ",
+    "Siglus bytecode reference but states no license, so it is treated as all-rights-reserved and ",
+    "documentation-only. SiglusExtract (xmoezzz) is GPLv3. utsushi-siglus does not depend on siglus_rs, ",
+    "does not include siglus_rs headers, does not copy siglus_rs's structure layouts, and does not ",
+    "mechanically translate any of these projects' code into Rust. Format hypotheses are re-derived and ",
+    "re-tested against publicly-archived Siglus format documentation and a real Siglus title's bytes before being encoded.",
 );
 
 /// Inert context the scaffold owns. The post-alpha nodes will populate

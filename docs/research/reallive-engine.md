@@ -962,10 +962,12 @@ Existing itotori code:
 >    only present-day consumer of the deeper carriers)**. The reuse
 >    claim is a code citation, not a brand affinity.
 >
-> **Clean-room posture for the `utsushi-siglus` scaffold.** siglus_rs
-> (https://github.com/CommitteeOfZero/siglus_rs equivalents and the
-> historical Mafia / SiglusExtract / GARbro reverse-engineering work)
-> is a **research anchor only**. The `utsushi-siglus` crate does NOT
+> **Clean-room posture for the `utsushi-siglus` scaffold.**
+> `xmoezzz/siglus_rs` (https://github.com/xmoezzz/siglus_rs, MPL-2.0;
+> the clearest bytecode reference is `bluecookies/siglus-decompile`,
+> unlicensed → all-rights-reserved/documentation-only; SiglusExtract is
+> xmoezzz GPLv3; plus the historical Mafia / GARbro reverse-engineering
+> work) is a **research anchor only**. The `utsushi-siglus` crate does NOT
 > depend on siglus_rs, does NOT include siglus_rs headers, does NOT
 > copy siglus_rs's structure layouts, and does NOT mechanically
 > translate siglus_rs code into Rust. The clean-room boundary

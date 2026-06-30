@@ -84,9 +84,10 @@ pub const SIGLUS_UNIMPLEMENTED_MARKER: &str = "kaifuu.siglus";
 /// posture with the **correct** provenance without parsing the module
 /// doc-comment.
 ///
-/// Correctness note: an earlier repo statement mis-cited the project as
-/// `CommitteeOfZero/siglus_rs` under GPL-3. The accurate provenance,
-/// enforced here and by siglus-25, is `xmoezzz/siglus_rs` under MPL-2.0.
+/// Correctness note: an earlier repo statement mis-attributed the
+/// project to the wrong repository owner under an incorrect license. The
+/// accurate provenance, enforced here and by siglus-25, is
+/// `xmoezzz/siglus_rs` under MPL-2.0.
 pub const SIGLUS_RS_RESEARCH_ANCHOR_BOUNDARY_STATEMENT: &str = concat!(
     "xmoezzz/siglus_rs (https://github.com/xmoezzz/siglus_rs, MPL-2.0) is a research anchor only. ",
     "bluecookies/siglus-decompile (https://github.com/bluecookies/siglus-decompile) is the clearest ",

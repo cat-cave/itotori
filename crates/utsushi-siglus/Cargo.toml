@@ -4,7 +4,7 @@ version = "0.0.0"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "UTSUSHI-147 cross-engine substrate-alignment scaffold: pure-Rust Siglus engine port that registers conformance against the utsushi-core substrate facade. Clean-room; siglus_rs is a research anchor only and is not linked, vendored, or mechanically translated."
+description = "UTSUSHI-147 cross-engine substrate-alignment scaffold: pure-Rust Siglus engine port that registers conformance against the utsushi-core substrate facade. Clean-room; xmoezzz/siglus_rs (MPL-2.0) is a research anchor only and is not linked, vendored, or mechanically translated."
 
 [dependencies]
 # Intentionally NO `utsushi-reallive` dependency. The Siglus port is a
@@ -18,14 +18,16 @@ utsushi-core = { path = "../utsushi-core" }
 # NOT depend on siglus_rs — neither as a source dep nor a build artifact.
 # This block exists so audit tooling can detect the boundary statement
 # without parsing crate-level docs.
-project = "siglus_rs"
-url = "https://github.com/CommitteeOfZero/siglus_rs"
-# siglus_rs's published license is GPL-3 (mirroring the rlvm posture).
-# itotori does NOT take a derived-work posture toward siglus_rs: no
-# headers included, no source files vendored, no mechanical translation.
-# The license string is recorded here as observed, not as imposed on
-# itotori.
-license = "GPL-3.0-only"
+project = "xmoezzz/siglus_rs"
+url = "https://github.com/xmoezzz/siglus_rs"
+# siglus_rs's published license is MPL-2.0. itotori does NOT take a
+# derived-work posture toward siglus_rs: no headers included, no source
+# files vendored, no mechanical translation. The license string is
+# recorded here as observed, not as imposed on itotori. (The clearest
+# bytecode reference, bluecookies/siglus-decompile, states no license and
+# is treated as all-rights-reserved, documentation-only; SiglusExtract is
+# xmoezzz GPLv3. Neither is vendored, linked, or mechanically translated.)
+license = "MPL-2.0"
 # Linkage posture: siglus_rs is NOT linked at any tier (source, object,
 # or distribution). itotori's distribution posture for this crate is the
 # workspace-default `MIT OR Apache-2.0`.
