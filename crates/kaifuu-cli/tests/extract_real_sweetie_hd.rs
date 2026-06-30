@@ -1,10 +1,16 @@
 //! KAIFUU-210 — CLI integration test for
-//! `kaifuu-cli extract --engine reallive --scene 1 --bundle-output PATH`.
+//! `kaifuu-cli extract --engine reallive --scene 2011 --bundle-output PATH`.
 //!
 //! Env-gated on `ITOTORI_REAL_GAME_ROOT`. Runs the kaifuu-cli
 //! binary against the real Sweetie HD extracted root, asserts the
 //! output file exists and decodes as a v0.2 bridge bundle whose
 //! `schemaVersion` and `units` length pass the canonical contract.
+//!
+//! Scene **2011** is a dialogue-bearing scene (the same scene the
+//! `kaifuu-reallive` `bridge_real_bytes` test exercises). Scene 1 is
+//! binary-only — after the dialogue-surface filter the bridge correctly
+//! returns no_text_units for it, so this test targets a dialogue scene to
+//! exercise real translatable-text extraction end-to-end.
 
 #[path = "support/real_corpus.rs"]
 mod real_corpus;
@@ -30,7 +36,7 @@ fn kaifuu_cli_binary() -> PathBuf {
 
 #[test]
 #[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
-fn cli_extract_engine_reallive_scene_1_writes_schema_valid_v02_bundle() {
+fn cli_extract_engine_reallive_dialogue_scene_writes_schema_valid_v02_bundle() {
     let Some(game_root) = real_corpus::game_root() else {
         eprintln!(
             "{}",
@@ -40,14 +46,14 @@ fn cli_extract_engine_reallive_scene_1_writes_schema_valid_v02_bundle() {
     };
 
     let tmp_dir = tempfile::tempdir().expect("tmp dir");
-    let bundle_out = tmp_dir.path().join("sweetie-hd-scene-1.bridge.json");
+    let bundle_out = tmp_dir.path().join("sweetie-hd-scene-2011.bridge.json");
 
     let mut cmd = Command::new(kaifuu_cli_binary());
     cmd.arg("extract")
         .arg("--engine")
         .arg("reallive")
         .arg("--scene")
-        .arg("1")
+        .arg("2011")
         .arg("--bundle-output")
         .arg(&bundle_out)
         .arg("--game-root")

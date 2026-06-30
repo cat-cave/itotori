@@ -10,6 +10,12 @@
 //!   × 8-byte slot table).
 //! - The source root's `Seen.txt` is sha256-unchanged after the run.
 //! - The patched archive re-parses with the source's scene count.
+//!
+//! The bootstrap extract targets dialogue scene **2011** (the scene the
+//! `kaifuu-reallive` `bridge_real_bytes` test uses). Scene 1 is binary-only
+//! — the bridge returns no_text_units for it after the dialogue-surface
+//! filter — so a dialogue scene is required to exercise real
+//! translatable-text extraction plus byte-correct patchback.
 
 #[path = "support/real_corpus.rs"]
 mod real_corpus;
@@ -59,15 +65,16 @@ fn cli_patch_engine_reallive_writes_patched_seen_txt_under_writable_target() {
     let bundle_out = tmp.path().join("bridge-bundle-translated.json");
 
     // Step 1: extract the source-side bundle via the existing extract
-    // CLI to bootstrap a real bundle.
+    // CLI to bootstrap a real bundle. Target dialogue scene 2011 (scene 1
+    // is binary-only and surfaces no translatable units).
     let extract_status = Command::new(kaifuu_cli_binary())
         .arg("extract")
         .arg("--engine")
         .arg("reallive")
         .arg("--scene")
-        .arg("1")
+        .arg("2011")
         .arg("--bundle-output")
-        .arg(tmp.path().join("scene-1-source.json"))
+        .arg(tmp.path().join("scene-2011-source.json"))
         .arg("--game-root")
         .arg(&source_root)
         .arg("--game-id")
@@ -89,7 +96,7 @@ fn cli_patch_engine_reallive_writes_patched_seen_txt_under_writable_target() {
     // Synthesise a translated bundle by reading the source and adding
     // a target.text per unit.
     let source_bundle_bytes =
-        fs::read(tmp.path().join("scene-1-source.json")).expect("read source bundle");
+        fs::read(tmp.path().join("scene-2011-source.json")).expect("read source bundle");
     let mut bundle_value: serde_json::Value =
         serde_json::from_slice(&source_bundle_bytes).expect("source bundle JSON parses");
     {

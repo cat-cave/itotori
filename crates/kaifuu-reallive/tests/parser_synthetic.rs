@@ -97,8 +97,13 @@ fn command_choice_classified_from_sel_module_with_two_choices() {
     match &opcodes[0] {
         RealLiveOpcode::Choice { choices } => {
             assert_eq!(choices.len(), 2);
-            assert_eq!(choices[0], vec![0x61, 0x62]);
-            assert_eq!(choices[1], vec![0x63, 0x64]);
+            assert_eq!(choices[0].bytes, vec![0x61, 0x62]);
+            assert_eq!(choices[1].bytes, vec![0x63, 0x64]);
+            // Each option carries its scene-relative byte offset: after the
+            // 8-byte command header + '(' choice0 begins at 9; after the
+            // comma choice1 begins at 12 — never the command opener (0).
+            assert_eq!(choices[0].byte_offset, 9);
+            assert_eq!(choices[1].byte_offset, 12);
         }
         other => panic!("expected Choice, got {other:?}"),
     }

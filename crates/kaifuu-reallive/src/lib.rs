@@ -160,7 +160,7 @@ pub use inventory::{
     build_scene_inventory,
 };
 pub use opcode::{
-    COMMAND_HEADER_LEN, Expr, RealLiveOpcode, RealLiveParseError, TextEncoding,
+    COMMAND_HEADER_LEN, CommandArg, Expr, RealLiveOpcode, RealLiveParseError, TextEncoding,
     is_recognized_opener, is_shift_jis_textout_lead, is_structural_opener, is_translatable_textout,
     parse_expression, parse_real_bytecode,
 };

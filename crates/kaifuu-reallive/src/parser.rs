@@ -265,7 +265,14 @@ fn project_opcode(
     let mut operands: Vec<Operand> = Vec::new();
     let mut string_slot_refs: Vec<crate::ast::StringSlotRef> = Vec::new();
     let mut slot_index_within_instruction: u8 = 0;
-    let push_string_slot = |bytes: &[u8],
+    // `slot_byte_offset` is the slot's **scene-relative** byte offset — the
+    // splice target the length-preserving patch-back keys on. It MUST point
+    // at the slot's editable bytes, not the instruction opener. For a
+    // Textout run the run starts at the instruction, so the two coincide;
+    // for a Choice option the editable bytes live inside the argument list,
+    // so the caller passes the per-option offset captured by the decoder.
+    let push_string_slot = |slot_byte_offset: u64,
+                            bytes: &[u8],
                             role: StringSlotRole,
                             strings: &mut Vec<crate::ast::StringSlot>,
                             operands: &mut Vec<Operand>,
@@ -274,7 +281,7 @@ fn project_opcode(
                             slot_index_within_instruction: &mut u8| {
         let (slot, slot_ref) = make_slot(
             scene_id,
-            byte_offset,
+            slot_byte_offset,
             *slot_index_within_instruction,
             bytes,
             role,
@@ -292,7 +299,11 @@ fn project_opcode(
 
     match opcode {
         RealLiveOpcode::Textout { raw_bytes, .. } => {
+            // A Textout run starts at the instruction byte_offset and the
+            // whole run is the editable slot, so offset == byte_offset and
+            // byte_len == raw_bytes.len() — already byte-correct.
             push_string_slot(
+                byte_offset,
                 raw_bytes,
                 StringSlotRole::Dialogue,
                 strings,
@@ -303,7 +314,14 @@ fn project_opcode(
             );
         }
         RealLiveOpcode::TextDisplay { .. } => {
+            // TextDisplay / CharacterTextDisplay carry no inline text body
+            // in the parsed opcode (the visible run lands as the following
+            // Textout). The slot is a zero-length marker anchored at the
+            // command opener: byte_len == 0, so the legacy `apply_patches`
+            // splice can never overwrite the opcode header (any non-empty
+            // edit is rejected by the length-preserving gate).
             push_string_slot(
+                byte_offset,
                 &[],
                 StringSlotRole::Dialogue,
                 strings,
@@ -315,6 +333,7 @@ fn project_opcode(
         }
         RealLiveOpcode::CharacterTextDisplay => {
             push_string_slot(
+                byte_offset,
                 &[],
                 StringSlotRole::SpeakerName,
                 strings,
@@ -326,8 +345,14 @@ fn project_opcode(
         }
         RealLiveOpcode::Choice { choices } => {
             for choice in choices {
+                // Stamp each Choice slot at the option's authoritative
+                // scene-relative byte offset (inside the argument list),
+                // NOT the command opener — otherwise the length-preserving
+                // `apply_patches` splice would write the translation over
+                // the opcode header and structurally corrupt the scene.
                 push_string_slot(
-                    choice,
+                    choice.byte_offset,
+                    &choice.bytes,
                     StringSlotRole::Choice,
                     strings,
                     &mut operands,

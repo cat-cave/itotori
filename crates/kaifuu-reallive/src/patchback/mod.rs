@@ -768,6 +768,87 @@ mod tests {
         assert_eq!(err.code.as_str(), PATCHBACK_PARSER_REGRESSION_CODE);
     }
 
+    /// A `module_sel` Choice command (`23 01 05 00 00 02 00 00`) followed
+    /// by a bracketed `( "あ" , "い" )` argument list. Option 0 ("あ",
+    /// `82 A0`) begins at scene-relative byte 9 (after the 8-byte command
+    /// header + `(`); option 1 ("い", `82 A2`) begins at byte 12. The whole
+    /// scene decodes to exactly one Choice instruction carrying two
+    /// `StringSlotRole::Choice` slots.
+    fn choice_scene_blob() -> Vec<u8> {
+        let mut scene = vec![0x23, 0x01, 0x05, 0x00, 0x00, 0x02, 0x00, 0x00];
+        scene.push(b'('); // byte 8
+        scene.extend_from_slice(&[0x82, 0xA0]); // option 0 "あ" at 9..11
+        scene.push(b','); // byte 11
+        scene.extend_from_slice(&[0x82, 0xA2]); // option 1 "い" at 12..14
+        scene.push(b')'); // byte 14
+        scene
+    }
+
+    /// Regression for patchback-non-textout-slot-offset: a non-Textout
+    /// (Choice) slot must patch byte-correctly through the legacy
+    /// `apply_patches` surface — the opcode header is NOT overwritten.
+    ///
+    /// Before the fix the Choice slot's `byte_offset_within_scene` pointed
+    /// at the command opener (byte 0) while `byte_len` was the option-text
+    /// length, so the length-preserving splice wrote the translation over
+    /// the `0x23` command header → structural corruption. With the parser
+    /// stamping each option at its real argument-list offset, the splice
+    /// lands on the option bytes and the header survives byte-identical.
+    #[test]
+    fn patches_choice_option_slot_without_overwriting_opcode_header() {
+        let archive = single_scene_archive(&choice_scene_blob());
+        let (index, scenes) = parse_archive_and_scenes(&archive);
+        let scene = &scenes[0];
+        let scene_id = scene.scene_id.clone();
+
+        // Two Choice slots, stamped at the option bytes (9 and 12), never
+        // the command opener (0).
+        let choice_slots: Vec<&crate::ast::StringSlot> = scene
+            .strings
+            .iter()
+            .filter(|s| s.semantic_role == StringSlotRole::Choice)
+            .collect();
+        assert_eq!(choice_slots.len(), 2, "two choice options");
+        assert_eq!(choice_slots[0].byte_offset_within_scene, 9);
+        assert_eq!(choice_slots[0].byte_len, 2);
+        assert_eq!(choice_slots[1].byte_offset_within_scene, 12);
+        assert_ne!(
+            choice_slots[0].byte_offset_within_scene, 0,
+            "the option offset must NOT point at the opcode opener"
+        );
+        let option0_slot_id = choice_slots[0].slot_id.as_str().to_string();
+
+        // Replace option 0 "あ" (82 A0) with "う" (82 A4) — same 2-byte
+        // Shift-JIS budget, so the edit stays length-preserving.
+        let edit = length_preserving_edit(&scene_id, &option0_slot_id, "う");
+        let out = apply_patches(&archive, &index, &scenes, &[edit])
+            .expect("choice-option patch must succeed byte-correctly");
+
+        let scene_start = index.entries[0].byte_offset as usize;
+        // The 8-byte opcode header is byte-identical — NOT overwritten.
+        assert_eq!(
+            &out[scene_start..scene_start + 8],
+            &[0x23, 0x01, 0x05, 0x00, 0x00, 0x02, 0x00, 0x00],
+            "the Choice command header must survive the patch byte-identical"
+        );
+        // Option 0's two bytes became the translation.
+        assert_eq!(
+            &out[scene_start + 9..scene_start + 11],
+            encode_shift_jis_slot("う").expect("encodes").as_slice(),
+            "option 0 bytes must carry the translation"
+        );
+        // Everything else (the '(' separator, option 1, the ')') is
+        // byte-identical, and the file length is preserved.
+        assert_eq!(out.len(), archive.len());
+        assert_eq!(out[scene_start + 8], b'(');
+        assert_eq!(
+            &out[scene_start + 11..scene_start + 15],
+            &[b',', 0x82, 0xA2, b')']
+        );
+        assert_eq!(out[..scene_start + 9], archive[..scene_start + 9]);
+        assert_eq!(out[scene_start + 11..], archive[scene_start + 11..]);
+    }
+
     #[test]
     fn rejects_protected_span_loss() {
         // The real KAIFUU-191 parser only emits editable slots from

@@ -129,7 +129,11 @@ pub enum RealLiveOpcode {
     /// `module_msg` character-text Command (recognised).
     CharacterTextDisplay,
     /// `module_sel` choice Command (`select`/`select_s`/`select_w`).
-    Choice { choices: Vec<Vec<u8>> },
+    /// Each option carries its **scene-relative byte offset** (where the
+    /// option's editable bytes begin inside the decompressed scene
+    /// bytecode) so the length-preserving patch-back splice target is the
+    /// option text itself, never the command opener. See [`CommandArg`].
+    Choice { choices: Vec<CommandArg> },
     /// `module_jmp` conditional branch (`goto_if`/`goto_unless`).
     Branch,
     /// `module_jmp` `jump` (cross-scene long jump).
@@ -174,6 +178,27 @@ pub enum RealLiveOpcode {
     /// carries the full command span the decoder consumed. A well-formed
     /// scene at a documented module never produces this variant.
     Unknown { opcode: u8, raw_bytes: Vec<u8> },
+}
+
+/// One argument slot from a Command's bracketed `(...)` argument list,
+/// paired with the **scene-relative byte offset** where the slot's bytes
+/// begin in the decompressed scene bytecode.
+///
+/// The offset is authoritative for length-preserving patch-back: a
+/// `module_sel` Choice option's editable bytes live HERE, inside the
+/// argument list (after the 8-byte Command header and the `(`), never at
+/// the command opener. Carrying the offset on every parsed arg means the
+/// Scene-AST projection in `parser.rs` can stamp each Choice slot's
+/// `byte_offset_within_scene` at the option's real bytes instead of at the
+/// opcode header — the latter would make the legacy `apply_patches` splice
+/// over the opcode header and structurally corrupt the scene.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CommandArg {
+    /// Scene-relative byte offset where this argument's bytes begin.
+    pub byte_offset: u64,
+    /// The argument's raw bytes (Shift-JIS text run, expression bytes, or
+    /// empty for an interior `,,` slot).
+    pub bytes: Vec<u8>,
 }
 
 impl RealLiveOpcode {
@@ -727,9 +752,12 @@ fn goto_kind(command_id: u32) -> GotoKind {
 /// sub-expression are consumed as part of that data item by the grammar
 /// and never split a slot. Returns the per-slot raw bytes plus the total
 /// bytes consumed (both parentheses included).
-fn parse_arg_list(bytes: &[u8], pos: usize) -> Result<(Vec<Vec<u8>>, usize), RealLiveParseError> {
+fn parse_arg_list(
+    bytes: &[u8],
+    pos: usize,
+) -> Result<(Vec<CommandArg>, usize), RealLiveParseError> {
     let mut cursor = pos + 1; // skip '('
-    let mut args: Vec<Vec<u8>> = Vec::new();
+    let mut args: Vec<CommandArg> = Vec::new();
     let mut slot_start = cursor;
     loop {
         let Some(&b) = bytes.get(cursor) else {
@@ -741,7 +769,10 @@ fn parse_arg_list(bytes: &[u8], pos: usize) -> Result<(Vec<Vec<u8>>, usize), Rea
         match b {
             EXPR_PAREN_CLOSE => {
                 if cursor > slot_start {
-                    args.push(bytes[slot_start..cursor].to_vec());
+                    args.push(CommandArg {
+                        byte_offset: slot_start as u64,
+                        bytes: bytes[slot_start..cursor].to_vec(),
+                    });
                 }
                 cursor += 1;
                 break;
@@ -749,7 +780,10 @@ fn parse_arg_list(bytes: &[u8], pos: usize) -> Result<(Vec<Vec<u8>>, usize), Rea
             // Top-level separator: close the current slot (possibly
             // empty) and open the next.
             opener::COMMA => {
-                args.push(bytes[slot_start..cursor].to_vec());
+                args.push(CommandArg {
+                    byte_offset: slot_start as u64,
+                    bytes: bytes[slot_start..cursor].to_vec(),
+                });
                 cursor += 1;
                 slot_start = cursor;
             }
@@ -799,7 +833,7 @@ fn decode_command(bytes: &[u8], pos: usize) -> Result<(RealLiveOpcode, usize), R
         (u32::from(module_type) << 24) | (u32::from(module_id) << 16) | u32::from(opcode_u16);
 
     let mut consumed = COMMAND_HEADER_LEN;
-    let mut args_bytes: Vec<Vec<u8>> = Vec::new();
+    let mut args_bytes: Vec<CommandArg> = Vec::new();
 
     // Helper: consume `count` trailing `i32` jump-target pointers.
     let consume_pointers = |consumed: &mut usize, count: usize| -> Result<(), RealLiveParseError> {
@@ -815,7 +849,7 @@ fn decode_command(bytes: &[u8], pos: usize) -> Result<(RealLiveOpcode, usize), R
     };
     // Helper: consume a bracketed `(...)` arg list if one is present.
     let parse_optional_args =
-        |consumed: &mut usize, args: &mut Vec<Vec<u8>>| -> Result<(), RealLiveParseError> {
+        |consumed: &mut usize, args: &mut Vec<CommandArg>| -> Result<(), RealLiveParseError> {
             if bytes.get(pos + *consumed) == Some(&EXPR_PAREN_OPEN) {
                 let (parsed, len) = parse_arg_list(bytes, pos + *consumed)?;
                 *args = parsed;
@@ -877,7 +911,7 @@ fn classify_command(
     module_type: u8,
     module_id: u8,
     opcode_u16: u16,
-    args_bytes: &[Vec<u8>],
+    args_bytes: &[CommandArg],
 ) -> Option<RealLiveOpcode> {
     // module_type is documented (RLDEV) to take values {0, 1, 2}
     // mapping to {system-bootstrap, Kepago-RLOperation, debug-extension}.
@@ -926,6 +960,10 @@ fn classify_command(
             _ => RealLiveOpcode::SetVariable,
         },
         module_id::SEL => RealLiveOpcode::Choice {
+            // Carry each option's authoritative scene-relative byte offset
+            // forward (already captured by `parse_arg_list`) so the
+            // Scene-AST projection stamps every Choice slot at the option's
+            // real bytes, not the command opener.
             choices: args_bytes.to_vec(),
         },
         module_id::JMP => match opcode_u16 {
@@ -974,10 +1012,10 @@ fn expr_as_i32(expr: &Expr) -> Option<i32> {
 /// integer value when it is a constant literal, else `0`. The argument
 /// bytes are a full expression (e.g. `$ 0xFF` + i32), decoded by the real
 /// [`parse_expression`] evaluator rather than a byte-prefix guess.
-fn first_arg_as_i32(args_bytes: &[Vec<u8>]) -> i32 {
+fn first_arg_as_i32(args_bytes: &[CommandArg]) -> i32 {
     args_bytes
         .first()
-        .and_then(|arg| parse_expression(arg, 0).ok())
+        .and_then(|arg| parse_expression(&arg.bytes, 0).ok())
         .and_then(|(expr, _)| expr_as_i32(&expr))
         .unwrap_or(0)
 }
@@ -988,7 +1026,7 @@ fn first_arg_as_i32(args_bytes: &[Vec<u8>]) -> i32 {
 /// `i32` bit pattern is reinterpreted (`as u32`) rather than passed
 /// through `unsigned_abs`, which would flip a negative literal to its
 /// absolute value and corrupt the id.
-fn first_arg_as_u32(args_bytes: &[Vec<u8>]) -> u32 {
+fn first_arg_as_u32(args_bytes: &[CommandArg]) -> u32 {
     first_arg_as_i32(args_bytes) as u32
 }
 
@@ -1534,37 +1572,68 @@ mod tests {
 
     #[test]
     fn parse_arg_list_trailing_comma_drops_final_empty_slot() {
+        fn arg_bytes(args: &[CommandArg]) -> Vec<Vec<u8>> {
+            args.iter().map(|a| a.bytes.clone()).collect()
+        }
         // `()` -> zero slots.
         assert_eq!(
-            parse_arg_list(&[EXPR_PAREN_OPEN, EXPR_PAREN_CLOSE], 0)
-                .unwrap()
-                .0,
+            arg_bytes(
+                &parse_arg_list(&[EXPR_PAREN_OPEN, EXPR_PAREN_CLOSE], 0)
+                    .unwrap()
+                    .0
+            ),
             Vec::<Vec<u8>>::new()
         );
         // `(,)` -> one empty interior slot from the comma; the trailing
         // comma before `)` does NOT add a final empty slot.
         assert_eq!(
-            parse_arg_list(&[EXPR_PAREN_OPEN, opener::COMMA, EXPR_PAREN_CLOSE], 0)
-                .unwrap()
-                .0,
+            arg_bytes(
+                &parse_arg_list(&[EXPR_PAREN_OPEN, opener::COMMA, EXPR_PAREN_CLOSE], 0)
+                    .unwrap()
+                    .0
+            ),
             vec![Vec::<u8>::new()]
         );
         // `(,,)` -> two empty slots (one per comma); still no extra
         // trailing slot.
         assert_eq!(
-            parse_arg_list(
-                &[
-                    EXPR_PAREN_OPEN,
-                    opener::COMMA,
-                    opener::COMMA,
-                    EXPR_PAREN_CLOSE
-                ],
-                0
-            )
-            .unwrap()
-            .0,
+            arg_bytes(
+                &parse_arg_list(
+                    &[
+                        EXPR_PAREN_OPEN,
+                        opener::COMMA,
+                        opener::COMMA,
+                        EXPR_PAREN_CLOSE
+                    ],
+                    0
+                )
+                .unwrap()
+                .0
+            ),
             vec![Vec::<u8>::new(), Vec::<u8>::new()]
         );
+    }
+
+    #[test]
+    fn parse_arg_list_stamps_scene_relative_offset_per_option() {
+        // `( "あ" , "い" )` starting at byte 0: option 0 begins right after
+        // the `(` at offset 1; option 1 begins after the comma at offset 4.
+        let bytes = [
+            EXPR_PAREN_OPEN, // 0: (
+            0x82,
+            0xA0,          // 1..3: "あ"
+            opener::COMMA, // 3: ,
+            0x82,
+            0xA2,             // 4..6: "い"
+            EXPR_PAREN_CLOSE, // 6: )
+        ];
+        let (args, consumed) = parse_arg_list(&bytes, 0).unwrap();
+        assert_eq!(consumed, bytes.len());
+        assert_eq!(args.len(), 2);
+        assert_eq!(args[0].byte_offset, 1);
+        assert_eq!(args[0].bytes, vec![0x82, 0xA0]);
+        assert_eq!(args[1].byte_offset, 4);
+        assert_eq!(args[1].bytes, vec![0x82, 0xA2]);
     }
 
     #[test]

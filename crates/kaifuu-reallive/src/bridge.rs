@@ -336,7 +336,8 @@ fn collect_units(
                 // adjacency to attribute the unit.
             }
             RealLiveOpcode::Choice { choices } => {
-                for (option_index, choice_bytes) in choices.iter().enumerate() {
+                for (option_index, choice) in choices.iter().enumerate() {
+                    let choice_bytes = choice.bytes.as_slice();
                     // An empty choice option is an interior `,,` segment
                     // that carries no translatable body. The patchback
                     // re-walk (collect_text_unit_positions) skips
