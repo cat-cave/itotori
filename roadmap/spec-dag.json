@@ -41853,6 +41853,889 @@
         }
       ],
       "audit_focus": ["crates/kaifuu-vault-source/tests/contract_failure_modes_test.rs:94"]
+    },
+    {
+      "id": "siglus-05-crate-skeleton",
+      "title": "[siglus] Create kaifuu-siglus crate skeleton mirroring kaifuu-reallive module layout",
+      "kind": "feature",
+      "milestone": "beta",
+      "status": "ready",
+      "priority": "P2",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "There is no kaifuu-siglus crate today (only kaifuu-core/src/siglus_static_key.rs exists). Create crates/kaifuu-siglus with the proven kaifuu-reallive module shape: lib.rs facade, archive.rs (Scene.pck), decrypt.rs (256-byte XOR + per-game key), decompress.rs/compress.rs (proprietary Siglus LZSS), gameexe.rs, opcode.rs (decompiler), expression.rs (stack), bridge.rs (BridgeBundleV02 producer), patchback/ (bundle_driven + delta). Types/signatures only; no behaviour yet. Carry the corrected clean-room boundary const (see siglus-25): siglus_rs = xmoezzz/siglus_rs MPL-2.0 research anchor; bluecookies/siglus-decompile = unlicensed bytecode reference; SiglusExtract GPLv3 — none vendored/linked/mechanically-translated.",
+      "acceptance": "crates/kaifuu-siglus compiles in the workspace with the named modules and public type stubs mirroring kaifuu-reallive; carries a grep-pinnable clean-room boundary const naming xmoezzz/siglus_rs (MPL-2.0) correctly; no dependency on any Siglus reference project; no synthetic-only tautological tests introduced. Engine-family neutral — no game bytes required to build.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-30T13:57:09.439Z",
+      "updated_at": "2026-06-30T13:57:09.439Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["kaifuu"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "just ci"
+        }
+      ],
+      "audit_focus": ["crates/kaifuu-siglus", "crates/kaifuu-reallive layout"]
+    },
+    {
+      "id": "siglus-01-disc-recon",
+      "title": "[siglus] Recon: characterize karetoshi/gamekoi copy-protected DVD images + native realizability decision",
+      "kind": "feature",
+      "milestone": "beta",
+      "status": "blocked",
+      "priority": "P2",
+      "estimate_points": 3,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "GATING FRONT-DOOR. The two owned Siglus games are stored in the vault ONLY as copy-protected retail DVD images (DAEMON Tools/Disc Soft .mds+.mdf): karetoshi=vj007329 (kfhd disc1/2.mdf, 3.86GB+3.89GB), gamekoi=vj015134 (gamekoi1/2.mdf, 4.14GB+4.09GB). vault-curation's own provenance records 'xorriso realized zero files (non-ISO / copy-protected disc image — unrealizable)'; an independent full 3.8GB scan of gamekoi1.mdf found ZERO CD001/UDF VRS magic, ZERO plaintext Scene.pck/Gameexe.dat/SiglusEngine strings, and high-entropy payload — i.e. the sectors are transformed (protection/scramble), not a plain filesystem at an offset. Under the HARD LAWS (no Wine, no installer execution, no shell-out) we cannot currently lift a Siglus game tree from these artifacts. This node characterizes BOTH discs in-process (read-only over kaifuu-vault-source) and produces a DECISION: either (a) a native realization path exists (parse .mds layout, identify sector encoding/protection class, descramble to a UDF/ISO tree) or (b) BLOCKED → the title's DLsite download edition must be re-acquired by vault-curation (out of itotori scope) to give Kaifuu a plaintext input, exactly like the proven RealLive/KiriKiri corpora.",
+      "acceptance": "Sanitized characterization artifact for BOTH karetoshi AND gamekoi: per-disc .mds parse (sector size/mode, session/track layout), entropy profile, protection-class classification, and presence/absence of any realizable filesystem — counts/offsets/sizes/sha256-prefixes/redacted ONLY, zero raw bytes. A written decision record stating, per game, native-realization (with a proven approach) vs BLOCKED-needs-download-edition. No Wine, no Command::new, no external binary, no installer execution; all reads in-process and read-only through kaifuu-vault-source. If BLOCKED, the record names the precise vault-curation handoff and marks siglus-02 conditional.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-30T13:57:39.205Z",
+      "updated_at": "2026-06-30T13:58:48.384Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": "[2026-06-30T13:58:48.384Z] Blocked by external-dependency: Vault karetoshi/gamekoi are copy-protected DVD images (.mds/.mdf); vault provenance + an independent 3.8GB scan confirm zero ISO/UDF + zero plaintext Scene.pck/Gameexe.dat + high-entropy scrambled sectors. Unrealizable under no-Wine/no-shell-out/no-installer laws. Entire real-bytes Siglus chain depends on this.\nNeeded: Portable plaintext Siglus game trees (Scene.pck + Gameexe.dat) for karetoshi AND gamekoi, re-extracted+rearchived via vault-curation; unblock when available.",
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": "external-dependency",
+      "blocked_reason": "Vault karetoshi/gamekoi are copy-protected DVD images (.mds/.mdf); vault provenance + an independent 3.8GB scan confirm zero ISO/UDF + zero plaintext Scene.pck/Gameexe.dat + high-entropy scrambled sectors. Unrealizable under no-Wine/no-shell-out/no-installer laws. Entire real-bytes Siglus chain depends on this.",
+      "blocked_owner": "trevor",
+      "projects": ["kaifuu"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "just ci"
+        }
+      ],
+      "audit_focus": ["crates/kaifuu-vault-source", "/archive/vault disc-image realizability"]
+    },
+    {
+      "id": "siglus-02-tree-realize",
+      "title": "[siglus] Native realize karetoshi/gamekoi to a plaintext Siglus game tree (or consume re-acquired download edition)",
+      "kind": "feature",
+      "milestone": "beta",
+      "status": "blocked",
+      "priority": "P2",
+      "estimate_points": 3,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "Turn the siglus-01 decision into a real plaintext tree for BOTH games containing Scene.pck + Gameexe.dat + the engine executable. If siglus-01 found a native path: implement the in-process MDS/MDF realization (no xorriso/7z shell-out — native sector reader + descramble + UDF/ISO9660 directory walk) and emit the tree to scratch. If siglus-01 returned BLOCKED: this node instead consumes the re-acquired DLsite download-edition artifact through kaifuu-vault-source (the same shape Oshioki Sweetie HD and the KiriKiri corpus already use) and verifies it presents a Siglus tree. Either way the OUTPUT contract is identical: a scratch tree with Scene.pck/Gameexe.dat present for both titles.",
+      "acceptance": "For BOTH karetoshi AND gamekoi, a scratch game tree is produced whose top-level contains a Scene.pck and a Gameexe.dat (and the SiglusEngine/game executable when present), with sanitized manifest (file count, sizes, sha256-prefixes) recorded — no raw bytes. Realization is fully in-process (no Wine, no Command::new, no external archiver) OR is a read-only consumption of a re-acquired download edition via kaifuu-vault-source. Untouched vault bytes (read-only invariant) are not mutated.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-30T13:57:39.317Z",
+      "updated_at": "2026-06-30T13:58:48.501Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": "[2026-06-30T13:58:48.501Z] Blocked by external-dependency: Vault karetoshi/gamekoi are copy-protected DVD images (.mds/.mdf); vault provenance + an independent 3.8GB scan confirm zero ISO/UDF + zero plaintext Scene.pck/Gameexe.dat + high-entropy scrambled sectors. Unrealizable under no-Wine/no-shell-out/no-installer laws. Entire real-bytes Siglus chain depends on this.\nNeeded: Portable plaintext Siglus game trees (Scene.pck + Gameexe.dat) for karetoshi AND gamekoi, re-extracted+rearchived via vault-curation; unblock when available.",
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": "external-dependency",
+      "blocked_reason": "Vault karetoshi/gamekoi are copy-protected DVD images (.mds/.mdf); vault provenance + an independent 3.8GB scan confirm zero ISO/UDF + zero plaintext Scene.pck/Gameexe.dat + high-entropy scrambled sectors. Unrealizable under no-Wine/no-shell-out/no-installer laws. Entire real-bytes Siglus chain depends on this.",
+      "blocked_owner": "trevor",
+      "projects": ["kaifuu"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "just ci"
+        }
+      ],
+      "audit_focus": ["crates/kaifuu-vault-source"]
+    },
+    {
+      "id": "siglus-25-correct-cleanroom-citation",
+      "title": "[siglus] Audit-fix: correct the siglus_rs clean-room citation (repo + license) across utsushi-siglus and node specs",
+      "kind": "audit-fix",
+      "milestone": "beta",
+      "status": "ready",
+      "priority": "P2",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "The landed utsushi-siglus scaffold (crates/utsushi-siglus/src/lib.rs, SIGLUS_RS_RESEARCH_ANCHOR_BOUNDARY_STATEMENT) and several Siglus node specs cite siglus_rs as 'https://github.com/CommitteeOfZero/siglus_rs' under 'GPL-3'. Web verification shows the actual project is xmoezzz/siglus_rs under MPL-2.0; the clearest BYTECODE reference is bluecookies/siglus-decompile (no stated license → treat all-rights-reserved); SiglusExtract is xmoezzz GPLv3; the static-key port already references siglus_static_key_tool (xmoezzz). Correct every citation so the clean-room posture rests on accurate provenance.",
+      "acceptance": "All Siglus clean-room boundary statements (crate consts + node specs/docs) cite xmoezzz/siglus_rs (MPL-2.0) and, where relevant, bluecookies/siglus-decompile (unlicensed, documentation-only) and SiglusExtract (GPLv3) accurately; no remaining 'CommitteeOfZero/siglus_rs' or 'GPL-3 siglus_rs' string. Posture unchanged: no vendoring/linking/mechanical-translation of any reference; re-derive-and-retest-on-real-bytes wording retained.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-30T13:57:39.417Z",
+      "updated_at": "2026-06-30T13:57:39.417Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["utsushi"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "just ci"
+        }
+      ],
+      "audit_focus": ["crates/utsushi-siglus/src/lib.rs", "roadmap/spec-dag.json siglus nodes"]
+    },
+    {
+      "id": "siglus-03-detector-real",
+      "title": "[siglus] Real Siglus engine detector on the realized tree (Scene.pck/Gameexe.dat/exe)",
+      "kind": "feature",
+      "milestone": "beta",
+      "status": "ready",
+      "priority": "P2",
+      "estimate_points": 2,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "Extend the detector discipline (KAIFUU-172 RealLive detector; KAIFUU-091 synthetic Siglus detector fixtures) to fingerprint Siglus on the REAL realized trees: Scene.pck 0x5C header + HeaderPair table, Gameexe.dat presence, SiglusEngine/game.exe packer markers, and which of the documented cipher 'methods' the build uses. Produce a redacted detection report. Supersedes the synthetic-only detector acceptance with real-bytes evidence.",
+      "acceptance": "Detector positively identifies SiglusEngine on BOTH karetoshi AND gamekoi realized trees from real bytes, emitting a redacted detection-report (header offsets, table counts, cipher-method id, sha256-prefixes — no raw bytes/keys). Negative cases (RealLive tree, RPG tree) do not false-positive. Cipher-method classification is recorded per game.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-30T13:57:39.522Z",
+      "updated_at": "2026-06-30T13:57:39.522Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["kaifuu"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "just ci"
+        }
+      ],
+      "audit_focus": ["crates/kaifuu-siglus", "crates/kaifuu-core detector"]
+    },
+    {
+      "id": "siglus-04-key-recovery-real",
+      "title": "[siglus] Real Siglus second-layer key recovery from packed exe (extend KAIFUU-069 beyond synthetic stub)",
+      "kind": "feature",
+      "milestone": "beta",
+      "status": "ready",
+      "priority": "P2",
+      "estimate_points": 3,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "KAIFUU-069 (done) ships an in-process static-key DISCOVERY seam validated only against synthetic fixtures (kaifuu-core/src/siglus_static_key.rs). Grow it to recover the real 16-byte second-layer key from each game's packed SiglusEngine/game.exe (UPX/Themida/WinLicense), in-process and WITHOUT executing the binary, validating the candidate by stripping the constant 256-byte XOR table off Gameexe.dat, checking the compressed header, and attempting Siglus LZSS decompression. Publish a structured secretRef + sha256 proof only — never raw key bytes. Reconcile the conflicting documented 'default keys' against the real builds.",
+      "acceptance": "For BOTH games, a validated second-layer key is recovered in-process (no Command::new, no Wine, no running the exe) and proven by reproducing Gameexe.dat known-plaintext; only secretRef + material sha256 are persisted (asserted by a no-raw-key test, mirroring KAIFUU-069). Protected/unsupported packers and validation failures return semantic diagnostics. If a game's exe is unavailable from the realized tree, the node records a BLOCKED diagnostic rather than fabricating a key.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-30T13:57:39.622Z",
+      "updated_at": "2026-06-30T13:57:39.622Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["kaifuu"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "just ci"
+        }
+      ],
+      "audit_focus": ["crates/kaifuu-core/src/siglus_static_key.rs"]
+    },
+    {
+      "id": "siglus-06-scene-pck-reader",
+      "title": "[siglus] Scene.pck container reader: 0x5C header, SceneList, 256-byte XOR + proprietary LZSS",
+      "kind": "feature",
+      "milestone": "beta",
+      "status": "ready",
+      "priority": "P2",
+      "estimate_points": 3,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "Implement the Scene.pck reader in kaifuu-siglus: fixed 0x5C header of HeaderPair{offset,count} records → global vars, global functions, SceneList (parallel name + offset/length tables); per-scene fetch then decode = (1) cyclic XOR by the constant 256-byte table, (2) proprietary Siglus LZSS decompress (8-bit flag byte; back-ref length=(w&0xF)+2, offset=w>>4 — NOT zlib, NOT RealLive compress), (3) optional position-dependent secondary XOR gated by extra_key_use using the siglus-04 recovered key. Handle the documented cipher-method family per game (siglus-03). Mirror kaifuu-reallive archive.rs+decompressor.rs.",
+      "acceptance": "Both karetoshi AND gamekoi Scene.pck unpack to their full set of decoded scenes; a sanitized report records scene count, per-scene decompressed-size histogram, and sha256-prefixes only — no raw scene bytes. Round-trip decode is deterministic; wrong/missing key and unsupported cipher-method fail with semantic diagnostics before any output. Consumes the siglus-04 secretRef, never a raw key.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-30T13:57:39.720Z",
+      "updated_at": "2026-06-30T13:57:39.720Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["kaifuu"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "just ci"
+        }
+      ],
+      "audit_focus": [
+        "crates/kaifuu-siglus/archive.rs",
+        "crates/kaifuu-siglus/decrypt.rs",
+        "crates/kaifuu-siglus/decompress.rs"
+      ]
+    },
+    {
+      "id": "siglus-07-gameexe-dat",
+      "title": "[siglus] Gameexe.dat reader → UTF-16LE Gameexe.txt inventory (speaker/name resolution)",
+      "kind": "feature",
+      "milestone": "beta",
+      "status": "ready",
+      "priority": "P2",
+      "estimate_points": 2,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "Implement Gameexe.dat decode in kaifuu-siglus: strip the constant 256-byte XOR table, decompress, parse the resulting UTF-16LE-with-BOM Gameexe.txt into a typed inventory (the Siglus analog of RealLive's NAMAE inventory used by kaifuu-reallive/gameexe.rs for speaker resolution). Expose lookups the bridge uses for speaker attribution.",
+      "acceptance": "Both games' Gameexe.dat decode to a parsed UTF-16LE inventory; sanitized report records entry counts and key categories only (no raw text dumps of copyrighted content beyond structural counts). Inventory feeds speaker resolution in siglus-13. Malformed/wrong-key input fails with semantic diagnostics.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-30T13:57:39.807Z",
+      "updated_at": "2026-06-30T13:57:39.807Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["kaifuu"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "just ci"
+        }
+      ],
+      "audit_focus": ["crates/kaifuu-siglus/gameexe.rs"]
+    },
+    {
+      "id": "siglus-08-bytecode-skeleton",
+      "title": "[siglus] Scene bytecode parser skeleton: header, UTF-16LE string table, label table, type tags, opcode walk + Unknown histogram",
+      "kind": "feature",
+      "milestone": "beta",
+      "status": "ready",
+      "priority": "P2",
+      "estimate_points": 3,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "Mirror kaifuu-reallive opcode.rs: parse a decoded scene's header, string table (UTF-16LE length-prefixed, indexed by 0x02 Push operand), label/jump-target table, and the variable type-tag model (0x0A Int, 0x0B IntList, 0x14 Str, 0x15 StrList, 0x0D/0x0E refs). Walk the opcode stream with an explicit Siglus opcode enum + Unknown{opcode,raw_bytes} fallback and CommandArg{byte_offset,bytes} (scene-relative offsets for patchback). Emit a per-opcode classification histogram. Args read by count terminated by the 0xFFFFFFFF sentinel.",
+      "acceptance": "Every scene of BOTH games parses to a fully partitioned opcode/byte stream with a histogram; no panics on real bytes. CommandArg byte-offsets are exact and reproducible. At this stage Unknown>0 is permitted but reported per-opcode (the path to zero is staged through siglus-09/10/11/12).",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-30T13:57:39.921Z",
+      "updated_at": "2026-06-30T13:57:39.921Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["kaifuu"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "just ci"
+        }
+      ],
+      "audit_focus": ["crates/kaifuu-siglus/opcode.rs"]
+    },
+    {
+      "id": "siglus-09-expression-stack",
+      "title": "[siglus] Expression + stack decoder: ProgStack value model, calc1/calc2 operator tables, scope tags",
+      "kind": "feature",
+      "milestone": "beta",
+      "status": "ready",
+      "priority": "P2",
+      "estimate_points": 3,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "Mirror bluecookies/siglus-decompile expression.rs/stack.rs (clean-room, re-derived on real bytes): ProgStack{values,frames} with open_frame/dup_frame; push/pop/dup/close-frame (0x02-0x07); calc1 unary (0x01 id,0x02 neg,0x30 not) and calc2 operator-byte tables (int: 0x01-05 arithmetic, 0x10-15 comparison, 0x20-21 logical, 0x31-36 bitwise; str: 0x01 concat, 0x10/11 eq/ne); operand variants RawInt/RawString/Variable/FunctionCall; scope tags 0x7E function-ref, 0x7F global-var. Full expression evaluation (no opaque blobs).",
+      "acceptance": "Every expression in every scene of BOTH games fully decodes to a typed expression tree with zero unparsed expression bytes; operator coverage is histogrammed and complete on real bytes. Reference operator tables are re-derived/re-tested, not copied. Unsupported operator bytes (if any appear) are explicit diagnostics, not silent skips.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-30T13:57:40.020Z",
+      "updated_at": "2026-06-30T13:57:40.020Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["kaifuu"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "just ci"
+        }
+      ],
+      "audit_focus": ["crates/kaifuu-siglus/expression.rs"]
+    },
+    {
+      "id": "siglus-10-text-choice-flow-opcodes",
+      "title": "[siglus] Decode text/flow/assignment/arithmetic opcode families (0x10-0x16, 0x20-0x22, 0x31, 0x32)",
+      "kind": "feature",
+      "milestone": "beta",
+      "status": "ready",
+      "priority": "P2",
+      "estimate_points": 3,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "Decode the structural opcode families to named variants: text (0x31 AddText = string-ref + numeric id; 0x32 SetName = speaker), flow (0x10 Jump, 0x11/0x12 jump-if-zero/nonzero, 0x13/0x14 short-call, 0x15 Return, 0x16 EndScript), assignment (0x20), arithmetic (0x21 calc1, 0x22 calc2 dispatch into siglus-09). Choices/selects are NOT a dedicated opcode — they are a 0x30 select syscall followed by 0x11/0x12 conditional jumps; record that linkage for the bridge (full select decode lands in siglus-11).",
+      "acceptance": "All listed opcode families decode to named variants on BOTH games with exact arguments; text surfaces (0x31) carry the string-table reference and byte-offset needed by patchback; the select-then-conditional-jump choice pattern is recognized and linked. Histogram shows these families contributing zero Unknown on both games.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-30T13:57:40.102Z",
+      "updated_at": "2026-06-30T13:57:40.102Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["kaifuu"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "just ci"
+        }
+      ],
+      "audit_focus": ["crates/kaifuu-siglus/opcode.rs"]
+    },
+    {
+      "id": "siglus-11-syscall-0x30",
+      "title": "[siglus] 0x30 system-function call decoder: variable-length stateful argument decoding to completeness on both games",
+      "kind": "feature",
+      "milestone": "beta",
+      "status": "ready",
+      "priority": "P2",
+      "estimate_points": 3,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "THE hard node. Opcode 0x30 funnels the engine's hundreds of system functions through one call keyed by a numeric function id, with stateful/variable-length argument decoding — the canonical place single-title Siglus decompilers silently fail (Hatsuyuki-Sakura works / Rewrite+ breaks). Enumerate the function table and decode every 0x30 call's arguments on BOTH games, including the select/choice function. Completeness = the function table is enumerated, not just the opcode recognized.",
+      "acceptance": "Every 0x30 system-call site in every scene of BOTH karetoshi AND gamekoi decodes to a typed call (function id + fully decoded argument list, no trailing opaque bytes). The select/choice function's options are extractable. Any function id whose argument shape is not yet known is surfaced as an explicit, counted diagnostic (NOT skipped) — and the node is not accepted while such diagnostics are non-zero on either game (no relaxed floor).",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-30T13:57:40.187Z",
+      "updated_at": "2026-06-30T13:57:40.187Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["kaifuu"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "just ci"
+        }
+      ],
+      "audit_focus": ["crates/kaifuu-siglus/opcode.rs syscall dispatch"]
+    },
+    {
+      "id": "siglus-12-zero-unknown-gate",
+      "title": "[siglus] 100% decompilation gate: zero Unknown opcodes + full expression evaluation on every scene of both games",
+      "kind": "feature",
+      "milestone": "beta",
+      "status": "ready",
+      "priority": "P2",
+      "estimate_points": 2,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "The hard-law acceptance gate mirroring kaifuu-reallive's 100% decompiler discipline. Run the full decode (siglus-08..11) over EVERY scene of BOTH games and assert the partition is complete: zero Unknown opcodes, zero unparsed expression bytes, zero undecoded 0x30 arguments. Add the histogram-to-zero test as a standing regression (a real-bytes test, not synthetic). Optional CFG/source structuring is explicitly out of scope here — the gate is byte-classification completeness + full expression evaluation, not pretty .ss emission.",
+      "acceptance": "A real-bytes test asserts, per game, 0 Unknown opcodes and 0 unparsed expressions and 0 undecoded syscall args across all scenes of BOTH karetoshi AND gamekoi (NO >=75% or any relaxed floor). The histogram artifact is sanitized (opcode counts only). Re-running is deterministic. Failure on either game blocks acceptance.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-30T13:57:40.272Z",
+      "updated_at": "2026-06-30T13:57:40.272Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["kaifuu"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "just ci"
+        }
+      ],
+      "audit_focus": ["crates/kaifuu-siglus/opcode.rs", "crates/kaifuu-siglus tests"]
+    },
+    {
+      "id": "siglus-13-bridge-bundle",
+      "title": "[siglus] BridgeBundleV02 producer for Siglus (dialogue/choice/speaker/protected_spans)",
+      "kind": "feature",
+      "milestone": "beta",
+      "status": "ready",
+      "priority": "P2",
+      "estimate_points": 3,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "Mirror kaifuu-reallive bridge.rs: walk decoded scenes → BridgeBundleV02. 0x31 AddText → dialogue units; the 0x30-select + conditional-jump pattern → choice_label units; 0x32 SetName + Gameexe inventory → speaker; inline control/markup tokens → protected_spans (preserve_mode exact). source_unit_key = 'siglus:scene-<name>#<cmd_byte_offset>' (offset-keyed, stable like RealLive); source_text UTF-16LE→UTF-8; source_hash = sha256 of the located source literal (the patchback gate input). Stable bridge_id/bridge_unit_id per KAIFUU-183.",
+      "acceptance": "Both games produce a schema-valid BridgeBundleV02 whose dialogue/choice/speaker units carry stable source_unit_key + source_hash + exact byte-offsets and protected_spans for all inline markup; counts/sha256 reported, no raw copyrighted text beyond the structured units required by the contract. Choice units link to their select-syscall site. bridge_unit_ids are deterministic across re-runs.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-30T13:57:40.350Z",
+      "updated_at": "2026-06-30T13:57:40.350Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["kaifuu"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "just ci"
+        }
+      ],
+      "audit_focus": ["crates/kaifuu-siglus/bridge.rs", "crates/kaifuu-core BridgeBundleV02"]
+    },
+    {
+      "id": "siglus-14-patchback-byte-correct",
+      "title": "[siglus] Byte-correct Siglus patchback (alpha-006c standard): StaleSourceHash gate + re-pack + re-decompile self-check",
+      "kind": "feature",
+      "milestone": "beta",
+      "status": "ready",
+      "priority": "P2",
+      "estimate_points": 3,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "Mirror kaifuu-reallive patchback/bundle_driven.rs (the alpha-006c standard). apply_translated_bundle(original Scene.pck, TranslatedBundleV02, opts): (1) untranslated units (target==source) → zero byte edits, scene byte-identical; (2) StaleSourceHash gate — located literal must sha256-match unit.source_hash else PatchbackError::StaleSource; (3) splice UTF-16LE target text into the scene string table, highest-offset-first; (4) re-compress (proprietary LZSS) + re-XOR + recovered-key re-encrypt the scene; (5) rewrite the Scene.pck SceneList directory for new sizes; (6) re-decompile self-check — patched scene re-decodes with ZERO new Unknowns and every patched surface re-decodes to target.",
+      "acceptance": "On BOTH games: untranslated regions are byte-identical to source; only translated string payloads change; StaleSourceHash mismatch is a hard typed error; a patched Scene.pck re-decompiles via siglus-06/08..12 with zero new Unknown opcodes and every patched unit re-decoding to its target; directory rewrite is correct. Verified by a real-bytes round-trip test on both karetoshi AND gamekoi. No raw keys persisted.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-30T13:57:40.446Z",
+      "updated_at": "2026-06-30T13:57:40.446Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["kaifuu"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "just ci"
+        }
+      ],
+      "audit_focus": ["crates/kaifuu-siglus/patchback", "crates/kaifuu-siglus/compress.rs"]
+    },
+    {
+      "id": "siglus-15-kaifuu-delta",
+      "title": "[siglus] Siglus .kaifuu delta package producer",
+      "kind": "feature",
+      "milestone": "beta",
+      "status": "ready",
+      "priority": "P2",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "Mirror kaifuu-rpgmaker produce_delta_package → kaifuu-delta: emit a .kaifuu delta package for the Siglus patchback (changed Scene.pck units only, with SourceProvenance + StaleSourceHash carried), so application is reproducible against the exact source revision.",
+      "acceptance": "Both games produce a .kaifuu delta that, applied to the unmodified source tree, reproduces the byte-correct patched Scene.pck from siglus-14 (idempotent, provenance-gated). Delta carries source_hash provenance; applying against a stale source is rejected. Sanitized manifest only.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-30T13:57:40.527Z",
+      "updated_at": "2026-06-30T13:57:40.527Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["kaifuu"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "just ci"
+        }
+      ],
+      "audit_focus": ["crates/kaifuu-siglus/patchback", "crates/kaifuu-delta"]
+    },
+    {
+      "id": "siglus-16-engine-profile",
+      "title": "[siglus] Siglus engine-profile in localize-project (claim→detect→extract→bridge→patchback→delta wiring)",
+      "kind": "feature",
+      "milestone": "beta",
+      "status": "ready",
+      "priority": "P2",
+      "estimate_points": 2,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "Register the Siglus engine family end-to-end in localize-project: vault-source claim resolution for karetoshi/gamekoi, detection (siglus-03) → realize (siglus-02) → Scene.pck/Gameexe extract (siglus-06/07) → bridge (siglus-13) → patchback+delta (siglus-14/15). Mirror the RealLive/RPG-Maker engine-profile registration so the orchestrator can drive a Siglus title through the standard pipeline.",
+      "acceptance": "A Siglus engine-profile drives BOTH karetoshi AND gamekoi from a vault claim to a delta package through the standard localize-project pipeline; the profile declares its supported cipher-method set and fails out-of-profile inputs with semantic diagnostics. No raw keys/bytes in profile metadata.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-30T13:57:40.613Z",
+      "updated_at": "2026-06-30T13:57:40.613Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["itotori"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "just ci"
+        }
+      ],
+      "audit_focus": ["localize-project engine profiles", "crates/kaifuu-siglus"]
+    },
+    {
+      "id": "siglus-17-port-launch-assets",
+      "title": "[siglus] utsushi-siglus port: real launch() — load Scene.pck/Gameexe.dat via AssetPackage, build scene index",
+      "kind": "feature",
+      "milestone": "beta",
+      "status": "ready",
+      "priority": "P2",
+      "estimate_points": 2,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "Replace the inert utsushi-siglus launch() scaffold: hydrate UtsushiSiglusPortContext.asset_package from PortRequest.vfs (substrate AssetPackage — NOT the host filesystem), load Scene.pck + Gameexe.dat through siglus-06/07, build a scene/moment index. Keep the manifest at E1/TraceOnly for now. Stop returning UNIMPLEMENTED_MESSAGE for launch.",
+      "acceptance": "launch() loads both games' decoded scene index through the substrate AssetPackage (no Command::new, no Wine, no host-fs reach-around) and exposes a scene/moment count; the scaffold UNIMPLEMENTED marker is gone for launch. Works on BOTH karetoshi AND gamekoi assets. Substrate-facade containment preserved.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-30T13:57:40.699Z",
+      "updated_at": "2026-06-30T13:57:40.699Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["utsushi"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "just ci"
+        }
+      ],
+      "audit_focus": ["crates/utsushi-siglus/src/lib.rs"]
+    },
+    {
+      "id": "siglus-18-port-observe-text-e1",
+      "title": "[siglus] utsushi-siglus port: observe() static text-stream walk → TextLine + bridge_ref (E1, mirror rpgmaker-mv)",
+      "kind": "feature",
+      "milestone": "beta",
+      "status": "ready",
+      "priority": "P2",
+      "estimate_points": 3,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "First real sentinel-observation slice, mirroring utsushi-rpgmaker-mv/src/port.rs E1 static walk: observe() emits one TextLine per 0x31 AddText / 0x32 SetName into the text sink, with TextLine.bridge_ref.source_unit_key linking to the siglus-13 bridge units, walking scenes deterministically. No live VM yet. This is the 'real Siglus runtime port' E1 floor: observe real text rendering WITHOUT Wine or the original binary.",
+      "acceptance": "Runner drives the port through launch→observe ticks producing an ordered TextLine stream for BOTH games whose bridge_refs resolve to real bridge_unit_ids; text sink emits at E1; frame/audio sinks declared Unsupported. Deterministic; capture() writes a sanitized trace artifact. No raw key/byte leakage in artifacts.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-30T13:57:40.786Z",
+      "updated_at": "2026-06-30T13:57:40.786Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["utsushi"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "just ci"
+        }
+      ],
+      "audit_focus": ["crates/utsushi-siglus/src/lib.rs", "crates/utsushi-rpgmaker-mv/src/port.rs"]
+    },
+    {
+      "id": "siglus-19-port-choice-branch",
+      "title": "[siglus] utsushi-siglus port: choice/select observation + conditional-branch evaluation",
+      "kind": "feature",
+      "milestone": "beta",
+      "status": "ready",
+      "priority": "P2",
+      "estimate_points": 3,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "Extend observe() to surface choice moments: decode the 0x30-select call's options, evaluate the following 0x11/0x12 conditional jumps using the siglus-09 expression evaluator over port variable state, and emit choice observation events linked to bridge choice_label units. Mirror how utsushi-reallive evaluates branches.",
+      "acceptance": "On BOTH games the port emits choice moments with their option set and resolves at least one branch deterministically via expression evaluation; choice events link to bridge choice_label unit ids; unsupported select shapes are explicit diagnostics. No Wine/host-binary.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-30T13:57:40.884Z",
+      "updated_at": "2026-06-30T13:57:40.884Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["utsushi"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "just ci"
+        }
+      ],
+      "audit_focus": ["crates/utsushi-siglus/src/lib.rs"]
+    },
+    {
+      "id": "siglus-20-port-vm-eval-e2",
+      "title": "[siglus] utsushi-siglus port: scene-bytecode interpreter (flow/assignment/expression) for deterministic moment sequencing (E2)",
+      "kind": "feature",
+      "milestone": "beta",
+      "status": "ready",
+      "priority": "P2",
+      "estimate_points": 3,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "Upgrade from static walk to a real scene-bytecode interpreter (the utsushi-reallive syscall-level shape): execute flow (0x10-0x16), assignment (0x20), arithmetic/expression (0x21/0x22 + siglus-09), and the non-rendering subset of 0x30 system calls needed to advance the script, maintaining variable state and jump targets, to produce a deterministic moment sequence. Raise manifest evidence/fidelity accordingly. This is the 'intense' native-runtime port: it executes decompiled scenes and emits observable text/choice/moment events without the original engine.",
+      "acceptance": "The interpreter advances both games' scripts through a deterministic moment sequence driven by real bytecode execution (variable state + jumps), emitting text/choice/moment events that match the static-walk ordering where they overlap; manifest evidence tier raised to reflect executed (not just parsed) observation; unsupported runtime syscalls are explicit, counted diagnostics. No Wine/host-binary, substrate AssetPackage/SinkSet only.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-30T13:57:40.979Z",
+      "updated_at": "2026-06-30T13:57:40.979Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["utsushi"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "just ci"
+        }
+      ],
+      "audit_focus": ["crates/utsushi-siglus/src/lib.rs", "crates/utsushi-reallive/src/lib.rs"]
+    },
+    {
+      "id": "siglus-21-conformance",
+      "title": "[siglus] utsushi-siglus conformance: link observed events to bridge units on both games (supersede overclaim audit)",
+      "kind": "audit-fix",
+      "milestone": "beta",
+      "status": "ready",
+      "priority": "P2",
+      "estimate_points": 2,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "Add ConformanceCheck/ConformanceResult coverage: link the port's observed text/choice/moment events back to bridge_unit_ids for BOTH games (trace + snapshot conformance), proving the manifest capabilities are now derived from an executed path. This directly resolves the standing audits utsushi-siglus-manifest-capability-overclaim and inline-siglus-scaffold-inert.",
+      "acceptance": "Conformance passes on BOTH karetoshi AND gamekoi: every emitted text/choice event maps to a real bridge_unit_id; capability descriptor booleans are derived from the executed path (not hardcoded); the tautological scaffold tests are removed; a wrong-key/failed run reports status=Failed (not green). Sanitized conformance artifact only.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-30T13:57:41.059Z",
+      "updated_at": "2026-06-30T13:57:41.059Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["utsushi"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "just ci"
+        }
+      ],
+      "audit_focus": ["crates/utsushi-siglus", "utsushi-siglus-manifest-capability-overclaim"]
+    },
+    {
+      "id": "siglus-22-vertical-slice",
+      "title": "[siglus] Siglus vertical-slice wiring (one game): claim→realize→extract→bridge→patchback→delta→observe→conformance",
+      "kind": "feature",
+      "milestone": "beta",
+      "status": "ready",
+      "priority": "P2",
+      "estimate_points": 2,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "Wire the whole Siglus vertical for ONE game (gamekoi) as an integration proof: vault claim → realize → detect → key → Scene.pck/Gameexe extract → bridge → stub-translate one unit → byte-correct patchback → delta → native-port observe → conformance link. Mirrors the RealLive alpha vertical (ALPHA-006) shape.",
+      "acceptance": "An end-to-end integration test takes gamekoi from a vault claim to a delta package AND a native-port conformance pass on the patched text, with a single stub translation flowing through bridge→patchback→observe and verified byte-correct. No live LLM here (that is siglus-23). No Wine; no raw keys/bytes in artifacts.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-30T13:57:41.144Z",
+      "updated_at": "2026-06-30T13:57:41.144Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["itotori"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "just ci"
+        }
+      ],
+      "audit_focus": ["localize-project", "crates/kaifuu-siglus", "crates/utsushi-siglus"]
+    },
+    {
+      "id": "siglus-23-live-zdr-capstone",
+      "title": "[siglus] Live-ZDR Siglus capstone: real LLM translation + full agentic loop + native-port sentinel verification on BOTH games",
+      "kind": "feature",
+      "milestone": "beta",
+      "status": "ready",
+      "priority": "P2",
+      "estimate_points": 3,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "Mirror ALPHA-001/ALPHA-006: take a real extracted Siglus text slice from EACH of karetoshi and gamekoi, translate it with a real LLM over the pre-authorized ZDR-scoped OpenRouter key (DEV_PAIR = deepseek-v4-flash, fireworks; account-wide ZDR; record the real served (model,provider) pair), run the full agentic localization loop, patch back byte-correct, produce the delta, and verify the translated text via the native utsushi-siglus runtime port (observe the patched text/choice rendering as the sentinel) — all WITHOUT Wine or the original game binary.",
+      "acceptance": "On BOTH karetoshi AND gamekoi: a real ZDR LLM call (real served model/provider pair recorded; ZDR posture honored) translates a real extracted unit; byte-correct patchback + delta succeed (untranslated byte-identical, StaleSourceHash enforced, re-decompile zero new Unknowns); the native port observes the patched text as a sentinel and conformance links it to the bridge unit. Cost is from real calls only; green merges autonomously. No raw keys/bytes/text dumps beyond the structured units; secretRefs + sha256 only.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-30T13:57:41.226Z",
+      "updated_at": "2026-06-30T13:57:41.226Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["itotori"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "just ci"
+        }
+      ],
+      "audit_focus": ["localize-project capstone", "ZDR posture"]
+    },
+    {
+      "id": "siglus-24-supersede-scaffold-audits",
+      "title": "[siglus] Audit-fix: retire synthetic-only Siglus scaffolds superseded by the real vertical",
+      "kind": "audit-fix",
+      "milestone": "beta",
+      "status": "ready",
+      "priority": "P2",
+      "estimate_points": 2,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "Once the real adapter (siglus-06..14) and real port (siglus-17..21) land, retire/repoint the synthetic-only Siglus nodes and tests that the real path supersedes (e.g. KAIFUU-070 synthetic known-key smoke, UTSUSHI-034/036 VM/opcode scaffolds, UTSUSHI-112/113 synthetic VM/playback) so the DAG does not carry tautological green alongside real-bytes green. Per the no-legacy-compat law: delete the superseded synthetic path in the same change as the real one, no shims.",
+      "acceptance": "Superseded synthetic-only Siglus nodes/tests are deleted or repointed to consume the real kaifuu-siglus/utsushi-siglus path; no duplicate synthetic+real coverage of the same capability remains; CI (just ci) stays green; the cross-engine substrate-alignment fixture still passes with the real port in place.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-30T13:57:41.311Z",
+      "updated_at": "2026-06-30T13:57:41.311Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["utsushi"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "just ci"
+        }
+      ],
+      "audit_focus": [
+        "roadmap/spec-dag.json siglus nodes",
+        "crates/utsushi-siglus",
+        "crates/kaifuu-siglus"
+      ]
     }
   ],
   "edges": [
@@ -52355,6 +53238,240 @@
       "to_node": "it092-followup-dedupe-cost-ledger-recompute",
       "type": "requires",
       "created_at": "2026-06-30T11:48:01.351Z"
+    },
+    {
+      "from_node": "siglus-01-disc-recon",
+      "to_node": "siglus-02-tree-realize",
+      "type": "requires",
+      "created_at": "2026-06-30T13:57:41.409Z"
+    },
+    {
+      "from_node": "siglus-05-crate-skeleton",
+      "to_node": "siglus-25-correct-cleanroom-citation",
+      "type": "requires",
+      "created_at": "2026-06-30T13:57:41.510Z"
+    },
+    {
+      "from_node": "siglus-02-tree-realize",
+      "to_node": "siglus-03-detector-real",
+      "type": "requires",
+      "created_at": "2026-06-30T13:57:41.612Z"
+    },
+    {
+      "from_node": "siglus-02-tree-realize",
+      "to_node": "siglus-04-key-recovery-real",
+      "type": "requires",
+      "created_at": "2026-06-30T13:57:41.699Z"
+    },
+    {
+      "from_node": "siglus-05-crate-skeleton",
+      "to_node": "siglus-06-scene-pck-reader",
+      "type": "requires",
+      "created_at": "2026-06-30T13:57:41.816Z"
+    },
+    {
+      "from_node": "siglus-04-key-recovery-real",
+      "to_node": "siglus-06-scene-pck-reader",
+      "type": "requires",
+      "created_at": "2026-06-30T13:57:41.904Z"
+    },
+    {
+      "from_node": "siglus-03-detector-real",
+      "to_node": "siglus-06-scene-pck-reader",
+      "type": "requires",
+      "created_at": "2026-06-30T13:57:42.005Z"
+    },
+    {
+      "from_node": "siglus-05-crate-skeleton",
+      "to_node": "siglus-07-gameexe-dat",
+      "type": "requires",
+      "created_at": "2026-06-30T13:57:42.108Z"
+    },
+    {
+      "from_node": "siglus-04-key-recovery-real",
+      "to_node": "siglus-07-gameexe-dat",
+      "type": "requires",
+      "created_at": "2026-06-30T13:57:42.209Z"
+    },
+    {
+      "from_node": "siglus-06-scene-pck-reader",
+      "to_node": "siglus-08-bytecode-skeleton",
+      "type": "requires",
+      "created_at": "2026-06-30T13:57:42.325Z"
+    },
+    {
+      "from_node": "siglus-08-bytecode-skeleton",
+      "to_node": "siglus-09-expression-stack",
+      "type": "requires",
+      "created_at": "2026-06-30T13:57:42.441Z"
+    },
+    {
+      "from_node": "siglus-09-expression-stack",
+      "to_node": "siglus-10-text-choice-flow-opcodes",
+      "type": "requires",
+      "created_at": "2026-06-30T13:57:42.557Z"
+    },
+    {
+      "from_node": "siglus-10-text-choice-flow-opcodes",
+      "to_node": "siglus-11-syscall-0x30",
+      "type": "requires",
+      "created_at": "2026-06-30T13:57:42.691Z"
+    },
+    {
+      "from_node": "siglus-11-syscall-0x30",
+      "to_node": "siglus-12-zero-unknown-gate",
+      "type": "requires",
+      "created_at": "2026-06-30T13:57:42.825Z"
+    },
+    {
+      "from_node": "siglus-12-zero-unknown-gate",
+      "to_node": "siglus-13-bridge-bundle",
+      "type": "requires",
+      "created_at": "2026-06-30T13:57:42.937Z"
+    },
+    {
+      "from_node": "siglus-07-gameexe-dat",
+      "to_node": "siglus-13-bridge-bundle",
+      "type": "requires",
+      "created_at": "2026-06-30T13:57:43.040Z"
+    },
+    {
+      "from_node": "siglus-13-bridge-bundle",
+      "to_node": "siglus-14-patchback-byte-correct",
+      "type": "requires",
+      "created_at": "2026-06-30T13:57:43.154Z"
+    },
+    {
+      "from_node": "siglus-14-patchback-byte-correct",
+      "to_node": "siglus-15-kaifuu-delta",
+      "type": "requires",
+      "created_at": "2026-06-30T13:57:43.262Z"
+    },
+    {
+      "from_node": "siglus-13-bridge-bundle",
+      "to_node": "siglus-16-engine-profile",
+      "type": "requires",
+      "created_at": "2026-06-30T13:57:43.373Z"
+    },
+    {
+      "from_node": "siglus-14-patchback-byte-correct",
+      "to_node": "siglus-16-engine-profile",
+      "type": "requires",
+      "created_at": "2026-06-30T13:57:43.505Z"
+    },
+    {
+      "from_node": "siglus-03-detector-real",
+      "to_node": "siglus-16-engine-profile",
+      "type": "requires",
+      "created_at": "2026-06-30T13:57:43.625Z"
+    },
+    {
+      "from_node": "siglus-06-scene-pck-reader",
+      "to_node": "siglus-17-port-launch-assets",
+      "type": "requires",
+      "created_at": "2026-06-30T13:57:43.737Z"
+    },
+    {
+      "from_node": "siglus-07-gameexe-dat",
+      "to_node": "siglus-17-port-launch-assets",
+      "type": "requires",
+      "created_at": "2026-06-30T13:57:43.834Z"
+    },
+    {
+      "from_node": "siglus-17-port-launch-assets",
+      "to_node": "siglus-18-port-observe-text-e1",
+      "type": "requires",
+      "created_at": "2026-06-30T13:57:43.944Z"
+    },
+    {
+      "from_node": "siglus-13-bridge-bundle",
+      "to_node": "siglus-18-port-observe-text-e1",
+      "type": "requires",
+      "created_at": "2026-06-30T13:57:44.062Z"
+    },
+    {
+      "from_node": "siglus-18-port-observe-text-e1",
+      "to_node": "siglus-19-port-choice-branch",
+      "type": "requires",
+      "created_at": "2026-06-30T13:57:44.178Z"
+    },
+    {
+      "from_node": "siglus-09-expression-stack",
+      "to_node": "siglus-19-port-choice-branch",
+      "type": "requires",
+      "created_at": "2026-06-30T13:57:44.296Z"
+    },
+    {
+      "from_node": "siglus-19-port-choice-branch",
+      "to_node": "siglus-20-port-vm-eval-e2",
+      "type": "requires",
+      "created_at": "2026-06-30T13:57:44.451Z"
+    },
+    {
+      "from_node": "siglus-11-syscall-0x30",
+      "to_node": "siglus-20-port-vm-eval-e2",
+      "type": "requires",
+      "created_at": "2026-06-30T13:57:44.574Z"
+    },
+    {
+      "from_node": "siglus-20-port-vm-eval-e2",
+      "to_node": "siglus-21-conformance",
+      "type": "requires",
+      "created_at": "2026-06-30T13:57:44.705Z"
+    },
+    {
+      "from_node": "siglus-16-engine-profile",
+      "to_node": "siglus-21-conformance",
+      "type": "requires",
+      "created_at": "2026-06-30T13:57:44.819Z"
+    },
+    {
+      "from_node": "siglus-16-engine-profile",
+      "to_node": "siglus-22-vertical-slice",
+      "type": "requires",
+      "created_at": "2026-06-30T13:57:44.952Z"
+    },
+    {
+      "from_node": "siglus-18-port-observe-text-e1",
+      "to_node": "siglus-22-vertical-slice",
+      "type": "requires",
+      "created_at": "2026-06-30T13:57:45.077Z"
+    },
+    {
+      "from_node": "siglus-15-kaifuu-delta",
+      "to_node": "siglus-22-vertical-slice",
+      "type": "requires",
+      "created_at": "2026-06-30T13:57:45.187Z"
+    },
+    {
+      "from_node": "siglus-21-conformance",
+      "to_node": "siglus-23-live-zdr-capstone",
+      "type": "requires",
+      "created_at": "2026-06-30T13:57:45.288Z"
+    },
+    {
+      "from_node": "siglus-22-vertical-slice",
+      "to_node": "siglus-23-live-zdr-capstone",
+      "type": "requires",
+      "created_at": "2026-06-30T13:57:45.383Z"
+    },
+    {
+      "from_node": "siglus-15-kaifuu-delta",
+      "to_node": "siglus-23-live-zdr-capstone",
+      "type": "requires",
+      "created_at": "2026-06-30T13:57:45.500Z"
+    },
+    {
+      "from_node": "siglus-21-conformance",
+      "to_node": "siglus-24-supersede-scaffold-audits",
+      "type": "requires",
+      "created_at": "2026-06-30T13:57:45.600Z"
+    },
+    {
+      "from_node": "siglus-14-patchback-byte-correct",
+      "to_node": "siglus-24-supersede-scaffold-audits",
+      "type": "requires",
+      "created_at": "2026-06-30T13:57:45.695Z"
     }
   ],
   "findings": [
@@ -85161,6 +86278,22 @@
       "created_at": "2026-06-30T12:27:07.803Z",
       "kind": "note",
       "evidence": null
+    },
+    {
+      "id": "cb2983eb-38d9-4109-a3c7-bc512522ad23",
+      "node_id": "siglus-01-disc-recon",
+      "text": "Blocked by external-dependency: Vault karetoshi/gamekoi are copy-protected DVD images (.mds/.mdf); vault provenance + an independent 3.8GB scan confirm zero ISO/UDF + zero plaintext Scene.pck/Gameexe.dat + high-entropy scrambled sectors. Unrealizable under no-Wine/no-shell-out/no-installer laws. Entire real-bytes Siglus chain depends on this.\nNeeded: Portable plaintext Siglus game trees (Scene.pck + Gameexe.dat) for karetoshi AND gamekoi, re-extracted+rearchived via vault-curation; unblock when available.",
+      "created_at": "2026-06-30T13:58:48.384Z",
+      "kind": "blocker",
+      "evidence": "siglus-spec findings: gamekoi vj015134 sha 1719b626…, karetoshi vj007329 sha 7076ab2b…; xorriso realized zero files (copy-protected disc image — unrealizable)."
+    },
+    {
+      "id": "2f35a93d-23b9-4613-829a-ed6f2c38a59d",
+      "node_id": "siglus-02-tree-realize",
+      "text": "Blocked by external-dependency: Vault karetoshi/gamekoi are copy-protected DVD images (.mds/.mdf); vault provenance + an independent 3.8GB scan confirm zero ISO/UDF + zero plaintext Scene.pck/Gameexe.dat + high-entropy scrambled sectors. Unrealizable under no-Wine/no-shell-out/no-installer laws. Entire real-bytes Siglus chain depends on this.\nNeeded: Portable plaintext Siglus game trees (Scene.pck + Gameexe.dat) for karetoshi AND gamekoi, re-extracted+rearchived via vault-curation; unblock when available.",
+      "created_at": "2026-06-30T13:58:48.501Z",
+      "kind": "blocker",
+      "evidence": "siglus-spec findings: gamekoi vj015134 sha 1719b626…, karetoshi vj007329 sha 7076ab2b…; xorriso realized zero files (copy-protected disc image — unrealizable)."
     }
   ],
   "assignments": [],
