@@ -1,6 +1,3 @@
-import { readFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
 import { describe, expect, it, vi } from "vitest";
 import {
   AccountZdrAssertionError,
@@ -17,13 +14,6 @@ import {
   type ProviderRunArtifact,
   type ProviderRunArtifactRecorder,
 } from "../src/providers/index.js";
-
-const HERE = dirname(fileURLToPath(import.meta.url));
-const REPO_ROOT = resolve(HERE, "../../..");
-const LOCALIZE_PROJECT_PAIR_POLICY_PATH = resolve(
-  REPO_ROOT,
-  "presets/localize-project.pair-policy.json",
-);
 
 describe("provider capabilities", () => {
   it("selects only explicitly supported structured-output modes", () => {
@@ -295,12 +285,12 @@ describe("OpenRouterProvider", () => {
     expect(recorder.artifacts[0]?.adapterMetadata).toHaveProperty("openrouterMetadata");
   });
 
-  it("accepts evidence-backed localize-project provider slug/name pairs", async () => {
-    const coveredProviderIds = new Set(
-      LOCALIZE_PROJECT_PROVIDER_NAME_FIXTURES.map((fixture) => fixture.providerId),
-    );
-    expect([...coveredProviderIds].sort()).toEqual(loadLocalizeProjectProviderIds());
-
+  it("records the served upstream provider name for each ZDR-allow-list provider OpenRouter may serve", async () => {
+    // OpenRouter-side fallback (provider.order + allow_fallbacks) may serve
+    // any provider in the account ZDR allow-list on a primary-provider 429.
+    // Whichever upstream actually served must be recorded verbatim on the
+    // provider-run record; these fixtures pin the served-name mapping for the
+    // representative providers the localize-project recipe routes across.
     for (const fixture of LOCALIZE_PROJECT_PROVIDER_NAME_FIXTURES) {
       const recorder = memoryRecorder();
       const fetchMock = vi.fn(async () =>
@@ -349,10 +339,9 @@ describe("OpenRouterProvider", () => {
   it("ITOTORI-243: accepts a Fireworks-preferred request served by another ZDR-allow-list provider and records the served pair", async () => {
     // The request is private_corpus, so zdr:true is enforced on the wire —
     // OpenRouter could only have served a ZDR-allow-list provider. AtlasCloud
-    // is one such provider (it is in presets/localize-project.pair-policy.json's
-    // evidence-validated alternates), so a Fireworks-PREFERRED (order[0])
-    // request served by AtlasCloud is a valid ZDR serve. ITOTORI-243 removed
-    // the provider-identity throw: accept and record the served (model,
+    // is one such provider, so a Fireworks-PREFERRED (order[0]) request served
+    // by AtlasCloud is a valid ZDR serve (OpenRouter-side fallback). ITOTORI-243
+    // removed the provider-identity throw: accept and record the served (model,
     // providerId) pair + real billed cost, never reject.
     const recorder = memoryRecorder();
     const fetchMock = vi.fn(async () =>
@@ -1092,32 +1081,6 @@ const LOCALIZE_PROJECT_PROVIDER_NAME_FIXTURES = [
   { providerId: "morph", observedProviderName: "Morph" },
   { providerId: "atlas-cloud", observedProviderName: "AtlasCloud" },
 ] as const;
-
-function loadLocalizeProjectProviderIds(): string[] {
-  const parsed = JSON.parse(readFileSync(LOCALIZE_PROJECT_PAIR_POLICY_PATH, "utf8")) as unknown;
-  const providerIds = new Set<string>();
-  collectProviderIds(parsed, providerIds);
-  return [...providerIds].sort();
-}
-
-function collectProviderIds(value: unknown, providerIds: Set<string>): void {
-  if (Array.isArray(value)) {
-    for (const item of value) {
-      collectProviderIds(item, providerIds);
-    }
-    return;
-  }
-  if (typeof value !== "object" || value === null) {
-    return;
-  }
-  for (const [key, child] of Object.entries(value)) {
-    if (key === "providerId" && typeof child === "string") {
-      providerIds.add(child);
-      continue;
-    }
-    collectProviderIds(child, providerIds);
-  }
-}
 
 /**
  * ITOTORI-227 — minimal request fixture for the wire-level provider.zdr

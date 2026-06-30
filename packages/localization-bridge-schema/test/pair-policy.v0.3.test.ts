@@ -1,35 +1,20 @@
-// ITOTORI-238 — v0.3 pair-policy schema unit tests.
+// v0.3 pair-policy schema unit tests.
 //
 // Scope:
-//   - Happy path: minimal v0.3 file resolves with canonical defaults,
-//     including alternateProviders=[] and
-//     failoverPredicate='http_429_from_primary'.
+//   - Happy path: minimal v0.3 file resolves with canonical defaults.
 //   - Version mismatch: v0.1 / v0.2 / absent / wrong schemaVersion ->
 //     typed PairPolicyVersionMismatchError.
-//   - alternateProviders parsing:
-//       * default [] when absent.
-//       * each entry requires modelId + providerId + capabilitySheet.
-//       * a duplicate alternate raises a validation error.
-//       * an alternate byte-equal to the primary raises a validation
-//         error (failover would loop on the same upstream).
-//       * an alternate whose capabilitySheet declares
-//         supportsStructuredOutputJsonSchema=false is REFUSED at parse
-//         time (the QA stages mandate structured outputs).
-//       * evidenceRef must be a non-empty string (forcing function for
-//         the evidence-validation rule).
-//   - failoverPredicate parsing:
-//       * default 'http_429_from_primary' when absent.
-//       * accepts the literal 'http_429_from_primary'.
-//       * REFUSES any unknown literal at parse time (closed sum type).
 //   - ZDR posture downgrade: zdr=false requires OPENROUTER_ZDR_DOWNGRADE
 //     (preserved verbatim from v0.2).
 //   - Seed / maxPriceUsd / fallbackModels defaults are deterministic.
 //   - flattenPairPolicyV03Postures iterates leaves in declared order.
+//
+// There is no app-level alternate/failover plumbing in v0.3: resilience
+// is OpenRouter-side (provider.order + allow_fallbacks within the ZDR
+// allow-list), so the schema carries only the single primary pair.
 
 import { describe, expect, it } from "vitest";
 import {
-  DEFAULT_FAILOVER_PREDICATE,
-  FAILOVER_PREDICATES,
   PAIR_POLICY_SCHEMA_VERSION,
   PAIR_POLICY_V03_STAGE_LEAF_PATHS,
   PairPolicyV03ValidationError,
@@ -71,20 +56,6 @@ function minimalV03(): Record<string, unknown> {
   };
 }
 
-function validAlternate(): Record<string, unknown> {
-  return {
-    modelId: "deepseek/deepseek-v4-flash",
-    providerId: "deepinfra",
-    capabilitySheet: {
-      supportsStructuredOutputJsonSchema: true,
-      supportsToolUse: true,
-      contextWindowTokens: 128000,
-      maxOutputTokens: 8192,
-      evidenceRef: "docs/openrouter-integration-evidence/2026-06-26-alt-providers.json",
-    },
-  };
-}
-
 describe("parsePairPolicyV03 (happy path)", () => {
   it("resolves canonical defaults on a minimal v0.3 file", () => {
     const parsed = parsePairPolicyV03(minimalV03(), {
@@ -99,9 +70,6 @@ describe("parsePairPolicyV03 (happy path)", () => {
     expect(parsed.stages.translation.primary.maxPriceUsd).toBe(
       deriveDefaultMaxPriceUsd(DEFAULT_COST_CAP_USD, stageCount),
     );
-    // ITOTORI-238 — defaults: empty alternates list, default predicate.
-    expect(parsed.alternateProviders).toEqual([]);
-    expect(parsed.failoverPredicate).toBe(DEFAULT_FAILOVER_PREDICATE);
   });
 });
 
@@ -159,150 +127,6 @@ describe("parsePairPolicyV03 (version mismatch)", () => {
         zdrDowngradeEnv: undefined,
       }),
     ).toThrow(PairPolicyVersionMismatchError);
-  });
-});
-
-describe("parsePairPolicyV03 (alternateProviders)", () => {
-  it("accepts a single valid alternate", () => {
-    const raw = minimalV03();
-    raw.alternateProviders = [validAlternate()];
-    const parsed = parsePairPolicyV03(raw, {
-      defaultCostCapUsd: DEFAULT_COST_CAP_USD,
-      zdrDowngradeEnv: undefined,
-    });
-    expect(parsed.alternateProviders).toHaveLength(1);
-    const alt = parsed.alternateProviders[0];
-    expect(alt?.modelId).toBe("deepseek/deepseek-v4-flash");
-    expect(alt?.providerId).toBe("deepinfra");
-    expect(alt?.capabilitySheet.supportsStructuredOutputJsonSchema).toBe(true);
-    expect(alt?.capabilitySheet.contextWindowTokens).toBe(128000);
-    expect(alt?.capabilitySheet.evidenceRef.length).toBeGreaterThan(0);
-  });
-
-  it("defaults to [] when alternateProviders is absent", () => {
-    const parsed = parsePairPolicyV03(minimalV03(), {
-      defaultCostCapUsd: DEFAULT_COST_CAP_USD,
-      zdrDowngradeEnv: undefined,
-    });
-    expect(parsed.alternateProviders).toEqual([]);
-  });
-
-  it("rejects alternateProviders that is not an array", () => {
-    const raw = minimalV03();
-    raw.alternateProviders = "not an array" as unknown as Array<Record<string, unknown>>;
-    expect(() =>
-      parsePairPolicyV03(raw, {
-        defaultCostCapUsd: DEFAULT_COST_CAP_USD,
-        zdrDowngradeEnv: undefined,
-      }),
-    ).toThrow(PairPolicyV03ValidationError);
-  });
-
-  it("rejects a duplicate alternate (same modelId + providerId twice)", () => {
-    const raw = minimalV03();
-    raw.alternateProviders = [validAlternate(), validAlternate()];
-    expect(() =>
-      parsePairPolicyV03(raw, {
-        defaultCostCapUsd: DEFAULT_COST_CAP_USD,
-        zdrDowngradeEnv: undefined,
-      }),
-    ).toThrow(PairPolicyV03ValidationError);
-  });
-
-  it("rejects an alternate that byte-equals the primary pair", () => {
-    const raw = minimalV03();
-    const alt = validAlternate();
-    alt.providerId = "fireworks"; // matches the primary
-    raw.alternateProviders = [alt];
-    expect(() =>
-      parsePairPolicyV03(raw, {
-        defaultCostCapUsd: DEFAULT_COST_CAP_USD,
-        zdrDowngradeEnv: undefined,
-      }),
-    ).toThrow(PairPolicyV03ValidationError);
-  });
-
-  it("rejects an alternate whose capabilitySheet declares supportsStructuredOutputJsonSchema=false", () => {
-    const raw = minimalV03();
-    const alt = validAlternate();
-    (alt.capabilitySheet as Record<string, unknown>).supportsStructuredOutputJsonSchema = false;
-    raw.alternateProviders = [alt];
-    expect(() =>
-      parsePairPolicyV03(raw, {
-        defaultCostCapUsd: DEFAULT_COST_CAP_USD,
-        zdrDowngradeEnv: undefined,
-      }),
-    ).toThrow(PairPolicyV03ValidationError);
-  });
-
-  it("rejects an alternate without an evidenceRef", () => {
-    const raw = minimalV03();
-    const alt = validAlternate();
-    (alt.capabilitySheet as Record<string, unknown>).evidenceRef = "";
-    raw.alternateProviders = [alt];
-    expect(() =>
-      parsePairPolicyV03(raw, {
-        defaultCostCapUsd: DEFAULT_COST_CAP_USD,
-        zdrDowngradeEnv: undefined,
-      }),
-    ).toThrow(PairPolicyV03ValidationError);
-  });
-
-  it("rejects an alternate with a non-positive contextWindowTokens", () => {
-    const raw = minimalV03();
-    const alt = validAlternate();
-    (alt.capabilitySheet as Record<string, unknown>).contextWindowTokens = 0;
-    raw.alternateProviders = [alt];
-    expect(() =>
-      parsePairPolicyV03(raw, {
-        defaultCostCapUsd: DEFAULT_COST_CAP_USD,
-        zdrDowngradeEnv: undefined,
-      }),
-    ).toThrow(PairPolicyV03ValidationError);
-  });
-});
-
-describe("parsePairPolicyV03 (failoverPredicate)", () => {
-  it("defaults failoverPredicate to 'http_429_from_primary' when absent", () => {
-    const parsed = parsePairPolicyV03(minimalV03(), {
-      defaultCostCapUsd: DEFAULT_COST_CAP_USD,
-      zdrDowngradeEnv: undefined,
-    });
-    expect(parsed.failoverPredicate).toBe("http_429_from_primary");
-    expect(DEFAULT_FAILOVER_PREDICATE).toBe("http_429_from_primary");
-    expect(FAILOVER_PREDICATES).toContain("http_429_from_primary");
-  });
-
-  it("accepts an explicit 'http_429_from_primary' literal", () => {
-    const raw = minimalV03();
-    raw.failoverPredicate = "http_429_from_primary";
-    const parsed = parsePairPolicyV03(raw, {
-      defaultCostCapUsd: DEFAULT_COST_CAP_USD,
-      zdrDowngradeEnv: undefined,
-    });
-    expect(parsed.failoverPredicate).toBe("http_429_from_primary");
-  });
-
-  it("REFUSES an unknown failoverPredicate literal at parse time", () => {
-    const raw = minimalV03();
-    raw.failoverPredicate = "http_5xx_from_primary";
-    expect(() =>
-      parsePairPolicyV03(raw, {
-        defaultCostCapUsd: DEFAULT_COST_CAP_USD,
-        zdrDowngradeEnv: undefined,
-      }),
-    ).toThrow(PairPolicyV03ValidationError);
-  });
-
-  it("REFUSES a non-string failoverPredicate", () => {
-    const raw = minimalV03();
-    raw.failoverPredicate = 429 as unknown as string;
-    expect(() =>
-      parsePairPolicyV03(raw, {
-        defaultCostCapUsd: DEFAULT_COST_CAP_USD,
-        zdrDowngradeEnv: undefined,
-      }),
-    ).toThrow(PairPolicyV03ValidationError);
   });
 });
 

@@ -10,29 +10,28 @@
 // LLM emits is guaranteed to include the substring the patchback +
 // replay-validate pipeline asserts on.
 //
-// ITOTORI-238 — explicit alternate providers + failover predicate.
+// Resilience model — OpenRouter-side fallback (post-ITOTORI-241):
 //
-//   The pair-policy v0.3 widens v0.2 by adding two top-level fields:
-//     - alternateProviders: ordered list of fully-declared
-//       (modelId, providerId, capabilitySheet) entries.
-//     - failoverPredicate: the literal 'http_429_from_primary' — the
-//       ONLY failure mode that causes this driver to advance to the
-//       next alternate.
+//   This driver runs the SINGLE pair-policy primary pair for every
+//   stage. It does NOT carry an app-level 429-failover / alternate-
+//   chaining loop. On the wire the OpenRouter provider sends
+//   `provider.order = [providerId]` + `provider.allow_fallbacks = true`
+//   + `provider.zdr = true` + `provider.data_collection = deny`, so
+//   OpenRouter ITSELF routes within the account ZDR allow-list when the
+//   preferred provider returns HTTP 429 (UTSUSHI-231 / UTSUSHI-231 live
+//   run: OR served DigitalOcean on a primary-provider miss and the run
+//   completed). The served (model, providerId) pair is recorded
+//   verbatim in each invocation's provider-run record
+//   (`provider.upstreamProvider` / `provider.actualModelId`).
 //
-//   On a primary 429 the driver:
-//     1. records the audit-trail (primary 429 + alternate adopted),
-//     2. constructs a NEW provider pinned to the next alternate's
-//        (modelId, providerId),
-//     3. re-runs the agentic loop with the same input + a per-stage
-//        pair-policy whose pinned pair has been replaced byte-equal
-//        with the alternate's pair, and
-//     4. surfaces `LocalizeProjectBlockedExternal` when every alternate has
-//        been exhausted.
-//
-//   On ANY other failure (provider_response_invalid,
-//   non-429 provider_http_error, capability_unsupported, etc.) the
-//   driver raises immediately — silent provider swap is forbidden
-//   (audit-focus 3).
+//   The superseded ITOTORI-238/239/240 approach (an EXPLICIT
+//   `alternateProviders[]` chain advanced by a `failoverPredicate` on a
+//   primary 429) was REMOVED — it was redundant with OR-side fallback
+//   and could double-handle a 429 OR had already resolved. The
+//   no-legacy rule means there is no dual failover: if EVERY ZDR-allow-
+//   list provider is at quota, OpenRouter returns the terminal error and
+//   the agentic loop surfaces it as a `ModelProviderError` (the natural
+//   terminal). No app-level retry layered on top.
 //
 // Outputs three files:
 //   1. <output>                       — the AgenticLoopBundle.v0 JSON
@@ -49,12 +48,14 @@
 //   3. <patch-report-output>          — a deterministic
 //                                       `patch-report.json` shape
 //                                       summarising which pair drove
-//                                       the run (the (modelId,
-//                                       providerId) pair from the
-//                                       pair-policy — the PRIMARY pair
-//                                       on a clean run, the FAILOVER
-//                                       pair when an alternate was
-//                                       adopted), the bridge unit
+//                                       the run (the single (modelId,
+//                                       providerId) primary pair from
+//                                       the pair-policy that the request
+//                                       preferred; the actual served
+//                                       upstream provider, which OR may
+//                                       have fallen back to, lives in
+//                                       the per-invocation provider-run
+//                                       records), the bridge unit
 //                                       count, and the sentinel
 //                                       substring. The Rust patchback
 //                                       crate does not emit a
@@ -83,20 +84,12 @@ import {
   type BridgeBundleV02,
   type LocalizationUnitV02,
   type PairPolicyV03,
-  type PairPolicyV03Alternate,
   type StagePostureV03,
 } from "@itotori/localization-bridge-schema";
-import {
-  DEFAULT_COST_CAP_USD,
-  OpenRouterModelProvider,
-  openRouterDefaultCapabilities,
-} from "../providers/openrouter.js";
+import { DEFAULT_COST_CAP_USD, OpenRouterModelProvider } from "../providers/openrouter.js";
 import { LocalProviderRunArtifactRecorder } from "../providers/artifacts.js";
 import { FakeModelProvider } from "../providers/fake.js";
-import { globalCapabilityGuard, type CapabilityGuard } from "../providers/capability-guard.js";
-import { ModelProviderError } from "../providers/types.js";
 import type {
-  ModelCapabilities,
   ModelInvocationRequest,
   ModelInvocationResult,
   ModelProvider,
@@ -206,40 +199,6 @@ export class LocalizeProjectMissingProviderRunArtifactsDirectoryError extends Er
   }
 }
 
-/**
- * ITOTORI-238 — raised when the primary pair returned HTTP 429 AND
- * every declared alternate has also been exhausted (or none were
- * declared). Carries the per-pair failure record so the operator can
- * see exactly which providers refused and why.
- *
- * The name encodes the audit-focus claim: this is a STRUCTURAL
- * external block — Trevor's account is at quota on every pair the
- * policy file declared, and itotori cannot continue without operator
- * action (either a quota increase upstream, or a new alternate added
- * to the policy file + re-validated).
- */
-export class LocalizeProjectBlockedExternal extends Error {
-  constructor(
-    public readonly attempts: ReadonlyArray<{
-      pair: { modelId: string; providerId: string };
-      role: "primary" | "alternate";
-      failureClass: string;
-      detail: string;
-    }>,
-  ) {
-    const summary = attempts
-      .map(
-        (entry, idx) =>
-          `  [${idx}] role=${entry.role} pair=(${entry.pair.modelId}, ${entry.pair.providerId}) failure=${entry.failureClass} — ${entry.detail}`,
-      )
-      .join("\n");
-    super(
-      `localize-project-stage refused: LOCALIZE PROJECT BLOCKED (external) — every declared (modelId, providerId) pair returned the configured failover predicate's failure. Attempts:\n${summary}\nResolution: either add a new evidence-validated alternate to the pair-policy preset (alternateProviders[]), wait for the upstream quota to lift, or request an OpenRouter-side quota increase. No silent provider broadening is allowed — every alternate must be a commit-visible, evidence-validated entry.`,
-    );
-    this.name = "LocalizeProjectBlockedExternal";
-  }
-}
-
 const DEFAULT_UNIT_INDEX = 0;
 
 // Re-export so the test surface and any external integrators get the
@@ -248,8 +207,8 @@ const DEFAULT_UNIT_INDEX = 0;
 export { PairPolicyVersionMismatchError };
 
 /**
- * ITOTORI-234 / ITOTORI-238 — Parse + validate a raw JSON value as a
- * v0.3 pair-policy tailored for the localize-project alpha closer.
+ * ITOTORI-234 — Parse + validate a raw JSON value as a v0.3 pair-policy
+ * tailored for the localize-project alpha closer.
  *
  * Required shape (matches `PairPolicyV03` in
  * `@itotori/localization-bridge-schema/pair-policy.v0.3`):
@@ -259,24 +218,17 @@ export { PairPolicyVersionMismatchError };
  *   "schemaVersion": "itotori.pair-policy.v0.3",
  *   "policyId": "localize-project-alpha-1",
  *   "pair": { "modelId": "...", "providerId": "..." },
- *   "alternateProviders": [{
- *     "modelId": "...",
- *     "providerId": "...",
- *     "capabilitySheet": {
- *       "supportsStructuredOutputJsonSchema": true,
- *       "supportsToolUse": true,
- *       "contextWindowTokens": 128000,
- *       "maxOutputTokens": 8192,
- *       "evidenceRef": "docs/openrouter-integration-evidence/..."
- *     }
- *   }],
- *   "failoverPredicate": "http_429_from_primary",
  *   "enUsSentinel": "STELLA-ALPHA-EN-US-SENTINEL",
  *   "sceneId": 1,
  *   "openrouterPresetSlug": "optional",
  *   "stages": { ...per-stage StagePostureV03 leaves... }
  * }
  * ```
+ *
+ * There is no app-level alternate/failover plumbing: OpenRouter-side
+ * fallback (provider.order + allow_fallbacks within the ZDR allow-list)
+ * is the resilience mechanism, so the policy declares the SINGLE primary
+ * pair only.
  *
  * Every leaf's `pair` MUST byte-equal the top-level `pair` field
  * (single-game alpha invariant — only one pair drives this recipe;
@@ -303,8 +255,7 @@ export function parseLocalizeProjectPairPolicy(value: unknown): {
   pairPolicy: PairPolicy;
   /**
    * Raw parsed v0.3 policy. Surfaced so the dry-run printer + driver
-   * can iterate every leaf's posture (zdr + seed) verbatim AND so the
-   * driver can read alternateProviders[] + failoverPredicate.
+   * can iterate every leaf's posture (zdr + seed) verbatim.
    */
   policyV03: PairPolicyV03;
 } {
@@ -362,193 +313,6 @@ function assertEveryLeafMatches(policy: PairPolicyV03): void {
   }
 }
 
-/**
- * Replace every leaf-pair in the per-stage policy with the alternate
- * pair. Preserves zdr / fallbackModels / seed / maxPriceUsd verbatim
- * (the alternate inherits the primary's posture; only the routing
- * pair changes).
- *
- * Why we don't re-derive the seed from the new pair: failover MUST
- * be deterministic from the operator's perspective. The seed is
- * derived from the LEAF PATH, not the pair, so it stays stable across
- * primary/alternate runs. This keeps replay traces comparable when
- * an alternate is adopted.
- */
-function replaceLeafPair(pairPolicy: PairPolicy, alternate: PairPolicyV03Alternate): PairPolicy {
-  const swap = (leaf: StagePostureV03): StagePostureV03 => ({
-    pair: { modelId: alternate.modelId, providerId: alternate.providerId },
-    zdr: leaf.zdr,
-    fallbackModels: leaf.fallbackModels,
-    seed: leaf.seed,
-    maxPriceUsd: leaf.maxPriceUsd,
-  });
-  const out: PairPolicy = {
-    context: {
-      sceneSummary: swap(pairPolicy.context.sceneSummary),
-      characterRelationship: swap(pairPolicy.context.characterRelationship),
-      terminologyCandidate: swap(pairPolicy.context.terminologyCandidate),
-      routeChoiceMap: swap(pairPolicy.context.routeChoiceMap),
-    },
-    preTranslation: {
-      speakerLabel: swap(pairPolicy.preTranslation.speakerLabel),
-    },
-    translation: {
-      primary: swap(pairPolicy.translation.primary),
-      ...(pairPolicy.translation.regrade !== undefined
-        ? { regrade: swap(pairPolicy.translation.regrade) }
-        : {}),
-    },
-    qa: {
-      styleAdherence: swap(pairPolicy.qa.styleAdherence),
-      semanticDrift: swap(pairPolicy.qa.semanticDrift),
-      toneRegister: swap(pairPolicy.qa.toneRegister),
-      unresolvedTerminology: swap(pairPolicy.qa.unresolvedTerminology),
-    },
-    repair: {
-      primary: swap(pairPolicy.repair.primary),
-    },
-  };
-  return out;
-}
-
-/**
- * ITOTORI-240 — translate an alternate's declared
- * `PairPolicyV03AlternateCapabilitySheet` into the wider
- * `ModelCapabilities` shape consumed by `CapabilityGuard`, then register
- * the entry under the alternate's (modelId, providerId) pair.
- *
- * Root cause this closes (from the UTSUSHI-231 retry #8 sweep): the
- * pair-policy preset declares every alternate's capability sheet
- * inline, but ITOTORI-239 wired the data INTO the policy file without
- * teaching the driver to push it into `globalCapabilityGuard`. The
- * `SentinelInjectingProviderWrapper` calls
- * `inner.descriptorForPair(opts.pair)` which delegates to
- * `CapabilityGuard.has/lookup` — and on a miss, the descriptor falls
- * back to `openRouterDefaultCapabilities` (jsonSchema=`untested`),
- * which the speaker-label agent's pre-flight assertion refuses. End
- * effect: every alternate in the chain hard-refused with
- * `capability_unsupported` before its HTTP call could even fire.
- *
- * The fix here registers each alternate's capabilitySheet into the
- * SAME singleton guard `OpenRouterModelProvider` reaches into in
- * `descriptorForPair`, so `globalCapabilityGuard().has(alt.modelId,
- * alt.providerId)` is true BEFORE the failover loop begins.
- *
- * Why only the active policy's alternates (and NOT every pair we
- * could imagine): the no-silent-fallback invariant. Auto-registering
- * arbitrary pairs at module load would let an unaudited (model,
- * provider) pair slip into a run via a renamed alternate. Each
- * registration is anchored to a commit-visible alternate inside the
- * preset file, and the alternate-validation rule (parser enforces
- * `supportsStructuredOutputJsonSchema=true` + non-empty `evidenceRef`)
- * makes the data trustworthy at the registration site.
- *
- * Unknown pairs (not declared in the active policy's alternates) are
- * NOT registered here — `descriptorForPair` keeps its safe-default
- * fallback for those, and any agent attempting to use such a pair
- * will still refuse with `capability_unsupported` (which is the
- * desired posture per ITOTORI-220 / ITOTORI-237).
- */
-export function alternateCapabilitiesAsModelCapabilities(
-  alternate: PairPolicyV03Alternate,
-): ModelCapabilities {
-  const sheet = alternate.capabilitySheet;
-  // Translate the alternate's coarse booleans into the structured-
-  // output axis the speaker-label pre-flight asserts on. The other
-  // axes (image input, routing) inherit the OpenRouter defaults —
-  // those are not policy-configurable per alternate and the family-
-  // wide defaults are correct.
-  const structuredOutputSupport = sheet.supportsStructuredOutputJsonSchema
-    ? ("supported" as const)
-    : ("untested" as const);
-  const toolCallSupport = sheet.supportsToolUse ? ("supported" as const) : ("untested" as const);
-  return {
-    ...openRouterDefaultCapabilities,
-    structuredOutputs: {
-      jsonSchema: structuredOutputSupport,
-      jsonObject: structuredOutputSupport,
-      toolCallArguments: toolCallSupport,
-      plainJsonExtraction: "supported",
-      preferredModes: ["json_schema", "tool_call_arguments", "json_object", "plain_json"],
-    },
-    toolCalls: {
-      support: toolCallSupport,
-      // Alternates declared by the alpha closer's pair-policy preset
-      // share the deepseek-v4-flash family — parallel tool calls are
-      // not asserted by the alternate sheet, so we inherit the default
-      // (`untested`). The orchestrator never asks for parallel calls.
-      parallelToolCalls: openRouterDefaultCapabilities.toolCalls.parallelToolCalls,
-      requiresSchemaPerRequest: true,
-    },
-    routing: {
-      ...openRouterDefaultCapabilities.routing,
-    },
-    contextWindowTokens: sheet.contextWindowTokens,
-    maxOutputTokens: sheet.maxOutputTokens,
-    notes: [
-      `ITOTORI-240: registered from pair-policy alternateProviders[] entry (evidenceRef: ${sheet.evidenceRef})`,
-    ],
-  };
-}
-
-/**
- * ITOTORI-240 — registration loop. Pre-iterates the policy's
- * `alternateProviders[]` and registers each `capabilitySheet` into the
- * supplied `CapabilityGuard` (defaults to the singleton). MUST run
- * BEFORE the failover loop so any per-pair `descriptorForPair` lookup
- * during stage execution finds the alternate's registered sheet
- * instead of falling back to the safe-default `untested` posture.
- *
- * Idempotent: re-registering the same pair overwrites the entry, so
- * repeated invocations across re-runs of the command in the same
- * process (e.g. a script that loops) do not accumulate stale data.
- */
-export function registerPairPolicyAlternatesInCapabilityGuard(
-  policy: PairPolicyV03,
-  guard: CapabilityGuard = globalCapabilityGuard(),
-): void {
-  for (const alternate of policy.alternateProviders) {
-    guard.register(
-      alternate.modelId,
-      alternate.providerId,
-      alternateCapabilitiesAsModelCapabilities(alternate),
-    );
-  }
-}
-
-/**
- * ITOTORI-238 — does the thrown error match the policy's
- * `failoverPredicate`? Today the only predicate is
- * `"http_429_from_primary"`, which matches a
- * `ModelProviderError` whose `code === "provider_http_error"` AND
- * whose `providerRun.errorClasses` includes `"http_429"`.
- *
- * Any other failure (provider_response_invalid,
- * capability_unsupported, configuration_error, OR a non-429
- * provider_http_error) MUST return `false` so the caller surfaces
- * the error immediately. This is the audit-focus 3 invariant.
- */
-function matchesFailoverPredicate(
-  predicate: PairPolicyV03["failoverPredicate"],
-  error: unknown,
-): boolean {
-  if (predicate !== "http_429_from_primary") {
-    return false;
-  }
-  if (!(error instanceof ModelProviderError)) {
-    return false;
-  }
-  if (error.code !== "provider_http_error") {
-    return false;
-  }
-  // The OpenRouter provider tags 429 responses with errorClass
-  // `"http_429"` in the provider run record (see
-  // apps/itotori/src/providers/openrouter.ts:194 — `errorClasses:
-  // [\`http_${response.status}\`]`).
-  const classes = error.providerRun?.errorClasses ?? [];
-  return classes.includes("http_429");
-}
-
 export async function runLocalizeProjectStageCommand(
   args: LocalizeProjectStageArgs,
 ): Promise<AgenticLoopBundle> {
@@ -571,26 +335,10 @@ export async function runLocalizeProjectStageCommand(
   }
 
   const rawPolicy = args.io.readJson(args.pairPolicyPath);
-  const { policyId, pair, enUsSentinel, sceneId, pairPolicy, policyV03 } =
+  const { policyId, pair, enUsSentinel, sceneId, pairPolicy } =
     parseLocalizeProjectPairPolicy(rawPolicy);
   log(
-    `localize-project-stage: primary=(${pair.modelId}, ${pair.providerId}) sentinel=${enUsSentinel} alternates=${policyV03.alternateProviders.length} failoverPredicate=${policyV03.failoverPredicate}`,
-  );
-
-  // ITOTORI-240 — register every alternate's capabilitySheet into the
-  // singleton CapabilityGuard BEFORE the failover loop starts. The
-  // SentinelInjectingProviderWrapper (and any downstream pre-flight
-  // check that reads `provider.descriptor.capabilities`) calls
-  // `inner.descriptorForPair(opts.pair)` per attempt; without this
-  // registration the alternate's pair is a guard miss and the wrapper
-  // falls back to the family-default `untested` posture, which the
-  // speaker-label agent's structured-output pre-flight refuses. The
-  // primary pair is already covered by OpenRouterModelProvider's
-  // constructor-time registration of the dev-pair.ts known table;
-  // this loop closes the gap for the policy-declared alternates.
-  registerPairPolicyAlternatesInCapabilityGuard(policyV03);
-  log(
-    `localize-project-stage: registered ${policyV03.alternateProviders.length} alternate capability sheet(s) into globalCapabilityGuard`,
+    `localize-project-stage: pair=(${pair.modelId}, ${pair.providerId}) sentinel=${enUsSentinel} (OpenRouter-side fallback handles 429s within the ZDR allow-list)`,
   );
 
   const providerKind = args.providerKind ?? "live";
@@ -627,113 +375,31 @@ export async function runLocalizeProjectStageCommand(
     actor: args.actor,
   };
 
-  // ITOTORI-238 — failover orchestration. We attempt the primary pair
-  // first; if it raises an error matching the policy's failoverPredicate
-  // we advance to the next declared alternate (in policy-declared order).
-  // Each attempt re-runs the FULL agentic loop from scratch — there is
-  // no per-stage failover, because mid-run provider swap would invalidate
-  // the audit trail (the stage's seed + posture is bound to a single
-  // pair).
-  const attemptPairs: Array<{
-    pair: { modelId: string; providerId: string };
-    role: "primary" | "alternate";
-    pairPolicy: PairPolicy;
-    factory: AgenticLoopProviderFactory;
-  }> = [
-    {
-      pair,
-      role: "primary",
-      pairPolicy,
-      factory:
-        providerKind === "fake"
-          ? sentinelFakeFactory(unit, policy, enUsSentinel)
-          : args.liveFactoryOverride !== undefined
-            ? withStagePostureInjectionFactory(
-                args.liveFactoryOverride(pair, { artifactRecorder }),
-                enUsSentinel,
-              )
-            : liveOpenRouterFactory({
-                enUsSentinel,
-                costCapUsd: args.costCapUsd ?? DEFAULT_COST_CAP_USD,
-                artifactRecorder,
-              }),
-    },
-    ...policyV03.alternateProviders.map((alternate) => {
-      const altPair = { modelId: alternate.modelId, providerId: alternate.providerId };
-      return {
-        pair: altPair,
-        role: "alternate" as const,
-        pairPolicy: replaceLeafPair(pairPolicy, alternate),
-        factory:
-          providerKind === "fake"
-            ? sentinelFakeFactory(unit, policy, enUsSentinel)
-            : args.liveFactoryOverride !== undefined
-              ? withStagePostureInjectionFactory(
-                  args.liveFactoryOverride(altPair, { artifactRecorder }),
-                  enUsSentinel,
-                )
-              : liveOpenRouterFactory({
-                  enUsSentinel,
-                  costCapUsd: args.costCapUsd ?? DEFAULT_COST_CAP_USD,
-                  artifactRecorder,
-                }),
-      };
-    }),
-  ];
+  // Single primary-pair run. OpenRouter-side fallback is the resilience
+  // mechanism: on the wire the provider sends `provider.order =
+  // [providerId]` + `allow_fallbacks = true` + `zdr = true`, so OR routes
+  // within the account ZDR allow-list when the preferred upstream returns
+  // HTTP 429 and records whichever provider actually served (UTSUSHI-231
+  // live run completed when OR served DigitalOcean on a Fireworks miss).
+  // There is NO app-level alternate-chaining loop: if EVERY ZDR-allow-list
+  // provider is at quota, OR returns the terminal error and
+  // `runAgenticLoopForUnit` surfaces it verbatim as a `ModelProviderError`.
+  const factory: AgenticLoopProviderFactory =
+    providerKind === "fake"
+      ? sentinelFakeFactory(unit, policy, enUsSentinel)
+      : args.liveFactoryOverride !== undefined
+        ? withStagePostureInjectionFactory(
+            args.liveFactoryOverride(pair, { artifactRecorder }),
+            enUsSentinel,
+          )
+        : liveOpenRouterFactory({
+            enUsSentinel,
+            costCapUsd: args.costCapUsd ?? DEFAULT_COST_CAP_USD,
+            artifactRecorder,
+          });
 
-  const failureAttempts: Array<{
-    pair: { modelId: string; providerId: string };
-    role: "primary" | "alternate";
-    failureClass: string;
-    detail: string;
-  }> = [];
-  let bundle: AgenticLoopBundle | undefined;
-  let driverPair: { modelId: string; providerId: string } = pair;
-
-  for (let i = 0; i < attemptPairs.length; i += 1) {
-    const attempt = attemptPairs[i];
-    if (attempt === undefined) {
-      // Defensive — the loop bound is `attemptPairs.length` so this
-      // branch is unreachable, but TS narrowing benefits from the check.
-      break;
-    }
-    log(
-      `localize-project-stage: attempt ${i + 1}/${attemptPairs.length} role=${attempt.role} pair=(${attempt.pair.modelId}, ${attempt.pair.providerId})`,
-    );
-    try {
-      bundle = await runAgenticLoopForUnit(input, attempt.pairPolicy, policy, attempt.factory);
-      assertAgenticLoopBundle(bundle);
-      driverPair = attempt.pair;
-      break;
-    } catch (error) {
-      if (matchesFailoverPredicate(policyV03.failoverPredicate, error)) {
-        // Record the audit trail entry and advance — but ONLY when the
-        // primary failed. Alternate-stage failures with the same
-        // predicate also advance (a chain of 429s is still a 429 chain),
-        // but a non-primary 429 indicates the alternate is itself at
-        // quota.
-        const detail = error instanceof Error ? error.message : String(error);
-        failureAttempts.push({
-          pair: attempt.pair,
-          role: attempt.role,
-          failureClass: "http_429",
-          detail,
-        });
-        log(
-          `localize-project-stage: pair (${attempt.pair.modelId}, ${attempt.pair.providerId}) returned the failover predicate's failure (http_429); advancing to next alternate (${attemptPairs.length - i - 1} remaining)`,
-        );
-        continue;
-      }
-      // Any other failure surfaces IMMEDIATELY — this is the audit-
-      // focus 3 invariant: silent provider swap on an unknown error
-      // is forbidden. Raise verbatim.
-      throw error;
-    }
-  }
-
-  if (bundle === undefined) {
-    throw new LocalizeProjectBlockedExternal(failureAttempts);
-  }
+  const bundle = await runAgenticLoopForUnit(input, pairPolicy, policy, factory);
+  assertAgenticLoopBundle(bundle);
 
   args.io.writeJson(args.outputPath, bundle);
   log(`localize-project-stage: wrote ${args.outputPath}`);
@@ -753,22 +419,22 @@ export async function runLocalizeProjectStageCommand(
   // NOT emit a per-run report; the driver shoulders that artifact so
   // the UTSUSHI-228 artifact contract is satisfied.
   //
-  // ITOTORI-238 — the `pair` field carries the pair THAT ACTUALLY DROVE
-  // THE SUCCESSFUL RUN (i.e. the primary on a clean run, the alternate
-  // on a failover-adopted run). The `failoverAttempts` field carries
-  // every 429 along the way so audit can trace the chain.
+  // The `pair` field carries the SINGLE primary pair the request
+  // preferred (`provider.order[0]`). The actual served upstream
+  // provider — which OpenRouter may have fallen back to within the ZDR
+  // allow-list on a 429 — is recorded per-invocation in the provider-run
+  // records (`provider.upstreamProvider` / `provider.actualModelId`), not
+  // re-summarised here.
   const patchReport = {
     schemaVersion: "itotori.localize-project.patch-report.v0",
     policyId,
-    pair: driverPair,
+    pair,
     enUsSentinel,
     sceneId,
     bridgeUnitId: unit.bridgeUnitId,
     unitCount: bridge.units.length,
     finalDraftTextLength: draftText.length,
     translatedTargetText: wrapWithSentinel(draftText, enUsSentinel),
-    failoverPredicate: policyV03.failoverPredicate,
-    failoverAttempts: failureAttempts,
   };
   args.io.writeJson(args.patchReportOutputPath, patchReport);
   log(`localize-project-stage: wrote ${args.patchReportOutputPath}`);
