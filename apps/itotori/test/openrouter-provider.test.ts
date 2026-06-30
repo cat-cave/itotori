@@ -531,6 +531,79 @@ describe("OpenRouterModelProvider — request shape (ITOTORI-220 pair pin)", () 
     });
   });
 
+  it("ITOTORI-242: fallbackUsed is TRUE when the served provider differs from order[0] (a genuine provider-level ZDR fallback), and the served pair is recorded", async () => {
+    // The headline ITOTORI-242 resilience path: order[0]
+    // (DEV_PAIR.providerId='fireworks') 429s, OpenRouter serves a DIFFERENT
+    // ZDR-allow-list provider ('deepinfra') with the SAME model. The old
+    // model-only check (actualModelId !== requestedModelId) read this as
+    // fallbackUsed:false; the provider swap must now be first-class
+    // telemetry — fallbackUsed:true — without any rejection.
+    const recorder = memoryRecorder();
+    const fetchMock = vi.fn(async () =>
+      successResponse({ upstreamProvider: "deepinfra", usageCost: 0.000042 }),
+    ) as unknown as typeof fetch;
+    const provider = new OpenRouterModelProvider({
+      env: { OPENROUTER_API_KEY: "abc", OPENROUTER_ZDR_ACCOUNT_ASSERTED: "1" },
+      httpClient: fetchMock,
+      capabilityGuard: new CapabilityGuard(),
+      artifactRecorder: recorder,
+    });
+    const result = await provider.invoke(baseRequest());
+    // Accepted, not rejected: a non-preferred ZDR serve is valid.
+    expect(result.providerRun.status).toBe("succeeded");
+    // The provider-level fallback is reflected in the first-class flag.
+    expect(result.providerRun.fallbackUsed).toBe(true);
+    // The served pair is recorded as the truth.
+    expect(result.providerRun.provider.upstreamProvider).toBe("deepinfra");
+    expect(result.providerRun.provider.requestedProviderId).toBe(DEV_PAIR.providerId);
+    expect(recorder.artifacts[0]?.run.fallbackUsed).toBe(true);
+    expect(recorder.artifacts[0]?.run.provider.upstreamProvider).toBe("deepinfra");
+  });
+
+  it("ITOTORI-242: fallbackUsed is FALSE when order[0] serves directly (no provider fallback, same model)", async () => {
+    // The preferred provider (order[0], DEV_PAIR.providerId='fireworks')
+    // answers directly with the requested model — no provider swap and no
+    // model fallback, so fallbackUsed must be false.
+    const recorder = memoryRecorder();
+    const fetchMock = vi.fn(async () =>
+      successResponse({ upstreamProvider: DEV_PAIR.providerId, usageCost: 0.000011 }),
+    ) as unknown as typeof fetch;
+    const provider = new OpenRouterModelProvider({
+      env: { OPENROUTER_API_KEY: "abc", OPENROUTER_ZDR_ACCOUNT_ASSERTED: "1" },
+      httpClient: fetchMock,
+      capabilityGuard: new CapabilityGuard(),
+      artifactRecorder: recorder,
+    });
+    const result = await provider.invoke(baseRequest());
+    expect(result.providerRun.status).toBe("succeeded");
+    expect(result.providerRun.fallbackUsed).toBe(false);
+    expect(result.providerRun.provider.upstreamProvider).toBe(DEV_PAIR.providerId);
+    expect(recorder.artifacts[0]?.run.fallbackUsed).toBe(false);
+  });
+
+  it("ITOTORI-242: a casing/version-only diff (order[0]='fireworks' → served='Fireworks') does NOT falsely read as a provider fallback", async () => {
+    // Live OR echoes the human-readable provider name (TitleCase
+    // 'Fireworks') while order[0] is the lowercase slug ('fireworks').
+    // That is the SAME provider — a slug↔display-name shape, not a
+    // fallback — so provider-id normalization must keep fallbackUsed:false.
+    const recorder = memoryRecorder();
+    const fetchMock = vi.fn(async () =>
+      successResponse({ upstreamProvider: "Fireworks", usageCost: 0.000013 }),
+    ) as unknown as typeof fetch;
+    const provider = new OpenRouterModelProvider({
+      env: { OPENROUTER_API_KEY: "abc", OPENROUTER_ZDR_ACCOUNT_ASSERTED: "1" },
+      httpClient: fetchMock,
+      capabilityGuard: new CapabilityGuard(),
+      artifactRecorder: recorder,
+    });
+    const result = await provider.invoke(baseRequest());
+    expect(result.providerRun.status).toBe("succeeded");
+    // Casing-only diff: NOT a fallback.
+    expect(result.providerRun.fallbackUsed).toBe(false);
+    expect(result.providerRun.provider.upstreamProvider).toBe("Fireworks");
+    expect(recorder.artifacts[0]?.run.fallbackUsed).toBe(false);
+  });
+
   it("ITOTORI-243: ACCEPTS a public-input serve from a provider differing from order[0] and records the served pair + real cost", async () => {
     // For `public` input there is no privacy contract (zdr is not enforced
     // on the wire), so any provider OpenRouter routes to is a valid serve.

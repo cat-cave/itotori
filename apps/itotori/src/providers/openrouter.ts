@@ -1151,6 +1151,27 @@ function buildProviderRunRecord(input: {
 }): ProviderRunRecord {
   const completedAt = new Date();
   const fallbackPlan = fallbackPlanForRequest(input.request, input.requestedModelId);
+  // ITOTORI-242 — fallbackUsed must reflect BOTH a model-level fallback
+  // (the served model differs from the requested model within a multi-
+  // entry fallback plan) AND a provider-level ZDR fallback. With OR-side
+  // fallback ON (allow_fallbacks:true), a 429 on the preferred provider
+  // (order[0]) makes OpenRouter serve a DIFFERENT ZDR-allow-list provider
+  // while keeping the same model — a provider swap that the old model-only
+  // check missed entirely. That swap IS the headline resilience path
+  // (UTSUSHI-231 live run: OR served DigitalOcean instead of the fireworks
+  // preference) and must read as fallbackUsed:true. It is accurate
+  // telemetry, NOT an error: the pair_mismatch guard is gone, so this
+  // NEVER rejects a non-preferred ZDR serve. The served provider
+  // (input.upstreamProvider, read verbatim from the response) is compared
+  // to the preferred order[0] under casing/version normalization so a
+  // legit slug↔display-name shape ('fireworks' ↔ 'Fireworks') or a dated
+  // snapshot suffix does NOT read as a false fallback.
+  const modelFallbackUsed =
+    fallbackPlan.length > 1 && input.actualModelId !== input.requestedModelId;
+  const providerFallbackUsed = servedProviderDiffersFromPreferred(
+    input.upstreamProvider,
+    input.routingPosture.order[0],
+  );
   const provider: ProviderRunRecord["provider"] = {
     providerFamily: input.descriptor.family,
     endpointFamily: input.descriptor.endpointFamily,
@@ -1174,7 +1195,7 @@ function buildProviderRunRecord(input: {
     structuredOutputMode: input.request.structuredOutput?.mode ?? "none",
     retryCount: 0,
     errorClasses: input.errorClasses,
-    fallbackUsed: fallbackPlan.length > 1 && input.actualModelId !== input.requestedModelId,
+    fallbackUsed: modelFallbackUsed || providerFallbackUsed,
     fallbackPlan,
     tokenUsage: input.tokenUsage,
     // ITOTORI-225 — zero-cost failures record ZERO_COST rather than the
@@ -1276,6 +1297,49 @@ function fallbackPlanForRequest(
   requestedModelId: string,
 ): string[] {
   return Array.from(new Set([requestedModelId, ...(request.fallbackModels ?? [])]));
+}
+
+/**
+ * ITOTORI-242 — true when OpenRouter served a provider that genuinely
+ * differs from the preferred order[0], i.e. a real provider-level ZDR
+ * fallback fired. Returns false when either side is absent (no served
+ * provider recorded, or no routing preference) or when the only difference
+ * is provider-id casing or a trailing version/snapshot suffix — those are
+ * legit slug↔display-name shapes, NOT a fallback.
+ */
+function servedProviderDiffersFromPreferred(
+  served: string | undefined,
+  preferred: string | undefined,
+): boolean {
+  if (served === undefined || preferred === undefined) {
+    return false;
+  }
+  return normalizeProviderIdForComparison(served) !== normalizeProviderIdForComparison(preferred);
+}
+
+/**
+ * Casing/version-insensitive provider-id key. OpenRouter echoes the
+ * human-readable provider name (e.g. `Fireworks`) while the routing
+ * `order` carries the lowercase slug (`fireworks`); some ids also carry a
+ * trailing version/snapshot token or a parenthetical index. Lowercasing
+ * and stripping those trailing tokens keeps a legit slug↔display-name (or
+ * dated-snapshot) diff from reading as a provider fallback. OR provider
+ * slugs never end in a bare version number (e.g. `01-ai`, `deepinfra`,
+ * `digitalocean` end in letters), so the trailing-version strip cannot
+ * collapse two distinct providers.
+ */
+function normalizeProviderIdForComparison(id: string): string {
+  return (
+    id
+      .trim()
+      .toLowerCase()
+      // strip a trailing parenthetical index/annotation, e.g. `digitalocean (6)`.
+      .replace(/\s*\([^)]*\)\s*$/, "")
+      // strip a trailing version/date-snapshot token, e.g. `-v2`, `@2024-01-01`.
+      .replace(/[\s@:_/-]*v?\d+(?:[._-]\d+)*$/, "")
+      .replace(/[\s_/-]+$/, "")
+      .trim()
+  );
 }
 
 function selectedOpenRouterProvider(body: unknown): string | undefined {
