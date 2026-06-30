@@ -36760,7 +36760,7 @@
       "validation": null,
       "context": null,
       "created_at": "2026-06-30T01:54:34.761Z",
-      "updated_at": "2026-06-30T01:54:34.761Z",
+      "updated_at": "2026-06-30T01:55:17.723Z",
       "claimed_at": null,
       "done_at": null,
       "group_name": null,
@@ -36777,7 +36777,11 @@
           "value": "pnpm --filter @itotori/app exec vitest run providers"
         }
       ],
-      "audit_focus": []
+      "audit_focus": [
+        "Regression risk: batchToSaveInput sends only modelProviderFamily+modelId; SaveTranslationBatchInput and the translation_batches table (schema.ts 2818-2862) have no provider_id c",
+        "No-legacy: the old buggy path is deleted, not flag-gated or dual-plumbed.",
+        "The new test asserts the CORRECTED behavior on a real case, not a tautology."
+      ]
     },
     {
       "id": "reallive-command-arg-scanner-ignores-ff-int-literal-introducer",
@@ -36795,7 +36799,7 @@
       "validation": null,
       "context": null,
       "created_at": "2026-06-30T01:54:34.761Z",
-      "updated_at": "2026-06-30T01:54:34.761Z",
+      "updated_at": "2026-06-30T01:55:17.810Z",
       "claimed_at": null,
       "done_at": null,
       "group_name": null,
@@ -36812,7 +36816,11 @@
           "value": "direnv exec . cargo test -p kaifuu-reallive"
         }
       ],
-      "audit_focus": []
+      "audit_focus": [
+        "Regression risk: decode_command scans the ArgList byte-by-byte (b')' closes, b',' splits) but never skips the 0xFF + 4-byte i32 LE literal payload that the same file decodes in ",
+        "No-legacy: the old buggy path is deleted, not flag-gated or dual-plumbed.",
+        "The new test asserts the CORRECTED behavior on a real case, not a tautology."
+      ]
     },
     {
       "id": "reallive-bridge-patchback-occurrence-drift-on-empty-choice-option",
@@ -36830,7 +36838,7 @@
       "validation": null,
       "context": null,
       "created_at": "2026-06-30T01:54:34.761Z",
-      "updated_at": "2026-06-30T01:54:34.761Z",
+      "updated_at": "2026-06-30T01:55:17.893Z",
       "claimed_at": null,
       "done_at": null,
       "group_name": null,
@@ -36847,7 +36855,11 @@
           "value": "direnv exec . cargo test -p kaifuu-reallive"
         }
       ],
-      "audit_focus": []
+      "audit_focus": [
+        "Regression risk: classify_command pushes empty arg segments on every ',' (opcode.rs:388-390) and the bridge increments occurrence for each choice including empties, but the patc",
+        "No-legacy: the old buggy path is deleted, not flag-gated or dual-plumbed.",
+        "The new test asserts the CORRECTED behavior on a real case, not a tautology."
+      ]
     },
     {
       "id": "provider-fallback-not-reflected-in-fallbackused",
@@ -36865,7 +36877,7 @@
       "validation": null,
       "context": null,
       "created_at": "2026-06-30T01:54:34.761Z",
-      "updated_at": "2026-06-30T01:54:34.761Z",
+      "updated_at": "2026-06-30T01:55:18.026Z",
       "claimed_at": null,
       "done_at": null,
       "group_name": null,
@@ -36882,7 +36894,11 @@
           "value": "pnpm --filter @itotori/app exec vitest run providers"
         }
       ],
-      "audit_focus": []
+      "audit_focus": [
+        "Regression risk: ITOTORI-242's headline feature is provider-level ZDR fallback on a 429, but fallbackUsed is `fallbackPlan.length>1 && actualModelId!==requestedModelId` (model-o",
+        "No-legacy: the old buggy path is deleted, not flag-gated or dual-plumbed.",
+        "The new test asserts the CORRECTED behavior on a real case, not a tautology."
+      ]
     },
     {
       "id": "ledger-providerid-default-unknown-sentinel",
@@ -36900,7 +36916,7 @@
       "validation": null,
       "context": null,
       "created_at": "2026-06-30T01:54:34.761Z",
-      "updated_at": "2026-06-30T01:54:34.761Z",
+      "updated_at": "2026-06-30T01:55:18.136Z",
       "claimed_at": null,
       "done_at": null,
       "group_name": null,
@@ -36917,7 +36933,11 @@
           "value": "pnpm --filter @itotori/app exec vitest run providers"
         }
       ],
-      "audit_focus": []
+      "audit_focus": [
+        "Regression risk: The column's own doc says 'required pinned providerId per the (modelId, providerId) pair rule' (ITOTORI-220), but `.default(\"unknown\")` means any insert that om",
+        "No-legacy: the old buggy path is deleted, not flag-gated or dual-plumbed.",
+        "The new test asserts the CORRECTED behavior on a real case, not a tautology."
+      ]
     },
     {
       "id": "retry-policy-type-rule-misclassified-nonretryable",
@@ -36935,7 +36955,7 @@
       "validation": null,
       "context": null,
       "created_at": "2026-06-30T01:54:34.761Z",
-      "updated_at": "2026-06-30T01:54:34.761Z",
+      "updated_at": "2026-06-30T01:55:18.238Z",
       "claimed_at": null,
       "done_at": null,
       "group_name": null,
@@ -36952,7 +36972,11 @@
           "value": "pnpm --filter @itotori/app exec vitest run providers"
         }
       ],
-      "audit_focus": []
+      "audit_focus": [
+        "Regression risk: MISSING_REQUIRED_FIELD_RULES includes 'type', but translation-draft.ts emits rule 'type' for BOTH missing fields AND genuine type-coercion ('expected string'/'e",
+        "No-legacy: the old buggy path is deleted, not flag-gated or dual-plumbed.",
+        "The new test asserts the CORRECTED behavior on a real case, not a tautology."
+      ]
     },
     {
       "id": "reallive-expression-body-swallows-following-textout-dialogue",
@@ -36970,7 +36994,7 @@
       "validation": null,
       "context": null,
       "created_at": "2026-06-30T01:54:34.761Z",
-      "updated_at": "2026-06-30T01:54:34.761Z",
+      "updated_at": "2026-06-30T01:55:18.349Z",
       "claimed_at": null,
       "done_at": null,
       "group_name": null,
@@ -36987,7 +37011,11 @@
           "value": "direnv exec . cargo test -p kaifuu-reallive"
         }
       ],
-      "audit_focus": []
+      "audit_focus": [
+        "Regression risk: is_expression_body_terminator stops only at {0x0A,0x21,0x23,0x40}, so parse_real_bytecode extends an Expression body across any directly-following Shift-JIS Tex",
+        "No-legacy: the old buggy path is deleted, not flag-gated or dual-plumbed.",
+        "The new test asserts the CORRECTED behavior on a real case, not a tautology."
+      ]
     },
     {
       "id": "reallive-patchback-scene-attribution-mixes-file-and-decompressed-offsets",
@@ -37005,7 +37033,7 @@
       "validation": null,
       "context": null,
       "created_at": "2026-06-30T01:54:34.761Z",
-      "updated_at": "2026-06-30T01:54:34.761Z",
+      "updated_at": "2026-06-30T01:55:18.450Z",
       "claimed_at": null,
       "done_at": null,
       "group_name": null,
@@ -37022,7 +37050,11 @@
           "value": "direnv exec . cargo test -p kaifuu-reallive"
         }
       ],
-      "audit_focus": []
+      "audit_focus": [
+        "Regression risk: startByte = scene_blob_file_offset + unit.decompressed_byte_offset mixes the compressed file domain with a decompressed bytecode cursor; resolve_edit then locat",
+        "No-legacy: the old buggy path is deleted, not flag-gated or dual-plumbed.",
+        "The new test asserts the CORRECTED behavior on a real case, not a tautology."
+      ]
     },
     {
       "id": "zero-dimension-screensize-mod-silently-corrupts-pointer-dispatch",
@@ -37040,7 +37072,7 @@
       "validation": null,
       "context": null,
       "created_at": "2026-06-30T01:54:34.761Z",
-      "updated_at": "2026-06-30T01:54:34.761Z",
+      "updated_at": "2026-06-30T01:55:18.549Z",
       "claimed_at": null,
       "done_at": null,
       "group_name": null,
@@ -37057,7 +37089,11 @@
           "value": "direnv exec . cargo test -p utsushi-reallive"
         }
       ],
-      "audit_focus": []
+      "audit_focus": [
+        "Regression risk: parse_screen_size accepts a present-but-zero width/height (e.g. SCREENSIZE_MOD=999,0,720) via u32::try_from, producing ScreenSize{width:0}; route_for_input_even",
+        "No-legacy: the old buggy path is deleted, not flag-gated or dual-plumbed.",
+        "The new test asserts the CORRECTED behavior on a real case, not a tautology."
+      ]
     },
     {
       "id": "render-emit-path-discards-drawtext-count-allows-zero-localized-text-screenshot",
@@ -37075,7 +37111,7 @@
       "validation": null,
       "context": null,
       "created_at": "2026-06-30T01:54:34.761Z",
-      "updated_at": "2026-06-30T01:54:34.761Z",
+      "updated_at": "2026-06-30T01:55:18.646Z",
       "claimed_at": null,
       "done_at": null,
       "group_name": null,
@@ -37092,7 +37128,11 @@
           "value": "direnv exec . cargo test -p utsushi-reallive"
         }
       ],
-      "audit_focus": []
+      "audit_focus": [
+        "Regression risk: rasterise_with_text (called by emit_localized_screenshot) discards the u64 pixel count draw_text returns; draw_text's docstring says a blank layer is a regressi",
+        "No-legacy: the old buggy path is deleted, not flag-gated or dual-plumbed.",
+        "The new test asserts the CORRECTED behavior on a real case, not a tautology."
+      ]
     },
     {
       "id": "public-input-fallback-rejected-despite-allow-fallbacks",
@@ -37110,7 +37150,7 @@
       "validation": null,
       "context": null,
       "created_at": "2026-06-30T01:54:34.761Z",
-      "updated_at": "2026-06-30T01:54:34.761Z",
+      "updated_at": "2026-06-30T01:55:18.733Z",
       "claimed_at": null,
       "done_at": null,
       "group_name": null,
@@ -37127,7 +37167,11 @@
           "value": "pnpm --filter @itotori/app exec vitest run providers"
         }
       ],
-      "audit_focus": []
+      "audit_focus": [
+        "Regression risk: allow_fallbacks is unconditionally true (line 705) but isAcceptedZdrFallback requires routingPosture.zdr===true; public/synthetic_public input defaults zdr=fals",
+        "No-legacy: the old buggy path is deleted, not flag-gated or dual-plumbed.",
+        "The new test asserts the CORRECTED behavior on a real case, not a tautology."
+      ]
     },
     {
       "id": "retry-policy-required-rule-dead-entry",
@@ -37145,7 +37189,7 @@
       "validation": null,
       "context": null,
       "created_at": "2026-06-30T01:54:34.761Z",
-      "updated_at": "2026-06-30T01:54:34.761Z",
+      "updated_at": "2026-06-30T01:55:18.826Z",
       "claimed_at": null,
       "done_at": null,
       "group_name": null,
@@ -37162,7 +37206,11 @@
           "value": "pnpm --filter @itotori/app exec vitest run providers"
         }
       ],
-      "audit_focus": []
+      "audit_focus": [
+        "Regression risk: translation-draft.ts never throws with rule 'required' (it uses 'type'/'const'/'enum'/'minLength'/'minimum'/'additionalProperties'), so the 'required' branch of",
+        "No-legacy: the old buggy path is deleted, not flag-gated or dual-plumbed.",
+        "The new test asserts the CORRECTED behavior on a real case, not a tautology."
+      ]
     },
     {
       "id": "repair-severity-doc-contradicts-p1-default",
@@ -37180,7 +37228,7 @@
       "validation": null,
       "context": null,
       "created_at": "2026-06-30T01:54:34.761Z",
-      "updated_at": "2026-06-30T01:54:34.761Z",
+      "updated_at": "2026-06-30T01:55:18.917Z",
       "claimed_at": null,
       "done_at": null,
       "group_name": null,
@@ -37197,7 +37245,11 @@
           "value": "pnpm --filter @itotori/app exec vitest run providers"
         }
       ],
-      "audit_focus": []
+      "audit_focus": [
+        "Regression risk: minimumSeverity defaults to 'p1' (line 114) and assertSeverity rejects p2; yet repair-job-service.ts:21-24 and types.ts:64-67 say jobs below p2 are rejected and",
+        "No-legacy: the old buggy path is deleted, not flag-gated or dual-plumbed.",
+        "The new test asserts the CORRECTED behavior on a real case, not a tautology."
+      ]
     },
     {
       "id": "sumcost-bymodel-collapses-null-modelid-into-unknown",
@@ -37215,7 +37267,7 @@
       "validation": null,
       "context": null,
       "created_at": "2026-06-30T01:54:34.761Z",
-      "updated_at": "2026-06-30T01:54:34.761Z",
+      "updated_at": "2026-06-30T01:55:19.005Z",
       "claimed_at": null,
       "done_at": null,
       "group_name": null,
@@ -37232,7 +37284,11 @@
           "value": "pnpm --filter @itotori/app exec vitest run providers"
         }
       ],
-      "audit_focus": []
+      "audit_focus": [
+        "Regression risk: The repo's own LedgerPairAggregateRow doc (141-149) says it returns the raw nullable modelId and the telemetry layer surfaces the sentinel; but sumCostByProject",
+        "No-legacy: the old buggy path is deleted, not flag-gated or dual-plumbed.",
+        "The new test asserts the CORRECTED behavior on a real case, not a tautology."
+      ]
     },
     {
       "id": "pointer-to-pixel-doc-claims-nearest-but-truncates",
@@ -37250,7 +37306,7 @@
       "validation": null,
       "context": null,
       "created_at": "2026-06-30T01:54:34.761Z",
-      "updated_at": "2026-06-30T01:54:34.761Z",
+      "updated_at": "2026-06-30T01:55:19.094Z",
       "claimed_at": null,
       "done_at": null,
       "group_name": null,
@@ -37267,7 +37323,11 @@
           "value": "direnv exec . cargo test -p utsushi-reallive"
         }
       ],
-      "audit_focus": []
+      "audit_focus": [
+        "Regression risk: The docstring says coords are 'rounded to the nearest pixel via a truncating-toward-zero as i32 cast' (self-contradictory) but the code floors, so a normalized ",
+        "No-legacy: the old buggy path is deleted, not flag-gated or dual-plumbed.",
+        "The new test asserts the CORRECTED behavior on a real case, not a tautology."
+      ]
     },
     {
       "id": "syscall-dispatcher-docstrings-miscount-named-routes-15-vs-16",
@@ -37285,7 +37345,7 @@
       "validation": null,
       "context": null,
       "created_at": "2026-06-30T01:54:34.761Z",
-      "updated_at": "2026-06-30T01:54:34.761Z",
+      "updated_at": "2026-06-30T01:55:19.239Z",
       "claimed_at": null,
       "done_at": null,
       "group_name": null,
@@ -37302,7 +37362,11 @@
           "value": "direnv exec . cargo test -p utsushi-reallive"
         }
       ],
-      "audit_focus": []
+      "audit_focus": [
+        "Regression risk: The struct docstring ('7 named routes + 8 WBCALL slots; one MOUSEACTIONCALL slot') and entry_count docstring (488-489) both add to 16, not 15; the actual table ",
+        "No-legacy: the old buggy path is deleted, not flag-gated or dual-plumbed.",
+        "The new test asserts the CORRECTED behavior on a real case, not a tautology."
+      ]
     },
     {
       "id": "graphics-object-alpha-documented-render-effect-ignored-by-paint-object",
@@ -37320,7 +37384,7 @@
       "validation": null,
       "context": null,
       "created_at": "2026-06-30T01:54:34.761Z",
-      "updated_at": "2026-06-30T01:54:34.761Z",
+      "updated_at": "2026-06-30T01:55:19.342Z",
       "claimed_at": null,
       "done_at": null,
       "group_name": null,
@@ -37337,7 +37401,11 @@
           "value": "direnv exec . cargo test -p utsushi-reallive"
         }
       ],
-      "audit_focus": []
+      "audit_focus": [
+        "Regression risk: GraphicsAlpha's docstring states '0 = fully transparent (object contributes nothing to the framebuffer)', but RenderPass::paint_object (render_pipeline.rs 481-4",
+        "No-legacy: the old buggy path is deleted, not flag-gated or dual-plumbed.",
+        "The new test asserts the CORRECTED behavior on a real case, not a tautology."
+      ]
     }
   ],
   "edges": [
