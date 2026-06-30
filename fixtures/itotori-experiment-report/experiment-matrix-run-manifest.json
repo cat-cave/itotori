@@ -1,0 +1,215 @@
+{
+  "schemaVersion": "itotori.experiment_matrix_run_manifest.v0.1",
+  "experimentId": "itotori-100-fixture",
+  "configHash": "sha256:a1b2c3d4a1b2c3d4a1b2c3d4a1b2c3d4a1b2c3d4a1b2c3d4a1b2c3d4a1b2c3d4",
+  "mode": "recorded",
+  "generatedAt": "2026-06-30T00:00:00.000Z",
+  "status": "succeeded",
+  "plannedInvocationCount": 3,
+  "artifacts": [
+    {
+      "schemaVersion": "itotori.experiment_invocation_artifact.v0.1",
+      "experimentId": "itotori-100-fixture",
+      "cellId": "a-clean",
+      "fixtureCorpusId": "corpus-pub-1",
+      "pair": {
+        "modelId": "deepseek-v4-flash",
+        "providerId": "fireworks"
+      },
+      "promptPreset": {
+        "presetId": "preset",
+        "templateVersion": "1.0.0",
+        "promptHash": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+      },
+      "policyVersion": "policy-2026-06-28",
+      "targetLocale": "en-US",
+      "inputClassification": "synthetic_public",
+      "runId": "exprun-a-clean",
+      "ledgerId": "ledger:exprun-a-clean",
+      "recordedBundleId": "bundle-a-clean",
+      "guard": {
+        "ran": true,
+        "outcome": "passed"
+      },
+      "providerRun": {
+        "status": "succeeded",
+        "requestedModelId": "deepseek-v4-flash",
+        "actualModelId": "deepseek-v4-flash",
+        "requestedProviderId": "fireworks",
+        "upstreamProvider": "fireworks",
+        "providerFamily": "openrouter",
+        "structuredOutputMode": "json_schema",
+        "retryCount": 0,
+        "fallbackUsed": false,
+        "fallbackPlan": [],
+        "cost": {
+          "costKind": "billed",
+          "currency": "USD",
+          "amountUsd": "0.00000602",
+          "amountMicrosUsd": 6
+        },
+        "tokenUsage": {
+          "tokenCountSource": "provider_reported",
+          "promptTokens": 12,
+          "completionTokens": 8,
+          "totalTokens": 20
+        },
+        "routingPosture": {
+          "order": ["openrouter-preferred"],
+          "allow_fallbacks": true,
+          "data_collection": "deny",
+          "zdr": true,
+          "require_parameters": true
+        },
+        "usageResponseJson": {
+          "prompt_tokens": 12,
+          "completion_tokens": 8,
+          "cost": 0.00000602
+        }
+      },
+      "redaction": {
+        "status": "public_unredacted",
+        "redactedFields": [],
+        "reason": "synthetic_public carries no private corpus text"
+      }
+    },
+    {
+      "schemaVersion": "itotori.experiment_invocation_artifact.v0.1",
+      "experimentId": "itotori-100-fixture",
+      "cellId": "b-fallback",
+      "fixtureCorpusId": "corpus-pub-1",
+      "pair": {
+        "modelId": "deepseek-v4-flash",
+        "providerId": "fireworks"
+      },
+      "promptPreset": {
+        "presetId": "preset",
+        "templateVersion": "1.0.0",
+        "promptHash": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+      },
+      "policyVersion": "policy-2026-06-28",
+      "targetLocale": "en-US",
+      "inputClassification": "synthetic_public",
+      "runId": "exprun-b-fallback",
+      "ledgerId": "ledger:exprun-b-fallback",
+      "recordedBundleId": "bundle-b-fallback",
+      "guard": {
+        "ran": true,
+        "outcome": "passed"
+      },
+      "providerRun": {
+        "status": "succeeded",
+        "requestedModelId": "deepseek-v4-flash",
+        "actualModelId": "deepseek-v4-flash",
+        "requestedProviderId": "fireworks",
+        "upstreamProvider": "DigitalOcean",
+        "providerFamily": "openrouter",
+        "structuredOutputMode": "json_schema",
+        "retryCount": 1,
+        "fallbackUsed": true,
+        "fallbackPlan": ["deepseek-v4-flash", "deepseek-v4-flash-backup"],
+        "cost": {
+          "costKind": "billed",
+          "currency": "USD",
+          "amountUsd": "0.00001500",
+          "amountMicrosUsd": 15
+        },
+        "tokenUsage": {
+          "tokenCountSource": "provider_reported",
+          "promptTokens": 20,
+          "completionTokens": 10,
+          "totalTokens": 30
+        },
+        "routingPosture": {
+          "order": ["openrouter-preferred"],
+          "allow_fallbacks": true,
+          "data_collection": "deny",
+          "zdr": true,
+          "require_parameters": true
+        },
+        "usageResponseJson": {
+          "prompt_tokens": 20,
+          "completion_tokens": 10,
+          "cost": 0.000015
+        }
+      },
+      "redaction": {
+        "status": "public_unredacted",
+        "redactedFields": [],
+        "reason": "synthetic_public carries no private corpus text"
+      }
+    },
+    {
+      "schemaVersion": "itotori.experiment_invocation_artifact.v0.1",
+      "experimentId": "itotori-100-fixture",
+      "cellId": "c-partial-so",
+      "fixtureCorpusId": "corpus-pub-1",
+      "pair": {
+        "modelId": "deepseek-v4-flash",
+        "providerId": "fireworks"
+      },
+      "promptPreset": {
+        "presetId": "preset",
+        "templateVersion": "1.0.0",
+        "promptHash": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+      },
+      "policyVersion": "policy-2026-06-28",
+      "targetLocale": "en-US",
+      "inputClassification": "synthetic_public",
+      "runId": "exprun-c-partial-so",
+      "ledgerId": "ledger:exprun-c-partial-so",
+      "recordedBundleId": "bundle-c-partial-so",
+      "guard": {
+        "ran": true,
+        "outcome": "passed"
+      },
+      "providerRun": {
+        "status": "partial",
+        "requestedModelId": "deepseek-v4-flash",
+        "actualModelId": "deepseek-v4-flash",
+        "requestedProviderId": "fireworks",
+        "upstreamProvider": "digitalocean",
+        "providerFamily": "openrouter",
+        "structuredOutputMode": "json_object",
+        "retryCount": 2,
+        "fallbackUsed": true,
+        "fallbackPlan": ["deepseek-v4-flash", "deepseek-v4-flash-backup"],
+        "cost": {
+          "costKind": "zero",
+          "currency": "USD",
+          "amountUsd": "0",
+          "amountMicrosUsd": 0
+        },
+        "tokenUsage": {
+          "tokenCountSource": "provider_reported",
+          "promptTokens": 20,
+          "completionTokens": 0,
+          "totalTokens": 20
+        },
+        "routingPosture": {
+          "order": ["openrouter-preferred"],
+          "allow_fallbacks": true,
+          "data_collection": "deny",
+          "zdr": true,
+          "require_parameters": true
+        },
+        "usageResponseJson": {
+          "_synthetic_zero_cost": true
+        }
+      },
+      "redaction": {
+        "status": "public_unredacted",
+        "redactedFields": [],
+        "reason": "synthetic_public carries no private corpus text"
+      }
+    }
+  ],
+  "findings": [],
+  "costSummary": {
+    "currency": "USD",
+    "totalMicrosUsd": 21,
+    "totalUsd": "0.000021",
+    "billedInvocationCount": 2,
+    "zeroCostInvocationCount": 1
+  }
+}

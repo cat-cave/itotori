@@ -83,6 +83,12 @@ import {
   loadBenchmarkStagesFixture,
   runBenchmarkHarnessCommand,
 } from "./benchmark-harness/index.js";
+import {
+  composeExperimentBenchmarkReport,
+  DEFAULT_PUBLIC_EXPERIMENT_MANIFEST_FIXTURE_PATH,
+  DEFAULT_PUBLIC_PROVIDER_ROUTE_REPORT_FIXTURE_PATH,
+  ExperimentReportCompositionError,
+} from "./experiment-report/index.js";
 import { scanCatalogLocalRoot } from "./services/catalog-local-scan.js";
 
 export type JsonFileStore = {
@@ -246,6 +252,9 @@ export async function runItotoriCliCommand(
       break;
     case "benchmark-harness-run":
       await runBenchmarkHarnessHandler(args, dependencies);
+      break;
+    case "experiment-report-compose":
+      await runExperimentReportComposeHandler(args, dependencies);
       break;
     default:
       throw new Error(`unknown itotori command: ${String(command)}`);
@@ -767,6 +776,55 @@ async function runBenchmarkHarnessHandler(
     throw new Error(
       `benchmark-harness run failed at stage '${manifest.failedStageId ?? "unknown"}'; see ${outputDir}/run-manifest.json`,
     );
+  }
+}
+
+async function runExperimentReportComposeHandler(
+  args: string[],
+  dependencies: ItotoriCliDependencies,
+): Promise<void> {
+  // ITOTORI-039 — COMPOSE an ITOTORI-099 experiment-matrix run manifest and
+  // an ITOTORI-100 provider route report into a benchmark report attachment.
+  // Every input defaults to a checked-in PUBLIC fixture, so the command
+  // completes with no private corpora and no live provider credentials. A
+  // missing / stale / invalid composed artifact FAILS with a structured
+  // finding that NAMES the artifact and escalates to a non-zero exit.
+  const manifestPath =
+    optionalFlag(args, "--experiment-manifest") ?? DEFAULT_PUBLIC_EXPERIMENT_MANIFEST_FIXTURE_PATH;
+  const routeReportPath =
+    optionalFlag(args, "--provider-route-report") ??
+    DEFAULT_PUBLIC_PROVIDER_ROUTE_REPORT_FIXTURE_PATH;
+  const outputPath =
+    optionalFlag(args, "--output") ?? "artifacts/itotori/experiment-report/attachment.json";
+
+  const composition = composeExperimentBenchmarkReport({
+    experimentManifestRef: {
+      artifactName: "experiment-matrix run manifest",
+      artifactPath: manifestPath,
+    },
+    providerRouteReportRef: {
+      artifactName: "provider route report",
+      artifactPath: routeReportPath,
+    },
+    // The reader throws ENOENT on a missing file; the command catches it and
+    // turns it into a `missing_artifact` finding NAMING the artifact.
+    readArtifact: (ref) => dependencies.io.readJson(ref.artifactPath),
+    generatedAt: "2026-06-30T00:00:00.000Z",
+    log: (message) => {
+      process.stdout.write(`${message}\n`);
+    },
+  });
+
+  if (composition.attachment !== null) {
+    // The attachment (succeeded OR failed, with embedded findings) is written
+    // so the diagnostics stay inspectable on disk.
+    dependencies.io.writeJson(outputPath, composition.attachment);
+  }
+
+  if (composition.status !== "succeeded") {
+    // Escalate so a missing/stale/invalid composed artifact is not masked by
+    // exit 0. The error names every offending artifact + field.
+    throw new ExperimentReportCompositionError(composition.findings);
   }
 }
 

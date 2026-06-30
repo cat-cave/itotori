@@ -1,0 +1,26 @@
+// ITOTORI-039 — Provider experiment reporting integration public surface.
+
+export {
+  DEFAULT_PUBLIC_EXPERIMENT_MANIFEST_FIXTURE_PATH,
+  DEFAULT_PUBLIC_PROVIDER_ROUTE_REPORT_FIXTURE_PATH,
+  EXPERIMENT_BENCHMARK_ATTACHMENT_SCHEMA_VERSION,
+  ExperimentReportCompositionError,
+  assertExperimentReportComposed,
+  composeExperimentBenchmarkReport,
+  type BenchmarkReportAttachment,
+  type ComposedArtifactReader,
+  type ComposedArtifactRef,
+  type CostSummarySection,
+  type ExperimentReportComposeInput,
+  type ExperimentReportComposition,
+  type ExperimentReportFinding,
+  type ExperimentReportFindingKind,
+  type FallbackSection,
+  type FallbackSectionRow,
+  type ProviderRouteSection,
+  type ProviderRouteSectionRow,
+  type RetrySection,
+  type RetrySectionRow,
+  type ServedModelProviderPair,
+  type StructuredOutputSupportSection,
+} from "./compose.js";

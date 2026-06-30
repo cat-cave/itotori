@@ -1,0 +1,149 @@
+{
+  "schemaVersion": "itotori.provider_route_report.v0.1",
+  "experimentId": "itotori-100-fixture",
+  "generatedAt": "2026-06-30T00:00:00.000Z",
+  "reliability": {
+    "schemaVersion": "itotori.provider_route_report.v0.1",
+    "section": "reliability",
+    "experimentId": "itotori-100-fixture",
+    "generatedAt": "2026-06-30T00:00:00.000Z",
+    "byServedRoute": {
+      "digitalocean::deepseek-v4-flash": {
+        "servedProvider": "digitalocean",
+        "servedModel": "deepseek-v4-flash",
+        "requestedPairs": ["deepseek-v4-flash:fireworks"],
+        "servedDivergesFromRequested": true,
+        "invocationCount": 2,
+        "succeededCount": 1,
+        "failedCount": 0,
+        "partialCount": 1,
+        "skippedCount": 0,
+        "retriedInvocationCount": 2,
+        "totalRetryCount": 3,
+        "fallbackInvocationCount": 2,
+        "fallbackPlans": ["deepseek-v4-flash>deepseek-v4-flash-backup"],
+        "zdrEnforcedCount": 2,
+        "structuredOutputSupport": [
+          {
+            "mode": "json_object",
+            "requestedCount": 1,
+            "succeededCount": 0
+          },
+          {
+            "mode": "json_schema",
+            "requestedCount": 1,
+            "succeededCount": 1
+          }
+        ]
+      },
+      "fireworks::deepseek-v4-flash": {
+        "servedProvider": "fireworks",
+        "servedModel": "deepseek-v4-flash",
+        "requestedPairs": ["deepseek-v4-flash:fireworks"],
+        "servedDivergesFromRequested": false,
+        "invocationCount": 1,
+        "succeededCount": 1,
+        "failedCount": 0,
+        "partialCount": 0,
+        "skippedCount": 0,
+        "retriedInvocationCount": 0,
+        "totalRetryCount": 0,
+        "fallbackInvocationCount": 0,
+        "fallbackPlans": [],
+        "zdrEnforcedCount": 1,
+        "structuredOutputSupport": [
+          {
+            "mode": "json_schema",
+            "requestedCount": 1,
+            "succeededCount": 1
+          }
+        ]
+      }
+    },
+    "totals": {
+      "invocationCount": 3,
+      "succeededCount": 2,
+      "failedCount": 0,
+      "partialCount": 1,
+      "skippedCount": 0,
+      "retriedInvocationCount": 2,
+      "totalRetryCount": 3,
+      "fallbackInvocationCount": 2,
+      "zdrEnforcedCount": 3
+    }
+  },
+  "structuredOutputSupport": {
+    "schemaVersion": "itotori.provider_route_report.v0.1",
+    "section": "structured_output_support",
+    "experimentId": "itotori-100-fixture",
+    "generatedAt": "2026-06-30T00:00:00.000Z",
+    "rows": [
+      {
+        "servedProvider": "digitalocean",
+        "servedModel": "deepseek-v4-flash",
+        "mode": "json_object",
+        "requestedCount": 1,
+        "succeededCount": 0,
+        "supportRate": 0,
+        "fullySupported": false
+      },
+      {
+        "servedProvider": "digitalocean",
+        "servedModel": "deepseek-v4-flash",
+        "mode": "json_schema",
+        "requestedCount": 1,
+        "succeededCount": 1,
+        "supportRate": 1,
+        "fullySupported": true
+      },
+      {
+        "servedProvider": "fireworks",
+        "servedModel": "deepseek-v4-flash",
+        "mode": "json_schema",
+        "requestedCount": 1,
+        "succeededCount": 1,
+        "supportRate": 1,
+        "fullySupported": true
+      }
+    ]
+  },
+  "costReconciliation": {
+    "schemaVersion": "itotori.provider_route_report.v0.1",
+    "section": "cost_reconciliation",
+    "experimentId": "itotori-100-fixture",
+    "generatedAt": "2026-06-30T00:00:00.000Z",
+    "currency": "USD",
+    "artifactInvocationCount": 3,
+    "ledgerEntryCount": 3,
+    "reconciledInvocationCount": 3,
+    "artifactMicrosUsd": 21,
+    "ledgerMicrosUsd": 21,
+    "artifactUsd": "0.000021",
+    "ledgerUsd": "0.000021",
+    "byServedRoute": {
+      "digitalocean::deepseek-v4-flash": {
+        "servedProvider": "digitalocean",
+        "servedModel": "deepseek-v4-flash",
+        "reconciledInvocationCount": 2,
+        "billedInvocationCount": 1,
+        "zeroCostInvocationCount": 1,
+        "artifactMicrosUsd": 15,
+        "ledgerMicrosUsd": 15,
+        "artifactUsd": "0.000015",
+        "ledgerUsd": "0.000015"
+      },
+      "fireworks::deepseek-v4-flash": {
+        "servedProvider": "fireworks",
+        "servedModel": "deepseek-v4-flash",
+        "reconciledInvocationCount": 1,
+        "billedInvocationCount": 1,
+        "zeroCostInvocationCount": 0,
+        "artifactMicrosUsd": 6,
+        "ledgerMicrosUsd": 6,
+        "artifactUsd": "0.000006",
+        "ledgerUsd": "0.000006"
+      }
+    },
+    "findings": []
+  }
+}
