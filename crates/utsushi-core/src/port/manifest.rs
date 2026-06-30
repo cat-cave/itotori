@@ -336,20 +336,22 @@ impl PortManifest {
             });
         }
 
-        let mut seen_keys: [Option<&'static str>; 32] = [None; 32];
-        let mut seen_count = 0usize;
-        for schema in self.env_schema {
+        // Duplicate-key detection over the *entire* env_schema. A fixed-size
+        // dedup buffer would silently stop recording past its capacity, so a
+        // duplicate between two entries both beyond that bound would go
+        // undetected and the EnvFieldDuplicate guarantee would be only
+        // best-effort. Compare each key against every earlier one: env_schema
+        // is a small, static, compile-time slice, so the O(n²) scan is
+        // allocation-free and never truncates.
+        for (index, schema) in self.env_schema.iter().enumerate() {
             schema.validate()?;
-            for slot in seen_keys.iter().take(seen_count) {
-                if slot.is_some_and(|existing| existing == schema.key) {
-                    return Err(EnginePortError::ManifestInvalid {
-                        source: ManifestError::EnvFieldDuplicate { key: schema.key },
-                    });
-                }
-            }
-            if seen_count < seen_keys.len() {
-                seen_keys[seen_count] = Some(schema.key);
-                seen_count += 1;
+            if self.env_schema[..index]
+                .iter()
+                .any(|earlier| earlier.key == schema.key)
+            {
+                return Err(EnginePortError::ManifestInvalid {
+                    source: ManifestError::EnvFieldDuplicate { key: schema.key },
+                });
             }
         }
 
@@ -559,6 +561,71 @@ mod tests {
             manifest.validate(),
             Err(EnginePortError::ManifestInvalid {
                 source: ManifestError::EvidenceTierAboveFidelityCeiling { .. }
+            })
+        ));
+    }
+
+    #[test]
+    fn validate_detects_duplicate_env_key_beyond_thirty_two_entries() {
+        // Regression: the old dedup used a fixed [Option<&str>; 32] buffer and
+        // only recorded keys while seen_count < 32, so a duplicate between two
+        // entries both *beyond* the 32nd slot was never detected. Build a
+        // schema with 32 distinct keys followed by a duplicate pair at indices
+        // 32 and 33 — both past the old cap — and require the duplicate to be
+        // rejected.
+        const fn ek(key: &'static str) -> EnvFieldSchema {
+            EnvFieldSchema {
+                key,
+                shape: EnvFieldShape::Flag,
+                required: false,
+                purpose: "dup-scan filler",
+            }
+        }
+        const SCHEMA: &[EnvFieldSchema] = &[
+            ek("K00"),
+            ek("K01"),
+            ek("K02"),
+            ek("K03"),
+            ek("K04"),
+            ek("K05"),
+            ek("K06"),
+            ek("K07"),
+            ek("K08"),
+            ek("K09"),
+            ek("K10"),
+            ek("K11"),
+            ek("K12"),
+            ek("K13"),
+            ek("K14"),
+            ek("K15"),
+            ek("K16"),
+            ek("K17"),
+            ek("K18"),
+            ek("K19"),
+            ek("K20"),
+            ek("K21"),
+            ek("K22"),
+            ek("K23"),
+            ek("K24"),
+            ek("K25"),
+            ek("K26"),
+            ek("K27"),
+            ek("K28"),
+            ek("K29"),
+            ek("K30"),
+            ek("K31"),
+            // Indices 32 and 33: identical keys, both beyond the old 32-cap.
+            ek("KDUP"),
+            ek("KDUP"),
+        ];
+        let manifest = PortManifest {
+            env_schema: SCHEMA,
+            ..baseline_manifest()
+        };
+        assert!(matches!(
+            manifest.validate(),
+            Err(EnginePortError::ManifestInvalid {
+                source: ManifestError::EnvFieldDuplicate { key: "KDUP" }
             })
         ));
     }

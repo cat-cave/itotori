@@ -462,9 +462,10 @@ pub fn parse_expression_with_warnings(
     // standalone ExpressionElement and is the form callers feed in
     // most often. The detection rule is "after the destination term
     // (which must be parseable as a `term`), the next two bytes are
-    // `\` + an assignment-op byte in 0x14..=0x1C". When the lookahead
-    // succeeds the term is wrapped into an Assignment; when it fails
-    // the parse falls back to a top-level expression.
+    // `\` + any byte accepted by `AssignOp::from_byte` (0x14..=0x1E)".
+    // When the lookahead succeeds the term is wrapped into an
+    // Assignment; when it fails the parse falls back to a top-level
+    // expression.
     if let Some(parsed) = try_parse_assignment(&mut state)? {
         return Ok(ParsedExpression {
             node: parsed.0,

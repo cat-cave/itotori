@@ -295,7 +295,18 @@ impl AvgDecompressor {
             });
         }
 
-        let mut dst: Vec<u8> = Vec::with_capacity(declared_uncompressed_size);
+        // Bound the *initial* allocation against the input. `declared_uncompressed_size`
+        // is an attacker-controlled raw u32 header field; a tiny malformed scene can
+        // declare up to 0xFFFF_FFFF and force a ~4 GiB allocation before a single byte
+        // is decoded. Each source byte expands to at most `AVG32_LZSS_MAX_RUN` output
+        // bytes, so `compressed.len() * AVG32_LZSS_MAX_RUN` is a hard upper bound on the
+        // real output: when the declared size is legitimate this preallocates it in full,
+        // and when it is implausible we cap the up-front reservation. The decode loop
+        // below grows `dst` incrementally, so this never affects output correctness — a
+        // genuine shortfall still surfaces as `UnexpectedEndOfStream`.
+        let initial_capacity =
+            declared_uncompressed_size.min(compressed.len().saturating_mul(AVG32_LZSS_MAX_RUN));
+        let mut dst: Vec<u8> = Vec::with_capacity(initial_capacity);
         let mut src_pos: usize = AVG32_COMPRESSED_PREAMBLE_LEN;
         // Mask cycles with `(idx & 0xff)`; a `u8` wraps for free.
         let mut mask_idx: u8 = AVG32_COMPRESSED_PREAMBLE_LEN as u8;
@@ -595,6 +606,32 @@ mod tests {
             .decompress(&[], 0, None, 0)
             .expect_err("empty input must refuse silent zero-state");
         assert!(matches!(err, DecompressError::TruncatedInput { .. }));
+    }
+
+    /// A tiny stream declaring a ~4 GiB uncompressed size must not try to
+    /// preallocate that much up front. The decode loop still surfaces the
+    /// shortfall as a typed [`DecompressError::UnexpectedEndOfStream`]; the
+    /// point of this test is that the call returns (rather than aborting on a
+    /// failed multi-gigabyte reservation) because the initial capacity is
+    /// bounded by the input length.
+    #[test]
+    fn implausible_declared_size_does_not_overallocate() {
+        // 8-byte preamble + a single flag byte requesting literals, then the
+        // stream is exhausted long before the declared `u32::MAX` bytes.
+        let mut compressed = vec![0u8; AVG32_COMPRESSED_PREAMBLE_LEN];
+        compressed.push(0xff); // flag byte: next tokens are literals
+        compressed.push(0x41); // one literal, then end-of-stream
+
+        let err = AvgDecompressor::new()
+            .decompress(&compressed, u32::MAX, None, 0)
+            .expect_err("a truncated stream declaring u32::MAX must error, not OOM");
+        match err {
+            DecompressError::UnexpectedEndOfStream {
+                declared_uncompressed_size,
+                ..
+            } => assert_eq!(declared_uncompressed_size, u32::MAX as usize),
+            other => panic!("expected UnexpectedEndOfStream, got: {other:?}"),
+        }
     }
 
     /// Synthetic case #1: pure literals. All tokens are literals; no

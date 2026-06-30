@@ -49,7 +49,7 @@ use utsushi_core::substrate::{
 use crate::bytecode_element::{
     BytecodeDecodeError, BytecodeElement, CommandArgShape, decode_command_arg_values,
 };
-use crate::expression::{ExprNode, ExpressionParseError, parse_expression};
+use crate::expression::{ExprNode, parse_expression};
 use crate::expression_eval::{EvaluationError, evaluate, evaluate_assignment};
 use crate::rlop::{
     DispatchOutcome, ExprValue, LongOp, LongOpId, LongOpReadiness, LongOpScheduler, RlopKey,
@@ -1175,17 +1175,6 @@ impl std::fmt::Display for ExpressionWrapError {
         match self {
             Self::Eval(err) => write!(formatter, "{err}"),
         }
-    }
-}
-
-impl From<ExpressionParseError> for ExpressionWrapError {
-    fn from(err: ExpressionParseError) -> Self {
-        // Convert through the eval-error string to keep the dispatch
-        // path's wrap-error type single-variant.
-        Self::Eval(EvaluationError::UnknownBank {
-            bank_byte: 0,
-            debug: format!("expression parse: {err}"),
-        })
     }
 }
 

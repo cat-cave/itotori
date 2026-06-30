@@ -260,8 +260,10 @@ impl Runner {
     /// pins.
     ///
     /// Returns `Ok(RunnerObservation::default())` (i.e. an empty tick)
-    /// when no sink yielded a payload. The caller treats two consecutive
-    /// empty ticks as end-of-stream.
+    /// when no sink yielded a payload. A single empty tick completes the
+    /// observation phase: the runner's `drain_observations` loop stops on
+    /// the first empty tick, matching [`RunnerObservation::is_empty`] and
+    /// [`EnginePort::observe`].
     pub fn tick<P: EnginePort>(
         &self,
         port: &mut P,

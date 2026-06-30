@@ -962,7 +962,18 @@ fn lzss_decode_classic(
     uncompressed_size: usize,
     g00_type: G00Type,
 ) -> Result<(Vec<u8>, Option<G00Warning>), G00DecodeError> {
-    let mut dst = Vec::with_capacity(uncompressed_size);
+    // Bound the *initial* allocation against the input length.
+    // `uncompressed_size` is the attacker-controlled raw u32 LE header field
+    // (see `parse_lzss_section`); a malformed g00 can declare up to ~4 GiB and
+    // force that reservation before a single byte is decoded. Each source byte
+    // expands to at most `G00_LZSS_MAX_RUN` output bytes, so
+    // `input.len() * G00_LZSS_MAX_RUN` is a hard upper bound on the real output:
+    // a legitimate header preallocates in full, an implausible one is capped.
+    // The loop below grows `dst` incrementally, so this never changes the
+    // decoded result — a genuine shortfall still surfaces as a
+    // `PayloadLengthMismatch` warning (or `UnexpectedEndOfStream`).
+    let initial_capacity = uncompressed_size.min(input.len().saturating_mul(G00_LZSS_MAX_RUN));
+    let mut dst = Vec::with_capacity(initial_capacity);
     let mut ring = vec![0u8; G00_LZSS_RING_BUFFER_LEN];
     let mut cursor: usize = G00_LZSS_INITIAL_CURSOR;
     let mut src_pos = 0usize;
@@ -1177,6 +1188,25 @@ mod tests {
             .expect("clean back-reference stream must decode");
         assert_eq!(out, expected);
         assert!(warning.is_none());
+    }
+
+    #[test]
+    fn lzss_classic_implausible_declared_size_does_not_overallocate() {
+        // A tiny stream declaring a ~4 GiB uncompressed size must not try to
+        // preallocate that much up front. The decoder bounds its initial
+        // capacity by `input.len() * G00_LZSS_MAX_RUN`, then surfaces the
+        // shortfall as a `PayloadLengthMismatch` warning. The point of this
+        // test is that the call *returns* rather than aborting on a failed
+        // multi-gigabyte reservation.
+        let plaintext: Vec<u8> = (0..4u8).collect();
+        let encoded = encode_lzss_literals_only(&plaintext);
+        let (out, warning) = lzss_decode_classic(&encoded, u32::MAX as usize, G00Type::RawBgr)
+            .expect("a tiny stream declaring u32::MAX must decode-and-warn, not OOM");
+        assert!(out.len() <= encoded.len() * G00_LZSS_MAX_RUN);
+        assert!(matches!(
+            warning,
+            Some(G00Warning::PayloadLengthMismatch { .. })
+        ));
     }
 
     #[test]
