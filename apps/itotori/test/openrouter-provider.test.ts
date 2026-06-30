@@ -24,6 +24,7 @@ import {
   assertBilledCost,
   CapabilityGuard,
   DEV_PAIR,
+  extractCacheDiscountMicros,
   ModelProviderError,
   OpenRouterCostCapError,
   OpenRouterMissingArtifactRecorderError,
@@ -1178,19 +1179,23 @@ describe("OpenRouterModelProvider — ITOTORI-233 live cache evidence (env-gated
     // wire call; this assertion is the scaffolded forcing function.
   });
 
-  // Always-runs sentinel: when the env var is unset, the test count
-  // surfaces the skip without leaving a "0 tests" emptiness in the
-  // describe block.
-  it("env-gate documents the implicit-cache evidence gap", () => {
-    if (liveCacheProvider === undefined) {
-      // Documented gap: ZDR allow-list excludes the deepseek endpoint,
-      // so this assertion just records the gap for future readers.
-      expect(true).toBe(true);
-    } else {
-      // If the env var IS set, the live test above runs and this
-      // sentinel is redundant but still passes.
-      expect(true).toBe(true);
-    }
+  // Always-runs assertion on the cache-discount normalizer so the
+  // describe block is never "0 tests" when the live env var is unset.
+  // This exercises the non-cache-hit path that IS reachable on Trevor's
+  // ZDR account (the deepseek implicit-cache endpoint is excluded): a
+  // response whose `usage.cost_details.cache_discount` is null/absent
+  // maps to 0 micros, which is exactly the value the ledger records for
+  // every non-cache call until a non-null discount is empirically
+  // surfaced (see ITOTORI-233).
+  it("extractCacheDiscountMicros maps the non-cache-hit shape (null/absent cache_discount) to 0", () => {
+    // Empirical non-cache-hit shape (2026-06-25.json call_6): explicit null.
+    expect(extractCacheDiscountMicros({ cost_details: { cache_discount: null } })).toBe(0);
+    // cost_details present but the key omitted entirely.
+    expect(extractCacheDiscountMicros({ cost_details: {} })).toBe(0);
+    // cost_details absent altogether.
+    expect(extractCacheDiscountMicros({})).toBe(0);
+    // Empty-string discount (whitespace-only) also normalizes to 0.
+    expect(extractCacheDiscountMicros({ cost_details: { cache_discount: "  " } })).toBe(0);
   });
 });
 

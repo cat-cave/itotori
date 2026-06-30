@@ -31,7 +31,16 @@ test("verify-artifacts proves provider-run, telemetry, ZDR, billed cost, sentine
   assert.equal(report.telemetryProof.billedCount, 1);
   assert.equal(report.telemetryProof.metadata.projectId, PROJECT_ID);
   assert.equal(report.replaySentinelTextLineCount, 1);
-  assert.match(report.artifactSha256.patchReport, /^[a-f0-9]{64}$/u);
+  // The title promises "hashes" (plural): assert EVERY recorded artifact hash
+  // is a well-formed sha256 hex digest, not just the patch-report one.
+  const hashEntries = Object.entries(report.artifactSha256);
+  assert.ok(
+    hashEntries.length >= 2,
+    `expected multiple artifact hashes, got ${hashEntries.length}`,
+  );
+  for (const [name, digest] of hashEntries) {
+    assert.match(digest, /^[a-f0-9]{64}$/u, `artifactSha256.${name} is not a sha256 hex digest`);
+  }
   assert.deepEqual(report.artifacts, {
     agenticLoopBundle: "agentic-loop-bundle.v0.json",
     patchReport: "patch-report.json",
@@ -78,20 +87,39 @@ test("verify-artifacts rejects stale provider-run artifacts with mismatched mode
 });
 
 test("verify-artifacts rejects fake or local provider artifacts", () => {
-  const fixture = createFixture({
-    providerArtifactPatch: {
-      run: {
-        provider: {
-          providerFamily: "local-openai-compatible",
-          endpointFamily: "local-chat-completions",
+  // Local provider family (a self-hosted OpenAI-compatible endpoint).
+  const local = runVerifier(
+    createFixture({
+      providerArtifactPatch: {
+        run: {
+          provider: {
+            providerFamily: "local-openai-compatible",
+            endpointFamily: "local-chat-completions",
+          },
         },
       },
-    },
-  });
-  const result = runVerifier(fixture);
+    }),
+  );
+  assert.notEqual(local.status, 0);
+  assert.match(childOutput(local), /not a live OpenRouter artifact/u);
 
-  assert.notEqual(result.status, 0);
-  assert.match(childOutput(result), /not a live OpenRouter artifact/u);
+  // Fake/recorded provider family (a replayed fixture, not a live call). The
+  // verifier (verify-artifacts.mjs:293-302) gates on providerFamily ===
+  // "openrouter", so a recorded artifact must be rejected the same way.
+  const recorded = runVerifier(
+    createFixture({
+      providerArtifactPatch: {
+        run: {
+          provider: {
+            providerFamily: "recorded",
+            endpointFamily: "recorded",
+          },
+        },
+      },
+    }),
+  );
+  assert.notEqual(recorded.status, 0);
+  assert.match(childOutput(recorded), /not a live OpenRouter artifact/u);
 });
 
 test("verify-artifacts rejects provider artifacts missing ZDR routing proof", () => {

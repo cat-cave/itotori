@@ -10,6 +10,7 @@
 //
 // The page injects `var DATA = {...}` before this bundle, so we read a global.
 
+import { provenanceBannerClassName } from "../provenance-status.js";
 import type { DashboardData, EnrichedNode, Provenance } from "./client-types.js";
 
 declare const DATA: DashboardData;
@@ -126,13 +127,17 @@ type AnyNode = EnrichedNode & Record<string, unknown>;
     const when = relativeTime(p.generatedAt);
     const behind = (p.commitsBehind || 0) > 0;
     if (!p.originMainKnown) {
-      pv.className = "provbanner";
+      pv.className = provenanceBannerClassName(p);
       pv.textContent =
-        "✓ " + sha + " · generated " + when + " — origin/main unknown locally — run git fetch";
+        "⚠ " +
+        sha +
+        " · generated " +
+        when +
+        " — staleness unverifiable: origin/main unknown locally — run git fetch";
       return;
     }
     if (behind || p.dirty) {
-      pv.className = "provbanner warn";
+      pv.className = provenanceBannerClassName(p);
       const parts: string[] = [];
       if (behind) {
         parts.push(
@@ -148,7 +153,7 @@ type AnyNode = EnrichedNode & Record<string, unknown>;
       pv.textContent = sha + " · " + parts.join(" — ");
       return;
     }
-    pv.className = "provbanner ok";
+    pv.className = provenanceBannerClassName(p);
     pv.textContent = "✓ " + sha + " · generated " + when;
   }
   renderProvenance();

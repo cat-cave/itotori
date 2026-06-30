@@ -23,9 +23,10 @@
 
 /**
  * Thrown when {@link assertOpenRouterZdrAccount} runs without
- * `OPENROUTER_ZDR_ACCOUNT_ASSERTED=1` in the environment. The OpenRouter
- * provider constructor calls the assertion synchronously, so this error
- * surfaces at process startup — never silently during an invocation.
+ * `OPENROUTER_ZDR_ACCOUNT_ASSERTED=1` in the environment. The
+ * OpenRouterModelProvider constructor calls the assertion synchronously
+ * at startup, so this error surfaces at process startup — never silently
+ * during an invocation.
  */
 export class AccountZdrAssertionError extends Error {
   constructor(message: string) {

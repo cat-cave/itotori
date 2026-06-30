@@ -1090,11 +1090,12 @@ async function main() {
   }
 
   // ----------------- Phase 3: kaifuu patch -----------------------
-  // Re-resolve target writability + copy the source tree to TARGET.
-  // The kaifuu-cli `patch --engine reallive` step itself ALSO copies
-  // the source tree, but it expects target to be empty (unless --force).
-  // We let kaifuu-cli do the copying so the writable-mode bumping is
-  // owned in one place; that's why we don't pre-copy here.
+  // Run kaifuu-cli `patch --engine reallive`. The CLI itself copies the
+  // source tree into TARGET and bumps writable mode; it expects TARGET to
+  // be empty unless `--force` is passed (we pass it, since TARGET was
+  // already writability-checked earlier via ensureWritableTargetDistinctFromSource).
+  // We let kaifuu-cli own the copy + writable-mode bumping in one place;
+  // that's why the driver does not pre-copy the tree here.
   runCommand(
     "cargo",
     [

@@ -471,15 +471,40 @@ test("--dry-run resolves ITOTORI_REAL_CORPUS_MANIFEST by project, corpus, and en
   const policy = writePairPolicy("fixture-alpha");
   const privateRoot = join(tmpdir(), `itotori-private-root-${process.pid}-manifest-selection`);
   const directSourceRoot = join(tmpdir(), `itotori-direct-source-root-${process.pid}`);
+  // Three decoys, each differing from the target in EXACTLY ONE selection
+  // dimension (project, corpus, or engine) while sharing the other two. This
+  // makes every filter independently load-bearing: if the resolver dropped any
+  // one of the three filters, the matching decoy would survive and produce a
+  // multiple-match error instead of the unique target. That is what proves the
+  // corpus is resolved "by project, corpus, and engine" rather than by --corpus
+  // alone.
   const manifest = writeRealCorpusManifest([
     {
-      corpusId: "wrong-engine-corpus",
+      // Differs only by projectId — excluded by the project filter.
+      corpusId: "fixture-corpus",
+      projectId: "other-project",
+      engine: "reallive",
+      root: join(privateRoot, "wrong-project"),
+      sourceLocale: "ja-JP-x-test",
+    },
+    {
+      // Differs only by engine — excluded by the engine filter.
+      corpusId: "fixture-corpus",
       projectId: "fixture-alpha",
       engine: "not-reallive",
       root: join(privateRoot, "wrong-engine"),
       sourceLocale: "ja-JP-x-test",
     },
     {
+      // Differs only by corpusId — excluded by the --corpus filter.
+      corpusId: "wrong-corpus",
+      projectId: "fixture-alpha",
+      engine: "reallive",
+      root: join(privateRoot, "wrong-corpus"),
+      sourceLocale: "ja-JP-x-test",
+    },
+    {
+      // The unique target: matches project AND corpus AND engine.
       corpusId: "fixture-corpus",
       projectId: "fixture-alpha",
       engine: "reallive",

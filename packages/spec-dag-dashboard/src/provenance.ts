@@ -1,38 +1,30 @@
 // Git provenance for the generated dashboard, so the page can warn loudly when
 // it was generated from a stale or dirty tree.
 //
-// The parsers are pure and unit-tested; collectGitProvenance is the only impure
-// part and only ever reads local git state (NO network/fetch). Every git call
-// is wrapped in try/catch so a missing repo, detached state, or absent
-// origin/main degrades gracefully to "unknown" rather than throwing.
+// The pure parsers/derivations live in provenance-status.ts (no node imports,
+// shared with the browser client); collectGitProvenance is the only impure part
+// and only ever reads local git state (NO network/fetch). Every git call is
+// wrapped in try/catch so a missing repo, detached state, or absent origin/main
+// degrades gracefully to "unknown" rather than throwing.
 
 import { execFileSync } from "node:child_process";
 
+import {
+  deriveProvenanceStatus,
+  parseCommitsBehind,
+  parseDirty,
+  provenanceBannerClassName,
+  type ProvenanceStatus,
+} from "./provenance-status.js";
 import type { Provenance } from "./types.js";
 
-export type ProvenanceStatus = "current" | "behind" | "dirty" | "behind-dirty" | "unknown";
-
-/** Parse `git rev-list --count` output ("3\n") to a number, else null. */
-export function parseCommitsBehind(out: string): number | null {
-  const trimmed = out.trim();
-  if (!/^\d+$/.test(trimmed)) return null;
-  return Number(trimmed);
-}
-
-/** A non-empty `git status --porcelain` means the working tree is dirty. */
-export function parseDirty(porcelain: string): boolean {
-  return porcelain.trim().length > 0;
-}
-
-/** Derive the headline provenance status from a collected Provenance record. */
-export function deriveProvenanceStatus(p: Provenance): ProvenanceStatus {
-  if (!p.originMainKnown) return "unknown";
-  const behind = (p.commitsBehind ?? 0) > 0;
-  if (behind && p.dirty) return "behind-dirty";
-  if (behind) return "behind";
-  if (p.dirty) return "dirty";
-  return "current";
-}
+export {
+  deriveProvenanceStatus,
+  parseCommitsBehind,
+  parseDirty,
+  provenanceBannerClassName,
+  type ProvenanceStatus,
+};
 
 function tryGit(repoRoot: string, args: string[]): string | null {
   try {

@@ -20,7 +20,7 @@ Affected detection must be conservative:
 | `apps/itotori/`, `packages/itotori-db/`                                             | `just ci-itotori`                                                                   |
 | `crates/kaifuu-*`                                                                   | `just ci-kaifuu`                                                                    |
 | `apps/runtime-web-review/`, `crates/utsushi-*`                                      | `just ci-utsushi`                                                                   |
-| `fixtures/`, `packages/test-fixtures/`                                              | `just fixtures-validate`, `just hello`                                              |
+| `fixtures/`                                                                         | `just fixtures-validate`, `just hello`                                              |
 | `suite/scripts/localize-project/`                                                   | `just localize-project-test`                                                        |
 | `roadmap/`                                                                          | `just roadmap-validate`                                                             |
 | Unknown non-documentation paths                                                     | `just check`                                                                        |

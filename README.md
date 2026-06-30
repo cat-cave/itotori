@@ -38,7 +38,6 @@ apps/
 packages/
   localization-bridge-schema/
   itotori-db/
-  test-fixtures/
 crates/
   kaifuu-*/
   utsushi-*/

@@ -993,7 +993,7 @@ function normalizeOpenRouterCost(response: Record<string, unknown>): ProviderCos
  * them with `provider_response_invalid`. Defaults to 0 if `cost_details`
  * is absent.
  */
-function extractCacheDiscountMicros(usage: Record<string, unknown>): number {
+export function extractCacheDiscountMicros(usage: Record<string, unknown>): number {
   const costDetails = usage.cost_details;
   if (!isRecord(costDetails)) {
     return 0;

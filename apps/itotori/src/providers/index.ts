@@ -42,6 +42,7 @@ export {
   OpenRouterMissingApiKeyError,
   OpenRouterModelProvider,
   OpenRouterProvider,
+  extractCacheDiscountMicros,
   openRouterApiKeyFromEnv,
   openRouterDefaultCapabilities,
   type OpenRouterHttpClient,

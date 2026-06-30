@@ -10,5 +10,5 @@
     "noEmit": true,
     "noUncheckedIndexedAccess": false
   },
-  "include": ["src/client/**/*.ts", "src/types.ts"]
+  "include": ["src/client/**/*.ts", "src/types.ts", "src/provenance-status.ts"]
 }

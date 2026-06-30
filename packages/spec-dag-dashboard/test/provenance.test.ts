@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { deriveProvenanceStatus, parseCommitsBehind, parseDirty } from "../src/provenance.js";
+import {
+  deriveProvenanceStatus,
+  parseCommitsBehind,
+  parseDirty,
+  provenanceBannerClassName,
+} from "../src/provenance.js";
 import type { Provenance } from "../src/types.js";
 
 function prov(partial: Partial<Provenance>): Provenance {
@@ -57,5 +62,32 @@ describe("deriveProvenanceStatus", () => {
   });
   it("is behind-dirty when both behind and dirty", () => {
     expect(deriveProvenanceStatus(prov({ commitsBehind: 3, dirty: true }))).toBe("behind-dirty");
+  });
+});
+
+describe("provenanceBannerClassName", () => {
+  it("only earns the reassuring ok styling when verified current and clean", () => {
+    expect(provenanceBannerClassName(prov({ commitsBehind: 0, dirty: false }))).toBe(
+      "provbanner ok",
+    );
+  });
+  it("warns (never neutral/ok) when origin/main is unknown — staleness unverifiable", () => {
+    // Regression for the masking finding: an absent origin/main used to render
+    // as the neutral "provbanner" with a reassuring "✓", hiding that staleness
+    // could not be verified. It must now warn.
+    expect(provenanceBannerClassName(prov({ originMainKnown: false, commitsBehind: null }))).toBe(
+      "provbanner warn",
+    );
+  });
+  it("warns when behind, dirty, or both", () => {
+    expect(provenanceBannerClassName(prov({ commitsBehind: 3, dirty: false }))).toBe(
+      "provbanner warn",
+    );
+    expect(provenanceBannerClassName(prov({ commitsBehind: 0, dirty: true }))).toBe(
+      "provbanner warn",
+    );
+    expect(provenanceBannerClassName(prov({ commitsBehind: 3, dirty: true }))).toBe(
+      "provbanner warn",
+    );
   });
 });

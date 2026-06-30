@@ -86,7 +86,7 @@ export function affectedTasks(changedPaths) {
     } else if (path.startsWith("packages/localization-bridge-schema/")) {
       addAllProjectGates(tasks);
       add(tasks, "hello");
-    } else if (path.startsWith("fixtures/") || path.startsWith("packages/test-fixtures/")) {
+    } else if (path.startsWith("fixtures/")) {
       addFixtureGates(tasks);
     } else if (path.startsWith("suite/scripts/localize-project/")) {
       add(tasks, "localize-project-test");

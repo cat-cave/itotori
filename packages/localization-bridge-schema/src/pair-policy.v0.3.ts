@@ -208,8 +208,7 @@ export class PairPolicyVersionMismatchError extends Error {
 
 /**
  * Raised on every other structural failure (missing field, wrong
- * type, malformed leaf, malformed alternate, zdr downgrade not
- * approved by env, unknown failover predicate, etc.).
+ * type, malformed leaf, zdr downgrade not approved by env, etc.).
  */
 export class PairPolicyV03ValidationError extends Error {
   constructor(
