@@ -158,7 +158,7 @@ function writeProviderProofFixture({ artifactRunId = "openrouter-proof-1" } = {}
       status: "succeeded",
       provider: {
         providerFamily: "openrouter",
-        endpointFamily: "openrouter-chat-completions",
+        endpointFamily: "chat-completions",
         requestedModelId: MODEL_ID,
         requestedProviderId: PROVIDER_ID,
         actualModelId: MODEL_ID,

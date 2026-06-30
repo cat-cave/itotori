@@ -153,6 +153,21 @@ function pairKey(pair) {
   return `${pair.modelId}:${pair.providerId}`;
 }
 
+// ITOTORI-243 — the served `actualModelId` is the REAL model OpenRouter
+// answered with. The pinned alias `deepseek/deepseek-v4-flash` resolves
+// upstream to a dated snapshot (e.g. `deepseek/deepseek-v4-flash-20260423`),
+// so the served id is the requested base id OR a `-<version>`-suffixed
+// variant of it. Mirroring the same node's provider-fallback relaxation
+// (served provider may differ from the pinned `order[0]`), the served
+// MODEL is accepted when it is the requested base model or a versioned
+// snapshot of it — never a different base model. `requestedModelId`
+// stays strict (we always request the canonical alias).
+function servedModelMatchesExpected(actualModelId, expectedModelId) {
+  return (
+    actualModelId === expectedModelId || actualModelId.startsWith(`${expectedModelId}-`)
+  );
+}
+
 function parseFiniteUsd(value, label) {
   const parsed = typeof value === "number" ? value : Number.parseFloat(String(value));
   if (!Number.isFinite(parsed)) {
@@ -274,9 +289,16 @@ function verifyProviderRunArtifacts(args) {
   for (const [runId, { path, artifact, run }] of artifactByRunId.entries()) {
     const invocation = expectedByRunId.get(runId);
     const provider = assertObject(run.provider, `provider-run artifact ${path}.run.provider`);
+    // The live OpenRouter chat-completions endpoint family is the canonical
+    // `"chat-completions"` literal from the `EndpointFamily` union (see
+    // apps/itotori/src/providers/types.ts) — the OpenRouter provider
+    // descriptor records exactly that (openrouter.ts). `providerFamily`
+    // ("openrouter" vs "local"/"recorded") is the discriminator that proves
+    // this is a LIVE OpenRouter artifact rather than a local-chat-completions
+    // or recorded-fixture one.
     if (
       provider.providerFamily !== "openrouter" ||
-      provider.endpointFamily !== "openrouter-chat-completions"
+      provider.endpointFamily !== "chat-completions"
     ) {
       throw new Error(
         `provider-run artifact ${runId} is not a live OpenRouter artifact: providerFamily=${String(provider.providerFamily)} endpointFamily=${String(provider.endpointFamily)}`,
@@ -289,10 +311,11 @@ function verifyProviderRunArtifacts(args) {
     }
     if (
       provider.requestedModelId !== expectedModelId ||
-      provider.actualModelId !== expectedModelId
+      typeof provider.actualModelId !== "string" ||
+      !servedModelMatchesExpected(provider.actualModelId, expectedModelId)
     ) {
       throw new Error(
-        `provider-run artifact ${runId} model mismatch: expected ${expectedModelId}, requested=${String(provider.requestedModelId)} actual=${String(provider.actualModelId)}`,
+        `provider-run artifact ${runId} model mismatch: expected ${expectedModelId} (or a versioned snapshot of it), requested=${String(provider.requestedModelId)} actual=${String(provider.actualModelId)}`,
       );
     }
     if (provider.requestedProviderId !== expectedProviderId) {

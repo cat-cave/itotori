@@ -386,7 +386,7 @@ function providerRunArtifact() {
       status: "succeeded",
       provider: {
         providerFamily: "openrouter",
-        endpointFamily: "openrouter-chat-completions",
+        endpointFamily: "chat-completions",
         providerName: "OpenRouter",
         requestedModelId: MODEL_ID,
         requestedProviderId: PROVIDER_ID,

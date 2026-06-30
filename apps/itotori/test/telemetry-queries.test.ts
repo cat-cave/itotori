@@ -963,7 +963,7 @@ describe("provider-run-artifact telemetry source (UTSUSHI-231)", () => {
         status: "succeeded",
         provider: {
           providerFamily: "openrouter",
-          endpointFamily: "openrouter-chat-completions",
+          endpointFamily: "chat-completions",
           providerName: "OpenRouter",
           requestedModelId: ART_MODEL,
           requestedProviderId: ART_PROVIDER,

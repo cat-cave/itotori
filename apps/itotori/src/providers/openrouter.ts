@@ -61,6 +61,16 @@ export type OpenRouterProviderOptions = {
   capabilities?: ModelCapabilities;
   routing?: OpenRouterProviderRouting;
   live: ProviderLiveRunOptions;
+  /**
+   * ITOTORI-243 follow-up — the per-(modelId, providerId) capability
+   * registry the invoke-time guard consults so structured-output modes
+   * advertised by a pair's sheet (e.g. DEV_PAIR `json_object`) are not
+   * refused against the class-level `openRouterDefaultCapabilities`
+   * fallback. Omitted when the inner provider is built standalone; a
+   * guard miss falls back to the descriptor capabilities, preserving the
+   * no-silent-fallback refusal for unknown pairs.
+   */
+  capabilityGuard?: CapabilityGuard;
 };
 
 export class OpenRouterProvider implements ModelProvider {
@@ -70,6 +80,7 @@ export class OpenRouterProvider implements ModelProvider {
   private readonly fetchImpl: typeof fetch;
   private readonly routing: OpenRouterProviderRouting;
   private readonly live: ProviderLiveRunOptions;
+  private readonly capabilityGuard: CapabilityGuard | undefined;
 
   constructor(options: OpenRouterProviderOptions) {
     this.baseUrl = options.baseUrl ?? "https://openrouter.ai/api/v1";
@@ -77,6 +88,7 @@ export class OpenRouterProvider implements ModelProvider {
     this.fetchImpl = options.fetch ?? globalThis.fetch;
     this.routing = options.routing ?? {};
     this.live = options.live;
+    this.capabilityGuard = options.capabilityGuard;
     this.descriptor = {
       family: "openrouter",
       endpointFamily: "chat-completions",
@@ -110,8 +122,25 @@ export class OpenRouterProvider implements ModelProvider {
       providerRouting,
       request.inputClassification,
     );
+    // ITOTORI-243 follow-up — the invoke-time capability guard must consult
+    // the per-(modelId, providerId) sheet registered in the singleton
+    // CapabilityGuard (the same sheet the agentic loop's structured-mode
+    // selector reads via `descriptorForPair`), NOT the class-level
+    // `openRouterDefaultCapabilities` fallback. Without this, a pair whose
+    // sheet advertises `json_object` (e.g. DEV_PAIR via Fireworks) is
+    // refused at invoke time with "structured output mode json_object is
+    // untested for provider", even though the agent legitimately selected
+    // `json_object` from that very sheet. Unknown pairs (guard miss) keep
+    // the default `untested` posture and stay refused — the
+    // no-silent-fallback invariant is preserved.
+    const pairCapabilities =
+      this.capabilityGuard !== undefined &&
+      this.capabilityGuard.has(requestedModelId, request.providerId)
+        ? this.capabilityGuard.lookup(requestedModelId, request.providerId)
+        : this.descriptor.capabilities;
     assertProviderInvocationSupported({
       descriptor: this.descriptor,
+      capabilities: pairCapabilities,
       request,
       requestedModelId,
       routingRequirements: openRouterRoutingRequirements(this.routing, providerRouting),
@@ -1662,6 +1691,19 @@ export class OpenRouterModelProvider implements ModelProvider {
       sleep,
     });
 
+    // Register every known-pair capability sheet into the singleton
+    // CapabilityGuard so orchestrator code calling
+    // globalCapabilityGuard().lookup(modelId, providerId) succeeds for
+    // any pair from dev-pair.ts without per-call registration. Resolve +
+    // populate the guard BEFORE constructing the inner provider so the
+    // same registered sheets back the inner's invoke-time capability
+    // check (ITOTORI-243 follow-up).
+    const guard = options.capabilityGuard ?? globalCapabilityGuard();
+    for (const entry of knownPairsForRegistration()) {
+      guard.register(entry.pair.modelId, entry.pair.providerId, entry.modelCapabilities);
+    }
+    this.capabilityGuard = guard;
+
     // The inner OpenRouterProvider does the request shaping + pair
     // check; we wrap it for cost cap + rate limit + env config.
     // modelId on the descriptor is "openrouter" because the provider
@@ -1673,18 +1715,9 @@ export class OpenRouterModelProvider implements ModelProvider {
       apiKey,
       fetch: options.httpClient ?? globalThis.fetch,
       live: { enabled: true, artifactRecorder: recorder, rawCapture: "disabled" },
+      capabilityGuard: guard,
     });
     this.descriptor = this.inner.descriptor;
-
-    // Register every known-pair capability sheet into the singleton
-    // CapabilityGuard so orchestrator code calling
-    // globalCapabilityGuard().lookup(modelId, providerId) succeeds for
-    // any pair from dev-pair.ts without per-call registration.
-    const guard = options.capabilityGuard ?? globalCapabilityGuard();
-    for (const entry of knownPairsForRegistration()) {
-      guard.register(entry.pair.modelId, entry.pair.providerId, entry.modelCapabilities);
-    }
-    this.capabilityGuard = guard;
   }
 
   /**
