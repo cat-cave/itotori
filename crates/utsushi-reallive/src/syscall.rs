@@ -231,10 +231,13 @@ pub struct ScreenSize {
 
 impl ScreenSize {
     /// Convert a normalized pointer (`x`, `y` in `[0.0, 1.0]`) to
-    /// pixel space. Returns `(x_px, y_px)` rounded to the nearest
-    /// pixel via a truncating-toward-zero `as i32` cast on
-    /// `value * (dim - 1)`. Coordinates outside `[0.0, 1.0]` are
-    /// clamped before the multiply.
+    /// pixel space. Returns `(x_px, y_px)` truncated toward zero
+    /// (floor, since the clamped product is non-negative) via an
+    /// `as i32` cast on `value * (dim - 1)` — *not* rounded to the
+    /// nearest pixel. Coordinates outside `[0.0, 1.0]` are clamped
+    /// before the multiply. Hot-region boundary tests are inclusive,
+    /// so a coordinate exactly on a pixel edge maps to that edge
+    /// pixel; a sub-pixel fraction maps to the pixel below it.
     pub fn pointer_to_pixel(&self, x: f32, y: f32) -> (i32, i32) {
         let x_c = x.clamp(0.0, 1.0);
         let y_c = y.clamp(0.0, 1.0);
@@ -325,9 +328,9 @@ pub enum SyscallDispatchError {
 }
 
 /// Typed dispatcher built from a parsed [`Gameexe`] tree. Holds the
-/// 15-route Sweetie HD table (7 named routes + 8 WBCALL slots; one
-/// MOUSEACTIONCALL slot) plus the screen size used by the pointer
-/// normalization round-trip.
+/// 15-route Sweetie HD table (6 named scalar routes, 1 MOUSEACTIONCALL
+/// slot, and 8 WBCALL slots = 15) plus the screen size used by the
+/// pointer normalization round-trip.
 #[derive(Debug, Clone)]
 pub struct SyscallDispatcher {
     routes: Vec<SyscallRoute>,
@@ -351,7 +354,7 @@ impl SyscallDispatcher {
     pub fn from_gameexe(gameexe: &Gameexe) -> Result<Self, SyscallDispatchBuildError> {
         let mut routes: Vec<SyscallRoute> = Vec::with_capacity(16);
 
-        // The four named scalar routes whose `_MOD` key gates them.
+        // The six named scalar routes whose `_MOD` key gates them.
         for (key, mod_key, kind) in [
             ("CANCELCALL", "CANCELCALL_MOD", SyscallRouteKind::Cancel),
             (
@@ -485,8 +488,9 @@ impl SyscallDispatcher {
         seen.iter().filter(|present| **present).count()
     }
 
-    /// Total entry count (15 for Sweetie HD: 7 named + 8 WBCALL +
-    /// 1 MOUSEACTIONCALL — minus any `_MOD=0`-disabled entries).
+    /// Total entry count (15 for Sweetie HD: 6 named scalar routes +
+    /// 1 MOUSEACTIONCALL + 8 WBCALL — minus any `_MOD=0`-disabled
+    /// entries).
     pub fn entry_count(&self) -> usize {
         self.routes.len()
     }
@@ -696,6 +700,15 @@ fn normalise_pair(
 }
 
 /// Parse `SCREENSIZE_MOD=mode,width,height` if present.
+///
+/// A degenerate dimension (`width == 0` or `height == 0`) is treated as
+/// malformed and yields `None`, exactly as an absent or non-3-int
+/// `SCREENSIZE_MOD` does. A zero dimension cannot index a pixel grid:
+/// [`ScreenSize::pointer_to_pixel`] would collapse that axis to `0`,
+/// silently mis-routing or vanishing every pointer hot-region dispatch.
+/// Returning `None` instead routes the case through the existing
+/// [`SyscallDispatchError::MissingScreenSize`] guard so the defect
+/// surfaces as a typed diagnostic rather than corrupting dispatch.
 fn parse_screen_size(gameexe: &Gameexe) -> Option<ScreenSize> {
     let array = gameexe.get_int_array("SCREENSIZE_MOD")?;
     if array.len() != 3 {
@@ -703,6 +716,9 @@ fn parse_screen_size(gameexe: &Gameexe) -> Option<ScreenSize> {
     }
     let width = u32::try_from(array[1]).ok()?;
     let height = u32::try_from(array[2]).ok()?;
+    if width == 0 || height == 0 {
+        return None;
+    }
     Some(ScreenSize {
         mode: array[0],
         width,
@@ -957,6 +973,46 @@ mod tests {
                 assert_eq!(code, SYSCALL_MISSING_SCREEN_SIZE_CODE);
             }
             other => panic!("expected MissingScreenSize diagnostic, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn zero_dimension_screen_size_is_rejected_not_silently_zeroed() {
+        // A present-but-degenerate `SCREENSIZE_MOD` (a zero width or a
+        // zero height) cannot index a pixel grid: the old path parsed
+        // it into `ScreenSize { width: 0, .. }`, bypassing the
+        // `MissingScreenSize` guard while `pointer_to_pixel` collapsed
+        // that axis to `0` — silently mis-routing every pointer
+        // hot-region dispatch. The corrected `parse_screen_size`
+        // rejects the degenerate shape so the typed diagnostic fires.
+        for degenerate in [
+            "#SCREENSIZE_MOD=999,0,720\r\n",
+            "#SCREENSIZE_MOD=999,1280,0\r\n",
+        ] {
+            let text = reallive_real_bytes_lines_14_28()
+                .replace("#SCREENSIZE_MOD=999,1280,720\r\n", degenerate);
+            let gx = parse_gameexe(&text);
+            let dispatcher = SyscallDispatcher::from_gameexe(&gx).expect("build");
+            assert!(
+                dispatcher.screen_size().is_none(),
+                "degenerate SCREENSIZE_MOD {degenerate:?} must not parse into a usable screen size"
+            );
+            // A pointer event that previously vanished into the zeroed
+            // axis must now surface the typed missing-screen-size
+            // diagnostic instead of silently corrupting dispatch.
+            let event = InputEvent::Pointer {
+                x: 1250.0 / 1279.0,
+                y: 300.0 / 719.0,
+                button: utsushi_core::substrate::PointerButton::Primary,
+            };
+            match dispatcher.route_for_input_event(&event) {
+                Err(SyscallDispatchError::MissingScreenSize { code }) => {
+                    assert_eq!(code, SYSCALL_MISSING_SCREEN_SIZE_CODE);
+                }
+                other => panic!(
+                    "degenerate SCREENSIZE_MOD {degenerate:?} must surface MissingScreenSize, got {other:?}"
+                ),
+            }
         }
     }
 
