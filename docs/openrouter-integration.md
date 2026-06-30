@@ -143,8 +143,10 @@ mirror that distinction.
 
 **DOC-AMBIGUOUS-1 resolved.** OR's `/chat/completions` response carries
 no dedicated "zdr_enforced: true" field — the keys captured on call_1
-(account ZDR-on, `provider.zdr=true`, `provider.only=["fireworks"]`)
-were:
+(account ZDR-on, `provider.zdr=true`; this evidence call ran under the
+now-superseded pre-ITOTORI-241 hard-pin request posture, replaced by the
+§3.2 `order` + `allow_fallbacks:true` model — the recorded RESPONSE keys
+are unaffected) were:
 
 ```
 ["choices", "created", "id", "model", "object", "provider", "service_tier", "system_fingerprint", "usage"]
@@ -209,13 +211,18 @@ Source: `https://openrouter.ai/docs/guides/provider-selection` (fetched
 
 ### §3.2 — itotori's standard alpha posture
 
-For every non-public-input call:
+OpenRouter-side automatic fallback IS the model: itotori expresses a
+provider PREFERENCE and lets OpenRouter route within the ZDR allow-list,
+then RECORDS whichever provider actually served. It does NOT hard-pin the
+served provider (ITOTORI-241; confirmed live by UTSUSHI-231, where OR
+served DigitalOcean and Fireworks within the ZDR allow-list and the run
+completed). For every non-public-input call:
 
 ```json
 {
   "provider": {
-    "only": ["<verifiedProviderTag>"],
-    "allow_fallbacks": false,
+    "order": ["<preferredProviderTag>"],
+    "allow_fallbacks": true,
     "data_collection": "deny",
     "zdr": true,
     "require_parameters": true
@@ -230,26 +237,47 @@ exceeds that stage cap.
 
 Rationale per knob:
 
-- `only: [providerTag]` — pins the upstream to a single catalog-verified
-  endpoint; combined with `allow_fallbacks: false` it implements the
-  load-bearing `(modelId, providerId)` pair rule (per
-  `memory/feedback_model_provider_pair.md`).
-- `allow_fallbacks: false` — explicit; the pair is the pin.
+- `order: [preferredProviderTag]` — provider PREFERENCE, NOT a hard pin.
+  `order[0]` is the pair's `providerId` (tried first); with
+  `allow_fallbacks: true` OpenRouter may route to another ZDR-allow-list
+  provider when the preferred one is transiently unavailable. There is no
+  `only` enumeration: `zdr: true` is what bounds the routable set, so
+  membership self-updates as the account ZDR set changes — no
+  itotori-side provider registry to drift
+  (`apps/itotori/src/providers/openrouter.ts` `buildOpenRouterProviderRouting`,
+  which emits `order` and never `only`).
+- `allow_fallbacks: true` — a transient upstream error on the preferred
+  provider must not fail the whole call; `zdr: true` confines the
+  fallback pool to the account ZDR allow-list. itotori RECORDS the real
+  served `(model, providerId)` pair from the response (top-level `model`
+  - `provider` fields) into the ledger; whichever ZDR-allow-list provider
+    answered is a valid serve. The old `pair_mismatch` guard that rejected
+    a served provider other than the requested one was DELETED — provider
+    identity is no longer a failure axis
+    (`apps/itotori/src/providers/types.ts`, `ModelProviderError`). The
+    `(modelId, providerId)` pair rule still holds at the REQUEST layer (the
+    pair we ask for, per `memory/feedback_model_provider_pair.md`) and at
+    the LEDGER layer (the pair we record); it is no longer a wire-level
+    rejection knob.
 - `data_collection: "deny"` — independent of ZDR, ensures the provider
   cannot retain for training even when ZDR is satisfied.
-- `zdr: true` — `OR`s with the account-wide ZDR setting per §2.1; serves
-  as belt-and-suspenders against account state drift.
+- `zdr: true` — `OR`s with the account-wide ZDR setting per §2.1. This is
+  the PRIVACY GATE that bounds the fallback pool; it also serves as
+  belt-and-suspenders against account state drift.
 - `require_parameters: true` — recommended by the structured-outputs
-  doc (§6.1) when `response_format` is in play; for the alpha pair we
-  send it on every call so a silently-incapable endpoint is filtered
-  out at routing time rather than returning unformatted text.
+  doc (§6.1) when `response_format` is in play; itotori emits it whenever
+  the request carries a `response_format` (json_schema or json_object) so
+  a silently-incapable endpoint is filtered out at routing time rather
+  than returning unformatted text.
 
 ### §3.3 — Knobs itotori does NOT default
 
-`order`, `ignore`, `quantizations`, `sort`,
-`preferred_min_throughput`, `preferred_max_latency`, `max_price`,
-`enforce_distillable_text` — caller-supplied only. The pair-policy
-schema v0.2 (ITOTORI-234) widens to carry the relevant ones per stage.
+`ignore`, `quantizations`, `sort`, `preferred_min_throughput`,
+`preferred_max_latency`, `enforce_distillable_text` — caller-supplied
+only. (`order` is NOT in this list: per §3.2 it is always populated with
+the pair's `providerId` leading; `max_price` is emitted from a stage
+leaf's `maxPriceUsd` when set.) The pair-policy schema (ITOTORI-238 v0.3)
+widens to carry the relevant ones per stage.
 
 ---
 
@@ -636,7 +664,7 @@ The per-model endpoint sub-resource lists every provider currently
 serving the model. Each endpoint object carries:
 
 - `provider_name` (human-readable) + `tag` (the slug used in
-  `provider.only` / `provider.ignore`).
+  `provider.order` / `provider.ignore`).
 - `pricing` (per-endpoint, may differ from the top-level model
   pricing).
 - `context_length`, `max_completion_tokens`, `max_prompt_tokens`.
@@ -679,10 +707,11 @@ true`), and as proven by the evidence file's call_3/call_4 404
   is not authorised to gather.
 - **Live call success**: `docs/openrouter-integration-evidence/2026-06-25.json`
   call_1 (POST /chat/completions, `model:"deepseek/deepseek-v4-flash"`,
-  `provider.only:["fireworks"]`, `provider.zdr:true`,
-  `provider.data_collection:"deny"`) returned 200, `provider:"Fireworks"`,
-  `usage.cost: 0.00000602`. The pair routes; the audit can land
-  without further verification.
+  `provider.zdr:true`, `provider.data_collection:"deny"`; captured under
+  the now-superseded pre-ITOTORI-241 hard-pin request posture — the
+  current wire posture is §3.2's `order` + `allow_fallbacks:true`)
+  returned 200, `provider:"Fireworks"`, `usage.cost: 0.00000602`. The
+  pair routes; the audit can land without further verification.
 
 ### §9.4 — Other catalog endpoints with v4 family
 
@@ -702,7 +731,7 @@ This doc anchors the corrective-node landing surface. Per-node hooks:
 | §5.3 — cache annotations        | ITOTORI-233                           | `TokenUsage.cacheReadTokens/cacheWriteTokens`; `ProviderCost.cacheDiscountMicrosUsd`.                                                     |
 | §5.4 — `/generation` reconciler | ITOTORI-235                           | `openrouter-cost-reconciler.ts` honours the eventual-consistency window (call_6 succeeded after ~8s; reconciler must back off similarly). |
 | §2.3 — ZDR rejection envelope   | ITOTORI-227                           | `AccountZdrPolicyRejectionError` typed at the seam.                                                                                       |
-| §2.4 — ZDR proof posture        | ITOTORI-230                           | `ProviderRunRecord.routingPosture` mirrors `{only, allow_fallbacks, data_collection, zdr, require_parameters}`.                           |
+| §2.4 — ZDR proof posture        | ITOTORI-230                           | `ProviderRunRecord.routingPosture` mirrors `{order, allow_fallbacks, data_collection, zdr, require_parameters}`.                          |
 | §7.2 — metadata header gate     | ITOTORI-233                           | Endpoint-pricing fallback path kept-and-fixed (header IS the gate, header IS sent today).                                                 |
 | §3.2 — alpha routing posture    | ITOTORI-227                           | `buildOpenRouterProviderRouting` defaults `provider.zdr=true` for non-public input.                                                       |
 | §9.3 — slug + providerId        | ITOTORI-226                           | `dev-pair.ts`, `presets/localize-sweetie-hd.pair-policy.json` move to `deepseek/deepseek-v4-flash` + `fireworks`.                         |

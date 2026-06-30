@@ -15,11 +15,17 @@
 //      LITERAL string identifying WHICH failure condition on the
 //      primary pair triggers the driver to advance to the next
 //      alternate. The only accepted literal in v0.3 is
-//      `"http_429_from_primary"`. Any other failure mode (`pair_mismatch`,
-//      `provider_response_invalid`, `provider_http_error` with status
-//      != 429, etc.) MUST surface immediately — silently swapping
-//      providers on an unknown error is the failure mode the audit-
-//      focus call-out forbids.
+//      `"http_429_from_primary"`. Any other failure mode
+//      (`provider_response_invalid`, `provider_http_error` with status
+//      != 429, `capability_unsupported`, `cost_cap_exceeded`, etc.) MUST
+//      surface immediately — silently swapping providers on an unknown
+//      error is the failure mode the audit-focus call-out forbids.
+//      (`pair_mismatch` is deliberately NOT in this list: that guard was
+//      deleted when OpenRouter-side automatic fallback became the model —
+//      provider identity is no longer a failure axis, so a served
+//      provider other than the requested one is a valid serve, not an
+//      error. See `apps/itotori/src/providers/types.ts` `ModelProviderError`,
+//      whose code union no longer contains `pair_mismatch`.)
 //
 // The v0.2 path is DELETED in the same change (no-legacy-compat):
 //   - `packages/localization-bridge-schema/src/pair-policy.v0.2.ts` is
