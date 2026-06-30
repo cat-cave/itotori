@@ -1,0 +1,62 @@
+{
+  "schemaVersion": "0.1.0",
+  "pathId": "kaifuu-rpgmaker-mv-mz-encrypted-image",
+  "sourceNodeId": "KAIFUU-115",
+  "engineFamily": "rpgmaker",
+  "entries": [
+    {
+      "entryId": "image-valid-pictures",
+      "requirementId": "rpgmaker-mv-mz-asset-key",
+      "secretRef": "local-secret:rpgmaker-mv-mz-asset-key",
+      "surface": "pictures",
+      "surfaceCodec": "png_image",
+      "scenario": "valid",
+      "expected": "round_tripped"
+    },
+    {
+      "entryId": "image-valid-titles",
+      "requirementId": "rpgmaker-mv-mz-asset-key",
+      "secretRef": "local-secret:rpgmaker-mv-mz-asset-key",
+      "surface": "titles",
+      "surfaceCodec": "png_image",
+      "scenario": "valid",
+      "expected": "round_tripped"
+    },
+    {
+      "entryId": "image-wrong-key",
+      "requirementId": "rpgmaker-mv-mz-asset-key",
+      "secretRef": "local-secret:rpgmaker-mv-mz-asset-key",
+      "surface": "pictures",
+      "surfaceCodec": "png_image",
+      "scenario": "wrong_key",
+      "expected": "wrong_key"
+    },
+    {
+      "entryId": "image-missing-key",
+      "requirementId": "rpgmaker-mv-mz-asset-key",
+      "secretRef": "local-secret:rpgmaker-mv-mz-asset-key",
+      "surface": "faces",
+      "surfaceCodec": "png_image",
+      "scenario": "missing_key",
+      "expected": "missing_key"
+    },
+    {
+      "entryId": "image-unsupported-surface-audio",
+      "requirementId": "rpgmaker-mv-mz-asset-key",
+      "secretRef": "local-secret:rpgmaker-mv-mz-asset-key",
+      "surface": "pictures",
+      "surfaceCodec": "m4a_audio",
+      "scenario": "unsupported_surface",
+      "expected": "unsupported_surface"
+    },
+    {
+      "entryId": "image-unsupported-variant",
+      "requirementId": "rpgmaker-mv-mz-asset-key",
+      "secretRef": "local-secret:rpgmaker-mv-mz-asset-key",
+      "surface": "characters",
+      "surfaceCodec": "png_image",
+      "scenario": "unsupported_variant",
+      "expected": "unsupported_variant"
+    }
+  ]
+}

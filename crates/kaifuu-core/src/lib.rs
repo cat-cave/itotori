@@ -154,6 +154,7 @@ pub const STRING_RELOCATION_INVALID_SOURCE_BYTES: &str =
 pub const XP3_PLAIN_MAGIC: &[u8] = b"XP3\r\n \n\x1a\x8b\x67\x01";
 
 pub mod contracts;
+pub mod mv_mz_encrypted_image;
 pub mod mv_mz_readiness;
 mod offset_map;
 pub mod patch_transaction;
@@ -163,6 +164,21 @@ pub mod siglus_static_key;
 pub mod xp3_capability_profile;
 
 pub use registry::{AdapterCapabilityMatrix, CapabilityLevel, CapabilityLevelStatus};
+
+pub use mv_mz_encrypted_image::{
+    MV_MZ_ENCRYPTED_IMAGE_CRYPTO_PROFILE_ID, MV_MZ_ENCRYPTED_IMAGE_ENGINE_FAMILY,
+    MV_MZ_ENCRYPTED_IMAGE_FIXTURE_ID, MV_MZ_ENCRYPTED_IMAGE_REQUIREMENT_ID,
+    MV_MZ_ENCRYPTED_IMAGE_SCHEMA_VERSION, MV_MZ_ENCRYPTED_IMAGE_SUPPORT_BOUNDARY,
+    MV_MZ_ENCRYPTED_IMAGE_VARIANT, MvMzEncryptedImageDiagnosticDeclaration,
+    MvMzEncryptedImageEntryReport, MvMzEncryptedImageFinding, MvMzEncryptedImageFixture,
+    MvMzEncryptedImageFixtureEntry, MvMzEncryptedImageOutcome, MvMzEncryptedImagePath,
+    MvMzEncryptedImagePathViolation, MvMzEncryptedImageReport, MvMzEncryptedImageRequest,
+    MvMzEncryptedImageScenario, MvMzImageRoundTripProof, MvMzImageSurface,
+    MvMzImageSurfaceDeclaration, MvMzImageVariantError, RpgMakerImageCryptoProfile,
+    SEMANTIC_MV_MZ_IMAGE_MISSING_KEY, SEMANTIC_MV_MZ_IMAGE_UNSUPPORTED_SURFACE,
+    SEMANTIC_MV_MZ_IMAGE_UNSUPPORTED_VARIANT, SEMANTIC_MV_MZ_IMAGE_WRONG_KEY,
+    encrypt_synthetic_image, run_mv_mz_encrypted_image,
+};
 
 pub use mv_mz_readiness::{
     EncryptedMediaDiagnostic, EncryptedMediaKind, IdentityContainer, MvMzFixtureFile,

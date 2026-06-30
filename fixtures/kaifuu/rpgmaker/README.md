@@ -1,5 +1,21 @@
 # KAIFUU-039 — RPG Maker MV/MZ encrypted-media readiness fixtures
 
+> ## Sibling: `encrypted-image.json` (KAIFUU-115)
+>
+> `encrypted-image.json` is a **separate** path and is NOT a KAIFUU-039
+> readiness fixture. It backs the KAIFUU-115 encrypted-IMAGE
+> **decrypt + re-encrypt** path
+> (`kaifuu_core::mv_mz_encrypted_image`), which genuinely decrypts an
+> RPGMV-header image to its PNG plaintext and re-encrypts it with a
+> byte-correct round-trip — distinct from KAIFUU-039 (which never
+> decrypts) and KAIFUU-108 (JSON-text inventory). Its bytes are fully
+> synthetic: a tiny in-module 1x1 PNG and a clearly-fake 16-byte key;
+> the fixture file itself stores only secret-refs + the named image
+> surface + a scenario tag. The matrix covers valid round-trip,
+> wrong-key, missing-key, unsupported-surface (audio), and
+> unsupported-variant (malformed header) entries. Encrypted audio is
+> owned by the sibling KAIFUU-116; JSON text stays with KAIFUU-108.
+
 These fixtures back the `kaifuu rpgmaker encrypted-media-proof` command
 (KAIFUU-039). They are intentionally **synthetic**:
 
