@@ -15,16 +15,12 @@ use crate::discovery::{
 };
 use crate::error::VaultSourceError;
 use crate::extraction::{ExtractedTree, ScratchPaths, extract_archive};
-use crate::findings::{CrossCheckFinding, catalog_bypass_finding};
-use crate::metadata::{
-    CrossCheckTolerance, EmbeddedMetadata, EmbeddedSchema, cross_check, read_and_validate,
-};
+use crate::findings::CrossCheckFinding;
+use crate::metadata::{CrossCheckTolerance, EmbeddedMetadata, cross_check, read_embedded_metadata};
 use crate::paths::{GameIdContext, derive_game_id};
-use crate::resolution::{
-    ArtifactSelection, ResolvedArtifact, by_sha_path, resolve_by_sha, resolve_release,
-};
+use crate::resolution::{ArtifactSelection, ResolvedArtifact, resolve_release};
 use crate::retention::{
-    RunOutcome, apply_retention, read_last_artifact_sha, write_last_artifact_sha,
+    RunOutcome, apply_retention, read_last_canonical_id, write_last_canonical_id,
 };
 
 /// Capability report a caller can introspect before doing anything.
@@ -69,23 +65,25 @@ pub struct MaterializeResult {
     pub game_id: String,
     /// Run id (per-call; uuid v7 when caller did not supply one).
     pub run_id: String,
-    /// `<scratch>/<game-id>/<run-id>/extracted/`.
+    /// `<scratch>/<game-id>/<run-id>/extracted/` — the raw extraction root.
     pub extracted_root: PathBuf,
-    /// `<extracted_root>/<subpath>` when applicable.
+    /// `<extracted_root>/<canonical_id>/` — the game tree root. The by-id
+    /// archive wraps the game tree (and `_vault/metadata.json`) under a
+    /// top-level `<canonical_id>/` directory; this points at it. Downstream
+    /// engine adapters point here.
+    pub tree_root: PathBuf,
+    /// `<tree_root>/<subpath>` when applicable.
     pub subpath_root: Option<PathBuf>,
-    /// Validated and parsed embedded metadata.
+    /// Parsed embedded by-id metadata.
     pub embedded: EmbeddedMetadata,
     /// Cross-check findings (may be empty).
     pub findings: Vec<CrossCheckFinding>,
-    /// The artifact sha256 that was extracted.
-    pub artifact_sha256: String,
+    /// The stable `canonical_id` that was resolved and extracted.
+    pub artifact_canonical_id: String,
     /// `releases.id`.
     pub release_id: i64,
     /// All resolved artifacts (the first is the primary).
     pub artifacts: Vec<ResolvedArtifact>,
-    /// `true` when the call went through catalog-bypass mode
-    /// (`ByArtifactSha`).
-    pub catalog_bypass: bool,
     /// Retention policy the materialize call ran under; used by `release`.
     pub retention_policy: RetentionPolicy,
 }
@@ -102,14 +100,6 @@ pub trait LocalCorpusSource: Send + Sync {
     fn materialize(
         &self,
         candidate: &ReleaseCandidate,
-        opts: MaterializeOptions,
-    ) -> Result<MaterializeResult, VaultSourceError>;
-
-    /// Materialize directly from a sha256 (catalog-bypass mode). The
-    /// `MaterializeResult` carries a bypass finding.
-    fn materialize_by_sha(
-        &self,
-        sha256: &str,
         opts: MaterializeOptions,
     ) -> Result<MaterializeResult, VaultSourceError>;
 
@@ -158,13 +148,12 @@ impl LocalCorpusRegistry {
     }
 }
 
-/// The vault-source adapter. Holds resolved vault/scratch roots and a
-/// compiled JSON-Schema validator.
+/// The vault-source adapter. Holds resolved vault/scratch roots and the
+/// observed catalog schema version.
 pub struct VaultSource {
     vault_root: PathBuf,
     scratch_root: PathBuf,
     schema_version: u32,
-    embedded_schema: EmbeddedSchema,
 }
 
 impl std::fmt::Debug for VaultSource {
@@ -235,9 +224,11 @@ fn canonicalize_existing_prefix(path: &Path) -> PathBuf {
 impl VaultSource {
     /// Open a [`VaultSource`] against the resolved vault + scratch roots.
     ///
-    /// Validates the vault root (`catalog.db` + `artifacts/by-sha/`),
-    /// probes the catalog schema version, and compiles the embedded
-    /// metadata schema.
+    /// Validates the vault root (`catalog.db` + `artifacts/by-id/`) and probes
+    /// the catalog schema version. No embedded-metadata JSON-Schema is
+    /// compiled: the by-id era embeds the canonical metadata document (not the
+    /// legacy v1.0 `releases[]` shape), and identity is cross-checked
+    /// field-by-field at materialize time.
     pub fn open(
         vault_cfg: &VaultConfig,
         scratch_cfg: &ScratchConfig,
@@ -258,15 +249,10 @@ impl VaultSource {
         let schema_version = crate::catalog::probe_schema_version(&conn)?;
         drop(conn);
 
-        // Compile the embedded-metadata schema.
-        let schema_path = vault_root.join("embedded-metadata.schema.json");
-        let embedded_schema = EmbeddedSchema::from_schema_path(&schema_path)?;
-
         Ok(Self {
             vault_root,
             scratch_root,
             schema_version,
-            embedded_schema,
         })
     }
 
@@ -302,71 +288,52 @@ impl VaultSource {
         ScratchPaths::compose(&self.scratch_root, game_id, run_id)
     }
 
-    /// Internal materialize, shared between catalog-resolved and
-    /// catalog-bypass paths.
+    /// Internal materialize for a catalog-resolved candidate.
     fn materialize_inner(
         &self,
-        candidate: Option<&ReleaseCandidate>,
-        explicit_artifact: Option<ResolvedArtifact>,
+        candidate: &ReleaseCandidate,
         opts: MaterializeOptions,
     ) -> Result<MaterializeResult, VaultSourceError> {
         let conn = self.open_conn()?;
         let _ = crate::catalog::probe_schema_version(&conn)?;
 
-        let (resolved_artifacts, candidate_owned, work_ids, canonical_title) = match candidate {
-            Some(c) => {
-                let resolved =
-                    resolve_release(&conn, &self.vault_root, c.release_id, &opts.selection)?;
-                let work_ids = load_work_identifiers(&conn, c.work_id)?;
-                let title = load_canonical_title(&conn, c.work_id)?;
-                (resolved, c.clone(), work_ids, title)
-            }
-            None => {
-                let primary = explicit_artifact.expect("bypass path requires explicit artifact");
-                let synthetic_candidate = ReleaseCandidate {
-                    release_id: -1,
-                    work_id: -1,
-                    edition_name: None,
-                    release_date: None,
-                    store: None,
-                    engine: None,
-                    engine_version: None,
-                    engine_needs_review: false,
-                    languages: Vec::new(),
-                    platforms: Vec::new(),
-                };
-                (
-                    vec![primary],
-                    synthetic_candidate,
-                    Vec::new(),
-                    "bypass".into(),
-                )
-            }
-        };
+        let resolved_artifacts = resolve_release(
+            &conn,
+            &self.vault_root,
+            candidate.release_id,
+            &opts.selection,
+        )?;
+        let work_ids = load_work_identifiers(&conn, candidate.work_id)?;
+        let canonical_title = load_canonical_title(&conn, candidate.work_id)?;
 
         if resolved_artifacts.is_empty() {
             return Err(VaultSourceError::ReleaseNotResolved {
-                claim_summary: format!("release-id({})", candidate_owned.release_id),
+                claim_summary: format!("release-id({})", candidate.release_id),
             });
         }
 
         let primary = &resolved_artifacts[0];
+        let canonical_id = primary.canonical_id.clone();
 
         let game_id = derive_game_id(&GameIdContext {
             identifiers: &work_ids,
-            release_id: candidate_owned.release_id,
+            release_id: candidate.release_id,
             canonical_title: &canonical_title,
         });
         let run_id = opts.run_id.clone().unwrap_or_else(Self::fresh_run_id);
         let paths = self.build_paths(&game_id.id, &run_id);
 
-        // Decide whether to reuse a cached extraction.
+        // Decide whether to reuse a cached extraction. The by-id archive wraps
+        // its tree under `<canonical_id>/`, so the cached tree root is
+        // `<game-id>/extracted/<canonical_id>`.
         let reuse = matches!(opts.retention, RetentionPolicy::KeepExtractedForGame) && {
-            let last = read_last_artifact_sha(&paths.last_artifact_sha_marker);
+            let last = read_last_canonical_id(&paths.last_canonical_id_marker);
             let canonical_extracted = paths.game_root.join("extracted");
-            last.as_deref() == Some(primary.sha256.as_str())
-                && canonical_extracted.exists()
-                && canonical_extracted.join("_vault/metadata.json").exists()
+            last.as_deref() == Some(canonical_id.as_str())
+                && canonical_extracted
+                    .join(&canonical_id)
+                    .join("_vault/metadata.json")
+                    .exists()
         };
 
         let extracted_root = if reuse {
@@ -379,48 +346,46 @@ impl VaultSource {
             // failure that triggers `release()` still leaves the marker.
             if matches!(opts.retention, RetentionPolicy::KeepExtractedForGame)
                 && let Err(e) =
-                    write_last_artifact_sha(&paths.last_artifact_sha_marker, &primary.sha256)
+                    write_last_canonical_id(&paths.last_canonical_id_marker, &canonical_id)
             {
                 return Err(VaultSourceError::ScratchUnwritable {
-                    path: paths.last_artifact_sha_marker.clone(),
+                    path: paths.last_canonical_id_marker.clone(),
                     source: e,
                 });
             }
             paths.extracted_root.clone()
         };
 
-        // Read and validate _vault/metadata.json (FIRST file post-extraction).
-        let embedded = read_and_validate(&extracted_root, &self.embedded_schema, &primary.sha256)?;
+        // The game tree (and `_vault/metadata.json`) live under the
+        // `<canonical_id>/` wrapper the by-id repack adds.
+        let tree_root = extracted_root.join(&canonical_id);
 
-        // Cross-check.
-        let mut findings = Vec::new();
-        if candidate.is_some() {
-            let outcome = cross_check(
-                &embedded,
-                &candidate_owned,
-                &work_ids,
-                primary.original_sha256.as_deref(),
-                &primary.role,
-                &opts.tolerance,
-            )?;
-            findings.extend(outcome.findings);
-        } else {
-            findings.push(catalog_bypass_finding(&primary.sha256));
-        }
+        // Read the embedded by-id metadata (FIRST file post-extraction).
+        let embedded = read_embedded_metadata(&tree_root, &canonical_id)?;
 
-        let subpath_root = primary.subpath.as_ref().map(|sp| extracted_root.join(sp));
+        // Identity cross-check (canonical_id + work identifiers).
+        let outcome = cross_check(
+            &embedded,
+            candidate,
+            &work_ids,
+            &canonical_id,
+            &opts.tolerance,
+        )?;
+        let findings = outcome.findings;
+
+        let subpath_root = primary.subpath.as_ref().map(|sp| tree_root.join(sp));
 
         Ok(MaterializeResult {
             game_id: game_id.id,
             run_id,
             extracted_root,
+            tree_root,
             subpath_root,
             embedded,
             findings,
-            artifact_sha256: primary.sha256.clone(),
-            release_id: candidate_owned.release_id,
+            artifact_canonical_id: canonical_id,
+            release_id: candidate.release_id,
             artifacts: resolved_artifacts,
-            catalog_bypass: candidate.is_none(),
             retention_policy: opts.retention,
         })
     }
@@ -442,30 +407,7 @@ impl LocalCorpusSource for VaultSource {
         candidate: &ReleaseCandidate,
         opts: MaterializeOptions,
     ) -> Result<MaterializeResult, VaultSourceError> {
-        self.materialize_inner(Some(candidate), None, opts)
-    }
-
-    fn materialize_by_sha(
-        &self,
-        sha256: &str,
-        opts: MaterializeOptions,
-    ) -> Result<MaterializeResult, VaultSourceError> {
-        let conn = self.open_conn()?;
-        let _ = crate::catalog::probe_schema_version(&conn)?;
-        let resolved = resolve_by_sha(&conn, &self.vault_root, sha256)?;
-        // Validate that the by-sha path actually points to a file under
-        // by-sha/ — defence in depth: resolve_by_sha already does the
-        // check, but we also confirm the path layout here.
-        let expected_path = by_sha_path(&self.vault_root, sha256)?;
-        if resolved.on_disk_path != expected_path {
-            return Err(VaultSourceError::ArtifactMissing {
-                path: expected_path,
-                sha256: sha256.to_string(),
-                release_id: -1,
-                artifact_id: resolved.id,
-            });
-        }
-        self.materialize_inner(None, Some(resolved), opts)
+        self.materialize_inner(candidate, opts)
     }
 
     fn release(

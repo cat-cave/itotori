@@ -311,10 +311,12 @@ fn run_with_args_and_registry(
     Ok(())
 }
 
-/// KAIFUU-210 — `extract --engine reallive --scene <N> --bundle-output <PATH>`.
+/// KAIFUU-210 / ALPHA-006a — `extract --engine reallive --scene <N> --bundle-output <PATH>`.
 ///
-/// Loads the RealLive SEEN.TXT envelope from `--game-root <PATH>` (or
-/// `ITOTORI_REAL_GAME_ROOT` for explicit real-bytes fixture runs),
+/// Sources the RealLive corpus either BY-ID through the read-only vault
+/// (`--vault-canonical-id <ID>`, the alpha production route) or from a raw
+/// game tree (`--game-root <PATH>` / `ITOTORI_REAL_GAME_ROOT`, the env-gated
+/// test helper). It then loads the resolved `REALLIVEDATA/Seen.txt` envelope,
 /// resolves scene `N` via the 10,000-slot directory, decompresses its
 /// AVG32 LZSS payload using kaifuu-reallive's `decompress_avg32`, walks
 /// the decompressed bytecode into the v0.2 BridgeBundle via
@@ -337,19 +339,32 @@ fn run_extract_reallive_bundle(args: &[String]) -> Result<(), Box<dyn std::error
             .map_err(|err| -> Box<dyn std::error::Error> {
                 format!("--scene must be a u16: {err}").into()
             })?;
-    let game_root = match flag_optional(args, "--game-root") {
-        Some(value) => PathBuf::from(value),
-        None => match std::env::var_os(REAL_GAME_ROOT_ENV) {
-            Some(value) => PathBuf::from(value),
-            None => {
-                return Err(
-                    format!("--game-root <PATH> or {REAL_GAME_ROOT_ENV} env var required").into(),
-                );
-            }
-        },
+    // Alpha sourcing route (production): resolve the corpus BY-ID through the
+    // read-only vault adapter (`kaifuu-vault-source`). `--game-root` /
+    // ITOTORI_REAL_GAME_ROOT is retained only as the env-gated raw-path helper
+    // that serves unit tests.
+    let resolved_game_root = match flag_optional(args, "--vault-canonical-id") {
+        Some(canonical_id) => {
+            let tree_root = resolve_reallive_game_root_via_vault(canonical_id)?;
+            resolve_reallive_game_root(&tree_root)?
+        }
+        None => {
+            let game_root = match flag_optional(args, "--game-root") {
+                Some(value) => PathBuf::from(value),
+                None => match std::env::var_os(REAL_GAME_ROOT_ENV) {
+                    Some(value) => PathBuf::from(value),
+                    None => {
+                        return Err(format!(
+                            "--vault-canonical-id <ID> (vault by-id sourcing), \
+                             or --game-root <PATH> / {REAL_GAME_ROOT_ENV} (raw-path test helper) required"
+                        )
+                        .into());
+                    }
+                },
+            };
+            resolve_reallive_game_root(&game_root)?
+        }
     };
-
-    let resolved_game_root = resolve_reallive_game_root(&game_root)?;
     let seen_path = resolved_game_root.join("REALLIVEDATA").join("Seen.txt");
     let seen_bytes = fs::read(&seen_path).map_err(|err| -> Box<dyn std::error::Error> {
         format!("failed to read {}: {err}", seen_path.display()).into()
@@ -763,6 +778,43 @@ fn resolve_reallive_seen_path(game_root: &Path) -> Result<PathBuf, Box<dyn std::
     Ok(resolve_reallive_game_root(game_root)?
         .join("REALLIVEDATA")
         .join("Seen.txt"))
+}
+
+/// Alpha by-id sourcing: resolve a RealLive corpus through the read-only vault
+/// adapter and return the materialised game-tree root (the `<canonical_id>/`
+/// wrapper under scratch). The catalog is opened `mode=ro` and every byte
+/// lands under scratch — the vault is never written. The extracted tree is
+/// intentionally left in place (the caller process produces its bundle and
+/// exits); retention/cleanup is the operator's concern.
+fn resolve_reallive_game_root_via_vault(
+    canonical_id: &str,
+) -> Result<PathBuf, Box<dyn std::error::Error>> {
+    use kaifuu_vault_source::{
+        ClaimQuery, LocalCorpusSource, MaterializeOptions, ScratchConfig, VaultConfig, VaultSource,
+    };
+
+    let source = VaultSource::open(&VaultConfig::default(), &ScratchConfig::default()).map_err(
+        |err| -> Box<dyn std::error::Error> { format!("kaifuu.vault.open: {err}").into() },
+    )?;
+    let candidate = source
+        .discover(&ClaimQuery::ByCanonicalId {
+            canonical_id: canonical_id.to_string(),
+        })
+        .map_err(|err| -> Box<dyn std::error::Error> {
+            format!("kaifuu.vault.discover: {err}").into()
+        })?
+        .into_iter()
+        .next()
+        .ok_or_else(|| -> Box<dyn std::error::Error> {
+            format!("kaifuu.vault.release_not_resolved: no release for canonical_id {canonical_id}")
+                .into()
+        })?;
+    let materialized = source
+        .materialize(&candidate, MaterializeOptions::default())
+        .map_err(|err| -> Box<dyn std::error::Error> {
+            format!("kaifuu.vault.materialize: {err}").into()
+        })?;
+    Ok(materialized.tree_root)
 }
 
 fn resolve_reallive_game_root(game_root: &Path) -> Result<PathBuf, Box<dyn std::error::Error>> {
@@ -2870,6 +2922,54 @@ fn flag_values<'a>(args: &'a [String], name: &str) -> Vec<&'a str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// ALPHA-006a — the alpha extract entrypoint sources Oshioki Sweetie HD
+    /// BY-ID through the read-only vault adapter and yields a `Seen.txt` whose
+    /// per-file sha256 equals the known direct-path bytes. Env-gated + ignored;
+    /// run against the real vault with:
+    ///
+    /// ```text
+    /// ITOTORI_VAULT_ROOT=/archive/vault ITOTORI_REQUIRE_REAL_BYTES=1 \
+    ///   cargo test -p kaifuu-cli vault_sourced_extract -- --ignored --nocapture
+    /// ```
+    #[test]
+    #[ignore = "requires ITOTORI_VAULT_ROOT=/archive/vault + ITOTORI_REQUIRE_REAL_BYTES=1"]
+    fn vault_sourced_extract_resolves_sweetie_hd_by_id_to_known_seen_bytes() {
+        use sha2::{Digest, Sha256};
+
+        if std::env::var("ITOTORI_REQUIRE_REAL_BYTES").ok().as_deref() != Some("1") {
+            eprintln!("skipping: set ITOTORI_REQUIRE_REAL_BYTES=1 to run this proof");
+            return;
+        }
+        if std::env::var("ITOTORI_VAULT_ROOT").ok().as_deref() != Some("/archive/vault") {
+            eprintln!("skipping: set ITOTORI_VAULT_ROOT=/archive/vault to run this proof");
+            return;
+        }
+
+        const SWEETIE_CANONICAL_ID: &str =
+            "oshioki-sweetie-koi-suru-onee-san-wa-urahara-desu.vj013077.v1-0.ja";
+        const SWEETIE_SEEN_SHA256: &str =
+            "903f538b821a9b1e6cb3d399582915c0bcf73b0a058ecc907caf6017a4fa209f";
+
+        let tree_root = resolve_reallive_game_root_via_vault(SWEETIE_CANONICAL_ID)
+            .expect("by-id vault sourcing must resolve Sweetie HD");
+        let seen_path = resolve_reallive_seen_path(&tree_root)
+            .expect("REALLIVEDATA/Seen.txt under the vault-sourced tree");
+        let bytes = std::fs::read(&seen_path).expect("read vault-sourced Seen.txt");
+        let mut hasher = Sha256::new();
+        hasher.update(&bytes);
+        let sha = hasher
+            .finalize()
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect::<String>();
+        eprintln!("[alpha-006a] vault-sourced Sweetie HD Seen.txt sha256 = {sha}");
+        assert_eq!(
+            sha, SWEETIE_SEEN_SHA256,
+            "vault by-id sourced Seen.txt must equal the known direct-path bytes"
+        );
+    }
+
     use kaifuu_core::{
         ASSET_INVENTORY_SCHEMA_VERSION, AdapterCapabilities, AdapterCapabilityMatrix,
         AdapterFailure, AdapterWarning, ArchiveDetectionSignal, ArchiveDetectionStatus,

@@ -66,7 +66,7 @@ fn removes_per_run_extraction_directory_on_extraction_failure() {
         for e in std::fs::read_dir(&game_root).unwrap() {
             let e = e.unwrap();
             let name = e.file_name().into_string().unwrap();
-            // Marker file (.last-artifact-sha256) is fine; run dirs are not.
+            // Marker file (.last-canonical-id) is fine; run dirs are not.
             assert!(
                 name.starts_with('.'),
                 "leftover run dir survived failure: {name}"

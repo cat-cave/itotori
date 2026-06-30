@@ -87,30 +87,34 @@ fn materialize_raises_EmbeddedMetadataMissing_when_metadata_absent() {
 }
 
 #[test]
-fn catalog_bypass_mode_materializes_by_sha_and_emits_bypass_finding() {
+fn materialize_resolves_by_id_and_extracts_under_the_canonical_id_wrapper() {
     let v = common::SyntheticVault::build();
     let source = open_source(&v);
-    let sha = v.fixtures[common::FIXTURE_GOOD_PRIMARY].sha256.clone();
-    let mat = source
-        .materialize_by_sha(&sha, MaterializeOptions::default())
+    let candidate = source
+        .discover(&ClaimQuery::ByReleaseId { release_id: 10 })
+        .unwrap()
+        .pop()
         .unwrap();
-    assert!(mat.catalog_bypass);
-    assert!(
-        mat.findings
-            .iter()
-            .any(|f| f.field == "materialization_kind")
+    let mat = source
+        .materialize(&candidate, MaterializeOptions::default())
+        .unwrap();
+    assert_eq!(mat.artifact_canonical_id, common::CID_GOOD_PRIMARY);
+    // tree_root is the `<canonical_id>/` wrapper inside extracted_root.
+    assert_eq!(
+        mat.tree_root,
+        mat.extracted_root.join(common::CID_GOOD_PRIMARY)
+    );
+    assert!(mat.tree_root.join("_vault/metadata.json").exists());
+    assert!(mat.tree_root.join("game/start.exe").exists());
+    assert_eq!(
+        mat.embedded.canonical_id.as_deref(),
+        Some(common::CID_GOOD_PRIMARY)
     );
 }
 
 #[test]
-fn strict_tolerance_promotes_platform_finding_to_error_when_disjoint() {
+fn strict_tolerance_succeeds_when_languages_and_engine_agree() {
     let v = common::SyntheticVault::build();
-    // The good_primary fixture is bound to release 10 (catalog platforms
-    // = {windows}). The embedded metadata also says {windows}. To make
-    // strict mode trigger, we use release 13 (whose embedded has disjoint
-    // ids first); that errors on work-identity before platforms get a
-    // chance. Instead, we exercise a less-strict path: ensure no error
-    // when strict and tolerant disagree on a non-conflicting field.
     let source = open_source(&v);
     let candidate = source
         .discover(&ClaimQuery::ByReleaseId { release_id: 10 })
@@ -121,7 +125,8 @@ fn strict_tolerance_promotes_platform_finding_to_error_when_disjoint() {
         tolerance: CrossCheckTolerance::strict(),
         ..Default::default()
     };
-    // Same platforms; should succeed even with strict tolerance.
+    // Embedded languages {ja} == catalog {ja}; engine "kirikiri" == catalog
+    // engine fact; strict tolerance therefore raises nothing.
     let mat = source.materialize(&candidate, opts).unwrap();
-    assert!(!mat.catalog_bypass);
+    assert_eq!(mat.artifact_canonical_id, common::CID_GOOD_PRIMARY);
 }

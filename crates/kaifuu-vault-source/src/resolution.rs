@@ -1,15 +1,25 @@
-//! Resolve a release id into one or more on-disk artifacts.
+//! Resolve a release id into one or more on-disk artifacts, addressed BY-ID.
 //!
-//! The on-disk path is reconstructed purely from `artifacts.sha256`; the
-//! catalog's informational `artifacts.vault_path` is never used. The
-//! `by-name/` subtree is never consulted, listed, or stat-ed.
+//! The on-disk path is the content-addressed *by-id* store:
+//!
+//! ```text
+//! <vault-root>/artifacts/by-id/<canonical_id>/<canonical_id>.7z
+//! ```
+//!
+//! `canonical_id` is the catalog's STABLE identity for an artifact
+//! (`artifacts.canonical_id`); the path is reconstructed from it and
+//! cross-checked against the catalog's `artifacts.vault_path`. The legacy
+//! sha-addressed archive path and the archive-level sha256/size integrity
+//! coupling have been removed: a content hash is brittle identity (any
+//! folder/metadata change mints a new hash), so identity is `canonical_id`
+//! plus the embedded `_vault/metadata.json` cross-check, and byte-fidelity is
+//! a per-game-file hash (e.g. the extracted `Seen.txt`), never the archive
+//! hash.
 
 use std::collections::HashSet;
-use std::io::Read;
 use std::path::{Path, PathBuf};
 
 use rusqlite::Connection;
-use sha2::{Digest, Sha256};
 
 use crate::error::VaultSourceError;
 
@@ -48,9 +58,8 @@ impl ArtifactSelection {
     }
 }
 
-/// A resolved artifact: catalog-side facts plus an on-disk path we have
-/// confirmed exists, is a regular file, and matches both the catalog size
-/// and the catalog sha256.
+/// A resolved artifact: catalog-side facts plus an on-disk by-id path we have
+/// confirmed exists and is a regular file.
 #[derive(Debug, Clone)]
 pub struct ResolvedArtifact {
     /// `artifacts.id`.
@@ -60,17 +69,20 @@ pub struct ResolvedArtifact {
     /// `release_artifacts.subpath` (None when the artifact is a whole
     /// release).
     pub subpath: Option<String>,
-    /// `artifacts.sha256`.
-    pub sha256: String,
-    /// `artifacts.size_bytes`.
-    pub size_bytes: u64,
-    /// Reconstructed `<vault-root>/artifacts/by-sha/<aa>/<bb>/<hash>.7z`.
+    /// `artifacts.canonical_id` — the stable identity and the by-id store key.
+    pub canonical_id: String,
+    /// Reconstructed `<vault-root>/artifacts/by-id/<canonical_id>/<canonical_id>.7z`.
     pub on_disk_path: PathBuf,
-    /// `artifacts.original_sha256` (for cross-check).
+    /// `artifacts.original_sha256` (provenance only; the pre-repack download
+    /// hash, never used for path reconstruction or verification).
     pub original_sha256: Option<String>,
     /// `artifacts.artifact_kind`.
     pub artifact_kind: String,
-    /// `artifacts.vault_path` (informational only; never used for I/O).
+    /// `artifacts.canonical_sha256` — the repacked by-id archive hash
+    /// (informational provenance only; NOT an identity or verification gate).
+    pub canonical_sha256: Option<String>,
+    /// `artifacts.vault_path` (the catalog's recorded by-id path; cross-checked
+    /// against the reconstruction).
     pub vault_path: String,
 }
 
@@ -98,92 +110,89 @@ pub fn resolve_release(
 
     let mut out = Vec::with_capacity(wanted.len());
     for r in wanted {
-        let on_disk_path = by_sha_path(vault_root, &r.sha256)?;
-        verify_artifact_on_disk(&on_disk_path, &r.sha256, r.size_bytes, release_id, r.id)?;
+        let canonical_id = match r.canonical_id {
+            Some(c) if !c.is_empty() => c,
+            _ => {
+                return Err(VaultSourceError::ReleaseNotResolved {
+                    claim_summary: format!(
+                        "release-id({release_id}) artifact-id({}) has no by-id canonical_id",
+                        r.id
+                    ),
+                });
+            }
+        };
+        let on_disk_path = by_id_path(vault_root, &canonical_id)?;
+        verify_vault_path_is_by_id(&r.vault_path, &canonical_id, release_id, r.id)?;
+        verify_artifact_present(&on_disk_path, &canonical_id, release_id, r.id)?;
         out.push(ResolvedArtifact {
             id: r.id,
             role: r.role,
             subpath: r.subpath,
-            sha256: r.sha256,
-            size_bytes: r.size_bytes,
+            canonical_id,
             on_disk_path,
             original_sha256: r.original_sha256,
             artifact_kind: r.artifact_kind,
+            canonical_sha256: r.canonical_sha256,
             vault_path: r.vault_path,
         });
     }
     Ok(out)
 }
 
-/// Resolve directly from a sha256 (catalog-bypass mode). The catalog is
-/// only consulted to identify which release_artifacts row, if any, holds
-/// metadata about the artifact.
-pub fn resolve_by_sha(
-    conn: &Connection,
-    vault_root: &Path,
-    sha256: &str,
-) -> Result<ResolvedArtifact, VaultSourceError> {
-    let row: Option<(i64, String, u64, Option<String>, String, String)> = conn
-        .query_row(
-            "SELECT id, sha256, size_bytes, original_sha256, artifact_kind, vault_path \
-             FROM artifacts WHERE sha256 = ?1",
-            rusqlite::params![sha256],
-            |r| {
-                Ok((
-                    r.get::<_, i64>(0)?,
-                    r.get::<_, String>(1)?,
-                    r.get::<_, i64>(2)? as u64,
-                    r.get::<_, Option<String>>(3)?,
-                    r.get::<_, String>(4)?,
-                    r.get::<_, String>(5)?,
-                ))
-            },
-        )
-        .ok();
-    let (id, sha, size, original_sha256, artifact_kind, vault_path) = match row {
-        Some(r) => r,
-        None => {
-            return Err(VaultSourceError::ReleaseNotResolved {
-                claim_summary: format!("artifact-sha({sha256})"),
-            });
-        }
-    };
-    let on_disk_path = by_sha_path(vault_root, &sha)?;
-    verify_artifact_on_disk(&on_disk_path, &sha, size, -1, id)?;
-    Ok(ResolvedArtifact {
-        id,
-        role: "primary".into(),
-        subpath: None,
-        sha256: sha,
-        size_bytes: size,
-        on_disk_path,
-        original_sha256,
-        artifact_kind,
-        vault_path,
-    })
-}
-
-/// Construct the on-disk path for an artifact addressed by sha256, per
-/// `<vault-root>/artifacts/by-sha/<aa>/<bb>/<hash>.7z`.
+/// Construct the on-disk path for an artifact addressed by `canonical_id`, per
+/// `<vault-root>/artifacts/by-id/<canonical_id>/<canonical_id>.7z`.
 ///
-/// The sha is validated as a 64-char lowercase-hex string before slicing;
-/// a corrupt `artifacts.sha256` row therefore surfaces a typed
-/// [`VaultSourceError::ReleaseNotResolved`] instead of panicking on the
-/// `[0..2]`/`[2..4]` slices.
-pub fn by_sha_path(vault_root: &Path, sha256: &str) -> Result<PathBuf, VaultSourceError> {
-    if sha256.len() != 64 || !sha256.bytes().all(|b| b.is_ascii_hexdigit()) {
-        return Err(VaultSourceError::ReleaseNotResolved {
-            claim_summary: format!("artifact-sha({sha256}) is not a 64-char hex digest"),
-        });
-    }
-    let aa = &sha256[0..2];
-    let bb = &sha256[2..4];
+/// The `canonical_id` is validated as a single safe path segment before use
+/// (no separators, no `..`, no NUL, non-empty), so a corrupt
+/// `artifacts.canonical_id` surfaces a typed
+/// [`VaultSourceError::ReleaseNotResolved`] instead of escaping the by-id
+/// store.
+pub fn by_id_path(vault_root: &Path, canonical_id: &str) -> Result<PathBuf, VaultSourceError> {
+    validate_canonical_id(canonical_id)?;
     Ok(vault_root
         .join("artifacts")
-        .join("by-sha")
-        .join(aa)
-        .join(bb)
-        .join(format!("{sha256}.7z")))
+        .join("by-id")
+        .join(canonical_id)
+        .join(format!("{canonical_id}.7z")))
+}
+
+/// A `canonical_id` is a single filesystem-safe directory segment.
+fn validate_canonical_id(canonical_id: &str) -> Result<(), VaultSourceError> {
+    let bad = canonical_id.is_empty()
+        || canonical_id == "."
+        || canonical_id == ".."
+        || canonical_id.contains('/')
+        || canonical_id.contains('\\')
+        || canonical_id.contains('\0')
+        || canonical_id.starts_with('.');
+    if bad {
+        return Err(VaultSourceError::ReleaseNotResolved {
+            claim_summary: format!("canonical_id({canonical_id}) is not a safe by-id segment"),
+        });
+    }
+    Ok(())
+}
+
+/// Defence in depth: the catalog's recorded `vault_path` must be the by-id
+/// path for this `canonical_id`. A row still pointing at the removed legacy
+/// sha-addressed layout (or any other path) is a typed resolution failure,
+/// never silently honoured.
+fn verify_vault_path_is_by_id(
+    vault_path: &str,
+    canonical_id: &str,
+    release_id: i64,
+    artifact_id: i64,
+) -> Result<(), VaultSourceError> {
+    let expected = format!("artifacts/by-id/{canonical_id}/{canonical_id}.7z");
+    if vault_path != expected {
+        return Err(VaultSourceError::ReleaseNotResolved {
+            claim_summary: format!(
+                "release-id({release_id}) artifact-id({artifact_id}) vault_path {vault_path:?} \
+                 is not the by-id path {expected:?}"
+            ),
+        });
+    }
+    Ok(())
 }
 
 fn role_order(role: &str) -> u32 {
@@ -205,21 +214,33 @@ struct RawRow {
     id: i64,
     role: String,
     subpath: Option<String>,
-    sha256: String,
-    size_bytes: u64,
+    canonical_id: Option<String>,
+    vault_path: String,
     original_sha256: Option<String>,
     artifact_kind: String,
-    vault_path: String,
+    canonical_sha256: Option<String>,
 }
 
 fn load_release_artifact_rows(
     conn: &Connection,
     release_id: i64,
 ) -> Result<Vec<RawRow>, VaultSourceError> {
+    // v3 links an artifact to its release primarily via the direct
+    // `artifacts.release_id` column (that artifact IS the release's primary
+    // content, role `primary`); the `release_artifacts` junction carries the
+    // supplementary roles (patch / translation / bundle_member / ...). The v1
+    // synthetic fixture leaves `artifacts.release_id` NULL and uses only the
+    // junction. We union both and dedupe per artifact, keeping the
+    // strongest-precedence role.
     let mut stmt = conn
         .prepare(
-            "SELECT ra.role, ra.subpath, a.id, a.sha256, a.size_bytes, \
-                    a.original_sha256, a.artifact_kind, a.vault_path \
+            "SELECT 'primary' AS role, NULL AS subpath, a.id, a.canonical_id, a.vault_path, \
+                    a.original_sha256, a.artifact_kind, a.canonical_sha256 \
+             FROM artifacts a \
+             WHERE a.release_id = ?1 \
+             UNION ALL \
+             SELECT ra.role, ra.subpath, a.id, a.canonical_id, a.vault_path, \
+                    a.original_sha256, a.artifact_kind, a.canonical_sha256 \
              FROM release_artifacts ra \
              JOIN artifacts a ON a.id = ra.artifact_id \
              WHERE ra.release_id = ?1",
@@ -231,19 +252,29 @@ fn load_release_artifact_rows(
                 role: r.get::<_, String>(0)?,
                 subpath: r.get::<_, Option<String>>(1)?,
                 id: r.get::<_, i64>(2)?,
-                sha256: r.get::<_, String>(3)?,
-                size_bytes: r.get::<_, i64>(4)? as u64,
+                canonical_id: r.get::<_, Option<String>>(3)?,
+                vault_path: r.get::<_, String>(4)?,
                 original_sha256: r.get::<_, Option<String>>(5)?,
                 artifact_kind: r.get::<_, String>(6)?,
-                vault_path: r.get::<_, String>(7)?,
+                canonical_sha256: r.get::<_, Option<String>>(7)?,
             })
         })
         .map_err(map_query_err)?;
-    let mut out = Vec::new();
+
+    // Dedupe per artifact id, keeping the strongest-precedence role (e.g. a
+    // `primary` direct-column row wins over a `bundle_member` junction row for
+    // the same artifact).
+    let mut by_id: std::collections::BTreeMap<i64, RawRow> = std::collections::BTreeMap::new();
     for r in rows {
-        out.push(r.map_err(map_query_err)?);
+        let r = r.map_err(map_query_err)?;
+        match by_id.get(&r.id) {
+            Some(existing) if role_order(&existing.role) <= role_order(&r.role) => {}
+            _ => {
+                by_id.insert(r.id, r);
+            }
+        }
     }
-    Ok(out)
+    Ok(by_id.into_values().collect())
 }
 
 fn map_query_err(_e: rusqlite::Error) -> VaultSourceError {
@@ -253,22 +284,23 @@ fn map_query_err(_e: rusqlite::Error) -> VaultSourceError {
     }
 }
 
-/// Stat + size + streamed sha256 check.
-fn verify_artifact_on_disk(
+/// Stat the by-id archive: it must exist and be a regular file. Symlinks are
+/// refused (`symlink_metadata` does not follow them), so nothing under
+/// `by-name/` or elsewhere can stand in for the addressed artifact. No
+/// archive-level sha256/size verification is performed — byte-fidelity is a
+/// per-game-file concern, not an archive-repack-hash concern.
+fn verify_artifact_present(
     on_disk_path: &Path,
-    expected_sha: &str,
-    expected_size: u64,
+    canonical_id: &str,
     release_id: i64,
     artifact_id: i64,
 ) -> Result<(), VaultSourceError> {
-    // symlink_metadata: refuse to follow symlinks (would let `by-name` or
-    // anything else stand in for the addressed artifact).
     let meta = match std::fs::symlink_metadata(on_disk_path) {
         Ok(m) => m,
         Err(_) => {
             return Err(VaultSourceError::ArtifactMissing {
                 path: on_disk_path.to_path_buf(),
-                sha256: expected_sha.to_string(),
+                canonical_id: canonical_id.to_string(),
                 release_id,
                 artifact_id,
             });
@@ -277,143 +309,79 @@ fn verify_artifact_on_disk(
     if !meta.file_type().is_file() {
         return Err(VaultSourceError::ArtifactMissing {
             path: on_disk_path.to_path_buf(),
-            sha256: expected_sha.to_string(),
+            canonical_id: canonical_id.to_string(),
             release_id,
             artifact_id,
-        });
-    }
-    let actual_size = meta.len();
-    if actual_size != expected_size {
-        return Err(VaultSourceError::ArtifactSizeMismatch {
-            path: on_disk_path.to_path_buf(),
-            sha256: expected_sha.to_string(),
-            expected: expected_size,
-            actual: actual_size,
-        });
-    }
-    let actual_sha = stream_sha256(on_disk_path)?;
-    if actual_sha != expected_sha {
-        return Err(VaultSourceError::ArtifactHashMismatch {
-            path: on_disk_path.to_path_buf(),
-            expected: expected_sha.to_string(),
-            actual: actual_sha,
         });
     }
     Ok(())
 }
 
-fn stream_sha256(path: &Path) -> Result<String, VaultSourceError> {
-    let mut file = std::fs::File::open(path).map_err(|_| VaultSourceError::ArtifactMissing {
-        path: path.to_path_buf(),
-        sha256: String::new(),
-        release_id: -1,
-        artifact_id: -1,
-    })?;
-    let mut hasher = Sha256::new();
-    let mut buf = vec![0u8; 1024 * 1024];
-    loop {
-        let n = file
-            .read(&mut buf)
-            .map_err(|e| VaultSourceError::ExtractionFailed {
-                archive_path: path.to_path_buf(),
-                reason: format!("read error during sha256 stream: {e}"),
-                bytes_written: 0,
-            })?;
-        if n == 0 {
-            break;
-        }
-        hasher.update(&buf[..n]);
-    }
-    let out = hasher.finalize();
-    Ok(hex_lower(&out))
-}
-
-fn hex_lower(bytes: &[u8]) -> String {
-    const TABLE: &[u8; 16] = b"0123456789abcdef";
-    let mut out = String::with_capacity(bytes.len() * 2);
-    for &b in bytes {
-        out.push(TABLE[(b >> 4) as usize] as char);
-        out.push(TABLE[(b & 0xf) as usize] as char);
-    }
-    out
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::Write;
     use tempfile::tempdir;
 
     #[test]
-    fn computes_by_sha_path_from_sha256_using_first_two_pairs_as_subdirs() {
+    fn computes_by_id_path_from_canonical_id() {
         let root = Path::new("/vault");
-        let sha = "aabbccddeeff00112233445566778899aabbccddeeff00112233445566778899";
-        let p = by_sha_path(root, sha).expect("valid 64-char hex sha");
+        let cid = "oshioki-sweetie.vj013077.v1-0.ja";
+        let p = by_id_path(root, cid).expect("valid canonical_id");
         assert_eq!(
             p,
-            Path::new("/vault/artifacts/by-sha/aa/bb").join(format!("{sha}.7z"))
+            Path::new("/vault/artifacts/by-id")
+                .join(cid)
+                .join(format!("{cid}.7z"))
         );
     }
 
     #[test]
-    fn by_sha_path_rejects_short_or_non_hex_sha_with_typed_error_instead_of_panicking() {
+    fn by_id_path_rejects_unsafe_canonical_id_with_typed_error_instead_of_escaping() {
         let root = Path::new("/vault");
-        // Too short (would panic on the [0..2]/[2..4] slices).
-        assert!(matches!(
-            by_sha_path(root, "ab"),
-            Err(VaultSourceError::ReleaseNotResolved { .. })
-        ));
-        // Empty.
-        assert!(matches!(
-            by_sha_path(root, ""),
-            Err(VaultSourceError::ReleaseNotResolved { .. })
-        ));
-        // Right length but non-hex.
-        let non_hex = "zz".to_string() + &"a".repeat(62);
-        assert!(matches!(
-            by_sha_path(root, &non_hex),
-            Err(VaultSourceError::ReleaseNotResolved { .. })
-        ));
-    }
-
-    #[test]
-    fn rejects_artifact_whose_on_disk_size_differs_from_catalog_size() {
-        let td = tempdir().unwrap();
-        let p = td.path().join("a.7z");
-        let mut f = std::fs::File::create(&p).unwrap();
-        f.write_all(b"hello").unwrap();
-        let err = verify_artifact_on_disk(&p, "deadbeef", 999, 1, 1).unwrap_err();
-        match err {
-            VaultSourceError::ArtifactSizeMismatch {
-                expected: 999,
-                actual: 5,
-                ..
-            } => {}
-            other => panic!("expected size mismatch, got {other:?}"),
+        for bad in ["", ".", "..", "a/b", "a\\b", ".hidden", "x/../etc"] {
+            assert!(
+                matches!(
+                    by_id_path(root, bad),
+                    Err(VaultSourceError::ReleaseNotResolved { .. })
+                ),
+                "expected rejection for {bad:?}"
+            );
         }
     }
 
     #[test]
-    fn rejects_artifact_whose_streamed_sha256_differs_from_catalog_sha256() {
-        let td = tempdir().unwrap();
-        let p = td.path().join("a.7z");
-        let mut f = std::fs::File::create(&p).unwrap();
-        f.write_all(b"hello").unwrap();
-        // sha256("hello") starts with 2cf24dba5fb0...
-        let wrong = "0000000000000000000000000000000000000000000000000000000000000000";
-        let err = verify_artifact_on_disk(&p, wrong, 5, 1, 1).unwrap_err();
-        match err {
-            VaultSourceError::ArtifactHashMismatch { expected, .. } => {
-                assert_eq!(expected, wrong);
-            }
-            other => panic!("expected hash mismatch, got {other:?}"),
-        }
+    fn verify_vault_path_rejects_removed_legacy_sha_layout() {
+        // A catalog row still pointing at the removed legacy sha-addressed
+        // layout must surface a typed resolution failure, never be honoured.
+        let err = verify_vault_path_is_by_id(
+            "artifacts/sha-addressed/aa/bb/aabb....7z",
+            "some-id.v1.ja",
+            1,
+            1,
+        )
+        .unwrap_err();
+        assert!(matches!(err, VaultSourceError::ReleaseNotResolved { .. }));
     }
 
     #[test]
-    fn returns_missing_when_artifact_path_does_not_exist() {
-        let p = PathBuf::from("/tmp/itotori-vault-source-nope.7z");
-        let err = verify_artifact_on_disk(&p, "deadbeef", 0, 1, 1).unwrap_err();
+    fn verify_vault_path_accepts_matching_by_id_path() {
+        let cid = "some-id.v1.ja";
+        verify_vault_path_is_by_id(&format!("artifacts/by-id/{cid}/{cid}.7z"), cid, 1, 1).unwrap();
+    }
+
+    #[test]
+    fn returns_missing_when_by_id_archive_does_not_exist() {
+        let p = PathBuf::from("/tmp/itotori-vault-source-by-id-nope.7z");
+        let err = verify_artifact_present(&p, "nope.v1.ja", 1, 1).unwrap_err();
+        assert!(matches!(err, VaultSourceError::ArtifactMissing { .. }));
+    }
+
+    #[test]
+    fn returns_missing_when_by_id_path_is_a_directory_not_a_file() {
+        let td = tempdir().unwrap();
+        let dir = td.path().join("notafile.7z");
+        std::fs::create_dir_all(&dir).unwrap();
+        let err = verify_artifact_present(&dir, "notafile.v1.ja", 1, 1).unwrap_err();
         assert!(matches!(err, VaultSourceError::ArtifactMissing { .. }));
     }
 }

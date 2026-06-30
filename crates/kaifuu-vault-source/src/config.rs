@@ -64,7 +64,7 @@ pub struct ScratchConfig {
 /// Resolve the vault root per the contract's order.
 ///
 /// Returns the unvalidated path; callers (the [`crate::source::VaultSource`]
-/// constructor) then assert that `catalog.db` and `artifacts/by-sha/` exist.
+/// constructor) then assert that `catalog.db` and `artifacts/by-id/` exist.
 pub fn resolve_vault_root(cfg: &VaultConfig) -> Result<PathBuf, VaultSourceError> {
     if let Ok(env_root) = env::var("ITOTORI_VAULT_ROOT")
         && !env_root.is_empty()
@@ -152,7 +152,7 @@ fn default_scratch_root() -> Result<PathBuf, VaultSourceError> {
 
 /// Validate that the resolved vault root contains the two required entries.
 ///
-/// `catalog.db` must be a regular file; `artifacts/by-sha/` must be a
+/// `catalog.db` must be a regular file; `artifacts/by-id/` must be a
 /// directory.
 pub fn validate_vault_root(root: &Path) -> Result<(), VaultSourceError> {
     let meta = match std::fs::symlink_metadata(root) {
@@ -195,14 +195,14 @@ pub fn validate_vault_root(root: &Path) -> Result<(), VaultSourceError> {
         });
     }
 
-    let by_sha = canonical.join("artifacts/by-sha");
-    let by_sha_meta = std::fs::metadata(&by_sha);
-    if by_sha_meta.as_ref().map(|m| m.is_dir()).unwrap_or(false) {
+    let by_id = canonical.join("artifacts/by-id");
+    let by_id_meta = std::fs::metadata(&by_id);
+    if by_id_meta.as_ref().map(|m| m.is_dir()).unwrap_or(false) {
         // ok
     } else {
         return Err(VaultSourceError::VaultRootIncomplete {
             path: root.to_path_buf(),
-            missing: "artifacts/by-sha",
+            missing: "artifacts/by-id",
         });
     }
 
@@ -278,7 +278,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_resolved_root_when_catalog_db_or_by_sha_subdir_is_absent() {
+    fn rejects_resolved_root_when_catalog_db_or_by_id_subdir_is_absent() {
         let td = tempdir().unwrap();
         // empty dir → missing catalog
         let err = validate_vault_root(td.path()).unwrap_err();
@@ -290,19 +290,19 @@ mod tests {
             }
         ));
 
-        // add catalog but no artifacts/by-sha
+        // add catalog but no artifacts/by-id
         std::fs::write(td.path().join("catalog.db"), b"x").unwrap();
         let err = validate_vault_root(td.path()).unwrap_err();
         assert!(matches!(
             err,
             VaultSourceError::VaultRootIncomplete {
-                missing: "artifacts/by-sha",
+                missing: "artifacts/by-id",
                 ..
             }
         ));
 
         // add both → ok
-        std::fs::create_dir_all(td.path().join("artifacts/by-sha")).unwrap();
+        std::fs::create_dir_all(td.path().join("artifacts/by-id")).unwrap();
         validate_vault_root(td.path()).unwrap();
     }
 

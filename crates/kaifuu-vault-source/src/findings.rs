@@ -27,17 +27,3 @@ pub struct CrossCheckFinding {
     /// Always `"direct_observation"` for this adapter.
     pub evidence: &'static str,
 }
-
-/// Special finding emitted when [`crate::discovery::ClaimQuery::ByArtifactSha`]
-/// (catalog-bypass mode) is used.
-pub fn catalog_bypass_finding(artifact_sha256: &str) -> CrossCheckFinding {
-    CrossCheckFinding {
-        entity_type: "artifact".into(),
-        entity_id: 0,
-        field: "materialization_kind".into(),
-        catalog_value: Value::Null,
-        embedded_value: Value::String(format!("catalog-bypass:{artifact_sha256}")),
-        source: "vault:embedded",
-        evidence: "direct_observation",
-    }
-}

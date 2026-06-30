@@ -534,6 +534,7 @@ dependencies = [
  "kaifuu-engine-fixture",
  "kaifuu-reallive",
  "kaifuu-rpgmaker",
+ "kaifuu-vault-source",
  "serde_json",
  "sha2",
  "tempfile",
@@ -613,7 +614,6 @@ name = "kaifuu-vault-source"
 version = "0.0.0"
 dependencies = [
  "dirs",
- "jsonschema",
  "rusqlite",
  "serde",
  "serde_json",

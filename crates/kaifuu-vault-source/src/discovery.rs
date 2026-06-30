@@ -45,11 +45,11 @@ pub enum ClaimQuery {
         /// `releases.id`.
         release_id: i64,
     },
-    /// Catalog-bypass: extract the artifact addressed by sha256 only.
-    /// The materialize result is flagged.
-    ByArtifactSha {
-        /// `artifacts.sha256`.
-        sha256: String,
+    /// Resolve by the stable by-id `artifacts.canonical_id` (the by-id store
+    /// key). Returns the release(s) that artifact belongs to.
+    ByCanonicalId {
+        /// `artifacts.canonical_id`.
+        canonical_id: String,
     },
 }
 
@@ -80,7 +80,7 @@ impl ClaimQuery {
                 None => format!("engine({engine})"),
             },
             Self::ByReleaseId { release_id } => format!("release-id({release_id})"),
-            Self::ByArtifactSha { sha256 } => format!("artifact-sha({sha256})"),
+            Self::ByCanonicalId { canonical_id } => format!("canonical-id({canonical_id})"),
         }
     }
 }
@@ -244,17 +244,23 @@ pub fn discover(
             }
             candidates
         }
-        ClaimQuery::ByArtifactSha { sha256 } => {
+        ClaimQuery::ByCanonicalId { canonical_id } => {
+            // An artifact links to its release via the direct
+            // `artifacts.release_id` column (v3) and/or the
+            // `release_artifacts` junction (roles); consult both.
             let mut stmt = conn
                 .prepare(
-                    "SELECT ra.release_id FROM release_artifacts ra \
+                    "SELECT a.release_id FROM artifacts a \
+                     WHERE a.canonical_id = ?1 AND a.release_id IS NOT NULL \
+                     UNION \
+                     SELECT ra.release_id FROM release_artifacts ra \
                      JOIN artifacts a ON a.id = ra.artifact_id \
-                     WHERE a.sha256 = ?1 \
-                     ORDER BY ra.release_id",
+                     WHERE a.canonical_id = ?1 \
+                     ORDER BY 1",
                 )
                 .map_err(map_query_err)?;
             let rows = stmt
-                .query_map(rusqlite::params![sha256], |r| r.get::<_, i64>(0))
+                .query_map(rusqlite::params![canonical_id], |r| r.get::<_, i64>(0))
                 .map_err(map_query_err)?;
             collect_ids(rows)?
         }

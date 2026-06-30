@@ -38,9 +38,10 @@ pub struct ScratchPaths {
     pub run_root: PathBuf,
     /// `<scratch-root>/<game-id>/<run-id>/extracted/`.
     pub extracted_root: PathBuf,
-    /// `<scratch-root>/<game-id>/.last-artifact-sha256` (used by
-    /// `RetentionPolicy::KeepExtractedForGame`).
-    pub last_artifact_sha_marker: PathBuf,
+    /// `<scratch-root>/<game-id>/.last-canonical-id` (used by
+    /// `RetentionPolicy::KeepExtractedForGame` to decide whether the cached
+    /// extraction still matches the resolved artifact's stable id).
+    pub last_canonical_id_marker: PathBuf,
 }
 
 impl ScratchPaths {
@@ -49,12 +50,12 @@ impl ScratchPaths {
         let game_root = scratch_root.join(game_id);
         let run_root = game_root.join(run_id);
         let extracted_root = run_root.join("extracted");
-        let last_artifact_sha_marker = game_root.join(".last-artifact-sha256");
+        let last_canonical_id_marker = game_root.join(".last-canonical-id");
         Self {
             game_root,
             run_root,
             extracted_root,
-            last_artifact_sha_marker,
+            last_canonical_id_marker,
         }
     }
 }
@@ -145,10 +146,20 @@ pub fn extract_archive(
     );
 
     match result {
-        Ok(()) => Ok(ExtractedTree {
-            extracted_root,
-            bytes_written,
-        }),
+        Ok(()) => {
+            // Defence against a silently-incomplete extraction: some real
+            // archives contain folders whose codec combination the pure-Rust
+            // decoder cannot fully decode, and the decode loop can return
+            // `Ok(())` having skipped them. A partial tree must never be
+            // surfaced as success (the contract: "partial extractions are not
+            // used"). Re-read the archive header and confirm every file entry
+            // actually landed on disk.
+            verify_complete_extraction(&archive_path_owned, &extracted_root, &paths.run_root)?;
+            Ok(ExtractedTree {
+                extracted_root,
+                bytes_written,
+            })
+        }
         Err(_e) => {
             // If we recorded an unsafe reason, surface that first.
             let reason = unsafe_reason.into_inner();
@@ -176,6 +187,66 @@ pub fn extract_archive(
 struct UnsafeReason {
     entry: String,
     reason: &'static str,
+}
+
+/// Confirm the on-disk tree contains every file entry the archive header
+/// declares. Surfaces a silently-incomplete extraction (e.g. an unsupported
+/// codec folder the decoder skipped) as a typed [`VaultSourceError::ExtractionFailed`]
+/// and removes the partial tree, rather than letting a partial extraction be
+/// observed as success.
+fn verify_complete_extraction(
+    archive_path: &Path,
+    extracted_root: &Path,
+    run_root: &Path,
+) -> Result<(), VaultSourceError> {
+    let archive = match sevenz_rust2::Archive::open(archive_path) {
+        Ok(a) => a,
+        Err(e) => {
+            let _ = std::fs::remove_dir_all(run_root);
+            return Err(VaultSourceError::ExtractionFailed {
+                archive_path: archive_path.to_path_buf(),
+                reason: format!("could not re-read archive header to verify extraction: {e}"),
+                bytes_written: 0,
+            });
+        }
+    };
+
+    let mut total: u64 = 0;
+    let mut missing: u64 = 0;
+    let mut first_missing: Option<String> = None;
+    for entry in &archive.files {
+        if entry.is_directory {
+            continue;
+        }
+        total += 1;
+        // Entries that fail name validation never extract; they would already
+        // have triggered an `ExtractionUnsafePath` failure above, so a
+        // successful extraction implies all names validated.
+        let Ok(safe_rel) = validate_entry_name(&entry.name) else {
+            continue;
+        };
+        if !extracted_root.join(&safe_rel).exists() {
+            missing += 1;
+            if first_missing.is_none() {
+                first_missing = Some(entry.name.clone());
+            }
+        }
+    }
+
+    if missing > 0 {
+        let _ = std::fs::remove_dir_all(run_root);
+        return Err(VaultSourceError::ExtractionFailed {
+            archive_path: archive_path.to_path_buf(),
+            reason: format!(
+                "incomplete extraction: {missing} of {total} file entries were not written \
+                 (likely an unsupported codec folder the pure-Rust decoder skipped); \
+                 first missing: {}",
+                first_missing.unwrap_or_default()
+            ),
+            bytes_written: 0,
+        });
+    }
+    Ok(())
 }
 
 /// Validate an archive entry name. Returns the safe relative path, or a

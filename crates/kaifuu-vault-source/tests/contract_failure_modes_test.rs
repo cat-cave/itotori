@@ -37,7 +37,7 @@ fn vault_root_missing_when_configured_path_does_not_exist() {
 }
 
 #[test]
-fn vault_root_incomplete_when_artifacts_by_sha_subdir_is_absent() {
+fn vault_root_incomplete_when_artifacts_by_id_subdir_is_absent() {
     let td = tempfile::tempdir().unwrap();
     std::fs::write(td.path().join("catalog.db"), b"x").unwrap();
     let err = VaultSource::open(
@@ -50,7 +50,7 @@ fn vault_root_incomplete_when_artifacts_by_sha_subdir_is_absent() {
     assert!(matches!(
         err,
         VaultSourceError::VaultRootIncomplete {
-            missing: "artifacts/by-sha",
+            missing: "artifacts/by-id",
             ..
         }
     ));
@@ -60,11 +60,7 @@ fn vault_root_incomplete_when_artifacts_by_sha_subdir_is_absent() {
 fn catalog_open_failed_when_catalog_db_is_a_directory() {
     let td = tempfile::tempdir().unwrap();
     std::fs::create_dir_all(td.path().join("catalog.db")).unwrap();
-    std::fs::create_dir_all(td.path().join("artifacts/by-sha")).unwrap();
-    // need the schema file or open will report different err first
-    let schema_src = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/fixtures/synthetic-vault/embedded-metadata.schema.json");
-    std::fs::copy(schema_src, td.path().join("embedded-metadata.schema.json")).unwrap();
+    std::fs::create_dir_all(td.path().join("artifacts/by-id")).unwrap();
 
     let err = VaultSource::open(
         &VaultConfig {
@@ -94,10 +90,7 @@ fn catalog_open_failed_when_catalog_db_is_a_directory() {
 #[ignore = "CI-only failure: passes locally on nix devshell (rusqlite from nix), fails on Ubuntu CI. Suspected rusqlite/SQLite version skew. Tracked by KAIFUU-237."]
 fn catalog_schema_unsupported_when_schema_version_row_is_absent() {
     let td = tempfile::tempdir().unwrap();
-    std::fs::create_dir_all(td.path().join("artifacts/by-sha")).unwrap();
-    let schema_src = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/fixtures/synthetic-vault/embedded-metadata.schema.json");
-    std::fs::copy(schema_src, td.path().join("embedded-metadata.schema.json")).unwrap();
+    std::fs::create_dir_all(td.path().join("artifacts/by-id")).unwrap();
     let cat_path = td.path().join("catalog.db");
     let c = rusqlite::Connection::open(&cat_path).unwrap();
     c.execute_batch("CREATE TABLE schema_version (version INTEGER PRIMARY KEY, applied_at TEXT);")
@@ -121,10 +114,7 @@ fn catalog_schema_unsupported_when_schema_version_row_is_absent() {
 #[ignore = "CI-only failure: passes locally on nix devshell, fails on Ubuntu CI. Same root cause as catalog_schema_unsupported_when_schema_version_row_is_absent. Tracked by KAIFUU-237."]
 fn catalog_schema_unsupported_when_schema_version_exceeds_supported() {
     let td = tempfile::tempdir().unwrap();
-    std::fs::create_dir_all(td.path().join("artifacts/by-sha")).unwrap();
-    let schema_src = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/fixtures/synthetic-vault/embedded-metadata.schema.json");
-    std::fs::copy(schema_src, td.path().join("embedded-metadata.schema.json")).unwrap();
+    std::fs::create_dir_all(td.path().join("artifacts/by-id")).unwrap();
     let cat_path = td.path().join("catalog.db");
     let c = rusqlite::Connection::open(&cat_path).unwrap();
     c.execute_batch(
@@ -169,11 +159,15 @@ fn scratch_unwritable_when_scratch_root_parent_is_read_only() {
 }
 
 #[test]
-fn materialize_raises_ArtifactHashMismatch_for_hash_mismatch_fixture() {
+fn materialize_raises_ArtifactMissing_when_by_id_archive_is_absent_from_disk() {
+    // Resolution succeeds (catalog row + valid canonical_id) but the by-id
+    // archive file is deleted from disk before materialize.
     let v = common::SyntheticVault::build();
+    let missing = v.fixtures[common::FIXTURE_GOOD_PRIMARY].on_disk.clone();
+    std::fs::remove_file(&missing).unwrap();
     let source = open_source(&v);
     let candidate = source
-        .discover(&ClaimQuery::ByReleaseId { release_id: 12 })
+        .discover(&ClaimQuery::ByReleaseId { release_id: 10 })
         .unwrap()
         .pop()
         .unwrap();
@@ -181,8 +175,8 @@ fn materialize_raises_ArtifactHashMismatch_for_hash_mismatch_fixture() {
         .materialize(&candidate, MaterializeOptions::default())
         .unwrap_err();
     assert!(
-        matches!(err, VaultSourceError::ArtifactHashMismatch { .. }),
-        "expected ArtifactHashMismatch, got {err:?}"
+        matches!(err, VaultSourceError::ArtifactMissing { .. }),
+        "expected ArtifactMissing, got {err:?}"
     );
 }
 

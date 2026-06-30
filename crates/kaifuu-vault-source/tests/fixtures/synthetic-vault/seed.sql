@@ -1,19 +1,20 @@
 -- Synthetic catalog for integration tests.
 --
--- Mirrors /archive/vault/schema.sql v1 (subset relevant to the
--- vault-source adapter). Insertions are deterministic so the synthetic
+-- Mirrors /archive/vault/schema.sql (subset relevant to the vault-source
+-- adapter) plus the by-id columns the resolver reads
+-- (`artifacts.canonical_id`, `artifacts.vault_path`, `artifacts.canonical_sha256`,
+-- `artifacts.state`). Insertions are deterministic so the synthetic
 -- catalog.db file is reproducible across runs.
 --
--- Seven fixtures live in this synthetic vault. Each is keyed by a
--- well-known sha256 string (`fixture-<n>-...`) chosen so the by-sha
--- subdirectory layout exercises the resolver's `<aa>/<bb>/<hash>.7z`
--- math. Real sha256 hashes are computed and recorded at test setup time
--- because the archive bytes are constructed in-test (see
--- `tests/common/mod.rs`).
+-- Fixtures live in this synthetic vault, each keyed by a stable
+-- `canonical_id`. The by-id content store layout
+-- (`artifacts/by-id/<canonical_id>/<canonical_id>.7z`) is exercised by the
+-- resolver. Archive bytes are constructed in-test (see `tests/common/mod.rs`),
+-- which inserts the `artifacts` + `release_artifacts` rows once the
+-- canonical ids / sizes are known.
 --
 -- Note: this file is the seed for the *catalog.db committed-fixture*
--- (built by build.rs). Tests work with per-test temp copies that
--- additionally synchronise artifact sha256 values to the in-test bytes.
+-- (built by build.rs).
 
 PRAGMA foreign_keys = ON;
 
@@ -114,7 +115,6 @@ CREATE TABLE IF NOT EXISTS release_platforms (
 
 CREATE TABLE IF NOT EXISTS artifacts (
   id                INTEGER PRIMARY KEY,
-  sha256            TEXT NOT NULL UNIQUE,
   size_bytes        INTEGER NOT NULL,
   artifact_kind     TEXT NOT NULL,
   original_filename TEXT,
@@ -122,7 +122,12 @@ CREATE TABLE IF NOT EXISTS artifacts (
   original_sha256   TEXT,
   source_account    TEXT,
   observed_at       TEXT NOT NULL DEFAULT (datetime('now')),
-  vault_path        TEXT NOT NULL
+  vault_path        TEXT NOT NULL,
+  -- by-id era columns (v3 superset the resolver reads):
+  release_id        INTEGER,   -- direct artifact->release link (v3); NULL here, the fixture uses the junction
+  canonical_id      TEXT,
+  canonical_sha256  TEXT,
+  state             TEXT
 );
 
 CREATE TABLE IF NOT EXISTS release_artifacts (
@@ -235,7 +240,7 @@ INSERT INTO release_platforms (release_id, platform) VALUES
   (20, 'windows');
 
 -- Artifact rows are inserted at test setup time once the synthetic 7z
--- archives have been built and their real sha256 computed. We keep the
+-- archives have been built (canonical_id / size known). We keep the
 -- table empty in the static seed.
 -- (release_artifacts also defer.)
 

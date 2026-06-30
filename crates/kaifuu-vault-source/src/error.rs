@@ -24,10 +24,6 @@ pub const SEMANTIC_VAULT_CATALOG_SCHEMA_UNSUPPORTED: &str =
 pub const SEMANTIC_VAULT_RELEASE_NOT_RESOLVED: &str = "kaifuu.vault.release_not_resolved";
 /// Semantic code for [`VaultSourceError::ArtifactMissing`].
 pub const SEMANTIC_VAULT_ARTIFACT_MISSING: &str = "kaifuu.vault.artifact_missing";
-/// Semantic code for [`VaultSourceError::ArtifactSizeMismatch`].
-pub const SEMANTIC_VAULT_ARTIFACT_SIZE_MISMATCH: &str = "kaifuu.vault.artifact_size_mismatch";
-/// Semantic code for [`VaultSourceError::ArtifactHashMismatch`].
-pub const SEMANTIC_VAULT_ARTIFACT_HASH_MISMATCH: &str = "kaifuu.vault.artifact_hash_mismatch";
 /// Semantic code for [`VaultSourceError::ExtractionFailed`].
 pub const SEMANTIC_VAULT_EXTRACTION_FAILED: &str = "kaifuu.vault.extraction_failed";
 /// Semantic code for [`VaultSourceError::ExtractionUnsafePath`].
@@ -45,7 +41,8 @@ pub const SEMANTIC_VAULT_SCRATCH_UNWRITABLE: &str = "kaifuu.vault.scratch_unwrit
 /// against and knows how to read.
 ///
 /// - **v1** is exercised by the synthetic test fixtures
-///   (`tests/fixtures/synthetic-vault/seed.sql`).
+///   (`tests/fixtures/synthetic-vault/seed.sql`), which carry the by-id
+///   `artifacts.canonical_id` / `vault_path` columns the resolver reads.
 /// - **v3** is the live read-only `/archive/vault/catalog.db`. Every catalog
 ///   query the adapter runs has been confirmed column- and type-compatible
 ///   with the v3 schema (see `README.md` §Catalog schema support).
@@ -73,7 +70,7 @@ pub enum VaultSourceError {
     VaultRootIncomplete {
         /// Resolved root that was probed.
         path: PathBuf,
-        /// Required child that is missing (`catalog.db` or `artifacts/by-sha/`).
+        /// Required child that is missing (`catalog.db` or `artifacts/by-id/`).
         missing: &'static str,
     },
 
@@ -104,41 +101,19 @@ pub enum VaultSourceError {
         claim_summary: String,
     },
 
-    /// The `by-sha` path for the resolved sha256 does not exist.
-    #[error("artifact missing on disk: {path:?} sha256={sha256}")]
+    /// The `by-id` path for the resolved `canonical_id` does not exist (or is
+    /// not a regular file).
+    #[error("artifact missing on disk: {path:?} canonical_id={canonical_id}")]
     ArtifactMissing {
-        /// Expected on-disk path under `<vault-root>/artifacts/by-sha/`.
+        /// Expected on-disk path under
+        /// `<vault-root>/artifacts/by-id/<canonical_id>/<canonical_id>.7z`.
         path: PathBuf,
-        /// Catalog-declared sha256.
-        sha256: String,
+        /// Catalog-declared `artifacts.canonical_id`.
+        canonical_id: String,
         /// Release this artifact resolves from.
         release_id: i64,
         /// `artifacts.id` row this resolution targeted.
         artifact_id: i64,
-    },
-
-    /// On-disk file size differs from `artifacts.size_bytes`.
-    #[error("artifact size mismatch at {path:?}: expected={expected} actual={actual}")]
-    ArtifactSizeMismatch {
-        /// On-disk path.
-        path: PathBuf,
-        /// Catalog-declared sha256 (for triage).
-        sha256: String,
-        /// Catalog-declared size.
-        expected: u64,
-        /// Observed size on disk.
-        actual: u64,
-    },
-
-    /// Streamed sha256 differs from `artifacts.sha256`.
-    #[error("artifact hash mismatch at {path:?}: expected={expected} actual={actual}")]
-    ArtifactHashMismatch {
-        /// On-disk path.
-        path: PathBuf,
-        /// Catalog-declared sha256.
-        expected: String,
-        /// Observed sha256.
-        actual: String,
     },
 
     /// 7z decompression failed; truncated archive, decoder error, disk full.
@@ -169,22 +144,23 @@ pub enum VaultSourceError {
     },
 
     /// Extraction completed but `_vault/metadata.json` is absent.
-    #[error("_vault/metadata.json missing under {extracted_root:?}")]
+    #[error("_vault/metadata.json missing under {tree_root:?}")]
     EmbeddedMetadataMissing {
-        /// Per-run extracted root.
-        extracted_root: PathBuf,
-        /// The artifact's sha256, for triage.
-        artifact_sha256: String,
+        /// Per-run extracted tree root (the `<canonical_id>/` wrapper dir).
+        tree_root: PathBuf,
+        /// The artifact's `canonical_id`, for triage.
+        canonical_id: String,
     },
 
-    /// `_vault/metadata.json` fails schema validation.
-    #[error("_vault/metadata.json failed schema validation under {extracted_root:?}")]
+    /// `_vault/metadata.json` is present but cannot be parsed / is missing the
+    /// identity fields the by-id cross-check requires.
+    #[error("_vault/metadata.json invalid under {tree_root:?}")]
     EmbeddedMetadataInvalid {
-        /// Per-run extracted root.
-        extracted_root: PathBuf,
-        /// The embedded `schema_version` field as observed (or `"unknown"`).
-        schema_version: String,
-        /// One human-readable line per failed JSON-Schema rule.
+        /// Per-run extracted tree root.
+        tree_root: PathBuf,
+        /// The artifact's `canonical_id`, for triage.
+        canonical_id: String,
+        /// One human-readable line per problem found.
         errors: Vec<String>,
     },
 
@@ -230,8 +206,6 @@ impl VaultSourceError {
             Self::CatalogSchemaUnsupported { .. } => SEMANTIC_VAULT_CATALOG_SCHEMA_UNSUPPORTED,
             Self::ReleaseNotResolved { .. } => SEMANTIC_VAULT_RELEASE_NOT_RESOLVED,
             Self::ArtifactMissing { .. } => SEMANTIC_VAULT_ARTIFACT_MISSING,
-            Self::ArtifactSizeMismatch { .. } => SEMANTIC_VAULT_ARTIFACT_SIZE_MISMATCH,
-            Self::ArtifactHashMismatch { .. } => SEMANTIC_VAULT_ARTIFACT_HASH_MISMATCH,
             Self::ExtractionFailed { .. } => SEMANTIC_VAULT_EXTRACTION_FAILED,
             Self::ExtractionUnsafePath { .. } => SEMANTIC_VAULT_EXTRACTION_UNSAFE_PATH,
             Self::EmbeddedMetadataMissing { .. } => SEMANTIC_VAULT_EMBEDDED_METADATA_MISSING,
@@ -246,7 +220,7 @@ impl VaultSourceError {
 mod tests {
     use super::*;
 
-    /// The contract's *Failure Modes* table has exactly 14 rows. Each row
+    /// The contract's *Failure Modes* table has exactly 12 rows. Each row
     /// maps to exactly one variant; this test pins the count and the
     /// code-string mapping.
     #[test]
@@ -261,14 +235,6 @@ mod tests {
             ),
             ("ReleaseNotResolved", SEMANTIC_VAULT_RELEASE_NOT_RESOLVED),
             ("ArtifactMissing", SEMANTIC_VAULT_ARTIFACT_MISSING),
-            (
-                "ArtifactSizeMismatch",
-                SEMANTIC_VAULT_ARTIFACT_SIZE_MISMATCH,
-            ),
-            (
-                "ArtifactHashMismatch",
-                SEMANTIC_VAULT_ARTIFACT_HASH_MISMATCH,
-            ),
             ("ExtractionFailed", SEMANTIC_VAULT_EXTRACTION_FAILED),
             (
                 "ExtractionUnsafePath",
@@ -288,7 +254,7 @@ mod tests {
             ),
             ("ScratchUnwritable", SEMANTIC_VAULT_SCRATCH_UNWRITABLE),
         ];
-        assert_eq!(expected.len(), 14, "Failure Modes table size pin");
+        assert_eq!(expected.len(), 12, "Failure Modes table size pin");
 
         // Build a sample of each variant and check the code.
         let samples: Vec<(&str, VaultSourceError)> = vec![
@@ -322,26 +288,9 @@ mod tests {
                 "ArtifactMissing",
                 VaultSourceError::ArtifactMissing {
                     path: PathBuf::from("/x"),
-                    sha256: "00".into(),
+                    canonical_id: "x.v1.ja".into(),
                     release_id: 1,
                     artifact_id: 1,
-                },
-            ),
-            (
-                "ArtifactSizeMismatch",
-                VaultSourceError::ArtifactSizeMismatch {
-                    path: PathBuf::from("/x"),
-                    sha256: "00".into(),
-                    expected: 1,
-                    actual: 2,
-                },
-            ),
-            (
-                "ArtifactHashMismatch",
-                VaultSourceError::ArtifactHashMismatch {
-                    path: PathBuf::from("/x"),
-                    expected: "a".into(),
-                    actual: "b".into(),
                 },
             ),
             (
@@ -363,15 +312,15 @@ mod tests {
             (
                 "EmbeddedMetadataMissing",
                 VaultSourceError::EmbeddedMetadataMissing {
-                    extracted_root: PathBuf::from("/x"),
-                    artifact_sha256: "00".into(),
+                    tree_root: PathBuf::from("/x"),
+                    canonical_id: "x.v1.ja".into(),
                 },
             ),
             (
                 "EmbeddedMetadataInvalid",
                 VaultSourceError::EmbeddedMetadataInvalid {
-                    extracted_root: PathBuf::from("/x"),
-                    schema_version: "1.0".into(),
+                    tree_root: PathBuf::from("/x"),
+                    canonical_id: "x.v1.ja".into(),
                     errors: vec!["x".into()],
                 },
             ),
@@ -400,7 +349,7 @@ mod tests {
                 },
             ),
         ];
-        assert_eq!(samples.len(), 14, "every failure-mode variant is sampled");
+        assert_eq!(samples.len(), 12, "every failure-mode variant is sampled");
 
         for (name, sample) in &samples {
             let expected_code = expected

@@ -1,10 +1,28 @@
-//! `_vault/metadata.json` parser, JSON-Schema validator, and the
-//! cross-checker against the catalog.
+//! `_vault/metadata.json` parser and the by-id identity cross-checker.
+//!
+//! The by-id content store embeds the vault-curation *canonical* metadata
+//! document at `<canonical_id>/_vault/metadata.json` (top-level
+//! `canonical_id`, `identifiers`, `engine`, `work`, `release`, ...). This is
+//! the by-id-era shape produced by vault-curation's stage-2 repack; it is NOT
+//! the legacy "Vault Embedded Artifact Metadata v1.0" `releases[]` /
+//! `vault_artifact` shape (that schema is from the prior sha-addressed era and
+//! has been dropped along with the legacy resolution path).
+//!
+//! Identity is established by:
+//!
+//! 1. **`canonical_id`** — the embedded `canonical_id` must equal the catalog
+//!    `artifacts.canonical_id` the by-id path was resolved from. This is the
+//!    load-bearing identity gate.
+//! 2. **work identifiers** — the embedded `identifiers` must intersect the
+//!    catalog's `identifiers` for the resolved work (at least one external id
+//!    must agree).
+//!
+//! `engine` and `languages` disagreements are surfaced as non-fatal findings
+//! (the catalog is the integrated truth). Byte-fidelity is a per-game-file
+//! concern (e.g. the extracted `Seen.txt` sha256), never the archive sha.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
-use jsonschema::Validator;
-use serde::Deserialize;
 use serde_json::Value;
 
 use crate::discovery::ReleaseCandidate;
@@ -13,25 +31,22 @@ use crate::findings::CrossCheckFinding;
 use crate::paths::ExternalId;
 
 /// Caller-facing tolerance for cross-check disagreements.
-/// Contract default: reject mismatched work identity (always); accept
-/// everything else with a finding.
+/// Contract default: reject mismatched identity (`canonical_id`, work
+/// identifiers) always; accept everything else with a finding.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct CrossCheckTolerance {
-    /// When `true`, platforms-disjoint promotes to error.
-    pub strict_platforms: bool,
-    /// When `true`, languages-disjoint promotes to error.
+    /// When `true`, a languages-disjoint disagreement promotes to error.
     pub strict_languages: bool,
-    /// When `true`, role-mismatch promotes to error.
-    pub strict_role: bool,
+    /// When `true`, an engine disagreement promotes to error.
+    pub strict_engine: bool,
 }
 
 impl CrossCheckTolerance {
     /// Strict mode: every catalog/embedded disagreement becomes an error.
     pub fn strict() -> Self {
         Self {
-            strict_platforms: true,
             strict_languages: true,
-            strict_role: true,
+            strict_engine: true,
         }
     }
 }
@@ -43,333 +58,212 @@ pub struct CrossCheckOutcome {
     pub findings: Vec<CrossCheckFinding>,
 }
 
-/// Embedded metadata after schema validation and structural parsing.
+/// Embedded by-id metadata after parsing and identity-field extraction.
 #[derive(Debug, Clone)]
 pub struct EmbeddedMetadata {
-    /// Schema version string from the embedded file (must be `"1.0"`).
-    pub schema_version: String,
+    /// Top-level `canonical_id` (the by-id identity).
+    pub canonical_id: Option<String>,
+    /// `engine` (e.g. `"reallive"`).
+    pub engine: Option<String>,
+    /// `work.canonical_title`.
+    pub canonical_title: Option<String>,
+    /// `identifiers[]` as `(source, kind, value)` tuples.
+    pub identifiers: Vec<(String, String, String)>,
+    /// `languages[]`.
+    pub languages: Vec<String>,
     /// Raw parsed JSON for downstream inspection.
     pub raw: Value,
 }
 
-/// Compiled JSON-Schema validator. Cache one per [`crate::source::VaultSource`].
-pub struct EmbeddedSchema {
-    validator: Validator,
-}
-
-impl std::fmt::Debug for EmbeddedSchema {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("EmbeddedSchema").finish_non_exhaustive()
-    }
-}
-
-impl EmbeddedSchema {
-    /// Compile a schema file (the vault's `embedded-metadata.schema.json`).
-    pub fn from_schema_path(path: &Path) -> Result<Self, VaultSourceError> {
-        let raw =
-            std::fs::read_to_string(path).map_err(|_| VaultSourceError::VaultRootIncomplete {
-                path: path.to_path_buf(),
-                missing: "embedded-metadata.schema.json",
-            })?;
-        Self::from_schema_str(&raw)
-    }
-
-    /// Compile a schema given its JSON source.
-    pub fn from_schema_str(json: &str) -> Result<Self, VaultSourceError> {
-        let schema_value: Value =
-            serde_json::from_str(json).map_err(|e| VaultSourceError::EmbeddedMetadataInvalid {
-                extracted_root: PathBuf::new(),
-                schema_version: "unknown".into(),
-                errors: vec![format!("schema parse: {e}")],
-            })?;
-        let validator = jsonschema::options().build(&schema_value).map_err(|e| {
-            VaultSourceError::EmbeddedMetadataInvalid {
-                extracted_root: PathBuf::new(),
-                schema_version: "unknown".into(),
-                errors: vec![format!("schema compile: {e}")],
-            }
-        })?;
-        Ok(Self { validator })
-    }
-
-    /// Validate an instance JSON value against the schema.
-    pub fn validate(
-        &self,
-        instance: &Value,
-        extracted_root: &Path,
-    ) -> Result<(), VaultSourceError> {
-        let errors: Vec<String> = self
-            .validator
-            .iter_errors(instance)
-            .map(|e| format!("{}: {}", e.instance_path(), e))
-            .collect();
-        if !errors.is_empty() {
-            let schema_version = instance
-                .get("schema_version")
-                .and_then(|v| v.as_str())
-                .unwrap_or("unknown")
-                .to_string();
-            return Err(VaultSourceError::EmbeddedMetadataInvalid {
-                extracted_root: extracted_root.to_path_buf(),
-                schema_version,
-                errors,
-            });
-        }
-        Ok(())
-    }
-}
-
-/// Read and validate the `_vault/metadata.json` file at the root of the
-/// extracted tree.
+/// Read and parse the `_vault/metadata.json` file at the root of the extracted
+/// by-id tree (the `<canonical_id>/` wrapper directory).
 ///
-/// This is the **first** file the adapter reads post-extraction *(Contract:
-/// §Extraction → §Cross-checking via Embedded Metadata)*.
-pub fn read_and_validate(
-    extracted_root: &Path,
-    schema: &EmbeddedSchema,
-    artifact_sha256: &str,
+/// This is the **first** file the adapter reads post-extraction. It must be
+/// present, parse as JSON, and carry a non-empty top-level `canonical_id`.
+pub fn read_embedded_metadata(
+    tree_root: &Path,
+    canonical_id: &str,
 ) -> Result<EmbeddedMetadata, VaultSourceError> {
-    let path = extracted_root.join("_vault").join("metadata.json");
+    let path = tree_root.join("_vault").join("metadata.json");
     let raw =
         std::fs::read_to_string(&path).map_err(|_| VaultSourceError::EmbeddedMetadataMissing {
-            extracted_root: extracted_root.to_path_buf(),
-            artifact_sha256: artifact_sha256.to_string(),
+            tree_root: tree_root.to_path_buf(),
+            canonical_id: canonical_id.to_string(),
         })?;
     let value: Value =
         serde_json::from_str(&raw).map_err(|e| VaultSourceError::EmbeddedMetadataInvalid {
-            extracted_root: extracted_root.to_path_buf(),
-            schema_version: "unknown".into(),
+            tree_root: tree_root.to_path_buf(),
+            canonical_id: canonical_id.to_string(),
             errors: vec![format!("json parse: {e}")],
         })?;
-    schema.validate(&value, extracted_root)?;
-    let schema_version = value
-        .get("schema_version")
+
+    let embedded_canonical_id = value
+        .get("canonical_id")
         .and_then(|v| v.as_str())
-        .unwrap_or("unknown")
-        .to_string();
+        .map(|s| s.to_string());
+    if embedded_canonical_id.as_deref().map(str::is_empty) != Some(false) {
+        return Err(VaultSourceError::EmbeddedMetadataInvalid {
+            tree_root: tree_root.to_path_buf(),
+            canonical_id: canonical_id.to_string(),
+            errors: vec!["_vault/metadata.json has no non-empty top-level canonical_id".into()],
+        });
+    }
+
+    let identifiers = value
+        .get("identifiers")
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|item| {
+                    let s = item.get("source").and_then(|v| v.as_str())?.to_string();
+                    let k = item.get("kind").and_then(|v| v.as_str())?.to_string();
+                    let v = item.get("value").and_then(|v| v.as_str())?.to_string();
+                    Some((s, k, v))
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
+    let languages = value
+        .get("languages")
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                .collect()
+        })
+        .unwrap_or_default();
+
+    let engine = value
+        .get("engine")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+    let canonical_title = value
+        .get("work")
+        .and_then(|w| w.get("canonical_title"))
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+
     Ok(EmbeddedMetadata {
-        schema_version,
+        canonical_id: embedded_canonical_id,
+        engine,
+        canonical_title,
+        identifiers,
+        languages,
         raw: value,
     })
 }
 
-/// Cross-check selected fields of [`EmbeddedMetadata`] against the catalog.
+/// Cross-check the embedded by-id metadata's identity against the catalog.
 ///
-/// Returns either an [`Ok`] outcome (with possibly nonempty `findings`) or
-/// an [`Err`] when the tolerance is exceeded.
+/// Returns either an [`Ok`] outcome (with possibly nonempty `findings`) or an
+/// [`Err`] when an identity gate fails (or a softer disagreement is promoted
+/// to error by `tolerance`).
 pub fn cross_check(
     embedded: &EmbeddedMetadata,
     catalog_candidate: &ReleaseCandidate,
     catalog_work_identifiers: &[ExternalId],
-    catalog_artifact_original_sha256: Option<&str>,
-    resolved_role: &str,
+    resolved_canonical_id: &str,
     tolerance: &CrossCheckTolerance,
 ) -> Result<CrossCheckOutcome, VaultSourceError> {
     let mut findings = Vec::new();
 
-    // Pick the embedded "release" entry that best matches the resolved
-    // role. If a single embedded release exists, we use it directly; if
-    // multiple, we prefer the one with matching role.
-    let releases = embedded
-        .raw
-        .get("releases")
-        .and_then(|v| v.as_array())
-        .cloned()
-        .unwrap_or_default();
-    let embedded_release = if releases.len() == 1 {
-        Some(releases[0].clone())
-    } else {
-        releases
-            .iter()
-            .find(|r| r.get("role").and_then(|v| v.as_str()) == Some(resolved_role))
-            .cloned()
-            .or_else(|| releases.first().cloned())
-    };
-
-    // An embedded metadata with no usable release cannot confirm the
-    // work-identity / platform / language / role fields the cross-check
-    // contract requires it to reconcile. An empty or absent `releases`
-    // array is schema-valid JSON but would otherwise skip the entire
-    // reconciliation block and return Ok with zero findings — a
-    // defaults-to-pass on missing data. Fail closed with a typed
-    // mismatch instead.
-    let release = embedded_release.ok_or_else(|| VaultSourceError::CatalogEmbeddedMismatch {
-        entity_type: "release".into(),
-        entity_id: catalog_candidate.work_id,
-        field: "releases".into(),
-        catalog_value: Value::String(resolved_role.to_string()),
-        embedded_value: Value::Array(releases.clone()),
-    })?;
-    let release = &release;
+    // Identity gate 1: canonical_id must match the catalog id the by-id path
+    // was resolved from. This is the by-id replacement for archive-sha
+    // identity.
+    if let Some(emb_id) = embedded.canonical_id.as_deref()
+        && emb_id != resolved_canonical_id
     {
-        // Work identifiers: at least one must intersect the catalog.
-        if let Some(work) = release.get("work") {
-            let embedded_identifiers: Vec<(String, String, String)> = work
-                .get("identifiers")
-                .and_then(|v| v.as_array())
-                .map(|arr| {
-                    arr.iter()
-                        .filter_map(|item| {
-                            let s = item.get("source").and_then(|v| v.as_str())?.to_string();
-                            let k = item.get("kind").and_then(|v| v.as_str())?.to_string();
-                            let v = item.get("value").and_then(|v| v.as_str())?.to_string();
-                            Some((s, k, v))
-                        })
-                        .collect()
-                })
-                .unwrap_or_default();
-
-            let catalog_set: std::collections::HashSet<(String, String, String)> =
-                catalog_work_identifiers
-                    .iter()
-                    .map(|id| (id.source.clone(), id.kind.clone(), id.value.clone()))
-                    .collect();
-            let embedded_set: std::collections::HashSet<(String, String, String)> =
-                embedded_identifiers.iter().cloned().collect();
-
-            let intersection: Vec<_> = embedded_set.intersection(&catalog_set).cloned().collect();
-            if !embedded_set.is_empty() && !catalog_set.is_empty() && intersection.is_empty() {
-                return Err(VaultSourceError::CatalogEmbeddedMismatch {
-                    entity_type: "work".into(),
-                    entity_id: catalog_candidate.work_id,
-                    field: "identifiers".into(),
-                    catalog_value: serde_json::to_value(catalog_work_identifiers_json(
-                        catalog_work_identifiers,
-                    ))
-                    .unwrap_or(Value::Null),
-                    embedded_value: serde_json::to_value(embedded_identifiers_json(
-                        &embedded_identifiers,
-                    ))
-                    .unwrap_or(Value::Null),
-                });
-            }
-        }
-
-        // Platforms.
-        let embedded_platforms: Vec<String> = release
-            .get("platforms")
-            .and_then(|v| v.as_array())
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|v| v.as_str().map(|s| s.to_string()))
-                    .collect()
-            })
-            .unwrap_or_default();
-        if !sets_overlap(&embedded_platforms, &catalog_candidate.platforms) {
-            let finding = CrossCheckFinding {
-                entity_type: "release".into(),
-                entity_id: catalog_candidate.release_id,
-                field: "platforms".into(),
-                catalog_value: serde_json::to_value(&catalog_candidate.platforms)
-                    .unwrap_or(Value::Null),
-                embedded_value: serde_json::to_value(&embedded_platforms).unwrap_or(Value::Null),
-                source: "vault:embedded",
-                evidence: "direct_observation",
-            };
-            if tolerance.strict_platforms {
-                return Err(VaultSourceError::CatalogEmbeddedMismatch {
-                    entity_type: finding.entity_type.clone(),
-                    entity_id: finding.entity_id,
-                    field: finding.field.clone(),
-                    catalog_value: finding.catalog_value.clone(),
-                    embedded_value: finding.embedded_value.clone(),
-                });
-            }
-            findings.push(finding);
-        }
-
-        // Languages.
-        let embedded_languages: Vec<String> = release
-            .get("languages")
-            .and_then(|v| v.as_array())
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|v| v.as_str().map(|s| s.to_string()))
-                    .collect()
-            })
-            .unwrap_or_default();
-        if !sets_overlap(&embedded_languages, &catalog_candidate.languages) {
-            let finding = CrossCheckFinding {
-                entity_type: "release".into(),
-                entity_id: catalog_candidate.release_id,
-                field: "languages".into(),
-                catalog_value: serde_json::to_value(&catalog_candidate.languages)
-                    .unwrap_or(Value::Null),
-                embedded_value: serde_json::to_value(&embedded_languages).unwrap_or(Value::Null),
-                source: "vault:embedded",
-                evidence: "direct_observation",
-            };
-            if tolerance.strict_languages {
-                return Err(VaultSourceError::CatalogEmbeddedMismatch {
-                    entity_type: finding.entity_type.clone(),
-                    entity_id: finding.entity_id,
-                    field: finding.field.clone(),
-                    catalog_value: finding.catalog_value.clone(),
-                    embedded_value: finding.embedded_value.clone(),
-                });
-            }
-            findings.push(finding);
-        }
-
-        // Role.
-        let embedded_role = release.get("role").and_then(|v| v.as_str()).unwrap_or("");
-        if !embedded_role.is_empty() && embedded_role != resolved_role {
-            let finding = CrossCheckFinding {
-                entity_type: "artifact".into(),
-                entity_id: catalog_candidate.release_id,
-                field: "role".into(),
-                catalog_value: Value::String(resolved_role.to_string()),
-                embedded_value: Value::String(embedded_role.to_string()),
-                source: "vault:embedded",
-                evidence: "direct_observation",
-            };
-            if tolerance.strict_role {
-                return Err(VaultSourceError::CatalogEmbeddedMismatch {
-                    entity_type: finding.entity_type.clone(),
-                    entity_id: finding.entity_id,
-                    field: finding.field.clone(),
-                    catalog_value: finding.catalog_value.clone(),
-                    embedded_value: finding.embedded_value.clone(),
-                });
-            }
-            findings.push(finding);
-        }
-    }
-
-    // vault_artifact.original_sha256
-    let embedded_orig_sha = embedded
-        .raw
-        .get("vault_artifact")
-        .and_then(|v| v.get("original_sha256"))
-        .and_then(|v| v.as_str());
-    if let (Some(cat), Some(emb)) = (catalog_artifact_original_sha256, embedded_orig_sha)
-        && cat != emb
-    {
-        findings.push(CrossCheckFinding {
+        return Err(VaultSourceError::CatalogEmbeddedMismatch {
             entity_type: "artifact".into(),
             entity_id: catalog_candidate.release_id,
-            field: "original_sha256".into(),
-            catalog_value: Value::String(cat.to_string()),
-            embedded_value: Value::String(emb.to_string()),
+            field: "canonical_id".into(),
+            catalog_value: Value::String(resolved_canonical_id.to_string()),
+            embedded_value: Value::String(emb_id.to_string()),
+        });
+    }
+
+    // Identity gate 2: work identifiers must intersect (at least one external
+    // id must agree) when both sides declare identifiers.
+    let catalog_set: std::collections::HashSet<(String, String, String)> = catalog_work_identifiers
+        .iter()
+        .map(|id| (id.source.clone(), id.kind.clone(), id.value.clone()))
+        .collect();
+    let embedded_set: std::collections::HashSet<(String, String, String)> =
+        embedded.identifiers.iter().cloned().collect();
+    let intersects = embedded_set.intersection(&catalog_set).next().is_some();
+    if !embedded_set.is_empty() && !catalog_set.is_empty() && !intersects {
+        return Err(VaultSourceError::CatalogEmbeddedMismatch {
+            entity_type: "work".into(),
+            entity_id: catalog_candidate.work_id,
+            field: "identifiers".into(),
+            catalog_value: serde_json::to_value(catalog_work_identifiers_json(
+                catalog_work_identifiers,
+            ))
+            .unwrap_or(Value::Null),
+            embedded_value: serde_json::to_value(embedded_identifiers_json(&embedded.identifiers))
+                .unwrap_or(Value::Null),
+        });
+    }
+
+    // Soft check: languages overlap.
+    if !embedded.languages.is_empty()
+        && !catalog_candidate.languages.is_empty()
+        && !sets_overlap(&embedded.languages, &catalog_candidate.languages)
+    {
+        let finding = CrossCheckFinding {
+            entity_type: "release".into(),
+            entity_id: catalog_candidate.release_id,
+            field: "languages".into(),
+            catalog_value: serde_json::to_value(&catalog_candidate.languages)
+                .unwrap_or(Value::Null),
+            embedded_value: serde_json::to_value(&embedded.languages).unwrap_or(Value::Null),
             source: "vault:embedded",
             evidence: "direct_observation",
-        });
+        };
+        if tolerance.strict_languages {
+            return Err(VaultSourceError::CatalogEmbeddedMismatch {
+                entity_type: finding.entity_type.clone(),
+                entity_id: finding.entity_id,
+                field: finding.field.clone(),
+                catalog_value: finding.catalog_value.clone(),
+                embedded_value: finding.embedded_value.clone(),
+            });
+        }
+        findings.push(finding);
+    }
+
+    // Soft check: engine agreement (when the catalog knows an engine).
+    if let (Some(emb_engine), Some(cat_engine)) = (
+        embedded.engine.as_deref(),
+        catalog_candidate.engine.as_deref(),
+    ) && emb_engine != cat_engine
+    {
+        let finding = CrossCheckFinding {
+            entity_type: "release".into(),
+            entity_id: catalog_candidate.release_id,
+            field: "engine".into(),
+            catalog_value: Value::String(cat_engine.to_string()),
+            embedded_value: Value::String(emb_engine.to_string()),
+            source: "vault:embedded",
+            evidence: "direct_observation",
+        };
+        if tolerance.strict_engine {
+            return Err(VaultSourceError::CatalogEmbeddedMismatch {
+                entity_type: finding.entity_type.clone(),
+                entity_id: finding.entity_id,
+                field: finding.field.clone(),
+                catalog_value: finding.catalog_value.clone(),
+                embedded_value: finding.embedded_value.clone(),
+            });
+        }
+        findings.push(finding);
     }
 
     Ok(CrossCheckOutcome { findings })
 }
 
 fn sets_overlap<A: AsRef<str>, B: AsRef<str>>(a: &[A], b: &[B]) -> bool {
-    if a.is_empty() && b.is_empty() {
-        return true;
-    }
-    if a.is_empty() || b.is_empty() {
-        // The contract reads "catalog is the integrated truth", so an
-        // empty embedded set against a non-empty catalog set is a finding
-        // not a fatal mismatch. We treat as overlap-failure to allow the
-        // finding to be emitted.
-        return false;
-    }
     for x in a {
         for y in b {
             if x.as_ref() == y.as_ref() {
@@ -404,47 +298,12 @@ fn embedded_identifiers_json(ids: &[(String, String, String)]) -> Vec<serde_json
         .collect()
 }
 
-/// Minimal serde-side shape for what the contract calls the "vault_artifact"
-/// section. Used by call-sites that prefer struct access to JSON pointers.
-#[derive(Debug, Clone, Deserialize)]
-pub struct VaultArtifactSection {
-    /// `artifacts.original_sha256`.
-    pub original_sha256: Option<String>,
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    const TRIVIAL_SCHEMA: &str = r#"{
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "type": "object",
-        "required": ["schema_version"],
-        "properties": {
-            "schema_version": { "const": "1.0" }
-        }
-    }"#;
-
-    #[test]
-    fn compiles_a_draft_2020_12_schema() {
-        let s = EmbeddedSchema::from_schema_str(TRIVIAL_SCHEMA).unwrap();
-        let ok = serde_json::json!({"schema_version": "1.0"});
-        s.validate(&ok, Path::new("/tmp")).unwrap();
-    }
-
-    #[test]
-    fn rejects_instance_that_does_not_match_schema() {
-        let s = EmbeddedSchema::from_schema_str(TRIVIAL_SCHEMA).unwrap();
-        let bad = serde_json::json!({"schema_version": "2.0"});
-        let err = s.validate(&bad, Path::new("/tmp")).unwrap_err();
-        assert!(matches!(
-            err,
-            VaultSourceError::EmbeddedMetadataInvalid { .. }
-        ));
-    }
-
-    fn candidate_stub() -> crate::discovery::ReleaseCandidate {
-        crate::discovery::ReleaseCandidate {
+    fn candidate_stub() -> ReleaseCandidate {
+        ReleaseCandidate {
             release_id: 42,
             work_id: 7,
             edition_name: None,
@@ -458,59 +317,84 @@ mod tests {
         }
     }
 
-    #[test]
-    fn cross_check_rejects_empty_embedded_releases_instead_of_defaulting_to_pass() {
-        // A schema-valid but empty `releases: []` must NOT silently bypass
-        // the work-identity / platform / language reconciliation and return
-        // Ok with zero findings; it fails closed with a typed mismatch.
-        let embedded = EmbeddedMetadata {
-            schema_version: "1.0".into(),
-            raw: serde_json::json!({ "releases": [] }),
-        };
-        let candidate = candidate_stub();
-        let err = cross_check(
-            &embedded,
-            &candidate,
-            &[],
-            None,
-            "primary",
-            &CrossCheckTolerance::default(),
-        )
-        .expect_err("empty releases must be rejected, not silently passed");
-        match err {
-            VaultSourceError::CatalogEmbeddedMismatch {
-                entity_type,
-                field,
-                entity_id,
-                ..
-            } => {
-                assert_eq!(entity_type, "release");
-                assert_eq!(field, "releases");
-                assert_eq!(entity_id, candidate.work_id);
-            }
-            other => panic!("expected CatalogEmbeddedMismatch, got {other:?}"),
+    fn embedded_with(canonical_id: &str, ids: &[(&str, &str, &str)]) -> EmbeddedMetadata {
+        EmbeddedMetadata {
+            canonical_id: Some(canonical_id.to_string()),
+            engine: Some("reallive".into()),
+            canonical_title: Some("X".into()),
+            identifiers: ids
+                .iter()
+                .map(|(s, k, v)| (s.to_string(), k.to_string(), v.to_string()))
+                .collect(),
+            languages: vec!["ja".into()],
+            raw: Value::Null,
         }
     }
 
     #[test]
-    fn cross_check_also_rejects_absent_embedded_releases() {
-        // A missing `releases` key is the same failure as an empty array.
-        let embedded = EmbeddedMetadata {
-            schema_version: "1.0".into(),
-            raw: serde_json::json!({}),
-        };
+    fn rejects_canonical_id_mismatch_as_identity_failure() {
+        let embedded = embedded_with("wrong-id.v1.ja", &[("vndb", "v", "v1234")]);
         let err = cross_check(
             &embedded,
             &candidate_stub(),
-            &[],
-            None,
-            "primary",
+            &[ExternalId {
+                source: "vndb".into(),
+                kind: "v".into(),
+                value: "v1234".into(),
+            }],
+            "right-id.v1.ja",
             &CrossCheckTolerance::default(),
         )
-        .expect_err("absent releases must be rejected, not silently passed");
-        assert!(matches!(
-            err,
-            VaultSourceError::CatalogEmbeddedMismatch { .. }
-        ));
+        .expect_err("canonical_id mismatch must fail closed");
+        match err {
+            VaultSourceError::CatalogEmbeddedMismatch { field, .. } => {
+                assert_eq!(field, "canonical_id");
+            }
+            other => panic!("expected canonical_id mismatch, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn rejects_disjoint_work_identifiers() {
+        let embedded = embedded_with("right-id.v1.ja", &[("vndb", "v", "v9999")]);
+        let err = cross_check(
+            &embedded,
+            &candidate_stub(),
+            &[ExternalId {
+                source: "vndb".into(),
+                kind: "v".into(),
+                value: "v1234".into(),
+            }],
+            "right-id.v1.ja",
+            &CrossCheckTolerance::default(),
+        )
+        .expect_err("disjoint identifiers must fail closed");
+        match err {
+            VaultSourceError::CatalogEmbeddedMismatch {
+                field, entity_type, ..
+            } => {
+                assert_eq!(entity_type, "work");
+                assert_eq!(field, "identifiers");
+            }
+            other => panic!("expected identifiers mismatch, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn accepts_matching_identity_with_no_findings() {
+        let embedded = embedded_with("right-id.v1.ja", &[("vndb", "v", "v1234")]);
+        let outcome = cross_check(
+            &embedded,
+            &candidate_stub(),
+            &[ExternalId {
+                source: "vndb".into(),
+                kind: "v".into(),
+                value: "v1234".into(),
+            }],
+            "right-id.v1.ja",
+            &CrossCheckTolerance::default(),
+        )
+        .unwrap();
+        assert!(outcome.findings.is_empty());
     }
 }

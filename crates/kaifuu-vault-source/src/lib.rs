@@ -6,13 +6,13 @@
 //!
 //! - opens `<vault-root>/catalog.db` read-only via `rusqlite` (`mode=ro`);
 //! - discovers candidate releases via the catalog;
-//! - resolves artifacts via the `artifacts/by-sha/<aa>/<bb>/<hash>.7z` path
-//!   layout, verifying sha256 and size;
+//! - resolves artifacts BY-ID via the
+//!   `artifacts/by-id/<canonical_id>/<canonical_id>.7z` content store
+//!   (no archive-sha identity or integrity coupling);
 //! - extracts archives in pure Rust via `sevenz-rust2`, rejecting unsafe
 //!   entries before any byte is written to scratch;
-//! - validates the embedded `_vault/metadata.json` against the vault's
-//!   `embedded-metadata.schema.json` (draft 2020-12) and cross-checks
-//!   selected fields against the catalog;
+//! - reads the embedded by-id `_vault/metadata.json` and cross-checks its
+//!   identity (`canonical_id`, work identifiers) against the catalog;
 //! - never writes to the vault, never touches `artifacts/by-name/`, never
 //!   modifies `catalog.db`.
 //!
@@ -22,8 +22,7 @@
 //! - [`ClaimQuery`], [`ReleaseCandidate`]
 //! - [`ResolvedArtifact`], [`ArtifactSelection`]
 //! - [`ExtractedTree`], [`ScratchPaths`]
-//! - [`EmbeddedMetadata`], [`EmbeddedSchema`], [`CrossCheckTolerance`],
-//!   [`CrossCheckOutcome`]
+//! - [`EmbeddedMetadata`], [`CrossCheckTolerance`], [`CrossCheckOutcome`]
 //! - [`CrossCheckFinding`]
 //! - [`LocalCorpusSource`], [`VaultSource`], [`MaterializeOptions`],
 //!   [`MaterializeResult`], [`LocalCorpusRegistry`],
@@ -49,8 +48,7 @@ pub mod source;
 pub use config::{GameIdSource, RetentionPolicy, ScratchConfig, VaultConfig};
 pub use discovery::{ClaimQuery, ReleaseCandidate};
 pub use error::{
-    SEMANTIC_VAULT_ARTIFACT_HASH_MISMATCH, SEMANTIC_VAULT_ARTIFACT_MISSING,
-    SEMANTIC_VAULT_ARTIFACT_SIZE_MISMATCH, SEMANTIC_VAULT_CATALOG_EMBEDDED_MISMATCH,
+    SEMANTIC_VAULT_ARTIFACT_MISSING, SEMANTIC_VAULT_CATALOG_EMBEDDED_MISMATCH,
     SEMANTIC_VAULT_CATALOG_OPEN_FAILED, SEMANTIC_VAULT_CATALOG_SCHEMA_UNSUPPORTED,
     SEMANTIC_VAULT_EMBEDDED_METADATA_INVALID, SEMANTIC_VAULT_EMBEDDED_METADATA_MISSING,
     SEMANTIC_VAULT_EXTRACTION_FAILED, SEMANTIC_VAULT_EXTRACTION_UNSAFE_PATH,
@@ -60,7 +58,7 @@ pub use error::{
 };
 pub use extraction::{ExtractedTree, ScratchPaths};
 pub use findings::CrossCheckFinding;
-pub use metadata::{CrossCheckOutcome, CrossCheckTolerance, EmbeddedMetadata, EmbeddedSchema};
+pub use metadata::{CrossCheckOutcome, CrossCheckTolerance, EmbeddedMetadata};
 pub use paths::{ExternalId, GameId, GameIdContext};
 pub use resolution::{ArtifactSelection, ResolvedArtifact};
 pub use retention::RunOutcome;

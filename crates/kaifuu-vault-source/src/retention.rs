@@ -58,9 +58,9 @@ fn promote_extracted_to_game(paths: &ScratchPaths) -> std::io::Result<()> {
     Ok(())
 }
 
-/// Look up the previously-cached artifact sha256 for a game id, if the
+/// Look up the previously-cached artifact `canonical_id` for a game id, if the
 /// `KeepExtractedForGame` policy left one behind.
-pub fn read_last_artifact_sha(marker: &Path) -> Option<String> {
+pub fn read_last_canonical_id(marker: &Path) -> Option<String> {
     std::fs::read_to_string(marker)
         .ok()
         .map(|s| s.trim().to_string())
@@ -68,11 +68,11 @@ pub fn read_last_artifact_sha(marker: &Path) -> Option<String> {
 
 /// Write the marker file for a freshly-materialised artifact under the
 /// `KeepExtractedForGame` policy.
-pub fn write_last_artifact_sha(marker: &Path, sha: &str) -> std::io::Result<()> {
+pub fn write_last_canonical_id(marker: &Path, canonical_id: &str) -> std::io::Result<()> {
     if let Some(p) = marker.parent() {
         std::fs::create_dir_all(p)?;
     }
-    std::fs::write(marker, sha.as_bytes())
+    std::fs::write(marker, canonical_id.as_bytes())
 }
 
 #[cfg(test)]
@@ -140,30 +140,30 @@ mod tests {
     }
 
     #[test]
-    fn keep_extracted_for_game_reuses_existing_extracted_tree_when_artifact_sha_matches() {
+    fn keep_extracted_for_game_reuses_existing_extracted_tree_when_canonical_id_matches() {
         let td = tempdir().unwrap();
         let p = setup_run(td.path());
-        let sha = "deadbeef".repeat(8);
-        write_last_artifact_sha(&p.last_artifact_sha_marker, &sha).unwrap();
+        let cid = "hello-galaxy.v1234.v1-0.ja";
+        write_last_canonical_id(&p.last_canonical_id_marker, cid).unwrap();
         assert_eq!(
-            read_last_artifact_sha(&p.last_artifact_sha_marker).as_deref(),
-            Some(sha.as_str())
+            read_last_canonical_id(&p.last_canonical_id_marker).as_deref(),
+            Some(cid)
         );
     }
 
     #[test]
-    fn keep_extracted_for_game_reextracts_when_artifact_sha_changes() {
+    fn keep_extracted_for_game_reextracts_when_canonical_id_changes() {
         let td = tempdir().unwrap();
         let p = setup_run(td.path());
-        write_last_artifact_sha(&p.last_artifact_sha_marker, "old_sha").unwrap();
+        write_last_canonical_id(&p.last_canonical_id_marker, "old.v1.ja").unwrap();
         assert_eq!(
-            read_last_artifact_sha(&p.last_artifact_sha_marker).as_deref(),
-            Some("old_sha")
+            read_last_canonical_id(&p.last_canonical_id_marker).as_deref(),
+            Some("old.v1.ja")
         );
-        write_last_artifact_sha(&p.last_artifact_sha_marker, "new_sha").unwrap();
+        write_last_canonical_id(&p.last_canonical_id_marker, "new.v1.ja").unwrap();
         assert_eq!(
-            read_last_artifact_sha(&p.last_artifact_sha_marker).as_deref(),
-            Some("new_sha")
+            read_last_canonical_id(&p.last_canonical_id_marker).as_deref(),
+            Some("new.v1.ja")
         );
     }
 }
