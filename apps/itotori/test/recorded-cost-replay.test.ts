@@ -88,6 +88,17 @@ function bundleWith(
       [keyFor(request)]: {
         content: "captured-response",
         finishReason: "stop",
+        // genaudit2-01 — recorded responses carry the REAL captured token
+        // counts (a capture of a real call always does). Mirror the
+        // prompt/completion counts the usageResponseJson records so the
+        // bundle is internally consistent. There is no char/4 fallback any
+        // more: omitting this field is now a construction-time schema error.
+        tokenUsage: {
+          tokenCountSource: "provider_reported",
+          promptTokens: 4,
+          completionTokens: 4,
+          totalTokens: 8,
+        },
         cost,
         // ITOTORI-230 — canonical alpha posture stand-in; the cost
         // replay test asserts cost shape, not posture content. A real
@@ -403,6 +414,101 @@ describe("ITOTORI-228 — RecordedModelProvider replays captured real cost", () 
     expect(() => new RecordedModelProvider({ bundle: malformed })).toThrow(
       RecordedBundleSchemaMismatchError,
     );
+  });
+
+  it("genaudit2-01: refuses a recorded response that lacks a REAL token count (no char/4 laundering)", () => {
+    const request = baseRequest();
+    // A well-formed v3 response EXCEPT for its tokenUsage. Helper lets each
+    // case mutate only the token field so we prove the token guard fires
+    // independently of cost / posture / usageResponseJson validation.
+    const malformedWith = (tokenUsage: unknown): RecordedProviderBundle =>
+      ({
+        schemaVersion: RECORDED_PROVIDER_BUNDLE_SCHEMA_VERSION,
+        bundleId: "missing-real-token-count-bundle",
+        capturedProviderFamily: "openrouter" as const,
+        capturedProviderName: "openrouter:missing-token-count",
+        capturedRequestedModelId: request.modelId,
+        capturedProviderId: request.providerId,
+        capturedActualModelId: request.modelId,
+        responses: {
+          [keyFor(request)]: {
+            content: "captured-response",
+            finishReason: "stop",
+            cost: ZERO_COST,
+            routingPosture: {
+              order: [request.providerId],
+              allow_fallbacks: false,
+              data_collection: "deny",
+              zdr: true,
+              require_parameters: true,
+            },
+            usageResponseJson: { _synthetic_zero_cost: true },
+            ...(tokenUsage === undefined ? {} : { tokenUsage }),
+          },
+        },
+      }) as unknown as RecordedProviderBundle;
+
+    // 1. tokenUsage omitted entirely — pre-genaudit2-01 this silently fell
+    //    back to defaultTokenUsage() → a char/4 estimate tagged
+    //    `deterministic_counter`. Now a construction-time schema error.
+    expect(() => new RecordedModelProvider({ bundle: malformedWith(undefined) })).toThrow(
+      RecordedBundleSchemaMismatchError,
+    );
+
+    // 2. The exact laundering shape the old fallback produced: a char/4
+    //    estimate dressed up as `deterministic_counter`. It must NOT be
+    //    accepted just because its provenance string is whitelisted — but
+    //    here we prove the path that produced it is gone by rejecting a
+    //    response that carries an honestly-tagged `estimated` count: a
+    //    non-real provenance is incomplete evidence.
+    expect(
+      () =>
+        new RecordedModelProvider({
+          bundle: malformedWith({
+            tokenCountSource: "estimated",
+            promptTokens: 3,
+            completionTokens: 4,
+            totalTokens: 7,
+          }),
+        }),
+    ).toThrow(RecordedBundleSchemaMismatchError);
+
+    // 3. `unknown` provenance (provider omitted the usage block) is likewise
+    //    rejected — not coerced to a count.
+    expect(
+      () =>
+        new RecordedModelProvider({
+          bundle: malformedWith({
+            tokenCountSource: "unknown",
+            promptTokens: 3,
+            completionTokens: 4,
+          }),
+        }),
+    ).toThrow(RecordedBundleSchemaMismatchError);
+
+    // 4. Real provenance but a missing completion count is still incomplete
+    //    evidence — no `?? 0` / `?? estimate` coercion survives.
+    expect(
+      () =>
+        new RecordedModelProvider({
+          bundle: malformedWith({ tokenCountSource: "provider_reported", promptTokens: 3 }),
+        }),
+    ).toThrow(RecordedBundleSchemaMismatchError);
+  });
+
+  it("genaudit2-01: replays the captured REAL token count verbatim (the only accepted path)", async () => {
+    // A bundle that carries genuine provider-reported counts constructs and
+    // replays them byte-for-byte — proving the fix removed the laundered
+    // fallback WITHOUT breaking the real recorded-replay contract.
+    const request = baseRequest();
+    const provider = new RecordedModelProvider({ bundle: bundleWith(request, ZERO_COST) });
+    const result = await provider.invoke(request);
+    expect(result.providerRun.tokenUsage).toEqual({
+      tokenCountSource: "provider_reported",
+      promptTokens: 4,
+      completionTokens: 4,
+      totalTokens: 8,
+    });
   });
 
   it("refuses a v3 bundle whose usageResponseJson.cost mismatches the captured ProviderCost", () => {

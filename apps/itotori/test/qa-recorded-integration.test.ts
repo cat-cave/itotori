@@ -235,6 +235,15 @@ describe("QaAgent + RecordedModelProvider integration", () => {
             zdr: true,
             require_parameters: true,
           },
+          // genaudit2-01 — bundle-miss test; the response is well-formed
+          // (real captured counts) so construction passes and the miss is
+          // surfaced at invoke, not masked by a token-shape error.
+          tokenUsage: {
+            tokenCountSource: "provider_reported",
+            promptTokens: 1024,
+            completionTokens: 256,
+            totalTokens: 1280,
+          },
           // ITOTORI-232 — bundle-miss test; sentinel-shaped usage.
           usageResponseJson: { _synthetic_qa_miss_test_bundle: true },
         },

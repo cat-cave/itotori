@@ -217,6 +217,14 @@ describe("ITOTORI-220 — (modelId, providerId) pair contract", () => {
           content: "ok",
           finishReason: "stop",
           cost: ZERO_COST,
+          // genaudit2-01 — pair-contract test; well-formed real counts so
+          // construction passes and the assertion is on providerId routing.
+          tokenUsage: {
+            tokenCountSource: "provider_reported",
+            promptTokens: 3,
+            completionTokens: 1,
+            totalTokens: 4,
+          },
           // ITOTORI-230 — pair-contract test; canonical alpha posture
           // stand-in (no real LIVE call ever produced these bytes).
           routingPosture: {

@@ -260,6 +260,14 @@ describe("SpeakerLabelAgent + RecordedModelProvider integration", () => {
             zdr: true,
             require_parameters: true,
           },
+          // genaudit2-01 — bundle-miss test; well-formed real counts so
+          // construction passes and the miss surfaces at invoke.
+          tokenUsage: {
+            tokenCountSource: "provider_reported",
+            promptTokens: 1024,
+            completionTokens: 256,
+            totalTokens: 1280,
+          },
           // ITOTORI-232 — bundle-miss test; sentinel usage.
           usageResponseJson: { _synthetic_speaker_label_miss_test_bundle: true },
         },

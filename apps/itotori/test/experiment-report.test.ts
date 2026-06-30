@@ -345,6 +345,14 @@ function recordedProviderForCell(
       content: "replayed-experiment-content",
       finishReason: "stop",
       cost,
+      // genaudit2-01 — recorded responses carry the REAL captured token
+      // counts (a capture of a real call always does); no char/4 fallback.
+      tokenUsage: {
+        tokenCountSource: "provider_reported",
+        promptTokens: 4,
+        completionTokens: 4,
+        totalTokens: 8,
+      },
       routingPosture: {
         order: [forCell.pair.providerId],
         allow_fallbacks: true,

@@ -42,6 +42,7 @@
 import { createHash } from "node:crypto";
 import { assertProviderInvocationSupported } from "./capability-guard.js";
 import { ZERO_COST } from "./cost.js";
+import { isRealTokenCountSource } from "./token-accounting.js";
 import {
   ModelProviderError,
   type JsonObject,
@@ -83,7 +84,9 @@ import { createProviderRunId } from "./types.js";
  * annotations ride naturally on the EXISTING required v3 shapes:
  *
  *   - Read/write tokens land on `RecordedProviderResponse.tokenUsage`
- *     (already an optional but read-by-replay `TokenUsage`).
+ *     (a required, replay-surfaced `TokenUsage`; genaudit2-01 made the
+ *     field required — its REAL prompt/completion counts are validated at
+ *     construction and the cache annotations ride on the same object).
  *   - The cache discount lands on `RecordedProviderResponse.cost`
  *     (already required v1 `ProviderCost`).
  *
@@ -108,8 +111,20 @@ export type RecordedProviderResponse = {
   content: string | null;
   toolCalls?: ModelToolCall[];
   finishReason?: string;
-  /** Provider-reported token usage; defaults to a deterministic counter. */
-  tokenUsage?: TokenUsage;
+  /**
+   * genaudit2-01 — the original call's REAL token usage, mirrored verbatim.
+   * Required: a recorded bundle is a capture of a real provider call, so a
+   * response that lacks real prompt/completion counts is incomplete
+   * evidence, not a recoverable case. There is intentionally NO synthesis
+   * fallback: the pre-genaudit2-01 code substituted a char/4 estimate
+   * (`Math.ceil(len/4)`) tagged `deterministic_counter` here, which the
+   * central token guard (`token-accounting.ts`, `assertReportedTokenUsage`)
+   * whitelists as a REAL count — laundering the exact estimate that guard
+   * exists to forbid. `assertBundleSchema` now rejects any response whose
+   * `tokenUsage` is absent, missing prompt/completion counts, or tagged
+   * with a non-real provenance (`estimated`/`unknown`) at construction.
+   */
+  tokenUsage: TokenUsage;
   /**
    * ITOTORI-228 — the original LIVE call's billed cost (USD micros),
    * mirrored verbatim from `usage.cost` on the captured response. After
@@ -349,7 +364,12 @@ export class RecordedModelProvider implements ModelProvider {
       errorClasses: [],
       fallbackUsed: false,
       fallbackPlan: request.fallbackModels ?? [requestedModelId],
-      tokenUsage: response.tokenUsage ?? defaultTokenUsage(request, response.content),
+      // genaudit2-01 — surface the captured REAL counts verbatim. There is
+      // NO char/4 fallback: `assertBundleSchema` already proved (at
+      // construction) that `response.tokenUsage` carries real prompt/
+      // completion counts with a real provenance, so a missing count is a
+      // typed construction failure, never a laundered estimate here.
+      tokenUsage: response.tokenUsage,
       // ITOTORI-228 — mirror the captured LIVE cost verbatim. The bundle
       // schema makes `response.cost` non-optional; pre-ITOTORI-228 files
       // would have already failed `assertBundleSchema` at construction.
@@ -422,28 +442,6 @@ export function recordedBundleKey(inputs: RecordedBundleKeyInputs): string {
     [inputs.modelId, inputs.providerId, inputs.promptHash, inputs.inputClassification].join(":"),
   );
   return `sha256:${hash.digest("hex")}`;
-}
-
-function defaultTokenUsage(request: ModelInvocationRequest, content: string | null): TokenUsage {
-  const promptText = request.messages
-    .map((message) => (typeof message.content === "string" ? message.content : ""))
-    .join(" ");
-  const promptTokens = approximateTokens(promptText);
-  const completionTokens = approximateTokens(content ?? "");
-  return {
-    tokenCountSource: "deterministic_counter",
-    promptTokens,
-    completionTokens,
-    totalTokens: promptTokens + completionTokens,
-  };
-}
-
-function approximateTokens(text: string): number {
-  const normalized = text.trim();
-  if (normalized.length === 0) {
-    return 0;
-  }
-  return Math.max(1, Math.ceil(normalized.length / 4));
 }
 
 /**
@@ -548,6 +546,14 @@ function assertBundleSchema(bundle: RecordedProviderBundle): void {
       usageJson as JsonObject,
       cost as ProviderCost,
     );
+    // genaudit2-01 — token usage is required evidence, validated like cost /
+    // routingPosture / usageResponseJson. A recorded bundle is a capture of a
+    // real call: its token counts MUST be real (provider_reported or a genuine
+    // deterministic count). Reject a response that omits them, omits the
+    // prompt/completion counts, or tags them with a non-real provenance
+    // (`estimated` / `unknown`) — that is incomplete evidence, not something to
+    // paper over with a char/4 estimate.
+    assertTokenUsageShape(bundle.bundleId, key, (response as { tokenUsage?: unknown }).tokenUsage);
   }
   // Touch ZERO_COST so the import survives tree-shaking; documents the
   // canonical zero-cost shape callers should reuse on genuinely-free
@@ -599,6 +605,44 @@ function assertResponseCostShape(bundleId: string, key: string, cost: unknown): 
       bundleId,
       `response under key '${key}' is costKind='zero' but amountUsd=${candidate.amountUsd} (zero-cost responses must have amountUsd "0")`,
     );
+  }
+}
+
+/**
+ * genaudit2-01 — validate the required REAL `tokenUsage` on a recorded
+ * response. A recorded bundle replays a real captured call, so its token
+ * counts must come from real provider output (`provider_reported`) or a
+ * genuine deterministic count of the recorded content
+ * (`deterministic_counter`) — never a char/4 estimate. Provenance is checked
+ * against `isRealTokenCountSource`, the SAME whitelist the central token
+ * guard (`token-accounting.ts`) enforces, so this construction-time check and
+ * the persist-time `assertReportedTokenUsage` can never disagree. Any
+ * deviation (missing usage, missing prompt/completion count, non-finite
+ * count, or `estimated` / `unknown` provenance) is a typed
+ * `RecordedBundleSchemaMismatchError`, not a synthesis-with-fallback site.
+ */
+function assertTokenUsageShape(bundleId: string, key: string, tokenUsage: unknown): void {
+  if (tokenUsage === undefined || tokenUsage === null || typeof tokenUsage !== "object") {
+    throw new RecordedBundleSchemaMismatchError(
+      bundleId,
+      `response under key '${key}' is missing required field 'tokenUsage' (genaudit2-01 — a recorded bundle is a capture of a real call; its REAL prompt/completion token counts are required evidence, never synthesised from a char/4 estimate)`,
+    );
+  }
+  const candidate = tokenUsage as Partial<TokenUsage>;
+  if (!isRealTokenCountSource(candidate.tokenCountSource as TokenUsage["tokenCountSource"])) {
+    throw new RecordedBundleSchemaMismatchError(
+      bundleId,
+      `response under key '${key}' tokenUsage has non-real tokenCountSource ${JSON.stringify(candidate.tokenCountSource)} (genaudit2-01 — recorded token counts must be 'provider_reported' or a genuine 'deterministic_counter'; 'estimated' / 'unknown' is incomplete evidence and is rejected, never laundered as a real count)`,
+    );
+  }
+  for (const field of ["promptTokens", "completionTokens"] as const) {
+    const value = candidate[field];
+    if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+      throw new RecordedBundleSchemaMismatchError(
+        bundleId,
+        `response under key '${key}' tokenUsage.${field} is ${JSON.stringify(value)} (genaudit2-01 — required finite non-negative real count; a recorded bundle must carry the actual captured ${field}, not a default or estimate)`,
+      );
+    }
   }
 }
 
