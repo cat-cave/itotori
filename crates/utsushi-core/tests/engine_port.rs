@@ -1223,7 +1223,7 @@ fn runtime_request_debug_does_not_leak_cancellation_or_replay_log() {
 }
 
 // ===================================================================
-// EnginePortAdapter bridge to legacy RuntimeAdapter
+// EnginePortAdapter bridge onto the RuntimeAdapter surface
 // ===================================================================
 
 #[test]
@@ -1265,6 +1265,59 @@ fn engine_port_adapter_trace_runs_lifecycle_and_returns_sink_shaped_observations
             .any(|entry| entry["sink"] == "text_surface")
     );
     assert_eq!(value["shutdownStatus"], "clean");
+}
+
+#[test]
+fn engine_port_adapter_capture_hydrates_managed_artifact_root_from_raw_path() {
+    // Regression guard for genaudit1-03: the bridge must hydrate the
+    // managed artifact root from the `RuntimeRequest`'s raw `&Path` so a
+    // capture through the `RuntimeAdapter` surface actually contains and
+    // writes its artifact — not fail closed with `ArtifactRootMissing`.
+    let (_input_dir, input_root) = build_input_root();
+    let artifact_dir = TempDir::new().expect("artifact tempdir");
+    let adapter = EnginePortAdapter::new(ReferencePort::new()).expect("adapter builds");
+    // The caller hands the adapter only a raw, unprepared `&Path`; the
+    // bridge is responsible for wrapping it into a managed root and
+    // preparing it, exactly like every other RuntimeAdapter implementation.
+    let request = RuntimeRequest::new(&input_root).with_artifact_root(artifact_dir.path());
+
+    let value: Value = adapter
+        .capture(&request)
+        .expect("capture via adapter succeeds");
+    assert_eq!(value["operation"], "capture");
+    let captures = value["captures"].as_array().expect("captures array");
+    let artifact_uri = captures
+        .first()
+        .and_then(|capture| capture["artifactUri"].as_str())
+        .expect("capture artifact uri present");
+
+    let resolved = RuntimeArtifactRoot::new(artifact_dir.path())
+        .artifact_path(artifact_uri)
+        .expect("artifact uri resolves under managed root");
+    assert!(resolved.starts_with(artifact_dir.path()));
+    assert!(
+        resolved.exists(),
+        "bridge must have written the capture artifact: {resolved:?}"
+    );
+}
+
+#[test]
+fn engine_port_adapter_capture_without_artifact_root_fails_closed() {
+    // The bridge keeps the fail-closed guarantee: a capture with no
+    // artifact root cannot enforce containment, so the runner rejects it
+    // with `ArtifactRootMissing` rather than writing unmanaged output.
+    let (_input_dir, input_root) = build_input_root();
+    let adapter = EnginePortAdapter::new(ReferencePort::new()).expect("adapter builds");
+    let request = RuntimeRequest::new(&input_root);
+
+    let error = adapter
+        .capture(&request)
+        .expect_err("capture without a managed artifact root must fail closed");
+    let rendered = format!("{error}");
+    assert!(
+        rendered.contains("artifact root"),
+        "expected an artifact-root-missing failure, got: {rendered}"
+    );
 }
 
 // ===================================================================

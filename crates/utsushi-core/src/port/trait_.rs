@@ -2,11 +2,11 @@
 //!
 //! Every Utsushi engine port crate implements `EnginePort` on a stateful
 //! struct that owns the live engine handle. The trait is intentionally
-//! lifecycle-shaped (launch / observe / capture / shutdown), not
-//! operation-shaped like the legacy `RuntimeAdapter`. The runner in
-//! `super::runner` orchestrates the lifecycle on behalf of the legacy
-//! `RuntimeAdapter` surface, so existing CLI consumers do not need to
-//! change.
+//! lifecycle-shaped (launch / observe / capture / shutdown), distinct from
+//! the operation-shaped [`RuntimeAdapter`](crate::RuntimeAdapter) consumer
+//! surface. The runner in `super::runner` drives the lifecycle behind a
+//! [`super::EnginePortAdapter`] so an engine-authored port registers on the
+//! `RuntimeAdapter` surface that CLI consumers already use.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -24,9 +24,10 @@ use super::runner::RunnerCancellation;
 
 /// Stable identifier for a "moment" in a port's playback. Engine ports
 /// translate the id into whatever scene/scenario/frame coordinate is
-/// natural. UTSUSHI-104 will define the global moment index; for now the
-/// engine port template only needs an opaque identifier carrier so the
-/// `jump` method has a typed argument.
+/// natural. The substrate models a moment as an opaque, port-defined
+/// identifier so the `jump` method has a typed argument; the cross-engine
+/// moment index and jump planner (UTSUSHI-104) consume this identifier
+/// without changing its shape.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct MomentId {
     pub value: String,
@@ -87,7 +88,7 @@ impl PortEnv {
 /// Request handed to every lifecycle method.
 #[derive(Clone)]
 pub struct PortRequest<'a> {
-    /// Input root (mirrors the legacy `RuntimeRequest::input_root`).
+    /// Input root (mirrors [`crate::RuntimeRequest::input_root`]).
     pub input_root: &'a Path,
 
     /// Managed artifact root for capture output. Required for capture.
@@ -107,8 +108,8 @@ pub struct PortRequest<'a> {
     /// Run id supplied by the runner.
     pub run_id: &'a str,
 
-    /// Operation the runner is fulfilling on behalf of the legacy
-    /// `RuntimeAdapter`. Lets a port branch on Trace vs Capture vs
+    /// Operation the runner is fulfilling on behalf of the
+    /// `RuntimeAdapter` surface. Lets a port branch on Trace vs Capture vs
     /// SmokeValidation without separate methods.
     pub operation: RuntimeOperation,
 }
@@ -171,8 +172,8 @@ pub struct CaptureOutcome {
     pub artifact_uri: String,
     /// Materialised path on disk, if the port wrote one.
     pub artifact_path: Option<PathBuf>,
-    /// Optional textual summary the runner forwards into the legacy
-    /// runtime report.
+    /// Optional textual summary the runner forwards into the runtime
+    /// report.
     pub summary: Option<String>,
 }
 

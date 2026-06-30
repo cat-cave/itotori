@@ -9,8 +9,8 @@
 //!    shutdown plus optional `jump`).
 //! 3. [`Runner`] — orchestrates manifest validation, cancellation,
 //!    artifact-root containment, and observation re-validation.
-//! 4. [`EnginePortAdapter`] — a shim that lets an `EnginePort` participate
-//!    in the legacy [`RuntimeAdapter`](crate::RuntimeAdapter) registry.
+//! 4. [`EnginePortAdapter`] — a bridge that lets an `EnginePort` register
+//!    on the [`RuntimeAdapter`](crate::RuntimeAdapter) registry surface.
 //! 5. [`conformance`] — the ABI conformance harness engine port crates
 //!    use in their integration tests.
 //!
@@ -49,15 +49,15 @@ use std::sync::Mutex;
 use serde_json::{Value, json};
 
 use crate::{
-    ApproximationTier, RuntimeAdapter, RuntimeAdapterDescriptor, RuntimeCapability,
-    RuntimeCapabilityClass, RuntimeCapabilityContract, RuntimeFeatureSupport, RuntimeOperation,
-    RuntimePlaybackFeature, RuntimeRequest, UtsushiResult, runtime_artifact_uri,
+    ApproximationTier, RuntimeAdapter, RuntimeAdapterDescriptor, RuntimeArtifactRoot,
+    RuntimeCapability, RuntimeCapabilityClass, RuntimeCapabilityContract, RuntimeFeatureSupport,
+    RuntimeOperation, RuntimePlaybackFeature, RuntimeRequest, UtsushiResult, runtime_artifact_uri,
 };
 
-/// Adapter shim that lets an `EnginePort` participate in the legacy
-/// `RuntimeAdapterRegistry`. The shim hides the generic and serialises
-/// access through a `Mutex` so multiple `RuntimeAdapter` calls can share
-/// one port instance.
+/// Bridge that lets an `EnginePort` register on the
+/// `RuntimeAdapterRegistry`. It hides the port's generic parameter behind
+/// the `dyn RuntimeAdapter` object and serialises access through a `Mutex`
+/// so multiple `RuntimeAdapter` calls can share one port instance.
 pub struct EnginePortAdapter<P: EnginePort + 'static> {
     port: Mutex<P>,
     runner: Runner,
@@ -94,22 +94,30 @@ impl<P: EnginePort + 'static> EnginePortAdapter<P> {
             .map_err(|error| -> Box<dyn std::error::Error> { error.to_string().into() })?;
         let run_id = format!("{}-{}", P::MANIFEST.id, operation.as_str());
         let cancellation = request.cancellation.clone().unwrap_or_default();
-        let port_request = PortRequest::new(request.input_root, &run_id, operation)
-            .with_cancellation(cancellation);
-        let port_request = if let Some(vfs) = request.vfs.clone() {
-            port_request.with_vfs(vfs)
-        } else {
-            port_request
+        // The `RuntimeAdapter` surface carries the artifact root as a raw
+        // `&Path`; the port lifecycle works against the managed
+        // `RuntimeArtifactRoot` so capture output is contained and
+        // audit-validated. Wrap the path and prepare the managed root here so
+        // the port receives a fully managed root — the same idiom every other
+        // `RuntimeAdapter` implementation uses. When no artifact root is
+        // supplied the managed root stays `None` and the runner fails closed on
+        // Capture/SmokeValidation with `EnginePortError::ArtifactRootMissing`.
+        let managed_artifact_root = match request.artifact_root {
+            Some(path) => {
+                let root = RuntimeArtifactRoot::new(path);
+                root.prepare()?;
+                Some(root)
+            }
+            None => None,
         };
-        // Note: this Slice A shim does not yet hydrate
-        // `port_request.artifact_root`. The legacy `RuntimeRequest` carries
-        // only a `&Path`, while `PortRequest` expects a managed
-        // `RuntimeArtifactRoot`. The fixture adoption in Slice B teaches
-        // the legacy types how to hand one off; UTSUSHI-104+ will widen
-        // `RuntimeRequest` to carry a managed root directly. Until then the
-        // runner rejects Capture/SmokeValidation requests that reach it
-        // without a managed root (`EnginePortError::ArtifactRootMissing`)
-        // rather than silently skipping capture containment.
+        let mut port_request = PortRequest::new(request.input_root, &run_id, operation)
+            .with_cancellation(cancellation);
+        if let Some(vfs) = request.vfs.clone() {
+            port_request = port_request.with_vfs(vfs);
+        }
+        if let Some(root) = managed_artifact_root.as_ref() {
+            port_request = port_request.with_artifact_root(root);
+        }
         let runner_outcome = match operation {
             RuntimeOperation::Trace => self.runner.run_trace(&mut *port, &port_request),
             RuntimeOperation::Capture => self.runner.run_capture(&mut *port, &port_request),
@@ -194,10 +202,9 @@ fn derive_capability_contract(
     capability_class: RuntimeCapabilityClass,
 ) -> RuntimeCapabilityContract {
     let mut features = Vec::new();
-    // Translate manifest capabilities into the legacy
-    // RuntimeFeatureSupport list. The mapping is mechanical; engine
-    // crates that need a richer narrative can subclass the descriptor
-    // via the bridge in Slice B.
+    // Translate manifest capabilities into the RuntimeFeatureSupport list.
+    // The mapping is mechanical; engine crates that need a richer narrative
+    // build their descriptor directly rather than through this bridge.
     if manifest.capabilities.contains(&PortCapability::Observe) {
         features.push(RuntimeFeatureSupport::supported(
             RuntimePlaybackFeature::StaticTrace,
@@ -245,7 +252,7 @@ fn runner_outcome_to_value(
 ) -> UtsushiResult<Value> {
     // Surface every drained sink emission as a typed JSON payload. The
     // engine-port adapter's wire form is "list of sink-shaped observations"
-    // rather than the legacy hook-envelope; each entry
+    // rather than a single hook-envelope; each entry
     // names the sink kind so downstream consumers can route on it without
     // running the full RuntimeEvidenceReportV02 validator.
     //
