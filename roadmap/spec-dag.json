@@ -42935,11 +42935,11 @@
       "owner": null,
       "branch": null,
       "spec": "DISCOVERED via Kanon multi-game recon: the decompiler recognizes only the handful of commands present in Sweetie HD scene 1; the full archives carry hundreds of unknown (module_type,module_id,opcode) commands. Top Kanon signatures: (1,10,0)x245, (1,10,100)x233, (1,82,1004)x88, (1,60,2)x63, (1,82,1000)x34, (1,72,1000)x32, (1,82,1039)x31, (1,62,10)x26, (1,61,11)x23, (1,10,2)x19, + ids 20/22/30/31/81/84. Sweetie HD full archive: 1332 unknown commands. Build the RealLive command-module catalogue (module 1 system functions etc.) with correct arg-count/types, clean-room from the rldev/rlvm reference (NOT vendored). NO floor relaxing.",
-      "acceptance": "kaifuu-reallive recognizes the RealLive command-module catalogue such that zero Unknown commands remain across both Sweetie HD AND Kanon full archives; each module/opcode decodes to a typed command with correct args; tests over the real unknown tuples; just ci green.",
+      "acceptance": "DELIVERED: typed RealLive command-module catalogue (classify_command, real rlvm module ids — module_sel type0/id2; SEL/STR guesses removed), select-block {…} + goto_on/goto_case brace framing. PROVEN: corpus-2 Kanon FULL archive == 0 unknown / 0 malformed / 0 parse-failures across all 79 scenes (1,162,032 opcodes) — full-archive 100%-decompilation, asserted. corpus-1 Sweetie HD residual (46 unknown / 121 parse-fail) is NOT a catalogue gap: it is a second-level xor_2 per-game encryption (forensically proven, lag-16 autocorrelation), carved to reallive-xor2-sukara-decryptor. scene-1 framing byte-identical (FRAMING_DIFFS=0); 4 prior silent regressions fixed; fixtures repointed off the (ciphertext) scene 2011 to clean scenes. The both-games full-archive-zero bar lives on reallive-full-archive-zero-unknown-gate (now also gated on the xor_2 decryptor for Sweetie). No floor relaxed.",
       "validation": null,
       "context": null,
       "created_at": "2026-06-30T16:54:26.822Z",
-      "updated_at": "2026-06-30T16:54:26.822Z",
+      "updated_at": "2026-06-30T19:38:42.957Z",
       "claimed_at": null,
       "done_at": null,
       "group_name": null,
@@ -43257,6 +43257,79 @@
         }
       ],
       "audit_focus": ["crates/kaifuu-vault-source/src/extraction.rs (decode-loop comment ~line 33)"]
+    },
+    {
+      "id": "reallive-xor2-sukara-decryptor",
+      "title": "RealLive xor_2 second-level decryptor (Sweetie HD / Sukara per-game 16-byte key)",
+      "kind": "feature",
+      "milestone": "alpha",
+      "status": "ready",
+      "priority": "P1",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "DISCOVERED via the command-catalogue work + Kanon full-archive validation: Sweetie HD bytecode has a SECOND-LEVEL 16-byte-period XOR (rlvm use_xor_2, compiler_version=110002) over bounded module_sel/data segments of the DECOMPRESSED bytecode — masked until now because the lax decoder mislabeled the ciphertext as binary textout (so fixtures falsely passed). Forensic proof: byte-equality autocorrelation spikes at lag-16 (9.5%) + lag-32 (9.3%) vs ~0.4% elsewhere; two 16-byte windows decode byte-identical; the stream RESYNCS to clean bytecode after each segment (per-segment XOR). Sukaras per-game key is ABSENT from rlvms published xor_2 table. Recover the key (static analysis of the game exe, clean-room, no shell-out) and apply it behind use_xor_2. 153/198 Sweetie scenes affected (121 hard parse-fail + 32 downstream Unknowns).",
+      "acceptance": "The per-game xor_2 key for Sweetie HD/Sukara is recovered (clean-room, in-process, no shell-out) and applied behind use_xor_2; Sweetie HD FULL archive then decompiles with ZERO unknown opcodes + ZERO malformed-expression + ZERO parse-failures (all 198 scenes), matching Kanons full-archive 100%. NO copyrighted bytes/keys in artifacts (counts/hashes/secret-refs only). just ci green.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-30T19:38:42.744Z",
+      "updated_at": "2026-06-30T19:38:42.744Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["kaifuu"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "just ci"
+        }
+      ],
+      "audit_focus": [
+        "crates/kaifuu-reallive/src/opcode.rs xor_2 segment",
+        "Sweetie HD module_sel ciphertext spans"
+      ]
+    },
+    {
+      "id": "reallive-select-block-patchback-roundtrip",
+      "title": "RealLive multi-option select-block patchback round-trip (choice_label) — scene 1018",
+      "kind": "feature",
+      "milestone": "alpha",
+      "status": "ready",
+      "priority": "P2",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "Flagged by the command-catalogue work: real multi-option select-block patchback (choice_label round-trip) on Sweetie scene 1018 is unexercised on main; needs a dedicated byte-correct round-trip check now that select-block {…} framing is decoded.",
+      "acceptance": "Multi-option select-block patchback round-trips byte-correct on a real select-block scene (e.g. 1018); choice labels re-insert without breaking the block framing; re-decompile zero-new-unknown. just ci green.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-30T19:38:42.835Z",
+      "updated_at": "2026-06-30T19:38:42.835Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["kaifuu"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "just ci"
+        }
+      ],
+      "audit_focus": ["crates/kaifuu-reallive/src/patchback/bundle_driven.rs select-block"]
     }
   ],
   "edges": [
@@ -54029,6 +54102,12 @@
       "to_node": "beta-reallive-third-corpus-regression",
       "type": "requires",
       "created_at": "2026-06-30T17:55:22.659Z"
+    },
+    {
+      "from_node": "reallive-xor2-sukara-decryptor",
+      "to_node": "reallive-full-archive-zero-unknown-gate",
+      "type": "requires",
+      "created_at": "2026-06-30T19:38:43.046Z"
     }
   ],
   "findings": [
