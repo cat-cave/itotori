@@ -40183,11 +40183,11 @@
       "owner": null,
       "branch": null,
       "spec": "suite/scripts/localize-project/run.mjs:1194-1229; suite/scripts/localize-project/run.test.mjs:354-459",
-      "acceptance": "Finding is addressed and verified.",
+      "acceptance": "A node --test case in suite/scripts/localize-project/run.test.mjs pre-seeds a runDir/provider-runs/<id>/provider-run.json fixture (mirroring writeProviderProofFixture) and asserts feedback.cost.billedMicrosUsd, billedUsd, and zdrEnforcedCount are summed only from cost entries where costKind==='billed', AND that the cost.non_billed_live_success blocking finding fires when a live success carries no billed cost. Test runs green; just ci green.",
       "validation": null,
       "context": null,
       "created_at": "2026-06-30T10:18:47.619Z",
-      "updated_at": "2026-06-30T10:18:47.619Z",
+      "updated_at": "2026-06-30T10:20:41.064Z",
       "claimed_at": null,
       "done_at": null,
       "group_name": null,
@@ -40198,8 +40198,21 @@
       "blocked_reason": null,
       "blocked_owner": null,
       "projects": [],
-      "verification": [],
-      "audit_focus": []
+      "verification": [
+        {
+          "type": "command",
+          "value": "just ci"
+        },
+        {
+          "type": "manual",
+          "value": "Test exercises summarizeProviderBilledCost against a real provider-run.json fixture (not fake-mode zero)"
+        }
+      ],
+      "audit_focus": [
+        "suite/scripts/localize-project/run.mjs:1194-1229 summarizeProviderBilledCost",
+        "suite/scripts/localize-project/run.mjs:1270-1276 cost.non_billed_live_success finding",
+        "suite/scripts/localize-project/run.test.mjs full-loop test fake-mode-only gap"
+      ]
     },
     {
       "id": "rerun-re-bill-is-asserted-structurally-not-proven",
@@ -40213,11 +40226,11 @@
       "owner": null,
       "branch": null,
       "spec": "suite/scripts/localize-project/run.mjs:1670-1708; suite/scripts/localize-project/run.test.mjs:445-452",
-      "acceptance": "Finding is addressed and verified.",
+      "acceptance": "A test proves the feedback-driven rerun performs a REAL second bounded billed slice: it writes a fresh provider-runs dir distinct from the initial iteration, re-reads cost from those new artifacts, and the rerun's billedMicrosUsd is independently sourced (not a copy/double-count of the initial). rerunCompleted=true requires the rerun artifact set to exist. just ci green.",
       "validation": null,
       "context": null,
       "created_at": "2026-06-30T10:18:47.624Z",
-      "updated_at": "2026-06-30T10:18:47.624Z",
+      "updated_at": "2026-06-30T10:20:41.202Z",
       "claimed_at": null,
       "done_at": null,
       "group_name": null,
@@ -40228,8 +40241,21 @@
       "blocked_reason": null,
       "blocked_owner": null,
       "projects": [],
-      "verification": [],
-      "audit_focus": []
+      "verification": [
+        {
+          "type": "command",
+          "value": "just ci"
+        },
+        {
+          "type": "manual",
+          "value": "Rerun re-bill proven against distinct provider-run artifacts, not structural assertion"
+        }
+      ],
+      "audit_focus": [
+        "suite/scripts/localize-project/run.mjs:1309 runRpgMakerSliceIteration bounded body",
+        "suite/scripts/localize-project/run.mjs rerun provider-runs dir isolation",
+        "rerunCompleted flag provenance"
+      ]
     },
     {
       "id": "dead-parameter-branch-in-rpgmakeriterationpaths",
@@ -40243,11 +40269,11 @@
       "owner": null,
       "branch": null,
       "spec": "suite/scripts/localize-project/run.mjs:1450-1465",
-      "acceptance": "Finding is addressed and verified.",
+      "acceptance": "The dead/unused parameter branch in rpgMakerIterationPaths (run.mjs:1450-1465) is removed entirely (no-legacy-compat: delete, do not deprecate); no caller depends on the removed branch; just ci green and the full-loop test still passes.",
       "validation": null,
       "context": null,
       "created_at": "2026-06-30T10:18:47.627Z",
-      "updated_at": "2026-06-30T10:18:47.627Z",
+      "updated_at": "2026-06-30T10:20:41.298Z",
       "claimed_at": null,
       "done_at": null,
       "group_name": null,
@@ -40258,8 +40284,19 @@
       "blocked_reason": null,
       "blocked_owner": null,
       "projects": [],
-      "verification": [],
-      "audit_focus": []
+      "verification": [
+        {
+          "type": "command",
+          "value": "just ci"
+        },
+        {
+          "type": "manual",
+          "value": "rg confirms no remaining reference to the removed parameter branch"
+        }
+      ],
+      "audit_focus": [
+        "suite/scripts/localize-project/run.mjs:1450-1465 rpgMakerIterationPaths dead parameter"
+      ]
     },
     {
       "id": "permissive-fallbacks-on-apply-detect-status-produce-no-finding-w",
@@ -40273,11 +40310,11 @@
       "owner": null,
       "branch": null,
       "spec": "suite/scripts/localize-project/run.mjs:1159-1165, 1261-1269",
-      "acceptance": "Finding is addressed and verified.",
+      "acceptance": "When the apply-report or detect status field is absent/unexpected, the loop emits a STRUCTURED finding rather than silently treating absence as success (product law: all failures are structured findings). Permissive `?? success` style fallbacks on apply/detect status are replaced with explicit absent-field findings. A test asserts a finding is produced for a missing/unexpected status. just ci green.",
       "validation": null,
       "context": null,
       "created_at": "2026-06-30T10:18:47.632Z",
-      "updated_at": "2026-06-30T10:18:47.632Z",
+      "updated_at": "2026-06-30T10:20:41.389Z",
       "claimed_at": null,
       "done_at": null,
       "group_name": null,
@@ -40288,8 +40325,20 @@
       "blocked_reason": null,
       "blocked_owner": null,
       "projects": [],
-      "verification": [],
-      "audit_focus": []
+      "verification": [
+        {
+          "type": "command",
+          "value": "just ci"
+        },
+        {
+          "type": "manual",
+          "value": "Missing/unexpected apply+detect status each produce a structured finding (test-proven)"
+        }
+      ],
+      "audit_focus": [
+        "suite/scripts/localize-project/run.mjs apply-report status fallback",
+        "suite/scripts/localize-project/run.mjs detect status fallback (status=unknown handling)"
+      ]
     }
   ],
   "edges": [
