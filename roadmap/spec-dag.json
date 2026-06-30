@@ -43085,11 +43085,11 @@
       "owner": null,
       "branch": null,
       "spec": "Trevor (2026-06-30): the vault adapter must resolve content by-id, NOT by-sha; by-sha is a LEGACY approach being fully removed soon. Currently kaifuu-vault-source reconstructs by-sha/<sha256>.7z from catalog.sha256 (source.rs/resolution.rs/discovery.rs/config.rs + tests + synthetic-vault seed.sql + README + docs/itotori-vault-source-adapter.md). This is why alpha-006a hit ArtifactMissing: Sweetie HD content exists by-id but the catalog sha is not in by-sha. Convert resolution to by-id (use the catalog vault_path / artifact-id by-id path), DELETE the by-sha reconstruction + by-sha integrity coupling (no-legacy-compat), update the adapter doc + README + synthetic-vault seed to by-id. ~73 by-sha references across the crate.",
-      "acceptance": "kaifuu-vault-source resolves real vault artifacts BY-ID (no by-sha path reconstruction remains; rg -i by.sha over crates/kaifuu-vault-source src is empty); the adapter resolves BOTH Sweetie HD AND Kanon from the real read-only vault by-id and materializes their REALLIVE trees; Sweetie HD by-id -> Seen.txt sha256 == 903f538b... (the known direct-path bytes); adapter doc + README updated to by-id; existing contract/resolution/metadata tests migrated to by-id and green; just ci green. No vault writes; no copyrighted bytes in artifacts.",
+      "acceptance": "DELIVERED: adapter resolves BY-ID (canonical_id → by-id path; by-sha fully deleted, rg-empty); identity = canonical_id + metadata cross-check; per-file byte-fidelity preserved (NOT archive hash). PROVEN: Sweetie HD by-id → extracted Seen.txt sha256 == 903f538b…209f (matches direct-path bytes). Kanon RESOLVES by-id (release 331) but full MATERIALIZE is blocked by a real pure-Rust 7z decoder gap (Delta+BCJ2 multi-coder folders skipped by sevenz-rust2) — surfaced as typed ExtractionFailed (no faked partial), tracked by vault-7z-delta-bcj2-decoder. by-sha removed (no-legacy-compat); adapter doc/README/seed migrated to by-id; tests migrated + green; just ci green. (Kanon multi-game validation continues via the /scratch corpus, unaffected.)",
       "validation": null,
       "context": null,
       "created_at": "2026-06-30T17:49:00.304Z",
-      "updated_at": "2026-06-30T17:49:00.304Z",
+      "updated_at": "2026-06-30T18:39:50.019Z",
       "claimed_at": null,
       "done_at": null,
       "group_name": null,
@@ -43146,6 +43146,79 @@
         }
       ],
       "audit_focus": ["crates/kaifuu-reallive/tests/multi_corpus_real_bytes.rs"]
+    },
+    {
+      "id": "vault-7z-delta-bcj2-decoder",
+      "title": "Native 7z Delta+BCJ2 multi-coder support (vault by-id materialize for Kanon-class archives)",
+      "kind": "feature",
+      "milestone": "alpha",
+      "status": "ready",
+      "priority": "P2",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "Surfaced by vault-adapter-by-id-resolution: the pure-Rust sevenz-rust2 0.21 decoder silently SKIPS 7z folders that use Delta+BCJ2 multi-coder chains — Kanon vault by-id archive: 11219/19903 entries skipped (incl SEEN.TXT + _vault/metadata.json). System 7z handles it but no-shell-out forbids it (own the full stack). extract_archive now surfaces this as typed ExtractionFailed (no partial tree). Implement Delta + BCJ2 (+ the BCJ x86/arm filters as needed) natively so vault by-id can materialize all titles incl Kanon.",
+      "acceptance": "Vault by-id materialize of Kanon (release 331) extracts the COMPLETE tree natively (no skipped entries; SEEN.TXT sha256 == 3f442b44…046c, matching the scratch corpus) with NO shell-out; a Delta+BCJ2 fixture archive round-trips; just ci green.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-30T18:39:49.690Z",
+      "updated_at": "2026-06-30T18:39:49.690Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["kaifuu"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "just ci"
+        }
+      ],
+      "audit_focus": ["crates/kaifuu-vault-source/src/extraction.rs"]
+    },
+    {
+      "id": "vault-embedded-metadata-schema-reconcile",
+      "title": "Reconcile published embedded-metadata.schema.json (v1.0) with vault-curation by-id canonical sidecar shape",
+      "kind": "audit-fix",
+      "milestone": "beta",
+      "status": "blocked",
+      "priority": "P3",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "vault-adapter-by-id-resolution found the live vault by-id archives embed a vault-curation CANONICAL document (no releases[]/vault_artifact) that does NOT match the published docs embedded-metadata.schema.json (v1.0). The adapter dropped the stale v1.0 validation + jsonschema dep to resolve real archives. Reconcile: either vault-curation publishes the canonical sidecar schema, or itotori validates against the real shape. Cross-project (vault-curation owns the embed).",
+      "acceptance": "The embedded by-id sidecar shape and the itotori-side metadata cross-check agree on a single documented schema; metadata cross_check validates against it; just ci green.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-30T18:39:49.801Z",
+      "updated_at": "2026-06-30T18:39:49.921Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": "[2026-06-30T18:39:49.921Z] Blocked by external-dependency: The canonical by-id sidecar shape is authored by the vault-curation sibling project (stage-2 repack embed); itotori reads it read-only. Needs vault-curation to publish/confirm the canonical schema.\nNeeded: vault-curation publishes the canonical by-id embedded-metadata schema (or confirms the shape) so itotori validates against the real document.",
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": "external-dependency",
+      "blocked_reason": "The canonical by-id sidecar shape is authored by the vault-curation sibling project (stage-2 repack embed); itotori reads it read-only. Needs vault-curation to publish/confirm the canonical schema.",
+      "blocked_owner": "trevor",
+      "projects": ["kaifuu"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "just ci"
+        }
+      ],
+      "audit_focus": [
+        "crates/kaifuu-vault-source/src/metadata.rs",
+        "docs (embedded-metadata.schema.json)"
+      ]
     }
   ],
   "edges": [
@@ -53918,6 +53991,12 @@
       "to_node": "beta-reallive-third-corpus-regression",
       "type": "requires",
       "created_at": "2026-06-30T17:55:22.659Z"
+    },
+    {
+      "from_node": "vault-7z-delta-bcj2-decoder",
+      "to_node": "vault-adapter-by-id-resolution",
+      "type": "requires",
+      "created_at": "2026-06-30T18:39:50.138Z"
     }
   ],
   "findings": [
@@ -90518,6 +90597,14 @@
       "created_at": "2026-06-30T18:06:10.147Z",
       "kind": "note",
       "evidence": null
+    },
+    {
+      "id": "f3f8da0f-5ebc-429f-9291-2db0fbef59cf",
+      "node_id": "vault-embedded-metadata-schema-reconcile",
+      "text": "Blocked by external-dependency: The canonical by-id sidecar shape is authored by the vault-curation sibling project (stage-2 repack embed); itotori reads it read-only. Needs vault-curation to publish/confirm the canonical schema.\nNeeded: vault-curation publishes the canonical by-id embedded-metadata schema (or confirms the shape) so itotori validates against the real document.",
+      "created_at": "2026-06-30T18:39:49.921Z",
+      "kind": "blocker",
+      "evidence": "vault-adapter-by-id-resolution 8bc6a28: live by-id archives embed a canonical doc, not the published v1.0 releases[]/vault_artifact shape."
     }
   ],
   "assignments": [],
