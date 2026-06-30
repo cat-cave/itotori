@@ -1,10 +1,11 @@
 // ITOTORI-026 — Benchmark harness integration regression suite.
 //
-// Proves the composition command (a) wires the five prerequisite
-// subsystems into ONE run that names every generated report, (b) sources
-// the cost summary from the composed report's validated cost ledger (no
-// hardcoded cost), and (c) propagates a per-stage failure as a VISIBLE
-// failed stage that short-circuits the rest of the pipeline.
+// Proves the composition command (a) wires the five prerequisite subsystems —
+// the REAL stage implementations (ITOTORI-090/091/092) — into ONE run that
+// names every generated report, (b) sources the cost summary from the report's
+// recomputed cost ledger (no hardcoded cost), and (c) propagates a per-stage
+// failure as a VISIBLE failed stage that short-circuits the rest of the
+// pipeline.
 
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
@@ -17,9 +18,11 @@ import {
   benchmarkSetReadModelFromSeedsFixture,
   benchmarkSetSelectionInputFromSetsFixture,
   buildPublicBenchmarkHarnessStages,
+  loadBenchmarkStagesFixture,
   runBenchmarkHarnessCommand,
   type BenchmarkHarnessStage,
   type BenchmarkHarnessStageId,
+  type BenchmarkStagesPublicFixture,
   type PublicBenchmarkHarnessFixtureInputs,
 } from "../src/benchmark-harness/index.js";
 import { runItotoriCliCommand, type ItotoriCliServices } from "../src/cli-handlers.js";
@@ -32,10 +35,15 @@ function readRepoJson(repoRelativePath: string): unknown {
 
 const SEEDS_FIXTURE_PATH = "fixtures/catalog-benchmark-seeds/fixture.json";
 const SETS_FIXTURE_PATH = "fixtures/catalog-benchmark-sets/fixture.json";
-const REPORT_FIXTURE_PATH =
-  "packages/localization-bridge-schema/test/examples/benchmark-report-v0.2.json";
+const STAGES_FIXTURE_PATH = "fixtures/benchmark-stages/public-fixture.json";
 
-function publicFixtureInputs(): PublicBenchmarkHarnessFixtureInputs {
+function stagesFixture(): BenchmarkStagesPublicFixture {
+  return loadBenchmarkStagesFixture(readRepoJson(STAGES_FIXTURE_PATH));
+}
+
+function publicFixtureInputs(
+  overrides?: Partial<BenchmarkStagesPublicFixture>,
+): PublicBenchmarkHarnessFixtureInputs {
   const readModel = benchmarkSetReadModelFromSeedsFixture(readRepoJson(SEEDS_FIXTURE_PATH));
   return {
     benchmarkSetReadModel: readModel,
@@ -43,7 +51,7 @@ function publicFixtureInputs(): PublicBenchmarkHarnessFixtureInputs {
       readRepoJson(SETS_FIXTURE_PATH),
       readModel.targetLanguage,
     ),
-    benchmarkReport: readRepoJson(REPORT_FIXTURE_PATH),
+    stagesFixture: { ...stagesFixture(), ...overrides },
   };
 }
 
@@ -82,8 +90,24 @@ function stagesWithInjectedFailure(failAt: BenchmarkHarnessStageId): BenchmarkHa
   );
 }
 
+/** Independent sum of the recorded provider-run costs (the ground truth). */
+function summedRecordedCostMicros(fixture: BenchmarkStagesPublicFixture): number {
+  let total = 0;
+  for (const system of fixture.recordedSystems) {
+    if (system.providerRun.cost.costKind !== "unknown") {
+      total += system.providerRun.cost.amountMicrosUsd ?? 0;
+    }
+  }
+  for (const agent of fixture.qaAgents) {
+    if (agent.providerRun.cost.costKind !== "unknown") {
+      total += agent.providerRun.cost.amountMicrosUsd ?? 0;
+    }
+  }
+  return total;
+}
+
 describe("benchmark harness — public fixture composition", () => {
-  it("wires all five stages and names every generated report", async () => {
+  it("wires all five real stages and names every generated report", async () => {
     const io = memoryIo();
     const stages = buildPublicBenchmarkHarnessStages(publicFixtureInputs());
     const manifest = await runBenchmarkHarnessCommand(runArgs(stages, io));
@@ -93,20 +117,17 @@ describe("benchmark harness — public fixture composition", () => {
     expect(manifest.status).toBe("succeeded");
     expect(manifest.failedStageId).toBeNull();
 
-    // Every pipeline position ran and succeeded, in order.
     expect(manifest.stages.map((stage) => stage.stageId)).toEqual([
       ...BENCHMARK_HARNESS_STAGE_ORDER,
     ]);
     expect(manifest.stages.every((stage) => stage.status === "succeeded")).toBe(true);
 
-    // The run manifest NAMES all five generated reports by path + hash.
     expect(manifest.generatedReports).toHaveLength(BENCHMARK_HARNESS_STAGE_ORDER.length);
     for (const stageId of BENCHMARK_HARNESS_STAGE_ORDER) {
       const named = manifest.generatedReports.find((report) => report.stageId === stageId);
       expect(named).toBeDefined();
       expect(named?.artifactPath).toBe(`artifacts/test/benchmark-harness/${stageId}.json`);
       expect(named?.artifactHash).toMatch(/^sha256:[a-f0-9]{64}$/u);
-      // The named artifact path was actually written.
       expect(io.writes.has(named?.artifactPath ?? "")).toBe(true);
     }
     expect(io.writes.has("artifacts/test/benchmark-harness/run-manifest.json")).toBe(true);
@@ -114,43 +135,54 @@ describe("benchmark harness — public fixture composition", () => {
 
   it("consumes the ITOTORI-089 benchmark set manifest and records its id", async () => {
     const io = memoryIo();
-    const inputs = publicFixtureInputs();
     const manifest = await runBenchmarkHarnessCommand(
-      runArgs(buildPublicBenchmarkHarnessStages(inputs), io),
+      runArgs(buildPublicBenchmarkHarnessStages(publicFixtureInputs()), io),
     );
     expect(manifest.benchmarkSetManifestId).toMatch(/^benchmark-set-sha256-[a-f0-9]{16}$/u);
-    // The named benchmark-set report is the same manifest the harness consumed.
     const selectionArtifact = io.writes.get(
       "artifacts/test/benchmark-harness/benchmark-set-selection.json",
     ) as { manifestId: string };
     expect(selectionArtifact.manifestId).toBe(manifest.benchmarkSetManifestId);
   });
 
-  it("sources the cost summary from the composed report's validated ledger (no hardcoded cost)", async () => {
+  it("sources the cost summary from the report's recomputed ledger (no hardcoded cost)", async () => {
     const io = memoryIo();
-    const report = readRepoJson(REPORT_FIXTURE_PATH) as {
-      costLedger: { reportTotalMicrosUsd: number; totalsBySystem: { totalMicrosUsd: number }[] };
-      providerModelCostRecords: { cost: { amountMicrosUsd?: number; costKind: string } }[];
-    };
+    const fixture = stagesFixture();
     const manifest = await runBenchmarkHarnessCommand(
       runArgs(buildPublicBenchmarkHarnessStages(publicFixtureInputs()), io),
     );
 
     expect(manifest.costSummary).not.toBeNull();
-    // The run total equals the composed report's ledger total ...
-    expect(manifest.costSummary?.reportTotalMicrosUsd).toBe(report.costLedger.reportTotalMicrosUsd);
-    // ... which itself equals the sum of the real provider-run cost records
-    // (assertBenchmarkReportV02 recomputes & enforces this — cost flows from
-    // the composed artifact rather than from a literal).
-    const summedProviderCost = report.providerModelCostRecords.reduce(
-      (total, providerRun) =>
-        providerRun.cost.costKind === "unknown"
-          ? total
-          : total + (providerRun.cost.amountMicrosUsd ?? 0),
-      0,
-    );
-    expect(manifest.costSummary?.reportTotalMicrosUsd).toBe(summedProviderCost);
+    // The run total equals the sum of the REAL recorded provider-run costs:
+    // assembleBenchmarkReport recomputes the ledger from those records and
+    // assertBenchmarkReportV02 enforces the equality — cost flows from the
+    // artifacts, never from a literal.
+    expect(manifest.costSummary?.reportTotalMicrosUsd).toBe(summedRecordedCostMicros(fixture));
     expect(manifest.costSummary?.currency).toBe("USD");
+    // The cost-quality artifact embeds the validated report carrying that ledger.
+    const costArtifact = io.writes.get(
+      "artifacts/test/benchmark-harness/cost-quality-report.json",
+    ) as { report: { costLedger: { reportTotalMicrosUsd: number } } };
+    expect(costArtifact.report.costLedger.reportTotalMicrosUsd).toBe(
+      manifest.costSummary?.reportTotalMicrosUsd,
+    );
+  });
+
+  it("computes QA-agent precision/recall and renders the QA-accuracy section", async () => {
+    const io = memoryIo();
+    await runBenchmarkHarnessCommand(
+      runArgs(buildPublicBenchmarkHarnessStages(publicFixtureInputs()), io),
+    );
+    const costArtifact = io.writes.get(
+      "artifacts/test/benchmark-harness/cost-quality-report.json",
+    ) as {
+      rendered: {
+        qaAccuracy: { agents: Array<{ seededPrecision: number; seededRecall: number }> };
+      };
+    };
+    const agent = costArtifact.rendered.qaAccuracy.agents[0];
+    expect(agent?.seededPrecision).toBe(1);
+    expect(agent?.seededRecall).toBe(1);
   });
 });
 
@@ -162,7 +194,6 @@ describe("benchmark harness — failure propagation", () => {
         runArgs(stagesWithInjectedFailure(failAt), io),
       );
 
-      // The command still RETURNS a manifest — failure is reported, not thrown away.
       expect(manifest.status).toBe("failed");
       expect(manifest.failedStageId).toBe(failAt);
 
@@ -171,22 +202,18 @@ describe("benchmark harness — failure propagation", () => {
         const record = manifest.stages.find((stage) => stage.stageId === stageId);
         expect(record).toBeDefined();
         if (index < failIndex) {
-          // Earlier stages stay succeeded and their reports stay named.
           expect(record?.status).toBe("succeeded");
           expect(manifest.generatedReports.some((report) => report.stageId === stageId)).toBe(true);
         } else if (index === failIndex) {
-          // The failed stage is VISIBLE with a structured failure.
           expect(record?.status).toBe("failed");
           if (record?.status === "failed") {
             expect(record.failure.stageId).toBe(failAt);
             expect(record.failure.message).toContain(failAt);
           }
-          // A failed stage emits no named report.
           expect(manifest.generatedReports.some((report) => report.stageId === stageId)).toBe(
             false,
           );
         } else {
-          // Downstream stages are skipped — but RECORDED, never dropped.
           expect(record?.status).toBe("skipped_upstream_failed");
           if (record?.status === "skipped_upstream_failed") {
             expect(record.blockedByStageId).toBe(failAt);
@@ -196,30 +223,46 @@ describe("benchmark harness — failure propagation", () => {
           );
         }
       }
-      // The run manifest is still written so the failure is auditable.
       expect(io.writes.has("artifacts/test/benchmark-harness/run-manifest.json")).toBe(true);
-      // No cost summary when the cost-quality renderer never ran.
       if (failIndex <= BENCHMARK_HARNESS_STAGE_ORDER.indexOf("cost-quality-report")) {
         expect(manifest.costSummary).toBeNull();
       }
     });
   }
 
-  it("propagates a cost-quality renderer failure when the ledger is tampered (cost cannot be faked)", async () => {
+  it("fails the raw-mtl-baseline stage when no raw_mtl_baseline system is recorded", async () => {
     const io = memoryIo();
-    const inputs = publicFixtureInputs();
-    const tamperedReport = structuredClone(inputs.benchmarkReport) as {
-      costLedger: { reportTotalMicrosUsd: number };
-    };
-    // Break the ledger total so it no longer matches the provider-run costs.
-    tamperedReport.costLedger.reportTotalMicrosUsd =
-      tamperedReport.costLedger.reportTotalMicrosUsd + 1;
-    const stages = buildPublicBenchmarkHarnessStages({
-      ...inputs,
-      benchmarkReport: tamperedReport,
+    const fixture = stagesFixture();
+    const inputs = publicFixtureInputs({
+      recordedSystems: fixture.recordedSystems.filter(
+        (system) => system.systemKind !== "raw_mtl_baseline",
+      ),
     });
+    const manifest = await runBenchmarkHarnessCommand(
+      runArgs(buildPublicBenchmarkHarnessStages(inputs), io),
+    );
+    expect(manifest.failedStageId).toBe("raw-mtl-baseline");
+    const record = manifest.stages.find((stage) => stage.stageId === "raw-mtl-baseline");
+    expect(record?.status).toBe("failed");
+    if (record?.status === "failed") {
+      expect(record.failure.message).toContain("raw_mtl_baseline");
+    }
+  });
 
-    const manifest = await runBenchmarkHarnessCommand(runArgs(stages, io));
+  it("propagates a cost-quality renderer failure when a provider cost record is malformed (cost cannot be faked)", async () => {
+    const io = memoryIo();
+    const fixture = structuredClone(stagesFixture());
+    // A non-integer micros amount cannot pass the schema's cost-record check;
+    // the renderer's assertBenchmarkReportV02 rejects it. A faked cost cannot
+    // be smuggled past the recompute.
+    fixture.recordedSystems[1].providerRun.cost.amountMicrosUsd = 1570.5;
+    const inputs: PublicBenchmarkHarnessFixtureInputs = {
+      ...publicFixtureInputs(),
+      stagesFixture: fixture,
+    };
+    const manifest = await runBenchmarkHarnessCommand(
+      runArgs(buildPublicBenchmarkHarnessStages(inputs), io),
+    );
     expect(manifest.status).toBe("failed");
     expect(manifest.failedStageId).toBe("cost-quality-report");
     expect(manifest.costSummary).toBeNull();
@@ -227,12 +270,10 @@ describe("benchmark harness — failure propagation", () => {
     expect(record?.status).toBe("failed");
   });
 
-  it("fails the qa-agent-evaluation stage when the composed report names no evaluations", async () => {
+  it("fails the qa-agent-evaluation stage when the fixture names no QA agents", async () => {
     const io = memoryIo();
-    const inputs = publicFixtureInputs();
-    const report = structuredClone(inputs.benchmarkReport) as { qaAgentEvaluations: unknown[] };
-    report.qaAgentEvaluations = [];
-    const stages = buildPublicBenchmarkHarnessStages({ ...inputs, benchmarkReport: report });
+    const inputs = publicFixtureInputs({ qaAgents: [] });
+    const stages = buildPublicBenchmarkHarnessStages(inputs);
 
     let missingError: unknown;
     const probeStages = stages.map((stage) =>
@@ -301,16 +342,17 @@ describe("benchmark harness — CLI dispatch", () => {
   it("escalates a failed pipeline to a thrown error (failure stays visible at the process level)", async () => {
     const writes = new Map<string, unknown>();
     const io = {
-      // Serve a report with no raw_mtl_baseline system so the second stage fails.
+      // Serve a stages fixture with no raw_mtl_baseline system so the second
+      // stage fails.
       readJson: (path: string) => {
-        if (path.includes("benchmark-report")) {
-          const report = structuredClone(readRepoJson(REPORT_FIXTURE_PATH)) as {
-            systemsCompared: { systemKind: string }[];
+        if (path.includes("benchmark-stages")) {
+          const fixture = structuredClone(readRepoJson(STAGES_FIXTURE_PATH)) as {
+            recordedSystems: { systemKind: string }[];
           };
-          report.systemsCompared = report.systemsCompared.filter(
+          fixture.recordedSystems = fixture.recordedSystems.filter(
             (system) => system.systemKind !== "raw_mtl_baseline",
           );
-          return report;
+          return fixture;
         }
         return readRepoJson(path);
       },
@@ -322,7 +364,6 @@ describe("benchmark harness — CLI dispatch", () => {
         cliDependencies(io),
       ),
     ).rejects.toThrow(/benchmark-harness run failed at stage 'raw-mtl-baseline'/u);
-    // The manifest was still written before the escalation — failure is auditable.
     const manifest = writes.get("artifacts/test/cli-benchmark-harness-fail/run-manifest.json");
     assertBenchmarkHarnessRunManifest(manifest);
     expect(manifest.status).toBe("failed");

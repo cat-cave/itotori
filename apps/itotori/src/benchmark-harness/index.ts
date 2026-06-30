@@ -21,12 +21,17 @@ export {
 } from "./run-command.js";
 
 export {
-  DEFAULT_PUBLIC_BENCHMARK_REPORT_FIXTURE_PATH,
   DEFAULT_PUBLIC_BENCHMARK_SEEDS_FIXTURE_PATH,
   DEFAULT_PUBLIC_BENCHMARK_SETS_FIXTURE_PATH,
+  DEFAULT_PUBLIC_BENCHMARK_STAGES_FIXTURE_PATH,
   BenchmarkHarnessMissingCompositionError,
   benchmarkSetReadModelFromSeedsFixture,
   benchmarkSetSelectionInputFromSetsFixture,
   buildPublicBenchmarkHarnessStages,
   type PublicBenchmarkHarnessFixtureInputs,
 } from "./public-fixture.js";
+
+export {
+  loadBenchmarkStagesFixture,
+  type BenchmarkStagesPublicFixture,
+} from "../benchmark-stages/index.js";

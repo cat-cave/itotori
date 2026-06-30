@@ -1,55 +1,72 @@
-// ITOTORI-026 — Public, deterministic cost-and-quality composition
-// fixture for the benchmark harness.
+// ITOTORI-026 — Public, deterministic composition fixture for the benchmark
+// harness.
 //
 // Builds the five pipeline stages from PUBLIC fixture inputs only — no
-// private-local corpora, no live provider credentials. Each stage's
-// `run()` COMPOSES an existing prerequisite output:
+// private-local corpora, no live provider credentials. Each stage's `run()`
+// COMPOSES a REAL benchmark stage implementation (ITOTORI-090/091/092); the
+// harness owns no scoring, routing, or rendering of its own:
 //
 //   benchmark-set-selection : `selectBenchmarkSet` (ITOTORI-089) over the
 //                             public catalog-benchmark-seeds read model.
-//   raw-mtl-baseline        : the `raw_mtl_baseline` compared system(s) +
-//                             their provider-run cost records, extracted
-//                             from the composed cost/quality report.
-//   deterministic-qa        : the report's `deterministicQaResults`.
-//   qa-agent-evaluation     : the report's `qaAgentEvaluations`.
-//   cost-quality-report     : `assertBenchmarkReportV02` (the renderer /
-//                             validator that recomputes the cost ledger
-//                             from the real provider-run cost records),
-//                             handing the validated ledger up as the run
-//                             cost summary.
+//   raw-mtl-baseline        : `runRawMtlBaselineStage` (ITOTORI-090) over the
+//                             selected manifest's target locale + recorded MTL
+//                             outputs.
+//   deterministic-qa        : `runDeterministicQaStage` (ITOTORI-090) over the
+//                             baseline outputs from the upstream stage.
+//   qa-agent-evaluation     : `evaluateQaAgents` (ITOTORI-091) over recorded
+//                             QA-agent findings + the seeded-defect oracle.
+//   cost-quality-report     : `assembleBenchmarkReport` + `renderBenchmarkReports`
+//                             (ITOTORI-092) — `assembleBenchmarkReport` composes
+//                             `assertBenchmarkReportV02`, which recomputes the
+//                             cost ledger from the real provider-run cost
+//                             records and rejects a tampered/inconsistent one.
 //
-// The harness fabricates no cost: the cost summary is sourced from the
-// composed report's validated `costLedger`. A stage throws when its named
-// prerequisite output is missing/invalid, which the orchestrator records
-// as a visible failed stage (failure propagation).
+// The harness fabricates no cost: the run cost summary is SOURCED from the
+// validated report's recomputed `costLedger`. A stage throws when its named
+// prerequisite output is missing/invalid, which the orchestrator records as a
+// visible failed stage (failure propagation).
 
 import type { CatalogBenchmarkSeedFinderReadModel } from "@itotori/db";
-import { assertBenchmarkReportV02 } from "@itotori/localization-bridge-schema";
+import {
+  assembleBenchmarkReport,
+  evaluateQaAgents,
+  renderBenchmarkReports,
+  runDeterministicQaStage,
+  runRawMtlBaselineStage,
+  type BenchmarkStagesPublicFixture,
+  type DeterministicQaResult,
+  type QaAgentEvaluationResult,
+  type RawMtlBaselineResult,
+} from "../benchmark-stages/index.js";
 import {
   assertBenchmarkSetManifest,
   assertBenchmarkSetManifestPublicSafe,
   selectBenchmarkSet,
   type BenchmarkSetCapabilityFilters,
+  type BenchmarkSetManifest,
   type BenchmarkSetRunParameters,
   type BenchmarkSetSelectionInput,
 } from "../benchmark-set/index.js";
 import type {
   BenchmarkHarnessCostSummary,
   BenchmarkHarnessStage,
+  BenchmarkHarnessStageContext,
   BenchmarkHarnessStageId,
+  BenchmarkHarnessStageOutput,
 } from "./run-command.js";
 
 export const DEFAULT_PUBLIC_BENCHMARK_SEEDS_FIXTURE_PATH =
   "fixtures/catalog-benchmark-seeds/fixture.json";
 export const DEFAULT_PUBLIC_BENCHMARK_SETS_FIXTURE_PATH =
   "fixtures/catalog-benchmark-sets/fixture.json";
-export const DEFAULT_PUBLIC_BENCHMARK_REPORT_FIXTURE_PATH =
-  "packages/localization-bridge-schema/test/examples/benchmark-report-v0.2.json";
+export const DEFAULT_PUBLIC_BENCHMARK_STAGES_FIXTURE_PATH =
+  "fixtures/benchmark-stages/public-fixture.json";
 
 /**
- * Thrown when a stage cannot find the prerequisite output it is meant to
- * COMPOSE (e.g. a report carrying zero `qaAgentEvaluations`). Surfaces as
- * a visible failed stage rather than an empty/skipped one.
+ * Thrown when a stage cannot produce the composed output it is meant to emit
+ * (e.g. a fixture carrying zero QA agents, so the QA-agent stage would yield
+ * zero evaluations). Surfaces as a visible failed stage rather than an
+ * empty/skipped one.
  */
 export class BenchmarkHarnessMissingCompositionError extends Error {
   constructor(
@@ -66,12 +83,8 @@ export type PublicBenchmarkHarnessFixtureInputs = {
   benchmarkSetReadModel: CatalogBenchmarkSeedFinderReadModel;
   /** Selection parameters fed to `selectBenchmarkSet`. */
   benchmarkSetSelectionInput: BenchmarkSetSelectionInput;
-  /**
-   * The composed cost/quality report (a `BenchmarkReportV02`). Passed as
-   * `unknown` so the cost-quality-report stage is the authority that runs
-   * the schema validator on it — stages never trust the shape blindly.
-   */
-  benchmarkReport: unknown;
+  /** Public ingredient fixture the real stages consume. */
+  stagesFixture: BenchmarkStagesPublicFixture;
 };
 
 /**
@@ -85,7 +98,7 @@ export function buildPublicBenchmarkHarnessStages(
   return [
     benchmarkSetSelectionStage(inputs),
     rawMtlBaselineStage(inputs),
-    deterministicQaStage(inputs),
+    deterministicQaStage(),
     qaAgentEvaluationStage(inputs),
     costQualityReportStage(inputs),
   ];
@@ -118,53 +131,45 @@ function benchmarkSetSelectionStage(
 function rawMtlBaselineStage(inputs: PublicBenchmarkHarnessFixtureInputs): BenchmarkHarnessStage {
   return {
     stageId: "raw-mtl-baseline",
-    run: async () => {
-      const report = asRecord(inputs.benchmarkReport, "benchmarkReport");
-      const systems = asArray(report.systemsCompared, "benchmarkReport.systemsCompared");
-      const baselineSystems = systems.filter(
-        (system) => asRecord(system, "system").systemKind === "raw_mtl_baseline",
+    run: async (context) => {
+      const manifest = upstreamArtifact<BenchmarkSetManifest>(
+        context,
+        "benchmark-set-selection",
+        "raw-mtl-baseline",
       );
-      if (baselineSystems.length === 0) {
-        throw new BenchmarkHarnessMissingCompositionError(
-          "raw-mtl-baseline",
-          "composed report has no compared system with systemKind 'raw_mtl_baseline'",
-        );
-      }
-      const baselineSystemIds = new Set(
-        baselineSystems.map((system) => asRecord(system, "system").systemId),
-      );
-      const providerRuns = asArray(
-        report.providerModelCostRecords,
-        "benchmarkReport.providerModelCostRecords",
-      ).filter((run) => baselineSystemIds.has(asRecord(run, "providerRun").systemId));
+      const result = runRawMtlBaselineStage({
+        targetLocale: manifest.targetLocale,
+        corpusTargetLocale: inputs.stagesFixture.corpusTargetLocale,
+        corpus: inputs.stagesFixture.corpus,
+        recordedSystems: inputs.stagesFixture.recordedSystems,
+      });
       return {
         artifactKind: "raw-mtl-baseline-report",
         label: "Raw MTL baseline compared systems",
-        artifact: { systems: baselineSystems, providerRuns },
+        artifact: result,
       };
     },
   };
 }
 
-function deterministicQaStage(inputs: PublicBenchmarkHarnessFixtureInputs): BenchmarkHarnessStage {
+function deterministicQaStage(): BenchmarkHarnessStage {
   return {
     stageId: "deterministic-qa",
-    run: async () => {
-      const report = asRecord(inputs.benchmarkReport, "benchmarkReport");
-      const results = asArray(
-        report.deterministicQaResults,
-        "benchmarkReport.deterministicQaResults",
+    run: async (context) => {
+      const baseline = upstreamArtifact<RawMtlBaselineResult>(
+        context,
+        "raw-mtl-baseline",
+        "deterministic-qa",
       );
-      if (results.length === 0) {
-        throw new BenchmarkHarnessMissingCompositionError(
-          "deterministic-qa",
-          "composed report carries zero deterministicQaResults",
-        );
-      }
+      const result = runDeterministicQaStage({
+        baselineOutputs: baseline.baselineOutputs,
+        startedAt: "2026-06-28T12:01:05.000Z",
+        completedAt: "2026-06-28T12:01:05.100Z",
+      });
       return {
         artifactKind: "deterministic-qa-report",
         label: "Deterministic QA results",
-        artifact: { deterministicQaResults: results },
+        artifact: result,
       };
     },
   };
@@ -176,18 +181,26 @@ function qaAgentEvaluationStage(
   return {
     stageId: "qa-agent-evaluation",
     run: async () => {
-      const report = asRecord(inputs.benchmarkReport, "benchmarkReport");
-      const evaluations = asArray(report.qaAgentEvaluations, "benchmarkReport.qaAgentEvaluations");
-      if (evaluations.length === 0) {
+      if (inputs.stagesFixture.qaAgents.length === 0) {
         throw new BenchmarkHarnessMissingCompositionError(
           "qa-agent-evaluation",
-          "composed report carries zero qaAgentEvaluations",
+          "public fixture carries zero recorded QA agents to evaluate",
+        );
+      }
+      const result = evaluateQaAgents({
+        agents: inputs.stagesFixture.qaAgents,
+        seededDefectOracle: inputs.stagesFixture.seededDefectOracle,
+      });
+      if (result.evaluations.length === 0) {
+        throw new BenchmarkHarnessMissingCompositionError(
+          "qa-agent-evaluation",
+          "QA-agent evaluation produced zero evaluations",
         );
       }
       return {
         artifactKind: "qa-agent-evaluation-report",
         label: "QA-agent evaluations",
-        artifact: { qaAgentEvaluations: evaluations },
+        artifact: result,
       };
     },
   };
@@ -198,12 +211,48 @@ function costQualityReportStage(
 ): BenchmarkHarnessStage {
   return {
     stageId: "cost-quality-report",
-    run: async () => {
-      const report = inputs.benchmarkReport;
-      // The renderer/validator: recomputes the cost ledger from the real
-      // provider-run cost records and rejects a tampered/inconsistent
-      // ledger. A throw here is a visible cost-quality-renderer failure.
-      assertBenchmarkReportV02(report);
+    run: async (context) => {
+      const rawMtl = upstreamArtifact<RawMtlBaselineResult>(
+        context,
+        "raw-mtl-baseline",
+        "cost-quality-report",
+      );
+      const deterministicQa = upstreamArtifact<DeterministicQaResult>(
+        context,
+        "deterministic-qa",
+        "cost-quality-report",
+      );
+      const qaAgent = upstreamArtifact<QaAgentEvaluationResult>(
+        context,
+        "qa-agent-evaluation",
+        "cost-quality-report",
+      );
+      const meta = inputs.stagesFixture.reportMeta;
+      // assembleBenchmarkReport COMPOSES assertBenchmarkReportV02 — it recomputes
+      // the cost ledger from the real provider-run cost records and throws on any
+      // inconsistency. A throw here is a visible cost-quality-renderer failure.
+      const report = assembleBenchmarkReport({
+        benchmarkRunId: context.benchmarkRunId,
+        benchmarkName: meta.benchmarkName,
+        createdAt: meta.createdAt,
+        status: meta.status,
+        sourceLocale: meta.sourceLocale,
+        targetLocale: meta.targetLocale,
+        engineProfile: meta.engineProfile,
+        gitCommit: meta.gitCommit,
+        ...(meta.deterministicSeed !== undefined
+          ? { deterministicSeed: meta.deterministicSeed }
+          : {}),
+        toolVersions: meta.toolVersions,
+        commandLines: meta.commandLines,
+        fixtureOrCorpusRefs: inputs.stagesFixture.fixtureOrCorpusRefs,
+        rawMtl,
+        deterministicQa,
+        qaAgent,
+        humanEvaluationResults: inputs.stagesFixture.humanEvaluationResults,
+        knownBlindSpots: meta.knownBlindSpots,
+      });
+      const rendered = renderBenchmarkReports(report, qaAgent.calibration);
       const ledger = report.costLedger;
       const costSummary: BenchmarkHarnessCostSummary = {
         currency: "USD",
@@ -217,11 +266,26 @@ function costQualityReportStage(
       return {
         artifactKind: "benchmark-report",
         label: report.benchmarkName,
-        artifact: report,
+        artifact: { report, rendered },
         costSummary,
       };
     },
   };
+}
+
+function upstreamArtifact<T>(
+  context: BenchmarkHarnessStageContext,
+  fromStageId: BenchmarkHarnessStageId,
+  stageId: BenchmarkHarnessStageId,
+): T {
+  const output: BenchmarkHarnessStageOutput | undefined = context.upstream.get(fromStageId);
+  if (output === undefined) {
+    throw new BenchmarkHarnessMissingCompositionError(
+      stageId,
+      `missing upstream '${fromStageId}' output to compose`,
+    );
+  }
+  return output.artifact as T;
 }
 
 /**

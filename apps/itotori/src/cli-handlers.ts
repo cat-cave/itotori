@@ -74,12 +74,13 @@ import {
 import type { TelemetryQuery } from "./telemetry/queries.js";
 import { runReviewQueueFixtureCommand } from "./reviewer/review-queue-fixture-command.js";
 import {
-  DEFAULT_PUBLIC_BENCHMARK_REPORT_FIXTURE_PATH,
   DEFAULT_PUBLIC_BENCHMARK_SEEDS_FIXTURE_PATH,
   DEFAULT_PUBLIC_BENCHMARK_SETS_FIXTURE_PATH,
+  DEFAULT_PUBLIC_BENCHMARK_STAGES_FIXTURE_PATH,
   benchmarkSetReadModelFromSeedsFixture,
   benchmarkSetSelectionInputFromSetsFixture,
   buildPublicBenchmarkHarnessStages,
+  loadBenchmarkStagesFixture,
   runBenchmarkHarnessCommand,
 } from "./benchmark-harness/index.js";
 import { scanCatalogLocalRoot } from "./services/catalog-local-scan.js";
@@ -731,8 +732,8 @@ async function runBenchmarkHarnessHandler(
     optionalFlag(args, "--benchmark-seeds") ?? DEFAULT_PUBLIC_BENCHMARK_SEEDS_FIXTURE_PATH;
   const setsPath =
     optionalFlag(args, "--benchmark-sets") ?? DEFAULT_PUBLIC_BENCHMARK_SETS_FIXTURE_PATH;
-  const reportPath =
-    optionalFlag(args, "--benchmark-report") ?? DEFAULT_PUBLIC_BENCHMARK_REPORT_FIXTURE_PATH;
+  const stagesFixturePath =
+    optionalFlag(args, "--benchmark-stages") ?? DEFAULT_PUBLIC_BENCHMARK_STAGES_FIXTURE_PATH;
   const outputDir = optionalFlag(args, "--output-dir") ?? "artifacts/itotori/benchmark-harness";
 
   const benchmarkSetReadModel = benchmarkSetReadModelFromSeedsFixture(
@@ -745,7 +746,7 @@ async function runBenchmarkHarnessHandler(
   const stages = buildPublicBenchmarkHarnessStages({
     benchmarkSetReadModel,
     benchmarkSetSelectionInput,
-    benchmarkReport: dependencies.io.readJson(reportPath),
+    stagesFixture: loadBenchmarkStagesFixture(dependencies.io.readJson(stagesFixturePath)),
   });
 
   const manifest = await runBenchmarkHarnessCommand({
