@@ -1,0 +1,43 @@
+{
+  "schemaVersion": "itotori.provider-proof-bundle.v0",
+  "proofId": "provider-proof:recorded:hello-game-fallback-v0",
+  "mode": "recorded",
+  "fixtureId": "hello-game",
+  "note": "Recorded provider-proof ledger where the draft role's request to its requested provider was served by a DIFFERENT upstream via OpenRouter automatic fallback (servedProvider != providerId). Cost + token usage are recorded verbatim; no raw prompts or completions.",
+  "ledger": [
+    {
+      "providerProofId": "recorded:pp-draft-fallback-attempt-1",
+      "role": "draft",
+      "modelId": "deepseek/deepseek-v4-flash",
+      "providerId": "fireworks",
+      "servedProvider": "deepinfra",
+      "servedModel": "deepseek/deepseek-v4-flash",
+      "tokensIn": 40,
+      "tokensOut": 28,
+      "tokenCountSource": "provider_reported",
+      "costUnit": "usd",
+      "costAmount": "0.000015",
+      "costMicrosUsd": 15,
+      "latencyMs": 0,
+      "zdr": true,
+      "promptHash": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+    },
+    {
+      "providerProofId": "recorded:pp-qa-fallback-attempt-0",
+      "role": "qa",
+      "modelId": "deepseek/deepseek-v4-flash",
+      "providerId": "fireworks",
+      "servedProvider": "fireworks",
+      "servedModel": "deepseek/deepseek-v4-flash",
+      "tokensIn": 55,
+      "tokensOut": 33,
+      "tokenCountSource": "provider_reported",
+      "costUnit": "usd",
+      "costAmount": "0.000020",
+      "costMicrosUsd": 20,
+      "latencyMs": 0,
+      "zdr": true,
+      "promptHash": "sha256:5555555555555555555555555555555555555555555555555555555555555555"
+    }
+  ]
+}

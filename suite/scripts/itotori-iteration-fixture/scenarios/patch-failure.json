@@ -1,0 +1,15 @@
+{
+  "schemaVersion": "itotori.iteration-fixture.recording.v0",
+  "scenario": "patch-failure",
+  "expectedVerdict": "broken",
+  "fixtureId": "hello-game",
+  "iterationScenarioUri": "suite/scripts/itotori-iteration-fixture/inputs/iteration-recordings/iter-success.json",
+  "patchResult": {
+    "uri": "suite/scripts/itotori-iteration-fixture/inputs/patch-result-failed-v0.2.fr-FR.json",
+    "expectedHash": "sha256:acc114fc92acca52affcdc5c212ddeb564e1a39710c68047196aa0b6a6a693b2"
+  },
+  "runtimeReport": {
+    "uri": "fixtures/hello-game/expected/runtime-report-v0.2.fr-FR.json",
+    "expectedHash": "sha256:c71310b80e2e96bb6420c608da080e248a6433cfd1a2f6e65abe508ff485ec0b"
+  }
+}

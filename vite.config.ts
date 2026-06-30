@@ -130,6 +130,27 @@ export default defineConfig({
           "node --test suite/scripts/itotori-fixture-iteration/run.test.mjs suite/scripts/itotori-fixture-iteration/iteration.test.mjs",
         cache: false,
       },
+      // ITOTORI-028: end-to-end draft iteration fixture command. COMPOSES the
+      // ITOTORI-095 Itotori loop (import -> draft -> qa -> reviewer -> export ->
+      // feedback -> rerun) with the Kaifuu patch result + Utsushi runtime
+      // observation into ONE manifest-bound run, then emits a schema-valid,
+      // hash-addressed FixtureIterationResult artifact per stage and a
+      // SHARED-025 manifest that proves all nine stages belong to the same
+      // fixture id + source revision. Composes existing seams; recorded/public
+      // only, no creds, no DB.
+      "itotori:iteration-fixture": {
+        command: "node suite/scripts/itotori-iteration-fixture/run.mjs",
+        cache: false,
+      },
+      // ITOTORI-028: deterministic unit + integration tests covering the full
+      // cross-tool composition + per-stage schema-valid/hash-addressed
+      // artifacts across all six recorded paths (success, QA rejection, runtime
+      // feedback, patch failure, provider fallback, rerun repair).
+      "itotori:iteration-fixture-test": {
+        command:
+          "node --test suite/scripts/itotori-iteration-fixture/run.test.mjs suite/scripts/itotori-iteration-fixture/iteration-fixture.test.mjs",
+        cache: false,
+      },
     },
   },
 });

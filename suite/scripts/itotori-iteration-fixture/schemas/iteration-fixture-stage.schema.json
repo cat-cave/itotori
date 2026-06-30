@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/cat-cave/itotori/suite/scripts/itotori-iteration-fixture/schemas/iteration-fixture-stage.schema.json",
+  "title": "Itotori Iteration Fixture Cross-Tool Stage Result",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "generatedAt",
+    "stageId",
+    "project",
+    "artifactId",
+    "fixtureId",
+    "sourceRevision",
+    "targetLocale",
+    "sourceUri",
+    "sourceHash",
+    "status",
+    "contentHash",
+    "detail",
+    "findings"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "itotori.iteration-fixture.cross-stage.v0" },
+    "generatedAt": { "type": "string", "minLength": 1 },
+    "stageId": {
+      "type": "string",
+      "enum": ["patch-result", "runtime-observation"]
+    },
+    "project": { "type": "string", "enum": ["kaifuu", "utsushi"] },
+    "artifactId": { "type": "string", "minLength": 1 },
+    "fixtureId": { "type": ["string", "null"] },
+    "sourceRevision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sourceBridgeId", "sourceBundleHash", "sourceRevisionId"],
+      "properties": {
+        "sourceBridgeId": { "type": ["string", "null"] },
+        "sourceBundleHash": { "type": ["string", "null"] },
+        "sourceRevisionId": { "type": ["string", "null"] }
+      }
+    },
+    "targetLocale": { "type": ["string", "null"] },
+    "sourceUri": {
+      "type": "string",
+      "pattern": "^(fixtures|suite)/(?!.*private-local/)(?!.*\\.\\.)[A-Za-z0-9._/-]+$"
+    },
+    "sourceHash": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "status": { "type": "string", "minLength": 1 },
+    "contentHash": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "detail": { "type": "object" },
+    "findings": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/finding" }
+    }
+  },
+  "$defs": {
+    "finding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "severity", "stageId", "artifactId", "remediation", "message"],
+      "properties": {
+        "code": { "type": "string", "minLength": 1 },
+        "severity": { "type": "string", "enum": ["blocking", "warn", "info"] },
+        "stageId": { "type": "string", "minLength": 1 },
+        "artifactId": { "type": "string", "minLength": 1 },
+        "remediation": { "type": "string", "minLength": 1 },
+        "message": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

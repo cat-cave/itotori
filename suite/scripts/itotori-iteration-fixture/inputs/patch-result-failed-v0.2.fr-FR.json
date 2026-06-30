@@ -1,0 +1,28 @@
+{
+  "adapterId": "kaifuu-reallive",
+  "schemaVersion": "0.2.0",
+  "patchExportId": "019ed012-0000-7000-8000-000000000901",
+  "patchResultId": "019ed012-0000-7000-8000-00000000090f",
+  "status": "failed",
+  "outputHash": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+  "failures": [
+    {
+      "entryId": "019ed012-0000-7000-8000-000000000902",
+      "bridgeUnitId": "019ed012-0000-7000-8000-000000000402",
+      "failureKind": "patch_apply_rejected",
+      "detail": "Recorded synthetic failure: the target script offset for hello.scene.001.line.002 could not be rewritten cleanly."
+    }
+  ],
+  "sourceCompatibility": {
+    "schemaVersion": "0.2.0",
+    "patchExportId": "019ed012-0000-7000-8000-000000000901",
+    "sourceBridgeId": "019ed012-0000-7000-8000-000000000001",
+    "expectedSourceBundleHash": "sha256:0c659aa5e7a4939bbad9198b81f96408623d7b5d321a6725509d105386001498",
+    "actualSourceBundleHash": "sha256:0c659aa5e7a4939bbad9198b81f96408623d7b5d321a6725509d105386001498",
+    "sourceBundleHashMatches": true,
+    "status": "compatible",
+    "compatibleUnits": [],
+    "incompatibleUnits": []
+  },
+  "touchedAssets": []
+}

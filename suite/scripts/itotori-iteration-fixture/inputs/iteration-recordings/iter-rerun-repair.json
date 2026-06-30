@@ -1,0 +1,95 @@
+{
+  "schemaVersion": "itotori.fixture-iteration.recording.v0",
+  "scenario": "rerun-repair",
+  "expectedVerdict": "repaired",
+  "fixtureId": "hello-game",
+  "identity": {
+    "projectId": "project-hello-game-alpha",
+    "localeBranchId": "locale-branch-hello-game-fr-FR",
+    "sourceBridgeId": "019ed012-0000-7000-8000-000000000001",
+    "sourceBundleHash": "sha256:0c659aa5e7a4939bbad9198b81f96408623d7b5d321a6725509d105386001498",
+    "sourceRevisionId": "019ed012-0000-7000-8000-000000000101",
+    "sourceLocale": "ja-JP",
+    "targetLocale": "fr-FR"
+  },
+  "providerLedgerUri": "fixtures/provider-proof/expected-recorded-proof-bundle.json",
+  "stages": {
+    "import": {
+      "artifactId": "import:bridge-hello-game",
+      "status": "imported",
+      "detail": {
+        "bridgeId": "019ed012-0000-7000-8000-000000000001",
+        "unitCount": 11,
+        "assetCount": 5,
+        "sourceLocale": "ja-JP"
+      }
+    },
+    "draft": {
+      "artifactId": "draft:draft-job-hello-game",
+      "ledgerRole": "draft",
+      "status": "drafted",
+      "detail": {
+        "draftJobId": "draft-job-hello-game",
+        "outcome": "accepted",
+        "draftUnitCount": 11
+      }
+    },
+    "qa": {
+      "artifactId": "qa:qa-job-hello-game",
+      "ledgerRole": "qa",
+      "status": "rejected",
+      "detail": {
+        "qaJobId": "qa-job-hello-game",
+        "findings": [
+          {
+            "findingId": "finding-hello-game-mistranslation",
+            "category": "mistranslation",
+            "severity": "major",
+            "bridgeUnitId": "019ed012-0000-7000-8000-000000000402"
+          }
+        ]
+      }
+    },
+    "reviewer": {
+      "artifactId": "reviewer:decision-hello-game-repair",
+      "status": "repair-rerun",
+      "detail": {
+        "action": "requestRepair",
+        "priorState": "pending",
+        "nextState": "repair-rerun",
+        "transitionId": "transition-hello-game-repair",
+        "repairHint": "rerun targeted draft with runtime trace context"
+      }
+    },
+    "export": {
+      "artifactId": "export:patch-export-hello-game-deferred",
+      "status": "deferred",
+      "detail": {
+        "preflight": "passed",
+        "draftCount": 0,
+        "targetLocale": "fr-FR"
+      }
+    },
+    "feedback": {
+      "artifactId": "feedback:feedback-report-hello-game-ctx",
+      "status": "imported",
+      "detail": {
+        "triageLabel": "needs_context",
+        "reportStatus": "intake",
+        "contextStatus": "unknown",
+        "affectedBridgeUnitIds": []
+      }
+    },
+    "rerun": {
+      "artifactId": "rerun:rerun-hello-game-repair",
+      "ledgerRole": "draft",
+      "status": "repaired",
+      "detail": {
+        "stage": "draft-repair",
+        "affectedUnitIds": ["019ed012-0000-7000-8000-000000000402"],
+        "reasonCodes": ["qa_major_defect"],
+        "repairedFindingCodes": ["qa.defect_found"]
+      }
+    }
+  }
+}
