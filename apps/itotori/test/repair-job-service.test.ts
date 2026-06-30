@@ -408,12 +408,65 @@ describe("RepairJobService.enqueue", () => {
     expect(first.job).toEqual(job);
   });
 
-  it("mints stable job ids deterministic in trigger + counter", () => {
+  it("repairHistory() and the enqueue() return value are defensive copies of internal history", () => {
+    const service = makeService();
+    const job = service.enqueue({ trigger: qaTrigger(), pair: PAIR });
+
+    // Mutate the job object returned by enqueue(). The cast bypasses the
+    // readonly types deliberately: the append-only guarantee must hold at
+    // runtime, not merely via the type system.
+    (job as { jobId: string }).jobId = "MUTATED-RETURN";
+    (job as { severity: string }).severity = "p2";
+
+    // Mutate an event (and its embedded job) handed back by repairHistory().
+    const snapshot = service.repairHistory();
+    const enq = snapshot[0];
+    if (enq?.kind !== "job_enqueued") {
+      throw new Error("expected job_enqueued event");
+    }
+    (enq as { jobId: string }).jobId = "MUTATED-SNAPSHOT";
+    (enq.job as { jobId: string }).jobId = "MUTATED-SNAPSHOT-JOB";
+    (enq.job as { severity: string }).severity = "p2";
+
+    // Neither mutation reached the service's internal append-only history.
+    const fresh = service.repairHistory();
+    const freshEnq = fresh[0];
+    if (freshEnq?.kind !== "job_enqueued") {
+      throw new Error("expected job_enqueued event");
+    }
+    expect(freshEnq.jobId).not.toBe("MUTATED-RETURN");
+    expect(freshEnq.jobId).not.toBe("MUTATED-SNAPSHOT");
+    expect(freshEnq.job.jobId).not.toBe("MUTATED-RETURN");
+    expect(freshEnq.job.jobId).not.toBe("MUTATED-SNAPSHOT-JOB");
+    expect(freshEnq.job.severity).toBe("p1");
+  });
+
+  it("mints byte-equal job ids across a replay seeded with a fixed instanceId", () => {
+    // Replay determinism: two services constructed with the SAME instanceId
+    // mint identical jobIds for the same trigger at the same counter slot.
+    const replayA = new RepairJobService({
+      now: deterministicClock(),
+      instanceId: "fixed-instance",
+    });
+    const replayB = new RepairJobService({
+      now: deterministicClock(),
+      instanceId: "fixed-instance",
+    });
+    const ja = replayA.enqueue({ trigger: qaTrigger(), pair: PAIR });
+    const jb = replayB.enqueue({ trigger: qaTrigger(), pair: PAIR });
+    expect(ja.jobId).toEqual(jb.jobId);
+  });
+
+  it("mints colliding-free job ids across distinct service instances", () => {
+    // Two DISTINCT instances (each gets a fresh random instanceId by
+    // default) must NOT mint the same jobId for the same trigger at the
+    // same counter slot — otherwise a caller merging their histories sees
+    // jobId collisions.
     const a = makeService();
     const b = makeService();
     const ja = a.enqueue({ trigger: qaTrigger(), pair: PAIR });
     const jb = b.enqueue({ trigger: qaTrigger(), pair: PAIR });
-    expect(ja.jobId).toEqual(jb.jobId);
+    expect(ja.jobId).not.toEqual(jb.jobId);
   });
 
   it("scene-scoped human decision without a sceneIndex throws a typed error", () => {

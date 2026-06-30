@@ -18,15 +18,17 @@
 //     `RepairEvent` to the history; the events are immutable and
 //     surfaced through `repairHistory()`. The (modelId, providerId)
 //     pair is recorded verbatim on each job.
-//   - Over-broad invalidation. Severity below `p2` is rejected so a
-//     noisy P3 finding cannot consume repair budget. The selector
-//     (./affected-work-selector.ts) does the narrowing; this service
-//     enforces the rules around it.
+//   - Over-broad invalidation. `minimumSeverity` defaults to `p1`, so a
+//     `p2` finding is rejected unless a caller explicitly widens the
+//     threshold to `p2`; that keeps noisy sub-blocking findings from
+//     consuming repair budget. (`REPAIR_JOB_SEVERITIES` is `p0|p1|p2`;
+//     there is no `p3`.) The selector (./affected-work-selector.ts) does
+//     the narrowing; this service enforces the rules around it.
 //
 // The service is pure: there is no IO, no DB, no provider invocation.
 // Production wiring layers an executor on top via `claimNext`.
 
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import {
   selectAffectedWork,
   type AffectedWorkSelection,
@@ -65,6 +67,15 @@ export type RepairJobServiceOptions = {
    * they want noisier triggers to count.
    */
   minimumSeverity?: RepairJobSeverity;
+  /**
+   * Per-instance entropy folded into every minted jobId. Defaults to a
+   * fresh `randomUUID()` so two RepairJobService instances that ingest
+   * overlapping triggers at the same counter slot never mint colliding
+   * jobIds — a caller merging histories from two services stays
+   * collision-free. Pass a FIXED value to make jobIds byte-reproducible
+   * across a replay of the same service.
+   */
+  instanceId?: string;
 };
 
 export class RepairJobServiceError extends Error {
@@ -103,6 +114,7 @@ export class RepairJobService {
   private readonly now: RepairJobServiceClock;
   private readonly sceneIndex: RepairSceneIndex | undefined;
   private readonly minimumSeverity: RepairJobSeverity;
+  private readonly instanceId: string;
   private readonly queue: RepairJob[] = [];
   private readonly history: RepairEvent[] = [];
   private readonly inflight = new Set<string>();
@@ -120,6 +132,7 @@ export class RepairJobService {
     this.now = options.now ?? (() => new Date());
     this.sceneIndex = options.sceneIndex;
     this.minimumSeverity = options.minimumSeverity ?? "p1";
+    this.instanceId = options.instanceId ?? randomUUID();
   }
 
   /**
@@ -159,7 +172,16 @@ export class RepairJobService {
     // Stable priority sort: lower numeric priority first; ties broken by
     // enqueue time so older jobs drain first.
     this.queue.sort(compareJobs);
-    this.history.push({ kind: "job_enqueued", jobId, at: enqueuedAt, job });
+    // Embed an independent deep copy of the job in the append-only history
+    // so that mutating the queued job OR the value returned to the caller
+    // can never retroactively edit history. The readonly types discourage
+    // mutation; the structural guarantee must not depend on them.
+    this.history.push({
+      kind: "job_enqueued",
+      jobId,
+      at: enqueuedAt,
+      job: structuredClone(job),
+    });
     return job;
   }
 
@@ -234,9 +256,14 @@ export class RepairJobService {
    * Append-only event history. Surfaces every state transition the
    * service has observed since construction so the dashboard can
    * reconstruct the repair lineage without rejoining inputs.
+   *
+   * Each event is deep-copied on emit so a caller that mutates the
+   * returned snapshot — including the `RepairJob` embedded in a
+   * `job_enqueued` event — cannot retroactively edit the internal,
+   * append-only history.
    */
   repairHistory(): ReadonlyArray<RepairEvent> {
-    return this.history.slice();
+    return this.history.map((event) => structuredClone(event));
   }
 
   /**
@@ -280,10 +307,13 @@ export class RepairJobService {
   }
 
   private mintJobId(trigger: RepairTrigger, counter: number): string {
-    // Deterministic id derived from trigger + counter so a replay
-    // produces byte-equal job ids. The counter prevents collisions
-    // across two QA findings that share the same bridge unit.
-    const seed = `${trigger.trigger}|${triggerStableKey(trigger)}|${counter}`;
+    // Id derived from the per-instance entropy seed + trigger + counter.
+    // The counter prevents collisions across two QA findings that share the
+    // same bridge unit; `instanceId` prevents collisions across two distinct
+    // service instances that ingest overlapping triggers at the same counter
+    // slot. Seeding a service with a FIXED `instanceId` makes a replay
+    // produce byte-equal job ids.
+    const seed = `${this.instanceId}|${trigger.trigger}|${triggerStableKey(trigger)}|${counter}`;
     const digest = createHash("sha256").update(seed).digest("hex");
     return `repair-job-${digest.slice(0, 16)}`;
   }

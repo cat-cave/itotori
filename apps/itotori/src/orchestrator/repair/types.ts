@@ -62,9 +62,11 @@ export const REPAIR_JOB_TRIGGERS = [
 export type RepairJobTrigger = (typeof REPAIR_JOB_TRIGGERS)[number];
 
 /**
- * Closed enum of severities that drive job priority. The service refuses
- * to enqueue jobs whose normalized severity is below `p2`; the orchestrator
- * surfaces those for human triage instead of consuming repair budget.
+ * Closed enum of severities that drive job priority. The service's
+ * `minimumSeverity` defaults to `p1`, so a `p2` job is refused unless a
+ * caller widens the threshold to `p2`; the orchestrator surfaces refused
+ * findings for human triage instead of consuming repair budget. The enum is
+ * `p0|p1|p2` — there is no `p3`.
  */
 export const REPAIR_JOB_SEVERITIES = ["p0", "p1", "p2"] as const;
 export type RepairJobSeverity = (typeof REPAIR_JOB_SEVERITIES)[number];

@@ -15635,7 +15635,9 @@ pub struct PartialAdapterInventory {
 
 impl PartialAdapterReport {
     /// Build a normalized partial report with sorted evidence,
-    /// deterministic diagnostic order, and an up-to-date severity rollup.
+    /// deterministic diagnostic order, an up-to-date severity rollup, and a
+    /// content-derived `report_id` (see `normalize`) so two partial runs
+    /// with distinct inputs never share an id.
     pub fn new(
         adapter_id: impl Into<String>,
         detected_variant: Option<String>,
@@ -15646,7 +15648,8 @@ impl PartialAdapterReport {
     ) -> Self {
         let mut report = Self {
             schema_version: "0.1.0".to_string(),
-            report_id: deterministic_id("kaifuu-partial-adapter", 193),
+            // Placeholder; `normalize()` replaces it with a content-derived id.
+            report_id: String::new(),
             adapter_id: adapter_id.into(),
             detected: false,
             partial: true,
@@ -15669,6 +15672,21 @@ impl PartialAdapterReport {
         self.inventory.sources.sort();
         self.inventory.sources.dedup();
         self.severity_counts = PartialSeverityCounts::from_diagnostics(&self.diagnostics);
+        // Derive `report_id` from the normalized content rather than a
+        // hardcoded constant, so two partial runs with distinct
+        // adapter/variant/evidence/diagnostics/inventory get distinct ids and
+        // dashboard de-duplication by reportId never collapses independent
+        // runs. Computed after sorting so id is invariant to input order.
+        let fingerprint = serde_json::to_string(&(
+            &self.adapter_id,
+            &self.detected_variant,
+            self.command,
+            &self.evidence,
+            &self.diagnostics,
+            &self.inventory,
+        ))
+        .unwrap_or_default();
+        self.report_id = format!("kaifuu-partial-adapter-{}", content_hash(&fingerprint));
     }
 
     pub fn has_blocking_diagnostic(&self) -> bool {
@@ -20114,6 +20132,51 @@ mod tests {
         Arc,
         atomic::{AtomicUsize, Ordering},
     };
+
+    fn partial_report_with(adapter_id: &str, message: &str) -> PartialAdapterReport {
+        PartialAdapterReport::new(
+            adapter_id.to_string(),
+            None,
+            PartialAdapterCommand::Extract,
+            vec![DetectionEvidence {
+                path: "data/SEEN.TXT".to_string(),
+                kind: "envelope".to_string(),
+                status: EvidenceStatus::Matched,
+                detail: "ok".to_string(),
+            }],
+            vec![PartialAdapterDiagnostic {
+                code: "kaifuu.partial.example".to_string(),
+                severity: PartialDiagnosticSeverity::P2,
+                message: message.to_string(),
+                asset_ref: None,
+                remediation: None,
+            }],
+            PartialAdapterInventory::default(),
+        )
+    }
+
+    #[test]
+    fn partial_report_id_is_content_derived_not_a_constant() {
+        // KAIFUU-193 P3 fix: report_id used to be the hardcoded
+        // `deterministic_id("kaifuu-partial-adapter", 193)` — identical for
+        // every partial report. It must now vary with the report content so
+        // dashboard de-duplication by reportId cannot collapse independent runs.
+        let a = partial_report_with("kaifuu-reallive", "scene index mismatch");
+        let b = partial_report_with("kaifuu-siglus", "scene index mismatch");
+        let c = partial_report_with("kaifuu-reallive", "gameexe key mismatch");
+
+        // Distinct adapter and distinct diagnostic content each change the id.
+        assert_ne!(a.report_id, b.report_id);
+        assert_ne!(a.report_id, c.report_id);
+
+        // It is no longer the old hardcoded constant.
+        assert_ne!(a.report_id, deterministic_id("kaifuu-partial-adapter", 193));
+        assert!(a.report_id.starts_with("kaifuu-partial-adapter-"));
+
+        // Identical content (after normalization) is reproducible.
+        let a2 = partial_report_with("kaifuu-reallive", "scene index mismatch");
+        assert_eq!(a.report_id, a2.report_id);
+    }
 
     /// KAIFUU-053 test helper: explicitly request the derived-from-reports
     /// matrix for fixtures that exercise contract / preflight machinery
