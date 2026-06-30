@@ -193,3 +193,25 @@ fn manifest_declares_engine_id_utsushi_siglus() {
         "Siglus port manifest must declare engine id `utsushi-siglus`",
     );
 }
+
+#[test]
+fn manifest_limitations_declare_inert_design_stage_scaffold_honestly() {
+    // The "second engine family" claim is contract-level only: the
+    // scaffold exercises zero Siglus real bytes and validates zero
+    // Siglus games. The manifest must say so out loud, so a future
+    // change cannot quietly present `utsushi-siglus` as a functioning
+    // second engine without first replacing this honest declaration.
+    let limitations = UtsushiSiglusPort::MANIFEST.limitations;
+    let joined = limitations.join("\n").to_lowercase();
+    for required in [
+        "scaffold only",
+        "every lifecycle method returns a typed lifecycle error",
+        "out of alpha scope",
+    ] {
+        assert!(
+            joined.contains(required),
+            "Siglus manifest limitations must honestly declare the inert design-stage scaffold \
+             (missing phrase: `{required}`); got: {limitations:?}",
+        );
+    }
+}
