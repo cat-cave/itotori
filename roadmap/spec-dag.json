@@ -37577,6 +37577,123 @@
         "Real SJIS dialogue IS still surfaced + translatable (no false-negative)",
         "No-legacy: single surface-selection path"
       ]
+    },
+    {
+      "id": "catalog-065-verifier-factidentities-check-tautological",
+      "title": "[audit-3] CATALOG-065 verifier factIdentities check is tautological (compares expected to a copy of itself)",
+      "kind": "audit-fix",
+      "milestone": "alpha",
+      "status": "ready",
+      "priority": "P3",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "WHY: persistedIdentities is built from context.expectedFactIdentities itself, then sameStringList(persistedIdentities, expectedFactIdentities) is always true — false assurance the persisted fact identities match.\n\nSUGGESTED FIX: Derive persistedIdentities from data read back from the repository (recompute from persisted source record/external IDs) so the comparison can genuinely fail.\n\nEVIDENCE: packages/itotori-db/src/services/catalog-recorded-importers.ts:2121 (general-audit-3 services-D, confirmed).",
+      "acceptance": "The defect at packages/itotori-db/src/services/catalog-recorded-importers.ts:2121 is corrected per the suggested fix; a test proves the corrected behavior. No-legacy.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-30T05:42:30.648Z",
+      "updated_at": "2026-06-30T05:42:30.648Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["itotori"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/db test:db"
+        }
+      ],
+      "audit_focus": [
+        "Regression: persistedIdentities is built from context.expectedFactIdentities itself, then sameStringList(persistedIdentities, expectedFactIdentities) is",
+        "No-legacy single path",
+        "Test asserts corrected behavior not the bug"
+      ]
+    },
+    {
+      "id": "catalog-importer-originallanguage-hardcoded-ja-jp",
+      "title": "[audit-3] IGDB/Wikidata importer hardcodes originalLanguage ja-JP for all works",
+      "kind": "audit-fix",
+      "milestone": "alpha",
+      "status": "ready",
+      "priority": "P3",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "WHY: parseIgdbPlatformResponse (674) + Wikidata (723) set originalLanguage:'ja-JP' unconditionally -> flows to persisted work; a non-Japanese title is written with a fabricated original language.\n\nSUGGESTED FIX: Only set originalLanguage when the source payload provides language evidence; otherwise omit it (genuinely-known data only).\n\nEVIDENCE: packages/itotori-db/src/services/catalog-recorded-importers.ts:674 (general-audit-3 services-D, confirmed).",
+      "acceptance": "The defect at packages/itotori-db/src/services/catalog-recorded-importers.ts:674 is corrected per the suggested fix; a test proves the corrected behavior. No-legacy.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-30T05:42:30.648Z",
+      "updated_at": "2026-06-30T05:42:30.648Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["itotori"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/db test:db"
+        }
+      ],
+      "audit_focus": [
+        "Regression: parseIgdbPlatformResponse (674) + Wikidata (723) set originalLanguage:'ja-JP' unconditionally -> flows to persisted work; a non-Japanese tit",
+        "No-legacy single path",
+        "Test asserts corrected behavior not the bug"
+      ]
+    },
+    {
+      "id": "catalog-generic-conflicts-defaulted-to-languagestatus-kind",
+      "title": "[audit-3] Generic payload conflicts defaulted to languageStatus conflictKind (masks absent kind)",
+      "kind": "audit-fix",
+      "milestone": "alpha",
+      "status": "ready",
+      "priority": "P3",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "WHY: conflictKind ?? languageStatus defaults a missing kind; conflictFactsFromPayload never sets kind, so every untyped conflict persists as language-status regardless of actual nature.\n\nSUGGESTED FIX: Use a neutral/unknown conflict kind when absent, or require conflictKind on the generic conflict path.\n\nEVIDENCE: packages/itotori-db/src/services/catalog-recorded-importers.ts:2433 (general-audit-3 services-D, confirmed).",
+      "acceptance": "The defect at packages/itotori-db/src/services/catalog-recorded-importers.ts:2433 is corrected per the suggested fix; a test proves the corrected behavior. No-legacy.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-30T05:42:30.648Z",
+      "updated_at": "2026-06-30T05:42:30.648Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["itotori"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/db test:db"
+        }
+      ],
+      "audit_focus": [
+        "Regression: conflictKind ?? languageStatus defaults a missing kind; conflictFactsFromPayload never sets kind, so every untyped conflict persists as lang",
+        "No-legacy single path",
+        "Test asserts corrected behavior not the bug"
+      ]
     }
   ],
   "edges": [
