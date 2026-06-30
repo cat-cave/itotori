@@ -34353,7 +34353,7 @@
       "title": "Test named '..._at_least_90_percent_opcode_recognition' asserts only >= 0.75",
       "kind": "audit-fix",
       "milestone": "continuous",
-      "status": "ready",
+      "status": "cancelled",
       "priority": "P2",
       "estimate_points": 1,
       "risk": "low",
@@ -34364,7 +34364,7 @@
       "validation": null,
       "context": null,
       "created_at": "2026-06-29T05:14:14.877Z",
-      "updated_at": "2026-06-29T05:14:14.877Z",
+      "updated_at": "2026-06-30T03:26:23.028Z",
       "claimed_at": null,
       "done_at": null,
       "group_name": null,
@@ -36342,19 +36342,19 @@
       "title": "ALPHA-006e: RealLive decompiler to 100% (full ExpressionPiece eval, 0 unknown opcodes)",
       "kind": "feature",
       "milestone": "alpha",
-      "status": "ready",
+      "status": "claimed",
       "priority": "P1",
       "estimate_points": 1,
       "risk": "high",
-      "owner": null,
-      "branch": null,
-      "spec": "WHAT: Complete the kaifuu-reallive Command-argument / ExpressionPiece evaluator so real RealLive scene bytecode decompiles with ZERO unknown opcodes and full expression evaluation, and raise the test floor to demand it.\n\nWHY: Re-measured on main against the real Sweetie HD Seen.txt scene 1: total_opcodes=299, recognized=253, unknown=46 -> recognition_rate=84.62%. crates/kaifuu-reallive/tests/scene_1_dispatch_real_bytes.rs:258-265 asserts only `recognition_rate >= 0.75` -- a DEFECT floor that masks incomplete decompilation. The residual 46 unknown spans are dominated by byte-coalesced positions that cannot be aligned to a documented BytecodeElement boundary without a full ExpressionPiece evaluator (the comment at lines 246-257 admits this).\n\nNO-LEGACY: the >=0.75 floor and its rationalizing comment are deleted in the same change as the 100% assertion; no second relaxed threshold remains.\n\nMULTI-GAME: 100% (0 unknown) must hold on Sweetie HD AND a 2nd RealLive title (depends on fix-second-reallive-corpus); a single-game opcode catalogue does not generalize.",
-      "acceptance": "- On real Sweetie HD scene 1: unknown==0 / recognition_rate==100% via the full ExpressionPiece evaluator (every Unknown{opcode:0x23,...} span resolved to a typed BytecodeElement).\n- scene_1_dispatch_real_bytes.rs asserts unknown==0 (or recognition_rate==1.0); the `>= 0.75` floor and its excuse comment are gone.\n- The same 0-unknown result holds on a 2nd real RealLive title.\n- No new threshold relaxation (no 0.75/0.9 floor remains anywhere in that test).",
+      "owner": "orchestrator",
+      "branch": "spec/alpha-006e-decompiler-100",
+      "spec": "WHAT: Complete the kaifuu-reallive Command-argument / ExpressionPiece evaluator so real RealLive scene bytecode decompiles with ZERO unknown opcodes and full expression evaluation, and raise the test floor to demand it.\n\nWHY: Re-measured on main against the real Sweetie HD Seen.txt scene 1: total_opcodes=299, recognized=253, unknown=46 -> recognition_rate=84.62%. crates/kaifuu-reallive/tests/scene_1_dispatch_real_bytes.rs:258-265 asserts only `recognition_rate >= 0.75` -- a DEFECT floor that masks incomplete decompilation. The residual 46 unknown spans are dominated by byte-coalesced positions that cannot be aligned to a documented BytecodeElement boundary without a full ExpressionPiece evaluator (the comment at lines 246-257 admits this).\n\nNO-LEGACY: the >=0.75 floor and its rationalizing comment are deleted in the same change as the 100% assertion; no second relaxed threshold remains.\n\nMULTI-GAME: 100% (0 unknown) must hold on Sweetie HD AND a 2nd RealLive title (depends on fix-second-reallive-corpus); a single-game opcode catalogue does not generalize.\n",
+      "acceptance": "- On real Sweetie HD scene 1: unknown==0 / recognition_rate==100% via the full ExpressionPiece evaluator (every Unknown{opcode,...} span resolved to a typed BytecodeElement).\n- crates/kaifuu-reallive/tests/scene_1_dispatch_real_bytes.rs asserts unknown==0 (or recognition_rate==1.0); the `>= 0.75` floor (line 259) and its rationalizing comment are DELETED; the test fn name (line ~56) no longer claims \"90 percent\" — it states 100%/0-unknown.\n- No threshold relaxation remains anywhere in that test (no 0.75/0.9 floor).\n- (Multi-game validation on a 2nd RealLive title is split to alpha-006e-multigame-validation, gated on FIX-4 — NOT required for this node.)\n",
       "validation": null,
       "context": null,
       "created_at": "2026-06-29T16:04:04.008Z",
-      "updated_at": "2026-06-29T16:04:04.008Z",
-      "claimed_at": null,
+      "updated_at": "2026-06-30T03:27:02.004Z",
+      "claimed_at": "2026-06-30T03:27:02.004Z",
       "done_at": null,
       "group_name": "engine-adapters",
       "status_reason": null,
@@ -37438,6 +37438,111 @@
         {
           "type": "command",
           "value": "pnpm --filter @itotori/app exec vitest run telemetry"
+        }
+      ],
+      "audit_focus": []
+    },
+    {
+      "id": "alpha-006e-multigame-validation",
+      "title": "Validate RealLive 100%-decompiler on a 2nd RealLive title (multi-game law)",
+      "kind": "feature",
+      "milestone": "alpha",
+      "status": "ready",
+      "priority": "P2",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "Multi-game validation of the RealLive 100% decompiler (split from alpha-006e-decompiler-100, which completes the ExpressionPiece evaluator + hits 0-unknown on Sweetie HD scene 1). Per the multi-game-validation law (engine-family behavior validates against >=2 real RealLive titles), confirm the completed evaluator reaches 0 unknown opcodes on a SECOND real RealLive title too (not just Sweetie HD), so the opcode/ExpressionPiece coverage generalizes. Gated on fix-second-reallive-corpus (a 2nd RealLive corpus via vault-curation) + alpha-006e-decompiler-100.\n",
+      "acceptance": "- The completed evaluator decompiles a 2nd real RealLive title (distinct from Sweetie HD) with unknown==0 / recognition_rate==100% on at least one real scene.\n- An env-gated real-bytes test against the 2nd corpus (ITOTORI_REAL_GAME_ROOT_2) asserts 0 unknown.\n- Confirms the single-game (Sweetie HD) opcode coverage generalizes; no game-specific special-casing masks an unknown.\n",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-30T03:26:22.466Z",
+      "updated_at": "2026-06-30T03:26:22.558Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["kaifuu"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "direnv exec . cargo test -p kaifuu-reallive"
+        }
+      ],
+      "audit_focus": []
+    },
+    {
+      "id": "propagate-or-side-fallback-decision-to-docs-presets-comments",
+      "title": "Propagate OR-side-fallback decision to docs/presets/comments (still claim strict-pin)",
+      "kind": "feature",
+      "milestone": "alpha",
+      "status": "claimed",
+      "priority": "P1",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": "orchestrator",
+      "branch": "spec/propagate-or-side-fallback-decision-to-docs-presets-comments",
+      "spec": "The OR-side-fallback product decision (remove-pair-mismatch-guard-accept-zdr-served-provider, done) is NOT propagated to docs/presets/comments — they still present strict pinning as the model. Fix all of:\n1. P1: docs/openrouter-integration.md §3.2/§3.3 (lines ~210-245, 146, 682) — the \"canonical reference\" still presents provider.only:[...] + allow_fallbacks:false as the CURRENT standard alpha posture (\"the pair is the pin\"). Rewrite to the live model: order:[providerId] + allow_fallbacks:true, zdr:true as the gate, real served provider recorded, pair_mismatch guard removed.\n2. P2: presets/localize-project.pair-policy.json:68 notes — narrative still claims provider.only=[<alt>] / allow_fallbacks=false / \"pair_mismatch ... silent provider swap forbidden\" wire behavior the client no longer produces (the suite verifier now REQUIRES allow_fallbacks=true).\n3. P3: packages/localization-bridge-schema/src/pair-policy.v0.3.ts:18 — still lists pair_mismatch as the leading must-surface failure mode after that guard was deleted; types.ts:550 documents provider-identity is no longer a failure axis.\n",
+      "acceptance": "- docs/openrouter-integration.md describes order+allow_fallbacks:true + zdr-gate + real-served-provider-recording as the current model; no remaining claim that only:[providerId]/allow_fallbacks:false is \"the standard\" or \"the pin\". rg confirms no stale strict-pin-as-current language.\n- presets/localize-project.pair-policy.json notes match the current wire behavior (allow_fallbacks:true, no pair_mismatch silent-swap-forbidden claim).\n- pair-policy.v0.3.ts:18 no longer lists pair_mismatch as a must-surface failure mode.\n- A grep proves no doc/preset/comment presents the removed pair_mismatch guard or strict pin as current behavior.\n",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-30T03:27:01.434Z",
+      "updated_at": "2026-06-30T03:27:02.262Z",
+      "claimed_at": "2026-06-30T03:27:02.262Z",
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["itotori"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "! rg -q 'allow_fallbacks.*false|the pair is the pin|only:\\[providerId\\]' docs/openrouter-integration.md"
+        }
+      ],
+      "audit_focus": []
+    },
+    {
+      "id": "app-level-429-failover-redundant-with-or-side-fallback",
+      "title": "Remove app-level 429-failover loop now redundant with OR-side fallback (or justify)",
+      "kind": "feature",
+      "milestone": "alpha",
+      "status": "ready",
+      "priority": "P2",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "DAG-OR-3 (repo-wide audit): apps/itotori/src/orchestrator/localize-project-stage-command.ts runs an APP-LEVEL manual 429-failover loop (failoverPredicate=http_429_from_primary over pair-policy alternates, presets/localize-project.pair-policy.json:65) that now COEXISTS with OpenRouter-side automatic fallback (post-ITOTORI-241: order+allow_fallbacks:true, OR routes within ZDR allow-list on 429). With OR handling 429s (UTSUSHI-231 live run: OR served DigitalOcean on fallback, run completed), the app-level alternate-chaining is the now-superseded ITOTORI-239/240 approach and is redundant (and could double-handle a 429 OR already resolved). Decide the layering explicitly: per Trevor's decision (OR-side fallback is the resilience mechanism), REMOVE the redundant app-level failoverPredicate/alternate-chaining loop (no-legacy), keeping the single pair-policy primary; OR document precisely why a thin app-level retry is still needed on top of OR fallback (e.g. all-ZDR-providers-429). Default to removal unless a concrete gap is shown.\n",
+      "acceptance": "- The app-level 429-failover/alternate-chaining loop in localize-project-stage-command.ts is removed (OR-side fallback handles 429s), OR a documented rationale + test justifies a minimal app-level retry layered on OR fallback.\n- No-legacy: no dual failover machinery; the superseded ITOTORI-239/240 alternate-chaining is gone.\n- A live or recorded run still completes under a primary-provider 429 (OR fallback serves an alternate ZDR provider), proving resilience without the app-level loop.\n- pnpm --filter @itotori/app exec vitest run localize-project-stage green.\n",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-30T03:27:01.656Z",
+      "updated_at": "2026-06-30T03:27:01.740Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["itotori"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/app exec vitest run localize-project-stage"
         }
       ],
       "audit_focus": []
@@ -47771,12 +47876,6 @@
       "created_at": "2026-06-29T16:07:34.196Z"
     },
     {
-      "from_node": "fix-second-reallive-corpus",
-      "to_node": "alpha-006e-decompiler-100",
-      "type": "requires",
-      "created_at": "2026-06-29T16:07:34.373Z"
-    },
-    {
       "from_node": "fix-realistic-g00-fixture",
       "to_node": "alpha-006b-screenshot-rasterizer",
       "type": "requires",
@@ -47847,6 +47946,18 @@
       "to_node": "UTSUSHI-231",
       "type": "requires",
       "created_at": "2026-06-30T01:37:05.772Z"
+    },
+    {
+      "from_node": "fix-second-reallive-corpus",
+      "to_node": "alpha-006e-multigame-validation",
+      "type": "requires",
+      "created_at": "2026-06-30T03:26:22.640Z"
+    },
+    {
+      "from_node": "alpha-006e-decompiler-100",
+      "to_node": "alpha-006e-multigame-validation",
+      "type": "requires",
+      "created_at": "2026-06-30T03:26:22.725Z"
     }
   ],
   "findings": [
