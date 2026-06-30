@@ -88,10 +88,19 @@ fn command_character_text_display_classified_from_msg_opcode_3() {
 }
 
 #[test]
-fn command_choice_classified_from_sel_module_with_two_choices() {
-    // module=1.SEL(=5), opcode=0, argc=2, then '(' choice0 ',' choice1 ')'
+fn command_choice_classified_from_sel_module_select_block() {
+    // module_sel `select` (type 0, module 2, opcode 1) uses the
+    // SelectElement `{ … }` block framing: 8-byte header, then `{`, then
+    // each option is its text followed by a `\n`+i16 line marker, closed
+    // by `}`. Two options "ab" / "cd".
     let bytes = &[
-        0x23, 1, 5, 0, 0, 2, 0, 0, b'(', 0x61, 0x62, b',', 0x63, 0x64, b')',
+        0x23, 0, 2, 1, 0, 2, 0, 0,    // header (type 0, module 2, opcode 1)
+        b'{', // block open at offset 8
+        0x61, 0x62, // option 0 text "ab" at offset 9
+        0x0A, 0x05, 0x00, // \n + line 5
+        0x63, 0x64, // option 1 text "cd" at offset 14
+        0x0A, 0x06, 0x00, // \n + line 6
+        b'}', // block close
     ];
     let opcodes = parse_scene(bytes).expect("decode");
     match &opcodes[0] {
@@ -99,11 +108,11 @@ fn command_choice_classified_from_sel_module_with_two_choices() {
             assert_eq!(choices.len(), 2);
             assert_eq!(choices[0].bytes, vec![0x61, 0x62]);
             assert_eq!(choices[1].bytes, vec![0x63, 0x64]);
-            // Each option carries its scene-relative byte offset: after the
-            // 8-byte command header + '(' choice0 begins at 9; after the
-            // comma choice1 begins at 12 — never the command opener (0).
+            // Each option carries its scene-relative byte offset — the
+            // option text bytes inside the `{ … }` block, never the
+            // command opener (0).
             assert_eq!(choices[0].byte_offset, 9);
-            assert_eq!(choices[1].byte_offset, 12);
+            assert_eq!(choices[1].byte_offset, 14);
         }
         other => panic!("expected Choice, got {other:?}"),
     }
@@ -279,16 +288,43 @@ fn non_structural_lead_byte_is_preserved_as_textout_not_dropped() {
 }
 
 #[test]
-fn command_with_unrecognized_module_id_preserved_with_command_opener() {
-    // module_id 99 is not in the documented {SYS,MSG,SEL,JMP,MEM,STR,GRP,BGM,KOE} set.
+fn in_space_command_at_unlabelled_module_decodes_to_generic_command_not_unknown() {
+    // module_id 99 has no bespoke bridge label, but module_type=1 is inside
+    // RealLive's documented {0,1,2} space, so the reference-complete catalogue
+    // decodes it to the generic typed `Command` (the rlvm `FunctionElement`
+    // analogue) — never `Unknown`, never fail-open. `Unknown` is reserved for
+    // the `module_type > 2` desync tripwire (see
+    // `out_of_space_module_type_is_unknown_desync_tripwire`).
     let bytes = &[0x23, 1, 99, 0, 0, 0, 0, 0];
+    let opcodes = parse_scene(bytes).expect("decode");
+    assert!(
+        matches!(
+            opcodes[0],
+            RealLiveOpcode::Command {
+                module_type: 1,
+                module_id: 99,
+                opcode: 0,
+                ..
+            }
+        ),
+        "expected generic Command for in-space module, got {:?}",
+        opcodes[0]
+    );
+    assert!(opcodes[0].is_recognized());
+}
+
+#[test]
+fn out_of_space_module_type_is_preserved_as_unknown_with_command_opener() {
+    // module_type 14 is outside the documented {0,1,2} space — the desync
+    // tripwire that must NOT be coalesced into a generic Command.
+    let bytes = &[0x23, 14, 99, 0, 0, 0, 0, 0];
     let opcodes = parse_scene(bytes).expect("decode");
     match &opcodes[0] {
         RealLiveOpcode::Unknown { opcode, raw_bytes } => {
             assert_eq!(*opcode, 0x23);
-            assert!(raw_bytes.starts_with(&[0x23, 1, 99]));
+            assert!(raw_bytes.starts_with(&[0x23, 14, 99]));
         }
-        other => panic!("expected Unknown for unrecognized module, got {other:?}"),
+        other => panic!("expected Unknown for out-of-space module_type, got {other:?}"),
     }
 }
 

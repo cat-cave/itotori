@@ -229,6 +229,9 @@ fn project_opcode(
         RealLiveOpcode::VoicePlay { .. } => Some(NamedOpcode::SetVar),
         RealLiveOpcode::SetVariable => Some(NamedOpcode::SetVar),
         RealLiveOpcode::End => Some(NamedOpcode::Return),
+        // Generic typed function command (documented long-tail module):
+        // structurally decoded but without a bespoke synthetic NamedOpcode.
+        RealLiveOpcode::Command { .. } => None,
         RealLiveOpcode::Unknown { .. } => None,
     };
 

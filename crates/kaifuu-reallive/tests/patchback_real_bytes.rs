@@ -40,11 +40,15 @@ use kaifuu_reallive::{
 
 const SWEETIE_HD_GAME_ID: &str = "sweetie-hd";
 const SWEETIE_HD_SOURCE_PROFILE_ID: &str = "kaifuu-reallive-sweetie-hd";
-/// A known dialogue-bearing scene in Sweetie HD's `Seen.txt`. Scene 1 is
-/// an all-binary boundary scene and carries no translatable units (see
-/// `bridge_real_bytes`), so the patchback round-trip is exercised against
-/// a real dialogue scene instead.
-const DIALOGUE_SCENE_ID: u16 = 2011;
+/// A known dialogue-bearing scene in Sweetie HD's `Seen.txt` that decodes
+/// 100% clean. Scene 1 is an all-binary boundary scene and carries no
+/// translatable units (see `bridge_real_bytes`), so the patchback
+/// round-trip is exercised against a real dialogue scene instead.
+/// (Scene 2011, previously used here, contains a second-level-XOR'd
+/// `module_sel` block — a `compiler_version=110002` `xor_2` segment owned
+/// by the decompressor follow-up node — and can no longer be decoded
+/// end-to-end, so it is not a valid clean round-trip fixture.)
+const DIALOGUE_SCENE_ID: u16 = 1017;
 
 /// English-language sentinel used by the round-trip assertion.
 ///

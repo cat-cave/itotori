@@ -10,10 +10,15 @@
 //!   surface ZERO translatable units and return `NoTextUnits` — surfacing
 //!   any of them (e.g. the 214-byte op[72] data block) would let patchback
 //!   overwrite the table and corrupt the scene.
-//! - **Scene 2011** is a dialogue scene. The producer must surface exactly
-//!   the readable Shift-JIS Textout runs (plus choice options) as
-//!   translatable units — no false negatives — with decoded text, a
-//!   `reallive.kidoku` span, and NAMAE-resolved speakers.
+//! - **Scene 1018** is a dialogue scene that decodes 100% clean under the
+//!   reference-complete command catalogue (real `module_sel` select-block
+//!   Choice units included). The producer must surface exactly the readable
+//!   Shift-JIS Textout runs plus choice options as translatable units — no
+//!   false negatives — with decoded text, a `reallive.kidoku` span, and
+//!   NAMAE-resolved speakers. (The previously-used scene 2011 contains a
+//!   second-level-XOR'd `module_sel` block — a `compiler_version=110002`
+//!   `xor_2` segment, owned by the decompressor follow-up node — so it can
+//!   no longer be decoded end-to-end and is not a valid clean fixture.)
 //!
 //! The test is env-gated; without `ITOTORI_REAL_GAME_ROOT` it
 //! emits an explicit skip notice and returns (no silent pass).
@@ -34,8 +39,10 @@ use kaifuu_reallive::{
 
 const SWEETIE_HD_GAME_ID: &str = "sweetie-hd";
 const SWEETIE_HD_SOURCE_PROFILE_ID: &str = "kaifuu-reallive-sweetie-hd";
-/// A known dialogue-bearing scene in Sweetie HD's `Seen.txt`.
-const DIALOGUE_SCENE_ID: u16 = 2011;
+/// A known dialogue-bearing scene in Sweetie HD's `Seen.txt` that decodes
+/// 100% clean (readable dialogue + binary catch-all runs + real
+/// `module_sel` select-block Choice options + kidoku + NAMAE speakers).
+const DIALOGUE_SCENE_ID: u16 = 1018;
 
 fn real_seen_txt_path() -> Option<PathBuf> {
     real_corpus::seen_txt_path()

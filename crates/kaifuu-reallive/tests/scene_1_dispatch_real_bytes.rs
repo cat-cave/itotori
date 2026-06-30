@@ -359,28 +359,40 @@ fn scene_1_arg_expression_framing_offsets_are_pinned_byte_exact() {
     // lists / trailing goto pointers) and Expression elements whose spans
     // are computed by the ExpressionPiece evaluator — i.e. exactly the
     // framing the audit finding is about.
+    //
+    // Labels reflect the reference-complete command catalogue
+    // (`reallive-command-module-catalogue`): every in-space command with no
+    // bespoke bridge label decodes to the generic typed `"command"` (the
+    // rlvm `FunctionElement` analogue). The element at offset 30 is module
+    // (type=1, id=5, opcode=120) — a `module_msg`-class command per
+    // `docs/research/reallive-sweetie-hd-encryption-mechanism.md` §4.2, not a
+    // user choice — and the 8/16/22-byte commands previously coalesced into
+    // the alpha's catch-all `set_variable` are likewise generic `"command"`.
+    // The byte-framing (offset + width) is **byte-identical** to the prior
+    // pin — only the catalogue label is corrected, which is exactly what the
+    // 100%-decompilation catalogue node delivers.
     let golden: &[(usize, &str, usize)] = &[
         (6, "meta_entrypoint", 3),
-        (30, "choice", 8),
+        (30, "command", 8),
         (38, "expression", 14),
-        (193, "set_variable", 8),
-        (201, "set_variable", 8),
-        (209, "set_variable", 8),
-        (217, "set_variable", 8),
-        (225, "set_variable", 8),
-        (233, "set_variable", 8),
-        (241, "set_variable", 8),
-        (249, "set_variable", 8),
+        (193, "command", 8),
+        (201, "command", 8),
+        (209, "command", 8),
+        (217, "command", 8),
+        (225, "command", 8),
+        (233, "command", 8),
+        (241, "command", 8),
+        (249, "command", 8),
         (257, "meta_entrypoint", 3),
         (260, "textout", 22),
         (283, "textout", 15),
         (299, "textout", 214),
         (517, "expression", 18),
-        (544, "set_variable", 16),
+        (544, "command", 16),
         (566, "background", 22),
         (591, "background", 22),
-        (619, "set_variable", 8),
-        (630, "set_variable", 16),
+        (619, "command", 8),
+        (630, "command", 16),
         (652, "branch", 32),
         (687, "expression", 18),
         (711, "expression", 18),
@@ -400,9 +412,9 @@ fn scene_1_arg_expression_framing_offsets_are_pinned_byte_exact() {
         (1027, "expression", 18),
         (1048, "expression", 18),
         (1069, "expression", 18),
-        (1096, "set_variable", 16),
+        (1096, "command", 16),
         (1121, "background", 22),
-        (1158, "set_variable", 22),
+        (1158, "command", 22),
         (1180, "expression", 14),
         (1197, "branch", 32),
         (1232, "background", 24),

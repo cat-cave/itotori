@@ -1100,17 +1100,26 @@ mod tests {
 
     #[test]
     fn empty_choice_option_does_not_drift_occurrence_index_of_later_units() {
-        // Bytecode: Textout(ハ), Choice("A",,"B"), Textout(ニ).
-        // The empty `,,` option must NOT consume an occurrence_index, so
-        // every later unit keeps the same occurrence the patchback
-        // re-walk (collect_text_unit_positions) assigns.
+        // Bytecode: Textout(ハ), select{ "A", <empty>, "B" }, Textout(ニ).
+        // The empty option must NOT consume an occurrence_index, so every
+        // later unit keeps the same occurrence the patchback re-walk
+        // (collect_text_unit_positions) assigns.
         //
-        // COMMAND header (8 bytes): 0x23, module_type=1, module_id=SEL(5),
-        // opcode=0x0000, argc=0, overload=0, reserved=0; then `(A,,B)`.
+        // COMMAND header (8 bytes): 0x23, module_type=0, module_id=SEL(2),
+        // opcode=1 (select), argc, overload, reserved; then the
+        // SelectElement `{ … }` block. The middle option is an empty entry
+        // (a bare `\n`+line marker with no text), which `decode_select`
+        // drops — emitting only "A" and "B".
         let mut bytecode: Vec<u8> = Vec::new();
         bytecode.extend_from_slice(&[0x83, 0x6E]); // Textout "ハ" -> occ 0
-        bytecode.extend_from_slice(&[0x23, 0x01, 0x05, 0x00, 0x00, 0x00, 0x00, 0x00]);
-        bytecode.extend_from_slice(b"(A,,B)"); // option A -> occ 1, empty skipped, B -> occ 2
+        bytecode.extend_from_slice(&[0x23, 0x00, 0x02, 0x01, 0x00, 0x02, 0x00, 0x00]);
+        bytecode.push(b'{');
+        bytecode.extend_from_slice(b"A"); // option A -> occ 1
+        bytecode.extend_from_slice(&[0x0a, 0x05, 0x00]);
+        bytecode.extend_from_slice(&[0x0a, 0x06, 0x00]); // empty option -> dropped
+        bytecode.extend_from_slice(b"B"); // option B -> occ 2
+        bytecode.extend_from_slice(&[0x0a, 0x07, 0x00]);
+        bytecode.push(b'}');
         bytecode.extend_from_slice(&[0x83, 0x70]); // Textout "ニ" -> occ 3
         bytecode.extend_from_slice(&[0x0a, 0x05, 0x00]); // MetaLine terminator
 
@@ -1216,18 +1225,24 @@ mod tests {
 
     #[test]
     fn unit_offset_after_choice_command_tracks_authoritative_decode_width_no_drift() {
-        // 004 regression: opcode_byte_width reconstructed a Choice as
-        // `8 + sum(len+1)` (here 13) while decode_command actually
-        // consumes `8-byte header + "(A,,B)" (6 bytes)` = 14. The unit
-        // that follows a Choice command must be anchored at the real
-        // decoded width, so its decompressed-stream offset is exact.
+        // 004 regression: the unit that follows a Choice command must be
+        // anchored at the REAL width `decode_command` consumed, never a
+        // hand-reconstructed table. The `module_sel` `SelectElement`
+        // `{ … }` block here consumes 18 bytes (8-byte header + `{` + "A" +
+        // `\n`+line + "B" + `\n`+line + `}`), so the trailing dialogue must
+        // anchor at 2 (first Textout) + 18 = 20.
         //
-        // Bytecode: Textout "ハ" (2 bytes) | SEL choice command (14 bytes)
+        // Bytecode: Textout "ハ" (2 bytes) | select{ "A", "B" } (18 bytes)
         // | Textout "ニ" (occurrence 3) | MetaLine terminator.
         let mut bytecode: Vec<u8> = Vec::new();
         bytecode.extend_from_slice(&[0x83, 0x6E]); // Textout "ハ" -> occ 0, offset 0
-        bytecode.extend_from_slice(&[0x23, 0x01, 0x05, 0x00, 0x00, 0x00, 0x00, 0x00]);
-        bytecode.extend_from_slice(b"(A,,B)"); // options A/B -> occ 1, occ 2
+        bytecode.extend_from_slice(&[0x23, 0x00, 0x02, 0x01, 0x00, 0x02, 0x00, 0x00]);
+        bytecode.push(b'{');
+        bytecode.extend_from_slice(b"A"); // option A -> occ 1
+        bytecode.extend_from_slice(&[0x0a, 0x05, 0x00]);
+        bytecode.extend_from_slice(b"B"); // option B -> occ 2
+        bytecode.extend_from_slice(&[0x0a, 0x06, 0x00]);
+        bytecode.push(b'}');
         bytecode.extend_from_slice(&[0x83, 0x70]); // Textout "ニ" -> occ 3
         bytecode.extend_from_slice(&[0x0a, 0x05, 0x00]); // MetaLine terminator
 
@@ -1236,8 +1251,7 @@ mod tests {
             .expect("scene with choice must produce units");
 
         // The trailing dialogue unit (occurrence 3) must start at the real
-        // cursor: 2 (first Textout) + 14 (choice header+arglist) = 16, not
-        // the old hardcoded-table value of 15.
+        // cursor: 2 (first Textout) + 18 (select header+block) = 20.
         let trailing = produced
             .json
             .get("units")
@@ -1254,8 +1268,8 @@ mod tests {
             .as_u64()
             .expect("startByte u64");
         assert_eq!(
-            start, 16,
-            "unit after Choice must anchor at the authoritative decode width (16), not a drifted 15"
+            start, 20,
+            "unit after Choice must anchor at the authoritative decode width (20)"
         );
     }
 

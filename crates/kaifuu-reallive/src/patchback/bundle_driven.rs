@@ -834,45 +834,29 @@ fn collect_text_unit_positions(
             }
         }
         if let RealLiveOpcode::Choice { choices } = op {
-            // Each Choice contributes `choices.len()` units, one per
-            // choice option. Choice arg bytes live in `bytes[pos+8 ..
-            // new_pos]` per the rlvm ArgList layout (`(arg0, arg1,
-            // ...)`). Re-derive the per-arg byte ranges from the
-            // original byte stream because the typed `choices` vector
-            // dropped the byte positions.
-            let args_start = pos + crate::opcode::COMMAND_HEADER_LEN;
-            let args_region = &decompressed[args_start..new_pos];
-            let mut option_start = 0usize;
-            let mut cursor = if !args_region.is_empty() && args_region[0] == b'(' {
-                option_start = 1;
-                1
-            } else {
-                0
-            };
-            let mut option_index = 0usize;
-            while cursor < args_region.len() {
-                let b = args_region[cursor];
-                if b == b',' || b == b')' {
-                    let arg_start = args_start + option_start;
-                    let arg_end = args_start + cursor;
-                    if arg_end > arg_start && option_index < choices.len() {
-                        out.push(TextUnitPosition {
-                            occurrence_index: occurrence,
-                            surface_kind: "choice_label",
-                            start_byte: arg_start,
-                            end_byte: arg_end,
-                        });
-                        occurrence += 1;
-                    }
-                    option_index += 1;
-                    cursor += 1;
-                    option_start = cursor;
-                    if b == b')' {
-                        break;
-                    }
-                } else {
-                    cursor += 1;
+            // Each non-empty Choice option is one `choice_label` unit,
+            // anchored at the option's authoritative scene-relative byte
+            // offset captured by the decoder (`parse_arg_list` for the
+            // `( … )` form, `decode_select` for the `module_sel`
+            // `SelectElement` `{ … }` block form). Sourcing the positions
+            // from the typed `choices` keeps this patch-back re-walk
+            // identical to the bridge producer (`bridge.rs`) for BOTH
+            // framings — the previous `(arg0, arg1, …)` byte re-scan was
+            // correct only for the comma form and would mis-anchor every
+            // `{ … }` select option.
+            for choice in choices {
+                if choice.bytes.is_empty() {
+                    continue;
                 }
+                let start_byte = choice.byte_offset as usize;
+                let end_byte = start_byte + choice.bytes.len();
+                out.push(TextUnitPosition {
+                    occurrence_index: occurrence,
+                    surface_kind: "choice_label",
+                    start_byte,
+                    end_byte,
+                });
+                occurrence += 1;
             }
         }
         if new_pos <= pos {
@@ -1296,11 +1280,18 @@ mod tests {
         // re-walk must agree on occurrence_index for every unit, so the
         // trailing unit splices correctly with NO ProvenanceMismatch.
         //
-        // Bytecode: Textout(ハ), Choice("A",,"B"), Textout(ニ), MetaLine.
+        // Bytecode: Textout(ハ), select{ "A", <empty>, "B" }, Textout(ニ),
+        // MetaLine. The empty middle option is dropped by `decode_select`.
         let mut plaintext: Vec<u8> = Vec::new();
         plaintext.extend_from_slice(&[0x83, 0x6E]); // occ 0 dialogue
-        plaintext.extend_from_slice(&[0x23, 0x01, 0x05, 0x00, 0x00, 0x00, 0x00, 0x00]);
-        plaintext.extend_from_slice(b"(A,,B)"); // occ 1 "A", empty skip, occ 2 "B"
+        plaintext.extend_from_slice(&[0x23, 0x00, 0x02, 0x01, 0x00, 0x02, 0x00, 0x00]);
+        plaintext.push(b'{');
+        plaintext.extend_from_slice(b"A"); // occ 1 "A"
+        plaintext.extend_from_slice(&[0x0a, 0x05, 0x00]);
+        plaintext.extend_from_slice(&[0x0a, 0x06, 0x00]); // empty option -> dropped
+        plaintext.extend_from_slice(b"B"); // occ 2 "B"
+        plaintext.extend_from_slice(&[0x0a, 0x07, 0x00]);
+        plaintext.push(b'}');
         plaintext.extend_from_slice(&[0x83, 0x70]); // occ 3 dialogue
         plaintext.extend_from_slice(&[0x0a, 0x05, 0x00]);
 
@@ -1341,12 +1332,14 @@ mod tests {
         // Correct-unit splice: every edit landed at its true position.
         let expected: Vec<u8> = vec![
             0x61, // occ0 -> "a"
-            0x23, 0x01, 0x05, 0x00, 0x00, 0x00, 0x00, 0x00, // command header
-            0x28, // '('
-            0x62, // occ1 -> "b"
-            0x2c, 0x2c, // ",,"
-            0x63, // occ2 -> "c"
-            0x29, // ')'
+            0x23, 0x00, 0x02, 0x01, 0x00, 0x02, 0x00, 0x00, // select header
+            0x7b, // '{'
+            0x62, // occ1 "A" -> "b"
+            0x0a, 0x05, 0x00, // \n + line
+            0x0a, 0x06, 0x00, // empty option (untouched)
+            0x63, // occ2 "B" -> "c"
+            0x0a, 0x07, 0x00, // \n + line
+            0x7d, // '}'
             0x64, // occ3 -> "d"
             0x0a, 0x05, 0x00, // MetaLine
         ];

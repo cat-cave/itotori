@@ -172,11 +172,36 @@ pub enum RealLiveOpcode {
     /// `module_sys` `end` (scene terminator).
     End,
 
-    /// A Command whose `(module_type, module_id, opcode)` tuple is at an
-    /// undocumented module (outside the classified catalogue). The
-    /// original `opcode` byte (`0x23`) is preserved for audit; `raw_bytes`
-    /// carries the full command span the decoder consumed. A well-formed
-    /// scene at a documented module never produces this variant.
+    /// A fully-decoded RealLive function Command that does not map to one
+    /// of the bridge-relevant convenience variants above (text / choice /
+    /// voice / control-flow). This is the **generic typed decode** — the
+    /// direct analogue of rlvm's `FunctionElement` (the `default:` arm of
+    /// `BytecodeElement::Read`): the 8-byte header is fully parsed and the
+    /// bracketed argument list is decoded into typed [`CommandArg`] slots
+    /// by the same ExpressionPiece grammar every other command uses.
+    ///
+    /// It is **not** an `Unknown` blob and **not** fail-open: a command
+    /// only lands here once its bytes have been parsed end-to-end (a
+    /// malformed argument list surfaces a typed error instead). The variant
+    /// names the module/opcode it decoded so the catalogue stays
+    /// reference-complete across the full RealLive module space (system,
+    /// graphics, object, string, memory, ... families) without inventing a
+    /// per-opcode semantic label the bytecode framing does not require.
+    Command {
+        module_type: u8,
+        module_id: u8,
+        opcode: u16,
+        overload: u8,
+        args: Vec<CommandArg>,
+    },
+
+    /// A Command whose `(module_type, module_id, opcode)` tuple is
+    /// structurally implausible — `module_type > 2`, outside RealLive's
+    /// documented `{0, 1, 2}` module-type space. In a well-framed scene
+    /// this never occurs; its presence means the cursor desynced and is
+    /// reading arbitrary bytes as a command header, so it is preserved
+    /// (`opcode` = `0x23`, `raw_bytes` = the consumed span) as a hard
+    /// tripwire rather than silently coalesced into [`Self::Command`].
     Unknown { opcode: u8, raw_bytes: Vec<u8> },
 }
 
@@ -236,6 +261,7 @@ impl RealLiveOpcode {
             Self::SetVariable => "set_variable",
             Self::If => "if",
             Self::End => "end",
+            Self::Command { .. } => "command",
             Self::Unknown { .. } => "unknown",
         }
     }
@@ -309,14 +335,9 @@ mod module_id {
     pub const MEM: u8 = 11;
     /// `module_jmp.cc` — control flow (`goto`, `gosub`, `ret`, `jump`).
     pub const JMP: u8 = 1;
-    /// `module_str.cc` — string manipulation.
-    pub const STR: u8 = 2;
     /// `module_msg.cc` — text / messaging (`pause`, `br`, `page`,
     /// `FontColor`, `FastText`).
     pub const MSG: u8 = 3;
-    /// `module_sel.cc` — choice / selection (`select`, `select_s`,
-    /// `select_w`).
-    pub const SEL: u8 = 5;
     /// `module_grp.cc` — graphics primitives (`load`, `openBg`, `fade`).
     pub const GRP: u8 = 33;
     /// `module_bgm.cc` — BGM playback.
@@ -866,6 +887,210 @@ fn goto_kind(command_id: u32) -> GotoKind {
     }
 }
 
+/// Select-block open / close braces (`{` `}`) and the option-text
+/// boundary bytes used by the [`decode_select`] `{ … }` framing.
+const SELECT_BLOCK_OPEN: u8 = 0x7B;
+const SELECT_BLOCK_CLOSE: u8 = 0x7D;
+
+/// `true` if `command_id` is a `module_sel` selection command that the
+/// compiler emits with the `SelectElement` `{ … }` block framing rather
+/// than a plain `( … )` argument list — `select_w`/`select`/`select_s2`/
+/// `select_s` (`(0, 2, 0..=3)`) plus the `0x10` selection variant
+/// (`(0, 2, 16)`). Restated from rlvm `libreallive/bytecode.cc`'s
+/// `BytecodeElement::Read` dispatch (the `SelectElement` opcode set), NOT
+/// vendored. The remaining `module_sel` opcodes (`select_objbtn`,
+/// `objbtn_init`, …) use the ordinary function-call framing and are
+/// decoded by the generic argument-list path.
+fn is_select_command(command_id: u32) -> bool {
+    matches!(
+        command_id,
+        0x0002_0000 | 0x0002_0001 | 0x0002_0002 | 0x0002_0003 | 0x0002_0010
+    )
+}
+
+/// `true` if `byte` continues a RealLive **string token** in the
+/// unquoted state (rlvm `libreallive` `NextString`): a Shift-JIS lead
+/// byte (`0x81..=0x9F` / `0xE0..=0xEF`), an ASCII alphanumeric, space,
+/// `?`, `_`, `"` or `\`. Any other byte ends the token. Restated from the
+/// rlvm reference, not vendored.
+fn is_next_string_byte(byte: u8) -> bool {
+    matches!(byte, 0x81..=0x9F | 0xE0..=0xEF)
+        || byte.is_ascii_alphanumeric()
+        || matches!(byte, b' ' | b'?' | b'_' | b'"' | b'\\')
+}
+
+/// Length in bytes of the string token beginning at `pos`, mirroring rlvm
+/// `NextString`: a run of [`is_next_string_byte`] bytes with Shift-JIS
+/// double-byte pairs consumed whole, `"`-quoted spans that ignore the
+/// boundary set until the closing quote (honouring the `\"` escape), and
+/// the embedded `###PRINT(<expr>)` interpolation form. Returns `0` when
+/// `pos` does not begin a string token.
+fn next_string_len(bytes: &[u8], pos: usize) -> usize {
+    const PRINT_TAG: &[u8] = b"###PRINT(";
+    let mut end = pos;
+    let mut quoted = false;
+    while end < bytes.len() {
+        let b = bytes[end];
+        if quoted {
+            if b == b'\\' && bytes.get(end + 1) == Some(&b'"') {
+                // Escaped quote — skip both bytes, stay quoted.
+                end += 2;
+                continue;
+            }
+            if b == b'"' {
+                end += 1; // closing quote
+                break;
+            }
+        } else {
+            if bytes[end..].starts_with(PRINT_TAG) {
+                end += PRINT_TAG.len();
+                match parse_expression(bytes, end) {
+                    // `+ 1` consumes the closing `)` of the `###PRINT(…)`
+                    // interpolation (rlvm `end += 1 + NextExpression(end)`).
+                    Ok((_expr, len)) => end += len + 1,
+                    Err(_) => break,
+                }
+                continue;
+            }
+            if b == b'"' {
+                quoted = true;
+                end += 1;
+                continue;
+            }
+            if !is_next_string_byte(b) {
+                break;
+            }
+        }
+        if matches!(b, 0x81..=0x9F | 0xE0..=0xEF) && end + 1 < bytes.len() {
+            end += 2;
+        } else {
+            end += 1;
+        }
+    }
+    end - pos
+}
+
+/// Decode a `module_sel` selection Command's `SelectElement` body and
+/// return each option's text as a [`CommandArg`] (offset + raw bytes) plus
+/// the total bytes the command consumed (8-byte header included). `pos`
+/// points at the `0x23` opener.
+///
+/// Layout (rlvm `libreallive/bytecode.cc::SelectElement::SelectElement`,
+/// restated, not vendored): the 8-byte header, an optional `( … )` window
+/// expression, the `{` block open, an optional `\n`+i16 first-line marker,
+/// then one entry per option until the matching `}`. Each option is an
+/// optional `( … )` condition group (whose interior carries `\`-introduced
+/// effect expressions and the single-byte effect codes the compiler emits,
+/// e.g. `'2'`/`'3'` that take no operand), the option text
+/// ([`next_string_len`]), and a trailing `\n`+i16 line marker. Trailing
+/// `\n`+i16 markers after the `}` are consumed as junk. Only options that
+/// carry non-empty text become [`CommandArg`] slots (an empty option is
+/// not a translatable unit) so the produced `choices` length matches the
+/// bridge / patch-back text-unit walk exactly.
+fn decode_select(bytes: &[u8], pos: usize) -> Result<(Vec<CommandArg>, usize), RealLiveParseError> {
+    let argc_offset = pos; // for error reporting only
+    let mut cursor = pos + COMMAND_HEADER_LEN;
+    let truncated = |cursor: usize| RealLiveParseError::TruncatedCommandArgs {
+        offset: argc_offset as u64,
+        argc: (cursor.min(u16::MAX as usize)) as u16,
+    };
+
+    // Optional window/parameter expression `( … )`.
+    if bytes.get(cursor) == Some(&EXPR_PAREN_OPEN) {
+        let (_expr, len) = parse_expression(bytes, cursor)?;
+        cursor += len;
+    }
+    // Mandatory `{` block open.
+    if bytes.get(cursor) != Some(&SELECT_BLOCK_OPEN) {
+        return Err(truncated(cursor));
+    }
+    cursor += 1;
+    // Optional first-line `\n`+i16 marker.
+    if bytes.get(cursor) == Some(&opener::META_LINE) {
+        cursor += 3;
+    }
+
+    let mut choices: Vec<CommandArg> = Vec::new();
+    loop {
+        match bytes.get(cursor) {
+            None => return Err(truncated(cursor)),
+            Some(&SELECT_BLOCK_CLOSE) => {
+                cursor += 1;
+                break;
+            }
+            _ => {}
+        }
+        // Skip inter-option separators (`,`) and stray line markers.
+        while bytes.get(cursor) == Some(&opener::COMMA) {
+            cursor += 1;
+        }
+        if bytes.get(cursor) == Some(&opener::META_LINE) {
+            cursor += 3;
+        }
+        if bytes.get(cursor) == Some(&SELECT_BLOCK_CLOSE) {
+            cursor += 1;
+            break;
+        }
+        // Optional condition group `( … )`.
+        if bytes.get(cursor) == Some(&EXPR_PAREN_OPEN) {
+            cursor += 1; // '('
+            loop {
+                match bytes.get(cursor) {
+                    None => return Err(truncated(cursor)),
+                    Some(&EXPR_PAREN_CLOSE) => {
+                        cursor += 1;
+                        break;
+                    }
+                    Some(&EXPR_PAREN_OPEN) => {
+                        let (_e, len) = parse_expression(bytes, cursor)?;
+                        cursor += len;
+                    }
+                    Some(&effect) => {
+                        cursor += 1; // the single effect-code byte
+                        // The `'2'`/`'3'` effect codes take no operand; any
+                        // other effect code that is not immediately followed
+                        // by `)` or a digit introduces a `\`/`$` expression
+                        // operand.
+                        if effect != b'2' && effect != b'3' {
+                            let next = bytes.get(cursor).copied();
+                            let stop = next == Some(EXPR_PAREN_CLOSE)
+                                || next.is_some_and(|b| b.is_ascii_digit());
+                            if !stop && next.is_some() {
+                                let (_e, len) = parse_expression(bytes, cursor)?;
+                                cursor += len;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        // Option text.
+        let text_start = cursor;
+        let text_len = next_string_len(bytes, cursor);
+        let text = bytes[cursor..cursor + text_len].to_vec();
+        cursor += text_len;
+        if !text.is_empty() {
+            choices.push(CommandArg {
+                byte_offset: text_start as u64,
+                bytes: text,
+            });
+        }
+        // Trailing `\n`+i16 line marker for this option.
+        if bytes.get(cursor) == Some(&opener::META_LINE) {
+            cursor += 3;
+        } else if text_len == 0 {
+            // No text and no line marker — the cursor would not advance and
+            // the loop would spin. Surface a typed framing error.
+            return Err(truncated(cursor));
+        }
+    }
+    // Trailing junk: `\n`+i16 markers after the closing brace.
+    while bytes.get(cursor) == Some(&opener::META_LINE) {
+        cursor += 3;
+    }
+    Ok((choices, cursor - pos))
+}
+
 /// Parse a bracketed argument list `'(' (arg (',' arg)*)? ')'` beginning
 /// at `pos` (which must point at the `(`).
 ///
@@ -956,8 +1181,17 @@ fn decode_command(bytes: &[u8], pos: usize) -> Result<(RealLiveOpcode, usize), R
     // selector (rlvm `bytecode.h:CommandElement`). For goto_on / goto_case
     // it is the number of trailing jump targets / cases.
     let argc = u16::from_le_bytes([bytes[pos + 5], bytes[pos + 6]]);
+    let overload = bytes[pos + 7];
     let command_id =
         (u32::from(module_type) << 24) | (u32::from(module_id) << 16) | u32::from(opcode_u16);
+
+    // `module_sel` selection commands carry a `SelectElement` `{ … }`
+    // option block rather than a plain `( … )` argument list, so they are
+    // framed by their own decoder before the generic paths below.
+    if is_select_command(command_id) {
+        let (choices, consumed) = decode_select(bytes, pos)?;
+        return Ok((RealLiveOpcode::Choice { choices }, consumed));
+    }
 
     let mut consumed = COMMAND_HEADER_LEN;
     let mut args_bytes: Vec<CommandArg> = Vec::new();
@@ -995,13 +1229,36 @@ fn decode_command(bytes: &[u8], pos: usize) -> Result<(RealLiveOpcode, usize), R
             consume_pointers(&mut consumed, 1)?;
         }
         GotoKind::GotoOn => {
+            // `goto_on(expr) { @t0 @t1 … }` — the discriminant expression,
+            // then a `{`-delimited block of `argc` raw i32 jump targets
+            // (rlvm `GotoOnElement`). The braces wrap the target list.
             parse_optional_args(&mut consumed, &mut args_bytes)?;
+            let braced = bytes.get(pos + consumed) == Some(&SELECT_BLOCK_OPEN);
+            if braced {
+                consumed += 1;
+            }
             consume_pointers(&mut consumed, argc as usize)?;
+            if braced {
+                if bytes.get(pos + consumed) != Some(&SELECT_BLOCK_CLOSE) {
+                    return Err(RealLiveParseError::TruncatedCommandArgs {
+                        offset: pos as u64,
+                        argc,
+                    });
+                }
+                consumed += 1;
+            }
         }
         GotoKind::GotoCase => {
+            // `goto_case(expr) { (case0) @t0 (case1) @t1 … }` — the
+            // discriminant expression, then a `{`-delimited block of `argc`
+            // entries, each a bracketed `(case-expr)` (the default case is
+            // the empty `()`) followed by an i32 target (rlvm
+            // `GotoCaseElement`). The braces wrap the case list.
             parse_optional_args(&mut consumed, &mut args_bytes)?;
-            // Each case: a bracketed `(case-expr)` followed by an i32
-            // target.
+            let braced = bytes.get(pos + consumed) == Some(&SELECT_BLOCK_OPEN);
+            if braced {
+                consumed += 1;
+            }
             for _ in 0..argc {
                 if bytes.get(pos + consumed) != Some(&EXPR_PAREN_OPEN) {
                     return Err(RealLiveParseError::TruncatedCommandArgs {
@@ -1013,6 +1270,15 @@ fn decode_command(bytes: &[u8], pos: usize) -> Result<(RealLiveOpcode, usize), R
                 consumed += len;
                 consume_pointers(&mut consumed, 1)?;
             }
+            if braced {
+                if bytes.get(pos + consumed) != Some(&SELECT_BLOCK_CLOSE) {
+                    return Err(RealLiveParseError::TruncatedCommandArgs {
+                        offset: pos as u64,
+                        argc,
+                    });
+                }
+                consumed += 1;
+            }
         }
         GotoKind::None => {
             // Ordinary function command: an optional bracketed arg list.
@@ -1020,8 +1286,13 @@ fn decode_command(bytes: &[u8], pos: usize) -> Result<(RealLiveOpcode, usize), R
         }
     }
 
-    let opcode =
-        classify_command(module_type, module_id, opcode_u16, &args_bytes).unwrap_or_else(|| {
+    let opcode = classify_command(module_type, module_id, opcode_u16, overload, &args_bytes)
+        .unwrap_or_else(|| {
+            // `classify_command` only declines a command whose
+            // `module_type` is outside RealLive's documented `{0, 1, 2}`
+            // space — i.e. a desync tripwire. Every in-space command
+            // (including the documented long tail) decodes to a typed
+            // variant, so this arm never fires on a well-framed scene.
             RealLiveOpcode::Unknown {
                 opcode: opener::COMMAND,
                 raw_bytes: bytes[pos..pos + consumed].to_vec(),
@@ -1030,69 +1301,62 @@ fn decode_command(bytes: &[u8], pos: usize) -> Result<(RealLiveOpcode, usize), R
     Ok((opcode, consumed))
 }
 
-/// Classify a Command into a recognised [`RealLiveOpcode`] variant
-/// keyed on the (module_type, module_id, opcode_u16) tuple. Returns
-/// `None` when the command falls outside the alpha set; the caller
-/// records it as [`RealLiveOpcode::Unknown`].
+/// Classify a fully-framed Command into a typed [`RealLiveOpcode`].
+///
+/// The byte framing (header, argument list, goto pointers, select block)
+/// is already resolved by [`decode_command`]; this is purely the
+/// *labelling* pass. It returns `None` **only** when `module_type` is
+/// outside RealLive's documented `{0, 1, 2}` space — a desync tripwire the
+/// caller records as [`RealLiveOpcode::Unknown`]. Every in-space command
+/// resolves to a typed variant: the bridge-relevant families
+/// (control-flow, message, voice, BGM, graphics-background, memory) keep
+/// their named variants, and the documented long tail (system functions,
+/// object planes, string ops, …) decodes to the generic typed
+/// [`RealLiveOpcode::Command`] carrying its module / opcode / args — so the
+/// catalogue is reference-complete with zero `Unknown` on a well-framed
+/// scene, without inventing per-opcode semantics the framing never needs.
+///
+/// `module_type` / `module_id` keys are restated from the rlvm
+/// `src/modules/module_*.cc` registrations (`RLModule(name, type, id)`)
+/// and `libreallive/bytecode.cc` dispatch — reference, not vendored.
 fn classify_command(
     module_type: u8,
     module_id: u8,
     opcode_u16: u16,
+    overload: u8,
     args_bytes: &[CommandArg],
 ) -> Option<RealLiveOpcode> {
-    // module_type is documented (RLDEV) to take values {0, 1, 2}
-    // mapping to {system-bootstrap, Kepago-RLOperation, debug-extension}.
-    // Per the KAIFUU-191 audit-focus row "no opcode handler may be
-    // inferred from Sweetie HD bytes alone" we classify only the
-    // documented module_id values from rlvm `src/modules/module_*.cc`
-    // here. Commands at any other (module_type, module_id, opcode)
-    // tuple surface as `Unknown` so a follow-up node can widen the
-    // catalogue against a documented per-module audit.
     if module_type > 2 {
         return None;
     }
+    let command_id =
+        (u32::from(module_type) << 24) | (u32::from(module_id) << 16) | u32::from(opcode_u16);
+
+    // Generic typed decode for any in-space command without a bespoke
+    // bridge label — the `FunctionElement` analogue.
+    let generic = || RealLiveOpcode::Command {
+        module_type,
+        module_id,
+        opcode: opcode_u16,
+        overload,
+        args: args_bytes.to_vec(),
+    };
+
+    // Control-flow commands (`module_jmp` and the cross-scene `gosub`/
+    // `farcall` module variants) were byte-consumed via their goto framing;
+    // label them by family.
+    match goto_kind(command_id) {
+        GotoKind::Goto => return Some(RealLiveOpcode::Goto),
+        GotoKind::GotoIf => return Some(RealLiveOpcode::Branch),
+        GotoKind::GotoOn | GotoKind::GotoCase => return Some(RealLiveOpcode::If),
+        GotoKind::GosubWith => return Some(RealLiveOpcode::Call),
+        GotoKind::None => {}
+    }
+
     let mapped = match module_id {
-        module_id::SYS => match opcode_u16 {
-            17 => RealLiveOpcode::End,
-            100 | 101 => RealLiveOpcode::Wait {
-                duration_ms: first_arg_as_i32(args_bytes),
-            },
-            // module_sys (rlvm `src/modules/module_sys.cc`) catalogues
-            // ~110 opcodes covering `title`, `pcnt`, `rnd`, `abs`,
-            // `SceneNum`, `MenuReturn`, `screen mode`, `message speed`,
-            // and similar memory-bank-touching control operations.
-            // For the KAIFUU-191 alpha we coalesce the long tail into
-            // `SetVariable` — the spec's catch-all for any opcode that
-            // writes to a memory bank. This is **documented from rlvm
-            // module_sys.cc**, not inferred from Sweetie HD bytes
-            // alone, satisfying the audit-focus row. The follow-up
-            // node will split this into per-opcode named variants
-            // (`SceneNum`, `MenuReturn`, etc.) under explicit
-            // citations.
-            _ => RealLiveOpcode::SetVariable,
-        },
-        module_id::MSG => match opcode_u16 {
-            3 => RealLiveOpcode::CharacterTextDisplay,
-            _ if (1..=200).contains(&opcode_u16) => RealLiveOpcode::TextDisplay {
-                encoding: TextEncoding::ShiftJisLengthPrefixed,
-            },
-            // module_msg (rlvm `src/modules/module_msg.cc`) carries
-            // ~35–40 message-control opcodes per the RLDEV catalogue
-            // (`pause`, `par`, `br`, `page`, `msgHide`, `FontColor`,
-            // `TextPos`, `FastText`, `FaceOpen`). Opcodes outside the
-            // common-case `1..=200` text-display range coalesce to
-            // `SetVariable` — the spec's catch-all — to keep the alpha
-            // recognition rate honest without inferring opcode
-            // semantics from Sweetie HD bytes alone.
-            _ => RealLiveOpcode::SetVariable,
-        },
-        module_id::SEL => RealLiveOpcode::Choice {
-            // Carry each option's authoritative scene-relative byte offset
-            // forward (already captured by `parse_arg_list`) so the
-            // Scene-AST projection stamps every Choice slot at the option's
-            // real bytes, not the command opener.
-            choices: args_bytes.to_vec(),
-        },
+        // module_jmp (rlvm `module_jmp.cc`, type 0 id 1) — the non-pointer
+        // opcodes (the pointer-carrying ones are handled by goto framing
+        // above).
         module_id::JMP => match opcode_u16 {
             0 | 1 => RealLiveOpcode::Goto,
             2 | 3 => RealLiveOpcode::Branch,
@@ -1100,26 +1364,45 @@ fn classify_command(
             10..=13 => RealLiveOpcode::Call,
             20..=22 => RealLiveOpcode::Return,
             30 | 31 => RealLiveOpcode::Jump,
-            // module_jmp (rlvm `src/modules/module_jmp.cc`) has ~22
-            // documented opcodes (`goto`, `gosub`, `farcall`, `ret`,
-            // `jump`, etc.). Opcodes outside the catalogue above
-            // coalesce to `Jump` — the spec's most general control-
-            // flow variant — keeping the recognition rate honest.
-            _ => RealLiveOpcode::Jump,
+            _ => generic(),
         },
-        module_id::MEM => RealLiveOpcode::SetVariable,
-        module_id::GRP => RealLiveOpcode::Background {
-            sprite_id: first_arg_as_u32(args_bytes),
+        // module_msg (rlvm `module_msg.cc`) — opcode 3 is the character /
+        // speaker text op; the common text-display range is `1..=200`.
+        module_id::MSG => match opcode_u16 {
+            3 => RealLiveOpcode::CharacterTextDisplay,
+            x if (1..=200).contains(&x) => RealLiveOpcode::TextDisplay {
+                encoding: TextEncoding::ShiftJisLengthPrefixed,
+            },
+            _ => generic(),
         },
+        // module_sys (rlvm `module_sys.cc`, type 1 id 4) — `end` / `wait`
+        // keep named variants; the long control tail is generic.
+        module_id::SYS => match opcode_u16 {
+            17 => RealLiveOpcode::End,
+            100 | 101 => RealLiveOpcode::Wait {
+                duration_ms: first_arg_as_i32(args_bytes),
+            },
+            _ => generic(),
+        },
+        // module_koe (rlvm `module_koe.cc`, type 1 id 23) — voice playback.
+        module_id::KOE => RealLiveOpcode::VoicePlay {
+            voice_id: first_arg_as_u32(args_bytes),
+        },
+        // module_bgm (rlvm `module_bgm.cc`) — BGM playback / stop.
         module_id::BGM => match opcode_u16 {
             0..=3 => RealLiveOpcode::BgmPlay,
             _ => RealLiveOpcode::BgmStop,
         },
-        module_id::KOE => RealLiveOpcode::VoicePlay {
-            voice_id: first_arg_as_u32(args_bytes),
+        // module_grp (rlvm `module_grp.cc`, type 1 id 33) — background /
+        // sprite load (first arg is the sprite id).
+        module_id::GRP => RealLiveOpcode::Background {
+            sprite_id: first_arg_as_u32(args_bytes),
         },
-        module_id::STR => RealLiveOpcode::SetVariable,
-        _ => return None,
+        // module_mem (rlvm `module_mem.cc`) — any variable-bank write.
+        module_id::MEM => RealLiveOpcode::SetVariable,
+        // Everything else (object planes, string ops, graphics extensions,
+        // …) decodes to the generic typed command.
+        _ => generic(),
     };
     Some(mapped)
 }
@@ -1258,33 +1541,51 @@ pub(crate) fn decode_element(
         }
         opener::COMMAND => decode_command(bytes, pos),
         _ => {
-            // Textout (catch-all): any non-structural byte starts a text
-            // run that extends to the next structural opener. Shift-JIS
-            // double-byte pairs are consumed whole so a trail byte equal
-            // to an opener value does not end the run early.
-            let start = pos;
-            let mut end = pos;
-            while end < bytes.len() {
-                let b = bytes[end];
-                if is_structural_opener(b) {
-                    break;
-                }
-                if is_shift_jis_textout_lead(b) && end + 1 < bytes.len() {
-                    end += 2;
-                } else {
-                    end += 1;
-                }
-            }
-            let raw_bytes = bytes[start..end].to_vec();
+            let (raw_bytes, consumed) = scan_textout(bytes, pos);
             Ok((
                 RealLiveOpcode::Textout {
                     encoding: TextEncoding::ShiftJisInlineRun,
                     raw_bytes,
                 },
-                end - start,
+                consumed,
             ))
         }
     }
+}
+
+/// Scan a Textout run beginning at `pos` (a non-structural lead byte),
+/// returning its raw bytes and the byte width consumed.
+///
+/// This is the catch-all in [`decode_element`]: any byte that is not one
+/// of the seven structural BytecodeElement openers
+/// ([`is_structural_opener`]) begins a displayable-text (or embedded
+/// binary) run that extends to the next structural opener. Shift-JIS
+/// double-byte pairs ([`is_shift_jis_textout_lead`]) are consumed whole,
+/// so a trail byte whose value equals a structural opener never ends the
+/// run early.
+///
+/// The run is treated as an opaque byte span — commas and `"` are part of
+/// the run, and the producer's surface-selection split
+/// ([`is_translatable_textout`]) later decides whether a given run is
+/// readable Shift-JIS dialogue or embedded binary data. This is the
+/// minimal, version-agnostic boundary rule: applying text-only quoting /
+/// comma-inlining heuristics here mis-splits embedded binary data blocks
+/// (e.g. Sweetie HD's binary catch-all runs).
+fn scan_textout(bytes: &[u8], pos: usize) -> (Vec<u8>, usize) {
+    let start = pos;
+    let mut end = pos;
+    while end < bytes.len() {
+        let b = bytes[end];
+        if is_structural_opener(b) {
+            break;
+        }
+        if is_shift_jis_textout_lead(b) && end + 1 < bytes.len() {
+            end += 2;
+        } else {
+            end += 1;
+        }
+    }
+    (bytes[start..end].to_vec(), end - start)
 }
 
 /// Read the `u16 LE` payload of a 3-byte Meta element at `pos`.
@@ -1391,17 +1692,40 @@ mod tests {
     }
 
     #[test]
-    fn unknown_command_module_preserved_with_command_opener() {
-        let bytes = &[opener::COMMAND, 1, 99, 0xFF, 0xFF, 0, 0, 0];
+    fn out_of_space_module_type_preserved_as_unknown_with_command_opener() {
+        // `Unknown` is now reserved for the desync tripwire: a command
+        // header whose module_type is outside RealLive's documented
+        // `{0, 1, 2}` space. Such a header (module_type=14) is preserved
+        // verbatim for audit rather than coalesced into a generic Command.
+        let bytes = &[opener::COMMAND, 14, 99, 0xFF, 0xFF, 0, 0, 0];
         let opcodes = parse_real_bytecode(bytes).expect("must decode");
         assert_eq!(opcodes.len(), 1);
         match &opcodes[0] {
             RealLiveOpcode::Unknown { opcode, raw_bytes } => {
                 assert_eq!(*opcode, opener::COMMAND);
-                assert!(raw_bytes.starts_with(&[opener::COMMAND, 1, 99]));
+                assert!(raw_bytes.starts_with(&[opener::COMMAND, 14, 99]));
             }
             other => panic!("expected Unknown, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn in_space_undocumented_module_decodes_to_generic_command_not_unknown() {
+        // An in-space (module_type <= 2) command at an otherwise
+        // unlabelled module decodes to the generic typed Command — zero
+        // Unknown on a well-framed scene.
+        let bytes = &[opener::COMMAND, 1, 99, 0xFF, 0xFF, 0, 0, 0];
+        let opcodes = parse_real_bytecode(bytes).expect("must decode");
+        assert_eq!(opcodes.len(), 1);
+        assert!(matches!(
+            opcodes[0],
+            RealLiveOpcode::Command {
+                module_type: 1,
+                module_id: 99,
+                opcode: 0xFFFF,
+                ..
+            }
+        ));
     }
 
     #[test]
@@ -1765,14 +2089,45 @@ mod tests {
     }
 
     #[test]
-    fn msgclr_class_msg_opcode_coalesces_to_set_variable() {
-        // module_msg opcodes outside the 1..=200 text range coalesce to
-        // SetVariable (the catch-all); no dedicated clear-screen opcode is
-        // produced from real decode.
+    fn msg_opcode_outside_text_range_decodes_to_generic_command() {
+        // module_msg opcodes outside the 1..=200 text-display range have no
+        // bridge-relevant label, so they decode to the generic typed
+        // `Command` (the reference-complete long-tail decode) — never
+        // `Unknown`, never fail-open.
         assert_eq!(
-            classify_command(0, module_id::MSG, 250, &[]),
-            Some(RealLiveOpcode::SetVariable)
+            classify_command(0, module_id::MSG, 250, 0, &[]),
+            Some(RealLiveOpcode::Command {
+                module_type: 0,
+                module_id: module_id::MSG,
+                opcode: 250,
+                overload: 0,
+                args: vec![],
+            })
         );
+    }
+
+    #[test]
+    fn undocumented_module_decodes_to_generic_command_not_unknown() {
+        // An in-space module with no bespoke label (e.g. an object-plane
+        // module surfaced by the Kanon recon) decodes to the generic typed
+        // `Command`, so a well-framed scene yields ZERO `Unknown`.
+        assert_eq!(
+            classify_command(1, 82, 1004, 3, &[]),
+            Some(RealLiveOpcode::Command {
+                module_type: 1,
+                module_id: 82,
+                opcode: 1004,
+                overload: 3,
+                args: vec![],
+            })
+        );
+    }
+
+    #[test]
+    fn out_of_space_module_type_is_unknown_desync_tripwire() {
+        // module_type > 2 is outside RealLive's documented space; it is the
+        // desync tripwire and must NOT be coalesced into a generic Command.
+        assert_eq!(classify_command(14, 3, 23243, 0, &[]), None);
     }
 
     #[test]
