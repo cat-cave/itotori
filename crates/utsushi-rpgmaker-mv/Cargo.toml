@@ -1,0 +1,20 @@
+[package]
+name = "utsushi-rpgmaker-mv"
+version = "0.0.0"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Pure-Rust RPG Maker MV/MZ runtime port for the utsushi-core substrate facade. Walks the project's event-command data files (www/data or data) and emits the runtime text stream as trace evidence. Clean-room: no engine source vendored, no copyrighted game bytes; engine command codes are public MV/MZ constants."
+
+[dependencies]
+# Intentionally NO `kaifuu-rpgmaker` dependency. As with utsushi-reallive
+# vs kaifuu-reallive, the runtime port owns its own MV/MZ event-data parser
+# even though the format it recognises is identical to what kaifuu-rpgmaker
+# extracts: keeping the implementations separate means a regression in one
+# project cannot poison the other.
+serde.workspace = true
+serde_json.workspace = true
+utsushi-core = { path = "../utsushi-core" }
+
+[dev-dependencies]
+tempfile.workspace = true

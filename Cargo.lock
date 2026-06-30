@@ -1259,6 +1259,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "utsushi-rpgmaker-mv"
+version = "0.0.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "tempfile",
+ "utsushi-core",
+]
+
+[[package]]
 name = "utsushi-siglus"
 version = "0.0.0"
 dependencies = [
