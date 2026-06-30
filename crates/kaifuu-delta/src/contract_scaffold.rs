@@ -253,6 +253,14 @@ pub fn run_encrypted_xp3_contract_scaffold(
         .to_path_buf();
     let fixture: ScaffoldFixture = read_json(fixture_path)?;
 
+    // The report hardcodes `not_retail_readiness_claim: true` (it is never a
+    // retail readiness claim). Reject a fixture that asserts otherwise rather
+    // than emitting a report whose integrity flag would contradict its own
+    // hardcoded disclaimer.
+    if !fixture.not_retail_readiness_claim {
+        return Err("contract scaffold fixture must set notRetailReadinessClaim: true".into());
+    }
+
     fs::create_dir_all(work_dir)?;
 
     let mut stages = Vec::new();
@@ -341,7 +349,10 @@ pub fn run_encrypted_xp3_contract_scaffold(
         schema_version: CONTRACT_SCAFFOLD_SCHEMA_VERSION.to_string(),
         fixture_id: fixture.fixture_id,
         disclaimer: ENCRYPTED_XP3_CONTRACT_SCAFFOLD_DISCLAIMER.to_string(),
-        not_retail_readiness_claim: fixture.not_retail_readiness_claim,
+        // Always true: validated at load (above); never sourced from the
+        // fixture into the report, so the integrity flag cannot drift from
+        // the hardcoded disclaimer.
+        not_retail_readiness_claim: true,
         status,
         stages,
     })
@@ -735,6 +746,28 @@ mod tests {
                 ContractStage::Verify,
                 ContractStage::DeltaApply,
             ]
+        );
+    }
+
+    #[test]
+    fn rejects_fixture_that_disclaims_the_not_retail_readiness_invariant() {
+        let staging = tempfile::tempdir().unwrap();
+        let fixture_root = staging.path().join("fixture");
+        copy_dir_recursive(&fixture_dir(), &fixture_root);
+
+        // Flip the integrity flag to false in the copied descriptor; the
+        // harness must refuse it rather than emit a contradictory report.
+        let descriptor = fixture_root.join("contract-scaffold.fixture.json");
+        let mut value: serde_json::Value =
+            serde_json::from_slice(&fs::read(&descriptor).unwrap()).unwrap();
+        value["notRetailReadinessClaim"] = serde_json::Value::Bool(false);
+        fs::write(&descriptor, serde_json::to_vec_pretty(&value).unwrap()).unwrap();
+
+        let work = tempfile::tempdir().unwrap();
+        let result = run_encrypted_xp3_contract_scaffold(&descriptor, &work.path().join("run"));
+        assert!(
+            result.is_err(),
+            "fixture asserting notRetailReadinessClaim:false must be rejected"
         );
     }
 

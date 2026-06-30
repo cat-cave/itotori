@@ -220,16 +220,22 @@ pub fn discover(
             if let Some(v) = engine_version {
                 let mut filtered = Vec::with_capacity(candidates.len());
                 for id in candidates.drain(..) {
-                    let observed: Option<String> = conn
-                        .query_row(
-                            "SELECT value FROM v_current_facts \
+                    // Distinguish a legitimately-absent engine_version fact
+                    // (QueryReturnedNoRows -> None) from a real query/decode
+                    // error, which must propagate rather than silently drop
+                    // the candidate and mask catalog issues.
+                    let observed: Option<String> = match conn.query_row(
+                        "SELECT value FROM v_current_facts \
                              WHERE entity_type = 'release' \
                                AND entity_id = ?1 \
                                AND field = 'engine_version'",
-                            rusqlite::params![id],
-                            |r| r.get(0),
-                        )
-                        .ok();
+                        rusqlite::params![id],
+                        |r| r.get(0),
+                    ) {
+                        Ok(value) => Some(value),
+                        Err(rusqlite::Error::QueryReturnedNoRows) => None,
+                        Err(e) => return Err(map_query_err(e)),
+                    };
                     if observed.as_deref() == Some(v.as_str()) {
                         filtered.push(id);
                     }

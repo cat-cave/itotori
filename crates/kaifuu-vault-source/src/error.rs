@@ -385,7 +385,22 @@ mod tests {
                     embedded_value: serde_json::Value::Null,
                 },
             ),
+            (
+                "CatalogOpenFailed",
+                VaultSourceError::CatalogOpenFailed {
+                    path: PathBuf::from("/x"),
+                    source: rusqlite::Error::QueryReturnedNoRows,
+                },
+            ),
+            (
+                "ScratchUnwritable",
+                VaultSourceError::ScratchUnwritable {
+                    path: PathBuf::from("/x"),
+                    source: std::io::Error::new(std::io::ErrorKind::PermissionDenied, "denied"),
+                },
+            ),
         ];
+        assert_eq!(samples.len(), 14, "every failure-mode variant is sampled");
 
         for (name, sample) in &samples {
             let expected_code = expected

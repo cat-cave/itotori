@@ -98,7 +98,7 @@ pub fn resolve_release(
 
     let mut out = Vec::with_capacity(wanted.len());
     for r in wanted {
-        let on_disk_path = by_sha_path(vault_root, &r.sha256);
+        let on_disk_path = by_sha_path(vault_root, &r.sha256)?;
         verify_artifact_on_disk(&on_disk_path, &r.sha256, r.size_bytes, release_id, r.id)?;
         out.push(ResolvedArtifact {
             id: r.id,
@@ -148,7 +148,7 @@ pub fn resolve_by_sha(
             });
         }
     };
-    let on_disk_path = by_sha_path(vault_root, &sha);
+    let on_disk_path = by_sha_path(vault_root, &sha)?;
     verify_artifact_on_disk(&on_disk_path, &sha, size, -1, id)?;
     Ok(ResolvedArtifact {
         id,
@@ -165,15 +165,25 @@ pub fn resolve_by_sha(
 
 /// Construct the on-disk path for an artifact addressed by sha256, per
 /// `<vault-root>/artifacts/by-sha/<aa>/<bb>/<hash>.7z`.
-pub fn by_sha_path(vault_root: &Path, sha256: &str) -> PathBuf {
+///
+/// The sha is validated as a 64-char lowercase-hex string before slicing;
+/// a corrupt `artifacts.sha256` row therefore surfaces a typed
+/// [`VaultSourceError::ReleaseNotResolved`] instead of panicking on the
+/// `[0..2]`/`[2..4]` slices.
+pub fn by_sha_path(vault_root: &Path, sha256: &str) -> Result<PathBuf, VaultSourceError> {
+    if sha256.len() != 64 || !sha256.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return Err(VaultSourceError::ReleaseNotResolved {
+            claim_summary: format!("artifact-sha({sha256}) is not a 64-char hex digest"),
+        });
+    }
     let aa = &sha256[0..2];
     let bb = &sha256[2..4];
-    vault_root
+    Ok(vault_root
         .join("artifacts")
         .join("by-sha")
         .join(aa)
         .join(bb)
-        .join(format!("{sha256}.7z"))
+        .join(format!("{sha256}.7z")))
 }
 
 fn role_order(role: &str) -> u32 {
@@ -338,11 +348,32 @@ mod tests {
     fn computes_by_sha_path_from_sha256_using_first_two_pairs_as_subdirs() {
         let root = Path::new("/vault");
         let sha = "aabbccddeeff00112233445566778899aabbccddeeff00112233445566778899";
-        let p = by_sha_path(root, sha);
+        let p = by_sha_path(root, sha).expect("valid 64-char hex sha");
         assert_eq!(
             p,
             Path::new("/vault/artifacts/by-sha/aa/bb").join(format!("{sha}.7z"))
         );
+    }
+
+    #[test]
+    fn by_sha_path_rejects_short_or_non_hex_sha_with_typed_error_instead_of_panicking() {
+        let root = Path::new("/vault");
+        // Too short (would panic on the [0..2]/[2..4] slices).
+        assert!(matches!(
+            by_sha_path(root, "ab"),
+            Err(VaultSourceError::ReleaseNotResolved { .. })
+        ));
+        // Empty.
+        assert!(matches!(
+            by_sha_path(root, ""),
+            Err(VaultSourceError::ReleaseNotResolved { .. })
+        ));
+        // Right length but non-hex.
+        let non_hex = "zz".to_string() + &"a".repeat(62);
+        assert!(matches!(
+            by_sha_path(root, &non_hex),
+            Err(VaultSourceError::ReleaseNotResolved { .. })
+        ));
     }
 
     #[test]

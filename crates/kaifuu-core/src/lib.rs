@@ -19870,8 +19870,13 @@ fn v02_patch_entry_span_mappings_compatible(entry: &Value, unit: &V02BridgeUnitS
             return false;
         }
 
+        // Fail closed: a mapping whose `raw` has no corresponding source
+        // span is bogus. The final coverage loop only checks that required
+        // source spans are covered, so accepting an extra mapping here would
+        // let a patch carrying spans that reference non-existent source spans
+        // pass the compatibility gate.
         let Some(source_spans) = required_spans.get(mapping.raw.as_str()) else {
-            continue;
+            return false;
         };
 
         let duplicate_raw = source_spans.len() > 1;
@@ -25980,6 +25985,41 @@ printf launched > '{}'
         ));
         assert!(!v02_patch_entry_span_mappings_compatible(
             &reused_identity,
+            source_unit
+        ));
+
+        // A mapping whose `raw` is absent from the source unit's spans must
+        // fail the compatibility gate (fail closed), not be silently skipped.
+        // `{x}` matches the target text at 14..17 but is not a source span,
+        // so the patch carries a span referencing a non-existent source span.
+        let bogus_raw = serde_json::json!({
+            "targetText": "{name} {name} {x}",
+            "protectedSpanMappings": [
+                {
+                    "raw": "{name}",
+                    "sourceSpanId": "019ed001-0000-7000-8000-000000000841",
+                    "sourceStartByte": 0,
+                    "sourceEndByte": 6,
+                    "targetStart": 0,
+                    "targetEnd": 6
+                },
+                {
+                    "raw": "{name}",
+                    "sourceSpanId": "019ed001-0000-7000-8000-000000000842",
+                    "sourceStartByte": 13,
+                    "sourceEndByte": 19,
+                    "targetStart": 7,
+                    "targetEnd": 13
+                },
+                {
+                    "raw": "{x}",
+                    "targetStart": 14,
+                    "targetEnd": 17
+                }
+            ]
+        });
+        assert!(!v02_patch_entry_span_mappings_compatible(
+            &bogus_raw,
             source_unit
         ));
     }

@@ -88,24 +88,6 @@ const REALLIVE_GAMEEXE_INI_MAGIC: &[u8] = b"# RealLive Gameexe.ini fixture";
 const REALLIVE_PROFILE_ID: &str = "019ed000-0000-7000-8000-000000172001";
 const REALLIVE_GAME_ID: &str = "kaifuu-reallive-synthetic-scene-seen";
 const REALLIVE_SUPPORT_BOUNDARY: &str = "RealLive detector profile identifies SEEN.TXT/Gameexe.ini/SEEN.GAN fixtures for identify and (in a single later slice) profile/asset-inventory only; parser, extraction, decryption, patch-back, and runtime support are not claimed.";
-// RealLive Gameexe.ini ASCII prefixes recognized as positive engine evidence.
-// All are documented on Haeleth's RLDEV site
-// (https://dev.haeleth.net/rldev.shtml) and observable in any RealLive title's
-// Gameexe.ini. None are copied from rlvm source.
-const REALLIVE_GAMEEXE_INI_KEY_PREFIXES: &[&str] = &[
-    "#GAMEEXE_VERSION",
-    "#REGNAME",
-    "#G00BUF",
-    "#G00CACHE",
-    "#G00",
-    "#KOEPAC",
-    "#KOEDIR",
-    "#KOE",
-    "#SEEN_PATH",
-    "#SEEN.TXT",
-    "#SEEN",
-];
-
 #[derive(Debug, Default, Clone, Copy)]
 pub struct FixtureAdapter;
 
@@ -4886,13 +4868,16 @@ fn reallive_gameexe_ini_key_hits(path: &Path) -> GameexeIniKeyHits {
         if !line.starts_with('#') {
             continue;
         }
-        // Compare against the documented prefixes; uppercase the key
-        // portion only (before '=' or whitespace) for robustness.
+        // Uppercase the key portion only (before '=' or whitespace) for
+        // robustness, then match the RealLive Gameexe.ini key prefixes that
+        // are positive engine evidence. These prefixes are documented on
+        // Haeleth's RLDEV site (https://dev.haeleth.net/rldev.shtml) and
+        // observable in any RealLive title's Gameexe.ini; none are copied
+        // from rlvm source. This match is the single source of truth.
         let key_end = line
             .find(|c: char| c == '=' || c.is_whitespace())
             .unwrap_or(line.len());
         let key = line[..key_end].to_ascii_uppercase();
-        let _ = REALLIVE_GAMEEXE_INI_KEY_PREFIXES; // touch to document source
         if key == "#GAMEEXE_VERSION" {
             hits.gameexe_version = true;
         } else if key == "#REGNAME" {

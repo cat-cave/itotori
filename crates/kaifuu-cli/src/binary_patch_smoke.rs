@@ -603,15 +603,54 @@ mod tests {
 
     #[test]
     fn map_patchback_error_to_v02_failure_is_exhaustive_over_every_variant() {
-        for code in [
-            PatchBackErrorCode::OffsetOverflow,
-            PatchBackErrorCode::ShiftJisEncodeFailure,
-            PatchBackErrorCode::UnsupportedLengthPolicy,
-            PatchBackErrorCode::ParserRegression,
-            PatchBackErrorCode::UnknownSlotId,
-            PatchBackErrorCode::StaleSourceHash,
-            PatchBackErrorCode::ProtectedSpanLost,
-        ] {
+        // Exact (code -> category, diagnosticCode) pairs. Pinning the precise
+        // mapping per variant — rather than mere set-membership — means a
+        // wrong mapping fails the test. Note `protected_span_violation` is NOT
+        // in the v0.2 category vocabulary: ProtectedSpanLost maps to
+        // `patch_write_failed` (see KAIFUU-084 §6), so it must not appear.
+        let table = [
+            (
+                PatchBackErrorCode::OffsetOverflow,
+                "patch_write_failed",
+                "kaifuu.reallive.patchback_offset_overflow",
+            ),
+            (
+                PatchBackErrorCode::ShiftJisEncodeFailure,
+                "patch_write_failed",
+                "kaifuu.reallive.patchback_shift_jis_encode_failure",
+            ),
+            (
+                PatchBackErrorCode::UnsupportedLengthPolicy,
+                "adapter_unsupported",
+                "kaifuu.reallive.patchback_unsupported_length_policy",
+            ),
+            (
+                PatchBackErrorCode::ParserRegression,
+                "patch_write_failed",
+                "kaifuu.reallive.patchback_parser_regression",
+            ),
+            (
+                PatchBackErrorCode::UnknownSlotId,
+                "asset_missing",
+                "kaifuu.reallive.patchback_unknown_slot_id",
+            ),
+            (
+                PatchBackErrorCode::StaleSourceHash,
+                "source_incompatible",
+                "kaifuu.reallive.patchback_stale_source_hash",
+            ),
+            (
+                PatchBackErrorCode::ProtectedSpanLost,
+                "patch_write_failed",
+                "kaifuu.reallive.patchback_protected_span_lost",
+            ),
+        ];
+
+        // Guards exhaustiveness: if a PatchBackErrorCode variant is added, this
+        // count must be updated alongside a new table row.
+        assert_eq!(table.len(), 7, "every PatchBackErrorCode variant is pinned");
+
+        for (code, expected_category, expected_diagnostic) in table {
             let error = PatchBackError {
                 code: code.clone(),
                 scene_id: None,
@@ -623,19 +662,18 @@ mod tests {
                 .get("category")
                 .and_then(Value::as_str)
                 .expect("category present");
-            assert!(matches!(
-                category,
-                "patch_write_failed"
-                    | "adapter_unsupported"
-                    | "asset_missing"
-                    | "source_incompatible"
-                    | "protected_span_violation"
-            ));
+            assert_eq!(
+                category, expected_category,
+                "category mismatch for {code:?}"
+            );
             let diagnostic_code = value
                 .get("diagnosticCode")
                 .and_then(Value::as_str)
                 .expect("diagnosticCode present");
-            assert!(diagnostic_code.starts_with("kaifuu.reallive.patchback_"));
+            assert_eq!(
+                diagnostic_code, expected_diagnostic,
+                "diagnosticCode mismatch for {code:?}"
+            );
         }
     }
 

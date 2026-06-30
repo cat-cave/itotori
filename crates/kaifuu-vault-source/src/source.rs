@@ -177,6 +177,61 @@ impl std::fmt::Debug for VaultSource {
     }
 }
 
+/// Reject a scratch root that is equal to, or nested under, the vault root.
+///
+/// The vault is read-only; routing writes into it (via a misconfigured
+/// `ITOTORI_SCRATCH_ROOT`) is a policy violation, surfaced as a typed
+/// [`VaultSourceError::ScratchUnwritable`] rather than silently honoured.
+fn reject_scratch_inside_vault(
+    vault_root: &Path,
+    scratch_root: &Path,
+) -> Result<(), VaultSourceError> {
+    let vault_canonical = canonicalize_existing_prefix(vault_root);
+    let scratch_canonical = canonicalize_existing_prefix(scratch_root);
+    if scratch_canonical == vault_canonical || scratch_canonical.starts_with(&vault_canonical) {
+        return Err(VaultSourceError::ScratchUnwritable {
+            path: scratch_root.to_path_buf(),
+            source: std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!(
+                    "scratch root resolves inside the read-only vault root {}",
+                    vault_root.display()
+                ),
+            ),
+        });
+    }
+    Ok(())
+}
+
+/// Canonicalize `path`, tolerating a not-yet-created tail: canonicalize the
+/// deepest existing ancestor and re-attach the remaining components. This lets
+/// the disjointness check run before the scratch directory exists.
+fn canonicalize_existing_prefix(path: &Path) -> PathBuf {
+    if let Ok(canonical) = std::fs::canonicalize(path) {
+        return canonical;
+    }
+    let mut suffix: Vec<std::ffi::OsString> = Vec::new();
+    let mut cursor = path;
+    loop {
+        match cursor.parent() {
+            Some(parent) => {
+                if let Some(name) = cursor.file_name() {
+                    suffix.push(name.to_os_string());
+                }
+                if let Ok(canonical) = std::fs::canonicalize(parent) {
+                    let mut out = canonical;
+                    for component in suffix.iter().rev() {
+                        out.push(component);
+                    }
+                    return out;
+                }
+                cursor = parent;
+            }
+            None => return path.to_path_buf(),
+        }
+    }
+}
+
 impl VaultSource {
     /// Open a [`VaultSource`] against the resolved vault + scratch roots.
     ///
@@ -190,6 +245,11 @@ impl VaultSource {
         let vault_root = resolve_vault_root(vault_cfg)?;
         validate_vault_root(&vault_root)?;
         let scratch_root = resolve_scratch_root(scratch_cfg)?;
+        // Enforce the read-only-vault invariant against operator misconfig:
+        // a scratch root equal to or nested under the vault root would route
+        // extraction/marker writes into the read-only vault. Reject it before
+        // `ensure_scratch_writable` creates any directory.
+        reject_scratch_inside_vault(&vault_root, &scratch_root)?;
         Self::ensure_scratch_writable(&scratch_root)?;
 
         // Probe schema version (open & drop a connection just for the probe;
@@ -396,7 +456,7 @@ impl LocalCorpusSource for VaultSource {
         // Validate that the by-sha path actually points to a file under
         // by-sha/ — defence in depth: resolve_by_sha already does the
         // check, but we also confirm the path layout here.
-        let expected_path = by_sha_path(&self.vault_root, sha256);
+        let expected_path = by_sha_path(&self.vault_root, sha256)?;
         if resolved.on_disk_path != expected_path {
             return Err(VaultSourceError::ArtifactMissing {
                 path: expected_path,
@@ -442,5 +502,34 @@ impl LocalCorpusSource for VaultSource {
             read_only: true,
             findings_sink_required: true,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::tempdir;
+
+    #[test]
+    fn reject_scratch_inside_vault_rejects_nested_and_equal_roots() {
+        let vault = tempdir().expect("vault tempdir");
+        let scratch_outside = tempdir().expect("scratch tempdir");
+
+        // Disjoint roots are accepted.
+        assert!(reject_scratch_inside_vault(vault.path(), scratch_outside.path()).is_ok());
+
+        // Scratch equal to the vault root is rejected.
+        assert!(matches!(
+            reject_scratch_inside_vault(vault.path(), vault.path()),
+            Err(VaultSourceError::ScratchUnwritable { .. })
+        ));
+
+        // Scratch nested under the vault root is rejected even when the
+        // nested directory does not exist yet.
+        let nested = vault.path().join("extraction").join("scratch");
+        assert!(matches!(
+            reject_scratch_inside_vault(vault.path(), &nested),
+            Err(VaultSourceError::ScratchUnwritable { .. })
+        ));
     }
 }
