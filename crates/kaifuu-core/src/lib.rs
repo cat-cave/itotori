@@ -154,6 +154,7 @@ pub const STRING_RELOCATION_INVALID_SOURCE_BYTES: &str =
 pub const XP3_PLAIN_MAGIC: &[u8] = b"XP3\r\n \n\x1a\x8b\x67\x01";
 
 pub mod contracts;
+pub mod mv_mz_encrypted_audio;
 pub mod mv_mz_encrypted_image;
 pub mod mv_mz_readiness;
 mod offset_map;
@@ -165,6 +166,20 @@ pub mod siglus_static_key;
 pub mod xp3_capability_profile;
 
 pub use registry::{AdapterCapabilityMatrix, CapabilityLevel, CapabilityLevelStatus};
+
+pub use mv_mz_encrypted_audio::{
+    MV_MZ_ENCRYPTED_AUDIO_CRYPTO_PROFILE_ID, MV_MZ_ENCRYPTED_AUDIO_ENGINE_FAMILY,
+    MV_MZ_ENCRYPTED_AUDIO_FIXTURE_ID, MV_MZ_ENCRYPTED_AUDIO_REQUIREMENT_ID,
+    MV_MZ_ENCRYPTED_AUDIO_SCHEMA_VERSION, MV_MZ_ENCRYPTED_AUDIO_SUPPORT_BOUNDARY,
+    MV_MZ_ENCRYPTED_AUDIO_VARIANT, MvMzAudioRoundTripProof, MvMzAudioSurface,
+    MvMzAudioSurfaceDeclaration, MvMzAudioVariantError, MvMzEncryptedAudioDiagnosticDeclaration,
+    MvMzEncryptedAudioEntryReport, MvMzEncryptedAudioFinding, MvMzEncryptedAudioFixture,
+    MvMzEncryptedAudioFixtureEntry, MvMzEncryptedAudioOutcome, MvMzEncryptedAudioPath,
+    MvMzEncryptedAudioPathViolation, MvMzEncryptedAudioReport, MvMzEncryptedAudioRequest,
+    MvMzEncryptedAudioScenario, RpgMakerAudioCryptoProfile, SEMANTIC_MV_MZ_AUDIO_MISSING_KEY,
+    SEMANTIC_MV_MZ_AUDIO_UNSUPPORTED_SURFACE, SEMANTIC_MV_MZ_AUDIO_UNSUPPORTED_VARIANT,
+    SEMANTIC_MV_MZ_AUDIO_WRONG_KEY, encrypt_synthetic_audio, run_mv_mz_encrypted_audio,
+};
 
 pub use mv_mz_encrypted_image::{
     MV_MZ_ENCRYPTED_IMAGE_CRYPTO_PROFILE_ID, MV_MZ_ENCRYPTED_IMAGE_ENGINE_FAMILY,
