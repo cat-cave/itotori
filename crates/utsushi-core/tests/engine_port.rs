@@ -495,6 +495,64 @@ impl EnginePort for MissingObservePort {
     }
 }
 
+/// Port whose `shutdown` is NOT idempotent: it reports `Clean` on every
+/// call instead of `Clean -> AlreadyShutDown`. The conformance harness
+/// must reject it with the typed `EnginePortError::ShutdownNotIdempotent`
+/// (previously the harness accepted `AlreadyShutDown | Clean` for the
+/// second call, so this drift passed silently).
+struct NonIdempotentShutdownPort(ReferencePort);
+
+impl NonIdempotentShutdownPort {
+    const MANIFEST: PortManifest = PortManifest {
+        id: "utsushi-synthetic-nonidempotent",
+        name: "Synthetic Non-Idempotent-Shutdown Port",
+        version: "0.0.0",
+        abi_version: 1,
+        capabilities: &[
+            PortCapability::Launch,
+            PortCapability::Observe,
+            PortCapability::Capture,
+            PortCapability::Shutdown,
+        ],
+        required_methods: REQUIRED_LIFECYCLE_STAGES,
+        optional_methods: &[],
+        env_schema: &[],
+        fidelity_tier_max: FidelityTier::LayoutProbe,
+        evidence_tier_max: EvidenceTier::E2,
+        limitations: &["Synthetic test-only port with deliberately non-idempotent shutdown."],
+    };
+
+    fn new() -> Self {
+        Self(ReferencePort::new())
+    }
+}
+
+impl EnginePort for NonIdempotentShutdownPort {
+    const MANIFEST: PortManifest = Self::MANIFEST;
+
+    fn launch(&mut self, request: &PortRequest<'_>) -> Result<(), EnginePortError> {
+        self.0.launch(request)
+    }
+
+    fn observe(&mut self, request: &PortRequest<'_>) -> Result<(), EnginePortError> {
+        self.0.observe(request)
+    }
+
+    fn sink_set(&self) -> &SinkSet {
+        self.0.sink_set()
+    }
+
+    fn capture(&mut self, request: &PortRequest<'_>) -> Result<CaptureOutcome, EnginePortError> {
+        self.0.capture(request)
+    }
+
+    fn shutdown(&mut self) -> Result<PortShutdownOutcome, EnginePortError> {
+        // Always reports Clean — never signals AlreadyShutDown on a
+        // repeat call, violating the documented idempotence rule.
+        Ok(PortShutdownOutcome::clean())
+    }
+}
+
 /// Manifest declaring abi_version = 99. Used to assert the runner
 /// rejects ports it cannot drive.
 const UNSUPPORTED_ABI_MANIFEST: PortManifest = PortManifest {
@@ -996,6 +1054,25 @@ fn port_with_unimplemented_observe_fails_conformance_with_drift_diagnostic() {
             assert_eq!(capability, PortCapability::Observe);
         }
         other => panic!("expected CapabilityUnsupported(Observe), got {other:?}"),
+    }
+}
+
+#[test]
+fn port_with_non_idempotent_shutdown_fails_conformance_with_typed_error() {
+    let (_input_dir, input_root) = build_input_root();
+    let (_root_dir, artifact_root) = build_artifact_root();
+    let fixture = build_fixture(artifact_root, input_root);
+
+    let outcome = conformance::run_required_abi(NonIdempotentShutdownPort::new, &fixture);
+    let error = outcome.expect_err("non-idempotent shutdown must fail conformance");
+    match error {
+        EnginePortError::ShutdownNotIdempotent { first, second } => {
+            assert_eq!(first, PortShutdownStatus::Clean);
+            // The port reported Clean on the second call instead of the
+            // required AlreadyShutDown.
+            assert_eq!(second, PortShutdownStatus::Clean);
+        }
+        other => panic!("expected ShutdownNotIdempotent, got {other:?}"),
     }
 }
 

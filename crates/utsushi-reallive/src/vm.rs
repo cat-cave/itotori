@@ -46,11 +46,14 @@ use utsushi_core::substrate::{
     Inspectable, Restorable, RestoreReport, SnapshotError, StatePath, StateTree, StateValue,
 };
 
-use crate::bytecode_element::{BytecodeDecodeError, BytecodeElement};
+use crate::bytecode_element::{
+    BytecodeDecodeError, BytecodeElement, CommandArgShape, decode_command_arg_values,
+};
 use crate::expression::{ExprNode, ExpressionParseError, parse_expression};
 use crate::expression_eval::{EvaluationError, evaluate, evaluate_assignment};
 use crate::rlop::{
-    DispatchOutcome, LongOp, LongOpId, LongOpReadiness, LongOpScheduler, RlopKey, RlopRegistry,
+    DispatchOutcome, ExprValue, LongOp, LongOpId, LongOpReadiness, LongOpScheduler, RlopKey,
+    RlopRegistry,
 };
 use crate::var_banks::VarBanks;
 
@@ -871,12 +874,20 @@ impl Vm {
                 module_type,
                 module_id,
                 opcode,
+                raw_bytes,
                 ..
             } => {
                 let key = RlopKey::new(module_type, module_id, opcode);
                 match registry.get(key) {
                     Some(op) => {
-                        let outcome = op.dispatch(self, &[]);
+                        // Decode the element's own argument list and
+                        // dispatch with the REAL values. Previously this
+                        // passed `&[]`, so every argument-taking op — all
+                        // control-flow ops (goto / farcall / …) included —
+                        // saw an empty slice and took its warn-and-advance
+                        // path, making jumps dead in the integration path.
+                        let args = self.decode_command_args(&raw_bytes);
+                        let outcome = op.dispatch(self, &args);
                         self.apply_outcome(&outcome, post_pc)?;
                         Ok(VmEvent::CommandDispatched { key, outcome })
                     }
@@ -895,6 +906,70 @@ impl Vm {
                 }
             }
         }
+    }
+
+    /// Decode a `Command` element's `(...)` argument list (from
+    /// `raw_bytes`, past the 8-byte header) into the [`ExprValue`] slice
+    /// [`crate::rlop::RLOperation::dispatch`] expects.
+    ///
+    /// This is the seam the audit pinned: the integration dispatch path
+    /// used to pass `&[]`, so control-flow opcodes never received their
+    /// targets and a real scene's `goto` was silently walked linearly
+    /// instead of jumping. Each comma-separated argument value is decoded
+    /// to its real `ExprValue` — expression-shaped data is parsed +
+    /// evaluated to an `Int`, string / complex data is carried as
+    /// `Bytes`.
+    ///
+    /// Decoding is fail-soft to match the surrounding dispatch loop: a
+    /// value that fails to parse / evaluate surfaces a typed
+    /// [`VmWarning::ExpressionFailure`] and decoding stops, so the op
+    /// observes the prefix it could decode and applies its own typed
+    /// arity / variant check rather than panicking. The element already
+    /// length-walked successfully at decode time, so a hard structural
+    /// error here is unreachable on real scenes; if it ever occurs it is
+    /// surfaced as a warning and an empty arg list, never a panic.
+    fn decode_command_args(&mut self, raw_bytes: &[u8]) -> Vec<ExprValue> {
+        let arg_slices = match decode_command_arg_values(raw_bytes) {
+            Ok(slices) => slices,
+            Err(err) => {
+                self.warnings.push(VmWarning::ExpressionFailure {
+                    scene: self.scene,
+                    pc: self.pc,
+                    reason: err.to_string(),
+                });
+                return Vec::new();
+            }
+        };
+        let mut values = Vec::with_capacity(arg_slices.len());
+        for arg in arg_slices {
+            match arg.shape {
+                CommandArgShape::Expression => match parse_expression(&arg.bytes) {
+                    Ok((node, _consumed)) => match self.eval_expression_node(&node) {
+                        Ok((_is_assignment, value)) => values.push(ExprValue::Int(value)),
+                        Err(err) => {
+                            self.warnings.push(VmWarning::ExpressionFailure {
+                                scene: self.scene,
+                                pc: self.pc,
+                                reason: err.to_string(),
+                            });
+                            break;
+                        }
+                    },
+                    Err(err) => {
+                        self.warnings.push(VmWarning::ExpressionFailure {
+                            scene: self.scene,
+                            pc: self.pc,
+                            reason: err.to_string(),
+                        });
+                        break;
+                    }
+                },
+                CommandArgShape::String | CommandArgShape::Complex => {
+                    values.push(ExprValue::Bytes(arg.bytes));
+                }
+            }
+        }
+        values
     }
 
     /// Evaluate the supplied expression element raw bytes and surface a
@@ -1466,6 +1541,96 @@ mod tests {
     fn build_scene(id: SceneId, bytes: &[u8]) -> Scene {
         let elements = decode_bytecode_stream(bytes).expect("decode test scene");
         Scene::new(id, elements).expect("non-empty scene")
+    }
+
+    /// Encode an int-literal expression value (`$ FF <i32 LE>`).
+    fn int_literal_bytes(value: i32) -> Vec<u8> {
+        let mut b = vec![0x24, 0xFF];
+        b.extend_from_slice(&value.to_le_bytes());
+        b
+    }
+
+    /// Encode a single `goto(target_pc)` command (module 0/1, opcode 0)
+    /// with one int-literal argument.
+    fn goto_command(target_pc: i32) -> Vec<u8> {
+        let mut b = vec![0x23, 0x00, 0x01, 0x00, 0x00, 0x01, 0x00, 0x00, b'('];
+        b.extend_from_slice(&int_literal_bytes(target_pc));
+        b.push(b')');
+        b
+    }
+
+    /// Encode a `farcall(return_scene, return_pc, target_scene,
+    /// target_pc)` command (module 0/1, opcode 0x0020) with four
+    /// int-literal arguments.
+    fn farcall_command(rs: i32, rp: i32, ts: i32, tp: i32) -> Vec<u8> {
+        let mut b = vec![0x23, 0x00, 0x01, 0x20, 0x00, 0x04, 0x00, 0x00, b'('];
+        for (idx, value) in [rs, rp, ts, tp].iter().enumerate() {
+            if idx > 0 {
+                b.push(b',');
+            }
+            b.extend_from_slice(&int_literal_bytes(*value));
+        }
+        b.push(b')');
+        b
+    }
+
+    #[test]
+    fn step_dispatches_goto_with_real_args_and_jumps_to_target() {
+        // Regression (audit-3): the integration dispatch path passed
+        // `op.dispatch(self, &[])`, so `goto` got an empty arg slice and
+        // fell through (warn-and-advance) instead of jumping. With the
+        // real-arg wiring the decoded target must take effect: stepping a
+        // `goto 100` command (which itself occupies bytes 0..16) must
+        // move pc to 100, NOT to the linear post-command byte 16.
+        let mut store = InMemorySceneStore::new();
+        store.insert(build_scene(1, &goto_command(100)));
+        let mut registry = RlopRegistry::new();
+        crate::rlop::module_ctrl::register_control_flow_rlops(&mut registry);
+        let mut scheduler = NeverReadyScheduler;
+        let mut vm = Vm::new(1, 0);
+
+        let outcome = vm.step(&store, &registry, &mut scheduler).expect("step");
+        assert!(matches!(
+            outcome,
+            StepOutcome::Advanced {
+                event: VmEvent::CommandDispatched { .. }
+            }
+        ));
+        assert_eq!(
+            vm.pc(),
+            100,
+            "goto must jump to its decoded target, not fall through to post_pc"
+        );
+        assert_ne!(vm.pc(), 16, "pc must NOT be the linear post-command byte");
+        assert!(
+            vm.warnings().is_empty(),
+            "goto with a valid int arg must not warn: {:?}",
+            vm.warnings()
+        );
+    }
+
+    #[test]
+    fn step_dispatches_farcall_with_real_args_and_pushes_frame() {
+        // Companion control-flow proof: `farcall` needs four decoded args
+        // (return_scene, return_pc, target_scene, target_pc). With the
+        // empty-slice bug it warn-and-advanced; now it must cross to the
+        // target scene/pc and push a far-call frame.
+        let mut store = InMemorySceneStore::new();
+        store.insert(build_scene(1, &farcall_command(1, 37, 2, 50)));
+        let mut registry = RlopRegistry::new();
+        crate::rlop::module_ctrl::register_control_flow_rlops(&mut registry);
+        let mut scheduler = NeverReadyScheduler;
+        let mut vm = Vm::new(1, 0);
+
+        vm.step(&store, &registry, &mut scheduler).expect("step");
+        assert_eq!(vm.scene(), 2, "farcall must cross to the target scene");
+        assert_eq!(vm.pc(), 50, "farcall must land on the target pc");
+        assert_eq!(vm.stack().len(), 1, "farcall must push exactly one frame");
+        assert!(
+            vm.warnings().is_empty(),
+            "farcall with valid int args must not warn: {:?}",
+            vm.warnings()
+        );
     }
 
     #[test]

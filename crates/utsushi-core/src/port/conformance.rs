@@ -75,11 +75,23 @@ where
     let first_shutdown_clean =
         outcome.shutdown.status == super::diagnostics::PortShutdownStatus::Clean;
     let second_shutdown = port.shutdown()?;
-    let second_shutdown_idempotent = matches!(
-        second_shutdown.status,
-        super::diagnostics::PortShutdownStatus::AlreadyShutDown
-            | super::diagnostics::PortShutdownStatus::Clean
-    );
+    // The documented idempotence rule (EnginePort::shutdown) is: the first
+    // call returns `Clean`, the second `AlreadyShutDown`. The earlier check
+    // accepted `AlreadyShutDown | Clean` for the second call — and
+    // `PortShutdownStatus` has only those two variants, so the match was
+    // tautological and a port that never signalled idempotency still
+    // passed. Enforce the real rule: the second call MUST report
+    // `AlreadyShutDown`, and any first/second pair that violates
+    // `Clean -> AlreadyShutDown` surfaces the typed
+    // `EnginePortError::ShutdownNotIdempotent`.
+    let second_shutdown_idempotent =
+        second_shutdown.status == super::diagnostics::PortShutdownStatus::AlreadyShutDown;
+    if !(first_shutdown_clean && second_shutdown_idempotent) {
+        return Err(EnginePortError::ShutdownNotIdempotent {
+            first: outcome.shutdown.status,
+            second: second_shutdown.status,
+        });
+    }
 
     // Jump capability check: a port must produce the typed
     // CapabilityUnsupported when it does not declare jump.

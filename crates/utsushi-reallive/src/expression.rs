@@ -483,11 +483,22 @@ pub fn parse_expression_with_warnings(
     })
 }
 
+/// Maximum grouping / unary nesting depth the parser will descend before
+/// surfacing a typed [`ExpressionParseError::Malformed`]. `parse_term`
+/// (the single re-entry point for every `(`-grouping and `\<op>` unary
+/// recursion) is guarded by this bound so a malformed / hostile
+/// expression with deeply nested `(` cannot stack-overflow the process —
+/// it returns the typed error the module otherwise guarantees. Real
+/// RealLive expressions nest only a handful of levels; this cap is loose.
+const MAX_EXPRESSION_DEPTH: usize = 256;
+
 /// Recursive-descent state shared across the helper functions.
 struct ParserState<'a> {
     bytes: &'a [u8],
     pos: usize,
     warnings: Vec<ExpressionWarning>,
+    /// Current grouping / unary nesting depth (see [`MAX_EXPRESSION_DEPTH`]).
+    depth: usize,
 }
 
 impl<'a> ParserState<'a> {
@@ -496,6 +507,7 @@ impl<'a> ParserState<'a> {
             bytes,
             pos: 0,
             warnings: Vec::new(),
+            depth: 0,
         }
     }
 
@@ -735,7 +747,31 @@ fn peek_binary_op(state: &ParserState<'_>, allowed: &[ExprOp]) -> Option<ExprOp>
 }
 
 /// Parse a single term — grouping, unary form, or token.
+///
+/// `parse_term` is the single re-entry point of the mutually-recursive
+/// descent: every `(`-grouping recurses through `parse_expr` back into
+/// `parse_term`, and every `\<op>` unary form recurses into `parse_term`
+/// directly. Guarding it with a depth counter therefore bounds the whole
+/// recursion: a hostile expression with deeply nested groupings surfaces
+/// a typed [`ExpressionParseError::Malformed`] past
+/// [`MAX_EXPRESSION_DEPTH`] instead of overflowing the stack.
 fn parse_term(state: &mut ParserState<'_>) -> Result<ExprNode, ExpressionParseError> {
+    state.depth += 1;
+    if state.depth > MAX_EXPRESSION_DEPTH {
+        let pos = state.pos;
+        state.depth -= 1;
+        return Err(state.malformed(
+            pos,
+            format!("term: expression nesting exceeded depth limit {MAX_EXPRESSION_DEPTH}"),
+        ));
+    }
+    let result = parse_term_body(state);
+    state.depth -= 1;
+    result
+}
+
+/// Body of [`parse_term`]; see that function for the depth-bound rationale.
+fn parse_term_body(state: &mut ParserState<'_>) -> Result<ExprNode, ExpressionParseError> {
     let Some(b0) = state.current() else {
         return Err(state.truncated(1, "term: input exhausted"));
     };
@@ -886,6 +922,31 @@ mod tests {
             }
             other => panic!("expected Truncated on empty input, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn deeply_nested_groupings_surface_typed_error_not_stack_overflow() {
+        // Regression (audit-3): `parse_term` recursed into `parse_expr`
+        // on every `(` with no depth limit, so a hostile expression of
+        // deeply nested `(` overflowed the process stack. Past
+        // `MAX_EXPRESSION_DEPTH` the parser must instead return the typed
+        // `Malformed` error the module guarantees.
+        let bytes = vec![PAREN_OPEN; MAX_EXPRESSION_DEPTH + 50];
+        match parse_expression(&bytes) {
+            Err(ExpressionParseError::Malformed { .. }) => {}
+            other => panic!("expected Malformed on over-deep nesting, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn moderately_nested_groupings_still_parse() {
+        // A legitimately nested integer literal `((($FF 5)))` must still
+        // parse — the depth bound only trips on pathological nesting.
+        let mut bytes = vec![PAREN_OPEN; 3];
+        bytes.extend_from_slice(&[EXPRESSION_TOKEN_LEAD, EXPRESSION_INT_LITERAL_TAG]);
+        bytes.extend_from_slice(&5_i32.to_le_bytes());
+        bytes.extend(std::iter::repeat_n(PAREN_CLOSE, 3));
+        parse_expression(&bytes).expect("3-deep grouping must parse");
     }
 
     #[test]

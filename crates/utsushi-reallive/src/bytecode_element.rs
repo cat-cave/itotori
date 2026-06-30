@@ -971,6 +971,50 @@ fn next_expression(bytes: &[u8], pos: usize) -> Result<usize, BytecodeDecodeErro
 ///   compound entry with optional trailing `\<expression>`.
 /// - Otherwise — fall through to [`next_expression`].
 fn next_data(bytes: &[u8], pos: usize) -> Result<usize, BytecodeDecodeError> {
+    // Leading `,` separators and embedded `\n` MetaLine markers are
+    // absorbed *iteratively* (not via self-recursion) so an
+    // attacker-controllable run of separator bytes — which is exactly
+    // one byte (or three) per element — cannot drive one stack frame per
+    // separator and overflow the process stack. A long separator run is
+    // now O(1) stack and either walks through to the value or surfaces a
+    // typed [`BytecodeDecodeError`].
+    let value_pos = skip_data_separators(bytes, pos)?;
+    let value_len = next_data_value(bytes, value_pos)?;
+    Ok((value_pos - pos) + value_len)
+}
+
+/// Skip a run of `,` separators and embedded `\n` MetaLine markers
+/// starting at `bytes[pos]`, returning the index of the first byte that
+/// is neither. Iterative (no recursion) so a long separator run stays
+/// bounded-stack; a truncated MetaLine marker surfaces a typed
+/// [`BytecodeDecodeError::Truncated`].
+fn skip_data_separators(bytes: &[u8], pos: usize) -> Result<usize, BytecodeDecodeError> {
+    let mut p = pos;
+    loop {
+        match peek(bytes, p) {
+            Some(b',') => p += 1,
+            Some(META_LINE_LEAD_BYTE) => {
+                if p + 3 > bytes.len() {
+                    return Err(BytecodeDecodeError::Truncated {
+                        observed_len: bytes.len(),
+                        position: p,
+                        needed: p + 3 - bytes.len(),
+                        message: "data: embedded MetaLine marker truncated (need 3 bytes)"
+                            .to_string(),
+                    });
+                }
+                p += 3;
+            }
+            _ => return Ok(p),
+        }
+    }
+}
+
+/// Length-walk a single command-argument **value** (string / complex /
+/// expression) starting at `bytes[pos]`. Unlike [`next_data`] this does
+/// not absorb leading `,`/MetaLine separators — the caller strips those
+/// via [`skip_data_separators`].
+fn next_data_value(bytes: &[u8], pos: usize) -> Result<usize, BytecodeDecodeError> {
     let Some(b0) = peek(bytes, pos) else {
         return Err(BytecodeDecodeError::Truncated {
             observed_len: bytes.len(),
@@ -979,20 +1023,6 @@ fn next_data(bytes: &[u8], pos: usize) -> Result<usize, BytecodeDecodeError> {
             message: "data: input exhausted".to_string(),
         });
     };
-    if b0 == b',' {
-        return Ok(1 + next_data(bytes, pos + 1)?);
-    }
-    if b0 == META_LINE_LEAD_BYTE {
-        if pos + 3 > bytes.len() {
-            return Err(BytecodeDecodeError::Truncated {
-                observed_len: bytes.len(),
-                position: pos,
-                needed: pos + 3 - bytes.len(),
-                message: "data: embedded MetaLine marker truncated (need 3 bytes)".to_string(),
-            });
-        }
-        return Ok(3 + next_data(bytes, pos + 3)?);
-    }
     if is_data_string_lead(b0) {
         return next_string(bytes, pos);
     }
@@ -1000,6 +1030,100 @@ fn next_data(bytes: &[u8], pos: usize) -> Result<usize, BytecodeDecodeError> {
         return next_complex_data(bytes, pos);
     }
     next_expression(bytes, pos)
+}
+
+/// Shape of a single decoded command-argument value, so the VM can pick
+/// the right [`crate::rlop::ExprValue`] representation without
+/// re-deriving the lead-byte classification.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum CommandArgShape {
+    /// String-shaped data (Shift-JIS / ASCII / quoted). The VM maps this
+    /// to `ExprValue::Bytes`.
+    String,
+    /// Bracketed complex tag (`(<data>...)`). The VM maps this to
+    /// `ExprValue::Bytes` (raw tag bytes).
+    Complex,
+    /// Expression-shaped data. The VM parses + evaluates this to
+    /// `ExprValue::Int`.
+    Expression,
+}
+
+/// One decoded command-argument value: its shape plus the exact byte
+/// span (owned so the VM can re-parse / decode it without holding the
+/// element borrow).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct CommandArg {
+    /// Lead-byte classification used to pick the `ExprValue` variant.
+    pub shape: CommandArgShape,
+    /// The argument value's raw bytes (separators already stripped).
+    pub bytes: Vec<u8>,
+}
+
+/// Classify a command-argument value by its lead byte, mirroring the
+/// dispatch order in [`next_data_value`] (string lead wins over the
+/// `(`-complex branch).
+fn command_arg_shape(lead: u8) -> CommandArgShape {
+    if is_data_string_lead(lead) {
+        CommandArgShape::String
+    } else if lead == b'a' || lead == b'(' {
+        CommandArgShape::Complex
+    } else {
+        CommandArgShape::Expression
+    }
+}
+
+/// Decode the `(...)` argument list inside a `Command` element's
+/// `raw_bytes` into one [`CommandArg`] per comma-separated value.
+/// Returns an empty vec for a header-only command (no `(` arg list).
+///
+/// This is the value-extraction counterpart to [`walk_command_arg_list`]
+/// (which only length-walks): the VM's integration dispatch path feeds
+/// the decoded values to `RLOperation::dispatch` so argument-taking ops
+/// — every control-flow op (goto / farcall / …) included — receive their
+/// real targets instead of an empty slice.
+pub(crate) fn decode_command_arg_values(
+    raw_bytes: &[u8],
+) -> Result<Vec<CommandArg>, BytecodeDecodeError> {
+    if raw_bytes.len() <= COMMAND_HEADER_BYTE_LEN {
+        return Ok(Vec::new());
+    }
+    let list_start = COMMAND_HEADER_BYTE_LEN;
+    if peek(raw_bytes, list_start) != Some(b'(') {
+        return Ok(Vec::new());
+    }
+    let mut args = Vec::new();
+    let mut p = list_start + 1;
+    loop {
+        p = skip_data_separators(raw_bytes, p)?;
+        match peek(raw_bytes, p) {
+            None => {
+                return Err(BytecodeDecodeError::Truncated {
+                    observed_len: raw_bytes.len(),
+                    position: p,
+                    needed: 1,
+                    message: "command argument list truncated before closing ')'".to_string(),
+                });
+            }
+            Some(b')') => return Ok(args),
+            Some(_) => {}
+        }
+        let value_len = next_data_value(raw_bytes, p)?;
+        if value_len == 0 {
+            return Err(BytecodeDecodeError::MalformedElement {
+                position: p,
+                message: format!(
+                    "command argument value walker returned 0 bytes for lead 0x{:02x}",
+                    raw_bytes[p],
+                ),
+            });
+        }
+        let shape = command_arg_shape(raw_bytes[p]);
+        args.push(CommandArg {
+            shape,
+            bytes: raw_bytes[p..p + value_len].to_vec(),
+        });
+        p += value_len;
+    }
 }
 
 /// `true` when `byte` is one of the lead bytes that introduces a
@@ -1334,6 +1458,62 @@ fn verify_partition(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn next_data_long_comma_run_surfaces_typed_error_not_stack_overflow() {
+        // Regression (audit-3): `next_data` used to recurse once per `,`
+        // separator (`1 + next_data(pos + 1)`), so a long run of commas
+        // over attacker-controllable decompressed bytecode drove one
+        // stack frame per comma and overflowed the process stack. The
+        // iterative separator-skip must instead consume the whole run in
+        // O(1) stack and surface a typed `Truncated` error when the input
+        // exhausts mid-separator-run.
+        let bytes = vec![b','; 500_000];
+        match next_data(&bytes, 0) {
+            Err(BytecodeDecodeError::Truncated { .. }) => {}
+            other => panic!("expected Truncated on an all-comma buffer, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn next_data_long_metaline_run_surfaces_typed_error_not_stack_overflow() {
+        // Companion to the comma case: embedded `\n` MetaLine markers
+        // (3 bytes each) also used to recurse per marker. A long run of
+        // complete markers followed by exhaustion must surface a typed
+        // error rather than overflow.
+        let mut bytes = Vec::new();
+        for _ in 0..200_000 {
+            bytes.extend_from_slice(&[META_LINE_LEAD_BYTE, 0x00, 0x00]);
+        }
+        match next_data(&bytes, 0) {
+            Err(BytecodeDecodeError::Truncated { .. }) => {}
+            other => panic!("expected Truncated on an all-metaline buffer, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn decode_command_arg_values_splits_comma_separated_int_args() {
+        // `goto`-shaped header (module 0/1, opcode 0) with a 2-int arg
+        // list: `( $FF<7> , $FF<9> )`. The value extractor must return
+        // two Expression-shaped args carrying the literal bytes.
+        let mut raw = vec![0x23, 0x00, 0x01, 0x00, 0x00, 0x02, 0x00, 0x00, b'('];
+        raw.extend_from_slice(&[0x24, 0xFF]);
+        raw.extend_from_slice(&7_i32.to_le_bytes());
+        raw.push(b',');
+        raw.extend_from_slice(&[0x24, 0xFF]);
+        raw.extend_from_slice(&9_i32.to_le_bytes());
+        raw.push(b')');
+
+        let args = decode_command_arg_values(&raw).expect("arg list decodes");
+        assert_eq!(args.len(), 2);
+        assert!(args.iter().all(|a| a.shape == CommandArgShape::Expression));
+    }
+
+    #[test]
+    fn decode_command_arg_values_empty_for_header_only_command() {
+        let raw = vec![0x23, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00];
+        assert!(decode_command_arg_values(&raw).expect("decodes").is_empty());
+    }
 
     #[test]
     fn empty_input_is_truncated_not_zero_state() {

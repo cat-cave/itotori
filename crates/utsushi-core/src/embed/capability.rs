@@ -1,9 +1,10 @@
 //! Capability declaration for the WASM embed ABI substrate.
 //!
 //! The capability list is the canonical answer to "what observable surface
-//! does this embed expose?" A capability mismatch surfaces as
-//! [`super::diagnostics::EmbedError::CapabilityNotSupported`] rather than a
-//! silent missing field.
+//! does this embed expose?" An `Unsupported` capability tells the host the
+//! underlying field must not be read (see
+//! [`EmbedCapabilityStatus::is_available`]); the host consults the
+//! capability vector rather than relying on a silent missing field.
 //!
 //! Capability ids are an append-only typed enum. New variants are added at
 //! the end of [`EmbedCapabilityId`]; ordering is stable on both
@@ -91,8 +92,8 @@ impl EmbedCapabilityStatus {
     }
 
     /// Whether the host may read the underlying field. `Supported | Partial`
-    /// promise a present field; `Unsupported` promises a typed
-    /// [`EmbedError::CapabilityNotSupported`] error.
+    /// promise a present field; `Unsupported` tells the host the field must
+    /// not be read.
     pub fn is_available(self) -> bool {
         matches!(self, Self::Supported | Self::Partial)
     }
