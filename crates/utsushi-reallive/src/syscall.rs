@@ -95,6 +95,12 @@ pub const SYSCALL_MISSING_SCREEN_SIZE_CODE: &str = "utsushi.reallive.syscall.mis
 /// share a single source of truth.
 pub const WBCALL_SLOT_COUNT: u8 = 8;
 
+/// Stable diagnostic code emitted when a `WBCALL.NNN` key is declared at
+/// or beyond the validated [`WBCALL_SLOT_COUNT`] cap. RLDEV documents a
+/// larger WBCALL namespace, but no alpha-corpus RealLive title exercises
+/// it; the dispatcher refuses to silently ignore an out-of-range slot.
+pub const SYSCALL_WBCALL_BEYOND_CAP_CODE: &str = "utsushi.reallive.syscall.wbcall_beyond_cap";
+
 /// The fixed kind-distinct route count documented in
 /// `docs/research/reallive-engine.md` § H. Eight kinds:
 /// `Cancel`, `SystemcallSave`, `SystemcallLoad`, `SystemcallSystem`,
@@ -299,6 +305,30 @@ pub enum SyscallDispatchBuildError {
         /// Dotted-path key (e.g. `MOUSEACTIONCALL.000`).
         route_key: String,
     },
+    /// A `WBCALL.NNN` key is present with `NNN` at or beyond the
+    /// validated [`WBCALL_SLOT_COUNT`] cap. Sweetie HD (the only
+    /// alpha-corpus RealLive title) declares exactly `WBCALL.000`-`007`;
+    /// RLDEV documents a larger namespace but no real corpus game
+    /// exercises it. The dispatcher refuses to silently ignore the
+    /// out-of-range slot (the original silent-truncation behaviour)
+    /// rather than register a route the engine has never validated. When
+    /// a real ≥2-game beta corpus exercises higher slots, raise the cap
+    /// and convert this to enumeration (mirroring the MOUSEACTIONCALL
+    /// full-namespace scan).
+    #[error(
+        "wbcall route {route_key} declares slot index {index} at or beyond the validated cap of {cap} ({code})"
+    )]
+    WbcallSlotBeyondCap {
+        /// Stable diagnostic code (matches
+        /// [`SYSCALL_WBCALL_BEYOND_CAP_CODE`]).
+        code: String,
+        /// Dotted-path key (e.g. `WBCALL.008`).
+        route_key: String,
+        /// The out-of-range slot index that was declared.
+        index: u8,
+        /// The validated cap ([`WBCALL_SLOT_COUNT`]).
+        cap: u8,
+    },
 }
 
 /// Typed error surfaced by [`SyscallDispatcher::route_for_input_event`]
@@ -464,6 +494,25 @@ impl SyscallDispatcher {
             }
         }
 
+        // Guard against silent truncation of the WBCALL namespace. The
+        // loop above only registers `WBCALL.000`-`007` (the validated
+        // Sweetie HD corpus); RealLive's namespace is larger. Scan the
+        // rest of the `u8` index space and refuse — with a typed error —
+        // to silently ignore any `WBCALL.NNN` declared at or beyond the
+        // cap, rather than dropping a route the engine has never
+        // validated.
+        for index in WBCALL_SLOT_COUNT..=u8::MAX {
+            let key = format!("WBCALL.{index:03}");
+            if gameexe.get(&key).is_some() {
+                return Err(SyscallDispatchBuildError::WbcallSlotBeyondCap {
+                    code: SYSCALL_WBCALL_BEYOND_CAP_CODE.to_string(),
+                    route_key: key,
+                    index,
+                    cap: WBCALL_SLOT_COUNT,
+                });
+            }
+        }
+
         let screen_size = parse_screen_size(gameexe);
 
         Ok(Self {
@@ -620,22 +669,55 @@ impl SyscallDispatcher {
             ExprValue::Int(route.entrypoint as i32),
         ];
         let outcome = FarcallOp.dispatch(vm, &args);
-        match &outcome {
-            DispatchOutcome::FarCall { .. } => {}
-            other => {
-                // The FarcallOp surface is documented to return
-                // FarCall on well-shaped args; any other outcome
-                // indicates a substrate regression (e.g. a future
-                // FarcallOp variant that fails on overflow). Carry it
-                // through to `apply_dispatch_outcome` so the typed
-                // failure is observable rather than swallowed.
-                debug_assert!(
-                    matches!(other, DispatchOutcome::Advance),
-                    "FarcallOp returned unexpected outcome {other:?}",
-                );
-            }
-        }
-        vm.apply_dispatch_outcome(&outcome, return_pc)
+        // The FarcallOp surface is documented to return FarCall on
+        // well-shaped args. Any other outcome indicates a substrate
+        // regression (e.g. a future FarcallOp variant that fails on
+        // overflow). Surface it as a typed error in *all* build profiles
+        // rather than forwarding it to `apply_dispatch_outcome` — a bare
+        // `debug_assert` would let release builds silently apply the
+        // unexpected outcome and corrupt control flow with no diagnostic.
+        let outcome = require_far_call_outcome(&outcome, route.scene_id, return_pc)?;
+        vm.apply_dispatch_outcome(outcome, return_pc)
+    }
+}
+
+/// Stable diagnostic token for a [`DispatchOutcome`] variant. Used to
+/// name the unexpected outcome in [`VmError::UnexpectedDispatchOutcome`]
+/// without leaking the `Debug` form.
+fn dispatch_outcome_token(outcome: &DispatchOutcome) -> &'static str {
+    match outcome {
+        DispatchOutcome::Advance => "advance",
+        DispatchOutcome::Jump { .. } => "jump",
+        DispatchOutcome::Subroutine { .. } => "subroutine",
+        DispatchOutcome::FarCall { .. } => "far_call",
+        DispatchOutcome::Return => "return",
+        DispatchOutcome::ReturnFromCall => "return_from_call",
+        DispatchOutcome::Yield { .. } => "yield",
+        DispatchOutcome::Halt => "halt",
+    }
+}
+
+/// Require that `FarcallOp` produced a [`DispatchOutcome::FarCall`].
+/// Returns the borrowed outcome for application, or a typed
+/// [`VmError::UnexpectedDispatchOutcome`] for any other shape.
+///
+/// Pulled out of [`SyscallDispatcher::invoke`] as a pure helper so the
+/// regression test can feed a synthetic non-`FarCall` outcome: the live
+/// `invoke` path always passes four well-typed `Int` args, so `FarcallOp`
+/// cannot currently produce any other shape there.
+fn require_far_call_outcome(
+    outcome: &DispatchOutcome,
+    route_scene: SceneId,
+    return_pc: u32,
+) -> Result<&DispatchOutcome, VmError> {
+    match outcome {
+        DispatchOutcome::FarCall { .. } => Ok(outcome),
+        other => Err(VmError::UnexpectedDispatchOutcome {
+            scene: route_scene,
+            pc: return_pc,
+            expected: "far_call",
+            found: dispatch_outcome_token(other),
+        }),
     }
 }
 
@@ -1090,6 +1172,62 @@ mod tests {
         // Landed at (9999, 10).
         assert_eq!(vm.scene(), 9999);
         assert_eq!(vm.pc(), 10);
+    }
+
+    #[test]
+    fn wbcall_slot_beyond_cap_is_typed_error_not_silent_ignore() {
+        // Audit-focus pin: a `WBCALL.NNN` declared at or beyond the
+        // validated 8-slot cap must surface a typed error, not be
+        // silently dropped. Append WBCALL.008 to the Sweetie HD shape.
+        let mut text = reallive_real_bytes_lines_14_28().to_string();
+        text.push_str("#WBCALL.008=9999,8\r\n");
+        let gx = parse_gameexe(&text);
+        match SyscallDispatcher::from_gameexe(&gx) {
+            Err(SyscallDispatchBuildError::WbcallSlotBeyondCap {
+                code,
+                route_key,
+                index,
+                cap,
+            }) => {
+                assert_eq!(code, SYSCALL_WBCALL_BEYOND_CAP_CODE);
+                assert_eq!(route_key, "WBCALL.008");
+                assert_eq!(index, 8);
+                assert_eq!(cap, WBCALL_SLOT_COUNT);
+            }
+            other => panic!("expected WbcallSlotBeyondCap, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn require_far_call_outcome_rejects_non_far_call() {
+        // The invoke() fallback must surface a typed error in *all*
+        // build profiles (not a debug-only assert that silently advances
+        // in release). Feed the pure helper a synthetic non-FarCall
+        // outcome and assert the typed VmError.
+        let advance = DispatchOutcome::Advance;
+        match require_far_call_outcome(&advance, 9999, 200) {
+            Err(VmError::UnexpectedDispatchOutcome {
+                scene,
+                pc,
+                expected,
+                found,
+            }) => {
+                assert_eq!(scene, 9999);
+                assert_eq!(pc, 200);
+                assert_eq!(expected, "far_call");
+                assert_eq!(found, "advance");
+            }
+            other => panic!("expected UnexpectedDispatchOutcome, got: {other:?}"),
+        }
+        // A genuine FarCall outcome passes through unchanged.
+        let far_call = DispatchOutcome::FarCall {
+            return_scene: 1,
+            return_pc: 2,
+            target_scene: 3,
+            target_pc: 4,
+        };
+        let passed = require_far_call_outcome(&far_call, 3, 2).expect("FarCall must pass through");
+        assert!(matches!(passed, DispatchOutcome::FarCall { .. }));
     }
 
     #[test]

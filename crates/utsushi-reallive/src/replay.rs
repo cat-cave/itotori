@@ -945,6 +945,9 @@ fn vm_error_semantic_code(err: &crate::VmError) -> &'static str {
         crate::VmError::FrameKindMismatch { .. } => "utsushi.reallive.vm.frame_kind_mismatch",
         crate::VmError::BytecodeDecode { .. } => "utsushi.reallive.vm.bytecode_decode",
         crate::VmError::StackOverflow { .. } => "utsushi.reallive.vm.stack_overflow",
+        crate::VmError::UnexpectedDispatchOutcome { .. } => {
+            "utsushi.reallive.vm.unexpected_dispatch_outcome"
+        }
     }
 }
 

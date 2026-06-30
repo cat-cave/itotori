@@ -363,6 +363,19 @@ pub struct GlobalSave {
 
 impl GlobalSave {
     /// Decode a `save999.sav` from a byte slice.
+    ///
+    /// **Slot-end safety asymmetry (by design).** Unlike
+    /// [`SystemSave::decode`], this format's `leading_u32` is a
+    /// per-format constant (`0xA4`), *not* the file size, so the
+    /// `leading_u32 == bytes.len()` cross-check that guards `SystemSave`
+    /// against a truncated payload does **not** apply here. Slot-end
+    /// safety therefore rests entirely on the null-terminated magic-string
+    /// check below: a truncation that severs the payload but leaves the
+    /// `AVG_GLOBAL_SAVE\0` magic intact decodes without a diagnostic. This
+    /// is intentional — there is no cross-check available to add without a
+    /// per-format payload-length field, which the on-disk format does not
+    /// carry. Documented so the audit-focus "silently truncating slots"
+    /// pin is not re-flagged against `GlobalSave`.
     pub fn decode(bytes: &[u8]) -> Result<Self, SaveDecodeError> {
         let preamble = AvgSavePreamble::decode(bytes)?;
         let (magic_bytes, nul_offset) = read_nul_terminated(bytes, AVG_SAVE_PREAMBLE_BYTE_LEN)?;
@@ -420,6 +433,17 @@ impl ReadFlags {
     /// Decode a `read.sav` from a byte slice. Decodes the Shift-JIS
     /// title field strictly: a replacement byte raises
     /// [`SaveDecodeError::ShiftJisDecodeFailure`].
+    ///
+    /// **Slot-end safety asymmetry (by design).** As with
+    /// [`GlobalSave::decode`], this format's `leading_u32` is a
+    /// per-format constant (`0x98`), not the file size, so the
+    /// `SystemSave` file-size cross-check does **not** apply. Slot-end
+    /// safety rests on the null-terminated Shift-JIS title field plus the
+    /// strict (no-replacement-byte) decode: a truncation that severs the
+    /// trailing payload but leaves a well-formed null-terminated title
+    /// intact decodes without a diagnostic. Documented so the audit-focus
+    /// "silently truncating slots" pin is not re-flagged against
+    /// `ReadFlags`.
     pub fn decode(bytes: &[u8]) -> Result<Self, SaveDecodeError> {
         let preamble = AvgSavePreamble::decode(bytes)?;
         let (title_bytes_slice, nul_offset) =

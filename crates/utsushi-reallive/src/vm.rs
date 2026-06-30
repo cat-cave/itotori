@@ -515,6 +515,28 @@ pub enum VmError {
         /// Stable string naming the frame kind that was being pushed.
         kind: &'static str,
     },
+    /// A control-flow op was dispatched expecting one [`DispatchOutcome`]
+    /// shape but produced another. Surfaced by
+    /// [`crate::syscall::SyscallDispatcher::invoke`] when `FarcallOp`
+    /// returns anything other than [`DispatchOutcome::FarCall`]: the
+    /// route dispatcher refuses to apply the unexpected outcome rather
+    /// than silently forwarding it (which in a release build would
+    /// corrupt control flow with no diagnostic). Dead against the current
+    /// op tables — pinned so a future `FarcallOp` failure mode surfaces
+    /// as a typed error instead of a debug-only assertion.
+    #[error(
+        "utsushi.reallive.vm.unexpected_dispatch_outcome: scene={scene} pc={pc} expected={expected} found={found}"
+    )]
+    UnexpectedDispatchOutcome {
+        /// Scene id of the route that was dispatched.
+        scene: SceneId,
+        /// Return pc supplied to the dispatch.
+        pc: u32,
+        /// Stable token naming the expected outcome ("far_call").
+        expected: &'static str,
+        /// Stable token naming the outcome actually produced.
+        found: &'static str,
+    },
 }
 
 impl From<BytecodeDecodeError> for VmError {

@@ -377,6 +377,20 @@ pub enum G00DecodeError {
         /// Bytes actually emitted before the input was exhausted.
         emitted: usize,
     },
+    /// The LZSS section header declared a `compressed_size` smaller than
+    /// the mandatory 8-byte preamble it is defined to include. Such a
+    /// value is internally inconsistent (the compressed region cannot be
+    /// smaller than its own header), so the parser rejects it instead of
+    /// clamping the implied payload to an empty slice (which would only
+    /// surface downstream as a [`G00Warning::PayloadLengthMismatch`]).
+    MalformedCompressedSize {
+        /// Sub-format whose LZSS header carried the bad size.
+        g00_type: G00Type,
+        /// The `compressed_size` field read from the header.
+        compressed_size: usize,
+        /// Minimum well-formed value (the 8-byte preamble length).
+        minimum: usize,
+    },
 }
 
 impl std::fmt::Display for G00DecodeError {
@@ -427,6 +441,15 @@ impl std::fmt::Display for G00DecodeError {
                 "utsushi.reallive.g00.unexpected_end_of_stream: \
                  type={g00_type:?} declared_uncompressed_size={declared_uncompressed_size} \
                  emitted={emitted}"
+            ),
+            G00DecodeError::MalformedCompressedSize {
+                g00_type,
+                compressed_size,
+                minimum,
+            } => write!(
+                formatter,
+                "utsushi.reallive.g00.malformed_compressed_size: \
+                 type={g00_type:?} compressed_size={compressed_size} minimum={minimum}"
             ),
         }
     }
@@ -634,7 +657,7 @@ fn decode_type0(
         .saturating_mul(4);
 
     let (decoded, length_warning) =
-        lzss_decode_classic(section.payload, section.uncompressed_size, G00Type::RawBgr);
+        lzss_decode_classic(section.payload, section.uncompressed_size, G00Type::RawBgr)?;
     let mut bgra = pad_or_truncate(decoded, pixel_byte_count);
 
     bgra_to_rgba_in_place(&mut bgra);
@@ -674,7 +697,7 @@ fn decode_type1(
         section.payload,
         section.uncompressed_size,
         G00Type::PalettedLzss,
-    );
+    )?;
 
     if decoded.len() < required_decoded_len {
         return Err(G00DecodeError::DecodedBufferTooShort {
@@ -801,7 +824,7 @@ fn decode_type2(
         section.payload,
         section.uncompressed_size,
         G00Type::RegionedLzss,
-    );
+    )?;
 
     // Pad/truncate the decoded payload to exactly `width * height * 4`
     // before the BGRA->RGBA reorder, symmetric with `decode_type0`
@@ -860,6 +883,18 @@ fn parse_lzss_section<'a>(
         input[preamble_off + 7],
     ]) as usize;
     let payload_start = preamble_off + 8;
+    // `compressed_size` is defined to include the 8-byte preamble, so a
+    // value below the preamble length is internally inconsistent. Reject
+    // it with a typed error rather than letting the `.max(payload_start)`
+    // clamp below hide the malformed header behind an empty payload that
+    // only surfaces as a downstream PayloadLengthMismatch warning.
+    if compressed_size < 8 {
+        return Err(G00DecodeError::MalformedCompressedSize {
+            g00_type,
+            compressed_size,
+            minimum: 8,
+        });
+    }
     // `compressed_size` includes the 8-byte preamble itself.
     let declared_payload_end = preamble_off.saturating_add(compressed_size);
     let payload_end = declared_payload_end.min(input.len()).max(payload_start);
@@ -911,15 +946,22 @@ fn pad_or_truncate(mut decoded: Vec<u8>, target_len: usize) -> Vec<u8> {
 /// bytes, initialised to `0x00`, with the cursor starting at
 /// [`G00_LZSS_INITIAL_CURSOR`] = 4078.
 ///
-/// Returns `(decoded, payload_length_mismatch_warning)`. The decoder
-/// stops at either `dst.len() == uncompressed_size` (clean) or the
-/// input being exhausted (warning is surfaced when the latter happens
-/// short of the declared size).
+/// Returns `Ok((decoded, payload_length_mismatch_warning))`. The decoder
+/// stops at either `dst.len() == uncompressed_size` (clean) or the input
+/// being exhausted. Input exhaustion at a flag-byte boundary or while a
+/// *literal* operation is pending is treated as a clean-but-short stream
+/// (a [`G00Warning::PayloadLengthMismatch`] is surfaced) — a trailing
+/// literal bit is indistinguishable from the zero-bit padding of an
+/// unused flag byte. A *back-reference* bit, by contrast, commits to a
+/// 2-byte token; if fewer than 2 operand bytes remain the stream is
+/// unambiguously truncated mid-token, so the decoder returns a hard
+/// [`G00DecodeError::UnexpectedEndOfStream`] rather than a best-effort
+/// partial buffer.
 fn lzss_decode_classic(
     input: &[u8],
     uncompressed_size: usize,
     g00_type: G00Type,
-) -> (Vec<u8>, Option<G00Warning>) {
+) -> Result<(Vec<u8>, Option<G00Warning>), G00DecodeError> {
     let mut dst = Vec::with_capacity(uncompressed_size);
     let mut ring = vec![0u8; G00_LZSS_RING_BUFFER_LEN];
     let mut cursor: usize = G00_LZSS_INITIAL_CURSOR;
@@ -954,7 +996,18 @@ fn lzss_decode_classic(
             cursor = (cursor + 1) % G00_LZSS_RING_BUFFER_LEN;
         } else {
             if src_pos + 2 > input.len() {
-                break;
+                // A flag bit of 1 commits to a 2-byte back-reference
+                // token. Unlike a trailing literal bit (which is
+                // indistinguishable from zero-bit flag padding at a
+                // clean stream end), a back-reference with fewer than 2
+                // operand bytes left is an unambiguous mid-token
+                // truncation. Surface it as a hard error instead of a
+                // best-effort partial decode.
+                return Err(G00DecodeError::UnexpectedEndOfStream {
+                    g00_type,
+                    declared_uncompressed_size: uncompressed_size,
+                    emitted: dst.len(),
+                });
             }
             let b1 = input[src_pos] as usize;
             let b2 = input[src_pos + 1] as usize;
@@ -1000,7 +1053,7 @@ fn lzss_decode_classic(
         None
     };
 
-    (dst, warning)
+    Ok((dst, warning))
 }
 
 #[cfg(test)]
@@ -1104,7 +1157,8 @@ mod tests {
     fn lzss_classic_pure_literals_round_trip() {
         let plaintext: Vec<u8> = (0..16u8).collect();
         let encoded = encode_lzss_literals_only(&plaintext);
-        let (out, warning) = lzss_decode_classic(&encoded, plaintext.len(), G00Type::RawBgr);
+        let (out, warning) = lzss_decode_classic(&encoded, plaintext.len(), G00Type::RawBgr)
+            .expect("clean literal stream must decode");
         assert_eq!(out, plaintext);
         assert!(warning.is_none(), "no length mismatch on clean round trip");
     }
@@ -1119,7 +1173,8 @@ mod tests {
         let literals = vec![0x10u8, 0x20, 0x30, 0x40];
         let encoded = encode_lzss_one_backref(&literals, G00_LZSS_INITIAL_CURSOR as u16, 4);
         let expected = vec![0x10, 0x20, 0x30, 0x40, 0x10, 0x20, 0x30, 0x40];
-        let (out, warning) = lzss_decode_classic(&encoded, expected.len(), G00Type::RawBgr);
+        let (out, warning) = lzss_decode_classic(&encoded, expected.len(), G00Type::RawBgr)
+            .expect("clean back-reference stream must decode");
         assert_eq!(out, expected);
         assert!(warning.is_none());
     }
@@ -1134,7 +1189,8 @@ mod tests {
         // not silently truncate.
         let plaintext: Vec<u8> = (0..4u8).collect();
         let encoded = encode_lzss_literals_only(&plaintext);
-        let (out, warning) = lzss_decode_classic(&encoded, 100, G00Type::RawBgr);
+        let (out, warning) = lzss_decode_classic(&encoded, 100, G00Type::RawBgr)
+            .expect("a short literal stream is a clean-but-short decode, not a hard error");
         assert!(out.len() < 100, "decoder must stop when input runs out");
         match warning {
             Some(G00Warning::PayloadLengthMismatch {
@@ -1147,6 +1203,68 @@ mod tests {
                 assert_eq!(observed_payload_size, out.len() as u64);
             }
             other => panic!("expected PayloadLengthMismatch warning, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn lzss_classic_truncated_back_reference_is_unexpected_end_of_stream() {
+        // A flag bit of 1 commits to a 2-byte back-reference token.
+        // Build a stream whose final flag bit requests a back-reference
+        // but supply only one of the two operand bytes. This is an
+        // unambiguous mid-token truncation: the decoder must surface a
+        // hard UnexpectedEndOfStream error, not a best-effort partial
+        // buffer + warning (which is the literal/flag-boundary case).
+        // Flag byte `0b0000_0001`: bit 0 = 1 -> the first op is a
+        // back-reference. The single trailing `0x10` is only one of the
+        // two operand bytes the token requires.
+        let encoded = vec![0b0000_0001u8, 0x10];
+        let err = lzss_decode_classic(&encoded, 64, G00Type::RawBgr)
+            .expect_err("a back-reference token truncated mid-stream must hard-error");
+        match err {
+            G00DecodeError::UnexpectedEndOfStream {
+                g00_type,
+                declared_uncompressed_size,
+                emitted,
+            } => {
+                assert_eq!(g00_type, G00Type::RawBgr);
+                assert_eq!(declared_uncompressed_size, 64);
+                assert_eq!(
+                    emitted, 0,
+                    "no bytes were emitted before the truncated token"
+                );
+            }
+            other => panic!("expected UnexpectedEndOfStream, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_lzss_section_rejects_compressed_size_below_preamble() {
+        // `compressed_size` is defined to include its own 8-byte
+        // preamble, so a value < 8 is internally inconsistent. The
+        // parser must reject it with a typed MalformedCompressedSize
+        // error rather than clamping the implied payload to an empty
+        // slice (which would only surface as a downstream
+        // PayloadLengthMismatch warning).
+        let mut bytes = Vec::new();
+        // compressed_size = 4 (< 8): malformed.
+        bytes.extend_from_slice(&4u32.to_le_bytes());
+        // uncompressed_size = 16.
+        bytes.extend_from_slice(&16u32.to_le_bytes());
+        // Some trailing bytes so the 8-byte preamble length check passes.
+        bytes.extend_from_slice(&[0u8; 4]);
+        let err = parse_lzss_section(&bytes, 0, G00Type::RawBgr)
+            .expect_err("compressed_size < 8 must be rejected");
+        match err {
+            G00DecodeError::MalformedCompressedSize {
+                g00_type,
+                compressed_size,
+                minimum,
+            } => {
+                assert_eq!(g00_type, G00Type::RawBgr);
+                assert_eq!(compressed_size, 4);
+                assert_eq!(minimum, 8);
+            }
+            other => panic!("expected MalformedCompressedSize, got: {other:?}"),
         }
     }
 
