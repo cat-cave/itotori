@@ -70,7 +70,9 @@ pub fn run_rpgmaker_mv_capture_command(args: &[String]) -> Result<(), Box<dyn Er
         .with_artifact_root(&artifact_root);
     let outcome = runner
         .run_capture(&mut port, &request)
-        .map_err(|err| -> Box<dyn Error> { format!("utsushi.rpgmaker_mv.capture: {err}").into() })?;
+        .map_err(|err| -> Box<dyn Error> {
+            format!("utsushi.rpgmaker_mv.capture: {err}").into()
+        })?;
 
     let texts: Vec<&str> = outcome
         .observations

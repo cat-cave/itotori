@@ -561,9 +561,10 @@ fn run_extract_rpgmaker_bundle(args: &[String]) -> Result<(), Box<dyn std::error
         extractor_name: "kaifuu-rpgmaker",
         extractor_version: "0.1.0",
     };
-    let extraction = extract_game_dir(&game_dir, &opts).map_err(
-        |err| -> Box<dyn std::error::Error> { format!("kaifuu.rpgmaker.extract: {err}").into() },
-    )?;
+    let extraction =
+        extract_game_dir(&game_dir, &opts).map_err(|err| -> Box<dyn std::error::Error> {
+            format!("kaifuu.rpgmaker.extract: {err}").into()
+        })?;
 
     write_json(&bundle_output, &extraction.bundle.json)?;
 
