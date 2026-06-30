@@ -42974,11 +42974,11 @@
       "owner": null,
       "branch": null,
       "spec": "HONESTY FIX + real 100% gate. The test crates/kaifuu-reallive/tests/scene_1_dispatch_real_bytes.rs (dispatches_sweetie_hd_scene_1_with_zero_unknown_opcodes_full_recognition) asserts 0 unknown on SCENE 1 ONLY but its name/docstring claim 'full recognition / 100% recognition' — masking that both real archives fail on ~98% of scenes (Sweetie HD 2/198 clean, Kanon 2/79 clean). Rename/reframe that test to a scene-1 PIN (no 'full recognition' claim), and make the multi_corpus_real_bytes harness (added by fix-second-reallive-corpus) ASSERT zero unknown opcodes + zero MalformedExpression across the FULL archives of BOTH Sweetie HD and Kanon. This is the real 100%-decompilation gate (project law).",
-      "acceptance": "scene_1 test reframed as a scene-1 pin (no full-recognition claim); multi_corpus_real_bytes asserts zero-unknown + zero-malformed across full Sweetie HD AND Kanon archives and PASSES; just ci green. (Depends on the expression-evaluator + command-catalogue nodes.)",
+      "acceptance": "ALPHA STANDARD (Trevor 2026-06-30): 2 DIVERGENT RealLive titles at FULL-ARCHIVE 100%. (1) scene_1 test reframed as a scene-1 pin (NO full-recognition claim). (2) multi_corpus_real_bytes asserts ZERO unknown opcodes + ZERO MalformedExpression across the FULL archives (every scene) of BOTH Sweetie HD (modern) AND Kanon (v1.2.6.8+rlBabel) — divergent variants. (3) The decompiler is REFERENCE-COMPLETE: the full documented RealLive opcode/module + ExpressionPiece grammar from the rldev/rlvm reference (clean-room) — the 2 games VALIDATE coverage, they do not DEFINE it (no sample-driven 100%). NO sampling, NO relaxed floor. just ci green. (A 3rd corpus is beta hardening, not this gate — see beta-reallive-third-corpus-regression.)",
       "validation": null,
       "context": null,
       "created_at": "2026-06-30T16:54:26.921Z",
-      "updated_at": "2026-06-30T16:54:26.921Z",
+      "updated_at": "2026-06-30T17:55:22.461Z",
       "claimed_at": null,
       "done_at": null,
       "group_name": null,
@@ -43111,6 +43111,41 @@
         "crates/kaifuu-vault-source/src/source.rs",
         "docs/itotori-vault-source-adapter.md"
       ]
+    },
+    {
+      "id": "beta-reallive-third-corpus-regression",
+      "title": "BETA: 3rd RealLive corpus regression (surface undocumented opcodes the reference missed)",
+      "kind": "feature",
+      "milestone": "beta",
+      "status": "ready",
+      "priority": "P3",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "Once the RealLive decompiler is reference-complete + 2-game full-archive 100% holds (alpha bar), add a THIRD divergent RealLive title as beta/full-release regression insurance. Rationale (Trevor 2026-06-30): a 3rd game catches opcodes/expression forms that are real but UNDOCUMENTED in the rldev/rlvm reference (so neither Sweetie HD nor Kanon exercised them). This is hardening beyond the alpha 2-divergent-games bar, NOT an alpha gate. Source a 3rd RealLive title (download-edition / scratch corpus), wire it as ITOTORI_REAL_GAME_ROOT_3, run the full-archive zero-unknown gate; any new unknowns -> structured findings -> decompiler extension.",
+      "acceptance": "A 3rd divergent RealLive title is wired into the multi-corpus harness and the full-archive zero-unknown + zero-MalformedExpression gate passes on all 3 (or any new gaps are filed as structured-finding extension nodes). just ci green.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-30T17:55:22.567Z",
+      "updated_at": "2026-06-30T17:55:22.567Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["kaifuu"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "just ci"
+        }
+      ],
+      "audit_focus": ["crates/kaifuu-reallive/tests/multi_corpus_real_bytes.rs"]
     }
   ],
   "edges": [
@@ -53877,6 +53912,12 @@
       "to_node": "alpha-006a-vault-sourcing",
       "type": "requires",
       "created_at": "2026-06-30T17:49:00.420Z"
+    },
+    {
+      "from_node": "reallive-full-archive-zero-unknown-gate",
+      "to_node": "beta-reallive-third-corpus-regression",
+      "type": "requires",
+      "created_at": "2026-06-30T17:55:22.659Z"
     }
   ],
   "findings": [
