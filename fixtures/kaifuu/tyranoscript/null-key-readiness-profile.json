@@ -1,0 +1,63 @@
+{
+  "schemaVersion": "0.1.0",
+  "fixtureId": "kaifuu-tyranoscript-null-key-readiness",
+  "engine": {
+    "adapterId": null,
+    "engineFamily": "tyranoscript",
+    "detectedVariant": "plaintext-ks-null-key",
+    "engineVersion": null
+  },
+  "crypto": "null_key",
+  "supportBoundary": "Synthetic TyranoScript null-key readiness fixture: identifies plaintext .ks/.ksx script data and lists script assets only. TyranoScript ships UTF-8 plaintext scenario data with no archive encryption, so the crypto posture is null-key; there is no dominant dedicated reinserter, so extraction, patch-back, helper, and runtime support are not claimed.",
+  "assets": [
+    {
+      "assetId": "tyranoscript-scene-1",
+      "assetKind": "script",
+      "path": "data/scene1.ks",
+      "sourceHash": "sha256:16fd1322e6d58842a4e83b2a5d0300ffdf5e290a088aae71d6308d1d035a60ef",
+      "textSurfaces": ["dialogue"]
+    }
+  ],
+  "capabilities": [
+    {
+      "capability": "detection",
+      "status": "supported",
+      "limitation": null
+    },
+    {
+      "capability": "asset_listing",
+      "status": "supported",
+      "limitation": null
+    },
+    {
+      "capability": "asset_inventory",
+      "status": "supported",
+      "limitation": null
+    },
+    {
+      "capability": "extraction",
+      "status": "unsupported",
+      "limitation": "plaintext .ks data is readable, but no dedicated TyranoScript text extraction adapter exists"
+    },
+    {
+      "capability": "patching",
+      "status": "unsupported",
+      "limitation": "no TyranoScript patch-back adapter; there is no dominant dedicated reinserter for the engine"
+    },
+    {
+      "capability": "patch_back",
+      "status": "unsupported",
+      "limitation": "no TyranoScript patch-back adapter; there is no dominant dedicated reinserter for the engine"
+    },
+    {
+      "capability": "key_profile",
+      "status": "unsupported",
+      "limitation": "TyranoScript scenario data is plaintext null-key; no key material or helper is required or provided"
+    },
+    {
+      "capability": "runtime_vm",
+      "status": "unsupported",
+      "limitation": "runtime support belongs to future Utsushi work, not this readiness fixture"
+    }
+  ]
+}

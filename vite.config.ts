@@ -7,7 +7,14 @@ export default defineConfig({
     // target replay logs) are byte-pinned to the output of
     // `deterministic_json_bytes`. Letting the formatter rewrite them
     // would silently break the byte-equality determinism gate.
-    ignorePatterns: ["crates/utsushi-fixture/tests/fixtures/jump_targets/replay_logs/**"],
+    //
+    // The ALPHA-004 engine capability matrix artifact is byte-pinned to the
+    // output of `scripts/generate-engine-capability-matrix.mjs` (its `--check`
+    // staleness gate compares exact bytes); the formatter must not rewrite it.
+    ignorePatterns: [
+      "crates/utsushi-fixture/tests/fixtures/jump_targets/replay_logs/**",
+      "apps/itotori/src/engine-capability/**",
+    ],
   },
   resolve: {
     alias: {
