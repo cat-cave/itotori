@@ -7,7 +7,7 @@ static-key discovery adapter.
 ## No retail bytes
 
 There are **no committed executable or `Gameexe.dat` binaries** here. Every
-scenario is materialised in-process by the synthetic *fixture stub helper*
+scenario is materialised in-process by the synthetic _fixture stub helper_
 (`kaifuu_core::build_siglus_static_key_stub`) from clearly-fake in-module
 constants — no retail game bytes, no real keys, no extracted scripts, no
 helper dumps, no private paths. The synthetic key is `SIGLUSXORKEY0123` and the
@@ -22,14 +22,14 @@ helper dumps, no private paths. The synthetic key is `SIGLUSXORKEY0123` and the
 the structured `secretRef` to publish and the `expected` outcome the validator
 confirms against the evidence.
 
-| Entry                             | Stub                  | Expected outcome       |
-| --------------------------------- | --------------------- | ---------------------- |
-| `static-key-valid`                | `valid`               | `validated`            |
-| `static-key-wrong-key`            | `wrong_key`           | `validation_failed`    |
-| `static-key-unsupported-packer`   | `unsupported_packer`  | `unsupported_packer`   |
-| `static-key-protected-executable` | `protected_executable`| `protected_executable` |
-| `static-key-no-key-region`        | `key_region_missing`  | `key_region_not_found` |
-| `static-key-helper-mismatch`      | `valid` + non-static `declaredHelper` | `helper_mismatch` |
+| Entry                             | Stub                                  | Expected outcome       |
+| --------------------------------- | ------------------------------------- | ---------------------- |
+| `static-key-valid`                | `valid`                               | `validated`            |
+| `static-key-wrong-key`            | `wrong_key`                           | `validation_failed`    |
+| `static-key-unsupported-packer`   | `unsupported_packer`                  | `unsupported_packer`   |
+| `static-key-protected-executable` | `protected_executable`                | `protected_executable` |
+| `static-key-no-key-region`        | `key_region_missing`                  | `key_region_not_found` |
+| `static-key-helper-mismatch`      | `valid` + non-static `declaredHelper` | `helper_mismatch`      |
 
 ## Validate before consume
 

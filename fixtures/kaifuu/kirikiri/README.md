@@ -93,7 +93,7 @@ The two negative archives are deterministic, synthetic plain-XP3 byte strings
 (reproduced byte-for-byte by the `kaifuu-core` `plain_xp3_smoke` regression
 tests). Each must fail **before any rebuild byte** is produced:
 
-| Negative fixture (under `negative/`)        | Failure kind               | Cites                                  |
-| ------------------------------------------- | -------------------------- | -------------------------------------- |
-| `plain-xp3-malformed-table.xp3`             | `malformed_table`          | `kaifuu.plain_xp3_smoke.malformed_table` (overrun file-table index) |
-| `plain-xp3-unsupported-member-flags.xp3`    | `unsupported_member_flags` | member id `scenario/flagged.ks` (segment flag `0x4` outside the supported set) |
+| Negative fixture (under `negative/`)     | Failure kind               | Cites                                                                          |
+| ---------------------------------------- | -------------------------- | ------------------------------------------------------------------------------ |
+| `plain-xp3-malformed-table.xp3`          | `malformed_table`          | `kaifuu.plain_xp3_smoke.malformed_table` (overrun file-table index)            |
+| `plain-xp3-unsupported-member-flags.xp3` | `unsupported_member_flags` | member id `scenario/flagged.ks` (segment flag `0x4` outside the supported set) |
