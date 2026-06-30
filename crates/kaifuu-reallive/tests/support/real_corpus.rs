@@ -6,10 +6,117 @@ use std::path::{Path, PathBuf};
 
 pub const REAL_GAME_ROOT_ENV: &str = "ITOTORI_REAL_GAME_ROOT";
 
+/// Second RealLive corpus root, used for multi-game validation (project
+/// law: engine-family behaviour must validate against >=2 real RealLive
+/// games). Points at a *different* RealLive title than [`REAL_GAME_ROOT_ENV`]
+/// (e.g. Kanon, a 1.2.6.8 title) so the Sweetie-HD opcode/Choice layout can
+/// be exercised against a second, independently-authored bytecode corpus.
+pub const REAL_GAME_ROOT_2_ENV: &str = "ITOTORI_REAL_GAME_ROOT_2";
+
 /// Opt-in flag (`ITOTORI_REQUIRE_REAL_BYTES=1`) that turns an absent corpus
 /// from a skip into a hard failure, for contexts where real-bytes coverage is
 /// expected to actually run (e.g. CI that stages Sweetie HD).
 pub const REQUIRE_REAL_BYTES_ENV: &str = "ITOTORI_REQUIRE_REAL_BYTES";
+
+/// A resolved real-bytes RealLive corpus: the game root plus the located
+/// SEEN archive.
+///
+/// Supports both observed on-disk layouts:
+/// - **modern** `<root>/REALLIVEDATA/Seen.txt` (Sweetie HD, the newer
+///   compiler line);
+/// - **flat** `<root>/SEEN.TXT` (older 1.2.6.x titles such as Kanon, which
+///   keep the archive directly in the game root with no `REALLIVEDATA/`
+///   subdirectory).
+///
+/// This is the single accessor the multi-game-validation harness uses so a
+/// test can iterate over every staged corpus without caring which layout a
+/// given title ships.
+pub struct RealCorpus {
+    /// Human-readable label for diagnostics (e.g. `"corpus-1"`).
+    pub label: &'static str,
+    /// The resolved game root (the directory holding the SEEN archive or a
+    /// `REALLIVEDATA/` subdirectory).
+    pub root: PathBuf,
+    /// The located SEEN archive (`Seen.txt` / `SEEN.TXT`).
+    pub seen_txt: PathBuf,
+}
+
+/// Resolve the first corpus (`ITOTORI_REAL_GAME_ROOT`, Sweetie HD).
+pub fn corpus_1() -> Option<RealCorpus> {
+    corpus_for_env("corpus-1", REAL_GAME_ROOT_ENV)
+}
+
+/// Resolve the second corpus (`ITOTORI_REAL_GAME_ROOT_2`, e.g. Kanon).
+pub fn corpus_2() -> Option<RealCorpus> {
+    corpus_for_env("corpus-2", REAL_GAME_ROOT_2_ENV)
+}
+
+/// Every staged real RealLive corpus, in declaration order. Empty when no
+/// corpus root is set.
+pub fn corpora() -> Vec<RealCorpus> {
+    [corpus_1(), corpus_2()].into_iter().flatten().collect()
+}
+
+fn corpus_for_env(label: &'static str, env_name: &str) -> Option<RealCorpus> {
+    let root = PathBuf::from(env::var_os(env_name)?);
+    let resolved = resolve_corpus_root(&root)?;
+    let seen_txt = find_seen_archive(&resolved)?;
+    Some(RealCorpus {
+        label,
+        root: resolved,
+        seen_txt,
+    })
+}
+
+/// Descend up to depth 4 looking for a directory that contains a SEEN
+/// archive under either supported layout.
+fn resolve_corpus_root(root: &Path) -> Option<PathBuf> {
+    let mut current = root.to_path_buf();
+    for _ in 0..=4 {
+        if find_seen_archive(&current).is_some() {
+            return Some(current);
+        }
+        let children = child_dirs(&current);
+        let with_seen: Vec<PathBuf> = children
+            .iter()
+            .filter(|path| find_seen_archive(path).is_some())
+            .cloned()
+            .collect();
+        if with_seen.len() == 1 {
+            return with_seen.into_iter().next();
+        }
+        if children.len() != 1 {
+            return None;
+        }
+        current = children.into_iter().next()?;
+    }
+    None
+}
+
+/// Locate the SEEN archive under either the modern `REALLIVEDATA/Seen.txt`
+/// layout or the flat root-level `SEEN.TXT` layout (case-insensitive).
+fn find_seen_archive(dir: &Path) -> Option<PathBuf> {
+    if let Some(reallivedata) = find_child_ci(dir, "REALLIVEDATA")
+        && let Some(seen) = find_child_ci(&reallivedata, "Seen.txt")
+        && seen.is_file()
+    {
+        return Some(seen);
+    }
+    let flat = find_child_ci(dir, "Seen.txt")?;
+    flat.is_file().then_some(flat)
+}
+
+/// Find a direct child entry whose file name equals `name` case-insensitively.
+fn find_child_ci(dir: &Path, name: &str) -> Option<PathBuf> {
+    fs::read_dir(dir).ok()?.flatten().find_map(|entry| {
+        let path = entry.path();
+        let matches = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .is_some_and(|n| n.eq_ignore_ascii_case(name));
+        matches.then_some(path)
+    })
+}
 
 pub fn game_root() -> Option<PathBuf> {
     let root = PathBuf::from(env::var_os(REAL_GAME_ROOT_ENV)?);
