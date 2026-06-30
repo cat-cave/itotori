@@ -36196,11 +36196,11 @@
       "validation": null,
       "context": null,
       "created_at": "2026-06-29T16:04:04.008Z",
-      "updated_at": "2026-06-30T16:36:40.674Z",
+      "updated_at": "2026-06-30T17:47:47.345Z",
       "claimed_at": "2026-06-29T16:09:11.316Z",
       "done_at": null,
       "group_name": "engine-adapters",
-      "status_reason": "Wiring complete + verified (kaifuu-cli main.rs:42 first non-test consumer; read-only; ITOTORI_REAL_GAME_ROOT fallback deleted; commit e908f79 on branch). Headline sha-equality proof BLOCKED by two read-only vault-curation-owned blockers: (1) catalog schema drift — adapter pins v1, live /archive/vault/catalog.db is v3 -> handled by precursor kaifuu-vault-source-schema-v3-support (internal edge); (2) EXTERNAL: Oshioki Sweetie HD is not in the vault by-sha content store — it exists only as a by-id repack (content sha 3f337d5b), and its catalog artifacts.sha256 (5fafb7f0) is the original_sha256 of a download that no longer exists in by-sha, so materialize_by_sha fails ArtifactMissing. The sibling vault-curation project must promote Sweetie HD into by-sha under a catalog sha that matches the by-sha file. Direct-path reference Seen.txt sha256=903f538b (test asserts equality, passes once both clear).\n[2026-06-30T16:36:40.674Z] Trevor provided a 2nd real RealLive title: Kanon (fan patch, rlBabel) at /scratch/itotori-research/kanon — genuine RealLive v1.2.6.8 tree (REALLIVE.EXE, GAMEEXE.INI, SEEN.TXT + SEENxxxx.TXT bytecode, G00/KOE/etc). Unblocks the RealLive multi-game chain.",
+      "status_reason": "Wiring complete + verified (kaifuu-cli main.rs:42 first non-test consumer; read-only; ITOTORI_REAL_GAME_ROOT fallback deleted; commit e908f79 on branch). Headline sha-equality proof BLOCKED by two read-only vault-curation-owned blockers: (1) catalog schema drift — adapter pins v1, live /archive/vault/catalog.db is v3 -> handled by precursor kaifuu-vault-source-schema-v3-support (internal edge); (2) EXTERNAL: Oshioki Sweetie HD is not in the vault by-sha content store — it exists only as a by-id repack (content sha 3f337d5b), and its catalog artifacts.sha256 (5fafb7f0) is the original_sha256 of a download that no longer exists in by-sha, so materialize_by_sha fails ArtifactMissing. The sibling vault-curation project must promote Sweetie HD into by-sha under a catalog sha that matches the by-sha file. Direct-path reference Seen.txt sha256=903f538b (test asserts equality, passes once both clear).\n[2026-06-30T16:36:40.674Z] Trevor provided a 2nd real RealLive title: Kanon (fan patch, rlBabel) at /scratch/itotori-research/kanon — genuine RealLive v1.2.6.8 tree (REALLIVE.EXE, GAMEEXE.INI, SEEN.TXT + SEENxxxx.TXT bytecode, G00/KOE/etc). Unblocks the RealLive multi-game chain.\n[2026-06-30T17:36:19.844Z] Blocked by external-dependency: Vault-source wiring + no-legacy deletion are DONE+merge-clean (998b735, production import at kaifuu-cli/src/main.rs:36), but the byte-equality acceptance is blocked: Sweetie HD's catalog sha 5fafb7f0... is NOT in /archive/vault/artifacts/by-sha (it exists only as a by-id repack, content sha 3f337d5b...). The read-only adapter resolves by-sha only; project law forbids writing the vault. materialize_by_sha correctly returns ArtifactMissing. Must NOT merge the code yet — it deletes the raw-path fallback, so the production extract would be non-functional until promotion.\nNeeded: vault-curation: promote Oshioki Sweetie HD into /archive/vault/artifacts/by-sha under a sha matching the catalog row (or reconcile the catalog sha to the by-id content sha). Test goes green automatically once present.\n[2026-06-30T17:47:47.345Z] Correction from Trevor: the adapter must resolve by-id, NOT by-sha. by-sha is a legacy approach being fully removed. The 'Sweetie HD absent from by-sha' blocker is moot — content is present by-id. Real work: switch kaifuu-vault-source to by-id resolution, delete the by-sha path (no-legacy-compat), update the adapter doc, prove Sweetie HD by-id -> matching Seen.txt sha256.",
       "check_command": null,
       "ci_command": null,
       "blocked_by": null,
@@ -43072,6 +43072,45 @@
         }
       ],
       "audit_focus": ["crates/utsushi-fixture/src/launch_adapters.rs:1929"]
+    },
+    {
+      "id": "vault-adapter-by-id-resolution",
+      "title": "Convert kaifuu-vault-source to by-id resolution; delete legacy by-sha path",
+      "kind": "feature",
+      "milestone": "alpha",
+      "status": "ready",
+      "priority": "P1",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "Trevor (2026-06-30): the vault adapter must resolve content by-id, NOT by-sha; by-sha is a LEGACY approach being fully removed soon. Currently kaifuu-vault-source reconstructs by-sha/<sha256>.7z from catalog.sha256 (source.rs/resolution.rs/discovery.rs/config.rs + tests + synthetic-vault seed.sql + README + docs/itotori-vault-source-adapter.md). This is why alpha-006a hit ArtifactMissing: Sweetie HD content exists by-id but the catalog sha is not in by-sha. Convert resolution to by-id (use the catalog vault_path / artifact-id by-id path), DELETE the by-sha reconstruction + by-sha integrity coupling (no-legacy-compat), update the adapter doc + README + synthetic-vault seed to by-id. ~73 by-sha references across the crate.",
+      "acceptance": "kaifuu-vault-source resolves real vault artifacts BY-ID (no by-sha path reconstruction remains; rg -i by.sha over crates/kaifuu-vault-source src is empty); the adapter resolves BOTH Sweetie HD AND Kanon from the real read-only vault by-id and materializes their REALLIVE trees; Sweetie HD by-id -> Seen.txt sha256 == 903f538b... (the known direct-path bytes); adapter doc + README updated to by-id; existing contract/resolution/metadata tests migrated to by-id and green; just ci green. No vault writes; no copyrighted bytes in artifacts.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-30T17:49:00.304Z",
+      "updated_at": "2026-06-30T17:49:00.304Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["kaifuu"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "just ci"
+        }
+      ],
+      "audit_focus": [
+        "crates/kaifuu-vault-source/src/resolution.rs",
+        "crates/kaifuu-vault-source/src/source.rs",
+        "docs/itotori-vault-source-adapter.md"
+      ]
     }
   ],
   "edges": [
@@ -53832,6 +53871,12 @@
       "to_node": "alpha-006c-patchback-byte-fidelity",
       "type": "requires",
       "created_at": "2026-06-30T16:54:27.440Z"
+    },
+    {
+      "from_node": "vault-adapter-by-id-resolution",
+      "to_node": "alpha-006a-vault-sourcing",
+      "type": "requires",
+      "created_at": "2026-06-30T17:49:00.420Z"
     }
   ],
   "findings": [
@@ -90120,6 +90165,22 @@
       "created_at": "2026-06-30T17:14:50.689Z",
       "kind": "note",
       "evidence": null
+    },
+    {
+      "id": "b854491a-349d-4be8-a2f9-25f58fbe4bf2",
+      "node_id": "alpha-006a-vault-sourcing",
+      "text": "Blocked by external-dependency: Vault-source wiring + no-legacy deletion are DONE+merge-clean (998b735, production import at kaifuu-cli/src/main.rs:36), but the byte-equality acceptance is blocked: Sweetie HD's catalog sha 5fafb7f0... is NOT in /archive/vault/artifacts/by-sha (it exists only as a by-id repack, content sha 3f337d5b...). The read-only adapter resolves by-sha only; project law forbids writing the vault. materialize_by_sha correctly returns ArtifactMissing. Must NOT merge the code yet — it deletes the raw-path fallback, so the production extract would be non-functional until promotion.\nNeeded: vault-curation: promote Oshioki Sweetie HD into /archive/vault/artifacts/by-sha under a sha matching the catalog row (or reconcile the catalog sha to the by-id content sha). Test goes green automatically once present.",
+      "created_at": "2026-06-30T17:36:19.844Z",
+      "kind": "blocker",
+      "evidence": "alpha-006a worker proof 998b735: catalog sha 5fafb7f0… (artifact_id 27) absent from by-sha store; direct-path REALLIVEDATA/Seen.txt sha256 903f538b… is the expected equality target."
+    },
+    {
+      "id": "ab3d2891-392b-4375-8de4-92a0b4191c29",
+      "node_id": "alpha-006a-vault-sourcing",
+      "text": "Correction from Trevor: the adapter must resolve by-id, NOT by-sha. by-sha is a legacy approach being fully removed. The 'Sweetie HD absent from by-sha' blocker is moot — content is present by-id. Real work: switch kaifuu-vault-source to by-id resolution, delete the by-sha path (no-legacy-compat), update the adapter doc, prove Sweetie HD by-id -> matching Seen.txt sha256.",
+      "created_at": "2026-06-30T17:47:47.345Z",
+      "kind": "retry",
+      "evidence": "Trevor direction 2026-06-30: by-id not by-sha; by-sha legacy to be removed."
     }
   ],
   "assignments": [],
