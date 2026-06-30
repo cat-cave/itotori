@@ -283,30 +283,59 @@ pub fn is_shift_jis_textout_lead(byte: u8) -> bool {
     (0x81..=0x9F).contains(&byte) || (0xE0..=0xFC).contains(&byte)
 }
 
-/// True if `byte` terminates an Expression-element body when scanned at
-/// the byte level. Used by the parser to bound an Expression body
-/// without performing full ExpressionPiece evaluation. Per
-/// `docs/research/reallive-engine.md` §G, expression bodies legally
-/// contain `0x00` (binary-op byte), `0x24` (memory-reference
-/// sub-expression prefix), `0x2C` (separator), `0xFF` (int-literal
-/// introducer + 4 bytes), and assorted bytes in the `0x80..=0xFF`
-/// range as int-literal payload bytes. Stopping on Shift-JIS lead
-/// bytes inside an expression body misclassifies legitimate
-/// literal-byte runs as Textout starts; we therefore stop **only**
-/// at the meta / command top-level markers
-/// (`0x0A`, `0x21`, `0x23`, `0x40`).
-///
-/// This is conservative — an expression body may consume extra bytes
-/// beyond the true ExpressionPiece end if the next element is a
-/// Textout or sub-Expression — but it keeps the partition honest in
-/// the common Sweetie HD scene-1 case where expression bodies are
-/// followed by MetaLine / MetaKidoku / Command markers. A follow-up
-/// node will land the full ExpressionPiece evaluator.
+/// True if `byte` is a top-level meta / command marker that terminates
+/// an Expression-element body (`0x0A`, `0x21`, `0x23`, `0x40`). These
+/// bytes never appear bare inside an ExpressionPiece body except as the
+/// payload of a `0xFF` int-literal token, which the body walk
+/// ([`expression_body_end`]) consumes verbatim before this predicate is
+/// consulted.
 pub fn is_expression_body_terminator(byte: u8) -> bool {
     matches!(
         byte,
         opener::META_LINE | opener::META_ENTRYPOINT | opener::COMMAND | opener::META_KIDOKU
     )
+}
+
+/// Exclusive end offset of an Expression-element body that begins at
+/// `body_start` (the byte immediately after the `0x24` opener).
+///
+/// The walk is ExpressionPiece-token-aware so the body terminates at its
+/// true boundary instead of over-consuming the following element. Per
+/// `docs/research/reallive-engine.md` §G an expression body legally
+/// contains `0x00` (binary-op byte), `0x24` (memory-reference
+/// sub-expression prefix), `0x2C` (separator), and `0xFF` (int-literal
+/// introducer + 4 bytes of i32 LE):
+///
+/// - A `0xFF` int-literal introducer consumes its 4 payload bytes
+///   verbatim. Those payload bytes can legally equal a meta/command
+///   marker or a Shift-JIS lead value; skipping them keeps the walk from
+///   ending the body early on a literal byte. This is the bounded
+///   int-literal length walk the body needs — the only source of bare
+///   high bytes (`0x80..=0xFF`) in a well-formed expression body.
+/// - Any other byte is examined as a boundary candidate: the body ends
+///   at the first top-level meta/command marker
+///   ([`is_expression_body_terminator`]) **or** at a Shift-JIS Textout
+///   lead byte ([`is_shift_jis_textout_lead`]). Stopping at the Textout
+///   lead is what prevents an Expression element from swallowing a
+///   directly-following Textout (dialogue) run — that run must surface
+///   as its own translatable unit, not be buried in `Expression.raw_bytes`.
+pub(crate) fn expression_body_end(bytes: &[u8], body_start: usize) -> usize {
+    let mut i = body_start;
+    while i < bytes.len() {
+        let byte = bytes[i];
+        if byte == 0xFF {
+            // int-literal token: introducer + 4 LE payload bytes,
+            // consumed verbatim (payload may carry terminator- or
+            // SJIS-lead-valued bytes).
+            i = (i + 5).min(bytes.len());
+            continue;
+        }
+        if is_expression_body_terminator(byte) || is_shift_jis_textout_lead(byte) {
+            break;
+        }
+        i += 1;
+    }
+    i
 }
 
 /// True if `byte` is a recognised BytecodeElement opener (per opcode-table
@@ -377,6 +406,24 @@ fn decode_command(bytes: &[u8], pos: usize) -> Result<(RealLiveOpcode, usize), R
         while pos + consumed < bytes.len() {
             let byte = bytes[pos + consumed];
             match byte {
+                // `0xFF` introduces a 4-byte i32-LE int literal (rlvm
+                // `expression.cc`; same encoding decoded by
+                // `first_arg_as_u16`/`first_arg_as_u32`). Its payload
+                // bytes can legally equal `0x28` `(`, `0x29` `)`, or
+                // `0x2C` `,`; we copy the introducer + 4 payload bytes
+                // verbatim WITHOUT inspecting them as delimiters so a
+                // literal never mis-terminates or mis-splits the
+                // argument list. This is checked BEFORE the delimiter
+                // arms so the introducer wins. A truncated literal (<4
+                // payload bytes left) consumes what remains and lets the
+                // unclosed-arglist guard below surface
+                // `TruncatedCommandArgs`.
+                0xFF => {
+                    let lit_start = pos + consumed;
+                    let lit_end = (lit_start + 5).min(bytes.len());
+                    current_arg.extend_from_slice(&bytes[lit_start..lit_end]);
+                    consumed = lit_end - pos;
+                }
                 b')' => {
                     consumed += 1;
                     if !current_arg.is_empty() {
@@ -603,26 +650,21 @@ pub fn parse_real_bytecode(bytes: &[u8]) -> Result<Vec<RealLiveOpcode>, RealLive
                 pos += 3;
             }
             opener::EXPRESSION => {
-                // Expression body bytes run until the next **top-level**
-                // element-opener byte. Per
-                // `docs/research/reallive-engine.md` §G the expression
-                // encoding legally contains 0x00 (binary-op byte mul),
-                // 0x24 (memory-reference sub-expression prefix),
-                // 0x2C (separator), and 0xFF (int-literal introducer
-                // followed by 4 bytes of i32 LE). Stopping at every
-                // `is_recognized_opener` byte would slice expression
-                // bodies prematurely; we instead stop only at meta /
-                // command markers `{0x0A, 0x21, 0x23, 0x40}` or at a
-                // Shift-JIS Textout lead.
+                // Expression body bytes run until the true ExpressionPiece
+                // boundary computed by `expression_body_end`: a
+                // token-aware walk that consumes `0xFF` int-literal
+                // payloads verbatim and stops at the first top-level
+                // meta/command marker `{0x0A, 0x21, 0x23, 0x40}` OR at a
+                // Shift-JIS Textout lead. Stopping at the Textout lead
+                // ensures a directly-following Textout (dialogue) run is
+                // decoded as its own translatable element rather than
+                // absorbed into this Expression body.
                 //
                 // Full expression-piece evaluation lives in a follow-up
                 // node; the body is preserved verbatim for downstream
                 // tools.
                 let body_start = pos + 1;
-                let mut body_end = body_start;
-                while body_end < bytes.len() && !is_expression_body_terminator(bytes[body_end]) {
-                    body_end += 1;
-                }
+                let body_end = expression_body_end(bytes, body_start);
                 let raw_bytes = bytes[body_start..body_end].to_vec();
                 out.push(RealLiveOpcode::Expression { raw_bytes });
                 pos = body_end;
@@ -836,6 +878,119 @@ mod tests {
             other => panic!("expected Textout, got {other:?}"),
         }
         assert!(matches!(opcodes[1], RealLiveOpcode::MetaLine { line: 5 }));
+    }
+
+    #[test]
+    fn command_arglist_int_literal_payload_with_delimiter_bytes_does_not_misterminate() {
+        // Bug: the arglist scanner split on raw 0x28 '(' / 0x29 ')' /
+        // 0x2C ',' without honoring the 0xFF int-literal introducer.
+        // Here a single argument is a 0xFF int literal whose 4 LE payload
+        // bytes are exactly [0x29 ')', 0x2C ',', 0x28 '(', 0x00] — every
+        // delimiter value. The literal must be consumed whole so the
+        // arglist closes at the REAL trailing ')', and the following
+        // MetaLine decodes aligned with zero unknown opcodes.
+        //
+        // module_sys (id=4) opcode 100 == Wait, argc=1; first_arg_as_u16
+        // decodes the int literal, so asserting duration_ms proves all 4
+        // payload bytes (incl. the delimiter-valued ones) landed in the
+        // argument rather than splitting it.
+        let bytes = &[
+            opener::COMMAND,
+            1,
+            module_id::SYS,
+            100,
+            0, // opcode_u16 = 100 (Wait)
+            1, // argc
+            0, // overload
+            0, // reserved
+            b'(',
+            0xFF,
+            0x29,
+            0x2C,
+            0x28,
+            0x00, // i32 LE literal = 0x00282C29
+            b')',
+            opener::META_LINE,
+            0x07,
+            0x00,
+        ];
+        let opcodes = parse_real_bytecode(bytes).expect("must decode");
+        assert!(
+            opcodes.iter().all(RealLiveOpcode::is_recognized),
+            "no element may misalign into Unknown: {opcodes:?}"
+        );
+        assert_eq!(
+            opcodes.len(),
+            2,
+            "arglist must close at the real ')': {opcodes:?}"
+        );
+        // 0x00282C29 capped to u16 == 0x2C29 == 11305 — proves the full
+        // 5-byte literal (incl. 0x29/0x2C/0x28) was captured as one arg.
+        assert!(
+            matches!(
+                opcodes[0],
+                RealLiveOpcode::Wait {
+                    duration_ms: 0x2C29
+                }
+            ),
+            "expected Wait with literal-derived duration, got {:?}",
+            opcodes[0]
+        );
+        assert!(
+            matches!(opcodes[1], RealLiveOpcode::MetaLine { line: 7 }),
+            "stream must stay aligned after the arglist: {:?}",
+            opcodes[1]
+        );
+    }
+
+    #[test]
+    fn expression_immediately_followed_by_textout_decodes_as_two_elements() {
+        // Bug: an Expression body extended across a directly-following
+        // Shift-JIS Textout run, burying the dialogue in
+        // Expression.raw_bytes. The body here also carries a 0xFF int
+        // literal whose payload byte 0x83 has a Shift-JIS lead VALUE —
+        // that payload must be skipped (not mistaken for a Textout
+        // start), and the body must terminate at the REAL Textout that
+        // follows the literal.
+        let bytes = &[
+            opener::EXPRESSION,
+            0x5C, // expression op byte (not terminator / SJIS lead / 0xFF)
+            0xFF,
+            0x83,
+            0x6E,
+            0x01,
+            0x00, // int literal; 0x83 payload has an SJIS-lead value
+            0x83,
+            0x6E, // Textout "ハ" — the translatable dialogue
+            opener::META_LINE,
+            0x05,
+            0x00,
+        ];
+        let opcodes = parse_real_bytecode(bytes).expect("must decode");
+        assert_eq!(
+            opcodes.len(),
+            3,
+            "Expression + Textout + MetaLine must be THREE elements: {opcodes:?}"
+        );
+        match &opcodes[0] {
+            RealLiveOpcode::Expression { raw_bytes } => {
+                // Body ends BEFORE the trailing Textout (6 body bytes).
+                assert_eq!(
+                    raw_bytes,
+                    &vec![0x5C, 0xFF, 0x83, 0x6E, 0x01, 0x00],
+                    "Expression must not swallow the following Textout"
+                );
+            }
+            other => panic!("expected Expression, got {other:?}"),
+        }
+        match &opcodes[1] {
+            RealLiveOpcode::Textout { raw_bytes, .. } => {
+                // The dialogue text is recovered as its own unit.
+                assert_eq!(raw_bytes, &vec![0x83, 0x6E]);
+            }
+            other => panic!("expected Textout (recovered dialogue), got {other:?}"),
+        }
+        assert!(matches!(opcodes[2], RealLiveOpcode::MetaLine { line: 5 }));
     }
 
     #[test]

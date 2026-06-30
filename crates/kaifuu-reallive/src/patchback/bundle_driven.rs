@@ -890,13 +890,10 @@ fn advance_one_element(
             Ok((pos + 3, None))
         }
         opener::EXPRESSION => {
-            let body_start = pos + 1;
-            let mut body_end = body_start;
-            while body_end < bytes.len()
-                && !crate::opcode::is_expression_body_terminator(bytes[body_end])
-            {
-                body_end += 1;
-            }
+            // Mirror `parse_real_bytecode`'s token-aware Expression body
+            // walk exactly so the re-walk cursor lands on the same
+            // boundary (incl. not absorbing a following Textout).
+            let body_end = crate::opcode::expression_body_end(bytes, pos + 1);
             Ok((body_end, None))
         }
         opener::COMMAND => {
@@ -915,6 +912,15 @@ fn advance_one_element(
                 cursor += 1;
                 while cursor < bytes.len() {
                     let b = bytes[cursor];
+                    // `0xFF` int-literal token: introducer + 4 payload
+                    // bytes consumed verbatim (payload may equal `(` `)`
+                    // `,`). Mirrors the arglist scan in
+                    // `crate::opcode::decode_command` so the re-walk
+                    // cursor matches the decoder's `consumed` exactly.
+                    if b == 0xFF {
+                        cursor = (cursor + 5).min(bytes.len());
+                        continue;
+                    }
                     cursor += 1;
                     if b == b')' {
                         break;

@@ -54,19 +54,21 @@ fn comma_separator_bytes_recognized_in_both_forms() {
 
 #[test]
 fn expression_element_preserves_body_bytes_until_next_recognized_opener() {
-    // 0x24 followed by a non-opener expression body that runs up to the
-    // next recognized opener byte (here, 0x0A MetaLine). Note: 0x00
-    // itself is the META_COMMA opener, so the expression body cannot
-    // contain a 0x00 literal — bytes that close the body include every
-    // documented opener byte.
-    let bytes = &[0x24, 0xC8, 0xFF, 0x01, 0x0A, 0x02, 0x00];
+    // 0x24 opener, then an expression body that is ExpressionPiece-token
+    // aware: `0xC8` is a bare body byte, `0xFF 0x01 0x02 0x03 0x04` is a
+    // 4-byte i32-LE int-literal token (introducer + 4 payload bytes
+    // consumed verbatim), and the body terminates at the following
+    // `0x0A` MetaLine opener. Crucially the int-literal payload is NOT
+    // re-scanned for terminator/SJIS-lead values, so the body ends at
+    // its true boundary rather than mis-stopping inside the literal.
+    let bytes = &[0x24, 0xC8, 0xFF, 0x01, 0x02, 0x03, 0x04, 0x0A, 0x02, 0x00];
     let opcodes = parse_scene(bytes).expect("decode");
     match &opcodes[0] {
         RealLiveOpcode::Expression { raw_bytes } => {
-            // Expression body is `[0xC8, 0xFF, 0x01]` — every byte
-            // between the `0x24` opener and the following `0x0A`
-            // MetaLine opener.
-            assert_eq!(raw_bytes, &vec![0xC8, 0xFF, 0x01]);
+            // Body is `[0xC8, 0xFF, 0x01, 0x02, 0x03, 0x04]` — the bare
+            // byte plus the whole 5-byte int-literal token, up to the
+            // `0x0A` MetaLine opener.
+            assert_eq!(raw_bytes, &vec![0xC8, 0xFF, 0x01, 0x02, 0x03, 0x04]);
         }
         other => panic!("expected Expression, got {other:?}"),
     }
