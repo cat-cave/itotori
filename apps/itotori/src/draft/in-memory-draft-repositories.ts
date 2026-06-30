@@ -270,6 +270,25 @@ export class InMemoryDraftAttemptProviderLedgerRepository implements ItotoriDraf
         );
       }
     }
+    // general-audit-1 (genaudit1-00) — mirror the DB-backed repo's typed
+    // gate: a persisted token count MUST name a real provenance. PROJECT
+    // LAW — token counts come only from real provider output, never an
+    // estimate. The migration-0049 CHECK enforces the same set at storage.
+    const recordsTokenCount = input.tokensIn !== undefined || input.tokensOut !== undefined;
+    if (
+      input.tokenCountSource !== undefined &&
+      input.tokenCountSource !== "provider_reported" &&
+      input.tokenCountSource !== "deterministic_counter"
+    ) {
+      throw new InMemoryDraftRepositoryError(
+        `tokenCountSource must name a real provenance (provider_reported|deterministic_counter); got ${input.tokenCountSource} — PROJECT LAW: real token counts only`,
+      );
+    }
+    if (recordsTokenCount && input.tokenCountSource === undefined) {
+      throw new InMemoryDraftRepositoryError(
+        "tokenCountSource is required when a token count is recorded (PROJECT LAW: real-token provenance)",
+      );
+    }
     const entry: DraftAttemptProviderLedgerEntry = {
       ledgerEntryId,
       draftJobAttemptId: input.draftJobAttemptId,
@@ -285,6 +304,7 @@ export class InMemoryDraftAttemptProviderLedgerRepository implements ItotoriDraf
       contextArtifactRefs: [...(input.contextArtifactRefs ?? [])],
       tokensIn: input.tokensIn ?? null,
       tokensOut: input.tokensOut ?? null,
+      tokenCountSource: input.tokenCountSource ?? null,
       costUnit: input.costUnit,
       costAmount: input.costAmount,
       usageResponseJson: { ...input.usageResponseJson },

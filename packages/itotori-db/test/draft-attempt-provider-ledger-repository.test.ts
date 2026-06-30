@@ -69,6 +69,9 @@ function baseLedgerInput(draftJobAttemptId: string): RecordLedgerEntryInput {
     ],
     tokensIn: 500,
     tokensOut: 200,
+    // general-audit-1 (genaudit1-00) — a recorded token count must name a
+    // real provenance. Live OR usage parses to `provider_reported`.
+    tokenCountSource: "provider_reported",
     costUnit: "usd",
     costAmount: "0.01250000",
     // ITOTORI-232 — required `usage` block mirrored from the originating
@@ -114,6 +117,7 @@ describe.skipIf(!process.env.DATABASE_URL)("ItotoriDraftAttemptProviderLedgerRep
       ]);
       expect(entry.tokensIn).toBe(500);
       expect(entry.tokensOut).toBe(200);
+      expect(entry.tokenCountSource).toBe("provider_reported");
       expect(entry.costUnit).toBe("usd");
       expect(entry.costAmount).toBe("0.01250000");
       expect(entry.usageResponseJson).toEqual({

@@ -50,6 +50,26 @@ test("still catches a bare costUsd numeric literal", () => {
   assert.deepEqual(hits, ["hardcoded costUsd/cost_usd numeric literal"]);
 });
 
+test("catches a `?? estimateTokens(...)` token-count fabrication fallback", () => {
+  const hits = labels(
+    PROD_PATH,
+    "    const tokensOut = providerRun.tokenUsage.completionTokens ?? estimateTokens(rawContent);",
+  );
+  assert.deepEqual(hits, [
+    "token-count fabrication: `?? estimateTokens(...)` fallback in a recording path",
+  ]);
+});
+
+test("leaves a legitimate non-fallback estimateTokens(...) pre-flight call alone", () => {
+  // Pre-flight planning + the explicitly-named `inputTokenEstimate` are honest
+  // estimates: they do not use the `?? estimateTokens(` fallback form.
+  assert.deepEqual(labels(PROD_PATH, "  tokens += estimateTokens(input.sceneSummary.body);"), []);
+  assert.deepEqual(
+    labels(PROD_PATH, "  const inputTokenEstimate = estimateTokens(`${a}\\n${b}`);"),
+    [],
+  );
+});
+
 test("leaves the canonical ZERO_COST shapes alone", () => {
   assert.deepEqual(labels(PROD_PATH, "  amountMicrosUsd: 0,"), []);
   assert.deepEqual(labels(PROD_PATH, "      cost: 0,"), []);

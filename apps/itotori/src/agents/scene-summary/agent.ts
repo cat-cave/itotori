@@ -1,5 +1,6 @@
 import { createUuid7 } from "@itotori/db";
 import { estimateTokens } from "../../batch-planner/token-estimator.js";
+import { assertReportedTokenCount } from "../../providers/token-accounting.js";
 import type {
   ModelInvocationRequest,
   ModelMessage,
@@ -64,8 +65,16 @@ export async function generateSceneSummary(
 
   const now = (input.now ?? (() => new Date()))();
 
+  // `inputTokenEstimate` is an explicit pre-flight estimate stored in a
+  // field that names itself as such — honest provenance, not a real count.
   const inputTokenEstimate = estimateTokens(`${rendered.systemText}\n${rendered.userText}`);
-  const completionTokens = providerRun.tokenUsage.completionTokens ?? estimateTokens(summaryText);
+  // `completionTokens` is a REAL count: throw on absence rather than
+  // substitute an estimate (PROJECT LAW, mirror of assertBilledCost).
+  const completionTokens = assertReportedTokenCount(
+    providerRun.tokenUsage,
+    "completionTokens",
+    providerRun.runId,
+  );
 
   const id = input.sceneSummaryId ?? createUuid7();
   const citedUnitIds = input.units.map((unit) => unit.bridgeUnitId);

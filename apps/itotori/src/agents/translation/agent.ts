@@ -44,7 +44,7 @@ import {
   type StructuredTranslationDraftOutput,
   type TranslationDraft,
 } from "@itotori/localization-bridge-schema";
-import { estimateTokens } from "../../batch-planner/token-estimator.js";
+import { assertReportedTokenUsage } from "../../providers/token-accounting.js";
 import { selectStructuredOutputRequest } from "../../providers/structured-output.js";
 import { RecordedModelProvider } from "../../providers/recorded.js";
 import type {
@@ -158,10 +158,14 @@ export class TranslationAgent {
     this.assertCitationsResolve(parsed, input);
     this.assertProtectedSpansPreserved(parsed, input);
 
-    const tokensIn =
-      providerRun.tokenUsage.promptTokens ??
-      estimateTokens(`${rendered.systemText}\n${rendered.userText}`);
-    const tokensOut = providerRun.tokenUsage.completionTokens ?? estimateTokens(rawContent);
+    // PROJECT LAW: token counts come ONLY from real provider output. A
+    // missing count is a real failure (mirror of assertBilledCost), never a
+    // char/4 estimate that would land in the ledger indistinguishable from a
+    // provider-reported count.
+    const { tokensIn, tokensOut } = assertReportedTokenUsage(
+      providerRun.tokenUsage,
+      providerRun.runId,
+    );
 
     const result: TranslationInvocationResult = {
       drafts: parsed.drafts,

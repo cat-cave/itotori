@@ -135,6 +135,20 @@ const FORBIDDEN_PATTERNS = [
     costLiteral: true,
   },
   {
+    // general-audit-1 (genaudit1-00): token-count fabrication. The
+    // unambiguous signature is a `?? estimateTokens(...)` fallback on a real
+    // token field — the char/4 heuristic substituted when a provider omits
+    // usage, which then landed in the ledger indistinguishable from a
+    // provider-reported count. PROJECT LAW: token counts come ONLY from real
+    // provider output (mirror of the no-hardcoded-cost rule). The legitimate
+    // pre-flight uses (`estimateTokens(...)` in batch-planner, and the
+    // explicitly-named `inputTokenEstimate = estimateTokens(...)`) do NOT use
+    // the `?? estimateTokens(` fallback form, so they are untouched. Fires
+    // everywhere (not a cost-literal), so it cannot regress in a test either.
+    label: "token-count fabrication: `?? estimateTokens(...)` fallback in a recording path",
+    regex: /\?\?\s*estimateTokens\s*\(/u,
+  },
+  {
     // Object-form `costUsd: { unit: "usd", amount: "0.01250000" }` — the
     // decimal-string amount inside a costUsd money object. Non-zero only;
     // `amount: "0.00000000"` is the zero shape and is left alone. Scoped to

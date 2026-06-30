@@ -31,6 +31,14 @@ export type DraftAttemptProviderLedgerEntry = {
   contextArtifactRefs: DraftAttemptProviderLedgerContextRef[];
   tokensIn: number | null;
   tokensOut: number | null;
+  /**
+   * general-audit-1 (genaudit1-00) — provenance of tokens_in / tokens_out.
+   * A real recorded count names `provider_reported` (live OR usage block)
+   * or `deterministic_counter` (recorded/fake bundle). NULL only for
+   * pre-migration rows or rows that recorded no token count. The estimate
+   * sentinels are rejected at insert (PROJECT LAW: real token counts only).
+   */
+  tokenCountSource: string | null;
   costUnit: string;
   costAmount: string;
   /**
@@ -85,6 +93,15 @@ export type RecordLedgerEntryInput = {
   contextArtifactRefs?: DraftAttemptProviderLedgerContextRef[] | undefined;
   tokensIn?: number | undefined;
   tokensOut?: number | undefined;
+  /**
+   * general-audit-1 (genaudit1-00) — REQUIRED whenever a token count is
+   * recorded. Must name a REAL provenance: `provider_reported` or
+   * `deterministic_counter`. The estimate sentinels (`estimated`,
+   * `unknown`) are rejected — PROJECT LAW: persisted token counts come
+   * ONLY from real provider output. Omit only for rows that record no
+   * token count at all.
+   */
+  tokenCountSource?: string | undefined;
   costUnit: string;
   costAmount: string;
   /**
@@ -289,6 +306,7 @@ export class ItotoriDraftAttemptProviderLedgerRepository implements ItotoriDraft
       contextArtifactRefs: input.contextArtifactRefs ?? [],
       tokensIn: input.tokensIn ?? null,
       tokensOut: input.tokensOut ?? null,
+      tokenCountSource: input.tokenCountSource ?? null,
       costUnit: input.costUnit,
       costAmount: input.costAmount,
       usageResponseJson: input.usageResponseJson,
@@ -552,6 +570,47 @@ export class ItotoriDraftAttemptProviderLedgerRepository implements ItotoriDraft
   }
 }
 
+/**
+ * general-audit-1 (genaudit1-00) — token-count provenances that represent a
+ * REAL count (mirrors apps/itotori providers/types.ts TokenUsage and the
+ * migration-0049 CHECK). `estimated` / `unknown` are deliberately absent:
+ * an estimate must never be persisted as a real token count.
+ */
+const REAL_TOKEN_COUNT_SOURCES: ReadonlySet<string> = new Set([
+  "provider_reported",
+  "deterministic_counter",
+]);
+
+function assertRealTokenCountSource(input: RecordLedgerEntryInput): void {
+  const recordsTokenCount = input.tokensIn !== undefined || input.tokensOut !== undefined;
+  if (!recordsTokenCount) {
+    // No token count recorded → no provenance required (and an estimate
+    // sentinel attached to a no-token row is still rejected below).
+    if (
+      input.tokenCountSource !== undefined &&
+      !REAL_TOKEN_COUNT_SOURCES.has(input.tokenCountSource)
+    ) {
+      throw new DraftAttemptProviderLedgerRepositoryError(
+        "ledger_entry_invalid_input",
+        `tokenCountSource must name a real provenance (provider_reported|deterministic_counter); got ${input.tokenCountSource} — PROJECT LAW: token counts come only from real provider output`,
+      );
+    }
+    return;
+  }
+  if (input.tokenCountSource === undefined) {
+    throw new DraftAttemptProviderLedgerRepositoryError(
+      "ledger_entry_invalid_input",
+      "tokenCountSource is required when a token count is recorded (PROJECT LAW: real-token provenance)",
+    );
+  }
+  if (!REAL_TOKEN_COUNT_SOURCES.has(input.tokenCountSource)) {
+    throw new DraftAttemptProviderLedgerRepositoryError(
+      "ledger_entry_invalid_input",
+      `tokenCountSource must name a real provenance (provider_reported|deterministic_counter); got ${input.tokenCountSource} — PROJECT LAW: token counts come only from real provider output, never estimated/defaulted`,
+    );
+  }
+}
+
 function assertRecordLedgerEntryInput(input: RecordLedgerEntryInput): void {
   if (input.draftJobAttemptId.length === 0) {
     throw new DraftAttemptProviderLedgerRepositoryError(
@@ -619,6 +678,12 @@ function assertRecordLedgerEntryInput(input: RecordLedgerEntryInput): void {
       "tokensOut must be a non-negative integer",
     );
   }
+  // general-audit-1 (genaudit1-00) — PROJECT LAW: a persisted token count
+  // MUST name a real provenance. A row that records any token count without
+  // a `token_count_source` (or with an estimate sentinel) is the
+  // fabrication this guard closes — the token-side mirror of
+  // assertBilledCost. Rows with no token count at all may omit it.
+  assertRealTokenCountSource(input);
   if (
     input.latencyMs !== undefined &&
     (!Number.isInteger(input.latencyMs) || input.latencyMs < 0)
@@ -766,6 +831,7 @@ function ledgerRowToEntry(
     contextArtifactRefs: row.contextArtifactRefs,
     tokensIn: row.tokensIn,
     tokensOut: row.tokensOut,
+    tokenCountSource: row.tokenCountSource,
     costUnit: row.costUnit,
     costAmount: row.costAmount,
     usageResponseJson: row.usageResponseJson,

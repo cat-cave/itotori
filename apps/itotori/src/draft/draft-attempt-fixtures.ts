@@ -22,6 +22,7 @@ import type {
 } from "@itotori/db";
 import type { ProviderRunRecord, TokenUsage } from "../providers/types.js";
 import { ZERO_COST } from "../providers/cost.js";
+import { assertReportedTokenUsage } from "../providers/token-accounting.js";
 import type {
   TranslationInvocationModelMetadata,
   TranslationInvocationResult,
@@ -144,13 +145,20 @@ function fixtureTranslationResult(
   providerRun: ProviderRunRecord,
   recordedArtifactId?: string,
 ): TranslationInvocationResult {
+  // PROJECT LAW (general-audit-1): fixtures carry REAL token counts drawn
+  // from the provider run via the same guard production uses — never a
+  // `?? 0` coercion.
+  const { tokensIn, tokensOut } = assertReportedTokenUsage(
+    providerRun.tokenUsage,
+    providerRun.runId,
+  );
   const result: TranslationInvocationResult = {
     drafts: FIXTURE_DRAFTS,
     providerRunId: providerRun.runId,
     promptHashUsed: FIXTURE_PROMPT_HASH,
     modelMetadata: fixtureModelMetadata(providerRun),
-    tokensIn: providerRun.tokenUsage.promptTokens ?? 0,
-    tokensOut: providerRun.tokenUsage.completionTokens ?? 0,
+    tokensIn,
+    tokensOut,
   };
   if (recordedArtifactId !== undefined) {
     result.recordedArtifactId = recordedArtifactId;

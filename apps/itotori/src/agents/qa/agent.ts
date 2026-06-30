@@ -34,7 +34,7 @@ import {
   STRUCTURED_QA_FINDING_OUTPUT_SCHEMA_VERSION,
   type StructuredQaFindingOutput,
 } from "@itotori/localization-bridge-schema";
-import { estimateTokens } from "../../batch-planner/token-estimator.js";
+import { assertReportedTokenUsage } from "../../providers/token-accounting.js";
 import { selectStructuredOutputRequest } from "../../providers/structured-output.js";
 import type {
   JsonObject,
@@ -139,10 +139,12 @@ export class QaAgent {
     const parsed = parseStructuredQaFindingOutput(rawContent);
     this.assertCitationsResolve(parsed, input);
 
-    const tokensIn =
-      providerRun.tokenUsage.promptTokens ??
-      estimateTokens(`${rendered.systemText}\n${rendered.userText}`);
-    const tokensOut = providerRun.tokenUsage.completionTokens ?? estimateTokens(rawContent);
+    // PROJECT LAW: real provider token counts only — throw on absence
+    // rather than substitute a char/4 estimate (mirror of assertBilledCost).
+    const { tokensIn, tokensOut } = assertReportedTokenUsage(
+      providerRun.tokenUsage,
+      providerRun.runId,
+    );
 
     const result: QaInvocationResult = {
       findings: parsed.findings,

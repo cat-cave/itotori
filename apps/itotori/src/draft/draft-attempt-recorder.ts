@@ -92,6 +92,14 @@ export class DraftAttemptRecorder {
       contextArtifactRefs: [...(args.contextArtifactRefs ?? [])],
       tokensIn: result.tokensIn,
       tokensOut: result.tokensOut,
+      // general-audit-1 (genaudit1-00) — provenance of the persisted token
+      // counts. The agent derived `tokensIn`/`tokensOut` from this same
+      // `providerRun.tokenUsage` via `assertReportedTokenUsage`, which already
+      // threw unless the source was a real one (`provider_reported` for live
+      // OR usage, `deterministic_counter` for recorded/fake bundles). We
+      // persist it so a real recorded count is distinguishable from any
+      // estimate, and the repository re-asserts it is real before insert.
+      tokenCountSource: providerRun.tokenUsage.tokenCountSource,
       // cost_unit is the literal 'usd' (migration-0041 CHECK); ProviderCost
       // carries the canonical uppercase "USD", lowercased here for the
       // storage contract.

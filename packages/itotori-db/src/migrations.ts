@@ -252,6 +252,10 @@ export const migrations = [
     id: "0048_catalog_conflict_unknown_kind",
     file: "0048_catalog_conflict_unknown_kind.sql",
   },
+  {
+    id: "0049_provider_ledger_token_count_source",
+    file: "0049_provider_ledger_token_count_source.sql",
+  },
 ] as const;
 
 function migrationPath(file: string): string {

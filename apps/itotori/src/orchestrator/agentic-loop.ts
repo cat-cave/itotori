@@ -70,6 +70,7 @@ import { FindingTriageRouter } from "../triage/router.js";
 import type { FindingTriageResult } from "../triage/router.js";
 import type { ModelInvocationRequest, ModelProvider, ProviderFamily } from "../providers/types.js";
 import { assertBilledCost } from "../providers/cost.js";
+import { assertReportedTokenUsage } from "../providers/token-accounting.js";
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -740,8 +741,14 @@ async function invokeContextLikeProbe(
   const startedAt = now();
   const invocation = await provider.invoke(request);
   const endedAt = now();
-  const tokensIn = invocation.providerRun.tokenUsage.promptTokens ?? 0;
-  const tokensOut = invocation.providerRun.tokenUsage.completionTokens ?? 0;
+  // PROJECT LAW: token counts come ONLY from real provider output. A
+  // provider omitting a count is a real failure (mirror of the
+  // assertBilledCost guard immediately below), NOT a silent coercion to
+  // zero that would understate real usage in the persisted bundle.
+  const { tokensIn, tokensOut } = assertReportedTokenUsage(
+    invocation.providerRun.tokenUsage,
+    invocation.providerRun.runId,
+  );
   return {
     invocationId: `context:${agentLabel}:${invocation.providerRun.runId}`,
     agentLabel,

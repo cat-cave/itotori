@@ -3934,6 +3934,19 @@ export const draftAttemptProviderLedger = pgTable(
       .default(sql`'[]'::jsonb`),
     tokensIn: integer("tokens_in"),
     tokensOut: integer("tokens_out"),
+    /**
+     * general-audit-1 (genaudit1-00) — provenance of `tokens_in`/`tokens_out`.
+     * PROJECT LAW: persisted token counts come ONLY from real provider
+     * output. A recorded token count MUST name a real source —
+     * `provider_reported` (live OpenRouter `usage` block) or
+     * `deterministic_counter` (recorded/fake bundles counting real bytes).
+     * The estimate sentinels (`estimated`, `unknown`) are rejected at insert
+     * by the application guard AND the migration-0049 CHECK, so a fabricated
+     * count can never masquerade as a provider-reported one (asymmetry with
+     * cost is closed). NULL only for pre-migration rows / rows that recorded
+     * no token count at all.
+     */
+    tokenCountSource: text("token_count_source"),
     costUnit: text("cost_unit").notNull(),
     costAmount: numeric("cost_amount", { precision: 20, scale: 8 }).notNull(),
     /**
