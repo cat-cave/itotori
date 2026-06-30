@@ -37694,6 +37694,240 @@
         "No-legacy single path",
         "Test asserts corrected behavior not the bug"
       ]
+    },
+    {
+      "id": "agentic-loop-comment-claims-parallel-qa-but-runs-sequential",
+      "title": "[audit-3] agentic-loop comment claims QA agents 'fire in parallel' but they run sequentially",
+      "kind": "audit-fix",
+      "milestone": "alpha",
+      "status": "ready",
+      "priority": "P3",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "WHY: Comment (465-468) says the four QA agents fire in parallel, but 475-497 await each invokeQaStage one at a time in a for...of loop. Comment contradicts code (no correctness impact; the Promise.all design is in scored-finding-workflow.ts).\n\nSUGGESTED FIX: Reword the comment to say sequential here (note: all stages share one memoized provider → parallel would contend the token bucket), or switch to Promise.all if parallelism is intended.\n\nEVIDENCE: apps/itotori/src/orchestrator/agentic-loop.ts:465 (general-audit-3, confirmed).",
+      "acceptance": "The item at apps/itotori/src/orchestrator/agentic-loop.ts:465 is corrected per the suggested fix (doc-match-code, fail-loud, or clarifying comment as indicated); a test asserts corrected behavior where it is a code fix. No-legacy.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-30T05:49:49.568Z",
+      "updated_at": "2026-06-30T05:49:49.568Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["itotori"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/app exec vitest run batch-planner"
+        }
+      ],
+      "audit_focus": [
+        "Regression: Comment (465-468) says the four QA agents fire in parallel, but 475-497 await each invokeQaStage one at a time in a for...of loop. Comment c",
+        "No-legacy single path",
+        "Test asserts corrected behavior (code fixes)"
+      ]
+    },
+    {
+      "id": "scored-finding-per-agent-score-masks-out-of-set-units-via-default-1",
+      "title": "[audit-3] Per-agent QA score masks findings on out-of-input bridge units via ?? 1.0",
+      "kind": "audit-fix",
+      "milestone": "alpha",
+      "status": "ready",
+      "priority": "P3",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "WHY: aggregateScoredFindings does sum += byBridgeUnit.get(unitId) ?? 1.0; byBridgeUnit only holds input.units, so a finding on a unit not in input.units contributes a perfect 1.0, silently discarding its severity. Mitigated by assertBridgeUnitsResolve upstream (latent robustness gap).\n\nSUGGESTED FIX: Treat a missing byBridgeUnit entry as a hard typed error (finding referenced an out-of-scope unit), mirroring the file's convention.\n\nEVIDENCE: apps/itotori/src/qa/scored-finding-workflow.ts:222 (general-audit-3, confirmed).",
+      "acceptance": "The item at apps/itotori/src/qa/scored-finding-workflow.ts:222 is corrected per the suggested fix (doc-match-code, fail-loud, or clarifying comment as indicated); a test asserts corrected behavior where it is a code fix. No-legacy.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-30T05:49:49.568Z",
+      "updated_at": "2026-06-30T05:49:49.568Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["itotori"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/app exec vitest run batch-planner"
+        }
+      ],
+      "audit_focus": [
+        "Regression: aggregateScoredFindings does sum += byBridgeUnit.get(unitId) ?? 1.0; byBridgeUnit only holds input.units, so a finding on a unit not in inpu",
+        "No-legacy single path",
+        "Test asserts corrected behavior (code fixes)"
+      ]
+    },
+    {
+      "id": "benchmark-cost-kinds-retains-estimate-unknown-sentinel-clarify",
+      "title": "[audit-3] BENCHMARK_COST_KINDS retains estimate/unknown sentinel kinds (defensible; clarify comment)",
+      "kind": "audit-fix",
+      "milestone": "alpha",
+      "status": "ready",
+      "priority": "P3",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "WHY: BENCHMARK_COST_KINDS enumerates provider_estimate/local_estimate/unknown (purged from ProviderCost by ITOTORI-225); aggregator line 2341 does amountMicrosUsd ?? 0. DEFENSIBLE: benchmarks compare external systems with genuinely-unknowable cost + surfaces includesUnknownCost; the ?? 0 is unreachable for non-unknown (assert requires amount unless unknown, which continues before 2341). NOT an itotori-spend integrity gap.\n\nSUGGESTED FIX: No code change for correctness; add a one-line comment clarifying estimate/unknown apply only to externally-benchmarked systems, never itotori's own OpenRouter spend.\n\nEVIDENCE: packages/localization-bridge-schema/src/index.ts:490 (general-audit-3, confirmed).",
+      "acceptance": "The item at packages/localization-bridge-schema/src/index.ts:490 is corrected per the suggested fix (doc-match-code, fail-loud, or clarifying comment as indicated); a test asserts corrected behavior where it is a code fix. No-legacy.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-30T05:49:49.568Z",
+      "updated_at": "2026-06-30T05:49:49.568Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["itotori"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/app exec vitest run batch-planner"
+        }
+      ],
+      "audit_focus": [
+        "Regression: BENCHMARK_COST_KINDS enumerates provider_estimate/local_estimate/unknown (purged from ProviderCost by ITOTORI-225); aggregator line 2341 doe",
+        "No-legacy single path",
+        "Test asserts corrected behavior (code fixes)"
+      ]
+    },
+    {
+      "id": "GA3-001",
+      "title": "[audit-3] extraction doc + error enum claim a \"symlink-escape\" rejection that no code path emits",
+      "kind": "audit-fix",
+      "milestone": "alpha",
+      "status": "ready",
+      "priority": "P3",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "WHY: The module header (extraction.rs:6) lists \"symlink escapes\" among the rejections performed \"before any byte is written\", and error.rs:164-165 documents \"symlink-escape\" as a possible ExtractionUnsafePath.reason value. But validate_entry_name() has no symlink-specific logic and the closure never produces a \"symlink-escape\" reason — the only reasons emitted are empty-name, nul-byte, drive-prefix, parent-dir, absolute-path, backslash, escape, vault-collision. The actual safety comes structurally from writing every entry as a regular file via File::create (a symlink entry's target bytes become file content, so no symlink is ever materialized), not from a named symlink check. No vulnerability, but the docs over-claim an active check that does not exist.\n\nSUGGESTED FIX: Either implement an explicit symlink-entry rejection (emit reason \"symlink-escape\" when an ArchiveEntry advertises a symlink type) so the doc is honest, or remove \"symlink escapes\" from extraction.rs:6 and \"symlink-escape\" from error.rs:165 and instead document that symlink safety is structural (entries are always written as regular files).\n\nEVIDENCE: crates/kaifuu-vault-source/src/extraction.rs:6 (general-audit-3, confirmed).",
+      "acceptance": "The item at crates/kaifuu-vault-source/src/extraction.rs:6 is corrected per the suggested fix (doc-match-code, fail-loud, or clarifying comment as indicated); a test asserts corrected behavior where it is a code fix. No-legacy.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-30T05:49:49.568Z",
+      "updated_at": "2026-06-30T05:49:49.568Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["kaifuu"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "direnv exec . cargo test -p kaifuu-vault-source"
+        }
+      ],
+      "audit_focus": [
+        "Regression: The module header (extraction.rs:6) lists \"symlink escapes\" among the rejections performed \"before any byte is written\", and error.rs:164-16",
+        "No-legacy single path",
+        "Test asserts corrected behavior (code fixes)"
+      ]
+    },
+    {
+      "id": "GA3-002",
+      "title": "[audit-3] batch packer cap-check ignores per-batch character-card tokens, so reported tokenEstimate can exceed tokenBudgetCap",
+      "kind": "audit-fix",
+      "milestone": "alpha",
+      "status": "ready",
+      "priority": "P3",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "WHY: packGroupIntoBatches decides whether to start a new batch with `acc.totalTokens + incremental > tokenBudgetCap` (line 240), but character-relationship card tokens are computed only later in finalizeBatch (characterTokens, line 336) and added to totalTokens at line 361 to form the reported tokenEstimate. The split decision is therefore blind to character-card tokens, so a finalized batch's tokenEstimate can exceed tokenBudgetCap by the character-card token count. In practice the default targetFillRatio (0.7) leaves ~30% headroom that absorbs this, and nearCapWarning (computed on the full total) will fire — but a profile with a high fill ratio would let a batch silently overflow the model context window.\n\nSUGGESTED FIX: Account for the incremental character-card token delta in the pack-loop cap check (or reserve a character-token budget in computeTokenBudgetCap), so the split decision and the reported tokenEstimate use the same definition of total tokens.\n\nEVIDENCE: apps/itotori/src/batch-planner/planner.ts:240 (general-audit-3, confirmed).",
+      "acceptance": "The item at apps/itotori/src/batch-planner/planner.ts:240 is corrected per the suggested fix (doc-match-code, fail-loud, or clarifying comment as indicated); a test asserts corrected behavior where it is a code fix. No-legacy.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-30T05:49:49.568Z",
+      "updated_at": "2026-06-30T05:49:49.568Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["itotori"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/app exec vitest run batch-planner"
+        }
+      ],
+      "audit_focus": [
+        "Regression: packGroupIntoBatches decides whether to start a new batch with `acc.totalTokens + incremental > tokenBudgetCap` (line 240), but character-re",
+        "No-legacy single path",
+        "Test asserts corrected behavior (code fixes)"
+      ]
+    },
+    {
+      "id": "GA3-003",
+      "title": "[audit-3] variable span present-but-undeclared is labelled span_deleted, contradicting the enum's documented condition",
+      "kind": "audit-fix",
+      "milestone": "alpha",
+      "status": "ready",
+      "priority": "P3",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "WHY: In validateVariableSpan, when the draft has no ref for a variable span but the literal source text IS present in draftText (observedRanges.length > 0), the validator pushes kind:\"span_deleted\" (lines 386-394) with detail \"appears in draftText but was not declared in protectedSpanRefs\". The span_deleted enum doc (lines 84-90) defines it as \"required ref absent from the draft entirely (no matching entry ... AND the source text does not appear in draftText)\" — the literal-present case violates that documented AND-condition. Functionally harmless (retry-policy classifies span_deleted as retryable, which is the desired outcome), but the kind is semantically wrong vs its own doc.\n\nSUGGESTED FIX: Use a more accurate kind for the present-but-undeclared case (e.g. treat as a declaration omission rather than span_deleted) or amend the span_deleted doc to cover this branch; align the comment and the emitted kind.\n\nEVIDENCE: apps/itotori/src/draft/protected-span-validator.ts:386 (general-audit-3, confirmed).",
+      "acceptance": "The item at apps/itotori/src/draft/protected-span-validator.ts:386 is corrected per the suggested fix (doc-match-code, fail-loud, or clarifying comment as indicated); a test asserts corrected behavior where it is a code fix. No-legacy.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-30T05:49:49.568Z",
+      "updated_at": "2026-06-30T05:49:49.568Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["itotori"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/app exec vitest run batch-planner"
+        }
+      ],
+      "audit_focus": [
+        "Regression: In validateVariableSpan, when the draft has no ref for a variable span but the literal source text IS present in draftText (observedRanges.l",
+        "No-legacy single path",
+        "Test asserts corrected behavior (code fixes)"
+      ]
     }
   ],
   "edges": [
