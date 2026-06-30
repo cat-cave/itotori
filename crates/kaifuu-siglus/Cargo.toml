@@ -1,0 +1,22 @@
+[package]
+name = "kaifuu-siglus"
+version = "0.0.0"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Pure-Rust Siglus (SiglusEngine) Scene.pck / Gameexe.dat / scene-bytecode decompiler skeleton (siglus-05). Clean-room, native: xmoezzz/siglus_rs (MPL-2.0), bluecookies/siglus-decompile (unlicensed), and SiglusExtract (GPLv3) are research anchors only — none vendored, linked, or mechanically translated. No Siglus reference project is a dependency."
+
+# Clean-room boundary: this crate takes NO dependency on any Siglus
+# reference project. There is intentionally no `siglus_rs`, no
+# `siglus-decompile`, and no `SiglusExtract` dependency — neither as a
+# source dep nor a build artifact. The Siglus format stack is owned
+# natively in Rust. See `SIGLUS_RS_RESEARCH_ANCHOR_BOUNDARY_STATEMENT`
+# in src/lib.rs and the siglus-25 citation-correctness node.
+[dependencies]
+encoding_rs.workspace = true
+kaifuu-core = { path = "../kaifuu-core" }
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+uuid.workspace = true
