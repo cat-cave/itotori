@@ -152,6 +152,13 @@ pub const STRING_RELOCATION_UNSUPPORTED_POINTER_FORMAT: &str =
     "kaifuu.string_relocation.unsupported_pointer_format";
 pub const STRING_RELOCATION_POINTER_PROVENANCE_MISMATCH: &str =
     "kaifuu.string_relocation.pointer_provenance_mismatch";
+/// The fixture `sourceBytesHex` could not be parsed as hexadecimal. Kept
+/// distinct from a *genuinely empty* source (which is parsed successfully
+/// to a zero-length byte vector and still bounds-checked) so a parse
+/// failure never collapses to `source_len = 0` and silently disables slot
+/// bounds validation.
+pub const STRING_RELOCATION_INVALID_SOURCE_BYTES: &str =
+    "kaifuu.string_relocation.invalid_source_bytes";
 pub const XP3_PLAIN_MAGIC: &[u8] = b"XP3\r\n \n\x1a\x8b\x67\x01";
 
 pub mod contracts;

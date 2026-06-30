@@ -354,8 +354,19 @@ fn apply_slot_edit(
     // (length-preserving edits should preserve all of them; embedded
     // tooling can choose to lose spans only by going through a
     // length-changing edit, which we reject).
-    let source_spans = count_protected_spans_in_raw(source_slot_bytes);
-    let new_spans = count_protected_spans_in_raw(&new_bytes);
+    let to_patchback_err = |err: crate::protected_spans::ProtectedSpanError| {
+        PatchBackError::for_slot(
+            PatchBackErrorCode::ParserRegression,
+            scene.scene_id.as_str(),
+            &edit.slot_id,
+            format!(
+                "protected-span detection failed for slot {}: {err}",
+                edit.slot_id
+            ),
+        )
+    };
+    let source_spans = count_protected_spans_in_raw(source_slot_bytes).map_err(to_patchback_err)?;
+    let new_spans = count_protected_spans_in_raw(&new_bytes).map_err(to_patchback_err)?;
     if new_spans < source_spans {
         return Err(PatchBackError::for_slot(
             PatchBackErrorCode::ProtectedSpanLost,
@@ -372,9 +383,11 @@ fn apply_slot_edit(
     Ok(())
 }
 
-fn count_protected_spans_in_raw(raw_bytes: &[u8]) -> usize {
+fn count_protected_spans_in_raw(
+    raw_bytes: &[u8],
+) -> Result<usize, crate::protected_spans::ProtectedSpanError> {
     let decoded = crate::encoding::decode_shift_jis_slot(raw_bytes).text;
-    detect_protected_spans(raw_bytes, &decoded).spans.len()
+    Ok(detect_protected_spans(raw_bytes, &decoded)?.spans.len())
 }
 
 /// Build the replacement bytes for a slot: encode the text runs from

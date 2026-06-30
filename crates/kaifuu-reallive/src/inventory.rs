@@ -175,7 +175,24 @@ fn walk_scene(
             }
 
             let decoded_text = decode.text;
-            let spans_report = detect_protected_spans(&raw_bytes, &decoded_text);
+            let spans_report = match detect_protected_spans(&raw_bytes, &decoded_text) {
+                Ok(report) => report,
+                Err(err) => {
+                    // Malformed/adversarial Shift-JIS made the decoded byte
+                    // range non-char-boundary. Record it (no silent skip)
+                    // and continue the walk instead of crashing.
+                    warnings.push(InventoryWarning {
+                        code: crate::protected_spans::PROTECTED_SPAN_DECODED_RANGE_CODE.to_string(),
+                        source_unit_key: Some(slot.slot_id.as_str().to_string()),
+                        message: format!(
+                            "protected-span detection failed for slot {}: {err}; \
+                             preserving raw bytes, emitting no protected spans for this slot",
+                            slot.slot_id.as_str()
+                        ),
+                    });
+                    continue;
+                }
+            };
             for warning in spans_report.warnings {
                 warnings.push(InventoryWarning {
                     code: warning.code,

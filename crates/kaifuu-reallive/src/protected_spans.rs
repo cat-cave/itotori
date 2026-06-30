@@ -21,8 +21,68 @@
 use std::fmt::Write;
 
 use serde::{Deserialize, Serialize};
+use thiserror::Error;
 
 use crate::encoding::{SliceSegment, slice_control_bytes};
+
+/// Stable error code emitted when a protected-span decoded byte range does
+/// not line up with the decoded text's char boundaries (or runs past its
+/// end). Surfaced instead of a `str` index panic.
+pub const PROTECTED_SPAN_DECODED_RANGE_CODE: &str =
+    "kaifuu.reallive.protected_span.decoded_range_not_char_boundary";
+
+/// Error returned by [`detect_protected_spans`].
+///
+/// Protected-span detection aligns raw Shift-JIS byte offsets to byte
+/// offsets inside the *decoded* text by decoding successive prefixes of the
+/// raw bytes (see [`decoded_byte_offset_for_raw_offset`]). That alignment
+/// assumes the byte length of a decoded prefix equals the byte position of
+/// the same boundary inside the whole-slot decode — an invariant that does
+/// **not** hold for lossy/replacement Shift-JIS across a split double-byte
+/// pair. When it is violated, the computed decoded range can land inside a
+/// multi-byte char (or past the end of the decoded text); rather than panic
+/// on `decoded_text[a..b]`, detection returns this typed error so the
+/// inventory walk can record it and continue.
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+pub enum ProtectedSpanError {
+    /// A decoded byte range `[start, end)` is not a valid slice of the
+    /// decoded text (a bound is not on a char boundary, or is out of range,
+    /// or `start > end`).
+    #[error(
+        "protected-span decoded byte range {start}..{end} is not a valid char-boundary slice \
+         of decoded text of byte length {decoded_len}"
+    )]
+    DecodedRangeNotCharBoundary {
+        start: usize,
+        end: usize,
+        decoded_len: usize,
+    },
+}
+
+/// Char-boundary- and range-checked slice of the decoded text.
+///
+/// Returns [`ProtectedSpanError::DecodedRangeNotCharBoundary`] (never
+/// panics) when `[start, end)` is reversed, out of range, or lands inside a
+/// multi-byte char.
+fn decoded_slice(
+    decoded_text: &str,
+    start: usize,
+    end: usize,
+) -> Result<String, ProtectedSpanError> {
+    let decoded_len = decoded_text.len();
+    if start > end
+        || end > decoded_len
+        || !decoded_text.is_char_boundary(start)
+        || !decoded_text.is_char_boundary(end)
+    {
+        return Err(ProtectedSpanError::DecodedRangeNotCharBoundary {
+            start,
+            end,
+            decoded_len,
+        });
+    }
+    Ok(decoded_text[start..end].to_string())
+}
 
 /// Bounded RealLive protected-span catalogue.
 ///
@@ -112,7 +172,10 @@ pub struct ProtectedSpanReport {
 /// `decoded_text` is the result of [`crate::encoding::decode_shift_jis_slot`]
 /// on the same bytes. The caller is responsible for keeping the two
 /// arguments aligned.
-pub fn detect_protected_spans(raw_bytes: &[u8], decoded_text: &str) -> ProtectedSpanReport {
+pub fn detect_protected_spans(
+    raw_bytes: &[u8],
+    decoded_text: &str,
+) -> Result<ProtectedSpanReport, ProtectedSpanError> {
     let mut spans = Vec::new();
     let mut warnings = Vec::new();
 
@@ -121,7 +184,7 @@ pub fn detect_protected_spans(raw_bytes: &[u8], decoded_text: &str) -> Protected
     // variable placeholder). These are detected against the raw bytes
     // because they are ASCII; the decoded text byte offsets are computed
     // alongside.
-    detect_ascii_placeholders(raw_bytes, decoded_text, &mut spans);
+    detect_ascii_placeholders(raw_bytes, decoded_text, &mut spans)?;
 
     // Step 2: Control bytes. Walk the control byte segments and emit one
     // span per documented kind, or an `unknown_control` warning for any
@@ -149,7 +212,7 @@ pub fn detect_protected_spans(raw_bytes: &[u8], decoded_text: &str) -> Protected
                 Some(RealLiveProtectedSpan {
                     kind: ProtectedSpanKind::ColorCode { color_index: index },
                     raw_bytes_hex: hex_upper(raw),
-                    raw_text: decoded_text[decoded_offset..decoded_end].to_string(),
+                    raw_text: decoded_slice(decoded_text, decoded_offset, decoded_end)?,
                     byte_range_start: byte_offset as u64,
                     byte_range_end: end as u64,
                     decoded_range_start: decoded_offset as u64,
@@ -167,7 +230,7 @@ pub fn detect_protected_spans(raw_bytes: &[u8], decoded_text: &str) -> Protected
                     Some(RealLiveProtectedSpan {
                         kind: ProtectedSpanKind::Ruby { base, ruby },
                         raw_bytes_hex: hex_upper(raw),
-                        raw_text: decoded_text[decoded_offset..decoded_end].to_string(),
+                        raw_text: decoded_slice(decoded_text, decoded_offset, decoded_end)?,
                         byte_range_start: byte_offset as u64,
                         byte_range_end: end as u64,
                         decoded_range_start: decoded_offset as u64,
@@ -189,7 +252,7 @@ pub fn detect_protected_spans(raw_bytes: &[u8], decoded_text: &str) -> Protected
                         decoded_text,
                         byte_offset,
                         ProtectedSpanKind::UnknownControl { byte: 0x0d },
-                    ))
+                    )?)
                 }
             },
             // Choice token: 0x02 <index>
@@ -204,7 +267,7 @@ pub fn detect_protected_spans(raw_bytes: &[u8], decoded_text: &str) -> Protected
                         choice_index: index,
                     },
                     raw_bytes_hex: hex_upper(raw),
-                    raw_text: decoded_text[decoded_offset..decoded_end].to_string(),
+                    raw_text: decoded_slice(decoded_text, decoded_offset, decoded_end)?,
                     byte_range_start: byte_offset as u64,
                     byte_range_end: end as u64,
                     decoded_range_start: decoded_offset as u64,
@@ -221,7 +284,7 @@ pub fn detect_protected_spans(raw_bytes: &[u8], decoded_text: &str) -> Protected
                 Some(RealLiveProtectedSpan {
                     kind: ProtectedSpanKind::TextSizeDirective { size_byte },
                     raw_bytes_hex: hex_upper(raw),
-                    raw_text: decoded_text[decoded_offset..decoded_end].to_string(),
+                    raw_text: decoded_slice(decoded_text, decoded_offset, decoded_end)?,
                     byte_range_start: byte_offset as u64,
                     byte_range_end: end as u64,
                     decoded_range_start: decoded_offset as u64,
@@ -239,7 +302,7 @@ pub fn detect_protected_spans(raw_bytes: &[u8], decoded_text: &str) -> Protected
                 Some(RealLiveProtectedSpan {
                     kind: ProtectedSpanKind::WaitDirective { frames_byte },
                     raw_bytes_hex: hex_upper(raw),
-                    raw_text: decoded_text[decoded_offset..decoded_end].to_string(),
+                    raw_text: decoded_slice(decoded_text, decoded_offset, decoded_end)?,
                     byte_range_start: byte_offset as u64,
                     byte_range_end: end as u64,
                     decoded_range_start: decoded_offset as u64,
@@ -252,14 +315,14 @@ pub fn detect_protected_spans(raw_bytes: &[u8], decoded_text: &str) -> Protected
                 decoded_text,
                 byte_offset,
                 ProtectedSpanKind::ClearTextBox,
-            )),
+            )?),
             // Line break: 0x0a (when not consumed by ruby).
             0x0a => Some(simple_control_span(
                 raw_bytes,
                 decoded_text,
                 byte_offset,
                 ProtectedSpanKind::LineBreak,
-            )),
+            )?),
             // Anything else `< 0x20`: unknown control byte. Preserve.
             other if other < 0x20 => {
                 warnings.push(ProtectedSpanWarning {
@@ -276,7 +339,7 @@ pub fn detect_protected_spans(raw_bytes: &[u8], decoded_text: &str) -> Protected
                     decoded_text,
                     byte_offset,
                     ProtectedSpanKind::UnknownControl { byte: other },
-                ))
+                )?)
             }
             _ => None,
         };
@@ -298,7 +361,7 @@ pub fn detect_protected_spans(raw_bytes: &[u8], decoded_text: &str) -> Protected
 
     // Re-sort spans by byte_range_start so the bridge output is stable.
     spans.sort_by_key(|span| (span.byte_range_start, span.byte_range_end));
-    ProtectedSpanReport { spans, warnings }
+    Ok(ProtectedSpanReport { spans, warnings })
 }
 
 fn simple_control_span(
@@ -306,20 +369,20 @@ fn simple_control_span(
     decoded_text: &str,
     byte_offset: usize,
     kind: ProtectedSpanKind,
-) -> RealLiveProtectedSpan {
+) -> Result<RealLiveProtectedSpan, ProtectedSpanError> {
     let end = byte_offset + 1;
     let raw = &raw_bytes[byte_offset..end];
     let decoded_offset = decoded_byte_offset_for_raw_offset(raw_bytes, byte_offset);
     let decoded_end = decoded_byte_offset_for_raw_offset(raw_bytes, end);
-    RealLiveProtectedSpan {
+    Ok(RealLiveProtectedSpan {
         kind,
         raw_bytes_hex: hex_upper(raw),
-        raw_text: decoded_text[decoded_offset..decoded_end].to_string(),
+        raw_text: decoded_slice(decoded_text, decoded_offset, decoded_end)?,
         byte_range_start: byte_offset as u64,
         byte_range_end: end as u64,
         decoded_range_start: decoded_offset as u64,
         decoded_range_end: decoded_end as u64,
-    }
+    })
 }
 
 /// Find the next byte after a one-byte-argument control code. Returns
@@ -388,7 +451,7 @@ fn detect_ascii_placeholders(
     raw_bytes: &[u8],
     decoded_text: &str,
     spans: &mut Vec<RealLiveProtectedSpan>,
-) {
+) -> Result<(), ProtectedSpanError> {
     // `\{<digits>\}` name placeholders.
     let mut i = 0;
     while i + 1 < raw_bytes.len() {
@@ -412,7 +475,7 @@ fn detect_ascii_placeholders(
                 spans.push(RealLiveProtectedSpan {
                     kind: ProtectedSpanKind::NamePlaceholder { index: inner_str },
                     raw_bytes_hex: hex_upper(raw),
-                    raw_text: decoded_text[decoded_offset..decoded_end].to_string(),
+                    raw_text: decoded_slice(decoded_text, decoded_offset, decoded_end)?,
                     byte_range_start: i as u64,
                     byte_range_end: end as u64,
                     decoded_range_start: decoded_offset as u64,
@@ -441,7 +504,7 @@ fn detect_ascii_placeholders(
             spans.push(RealLiveProtectedSpan {
                 kind: ProtectedSpanKind::VariablePlaceholder { name },
                 raw_bytes_hex: hex_upper(raw),
-                raw_text: decoded_text[decoded_offset..decoded_end].to_string(),
+                raw_text: decoded_slice(decoded_text, decoded_offset, decoded_end)?,
                 byte_range_start: i as u64,
                 byte_range_end: end as u64,
                 decoded_range_start: decoded_offset as u64,
@@ -452,6 +515,7 @@ fn detect_ascii_placeholders(
         }
         i += 1;
     }
+    Ok(())
 }
 
 fn is_identifier_start(byte: u8) -> bool {
@@ -489,7 +553,32 @@ mod tests {
 
     fn detect_for(bytes: &[u8]) -> ProtectedSpanReport {
         let decoded = crate::encoding::decode_shift_jis_slot(bytes).text;
-        detect_protected_spans(bytes, &decoded)
+        detect_protected_spans(bytes, &decoded).expect("detection should succeed for this input")
+    }
+
+    /// Regression: a control directive whose argument byte is a Shift-JIS
+    /// LEAD byte makes the prefix-decode length land *inside* a multi-byte
+    /// char of the whole-slot decode. Slicing `decoded_text[a..b]` at a
+    /// non-char-boundary previously panicked and crashed the inventory walk
+    /// (`protected-span-sjis-prefix-length-index-panic`). It must now return
+    /// a typed `Err`.
+    #[test]
+    fn truncated_sjis_lead_byte_before_color_code_yields_typed_err() {
+        // 0x1f color-code control byte; its argument byte 0x83 is a SJIS
+        // lead byte that pairs with the following 0x9f as `Α` (U+0391, 2
+        // UTF-8 bytes) in the whole-slot decode, while the prefix decode of
+        // `[0x1f, 0x83]` yields `\u{1f}` + U+FFFD (4 bytes) — landing the
+        // decoded_end at byte 4, mid-`あ`.
+        let bytes = &[0x1f, 0x83, 0x9f, 0x82, 0xa0][..];
+        let decoded = crate::encoding::decode_shift_jis_slot(bytes).text;
+        let result = detect_protected_spans(bytes, &decoded);
+        assert!(
+            matches!(
+                result,
+                Err(ProtectedSpanError::DecodedRangeNotCharBoundary { .. })
+            ),
+            "expected DecodedRangeNotCharBoundary, got {result:?}"
+        );
     }
 
     #[test]

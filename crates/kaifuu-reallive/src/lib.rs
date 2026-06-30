@@ -182,7 +182,8 @@ pub use patchback::{
     SlotEdit, SlotEditLengthPolicy, apply_patches,
 };
 pub use protected_spans::{
-    PROTECTED_SPAN_UNKNOWN_CONTROL_CODE, ProtectedSpanKind, ProtectedSpanReport,
-    ProtectedSpanWarning, RealLiveProtectedSpan, detect_protected_spans,
+    PROTECTED_SPAN_DECODED_RANGE_CODE, PROTECTED_SPAN_UNKNOWN_CONTROL_CODE, ProtectedSpanError,
+    ProtectedSpanKind, ProtectedSpanReport, ProtectedSpanWarning, RealLiveProtectedSpan,
+    detect_protected_spans,
 };
 pub use scene_header::{SCENE_HEADER_BYTE_LEN, SceneHeader, SceneHeaderError};

@@ -6,11 +6,11 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::{
-    OperationStatus, ProtectedSpanMapping, STRING_RELOCATION_OVERLAPPING_WRITES,
-    STRING_RELOCATION_POINTER_PROVENANCE_MISMATCH, STRING_RELOCATION_UNRESOLVED_REFERENCE,
-    STRING_RELOCATION_UNSUPPORTED_POINTER_FORMAT, STRING_SLOT_INVALID_ENCODING,
-    STRING_SLOT_OVERFLOW, STRING_SLOT_PROTECTED_SPAN_MUTATION, STRING_SLOT_TERMINATOR_LOSS,
-    content_hash,
+    OperationStatus, ProtectedSpanMapping, STRING_RELOCATION_INVALID_SOURCE_BYTES,
+    STRING_RELOCATION_OVERLAPPING_WRITES, STRING_RELOCATION_POINTER_PROVENANCE_MISMATCH,
+    STRING_RELOCATION_UNRESOLVED_REFERENCE, STRING_RELOCATION_UNSUPPORTED_POINTER_FORMAT,
+    STRING_SLOT_INVALID_ENCODING, STRING_SLOT_OVERFLOW, STRING_SLOT_PROTECTED_SPAN_MUTATION,
+    STRING_SLOT_TERMINATOR_LOSS, content_hash,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -1854,11 +1854,14 @@ pub fn plan_string_table_rebuild(
         );
     }
 
+    // `validate_relocation_request` already rejects an unparseable source
+    // (returning above), so this re-parse normally succeeds; the Err arm
+    // remains as a typed defensive guard that never panics.
     let source_bytes = match parse_hex_bytes(&request.source_bytes_hex) {
         Ok(bytes) => bytes,
         Err(message) => {
             relocation_diagnostics.push(relocation_diagnostic(
-                STRING_RELOCATION_UNRESOLVED_REFERENCE,
+                STRING_RELOCATION_INVALID_SOURCE_BYTES,
                 None,
                 None,
                 None,
@@ -2135,9 +2138,26 @@ fn validate_relocation_request(
     request: &StringTableRebuildRequest,
 ) -> Vec<StringRelocationDiagnostic> {
     let mut diagnostics = Vec::new();
+    // Distinguish a *genuinely empty* source (valid hex parsing to a
+    // zero-length vector → `Some(0)`) from a *parse failure* (`None`). A
+    // parse failure must not collapse to `source_len = 0`, because a length
+    // of zero would silently gate OFF every slot bounds check below and let
+    // a positive-offset slot reach the rebuild path, where it indexes an
+    // empty slice and panics. Both cases now surface a typed diagnostic.
     let source_len = match parse_hex_bytes(&request.source_bytes_hex) {
-        Ok(bytes) => bytes.len() as u64,
-        Err(_) => 0,
+        Ok(bytes) => Some(bytes.len() as u64),
+        Err(message) => {
+            diagnostics.push(relocation_diagnostic(
+                STRING_RELOCATION_INVALID_SOURCE_BYTES,
+                None,
+                None,
+                None,
+                format!("source bytes are not valid hex: {message}"),
+                "repair_fixture_source_bytes",
+                "provide deterministic hexadecimal fixture bytes before rebuilding",
+            ));
+            None
+        }
     };
 
     let mut slot_ids = BTreeSet::new();
@@ -2154,7 +2174,12 @@ fn validate_relocation_request(
                 "declare each rebuilt slot exactly once",
             ));
         }
-        if source_len != 0 && slot.old_byte_range.end() > source_len {
+        // Bounds-check whenever the source length is known — including a
+        // genuinely empty source (`Some(0)`), where any positive-offset
+        // slot exceeds it and must be rejected rather than bypassed.
+        if let Some(source_len) = source_len
+            && slot.old_byte_range.end() > source_len
+        {
             diagnostics.push(relocation_diagnostic(
                 STRING_RELOCATION_UNRESOLVED_REFERENCE,
                 None,
@@ -2256,7 +2281,9 @@ fn validate_relocation_request(
                 "declare a byte range matching the supported reference format width",
             ));
         }
-        if source_len != 0 && reference.byte_range.end() > source_len {
+        if let Some(source_len) = source_len
+            && reference.byte_range.end() > source_len
+        {
             diagnostics.push(relocation_diagnostic(
                 STRING_RELOCATION_UNRESOLVED_REFERENCE,
                 Some(&reference.reference_id),
@@ -3354,6 +3381,72 @@ mod tests {
                 .relocation_diagnostics
                 .iter()
                 .any(|diagnostic| diagnostic.code == STRING_RELOCATION_OVERLAPPING_WRITES)
+        );
+    }
+
+    /// Regression: a genuinely EMPTY source (`sourceBytesHex == ""`) parses
+    /// to a zero-length byte vector, which previously gated OFF the slot
+    /// bounds check (`source_len != 0`). A positive-offset slot then slipped
+    /// through validation into `plan_string_table_rebuild`, where the gap
+    /// copy `source_bytes[gap_start..gap_end]` indexed the empty slice and
+    /// panicked (OOB). It must now fail with a typed bounds diagnostic
+    /// (`kaifuu-offset-map-empty-source-bypasses-bounds-then-oob-panic`).
+    #[test]
+    fn string_relocation_empty_source_with_positive_offset_slot_fails_typed_not_oob_panic() {
+        let (mut request, _) = typed_string_relocation_fixture("pointer_table");
+        // Slots in this fixture start at byte offset 16; an empty source can
+        // not contain them.
+        request.source_bytes_hex = String::new();
+
+        let report = plan_string_table_rebuild(&request);
+
+        assert_eq!(report.status, OperationStatus::Failed, "{report:?}");
+        assert!(report.output_bytes_hex.is_none());
+        assert!(
+            report
+                .relocation_diagnostics
+                .iter()
+                .any(
+                    |diagnostic| diagnostic.code == STRING_RELOCATION_UNRESOLVED_REFERENCE
+                        && diagnostic.message == "slot byte range exceeds source bytes"
+                ),
+            "expected a typed slot-bounds diagnostic, got {:?}",
+            report.relocation_diagnostics
+        );
+    }
+
+    /// Regression: a hex PARSE FAILURE must surface its own typed diagnostic
+    /// and must NOT collapse to `source_len = 0` (which would disable bounds
+    /// checks and risk the empty-source OOB path above). The parse-failure
+    /// case is kept distinct from a genuinely empty source.
+    #[test]
+    fn string_relocation_unparseable_source_fails_typed_distinct_from_empty() {
+        let (mut request, _) = typed_string_relocation_fixture("pointer_table");
+        // Odd-length, non-hex garbage: cannot parse as hex bytes.
+        request.source_bytes_hex = "zz".to_string();
+
+        let report = plan_string_table_rebuild(&request);
+
+        assert_eq!(report.status, OperationStatus::Failed, "{report:?}");
+        assert!(report.output_bytes_hex.is_none());
+        assert!(
+            report
+                .relocation_diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == STRING_RELOCATION_INVALID_SOURCE_BYTES),
+            "expected a typed invalid-source-bytes diagnostic, got {:?}",
+            report.relocation_diagnostics
+        );
+        // A parse failure must NOT be reported as an in-bounds-only success,
+        // and must NOT masquerade as a genuinely empty source (no spurious
+        // bounds bypass).
+        assert!(
+            report
+                .relocation_diagnostics
+                .iter()
+                .all(|diagnostic| diagnostic.message != "slot byte range exceeds source bytes"),
+            "parse failure must not also emit empty-source bounds diagnostics: {:?}",
+            report.relocation_diagnostics
         );
     }
 
