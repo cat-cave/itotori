@@ -6,29 +6,21 @@ use kaifuu_core::{
     AdapterRegistry, AssetInventoryManifest, AssetInventoryRequest, DetectionReport,
     DetectionResult, EncryptedMediaProofFixture, EncryptedMediaProofRequest, EngineAdapter,
     EvidenceStatus, ExtractRequest, GameProfile, GoldenByteEquivalenceMode, GoldenHarnessRequest,
-    HELPER_REGISTRY_SCHEMA_VERSION, HELPER_RESULT_SCHEMA_VERSION, HelperBinaryLaunchDiagnostic,
-    HelperBinaryLaunchValidationRequest, HelperBinaryLaunchValidationResult, HelperCapability,
-    HelperExecutionFilesystemAccess, HelperExecutionMode, HelperProcessCancelToken,
-    HelperProcessRunResult, HelperProcessRunWithOutput, HelperRedactionStatus, HelperRegistryEntry,
-    HelperRegistryInvocationRequest, HelperResult, KaifuuResult, LocalKeyImportRequest,
-    LocalKeyImportSource, LocalSecretDirectoryStore, PartialAdapterCommand,
-    PartialAdapterDiagnostic, PartialAdapterInventory, PartialAdapterReport,
-    PartialDiagnosticSeverity, PatchExport, PatchPreflightRequest, PatchRequest, PatchResult,
-    ProfileRequest, ProofHash, RegisteredBoundedHelperProcessRequest,
-    RpgMakerMvMzFixtureKeyValidationRequest, SEMANTIC_HELPER_AUTHORIZATION_DENIED,
-    SEMANTIC_HELPER_CANCELLED, SEMANTIC_HELPER_EXECUTION_DISALLOWED, SEMANTIC_HELPER_EXIT_FAILURE,
-    SEMANTIC_HELPER_IO_FAILURE, SEMANTIC_HELPER_OUTPUT_OVERFLOW, SEMANTIC_HELPER_TIMEOUT,
-    SEMANTIC_HELPER_UNAVAILABLE, SecretRef, SiglusParserBoundarySmokeRequest,
+    HelperBinaryLaunchValidationRequest, HelperCapability, HelperRedactionStatus,
+    HelperRegistryInvocationRequest, KaifuuResult, LocalKeyImportRequest, LocalKeyImportSource,
+    LocalSecretDirectoryStore, PartialAdapterCommand, PartialAdapterDiagnostic,
+    PartialAdapterInventory, PartialAdapterReport, PartialDiagnosticSeverity, PatchExport,
+    PatchPreflightRequest, PatchRequest, PatchResult, ProfileRequest, ProofHash,
+    RpgMakerMvMzFixtureKeyValidationRequest, SecretRef, SiglusParserBoundarySmokeRequest,
     SiglusParserBoundarySmokeVariant, VerifyRequest, Xp3CapabilityProfileFixture,
     Xp3CapabilityProfileRequest, Xp3ProfileProofFixture, Xp3ProfileProofRequest, atomic_write_text,
     encode_xp3, encrypted_media_proof, fixture_helper_registry, generate_xp3_capability_profile,
     normalize_helper_result_value, pack_plain_xp3_from_directory, parse_helper_capability,
     parse_hex_bytes, plain_xp3_writer_capability, promote_staged_directory_no_clobber, read_json,
     read_plain_xp3_archive, redact_for_log_or_report, redact_report_value,
-    replace_plain_xp3_entry_payload, run_plain_xp3_smoke_from_path,
-    run_registered_bounded_helper_process, run_registered_bounded_helper_process_with_output,
-    run_round_trip_golden, run_siglus_known_key_parser_boundary_smoke, sha256_hash_bytes,
-    stable_json, unpack_plain_xp3_to_directory, validate_helper_registry_entry_value,
+    replace_plain_xp3_entry_payload, run_plain_xp3_smoke_from_path, run_round_trip_golden,
+    run_siglus_known_key_parser_boundary_smoke, sha256_hash_bytes, stable_json,
+    unpack_plain_xp3_to_directory, validate_helper_registry_entry_value,
     validate_helper_result_value, validate_offset_map_value, validate_profile_value,
     validate_rpg_maker_mv_mz_fixture_key, write_json, xp3_profile_proof,
 };
@@ -1731,26 +1723,25 @@ fn run_helper_command(args: &[String]) -> Result<(), Box<dyn std::error::Error>>
     match positional(args, 1)? {
         "run" => run_helper_run_command(args),
         _ => Err(
-            "usage: kaifuu helper run --profile <fixture|registry-entry.json> --out <helper-result.json> [--input <request.json>] [--helper-binary <path> --allowlist-entry-id <id> --platform <platform> --helper-version <version> --capability <capability> --timeout-ms <ms>]"
+            "usage: kaifuu helper run --out <helper-result.json> [--input <request.json>] [--mode stub]"
                 .into(),
         ),
     }
 }
 
 fn run_helper_run_command(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
+    // Helper execution is in-process fixture/stub only. There is no external
+    // process launch path: the engine performs deterministic, in-process key
+    // discovery (see the Siglus StaticParser), so `helper run` never spawns an
+    // external binary.
     reject_helper_execution_config_flags(args)?;
-    let profile = flag(args, "--profile")?;
     let output = PathBuf::from(flag(args, "--out").or_else(|_| flag(args, "--output"))?);
-    if profile == "fixture"
-        || flag_present(args, "--stub")
-        || flag_optional(args, "--mode") == Some("stub")
-    {
-        return run_helper_run_fixture_stub(args, &output);
+    if flag_optional(args, "--mode").is_some_and(|mode| mode != "stub") {
+        return Err(
+            "helper run only supports the in-process --mode stub fixture path; external helper-process launch is not supported".into(),
+        );
     }
-    if flag_optional(args, "--mode").is_some_and(|mode| mode != "local") {
-        return Err("helper run --mode must be stub or local".into());
-    }
-    run_helper_run_local_process(args, Path::new(profile), &output)
+    run_helper_run_fixture_stub(args, &output)
 }
 
 fn run_helper_run_fixture_stub(
@@ -1810,99 +1801,6 @@ fn run_helper_run_fixture_stub(
     Ok(())
 }
 
-fn run_helper_run_local_process(
-    args: &[String],
-    profile: &Path,
-    output: &Path,
-) -> Result<(), Box<dyn std::error::Error>> {
-    reject_env_file_path(profile)?;
-    let helper_binary = PathBuf::from(flag(args, "--helper-binary")?);
-    reject_env_file_path(&helper_binary)?;
-    let allowlist_entry_id = flag(args, "--allowlist-entry-id")?;
-    let platform = flag(args, "--platform")?;
-    let helper_version = flag(args, "--helper-version")?;
-    let timeout_ms = parse_u32_flag(args, "--timeout-ms")?;
-    let required_capabilities = helper_run_requested_capabilities(args)?;
-    if required_capabilities.is_empty() {
-        return Err("helper run local mode requires at least one --capability".into());
-    }
-
-    let registry_value: serde_json::Value = read_json(profile)?;
-    let registry_validation = validate_helper_registry_entry_value(&registry_value);
-    if registry_validation.status == kaifuu_core::OperationStatus::Failed {
-        let registry_validation = registry_validation.redacted_for_report();
-        let result = helper_run_diagnostic_result(HelperRunDiagnosticContext {
-            args,
-            entry: None,
-            helper_id: &registry_validation
-                .helper_id
-                .clone()
-                .unwrap_or_else(|| "kaifuu.helper.unknown".to_string()),
-            helper_version,
-            platform,
-            timeout_ms,
-            diagnostic_code: "helper_authorization_denied",
-            message: "helper registry validation failed",
-            redacted_log_hash: "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
-            process: None,
-        })?;
-        atomic_write_text(output, &result.stable_json()?)?;
-        return Err(format!(
-            "{}: {}",
-            SEMANTIC_HELPER_AUTHORIZATION_DENIED,
-            registry_validation
-                .diagnostics
-                .iter()
-                .map(|diagnostic| diagnostic.code.as_str())
-                .collect::<Vec<_>>()
-                .join(", ")
-        )
-        .into());
-    }
-    let entry: HelperRegistryEntry = serde_json::from_value(registry_value)?;
-    let helper_id = flag_optional(args, "--helper-id")
-        .map(str::to_string)
-        .unwrap_or_else(|| entry.helper_id.clone());
-    let input_bytes = match flag_optional(args, "--input") {
-        Some(path) => {
-            let path = PathBuf::from(path);
-            reject_env_file_path(&path)?;
-            fs::read(path)?
-        }
-        None => Vec::new(),
-    };
-    let cancel_token = flag_optional(args, "--cancel-after-ms")
-        .map(helper_cancel_token_after_ms)
-        .transpose()?;
-
-    let process = run_registered_bounded_helper_process_with_output(
-        &entry,
-        RegisteredBoundedHelperProcessRequest {
-            helper_id: &helper_id,
-            allowlist_entry_id,
-            executable_path: &helper_binary,
-            platform,
-            helper_version,
-            required_capabilities: &required_capabilities,
-            timeout_ms,
-            stdin: &input_bytes,
-            cancel_token,
-        },
-    );
-
-    let result = if process.report.status == kaifuu_core::OperationStatus::Passed {
-        helper_run_result_from_process_stdout(args, &entry, &helper_id, &process)?
-    } else {
-        helper_run_result_from_process_failure(args, &entry, &helper_id, &process.report)?
-    };
-    let failed = result.diagnostic.code != kaifuu_core::HelperDiagnosticCode::Success;
-    atomic_write_text(output, &result.stable_json()?)?;
-    if failed {
-        return Err(result.diagnostic.code.semantic_code().into());
-    }
-    Ok(())
-}
-
 fn helper_run_requested_capabilities(
     args: &[String],
 ) -> Result<Vec<HelperCapability>, Box<dyn std::error::Error>> {
@@ -1913,253 +1811,6 @@ fn helper_run_requested_capabilities(
                 .ok_or_else(|| format!("unsupported helper capability {capability}").into())
         })
         .collect()
-}
-
-fn helper_run_result_from_process_stdout(
-    args: &[String],
-    entry: &HelperRegistryEntry,
-    helper_id: &str,
-    process: &HelperProcessRunWithOutput,
-) -> Result<HelperResult, Box<dyn std::error::Error>> {
-    let report = &process.report;
-    let value = match serde_json::from_slice::<serde_json::Value>(process.stdout.bytes()) {
-        Ok(value) => value,
-        Err(_) => {
-            return helper_run_diagnostic_result(HelperRunDiagnosticContext {
-                args,
-                entry: Some(entry),
-                helper_id,
-                helper_version: &entry.helper_version,
-                platform: &report.execution.platform,
-                timeout_ms: report.execution.timeout_ms,
-                diagnostic_code: "validation_failed",
-                message: "kaifuu.helper_malformed_output: helper stdout was not a valid redacted HelperResult JSON document",
-                redacted_log_hash: &helper_run_redacted_captured_hash(process.stdout.bytes()),
-                process: Some(report),
-            });
-        }
-    };
-    let mut result = match normalize_helper_result_value(&value) {
-        Ok(result) => result,
-        Err(_) => {
-            return helper_run_diagnostic_result(HelperRunDiagnosticContext {
-                args,
-                entry: Some(entry),
-                helper_id,
-                helper_version: &entry.helper_version,
-                platform: &report.execution.platform,
-                timeout_ms: report.execution.timeout_ms,
-                diagnostic_code: "validation_failed",
-                message: "kaifuu.helper_malformed_output: helper stdout failed the HelperResult contract",
-                redacted_log_hash: &helper_run_redacted_captured_hash(process.stdout.bytes()),
-                process: Some(report),
-            });
-        }
-    };
-    result.execution.filesystem_access = report.execution.filesystem_access;
-    result.execution.network_access = report.execution.network_access;
-    if result.helper.helper_id != entry.helper_id
-        || result.helper.helper_version != entry.helper_version
-    {
-        return helper_run_diagnostic_result(HelperRunDiagnosticContext {
-            args,
-            entry: Some(entry),
-            helper_id,
-            helper_version: &entry.helper_version,
-            platform: &report.execution.platform,
-            timeout_ms: report.execution.timeout_ms,
-            diagnostic_code: "helper_authorization_denied",
-            message: "helper output provenance did not match the selected hash-pinned profile",
-            redacted_log_hash: &helper_run_redacted_captured_hash(process.stdout.bytes()),
-            process: Some(report),
-        });
-    }
-    Ok(result)
-}
-
-fn helper_run_result_from_process_failure(
-    args: &[String],
-    entry: &HelperRegistryEntry,
-    helper_id: &str,
-    process: &HelperProcessRunResult,
-) -> Result<HelperResult, Box<dyn std::error::Error>> {
-    let diagnostic_code = helper_result_code_for_process_diagnostic(&process.diagnostic.code);
-    let redacted_log_hash = helper_run_redacted_log_hash(process);
-    helper_run_diagnostic_result(HelperRunDiagnosticContext {
-        args,
-        entry: Some(entry),
-        helper_id,
-        helper_version: &entry.helper_version,
-        platform: &process.execution.platform,
-        timeout_ms: process.execution.timeout_ms,
-        diagnostic_code,
-        message: &process.diagnostic.code,
-        redacted_log_hash: &redacted_log_hash,
-        process: Some(process),
-    })
-}
-
-fn helper_result_code_for_process_diagnostic(code: &str) -> &'static str {
-    match code {
-        SEMANTIC_HELPER_UNAVAILABLE => "helper_unavailable",
-        SEMANTIC_HELPER_TIMEOUT => "helper_timeout",
-        SEMANTIC_HELPER_CANCELLED
-        | SEMANTIC_HELPER_EXIT_FAILURE
-        | SEMANTIC_HELPER_IO_FAILURE
-        | SEMANTIC_HELPER_OUTPUT_OVERFLOW => "validation_failed",
-        _ => "helper_authorization_denied",
-    }
-}
-
-struct HelperRunDiagnosticContext<'a> {
-    args: &'a [String],
-    entry: Option<&'a HelperRegistryEntry>,
-    helper_id: &'a str,
-    helper_version: &'a str,
-    platform: &'a str,
-    timeout_ms: u32,
-    diagnostic_code: &'a str,
-    message: &'a str,
-    redacted_log_hash: &'a str,
-    process: Option<&'a HelperProcessRunResult>,
-}
-
-fn helper_run_diagnostic_result(
-    context: HelperRunDiagnosticContext<'_>,
-) -> Result<HelperResult, Box<dyn std::error::Error>> {
-    let fixture_id = helper_run_fixture_id(context.args);
-    let capability_level = flag_optional(context.args, "--capability-level").unwrap_or("wineLocal");
-    let helper_kind =
-        flag_optional(context.args, "--helper-kind").unwrap_or("wineLocalWindowsHelper");
-    let execution_mode = if helper_kind == "remoteWindowsHelper" {
-        "remoteHelper"
-    } else {
-        "platformHelper"
-    };
-    let network_access = context
-        .process
-        .map(|process| process.execution.network_access)
-        .or_else(|| {
-            context
-                .entry
-                .map(|entry| entry.execution_policy.network_access)
-        })
-        .unwrap_or(false);
-    let filesystem_access = context
-        .process
-        .map(|process| process.execution.filesystem_access)
-        .or_else(|| {
-            context.entry.map(|entry| {
-                helper_result_filesystem_access(entry.execution_policy.filesystem_access)
-            })
-        })
-        .unwrap_or(HelperExecutionFilesystemAccess::LocalGameReadOnly);
-    let duration_ms = context
-        .process
-        .and_then(|process| process.execution.duration_ms)
-        .unwrap_or(0)
-        .min(context.timeout_ms);
-    let value = serde_json::json!({
-        "schemaVersion": HELPER_RESULT_SCHEMA_VERSION,
-        "fixtureId": fixture_id,
-        "helperResultId": format!("helper-result-{fixture_id}"),
-        "profileId": helper_run_profile_id(context.args),
-        "helper": {
-            "helperId": context.helper_id,
-            "helperVersion": context.helper_version,
-            "helperKind": helper_kind
-        },
-        "capabilityLevel": capability_level,
-        "execution": {
-            "mode": execution_mode,
-            "platform": context.platform,
-            "bounded": true,
-            "timeoutMs": context.timeout_ms.max(1),
-            "durationMs": duration_ms,
-            "networkAccess": network_access,
-            "filesystemAccess": filesystem_access
-        },
-        "diagnostic": {
-            "code": context.diagnostic_code,
-            "message": context.message
-        },
-        "redaction": {
-            "status": "redacted",
-            "redactedLogHash": context.redacted_log_hash
-        },
-        "secretRefs": [],
-        "proofHashes": []
-    });
-    normalize_helper_result_value(&value).map_err(|validation| {
-        format!(
-            "generated helper diagnostic result failed validation: {}",
-            validation
-                .failures
-                .iter()
-                .map(|failure| format!("{}:{}", failure.field, failure.code))
-                .collect::<Vec<_>>()
-                .join(", ")
-        )
-        .into()
-    })
-}
-
-fn helper_result_filesystem_access(
-    access: kaifuu_core::HelperFilesystemAccess,
-) -> HelperExecutionFilesystemAccess {
-    match access {
-        kaifuu_core::HelperFilesystemAccess::None => HelperExecutionFilesystemAccess::None,
-        kaifuu_core::HelperFilesystemAccess::TempOnly => HelperExecutionFilesystemAccess::TempOnly,
-        kaifuu_core::HelperFilesystemAccess::ReadOnlyWorkspace => {
-            HelperExecutionFilesystemAccess::ReadOnlyWorkspace
-        }
-    }
-}
-
-fn helper_run_fixture_id(args: &[String]) -> String {
-    flag_optional(args, "--fixture-id")
-        .unwrap_or("kaifuu-helper-execution")
-        .to_string()
-}
-
-fn helper_run_profile_id(args: &[String]) -> String {
-    flag_optional(args, "--profile-id")
-        .or_else(|| flag_optional(args, "--engine-profile-id"))
-        .unwrap_or("019ed000-0000-7000-8000-helperprofile")
-        .to_string()
-}
-
-fn helper_run_redacted_log_hash(process: &HelperProcessRunResult) -> String {
-    let summary = serde_json::json!({
-        "diagnostic": process.diagnostic.code,
-        "stdout": process.stdout.redacted_sha256,
-        "stderr": process.stderr.redacted_sha256,
-        "timedOut": process.timed_out,
-        "cancelled": process.cancelled,
-        "terminated": process.terminated
-    });
-    sha256_hash_bytes(summary.to_string().as_bytes())
-}
-
-fn helper_run_redacted_captured_hash(bytes: &[u8]) -> String {
-    let text = String::from_utf8_lossy(bytes);
-    let redacted = redact_for_log_or_report(&text);
-    sha256_hash_bytes(redacted.as_bytes())
-}
-
-fn helper_cancel_token_after_ms(
-    value: &str,
-) -> Result<HelperProcessCancelToken, Box<dyn std::error::Error>> {
-    let delay_ms = value
-        .parse::<u64>()
-        .map_err(|_| format!("flag --cancel-after-ms must be an unsigned integer, got {value}"))?;
-    let token = HelperProcessCancelToken::new();
-    let cancel_token = token.clone();
-    std::thread::spawn(move || {
-        std::thread::sleep(std::time::Duration::from_millis(delay_ms));
-        cancel_token.cancel();
-    });
-    Ok(token)
 }
 
 fn reject_helper_execution_config_flags(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
@@ -2219,159 +1870,14 @@ fn run_key_helper_command(args: &[String]) -> Result<(), Box<dyn std::error::Err
                 }
             }
         }
-        "run-process" => {
-            let helper_binary = PathBuf::from(flag(args, "--helper-binary")?);
-            let timeout_ms = parse_u32_flag(args, "--timeout-ms")?;
-            let output = PathBuf::from(flag(args, "--output")?);
-            let registry_entry_path = PathBuf::from(flag(args, "--helper-registry-entry")?);
-            let allowlist_entry_id = flag(args, "--allowlist-entry-id")?;
-            let platform = flag(args, "--platform")?;
-            let helper_version = flag(args, "--helper-version")?;
-            let registry_value: serde_json::Value = read_json(&registry_entry_path)?;
-            let registry_validation = validate_helper_registry_entry_value(&registry_value);
-            if registry_validation.status == kaifuu_core::OperationStatus::Failed {
-                let registry_validation = registry_validation.redacted_for_report();
-                write_json(&output, &registry_validation)?;
-                return Err(format!(
-                    "helper registry validation failed for {}: {}",
-                    registry_validation
-                        .helper_id
-                        .as_deref()
-                        .unwrap_or("<unknown>"),
-                    registry_validation
-                        .diagnostics
-                        .iter()
-                        .map(|diagnostic| format!("{}:{}", diagnostic.field, diagnostic.code))
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                )
-                .into());
-            }
-            let entry: kaifuu_core::HelperRegistryEntry = serde_json::from_value(registry_value)?;
-            let helper_id = flag_optional(args, "--helper-id")
-                .map(str::to_string)
-                .unwrap_or_else(|| entry.helper_id.clone());
-            let required_capabilities = flag_values(args, "--capability")
-                .iter()
-                .map(|capability| {
-                    parse_helper_capability(capability)
-                        .ok_or_else(|| format!("unsupported helper capability {capability}").into())
-                })
-                .collect::<Result<Vec<_>, Box<dyn std::error::Error>>>()?;
-            if required_capabilities.is_empty() {
-                return Err("run-process requires at least one --capability".into());
-            }
-            if entry.execution_policy.mode != HelperExecutionMode::LocalProcess {
-                let policy_report = helper_execution_policy_requires_local_process_report(
-                    &helper_id,
-                    allowlist_entry_id,
-                    platform,
-                );
-                write_json(&output, &policy_report)?;
-                return Err(SEMANTIC_HELPER_EXECUTION_DISALLOWED.into());
-            }
-            let allowlist_validation = entry
-                .validate_binary_launch(HelperBinaryLaunchValidationRequest {
-                    helper_id: &helper_id,
-                    allowlist_entry_id,
-                    executable_path: &helper_binary,
-                    platform,
-                    helper_version,
-                    required_capabilities: &required_capabilities,
-                })
-                .redacted_for_report();
-            if allowlist_validation.status == kaifuu_core::OperationStatus::Failed {
-                write_json(&output, &allowlist_validation)?;
-                return Err(format!(
-                    "helper binary allowlist validation failed for {} / {}: {}",
-                    allowlist_validation.helper_id,
-                    allowlist_validation.allowlist_entry_id,
-                    allowlist_validation
-                        .diagnostics
-                        .iter()
-                        .map(|diagnostic| diagnostic.code.as_str())
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                )
-                .into());
-            }
-            let policy_timeout_ms = entry
-                .execution_policy
-                .max_runtime_seconds
-                .saturating_mul(1000);
-            let effective_timeout_ms = timeout_ms.min(policy_timeout_ms);
-            let stdin = flag_optional(args, "--stdin")
-                .map(fs::read)
-                .transpose()?
-                .unwrap_or_default();
-            let cancel_token = flag_optional(args, "--cancel-after-ms")
-                .map(|value| {
-                    let delay_ms = value.parse::<u64>().map_err(|_| {
-                        format!("flag --cancel-after-ms must be an unsigned integer, got {value}")
-                    })?;
-                    let token = HelperProcessCancelToken::new();
-                    let cancel_token = token.clone();
-                    std::thread::spawn(move || {
-                        std::thread::sleep(std::time::Duration::from_millis(delay_ms));
-                        cancel_token.cancel();
-                    });
-                    Ok::<_, Box<dyn std::error::Error>>(token)
-                })
-                .transpose()?;
-            let result = run_registered_bounded_helper_process(
-                &entry,
-                RegisteredBoundedHelperProcessRequest {
-                    helper_id: &helper_id,
-                    allowlist_entry_id,
-                    executable_path: &helper_binary,
-                    platform,
-                    helper_version,
-                    required_capabilities: &required_capabilities,
-                    timeout_ms: effective_timeout_ms,
-                    stdin: &stdin,
-                    cancel_token,
-                },
-            );
-            let failed = result.status == kaifuu_core::OperationStatus::Failed;
-            write_json(&output, &result)?;
-            if failed {
-                return Err(result.diagnostic.code.into());
-            }
-        }
         _ => {
             return Err(
-                "usage: kaifuu key-helper <validate --fixture <helper-result.json>|run-process --helper-registry-entry <entry.json> --helper-binary <path> --allowlist-entry-id <id> --platform <platform> --helper-version <version> --capability <capability> --timeout-ms <ms>> --output <report.json>"
+                "usage: kaifuu key-helper validate --fixture <helper-result.json> --output <report.json>"
                     .into(),
             );
         }
     }
     Ok(())
-}
-
-fn helper_execution_policy_requires_local_process_report(
-    helper_id: &str,
-    allowlist_entry_id: &str,
-    platform: &str,
-) -> HelperBinaryLaunchValidationResult {
-    HelperBinaryLaunchValidationResult {
-        schema_version: HELPER_REGISTRY_SCHEMA_VERSION.to_string(),
-        helper_id: redact_for_log_or_report(helper_id),
-        allowlist_entry_id: redact_for_log_or_report(allowlist_entry_id),
-        status: kaifuu_core::OperationStatus::Failed,
-        observed_hash: None,
-        platform: redact_for_log_or_report(platform),
-        diagnostics: vec![HelperBinaryLaunchDiagnostic {
-            helper_id: redact_for_log_or_report(helper_id),
-            allowlist_entry_id: redact_for_log_or_report(allowlist_entry_id),
-            code: SEMANTIC_HELPER_EXECUTION_DISALLOWED.to_string(),
-            field: "executionPolicy.mode".to_string(),
-            observed_hash: None,
-            platform: redact_for_log_or_report(platform),
-            remediation_code: "select_allowed_helper_policy".to_string(),
-            message: "helper registry execution policy must be local_process for process launch"
-                .to_string(),
-        }],
-    }
 }
 
 fn run_offset_map_command(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
@@ -3195,17 +2701,6 @@ fn required_reallive_metadata_flag<'a>(
     Ok(value)
 }
 
-fn parse_u32_flag(args: &[String], name: &str) -> Result<u32, Box<dyn std::error::Error>> {
-    let value = flag(args, name)?;
-    let parsed = value
-        .parse::<u32>()
-        .map_err(|_| format!("flag {name} must be an unsigned integer, got {value}"))?;
-    if parsed == 0 {
-        return Err(format!("flag {name} must be greater than zero").into());
-    }
-    Ok(parsed)
-}
-
 fn flag_optional<'a>(args: &'a [String], name: &str) -> Option<&'a str> {
     args.iter()
         .position(|arg| arg == name)
@@ -3270,114 +2765,6 @@ mod tests {
         dir
     }
 
-    #[cfg(unix)]
-    fn write_executable_stub(path: &Path, script: &str) {
-        use std::os::unix::fs::PermissionsExt;
-
-        fs::write(path, script).unwrap();
-        // fsync the file so its contents are flushed before chmod + exec.
-        // Without this, parallel tests under load can hit ETXTBSY when the
-        // kernel sees the file as still being written.
-        fs::File::open(path).unwrap().sync_all().unwrap();
-        let mut permissions = fs::metadata(path).unwrap().permissions();
-        permissions.set_mode(0o700);
-        fs::set_permissions(path, permissions).unwrap();
-    }
-
-    #[cfg(unix)]
-    fn write_process_helper_registry_entry(root: &Path, helper: &Path) -> PathBuf {
-        let registry_path = root.join("process-helper-registry.json");
-        let executable_name = helper.file_name().unwrap().to_str().unwrap();
-        let helper_hash = sha256_hash_bytes(&fs::read(helper).unwrap());
-        let registry_entry = serde_json::json!({
-            "schemaVersion": "0.1.0",
-            "helperId": "kaifuu.fixture.process-stub",
-            "helperVersion": "0.1.0",
-            "capabilities": ["fixture_invocation"],
-            "inputSchemaId": "kaifuu.helper.fixture-request.v0.1",
-            "outputSchemaId": "kaifuu.helper-result.v0.1",
-            "redactionClass": "public_fixture",
-            "executionPolicy": {
-                "policyId": "kaifuu-process-helper-stub-policy",
-                "mode": "local_process",
-                "allowlistRefId": kaifuu_core::FIXTURE_HELPER_ALLOWLIST_REF_ID,
-                "filesystemAccess": "none",
-                "networkAccess": false,
-                "maxRuntimeSeconds": 5
-            },
-            "binaryAllowlist": {
-                "entries": [
-                    {
-                        "allowlistEntryId": kaifuu_core::FIXTURE_HELPER_ALLOWLIST_REF_ID,
-                        "helperId": "kaifuu.fixture.process-stub",
-                        "platform": "fixture-any",
-                        "helperVersion": "0.1.0",
-                        "executableName": executable_name,
-                        "sha256Hash": helper_hash,
-                        "signature": {
-                            "signatureKind": "public-fixture-none",
-                            "signer": "kaifuu-public-fixtures",
-                            "signatureRef": "fixtures-public-no-signature"
-                        },
-                        "capabilities": ["fixture_invocation"]
-                    }
-                ]
-            }
-        });
-        fs::write(
-            &registry_path,
-            serde_json::to_string_pretty(&registry_entry).unwrap(),
-        )
-        .unwrap();
-        registry_path
-    }
-
-    #[cfg(unix)]
-    fn allowlisted_process_args(registry: &Path, helper: &Path) -> Vec<String> {
-        vec![
-            "--helper-id".to_string(),
-            "kaifuu.fixture.process-stub".to_string(),
-            "--helper-registry-entry".to_string(),
-            registry.to_str().unwrap().to_string(),
-            "--helper-binary".to_string(),
-            helper.to_str().unwrap().to_string(),
-            "--allowlist-entry-id".to_string(),
-            kaifuu_core::FIXTURE_HELPER_ALLOWLIST_REF_ID.to_string(),
-            "--platform".to_string(),
-            "fixture-any".to_string(),
-            "--helper-version".to_string(),
-            "0.1.0".to_string(),
-            "--capability".to_string(),
-            "fixture_invocation".to_string(),
-        ]
-    }
-
-    #[cfg(unix)]
-    fn allowlisted_helper_run_args(registry: &Path, helper: &Path, output: &Path) -> Vec<String> {
-        vec![
-            "helper".to_string(),
-            "run".to_string(),
-            "--profile".to_string(),
-            registry.to_str().unwrap().to_string(),
-            "--out".to_string(),
-            output.to_str().unwrap().to_string(),
-            "--helper-id".to_string(),
-            "kaifuu.fixture.process-stub".to_string(),
-            "--helper-binary".to_string(),
-            helper.to_str().unwrap().to_string(),
-            "--allowlist-entry-id".to_string(),
-            kaifuu_core::FIXTURE_HELPER_ALLOWLIST_REF_ID.to_string(),
-            "--platform".to_string(),
-            "fixture-any".to_string(),
-            "--helper-version".to_string(),
-            "0.1.0".to_string(),
-            "--capability".to_string(),
-            "fixture_invocation".to_string(),
-            "--timeout-ms".to_string(),
-            "1000".to_string(),
-        ]
-    }
-
     #[test]
     fn helper_run_fixture_stub_writes_helper_result() {
         let root = temp_dir("helper-run-fixture-stub");
@@ -3433,175 +2820,6 @@ mod tests {
         }
     }
 
-    #[cfg(unix)]
-    #[test]
-    fn helper_run_local_hash_mismatch_emits_denied_helper_result_before_launch() {
-        let root = temp_dir("helper-run-local-hash-mismatch");
-        let helper = root.join("helper-stub");
-        let output = root.join("helper-result.json");
-        let marker = root.join("launched-marker");
-        write_executable_stub(
-            &helper,
-            &format!(
-                r#"#!/bin/sh
-printf launched > '{}'
-"#,
-                marker.display()
-            ),
-        );
-        let registry = write_process_helper_registry_entry(&root, &helper);
-        write_executable_stub(
-            &helper,
-            r#"#!/bin/sh
-printf mutated
-"#,
-        );
-
-        let result = run_with_args(allowlisted_helper_run_args(&registry, &helper, &output));
-
-        assert!(result.is_err());
-        assert!(!marker.exists(), "helper launched despite hash mismatch");
-        let report: serde_json::Value = read_json(&output).unwrap();
-        assert_eq!(report["diagnostic"]["code"], "helper_authorization_denied");
-        assert_eq!(report["helper"]["helperId"], "kaifuu.fixture.process-stub");
-        assert!(report.get("stdout").is_none());
-        assert!(report.get("stderr").is_none());
-        let serialized = fs::read_to_string(&output).unwrap();
-        assert!(!serialized.contains(helper.to_str().unwrap()));
-        assert!(!serialized.contains(marker.to_str().unwrap()));
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn helper_run_local_malformed_stdout_emits_redacted_helper_result() {
-        let root = temp_dir("helper-run-local-malformed");
-        let helper = root.join("helper-stub");
-        let output = root.join("helper-result.json");
-        write_executable_stub(
-            &helper,
-            r#"#!/bin/sh
-printf 'not-json /home/dev/private-game 00112233445566778899aabbccddeeff'
-"#,
-        );
-        let registry = write_process_helper_registry_entry(&root, &helper);
-
-        let result = run_with_args(allowlisted_helper_run_args(&registry, &helper, &output));
-
-        assert!(result.is_err());
-        let report: serde_json::Value = read_json(&output).unwrap();
-        assert_eq!(report["diagnostic"]["code"], "validation_failed");
-        assert!(
-            report["diagnostic"]["message"]
-                .as_str()
-                .unwrap()
-                .contains("kaifuu.helper_malformed_output")
-        );
-        assert_eq!(report["redaction"]["status"], "redacted");
-        assert_eq!(report["execution"]["filesystemAccess"], "hostInherited");
-        assert!(report.get("stdout").is_none());
-        assert!(report.get("stderr").is_none());
-        let serialized = fs::read_to_string(&output).unwrap();
-        for forbidden in [
-            "/home/dev/private-game",
-            "00112233445566778899aabbccddeeff",
-            helper.to_str().unwrap(),
-        ] {
-            assert!(!serialized.contains(forbidden), "{forbidden} leaked");
-        }
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn helper_run_local_success_parses_full_stdout_before_summary_truncation() {
-        let root = temp_dir("helper-run-local-long-success");
-        let helper = root.join("helper-stub");
-        let output = root.join("helper-result.json");
-        let long_message = "fixture-helper-success ".repeat(80);
-        let helper_result = serde_json::json!({
-            "schemaVersion": "0.1.0",
-            "fixtureId": "kaifuu-helper-long-success",
-            "helperResultId": "helper-result-kaifuu-helper-long-success",
-            "profileId": "019ed000-0000-7000-8000-profile00086",
-            "helper": {
-                "helperId": "kaifuu.fixture.process-stub",
-                "helperVersion": "0.1.0",
-                "helperKind": "staticParser"
-            },
-            "capabilityLevel": "staticAnalysis",
-            "execution": {
-                "mode": "inProcess",
-                "platform": "fixture-static",
-                "bounded": true,
-                "timeoutMs": 1000,
-                "durationMs": 0,
-                "networkAccess": false,
-                "filesystemAccess": "none"
-            },
-            "diagnostic": {
-                "code": "success",
-                "message": long_message
-            },
-            "redaction": {
-                "status": "redacted",
-                "redactedLogHash": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
-            },
-            "secretRefs": [
-                {
-                    "requirementId": "fixture-long-success-key",
-                    "secretRef": "local-secret:fixture/helper/long-success-key",
-                    "materialKind": "fixedBytes",
-                    "bytes": 16,
-                    "validation": {
-                        "method": "fixtureRoundTripProof",
-                        "proofHash": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
-                    }
-                }
-            ],
-            "proofHashes": [
-                {
-                    "method": "fixtureRoundTripProof",
-                    "proofHash": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
-                }
-            ]
-        });
-        let helper_result_text = serde_json::to_string_pretty(&helper_result).unwrap();
-        assert!(
-            helper_result_text.len() > 1024,
-            "fixture must exceed HelperProcessOutputSummary.redactedText limit"
-        );
-        write_executable_stub(
-            &helper,
-            &format!(
-                r#"#!/bin/sh
-cat <<'JSON'
-{helper_result_text}
-JSON
-"#
-            ),
-        );
-        let registry = write_process_helper_registry_entry(&root, &helper);
-
-        run_with_args(allowlisted_helper_run_args(&registry, &helper, &output)).unwrap();
-
-        let report: serde_json::Value = read_json(&output).unwrap();
-        assert_eq!(report["diagnostic"]["code"], "success");
-        assert_eq!(
-            report["secretRefs"][0]["secretRef"],
-            "local-secret:fixture/helper/long-success-key"
-        );
-        assert_eq!(
-            report["proofHashes"][0]["proofHash"],
-            "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
-        );
-        assert_eq!(report["execution"]["filesystemAccess"], "hostInherited");
-        assert!(report.get("stdout").is_none());
-        assert!(report.get("stderr").is_none());
-        assert_eq!(
-            validate_helper_result_value(&report).status,
-            OperationStatus::Passed
-        );
-    }
-
     #[test]
     fn helper_run_rejects_arbitrary_command_flags() {
         let root = temp_dir("helper-run-command-rejected");
@@ -3620,6 +2838,60 @@ JSON
 
         let err = result.expect_err("arbitrary command flag must be rejected");
         assert!(err.to_string().contains("rejects arbitrary execution"));
+        assert!(!output.exists());
+    }
+
+    #[test]
+    fn helper_run_local_mode_is_unsupported_and_never_launches_a_process() {
+        // Regression guard for the deleted external helper-process launch path.
+        // `helper run` is in-process fixture/stub only; requesting any non-stub
+        // execution mode must fail with a structured error and never spawn.
+        let root = temp_dir("helper-run-local-removed");
+        let output = root.join("helper-result.json");
+
+        let result = run_with_args(vec![
+            "helper".to_string(),
+            "run".to_string(),
+            "--mode".to_string(),
+            "local".to_string(),
+            "--out".to_string(),
+            output.to_str().unwrap().to_string(),
+            "--helper-binary".to_string(),
+            "/bin/true".to_string(),
+        ]);
+
+        let err = result.expect_err("local helper-process launch must be unsupported");
+        assert!(
+            err.to_string()
+                .contains("external helper-process launch is not supported"),
+            "unexpected error: {err}"
+        );
+        assert!(!output.exists());
+    }
+
+    #[test]
+    fn key_helper_run_process_subcommand_is_removed() {
+        // Regression guard: the `kaifuu key-helper run-process` external-spawn
+        // subcommand has been deleted. Invoking it must fall through to usage,
+        // proving no compiled path reaches an external process launch.
+        let root = temp_dir("key-helper-run-process-removed");
+        let output = root.join("report.json");
+
+        let result = run_with_args(vec![
+            "key-helper".to_string(),
+            "run-process".to_string(),
+            "--helper-binary".to_string(),
+            "/bin/true".to_string(),
+            "--output".to_string(),
+            output.to_str().unwrap().to_string(),
+        ]);
+
+        let err = result.expect_err("run-process subcommand must be removed");
+        assert!(
+            err.to_string()
+                .contains("usage: kaifuu key-helper validate"),
+            "unexpected error: {err}"
+        );
         assert!(!output.exists());
     }
 
@@ -3905,411 +3177,6 @@ JSON
                 .any(|failure| failure["field"] == "helper"
                     && failure["code"] == "invalid_helper_semantics")
         );
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn key_helper_run_process_redacts_stdout_and_stderr() {
-        let root = temp_dir("key-helper-run-process-redaction");
-        let helper = root.join("helper-stub");
-        let output = root.join("process-report.json");
-        write_executable_stub(
-            &helper,
-            r#"#!/bin/sh
-printf 'public-ok 00112233445566778899aabbccddeeff /home/dev/private-game\n'
-printf 'stderr C:\Users\Dev\SecretGame\n' >&2
-"#,
-        );
-        let registry = write_process_helper_registry_entry(&root, &helper);
-
-        let mut args = vec!["key-helper".to_string(), "run-process".to_string()];
-        args.extend(allowlisted_process_args(&registry, &helper));
-        args.extend([
-            "--timeout-ms".to_string(),
-            "1000".to_string(),
-            "--output".to_string(),
-            output.to_str().unwrap().to_string(),
-        ]);
-        run_with_args(args).unwrap();
-
-        let report: serde_json::Value = read_json(&output).unwrap();
-        assert_eq!(report["status"], "passed");
-        assert_eq!(report["diagnostic"]["code"], "success");
-        assert_eq!(report["execution"]["bounded"], true);
-        assert_eq!(report["execution"]["networkAccess"], true);
-        assert_eq!(report["execution"]["filesystemAccess"], "hostInherited");
-        assert!(report["stdout"]["byteCount"].as_u64().unwrap() > 0);
-        assert_eq!(
-            report["stdout"]["redactedText"],
-            "[REDACTED:kaifuu.secret_redacted]"
-        );
-        assert_eq!(
-            report["stderr"]["redactedText"],
-            "[REDACTED:kaifuu.secret_redacted]"
-        );
-        let serialized = fs::read_to_string(&output).unwrap();
-        for forbidden in [
-            "00112233445566778899aabbccddeeff",
-            "/home/dev/private-game",
-            "C:\\Users\\Dev\\SecretGame",
-            helper.to_str().unwrap(),
-        ] {
-            assert!(!serialized.contains(forbidden), "{forbidden} leaked");
-        }
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn key_helper_run_process_rejects_hash_mismatch_before_launch() {
-        let root = temp_dir("key-helper-run-process-allowlist-hash");
-        let helper = root.join("helper-stub");
-        let marker = root.join("launched-marker");
-        let output = root.join("process-report.json");
-        write_executable_stub(
-            &helper,
-            &format!(
-                r#"#!/bin/sh
-printf launched > '{}'
-"#,
-                marker.display()
-            ),
-        );
-        let registry = write_process_helper_registry_entry(&root, &helper);
-        let mut registry_value: serde_json::Value = read_json(&registry).unwrap();
-        registry_value["binaryAllowlist"]["entries"][0]["sha256Hash"] = serde_json::json!(
-            "sha256:0000000000000000000000000000000000000000000000000000000000000000"
-        );
-        fs::write(
-            &registry,
-            serde_json::to_string_pretty(&registry_value).unwrap(),
-        )
-        .unwrap();
-
-        let mut args = vec!["key-helper".to_string(), "run-process".to_string()];
-        args.extend(allowlisted_process_args(&registry, &helper));
-        args.extend([
-            "--timeout-ms".to_string(),
-            "1000".to_string(),
-            "--output".to_string(),
-            output.to_str().unwrap().to_string(),
-        ]);
-        let result = run_with_args(args);
-
-        assert!(result.is_err());
-        assert!(!marker.exists(), "helper launched before allowlist gate");
-        let report: serde_json::Value = read_json(&output).unwrap();
-        assert_eq!(report["status"], "failed");
-        assert!(
-            report["diagnostics"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .any(|diagnostic| diagnostic["code"]
-                    == kaifuu_core::SEMANTIC_HELPER_ALLOWLIST_HASH_MISMATCH)
-        );
-        let serialized = fs::read_to_string(&output).unwrap();
-        assert!(!serialized.contains(marker.to_str().unwrap()));
-        assert!(!serialized.contains(helper.to_str().unwrap()));
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn key_helper_run_process_disallowed_policy_blocks_launch() {
-        let root = temp_dir("key-helper-run-process-disallowed-policy");
-        let helper = root.join("helper-stub");
-        let marker = root.join("launched-marker");
-        let output = root.join("process-report.json");
-        write_executable_stub(
-            &helper,
-            &format!(
-                r#"#!/bin/sh
-printf launched > '{}'
-"#,
-                marker.display()
-            ),
-        );
-        let registry = write_process_helper_registry_entry(&root, &helper);
-        let mut registry_value: serde_json::Value = read_json(&registry).unwrap();
-        registry_value["executionPolicy"]["mode"] = serde_json::json!("disallowed");
-        fs::write(
-            &registry,
-            serde_json::to_string_pretty(&registry_value).unwrap(),
-        )
-        .unwrap();
-
-        let mut args = vec!["key-helper".to_string(), "run-process".to_string()];
-        args.extend(allowlisted_process_args(&registry, &helper));
-        args.extend([
-            "--timeout-ms".to_string(),
-            "1000".to_string(),
-            "--output".to_string(),
-            output.to_str().unwrap().to_string(),
-        ]);
-        let result = run_with_args(args);
-
-        assert!(result.is_err());
-        assert!(
-            !marker.exists(),
-            "helper launched despite disallowed policy"
-        );
-        let report: serde_json::Value = read_json(&output).unwrap();
-        assert_eq!(report["status"], "failed");
-        assert_eq!(report["observedHash"], serde_json::Value::Null);
-        assert!(
-            report["diagnostics"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .any(|diagnostic| diagnostic["code"]
-                    == kaifuu_core::SEMANTIC_HELPER_EXECUTION_DISALLOWED
-                    && diagnostic["field"] == "executionPolicy.mode")
-        );
-        let serialized = fs::read_to_string(&output).unwrap();
-        assert!(!serialized.contains(marker.to_str().unwrap()));
-        assert!(!serialized.contains(helper.to_str().unwrap()));
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn key_helper_run_process_fixture_policy_blocks_before_allowlist() {
-        let root = temp_dir("key-helper-run-process-fixture-policy");
-        let helper = root.join("helper-stub");
-        let marker = root.join("launched-marker");
-        let output = root.join("process-report.json");
-        write_executable_stub(
-            &helper,
-            &format!(
-                r#"#!/bin/sh
-printf launched > '{}'
-"#,
-                marker.display()
-            ),
-        );
-        let registry = write_process_helper_registry_entry(&root, &helper);
-        let mut registry_value: serde_json::Value = read_json(&registry).unwrap();
-        registry_value["executionPolicy"]["mode"] = serde_json::json!("fixture_in_process");
-        registry_value["binaryAllowlist"]["entries"][0]["sha256Hash"] = serde_json::json!(
-            "sha256:0000000000000000000000000000000000000000000000000000000000000000"
-        );
-        fs::write(
-            &registry,
-            serde_json::to_string_pretty(&registry_value).unwrap(),
-        )
-        .unwrap();
-
-        let mut args = vec!["key-helper".to_string(), "run-process".to_string()];
-        args.extend(allowlisted_process_args(&registry, &helper));
-        args.extend([
-            "--timeout-ms".to_string(),
-            "1000".to_string(),
-            "--output".to_string(),
-            output.to_str().unwrap().to_string(),
-        ]);
-        let result = run_with_args(args);
-
-        assert!(result.is_err());
-        assert!(
-            !marker.exists(),
-            "helper launched despite fixture-in-process policy"
-        );
-        let report: serde_json::Value = read_json(&output).unwrap();
-        assert_eq!(report["status"], "failed");
-        assert_eq!(report["observedHash"], serde_json::Value::Null);
-        assert!(
-            report["diagnostics"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .any(|diagnostic| diagnostic["code"]
-                    == kaifuu_core::SEMANTIC_HELPER_EXECUTION_DISALLOWED
-                    && diagnostic["field"] == "executionPolicy.mode")
-        );
-        let serialized = fs::read_to_string(&output).unwrap();
-        assert!(!serialized.contains(marker.to_str().unwrap()));
-        assert!(!serialized.contains(helper.to_str().unwrap()));
-        assert!(!serialized.contains(kaifuu_core::SEMANTIC_HELPER_ALLOWLIST_HASH_MISMATCH));
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn key_helper_run_process_output_overflow_is_failure() {
-        let root = temp_dir("key-helper-run-process-output-overflow");
-        let helper = root.join("helper-stub");
-        let output = root.join("process-report.json");
-        write_executable_stub(
-            &helper,
-            r#"#!/bin/sh
-yes A | head -c 70000
-"#,
-        );
-        let registry = write_process_helper_registry_entry(&root, &helper);
-
-        let mut args = vec!["key-helper".to_string(), "run-process".to_string()];
-        args.extend(allowlisted_process_args(&registry, &helper));
-        args.extend([
-            "--timeout-ms".to_string(),
-            "1000".to_string(),
-            "--output".to_string(),
-            output.to_str().unwrap().to_string(),
-        ]);
-        let result = run_with_args(args);
-
-        assert!(result.is_err());
-        let report: serde_json::Value = read_json(&output).unwrap();
-        assert_eq!(report["status"], "failed");
-        assert_eq!(
-            report["diagnostic"]["code"],
-            kaifuu_core::SEMANTIC_HELPER_OUTPUT_OVERFLOW
-        );
-        assert_eq!(report["stdout"]["truncated"], true);
-        assert!(
-            report["stdout"]["byteCount"].as_u64().unwrap()
-                > report["stdout"]["capturedByteCount"].as_u64().unwrap()
-        );
-        let serialized = fs::read_to_string(&output).unwrap();
-        assert!(!serialized.contains(helper.to_str().unwrap()));
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn key_helper_run_process_registry_policy_bounds_timeout() {
-        let root = temp_dir("key-helper-run-process-policy-timeout");
-        let helper = root.join("helper-stub");
-        let output = root.join("process-report.json");
-        write_executable_stub(
-            &helper,
-            r#"#!/bin/sh
-sleep 2
-"#,
-        );
-        let registry = write_process_helper_registry_entry(&root, &helper);
-        let mut registry_value: serde_json::Value = read_json(&registry).unwrap();
-        registry_value["executionPolicy"]["maxRuntimeSeconds"] = serde_json::json!(1);
-        fs::write(
-            &registry,
-            serde_json::to_string_pretty(&registry_value).unwrap(),
-        )
-        .unwrap();
-
-        let mut args = vec!["key-helper".to_string(), "run-process".to_string()];
-        args.extend(allowlisted_process_args(&registry, &helper));
-        args.extend([
-            "--timeout-ms".to_string(),
-            "5000".to_string(),
-            "--output".to_string(),
-            output.to_str().unwrap().to_string(),
-        ]);
-        let result = run_with_args(args);
-
-        assert!(result.is_err());
-        let report: serde_json::Value = read_json(&output).unwrap();
-        assert_eq!(report["status"], "failed");
-        assert_eq!(
-            report["diagnostic"]["code"],
-            kaifuu_core::SEMANTIC_HELPER_TIMEOUT
-        );
-        assert_eq!(report["execution"]["timeoutMs"], 1000);
-        assert_eq!(report["timedOut"], true);
-        let serialized = fs::read_to_string(&output).unwrap();
-        assert!(!serialized.contains(helper.to_str().unwrap()));
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn key_helper_run_process_timeout_kills_process_group() {
-        let root = temp_dir("key-helper-run-process-timeout");
-        let helper = root.join("helper-stub");
-        let marker = root.join("leaked-marker");
-        let output = root.join("process-report.json");
-        write_executable_stub(
-            &helper,
-            &format!(
-                r#"#!/bin/sh
-(sleep 1; printf leaked > '{}') &
-wait
-"#,
-                marker.display()
-            ),
-        );
-        let registry = write_process_helper_registry_entry(&root, &helper);
-
-        let mut args = vec!["key-helper".to_string(), "run-process".to_string()];
-        args.extend(allowlisted_process_args(&registry, &helper));
-        args.extend([
-            "--timeout-ms".to_string(),
-            "50".to_string(),
-            "--output".to_string(),
-            output.to_str().unwrap().to_string(),
-        ]);
-        let result = run_with_args(args);
-
-        assert!(result.is_err());
-        std::thread::sleep(std::time::Duration::from_millis(1200));
-        assert!(
-            !marker.exists(),
-            "helper child process escaped timeout cleanup"
-        );
-        let report: serde_json::Value = read_json(&output).unwrap();
-        assert_eq!(report["status"], "failed");
-        assert_eq!(
-            report["diagnostic"]["code"],
-            kaifuu_core::SEMANTIC_HELPER_TIMEOUT
-        );
-        assert_eq!(report["timedOut"], true);
-        assert_eq!(report["terminated"], true);
-        let serialized = fs::read_to_string(&output).unwrap();
-        assert!(!serialized.contains(marker.to_str().unwrap()));
-        assert!(!serialized.contains(helper.to_str().unwrap()));
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn key_helper_run_process_cancel_kills_process_group() {
-        let root = temp_dir("key-helper-run-process-cancel");
-        let helper = root.join("helper-stub");
-        let marker = root.join("cancel-leaked-marker");
-        let output = root.join("process-report.json");
-        write_executable_stub(
-            &helper,
-            &format!(
-                r#"#!/bin/sh
-(sleep 1; printf leaked > '{}') &
-wait
-"#,
-                marker.display()
-            ),
-        );
-        let registry = write_process_helper_registry_entry(&root, &helper);
-
-        let mut args = vec!["key-helper".to_string(), "run-process".to_string()];
-        args.extend(allowlisted_process_args(&registry, &helper));
-        args.extend([
-            "--timeout-ms".to_string(),
-            "5000".to_string(),
-            "--cancel-after-ms".to_string(),
-            "50".to_string(),
-            "--output".to_string(),
-            output.to_str().unwrap().to_string(),
-        ]);
-        let result = run_with_args(args);
-
-        assert!(result.is_err());
-        std::thread::sleep(std::time::Duration::from_millis(1200));
-        assert!(
-            !marker.exists(),
-            "helper child process escaped cancel cleanup"
-        );
-        let report: serde_json::Value = read_json(&output).unwrap();
-        assert_eq!(report["status"], "failed");
-        assert_eq!(
-            report["diagnostic"]["code"],
-            kaifuu_core::SEMANTIC_HELPER_CANCELLED
-        );
-        assert_eq!(report["cancelled"], true);
-        assert_eq!(report["terminated"], true);
-        let serialized = fs::read_to_string(&output).unwrap();
-        assert!(!serialized.contains(marker.to_str().unwrap()));
-        assert!(!serialized.contains(helper.to_str().unwrap()));
     }
 
     #[test]

@@ -72,7 +72,7 @@
         },
         "mode": {
           "type": "string",
-          "enum": ["fixture_in_process", "local_process", "disallowed"]
+          "enum": ["fixture_in_process", "disallowed"]
         },
         "allowlistRefId": {
           "type": "string",

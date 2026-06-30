@@ -10,7 +10,7 @@
   },
   "capabilityLevel": "staticAnalysis",
   "execution": {
-    "mode": "localProcess",
+    "mode": "inProcess",
     "platform": "fixture-static",
     "bounded": true,
     "timeoutMs": 1000,

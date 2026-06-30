@@ -84,7 +84,7 @@
       "properties": {
         "mode": {
           "type": "string",
-          "enum": ["notExecuted", "inProcess", "localProcess", "platformHelper", "remoteHelper"]
+          "enum": ["notExecuted", "inProcess", "platformHelper", "remoteHelper"]
         },
         "platform": {
           "type": "string",
