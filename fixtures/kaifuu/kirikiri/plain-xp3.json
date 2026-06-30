@@ -1,0 +1,57 @@
+{
+  "schemaVersion": "0.1.0",
+  "fixtureId": "kaifuu-kirikiri-plain-xp3-smoke",
+  "sourceNodeId": "KAIFUU-071",
+  "engineFamily": "kiri_kiri_xp3",
+  "archive": {
+    "archiveId": "kirikiri-xp3-plain-smoke-archive",
+    "path": "plain.xp3"
+  },
+  "expected": {
+    "archiveHash": "sha256:fb642b2532ebaa678517505c3173ea06ed5ccadd6658b2d2e92ea408a0196faa",
+    "memberCount": 3,
+    "compressedMemberCount": 1,
+    "members": [
+      {
+        "memberId": "scenario/intro.ks",
+        "originalSize": 17,
+        "archiveSize": 17,
+        "compressed": false,
+        "segmentCount": 1,
+        "payloadHash": "sha256:f164e8ef8b67ac82b499cc324187087d7a6084af0f02ff61f18b1ed3b9ccac52",
+        "storedAdler32": "adler32:11112222"
+      },
+      {
+        "memberId": "scenario/compressed.ks",
+        "originalSize": 26,
+        "archiveSize": 26,
+        "compressed": true,
+        "segmentCount": 1,
+        "payloadHash": "sha256:5b41c75e638a736f6a7923be30ee1f32fbcf1b29fd1f055dd41b4d26677d0833",
+        "storedAdler32": "adler32:33334444"
+      },
+      {
+        "memberId": "image/title.png",
+        "originalSize": 18,
+        "archiveSize": 18,
+        "compressed": false,
+        "segmentCount": 1,
+        "payloadHash": "sha256:c699921500a49b5063116df5f7b3d4e672cbe9f2da5c2906f63d4400a30cb284",
+        "storedAdler32": "adler32:55556666"
+      }
+    ]
+  },
+  "negatives": [
+    {
+      "caseId": "malformed-table",
+      "path": "negative/plain-xp3-malformed-table.xp3",
+      "failureKind": "malformed_table"
+    },
+    {
+      "caseId": "unsupported-member-flags",
+      "path": "negative/plain-xp3-unsupported-member-flags.xp3",
+      "failureKind": "unsupported_member_flags",
+      "expectedMemberId": "scenario/flagged.ks"
+    }
+  ]
+}

@@ -73,3 +73,27 @@ claiming extract or patch-back:
 | `xp3-missing-crypt-profile.json`     | `xp3.crypt_profile.missing` (P0)        |
 | `xp3-unknown-encryption-plugin.json` | `xp3.crypt_profile.unknown_plugin` (P0) |
 | `xp3-leaked-archive-path.json`       | `xp3.archive_path.leaked` (P0)          |
+
+## Plain XP3 read/write smoke (KAIFUU-071)
+
+`plain-xp3.json` is the fixture consumed by `kaifuu xp3 plain-smoke --fixture
+fixtures/kaifuu/kirikiri/plain-xp3.json --out artifacts/kaifuu/plain-xp3-smoke.json`.
+It points at the shared `plain.xp3` archive (file table, one compressed member,
+directory-style member ids, and a non-text `image/title.png` asset) and declares
+the expected member ids, sizes, compression state, per-member payload hashes,
+and counts. The command inventories the archive through
+`read_plain_xp3_inventory` and deterministically rebuilds it through
+`read_plain_xp3_archive` + `encode_xp3` (the shared reader/writer path), proving
+a **byte-identical** rebuild (or a documented manifest-equivalence fallback).
+The report carries member hashes, member table offsets, compression state, and
+the output hash — counts/hashes/in-archive member ids only, never archive bytes
+or local paths. It needs no encryption key and no private corpus.
+
+The two negative archives are deterministic, synthetic plain-XP3 byte strings
+(reproduced byte-for-byte by the `kaifuu-core` `plain_xp3_smoke` regression
+tests). Each must fail **before any rebuild byte** is produced:
+
+| Negative fixture (under `negative/`)        | Failure kind               | Cites                                  |
+| ------------------------------------------- | -------------------------- | -------------------------------------- |
+| `plain-xp3-malformed-table.xp3`             | `malformed_table`          | `kaifuu.plain_xp3_smoke.malformed_table` (overrun file-table index) |
+| `plain-xp3-unsupported-member-flags.xp3`    | `unsupported_member_flags` | member id `scenario/flagged.ks` (segment flag `0x4` outside the supported set) |

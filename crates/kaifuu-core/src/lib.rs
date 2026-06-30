@@ -165,6 +165,7 @@ pub mod contracts;
 pub mod mv_mz_readiness;
 mod offset_map;
 pub mod patch_transaction;
+pub mod plain_xp3_smoke;
 pub mod registry;
 pub mod siglus_static_key;
 pub mod xp3_capability_profile;
@@ -203,6 +204,19 @@ pub use patch_transaction::{
     DiagnosticSeverity, PatchTransaction, PatchTransactionConfig, PatchTransactionError,
     PatchTransactionOutcome, PreflightCheck, PreflightReport, StagedPatchPayload,
     TransactionDiagnostic, TransactionFailureCategory, TransactionState,
+};
+
+pub use plain_xp3_smoke::{
+    PLAIN_XP3_SMOKE_SCHEMA_VERSION, PLAIN_XP3_SMOKE_SUPPORT_BOUNDARY,
+    PLAIN_XP3_SMOKE_SUPPORTED_SEGMENT_FLAGS, PlainXp3SmokeArchiveRef, PlainXp3SmokeArchiveReport,
+    PlainXp3SmokeEquivalence, PlainXp3SmokeExpectation, PlainXp3SmokeExpectedMember,
+    PlainXp3SmokeFinding, PlainXp3SmokeFixture, PlainXp3SmokeMemberReport,
+    PlainXp3SmokeNegativeFixture, PlainXp3SmokeNegativeKind, PlainXp3SmokeNegativeReport,
+    PlainXp3SmokeRebuildReport, PlainXp3SmokeReport, PlainXp3SmokeRequest,
+    SEMANTIC_SMOKE_EXPECTATION_MISMATCH, SEMANTIC_SMOKE_MALFORMED_TABLE,
+    SEMANTIC_SMOKE_NEGATIVE_DID_NOT_FAIL, SEMANTIC_SMOKE_REBUILD_DRIFT,
+    SEMANTIC_SMOKE_UNREADABLE_ARCHIVE, SEMANTIC_SMOKE_UNSUPPORTED_MEMBER_FLAGS,
+    generate_plain_xp3_smoke, run_plain_xp3_smoke_from_path,
 };
 
 pub use offset_map::{

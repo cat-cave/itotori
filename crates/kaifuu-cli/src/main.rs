@@ -25,10 +25,10 @@ use kaifuu_core::{
     normalize_helper_result_value, pack_plain_xp3_from_directory, parse_helper_capability,
     parse_hex_bytes, plain_xp3_writer_capability, promote_staged_directory_no_clobber, read_json,
     read_plain_xp3_archive, redact_for_log_or_report, redact_report_value,
-    replace_plain_xp3_entry_payload, run_registered_bounded_helper_process,
-    run_registered_bounded_helper_process_with_output, run_round_trip_golden,
-    run_siglus_known_key_parser_boundary_smoke, sha256_hash_bytes, stable_json,
-    unpack_plain_xp3_to_directory, validate_helper_registry_entry_value,
+    replace_plain_xp3_entry_payload, run_plain_xp3_smoke_from_path,
+    run_registered_bounded_helper_process, run_registered_bounded_helper_process_with_output,
+    run_round_trip_golden, run_siglus_known_key_parser_boundary_smoke, sha256_hash_bytes,
+    stable_json, unpack_plain_xp3_to_directory, validate_helper_registry_entry_value,
     validate_helper_result_value, validate_offset_map_value, validate_profile_value,
     validate_rpg_maker_mv_mz_fixture_key, write_json, xp3_profile_proof,
 };
@@ -1265,12 +1265,15 @@ fn run_xp3_command(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
         "capability-profile" => {
             return run_xp3_capability_profile(args);
         }
+        "plain-smoke" => {
+            return run_xp3_plain_smoke(args);
+        }
         "contract-scaffold" => {
             return run_xp3_contract_scaffold(args);
         }
         _ => {
             return Err(
-                "usage: kaifuu xp3 <profile-proof|capability-profile|unpack|pack|replace|verify|writer-capability|contract-scaffold> ..."
+                "usage: kaifuu xp3 <profile-proof|capability-profile|plain-smoke|unpack|pack|replace|verify|writer-capability|contract-scaffold> ..."
                     .into(),
             );
         }
@@ -1329,6 +1332,61 @@ fn run_xp3_capability_profile(args: &[String]) -> Result<(), Box<dyn std::error:
             .collect::<Vec<_>>()
             .join("; ");
         return Err(format!("XP3 capability profile validation failed: {failures}").into());
+    }
+    Ok(())
+}
+
+/// KAIFUU-071 — `kaifuu xp3 plain-smoke --fixture <descriptor> --out
+/// <report.json>`.
+///
+/// Inventories a public plain-XP3 archive and deterministically rebuilds it
+/// through the SHARED reader/writer path
+/// ([`kaifuu_core::read_plain_xp3_inventory`] for member hashes,
+/// [`kaifuu_core::read_plain_xp3_archive`] + [`kaifuu_core::encode_xp3`] for the
+/// rebuild), then proves byte-identity (or a documented manifest equivalence).
+/// Malformed-table and unsupported-member-flags negatives must fail BEFORE any
+/// rebuild byte and cite in-archive member ids — never raw local paths. The
+/// redacted report is written to `--out` and the command exits non-zero, listing
+/// each blocking finding code, when any positive check or negative case fails.
+/// Requires no encryption key and no private corpus.
+fn run_xp3_plain_smoke(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
+    let fixture_path = PathBuf::from(flag(args, "--fixture")?);
+    let report = run_plain_xp3_smoke_from_path(&fixture_path)?;
+    let redacted = report.redacted_for_report();
+    let json = redacted.stable_json()?;
+    // `--out` is the command-contract flag; accept `--output` as an alias.
+    match flag_optional(args, "--out").or_else(|| flag_optional(args, "--output")) {
+        Some(output) => atomic_write_text(&PathBuf::from(output), &json)?,
+        None => println!("{json}"),
+    }
+
+    // Surface a compact summary to stdout for CI logs (counts / hashes only).
+    println!(
+        "kaifuu xp3 plain-smoke: status={:?} members={} compressed={} rebuild={} outputHash={} negatives={}",
+        redacted.status,
+        redacted.archive.member_count,
+        redacted.archive.compressed_member_count,
+        redacted.rebuild.equivalence.as_str(),
+        redacted.rebuild.output_hash.as_str(),
+        redacted.negatives.len(),
+    );
+
+    if redacted.status == kaifuu_core::OperationStatus::Failed {
+        let mut codes: Vec<String> = redacted
+            .findings
+            .iter()
+            .filter(|finding| finding.severity.is_blocking())
+            .map(|finding| match &finding.member_id {
+                Some(member_id) => format!("{}@{}", finding.code, member_id),
+                None => finding.code.clone(),
+            })
+            .collect();
+        for negative in &redacted.negatives {
+            if negative.status == kaifuu_core::OperationStatus::Failed {
+                codes.push(format!("negative:{}", negative.case_id));
+            }
+        }
+        return Err(format!("plain XP3 smoke failed: {}", codes.join(", ")).into());
     }
     Ok(())
 }
@@ -9482,6 +9540,49 @@ wait
         let serialized = fs::read_to_string(&output).unwrap();
         assert!(!serialized.contains("/home/"));
         assert!(!serialized.contains("C:\\"));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn xp3_plain_smoke_command_passes_and_writes_report() {
+        // KAIFUU-071: inventory + deterministic rebuild through the shared
+        // reader/writer path; negatives fail before writes citing member ids.
+        let root = temp_dir("xp3-plain-smoke");
+        let output = root.join("plain-xp3-smoke.json");
+        run_cli(&[
+            "xp3",
+            "plain-smoke",
+            "--fixture",
+            kirikiri_fixture_path("plain-xp3.json").to_str().unwrap(),
+            "--out",
+            output.to_str().unwrap(),
+        ]);
+        let report: serde_json::Value = read_json(&output).unwrap();
+        assert_eq!(report["status"], "passed");
+        assert_eq!(report["archive"]["memberCount"], 3);
+        assert_eq!(report["archive"]["compressedMemberCount"], 1);
+        assert_eq!(report["rebuild"]["equivalence"], "byte_identical");
+        assert_eq!(report["rebuild"]["byteIdentical"], true);
+        assert_eq!(
+            report["rebuild"]["outputHash"],
+            report["rebuild"]["sourceHash"]
+        );
+        let negatives = report["negatives"].as_array().unwrap();
+        assert_eq!(negatives.len(), 2);
+        for negative in negatives {
+            assert_eq!(negative["status"], "passed");
+            assert_eq!(negative["failedBeforeWrite"], true);
+        }
+        let flagged = negatives
+            .iter()
+            .find(|negative| negative["failureKind"] == "unsupported_member_flags")
+            .unwrap();
+        assert_eq!(flagged["memberId"], "scenario/flagged.ks");
+        // No local path leaks into the redacted report.
+        let serialized = fs::read_to_string(&output).unwrap();
+        assert!(!serialized.contains("/home/"));
+        assert!(!serialized.contains("/scratch/"));
+        assert!(!serialized.contains(".xp3"));
         let _ = fs::remove_dir_all(root);
     }
 
