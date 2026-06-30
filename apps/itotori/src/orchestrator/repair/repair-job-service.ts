@@ -74,7 +74,8 @@ export class RepairJobServiceError extends Error {
       | "below_minimum_severity"
       | "scene_scope_requires_scene_index"
       | "not_in_flight"
-      | "unknown_job_id",
+      | "unknown_job_id"
+      | "unknown_parent_job_id",
     message: string,
   ) {
     super(message);
@@ -106,6 +107,13 @@ export class RepairJobService {
   private readonly history: RepairEvent[] = [];
   private readonly inflight = new Set<string>();
   private readonly completed = new Map<string, RepairJobOutcome>();
+  /**
+   * Every jobId this service has ever minted, retained across the job's
+   * whole lifecycle (queued → in-flight → completed → dropped). A
+   * `parentJobId` is validated against this set so the repair chain can
+   * never dangle past a job the service actually saw.
+   */
+  private readonly knownJobIds = new Set<string>();
   private jobCounter = 0;
 
   constructor(options: RepairJobServiceOptions = {}) {
@@ -118,11 +126,13 @@ export class RepairJobService {
    * Convert a trigger into a queued `RepairJob`. Returns the job so
    * callers can join the record to the originating finding without
    * scanning the queue. Throws on missing pair / below-severity /
-   * empty-scope inputs — every refusal carries a typed code.
+   * empty-scope / dangling-parent inputs — every refusal carries a
+   * typed code.
    */
   enqueue(input: EnqueueRepairJobInput): RepairJob {
     assertPair(input.pair);
     assertSeverity(input.trigger.severity, this.minimumSeverity);
+    this.assertKnownParent(input.parentJobId);
 
     const selection =
       input.trigger.trigger === "human_decision" && input.trigger.scope.kind === "scene"
@@ -144,6 +154,7 @@ export class RepairJobService {
       priority: priorityFromSeverity(input.trigger.severity),
       rationale: rationaleFor(input.trigger),
     };
+    this.knownJobIds.add(jobId);
     this.queue.push(job);
     // Stable priority sort: lower numeric priority first; ties broken by
     // enqueue time so older jobs drain first.
@@ -234,6 +245,26 @@ export class RepairJobService {
    */
   outcomeOf(jobId: string): RepairJobOutcome | undefined {
     return this.completed.get(jobId);
+  }
+
+  /**
+   * Reject a `parentJobId` that points at a job this service never
+   * minted. Accepting it verbatim would dangle the repair chain the
+   * dashboard reconstructs from `parentJobId` (types.ts), so a typo'd
+   * or stale id surfaces a typed `unknown_parent_job_id` error rather
+   * than silently breaking provenance — matching `drop()` /
+   * `recordOutcome`'s convention for unknown ids.
+   */
+  private assertKnownParent(parentJobId: string | undefined): void {
+    if (parentJobId === undefined) {
+      return;
+    }
+    if (!this.knownJobIds.has(parentJobId)) {
+      throw new RepairJobServiceError(
+        "unknown_parent_job_id",
+        `enqueue refused: parentJobId='${parentJobId}' does not reference a job this service ever minted`,
+      );
+    }
   }
 
   private requireSceneIndexAndSelect(

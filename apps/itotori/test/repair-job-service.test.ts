@@ -596,4 +596,28 @@ describe("ITOTORI-038 fixture repair loop", () => {
     expect(followup.parentJobId).toBe(first.jobId);
     expect(followup.severity).toBe("p0");
   });
+
+  it("rejects a parentJobId that references no job this service ever minted", () => {
+    const service = makeService();
+    let caught: unknown;
+    try {
+      service.enqueue({
+        trigger: qaTrigger({ findingId: "round-2", severity: "p0" }),
+        pair: PAIR,
+        // A typo'd / stale parent id: nothing was enqueued before this
+        // call, so the chain would dangle if accepted verbatim.
+        parentJobId: "repair-job-typo",
+      });
+    } catch (err) {
+      caught = err;
+    }
+    // The dangling parent must be observable — never silently copied
+    // onto the job where it breaks repair-tree provenance.
+    expect(caught).toBeInstanceOf(RepairJobServiceError);
+    expect((caught as RepairJobServiceError).code).toBe("unknown_parent_job_id");
+    // No job was queued and no history event was recorded for the
+    // refused enqueue.
+    expect(service.pending()).toEqual([]);
+    expect(service.repairHistory()).toEqual([]);
+  });
 });
