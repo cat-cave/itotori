@@ -80,6 +80,36 @@ export type TelemetrySummaryCliOutput = TelemetrySummaryByPair & {
   readonly postRunEvidence: TelemetrySummaryPostRunEvidence;
 };
 
+/**
+ * Assemble the final `TelemetrySummaryCliOutput` from already-aggregated
+ * per-pair rows. The DB-backed CLI path and the provider-run-artifact
+ * path (UTSUSHI-231) both funnel through here so the output shape — the
+ * metadata envelope + `postRunEvidence` — is produced in exactly ONE
+ * place regardless of where the rows were sourced.
+ */
+export function assembleTelemetrySummaryOutput(input: {
+  readonly projectId: string;
+  readonly from: Date;
+  readonly to: Date;
+  readonly generatedAt: Date;
+  readonly summary: TelemetrySummaryByPair;
+  readonly zdrRows: ReadonlyArray<TelemetryZdrEnforcedRow>;
+  readonly costKindRows: ReadonlyArray<TelemetryCostKindRow>;
+}): TelemetrySummaryCliOutput {
+  return {
+    metadata: {
+      projectId: input.projectId,
+      window: {
+        from: input.from.toISOString(),
+        to: input.to.toISOString(),
+      },
+      generatedAt: input.generatedAt.toISOString(),
+    },
+    ...input.summary,
+    postRunEvidence: buildPostRunEvidence(input.zdrRows, input.costKindRows),
+  };
+}
+
 export async function runTelemetrySummaryCli(
   args: TelemetrySummaryCliArgs,
   deps: TelemetrySummaryCliDeps,
@@ -100,18 +130,15 @@ export async function runTelemetrySummaryCli(
       to: args.to,
     }),
   ]);
-  const output: TelemetrySummaryCliOutput = {
-    metadata: {
-      projectId: args.projectId,
-      window: {
-        from: args.from.toISOString(),
-        to: args.to.toISOString(),
-      },
-      generatedAt: new Date().toISOString(),
-    },
-    ...summary,
-    postRunEvidence: buildPostRunEvidence(zdrRows, costKindRows),
-  };
+  const output = assembleTelemetrySummaryOutput({
+    projectId: args.projectId,
+    from: args.from,
+    to: args.to,
+    generatedAt: new Date(),
+    summary,
+    zdrRows,
+    costKindRows,
+  });
 
   deps.writeJson(args.outputPath, output);
 
@@ -208,7 +235,7 @@ export function renderTextSummary(
   return lines;
 }
 
-function buildPostRunEvidence(
+export function buildPostRunEvidence(
   zdrRows: ReadonlyArray<TelemetryZdrEnforcedRow>,
   costKindRows: ReadonlyArray<TelemetryCostKindRow>,
 ): TelemetrySummaryPostRunEvidence {
@@ -296,6 +323,48 @@ export function parseTelemetrySummaryCliFlags(args: ReadonlyArray<string>): {
     throw new Error(`--from (${fromRaw}) must not be after --to (${toRaw})`);
   }
   return { projectId, from, to, outputPath, groupByDay, format: formatRaw };
+}
+
+/**
+ * UTSUSHI-231 — flags for the provider-run-artifact telemetry source.
+ * Distinct from {@link parseTelemetrySummaryCliFlags} (the DB path):
+ * `--from`/`--to` are OPTIONAL because the window is derived from the
+ * artifacts' own timestamps when omitted. `--provider-runs-dir` selects
+ * this source.
+ */
+export function parseTelemetrySummaryProviderRunFlags(args: ReadonlyArray<string>): {
+  projectId: string;
+  providerRunsDir: string;
+  outputPath: string;
+  from?: Date;
+  to?: Date;
+  format: "json" | "text";
+} {
+  const projectId = requireFlag(args, "--project");
+  const providerRunsDir = requireFlag(args, "--provider-runs-dir");
+  const outputPath = requireFlag(args, "--output");
+  const fromRaw = optionalFlag(args, "--from");
+  const toRaw = optionalFlag(args, "--to");
+  const formatRaw = optionalFlag(args, "--format") ?? "json";
+  if (formatRaw !== "json" && formatRaw !== "text") {
+    throw new Error(`unknown --format value: ${formatRaw} (expected json or text)`);
+  }
+  const from = fromRaw === undefined ? undefined : parseIsoDate(fromRaw, "--from");
+  const to = toRaw === undefined ? undefined : parseIsoDate(toRaw, "--to");
+  if (from !== undefined && to !== undefined && from.getTime() > to.getTime()) {
+    throw new Error(`--from (${String(fromRaw)}) must not be after --to (${String(toRaw)})`);
+  }
+  const out: {
+    projectId: string;
+    providerRunsDir: string;
+    outputPath: string;
+    from?: Date;
+    to?: Date;
+    format: "json" | "text";
+  } = { projectId, providerRunsDir, outputPath, format: formatRaw };
+  if (from !== undefined) out.from = from;
+  if (to !== undefined) out.to = to;
+  return out;
 }
 
 function requireFlag(args: ReadonlyArray<string>, name: string): string {

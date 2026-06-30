@@ -24,6 +24,11 @@ import type {
 import { LedgerTelemetryQuery, TelemetryQueryError } from "../src/telemetry/queries-impl.js";
 import { renderTextSummary, runTelemetrySummaryCli } from "../src/telemetry/cli.js";
 import {
+  aggregateProviderRunArtifacts,
+  buildTelemetrySummaryFromProviderRunArtifacts,
+} from "../src/telemetry/provider-run-artifact-source.js";
+import type { ProviderRunArtifact } from "../src/providers/types.js";
+import {
   TELEMETRY_UNKNOWN_MODEL_SENTINEL,
   buildPairKey,
   type TelemetryPairKey,
@@ -915,6 +920,201 @@ describe("telemetry CLI renderTextSummary — ITOTORI-233", () => {
     expect((written as { metadata: { generatedAt: string } }).metadata.generatedAt).toMatch(
       /^\d{4}-\d{2}-\d{2}T/u,
     );
+  });
+});
+
+describe("provider-run-artifact telemetry source (UTSUSHI-231)", () => {
+  // The localize-project stage is DB-free: it writes per-invocation
+  // `provider-run.json` artifacts (not ledger rows). These tests prove
+  // the artifact source re-derives the same per-pair telemetry shape the
+  // DB path produces, keyed by the PINNED (requestedModelId,
+  // requestedProviderId) pair, with cost/tokens/ZDR/costKind sourced
+  // verbatim from the served response captured in the artifact.
+
+  const ART_MODEL = "deepseek/deepseek-v4-flash";
+  const ART_PROVIDER = "fireworks";
+
+  function providerRunArtifact(overrides: {
+    runId: string;
+    startedAt: string;
+    completedAt: string;
+    amountUsd: string;
+    amountMicrosUsd: number;
+    promptTokens?: number;
+    completionTokens?: number;
+    latencyMs?: number;
+    zdr?: boolean;
+    costKind?: "billed" | "zero";
+    cacheReadTokens?: number;
+    cacheDiscountMicrosUsd?: number;
+    // Served pair differs from the pinned pair by casing/versioning —
+    // proving the key uses the REQUESTED pair, not the served strings.
+    actualModelId?: string;
+    upstreamProvider?: string;
+  }): ProviderRunArtifact {
+    return {
+      schemaVersion: "itotori.provider-run.v0",
+      run: {
+        runId: overrides.runId,
+        taskKind: "draft_translation",
+        startedAt: overrides.startedAt,
+        completedAt: overrides.completedAt,
+        latencyMs: overrides.latencyMs ?? 100,
+        status: "succeeded",
+        provider: {
+          providerFamily: "openrouter",
+          endpointFamily: "openrouter-chat-completions",
+          providerName: "OpenRouter",
+          requestedModelId: ART_MODEL,
+          requestedProviderId: ART_PROVIDER,
+          actualModelId: overrides.actualModelId ?? ART_MODEL,
+          ...(overrides.upstreamProvider === undefined
+            ? {}
+            : { upstreamProvider: overrides.upstreamProvider }),
+        },
+        structuredOutputMode: "none",
+        retryCount: 0,
+        errorClasses: [],
+        fallbackUsed: false,
+        fallbackPlan: [ART_MODEL],
+        tokenUsage: {
+          tokenCountSource: "provider_reported",
+          promptTokens: overrides.promptTokens ?? 10,
+          completionTokens: overrides.completionTokens ?? 5,
+          totalTokens: (overrides.promptTokens ?? 10) + (overrides.completionTokens ?? 5),
+          ...(overrides.cacheReadTokens === undefined
+            ? {}
+            : { cacheReadTokens: overrides.cacheReadTokens }),
+        },
+        cost: {
+          costKind: overrides.costKind ?? "billed",
+          currency: "USD",
+          amountUsd: overrides.amountUsd,
+          amountMicrosUsd: overrides.amountMicrosUsd,
+          ...(overrides.cacheDiscountMicrosUsd === undefined
+            ? {}
+            : { cacheDiscountMicrosUsd: overrides.cacheDiscountMicrosUsd }),
+        },
+        routingPosture: {
+          order: [ART_PROVIDER],
+          allow_fallbacks: true,
+          data_collection: "deny",
+          zdr: overrides.zdr ?? true,
+          require_parameters: true,
+        },
+        usageResponseJson: { cost: Number(overrides.amountUsd) },
+        prompt: {
+          presetId: "itotori-agentic-loop-translation-primary",
+          templateVersion: "itotori-agentic-loop-translation-v0",
+          promptHash: "sha256:test",
+        },
+      },
+      request: {
+        messageCount: 2,
+        inputClassification: "private_corpus",
+        requestedModelId: ART_MODEL,
+        structuredOutputMode: "none",
+        toolCount: 0,
+        rawTextCaptured: false,
+        prompt: {
+          presetId: "itotori-agentic-loop-translation-primary",
+          templateVersion: "itotori-agentic-loop-translation-v0",
+          promptHash: "sha256:test",
+        },
+      },
+    } as ProviderRunArtifact;
+  }
+
+  it("aggregates real billed cost + tokens per PINNED pair (served strings ignored for the key)", () => {
+    const artifacts = [
+      providerRunArtifact({
+        runId: "run-1",
+        startedAt: "2026-06-27T12:00:00.000Z",
+        completedAt: "2026-06-27T12:00:01.000Z",
+        amountUsd: "0.00000602",
+        amountMicrosUsd: 6,
+        promptTokens: 100,
+        completionTokens: 50,
+        latencyMs: 200,
+        // Served provider/model differ by casing + version date — the
+        // key must still collapse to the pinned (flash, fireworks).
+        actualModelId: "deepseek/deepseek-v4-flash-20260423",
+        upstreamProvider: "Fireworks",
+      }),
+      providerRunArtifact({
+        runId: "run-2",
+        startedAt: "2026-06-27T12:00:02.000Z",
+        completedAt: "2026-06-27T12:00:03.000Z",
+        amountUsd: "0.00000400",
+        amountMicrosUsd: 4,
+        promptTokens: 20,
+        completionTokens: 10,
+        latencyMs: 100,
+      }),
+    ];
+    const { summary, zdrRows, costKindRows } = aggregateProviderRunArtifacts(artifacts);
+    const pair = buildPairKey(ART_MODEL, ART_PROVIDER);
+
+    expect(Object.keys(summary.byPair)).toEqual([pair]);
+    const row = summary.byPair[pair]!;
+    expect(row.invocationCount).toBe(2);
+    // Real billed cost = 0.00000602 + 0.00000400 = 0.00001002 (NOT the
+    // micros-rounded 6+4=10 → 0.00001000; the sub-micro tail survives).
+    expect(row.totalCostUsd).toBe("0.00001002");
+    expect(row.totalTokensIn).toBe(120);
+    expect(row.totalTokensOut).toBe(60);
+    expect(summary.totalCostUsd).toBe("0.00001002");
+
+    expect(zdrRows).toEqual([{ pair, invocationCount: 2, zdrEnforcedCount: 2 }]);
+    expect(costKindRows).toEqual([
+      { pair, costKind: "billed", invocationCount: 2, amountMicrosUsd: 10 },
+    ]);
+  });
+
+  it("surfaces verbatim cache savings + hit counts (never derived)", () => {
+    const artifacts = [
+      providerRunArtifact({
+        runId: "run-cache",
+        startedAt: "2026-06-27T12:00:00.000Z",
+        completedAt: "2026-06-27T12:00:01.000Z",
+        amountUsd: "0.00000500",
+        amountMicrosUsd: 5,
+        cacheReadTokens: 50,
+        cacheDiscountMicrosUsd: 3,
+      }),
+    ];
+    const { summary } = aggregateProviderRunArtifacts(artifacts);
+    const pair = buildPairKey(ART_MODEL, ART_PROVIDER);
+    expect(summary.byPair[pair]!.cacheHitCount).toBe(1);
+    expect(summary.byPair[pair]!.cacheSavingsUsd).toBe("0.00000300");
+    expect(summary.cacheSavingsUsd).toBe("0.00000300");
+  });
+
+  it("builds a CLI output whose window covers the artifacts and byPair is non-empty", () => {
+    const artifacts = [
+      providerRunArtifact({
+        runId: "run-1",
+        startedAt: "2026-06-27T12:00:00.000Z",
+        completedAt: "2026-06-27T12:00:05.000Z",
+        amountUsd: "0.00000100",
+        amountMicrosUsd: 1,
+      }),
+    ];
+    const output = buildTelemetrySummaryFromProviderRunArtifacts({
+      projectId: "sweetie-hd-alpha-1",
+      artifacts,
+      now: () => new Date("2026-06-27T13:00:00.000Z"),
+    });
+    const pair = buildPairKey(ART_MODEL, ART_PROVIDER);
+    expect(output.metadata.projectId).toBe("sweetie-hd-alpha-1");
+    expect(output.metadata.window.from).toBe("2026-06-27T12:00:00.000Z");
+    expect(output.metadata.window.to).toBe("2026-06-27T12:00:05.000Z");
+    expect(Object.keys(output.byPair)).toEqual([pair]);
+    expect(output.postRunEvidence.zdr.allInvocationsZdrEnforced).toBe(true);
+    expect(output.postRunEvidence.costKind.allInvocationsBilled).toBe(true);
+    expect(output.postRunEvidence.zdr.rows).toEqual([
+      { pair, invocationCount: 1, zdrEnforcedCount: 1 },
+    ]);
   });
 });
 

@@ -61,9 +61,15 @@ import {
 import { runExportPatchV2Command } from "./patch-export/index.js";
 import {
   parseTelemetrySummaryCliFlags,
+  parseTelemetrySummaryProviderRunFlags,
+  renderTextSummary,
   runTelemetrySummaryCli,
   type TelemetrySummaryCliDeps,
 } from "./telemetry/cli.js";
+import {
+  buildTelemetrySummaryFromProviderRunArtifacts,
+  readProviderRunArtifactsFromDir,
+} from "./telemetry/provider-run-artifact-source.js";
 import type { TelemetryQuery } from "./telemetry/queries.js";
 import { runReviewQueueFixtureCommand } from "./reviewer/review-queue-fixture-command.js";
 import { scanCatalogLocalRoot } from "./services/catalog-local-scan.js";
@@ -246,6 +252,42 @@ async function runTelemetrySummaryHandler(
   args: string[],
   dependencies: ItotoriCliDependencies,
 ): Promise<void> {
+  // UTSUSHI-231 — when `--provider-runs-dir` is supplied, source the
+  // summary from the per-run `provider-run.json` artifacts the
+  // localize-project stage writes (the DB-free path) instead of the
+  // draft-attempt provider ledger. The byPair, ZDR, and billed-cost
+  // evidence come verbatim from the real served responses captured in
+  // those artifacts — no DB, no withServices.
+  if (args.includes("--provider-runs-dir")) {
+    const flags = parseTelemetrySummaryProviderRunFlags(args);
+    const artifacts = readProviderRunArtifactsFromDir(flags.providerRunsDir);
+    if (artifacts.length === 0) {
+      throw new Error(
+        `telemetry-summary refused: no provider-run.json artifacts found under ${flags.providerRunsDir}`,
+      );
+    }
+    const output = buildTelemetrySummaryFromProviderRunArtifacts({
+      projectId: flags.projectId,
+      artifacts,
+      ...(flags.from === undefined ? {} : { from: flags.from }),
+      ...(flags.to === undefined ? {} : { to: flags.to }),
+    });
+    dependencies.io.writeJson(flags.outputPath, output);
+    if (flags.format === "text") {
+      for (const line of renderTextSummary(
+        output,
+        {
+          projectId: output.metadata.projectId,
+          from: new Date(output.metadata.window.from),
+          to: new Date(output.metadata.window.to),
+        },
+        output.postRunEvidence,
+      )) {
+        process.stdout.write(`${line}\n`);
+      }
+    }
+    return;
+  }
   const flags = parseTelemetrySummaryCliFlags(args);
   await dependencies.withServices(async (services) => {
     if (services.telemetry === undefined) {
