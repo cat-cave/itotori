@@ -24,7 +24,7 @@ contract in `docs/itotori-vault-source-adapter.md` and the plan in
   complete (a silently-skipped codec folder is surfaced as a typed
   `ExtractionFailed`, never a partial tree).
 - Reads the embedded by-id `_vault/metadata.json` (the vault-curation
-  *canonical* document) under the `<canonical_id>/` wrapper and cross-checks
+  _canonical_ document) under the `<canonical_id>/` wrapper and cross-checks
   its identity (`canonical_id`, work `identifiers`) against the catalog,
   surfacing softer disagreements (languages, engine) as `CrossCheckFinding`
   records (never writes to `catalog.db`).
@@ -61,14 +61,14 @@ in-test via `sevenz-rust2`'s `ArchiveWriter`, each wrapped under a
 placed at `artifacts/by-id/<canonical_id>/<canonical_id>.7z`. Fixture
 archives:
 
-| id                     | description                                              |
-| ---------------------- | -------------------------------------------------------- |
-| `good_primary`         | primary archive with valid `_vault/metadata.json`        |
-| `subpath_winmac`       | one archive with `Win/` and `Mac/` subtrees              |
-| `good_patch`           | `role=patch` archive bound to the same release           |
-| `embedded_id_mismatch` | embedded work identifiers disjoint from the catalog      |
-| `path_traversal`       | archive containing `../escape.txt`                       |
-| `missing_metadata`     | archive without `_vault/metadata.json`                   |
+| id                     | description                                         |
+| ---------------------- | --------------------------------------------------- |
+| `good_primary`         | primary archive with valid `_vault/metadata.json`   |
+| `subpath_winmac`       | one archive with `Win/` and `Mac/` subtrees         |
+| `good_patch`           | `role=patch` archive bound to the same release      |
+| `embedded_id_mismatch` | embedded work identifiers disjoint from the catalog |
+| `path_traversal`       | archive containing `../escape.txt`                  |
+| `missing_metadata`     | archive without `_vault/metadata.json`              |
 
 The live by-id resolution proof against the real read-only `/archive/vault`
 is `tests/live_vault_by_id_test.rs` (`#[ignore]`, run with
@@ -125,20 +125,20 @@ significant adapter-read changes are the widened `release_languages`
 primary key and the by-id linkage (`artifacts.release_id` direct column
 plus the `artifacts.canonical_id` / `vault_path` by-id store keys):
 
-| Table / view (columns the adapter reads)                                                                 | v1 → v3 status                                                                                                                                                                                                                                        |
-| -------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `schema_version` (`version`)                                                                             | unchanged                                                                                                                                                                                                                                             |
-| `works` (`id`, `canonical_title`)                                                                        | unchanged (other columns added, not read)                                                                                                                                                                                                             |
-| `work_titles` (`work_id`, `lang`, `title`)                                                               | unchanged                                                                                                                                                                                                                                             |
-| `producers` / `producer_identifiers` (`producer_id`, `source`, `kind`, `value`)                          | unchanged                                                                                                                                                                                                                                             |
-| `work_producers` (`work_id`, `producer_id`)                                                              | unchanged                                                                                                                                                                                                                                             |
-| `identifiers` (`work_id`, `source`, `kind`, `value`)                                                     | unchanged                                                                                                                                                                                                                                             |
-| `releases` (`id`, `work_id`, `edition_name`, `release_date`, `store`)                                    | read columns unchanged; v3 adds ~17 new columns (incl. `engine`, `version`, `dl_count`, …) the adapter does not read                                                                                                                                  |
-| `release_platforms` (`release_id`, `platform`)                                                           | unchanged (PK still `(release_id, platform)`)                                                                                                                                                                                                         |
-| `release_languages` (`release_id`, `language_code`)                                                      | **PK widened** from `(release_id, language_code)` to include `kind` and `source`; v3 adds `kind`, `is_mtl`, `evidence_path`, `source`. A `(release_id, language_code)` pair can now span multiple rows, so the language query uses `SELECT DISTINCT`. |
-| `artifacts` (`id`, `release_id`, `canonical_id`, `vault_path`, `original_sha256`, `artifact_kind`, `canonical_sha256`) | by-id resolution reads `canonical_id` (stable id / by-id store key), `vault_path` (cross-checked), `release_id` (direct artifact→release link), plus `original_sha256` / `canonical_sha256` as informational provenance only (never verified). |
-| `release_artifacts` (`release_id`, `artifact_id`, `role`, `subpath`)                                     | unchanged; consulted (union'd with `artifacts.release_id`) for supplementary roles                                                                                                                                                                  |
-| `facts` (`entity_type`, `entity_id`, `field`, `value`) + views `v_current_facts`, `v_facts_needs_review` | unchanged                                                                                                                                                                                                                                             |
+| Table / view (columns the adapter reads)                                                                               | v1 → v3 status                                                                                                                                                                                                                                        |
+| ---------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `schema_version` (`version`)                                                                                           | unchanged                                                                                                                                                                                                                                             |
+| `works` (`id`, `canonical_title`)                                                                                      | unchanged (other columns added, not read)                                                                                                                                                                                                             |
+| `work_titles` (`work_id`, `lang`, `title`)                                                                             | unchanged                                                                                                                                                                                                                                             |
+| `producers` / `producer_identifiers` (`producer_id`, `source`, `kind`, `value`)                                        | unchanged                                                                                                                                                                                                                                             |
+| `work_producers` (`work_id`, `producer_id`)                                                                            | unchanged                                                                                                                                                                                                                                             |
+| `identifiers` (`work_id`, `source`, `kind`, `value`)                                                                   | unchanged                                                                                                                                                                                                                                             |
+| `releases` (`id`, `work_id`, `edition_name`, `release_date`, `store`)                                                  | read columns unchanged; v3 adds ~17 new columns (incl. `engine`, `version`, `dl_count`, …) the adapter does not read                                                                                                                                  |
+| `release_platforms` (`release_id`, `platform`)                                                                         | unchanged (PK still `(release_id, platform)`)                                                                                                                                                                                                         |
+| `release_languages` (`release_id`, `language_code`)                                                                    | **PK widened** from `(release_id, language_code)` to include `kind` and `source`; v3 adds `kind`, `is_mtl`, `evidence_path`, `source`. A `(release_id, language_code)` pair can now span multiple rows, so the language query uses `SELECT DISTINCT`. |
+| `artifacts` (`id`, `release_id`, `canonical_id`, `vault_path`, `original_sha256`, `artifact_kind`, `canonical_sha256`) | by-id resolution reads `canonical_id` (stable id / by-id store key), `vault_path` (cross-checked), `release_id` (direct artifact→release link), plus `original_sha256` / `canonical_sha256` as informational provenance only (never verified).        |
+| `release_artifacts` (`release_id`, `artifact_id`, `role`, `subpath`)                                                   | unchanged; consulted (union'd with `artifacts.release_id`) for supplementary roles                                                                                                                                                                    |
+| `facts` (`entity_type`, `entity_id`, `field`, `value`) + views `v_current_facts`, `v_facts_needs_review`               | unchanged                                                                                                                                                                                                                                             |
 
 ## Local validation commands
 

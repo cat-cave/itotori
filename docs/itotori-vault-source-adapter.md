@@ -119,7 +119,7 @@ The adapter selects artifacts by `role`:
 
 ### By-id resolution (identity, not content hash)
 
-The on-disk path is the content-addressed *by-id* store, reconstructed from
+The on-disk path is the content-addressed _by-id_ store, reconstructed from
 the stable `artifacts.canonical_id`:
 
 ```
@@ -165,7 +165,7 @@ canonical scratch layout is:
 ```
 
 The by-id archive wraps its contents under a top-level `<canonical_id>/`
-directory. The adapter exposes that wrapper as the *tree root* — the path
+directory. The adapter exposes that wrapper as the _tree root_ — the path
 engine adapters point at — and reads `_vault/metadata.json` and any `subpath`
 relative to it.
 
@@ -208,7 +208,7 @@ after extraction.
 ## Cross-checking via Embedded Metadata
 
 Every by-id artifact carries `_vault/metadata.json` under its
-`<canonical_id>/` wrapper. This is the vault-curation *canonical* document —
+`<canonical_id>/` wrapper. This is the vault-curation _canonical_ document —
 top-level `canonical_id`, `identifiers[]` (`{source, kind, value}`), `engine`,
 `work`, `release`, `languages`, ... — produced by the stage-2 repack. (It is
 NOT the legacy "Vault Embedded Artifact Metadata v1.0" `releases[]` /
@@ -316,20 +316,20 @@ Linux defaults above are conveniences, not requirements.
 Every failure is a typed semantic error. The adapter never falls back
 silently to a degraded mode.
 
-| Error                      | Trigger                                                                             |
-| -------------------------- | ----------------------------------------------------------------------------------- |
-| `VaultRootMissing`         | Configured vault root does not exist or is not a directory.                         |
-| `VaultRootIncomplete`      | Vault root exists but lacks `catalog.db` or `artifacts/by-id/`.                     |
-| `CatalogOpenFailed`        | `catalog.db` exists but cannot be opened read-only.                                 |
-| `CatalogSchemaUnsupported` | `schema_version.version` is missing or not a version this adapter knows.            |
-| `ReleaseNotResolved`       | Discovery returned zero releases, or a resolved row has no/invalid `canonical_id` or a non-by-id `vault_path`. |
-| `ArtifactMissing`          | The `by-id` path for the resolved `canonical_id` does not exist (or is not a file). |
+| Error                      | Trigger                                                                                                                                 |
+| -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `VaultRootMissing`         | Configured vault root does not exist or is not a directory.                                                                             |
+| `VaultRootIncomplete`      | Vault root exists but lacks `catalog.db` or `artifacts/by-id/`.                                                                         |
+| `CatalogOpenFailed`        | `catalog.db` exists but cannot be opened read-only.                                                                                     |
+| `CatalogSchemaUnsupported` | `schema_version.version` is missing or not a version this adapter knows.                                                                |
+| `ReleaseNotResolved`       | Discovery returned zero releases, or a resolved row has no/invalid `canonical_id` or a non-by-id `vault_path`.                          |
+| `ArtifactMissing`          | The `by-id` path for the resolved `canonical_id` does not exist (or is not a file).                                                     |
 | `ExtractionFailed`         | Decoder error, truncated archive, decompression error, or an incomplete extraction (a codec folder the decoder could not fully decode). |
-| `ExtractionUnsafePath`     | Archive entry rejected for path traversal or symlink escape.                        |
-| `EmbeddedMetadataMissing`  | Extraction completed but `_vault/metadata.json` is absent.                          |
-| `EmbeddedMetadataInvalid`  | `_vault/metadata.json` fails schema validation.                                     |
-| `CatalogEmbeddedMismatch`  | Cross-check disagreement exceeds the configured tolerance (default: work identity). |
-| `ScratchUnwritable`        | Resolved scratch root cannot be created or written.                                 |
+| `ExtractionUnsafePath`     | Archive entry rejected for path traversal or symlink escape.                                                                            |
+| `EmbeddedMetadataMissing`  | Extraction completed but `_vault/metadata.json` is absent.                                                                              |
+| `EmbeddedMetadataInvalid`  | `_vault/metadata.json` fails schema validation.                                                                                         |
+| `CatalogEmbeddedMismatch`  | Cross-check disagreement exceeds the configured tolerance (default: work identity).                                                     |
+| `ScratchUnwritable`        | Resolved scratch root cannot be created or written.                                                                                     |
 
 Each error carries enough context (paths, hashes, ids, schema version, the
 specific cross-check field) for an operator or downstream agent to act
