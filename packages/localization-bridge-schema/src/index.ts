@@ -10,6 +10,7 @@ export * from "./patch-export-bundle.js";
 export * from "./agentic-loop-bundle.js";
 export * from "./pair-policy.v0.3.js";
 export * from "./provider-proof-bundle.js";
+export * from "./raw-mtl-baseline-proof.js";
 
 export type Uuid7 = string;
 export type Bcp47Locale = string;

@@ -203,6 +203,14 @@ provider-proof: build
     mkdir -p .tmp/provider-proof
     node apps/itotori/dist/cli.js provider-proof --output .tmp/provider-proof/recorded-proof-bundle.json
 
+# ITOTORI-117: deliberately-naive raw-MTL degenerate baseline proof, run
+# through the SAME ITOTORI-116 provider-proof path (recorded default; --live
+# opts in to a bounded real ZDR call). Emits systemKind raw_mtl_baseline.
+raw-mtl-baseline-proof: build
+    rm -rf .tmp/raw-mtl-baseline-proof
+    mkdir -p .tmp/raw-mtl-baseline-proof
+    node apps/itotori/dist/cli.js raw-mtl-baseline-proof --output .tmp/raw-mtl-baseline-proof/recorded-baseline-artifact.json
+
 # UTSUSHI-220: alpha-defining e2e Sweetie HD scene-1 text-replay smoke.
 # Runs the synthetic replay_scene acceptance tests through `cargo test`
 # (no real bytes required) so a fresh-clone reviewer can verify the

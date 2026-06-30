@@ -1,0 +1,165 @@
+{
+  "schemaVersion": "itotori.provider-proof-fixture.v0",
+  "fixtureId": "raw-mtl-baseline-recorded-v0",
+  "sourceLocale": "ja-JP",
+  "targetLocale": "en-US",
+  "bridgeUnitId": "019ed064-0000-7000-8000-0000000000aa",
+  "seededDefects": [
+    {
+      "seededDefectId": "seed-tone-001",
+      "bridgeUnitId": "019ed064-0000-7000-8000-0000000000b1",
+      "category": "tone",
+      "severity": "minor"
+    },
+    {
+      "seededDefectId": "seed-mistranslation-001",
+      "bridgeUnitId": "019ed064-0000-7000-8000-0000000000b2",
+      "category": "mistranslation",
+      "severity": "major"
+    }
+  ],
+  "roles": {
+    "draft": {
+      "attempts": [
+        {
+          "content": "{\"schemaVersion\":\"itotori.structured-translation-draft-output.v1\",\"drafts\":[{\"bridgeUnitId\":\"019ed064-0000-7000-8000-0000000000aa\",\"sourceLocale\":\"ja-JP\",\"targetLocale\":\"en-US\",\"draftText\":\"hello traveler the gate is open now\",\"protectedSpanRefs\":[],\"citationRefs\":[],\"agentRationale\":\"raw machine-translation baseline: literal word-for-word render, no glossary or stylistic adaptation\",\"confidenceFloor\":\"low\"}]}",
+          "providerRun": {
+            "runId": "pp-rawmtl-draft-attempt-0",
+            "taskKind": "draft_translation",
+            "startedAt": "1970-01-01T00:00:00.000Z",
+            "completedAt": "1970-01-01T00:00:00.000Z",
+            "latencyMs": 0,
+            "status": "succeeded",
+            "provider": {
+              "providerFamily": "openrouter",
+              "endpointFamily": "chat-completions",
+              "providerName": "openrouter",
+              "requestedModelId": "deepseek/deepseek-v4-flash",
+              "actualModelId": "deepseek/deepseek-v4-flash",
+              "requestedProviderId": "fireworks",
+              "upstreamProvider": "fireworks"
+            },
+            "structuredOutputMode": "json_object",
+            "retryCount": 0,
+            "errorClasses": [],
+            "fallbackUsed": false,
+            "fallbackPlan": ["deepseek/deepseek-v4-flash"],
+            "tokenUsage": {
+              "tokenCountSource": "deterministic_counter",
+              "promptTokens": 36,
+              "completionTokens": 22,
+              "totalTokens": 58
+            },
+            "cost": {
+              "costKind": "billed",
+              "currency": "USD",
+              "amountUsd": "0.000010",
+              "amountMicrosUsd": 10,
+              "cacheDiscountMicrosUsd": 0
+            },
+            "routingPosture": {
+              "order": ["fireworks"],
+              "allow_fallbacks": true,
+              "data_collection": "deny",
+              "zdr": true,
+              "require_parameters": true
+            },
+            "usageResponseJson": {
+              "prompt_tokens": 36,
+              "completion_tokens": 22,
+              "total_tokens": 58,
+              "cost": 0.00001
+            },
+            "prompt": {
+              "presetId": "itotori-raw-mtl-baseline-draft",
+              "templateVersion": "1.0.0",
+              "promptHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            }
+          }
+        }
+      ]
+    },
+    "qa": {
+      "attempts": [
+        {
+          "content": "{\"schemaVersion\":\"itotori.structured-qa-finding-output.v1\",\"findings\":[{\"findingId\":\"019ed064-0000-7000-8000-0000000000f2\",\"bridgeUnitId\":\"019ed064-0000-7000-8000-0000000000b2\",\"severity\":\"major\",\"category\":\"mistranslation\",\"evidenceRefs\":[\"evidence-mistranslation-001\"],\"recommendation\":\"the literal render drops the intended meaning; retranslate with context\",\"agentRationale\":\"the raw-MTL baseline mistranslated the seeded unit\"}]}",
+          "providerRun": {
+            "runId": "pp-rawmtl-qa-attempt-0",
+            "taskKind": "llm_qa",
+            "startedAt": "1970-01-01T00:00:00.000Z",
+            "completedAt": "1970-01-01T00:00:00.000Z",
+            "latencyMs": 0,
+            "status": "succeeded",
+            "provider": {
+              "providerFamily": "openrouter",
+              "endpointFamily": "chat-completions",
+              "providerName": "openrouter",
+              "requestedModelId": "deepseek/deepseek-v4-flash",
+              "actualModelId": "deepseek/deepseek-v4-flash",
+              "requestedProviderId": "fireworks",
+              "upstreamProvider": "fireworks"
+            },
+            "structuredOutputMode": "json_object",
+            "retryCount": 0,
+            "errorClasses": [],
+            "fallbackUsed": false,
+            "fallbackPlan": ["deepseek/deepseek-v4-flash"],
+            "tokenUsage": {
+              "tokenCountSource": "deterministic_counter",
+              "promptTokens": 50,
+              "completionTokens": 30,
+              "totalTokens": 80
+            },
+            "cost": {
+              "costKind": "billed",
+              "currency": "USD",
+              "amountUsd": "0.000018",
+              "amountMicrosUsd": 18,
+              "cacheDiscountMicrosUsd": 0
+            },
+            "routingPosture": {
+              "order": ["fireworks"],
+              "allow_fallbacks": true,
+              "data_collection": "deny",
+              "zdr": true,
+              "require_parameters": true
+            },
+            "usageResponseJson": {
+              "prompt_tokens": 50,
+              "completion_tokens": 30,
+              "total_tokens": 80,
+              "cost": 0.000018
+            },
+            "prompt": {
+              "presetId": "itotori-raw-mtl-baseline-qa",
+              "templateVersion": "1.0.0",
+              "promptHash": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+            }
+          }
+        }
+      ]
+    }
+  },
+  "deterministicBaselineQa": {
+    "findings": [
+      {
+        "findingId": "019ed064-0000-7000-8000-0000000000d1",
+        "bridgeUnitId": "019ed064-0000-7000-8000-0000000000b1",
+        "severity": "minor",
+        "category": "tone",
+        "evidenceRefs": ["evidence-det-tone-001"],
+        "recommendation": "deterministic check flagged a tone register drift",
+        "agentRationale": "deterministic-QA rule matched the seeded tone defect location"
+      },
+      {
+        "findingId": "019ed064-0000-7000-8000-0000000000d2",
+        "bridgeUnitId": "019ed064-0000-7000-8000-0000000000b2",
+        "severity": "major",
+        "category": "mistranslation",
+        "evidenceRefs": ["evidence-det-mistranslation-001"],
+        "recommendation": "deterministic check flagged a meaning divergence",
+        "agentRationale": "deterministic-QA rule matched the seeded mistranslation defect location"
+      }
+    ]
+  }
+}
