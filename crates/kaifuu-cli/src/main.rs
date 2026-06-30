@@ -15,9 +15,9 @@ use kaifuu_core::{
     SiglusParserBoundarySmokeRequest, SiglusParserBoundarySmokeVariant, VerifyRequest,
     Xp3CapabilityProfileFixture, Xp3CapabilityProfileRequest, Xp3ProfileProofFixture,
     Xp3ProfileProofRequest, atomic_write_text, encode_xp3, encrypted_media_proof,
-    fixture_helper_registry, generate_xp3_capability_profile, normalize_helper_result_value,
-    pack_plain_xp3_from_directory, parse_helper_capability, parse_hex_bytes,
-    plain_xp3_writer_capability, promote_staged_directory_no_clobber, read_json,
+    fixture_helper_registry, generate_alpha_encrypted_readiness, generate_xp3_capability_profile,
+    normalize_helper_result_value, pack_plain_xp3_from_directory, parse_helper_capability,
+    parse_hex_bytes, plain_xp3_writer_capability, promote_staged_directory_no_clobber, read_json,
     read_plain_xp3_archive, redact_for_log_or_report, redact_report_value,
     replace_plain_xp3_entry_payload, run_plain_xp3_smoke_from_path, run_round_trip_golden,
     run_siglus_known_key_parser_boundary_smoke, sha256_hash_bytes, stable_json,
@@ -1349,7 +1349,11 @@ fn run_xp3_capability_profile(args: &[String]) -> Result<(), Box<dyn std::error:
 fn run_readiness_command(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
     match positional(args, 1)? {
         "validate" => run_readiness_validate(args),
-        other => Err(format!("usage: kaifuu readiness validate ...; got {other:?}").into()),
+        "alpha-encrypted" => run_readiness_alpha_encrypted(args),
+        other => Err(format!(
+            "usage: kaifuu readiness <validate|alpha-encrypted> ...; got {other:?}"
+        )
+        .into()),
     }
 }
 
@@ -1391,6 +1395,77 @@ fn run_readiness_validate(args: &[String]) -> Result<(), Box<dyn std::error::Err
             .collect::<Vec<_>>()
             .join("; ");
         return Err(format!("packed-engine readiness validation failed: {failures}").into());
+    }
+    Ok(())
+}
+
+/// KAIFUU-104 — `kaifuu readiness alpha-encrypted [--fixtures-dir <dir>]
+/// [--output <report.json>] [--summary-output <summary.json>]`.
+///
+/// Generates public alpha encrypted-readiness EVIDENCE by COMPOSING the
+/// KAIFUU-103 packed-engine readiness validator output over the
+/// alpha-encrypted fixture directory (default `fixtures/kaifuu/alpha-encrypted`)
+/// with the synthetic patch artifacts in the same directory. The full report
+/// (profile id, fixture id, engine family, surface ids, helper id, key ref,
+/// capability levels, patch-result ref, diagnostics, and content/report hashes)
+/// is written to `--output` (default
+/// `target/kaifuu/alpha-encrypted-readiness.json`) and a README-safe aggregate
+/// summary to `--summary-output` (default
+/// `target/kaifuu/alpha-encrypted-readiness.summary.json`). A patch-capable
+/// profile-ready entry without a patch result, a readiness-only entry that
+/// claims one, a KAIFUU-103 validation failure, a dangling patch artifact, or
+/// an empty fixture directory each exit non-zero with structured finding codes.
+fn run_readiness_alpha_encrypted(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
+    let fixtures_dir = PathBuf::from(
+        flag_optional(args, "--fixtures-dir").unwrap_or("fixtures/kaifuu/alpha-encrypted"),
+    );
+    let output = PathBuf::from(
+        flag_optional(args, "--output").unwrap_or("target/kaifuu/alpha-encrypted-readiness.json"),
+    );
+    let summary_output = PathBuf::from(
+        flag_optional(args, "--summary-output")
+            .unwrap_or("target/kaifuu/alpha-encrypted-readiness.summary.json"),
+    );
+
+    let report = generate_alpha_encrypted_readiness(&fixtures_dir)?;
+    atomic_write_text(&output, &report.stable_json()?)?;
+    atomic_write_text(&summary_output, &report.summary().stable_json()?)?;
+
+    println!(
+        "kaifuu readiness alpha-encrypted: status={:?} profiles={} profileReady={} readinessOnly={} patchEvidence={} reportHash={} consumedValidationHash={}",
+        report.status,
+        report.profile_count,
+        report.profile_ready_count,
+        report.readiness_only_count,
+        report.patch_evidence_count,
+        report.report_hash.as_str(),
+        report.consumed_validation.report_hash.as_str(),
+    );
+
+    if report.status == kaifuu_core::OperationStatus::Failed {
+        let mut codes: Vec<String> = report
+            .findings
+            .iter()
+            .filter(|finding| finding.severity.is_blocking())
+            .map(|finding| format!("{}:{}", finding.severity.as_str(), finding.code))
+            .collect();
+        for entry in &report.entries {
+            if entry.status == kaifuu_core::OperationStatus::Failed {
+                let entry_codes = entry
+                    .findings
+                    .iter()
+                    .filter(|finding| finding.severity.is_blocking())
+                    .map(|finding| format!("{}:{}", finding.severity.as_str(), finding.code))
+                    .collect::<Vec<_>>()
+                    .join(",");
+                codes.push(format!("{} [{}]", entry.profile_id, entry_codes));
+            }
+        }
+        return Err(format!(
+            "alpha encrypted-readiness generation failed: {}",
+            codes.join("; ")
+        )
+        .into());
     }
     Ok(())
 }

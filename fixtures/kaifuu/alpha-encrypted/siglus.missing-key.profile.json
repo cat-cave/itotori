@@ -1,0 +1,29 @@
+{
+  "schemaVersion": "0.1.0",
+  "profileId": "packed/siglus/missing_key",
+  "fixtureId": "siglus.missing-key",
+  "sourceNodeId": "KAIFUU-103",
+  "engineFamily": "siglus",
+  "container": "siglus_pck",
+  "crypto": "key_profile",
+  "codec": "utf16_text",
+  "surface": "archive_entry",
+  "patchBack": "repack_archive",
+  "declaredCapability": "patch",
+  "key": {
+    "status": "missing",
+    "keyRef": "local-secret:siglus-unresolved-key",
+    "requirementId": "siglus.scene-pck.static-key"
+  },
+  "helper": {
+    "status": "not_required"
+  },
+  "content": [
+    {
+      "assetId": "scene/000.ss",
+      "byteCount": 4096,
+      "contentSha256": "sha256:78cd4b97f5ca9f5973a2e35aac7deac7d819ec2ab7fd9f1cd6ba5018557c166e"
+    }
+  ],
+  "contentHash": "sha256:c6dc680d3d562b9f8dfe43d8c834216cd1efeab9f9b59b16a7dc5f746e5aca78"
+}

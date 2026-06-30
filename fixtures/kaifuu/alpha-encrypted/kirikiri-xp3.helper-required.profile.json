@@ -1,0 +1,30 @@
+{
+  "schemaVersion": "0.1.0",
+  "profileId": "packed/kirikiri_xp3/helper_required",
+  "fixtureId": "kirikiri-xp3.helper-required",
+  "sourceNodeId": "KAIFUU-103",
+  "engineFamily": "kirikiri_xp3",
+  "container": "xp3",
+  "crypto": "helper_gated",
+  "codec": "utf16_text",
+  "surface": "archive_entry",
+  "patchBack": "repack_archive",
+  "declaredCapability": "extract",
+  "key": {
+    "status": "helper_gated",
+    "keyRef": "local-secret:xp3-helper-derived-key",
+    "requirementId": "kirikiri.xp3.helper-key"
+  },
+  "helper": {
+    "status": "unavailable",
+    "helperId": "kaifuu.helper.xp3-keygen"
+  },
+  "content": [
+    {
+      "assetId": "data.xp3/scenario.ks",
+      "byteCount": 9216,
+      "contentSha256": "sha256:a6770c64e373852c57840370f10ab88438a677ba45507e79ee64165fc490dd93"
+    }
+  ],
+  "contentHash": "sha256:e7452ee08faa573458430b70a288d8afbd89c2fbd504251651bbf303006626e1"
+}

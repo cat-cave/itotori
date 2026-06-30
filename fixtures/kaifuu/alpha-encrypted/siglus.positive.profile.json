@@ -1,0 +1,34 @@
+{
+  "schemaVersion": "0.1.0",
+  "profileId": "packed/siglus/positive",
+  "fixtureId": "siglus.positive",
+  "sourceNodeId": "KAIFUU-103",
+  "engineFamily": "siglus",
+  "container": "siglus_pck",
+  "crypto": "fixed_key",
+  "codec": "utf16_text",
+  "surface": "archive_entry",
+  "patchBack": "repack_archive",
+  "declaredCapability": "patch",
+  "key": {
+    "status": "resolved",
+    "keyRef": "local-secret:siglus-scene-static-key",
+    "requirementId": "siglus.scene-pck.static-key"
+  },
+  "helper": {
+    "status": "not_required"
+  },
+  "content": [
+    {
+      "assetId": "scene/000.ss",
+      "byteCount": 4096,
+      "contentSha256": "sha256:78cd4b97f5ca9f5973a2e35aac7deac7d819ec2ab7fd9f1cd6ba5018557c166e"
+    },
+    {
+      "assetId": "scene/index.dat",
+      "byteCount": 512,
+      "contentSha256": "sha256:987dfcefd00e5f54e21c23a56cae5833bee7e15d4a862b1a5460f46de2d36af5"
+    }
+  ],
+  "contentHash": "sha256:3736b4c48f92b28d3b122e356a5e348ac79d19a17f6225fe276d9bbad3f30526"
+}

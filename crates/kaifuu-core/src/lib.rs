@@ -153,6 +153,7 @@ pub const STRING_RELOCATION_INVALID_SOURCE_BYTES: &str =
     "kaifuu.string_relocation.invalid_source_bytes";
 pub const XP3_PLAIN_MAGIC: &[u8] = b"XP3\r\n \n\x1a\x8b\x67\x01";
 
+pub mod alpha_encrypted_readiness;
 pub mod contracts;
 pub mod mv_mz_encrypted_audio;
 pub mod mv_mz_encrypted_image;
@@ -213,6 +214,14 @@ pub use xp3_capability_profile::{
     generate_xp3_capability_profile,
 };
 
+pub use alpha_encrypted_readiness::{
+    ALPHA_ENCRYPTED_EVIDENCE_KIND, ALPHA_ENCRYPTED_PATCH_ARTIFACT_GLOB,
+    ALPHA_ENCRYPTED_PATCH_ARTIFACT_SCHEMA_VERSION, ALPHA_ENCRYPTED_READINESS_REPORT_SCHEMA_VERSION,
+    ALPHA_ENCRYPTED_READINESS_SUMMARY_SCHEMA_VERSION, ALPHA_ENCRYPTED_READINESS_SUPPORT_BOUNDARY,
+    AlphaEncryptedFinding, AlphaEncryptedPatchArtifact, AlphaEncryptedPatchResultRef,
+    AlphaEncryptedReadinessEntry, AlphaEncryptedReadinessReport, AlphaEncryptedReadinessSummary,
+    ConsumedValidationReport, generate_alpha_encrypted_readiness,
+};
 pub use packed_engine_readiness::{
     EngineProfileSpec, PACKED_ENGINE_PROFILE_GLOB, PACKED_ENGINE_READINESS_SCHEMA_VERSION,
     PACKED_ENGINE_READINESS_SUPPORT_BOUNDARY, PACKED_READINESS_REPORT_SCHEMA_VERSION,
