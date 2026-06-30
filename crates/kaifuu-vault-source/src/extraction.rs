@@ -3,7 +3,11 @@
 //! - Uses `sevenz-rust2` (pure-Rust 7z decoder; no system `7z` shell-out).
 //! - Validates every archive entry path **before any byte is written** to
 //!   disk, rejecting parent-dir traversal, absolute paths, drive prefixes,
-//!   symlink escapes, and writes into `_vault/` other than `metadata.json`.
+//!   backslash segments, and writes into `_vault/` other than `metadata.json`.
+//! - Symlink safety is **structural**, not a named rejection: every entry is
+//!   written as a regular file via `File::create`, so a symlink archive
+//!   entry's target bytes become ordinary file content and no symlink is ever
+//!   materialized on disk. There is therefore no `symlink-escape` reason.
 //! - Removes the per-run extraction directory on failure (truncated archive,
 //!   decoder error, path-traversal rejection) so partial extractions are
 //!   never surfaced.

@@ -111,6 +111,39 @@ export type TelemetrySummaryByPair = {
 };
 
 /**
+ * telemetry-served-provider-breakdown — one row of the served-provider
+ * cost split. `servedProvider` is the canonical id (case/whitespace
+ * normalized; see `canonicalServedProviderId`) of the REAL upstream
+ * provider that OpenRouter served the invocation through
+ * (`run.provider.upstreamProvider`), NOT the requested/pinned provider
+ * the {@link TelemetrySummaryByPair} byPair keys on. `totalCostUsd` is
+ * the SUM of the verbatim real billed `usage.cost` over the invocations
+ * served by this provider — never approximated.
+ */
+export type TelemetryServedProviderRow = {
+  readonly servedProvider: string;
+  readonly totalCostUsd: string;
+  readonly invocationCount: number;
+};
+
+/**
+ * telemetry-served-provider-breakdown — the served-provider cost split,
+ * ADDITIVE to (never a replacement for) {@link TelemetrySummaryByPair}'s
+ * requested-pair byPair (which `verify-artifacts.mjs` depends on for its
+ * `startsWith` compat). Per the model-provider-pair law ("providers are
+ * not equivalent") + the record-the-real-served-provider decision, this
+ * surfaces what a single OR-fallback run actually cost per upstream
+ * provider when it was served across several (e.g.
+ * DigitalOcean + Fireworks). `byServedProvider[k].totalCostUsd` sums to
+ * `totalCostUsd` by construction (every invocation contributes to
+ * exactly one canonical served-provider bucket).
+ */
+export type TelemetryServedProviderBreakdown = {
+  readonly byServedProvider: Record<string, TelemetryServedProviderRow>;
+  readonly totalCostUsd: string;
+};
+
+/**
  * Top-k-by-cost result row. `share` is the fraction of total cost
  * over the window, in [0, 1]. When `totalCostUsd` is "0", every
  * `share` value is 0 (we do not divide by zero).

@@ -1071,6 +1071,137 @@ describe("provider-run-artifact telemetry source (UTSUSHI-231)", () => {
     ]);
   });
 
+  it("surfaces a served-provider cost breakdown that sums to the total billed cost (additive to byPair)", () => {
+    // Mirrors the UTSUSHI-231 OR-fallback split: one PINNED pair
+    // (fireworks requested) served across DigitalOcean + Fireworks, with
+    // the served strings differing by casing ("Fireworks" vs "fireworks")
+    // to prove canonicalization merges them into one served bucket.
+    const artifacts = [
+      providerRunArtifact({
+        runId: "run-do",
+        startedAt: "2026-06-27T12:00:00.000Z",
+        completedAt: "2026-06-27T12:00:01.000Z",
+        amountUsd: "0.00000600",
+        amountMicrosUsd: 6,
+        upstreamProvider: "DigitalOcean",
+      }),
+      providerRunArtifact({
+        runId: "run-fw-1",
+        startedAt: "2026-06-27T12:00:02.000Z",
+        completedAt: "2026-06-27T12:00:03.000Z",
+        amountUsd: "0.00000500",
+        amountMicrosUsd: 5,
+        upstreamProvider: "Fireworks",
+      }),
+      providerRunArtifact({
+        runId: "run-fw-2",
+        startedAt: "2026-06-27T12:00:04.000Z",
+        completedAt: "2026-06-27T12:00:05.000Z",
+        amountUsd: "0.00000100",
+        amountMicrosUsd: 1,
+        upstreamProvider: "fireworks",
+      }),
+    ];
+    const { summary, servedProviderBreakdown } = aggregateProviderRunArtifacts(artifacts);
+
+    // Requested-pair byPair is unchanged: one PINNED pair, all 3 invocations.
+    const pair = buildPairKey(ART_MODEL, ART_PROVIDER);
+    expect(Object.keys(summary.byPair)).toEqual([pair]);
+    expect(summary.byPair[pair]!.invocationCount).toBe(3);
+
+    // Served-provider breakdown: "Fireworks" + "fireworks" canonicalize
+    // into one bucket; DigitalOcean is its own.
+    expect(Object.keys(servedProviderBreakdown.byServedProvider).sort()).toEqual([
+      "digitalocean",
+      "fireworks",
+    ]);
+    expect(servedProviderBreakdown.byServedProvider["digitalocean"]).toEqual({
+      servedProvider: "digitalocean",
+      totalCostUsd: "0.00000600",
+      invocationCount: 1,
+    });
+    expect(servedProviderBreakdown.byServedProvider["fireworks"]).toEqual({
+      servedProvider: "fireworks",
+      totalCostUsd: "0.00000600",
+      invocationCount: 2,
+    });
+
+    // The served breakdown sums to the total billed cost, verbatim.
+    expect(servedProviderBreakdown.totalCostUsd).toBe("0.00001200");
+    expect(servedProviderBreakdown.totalCostUsd).toBe(summary.totalCostUsd);
+    const servedSum = Object.values(servedProviderBreakdown.byServedProvider).reduce(
+      (acc, row) => acc + Number(row.totalCostUsd),
+      0,
+    );
+    expect(servedSum.toFixed(8)).toBe(summary.totalCostUsd);
+  });
+
+  it("buckets an artifact with no served provider under the documented sentinel (sum still holds)", () => {
+    const artifacts = [
+      providerRunArtifact({
+        runId: "run-known",
+        startedAt: "2026-06-27T12:00:00.000Z",
+        completedAt: "2026-06-27T12:00:01.000Z",
+        amountUsd: "0.00000700",
+        amountMicrosUsd: 7,
+        upstreamProvider: "Fireworks",
+      }),
+      providerRunArtifact({
+        runId: "run-unknown",
+        startedAt: "2026-06-27T12:00:02.000Z",
+        completedAt: "2026-06-27T12:00:03.000Z",
+        amountUsd: "0.00000300",
+        amountMicrosUsd: 3,
+        // upstreamProvider omitted entirely
+      }),
+    ];
+    const { summary, servedProviderBreakdown } = aggregateProviderRunArtifacts(artifacts);
+    expect(Object.keys(servedProviderBreakdown.byServedProvider).sort()).toEqual([
+      "fireworks",
+      "unknown-served-provider",
+    ]);
+    expect(servedProviderBreakdown.byServedProvider["unknown-served-provider"]!.totalCostUsd).toBe(
+      "0.00000300",
+    );
+    expect(servedProviderBreakdown.totalCostUsd).toBe(summary.totalCostUsd);
+  });
+
+  it("threads the served-provider breakdown into the CLI output (additive; byPair untouched)", () => {
+    const artifacts = [
+      providerRunArtifact({
+        runId: "run-do",
+        startedAt: "2026-06-27T12:00:00.000Z",
+        completedAt: "2026-06-27T12:00:01.000Z",
+        amountUsd: "0.00000600",
+        amountMicrosUsd: 6,
+        upstreamProvider: "DigitalOcean",
+      }),
+      providerRunArtifact({
+        runId: "run-fw",
+        startedAt: "2026-06-27T12:00:02.000Z",
+        completedAt: "2026-06-27T12:00:03.000Z",
+        amountUsd: "0.00000500",
+        amountMicrosUsd: 5,
+        upstreamProvider: "Fireworks",
+      }),
+    ];
+    const output = buildTelemetrySummaryFromProviderRunArtifacts({
+      projectId: "sweetie-hd-alpha-1",
+      artifacts,
+      now: () => new Date("2026-06-27T13:00:00.000Z"),
+    });
+    const pair = buildPairKey(ART_MODEL, ART_PROVIDER);
+    // Existing byPair surface is unaffected.
+    expect(Object.keys(output.byPair)).toEqual([pair]);
+    // New served view is present and sums to the total.
+    expect(output.servedProviderBreakdown).toBeDefined();
+    expect(Object.keys(output.servedProviderBreakdown!.byServedProvider).sort()).toEqual([
+      "digitalocean",
+      "fireworks",
+    ]);
+    expect(output.servedProviderBreakdown!.totalCostUsd).toBe(output.totalCostUsd);
+  });
+
   it("surfaces verbatim cache savings + hit counts (never derived)", () => {
     const artifacts = [
       providerRunArtifact({

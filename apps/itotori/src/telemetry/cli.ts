@@ -15,6 +15,7 @@ import type {
   TelemetryPairKey,
   TelemetryPairSummary,
   TelemetryQuery,
+  TelemetryServedProviderBreakdown,
   TelemetrySummaryByPair,
   TelemetryZdrEnforcedRow,
 } from "./queries.js";
@@ -78,6 +79,15 @@ export type TelemetrySummaryCliOutput = TelemetrySummaryByPair & {
     readonly generatedAt: string;
   };
   readonly postRunEvidence: TelemetrySummaryPostRunEvidence;
+  /**
+   * telemetry-served-provider-breakdown — real served-provider cost
+   * split, ADDITIVE to the requested-pair `byPair` (which the verifier
+   * depends on). Present only when sourced from provider-run artifacts
+   * (the served upstream provider is captured per invocation there); the
+   * DB-backed CLI path omits it because the ledger keys on the requested
+   * pair and has no served-provider column.
+   */
+  readonly servedProviderBreakdown?: TelemetryServedProviderBreakdown;
 };
 
 /**
@@ -95,6 +105,7 @@ export function assembleTelemetrySummaryOutput(input: {
   readonly summary: TelemetrySummaryByPair;
   readonly zdrRows: ReadonlyArray<TelemetryZdrEnforcedRow>;
   readonly costKindRows: ReadonlyArray<TelemetryCostKindRow>;
+  readonly servedProviderBreakdown?: TelemetryServedProviderBreakdown;
 }): TelemetrySummaryCliOutput {
   return {
     metadata: {
@@ -107,6 +118,9 @@ export function assembleTelemetrySummaryOutput(input: {
     },
     ...input.summary,
     postRunEvidence: buildPostRunEvidence(input.zdrRows, input.costKindRows),
+    ...(input.servedProviderBreakdown === undefined
+      ? {}
+      : { servedProviderBreakdown: input.servedProviderBreakdown }),
   };
 }
 

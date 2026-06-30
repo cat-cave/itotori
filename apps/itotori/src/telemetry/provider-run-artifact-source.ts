@@ -37,6 +37,8 @@ import {
   type TelemetryCostKindRow,
   type TelemetryPairKey,
   type TelemetryPairSummary,
+  type TelemetryServedProviderBreakdown,
+  type TelemetryServedProviderRow,
   type TelemetrySummaryByPair,
   type TelemetryZdrEnforcedRow,
 } from "./queries.js";
@@ -45,7 +47,43 @@ export type ProviderRunArtifactAggregate = {
   readonly summary: TelemetrySummaryByPair;
   readonly zdrRows: TelemetryZdrEnforcedRow[];
   readonly costKindRows: TelemetryCostKindRow[];
+  /**
+   * telemetry-served-provider-breakdown — real served-provider cost
+   * split (additive to `summary.byPair`, which keys on the requested
+   * pair). Keyed by canonical served-provider id.
+   */
+  readonly servedProviderBreakdown: TelemetryServedProviderBreakdown;
   readonly window: { readonly from: Date; readonly to: Date };
+};
+
+/**
+ * Sentinel served-provider id for invocations whose artifact carries no
+ * `run.provider.upstreamProvider` (e.g. a record produced before the
+ * served provider was captured). Deterministic and documented — never a
+ * silent merge into a real provider's bucket — so the served breakdown
+ * still sums to the total billed cost.
+ */
+export const SERVED_PROVIDER_UNKNOWN_SENTINEL = "unknown-served-provider" as const;
+
+/**
+ * Canonicalize a served upstream-provider string to a stable id. OR
+ * returns served strings that differ only cosmetically by case and
+ * spacing (e.g. "Fireworks" vs "fireworks", "Digital Ocean" vs
+ * "DigitalOcean"); collapsing those to one canonical id is what lets a
+ * single OR-fallback run that was served across the SAME upstream under
+ * two spellings show as one bucket. An absent/blank served string maps
+ * to {@link SERVED_PROVIDER_UNKNOWN_SENTINEL}.
+ */
+export function canonicalServedProviderId(raw: string | undefined | null): string {
+  if (raw === undefined || raw === null) return SERVED_PROVIDER_UNKNOWN_SENTINEL;
+  const trimmed = raw.trim();
+  if (trimmed.length === 0) return SERVED_PROVIDER_UNKNOWN_SENTINEL;
+  return trimmed.toLowerCase().replace(/\s+/g, "");
+}
+
+type MutableServedAccumulator = {
+  invocationCount: number;
+  costUsd: number;
 };
 
 type MutablePairAccumulator = {
@@ -154,6 +192,7 @@ export function aggregateProviderRunArtifacts(
   artifacts: ReadonlyArray<ProviderRunArtifact>,
 ): ProviderRunArtifactAggregate {
   const byPairAcc = new Map<TelemetryPairKey, MutablePairAccumulator>();
+  const byServedAcc = new Map<string, MutableServedAccumulator>();
   let minStartedAt = Number.POSITIVE_INFINITY;
   let maxEndedAt = Number.NEGATIVE_INFINITY;
 
@@ -163,8 +202,19 @@ export function aggregateProviderRunArtifacts(
     const key = buildPairKey(provider.requestedModelId, provider.requestedProviderId);
     const acc = byPairAcc.get(key) ?? emptyAccumulator();
 
+    const billed = billedAmountUsd(run);
+
+    // telemetry-served-provider-breakdown — bucket the SAME verbatim
+    // billed cost by the REAL served upstream provider (canonicalized),
+    // additive to the requested-pair byPair below.
+    const servedKey = canonicalServedProviderId(provider.upstreamProvider);
+    const servedAcc = byServedAcc.get(servedKey) ?? { invocationCount: 0, costUsd: 0 };
+    servedAcc.invocationCount += 1;
+    servedAcc.costUsd += billed;
+    byServedAcc.set(servedKey, servedAcc);
+
     acc.invocationCount += 1;
-    acc.costUsd += billedAmountUsd(run);
+    acc.costUsd += billed;
     acc.tokensIn += run.tokenUsage.promptTokens ?? 0;
     acc.tokensOut += run.tokenUsage.completionTokens ?? 0;
     if (typeof run.latencyMs === "number" && Number.isFinite(run.latencyMs)) {
@@ -242,12 +292,29 @@ export function aggregateProviderRunArtifacts(
     cacheSavingsUsd: (totalCacheSavingsMicros / 1_000_000).toFixed(8),
   };
 
+  const byServedProvider: Record<string, TelemetryServedProviderRow> = {};
+  let servedTotalCostUsd = 0;
+  for (const servedKey of [...byServedAcc.keys()].sort()) {
+    const acc = byServedAcc.get(servedKey)!;
+    byServedProvider[servedKey] = {
+      servedProvider: servedKey,
+      totalCostUsd: acc.costUsd.toFixed(8),
+      invocationCount: acc.invocationCount,
+    };
+    servedTotalCostUsd += acc.costUsd;
+  }
+  const servedProviderBreakdown: TelemetryServedProviderBreakdown = {
+    byServedProvider,
+    totalCostUsd: servedTotalCostUsd.toFixed(8),
+  };
+
   const fromMs = Number.isFinite(minStartedAt) ? minStartedAt : Date.now();
   const toMs = Number.isFinite(maxEndedAt) ? maxEndedAt : fromMs;
   return {
     summary,
     zdrRows,
     costKindRows,
+    servedProviderBreakdown,
     window: { from: new Date(fromMs), to: new Date(toMs) },
   };
 }
@@ -279,5 +346,6 @@ export function buildTelemetrySummaryFromProviderRunArtifacts(input: {
     summary: aggregate.summary,
     zdrRows: aggregate.zdrRows,
     costKindRows: aggregate.costKindRows,
+    servedProviderBreakdown: aggregate.servedProviderBreakdown,
   });
 }

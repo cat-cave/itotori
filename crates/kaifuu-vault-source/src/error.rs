@@ -154,15 +154,17 @@ pub enum VaultSourceError {
         bytes_written: u64,
     },
 
-    /// Archive entry rejected for path traversal or symlink escape.
+    /// Archive entry rejected for an unsafe path. Symlink safety is
+    /// structural (every entry is written as a regular file via
+    /// `File::create`), so there is no symlink-specific reason here.
     #[error("unsafe archive entry rejected: {entry:?} reason={reason}")]
     ExtractionUnsafePath {
         /// Archive being extracted.
         archive_path: PathBuf,
         /// The offending entry name as found in the archive header.
         entry: String,
-        /// Why it was rejected (parent-dir, absolute-path, drive-prefix,
-        /// vault-collision, symlink-escape).
+        /// Why it was rejected (empty-name, nul-byte, drive-prefix,
+        /// parent-dir, absolute-path, backslash, escape, vault-collision).
         reason: &'static str,
     },
 
