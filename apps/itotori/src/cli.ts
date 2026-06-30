@@ -26,7 +26,12 @@ function writeJson(path: string, value: unknown): void {
   writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`);
 }
 
-const nodeJsonFileStore: JsonFileStore = { readJson, writeJson };
+function writeText(path: string, contents: string): void {
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, contents);
+}
+
+const nodeJsonFileStore: JsonFileStore = { readJson, writeJson, writeText };
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   main().catch((error: unknown) => {

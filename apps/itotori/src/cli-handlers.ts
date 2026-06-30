@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import {
   assertConformanceManifestV01,
   assertConformanceResultV01,
@@ -89,11 +90,24 @@ import {
   DEFAULT_PUBLIC_PROVIDER_ROUTE_REPORT_FIXTURE_PATH,
   ExperimentReportCompositionError,
 } from "./experiment-report/index.js";
+import {
+  composeAlphaReadiness,
+  renderReadmeSafeAlphaSummary,
+  type AlphaReadinessCostQualityArtifact,
+  type AlphaReadinessPrivateLocalHandle,
+} from "./alpha-readiness/index.js";
 import { scanCatalogLocalRoot } from "./services/catalog-local-scan.js";
 
 export type JsonFileStore = {
   readJson(path: string): unknown;
   writeJson(path: string, value: unknown): void;
+  /**
+   * Persist a UTF-8 text artifact (e.g. the README-safe Markdown summary). The
+   * real CLI store implements it; an in-memory test store may omit it, in which
+   * case a handler that needs it throws a clear error rather than silently
+   * dropping the artifact.
+   */
+  writeText?(path: string, contents: string): void;
 };
 
 export type ItotoriCliServices = {
@@ -255,6 +269,9 @@ export async function runItotoriCliCommand(
       break;
     case "experiment-report-compose":
       await runExperimentReportComposeHandler(args, dependencies);
+      break;
+    case "alpha-readiness-run":
+      await runAlphaReadinessHandler(args, dependencies);
       break;
     default:
       throw new Error(`unknown itotori command: ${String(command)}`);
@@ -825,6 +842,147 @@ async function runExperimentReportComposeHandler(
     // Escalate so a missing/stale/invalid composed artifact is not masked by
     // exit 0. The error names every offending artifact + field.
     throw new ExperimentReportCompositionError(composition.findings);
+  }
+}
+
+async function runAlphaReadinessHandler(
+  args: string[],
+  dependencies: ItotoriCliDependencies,
+): Promise<void> {
+  // ALPHA-003 — COMPOSE the alpha readiness decision from PUBLIC-fixture
+  // benchmark evidence: the ITOTORI-026 harness run (which wires the
+  // ITOTORI-090/091/092 real stages, including the raw-MTL baseline and the
+  // ledger-recomputed cost/quality report) plus the ITOTORI-039/100 provider
+  // experiment-report (served pairs + artifact↔ledger cost reconciliation).
+  //
+  // Every input defaults to a checked-in PUBLIC fixture, so the command runs
+  // WITHOUT any private-local corpus and without live provider credentials. A
+  // private-local aggregate, when supplied, is recorded as supplementary
+  // evidence (presence + content hash only) and never gates the decision.
+  const seedsPath =
+    optionalFlag(args, "--benchmark-seeds") ?? DEFAULT_PUBLIC_BENCHMARK_SEEDS_FIXTURE_PATH;
+  const setsPath =
+    optionalFlag(args, "--benchmark-sets") ?? DEFAULT_PUBLIC_BENCHMARK_SETS_FIXTURE_PATH;
+  const stagesFixturePath =
+    optionalFlag(args, "--benchmark-stages") ?? DEFAULT_PUBLIC_BENCHMARK_STAGES_FIXTURE_PATH;
+  const experimentManifestPath =
+    optionalFlag(args, "--experiment-manifest") ?? DEFAULT_PUBLIC_EXPERIMENT_MANIFEST_FIXTURE_PATH;
+  const routeReportPath =
+    optionalFlag(args, "--provider-route-report") ??
+    DEFAULT_PUBLIC_PROVIDER_ROUTE_REPORT_FIXTURE_PATH;
+  const outputDir = optionalFlag(args, "--output-dir") ?? "artifacts/itotori/alpha-readiness";
+  const generatedAt = optionalFlag(args, "--generated-at") ?? "2026-06-30T00:00:00.000Z";
+  const privateLocalPath = optionalFlag(args, "--private-local-aggregate");
+
+  const log = (message: string): void => {
+    process.stdout.write(`${message}\n`);
+  };
+
+  // ── Run the benchmark harness over the public fixtures, capturing the
+  // cost-quality artifact in-memory while still persisting every stage report. ─
+  const benchmarkDir = `${outputDir}/benchmark`;
+  const benchmarkSetReadModel = benchmarkSetReadModelFromSeedsFixture(
+    dependencies.io.readJson(seedsPath),
+  );
+  const benchmarkSetSelectionInput = benchmarkSetSelectionInputFromSetsFixture(
+    dependencies.io.readJson(setsPath),
+    benchmarkSetReadModel.targetLanguage,
+  );
+  const stages = buildPublicBenchmarkHarnessStages({
+    benchmarkSetReadModel,
+    benchmarkSetSelectionInput,
+    stagesFixture: loadBenchmarkStagesFixture(dependencies.io.readJson(stagesFixturePath)),
+  });
+  const captured = new Map<string, unknown>();
+  const runManifest = await runBenchmarkHarnessCommand({
+    benchmarkRunId: "019ed026-0000-7000-8000-000000000001",
+    benchmarkName: "alpha readiness public-fixture benchmark run",
+    generatedAt,
+    outputDir: benchmarkDir,
+    stages,
+    io: {
+      writeJson: (path, value) => {
+        captured.set(path, value);
+        dependencies.io.writeJson(path, value);
+      },
+    },
+    log,
+  });
+
+  if (runManifest.status !== "succeeded") {
+    // The public-fixture benchmark decides pass/fail; a failed harness run is a
+    // failed alpha readiness. The run manifest is already persisted with the
+    // visible failed stage — escalate so the failure is not masked by exit 0.
+    throw new Error(
+      `alpha-readiness benchmark run failed at stage '${runManifest.failedStageId ?? "unknown"}'; see ${benchmarkDir}/run-manifest.json`,
+    );
+  }
+
+  const costQualityArtifact = captured.get(`${benchmarkDir}/cost-quality-report.json`) as
+    | AlphaReadinessCostQualityArtifact
+    | undefined;
+  if (costQualityArtifact === undefined) {
+    throw new Error(
+      `alpha-readiness: harness did not produce ${benchmarkDir}/cost-quality-report.json`,
+    );
+  }
+
+  // ── Compose the provider experiment-report (served pairs + cost reconcile). ─
+  const providerProofPath = `${outputDir}/provider-proof/attachment.json`;
+  const experimentComposition = composeExperimentBenchmarkReport({
+    experimentManifestRef: {
+      artifactName: "experiment-matrix run manifest",
+      artifactPath: experimentManifestPath,
+    },
+    providerRouteReportRef: {
+      artifactName: "provider route report",
+      artifactPath: routeReportPath,
+    },
+    readArtifact: (ref) => dependencies.io.readJson(ref.artifactPath),
+    generatedAt,
+    log,
+  });
+  if (experimentComposition.attachment !== null) {
+    dependencies.io.writeJson(providerProofPath, experimentComposition.attachment);
+  }
+
+  // ── Optional supplementary private-local aggregate: hash only, no contents. ─
+  let privateLocalAggregate: AlphaReadinessPrivateLocalHandle | null = null;
+  if (privateLocalPath !== undefined) {
+    const raw = dependencies.io.readJson(privateLocalPath);
+    const sha256 = createHash("sha256").update(JSON.stringify(raw)).digest("hex");
+    privateLocalAggregate = { label: privateLocalPath, sha256: `sha256:${sha256}` };
+  }
+
+  const report = composeAlphaReadiness({
+    runManifest,
+    costQualityArtifact,
+    experimentComposition,
+    providerProofArtifactPath: providerProofPath,
+    generatedAt,
+    privateLocalAggregate,
+  });
+
+  // ── Persist the deliverables. ────────────────────────────────────────────
+  dependencies.io.writeJson(`${outputDir}/alpha-readiness-report.json`, report);
+  dependencies.io.writeJson(`${outputDir}/cost-report.json`, report.cost);
+  dependencies.io.writeJson(`${outputDir}/quality-report.json`, report.quality);
+  const summaryPath = `${outputDir}/README-summary.md`;
+  if (dependencies.io.writeText === undefined) {
+    throw new Error(
+      `alpha-readiness: the CLI file store cannot write the README-safe summary to ${summaryPath}`,
+    );
+  }
+  dependencies.io.writeText(summaryPath, renderReadmeSafeAlphaSummary(report));
+  log(
+    `alpha-readiness: decision=${report.decision} gates=${report.gates.length} failedGates=${report.failedGateIds.length}; wrote ${outputDir}/alpha-readiness-report.json`,
+  );
+
+  if (report.decision !== "pass") {
+    // Keep a failed alpha readiness visible at the process level.
+    throw new Error(
+      `alpha-readiness decision='fail'; failing gates: ${report.failedGateIds.join(", ")}; see ${outputDir}/alpha-readiness-report.json`,
+    );
   }
 }
 
