@@ -880,96 +880,25 @@ fn advance_one_element(
     bytes: &[u8],
     pos: usize,
     op: &RealLiveOpcode,
-    lead: u8,
+    _lead: u8,
 ) -> Result<(usize, AdvancedTextRange), PatchbackError> {
-    use crate::opcode::{COMMAND_HEADER_LEN, opener};
-    match lead {
-        opener::META_COMMA | opener::COMMA => Ok((pos + 1, None)),
-        opener::META_LINE | opener::META_ENTRYPOINT | opener::META_KIDOKU => {
-            if bytes.len() - pos < 3 {
-                return Err(PatchbackError::DecompressFailure {
-                    scene_id,
-                    message: format!("bytecode re-walk hit truncated meta header at byte {pos}"),
-                });
-            }
-            Ok((pos + 3, None))
+    // Drive off the single source-of-truth element decoder so the re-walk
+    // cursor can never drift from `parse_real_bytecode`'s boundaries.
+    let (_decoded, consumed) = crate::opcode::decode_element(bytes, pos).map_err(|err| {
+        PatchbackError::DecompressFailure {
+            scene_id,
+            message: format!("bytecode re-walk failed to decode element at byte {pos}: {err}"),
         }
-        opener::EXPRESSION => {
-            // Mirror `parse_real_bytecode`'s token-aware Expression body
-            // walk exactly so the re-walk cursor lands on the same
-            // boundary (incl. not absorbing a following Textout).
-            let body_end = crate::opcode::expression_body_end(bytes, pos + 1);
-            Ok((body_end, None))
-        }
-        opener::COMMAND => {
-            if bytes.len() - pos < COMMAND_HEADER_LEN {
-                return Err(PatchbackError::DecompressFailure {
-                    scene_id,
-                    message: format!("bytecode re-walk hit truncated command header at byte {pos}"),
-                });
-            }
-            // Advance past the header and (optionally) the argument
-            // list `(arg0, arg1, ...)`. We mirror the argument scan
-            // from [`crate::opcode::decode_command`] so the cursor
-            // matches.
-            let mut cursor = pos + COMMAND_HEADER_LEN;
-            if cursor < bytes.len() && bytes[cursor] == b'(' {
-                cursor += 1;
-                while cursor < bytes.len() {
-                    let b = bytes[cursor];
-                    // `0xFF` int-literal token: introducer + 4 payload
-                    // bytes consumed verbatim (payload may equal `(` `)`
-                    // `,`). Mirrors the arglist scan in
-                    // `crate::opcode::decode_command` so the re-walk
-                    // cursor matches the decoder's `consumed` exactly.
-                    if b == 0xFF {
-                        cursor = (cursor + 5).min(bytes.len());
-                        continue;
-                    }
-                    cursor += 1;
-                    if b == b')' {
-                        break;
-                    }
-                }
-            }
-            Ok((cursor, None))
-        }
-        other if crate::opcode::is_shift_jis_textout_lead(other) => {
-            // Re-derive the Textout body span. The opcode is
-            // `RealLiveOpcode::Textout { raw_bytes, .. }`; we use
-            // raw_bytes.len() rather than re-scanning so we land at
-            // exactly the same boundary the parser chose.
-            let body_len = match op {
-                RealLiveOpcode::Textout { raw_bytes, .. } => raw_bytes.len(),
-                _ => {
-                    return Err(PatchbackError::DecompressFailure {
-                        scene_id,
-                        message: format!(
-                            "bytecode re-walk drift at byte {pos}: lead {other:#04x} is SJIS \
-                             but opcode is {label}",
-                            label = op.label()
-                        ),
-                    });
-                }
-            };
-            let body_end = pos + body_len;
-            Ok((body_end, Some(("dialogue", pos, body_end))))
-        }
-        _other => {
-            // Coalesce unknown bytes until the next recognised opener
-            // — mirrors [`parse_real_bytecode`]'s Unknown coalescing.
-            let mut body_end = pos;
-            while body_end < bytes.len() && !crate::opcode::is_recognized_opener(bytes[body_end]) {
-                body_end += 1;
-            }
-            // Special case: parser emitted single-byte Unknown when
-            // it can't make progress at all.
-            if body_end == pos {
-                body_end = pos + 1;
-            }
-            Ok((body_end, None))
-        }
-    }
+    })?;
+    let new_pos = pos + consumed;
+    // A Textout carries a dialogue surface; every other element kind does
+    // not. The caller's `op` and the freshly decoded element agree
+    // because both originate from the same decoder.
+    let recorded = match op {
+        RealLiveOpcode::Textout { .. } => Some(("dialogue", pos, new_pos)),
+        _ => None,
+    };
+    Ok((new_pos, recorded))
 }
 
 #[cfg(test)]

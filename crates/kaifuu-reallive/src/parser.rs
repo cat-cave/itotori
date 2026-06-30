@@ -158,6 +158,14 @@ fn map_parse_error(err: &RealLiveParseError) -> ParseDiagnostic {
                  {available} bytes remain"
             ),
         ),
+        RealLiveParseError::TruncatedExpression { offset } => (
+            *offset,
+            format!("expression token at offset {offset} ran past end of stream"),
+        ),
+        RealLiveParseError::MalformedExpression { offset, byte } => (
+            *offset,
+            format!("byte {byte:#04x} at offset {offset} is not a valid ExpressionPiece token"),
+        ),
     };
     ParseDiagnostic::fatal(
         ParseDiagnosticCode::TruncatedInstruction,

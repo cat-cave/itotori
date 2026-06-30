@@ -86,18 +86,22 @@
 //! | `0x24`              | ExpressionElement | [`RealLiveOpcode::Expression`] (body preserved verbatim)     |
 //! | `0x2C`              | CommaElement      | [`RealLiveOpcode::Comma`]                                    |
 //! | `0x40`              | MetaKidoku        | [`RealLiveOpcode::MetaKidoku`] (u16 LE)                      |
-//! | `0x81..=0x9F` /     | Textout (SJIS)    | [`RealLiveOpcode::Textout`] (Shift-JIS body)                 |
-//! | `0xE0..=0xFC`       |                   |                                                              |
-//! | other               | Unknown opener    | [`RealLiveOpcode::Unknown`] (single byte preserved)          |
+//! | any other byte      | Textout           | [`RealLiveOpcode::Textout`] (text run to next opener)        |
 //!
 //! Command elements decode the 8-byte header
-//! (`module_type`, `module_id`, `opcode_u16_le`, `argc`, `overload`,
-//! `reserved`) and classify into one of the documented RLOperation
-//! families per the catalogue in [`opcode`]. Commands outside the alpha
-//! classification set surface as [`RealLiveOpcode::Unknown`].
+//! (`module_type`, `module_id`, `opcode_u16_le`, `argc`, `overload`),
+//! parse their bracketed `ExpressionPiece` argument list with the real
+//! [`opcode::parse_expression`] evaluator, consume any goto-family
+//! trailing jump-target pointers, and classify into one of the
+//! documented RLOperation families per the catalogue in [`opcode`].
+//! Commands at an undocumented module surface as
+//! [`RealLiveOpcode::Unknown`].
 //!
-//! Empty input is a [`RealLiveParseError::TruncatedBytecode`] — never a
-//! silent `Ok(vec![])`.
+//! A well-formed scene stream produces **zero** `Unknown` spans: every
+//! byte is partitioned into a typed element (the catch-all being a
+//! Textout run). Empty input is a
+//! [`RealLiveParseError::TruncatedBytecode`] — never a silent
+//! `Ok(vec![])`.
 
 #![forbid(unsafe_code)]
 #![deny(missing_debug_implementations)]
@@ -154,8 +158,8 @@ pub use inventory::{
     build_scene_inventory,
 };
 pub use opcode::{
-    COMMAND_HEADER_LEN, RealLiveOpcode, RealLiveParseError, TextEncoding,
-    is_expression_body_terminator, is_recognized_opener, is_shift_jis_textout_lead,
+    COMMAND_HEADER_LEN, Expr, RealLiveOpcode, RealLiveParseError, TextEncoding,
+    is_recognized_opener, is_shift_jis_textout_lead, is_structural_opener, parse_expression,
     parse_real_bytecode,
 };
 pub use opcodes::NamedOpcode;

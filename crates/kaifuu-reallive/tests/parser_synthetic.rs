@@ -54,21 +54,18 @@ fn comma_separator_bytes_recognized_in_both_forms() {
 
 #[test]
 fn expression_element_preserves_body_bytes_until_next_recognized_opener() {
-    // 0x24 opener, then an expression body that is ExpressionPiece-token
-    // aware: `0xC8` is a bare body byte, `0xFF 0x01 0x02 0x03 0x04` is a
-    // 4-byte i32-LE int-literal token (introducer + 4 payload bytes
-    // consumed verbatim), and the body terminates at the following
-    // `0x0A` MetaLine opener. Crucially the int-literal payload is NOT
-    // re-scanned for terminator/SJIS-lead values, so the body ends at
-    // its true boundary rather than mis-stopping inside the literal.
-    let bytes = &[0x24, 0xC8, 0xFF, 0x01, 0x02, 0x03, 0x04, 0x0A, 0x02, 0x00];
+    // 0x24 ExpressionElement opener doubling as the `$` of a `$ 0xFF`
+    // int-literal token (`0x24 0xFF` + i32 LE). The 4 payload bytes are
+    // consumed whole — including `0x01`/`0x02`/etc. — and the element
+    // terminates at its true 6-byte boundary, the following `0x0A`
+    // MetaLine. The body bytes (everything after the opener) are
+    // preserved verbatim for downstream tooling.
+    let bytes = &[0x24, 0xFF, 0x01, 0x02, 0x03, 0x04, 0x0A, 0x02, 0x00];
     let opcodes = parse_scene(bytes).expect("decode");
     match &opcodes[0] {
         RealLiveOpcode::Expression { raw_bytes } => {
-            // Body is `[0xC8, 0xFF, 0x01, 0x02, 0x03, 0x04]` — the bare
-            // byte plus the whole 5-byte int-literal token, up to the
-            // `0x0A` MetaLine opener.
-            assert_eq!(raw_bytes, &vec![0xC8, 0xFF, 0x01, 0x02, 0x03, 0x04]);
+            // Body is the 5 bytes of the int-literal after the opener.
+            assert_eq!(raw_bytes, &vec![0xFF, 0x01, 0x02, 0x03, 0x04]);
         }
         other => panic!("expected Expression, got {other:?}"),
     }
@@ -257,17 +254,22 @@ fn truncated_command_arg_list_without_closing_paren_is_typed_error() {
 }
 
 #[test]
-fn unknown_opener_byte_is_preserved_with_unknown_variant_not_dropped() {
+fn non_structural_lead_byte_is_preserved_as_textout_not_dropped() {
+    // `0x55` is not one of the seven structural openers, so it begins a
+    // Textout run (the catch-all per rlvm `BytecodeElement::Read`) that
+    // ends at the following MetaLine. No byte is dropped or marked
+    // Unknown — a well-formed stream partitions entirely into typed
+    // elements.
     let bytes = &[0x55, 0x0A, 0x03, 0x00];
-    let opcodes = parse_scene(bytes).expect("must decode despite unknown opener");
+    let opcodes = parse_scene(bytes).expect("must decode despite non-structural lead");
     assert_eq!(opcodes.len(), 2);
     match &opcodes[0] {
-        RealLiveOpcode::Unknown { opcode, raw_bytes } => {
-            assert_eq!(*opcode, 0x55);
+        RealLiveOpcode::Textout { raw_bytes, .. } => {
             assert_eq!(raw_bytes, &vec![0x55]);
         }
-        other => panic!("expected Unknown for 0x55, got {other:?}"),
+        other => panic!("expected Textout for 0x55, got {other:?}"),
     }
+    assert!(opcodes[0].is_recognized());
     assert!(matches!(opcodes[1], RealLiveOpcode::MetaLine { line: 3 }));
 }
 

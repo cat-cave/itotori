@@ -35,10 +35,10 @@
 //!    falls outside the alpha classification — but explicitly labeled
 //!    via [`RealLiveOpcode::label`]).
 //! 3. The scene contains ≥1 voice-line reference (`VoicePlay` if
-//!    recognised, otherwise the test records the unknown count so the
-//!    follow-up node can widen the alpha set).
-//! 4. The unknown-opcode count is < 10% of total opcode count (≥ 90%
-//!    recognition rate).
+//!    recognised, otherwise the test records the count for diagnostics).
+//! 4. The unknown-opcode count is EXACTLY zero (100% recognition) — the
+//!    full ExpressionPiece evaluator, goto-family pointer handling, and
+//!    catch-all Textout partition resolve every byte to a typed element.
 //!
 //! The recognition rate is reported via `eprintln!` so the orchestration
 //! report can quote it directly.
@@ -53,7 +53,7 @@ use kaifuu_reallive::{REALLIVE_SEEN_TXT_DIRECTORY_BYTE_LEN, RealLiveOpcode, pars
 
 #[test]
 #[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
-fn dispatches_sweetie_hd_scene_1_with_at_least_90_percent_opcode_recognition() {
+fn dispatches_sweetie_hd_scene_1_with_zero_unknown_opcodes_full_recognition() {
     let Some(seen_path) = real_seen_txt_path() else {
         real_corpus::skip_or_require_real_bytes("Sweetie HD scene-1 dispatch test");
         return;
@@ -243,24 +243,18 @@ fn dispatches_sweetie_hd_scene_1_with_at_least_90_percent_opcode_recognition() {
     for ((module_type, module_id, opcode), count) in &unknown_command_signatures {
         eprintln!("  ({module_type:>3}, {module_id:>3}, {opcode:>5}): {count}");
     }
-    // The KAIFUU-191 spec sets the target recognition rate at 90%.
-    // The narrow per-this-node alpha set (15 documented variants per
-    // the spec) plus the deliberately shallow Command-argument /
-    // ExpressionPiece decoder yields ~84% on Sweetie HD scene 1; the
-    // residual unknown bucket is dominated by byte-coalesced spans
-    // from positions where the byte stream cannot be aligned to a
-    // documented BytecodeElement boundary without a full
-    // ExpressionPiece evaluator (the follow-up node lands that). The
-    // 75% floor below is the honest baseline above which the parser
-    // is structurally sound on scene 1 — measured headroom is
-    // ~9 points, plenty to absorb minor regressions in the follow-up
-    // catalogue widening.
-    assert!(
-        recognition_rate >= 0.75,
-        "opcode recognition rate must be >= 75% (alpha floor; the spec's 90% \
-         aspirational target requires a deeper ExpressionPiece evaluator — \
-         tracked for the follow-up node); got {:.2}% (recognized={recognized}, \
-         unknown={unknown}, total={total})",
+    // ALPHA-006e law: the full ExpressionPiece evaluator + goto-family
+    // pointer handling + catch-all Textout partition resolves EVERY byte
+    // of real Sweetie HD scene 1 into a typed BytecodeElement. There is
+    // no residual unknown bucket — `unknown` must be exactly zero
+    // (`recognition_rate == 1.0`). Any non-zero count is incomplete
+    // decompilation, not an acceptable floor.
+    assert_eq!(
+        unknown,
+        0,
+        "decompilation must be 100% complete: every byte of Sweetie HD scene 1 must resolve to a \
+         typed BytecodeElement (recognized={recognized}, unknown={unknown}, total={total}, \
+         recognition_rate={:.2}%)",
         recognition_rate * 100.0
     );
 }

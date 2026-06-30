@@ -18,19 +18,25 @@
 //!   per RLDEV/rlvm references per the KAIFUU-191 audit-focus row.
 //!
 //! Scope:
-//! - This module owns the **opener-byte + Command-header** dispatch.
-//! - Expression-piece (`0x24` Expression element) bodies are preserved
-//!   verbatim as raw bytes — full expression evaluation lands in a
-//!   follow-up node, not here.
+//! - This module owns the **opener-byte + Command-header** dispatch and
+//!   the full **ExpressionPiece evaluator** ([`parse_expression`]) that
+//!   decodes `0x24` Expression elements and Command argument lists into
+//!   typed [`Expr`] trees while computing their exact byte spans.
+//! - Command elements consume their bracketed argument list and any
+//!   goto-family trailing jump-target pointers (`docs/research/
+//!   reallive-engine.md` §D + rlvm `bytecode.cc`), so the byte cursor
+//!   stays aligned across the whole scene.
 //! - Text strings carried in Command argument lists or in Textout elements
 //!   are kept as raw Shift-JIS bytes; decoding is the
 //!   [`crate::encoding`] surface's job.
 //!
-//! The shape of the dispatch is deliberately narrow: a fresh decoder
-//! that handles every byte of a real Sweetie HD scene-1 stream into
-//! either a recognised [`RealLiveOpcode`] variant or an
-//! [`RealLiveOpcode::Unknown`] entry that preserves the unrecognised
-//! bytes. A scene that produces no opcodes is an error
+//! The decoder partitions **every** byte of a real Sweetie HD scene
+//! stream into a typed [`RealLiveOpcode`] element — the seven structural
+//! openers decode their element and every other byte begins a Textout
+//! run (the catch-all). A well-formed stream therefore yields **zero**
+//! [`RealLiveOpcode::Unknown`] spans (100% decompilation). A command at
+//! an undocumented module still surfaces as `Unknown` (preserving its
+//! bytes for audit). A scene that produces no opcodes is an error
 //! ([`RealLiveParseError::TruncatedBytecode`]), never a silent
 //! `Ok(vec![])`.
 
@@ -39,11 +45,10 @@ use thiserror::Error;
 
 /// BytecodeElement opener bytes (rlvm `bytecode.cc::BytecodeElement::Read`).
 ///
-/// These are the lead bytes that mark the start of a documented element
-/// in a decompressed RealLive scene stream. Any other lead byte either
-/// starts a Shift-JIS Textout run
-/// ([`is_shift_jis_textout_lead`]) or is preserved as an
-/// [`RealLiveOpcode::Unknown`].
+/// These are the seven structural lead bytes that mark the start of a
+/// documented element in a decompressed RealLive scene stream. Any other
+/// lead byte begins a Textout run ([`is_structural_opener`] is the
+/// boundary predicate; Shift-JIS pairs are consumed whole).
 pub mod opener {
     pub const META_COMMA: u8 = 0x00;
     pub const META_LINE: u8 = 0x0A;
@@ -113,9 +118,10 @@ pub enum RealLiveOpcode {
         encoding: TextEncoding,
         raw_bytes: Vec<u8>,
     },
-    /// `0x24` ExpressionElement — variable expression. Body bytes are
-    /// preserved verbatim until the expression terminator; the
-    /// expression-piece evaluator lives in a follow-up node.
+    /// `0x24` ExpressionElement — variable expression. `raw_bytes` are
+    /// the body bytes after the opener; the element's exact span is
+    /// computed by the [`parse_expression`] evaluator (call it on the
+    /// element bytes for the typed [`Expr`] tree).
     Expression { raw_bytes: Vec<u8> },
 
     /// `module_msg` text-display Command (recognised).
@@ -158,10 +164,11 @@ pub enum RealLiveOpcode {
     /// `module_sys` `end` (scene terminator).
     End,
 
-    /// Element opener or Command (module, id, opcode) tuple outside the
-    /// recognised alpha set. The original `opcode` byte is preserved for
-    /// audit; `raw_bytes` carries the full element span the decoder
-    /// consumed (or `1` for unknown opener bytes).
+    /// A Command whose `(module_type, module_id, opcode)` tuple is at an
+    /// undocumented module (outside the classified catalogue). The
+    /// original `opcode` byte (`0x23`) is preserved for audit; `raw_bytes`
+    /// carries the full command span the decoder consumed. A well-formed
+    /// scene at a documented module never produces this variant.
     Unknown { opcode: u8, raw_bytes: Vec<u8> },
 }
 
@@ -246,6 +253,18 @@ pub enum RealLiveParseError {
         declared: usize,
         available: usize,
     },
+    /// An ExpressionPiece ran past the end of the stream mid-token.
+    #[error(
+        "kaifuu.reallive.truncated_expression: expression token at offset {offset} ran past end of stream"
+    )]
+    TruncatedExpression { offset: u64 },
+    /// An ExpressionPiece byte did not match any documented token /
+    /// operator form (a structurally invalid expression, not merely an
+    /// unrecognised opcode).
+    #[error(
+        "kaifuu.reallive.malformed_expression: byte {byte:#04x} at offset {offset} is not a valid ExpressionPiece token"
+    )]
+    MalformedExpression { offset: u64, byte: u8 },
 }
 
 /// Module-id catalogue keys (rlvm `src/modules/module_*.cc` names).
@@ -283,59 +302,295 @@ pub fn is_shift_jis_textout_lead(byte: u8) -> bool {
     (0x81..=0x9F).contains(&byte) || (0xE0..=0xFC).contains(&byte)
 }
 
-/// True if `byte` is a top-level meta / command marker that terminates
-/// an Expression-element body (`0x0A`, `0x21`, `0x23`, `0x40`). These
-/// bytes never appear bare inside an ExpressionPiece body except as the
-/// payload of a `0xFF` int-literal token, which the body walk
-/// ([`expression_body_end`]) consumes verbatim before this predicate is
-/// consulted.
-pub fn is_expression_body_terminator(byte: u8) -> bool {
+/// True if `byte` is one of the seven structural BytecodeElement opener
+/// bytes (`0x00`, `0x0A`, `0x21`, `0x23`, `0x24`, `0x2C`, `0x40`).
+///
+/// These are the only bytes that begin a non-text element; every other
+/// byte is the start (or continuation) of a Textout run. A Textout run
+/// terminates at the first structural opener — Shift-JIS lead bytes are
+/// *not* in this set because they continue a text run rather than end it.
+pub fn is_structural_opener(byte: u8) -> bool {
     matches!(
         byte,
-        opener::META_LINE | opener::META_ENTRYPOINT | opener::COMMAND | opener::META_KIDOKU
+        opener::META_COMMA
+            | opener::META_LINE
+            | opener::META_ENTRYPOINT
+            | opener::COMMAND
+            | opener::EXPRESSION
+            | opener::COMMA
+            | opener::META_KIDOKU
     )
 }
 
-/// Exclusive end offset of an Expression-element body that begins at
-/// `body_start` (the byte immediately after the `0x24` opener).
+/// ExpressionPiece operator-introducer byte (`\`, `0x5C`).
 ///
-/// The walk is ExpressionPiece-token-aware so the body terminates at its
-/// true boundary instead of over-consuming the following element. Per
-/// `docs/research/reallive-engine.md` §G an expression body legally
-/// contains `0x00` (binary-op byte), `0x24` (memory-reference
-/// sub-expression prefix), `0x2C` (separator), and `0xFF` (int-literal
-/// introducer + 4 bytes of i32 LE):
+/// Per `docs/research/reallive-engine.md` §G and rlvm
+/// `libreallive/expression.cc`, every unary and binary operator in a
+/// compiled RealLive expression is introduced by `0x5C` followed by a
+/// single op-code byte (arithmetic `0x00..=0x09`, compound-assignment
+/// `0x14..=0x26`, comparison `0x28..=0x2D`, logical `0x3C`/`0x3D`).
+const EXPR_OP_PREFIX: u8 = 0x5C;
+/// ExpressionPiece integer-literal introducer (`0xFF`); followed by 4
+/// bytes of `i32` little-endian. Integer literals also appear in the
+/// `$`-prefixed form (`0x24 0xFF` + 4 bytes) emitted by the compiler.
+const EXPR_INT_LITERAL: u8 = 0xFF;
+/// ExpressionPiece store-register reference (`0xC8`).
+const EXPR_STORE_REGISTER: u8 = 0xC8;
+/// Memory-reference index open / close brackets (`[` `]`).
+const EXPR_INDEX_OPEN: u8 = 0x5B;
+const EXPR_INDEX_CLOSE: u8 = 0x5D;
+/// Sub-expression grouping parentheses (`(` `)`).
+const EXPR_PAREN_OPEN: u8 = 0x28;
+const EXPR_PAREN_CLOSE: u8 = 0x29;
+/// Memory-/`$`-reference prefix (`$`, `0x24`). Shares its value with the
+/// [`opener::EXPRESSION`] element opener — at the start of an Expression
+/// element the `0x24` opener doubles as the `$` of the first token.
+const EXPR_DOLLAR: u8 = 0x24;
+
+/// A fully-decoded RealLive ExpressionPiece (RLDEV / rlvm
+/// `libreallive/expression.cc` grammar, restated in our own words).
 ///
-/// - A `0xFF` int-literal introducer consumes its 4 payload bytes
-///   verbatim. Those payload bytes can legally equal a meta/command
-///   marker or a Shift-JIS lead value; skipping them keeps the walk from
-///   ending the body early on a literal byte. This is the bounded
-///   int-literal length walk the body needs — the only source of bare
-///   high bytes (`0x80..=0xFF`) in a well-formed expression body.
-/// - Any other byte is examined as a boundary candidate: the body ends
-///   at the first top-level meta/command marker
-///   ([`is_expression_body_terminator`]) **or** at a Shift-JIS Textout
-///   lead byte ([`is_shift_jis_textout_lead`]). Stopping at the Textout
-///   lead is what prevents an Expression element from swallowing a
-///   directly-following Textout (dialogue) run — that run must surface
-///   as its own translatable unit, not be buried in `Expression.raw_bytes`.
-pub(crate) fn expression_body_end(bytes: &[u8], body_start: usize) -> usize {
-    let mut i = body_start;
-    while i < bytes.len() {
-        let byte = bytes[i];
-        if byte == 0xFF {
-            // int-literal token: introducer + 4 LE payload bytes,
-            // consumed verbatim (payload may carry terminator- or
-            // SJIS-lead-valued bytes).
-            i = (i + 5).min(bytes.len());
-            continue;
+/// This is the typed output of [`parse_expression`]: every byte of a
+/// well-formed expression maps to one of these nodes. The decoder uses
+/// the parse both to evaluate the expression's structure and to compute
+/// the exact byte span an Expression element / Command argument occupies,
+/// so the bytecode stream stays aligned with zero residual unknown bytes.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "node", rename_all = "snake_case")]
+pub enum Expr {
+    /// `0xFF`+i32 (or `$ 0xFF`+i32) integer literal.
+    IntLiteral { value: i32 },
+    /// `0xC8` store-register reference.
+    StoreRegister,
+    /// `<bank> [ <index> ]` memory-bank reference. `bank` is the single
+    /// bank-selector byte (`docs/research/reallive-engine.md` §G).
+    MemoryRef { bank: u8, index: Box<Expr> },
+    /// `\<op>` binary operator joining two operands.
+    Binary {
+        op: u8,
+        lhs: Box<Expr>,
+        rhs: Box<Expr>,
+    },
+    /// `\<op>` unary operator prefixing one operand.
+    Unary { op: u8, operand: Box<Expr> },
+    /// `( <inner> )` parenthesised sub-expression.
+    Parenthesized { inner: Box<Expr> },
+    /// A string operand (quoted or bare identifier) carried in an
+    /// argument list; bytes preserved verbatim (downstream Shift-JIS
+    /// decode is [`crate::encoding`]'s job).
+    StrLiteral { raw_bytes: Vec<u8> },
+}
+
+/// Read a little-endian `i32` at `pos`, erroring if fewer than 4 bytes
+/// remain.
+fn read_i32_le(bytes: &[u8], pos: usize) -> Result<i32, RealLiveParseError> {
+    if pos + 4 > bytes.len() {
+        return Err(RealLiveParseError::TruncatedExpression { offset: pos as u64 });
+    }
+    Ok(i32::from_le_bytes([
+        bytes[pos],
+        bytes[pos + 1],
+        bytes[pos + 2],
+        bytes[pos + 3],
+    ]))
+}
+
+/// `true` if `byte` introduces (in argument-list position) an
+/// ExpressionPiece operand rather than a bare string. The bank-byte
+/// memory-reference form is detected by a following `[`.
+fn is_expression_start(bytes: &[u8], pos: usize) -> bool {
+    match bytes.get(pos) {
+        Some(&b) => {
+            matches!(
+                b,
+                EXPR_INT_LITERAL
+                    | EXPR_STORE_REGISTER
+                    | EXPR_DOLLAR
+                    | EXPR_PAREN_OPEN
+                    | EXPR_OP_PREFIX
+            ) || bytes.get(pos + 1) == Some(&EXPR_INDEX_OPEN)
         }
-        if is_expression_body_terminator(byte) || is_shift_jis_textout_lead(byte) {
+        None => false,
+    }
+}
+
+/// Parse a single ExpressionPiece **token** at `pos` — the lowest grammar
+/// level: integer literal, store register, `$`-prefixed value, memory
+/// reference, or parenthesised sub-expression. Returns the node and the
+/// number of bytes consumed.
+fn parse_token(bytes: &[u8], pos: usize) -> Result<(Expr, usize), RealLiveParseError> {
+    let Some(&b) = bytes.get(pos) else {
+        return Err(RealLiveParseError::TruncatedExpression { offset: pos as u64 });
+    };
+    match b {
+        EXPR_INT_LITERAL => {
+            let value = read_i32_le(bytes, pos + 1)?;
+            Ok((Expr::IntLiteral { value }, 5))
+        }
+        EXPR_STORE_REGISTER => Ok((Expr::StoreRegister, 1)),
+        EXPR_DOLLAR => match bytes.get(pos + 1) {
+            // `$ 0xFF` + i32 — the compiler's typed integer-literal form.
+            Some(&EXPR_INT_LITERAL) => {
+                let value = read_i32_le(bytes, pos + 2)?;
+                Ok((Expr::IntLiteral { value }, 6))
+            }
+            // `$` as a type prefix in front of a memory reference or
+            // store register; consume the `$` and recurse on the value.
+            Some(_) => {
+                let (inner, len) = parse_token(bytes, pos + 1)?;
+                Ok((inner, len + 1))
+            }
+            None => Err(RealLiveParseError::TruncatedExpression { offset: pos as u64 }),
+        },
+        _ => {
+            // Memory-bank reference: `<bank> [ <index-expr> ]`.
+            if bytes.get(pos + 1) == Some(&EXPR_INDEX_OPEN) {
+                let (index, index_len) = parse_expression(bytes, pos + 2)?;
+                let close = pos + 2 + index_len;
+                if bytes.get(close) != Some(&EXPR_INDEX_CLOSE) {
+                    return Err(RealLiveParseError::MalformedExpression {
+                        offset: close as u64,
+                        byte: bytes.get(close).copied().unwrap_or(0),
+                    });
+                }
+                Ok((
+                    Expr::MemoryRef {
+                        bank: b,
+                        index: Box::new(index),
+                    },
+                    2 + index_len + 1,
+                ))
+            } else {
+                Err(RealLiveParseError::MalformedExpression {
+                    offset: pos as u64,
+                    byte: b,
+                })
+            }
+        }
+    }
+}
+
+/// Parse an ExpressionPiece **term** at `pos`: a parenthesised group, a
+/// `\<op>` unary-prefixed term, or a bare token.
+fn parse_term(bytes: &[u8], pos: usize) -> Result<(Expr, usize), RealLiveParseError> {
+    match bytes.get(pos) {
+        Some(&EXPR_PAREN_OPEN) => {
+            let (inner, inner_len) = parse_expression(bytes, pos + 1)?;
+            let close = pos + 1 + inner_len;
+            if bytes.get(close) != Some(&EXPR_PAREN_CLOSE) {
+                return Err(RealLiveParseError::MalformedExpression {
+                    offset: close as u64,
+                    byte: bytes.get(close).copied().unwrap_or(0),
+                });
+            }
+            Ok((
+                Expr::Parenthesized {
+                    inner: Box::new(inner),
+                },
+                inner_len + 2,
+            ))
+        }
+        Some(&EXPR_OP_PREFIX) => {
+            let Some(&op) = bytes.get(pos + 1) else {
+                return Err(RealLiveParseError::TruncatedExpression { offset: pos as u64 });
+            };
+            let (operand, operand_len) = parse_term(bytes, pos + 2)?;
+            Ok((
+                Expr::Unary {
+                    op,
+                    operand: Box::new(operand),
+                },
+                operand_len + 2,
+            ))
+        }
+        _ => parse_token(bytes, pos),
+    }
+}
+
+/// Parse a full ExpressionPiece at `pos`, returning the typed [`Expr`]
+/// tree and the exact number of bytes consumed.
+///
+/// Operator precedence is collapsed into a single left-to-right chain:
+/// the byte length of an expression is independent of the precedence
+/// grouping (every binary operator is encoded `\<op>` and joins two
+/// terms), so a flat fold yields both the correct length and a faithful
+/// operator tree. This is the real ExpressionPiece evaluator that drives
+/// the decompiler's byte alignment — there is no heuristic body scan.
+pub fn parse_expression(bytes: &[u8], pos: usize) -> Result<(Expr, usize), RealLiveParseError> {
+    let (mut node, mut len) = parse_term(bytes, pos)?;
+    loop {
+        let cursor = pos + len;
+        if bytes.get(cursor) == Some(&EXPR_OP_PREFIX) {
+            let Some(&op) = bytes.get(cursor + 1) else {
+                return Err(RealLiveParseError::TruncatedExpression {
+                    offset: cursor as u64,
+                });
+            };
+            let (rhs, rhs_len) = parse_term(bytes, cursor + 2)?;
+            node = Expr::Binary {
+                op,
+                lhs: Box::new(node),
+                rhs: Box::new(rhs),
+            };
+            len += 2 + rhs_len;
+        } else {
             break;
         }
-        i += 1;
     }
-    i
+    Ok((node, len))
+}
+
+/// Length of a string operand (bare identifier or `"`-quoted) at `pos`.
+/// Bare strings run until a structural / expression delimiter; quoted
+/// strings run to the closing `"`. Shift-JIS double-byte pairs are
+/// consumed whole so a trail byte equal to a delimiter value does not end
+/// the string early.
+fn string_operand_len(bytes: &[u8], pos: usize) -> usize {
+    let mut i = pos;
+    if bytes.get(pos) == Some(&b'"') {
+        i += 1;
+        while let Some(&b) = bytes.get(i) {
+            if b == b'"' {
+                i += 1;
+                break;
+            }
+            if is_shift_jis_textout_lead(b) && i + 1 < bytes.len() {
+                i += 2;
+            } else {
+                i += 1;
+            }
+        }
+    } else {
+        while let Some(&b) = bytes.get(i) {
+            if is_string_operand_delimiter(b) {
+                break;
+            }
+            if is_shift_jis_textout_lead(b) && i + 1 < bytes.len() {
+                i += 2;
+            } else {
+                i += 1;
+            }
+        }
+    }
+    i - pos
+}
+
+/// `true` if `byte` ends a bare (unquoted) string operand.
+fn is_string_operand_delimiter(byte: u8) -> bool {
+    matches!(
+        byte,
+        opener::META_COMMA
+            | opener::META_LINE
+            | opener::META_ENTRYPOINT
+            | b'"'
+            | opener::COMMAND
+            | EXPR_DOLLAR
+            | EXPR_PAREN_OPEN
+            | EXPR_PAREN_CLOSE
+            | opener::COMMA
+            | opener::META_KIDOKU
+            | EXPR_OP_PREFIX
+    )
 }
 
 /// True if `byte` is a recognised BytecodeElement opener (per opcode-table
@@ -353,6 +608,116 @@ pub fn is_recognized_opener(byte: u8) -> bool {
     ) || is_shift_jis_textout_lead(byte)
 }
 
+/// Width of a goto-family jump-target pointer (`i32` LE).
+const GOTO_POINTER_LEN: usize = 4;
+
+/// Goto-family classification of a Command, keyed on the 32-bit command
+/// id `(module_type << 24) | (module_id << 16) | opcode_u16` (rlvm
+/// `libreallive/bytecode.cc::BytecodeElement::Read`). These are the
+/// commands that carry **trailing jump-target pointers** after the
+/// argument list — the structure a length-only argument scan cannot see.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum GotoKind {
+    /// `goto` / `gosub`: 8-byte header + one `i32` target, no arglist.
+    Goto,
+    /// `goto_if` / `goto_unless` / `gosub_if`: header + `(cond)` + `i32`.
+    GotoIf,
+    /// `goto_on`: header + `(expr)` + `argc` × `i32` targets.
+    GotoOn,
+    /// `goto_case`: header + `(expr)` + `argc` × (`(case)` + `i32`).
+    GotoCase,
+    /// `gosub_with`: header + `(args)` + `i32` target.
+    GosubWith,
+    /// Not a goto-family command.
+    None,
+}
+
+/// Map a command id to its [`GotoKind`]. The id sets are restated from
+/// rlvm `libreallive/bytecode.cc`'s `BytecodeElement::Read` dispatch
+/// switch (the cross-scene/`farcall` module variants `0x05`/`0x06` are
+/// included alongside the intra-scene `0x01` jmp module).
+fn goto_kind(command_id: u32) -> GotoKind {
+    match command_id {
+        0x0001_0000 | 0x0001_0005 | 0x0005_0001 | 0x0005_0005 | 0x0006_0001 | 0x0006_0005 => {
+            GotoKind::Goto
+        }
+        0x0001_0001 | 0x0001_0002 | 0x0001_0006 | 0x0001_0007 | 0x0005_0002 | 0x0005_0006
+        | 0x0005_0007 | 0x0006_0000 | 0x0006_0002 | 0x0006_0006 | 0x0006_0007 => GotoKind::GotoIf,
+        0x0001_0003 | 0x0001_0008 | 0x0005_0003 | 0x0005_0008 | 0x0006_0003 | 0x0006_0008 => {
+            GotoKind::GotoOn
+        }
+        0x0001_0004 | 0x0001_0009 | 0x0005_0004 | 0x0005_0009 | 0x0006_0004 | 0x0006_0009 => {
+            GotoKind::GotoCase
+        }
+        0x0001_0010 | 0x0006_0010 => GotoKind::GosubWith,
+        _ => GotoKind::None,
+    }
+}
+
+/// Parse a bracketed argument list `'(' (arg (',' arg)*)? ')'` beginning
+/// at `pos` (which must point at the `(`).
+///
+/// The list is split into comma-delimited **slots**; each slot's bytes
+/// are the concatenation of its ExpressionPiece / string data items. A
+/// `,` immediately followed by `,` (or `)`) yields an empty slot — this
+/// preserves the one-slot-per-option contract the Choice / select
+/// surface walk relies on. Top-level commas are the only separators;
+/// commas buried inside an integer-literal payload or a parenthesised
+/// sub-expression are consumed as part of that data item by the grammar
+/// and never split a slot. Returns the per-slot raw bytes plus the total
+/// bytes consumed (both parentheses included).
+fn parse_arg_list(bytes: &[u8], pos: usize) -> Result<(Vec<Vec<u8>>, usize), RealLiveParseError> {
+    let mut cursor = pos + 1; // skip '('
+    let mut args: Vec<Vec<u8>> = Vec::new();
+    let mut slot_start = cursor;
+    loop {
+        let Some(&b) = bytes.get(cursor) else {
+            return Err(RealLiveParseError::TruncatedCommandArgs {
+                offset: pos as u64,
+                argc: 0,
+            });
+        };
+        match b {
+            EXPR_PAREN_CLOSE => {
+                if cursor > slot_start {
+                    args.push(bytes[slot_start..cursor].to_vec());
+                }
+                cursor += 1;
+                break;
+            }
+            // Top-level separator: close the current slot (possibly
+            // empty) and open the next.
+            opener::COMMA => {
+                args.push(bytes[slot_start..cursor].to_vec());
+                cursor += 1;
+                slot_start = cursor;
+            }
+            // A `\n` + i16 line marker can appear between arguments
+            // (rlvm `GetData`); skip its 3 bytes as part of the slot.
+            opener::META_LINE => cursor += 3,
+            _ => {
+                let len = if is_expression_start(bytes, cursor) {
+                    let (_expr, len) = parse_expression(bytes, cursor)?;
+                    len
+                } else {
+                    string_operand_len(bytes, cursor)
+                };
+                if len == 0 {
+                    // No forward progress — a byte that is neither a
+                    // valid expression token nor a string char. Surface a
+                    // typed error rather than spin.
+                    return Err(RealLiveParseError::MalformedExpression {
+                        offset: cursor as u64,
+                        byte: b,
+                    });
+                }
+                cursor = (cursor + len).min(bytes.len());
+            }
+        }
+    }
+    Ok((args, cursor - pos))
+}
+
 /// Decode a single Command at `pos` into a `RealLiveOpcode` plus the
 /// number of bytes consumed. `pos` points at the `0x23` opener byte.
 fn decode_command(bytes: &[u8], pos: usize) -> Result<(RealLiveOpcode, usize), RealLiveParseError> {
@@ -365,96 +730,81 @@ fn decode_command(bytes: &[u8], pos: usize) -> Result<(RealLiveOpcode, usize), R
     let module_type = bytes[pos + 1];
     let module_id = bytes[pos + 2];
     let opcode_u16 = u16::from_le_bytes([bytes[pos + 3], bytes[pos + 4]]);
-    let argc = bytes[pos + 5];
-    let _overload = bytes[pos + 6];
-    let _reserved = bytes[pos + 7];
+    // The header `argc` is a `u16 LE` (bytes 5-6); byte 7 is the overload
+    // selector (rlvm `bytecode.h:CommandElement`). For goto_on / goto_case
+    // it is the number of trailing jump targets / cases.
+    let argc = u16::from_le_bytes([bytes[pos + 5], bytes[pos + 6]]);
+    let command_id =
+        (u32::from(module_type) << 24) | (u32::from(module_id) << 16) | u32::from(opcode_u16);
 
-    // Argument list shape (per RLDEV / rlvm `expression.cc`):
-    //   '(' arg0 ',' arg1 ',' ... ')'
-    // Arguments are ExpressionPiece byte runs whose body we preserve
-    // verbatim — full expression evaluation is a follow-up node.
-    //
-    // We scan forward from `pos + COMMAND_HEADER_LEN`. The argument
-    // list is bracketed by `0x28` `(` and `0x29` `)` per documented
-    // expression encoding (`expression.cc::ExpressionPiece::ParseArg`,
-    // restated). When the opening `(` is absent the command takes no
-    // bracketed args (`argc == 0` commands often skip the parens).
     let mut consumed = COMMAND_HEADER_LEN;
     let mut args_bytes: Vec<Vec<u8>> = Vec::new();
-    if argc > 0 || (pos + consumed < bytes.len() && bytes[pos + consumed] == b'(') {
-        if pos + consumed >= bytes.len() {
+
+    // Helper: consume `count` trailing `i32` jump-target pointers.
+    let consume_pointers = |consumed: &mut usize, count: usize| -> Result<(), RealLiveParseError> {
+        let need = count * GOTO_POINTER_LEN;
+        if pos + *consumed + need > bytes.len() {
             return Err(RealLiveParseError::TruncatedCommandArgs {
                 offset: pos as u64,
-                argc,
+                argc: argc as u8,
             });
         }
-        if bytes[pos + consumed] != b'(' {
-            // Command declared argc>0 but no '(' — leave argument
-            // decoding to a follow-up node; preserve raw bytes via
-            // Unknown to keep the partition honest.
-            return Ok((
-                RealLiveOpcode::Unknown {
-                    opcode: opener::COMMAND,
-                    raw_bytes: bytes[pos..pos + consumed].to_vec(),
-                },
-                consumed,
-            ));
+        *consumed += need;
+        Ok(())
+    };
+    // Helper: consume a bracketed `(...)` arg list if one is present.
+    let parse_optional_args =
+        |consumed: &mut usize, args: &mut Vec<Vec<u8>>| -> Result<(), RealLiveParseError> {
+            if bytes.get(pos + *consumed) == Some(&EXPR_PAREN_OPEN) {
+                let (parsed, len) = parse_arg_list(bytes, pos + *consumed)?;
+                *args = parsed;
+                *consumed += len;
+            }
+            Ok(())
+        };
+
+    match goto_kind(command_id) {
+        GotoKind::Goto => {
+            // 8-byte header + one i32 target; no argument list.
+            consume_pointers(&mut consumed, 1)?;
         }
-        consumed += 1; // skip '('
-        let mut current_arg: Vec<u8> = Vec::new();
-        let mut closed = false;
-        while pos + consumed < bytes.len() {
-            let byte = bytes[pos + consumed];
-            match byte {
-                // `0xFF` introduces a 4-byte i32-LE int literal (rlvm
-                // `expression.cc`; same encoding decoded by
-                // `first_arg_as_u16`/`first_arg_as_u32`). Its payload
-                // bytes can legally equal `0x28` `(`, `0x29` `)`, or
-                // `0x2C` `,`; we copy the introducer + 4 payload bytes
-                // verbatim WITHOUT inspecting them as delimiters so a
-                // literal never mis-terminates or mis-splits the
-                // argument list. This is checked BEFORE the delimiter
-                // arms so the introducer wins. A truncated literal (<4
-                // payload bytes left) consumes what remains and lets the
-                // unclosed-arglist guard below surface
-                // `TruncatedCommandArgs`.
-                0xFF => {
-                    let lit_start = pos + consumed;
-                    let lit_end = (lit_start + 5).min(bytes.len());
-                    current_arg.extend_from_slice(&bytes[lit_start..lit_end]);
-                    consumed = lit_end - pos;
+        GotoKind::GotoIf | GotoKind::GosubWith => {
+            parse_optional_args(&mut consumed, &mut args_bytes)?;
+            consume_pointers(&mut consumed, 1)?;
+        }
+        GotoKind::GotoOn => {
+            parse_optional_args(&mut consumed, &mut args_bytes)?;
+            consume_pointers(&mut consumed, argc as usize)?;
+        }
+        GotoKind::GotoCase => {
+            parse_optional_args(&mut consumed, &mut args_bytes)?;
+            // Each case: a bracketed `(case-expr)` followed by an i32
+            // target.
+            for _ in 0..argc {
+                if bytes.get(pos + consumed) != Some(&EXPR_PAREN_OPEN) {
+                    return Err(RealLiveParseError::TruncatedCommandArgs {
+                        offset: pos as u64,
+                        argc: argc as u8,
+                    });
                 }
-                b')' => {
-                    consumed += 1;
-                    if !current_arg.is_empty() {
-                        args_bytes.push(std::mem::take(&mut current_arg));
-                    }
-                    closed = true;
-                    break;
-                }
-                b',' => {
-                    consumed += 1;
-                    args_bytes.push(std::mem::take(&mut current_arg));
-                }
-                other => {
-                    current_arg.push(other);
-                    consumed += 1;
-                }
+                let (_case, len) = parse_arg_list(bytes, pos + consumed)?;
+                consumed += len;
+                consume_pointers(&mut consumed, 1)?;
             }
         }
-        if !closed {
-            return Err(RealLiveParseError::TruncatedCommandArgs {
-                offset: pos as u64,
-                argc,
-            });
+        GotoKind::None => {
+            // Ordinary function command: an optional bracketed arg list.
+            parse_optional_args(&mut consumed, &mut args_bytes)?;
         }
     }
 
-    let opcode = classify_command(module_type, module_id, opcode_u16, &args_bytes);
-    let opcode = opcode.unwrap_or_else(|| RealLiveOpcode::Unknown {
-        opcode: opener::COMMAND,
-        raw_bytes: bytes[pos..pos + consumed].to_vec(),
-    });
+    let opcode =
+        classify_command(module_type, module_id, opcode_u16, &args_bytes).unwrap_or_else(|| {
+            RealLiveOpcode::Unknown {
+                opcode: opener::COMMAND,
+                raw_bytes: bytes[pos..pos + consumed].to_vec(),
+            }
+        });
     Ok((opcode, consumed))
 }
 
@@ -548,38 +898,35 @@ fn classify_command(
     Some(mapped)
 }
 
-/// Extract a u16 from the first expression argument if possible. The
-/// expression encoding uses `\xFF` to introduce an `i32 LE` literal
-/// (rlvm `expression.cc`); we accept the literal and cap at u16. For
-/// non-literal expressions we return `0` (the call site only uses this
-/// to decorate the variant; the raw bytes are still preserved upstream
-/// when the command is reclassified as Unknown).
+/// Reduce an [`Expr`] to a constant `i32` when it is (or wraps) an
+/// integer literal. Used to decorate `Wait` / `Background` / `VoicePlay`
+/// with their first scalar argument.
+fn expr_as_i32(expr: &Expr) -> Option<i32> {
+    match expr {
+        Expr::IntLiteral { value } => Some(*value),
+        Expr::Parenthesized { inner } => expr_as_i32(inner),
+        _ => None,
+    }
+}
+
+/// Parse the first argument's bytes as an ExpressionPiece and return its
+/// integer value when it is a constant literal, else `0`. The argument
+/// bytes are a full expression (e.g. `$ 0xFF` + i32), decoded by the real
+/// [`parse_expression`] evaluator rather than a byte-prefix guess.
+fn first_arg_as_i32(args_bytes: &[Vec<u8>]) -> i32 {
+    args_bytes
+        .first()
+        .and_then(|arg| parse_expression(arg, 0).ok())
+        .and_then(|(expr, _)| expr_as_i32(&expr))
+        .unwrap_or(0)
+}
+
 fn first_arg_as_u16(args_bytes: &[Vec<u8>]) -> u16 {
-    let Some(arg) = args_bytes.first() else {
-        return 0;
-    };
-    if arg.is_empty() {
-        return 0;
-    }
-    if arg[0] == 0xFF && arg.len() >= 5 {
-        let value = i32::from_le_bytes([arg[1], arg[2], arg[3], arg[4]]);
-        return value.unsigned_abs() as u16;
-    }
-    0
+    first_arg_as_i32(args_bytes).unsigned_abs() as u16
 }
 
 fn first_arg_as_u32(args_bytes: &[Vec<u8>]) -> u32 {
-    let Some(arg) = args_bytes.first() else {
-        return 0;
-    };
-    if arg.is_empty() {
-        return 0;
-    }
-    if arg[0] == 0xFF && arg.len() >= 5 {
-        let value = i32::from_le_bytes([arg[1], arg[2], arg[3], arg[4]]);
-        return value.unsigned_abs();
-    }
-    0
+    first_arg_as_i32(args_bytes).unsigned_abs()
 }
 
 /// Decode the full real-bytecode stream into a [`RealLiveOpcode`] sequence.
@@ -592,9 +939,11 @@ fn first_arg_as_u32(args_bytes: &[Vec<u8>]) -> u32 {
 ///
 /// An empty input is rejected with
 /// [`RealLiveParseError::TruncatedBytecode`]; the function never returns
-/// `Ok(vec![])` on a non-empty input either: any byte not consumed by a
-/// recognised element is preserved as
-/// [`RealLiveOpcode::Unknown`] so the partition guarantee holds.
+/// `Ok(vec![])` on a non-empty input either. Every byte is partitioned
+/// into a typed [`RealLiveOpcode`] element — a well-formed stream
+/// produces **zero** [`RealLiveOpcode::Unknown`] spans because any byte
+/// outside a structural element is a Textout (the catch-all per rlvm
+/// `BytecodeElement::Read`).
 pub fn parse_real_bytecode(bytes: &[u8]) -> Result<Vec<RealLiveOpcode>, RealLiveParseError> {
     if bytes.is_empty() {
         return Err(RealLiveParseError::TruncatedBytecode { input_len: 0 });
@@ -604,145 +953,10 @@ pub fn parse_real_bytecode(bytes: &[u8]) -> Result<Vec<RealLiveOpcode>, RealLive
     let mut pos: usize = 0;
 
     while pos < bytes.len() {
-        let lead = bytes[pos];
-        match lead {
-            opener::META_COMMA | opener::COMMA => {
-                out.push(RealLiveOpcode::Comma);
-                pos += 1;
-            }
-            opener::META_LINE => {
-                if bytes.len() - pos < 3 {
-                    return Err(RealLiveParseError::TruncatedMetaHeader {
-                        opener: lead,
-                        offset: pos as u64,
-                        needed: 3,
-                        available: bytes.len() - pos,
-                    });
-                }
-                let line = u16::from_le_bytes([bytes[pos + 1], bytes[pos + 2]]);
-                out.push(RealLiveOpcode::MetaLine { line });
-                pos += 3;
-            }
-            opener::META_ENTRYPOINT => {
-                if bytes.len() - pos < 3 {
-                    return Err(RealLiveParseError::TruncatedMetaHeader {
-                        opener: lead,
-                        offset: pos as u64,
-                        needed: 3,
-                        available: bytes.len() - pos,
-                    });
-                }
-                let entrypoint = u16::from_le_bytes([bytes[pos + 1], bytes[pos + 2]]);
-                out.push(RealLiveOpcode::MetaEntrypoint { entrypoint });
-                pos += 3;
-            }
-            opener::META_KIDOKU => {
-                if bytes.len() - pos < 3 {
-                    return Err(RealLiveParseError::TruncatedMetaHeader {
-                        opener: lead,
-                        offset: pos as u64,
-                        needed: 3,
-                        available: bytes.len() - pos,
-                    });
-                }
-                let mark = u16::from_le_bytes([bytes[pos + 1], bytes[pos + 2]]);
-                out.push(RealLiveOpcode::MetaKidoku { mark });
-                pos += 3;
-            }
-            opener::EXPRESSION => {
-                // Expression body bytes run until the true ExpressionPiece
-                // boundary computed by `expression_body_end`: a
-                // token-aware walk that consumes `0xFF` int-literal
-                // payloads verbatim and stops at the first top-level
-                // meta/command marker `{0x0A, 0x21, 0x23, 0x40}` OR at a
-                // Shift-JIS Textout lead. Stopping at the Textout lead
-                // ensures a directly-following Textout (dialogue) run is
-                // decoded as its own translatable element rather than
-                // absorbed into this Expression body.
-                //
-                // Full expression-piece evaluation lives in a follow-up
-                // node; the body is preserved verbatim for downstream
-                // tools.
-                let body_start = pos + 1;
-                let body_end = expression_body_end(bytes, body_start);
-                let raw_bytes = bytes[body_start..body_end].to_vec();
-                out.push(RealLiveOpcode::Expression { raw_bytes });
-                pos = body_end;
-            }
-            opener::COMMAND => {
-                let (opcode, consumed) = decode_command(bytes, pos)?;
-                out.push(opcode);
-                pos += consumed;
-            }
-            other if is_shift_jis_textout_lead(other) => {
-                // A Textout run extends through Shift-JIS double-byte
-                // pairs and accepts a permissive trail-byte range
-                // (any byte that is NOT a top-level Meta/Command
-                // opener). This mirrors RLDEV's documented Textout
-                // detector — text strings in RealLive bytecode are
-                // bounded by the same top-level Meta/Command markers
-                // that terminate every other element.
-                let body_start = pos;
-                let mut body_end = body_start;
-                while body_end < bytes.len() {
-                    let lead = bytes[body_end];
-                    if !is_shift_jis_textout_lead(lead) {
-                        break;
-                    }
-                    body_end += 1;
-                    if body_end < bytes.len() {
-                        let trail = bytes[body_end];
-                        // Stop if the trail-position byte is a top-level
-                        // Meta or Command opener — these never appear
-                        // inside a Shift-JIS pair and they end the run
-                        // cleanly. Other bytes (including Comma,
-                        // Expression, NUL) are valid SJIS trail
-                        // candidates and get consumed.
-                        if matches!(
-                            trail,
-                            opener::META_LINE
-                                | opener::META_ENTRYPOINT
-                                | opener::COMMAND
-                                | opener::META_KIDOKU
-                        ) {
-                            break;
-                        }
-                        body_end += 1;
-                    }
-                }
-                let raw_bytes = bytes[body_start..body_end].to_vec();
-                out.push(RealLiveOpcode::Textout {
-                    encoding: TextEncoding::ShiftJisInlineRun,
-                    raw_bytes,
-                });
-                pos = body_end;
-            }
-            other => {
-                // Unrecognised lead byte. The pre-KAIFUU-191 parser
-                // emitted a single-byte Unknown per occurrence; that
-                // over-counted misaligned ExpressionPiece / command-
-                // argument bodies and dragged the recognition rate
-                // down. Per the KAIFUU-191 audit-focus row
-                // "Opcode byte coverage must be documented per
-                // RLDEV/rlvm references; no opcode handler may be
-                // inferred from Sweetie HD bytes alone", we still tag
-                // the byte as Unknown — but coalesce consecutive
-                // unknown bytes into a single Unknown span so the
-                // partition stays honest without inflating the
-                // element count.
-                let body_start = pos;
-                let mut body_end = body_start;
-                while body_end < bytes.len() && !is_recognized_opener(bytes[body_end]) {
-                    body_end += 1;
-                }
-                let raw_bytes = bytes[body_start..body_end].to_vec();
-                out.push(RealLiveOpcode::Unknown {
-                    opcode: other,
-                    raw_bytes,
-                });
-                pos = body_end;
-            }
-        }
+        let (opcode, consumed) = decode_element(bytes, pos)?;
+        debug_assert!(consumed > 0, "decode_element must make forward progress");
+        out.push(opcode);
+        pos += consumed;
     }
 
     if out.is_empty() {
@@ -751,6 +965,89 @@ pub fn parse_real_bytecode(bytes: &[u8]) -> Result<Vec<RealLiveOpcode>, RealLive
         });
     }
     Ok(out)
+}
+
+/// Decode exactly one BytecodeElement at `pos`, returning the typed
+/// [`RealLiveOpcode`] and the number of bytes it consumed.
+///
+/// This is the single source of truth for element boundaries — both
+/// [`parse_real_bytecode`] and the patchback re-walk drive off it so
+/// their cursors never drift. The dispatch is the documented opener-byte
+/// switch (`docs/research/reallive-engine.md` §D): structural openers
+/// `{0x00, 0x0A, 0x21, 0x23, 0x24, 0x2C, 0x40}` decode their element;
+/// every other byte begins a Textout run that extends to the next
+/// structural opener (Shift-JIS pairs consumed whole).
+pub(crate) fn decode_element(
+    bytes: &[u8],
+    pos: usize,
+) -> Result<(RealLiveOpcode, usize), RealLiveParseError> {
+    let lead = bytes[pos];
+    match lead {
+        opener::META_COMMA | opener::COMMA => Ok((RealLiveOpcode::Comma, 1)),
+        opener::META_LINE => {
+            let value = read_meta_u16(bytes, pos)?;
+            Ok((RealLiveOpcode::MetaLine { line: value }, 3))
+        }
+        opener::META_ENTRYPOINT => {
+            let value = read_meta_u16(bytes, pos)?;
+            Ok((RealLiveOpcode::MetaEntrypoint { entrypoint: value }, 3))
+        }
+        opener::META_KIDOKU => {
+            let value = read_meta_u16(bytes, pos)?;
+            Ok((RealLiveOpcode::MetaKidoku { mark: value }, 3))
+        }
+        opener::EXPRESSION => {
+            // The `0x24` element opener doubles as the `$` of the first
+            // ExpressionPiece token; parse from `pos` so the real
+            // evaluator computes the exact span (it stops precisely at
+            // the expression's true end, never absorbing a following
+            // Textout).
+            let (_expr, len) = parse_expression(bytes, pos)?;
+            let raw_bytes = bytes[pos + 1..pos + len].to_vec();
+            Ok((RealLiveOpcode::Expression { raw_bytes }, len))
+        }
+        opener::COMMAND => decode_command(bytes, pos),
+        _ => {
+            // Textout (catch-all): any non-structural byte starts a text
+            // run that extends to the next structural opener. Shift-JIS
+            // double-byte pairs are consumed whole so a trail byte equal
+            // to an opener value does not end the run early.
+            let start = pos;
+            let mut end = pos;
+            while end < bytes.len() {
+                let b = bytes[end];
+                if is_structural_opener(b) {
+                    break;
+                }
+                if is_shift_jis_textout_lead(b) && end + 1 < bytes.len() {
+                    end += 2;
+                } else {
+                    end += 1;
+                }
+            }
+            let raw_bytes = bytes[start..end].to_vec();
+            Ok((
+                RealLiveOpcode::Textout {
+                    encoding: TextEncoding::ShiftJisInlineRun,
+                    raw_bytes,
+                },
+                end - start,
+            ))
+        }
+    }
+}
+
+/// Read the `u16 LE` payload of a 3-byte Meta element at `pos`.
+fn read_meta_u16(bytes: &[u8], pos: usize) -> Result<u16, RealLiveParseError> {
+    if bytes.len() - pos < 3 {
+        return Err(RealLiveParseError::TruncatedMetaHeader {
+            opener: bytes[pos],
+            offset: pos as u64,
+            needed: 3,
+            available: bytes.len() - pos,
+        });
+    }
+    Ok(u16::from_le_bytes([bytes[pos + 1], bytes[pos + 2]]))
 }
 
 #[cfg(test)]
@@ -803,17 +1100,19 @@ mod tests {
     }
 
     #[test]
-    fn unknown_opener_byte_preserved_as_unknown_variant() {
+    fn non_structural_lead_byte_decodes_as_textout_not_unknown() {
+        // `0x55` is not a structural opener, so it begins a Textout run
+        // (the catch-all per rlvm `BytecodeElement::Read`) that ends at
+        // the following MetaLine opener. No byte is dropped or marked
+        // Unknown — every byte partitions into a typed element.
         let bytes = &[0x55, opener::META_LINE, 0x07, 0x00];
-        let opcodes = parse_real_bytecode(bytes).expect("unknown openers tolerated");
+        let opcodes = parse_real_bytecode(bytes).expect("non-structural lead tolerated");
         assert_eq!(opcodes.len(), 2);
-        assert!(matches!(
-            &opcodes[0],
-            RealLiveOpcode::Unknown {
-                opcode: 0x55,
-                raw_bytes
-            } if raw_bytes == &vec![0x55]
-        ));
+        match &opcodes[0] {
+            RealLiveOpcode::Textout { raw_bytes, .. } => assert_eq!(raw_bytes, &vec![0x55]),
+            other => panic!("expected Textout, got {other:?}"),
+        }
+        assert!(opcodes.iter().all(RealLiveOpcode::is_recognized));
         assert!(matches!(opcodes[1], RealLiveOpcode::MetaLine { line: 7 }));
     }
 
@@ -945,21 +1244,20 @@ mod tests {
 
     #[test]
     fn expression_immediately_followed_by_textout_decodes_as_two_elements() {
-        // Bug: an Expression body extended across a directly-following
-        // Shift-JIS Textout run, burying the dialogue in
-        // Expression.raw_bytes. The body here also carries a 0xFF int
-        // literal whose payload byte 0x83 has a Shift-JIS lead VALUE —
-        // that payload must be skipped (not mistaken for a Textout
-        // start), and the body must terminate at the REAL Textout that
-        // follows the literal.
+        // An Expression element whose value is a `$ 0xFF` int literal
+        // (`0x24 0xFF` + i32) carries a payload byte `0x83` with a
+        // Shift-JIS lead VALUE. The literal must be consumed whole (its
+        // payload is not mistaken for a Textout start), and the
+        // expression must terminate at its true 6-byte boundary so the
+        // REAL Textout that follows surfaces as its own translatable
+        // unit instead of being buried in `Expression.raw_bytes`.
         let bytes = &[
             opener::EXPRESSION,
-            0x5C, // expression op byte (not terminator / SJIS lead / 0xFF)
             0xFF,
             0x83,
             0x6E,
             0x01,
-            0x00, // int literal; 0x83 payload has an SJIS-lead value
+            0x00, // $ 0xFF int literal = 0x00016E83; 0x83 has an SJIS-lead value
             0x83,
             0x6E, // Textout "ハ" — the translatable dialogue
             opener::META_LINE,
@@ -974,10 +1272,11 @@ mod tests {
         );
         match &opcodes[0] {
             RealLiveOpcode::Expression { raw_bytes } => {
-                // Body ends BEFORE the trailing Textout (6 body bytes).
+                // Body is the 5 bytes after the `0x24` opener — the whole
+                // int literal, nothing more.
                 assert_eq!(
                     raw_bytes,
-                    &vec![0x5C, 0xFF, 0x83, 0x6E, 0x01, 0x00],
+                    &vec![0xFF, 0x83, 0x6E, 0x01, 0x00],
                     "Expression must not swallow the following Textout"
                 );
             }
@@ -991,6 +1290,98 @@ mod tests {
             other => panic!("expected Textout (recovered dialogue), got {other:?}"),
         }
         assert!(matches!(opcodes[2], RealLiveOpcode::MetaLine { line: 5 }));
+    }
+
+    #[test]
+    fn parses_assignment_expression_into_typed_tree() {
+        // `$06[401] = 1` — the pervasive Sweetie HD scene-1 idiom:
+        // memory-ref LHS, `\0x1e` assignment op, `$ 0xFF` int-literal
+        // RHS. The evaluator must consume exactly 18 bytes and produce a
+        // typed Binary(MemoryRef, IntLiteral) tree.
+        let body = [
+            0x24, 0x06, 0x5B, 0x24, 0xFF, 0x91, 0x01, 0x00, 0x00, 0x5D, 0x5C, 0x1E, 0x24, 0xFF,
+            0x01, 0x00, 0x00, 0x00,
+        ];
+        let (expr, len) = parse_expression(&body, 0).expect("assignment must parse");
+        assert_eq!(len, 18, "must consume the whole expression");
+        match expr {
+            Expr::Binary { op, lhs, rhs } => {
+                assert_eq!(op, 0x1E, "assignment operator");
+                assert!(matches!(
+                    *lhs,
+                    Expr::MemoryRef { bank: 0x06, ref index }
+                        if matches!(**index, Expr::IntLiteral { value: 401 })
+                ));
+                assert!(matches!(*rhs, Expr::IntLiteral { value: 1 }));
+            }
+            other => panic!("expected Binary assignment, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn goto_if_consumes_trailing_jump_pointer() {
+        // module_jmp goto_if (modtype=0, module=1, opcode=2) carries a
+        // `(cond)` arg list followed by a 4-byte i32 jump target. The
+        // decoder must consume header + arglist + pointer so the stream
+        // stays aligned (the trailing pointer is not left as Unknown).
+        let mut bytes = vec![
+            opener::COMMAND,
+            0,
+            1,
+            2,
+            0, // opcode_u16 = 2 (goto_if)
+            0,
+            0,
+            0, // argc=0, overload=0
+        ];
+        // arg list: `( $ 0xFF 0 )`
+        bytes.extend_from_slice(&[b'(', 0x24, 0xFF, 0x00, 0x00, 0x00, 0x00, b')']);
+        // trailing i32 jump target = 0x0461
+        bytes.extend_from_slice(&[0x61, 0x04, 0x00, 0x00]);
+        // a following MetaLine to prove alignment
+        bytes.extend_from_slice(&[opener::META_LINE, 0x07, 0x00]);
+        let opcodes = parse_real_bytecode(&bytes).expect("must decode");
+        assert!(
+            opcodes.iter().all(RealLiveOpcode::is_recognized),
+            "no element may misalign into Unknown: {opcodes:?}"
+        );
+        assert_eq!(opcodes.len(), 2, "goto_if + MetaLine: {opcodes:?}");
+        assert!(matches!(opcodes[0], RealLiveOpcode::Branch));
+        assert!(matches!(opcodes[1], RealLiveOpcode::MetaLine { line: 7 }));
+    }
+
+    #[test]
+    fn plain_goto_consumes_twelve_bytes_with_pointer() {
+        // module_jmp goto (modtype=0, module=1, opcode=0): 8-byte header
+        // + 4-byte i32 target, no arg list (rlvm GotoElement == 12 bytes).
+        let mut bytes = vec![opener::COMMAND, 0, 1, 0, 0, 0, 0, 0];
+        bytes.extend_from_slice(&[0x0F, 0x06, 0x00, 0x00]); // i32 target
+        bytes.extend_from_slice(&[opener::META_LINE, 0x86, 0x00]);
+        let opcodes = parse_real_bytecode(&bytes).expect("must decode");
+        assert_eq!(opcodes.len(), 2, "goto + MetaLine: {opcodes:?}");
+        assert!(matches!(opcodes[0], RealLiveOpcode::Goto));
+        assert!(matches!(
+            opcodes[1],
+            RealLiveOpcode::MetaLine { line: 0x86 }
+        ));
+    }
+
+    #[test]
+    fn command_string_argument_is_consumed_as_operand() {
+        // module_grp open command with a bare string filename followed by
+        // an int param: `( _WHITE $ 0xFF 50 )`. The string operand must
+        // be consumed (stopping at the `$`), and the int param decoded.
+        let mut bytes = vec![opener::COMMAND, 1, module_id::GRP, 0x49, 0, 2, 0, 0];
+        bytes.push(b'(');
+        bytes.extend_from_slice(b"_WHITE");
+        bytes.extend_from_slice(&[0x24, 0xFF, 0x32, 0x00, 0x00, 0x00]); // $ 0xFF 50
+        bytes.push(b')');
+        bytes.extend_from_slice(&[opener::META_LINE, 0x01, 0x00]);
+        let opcodes = parse_real_bytecode(&bytes).expect("must decode");
+        assert!(opcodes.iter().all(RealLiveOpcode::is_recognized));
+        assert_eq!(opcodes.len(), 2, "background + MetaLine: {opcodes:?}");
+        assert!(matches!(opcodes[0], RealLiveOpcode::Background { .. }));
+        assert!(matches!(opcodes[1], RealLiveOpcode::MetaLine { line: 1 }));
     }
 
     #[test]
