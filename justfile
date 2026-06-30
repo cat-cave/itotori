@@ -48,6 +48,11 @@ test:
 localize-project-test:
     node --test suite/scripts/localize-project/*.test.mjs
 
+# ALPHA-007: public fixture vertical (suite/scripts/alpha-public-fixture).
+# Deterministic; offline (injects a committed ITOTORI-026 harness output).
+alpha-public-fixture-test:
+    node --test suite/scripts/alpha-public-fixture/run.test.mjs suite/scripts/alpha-public-fixture/linkage.test.mjs
+
 build:
     pnpm exec vp run ts:build
     cargo build --workspace

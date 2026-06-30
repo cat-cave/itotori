@@ -1,0 +1,127 @@
+{
+  "schemaVersion": "itotori.alpha-public-fixture.vertical-linkage.v0",
+  "generatedAt": "2026-06-30T00:00:00.000Z",
+  "verticalFixture": {
+    "fixtureId": "hello-game",
+    "publicManifestUri": "fixtures/public/hello-game.manifest.json",
+    "publicManifestHash": "sha256:1b800fad6acab8d16e8b8c651238186c4dde656c0afb641da7325b21365b0f20",
+    "sourceBridgeId": "019ed012-0000-7000-8000-000000000001",
+    "sourceBundleHash": "sha256:0c659aa5e7a4939bbad9198b81f96408623d7b5d321a6725509d105386001498",
+    "sourceRevision": {
+      "revisionId": "019ed012-0000-7000-8000-000000000101",
+      "revisionKind": "content_hash",
+      "value": "sha256:0c659aa5e7a4939bbad9198b81f96408623d7b5d321a6725509d105386001498"
+    },
+    "sourceLocale": "ja-JP",
+    "targetLocale": "fr-FR"
+  },
+  "sharedManifest": {
+    "proofManifestId": "019ed025-0000-7000-8000-000000000301",
+    "uri": "fixtures/alpha-vertical-proof/hello-game-alpha-proof-v0.2.fr-FR.json",
+    "hash": "sha256:779a9d97e2623143b786753ece90c5fee287f399adc69bccbec0fb40641bb45e",
+    "providerProofIds": ["019ed025-0000-7000-8000-000000000303"],
+    "benchmarkReportRefHash": "sha256:e08217064d9fc1eb95fd6d848c29628cff24c0520d4a4f03eace72cf2d4075b3"
+  },
+  "artifacts": {
+    "bridge": {
+      "project": "itotori",
+      "artifactKind": "bridge_bundle",
+      "artifactId": "019ed012-0000-7000-8000-000000000001",
+      "uri": "fixtures/hello-game/expected/bridge-v0.2.json",
+      "hash": "sha256:6102810a6a9c0c5239ed5666aea9379694a14067ee07af39064fd404967af6cc",
+      "fixtureId": "hello-game",
+      "sourceBridgeId": "019ed012-0000-7000-8000-000000000001",
+      "sourceBundleHash": "sha256:0c659aa5e7a4939bbad9198b81f96408623d7b5d321a6725509d105386001498",
+      "targetLocale": null
+    },
+    "patchExport": {
+      "project": "itotori",
+      "artifactKind": "patch_export",
+      "artifactId": "019ed012-0000-7000-8000-000000000901",
+      "uri": "fixtures/hello-game/expected/patch-export-v0.2.fr-FR.json",
+      "hash": "sha256:1fb49bd51cf9343b89404baf89d628362bda10058b2ff3921f150ab5eb8938d5",
+      "fixtureId": "hello-game",
+      "sourceBridgeId": "019ed012-0000-7000-8000-000000000001",
+      "sourceBundleHash": "sha256:0c659aa5e7a4939bbad9198b81f96408623d7b5d321a6725509d105386001498",
+      "targetLocale": "fr-FR"
+    },
+    "patchResult": {
+      "project": "kaifuu",
+      "artifactKind": "patch_result",
+      "artifactId": "019ed012-0000-7000-8000-000000000902",
+      "uri": "fixtures/hello-game/expected/patch-result-v0.2.fr-FR.json",
+      "hash": "sha256:a6c44fa4d44937a5f963d25c9579042a46f37d2d15df897b99cf49ae50444c55",
+      "fixtureId": "hello-game",
+      "sourceBridgeId": "019ed012-0000-7000-8000-000000000001",
+      "sourceBundleHash": "sha256:0c659aa5e7a4939bbad9198b81f96408623d7b5d321a6725509d105386001498",
+      "targetLocale": "fr-FR",
+      "status": "passed",
+      "sourceBundleHashMatches": true
+    },
+    "deltaPackage": {
+      "project": "kaifuu",
+      "artifactKind": "delta_package",
+      "artifactId": "019ed012-0000-7000-8000-000000000903",
+      "uri": "fixtures/hello-game/expected/delta-package-v0.2.fr-FR.json",
+      "hash": "sha256:a9cb30ef265ac6dbc0ff8690f80ddad25876e05a3396e83ecf37dc2370cdd4f2",
+      "fixtureId": "hello-game",
+      "sourceBridgeId": "019ed012-0000-7000-8000-000000000001",
+      "sourceBundleHash": "sha256:0c659aa5e7a4939bbad9198b81f96408623d7b5d321a6725509d105386001498",
+      "targetLocale": "fr-FR"
+    },
+    "runtimeObservation": {
+      "project": "utsushi",
+      "artifactKind": "runtime_observation_proof",
+      "artifactId": "019ed012-0000-7000-8000-000000000904",
+      "fixtureId": "hello-game",
+      "sourceBridgeId": "019ed012-0000-7000-8000-000000000001",
+      "sourceBundleHash": "sha256:0c659aa5e7a4939bbad9198b81f96408623d7b5d321a6725509d105386001498",
+      "targetLocale": "fr-FR",
+      "status": "passed"
+    },
+    "providerProof": {
+      "project": "itotori",
+      "artifactKind": "provider_proof",
+      "providerProofId": "019ed025-0000-7000-8000-000000000303",
+      "fixtureId": "hello-game",
+      "fallbackUsed": true,
+      "billedMicrosUsd": 2550,
+      "zdrEnforcedCount": 0
+    },
+    "benchmark": {
+      "project": "itotori",
+      "artifactKind": "benchmark_report",
+      "producedBy": "ITOTORI-026",
+      "benchmarkRunId": "019ed026-0000-7000-8000-000000000001",
+      "runManifestId": "019ed026-0000-7000-8000-000000000001",
+      "runManifestSchema": "itotori.benchmark_harness_run_manifest.v0.1",
+      "status": "succeeded",
+      "reportStatus": "passed",
+      "hash": "sha256:8e74fd29e41347e243e508d09c10ad938a70a8ee07b6aee4e8a5405e618cbeb4",
+      "corpusRef": {
+        "corpusRefId": "itotori-public-fixture",
+        "corpusKind": "public_fixture",
+        "publicContent": true,
+        "sourceLocale": "ja-JP",
+        "targetLocale": "en-US",
+        "engineProfile": "kaifuu-fixture-default"
+      },
+      "producedByHarness": true
+    },
+    "dashboardReadModel": {
+      "project": "itotori",
+      "artifactKind": "dashboard_read_model",
+      "fixtureId": "hello-game",
+      "sourceBridgeId": "019ed012-0000-7000-8000-000000000001",
+      "sourceBundleHash": "sha256:0c659aa5e7a4939bbad9198b81f96408623d7b5d321a6725509d105386001498",
+      "targetLocale": "fr-FR",
+      "status": "passed"
+    }
+  },
+  "verdict": "unvalidated",
+  "findings": [],
+  "scenario": {
+    "name": "provider-fallback",
+    "note": "Recorded provider proof fallbackUsed=true -> finding provider.fallback_used (warn, non-blocking)."
+  }
+}

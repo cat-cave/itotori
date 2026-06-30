@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/cat-cave/itotori/suite/scripts/alpha-public-fixture/schemas/runtime-observation-proof.schema.json",
+  "title": "Alpha Public Fixture Runtime Observation Proof",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "generatedAt",
+    "fixtureId",
+    "sourceBridgeId",
+    "sourceBundleHash",
+    "runtimeReportId",
+    "runtimeReportHash",
+    "runtimeTargetIds",
+    "status",
+    "traceEventCount",
+    "branchEventCount",
+    "observedTextLineCount"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "itotori.alpha-public-fixture.runtime-observation-proof.v0" },
+    "generatedAt": { "type": "string", "minLength": 1 },
+    "fixtureId": { "type": "string", "minLength": 1 },
+    "sourceBridgeId": { "type": "string", "minLength": 1 },
+    "sourceBundleHash": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "sourceLocale": { "type": ["string", "null"] },
+    "targetLocale": { "type": ["string", "null"] },
+    "runtimeReportId": { "type": "string", "minLength": 1 },
+    "runtimeReportUri": { "type": "string", "minLength": 1 },
+    "runtimeReportHash": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "runtimeTargetIds": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "adapterName": { "type": ["string", "null"] },
+    "adapterVersion": { "type": ["string", "null"] },
+    "evidenceTier": { "type": ["string", "null"] },
+    "fidelityTier": { "type": ["string", "null"] },
+    "status": { "type": "string", "minLength": 1 },
+    "traceEventCount": { "type": "integer", "minimum": 0 },
+    "branchEventCount": { "type": "integer", "minimum": 0 },
+    "observedTextLineCount": { "type": "integer", "minimum": 0 }
+  }
+}

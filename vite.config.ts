@@ -94,6 +94,30 @@ export default defineConfig({
         dependsOn: ["ts:build", "rust:check"],
         cache: false,
       },
+      // ALPHA-007: public fixture vertical run. Composes the existing public
+      // fixture artifacts across Itotori + Kaifuu + Utsushi + provider proof +
+      // SHARED-025 manifest and produces a fresh ITOTORI-026 benchmark, then
+      // emits a hash-addressed, schema-valid, linkage-proven manifest under
+      // artifacts/alpha/public-fixture/. Public fixtures only; no DB, no creds.
+      "alpha:public-fixture": {
+        command: "node suite/scripts/alpha-public-fixture/run.mjs",
+        dependsOn: ["ts:build"],
+        cache: false,
+      },
+      // ALPHA-007: independent artifact-linkage validator. Re-proves linkage
+      // from the emitted artifacts (schema + hash-addressing + cross-artifact
+      // agreement) instead of trusting a success string.
+      "alpha:public-fixture-validate": {
+        command: "node suite/scripts/alpha-public-fixture/validate-linkage.mjs",
+        dependsOn: ["alpha:public-fixture"],
+        cache: false,
+      },
+      // ALPHA-007: deterministic unit + integration tests for the vertical.
+      "alpha:public-fixture-test": {
+        command:
+          "node --test suite/scripts/alpha-public-fixture/run.test.mjs suite/scripts/alpha-public-fixture/linkage.test.mjs",
+        cache: false,
+      },
     },
   },
 });
