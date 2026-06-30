@@ -16,7 +16,7 @@
 
 > **The "Outcome A" conclusion below (no second-level XOR) is WRONG for the
 > full archive.** It was reached from scene-1's first 64 bytes only, which sit
-> *before* the `xor_2` segment at decompressed offset `256`. Full-archive
+> _before_ the `xor_2` segment at decompressed offset `256`. Full-archive
 > validation (the command-catalogue + Kanon work) later proved that Sweetie HD
 > **does** apply rlvm's second-level `xor_2` over a bounded `[256, 513)`
 > segment of every scene (`XorKey { xor_offset = 256, xor_length = 257 }`):
