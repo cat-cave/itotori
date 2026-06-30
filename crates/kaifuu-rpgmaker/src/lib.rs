@@ -52,6 +52,7 @@ mod escape;
 mod extract;
 mod json_locate;
 mod patchback;
+mod recognize;
 
 use std::fs;
 use std::path::Path;
@@ -77,6 +78,7 @@ pub use patchback::{
     PatchbackOpts, ProducedDelta, TranslatedBundleV02, TranslatedUnitTarget,
     apply_translated_bundle, produce_delta_package,
 };
+pub use recognize::{RecognizedCommand, recognize_plugin_command};
 
 /// Full result of a game-directory extraction.
 #[derive(Debug, Clone)]

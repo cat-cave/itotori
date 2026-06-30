@@ -8,6 +8,7 @@ use serde_json::Value;
 
 use crate::codes::{CodeClass, TextRole, classify};
 use crate::escape::{EscapeSpan, scan_escape_spans};
+use crate::recognize::recognize_plugin_command;
 
 /// The localization-bridge surface kind a unit maps to, plus the data the
 /// bridge layer needs to build that surface's required context object.
@@ -22,6 +23,12 @@ pub enum SurfaceKind {
     ChoiceLabel { group: usize, option: usize },
     /// A `Show Text` (MZ) / runtime speaker-name string.
     SpeakerName,
+    /// On-screen display text recognized inside a message-bearing plugin
+    /// command (e.g. a `D_TEXT` text picture). `plugin_command` records the
+    /// recognized command keyword for provenance. The unit text is the full
+    /// `parameters[0]` literal; the command's structural tokens are carried
+    /// as preserve-exact control-markup spans.
+    PluginText { plugin_command: &'static str },
     /// A database name/description/message field.
     Database {
         database_kind: &'static str,
@@ -141,6 +148,38 @@ impl ExtractAcc {
             text: text.to_string(),
             spans,
             speaker,
+        });
+    }
+
+    /// Push a unit recognized inside a plugin/script command. `full_text` is
+    /// the whole `parameters[0]` literal (so the pointer + sourceHash stay
+    /// patchback-targetable); `control_spans` protect the command's
+    /// structural tokens. The inline `\`-control codes inside the display
+    /// text are scanned and merged, then all spans are sorted ascending by
+    /// start byte (the v0.2 non-overlapping-span contract). The recognizer's
+    /// structural spans bound the keyword prefix and trailing args, so they
+    /// never overlap the escape spans found within the display region.
+    fn push_recognized_unit(
+        &mut self,
+        file: &str,
+        pointer: Vec<String>,
+        surface_kind: SurfaceKind,
+        full_text: &str,
+        control_spans: Vec<EscapeSpan>,
+    ) {
+        if full_text.is_empty() {
+            return;
+        }
+        let mut spans = control_spans;
+        spans.extend(scan_escape_spans(full_text));
+        spans.sort_by_key(|span| span.start_byte);
+        self.units.push(ProtoUnit {
+            file: file.to_string(),
+            pointer,
+            surface_kind,
+            text: full_text.to_string(),
+            spans,
+            speaker: None,
         });
     }
 }
@@ -366,14 +405,35 @@ fn walk_command_list(acc: &mut ExtractAcc, file: &str, base: Vec<String>, list: 
                 });
             }
             CodeClass::Plugin => {
-                acc.findings.push(Finding {
-                    kind: FindingKind::PluginCommandText,
-                    file: file.to_string(),
-                    pointer: entry_pointer(&["parameters"]),
-                    command_code: Some(code),
-                    detail: "Plugin command may render display text (e.g. a draw-text plugin); manual review"
-                        .to_string(),
-                });
+                // Evidence-driven recognizer first: a KNOWN message-bearing
+                // plugin command (e.g. D_TEXT) extracts its display text as a
+                // unit keyed by the same `parameters/0` pointer; everything
+                // else stays a structured finding (no blind grab of engine
+                // control).
+                let param0 = params.and_then(|p| p.first()).and_then(Value::as_str);
+                match param0.and_then(|s| recognize_plugin_command(s).map(|rec| (s, rec))) {
+                    Some((text, rec)) => {
+                        acc.push_recognized_unit(
+                            file,
+                            entry_pointer(&["parameters", "0"]),
+                            SurfaceKind::PluginText {
+                                plugin_command: rec.command,
+                            },
+                            text,
+                            rec.control_spans,
+                        );
+                    }
+                    None => {
+                        acc.findings.push(Finding {
+                            kind: FindingKind::PluginCommandText,
+                            file: file.to_string(),
+                            pointer: entry_pointer(&["parameters"]),
+                            command_code: Some(code),
+                            detail: "Plugin command not recognized as message-bearing; may render display text via an unknown plugin; manual review"
+                                .to_string(),
+                        });
+                    }
+                }
             }
             CodeClass::Structural => {}
             CodeClass::Unknown => {
@@ -697,6 +757,106 @@ mod tests {
             .find(|f| f.kind == FindingKind::UnknownCommandCode)
             .expect("unknown-code finding");
         assert_eq!(unknown.command_code, Some(70));
+    }
+
+    #[test]
+    fn recognized_d_text_plugin_extracts_unit_control_plugin_stays_finding() {
+        // Synthetic event list: a recognized D_TEXT (display text + size),
+        // a D_TEXT_SETTING control command, and a screen-shake control
+        // command. Only the D_TEXT becomes a translatable unit.
+        let list = json!([
+            {"code": 356, "indent": 0, "parameters": ["D_TEXT Hello 32"]},
+            {"code": 356, "indent": 0, "parameters": ["D_TEXT_SETTING ALIGN CENTER"]},
+            {"code": 356, "indent": 0, "parameters": ["P_SHAKE 1 2 3"]}
+        ]);
+        let mut acc = ExtractAcc::default();
+        walk_command_list(
+            &mut acc,
+            "Map001.json",
+            vec!["list".to_string()],
+            list.as_array().unwrap(),
+        );
+
+        // One recognized plugin-text unit; two control commands stay findings.
+        assert_eq!(acc.units.len(), 1, "only D_TEXT extracts a unit");
+        let unit = &acc.units[0];
+        assert!(matches!(
+            unit.surface_kind,
+            SurfaceKind::PluginText {
+                plugin_command: "D_TEXT"
+            }
+        ));
+        // The unit text is the FULL parameters[0] literal (patchback-safe);
+        // it is keyed by the parameters/0 pointer.
+        assert_eq!(unit.text, "D_TEXT Hello 32");
+        assert_eq!(
+            unit.source_unit_key(),
+            "rpgmaker:Map001.json#/list/0/parameters/0"
+        );
+        // The keyword prefix and trailing size are protected control spans,
+        // so only "Hello" is translatable. Every span's byte range must
+        // reproduce its raw substring.
+        let names: Vec<&str> = unit.spans.iter().map(|s| s.parsed_name.as_str()).collect();
+        assert_eq!(
+            names,
+            vec![
+                "rpgmaker.plugin.D_TEXT.command",
+                "rpgmaker.plugin.D_TEXT.font_size",
+            ]
+        );
+        for span in &unit.spans {
+            assert_eq!(&unit.text[span.start_byte..span.end_byte], span.raw);
+        }
+
+        // Two control plugin commands surfaced as findings, never dropped,
+        // never mis-extracted as units.
+        assert_eq!(
+            acc.findings
+                .iter()
+                .filter(|f| f.kind == FindingKind::PluginCommandText)
+                .count(),
+            2,
+        );
+        // Findings carry only structural description, never the command text.
+        for finding in &acc.findings {
+            assert!(!finding.detail.contains("ALIGN"));
+            assert!(!finding.detail.contains("P_SHAKE"));
+        }
+    }
+
+    #[test]
+    fn d_text_with_inline_escape_code_merges_spans_in_order() {
+        // Display text carries an inline \v[1] code: the keyword prefix, the
+        // escape code, and the trailing size must all be protected, sorted
+        // ascending by start byte and non-overlapping.
+        let list = json!([
+            {"code": 356, "indent": 0, "parameters": ["D_TEXT \\v[1]pts 28"]}
+        ]);
+        let mut acc = ExtractAcc::default();
+        walk_command_list(
+            &mut acc,
+            "Map001.json",
+            vec!["list".to_string()],
+            list.as_array().unwrap(),
+        );
+        assert_eq!(acc.units.len(), 1);
+        let spans = &acc.units[0].spans;
+        let names: Vec<&str> = spans.iter().map(|s| s.parsed_name.as_str()).collect();
+        assert_eq!(
+            names,
+            vec![
+                "rpgmaker.plugin.D_TEXT.command",
+                "rpgmaker.escape.V",
+                "rpgmaker.plugin.D_TEXT.font_size",
+            ]
+        );
+        // Ascending + non-overlapping.
+        for pair in spans.windows(2) {
+            assert!(pair[0].end_byte <= pair[1].start_byte);
+        }
+        for span in spans {
+            assert_eq!(&acc.units[0].text[span.start_byte..span.end_byte], span.raw);
+        }
     }
 
     #[test]

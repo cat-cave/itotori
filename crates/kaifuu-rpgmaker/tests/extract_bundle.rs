@@ -214,14 +214,59 @@ fn real_bytes_lustmemory_extracts_non_trivial_unit_count() {
         result.bundle.bundle.assets.len()
     );
 
-    // Plugin/script/unknown surfaces are recorded as findings, not dropped.
+    // Plugin/script/unknown surfaces that no recognizer claims are recorded
+    // as findings, not dropped.
     assert!(
         result
             .findings
             .iter()
             .any(|f| f.kind == FindingKind::PluginCommandText),
-        "356 plugin commands in the corpus must surface as findings"
+        "unrecognized 356 plugin commands in the corpus must surface as findings"
     );
+
+    // Recognized message-bearing plugin commands (e.g. D_TEXT) extract their
+    // display text as units keyed by their parameters/0 pointer. They map to
+    // the `narration` surface and carry a `rpgmaker.plugin.*` control-markup
+    // span over the command keyword, which is how they are identified here
+    // (counts only — never verbatim text).
+    let plugin_text_units: Vec<_> = units
+        .iter()
+        .filter(|u| {
+            u.surface_kind == "narration"
+                && u.spans.iter().any(|s| {
+                    s.parsed_name
+                        .as_ref()
+                        .and_then(serde_json::Value::as_str)
+                        .is_some_and(|name| name.starts_with("rpgmaker.plugin."))
+                })
+        })
+        .collect();
+    eprintln!(
+        "[real-bytes] recognized plugin/script-command text units={} (D_TEXT)",
+        plugin_text_units.len()
+    );
+    assert!(
+        !plugin_text_units.is_empty(),
+        "the corpus's D_TEXT plugin commands must extract as translatable units"
+    );
+
+    // No engine-control command was mis-extracted as dialogue: every
+    // recognized plugin-text unit keeps its command keyword protected as a
+    // preserve-exact span (so the keyword/size are never sent to a
+    // translator as prose).
+    for unit in &plugin_text_units {
+        assert!(
+            unit.spans.iter().any(|s| {
+                s.parsed_name
+                    .as_ref()
+                    .and_then(serde_json::Value::as_str)
+                    .is_some_and(|name| {
+                        name.starts_with("rpgmaker.plugin.") && name.ends_with(".command")
+                    })
+            }),
+            "recognized plugin text must protect its command keyword"
+        );
+    }
 
     // Every protected span's byte range must reproduce its raw substring
     // (the v0.2 validator already enforced this; assert again as a

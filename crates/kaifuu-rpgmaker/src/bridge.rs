@@ -296,6 +296,9 @@ fn surface_kind_str(kind: &SurfaceKind) -> &'static str {
     match kind {
         SurfaceKind::Dialogue { .. } => "dialogue",
         SurfaceKind::Narration => "narration",
+        // Recognized plugin display text (e.g. D_TEXT) is on-screen,
+        // speaker-less display text — the v0.2 `narration` surface.
+        SurfaceKind::PluginText { .. } => "narration",
         SurfaceKind::ChoiceLabel { .. } => "choice_label",
         SurfaceKind::SpeakerName => "speaker_name",
         SurfaceKind::Database { .. } => "database_entry",
@@ -316,6 +319,12 @@ fn surface_context_json(namespace: &str, source_unit_key: &str, unit: &ProtoUnit
         }),
         SurfaceKind::Narration => json!({
             "route": {"sceneKey": scene_key, "position": position},
+        }),
+        SurfaceKind::PluginText { plugin_command } => json!({
+            "route": {
+                "sceneKey": scene_key,
+                "position": format!("{position}#plugin-{plugin_command}"),
+            },
         }),
         SurfaceKind::ChoiceLabel { group, option } => json!({
             "choice": {
