@@ -360,39 +360,40 @@ fn scene_1_arg_expression_framing_offsets_are_pinned_byte_exact() {
     // are computed by the ExpressionPiece evaluator — i.e. exactly the
     // framing the audit finding is about.
     //
-    // Labels reflect the reference-complete command catalogue
-    // (`reallive-command-module-catalogue`): every in-space command with no
-    // bespoke bridge label decodes to the generic typed `"command"` (the
-    // rlvm `FunctionElement` analogue). The element at offset 30 is module
-    // (type=1, id=5, opcode=120) — a `module_msg`-class command per
-    // `docs/research/reallive-sweetie-hd-encryption-mechanism.md` §4.2, not a
-    // user choice — and the 8/16/22-byte commands previously coalesced into
-    // the alpha's catch-all `set_variable` are likewise generic `"command"`.
-    // The byte-framing (offset + width) is **byte-identical** to the prior
-    // pin — only the catalogue label is corrected, which is exactly what the
-    // 100%-decompilation catalogue node delivers.
+    // Labels reflect the SEMANTIC command catalogue
+    // (`reallive-semantic-command-cataloguing`): every in-space command maps
+    // to a named operation family keyed on its `module_id`, never a generic
+    // `"command"` blob. The element at offset 30 is module (type=1, id=5,
+    // opcode=120) — a `module_sys`-class control op per
+    // `docs/research/reallive-sweetie-hd-encryption-mechanism.md` §4.2, so it
+    // is `"system_control"`; offset 201 is a `module_msg` window directive
+    // (`"message_control"`); the 8/16/22-byte `module_sys` ops previously
+    // shown as the generic `"command"` are now `"system_control"`. The
+    // byte-framing (offset + width) is **byte-identical** to the prior pin —
+    // only the label is upgraded from a blob to a semantic family, which is
+    // exactly what the semantic-cataloguing node delivers.
     let golden: &[(usize, &str, usize)] = &[
         (6, "meta_entrypoint", 3),
-        (30, "command", 8),
+        (30, "system_control", 8),
         (38, "expression", 14),
-        (193, "command", 8),
-        (201, "command", 8),
-        (209, "command", 8),
-        (217, "command", 8),
-        (225, "command", 8),
-        (233, "command", 8),
-        (241, "command", 8),
-        (249, "command", 8),
+        (193, "system_control", 8),
+        (201, "message_control", 8),
+        (209, "system_control", 8),
+        (217, "system_control", 8),
+        (225, "system_control", 8),
+        (233, "system_control", 8),
+        (241, "system_control", 8),
+        (249, "system_control", 8),
         (257, "meta_entrypoint", 3),
         (260, "textout", 22),
         (283, "textout", 15),
         (299, "textout", 214),
         (517, "expression", 18),
-        (544, "command", 16),
+        (544, "system_control", 16),
         (566, "background", 22),
         (591, "background", 22),
-        (619, "command", 8),
-        (630, "command", 16),
+        (619, "system_control", 8),
+        (630, "system_control", 16),
         (652, "branch", 32),
         (687, "expression", 18),
         (711, "expression", 18),
@@ -412,9 +413,9 @@ fn scene_1_arg_expression_framing_offsets_are_pinned_byte_exact() {
         (1027, "expression", 18),
         (1048, "expression", 18),
         (1069, "expression", 18),
-        (1096, "command", 16),
+        (1096, "system_control", 16),
         (1121, "background", 22),
-        (1158, "command", 22),
+        (1158, "system_control", 22),
         (1180, "expression", 14),
         (1197, "branch", 32),
         (1232, "background", 24),

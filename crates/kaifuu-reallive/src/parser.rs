@@ -225,12 +225,25 @@ fn project_opcode(
         RealLiveOpcode::Return => Some(NamedOpcode::Return),
         RealLiveOpcode::Wait { .. } => Some(NamedOpcode::Pause),
         RealLiveOpcode::Background { .. } => Some(NamedOpcode::SetVar),
-        RealLiveOpcode::BgmPlay | RealLiveOpcode::BgmStop => Some(NamedOpcode::SetVar),
         RealLiveOpcode::VoicePlay { .. } => Some(NamedOpcode::SetVar),
         RealLiveOpcode::SetVariable => Some(NamedOpcode::SetVar),
         RealLiveOpcode::End => Some(NamedOpcode::Return),
-        // Generic typed function command (documented long-tail module):
-        // structurally decoded but without a bespoke synthetic NamedOpcode.
+        // Semantic command families (selection / message-window / system /
+        // variable / audio / screen / display-object). The legacy Scene-AST
+        // surface is coarse: these are all non-dialogue state operations, so
+        // they project to the neutral `SetVar` named opcode while the rich
+        // taxonomy lives on `RealLiveOpcode`. Each is RECOGNISED, so the
+        // parser AST agrees with `is_recognized()` (Named, not Unrecognized).
+        RealLiveOpcode::SelectionControl { .. }
+        | RealLiveOpcode::MessageControl { .. }
+        | RealLiveOpcode::SystemControl { .. }
+        | RealLiveOpcode::VariableOp { .. }
+        | RealLiveOpcode::Audio { .. }
+        | RealLiveOpcode::ScreenControl { .. }
+        | RealLiveOpcode::GraphicsObject { .. } => Some(NamedOpcode::SetVar),
+        // The un-catalogued generic Command and the desync `Unknown` are the
+        // only NOT-recognised command variants: no NamedOpcode, so the AST
+        // marks them `Unrecognized` — agreeing with `is_recognized()` == false.
         RealLiveOpcode::Command { .. } => None,
         RealLiveOpcode::Unknown { .. } => None,
     };

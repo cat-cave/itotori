@@ -33,11 +33,15 @@
 //! The decoder partitions **every** byte of a real Sweetie HD scene
 //! stream into a typed [`RealLiveOpcode`] element — the seven structural
 //! openers decode their element and every other byte begins a Textout
-//! run (the catch-all). A well-formed stream therefore yields **zero**
-//! [`RealLiveOpcode::Unknown`] spans (100% decompilation). A command at
-//! an undocumented module still surfaces as `Unknown` (preserving its
-//! bytes for audit). A scene that produces no opcodes is an error
-//! ([`RealLiveParseError::TruncatedBytecode`]), never a silent
+//! run (the catch-all). Every in-space Command is further classified to a
+//! **semantic operation family** keyed on its `module_id` (control-flow,
+//! selection, message, system, audio, voice, graphics-background,
+//! display-object, screen, variable, memory). A well-formed, fully
+//! catalogued stream therefore yields **zero** [`RealLiveOpcode::Command`]
+//! (un-catalogued) and **zero** [`RealLiveOpcode::Unknown`] (desync
+//! tripwire) spans — the SEMANTIC 100%-decompilation bar (Utsushi cannot
+//! render a command it cannot identify). A scene that produces no opcodes
+//! is an error ([`RealLiveParseError::TruncatedBytecode`]), never a silent
 //! `Ok(vec![])`.
 
 use serde::{Deserialize, Serialize};
@@ -95,7 +99,7 @@ pub enum TextEncoding {
 ///   `module_jmp.cc`).
 /// - `Wait`/`End` — module_sys family (rlvm `module_sys.cc`).
 /// - `Background` — module_grp family (rlvm `module_grp.cc`).
-/// - `BgmPlay`/`BgmStop` — module_bgm family (rlvm `module_bgm.cc`).
+/// - `Audio` — module_bgm / module_se / module_pcm channels.
 /// - `VoicePlay` — module_koe family (rlvm `module_koe.cc`).
 /// - `SetVariable` — module_mem family (rlvm `module_mem.cc`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -155,10 +159,6 @@ pub enum RealLiveOpcode {
     /// argument is the u32 sprite id pulled from the Command argument
     /// list).
     Background { sprite_id: u32 },
-    /// `module_bgm` `bgmPlay`/`bgmLoop`.
-    BgmPlay,
-    /// `module_bgm` `bgmStop`/`bgmFadeOut`.
-    BgmStop,
     /// `module_koe` `koePlay`/`koePlayInChar` (the argument is the u32
     /// `(archive_id, sample_id)` voice id pulled from the Command
     /// argument list).
@@ -172,21 +172,56 @@ pub enum RealLiveOpcode {
     /// `module_sys` `end` (scene terminator).
     End,
 
-    /// A fully-decoded RealLive function Command that does not map to one
-    /// of the bridge-relevant convenience variants above (text / choice /
-    /// voice / control-flow). This is the **generic typed decode** — the
-    /// direct analogue of rlvm's `FunctionElement` (the `default:` arm of
-    /// `BytecodeElement::Read`): the 8-byte header is fully parsed and the
-    /// bracketed argument list is decoded into typed [`CommandArg`] slots
-    /// by the same ExpressionPiece grammar every other command uses.
-    ///
-    /// It is **not** an `Unknown` blob and **not** fail-open: a command
-    /// only lands here once its bytes have been parsed end-to-end (a
-    /// malformed argument list surfaces a typed error instead). The variant
-    /// names the module/opcode it decoded so the catalogue stays
-    /// reference-complete across the full RealLive module space (system,
-    /// graphics, object, string, memory, ... families) without inventing a
-    /// per-opcode semantic label the bytecode framing does not require.
+    /// `module_sel` selection-button setup / state command (non-dialogue:
+    /// `select_objbtn`, `objbtn_init`, button enable / clear / position).
+    /// The translatable `select*` option blocks decode to [`Self::Choice`];
+    /// these configure the on-screen selection buttons and carry no
+    /// dialogue. `opcode` selects the specific button operation.
+    SelectionControl { opcode: u16 },
+    /// `module_msg` text-window directive (non-dialogue): page / line-break /
+    /// clear / face-window / text-position / colour / name-window control.
+    /// These steer how the following dialogue renders but carry no
+    /// translatable body themselves. `opcode` selects the window operation.
+    MessageControl { opcode: u16 },
+    /// `module_sys` engine / system control & query: title, screen mode,
+    /// message speed, save / load triggers, rng, math, scene / menu state,
+    /// timers. `opcode` selects the specific system call.
+    SystemControl { opcode: u16 },
+    /// `module_str`-class indexed variable / flag operation (module id 10):
+    /// every opcode operates on a single integer memory-bank reference
+    /// (assignment / query / counter — the uniform single-`memref` arg model
+    /// observed on both archives). `opcode` selects the operation.
+    VariableOp { opcode: u16 },
+    /// Audio playback control (`module_bgm` / `module_se` / `module_pcm`
+    /// channels, module ids 20 / 21 / 22): play (by filename) / stop / fade /
+    /// volume. `module_id` selects the channel, `opcode` the operation.
+    Audio { module_id: u8, opcode: u16 },
+    /// Screen / frame / weather / animation-layer control (module ids
+    /// 30 / 31 / 40 / 60 / 61 / 62): the graphics-pipeline operations that act
+    /// on the whole screen or an effect layer rather than a single object.
+    /// `module_id` / `opcode` select the operation.
+    ScreenControl { module_id: u8, opcode: u16 },
+    /// Display-object (sprite-plane) operation — foreground / background /
+    /// child object modules (ids 71 / 72 / 73 / 81 / 82 / 84 / 85 / 90, in
+    /// both the single `module_type = 1` and range `module_type = 2` forms):
+    /// object load (`objOfFile`), position / scale / rotation / alpha / order
+    /// setters and getters, allocation, animation. `module_id` selects the
+    /// plane / category, `opcode` the operation. The composited object is
+    /// what Utsushi must render, so this is a first-class family, never a
+    /// generic blob.
+    GraphicsObject { module_id: u8, opcode: u16 },
+
+    /// A structurally-decoded in-space Command whose `(module_type,
+    /// module_id, opcode)` tuple is **not yet catalogued** to a semantic
+    /// family above. The 8-byte header and the bracketed argument list are
+    /// fully parsed into typed [`CommandArg`] slots, but the operation has no
+    /// semantic meaning assigned — so it is **not recognised**
+    /// ([`Self::is_recognized`] returns `false`) and FAILS the full-archive
+    /// semantic-zero gate. It exists only as the typed fallback for a tuple
+    /// the catalogue has not reached; on the proven corpora (Sweetie HD,
+    /// Kanon) it never occurs. Utsushi cannot render a command it cannot
+    /// semantically identify, so this blob is deliberately gated, not
+    /// accepted.
     Command {
         module_type: u8,
         module_id: u8,
@@ -227,12 +262,17 @@ pub struct CommandArg {
 }
 
 impl RealLiveOpcode {
-    /// `true` if this variant is one of the recognised alpha-set
-    /// classifications (anything other than [`RealLiveOpcode::Unknown`]).
-    /// Used by the real-bytes integration test to compute the recognition
-    /// rate over Sweetie HD scene 1.
+    /// `true` if this variant is a **semantically-typed** classification —
+    /// every structural marker and every command mapped to a named operation
+    /// family. It is `false` only for the two non-semantic variants:
+    /// [`RealLiveOpcode::Command`] (an in-space tuple not yet catalogued to a
+    /// family) and [`RealLiveOpcode::Unknown`] (the `module_type > 2` desync
+    /// tripwire). The full-archive gate requires zero of either: Utsushi
+    /// cannot render a command it cannot semantically identify, so an
+    /// un-catalogued tuple must FAIL recognition rather than masquerade as
+    /// decoded.
     pub fn is_recognized(&self) -> bool {
-        !matches!(self, Self::Unknown { .. })
+        !matches!(self, Self::Command { .. } | Self::Unknown { .. })
     }
 
     /// Stable serde label (snake_case discriminant string), useful for
@@ -255,12 +295,17 @@ impl RealLiveOpcode {
             Self::Return => "return",
             Self::Wait { .. } => "wait",
             Self::Background { .. } => "background",
-            Self::BgmPlay => "bgm_play",
-            Self::BgmStop => "bgm_stop",
             Self::VoicePlay { .. } => "voice_play",
             Self::SetVariable => "set_variable",
             Self::If => "if",
             Self::End => "end",
+            Self::SelectionControl { .. } => "selection_control",
+            Self::MessageControl { .. } => "message_control",
+            Self::SystemControl { .. } => "system_control",
+            Self::VariableOp { .. } => "variable_op",
+            Self::Audio { .. } => "audio",
+            Self::ScreenControl { .. } => "screen_control",
+            Self::GraphicsObject { .. } => "graphics_object",
             Self::Command { .. } => "command",
             Self::Unknown { .. } => "unknown",
         }
@@ -335,13 +380,25 @@ mod module_id {
     pub const MEM: u8 = 11;
     /// `module_jmp.cc` — control flow (`goto`, `gosub`, `ret`, `jump`).
     pub const JMP: u8 = 1;
+    /// `module_sel.cc` — selection / selection-button management (the
+    /// translatable `select*` blocks decode to `Choice` upstream of the
+    /// classifier; this id covers the non-dialogue button ops).
+    pub const SEL: u8 = 2;
     /// `module_msg.cc` — text / messaging (`pause`, `br`, `page`,
     /// `FontColor`, `FastText`).
     pub const MSG: u8 = 3;
+    /// `module_sys.cc` second registration id observed on Sweetie HD /
+    /// Kanon — system-class control sharing `module_sys` semantics.
+    pub const SYS2: u8 = 5;
+    /// `module_str.cc`-class indexed variable / flag module — every opcode
+    /// carries a single integer memory-bank reference operand.
+    pub const STR: u8 = 10;
+    /// `module_bgm.cc` / `module_se.cc` / `module_pcm.cc` audio channels.
+    pub const AUDIO_BGM: u8 = 20;
+    pub const AUDIO_SE: u8 = 21;
+    pub const AUDIO_PCM: u8 = 22;
     /// `module_grp.cc` — graphics primitives (`load`, `openBg`, `fade`).
     pub const GRP: u8 = 33;
-    /// `module_bgm.cc` — BGM playback.
-    pub const BGM: u8 = 19;
     /// `module_koe.cc` — voice playback.
     pub const KOE: u8 = 23;
 }
@@ -1308,17 +1365,20 @@ fn decode_command(bytes: &[u8], pos: usize) -> Result<(RealLiveOpcode, usize), R
 /// *labelling* pass. It returns `None` **only** when `module_type` is
 /// outside RealLive's documented `{0, 1, 2}` space — a desync tripwire the
 /// caller records as [`RealLiveOpcode::Unknown`]. Every in-space command
-/// resolves to a typed variant: the bridge-relevant families
-/// (control-flow, message, voice, BGM, graphics-background, memory) keep
-/// their named variants, and the documented long tail (system functions,
-/// object planes, string ops, …) decodes to the generic typed
-/// [`RealLiveOpcode::Command`] carrying its module / opcode / args — so the
-/// catalogue is reference-complete with zero `Unknown` on a well-framed
-/// scene, without inventing per-opcode semantics the framing never needs.
+/// resolves to a **semantically-typed** operation family keyed on its
+/// `module_id` (the engine's real semantic key — `module_type` is a
+/// compiler-version artifact, so e.g. `Wait` is observed at both `0:4:100`
+/// and `1:4:100`): control-flow, selection, message-window, system, audio,
+/// voice, graphics-background, display-object, screen-control, variable and
+/// memory families each map to a named variant Utsushi can dispatch on. The
+/// generic [`RealLiveOpcode::Command`] is reached only by an in-space
+/// `module_id` the catalogue has not yet reached — it is NOT recognised and
+/// FAILS the semantic-zero gate; on the proven Sweetie HD / Kanon corpora
+/// every tuple lands in a named family.
 ///
-/// `module_type` / `module_id` keys are restated from the rlvm
-/// `src/modules/module_*.cc` registrations (`RLModule(name, type, id)`)
-/// and `libreallive/bytecode.cc` dispatch — reference, not vendored.
+/// `module_id` keys are restated from the rlvm `src/modules/module_*.cc`
+/// registrations (`RLModule(name, type, id)`) and `libreallive/bytecode.cc`
+/// dispatch — reference, not vendored.
 fn classify_command(
     module_type: u8,
     module_id: u8,
@@ -1332,8 +1392,9 @@ fn classify_command(
     let command_id =
         (u32::from(module_type) << 24) | (u32::from(module_id) << 16) | u32::from(opcode_u16);
 
-    // Generic typed decode for any in-space command without a bespoke
-    // bridge label — the `FunctionElement` analogue.
+    // Un-catalogued fallback: an in-space `module_id` no semantic family
+    // covers. Structurally decoded but NOT recognised — fails the
+    // semantic-zero gate. Never reached on the proven corpora.
     let generic = || RealLiveOpcode::Command {
         module_type,
         module_id,
@@ -1354,54 +1415,80 @@ fn classify_command(
     }
 
     let mapped = match module_id {
-        // module_jmp (rlvm `module_jmp.cc`, type 0 id 1) — the non-pointer
-        // opcodes (the pointer-carrying ones are handled by goto framing
-        // above).
+        // module_jmp (rlvm `module_jmp.cc`, id 1) — the non-pointer opcodes
+        // (the pointer-carrying ones are handled by goto framing above).
+        // Module 1 is the control-flow namespace, so any residual opcode is a
+        // jump/computed-flow form rather than a generic blob.
         module_id::JMP => match opcode_u16 {
             0 | 1 => RealLiveOpcode::Goto,
             2 | 3 => RealLiveOpcode::Branch,
             4 | 5 => RealLiveOpcode::If,
             10..=13 => RealLiveOpcode::Call,
             20..=22 => RealLiveOpcode::Return,
-            30 | 31 => RealLiveOpcode::Jump,
-            _ => generic(),
+            _ => RealLiveOpcode::Jump,
         },
-        // module_msg (rlvm `module_msg.cc`) — opcode 3 is the character /
-        // speaker text op; the common text-display range is `1..=200`.
+        // module_sel (rlvm `module_sel.cc`, id 2) — the translatable
+        // `select*` option blocks were decoded to `Choice` before classify;
+        // every other opcode is selection-button setup / state.
+        module_id::SEL => RealLiveOpcode::SelectionControl { opcode: opcode_u16 },
+        // module_msg (rlvm `module_msg.cc`, id 3) — opcode 3 is the character
+        // / speaker text op; the common text-display range is `1..=200`; the
+        // remaining opcodes are non-dialogue window directives.
         module_id::MSG => match opcode_u16 {
             3 => RealLiveOpcode::CharacterTextDisplay,
             x if (1..=200).contains(&x) => RealLiveOpcode::TextDisplay {
                 encoding: TextEncoding::ShiftJisLengthPrefixed,
             },
-            _ => generic(),
+            _ => RealLiveOpcode::MessageControl { opcode: opcode_u16 },
         },
-        // module_sys (rlvm `module_sys.cc`, type 1 id 4) — `end` / `wait`
-        // keep named variants; the long control tail is generic.
+        // module_sys (rlvm `module_sys.cc`, id 4) — `end` / `wait` keep their
+        // named variants; the long control / query tail is system control.
         module_id::SYS => match opcode_u16 {
             17 => RealLiveOpcode::End,
             100 | 101 => RealLiveOpcode::Wait {
                 duration_ms: first_arg_as_i32(args_bytes),
             },
-            _ => generic(),
+            _ => RealLiveOpcode::SystemControl { opcode: opcode_u16 },
         },
-        // module_koe (rlvm `module_koe.cc`, type 1 id 23) — voice playback.
+        // module_sys second registration id (5) — system-class control.
+        module_id::SYS2 => RealLiveOpcode::SystemControl { opcode: opcode_u16 },
+        // module_str-class indexed variable / flag module (id 10) — uniform
+        // single integer memory-bank reference operand.
+        module_id::STR => RealLiveOpcode::VariableOp { opcode: opcode_u16 },
+        // module_mem (rlvm `module_mem.cc`, id 11) — any variable-bank write.
+        module_id::MEM => RealLiveOpcode::SetVariable,
+        // Audio channels (module_bgm / module_se / module_pcm, ids 20/21/22)
+        // — play (by filename) / stop / fade / volume.
+        module_id::AUDIO_BGM | module_id::AUDIO_SE | module_id::AUDIO_PCM => {
+            RealLiveOpcode::Audio {
+                module_id,
+                opcode: opcode_u16,
+            }
+        }
+        // module_koe (rlvm `module_koe.cc`, id 23) — voice playback.
         module_id::KOE => RealLiveOpcode::VoicePlay {
             voice_id: first_arg_as_u32(args_bytes),
         },
-        // module_bgm (rlvm `module_bgm.cc`) — BGM playback / stop.
-        module_id::BGM => match opcode_u16 {
-            0..=3 => RealLiveOpcode::BgmPlay,
-            _ => RealLiveOpcode::BgmStop,
-        },
-        // module_grp (rlvm `module_grp.cc`, type 1 id 33) — background /
-        // sprite load (first arg is the sprite id).
+        // module_grp (rlvm `module_grp.cc`, id 33) — background / sprite load
+        // (first arg is the sprite id).
         module_id::GRP => RealLiveOpcode::Background {
             sprite_id: first_arg_as_u32(args_bytes),
         },
-        // module_mem (rlvm `module_mem.cc`) — any variable-bank write.
-        module_id::MEM => RealLiveOpcode::SetVariable,
-        // Everything else (object planes, string ops, graphics extensions,
-        // …) decodes to the generic typed command.
+        // Screen / frame / weather / animation-layer control (ids
+        // 30/31/40/60/61/62) — whole-screen / effect-layer graphics ops.
+        30 | 31 | 40 | 60 | 61 | 62 => RealLiveOpcode::ScreenControl {
+            module_id,
+            opcode: opcode_u16,
+        },
+        // Display-object (sprite-plane) modules — foreground / background /
+        // child object planes and their range (`module_type = 2`) forms.
+        71 | 72 | 73 | 81 | 82 | 84 | 85 | 90 => RealLiveOpcode::GraphicsObject {
+            module_id,
+            opcode: opcode_u16,
+        },
+        // An in-space module id the catalogue has not reached: the typed
+        // fallback that FAILS the semantic-zero gate (never occurs on the
+        // proven Sweetie HD / Kanon corpora).
         _ => generic(),
     };
     Some(mapped)
@@ -1710,10 +1797,14 @@ mod tests {
     }
 
     #[test]
-    fn in_space_undocumented_module_decodes_to_generic_command_not_unknown() {
-        // An in-space (module_type <= 2) command at an otherwise
-        // unlabelled module decodes to the generic typed Command — zero
-        // Unknown on a well-framed scene.
+    fn in_space_uncatalogued_module_is_generic_command_and_fails_recognition() {
+        // An in-space (module_type <= 2) command at a module_id no semantic
+        // family covers (99) decodes to the generic typed Command — NOT
+        // `Unknown` (it is structurally framed), but it is NOT recognised:
+        // an un-catalogued tuple must fail the semantic-zero gate rather
+        // than masquerade as decoded. (Every module_id present on the real
+        // Sweetie HD / Kanon corpora lands in a named family, so this never
+        // fires there.)
         let bytes = &[opener::COMMAND, 1, 99, 0xFF, 0xFF, 0, 0, 0];
         let opcodes = parse_real_bytecode(bytes).expect("must decode");
         assert_eq!(opcodes.len(), 1);
@@ -1726,6 +1817,102 @@ mod tests {
                 ..
             }
         ));
+        assert!(
+            !opcodes[0].is_recognized(),
+            "an un-catalogued in-space tuple must FAIL recognition"
+        );
+    }
+
+    #[test]
+    fn catalogued_modules_classify_to_named_semantic_families() {
+        // Spot-check the new semantic families across the module space so a
+        // real-game tuple can never silently fall back to generic Command.
+        type Case = (u8, u8, u16, fn(&RealLiveOpcode) -> bool);
+        let cases: &[Case] = &[
+            // module 2 (Sel) non-select op -> SelectionControl.
+            (0, 2, 30, |o| {
+                matches!(o, RealLiveOpcode::SelectionControl { opcode: 30 })
+            }),
+            // module 3 (Msg) window directive (>200) -> MessageControl.
+            (0, 3, 201, |o| {
+                matches!(o, RealLiveOpcode::MessageControl { opcode: 201 })
+            }),
+            // module 4 (Sys) control tail -> SystemControl.
+            (1, 4, 130, |o| {
+                matches!(o, RealLiveOpcode::SystemControl { opcode: 130 })
+            }),
+            // module 5 (Sys2) -> SystemControl.
+            (1, 5, 120, |o| {
+                matches!(o, RealLiveOpcode::SystemControl { opcode: 120 })
+            }),
+            // module 10 (variable/flag) -> VariableOp.
+            (1, 10, 100, |o| {
+                matches!(o, RealLiveOpcode::VariableOp { opcode: 100 })
+            }),
+            // module 20/21/22 (audio channels) -> Audio.
+            (1, 20, 0, |o| {
+                matches!(
+                    o,
+                    RealLiveOpcode::Audio {
+                        module_id: 20,
+                        opcode: 0
+                    }
+                )
+            }),
+            // module 30/60/62 (screen / animation / effect layer) -> ScreenControl.
+            (1, 62, 10, |o| {
+                matches!(
+                    o,
+                    RealLiveOpcode::ScreenControl {
+                        module_id: 62,
+                        opcode: 10
+                    }
+                )
+            }),
+            // module 72/81/82 (display object planes) -> GraphicsObject.
+            (1, 82, 1000, |o| {
+                matches!(
+                    o,
+                    RealLiveOpcode::GraphicsObject {
+                        module_id: 82,
+                        opcode: 1000
+                    }
+                )
+            }),
+            // module_type 2 range form of an object module -> GraphicsObject.
+            (2, 81, 1064, |o| {
+                matches!(
+                    o,
+                    RealLiveOpcode::GraphicsObject {
+                        module_id: 81,
+                        opcode: 1064
+                    }
+                )
+            }),
+        ];
+        for &(mt, mid, op, pred) in cases {
+            let bytes = &[
+                opener::COMMAND,
+                mt,
+                mid,
+                (op & 0xFF) as u8,
+                (op >> 8) as u8,
+                0,
+                0,
+                0,
+            ];
+            let opcodes = parse_real_bytecode(bytes).expect("must decode");
+            assert_eq!(opcodes.len(), 1, "{mt}:{mid}:{op}");
+            assert!(
+                pred(&opcodes[0]),
+                "{mt}:{mid}:{op} did not classify to its semantic family: {:?}",
+                opcodes[0]
+            );
+            assert!(
+                opcodes[0].is_recognized(),
+                "{mt}:{mid}:{op} semantic family must be recognised"
+            );
+        }
     }
 
     #[test]
@@ -2089,36 +2276,26 @@ mod tests {
     }
 
     #[test]
-    fn msg_opcode_outside_text_range_decodes_to_generic_command() {
-        // module_msg opcodes outside the 1..=200 text-display range have no
-        // bridge-relevant label, so they decode to the generic typed
-        // `Command` (the reference-complete long-tail decode) — never
-        // `Unknown`, never fail-open.
+    fn msg_opcode_outside_text_range_decodes_to_message_control() {
+        // module_msg opcodes outside the 1..=200 text-display range are
+        // non-dialogue text-window directives — they classify to the
+        // semantic `MessageControl` family, never the generic blob.
         assert_eq!(
             classify_command(0, module_id::MSG, 250, 0, &[]),
-            Some(RealLiveOpcode::Command {
-                module_type: 0,
-                module_id: module_id::MSG,
-                opcode: 250,
-                overload: 0,
-                args: vec![],
-            })
+            Some(RealLiveOpcode::MessageControl { opcode: 250 })
         );
     }
 
     #[test]
-    fn undocumented_module_decodes_to_generic_command_not_unknown() {
-        // An in-space module with no bespoke label (e.g. an object-plane
-        // module surfaced by the Kanon recon) decodes to the generic typed
-        // `Command`, so a well-framed scene yields ZERO `Unknown`.
+    fn object_plane_module_decodes_to_graphics_object_family() {
+        // An object-plane module (id 82, ObjBg) decodes to the semantic
+        // `GraphicsObject` family carrying its plane id + opcode — the
+        // composited object Utsushi must render, never a generic blob.
         assert_eq!(
             classify_command(1, 82, 1004, 3, &[]),
-            Some(RealLiveOpcode::Command {
-                module_type: 1,
+            Some(RealLiveOpcode::GraphicsObject {
                 module_id: 82,
                 opcode: 1004,
-                overload: 3,
-                args: vec![],
             })
         );
     }

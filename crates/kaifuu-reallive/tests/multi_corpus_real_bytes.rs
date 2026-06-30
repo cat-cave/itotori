@@ -38,14 +38,15 @@
 //!
 //! - **Expression grammar (`reallive-expr-eval-bank-refs`) — DONE.** The
 //!   ExpressionPiece evaluator implements the full RealLive reference grammar.
-//! - **Command-module catalogue (`reallive-command-module-catalogue`) —
-//!   DONE.** The goto-family / `module_sel` `{ … }` block framing, the
-//!   rlvm-exact Textout boundary, and the reference-complete module classifier
-//!   decode the whole RealLive module/opcode space. corpus-2 (Kanon) is
-//!   asserted to the HARD bar — ZERO unknown commands, ZERO malformed
-//!   expressions, ZERO parse failures across its WHOLE archive (was
-//!   161 614 unknown / 5 parse failures): a full-archive 100%-decompilation
-//!   proof.
+//! - **Semantic command cataloguing (`reallive-semantic-command-cataloguing`)
+//!   — DONE.** Every in-space `(module_type, module_id, opcode)` maps to a
+//!   SEMANTICALLY-TYPED operation family (keyed on `module_id`), not a generic
+//!   `Command{module,id,opcode,args}` blob: `is_recognized()` is true ONLY for
+//!   a named family. Both archives are asserted at the SEMANTIC-zero bar —
+//!   ZERO generic `Command`, ZERO `Unknown`, ZERO malformed expressions, ZERO
+//!   parse failures across every populated scene. Supersedes the prior
+//!   `reallive-command-module-catalogue`, which counted the generic blob as
+//!   recognised (framing, not semantics).
 //! - **Sweetie HD second-level XOR — DONE
 //!   (`reallive-xor2-sukara-decryptor`).** corpus-1 (Sweetie HD, compiler
 //!   `110002`) carries a second-level per-game `xor_2` over a bounded
@@ -100,9 +101,23 @@ struct CoverageReport {
     /// expression-reference grammar produces none of these.
     malformed_expression_scenes: usize,
     total_opcodes: usize,
+    /// Count of opcodes that fail `is_recognized()` — i.e. the union of the
+    /// un-catalogued generic `Command` blob and the `module_type > 2`
+    /// `Unknown` desync tripwire. The semantic-zero bar is `0`.
     total_unknown: usize,
+    /// Of `total_unknown`, the count that are the un-catalogued generic
+    /// `Command` (an in-space tuple no semantic family covers). This is the
+    /// metric the `reallive-semantic-command-cataloguing` node drives to zero:
+    /// every command must map to a named operation family, never a blob.
+    total_generic_command: usize,
+    /// Of `total_unknown`, the count that are the `module_type > 2` `Unknown`
+    /// desync tripwire.
+    total_unknown_desync: usize,
     histogram: BTreeMap<&'static str, usize>,
-    unknown_signatures: BTreeMap<(u8, u8, u16), usize>,
+    /// `(module_type, module_id, opcode)` signatures of every NOT-recognised
+    /// command (generic `Command` and `Unknown` alike) with frequencies, so a
+    /// regression names the exact un-catalogued tuples.
+    unrecognised_signatures: BTreeMap<(u8, u8, u16), usize>,
 }
 
 fn sha256_hex(bytes: &[u8]) -> String {
@@ -146,8 +161,10 @@ fn decompile_corpus(corpus: &RealCorpus) -> CoverageReport {
         malformed_expression_scenes: 0,
         total_opcodes: 0,
         total_unknown: 0,
+        total_generic_command: 0,
+        total_unknown_desync: 0,
         histogram: BTreeMap::new(),
-        unknown_signatures: BTreeMap::new(),
+        unrecognised_signatures: BTreeMap::new(),
     };
 
     // --- Stage 1: envelope -> header -> AVG32 decompress (first-level). ---
@@ -212,16 +229,35 @@ fn decompile_corpus(corpus: &RealCorpus) -> CoverageReport {
         }
         for op in &opcodes {
             *report.histogram.entry(op.label()).or_insert(0) += 1;
-            if let RealLiveOpcode::Unknown { opcode, raw_bytes } = op
-                && *opcode == 0x23
-                && raw_bytes.len() >= 5
-            {
-                let sig = (
-                    raw_bytes[1],
-                    raw_bytes[2],
-                    u16::from_le_bytes([raw_bytes[3], raw_bytes[4]]),
-                );
-                *report.unknown_signatures.entry(sig).or_insert(0) += 1;
+            match op {
+                // Un-catalogued generic blob: an in-space tuple no semantic
+                // family covers. Its presence is the semantic-cataloguing
+                // regression the gate forbids.
+                RealLiveOpcode::Command {
+                    module_type,
+                    module_id,
+                    opcode,
+                    ..
+                } => {
+                    report.total_generic_command += 1;
+                    *report
+                        .unrecognised_signatures
+                        .entry((*module_type, *module_id, *opcode))
+                        .or_insert(0) += 1;
+                }
+                // `module_type > 2` desync tripwire (raw header preserved).
+                RealLiveOpcode::Unknown { opcode, raw_bytes }
+                    if *opcode == 0x23 && raw_bytes.len() >= 5 =>
+                {
+                    report.total_unknown_desync += 1;
+                    let sig = (
+                        raw_bytes[1],
+                        raw_bytes[2],
+                        u16::from_le_bytes([raw_bytes[3], raw_bytes[4]]),
+                    );
+                    *report.unrecognised_signatures.entry(sig).or_insert(0) += 1;
+                }
+                _ => {}
             }
         }
     }
@@ -264,12 +300,13 @@ fn print_report(report: &CoverageReport) {
     for (label, count) in &report.histogram {
         eprintln!("    {label}: {count}");
     }
-    if !report.unknown_signatures.is_empty() {
+    if !report.unrecognised_signatures.is_empty() {
         eprintln!(
-            "[{}] UNRECOGNISED command (module_type, module_id, opcode) -> count:",
+            "[{}] UNRECOGNISED command (un-catalogued generic Command / desync Unknown) \
+             (module_type, module_id, opcode) -> count:",
             report.label
         );
-        for ((mt, mid, oc), count) in &report.unknown_signatures {
+        for ((mt, mid, oc), count) in &report.unrecognised_signatures {
             eprintln!("    ({mt:>3}, {mid:>3}, {oc:>5}): {count}");
         }
     }
@@ -313,66 +350,68 @@ fn multi_game_validation_runs_against_two_distinct_reallive_corpora() {
         );
     }
 
-    // ---- reallive-command-module-catalogue: full-archive completeness ----
+    // ---- reallive-semantic-command-cataloguing: full-archive SEMANTIC zero -
     //
-    // The command catalogue (`opcode.rs`) now decodes the whole RealLive
-    // module/opcode space: the goto-family `{ … }` block framing
-    // (`goto_on` / `goto_case`), the `module_sel` `SelectElement` `{ … }`
-    // option blocks (including the `###PRINT(…)` interpolation form), the
-    // rlvm-exact Textout boundary (commas inlined, `"`-quoted spans ignoring
-    // `#`/`$`/`@`/`\n`), and a reference-complete classifier that maps every
-    // in-space `(module_type, module_id, opcode)` to a typed command (the
-    // documented long tail decodes to the generic typed `Command` variant —
-    // never `Unknown`, never fail-open). `Unknown` is now reserved solely
-    // for a `module_type > 2` desync tripwire.
+    // The command catalogue (`opcode.rs`) maps every in-space
+    // `(module_type, module_id, opcode)` to a **semantically-typed operation
+    // family** keyed on its `module_id` (the engine's real semantic key —
+    // `module_type` is a compiler-version artifact): control-flow, selection,
+    // message-window, system, variable/flag, audio, voice,
+    // graphics-background, display-object, screen-control and memory. There is
+    // NO generic `Command{module,id,opcode,args}` blob on the real bytes:
+    // `is_recognized()` is true ONLY for a semantically-typed variant, so the
+    // SEMANTIC bar is "zero generic `Command` AND zero `Unknown`". This
+    // supersedes the prior `reallive-command-module-catalogue`, which funnelled
+    // the long tail into the generic `Command` blob and (wrongly) counted it as
+    // recognised — framing, not semantics: Utsushi cannot render a command it
+    // cannot semantically identify.
     //
-    // corpus-2 (Kanon, compiler line without the per-game second-level XOR)
-    // is the clean second RealLive title that isolates the catalogue: it is
-    // asserted to the HARD bar — ZERO unknown commands, ZERO malformed
-    // expressions, ZERO parse failures across its WHOLE 79-scene archive
-    // (was 161 614 unknown / 5 parse failures before this node). This is the
-    // full-archive proof that the command catalogue is reference-complete.
-    //
-    // corpus-1 (Sweetie HD) is NOT asserted-zero, for a reason discovered,
-    // verified on the real bytes, and recorded honestly rather than relaxing
-    // the bar: the residual is a SECOND-LEVEL XOR (decompressor / decryption),
-    // NOT a command-catalogue gap. Measured residual: unknown_commands=46
-    // (across 32 scenes), parse_failures=121 (malformed_expression=108,
-    // TruncatedCommandArgs=13); 45 of 198 scenes decode 100% clean. Tracing a
-    // failing `module_sel` block shows the header / `( … )` window / `{` open
-    // and the first readable Shift-JIS options decode cleanly, then a
-    // high-entropy span begins whose byte-equality autocorrelation spikes at
-    // lag 16 (~9.5%) and lag 32 (~9.3%) versus a ~0.4% baseline at every other
-    // lag — a 16-byte-period XOR over structured plaintext (two 16-byte
-    // windows decode byte-identical) — after which the stream resyncs to clean
-    // bytecode. That bounded-segment behaviour is why long (>=0.5 MB) Sweetie
-    // scenes still decode 100% clean: they carry no `xor_2` segment. The
-    // `Unknown` commands are downstream symptoms (a desynced cursor reading
-    // ciphertext as a `module_type > 2` command header). Recovering the
-    // per-game 16-byte key behind `use_xor_2` (compiler_version=110002) is the
-    // deferred decompressor `xor_2_pass` node, orthogonal to the module
-    // catalogue (proven reference-complete by corpus-2's 1.16M-opcode
-    // zero-unknown decode). Sweetie HD's catalogue behaviour is independently
-    // pinned (zero unknown) on its clean scene 1 by `scene_1_dispatch_real_bytes`.
+    // BOTH complete archives are asserted at this hard SEMANTIC-zero bar.
+    // corpus-2 (Kanon, 10002) carries no second-level XOR and is decoded by
+    // the catalogue alone; corpus-1 (Sweetie HD, 110002) is first decrypted by
+    // the second-level `xor_2` decryptor (per-game key recovered in-process,
+    // validated before consumption) and then decoded by the SAME catalogue.
+    // No floor is relaxed and no scene is skipped: every populated scene of
+    // both archives decodes with zero generic `Command`, zero `Unknown`, zero
+    // malformed expressions and zero parse failures.
     for report in &reports {
         eprintln!(
-            "[{}] CATALOGUE: unknown_commands={} malformed_expression_scenes={} parse_failures={}",
+            "[{}] CATALOGUE: not_recognised={} (generic_command={} unknown_desync={}) \
+             malformed_expression_scenes={} parse_failures={}",
             report.label,
             report.total_unknown,
+            report.total_generic_command,
+            report.total_unknown_desync,
             report.malformed_expression_scenes,
             report.parse_failures,
         );
 
-        // BOTH divergent games are now asserted at the SAME hard zero bar
-        // (the alpha standard). corpus-2 (Kanon, 10002) carries no xor_2 and
-        // is decoded by the command catalogue alone; corpus-1 (Sweetie HD,
-        // 110002) is first decrypted by the second-level xor_2 decryptor
-        // (per-game key recovered in-process from the corpus, validated
-        // before consumption) and then decoded by the same catalogue. No
-        // floor is relaxed and no scene is skipped.
+        // SEMANTIC zero, split out explicitly so a regression names which
+        // failure mode it is. (1) Zero un-catalogued generic `Command`: every
+        // command maps to a named operation family.
+        assert_eq!(
+            report.total_generic_command, 0,
+            "[{}] {} command(s) decode to the generic `Command` blob on the full archive \
+             — every in-space tuple must map to a SEMANTIC family (see signatures above)",
+            report.label, report.total_generic_command
+        );
+        // (2) Zero `module_type > 2` desync `Unknown`.
+        assert_eq!(
+            report.total_unknown_desync, 0,
+            "[{}] {} `Unknown` desync tripwire(s) on the full archive",
+            report.label, report.total_unknown_desync
+        );
+        // The histogram must carry no `"command"` bucket at all.
+        assert_eq!(
+            report.histogram.get("command").copied().unwrap_or(0),
+            0,
+            "[{}] opcode histogram still has a `command` bucket — un-catalogued tuples remain",
+            report.label
+        );
+        // (1)+(2) combined: nothing fails `is_recognized()`.
         assert_eq!(
             report.total_unknown, 0,
-            "[{}] {} command(s) still decode to Unknown on the full archive \
+            "[{}] {} command(s) fail recognition on the full archive \
              (the bar is zero; no floor may be relaxed)",
             report.label, report.total_unknown
         );

@@ -182,17 +182,33 @@ fn command_background_classified_from_grp_module() {
 }
 
 #[test]
-fn command_bgm_play_classified_from_bgm_module_opcode_zero() {
-    let bytes = &[0x23, 1, 19, 0, 0, 0, 0, 0];
+fn command_bgm_classified_from_audio_module_to_audio_family() {
+    // The BGM channel (module id 20) classifies to the semantic `Audio`
+    // family carrying its channel id + opcode (play, by filename, here).
+    let bytes = &[0x23, 1, 20, 0, 0, 0, 0, 0];
     let opcodes = parse_scene(bytes).expect("decode");
-    assert!(matches!(opcodes[0], RealLiveOpcode::BgmPlay));
+    assert!(matches!(
+        opcodes[0],
+        RealLiveOpcode::Audio {
+            module_id: 20,
+            opcode: 0
+        }
+    ));
+    assert!(opcodes[0].is_recognized());
 }
 
 #[test]
-fn command_bgm_stop_classified_from_bgm_module_high_opcode() {
-    let bytes = &[0x23, 1, 19, 100, 0, 0, 0, 0];
+fn command_se_classified_from_audio_module_to_audio_family() {
+    // The SE channel (module id 21) likewise classifies to `Audio`.
+    let bytes = &[0x23, 1, 21, 5, 0, 0, 0, 0];
     let opcodes = parse_scene(bytes).expect("decode");
-    assert!(matches!(opcodes[0], RealLiveOpcode::BgmStop));
+    assert!(matches!(
+        opcodes[0],
+        RealLiveOpcode::Audio {
+            module_id: 21,
+            opcode: 5
+        }
+    ));
 }
 
 #[test]
@@ -288,13 +304,14 @@ fn non_structural_lead_byte_is_preserved_as_textout_not_dropped() {
 }
 
 #[test]
-fn in_space_command_at_unlabelled_module_decodes_to_generic_command_not_unknown() {
-    // module_id 99 has no bespoke bridge label, but module_type=1 is inside
-    // RealLive's documented {0,1,2} space, so the reference-complete catalogue
-    // decodes it to the generic typed `Command` (the rlvm `FunctionElement`
-    // analogue) — never `Unknown`, never fail-open. `Unknown` is reserved for
-    // the `module_type > 2` desync tripwire (see
-    // `out_of_space_module_type_is_unknown_desync_tripwire`).
+fn in_space_uncatalogued_module_is_generic_command_and_not_recognised() {
+    // module_id 99 is an in-space ({0,1,2}) tuple no semantic family covers,
+    // so it decodes to the generic typed `Command` (structurally framed) —
+    // but it is NOT recognised: an un-catalogued tuple must FAIL the
+    // semantic-zero gate, never masquerade as decoded. (`Unknown` is the
+    // separate `module_type > 2` desync tripwire.) Every module_id present on
+    // the real Sweetie HD / Kanon corpora lands in a named family, so this
+    // never fires on real bytes.
     let bytes = &[0x23, 1, 99, 0, 0, 0, 0, 0];
     let opcodes = parse_scene(bytes).expect("decode");
     assert!(
@@ -307,10 +324,13 @@ fn in_space_command_at_unlabelled_module_decodes_to_generic_command_not_unknown(
                 ..
             }
         ),
-        "expected generic Command for in-space module, got {:?}",
+        "expected generic Command for un-catalogued in-space module, got {:?}",
         opcodes[0]
     );
-    assert!(opcodes[0].is_recognized());
+    assert!(
+        !opcodes[0].is_recognized(),
+        "an un-catalogued in-space tuple must FAIL recognition"
+    );
 }
 
 #[test]
