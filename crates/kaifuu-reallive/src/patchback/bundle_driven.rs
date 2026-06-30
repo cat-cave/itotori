@@ -605,6 +605,21 @@ fn patch_scene_blob(
     })?;
 
     let bytecode_start = header.bytecode_offset as usize;
+    // The re-emit always writes a full SCENE_HEADER_BYTE_LEN-byte header
+    // and preserves bytecode_offset (0x20) verbatim. If the header
+    // declares an offset *inside* the header region, the preserved offset
+    // would point at header bytes while the compressed payload is written
+    // at SCENE_HEADER_BYTE_LEN — any decompressor would then read bytecode
+    // from inside the header and corrupt the scene. Reject it up front
+    // with a typed error instead of silently emitting a corrupt blob.
+    if bytecode_start < SCENE_HEADER_BYTE_LEN {
+        return Err(PatchbackError::SceneHeaderInvalid {
+            scene_id,
+            message: format!(
+                "scene header declares bytecode_offset={bytecode_start} inside the {SCENE_HEADER_BYTE_LEN}-byte header region (must be >= {SCENE_HEADER_BYTE_LEN})"
+            ),
+        });
+    }
     let bytecode_end = bytecode_start + header.bytecode_compressed_size as usize;
     if bytecode_end > original_blob.len() {
         return Err(PatchbackError::SceneHeaderInvalid {
@@ -965,6 +980,29 @@ mod tests {
 
     struct SyntheticArchive {
         archive: Vec<u8>,
+    }
+
+    #[test]
+    fn patch_scene_blob_rejects_bytecode_offset_inside_header_region() {
+        // 006 regression: patch_scene_blob guarded only the upper bound
+        // (bytecode_end > blob.len()); a header declaring bytecode_offset
+        // < SCENE_HEADER_BYTE_LEN slipped through and re-emitted a corrupt
+        // scene (compressed payload at 0x1d0 while the preserved offset
+        // points inside the header). It must now surface a typed
+        // SceneHeaderInvalid before any mutation.
+        let mut blob = vec![0u8; SCENE_HEADER_BYTE_LEN + 16];
+        // bytecode_offset (0x20) = 0x20, well inside the 0x1d0 header.
+        blob[0x20..0x24].copy_from_slice(&0x20u32.to_le_bytes());
+        // compressed_size (0x28) small enough that bytecode_end is in
+        // bounds — proving the NEW lower-bound guard is what fires.
+        blob[0x28..0x2c].copy_from_slice(&4u32.to_le_bytes());
+
+        let err = patch_scene_blob(42, &blob, &[])
+            .expect_err("bytecode_offset inside the header must be rejected");
+        assert!(
+            matches!(err, PatchbackError::SceneHeaderInvalid { scene_id: 42, .. }),
+            "expected SceneHeaderInvalid, got {err:?}"
+        );
     }
 
     fn make_bundle_json(

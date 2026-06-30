@@ -49,7 +49,8 @@ use kaifuu_core::{BRIDGE_SCHEMA_VERSION_V02, BridgeBundleV02, BridgeContractVali
 
 use crate::gameexe::{GameexeInventoryReport, GameexeKeyFamily};
 use crate::opcode::{
-    RealLiveOpcode, RealLiveParseError, TextEncoding, is_translatable_textout, parse_real_bytecode,
+    RealLiveOpcode, RealLiveParseError, TextEncoding, is_translatable_textout,
+    parse_real_bytecode_spans,
 };
 
 /// Caller-supplied knobs for [`produce_bundle`].
@@ -103,6 +104,24 @@ pub enum BridgeProduceError {
     /// bug.
     #[error("kaifuu.reallive.bridge.schema_validation: {0}")]
     SchemaValidation(String),
+    /// A computed protected span (kidoku / name_token / asset_ref /
+    /// font_tone) failed its byte-range / raw-bytes equality check
+    /// against the wrapped `sourceText`. The 100%-fidelity contract
+    /// forbids silently dropping it (that would let a translate+patchback
+    /// pass rewrite a protected `#FACE(...)` / `【NAMAE】` region) — the
+    /// mismatch is surfaced as a producer regression instead.
+    #[error(
+        "kaifuu.reallive.bridge.protected_span_invalid: scene {scene_id} unit {occurrence_index} span #{span_index} (parsedName={parsed_name}) byte range {start_byte}..{end_byte} does not match sourceText: {reason}"
+    )]
+    ProtectedSpanInvalid {
+        scene_id: u16,
+        occurrence_index: usize,
+        span_index: usize,
+        parsed_name: &'static str,
+        start_byte: u64,
+        end_byte: u64,
+        reason: String,
+    },
 }
 
 impl From<BridgeContractValidationError> for BridgeProduceError {
@@ -142,18 +161,24 @@ pub fn produce_bundle(
     if decompressed_bytecode.is_empty() {
         return Err(BridgeProduceError::EmptyScene { scene_id });
     }
-    let opcodes = parse_real_bytecode(decompressed_bytecode)?;
-    if opcodes.is_empty() {
+    // Drive the provenance cursor off the authoritative width-carrying
+    // decode: each element's byte width is exactly what the single
+    // source of truth `decode_element` / `decode_command` consumed. The
+    // producer must NOT re-derive widths from a hand-maintained table —
+    // that table silently drifted (undercounting every command at 8) and
+    // mis-placed each unit's `decompressed_byte_offset`.
+    let opcode_spans = parse_real_bytecode_spans(decompressed_bytecode)?;
+    if opcode_spans.is_empty() {
         return Err(BridgeProduceError::EmptyScene { scene_id });
     }
-    let units = collect_units(scene_id, &opcodes, gameexe_inventory, opts);
+    let units = collect_units(scene_id, &opcode_spans, gameexe_inventory, opts);
     if units.is_empty() {
         return Err(BridgeProduceError::NoTextUnits {
             scene_id,
-            opcode_count: opcodes.len(),
+            opcode_count: opcode_spans.len(),
         });
     }
-    let json = build_bundle_json(scene_id, scene_bytes, &units, opts);
+    let json = build_bundle_json(scene_id, scene_bytes, &units, opts)?;
     let bundle = BridgeBundleV02::validate_json(&json)?;
     Ok(ProducedBundle { bundle, json })
 }
@@ -207,7 +232,7 @@ struct ProtoSpan {
 
 fn collect_units(
     _scene_id: u16,
-    opcodes: &[RealLiveOpcode],
+    opcode_spans: &[(RealLiveOpcode, usize)],
     gameexe_inventory: &GameexeInventoryReport,
     opts: &BridgeOpts<'_>,
 ) -> Vec<ProtoUnit> {
@@ -220,14 +245,14 @@ fn collect_units(
     let mut pending_markers: Vec<PendingMarker> = Vec::new();
     // Last speaker raw label seen, carried forward until voice attach.
     let mut last_speaker: Option<String> = None;
-    // Decompressed-byte cursor: we recompute by traversing opcodes and
-    // accumulating element widths from the raw byte arrays each variant
-    // carries. The width helpers below mirror the parser's element
-    // widths so the cursor lands at the start of each text-display body.
+    // Decompressed-byte cursor. Each element's width comes from the
+    // authoritative width-carrying decode ([`parse_real_bytecode_spans`]),
+    // so the cursor lands at the exact start of every text-display body
+    // and can never drift from `decode_command`'s real boundaries.
     let mut cursor: u64 = 0;
 
-    for (idx, op) in opcodes.iter().enumerate() {
-        let width = opcode_byte_width(op);
+    for (idx, (op, width)) in opcode_spans.iter().enumerate() {
+        let width = *width;
         match op {
             RealLiveOpcode::MetaKidoku { mark } => {
                 pending_markers.push(PendingMarker {
@@ -619,45 +644,6 @@ fn decode_text_body(raw: &[u8], _encoding: TextEncoding) -> String {
     decoded.into_owned()
 }
 
-/// Compute the byte width consumed by one decoded opcode in the
-/// post-AVG32 decompressed bytecode stream. This mirrors the widths
-/// used by [`parse_real_bytecode`] so the bridge producer can carry a
-/// cursor that lands at the start of every text-display body.
-fn opcode_byte_width(op: &RealLiveOpcode) -> usize {
-    match op {
-        RealLiveOpcode::MetaLine { .. }
-        | RealLiveOpcode::MetaEntrypoint { .. }
-        | RealLiveOpcode::MetaKidoku { .. } => 3,
-        RealLiveOpcode::Comma => 1,
-        RealLiveOpcode::Textout { raw_bytes, .. } => raw_bytes.len(),
-        RealLiveOpcode::Expression { raw_bytes } => raw_bytes.len() + 1, // +opener byte
-        RealLiveOpcode::Unknown { raw_bytes, .. } => raw_bytes.len().max(1),
-        // Recognised commands: the parser does not retain the raw byte
-        // span on the typed variant, so we under-count by the command
-        // header + args width. The bridge cursor still lands inside the
-        // command body, which is acceptable for provenance — the
-        // patchback driver (KAIFUU-211) will re-walk the stream.
-        RealLiveOpcode::TextDisplay { .. } => 8,
-        RealLiveOpcode::CharacterTextDisplay => 8,
-        RealLiveOpcode::Choice { choices } => {
-            8 + choices.iter().map(|c| c.len() + 1).sum::<usize>()
-        }
-        RealLiveOpcode::Branch
-        | RealLiveOpcode::Jump
-        | RealLiveOpcode::Goto
-        | RealLiveOpcode::Call
-        | RealLiveOpcode::Return
-        | RealLiveOpcode::Wait { .. }
-        | RealLiveOpcode::Background { .. }
-        | RealLiveOpcode::BgmPlay
-        | RealLiveOpcode::BgmStop
-        | RealLiveOpcode::VoicePlay { .. }
-        | RealLiveOpcode::SetVariable
-        | RealLiveOpcode::If
-        | RealLiveOpcode::End => 8,
-    }
-}
-
 // ---------------------------------------------------------------------
 // JSON bundle assembly
 // ---------------------------------------------------------------------
@@ -667,7 +653,7 @@ fn build_bundle_json(
     scene_bytes: &[u8],
     units: &[ProtoUnit],
     opts: &BridgeOpts<'_>,
-) -> Value {
+) -> Result<Value, BridgeProduceError> {
     let bundle_namespace = format!(
         "reallive-bridge:game-id={}:source-profile-id={}:scene={scene_id:04}",
         opts.game_id, opts.source_profile_id
@@ -712,9 +698,9 @@ fn build_bundle_json(
                 unit,
             )
         })
-        .collect();
+        .collect::<Result<Vec<Value>, BridgeProduceError>>()?;
 
-    json!({
+    Ok(json!({
         "schemaVersion": BRIDGE_SCHEMA_VERSION_V02,
         "bridgeId": bridge_id,
         "sourceGame": {
@@ -774,7 +760,7 @@ fn build_bundle_json(
         "assets": assets,
         "units": units_json,
         "policyRecords": [],
-    })
+    }))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -787,7 +773,7 @@ fn build_unit_json(
     namespace: &str,
     opts: &BridgeOpts<'_>,
     unit: &ProtoUnit,
-) -> Value {
+) -> Result<Value, BridgeProduceError> {
     let source_text = format!("{}{}", unit.control_prefix, unit.decoded_text);
     let bridge_unit_id = deterministic_uuid7(namespace, &format!("unit-{}", unit.occurrence_index));
     let surface_id = deterministic_uuid7(namespace, &format!("surface-{}", unit.occurrence_index));
@@ -801,13 +787,43 @@ fn build_unit_json(
 
     let mut spans_json: Vec<Value> = Vec::new();
     for (idx, span) in unit.spans.iter().enumerate() {
-        // Validate the span byte range matches the wrapped source text.
+        // Validate the span byte range matches the wrapped source text. A
+        // failure is a producer regression (an off-by-one in the span
+        // arithmetic, or a span that no longer covers its protected
+        // region), NOT something to silently drop: dropping it would lose
+        // the `preserveMode=exact` guard and let a translate+patchback
+        // pass rewrite a protected `#FACE(...)` / `【NAMAE】` region. Surface
+        // a typed error per the 100%-fidelity contract.
         if span.end_byte as usize > source_text.len() {
-            continue;
+            return Err(BridgeProduceError::ProtectedSpanInvalid {
+                scene_id,
+                occurrence_index: unit.occurrence_index,
+                span_index: idx,
+                parsed_name: span.parsed_name,
+                start_byte: span.start_byte,
+                end_byte: span.end_byte,
+                reason: format!(
+                    "end_byte {} exceeds sourceText length {}",
+                    span.end_byte,
+                    source_text.len()
+                ),
+            });
         }
         let actual = &source_text.as_bytes()[span.start_byte as usize..span.end_byte as usize];
         if actual != span.raw.as_bytes() {
-            continue;
+            return Err(BridgeProduceError::ProtectedSpanInvalid {
+                scene_id,
+                occurrence_index: unit.occurrence_index,
+                span_index: idx,
+                parsed_name: span.parsed_name,
+                start_byte: span.start_byte,
+                end_byte: span.end_byte,
+                reason: format!(
+                    "byte range covers {:?} but span.raw is {:?}",
+                    String::from_utf8_lossy(actual),
+                    span.raw
+                ),
+            });
         }
         spans_json.push(json!({
             "spanId": deterministic_uuid7(namespace, &format!("span-{}-{}", unit.occurrence_index, idx)),
@@ -896,7 +912,7 @@ fn build_unit_json(
         });
     }
 
-    json!({
+    Ok(json!({
         "bridgeUnitId": bridge_unit_id,
         "surfaceId": surface_id,
         "surfaceKind": unit.surface_kind,
@@ -929,7 +945,7 @@ fn build_unit_json(
             },
         },
         "runtimeExpectation": runtime_expectation,
-    })
+    }))
 }
 
 // ---------------------------------------------------------------------
@@ -1133,6 +1149,116 @@ mod tests {
     }
 
     #[test]
+    fn protected_span_failing_validation_surfaces_typed_error_not_silent_drop() {
+        // 005 regression: build_unit_json bare-`continue`d on a span that
+        // failed its byte-range / raw-bytes equality check, dropping the
+        // protected span (and its preserveMode=exact guard) with no error.
+        // The contract forbids that — a mismatch must surface a typed
+        // BridgeProduceError.
+        let base_unit = |spans: Vec<ProtoSpan>| ProtoUnit {
+            surface_kind: "dialogue",
+            decoded_text: "本文".to_string(),
+            control_prefix: String::new(),
+            spans,
+            raw_speaker: None,
+            decompressed_byte_offset: 0,
+            decompressed_byte_len: 6,
+            voice_archive_id: None,
+            voice_sample_id: None,
+            occurrence_index: 0,
+            choice_group_index: None,
+            choice_option_index: None,
+        };
+
+        // Raw-bytes mismatch: span claims bytes 0..5 are "#FACE" but the
+        // sourceText bytes there are the decoded dialogue.
+        let mismatch = base_unit(vec![ProtoSpan {
+            parsed_name: "reallive.asset_ref",
+            start_byte: 0,
+            end_byte: 5,
+            raw: "#FACE".to_string(),
+        }]);
+        let err = build_unit_json(7, "a", "k", "r", "h", "ns", &opts_for_test(), &mismatch)
+            .expect_err("mismatched protected span must error, not be dropped");
+        assert!(
+            matches!(
+                err,
+                BridgeProduceError::ProtectedSpanInvalid {
+                    scene_id: 7,
+                    parsed_name: "reallive.asset_ref",
+                    ..
+                }
+            ),
+            "expected ProtectedSpanInvalid, got {err:?}"
+        );
+
+        // Out-of-range: end_byte past sourceText length.
+        let oob = base_unit(vec![ProtoSpan {
+            parsed_name: "reallive.font_tone",
+            start_byte: 0,
+            end_byte: 999,
+            raw: "x".to_string(),
+        }]);
+        let err = build_unit_json(7, "a", "k", "r", "h", "ns", &opts_for_test(), &oob)
+            .expect_err("out-of-range protected span must error, not be dropped");
+        assert!(
+            matches!(
+                err,
+                BridgeProduceError::ProtectedSpanInvalid {
+                    parsed_name: "reallive.font_tone",
+                    ..
+                }
+            ),
+            "expected ProtectedSpanInvalid, got {err:?}"
+        );
+    }
+
+    #[test]
+    fn unit_offset_after_choice_command_tracks_authoritative_decode_width_no_drift() {
+        // 004 regression: opcode_byte_width reconstructed a Choice as
+        // `8 + sum(len+1)` (here 13) while decode_command actually
+        // consumes `8-byte header + "(A,,B)" (6 bytes)` = 14. The unit
+        // that follows a Choice command must be anchored at the real
+        // decoded width, so its decompressed-stream offset is exact.
+        //
+        // Bytecode: Textout "ハ" (2 bytes) | SEL choice command (14 bytes)
+        // | Textout "ニ" (occurrence 3) | MetaLine terminator.
+        let mut bytecode: Vec<u8> = Vec::new();
+        bytecode.extend_from_slice(&[0x83, 0x6E]); // Textout "ハ" -> occ 0, offset 0
+        bytecode.extend_from_slice(&[0x23, 0x01, 0x05, 0x00, 0x00, 0x00, 0x00, 0x00]);
+        bytecode.extend_from_slice(b"(A,,B)"); // options A/B -> occ 1, occ 2
+        bytecode.extend_from_slice(&[0x83, 0x70]); // Textout "ニ" -> occ 3
+        bytecode.extend_from_slice(&[0x0a, 0x05, 0x00]); // MetaLine terminator
+
+        let report = parse_gameexe_inventory(b"");
+        let produced = produce_bundle(1, &[0u8; 32], &bytecode, &report, &opts_for_test())
+            .expect("scene with choice must produce units");
+
+        // The trailing dialogue unit (occurrence 3) must start at the real
+        // cursor: 2 (first Textout) + 14 (choice header+arglist) = 16, not
+        // the old hardcoded-table value of 15.
+        let trailing = produced
+            .json
+            .get("units")
+            .and_then(|u| u.as_array())
+            .and_then(|units| {
+                units.iter().find(|u| {
+                    u["sourceUnitKey"]
+                        .as_str()
+                        .is_some_and(|k| k.ends_with("#0003"))
+                })
+            })
+            .expect("occurrence-3 dialogue unit present");
+        let start = trailing["sourceLocation"]["range"]["startByte"]
+            .as_u64()
+            .expect("startByte u64");
+        assert_eq!(
+            start, 16,
+            "unit after Choice must anchor at the authoritative decode width (16), not a drifted 15"
+        );
+    }
+
+    #[test]
     fn predicate_classifies_real_binary_block_as_non_translatable_and_real_dialogue_as_translatable()
      {
         use crate::test_fixtures::{SCENE1_BINARY_BLOCK_214B, SCENE2011_DIALOGUE_SJIS};
@@ -1167,7 +1293,7 @@ mod tests {
         // Sanity: the raw bytecode does parse as exactly two Textout runs,
         // so the test is genuinely exercising the surface-selection split
         // (not an artefact of the binary bytes fragmenting).
-        let opcodes = parse_real_bytecode(&bytecode).expect("bytecode parses");
+        let opcodes = crate::opcode::parse_real_bytecode(&bytecode).expect("bytecode parses");
         let textouts: Vec<&[u8]> = opcodes
             .iter()
             .filter_map(|op| match op {

@@ -317,11 +317,22 @@ pub fn run_binary_patch_smoke(config: BinaryPatchSmokeConfig<'_>) -> BinarySmoke
     // Step 1: read or synthesize SEEN.TXT.
     // ---------------------------------------------------------------
     let archive_bytes = match config.fixture_dir {
+        // A caller that supplied `--fixture` asked to exercise REAL bytes.
+        // If the fixture cannot be read, propagate the error as Aborted —
+        // silently substituting the synthetic envelope would report a
+        // PASS against synthetic bytes while the user believes the real
+        // fixture ran, masking a real-byte regression. Only the unset
+        // (`None`) case may synthesize.
         Some(dir) => {
             let seen_path = dir.join("SEEN.TXT");
             match fs::read(&seen_path) {
                 Ok(bytes) => bytes,
-                Err(_) => build_synthetic_seen_txt(),
+                Err(error) => {
+                    return BinarySmokeOutcome::Aborted(format!(
+                        "failed to read supplied fixture {}: {error}",
+                        seen_path.display()
+                    ));
+                }
             }
         }
         None => build_synthetic_seen_txt(),

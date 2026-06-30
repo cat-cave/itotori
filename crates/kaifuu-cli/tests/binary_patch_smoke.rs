@@ -198,3 +198,32 @@ fn smoke_command_writes_patch_result_json_with_v02_schema_version() {
         Some("0.2.0")
     );
 }
+
+#[test]
+fn supplied_fixture_that_cannot_be_read_aborts_instead_of_silently_synthesizing() {
+    // 012 regression: when `--fixture` is supplied but the fixture's
+    // SEEN.TXT cannot be read, the smoke used to swallow the read error
+    // and substitute the synthetic envelope — reporting a PASS against
+    // synthetic bytes while the user believed the real fixture ran. It
+    // must now abort with a typed error mentioning the bad path, and must
+    // NOT write a patch-result.json (no false PASS).
+    let out = tempdir().unwrap();
+    let missing_fixture = out.path().join("nonexistent-fixture-dir");
+
+    let outcome = binary_patch_smoke::run_binary_patch_smoke(BinaryPatchSmokeConfig {
+        fixture_dir: Some(missing_fixture.as_path()),
+        output_dir: out.path(),
+        inject_failure: InjectFailure::None,
+        run_id: "binary-patch-smoke-fixture-abort",
+    });
+
+    match outcome {
+        BinarySmokeOutcome::Aborted(reason) => {
+            assert!(
+                reason.contains("SEEN.TXT"),
+                "abort reason must name the unreadable fixture, got {reason:?}"
+            );
+        }
+        other => panic!("expected Aborted on unreadable fixture, got {other:?}"),
+    }
+}

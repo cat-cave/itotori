@@ -140,9 +140,13 @@ pub enum RealLiveOpcode {
     Call,
     /// `module_jmp` `ret`/`ret_with`/`rtl`.
     Return,
-    /// `module_sys` `wait` (longop pause with a u16-LE duration in
-    /// milliseconds — argument decoded from the Command argument list).
-    Wait { duration_ms: u16 },
+    /// `module_sys` `wait` (longop pause with a duration in milliseconds
+    /// — argument decoded from the Command argument list). The literal is
+    /// surfaced at its full `i32` range: RealLive wait durations routinely
+    /// exceed `u16::MAX` (a 2-minute pause is 120000 ms) and the engine
+    /// also accepts negative/relative forms, so narrowing to `u16` via
+    /// `unsigned_abs` would silently corrupt the decompiled value.
+    Wait { duration_ms: i32 },
     /// `module_grp` `openBg`/`load` (background sprite load — the
     /// argument is the u32 sprite id pulled from the Command argument
     /// list).
@@ -887,7 +891,7 @@ fn classify_command(
         module_id::SYS => match opcode_u16 {
             17 => RealLiveOpcode::End,
             100 | 101 => RealLiveOpcode::Wait {
-                duration_ms: first_arg_as_u16(args_bytes),
+                duration_ms: first_arg_as_i32(args_bytes),
             },
             // module_sys (rlvm `src/modules/module_sys.cc`) catalogues
             // ~110 opcodes covering `title`, `pcnt`, `rnd`, `abs`,
@@ -975,12 +979,14 @@ fn first_arg_as_i32(args_bytes: &[Vec<u8>]) -> i32 {
         .unwrap_or(0)
 }
 
-fn first_arg_as_u16(args_bytes: &[Vec<u8>]) -> u16 {
-    first_arg_as_i32(args_bytes).unsigned_abs() as u16
-}
-
+/// Surface the first argument literal as a `u32` **id** without losing
+/// magnitude or sign information. Asset / voice ids are bit-packed `u32`
+/// values (e.g. `voice_id = (archive_id << 16) | sample_id`), so the raw
+/// `i32` bit pattern is reinterpreted (`as u32`) rather than passed
+/// through `unsigned_abs`, which would flip a negative literal to its
+/// absolute value and corrupt the id.
 fn first_arg_as_u32(args_bytes: &[Vec<u8>]) -> u32 {
-    first_arg_as_i32(args_bytes).unsigned_abs()
+    first_arg_as_i32(args_bytes) as u32
 }
 
 /// Decode the full real-bytecode stream into a [`RealLiveOpcode`] sequence.
@@ -999,17 +1005,38 @@ fn first_arg_as_u32(args_bytes: &[Vec<u8>]) -> u32 {
 /// outside a structural element is a Textout (the catch-all per rlvm
 /// `BytecodeElement::Read`).
 pub fn parse_real_bytecode(bytes: &[u8]) -> Result<Vec<RealLiveOpcode>, RealLiveParseError> {
+    Ok(parse_real_bytecode_spans(bytes)?
+        .into_iter()
+        .map(|(opcode, _consumed)| opcode)
+        .collect())
+}
+
+/// Decode the full real-bytecode stream into `(opcode, consumed_width)`
+/// pairs — the **authoritative**, width-carrying decode.
+///
+/// Each pair's `consumed_width` is exactly the number of bytes
+/// [`decode_element`] (the single source of truth that `decode_command`
+/// drives) consumed for that element, including any bracketed argument
+/// list and trailing goto-family jump pointers. Every downstream surface
+/// that needs per-element byte widths — the Scene-AST projection in
+/// `parser.rs` and the bridge provenance cursor in `bridge.rs` — derives
+/// its widths from this function rather than re-deriving them from a
+/// hand-maintained table that could silently drift from the decoder.
+/// [`parse_real_bytecode`] is a thin width-dropping wrapper over this.
+pub fn parse_real_bytecode_spans(
+    bytes: &[u8],
+) -> Result<Vec<(RealLiveOpcode, usize)>, RealLiveParseError> {
     if bytes.is_empty() {
         return Err(RealLiveParseError::TruncatedBytecode { input_len: 0 });
     }
 
-    let mut out: Vec<RealLiveOpcode> = Vec::new();
+    let mut out: Vec<(RealLiveOpcode, usize)> = Vec::new();
     let mut pos: usize = 0;
 
     while pos < bytes.len() {
         let (opcode, consumed) = decode_element(bytes, pos)?;
         debug_assert!(consumed > 0, "decode_element must make forward progress");
-        out.push(opcode);
+        out.push((opcode, consumed));
         pos += consumed;
     }
 
@@ -1243,7 +1270,7 @@ mod tests {
         // arglist closes at the REAL trailing ')', and the following
         // MetaLine decodes aligned with zero unknown opcodes.
         //
-        // module_sys (id=4) opcode 100 == Wait, argc=1; first_arg_as_u16
+        // module_sys (id=4) opcode 100 == Wait, argc=1; first_arg_as_i32
         // decodes the int literal, so asserting duration_ms proves all 4
         // payload bytes (incl. the delimiter-valued ones) landed in the
         // argument rather than splitting it.
@@ -1277,22 +1304,68 @@ mod tests {
             2,
             "arglist must close at the real ')': {opcodes:?}"
         );
-        // 0x00282C29 capped to u16 == 0x2C29 == 11305 — proves the full
-        // 5-byte literal (incl. 0x29/0x2C/0x28) was captured as one arg.
+        // The full i32 literal 0x00282C29 is surfaced verbatim (no u16
+        // truncation) — proves the full 5-byte literal (incl.
+        // 0x29/0x2C/0x28) was captured as one arg.
         assert!(
             matches!(
                 opcodes[0],
                 RealLiveOpcode::Wait {
-                    duration_ms: 0x2C29
+                    duration_ms: 0x0028_2C29
                 }
             ),
-            "expected Wait with literal-derived duration, got {:?}",
+            "expected Wait with full-range literal-derived duration, got {:?}",
             opcodes[0]
         );
         assert!(
             matches!(opcodes[1], RealLiveOpcode::MetaLine { line: 7 }),
             "stream must stay aligned after the arglist: {:?}",
             opcodes[1]
+        );
+    }
+
+    #[test]
+    fn wait_and_id_operands_preserve_full_magnitude_and_sign_no_unsigned_abs() {
+        // 007 regression: operand literals were narrowed via
+        // `unsigned_abs() as u16/u32`, silently truncating any value above
+        // u16::MAX and flipping the sign of negative literals. The decoded
+        // surface must now carry the literal's real range.
+
+        // Wait with a 100000 ms duration (> u16::MAX = 65535). Old code
+        // truncated to (100000 & 0xFFFF) = 34464; the i32 surface keeps it.
+        let mut wait = vec![opener::COMMAND, 1, module_id::SYS, 100, 0, 1, 0, 0];
+        wait.extend_from_slice(&[b'(', EXPR_INT_LITERAL]);
+        wait.extend_from_slice(&100_000i32.to_le_bytes());
+        wait.push(b')');
+        let opcodes = parse_real_bytecode(&wait).expect("wait decodes");
+        assert!(
+            matches!(
+                opcodes[0],
+                RealLiveOpcode::Wait {
+                    duration_ms: 100_000
+                }
+            ),
+            "duration must survive above u16::MAX, got {:?}",
+            opcodes[0]
+        );
+
+        // Background (module_grp) sprite id carrying a negative literal
+        // -5 (= 0xFFFF_FFFB). Old code's unsigned_abs flipped it to 5; the
+        // bit-reinterpreting `as u32` preserves the literal's bit pattern.
+        let mut bg = vec![opener::COMMAND, 1, module_id::GRP, 0x49, 0, 1, 0, 0];
+        bg.extend_from_slice(&[b'(', EXPR_INT_LITERAL]);
+        bg.extend_from_slice(&(-5i32).to_le_bytes());
+        bg.push(b')');
+        let opcodes = parse_real_bytecode(&bg).expect("background decodes");
+        assert!(
+            matches!(
+                opcodes[0],
+                RealLiveOpcode::Background {
+                    sprite_id: 0xFFFF_FFFB
+                }
+            ),
+            "negative id literal must keep its bit pattern (no unsigned_abs flip), got {:?}",
+            opcodes[0]
         );
     }
 

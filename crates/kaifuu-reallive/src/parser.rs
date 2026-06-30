@@ -33,7 +33,10 @@ use crate::ast::{
     StringSlotRole,
 };
 use crate::diagnostics::{ParseDiagnostic, ParseDiagnosticCode};
-use crate::opcode::{RealLiveOpcode, RealLiveParseError, TextEncoding, parse_real_bytecode};
+use crate::opcode::{
+    RealLiveOpcode, RealLiveParseError, TextEncoding, parse_real_bytecode,
+    parse_real_bytecode_spans,
+};
 use crate::opcodes::NamedOpcode;
 use crate::strings::make_slot;
 
@@ -63,8 +66,14 @@ pub fn parse_scene(scene_bytes: &[u8]) -> Result<Vec<RealLiveOpcode>, RealLivePa
 /// inventory walk surfaces them without silent loss.
 pub fn parse_scene_into_ast(scene_bytes: &[u8], scene_id: u16, _scene_offset: u64) -> ParseOutcome {
     let mut diagnostics = Vec::new();
-    let opcodes = match parse_real_bytecode(scene_bytes) {
-        Ok(opcodes) => opcodes,
+    // Drive the AST projection off the authoritative width-carrying decode
+    // ([`parse_real_bytecode_spans`]): each element's `consumed` width is
+    // exactly what the single-source-of-truth `decode_element` /
+    // `decode_command` consumed. The projection must NOT re-derive widths
+    // heuristically — a second table would silently drift and mis-place
+    // every `byte_offset` after the first command carrying args/pointers.
+    let spans = match parse_real_bytecode_spans(scene_bytes) {
+        Ok(spans) => spans,
         Err(err) => {
             diagnostics.push(map_parse_error(&err));
             return ParseOutcome::new(None, diagnostics);
@@ -76,8 +85,9 @@ pub fn parse_scene_into_ast(scene_bytes: &[u8], scene_id: u16, _scene_offset: u6
     let mut next_global_slot_index: u32 = 0;
     let mut byte_offset: u64 = 0;
 
-    for opcode in &opcodes {
-        let (consumed, kind, operands, string_slot_refs) = project_opcode(
+    for (opcode, consumed) in &spans {
+        let consumed = *consumed;
+        let (kind, operands, string_slot_refs) = project_opcode(
             opcode,
             scene_id,
             byte_offset,
@@ -177,10 +187,15 @@ fn map_parse_error(err: &RealLiveParseError) -> ParseDiagnostic {
 }
 
 /// Project a single [`RealLiveOpcode`] into a Scene-level
-/// (`byte_len`, `InstructionKind`, `operands`, `string_slot_refs`) tuple
-/// for the [`Scene`] tree. The function also pushes any extracted string
-/// slots into the running `strings` vector and bumps
-/// `next_global_slot_index`.
+/// (`InstructionKind`, `operands`, `string_slot_refs`) tuple for the
+/// [`Scene`] tree. The function also pushes any extracted string slots
+/// into the running `strings` vector and bumps `next_global_slot_index`.
+///
+/// The element's byte width is **not** computed here: it is supplied by
+/// the caller from [`parse_real_bytecode_spans`] (the single source of
+/// truth that mirrors `decode_command`). Re-deriving it here would
+/// reintroduce a second width table that could silently drift from the
+/// decoder.
 fn project_opcode(
     opcode: &RealLiveOpcode,
     scene_id: u16,
@@ -189,41 +204,32 @@ fn project_opcode(
     strings: &mut Vec<crate::ast::StringSlot>,
     next_global_slot_index: &mut u32,
 ) -> (
-    usize,
     InstructionKind,
     Vec<Operand>,
     Vec<crate::ast::StringSlotRef>,
 ) {
-    let (consumed, named) = match opcode {
-        RealLiveOpcode::MetaLine { .. } => (3, None),
-        RealLiveOpcode::MetaEntrypoint { .. } => (3, None),
-        RealLiveOpcode::MetaKidoku { .. } => (3, None),
-        RealLiveOpcode::Comma => (1, None),
-        RealLiveOpcode::Textout { raw_bytes, .. } => {
-            (raw_bytes.len(), Some(NamedOpcode::TextDisplay))
-        }
-        RealLiveOpcode::Expression { raw_bytes } => (raw_bytes.len() + 1, None),
-        RealLiveOpcode::TextDisplay { .. } => (8, Some(NamedOpcode::TextDisplay)),
-        RealLiveOpcode::CharacterTextDisplay => (8, Some(NamedOpcode::SetSpeaker)),
-        RealLiveOpcode::Choice { choices } => {
-            let mut total = 10usize;
-            for choice in choices {
-                total += choice.len() + 1;
-            }
-            (total, Some(NamedOpcode::Choice))
-        }
-        RealLiveOpcode::Branch | RealLiveOpcode::If => (8, Some(NamedOpcode::Jump)),
+    let named: Option<NamedOpcode> = match opcode {
+        RealLiveOpcode::MetaLine { .. }
+        | RealLiveOpcode::MetaEntrypoint { .. }
+        | RealLiveOpcode::MetaKidoku { .. }
+        | RealLiveOpcode::Comma
+        | RealLiveOpcode::Expression { .. } => None,
+        RealLiveOpcode::Textout { .. } => Some(NamedOpcode::TextDisplay),
+        RealLiveOpcode::TextDisplay { .. } => Some(NamedOpcode::TextDisplay),
+        RealLiveOpcode::CharacterTextDisplay => Some(NamedOpcode::SetSpeaker),
+        RealLiveOpcode::Choice { .. } => Some(NamedOpcode::Choice),
+        RealLiveOpcode::Branch | RealLiveOpcode::If => Some(NamedOpcode::Jump),
         RealLiveOpcode::Jump | RealLiveOpcode::Goto | RealLiveOpcode::Call => {
-            (8, Some(NamedOpcode::Jump))
+            Some(NamedOpcode::Jump)
         }
-        RealLiveOpcode::Return => (8, Some(NamedOpcode::Return)),
-        RealLiveOpcode::Wait { .. } => (8, Some(NamedOpcode::Pause)),
-        RealLiveOpcode::Background { .. } => (8, Some(NamedOpcode::SetVar)),
-        RealLiveOpcode::BgmPlay | RealLiveOpcode::BgmStop => (8, Some(NamedOpcode::SetVar)),
-        RealLiveOpcode::VoicePlay { .. } => (8, Some(NamedOpcode::SetVar)),
-        RealLiveOpcode::SetVariable => (8, Some(NamedOpcode::SetVar)),
-        RealLiveOpcode::End => (8, Some(NamedOpcode::Return)),
-        RealLiveOpcode::Unknown { raw_bytes, .. } => (raw_bytes.len(), None),
+        RealLiveOpcode::Return => Some(NamedOpcode::Return),
+        RealLiveOpcode::Wait { .. } => Some(NamedOpcode::Pause),
+        RealLiveOpcode::Background { .. } => Some(NamedOpcode::SetVar),
+        RealLiveOpcode::BgmPlay | RealLiveOpcode::BgmStop => Some(NamedOpcode::SetVar),
+        RealLiveOpcode::VoicePlay { .. } => Some(NamedOpcode::SetVar),
+        RealLiveOpcode::SetVariable => Some(NamedOpcode::SetVar),
+        RealLiveOpcode::End => Some(NamedOpcode::Return),
+        RealLiveOpcode::Unknown { .. } => None,
     };
 
     let kind = match opcode {
@@ -335,5 +341,48 @@ fn project_opcode(
     }
     let _ = TextEncoding::ShiftJisInlineRun; // silence unused-import
 
-    (consumed, kind, operands, string_slot_refs)
+    (kind, operands, string_slot_refs)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::opcode::{decode_element, opener};
+
+    #[test]
+    fn ast_byte_offsets_track_the_authoritative_decode_width_no_hardcoded_8_drift() {
+        // 003 regression: project_opcode hardcoded every recognised
+        // command to width 8, so the AST `byte_offset` of every element
+        // after the first arg/pointer-carrying command drifted. Here a
+        // goto_if (module_jmp opcode 2) carries an 8-byte header + an
+        // 8-byte `( $ 0xFF 0 )` arg list + a 4-byte trailing jump pointer
+        // = 20 bytes total. The following Textout's byte_offset must equal
+        // that real width (20), not the old hardcoded 8.
+        let mut bytes = vec![opener::COMMAND, 0, 1, 2, 0, 0, 0, 0];
+        bytes.extend_from_slice(&[b'(', 0x24, 0xFF, 0x00, 0x00, 0x00, 0x00, b')']);
+        bytes.extend_from_slice(&[0x61, 0x04, 0x00, 0x00]); // trailing i32 jump target
+        bytes.extend_from_slice(&[0x83, 0x6E]); // Textout "ハ"
+        bytes.extend_from_slice(&[opener::META_LINE, 0x05, 0x00]); // bound the run
+
+        // The authoritative width the decoder consumes for the command.
+        let (_op, command_width) = decode_element(&bytes, 0).expect("command decodes");
+        assert_eq!(
+            command_width, 20,
+            "goto_if must consume header+arglist+pointer"
+        );
+
+        let outcome = parse_scene_into_ast(&bytes, 1, 0);
+        let scene = outcome.scene.expect("scene must parse");
+        // instruction[0] = goto_if command; byte_len must be the real width.
+        assert_eq!(
+            scene.instructions[0].byte_len, command_width as u64,
+            "command byte_len must mirror decode_command, not a hardcoded 8"
+        );
+        // instruction[1] = the Textout; its byte_offset must follow the
+        // command at the real width.
+        assert_eq!(
+            scene.instructions[1].byte_offset, command_width as u64,
+            "byte_offset after an arg/pointer command must not drift to the hardcoded 8"
+        );
+    }
 }
