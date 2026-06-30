@@ -76,6 +76,17 @@ import { reviewerQueueDashboardStateValues } from "./reviewer/api-service.js";
 import type { ReviewerBatchActionRequest, ReviewerBatchPreview } from "./reviewer/batch-preview.js";
 import type { ReviewerBatchExecuteResult } from "./reviewer/batch-execute.js";
 import type { ReviewerDetailContext } from "./reviewer/detail-fixtures.js";
+import {
+  workspaceDiagnosticCodeValues,
+  workspaceSearchModeValues,
+} from "./workspace/read-model.js";
+import type {
+  WorkspaceAssetBrowseReadModel,
+  WorkspaceComparisonReadModel,
+  WorkspaceProjectBrowseReadModel,
+  WorkspaceSceneBrowseReadModel,
+  WorkspaceSearchReadModel,
+} from "./workspace/read-model.js";
 
 export type ItotoriApiRouteId =
   | "assetDecisions.active"
@@ -89,6 +100,11 @@ export type ItotoriApiRouteId =
   | "reviewer.batchPreview"
   | "reviewer.batchExecute"
   | "terminology.search"
+  | "workspace.projects"
+  | "workspace.scenes"
+  | "workspace.assets"
+  | "workspace.comparison"
+  | "workspace.search"
   | "projects.list"
   | "projects.status"
   | "projects.decisions"
@@ -123,6 +139,16 @@ export type ApiCatalogBenchmarkSeedsResponse = CatalogBenchmarkSeedFinderReadMod
 export type ApiCatalogOpportunitiesResponse = CatalogOpportunityRankingReadModel;
 
 export type ApiTerminologySearchResponse = TerminologySearchReadModel;
+
+export type ApiWorkspaceProjectBrowseResponse = WorkspaceProjectBrowseReadModel;
+
+export type ApiWorkspaceSceneBrowseResponse = WorkspaceSceneBrowseReadModel;
+
+export type ApiWorkspaceAssetBrowseResponse = WorkspaceAssetBrowseReadModel;
+
+export type ApiWorkspaceComparisonResponse = WorkspaceComparisonReadModel;
+
+export type ApiWorkspaceSearchResponse = WorkspaceSearchReadModel;
 
 export type ApiReviewerQueueDashboardResponse = ReviewerQueueDashboardReadModel;
 
@@ -203,6 +229,11 @@ export type ItotoriApiResponseBody =
   | ApiReviewerBatchPreviewResponse
   | ApiReviewerBatchExecuteResponse
   | ApiTerminologySearchResponse
+  | ApiWorkspaceProjectBrowseResponse
+  | ApiWorkspaceSceneBrowseResponse
+  | ApiWorkspaceAssetBrowseResponse
+  | ApiWorkspaceComparisonResponse
+  | ApiWorkspaceSearchResponse
   | ApiProjectsResponse
   | ProjectDashboardStatus
   | ApiDashboardDecisionsResponse
@@ -387,6 +418,21 @@ export function assertItotoriApiResponse(
       return;
     case "terminology.search":
       assertTerminologySearchReadModel(value);
+      return;
+    case "workspace.projects":
+      assertWorkspaceProjectBrowseReadModel(value);
+      return;
+    case "workspace.scenes":
+      assertWorkspaceSceneBrowseReadModel(value);
+      return;
+    case "workspace.assets":
+      assertWorkspaceAssetBrowseReadModel(value);
+      return;
+    case "workspace.comparison":
+      assertWorkspaceComparisonReadModel(value);
+      return;
+    case "workspace.search":
+      assertWorkspaceSearchReadModel(value);
       return;
     case "projects.list":
       assertProjectsResponse(value);
@@ -602,6 +648,324 @@ function assertReviewerQueuePermissionView(value: unknown, label: string): void 
   assertBoolean(permission.canReadQueue, `${label}.canReadQueue`);
   assertBoolean(permission.canManageQueue, `${label}.canManageQueue`);
   assertStringArray(permission.denialReasons, `${label}.denialReasons`);
+}
+
+const workspaceDiagnosticCodeList = Object.values(workspaceDiagnosticCodeValues);
+const workspaceSearchModeList = Object.values(workspaceSearchModeValues);
+
+function assertWorkspaceDiagnostics(value: unknown, label: string): void {
+  const diagnostics = asArray(value, label);
+  for (const [index, diagnosticValue] of diagnostics.entries()) {
+    const diagnostic = asStrictRecord(diagnosticValue, `${label}[${index}]`, ["code", "message"]);
+    assertEnum(diagnostic.code, workspaceDiagnosticCodeList, `${label}[${index}].code`);
+    assertString(diagnostic.message, `${label}[${index}].message`);
+  }
+}
+
+export function assertWorkspaceProjectBrowseReadModel(
+  value: unknown,
+  label = "WorkspaceProjectBrowseReadModel",
+): asserts value is WorkspaceProjectBrowseReadModel {
+  const model = asStrictRecord(value, label, [
+    "schemaVersion",
+    "generatedAt",
+    "permission",
+    "projects",
+    "diagnostics",
+  ]);
+  assertLiteral(model.schemaVersion, "workspace.project_browse.v0.1", `${label}.schemaVersion`);
+  assertDateLike(model.generatedAt, `${label}.generatedAt`);
+  assertReviewerQueuePermissionView(model.permission, `${label}.permission`);
+  const projects = asArray(model.projects, `${label}.projects`);
+  for (const [index, projectValue] of projects.entries()) {
+    const project = asStrictRecord(projectValue, `${label}.projects[${index}]`, [
+      "projectId",
+      "projectKey",
+      "name",
+      "status",
+      "sourceLocale",
+      "sourceBundleRevisionId",
+      "branchCount",
+      "unitCount",
+      "localeBranches",
+    ]);
+    const projectLabel = `${label}.projects[${index}]`;
+    assertString(project.projectId, `${projectLabel}.projectId`);
+    assertString(project.projectKey, `${projectLabel}.projectKey`);
+    assertString(project.name, `${projectLabel}.name`);
+    assertString(project.status, `${projectLabel}.status`);
+    assertString(project.sourceLocale, `${projectLabel}.sourceLocale`);
+    assertString(project.sourceBundleRevisionId, `${projectLabel}.sourceBundleRevisionId`);
+    assertNonNegativeInteger(project.branchCount, `${projectLabel}.branchCount`);
+    assertNonNegativeInteger(project.unitCount, `${projectLabel}.unitCount`);
+    const branches = asArray(project.localeBranches, `${projectLabel}.localeBranches`);
+    for (const [branchIndex, branchValue] of branches.entries()) {
+      assertWorkspaceLocaleBranchSummary(
+        branchValue,
+        `${projectLabel}.localeBranches[${branchIndex}]`,
+      );
+    }
+  }
+  assertWorkspaceDiagnostics(model.diagnostics, `${label}.diagnostics`);
+}
+
+function assertWorkspaceLocaleBranchSummary(value: unknown, label: string): void {
+  const branch = asStrictRecord(value, label, [
+    "localeBranchId",
+    "projectId",
+    "branchName",
+    "sourceLocale",
+    "targetLocale",
+    "status",
+    "unitCount",
+    "translatedUnitCount",
+    "openFindingCount",
+    "artifactCount",
+    "currentStyleGuidePolicyVersionId",
+    "sceneBrowsePath",
+    "assetBrowsePath",
+  ]);
+  assertString(branch.localeBranchId, `${label}.localeBranchId`);
+  assertString(branch.projectId, `${label}.projectId`);
+  assertString(branch.branchName, `${label}.branchName`);
+  assertString(branch.sourceLocale, `${label}.sourceLocale`);
+  assertString(branch.targetLocale, `${label}.targetLocale`);
+  assertString(branch.status, `${label}.status`);
+  assertNonNegativeInteger(branch.unitCount, `${label}.unitCount`);
+  assertNonNegativeInteger(branch.translatedUnitCount, `${label}.translatedUnitCount`);
+  assertNonNegativeInteger(branch.openFindingCount, `${label}.openFindingCount`);
+  assertNonNegativeInteger(branch.artifactCount, `${label}.artifactCount`);
+  assertNullableString(
+    branch.currentStyleGuidePolicyVersionId,
+    `${label}.currentStyleGuidePolicyVersionId`,
+  );
+  assertString(branch.sceneBrowsePath, `${label}.sceneBrowsePath`);
+  assertString(branch.assetBrowsePath, `${label}.assetBrowsePath`);
+}
+
+export function assertWorkspaceSceneBrowseReadModel(
+  value: unknown,
+  label = "WorkspaceSceneBrowseReadModel",
+): asserts value is WorkspaceSceneBrowseReadModel {
+  const model = asStrictRecord(value, label, [
+    "schemaVersion",
+    "generatedAt",
+    "permission",
+    "projectId",
+    "localeBranchId",
+    "scenes",
+    "diagnostics",
+  ]);
+  assertLiteral(model.schemaVersion, "workspace.scene_browse.v0.1", `${label}.schemaVersion`);
+  assertDateLike(model.generatedAt, `${label}.generatedAt`);
+  assertReviewerQueuePermissionView(model.permission, `${label}.permission`);
+  assertString(model.projectId, `${label}.projectId`);
+  assertString(model.localeBranchId, `${label}.localeBranchId`);
+  const scenes = asArray(model.scenes, `${label}.scenes`);
+  for (const [index, sceneValue] of scenes.entries()) {
+    const sceneLabel = `${label}.scenes[${index}]`;
+    const scene = asStrictRecord(sceneValue, sceneLabel, [
+      "sceneId",
+      "sceneSummaryId",
+      "localeBranchId",
+      "sourceRevisionId",
+      "summaryLocale",
+      "summaryText",
+      "status",
+      "stale",
+      "generatedAt",
+      "units",
+      "citedUnitCount",
+    ]);
+    assertString(scene.sceneId, `${sceneLabel}.sceneId`);
+    assertString(scene.sceneSummaryId, `${sceneLabel}.sceneSummaryId`);
+    assertString(scene.localeBranchId, `${sceneLabel}.localeBranchId`);
+    assertString(scene.sourceRevisionId, `${sceneLabel}.sourceRevisionId`);
+    assertString(scene.summaryLocale, `${sceneLabel}.summaryLocale`);
+    assertString(scene.summaryText, `${sceneLabel}.summaryText`);
+    assertString(scene.status, `${sceneLabel}.status`);
+    assertBoolean(scene.stale, `${sceneLabel}.stale`);
+    assertDateLike(scene.generatedAt, `${sceneLabel}.generatedAt`);
+    assertNonNegativeInteger(scene.citedUnitCount, `${sceneLabel}.citedUnitCount`);
+    const units = asArray(scene.units, `${sceneLabel}.units`);
+    for (const [unitIndex, unitValue] of units.entries()) {
+      const unitLabel = `${sceneLabel}.units[${unitIndex}]`;
+      const unit = asStrictRecord(unitValue, unitLabel, [
+        "bridgeUnitId",
+        "sourceUnitKey",
+        "speaker",
+        "occurrenceId",
+        "sourceText",
+        "cited",
+      ]);
+      assertString(unit.bridgeUnitId, `${unitLabel}.bridgeUnitId`);
+      assertString(unit.sourceUnitKey, `${unitLabel}.sourceUnitKey`);
+      assertNullableString(unit.speaker, `${unitLabel}.speaker`);
+      assertString(unit.occurrenceId, `${unitLabel}.occurrenceId`);
+      assertNullableString(unit.sourceText, `${unitLabel}.sourceText`);
+      assertBoolean(unit.cited, `${unitLabel}.cited`);
+    }
+  }
+  assertWorkspaceDiagnostics(model.diagnostics, `${label}.diagnostics`);
+}
+
+export function assertWorkspaceAssetBrowseReadModel(
+  value: unknown,
+  label = "WorkspaceAssetBrowseReadModel",
+): asserts value is WorkspaceAssetBrowseReadModel {
+  const model = asStrictRecord(value, label, [
+    "schemaVersion",
+    "generatedAt",
+    "permission",
+    "projectId",
+    "localeBranchId",
+    "assets",
+    "diagnostics",
+  ]);
+  assertLiteral(model.schemaVersion, "workspace.asset_browse.v0.1", `${label}.schemaVersion`);
+  assertDateLike(model.generatedAt, `${label}.generatedAt`);
+  assertReviewerQueuePermissionView(model.permission, `${label}.permission`);
+  assertString(model.projectId, `${label}.projectId`);
+  assertString(model.localeBranchId, `${label}.localeBranchId`);
+  const assets = asArray(model.assets, `${label}.assets`);
+  for (const [index, assetValue] of assets.entries()) {
+    const assetLabel = `${label}.assets[${index}]`;
+    const asset = asStrictRecord(assetValue, assetLabel, [
+      "assetRef",
+      "assetKind",
+      "displayLabel",
+      "decided",
+      "decisionPolicy",
+      "decisionRationale",
+    ]);
+    const assetRef = asStrictRecord(asset.assetRef, `${assetLabel}.assetRef`, ["kind", "ref"]);
+    assertString(assetRef.kind, `${assetLabel}.assetRef.kind`);
+    assertString(assetRef.ref, `${assetLabel}.assetRef.ref`);
+    assertString(asset.assetKind, `${assetLabel}.assetKind`);
+    assertNullableString(asset.displayLabel, `${assetLabel}.displayLabel`);
+    assertBoolean(asset.decided, `${assetLabel}.decided`);
+    assertNullableString(asset.decisionPolicy, `${assetLabel}.decisionPolicy`);
+    assertNullableString(asset.decisionRationale, `${assetLabel}.decisionRationale`);
+  }
+  assertWorkspaceDiagnostics(model.diagnostics, `${label}.diagnostics`);
+}
+
+export function assertWorkspaceComparisonReadModel(
+  value: unknown,
+  label = "WorkspaceComparisonReadModel",
+): asserts value is WorkspaceComparisonReadModel {
+  const model = asStrictRecord(value, label, [
+    "schemaVersion",
+    "generatedAt",
+    "permission",
+    "reviewItemId",
+    "localeBranchId",
+    "sourceRevisionId",
+    "bridgeUnitId",
+    "sourceUnitKey",
+    "contextNote",
+    "cells",
+    "hasFinal",
+    "runtimeEvidenceLinks",
+    "diagnostics",
+  ]);
+  assertLiteral(model.schemaVersion, "workspace.comparison.v0.1", `${label}.schemaVersion`);
+  assertDateLike(model.generatedAt, `${label}.generatedAt`);
+  assertReviewerQueuePermissionView(model.permission, `${label}.permission`);
+  assertString(model.reviewItemId, `${label}.reviewItemId`);
+  assertNullableString(model.localeBranchId, `${label}.localeBranchId`);
+  assertNullableString(model.sourceRevisionId, `${label}.sourceRevisionId`);
+  assertNullableString(model.bridgeUnitId, `${label}.bridgeUnitId`);
+  assertNullableString(model.sourceUnitKey, `${label}.sourceUnitKey`);
+  assertNullableString(model.contextNote, `${label}.contextNote`);
+  assertBoolean(model.hasFinal, `${label}.hasFinal`);
+  const cells = asArray(model.cells, `${label}.cells`);
+  for (const [index, cellValue] of cells.entries()) {
+    const cellLabel = `${label}.cells[${index}]`;
+    const cell = asStrictRecord(cellValue, cellLabel, ["side", "locale", "text", "label"]);
+    assertEnum(cell.side, ["source", "draft", "final"] as const, `${cellLabel}.side`);
+    assertString(cell.locale, `${cellLabel}.locale`);
+    assertString(cell.text, `${cellLabel}.text`);
+    assertString(cell.label, `${cellLabel}.label`);
+  }
+  const links = asArray(model.runtimeEvidenceLinks, `${label}.runtimeEvidenceLinks`);
+  for (const [index, linkValue] of links.entries()) {
+    const linkLabel = `${label}.runtimeEvidenceLinks[${index}]`;
+    const link = asStrictRecord(linkValue, linkLabel, [
+      "evidenceKind",
+      "evidenceTier",
+      "runtimeTargetId",
+      "observationEventIds",
+      "artifactHashes",
+      "providerProofRefs",
+      "summary",
+    ]);
+    assertString(link.evidenceKind, `${linkLabel}.evidenceKind`);
+    assertString(link.evidenceTier, `${linkLabel}.evidenceTier`);
+    assertString(link.runtimeTargetId, `${linkLabel}.runtimeTargetId`);
+    assertStringArray(link.observationEventIds, `${linkLabel}.observationEventIds`);
+    assertStringArray(link.artifactHashes, `${linkLabel}.artifactHashes`);
+    assertStringArray(link.providerProofRefs, `${linkLabel}.providerProofRefs`);
+    assertString(link.summary, `${linkLabel}.summary`);
+  }
+  assertWorkspaceDiagnostics(model.diagnostics, `${label}.diagnostics`);
+}
+
+export function assertWorkspaceSearchReadModel(
+  value: unknown,
+  label = "WorkspaceSearchReadModel",
+): asserts value is WorkspaceSearchReadModel {
+  const model = asStrictRecord(value, label, [
+    "schemaVersion",
+    "generatedAt",
+    "permission",
+    "projectId",
+    "localeBranchId",
+    "query",
+    "normalizedQuery",
+    "mode",
+    "results",
+    "droppedOpaqueCount",
+    "diagnostics",
+  ]);
+  assertLiteral(model.schemaVersion, "workspace.search.v0.1", `${label}.schemaVersion`);
+  assertDateLike(model.generatedAt, `${label}.generatedAt`);
+  assertReviewerQueuePermissionView(model.permission, `${label}.permission`);
+  assertString(model.projectId, `${label}.projectId`);
+  assertString(model.localeBranchId, `${label}.localeBranchId`);
+  assertString(model.query, `${label}.query`);
+  assertString(model.normalizedQuery, `${label}.normalizedQuery`);
+  assertEnum(model.mode, workspaceSearchModeList, `${label}.mode`);
+  assertNonNegativeInteger(model.droppedOpaqueCount, `${label}.droppedOpaqueCount`);
+  const results = asArray(model.results, `${label}.results`);
+  for (const [index, resultValue] of results.entries()) {
+    const resultLabel = `${label}.results[${index}]`;
+    const result = asStrictRecord(resultValue, resultLabel, [
+      "matchKind",
+      "localeBranchId",
+      "sourceArtifactId",
+      "bridgeUnitRef",
+      "sourceRevisionId",
+      "sourceLocale",
+      "targetLocale",
+      "snippet",
+      "score",
+      "matchRefId",
+    ]);
+    assertEnum(result.matchKind, ["exact", "terminology"] as const, `${resultLabel}.matchKind`);
+    // Acceptance: every search result MUST cite a locale branch id, a
+    // source artifact id, and a bridge unit ref (never an opaque snippet).
+    assertString(result.localeBranchId, `${resultLabel}.localeBranchId`);
+    assertString(result.sourceArtifactId, `${resultLabel}.sourceArtifactId`);
+    assertString(result.bridgeUnitRef, `${resultLabel}.bridgeUnitRef`);
+    assertNullableString(result.sourceRevisionId, `${resultLabel}.sourceRevisionId`);
+    assertNullableString(result.sourceLocale, `${resultLabel}.sourceLocale`);
+    assertNullableString(result.targetLocale, `${resultLabel}.targetLocale`);
+    assertString(result.snippet, `${resultLabel}.snippet`);
+    assertFiniteNumber(result.score, `${resultLabel}.score`);
+    assertNullableString(result.matchRefId, `${resultLabel}.matchRefId`);
+  }
+  assertWorkspaceDiagnostics(model.diagnostics, `${label}.diagnostics`);
 }
 
 function assertReviewerBatchActionRequest(value: unknown, label: string): void {

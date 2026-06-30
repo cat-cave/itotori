@@ -74,6 +74,18 @@ import {
 } from "./reviewer/detail-fixtures.js";
 import type { ReviewerQueueApiServicePort } from "./reviewer/api-service.js";
 import type { ReviewerQueuePermissionView } from "./auth.js";
+import type {
+  LocalizationWorkspaceApiServicePort,
+  LoadWorkspaceSearchInput,
+} from "./workspace/api-service.js";
+import { workspaceSearchModeValues } from "./workspace/read-model.js";
+import type {
+  ApiWorkspaceAssetBrowseResponse,
+  ApiWorkspaceComparisonResponse,
+  ApiWorkspaceProjectBrowseResponse,
+  ApiWorkspaceSceneBrowseResponse,
+  ApiWorkspaceSearchResponse,
+} from "./api-schema.js";
 
 export type ApiMutationPermissionGate = {
   mutation: string;
@@ -122,6 +134,7 @@ export type ItotoriApiServices = {
     searchTerms(input: TerminologySearchInput): Promise<TerminologySearchReadModel>;
   };
   reviewerQueue: ReviewerQueueApiServicePort;
+  workspace: LocalizationWorkspaceApiServicePort;
   assetDecisions: {
     loadActiveDecisions(
       projectId: string,
@@ -236,6 +249,77 @@ async function routeItotoriApiRequest(
       "terminology.search",
       await services.terminologyRepository.searchTerms(parseTerminologySearchInput(request.search)),
     );
+  }
+
+  if (request.method === "GET" && request.pathname === "/api/workspace/projects") {
+    const permission = await resolveApiReviewerQueuePermissionView(
+      services,
+      parseActorUserIdQuery(request.search),
+    );
+    return ok("workspace.projects", await services.workspace.loadProjectBrowse({ permission }));
+  }
+
+  if (request.method === "GET" && request.pathname === "/api/workspace/scenes") {
+    const permission = await resolveApiReviewerQueuePermissionView(
+      services,
+      parseActorUserIdQuery(request.search),
+    );
+    const scope = parseWorkspaceBranchScopeQuery(request.search, "workspace scenes");
+    return ok(
+      "workspace.scenes",
+      await services.workspace.loadSceneBrowse({ ...scope, permission }),
+    );
+  }
+
+  if (request.method === "GET" && request.pathname === "/api/workspace/assets") {
+    const permission = await resolveApiReviewerQueuePermissionView(
+      services,
+      parseActorUserIdQuery(request.search),
+    );
+    const scope = parseWorkspaceBranchScopeQuery(request.search, "workspace assets");
+    return ok(
+      "workspace.assets",
+      await services.workspace.loadAssetBrowse({
+        projectId: scope.projectId,
+        localeBranchId: scope.localeBranchId,
+        permission,
+      }),
+    );
+  }
+
+  if (request.method === "GET" && request.pathname === "/api/workspace/comparison") {
+    const permission = await resolveApiReviewerQueuePermissionView(
+      services,
+      parseActorUserIdQuery(request.search),
+    );
+    const reviewItemId = parseWorkspaceComparisonQuery(request.search);
+    return ok(
+      "workspace.comparison",
+      await services.workspace.loadComparison({ reviewItemId, permission }),
+    );
+  }
+
+  if (request.method === "GET" && request.pathname === "/api/workspace/search") {
+    const permission = await resolveApiReviewerQueuePermissionView(
+      services,
+      parseActorUserIdQuery(request.search),
+    );
+    const searchInput = parseWorkspaceSearchQuery(request.search);
+    return ok(
+      "workspace.search",
+      await services.workspace.loadSearch({ ...searchInput, permission }),
+    );
+  }
+
+  if (
+    request.method !== "GET" &&
+    (request.pathname === "/api/workspace/projects" ||
+      request.pathname === "/api/workspace/scenes" ||
+      request.pathname === "/api/workspace/assets" ||
+      request.pathname === "/api/workspace/comparison" ||
+      request.pathname === "/api/workspace/search")
+  ) {
+    return methodNotAllowed(["GET"]);
   }
 
   const assetDecisionRoute = parseAssetDecisionApiRoute(request.pathname);
@@ -497,6 +581,98 @@ function parseReviewerQueueDashboardQuery(search = ""): { localeBranchId: string
     throw new ApiValidationError("localeBranchId must be non-empty");
   }
   return { localeBranchId };
+}
+
+function parseWorkspaceBranchScopeQuery(
+  search = "",
+  context: string,
+): { projectId: string; localeBranchId: string; sceneId?: string; sourceRevisionId?: string } {
+  const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
+  assertKnownQueryParams(
+    params,
+    ["projectId", "localeBranchId", "sceneId", "sourceRevisionId", "actorUserId"],
+    context,
+  );
+  const projectId = requiredNonEmptyParam(params, "projectId");
+  const localeBranchId = requiredNonEmptyParam(params, "localeBranchId");
+  const scope: {
+    projectId: string;
+    localeBranchId: string;
+    sceneId?: string;
+    sourceRevisionId?: string;
+  } = { projectId, localeBranchId };
+  const sceneId = params.get("sceneId");
+  if (sceneId !== null) {
+    if (sceneId.trim().length === 0) {
+      throw new ApiValidationError("sceneId must be non-empty");
+    }
+    scope.sceneId = sceneId;
+  }
+  const sourceRevisionId = params.get("sourceRevisionId");
+  if (sourceRevisionId !== null) {
+    if (sourceRevisionId.trim().length === 0) {
+      throw new ApiValidationError("sourceRevisionId must be non-empty");
+    }
+    scope.sourceRevisionId = sourceRevisionId;
+  }
+  return scope;
+}
+
+function parseWorkspaceComparisonQuery(search = ""): string {
+  const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
+  assertKnownQueryParams(params, ["reviewItemId", "actorUserId"], "workspace comparison");
+  return requiredNonEmptyParam(params, "reviewItemId");
+}
+
+function parseWorkspaceSearchQuery(search = ""): Omit<LoadWorkspaceSearchInput, "permission"> {
+  const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
+  assertKnownQueryParams(
+    params,
+    ["projectId", "localeBranchId", "query", "mode", "limit", "actorUserId"],
+    "workspace search",
+  );
+  const input: Omit<LoadWorkspaceSearchInput, "permission"> = {
+    projectId: requiredNonEmptyParam(params, "projectId"),
+    localeBranchId: requiredNonEmptyParam(params, "localeBranchId"),
+    query: requiredQueryParam(params, "query"),
+  };
+  const mode = params.get("mode");
+  if (mode !== null) {
+    input.mode = enumParam(
+      mode,
+      [
+        workspaceSearchModeValues.all,
+        workspaceSearchModeValues.exact,
+        workspaceSearchModeValues.terminology,
+      ] as const,
+      "mode",
+    );
+  }
+  const limit = params.get("limit");
+  if (limit !== null) {
+    const parsedLimit = Number(limit);
+    if (!Number.isInteger(parsedLimit) || parsedLimit < 1 || parsedLimit > 100) {
+      throw new ApiValidationError("limit must be an integer from 1 through 100");
+    }
+    input.limit = parsedLimit;
+  }
+  return input;
+}
+
+function requiredNonEmptyParam(params: URLSearchParams, name: string): string {
+  const value = params.get(name);
+  if (value === null || value.trim().length === 0) {
+    throw new ApiValidationError(`${name} is required and must be non-empty`);
+  }
+  return value;
+}
+
+function requiredQueryParam(params: URLSearchParams, name: string): string {
+  const value = params.get(name);
+  if (value === null) {
+    throw new ApiValidationError(`${name} is required`);
+  }
+  return value;
 }
 
 function parseReviewerDetailApiRoute(pathname: string): { reviewItemId: string } | null {
@@ -918,6 +1094,14 @@ function ok(
   body: ApiReviewerBatchExecuteResponse,
 ): ApiJsonResponse;
 function ok(routeId: "terminology.search", body: TerminologySearchReadModel): ApiJsonResponse;
+function ok(
+  routeId: "workspace.projects",
+  body: ApiWorkspaceProjectBrowseResponse,
+): ApiJsonResponse;
+function ok(routeId: "workspace.scenes", body: ApiWorkspaceSceneBrowseResponse): ApiJsonResponse;
+function ok(routeId: "workspace.assets", body: ApiWorkspaceAssetBrowseResponse): ApiJsonResponse;
+function ok(routeId: "workspace.comparison", body: ApiWorkspaceComparisonResponse): ApiJsonResponse;
+function ok(routeId: "workspace.search", body: ApiWorkspaceSearchResponse): ApiJsonResponse;
 function ok(routeId: "projects.status", body: ProjectDashboardStatus): ApiJsonResponse;
 function ok(routeId: "projects.decisions", body: DashboardDecisionReadModel): ApiJsonResponse;
 function ok(routeId: "projects.cost", body: ProjectCostReport): ApiJsonResponse;

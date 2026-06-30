@@ -76,6 +76,10 @@ import {
 } from "../reviewer/api-service.js";
 import { ReviewerQueueActionService } from "../reviewer/action-service.js";
 import {
+  LocalizationWorkspaceApiService,
+  type LocalizationWorkspaceApiServicePort,
+} from "../workspace/api-service.js";
+import {
   ItotoriProjectWorkflowService,
   type ItotoriProjectWorkflowPort,
 } from "./project-workflow.js";
@@ -106,6 +110,7 @@ export type ItotoriApplicationServices = {
     searchTerms(input: TerminologySearchInput): Promise<TerminologySearchReadModel>;
   };
   reviewerQueue: ReviewerQueueApiServicePort;
+  workspace: LocalizationWorkspaceApiServicePort;
   exactSearch: {
     refreshDocuments(
       input: RefreshExactSearchDocumentsInput,
@@ -293,6 +298,35 @@ export async function withDatabaseItotoriServices<T>(
       localUserActor,
       reviewerQueueRepository,
     );
+    const reviewerQueueApiService = new ReviewerQueueApiService({
+      repository: {
+        loadItemsByBranch: (localeBranchId) =>
+          reviewerQueueRepository.loadItemsByBranch(localUserActor, localeBranchId),
+        loadTransitionsByItem: (reviewItemId) =>
+          reviewerQueueRepository.loadTransitionsByItem(localUserActor, reviewItemId),
+        getItem: (reviewItemId) => reviewerQueueRepository.getItem(localUserActor, reviewItemId),
+      },
+      actionService: new ReviewerQueueActionService(reviewerQueueRepository),
+    });
+    // ITOTORI-040 — read-oriented workspace composes existing read-model
+    // ports; no direct DB access of its own.
+    const workspaceApiService = new LocalizationWorkspaceApiService({
+      readPort: {
+        getDashboardStatus: () => projectRepository.getDashboardStatus(),
+        listLocaleBranchIdentities: (projectId) =>
+          projectRepository.listLocaleBranchIdentities(projectId),
+        loadSceneSummaries: (query) => sceneSummaryRepository.loadSummaries(localUserActor, query),
+        loadBridgeUnitsForSummary: (bridgeUnitIds) =>
+          sceneSummaryRepository.loadBridgeUnitsForSummary(localUserActor, { bridgeUnitIds }),
+        loadActiveAssetDecisions: (projectId, localeBranchId) =>
+          assetDecisionRepository.loadActiveDecisions(localUserActor, projectId, localeBranchId),
+        loadCandidateAssets: (projectId, localeBranchId) =>
+          assetDecisionRepository.loadCandidateAssets(localUserActor, projectId, localeBranchId),
+        searchExact: (input) => exactSearchRepository.searchExact(localUserActor, input),
+        searchTerminology: (input) => terminologyRepository.searchTerms(localUserActor, input),
+        loadComparisonContext: (input) => reviewerQueueApiService.loadDetailContext(input),
+      },
+    });
     return await callback({
       authorization: new ItotoriAuthorizationService(context.db, localUserActor),
       projectWorkflow: new ItotoriProjectWorkflowService(
@@ -317,16 +351,8 @@ export async function withDatabaseItotoriServices<T>(
       terminologyRepository: {
         searchTerms: (input) => terminologyRepository.searchTerms(localUserActor, input),
       },
-      reviewerQueue: new ReviewerQueueApiService({
-        repository: {
-          loadItemsByBranch: (localeBranchId) =>
-            reviewerQueueRepository.loadItemsByBranch(localUserActor, localeBranchId),
-          loadTransitionsByItem: (reviewItemId) =>
-            reviewerQueueRepository.loadTransitionsByItem(localUserActor, reviewItemId),
-          getItem: (reviewItemId) => reviewerQueueRepository.getItem(localUserActor, reviewItemId),
-        },
-        actionService: new ReviewerQueueActionService(reviewerQueueRepository),
-      }),
+      reviewerQueue: reviewerQueueApiService,
+      workspace: workspaceApiService,
       exactSearch: {
         refreshDocuments: (input) => exactSearchRepository.refreshDocuments(localUserActor, input),
         searchExact: (input) => exactSearchRepository.searchExact(localUserActor, input),

@@ -34,6 +34,14 @@ import {
   type ReviewerQueueDashboardReadModel,
 } from "../src/reviewer/index.js";
 import {
+  workspaceAssetBrowseFixture,
+  workspaceComparisonFixture,
+  workspaceDeniedComparisonFixture,
+  workspaceProjectBrowseFixture,
+  workspaceSceneBrowseFixture,
+  workspaceSearchFixture,
+} from "../src/workspace/index.js";
+import {
   benchmarkReportFixture,
   bridgeFixture,
   catalogBenchmarkSeedsFixture,
@@ -2379,6 +2387,37 @@ function serviceFixture(): ItotoriApiServices {
       loadActiveDecisions: vi.fn(async () => [assetDecisionApiFixture]),
       loadCandidateAssets: vi.fn(async () => [candidateAssetApiFixture]),
     },
+    workspace: {
+      loadProjectBrowse: vi.fn(async ({ permission }) => ({
+        ...workspaceProjectBrowseFixture(),
+        permission,
+      })),
+      loadSceneBrowse: vi.fn(async ({ projectId, localeBranchId, permission }) => ({
+        ...workspaceSceneBrowseFixture(),
+        projectId,
+        localeBranchId,
+        permission,
+      })),
+      loadAssetBrowse: vi.fn(async ({ projectId, localeBranchId, permission }) => ({
+        ...workspaceAssetBrowseFixture(),
+        projectId,
+        localeBranchId,
+        permission,
+      })),
+      loadComparison: vi.fn(async ({ reviewItemId, permission }) =>
+        permission.canReadQueue
+          ? { ...workspaceComparisonFixture(), reviewItemId, permission }
+          : workspaceDeniedComparisonFixture(reviewItemId),
+      ),
+      loadSearch: vi.fn(async ({ projectId, localeBranchId, query, mode, permission }) => ({
+        ...workspaceSearchFixture(),
+        projectId,
+        localeBranchId,
+        query,
+        mode: mode ?? "all",
+        permission,
+      })),
+    },
   };
 }
 
@@ -2504,3 +2543,108 @@ function reviewerQueueDashboardApiFixture(): ReviewerQueueDashboardReadModel {
     },
   };
 }
+
+describe("Itotori API handlers — localization workspace (ITOTORI-040)", () => {
+  it("serves the project browse, scene, asset, comparison, and search read-models through the API", async () => {
+    const services = serviceFixture();
+    const projects = await handleItotoriApiRequest(
+      { method: "GET", pathname: "/api/workspace/projects" },
+      services,
+    );
+    const scenes = await handleItotoriApiRequest(
+      {
+        method: "GET",
+        pathname: "/api/workspace/scenes",
+        search: "?projectId=project-itotori-040&localeBranchId=locale-branch-itotori-040",
+      },
+      services,
+    );
+    const assets = await handleItotoriApiRequest(
+      {
+        method: "GET",
+        pathname: "/api/workspace/assets",
+        search: "?projectId=project-itotori-040&localeBranchId=locale-branch-itotori-040",
+      },
+      services,
+    );
+    const comparison = await handleItotoriApiRequest(
+      {
+        method: "GET",
+        pathname: "/api/workspace/comparison",
+        search: "?reviewItemId=reviewer-queue-itotori-040",
+      },
+      services,
+    );
+    const search = await handleItotoriApiRequest(
+      {
+        method: "GET",
+        pathname: "/api/workspace/search",
+        search:
+          "?projectId=project-itotori-040&localeBranchId=locale-branch-itotori-040&query=世界&mode=all",
+      },
+      services,
+    );
+    expect(projects.statusCode).toBe(200);
+    expect(scenes.statusCode).toBe(200);
+    expect(assets.statusCode).toBe(200);
+    expect(comparison.statusCode).toBe(200);
+    expect(search.statusCode).toBe(200);
+    // The handler validated each body via assertItotoriApiResponse before
+    // returning it, so reaching 200 IS the read-through-API proof.
+    expect((scenes.body as { localeBranchId: string }).localeBranchId).toBe(
+      "locale-branch-itotori-040",
+    );
+    expect(services.workspace.loadComparison).toHaveBeenCalledWith(
+      expect.objectContaining({ reviewItemId: "reviewer-queue-itotori-040" }),
+    );
+  });
+
+  it("rejects unknown query params and missing branch scope", async () => {
+    const services = serviceFixture();
+    const missingScope = await handleItotoriApiRequest(
+      { method: "GET", pathname: "/api/workspace/scenes" },
+      services,
+    );
+    const unknownParam = await handleItotoriApiRequest(
+      {
+        method: "GET",
+        pathname: "/api/workspace/search",
+        search: "?projectId=p1&localeBranchId=b1&query=x&bogus=1",
+      },
+      services,
+    );
+    expect(missingScope.statusCode).toBe(400);
+    expect(unknownParam.statusCode).toBe(400);
+  });
+
+  it("405s a non-GET workspace request", async () => {
+    const services = serviceFixture();
+    const response = await handleItotoriApiRequest(
+      { method: "POST", pathname: "/api/workspace/projects", body: {} },
+      services,
+    );
+    expect(response.statusCode).toBe(405);
+  });
+
+  it("returns a denied comparison read-model when queue.read is missing", async () => {
+    const services = serviceFixture();
+    (services.authorization.requirePermission as ReturnType<typeof vi.fn>).mockImplementation(
+      async () => {
+        throw new AuthorizationError({ userId: "unauthorized-user" }, permissionValues.queueRead);
+      },
+    );
+    const response = await handleItotoriApiRequest(
+      {
+        method: "GET",
+        pathname: "/api/workspace/comparison",
+        search: "?reviewItemId=reviewer-queue-itotori-040&actorUserId=unauthorized-user",
+      },
+      services,
+    );
+    expect(response.statusCode).toBe(200);
+    expect((response.body as { cells: unknown[] }).cells).toHaveLength(0);
+    expect(
+      (response.body as { permission: { canReadQueue: boolean } }).permission.canReadQueue,
+    ).toBe(false);
+  });
+});
