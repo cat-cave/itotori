@@ -429,6 +429,14 @@ const EXPR_PAREN_CLOSE: u8 = 0x29;
 /// [`opener::EXPRESSION`] element opener — at the start of an Expression
 /// element the `0x24` opener doubles as the `$` of the first token.
 const EXPR_DOLLAR: u8 = 0x24;
+/// Special-parameter introducer (`a`, `0x61`) — rlvm
+/// `libreallive/expression.cc` `SpecialExpressionPiece`. A special
+/// parameter is `0x61 <tag> <data-item>`, where `<tag>` is a single byte
+/// (or `0xFF`+`i32` when wide) and `<data-item>` is the contained value
+/// (in practice a complex `( … )` group). Used by the variadic
+/// object/graphics multi-commands (`objBgMulti`, selection-button tables)
+/// to attach a discriminant tag to each grouped parameter set.
+const EXPR_SPECIAL: u8 = 0x61;
 
 /// A fully-decoded RealLive ExpressionPiece (RLDEV / rlvm
 /// `libreallive/expression.cc` grammar, restated in our own words).
@@ -456,8 +464,15 @@ pub enum Expr {
     },
     /// `\<op>` unary operator prefixing one operand.
     Unary { op: u8, operand: Box<Expr> },
-    /// `( <inner> )` parenthesised sub-expression.
-    Parenthesized { inner: Box<Expr> },
+    /// `( <item> <item>* )` complex parameter — a parenthesised **sequence**
+    /// of data items (rlvm `ComplexExpressionPiece`). A plain parenthesised
+    /// arithmetic sub-expression `( <expr> )` is the one-item case: its sole
+    /// item is the operator-chained expression, so the same node and byte
+    /// width cover both grouping and complex-parameter forms.
+    Complex { items: Vec<Expr> },
+    /// `0x61 <tag> <item>` special parameter (rlvm `SpecialExpressionPiece`):
+    /// a tagged wrapper around a contained data item (usually a `Complex`).
+    SpecialParam { tag: i32, content: Box<Expr> },
     /// A string operand (quoted or bare identifier) carried in an
     /// argument list; bytes preserved verbatim (downstream Shift-JIS
     /// decode is [`crate::encoding`]'s job).
@@ -478,29 +493,155 @@ fn read_i32_le(bytes: &[u8], pos: usize) -> Result<i32, RealLiveParseError> {
     ]))
 }
 
-/// `true` if `byte` introduces (in argument-list position) an
-/// ExpressionPiece operand rather than a bare string. The bank-byte
-/// memory-reference form is detected by a following `[`.
-fn is_expression_start(bytes: &[u8], pos: usize) -> bool {
+/// `true` if `byte` opens an arithmetic-expression token (rlvm
+/// `GetExpressionToken`): an integer literal (`0xFF`), the store register
+/// (`0xC8`), a `$`-prefixed memory reference / typed literal, or a `\`
+/// operator. Every *other* lead byte at a data position is a string
+/// constant (a bare identifier or `"`-quoted run) — there is **no**
+/// "any byte followed by `[`" memory-reference form: a real memory
+/// reference is always `$`-prefixed, so a quoted string that happens to
+/// begin with `[` is never misread as a bank reference.
+fn is_expr_token_lead(byte: u8) -> bool {
+    matches!(
+        byte,
+        EXPR_INT_LITERAL | EXPR_STORE_REGISTER | EXPR_DOLLAR | EXPR_OP_PREFIX
+    )
+}
+
+/// `true` if `byte` opens a **non-string** data item — a complex parameter
+/// (`(`), a special parameter (`0x61`), or an arithmetic-expression token
+/// (`0xFF` / `0xC8` / `$` / `\`). String constants are deliberately
+/// excluded: this set is used to disambiguate a special parameter from a
+/// bare string that merely begins with `0x61`.
+fn is_nonstring_data_lead(byte: u8) -> bool {
+    matches!(byte, EXPR_PAREN_OPEN | EXPR_SPECIAL) || is_expr_token_lead(byte)
+}
+
+/// `true` if `pos` begins a special parameter (`0x61 <tag> <item>`).
+///
+/// The compiler emits a special parameter as the `0x61` introducer, a tag
+/// (a single byte, or `0xFF`+`i32` in the wide form), and then its contained
+/// data item — across the Sweetie HD and Kanon archives that item is always
+/// a complex `(` group or a `$`-prefixed memory / literal reference, i.e. a
+/// **non-string** data lead. Requiring that lead disambiguates a genuine
+/// special parameter from a bare string constant that merely begins with the
+/// byte `0x61` (`'a'`): such a string's following byte is another string
+/// byte or a delimiter, never a complex / expression lead.
+fn is_special_param_lead(bytes: &[u8], pos: usize) -> bool {
+    if bytes.get(pos) != Some(&EXPR_SPECIAL) {
+        return false;
+    }
+    let content_pos = match bytes.get(pos + 1) {
+        // Wide tag: `0x61 0xFF <i32> <item>`.
+        Some(&EXPR_INT_LITERAL) => pos + 6,
+        // Single-byte tag: `0x61 <tag> <item>`.
+        Some(_) => pos + 2,
+        None => return false,
+    };
+    bytes
+        .get(content_pos)
+        .copied()
+        .is_some_and(is_nonstring_data_lead)
+}
+
+/// Parse a single **data item** at `pos` (rlvm `libreallive/expression.cc`
+/// `GetData`): the unit an argument slot, a complex-parameter element, or a
+/// special-parameter content is composed of. Exactly one of:
+///
+/// - a special parameter (`0x61` …);
+/// - a complex parameter (`( … )`);
+/// - an arithmetic expression (`$`-mem / literal / store / `\`-operator
+///   chain, including a parenthesised group as its leading term);
+/// - a string constant (any other lead byte → a bare / `"`-quoted run).
+///
+/// Returns the typed node and the exact number of bytes consumed so the
+/// caller keeps the stream byte-aligned.
+fn parse_data(bytes: &[u8], pos: usize) -> Result<(Expr, usize), RealLiveParseError> {
     match bytes.get(pos) {
+        None => Err(RealLiveParseError::TruncatedExpression { offset: pos as u64 }),
+        Some(&EXPR_SPECIAL) if is_special_param_lead(bytes, pos) => parse_special_param(bytes, pos),
+        Some(&EXPR_PAREN_OPEN) => parse_complex(bytes, pos),
+        Some(&b) if is_expr_token_lead(b) => parse_expression(bytes, pos),
         Some(&b) => {
-            matches!(
-                b,
-                EXPR_INT_LITERAL
-                    | EXPR_STORE_REGISTER
-                    | EXPR_DOLLAR
-                    | EXPR_PAREN_OPEN
-                    | EXPR_OP_PREFIX
-            ) || bytes.get(pos + 1) == Some(&EXPR_INDEX_OPEN)
+            let len = string_operand_len(bytes, pos);
+            if len == 0 {
+                return Err(RealLiveParseError::MalformedExpression {
+                    offset: pos as u64,
+                    byte: b,
+                });
+            }
+            Ok((
+                Expr::StrLiteral {
+                    raw_bytes: bytes[pos..pos + len].to_vec(),
+                },
+                len,
+            ))
         }
-        None => false,
     }
 }
 
-/// Parse a single ExpressionPiece **token** at `pos` — the lowest grammar
-/// level: integer literal, store register, `$`-prefixed value, memory
-/// reference, or parenthesised sub-expression. Returns the node and the
-/// number of bytes consumed.
+/// Parse a complex parameter `( <item> <item>* )` at `pos` (which must
+/// point at the `(`) — rlvm `ComplexExpressionPiece`. The contained items
+/// are a back-to-back **sequence** of [`parse_data`] values (no comma is
+/// required between them; a stray `,` or inline `\n` line marker is
+/// tolerated as a separator). The one-item case is exactly a parenthesised
+/// arithmetic sub-expression, so this single routine covers both grouping
+/// and complex-parameter forms.
+fn parse_complex(bytes: &[u8], pos: usize) -> Result<(Expr, usize), RealLiveParseError> {
+    let mut cursor = pos + 1; // skip '('
+    let mut items: Vec<Expr> = Vec::new();
+    loop {
+        match bytes.get(cursor) {
+            None => return Err(RealLiveParseError::TruncatedExpression { offset: pos as u64 }),
+            Some(&EXPR_PAREN_CLOSE) => {
+                cursor += 1;
+                break;
+            }
+            // Tolerated inter-item separators inside a complex param.
+            Some(&opener::COMMA) => cursor += 1,
+            Some(&opener::META_LINE) => cursor += 3,
+            Some(&b) => {
+                let (item, len) = parse_data(bytes, cursor)?;
+                if len == 0 {
+                    return Err(RealLiveParseError::MalformedExpression {
+                        offset: cursor as u64,
+                        byte: b,
+                    });
+                }
+                items.push(item);
+                cursor += len;
+            }
+        }
+    }
+    Ok((Expr::Complex { items }, cursor - pos))
+}
+
+/// Parse a special parameter `0x61 <tag> <item>` at `pos` (which must point
+/// at the `0x61` introducer) — rlvm `SpecialExpressionPiece`. `<tag>` is a
+/// single discriminant byte, or `0xFF`+`i32` in the wide form; `<item>` is
+/// the contained [`parse_data`] value (in practice a `Complex` group).
+fn parse_special_param(bytes: &[u8], pos: usize) -> Result<(Expr, usize), RealLiveParseError> {
+    let (tag, tag_len) = match bytes.get(pos + 1) {
+        Some(&EXPR_INT_LITERAL) => (read_i32_le(bytes, pos + 2)?, 5),
+        Some(&t) => (i32::from(t), 1),
+        None => return Err(RealLiveParseError::TruncatedExpression { offset: pos as u64 }),
+    };
+    let (content, content_len) = parse_data(bytes, pos + 1 + tag_len)?;
+    Ok((
+        Expr::SpecialParam {
+            tag,
+            content: Box::new(content),
+        },
+        1 + tag_len + content_len,
+    ))
+}
+
+/// Parse a single ExpressionPiece **token** at `pos` — the lowest
+/// arithmetic grammar level: integer literal (`0xFF` / `$ 0xFF`), store
+/// register (`0xC8`), or `$`-prefixed memory reference `$ <bank> [ <index> ]`.
+/// Any other lead byte is a structurally invalid arithmetic token
+/// ([`RealLiveParseError::MalformedExpression`]) — string constants and
+/// complex / special parameters are handled one level up by [`parse_data`].
 fn parse_token(bytes: &[u8], pos: usize) -> Result<(Expr, usize), RealLiveParseError> {
     let Some(&b) = bytes.get(pos) else {
         return Err(RealLiveParseError::TruncatedExpression { offset: pos as u64 });
@@ -517,19 +658,22 @@ fn parse_token(bytes: &[u8], pos: usize) -> Result<(Expr, usize), RealLiveParseE
                 let value = read_i32_le(bytes, pos + 2)?;
                 Ok((Expr::IntLiteral { value }, 6))
             }
-            // `$` as a type prefix in front of a memory reference or
-            // store register; consume the `$` and recurse on the value.
-            Some(_) => {
-                let (inner, len) = parse_token(bytes, pos + 1)?;
-                Ok((inner, len + 1))
-            }
-            None => Err(RealLiveParseError::TruncatedExpression { offset: pos as u64 }),
-        },
-        _ => {
-            // Memory-bank reference: `<bank> [ <index-expr> ]`.
-            if bytes.get(pos + 1) == Some(&EXPR_INDEX_OPEN) {
-                let (index, index_len) = parse_expression(bytes, pos + 2)?;
-                let close = pos + 2 + index_len;
+            // `$ 0xC8` — the `$`-prefixed store-register reference (the
+            // assignment RHS idiom `intX[i] = store`); no `[index]` follows.
+            Some(&EXPR_STORE_REGISTER) => Ok((Expr::StoreRegister, 2)),
+            // `$ <bank> [ <index-expr> ]` — a memory-bank reference. `bank`
+            // is the single bank-selector byte (intA–intG/intZ, strS/M/K and
+            // the numeric bank codes rlvm emits); the index is itself a full
+            // expression. A real memory reference is ALWAYS `$`-prefixed.
+            Some(&bank) => {
+                if bytes.get(pos + 2) != Some(&EXPR_INDEX_OPEN) {
+                    return Err(RealLiveParseError::MalformedExpression {
+                        offset: (pos + 2) as u64,
+                        byte: bytes.get(pos + 2).copied().unwrap_or(0),
+                    });
+                }
+                let (index, index_len) = parse_expression(bytes, pos + 3)?;
+                let close = pos + 3 + index_len;
                 if bytes.get(close) != Some(&EXPR_INDEX_CLOSE) {
                     return Err(RealLiveParseError::MalformedExpression {
                         offset: close as u64,
@@ -538,41 +682,26 @@ fn parse_token(bytes: &[u8], pos: usize) -> Result<(Expr, usize), RealLiveParseE
                 }
                 Ok((
                     Expr::MemoryRef {
-                        bank: b,
+                        bank,
                         index: Box::new(index),
                     },
-                    2 + index_len + 1,
+                    3 + index_len + 1,
                 ))
-            } else {
-                Err(RealLiveParseError::MalformedExpression {
-                    offset: pos as u64,
-                    byte: b,
-                })
             }
-        }
+            None => Err(RealLiveParseError::TruncatedExpression { offset: pos as u64 }),
+        },
+        _ => Err(RealLiveParseError::MalformedExpression {
+            offset: pos as u64,
+            byte: b,
+        }),
     }
 }
 
-/// Parse an ExpressionPiece **term** at `pos`: a parenthesised group, a
-/// `\<op>` unary-prefixed term, or a bare token.
+/// Parse an ExpressionPiece **term** at `pos`: a parenthesised group /
+/// complex parameter, a `\<op>` unary-prefixed term, or a bare token.
 fn parse_term(bytes: &[u8], pos: usize) -> Result<(Expr, usize), RealLiveParseError> {
     match bytes.get(pos) {
-        Some(&EXPR_PAREN_OPEN) => {
-            let (inner, inner_len) = parse_expression(bytes, pos + 1)?;
-            let close = pos + 1 + inner_len;
-            if bytes.get(close) != Some(&EXPR_PAREN_CLOSE) {
-                return Err(RealLiveParseError::MalformedExpression {
-                    offset: close as u64,
-                    byte: bytes.get(close).copied().unwrap_or(0),
-                });
-            }
-            Ok((
-                Expr::Parenthesized {
-                    inner: Box::new(inner),
-                },
-                inner_len + 2,
-            ))
-        }
+        Some(&EXPR_PAREN_OPEN) => parse_complex(bytes, pos),
         Some(&EXPR_OP_PREFIX) => {
             let Some(&op) = bytes.get(pos + 1) else {
                 return Err(RealLiveParseError::TruncatedExpression { offset: pos as u64 });
@@ -791,12 +920,10 @@ fn parse_arg_list(
             // (rlvm `GetData`); skip its 3 bytes as part of the slot.
             opener::META_LINE => cursor += 3,
             _ => {
-                let len = if is_expression_start(bytes, cursor) {
-                    let (_expr, len) = parse_expression(bytes, cursor)?;
-                    len
-                } else {
-                    string_operand_len(bytes, cursor)
-                };
+                // One data item (rlvm `GetData`): an arithmetic expression,
+                // a string constant, or a complex / special parameter. The
+                // grammar — not a delimiter scan — computes its exact width.
+                let (_item, len) = parse_data(bytes, cursor)?;
                 if len == 0 {
                     // No forward progress — a byte that is neither a
                     // valid expression token nor a string char. Surface a
@@ -1003,7 +1130,8 @@ fn classify_command(
 fn expr_as_i32(expr: &Expr) -> Option<i32> {
     match expr {
         Expr::IntLiteral { value } => Some(*value),
-        Expr::Parenthesized { inner } => expr_as_i32(inner),
+        // A single-item complex parameter is a parenthesised value `( lit )`.
+        Expr::Complex { items } if items.len() == 1 => expr_as_i32(&items[0]),
         _ => None,
     }
 }
@@ -1671,5 +1799,211 @@ mod tests {
             ),
             "expected argc=300, got {err:?}"
         );
+    }
+
+    // ---- RealLive expression-reference grammar (reallive-expr-eval-bank-refs)
+    // The byte sequences below are SYNTHETIC: they reproduce the structural
+    // forms the Kanon + Sweetie HD full-archive recon exposed (integer/string
+    // bank references, store register, array index, complex / special params,
+    // bracket-leading quoted strings) WITHOUT embedding any copyrighted game
+    // text — every string operand here is an ASCII placeholder.
+
+    #[test]
+    fn integer_bank_reference_dollar_prefixed_with_array_index() {
+        // `$ 0x02 [ 0x000C ]` — an `intC[12]` bank reference (the `0x42 'B'` /
+        // `0x43 'C'` recon class is the *bareword* form; the canonical numeric
+        // bank reference rlvm emits is `$ <bank> [ <index> ]`).
+        let bytes = [
+            EXPR_DOLLAR,
+            0x02, // bank selector
+            EXPR_INDEX_OPEN,
+            EXPR_INT_LITERAL,
+            0x0C,
+            0x00,
+            0x00,
+            0x00,
+            EXPR_INDEX_CLOSE,
+        ];
+        let (expr, len) = parse_expression(&bytes, 0).expect("memory ref must parse");
+        assert_eq!(len, bytes.len());
+        assert!(matches!(
+            expr,
+            Expr::MemoryRef { bank: 0x02, ref index }
+                if matches!(**index, Expr::IntLiteral { value: 12 })
+        ));
+    }
+
+    #[test]
+    fn dollar_prefixed_store_register_is_two_bytes() {
+        // `$ 0xC8` — the `$`-typed store-register RHS idiom (`intX[i] = store`).
+        // Must consume exactly 2 bytes and NOT be misread as `$ <bank=0xC8> [`.
+        let (expr, len) = parse_expression(&[EXPR_DOLLAR, EXPR_STORE_REGISTER, 0x0A], 0)
+            .expect("$store must parse");
+        assert_eq!(len, 2, "$ + 0xC8 store register is two bytes");
+        assert!(matches!(expr, Expr::StoreRegister));
+    }
+
+    #[test]
+    fn bracket_leading_quoted_string_arg_is_not_misread_as_bank_reference() {
+        // `( "[X]" )` — a quoted string whose first content byte is `[`. The
+        // old "any byte followed by `[`" heuristic misread the opening `"` as
+        // a memory-bank reference and failed on the next byte (the Sweetie HD
+        // `0x83` / Kanon `0x53` recon class). A real bank reference is always
+        // `$`-prefixed, so the quoted string is consumed whole.
+        let bytes = [
+            EXPR_PAREN_OPEN,
+            b'"',
+            b'[',
+            b'X',
+            b']',
+            b'"',
+            EXPR_PAREN_CLOSE,
+        ];
+        let (args, consumed) = parse_arg_list(&bytes, 0).expect("quoted `[`-string must parse");
+        assert_eq!(consumed, bytes.len());
+        assert_eq!(args.len(), 1);
+        assert_eq!(args[0].bytes, b"\"[X]\"".to_vec());
+    }
+
+    #[test]
+    fn bareword_string_then_int_then_special_param_in_arg_list() {
+        // `( "BG" $0 0x61 0x01 ( "FG" $0 ) )` — the Kanon `0x42 'B'` recon
+        // class: a bareword asset-id string, an int literal, and a special
+        // parameter (tag 0x01) wrapping a complex group with its own bareword.
+        // Every byte must partition with zero residual.
+        let bytes = [
+            EXPR_PAREN_OPEN, // (
+            b'B',
+            b'G', // bareword "BG"
+            EXPR_DOLLAR,
+            EXPR_INT_LITERAL,
+            0,
+            0,
+            0,
+            0, // $0
+            EXPR_SPECIAL,
+            0x01,            // special param, tag 0x01
+            EXPR_PAREN_OPEN, // (  complex
+            b'F',
+            b'G', // bareword "FG"
+            EXPR_DOLLAR,
+            EXPR_INT_LITERAL,
+            0,
+            0,
+            0,
+            0,                // $0
+            EXPR_PAREN_CLOSE, // )  complex
+            EXPR_PAREN_CLOSE, // )
+        ];
+        let (args, consumed) = parse_arg_list(&bytes, 0).expect("special-param arg must parse");
+        assert_eq!(consumed, bytes.len(), "whole arg list consumed");
+        // One un-split slot (no top-level comma): bareword + int + special.
+        assert_eq!(args.len(), 1);
+        assert_eq!(args[0].bytes, bytes[1..bytes.len() - 1].to_vec());
+    }
+
+    #[test]
+    fn special_param_with_memory_ref_content_no_complex_wrapper() {
+        // `0x61 0x00 $0x06[7]` — a special parameter (tag 0x00) whose content
+        // is a `$`-memory reference directly (no `( )` wrapper). The Sweetie HD
+        // `objBgMulti`-class `0x61 0x00 $…` form: it must be recognised as a
+        // special parameter, not a bare string ending at the `0x00` delimiter.
+        let bytes = [
+            EXPR_SPECIAL,
+            0x00, // tag
+            EXPR_DOLLAR,
+            0x06,
+            EXPR_INDEX_OPEN,
+            EXPR_INT_LITERAL,
+            0x07,
+            0x00,
+            0x00,
+            0x00,
+            EXPR_INDEX_CLOSE,
+        ];
+        let (expr, len) = parse_data(&bytes, 0).expect("special-with-memref must parse");
+        assert_eq!(len, bytes.len());
+        match expr {
+            Expr::SpecialParam { tag: 0, content } => {
+                assert!(matches!(
+                    *content,
+                    Expr::MemoryRef { bank: 0x06, ref index }
+                        if matches!(**index, Expr::IntLiteral { value: 7 })
+                ));
+            }
+            other => panic!("expected SpecialParam{{tag:0}}, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn leading_0x61_string_is_not_misread_as_special_param() {
+        // A bare string that merely begins with `0x61` (`'a'`) — e.g. a
+        // `select` option "ab" — is NOT a special parameter: the byte after
+        // the would-be tag is a string byte / delimiter, never a complex /
+        // expression lead. The synthetic Choice pin depends on this.
+        assert!(!is_special_param_lead(&[EXPR_SPECIAL, b'b', b','], 0));
+        assert!(is_special_param_lead(
+            &[EXPR_SPECIAL, 0x01, EXPR_PAREN_OPEN],
+            0
+        ));
+    }
+
+    #[test]
+    fn complex_param_is_a_sequence_of_data_items_not_a_single_expression() {
+        // `( $0 $0 $1 $0x02[0] )` — a complex parameter is a back-to-back
+        // sequence of data items (rlvm `ComplexExpressionPiece`), NOT a single
+        // operator-chained expression. The old parenthesised-expression path
+        // stopped at the second item and failed on the `$` (the Kanon `0x24`
+        // recon class).
+        let bytes = [
+            EXPR_PAREN_OPEN,
+            EXPR_DOLLAR,
+            EXPR_INT_LITERAL,
+            0,
+            0,
+            0,
+            0, // $0
+            EXPR_DOLLAR,
+            EXPR_INT_LITERAL,
+            0,
+            0,
+            0,
+            0, // $0
+            EXPR_DOLLAR,
+            EXPR_INT_LITERAL,
+            1,
+            0,
+            0,
+            0, // $1
+            EXPR_DOLLAR,
+            0x02,
+            EXPR_INDEX_OPEN,
+            EXPR_INT_LITERAL,
+            0,
+            0,
+            0,
+            0,
+            EXPR_INDEX_CLOSE, // $intC[0]
+            EXPR_PAREN_CLOSE,
+        ];
+        let (expr, len) = parse_data(&bytes, 0).expect("complex param must parse");
+        assert_eq!(len, bytes.len());
+        match expr {
+            Expr::Complex { items } => assert_eq!(items.len(), 4, "four data items"),
+            other => panic!("expected Complex, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn bare_token_without_dollar_prefix_is_malformed_not_a_bank_reference() {
+        // A bank reference is ONLY `$`-prefixed. A bare `0x02 [ … ]` (no `$`)
+        // is not a valid arithmetic token — the evaluator must surface a typed
+        // MalformedExpression rather than silently inventing a reference.
+        let err = parse_token(&[0x02, EXPR_INDEX_OPEN, EXPR_INT_LITERAL, 0, 0, 0, 0], 0)
+            .expect_err("bare bank byte must be malformed");
+        assert!(matches!(
+            err,
+            RealLiveParseError::MalformedExpression { byte: 0x02, .. }
+        ));
     }
 }
