@@ -186,7 +186,22 @@ pub fn cross_check(
             .or_else(|| releases.first().cloned())
     };
 
-    if let Some(release) = embedded_release.as_ref() {
+    // An embedded metadata with no usable release cannot confirm the
+    // work-identity / platform / language / role fields the cross-check
+    // contract requires it to reconcile. An empty or absent `releases`
+    // array is schema-valid JSON but would otherwise skip the entire
+    // reconciliation block and return Ok with zero findings — a
+    // defaults-to-pass on missing data. Fail closed with a typed
+    // mismatch instead.
+    let release = embedded_release.ok_or_else(|| VaultSourceError::CatalogEmbeddedMismatch {
+        entity_type: "release".into(),
+        entity_id: catalog_candidate.work_id,
+        field: "releases".into(),
+        catalog_value: Value::String(resolved_role.to_string()),
+        embedded_value: Value::Array(releases.clone()),
+    })?;
+    let release = &release;
+    {
         // Work identifiers: at least one must intersect the catalog.
         if let Some(work) = release.get("work") {
             let embedded_identifiers: Vec<(String, String, String)> = work
@@ -425,6 +440,77 @@ mod tests {
         assert!(matches!(
             err,
             VaultSourceError::EmbeddedMetadataInvalid { .. }
+        ));
+    }
+
+    fn candidate_stub() -> crate::discovery::ReleaseCandidate {
+        crate::discovery::ReleaseCandidate {
+            release_id: 42,
+            work_id: 7,
+            edition_name: None,
+            release_date: None,
+            store: None,
+            engine: None,
+            engine_version: None,
+            engine_needs_review: false,
+            languages: vec!["ja".into()],
+            platforms: vec!["windows".into()],
+        }
+    }
+
+    #[test]
+    fn cross_check_rejects_empty_embedded_releases_instead_of_defaulting_to_pass() {
+        // A schema-valid but empty `releases: []` must NOT silently bypass
+        // the work-identity / platform / language reconciliation and return
+        // Ok with zero findings; it fails closed with a typed mismatch.
+        let embedded = EmbeddedMetadata {
+            schema_version: "1.0".into(),
+            raw: serde_json::json!({ "releases": [] }),
+        };
+        let candidate = candidate_stub();
+        let err = cross_check(
+            &embedded,
+            &candidate,
+            &[],
+            None,
+            "primary",
+            &CrossCheckTolerance::default(),
+        )
+        .expect_err("empty releases must be rejected, not silently passed");
+        match err {
+            VaultSourceError::CatalogEmbeddedMismatch {
+                entity_type,
+                field,
+                entity_id,
+                ..
+            } => {
+                assert_eq!(entity_type, "release");
+                assert_eq!(field, "releases");
+                assert_eq!(entity_id, candidate.work_id);
+            }
+            other => panic!("expected CatalogEmbeddedMismatch, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn cross_check_also_rejects_absent_embedded_releases() {
+        // A missing `releases` key is the same failure as an empty array.
+        let embedded = EmbeddedMetadata {
+            schema_version: "1.0".into(),
+            raw: serde_json::json!({}),
+        };
+        let err = cross_check(
+            &embedded,
+            &candidate_stub(),
+            &[],
+            None,
+            "primary",
+            &CrossCheckTolerance::default(),
+        )
+        .expect_err("absent releases must be rejected, not silently passed");
+        assert!(matches!(
+            err,
+            VaultSourceError::CatalogEmbeddedMismatch { .. }
         ));
     }
 }

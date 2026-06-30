@@ -319,20 +319,27 @@ fn load_candidate(conn: &Connection, rid: i64) -> Result<ReleaseCandidate, Vault
              WHERE release_id = ?1 ORDER BY 1",
         )
         .map_err(map_query_err)?;
-    let langs = langs_stmt
+    let langs_rows = langs_stmt
         .query_map(rusqlite::params![rid], |r| r.get::<_, String>(0))
-        .map_err(map_query_err)?
-        .filter_map(|r| r.ok())
-        .collect();
+        .map_err(map_query_err)?;
+    // Propagate row-decode errors instead of silently dropping rows: a
+    // dropped language could fabricate or mask a disjoint-set finding in
+    // cross_check. Consistent with collect_ids / load_work_identifiers.
+    let mut langs = Vec::new();
+    for r in langs_rows {
+        langs.push(r.map_err(map_query_err)?);
+    }
 
     let mut plats_stmt = conn
         .prepare("SELECT platform FROM release_platforms WHERE release_id = ?1 ORDER BY 1")
         .map_err(map_query_err)?;
-    let plats = plats_stmt
+    let plats_rows = plats_stmt
         .query_map(rusqlite::params![rid], |r| r.get::<_, String>(0))
-        .map_err(map_query_err)?
-        .filter_map(|r| r.ok())
-        .collect();
+        .map_err(map_query_err)?;
+    let mut plats = Vec::new();
+    for r in plats_rows {
+        plats.push(r.map_err(map_query_err)?);
+    }
 
     Ok(ReleaseCandidate {
         release_id: rid,
@@ -409,5 +416,60 @@ fn map_query_err(_e: rusqlite::Error) -> VaultSourceError {
     VaultSourceError::CatalogSchemaUnsupported {
         observed: None,
         supported: crate::error::SUPPORTED_SCHEMA_VERSIONS,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn load_candidate_surfaces_language_row_decode_error_instead_of_dropping_it() {
+        // A release_languages row whose language_code is NULL fails to
+        // decode as String. The loader must surface that as a typed error,
+        // not silently drop the row (which would mask/fabricate a
+        // disjoint-set finding downstream in cross_check).
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE releases (\
+                 id INTEGER PRIMARY KEY, work_id INTEGER, \
+                 edition_name TEXT, release_date TEXT, store TEXT);\
+             INSERT INTO releases (id, work_id) VALUES (1, 1);\
+             CREATE TABLE release_languages (release_id INTEGER, language_code);\
+             INSERT INTO release_languages (release_id, language_code) \
+                 VALUES (1, NULL);\
+             CREATE TABLE release_platforms (release_id INTEGER, platform TEXT);",
+        )
+        .unwrap();
+
+        let err = load_candidate(&conn, 1)
+            .expect_err("a NULL language_code row must surface a typed error");
+        assert!(
+            matches!(err, VaultSourceError::CatalogSchemaUnsupported { .. }),
+            "expected CatalogSchemaUnsupported, got {err:?}"
+        );
+    }
+
+    #[test]
+    fn load_candidate_returns_decoded_language_and_platform_sets() {
+        // Happy path: well-typed rows decode into the candidate's sets.
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE releases (\
+                 id INTEGER PRIMARY KEY, work_id INTEGER, \
+                 edition_name TEXT, release_date TEXT, store TEXT);\
+             INSERT INTO releases (id, work_id) VALUES (1, 1);\
+             CREATE TABLE release_languages (release_id INTEGER, language_code);\
+             INSERT INTO release_languages (release_id, language_code) \
+                 VALUES (1, 'ja');\
+             CREATE TABLE release_platforms (release_id INTEGER, platform TEXT);\
+             INSERT INTO release_platforms (release_id, platform) \
+                 VALUES (1, 'windows');",
+        )
+        .unwrap();
+
+        let candidate = load_candidate(&conn, 1).unwrap();
+        assert_eq!(candidate.languages, vec!["ja".to_string()]);
+        assert_eq!(candidate.platforms, vec!["windows".to_string()]);
     }
 }

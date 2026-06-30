@@ -636,13 +636,38 @@ fn trim_inline_value(decoded: &str) -> String {
     trimmed.to_string()
 }
 
+/// Return `true` when a trimmed Gameexe.ini RHS is a purely numeric
+/// config value (a single integer like `8`, or a numeric tuple like
+/// `1,2,3`) rather than an asset path or pack declaration. Used to keep
+/// numeric `#G00*` knobs (`#G00BUF=8`) classified as
+/// [`GameexeKeyTreatment::Config`] instead of an asset reference.
+fn is_numeric_config_value(value: &str) -> bool {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return false;
+    }
+    let mut saw_digit = false;
+    for part in trimmed.split(',') {
+        let part = part.trim();
+        // Each comma-separated component must be a signed integer.
+        match part.strip_prefix(['-', '+']).unwrap_or(part) {
+            "" => return false,
+            digits if digits.bytes().all(|b| b.is_ascii_digit()) => {
+                saw_digit = true;
+            }
+            _ => return false,
+        }
+    }
+    saw_digit
+}
+
 /// Classify a single upper-cased Gameexe.ini key into its
 /// [`GameexeKeyFamily`] and high-level [`GameexeKeyTreatment`] bucket.
 ///
 /// The key includes the leading `#`. Suffixes are passed by reference to
 /// the `helpers` module so the per-family enum payload captures the
 /// per-key suffix data without re-allocating the raw key string.
-fn classify_key(key: &str, _value: &str) -> (GameexeKeyFamily, GameexeKeyTreatment) {
+fn classify_key(key: &str, value: &str) -> (GameexeKeyFamily, GameexeKeyTreatment) {
     // Reject structurally malformed keys early.
     if key.len() <= 1 || !key.starts_with('#') {
         return (
@@ -1384,10 +1409,16 @@ fn classify_key(key: &str, _value: &str) -> (GameexeKeyFamily, GameexeKeyTreatme
     // members so the catalogue stays exhaustive for the keys those
     // titles use).
     if bare.starts_with("G00") {
-        return (
-            GameexeKeyFamily::G00Family,
-            GameexeKeyTreatment::AssetReference,
-        );
+        // `#G00BUF=8` and similar numeric knobs are image-buffer
+        // counts/config, not asset paths. Only reserve AssetReference
+        // for actual `#G00*` path/pack declarations. A numeric RHS must
+        // never be emitted as a literal asset-path reference.
+        let treatment = if is_numeric_config_value(value) {
+            GameexeKeyTreatment::Config
+        } else {
+            GameexeKeyTreatment::AssetReference
+        };
+        return (GameexeKeyFamily::G00Family, treatment);
     }
     if bare.starts_with("KOE") {
         return (
@@ -1689,15 +1720,30 @@ mod tests {
     }
 
     #[test]
-    fn keeps_g00_and_koepac_as_asset_references() {
-        let report = parse_gameexe_inventory(b"#G00BUF=8\n#KOEPAC=koe.ovk\n");
-        assert_eq!(report.entries.len(), 2);
-        assert!(
-            report
-                .entries
-                .iter()
-                .all(|e| e.treatment == GameexeKeyTreatment::AssetReference)
-        );
+    fn numeric_g00_knob_is_config_not_asset_reference() {
+        // `#G00BUF=8` is an image-buffer count, not an asset path; it
+        // must not be emitted as a literal asset reference.
+        let report = parse_gameexe_inventory(b"#G00BUF=8\n");
+        let entry = first(&report);
+        assert_eq!(entry.treatment, GameexeKeyTreatment::Config);
+        assert!(matches!(entry.family, GameexeKeyFamily::G00Family));
+    }
+
+    #[test]
+    fn path_g00_declaration_stays_asset_reference() {
+        // A non-numeric `#G00*` RHS is an actual path/pack declaration.
+        let report = parse_gameexe_inventory(b"#G00PACK=bg.g00\n");
+        let entry = first(&report);
+        assert_eq!(entry.treatment, GameexeKeyTreatment::AssetReference);
+        assert!(matches!(entry.family, GameexeKeyFamily::G00Family));
+    }
+
+    #[test]
+    fn koepac_stays_asset_reference() {
+        let report = parse_gameexe_inventory(b"#KOEPAC=koe.ovk\n");
+        let entry = first(&report);
+        assert_eq!(entry.treatment, GameexeKeyTreatment::AssetReference);
+        assert!(matches!(entry.family, GameexeKeyFamily::KoePack));
     }
 
     #[test]

@@ -80,20 +80,32 @@ impl SourceProvenance {
     /// envelope carries `partial: true` (the KAIFUU-193 PartialAdapterReport
     /// shape) the resulting provenance is marked partial and carries the
     /// adapter id / report id / blocking diagnostic count forward for
-    /// debugging. Any other shape (including a regular bridge envelope
-    /// without a `partial` field) is treated as complete.
+    /// debugging. A *missing* `partial` field (e.g. a regular bridge
+    /// envelope) is treated as complete. A *present-but-non-bool* `partial`
+    /// field is a malformed envelope and surfaces a typed
+    /// [`MalformedPartialFlag`] error — it must never silently default to
+    /// complete, as that would defeat the KAIFUU-193 "apply MUST refuse any
+    /// envelope whose `partial` field is true" gate (see `apply_delta`).
     pub fn from_extract_envelope_file(path: &Path) -> KaifuuResult<Self> {
         let envelope: Value = read_json(path)?;
-        Ok(Self::from_extract_envelope_value(&envelope))
+        Self::from_extract_envelope_value(&envelope)
     }
 
-    pub fn from_extract_envelope_value(envelope: &Value) -> Self {
-        let partial = envelope
-            .get("partial")
-            .and_then(Value::as_bool)
-            .unwrap_or(false);
+    pub fn from_extract_envelope_value(envelope: &Value) -> KaifuuResult<Self> {
+        let partial = match envelope.get("partial") {
+            // Absent `partial` field — a regular complete bridge envelope.
+            None | Some(Value::Null) => false,
+            Some(Value::Bool(flag)) => *flag,
+            // Present-but-non-bool (string "true", number 1, etc.): fail
+            // closed with a typed error rather than defaulting to complete.
+            Some(other) => {
+                return Err(Box::new(MalformedPartialFlag {
+                    found: other.clone(),
+                }));
+            }
+        };
         if !partial {
-            return Self::complete();
+            return Ok(Self::complete());
         }
         let adapter_id = envelope
             .get("adapterId")
@@ -108,14 +120,37 @@ impl SourceProvenance {
             let p1 = counts.get("p1").and_then(Value::as_u64).unwrap_or(0);
             u32::try_from(p0 + p1).unwrap_or(u32::MAX)
         });
-        Self {
+        Ok(Self {
             partial: true,
             adapter_id,
             partial_report_id,
             blocking_diagnostic_count,
-        }
+        })
     }
 }
+
+/// Typed error returned when an extract envelope carries a `partial` field
+/// that is present but not a JSON boolean (e.g. the string `"true"` or the
+/// number `1`). Such an envelope is malformed: silently coercing it to
+/// `complete` would let a hand-edited or foreign envelope slip past the
+/// KAIFUU-193 partial-source refusal gate, so it fails closed here.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MalformedPartialFlag {
+    /// The non-boolean value found at the envelope's `partial` key.
+    pub found: Value,
+}
+
+impl fmt::Display for MalformedPartialFlag {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            formatter,
+            "kaifuu.delta.malformed_partial_flag: extract envelope `partial` field must be a JSON boolean, found {}",
+            self.found,
+        )
+    }
+}
+
+impl std::error::Error for MalformedPartialFlag {}
 
 /// KAIFUU-238: typed error returned by `apply_delta` when a package's source
 /// extract carried `partial: true`. Apply must refuse — the documented
@@ -1316,7 +1351,7 @@ mod tests {
             "severityCounts": { "p0": 0, "p1": 2, "p2": 1, "p3": 0 },
             "inventory": { "entries": 3, "sources": [] }
         });
-        let provenance = SourceProvenance::from_extract_envelope_value(&envelope);
+        let provenance = SourceProvenance::from_extract_envelope_value(&envelope).unwrap();
         assert!(provenance.partial);
         assert_eq!(provenance.adapter_id.as_deref(), Some("kaifuu-reallive"));
         assert_eq!(
@@ -1335,9 +1370,28 @@ mod tests {
             "bridgeId": "abc",
             "units": []
         });
-        let provenance = SourceProvenance::from_extract_envelope_value(&envelope);
+        let provenance = SourceProvenance::from_extract_envelope_value(&envelope).unwrap();
         assert!(!provenance.partial);
         assert!(provenance.adapter_id.is_none());
+    }
+
+    #[test]
+    fn source_provenance_from_envelope_value_rejects_non_bool_partial() {
+        // A present-but-non-bool `partial` (here the JSON string "true")
+        // must fail closed with a typed error, never silently default to
+        // complete and slip past the KAIFUU-193 partial-source gate.
+        for malformed in [json!("true"), json!(1), json!(["true"]), json!({})] {
+            let envelope = json!({
+                "schemaVersion": "0.1.0",
+                "partial": malformed,
+            });
+            let err = SourceProvenance::from_extract_envelope_value(&envelope)
+                .expect_err("non-bool partial must be rejected");
+            assert!(
+                err.downcast_ref::<MalformedPartialFlag>().is_some(),
+                "expected MalformedPartialFlag, got: {err}"
+            );
+        }
     }
 
     #[test]

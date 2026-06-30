@@ -432,6 +432,63 @@ impl<'a> PatchTransaction<'a> {
         }
         let staged_path = staging_path_for(&self.config);
 
+        // Enforce the preflighted payload-length guarantee on the real
+        // bytes. run_preflight validated config.expected_payload_len
+        // against the byte budget and the identity-relocation invariant
+        // and recorded it as preflight_payload_len; the bytes actually
+        // handed to stage() MUST match that length and re-satisfy the
+        // byte budget, or those invariants would go unenforced on the
+        // real content. Fail closed (fatal diagnostic, no write) on any
+        // mismatch instead of silently staging an unvalidated payload.
+        let actual_payload_len = payload.len() as u64;
+        let preflighted_len = match self.preflight_payload_len {
+            Some(len) => len,
+            None => {
+                self.record_stage_failure(
+                    None,
+                    PreflightCheck::Relocation,
+                    TransactionFailureCategory::AdapterUnsupported,
+                    SEMANTIC_PATCH_TRANSACTION_RELOCATION_UNSUPPORTED,
+                    "stage invoked without a completed preflight payload-length check".to_string(),
+                );
+                return Ok(StagedPatchPayload {
+                    staged_path,
+                    payload_len: actual_payload_len,
+                });
+            }
+        };
+        if actual_payload_len != preflighted_len {
+            self.record_stage_failure(
+                None,
+                PreflightCheck::Relocation,
+                TransactionFailureCategory::AdapterUnsupported,
+                SEMANTIC_PATCH_TRANSACTION_RELOCATION_UNSUPPORTED,
+                format!(
+                    "staged payload length {actual_payload_len} != preflighted payload length {preflighted_len}"
+                ),
+            );
+            return Ok(StagedPatchPayload {
+                staged_path,
+                payload_len: actual_payload_len,
+            });
+        }
+        if actual_payload_len > self.config.byte_budget {
+            self.record_stage_failure(
+                None,
+                PreflightCheck::ByteBudget,
+                TransactionFailureCategory::PatchWriteFailed,
+                SEMANTIC_PATCH_TRANSACTION_BYTE_BUDGET_EXCEEDED,
+                format!(
+                    "staged payload length {actual_payload_len} exceeds per-asset byte budget {}",
+                    self.config.byte_budget
+                ),
+            );
+            return Ok(StagedPatchPayload {
+                staged_path,
+                payload_len: actual_payload_len,
+            });
+        }
+
         let parent = match staged_path.parent() {
             Some(parent) => parent,
             None => {
@@ -1483,6 +1540,63 @@ mod tests {
             partial["rollbackDiagnosticCode"].as_str().unwrap(),
             SEMANTIC_PATCH_TRANSACTION_STAGED_VERIFY_ROLLED_BACK
         );
+        assert!(validate_patch_result_v02(&outcome.patch_result_v02).is_ok());
+    }
+
+    #[test]
+    fn rejects_staged_payload_whose_length_differs_from_preflight() {
+        // A payload whose actual length differs from the preflighted
+        // expected_payload_len must fail closed: the staged file is never
+        // written and a fatal relocation diagnostic is recorded, instead
+        // of silently staging an unvalidated payload.
+        let dir = tempfile::tempdir().unwrap();
+        let output_path = dir.path().join("SEEN.TXT");
+        let source = vec![b'A'; 32];
+        write_source(&output_path, &source);
+        let expected_source_hash = sha256_hash_bytes(&source);
+        let intended = vec![b'B'; 32];
+        let expected_output_hash = sha256_hash_bytes(&intended);
+        let capabilities = capabilities_with_identity_patch();
+        let required = ["identity"];
+        let config = make_config(
+            &output_path,
+            &expected_source_hash,
+            &expected_output_hash,
+            32,
+            32,
+            &required,
+            &capabilities,
+        );
+        let mut transaction = PatchTransaction::new(config);
+        let report = transaction.run_preflight().unwrap();
+        assert!(
+            report.is_clear(),
+            "expected clean preflight, got {report:?}"
+        );
+        // Stage a payload one byte longer than the preflighted length.
+        let oversized = vec![b'B'; 33];
+        transaction.stage(&oversized).unwrap();
+        assert_eq!(transaction.state(), TransactionState::PromoteFailed);
+        let staged_path = dir
+            .path()
+            .join(".staging")
+            .join(format!("{ASSET_ID}-{RUN_ID}.tmp"));
+        assert!(
+            !staged_path.exists(),
+            "mismatched payload must never be written to the staging file"
+        );
+        assert_eq!(
+            fs::read(&output_path).unwrap(),
+            source,
+            "output path must still hold the original source bytes"
+        );
+        let outcome = transaction.into_outcome();
+        let failures = outcome.patch_result_v02["failures"].as_array().unwrap();
+        let codes: Vec<&str> = failures
+            .iter()
+            .map(|f| f["diagnosticCode"].as_str().unwrap())
+            .collect();
+        assert!(codes.contains(&SEMANTIC_PATCH_TRANSACTION_RELOCATION_UNSUPPORTED));
         assert!(validate_patch_result_v02(&outcome.patch_result_v02).is_ok());
     }
 
