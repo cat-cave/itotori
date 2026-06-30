@@ -39,8 +39,8 @@
       "path": "fixtures/public/kaifuu-helper-results/helper-registry.schema.json",
       "role": "metadata",
       "mediaType": "application/schema+json",
-      "sha256": "a1cab55e4467a27ea30f478f40bececdb465e3d87015d1daad91a8a22197e0ce",
-      "bytes": 5196,
+      "sha256": "64b9476a3b6a34f9bd547793544ebeb079db85adb0bf9ce7196b9b6847836d0b",
+      "bytes": 5179,
       "redistributable": true
     },
     {
@@ -167,8 +167,8 @@
       "path": "fixtures/public/kaifuu-helper-results/helper-result.schema.json",
       "role": "metadata",
       "mediaType": "application/schema+json",
-      "sha256": "4b301f7d48e7c3ff7d7dc095bc253ee18a6d316cae05621218145ebd47b50daf",
-      "bytes": 6532,
+      "sha256": "46a8d63d1db18eb1ddc91e2b8fb147eb67cf31c4769b8d6b4ed42ecc77ece18a",
+      "bytes": 6516,
       "redistributable": true
     },
     {
