@@ -38006,6 +38006,1956 @@
         "A regression test feeds the exact bad bytes (e.g. SJIS lead byte / empty source)",
         "100%-decompilation + no-silent-fallback: malformed input is surfaced, not crashed or skipped"
       ]
+    },
+    {
+      "id": "a3c-ga3-003-0",
+      "title": "[audit-3] Scene-AST instruction byte offsets drift: project_opcode hardcodes fixed-8 widths instead ",
+      "kind": "audit-fix",
+      "milestone": "alpha",
+      "status": "ready",
+      "priority": "P2",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "WHY: parse_real_bytecode's typed command variants drop their consumed width, so project_opcode re-derives it heuristically: every recognized 8+arg command is hardcoded to 8 (206, 215-225) and Choice to 10+sum(len+1) (208-214). decode_command actually consumes 8 + arglist + trailing i32 jump pointers; e.g. Choice (A,,B) really consumes 14, project_opcode yields 15. parse_scene_into_ast accumulates byte_offset += this wrong consumed (line 110), so Instruction.byte_offset/byte_len, InstructionId::for_scene(byte_offset), and string-slot byte_offset_within_scene all drift after the first command carrying args/pointers. Latent because patchback re-walks via decode_element (occurrence_index) and only compares counts, but the AST surface (consumed by inventory.rs) claims byte-exact offsets that are wrong on real bytecode. Both project_opcode and bridge.rs::opcode_byte_width carry doc-comments claiming they 'mirror' the parser widths, which is false.\n\nSUGGESTED FIX: Have parse_real_bytecode/decode_element surface the real per-element consumed width and feed that single source of truth into project_opcode (and bridge.rs::opcode_byte_width) instead of two diverging hardcoded reconstructions.\n\nEVIDENCE: /home/trevor/projects/itotori/crates/kaifuu-reallive/src/parser.rs:206 (general-audit-3, confirmed=true).",
+      "acceptance": "The item at /home/trevor/projects/itotori/crates/kaifuu-reallive/src/parser.rs:206 is corrected per the suggested fix (malformed/edge input -> typed error or correct handling, NOT silent skip/default/panic; or doc-match-code). A test asserts the corrected behavior where it is a code fix. No-legacy.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-30T05:57:42.196Z",
+      "updated_at": "2026-06-30T05:57:42.196Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["kaifuu"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "direnv exec . cargo test -p kaifuu-reallive -p kaifuu-core"
+        }
+      ],
+      "audit_focus": [
+        "Regression: parse_real_bytecode's typed command variants drop their consumed width, so project_opcode re-derives it heuristically: every recognized 8+ar",
+        "No-legacy single path; no silent fail-open/skip on malformed bytes",
+        "Test asserts corrected behavior (code fixes)"
+      ]
+    },
+    {
+      "id": "a3c-ga3-004-1",
+      "title": "[audit-3] bridge opcode_byte_width hardcodes 8 for commands; doc-comment falsely claims it mirrors p",
+      "kind": "audit-fix",
+      "milestone": "alpha",
+      "status": "ready",
+      "priority": "P2",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "WHY: opcode_byte_width returns a fixed 8 for every recognized command (640-657) and 8+sum(len+1) for Choice (642-644), while decode_command consumes 8 + arglist + jump pointers (and the parser's own Choice helper uses 10+..., so the two reconstructions also disagree with each other). The cursor (line 376) and thus every unit's decompressed_byte_offset drift after any command with args. The doc-comment (622-625) states it 'mirrors the widths used by parse_real_bytecode' — it does not. Same root cause as the parser.rs drift; a second hand-maintained width table with its own false comment.\n\nSUGGESTED FIX: Drive the cursor from the authoritative decode_command consumed width and correct the contradictory comment.\n\nEVIDENCE: /home/trevor/projects/itotori/crates/kaifuu-reallive/src/bridge.rs:640 (general-audit-3, confirmed=true).",
+      "acceptance": "The item at /home/trevor/projects/itotori/crates/kaifuu-reallive/src/bridge.rs:640 is corrected per the suggested fix (malformed/edge input -> typed error or correct handling, NOT silent skip/default/panic; or doc-match-code). A test asserts the corrected behavior where it is a code fix. No-legacy.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-30T05:57:42.196Z",
+      "updated_at": "2026-06-30T05:57:42.196Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["kaifuu"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "direnv exec . cargo test -p kaifuu-reallive -p kaifuu-core"
+        }
+      ],
+      "audit_focus": [
+        "Regression: opcode_byte_width returns a fixed 8 for every recognized command (640-657) and 8+sum(len+1) for Choice (642-644), while decode_command consu",
+        "No-legacy single path; no silent fail-open/skip on malformed bytes",
+        "Test asserts corrected behavior (code fixes)"
+      ]
+    },
+    {
+      "id": "a3c-ga3-005-2",
+      "title": "[audit-3] build_unit_json silently drops protected control-markup spans on validation failure",
+      "kind": "audit-fix",
+      "milestone": "alpha",
+      "status": "ready",
+      "priority": "P2",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "WHY: When a computed protected span (kidoku/name_token/asset_ref/font_tone) fails span.end_byte > source_text.len() (805) or actual != span.raw.as_bytes() (809), the code bare-continues and the span is omitted from the bundle with no warning/error. A dropped asset_ref/font_tone/name-token span means that byte region loses preserveMode=exact, so a translate+patchback pass could rewrite a #FACE(...)/NAMAE region. It also masks any off-by-one in the span-offset arithmetic instead of surfacing it — the 'parse succeeds by skipping' anti-pattern the 100%-fidelity contract forbids.\n\nSUGGESTED FIX: Treat a span that fails the byte-range/raw-bytes equality check as a producer regression (return a typed BridgeProduceError) rather than dropping it.\n\nEVIDENCE: /home/trevor/projects/itotori/crates/kaifuu-reallive/src/bridge.rs:805 (general-audit-3, confirmed=true).",
+      "acceptance": "The item at /home/trevor/projects/itotori/crates/kaifuu-reallive/src/bridge.rs:805 is corrected per the suggested fix (malformed/edge input -> typed error or correct handling, NOT silent skip/default/panic; or doc-match-code). A test asserts the corrected behavior where it is a code fix. No-legacy.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-30T05:57:42.196Z",
+      "updated_at": "2026-06-30T05:57:42.196Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["kaifuu"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "direnv exec . cargo test -p kaifuu-reallive -p kaifuu-core"
+        }
+      ],
+      "audit_focus": [
+        "Regression: When a computed protected span (kidoku/name_token/asset_ref/font_tone) fails span.end_byte > source_text.len() (805) or actual != span.raw.a",
+        "No-legacy single path; no silent fail-open/skip on malformed bytes",
+        "Test asserts corrected behavior (code fixes)"
+      ]
+    },
+    {
+      "id": "a3c-ga3-006-3",
+      "title": "[audit-3] patch_scene_blob: bytecode_offset < SCENE_HEADER_BYTE_LEN unvalidated, silently mis-emits ",
+      "kind": "audit-fix",
+      "milestone": "alpha",
+      "status": "ready",
+      "priority": "P2",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "WHY: patch_scene_blob guards only bytecode_end > blob.len() (609); it never checks bytecode_start >= SCENE_HEADER_BYTE_LEN (0x1d0). On re-emit it always copies a full 0x1d0-byte header (689), preserves bytecode_offset at 0x20 verbatim, and appends gap bytes only if bytecode_start > SCENE_HEADER_BYTE_LEN (724). If a header declares bytecode_offset < 0x1d0, compressed_new is written starting at file offset 0x1d0 while the preserved bytecode_offset still points inside the header region, so any decompressor reads bytecode from inside the header -> corrupt scene. apply_translated_bundle's self-check (404-418) only re-parses the directory and compares entry counts; it never re-decompresses, so the corruption is emitted silently, violating the module's typed-error/no-silent-fallback contract. Reachable only via a malformed/crafted Seen.txt.\n\nSUGGESTED FIX: After parsing the header, validate header.bytecode_offset as usize >= SCENE_HEADER_BYTE_LEN (and that the pre-bytecode gap fits the blob); return PatchbackError::SceneHeaderInvalid on failure. Alternatively rewrite bytecode_offset (0x20) to the actual emitted offset.\n\nEVIDENCE: /home/trevor/projects/itotori/crates/kaifuu-reallive/src/patchback/bundle_driven.rs:724 (general-audit-3, confirmed=true).",
+      "acceptance": "The item at /home/trevor/projects/itotori/crates/kaifuu-reallive/src/patchback/bundle_driven.rs:724 is corrected per the suggested fix (malformed/edge input -> typed error or correct handling, NOT silent skip/default/panic; or doc-match-code). A test asserts the corrected behavior where it is a code fix. No-legacy.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-30T05:57:42.196Z",
+      "updated_at": "2026-06-30T05:57:42.196Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["kaifuu"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "direnv exec . cargo test -p kaifuu-reallive -p kaifuu-core"
+        }
+      ],
+      "audit_focus": [
+        "Regression: patch_scene_blob guards only bytecode_end > blob.len() (609); it never checks bytecode_start >= SCENE_HEADER_BYTE_LEN (0x1d0). On re-emit it",
+        "No-legacy single path; no silent fail-open/skip on malformed bytes",
+        "Test asserts corrected behavior (code fixes)"
+      ]
+    },
+    {
+      "id": "a3c-ga3-007-4",
+      "title": "[audit-3] Wait/Background/VoicePlay operand values silently narrowed via unsigned_abs() as u16/u32",
+      "kind": "audit-fix",
+      "milestone": "alpha",
+      "status": "ready",
+      "priority": "P2",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "WHY: first_arg_as_u16 (978) computes first_arg_as_i32(...).unsigned_abs() as u16, silently truncating any value >65535 and turning a negative literal into its absolute value; first_arg_as_u32 (982) similarly applies unsigned_abs, flipping negative ids. The surfaced Wait.duration_ms / Background.sprite_id / VoicePlay.voice_id lose magnitude/sign. These are decorative metadata fields (raw arg bytes preserved for round-trip), so patchback fidelity is unaffected, but the AST decompilation surface is lossy and an in-file test depends on the truncation.\n\nSUGGESTED FIX: Widen duration_ms/sprite_id/voice_id to the literal's real range (i32/u32) or surface the raw literal; drop unsigned_abs so sign/magnitude are preserved.\n\nEVIDENCE: /home/trevor/projects/itotori/crates/kaifuu-reallive/src/opcode.rs:978 (general-audit-3, confirmed=true).",
+      "acceptance": "The item at /home/trevor/projects/itotori/crates/kaifuu-reallive/src/opcode.rs:978 is corrected per the suggested fix (malformed/edge input -> typed error or correct handling, NOT silent skip/default/panic; or doc-match-code). A test asserts the corrected behavior where it is a code fix. No-legacy.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-30T05:57:42.196Z",
+      "updated_at": "2026-06-30T05:57:42.196Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["kaifuu"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "direnv exec . cargo test -p kaifuu-reallive -p kaifuu-core"
+        }
+      ],
+      "audit_focus": [
+        "Regression: first_arg_as_u16 (978) computes first_arg_as_i32(...).unsigned_abs() as u16, silently truncating any value >65535 and turning a negative lit",
+        "No-legacy single path; no silent fail-open/skip on malformed bytes",
+        "Test asserts corrected behavior (code fixes)"
+      ]
+    },
+    {
+      "id": "a3c-ga3-008-5",
+      "title": "[audit-3] #G00BUF numeric config emitted as AssetReference; fixture test locks in the wrong classifi",
+      "kind": "audit-fix",
+      "milestone": "alpha",
+      "status": "ready",
+      "priority": "P2",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "WHY: The catch-all bare.starts_with('G00') (1386-1390) routes every #G00* key to G00Family with treatment AssetReference, but the family doc (466-468) describes #G00BUF=8 as an image-buffer count config whose value is a number, not a path. The inventory/patching layer receives the literal '8' as an asset path reference. The test keeps_g00_and_koepac_as_asset_references (1692-1701) mixes a true asset (#KOEPAC=koe.ovk) with this config count so the misclassification looks correct.\n\nSUGGESTED FIX: Classify numeric #G00* knobs (e.g. #G00BUF) as Config and reserve AssetReference for actual #G00* path/pack declarations; split the fixture test so each key asserts its own treatment.\n\nEVIDENCE: /home/trevor/projects/itotori/crates/kaifuu-reallive/src/gameexe.rs:1386 (general-audit-3, confirmed=true).",
+      "acceptance": "The item at /home/trevor/projects/itotori/crates/kaifuu-reallive/src/gameexe.rs:1386 is corrected per the suggested fix (malformed/edge input -> typed error or correct handling, NOT silent skip/default/panic; or doc-match-code). A test asserts the corrected behavior where it is a code fix. No-legacy.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-30T05:57:42.196Z",
+      "updated_at": "2026-06-30T05:57:42.196Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["kaifuu"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "direnv exec . cargo test -p kaifuu-reallive -p kaifuu-core"
+        }
+      ],
+      "audit_focus": [
+        "Regression: The catch-all bare.starts_with('G00') (1386-1390) routes every #G00* key to G00Family with treatment AssetReference, but the family doc (466",
+        "No-legacy single path; no silent fail-open/skip on malformed bytes",
+        "Test asserts corrected behavior (code fixes)"
+      ]
+    },
+    {
+      "id": "a3c-ga3-009-6",
+      "title": "[audit-3] preflight_payload_len is write-only; staged payload length never validated against budget/",
+      "kind": "audit-fix",
+      "milestone": "alpha",
+      "status": "ready",
+      "priority": "P2",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "WHY: preflight_payload_len is declared (234), initialized None (245), and assigned (395) but never read. The byte-budget check (314-327) and identity-relocation check (382-394) validate only the caller-declared config.expected_payload_len; stage(payload) (420) writes payload directly and never asserts payload.len() equals the preflighted length or re-checks it against byte_budget. The preflight guarantee is advisory dead config — a payload whose actual size differs from the declared length is staged with the budget/relocation invariant unenforced on the real bytes (only verify()'s output-hash constrains content).\n\nSUGGESTED FIX: Either delete the dead field, or make stage() consume it: assert payload.len() as u64 == preflight_payload_len and re-validate against byte_budget before writing, recording a fatal diagnostic on mismatch.\n\nEVIDENCE: /home/trevor/projects/itotori/crates/kaifuu-core/src/patch_transaction.rs:234 (general-audit-3, confirmed=true).",
+      "acceptance": "The item at /home/trevor/projects/itotori/crates/kaifuu-core/src/patch_transaction.rs:234 is corrected per the suggested fix (malformed/edge input -> typed error or correct handling, NOT silent skip/default/panic; or doc-match-code). A test asserts the corrected behavior where it is a code fix. No-legacy.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-30T05:57:42.196Z",
+      "updated_at": "2026-06-30T05:57:42.196Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["kaifuu"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "direnv exec . cargo test -p kaifuu-reallive -p kaifuu-core"
+        }
+      ],
+      "audit_focus": [
+        "Regression: preflight_payload_len is declared (234), initialized None (245), and assigned (395) but never read. The byte-budget check (314-327) and iden",
+        "No-legacy single path; no silent fail-open/skip on malformed bytes",
+        "Test asserts corrected behavior (code fixes)"
+      ]
+    },
+    {
+      "id": "a3c-ga3-010-7",
+      "title": "[audit-3] cross_check silently skips ALL work-identity/platform/language checks when embedded releas",
+      "kind": "audit-fix",
+      "milestone": "alpha",
+      "status": "ready",
+      "priority": "P2",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "WHY: embedded.raw.get('releases').and_then(as_array).unwrap_or_default() then releases.first() => an empty array yields embedded_release None and the entire work-identity/platforms/languages/role block (189-322) is skipped, returning Ok with zero findings. The vault schema (embedded-metadata.schema.json:7,45) requires releases to be an array but ALLOWS empty [], so a schema-valid 'releases: []' passes read_and_validate then bypasses the cross-check the contract says must always reject on work-identity mismatch. Safety check defaults-to-pass on missing data instead of erroring.\n\nSUGGESTED FIX: Treat an empty/absent embedded releases (or one with no usable release) as an error rather than silent Ok; or require minItems:1 in the schema and assert it here.\n\nEVIDENCE: /home/trevor/projects/itotori/crates/kaifuu-vault-source/src/metadata.rs:173 (general-audit-3, confirmed=true).",
+      "acceptance": "The item at /home/trevor/projects/itotori/crates/kaifuu-vault-source/src/metadata.rs:173 is corrected per the suggested fix (malformed/edge input -> typed error or correct handling, NOT silent skip/default/panic; or doc-match-code). A test asserts the corrected behavior where it is a code fix. No-legacy.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-30T05:57:42.196Z",
+      "updated_at": "2026-06-30T05:57:42.196Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["kaifuu"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "direnv exec . cargo test -p kaifuu-reallive -p kaifuu-core"
+        }
+      ],
+      "audit_focus": [
+        "Regression: embedded.raw.get('releases').and_then(as_array).unwrap_or_default() then releases.first() => an empty array yields embedded_release None and",
+        "No-legacy single path; no silent fail-open/skip on malformed bytes",
+        "Test asserts corrected behavior (code fixes)"
+      ]
+    },
+    {
+      "id": "a3c-ga3-011-8",
+      "title": "[audit-3] Row-decode errors on languages/platforms swallowed by filter_map(|r| r.ok())",
+      "kind": "audit-fix",
+      "milestone": "alpha",
+      "status": "ready",
+      "priority": "P2",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "WHY: languages (325) and platforms (334) collect via filter_map(|r| r.ok()), silently dropping any row that fails to decode. These sets feed cross_check's platforms/languages overlap comparison, so a dropped value can fabricate or mask a disjoint-set finding (or a strict-mode error). Inconsistent with collect_ids (390) and load_work_identifiers (374), which propagate row errors via map_query_err.\n\nSUGGESTED FIX: Collect with explicit error propagation (for r in rows { out.push(r.map_err(map_query_err)?); }) like the other loaders.\n\nEVIDENCE: /home/trevor/projects/itotori/crates/kaifuu-vault-source/src/discovery.rs:325 (general-audit-3, confirmed=true).",
+      "acceptance": "The item at /home/trevor/projects/itotori/crates/kaifuu-vault-source/src/discovery.rs:325 is corrected per the suggested fix (malformed/edge input -> typed error or correct handling, NOT silent skip/default/panic; or doc-match-code). A test asserts the corrected behavior where it is a code fix. No-legacy.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-30T05:57:42.196Z",
+      "updated_at": "2026-06-30T05:57:42.196Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["kaifuu"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "direnv exec . cargo test -p kaifuu-reallive -p kaifuu-core"
+        }
+      ],
+      "audit_focus": [
+        "Regression: languages (325) and platforms (334) collect via filter_map(|r| r.ok()), silently dropping any row that fails to decode. These sets feed cros",
+        "No-legacy single path; no silent fail-open/skip on malformed bytes",
+        "Test asserts corrected behavior (code fixes)"
+      ]
+    },
+    {
+      "id": "a3c-ga3-012-9",
+      "title": "[audit-3] Binary-patch smoke silently falls back to synthetic SEEN.TXT when a supplied --fixture arc",
+      "kind": "audit-fix",
+      "milestone": "alpha",
+      "status": "ready",
+      "priority": "P2",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "WHY: BinaryPatchSmokeConfig.fixture_dir is documented (65-71) as overriding the synthetic fixture builder when supplied, but the read arm Err(_) => build_synthetic_seen_txt() swallows any read error and substitutes the synthetic 80,000-byte envelope. A user pointing --fixture at a wrong/unreadable path gets a PASSING run against synthetic bytes while believing the real fixture was exercised; a real-byte regression is masked, not surfaced.\n\nSUGGESTED FIX: On Some(dir), propagate the read error as BinarySmokeOutcome::Aborted instead of falling back to the synthetic builder. Only the None branch should synthesize.\n\nEVIDENCE: /home/trevor/projects/itotori/crates/kaifuu-cli/src/binary_patch_smoke.rs:324 (general-audit-3, confirmed=true).",
+      "acceptance": "The item at /home/trevor/projects/itotori/crates/kaifuu-cli/src/binary_patch_smoke.rs:324 is corrected per the suggested fix (malformed/edge input -> typed error or correct handling, NOT silent skip/default/panic; or doc-match-code). A test asserts the corrected behavior where it is a code fix. No-legacy.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-30T05:57:42.196Z",
+      "updated_at": "2026-06-30T05:57:42.196Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["kaifuu"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "direnv exec . cargo test -p kaifuu-reallive -p kaifuu-core"
+        }
+      ],
+      "audit_focus": [
+        "Regression: BinaryPatchSmokeConfig.fixture_dir is documented (65-71) as overriding the synthetic fixture builder when supplied, but the read arm Err(_) ",
+        "No-legacy single path; no silent fail-open/skip on malformed bytes",
+        "Test asserts corrected behavior (code fixes)"
+      ]
+    },
+    {
+      "id": "a3c-ga3-013-10",
+      "title": "[audit-3] apply_delta partial-source gate fails open: non-bool partial field defaults to complete",
+      "kind": "audit-fix",
+      "milestone": "alpha",
+      "status": "ready",
+      "priority": "P2",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "WHY: SourceProvenance::from_extract_envelope_value reads envelope.get('partial').and_then(Value::as_bool).unwrap_or(false) (91-94). A present-but-non-bool partial value (e.g. JSON string 'true' or number 1) returns None from as_bool and defaults to false=complete. apply_delta (line 331) gates the KAIFUU-193 'apply MUST refuse any envelope whose partial field is true' contract solely on this boolean, so a malformed-truthy partial marker silently passes a MUST-refuse gate. Producer is kaifuu's own extractor (writes proper bools) so likelihood is low, but a hand-edited or foreign envelope defeats the gate. Verified lines 90-96, 331-338.\n\nSUGGESTED FIX: In from_extract_envelope_value, treat a present-but-non-bool partial as partial (refuse) or surface a typed error from from_extract_envelope_file rather than defaulting to complete.\n\nEVIDENCE: /home/trevor/projects/itotori/crates/kaifuu-delta/src/lib.rs:91 (general-audit-3, confirmed=true).",
+      "acceptance": "The item at /home/trevor/projects/itotori/crates/kaifuu-delta/src/lib.rs:91 is corrected per the suggested fix (malformed/edge input -> typed error or correct handling, NOT silent skip/default/panic; or doc-match-code). A test asserts the corrected behavior where it is a code fix. No-legacy.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-30T05:57:42.196Z",
+      "updated_at": "2026-06-30T05:57:42.196Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["kaifuu"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "direnv exec . cargo test -p kaifuu-reallive -p kaifuu-core"
+        }
+      ],
+      "audit_focus": [
+        "Regression: SourceProvenance::from_extract_envelope_value reads envelope.get('partial').and_then(Value::as_bool).unwrap_or(false) (91-94). A present-but",
+        "No-legacy single path; no silent fail-open/skip on malformed bytes",
+        "Test asserts corrected behavior (code fixes)"
+      ]
+    },
+    {
+      "id": "a3c-ga3-014-11",
+      "title": "[audit-3] VM dispatches every Command opcode with empty args (&[]), so all argument-taking ops (goto",
+      "kind": "audit-fix",
+      "milestone": "alpha",
+      "status": "ready",
+      "priority": "P2",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "WHY: dispatch_element destructures BytecodeElement::Command as { module_type, module_id, opcode, .. } and calls op.dispatch(self, &[]) (879), discarding the element's own raw_bytes (full arg list) and arg_count fields (bytecode_element.rs:169-176). module_ctrl documents goto->Jump, farcall->FarCall, goto_if->conditional Jump, and the registry advertises them, but every such op needs args[0..] and gets an empty slice, so each takes its warn_and_advance() path. The replay alpha path only works because text comes from a dedicated Textout element and Pause/line-break need no args. The op-layer unit tests pass args directly to op.dispatch, bypassing this seam, so they stay green while no integration test ever drives a real jump through the VM. Net effect: a real scene containing a goto is silently walked linearly instead of jumping, producing an incorrect 'validation' replay. Verified lines 870-896.\n\nSUGGESTED FIX: Parse the Command element's argument list (from raw_bytes after the 8-byte header, arg_count entries) into the ExprValue slice the RLOperation trait expects, and pass it to op.dispatch; add an integration test that drives a goto/farcall through Vm::step and asserts the pc actually moves to the target.\n\nEVIDENCE: /home/trevor/projects/itotori/crates/utsushi-reallive/src/vm.rs:879 (general-audit-3, confirmed=true).",
+      "acceptance": "The item at /home/trevor/projects/itotori/crates/utsushi-reallive/src/vm.rs:879 is corrected per the suggested fix (malformed/edge input -> typed error or correct handling, NOT silent skip/default/panic; or doc-match-code). A test asserts the corrected behavior where it is a code fix. No-legacy.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-30T05:57:42.196Z",
+      "updated_at": "2026-06-30T05:57:42.196Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["utsushi"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "direnv exec . cargo test -p utsushi-reallive -p utsushi-core"
+        }
+      ],
+      "audit_focus": [
+        "Regression: dispatch_element destructures BytecodeElement::Command as { module_type, module_id, opcode, .. } and calls op.dispatch(self, &[]) (879), dis",
+        "No-legacy single path; no silent fail-open/skip on malformed bytes",
+        "Test asserts corrected behavior (code fixes)"
+      ]
+    },
+    {
+      "id": "a3c-ga3-015-12",
+      "title": "[audit-3] Unbounded recursion in next_data() over decompressed bytecode (stack overflow / process ab",
+      "kind": "audit-fix",
+      "milestone": "alpha",
+      "status": "ready",
+      "priority": "P2",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "WHY: next_data recurses once per ',' separator (983: 1 + next_data(bytes, pos + 1)?) and once per embedded MetaLine marker (994: 3 + next_data(bytes, pos + 3)?) with no depth bound. The input is attacker-controllable decompressed scene bytecode. A scene with N consecutive commas drives N stack frames, overflowing the stack and aborting the process — violating the crate's typed-error (no-panic) contract for malformed bytes that the surrounding TruncatedInput handling otherwise upholds.\n\nSUGGESTED FIX: Convert next_data to an iterative loop accumulating the byte length, or thread an explicit depth counter and return a typed BytecodeDecodeError when a sane recursion/nesting cap is exceeded.\n\nEVIDENCE: /home/trevor/projects/itotori/crates/utsushi-reallive/src/bytecode_element.rs:983 (general-audit-3, confirmed=true).",
+      "acceptance": "The item at /home/trevor/projects/itotori/crates/utsushi-reallive/src/bytecode_element.rs:983 is corrected per the suggested fix (malformed/edge input -> typed error or correct handling, NOT silent skip/default/panic; or doc-match-code). A test asserts the corrected behavior where it is a code fix. No-legacy.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-30T05:57:42.196Z",
+      "updated_at": "2026-06-30T05:57:42.196Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["utsushi"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "direnv exec . cargo test -p utsushi-reallive -p utsushi-core"
+        }
+      ],
+      "audit_focus": [
+        "Regression: next_data recurses once per ',' separator (983: 1 + next_data(bytes, pos + 1)?) and once per embedded MetaLine marker (994: 3 + next_data(by",
+        "No-legacy single path; no silent fail-open/skip on malformed bytes",
+        "Test asserts corrected behavior (code fixes)"
+      ]
+    },
+    {
+      "id": "a3c-ga3-016-13",
+      "title": "[audit-3] Unbounded recursion in expression parser (parse_term -> parse_expr) on nested groupings; s",
+      "kind": "audit-fix",
+      "milestone": "alpha",
+      "status": "ready",
+      "priority": "P2",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "WHY: parse_term recurses into parse_expr on every '(' (PAREN_OPEN) with no depth limit; parse_expr/parse_term are mutually recursive. parse_expression is reached from Vm::dispatch_expression on real Expression-element bytes (vm.rs:903-904), so a malformed/hostile expression with deeply nested '(' overflows the stack and aborts the process rather than returning the typed ExpressionParseError the module otherwise guarantees.\n\nSUGGESTED FIX: Thread a depth counter through ParserState and return ExpressionParseError::Malformed when a reasonable nesting depth is exceeded.\n\nEVIDENCE: /home/trevor/projects/itotori/crates/utsushi-reallive/src/expression.rs:743 (general-audit-3, confirmed=true).",
+      "acceptance": "The item at /home/trevor/projects/itotori/crates/utsushi-reallive/src/expression.rs:743 is corrected per the suggested fix (malformed/edge input -> typed error or correct handling, NOT silent skip/default/panic; or doc-match-code). A test asserts the corrected behavior where it is a code fix. No-legacy.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-30T05:57:42.196Z",
+      "updated_at": "2026-06-30T05:57:42.196Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["utsushi"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "direnv exec . cargo test -p utsushi-reallive -p utsushi-core"
+        }
+      ],
+      "audit_focus": [
+        "Regression: parse_term recurses into parse_expr on every '(' (PAREN_OPEN) with no depth limit; parse_expr/parse_term are mutually recursive. parse_expre",
+        "No-legacy single path; no silent fail-open/skip on malformed bytes",
+        "Test asserts corrected behavior (code fixes)"
+      ]
+    },
+    {
+      "id": "a3c-ga3-017-14",
+      "title": "[audit-3] EmbedError taxonomy is mostly dead config (~11/15 variants never constructed); module/vari",
+      "kind": "audit-fix",
+      "milestone": "alpha",
+      "status": "ready",
+      "priority": "P2",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "WHY: Only InvalidCapability, DuplicateCapability, UnsortedCapabilities, and CapabilitiesTooLarge are ever constructed (all in embed/capability.rs). The remaining variants (SchemaVersionMismatch, CapabilityNotSupported, InvalidAdapterId, SnapshotAdapterIdMismatch, InvalidSnapshotRef, InvalidArtifactRef, RedactionViolation, EnvelopeTooLarge, TraceTooLarge, ArtifactRefsTooLarge, Json) are constructed nowhere; their docs promise envelope/from_json_value/validate/size-ceiling/redaction behavior the embed module never implements (it ships only the capability list). codes::ALL plus the every_variant_returns_a_code test only assert the dead taxonomy maps to codes. Capability-declaration-exceeds-implementation + dead config + docs-contradict-code.\n\nSUGGESTED FIX: Either land the embed envelope (from_json_value/validate/size ceilings/redaction) the taxonomy promises, or delete the unreachable variants, their codes::ALL entries, and the fixture-only test, and rewrite the module docs to describe only the capability-list surface that exists.\n\nEVIDENCE: /home/trevor/projects/itotori/crates/utsushi-core/src/embed/diagnostics.rs:59 (general-audit-3, confirmed=true).",
+      "acceptance": "The item at /home/trevor/projects/itotori/crates/utsushi-core/src/embed/diagnostics.rs:59 is corrected per the suggested fix (malformed/edge input -> typed error or correct handling, NOT silent skip/default/panic; or doc-match-code). A test asserts the corrected behavior where it is a code fix. No-legacy.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-30T05:57:42.196Z",
+      "updated_at": "2026-06-30T05:57:42.196Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["utsushi"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "direnv exec . cargo test -p utsushi-reallive -p utsushi-core"
+        }
+      ],
+      "audit_focus": [
+        "Regression: Only InvalidCapability, DuplicateCapability, UnsortedCapabilities, and CapabilitiesTooLarge are ever constructed (all in embed/capability.rs",
+        "No-legacy single path; no silent fail-open/skip on malformed bytes",
+        "Test asserts corrected behavior (code fixes)"
+      ]
+    },
+    {
+      "id": "a3c-ga3-018-15",
+      "title": "[audit-3] Port ABI 'shutdown idempotence' conformance check is tautological; the documented second-c",
+      "kind": "audit-fix",
+      "milestone": "alpha",
+      "status": "ready",
+      "priority": "P2",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "WHY: second_shutdown_idempotent = matches!(second_shutdown.status, AlreadyShutDown | Clean). PortShutdownStatus (diagnostics.rs:256-260) has exactly those two variants, so the match is always true regardless of port behavior. The EnginePort::shutdown doc (trait_.rs:259-260) states the first call returns Clean and the second AlreadyShutDown, but the harness accepts Clean for the second call, so a port that never signals idempotency still passes. EnginePortError::ShutdownNotIdempotent is consequently never constructed anywhere.\n\nSUGGESTED FIX: Assert second_shutdown.status == PortShutdownStatus::AlreadyShutDown and emit EnginePortError::ShutdownNotIdempotent when the first/second pair violates the Clean->AlreadyShutDown rule, or delete the unenforceable claim and the dead error variant.\n\nEVIDENCE: /home/trevor/projects/itotori/crates/utsushi-core/src/port/conformance.rs:78 (general-audit-3, confirmed=true).",
+      "acceptance": "The item at /home/trevor/projects/itotori/crates/utsushi-core/src/port/conformance.rs:78 is corrected per the suggested fix (malformed/edge input -> typed error or correct handling, NOT silent skip/default/panic; or doc-match-code). A test asserts the corrected behavior where it is a code fix. No-legacy.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-30T05:57:42.196Z",
+      "updated_at": "2026-06-30T05:57:42.196Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["utsushi"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "direnv exec . cargo test -p utsushi-reallive -p utsushi-core"
+        }
+      ],
+      "audit_focus": [
+        "Regression: second_shutdown_idempotent = matches!(second_shutdown.status, AlreadyShutDown | Clean). PortShutdownStatus (diagnostics.rs:256-260) has exac",
+        "No-legacy single path; no silent fail-open/skip on malformed bytes",
+        "Test asserts corrected behavior (code fixes)"
+      ]
+    },
+    {
+      "id": "a3c-ga3-019-16",
+      "title": "[audit-3] Unbounded Vec preallocation from attacker-controlled declared uncompressed_size (AVG32 sce",
+      "kind": "audit-fix",
+      "milestone": "alpha",
+      "status": "ready",
+      "priority": "P3",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "WHY: Vec::with_capacity(declared_uncompressed_size) where declared_uncompressed_size is the raw u32 header field (283), reached after only an 8-byte preamble length check. No relationship is enforced against compressed.len(), so a tiny malformed scene declaring up to 0xFFFFFFFF forces a ~4 GiB allocation request on every scene load. nwa.rs/ovk.rs validate the table fits the slice before allocating; this path does not.\n\nSUGGESTED FIX: Bound the initial capacity (e.g. .min(compressed.len().saturating_mul(sane_ratio))) or reject an implausible declared size with a typed error before allocating; the decode loop already grows dst incrementally.\n\nEVIDENCE: /home/trevor/projects/itotori/crates/utsushi-reallive/src/decompressor.rs:298 (general-audit-3, confirmed=true).",
+      "acceptance": "The item at /home/trevor/projects/itotori/crates/utsushi-reallive/src/decompressor.rs:298 is corrected per the suggested fix (malformed/edge input -> typed error or correct handling, NOT silent skip/default/panic; or doc-match-code). A test asserts the corrected behavior where it is a code fix. No-legacy.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-30T05:57:42.196Z",
+      "updated_at": "2026-06-30T05:57:42.196Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["utsushi"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "direnv exec . cargo test -p utsushi-reallive -p utsushi-core"
+        }
+      ],
+      "audit_focus": [
+        "Regression: Vec::with_capacity(declared_uncompressed_size) where declared_uncompressed_size is the raw u32 header field (283), reached after only an 8-b",
+        "No-legacy single path; no silent fail-open/skip on malformed bytes",
+        "Test asserts corrected behavior (code fixes)"
+      ]
+    },
+    {
+      "id": "a3c-ga3-020-17",
+      "title": "[audit-3] Unbounded Vec preallocation from attacker-controlled uncompressed_size (g00 LZSS decoder)",
+      "kind": "audit-fix",
+      "milestone": "alpha",
+      "status": "ready",
+      "priority": "P3",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "WHY: lzss_decode_classic calls Vec::with_capacity(uncompressed_size) where uncompressed_size is parse_lzss_section's raw u32 LE header field (879), with no check tying it to the payload slice length. A malformed g00 can declare up to 4 GiB and force that allocation before any byte is decoded. (decode_type1's with_capacity at 712 is safe because it runs after a decoded-length check; this entry point is not gated.)\n\nSUGGESTED FIX: Bound the initial capacity against input.len(), or reject an implausibly large uncompressed_size with a typed error.\n\nEVIDENCE: /home/trevor/projects/itotori/crates/utsushi-reallive/src/g00.rs:965 (general-audit-3, confirmed=true).",
+      "acceptance": "The item at /home/trevor/projects/itotori/crates/utsushi-reallive/src/g00.rs:965 is corrected per the suggested fix (malformed/edge input -> typed error or correct handling, NOT silent skip/default/panic; or doc-match-code). A test asserts the corrected behavior where it is a code fix. No-legacy.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-30T05:57:42.196Z",
+      "updated_at": "2026-06-30T05:57:42.196Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["utsushi"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "direnv exec . cargo test -p utsushi-reallive -p utsushi-core"
+        }
+      ],
+      "audit_focus": [
+        "Regression: lzss_decode_classic calls Vec::with_capacity(uncompressed_size) where uncompressed_size is parse_lzss_section's raw u32 LE header field (879",
+        "No-legacy single path; no silent fail-open/skip on malformed bytes",
+        "Test asserts corrected behavior (code fixes)"
+      ]
+    },
+    {
+      "id": "a3c-ga3-021-18",
+      "title": "[audit-3] Dead From<ExpressionParseError> for ExpressionWrapError impl (never reachable)",
+      "kind": "audit-fix",
+      "milestone": "alpha",
+      "status": "ready",
+      "priority": "P3",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "WHY: ExpressionWrapError is produced only inside eval_expression_node (943-951), which takes an already-parsed &ExprNode and maps every error via ExpressionWrapError::Eval. No function returning ExpressionWrapError ever applies ? to an ExpressionParseError. The From impl — which lossily wraps a parse error into EvaluationError::UnknownBank { bank_byte: 0 } — is unreachable dead code.\n\nSUGGESTED FIX: Delete the impl, or route dispatch_expression's parse-error handling through it if a single wrap-error type is actually desired.\n\nEVIDENCE: /home/trevor/projects/itotori/crates/utsushi-reallive/src/vm.rs:1106 (general-audit-3, confirmed=true).",
+      "acceptance": "The item at /home/trevor/projects/itotori/crates/utsushi-reallive/src/vm.rs:1106 is corrected per the suggested fix (malformed/edge input -> typed error or correct handling, NOT silent skip/default/panic; or doc-match-code). A test asserts the corrected behavior where it is a code fix. No-legacy.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-30T05:57:42.196Z",
+      "updated_at": "2026-06-30T05:57:42.196Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["utsushi"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "direnv exec . cargo test -p utsushi-reallive -p utsushi-core"
+        }
+      ],
+      "audit_focus": [
+        "Regression: ExpressionWrapError is produced only inside eval_expression_node (943-951), which takes an already-parsed &ExprNode and maps every error via",
+        "No-legacy single path; no silent fail-open/skip on malformed bytes",
+        "Test asserts corrected behavior (code fixes)"
+      ]
+    },
+    {
+      "id": "a3c-ga3-022-19",
+      "title": "[audit-3] Comment understates the assignment-operator byte range (says 0x14..=0x1C; code accepts the",
+      "kind": "audit-fix",
+      "milestone": "alpha",
+      "status": "ready",
+      "priority": "P3",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "WHY: The parse_expression detection comment says the assignment shape is backslash + an op byte in 0x14..=0x1C, but the actual detector (try_parse_assignment, 574) accepts any AssignOp::from_byte, and the module doc (49) and AssignOp enum document the full range 0x14..=0x24 used by Sweetie HD. Comment contradicts code.\n\nSUGGESTED FIX: Update the comment to '0x14..=0x24' (or 'any AssignOp::from_byte') to match try_parse_assignment.\n\nEVIDENCE: /home/trevor/projects/itotori/crates/utsushi-reallive/src/expression.rs:465 (general-audit-3, confirmed=true).",
+      "acceptance": "The item at /home/trevor/projects/itotori/crates/utsushi-reallive/src/expression.rs:465 is corrected per the suggested fix (malformed/edge input -> typed error or correct handling, NOT silent skip/default/panic; or doc-match-code). A test asserts the corrected behavior where it is a code fix. No-legacy.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-30T05:57:42.196Z",
+      "updated_at": "2026-06-30T05:57:42.196Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["utsushi"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "direnv exec . cargo test -p utsushi-reallive -p utsushi-core"
+        }
+      ],
+      "audit_focus": [
+        "Regression: The parse_expression detection comment says the assignment shape is backslash + an op byte in 0x14..=0x1C, but the actual detector (try_pars",
+        "No-legacy single path; no silent fail-open/skip on malformed bytes",
+        "Test asserts corrected behavior (code fixes)"
+      ]
+    },
+    {
+      "id": "a3c-ga3-023-20",
+      "title": "[audit-3] Runner::tick docstring contradicts code on end-of-stream (says two empty ticks; code stops",
+      "kind": "audit-fix",
+      "milestone": "alpha",
+      "status": "ready",
+      "priority": "P3",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "WHY: tick()'s doc says 'two consecutive empty ticks' signal end-of-stream, but drain_observations (323) returns on the FIRST empty tick. EnginePort::observe (trait_.rs:230) and RunnerObservation::is_empty (runner.rs:79) both say a single empty tick ends observation. A port author following the tick() doc would be silently truncated.\n\nSUGGESTED FIX: Change the tick() docstring to state a single empty tick completes the observation phase, matching drain_observations.\n\nEVIDENCE: /home/trevor/projects/itotori/crates/utsushi-core/src/port/runner.rs:264 (general-audit-3, confirmed=true).",
+      "acceptance": "The item at /home/trevor/projects/itotori/crates/utsushi-core/src/port/runner.rs:264 is corrected per the suggested fix (malformed/edge input -> typed error or correct handling, NOT silent skip/default/panic; or doc-match-code). A test asserts the corrected behavior where it is a code fix. No-legacy.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-30T05:57:42.196Z",
+      "updated_at": "2026-06-30T05:57:42.196Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["utsushi"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "direnv exec . cargo test -p utsushi-reallive -p utsushi-core"
+        }
+      ],
+      "audit_focus": [
+        "Regression: tick()'s doc says 'two consecutive empty ticks' signal end-of-stream, but drain_observations (323) returns on the FIRST empty tick. EnginePo",
+        "No-legacy single path; no silent fail-open/skip on malformed bytes",
+        "Test asserts corrected behavior (code fixes)"
+      ]
+    },
+    {
+      "id": "a3c-ga3-024-21",
+      "title": "[audit-3] env-schema duplicate-key detection silently truncates past 32 entries",
+      "kind": "audit-fix",
+      "milestone": "alpha",
+      "status": "ready",
+      "priority": "P3",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "WHY: PortManifest::validate dedups env keys with a fixed [Option<&'static str>; 32] and only records a key when seen_count < 32. There is no cap rejecting env_schema longer than 32, so keys beyond index 32 are never inserted into the dedup set; a duplicate between two entries both beyond the 32nd is never detected. The EnvFieldDuplicate guarantee is silently best-effort.\n\nSUGGESTED FIX: Use a HashSet<&'static str> for the dedup, or add an explicit env_schema length cap that errors when exceeded.\n\nEVIDENCE: /home/trevor/projects/itotori/crates/utsushi-core/src/port/manifest.rs:339 (general-audit-3, confirmed=true).",
+      "acceptance": "The item at /home/trevor/projects/itotori/crates/utsushi-core/src/port/manifest.rs:339 is corrected per the suggested fix (malformed/edge input -> typed error or correct handling, NOT silent skip/default/panic; or doc-match-code). A test asserts the corrected behavior where it is a code fix. No-legacy.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-30T05:57:42.196Z",
+      "updated_at": "2026-06-30T05:57:42.196Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["utsushi"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "direnv exec . cargo test -p utsushi-reallive -p utsushi-core"
+        }
+      ],
+      "audit_focus": [
+        "Regression: PortManifest::validate dedups env keys with a fixed [Option<&'static str>; 32] and only records a key when seen_count < 32. There is no cap ",
+        "No-legacy single path; no silent fail-open/skip on malformed bytes",
+        "Test asserts corrected behavior (code fixes)"
+      ]
+    },
+    {
+      "id": "a3c-ga3-025-22",
+      "title": "[audit-3] Capture-root containment weakened: canonicalize errors swallowed, and the production legac",
+      "kind": "audit-fix",
+      "milestone": "alpha",
+      "status": "ready",
+      "priority": "P3",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "WHY: ensure_capture_within_root uses std::fs::canonicalize(path).unwrap_or_else(|_| path.into()) for both root and artifact path; on canonicalize failure it falls back to the non-canonical path, so a non-existent/symlinked artifact path can defeat the starts_with containment guard. Separately, EnginePortAdapter::run_lifecycle (port/mod.rs) never hydrates port_request.artifact_root, so the 'if let Some(root) = request.artifact_root' containment check is skipped for every capture driven through the only production (legacy RuntimeAdapter) wiring, after which an unvalidated CaptureOutcome.artifact_uri flows into the report. Subagent-verified; not independently line-checked by lead.\n\nSUGGESTED FIX: Treat canonicalize failure on the artifact path as a containment violation (don't fall back), and either hydrate artifact_root in EnginePortAdapter or have the runner reject Capture when no artifact_root is supplied so containment is never silently disabled.\n\nEVIDENCE: /home/trevor/projects/itotori/crates/utsushi-core/src/port/runner.rs:357 (general-audit-3, confirmed=true).",
+      "acceptance": "The item at /home/trevor/projects/itotori/crates/utsushi-core/src/port/runner.rs:357 is corrected per the suggested fix (malformed/edge input -> typed error or correct handling, NOT silent skip/default/panic; or doc-match-code). A test asserts the corrected behavior where it is a code fix. No-legacy.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-30T05:57:42.196Z",
+      "updated_at": "2026-06-30T05:57:42.196Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["utsushi"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "direnv exec . cargo test -p utsushi-reallive -p utsushi-core"
+        }
+      ],
+      "audit_focus": [
+        "Regression: ensure_capture_within_root uses std::fs::canonicalize(path).unwrap_or_else(|_| path.into()) for both root and artifact path; on canonicalize",
+        "No-legacy single path; no silent fail-open/skip on malformed bytes",
+        "Test asserts corrected behavior (code fixes)"
+      ]
+    },
+    {
+      "id": "a3c-ga3-026-23",
+      "title": "[audit-3] runner_outcome_to_value silently drops a sink observation/frame/audio payload on serializa",
+      "kind": "audit-fix",
+      "milestone": "alpha",
+      "status": "ready",
+      "priority": "P3",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "WHY: Each sink payload is pushed only inside if let Ok(value) = serde_json::to_value(line) { ... } (likewise frames and audio); on a to_value Err the observation is silently dropped from the report. For today's flat camelCase structs to_value cannot fail (currently unreachable), but it is a silent-drop-on-error that would hide a real observation if a payload ever became non-serializable.\n\nSUGGESTED FIX: Propagate the serialization error (run_lifecycle returns UtsushiResult and can carry it) or emit a typed diagnostic entry instead of dropping the payload.\n\nEVIDENCE: /home/trevor/projects/itotori/crates/utsushi-core/src/port/mod.rs:248 (general-audit-3, confirmed=true).",
+      "acceptance": "The item at /home/trevor/projects/itotori/crates/utsushi-core/src/port/mod.rs:248 is corrected per the suggested fix (malformed/edge input -> typed error or correct handling, NOT silent skip/default/panic; or doc-match-code). A test asserts the corrected behavior where it is a code fix. No-legacy.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-30T05:57:42.196Z",
+      "updated_at": "2026-06-30T05:57:42.196Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["utsushi"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "direnv exec . cargo test -p utsushi-reallive -p utsushi-core"
+        }
+      ],
+      "audit_focus": [
+        "Regression: Each sink payload is pushed only inside if let Ok(value) = serde_json::to_value(line) { ... } (likewise frames and audio); on a to_value Err",
+        "No-legacy single path; no silent fail-open/skip on malformed bytes",
+        "Test asserts corrected behavior (code fixes)"
+      ]
+    },
+    {
+      "id": "a3c-ga3-027-24",
+      "title": "[audit-3] Dead AssetIdErrorReason variants: EmptyPath and NonNfc never constructed",
+      "kind": "audit-fix",
+      "milestone": "alpha",
+      "status": "ready",
+      "priority": "P3",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "WHY: AssetIdErrorReason::EmptyPath (274) and ::NonNfc (283) have as_str arms but are constructed nowhere. NonNfc is unreachable by design because id.rs NFC-normalizes path segments instead of rejecting non-NFC input; EmptyPath is never produced. Dead config in an otherwise closed taxonomy.\n\nSUGGESTED FIX: Delete the two variants and their as_str arms, or wire them up if a future stricter mode is intended.\n\nEVIDENCE: /home/trevor/projects/itotori/crates/utsushi-core/src/vfs/diagnostics.rs:274 (general-audit-3, confirmed=true).",
+      "acceptance": "The item at /home/trevor/projects/itotori/crates/utsushi-core/src/vfs/diagnostics.rs:274 is corrected per the suggested fix (malformed/edge input -> typed error or correct handling, NOT silent skip/default/panic; or doc-match-code). A test asserts the corrected behavior where it is a code fix. No-legacy.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-30T05:57:42.196Z",
+      "updated_at": "2026-06-30T05:57:42.196Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["utsushi"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "direnv exec . cargo test -p utsushi-reallive -p utsushi-core"
+        }
+      ],
+      "audit_focus": [
+        "Regression: AssetIdErrorReason::EmptyPath (274) and ::NonNfc (283) have as_str arms but are constructed nowhere. NonNfc is unreachable by design because",
+        "No-legacy single path; no silent fail-open/skip on malformed bytes",
+        "Test asserts corrected behavior (code fixes)"
+      ]
+    },
+    {
+      "id": "a3c-ga3-028-25",
+      "title": "[audit-3] Dead port diagnostic variants: DriftKind::DeclaredButUnimplemented and CapabilityReason::H",
+      "kind": "audit-fix",
+      "milestone": "alpha",
+      "status": "ready",
+      "priority": "P3",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "WHY: DriftKind::DeclaredButUnimplemented (219) is never constructed — only DriftKind::UnclaimedImplementation is used. CapabilityReason::HostUnavailable (242) is never constructed either. Both appear only in their definition and Display arms.\n\nSUGGESTED FIX: Remove the unused variants, or add the validation paths they were meant to carry.\n\nEVIDENCE: /home/trevor/projects/itotori/crates/utsushi-core/src/port/diagnostics.rs:219 (general-audit-3, confirmed=true).",
+      "acceptance": "The item at /home/trevor/projects/itotori/crates/utsushi-core/src/port/diagnostics.rs:219 is corrected per the suggested fix (malformed/edge input -> typed error or correct handling, NOT silent skip/default/panic; or doc-match-code). A test asserts the corrected behavior where it is a code fix. No-legacy.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-30T05:57:42.196Z",
+      "updated_at": "2026-06-30T05:57:42.196Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["utsushi"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "direnv exec . cargo test -p utsushi-reallive -p utsushi-core"
+        }
+      ],
+      "audit_focus": [
+        "Regression: DriftKind::DeclaredButUnimplemented (219) is never constructed — only DriftKind::UnclaimedImplementation is used. CapabilityReason::HostUnav",
+        "No-legacy single path; no silent fail-open/skip on malformed bytes",
+        "Test asserts corrected behavior (code fixes)"
+      ]
+    },
+    {
+      "id": "a3c-ga3-029-26",
+      "title": "[audit-3] Dead impl-map provenance variants: FixtureClassificationMissing and ProvenanceField::ByteC",
+      "kind": "audit-fix",
+      "milestone": "alpha",
+      "status": "ready",
+      "priority": "P3",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "WHY: ImplMapError::FixtureClassificationMissing (55) is never constructed (classification is a required enum field); ProvenanceField::ByteCount/::Classification (120-122) are never used by the validator, which emits only MissingFixtureProvenance with ProvenanceField::Id and ::Hash. Dead config.\n\nSUGGESTED FIX: Drop the unused variants, or use them in validate_subsystem_fixture if byte-count/classification provenance reporting is intended.\n\nEVIDENCE: /home/trevor/projects/itotori/crates/utsushi-core/src/port/impl_map/diagnostics.rs:55 (general-audit-3, confirmed=true).",
+      "acceptance": "The item at /home/trevor/projects/itotori/crates/utsushi-core/src/port/impl_map/diagnostics.rs:55 is corrected per the suggested fix (malformed/edge input -> typed error or correct handling, NOT silent skip/default/panic; or doc-match-code). A test asserts the corrected behavior where it is a code fix. No-legacy.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-30T05:57:42.196Z",
+      "updated_at": "2026-06-30T05:57:42.196Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["utsushi"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "direnv exec . cargo test -p utsushi-reallive -p utsushi-core"
+        }
+      ],
+      "audit_focus": [
+        "Regression: ImplMapError::FixtureClassificationMissing (55) is never constructed (classification is a required enum field); ProvenanceField::ByteCount/:",
+        "No-legacy single path; no silent fail-open/skip on malformed bytes",
+        "Test asserts corrected behavior (code fixes)"
+      ]
+    },
+    {
+      "id": "a3c-ga3-030-27",
+      "title": "[audit-3] resolve_binary_candidate's candidate-count is computed then discarded on the success path",
+      "kind": "audit-fix",
+      "milestone": "alpha",
+      "status": "ready",
+      "priority": "P3",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "WHY: resolve_binary_candidate returns a (PathBuf, label, count) triple, but probe_chromium discards the count with let _ = candidates_tried; on success and recomputes a separate tried value in the failure branch. The third tuple element is never consumed on the path that returns it — dead returned data (test-support tier; minor).\n\nSUGGESTED FIX: Drop the count from resolve_binary_candidate's return type (compute it only where the NoBinaryFound error needs it).\n\nEVIDENCE: /home/trevor/projects/itotori/crates/utsushi-fixture/src/launch_adapters.rs:667 (general-audit-3, confirmed=true).",
+      "acceptance": "The item at /home/trevor/projects/itotori/crates/utsushi-fixture/src/launch_adapters.rs:667 is corrected per the suggested fix (malformed/edge input -> typed error or correct handling, NOT silent skip/default/panic; or doc-match-code). A test asserts the corrected behavior where it is a code fix. No-legacy.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-30T05:57:42.196Z",
+      "updated_at": "2026-06-30T05:57:42.196Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["utsushi"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "direnv exec . cargo test -p utsushi-reallive -p utsushi-core"
+        }
+      ],
+      "audit_focus": [
+        "Regression: resolve_binary_candidate returns a (PathBuf, label, count) triple, but probe_chromium discards the count with let _ = candidates_tried; on s",
+        "No-legacy single path; no silent fail-open/skip on malformed bytes",
+        "Test asserts corrected behavior (code fixes)"
+      ]
+    },
+    {
+      "id": "a3c-ga3-031-28",
+      "title": "[audit-3] parse_arg_list comment claims trailing comma yields an empty slot, but the close arm drops",
+      "kind": "audit-fix",
+      "milestone": "alpha",
+      "status": "ready",
+      "priority": "P3",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "WHY: Doc-comment (716-720) states a ',' before ')' yields an empty slot, but the EXPR_PAREN_CLOSE arm guards the final push with if cursor > slot_start (736), so (A,) produces ['A'], not ['A',''], while interior ,, does produce the empty slot. Comment contradicts code for the trailing-comma case.\n\nSUGGESTED FIX: Either always push the final slot to match the documented contract, or fix the comment to say trailing empty slots are dropped.\n\nEVIDENCE: /home/trevor/projects/itotori/crates/kaifuu-reallive/src/opcode.rs:716 (general-audit-3, confirmed=true).",
+      "acceptance": "The item at /home/trevor/projects/itotori/crates/kaifuu-reallive/src/opcode.rs:716 is corrected per the suggested fix (malformed/edge input -> typed error or correct handling, NOT silent skip/default/panic; or doc-match-code). A test asserts the corrected behavior where it is a code fix. No-legacy.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-30T05:57:42.196Z",
+      "updated_at": "2026-06-30T05:57:42.196Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["kaifuu"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "direnv exec . cargo test -p kaifuu-reallive -p kaifuu-core"
+        }
+      ],
+      "audit_focus": [
+        "Regression: Doc-comment (716-720) states a ',' before ')' yields an empty slot, but the EXPR_PAREN_CLOSE arm guards the final push with if cursor > slot",
+        "No-legacy single path; no silent fail-open/skip on malformed bytes",
+        "Test asserts corrected behavior (code fixes)"
+      ]
+    },
+    {
+      "id": "a3c-ga3-032-29",
+      "title": "[audit-3] NamedOpcode::ClearScreen declared but never produced",
+      "kind": "audit-fix",
+      "milestone": "alpha",
+      "status": "ready",
+      "priority": "P3",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "WHY: ClearScreen is defined and handled in as_label/default_string_slot_role, but project_opcode never maps any RealLiveOpcode to it (msgClr-class opcodes coalesce into SetVariable/SetVar). Dead classification variant — declared but unreachable from real decode.\n\nSUGGESTED FIX: Wire a real opcode to ClearScreen in classify_command/project_opcode, or remove the dead variant.\n\nEVIDENCE: /home/trevor/projects/itotori/crates/kaifuu-reallive/src/opcodes.rs:45 (general-audit-3, confirmed=true).",
+      "acceptance": "The item at /home/trevor/projects/itotori/crates/kaifuu-reallive/src/opcodes.rs:45 is corrected per the suggested fix (malformed/edge input -> typed error or correct handling, NOT silent skip/default/panic; or doc-match-code). A test asserts the corrected behavior where it is a code fix. No-legacy.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-30T05:57:42.196Z",
+      "updated_at": "2026-06-30T05:57:42.196Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["kaifuu"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "direnv exec . cargo test -p kaifuu-reallive -p kaifuu-core"
+        }
+      ],
+      "audit_focus": [
+        "Regression: ClearScreen is defined and handled in as_label/default_string_slot_role, but project_opcode never maps any RealLiveOpcode to it (msgClr-clas",
+        "No-legacy single path; no silent fail-open/skip on malformed bytes",
+        "Test asserts corrected behavior (code fixes)"
+      ]
+    },
+    {
+      "id": "a3c-ga3-033-30",
+      "title": "[audit-3] TruncatedCommandArgs diagnostic truncates the u16 argc to u8",
+      "kind": "audit-fix",
+      "milestone": "alpha",
+      "status": "ready",
+      "priority": "P3",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "WHY: argc is read as u16 (790) but the TruncatedCommandArgs error carries argc:u8 and is populated with argc as u8 (803, 841). For a goto_on/goto_case command declaring argc>255 the diagnostic misreports the count. Diagnostic-only (the decode loop uses argc as usize correctly), but a latent reporting bug.\n\nSUGGESTED FIX: Make RealLiveParseError::TruncatedCommandArgs.argc a u16 and drop the as u8 casts.\n\nEVIDENCE: /home/trevor/projects/itotori/crates/kaifuu-reallive/src/opcode.rs:803 (general-audit-3, confirmed=true).",
+      "acceptance": "The item at /home/trevor/projects/itotori/crates/kaifuu-reallive/src/opcode.rs:803 is corrected per the suggested fix (malformed/edge input -> typed error or correct handling, NOT silent skip/default/panic; or doc-match-code). A test asserts the corrected behavior where it is a code fix. No-legacy.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-30T05:57:42.196Z",
+      "updated_at": "2026-06-30T05:57:42.196Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["kaifuu"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "direnv exec . cargo test -p kaifuu-reallive -p kaifuu-core"
+        }
+      ],
+      "audit_focus": [
+        "Regression: argc is read as u16 (790) but the TruncatedCommandArgs error carries argc:u8 and is populated with argc as u8 (803, 841). For a goto_on/goto",
+        "No-legacy single path; no silent fail-open/skip on malformed bytes",
+        "Test asserts corrected behavior (code fixes)"
+      ]
+    },
+    {
+      "id": "a3c-ga3-034-31",
+      "title": "[audit-3] Inventory hex decode defaults invalid nibbles/odd length to 0 instead of erroring",
+      "kind": "audit-fix",
+      "milestone": "alpha",
+      "status": "ready",
+      "priority": "P3",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "WHY: decode_nibble (406) returns 0 for any non-hex byte and parse_hex (415) silently breaks on an odd trailing nibble. Malformed raw_bytes_hex decodes to wrong bytes that then feed Shift-JIS decode, span detection, and the sha256 source_hash — 'succeeding' by defaulting rather than surfacing a corrupt-AST error. Input is parser-internal (should always be valid hex) so low likelihood, but it's the defaulting-masks-failure pattern in the decompilation path.\n\nSUGGESTED FIX: Make parse_hex/decode_nibble return Result and surface a typed diagnostic on non-hex or odd-length input.\n\nEVIDENCE: /home/trevor/projects/itotori/crates/kaifuu-reallive/src/inventory.rs:411 (general-audit-3, confirmed=true).",
+      "acceptance": "The item at /home/trevor/projects/itotori/crates/kaifuu-reallive/src/inventory.rs:411 is corrected per the suggested fix (malformed/edge input -> typed error or correct handling, NOT silent skip/default/panic; or doc-match-code). A test asserts the corrected behavior where it is a code fix. No-legacy.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-30T05:57:42.196Z",
+      "updated_at": "2026-06-30T05:57:42.196Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["kaifuu"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "direnv exec . cargo test -p kaifuu-reallive -p kaifuu-core"
+        }
+      ],
+      "audit_focus": [
+        "Regression: decode_nibble (406) returns 0 for any non-hex byte and parse_hex (415) silently breaks on an odd trailing nibble. Malformed raw_bytes_hex de",
+        "No-legacy single path; no silent fail-open/skip on malformed bytes",
+        "Test asserts corrected behavior (code fixes)"
+      ]
+    },
+    {
+      "id": "a3c-ga3-035-32",
+      "title": "[audit-3] SystemCall family discards SAVE/LOAD/SYSTEM/_MOD subtype",
+      "kind": "audit-fix",
+      "milestone": "alpha",
+      "status": "ready",
+      "priority": "P3",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "WHY: For #SYSTEMCALL_* (1245-1255) the stripped remainder (SAVE/LOAD/SYSTEM/_MOD) is discarded via let _ = rest; (1251) and the unit GameexeKeyFamily::SystemCall carries no payload. So #SYSTEMCALL_SAVE/LOAD/SYSTEM/_MOD collapse to one indistinguishable value; a typed consumer cannot tell them apart without re-parsing entry.key.\n\nSUGGESTED FIX: Give SystemCall a field: String payload populated from rest.\n\nEVIDENCE: /home/trevor/projects/itotori/crates/kaifuu-reallive/src/gameexe.rs:1245 (general-audit-3, confirmed=true).",
+      "acceptance": "The item at /home/trevor/projects/itotori/crates/kaifuu-reallive/src/gameexe.rs:1245 is corrected per the suggested fix (malformed/edge input -> typed error or correct handling, NOT silent skip/default/panic; or doc-match-code). A test asserts the corrected behavior where it is a code fix. No-legacy.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-30T05:57:42.196Z",
+      "updated_at": "2026-06-30T05:57:42.196Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["kaifuu"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "direnv exec . cargo test -p kaifuu-reallive -p kaifuu-core"
+        }
+      ],
+      "audit_focus": [
+        "Regression: For #SYSTEMCALL_* (1245-1255) the stripped remainder (SAVE/LOAD/SYSTEM/_MOD) is discarded via let _ = rest; (1251) and the unit GameexeKeyFa",
+        "No-legacy single path; no silent fail-open/skip on malformed bytes",
+        "Test asserts corrected behavior (code fixes)"
+      ]
+    },
+    {
+      "id": "a3c-ga3-036-33",
+      "title": "[audit-3] Dead/unreachable Gameexe classification entries (WINDOW_ATTR, MSGBK_BUTTON_DISP_MODE, stra",
+      "kind": "audit-fix",
+      "milestone": "alpha",
+      "status": "ready",
+      "priority": "P3",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "WHY: Three dead catalogue entries: (a) if bare == 'WINDOW_ATTR' (736-743) is shadowed by the earlier strip_prefix('WINDOW_') at 728. (b) 'MSGBK_BUTTON_DISP_MODE' in the EngineBootstrap matches! list (1376) is unreachable because strip_prefix('MSGBK_') at 751 already returns MessageBackConfig. (c) A stray bare 'D' entry (1375) has no documented #D key and silently classifies an undocumented key as known Config instead of emitting the Unknown warning the clean-room contract promises.\n\nSUGGESTED FIX: Remove the shadowed WINDOW_ATTR branch, remove MSGBK_BUTTON_DISP_MODE from EngineBootstrap, and remove or correct the stray 'D' entry.\n\nEVIDENCE: /home/trevor/projects/itotori/crates/kaifuu-reallive/src/gameexe.rs:736 (general-audit-3, confirmed=true).",
+      "acceptance": "The item at /home/trevor/projects/itotori/crates/kaifuu-reallive/src/gameexe.rs:736 is corrected per the suggested fix (malformed/edge input -> typed error or correct handling, NOT silent skip/default/panic; or doc-match-code). A test asserts the corrected behavior where it is a code fix. No-legacy.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-30T05:57:42.196Z",
+      "updated_at": "2026-06-30T05:57:42.196Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["kaifuu"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "direnv exec . cargo test -p kaifuu-reallive -p kaifuu-core"
+        }
+      ],
+      "audit_focus": [
+        "Regression: Three dead catalogue entries: (a) if bare == 'WINDOW_ATTR' (736-743) is shadowed by the earlier strip_prefix('WINDOW_') at 728. (b) 'MSGBK_B",
+        "No-legacy single path; no silent fail-open/skip on malformed bytes",
+        "Test asserts corrected behavior (code fixes)"
+      ]
+    },
+    {
+      "id": "a3c-ga3-037-34",
+      "title": "[audit-3] Detector test comment contradicts code: REALLIVEDATA is at depth 4, not 3",
+      "kind": "audit-fix",
+      "milestone": "alpha",
+      "status": "ready",
+      "priority": "P3",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "WHY: max_depth_bounds_recursion creates root/a/b/c/REALLIVEDATA (depth 4) but the comment says 'REALLIVEDATA sits at depth 3'; the assertion at 382 correctly expects search_depth==4. Comment is stale vs the code.\n\nSUGGESTED FIX: Update the comment to depth 4 (a/b/c/REALLIVEDATA).\n\nEVIDENCE: /home/trevor/projects/itotori/crates/kaifuu-reallive/src/detector.rs:369 (general-audit-3, confirmed=true).",
+      "acceptance": "The item at /home/trevor/projects/itotori/crates/kaifuu-reallive/src/detector.rs:369 is corrected per the suggested fix (malformed/edge input -> typed error or correct handling, NOT silent skip/default/panic; or doc-match-code). A test asserts the corrected behavior where it is a code fix. No-legacy.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-30T05:57:42.196Z",
+      "updated_at": "2026-06-30T05:57:42.196Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["kaifuu"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "direnv exec . cargo test -p kaifuu-reallive -p kaifuu-core"
+        }
+      ],
+      "audit_focus": [
+        "Regression: max_depth_bounds_recursion creates root/a/b/c/REALLIVEDATA (depth 4) but the comment says 'REALLIVEDATA sits at depth 3'; the assertion at 3",
+        "No-legacy single path; no silent fail-open/skip on malformed bytes",
+        "Test asserts corrected behavior (code fixes)"
+      ]
+    },
+    {
+      "id": "a3c-ga3-038-35",
+      "title": "[audit-3] encode_xp3 silently truncates UTF-16 path-unit count to u16",
+      "kind": "audit-fix",
+      "milestone": "alpha",
+      "status": "ready",
+      "priority": "P3",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "WHY: In the production XP3 writer, the info chunk's path-length field is written as (path_units.len() as u16) while all path units are still emitted. A path exceeding 65535 UTF-16 units writes a truncated count but the full payload, producing a corrupt/unparseable archive with no error — the silent-default-instead-of-error class — though only reachable with a pathologically long path.\n\nSUGGESTED FIX: Use u16::try_from(path_units.len()) and return PlainXp3WriterError::InconsistentManifest on overflow, mirroring the existing usize::try_from guards.\n\nEVIDENCE: /home/trevor/projects/itotori/crates/kaifuu-core/src/lib.rs:17816 (general-audit-3, confirmed=true).",
+      "acceptance": "The item at /home/trevor/projects/itotori/crates/kaifuu-core/src/lib.rs:17816 is corrected per the suggested fix (malformed/edge input -> typed error or correct handling, NOT silent skip/default/panic; or doc-match-code). A test asserts the corrected behavior where it is a code fix. No-legacy.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-30T05:57:42.196Z",
+      "updated_at": "2026-06-30T05:57:42.196Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["kaifuu"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "direnv exec . cargo test -p kaifuu-reallive -p kaifuu-core"
+        }
+      ],
+      "audit_focus": [
+        "Regression: In the production XP3 writer, the info chunk's path-length field is written as (path_units.len() as u16) while all path units are still emit",
+        "No-legacy single path; no silent fail-open/skip on malformed bytes",
+        "Test asserts corrected behavior (code fixes)"
+      ]
+    },
+    {
+      "id": "a3c-ga3-039-36",
+      "title": "[audit-3] v02 span-mapping compatibility silently skips mappings whose raw is absent from source spa",
+      "kind": "audit-fix",
+      "milestone": "alpha",
+      "status": "ready",
+      "priority": "P3",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "WHY: In v02_patch_entry_span_mappings_compatible, a protectedSpanMapping whose raw is not present in the source unit's spans hits continue (19867) and is accepted; the final coverage loop (19901) only checks required source spans are covered, so a patch carrying extra/bogus span mappings referencing non-existent source spans still passes the compatibility gate — fails open instead of closed.\n\nSUGGESTED FIX: Return false (or accumulate a diagnostic) when a mapping's raw has no corresponding source span.\n\nEVIDENCE: /home/trevor/projects/itotori/crates/kaifuu-core/src/lib.rs:19866 (general-audit-3, confirmed=true).",
+      "acceptance": "The item at /home/trevor/projects/itotori/crates/kaifuu-core/src/lib.rs:19866 is corrected per the suggested fix (malformed/edge input -> typed error or correct handling, NOT silent skip/default/panic; or doc-match-code). A test asserts the corrected behavior where it is a code fix. No-legacy.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-30T05:57:42.196Z",
+      "updated_at": "2026-06-30T05:57:42.196Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["kaifuu"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "direnv exec . cargo test -p kaifuu-reallive -p kaifuu-core"
+        }
+      ],
+      "audit_focus": [
+        "Regression: In v02_patch_entry_span_mappings_compatible, a protectedSpanMapping whose raw is not present in the source unit's spans hits continue (19867",
+        "No-legacy single path; no silent fail-open/skip on malformed bytes",
+        "Test asserts corrected behavior (code fixes)"
+      ]
+    },
+    {
+      "id": "a3c-ga3-040-37",
+      "title": "[audit-3] by_sha_path slices sha256[0..2]/[2..4] with no length guard — panics on a short/corrupt sh",
+      "kind": "audit-fix",
+      "milestone": "alpha",
+      "status": "ready",
+      "priority": "P3",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "WHY: &sha256[0..2] and &sha256[2..4] panic if the value is fewer than 4 bytes. It is a pub fn; callers normally funnel through a DB lookup so the value is a 64-char hex string, but a corrupt catalog artifacts.sha256 row reaching line 151 would panic instead of a typed VaultSourceError.\n\nSUGGESTED FIX: Validate sha256.len() >= 4 (ideally == 64 and all-hex) and return ReleaseNotResolved/ArtifactMissing instead of slicing unconditionally.\n\nEVIDENCE: /home/trevor/projects/itotori/crates/kaifuu-vault-source/src/resolution.rs:169 (general-audit-3, confirmed=true).",
+      "acceptance": "The item at /home/trevor/projects/itotori/crates/kaifuu-vault-source/src/resolution.rs:169 is corrected per the suggested fix (malformed/edge input -> typed error or correct handling, NOT silent skip/default/panic; or doc-match-code). A test asserts the corrected behavior where it is a code fix. No-legacy.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-30T05:57:42.196Z",
+      "updated_at": "2026-06-30T05:57:42.196Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["kaifuu"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "direnv exec . cargo test -p kaifuu-reallive -p kaifuu-core"
+        }
+      ],
+      "audit_focus": [
+        "Regression: &sha256[0..2] and &sha256[2..4] panic if the value is fewer than 4 bytes. It is a pub fn; callers normally funnel through a DB lookup so the",
+        "No-legacy single path; no silent fail-open/skip on malformed bytes",
+        "Test asserts corrected behavior (code fixes)"
+      ]
+    },
+    {
+      "id": "a3c-ga3-041-38",
+      "title": "[audit-3] engine_version discovery filter uses .ok(), dropping a candidate on genuine DB error",
+      "kind": "audit-fix",
+      "milestone": "alpha",
+      "status": "ready",
+      "priority": "P3",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "WHY: In ByEngineClaim's version filter, conn.query_row(...).ok() cannot distinguish a legitimately-absent engine_version fact from a real query/decode error; on error the candidate is silently filtered out, masking catalog issues. Low impact since absence is the common case.\n\nSUGGESTED FIX: Distinguish QueryReturnedNoRows (legit None) from other rusqlite errors (propagate via map_query_err).\n\nEVIDENCE: /home/trevor/projects/itotori/crates/kaifuu-vault-source/src/discovery.rs:232 (general-audit-3, confirmed=true).",
+      "acceptance": "The item at /home/trevor/projects/itotori/crates/kaifuu-vault-source/src/discovery.rs:232 is corrected per the suggested fix (malformed/edge input -> typed error or correct handling, NOT silent skip/default/panic; or doc-match-code). A test asserts the corrected behavior where it is a code fix. No-legacy.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-30T05:57:42.196Z",
+      "updated_at": "2026-06-30T05:57:42.196Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["kaifuu"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "direnv exec . cargo test -p kaifuu-reallive -p kaifuu-core"
+        }
+      ],
+      "audit_focus": [
+        "Regression: In ByEngineClaim's version filter, conn.query_row(...).ok() cannot distinguish a legitimately-absent engine_version fact from a real query/d",
+        "No-legacy single path; no silent fail-open/skip on malformed bytes",
+        "Test asserts corrected behavior (code fixes)"
+      ]
+    },
+    {
+      "id": "a3c-ga3-042-39",
+      "title": "[audit-3] No guard that scratch_root is disjoint from vault_root (read-only invariant unenforced vs ",
+      "kind": "audit-fix",
+      "milestone": "alpha",
+      "status": "ready",
+      "priority": "P3",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "WHY: vault and scratch roots are resolved independently. All writes correctly target scratch only (verified: no fs-mutating call targets the vault), but nothing prevents a misconfigured ITOTORI_SCRATCH_ROOT pointing inside /archive/vault/, in which case extraction/marker writes would land in the read-only vault. Not an in-code violation, but the critical read-only invariant is unenforced against operator misconfig.\n\nSUGGESTED FIX: In VaultSource::open, reject a scratch_root equal to or nested under the canonicalized vault_root.\n\nEVIDENCE: /home/trevor/projects/itotori/crates/kaifuu-vault-source/src/source.rs:186 (general-audit-3, confirmed=true).",
+      "acceptance": "The item at /home/trevor/projects/itotori/crates/kaifuu-vault-source/src/source.rs:186 is corrected per the suggested fix (malformed/edge input -> typed error or correct handling, NOT silent skip/default/panic; or doc-match-code). A test asserts the corrected behavior where it is a code fix. No-legacy.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-30T05:57:42.196Z",
+      "updated_at": "2026-06-30T05:57:42.196Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["kaifuu"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "direnv exec . cargo test -p kaifuu-reallive -p kaifuu-core"
+        }
+      ],
+      "audit_focus": [
+        "Regression: vault and scratch roots are resolved independently. All writes correctly target scratch only (verified: no fs-mutating call targets the vaul",
+        "No-legacy single path; no silent fail-open/skip on malformed bytes",
+        "Test asserts corrected behavior (code fixes)"
+      ]
+    },
+    {
+      "id": "a3c-ga3-043-40",
+      "title": "[audit-3] Failure-modes test claims all 14 rows mapped but only samples 12 variants",
+      "kind": "audit-fix",
+      "milestone": "alpha",
+      "status": "ready",
+      "priority": "P3",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "WHY: The test pins expected.len()==14, yet the samples vec (292-386) constructs only 12 variants — CatalogOpenFailed and ScratchUnwritable are omitted, so their semantic_code() mappings are never exercised. The test name overclaims coverage of all rows.\n\nSUGGESTED FIX: Add samples for CatalogOpenFailed and ScratchUnwritable so all 14 codes are asserted, or rename to reflect partial coverage.\n\nEVIDENCE: /home/trevor/projects/itotori/crates/kaifuu-vault-source/src/error.rs:289 (general-audit-3, confirmed=true).",
+      "acceptance": "The item at /home/trevor/projects/itotori/crates/kaifuu-vault-source/src/error.rs:289 is corrected per the suggested fix (malformed/edge input -> typed error or correct handling, NOT silent skip/default/panic; or doc-match-code). A test asserts the corrected behavior where it is a code fix. No-legacy.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-30T05:57:42.196Z",
+      "updated_at": "2026-06-30T05:57:42.196Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["kaifuu"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "direnv exec . cargo test -p kaifuu-reallive -p kaifuu-core"
+        }
+      ],
+      "audit_focus": [
+        "Regression: The test pins expected.len()==14, yet the samples vec (292-386) constructs only 12 variants — CatalogOpenFailed and ScratchUnwritable are om",
+        "No-legacy single path; no silent fail-open/skip on malformed bytes",
+        "Test asserts corrected behavior (code fixes)"
+      ]
+    },
+    {
+      "id": "a3c-ga3-044-41",
+      "title": "[audit-3] Claim-integrity flag not_retail_readiness_claim sourced from fixture input despite 'Always",
+      "kind": "audit-fix",
+      "milestone": "alpha",
+      "status": "ready",
+      "priority": "P3",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "WHY: The report field doc (140-141) states not_retail_readiness_claim is 'Always true', but the value is sourced from the external fixture descriptor with no validation. A fixture carrying notRetailReadinessClaim:false would produce a report whose integrity flag contradicts its own hardcoded disclaimer. The test passes only because the committed fixture sets it true; the invariant is not enforced in code.\n\nSUGGESTED FIX: Hardcode not_retail_readiness_claim: true in report construction, or assert the fixture value is true at load time and error otherwise.\n\nEVIDENCE: /home/trevor/projects/itotori/crates/kaifuu-delta/src/contract_scaffold.rs:344 (general-audit-3, confirmed=true).",
+      "acceptance": "The item at /home/trevor/projects/itotori/crates/kaifuu-delta/src/contract_scaffold.rs:344 is corrected per the suggested fix (malformed/edge input -> typed error or correct handling, NOT silent skip/default/panic; or doc-match-code). A test asserts the corrected behavior where it is a code fix. No-legacy.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-30T05:57:42.196Z",
+      "updated_at": "2026-06-30T05:57:42.196Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["kaifuu"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "direnv exec . cargo test -p kaifuu-reallive -p kaifuu-core"
+        }
+      ],
+      "audit_focus": [
+        "Regression: The report field doc (140-141) states not_retail_readiness_claim is 'Always true', but the value is sourced from the external fixture descri",
+        "No-legacy single path; no silent fail-open/skip on malformed bytes",
+        "Test asserts corrected behavior (code fixes)"
+      ]
+    },
+    {
+      "id": "a3c-ga3-045-42",
+      "title": "[audit-3] Dead config: REALLIVE_GAMEEXE_INI_KEY_PREFIXES declared as source-of-truth but never read;",
+      "kind": "audit-fix",
+      "milestone": "alpha",
+      "status": "ready",
+      "priority": "P3",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "WHY: The const (95-106) enumerates 11 documented Gameexe.ini key prefixes, but reallive_gameexe_ini_key_hits never iterates it — it is only let _ = REALLIVE_GAMEEXE_INI_KEY_PREFIXES; to silence the unused warning. The actual matching (4896-4905) hardcodes 5 patterns, so the constant and matcher can silently drift; editing the documented list has zero effect on detection.\n\nSUGGESTED FIX: Drive the matcher from the constant, or delete the constant and document the prefixes inline so there is one source of truth.\n\nEVIDENCE: /home/trevor/projects/itotori/crates/kaifuu-engine-fixture/src/lib.rs:4895 (general-audit-3, confirmed=true).",
+      "acceptance": "The item at /home/trevor/projects/itotori/crates/kaifuu-engine-fixture/src/lib.rs:4895 is corrected per the suggested fix (malformed/edge input -> typed error or correct handling, NOT silent skip/default/panic; or doc-match-code). A test asserts the corrected behavior where it is a code fix. No-legacy.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-30T05:57:42.196Z",
+      "updated_at": "2026-06-30T05:57:42.196Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["kaifuu"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "direnv exec . cargo test -p kaifuu-reallive -p kaifuu-core"
+        }
+      ],
+      "audit_focus": [
+        "Regression: The const (95-106) enumerates 11 documented Gameexe.ini key prefixes, but reallive_gameexe_ini_key_hits never iterates it — it is only let _",
+        "No-legacy single path; no silent fail-open/skip on malformed bytes",
+        "Test asserts corrected behavior (code fixes)"
+      ]
+    },
+    {
+      "id": "a3c-ga3-046-43",
+      "title": "[audit-3] Exhaustiveness test asserts only set-membership (incl. an unreachable category), not the p",
+      "kind": "audit-fix",
+      "milestone": "alpha",
+      "status": "ready",
+      "priority": "P3",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "WHY: map_patchback_error_to_v02_failure_is_exhaustive_over_every_variant iterates all 7 PatchBackErrorCode variants but only asserts the category is one of a 5-element set. 'protected_span_violation' is never produced (ProtectedSpanLost maps to patch_write_failed at 245-251), so the allowed set is wider than the code's range and a wrong mapping would still pass. The test name overclaims.\n\nSUGGESTED FIX: Assert the exact (code -> category, diagnosticCode) pair per variant via a table, and drop the unreachable 'protected_span_violation' from the accepted set.\n\nEVIDENCE: /home/trevor/projects/itotori/crates/kaifuu-cli/src/binary_patch_smoke.rs:615 (general-audit-3, confirmed=true).",
+      "acceptance": "The item at /home/trevor/projects/itotori/crates/kaifuu-cli/src/binary_patch_smoke.rs:615 is corrected per the suggested fix (malformed/edge input -> typed error or correct handling, NOT silent skip/default/panic; or doc-match-code). A test asserts the corrected behavior where it is a code fix. No-legacy.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-30T05:57:42.196Z",
+      "updated_at": "2026-06-30T05:57:42.196Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["kaifuu"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "direnv exec . cargo test -p kaifuu-reallive -p kaifuu-core"
+        }
+      ],
+      "audit_focus": [
+        "Regression: map_patchback_error_to_v02_failure_is_exhaustive_over_every_variant iterates all 7 PatchBackErrorCode variants but only asserts the category",
+        "No-legacy single path; no silent fail-open/skip on malformed bytes",
+        "Test asserts corrected behavior (code fixes)"
+      ]
+    },
+    {
+      "id": "a3c-ga3-050-44",
+      "title": "[audit-3] pair-policy.v0.3 error-class doc references removed alternate/failover-predicate machinery",
+      "kind": "audit-fix",
+      "milestone": "alpha",
+      "status": "ready",
+      "priority": "P3",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "WHY: PairPolicyV03ValidationError's doc-comment (209-213) lists 'malformed alternate, ... unknown failover predicate' as failure causes, but the alternateProviders[]/failoverPredicate machinery was REMOVED in this same file (header lines 13-18 state it is gone, no-legacy). The error doc describes validation branches that no longer exist.\n\nSUGGESTED FIX: Drop the 'malformed alternate'/'unknown failover predicate' references from the error-class doc to match the current schema surface.\n\nEVIDENCE: /home/trevor/projects/itotori/packages/localization-bridge-schema/src/pair-policy.v0.3.ts:210 (general-audit-3, confirmed=true).",
+      "acceptance": "The item at /home/trevor/projects/itotori/packages/localization-bridge-schema/src/pair-policy.v0.3.ts:210 is corrected per the suggested fix (malformed/edge input -> typed error or correct handling, NOT silent skip/default/panic; or doc-match-code). A test asserts the corrected behavior where it is a code fix. No-legacy.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-30T05:57:42.196Z",
+      "updated_at": "2026-06-30T05:57:42.196Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["itotori"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/localization-bridge-schema test"
+        }
+      ],
+      "audit_focus": [
+        "Regression: PairPolicyV03ValidationError's doc-comment (209-213) lists 'malformed alternate, ... unknown failover predicate' as failure causes, but the ",
+        "No-legacy single path; no silent fail-open/skip on malformed bytes",
+        "Test asserts corrected behavior (code fixes)"
+      ]
+    },
+    {
+      "id": "a3c-ga3-051-45",
+      "title": "[audit-3] account-zdr.ts comment claims the OpenRouterProvider constructor asserts ZDR; the assertio",
+      "kind": "audit-fix",
+      "milestone": "alpha",
+      "status": "ready",
+      "priority": "P3",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "WHY: Comment (16-18) says 'the OpenRouter provider constructor calls the assertion synchronously'. The inner OpenRouterProvider constructor (openrouter.ts:86-100) does NOT call assertOpenRouterZdrAccount; only the public OpenRouterModelProvider wrapper does (openrouter.ts:1745), and the smoke tool calls it separately (style-guide-provider-smoke.ts:133). The gate is intact (the only live path is the wrapper), but the comment names the wrong constructor — a reader auditing the privacy gate could be misled.\n\nSUGGESTED FIX: Reword to 'the OpenRouterModelProvider constructor calls the assertion synchronously at startup'.\n\nEVIDENCE: /home/trevor/projects/itotori/apps/itotori/src/providers/account-zdr.ts:16 (general-audit-3, confirmed=true).",
+      "acceptance": "The item at /home/trevor/projects/itotori/apps/itotori/src/providers/account-zdr.ts:16 is corrected per the suggested fix (malformed/edge input -> typed error or correct handling, NOT silent skip/default/panic; or doc-match-code). A test asserts the corrected behavior where it is a code fix. No-legacy.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-30T05:57:42.196Z",
+      "updated_at": "2026-06-30T05:57:42.196Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["itotori"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/app exec tsc --noEmit"
+        }
+      ],
+      "audit_focus": [
+        "Regression: Comment (16-18) says 'the OpenRouter provider constructor calls the assertion synchronously'. The inner OpenRouterProvider constructor (open",
+        "No-legacy single path; no silent fail-open/skip on malformed bytes",
+        "Test asserts corrected behavior (code fixes)"
+      ]
+    },
+    {
+      "id": "a3c-ga3-052-46",
+      "title": "[audit-3] Tautological sentinel test (expect(true).toBe(true)) documents the implicit-cache evidence",
+      "kind": "audit-fix",
+      "milestone": "alpha",
+      "status": "ready",
+      "priority": "P3",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "WHY: The 'env-gate documents the implicit-cache evidence gap' test (1184-1194) runs expect(true).toBe(true) in both branches — it validates no behavior and exists only as a non-empty placeholder so the describe block isn't '0 tests'. Honestly labeled but it is a tautological test (the overclaim category): it asserts coverage of the cache path while testing nothing.\n\nSUGGESTED FIX: Remove the sentinel, or replace it with a real assertion on the cache-discount normalizer (e.g. extractCacheDiscountMicros mapping a null cost_details to 0) so the test exercises actual code.\n\nEVIDENCE: /home/trevor/projects/itotori/apps/itotori/test/openrouter-provider.test.ts:1188 (general-audit-3, confirmed=true).",
+      "acceptance": "The item at /home/trevor/projects/itotori/apps/itotori/test/openrouter-provider.test.ts:1188 is corrected per the suggested fix (malformed/edge input -> typed error or correct handling, NOT silent skip/default/panic; or doc-match-code). A test asserts the corrected behavior where it is a code fix. No-legacy.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-30T05:57:42.196Z",
+      "updated_at": "2026-06-30T05:57:42.196Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["itotori"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/app exec tsc --noEmit"
+        }
+      ],
+      "audit_focus": [
+        "Regression: The 'env-gate documents the implicit-cache evidence gap' test (1184-1194) runs expect(true).toBe(true) in both branches — it validates no be",
+        "No-legacy single path; no silent fail-open/skip on malformed bytes",
+        "Test asserts corrected behavior (code fixes)"
+      ]
+    },
+    {
+      "id": "a3c-ga3-053-47",
+      "title": "[audit-3] packages/test-fixtures is an unconsumed package with an incomplete artifact map",
+      "kind": "audit-fix",
+      "milestone": "alpha",
+      "status": "ready",
+      "priority": "P3",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "WHY: Independently confirmed: rg found zero importers of @itotori/test-fixtures across apps/ and packages/ (excluding node_modules). The package's artifact map is incomplete and nothing consumes it — dead/dual config carried in the workspace. (db/schema/suite subagent flagged the incomplete artifact map specifically.)\n\nSUGGESTED FIX: Either wire the package into the suites that should use it, or remove it from the workspace.\n\nEVIDENCE: /home/trevor/projects/itotori/packages/test-fixtures/src/index.ts:1 (general-audit-3, confirmed=true).",
+      "acceptance": "The item at /home/trevor/projects/itotori/packages/test-fixtures/src/index.ts:1 is corrected per the suggested fix (malformed/edge input -> typed error or correct handling, NOT silent skip/default/panic; or doc-match-code). A test asserts the corrected behavior where it is a code fix. No-legacy.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-30T05:57:42.196Z",
+      "updated_at": "2026-06-30T05:57:42.196Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["itotori"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/app exec tsc --noEmit"
+        }
+      ],
+      "audit_focus": [
+        "Regression: Independently confirmed: rg found zero importers of @itotori/test-fixtures across apps/ and packages/ (excluding node_modules). The package'",
+        "No-legacy single path; no silent fail-open/skip on malformed bytes",
+        "Test asserts corrected behavior (code fixes)"
+      ]
+    },
+    {
+      "id": "a3c-ga3-054-48",
+      "title": "[audit-3] spec-dag-dashboard provenance banner styling can mask fixture-less/stale provenance (dev-t",
+      "kind": "audit-fix",
+      "milestone": "alpha",
+      "status": "ready",
+      "priority": "P3",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "WHY: Subagent-reported (db/schema/suite sweep): the dev dashboard's provenance/audit banner can present a reassuring 'ok' state that masks fixture-less or stale provenance. Dev-only tooling (not a product gate). File anchored to render.ts (.provbanner at lines 60-66); the exact masking line is the subagent's and was not independently line-verified by the lead.\n\nSUGGESTED FIX: Ensure the provbanner reflects Provenance=disabled/loaded honestly (warn styling when fixture provenance is absent).\n\nEVIDENCE: /home/trevor/projects/itotori/packages/spec-dag-dashboard/src/render.ts:60 (general-audit-3, confirmed=true).",
+      "acceptance": "The item at /home/trevor/projects/itotori/packages/spec-dag-dashboard/src/render.ts:60 is corrected per the suggested fix (malformed/edge input -> typed error or correct handling, NOT silent skip/default/panic; or doc-match-code). A test asserts the corrected behavior where it is a code fix. No-legacy.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-30T05:57:42.196Z",
+      "updated_at": "2026-06-30T05:57:42.196Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["itotori"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/app exec tsc --noEmit"
+        }
+      ],
+      "audit_focus": [
+        "Regression: Subagent-reported (db/schema/suite sweep): the dev dashboard's provenance/audit banner can present a reassuring 'ok' state that masks fixtur",
+        "No-legacy single path; no silent fail-open/skip on malformed bytes",
+        "Test asserts corrected behavior (code fixes)"
+      ]
+    },
+    {
+      "id": "a3c-ga3-055-49",
+      "title": "[audit-3] Self-check / validation scripts contain overclaiming assertions plus a comment inaccuracy ",
+      "kind": "audit-fix",
+      "milestone": "alpha",
+      "status": "ready",
+      "priority": "P3",
+      "estimate_points": 1,
+      "risk": "medium",
+      "owner": null,
+      "branch": null,
+      "spec": "WHY: Subagent-reported (db/schema/suite sweep): three load-bearing self-check scripts under scripts/ carry overclaims (a test/validator whose name implies broader coverage than the assertions exercise) plus one comment inaccuracy. No P0/P1/P2; the itotori-db transaction/atomicity layer and the localization-bridge-schema contract were both found unusually disciplined. Exact file:line are the subagent's and were not relayed to the lead, so this is recorded at directory level pending the subagent's detail.\n\nSUGGESTED FIX: Re-run the db/schema/suite sweep (or inspect scripts/*.test.mjs + validate-*.mjs) to recover exact file:line for the three script overclaims + comment inaccuracy, then tighten each assertion to match its name.\n\nEVIDENCE: /home/trevor/projects/itotori/scripts:0 (general-audit-3, confirmed=true).",
+      "acceptance": "The item at /home/trevor/projects/itotori/scripts:0 is corrected per the suggested fix (malformed/edge input -> typed error or correct handling, NOT silent skip/default/panic; or doc-match-code). A test asserts the corrected behavior where it is a code fix. No-legacy.",
+      "validation": null,
+      "context": null,
+      "created_at": "2026-06-30T05:57:42.196Z",
+      "updated_at": "2026-06-30T05:57:42.196Z",
+      "claimed_at": null,
+      "done_at": null,
+      "group_name": null,
+      "status_reason": null,
+      "check_command": null,
+      "ci_command": null,
+      "blocked_by": null,
+      "blocked_reason": null,
+      "blocked_owner": null,
+      "projects": ["suite"],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/app exec tsc --noEmit"
+        }
+      ],
+      "audit_focus": [
+        "Regression: Subagent-reported (db/schema/suite sweep): three load-bearing self-check scripts under scripts/ carry overclaims (a test/validator whose nam",
+        "No-legacy single path; no silent fail-open/skip on malformed bytes",
+        "Test asserts corrected behavior (code fixes)"
+      ]
     }
   ],
   "edges": [
