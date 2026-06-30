@@ -366,19 +366,19 @@ mod tests {
 
     #[test]
     fn max_depth_bounds_recursion() {
-        // REALLIVEDATA sits at depth 3 under root. With max_depth = 2,
-        // the walker must NOT find it.
+        // REALLIVEDATA sits at depth 4 under root (a/b/c/REALLIVEDATA).
+        // With max_depth = 2, the walker must NOT find it.
         let root = unique_temp_dir("max-depth-bound");
         fs::create_dir_all(root.join("a/b/c/REALLIVEDATA")).unwrap();
 
         let outcome_shallow = detect_with_max_depth(&root, 2).expect("readable root");
         assert!(
             outcome_shallow.is_none(),
-            "REALLIVEDATA at depth 3 must NOT be found with max_depth = 2"
+            "REALLIVEDATA at depth 4 must NOT be found with max_depth = 2"
         );
 
         let outcome_deep = detect_with_max_depth(&root, 4).expect("readable root");
-        let evidence = outcome_deep.expect("max_depth = 4 must reach the depth-3 REALLIVEDATA");
+        let evidence = outcome_deep.expect("max_depth = 4 must reach the depth-4 REALLIVEDATA");
         assert_eq!(evidence.search_depth, 4);
 
         fs::remove_dir_all(&root).unwrap();

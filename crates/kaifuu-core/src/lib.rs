@@ -17820,7 +17820,14 @@ pub fn encode_xp3(archive: &PlainXp3Archive) -> Result<Vec<u8>, PlainXp3WriterEr
         info.extend_from_slice(&0_u32.to_le_bytes());
         info.extend_from_slice(&entry.original_size.to_le_bytes());
         info.extend_from_slice(&entry.archive_size.to_le_bytes());
-        info.extend_from_slice(&(path_units.len() as u16).to_le_bytes());
+        let path_unit_count = u16::try_from(path_units.len()).map_err(|_| {
+            PlainXp3WriterError::InconsistentManifest(format!(
+                "entry {:?} path length {} UTF-16 units does not fit in u16",
+                entry.path,
+                path_units.len()
+            ))
+        })?;
+        info.extend_from_slice(&path_unit_count.to_le_bytes());
         for unit in path_units {
             info.extend_from_slice(&unit.to_le_bytes());
         }
@@ -20894,6 +20901,32 @@ mod tests {
                     archive_size: 5,
                 }],
                 payload: vec![0; 5],
+            }],
+        };
+        let error = encode_xp3(&archive).unwrap_err();
+        assert!(matches!(
+            error,
+            PlainXp3WriterError::InconsistentManifest(_)
+        ));
+    }
+
+    #[test]
+    fn encode_xp3_rejects_path_exceeding_u16_utf16_units() {
+        // A path longer than u16::MAX UTF-16 units cannot be written
+        // truthfully into the info chunk's u16 path-length field. The
+        // writer must surface InconsistentManifest rather than silently
+        // truncating the count while emitting the full path payload.
+        let long_path = "a".repeat(usize::from(u16::MAX) + 1);
+        let archive = PlainXp3Archive {
+            schema_version: PLAIN_XP3_MANIFEST_SCHEMA_VERSION.to_string(),
+            variant: PLAIN_XP3_MANIFEST_VARIANT.to_string(),
+            entries: vec![PlainXp3ArchiveEntry {
+                path: long_path,
+                original_size: 0,
+                archive_size: 0,
+                stored_adler32: None,
+                segments: vec![],
+                payload: vec![],
             }],
         };
         let error = encode_xp3(&archive).unwrap_err();

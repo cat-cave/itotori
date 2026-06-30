@@ -115,8 +115,14 @@ pub enum GameexeKeyFamily {
     /// `#CANCELCALL=9999,10`, `#CANCELCALL_MOD=1`.
     CancelCall,
     /// `#SYSTEMCALL_SAVE`, `#SYSTEMCALL_LOAD`, `#SYSTEMCALL_SYSTEM`,
-    /// `#SYSTEMCALL_<NAME>_MOD`.
-    SystemCall,
+    /// `#SYSTEMCALL_<NAME>_MOD`. `payload` is the suffix after
+    /// `SYSTEMCALL_` (e.g. `SAVE`, `LOAD`, `SYSTEM`, `<NAME>_MOD`), so a
+    /// typed consumer can distinguish the sub-call without re-parsing the
+    /// raw key.
+    SystemCall {
+        /// Raw suffix after `#SYSTEMCALL_`.
+        payload: String,
+    },
     /// `#LOADCALL=9999,40`, `#LOADCALL_MOD=1`.
     LoadCall,
     /// `#EXAFTERCALL`, `#EXAFTERCALL_MOD`.
@@ -758,14 +764,6 @@ fn classify_key(key: &str, value: &str) -> (GameexeKeyFamily, GameexeKeyTreatmen
             GameexeKeyTreatment::Config,
         );
     }
-    if bare == "WINDOW_ATTR" {
-        return (
-            GameexeKeyFamily::WindowConfig {
-                field: "ATTR".to_string(),
-            },
-            GameexeKeyTreatment::Config,
-        );
-    }
     if let Some(rest) = bare.strip_prefix("MSGBK_WINDOW.") {
         let (index, field) = split_first_dot(rest);
         return (
@@ -1269,13 +1267,12 @@ fn classify_key(key: &str, value: &str) -> (GameexeKeyFamily, GameexeKeyTreatmen
     }
     if let Some(rest) = bare.strip_prefix("SYSTEMCALL_") {
         return (
-            GameexeKeyFamily::SystemCall,
+            GameexeKeyFamily::SystemCall {
+                payload: rest.to_string(),
+            },
             // The `_MOD` and `_<NAME>` variants are both scene-call dispatch
             // tuples / mode flags; all config.
-            {
-                let _ = rest;
-                GameexeKeyTreatment::Config
-            },
+            GameexeKeyTreatment::Config,
         );
     }
     if let Some(rest) = bare.strip_prefix("LOADCALL")
@@ -1397,8 +1394,6 @@ fn classify_key(key: &str, value: &str) -> (GameexeKeyFamily, GameexeKeyTreatmen
             | "ANIME_HISPEED_MODE"
             | "MANUAL_PATH"
             | "MASK"
-            | "D"
-            | "MSGBK_BUTTON_DISP_MODE"
     ) {
         return (
             GameexeKeyFamily::EngineBootstrap,
@@ -1807,5 +1802,63 @@ mod tests {
         assert_eq!(report.entries.len(), 2);
         assert_eq!(report.entries[0].key, "#CAPTION");
         assert_eq!(report.entries[1].key, "#REGNAME");
+    }
+
+    #[test]
+    fn systemcall_retains_subtype_payload() {
+        let (save, _) = classify_key("#SYSTEMCALL_SAVE", "");
+        let (load, _) = classify_key("#SYSTEMCALL_LOAD", "");
+        match (&save, &load) {
+            (
+                GameexeKeyFamily::SystemCall {
+                    payload: save_payload,
+                },
+                GameexeKeyFamily::SystemCall {
+                    payload: load_payload,
+                },
+            ) => {
+                assert_eq!(save_payload, "SAVE");
+                assert_eq!(load_payload, "LOAD");
+            }
+            other => panic!("expected distinct SystemCall payloads, got {other:?}"),
+        }
+        // The two sub-calls are now distinguishable typed values.
+        assert_ne!(save, load);
+    }
+
+    #[test]
+    fn window_attr_classifies_via_window_prefix() {
+        // The removed shadowed `WINDOW_ATTR` branch produced the same
+        // result the `WINDOW_` strip already yields.
+        let (family, treatment) = classify_key("#WINDOW_ATTR", "");
+        assert_eq!(treatment, GameexeKeyTreatment::Config);
+        match family {
+            GameexeKeyFamily::WindowConfig { field } => assert_eq!(field, "ATTR"),
+            other => panic!("expected WindowConfig, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn msgbk_button_disp_mode_is_message_back_config_not_engine_bootstrap() {
+        let (family, _) = classify_key("#MSGBK_BUTTON_DISP_MODE", "");
+        match family {
+            GameexeKeyFamily::MessageBackConfig { field } => {
+                assert_eq!(field, "BUTTON_DISP_MODE");
+            }
+            other => panic!("expected MessageBackConfig, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn stray_bare_d_key_surfaces_unknown_not_silent_config() {
+        let (family, treatment) = classify_key("#D", "");
+        assert_eq!(treatment, GameexeKeyTreatment::Unknown);
+        match family {
+            GameexeKeyFamily::Unknown { raw_key, reason } => {
+                assert_eq!(raw_key, "#D");
+                assert_eq!(reason, UnknownReason::UnknownFamily);
+            }
+            other => panic!("expected Unknown, got {other:?}"),
+        }
     }
 }

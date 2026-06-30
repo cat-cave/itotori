@@ -41,8 +41,6 @@ pub enum NamedOpcode {
     /// Subroutine return / scene end (rlvm `module_jmp::ret*` and
     /// `module_sys::end`).
     Return,
-    /// Clear the text window (rlvm `module_msg::msgClr`).
-    ClearScreen,
     /// Pause for keypress / wait longop (rlvm `module_sys::wait`,
     /// `module_msg::pause`).
     Pause,
@@ -59,7 +57,6 @@ impl NamedOpcode {
             Self::SetVar => "set_var",
             Self::Jump => "jump",
             Self::Return => "return",
-            Self::ClearScreen => "clear_screen",
             Self::Pause => "pause",
         }
     }
@@ -72,9 +69,7 @@ impl NamedOpcode {
             Self::TextDisplay => StringSlotRole::Dialogue,
             Self::SetSpeaker => StringSlotRole::SpeakerName,
             Self::Choice => StringSlotRole::Choice,
-            Self::SetVar | Self::Jump | Self::Return | Self::ClearScreen | Self::Pause => {
-                StringSlotRole::Unknown
-            }
+            Self::SetVar | Self::Jump | Self::Return | Self::Pause => StringSlotRole::Unknown,
         }
     }
 }

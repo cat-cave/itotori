@@ -245,7 +245,7 @@ pub enum RealLiveParseError {
     #[error(
         "kaifuu.reallive.truncated_command_args: command at offset {offset} declared argc={argc} but argument bytes ran out"
     )]
-    TruncatedCommandArgs { offset: u64, argc: u8 },
+    TruncatedCommandArgs { offset: u64, argc: u16 },
     /// A Shift-JIS Textout run failed length-prefix validation. Surfaced
     /// for malformed length-prefixed strings; inline Textout runs that
     /// run to the next opener byte cannot produce this.
@@ -717,9 +717,12 @@ fn goto_kind(command_id: u32) -> GotoKind {
 ///
 /// The list is split into comma-delimited **slots**; each slot's bytes
 /// are the concatenation of its ExpressionPiece / string data items. A
-/// `,` immediately followed by `,` (or `)`) yields an empty slot — this
-/// preserves the one-slot-per-option contract the Choice / select
-/// surface walk relies on. Top-level commas are the only separators;
+/// `,` immediately followed by another `,` yields an empty interior
+/// slot — this preserves the one-slot-per-option contract the Choice /
+/// select surface walk relies on. A trailing `,` immediately before
+/// `)` does NOT yield a final empty slot, and an empty `()` yields zero
+/// slots: the close arm only pushes the final slot when it is non-empty
+/// (`cursor > slot_start`). Top-level commas are the only separators;
 /// commas buried inside an integer-literal payload or a parenthesised
 /// sub-expression are consumed as part of that data item by the grammar
 /// and never split a slot. Returns the per-slot raw bytes plus the total
@@ -804,7 +807,7 @@ fn decode_command(bytes: &[u8], pos: usize) -> Result<(RealLiveOpcode, usize), R
         if pos + *consumed + need > bytes.len() {
             return Err(RealLiveParseError::TruncatedCommandArgs {
                 offset: pos as u64,
-                argc: argc as u8,
+                argc,
             });
         }
         *consumed += need;
@@ -842,7 +845,7 @@ fn decode_command(bytes: &[u8], pos: usize) -> Result<(RealLiveOpcode, usize), R
                 if bytes.get(pos + consumed) != Some(&EXPR_PAREN_OPEN) {
                     return Err(RealLiveParseError::TruncatedCommandArgs {
                         offset: pos as u64,
-                        argc: argc as u8,
+                        argc,
                     });
                 }
                 let (_case, len) = parse_arg_list(bytes, pos + consumed)?;
@@ -1527,5 +1530,77 @@ mod tests {
         assert!(is_shift_jis_textout_lead(0x81));
         assert!(is_shift_jis_textout_lead(0xE0));
         assert!(!is_recognized_opener(0x55));
+    }
+
+    #[test]
+    fn parse_arg_list_trailing_comma_drops_final_empty_slot() {
+        // `()` -> zero slots.
+        assert_eq!(
+            parse_arg_list(&[EXPR_PAREN_OPEN, EXPR_PAREN_CLOSE], 0)
+                .unwrap()
+                .0,
+            Vec::<Vec<u8>>::new()
+        );
+        // `(,)` -> one empty interior slot from the comma; the trailing
+        // comma before `)` does NOT add a final empty slot.
+        assert_eq!(
+            parse_arg_list(&[EXPR_PAREN_OPEN, opener::COMMA, EXPR_PAREN_CLOSE], 0)
+                .unwrap()
+                .0,
+            vec![Vec::<u8>::new()]
+        );
+        // `(,,)` -> two empty slots (one per comma); still no extra
+        // trailing slot.
+        assert_eq!(
+            parse_arg_list(
+                &[
+                    EXPR_PAREN_OPEN,
+                    opener::COMMA,
+                    opener::COMMA,
+                    EXPR_PAREN_CLOSE
+                ],
+                0
+            )
+            .unwrap()
+            .0,
+            vec![Vec::<u8>::new(), Vec::<u8>::new()]
+        );
+    }
+
+    #[test]
+    fn msgclr_class_msg_opcode_coalesces_to_set_variable() {
+        // module_msg opcodes outside the 1..=200 text range coalesce to
+        // SetVariable (the catch-all); no dedicated clear-screen opcode is
+        // produced from real decode.
+        assert_eq!(
+            classify_command(0, module_id::MSG, 250, &[]),
+            Some(RealLiveOpcode::SetVariable)
+        );
+    }
+
+    #[test]
+    fn truncated_goto_on_reports_full_u16_argc() {
+        // goto_on command (module_id JMP, opcode 3) declaring argc=300 with
+        // no trailing jump-target bytes must surface the full u16 argc, not
+        // 300 truncated to u8 (300 & 0xFF == 44).
+        let argc: u16 = 300;
+        let bytes = [
+            opener::COMMAND,
+            0,              // module_type
+            module_id::JMP, // module_id
+            3,              // opcode_lo (goto_on)
+            0,              // opcode_hi
+            (argc & 0xFF) as u8,
+            (argc >> 8) as u8,
+            0, // overload
+        ];
+        let err = decode_command(&bytes, 0).expect_err("missing jump targets must error");
+        assert!(
+            matches!(
+                err,
+                RealLiveParseError::TruncatedCommandArgs { argc: 300, .. }
+            ),
+            "expected argc=300, got {err:?}"
+        );
     }
 }

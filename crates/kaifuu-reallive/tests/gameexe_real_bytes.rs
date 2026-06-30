@@ -206,7 +206,7 @@ fn family_label(family: &GameexeKeyFamily) -> &'static str {
         GameexeKeyFamily::Debug => "Debug",
         GameexeKeyFamily::SeenEntry => "SeenEntry",
         GameexeKeyFamily::CancelCall => "CancelCall",
-        GameexeKeyFamily::SystemCall => "SystemCall",
+        GameexeKeyFamily::SystemCall { .. } => "SystemCall",
         GameexeKeyFamily::LoadCall => "LoadCall",
         GameexeKeyFamily::ExAfterCall => "ExAfterCall",
         GameexeKeyFamily::MouseActionCall { .. } => "MouseActionCall",

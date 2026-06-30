@@ -29,6 +29,41 @@ pub const INVENTORY_UNATTRIBUTED_DIALOGUE_CODE: &str =
 pub const INVENTORY_UNKNOWN_ASSET_EXTENSION_CODE: &str =
     "kaifuu.reallive.inventory.unknown_asset_extension";
 pub const INVENTORY_UNSUPPORTED_TEXT_SHAPE_CODE: &str = "kaifuu.reallive.unsupported_text_shape";
+/// Raised when a slot's `raw_bytes_hex` is not the even-length hex the
+/// parser always emits — a corrupt-AST signal, surfaced instead of being
+/// silently defaulted to zero bytes.
+pub const INVENTORY_RAW_HEX_DECODE_FAILURE_CODE: &str =
+    "kaifuu.reallive.inventory.raw_hex_decode_failure";
+
+/// Typed failure for [`parse_hex`] / [`decode_nibble`].
+///
+/// The `raw_bytes_hex` fields on the AST surface are always produced as
+/// even-length hex by the parser, so any deviation is a corrupt-AST
+/// signal rather than a value to silently default to zero.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum HexDecodeError {
+    /// A byte outside `[0-9a-fA-F]` appeared in the hex string.
+    NonHexByte {
+        /// The offending byte.
+        byte: u8,
+    },
+    /// The hex string had an odd number of nibbles.
+    OddLength {
+        /// The odd nibble count.
+        len: usize,
+    },
+}
+
+impl std::fmt::Display for HexDecodeError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::NonHexByte { byte } => write!(f, "non-hex byte 0x{byte:02x} in raw_bytes_hex"),
+            Self::OddLength { len } => write!(f, "odd-length raw_bytes_hex ({len} nibbles)"),
+        }
+    }
+}
+
+impl std::error::Error for HexDecodeError {}
 
 /// Categorised asset reference (file paths embedded in scene text).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -160,7 +195,26 @@ fn walk_scene(
                 continue;
             };
 
-            let raw_bytes = parse_hex(&slot.raw_bytes_hex);
+            let raw_bytes = match parse_hex(&slot.raw_bytes_hex) {
+                Ok(bytes) => bytes,
+                Err(err) => {
+                    // raw_bytes_hex is always even-length hex when produced
+                    // by the parser; a deviation is a corrupt-AST signal.
+                    // Record it (no silent default-to-zero, which would
+                    // corrupt the Shift-JIS decode, span detection and the
+                    // sha256 source_hash) and continue the walk.
+                    warnings.push(InventoryWarning {
+                        code: INVENTORY_RAW_HEX_DECODE_FAILURE_CODE.to_string(),
+                        source_unit_key: Some(slot.slot_id.as_str().to_string()),
+                        message: format!(
+                            "raw_bytes_hex for slot {} is not valid even-length hex: {err}; \
+                             skipping slot",
+                            slot.slot_id.as_str()
+                        ),
+                    });
+                    continue;
+                }
+            };
             let decode = decode_shift_jis_slot(&raw_bytes);
             if decode.had_replacement {
                 warnings.push(InventoryWarning {
@@ -336,7 +390,7 @@ fn map_protected_span(span: &RealLiveProtectedSpan, _decoded_text: &str) -> Prot
         // Mark with a synthetic placeholder span keyed on the byte
         // position so downstream tooling can still see it.
         let mut span_value = ProtectedSpan::control_markup(
-            format!("[ctrl:0x{:02X}@b{}]", raw_byte_first(span), start),
+            format!("[ctrl:{}@b{}]", raw_byte_first_label(span), start),
             start,
             start.saturating_add(0),
             label,
@@ -349,7 +403,7 @@ fn map_protected_span(span: &RealLiveProtectedSpan, _decoded_text: &str) -> Prot
         // span list (no normalize is called here at the inventory layer).
         span_value.start = start;
         span_value.end = end;
-        span_value.raw = format!("[ctrl:0x{:02X}]", raw_byte_first(span));
+        span_value.raw = format!("[ctrl:{}]", raw_byte_first_label(span));
         return span_value;
     }
     match &span.kind {
@@ -410,37 +464,46 @@ fn map_protected_span(span: &RealLiveProtectedSpan, _decoded_text: &str) -> Prot
     }
 }
 
-fn raw_byte_first(span: &RealLiveProtectedSpan) -> u8 {
-    let hex = &span.raw_bytes_hex;
-    if hex.len() < 2 {
-        return 0;
+fn raw_byte_first(span: &RealLiveProtectedSpan) -> Result<u8, HexDecodeError> {
+    match span.raw_bytes_hex.as_bytes() {
+        // Empty control span: there is genuinely no leading byte.
+        [] => Ok(0),
+        [_only] => Err(HexDecodeError::OddLength { len: 1 }),
+        [hi, lo, ..] => Ok((decode_nibble(*hi)? << 4) | decode_nibble(*lo)?),
     }
-    let hi = decode_nibble(hex.as_bytes()[0]);
-    let lo = decode_nibble(hex.as_bytes()[1]);
-    (hi << 4) | lo
 }
 
-fn decode_nibble(byte: u8) -> u8 {
+/// Cosmetic `[ctrl:…]` label fragment for a control span's first byte.
+/// Surfaces the raw hex verbatim when the bytes are not decodable rather
+/// than masking the failure as `0x00`.
+fn raw_byte_first_label(span: &RealLiveProtectedSpan) -> String {
+    match raw_byte_first(span) {
+        Ok(byte) => format!("0x{byte:02X}"),
+        Err(_) => format!("rawHex:{}", span.raw_bytes_hex),
+    }
+}
+
+fn decode_nibble(byte: u8) -> Result<u8, HexDecodeError> {
     match byte {
-        b'0'..=b'9' => byte - b'0',
-        b'A'..=b'F' => byte - b'A' + 10,
-        b'a'..=b'f' => byte - b'a' + 10,
-        _ => 0,
+        b'0'..=b'9' => Ok(byte - b'0'),
+        b'A'..=b'F' => Ok(byte - b'A' + 10),
+        b'a'..=b'f' => Ok(byte - b'a' + 10),
+        _ => Err(HexDecodeError::NonHexByte { byte }),
     }
 }
 
-fn parse_hex(hex: &str) -> Vec<u8> {
+fn parse_hex(hex: &str) -> Result<Vec<u8>, HexDecodeError> {
     let bytes = hex.as_bytes();
+    if !bytes.len().is_multiple_of(2) {
+        return Err(HexDecodeError::OddLength { len: bytes.len() });
+    }
     let mut out = Vec::with_capacity(bytes.len() / 2);
-    for chunk in bytes.chunks(2) {
-        if chunk.len() < 2 {
-            break;
-        }
-        let hi = decode_nibble(chunk[0]);
-        let lo = decode_nibble(chunk[1]);
+    for chunk in bytes.chunks_exact(2) {
+        let hi = decode_nibble(chunk[0])?;
+        let lo = decode_nibble(chunk[1])?;
         out.push((hi << 4) | lo);
     }
-    out
+    Ok(out)
 }
 
 fn classify_asset_path(text: &str) -> Option<AssetReferenceKind> {
@@ -487,5 +550,32 @@ mod tests {
     #[test]
     fn rejects_non_ascii_text_from_asset_classification() {
         assert!(classify_asset_path("背景.g00").is_none());
+    }
+
+    #[test]
+    fn parse_hex_decodes_valid_even_hex() {
+        assert_eq!(parse_hex("0a1B"), Ok(vec![0x0a, 0x1b]));
+    }
+
+    #[test]
+    fn parse_hex_rejects_odd_length_instead_of_truncating() {
+        assert_eq!(parse_hex("abc"), Err(HexDecodeError::OddLength { len: 3 }));
+    }
+
+    #[test]
+    fn parse_hex_rejects_non_hex_byte_instead_of_defaulting_to_zero() {
+        assert_eq!(
+            parse_hex("0z"),
+            Err(HexDecodeError::NonHexByte { byte: b'z' })
+        );
+    }
+
+    #[test]
+    fn decode_nibble_rejects_non_hex_byte() {
+        assert_eq!(
+            decode_nibble(b'g'),
+            Err(HexDecodeError::NonHexByte { byte: b'g' })
+        );
+        assert_eq!(decode_nibble(b'F'), Ok(15));
     }
 }
