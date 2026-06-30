@@ -208,7 +208,8 @@ export function aggregateProviderRunArtifacts(
     // billed cost by the REAL served upstream provider (canonicalized),
     // additive to the requested-pair byPair below.
     const servedKey = canonicalServedProviderId(provider.upstreamProvider);
-    const servedAcc = byServedAcc.get(servedKey) ?? { invocationCount: 0, costUsd: 0 };
+    // running-sum accumulator zero-init (costUsd += billed below), never a fabricated cost
+    const servedAcc = byServedAcc.get(servedKey) ?? { invocationCount: 0, costUsd: 0 }; // itotori-225-audit-allow: accumulator zero-init
     servedAcc.invocationCount += 1;
     servedAcc.costUsd += billed;
     byServedAcc.set(servedKey, servedAcc);
