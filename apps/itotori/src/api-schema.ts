@@ -34,10 +34,12 @@ import {
   catalogRawContentRedactionClassValues,
   catalogSourceRecordKindValues,
   catalogSourceValues,
+  feedbackTypeValues,
   reviewerQueueActionList,
   reviewerQueueItemKindList,
   reviewerQueueItemStateList,
 } from "@itotori/db";
+import type { FeedbackType } from "@itotori/db";
 import {
   assertBenchmarkReportV02,
   assertBridgeBundle,
@@ -87,6 +89,18 @@ import type {
   WorkspaceSceneBrowseReadModel,
   WorkspaceSearchReadModel,
 } from "./workspace/read-model.js";
+import {
+  workspaceCorrectionDiagnosticCodeValues,
+  workspaceCorrectionDispositionValues,
+} from "./workspace/correction-model.js";
+import type {
+  WorkspaceCorrectionPreviewReadModel,
+  WorkspaceCorrectionSubmitReadModel,
+} from "./workspace/correction-model.js";
+import type {
+  SubmitWorkspaceCorrectionsInput,
+  WorkspaceCorrectionSubmission,
+} from "./workspace/correction-service.js";
 
 export type ItotoriApiRouteId =
   | "assetDecisions.active"
@@ -105,6 +119,8 @@ export type ItotoriApiRouteId =
   | "workspace.assets"
   | "workspace.comparison"
   | "workspace.search"
+  | "workspace.correctionPreview"
+  | "workspace.correctionSubmit"
   | "projects.list"
   | "projects.status"
   | "projects.decisions"
@@ -149,6 +165,15 @@ export type ApiWorkspaceAssetBrowseResponse = WorkspaceAssetBrowseReadModel;
 export type ApiWorkspaceComparisonResponse = WorkspaceComparisonReadModel;
 
 export type ApiWorkspaceSearchResponse = WorkspaceSearchReadModel;
+
+export type ApiWorkspaceCorrectionPreviewResponse = WorkspaceCorrectionPreviewReadModel;
+
+export type ApiWorkspaceCorrectionSubmitResponse = WorkspaceCorrectionSubmitReadModel;
+
+export type ApiWorkspaceCorrectionSubmitRequest = Omit<
+  SubmitWorkspaceCorrectionsInput,
+  "permission"
+>;
 
 export type ApiReviewerQueueDashboardResponse = ReviewerQueueDashboardReadModel;
 
@@ -234,6 +259,8 @@ export type ItotoriApiResponseBody =
   | ApiWorkspaceAssetBrowseResponse
   | ApiWorkspaceComparisonResponse
   | ApiWorkspaceSearchResponse
+  | ApiWorkspaceCorrectionPreviewResponse
+  | ApiWorkspaceCorrectionSubmitResponse
   | ApiProjectsResponse
   | ProjectDashboardStatus
   | ApiDashboardDecisionsResponse
@@ -433,6 +460,12 @@ export function assertItotoriApiResponse(
       return;
     case "workspace.search":
       assertWorkspaceSearchReadModel(value);
+      return;
+    case "workspace.correctionPreview":
+      assertWorkspaceCorrectionPreviewReadModel(value);
+      return;
+    case "workspace.correctionSubmit":
+      assertWorkspaceCorrectionSubmitReadModel(value);
       return;
     case "projects.list":
       assertProjectsResponse(value);
@@ -660,6 +693,227 @@ function assertWorkspaceDiagnostics(value: unknown, label: string): void {
     assertEnum(diagnostic.code, workspaceDiagnosticCodeList, `${label}[${index}].code`);
     assertString(diagnostic.message, `${label}[${index}].message`);
   }
+}
+
+const workspaceCorrectionDiagnosticCodeList = Object.values(
+  workspaceCorrectionDiagnosticCodeValues,
+);
+const workspaceCorrectionDispositionList = Object.values(workspaceCorrectionDispositionValues);
+const feedbackTypeList = Object.values(feedbackTypeValues);
+
+function assertWorkspaceCorrectionDiagnostics(value: unknown, label: string): void {
+  const diagnostics = asArray(value, label);
+  for (const [index, diagnosticValue] of diagnostics.entries()) {
+    const diagnostic = asStrictRecord(diagnosticValue, `${label}[${index}]`, ["code", "message"]);
+    assertEnum(diagnostic.code, workspaceCorrectionDiagnosticCodeList, `${label}[${index}].code`);
+    assertString(diagnostic.message, `${label}[${index}].message`);
+  }
+}
+
+export function assertWorkspaceCorrectionPreviewReadModel(
+  value: unknown,
+  label = "WorkspaceCorrectionPreviewReadModel",
+): asserts value is WorkspaceCorrectionPreviewReadModel {
+  const model = asStrictRecord(value, label, [
+    "schemaVersion",
+    "generatedAt",
+    "permission",
+    "localeBranchId",
+    "units",
+    "diagnostics",
+  ]);
+  assertLiteral(model.schemaVersion, "workspace.correction_preview.v0.1", `${label}.schemaVersion`);
+  assertDateLike(model.generatedAt, `${label}.generatedAt`);
+  assertReviewerQueuePermissionView(model.permission, `${label}.permission`);
+  assertString(model.localeBranchId, `${label}.localeBranchId`);
+  const units = asArray(model.units, `${label}.units`);
+  for (const [index, unitValue] of units.entries()) {
+    const unitLabel = `${label}.units[${index}]`;
+    const unit = asStrictRecord(unitValue, unitLabel, [
+      "reviewItemId",
+      "localeBranchId",
+      "sourceRevisionId",
+      "bridgeUnitId",
+      "sourceUnitKey",
+      "sourceLocale",
+      "sourceText",
+      "targetLocale",
+      "draftText",
+      "finalText",
+      "styleGuidePolicyVersionId",
+      "styleGuidePolicyStatus",
+      "glossary",
+      "runtimeEvidenceLinks",
+      "screenshotArtifactHashes",
+      "diagnostics",
+    ]);
+    assertString(unit.reviewItemId, `${unitLabel}.reviewItemId`);
+    assertNullableString(unit.localeBranchId, `${unitLabel}.localeBranchId`);
+    assertNullableString(unit.sourceRevisionId, `${unitLabel}.sourceRevisionId`);
+    assertNullableString(unit.bridgeUnitId, `${unitLabel}.bridgeUnitId`);
+    assertNullableString(unit.sourceUnitKey, `${unitLabel}.sourceUnitKey`);
+    assertNullableString(unit.sourceLocale, `${unitLabel}.sourceLocale`);
+    assertNullableString(unit.sourceText, `${unitLabel}.sourceText`);
+    assertNullableString(unit.targetLocale, `${unitLabel}.targetLocale`);
+    assertNullableString(unit.draftText, `${unitLabel}.draftText`);
+    assertNullableString(unit.finalText, `${unitLabel}.finalText`);
+    assertNullableString(unit.styleGuidePolicyVersionId, `${unitLabel}.styleGuidePolicyVersionId`);
+    assertNullableString(unit.styleGuidePolicyStatus, `${unitLabel}.styleGuidePolicyStatus`);
+    const glossary = asArray(unit.glossary, `${unitLabel}.glossary`);
+    for (const [glossaryIndex, glossaryValue] of glossary.entries()) {
+      const glossaryLabel = `${unitLabel}.glossary[${glossaryIndex}]`;
+      const ref = asStrictRecord(glossaryValue, glossaryLabel, [
+        "termId",
+        "sourceTerm",
+        "preferredTranslation",
+        "status",
+      ]);
+      assertString(ref.termId, `${glossaryLabel}.termId`);
+      assertString(ref.sourceTerm, `${glossaryLabel}.sourceTerm`);
+      assertString(ref.preferredTranslation, `${glossaryLabel}.preferredTranslation`);
+      assertString(ref.status, `${glossaryLabel}.status`);
+    }
+    asArray(unit.runtimeEvidenceLinks, `${unitLabel}.runtimeEvidenceLinks`);
+    assertStringArray(unit.screenshotArtifactHashes, `${unitLabel}.screenshotArtifactHashes`);
+    assertWorkspaceCorrectionDiagnostics(unit.diagnostics, `${unitLabel}.diagnostics`);
+  }
+  assertWorkspaceCorrectionDiagnostics(model.diagnostics, `${label}.diagnostics`);
+}
+
+export function assertWorkspaceCorrectionSubmitReadModel(
+  value: unknown,
+  label = "WorkspaceCorrectionSubmitReadModel",
+): asserts value is WorkspaceCorrectionSubmitReadModel {
+  const model = asStrictRecord(value, label, [
+    "schemaVersion",
+    "generatedAt",
+    "permission",
+    "localeBranchId",
+    "batchId",
+    "batchLabel",
+    "submittedCount",
+    "edits",
+    "repairCandidateReportIds",
+    "decisionQueueReportIds",
+    "needsContextReportIds",
+    "affectedBridgeUnitIds",
+    "diagnostics",
+  ]);
+  assertLiteral(model.schemaVersion, "workspace.correction_submit.v0.1", `${label}.schemaVersion`);
+  assertDateLike(model.generatedAt, `${label}.generatedAt`);
+  assertReviewerQueuePermissionView(model.permission, `${label}.permission`);
+  assertString(model.localeBranchId, `${label}.localeBranchId`);
+  assertString(model.batchId, `${label}.batchId`);
+  assertNullableString(model.batchLabel, `${label}.batchLabel`);
+  assertNonNegativeInteger(model.submittedCount, `${label}.submittedCount`);
+  const edits = asArray(model.edits, `${label}.edits`);
+  for (const [index, editValue] of edits.entries()) {
+    const editLabel = `${label}.edits[${index}]`;
+    const edit = asStrictRecord(editValue, editLabel, [
+      "correctionEditId",
+      "projectId",
+      "localeBranchId",
+      "sourceRevisionId",
+      "bridgeUnitId",
+      "actorUserId",
+      "reason",
+      "beforeText",
+      "afterText",
+      "disposition",
+      "triageLabel",
+      "feedbackReportId",
+      "feedbackEvidenceId",
+      "reviewItemId",
+      "duplicate",
+    ]);
+    assertString(edit.correctionEditId, `${editLabel}.correctionEditId`);
+    assertString(edit.projectId, `${editLabel}.projectId`);
+    assertString(edit.localeBranchId, `${editLabel}.localeBranchId`);
+    assertString(edit.sourceRevisionId, `${editLabel}.sourceRevisionId`);
+    assertString(edit.bridgeUnitId, `${editLabel}.bridgeUnitId`);
+    assertString(edit.actorUserId, `${editLabel}.actorUserId`);
+    assertString(edit.reason, `${editLabel}.reason`);
+    assertNullableString(edit.beforeText, `${editLabel}.beforeText`);
+    assertString(edit.afterText, `${editLabel}.afterText`);
+    assertEnum(edit.disposition, workspaceCorrectionDispositionList, `${editLabel}.disposition`);
+    assertString(edit.triageLabel, `${editLabel}.triageLabel`);
+    assertString(edit.feedbackReportId, `${editLabel}.feedbackReportId`);
+    assertString(edit.feedbackEvidenceId, `${editLabel}.feedbackEvidenceId`);
+    assertNullableString(edit.reviewItemId, `${editLabel}.reviewItemId`);
+    assertBoolean(edit.duplicate, `${editLabel}.duplicate`);
+  }
+  assertStringArray(model.repairCandidateReportIds, `${label}.repairCandidateReportIds`);
+  assertStringArray(model.decisionQueueReportIds, `${label}.decisionQueueReportIds`);
+  assertStringArray(model.needsContextReportIds, `${label}.needsContextReportIds`);
+  assertStringArray(model.affectedBridgeUnitIds, `${label}.affectedBridgeUnitIds`);
+  assertWorkspaceCorrectionDiagnostics(model.diagnostics, `${label}.diagnostics`);
+}
+
+export function parseWorkspaceCorrectionSubmitRequest(
+  body: unknown,
+): ApiWorkspaceCorrectionSubmitRequest {
+  return parseRequest("ApiWorkspaceCorrectionSubmitRequest", () => {
+    const request = asRecord(body, "ApiWorkspaceCorrectionSubmitRequest");
+    assertString(request.projectId, "ApiWorkspaceCorrectionSubmitRequest.projectId");
+    assertString(request.localeBranchId, "ApiWorkspaceCorrectionSubmitRequest.localeBranchId");
+    assertString(request.sourceBundleId, "ApiWorkspaceCorrectionSubmitRequest.sourceBundleId");
+    assertString(request.targetLocale, "ApiWorkspaceCorrectionSubmitRequest.targetLocale");
+    assertString(request.actorUserId, "ApiWorkspaceCorrectionSubmitRequest.actorUserId");
+    const corrections = asArray(
+      request.corrections,
+      "ApiWorkspaceCorrectionSubmitRequest.corrections",
+    ).map((value, index) => {
+      const correctionLabel = `ApiWorkspaceCorrectionSubmitRequest.corrections[${index}]`;
+      const correction = asRecord(value, correctionLabel);
+      assertString(correction.bridgeUnitId, `${correctionLabel}.bridgeUnitId`);
+      assertString(correction.sourceRevisionId, `${correctionLabel}.sourceRevisionId`);
+      assertString(correction.reason, `${correctionLabel}.reason`);
+      assertString(correction.correctedText, `${correctionLabel}.correctedText`);
+      const parsed: WorkspaceCorrectionSubmission = {
+        bridgeUnitId: correction.bridgeUnitId,
+        sourceRevisionId: correction.sourceRevisionId,
+        reason: correction.reason,
+        correctedText: correction.correctedText,
+      };
+      if (correction.sourceUnitKey !== undefined) {
+        assertString(correction.sourceUnitKey, `${correctionLabel}.sourceUnitKey`);
+        parsed.sourceUnitKey = correction.sourceUnitKey;
+      }
+      if (correction.draftText !== undefined) {
+        assertString(correction.draftText, `${correctionLabel}.draftText`);
+        parsed.draftText = correction.draftText;
+      }
+      if (correction.feedbackType !== undefined) {
+        assertEnum(
+          correction.feedbackType,
+          feedbackTypeList as readonly FeedbackType[],
+          `${correctionLabel}.feedbackType`,
+        );
+        parsed.feedbackType = correction.feedbackType;
+      }
+      return parsed;
+    });
+    const result: ApiWorkspaceCorrectionSubmitRequest = {
+      projectId: request.projectId,
+      localeBranchId: request.localeBranchId,
+      sourceBundleId: request.sourceBundleId,
+      targetLocale: request.targetLocale,
+      actorUserId: request.actorUserId,
+      corrections,
+    };
+    if (request.batchLabel !== undefined) {
+      assertString(request.batchLabel, "ApiWorkspaceCorrectionSubmitRequest.batchLabel");
+      result.batchLabel = request.batchLabel;
+    }
+    if (request.actorDisplayName !== undefined) {
+      assertString(
+        request.actorDisplayName,
+        "ApiWorkspaceCorrectionSubmitRequest.actorDisplayName",
+      );
+      result.actorDisplayName = request.actorDisplayName;
+    }
+    return result;
+  });
 }
 
 export function assertWorkspaceProjectBrowseReadModel(

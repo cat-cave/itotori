@@ -4394,3 +4394,62 @@ export const reviewerQueueTransitions = pgTable(
     index("itotori_reviewer_queue_transitions_actor_idx").on(table.actorUserId, table.createdAt),
   ],
 );
+
+// ITOTORI-118 — durable edit history for reviewer manual corrections.
+//
+// One append-only row per correction. Tied to (project, locale branch, source
+// revision, bridge unit, actor, reason) and linked back to the feedback report
+// / evidence / reviewer-queue item the correction produced — the correction
+// enters the same feedback + decision + targeted-rerun loop, this table only
+// records the durable audit trail. `localeBranchId` keeps corrections
+// branch-scoped (ITOTORI-059); a correction is never conflated across branches.
+export const workspaceCorrectionEdits = pgTable(
+  "itotori_workspace_correction_edits",
+  {
+    correctionEditId: text("correction_edit_id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.projectId, { onDelete: "cascade" }),
+    localeBranchId: text("locale_branch_id")
+      .notNull()
+      .references(() => localeBranches.localeBranchId, { onDelete: "cascade" }),
+    sourceRevisionId: text("source_revision_id")
+      .notNull()
+      .references(() => sourceRevisions.sourceRevisionId, { onDelete: "restrict" }),
+    bridgeUnitId: text("bridge_unit_id").notNull(),
+    actorUserId: text("actor_user_id")
+      .notNull()
+      .references(() => users.userId, { onDelete: "restrict" }),
+    reason: text("reason").notNull(),
+    beforeText: text("before_text"),
+    afterText: text("after_text").notNull(),
+    disposition: text("disposition").notNull(),
+    triageLabel: text("triage_label").notNull(),
+    feedbackReportId: text("feedback_report_id")
+      .notNull()
+      .references(() => feedbackReports.feedbackReportId, { onDelete: "cascade" }),
+    feedbackEvidenceId: text("feedback_evidence_id").notNull(),
+    reviewItemId: text("review_item_id").references(() => reviewerQueueItems.reviewItemId, {
+      onDelete: "set null",
+    }),
+    batchId: text("batch_id").notNull(),
+    metadata: jsonb("metadata")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("itotori_workspace_correction_edits_branch_time_idx").on(
+      table.localeBranchId,
+      table.createdAt,
+    ),
+    index("itotori_workspace_correction_edits_unit_idx").on(
+      table.localeBranchId,
+      table.sourceRevisionId,
+      table.bridgeUnitId,
+    ),
+    index("itotori_workspace_correction_edits_feedback_idx").on(table.feedbackReportId),
+    index("itotori_workspace_correction_edits_batch_idx").on(table.batchId),
+  ],
+);

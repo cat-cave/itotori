@@ -19,6 +19,7 @@ import {
   ItotoriTranslationBatchRepository,
   ItotoriTranslationMemoryRepository,
   ItotoriTranslationMemoryService,
+  ItotoriWorkspaceCorrectionRepository,
   bootstrapLocalUser,
   createDatabaseContext,
   databaseUrlFromEnv,
@@ -80,6 +81,10 @@ import {
   type LocalizationWorkspaceApiServicePort,
 } from "../workspace/api-service.js";
 import {
+  WorkspaceCorrectionService,
+  type WorkspaceCorrectionServicePort,
+} from "../workspace/correction-service.js";
+import {
   ItotoriProjectWorkflowService,
   type ItotoriProjectWorkflowPort,
 } from "./project-workflow.js";
@@ -111,6 +116,7 @@ export type ItotoriApplicationServices = {
   };
   reviewerQueue: ReviewerQueueApiServicePort;
   workspace: LocalizationWorkspaceApiServicePort;
+  workspaceCorrections: WorkspaceCorrectionServicePort;
   exactSearch: {
     refreshDocuments(
       input: RefreshExactSearchDocumentsInput,
@@ -308,6 +314,8 @@ export async function withDatabaseItotoriServices<T>(
       },
       actionService: new ReviewerQueueActionService(reviewerQueueRepository),
     });
+    // ITOTORI-118 — workspace mutation layer: durable correction edit history.
+    const workspaceCorrectionRepository = new ItotoriWorkspaceCorrectionRepository(context.db);
     // ITOTORI-040 — read-oriented workspace composes existing read-model
     // ports; no direct DB access of its own.
     const workspaceApiService = new LocalizationWorkspaceApiService({
@@ -324,6 +332,23 @@ export async function withDatabaseItotoriServices<T>(
           assetDecisionRepository.loadCandidateAssets(localUserActor, projectId, localeBranchId),
         searchExact: (input) => exactSearchRepository.searchExact(localUserActor, input),
         searchTerminology: (input) => terminologyRepository.searchTerms(localUserActor, input),
+        loadComparisonContext: (input) => reviewerQueueApiService.loadDetailContext(input),
+      },
+    });
+    // ITOTORI-118 — the mutation service composes the feedback intake (so
+    // corrections enter the same decision + targeted-rerun loop), the durable
+    // edit-history repository, and the reviewer-detail comparison read-model
+    // for the before/after preview. Repository calls are bound to the local
+    // authorization actor, exactly like the read workspace.
+    const workspaceCorrectionService = new WorkspaceCorrectionService({
+      importPort: manualFeedbackService,
+      editRepository: {
+        recordCorrectionEdit: (input) =>
+          workspaceCorrectionRepository.recordCorrectionEdit(localUserActor, input),
+        loadCorrectionEditsByBranch: (localeBranchId) =>
+          workspaceCorrectionRepository.loadCorrectionEditsByBranch(localUserActor, localeBranchId),
+      },
+      comparisonPort: {
         loadComparisonContext: (input) => reviewerQueueApiService.loadDetailContext(input),
       },
     });
@@ -353,6 +378,7 @@ export async function withDatabaseItotoriServices<T>(
       },
       reviewerQueue: reviewerQueueApiService,
       workspace: workspaceApiService,
+      workspaceCorrections: workspaceCorrectionService,
       exactSearch: {
         refreshDocuments: (input) => exactSearchRepository.refreshDocuments(localUserActor, input),
         searchExact: (input) => exactSearchRepository.searchExact(localUserActor, input),

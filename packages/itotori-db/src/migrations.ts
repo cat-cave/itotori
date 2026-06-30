@@ -256,6 +256,10 @@ export const migrations = [
     id: "0049_provider_ledger_token_count_source",
     file: "0049_provider_ledger_token_count_source.sql",
   },
+  {
+    id: "0050_workspace_correction_edits",
+    file: "0050_workspace_correction_edits.sql",
+  },
 ] as const;
 
 function migrationPath(file: string): string {

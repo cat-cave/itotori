@@ -108,6 +108,9 @@ const readOnlyProjectWorkflowServices = new Set<keyof ItotoriApiServices["projec
 const readOnlyPostApiRoutes = new Set([
   "POST /api/reviewer/queue/batch-preview",
   "POST /api/reviewer/queue/batch-confirm",
+  // ITOTORI-118 — the correction submit mutates via the workspace correction
+  // service (gated on queue.manage), not via a projectWorkflow call.
+  "POST /api/workspace/corrections",
 ]);
 
 const apiMutationPermissionMatrix = [
@@ -2418,6 +2421,38 @@ function serviceFixture(): ItotoriApiServices {
         permission,
       })),
     },
+    workspaceCorrections: {
+      loadPreview: vi.fn(async ({ localeBranchId, permission }) => ({
+        schemaVersion: "workspace.correction_preview.v0.1" as const,
+        generatedAt: new Date("2026-06-30T00:00:00Z"),
+        permission,
+        localeBranchId,
+        units: [],
+        diagnostics: [],
+      })),
+      submitCorrections: vi.fn(async ({ localeBranchId, permission }) => ({
+        schemaVersion: "workspace.correction_submit.v0.1" as const,
+        generatedAt: new Date("2026-06-30T00:00:00Z"),
+        permission,
+        localeBranchId,
+        batchId: "workspace-correction-batch-test",
+        batchLabel: null,
+        submittedCount: permission.canManageQueue ? 1 : 0,
+        edits: [],
+        repairCandidateReportIds: [],
+        decisionQueueReportIds: [],
+        needsContextReportIds: [],
+        affectedBridgeUnitIds: [],
+        diagnostics: permission.canManageQueue
+          ? []
+          : [
+              {
+                code: "workspace_correction_mutation_permission_denied" as const,
+                message: "Workspace correction blocked: queue.manage missing",
+              },
+            ],
+      })),
+    },
   };
 }
 
@@ -2646,5 +2681,84 @@ describe("Itotori API handlers — localization workspace (ITOTORI-040)", () => 
     expect(
       (response.body as { permission: { canReadQueue: boolean } }).permission.canReadQueue,
     ).toBe(false);
+  });
+});
+
+describe("Itotori API handlers — workspace manual corrections (ITOTORI-118)", () => {
+  const submitBody = {
+    projectId: "project-1",
+    localeBranchId: "branch-1",
+    sourceBundleId: "bundle-1",
+    targetLocale: "en-US",
+    actorUserId: "reviewer-1",
+    corrections: [
+      {
+        bridgeUnitId: "unit-a",
+        sourceRevisionId: "rev-1",
+        reason: "Typo fix",
+        correctedText: "The hero.",
+      },
+    ],
+  };
+
+  it("GET preview reads through the API gated on queue.read", async () => {
+    const services = serviceFixture();
+    const response = await handleItotoriApiRequest(
+      {
+        method: "GET",
+        pathname: "/api/workspace/corrections",
+        search: "?localeBranchId=branch-1&reviewItemIds=item-1,item-2",
+      },
+      services,
+    );
+    expect(response.statusCode).toBe(200);
+    expect((response.body as { schemaVersion: string }).schemaVersion).toBe(
+      "workspace.correction_preview.v0.1",
+    );
+    expect(services.workspaceCorrections.loadPreview).toHaveBeenCalledWith(
+      expect.objectContaining({ localeBranchId: "branch-1", reviewItemIds: ["item-1", "item-2"] }),
+    );
+  });
+
+  it("POST submit records corrections through the API when queue.manage is held", async () => {
+    const services = serviceFixture();
+    const response = await handleItotoriApiRequest(
+      { method: "POST", pathname: "/api/workspace/corrections", body: submitBody },
+      services,
+    );
+    expect(response.statusCode).toBe(200);
+    expect((response.body as { submittedCount: number }).submittedCount).toBe(1);
+    expect(services.workspaceCorrections.submitCorrections).toHaveBeenCalledWith(
+      expect.objectContaining({ projectId: "project-1", localeBranchId: "branch-1" }),
+    );
+  });
+
+  it("POST submit is refused (no mutation) when queue.manage is missing", async () => {
+    const services = serviceFixture();
+    (services.authorization.requirePermission as ReturnType<typeof vi.fn>).mockImplementation(
+      async (permission) => {
+        if (permission === permissionValues.queueManage) {
+          throw new AuthorizationError({ userId: "reviewer-1" }, permissionValues.queueManage);
+        }
+      },
+    );
+    const response = await handleItotoriApiRequest(
+      { method: "POST", pathname: "/api/workspace/corrections", body: submitBody },
+      services,
+    );
+    expect(response.statusCode).toBe(200);
+    expect((response.body as { submittedCount: number }).submittedCount).toBe(0);
+    expect(
+      (response.body as { diagnostics: Array<{ code: string }> }).diagnostics.map((d) => d.code),
+    ).toContain("workspace_correction_mutation_permission_denied");
+  });
+
+  it("405s an unsupported method on the corrections route", async () => {
+    const services = serviceFixture();
+    const response = await handleItotoriApiRequest(
+      { method: "DELETE", pathname: "/api/workspace/corrections" },
+      services,
+    );
+    expect(response.statusCode).toBe(405);
   });
 });

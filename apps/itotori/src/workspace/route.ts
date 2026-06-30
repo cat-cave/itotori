@@ -26,9 +26,11 @@ import {
   renderWorkspaceSceneBrowseView,
   renderWorkspaceSearchView,
 } from "./view.js";
+import type { WorkspaceCorrectionPreviewReadModel } from "./correction-model.js";
+import { renderWorkspaceCorrectionPreviewView } from "./correction-view.js";
 
 export const workspaceRoutePathRegex =
-  /^\/workspace(?:\/(projects|scenes|assets|comparison|search))?$/u;
+  /^\/workspace(?:\/(projects|scenes|assets|comparison|search|corrections))?$/u;
 
 export type WorkspaceRoute =
   | { kind: "projects" }
@@ -41,7 +43,8 @@ export type WorkspaceRoute =
       localeBranchId: string;
       query: string;
       mode: WorkspaceSearchMode | null;
-    };
+    }
+  | { kind: "corrections"; localeBranchId: string; reviewItemIds: string[] };
 
 export function parseWorkspaceRoute(pathname: string, search = ""): WorkspaceRoute | null {
   const match = workspaceRoutePathRegex.exec(pathname);
@@ -76,6 +79,21 @@ export function parseWorkspaceRoute(pathname: string, search = ""): WorkspaceRou
         rawMode === "exact" || rawMode === "terminology" || rawMode === "all" ? rawMode : null;
       return { kind: "search", ...scope, query, mode };
     }
+    case "corrections": {
+      const localeBranchId = nonEmpty(params.get("localeBranchId"));
+      if (localeBranchId === null) {
+        return null;
+      }
+      const reviewItemIdsRaw = params.get("reviewItemIds");
+      const reviewItemIds =
+        reviewItemIdsRaw === null
+          ? []
+          : reviewItemIdsRaw
+              .split(",")
+              .map((value) => value.trim())
+              .filter((value) => value.length > 0);
+      return { kind: "corrections", localeBranchId, reviewItemIds };
+    }
     default:
       return null;
   }
@@ -92,7 +110,8 @@ export function workspaceRouteApiTarget(route: WorkspaceRoute): {
     | "workspace.scenes"
     | "workspace.assets"
     | "workspace.comparison"
-    | "workspace.search";
+    | "workspace.search"
+    | "workspace.correctionPreview";
 } {
   switch (route.kind) {
     case "projects":
@@ -122,6 +141,16 @@ export function workspaceRouteApiTarget(route: WorkspaceRoute): {
         params.set("mode", route.mode);
       }
       return { apiPath: `/api/workspace/search?${params.toString()}`, routeId: "workspace.search" };
+    }
+    case "corrections": {
+      const params = new URLSearchParams({ localeBranchId: route.localeBranchId });
+      if (route.reviewItemIds.length > 0) {
+        params.set("reviewItemIds", route.reviewItemIds.join(","));
+      }
+      return {
+        apiPath: `/api/workspace/corrections?${params.toString()}`,
+        routeId: "workspace.correctionPreview",
+      };
     }
   }
 }
@@ -160,7 +189,8 @@ export function renderWorkspaceReadModel(
     | "workspace.scenes"
     | "workspace.assets"
     | "workspace.comparison"
-    | "workspace.search",
+    | "workspace.search"
+    | "workspace.correctionPreview",
   body: unknown,
 ): string {
   switch (routeId) {
@@ -174,6 +204,8 @@ export function renderWorkspaceReadModel(
       return renderWorkspaceComparisonView(body as WorkspaceComparisonReadModel);
     case "workspace.search":
       return renderWorkspaceSearchView(body as WorkspaceSearchReadModel);
+    case "workspace.correctionPreview":
+      return renderWorkspaceCorrectionPreviewView(body as WorkspaceCorrectionPreviewReadModel);
   }
 }
 

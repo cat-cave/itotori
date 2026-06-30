@@ -48,6 +48,7 @@ import {
   parseReviewerBatchExecuteRequest,
   parseReviewerBatchPreviewRequest,
   parseRuntimeEvidenceRequest,
+  parseWorkspaceCorrectionSubmitRequest,
   type ApiDraftBranchResponse,
   type ApiErrorResponse,
   type ApiAssetDecisionsResponse,
@@ -78,10 +79,13 @@ import type {
   LocalizationWorkspaceApiServicePort,
   LoadWorkspaceSearchInput,
 } from "./workspace/api-service.js";
+import type { WorkspaceCorrectionServicePort } from "./workspace/correction-service.js";
 import { workspaceSearchModeValues } from "./workspace/read-model.js";
 import type {
   ApiWorkspaceAssetBrowseResponse,
   ApiWorkspaceComparisonResponse,
+  ApiWorkspaceCorrectionPreviewResponse,
+  ApiWorkspaceCorrectionSubmitResponse,
   ApiWorkspaceProjectBrowseResponse,
   ApiWorkspaceSceneBrowseResponse,
   ApiWorkspaceSearchResponse,
@@ -135,6 +139,7 @@ export type ItotoriApiServices = {
   };
   reviewerQueue: ReviewerQueueApiServicePort;
   workspace: LocalizationWorkspaceApiServicePort;
+  workspaceCorrections: WorkspaceCorrectionServicePort;
   assetDecisions: {
     loadActiveDecisions(
       projectId: string,
@@ -311,6 +316,27 @@ async function routeItotoriApiRequest(
     );
   }
 
+  if (request.method === "GET" && request.pathname === "/api/workspace/corrections") {
+    const permission = await resolveApiReviewerQueuePermissionView(
+      services,
+      parseActorUserIdQuery(request.search),
+    );
+    const previewInput = parseWorkspaceCorrectionPreviewQuery(request.search);
+    return ok(
+      "workspace.correctionPreview",
+      await services.workspaceCorrections.loadPreview({ ...previewInput, permission }),
+    );
+  }
+
+  if (request.method === "POST" && request.pathname === "/api/workspace/corrections") {
+    const body = parseWorkspaceCorrectionSubmitRequest(request.body);
+    const permission = await resolveApiReviewerQueuePermissionView(services, body.actorUserId);
+    return ok(
+      "workspace.correctionSubmit",
+      await services.workspaceCorrections.submitCorrections({ ...body, permission }),
+    );
+  }
+
   if (
     request.method !== "GET" &&
     (request.pathname === "/api/workspace/projects" ||
@@ -320,6 +346,14 @@ async function routeItotoriApiRequest(
       request.pathname === "/api/workspace/search")
   ) {
     return methodNotAllowed(["GET"]);
+  }
+
+  if (
+    request.pathname === "/api/workspace/corrections" &&
+    request.method !== "GET" &&
+    request.method !== "POST"
+  ) {
+    return methodNotAllowed(["GET", "POST"]);
   }
 
   const assetDecisionRoute = parseAssetDecisionApiRoute(request.pathname);
@@ -616,6 +650,28 @@ function parseWorkspaceBranchScopeQuery(
     scope.sourceRevisionId = sourceRevisionId;
   }
   return scope;
+}
+
+function parseWorkspaceCorrectionPreviewQuery(search = ""): {
+  localeBranchId: string;
+  reviewItemIds: string[];
+} {
+  const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
+  assertKnownQueryParams(
+    params,
+    ["localeBranchId", "reviewItemIds", "actorUserId"],
+    "workspace corrections preview",
+  );
+  const localeBranchId = requiredNonEmptyParam(params, "localeBranchId");
+  const reviewItemIdsRaw = params.get("reviewItemIds");
+  const reviewItemIds =
+    reviewItemIdsRaw === null
+      ? []
+      : reviewItemIdsRaw
+          .split(",")
+          .map((value) => value.trim())
+          .filter((value) => value.length > 0);
+  return { localeBranchId, reviewItemIds };
 }
 
 function parseWorkspaceComparisonQuery(search = ""): string {
@@ -1102,6 +1158,14 @@ function ok(routeId: "workspace.scenes", body: ApiWorkspaceSceneBrowseResponse):
 function ok(routeId: "workspace.assets", body: ApiWorkspaceAssetBrowseResponse): ApiJsonResponse;
 function ok(routeId: "workspace.comparison", body: ApiWorkspaceComparisonResponse): ApiJsonResponse;
 function ok(routeId: "workspace.search", body: ApiWorkspaceSearchResponse): ApiJsonResponse;
+function ok(
+  routeId: "workspace.correctionPreview",
+  body: ApiWorkspaceCorrectionPreviewResponse,
+): ApiJsonResponse;
+function ok(
+  routeId: "workspace.correctionSubmit",
+  body: ApiWorkspaceCorrectionSubmitResponse,
+): ApiJsonResponse;
 function ok(routeId: "projects.status", body: ProjectDashboardStatus): ApiJsonResponse;
 function ok(routeId: "projects.decisions", body: DashboardDecisionReadModel): ApiJsonResponse;
 function ok(routeId: "projects.cost", body: ProjectCostReport): ApiJsonResponse;

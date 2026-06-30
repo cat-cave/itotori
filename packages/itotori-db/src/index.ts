@@ -755,6 +755,21 @@ export type {
   ReviewerQueueItemState,
   ReviewerQueueTransitionRecord,
 } from "./schema.js";
+export {
+  ItotoriWorkspaceCorrectionRepository,
+  WorkspaceCorrectionRepositoryError,
+  workspaceCorrectionDispositionList,
+  workspaceCorrectionDispositionValues,
+  workspaceCorrectionEventKind,
+  workspaceCorrectionRepositoryErrorCodes,
+} from "./repositories/workspace-correction-repository.js";
+export type {
+  ItotoriWorkspaceCorrectionRepositoryPort,
+  WorkspaceCorrectionDisposition,
+  WorkspaceCorrectionEditInput,
+  WorkspaceCorrectionEditRecord,
+  WorkspaceCorrectionRepositoryErrorCode,
+} from "./repositories/workspace-correction-repository.js";
 export type {
   ItotoriAuditFindingRepositoryPort,
   LoadFindingsByNodeOptions,

@@ -30,6 +30,7 @@ import { ItotoriTerminologyRepository } from "../src/repositories/terminology-re
 import { ItotoriTranslationBatchRepository } from "../src/repositories/translation-batch-repository.js";
 import { ItotoriSceneSummaryRepository } from "../src/repositories/scene-summary-repository.js";
 import { ItotoriTranslationMemoryRepository } from "../src/repositories/translation-memory-repository.js";
+import { ItotoriWorkspaceCorrectionRepository } from "../src/repositories/workspace-correction-repository.js";
 import type { DatabaseContext, ItotoriDatabase } from "../src/connection.js";
 import { assertDeniedRepositoryMutation } from "./authorization-test-helpers.js";
 import { isolatedMigratedContext } from "./db-test-context.js";
@@ -897,6 +898,18 @@ const repositoryPermissionGateMatrix = [
     "reviewer-queue-repository.test.ts load transitions by item coverage",
     (repo) => repo.loadTransitionsByItem(deniedActor, "reviewer-queue-x"),
   ),
+  workspaceCorrectionGate(
+    "recordCorrectionEdit",
+    "queueManage",
+    "workspace-correction-repository.test.ts record correction coverage",
+    (repo) => repo.recordCorrectionEdit(deniedActor, undefined as never),
+  ),
+  workspaceCorrectionGate(
+    "loadCorrectionEditsByBranch",
+    "queueRead",
+    "workspace-correction-repository.test.ts load corrections by branch coverage",
+    (repo) => repo.loadCorrectionEditsByBranch(deniedActor, "branch-x"),
+  ),
 ] as const satisfies readonly RepositoryPermissionGateCase[];
 
 describe("repository permission gate matrix", () => {
@@ -1740,6 +1753,18 @@ describe("repository permission gate matrix", () => {
           "requiredPermission": "queue.read",
           "successFixture": "reviewer-queue-repository.test.ts load transitions by item coverage",
         },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriWorkspaceCorrectionRepository.recordCorrectionEdit",
+          "requiredPermission": "queue.manage",
+          "successFixture": "workspace-correction-repository.test.ts record correction coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriWorkspaceCorrectionRepository.loadCorrectionEditsByBranch",
+          "requiredPermission": "queue.read",
+          "successFixture": "workspace-correction-repository.test.ts load corrections by branch coverage",
+        },
       ]
     `);
   });
@@ -2155,6 +2180,22 @@ function reviewerQueueGate(
     permissionKey,
     successFixture,
     runDeniedMutation: (db) => run(new ItotoriReviewerQueueRepository(db)),
+  });
+}
+
+function workspaceCorrectionGate(
+  mutation: string,
+  permissionKey: PermissionKey,
+  successFixture: string,
+  run: (repository: ItotoriWorkspaceCorrectionRepository) => Promise<unknown>,
+): RepositoryPermissionGateCase {
+  return repositoryGate({
+    repository: "ItotoriWorkspaceCorrectionRepository",
+    sourceFile: "workspace-correction-repository.ts",
+    mutation,
+    permissionKey,
+    successFixture,
+    runDeniedMutation: (db) => run(new ItotoriWorkspaceCorrectionRepository(db)),
   });
 }
 
