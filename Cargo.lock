@@ -586,6 +586,7 @@ name = "kaifuu-rpgmaker"
 version = "0.0.0"
 dependencies = [
  "kaifuu-core",
+ "kaifuu-delta",
  "serde",
  "serde_json",
  "sha2",

@@ -8,6 +8,7 @@ description = "Pure-Rust RPG Maker MV/MZ www/data/*.json text-extraction adapter
 
 [dependencies]
 kaifuu-core = { path = "../kaifuu-core" }
+kaifuu-delta = { path = "../kaifuu-delta" }
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
@@ -15,3 +16,6 @@ thiserror.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
+kaifuu-core = { path = "../kaifuu-core" }
+kaifuu-delta = { path = "../kaifuu-delta" }
+serde_json.workspace = true

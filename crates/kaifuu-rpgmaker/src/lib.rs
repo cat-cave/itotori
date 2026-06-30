@@ -50,6 +50,8 @@ mod bridge;
 mod codes;
 mod escape;
 mod extract;
+mod json_locate;
+mod patchback;
 
 use std::fs;
 use std::path::Path;
@@ -65,6 +67,15 @@ pub use escape::{EscapeSpan, scan_escape_spans};
 pub use extract::{
     ExtractAcc, Finding, FindingKind, ProtoUnit, SurfaceKind, is_database_file, walk_common_events,
     walk_database, walk_map, walk_system, walk_troops,
+};
+pub use json_locate::{LocateError, QuotedSpan, Scanner, encode_json_string_ascii_safe};
+pub use patchback::{
+    JsonStringEscaping, PATCHBACK_BUNDLE_SCHEMA_INVALID_CODE, PATCHBACK_DELTA_PRODUCE_CODE,
+    PATCHBACK_IO_CODE, PATCHBACK_OVERLAPPING_SURFACES_CODE, PATCHBACK_STALE_SOURCE_CODE,
+    PATCHBACK_SURFACE_KEY_MALFORMED_CODE, PATCHBACK_TARGET_EMPTY_CODE,
+    PATCHBACK_UNRESOLVED_SURFACE_CODE, PATCHBACK_VERIFICATION_FAILED_CODE, PatchbackError,
+    PatchbackOpts, ProducedDelta, TranslatedBundleV02, TranslatedUnitTarget,
+    apply_translated_bundle, produce_delta_package,
 };
 
 /// Full result of a game-directory extraction.
