@@ -3,8 +3,13 @@
 //! Composes the three patch-back slices end-to-end in one synchronous
 //! flow:
 //!
-//! 1. KAIFUU-174 — `kaifuu_reallive::apply_patches` over a synthetic
-//!    SEEN.TXT envelope produces the patched byte buffer.
+//! 1. KAIFUU-211 — `kaifuu_reallive::apply_translated_bundle` (the
+//!    canonical `bundle_driven` patchback) consumes a translated v0.2
+//!    BridgeBundle over a synthetic real-shape SEEN.TXT envelope and
+//!    produces the patched byte buffer. The legacy length-preserving
+//!    slot-edit surface has been deleted (no-legacy-compat); the
+//!    smoke exercises the same path the alpha `patch --engine reallive`
+//!    command uses.
 //! 2. KAIFUU-084 — `kaifuu_core::patch_transaction::PatchTransaction`
 //!    drives preflight → stage → verify → promote and emits the v0.2
 //!    PatchResult shape.
@@ -28,8 +33,12 @@ use kaifuu_core::{
     sha256_hash_bytes, write_json,
 };
 use kaifuu_reallive::{
-    PatchBackError, PatchBackErrorCode, RealLiveSceneIndex, Scene, SlotEdit, SlotEditLengthPolicy,
-    apply_patches, parse_archive, parse_scene_into_ast,
+    PATCHBACK_ARCHIVE_PARSE_FAILURE_CODE, PATCHBACK_BUNDLE_SCHEMA_INVALID_CODE,
+    PATCHBACK_COMPRESS_FAILURE_CODE, PATCHBACK_DECOMPRESS_FAILURE_CODE,
+    PATCHBACK_PROVENANCE_MISMATCH_CODE, PATCHBACK_SCENE_HEADER_INVALID_CODE,
+    PATCHBACK_SCENE_PACKING_OVERFLOW_CODE, PATCHBACK_TARGET_ENCODE_FAILURE_CODE, PatchbackError,
+    PatchbackOpts, SCENE_HEADER_BYTE_LEN, TranslatedBundleV02, apply_translated_bundle,
+    compress_avg32_literal, parse_archive,
 };
 use serde_json::{Value, json};
 
@@ -66,9 +75,9 @@ pub struct BinaryPatchSmokeConfig<'a> {
     /// `SEEN.TXT` from `<fixture>/SEEN.TXT` (overriding the synthetic
     /// fixture builder); otherwise the smoke constructs the deterministic
     /// real-shape SEEN.TXT envelope from [`build_synthetic_seen_txt`] (the
-    /// 80,000-byte 10,000-slot directory + one post-KAIFUU-191 scene) and
-    /// applies a fixed length-preserving patch to its Textout dialogue
-    /// slot.
+    /// 80,000-byte 10,000-slot directory + one real-framed scene) and
+    /// applies a fixed translated v0.2 bundle to its Textout dialogue
+    /// unit via the canonical `bundle_driven` patchback.
     pub fixture_dir: Option<&'a Path>,
     pub output_dir: &'a Path,
     pub inject_failure: InjectFailure,
@@ -101,47 +110,43 @@ impl BinarySmokeOutcome {
     }
 }
 
-/// Byte length of the editable Textout dialogue run in the synthetic
-/// scene (`"あい"` = `82 A0 82 A2`). Both the builder and the
-/// length-preserving SlotEdit key on this so the smoke stays in lock-step
-/// when the fixture is regenerated.
-const SYNTHETIC_DIALOGUE_BYTE_LEN: u64 = 4;
+/// Compiler version stamped in the synthetic scene header (matches the
+/// real Sweetie HD scene-1 compiler version, KAIFUU-191).
+const SYNTHETIC_COMPILER_VERSION: u32 = 110_002;
 
-/// Build a deterministic synthetic SEEN.TXT envelope that is structurally
-/// faithful to real RealLive bytes (KAIFUU FIX-1).
-///
-/// Envelope: the real 10,000-slot fixed-offset directory (KAIFUU-188) —
-/// 80,000 bytes of `(u32_le offset, u32_le length)` pairs at file offset
-/// 0. One scene is populated at slot 1 (`reallive:scene-0001`); its
-/// payload sits at file offset `0x0001_3880` (= 80,000, immediately after
-/// the directory), mirroring Sweetie HD's first-scene layout. Slot 0 stays
-/// zeroed (reserved) so the envelope parser exercises its skip path.
-///
-/// Scene body: **post-KAIFUU-191 real opener-byte shape** decoded by
-/// `kaifuu_reallive::parse_scene`. The bytes are the *decompressed* scene
-/// bytecode the parser consumes — real Seen.txt scenes add an outer AVG32
-/// LZSS + XOR frame (8-byte preamble per
-/// `kaifuu_reallive::AVG32_COMPRESSED_PREAMBLE_LEN`, `0x1d0`-byte scene
-/// header) on top, and the length-preserving patch-back surface operates
-/// on this post-decompression layer (parser contract: "the caller owns
-/// AVG32 LZSS + XOR decompression"). The unit tests prove the body still
-/// round-trips byte-identically through `compress_avg32_literal` /
-/// `decompress_avg32`.
-///
-/// The body opens with a documented Meta run (MetaLine / MetaEntrypoint /
-/// MetaKidoku — the real Sweetie HD scene-1 prologue shape) and then
-/// exercises every alpha string role through real 8-byte `CommandElement`
-/// headers (`0x23`, module_type, module_id, opcode_u16_le, argc, overload,
-/// reserved) plus a bracketed `( arg , arg )` argument list:
+/// Canonical v0.2 sourceUnitKey for the synthetic dialogue unit
+/// (`reallive:scene-NNNN#OOOO`). Scene 1, occurrence 0 — the first (and
+/// only) translatable Textout in the synthetic scene.
+const SYNTHETIC_DIALOGUE_SOURCE_UNIT_KEY: &str = "reallive:scene-0001#0000";
+
+/// Shift-JIS sentinel the synthetic bundle translates the dialogue unit
+/// to. `"うえ"` (`0x82 0xA4 0x82 0xA6`) encodes to the same 4-byte budget
+/// as the `"あい"` source body, so the bundle_driven re-emission keeps the
+/// scene's decompressed length — and (because the AVG32 literal encoder's
+/// output size depends only on its input size) the recompressed blob and
+/// the whole archive stay byte-length-identical. That length-stability is
+/// what lets the composed KAIFUU-084 `PatchTransaction` identity
+/// relocation invariant (`expected_payload_len == source length`) hold.
+/// The leading `0x82` is a Shift-JIS lead byte, so the patched bytes still
+/// re-parse as a Textout run.
+const SYNTHETIC_TARGET_TEXT: &str = "うえ";
+
+/// Build the synthetic scene's **decompressed** bytecode: the real
+/// post-KAIFUU-191 opener-byte shape decoded by
+/// `kaifuu_reallive::parse_scene`, exercising every alpha string role
+/// through real 8-byte `CommandElement` headers plus a bracketed
+/// `( arg , arg )` argument list:
+/// - Meta prologue (MetaLine / MetaEntrypoint / MetaKidoku).
 /// - `SetSpeaker`   — module_msg (id 3) opcode 3 → `CharacterTextDisplay`.
-/// - `Textout`      — inline Shift-JIS run `"あい"` (editable Dialogue).
+/// - `Textout`      — inline Shift-JIS run `"あい"` (the editable Dialogue
+///   unit at occurrence 0).
 /// - `TextDisplay`  — module_msg (id 3) opcode 10 → `TextDisplay`.
 /// - `Choice`       — module_sel (id 5), argc=2, two Shift-JIS choices.
 /// - scene terminator — module_sys (id 4) opcode 17 → `End`.
 ///
 /// The whole body decodes with **0 unknown opcodes**; no retail bytecode
 /// or text is copied — every byte is authored from the documented shape.
-pub fn build_synthetic_seen_txt() -> Vec<u8> {
+pub fn synthetic_scene_bytecode() -> Vec<u8> {
     // An 8-byte real `CommandElement` header (rlvm `bytecode.h:CommandElement`
     // — research anchor only): `0x23`, module_type, module_id,
     // opcode_u16_le (lo, hi), argc, overload, reserved.
@@ -165,7 +170,7 @@ pub fn build_synthetic_seen_txt() -> Vec<u8> {
     // SetSpeaker: module_msg opcode 3 → CharacterTextDisplay (argc 0).
     scene.extend_from_slice(&command_header(MODULE_TYPE_KEPAGO, MODULE_MSG, 3, 0));
     // Textout: inline Shift-JIS dialogue run "あい" (82 A0 82 A2). This is
-    // the single editable Dialogue slot the length-preserving smoke edits.
+    // the single editable Dialogue unit the bundle translates.
     scene.extend_from_slice(&[0x82, 0xA0, 0x82, 0xA2]);
     // TextDisplay: module_msg opcode 10 (in 1..=200, != 3) (argc 0).
     scene.extend_from_slice(&command_header(MODULE_TYPE_KEPAGO, MODULE_MSG, 10, 0));
@@ -178,83 +183,256 @@ pub fn build_synthetic_seen_txt() -> Vec<u8> {
     scene.push(b')'); // 0x29
     // Scene terminator: module_sys opcode 17 → End (argc 0).
     scene.extend_from_slice(&command_header(MODULE_TYPE_KEPAGO, MODULE_SYS, 17, 0));
+    scene
+}
 
+/// Frame the synthetic decompressed bytecode into a real scene blob:
+/// a `SCENE_HEADER_BYTE_LEN`-byte (0x1d0) scene header (compiler version
+/// at 0x04, bytecode_offset/uncompressed/compressed sizes at 0x20/0x24/
+/// 0x28) followed by the AVG32 LZSS literal-compressed bytecode. This is
+/// the on-disk shape `kaifuu_reallive::SceneHeader::parse` +
+/// `decompress_avg32` consume — the same framing the bundle_driven
+/// patchback inverts.
+fn synthetic_scene_blob() -> Vec<u8> {
+    let bytecode = synthetic_scene_bytecode();
+    let compressed = compress_avg32_literal(&bytecode).expect("synthetic bytecode compresses");
+
+    let mut header = vec![0u8; SCENE_HEADER_BYTE_LEN];
+    header[0..4].copy_from_slice(&(SCENE_HEADER_BYTE_LEN as u32).to_le_bytes());
+    header[4..8].copy_from_slice(&SYNTHETIC_COMPILER_VERSION.to_le_bytes());
+    // bytecode_offset at 0x20 (immediately after the header).
+    header[0x20..0x24].copy_from_slice(&(SCENE_HEADER_BYTE_LEN as u32).to_le_bytes());
+    // bytecode_uncompressed_size at 0x24.
+    header[0x24..0x28].copy_from_slice(&(bytecode.len() as u32).to_le_bytes());
+    // bytecode_compressed_size at 0x28.
+    header[0x28..0x2c].copy_from_slice(&(compressed.len() as u32).to_le_bytes());
+
+    let mut blob = Vec::with_capacity(header.len() + compressed.len());
+    blob.extend_from_slice(&header);
+    blob.extend_from_slice(&compressed);
+    blob
+}
+
+/// Build a deterministic synthetic SEEN.TXT envelope that is structurally
+/// faithful to real RealLive bytes (KAIFUU FIX-1 + KAIFUU-211 framing).
+///
+/// Envelope: the real 10,000-slot fixed-offset directory (KAIFUU-188) —
+/// 80,000 bytes of `(u32_le offset, u32_le length)` pairs at file offset
+/// 0. One scene is populated at slot 1 (`reallive:scene-0001`); its blob
+/// (a real 0x1d0-byte scene header + AVG32-compressed bytecode) sits at
+/// file offset `0x0001_3880` (= 80,000, immediately after the directory),
+/// mirroring Sweetie HD's first-scene layout. Slot 0 stays zeroed
+/// (reserved) so the envelope parser exercises its skip path.
+pub fn build_synthetic_seen_txt() -> Vec<u8> {
+    let blob = synthetic_scene_blob();
     let directory_byte_len = kaifuu_reallive::REALLIVE_SEEN_TXT_DIRECTORY_BYTE_LEN as usize;
     let payload_offset = directory_byte_len as u32;
-    let mut archive = vec![0u8; directory_byte_len + scene.len()];
-    // Slot 1: (offset = 0x0001_3880, size = scene.len()). Slot N lives at
+    let mut archive = vec![0u8; directory_byte_len + blob.len()];
+    // Slot 1: (offset = 0x0001_3880, size = blob.len()). Slot N lives at
     // directory byte offset N × 8; slot 0 stays zeroed (reserved).
     let slot1 = 8usize;
     archive[slot1..slot1 + 4].copy_from_slice(&payload_offset.to_le_bytes());
-    archive[slot1 + 4..slot1 + 8].copy_from_slice(&(scene.len() as u32).to_le_bytes());
-    archive[directory_byte_len..].copy_from_slice(&scene);
+    archive[slot1 + 4..slot1 + 8].copy_from_slice(&(blob.len() as u32).to_le_bytes());
+    archive[directory_byte_len..].copy_from_slice(&blob);
     archive
 }
 
-/// Build a deterministic synthetic SlotEdit replacing the editable Textout
-/// dialogue run (`"あい"`) with a length-preserving Shift-JIS translation
-/// (`"うえ"`, also 4 bytes). Both encode to `SYNTHETIC_DIALOGUE_BYTE_LEN`
-/// bytes so the patch stays length-preserving and the post-patch self-check
-/// re-parse keeps the scene table byte-identical.
-pub fn build_synthetic_slot_edit(scenes: &[Scene]) -> SlotEdit {
-    let scene = &scenes[0];
-    let dialogue_slot = scene
-        .strings
-        .iter()
-        .find(|s| {
-            s.semantic_role == kaifuu_reallive::StringSlotRole::Dialogue
-                && s.byte_len == SYNTHETIC_DIALOGUE_BYTE_LEN
-        })
-        .expect("synthetic Textout dialogue slot of 4 bytes");
-    SlotEdit {
-        scene_id: scene.scene_id.as_str().to_string(),
-        slot_id: dialogue_slot.slot_id.as_str().to_string(),
-        replacement_text: "うえ".to_string(),
-        length_policy: SlotEditLengthPolicy::LengthPreserving,
-        expected_source_hash: None,
-    }
+/// Build the synthetic translated v0.2 BridgeBundle JSON for the single
+/// dialogue unit. The source side is a canonical v0.2 BridgeBundle (the
+/// shape `kaifuu_core::BridgeBundleV02::validate_json` accepts) augmented
+/// with a per-unit `target` object. `source_unit_key` is parameterised so
+/// the failure-injection seam can point it at an unresolvable occurrence.
+fn build_synthetic_translated_bundle_json(target_text: &str, source_unit_key: &str) -> Value {
+    let bridge_id = "01970000-0000-7000-8000-000000000001";
+    let revision_id = "01970000-0000-7000-8000-000000000002";
+    let asset_id = "01970000-0000-7000-8000-000000000003";
+    let bridge_unit_id = "01970000-0000-7000-8000-000000000004";
+    let surface_id = "01970000-0000-7000-8000-000000000005";
+    let source_profile_revision_id = "01970000-0000-7000-8000-000000000007";
+
+    let scene_blob_hash = sha256_hash_bytes(b"synthetic-scene-1-placeholder-content");
+    let source_hash = sha256_hash_bytes("Synthetic source text".as_bytes());
+    let source_profile_hash = sha256_hash_bytes(b"kaifuu-reallive-sweetie-hd");
+
+    // The dialogue body sits at decompressed offset 17 (after the 9-byte
+    // Meta prologue + the 8-byte SetSpeaker header) and is 4 bytes wide.
+    // bundle_driven only uses this range for a positive-width sanity
+    // check; the authoritative key is the occurrence in `source_unit_key`.
+    let start_byte = kaifuu_reallive::REALLIVE_SEEN_TXT_DIRECTORY_BYTE_LEN + 17;
+    let end_byte = start_byte + 4;
+
+    json!({
+        "schemaVersion": "0.2.0",
+        "bridgeId": bridge_id,
+        "sourceGame": {
+            "gameId": "sweetie-hd",
+            "gameVersion": "1.0.0",
+            "sourceProfileId": "kaifuu-reallive-sweetie-hd",
+            "sourceProfileRevision": {
+                "revisionId": source_profile_revision_id,
+                "revisionKind": "content_hash",
+                "value": source_profile_hash,
+            },
+        },
+        "sourceBundleHash": scene_blob_hash,
+        "sourceBundleRevision": {
+            "revisionId": revision_id,
+            "revisionKind": "content_hash",
+            "value": scene_blob_hash,
+        },
+        "sourceLocale": "ja-JP",
+        "hashStrategy": {
+            "sourceProfile": {
+                "scope": "source_profile",
+                "algorithm": "sha256",
+                "normalization": "utf8-nfc-lf-json-stable-v1",
+            },
+            "sourceBundle": {
+                "scope": "source_bundle",
+                "algorithm": "sha256",
+                "normalization": "utf8-nfc-lf-json-stable-v1",
+            },
+            "sourceAsset": {
+                "scope": "source_asset",
+                "algorithm": "sha256",
+                "normalization": "bytes",
+            },
+            "sourceUnit": {
+                "scope": "source_unit",
+                "algorithm": "sha256",
+                "normalization": "utf8-nfc-lf-json-stable-v1",
+                "fields": ["sourceLocale", "sourceUnitKey", "sourceText", "spans.raw"],
+            },
+            "patchExport": {
+                "scope": "patch_export",
+                "algorithm": "sha256",
+                "normalization": "utf8-nfc-lf-json-stable-v1",
+            },
+            "deltaPackage": {
+                "scope": "delta_package",
+                "algorithm": "sha256",
+                "normalization": "utf8-nfc-lf-json-stable-v1",
+            },
+        },
+        "extractor": {
+            "name": "kaifuu-reallive-bridge",
+            "version": "0.1.0",
+        },
+        "assets": [
+            {
+                "assetId": asset_id,
+                "assetKey": "reallive:scene-0001",
+                "assetKind": "script",
+                "sourceHash": scene_blob_hash,
+                "sourceRevision": {
+                    "revisionId": revision_id,
+                    "revisionKind": "content_hash",
+                    "value": scene_blob_hash,
+                },
+                "path": "REALLIVEDATA/Seen.txt#scene-0001",
+            }
+        ],
+        "units": [
+            {
+                "bridgeUnitId": bridge_unit_id,
+                "surfaceId": surface_id,
+                "surfaceKind": "dialogue",
+                "sourceUnitKey": source_unit_key,
+                "occurrenceId": "scene-0001-occ-0000",
+                "sourceLocale": "ja-JP",
+                "sourceText": "Synthetic source text",
+                "sourceHash": source_hash,
+                "sourceRevision": {
+                    "revisionId": revision_id,
+                    "revisionKind": "content_hash",
+                    "value": scene_blob_hash,
+                },
+                "sourceAssetRef": {
+                    "assetId": asset_id,
+                    "assetKey": "reallive:scene-0001",
+                },
+                "sourceLocation": {
+                    "containerKey": "reallive:scene-0001",
+                    "entryPath": ["scene", "0001", "units", "0000"],
+                    "range": {
+                        "startByte": start_byte,
+                        "endByte": end_byte,
+                    },
+                },
+                "speaker": {"knowledgeState": "not_applicable"},
+                "context": {
+                    "route": {
+                        "sceneKey": "scene-0001",
+                        "position": "line-0000",
+                    },
+                },
+                "spans": [],
+                "patchRef": {
+                    "assetId": asset_id,
+                    "writeMode": "replace",
+                    "sourceUnitKey": source_unit_key,
+                    "sourceRevision": {
+                        "revisionId": revision_id,
+                        "revisionKind": "content_hash",
+                        "value": scene_blob_hash,
+                    },
+                },
+                "runtimeExpectation": {
+                    "expectationKind": "trace_text",
+                    "traceKey": "scene-0001-occ-0000",
+                },
+                "target": {
+                    "locale": "en-US",
+                    "text": target_text,
+                }
+            }
+        ],
+        "policyRecords": [],
+    })
 }
 
-/// Map a [`PatchBackError`] to a v0.2 PatchResult `failures[0]`
-/// payload. Mirrors the KAIFUU-010 §6 / KAIFUU-084 §6 table.
-pub fn map_patchback_error_to_v02_failure(error: &PatchBackError) -> Value {
-    let (category, diagnostic_code) = match error.code {
-        PatchBackErrorCode::OffsetOverflow => (
-            "patch_write_failed",
-            "kaifuu.reallive.patchback_offset_overflow",
-        ),
-        PatchBackErrorCode::ShiftJisEncodeFailure => (
-            "patch_write_failed",
-            "kaifuu.reallive.patchback_shift_jis_encode_failure",
-        ),
-        PatchBackErrorCode::UnsupportedLengthPolicy => (
-            "adapter_unsupported",
-            "kaifuu.reallive.patchback_unsupported_length_policy",
-        ),
-        PatchBackErrorCode::ParserRegression => (
-            "patch_write_failed",
-            "kaifuu.reallive.patchback_parser_regression",
-        ),
-        PatchBackErrorCode::UnknownSlotId => {
-            ("asset_missing", "kaifuu.reallive.patchback_unknown_slot_id")
+/// Map a [`PatchbackError`] (the canonical `bundle_driven` patchback
+/// error) to a v0.2 PatchResult `failures[0]` payload. The diagnostic
+/// code is the stable `kaifuu.reallive.patchback_*` code the error
+/// publishes; the category is the closest v0.2 `PATCH_FAILURE_CATEGORIES_V02`
+/// vocabulary slot.
+pub fn map_patchback_error_to_v02_failure(error: &PatchbackError) -> Value {
+    let (category, diagnostic_code) = match error {
+        // A stale / invalid source-side bundle or an unresolved source
+        // provenance range is a source-incompatibility, not a write fault.
+        PatchbackError::BundleSchemaInvalid { .. } => {
+            ("source_incompatible", PATCHBACK_BUNDLE_SCHEMA_INVALID_CODE)
         }
-        PatchBackErrorCode::StaleSourceHash => (
-            "source_incompatible",
-            "kaifuu.reallive.patchback_stale_source_hash",
-        ),
-        PatchBackErrorCode::ProtectedSpanLost => (
-            // Mirrors KAIFUU-084 §6: protected-span loss maps to
-            // patch_write_failed at the v0.2 vocabulary (the v0.2
-            // category enum has no protected_span_violation slot).
-            "patch_write_failed",
-            "kaifuu.reallive.patchback_protected_span_lost",
-        ),
+        PatchbackError::ProvenanceMismatch { .. } => {
+            ("source_incompatible", PATCHBACK_PROVENANCE_MISMATCH_CODE)
+        }
+        // Everything else is a write-side fault: the archive/scene bytes
+        // could not be parsed, decompressed, encoded, recompressed, or
+        // packed back into the directory.
+        PatchbackError::ArchiveParseFailure { .. } => {
+            ("patch_write_failed", PATCHBACK_ARCHIVE_PARSE_FAILURE_CODE)
+        }
+        PatchbackError::SceneHeaderInvalid { .. } => {
+            ("patch_write_failed", PATCHBACK_SCENE_HEADER_INVALID_CODE)
+        }
+        PatchbackError::DecompressFailure { .. } => {
+            ("patch_write_failed", PATCHBACK_DECOMPRESS_FAILURE_CODE)
+        }
+        PatchbackError::CompressFailure { .. } => {
+            ("patch_write_failed", PATCHBACK_COMPRESS_FAILURE_CODE)
+        }
+        PatchbackError::TargetEncodeFailure { .. } => {
+            ("patch_write_failed", PATCHBACK_TARGET_ENCODE_FAILURE_CODE)
+        }
+        PatchbackError::ScenePackingOverflow { .. } => {
+            ("patch_write_failed", PATCHBACK_SCENE_PACKING_OVERFLOW_CODE)
+        }
     };
     json!({
         "failureId": deterministic_failure_id_from_seed(diagnostic_code),
         "category": category,
         "diagnosticCode": diagnostic_code,
-        "cause": error.message.clone(),
+        "cause": error.to_string(),
         "assetId": ASSET_ID,
         "bridgeUnitId": BRIDGE_UNIT_ID,
         "adapterId": ADAPTER_ID,
@@ -339,57 +517,52 @@ pub fn run_binary_patch_smoke(config: BinaryPatchSmokeConfig<'_>) -> BinarySmoke
     };
 
     // ---------------------------------------------------------------
-    // Step 2: parse the archive and run kaifuu-reallive apply_patches.
+    // Step 2: parse the archive and run the canonical bundle_driven
+    // patchback (`apply_translated_bundle`).
     // ---------------------------------------------------------------
-    let scene_index = match parse_archive(&archive_bytes) {
-        Ok(index) => index,
-        Err(diag) => {
-            return BinarySmokeOutcome::Aborted(format!(
-                "synthetic archive failed to parse: {diag:?}"
-            ));
-        }
-    };
-    let scenes = match parse_scenes(&archive_bytes, &scene_index) {
-        Ok(scenes) => scenes,
-        Err(message) => return BinarySmokeOutcome::Aborted(message),
-    };
-    let edit = build_synthetic_slot_edit(&scenes);
-    let mut edits = vec![edit];
-
-    // Apply --inject-failure preflight-source-hash by replacing the
-    // source-hash gate before any apply happens.
-    let mut force_stale_source_hash = false;
-    if config.inject_failure == InjectFailure::PreflightSourceHash {
-        force_stale_source_hash = true;
-        if let Some(first) = edits.get_mut(0) {
-            first.expected_source_hash = Some(
-                "sha256:0000000000000000000000000000000000000000000000000000000000000000"
-                    .to_string(),
-            );
-        }
+    if let Err(diag) = parse_archive(&archive_bytes) {
+        return BinarySmokeOutcome::Aborted(format!("synthetic archive failed to parse: {diag:?}"));
     }
 
-    let patched_bytes = match apply_patches(&archive_bytes, &scene_index, &scenes, &edits) {
-        Ok(bytes) => bytes,
+    // The PreflightSourceHash injection points the unit's source
+    // provenance at an occurrence the scene bytecode cannot resolve,
+    // forcing a typed `ProvenanceMismatch` (source-incompatible) out of
+    // the bundle_driven driver — the bundle_driven analogue of the old
+    // stale-source-hash refusal.
+    let source_unit_key = match config.inject_failure {
+        InjectFailure::PreflightSourceHash => "reallive:scene-0001#9999",
+        _ => SYNTHETIC_DIALOGUE_SOURCE_UNIT_KEY,
+    };
+    let bundle_value =
+        build_synthetic_translated_bundle_json(SYNTHETIC_TARGET_TEXT, source_unit_key);
+    let translated = match TranslatedBundleV02::from_json(&bundle_value) {
+        Ok(bundle) => bundle,
         Err(error) => {
-            // The smoke never reached the transaction harness; emit a
-            // v0.2 Failed JSON directly from the mapping table.
-            let failure = map_patchback_error_to_v02_failure(&error);
-            let result_value = build_patchback_failure_v02(&failure, config.run_id, &archive_bytes);
-            if let Err(err) = write_json(&patch_result_path, &result_value) {
-                return BinarySmokeOutcome::Aborted(format!(
-                    "failed to write patch-result.json: {err}"
-                ));
-            }
-            // Preserve the source bytes (no promotion happened).
-            if let Err(err) = fs::write(&output_seen_path, &archive_bytes) {
-                return BinarySmokeOutcome::Aborted(format!(
-                    "failed to write source bytes to output: {err}"
-                ));
-            }
-            return BinarySmokeOutcome::Failed;
+            return emit_direct_failure(
+                &output_seen_path,
+                &patch_result_path,
+                config.run_id,
+                &archive_bytes,
+                &error,
+            );
         }
     };
+
+    let patched_bytes =
+        match apply_translated_bundle(&archive_bytes, &translated, &PatchbackOpts::shift_jis()) {
+            Ok(bytes) => bytes,
+            Err(error) => {
+                // The smoke never reached the transaction harness; emit a
+                // v0.2 Failed JSON directly from the mapping table.
+                return emit_direct_failure(
+                    &output_seen_path,
+                    &patch_result_path,
+                    config.run_id,
+                    &archive_bytes,
+                    &error,
+                );
+            }
+        };
 
     // Stash the source bytes at the output path so the transaction
     // harness reads them back during preflight.
@@ -400,7 +573,7 @@ pub fn run_binary_patch_smoke(config: BinaryPatchSmokeConfig<'_>) -> BinarySmoke
     }
 
     // ---------------------------------------------------------------
-    // Step 3: apply --inject-failure that does NOT change apply_patches
+    // Step 3: apply --inject-failure that does NOT change the patchback
     // input shape.
     // ---------------------------------------------------------------
     let payload_to_stage = match config.inject_failure {
@@ -474,15 +647,37 @@ pub fn run_binary_patch_smoke(config: BinaryPatchSmokeConfig<'_>) -> BinarySmoke
             "patch-result.json failed v0.2 validation: {err:?}"
         ));
     }
-    // Suppress unused-warning lint when force_stale_source_hash isn't
-    // observed downstream (the apply_patches branch above is the
-    // observer; this re-affirms intent).
-    let _ = force_stale_source_hash;
 
     match final_state {
         TransactionState::Promoted => BinarySmokeOutcome::Passed,
         _ => BinarySmokeOutcome::Failed,
     }
+}
+
+/// Emit a v0.2 Failed PatchResult directly from a patchback error (used
+/// when the bundle_driven driver refuses before the transaction harness
+/// runs), preserve the source bytes at the output path, and return
+/// `Failed`. Returns `Aborted` only if the JSON / byte writes themselves
+/// fail.
+fn emit_direct_failure(
+    output_seen_path: &Path,
+    patch_result_path: &Path,
+    run_id: &str,
+    archive_bytes: &[u8],
+    error: &PatchbackError,
+) -> BinarySmokeOutcome {
+    let failure = map_patchback_error_to_v02_failure(error);
+    let result_value = build_patchback_failure_v02(&failure, run_id);
+    if let Err(err) = write_json(patch_result_path, &result_value) {
+        return BinarySmokeOutcome::Aborted(format!("failed to write patch-result.json: {err}"));
+    }
+    // Preserve the source bytes (no promotion happened).
+    if let Err(err) = fs::write(output_seen_path, archive_bytes) {
+        return BinarySmokeOutcome::Aborted(format!(
+            "failed to write source bytes to output: {err}"
+        ));
+    }
+    BinarySmokeOutcome::Failed
 }
 
 fn is_terminal(state: &TransactionState) -> bool {
@@ -496,28 +691,10 @@ fn is_terminal(state: &TransactionState) -> bool {
     )
 }
 
-fn parse_scenes(
-    archive_bytes: &[u8],
-    scene_index: &RealLiveSceneIndex,
-) -> Result<Vec<Scene>, String> {
-    let mut scenes = Vec::with_capacity(scene_index.entries.len());
-    for entry in &scene_index.entries {
-        let blob_start = entry.byte_offset as usize;
-        let blob_end = blob_start + entry.byte_len as usize;
-        let blob = &archive_bytes[blob_start..blob_end];
-        let outcome = parse_scene_into_ast(blob, entry.scene_id, entry.byte_offset);
-        let scene = outcome
-            .scene
-            .ok_or_else(|| format!("synthetic scene at slot {} failed to parse", entry.scene_id))?;
-        scenes.push(scene);
-    }
-    Ok(scenes)
-}
-
 /// Build a v0.2 Failed PatchResult JSON directly from a patchback
 /// error mapping. Used when the smoke aborts before driving the
-/// transaction state machine (e.g. apply_patches itself failed).
-fn build_patchback_failure_v02(failure: &Value, run_id: &str, _archive_bytes: &[u8]) -> Value {
+/// transaction state machine (e.g. apply_translated_bundle itself failed).
+fn build_patchback_failure_v02(failure: &Value, run_id: &str) -> Value {
     json!({
         "schemaVersion": "0.2.0",
         "patchResultId": deterministic_failure_id(run_id, ASSET_ID),
@@ -603,76 +780,101 @@ mod tests {
 
     #[test]
     fn map_patchback_error_to_v02_failure_is_exhaustive_over_every_variant() {
-        // Exact (code -> category, diagnosticCode) pairs. Pinning the precise
-        // mapping per variant — rather than mere set-membership — means a
-        // wrong mapping fails the test. Note `protected_span_violation` is NOT
-        // in the v0.2 category vocabulary: ProtectedSpanLost maps to
-        // `patch_write_failed` (see KAIFUU-084 §6), so it must not appear.
-        let table = [
+        // Exact (variant -> category, diagnosticCode) pairs. Pinning the
+        // precise mapping per variant — rather than mere set-membership —
+        // means a wrong mapping fails the test. Source-side faults
+        // (BundleSchemaInvalid, ProvenanceMismatch) map to
+        // `source_incompatible`; every other (write-side) variant maps to
+        // `patch_write_failed`.
+        let table: Vec<(PatchbackError, &str, &str)> = vec![
             (
-                PatchBackErrorCode::OffsetOverflow,
-                "patch_write_failed",
-                "kaifuu.reallive.patchback_offset_overflow",
-            ),
-            (
-                PatchBackErrorCode::ShiftJisEncodeFailure,
-                "patch_write_failed",
-                "kaifuu.reallive.patchback_shift_jis_encode_failure",
-            ),
-            (
-                PatchBackErrorCode::UnsupportedLengthPolicy,
-                "adapter_unsupported",
-                "kaifuu.reallive.patchback_unsupported_length_policy",
-            ),
-            (
-                PatchBackErrorCode::ParserRegression,
-                "patch_write_failed",
-                "kaifuu.reallive.patchback_parser_regression",
-            ),
-            (
-                PatchBackErrorCode::UnknownSlotId,
-                "asset_missing",
-                "kaifuu.reallive.patchback_unknown_slot_id",
-            ),
-            (
-                PatchBackErrorCode::StaleSourceHash,
+                PatchbackError::BundleSchemaInvalid {
+                    message: "synthetic".into(),
+                },
                 "source_incompatible",
-                "kaifuu.reallive.patchback_stale_source_hash",
+                PATCHBACK_BUNDLE_SCHEMA_INVALID_CODE,
             ),
             (
-                PatchBackErrorCode::ProtectedSpanLost,
+                PatchbackError::ArchiveParseFailure {
+                    message: "synthetic".into(),
+                },
                 "patch_write_failed",
-                "kaifuu.reallive.patchback_protected_span_lost",
+                PATCHBACK_ARCHIVE_PARSE_FAILURE_CODE,
+            ),
+            (
+                PatchbackError::ProvenanceMismatch {
+                    bridge_unit_id: "u".into(),
+                    start_byte: 0,
+                    end_byte: 1,
+                    reason: "synthetic".into(),
+                },
+                "source_incompatible",
+                PATCHBACK_PROVENANCE_MISMATCH_CODE,
+            ),
+            (
+                PatchbackError::SceneHeaderInvalid {
+                    scene_id: 1,
+                    message: "synthetic".into(),
+                },
+                "patch_write_failed",
+                PATCHBACK_SCENE_HEADER_INVALID_CODE,
+            ),
+            (
+                PatchbackError::DecompressFailure {
+                    scene_id: 1,
+                    message: "synthetic".into(),
+                },
+                "patch_write_failed",
+                PATCHBACK_DECOMPRESS_FAILURE_CODE,
+            ),
+            (
+                PatchbackError::CompressFailure {
+                    scene_id: 1,
+                    message: "synthetic".into(),
+                },
+                "patch_write_failed",
+                PATCHBACK_COMPRESS_FAILURE_CODE,
+            ),
+            (
+                PatchbackError::TargetEncodeFailure {
+                    bridge_unit_id: "u".into(),
+                    message: "synthetic".into(),
+                },
+                "patch_write_failed",
+                PATCHBACK_TARGET_ENCODE_FAILURE_CODE,
+            ),
+            (
+                PatchbackError::ScenePackingOverflow {
+                    observed_size: 0,
+                    reason: "synthetic".into(),
+                },
+                "patch_write_failed",
+                PATCHBACK_SCENE_PACKING_OVERFLOW_CODE,
             ),
         ];
 
-        // Guards exhaustiveness: if a PatchBackErrorCode variant is added, this
-        // count must be updated alongside a new table row.
-        assert_eq!(table.len(), 7, "every PatchBackErrorCode variant is pinned");
+        // Guards exhaustiveness: if a PatchbackError variant is added, this
+        // count must be updated alongside a new table row. (Mirrors the
+        // 8-variant bundle_driven `PatchbackError` enum.)
+        assert_eq!(table.len(), 8, "every PatchbackError variant is pinned");
 
-        for (code, expected_category, expected_diagnostic) in table {
-            let error = PatchBackError {
-                code: code.clone(),
-                scene_id: None,
-                slot_id: None,
-                message: "synthetic".to_string(),
-            };
-            let value = map_patchback_error_to_v02_failure(&error);
+        for (error, expected_category, expected_diagnostic) in &table {
+            let value = map_patchback_error_to_v02_failure(error);
             let category = value
                 .get("category")
                 .and_then(Value::as_str)
                 .expect("category present");
             assert_eq!(
-                category, expected_category,
-                "category mismatch for {code:?}"
+                category, *expected_category,
+                "category mismatch for {error:?}"
             );
             let diagnostic_code = value
                 .get("diagnosticCode")
                 .and_then(Value::as_str)
                 .expect("diagnosticCode present");
             assert_eq!(
-                diagnostic_code, expected_diagnostic,
-                "diagnosticCode mismatch for {code:?}"
+                diagnostic_code, *expected_diagnostic,
+                "diagnosticCode mismatch for {error:?}"
             );
         }
     }
@@ -684,25 +886,20 @@ mod tests {
         assert_eq!(index.entries.len(), 1);
     }
 
-    /// FIX-1 acceptance: the synthetic Seen.txt parses through the CURRENT
-    /// (post-KAIFUU-191) parser with **0 unknown opcodes** and exercises
-    /// the four target roles — Textout, TextDisplay, SetSpeaker
-    /// (`CharacterTextDisplay`), and Choice. This is the non-tautological
-    /// guard: it asserts real parser-shape facts, not just "the builder
-    /// returns bytes".
+    /// FIX-1 acceptance: the synthetic scene's decompressed bytecode parses
+    /// through the CURRENT (post-KAIFUU-191) parser with **0 unknown
+    /// opcodes** and exercises the four target roles — Textout, TextDisplay,
+    /// SetSpeaker (`CharacterTextDisplay`), and Choice. This is the
+    /// non-tautological guard: it asserts real parser-shape facts, not just
+    /// "the builder returns bytes".
     #[test]
-    fn synthetic_seen_txt_decodes_four_roles_with_zero_unknown_opcodes() {
-        use kaifuu_reallive::{RealLiveOpcode, StringSlotRole, parse_scene};
+    fn synthetic_scene_decodes_four_roles_with_zero_unknown_opcodes() {
+        use kaifuu_reallive::{RealLiveOpcode, parse_scene};
 
-        let archive = build_synthetic_seen_txt();
-        let index = parse_archive(&archive).expect("envelope parses");
-        assert_eq!(index.entries.len(), 1, "one populated scene at slot 1");
-        let entry = &index.entries[0];
-        let blob = &archive
-            [entry.byte_offset as usize..(entry.byte_offset + u64::from(entry.byte_len)) as usize];
+        let bytecode = synthetic_scene_bytecode();
 
         // (1) Decode the real bytecode: ZERO unknown opcodes.
-        let opcodes = parse_scene(blob).expect("scene bytecode decodes");
+        let opcodes = parse_scene(&bytecode).expect("scene bytecode decodes");
         let unknown: Vec<&RealLiveOpcode> = opcodes.iter().filter(|o| !o.is_recognized()).collect();
         assert!(
             unknown.is_empty(),
@@ -734,34 +931,16 @@ mod tests {
                 .any(|o| matches!(o, RealLiveOpcode::Choice { .. })),
             "Choice role present"
         );
-
-        // (3) Project into the Scene tree: the four string-slot roles flow
-        //     through to the inventory surface.
-        let scene = parse_scene_into_ast(blob, entry.scene_id, entry.byte_offset)
-            .scene
-            .expect("scene projects into the AST");
-        let has_role = |role: StringSlotRole| scene.strings.iter().any(|s| s.semantic_role == role);
-        assert!(
-            has_role(StringSlotRole::Dialogue),
-            "Dialogue slots (Textout + TextDisplay)"
-        );
-        assert!(
-            has_role(StringSlotRole::SpeakerName),
-            "SpeakerName slot (SetSpeaker)"
-        );
-        assert!(has_role(StringSlotRole::Choice), "Choice slots");
     }
 
-    /// FIX-1 structural faithfulness: the synthetic decompressed scene
-    /// bytecode round-trips byte-identically through the real AVG32
-    /// LZSS + XOR compression framing, proving the body is compatible with
-    /// the outer frame a real Seen.txt adds (the smoke itself operates on
-    /// the post-decompression layer per the parser contract).
+    /// FIX-1 structural faithfulness: the synthetic scene blob is a real
+    /// scene-header + AVG32 LZSS + XOR compressed frame whose payload
+    /// round-trips byte-identically back to the authored decompressed
+    /// bytecode (the same framing a real Seen.txt scene carries, and the
+    /// shape the bundle_driven patchback decompresses / recompresses).
     #[test]
-    fn synthetic_scene_round_trips_through_avg32_compression_framing() {
-        use kaifuu_reallive::{
-            AVG32_COMPRESSED_PREAMBLE_LEN, compress_avg32_literal, decompress_avg32, parse_scene,
-        };
+    fn synthetic_scene_blob_round_trips_through_avg32_compression_framing() {
+        use kaifuu_reallive::{SceneHeader, decompress_avg32, parse_scene};
 
         let archive = build_synthetic_seen_txt();
         let index = parse_archive(&archive).expect("envelope parses");
@@ -769,34 +948,21 @@ mod tests {
         let blob = &archive
             [entry.byte_offset as usize..(entry.byte_offset + u64::from(entry.byte_len)) as usize];
 
-        let compressed = compress_avg32_literal(blob).expect("AVG32 compresses");
+        let header = SceneHeader::parse(blob).expect("synthetic scene header parses");
+        let compressed = &blob[header.bytecode_offset as usize
+            ..(header.bytecode_offset + header.bytecode_compressed_size) as usize];
+        let decompressed = decompress_avg32(compressed, header.bytecode_uncompressed_size as usize)
+            .expect("AVG32 decompresses");
+        assert_eq!(
+            decompressed,
+            synthetic_scene_bytecode(),
+            "AVG32 LZSS + XOR round-trips byte-identically to the authored bytecode"
+        );
         assert!(
-            compressed.len() >= AVG32_COMPRESSED_PREAMBLE_LEN,
-            "compressed stream carries the 8-byte AVG32 preamble"
-        );
-        let decompressed = decompress_avg32(&compressed, blob.len()).expect("AVG32 decompresses");
-        assert_eq!(
-            decompressed, blob,
-            "AVG32 LZSS + XOR round-trips byte-identically"
-        );
-        assert_eq!(
-            parse_scene(&decompressed)
+            !parse_scene(&decompressed)
                 .expect("decompressed decodes")
-                .len(),
-            parse_scene(blob).expect("plaintext decodes").len(),
-            "decompressed bytecode decodes identically to the in-archive plaintext"
+                .is_empty(),
+            "decompressed bytecode decodes to a non-empty opcode stream"
         );
-    }
-
-    #[test]
-    fn synthetic_seen_txt_round_trips_with_length_preserving_edit() {
-        let archive = build_synthetic_seen_txt();
-        let index = parse_archive(&archive).expect("parses");
-        let scenes = parse_scenes(&archive, &index).expect("scenes parse");
-        let edit = build_synthetic_slot_edit(&scenes);
-        let patched =
-            apply_patches(&archive, &index, &scenes, &[edit]).expect("synthetic edit applies");
-        assert_eq!(patched.len(), archive.len(), "length-preserving");
-        assert_ne!(patched, archive, "the dialogue bytes actually changed");
     }
 }

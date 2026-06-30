@@ -8,16 +8,19 @@
 //! small, contained pragma that the Rust book and rustc docs support
 //! for exactly this case.
 //!
-//! # KAIFUU FIX-1 status
+//! # KAIFUU FIX-1 / KAIFUU-211 status
 //!
-//! `binary_patch_smoke::build_synthetic_seen_txt` now emits the
+//! `binary_patch_smoke::build_synthetic_seen_txt` emits the
 //! **post-KAIFUU-191** real opener-byte shape (8-byte `CommandElement`
 //! headers, a Shift-JIS Textout dialogue run, a bracketed `select`
-//! argument list, and a Meta prologue) that decodes through
-//! `parse_scene_into_ast` with 0 unknown opcodes. The smoke edits the
-//! editable Textout Dialogue slot length-preservingly, so these
-//! integration smokes round-trip again — the `#![cfg(any())]` gate that
-//! disabled the file under the pre-KAIFUU-191 shape is removed.
+//! argument list, and a Meta prologue) wrapped in a real 0x1d0-byte scene
+//! header + AVG32 LZSS compression frame. The smoke translates the
+//! editable Textout Dialogue unit through the canonical
+//! `bundle_driven::apply_translated_bundle` patchback (the legacy
+//! slot-edit surface is deleted). The synthetic translation is chosen to
+//! keep the archive byte-length-identical (so the composed KAIFUU-084
+//! identity-relocation transaction promotes), but the dialogue bytes
+//! change and the patched archive still re-parses as a one-scene envelope.
 
 #[path = "../src/binary_patch_smoke.rs"]
 mod binary_patch_smoke;
@@ -65,12 +68,25 @@ fn positive_smoke_produces_passed_v02_with_output_hash() {
         "passed result touched at least one asset"
     );
 
-    // Patched SEEN.TXT was promoted to the output path; it must equal
-    // the apply_patches result (which is byte-for-byte a length
-    // preserving translation of the source).
+    // Patched SEEN.TXT was promoted to the output path. The synthetic
+    // translation keeps the archive byte-length-identical (so the identity
+    // relocation invariant holds), but the dialogue bytes change, so the
+    // output differs from the source while still re-parsing as a one-scene
+    // archive.
     let output_seen = std::fs::read(dir.path().join("SEEN.TXT")).expect("SEEN.TXT written");
     let synthetic = binary_patch_smoke::build_synthetic_seen_txt();
     assert_eq!(output_seen.len(), synthetic.len(), "length-preserving");
+    assert_ne!(
+        output_seen, synthetic,
+        "the dialogue bytes actually changed"
+    );
+    let reparsed =
+        kaifuu_reallive::parse_archive(&output_seen).expect("patched SEEN.TXT re-parses");
+    assert_eq!(
+        reparsed.entries.len(),
+        1,
+        "patched archive keeps its one populated scene"
+    );
 
     kaifuu_core::contracts::validate_patch_result_v02(&value)
         .expect("emitted JSON validates against the v0.2 contract");
@@ -179,9 +195,9 @@ fn preflight_source_hash_failure_is_classified_as_source_incompatible() {
         .get("category")
         .and_then(Value::as_str)
         .expect("category present");
-    // The smoke poisoned expected_source_hash on the SlotEdit, which
-    // causes the kaifuu-reallive patchback layer to refuse via
-    // PatchBackErrorCode::StaleSourceHash — that error maps to
+    // The smoke pointed the unit's source provenance at an occurrence the
+    // scene bytecode cannot resolve, so the bundle_driven patchback
+    // refuses via PatchbackError::ProvenanceMismatch — that error maps to
     // source_incompatible in the v0.2 vocabulary.
     assert_eq!(first_category, "source_incompatible");
 

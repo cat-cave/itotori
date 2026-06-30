@@ -4433,6 +4433,7 @@ impl EngineAdapter for RealLiveProfileDetectorAdapter {
                 state.variant,
             ));
         }
+        let resolved = Self::resolve_reallive_data_dir(request.game_dir);
         let seen_path = Self::seen_txt_path(request.game_dir);
         let archive_bytes = fs::read(&seen_path)?;
         let scene_index = match kaifuu_reallive::parse_archive(&archive_bytes) {
@@ -4448,92 +4449,199 @@ impl EngineAdapter for RealLiveProfileDetectorAdapter {
                 ));
             }
         };
-        let mut scenes = Vec::new();
+        let variant = Self::detected_variant(state.variant);
+        let patch_export_id = request.patch_export.patch_export_id.clone();
+        let failed = |failures: Vec<AdapterFailure>| PatchResult {
+            schema_version: "0.1.0".to_string(),
+            patch_result_id: deterministic_id("reallive-patch", 174),
+            patch_export_id: patch_export_id.clone(),
+            status: OperationStatus::Failed,
+            output_hash: kaifuu_core::sha256_hash_bytes(&archive_bytes),
+            failures,
+        };
+
+        // Canonical patch-back route (KAIFUU-211 / ALPHA-006c): rebuild
+        // the v0.2 BridgeBundle per scene via `produce_bundle`, match the
+        // PatchExport entries to bridge units by `bridgeUnitId`, and apply
+        // through `bundle_driven::apply_translated_bundle`. There is no
+        // length-preserving legacy splice path. Gameexe.ini feeds the
+        // producer's voice/asset inventory (best-effort; absent ->
+        // empty).
+        let gameexe_path =
+            Self::gameexe_ini_path_with_resolved(request.game_dir, resolved.as_deref());
+        let gameexe_bytes = fs::read(&gameexe_path).unwrap_or_default();
+        let gameexe_inventory = kaifuu_reallive::parse_gameexe_inventory(&gameexe_bytes);
+
+        let mut matched_entry_ids: BTreeSet<String> = BTreeSet::new();
+        let mut touched: Vec<(u16, serde_json::Value)> = Vec::new();
         for entry in &scene_index.entries {
             let blob = &archive_bytes[entry.byte_offset as usize
                 ..(entry.byte_offset + u64::from(entry.byte_len)) as usize];
-            let outcome =
-                kaifuu_reallive::parse_scene_into_ast(blob, entry.scene_id, entry.byte_offset);
-            if let Some(scene) = outcome.scene {
-                scenes.push(scene);
+            let Ok(header) = kaifuu_reallive::SceneHeader::parse(blob) else {
+                // A scene whose header does not parse carries no
+                // translatable v0.2 units; it is left verbatim by the
+                // repacker, so skip it here rather than fail the run.
+                continue;
+            };
+            let bytecode_start = header.bytecode_offset as usize;
+            let bytecode_end = bytecode_start + header.bytecode_compressed_size as usize;
+            if bytecode_end > blob.len() {
+                continue;
             }
-        }
+            let Ok(decompressed) = kaifuu_reallive::decompress_avg32(
+                &blob[bytecode_start..bytecode_end],
+                header.bytecode_uncompressed_size as usize,
+            ) else {
+                continue;
+            };
+            let opts = kaifuu_reallive::BridgeOpts {
+                game_id: REALLIVE_GAME_ID,
+                game_version: "1.0.0",
+                source_profile_id: REALLIVE_PROFILE_ID,
+                source_locale: "ja-JP",
+                extractor_name: "kaifuu-reallive-bridge",
+                extractor_version: "0.1.0",
+                scene_kidoku_count: header.kidoku_count,
+            };
+            let Ok(produced) = kaifuu_reallive::produce_bundle(
+                entry.scene_id,
+                blob,
+                &decompressed,
+                &gameexe_inventory,
+                &opts,
+            ) else {
+                continue;
+            };
 
-        // Convert the PatchExport into reallive SlotEdits. Each entry's
-        // sourceUnitKey is the StringSlotId; locate its scene and emit
-        // a LengthPreserving SlotEdit. Entries that do not match a known
-        // slot surface as UnknownSlotId failures.
-        let mut edits = Vec::new();
-        let mut failures = Vec::new();
-        for entry in &request.patch_export.entries {
-            let mut found = false;
-            for scene in &scenes {
-                if scene
-                    .strings
-                    .iter()
-                    .any(|s| s.slot_id.as_str() == entry.source_unit_key)
-                {
-                    edits.push(kaifuu_reallive::SlotEdit {
-                        scene_id: scene.scene_id.as_str().to_string(),
-                        slot_id: entry.source_unit_key.clone(),
-                        replacement_text: entry.target_text.clone(),
-                        length_policy: kaifuu_reallive::SlotEditLengthPolicy::LengthPreserving,
-                        expected_source_hash: Some(entry.source_hash.clone()),
-                    });
-                    found = true;
-                    break;
+            let mut translated_json = produced.json.clone();
+            let mut scene_matched = 0usize;
+            if let Some(units_json) = translated_json["units"].as_array_mut() {
+                for (i, unit) in produced.bundle.units.iter().enumerate() {
+                    if let Some(export_entry) = request
+                        .patch_export
+                        .entries
+                        .iter()
+                        .find(|e| e.bridge_unit_id == unit.bridge_unit_id)
+                    {
+                        units_json[i]["target"] = serde_json::json!({
+                            "locale": request.patch_export.target_locale,
+                            "text": export_entry.target_text,
+                        });
+                        matched_entry_ids.insert(export_entry.bridge_unit_id.clone());
+                        scene_matched += 1;
+                    }
                 }
             }
-            if !found {
-                failures.push(Self::unsupported_failure(
+            if scene_matched == 0 {
+                continue;
+            }
+            // No silent partial: a touched scene must translate EVERY one
+            // of its bridge units (the v0.2 TranslatedBundle contract
+            // requires a target per unit).
+            if scene_matched != produced.bundle.units.len() {
+                return Ok(failed(vec![Self::unsupported_failure(
                     SemanticErrorCode::UnsupportedLayeredTransform,
                     Capability::PatchBack,
-                    Self::detected_variant(state.variant),
-                    &entry.source_unit_key,
-                    "PatchExportEntry sourceUnitKey is not present in the parsed Scene/SEEN AST",
-                    "re-extract the bridge bundle before re-applying this patch",
-                ));
+                    variant,
+                    REALLIVE_SEEN_TXT_PATH,
+                    format!(
+                        "scene {scene:04} is partially translated ({scene_matched}/{total} \
+                         bridge units); the bundle-driven patch-back requires a target for \
+                         every unit in a patched scene",
+                        scene = entry.scene_id,
+                        total = produced.bundle.units.len()
+                    ),
+                    "translate every unit of the scene, or re-extract a scene-scoped bundle",
+                )]));
             }
-        }
-        if !failures.is_empty() {
-            return Ok(PatchResult {
-                schema_version: "0.1.0".to_string(),
-                patch_result_id: deterministic_id("reallive-patch", 174),
-                patch_export_id: request.patch_export.patch_export_id.clone(),
-                status: OperationStatus::Failed,
-                output_hash: kaifuu_core::sha256_hash_bytes(&archive_bytes),
-                failures,
-            });
+            touched.push((entry.scene_id, translated_json));
         }
 
-        match kaifuu_reallive::apply_patches(&archive_bytes, &scene_index, &scenes, &edits) {
-            Ok(patched) => {
-                let output_path =
-                    kaifuu_core::safe_join_relative(request.output_dir, REALLIVE_SEEN_TXT_PATH)?;
-                if let Some(parent) = output_path.parent() {
-                    fs::create_dir_all(parent)?;
-                }
-                fs::write(&output_path, &patched)?;
-                Ok(PatchResult {
-                    schema_version: "0.1.0".to_string(),
-                    patch_result_id: deterministic_id("reallive-patch", 174),
-                    patch_export_id: request.patch_export.patch_export_id.clone(),
-                    status: OperationStatus::Passed,
-                    output_hash: kaifuu_core::sha256_hash_bytes(&patched),
-                    failures: vec![],
-                })
+        // Any export entry that matched no bridge unit is a stale/unknown
+        // reference — surface it as a typed failure.
+        let unmatched: Vec<AdapterFailure> = request
+            .patch_export
+            .entries
+            .iter()
+            .filter(|e| !matched_entry_ids.contains(&e.bridge_unit_id))
+            .map(|e| {
+                Self::unsupported_failure(
+                    SemanticErrorCode::UnsupportedLayeredTransform,
+                    Capability::PatchBack,
+                    variant,
+                    e.source_unit_key.clone(),
+                    "PatchExportEntry bridgeUnitId is not present in any scene's v0.2 bridge",
+                    "re-extract the bridge bundle before re-applying this patch",
+                )
+            })
+            .collect();
+        if !unmatched.is_empty() {
+            return Ok(failed(unmatched));
+        }
+
+        let passed = |output_hash: String| PatchResult {
+            schema_version: "0.1.0".to_string(),
+            patch_result_id: deterministic_id("reallive-patch", 174),
+            patch_export_id: patch_export_id.clone(),
+            status: OperationStatus::Passed,
+            output_hash,
+            failures: vec![],
+        };
+        let write_output = |bytes: &[u8]| -> KaifuuResult<()> {
+            let output_path =
+                kaifuu_core::safe_join_relative(request.output_dir, REALLIVE_SEEN_TXT_PATH)?;
+            if let Some(parent) = output_path.parent() {
+                fs::create_dir_all(parent)?;
             }
-            Err(err) => Ok(PatchResult {
-                schema_version: "0.1.0".to_string(),
-                patch_result_id: deterministic_id("reallive-patch", 174),
-                patch_export_id: request.patch_export.patch_export_id.clone(),
-                status: OperationStatus::Failed,
-                output_hash: kaifuu_core::sha256_hash_bytes(&archive_bytes),
-                failures: vec![Self::patchback_failure_to_adapter_failure(
-                    Self::detected_variant(state.variant),
-                    err,
-                )],
-            }),
+            fs::write(&output_path, bytes)?;
+            Ok(())
+        };
+
+        // Empty export (or one that touched no scene) is an identity
+        // patch: emit the source archive unchanged.
+        if touched.is_empty() {
+            write_output(&archive_bytes)?;
+            return Ok(passed(kaifuu_core::sha256_hash_bytes(&archive_bytes)));
+        }
+        // The bundle-driven driver patches one source BridgeBundle (one
+        // scene) per call. Multi-scene exports are out of scope for the
+        // detector fixture's patch surface.
+        if touched.len() > 1 {
+            return Ok(failed(vec![Self::unsupported_failure(
+                SemanticErrorCode::UnsupportedLayeredTransform,
+                Capability::PatchBack,
+                variant,
+                REALLIVE_SEEN_TXT_PATH,
+                format!(
+                    "patch export spans {} scenes; the fixture patch surface applies one \
+                     scene-scoped bundle per call",
+                    touched.len()
+                ),
+                "split the export into per-scene bundles and patch each scene separately",
+            )]));
+        }
+
+        let (_scene_id, translated_json) = &touched[0];
+        let translated = match kaifuu_reallive::TranslatedBundleV02::from_json(translated_json) {
+            Ok(translated) => translated,
+            Err(err) => {
+                return Ok(failed(vec![
+                    Self::patchback_v02_failure_to_adapter_failure(variant, err),
+                ]));
+            }
+        };
+        match kaifuu_reallive::apply_translated_bundle(
+            &archive_bytes,
+            &translated,
+            &kaifuu_reallive::PatchbackOpts::shift_jis(),
+        ) {
+            Ok(patched) => {
+                write_output(&patched)?;
+                Ok(passed(kaifuu_core::sha256_hash_bytes(&patched)))
+            }
+            Err(err) => Ok(failed(vec![
+                Self::patchback_v02_failure_to_adapter_failure(variant, err),
+            ])),
         }
     }
 
@@ -4578,7 +4686,7 @@ impl EngineAdapter for RealLiveProfileDetectorAdapter {
                             variant.clone(),
                             REALLIVE_SEEN_TXT_PATH,
                             "verify scene re-parse failed",
-                            "re-run patch with corrected SlotEdits",
+                            "re-run patch with a corrected translated bundle",
                         ));
                     }
                 }
@@ -4590,7 +4698,7 @@ impl EngineAdapter for RealLiveProfileDetectorAdapter {
                     variant.clone(),
                     REALLIVE_SEEN_TXT_PATH,
                     format!("verify archive re-parse failed: {}", diag.message),
-                    "re-run patch with corrected SlotEdits",
+                    "re-run patch with a corrected translated bundle",
                 ));
             }
         }
@@ -4702,27 +4810,25 @@ impl RealLiveProfileDetectorAdapter {
         failures
     }
 
-    fn patchback_failure_to_adapter_failure(
+    fn patchback_v02_failure_to_adapter_failure(
         variant: &str,
-        err: kaifuu_reallive::PatchBackError,
+        err: kaifuu_reallive::PatchbackError,
     ) -> AdapterFailure {
-        let code = err.code.as_str();
-        let asset_ref = err
-            .slot_id
-            .clone()
-            .unwrap_or_else(|| REALLIVE_SEEN_TXT_PATH.to_string());
+        // The v0.2 `PatchbackError` Display already carries its stable
+        // `kaifuu.reallive.patchback_*` code, so the message is the
+        // single source of the diagnostic code.
         AdapterFailure::semantic(
             AdapterFailureSemanticParams::new(
                 SemanticErrorCode::UnsupportedLayeredTransform,
                 REALLIVE_DETECTOR_ADAPTER_ID,
-                format!("patch-back rejected: {code}: {}", err.message),
+                format!("patch-back rejected: {err}"),
             )
             .engine("reallive")
             .detected_variant(variant)
-            .asset_ref(asset_ref)
+            .asset_ref(REALLIVE_SEEN_TXT_PATH)
             .required_capability(Capability::PatchBack)
             .remediation(
-                "review the patch export entries against the patch-back contract \
+                "review the translated bundle against the bundle-driven patch-back contract \
                  (kaifuu.reallive.patchback_* semantic codes)",
             ),
         )

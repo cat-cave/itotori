@@ -190,8 +190,8 @@ pub enum RealLiveOpcode {
 /// the command opener. Carrying the offset on every parsed arg means the
 /// Scene-AST projection in `parser.rs` can stamp each Choice slot's
 /// `byte_offset_within_scene` at the option's real bytes instead of at the
-/// opcode header — the latter would make the legacy `apply_patches` splice
-/// over the opcode header and structurally corrupt the scene.
+/// opcode header — the latter would make a slot-keyed splice land on the
+/// opcode header and structurally corrupt the scene.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CommandArg {
     /// Scene-relative byte offset where this argument's bytes begin.

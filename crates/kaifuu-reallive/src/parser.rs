@@ -317,9 +317,9 @@ fn project_opcode(
             // TextDisplay / CharacterTextDisplay carry no inline text body
             // in the parsed opcode (the visible run lands as the following
             // Textout). The slot is a zero-length marker anchored at the
-            // command opener: byte_len == 0, so the legacy `apply_patches`
-            // splice can never overwrite the opcode header (any non-empty
-            // edit is rejected by the length-preserving gate).
+            // command opener: byte_len == 0, so a slot-keyed splice can
+            // never overwrite the opcode header (the canonical
+            // bundle-driven patchback re-walks authoritative ranges).
             push_string_slot(
                 byte_offset,
                 &[],
@@ -347,9 +347,9 @@ fn project_opcode(
             for choice in choices {
                 // Stamp each Choice slot at the option's authoritative
                 // scene-relative byte offset (inside the argument list),
-                // NOT the command opener — otherwise the length-preserving
-                // `apply_patches` splice would write the translation over
-                // the opcode header and structurally corrupt the scene.
+                // NOT the command opener — otherwise a slot-keyed splice
+                // would write the translation over the opcode header and
+                // structurally corrupt the scene.
                 push_string_slot(
                     choice.byte_offset,
                     &choice.bytes,

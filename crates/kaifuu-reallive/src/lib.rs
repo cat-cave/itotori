@@ -40,7 +40,7 @@
 //!   byte stream into the documented [`RealLiveOpcode`] sequence.
 //! - [`parse_scene_into_ast`] — adapter that wraps [`parse_scene`] and
 //!   builds the [`Scene`] tree consumed by [`build_scene_inventory`]
-//!   and [`apply_patches`].
+//!   and the bundle-driven patchback driver.
 //!
 //! # SEEN.TXT envelope (real 10,000-slot fixed-offset-table — KAIFUU-188)
 //!
@@ -173,13 +173,6 @@ pub use patchback::bundle_driven::{
     PATCHBACK_SCENE_PACKING_OVERFLOW_CODE, PATCHBACK_TARGET_ENCODE_FAILURE_CODE,
     PATCHBACK_TARGET_NONEMPTY_CODE, PatchbackEncoding, PatchbackError, PatchbackOpts,
     TranslatedBundleV02, TranslatedUnitTarget, apply_translated_bundle,
-};
-pub use patchback::{
-    PATCHBACK_OFFSET_OVERFLOW_CODE, PATCHBACK_PARSER_REGRESSION_CODE,
-    PATCHBACK_PROTECTED_SPAN_LOST_CODE, PATCHBACK_SHIFT_JIS_ENCODE_FAILURE_CODE,
-    PATCHBACK_STALE_SOURCE_HASH_CODE, PATCHBACK_UNKNOWN_SLOT_ID_CODE,
-    PATCHBACK_UNSUPPORTED_LENGTH_POLICY_CODE, PatchBackError, PatchBackErrorCode, PatchBackPlan,
-    SlotEdit, SlotEditLengthPolicy, apply_patches,
 };
 pub use protected_spans::{
     PROTECTED_SPAN_DECODED_RANGE_CODE, PROTECTED_SPAN_UNKNOWN_CONTROL_CODE, ProtectedSpanError,
