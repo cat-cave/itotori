@@ -8,7 +8,7 @@ This policy separates those use cases.
 
 ```txt
 fixtures/
-  hello-game/                 Synthetic public fixture used by hello world.
+  hello-game/                 Synthetic public fixture used by the alpha proof vertical.
   public/                     Public fixture manifests, schema, and validator.
   private-local/              Local-only corpora ignored by git.
 ```

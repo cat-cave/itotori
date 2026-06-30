@@ -7,7 +7,7 @@ import { composeEnvValues, deriveHostPort, resolveDatabaseUrl } from "./itotori-
 const compose = readFileSync("docker-compose.yml", "utf8");
 const justfile = readFileSync("justfile", "utf8");
 const ciWorkflow = readFileSync(".github/workflows/ci.yml", "utf8");
-const helloWorkflow = readFileSync(".github/workflows/hello.yml", "utf8");
+const alphaProofWorkflow = readFileSync(".github/workflows/alpha-proof.yml", "utf8");
 const flake = readFileSync("flake.nix", "utf8");
 
 // Two roots that exercise both the same-basename-different-parent collision the
@@ -75,11 +75,11 @@ test("local compose applies durable runtime Postgres connection tuning", () => {
   assert.match(compose, /4x Postgres' default max_connections/u);
 });
 
-test("GitHub workflows use the local db compose path for Postgres parity", () => {
-  for (const [name, workflow] of [
-    ["ci", ciWorkflow],
-    ["hello", helloWorkflow],
-  ]) {
+test("the DB-backed CI workflow uses the local db compose path for Postgres parity", () => {
+  // ALPHA-009: only DB-backed workflows are asserted here. The alpha-proof
+  // integration workflow is public-fixture-only and deterministic — it does
+  // NOT start Postgres — so it is intentionally excluded from this matrix.
+  for (const [name, workflow] of [["ci", ciWorkflow]]) {
     assert.doesNotMatch(workflow, /^\s+services:\n\s+postgres:/mu, `${name} uses a GH service`);
     assert.match(workflow, /- run: just db-up\n/u, `${name} starts the compose db`);
     assert.match(workflow, /- run: just db-wait\n/u, `${name} waits for the compose db`);
@@ -89,6 +89,15 @@ test("GitHub workflows use the local db compose path for Postgres parity", () =>
       `${name} tears down the compose db`,
     );
   }
+});
+
+test("the alpha-proof integration workflow is public-fixture-only (no Postgres)", () => {
+  // ALPHA-009: the alpha proof gate must not depend on a database, live
+  // credentials, or private corpora; it runs the deterministic public-fixture
+  // vertical via `just alpha-proof`.
+  assert.doesNotMatch(alphaProofWorkflow, /just db-up|just db-wait|just db-down/u);
+  assert.doesNotMatch(alphaProofWorkflow, /DATABASE_URL/u);
+  assert.match(alphaProofWorkflow, /- run: just alpha-proof\n/u);
 });
 
 test("db recipes use explicit compose env files without project-global .env leakage", () => {

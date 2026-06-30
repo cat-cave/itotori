@@ -27,7 +27,7 @@ const taskOrder = [
   "ci-utsushi",
   "fixtures-validate",
   "localize-project-test",
-  "hello",
+  "alpha-proof",
   "roadmap-validate",
 ];
 
@@ -57,7 +57,7 @@ function addAllProjectGates(tasks) {
 }
 
 function addFixtureGates(tasks) {
-  add(tasks, "fixtures-validate", "hello");
+  add(tasks, "fixtures-validate", "alpha-proof");
 }
 
 function isDocsOnly(path) {
@@ -85,7 +85,7 @@ export function affectedTasks(changedPaths) {
       add(tasks, "roadmap-validate");
     } else if (path.startsWith("packages/localization-bridge-schema/")) {
       addAllProjectGates(tasks);
-      add(tasks, "hello");
+      add(tasks, "alpha-proof");
     } else if (path.startsWith("fixtures/")) {
       addFixtureGates(tasks);
     } else if (path.startsWith("suite/scripts/localize-project/")) {

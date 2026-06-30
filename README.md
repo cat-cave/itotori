@@ -8,26 +8,26 @@ The suite has three first-class subprojects:
 - **Kaifuu**: deterministic game extraction, patching, verification, and `.kaifuu` delta packages.
 - **Utsushi**: validation runtimes for trace, replay, capture, screenshots, and runtime evidence.
 
-The current scaffold is a functional DB-backed path. The hello-world fixture is the deterministic bootstrap that exercises the intended end-to-end contract across all three projects without copyrighted bytes; the first real-engine vertical is the explicit alpha proof target `ALPHA-006`, sourced from `/archive/vault/`.
+The current scaffold is a functional public-fixture path. The alpha proof (the `ALPHA-007` public-fixture vertical, gated by `ALPHA-009`) is the deterministic guardrail that exercises the intended end-to-end contract across all three projects without copyrighted bytes; the first real-engine vertical is the explicit alpha proof target `ALPHA-006`, sourced from `/archive/vault/`.
 
 ## Quickstart
 
 ```sh
 just install
-just db-up
-just ci
-just hello
+just alpha-proof
 ```
 
-`just hello` remains the deterministic bootstrap path against Postgres-backed Itotori state; it proves the contract end-to-end on a synthetic fixture. Future real-corpus docs should teach generic project runners and corpus descriptors, not new title-specific commands, environment variables, artifact schemas, or preset names. The title-reference allowlist and review command live in [docs/fixtures-and-corpora.md](docs/fixtures-and-corpora.md#title-reference-allowlist-for-active-docs).
+`just alpha-proof` is the required cross-project integration command: it runs `pnpm exec vp run alpha:public-fixture` and then re-proves cross-artifact linkage with `pnpm exec vp run alpha:public-fixture-validate`. It is public-fixture-only and deterministic — no database, no live credentials, no private corpora — and proves the contract end-to-end through schema-valid, hash-addressed artifact linkage rather than a `status=hello_world_passed` success string. See [docs/alpha-proof.md](docs/alpha-proof.md). Future real-corpus docs should teach generic project runners and corpus descriptors, not new title-specific commands, environment variables, artifact schemas, or preset names. The title-reference allowlist and review command live in [docs/fixtures-and-corpora.md](docs/fixtures-and-corpora.md#title-reference-allowlist-for-active-docs).
 
-1. Kaifuu extracts `fixtures/hello-game` into a `BridgeBundle`.
-2. Itotori imports the bridge, creates a fake `ja-JP -> en-US` draft, and exports `PatchExport`.
-3. Kaifuu patches the fixture game, creates a `.kaifuu` delta package, and applies it.
-4. Utsushi traces, captures, and smoke-validates the patched game.
-5. Itotori ingests the runtime report and writes dashboard-readable status to database tables.
-6. The Itotori dashboard reads project, QA, benchmark, and runtime state through typed API routes.
-7. The runtime evidence dashboard serves `/runtime/evidence/:runtimeRunId` and reads `/api/runtime/v0.2/status`.
+The vertical composes and links, for the same public fixture id, source revision, and locale branch:
+
+1. Kaifuu extraction (`BridgeBundle`) and the `.kaifuu` delta package / PatchResult.
+2. Itotori bridge import, draft, and `PatchExport`.
+3. Utsushi runtime observation proof.
+4. A sanitized provider proof and a fresh ITOTORI-026 benchmark report.
+5. Dashboard / read-model ingestion and the SHARED-025 alpha proof manifest.
+
+For the full DB-backed test suite and Rust gates, run `just ci` (which starts and tears down a worktree-scoped Postgres stack).
 
 ## Project Layout
 
@@ -43,7 +43,7 @@ crates/
   utsushi-*/
 docs/
   architecture.md
-  hello-world.md
+  alpha-proof.md
   spec-dag.md
 ```
 
@@ -51,8 +51,8 @@ Vite+ and Vite Task are the high-level TypeScript/web workspace surface. Cargo r
 
 ## Status
 
-This repository is scaffolded for DAG-driven development from the DB-backed hello
-world toward `ALPHA-006`, the explicit first real-engine alpha proof target.
+This repository is scaffolded for DAG-driven development from the public-fixture
+alpha proof toward `ALPHA-006`, the explicit first real-engine alpha proof target.
 
 The canonical roadmap is tracked as machine-readable data in `roadmap/spec-dag.json`.
 Use `just roadmap-validate`, `just roadmap-ready`, and `just roadmap-pop` to inspect

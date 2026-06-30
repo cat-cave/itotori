@@ -42,17 +42,21 @@ with deterministic exact fallback when pgvector or embeddings are unavailable.
 
 Vite+ and Vite Task provide the TypeScript/web workspace command surface and cached task orchestration. Cargo remains the authority for Rust builds, tests, and dependency modeling. The root `justfile` is the human-facing command layer.
 
-## Current Hello World
+## Current Alpha Proof
 
-The first fixture loop intentionally avoids copyrighted game files. It proves the contract between the projects without claiming real-engine support or translation quality.
+The public-fixture vertical intentionally avoids copyrighted game files. It proves the contract between the projects without claiming real-engine support or translation quality.
 
-The Hello World workflow remains the deterministic integration guardrail on the
-synthetic fixture path. The first real-engine vertical is `ALPHA-006` (Sukara's
-_Oshioki Sweetie HD Remaster + Sweets fandisc_ on RealLive, sourced from
-`/archive/vault/` per the vault-source adapter contract). `ALPHA-007` and
-`ALPHA-009` are the workflow handoff steps that promote the alpha-proof command
-into CI and retire the literal hello-world gate: the replacement proof must
-validate real cross-project artifact linkage instead of only a placeholder
-success line. Once that replacement is green, the old Hello World workflow must
-either disappear or become the same alpha proof under a compatibility alias; it
-should not remain as a second, weaker source of truth.
+The alpha proof workflow (`just alpha-proof`, run by
+[`.github/workflows/alpha-proof.yml`](../.github/workflows/alpha-proof.yml)) is
+the deterministic integration guardrail on the public-fixture path. It validates
+real cross-project artifact linkage — bridge, patch, PatchResult, provider
+proof, benchmark, runtime observation, dashboard/read-model ingestion, and the
+SHARED-025 manifest, all sharing one fixture id, source revision, locale branch,
+and content hashes — rather than a placeholder success line. `ALPHA-007`
+implemented the vertical command and `ALPHA-009` promoted it into CI and retired
+the literal "Hello World" workflow. The first real-engine vertical is `ALPHA-006`
+(Sukara's _Oshioki Sweetie HD Remaster + Sweets fandisc_ on RealLive, sourced
+from `/archive/vault/` per the vault-source adapter contract). There is no second,
+weaker Hello World source of truth: `just hello` survives only as a compatibility
+alias that delegates to `just alpha-proof` and cannot diverge. See
+[alpha-proof.md](alpha-proof.md).

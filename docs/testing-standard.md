@@ -41,13 +41,13 @@ The root `justfile` is the shared command surface:
 Package-level commands are allowed for tight loops, but PR verification should
 name the root command that protects the changed behavior.
 
-`just hello` and the GitHub Hello World workflow are temporary baseline
-integration checks. They should remain until `ALPHA-009` lands the alpha proof
-workflow, then the required integration command becomes `just alpha-proof` plus
-the alpha artifact-linkage validator. The successor must validate bridge,
-patch, provider proof, benchmark, runtime evidence, dashboard/read-model, and
-SHARED-025 manifest linkage for the same fixture identity; it cannot be a
-renamed success-string smoke.
+`just alpha-proof` and the GitHub Alpha Proof workflow are the required
+integration checks (`ALPHA-009` retired the literal Hello World workflow). The
+gate validates bridge, patch, provider proof, benchmark, runtime evidence,
+dashboard/read-model, and SHARED-025 manifest linkage for the same fixture
+identity, source revision, and locale branch; it is not a success-string smoke.
+`just hello` remains only as a compatibility alias that delegates to
+`just alpha-proof` for roadmap nodes that still declare it, and cannot diverge.
 
 ## Behavior Naming
 

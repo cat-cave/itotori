@@ -17,7 +17,7 @@ These docs describe the monorepo as a three-project suite:
 - Kaifuu: extraction, patching, verification, and delta packages.
 - Utsushi: runtime validation evidence.
 
-Start with [hello-world.md](hello-world.md), then read [architecture.md](architecture.md).
+Start with [alpha-proof.md](alpha-proof.md), then read [architecture.md](architecture.md).
 The alpha localization project readiness definition and check matrix live in
 [alpha-localization-project-readiness.md](project-readiness.md).
 The current spec dashboard is documented in

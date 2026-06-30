@@ -17,6 +17,7 @@ check:
     node --test scripts/itotori-db-compose-config.test.mjs
     node --test scripts/qd-full-ci.test.mjs
     node --test scripts/affected.test.mjs
+    node --test scripts/alpha-proof-gate.test.mjs
     node --test scripts/validate-tracked-artifact-hygiene.test.mjs
     node scripts/validate-tracked-artifact-hygiene.mjs --mode check
     just localize-project-test
@@ -134,25 +135,24 @@ db-migrate: db-cli-build
 db-reset: db-migrate
     node apps/itotori/dist/cli.js db-reset
 
-hello: build
-    rm -rf .tmp/hello-world
-    mkdir -p .tmp/hello-world
-    node apps/itotori/dist/cli.js db-migrate
-    node apps/itotori/dist/cli.js db-reset
-    cargo run -p kaifuu-cli -- extract fixtures/hello-game --output .tmp/hello-world/bridge.json
-    node apps/itotori/dist/cli.js import --bridge .tmp/hello-world/bridge.json --project .tmp/hello-world/itotori-project.json
-    node apps/itotori/dist/cli.js draft --project .tmp/hello-world/itotori-project.json --locale en-US
-    node apps/itotori/dist/cli.js export-patch --project .tmp/hello-world/itotori-project.json --output .tmp/hello-world/patch-export.json
-    cargo run -p kaifuu-cli -- patch fixtures/hello-game --patch .tmp/hello-world/patch-export.json --output .tmp/hello-world/patched-game
-    cargo run -p kaifuu-cli -- diff fixtures/hello-game .tmp/hello-world/patched-game --output .tmp/hello-world/hello.kaifuu
-    cargo run -p kaifuu-cli -- apply fixtures/hello-game --patch .tmp/hello-world/hello.kaifuu --output .tmp/hello-world/delta-applied-game
-    cargo run -p kaifuu-cli -- verify .tmp/hello-world/delta-applied-game --output .tmp/hello-world/kaifuu-verify.json
-    cargo run -p utsushi-cli -- trace .tmp/hello-world/delta-applied-game --output .tmp/hello-world/runtime-trace.json
-    cargo run -p utsushi-cli -- capture .tmp/hello-world/delta-applied-game --output .tmp/hello-world/frame-capture.json
-    cargo run -p utsushi-cli -- smoke .tmp/hello-world/delta-applied-game --output .tmp/hello-world/runtime-report.json
-    node apps/itotori/dist/cli.js ingest-runtime --project .tmp/hello-world/itotori-project.json --runtime-report .tmp/hello-world/runtime-report.json --output .tmp/hello-world/final-summary.json
-    node apps/itotori/dist/cli.js dashboard-status --output .tmp/hello-world/dashboard-status.json
-    node scripts/print-hello-summary.mjs .tmp/hello-world/final-summary.json
+# ALPHA-009: the suite alpha proof / public-fixture vertical is the required
+# integration guardrail (replaces the retired literal Hello World gate).
+# Runs the ALPHA-007 public-fixture vertical and then re-proves cross-artifact
+# linkage from the emitted artifacts independently. Both stages FAIL unless
+# bridge, patch export, PatchResult, provider proof, benchmark report, runtime
+# observation, dashboard/read-model ingestion, and the SHARED-025 manifest agree
+# on the same public fixture id, source revision, locale branch, and content
+# hashes. Public-fixture-only and deterministic: no DB, no creds, no private
+# corpora, no success-string assertion.
+alpha-proof:
+    pnpm exec vp run alpha:public-fixture
+    pnpm exec vp run alpha:public-fixture-validate
+
+# ALPHA-009: `hello` is retained ONLY as a compatibility alias for nodes that
+# still declare `just hello` as a verification. It cannot diverge from the alpha
+# proof gate — it delegates directly to `just alpha-proof`. There is no separate
+# Hello World source of truth and no literal hello-world success string.
+hello: alpha-proof
 
 # ITOTORI-019 / ITOTORI-222: synthetic hello-world loop wired through
 # the agentic-loop orchestrator at the drafting stage. Keeps the

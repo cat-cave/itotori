@@ -89,11 +89,6 @@ export default defineConfig({
       "rust:test": {
         command: "cargo test --workspace",
       },
-      hello: {
-        command: "just hello",
-        dependsOn: ["ts:build", "rust:check"],
-        cache: false,
-      },
       // ALPHA-007: public fixture vertical run. Composes the existing public
       // fixture artifacts across Itotori + Kaifuu + Utsushi + provider proof +
       // SHARED-025 manifest and produces a fresh ITOTORI-026 benchmark, then
