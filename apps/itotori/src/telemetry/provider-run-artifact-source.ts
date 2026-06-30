@@ -115,10 +115,9 @@ function billedAmountUsd(run: ProviderRunRecord): number {
 function emptyAccumulator(): MutablePairAccumulator {
   return {
     invocationCount: 0,
-    // itotori-225-audit-allow: running-sum accumulator zero-init, not a model
-    // cost — real billed costs are summed from billedAmountUsd(run) (line ~165),
-    // read verbatim from each provider-run.json usage.cost; never fabricated.
-    costUsd: 0,
+    // Running-sum accumulator zero-init, not a model cost: real billed costs are
+    // summed from billedAmountUsd(run) below, read verbatim from usage.cost.
+    costUsd: 0, // itotori-225-audit-allow: accumulator zero-init, never a fabricated cost
     tokensIn: 0,
     tokensOut: 0,
     latencies: [],
