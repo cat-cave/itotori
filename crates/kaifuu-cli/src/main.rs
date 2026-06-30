@@ -83,6 +83,16 @@ fn run_with_args_and_registry(
             {
                 return run_extract_reallive_bundle(&args);
             }
+            // RPG Maker MV/MZ extraction (vertical-slice wiring) routes
+            // through the kaifuu-rpgmaker `extract_game_dir` bundle
+            // producer: it takes the game's `www/` directory plus the same
+            // identity-metadata flags as the RealLive path and writes the
+            // v0.2 BridgeBundle JSON to `--bundle-output`.
+            if let Some(engine) = flag_optional(&args, "--engine")
+                && (engine == "rpgmaker" || engine == "rpg-maker")
+            {
+                return run_extract_rpgmaker_bundle(&args);
+            }
             let game_dir = PathBuf::from(positional(&args, 1)?);
             let output = PathBuf::from(flag(&args, "--output")?);
             match detect_or_partial(registry, &game_dir)? {
@@ -139,6 +149,16 @@ fn run_with_args_and_registry(
                 && engine == "reallive"
             {
                 return run_patch_reallive_bundle(&args);
+            }
+            // RPG Maker MV/MZ bundle-driven patchback + `.kaifuu` delta
+            // producer (vertical-slice wiring). Reads the translated v0.2
+            // bundle, byte-surgically patches the source `www/data/*.json`
+            // into `--patched-data-output`, and writes the delta package to
+            // `--delta-output`. The source tree is never mutated.
+            if let Some(engine) = flag_optional(&args, "--engine")
+                && (engine == "rpgmaker" || engine == "rpg-maker")
+            {
+                return run_patch_rpgmaker_bundle(&args);
             }
             let game_dir = PathBuf::from(positional(&args, 1)?);
             let patch = PathBuf::from(flag(&args, "--patch")?);
@@ -503,6 +523,109 @@ fn run_patch_reallive_bundle(args: &[String]) -> Result<(), Box<dyn std::error::
         )
         .into());
     }
+    Ok(())
+}
+
+/// RPG Maker MV/MZ extraction (`extract --engine rpgmaker --game-dir <www>
+/// ...`). Wraps [`kaifuu_rpgmaker::extract_game_dir`]: walks the game's
+/// `www/data/*.json` surfaces into the v0.2 BridgeBundle and writes the
+/// JSON to `--bundle-output`. Identity metadata mirrors the RealLive
+/// flag-shape. An optional `--findings-output` writes a sanitized
+/// per-kind finding census (counts only — never source text).
+fn run_extract_rpgmaker_bundle(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
+    use kaifuu_rpgmaker::{BridgeOpts, extract_game_dir};
+
+    let game_dir = match flag_optional(args, "--game-dir") {
+        Some(value) => PathBuf::from(value),
+        None => match std::env::var_os("ITOTORI_REAL_GAME_ROOT_RPG_MAKER_MV_MZ") {
+            Some(value) => PathBuf::from(value),
+            None => {
+                return Err(
+                    "--game-dir <www> or ITOTORI_REAL_GAME_ROOT_RPG_MAKER_MV_MZ env var required"
+                        .into(),
+                );
+            }
+        },
+    };
+    let game_id = flag(args, "--game-id")?;
+    let game_version = flag(args, "--game-version")?;
+    let source_profile_id = flag(args, "--source-profile-id")?;
+    let source_locale = flag(args, "--source-locale")?;
+    let bundle_output = PathBuf::from(flag(args, "--bundle-output")?);
+
+    let opts = BridgeOpts {
+        game_id,
+        game_version,
+        source_profile_id,
+        source_locale,
+        extractor_name: "kaifuu-rpgmaker",
+        extractor_version: "0.1.0",
+    };
+    let extraction = extract_game_dir(&game_dir, &opts).map_err(
+        |err| -> Box<dyn std::error::Error> { format!("kaifuu.rpgmaker.extract: {err}").into() },
+    )?;
+
+    write_json(&bundle_output, &extraction.bundle.json)?;
+
+    if let Some(findings_output) = flag_optional(args, "--findings-output") {
+        let mut by_kind: std::collections::BTreeMap<String, usize> =
+            std::collections::BTreeMap::new();
+        for finding in &extraction.findings {
+            *by_kind.entry(format!("{:?}", finding.kind)).or_insert(0) += 1;
+        }
+        let census = serde_json::json!({
+            "schema": "kaifuu.rpgmaker.findings-census.v0",
+            "total": extraction.findings.len(),
+            "byKind": by_kind,
+        });
+        write_json(&PathBuf::from(findings_output), &census)?;
+    }
+
+    eprintln!(
+        "kaifuu rpgmaker extract: units={} assets={} findings={}",
+        extraction.bundle.bundle.units.len(),
+        extraction.bundle.bundle.assets.len(),
+        extraction.findings.len(),
+    );
+    Ok(())
+}
+
+/// RPG Maker MV/MZ bundle-driven patchback + `.kaifuu` delta producer
+/// (`patch --engine rpgmaker --source <www> --bundle <translated.json>
+/// --delta-output <delta.kaifuu> --patched-data-output <dir>`).
+///
+/// Reads the translated v0.2 bundle, then calls
+/// [`kaifuu_rpgmaker::produce_delta_package`]: it byte-surgically patches
+/// the source `www/data/*.json` literals into a freshly-materialized
+/// `--patched-data-output` tree (StaleSourceHash-gated) and emits the
+/// `.kaifuu` delta package to `--delta-output`. The source tree is read
+/// only; it is never written.
+fn run_patch_rpgmaker_bundle(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
+    use kaifuu_rpgmaker::{PatchbackOpts, TranslatedBundleV02, produce_delta_package};
+
+    let source = PathBuf::from(flag(args, "--source")?);
+    let bundle_path = PathBuf::from(flag(args, "--bundle")?);
+    let delta_output = PathBuf::from(flag(args, "--delta-output")?);
+    let patched_data_output = PathBuf::from(flag(args, "--patched-data-output")?);
+
+    let bundle_value: serde_json::Value = read_json(&bundle_path)?;
+    let translated = TranslatedBundleV02::from_json(&bundle_value)
+        .map_err(|err| -> Box<dyn std::error::Error> { format!("{err}").into() })?;
+
+    let produced = produce_delta_package(
+        &source,
+        &translated,
+        &PatchbackOpts::rpg_maker_default(),
+        &patched_data_output,
+    )
+    .map_err(|err| -> Box<dyn std::error::Error> { format!("{err}").into() })?;
+
+    kaifuu_core::write_json(&delta_output, &produced.delta)?;
+
+    eprintln!(
+        "kaifuu rpgmaker patch: changed_files={}",
+        produced.changed_file_count,
+    );
     Ok(())
 }
 

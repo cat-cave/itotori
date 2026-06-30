@@ -213,15 +213,21 @@ hello-replay-validate:
 # -> utsushi replay-validate. The driver hard-fails if OPENROUTER_API_KEY,
 # a corpus source root, or TARGET is unset (no fallback to the recorded
 # provider). Pass --dry-run to print the per-phase commands without invoking
-# any LLM. Sweetie HD is selected by its explicit alpha target-data record,
-# not by a generic project-metadata default.
+# any LLM. The engine is selected by the project's alpha-target-data record:
+# `sweetie-hd-alpha-1` (RealLive Seen.txt) or `lust-memory-alpha-1` (RPG Maker
+# MV/MZ — extract -> live loop -> JSON patchback + .kaifuu delta -> delta-apply
+# -> utsushi-rpgmaker-mv text-trace runtime evidence). The MV/MZ slice is
+# bounded to ONE dialogue surface so a live run bills a single ZDR translation.
 #
 # Required env (unless --dry-run):
-#   OPENROUTER_API_KEY              live OpenRouter key
-#   ITOTORI_REAL_CORPUS_MANIFEST     preferred local corpus descriptor
-#   ITOTORI_REAL_GAME_ROOT           simple single-corpus fallback
-#   LOCALIZE_PROJECT_SOURCE_PATH     direct readonly source root fallback
-#   TARGET                          writable path for the patched copy
+#   OPENROUTER_API_KEY                       live OpenRouter key
+#   OPENROUTER_ZDR_ACCOUNT_ASSERTED=1        account-wide ZDR assertion (fail-closed)
+#   ITOTORI_REAL_CORPUS_MANIFEST             preferred local corpus descriptor
+#   ITOTORI_REAL_GAME_ROOT                   single-corpus fallback (RealLive root)
+#   ITOTORI_REAL_GAME_ROOT_RPG_MAKER_MV_MZ   single-corpus MV/MZ www/ root
+#   LOCALIZE_PROJECT_SOURCE_PATH             direct readonly source root fallback
+#   TARGET                                  writable patched copy (RealLive only;
+#                                            the MV/MZ path writes under the run dir)
 # These may already be in the process environment, or loaded explicitly with
 # --env-file <PATH> / ITOTORI_LOCAL_ENV_FILE from a local-only ignored file.
 #
@@ -229,6 +235,8 @@ hello-replay-validate:
 #   just localize-project --project sweetie-hd-alpha-1
 #   just localize-project --project sweetie-hd-alpha-1 --env-file .env.localize-project
 #   just localize-project --dry-run --project sweetie-hd-alpha-1
+#   just localize-project --dry-run --project lust-memory-alpha-1
+#   just localize-project --project lust-memory-alpha-1 --env-file .env.localize-project
 localize-project *ARGS:
     pnpm --filter @itotori/localization-bridge-schema build
     pnpm --filter @itotori/db build

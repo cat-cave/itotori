@@ -533,6 +533,7 @@ dependencies = [
  "kaifuu-delta",
  "kaifuu-engine-fixture",
  "kaifuu-reallive",
+ "kaifuu-rpgmaker",
  "serde_json",
  "sha2",
  "tempfile",
@@ -1219,6 +1220,7 @@ dependencies = [
  "utsushi-core",
  "utsushi-fixture",
  "utsushi-reallive",
+ "utsushi-rpgmaker-mv",
 ]
 
 [[package]]

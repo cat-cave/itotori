@@ -68,7 +68,6 @@ const DEFAULT_ALPHA_TARGET_DATA_PATH = join(
   "localize-project.alpha-target-data.json",
 );
 const REAL_CORPUS_MANIFEST_SCHEMA = "itotori.real-corpus-manifest.v0";
-const REAL_CORPUS_ENGINE = "reallive";
 const LOCAL_ENV_FILE_ENV_VAR = "ITOTORI_LOCAL_ENV_FILE";
 const LOCAL_ENV_ALLOWLIST = new Set([
   "OPENROUTER_API_KEY",
@@ -78,6 +77,7 @@ const LOCAL_ENV_ALLOWLIST = new Set([
   "ITOTORI_ALLOW_FAKE_LOCALIZE_PROVIDER",
   "ITOTORI_REAL_CORPUS_MANIFEST",
   "ITOTORI_REAL_GAME_ROOT",
+  "ITOTORI_REAL_GAME_ROOT_RPG_MAKER_MV_MZ",
   "LOCALIZE_PROJECT_SOURCE_PATH",
   "TARGET",
 ]);
@@ -419,6 +419,16 @@ function requireMetadataString(record, key, metadataPath) {
   return value;
 }
 
+// Engine identity blocks the driver understands. Exactly one must be
+// present in a project-metadata / alpha-target record. The block key
+// selects the engine the four phases dispatch through (RealLive Seen.txt
+// patchback + replay-validate, or RPG Maker MV/MZ JSON patchback + delta +
+// text-trace runtime evidence).
+const ENGINE_IDENTITY_BLOCKS = [
+  { key: "reallive", engine: "reallive" },
+  { key: "rpgMakerMvMz", engine: "rpg-maker-mv-mz" },
+];
+
 function parseProjectMetadataRecord(parsed, metadataPath) {
   const EXPECTED_SCHEMA = "itotori.localize-project.project-metadata.v0";
   if (parsed.schemaVersion !== EXPECTED_SCHEMA) {
@@ -426,19 +436,31 @@ function parseProjectMetadataRecord(parsed, metadataPath) {
       `project metadata at ${metadataPath} has schemaVersion='${String(parsed.schemaVersion)}'; expected '${EXPECTED_SCHEMA}'`,
     );
   }
-  if (
-    typeof parsed.reallive !== "object" ||
-    parsed.reallive === null ||
-    Array.isArray(parsed.reallive)
-  ) {
-    throw new Error(`project metadata at ${metadataPath} missing required object 'reallive'`);
+  const present = ENGINE_IDENTITY_BLOCKS.filter(
+    (candidate) =>
+      typeof parsed[candidate.key] === "object" &&
+      parsed[candidate.key] !== null &&
+      !Array.isArray(parsed[candidate.key]),
+  );
+  if (present.length === 0) {
+    throw new Error(
+      `project metadata at ${metadataPath} must carry exactly one engine identity block ('reallive' or 'rpgMakerMvMz')`,
+    );
   }
+  if (present.length > 1) {
+    throw new Error(
+      `project metadata at ${metadataPath} carries multiple engine identity blocks; exactly one is allowed`,
+    );
+  }
+  const { key, engine } = present[0];
+  const block = parsed[key];
   return {
     projectId: requireMetadataString(parsed, "projectId", metadataPath),
-    gameId: requireMetadataString(parsed.reallive, "game_id", metadataPath),
-    gameVersion: requireMetadataString(parsed.reallive, "game_version", metadataPath),
-    sourceProfileId: requireMetadataString(parsed.reallive, "source_profile_id", metadataPath),
-    sourceLocale: requireMetadataString(parsed.reallive, "source_locale", metadataPath),
+    engine,
+    gameId: requireMetadataString(block, "game_id", metadataPath),
+    gameVersion: requireMetadataString(block, "game_version", metadataPath),
+    sourceProfileId: requireMetadataString(block, "source_profile_id", metadataPath),
+    sourceLocale: requireMetadataString(block, "source_locale", metadataPath),
   };
 }
 
@@ -521,11 +543,19 @@ function loadAlphaTargetData(targetDataPath) {
       targetDataPath,
       entryLabel,
     );
+    // Forward whichever engine identity block the target carries; the
+    // record parser enforces exactly-one-engine.
+    const engineBlock = {};
+    for (const candidate of ENGINE_IDENTITY_BLOCKS) {
+      if (target[candidate.key] !== undefined) {
+        engineBlock[candidate.key] = target[candidate.key];
+      }
+    }
     const metadata = parseProjectMetadataRecord(
       {
         schemaVersion: "itotori.localize-project.project-metadata.v0",
         projectId,
-        reallive: target.reallive,
+        ...engineBlock,
       },
       `${targetDataPath} ${entryLabel}`,
     );
@@ -678,16 +708,46 @@ function missingRealCorpusSourceMessage() {
   ].join(" ");
 }
 
+// Per-engine convenience env var for a single local corpus root, mirroring
+// the read-only-fixture env the engine's real-bytes tests already honor.
+const ENGINE_REAL_GAME_ROOT_ENV = {
+  reallive: "ITOTORI_REAL_GAME_ROOT",
+  "rpg-maker-mv-mz": "ITOTORI_REAL_GAME_ROOT_RPG_MAKER_MV_MZ",
+};
+
 function resolveRealCorpusSource({ dryRun, projectMetadata, corpusId }) {
+  const engine = projectMetadata.engine;
   const manifestPath = process.env.ITOTORI_REAL_CORPUS_MANIFEST;
   if (manifestPath !== undefined && manifestPath.length > 0) {
     const manifest = loadRealCorpusManifest(manifestPath);
     return selectRealCorpusFromManifest(manifest, manifestPath, {
       projectId: projectMetadata.projectId,
       corpusId,
-      engine: REAL_CORPUS_ENGINE,
+      engine,
       sourceLocale: projectMetadata.sourceLocale,
     });
+  }
+
+  // Engine-specific single-corpus env var (e.g.
+  // ITOTORI_REAL_GAME_ROOT_RPG_MAKER_MV_MZ for the MV/MZ www root).
+  const engineEnvName = ENGINE_REAL_GAME_ROOT_ENV[engine];
+  if (engineEnvName !== undefined && engineEnvName !== "ITOTORI_REAL_GAME_ROOT") {
+    const engineRoot = process.env[engineEnvName];
+    if (engineRoot !== undefined && engineRoot.length > 0) {
+      return {
+        envName: engineEnvName,
+        root: engineRoot,
+        placeholder: `<${engineEnvName}>`,
+        dryRunLabel: `${engineEnvName} single corpus root=<${engineEnvName}> projectId=${projectMetadata.projectId} engine=${engine}`,
+        corpus: {
+          corpusId: corpusId ?? projectMetadata.projectId,
+          projectId: projectMetadata.projectId,
+          engine,
+          root: engineRoot,
+          sourceLocale: projectMetadata.sourceLocale,
+        },
+      };
+    }
   }
 
   const gameRoot = process.env.ITOTORI_REAL_GAME_ROOT;
@@ -696,11 +756,11 @@ function resolveRealCorpusSource({ dryRun, projectMetadata, corpusId }) {
       envName: "ITOTORI_REAL_GAME_ROOT",
       root: gameRoot,
       placeholder: "<ITOTORI_REAL_GAME_ROOT>",
-      dryRunLabel: `ITOTORI_REAL_GAME_ROOT single corpus root=<ITOTORI_REAL_GAME_ROOT> projectId=${projectMetadata.projectId} engine=${REAL_CORPUS_ENGINE}`,
+      dryRunLabel: `ITOTORI_REAL_GAME_ROOT single corpus root=<ITOTORI_REAL_GAME_ROOT> projectId=${projectMetadata.projectId} engine=${engine}`,
       corpus: {
         corpusId: corpusId ?? projectMetadata.projectId,
         projectId: projectMetadata.projectId,
-        engine: REAL_CORPUS_ENGINE,
+        engine,
         root: gameRoot,
         sourceLocale: projectMetadata.sourceLocale,
       },
@@ -938,6 +998,345 @@ export function verifyProviderRunArtifactsAfterStage({
   });
 }
 
+// ---------- RPG Maker MV/MZ engine pipeline (vertical slice) ----------
+
+// Runtime scene files the `utsushi-rpgmaker-mv` E1 port emits text from:
+// CommonEvents + numbered Maps (Show Text / Scroll / Choices). Database /
+// System surfaces are NOT replayed, so the bounded translation target must
+// land in one of these files for the runtime trace to carry it.
+const RPG_MAKER_RUNTIME_SCENE_FILE = /^(CommonEvents|Map\d+)\.json$/u;
+
+/** Parse a `rpgmaker:<file>#<json-pointer>` surface key into the file. */
+function rpgMakerSurfaceFile(sourceUnitKey) {
+  const rest = String(sourceUnitKey).replace(/^rpgmaker:/u, "");
+  const hashIndex = rest.indexOf("#");
+  return hashIndex === -1 ? rest : rest.slice(0, hashIndex);
+}
+
+/**
+ * Pick the bounded live-translation target: the first `dialogue` unit
+ * whose surface lives in a runtime-replayed scene file. Translating one
+ * such unit (rest no-op) keeps the live LLM cost to a single billed
+ * invocation while guaranteeing the patched text shows up in the runtime
+ * trace the validator asserts on.
+ */
+function selectRpgMakerDialogueUnit(bridge) {
+  const units = Array.isArray(bridge.units) ? bridge.units : [];
+  for (let index = 0; index < units.length; index++) {
+    const unit = units[index];
+    if (unit === null || typeof unit !== "object" || unit.surfaceKind !== "dialogue") continue;
+    const file = rpgMakerSurfaceFile(unit.sourceUnitKey);
+    if (RPG_MAKER_RUNTIME_SCENE_FILE.test(file)) {
+      return { unitIndex: index, sceneFile: file };
+    }
+  }
+  throw new Error(
+    "kaifuu.rpgmaker: no dialogue unit found in a CommonEvents/Map scene file; cannot bound the runtime slice",
+  );
+}
+
+/** Deterministic sha256 over a `data/` tree (sorted rel-path + bytes). */
+function sha256OfDataTree(dataDir) {
+  const files = [];
+  const walk = (dir, prefix) => {
+    const entries = readdirSync(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.isSymbolicLink()) {
+        throw new Error(`refusing to hash symlink at ${join(dir, entry.name)}`);
+      }
+      const abs = join(dir, entry.name);
+      const rel = prefix === "" ? entry.name : `${prefix}/${entry.name}`;
+      if (entry.isDirectory()) walk(abs, rel);
+      else if (entry.isFile()) files.push([rel, abs]);
+    }
+  };
+  walk(dataDir, "");
+  files.sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
+  const hash = createHash("sha256");
+  for (const [rel, abs] of files) {
+    hash.update(rel);
+    hash.update("\0");
+    hash.update(readFileSync(abs));
+  }
+  return hash.digest("hex");
+}
+
+async function runRpgMakerMvMzPipeline(ctx) {
+  const {
+    args,
+    policy,
+    pairPolicyPath,
+    projectMetadata,
+    sentinelSubstring,
+    runDir,
+    bridgeBundlePath,
+    agenticLoopBundlePath,
+    translatedBundlePath,
+    patchReportPath,
+    providerRunArtifactsDir,
+    dryRun,
+    realCorpusSource,
+    gameRoot,
+  } = ctx;
+
+  const findingsPath = join(runDir, "extraction-findings.json");
+  const deltaPath = join(runDir, "patch.kaifuu");
+  const patchedDataDir = join(runDir, "patched-data");
+  const deltaAppliedDir = join(runDir, "delta-applied");
+  const appliedDataDir = join(deltaAppliedDir, "data");
+  const applyReportPath = join(runDir, "apply-report.json");
+  const runtimeInputDir = join(runDir, "runtime-input");
+  const runtimeArtifactsDir = join(runDir, "runtime-artifacts");
+  const runtimeEvidencePath = join(runDir, "runtime-evidence.json");
+
+  const identityArgs = [
+    "--game-id",
+    projectMetadata.gameId,
+    "--game-version",
+    projectMetadata.gameVersion,
+    "--source-profile-id",
+    projectMetadata.sourceProfileId,
+    "--source-locale",
+    projectMetadata.sourceLocale,
+  ];
+  const runId = `rpgmaker-mv-mz-${args.project}`;
+
+  if (dryRun) {
+    printDryRunPlan(
+      [
+        `cargo run -p kaifuu-cli -- extract --engine rpgmaker --game-dir ${realCorpusSource.placeholder} ${identityArgs.join(" ")} --bundle-output ${bridgeBundlePath} --findings-output ${findingsPath}`,
+        `node apps/itotori/dist/cli.js localize-project-stage --bridge ${bridgeBundlePath} --pair-policy ${pairPolicyPath} --unit-index <first-dialogue-scene-unit> --engine-profile rpg-maker-mv-mz --output ${agenticLoopBundlePath} --translated-bundle-output ${translatedBundlePath} --patch-report-output ${patchReportPath} --provider-run-artifacts-dir ${providerRunArtifactsDir}`,
+        `cargo run -p kaifuu-cli -- patch --engine rpgmaker --source ${realCorpusSource.placeholder} --bundle ${translatedBundlePath} --delta-output ${deltaPath} --patched-data-output ${patchedDataDir}`,
+        `cargo run -p kaifuu-cli -- apply ${realCorpusSource.placeholder}/data --patch ${deltaPath} --output ${appliedDataDir} --report-output ${applyReportPath}`,
+        `cargo run -p utsushi-cli -- rpgmaker-mv-capture --game-dir ${runtimeInputDir} --artifact-root ${runtimeArtifactsDir} --run-id ${runId} --expect-textline-contains ${sentinelSubstring} --output ${runtimeEvidencePath}`,
+      ],
+      flattenPostures(policy),
+      realCorpusSource,
+    );
+    return;
+  }
+
+  mkdirSync(runDir, { recursive: true });
+
+  const sourceDataDir = join(gameRoot, "data");
+  if (!existsSync(sourceDataDir)) {
+    throw new Error(
+      `kaifuu.rpgmaker: ${realCorpusSource.placeholder}/data not found; the source root must be the game's www/ directory`,
+    );
+  }
+  const redact = buildPathRedactor([{ path: gameRoot, replacement: realCorpusSource.placeholder }]);
+
+  // Readonly-source invariant: hash the source data tree before any work.
+  const sourceTreeSha256Before = sha256OfDataTree(sourceDataDir);
+  process.stdout.write(
+    `[localize-project] source www/data sha256 (pre): ${sourceTreeSha256Before}\n`,
+  );
+
+  // ------------------- Phase 1: kaifuu extract --------------------
+  runCommand(
+    "cargo",
+    [
+      "run",
+      "-p",
+      "kaifuu-cli",
+      "--quiet",
+      "--",
+      "extract",
+      "--engine",
+      "rpgmaker",
+      "--game-dir",
+      gameRoot,
+      ...identityArgs,
+      "--bundle-output",
+      bridgeBundlePath,
+      "--findings-output",
+      findingsPath,
+    ],
+    process.env,
+    { redact },
+  );
+
+  // Bound the live slice to one runtime-replayed dialogue surface.
+  const bridge = JSON.parse(readFileSync(bridgeBundlePath, "utf8"));
+  const { unitIndex, sceneFile } = selectRpgMakerDialogueUnit(bridge);
+  process.stdout.write(
+    `[localize-project] bounded slice: unit-index=${unitIndex} scene-file=${sceneFile} (of ${bridge.units.length} units)\n`,
+  );
+
+  // -------------- Phase 2: agentic loop (live LLM) ----------------
+  const stageArgs = [
+    join(REPO_ROOT, "apps", "itotori", "dist", "cli.js"),
+    "localize-project-stage",
+    "--bridge",
+    bridgeBundlePath,
+    "--pair-policy",
+    pairPolicyPath,
+    "--unit-index",
+    String(unitIndex),
+    "--engine-profile",
+    "rpg-maker-mv-mz",
+    "--output",
+    agenticLoopBundlePath,
+    "--translated-bundle-output",
+    translatedBundlePath,
+    "--patch-report-output",
+    patchReportPath,
+    "--provider-run-artifacts-dir",
+    providerRunArtifactsDir,
+  ];
+  if (args.providerKind !== undefined) {
+    stageArgs.push("--provider-kind", args.providerKind);
+  }
+  runCommand("node", stageArgs, process.env, { redact });
+
+  if (args.providerKind !== "fake") {
+    const providerProof = verifyProviderRunArtifactsAfterStage({
+      agenticLoopBundlePath,
+      patchReportPath,
+      providerRunArtifactsDir,
+      expectedPair: policy.pair,
+    });
+    process.stdout.write(
+      `[localize-project] provider-run artifacts: ${providerProof.providerRunArtifactCount} verified for ${providerProof.invocations.length} live invocation(s) under ${providerRunArtifactsDir}\n`,
+    );
+  }
+
+  // ----------- Phase 3: kaifuu patchback + .kaifuu delta ----------
+  runCommand(
+    "cargo",
+    [
+      "run",
+      "-p",
+      "kaifuu-cli",
+      "--quiet",
+      "--",
+      "patch",
+      "--engine",
+      "rpgmaker",
+      "--source",
+      gameRoot,
+      "--bundle",
+      translatedBundlePath,
+      "--delta-output",
+      deltaPath,
+      "--patched-data-output",
+      patchedDataDir,
+    ],
+    process.env,
+    { redact },
+  );
+
+  // --------------- Phase 4: kaifuu delta-apply --------------------
+  // Reproduce the patched data tree from the `.kaifuu` package; this is
+  // the artifact the runtime consumes (proves the delta round-trips).
+  runCommand(
+    "cargo",
+    [
+      "run",
+      "-p",
+      "kaifuu-cli",
+      "--quiet",
+      "--",
+      "apply",
+      sourceDataDir,
+      "--patch",
+      deltaPath,
+      "--output",
+      appliedDataDir,
+      "--report-output",
+      applyReportPath,
+    ],
+    process.env,
+    { redact },
+  );
+
+  // ----------- Phase 5: bounded runtime text-trace evidence -------
+  // The runner caps a single observation stream; replay the one patched
+  // scene file (which carries the localized surface) rather than the full
+  // corpus. The capture fails closed unless the sentinel lands in a line.
+  const runtimeDataDir = join(runtimeInputDir, "data");
+  mkdirSync(runtimeDataDir, { recursive: true });
+  copyFileSync(join(appliedDataDir, sceneFile), join(runtimeDataDir, sceneFile));
+  runCommand(
+    "cargo",
+    [
+      "run",
+      "-p",
+      "utsushi-cli",
+      "--quiet",
+      "--",
+      "rpgmaker-mv-capture",
+      "--game-dir",
+      runtimeInputDir,
+      "--artifact-root",
+      runtimeArtifactsDir,
+      "--run-id",
+      runId,
+      "--expect-textline-contains",
+      sentinelSubstring,
+      "--output",
+      runtimeEvidencePath,
+    ],
+    process.env,
+    { redact },
+  );
+
+  // Readonly-source invariant: re-hash + assert no drift.
+  const sourceTreeSha256After = sha256OfDataTree(sourceDataDir);
+  process.stdout.write(
+    `[localize-project] source www/data sha256 (post): ${sourceTreeSha256After}\n`,
+  );
+  if (sourceTreeSha256Before !== sourceTreeSha256After) {
+    throw new Error(
+      `kaifuu.rpgmaker.source_mutated: source www/data tree changed during the run (pre=${sourceTreeSha256Before}, post=${sourceTreeSha256After})`,
+    );
+  }
+
+  for (const artifact of [
+    bridgeBundlePath,
+    findingsPath,
+    agenticLoopBundlePath,
+    translatedBundlePath,
+    patchReportPath,
+    deltaPath,
+    applyReportPath,
+    runtimeEvidencePath,
+  ]) {
+    if (!existsSync(artifact)) {
+      throw new Error(`expected artifact missing after successful run: ${artifact}`);
+    }
+  }
+
+  const summary = {
+    runDir: repoRelativePath(runDir),
+    project: args.project,
+    engine: projectMetadata.engine,
+    boundedSlice: { unitIndex, sceneFile, totalUnits: bridge.units.length },
+    sourceGame: {
+      gameId: projectMetadata.gameId,
+      gameVersion: projectMetadata.gameVersion,
+      sourceProfileId: projectMetadata.sourceProfileId,
+    },
+    sourceLocale: projectMetadata.sourceLocale,
+    pair: policy.pair,
+    enUsSentinel: policy.enUsSentinel,
+    sourceDataTreeSha256: sourceTreeSha256Before,
+    artifacts: {
+      bridgeBundle: portableRelativePath(runDir, bridgeBundlePath),
+      extractionFindings: portableRelativePath(runDir, findingsPath),
+      agenticLoopBundle: portableRelativePath(runDir, agenticLoopBundlePath),
+      translatedBundle: portableRelativePath(runDir, translatedBundlePath),
+      patchReport: portableRelativePath(runDir, patchReportPath),
+      delta: portableRelativePath(runDir, deltaPath),
+      applyReport: portableRelativePath(runDir, applyReportPath),
+      runtimeEvidence: portableRelativePath(runDir, runtimeEvidencePath),
+      providerRunArtifacts: portableRelativePath(runDir, providerRunArtifactsDir),
+    },
+  };
+  writeFileSync(join(runDir, "run-summary.json"), `${JSON.stringify(summary, null, 2)}\n`);
+  process.stdout.write(`[localize-project] SUCCESS — run dir: ${runDir}\n`);
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const requestedEnvFilePath =
@@ -987,6 +1386,31 @@ async function main() {
     corpusId: args.corpus,
   });
   const gameRoot = realCorpusSource.root;
+
+  // RPG Maker MV/MZ vertical slice: a self-contained engine pipeline that
+  // writes the patched copy + delta under the run dir (no external TARGET),
+  // bounds the live LLM slice to one dialogue surface, and emits text-trace
+  // runtime evidence. The RealLive Seen.txt path below is untouched.
+  if (projectMetadata.engine === "rpg-maker-mv-mz") {
+    await runRpgMakerMvMzPipeline({
+      args,
+      policy,
+      pairPolicyPath,
+      projectMetadata,
+      sentinelSubstring,
+      runDir,
+      bridgeBundlePath,
+      agenticLoopBundlePath,
+      translatedBundlePath,
+      patchReportPath,
+      providerRunArtifactsDir,
+      dryRun,
+      realCorpusSource,
+      gameRoot,
+    });
+    return;
+  }
+
   const targetRoot = process.env.TARGET;
   const livePathRedactor = buildPathRedactor([
     { path: gameRoot, replacement: realCorpusSource.placeholder },

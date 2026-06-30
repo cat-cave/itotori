@@ -122,6 +122,18 @@ export type LocalizeProjectStageArgs = {
    * runs against scene-1, unit 0 (the first dialogue unit) by default.
    */
   unitIndex?: number;
+  /**
+   * Engine profile controlling translated-bundle synthesis. `reallive`
+   * (default) overwrites EVERY unit's `target` with the SJIS-bracket
+   * sentinel-wrapped draft so the KAIFUU-191 lexer captures the patched
+   * run as a Textout opcode. `rpg-maker-mv-mz` translates ONLY the
+   * targeted `--unit-index` unit (sentinel-prefixed, no bracket wrap —
+   * RPG Maker stores JSON string literals) and keeps every other unit's
+   * `target.text === sourceText` (a byte no-op), so the kaifuu-rpgmaker
+   * patchback emits a single-surface, byte-correct `.kaifuu` delta rather
+   * than rewriting all 6000+ surfaces.
+   */
+  engineProfile?: "reallive" | "rpg-maker-mv-mz";
   io: LocalizeProjectStageIo;
   actor: AuthorizationActor;
   log?: (message: string) => void;
@@ -410,7 +422,11 @@ export async function runLocalizeProjectStageCommand(
   // lexer captures the run as a Textout opcode rather than silently
   // dropping the ASCII bytes as `Unknown`.
   const draftText = bundle.finalDraft.draftText ?? `[en-US] ${unit.sourceText}`;
-  const translatedBridge = synthesiseTranslatedBridge(rawBridge, draftText, enUsSentinel);
+  const engineProfile = args.engineProfile ?? "reallive";
+  const translatedBridge =
+    engineProfile === "rpg-maker-mv-mz"
+      ? synthesiseRpgMakerMvMzTranslatedBridge(rawBridge, draftText, enUsSentinel, unitIndex)
+      : synthesiseTranslatedBridge(rawBridge, draftText, enUsSentinel);
   args.io.writeJson(args.translatedBundleOutputPath, translatedBridge);
   log(`localize-project-stage: wrote ${args.translatedBundleOutputPath}`);
 
@@ -650,6 +666,53 @@ function synthesiseTranslatedBridge(
     (unit as Record<string, unknown>).target = {
       locale: "en-US",
       text: wrappedText,
+    };
+  }
+  return clone;
+}
+
+/**
+ * Build the v0.2 translated BridgeBundle JSON for the RPG Maker MV/MZ
+ * vertical slice. Unlike the RealLive synthesis (which rewrites every
+ * unit to the same bracket-wrapped sentinel), this translates ONLY the
+ * targeted `unitIndex` unit and leaves every other unit's
+ * `target.text === sourceText` — a byte no-op the kaifuu-rpgmaker
+ * patchback collapses to zero edits. The result is a single-surface,
+ * byte-correct `.kaifuu` delta. No SJIS bracket wrap: RPG Maker stores
+ * plain JSON string literals, so the sentinel is prefixed directly so the
+ * downstream runtime trace can assert it lands in an emitted TextLine.
+ */
+function synthesiseRpgMakerMvMzTranslatedBridge(
+  rawBridge: unknown,
+  draftText: string,
+  enUsSentinel: string,
+  unitIndex: number,
+): unknown {
+  if (typeof rawBridge !== "object" || rawBridge === null || Array.isArray(rawBridge)) {
+    throw new Error("localize-project-stage refused: bridge JSON must be an object");
+  }
+  const clone = JSON.parse(JSON.stringify(rawBridge)) as Record<string, unknown>;
+  const units = clone.units;
+  if (!Array.isArray(units)) {
+    throw new Error("localize-project-stage refused: bridge.units must be an array");
+  }
+  const targetedText = `${enUsSentinel} ${draftText}`;
+  for (const [index, unit] of units.entries()) {
+    if (typeof unit !== "object" || unit === null) {
+      throw new Error("localize-project-stage refused: bridge unit must be an object");
+    }
+    const record = unit as Record<string, unknown>;
+    const sourceText = record.sourceText;
+    if (typeof sourceText !== "string") {
+      throw new Error("localize-project-stage refused: bridge unit sourceText must be a string");
+    }
+    record.target = {
+      locale: "en-US",
+      // Only the targeted unit carries the live draft; everything else is
+      // a byte no-op (target === source). An empty source would trip the
+      // patchback's non-empty-target gate, but the RPG Maker extractor
+      // never surfaces empty literals.
+      text: index === unitIndex ? targetedText : sourceText,
     };
   }
   return clone;

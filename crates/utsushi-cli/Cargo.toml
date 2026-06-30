@@ -10,6 +10,7 @@ serde_json.workspace = true
 utsushi-core = { path = "../utsushi-core" }
 utsushi-fixture = { path = "../utsushi-fixture" }
 utsushi-reallive = { path = "../utsushi-reallive" }
+utsushi-rpgmaker-mv = { path = "../utsushi-rpgmaker-mv" }
 
 [dev-dependencies]
 # ALPHA-006b real-bytes test: synthesises a localized (English) patched

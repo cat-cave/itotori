@@ -355,6 +355,49 @@ test("--dry-run --project ... exits 0 and prints per-phase commands", () => {
   );
 });
 
+test("--dry-run --project lust-memory-alpha-1 plans the RPG Maker MV/MZ five-phase loop", () => {
+  const result = runDriver(["--dry-run", "--project", "lust-memory-alpha-1"]);
+  assert.equal(result.status, 0, `stderr: ${result.stderr}`);
+  // Five phases: extract -> stage -> patch+delta -> delta-apply -> runtime.
+  assert.equal(
+    (result.stdout.match(/\(planned\) \$ /gu) ?? []).length,
+    5,
+    `MV/MZ dry-run plan must preserve the five-phase command shape; got:\n${result.stdout}`,
+  );
+  // RPG Maker engine surfaces (NOT the RealLive Seen.txt path).
+  assert.ok(
+    result.stdout.includes("extract --engine rpgmaker") &&
+      result.stdout.includes("--game-dir") &&
+      result.stdout.includes("--game-id lust-memory") &&
+      result.stdout.includes("--source-profile-id kaifuu-rpgmaker-lust-memory"),
+    `MV/MZ dry-run extract must route through the rpgmaker engine with its identity metadata; got:\n${result.stdout}`,
+  );
+  assert.ok(
+    result.stdout.includes("--engine-profile rpg-maker-mv-mz"),
+    `MV/MZ stage must pass the rpg-maker-mv-mz engine profile; got:\n${result.stdout}`,
+  );
+  assert.ok(
+    result.stdout.includes("patch --engine rpgmaker") &&
+      result.stdout.includes("--delta-output") &&
+      result.stdout.includes("--patched-data-output"),
+    `MV/MZ dry-run must plan the rpgmaker patchback + delta producer; got:\n${result.stdout}`,
+  );
+  assert.ok(
+    result.stdout.includes("rpgmaker-mv-capture") &&
+      result.stdout.includes("--expect-textline-contains STELLA-MVMZ-EN-US-SENTINEL"),
+    `MV/MZ dry-run must plan the text-trace runtime evidence step; got:\n${result.stdout}`,
+  );
+  assert.ok(
+    !result.stdout.includes("--engine reallive") &&
+      !result.stdout.includes("REALLIVEDATA/Seen.txt"),
+    `MV/MZ dry-run must not reference the RealLive Seen.txt path; got:\n${result.stdout}`,
+  );
+  assert.ok(
+    result.stdout.includes("0 LLM calls"),
+    `MV/MZ dry-run plan must declare zero LLM calls; got:\n${result.stdout}`,
+  );
+});
+
 test("Sweetie metadata is loaded from explicit alpha target data, not a generic metadata preset", () => {
   const result = runDriver(["--dry-run", "--project", "sweetie-hd-alpha-1"]);
   assert.equal(result.status, 0, `stderr: ${result.stderr}`);

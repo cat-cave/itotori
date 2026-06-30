@@ -1,0 +1,56 @@
+{
+  "schemaVersion": "itotori.pair-policy.v0.3",
+  "policyId": "lust-memory-alpha-1",
+  "pair": {
+    "modelId": "deepseek/deepseek-v4-flash",
+    "providerId": "fireworks"
+  },
+  "enUsSentinel": "STELLA-MVMZ-EN-US-SENTINEL",
+  "sceneId": 1,
+  "notes": "RPG Maker MV/MZ vertical-slice pair-policy (analogous to sweetie-hd-alpha-1). Same single (modelId, providerId) primary pair pinned for every agentic-loop stage; OpenRouter-side ZDR-allow-list fallback is the resilience mechanism (provider.order=[providerId] + allow_fallbacks=true + zdr=true + data_collection=deny). The driver bounds the live slice to ONE dialogue surface (--engine-profile rpg-maker-mv-mz translates only the targeted unit, rest no-op), so a full run bills a single ZDR translation invocation. Unlike RealLive, the sentinel is NOT SJIS-bracket-wrapped: RPG Maker stores plain JSON string literals, so the sentinel is prefixed directly and the kaifuu-rpgmaker patchback splices it byte-surgically into one Map/CommonEvent Show-Text literal; the utsushi-rpgmaker-mv E1 text-trace then asserts it lands in an emitted TextLine. sceneId is carried for schema conformance but unused by the MV/MZ JSON extractor (which walks the whole www/data tree). Per-stage zdr / seed / maxPriceUsd are intentionally omitted: the parser fills canonical defaults. Operator-level zdr downgrades require OPENROUTER_ZDR_DOWNGRADE; no file-level escape hatch.",
+  "stages": {
+    "context": {
+      "sceneSummary": {
+        "pair": { "modelId": "deepseek/deepseek-v4-flash", "providerId": "fireworks" }
+      },
+      "characterRelationship": {
+        "pair": { "modelId": "deepseek/deepseek-v4-flash", "providerId": "fireworks" }
+      },
+      "terminologyCandidate": {
+        "pair": { "modelId": "deepseek/deepseek-v4-flash", "providerId": "fireworks" }
+      },
+      "routeChoiceMap": {
+        "pair": { "modelId": "deepseek/deepseek-v4-flash", "providerId": "fireworks" }
+      }
+    },
+    "preTranslation": {
+      "speakerLabel": {
+        "pair": { "modelId": "deepseek/deepseek-v4-flash", "providerId": "fireworks" }
+      }
+    },
+    "translation": {
+      "primary": {
+        "pair": { "modelId": "deepseek/deepseek-v4-flash", "providerId": "fireworks" }
+      }
+    },
+    "qa": {
+      "styleAdherence": {
+        "pair": { "modelId": "deepseek/deepseek-v4-flash", "providerId": "fireworks" }
+      },
+      "semanticDrift": {
+        "pair": { "modelId": "deepseek/deepseek-v4-flash", "providerId": "fireworks" }
+      },
+      "toneRegister": {
+        "pair": { "modelId": "deepseek/deepseek-v4-flash", "providerId": "fireworks" }
+      },
+      "unresolvedTerminology": {
+        "pair": { "modelId": "deepseek/deepseek-v4-flash", "providerId": "fireworks" }
+      }
+    },
+    "repair": {
+      "primary": {
+        "pair": { "modelId": "deepseek/deepseek-v4-flash", "providerId": "fireworks" }
+      }
+    }
+  }
+}

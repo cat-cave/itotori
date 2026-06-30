@@ -1,6 +1,7 @@
 mod render_validate;
 mod replay;
 mod replay_validate;
+mod rpgmaker_mv_capture;
 
 use std::path::PathBuf;
 
@@ -9,7 +10,7 @@ use utsushi_core::{
     RuntimeAdapterDescriptor, RuntimeAdapterRegistry, RuntimeOperation, RuntimeRequest, write_json,
 };
 
-const USAGE: &str = "usage: utsushi capabilities --output <path>\n       utsushi validate-reference-captures <corpus_manifest> --output <path>\n       utsushi replay --engine reallive --seen <PATH> --scene <N> --output <PATH> [--snapshot-output <PATH>]\n       utsushi replay-validate --engine reallive --seen <PATH> --scene <N> --expect-textline-contains <SUBSTR> [--print-textlines] [--print-replay-log <PATH>]\n       utsushi render-validate --engine reallive --seen <PATH> --scene <N> --artifact-root <DIR> [--run-id <ID>] [--expect-text-contains <SUBSTR>] [--width <N>] [--height <N>] [--output <PATH>]\n       utsushi <trace|capture|smoke> <game_dir> [--adapter <name>] [--artifact-root <path>] --output <path>";
+const USAGE: &str = "usage: utsushi capabilities --output <path>\n       utsushi validate-reference-captures <corpus_manifest> --output <path>\n       utsushi replay --engine reallive --seen <PATH> --scene <N> --output <PATH> [--snapshot-output <PATH>]\n       utsushi replay-validate --engine reallive --seen <PATH> --scene <N> --expect-textline-contains <SUBSTR> [--print-textlines] [--print-replay-log <PATH>]\n       utsushi render-validate --engine reallive --seen <PATH> --scene <N> --artifact-root <DIR> [--run-id <ID>] [--expect-text-contains <SUBSTR>] [--width <N>] [--height <N>] [--output <PATH>]\n       utsushi rpgmaker-mv-capture --game-dir <DIR> --artifact-root <DIR> --output <PATH> [--run-id <ID>] [--expect-textline-contains <SUBSTR>]\n       utsushi <trace|capture|smoke> <game_dir> [--adapter <name>] [--artifact-root <path>] --output <path>";
 const DEFAULT_ADAPTER_NAME: &str = utsushi_fixture::FixtureRuntimeAdapter::NAME;
 
 static FIXTURE_RUNTIME_ADAPTER: utsushi_fixture::FixtureRuntimeAdapter =
@@ -87,6 +88,15 @@ fn run_cli_with_registry(
             // the text-only `replay-validate` capture surface.
             let tail: Vec<String> = args.iter().skip(1).cloned().collect();
             render_validate::run_render_validate_command(&tail)?;
+        }
+        Some("rpgmaker-mv-capture") => {
+            // RPG Maker MV/MZ vertical-slice runtime evidence: drives the
+            // `utsushi-rpgmaker-mv` E1 text-per-tick port through the
+            // runner against a (patched) extracted game directory and
+            // asserts the localized substring lands in the text trace.
+            // Skips the leading `rpgmaker-mv-capture` argv slot.
+            let tail: Vec<String> = args.iter().skip(1).cloned().collect();
+            rpgmaker_mv_capture::run_rpgmaker_mv_capture_command(&tail)?;
         }
         Some(command) => {
             let operation = operation_from_command(command).ok_or(USAGE)?;

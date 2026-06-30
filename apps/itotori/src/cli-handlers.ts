@@ -403,6 +403,7 @@ async function runLocalizeProjectStage(
   const translatedBundleOutputPath = requiredFlag(args, "--translated-bundle-output");
   const patchReportOutputPath = requiredFlag(args, "--patch-report-output");
   const unitIndexRaw = optionalFlag(args, "--unit-index");
+  const engineProfileRaw = optionalFlag(args, "--engine-profile");
   const maxRepairAttemptsRaw = optionalFlag(args, "--max-repair-attempts");
   const providerKindRaw = optionalFlag(args, "--provider-kind");
   const costCapUsdRaw = optionalFlag(args, "--cost-cap-usd");
@@ -442,6 +443,14 @@ async function runLocalizeProjectStage(
       );
     }
     callArgs.unitIndex = parsed;
+  }
+  if (engineProfileRaw !== undefined) {
+    if (engineProfileRaw !== "reallive" && engineProfileRaw !== "rpg-maker-mv-mz") {
+      throw new Error(
+        `localize-project-stage refused: --engine-profile '${engineProfileRaw}' must be 'reallive' or 'rpg-maker-mv-mz'`,
+      );
+    }
+    callArgs.engineProfile = engineProfileRaw;
   }
   if (maxRepairAttemptsRaw !== undefined) {
     const parsed = Number.parseInt(maxRepairAttemptsRaw, 10);
