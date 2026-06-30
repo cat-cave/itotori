@@ -43,6 +43,12 @@ describe("ItotoriTranslationBatchRepository", () => {
           (ref) => ref.refKind === translationBatchContextRefKindValues.glossaryTerm,
         ),
       ).toBeDefined();
+      // ITOTORI-220 — the pinned provider half of the (modelId, providerId)
+      // pair survives the save/load round-trip; it is the real provider, not
+      // dropped and never the "unknown" sentinel.
+      expect(first.providerId).toBe("fake-fixture");
+      expect(first.providerId).not.toBe("unknown");
+      expect(loaded[1]!.providerId).toBe("fake-fixture");
       expect(first.modelTargetFillRatio).toBeCloseTo(0.7, 3);
       expect(first.modelContextWindowTokens).toBe(8000);
       expect(first.nearCapWarning).toBe(false);
@@ -159,6 +165,7 @@ function batchesFixture(): SaveTranslationBatchesInput {
         routeId: null,
         modelProviderFamily: "fake",
         modelId: "fake-test",
+        providerId: "fake-fixture",
         modelContextWindowTokens: 8000,
         modelMaxOutputTokens: 1024,
         modelTargetFillRatio: 0.7,
@@ -195,6 +202,7 @@ function batchesFixture(): SaveTranslationBatchesInput {
         routeId: null,
         modelProviderFamily: "fake",
         modelId: "fake-test",
+        providerId: "fake-fixture",
         modelContextWindowTokens: 8000,
         modelMaxOutputTokens: 1024,
         modelTargetFillRatio: 0.7,

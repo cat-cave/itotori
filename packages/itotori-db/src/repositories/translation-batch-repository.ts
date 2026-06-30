@@ -38,6 +38,8 @@ export type TranslationBatchRecord = {
   routeId: string | null;
   modelProviderFamily: string;
   modelId: string;
+  /** ITOTORI-220 — pinned provider half of the (modelId, providerId) pair. */
+  providerId: string;
   modelContextWindowTokens: number;
   modelMaxOutputTokens: number | null;
   modelTargetFillRatio: number;
@@ -67,6 +69,8 @@ export type SaveTranslationBatchInput = {
   routeId: string | null;
   modelProviderFamily: string;
   modelId: string;
+  /** ITOTORI-220 — pinned provider half of the (modelId, providerId) pair. */
+  providerId: string;
   modelContextWindowTokens: number;
   modelMaxOutputTokens: number | null;
   modelTargetFillRatio: number;
@@ -145,6 +149,7 @@ export class ItotoriTranslationBatchRepository implements ItotoriTranslationBatc
           routeId: batch.routeId,
           modelProviderFamily: batch.modelProviderFamily,
           modelId: batch.modelId,
+          providerId: batch.providerId,
           modelContextWindowTokens: batch.modelContextWindowTokens,
           modelMaxOutputTokens: batch.modelMaxOutputTokens,
           modelTargetFillRatio: batch.modelTargetFillRatio.toFixed(3),
@@ -344,6 +349,7 @@ function batchFromRow(
     routeId: row.routeId,
     modelProviderFamily: row.modelProviderFamily,
     modelId: row.modelId,
+    providerId: row.providerId,
     modelContextWindowTokens: row.modelContextWindowTokens,
     modelMaxOutputTokens: row.modelMaxOutputTokens,
     modelTargetFillRatio: Number.parseFloat(row.modelTargetFillRatio),

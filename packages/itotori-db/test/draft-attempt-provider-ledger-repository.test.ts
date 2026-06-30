@@ -882,4 +882,45 @@ describe.skipIf(!process.env.DATABASE_URL)("ItotoriDraftAttemptProviderLedgerRep
       await context.close();
     }
   });
+
+  it("ITOTORI-220: a raw insert omitting provider_id fails loud (no 'unknown' sentinel default)", async () => {
+    // The schema's `.default("unknown")` was removed (migration 0047) so a
+    // row that never declared the served provider can no longer be silently
+    // recorded as the fake (model, "unknown") pair. A direct insert that
+    // omits provider_id — bypassing the repository's typed gate — must now
+    // hit the NOT NULL constraint (Postgres 23502) instead of defaulting.
+    const context = await isolatedMigratedContext();
+    try {
+      await provisionDraftJobFixtureProject(context.db, localActor);
+      const attemptId = await provisionDraftAttempt(context.db);
+
+      let captured: unknown;
+      try {
+        // usage_response_json `{}` carries no `cost` key, so the real-cost
+        // CHECK is exempt — the ONLY thing that can fail here is the missing
+        // provider_id, proving the dropped default is what fails loud.
+        await context.pool.query(
+          `insert into itotori_draft_attempt_provider_ledger
+             (ledger_entry_id, draft_job_attempt_id, provider_proof_id,
+              cost_unit, cost_amount, usage_response_json)
+           values ($1, $2, $3, 'usd', '0', '{}'::jsonb)`,
+          ["ledger-no-provider-01", attemptId, "provider-proof-no-provider-01"],
+        );
+      } catch (error) {
+        captured = error;
+      }
+      // Postgres not_null_violation = 23502.
+      expect(pgErrorCodeOf(captured)).toBe("23502");
+      const message = (captured as { message?: string } | undefined)?.message ?? "";
+      expect(message).toMatch(/provider_id/u);
+
+      // No fake "unknown" row leaked through.
+      const rows = await context.pool.query(
+        "select provider_id from itotori_draft_attempt_provider_ledger",
+      );
+      expect(rows.rows).toHaveLength(0);
+    } finally {
+      await context.close();
+    }
+  });
 });

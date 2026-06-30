@@ -84,7 +84,10 @@ export type BatchModelProfile = {
    * ITOTORI-220 — required (modelId, providerId) pair pinned for every
    * batch invocation. The batch planner does not invoke a model, but the
    * downstream draft agent reads `providerId` off the profile when
-   * issuing the call, so it must travel with the batch shape.
+   * issuing the call, so it must travel with the batch shape AND be
+   * persisted: `batchToSaveInput` threads it into the
+   * `translation_batches.provider_id` column so the pinned provider half
+   * survives a save/load round-trip.
    */
   providerId: string;
   contextWindowTokens: number;

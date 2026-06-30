@@ -2836,6 +2836,16 @@ export const translationBatches = pgTable(
     routeId: text("route_id"),
     modelProviderFamily: text("model_provider_family").notNull(),
     modelId: text("model_id").notNull(),
+    /**
+     * ITOTORI-220 — required pinned providerId per the (modelId,
+     * providerId) pair rule. The planner pins both halves of the pair on
+     * `batch.modelProfile`; persisting only the model half dropped the
+     * provider provenance the downstream draft agent reads back. NOT NULL
+     * with NO sentinel default — a batch must carry its real provider, or
+     * the insert fails loud (migration 0047 deletes pre-fix rows that
+     * never captured it rather than backfilling a fake provider).
+     */
+    providerId: text("provider_id").notNull(),
     modelContextWindowTokens: integer("model_context_window_tokens").notNull(),
     modelMaxOutputTokens: integer("model_max_output_tokens"),
     modelTargetFillRatio: numeric("model_target_fill_ratio", { precision: 4, scale: 3 }).notNull(),
@@ -3900,11 +3910,15 @@ export const draftAttemptProviderLedger = pgTable(
     modelId: text("model_id"),
     /**
      * ITOTORI-220 — required pinned providerId per the (modelId,
-     * providerId) pair rule. NOT NULL is enforced by migration 0038
-     * (with `unknown` backfill for legacy rows); the repository's
-     * `recordLedgerEntry` requires it in its typed input.
+     * providerId) pair rule. NOT NULL with NO sentinel default: a
+     * `.default("unknown")` silently recorded a FAKE (model, "unknown")
+     * pair for any insert that omitted the real served provider, the exact
+     * no-fallback anti-pattern. The default is removed (migration 0047) so
+     * a missing providerId fails loud at insert; the repository's
+     * `recordLedgerEntry` already requires it in its typed input, and the
+     * caller must supply the provider that ACTUALLY served the call.
      */
-    providerId: text("provider_id").notNull().default("unknown"),
+    providerId: text("provider_id").notNull(),
     modelContextWindowTokens: integer("model_context_window_tokens"),
     modelMaxOutputTokens: integer("model_max_output_tokens"),
     promptTemplateVersion: text("prompt_template_version"),

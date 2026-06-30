@@ -45,6 +45,9 @@ function batchToSaveInput(batch: Batch): SaveTranslationBatchInput {
     routeId: batch.routeId ?? null,
     modelProviderFamily: batch.modelProfile.providerFamily,
     modelId: batch.modelProfile.modelId,
+    // ITOTORI-220 — thread the pinned provider half of the (modelId,
+    // providerId) pair so it is persisted, not dropped, on every batch.
+    providerId: batch.modelProfile.providerId,
     modelContextWindowTokens: batch.modelProfile.contextWindowTokens,
     modelMaxOutputTokens: batch.modelProfile.maxOutputTokens ?? null,
     modelTargetFillRatio: batch.modelProfile.targetFillRatio,
