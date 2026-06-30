@@ -873,7 +873,6 @@ describe("ItotoriProjectWorkflowService", () => {
     };
 
     await service.recordBenchmarkReport("project-test", {
-      localeBranchId: "locale-en-us",
       benchmarkReport,
     });
 
@@ -937,7 +936,6 @@ describe("ItotoriProjectWorkflowService", () => {
     firstRun.cost = { costKind: "unknown", currency: "USD" }; // itotori-225-audit-allow: cross-app BenchmarkCostAmountV02 still emits the legacy enum; this test verifies the itotori ingest boundary narrows it.
 
     await service.recordBenchmarkReport("project-test", {
-      localeBranchId: "locale-en-us",
       benchmarkReport,
     });
 

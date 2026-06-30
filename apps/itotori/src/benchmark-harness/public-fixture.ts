@@ -238,6 +238,7 @@ function costQualityReportStage(
         status: meta.status,
         sourceLocale: meta.sourceLocale,
         targetLocale: meta.targetLocale,
+        localeBranchId: meta.localeBranchId,
         engineProfile: meta.engineProfile,
         gitCommit: meta.gitCommit,
         ...(meta.deterministicSeed !== undefined

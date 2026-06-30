@@ -131,7 +131,6 @@ const apiMutationPermissionMatrix = [
   apiGate(
     "benchmarkRecord",
     post("/api/projects/project-1/benchmarks", {
-      localeBranchId: "locale-1",
       benchmarkReport: benchmarkReportFixture,
     }),
     "recordBenchmarkReport",

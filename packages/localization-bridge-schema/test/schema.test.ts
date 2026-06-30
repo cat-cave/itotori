@@ -1424,6 +1424,75 @@ describe("localization bridge schema guards", () => {
     expect(() => assertBenchmarkReportV02(report)).not.toThrow();
   });
 
+  // ITOTORI-059 — branch-aware benchmark + cost metadata.
+  it("accepts a benchmark report that identifies its locale branch on both the report and the cost ledger", () => {
+    const report = benchmarkReportV02Example();
+    const costLedger = asTestRecord(report.costLedger, "benchmark cost ledger");
+
+    expect(() => assertBenchmarkReportV02(report)).not.toThrow();
+    expect(report.localeBranchId).toBe("019ed006-0000-7000-8000-0000000000b1");
+    expect(costLedger.localeBranchId).toBe(report.localeBranchId);
+  });
+
+  it("rejects a benchmark report that drops its locale-branch identity but keeps it on the cost ledger", () => {
+    const report = benchmarkReportV02Example();
+    delete report.localeBranchId;
+
+    // The cost ledger still names a branch the report no longer claims: a
+    // dropped report-level branch identity must fail, not silently fall back.
+    expect(() => assertBenchmarkReportV02(report)).toThrow(
+      /costLedger\.localeBranchId must equal BenchmarkReportV02\.localeBranchId/,
+    );
+  });
+
+  it("rejects a benchmark cost ledger that drops the report's locale-branch identity", () => {
+    const report = benchmarkReportV02Example();
+    const costLedger = asTestRecord(report.costLedger, "benchmark cost ledger");
+    delete costLedger.localeBranchId;
+
+    expect(() => assertBenchmarkReportV02(report)).toThrow(
+      /costLedger\.localeBranchId must equal BenchmarkReportV02\.localeBranchId/,
+    );
+  });
+
+  it("rejects a benchmark cost ledger scoped to a different locale branch than its report (no cross-branch cost merge)", () => {
+    const report = benchmarkReportV02Example();
+    const costLedger = asTestRecord(report.costLedger, "benchmark cost ledger");
+    costLedger.localeBranchId = "019ed006-0000-7000-8000-0000000000b2";
+
+    expect(() => assertBenchmarkReportV02(report)).toThrow(
+      /cost cannot be merged across target locale branches/,
+    );
+  });
+
+  it("rejects a benchmark report whose locale-branch identity is not a UUID7", () => {
+    const report = benchmarkReportV02Example();
+    report.localeBranchId = "locale-en-us";
+
+    expect(() => assertBenchmarkReportV02(report)).toThrow(
+      /BenchmarkReportV02\.localeBranchId must be a UUID7/,
+    );
+  });
+
+  it("keeps two benchmark reports that share a target locale but belong to different branches distinct", () => {
+    const branchA = benchmarkReportV02Example();
+    const branchB = benchmarkReportV02Example();
+    const branchBLocaleBranchId = "019ed006-0000-7000-8000-0000000000b2";
+    branchB.localeBranchId = branchBLocaleBranchId;
+    asTestRecord(branchB.costLedger, "branch B cost ledger").localeBranchId = branchBLocaleBranchId;
+
+    // Same target locale, DIFFERENT locale branch: both are valid and the two
+    // never collapse onto a single branch (the conflation an end-to-end
+    // workflow keyed only by target locale would produce).
+    expect(() => assertBenchmarkReportV02(branchA)).not.toThrow();
+    expect(() => assertBenchmarkReportV02(branchB)).not.toThrow();
+    expect(branchA.targetLocale).toBe(branchB.targetLocale);
+    expect(branchA.localeBranchId).not.toBe(branchB.localeBranchId);
+    expect(asTestRecord(branchA.costLedger, "branch A cost ledger").localeBranchId).not.toBe(
+      asTestRecord(branchB.costLedger, "branch B cost ledger").localeBranchId,
+    );
+  });
+
   it("rejects v0.2 bridge ids that are not UUID7", () => {
     const bridge = bridgeV02Example();
     bridge.bridgeId = "not-a-uuid";

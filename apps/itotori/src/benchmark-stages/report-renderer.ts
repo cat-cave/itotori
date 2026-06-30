@@ -52,6 +52,11 @@ export type BenchmarkReportRenderInput = {
   status: BenchmarkRunStatusV02;
   sourceLocale: string;
   targetLocale: string;
+  // ITOTORI-059 — REQUIRED at the itotori recording boundary: a benchmark run
+  // is always scoped to the locale branch it drafted/scored, never to a bare
+  // target locale or the whole project. The assembled report (and its cost
+  // ledger) carry this so two branches sharing a target locale stay distinct.
+  localeBranchId: string;
   engineProfile: string;
   gitCommit: string;
   deterministicSeed?: string;
@@ -80,7 +85,7 @@ export function assembleBenchmarkReport(input: BenchmarkReportRenderInput): Benc
     ...input.qaAgent.findings,
   ];
 
-  const costLedger = computeCostLedger(providerModelCostRecords);
+  const costLedger = computeCostLedger(providerModelCostRecords, input.localeBranchId);
   const severities = findingRecords.map((finding) => finding.qualitySeverity);
   const { totalSourceCharacterCount, totalSourceUnitCount } = sumCorpusTotals(
     input.fixtureOrCorpusRefs,
@@ -97,6 +102,7 @@ export function assembleBenchmarkReport(input: BenchmarkReportRenderInput): Benc
     fixtureOrCorpusRefs: input.fixtureOrCorpusRefs,
     sourceLocale: input.sourceLocale,
     targetLocale: input.targetLocale,
+    localeBranchId: input.localeBranchId,
     engineProfile: input.engineProfile,
     gitCommit: input.gitCommit,
     bridgeSchemaVersion: BRIDGE_SCHEMA_VERSION,
@@ -343,7 +349,10 @@ function renderQaAccuracyReport(
   };
 }
 
-function computeCostLedger(providerRuns: BenchmarkProviderRunV02[]): BenchmarkCostLedgerV02 {
+function computeCostLedger(
+  providerRuns: BenchmarkProviderRunV02[],
+  localeBranchId: string,
+): BenchmarkCostLedgerV02 {
   let reportTotalMicrosUsd = 0;
   let includesUnknownCost = false;
   const totals = new Map<string, number>();
@@ -364,6 +373,7 @@ function computeCostLedger(providerRuns: BenchmarkProviderRunV02[]): BenchmarkCo
       totalMicrosUsd,
     })),
     includesUnknownCost,
+    localeBranchId,
   };
 }
 

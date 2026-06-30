@@ -25,6 +25,7 @@
   ],
   "sourceLocale": "en-US",
   "targetLocale": "fr-FR",
+  "localeBranchId": "019ed006-0000-7000-8000-0000000000b1",
   "engineProfile": "kaifuu-fixture-default",
   "gitCommit": "1111111111111111111111111111111111111111",
   "bridgeSchemaVersion": "0.2.0",
@@ -218,7 +219,8 @@
         "totalMicrosUsd": 2550
       }
     ],
-    "includesUnknownCost": false
+    "includesUnknownCost": false,
+    "localeBranchId": "019ed006-0000-7000-8000-0000000000b1"
   },
   "seededDefectOracle": [
     {

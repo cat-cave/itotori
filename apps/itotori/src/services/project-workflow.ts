@@ -185,7 +185,7 @@ export interface ItotoriProjectWorkflowPort {
   ): Promise<DecisionRecordResult>;
   recordBenchmarkReport(
     projectId: string,
-    input: { localeBranchId?: string; benchmarkReport: BenchmarkReportV02 },
+    input: { benchmarkReport: BenchmarkReportV02 },
   ): Promise<BenchmarkRecordResult>;
 }
 
@@ -623,9 +623,19 @@ export class ItotoriProjectWorkflowService implements ItotoriProjectWorkflowPort
 
   async recordBenchmarkReport(
     projectId: string,
-    input: { localeBranchId?: string; benchmarkReport: BenchmarkReportV02 },
+    input: { benchmarkReport: BenchmarkReportV02 },
   ): Promise<BenchmarkRecordResult> {
     const report = input.benchmarkReport;
+    // ITOTORI-059 — the locale branch comes from the report itself, not a
+    // separate channel. A report without it never reaches here (the API + the
+    // bridge schema reject it), but the workflow re-asserts so the artifact +
+    // every cost-ledger row are branch-scoped with no project-level fallback.
+    const localeBranchId = report.localeBranchId;
+    if (localeBranchId === undefined) {
+      throw new Error(
+        "recordBenchmarkReport: benchmarkReport.localeBranchId is required (cannot record a project-level benchmark)",
+      );
+    }
     await this.repository.recordBenchmarkArtifactWithProviderLedger(this.actor, {
       artifact: {
         artifactId: report.benchmarkRunId,
@@ -641,12 +651,12 @@ export class ItotoriProjectWorkflowService implements ItotoriProjectWorkflowPort
           findingCount: report.findingRecords.length,
           penaltyTotal: report.penaltySummary.penaltyTotal,
         },
-        ...(input.localeBranchId === undefined ? {} : { localeBranchId: input.localeBranchId }),
+        localeBranchId,
       },
       providerRuns: report.providerModelCostRecords.map((providerRun) =>
         providerRunLedgerInputFromBenchmark(
           projectId,
-          input.localeBranchId,
+          localeBranchId,
           report.benchmarkRunId,
           providerRun,
         ),
@@ -890,7 +900,7 @@ function providerRunLedgerInputFromRun(
 
 function providerRunLedgerInputFromBenchmark(
   projectId: string,
-  localeBranchId: string | undefined,
+  localeBranchId: string,
   benchmarkRunId: string,
   providerRun: BenchmarkReportV02["providerModelCostRecords"][number],
 ): ProviderRunLedgerInput {
@@ -906,7 +916,7 @@ function providerRunLedgerInputFromBenchmark(
   return {
     providerRunId: providerRun.providerRunId,
     projectId,
-    ...(localeBranchId === undefined ? {} : { localeBranchId }),
+    localeBranchId,
     systemId: providerRun.systemId,
     taskKind: providerRun.taskKind,
     startedAt: providerRun.startedAt,

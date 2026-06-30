@@ -7,6 +7,7 @@
     "status": "passed",
     "sourceLocale": "ja-JP",
     "targetLocale": "en-US",
+    "localeBranchId": "019ed026-0000-7000-8000-0000000000b1",
     "engineProfile": "kaifuu-fixture-default",
     "gitCommit": "1111111111111111111111111111111111111111",
     "deterministicSeed": "itotori-benchmark-stages-public-0001",

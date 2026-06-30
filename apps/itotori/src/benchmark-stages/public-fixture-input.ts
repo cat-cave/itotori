@@ -24,6 +24,9 @@ export type BenchmarkStagesReportMeta = {
   status: BenchmarkRunStatusV02;
   sourceLocale: string;
   targetLocale: string;
+  // ITOTORI-059 — locale branch the benchmark run belongs to (required so the
+  // assembled report + cost ledger self-identify their branch).
+  localeBranchId: string;
   engineProfile: string;
   gitCommit: string;
   deterministicSeed?: string;

@@ -179,7 +179,6 @@ export type ApiRecordDecisionRequest = {
 export type ApiRecordDecisionResponse = DecisionRecordResult;
 
 export type ApiRecordBenchmarkRequest = {
-  localeBranchId?: string;
   benchmarkReport: BenchmarkReportV02;
 };
 
@@ -282,15 +281,17 @@ export function parseRecordDecisionRequest(body: unknown): ApiRecordDecisionRequ
 export function parseRecordBenchmarkRequest(body: unknown): ApiRecordBenchmarkRequest {
   return parseRequest("ApiRecordBenchmarkRequest", () => {
     const request = asRecord(body, "ApiRecordBenchmarkRequest");
-    if (request.localeBranchId !== undefined) {
-      assertString(request.localeBranchId, "ApiRecordBenchmarkRequest.localeBranchId");
-    }
     assertBenchmarkReportV02(request.benchmarkReport);
-    const result: ApiRecordBenchmarkRequest = { benchmarkReport: request.benchmarkReport };
-    if (request.localeBranchId !== undefined) {
-      result.localeBranchId = request.localeBranchId;
+    // ITOTORI-059 — the recorded benchmark MUST self-identify its locale
+    // branch. There is no separate envelope channel and no project-level
+    // fallback: a report that omits localeBranchId is rejected so cost +
+    // benchmark records can never be attributed to the wrong branch.
+    if (request.benchmarkReport.localeBranchId === undefined) {
+      throw new ApiValidationError(
+        "ApiRecordBenchmarkRequest.benchmarkReport.localeBranchId is required (a benchmark must identify its target locale branch)",
+      );
     }
-    return result;
+    return { benchmarkReport: request.benchmarkReport };
   });
 }
 

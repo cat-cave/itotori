@@ -1474,6 +1474,10 @@ export type BenchmarkCostLedgerV02 = {
   reportTotalMicrosUsd: number;
   totalsBySystem: BenchmarkCostLedgerTotalV02[];
   includesUnknownCost: boolean;
+  // ITOTORI-059 — the cost ledger names the SAME locale branch as its report.
+  // The asserter rejects a ledger whose localeBranchId disagrees with the
+  // report's so cost can never be merged across target locale branches.
+  localeBranchId?: Uuid7;
 };
 
 export type BenchmarkFindingRecordV02 = {
@@ -1583,6 +1587,13 @@ export type BenchmarkReportV02 = {
   fixtureOrCorpusRefs: BenchmarkInputRefV02[];
   sourceLocale: Bcp47Locale;
   targetLocale: Bcp47Locale;
+  // ITOTORI-059 — the locale branch this benchmark run belongs to. A target
+  // locale is not enough: two branches can share a target locale (e.g. two
+  // competing en-US drafts) and their benchmark + cost state must never be
+  // conflated. Optional on the cross-app wire (mirroring the other v0.2
+  // locale-branch carriers); itotori's recording boundary requires it so a
+  // recorded benchmark never falls back to project-level scope.
+  localeBranchId?: Uuid7;
   engineProfile: string;
   gitCommit: string;
   bridgeSchemaVersion: typeof BRIDGE_SCHEMA_VERSION_V02;
@@ -2264,6 +2275,7 @@ export function assertBenchmarkReportV02(value: unknown): asserts value is Bench
   assertEnum(report.status, BENCHMARK_RUN_STATUSES, "BenchmarkReportV02.status");
   assertString(report.sourceLocale, "BenchmarkReportV02.sourceLocale");
   assertString(report.targetLocale, "BenchmarkReportV02.targetLocale");
+  assertOptionalUuid7(report.localeBranchId, "BenchmarkReportV02.localeBranchId");
   assertString(report.engineProfile, "BenchmarkReportV02.engineProfile");
   assertString(report.gitCommit, "BenchmarkReportV02.gitCommit");
   assertEqual(
@@ -2366,6 +2378,7 @@ export function assertBenchmarkReportV02(value: unknown): asserts value is Bench
     reportTotalMicrosUsd,
     costTotalsBySystem,
     includesUnknownCost,
+    report.localeBranchId as Uuid7 | undefined,
   );
 
   const seededDefectOracle = asArray(
@@ -5946,9 +5959,19 @@ function assertBenchmarkCostLedgerV02(
   expectedReportTotalMicrosUsd: number,
   expectedTotalsBySystem: ReadonlyMap<string, number>,
   expectedIncludesUnknownCost: boolean,
+  expectedLocaleBranchId: Uuid7 | undefined,
 ): asserts value is BenchmarkCostLedgerV02 {
   const ledger = asRecord(value, label);
   assertEqual(ledger.currency, "USD", `${label}.currency`);
+  // ITOTORI-059 — the ledger's locale branch MUST match its report's. A
+  // present-vs-absent mismatch or a different branch id is a conflation of
+  // cost across target locale branches and is rejected.
+  assertOptionalUuid7(ledger.localeBranchId, `${label}.localeBranchId`);
+  if (ledger.localeBranchId !== expectedLocaleBranchId) {
+    throw new Error(
+      `${label}.localeBranchId must equal BenchmarkReportV02.localeBranchId (cost cannot be merged across target locale branches)`,
+    );
+  }
   assertNonNegativeInteger(ledger.reportTotalMicrosUsd, `${label}.reportTotalMicrosUsd`);
   if (ledger.reportTotalMicrosUsd !== expectedReportTotalMicrosUsd) {
     throw new Error(`${label}.reportTotalMicrosUsd must equal providerModelCostRecords total`);
