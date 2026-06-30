@@ -12,6 +12,25 @@
 > `src/libreallive/compression.cc` (Peter Jolly, 2006). No rlvm source is
 > vendored.
 
+## 0. SUPERSEDED — read this first (`reallive-xor2-sukara-decryptor`)
+
+> **The "Outcome A" conclusion below (no second-level XOR) is WRONG for the
+> full archive.** It was reached from scene-1's first 64 bytes only, which sit
+> *before* the `xor_2` segment at decompressed offset `256`. Full-archive
+> validation (the command-catalogue + Kanon work) later proved that Sweetie HD
+> **does** apply rlvm's second-level `xor_2` over a bounded `[256, 513)`
+> segment of every scene (`XorKey { xor_offset = 256, xor_length = 257 }`):
+> byte-equality autocorrelation spikes at lag 16 / 32, and 153/198 scenes fail
+> to decode until it is removed (45/198 clean before, 198/198 after). Sukara's
+> per-game key is absent from rlvm's table **and** is not stored anywhere in
+> the shipped game (a full static scan of `RealLive.exe` + all 2,843 game
+> files finds it under no rotation — the retail interpreter derives it at run
+> time). It is recovered in-process from the game's own encrypted corpus
+> (cross-scene known-plaintext over the `0x00`-modal segment) and validated
+> before consumption in `crates/kaifuu-reallive/src/xor2.rs`; both full
+> archives now assert at the hard zero bar in `multi_corpus_real_bytes.rs`.
+> §1–§4 below are retained only as the (scene-1-scoped) historical record.
+
 ## 1. Bottom line
 
 **Outcome A.** Sweetie HD's RealLive scene bytecode for compiler version

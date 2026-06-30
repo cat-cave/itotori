@@ -125,6 +125,7 @@ pub mod scene_header;
 mod strings;
 #[cfg(test)]
 mod test_fixtures;
+pub mod xor2;
 
 pub use archive::{
     REALLIVE_SEEN_TXT_DIRECTORY_BYTE_LEN, REALLIVE_SEEN_TXT_SLOT_COUNT, RealLiveSceneIndex,
@@ -180,3 +181,7 @@ pub use protected_spans::{
     detect_protected_spans,
 };
 pub use scene_header::{SCENE_HEADER_BYTE_LEN, SceneHeader, SceneHeaderError};
+pub use xor2::{
+    XOR2_KEY_LEN, XOR2_SEGMENT_LENGTH, XOR2_SEGMENT_OFFSET, Xor2DecScene, Xor2Report,
+    compiler_version_uses_xor2, recover_and_decrypt_archive,
+};

@@ -9,7 +9,7 @@
 //!
 //! # What this test proves (and what it deliberately does NOT)
 //!
-//! This is the *availability + validation-runs* gate, not a 100%-decompile
+//! This is the availability + multi-game + **full-archive 100%-decompile**
 //! gate. It asserts:
 //! - each staged corpus resolves, is a real RealLive SEEN archive with >= 1
 //!   populated scene;
@@ -17,7 +17,11 @@
 //!   sha256** (audit-focus: "2nd corpus actually Sweetie HD again" — caught
 //!   here);
 //! - the merged decompiler **runs** over every scene of every corpus without
-//!   panicking and recognises non-trivial real structure.
+//!   panicking and recognises non-trivial real structure;
+//! - BOTH complete real archives — Kanon (`10002`, no `xor_2`) and Sweetie
+//!   HD (`110002`, second-level `xor_2` decrypted in-process) — decode with
+//!   ZERO unknown commands, ZERO malformed expressions, and ZERO parse
+//!   failures across every populated scene (the alpha 100% bar).
 //!
 //! It then prints a sanitized per-corpus decompiler-coverage report (clean /
 //! parse-failed / unknown-command scene counts, opcode histogram, and the
@@ -42,37 +46,28 @@
 //!   expressions, ZERO parse failures across its WHOLE archive (was
 //!   161 614 unknown / 5 parse failures): a full-archive 100%-decompilation
 //!   proof.
-//! - **Sweetie HD second-level XOR — OPEN (decompressor / decryption, NOT
-//!   this catalogue).** corpus-1's command framing is improved here, but
-//!   only 45 of its 198 scenes decode 100% clean; the residual is a
-//!   second-level (per-game `compiler_version=110002` `xor_2`) XOR applied
-//!   to bounded segments of the decompressed bytecode — the
-//!   `module_sel`/data regions where a select block or embedded data sits.
-//!   This was verified directly on the real bytes: element-tracing a
-//!   failing `module_sel` block shows the header, the `( … )` window, the
-//!   `{` open and the first readable Shift-JIS options decode cleanly, then
-//!   a high-entropy span begins; that span's byte-equality autocorrelation
-//!   spikes at lag 16 (≈9.5 %) and lag 32 (≈9.3 %) against a ≈0.4 % baseline
-//!   at every other lag — the signature of a 16-byte-period XOR over
-//!   structured plaintext (two 16-byte windows decode byte-identical) — and
-//!   the stream resyncs to clean bytecode once the segment ends, which is
-//!   why long (≥0.5 MB) Sweetie scenes still decode 100 % clean (they carry
-//!   no `xor_2` segment). The cursor desync that follows surfaces as
-//!   `MalformedExpression` / `TruncatedCommandArgs` parse failures, and the
-//!   46 `Unknown` commands are downstream symptoms (a desynced cursor
-//!   reading ciphertext as a `module_type > 2` command header). Recovering
-//!   the per-game 16-byte key and gating it behind `use_xor_2` is the
-//!   deferred decompressor `xor_2_pass` node (see
-//!   `docs/research/reallive-sweetie-hd-encryption-mechanism.md`, whose
-//!   scene-1-only "Outcome A" — no XOR-2 — is incomplete for the full
-//!   archive: scene 1 simply carries no `xor_2` segment). That work is
-//!   orthogonal to the module catalogue proven complete on corpus-2, so
-//!   corpus-1 is reported (with the residual characterised), not
-//!   asserted-zero.
+//! - **Sweetie HD second-level XOR — DONE
+//!   (`reallive-xor2-sukara-decryptor`).** corpus-1 (Sweetie HD, compiler
+//!   `110002`) carries a second-level per-game `xor_2` over a bounded
+//!   `[256, 513)` segment of every scene's decompressed bytecode (rlvm's
+//!   `XorKey { xor_offset = 256, xor_length = 257 }` shape; clean-room from
+//!   `compression.cc`). Forensic signature: byte-equality autocorrelation
+//!   spikes at lag 16 / lag 32 against a ≈0.4 % baseline — a 16-byte-period
+//!   XOR over structured plaintext. Sukara's key is absent from rlvm's
+//!   published table AND is not stored anywhere in the shipped game (a full
+//!   static scan of `RealLive.exe` + all 2,843 game files finds it under no
+//!   rotation): the retail interpreter derives it at run time. It is
+//!   therefore recovered here by in-process static analysis of the game's
+//!   own encrypted corpus (cross-scene known-plaintext over the `0x00`-modal
+//!   segment) and validated before consumption — see
+//!   [`kaifuu_reallive::xor2`]. With the segment decrypted, the SAME command
+//!   catalogue that decodes Kanon decodes all 198 Sweetie scenes 100% clean
+//!   (was 45/198 clean, 121 parse failures). corpus-1 is now asserted at the
+//!   SAME hard zero bar as corpus-2.
 //!
 //! This test's contract is corpus availability + harness execution + the
-//! full command-catalogue + expression-grammar zero bar on a complete real
-//! archive (corpus-2).
+//! full command-catalogue + expression-grammar + second-level-`xor_2` zero
+//! bar on BOTH complete real archives.
 
 #[path = "support/real_corpus.rs"]
 mod real_corpus;
@@ -81,8 +76,8 @@ use std::collections::BTreeMap;
 use std::fs;
 
 use kaifuu_reallive::{
-    RealLiveOpcode, RealLiveParseError, SceneHeader, decompress_avg32, parse_archive,
-    parse_real_bytecode,
+    RealLiveOpcode, RealLiveParseError, SceneHeader, Xor2DecScene, Xor2Report, decompress_avg32,
+    parse_archive, parse_real_bytecode, recover_and_decrypt_archive,
 };
 
 use real_corpus::RealCorpus;
@@ -95,6 +90,9 @@ struct CoverageReport {
     clean_scenes: usize,
     scenes_with_unknown: usize,
     parse_failures: usize,
+    /// Sanitized outcome of the second-level `xor_2` decryptor: counts /
+    /// offsets / one-way key sha256 only (never the key or decrypted bytes).
+    xor2: Xor2Report,
     /// Of `parse_failures`, the count whose first decode error is a
     /// `MalformedExpression` — i.e. the ExpressionPiece evaluator was handed
     /// a byte that is not a valid expression token. This is the metric the
@@ -124,13 +122,27 @@ fn decompile_corpus(corpus: &RealCorpus) -> CoverageReport {
         )
     });
 
+    let populated_scenes = index.entries.len();
     let mut report = CoverageReport {
         label: corpus.label,
         seen_sha256: sha256_hex(&bytes),
-        populated_scenes: index.entries.len(),
+        populated_scenes,
         clean_scenes: 0,
         scenes_with_unknown: 0,
         parse_failures: 0,
+        xor2: Xor2Report {
+            segment_offset: 0,
+            segment_length: 0,
+            key_len: 0,
+            scenes_total: 0,
+            scenes_eligible: 0,
+            baseline_clean: 0,
+            after_clean: 0,
+            scenes_decrypted: 0,
+            validated: false,
+            key_sha256: None,
+            finding: None,
+        },
         malformed_expression_scenes: 0,
         total_opcodes: 0,
         total_unknown: 0,
@@ -138,6 +150,10 @@ fn decompile_corpus(corpus: &RealCorpus) -> CoverageReport {
         unknown_signatures: BTreeMap::new(),
     };
 
+    // --- Stage 1: envelope -> header -> AVG32 decompress (first-level). ---
+    // Any failure before the decompressed bytecode exists is a hard parse
+    // failure (it can never reach the decoder).
+    let mut scenes: Vec<Xor2DecScene> = Vec::with_capacity(populated_scenes);
     for entry in &index.entries {
         let off = entry.byte_offset as usize;
         let end = off + entry.byte_len as usize;
@@ -161,7 +177,20 @@ fn decompile_corpus(corpus: &RealCorpus) -> CoverageReport {
             report.parse_failures += 1;
             continue;
         };
-        let opcodes = match parse_real_bytecode(&decompressed) {
+        scenes.push(Xor2DecScene {
+            compiler_version: header.compiler_version,
+            bytecode: decompressed,
+        });
+    }
+
+    // --- Stage 2: second-level xor_2 decryption (per-game key recovered ---
+    // in-process from the corpus, validate-before-consume). Scenes whose
+    // compiler_version does not set use_xor_2 (Kanon's 10002) are untouched.
+    report.xor2 = recover_and_decrypt_archive(&mut scenes);
+
+    // --- Stage 3: decode every (now-decrypted) scene. ---
+    for scene in &scenes {
+        let opcodes = match parse_real_bytecode(&scene.bytecode) {
             Ok(opcodes) => opcodes,
             Err(err) => {
                 report.parse_failures += 1;
@@ -214,6 +243,22 @@ fn print_report(report: &CoverageReport) {
         report.malformed_expression_scenes,
         report.total_opcodes,
         report.total_unknown,
+    );
+    let xor2 = &report.xor2;
+    eprintln!(
+        "[{}] XOR2: eligible={} validated={} decrypted={} baseline_clean={} after_clean={} \
+         segment=[{}..{}) key_len={} key_sha256={} finding={}",
+        report.label,
+        xor2.scenes_eligible,
+        xor2.validated,
+        xor2.scenes_decrypted,
+        xor2.baseline_clean,
+        xor2.after_clean,
+        xor2.segment_offset,
+        xor2.segment_offset + xor2.segment_length,
+        xor2.key_len,
+        xor2.key_sha256.as_deref().unwrap_or("none"),
+        xor2.finding.as_deref().unwrap_or("none"),
     );
     eprintln!("[{}] opcode histogram (label -> count):", report.label);
     for (label, count) in &report.histogram {
@@ -317,33 +362,77 @@ fn multi_game_validation_runs_against_two_distinct_reallive_corpora() {
             report.malformed_expression_scenes,
             report.parse_failures,
         );
-        if report.label == "corpus-2" {
-            assert_eq!(
-                report.total_unknown, 0,
-                "[{}] command catalogue incomplete: {} command(s) still decode to \
-                 Unknown on the full archive (the bar is zero; no floor may be relaxed)",
-                report.label, report.total_unknown
+
+        // BOTH divergent games are now asserted at the SAME hard zero bar
+        // (the alpha standard). corpus-2 (Kanon, 10002) carries no xor_2 and
+        // is decoded by the command catalogue alone; corpus-1 (Sweetie HD,
+        // 110002) is first decrypted by the second-level xor_2 decryptor
+        // (per-game key recovered in-process from the corpus, validated
+        // before consumption) and then decoded by the same catalogue. No
+        // floor is relaxed and no scene is skipped.
+        assert_eq!(
+            report.total_unknown, 0,
+            "[{}] {} command(s) still decode to Unknown on the full archive \
+             (the bar is zero; no floor may be relaxed)",
+            report.label, report.total_unknown
+        );
+        assert_eq!(
+            report.scenes_with_unknown, 0,
+            "[{}] {} scene(s) still carry an Unknown command on the full archive",
+            report.label, report.scenes_with_unknown
+        );
+        assert_eq!(
+            report.malformed_expression_scenes, 0,
+            "[{}] {} scene(s) still fail with MalformedExpression on the full archive",
+            report.label, report.malformed_expression_scenes
+        );
+        assert_eq!(
+            report.parse_failures, 0,
+            "[{}] {} scene(s) still hit a parse failure on the full archive \
+             (zero unknown + zero parse-failure is the gate's bar)",
+            report.label, report.parse_failures
+        );
+        assert_eq!(
+            report.clean_scenes, report.populated_scenes,
+            "[{}] only {}/{} scenes decode 100% clean (every populated scene must)",
+            report.label, report.clean_scenes, report.populated_scenes
+        );
+
+        // The xor_2 decryptor must have ACTUALLY engaged on the eligible
+        // corpus (Sweetie HD): a corpus with use_xor_2 scenes must have a
+        // validated, consumed per-game key, and the decryption must have
+        // strictly recovered scenes that were unreadable before
+        // (after_clean > baseline_clean). A corpus with no eligible scenes
+        // (Kanon) must have left every scene untouched.
+        if report.xor2.scenes_eligible > 0 {
+            assert!(
+                report.xor2.validated,
+                "[{}] {} scene(s) set use_xor_2 but no per-game key validated: {:?}",
+                report.label, report.xor2.scenes_eligible, report.xor2.finding
             );
             assert_eq!(
-                report.scenes_with_unknown, 0,
-                "[{}] {} scene(s) still carry an Unknown command on the full archive",
-                report.label, report.scenes_with_unknown
+                report.xor2.scenes_decrypted, report.xor2.scenes_eligible,
+                "[{}] xor_2 key validated but not applied to every eligible scene",
+                report.label
             );
-            assert_eq!(
-                report.malformed_expression_scenes, 0,
-                "[{}] {} scene(s) still fail with MalformedExpression on the full archive",
-                report.label, report.malformed_expression_scenes
+            assert!(
+                report.xor2.after_clean > report.xor2.baseline_clean,
+                "[{}] xor_2 decryption did not recover any previously-unreadable scene \
+                 (after_clean={} baseline_clean={})",
+                report.label,
+                report.xor2.after_clean,
+                report.xor2.baseline_clean
             );
-            assert_eq!(
-                report.parse_failures, 0,
-                "[{}] {} scene(s) still hit a command-framing parse failure on the full \
-                 archive (zero unknown + zero parse-failure is the gate's bar)",
-                report.label, report.parse_failures
+            assert!(
+                report.xor2.key_sha256.is_some(),
+                "[{}] validated xor_2 key must surface a one-way sha256 commitment",
+                report.label
             );
-            assert_eq!(
-                report.clean_scenes, report.populated_scenes,
-                "[{}] only {}/{} scenes decode 100% clean (every populated scene must)",
-                report.label, report.clean_scenes, report.populated_scenes
+        } else {
+            assert!(
+                !report.xor2.validated && report.xor2.scenes_decrypted == 0,
+                "[{}] corpus has no use_xor_2 scenes yet the decryptor reported activity",
+                report.label
             );
         }
     }
