@@ -1331,6 +1331,7 @@ fn build_input_root() -> (TempDir, PathBuf) {
 
 // Silence "imported but unused" for items only referenced via type
 // inference in helpers above when feature flags strip a test path.
+// reason: compile-time witness that keeps Arc<Mutex<_>> referenced when feature flags strip its only use.
 #[allow(dead_code)]
 fn _force_arc_mutex_in_scope(value: Arc<Mutex<u8>>) -> Arc<Mutex<u8>> {
     value

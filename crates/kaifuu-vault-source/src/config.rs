@@ -260,6 +260,7 @@ mod tests {
     static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
     #[test]
+    // reason: test name embeds the ITOTORI_VAULT_ROOT env-var identifier verbatim for grep-ability.
     #[allow(non_snake_case)]
     fn resolves_vault_root_from_env_when_ITOTORI_VAULT_ROOT_is_set() {
         let _lock = ENV_LOCK.lock().unwrap();

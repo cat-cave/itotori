@@ -1031,6 +1031,7 @@ fn process_entry(
     ))
 }
 
+// reason: single cohesive entry-finalize over distinct MV/MZ header fields; a params struct would only relocate the arity.
 #[allow(clippy::too_many_arguments)]
 fn finalize_entry(
     entry: &MvMzEncryptedAudioFixtureEntry,

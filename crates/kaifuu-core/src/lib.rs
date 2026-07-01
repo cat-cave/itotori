@@ -18276,6 +18276,7 @@ pub fn run_round_trip_golden(
     Ok(finalize_golden_report(report))
 }
 
+// reason: cohesive golden-patch phase driver; the arguments are distinct pipeline stages, not a bag a struct would clarify.
 #[allow(clippy::too_many_arguments)]
 fn run_golden_patch_phase(
     adapter: &dyn EngineAdapter,

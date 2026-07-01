@@ -15,6 +15,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 // reader. The seal is conventionally "do not implement" for production
 // callers; the in-tree integration test is the carve-out described in
 // the seal's docstring.
+// reason: the Sealed import backs the in-tree sealed-trait carve-out asserted by this test.
 #[allow(unused_imports)]
 use utsushi_core::vfs::archive::sealed::Sealed;
 use utsushi_core::{

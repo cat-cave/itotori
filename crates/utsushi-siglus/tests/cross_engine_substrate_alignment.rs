@@ -122,6 +122,7 @@ fn assert_implements_engine_port<P: EnginePort>() {}
 /// vehicle: every type the cross-engine fixture's doc-comment lists is
 /// named here, and clippy's `too_many_arguments` lint cannot fire
 /// against a single-argument function.
+// reason: compile-time cross-engine shape witness; the alias is referenced only for its trait bounds.
 #[allow(dead_code)]
 type FacadeShapeWitness = (
     std::marker::PhantomData<Arc<dyn AssetPackage>>,

@@ -518,6 +518,7 @@ mod browser_detection {
         /// [`force_display_unavailable`] so the wiring (semantic code,
         /// harness error kind, diagnostic detail attachment) stays
         /// live under workspace clippy.
+        // reason: reserved harness error variant kept live under workspace clippy; not constructed on every path yet.
         #[allow(dead_code)]
         DisplayUnavailable {
             source: BrowserDetectionLabel,
@@ -585,7 +586,8 @@ mod browser_detection {
     }
 
     #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-    #[allow(dead_code)] // reserved enum; see DisplayUnavailable reason above.
+    // reason: reserved enum variant kept for API symmetry; see DisplayUnavailable note above.
+    #[allow(dead_code)]
     pub(super) enum DisplayProbeOutcome {
         /// Display env vars present (X11/Wayland session). Headless launch
         /// nonetheless proceeds with `--headless=new --disable-gpu --no-sandbox`.

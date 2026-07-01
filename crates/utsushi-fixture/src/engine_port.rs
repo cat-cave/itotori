@@ -450,6 +450,7 @@ fn deterministic_bridge_unit_id(game_id: &str, index: usize) -> String {
 /// `write_bytes` method on the runner-provided root reference; this
 /// shim only exists so a downstream rename of `RuntimeArtifactRoot`
 /// surfaces a compile error here too.
+// reason: compile-time reference shim so a downstream RuntimeArtifactRoot rename fails here too.
 #[allow(dead_code)]
 fn _runtime_artifact_root_reference(root: &RuntimeArtifactRoot) -> &std::path::Path {
     root.path()

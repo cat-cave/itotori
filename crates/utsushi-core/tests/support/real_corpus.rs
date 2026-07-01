@@ -1,3 +1,4 @@
+// reason: shared real-bytes test-support helpers; not every consumer test uses every helper.
 #![allow(dead_code)]
 
 use std::env;

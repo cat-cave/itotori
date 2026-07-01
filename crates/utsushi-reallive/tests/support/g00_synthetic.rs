@@ -26,6 +26,7 @@
 //! framing the retail corpus uses — rather than a degenerate
 //! literal-only stream.
 
+// reason: shared synthetic-g00 test-support builders; not every consumer test uses every helper.
 #![allow(dead_code)]
 
 use std::fs;

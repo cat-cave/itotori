@@ -106,6 +106,7 @@ fn classifies_sweetie_hd_gameexe_ini_to_at_least_ninety_percent_coverage() {
     // Unknown. Sweetie HD has 1,345 lines so the cap is 135 (10% of
     // 1,350, rounded up).
     assert!(
+        // TODO(strictness-fix-relaxed-floors-to-strict): relaxed 10% unknown cap; tighten toward zero.
         unknown <= 135,
         "expected ≤135 unknown classifications (10% of ~1350 lines); got {unknown}"
     );

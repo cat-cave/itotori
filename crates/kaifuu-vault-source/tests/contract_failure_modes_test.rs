@@ -1,6 +1,7 @@
 //! Negative-path tests: every Failure-Mode row triggered against the
 //! synthetic vault.
 
+// reason: test names embed UPPER_SNAKE schema/env identifiers verbatim for grep-ability.
 #![allow(non_snake_case)]
 
 mod common;

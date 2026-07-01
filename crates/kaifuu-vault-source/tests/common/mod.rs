@@ -18,6 +18,7 @@
 //! `canonical_id`, `identifiers`, `engine`, `work`, `languages`), NOT the
 //! legacy v1.0 `releases[]` shape.
 
+// reason: shared vault integration-test helpers; not every test module uses every helper.
 #![allow(dead_code)]
 
 use std::io::Cursor;

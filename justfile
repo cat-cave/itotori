@@ -27,6 +27,8 @@ check:
     node scripts/spec-dag.mjs validate
     node --test scripts/audit-no-hardcoded-cost.test.mjs
     node scripts/audit-no-hardcoded-cost.mjs
+    node --test scripts/audit-strictness.test.mjs
+    node scripts/audit-strictness.mjs
     node --test scripts/generate-engine-capability-matrix.test.mjs
     node scripts/generate-engine-capability-matrix.mjs --check
     just fixtures-validate

@@ -97,6 +97,7 @@ fn real_wav_dir() -> Option<PathBuf> {
 // verbatim (`cargo test -p utsushi-reallive nwa_asa_decodes_33M_frames`).
 // The `M` is upper-case because the spec quotes "33M" as the
 // human-readable order-of-magnitude shorthand for the frame count.
+// reason: test name embeds the spec's '33M' order-of-magnitude shorthand verbatim.
 #[allow(non_snake_case)]
 fn nwa_asa_decodes_33M_frames() {
     let Some(bgm_dir) = real_bgm_dir() else {
@@ -207,6 +208,7 @@ fn nwa_chime_decodes_raw_pcm_header() {
 
     let header = decode_nwa_header(&bytes).expect("CHIME.nwa header decode");
     assert!(
+        // justification: audio channel count is domain-bounded to mono/stereo, not a relaxed floor.
         header.channels >= 1 && header.channels <= 2,
         "CHIME.nwa channels must be 1 or 2; got {}",
         header.channels,

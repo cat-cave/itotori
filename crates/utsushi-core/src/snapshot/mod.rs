@@ -52,6 +52,7 @@ pub mod diff;
 pub mod envelope;
 pub mod inspectable;
 pub mod redaction;
+// reason: the `snapshot` submodule name intentionally mirrors the parent module's domain term.
 #[allow(clippy::module_inception)]
 pub mod snapshot;
 pub mod state;

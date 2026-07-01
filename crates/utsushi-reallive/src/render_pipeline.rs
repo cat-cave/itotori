@@ -1021,6 +1021,7 @@ impl RenderPass {
     /// on `report` (and logged) via [`Self::record_skip`] so the dropped
     /// object surfaces on the render result instead of a frame silently
     /// looking complete when it is not.
+    // reason: cohesive paint step over distinct blit/render inputs; a params struct would add indirection without clarity.
     #[allow(clippy::too_many_arguments)]
     fn paint_image(
         &self,

@@ -3422,6 +3422,7 @@ impl RealLiveProfileDetectorAdapter {
         }
     }
 
+    // reason: cohesive variant resolver over distinct fixture selectors; splitting into a struct would just move the fields.
     #[allow(clippy::too_many_arguments)]
     fn resolve_variant(
         seen_txt_exists: bool,

@@ -397,6 +397,7 @@ mod tests {
     /// matches the on-disk field count one-for-one; a struct wrapper
     /// would add a layer of indirection the tests would have to read
     /// past.
+    // reason: test-only synthetic NWA header builder; each argument is a distinct header field the tests set explicitly.
     #[allow(clippy::too_many_arguments)]
     fn synth_header(
         channels: u16,

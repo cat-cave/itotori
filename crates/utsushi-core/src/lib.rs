@@ -3480,6 +3480,7 @@ fn remaining_until(deadline: Instant) -> Duration {
 // the `#[cfg(not(unix))]` sibling below legitimately returns `Err` because
 // process-tree cleanup is unsupported there, so the `Result` is required.
 #[cfg(unix)]
+// reason: the #[cfg(unix)] sibling returns Err on unsupported targets, so the Result wrapper is required for signature parity.
 #[allow(clippy::unnecessary_wraps)]
 fn configure_runtime_process_tree(
     command: &mut Command,

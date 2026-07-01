@@ -953,6 +953,7 @@ fn build_key_ref(
     })
 }
 
+// reason: single cohesive entry-finalize over distinct Siglus key fields; a params struct would only relocate the arity.
 #[allow(clippy::too_many_arguments)]
 fn finalize_entry(
     entry: &SiglusStaticKeyFixtureEntry,
@@ -975,6 +976,7 @@ fn finalize_entry(
     )
 }
 
+// reason: single cohesive entry-finalize over distinct Siglus key fields; a params struct would only relocate the arity.
 #[allow(clippy::too_many_arguments)]
 fn finalize_entry_with_input(
     entry: &SiglusStaticKeyFixtureEntry,

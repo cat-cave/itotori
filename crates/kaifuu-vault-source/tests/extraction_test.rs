@@ -1,5 +1,6 @@
 //! Extraction integration tests.
 
+// reason: test names embed UPPER_SNAKE schema/env identifiers verbatim for grep-ability.
 #![allow(non_snake_case)]
 
 mod common;

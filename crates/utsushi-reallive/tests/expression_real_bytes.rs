@@ -234,6 +234,7 @@ fn scene1_expression_elements_parse_and_evaluate() {
 
     // -- Clean-parse rate (acceptance criterion) --
     assert!(
+        // TODO(strictness-fix-relaxed-floors-to-strict): relaxed clean-parse floor below EXPECTED; tighten to require all clean.
         clean_parse_count >= MIN_CLEAN_PARSE_COUNT,
         "at least {MIN_CLEAN_PARSE_COUNT} of {SCENE_ONE_EXPECTED_EXPRESSION_COUNT} \
          Sweetie HD scene #0001 Expression elements must parse without warnings; got \

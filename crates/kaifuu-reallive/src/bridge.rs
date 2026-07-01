@@ -741,6 +741,7 @@ fn build_bundle_json(
     }))
 }
 
+// reason: cohesive bridge-unit JSON builder over distinct wire fields; a params struct would relocate the arity without clarity.
 #[allow(clippy::too_many_arguments)]
 fn build_unit_json(
     scene_id: u16,

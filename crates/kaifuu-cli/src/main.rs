@@ -829,6 +829,7 @@ fn make_writable(path: &Path) -> io::Result<()> {
     {
         let mut perms = metadata.permissions();
         if perms.readonly() {
+            // reason: set_readonly(false) is the only cross-platform clear of the read-only bit; the richer API is unix-only.
             #[allow(deprecated)]
             perms.set_readonly(false);
             fs::set_permissions(path, perms)?;

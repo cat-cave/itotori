@@ -52,6 +52,7 @@ pub enum InjectFailure {
 }
 
 impl InjectFailure {
+    // reason: smoke-harness parser kept live for the binary-patch smoke path; unused in some build configs.
     #[allow(dead_code)]
     pub fn parse(value: &str) -> Result<Self, String> {
         match value {
@@ -89,6 +90,7 @@ pub struct BinaryPatchSmokeConfig<'a> {
 /// `patch-result.json`); `Err(StatusAborted)` => exit 2 (smoke could
 /// not reach the v0.2 contract emission).
 #[derive(Debug)]
+// reason: smoke outcome enum retained for the report contract; not every variant is constructed on all paths.
 #[allow(dead_code)]
 pub enum BinarySmokeOutcome {
     Passed,
@@ -100,6 +102,7 @@ impl BinarySmokeOutcome {
     /// Exit code mapping: passed=0, failed=1, aborted=2. Mirrors the
     /// CLI dispatch arm's behaviour for callers that want to know the
     /// outcome without rerunning the command.
+    // reason: smoke-outcome accessor for callers that inspect status without rerunning the command.
     #[allow(dead_code)]
     pub fn exit_code(&self) -> i32 {
         match self {
@@ -767,6 +770,7 @@ fn deterministic_failure_id(run_id: &str, asset_id: &str) -> String {
 /// Convenience for the CLI dispatch arm: format the smoke outcome's
 /// final status into a stdout summary line, ensuring callers see a
 /// machine-readable cue even when patch-result.json was written.
+// reason: smoke summary writer retained for the stdout-summary contract; unused in some configs.
 #[allow(dead_code)]
 pub fn write_smoke_summary(writer: &mut impl Write, outcome: &BinarySmokeOutcome) {
     let (label, exit) = match outcome {
@@ -781,16 +785,19 @@ pub fn write_smoke_summary(writer: &mut impl Write, outcome: &BinarySmokeOutcome
 }
 
 // Allow ResultExt usage from main.rs without re-exporting the trait.
+// reason: smoke filename accessor used from main.rs without re-exporting the trait.
 #[allow(dead_code)]
 pub fn patch_result_filename() -> &'static str {
     "patch-result.json"
 }
 
+// reason: smoke filename accessor used from main.rs without re-exporting the trait.
 #[allow(dead_code)]
 pub fn output_seen_filename() -> &'static str {
     "SEEN.TXT"
 }
 
+// reason: smoke fixture-path helper used across the smoke module; unused in some configs.
 #[allow(dead_code)]
 pub fn fixture_path_for(base: &Path, name: &str) -> PathBuf {
     base.join(name)
