@@ -148,46 +148,46 @@ fn pick_varied_type0_g00(g00_dir: &Path) -> Option<(String, G00Image)> {
     None
 }
 
-/// Scan `g00_dir` for a real g00 file whose bytes HARD-FAIL
-/// [`decode_g00`] (a genuine decoder error, not a warning-tolerated
-/// decode). Prefers a file named `BACK` (the dominant scene background
-/// known to fail under the UTSUSHI-216 decoder bug), else the first
-/// undecodable file found. Returns `(on-disk stem, decode error string)`.
-/// No decoded art is returned — only the stem (a file name) and the
-/// error text.
-fn pick_undecodable_g00(g00_dir: &Path) -> Option<(String, String)> {
-    let mut entries: Vec<PathBuf> = fs::read_dir(g00_dir)
-        .ok()?
-        .flatten()
-        .map(|e| e.path())
-        .filter(|p| {
-            p.extension()
-                .and_then(|x| x.to_str())
-                .map(|x| x.eq_ignore_ascii_case("g00"))
-                .unwrap_or(false)
-        })
-        .collect();
-    // Probe a `BACK*` file first if present, then the rest in a stable
-    // order, so the assertion names the dominant background when it can.
-    entries.sort_by_key(|p| {
-        let stem_upper = p
-            .file_stem()
-            .and_then(|s| s.to_str())
-            .map(|s| s.to_ascii_uppercase())
-            .unwrap_or_default();
-        (!stem_upper.starts_with("BACK"), stem_upper)
-    });
+/// A deliberately-malformed, SYNTHETIC type-0 g00 byte buffer that
+/// [`decode_g00`] hard-rejects with
+/// [`G00DecodeError::MalformedCompressedSize`]. It carries a plausible
+/// header — a valid type-0 lead byte and non-zero `width`/`height` — but
+/// its LZSS section declares a `compressed_size` of `0`, which is below
+/// the mandatory 8-byte section preamble the field is defined to include,
+/// so the decoder rejects it as internally inconsistent (rather than
+/// clamping to an empty payload and surfacing only a downstream warning).
+///
+/// No real art is embedded: every byte is authored here. This lets the
+/// skip-surface proof exercise the `DecodeFailed` fail-soft path
+/// deterministically, decoupled from whether any real corpus g00 happens
+/// to be broken.
+fn malformed_type0_g00() -> Vec<u8> {
+    // 5-byte preamble: type byte 0 (RawBgr) + width=4, height=4 (u16 LE).
+    let mut bytes = vec![0u8, 4, 0, 4, 0];
+    // LZSS section header: compressed_size (u32 LE) = 0 (< 8, the mandatory
+    // preamble length) → MalformedCompressedSize. uncompressed_size = 64
+    // (4*4*4) so ONLY the compressed_size field is the offending value.
+    bytes.extend_from_slice(&0u32.to_le_bytes());
+    bytes.extend_from_slice(&64u32.to_le_bytes());
+    // A few trailing bytes so the buffer plausibly carries a payload region.
+    bytes.extend_from_slice(&[0xAA, 0xBB, 0xCC, 0xDD]);
+    bytes
+}
 
-    for path in entries.iter().take(600) {
-        let Ok(bytes) = fs::read(path) else {
-            continue;
-        };
-        if let Err(error) = decode_g00(&bytes) {
-            let stem = path.file_stem().and_then(|s| s.to_str())?.to_string();
-            return Some((stem, error.to_string()));
-        }
-    }
-    None
+/// Write `bytes` to `<temp>/g00/<stem>.g00` under a unique managed temp
+/// directory and return the g00 directory an [`OnDiskG00Package`] resolves
+/// against. Used to inject a synthetic malformed g00 into the render seam.
+fn temp_g00_dir_with(stem: &str, bytes: &[u8]) -> PathBuf {
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
+    let nonce = COUNTER.fetch_add(1, Ordering::Relaxed);
+    let dir = std::env::temp_dir().join(format!(
+        "utsushi-render-g00-synthetic-{}-{nonce}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).expect("create synthetic g00 dir");
+    fs::write(dir.join(format!("{stem}.g00")), bytes).expect("write malformed synthetic g00");
+    dir
 }
 
 /// True if the RGBA buffer is not a single uniform colour (some pixel
@@ -504,25 +504,37 @@ fn run_title_render_proof(g00_dir: PathBuf, title: &str) {
 /// suite hid by only ever picking cleanly-decodable sprites.
 ///
 /// It renders a background wipe + localized text + one image object whose
-/// asset is a real, undecodable g00 (the dominant `BACK.g00` background
-/// under Sweetie HD), and asserts the emit result REPORTS the skip
-/// (`is_incomplete() == true`, `skipped_objects` names the asset with a
-/// [`SkipReason::DecodeFailed`]) rather than silently succeeding.
-fn run_title_skip_surface_proof(g00_dir: PathBuf, title: &str) {
-    let Some((stem, decode_err)) = pick_undecodable_g00(&g00_dir) else {
-        panic!(
-            "no undecodable g00 found under {} for title {title}; this proof needs a real \
-             hard-decode-failing asset (e.g. BACK.g00) to exercise the silent-skip path — \
-             surface to orchestrator, do not fake",
-            g00_dir.display()
-        )
-    };
+/// asset is a SYNTHETIC malformed g00 (authored by [`malformed_type0_g00`],
+/// which [`decode_g00`] hard-rejects with
+/// [`G00DecodeError::MalformedCompressedSize`]), and asserts the emit
+/// result REPORTS the skip (`is_incomplete() == true`, `skipped_objects`
+/// names the asset with a [`SkipReason::DecodeFailed`]) rather than
+/// silently succeeding.
+///
+/// The malformed g00 is fully synthetic (no real art) and injected through
+/// the ordinary on-disk asset seam, so this proof is DETERMINISTIC and
+/// runs without a real corpus — it is enforced continuously in `just ci`.
+fn run_synthetic_skip_surface_proof() {
+    let title = "synthetic";
+    let stem = "MALFORMED_BACK";
+    let malformed = malformed_type0_g00();
+    // Confirm the authored bytes are exactly what the render seam will hit:
+    // a hard decoder rejection (not a warning-tolerated decode).
+    let decode_err = decode_g00(&malformed)
+        .expect_err("synthetic g00 must hard-fail decode_g00")
+        .to_string();
+    assert!(
+        decode_err.contains("malformed_compressed_size"),
+        "synthetic g00 must trip MalformedCompressedSize, got: {decode_err}"
+    );
     eprintln!(
-        "{title}: exercising silent-skip path with undecodable g00 stem={stem} \
+        "{title}: exercising silent-skip path with synthetic malformed g00 stem={stem} \
          (decode error: {decode_err})"
     );
 
+    let g00_dir = temp_g00_dir_with(stem, &malformed);
     let assets: Arc<dyn AssetPackage> = Arc::new(OnDiskG00Package::new(g00_dir.clone()));
+    let stem = stem.to_string();
     let fb_w = 320u32;
     let fb_h = 240u32;
 
@@ -617,6 +629,7 @@ fn run_title_skip_surface_proof(g00_dir: PathBuf, title: &str) {
 
     let _ = fs::remove_dir_all(&private_dir);
     let _ = fs::remove_dir_all(root.path());
+    let _ = fs::remove_dir_all(&g00_dir);
 }
 
 fn pixel_at(fb: &utsushi_reallive::Framebuffer, x: u32, y: u32) -> [u8; 4] {
@@ -682,17 +695,17 @@ fn render_pass_applies_state_and_rasterises_g00_title2_real_bytes() {
     run_title_render_proof(g00_dir, "title2");
 }
 
+/// Honest-fail-soft proof, enforced continuously in `just ci`.
+///
+/// This is deliberately NOT `#[ignore]`-gated and needs no real corpus:
+/// the undecodable asset is a SYNTHETIC malformed g00 (see
+/// [`malformed_type0_g00`]) injected through the ordinary on-disk asset
+/// seam. Keeping it in the default test set means the "an emit that
+/// dropped an undecodable object must report the skip, not fake success"
+/// invariant can never silently regress behind an `--ignored` gate again
+/// (the original real-corpus variant went RED — and unnoticed — the moment
+/// the g00 decoder was fixed and every corpus g00 started decoding).
 #[test]
-#[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var (title 1)"]
-fn emit_scene_reports_skip_for_undecodable_g00_title1_real_bytes() {
-    let Some(g00_dir) = real_corpus::g00_dir_for_env(real_corpus::REAL_GAME_ROOT_ENV) else {
-        eprintln!(
-            "{} unset or no g00 dir found; skipping silent-skip-surface proof (title 1). \
-             Re-run with {}=/path/to/reallive-game-root (no silent pass).",
-            real_corpus::REAL_GAME_ROOT_ENV,
-            real_corpus::REAL_GAME_ROOT_ENV,
-        );
-        return;
-    };
-    run_title_skip_surface_proof(g00_dir, "title1");
+fn emit_scene_reports_skip_for_undecodable_synthetic_g00() {
+    run_synthetic_skip_surface_proof();
 }
