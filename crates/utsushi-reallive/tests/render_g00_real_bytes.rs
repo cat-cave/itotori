@@ -34,7 +34,7 @@ use utsushi_core::substrate::{
 use utsushi_reallive::{
     G00Image, G00Type, GraphicsAlpha, GraphicsColourTone, GraphicsObject, GraphicsObjectStack,
     GraphicsPlane, GraphicsScale, PNG_FILE_MAGIC, RecordingFrameArtifactSink, RedactionPolicy,
-    RenderPass, SceneEmit, TextLayer, WipeColour, decode_g00, sha256_hex,
+    RenderPass, SceneEmit, SkipReason, TextLayer, WipeColour, decode_g00, sha256_hex,
 };
 
 // ---- on-disk g00 asset package --------------------------------------
@@ -144,6 +144,48 @@ fn pick_varied_type0_g00(g00_dir: &Path) -> Option<(String, G00Image)> {
         }
         let stem = path.file_stem().and_then(|s| s.to_str())?.to_string();
         return Some((stem, image));
+    }
+    None
+}
+
+/// Scan `g00_dir` for a real g00 file whose bytes HARD-FAIL
+/// [`decode_g00`] (a genuine decoder error, not a warning-tolerated
+/// decode). Prefers a file named `BACK` (the dominant scene background
+/// known to fail under the UTSUSHI-216 decoder bug), else the first
+/// undecodable file found. Returns `(on-disk stem, decode error string)`.
+/// No decoded art is returned — only the stem (a file name) and the
+/// error text.
+fn pick_undecodable_g00(g00_dir: &Path) -> Option<(String, String)> {
+    let mut entries: Vec<PathBuf> = fs::read_dir(g00_dir)
+        .ok()?
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| {
+            p.extension()
+                .and_then(|x| x.to_str())
+                .map(|x| x.eq_ignore_ascii_case("g00"))
+                .unwrap_or(false)
+        })
+        .collect();
+    // Probe a `BACK*` file first if present, then the rest in a stable
+    // order, so the assertion names the dominant background when it can.
+    entries.sort_by_key(|p| {
+        let stem_upper = p
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .map(|s| s.to_ascii_uppercase())
+            .unwrap_or_default();
+        (!stem_upper.starts_with("BACK"), stem_upper)
+    });
+
+    for path in entries.iter().take(600) {
+        let Ok(bytes) = fs::read(path) else {
+            continue;
+        };
+        if let Err(error) = decode_g00(&bytes) {
+            let stem = path.file_stem().and_then(|s| s.to_str())?.to_string();
+            return Some((stem, error.to_string()));
+        }
     }
     None
 }
@@ -455,6 +497,128 @@ fn run_title_render_proof(g00_dir: PathBuf, title: &str) {
     let _ = fs::remove_dir_all(root_on.path());
 }
 
+/// STRICT-PROOF anti-silent-partial-render proof (adversarial audit
+/// finding): a full-scene emit whose g00 asset FAILS to decode must NOT
+/// return hashes as if the scene rendered completely. It must SURFACE the
+/// dropped object on the result. This exercises the exact path the prior
+/// suite hid by only ever picking cleanly-decodable sprites.
+///
+/// It renders a background wipe + localized text + one image object whose
+/// asset is a real, undecodable g00 (the dominant `BACK.g00` background
+/// under Sweetie HD), and asserts the emit result REPORTS the skip
+/// (`is_incomplete() == true`, `skipped_objects` names the asset with a
+/// [`SkipReason::DecodeFailed`]) rather than silently succeeding.
+fn run_title_skip_surface_proof(g00_dir: PathBuf, title: &str) {
+    let Some((stem, decode_err)) = pick_undecodable_g00(&g00_dir) else {
+        panic!(
+            "no undecodable g00 found under {} for title {title}; this proof needs a real \
+             hard-decode-failing asset (e.g. BACK.g00) to exercise the silent-skip path — \
+             surface to orchestrator, do not fake",
+            g00_dir.display()
+        )
+    };
+    eprintln!(
+        "{title}: exercising silent-skip path with undecodable g00 stem={stem} \
+         (decode error: {decode_err})"
+    );
+
+    let assets: Arc<dyn AssetPackage> = Arc::new(OnDiskG00Package::new(g00_dir.clone()));
+    let fb_w = 320u32;
+    let fb_h = 240u32;
+
+    // A stack that CAN render everything except the image: an opaque
+    // background wipe + a real localized text layer, plus the image object
+    // whose g00 fails to decode. The wipe + text keep the emit non-vacuous
+    // so we reach (and inspect) the result rather than being rejected for a
+    // blank frame.
+    let mut stack = GraphicsObjectStack::new();
+    stack
+        .set(
+            GraphicsPlane::Background,
+            0,
+            GraphicsObject::wipe(WipeColour::opaque_rgb(0x24, 0x18, 0x30)),
+        )
+        .expect("set bg wipe");
+    let mut image = GraphicsObject::image(stem.clone());
+    image.position.x = 8;
+    image.position.y = 8;
+    stack
+        .set(GraphicsPlane::Foreground, 0, image)
+        .expect("set undecodable image object");
+
+    let text = TextLayer::localized(vec![format!("{title} INCOMPLETE EN").to_uppercase()]);
+
+    let root = temp_artifact_root("skip-surface");
+    let sink = RecordingFrameArtifactSink::new();
+    let private_dir = private_render_dir(&format!("{title}-skip"));
+    let mut pass = RenderPass::with_dimensions(fb_w, fb_h)
+        .expect("non-zero screen")
+        .with_assets(Arc::clone(&assets));
+
+    let shots = pass
+        .emit_scene_screenshots(
+            &stack,
+            &text,
+            SceneEmit {
+                root: &root,
+                run_id: "render-g00-skip-surface",
+                sink: &sink,
+                private_dir: &private_dir,
+                public_redact: true,
+            },
+        )
+        .expect("emit still succeeds fail-soft, but must report the skip");
+
+    // The emit did NOT silently succeed: it reports the frame as
+    // incomplete and names the dropped object with a DecodeFailed reason.
+    assert!(
+        shots.is_incomplete(),
+        "{title}: an emit that dropped an undecodable g00 must report is_incomplete()==true, \
+         not return hashes as if the scene rendered completely"
+    );
+    assert!(
+        !shots.skipped_objects.is_empty(),
+        "{title}: the dropped object must appear in skipped_objects"
+    );
+    let dropped = shots
+        .skipped_objects
+        .iter()
+        .find(|s| s.asset_key.eq_ignore_ascii_case(&stem))
+        .unwrap_or_else(|| {
+            panic!(
+                "{title}: skipped_objects must name the undecodable asset {stem}; got {:?}",
+                shots.skipped_objects
+            )
+        });
+    match &dropped.reason {
+        SkipReason::DecodeFailed { error } => {
+            assert!(
+                !error.is_empty(),
+                "{title}: DecodeFailed must carry the underlying decode error text"
+            );
+        }
+        other => panic!(
+            "{title}: the undecodable {stem} must be reported as DecodeFailed, got {other:?}"
+        ),
+    }
+    assert_eq!(
+        dropped.plane,
+        GraphicsPlane::Foreground,
+        "{title}: the skip must record the object's plane"
+    );
+
+    // The frame the emit DID produce is still a real hashable PNG (the
+    // fail-soft rendered the wipe + text) — but it is now HONEST about
+    // being partial.
+    let private_bytes = fs::read(&shots.private_png_path).expect("private PNG readable");
+    assert_eq!(&private_bytes[..8], &PNG_FILE_MAGIC, "{title}: private PNG");
+    assert_eq!(sha256_hex(&private_bytes), shots.private_png_sha256);
+    assert_eq!(sink.len(), 1, "{title}: public frame still announced");
+
+    let _ = fs::remove_dir_all(&private_dir);
+    let _ = fs::remove_dir_all(root.path());
+}
+
 fn pixel_at(fb: &utsushi_reallive::Framebuffer, x: u32, y: u32) -> [u8; 4] {
     let stride = fb.width() as usize * 4;
     let off = (y as usize) * stride + (x as usize) * 4;
@@ -516,4 +680,19 @@ fn render_pass_applies_state_and_rasterises_g00_title2_real_bytes() {
         return;
     };
     run_title_render_proof(g00_dir, "title2");
+}
+
+#[test]
+#[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var (title 1)"]
+fn emit_scene_reports_skip_for_undecodable_g00_title1_real_bytes() {
+    let Some(g00_dir) = real_corpus::g00_dir_for_env(real_corpus::REAL_GAME_ROOT_ENV) else {
+        eprintln!(
+            "{} unset or no g00 dir found; skipping silent-skip-surface proof (title 1). \
+             Re-run with {}=/path/to/reallive-game-root (no silent pass).",
+            real_corpus::REAL_GAME_ROOT_ENV,
+            real_corpus::REAL_GAME_ROOT_ENV,
+        );
+        return;
+    };
+    run_title_skip_surface_proof(g00_dir, "title1");
 }

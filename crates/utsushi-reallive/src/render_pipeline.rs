@@ -72,7 +72,7 @@ use std::sync::Arc;
 
 use sha2::{Digest, Sha256};
 
-use crate::g00::decode_g00;
+use crate::g00::{G00Warning, decode_g00};
 use crate::graphics_objects::{
     GraphicsColourTone, GraphicsObject, GraphicsObjectKind, GraphicsObjectStack, GraphicsPlane,
     WipeColour,
@@ -94,6 +94,17 @@ pub const RENDER_PIPELINE_ZERO_SCREEN_SIZE_CODE: &str =
 /// that keeps a localized-screenshot proof from being vacuous.
 pub const RENDER_PIPELINE_BLANK_LOCALIZED_TEXT_CODE: &str =
     "utsushi.reallive.render_pipeline.blank_localized_text";
+
+/// Stable diagnostic code emitted by [`RenderPass::paint_image`] when an
+/// image object contributes NO pixels (missing asset package, resolve /
+/// open / decode failure, or a zero-extent sprite). The compositor is
+/// fail-soft — it keeps rendering the rest of the stack — but the skip is
+/// NEVER silent: it is logged under this code AND recorded on the
+/// [`RenderReport`] so a consumer can tell an incomplete frame (one that
+/// dropped an object, e.g. the un-decodable `BACK.g00` background) from a
+/// complete render. See [`SkipReason`] / [`SkippedObject`].
+pub const RENDER_PIPELINE_OBJECT_SKIPPED_CODE: &str =
+    "utsushi.reallive.render_pipeline.object_skipped";
 
 /// PNG file-magic. Pinned so the deterministic-encoder test can assert
 /// the prefix without inlining the magic in the test itself.
@@ -500,6 +511,105 @@ impl std::fmt::Debug for SceneEmit<'_> {
     }
 }
 
+/// Why a graphics object contributed NO pixels during compositing.
+///
+/// Every variant corresponds to one fail-soft branch in
+/// [`RenderPass::paint_image`]. The compositor keeps rendering the rest
+/// of the stack, but the skip is recorded (never silently dropped) so a
+/// consumer can tell an incomplete frame from a complete render.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SkipReason {
+    /// No [`AssetPackage`] is bound, so the image ref cannot be
+    /// dereferenced at all.
+    NoAssetPackage,
+    /// The asset package failed to resolve the logical `g00/<key>.g00`
+    /// path to an asset id.
+    ResolveFailed {
+        /// The logical path that failed to resolve.
+        logical: String,
+        /// Display of the underlying resolve error.
+        error: String,
+    },
+    /// The asset id resolved but the package failed to open its bytes.
+    OpenFailed {
+        /// The logical path whose bytes failed to open.
+        logical: String,
+        /// Display of the underlying open error.
+        error: String,
+    },
+    /// [`decode_g00`] returned a hard error on the real bytes (e.g. the
+    /// UTSUSHI-216 `BACK.g00` decoder bug). This is the branch that would
+    /// otherwise silently drop the dominant scene background.
+    DecodeFailed {
+        /// Display of the g00 decode error.
+        error: String,
+    },
+    /// The decoded image, or its scaled destination rect, had a zero
+    /// dimension, so there was no extent to composite.
+    ZeroDims {
+        src_w: u32,
+        src_h: u32,
+        dst_w: u32,
+        dst_h: u32,
+    },
+}
+
+/// A single graphics object that was skipped (dropped, contributing no
+/// pixels) during compositing, plus enough detail to be audit-traceable
+/// back to the exact object and fail-soft branch.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SkippedObject {
+    /// The image object's asset key (g00 stem, e.g. `BACK`).
+    pub asset_key: String,
+    /// Plane the skipped object lived on.
+    pub plane: GraphicsPlane,
+    /// Slot within the plane.
+    pub slot: usize,
+    /// Why the object was skipped.
+    pub reason: SkipReason,
+}
+
+/// A non-fatal [`G00Warning`] surfaced while decoding an object's g00
+/// asset, tagged with the asset key it came from. These were previously
+/// discarded (the `_warnings` binding); they are now carried up to the
+/// render result so corpus-level audit can see them.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ObjectWarning {
+    /// The image object's asset key (g00 stem) the warning came from.
+    pub asset_key: String,
+    /// The decode warning.
+    pub warning: G00Warning,
+}
+
+/// Structural record of everything the compositor could NOT fully render
+/// while rasterising a stack: the objects it skipped (with reasons) and
+/// the non-fatal decode warnings it observed. An empty [`Self::is_empty`]
+/// report means the frame is a COMPLETE render of the stack; a non-empty
+/// skip list means at least one object was dropped and the frame is
+/// incomplete. This is what keeps a render artifact from looking complete
+/// when it is not.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct RenderReport {
+    /// Objects that contributed no pixels, with the reason for each.
+    pub skipped_objects: Vec<SkippedObject>,
+    /// Non-fatal g00 decode warnings observed, tagged by asset key.
+    pub warnings: Vec<ObjectWarning>,
+}
+
+impl RenderReport {
+    /// True when nothing was skipped and no decode warning fired — the
+    /// frame is a complete render of the stack.
+    pub fn is_empty(&self) -> bool {
+        self.skipped_objects.is_empty() && self.warnings.is_empty()
+    }
+
+    /// True when at least one object was DROPPED (contributed no pixels),
+    /// so the rendered frame is incomplete regardless of warnings.
+    pub fn is_incomplete(&self) -> bool {
+        !self.skipped_objects.is_empty()
+    }
+}
+
 /// Outcome of [`RenderPass::emit_scene_screenshots`]: the public
 /// (policy-selected) frame artifact plus the private full-fidelity PNG's
 /// on-disk path and content hash.
@@ -514,6 +624,25 @@ pub struct SceneScreenshots {
     pub private_png_sha256: String,
     /// The redaction policy the PUBLIC frame was rendered under.
     pub redaction: RedactionPolicy,
+    /// Objects that were DROPPED while compositing the full-fidelity
+    /// buffer (empty for a complete render). A non-empty list means the
+    /// emitted frame does NOT contain every object in the scene — e.g. an
+    /// un-decodable `BACK.g00` background reports here as
+    /// [`SkipReason::DecodeFailed`] instead of silently succeeding. See
+    /// [`Self::is_incomplete`].
+    pub skipped_objects: Vec<SkippedObject>,
+    /// Non-fatal g00 decode warnings observed while compositing the
+    /// full-fidelity buffer (previously discarded).
+    pub decode_warnings: Vec<ObjectWarning>,
+}
+
+impl SceneScreenshots {
+    /// True when at least one object was dropped during compositing, so
+    /// the emitted frame is NOT a complete render of the scene. A
+    /// consumer treats an incomplete frame as a non-final proof artifact.
+    pub fn is_incomplete(&self) -> bool {
+        !self.skipped_objects.is_empty()
+    }
 }
 
 /// The headless render pipeline. Owns a per-pass `frame_index`
@@ -618,19 +747,35 @@ impl RenderPass {
         stack: &GraphicsObjectStack,
         policy: RedactionPolicy,
     ) -> Framebuffer {
+        self.rasterise_reporting(stack, policy).0
+    }
+
+    /// Rasterise `stack` under `policy` exactly like
+    /// [`Self::rasterise_with_policy`], but ALSO return a [`RenderReport`]
+    /// recording every object the compositor could not fully render
+    /// (skipped objects with reasons + non-fatal decode warnings). This
+    /// is the honest fail-soft surface: the framebuffer still composites
+    /// whatever it can, and the report tells the caller whether anything
+    /// was dropped (an empty report ⇒ a complete render of the stack).
+    pub fn rasterise_reporting(
+        &self,
+        stack: &GraphicsObjectStack,
+        policy: RedactionPolicy,
+    ) -> (Framebuffer, RenderReport) {
         let mut framebuffer = Framebuffer::new(self.width, self.height);
+        let mut report = RenderReport::default();
         let mut entries: Vec<(GraphicsPlane, i32, usize, &GraphicsObject)> = stack
             .iter_allocated()
             .map(|(plane, slot, object)| (plane, object.layer_order, slot, object))
             .collect();
         entries.sort_by_key(|(plane, layer, slot, _)| (plane.paint_order(), *layer, *slot));
-        for (_, _, _, object) in entries {
+        for (plane, _, slot, object) in entries {
             if !object.visible {
                 continue;
             }
-            self.paint_object(&mut framebuffer, object, policy);
+            self.paint_object(&mut framebuffer, object, plane, slot, policy, &mut report);
         }
-        framebuffer
+        (framebuffer, report)
     }
 
     /// Rasterise `stack`, then paint the localized `text` layer on top.
@@ -711,9 +856,13 @@ impl RenderPass {
         text: &TextLayer,
         emit: SceneEmit<'_>,
     ) -> Result<SceneScreenshots, RenderEmitError> {
-        // Full-fidelity private buffer (always real g00 art).
-        let (full_fb, full_text_pixels) =
-            self.rasterise_with_text_policy(stack, text, RedactionPolicy::Full);
+        // Full-fidelity private buffer (always real g00 art). Collect the
+        // render report so any DROPPED object (e.g. an un-decodable
+        // BACK.g00 background) is surfaced on the result rather than
+        // silently omitted from a frame that would otherwise look
+        // complete.
+        let (mut full_fb, report) = self.rasterise_reporting(stack, RedactionPolicy::Full);
+        let full_text_pixels = full_fb.draw_text(text);
         self.reject_blank_localized(text, full_text_pixels)?;
 
         let private_png = encode_png_rgba_deterministic(&full_fb);
@@ -749,6 +898,8 @@ impl RenderPass {
             private_png_path,
             private_png_sha256: private_sha,
             redaction: policy,
+            skipped_objects: report.skipped_objects,
+            decode_warnings: report.warnings,
         })
     }
 
@@ -812,7 +963,10 @@ impl RenderPass {
         &self,
         framebuffer: &mut Framebuffer,
         object: &GraphicsObject,
+        plane: GraphicsPlane,
+        slot: usize,
         policy: RedactionPolicy,
+        report: &mut RenderReport,
     ) {
         match &object.kind {
             GraphicsObjectKind::Wipe { colour } => {
@@ -823,9 +977,42 @@ impl RenderPass {
                 framebuffer.fill_blended(toned, object.alpha.0);
             }
             GraphicsObjectKind::Image { image_ref } => {
-                self.paint_image(framebuffer, object, &image_ref.asset_key, policy);
+                self.paint_image(
+                    framebuffer,
+                    object,
+                    &image_ref.asset_key,
+                    plane,
+                    slot,
+                    policy,
+                    report,
+                );
             }
         }
+    }
+
+    /// Record (and log, under [`RENDER_PIPELINE_OBJECT_SKIPPED_CODE`]) a
+    /// fail-soft skip: an image object that contributed no pixels. The
+    /// compositor keeps going, but the skip is NEVER silent.
+    fn record_skip(
+        report: &mut RenderReport,
+        asset_key: &str,
+        plane: GraphicsPlane,
+        slot: usize,
+        reason: SkipReason,
+    ) {
+        // No `tracing`/`log` dependency in this crate; the established
+        // diagnostic channel here (see `bytecode_element`) is stderr. The
+        // stable code prefix makes the line audit-greppable.
+        eprintln!(
+            "{RENDER_PIPELINE_OBJECT_SKIPPED_CODE}: asset_key={asset_key} \
+             plane={plane:?} slot={slot} reason={reason:?}"
+        );
+        report.skipped_objects.push(SkippedObject {
+            asset_key: asset_key.to_string(),
+            plane,
+            slot,
+            reason,
+        });
     }
 
     /// Dereference an image object's `asset_key` through the bound asset
@@ -836,38 +1023,116 @@ impl RenderPass {
     /// with [`REDACTION_MARKER`] instead of the decoded pixels, so the
     /// emitted frame publishes no source art. If no asset package is
     /// bound, or resolution / decoding fails, the object contributes no
-    /// pixels (a fail-soft gap, never a panic).
+    /// pixels — a fail-soft gap, never a panic. Every such gap is RECORDED
+    /// on `report` (and logged) via [`Self::record_skip`] so the dropped
+    /// object surfaces on the render result instead of a frame silently
+    /// looking complete when it is not.
+    #[allow(clippy::too_many_arguments)]
     fn paint_image(
         &self,
         framebuffer: &mut Framebuffer,
         object: &GraphicsObject,
         asset_key: &str,
+        plane: GraphicsPlane,
+        slot: usize,
         policy: RedactionPolicy,
+        report: &mut RenderReport,
     ) {
         let Some(assets) = self.assets.as_ref() else {
+            Self::record_skip(report, asset_key, plane, slot, SkipReason::NoAssetPackage);
             return;
         };
         let logical = format!("g00/{asset_key}.g00");
-        let Ok(asset_id) = assets.resolve(&logical) else {
-            return;
+        let asset_id = match assets.resolve(&logical) {
+            Ok(asset_id) => asset_id,
+            Err(error) => {
+                Self::record_skip(
+                    report,
+                    asset_key,
+                    plane,
+                    slot,
+                    SkipReason::ResolveFailed {
+                        logical,
+                        error: error.to_string(),
+                    },
+                );
+                return;
+            }
         };
-        let Ok(bytes) = assets.open(&asset_id) else {
-            return;
+        let bytes = match assets.open(&asset_id) {
+            Ok(bytes) => bytes,
+            Err(error) => {
+                Self::record_skip(
+                    report,
+                    asset_key,
+                    plane,
+                    slot,
+                    SkipReason::OpenFailed {
+                        logical,
+                        error: error.to_string(),
+                    },
+                );
+                return;
+            }
         };
         // LIVE decode of the real g00 bytes into an RGBA canvas. The
         // decoder's non-fatal warnings (short-payload zero-extension) are
-        // tolerated; a hard decode error yields no pixels.
-        let Ok((image, _warnings)) = decode_g00(bytes.as_slice()) else {
-            return;
+        // surfaced on the report; a hard decode error records a
+        // DecodeFailed skip (the fail-soft continues rendering the rest of
+        // the stack) rather than silently dropping the object.
+        let (image, warnings) = match decode_g00(bytes.as_slice()) {
+            Ok(decoded) => decoded,
+            Err(error) => {
+                Self::record_skip(
+                    report,
+                    asset_key,
+                    plane,
+                    slot,
+                    SkipReason::DecodeFailed {
+                        error: error.to_string(),
+                    },
+                );
+                return;
+            }
         };
+        for warning in warnings {
+            report.warnings.push(ObjectWarning {
+                asset_key: asset_key.to_string(),
+                warning,
+            });
+        }
         let src_w = image.width;
         let src_h = image.height;
         if src_w == 0 || src_h == 0 {
+            Self::record_skip(
+                report,
+                asset_key,
+                plane,
+                slot,
+                SkipReason::ZeroDims {
+                    src_w,
+                    src_h,
+                    dst_w: 0,
+                    dst_h: 0,
+                },
+            );
             return;
         }
         let dst_w = scale_dimension(src_w, object.scale.x_thousandths);
         let dst_h = scale_dimension(src_h, object.scale.y_thousandths);
         if dst_w == 0 || dst_h == 0 {
+            Self::record_skip(
+                report,
+                asset_key,
+                plane,
+                slot,
+                SkipReason::ZeroDims {
+                    src_w,
+                    src_h,
+                    dst_w,
+                    dst_h,
+                },
+            );
             return;
         }
         let src_stride = (src_w as usize) * RGBA_BYTES_PER_PIXEL;

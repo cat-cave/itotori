@@ -237,11 +237,13 @@ pub use graphics_objects::{
     GraphicsScale, GraphicsStackError, ImageRef, WipeColour,
 };
 pub use render_pipeline::{
-    Framebuffer, PNG_BIT_DEPTH, PNG_COLOUR_TYPE_RGBA, PNG_FILE_MAGIC, REDACTION_MARKER,
-    RENDER_PIPELINE_BLANK_LOCALIZED_TEXT_CODE, RENDER_PIPELINE_ZERO_SCREEN_SIZE_CODE,
+    Framebuffer, ObjectWarning, PNG_BIT_DEPTH, PNG_COLOUR_TYPE_RGBA, PNG_FILE_MAGIC,
+    REDACTION_MARKER, RENDER_PIPELINE_BLANK_LOCALIZED_TEXT_CODE,
+    RENDER_PIPELINE_OBJECT_SKIPPED_CODE, RENDER_PIPELINE_ZERO_SCREEN_SIZE_CODE,
     RGBA_BYTES_PER_PIXEL, RecordingFrameArtifactSink, RedactionPolicy, RenderEmitError, RenderPass,
-    RenderPassBuildError, SCREENSHOT_ARTIFACT_KIND, SceneEmit, SceneScreenshots, TextLayer,
-    adler32, crc32_ieee, encode_png_rgba_deterministic, sha256_hex,
+    RenderPassBuildError, RenderReport, SCREENSHOT_ARTIFACT_KIND, SceneEmit, SceneScreenshots,
+    SkipReason, SkippedObject, TextLayer, adler32, crc32_ieee, encode_png_rgba_deterministic,
+    sha256_hex,
 };
 
 pub use save::{
