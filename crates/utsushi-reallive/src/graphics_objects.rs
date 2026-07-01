@@ -84,10 +84,13 @@ impl GraphicsPosition {
 /// Per-axis scale, expressed in **thousandths** (rlvm-public convention).
 /// `1000` = `100%`, `500` = `50%`, `2000` = `200%`. Stored as `i32` so
 /// the rlvm-documented signed-zero / negative-mirror cases can be
-/// represented losslessly; the render pass treats negative values as
-/// `0` (no draw) since the headless rasteriser does not implement
-/// mirroring at UTSUSHI-214 (mirroring lands with the graphics
-/// RLOperation family at UTSUSHI-215+).
+/// represented losslessly. The render pass **applies** this scale when
+/// compositing an image object: the decoded g00 bitmap is nearest-neighbour
+/// resampled to `src_dimension * thousandths / 1000` before it is blitted
+/// into the framebuffer (see
+/// [`crate::render_pipeline::RenderPass::paint_object`]). Negative or zero
+/// values collapse the destination extent to `0` (the object contributes no
+/// pixels); axis mirroring is out of scope for the headless rasteriser.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GraphicsScale {
@@ -106,15 +109,14 @@ impl GraphicsScale {
 /// Alpha in `0..=255` (rlvm-public convention). `0` = fully
 /// transparent, `255` = fully opaque.
 ///
-/// **Recorded state only; not applied by the UTSUSHI-214 render pass.**
-/// Like [`GraphicsColourTone`] and [`GraphicsScale`], the render pass at
-/// [`crate::render_pipeline`] stores the alpha faithfully on each object
-/// but does NOT blend it into the framebuffer:
-/// [`crate::render_pipeline::RenderPass::paint_object`] fills a `Wipe`
-/// object at full opacity regardless of this value (a `Wipe` with
-/// `alpha = TRANSPARENT` still fully fills the framebuffer). Object-level
-/// alpha blending lands with the graphics RLOperation family at
-/// UTSUSHI-215+.
+/// The render pass at [`crate::render_pipeline`] **applies** this alpha
+/// when compositing every object:
+/// [`crate::render_pipeline::RenderPass::paint_object`] blends the
+/// object's contribution over the existing framebuffer using
+/// `effective = source_alpha * object_alpha / 255` source-over
+/// compositing. An object with `alpha = TRANSPARENT` therefore
+/// contributes NO pixels (it leaves the framebuffer unchanged), and an
+/// `alpha = OPAQUE` object composites its source colour verbatim.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GraphicsAlpha(pub u8);
@@ -125,11 +127,12 @@ impl GraphicsAlpha {
 }
 
 /// Per-channel colour tone, expressed in **signed thousandths**
-/// (`-1000..=1000`). The render pass at UTSUSHI-214 stores the tone
-/// faithfully on each object; tone application against a real g00
-/// sprite lands with UTSUSHI-215's graphics RLOperation family (the
-/// "wipe" object kind ignores tone because the wipe colour is already
-/// the final pixel value).
+/// (`-1000..=1000`). The render pass at [`crate::render_pipeline`]
+/// **applies** this tone to each source pixel before compositing:
+/// `channel_out = clamp(channel + tone_thousandths * 255 / 1000, 0, 255)`
+/// (a `+1000` tone drives the channel to white, `-1000` to black). A
+/// [`Self::NEUTRAL`] tone is the identity transform, so an object with
+/// the default tone composites its source colour unchanged.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GraphicsColourTone {
@@ -197,11 +200,14 @@ impl WipeColour {
 }
 
 /// Reference to an image asset loaded by a graphics RLOperation. The
-/// render pass at UTSUSHI-214 does **not** dereference the reference
-/// against a real g00 blob — that wiring lands with UTSUSHI-215's
-/// graphics RLOperation family. The reference is carried verbatim on
-/// the object so audit tooling can pin which slot was assigned which
-/// asset across the lifecycle.
+/// render pass at [`crate::render_pipeline`] **dereferences** this
+/// reference during compositing: it resolves `g00/<asset_key>.g00`
+/// through the render pass's bound [`utsushi_core::substrate::AssetPackage`],
+/// decodes the bytes with [`crate::decode_g00`], and blits the decoded
+/// bitmap into the framebuffer (subject to the object's scale, tone, and
+/// alpha). The reference is also carried verbatim on the object so audit
+/// tooling can pin which slot was assigned which asset across the
+/// lifecycle.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ImageRef {
@@ -214,17 +220,18 @@ pub struct ImageRef {
     pub region_index: Option<u32>,
 }
 
-/// Per-object kind discriminator. UTSUSHI-214 pins two kinds: `Image`
-/// (assigned an [`ImageRef`]; rasterised by the render pass once
-/// UTSUSHI-215 wires g00 decoding into the pipeline) and `Wipe`
-/// (a full-framebuffer solid-colour fill — used for the
+/// Per-object kind discriminator. Two kinds: `Image` (assigned an
+/// [`ImageRef`]; the render pass dereferences the ref, decodes the g00
+/// bitmap, and composites it) and `Wipe` (a full-framebuffer
+/// solid-colour fill — used for the
 /// `render_wipe_solid_colour_deterministic_png` acceptance smoke).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", tag = "kind")]
 pub enum GraphicsObjectKind {
-    /// Image-backed object. The render pass at UTSUSHI-214 records the
-    /// reference but does not produce visible pixels until UTSUSHI-215
-    /// lands the g00 binding.
+    /// Image-backed object. The render pass resolves the [`ImageRef`]
+    /// through the bound asset package, decodes the g00 bytes, and
+    /// composites the decoded bitmap (scaled, tone-shifted, and
+    /// alpha-blended per the object's state) into the framebuffer.
     Image { image_ref: ImageRef },
     /// Solid-colour wipe. The render pass paints `colour` across the
     /// entire framebuffer (per the rlvm-public `Wipe` opcode shape).
@@ -257,9 +264,10 @@ pub struct GraphicsObject {
 }
 
 impl GraphicsObject {
-    /// Construct an inert image-backed object at the origin. The
-    /// `image_ref` is recorded but never dereferenced at UTSUSHI-214;
-    /// rasterisation lands with UTSUSHI-215.
+    /// Construct an image-backed object at the origin with identity
+    /// scale, opaque alpha, and neutral tone. The render pass
+    /// dereferences the `image_ref` through its bound asset package and
+    /// composites the decoded g00 bitmap.
     pub fn image(asset_key: impl Into<String>) -> Self {
         Self {
             position: GraphicsPosition::ORIGIN,

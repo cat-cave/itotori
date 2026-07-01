@@ -14,14 +14,20 @@
 //! successor to the text-only `replay-validate` capture surface.
 
 use std::error::Error;
+use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use serde_json::json;
 use utsushi_core::RuntimeArtifactRoot;
-use utsushi_core::substrate::EvidenceTier;
+use utsushi_core::substrate::{
+    AssetBytes, AssetId, AssetKind, AssetMetadata, AssetPackage, AssetSize, CaseRule, EvidenceTier,
+    PackageDescriptor, PackageKind, PackageSource, VfsError, VfsResult,
+};
 use utsushi_reallive::{
-    GraphicsObject, GraphicsObjectStack, GraphicsPlane, RecordingFrameArtifactSink, RenderPass,
-    ReplayEvent, ReplayOpts, TextLayer, WipeColour, replay_scene, sha256_hex,
+    GraphicsObject, GraphicsObjectStack, GraphicsPlane, RecordingFrameArtifactSink,
+    RedactionPolicy, RenderPass, ReplayEvent, ReplayOpts, SceneEmit, TextLayer, WipeColour,
+    replay_scene, sha256_hex,
 };
 
 /// Only `reallive` is supported (no silent fallback).
@@ -48,6 +54,8 @@ USAGE:
     --seen <PATH> \
     --scene <N> \
     --artifact-root <DIR> \
+    [--game-dir <DIR>] [--bg-asset <STEM>] \
+    [--private-artifact-root <DIR>] [--redaction on|off] \
     [--run-id <ID>] \
     [--expect-text-contains <SUBSTR>] \
     [--width <N>] [--height <N>] \
@@ -57,17 +65,26 @@ FLAGS:
   --engine reallive             Replay engine. Only `reallive` is supported.
   --seen <PATH>                 Path to a (localized) RealLive Seen.txt envelope.
   --scene <N>                   Scene id (u16) to drive through the VM.
-  --artifact-root <DIR>         Managed runtime-artifact root the PNG is written under.
+  --artifact-root <DIR>         Managed runtime-artifact root the PUBLIC PNG is written under.
+  --game-dir <DIR>              Game root containing the g00 asset directory. When given
+                                with --bg-asset, the real g00 background is composited.
+  --bg-asset <STEM>             g00 asset stem (e.g. BACK) composited as the scene background.
+  --private-artifact-root <DIR> Directory the PRIVATE full-fidelity PNG is written to.
+                                Default: the repo's gitignored /.private-render/ tree. NEVER
+                                committed (it carries real decoded g00 art).
+  --redaction on|off            PUBLIC-frame redaction toggle (default: on). `on` replaces
+                                image rects with a synthetic marker; `off` publishes the
+                                full-fidelity buffer (authorized local sharing only).
   --run-id <ID>                 Run id segment for the artifact URI (default: render-validate).
   --expect-text-contains <S>    Assert the rendered (localized) text layer contains <S>.
   --width <N> / --height <N>    Framebuffer size (default 1280x720).
   --output <PATH>               Write the deterministic JSON report to <PATH>.
   -h, --help                    Print this message and exit.
 
-The emitted artifact is announced through the substrate FrameArtifactSink
-at EvidenceTier::E2 as a `screenshot`. The rasterizer NEVER dereferences a
-copyrighted g00 bitmap; only synthetic fills and the localized text layer
-are painted.
+The render pass composites the REAL decoded g00 background into the
+full-fidelity buffer; the private PNG carries it verbatim while the public
+frame (announced through the substrate FrameArtifactSink at EvidenceTier::E2
+as a `screenshot`) is redacted by default so no copyrighted art is published.
 "#;
 
 /// Execute the `render-validate` subcommand.
@@ -94,6 +111,20 @@ pub fn run_render_validate_command(args: &[String]) -> Result<(), Box<dyn Error>
     let width = parse_dimension(args, "--width", DEFAULT_WIDTH)?;
     let height = parse_dimension(args, "--height", DEFAULT_HEIGHT)?;
     let output = optional_flag(args, "--output").map(PathBuf::from);
+    let game_dir = optional_flag(args, "--game-dir").map(PathBuf::from);
+    let bg_asset = optional_flag(args, "--bg-asset").map(str::to_string);
+    let private_artifact_root = optional_flag(args, "--private-artifact-root").map(PathBuf::from);
+    let public_redact = match optional_flag(args, "--redaction") {
+        None | Some("on") => true,
+        Some("off") => false,
+        Some(other) => {
+            return Err(format!(
+                "utsushi.cli.render_validate.redaction_flag: --redaction must be `on` or `off`, \
+                 got {other:?}"
+            )
+            .into());
+        }
+    };
 
     drive(Params {
         seen_path: &seen_path,
@@ -104,6 +135,10 @@ pub fn run_render_validate_command(args: &[String]) -> Result<(), Box<dyn Error>
         width,
         height,
         output: output.as_deref(),
+        game_dir: game_dir.as_deref(),
+        bg_asset: bg_asset.as_deref(),
+        private_artifact_root: private_artifact_root.as_deref(),
+        public_redact,
     })
 }
 
@@ -116,6 +151,10 @@ struct Params<'a> {
     width: u32,
     height: u32,
     output: Option<&'a Path>,
+    game_dir: Option<&'a Path>,
+    bg_asset: Option<&'a str>,
+    private_artifact_root: Option<&'a Path>,
+    public_redact: bool,
 }
 
 fn drive(params: Params<'_>) -> Result<(), Box<dyn Error>> {
@@ -160,9 +199,9 @@ fn drive(params: Params<'_>) -> Result<(), Box<dyn Error>> {
         .into());
     }
 
-    // 2. Build the render stack: a synthetic background fill + an Image
-    //    object that is recorded but NEVER dereferenced (redaction), and
-    //    the localized text layer painted on top.
+    // 2. Build the render stack: a synthetic background fill, the REAL
+    //    g00 scene background (when a game dir + bg asset are supplied),
+    //    and the localized text layer painted on top.
     let mut stack = GraphicsObjectStack::new();
     stack
         .set(
@@ -171,26 +210,54 @@ fn drive(params: Params<'_>) -> Result<(), Box<dyn Error>> {
             GraphicsObject::wipe(WipeColour::opaque_rgb(0x10, 0x14, 0x1c)),
         )
         .map_err(|err| format!("utsushi.cli.render_validate.stack: {err}"))?;
-    // Structural redaction marker: a (would-be) scene background image.
-    // The render pass keeps this a no-op; no g00 bytes are read.
-    stack
-        .set(
-            GraphicsPlane::Background,
-            1,
-            GraphicsObject::image("SCENE_BG"),
-        )
-        .map_err(|err| format!("utsushi.cli.render_validate.stack: {err}"))?;
+
+    // Bind a real g00 asset package + composite the named scene
+    // background when both --game-dir and --bg-asset are supplied.
+    let mut assets: Option<Arc<dyn AssetPackage>> = None;
+    let mut composited_bg_asset: Option<String> = None;
+    if let (Some(game_dir), Some(bg_asset)) = (params.game_dir, params.bg_asset) {
+        let g00_dir = find_g00_dir(game_dir).ok_or_else(|| {
+            format!(
+                "utsushi.cli.render_validate.g00_dir_missing: no g00 directory found under {}",
+                game_dir.display()
+            )
+        })?;
+        assets = Some(Arc::new(OnDiskG00Package::new(g00_dir)));
+        stack
+            .set(
+                GraphicsPlane::Background,
+                1,
+                GraphicsObject::image(bg_asset.to_string()),
+            )
+            .map_err(|err| format!("utsushi.cli.render_validate.stack: {err}"))?;
+        composited_bg_asset = Some(bg_asset.to_string());
+    }
     let text = TextLayer::localized(rendered_lines.clone());
 
-    // 3. Emit the deterministic screenshot through the substrate frame
-    //    sink at E2.
+    // 3. Emit the private full-fidelity PNG + the public (redacted by
+    //    default) screenshot through the substrate frame sink at E2.
     let mut pass = RenderPass::with_dimensions(params.width, params.height)
         .map_err(|err| format!("utsushi.cli.render_validate.render_pass: {err}"))?;
+    if let Some(assets) = assets {
+        pass = pass.with_assets(assets);
+    }
     let root = RuntimeArtifactRoot::new(params.artifact_root);
     let sink = RecordingFrameArtifactSink::new();
-    let artifact = pass
-        .emit_localized_screenshot(&stack, &text, &root, params.run_id, &sink)
+    let private_dir = private_artifact_dir(params.private_artifact_root, params.run_id);
+    let shots = pass
+        .emit_scene_screenshots(
+            &stack,
+            &text,
+            SceneEmit {
+                root: &root,
+                run_id: params.run_id,
+                sink: &sink,
+                private_dir: &private_dir,
+                public_redact: params.public_redact,
+            },
+        )
         .map_err(|err| format!("utsushi.cli.render_validate.emit: {err}"))?;
+    let artifact = &shots.public;
 
     if artifact.evidence_tier < EvidenceTier::E2 {
         return Err(format!(
@@ -221,6 +288,10 @@ fn drive(params: Params<'_>) -> Result<(), Box<dyn Error>> {
         "expectTextContains": params.expect_text_contains,
         "containsExpected": contains_expected,
         "framesAnnounced": sink.len(),
+        "compositedBgAsset": composited_bg_asset,
+        "redaction": if shots.redaction == RedactionPolicy::Redact { "on" } else { "off" },
+        "privateArtifactPath": shots.private_png_path.display().to_string(),
+        "privateArtifactSha256": shots.private_png_sha256,
     });
 
     if let Some(path) = params.output {
@@ -232,13 +303,19 @@ fn drive(params: Params<'_>) -> Result<(), Box<dyn Error>> {
 
     println!(
         "{RENDER_OK_CODE}: scene={} artifact_id={} uri={} evidence_tier={} \
-         rendered_lines={} textline_count={}",
+         rendered_lines={} textline_count={} redaction={} private={}",
         params.scene_id,
         artifact.artifact_ref.artifact_id,
         artifact.artifact_ref.uri,
         artifact.evidence_tier.as_str(),
         rendered_lines.len(),
         textline_count,
+        if shots.redaction == RedactionPolicy::Redact {
+            "on"
+        } else {
+            "off"
+        },
+        shots.private_png_path.display(),
     );
     Ok(())
 }
@@ -279,6 +356,141 @@ fn optional_flag<'a>(args: &'a [String], name: &str) -> Option<&'a str> {
         .position(|arg| arg == name)
         .and_then(|index| args.get(index + 1))
         .map(String::as_str)
+}
+
+/// Resolve the directory the PRIVATE full-fidelity PNG is written to.
+/// When `--private-artifact-root` is not supplied, default to the repo's
+/// gitignored `/.private-render/render-validate/<run_id>/` tree (which
+/// lives under `/scratch` in the agent worktree) so the real-art frame is
+/// never committed.
+fn private_artifact_dir(explicit: Option<&Path>, run_id: &str) -> PathBuf {
+    match explicit {
+        Some(dir) => dir.to_path_buf(),
+        None => {
+            let workspace_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+                .parent()
+                .and_then(Path::parent)
+                .map(Path::to_path_buf)
+                .unwrap_or_else(|| PathBuf::from("."));
+            workspace_root
+                .join(".private-render")
+                .join("render-validate")
+                .join(run_id)
+        }
+    }
+}
+
+/// Breadth-first search from `game_dir` (bounded depth 4) for a
+/// directory whose ASCII-case-folded name is `g00` that contains at
+/// least one `*.g00` file. Handles both `REALLIVEDATA/g00` (Sweetie HD)
+/// and top-level `G00` (Kanon) layouts.
+fn find_g00_dir(game_dir: &Path) -> Option<PathBuf> {
+    let mut frontier = vec![(game_dir.to_path_buf(), 0usize)];
+    while let Some((dir, depth)) = frontier.pop() {
+        let is_g00 = dir
+            .file_name()
+            .and_then(|name| name.to_str())
+            .map(|name| name.eq_ignore_ascii_case("g00"))
+            .unwrap_or(false);
+        if is_g00 && dir_has_g00_file(&dir) {
+            return Some(dir);
+        }
+        if depth < 4
+            && let Ok(entries) = fs::read_dir(&dir)
+        {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    frontier.push((path, depth + 1));
+                }
+            }
+        }
+    }
+    None
+}
+
+fn dir_has_g00_file(dir: &Path) -> bool {
+    fs::read_dir(dir)
+        .map(|entries| {
+            entries.flatten().any(|entry| {
+                entry
+                    .path()
+                    .extension()
+                    .and_then(|ext| ext.to_str())
+                    .map(|ext| ext.eq_ignore_ascii_case("g00"))
+                    .unwrap_or(false)
+            })
+        })
+        .unwrap_or(false)
+}
+
+/// Minimal [`AssetPackage`] resolving `g00/<STEM>.g00` against a real
+/// on-disk g00 directory. Reads via `std::fs`; never indexes the whole
+/// game tree (a one-shot CLI render must not walk `koe/` and `wav/`).
+#[derive(Debug)]
+struct OnDiskG00Package {
+    g00_dir: PathBuf,
+}
+
+impl OnDiskG00Package {
+    fn new(g00_dir: PathBuf) -> Self {
+        Self { g00_dir }
+    }
+
+    fn host_path(&self, id: &AssetId) -> PathBuf {
+        let logical = id.path();
+        let stem = logical.strip_prefix("g00/").unwrap_or(logical);
+        self.g00_dir.join(stem)
+    }
+}
+
+impl AssetPackage for OnDiskG00Package {
+    fn id(&self) -> &str {
+        "render-validate-on-disk-g00"
+    }
+
+    fn descriptor(&self) -> PackageDescriptor {
+        PackageDescriptor {
+            id: self.id().to_string(),
+            kind: PackageKind::Plaintext,
+            case_rule: CaseRule::Sensitive,
+            source: PackageSource::PublicName(self.id().to_string()),
+            revision: None,
+        }
+    }
+
+    fn case_rule(&self) -> CaseRule {
+        CaseRule::Sensitive
+    }
+
+    fn resolve(&self, logical: &str) -> VfsResult<AssetId> {
+        AssetId::from_parts(self.id(), logical)
+    }
+
+    fn exists(&self, id: &AssetId) -> VfsResult<bool> {
+        Ok(self.host_path(id).exists())
+    }
+
+    fn stat(&self, id: &AssetId) -> VfsResult<AssetMetadata> {
+        let meta = fs::metadata(self.host_path(id))
+            .map_err(|_| VfsError::AssetMissing { id: id.clone() })?;
+        Ok(AssetMetadata {
+            id: id.clone(),
+            kind: AssetKind::File,
+            size: AssetSize::Bytes(meta.len()),
+            revision: None,
+        })
+    }
+
+    fn open(&self, id: &AssetId) -> VfsResult<AssetBytes> {
+        let bytes =
+            fs::read(self.host_path(id)).map_err(|_| VfsError::AssetMissing { id: id.clone() })?;
+        Ok(AssetBytes::from(bytes))
+    }
+
+    fn list(&self, _prefix: &AssetId) -> VfsResult<Vec<AssetId>> {
+        Ok(Vec::new())
+    }
 }
 
 #[cfg(test)]
@@ -354,7 +566,10 @@ mod tests {
         assert!(HELP.contains("utsushi-cli render-validate"));
         assert!(HELP.contains("--engine reallive"));
         assert!(HELP.contains("EvidenceTier::E2"));
-        assert!(HELP.contains("NEVER dereferences"));
+        // The redaction toggle + private/public split is documented.
+        assert!(HELP.contains("--redaction on|off"));
+        assert!(HELP.contains("--private-artifact-root"));
+        assert!(HELP.contains("redacted by default"));
     }
 
     #[test]

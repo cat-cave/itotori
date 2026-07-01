@@ -20,6 +20,10 @@ fixtures/private-local/
 .kaifuu/secrets.local/
 # Local research scratch exports. Curated research notes live under docs/research/.
 /research/
+# Private full-fidelity render artifacts (real decoded g00 pixels). NEVER
+# committed: the render-validate emit boundary writes copyrighted game-art
+# frames here for local inspection only. Public/committed frames are redacted.
+/.private-render/
 # Per-agent worktrees managed by Claude Code agents.
 .claude/
 

@@ -10,16 +10,28 @@
 //! [`utsushi_core::substrate::FrameArtifactSink`] at
 //! [`EvidenceTier::E2`].
 //!
-//! # Copyright redaction is structural (ALPHA-006b PROJECT LAW)
+//! # Real g00 compositing + emit-boundary redaction
 //!
-//! The render pass NEVER dereferences a copyrighted g00 bitmap into the
-//! framebuffer. [`GraphicsObjectKind::Image`] objects are recorded but
-//! produce zero pixels (see [`RenderPass::paint_object`]); only our own
-//! synthetic [`GraphicsObjectKind::Wipe`] fills and the localized
-//! [`TextLayer`] (our translated text, rendered through the in-crate
-//! bitmap font) are painted. The emitted PNG therefore provably embeds
-//! NONE of any source g00 byte content — there is no code path from a
-//! decoded `G00Image` to the framebuffer.
+//! The render pass composites REAL decoded g00 art. When a
+//! [`GraphicsObjectKind::Image`] object is painted the pass resolves
+//! `g00/<asset_key>.g00` through its bound
+//! [`utsushi_core::substrate::AssetPackage`], decodes the bytes with
+//! [`crate::decode_g00`], and blits the decoded bitmap into the
+//! framebuffer subject to the object's recorded scale, colour tone, and
+//! alpha (see [`RenderPass::paint_object`]). [`GraphicsObjectKind::Wipe`]
+//! fills and the localized [`TextLayer`] are composited on top.
+//!
+//! Copyright redaction is a POLICY applied at the artifact-emit
+//! boundary, NOT hard-enforced in the render path. [`RedactionPolicy`]
+//! selects whether a rendered frame carries the real decoded art
+//! ([`RedactionPolicy::Full`]) or a synthetic redaction marker in place
+//! of every image object's rect ([`RedactionPolicy::Redact`], the
+//! default). [`RenderPass::emit_scene_screenshots`] writes the
+//! full-fidelity buffer to a PRIVATE, uncommitted path (hashable, never
+//! committed) and announces the public (policy-selected) buffer through
+//! the substrate frame sink — so a committed/CI proof publishes no
+//! copyrighted art while a locally-authorized run can toggle redaction
+//! off.
 //!
 //! # Substrate frame-artifact emission (E2)
 //!
@@ -55,14 +67,19 @@
 //! SHA-256 of the PNG bytes (sourced through the workspace `sha2`
 //! crate), so identical frame state produces an identical artifact id.
 
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+
 use sha2::{Digest, Sha256};
 
+use crate::g00::decode_g00;
 use crate::graphics_objects::{
-    GraphicsObject, GraphicsObjectKind, GraphicsObjectStack, GraphicsPlane, WipeColour,
+    GraphicsColourTone, GraphicsObject, GraphicsObjectKind, GraphicsObjectStack, GraphicsPlane,
+    WipeColour,
 };
 use crate::syscall::ScreenSize;
 use utsushi_core::substrate::{
-    EvidenceTier, FrameArtifact, FrameArtifactSink, ObservationArtifactRef, SinkError,
+    AssetPackage, EvidenceTier, FrameArtifact, FrameArtifactSink, ObservationArtifactRef, SinkError,
 };
 use utsushi_core::{RuntimeArtifactKind, RuntimeArtifactRoot, runtime_artifact_uri};
 
@@ -100,6 +117,43 @@ pub const SCREENSHOT_ARTIFACT_KIND: &str = "screenshot";
 /// filter) so the scanline contents stay byte-identical to the raw
 /// framebuffer row.
 const PNG_FILTER_NONE: u8 = 0;
+
+/// Opaque synthetic marker painted over an image object's rect when the
+/// render pass runs under [`RedactionPolicy::Redact`]. It is a fixed,
+/// obviously-synthetic value that shares NONE of the decoded g00 byte
+/// content, so a redacted public frame provably embeds no source art
+/// while still marking WHERE the (redacted) art would sit.
+pub const REDACTION_MARKER: WipeColour = WipeColour {
+    red: 0x7F,
+    green: 0x00,
+    blue: 0x7F,
+    alpha: 0xFF,
+};
+
+/// Copyright-redaction policy applied at the artifact-emit boundary.
+///
+/// This is NOT hard-enforced inside the compositing loop: the render
+/// path can always produce the full-fidelity buffer. The policy only
+/// selects what an *emitted* frame carries.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RedactionPolicy {
+    /// Composite the real decoded g00 art. Used for the PRIVATE,
+    /// uncommitted full-fidelity artifact and for locally-authorized
+    /// (redaction-off) public frames.
+    Full,
+    /// Replace every image object's rect with [`REDACTION_MARKER`] so the
+    /// emitted frame publishes no copyrighted art. The default for
+    /// committed / CI proof.
+    Redact,
+}
+
+impl RedactionPolicy {
+    /// Map a public-redaction toggle to a policy. `redact == true`
+    /// (the safe default) yields [`RedactionPolicy::Redact`].
+    pub fn public_toggle(redact: bool) -> Self {
+        if redact { Self::Redact } else { Self::Full }
+    }
+}
 
 /// In-process framebuffer. A `width × height` grid of RGBA bytes in
 /// row-major order. The render pass writes into the buffer directly;
@@ -155,6 +209,49 @@ impl Framebuffer {
         self.pixels[offset + 1] = colour.green;
         self.pixels[offset + 2] = colour.blue;
         self.pixels[offset + 3] = colour.alpha;
+    }
+
+    /// Source-over composite one RGBA `src` pixel at `(x, y)`, modulating
+    /// the source alpha by `object_alpha` (`0..=255`). The effective
+    /// source coverage is `src.a * object_alpha / 255`; the result is the
+    /// standard non-premultiplied source-over of `src` onto the current
+    /// destination pixel. `object_alpha == 255` with an opaque `src`
+    /// (`src[3] == 255`) writes `src` verbatim, so the opaque path is
+    /// byte-identical to [`Self::set_pixel`]. Out-of-bounds coordinates
+    /// are clipped (no-op).
+    fn blend_pixel(&mut self, x: u32, y: u32, src: [u8; RGBA_BYTES_PER_PIXEL], object_alpha: u8) {
+        if x >= self.width || y >= self.height {
+            return;
+        }
+        // Effective coverage in 0..=255.
+        let cover = ((src[3] as u32) * (object_alpha as u32)) / 255;
+        if cover == 0 {
+            return;
+        }
+        let offset = ((y as usize) * (self.width as usize) + (x as usize)) * RGBA_BYTES_PER_PIXEL;
+        let inv = 255 - cover;
+        for (channel, &s) in src.iter().take(3).enumerate() {
+            let d = self.pixels[offset + channel] as u32;
+            // Rounded source-over: (s*cover + d*inv) / 255.
+            self.pixels[offset + channel] = ((s as u32 * cover + d * inv + 127) / 255) as u8;
+        }
+        let da = self.pixels[offset + 3] as u32;
+        // out_a = cover + da*(1 - cover); non-premultiplied alpha.
+        self.pixels[offset + 3] = (cover + (da * inv + 127) / 255).min(255) as u8;
+    }
+
+    /// Blend `colour` across the entire framebuffer, modulating the
+    /// fill by `object_alpha`. A wipe object routes through this method so
+    /// its recorded object-level alpha (and its own `colour.alpha`) are
+    /// applied: an opaque wipe fills verbatim, a fully-transparent-alpha
+    /// wipe contributes nothing.
+    pub fn fill_blended(&mut self, colour: WipeColour, object_alpha: u8) {
+        let src = [colour.red, colour.green, colour.blue, colour.alpha];
+        for y in 0..self.height {
+            for x in 0..self.width {
+                self.blend_pixel(x, y, src, object_alpha);
+            }
+        }
     }
 
     /// Paint a [`TextLayer`] over the framebuffer using the in-crate
@@ -353,6 +450,10 @@ pub enum RenderEmitError {
     /// Building the managed runtime-artifact URI failed.
     #[error("runtime artifact uri build failed: {0}")]
     UriBuild(String),
+    /// Writing the PRIVATE full-fidelity PNG to its uncommitted
+    /// on-disk path failed (directory creation or file write).
+    #[error("private full-fidelity artifact write failed: {0}")]
+    PrivateArtifactWrite(String),
     /// A non-empty localized [`TextLayer`] painted ZERO framebuffer
     /// pixels (off-screen origin, all-whitespace, or a glyph-less
     /// layer), so the emitted PNG would carry no localized text and the
@@ -371,15 +472,76 @@ pub enum RenderEmitError {
     },
 }
 
+/// Emit-boundary inputs for [`RenderPass::emit_scene_screenshots`]: the
+/// managed public artifact root + run id + substrate sink, the private
+/// full-fidelity output directory, and the public-frame redaction toggle.
+pub struct SceneEmit<'a> {
+    /// Managed runtime-artifact root the PUBLIC PNG is written under.
+    pub root: &'a RuntimeArtifactRoot,
+    /// Run-id segment for the managed public artifact URI.
+    pub run_id: &'a str,
+    /// Substrate frame sink the public frame is announced through (E2).
+    pub sink: &'a dyn FrameArtifactSink,
+    /// Directory the PRIVATE full-fidelity PNG is written to (uncommitted).
+    pub private_dir: &'a Path,
+    /// Public-frame redaction toggle. `true` (default) redacts image
+    /// rects; `false` publishes the full-fidelity buffer.
+    pub public_redact: bool,
+}
+
+impl std::fmt::Debug for SceneEmit<'_> {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("SceneEmit")
+            .field("run_id", &self.run_id)
+            .field("private_dir", &self.private_dir)
+            .field("public_redact", &self.public_redact)
+            .finish_non_exhaustive()
+    }
+}
+
+/// Outcome of [`RenderPass::emit_scene_screenshots`]: the public
+/// (policy-selected) frame artifact plus the private full-fidelity PNG's
+/// on-disk path and content hash.
+#[derive(Debug, Clone)]
+pub struct SceneScreenshots {
+    /// The public frame announced through the substrate sink at E2.
+    pub public: FrameArtifact,
+    /// On-disk path of the uncommitted full-fidelity PNG (pixels
+    /// byte-derived from the decoded g00). Hashable and re-readable.
+    pub private_png_path: PathBuf,
+    /// SHA-256 hex of the private PNG bytes.
+    pub private_png_sha256: String,
+    /// The redaction policy the PUBLIC frame was rendered under.
+    pub redaction: RedactionPolicy,
+}
+
 /// The headless render pipeline. Owns a per-pass `frame_index`
-/// counter and the framebuffer dimensions. The encoded PNG bytes are
-/// persisted on disk through the caller's [`RuntimeArtifactRoot`]; the
-/// pass itself retains no bytes.
-#[derive(Debug)]
+/// counter, the framebuffer dimensions, and the optional
+/// [`AssetPackage`] the image-object compositor resolves g00 assets
+/// through. The encoded PNG bytes are persisted on disk through the
+/// caller's [`RuntimeArtifactRoot`]; the pass itself retains no bytes.
 pub struct RenderPass {
     width: u32,
     height: u32,
     frame_index: u64,
+    /// Asset package the image-object compositor resolves
+    /// `g00/<asset_key>.g00` through. `None` means no loader is bound, so
+    /// image objects contribute no pixels (there is nothing to
+    /// dereference).
+    assets: Option<Arc<dyn AssetPackage>>,
+}
+
+impl std::fmt::Debug for RenderPass {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("RenderPass")
+            .field("width", &self.width)
+            .field("height", &self.height)
+            .field("frame_index", &self.frame_index)
+            .field("has_assets", &self.assets.is_some())
+            .finish()
+    }
 }
 
 impl RenderPass {
@@ -405,7 +567,22 @@ impl RenderPass {
             width,
             height,
             frame_index: 0,
+            assets: None,
         })
+    }
+
+    /// Bind the [`AssetPackage`] the image-object compositor resolves
+    /// `g00/<asset_key>.g00` assets through. Consumes and returns `self`
+    /// so it chains off a constructor.
+    pub fn with_assets(mut self, assets: Arc<dyn AssetPackage>) -> Self {
+        self.assets = Some(assets);
+        self
+    }
+
+    /// Whether an asset package is bound (image objects can be
+    /// dereferenced).
+    pub fn has_assets(&self) -> bool {
+        self.assets.is_some()
     }
 
     /// Framebuffer pixel width.
@@ -423,10 +600,24 @@ impl RenderPass {
         self.frame_index
     }
 
-    /// Rasterise `stack` into a fresh framebuffer (no text layer).
-    /// The render order is `(plane: Background first, then Foreground)`,
-    /// then within each plane `(layer_order ascending, slot ascending)`.
+    /// Rasterise `stack` into a fresh framebuffer under the default
+    /// [`RedactionPolicy::Redact`] policy (no text layer). Image objects
+    /// are replaced by [`REDACTION_MARKER`]; use
+    /// [`Self::rasterise_with_policy`] with [`RedactionPolicy::Full`] to
+    /// composite the real decoded g00 art.
     pub fn rasterise(&self, stack: &GraphicsObjectStack) -> Framebuffer {
+        self.rasterise_with_policy(stack, RedactionPolicy::Redact)
+    }
+
+    /// Rasterise `stack` into a fresh framebuffer under `policy` (no text
+    /// layer). The render order is `(plane: Background first, then
+    /// Foreground)`, then within each plane `(layer_order ascending, slot
+    /// ascending)`.
+    pub fn rasterise_with_policy(
+        &self,
+        stack: &GraphicsObjectStack,
+        policy: RedactionPolicy,
+    ) -> Framebuffer {
         let mut framebuffer = Framebuffer::new(self.width, self.height);
         let mut entries: Vec<(GraphicsPlane, i32, usize, &GraphicsObject)> = stack
             .iter_allocated()
@@ -437,7 +628,7 @@ impl RenderPass {
             if !object.visible {
                 continue;
             }
-            self.paint_object(&mut framebuffer, object);
+            self.paint_object(&mut framebuffer, object, policy);
         }
         framebuffer
     }
@@ -454,20 +645,31 @@ impl RenderPass {
         stack: &GraphicsObjectStack,
         text: &TextLayer,
     ) -> (Framebuffer, u64) {
-        let mut framebuffer = self.rasterise(stack);
+        self.rasterise_with_text_policy(stack, text, RedactionPolicy::Redact)
+    }
+
+    /// Rasterise `stack` under `policy`, then paint the localized `text`
+    /// layer on top. Returns the framebuffer and the localized-text pixel
+    /// count.
+    pub fn rasterise_with_text_policy(
+        &self,
+        stack: &GraphicsObjectStack,
+        text: &TextLayer,
+        policy: RedactionPolicy,
+    ) -> (Framebuffer, u64) {
+        let mut framebuffer = self.rasterise_with_policy(stack, policy);
         let text_pixels = framebuffer.draw_text(text);
         (framebuffer, text_pixels)
     }
 
-    /// Rasterise `stack` + the localized `text` layer, encode the
-    /// deterministic PNG, persist it to `root` under a managed
-    /// `screenshots/<artifact_id>.png` URI, and announce a
-    /// [`FrameArtifact`] at [`EvidenceTier::E2`] through `sink`.
-    ///
-    /// COPYRIGHT REDACTION: this path NEVER dereferences a g00 bitmap.
-    /// Only the synthetic [`GraphicsObjectKind::Wipe`] fills and the
-    /// localized `text` layer reach the framebuffer; the emitted PNG
-    /// embeds zero source-asset bytes.
+    /// Rasterise `stack` + the localized `text` layer under the default
+    /// [`RedactionPolicy::Redact`] policy, encode the deterministic PNG,
+    /// persist it to `root` under a managed `screenshots/<artifact_id>.png`
+    /// URI, and announce a [`FrameArtifact`] at [`EvidenceTier::E2`]
+    /// through `sink`. This is the public, redacted single-frame emit: an
+    /// image object contributes only [`REDACTION_MARKER`] pixels, so the
+    /// emitted PNG publishes no source art. The full-fidelity path is
+    /// [`Self::emit_scene_screenshots`].
     ///
     /// NON-VACUOUS LOCALIZATION PROOF: a non-empty `text` layer that
     /// paints ZERO framebuffer pixels (off-screen origin, all-whitespace,
@@ -484,8 +686,78 @@ impl RenderPass {
         sink: &dyn FrameArtifactSink,
     ) -> Result<FrameArtifact, RenderEmitError> {
         let (framebuffer, text_pixels) = self.rasterise_with_text(stack, text);
-        // A non-empty localized text layer MUST paint pixels; otherwise
-        // the screenshot is a vacuous localization/redaction proof.
+        self.reject_blank_localized(text, text_pixels)?;
+        self.announce_framebuffer(&framebuffer, root, run_id, sink)
+    }
+
+    /// Emit the full-fidelity PRIVATE screenshot AND the public
+    /// (policy-selected) screenshot for `stack` + `text`.
+    ///
+    /// 1. The full-fidelity framebuffer (real decoded g00 composited,
+    ///    [`RedactionPolicy::Full`]) is encoded and written to
+    ///    `private_dir/<sha256>.png` — an uncommitted, hashable file on
+    ///    disk. Its pixels are byte-derived from the decoded g00.
+    /// 2. The public framebuffer is rendered under
+    ///    [`RedactionPolicy::public_toggle`]`(emit.public_redact)`: with
+    ///    `public_redact == true` (the default) image rects carry only
+    ///    [`REDACTION_MARKER`]; with `false` the public buffer equals the
+    ///    full-fidelity buffer. It is announced through `emit.sink` at E2.
+    ///
+    /// Redaction is thus a policy at THIS emit boundary — the render path
+    /// itself always produces the full-fidelity buffer.
+    pub fn emit_scene_screenshots(
+        &mut self,
+        stack: &GraphicsObjectStack,
+        text: &TextLayer,
+        emit: SceneEmit<'_>,
+    ) -> Result<SceneScreenshots, RenderEmitError> {
+        // Full-fidelity private buffer (always real g00 art).
+        let (full_fb, full_text_pixels) =
+            self.rasterise_with_text_policy(stack, text, RedactionPolicy::Full);
+        self.reject_blank_localized(text, full_text_pixels)?;
+
+        let private_png = encode_png_rgba_deterministic(&full_fb);
+        let private_sha = sha256_hex(&private_png);
+        std::fs::create_dir_all(emit.private_dir).map_err(|error| {
+            RenderEmitError::PrivateArtifactWrite(format!(
+                "create private dir {}: {error}",
+                emit.private_dir.display()
+            ))
+        })?;
+        let private_png_path = emit.private_dir.join(format!("{private_sha}.png"));
+        std::fs::write(&private_png_path, &private_png).map_err(|error| {
+            RenderEmitError::PrivateArtifactWrite(format!(
+                "write {}: {error}",
+                private_png_path.display()
+            ))
+        })?;
+
+        // Public buffer under the redaction toggle. When redaction is off
+        // the public buffer IS the full-fidelity buffer.
+        let policy = RedactionPolicy::public_toggle(emit.public_redact);
+        let public_fb = match policy {
+            RedactionPolicy::Full => full_fb,
+            RedactionPolicy::Redact => {
+                self.rasterise_with_text_policy(stack, text, RedactionPolicy::Redact)
+                    .0
+            }
+        };
+        let public = self.announce_framebuffer(&public_fb, emit.root, emit.run_id, emit.sink)?;
+
+        Ok(SceneScreenshots {
+            public,
+            private_png_path,
+            private_png_sha256: private_sha,
+            redaction: policy,
+        })
+    }
+
+    /// Reject a non-empty localized text layer that painted zero pixels.
+    fn reject_blank_localized(
+        &self,
+        text: &TextLayer,
+        text_pixels: u64,
+    ) -> Result<(), RenderEmitError> {
         if text.char_count() > 0 && text_pixels == 0 {
             return Err(RenderEmitError::BlankLocalizedText {
                 code: RENDER_PIPELINE_BLANK_LOCALIZED_TEXT_CODE.to_string(),
@@ -493,7 +765,21 @@ impl RenderPass {
                 line_count: text.lines.len(),
             });
         }
-        let png_bytes = encode_png_rgba_deterministic(&framebuffer);
+        Ok(())
+    }
+
+    /// Encode `framebuffer`, persist it under a managed
+    /// `screenshots/<artifact_id>.png` URI on `root`, and announce a
+    /// [`FrameArtifact`] at [`EvidenceTier::E2`] through `sink`. Advances
+    /// the per-pass frame index.
+    fn announce_framebuffer(
+        &mut self,
+        framebuffer: &Framebuffer,
+        root: &RuntimeArtifactRoot,
+        run_id: &str,
+        sink: &dyn FrameArtifactSink,
+    ) -> Result<FrameArtifact, RenderEmitError> {
+        let png_bytes = encode_png_rgba_deterministic(framebuffer);
         let artifact_id = sha256_hex(&png_bytes);
 
         root.prepare()
@@ -522,20 +808,158 @@ impl RenderPass {
         Ok(artifact)
     }
 
-    fn paint_object(&self, framebuffer: &mut Framebuffer, object: &GraphicsObject) {
+    fn paint_object(
+        &self,
+        framebuffer: &mut Framebuffer,
+        object: &GraphicsObject,
+        policy: RedactionPolicy,
+    ) {
         match &object.kind {
             GraphicsObjectKind::Wipe { colour } => {
-                framebuffer.fill(*colour);
+                // A wipe is a full-screen clear. Its recorded colour tone
+                // and object-level alpha are applied uniformly with every
+                // other object: a neutral-tone opaque wipe fills verbatim.
+                let toned = apply_tone(*colour, object.colour_tone);
+                framebuffer.fill_blended(toned, object.alpha.0);
             }
-            GraphicsObjectKind::Image { .. } => {
-                // COPYRIGHT REDACTION (ALPHA-006b PROJECT LAW): the
-                // image_ref is recorded on the object but its g00
-                // bitmap is NEVER decoded into the framebuffer. There
-                // is no `decode_g00` call reachable from here, so no
-                // source-asset byte can leak into the emitted PNG.
+            GraphicsObjectKind::Image { image_ref } => {
+                self.paint_image(framebuffer, object, &image_ref.asset_key, policy);
             }
         }
     }
+
+    /// Dereference an image object's `asset_key` through the bound asset
+    /// package, decode the g00 bytes, and composite the decoded bitmap
+    /// into `framebuffer` at the object's position, applying its scale
+    /// (nearest-neighbour resample), colour tone, and alpha. Under
+    /// [`RedactionPolicy::Redact`] the same destination rect is filled
+    /// with [`REDACTION_MARKER`] instead of the decoded pixels, so the
+    /// emitted frame publishes no source art. If no asset package is
+    /// bound, or resolution / decoding fails, the object contributes no
+    /// pixels (a fail-soft gap, never a panic).
+    fn paint_image(
+        &self,
+        framebuffer: &mut Framebuffer,
+        object: &GraphicsObject,
+        asset_key: &str,
+        policy: RedactionPolicy,
+    ) {
+        let Some(assets) = self.assets.as_ref() else {
+            return;
+        };
+        let logical = format!("g00/{asset_key}.g00");
+        let Ok(asset_id) = assets.resolve(&logical) else {
+            return;
+        };
+        let Ok(bytes) = assets.open(&asset_id) else {
+            return;
+        };
+        // LIVE decode of the real g00 bytes into an RGBA canvas. The
+        // decoder's non-fatal warnings (short-payload zero-extension) are
+        // tolerated; a hard decode error yields no pixels.
+        let Ok((image, _warnings)) = decode_g00(bytes.as_slice()) else {
+            return;
+        };
+        let src_w = image.width;
+        let src_h = image.height;
+        if src_w == 0 || src_h == 0 {
+            return;
+        }
+        let dst_w = scale_dimension(src_w, object.scale.x_thousandths);
+        let dst_h = scale_dimension(src_h, object.scale.y_thousandths);
+        if dst_w == 0 || dst_h == 0 {
+            return;
+        }
+        let src_stride = (src_w as usize) * RGBA_BYTES_PER_PIXEL;
+        for dy in 0..dst_h {
+            let py = object.position.y + dy as i32;
+            if py < 0 || py >= framebuffer.height as i32 {
+                continue;
+            }
+            // Nearest-neighbour source row.
+            let sy = ((dy as u64 * src_h as u64) / dst_h as u64) as u32;
+            for dx in 0..dst_w {
+                let px = object.position.x + dx as i32;
+                if px < 0 || px >= framebuffer.width as i32 {
+                    continue;
+                }
+                match policy {
+                    RedactionPolicy::Redact => {
+                        // Redaction: emit only the synthetic marker. No
+                        // decoded g00 byte is read into the framebuffer.
+                        let marker = [
+                            REDACTION_MARKER.red,
+                            REDACTION_MARKER.green,
+                            REDACTION_MARKER.blue,
+                            REDACTION_MARKER.alpha,
+                        ];
+                        framebuffer.blend_pixel(px as u32, py as u32, marker, object.alpha.0);
+                    }
+                    RedactionPolicy::Full => {
+                        let sx = ((dx as u64 * src_w as u64) / dst_w as u64) as u32;
+                        let sidx =
+                            (sy as usize) * src_stride + (sx as usize) * RGBA_BYTES_PER_PIXEL;
+                        let src = apply_tone_rgba(
+                            [
+                                image.pixels_rgba[sidx],
+                                image.pixels_rgba[sidx + 1],
+                                image.pixels_rgba[sidx + 2],
+                                image.pixels_rgba[sidx + 3],
+                            ],
+                            object.colour_tone,
+                        );
+                        framebuffer.blend_pixel(px as u32, py as u32, src, object.alpha.0);
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Scale `dimension` (pixels) by `thousandths` (`1000` = identity),
+/// rounding to nearest. Negative or zero scale collapses the extent to
+/// `0` (the object contributes no pixels); axis mirroring is out of
+/// scope for the headless rasteriser.
+fn scale_dimension(dimension: u32, thousandths: i32) -> u32 {
+    if thousandths <= 0 {
+        return 0;
+    }
+    (((dimension as u64) * (thousandths as u64) + 500) / 1000) as u32
+}
+
+/// Apply a signed-thousandths colour tone to a [`WipeColour`]'s RGB
+/// channels (alpha is untouched).
+fn apply_tone(colour: WipeColour, tone: GraphicsColourTone) -> WipeColour {
+    let [r, g, b, a] = apply_tone_rgba([colour.red, colour.green, colour.blue, colour.alpha], tone);
+    WipeColour {
+        red: r,
+        green: g,
+        blue: b,
+        alpha: a,
+    }
+}
+
+/// Apply a signed-thousandths colour tone to an RGBA pixel:
+/// `channel_out = clamp(channel + tone_thousandths * 255 / 1000)`. The
+/// alpha channel is passed through untouched. A [`GraphicsColourTone::NEUTRAL`]
+/// tone is the identity transform.
+fn apply_tone_rgba(
+    pixel: [u8; RGBA_BYTES_PER_PIXEL],
+    tone: GraphicsColourTone,
+) -> [u8; RGBA_BYTES_PER_PIXEL] {
+    let shift = |channel: u8, thousandths: i32| -> u8 {
+        if thousandths == 0 {
+            return channel;
+        }
+        let delta = (thousandths * 255) / 1000;
+        (channel as i32 + delta).clamp(0, 255) as u8
+    };
+    [
+        shift(pixel[0], tone.red_thousandths),
+        shift(pixel[1], tone.green_thousandths),
+        shift(pixel[2], tone.blue_thousandths),
+        pixel[3],
+    ]
 }
 
 /// A concrete supported [`FrameArtifactSink`] that validates every
@@ -965,27 +1389,61 @@ mod tests {
     }
 
     #[test]
-    fn alpha_transparent_wipe_still_fully_fills_framebuffer() {
-        // GraphicsAlpha is recorded state only; paint_object does NOT
-        // blend object-level alpha. A Wipe whose object alpha is
-        // TRANSPARENT still fully fills the framebuffer with the wipe
-        // colour — this asserts the doc-matches-code corrected behavior.
+    fn alpha_transparent_wipe_contributes_no_pixels() {
+        // Object-level alpha IS applied by paint_object: a Wipe whose
+        // object alpha is TRANSPARENT contributes NOTHING (it leaves the
+        // destination unchanged), rather than fully filling.
         use crate::graphics_objects::GraphicsAlpha;
         let pass = RenderPass::with_dimensions(2, 2).expect("non-zero screen");
         let mut stack = GraphicsObjectStack::new();
-        let mut wipe = GraphicsObject::wipe(WipeColour::opaque_rgb(0x11, 0x22, 0x33));
-        wipe.alpha = GraphicsAlpha::TRANSPARENT;
+        // Opaque white background, then a transparent-alpha black wipe on
+        // top: the transparent wipe must leave the white background intact.
+        let mut background = GraphicsObject::wipe(WipeColour::WHITE);
+        background.layer_order = 0;
+        let mut transparent = GraphicsObject::wipe(WipeColour::opaque_rgb(0x11, 0x22, 0x33));
+        transparent.layer_order = 1;
+        transparent.alpha = GraphicsAlpha::TRANSPARENT;
         stack
-            .set(GraphicsPlane::Foreground, 0, wipe)
-            .expect("set wipe");
+            .set(GraphicsPlane::Foreground, 0, background)
+            .expect("set background");
+        stack
+            .set(GraphicsPlane::Foreground, 1, transparent)
+            .expect("set transparent");
         let fb = pass.rasterise(&stack);
         for chunk in fb.pixels().chunks(RGBA_BYTES_PER_PIXEL) {
             assert_eq!(
                 chunk,
-                &[0x11, 0x22, 0x33, 0xFF],
-                "object-level alpha must NOT be applied by paint_object"
+                &[0xFF, 0xFF, 0xFF, 0xFF],
+                "a transparent-alpha wipe must contribute no pixels (object alpha IS applied)"
             );
         }
+    }
+
+    #[test]
+    fn alpha_half_wipe_blends_toward_background() {
+        // A half-alpha wipe blends halfway between its colour and the
+        // background: proof object-level alpha reaches the compositor.
+        use crate::graphics_objects::GraphicsAlpha;
+        let pass = RenderPass::with_dimensions(1, 1).expect("non-zero screen");
+        let mut stack = GraphicsObjectStack::new();
+        let mut background = GraphicsObject::wipe(WipeColour::BLACK);
+        background.layer_order = 0;
+        let mut half = GraphicsObject::wipe(WipeColour::WHITE);
+        half.layer_order = 1;
+        half.alpha = GraphicsAlpha(128);
+        stack
+            .set(GraphicsPlane::Foreground, 0, background)
+            .expect("bg");
+        stack.set(GraphicsPlane::Foreground, 1, half).expect("half");
+        let fb = pass.rasterise(&stack);
+        let pixel = &fb.pixels()[..4];
+        // 255*128/255 rounded ~= 128 over black.
+        assert!(
+            (120..=136).contains(&(pixel[0] as u32)),
+            "half-alpha white over black must be ~mid-grey, got {pixel:?}"
+        );
+        assert_eq!(pixel[0], pixel[1]);
+        assert_eq!(pixel[1], pixel[2]);
     }
 
     #[test]
@@ -1116,10 +1574,11 @@ mod tests {
     }
 
     #[test]
-    fn image_object_paints_no_pixels_redaction() {
-        // GraphicsObjectKind::Image must NOT be dereferenced into the
-        // framebuffer: an Image-only stack rasterises to the initial
-        // transparent pattern.
+    fn image_object_without_asset_package_contributes_nothing() {
+        // With no AssetPackage bound there is nothing to dereference, so
+        // an Image-only stack rasterises to the initial transparent
+        // pattern under EITHER policy (the g00 binding is what produces
+        // pixels — see the real-bytes suite for the composited case).
         let pass = RenderPass::with_dimensions(4, 4).expect("non-zero screen");
         let mut stack = GraphicsObjectStack::new();
         stack
@@ -1129,10 +1588,52 @@ mod tests {
                 GraphicsObject::image("SYNTH_BG"),
             )
             .expect("set image");
-        let fb = pass.rasterise(&stack);
-        assert!(
-            fb.pixels().iter().all(|&byte| byte == 0),
-            "Image objects must paint zero pixels (copyright redaction)"
+        assert!(!pass.has_assets());
+        for policy in [RedactionPolicy::Full, RedactionPolicy::Redact] {
+            let fb = pass.rasterise_with_policy(&stack, policy);
+            assert!(
+                fb.pixels().iter().all(|&byte| byte == 0),
+                "an image object with no asset package contributes zero pixels ({policy:?})"
+            );
+        }
+    }
+
+    #[test]
+    fn public_toggle_maps_redact_flag() {
+        assert_eq!(
+            RedactionPolicy::public_toggle(true),
+            RedactionPolicy::Redact
         );
+        assert_eq!(RedactionPolicy::public_toggle(false), RedactionPolicy::Full);
+    }
+
+    #[test]
+    fn apply_tone_neutral_is_identity_and_positive_lightens() {
+        let base = [0x40u8, 0x40, 0x40, 0xFF];
+        assert_eq!(
+            apply_tone_rgba(base, GraphicsColourTone::NEUTRAL),
+            base,
+            "neutral tone is identity"
+        );
+        let lightened = apply_tone_rgba(
+            base,
+            GraphicsColourTone {
+                red_thousandths: 1000,
+                green_thousandths: 0,
+                blue_thousandths: 0,
+            },
+        );
+        assert_eq!(lightened[0], 0xFF, "+1000 red drives channel to white");
+        assert_eq!(lightened[1], 0x40, "other channels untouched");
+        assert_eq!(lightened[3], 0xFF, "alpha untouched by tone");
+    }
+
+    #[test]
+    fn scale_dimension_rounds_and_floors_nonpositive() {
+        assert_eq!(scale_dimension(100, 1000), 100, "identity");
+        assert_eq!(scale_dimension(100, 500), 50, "half");
+        assert_eq!(scale_dimension(100, 2000), 200, "double");
+        assert_eq!(scale_dimension(100, 0), 0, "zero scale => no extent");
+        assert_eq!(scale_dimension(100, -500), 0, "negative scale => no extent");
     }
 }

@@ -5,10 +5,64 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 pub const REAL_GAME_ROOT_ENV: &str = "ITOTORI_REAL_GAME_ROOT";
+pub const REAL_GAME_ROOT_2_ENV: &str = "ITOTORI_REAL_GAME_ROOT_2";
 
 pub fn game_root() -> Option<PathBuf> {
     let root = PathBuf::from(env::var_os(REAL_GAME_ROOT_ENV)?);
     resolve_reallive_game_root(&root)
+}
+
+/// Locate the g00 asset directory reachable from the game root named by
+/// `env_var`. Handles BOTH the standard `REALLIVEDATA/g00` layout
+/// (Sweetie HD) and title variants that ship a top-level (case-varying)
+/// `G00` directory (Kanon). Returns `None` when the env var is unset or
+/// no g00 directory can be found. Directory search is bounded to a depth
+/// of 4 from the raw env path.
+pub fn g00_dir_for_env(env_var: &str) -> Option<PathBuf> {
+    let root = PathBuf::from(env::var_os(env_var)?);
+    find_g00_dir(&root, 4)
+}
+
+/// Breadth-first search from `root` (bounded to `max_depth`) for a
+/// directory whose ASCII-case-folded name is `g00` that contains at
+/// least one `*.g00` file.
+fn find_g00_dir(root: &Path, max_depth: usize) -> Option<PathBuf> {
+    let mut frontier = vec![(root.to_path_buf(), 0usize)];
+    while let Some((dir, depth)) = frontier.pop() {
+        if dir_is_g00_with_assets(&dir) {
+            return Some(dir);
+        }
+        if depth >= max_depth {
+            continue;
+        }
+        for child in child_dirs(&dir) {
+            frontier.push((child, depth + 1));
+        }
+    }
+    None
+}
+
+fn dir_is_g00_with_assets(dir: &Path) -> bool {
+    let is_named_g00 = dir
+        .file_name()
+        .and_then(|name| name.to_str())
+        .map(|name| name.eq_ignore_ascii_case("g00"))
+        .unwrap_or(false);
+    if !is_named_g00 {
+        return false;
+    }
+    fs::read_dir(dir)
+        .map(|entries| {
+            entries.flatten().any(|entry| {
+                entry
+                    .path()
+                    .extension()
+                    .and_then(|ext| ext.to_str())
+                    .map(|ext| ext.eq_ignore_ascii_case("g00"))
+                    .unwrap_or(false)
+            })
+        })
+        .unwrap_or(false)
 }
 
 pub fn reallivedata_dir() -> Option<PathBuf> {
