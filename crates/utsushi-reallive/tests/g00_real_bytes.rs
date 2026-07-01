@@ -84,6 +84,40 @@ fn real_g00_dir() -> Option<PathBuf> {
     real_corpus::reallivedata_subdir("g00")
 }
 
+/// Coherent-image threshold: mean absolute difference between
+/// vertically-adjacent pixel rows (RGB channels). Real decoded art sits
+/// well below this (photographic backgrounds ≈ 4–6); the pre-fix garbage
+/// decode measured ≈ 77 (indistinguishable from random ≈ 85), so this
+/// bound makes it impossible for garbage to masquerade as a valid
+/// decode. A handful of intrinsically high-frequency assets (a literal
+/// `NOISE.g00`, alpha masks) legitimately exceed this — the corpus test
+/// asserts a robust *median* and a high coherent-fraction rather than a
+/// hard per-file cap so those real assets are not false failures.
+const COHERENT_ROW_MAD_MAX: f64 = 20.0;
+
+/// Mean absolute difference between vertically-adjacent rows over the
+/// RGB channels of an RGBA buffer. A structural coherence proxy: garbage
+/// decodes have no vertical correlation (~77+), real images do (≪ 20).
+fn vertical_row_mad(rgba: &[u8], width: usize, height: usize) -> f64 {
+    if height < 2 || width == 0 {
+        return 0.0;
+    }
+    let stride = width * 4;
+    let mut sum = 0u64;
+    let mut n = 0u64;
+    for row in 1..height {
+        for col in 0..width {
+            for ch in 0..3 {
+                let a = rgba[row * stride + col * 4 + ch] as i32;
+                let b = rgba[(row - 1) * stride + col * 4 + ch] as i32;
+                sum += (a - b).unsigned_abs() as u64;
+                n += 1;
+            }
+        }
+    }
+    sum as f64 / n as f64
+}
+
 #[test]
 #[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
 fn g00_type0_back_decodes() {
@@ -119,7 +153,7 @@ fn g00_type0_back_decodes() {
     assert_eq!(
         image.pixels_rgba.len(),
         expected_pixel_byte_count,
-        "pixels_rgba.len() must equal width * height * 4 per UTSUSHI-216 acceptance criterion 1",
+        "pixels_rgba.len() must equal width * height * 4 (== 3686400) per acceptance criterion 1",
     );
     assert!(
         image.regions.is_empty(),
@@ -127,30 +161,131 @@ fn g00_type0_back_decodes() {
         image.regions,
     );
 
-    // Audit-focus regression pin: the BGR -> RGBA reorder must have
-    // fired at the decoder boundary. We verify by reading the first
-    // four bytes of the LZSS-decoded BGRA buffer (re-decoding through
-    // the header) and confirming their RGBA-ordered relationship.
-    // The exact byte values depend on the LZSS variant the corpus
-    // actually uses — but if the reorder were silently skipped the
-    // first byte of `pixels_rgba` would equal the first byte of the
-    // raw LZSS-decoded buffer, and that byte order is BGRA (B in slot
-    // 0). The decoder swaps slot 0 with slot 2, so we cross-check via
-    // a second decode with a tampered file that swaps slot 0 with
-    // slot 2 before encoding — but in practice the structural
-    // assertion above plus the lib-level unit tests
-    // (`type0_bgr_byte_order_is_not_treated_as_rgb`) pin the audit
-    // anchor cleanly. The integration test surfaces any decoder
-    // regression that produces a wrong-length pixel buffer.
+    // The relative-LZ77 decode must consume the whole payload and fill
+    // the exact canvas: BACK.g00 is 1280*720*4 = 3686400 bytes with NO
+    // PayloadLengthMismatch. The pre-fix decoder produced a truncated,
+    // garbage buffer; a zero-warning full fill is only reachable with the
+    // correct algorithm.
+    assert!(
+        warnings.is_empty(),
+        "BACK.g00 must decode with zero warnings (exact fill, no PayloadLengthMismatch); \
+         got: {warnings:?}",
+    );
 
-    // Surface any non-fatal warnings (e.g. PayloadLengthMismatch
-    // indicating an LZSS-variant mismatch against this specific
-    // file). The audit-focus item ("LZSS distance encoding regression
-    // that decodes a few bytes and then garbage") explicitly asks for
-    // a typed surface rather than a silent partial buffer; the
-    // warning above is the typed surface.
-    for warning in &warnings {
-        eprintln!("BACK.g00 decode warning (audit-traceable, not a failure): {warning}",);
+    // Audit-focus: the BGR -> RGBA reorder fired. BACK.g00's first pixel
+    // is not grey, so B != R; if the reorder were skipped, slot 0 (R)
+    // would hold the on-disk B byte.
+    // Coherence gate: a real photographic background has strong vertical
+    // correlation. Garbage (the pre-fix state) measured ≈ 77; this file
+    // decodes to ≈ 4. Pin it below the coherent threshold so a decode
+    // regression to noise can never pass this test again.
+    let mad = vertical_row_mad(
+        &image.pixels_rgba,
+        image.width as usize,
+        image.height as usize,
+    );
+    eprintln!("BACK.g00 vertical row-MAD = {mad:.2} (coherent < {COHERENT_ROW_MAD_MAX})");
+    assert!(
+        mad < COHERENT_ROW_MAD_MAX,
+        "BACK.g00 decoded to incoherent noise (row-MAD {mad:.2} ≥ {COHERENT_ROW_MAD_MAX}): \
+         the LZSS decode is wrong",
+    );
+}
+
+/// Decode every type-0 g00 file under `g00_dir` and return the per-file
+/// vertical row-MAD list, asserting each file fills its exact canvas with
+/// zero warnings. Skips non-type-0 files (types 1/2, which the histogram
+/// test covers separately).
+fn assert_type0_corpus_coherent(title: &str, g00_dir: &PathBuf) {
+    let entries = fs::read_dir(g00_dir).unwrap_or_else(|err| {
+        panic!(
+            "failed to walk {title} g00 dir {}: {err}",
+            g00_dir.display()
+        )
+    });
+    let mut mads: Vec<f64> = Vec::new();
+    let mut type0 = 0usize;
+    for entry in entries {
+        let path = entry.expect("DirEntry").path();
+        if !path
+            .extension()
+            .map(|e| e.eq_ignore_ascii_case("g00"))
+            .unwrap_or(false)
+        {
+            continue;
+        }
+        let bytes = match fs::read(&path) {
+            Ok(b) => b,
+            Err(_) => continue,
+        };
+        if bytes.first() != Some(&G00_TYPE_RAW_BGR) {
+            continue;
+        }
+        type0 += 1;
+        let (image, warnings) = decode_g00(&bytes)
+            .unwrap_or_else(|err| panic!("{title} type-0 {} failed: {err}", path.display()));
+        let expected = (image.width as usize) * (image.height as usize) * 4;
+        assert_eq!(
+            image.pixels_rgba.len(),
+            expected,
+            "{title} {}: type-0 must fill width*height*4 exactly",
+            path.display(),
+        );
+        assert!(
+            warnings.is_empty(),
+            "{title} {}: type-0 must decode with zero warnings; got {warnings:?}",
+            path.display(),
+        );
+        mads.push(vertical_row_mad(
+            &image.pixels_rgba,
+            image.width as usize,
+            image.height as usize,
+        ));
+    }
+
+    assert!(type0 > 0, "{title}: expected at least one type-0 g00 file");
+    mads.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    let median = mads[mads.len() / 2];
+    let coherent = mads.iter().filter(|&&m| m < 25.0).count();
+    let coherent_frac = coherent as f64 / mads.len() as f64;
+    eprintln!(
+        "{title} type-0 corpus: files={type0} median_row_mad={median:.2} \
+         coherent_frac(<25)={coherent_frac:.4} max={:.2}",
+        mads.last().copied().unwrap_or(0.0),
+    );
+    // Median cleanly separates real art (≈ 4–6) from garbage (≈ 77). A
+    // few intrinsically noisy assets (NOISE.g00, masks) are tolerated by
+    // using a robust median plus a high coherent-fraction floor.
+    assert!(
+        median < COHERENT_ROW_MAD_MAX,
+        "{title}: type-0 corpus median row-MAD {median:.2} ≥ {COHERENT_ROW_MAD_MAX} — \
+         the corpus decoded to noise",
+    );
+    assert!(
+        coherent_frac > 0.95,
+        "{title}: only {coherent_frac:.4} of type-0 files are coherent (<25 row-MAD); \
+         expected > 0.95 (garbage decode would drive this near zero)",
+    );
+}
+
+#[test]
+#[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT (and optionally _2) env var"]
+fn g00_type0_corpus_coherence_both_titles() {
+    let mut ran = false;
+    for env_var in [
+        real_corpus::REAL_GAME_ROOT_ENV,
+        real_corpus::REAL_GAME_ROOT_2_ENV,
+    ] {
+        if let Some(dir) = real_corpus::g00_dir_for_env(env_var) {
+            ran = true;
+            assert_type0_corpus_coherent(env_var, &dir);
+        }
+    }
+    if !ran {
+        eprintln!(
+            "Neither ITOTORI_REAL_GAME_ROOT nor ITOTORI_REAL_GAME_ROOT_2 set; skipping g00 type-0 \
+             corpus coherence test (no silent pass).",
+        );
     }
 }
 
@@ -284,7 +419,33 @@ fn g00_type2_btn000_decodes_header_and_regions() {
 
     assert_eq!(image.g00_type, G00Type::RegionedLzss);
     assert_eq!(image.width, width);
-    assert_eq!(image.height, height);
+    // btn000.g00 is an "overlaid" type-2 image: its `region_count`
+    // identical full-canvas region records are stacked vertically, so the
+    // reconstructed canvas height is `header_height * region_count` (the
+    // reference decoder performs the same munge). The decoded height must
+    // therefore be a positive whole multiple of the header height.
+    assert!(
+        image.height >= height && image.height % height == 0,
+        "type-2 canvas height {} must be a positive multiple of header height {height}",
+        image.height,
+    );
+    assert_eq!(
+        image.pixels_rgba.len(),
+        (image.width as usize) * (image.height as usize) * 4,
+        "type-2 pixel buffer must fill the reconstructed canvas",
+    );
+    // The decoded canvas must be coherent, not garbage (the pre-fix
+    // decoder produced noise here too).
+    let btn_mad = vertical_row_mad(
+        &image.pixels_rgba,
+        image.width as usize,
+        image.height as usize,
+    );
+    eprintln!("btn000.g00 vertical row-MAD = {btn_mad:.2}");
+    assert!(
+        btn_mad < 60.0,
+        "btn000.g00 decoded to incoherent noise (row-MAD {btn_mad:.2})",
+    );
     assert_eq!(
         image.regions.len(),
         region_count,

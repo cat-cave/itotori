@@ -18,6 +18,7 @@ Decoder under test: `crates/utsushi-reallive/src/g00.rs` (UTSUSHI-216).
 `lzss_decode_classic` (`g00.rs:960`).
 
 The decoder assumes a **single** classic Okumura-style LZSS stream with:
+
 - 8-bit flag byte, **LSB-first**;
 - `bit == 0` ⇒ literal, `bit == 1` ⇒ back-reference (`g00.rs:995`,
   `let is_literal = (flag & 1) == 0;`) — note this is the **inverse** of the
@@ -44,8 +45,8 @@ LZSS variant itself, not the header parse, not input truncation, and not a
 region/segmentation misread.
 
 Note the emitted count depends **only** on the control structure (flag order,
-literal polarity, length encoding) — ring contents/offset math change *which*
-bytes are emitted, not *how many*. So "reached `uncompressed_size`" is NOT a
+literal polarity, length encoding) — ring contents/offset math change _which_
+bytes are emitted, not _how many_. So "reached `uncompressed_size`" is NOT a
 correctness signal (see §4).
 
 ---
@@ -55,18 +56,19 @@ correctness signal (see §4).
 First 16 bytes (structural header, not art):
 `00 00 05 d0 02 12 87 0a 00 00 40 38 00 01 c7 bf`
 
-| field | offset | bytes | value | check |
-|---|---|---|---|---|
-| type | 0 | `00` | 0 (RawBgr) | — |
-| width  | 1 (u16 LE) | `00 05` | 1280 | — |
-| height | 3 (u16 LE) | `d0 02` | 720 | — |
-| compressed_size   | 5 (u32 LE) | `12 87 0a 00` | 689 938 | **== file_len(689943) − 5** ✓ |
-| uncompressed_size | 9 (u32 LE) | `40 38 00 01`(→`00 38 40 00`) | 3 686 400 | **== 1280·720·4** ✓ |
+| field             | offset     | bytes                         | value      | check                         |
+| ----------------- | ---------- | ----------------------------- | ---------- | ----------------------------- |
+| type              | 0          | `00`                          | 0 (RawBgr) | —                             |
+| width             | 1 (u16 LE) | `00 05`                       | 1280       | —                             |
+| height            | 3 (u16 LE) | `d0 02`                       | 720        | —                             |
+| compressed_size   | 5 (u32 LE) | `12 87 0a 00`                 | 689 938    | **== file_len(689943) − 5** ✓ |
+| uncompressed_size | 9 (u32 LE) | `40 38 00 01`(→`00 38 40 00`) | 3 686 400  | **== 1280·720·4** ✓           |
 
 LZSS payload = bytes `[13 .. 5+compressed_size]` = `[13 .. 689943]` =
 **689 930 bytes** = the entire remainder of the file (`compressed_size − 8`).
 
 **Implications:**
+
 - Every header field is correct and internally consistent. `compressed_size`
   is the section length from offset 5 to EOF (inclusive of its own 8-byte
   preamble); `uncompressed_size` is exactly the flat 32-bpp canvas size.
@@ -85,7 +87,8 @@ LZSS payload = bytes `[13 .. 5+compressed_size]` = `[13 .. 689943]` =
 Corpus scan with the exact `g00.rs` type-0 algorithm.
 
 Sweetie HD g00 (2450 files): type-0 = 2145, type-2 = 305.
-Of the 2145 type-0 files, by *terminal outcome only*:
+Of the 2145 type-0 files, by _terminal outcome only_:
+
 - 1434 reached `uncompressed_size` ("clean", `oc=0`);
 - 367 stopped at a literal/flag boundary (soft `PayloadLengthMismatch`, `oc=1`);
 - 344 stopped mid back-reference token (hard `UnexpectedEndOfStream`, `oc=2`).
@@ -94,6 +97,7 @@ Kanon G00 (classic RealLive, 640×480): type-0 = 307 (254 reach-us, 32 soft,
 21 hard), type-2 = 655, other lead byte = 40.
 
 Facts about the split:
+
 - **All** failing files have `compressed_size == file_len − 5` and
   `uncompressed_size == width·height·4`. Headers are 100 % correct across HD
   (1280×720) and classic (640×480).
@@ -107,6 +111,7 @@ Facts about the split:
 **Coherence check (the decisive one):** decoded output of the 1434 "clean"
 Sweetie type-0 files, measured as mean absolute byte delta between vertically
 adjacent rows (`|buf[i] − buf[i − width·4]|`):
+
 - observed 75.3 – 79.3 for the sampled "clean" files;
 - fully-random bytes ≈ 85; a coherent photographic background would be < ~15.
 
@@ -124,6 +129,7 @@ The format is a **single LZSS-family stream over the full 689 930-byte payload**
 (confirmed §2), and `itotori`'s variant is wrong in **multiple** axes.
 An exhaustive clean-room brute force was run over the standard 2-byte-token
 LZSS family for BACK.g00 and Kanon AYU_01.g00 simultaneously:
+
 - flag order MSB-first / LSB-first;
 - literal-when-bit-set / literal-when-bit-clear;
 - back-reference **absolute ring position** vs **relative back-distance into
@@ -133,6 +139,7 @@ LZSS family for BACK.g00 and Kanon AYU_01.g00 simultaneously:
 - optional match-length extension (nibble == max ⇒ read extra length byte).
 
 Key quantitative results:
+
 - A max-run-18 2-byte token has a **hard output ceiling of 2 942 393 bytes**
   (79.8 % of 3 686 400) from BACK.g00's payload — mathematically it can never
   fill the canvas. So the classic 12-bit-offset / 4-bit-length token is
@@ -142,7 +149,7 @@ Key quantitative results:
   but only 476 657 / 1 228 800 (39 %) on AYU_01 — so a naive extension is also
   not the exact rule.
 - **No single config** in the entire swept family both (a) emits exactly
-  `uncompressed_size` and (b) consumes the full payload for *both* files.
+  `uncompressed_size` and (b) consumes the full payload for _both_ files.
 - The relative-into-output canonical form (`out[dst − ((c>>4)+1)]`,
   length `(c&0xf)+2`, literal-when-set) fails on BACK.g00's very first
   back-reference token (offset ≈ 497 with only 3 bytes emitted), so BACK.g00
@@ -169,6 +176,7 @@ authoritative RealLive g00 decompressor once its exact bitstream is pinned
 `decode_type0`) — those are correct.
 
 The fixed decoder MUST, for BACK.g00:
+
 - consume the full 689 930-byte payload;
 - emit **exactly 3 686 400 bytes** (`= width·height·4`), with **no**
   `PayloadLengthMismatch` warning and no zero-padding via `pad_or_truncate`;
@@ -187,6 +195,7 @@ fail on the same code path.
 ## 6. Confidence + what needs interactive confirmation
 
 **HIGH confidence:**
+
 - The underrun is the LZSS variant, at `g00.rs:1009-1022`, not the header,
   not truncation, not segmentation (emitted=1 565 597 reproduced exactly).
 - All type-0 headers are correct; `compressed_size = file_len − 5`,
@@ -197,6 +206,7 @@ fail on the same code path.
   corpus "clean" count is not a correctness signal.
 
 **MEDIUM-LOW confidence (open item):**
+
 - The exact correct bitstream (flag order, literal polarity, offset
   absolute-vs-relative and its base, and especially the match-length /
   extended-length rule). Brute force over the standard 2-byte-token family did
@@ -205,6 +215,7 @@ fail on the same code path.
   extended/longer match length).
 
 **Needs interactive confirmation with Trevor:**
+
 - Pin the exact algorithm against the rlvm/xclannad RealLive g00 reference
   (research anchor only — per `RLVM_RESEARCH_ANCHOR_BOUNDARY_STATEMENT`, do NOT
   vendor/translate source into the repo), or against a known-good decoded
@@ -227,3 +238,83 @@ fail on the same code path.
   type2 305.
 - Kanon G00: type0 307 (reach-us 254 / soft 32 / hard 21), type2 655,
   other-lead-byte 40.
+
+---
+
+## 7. RESOLUTION — the exact algorithm (byte-exact confirmed) and the fix
+
+The open item in §6 is closed. The decoder was wrong in exactly the axes
+predicted, plus one more that brute force could not have found without the
+reference: **the LZSS output is a 24-bpp (3-byte) BGR canvas, not 32-bpp**, so
+the token offset/length are counted in **3-byte pixel units** and the
+header's `uncompressed_size` (`w·h·4`) is the _final_ 32-bpp size, not the
+LZSS output size (which is `w·h·3`).
+
+### Reference used
+
+Jagarl / xclannad `file.cc` `G00CONV` (`rlvm` vendors it at
+`vendor/xclannad/file.cc`; GPL-v2). Used as an **algorithm reference and a
+runnable oracle only** — no source vendored or translated into itotori. A
+standalone harness compiled from that `file.cc` (`GRPCONV::AssignConverter` →
+`conv->Read`) produced reference RGBA; itotori's clean-room Rust decode is
+**byte-exact** against it (see §8).
+
+### The correct algorithm (all three types share the control structure)
+
+Flag byte read **LSB-first**; **`bit = 1` ⇒ literal**, **`bit = 0` ⇒ 2-byte
+LE back-reference token**. The back-reference is a **relative back-distance
+into the already-emitted output** (no ring buffer, empty initial history,
+overlapping copies are byte-by-byte so a small distance is a run-fill).
+
+- **Type 0** (`RawBgr`, 24-bpp BGR): literal copies **3** bytes (one BGR
+  pixel). Token `t`: `distance = (t >> 4) * 3` bytes, `length =
+((t & 0x0f) + 1) * 3` bytes (length 3..48). Decode target is `w·h·3`;
+  then expand each BGR triple to RGBA `(R, G, B, 0xff)`. Consuming the whole
+  payload fills exactly `w·h·3`.
+- **Types 1 & 2** (AVG2000 "SCN2k" token): literal copies **1** byte. Token
+  `t`: `distance = (t >> 4)`, `length = (t & 0x0f) + 2`.
+  - Type 1: SCN2k output is `u16 count`, `count`×4-byte BGRA palette, then one
+    index/pixel (target = header `uncompressed_size + 1`). 0 files in corpus.
+  - Type 2: SCN2k output is a region container — `u32 region_deal2`, then per
+    region `(u32 offset, u32 length)` (8-byte stride from byte 4); each region
+    block is `0x74` header + repeated (`0x5c` sub-header `{x@0,y@2,w@6,h@8}` +
+    `w·h·4` BGRA) blitted into the transparent canvas at
+    `(region.x1 + x, region.y1 + y)`. "Overlaid" images (N identical
+    full-canvas regions) are stacked vertically → canvas height `= h·N`
+    (e.g. `btn000.g00`: header 360×54, 4 regions ⇒ 360×216).
+
+### How itotori's old decoder differed (all wrong simultaneously)
+
+1. Literal polarity inverted (`bit==0` literal; correct is `bit==1`).
+2. Offset was an **absolute 12-bit ring position** into a 4096 ring; correct
+   is a **relative back-distance** into the output, ×3 (pixel units) for type 0.
+3. Length was `(nibble)+3` in 1-byte units (3..18); correct is
+   `((nibble)+1)*3` in bytes for type 0 (an effective 3..48 with 3-byte
+   granularity) / `(nibble)+2` for SCN2k.
+4. Output treated as 32-bpp `w·h·4` and BGRA→RGBA swapped in place; correct is
+   24-bpp `w·h·3` BGR expanded to RGBA with opaque alpha.
+   Any one of these alone yields noise; together they gave the ~77 row-MAD garbage.
+
+## 8. Validation results (post-fix)
+
+- **Byte-exact vs oracle**: itotori's Rust decode == Jagarl decode, byte-for-
+  byte, on BACK.g00 (1280×720, type 0), Kanon AYU_01.g00 (640×480, type 0),
+  and btn000/btn001 (360×216, type 2), plus a 50-file random type-0 sample
+  (0 mismatches). The intrinsically high-frequency outliers `NOISE.g00`
+  (MAD 126) and `_mask03.g00` (MAD 50) are also byte-exact — they are real
+  noisy assets, not decode errors.
+- **Full type-0 corpus, both titles** (`g00_type0_corpus_coherence_both_titles`):
+  every file fills `w·h·4` exactly with **zero** PayloadLengthMismatch.
+  - Sweetie HD: 2145 type-0 files, median vertical row-MAD **4.41** (was ≈77),
+    99.91 % coherent (<25); only NOISE.g00 / a mask exceed it.
+  - Kanon: 307 type-0 files, median **6.33**, 100 % coherent, max 18.21.
+- **BACK.g00**: emits exactly 3 686 400 bytes, zero warnings, row-MAD 4.34.
+- **btn000.g00** (type 2): reconstructs 360×216, row-MAD 24.43, 4 regions.
+
+## 9. License disposition
+
+Clean-room: the algorithm (uncopyrightable) was read from the GPL-v2
+Jagarl/xclannad `file.cc` and reimplemented independently in Rust. No
+third-party source is vendored, linked, or committed; the oracle harness lives
+only under `/tmp` and is never committed. No decoded copyrighted pixel data is
+committed — only coherence metrics and small structural header hex.

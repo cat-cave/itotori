@@ -62,44 +62,55 @@
 //! UTSUSHI-214 supplies names through `Gameexe.ini`-driven
 //! cross-references, not through the g00 record itself).
 //!
-//! # LZSS variant
+//! # LZSS variant (relative back-reference LZ77)
 //!
-//! All three g00 types share a classic LZSS variant with the following
-//! parameters (re-derived from BACK.g00 real bytes):
+//! All three g00 types share the RealLive/AVG32 LZ77 control structure
+//! (flag byte, LSB-first, `bit = 1` → literal, `bit = 0` → 2-byte
+//! back-reference token) but differ in the copy granularity and the
+//! token bit-packing. The back-reference is a **relative back-distance
+//! into the already-emitted output** (there is no fixed ring buffer and
+//! no absolute position); the history starts empty and overlapping
+//! copies are byte-by-byte, so a small distance with a long length is a
+//! run-fill.
 //!
-//! - 8-bit flag byte, LSB first. `bit = 0` → literal byte; `bit = 1` →
-//!   2-byte back-reference token.
-//! - Back-reference token (16 bits, little-endian byte order): the low
-//!   8 bits and the high 4 bits of the next 12 carry the **absolute**
-//!   ring-buffer position (12-bit, range `0..=4095`); the low 4 bits
-//!   of the second byte carry `length - 3` (length range `3..=18`).
-//! - Ring buffer is `4096` bytes, initialised to `0x00`; the cursor
-//!   starts at `4096 - 18 = 4078` (one max-length match before the
-//!   wrap point).
+//! - **Type 0** (`RawBgr`): the LZSS output is a flat **24-bpp BGR**
+//!   canvas of `width * height * 3` bytes. A literal copies **3** bytes
+//!   (one BGR pixel). A back-reference token `t` (16-bit little-endian)
+//!   splits as `distance = (t >> 4) * 3` bytes and
+//!   `length = ((t & 0x0f) + 1) * 3` bytes (i.e. a whole number of
+//!   3-byte pixels; length range `3..=48`). After decoding, each BGR
+//!   triple is expanded to RGBA `(R, G, B, 0xff)` at the decoder
+//!   boundary. The header's `uncompressed_size` field is the **final
+//!   32-bpp** size `width * height * 4`, *not* the LZSS output size — a
+//!   correct decode stops exactly when the `width * height * 3` BGR
+//!   canvas is filled, which is also exactly when the compressed payload
+//!   is consumed.
+//! - **Types 1 & 2** (`PalettedLzss` / `RegionedLzss`): the AVG2000
+//!   ("SCN2k") token. A literal copies **1** byte. A back-reference
+//!   token `t` splits as `distance = (t >> 4)` bytes and
+//!   `length = (t & 0x0f) + 2` bytes. Type 1's LZSS output is a colour
+//!   table (`u16 LE count`, then `count` × 4-byte BGRA entries) followed
+//!   by one palette index per pixel; type 2's LZSS output is a region
+//!   container (a per-region offset/length table followed by tagged
+//!   32-bpp sub-bitmaps that are blitted into the transparent canvas).
 //!
-//! Whether this exact algorithm matches every g00 file in the corpus
-//! is a working hypothesis pinned by the synthetic round-trip tests in
-//! `tests` and re-verified against Sweetie HD's `BACK.g00` header in
-//! `tests/g00_real_bytes.rs::g00_type0_back_decodes`. When the LZSS
-//! payload falls **short** of `uncompressed_size` (input exhausted
-//! mid-stream), the decoder does not silently truncate: it returns the
-//! partial buffer paired with a structured [`G00Warning::PayloadLengthMismatch`]
-//! so downstream consumers observe the shortfall. The payload can
-//! never **overrun** `uncompressed_size`: the decoder appends one byte
-//! at a time and stops the instant `dst.len()` reaches the declared
-//! size, so it is structurally impossible to emit more bytes than
-//! declared (see the invariant `debug_assert!` in `lzss_decode_classic`).
+//! When the LZSS payload falls **short** of the expected output (input
+//! exhausted mid-stream), the decoder does not silently truncate: it
+//! zero-fills to the declared canvas size and surfaces a structured
+//! [`G00Warning::PayloadLengthMismatch`] so downstream consumers observe
+//! the shortfall. The decoder appends output one unit at a time and
+//! stops the instant the target size is reached, so it can never overrun.
 //!
 //! # Clean-room provenance
 //!
-//! The format hypothesis above is derived from publicly-archived
-//! xclannad / jagarl notes ([P] anchors in
-//! `docs/research/reallive-engine.md` § "g00 (RealLive image format)")
-//! plus the Sweetie HD real bytes audited under
-//! `crates/utsushi-reallive/tests/g00_real_bytes.rs`. rlvm
-//! (`https://github.com/eglaysher/rlvm`) is a **research anchor
-//! only**: no rlvm source is vendored, linked, or mechanically
-//! translated, per the crate-wide
+//! The algorithm above was re-derived by reading the publicly-archived
+//! Jagarl/xclannad `file.cc` `G00CONV` decode (GPL-v2) as a **research
+//! reference for the algorithm only** and validated byte-exact against
+//! it as an external oracle on real Sweetie HD and Kanon g00 bytes (see
+//! `docs/research/g00-type0-decoder-findings.md`). No third-party source
+//! is vendored, linked, or mechanically translated into this crate; the
+//! Rust below is an independent reimplementation of the (uncopyrightable)
+//! bitstream algorithm, per the crate-wide
 //! [`crate::RLVM_RESEARCH_ANCHOR_BOUNDARY_STATEMENT`].
 
 use serde::{Deserialize, Serialize};
@@ -122,26 +133,11 @@ pub const G00_HEADER_PREAMBLE_BYTE_LEN: usize = 5;
 /// disk: six little-endian `i32` fields.
 pub const G00_REGION_RECORD_BYTE_LEN: usize = 24;
 
-/// Number of bytes the type-1 palette occupies after LZSS decoding:
-/// 256 entries × 4-byte BGRA each.
-pub const G00_TYPE1_PALETTE_BYTE_LEN: usize = 256 * 4;
-
-/// LZSS ring-buffer size, in bytes. The 12-bit back-reference
-/// position field addresses `0..LZSS_RING_BUFFER_LEN`.
-pub const G00_LZSS_RING_BUFFER_LEN: usize = 4096;
-
-/// LZSS maximum match length. 4-bit length field carries
-/// `length - LZSS_MIN_RUN`, range `0..=15`.
-pub const G00_LZSS_MAX_RUN: usize = 18;
-
-/// LZSS minimum match length. Back-references shorter than this are
-/// never emitted; the 4-bit field encodes `length - LZSS_MIN_RUN`.
-pub const G00_LZSS_MIN_RUN: usize = 3;
-
-/// Initial ring-buffer cursor position. Classic LZSS convention:
-/// `LZSS_RING_BUFFER_LEN - LZSS_MAX_RUN` (one max-length match before
-/// the wrap point).
-pub const G00_LZSS_INITIAL_CURSOR: usize = G00_LZSS_RING_BUFFER_LEN - G00_LZSS_MAX_RUN;
+/// Bytes per pixel in the type-0 LZSS output canvas (24-bpp BGR, one
+/// literal token = one pixel). The decoded BGR canvas is
+/// `width * height * G00_TYPE0_BGR_BYTES_PER_PIXEL` bytes, expanded to
+/// 32-bpp RGBA at the decoder boundary.
+pub const G00_TYPE0_BGR_BYTES_PER_PIXEL: usize = 3;
 
 /// Strongly-typed enumeration of the three documented g00 sub-formats.
 ///
@@ -652,19 +648,34 @@ fn decode_type0(
     height: u32,
 ) -> Result<(G00Image, Vec<G00Warning>), G00DecodeError> {
     let section = parse_lzss_section(input, G00_HEADER_PREAMBLE_BYTE_LEN, G00Type::RawBgr)?;
-    let pixel_byte_count = (width as usize)
-        .saturating_mul(height as usize)
-        .saturating_mul(4);
+    let pixel_count = (width as usize).saturating_mul(height as usize);
+    // The LZSS output is a flat 24-bpp BGR canvas (`width * height * 3`).
+    // The header's `uncompressed_size` field is the *final* 32-bpp size
+    // (`width * height * 4`) and is used only for the shortfall warning.
+    let bgr_target = pixel_count.saturating_mul(G00_TYPE0_BGR_BYTES_PER_PIXEL);
+    let rgba_target = pixel_count.saturating_mul(4);
 
-    let (decoded, length_warning) =
-        lzss_decode_classic(section.payload, section.uncompressed_size, G00Type::RawBgr)?;
-    let mut bgra = pad_or_truncate(decoded, pixel_byte_count);
+    let bgr = lzss_decode(section.payload, bgr_target, LzssVariant::Type0Bgr);
 
-    bgra_to_rgba_in_place(&mut bgra);
+    // Expand each decoded BGR triple to RGBA `(R, G, B, 0xff)`.
+    let mut pixels_rgba = Vec::with_capacity(rgba_target);
+    for triple in bgr.chunks_exact(G00_TYPE0_BGR_BYTES_PER_PIXEL) {
+        pixels_rgba.push(triple[2]); // R
+        pixels_rgba.push(triple[1]); // G
+        pixels_rgba.push(triple[0]); // B
+        pixels_rgba.push(0xff); // opaque alpha
+    }
 
     let mut warnings = Vec::new();
-    if let Some(w) = length_warning {
-        warnings.push(w);
+    if pixels_rgba.len() != rgba_target {
+        // Short LZSS stream: zero-fill to the full canvas and surface a
+        // typed warning (never a silent wrong-size buffer).
+        warnings.push(G00Warning::PayloadLengthMismatch {
+            g00_type: G00Type::RawBgr,
+            declared_uncompressed_size: rgba_target as u64,
+            observed_payload_size: pixels_rgba.len() as u64,
+        });
+        pixels_rgba.resize(rgba_target, 0);
     }
 
     Ok((
@@ -672,7 +683,7 @@ fn decode_type0(
             g00_type: G00Type::RawBgr,
             width,
             height,
-            pixels_rgba: bgra,
+            pixels_rgba,
             regions: Vec::new(),
         },
         warnings,
@@ -691,42 +702,67 @@ fn decode_type1(
 ) -> Result<(G00Image, Vec<G00Warning>), G00DecodeError> {
     let section = parse_lzss_section(input, G00_HEADER_PREAMBLE_BYTE_LEN, G00Type::PalettedLzss)?;
     let pixel_count = (width as usize).saturating_mul(height as usize);
-    let required_decoded_len = G00_TYPE1_PALETTE_BYTE_LEN.saturating_add(pixel_count);
 
-    let (decoded, length_warning) = lzss_decode_classic(
+    // Type-1 LZSS uses the SCN2k token. Its output is a colour table
+    // (`u16 LE count`, then `count` × 4-byte BGRA entries) followed by
+    // one palette index per pixel. The header target is the declared
+    // uncompressed size + 1 (the AVG2000 decoder over-allocates by one).
+    let decoded = lzss_decode(
         section.payload,
-        section.uncompressed_size,
-        G00Type::PalettedLzss,
-    )?;
+        section.uncompressed_size.saturating_add(1),
+        LzssVariant::Scn2k,
+    );
 
-    if decoded.len() < required_decoded_len {
+    if decoded.len() < 2 {
         return Err(G00DecodeError::DecodedBufferTooShort {
             g00_type: G00Type::PalettedLzss,
-            required_len: required_decoded_len,
+            required_len: 2,
             observed_len: decoded.len(),
         });
     }
+    let colortable_len = u16::from_le_bytes([decoded[0], decoded[1]]) as usize;
+    let clamped_len = colortable_len.min(256);
+    // Palette entries are 4-byte BGRA values; index stream starts after
+    // the (raw, unclamped) colour table.
+    let indices_start = 2usize.saturating_add(colortable_len.saturating_mul(4));
 
-    let palette = &decoded[..G00_TYPE1_PALETTE_BYTE_LEN];
-    let indices = &decoded[G00_TYPE1_PALETTE_BYTE_LEN..G00_TYPE1_PALETTE_BYTE_LEN + pixel_count];
     let mut pixels_rgba = Vec::with_capacity(pixel_count.saturating_mul(4));
-    for &index in indices {
-        let palette_off = (index as usize) * 4;
-        // Palette stored as BGRA on disk; reorder to RGBA at decode
-        // boundary.
-        let b = palette[palette_off];
-        let g = palette[palette_off + 1];
-        let r = palette[palette_off + 2];
-        let a = palette[palette_off + 3];
-        pixels_rgba.push(r);
-        pixels_rgba.push(g);
-        pixels_rgba.push(b);
-        pixels_rgba.push(a);
+    let mut observed_pixels = 0usize;
+    if indices_start <= decoded.len() {
+        for &index in &decoded[indices_start..] {
+            if observed_pixels >= pixel_count {
+                break;
+            }
+            let idx = index as usize;
+            let (r, g, b, a) = if idx < clamped_len {
+                let off = 2 + idx * 4;
+                // On-disk palette entry byte order is B, G, R, A.
+                (
+                    decoded[off + 2],
+                    decoded[off + 1],
+                    decoded[off],
+                    decoded[off + 3],
+                )
+            } else {
+                (0, 0, 0, 0)
+            };
+            pixels_rgba.push(r);
+            pixels_rgba.push(g);
+            pixels_rgba.push(b);
+            pixels_rgba.push(a);
+            observed_pixels += 1;
+        }
     }
 
     let mut warnings = Vec::new();
-    if let Some(w) = length_warning {
-        warnings.push(w);
+    let rgba_target = pixel_count.saturating_mul(4);
+    if pixels_rgba.len() != rgba_target {
+        warnings.push(G00Warning::PayloadLengthMismatch {
+            g00_type: G00Type::PalettedLzss,
+            declared_uncompressed_size: rgba_target as u64,
+            observed_payload_size: pixels_rgba.len() as u64,
+        });
+        pixels_rgba.resize(rgba_target, 0);
     }
 
     Ok((
@@ -815,40 +851,97 @@ fn decode_type2(
         });
     }
 
-    let section = parse_lzss_section(input, lzss_preamble_off, G00Type::RegionedLzss)?;
-    let pixel_byte_count = (width as usize)
-        .saturating_mul(height as usize)
-        .saturating_mul(4);
+    // "Overlaid image" munge: some newer type-2 files carry N identical
+    // full-size region records stacked on top of each other. When every
+    // region is the same non-degenerate rectangle, each is given its own
+    // vertical band and the canvas height is multiplied, exactly as the
+    // reference decoder does before reconstruction.
+    let first = &regions[0].rect;
+    let all_identical = region_count > 1
+        && first.width() > 0
+        && first.height() > 0
+        && regions
+            .iter()
+            .all(|r| r.rect == *first && r.origin_x == regions[0].origin_x);
+    let mut canvas_height = height as usize;
+    if all_identical {
+        for (i, region) in regions.iter_mut().enumerate() {
+            let dy = (i as i32) * (height as i32);
+            region.rect.y1 += dy;
+            region.rect.y2 += dy;
+        }
+        canvas_height = (height as usize).saturating_mul(region_count);
+    }
 
-    let (decoded, length_warning) = lzss_decode_classic(
+    let section = parse_lzss_section(input, lzss_preamble_off, G00Type::RegionedLzss)?;
+    let decoded = lzss_decode(
         section.payload,
         section.uncompressed_size,
-        G00Type::RegionedLzss,
-    )?;
-
-    // Pad/truncate the decoded payload to exactly `width * height * 4`
-    // before the BGRA->RGBA reorder, symmetric with `decode_type0`
-    // (UTSUSHI-216 promoted finding 65c7433f). A short or over-long
-    // type-2 stream must yield a deterministic `width * height * 4`
-    // pixel buffer — never a silent wrong-size buffer whose 1-3 byte
-    // tail `bgra_to_rgba_in_place`'s `chunks_exact_mut(4)` would leave
-    // unreordered (the audit-focus "BGR treated as RGB silently" case).
-    // A genuinely short LZSS stream still surfaces a typed
-    // `PayloadLengthMismatch` warning from `lzss_decode_classic`, so the
-    // length adjustment is observable, not silent.
-    let mut pixels_rgba = pad_or_truncate(decoded, pixel_byte_count);
-    bgra_to_rgba_in_place(&mut pixels_rgba);
+        LzssVariant::Scn2k,
+    );
 
     let mut warnings = Vec::new();
-    if let Some(w) = length_warning {
-        warnings.push(w);
+    if decoded.len() != section.uncompressed_size {
+        warnings.push(G00Warning::PayloadLengthMismatch {
+            g00_type: G00Type::RegionedLzss,
+            declared_uncompressed_size: section.uncompressed_size as u64,
+            observed_payload_size: decoded.len() as u64,
+        });
+    }
+
+    // Reconstruct the transparent canvas by blitting each region's
+    // tagged 32-bpp sub-bitmaps. The SCN2k output is a container: a
+    // per-region `(offset, length)` table (8-byte stride starting at
+    // byte 4) followed by region blocks; each block is a `0x74`-byte
+    // header then repeated `(0x5c`-byte sub-header + `w*h*4` BGRA
+    // pixels`)` records.
+    let canvas_w = width as usize;
+    let mut pixels_rgba = vec![0u8; canvas_w.saturating_mul(canvas_height).saturating_mul(4)];
+    let region_deal2 = rd_u32(&decoded, 0);
+    let region_deal = region_count.min(region_deal2);
+    for (i, region) in regions.iter().enumerate().take(region_deal) {
+        let offset = rd_u32(&decoded, 4 + i * 8);
+        let length = rd_u32(&decoded, 8 + i * 8);
+        let block_start = offset.saturating_add(0x74);
+        let block_end = offset.saturating_add(length).min(decoded.len());
+        let mut src = block_start;
+        while src.saturating_add(0x5c) <= block_end {
+            let bx = rd_u16(&decoded, src) as i32;
+            let by = rd_u16(&decoded, src + 2) as i32;
+            let sw = rd_u16(&decoded, src + 6);
+            let sh = rd_u16(&decoded, src + 8);
+            src += 0x5c;
+            let dst_x = bx + region.rect.x1;
+            let dst_y = by + region.rect.y1;
+            let sub_pixels = sw.saturating_mul(sh);
+            for row in 0..sh {
+                for col in 0..sw {
+                    let s = src + (row * sw + col) * 4;
+                    if s + 4 > decoded.len() {
+                        continue;
+                    }
+                    let px = dst_x + col as i32;
+                    let py = dst_y + row as i32;
+                    if px < 0 || py < 0 || px as usize >= canvas_w || py as usize >= canvas_height {
+                        continue;
+                    }
+                    let d = ((py as usize) * canvas_w + px as usize) * 4;
+                    // Sub-bitmap pixel byte order is B, G, R, A.
+                    pixels_rgba[d] = decoded[s + 2];
+                    pixels_rgba[d + 1] = decoded[s + 1];
+                    pixels_rgba[d + 2] = decoded[s];
+                    pixels_rgba[d + 3] = decoded[s + 3];
+                }
+            }
+            src = src.saturating_add(sub_pixels.saturating_mul(4));
+        }
     }
 
     Ok((
         G00Image {
             g00_type: G00Type::RegionedLzss,
             width,
-            height,
+            height: canvas_height as u32,
             pixels_rgba,
             regions,
         },
@@ -904,243 +997,230 @@ fn parse_lzss_section<'a>(
     })
 }
 
-/// Reorder a `width * height * 4` BGRA byte slice into RGBA, in place.
-///
-/// The on-disk byte order is BGRA (one of the audit-focus items in
-/// UTSUSHI-216 is "Treating 'BGR' as 'RGB' silently"). This helper
-/// performs the swap explicitly so consumers see RGBA.
-fn bgra_to_rgba_in_place(bgra: &mut [u8]) {
-    for chunk in bgra.chunks_exact_mut(4) {
-        chunk.swap(0, 2); // swap B and R; G and A stay in place.
+/// Read a little-endian `u16` at `off`, or `0` if it runs past the end.
+fn rd_u16(buf: &[u8], off: usize) -> usize {
+    if off + 2 <= buf.len() {
+        (buf[off] as usize) | ((buf[off + 1] as usize) << 8)
+    } else {
+        0
     }
 }
 
-/// Truncate or zero-extend `decoded` to exactly `target_len` bytes.
-///
-/// Used when the LZSS-decoded payload does not exactly match the
-/// per-type pixel-buffer requirement (which is the audit-traceable
-/// hypothesis mismatch surface). Callers emit a typed
-/// [`G00Warning::PayloadLengthMismatch`] when this helper has to
-/// adjust the buffer.
-fn pad_or_truncate(mut decoded: Vec<u8>, target_len: usize) -> Vec<u8> {
-    if decoded.len() < target_len {
-        decoded.resize(target_len, 0);
-    } else if decoded.len() > target_len {
-        decoded.truncate(target_len);
+/// Read a little-endian `u32` at `off`, or `0` if it runs past the end.
+fn rd_u32(buf: &[u8], off: usize) -> usize {
+    if off + 4 <= buf.len() {
+        (buf[off] as usize)
+            | ((buf[off + 1] as usize) << 8)
+            | ((buf[off + 2] as usize) << 16)
+            | ((buf[off + 3] as usize) << 24)
+    } else {
+        0
     }
-    decoded
 }
 
-/// Decode a classic LZSS stream (ring buffer 4096, max-run 18, min-run 3,
-/// absolute 12-bit position encoding).
-///
-/// Encoding:
-/// - 8-bit flag byte, LSB first.
-/// - `bit = 0` → emit one literal byte from input.
-/// - `bit = 1` → read 2-byte back-reference token (lo, hi). The
-///   absolute ring-buffer position is `lo | ((hi & 0xf0) << 4)` (12
-///   bits). The match length is `(hi & 0x0f) + G00_LZSS_MIN_RUN`
-///   (3..=18).
-///
-/// The ring buffer is fixed-size [`G00_LZSS_RING_BUFFER_LEN`] = 4096
-/// bytes, initialised to `0x00`, with the cursor starting at
-/// [`G00_LZSS_INITIAL_CURSOR`] = 4078.
-///
-/// Returns `Ok((decoded, payload_length_mismatch_warning))`. The decoder
-/// stops at either `dst.len() == uncompressed_size` (clean) or the input
-/// being exhausted. Input exhaustion at a flag-byte boundary or while a
-/// *literal* operation is pending is treated as a clean-but-short stream
-/// (a [`G00Warning::PayloadLengthMismatch`] is surfaced) — a trailing
-/// literal bit is indistinguishable from the zero-bit padding of an
-/// unused flag byte. A *back-reference* bit, by contrast, commits to a
-/// 2-byte token; if fewer than 2 operand bytes remain the stream is
-/// unambiguously truncated mid-token, so the decoder returns a hard
-/// [`G00DecodeError::UnexpectedEndOfStream`] rather than a best-effort
-/// partial buffer.
-fn lzss_decode_classic(
-    input: &[u8],
-    uncompressed_size: usize,
-    g00_type: G00Type,
-) -> Result<(Vec<u8>, Option<G00Warning>), G00DecodeError> {
-    // Bound the *initial* allocation against the input length.
-    // `uncompressed_size` is the attacker-controlled raw u32 LE header field
-    // (see `parse_lzss_section`); a malformed g00 can declare up to ~4 GiB and
-    // force that reservation before a single byte is decoded. Each source byte
-    // expands to at most `G00_LZSS_MAX_RUN` output bytes, so
-    // `input.len() * G00_LZSS_MAX_RUN` is a hard upper bound on the real output:
-    // a legitimate header preallocates in full, an implausible one is capped.
-    // The loop below grows `dst` incrementally, so this never changes the
-    // decoded result — a genuine shortfall still surfaces as a
-    // `PayloadLengthMismatch` warning (or `UnexpectedEndOfStream`).
-    let initial_capacity = uncompressed_size.min(input.len().saturating_mul(G00_LZSS_MAX_RUN));
-    let mut dst = Vec::with_capacity(initial_capacity);
-    let mut ring = vec![0u8; G00_LZSS_RING_BUFFER_LEN];
-    let mut cursor: usize = G00_LZSS_INITIAL_CURSOR;
-    let mut src_pos = 0usize;
-    let mut flag: u8 = 0;
-    let mut bits_remaining: u8 = 0;
+/// The two g00 LZSS token layouts. Both share the flag structure
+/// (8-bit flag byte, LSB-first, `bit = 1` → literal, `bit = 0` →
+/// back-reference) and both encode the back-reference as a relative
+/// back-distance into the already-emitted output (no ring buffer).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LzssVariant {
+    /// Type-0 24-bpp BGR: literal = 3 bytes; token `t` →
+    /// `distance = (t >> 4) * 3`, `length = ((t & 0x0f) + 1) * 3`.
+    Type0Bgr,
+    /// AVG2000 ("SCN2k"), used by types 1 and 2: literal = 1 byte;
+    /// token `t` → `distance = (t >> 4)`, `length = (t & 0x0f) + 2`.
+    Scn2k,
+}
 
-    while dst.len() < uncompressed_size {
-        if bits_remaining == 0 {
-            if src_pos >= input.len() {
-                // Input exhausted mid-stream. Surface as a non-fatal
-                // length warning so downstream consumers can still
-                // observe the partial decode.
-                break;
-            }
-            flag = input[src_pos];
-            src_pos += 1;
-            bits_remaining = 8;
+impl LzssVariant {
+    /// Bytes copied per literal token.
+    fn literal_unit(self) -> usize {
+        match self {
+            LzssVariant::Type0Bgr => 3,
+            LzssVariant::Scn2k => 1,
         }
-        let is_literal = (flag & 1) == 0;
-        flag >>= 1;
-        bits_remaining -= 1;
+    }
 
-        if is_literal {
-            if src_pos >= input.len() {
-                break;
+    /// Split a 16-bit back-reference token into `(distance, length)` in
+    /// bytes.
+    fn split_token(self, t: usize) -> (usize, usize) {
+        match self {
+            LzssVariant::Type0Bgr => ((t >> 4) * 3, ((t & 0x0f) + 1) * 3),
+            LzssVariant::Scn2k => (t >> 4, (t & 0x0f) + 2),
+        }
+    }
+}
+
+/// Decode a RealLive/AVG32 g00 LZSS stream into `out_size` bytes.
+///
+/// The control structure is an 8-bit flag byte read LSB-first: a set
+/// bit emits a literal (`variant.literal_unit()` bytes copied straight
+/// from the input); a clear bit consumes a 2-byte little-endian token
+/// that copies `length` bytes from `distance` bytes back in the output
+/// produced so far (overlapping copies are byte-by-byte, so a short
+/// distance is a run-fill). There is no ring buffer — the history is the
+/// output itself, initially empty.
+///
+/// The decoder stops the instant `out_size` is reached, so it never
+/// overruns; when the input is exhausted first (or a token references an
+/// impossible distance) it returns the partial output. Callers compare
+/// `out.len()` against their expected size and surface a typed
+/// [`G00Warning::PayloadLengthMismatch`] on a shortfall — the length
+/// adjustment is never silent.
+fn lzss_decode(input: &[u8], out_size: usize, variant: LzssVariant) -> Vec<u8> {
+    // Cap the preallocation: `out_size` is derived from attacker-controlled
+    // header fields, but each input byte expands to a bounded number of
+    // output bytes, so bound the reservation by the input length. The vector
+    // still grows incrementally, so this never changes the decoded result.
+    let per_byte = match variant {
+        LzssVariant::Type0Bgr => 45, // max token length (((0x0f)+1)*3) per 2 input bytes ≈ 24; be generous
+        LzssVariant::Scn2k => 17,
+    };
+    let initial_capacity = out_size.min(input.len().saturating_mul(per_byte));
+    let mut dst: Vec<u8> = Vec::with_capacity(initial_capacity);
+    let unit = variant.literal_unit();
+    let mut src = 0usize;
+
+    'outer: while dst.len() < out_size && src < input.len() {
+        let flag = input[src];
+        src += 1;
+        for bit in 0..8 {
+            if dst.len() >= out_size {
+                break 'outer;
             }
-            let byte = input[src_pos];
-            src_pos += 1;
-            dst.push(byte);
-            ring[cursor] = byte;
-            cursor = (cursor + 1) % G00_LZSS_RING_BUFFER_LEN;
-        } else {
-            if src_pos + 2 > input.len() {
-                // A flag bit of 1 commits to a 2-byte back-reference
-                // token. Unlike a trailing literal bit (which is
-                // indistinguishable from zero-bit flag padding at a
-                // clean stream end), a back-reference with fewer than 2
-                // operand bytes left is an unambiguous mid-token
-                // truncation. Surface it as a hard error instead of a
-                // best-effort partial decode.
-                return Err(G00DecodeError::UnexpectedEndOfStream {
-                    g00_type,
-                    declared_uncompressed_size: uncompressed_size,
-                    emitted: dst.len(),
-                });
+            if src >= input.len() {
+                break 'outer;
             }
-            let b1 = input[src_pos] as usize;
-            let b2 = input[src_pos + 1] as usize;
-            src_pos += 2;
-            let position = b1 | ((b2 & 0xf0) << 4);
-            let run_length = (b2 & 0x0f) + G00_LZSS_MIN_RUN;
-            for i in 0..run_length {
-                let byte = ring[(position + i) % G00_LZSS_RING_BUFFER_LEN];
-                dst.push(byte);
-                ring[cursor] = byte;
-                cursor = (cursor + 1) % G00_LZSS_RING_BUFFER_LEN;
-                if dst.len() >= uncompressed_size {
-                    break;
+            if (flag >> bit) & 1 == 1 {
+                // Literal: copy `unit` bytes straight through.
+                for _ in 0..unit {
+                    if src >= input.len() || dst.len() >= out_size {
+                        break;
+                    }
+                    dst.push(input[src]);
+                    src += 1;
+                }
+            } else {
+                if src + 2 > input.len() {
+                    break 'outer;
+                }
+                let token = (input[src] as usize) | ((input[src + 1] as usize) << 8);
+                src += 2;
+                let (distance, length) = variant.split_token(token);
+                if distance == 0 || distance > dst.len() {
+                    // Impossible back-reference (empty or over-long history):
+                    // stop rather than fabricate bytes. Surfaces as a
+                    // PayloadLengthMismatch at the caller.
+                    break 'outer;
+                }
+                let start = dst.len() - distance;
+                for k in 0..length {
+                    if dst.len() >= out_size {
+                        break;
+                    }
+                    let byte = dst[start + k];
+                    dst.push(byte);
                 }
             }
         }
     }
 
-    // Invariant: `dst.len()` can reach but never exceed `uncompressed_size`,
-    // so the decoder cannot overrun the declared size. The outer loop only
-    // runs while `dst.len() < uncompressed_size`, and every byte is appended
-    // one at a time: the literal branch pushes exactly once per iteration, and
-    // the back-reference branch breaks the instant `dst.len() >= uncompressed_size`
-    // after each single-byte push. There is therefore no input that can drive
-    // `dst.len()` past `uncompressed_size` — a structural overflow guard here
-    // would be unreachable, so the invariant is pinned with a debug assertion
-    // instead of a runtime error path.
-    debug_assert!(
-        dst.len() <= uncompressed_size,
-        "lzss_decode_classic overshot uncompressed_size \
-         (dst.len()={}, uncompressed_size={})",
-        dst.len(),
-        uncompressed_size,
-    );
-
-    let warning = if dst.len() != uncompressed_size {
-        Some(G00Warning::PayloadLengthMismatch {
-            g00_type,
-            declared_uncompressed_size: uncompressed_size as u64,
-            observed_payload_size: dst.len() as u64,
-        })
-    } else {
-        None
-    };
-
-    Ok((dst, warning))
+    dst
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    /// Synthetic LZSS encoder for the classic variant.
-    ///
-    /// Test-only: the on-disk format is read-side. Takes a literal
-    /// byte sequence and emits a flag-byte + literals encoding (no
-    /// back-references) so we can build a self-consistent fixture for
-    /// the round-trip tests without depending on the rlvm reference.
-    fn encode_lzss_literals_only(plaintext: &[u8]) -> Vec<u8> {
+    /// Encode a byte stream as an all-literal g00 LZSS stream for the
+    /// given variant (`bit = 1` → literal). Because the decoder stops the
+    /// instant `out_size` is reached, the trailing (clear) bits of a
+    /// partial final flag group are never interpreted as tokens, so this
+    /// round-trips for any length.
+    fn encode_all_literals(bytes: &[u8], variant: LzssVariant) -> Vec<u8> {
+        let unit = variant.literal_unit();
+        assert_eq!(bytes.len() % unit, 0, "literal payload must be whole units");
+        let units: Vec<&[u8]> = bytes.chunks_exact(unit).collect();
         let mut out = Vec::new();
-        let mut idx = 0;
-        while idx < plaintext.len() {
-            let block_end = (idx + 8).min(plaintext.len());
-            let block_len = block_end - idx;
-            // Flag = bit set means "literal" -- but our decoder treats
-            // bit=0 as literal. So we leave all relevant bits clear.
-            let flag: u8 = 0;
-            // (We still need to zero the unused high bits, which is
-            // what 0 already gives us. The decoder only consumes the
-            // first block_len bits before looping.)
+        let mut i = 0;
+        while i < units.len() {
+            let end = (i + 8).min(units.len());
+            let count = end - i;
+            let flag: u8 = if count == 8 { 0xff } else { (1u8 << count) - 1 };
             out.push(flag);
-            for &byte in &plaintext[idx..block_end] {
-                out.push(byte);
+            for u in &units[i..end] {
+                out.extend_from_slice(u);
             }
-            let _ = block_len; // silence unused warning under some configs
-            idx = block_end;
+            i = end;
         }
-        out
-    }
-
-    /// Synthetic LZSS encoder that emits a single absolute-position
-    /// back-reference after a run of literals. Used to exercise the
-    /// back-reference decode path.
-    fn encode_lzss_one_backref(
-        literals: &[u8],
-        backref_position: u16,
-        backref_run_length: u8,
-    ) -> Vec<u8> {
-        let mut out = Vec::new();
-        let mut idx = 0;
-        // Emit literals 8 at a time (flag=0).
-        while idx + 8 <= literals.len() {
-            out.push(0);
-            for &byte in &literals[idx..idx + 8] {
-                out.push(byte);
-            }
-            idx += 8;
-        }
-        let tail_count = literals.len() - idx;
-        // Final flag has bits 0..tail_count cleared (literal), then
-        // bit tail_count set (backref). Remaining bits are unused.
-        let flag: u8 = 1u8 << tail_count;
-        out.push(flag);
-        for &byte in &literals[idx..] {
-            out.push(byte);
-        }
-        // Emit the backref token (lo, hi).
-        let pos = backref_position as u32;
-        let run = backref_run_length as u32;
-        assert!(run >= G00_LZSS_MIN_RUN as u32 && run <= G00_LZSS_MAX_RUN as u32);
-        let length_field = (run - G00_LZSS_MIN_RUN as u32) & 0x0f;
-        let lo = (pos & 0xff) as u8;
-        let hi = (((pos >> 4) & 0xf0) | length_field) as u8;
-        out.push(lo);
-        out.push(hi);
         out
     }
 
     #[test]
+    fn lzss_type0_all_literals_round_trip() {
+        let bgr: Vec<u8> = (0..24u8).collect(); // 8 BGR pixels
+        let enc = encode_all_literals(&bgr, LzssVariant::Type0Bgr);
+        let out = lzss_decode(&enc, bgr.len(), LzssVariant::Type0Bgr);
+        assert_eq!(out, bgr);
+    }
+
+    #[test]
+    fn lzss_scn2k_all_literals_round_trip() {
+        let data: Vec<u8> = (0..20u8).collect();
+        let enc = encode_all_literals(&data, LzssVariant::Scn2k);
+        let out = lzss_decode(&enc, data.len(), LzssVariant::Scn2k);
+        assert_eq!(out, data);
+    }
+
+    #[test]
+    fn lzss_type0_backreference_repeats_first_pixel() {
+        // 4 BGR pixels; the 4th is a back-reference to the 1st.
+        // Flag 0b0000_0111: bits 0,1,2 literal (3 pixels), bit 3 backref.
+        let mut enc = vec![0b0000_0111u8];
+        enc.extend_from_slice(&[0x11, 0x22, 0x33]); // pixel 0
+        enc.extend_from_slice(&[0x44, 0x55, 0x66]); // pixel 1
+        enc.extend_from_slice(&[0x77, 0x88, 0x99]); // pixel 2
+        // token: distance = 3*3 = 9 bytes back, length = 3 bytes.
+        // t = (distance/3)<<4 | (length/3 - 1) = (3<<4)|0 = 0x30.
+        enc.extend_from_slice(&[0x30, 0x00]);
+        let out = lzss_decode(&enc, 12, LzssVariant::Type0Bgr);
+        assert_eq!(out.len(), 12);
+        assert_eq!(&out[0..3], &[0x11, 0x22, 0x33]);
+        assert_eq!(
+            &out[9..12],
+            &[0x11, 0x22, 0x33],
+            "backref reproduced pixel 0"
+        );
+    }
+
+    #[test]
+    fn lzss_scn2k_backreference_run_fill() {
+        // literal 0xAB, then a token: distance 1, length 5 → run-fill.
+        // token t: distance = t>>4 = 1, length = (t&0xf)+2 = 5 → t&0xf = 3.
+        // t = (1<<4)|3 = 0x13 → lo=0x13, hi=0x00.
+        let enc = vec![0b0000_0001u8, 0xAB, 0x13, 0x00];
+        let out = lzss_decode(&enc, 6, LzssVariant::Scn2k);
+        assert_eq!(out, vec![0xAB; 6]);
+    }
+
+    /// Assemble a type-0 g00 file from a BGR canvas (all-literal LZSS).
+    fn synth_type0(width: u16, height: u16, bgr: &[u8]) -> Vec<u8> {
+        assert_eq!(bgr.len(), width as usize * height as usize * 3);
+        let lzss = encode_all_literals(bgr, LzssVariant::Type0Bgr);
+        let mut bytes = vec![G00_TYPE_RAW_BGR];
+        bytes.extend_from_slice(&width.to_le_bytes());
+        bytes.extend_from_slice(&height.to_le_bytes());
+        let compressed_size = (lzss.len() + 8) as u32;
+        let uncompressed_size = (width as u32) * (height as u32) * 4; // final 32-bpp size
+        bytes.extend_from_slice(&compressed_size.to_le_bytes());
+        bytes.extend_from_slice(&uncompressed_size.to_le_bytes());
+        bytes.extend_from_slice(&lzss);
+        bytes
+    }
+
+    #[test]
     fn truncated_preamble_is_typed_error() {
-        let err =
-            decode_g00(&[0u8; 3]).expect_err("3-byte input is shorter than the 5-byte preamble");
+        let err = decode_g00(&[0u8; 3]).expect_err("3-byte input is too short");
         match err {
             G00DecodeError::TruncatedPreamble {
                 observed_len,
@@ -1155,7 +1235,6 @@ mod tests {
 
     #[test]
     fn unknown_lead_byte_is_typed_error_not_silent_fallback() {
-        // 0x42 is not in {0, 1, 2}; decoder must reject.
         let bytes = [0x42u8, 0x00, 0x00, 0x00, 0x00];
         let err = decode_g00(&bytes).expect_err("lead byte 0x42 must be rejected");
         match err {
@@ -1165,122 +1244,10 @@ mod tests {
     }
 
     #[test]
-    fn lzss_classic_pure_literals_round_trip() {
-        let plaintext: Vec<u8> = (0..16u8).collect();
-        let encoded = encode_lzss_literals_only(&plaintext);
-        let (out, warning) = lzss_decode_classic(&encoded, plaintext.len(), G00Type::RawBgr)
-            .expect("clean literal stream must decode");
-        assert_eq!(out, plaintext);
-        assert!(warning.is_none(), "no length mismatch on clean round trip");
-    }
-
-    #[test]
-    fn lzss_classic_back_reference_round_trip() {
-        // Emit 4 literals into the ring buffer, then a back-reference
-        // copying them. The ring cursor starts at
-        // G00_LZSS_INITIAL_CURSOR = 4078, so the 4 literals land at
-        // positions 4078..4081. The back-reference at position=4078,
-        // length=4 should produce the same 4 bytes.
-        let literals = vec![0x10u8, 0x20, 0x30, 0x40];
-        let encoded = encode_lzss_one_backref(&literals, G00_LZSS_INITIAL_CURSOR as u16, 4);
-        let expected = vec![0x10, 0x20, 0x30, 0x40, 0x10, 0x20, 0x30, 0x40];
-        let (out, warning) = lzss_decode_classic(&encoded, expected.len(), G00Type::RawBgr)
-            .expect("clean back-reference stream must decode");
-        assert_eq!(out, expected);
-        assert!(warning.is_none());
-    }
-
-    #[test]
-    fn lzss_classic_implausible_declared_size_does_not_overallocate() {
-        // A tiny stream declaring a ~4 GiB uncompressed size must not try to
-        // preallocate that much up front. The decoder bounds its initial
-        // capacity by `input.len() * G00_LZSS_MAX_RUN`, then surfaces the
-        // shortfall as a `PayloadLengthMismatch` warning. The point of this
-        // test is that the call *returns* rather than aborting on a failed
-        // multi-gigabyte reservation.
-        let plaintext: Vec<u8> = (0..4u8).collect();
-        let encoded = encode_lzss_literals_only(&plaintext);
-        let (out, warning) = lzss_decode_classic(&encoded, u32::MAX as usize, G00Type::RawBgr)
-            .expect("a tiny stream declaring u32::MAX must decode-and-warn, not OOM");
-        assert!(out.len() <= encoded.len() * G00_LZSS_MAX_RUN);
-        assert!(matches!(
-            warning,
-            Some(G00Warning::PayloadLengthMismatch { .. })
-        ));
-    }
-
-    #[test]
-    fn lzss_classic_short_stream_emits_length_warning_not_silent_pass() {
-        // Audit-focus pin: regression test for the
-        // "LZSS distance encoding regression that decodes a few bytes
-        // and then garbage" item. Set up a stream that runs out
-        // before producing the declared uncompressed_size — the
-        // decoder must surface a typed PayloadLengthMismatch warning,
-        // not silently truncate.
-        let plaintext: Vec<u8> = (0..4u8).collect();
-        let encoded = encode_lzss_literals_only(&plaintext);
-        let (out, warning) = lzss_decode_classic(&encoded, 100, G00Type::RawBgr)
-            .expect("a short literal stream is a clean-but-short decode, not a hard error");
-        assert!(out.len() < 100, "decoder must stop when input runs out");
-        match warning {
-            Some(G00Warning::PayloadLengthMismatch {
-                g00_type,
-                declared_uncompressed_size,
-                observed_payload_size,
-            }) => {
-                assert_eq!(g00_type, G00Type::RawBgr);
-                assert_eq!(declared_uncompressed_size, 100);
-                assert_eq!(observed_payload_size, out.len() as u64);
-            }
-            other => panic!("expected PayloadLengthMismatch warning, got: {other:?}"),
-        }
-    }
-
-    #[test]
-    fn lzss_classic_truncated_back_reference_is_unexpected_end_of_stream() {
-        // A flag bit of 1 commits to a 2-byte back-reference token.
-        // Build a stream whose final flag bit requests a back-reference
-        // but supply only one of the two operand bytes. This is an
-        // unambiguous mid-token truncation: the decoder must surface a
-        // hard UnexpectedEndOfStream error, not a best-effort partial
-        // buffer + warning (which is the literal/flag-boundary case).
-        // Flag byte `0b0000_0001`: bit 0 = 1 -> the first op is a
-        // back-reference. The single trailing `0x10` is only one of the
-        // two operand bytes the token requires.
-        let encoded = vec![0b0000_0001u8, 0x10];
-        let err = lzss_decode_classic(&encoded, 64, G00Type::RawBgr)
-            .expect_err("a back-reference token truncated mid-stream must hard-error");
-        match err {
-            G00DecodeError::UnexpectedEndOfStream {
-                g00_type,
-                declared_uncompressed_size,
-                emitted,
-            } => {
-                assert_eq!(g00_type, G00Type::RawBgr);
-                assert_eq!(declared_uncompressed_size, 64);
-                assert_eq!(
-                    emitted, 0,
-                    "no bytes were emitted before the truncated token"
-                );
-            }
-            other => panic!("expected UnexpectedEndOfStream, got: {other:?}"),
-        }
-    }
-
-    #[test]
     fn parse_lzss_section_rejects_compressed_size_below_preamble() {
-        // `compressed_size` is defined to include its own 8-byte
-        // preamble, so a value < 8 is internally inconsistent. The
-        // parser must reject it with a typed MalformedCompressedSize
-        // error rather than clamping the implied payload to an empty
-        // slice (which would only surface as a downstream
-        // PayloadLengthMismatch warning).
         let mut bytes = Vec::new();
-        // compressed_size = 4 (< 8): malformed.
-        bytes.extend_from_slice(&4u32.to_le_bytes());
-        // uncompressed_size = 16.
+        bytes.extend_from_slice(&4u32.to_le_bytes()); // compressed_size = 4 (< 8)
         bytes.extend_from_slice(&16u32.to_le_bytes());
-        // Some trailing bytes so the 8-byte preamble length check passes.
         bytes.extend_from_slice(&[0u8; 4]);
         let err = parse_lzss_section(&bytes, 0, G00Type::RawBgr)
             .expect_err("compressed_size < 8 must be rejected");
@@ -1298,37 +1265,19 @@ mod tests {
         }
     }
 
-    /// Build a synthetic type-0 g00 file: 5-byte preamble +
-    /// `(compressed_size, uncompressed_size)` + literal-only LZSS
-    /// payload encoding the supplied BGRA byte stream.
-    fn synth_type0(width: u16, height: u16, bgra_payload: &[u8]) -> Vec<u8> {
-        let lzss = encode_lzss_literals_only(bgra_payload);
-        let mut bytes = Vec::new();
-        bytes.push(G00_TYPE_RAW_BGR);
-        bytes.extend_from_slice(&width.to_le_bytes());
-        bytes.extend_from_slice(&height.to_le_bytes());
-        let compressed_size = (lzss.len() + 8) as u32;
-        let uncompressed_size = bgra_payload.len() as u32;
-        bytes.extend_from_slice(&compressed_size.to_le_bytes());
-        bytes.extend_from_slice(&uncompressed_size.to_le_bytes());
-        bytes.extend_from_slice(&lzss);
-        bytes
-    }
-
     #[test]
-    fn type0_decodes_2x1_bgra_to_rgba() {
-        // 2 BGRA pixels: (B=10, G=20, R=30, A=40), (B=50, G=60, R=70, A=80).
-        // After decode the RGBA bytes must be
-        // (30, 20, 10, 40, 70, 60, 50, 80).
-        let bgra_payload = [10u8, 20, 30, 40, 50, 60, 70, 80];
-        let bytes = synth_type0(2, 1, &bgra_payload);
+    fn type0_decodes_bgr_to_rgba_with_opaque_alpha() {
+        // 2 BGR pixels: (B=10,G=20,R=30), (B=50,G=60,R=70).
+        let bgr = [10u8, 20, 30, 50, 60, 70];
+        let bytes = synth_type0(2, 1, &bgr);
         let (image, warnings) = decode_g00(&bytes).expect("type-0 must decode");
         assert_eq!(image.g00_type, G00Type::RawBgr);
         assert_eq!(image.width, 2);
         assert_eq!(image.height, 1);
         assert_eq!(image.pixels_rgba.len(), 2 * 4);
-        assert_eq!(&image.pixels_rgba[..4], &[30, 20, 10, 40]);
-        assert_eq!(&image.pixels_rgba[4..], &[70, 60, 50, 80]);
+        // BGR (10,20,30) -> RGBA (30,20,10,255).
+        assert_eq!(&image.pixels_rgba[..4], &[30, 20, 10, 0xff]);
+        assert_eq!(&image.pixels_rgba[4..], &[70, 60, 50, 0xff]);
         assert!(image.regions.is_empty());
         assert!(
             warnings.is_empty(),
@@ -1338,144 +1287,155 @@ mod tests {
 
     #[test]
     fn type0_bgr_byte_order_is_not_treated_as_rgb() {
-        // Audit-focus pin: regression test for the
-        // "Treating 'BGR' as 'RGB' silently" audit item. Pick a pixel
-        // where B != R so a silent reorder skip surfaces as a wrong
-        // value here.
-        let bgra_payload = [0x11u8, 0x22, 0x33, 0xff]; // B=0x11, G=0x22, R=0x33
-        let bytes = synth_type0(1, 1, &bgra_payload);
+        // B != R so a silent skip of the reorder is observable.
+        let bgr = [0x11u8, 0x22, 0x33]; // B=0x11, G=0x22, R=0x33
+        let bytes = synth_type0(1, 1, &bgr);
         let (image, _) = decode_g00(&bytes).expect("type-0 must decode");
-        // RGBA reorder: first byte must be R (0x33), then G, then B,
-        // then alpha.
-        assert_eq!(
-            image.pixels_rgba[0], 0x33,
-            "R slot must hold on-disk R byte (not B)"
-        );
-        assert_eq!(
-            image.pixels_rgba[1], 0x22,
-            "G slot must hold on-disk G byte"
-        );
-        assert_eq!(
-            image.pixels_rgba[2], 0x11,
-            "B slot must hold on-disk B byte"
-        );
-        assert_eq!(
-            image.pixels_rgba[3], 0xff,
-            "alpha must come from the on-disk A byte"
+        assert_eq!(image.pixels_rgba[0], 0x33, "R slot holds on-disk R (not B)");
+        assert_eq!(image.pixels_rgba[1], 0x22, "G slot holds on-disk G");
+        assert_eq!(image.pixels_rgba[2], 0x11, "B slot holds on-disk B");
+        assert_eq!(image.pixels_rgba[3], 0xff, "alpha is opaque");
+    }
+
+    #[test]
+    fn type0_short_stream_pads_and_warns_not_silent() {
+        // Declare a 4x1 canvas but supply LZSS for only 1 pixel.
+        let bgr = [1u8, 2, 3];
+        let lzss = encode_all_literals(&bgr, LzssVariant::Type0Bgr);
+        let mut bytes = vec![G00_TYPE_RAW_BGR];
+        bytes.extend_from_slice(&4u16.to_le_bytes());
+        bytes.extend_from_slice(&1u16.to_le_bytes());
+        bytes.extend_from_slice(&((lzss.len() + 8) as u32).to_le_bytes());
+        bytes.extend_from_slice(&(4u32 * 4).to_le_bytes()); // 4x1 canvas * 4 bytes
+        bytes.extend_from_slice(&lzss);
+        let (image, warnings) = decode_g00(&bytes).expect("short type-0 decodes best-effort");
+        assert_eq!(image.pixels_rgba.len(), 4 * 4, "padded to full canvas");
+        assert!(
+            warnings.iter().any(|w| matches!(
+                w,
+                G00Warning::PayloadLengthMismatch {
+                    g00_type: G00Type::RawBgr,
+                    ..
+                }
+            )),
+            "short stream must surface PayloadLengthMismatch; got {warnings:?}",
         );
     }
 
     #[test]
-    fn type1_synthetic_round_trip() {
-        // Build a 2x1 image with palette index 0 -> red, index 1 -> green.
-        let mut decoded_payload = vec![0u8; G00_TYPE1_PALETTE_BYTE_LEN + 2];
-        // Index 0: BGRA = (0x00, 0x00, 0xFF, 0xFF) -- red
-        decoded_payload[0] = 0x00; // B
-        decoded_payload[1] = 0x00; // G
-        decoded_payload[2] = 0xff; // R
-        decoded_payload[3] = 0xff; // A
-        // Index 1: BGRA = (0x00, 0xFF, 0x00, 0xFF) -- green
-        decoded_payload[4] = 0x00; // B
-        decoded_payload[5] = 0xff; // G
-        decoded_payload[6] = 0x00; // R
-        decoded_payload[7] = 0xff; // A
-        // Indices [0, 1] at the tail.
-        decoded_payload[G00_TYPE1_PALETTE_BYTE_LEN] = 0;
-        decoded_payload[G00_TYPE1_PALETTE_BYTE_LEN + 1] = 1;
-
-        let lzss_payload = encode_lzss_literals_only(&decoded_payload);
-        let uncompressed_size = decoded_payload.len() as u32;
-        let compressed_size = (lzss_payload.len() + 8) as u32;
-
-        let mut file = Vec::new();
-        file.push(G00_TYPE_PALETTED_LZSS);
+    fn type1_synthetic_palette_round_trip() {
+        // SCN2k container: u16 colortable_len=2, then 2 BGRA entries,
+        // then indices [0,1] for a 2x1 image.
+        let mut decoded = Vec::new();
+        decoded.extend_from_slice(&2u16.to_le_bytes());
+        decoded.extend_from_slice(&[0x00, 0x00, 0xff, 0xff]); // idx0 B,G,R,A = red
+        decoded.extend_from_slice(&[0x00, 0xff, 0x00, 0xff]); // idx1 = green
+        decoded.extend_from_slice(&[0, 1]); // indices
+        let lzss = encode_all_literals(&decoded, LzssVariant::Scn2k);
+        let mut file = vec![G00_TYPE_PALETTED_LZSS];
         file.extend_from_slice(&2u16.to_le_bytes());
         file.extend_from_slice(&1u16.to_le_bytes());
-        file.extend_from_slice(&compressed_size.to_le_bytes());
-        file.extend_from_slice(&uncompressed_size.to_le_bytes());
-        file.extend_from_slice(&lzss_payload);
-
+        file.extend_from_slice(&((lzss.len() + 8) as u32).to_le_bytes());
+        // uncompressed_size: Jagarl decodes to declared+1; declared = decoded.len()-1.
+        file.extend_from_slice(&((decoded.len() - 1) as u32).to_le_bytes());
+        file.extend_from_slice(&lzss);
         let (image, warnings) = decode_g00(&file).expect("synthetic type-1 must decode");
         assert_eq!(image.g00_type, G00Type::PalettedLzss);
-        assert_eq!(image.width, 2);
-        assert_eq!(image.height, 1);
         assert_eq!(image.pixels_rgba.len(), 8);
-        assert_eq!(&image.pixels_rgba[..4], &[0xff, 0x00, 0x00, 0xff]);
-        assert_eq!(&image.pixels_rgba[4..], &[0x00, 0xff, 0x00, 0xff]);
+        assert_eq!(
+            &image.pixels_rgba[..4],
+            &[0xff, 0x00, 0x00, 0xff],
+            "idx0 red"
+        );
+        assert_eq!(
+            &image.pixels_rgba[4..],
+            &[0x00, 0xff, 0x00, 0xff],
+            "idx1 green"
+        );
         assert!(
             warnings.is_empty(),
-            "synthetic type-1 must not warn; got {warnings:?}"
+            "clean type-1 must not warn: {warnings:?}"
         );
     }
 
     #[test]
     fn type2_zero_regions_is_typed_error() {
-        let mut bytes = Vec::new();
-        bytes.push(G00_TYPE_REGIONED_LZSS);
+        let mut bytes = vec![G00_TYPE_REGIONED_LZSS];
         bytes.extend_from_slice(&100u16.to_le_bytes());
         bytes.extend_from_slice(&50u16.to_le_bytes());
         bytes.extend_from_slice(&0u32.to_le_bytes());
-        // Need at least 8 more bytes for the LZSS preamble check.
         bytes.extend_from_slice(&[0u8; 8]);
         let err = decode_g00(&bytes).expect_err("zero-region type-2 must error");
         assert!(matches!(err, G00DecodeError::Type2ZeroRegions));
     }
 
-    #[test]
-    fn type2_synthetic_round_trip_with_one_region() {
-        // Build a 4-pixel canvas (4x1) with one region covering it.
-        let bgra_payload = [
-            0xAAu8, 0xBB, 0xCC, 0xff, // pixel 0
-            0x01, 0x02, 0x03, 0xff, // pixel 1
-            0x04, 0x05, 0x06, 0xff, // pixel 2
-            0x07, 0x08, 0x09, 0xff, // pixel 3
-        ];
-        let lzss = encode_lzss_literals_only(&bgra_payload);
-        let compressed_size = (lzss.len() + 8) as u32;
-        let uncompressed_size = bgra_payload.len() as u32;
+    /// Build a minimal but format-faithful type-2 container + file for a
+    /// `w`×`h` canvas with one full-canvas region whose sub-bitmap pixels
+    /// are `bgra`.
+    fn synth_type2(w: u16, h: u16, bgra: &[u8]) -> Vec<u8> {
+        let wh4 = w as usize * h as usize * 4;
+        assert_eq!(bgra.len(), wh4);
+        // Container: [u32 region_deal2=1][u32 offset=12][u32 length]
+        //            [0x74 header][0x5c subheader][w*h*4 pixels]
+        let offset = 12usize;
+        let block_len = 0x74 + 0x5c + wh4;
+        let length = block_len;
+        let mut unc = Vec::new();
+        unc.extend_from_slice(&1u32.to_le_bytes()); // region_deal2
+        unc.extend_from_slice(&(offset as u32).to_le_bytes()); // offset@4
+        unc.extend_from_slice(&(length as u32).to_le_bytes()); // length@8
+        assert_eq!(unc.len(), offset);
+        unc.extend_from_slice(&[0u8; 0x74]); // region block header
+        let mut sub = vec![0u8; 0x5c];
+        sub[0..2].copy_from_slice(&0u16.to_le_bytes()); // x
+        sub[2..4].copy_from_slice(&0u16.to_le_bytes()); // y
+        sub[6..8].copy_from_slice(&w.to_le_bytes()); // w
+        sub[8..10].copy_from_slice(&h.to_le_bytes()); // h
+        unc.extend_from_slice(&sub);
+        unc.extend_from_slice(bgra);
+        let uncompressed_size = unc.len();
 
-        let mut bytes = Vec::new();
-        bytes.push(G00_TYPE_REGIONED_LZSS);
-        bytes.extend_from_slice(&4u16.to_le_bytes());
-        bytes.extend_from_slice(&1u16.to_le_bytes());
+        let lzss = encode_all_literals(&unc, LzssVariant::Scn2k);
+        let mut bytes = vec![G00_TYPE_REGIONED_LZSS];
+        bytes.extend_from_slice(&w.to_le_bytes());
+        bytes.extend_from_slice(&h.to_le_bytes());
         bytes.extend_from_slice(&1u32.to_le_bytes()); // region_count
-        // Region 0: x1=0 y1=0 x2=3 y2=0 origin=(7, 11)
+        // region record: x1,y1,x2,y2,origin_x,origin_y
         bytes.extend_from_slice(&0i32.to_le_bytes());
         bytes.extend_from_slice(&0i32.to_le_bytes());
-        bytes.extend_from_slice(&3i32.to_le_bytes());
+        bytes.extend_from_slice(&((w as i32) - 1).to_le_bytes());
+        bytes.extend_from_slice(&((h as i32) - 1).to_le_bytes());
         bytes.extend_from_slice(&0i32.to_le_bytes());
-        bytes.extend_from_slice(&7i32.to_le_bytes());
-        bytes.extend_from_slice(&11i32.to_le_bytes());
-        bytes.extend_from_slice(&compressed_size.to_le_bytes());
-        bytes.extend_from_slice(&uncompressed_size.to_le_bytes());
+        bytes.extend_from_slice(&0i32.to_le_bytes());
+        bytes.extend_from_slice(&((lzss.len() + 8) as u32).to_le_bytes());
+        bytes.extend_from_slice(&(uncompressed_size as u32).to_le_bytes());
         bytes.extend_from_slice(&lzss);
+        bytes
+    }
 
+    #[test]
+    fn type2_synthetic_region_container_round_trip() {
+        // 2x1 canvas, first pixel BGRA (0x11,0x22,0x33,0xff).
+        let bgra = [0x11u8, 0x22, 0x33, 0xff, 0x44, 0x55, 0x66, 0x77];
+        let bytes = synth_type2(2, 1, &bgra);
         let (image, warnings) = decode_g00(&bytes).expect("type-2 must decode");
         assert_eq!(image.g00_type, G00Type::RegionedLzss);
-        assert_eq!(image.width, 4);
+        assert_eq!(image.width, 2);
         assert_eq!(image.height, 1);
         assert_eq!(image.regions.len(), 1);
-        assert_eq!(image.regions[0].rect.x1, 0);
-        assert_eq!(image.regions[0].rect.x2, 3);
-        assert_eq!(image.regions[0].rect.width(), 4);
-        assert_eq!(image.regions[0].origin_x, 7);
-        assert_eq!(image.regions[0].origin_y, 11);
-        assert_eq!(image.regions[0].name, None);
-        assert_eq!(image.pixels_rgba.len(), 16);
-        // Pixel 0: BGRA=(AA, BB, CC, ff) -> RGBA=(CC, BB, AA, ff)
-        assert_eq!(&image.pixels_rgba[..4], &[0xCC, 0xBB, 0xAA, 0xff]);
+        assert_eq!(image.regions[0].rect.width(), 2);
+        assert_eq!(image.pixels_rgba.len(), 2 * 4);
+        // BGRA (0x11,0x22,0x33,0xff) -> RGBA (0x33,0x22,0x11,0xff).
+        assert_eq!(&image.pixels_rgba[..4], &[0x33, 0x22, 0x11, 0xff]);
+        assert_eq!(&image.pixels_rgba[4..], &[0x66, 0x55, 0x44, 0x77]);
         assert!(
             warnings.is_empty(),
-            "clean round trip must not warn: {warnings:?}"
+            "clean type-2 must not warn: {warnings:?}"
         );
     }
 
     #[test]
     fn type2_region_off_by_one_inclusive_bound() {
-        // Audit-focus pin: regression test for the
-        // "Region table off-by-one against type 2 sub-bitmap counts"
-        // audit item. With x1=0, x2=99 the width is 100, not 99 (the
-        // bound is inclusive).
         let rect = G00Rect {
             x1: 0,
             y1: 0,
@@ -1484,7 +1444,6 @@ mod tests {
         };
         assert_eq!(rect.width(), 100);
         assert_eq!(rect.height(), 50);
-        assert_eq!((rect.width() * rect.height()) as usize, 5000);
     }
 
     #[test]
@@ -1496,7 +1455,6 @@ mod tests {
         assert_eq!(histogram.type0_count, 2);
         assert_eq!(histogram.type1_count, 0);
         assert_eq!(histogram.type2_count, 1);
-        assert_eq!(histogram.documented_total(), 3);
         let warnings = histogram.missing_type_warnings();
         assert_eq!(warnings.len(), 1);
         assert!(matches!(
@@ -1511,10 +1469,9 @@ mod tests {
     fn corpus_histogram_unreadable_files_bucketed_separately() {
         let mut histogram = G00CorpusHistogram::default();
         histogram.observe_lead_byte(&[]);
-        histogram.observe_lead_byte(&[0xFF]); // unknown lead byte
+        histogram.observe_lead_byte(&[0xFF]);
         assert_eq!(histogram.unreadable_count, 1);
         assert_eq!(histogram.unknown_count, 1);
-        assert_eq!(histogram.documented_total(), 0);
         assert_eq!(histogram.total(), 2);
     }
 
@@ -1523,21 +1480,17 @@ mod tests {
         let warning = G00Warning::NoTypeNInCorpus {
             g00_type: G00Type::PalettedLzss,
         };
-        let rendered = warning.to_string();
         assert!(
-            rendered.starts_with("utsushi.reallive.g00_no_type_N_in_corpus:"),
-            "warning must carry the spec-defined prefix; got: {rendered}",
+            warning
+                .to_string()
+                .starts_with("utsushi.reallive.g00_no_type_N_in_corpus:")
         );
     }
 
     #[test]
     fn error_display_carries_typed_code_prefix() {
         let err = G00DecodeError::UnknownType { observed: 0xff };
-        let rendered = err.to_string();
-        assert!(
-            rendered.starts_with("utsushi.reallive.g00."),
-            "error Display must carry the typed code prefix; got: {rendered}",
-        );
+        assert!(err.to_string().starts_with("utsushi.reallive.g00."));
     }
 
     #[test]

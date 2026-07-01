@@ -36,8 +36,8 @@ const RETAIL_BACK_HEIGHT: u32 = 720;
 const RETAIL_BTN000_WIDTH: u32 = 360;
 const RETAIL_BTN000_HEIGHT: u32 = 54;
 
-/// The authored first pixel on disk is BGRA = (0x11, 0x22, 0x33, 0xff);
-/// after the BGRA->RGBA reorder the decoded pixel must be
+/// The authored first pixel on disk is BGR = (0x11, 0x22, 0x33); after
+/// the BGR->RGBA reorder the decoded pixel must be
 /// (R=0x33, G=0x22, B=0x11, A=0xff).
 const EXPECTED_FIRST_PIXEL_RGBA: [u8; 4] = [0x33, 0x22, 0x11, 0xff];
 
@@ -204,8 +204,9 @@ fn synthetic_fixtures_carry_no_verbatim_retail_pixels() {
     let t0 = synthetic_type0_g00();
     let t2 = synthetic_type2_g00();
     assert!(
-        t0.len() < 256 && t2.len() < 256,
+        t0.len() < 256 && t2.len() < 1024,
         "synthetic fixtures must be tiny authored blobs, not retail extracts \
+         (retail BACK.g00 is ~690 KB, btn000.g00 ~55 KB) \
          (type0={} type2={})",
         t0.len(),
         t2.len(),
