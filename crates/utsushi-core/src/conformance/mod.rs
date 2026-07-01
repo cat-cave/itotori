@@ -112,14 +112,9 @@ impl ProfileId {
     /// declared `required_subsystems` MUST be a superset).
     pub fn required_subsystems(self) -> &'static [SubsystemRequirement] {
         match self {
-            Self::TextTrace => &[SubsystemRequirement::TextSink],
-            Self::BranchCapture => &[SubsystemRequirement::TextSink],
+            Self::TextTrace | Self::BranchCapture => &[SubsystemRequirement::TextSink],
             Self::SnapshotRestore => &[SubsystemRequirement::SnapshotPrimitives],
-            Self::FrameCapture => &[
-                SubsystemRequirement::FrameSink,
-                SubsystemRequirement::ArtifactStore,
-            ],
-            Self::RecordingCapture => &[
+            Self::FrameCapture | Self::RecordingCapture => &[
                 SubsystemRequirement::FrameSink,
                 SubsystemRequirement::ArtifactStore,
             ],

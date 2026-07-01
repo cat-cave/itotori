@@ -1,0 +1,12 @@
+# Clippy configuration for the itotori workspace.
+#
+# The restriction lints `unwrap_used`, `expect_used`, and `panic` are DEFERRED
+# (src carries ~3500 `unwrap()`, ~1300 `expect()`, ~220 `panic!` today; enabling
+# them workspace-wide would require a large mechanical `expect`/`?`/typed-error
+# migration). When a follow-up enables them in `[workspace.lints.clippy]`, these
+# allowances keep tests free to `unwrap`/`expect`/`panic`, so the strictness
+# lands on library/binary code only. Setting them now is harmless (the keys are
+# inert until the matching lints are enabled) and records the intended posture.
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true
+allow-panic-in-tests = true

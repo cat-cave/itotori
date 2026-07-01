@@ -474,10 +474,7 @@ impl UtsushiReallivePortContext {
     /// cross-reference entries" without poking at the `Option`
     /// directly.
     pub fn cross_reference_entry_count(&self) -> usize {
-        self.scene_index
-            .as_ref()
-            .map(|index| index.len())
-            .unwrap_or(0)
+        self.scene_index.as_ref().map_or(0, |index| index.len())
     }
 }
 
@@ -490,8 +487,7 @@ impl std::fmt::Debug for UtsushiReallivePortContext {
                 &self
                     .asset_package
                     .as_ref()
-                    .map(|_| "<present>")
-                    .unwrap_or("<absent>"),
+                    .map_or("<absent>", |_| "<present>"),
             )
             .field("scene_index_entries", &self.cross_reference_entry_count())
             .finish()

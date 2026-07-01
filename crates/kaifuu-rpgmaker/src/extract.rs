@@ -364,8 +364,7 @@ fn walk_command_list(acc: &mut ExtractAcc, file: &str, base: Vec<String>, list: 
                     let entry_id = params
                         .and_then(|p| p.first())
                         .and_then(Value::as_i64)
-                        .map(|id| id.to_string())
-                        .unwrap_or_else(|| "0".to_string());
+                        .map_or_else(|| "0".to_string(), |id| id.to_string());
                     acc.push_text_unit(
                         file,
                         entry_pointer(&["parameters", "1"]),
@@ -477,27 +476,7 @@ fn db_fields_for(file: &str) -> &'static [DbField] {
             field: "name",
             database_kind: "character_bio",
         }],
-        "Items.json" => &[
-            DbField {
-                field: "name",
-                database_kind: "item",
-            },
-            DbField {
-                field: "description",
-                database_kind: "item",
-            },
-        ],
-        "Weapons.json" => &[
-            DbField {
-                field: "name",
-                database_kind: "item",
-            },
-            DbField {
-                field: "description",
-                database_kind: "item",
-            },
-        ],
-        "Armors.json" => &[
+        "Items.json" | "Weapons.json" | "Armors.json" => &[
             DbField {
                 field: "name",
                 database_kind: "item",
@@ -575,8 +554,7 @@ pub fn walk_database(acc: &mut ExtractAcc, file: &str, value: &Value) {
         let entry_id = object
             .get("id")
             .and_then(Value::as_i64)
-            .map(|id| id.to_string())
-            .unwrap_or_else(|| index.to_string());
+            .map_or_else(|| index.to_string(), |id| id.to_string());
         for field in fields {
             if let Some(text) = object.get(field.field).and_then(Value::as_str) {
                 acc.push_text_unit(

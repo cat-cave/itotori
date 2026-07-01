@@ -231,7 +231,9 @@ mod tests {
                 assert_eq!(textline_count, 0);
                 assert!(sample_bodies.is_empty());
             }
-            other => panic!("expected NoMatch on empty log, got {other:?}"),
+            other @ ReplayValidation::Matched { .. } => {
+                panic!("expected NoMatch on empty log, got {other:?}")
+            }
         }
     }
 
@@ -247,7 +249,7 @@ mod tests {
                 assert_eq!(matching_event_index, 0);
                 assert!(body_utf8.contains("STELLA-ALPHA-227-EN-US"));
             }
-            other => panic!("expected Matched, got {other:?}"),
+            other @ ReplayValidation::NoMatch { .. } => panic!("expected Matched, got {other:?}"),
         }
     }
 
@@ -291,7 +293,7 @@ mod tests {
                 assert_eq!(sample_bodies.len(), 3);
                 assert!(sample_bodies.iter().any(|body| body == "あ"));
             }
-            other => panic!("expected NoMatch, got {other:?}"),
+            other @ ReplayValidation::Matched { .. } => panic!("expected NoMatch, got {other:?}"),
         }
     }
 
@@ -324,7 +326,7 @@ mod tests {
                     assert!(body.len() <= NO_MATCH_SAMPLE_BODY_BYTE_CAP);
                 }
             }
-            other => panic!("expected NoMatch, got {other:?}"),
+            other @ ReplayValidation::Matched { .. } => panic!("expected NoMatch, got {other:?}"),
         }
     }
 

@@ -280,15 +280,15 @@ impl GraphicsRuntimeWarning {
         match &mut self {
             Self::MissingArg {
                 opcode_tag: tag, ..
-            } => *tag = opcode_tag,
-            Self::ArgShapeMismatch {
+            }
+            | Self::ArgShapeMismatch {
                 opcode_tag: tag, ..
-            } => *tag = opcode_tag,
-            Self::InvalidShiftJis { opcode_tag: tag } => *tag = opcode_tag,
-            Self::VfsFailure {
+            }
+            | Self::InvalidShiftJis { opcode_tag: tag }
+            | Self::VfsFailure {
                 opcode_tag: tag, ..
-            } => *tag = opcode_tag,
-            Self::G00DecodeFailure {
+            }
+            | Self::G00DecodeFailure {
                 opcode_tag: tag, ..
             } => *tag = opcode_tag,
             // Variants that don't carry an opcode tag are unchanged.
@@ -578,7 +578,9 @@ impl GraphicsRuntime {
     }
 
     fn lock_inner(&self) -> std::sync::MutexGuard<'_, GraphicsRuntimeInner> {
-        self.inner.lock().unwrap_or_else(|err| err.into_inner())
+        self.inner
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 }
 
@@ -1203,7 +1205,7 @@ mod tests {
         let object = snap.foreground_slot(4).expect("slot 4 allocated");
         match &object.kind {
             Kind::Image { image_ref } => assert!(image_ref.asset_key.is_empty()),
-            other => panic!("expected Image, got {other:?}"),
+            other @ Kind::Wipe { .. } => panic!("expected Image, got {other:?}"),
         }
     }
 

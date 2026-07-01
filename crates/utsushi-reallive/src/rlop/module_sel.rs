@@ -293,17 +293,26 @@ impl SelRuntime {
 
     /// Drain the fail-soft warnings observed since the last call.
     pub fn take_warnings(&self) -> Vec<SelRuntimeWarning> {
-        let mut guard = self.inner.lock().unwrap_or_else(|err| err.into_inner());
+        let mut guard = self
+            .inner
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         std::mem::take(&mut guard.warnings)
     }
 
     fn record_warning(&self, warning: SelRuntimeWarning) {
-        let mut guard = self.inner.lock().unwrap_or_else(|err| err.into_inner());
+        let mut guard = self
+            .inner
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         guard.warnings.push(warning);
     }
 
     fn next_line_id(&self) -> String {
-        let mut guard = self.inner.lock().unwrap_or_else(|err| err.into_inner());
+        let mut guard = self
+            .inner
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let id = guard.next_line_seq;
         guard.next_line_seq = guard.next_line_seq.saturating_add(1);
         format!("utsushi-reallive-sel-line-{id:08x}")
@@ -316,7 +325,7 @@ impl SelRuntime {
     /// entries.
     fn selbtn_style_suffix(&self, choice_index: usize) -> Option<String> {
         let gameexe = self.gameexe.as_ref()?;
-        let prefix = format!("SELBTN.{:03}", choice_index);
+        let prefix = format!("SELBTN.{choice_index:03}");
         let keys = gameexe.list_namespace(&prefix);
         if keys.is_empty() {
             return None;
@@ -401,15 +410,14 @@ fn dispatch_select(
         // into when the user picks. With non-Bytes args interleaved the two
         // diverge, so derive the index from the contiguous choices length.
         let choice_index = choices.len();
-        let text = match decode_shift_jis(&bytes) {
-            Ok(text) => text,
-            Err(()) => {
-                runtime.record_warning(SelRuntimeWarning::InvalidShiftJis {
-                    variant,
-                    choice_index,
-                });
-                String::from_utf8_lossy(&bytes).into_owned()
-            }
+        let text = if let Ok(text) = decode_shift_jis(&bytes) {
+            text
+        } else {
+            runtime.record_warning(SelRuntimeWarning::InvalidShiftJis {
+                variant,
+                choice_index,
+            });
+            String::from_utf8_lossy(&bytes).into_owned()
         };
         runtime.emit_choice(variant, choice_index, text);
         choices.push(bytes);
@@ -573,14 +581,20 @@ impl ChoiceInputScheduler {
     /// will return [`LongOpReadiness::Ready`] after rewriting the head
     /// longop's private state.
     pub fn record_choice(&self, index: ChoiceIndex) {
-        let mut guard = self.pending.lock().unwrap_or_else(|err| err.into_inner());
+        let mut guard = self
+            .pending
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         *guard = Some(index);
     }
 
     /// Borrow the pending choice (if any). Exposed for tests that want
     /// to assert "no choice yet recorded" without forcing a poll.
     pub fn pending(&self) -> Option<ChoiceIndex> {
-        let guard = self.pending.lock().unwrap_or_else(|err| err.into_inner());
+        let guard = self
+            .pending
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         *guard
     }
 }
@@ -588,7 +602,10 @@ impl ChoiceInputScheduler {
 impl LongOpScheduler for ChoiceInputScheduler {
     fn poll(&mut self, head: &mut LongOp) -> LongOpReadiness {
         let pending = {
-            let guard = self.pending.lock().unwrap_or_else(|err| err.into_inner());
+            let guard = self
+                .pending
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             *guard
         };
         let Some(index) = pending else {
@@ -677,8 +694,7 @@ mod tests {
         for variant in SelectVariant::ALL {
             assert!(
                 registry.get(variant.rlop_key()).is_some(),
-                "missing variant: {:?}",
-                variant
+                "missing variant: {variant:?}"
             );
         }
         let alias_key = RlopKey::new(

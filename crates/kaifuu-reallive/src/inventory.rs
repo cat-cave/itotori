@@ -322,7 +322,7 @@ fn walk_scene(
             // SetSpeaker. Empty / unknown => warning.
             let speaker = match opcode {
                 Some(NamedOpcode::SetSpeaker) => {
-                    current_speaker = decoded_text.clone();
+                    current_speaker.clone_from(&decoded_text);
                     String::new()
                 }
                 Some(NamedOpcode::TextDisplay) => {
@@ -506,6 +506,10 @@ fn parse_hex(hex: &str) -> Result<Vec<u8>, HexDecodeError> {
     Ok(out)
 }
 
+// reason: the extension checks below run on `text` after `to_ascii_lowercase()`,
+// so the lowercase-literal `ends_with` comparisons are already case-insensitive;
+// clippy cannot see the prior case-folding.
+#[allow(clippy::case_sensitive_file_extension_comparisons)]
 fn classify_asset_path(text: &str) -> Option<AssetReferenceKind> {
     if !text.is_ascii() {
         return None;

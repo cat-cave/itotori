@@ -46,7 +46,7 @@ const DEFAULT_HEIGHT: u32 = 720;
 const MAX_RENDERED_LINES: usize = 24;
 const MAX_RENDERED_LINE_CHARS: usize = 64;
 
-const HELP: &str = r#"utsushi render-validate — rasterized localized scene screenshot (E2 frame artifact)
+const HELP: &str = r"utsushi render-validate — rasterized localized scene screenshot (E2 frame artifact)
 
 USAGE:
   utsushi-cli render-validate \
@@ -85,7 +85,7 @@ The render pass composites the REAL decoded g00 background into the
 full-fidelity buffer; the private PNG carries it verbatim while the public
 frame (announced through the substrate FrameArtifactSink at EvidenceTier::E2
 as a `screenshot`) is redacted by default so no copyrighted art is published.
-"#;
+";
 
 /// Execute the `render-validate` subcommand.
 pub fn run_render_validate_command(args: &[String]) -> Result<(), Box<dyn Error>> {
@@ -364,19 +364,17 @@ fn optional_flag<'a>(args: &'a [String], name: &str) -> Option<&'a str> {
 /// lives under `/scratch` in the agent worktree) so the real-art frame is
 /// never committed.
 fn private_artifact_dir(explicit: Option<&Path>, run_id: &str) -> PathBuf {
-    match explicit {
-        Some(dir) => dir.to_path_buf(),
-        None => {
-            let workspace_root = Path::new(env!("CARGO_MANIFEST_DIR"))
-                .parent()
-                .and_then(Path::parent)
-                .map(Path::to_path_buf)
-                .unwrap_or_else(|| PathBuf::from("."));
-            workspace_root
-                .join(".private-render")
-                .join("render-validate")
-                .join(run_id)
-        }
+    if let Some(dir) = explicit {
+        dir.to_path_buf()
+    } else {
+        let workspace_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .and_then(Path::parent)
+            .map_or_else(|| PathBuf::from("."), Path::to_path_buf);
+        workspace_root
+            .join(".private-render")
+            .join("render-validate")
+            .join(run_id)
     }
 }
 
@@ -390,8 +388,7 @@ fn find_g00_dir(game_dir: &Path) -> Option<PathBuf> {
         let is_g00 = dir
             .file_name()
             .and_then(|name| name.to_str())
-            .map(|name| name.eq_ignore_ascii_case("g00"))
-            .unwrap_or(false);
+            .is_some_and(|name| name.eq_ignore_ascii_case("g00"));
         if is_g00 && dir_has_g00_file(&dir) {
             return Some(dir);
         }
@@ -410,18 +407,15 @@ fn find_g00_dir(game_dir: &Path) -> Option<PathBuf> {
 }
 
 fn dir_has_g00_file(dir: &Path) -> bool {
-    fs::read_dir(dir)
-        .map(|entries| {
-            entries.flatten().any(|entry| {
-                entry
-                    .path()
-                    .extension()
-                    .and_then(|ext| ext.to_str())
-                    .map(|ext| ext.eq_ignore_ascii_case("g00"))
-                    .unwrap_or(false)
-            })
+    fs::read_dir(dir).is_ok_and(|entries| {
+        entries.flatten().any(|entry| {
+            entry
+                .path()
+                .extension()
+                .and_then(|ext| ext.to_str())
+                .is_some_and(|ext| ext.eq_ignore_ascii_case("g00"))
         })
-        .unwrap_or(false)
+    })
 }
 
 /// Minimal [`AssetPackage`] resolving `g00/<STEM>.g00` against a real
@@ -445,7 +439,7 @@ impl OnDiskG00Package {
 }
 
 impl AssetPackage for OnDiskG00Package {
-    fn id(&self) -> &str {
+    fn id(&self) -> &'static str {
         "render-validate-on-disk-g00"
     }
 

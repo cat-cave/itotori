@@ -99,10 +99,7 @@ const RUN_ID: &str = "0190a000-0000-7000-8000-000000000001";
 const FRAME_ID: &str = "0190a000-0000-7000-8000-000000000002";
 
 fn managed_uri() -> String {
-    format!(
-        "{}/{}/screenshots/{}.png",
-        RUNTIME_ARTIFACT_URI_ROOT, RUN_ID, FRAME_ID
-    )
+    format!("{RUNTIME_ARTIFACT_URI_ROOT}/{RUN_ID}/screenshots/{FRAME_ID}.png")
 }
 
 fn write_managed_frame() -> TempDir {

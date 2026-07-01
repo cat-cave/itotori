@@ -99,7 +99,7 @@ pub fn compress_avg32_literal(plaintext: &[u8]) -> Result<Vec<u8>, CompressError
     let group_count = plaintext
         .len()
         .div_ceil(8)
-        .max(if plaintext.is_empty() { 0 } else { 1 });
+        .max(usize::from(!plaintext.is_empty()));
     let total_len = AVG32_COMPRESSED_PREAMBLE_LEN + group_count + plaintext.len();
     if total_len > u32::MAX as usize {
         return Err(CompressError::OutputTooLarge {

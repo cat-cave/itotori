@@ -537,7 +537,7 @@ impl<'a> ParserState<'a> {
         }
     }
 
-    fn malformed(&self, position: usize, message: impl Into<String>) -> ExpressionParseError {
+    fn malformed(position: usize, message: impl Into<String>) -> ExpressionParseError {
         ExpressionParseError::Malformed {
             position,
             message: message.into(),
@@ -761,7 +761,7 @@ fn parse_term(state: &mut ParserState<'_>) -> Result<ExprNode, ExpressionParseEr
     if state.depth > MAX_EXPRESSION_DEPTH {
         let pos = state.pos;
         state.depth -= 1;
-        return Err(state.malformed(
+        return Err(ParserState::malformed(
             pos,
             format!("term: expression nesting exceeded depth limit {MAX_EXPRESSION_DEPTH}"),
         ));
@@ -784,7 +784,7 @@ fn parse_term_body(state: &mut ParserState<'_>) -> Result<ExprNode, ExpressionPa
                 state.advance(1);
                 Ok(ExprNode::Group(Box::new(inner)))
             }
-            Some(other) => Err(state.malformed(
+            Some(other) => Err(ParserState::malformed(
                 state.pos,
                 format!("term: expected ')' (0x29) to close grouping, got 0x{other:02x}"),
             )),
@@ -854,40 +854,37 @@ fn parse_token(state: &mut ParserState<'_>) -> Result<ExprNode, ExpressionParseE
         // $ <bank> — either 2-byte alt form or `$<bank>[<idx>]`.
         let bank = b1;
         // Look at what follows the bank byte.
-        match state.peek(1) {
-            Some(BRACKET_OPEN) => {
-                // $ <bank> [ <idx_expr> ]
-                state.advance(2); // consume bank + `[`
-                let index_node = parse_expr(state)?;
-                match state.current() {
-                    Some(BRACKET_CLOSE) => {
-                        state.advance(1);
-                        Ok(ExprNode::MemoryRef {
-                            bank,
-                            index: Box::new(index_node),
-                        })
-                    }
-                    Some(other) => Err(state.malformed(
-                        state.pos,
-                        format!(
-                            "token: memory-reference must close with ']' (0x5D); observed \
-                             0x{other:02x}",
-                        ),
-                    )),
-                    None => Err(state.truncated(1, "token: memory-reference missing closing ']'")),
+        if let Some(BRACKET_OPEN) = state.peek(1) {
+            // $ <bank> [ <idx_expr> ]
+            state.advance(2); // consume bank + `[`
+            let index_node = parse_expr(state)?;
+            match state.current() {
+                Some(BRACKET_CLOSE) => {
+                    state.advance(1);
+                    Ok(ExprNode::MemoryRef {
+                        bank,
+                        index: Box::new(index_node),
+                    })
                 }
+                Some(other) => Err(ParserState::malformed(
+                    state.pos,
+                    format!(
+                        "token: memory-reference must close with ']' (0x5D); observed \
+                         0x{other:02x}",
+                    ),
+                )),
+                None => Err(state.truncated(1, "token: memory-reference missing closing ']'")),
             }
-            _ => {
-                // 2-byte alt form: bank byte with no bracketed index.
-                // Encode as `MemoryRef { bank, index: IntLiteral(0) }`
-                // — the bank reference resolves to the bank's first
-                // slot per the rlvm convention.
-                state.advance(1);
-                Ok(ExprNode::MemoryRef {
-                    bank,
-                    index: Box::new(ExprNode::IntLiteral(0)),
-                })
-            }
+        } else {
+            // 2-byte alt form: bank byte with no bracketed index.
+            // Encode as `MemoryRef { bank, index: IntLiteral(0) }`
+            // — the bank reference resolves to the bank's first
+            // slot per the rlvm convention.
+            state.advance(1);
+            Ok(ExprNode::MemoryRef {
+                bank,
+                index: Box::new(ExprNode::IntLiteral(0)),
+            })
         }
     }
 }

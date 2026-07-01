@@ -619,13 +619,6 @@ impl Restorable for SaveState {
                     manifest_seen = true;
                     consumed.push(path.clone());
                 }
-                (MANIFEST_PATH, other) => {
-                    return Err(SnapshotError::RestoreTypeMismatch {
-                        path: path.clone(),
-                        expected: "string",
-                        found: other.type_tag(),
-                    });
-                }
                 (SYSTEM_SAVE_PATH, StateValue::String { value }) => {
                     let bytes = decode_hex_payload(path, value)?;
                     let save = SystemSave::decode(&bytes).map_err(|err| {
@@ -659,7 +652,7 @@ impl Restorable for SaveState {
                     new_read = Some(flags);
                     consumed.push(path.clone());
                 }
-                (SYSTEM_SAVE_PATH | GLOBAL_SAVE_PATH | READ_FLAGS_PATH, other) => {
+                (MANIFEST_PATH | SYSTEM_SAVE_PATH | GLOBAL_SAVE_PATH | READ_FLAGS_PATH, other) => {
                     return Err(SnapshotError::RestoreTypeMismatch {
                         path: path.clone(),
                         expected: "string",

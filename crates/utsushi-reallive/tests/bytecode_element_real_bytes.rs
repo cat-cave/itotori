@@ -132,9 +132,8 @@ fn scene1_element_stream_partition_and_first_command_header() {
         *counts.entry(element.variant_name()).or_insert(0) += 1;
     }
     eprintln!(
-        "[UTSUSHI-204 real-bytes] Sweetie HD scene #0001: {} elements (range {}..={} expected) \
-         — per-variant counts {:?}",
-        element_count, ELEMENT_COUNT_MIN, ELEMENT_COUNT_MAX, counts,
+        "[UTSUSHI-204 real-bytes] Sweetie HD scene #0001: {element_count} elements (range {ELEMENT_COUNT_MIN}..={ELEMENT_COUNT_MAX} expected) \
+         — per-variant counts {counts:?}",
     );
     // Surface the selection-option offsets for follow-up nodes
     // (UTSUSHI-205 will decide whether they are real SelectElement
@@ -303,8 +302,7 @@ fn scene1_element_stream_partition_and_first_command_header() {
         .count();
     eprintln!(
         "[UTSUSHI-204 real-bytes] Sweetie HD scene #0001 selection-option marker count = \
-         {selection_marker_count} (markers in 0x{:02x}..=0x{:02x})",
-        SELECTION_OPTION_MARKER_MIN, SELECTION_OPTION_MARKER_MAX,
+         {selection_marker_count} (markers in 0x{SELECTION_OPTION_MARKER_MIN:02x}..=0x{SELECTION_OPTION_MARKER_MAX:02x})",
     );
     // The spec allows EITHER "at least one marker recognised" OR
     // "the test asserts no selections in this scene". Scene #0001 is

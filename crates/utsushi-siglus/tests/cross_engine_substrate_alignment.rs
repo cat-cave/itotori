@@ -543,7 +543,9 @@ fn collect_facade_leaves(src: &str) -> BTreeSet<String> {
             let mut block = String::new();
             let after_brace = &trimmed[block_start + prefix_block.len()..];
             block.push_str(after_brace);
-            if !after_brace.contains('}') {
+            if after_brace.contains('}') {
+                index += 1;
+            } else {
                 let mut walk = index + 1;
                 while walk < lines.len() {
                     let l = lines[walk];
@@ -555,8 +557,6 @@ fn collect_facade_leaves(src: &str) -> BTreeSet<String> {
                     walk += 1;
                 }
                 index = walk + 1;
-            } else {
-                index += 1;
             }
             if let Some(end_off) = block.find('}') {
                 let body = &block[..end_off];

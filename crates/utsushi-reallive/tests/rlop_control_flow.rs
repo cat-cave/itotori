@@ -452,6 +452,6 @@ fn ctl_register_helper_populates_full_family() {
 // while keeping the test surface clear about which substrate types this
 // suite depends on.
 fn _touch_scheduler() {
-    let _scheduler: AlwaysReadyScheduler = AlwaysReadyScheduler;
+    let _: AlwaysReadyScheduler = AlwaysReadyScheduler;
     let _registered: Arc<dyn RLOperation> = Arc::new(GotoOp);
 }

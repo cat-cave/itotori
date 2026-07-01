@@ -1,6 +1,7 @@
 [package]
 name = "utsushi-cli"
 version = "0.0.0"
+publish = false
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
@@ -18,3 +19,6 @@ utsushi-rpgmaker-mv = { path = "../utsushi-rpgmaker-mv" }
 # drives the render-validate screenshot surface against it.
 encoding_rs.workspace = true
 kaifuu-reallive = { path = "../kaifuu-reallive" }
+
+[lints]
+workspace = true

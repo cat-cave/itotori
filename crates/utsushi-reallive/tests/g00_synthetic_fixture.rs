@@ -229,7 +229,9 @@ fn fixture_is_consumable_as_graphics_object_image_ref() {
             assert_eq!(image_ref.asset_key, SYNTHETIC_TYPE0_STEM);
             assert_eq!(image_ref.region_index, None);
         }
-        other => panic!("expected Image kind, got {other:?}"),
+        other @ GraphicsObjectKind::Wipe { .. } => {
+            panic!("expected Image kind, got {other:?}")
+        }
     }
 
     // A type-2-aware Image ref selecting region index 1 (valid: the

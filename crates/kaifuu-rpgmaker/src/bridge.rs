@@ -92,7 +92,7 @@ fn build_bundle_json(
         .iter()
         .map(|a| (a.file.as_str(), a.source_hash.as_str()))
         .collect();
-    manifest.sort();
+    manifest.sort_unstable();
     let mut manifest_blob = String::new();
     for (file, hash) in &manifest {
         manifest_blob.push_str(file);
@@ -295,10 +295,10 @@ fn build_unit_json(
 fn surface_kind_str(kind: &SurfaceKind) -> &'static str {
     match kind {
         SurfaceKind::Dialogue { .. } => "dialogue",
-        SurfaceKind::Narration => "narration",
         // Recognized plugin display text (e.g. D_TEXT) is on-screen,
-        // speaker-less display text — the v0.2 `narration` surface.
-        SurfaceKind::PluginText { .. } => "narration",
+        // speaker-less display text — the v0.2 `narration` surface, same as
+        // plain Narration.
+        SurfaceKind::Narration | SurfaceKind::PluginText { .. } => "narration",
         SurfaceKind::ChoiceLabel { .. } => "choice_label",
         SurfaceKind::SpeakerName => "speaker_name",
         SurfaceKind::Database { .. } => "database_entry",
@@ -363,12 +363,13 @@ fn surface_context_json(namespace: &str, source_unit_key: &str, unit: &ProtoUnit
 }
 
 fn sha256_canonical(bytes: &[u8]) -> String {
+    use std::fmt::Write as _;
     let mut hasher = Sha256::new();
     hasher.update(bytes);
     let digest = hasher.finalize();
     let mut hex = String::with_capacity(64);
-    for byte in digest.iter() {
-        hex.push_str(&format!("{byte:02x}"));
+    for byte in &digest {
+        let _ = write!(hex, "{byte:02x}");
     }
     format!("sha256:{hex}")
 }

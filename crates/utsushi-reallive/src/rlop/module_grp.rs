@@ -1116,7 +1116,7 @@ mod tests {
                 assert_eq!(colour.blue, 0x56);
                 assert_eq!(colour.alpha, 0xFF);
             }
-            other => panic!("expected Wipe, got {other:?}"),
+            other @ Kind::Image { .. } => panic!("expected Wipe, got {other:?}"),
         }
     }
 
@@ -1129,9 +1129,9 @@ mod tests {
         let obj = snapshot.foreground_slot(2).expect("slot 2 allocated");
         match &obj.kind {
             Kind::Wipe { colour } => {
-                assert_eq!((colour.red, colour.green, colour.blue), (10, 20, 30))
+                assert_eq!((colour.red, colour.green, colour.blue), (10, 20, 30));
             }
-            other => panic!("expected Wipe, got {other:?}"),
+            other @ Kind::Image { .. } => panic!("expected Wipe, got {other:?}"),
         }
     }
 
@@ -1152,7 +1152,7 @@ mod tests {
         let obj = snapshot.foreground_slot(7).expect("slot 7 allocated");
         match &obj.kind {
             Kind::Image { image_ref } => assert_eq!(image_ref.asset_key, "SPRITE1"),
-            other => panic!("expected Image, got {other:?}"),
+            other @ Kind::Wipe { .. } => panic!("expected Image, got {other:?}"),
         }
     }
 
@@ -1194,7 +1194,7 @@ mod tests {
             .expect("bg plane slot 0 registered");
         match &object.kind {
             Kind::Image { image_ref } => assert_eq!(image_ref.asset_key, "BG01A1"),
-            other => panic!("expected Image, got {other:?}"),
+            other @ Kind::Wipe { .. } => panic!("expected Image, got {other:?}"),
         }
         assert_eq!(
             snapshot.bg_canvas.as_ref().map(|c| c.asset_key.as_str()),
@@ -1215,7 +1215,7 @@ mod tests {
         let dst = snap.foreground_slot(2).expect("slot 2 populated");
         match &dst.kind {
             Kind::Image { image_ref } => assert_eq!(image_ref.asset_key, "ASSET"),
-            other => panic!("expected Image, got {other:?}"),
+            other @ Kind::Wipe { .. } => panic!("expected Image, got {other:?}"),
         }
     }
 

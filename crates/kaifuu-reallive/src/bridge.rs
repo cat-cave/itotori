@@ -311,23 +311,6 @@ fn collect_units(
                     units.push(unit);
                 }
             }
-            RealLiveOpcode::TextDisplay { .. } => {
-                // TextDisplay carries no raw text body in the parsed
-                // opcode (the body is carried in the next Textout or in
-                // command args we did not split). The KAIFUU-191 parser
-                // does not separate the text body from the TextDisplay
-                // command header — the inline Shift-JIS run that
-                // immediately follows lands as `Textout`. So
-                // TextDisplay alone does not emit a unit; it serves as
-                // a marker. Carry pending markers forward.
-            }
-            RealLiveOpcode::CharacterTextDisplay => {
-                // Same logic as TextDisplay — the following Textout
-                // run carries the body. CharacterTextDisplay typically
-                // sits between a NAMAE-table speaker tag and the
-                // dialogue body; the NAMAE-lookup pass below uses
-                // adjacency to attribute the unit.
-            }
             RealLiveOpcode::Choice { choices } => {
                 for (option_index, choice) in choices.iter().enumerate() {
                     let choice_bytes = choice.bytes.as_slice();
@@ -393,6 +376,11 @@ fn collect_units(
                     unit.voice_sample_id = Some(sample_id);
                 }
             }
+            // Non-emitting opcodes (no translatable unit). Notably
+            // `TextDisplay` / `CharacterTextDisplay` carry no raw text body in
+            // the parsed opcode — they serve as markers and the inline
+            // Shift-JIS run that follows lands as `Textout`, which emits the
+            // unit — so they, like every other opcode here, are a no-op.
             _ => {}
         }
         cursor = cursor.saturating_add(width as u64);
@@ -943,12 +931,13 @@ fn build_unit_json(
 // ---------------------------------------------------------------------
 
 fn sha256_canonical(bytes: &[u8]) -> String {
+    use std::fmt::Write as _;
     let mut hasher = Sha256::new();
     hasher.update(bytes);
     let digest = hasher.finalize();
     let mut hex = String::with_capacity(64);
-    for byte in digest.iter() {
-        hex.push_str(&format!("{byte:02x}"));
+    for byte in &digest {
+        let _ = write!(hex, "{byte:02x}");
     }
     format!("sha256:{hex}")
 }

@@ -26,7 +26,7 @@ use utsushi_rpgmaker_mv::UtsushiRpgmakerMvPort;
 const MATCH_OK_CODE: &str = "utsushi.rpgmaker_mv.replay_text_match_ok";
 const MATCH_FAILED_CODE: &str = "utsushi.rpgmaker_mv.replay_text_match_failed";
 
-const HELP: &str = r#"utsushi rpgmaker-mv-capture — RPG Maker MV/MZ text-trace runtime evidence
+const HELP: &str = r"utsushi rpgmaker-mv-capture — RPG Maker MV/MZ text-trace runtime evidence
 
 Usage:
   utsushi rpgmaker-mv-capture \
@@ -45,7 +45,7 @@ Usage:
 Exit codes:
   0  utsushi.rpgmaker_mv.replay_text_match_ok      — substring matched (or no expectation).
   1  utsushi.rpgmaker_mv.replay_text_match_failed  — no TextLine body matched.
-"#;
+";
 
 /// Execute the `rpgmaker-mv-capture` subcommand. Argv excludes the leading
 /// `rpgmaker-mv-capture` token.

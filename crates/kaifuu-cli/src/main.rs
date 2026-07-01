@@ -106,7 +106,7 @@ fn run_with_args_and_registry(
                         &detection,
                         &game_dir,
                         PartialAdapterCommand::Extract,
-                    )?;
+                    );
                     write_partial_adapter_report(&output, &report)?;
                 }
             }
@@ -215,8 +215,7 @@ fn run_with_args_and_registry(
             let output = PathBuf::from(flag(&args, "--output")?);
             let report_output = flag_optional(&args, "--report-output")
                 .map(PathBuf::from)
-                .map(Ok)
-                .unwrap_or_else(|| default_apply_report_output(&output))?;
+                .map_or_else(|| default_apply_report_output(&output), Ok)?;
             let report_output = validate_apply_report_output(&game_dir, &output, &report_output)?;
             let result = apply_delta(&game_dir, &patch, &output)?;
             write_apply_report_json(&report_output, &redact_report_value(&result))?;
@@ -240,7 +239,7 @@ fn run_with_args_and_registry(
                         &detection,
                         &game_dir,
                         PartialAdapterCommand::Verify,
-                    )?;
+                    );
                     write_partial_adapter_report(&PathBuf::from(output), &report)?;
                     if report.has_blocking_diagnostic() {
                         return Err(format!(
@@ -344,27 +343,25 @@ fn run_extract_reallive_bundle(args: &[String]) -> Result<(), Box<dyn std::error
     // read-only vault adapter (`kaifuu-vault-source`). `--game-root` /
     // ITOTORI_REAL_GAME_ROOT is retained only as the env-gated raw-path helper
     // that serves unit tests.
-    let resolved_game_root = match flag_optional(args, "--vault-canonical-id") {
-        Some(canonical_id) => {
-            let tree_root = resolve_reallive_game_root_via_vault(canonical_id)?;
-            resolve_reallive_game_root(&tree_root)?
-        }
-        None => {
-            let game_root = match flag_optional(args, "--game-root") {
+    let resolved_game_root = if let Some(canonical_id) = flag_optional(args, "--vault-canonical-id")
+    {
+        let tree_root = resolve_reallive_game_root_via_vault(canonical_id)?;
+        resolve_reallive_game_root(&tree_root)?
+    } else {
+        let game_root = match flag_optional(args, "--game-root") {
+            Some(value) => PathBuf::from(value),
+            None => match std::env::var_os(REAL_GAME_ROOT_ENV) {
                 Some(value) => PathBuf::from(value),
-                None => match std::env::var_os(REAL_GAME_ROOT_ENV) {
-                    Some(value) => PathBuf::from(value),
-                    None => {
-                        return Err(format!(
-                            "--vault-canonical-id <ID> (vault by-id sourcing), \
-                             or --game-root <PATH> / {REAL_GAME_ROOT_ENV} (raw-path test helper) required"
-                        )
-                        .into());
-                    }
-                },
-            };
-            resolve_reallive_game_root(&game_root)?
-        }
+                None => {
+                    return Err(format!(
+                        "--vault-canonical-id <ID> (vault by-id sourcing), \
+                         or --game-root <PATH> / {REAL_GAME_ROOT_ENV} (raw-path test helper) required"
+                    )
+                    .into());
+                }
+            },
+        };
+        resolve_reallive_game_root(&game_root)?
     };
     let seen_path = resolved_game_root.join("REALLIVEDATA").join("Seen.txt");
     let seen_bytes = fs::read(&seen_path).map_err(|err| -> Box<dyn std::error::Error> {
@@ -372,8 +369,7 @@ fn run_extract_reallive_bundle(args: &[String]) -> Result<(), Box<dyn std::error
     })?;
     if (seen_bytes.len() as u64) < REALLIVE_SEEN_TXT_DIRECTORY_BYTE_LEN {
         return Err(format!(
-            "Seen.txt is shorter than the fixed 10,000-slot directory ({}); refusing to parse",
-            REALLIVE_SEEN_TXT_DIRECTORY_BYTE_LEN
+            "Seen.txt is shorter than the fixed 10,000-slot directory ({REALLIVE_SEEN_TXT_DIRECTORY_BYTE_LEN}); refusing to parse"
         )
         .into());
     }
@@ -541,9 +537,7 @@ fn run_patch_reallive_bundle(args: &[String]) -> Result<(), Box<dyn std::error::
     // code is the documented patchback_target_nonempty Fatal from
     // KAIFUU-211.
     if target_root.exists() && !force {
-        let nonempty = fs::read_dir(&target_root)
-            .map(|mut entries| entries.next().is_some())
-            .unwrap_or(false);
+        let nonempty = fs::read_dir(&target_root).is_ok_and(|mut entries| entries.next().is_some());
         if nonempty {
             return Err(format!(
                 "{PATCHBACK_TARGET_NONEMPTY_CODE}: target {} is non-empty; rerun with --force to overwrite",
@@ -924,7 +918,7 @@ fn resolve_reallive_game_root(game_root: &Path) -> Result<PathBuf, Box<dyn std::
         if children.len() != 1 {
             break;
         }
-        current = children[0].clone();
+        current.clone_from(&children[0]);
         visited += 1;
     }
 
@@ -1278,7 +1272,7 @@ fn run_xp3_command(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
             let archive_path = PathBuf::from(flag(args, "--archive")?);
             let output_dir = PathBuf::from(flag(args, "--output-dir")?);
             let bytes = std::fs::read(&archive_path)
-                .map_err(|error| format!("read {archive_path:?}: {error}"))?;
+                .map_err(|error| format!("read {}: {error}", archive_path.display()))?;
             let manifest = unpack_plain_xp3_to_directory(&bytes, &output_dir).map_err(
                 |error| -> Box<dyn std::error::Error> {
                     format!("{} (semantic: {})", error, error.semantic_code()).into()
@@ -1301,7 +1295,7 @@ fn run_xp3_command(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
                 },
             )?;
             std::fs::write(&output_path, &bytes)
-                .map_err(|error| format!("write {output_path:?}: {error}"))?;
+                .map_err(|error| format!("write {}: {error}", output_path.display()))?;
             println!(
                 "kaifuu xp3 pack: bytes={} sha256={}",
                 bytes.len(),
@@ -1313,7 +1307,7 @@ fn run_xp3_command(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
             let entry_path = flag(args, "--entry-path")?;
             let payload_path = PathBuf::from(flag(args, "--payload")?);
             let payload = std::fs::read(&payload_path)
-                .map_err(|error| format!("read {payload_path:?}: {error}"))?;
+                .map_err(|error| format!("read {}: {error}", payload_path.display()))?;
             let manifest = replace_plain_xp3_entry_payload(&input_dir, entry_path, &payload)
                 .map_err(|error| -> Box<dyn std::error::Error> {
                     format!("{} (semantic: {})", error, error.semantic_code()).into()
@@ -1338,7 +1332,7 @@ fn run_xp3_command(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
             let source_path = PathBuf::from(flag(args, "--source")?);
             let input_dir = PathBuf::from(flag(args, "--input-dir")?);
             let source = std::fs::read(&source_path)
-                .map_err(|error| format!("read {source_path:?}: {error}"))?;
+                .map_err(|error| format!("read {}: {error}", source_path.display()))?;
             let archive =
                 read_plain_xp3_archive(&source).map_err(|error| -> Box<dyn std::error::Error> {
                     format!("{} (semantic: {})", error, error.semantic_code()).into()
@@ -1661,19 +1655,17 @@ fn run_xp3_contract_scaffold(args: &[String]) -> Result<(), Box<dyn std::error::
 
     // Scratch space the harness owns. Use a caller-provided --work-dir when
     // present, else a unique temp directory we clean up afterward.
-    let (work_dir, owns_work_dir) = match flag_optional(args, "--work-dir") {
-        Some(value) => (PathBuf::from(value), false),
-        None => {
-            let unique = format!(
-                "kaifuu-xp3-contract-scaffold-{}-{}",
-                std::process::id(),
-                std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .map(|elapsed| elapsed.as_nanos())
-                    .unwrap_or(0)
-            );
-            (std::env::temp_dir().join(unique), true)
-        }
+    let (work_dir, owns_work_dir) = if let Some(value) = flag_optional(args, "--work-dir") {
+        (PathBuf::from(value), false)
+    } else {
+        let unique = format!(
+            "kaifuu-xp3-contract-scaffold-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |elapsed| elapsed.as_nanos())
+        );
+        (std::env::temp_dir().join(unique), true)
     };
 
     let report = run_encrypted_xp3_contract_scaffold(&fixture, &work_dir)?;
@@ -1755,13 +1747,10 @@ fn run_key_command(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
             let secret_ref = SecretRef::new(flag(args, "--secret-ref")?.to_string())?;
             let key_purpose = flag(args, "--purpose")?.to_string();
             let engine_profile_id = flag(args, "--engine-profile-id")?.to_string();
-            let source_hash = ProofHash::new(
-                flag_optional(args, "--source-hash")
-                    .map(str::to_string)
-                    .unwrap_or_else(|| {
-                        sha256_hash_bytes(format!("{engine_profile_id}:{key_purpose}").as_bytes())
-                    }),
-            )?;
+            let source_hash = ProofHash::new(flag_optional(args, "--source-hash").map_or_else(
+                || sha256_hash_bytes(format!("{engine_profile_id}:{key_purpose}").as_bytes()),
+                str::to_string,
+            ))?;
             let output = PathBuf::from(flag(args, "--output")?);
             let source = match flag_optional(args, "--source").unwrap_or("manual") {
                 "manual" | "manual-key-entry" => LocalKeyImportSource::ManualKeyEntry,
@@ -2219,8 +2208,7 @@ fn run_golden_command(
     let game_dir = PathBuf::from(positional(args, 1)?);
     let output = PathBuf::from(flag(args, "--output")?);
     let work_dir = flag_optional(args, "--work-dir")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| output.with_extension("work"));
+        .map_or_else(|| output.with_extension("work"), PathBuf::from);
     let translated_patch_export = flag_optional(args, "--translated-patch")
         .map(PathBuf::from)
         .map(|path| read_json::<serde_json::Value>(&path))
@@ -2282,7 +2270,7 @@ fn run_profile_command(
                         &detection,
                         &game_dir,
                         PartialAdapterCommand::Profile,
-                    )?;
+                    );
                     write_partial_adapter_report(&output, &report)?;
                 }
             }
@@ -2311,7 +2299,7 @@ fn run_profile_command(
                         &detection,
                         &game_dir,
                         PartialAdapterCommand::Profile,
-                    )?;
+                    );
                     write_partial_adapter_report(&output, &report)?;
                 }
             }
@@ -2423,12 +2411,12 @@ fn build_partial_adapter_report(
     detection: &DetectionResult,
     game_dir: &Path,
     command: PartialAdapterCommand,
-) -> KaifuuResult<PartialAdapterReport> {
+) -> PartialAdapterReport {
     match detection.adapter_id.as_str() {
         kaifuu_engine_fixture::REALLIVE_DETECTOR_ADAPTER_ID => {
             build_reallive_partial_report(detection, game_dir, command)
         }
-        _ => Ok(build_generic_partial_report(detection, command)),
+        _ => build_generic_partial_report(detection, command),
     }
 }
 
@@ -2469,7 +2457,7 @@ fn build_reallive_partial_report(
     detection: &DetectionResult,
     game_dir: &Path,
     command: PartialAdapterCommand,
-) -> KaifuuResult<PartialAdapterReport> {
+) -> PartialAdapterReport {
     let resolved_data_dir = kaifuu_reallive::detect_reallive_data_dir(game_dir)
         .ok()
         .flatten()
@@ -2587,14 +2575,14 @@ fn build_reallive_partial_report(
 
     inventory.sources = sources;
 
-    Ok(PartialAdapterReport::new(
+    PartialAdapterReport::new(
         detection.adapter_id.clone(),
         detection.detected_variant.clone(),
         command,
         detection.evidence.clone(),
         diagnostics,
         inventory,
-    ))
+    )
 }
 
 fn resolve_reallive_seen_path_for_partial(data_root: &Path) -> PathBuf {
@@ -2613,8 +2601,7 @@ fn resolve_reallive_seen_path_for_partial(data_root: &Path) -> PathBuf {
 fn relative_to_game_dir(game_dir: &Path, target: &Path) -> String {
     let display = target
         .strip_prefix(game_dir)
-        .map(Path::to_path_buf)
-        .unwrap_or_else(|_| target.to_path_buf());
+        .map_or_else(|_| target.to_path_buf(), Path::to_path_buf);
     display
         .components()
         .map(|component| component.as_os_str().to_string_lossy().to_string())
@@ -3005,6 +2992,12 @@ mod tests {
     #[ignore = "requires ITOTORI_VAULT_ROOT=/archive/vault + ITOTORI_REQUIRE_REAL_BYTES=1"]
     fn vault_sourced_extract_resolves_sweetie_hd_by_id_to_known_seen_bytes() {
         use sha2::{Digest, Sha256};
+        use std::fmt::Write as _;
+
+        const SWEETIE_CANONICAL_ID: &str =
+            "oshioki-sweetie-koi-suru-onee-san-wa-urahara-desu.vj013077.v1-0.ja";
+        const SWEETIE_SEEN_SHA256: &str =
+            "903f538b821a9b1e6cb3d399582915c0bcf73b0a058ecc907caf6017a4fa209f";
 
         if std::env::var("ITOTORI_REQUIRE_REAL_BYTES").ok().as_deref() != Some("1") {
             eprintln!("skipping: set ITOTORI_REQUIRE_REAL_BYTES=1 to run this proof");
@@ -3015,11 +3008,6 @@ mod tests {
             return;
         }
 
-        const SWEETIE_CANONICAL_ID: &str =
-            "oshioki-sweetie-koi-suru-onee-san-wa-urahara-desu.vj013077.v1-0.ja";
-        const SWEETIE_SEEN_SHA256: &str =
-            "903f538b821a9b1e6cb3d399582915c0bcf73b0a058ecc907caf6017a4fa209f";
-
         let tree_root = resolve_reallive_game_root_via_vault(SWEETIE_CANONICAL_ID)
             .expect("by-id vault sourcing must resolve Sweetie HD");
         let seen_path = resolve_reallive_seen_path(&tree_root)
@@ -3027,11 +3015,10 @@ mod tests {
         let bytes = std::fs::read(&seen_path).expect("read vault-sourced Seen.txt");
         let mut hasher = Sha256::new();
         hasher.update(&bytes);
-        let sha = hasher
-            .finalize()
-            .iter()
-            .map(|b| format!("{b:02x}"))
-            .collect::<String>();
+        let sha = hasher.finalize().iter().fold(String::new(), |mut acc, b| {
+            let _ = write!(acc, "{b:02x}");
+            acc
+        });
         eprintln!("[alpha-006a] vault-sourced Sweetie HD Seen.txt sha256 = {sha}");
         assert_eq!(
             sha, SWEETIE_SEEN_SHA256,
@@ -3321,7 +3308,7 @@ mod tests {
     }
 
     fn run_cli(args: &[&str]) {
-        run_with_args(args.iter().map(|arg| arg.to_string()).collect()).unwrap();
+        run_with_args(args.iter().map(std::string::ToString::to_string).collect()).unwrap();
     }
 
     fn run_cli_with_registry(args: &[&str], registry: &AdapterRegistry) {
@@ -3332,7 +3319,10 @@ mod tests {
         args: &[&str],
         registry: &AdapterRegistry,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        run_with_args_and_registry(args.iter().map(|arg| arg.to_string()).collect(), registry)
+        run_with_args_and_registry(
+            args.iter().map(std::string::ToString::to_string).collect(),
+            registry,
+        )
     }
 
     #[test]
@@ -4265,7 +4255,7 @@ mod tests {
                 layered_access: None,
                 capabilities: test_capabilities().reports,
                 requirements: vec![],
-                metadata: Default::default(),
+                metadata: std::collections::BTreeMap::new(),
             };
             profile.normalize();
             profile
@@ -5831,7 +5821,7 @@ mod tests {
                 output_dir.join("patch-result.json").to_str().unwrap(),
             ]
             .iter()
-            .map(|arg| arg.to_string())
+            .map(std::string::ToString::to_string)
             .collect(),
         );
 
@@ -5863,7 +5853,7 @@ mod tests {
                 game_dir.join("report.json").to_str().unwrap(),
             ]
             .iter()
-            .map(|arg| arg.to_string())
+            .map(std::string::ToString::to_string)
             .collect(),
         );
 
@@ -5897,7 +5887,7 @@ mod tests {
                 output_dir.to_str().unwrap(),
             ]
             .iter()
-            .map(|arg| arg.to_string())
+            .map(std::string::ToString::to_string)
             .collect(),
         );
 
@@ -5934,7 +5924,7 @@ mod tests {
                 report_link.join("report.json").to_str().unwrap(),
             ]
             .iter()
-            .map(|arg| arg.to_string())
+            .map(std::string::ToString::to_string)
             .collect(),
         );
 
@@ -5971,7 +5961,7 @@ mod tests {
                 report_link.join("patch-result.json").to_str().unwrap(),
             ]
             .iter()
-            .map(|arg| arg.to_string())
+            .map(std::string::ToString::to_string)
             .collect(),
         );
 
@@ -6008,7 +5998,7 @@ mod tests {
                 game_dir.join("report.json").to_str().unwrap(),
             ]
             .iter()
-            .map(|arg| arg.to_string())
+            .map(std::string::ToString::to_string)
             .collect(),
         );
 
@@ -6051,7 +6041,7 @@ mod tests {
                     .unwrap(),
             ]
             .iter()
-            .map(|arg| arg.to_string())
+            .map(std::string::ToString::to_string)
             .collect(),
         );
 
@@ -6103,7 +6093,7 @@ mod tests {
                 patched_dir.to_str().unwrap(),
             ]
             .iter()
-            .map(|arg| arg.to_string())
+            .map(std::string::ToString::to_string)
             .collect(),
         );
 
@@ -6136,7 +6126,7 @@ mod tests {
                 output_dir.to_str().unwrap(),
             ]
             .iter()
-            .map(|arg| arg.to_string())
+            .map(std::string::ToString::to_string)
             .collect(),
             &registry,
         );
@@ -6174,7 +6164,7 @@ mod tests {
                 output_dir.to_str().unwrap(),
             ]
             .iter()
-            .map(|arg| arg.to_string())
+            .map(std::string::ToString::to_string)
             .collect(),
             &registry,
         );
@@ -6221,7 +6211,7 @@ mod tests {
                 output_dir.to_str().unwrap(),
             ]
             .iter()
-            .map(|arg| arg.to_string())
+            .map(std::string::ToString::to_string)
             .collect(),
             &registry,
         );
@@ -6257,7 +6247,7 @@ mod tests {
                 output_dir.to_str().unwrap(),
             ]
             .iter()
-            .map(|arg| arg.to_string())
+            .map(std::string::ToString::to_string)
             .collect(),
             &registry,
         );
@@ -6298,7 +6288,7 @@ mod tests {
                 game_dir.to_str().unwrap(),
             ]
             .iter()
-            .map(|arg| arg.to_string())
+            .map(std::string::ToString::to_string)
             .collect(),
             &registry,
         );
@@ -6319,7 +6309,7 @@ mod tests {
                 nested_output.to_str().unwrap(),
             ]
             .iter()
-            .map(|arg| arg.to_string())
+            .map(std::string::ToString::to_string)
             .collect(),
             &registry,
         );
@@ -6372,7 +6362,7 @@ mod tests {
                 "--force",
             ]
             .iter()
-            .map(|arg| arg.to_string())
+            .map(std::string::ToString::to_string)
             .collect::<Vec<_>>(),
         );
 
@@ -6438,7 +6428,7 @@ mod tests {
                 "--force",
             ]
             .iter()
-            .map(|arg| arg.to_string())
+            .map(std::string::ToString::to_string)
             .collect::<Vec<_>>(),
         );
 
@@ -6572,7 +6562,7 @@ mod tests {
                 output_dir.to_str().unwrap(),
             ]
             .iter()
-            .map(|arg| arg.to_string())
+            .map(std::string::ToString::to_string)
             .collect(),
             &registry,
         );
@@ -6610,7 +6600,7 @@ mod tests {
                 output_dir.to_str().unwrap(),
             ]
             .iter()
-            .map(|arg| arg.to_string())
+            .map(std::string::ToString::to_string)
             .collect(),
             &registry,
         );
@@ -6661,7 +6651,7 @@ mod tests {
                 output_dir.to_str().unwrap(),
             ]
             .iter()
-            .map(|arg| arg.to_string())
+            .map(std::string::ToString::to_string)
             .collect(),
             &registry,
         );
@@ -6741,7 +6731,7 @@ mod tests {
                 output_dir.to_str().unwrap(),
             ]
             .iter()
-            .map(|arg| arg.to_string())
+            .map(std::string::ToString::to_string)
             .collect(),
         );
 
@@ -6785,7 +6775,7 @@ mod tests {
                 output_dir.to_str().unwrap(),
             ]
             .iter()
-            .map(|arg| arg.to_string())
+            .map(std::string::ToString::to_string)
             .collect(),
             &registry,
         );
@@ -6894,7 +6884,7 @@ mod tests {
                     output_dir.to_str().unwrap(),
                 ]
                 .iter()
-                .map(|arg| arg.to_string())
+                .map(std::string::ToString::to_string)
                 .collect(),
                 &registry,
             );
@@ -6981,7 +6971,7 @@ mod tests {
                 report_path.to_str().unwrap(),
             ]
             .iter()
-            .map(|arg| arg.to_string())
+            .map(std::string::ToString::to_string)
             .collect(),
         );
 
@@ -7031,7 +7021,7 @@ mod tests {
                 report_path.to_str().unwrap(),
             ]
             .iter()
-            .map(|arg| arg.to_string())
+            .map(std::string::ToString::to_string)
             .collect(),
         );
 
@@ -7386,7 +7376,7 @@ mod tests {
                 "kaifuu-rpg-maker-missing-image-evidence",
             ]
             .iter()
-            .map(|arg| arg.to_string())
+            .map(std::string::ToString::to_string)
             .collect(),
         );
 
@@ -8778,7 +8768,7 @@ mod tests {
                 output.to_str().unwrap(),
             ]
             .iter()
-            .map(|arg| arg.to_string())
+            .map(std::string::ToString::to_string)
             .collect(),
         )
     }
@@ -9182,7 +9172,7 @@ mod tests {
                 target.to_str().unwrap(),
             ]
             .iter()
-            .map(|arg| arg.to_string())
+            .map(std::string::ToString::to_string)
             .collect(),
         );
         let error = result.unwrap_err().to_string();
@@ -9212,7 +9202,7 @@ mod tests {
                 target.to_str().unwrap(),
             ]
             .iter()
-            .map(|arg| arg.to_string())
+            .map(std::string::ToString::to_string)
             .collect(),
         );
         let error = result.unwrap_err().to_string();
@@ -9239,7 +9229,7 @@ mod tests {
                 target.to_str().unwrap(),
             ]
             .iter()
-            .map(|arg| arg.to_string())
+            .map(std::string::ToString::to_string)
             .collect(),
         );
         let error = result.unwrap_err().to_string();
@@ -9284,7 +9274,7 @@ mod tests {
                 new_payload_path.to_str().unwrap(),
             ]
             .iter()
-            .map(|arg| arg.to_string())
+            .map(std::string::ToString::to_string)
             .collect(),
         );
         let error = result.unwrap_err().to_string();
@@ -9338,7 +9328,7 @@ mod tests {
                 output.to_str().unwrap(),
             ]
             .iter()
-            .map(|arg| arg.to_string())
+            .map(std::string::ToString::to_string)
             .collect(),
         )
     }
@@ -9392,7 +9382,7 @@ mod tests {
                     .unwrap(),
             ]
             .iter()
-            .map(|arg| arg.to_string())
+            .map(std::string::ToString::to_string)
             .collect(),
         )
         .unwrap();

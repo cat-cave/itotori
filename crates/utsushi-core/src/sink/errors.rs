@@ -133,8 +133,7 @@ impl fmt::Display for SinkError {
                 reason,
             } => write!(
                 formatter,
-                "{code}: artifact_id={} reason={}",
-                artifact_id, reason
+                "{code}: artifact_id={artifact_id} reason={reason}"
             ),
             Self::RedactionViolation { sink, field } => {
                 write!(formatter, "{code}: sink={} field={}", sink.as_str(), field)

@@ -153,7 +153,7 @@ fn shannon_entropy(bytes: &[u8]) -> f64 {
     }
     let n = bytes.len() as f64;
     let mut h = 0.0f64;
-    for c in hist.iter() {
+    for c in &hist {
         if *c == 0 {
             continue;
         }
@@ -315,8 +315,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             // Header byte stats on the WHOLE decompressed stream.
             let h_whole = shannon_entropy(&dst);
             let h_head = shannon_entropy(&dst[..dst.len().min(256)]);
-            println!("entropy(dst): {:.3} bits/byte", h_whole);
-            println!("entropy(dst[..256]): {:.3} bits/byte", h_head);
+            println!("entropy(dst): {h_whole:.3} bits/byte");
+            println!("entropy(dst[..256]): {h_head:.3} bits/byte");
             let top = top_bytes(&dst, 16);
             println!("top 16 byte frequencies (whole dst):");
             for (b, c) in &top {
@@ -350,29 +350,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             // Known-plaintext XOR window: assume dst[0] *should* be one of the
             // opener bytes; compute candidate single-byte XOR masks if outcome
             // is not A.
-            if !is_opener_byte(first) {
-                println!("--- known-plaintext XOR-mask candidates for dst[0] ---");
-                for plain in [0x00u8, 0x0A, 0x21, 0x23, 0x24, 0x2C, 0x40] {
-                    println!(
-                        "  if plaintext[0]=0x{:02x}: mask_byte=0x{:02x}",
-                        plain,
-                        first ^ plain
-                    );
-                }
-                // Check whether dst looks like a periodic-XOR'd plaintext by
-                // testing common period candidates (16, 32, 256, etc.). For
-                // each candidate plaintext opener, see if mask is periodic.
-                println!(
-                    "--- mask-period probe: assume plaintext[0]=0x23 (Command), period in {{16,32,256}} ---"
-                );
-                let plain0 = 0x23u8;
-                let _mask0 = first ^ plain0;
-                // Recover a candidate mask by XORing dst[..256] with a guessed
-                // pattern of opener bytes; just emit dst[..16] and dst[..32]
-                // for the user to eyeball.
-                println!("dst[0..16] raw: {}", hex_row(&dst[..dst.len().min(16)]));
-                println!("dst[16..32] raw: {}", hex_row(&dst[16..dst.len().min(32)]));
-            } else {
+            if is_opener_byte(first) {
                 // Outcome A confirmed: emit a longer dump for traceability.
                 println!("--- outcome A confirmed: emit first 128 bytes of dst ---");
                 let n = dst.len().min(128);
@@ -424,6 +402,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                     elem_idx += 1;
                 }
+            } else {
+                println!("--- known-plaintext XOR-mask candidates for dst[0] ---");
+                for plain in [0x00u8, 0x0A, 0x21, 0x23, 0x24, 0x2C, 0x40] {
+                    println!(
+                        "  if plaintext[0]=0x{:02x}: mask_byte=0x{:02x}",
+                        plain,
+                        first ^ plain
+                    );
+                }
+                // Check whether dst looks like a periodic-XOR'd plaintext by
+                // testing common period candidates (16, 32, 256, etc.). For
+                // each candidate plaintext opener, see if mask is periodic.
+                println!(
+                    "--- mask-period probe: assume plaintext[0]=0x23 (Command), period in {{16,32,256}} ---"
+                );
+                // Recover a candidate mask by XORing dst[..256] with a guessed
+                // pattern of opener bytes; just emit dst[..16] and dst[..32]
+                // for the user to eyeball.
+                println!("dst[0..16] raw: {}", hex_row(&dst[..dst.len().min(16)]));
+                println!("dst[16..32] raw: {}", hex_row(&dst[16..dst.len().min(32)]));
             }
         }
         Err(e) => {

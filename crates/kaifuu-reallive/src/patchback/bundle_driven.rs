@@ -317,7 +317,7 @@ pub fn apply_translated_bundle(
     // Resolve each translation to a (scene_entry_index, edit) tuple.
     let mut edits_by_scene_index: BTreeMap<usize, Vec<ResolvedEdit>> = BTreeMap::new();
     for (target, unit) in bundle.targets.iter().zip(bundle.source.units.iter()) {
-        let resolved = resolve_edit(target, unit, &scene_index, opts)?;
+        let resolved = resolve_edit(target, unit, &scene_index, *opts)?;
         edits_by_scene_index
             .entry(resolved.scene_entry_index)
             .or_default()
@@ -548,7 +548,7 @@ fn resolve_edit(
     target: &TranslatedUnitTarget,
     unit: &kaifuu_core::LocalizationUnitV02,
     scene_index: &RealLiveSceneIndex,
-    opts: &PatchbackOpts,
+    opts: PatchbackOpts,
 ) -> Result<ResolvedEdit, PatchbackError> {
     if target.bridge_unit_id != unit.bridge_unit_id {
         return Err(PatchbackError::BundleSchemaInvalid {
@@ -1494,6 +1494,7 @@ mod tests {
     #[test]
     fn binary_catch_all_textout_survives_patchback_byte_identical_while_dialogue_is_translated() {
         use crate::test_fixtures::{SCENE1_BINARY_BLOCK_214B, SCENE2011_DIALOGUE_SJIS};
+        const SENTINEL: &str = "[EN] sentinel dialogue line";
 
         // Scene bytecode: [real dialogue Textout][MetaLine]
         // [214-byte binary Textout][MetaLine]. The producer surfaces only
@@ -1531,7 +1532,6 @@ mod tests {
         );
 
         // Translate the single dialogue unit to an en-US sentinel.
-        const SENTINEL: &str = "[EN] sentinel dialogue line";
         let mut translated_value = produced.json.clone();
         {
             let units = translated_value["units"].as_array_mut().expect("units");

@@ -338,8 +338,7 @@ fn dialogue_scene_surfaces_readable_sjis_textouts_as_translatable_units_real_byt
     for unit in units_array {
         for span in unit["spans"]
             .as_array()
-            .map(|s| s.as_slice())
-            .unwrap_or(&[])
+            .map_or(&[][..], std::vec::Vec::as_slice)
         {
             if let Some(name) = span["parsedName"].as_str() {
                 emitted_parsed_names.insert(name.to_string());

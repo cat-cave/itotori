@@ -123,7 +123,7 @@ const _: () = {
     // (Browser / Native / Wine / Fixture). A new variant added without
     // revising the facade contract will not compile because the match
     // is exhaustive.
-    let _check = |tag: SourceTag| -> u8 {
+    let check = |tag: SourceTag| -> u8 {
         match tag {
             SourceTag::Browser => 0,
             SourceTag::Native => 1,
@@ -131,7 +131,7 @@ const _: () = {
             SourceTag::Fixture => 3,
         }
     };
-    let _ = _check;
+    let _ = check;
 };
 
 /// `const` string-equality helper used by the assertion block above.

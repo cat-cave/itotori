@@ -72,12 +72,13 @@ fn kaifuu_cli_binary() -> PathBuf {
 
 fn sha256_hex(bytes: &[u8]) -> String {
     use sha2::{Digest, Sha256};
+    use std::fmt::Write as _;
     let mut hasher = Sha256::new();
     hasher.update(bytes);
     let digest = hasher.finalize();
     let mut hex = String::with_capacity(64);
-    for byte in digest.iter() {
-        hex.push_str(&format!("{byte:02x}"));
+    for byte in &digest {
+        let _ = write!(hex, "{byte:02x}");
     }
     hex
 }

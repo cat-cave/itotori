@@ -263,7 +263,7 @@ fn evaluate_binary(
                 return Ok(0);
             }
             let r = evaluate(rhs, banks)?;
-            return Ok(if r != 0 { 1 } else { 0 });
+            return Ok(i32::from(r != 0));
         }
         ExprOp::LogicOr => {
             let l = evaluate(lhs, banks)?;
@@ -271,7 +271,7 @@ fn evaluate_binary(
                 return Ok(1);
             }
             let r = evaluate(rhs, banks)?;
-            return Ok(if r != 0 { 1 } else { 0 });
+            return Ok(i32::from(r != 0));
         }
         _ => {}
     }
@@ -310,7 +310,7 @@ fn evaluate_binary(
 }
 
 fn bool_to_i32(b: bool) -> i32 {
-    if b { 1 } else { 0 }
+    i32::from(b)
 }
 
 /// Evaluate an [`ExprNode::Assignment`] node — writes the source value

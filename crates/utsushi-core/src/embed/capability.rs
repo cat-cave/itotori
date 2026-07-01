@@ -405,7 +405,7 @@ mod tests {
         // supported entry with all five ids cycled; duplicates would normally
         // fire first, so we deliberately use the sort_key to seed a sequence
         // that exceeds the ceiling before validate finds the duplicate.
-        for index in 0..(EMBED_MAX_CAPABILITIES + 1) {
+        for index in 0..=EMBED_MAX_CAPABILITIES {
             let id = match index % 5 {
                 0 => EmbedCapabilityId::State,
                 1 => EmbedCapabilityId::Trace,

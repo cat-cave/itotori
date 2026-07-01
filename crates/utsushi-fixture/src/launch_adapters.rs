@@ -643,26 +643,23 @@ mod browser_detection {
     ) -> Result<ChromiumProbeOutcome, BrowserUnavailabilityReason> {
         // 1. Resolve a binary candidate against the configured/env/PATH/platform
         //    order documented in the descriptor limitation list.
-        let (program, source) = match resolve_binary_candidate(configured) {
-            Some(found) => found,
-            None => {
-                // candidates_tried = configured + env probe + PATH candidates
-                // + platform paths (all attempted unsuccessfully)
-                let tried = 1 // env (if absent it still counts as one slot inspected)
-                    + BROWSER_CANDIDATES.len()
-                    + BROWSER_PLATFORM_PATHS.len();
-                let source = if configured.is_some() {
-                    BrowserDetectionLabel::ConfiguredUnavailable
-                } else if env::var_os("UTSUSHI_BROWSER_BIN").is_some() {
-                    BrowserDetectionLabel::EnvironmentUnavailable
-                } else {
-                    BrowserDetectionLabel::Unavailable
-                };
-                return Err(BrowserUnavailabilityReason::NoBinaryFound {
-                    source,
-                    candidates_tried: tried,
-                });
-            }
+        let Some((program, source)) = resolve_binary_candidate(configured) else {
+            // candidates_tried = configured + env probe + PATH candidates
+            // + platform paths (all attempted unsuccessfully)
+            let tried = 1 // env (if absent it still counts as one slot inspected)
+                + BROWSER_CANDIDATES.len()
+                + BROWSER_PLATFORM_PATHS.len();
+            let source = if configured.is_some() {
+                BrowserDetectionLabel::ConfiguredUnavailable
+            } else if env::var_os("UTSUSHI_BROWSER_BIN").is_some() {
+                BrowserDetectionLabel::EnvironmentUnavailable
+            } else {
+                BrowserDetectionLabel::Unavailable
+            };
+            return Err(BrowserUnavailabilityReason::NoBinaryFound {
+                source,
+                candidates_tried: tried,
+            });
         };
 
         // 2. Bounded version probe.
@@ -697,12 +694,12 @@ mod browser_detection {
             return resolve_program_candidate(&program)
                 .map(|path| (path, BrowserDetectionLabel::Environment));
         }
-        for candidate in BROWSER_CANDIDATES.iter() {
+        for candidate in BROWSER_CANDIDATES {
             if let Some(path) = resolve_program_candidate(candidate) {
                 return Some((path, BrowserDetectionLabel::Path));
             }
         }
-        for candidate in BROWSER_PLATFORM_PATHS.iter() {
+        for candidate in BROWSER_PLATFORM_PATHS {
             if is_launchable_file(Path::new(candidate)) {
                 return Some((
                     PathBuf::from(*candidate),
@@ -1747,10 +1744,10 @@ exit 0
         let artifact_root = root.join("runtime-artifacts");
         let fake_browser = fake_browser(
             &root,
-            r#"#!/bin/sh
+            r"#!/bin/sh
 set -eu
 exit 0
-"#,
+",
         );
         let adapter = BrowserLaunchAdapter::with_browser_program(fake_browser);
 
@@ -1778,10 +1775,10 @@ exit 0
         fs::write(&stale_path, b"\x89PNG\r\n\x1a\nstale screenshot bytes\n").unwrap();
         let fake_browser = fake_browser(
             &root,
-            r#"#!/bin/sh
+            r"#!/bin/sh
 set -eu
 exit 0
-"#,
+",
         );
         let adapter = BrowserLaunchAdapter::with_browser_program(fake_browser);
 
@@ -1837,6 +1834,10 @@ exit 0
 
     #[cfg(unix)]
     #[test]
+    // reason: this test mutates process env via the unavoidably unsafe
+    // std::env::{set_var,remove_var} (edition 2024) through a scoped EnvGuard.
+    // Test-only; src stays unsafe-free.
+    #[allow(unsafe_code)]
     fn browser_run_returns_chromium_unavailable_when_env_browser_bin_broken() {
         // Scoped env guard: this test sets UTSUSHI_BROWSER_BIN to a bogus
         // path, asserts the typed semantic outcome, and restores the

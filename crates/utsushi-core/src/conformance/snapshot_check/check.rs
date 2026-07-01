@@ -485,7 +485,7 @@ mod tests {
             })
             .collect();
         let mut sorted = paths.clone();
-        sorted.sort();
+        sorted.sort_unstable();
         assert_eq!(paths, sorted, "evidence must be sorted ascending");
         assert_eq!(paths, vec!["port.frame", "port.last"]);
     }

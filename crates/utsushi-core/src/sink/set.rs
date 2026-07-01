@@ -81,21 +81,18 @@ impl SinkSet {
     /// Capability summary suitable for descriptor / conformance introspection.
     pub fn capabilities(&self) -> SinkCapabilitySummary {
         SinkCapabilitySummary {
-            text: self
-                .text
-                .as_deref()
-                .map(|sink| sink.capability())
-                .unwrap_or(SinkCapability::Unsupported),
-            frame: self
-                .frame
-                .as_deref()
-                .map(|sink| sink.capability())
-                .unwrap_or(SinkCapability::Unsupported),
-            audio: self
-                .audio
-                .as_deref()
-                .map(|sink| sink.capability())
-                .unwrap_or(SinkCapability::Unsupported),
+            text: self.text.as_deref().map_or(
+                SinkCapability::Unsupported,
+                super::text::TextSurfaceSink::capability,
+            ),
+            frame: self.frame.as_deref().map_or(
+                SinkCapability::Unsupported,
+                super::frame::FrameArtifactSink::capability,
+            ),
+            audio: self.audio.as_deref().map_or(
+                SinkCapability::Unsupported,
+                super::audio::AudioEventSink::capability,
+            ),
         }
     }
 }

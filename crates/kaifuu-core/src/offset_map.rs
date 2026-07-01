@@ -1366,16 +1366,15 @@ fn validate_required_u64_field(
     value: Option<&Value>,
     field: &str,
 ) -> Option<u64> {
-    match value.and_then(Value::as_u64) {
-        Some(value) => Some(value),
-        None => {
-            diagnostics.push(OffsetMapDiagnostic::new(
-                "kaifuu.invalid_offset",
-                field,
-                format!("{field} must be a non-negative integer"),
-            ));
-            None
-        }
+    if let Some(value) = value.and_then(Value::as_u64) {
+        Some(value)
+    } else {
+        diagnostics.push(OffsetMapDiagnostic::new(
+            "kaifuu.invalid_offset",
+            field,
+            format!("{field} must be a non-negative integer"),
+        ));
+        None
     }
 }
 
@@ -2715,10 +2714,11 @@ fn relocation_diagnostic(
 }
 
 fn bytes_to_hex(bytes: &[u8]) -> String {
-    bytes
-        .iter()
-        .map(|byte| format!("{byte:02x}"))
-        .collect::<String>()
+    use std::fmt::Write as _;
+    bytes.iter().fold(String::new(), |mut acc, byte| {
+        let _ = write!(acc, "{byte:02x}");
+        acc
+    })
 }
 
 #[cfg(test)]

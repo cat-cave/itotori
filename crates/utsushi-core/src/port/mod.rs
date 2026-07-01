@@ -159,6 +159,7 @@ fn descriptor_from_manifest(manifest: &PortManifest) -> RuntimeAdapterDescriptor
     let capabilities = manifest
         .capabilities
         .iter()
+        .copied()
         .filter_map(port_capability_to_runtime_capability)
         .collect::<Vec<_>>();
     let capability_class = derive_capability_class(manifest);
@@ -172,11 +173,15 @@ fn descriptor_from_manifest(manifest: &PortManifest) -> RuntimeAdapterDescriptor
         capabilities,
         approximation_tiers: vec![ApproximationTier::None],
         diagnostics: Vec::new(),
-        limitations: manifest.limitations.iter().map(|s| s.to_string()).collect(),
+        limitations: manifest
+            .limitations
+            .iter()
+            .map(std::string::ToString::to_string)
+            .collect(),
     }
 }
 
-fn port_capability_to_runtime_capability(capability: &PortCapability) -> Option<RuntimeCapability> {
+fn port_capability_to_runtime_capability(capability: PortCapability) -> Option<RuntimeCapability> {
     match capability {
         PortCapability::Observe => Some(RuntimeCapability::Trace),
         PortCapability::Capture => Some(RuntimeCapability::FrameCapture),
@@ -242,7 +247,11 @@ fn derive_capability_contract(
         manifest.fidelity_tier_max,
         manifest.evidence_tier_max,
         features,
-        manifest.limitations.iter().map(|s| s.to_string()).collect(),
+        manifest
+            .limitations
+            .iter()
+            .map(std::string::ToString::to_string)
+            .collect(),
     )
 }
 

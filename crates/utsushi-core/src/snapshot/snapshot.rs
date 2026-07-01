@@ -261,7 +261,8 @@ fn is_leap_year(year: u32) -> bool {
 #[serde(rename_all = "camelCase")]
 pub struct Snapshot {
     schema_version: SnapshotSchemaVersion,
-    snapshot_id: SnapshotId,
+    #[serde(rename = "snapshotId")]
+    id: SnapshotId,
     /// RFC3339 instant supplied by the runner. The substrate never calls
     /// `SystemTime::now()`.
     generated_at: String,
@@ -287,7 +288,7 @@ impl Snapshot {
     }
     /// Snapshot id.
     pub fn snapshot_id(&self) -> &SnapshotId {
-        &self.snapshot_id
+        &self.id
     }
     /// RFC3339 instant supplied by the runner.
     pub fn generated_at(&self) -> &str {
@@ -322,7 +323,7 @@ impl Snapshot {
         }
         // Re-run id validators so deserialized payloads cannot smuggle
         // malformed metadata past serde.
-        SnapshotId::parse(self.snapshot_id.as_str())?;
+        SnapshotId::parse(self.id.as_str())?;
         validate_inspectable_id(&self.inspectable_id)?;
         validate_generated_at(&self.generated_at)?;
         if self.state_tree.is_empty() {
@@ -529,7 +530,7 @@ pub fn take_snapshot(
     };
     let snapshot = Snapshot {
         schema_version: SnapshotSchemaVersion::current(),
-        snapshot_id,
+        id: snapshot_id,
         generated_at: request.generated_at.to_string(),
         inspectable_id: inspectable_id.to_string(),
         state_tree,
@@ -874,14 +875,6 @@ mod tests {
 
     #[test]
     fn restore_snapshot_with_unknown_state_path_returns_restore_state_path_unknown() {
-        // Construct a snapshot whose state tree carries a path the port
-        // does not consume.
-        let mut tree = StateTree::new();
-        tree.insert(
-            StatePath::parse("port.unknown_thing").expect("p"),
-            StateValue::Uint { value: 1 },
-        )
-        .expect("insert");
         struct PortReturningSeed;
         impl Inspectable for PortReturningSeed {
             fn inspectable_id(&self) -> &'static str {
@@ -896,6 +889,15 @@ mod tests {
                 Ok(tree)
             }
         }
+
+        // Construct a snapshot whose state tree carries a path the port
+        // does not consume.
+        let mut tree = StateTree::new();
+        tree.insert(
+            StatePath::parse("port.unknown_thing").expect("p"),
+            StateValue::Uint { value: 1 },
+        )
+        .expect("insert");
         let seed_port = PortReturningSeed;
         let snapshot = take(&seed_port, 1);
         let mut port = FakePort {
@@ -1016,9 +1018,6 @@ mod tests {
 
     #[test]
     fn restore_snapshot_with_old_schema_version_returns_schema_version_mismatch() {
-        let snapshot = make_snapshot();
-        let mut json = snapshot.to_json_value().expect("json");
-        json["schemaVersion"] = "0.0.1".into();
         // Bypass `from_json_value` validation by constructing the
         // Snapshot manually through serde — we want to exercise the
         // `restore_snapshot` check, not the from_json_value check.
@@ -1049,6 +1048,10 @@ mod tests {
                 .expect("snapshot")
             }
         }
+
+        let snapshot = make_snapshot();
+        let mut json = snapshot.to_json_value().expect("json");
+        json["schemaVersion"] = "0.0.1".into();
         let raw = Raw {
             schema_version: SnapshotSchemaVersion("0.0.1".to_string()),
             snapshot_id: snapshot.snapshot_id().clone(),

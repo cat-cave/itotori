@@ -515,7 +515,7 @@ pub(crate) fn legacy_fixture_id(kind: &str, index: usize) -> String {
     while compact.len() < 8 {
         compact.push('0');
     }
-    format!("019ed000-0000-7000-8000-{}{:04}", compact, index)
+    format!("019ed000-0000-7000-8000-{compact}{index:04}")
 }
 
 pub(crate) fn deterministic_uuid(kind: &str, index: usize) -> String {

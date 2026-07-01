@@ -99,10 +99,11 @@ pub fn verify_fixture_hashes<F: FixtureStore>(
 /// dep tree can use it directly; we expose ours so the helper is
 /// dep-free for callers that only depend on `utsushi-core`.
 pub fn sha256_hex(bytes: &[u8]) -> String {
+    use std::fmt::Write as _;
     let digest = sha256_digest(bytes);
     let mut out = String::with_capacity(64);
     for byte in digest {
-        out.push_str(&format!("{:02x}", byte));
+        let _ = write!(out, "{byte:02x}");
     }
     out
 }

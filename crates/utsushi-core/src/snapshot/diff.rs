@@ -362,7 +362,7 @@ mod tests {
             .map(|change| change.path.as_str())
             .collect();
         let mut sorted = paths.clone();
-        sorted.sort();
+        sorted.sort_unstable();
         assert_eq!(paths, sorted);
     }
 

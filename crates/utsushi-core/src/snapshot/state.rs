@@ -373,8 +373,11 @@ impl StateValue {
     pub fn validate(&self, field_path: &str) -> Result<(), SnapshotError> {
         match self {
             Self::String { value } => reject_unredacted_local_path_string(field_path, value),
-            Self::Int { .. } | Self::Uint { .. } | Self::Bool { .. } | Self::Tick { .. } => Ok(()),
-            Self::AssetId { .. } => Ok(()),
+            Self::Int { .. }
+            | Self::Uint { .. }
+            | Self::Bool { .. }
+            | Self::Tick { .. }
+            | Self::AssetId { .. } => Ok(()),
             Self::Bytes(bytes) => bytes.validate(field_path),
             Self::List { items } => {
                 for (index, item) in items.iter().enumerate() {

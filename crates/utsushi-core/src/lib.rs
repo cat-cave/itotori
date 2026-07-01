@@ -961,9 +961,10 @@ impl RuntimePlaybackFeature {
                     Self::FrameCapture | Self::Screenshot,
                     RuntimeCapability::FrameCapture
                 )
-                | (Self::TextTrace, RuntimeCapability::SmokeValidation)
-                | (Self::FrameCapture, RuntimeCapability::SmokeValidation)
-                | (Self::Screenshot, RuntimeCapability::SmokeValidation)
+                | (
+                    Self::TextTrace | Self::FrameCapture | Self::Screenshot,
+                    RuntimeCapability::SmokeValidation
+                )
                 | (Self::Recording, RuntimeCapability::ReplayReview)
                 | (
                     Self::ReferenceComparison,
@@ -3199,7 +3200,7 @@ impl RuntimeLaunchCaptureHarness {
             artifact_store: artifact_store.as_ref(),
         };
 
-        if let Err(error) = self.run_hooks(
+        if let Err(error) = Self::run_hooks(
             RuntimeCaptureBoundary::AfterLaunch,
             hook_run,
             hooks,
@@ -3215,7 +3216,7 @@ impl RuntimeLaunchCaptureHarness {
             match wait_for_child_exit(&mut child, remaining_until(deadline), plan.poll_interval) {
                 Ok(Some(status)) => status,
                 Ok(None) => {
-                    let before_terminate_error = self.run_hooks(
+                    let before_terminate_error = Self::run_hooks(
                         RuntimeCaptureBoundary::BeforeTerminate,
                         hook_run,
                         hooks,
@@ -3259,15 +3260,14 @@ impl RuntimeLaunchCaptureHarness {
                 }
             };
 
-        let after_exit_error = self
-            .run_hooks(
-                RuntimeCaptureBoundary::AfterExit,
-                hook_run,
-                hooks,
-                &mut artifacts,
-                plan.hook_timeout,
-            )
-            .err();
+        let after_exit_error = Self::run_hooks(
+            RuntimeCaptureBoundary::AfterExit,
+            hook_run,
+            hooks,
+            &mut artifacts,
+            plan.hook_timeout,
+        )
+        .err();
 
         let exit = RuntimeProcessExit::from_status(status);
         if !exit.success {
@@ -3314,7 +3314,6 @@ impl RuntimeLaunchCaptureHarness {
     }
 
     fn run_hooks(
-        &self,
         boundary: RuntimeCaptureBoundary,
         run: RuntimeHookRun<'_>,
         hooks: &mut RuntimeCaptureHooks,
@@ -3477,7 +3476,11 @@ fn remaining_until(deadline: Instant) -> Duration {
         .unwrap_or(Duration::ZERO)
 }
 
+// reason: the return is only infallible on unix (where clippy evaluates this);
+// the `#[cfg(not(unix))]` sibling below legitimately returns `Err` because
+// process-tree cleanup is unsupported there, so the `Result` is required.
 #[cfg(unix)]
+#[allow(clippy::unnecessary_wraps)]
 fn configure_runtime_process_tree(
     command: &mut Command,
     _operation: RuntimeOperation,
@@ -4020,6 +4023,9 @@ fn unix_signal_process_group(process_id: u32, signal: i32) -> io::Result<()> {
 }
 
 #[cfg(unix)]
+// reason: process-group signalling needs the libc kill(2) FFI; there is no safe
+// std wrapper for negative-pgid delivery. Minimal unsafe surface.
+#[allow(unsafe_code)]
 fn unix_signal_process_group_raw(process_id: u32, signal: i32) -> io::Result<()> {
     let process_group_id = i32::try_from(process_id).map_err(|_| {
         io::Error::new(
@@ -4035,6 +4041,8 @@ fn unix_signal_process_group_raw(process_id: u32, signal: i32) -> io::Result<()>
 }
 
 #[cfg(unix)]
+// reason: declares the libc kill(2) FFI symbol used by process-group signalling.
+#[allow(unsafe_code)]
 mod unix_signals {
     pub const ESRCH: i32 = 3;
     pub const SIGTERM: i32 = 15;
@@ -4191,17 +4199,17 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
+    #[ignore = "child-process harness entry point; spawned by a parent harness test, not run standalone"]
     fn harness_child_exits() {}
 
     #[test]
-    #[ignore]
+    #[ignore = "child-process harness entry point; spawned by a parent harness test, not run standalone"]
     fn harness_child_sleeps() {
         std::thread::sleep(Duration::from_secs(5));
     }
 
     #[test]
-    #[ignore]
+    #[ignore = "child-process harness entry point; spawned by a parent harness test, not run standalone"]
     fn harness_child_spawns_grandchild() {
         let heartbeat_path =
             PathBuf::from(std::env::var("UTSUSHI_TEST_GRANDCHILD_HEARTBEAT").unwrap());
@@ -4227,7 +4235,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
+    #[ignore = "child-process harness entry point; spawned by a parent harness test, not run standalone"]
     fn harness_child_spawns_grandchild_then_fails() {
         let heartbeat_path =
             PathBuf::from(std::env::var("UTSUSHI_TEST_GRANDCHILD_HEARTBEAT").unwrap());
@@ -4249,7 +4257,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
+    #[ignore = "child-process harness entry point; spawned by a parent harness test, not run standalone"]
     fn harness_grandchild_heartbeats() {
         let heartbeat_path =
             PathBuf::from(std::env::var("UTSUSHI_TEST_GRANDCHILD_HEARTBEAT").unwrap());
@@ -4611,8 +4619,7 @@ mod tests {
         assert_eq!(
             artifact_ref["uri"],
             format!(
-                "{}/{}/screenshots/{}.png",
-                RUNTIME_ARTIFACT_URI_ROOT, HARNESS_RUN_ID, HARNESS_SCREENSHOT_ID
+                "{RUNTIME_ARTIFACT_URI_ROOT}/{HARNESS_RUN_ID}/screenshots/{HARNESS_SCREENSHOT_ID}.png"
             )
         );
         assert!(artifact_ref.get("data").is_none());

@@ -260,8 +260,7 @@ impl TraceConformanceCheck {
                 let matches = observed
                     .speaker
                     .as_deref()
-                    .map(|observed_speaker| observed_speaker == expected)
-                    .unwrap_or(false);
+                    .is_some_and(|observed_speaker| observed_speaker == expected);
                 if !matches {
                     let observed_speaker_token = match observed.speaker.as_deref() {
                         Some(value) => value.to_string(),
@@ -272,8 +271,7 @@ impl TraceConformanceCheck {
                         &golden.event_id,
                         Some(&observed.event_id),
                         format!(
-                            "expected speaker {:?} observed {:?}",
-                            expected, observed_speaker_token
+                            "expected speaker {expected:?} observed {observed_speaker_token:?}"
                         ),
                     ));
                 }
@@ -401,8 +399,9 @@ fn summarise_trace_failure(mismatches: &[TraceMismatch]) -> (String, String) {
     }
     let dominant_code = mismatches
         .first()
-        .map(|first| trace_mismatch_code(first.kind))
-        .unwrap_or(codes::TRACE_TEXT_MISMATCH)
+        .map_or(codes::TRACE_TEXT_MISMATCH, |first| {
+            trace_mismatch_code(first.kind)
+        })
         .to_string();
     let mut detail = format!(
         "{total} trace mismatches: text_diff={text_difference} order_shift={order_shift} \
@@ -466,7 +465,7 @@ impl TraceMismatch {
         Self {
             kind,
             expected_event_id: expected_event_id.to_string(),
-            observed_event_id: observed_event_id.map(|s| s.to_string()),
+            observed_event_id: observed_event_id.map(std::string::ToString::to_string),
             detail,
         }
     }
@@ -509,11 +508,10 @@ pub fn accepts_text_trace_evidence(evidence: &EvidenceRef) -> bool {
         | EvidenceRef::BridgeUnit { .. }
         | EvidenceRef::ReplayLogRef { .. }
         | EvidenceRef::ImplMapFixture { .. } => true,
-        EvidenceRef::FrameArtifactRef { .. } => false,
         // `EvidenceRef::StatePath` (UTSUSHI-028) belongs to the
         // snapshot-restore profile only; rejecting it here keeps the
         // text-trace evidence filter narrow.
-        EvidenceRef::StatePath { .. } => false,
+        EvidenceRef::FrameArtifactRef { .. } | EvidenceRef::StatePath { .. } => false,
         EvidenceRef::RuntimeArtifact { kind, .. } => matches!(
             kind,
             RuntimeArtifactKind::TraceLog | RuntimeArtifactKind::ConformanceReport
@@ -570,7 +568,7 @@ pub(super) fn validate_id_field(
             reason: format!("{field} is empty"),
         });
     }
-    if value.chars().any(|c| c.is_whitespace()) {
+    if value.chars().any(char::is_whitespace) {
         return Err(ConformanceError::EvidenceRefInvalid {
             artifact_kind,
             reason: format!("{field} contains whitespace"),

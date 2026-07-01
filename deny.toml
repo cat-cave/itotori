@@ -15,5 +15,29 @@ version = 2
 allow = ["MIT", "Apache-2.0", "Unicode-3.0", "MIT-0", "BSD-3-Clause", "Zlib", "MPL-2.0"]
 
 [bans]
-multiple-versions = "warn"
-wildcards = "allow"
+multiple-versions = "deny"
+# External `*` version requirements are denied. The only "wildcards" in this
+# tree are the version-less internal workspace path deps (e.g.
+# `kaifuu-core = { path = "../kaifuu-core" }`), which cargo-deny reports as
+# wildcards; `allow-wildcard-paths` exempts ONLY those local path crates and
+# keeps the ban fully active for any real external `*` dependency.
+wildcards = "deny"
+allow-wildcard-paths = true
+
+# Both skips below are transitive, upstream-pinned duplicates that cannot be
+# aligned from itotori's manifests (they come from third-party crates' own
+# version requirements). They are narrow (exact-version) skips, NOT a blanket
+# `multiple-versions = "allow"`.
+[[bans.skip]]
+# getrandom 0.2.17 is pulled ONLY by redox_users (a Redox-OS-target-only
+# transitive dep of `dirs`); it never builds on our Linux/macOS targets. The
+# live graph otherwise uses getrandom 0.4 (via uuid).
+name = "getrandom"
+version = "=0.2.17"
+
+[[bans.skip]]
+# hashbrown 0.16.1 is pinned by jsonschema 0.46 -> referencing (a dev-dep);
+# rusqlite 0.40 -> hashlink pulls hashbrown 0.17. Neither is bumpable without
+# an upstream release aligning the two.
+name = "hashbrown"
+version = "=0.16.1"

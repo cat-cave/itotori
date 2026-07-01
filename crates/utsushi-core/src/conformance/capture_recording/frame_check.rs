@@ -245,7 +245,7 @@ mod tests {
     use crate::{RuntimeArtifactKind, runtime_artifact_uri};
 
     fn synthetic_frame(frame_index: u64, tier: EvidenceTier) -> FrameArtifactRef {
-        let artifact_id = format!("frame-{:04}", frame_index);
+        let artifact_id = format!("frame-{frame_index:04}");
         let uri = runtime_artifact_uri(
             "synthetic-run",
             RuntimeArtifactKind::FrameCapture,
@@ -253,7 +253,7 @@ mod tests {
         )
         .expect("synthetic uri");
         FrameArtifactRef {
-            frame_id: format!("frame-{:04}", frame_index),
+            frame_id: format!("frame-{frame_index:04}"),
             evidence_tier: tier,
             artifact_ref: ObservationArtifactRef {
                 artifact_id,

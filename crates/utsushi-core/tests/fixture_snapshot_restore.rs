@@ -325,7 +325,7 @@ fn fixture_snapshot_conformance_check_fail_detail_quotes_state_path_verbatim() {
             assert_eq!(semantic_code, store_codes::STATE_DRIFT);
             // The check's `detail` text reports the count; the verbatim
             // StatePath quoting lands in the EvidenceRef::StatePath vec.
-            assert!(detail.contains("1"), "detail must report the path count");
+            assert!(detail.contains('1'), "detail must report the path count");
         }
         other => panic!("expected Fail, got {other:?}"),
     }

@@ -235,7 +235,10 @@ impl LongOpIdSequence {
     /// poisoned — that would indicate a prior allocator panic, which
     /// the dispatch path never triggers under our invariants.
     pub fn allocate(&self) -> LongOpId {
-        let mut guard = self.next.lock().unwrap_or_else(|err| err.into_inner());
+        let mut guard = self
+            .next
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let id = *guard;
         *guard = guard.checked_add(1).unwrap_or(u64::MAX);
         LongOpId(id)
@@ -357,31 +360,46 @@ impl MsgRuntime {
 
     /// Drain the fail-soft warnings observed since the last call.
     pub fn take_warnings(&self) -> Vec<MsgRuntimeWarning> {
-        let mut guard = self.inner.lock().unwrap_or_else(|err| err.into_inner());
+        let mut guard = self
+            .inner
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         std::mem::take(&mut guard.warnings)
     }
 
     /// Borrow the last `msg.linenumber` observed.
     pub fn last_line_number(&self) -> Option<u32> {
-        let guard = self.inner.lock().unwrap_or_else(|err| err.into_inner());
+        let guard = self
+            .inner
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         guard.last_line_number
     }
 
     /// Borrow the active font colour (RRGGBB).
     pub fn current_font_color(&self) -> Option<u32> {
-        let guard = self.inner.lock().unwrap_or_else(|err| err.into_inner());
+        let guard = self
+            .inner
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         guard.current_font_color
     }
 
     /// Borrow the active font size (points).
     pub fn current_font_size(&self) -> Option<u8> {
-        let guard = self.inner.lock().unwrap_or_else(|err| err.into_inner());
+        let guard = self
+            .inner
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         guard.current_font_size
     }
 
     /// Borrow the active text-window slot.
     pub fn current_text_window(&self) -> Option<u32> {
-        let guard = self.inner.lock().unwrap_or_else(|err| err.into_inner());
+        let guard = self
+            .inner
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         guard.current_text_window
     }
 
@@ -389,20 +407,29 @@ impl MsgRuntime {
     /// use this to assert the runtime is buffering verbatim Shift-JIS
     /// bytes between control opcodes.
     pub fn pending_body_len(&self) -> usize {
-        let guard = self.inner.lock().unwrap_or_else(|err| err.into_inner());
+        let guard = self
+            .inner
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         guard.pending_body.len()
     }
 
     /// Borrow the pending speaker label, if any.
     pub fn pending_speaker(&self) -> Option<String> {
-        let guard = self.inner.lock().unwrap_or_else(|err| err.into_inner());
+        let guard = self
+            .inner
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         guard.pending_speaker.clone()
     }
 
     /// Append `bytes` to the pending textout body. Called by
     /// [`dispatch_textout`] / [`MsgRuntime::handle_textout`].
     fn append_body(&self, bytes: &[u8]) {
-        let mut guard = self.inner.lock().unwrap_or_else(|err| err.into_inner());
+        let mut guard = self
+            .inner
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         guard.pending_body.extend_from_slice(bytes);
     }
 
@@ -411,7 +438,10 @@ impl MsgRuntime {
     /// emitted — an empty pending body produces no emission.
     fn flush_pending_line(&self, opcode: MsgOpcode) -> bool {
         let (body_bytes, speaker, text_window) = {
-            let mut guard = self.inner.lock().unwrap_or_else(|err| err.into_inner());
+            let mut guard = self
+                .inner
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             let body = std::mem::take(&mut guard.pending_body);
             (
                 body,
@@ -469,12 +499,18 @@ impl MsgRuntime {
     }
 
     fn record_warning(&self, warning: MsgRuntimeWarning) {
-        let mut guard = self.inner.lock().unwrap_or_else(|err| err.into_inner());
+        let mut guard = self
+            .inner
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         guard.warnings.push(warning);
     }
 
     fn next_line_id(&self) -> String {
-        let mut guard = self.inner.lock().unwrap_or_else(|err| err.into_inner());
+        let mut guard = self
+            .inner
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let id = guard.next_line_seq;
         guard.next_line_seq = guard.next_line_seq.saturating_add(1);
         format!("utsushi-reallive-msg-line-{id:08x}")
@@ -492,7 +528,10 @@ impl MsgRuntime {
     /// [`OPCODE_NAME_CLOSE`] becomes the speaker label of the next
     /// emission.
     fn begin_speaker(&self) {
-        let mut guard = self.inner.lock().unwrap_or_else(|err| err.into_inner());
+        let mut guard = self
+            .inner
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         // Stash the current pending body as the speaker label and
         // reset the body accumulator.
         let raw = std::mem::take(&mut guard.pending_body);
@@ -503,6 +542,10 @@ impl MsgRuntime {
 
     /// Close the speaker bracket. No-op when no speaker is active —
     /// the assignment happened on `begin_speaker`.
+    // reason: deliberately takes `&self` and is empty — it exists purely for
+    // API symmetry with `begin_speaker` so the per-opcode dispatch path stays
+    // uniform across name_open / name_close.
+    #[allow(clippy::unused_self)]
     fn end_speaker(&self) {
         // Intentionally empty: `begin_speaker` already wrote the
         // speaker label. The method exists for symmetry so the
@@ -670,7 +713,7 @@ impl RLOperation for MsgPageOp {
             .runtime
             .inner
             .lock()
-            .unwrap_or_else(|err| err.into_inner());
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         guard.pending_speaker = None;
         DispatchOutcome::Advance
     }
@@ -718,7 +761,7 @@ impl RLOperation for MsgMsgClearOp {
                 .runtime
                 .inner
                 .lock()
-                .unwrap_or_else(|err| err.into_inner());
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             guard.pending_body.clear();
         }
         DispatchOutcome::Advance
@@ -762,7 +805,7 @@ impl RLOperation for MsgLineNumberOp {
                 .runtime
                 .inner
                 .lock()
-                .unwrap_or_else(|err| err.into_inner());
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             guard.last_line_number = Some(value as u32);
         }
         DispatchOutcome::Advance
@@ -806,7 +849,7 @@ impl RLOperation for MsgFontColorOp {
                 .runtime
                 .inner
                 .lock()
-                .unwrap_or_else(|err| err.into_inner());
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             guard.current_font_color = Some(value);
         }
         DispatchOutcome::Advance
@@ -853,7 +896,7 @@ impl RLOperation for MsgFontSizeOp {
                 .runtime
                 .inner
                 .lock()
-                .unwrap_or_else(|err| err.into_inner());
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             guard.current_font_size = Some(value);
         }
         DispatchOutcome::Advance
@@ -935,7 +978,7 @@ impl RLOperation for MsgTextWindowOp {
                 .runtime
                 .inner
                 .lock()
-                .unwrap_or_else(|err| err.into_inner());
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             guard.current_text_window = Some(value);
         }
         DispatchOutcome::Advance

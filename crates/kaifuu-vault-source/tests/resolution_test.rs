@@ -48,7 +48,7 @@ fn selects_primary_role_by_default_and_includes_patch_role_on_request() {
     };
     let mat = source.materialize(&candidate2, opts).unwrap();
     let mut roles: Vec<&str> = mat.artifacts.iter().map(|a| a.role.as_str()).collect();
-    roles.sort();
+    roles.sort_unstable();
     assert_eq!(roles, vec!["patch", "primary"]);
 }
 

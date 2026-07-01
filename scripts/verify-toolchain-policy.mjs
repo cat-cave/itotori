@@ -166,12 +166,14 @@ hasRecipeDependency("ci", "check", "must depend on check");
 hasRecipeDependency("ci", "build", "must depend on build");
 hasRecipeDependency("ci", "db-migrate", "must depend on db-migrate");
 hasRecipeDependency("ci", "test", "must depend on test");
+// clippy + `cargo deny check` are wired into `check` (the single source of
+// truth); `ci` runs them transitively via its `check` dependency.
 hasRecipeCommand(
-  "ci",
+  "check",
   "cargo clippy --workspace --all-targets --all-features -- -D warnings",
   "must run cargo clippy strictly",
 );
-hasRecipeCommand("ci", "cargo deny check", "must run cargo deny");
+hasRecipeCommand("check", "cargo deny check", "must run cargo deny");
 hasExactRecipeCommands(
   "upgrade",
   [

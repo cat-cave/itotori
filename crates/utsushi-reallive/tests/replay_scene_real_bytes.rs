@@ -105,8 +105,7 @@ fn reallive_real_bytes_scene_one_replay_emits_textline() {
     // sink.
     let first_clean = log.first_text_line_utf8();
     eprintln!(
-        "[UTSUSHI-220 real-bytes] alpha-defining proof: first non-empty UTF-8 TextLine = {:?}",
-        first_clean,
+        "[UTSUSHI-220 real-bytes] alpha-defining proof: first non-empty UTF-8 TextLine = {first_clean:?}",
     );
     assert!(
         first_clean.is_some(),

@@ -202,7 +202,7 @@ impl ReplayLog {
     /// hashes / diffs. Acceptance criterion #1 — two runs against the
     /// same Seen.txt produce identical output here.
     pub fn to_deterministic_json(&self) -> Result<String, ReplayError> {
-        let value = self.to_canonical_value()?;
+        let value = self.to_canonical_value();
         // `serde_json::to_string_pretty` writes object keys in
         // insertion order, so the canonical builder below must insert
         // keys in sorted order to guarantee determinism. The pretty
@@ -257,7 +257,7 @@ impl ReplayLog {
     /// Build a [`serde_json::Value`] with sorted keys and hex byte
     /// arrays. Centralised so the deterministic-JSON path and the
     /// snapshot-round-trip path agree on the canonical shape.
-    fn to_canonical_value(&self) -> Result<serde_json::Value, ReplayError> {
+    fn to_canonical_value(&self) -> serde_json::Value {
         let mut events = Vec::with_capacity(self.events.len());
         for event in &self.events {
             events.push(event_to_canonical_value(event));
@@ -276,7 +276,7 @@ impl ReplayLog {
             "sceneId".to_string(),
             serde_json::Value::Number(self.scene_id.into()),
         );
-        Ok(serde_json::Value::Object(sort_map_keys(map)))
+        serde_json::Value::Object(sort_map_keys(map))
     }
 }
 
@@ -560,7 +560,7 @@ impl std::fmt::Debug for ReplayTextSink {
             .debug_struct("ReplayTextSink")
             .field(
                 "buffered_lines",
-                &self.lines.lock().map(|guard| guard.len()).unwrap_or(0),
+                &self.lines.lock().map_or(0, |guard| guard.len()),
             )
             .finish()
     }
@@ -906,12 +906,7 @@ fn drive_loop(ctx: &mut ReplayContext, opts: &ReplayOpts, scene_id: u16) -> Repl
                     events: events.len() as u32,
                 };
             }
-            StepOutcome::EndOfScene { .. } => {
-                break ReplayOutcome::EndOfScene {
-                    events: events.len() as u32,
-                };
-            }
-            StepOutcome::Halted => {
+            StepOutcome::EndOfScene { .. } | StepOutcome::Halted => {
                 break ReplayOutcome::EndOfScene {
                     events: events.len() as u32,
                 };

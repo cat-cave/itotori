@@ -352,11 +352,10 @@ mod tests {
         assert_eq!(samples.len(), 12, "every failure-mode variant is sampled");
 
         for (name, sample) in &samples {
-            let expected_code = expected
-                .iter()
-                .find(|(n, _)| *n == *name)
-                .map(|(_, c)| *c)
-                .unwrap_or_else(|| panic!("variant {name} not in expected table"));
+            let expected_code = expected.iter().find(|(n, _)| *n == *name).map_or_else(
+                || panic!("variant {name} not in expected table"),
+                |(_, c)| *c,
+            );
             assert_eq!(
                 sample.semantic_code(),
                 expected_code,

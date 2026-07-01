@@ -226,7 +226,7 @@ impl InMemorySnapshotStore {
     /// poisoned (callers that need the typed `StoreUnavailable` should
     /// route through [`SnapshotStore::resolve`] instead).
     pub fn len(&self) -> usize {
-        self.inner.lock().map(|guard| guard.len()).unwrap_or(0)
+        self.inner.lock().map_or(0, |guard| guard.len())
     }
 
     /// Whether the store contains no snapshots.

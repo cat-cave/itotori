@@ -294,8 +294,7 @@ impl<'a> PatchTransaction<'a> {
 
         for transform_id in self.config.required_transforms {
             let supported = patch_contract
-                .map(|contract| operation_contract_supports(contract, transform_id))
-                .unwrap_or(false);
+                .is_some_and(|contract| operation_contract_supports(contract, transform_id));
             if !supported {
                 self.diagnostics.push(TransactionDiagnostic {
                     check: PreflightCheck::TransformSupport,
@@ -441,21 +440,18 @@ impl<'a> PatchTransaction<'a> {
         // real content. Fail closed (fatal diagnostic, no write) on any
         // mismatch instead of silently staging an unvalidated payload.
         let actual_payload_len = payload.len() as u64;
-        let preflighted_len = match self.preflight_payload_len {
-            Some(len) => len,
-            None => {
-                self.record_stage_failure(
-                    None,
-                    PreflightCheck::Relocation,
-                    TransactionFailureCategory::AdapterUnsupported,
-                    SEMANTIC_PATCH_TRANSACTION_RELOCATION_UNSUPPORTED,
-                    "stage invoked without a completed preflight payload-length check".to_string(),
-                );
-                return Ok(StagedPatchPayload {
-                    staged_path,
-                    payload_len: actual_payload_len,
-                });
-            }
+        let Some(preflighted_len) = self.preflight_payload_len else {
+            self.record_stage_failure(
+                None,
+                PreflightCheck::Relocation,
+                TransactionFailureCategory::AdapterUnsupported,
+                SEMANTIC_PATCH_TRANSACTION_RELOCATION_UNSUPPORTED,
+                "stage invoked without a completed preflight payload-length check".to_string(),
+            );
+            return Ok(StagedPatchPayload {
+                staged_path,
+                payload_len: actual_payload_len,
+            });
         };
         if actual_payload_len != preflighted_len {
             self.record_stage_failure(
@@ -489,21 +485,18 @@ impl<'a> PatchTransaction<'a> {
             });
         }
 
-        let parent = match staged_path.parent() {
-            Some(parent) => parent,
-            None => {
-                self.record_stage_failure(
-                    None,
-                    PreflightCheck::StageWrite,
-                    TransactionFailureCategory::PatchWriteFailed,
-                    SEMANTIC_PATCH_TRANSACTION_STAGED_WRITE_FAILED,
-                    "staged path has no parent directory".to_string(),
-                );
-                return Ok(StagedPatchPayload {
-                    staged_path,
-                    payload_len: payload.len() as u64,
-                });
-            }
+        let Some(parent) = staged_path.parent() else {
+            self.record_stage_failure(
+                None,
+                PreflightCheck::StageWrite,
+                TransactionFailureCategory::PatchWriteFailed,
+                SEMANTIC_PATCH_TRANSACTION_STAGED_WRITE_FAILED,
+                "staged path has no parent directory".to_string(),
+            );
+            return Ok(StagedPatchPayload {
+                staged_path,
+                payload_len: payload.len() as u64,
+            });
         };
         if let Err(err) = fs::create_dir_all(parent) {
             self.record_stage_failure(
@@ -799,8 +792,7 @@ fn staging_path_for(config: &PatchTransactionConfig<'_>) -> PathBuf {
     let parent = config
         .output_path
         .parent()
-        .map(Path::to_path_buf)
-        .unwrap_or_else(|| PathBuf::from("."));
+        .map_or_else(|| PathBuf::from("."), Path::to_path_buf);
     parent
         .join(".staging")
         .join(format!("{}-{}.tmp", config.asset_id, config.run_id))
@@ -923,11 +915,10 @@ fn build_patch_result_v02(
 
     let status = match final_state {
         TransactionState::Promoted => "passed",
-        TransactionState::PreflightFailed
-        | TransactionState::VerifyFailed
-        | TransactionState::PromoteFailed
-        | TransactionState::Cancelled => "failed",
-        _ => "failed", // non-terminal default routed via into_outcome
+        // The terminal failure states (PreflightFailed / VerifyFailed /
+        // PromoteFailed / Cancelled) and any non-terminal default all map to
+        // "failed"; non-terminal states are routed via into_outcome upstream.
+        _ => "failed",
     };
     result.insert("status".to_string(), Value::String(status.to_string()));
 
@@ -1028,17 +1019,17 @@ fn rollback_diagnostic_code(
             {
                 SEMANTIC_PATCH_TRANSACTION_PROMOTE_ROLLED_BACK.to_string()
             } else {
-                diagnostics
-                    .first()
-                    .map(|d| d.diagnostic_code.clone())
-                    .unwrap_or_else(|| SEMANTIC_PATCH_TRANSACTION_STAGED_WRITE_FAILED.to_string())
+                diagnostics.first().map_or_else(
+                    || SEMANTIC_PATCH_TRANSACTION_STAGED_WRITE_FAILED.to_string(),
+                    |d| d.diagnostic_code.clone(),
+                )
             }
         }
         TransactionState::Cancelled => SEMANTIC_PATCH_TRANSACTION_CANCELLED.to_string(),
-        _ => diagnostics
-            .first()
-            .map(|d| d.diagnostic_code.clone())
-            .unwrap_or_else(|| SEMANTIC_PATCH_TRANSACTION_CANCELLED.to_string()),
+        _ => diagnostics.first().map_or_else(
+            || SEMANTIC_PATCH_TRANSACTION_CANCELLED.to_string(),
+            |d| d.diagnostic_code.clone(),
+        ),
     }
 }
 
@@ -1054,6 +1045,7 @@ fn touched_assets_rollup(config: &PatchTransactionConfig<'_>) -> String {
 /// group) is forced into `8..=b` and the version nibble (position 14) is
 /// forced to `7`, matching `assert_uuid7` in the contracts validator.
 fn deterministic_uuid7(parts: &[&str]) -> String {
+    use std::fmt::Write as _;
     let mut hasher = Sha256::new();
     for part in parts {
         hasher.update(part.as_bytes());
@@ -1062,7 +1054,7 @@ fn deterministic_uuid7(parts: &[&str]) -> String {
     let digest = hasher.finalize();
     let mut hex = String::with_capacity(64);
     for byte in digest {
-        hex.push_str(&format!("{byte:02x}"));
+        let _ = write!(hex, "{byte:02x}");
     }
     // 8-4-4-4-12 layout. We fix the version (group 3 first hex) to '7' and
     // the variant (group 4 first hex) to '8'.

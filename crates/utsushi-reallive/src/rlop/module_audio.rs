@@ -488,7 +488,7 @@ impl AudioRuntime {
         if archive_id < 0 {
             format!("z{:04}", 0)
         } else {
-            format!("z{:04}", archive_id)
+            format!("z{archive_id:04}")
         }
     }
 
@@ -509,7 +509,9 @@ impl AudioRuntime {
     }
 
     fn lock_inner(&self) -> std::sync::MutexGuard<'_, AudioRuntimeInner> {
-        self.inner.lock().unwrap_or_else(|err| err.into_inner())
+        self.inner
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
     fn record_warning(&self, warning: AudioRuntimeWarning) {
@@ -726,7 +728,7 @@ impl BgmStatusOp {
 
 impl RLOperation for BgmStatusOp {
     fn dispatch(&self, vm: &mut Vm, _args: &[ExprValue]) -> DispatchOutcome {
-        let value: u32 = if self.runtime.bgm_playing() { 1 } else { 0 };
+        let value: u32 = u32::from(self.runtime.bgm_playing());
         vm.banks_mut().set_store(value);
         DispatchOutcome::Advance
     }
@@ -799,27 +801,25 @@ impl KoePlayExOp {
 
 impl RLOperation for KoePlayExOp {
     fn dispatch(&self, _vm: &mut Vm, args: &[ExprValue]) -> DispatchOutcome {
-        let archive_id = match args.first() {
-            Some(ExprValue::Int(n)) => *n,
-            _ => {
-                self.runtime
-                    .record_warning(AudioRuntimeWarning::MissingArg {
-                        opcode_tag: KoeOpcode::PlayEx.as_str(),
-                        slot: "archive_id",
-                    });
-                return DispatchOutcome::Advance;
-            }
+        let archive_id = if let Some(ExprValue::Int(n)) = args.first() {
+            *n
+        } else {
+            self.runtime
+                .record_warning(AudioRuntimeWarning::MissingArg {
+                    opcode_tag: KoeOpcode::PlayEx.as_str(),
+                    slot: "archive_id",
+                });
+            return DispatchOutcome::Advance;
         };
-        let sample_id = match args.get(1) {
-            Some(ExprValue::Int(n)) => *n,
-            _ => {
-                self.runtime
-                    .record_warning(AudioRuntimeWarning::MissingArg {
-                        opcode_tag: KoeOpcode::PlayEx.as_str(),
-                        slot: "sample_id",
-                    });
-                return DispatchOutcome::Advance;
-            }
+        let sample_id = if let Some(ExprValue::Int(n)) = args.get(1) {
+            *n
+        } else {
+            self.runtime
+                .record_warning(AudioRuntimeWarning::MissingArg {
+                    opcode_tag: KoeOpcode::PlayEx.as_str(),
+                    slot: "sample_id",
+                });
+            return DispatchOutcome::Advance;
         };
         let archive_label = AudioRuntime::voice_archive_label(archive_id);
         self.runtime.emit(
@@ -904,7 +904,7 @@ impl KoeStatusOp {
 
 impl RLOperation for KoeStatusOp {
     fn dispatch(&self, vm: &mut Vm, _args: &[ExprValue]) -> DispatchOutcome {
-        let value: u32 = if self.runtime.koe_playing() { 1 } else { 0 };
+        let value: u32 = u32::from(self.runtime.koe_playing());
         vm.banks_mut().set_store(value);
         DispatchOutcome::Advance
     }
@@ -1003,16 +1003,15 @@ impl WavLoopOp {
 
 impl RLOperation for WavLoopOp {
     fn dispatch(&self, _vm: &mut Vm, args: &[ExprValue]) -> DispatchOutcome {
-        let name = match args.first() {
-            Some(ExprValue::Bytes(bytes)) => decode_shift_jis(bytes),
-            _ => {
-                self.runtime
-                    .record_warning(AudioRuntimeWarning::MissingArg {
-                        opcode_tag: PcmOpcode::Loop.as_str(),
-                        slot: "asset_name",
-                    });
-                return DispatchOutcome::Advance;
-            }
+        let name = if let Some(ExprValue::Bytes(bytes)) = args.first() {
+            decode_shift_jis(bytes)
+        } else {
+            self.runtime
+                .record_warning(AudioRuntimeWarning::MissingArg {
+                    opcode_tag: PcmOpcode::Loop.as_str(),
+                    slot: "asset_name",
+                });
+            return DispatchOutcome::Advance;
         };
         let Some(name) = name else {
             self.runtime
@@ -1054,16 +1053,15 @@ impl PlaySeOp {
 
 impl RLOperation for PlaySeOp {
     fn dispatch(&self, _vm: &mut Vm, args: &[ExprValue]) -> DispatchOutcome {
-        let slot = match args.first() {
-            Some(ExprValue::Int(n)) => *n,
-            _ => {
-                self.runtime
-                    .record_warning(AudioRuntimeWarning::MissingArg {
-                        opcode_tag: SeOpcode::PlaySe.as_str(),
-                        slot: "slot",
-                    });
-                return DispatchOutcome::Advance;
-            }
+        let slot = if let Some(ExprValue::Int(n)) = args.first() {
+            *n
+        } else {
+            self.runtime
+                .record_warning(AudioRuntimeWarning::MissingArg {
+                    opcode_tag: SeOpcode::PlaySe.as_str(),
+                    slot: "slot",
+                });
+            return DispatchOutcome::Advance;
         };
         let Some(asset_id) = self.runtime.se_asset_id_for_slot(slot) else {
             self.runtime
@@ -1093,23 +1091,18 @@ impl HasSeOp {
 
 impl RLOperation for HasSeOp {
     fn dispatch(&self, vm: &mut Vm, args: &[ExprValue]) -> DispatchOutcome {
-        let slot = match args.first() {
-            Some(ExprValue::Int(n)) => *n,
-            _ => {
-                self.runtime
-                    .record_warning(AudioRuntimeWarning::MissingArg {
-                        opcode_tag: SeOpcode::HasSe.as_str(),
-                        slot: "slot",
-                    });
-                vm.banks_mut().set_store(0);
-                return DispatchOutcome::Advance;
-            }
-        };
-        let value: u32 = if self.runtime.se_asset_id_for_slot(slot).is_some() {
-            1
+        let slot = if let Some(ExprValue::Int(n)) = args.first() {
+            *n
         } else {
-            0
+            self.runtime
+                .record_warning(AudioRuntimeWarning::MissingArg {
+                    opcode_tag: SeOpcode::HasSe.as_str(),
+                    slot: "slot",
+                });
+            vm.banks_mut().set_store(0);
+            return DispatchOutcome::Advance;
         };
+        let value: u32 = u32::from(self.runtime.se_asset_id_for_slot(slot).is_some());
         vm.banks_mut().set_store(value);
         DispatchOutcome::Advance
     }

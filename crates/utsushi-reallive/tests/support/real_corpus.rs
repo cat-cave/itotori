@@ -83,23 +83,19 @@ fn dir_is_g00_with_assets(dir: &Path) -> bool {
     let is_named_g00 = dir
         .file_name()
         .and_then(|name| name.to_str())
-        .map(|name| name.eq_ignore_ascii_case("g00"))
-        .unwrap_or(false);
+        .is_some_and(|name| name.eq_ignore_ascii_case("g00"));
     if !is_named_g00 {
         return false;
     }
-    fs::read_dir(dir)
-        .map(|entries| {
-            entries.flatten().any(|entry| {
-                entry
-                    .path()
-                    .extension()
-                    .and_then(|ext| ext.to_str())
-                    .map(|ext| ext.eq_ignore_ascii_case("g00"))
-                    .unwrap_or(false)
-            })
+    fs::read_dir(dir).is_ok_and(|entries| {
+        entries.flatten().any(|entry| {
+            entry
+                .path()
+                .extension()
+                .and_then(|ext| ext.to_str())
+                .is_some_and(|ext| ext.eq_ignore_ascii_case("g00"))
         })
-        .unwrap_or(false)
+    })
 }
 
 pub fn reallivedata_dir() -> Option<PathBuf> {

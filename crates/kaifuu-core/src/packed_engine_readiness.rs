@@ -123,10 +123,15 @@ impl PackedEngineFamily {
     /// The mechanical profile spec the validator checks a profile against.
     /// Returns `None` for [`PackedEngineFamily::Unknown`].
     pub fn profile_spec(self) -> Option<EngineProfileSpec> {
-        use CodecTransform::*;
-        use CryptoTransform::*;
-        use PatchBackTransform::*;
-        use SurfaceTransform::*;
+        use CodecTransform::{
+            BinaryTable, BytecodeDecompile, M4aAudio, OggAudio, PngImage, RubyMarshal,
+            ShiftJisText, Utf8Text, Utf16Text,
+        };
+        use CryptoTransform::{
+            FixedKey, HelperGated, KeyProfile, NullKey, RpgMakerAssetKey, RpgMakerAssetXor, Xor,
+        };
+        use PatchBackTransform::{RepackArchive, Unsupported};
+        use SurfaceTransform::{ArchiveEntry, BinaryOffset};
         let spec = match self {
             Self::Siglus => EngineProfileSpec {
                 container: ContainerTransform::SiglusPck,
@@ -606,23 +611,20 @@ pub fn validate_packed_engine_readiness_profile(
     }
 
     // --- Engine family + per-family transform-stack consistency. -----------
-    let spec = match profile.engine_family.profile_spec() {
-        Some(spec) => spec,
-        None => {
-            findings.push(finding(
-                "packed.readiness.unknown_engine_family",
-                PartialDiagnosticSeverity::P0,
-                "engineFamily",
-                "engineFamily is unknown / unrecognized".to_string(),
-                SemanticErrorCode::UnknownEngineVariant,
-            ));
-            return build_entry(
-                profile,
-                None,
-                PackedReadinessOutcome::UnsupportedLayeredTransform,
-                findings,
-            );
-        }
+    let Some(spec) = profile.engine_family.profile_spec() else {
+        findings.push(finding(
+            "packed.readiness.unknown_engine_family",
+            PartialDiagnosticSeverity::P0,
+            "engineFamily",
+            "engineFamily is unknown / unrecognized".to_string(),
+            SemanticErrorCode::UnknownEngineVariant,
+        ));
+        return build_entry(
+            profile,
+            None,
+            PackedReadinessOutcome::UnsupportedLayeredTransform,
+            findings,
+        );
     };
 
     if profile.container != spec.container {
@@ -794,10 +796,7 @@ fn validate_key(
             "packed.readiness.key_ref_missing",
             PartialDiagnosticSeverity::P0,
             "key.keyRef",
-            format!(
-                "keyStatus {:?} requires a keyRef or requirementId reference",
-                status
-            ),
+            format!("keyStatus {status:?} requires a keyRef or requirementId reference"),
             SemanticErrorCode::MissingKeyMaterial,
         ));
     }
@@ -868,7 +867,7 @@ fn validate_helper(
             "packed.readiness.helper_id_missing",
             PartialDiagnosticSeverity::P0,
             "helper.helperId",
-            format!("helperStatus {:?} requires a helperId", status),
+            format!("helperStatus {status:?} requires a helperId"),
             SemanticErrorCode::HelperRequired,
         ));
     }
@@ -935,8 +934,7 @@ pub fn validate_packed_engine_readiness_dir(
             && path
                 .file_name()
                 .and_then(|name| name.to_str())
-                .map(|name| name.ends_with(".profile.json"))
-                .unwrap_or(false)
+                .is_some_and(|name| name.ends_with(".profile.json"))
         {
             files.push(path);
         }
@@ -1163,6 +1161,10 @@ mod tests {
 
     #[test]
     fn positive_fixture_dir_is_green_and_covers_all_outcomes() {
+        use PackedReadinessOutcome::{
+            Extract, HelperRequired, Identify, Inventory, MissingKey, Patch,
+            UnsupportedLayeredTransform,
+        };
         let report = validate_packed_engine_readiness_dir(&fixtures_dir())
             .expect("validation runs without environmental error");
         assert_eq!(
@@ -1181,7 +1183,6 @@ mod tests {
             assert!(!entry.fixture_id.is_empty());
         }
         // Every one of the seven outcomes appears at least once.
-        use PackedReadinessOutcome::*;
         for outcome in [
             Identify,
             Inventory,

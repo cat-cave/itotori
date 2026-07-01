@@ -222,8 +222,8 @@ pub fn detect_protected_spans(
             // Ruby annotation: 0x0d <base bytes> 0x0a <ruby bytes> 0x09.
             // Search forward for the matching 0x0a and 0x09 within the
             // raw_bytes.
-            0x0d => match parse_ruby(raw_bytes, byte_offset) {
-                Some((base, ruby, end)) => {
+            0x0d => {
+                if let Some((base, ruby, end)) = parse_ruby(raw_bytes, byte_offset) {
                     let raw = &raw_bytes[byte_offset..end];
                     let decoded_offset = decoded_byte_offset_for_raw_offset(raw_bytes, byte_offset);
                     let decoded_end = decoded_byte_offset_for_raw_offset(raw_bytes, end);
@@ -236,13 +236,12 @@ pub fn detect_protected_spans(
                         decoded_range_start: decoded_offset as u64,
                         decoded_range_end: decoded_end as u64,
                     })
-                }
-                None => {
+                } else {
                     warnings.push(ProtectedSpanWarning {
                         code: PROTECTED_SPAN_UNKNOWN_CONTROL_CODE.to_string(),
                         message: format!(
                             "0x0d ruby-open at byte offset {byte_offset} did not match the \
-                             documented `<base> 0x0a <ruby> 0x09` shape; preserving as unknown control"
+                         documented `<base> 0x0a <ruby> 0x09` shape; preserving as unknown control"
                         ),
                         byte_offset: byte_offset as u64,
                         byte_len: 1,
@@ -254,7 +253,7 @@ pub fn detect_protected_spans(
                         ProtectedSpanKind::UnknownControl { byte: 0x0d },
                     )?)
                 }
-            },
+            }
             // Choice token: 0x02 <index>
             0x02 => {
                 let (consumed, index) = consume_byte_arg(&segments, window_index, byte_offset);
@@ -589,7 +588,7 @@ mod tests {
         assert_eq!(report.spans.len(), 1);
         match &report.spans[0].kind {
             ProtectedSpanKind::ColorCode { color_index } => assert_eq!(*color_index, 0x03),
-            other => panic!("expected color code, got {:?}", other),
+            other => panic!("expected color code, got {other:?}"),
         }
     }
 
@@ -608,7 +607,7 @@ mod tests {
                 assert_eq!(base, "base");
                 assert_eq!(ruby, "ruby");
             }
-            other => panic!("expected ruby, got {:?}", other),
+            other => panic!("expected ruby, got {other:?}"),
         }
     }
 
@@ -619,7 +618,7 @@ mod tests {
         assert_eq!(report.spans.len(), 1);
         match &report.spans[0].kind {
             ProtectedSpanKind::NamePlaceholder { index } => assert_eq!(index, "0"),
-            other => panic!("expected name placeholder, got {:?}", other),
+            other => panic!("expected name placeholder, got {other:?}"),
         }
     }
 
@@ -630,7 +629,7 @@ mod tests {
         assert_eq!(report.spans.len(), 1);
         match &report.spans[0].kind {
             ProtectedSpanKind::ChoiceToken { choice_index } => assert_eq!(*choice_index, 0x01),
-            other => panic!("expected choice token, got {:?}", other),
+            other => panic!("expected choice token, got {other:?}"),
         }
     }
 
@@ -657,7 +656,7 @@ mod tests {
         assert_eq!(report.spans.len(), 1);
         match &report.spans[0].kind {
             ProtectedSpanKind::VariablePlaceholder { name } => assert_eq!(name, "character"),
-            other => panic!("expected variable placeholder, got {:?}", other),
+            other => panic!("expected variable placeholder, got {other:?}"),
         }
     }
 
@@ -672,7 +671,7 @@ mod tests {
         assert_eq!(report.spans.len(), 1);
         match &report.spans[0].kind {
             ProtectedSpanKind::UnknownControl { byte } => assert_eq!(*byte, 0x05),
-            other => panic!("expected unknown control, got {:?}", other),
+            other => panic!("expected unknown control, got {other:?}"),
         }
     }
 }

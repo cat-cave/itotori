@@ -623,7 +623,10 @@ mod tests {
     fn edit(key: &str, tokens: &[&str], target: &str, source: &str) -> FileEdit {
         FileEdit {
             source_unit_key: key.to_string(),
-            tokens: tokens.iter().map(|t| t.to_string()).collect(),
+            tokens: tokens
+                .iter()
+                .map(std::string::ToString::to_string)
+                .collect(),
             target_text: target.to_string(),
             expected_source_hash: sha256_hash_bytes(source.as_bytes()),
         }

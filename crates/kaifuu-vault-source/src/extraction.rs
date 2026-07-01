@@ -274,7 +274,7 @@ pub fn validate_entry_name(name: &str) -> Result<PathBuf, &'static str> {
     let mut out = PathBuf::new();
     for c in p.components() {
         match c {
-            Component::CurDir => continue,
+            Component::CurDir => {}
             Component::ParentDir => return Err("parent-dir"),
             Component::RootDir => return Err("absolute-path"),
             Component::Prefix(_) => return Err("drive-prefix"),

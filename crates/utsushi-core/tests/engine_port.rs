@@ -133,10 +133,7 @@ fn synthetic_text_line(line_id: &str) -> TextLine {
 
 fn synthetic_frame(frame_id: &str) -> FrameArtifact {
     let run_id = "synthetic-run-0001";
-    let uri = format!(
-        "{}/{}/screenshots/{}.png",
-        RUNTIME_ARTIFACT_URI_ROOT, run_id, frame_id
-    );
+    let uri = format!("{RUNTIME_ARTIFACT_URI_ROOT}/{run_id}/screenshots/{frame_id}.png");
     FrameArtifact {
         frame_id: frame_id.to_string(),
         evidence_tier: EvidenceTier::E2,

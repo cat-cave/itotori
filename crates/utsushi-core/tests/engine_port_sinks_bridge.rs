@@ -144,10 +144,8 @@ impl EnginePort for SmokePort {
             })
             .expect("text emit");
         let artifact_id = format!("smoke-shot-{tick:02}");
-        let uri = format!(
-            "{}/smoke-run-0001/screenshots/{}.png",
-            RUNTIME_ARTIFACT_URI_ROOT, artifact_id
-        );
+        let uri =
+            format!("{RUNTIME_ARTIFACT_URI_ROOT}/smoke-run-0001/screenshots/{artifact_id}.png");
         self.frame
             .emit_frame(FrameArtifact {
                 frame_id: artifact_id.clone(),

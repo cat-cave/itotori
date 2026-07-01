@@ -281,9 +281,8 @@ impl RLOperation for GotoOnOp {
             Err(reason) => return warn_and_advance(vm, "goto_on", reason),
         };
         let table = &args[1..];
-        let idx = match usize::try_from(value) {
-            Ok(idx) => idx,
-            Err(_) => return DispatchOutcome::Advance,
+        let Ok(idx) = usize::try_from(value) else {
+            return DispatchOutcome::Advance;
         };
         let Some(target_value) = table.get(idx) else {
             return DispatchOutcome::Advance;

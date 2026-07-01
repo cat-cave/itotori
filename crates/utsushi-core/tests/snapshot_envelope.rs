@@ -28,20 +28,20 @@ use utsushi_core::{
 
 #[test]
 fn small_envelope_max_bytes_returns_sixteen_kib() {
-    assert_eq!(SnapshotEnvelope::Small.max_bytes(), 16 * 1024);
     const _CHECK: () = assert!(SnapshotEnvelope::Small.max_bytes() == 16 * 1024);
+    assert_eq!(SnapshotEnvelope::Small.max_bytes(), 16 * 1024);
 }
 
 #[test]
 fn medium_envelope_max_bytes_returns_two_hundred_fifty_six_kib() {
-    assert_eq!(SnapshotEnvelope::Medium.max_bytes(), 256 * 1024);
     const _CHECK: () = assert!(SnapshotEnvelope::Medium.max_bytes() == 256 * 1024);
+    assert_eq!(SnapshotEnvelope::Medium.max_bytes(), 256 * 1024);
 }
 
 #[test]
 fn large_envelope_max_bytes_returns_four_mib() {
-    assert_eq!(SnapshotEnvelope::Large.max_bytes(), 4 * 1024 * 1024);
     const _CHECK: () = assert!(SnapshotEnvelope::Large.max_bytes() == 4 * 1024 * 1024);
+    assert_eq!(SnapshotEnvelope::Large.max_bytes(), 4 * 1024 * 1024);
 }
 
 #[test]

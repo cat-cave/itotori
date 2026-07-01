@@ -1,6 +1,7 @@
 [package]
 name = "utsushi-core"
 version = "0.0.0"
+publish = false
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
@@ -24,3 +25,6 @@ unicode-normalization.workspace = true
 jsonschema.workspace = true
 tempfile.workspace = true
 utsushi-fixture = { path = "../utsushi-fixture" }
+
+[lints]
+workspace = true

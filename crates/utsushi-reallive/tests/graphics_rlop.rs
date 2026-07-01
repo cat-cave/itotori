@@ -68,7 +68,7 @@ impl OnDiskG00Package {
 }
 
 impl AssetPackage for OnDiskG00Package {
-    fn id(&self) -> &str {
+    fn id(&self) -> &'static str {
         "utsushi-215-on-disk-g00"
     }
 
@@ -255,7 +255,7 @@ fn grp_openbg_bg01a1_registers_bg_plane() {
         GraphicsObjectKind::Image { image_ref } => {
             assert_eq!(image_ref.asset_key, "BG01A1");
         }
-        other => panic!("expected Image, got {other:?}"),
+        other @ GraphicsObjectKind::Wipe { .. } => panic!("expected Image, got {other:?}"),
     }
 
     let bg_canvas = snap.bg_canvas.expect("bg canvas recorded");

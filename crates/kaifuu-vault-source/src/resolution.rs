@@ -295,16 +295,13 @@ fn verify_artifact_present(
     release_id: i64,
     artifact_id: i64,
 ) -> Result<(), VaultSourceError> {
-    let meta = match std::fs::symlink_metadata(on_disk_path) {
-        Ok(m) => m,
-        Err(_) => {
-            return Err(VaultSourceError::ArtifactMissing {
-                path: on_disk_path.to_path_buf(),
-                canonical_id: canonical_id.to_string(),
-                release_id,
-                artifact_id,
-            });
-        }
+    let Ok(meta) = std::fs::symlink_metadata(on_disk_path) else {
+        return Err(VaultSourceError::ArtifactMissing {
+            path: on_disk_path.to_path_buf(),
+            canonical_id: canonical_id.to_string(),
+            release_id,
+            artifact_id,
+        });
     };
     if !meta.file_type().is_file() {
         return Err(VaultSourceError::ArtifactMissing {

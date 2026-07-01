@@ -80,9 +80,8 @@ fn has_non_text_bytes(s: &str) -> bool {
 /// archive (case-insensitive). NAMAE resolution is not required for the
 /// purity invariant, so an absent file yields an empty inventory.
 fn read_gameexe(seen_txt: &Path) -> Vec<u8> {
-    let dir = match seen_txt.parent() {
-        Some(dir) => dir,
-        None => return Vec::new(),
+    let Some(dir) = seen_txt.parent() else {
+        return Vec::new();
     };
     let found = fs::read_dir(dir).ok().and_then(|entries| {
         entries.flatten().find_map(|entry| {
@@ -199,8 +198,9 @@ fn purity_for_corpus(corpus: &RealCorpus) -> PurityReport {
             Ok(produced) => produced,
             // A scene with no dialogue/choice surface legitimately produces
             // no bundle — that is not impurity.
-            Err(BridgeProduceError::NoTextUnits { .. })
-            | Err(BridgeProduceError::EmptyScene { .. }) => continue,
+            Err(BridgeProduceError::NoTextUnits { .. } | BridgeProduceError::EmptyScene { .. }) => {
+                continue;
+            }
             Err(other) => panic!(
                 "[{}] scene {} produced an unexpected bundle error: {other:?}",
                 corpus.label, meta.scene_id

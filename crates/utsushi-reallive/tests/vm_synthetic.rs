@@ -164,7 +164,9 @@ fn synthetic_goto_zero_infinite_loop_terminates_with_out_of_budget() {
                 "exactly 100 steps must run before the budget terminates the loop"
             );
         }
-        other => panic!("expected OutOfBudget, got {other:?}"),
+        other @ StepManyOutcome::Completed { .. } => {
+            panic!("expected OutOfBudget, got {other:?}")
+        }
     }
     // pc must still be 0 — we've been jumping back to the top of the
     // scene every step.
@@ -541,12 +543,15 @@ fn step_many_completes_cleanly_on_end_of_scene() {
             assert_eq!(executed, 2);
             assert!(matches!(last, StepOutcome::EndOfScene { scene: 1 }));
         }
-        other => panic!("expected Completed, got {other:?}"),
+        other @ StepManyOutcome::OutOfBudget { .. } => {
+            panic!("expected Completed, got {other:?}")
+        }
     }
 }
 
 #[test]
 fn vm_snapshot_restore_round_trips_scene_pc_stack_and_banks() {
+    use utsushi_reallive::{BankId, Value};
     let elements = vec![meta_line(0, 1)];
     let scene = Scene::new(1, elements).expect("scene");
     let mut store = InMemorySceneStore::new();
@@ -554,7 +559,6 @@ fn vm_snapshot_restore_round_trips_scene_pc_stack_and_banks() {
     let mut vm = Vm::new(7, 11);
     // Push a synthetic call stack so the restore re-establishes it.
     vm.enqueue_longop(LongOp::new(LongOpId(0xABCD), vec![0xAA, 0xBB]));
-    use utsushi_reallive::{BankId, Value};
     vm.banks_mut()
         .set(BankId::IntA, 5, Value::Int(123))
         .expect("set");

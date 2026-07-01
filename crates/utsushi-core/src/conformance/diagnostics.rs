@@ -430,6 +430,11 @@ impl fmt::Display for ConformanceError {
                 profile,
                 claimed,
                 ceiling,
+            }
+            | Self::PassAboveManifestCeiling {
+                profile,
+                claimed,
+                ceiling,
             } => write!(
                 formatter,
                 "{code}: profile={} claimed={} ceiling={}",
@@ -458,40 +463,22 @@ impl fmt::Display for ConformanceError {
                 formatter,
                 "{code}: artifact_kind={artifact_kind} reason={reason}"
             ),
-            Self::PassWithoutEvidence { profile } => {
+            Self::PassWithoutEvidence { profile }
+            | Self::DeclaredProfileReportedAsUnsupported { profile }
+            | Self::DeclaredProfileSkipped { profile }
+            | Self::ProfileNotDeclared { profile }
+            | Self::ProfileNotReported { profile } => {
                 write!(formatter, "{code}: profile={}", profile.as_str())
             }
             Self::MalformedSemanticCode { code: bad_code } => {
                 write!(formatter, "{code}: code={bad_code}")
             }
-            Self::DeclaredProfileReportedAsUnsupported { profile } => {
-                write!(formatter, "{code}: profile={}", profile.as_str())
-            }
-            Self::DeclaredProfileSkipped { profile } => {
-                write!(formatter, "{code}: profile={}", profile.as_str())
-            }
-            Self::ProfileNotDeclared { profile } => {
-                write!(formatter, "{code}: profile={}", profile.as_str())
-            }
-            Self::ProfileNotReported { profile } => {
-                write!(formatter, "{code}: profile={}", profile.as_str())
-            }
             Self::AdapterIdMismatch { manifest, result } => write!(
                 formatter,
                 "{code}: manifest_adapter_id={manifest} result_adapter_id={result}"
             ),
-            Self::PassAboveManifestCeiling {
-                profile,
-                claimed,
-                ceiling,
-            } => write!(
-                formatter,
-                "{code}: profile={} claimed={} ceiling={}",
-                profile.as_str(),
-                claimed.as_str(),
-                ceiling.as_str()
-            ),
-            Self::CaptureCheckProfileMismatch { observed, expected } => write!(
+            Self::CaptureCheckProfileMismatch { observed, expected }
+            | Self::SnapshotCheckProfileMismatch { observed, expected } => write!(
                 formatter,
                 "{code}: observed={} expected={}",
                 observed.as_str(),
@@ -512,7 +499,15 @@ impl fmt::Display for ConformanceError {
                 floor.as_str(),
                 ceiling.as_str()
             ),
-            Self::FrameArtifactCountOutOfRange { observed, min, max } => {
+            Self::FrameArtifactCountOutOfRange { observed, min, max }
+            | Self::RecordingEventCountOutOfRange { observed, min, max } => {
+                write!(formatter, "{code}: observed={observed} min={min} max={max}")
+            }
+            // reason: identical Display body to the u32 *OutOfRange arms above,
+            // but `observed`/`min`/`max` are u64 here, so folding it into the
+            // same `|` pattern would not type-check.
+            #[allow(clippy::match_same_arms)]
+            Self::RecordingDurationOutOfRange { observed, min, max } => {
                 write!(formatter, "{code}: observed={observed} min={min} max={max}")
             }
             Self::FrameCaptureNoArtifacts { declared_min } => {
@@ -551,7 +546,8 @@ impl fmt::Display for ConformanceError {
                 write!(formatter, "{code}: frame_index={frame_index}")
             }
             Self::RecordingIdMalformed { reason } => write!(formatter, "{code}: reason={reason}"),
-            Self::RecordingEvidenceTierOverclaim { observed, ceiling } => write!(
+            Self::RecordingEvidenceTierOverclaim { observed, ceiling }
+            | Self::SnapshotEvidenceTierOverclaim { observed, ceiling } => write!(
                 formatter,
                 "{code}: observed={} ceiling={}",
                 observed.as_str(),
@@ -572,30 +568,12 @@ impl fmt::Display for ConformanceError {
             Self::RecordingFrameCountMismatch { declared, actual } => {
                 write!(formatter, "{code}: declared={declared} actual={actual}")
             }
-            Self::RecordingDurationOutOfRange { observed, min, max } => {
-                write!(formatter, "{code}: observed={observed} min={min} max={max}")
-            }
-            Self::RecordingEventCountOutOfRange { observed, min, max } => {
-                write!(formatter, "{code}: observed={observed} min={min} max={max}")
-            }
-            Self::SnapshotCheckProfileMismatch { observed, expected } => write!(
-                formatter,
-                "{code}: observed={} expected={}",
-                observed.as_str(),
-                expected.as_str()
-            ),
             Self::SnapshotRefInvalid { side, reason } => {
                 write!(formatter, "{code}: side={side} reason={reason}")
             }
             Self::SnapshotInspectableIdMismatch { baseline, observed } => {
                 write!(formatter, "{code}: baseline={baseline} observed={observed}")
             }
-            Self::SnapshotEvidenceTierOverclaim { observed, ceiling } => write!(
-                formatter,
-                "{code}: observed={} ceiling={}",
-                observed.as_str(),
-                ceiling.as_str()
-            ),
         }
     }
 }

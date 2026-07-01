@@ -162,10 +162,11 @@ fn place_by_id(vault_root: &Path, canonical_id: &str, bytes: &[u8]) -> FixtureMe
 }
 
 fn sha256_hex(bytes: &[u8]) -> String {
+    use std::fmt::Write as _;
     let digest = Sha256::digest(bytes);
     let mut s = String::with_capacity(64);
-    for b in digest.iter() {
-        s.push_str(&format!("{b:02x}"));
+    for b in &digest {
+        let _ = write!(s, "{b:02x}");
     }
     s
 }

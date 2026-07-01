@@ -240,25 +240,19 @@ impl RLOperation for SetarrayOp {
             );
         }
         for i in 0..count {
-            let value = match args[3 + i].as_int() {
-                Some(value) => value,
-                None => {
-                    return warn_and_advance(
-                        vm,
-                        MemOpcode::Setarray,
-                        format!("arg[{}] expected Int(value), got Bytes", 3 + i),
-                    );
-                }
+            let Some(value) = args[3 + i].as_int() else {
+                return warn_and_advance(
+                    vm,
+                    MemOpcode::Setarray,
+                    format!("arg[{}] expected Int(value), got Bytes", 3 + i),
+                );
             };
-            let offset = match u16::try_from(i) {
-                Ok(value) => value,
-                Err(_) => {
-                    return warn_and_advance(
-                        vm,
-                        MemOpcode::Setarray,
-                        format!("offset out of range: {i}"),
-                    );
-                }
+            let Ok(offset) = u16::try_from(i) else {
+                return warn_and_advance(
+                    vm,
+                    MemOpcode::Setarray,
+                    format!("offset out of range: {i}"),
+                );
             };
             let idx = match checked_idx_add(base, offset, MemOpcode::Setarray) {
                 Ok(idx) => idx,
@@ -290,15 +284,8 @@ impl RLOperation for SetrngOp {
             Ok(value) => value,
             Err(reason) => return warn_and_advance(vm, MemOpcode::Setrng, reason),
         };
-        let end = match u16::try_from(end_i) {
-            Ok(value) => value,
-            Err(_) => {
-                return warn_and_advance(
-                    vm,
-                    MemOpcode::Setrng,
-                    format!("end out of range: {end_i}"),
-                );
-            }
+        let Ok(end) = u16::try_from(end_i) else {
+            return warn_and_advance(vm, MemOpcode::Setrng, format!("end out of range: {end_i}"));
         };
         if end < start {
             // Zero-size range (acceptance criterion #1: boundary case).
@@ -338,15 +325,12 @@ impl RLOperation for CpyrngOp {
                 format!("count out of range: {count_i}"),
             );
         }
-        let count = match u16::try_from(count_i) {
-            Ok(value) => value,
-            Err(_) => {
-                return warn_and_advance(
-                    vm,
-                    MemOpcode::Cpyrng,
-                    format!("count out of range: {count_i}"),
-                );
-            }
+        let Ok(count) = u16::try_from(count_i) else {
+            return warn_and_advance(
+                vm,
+                MemOpcode::Cpyrng,
+                format!("count out of range: {count_i}"),
+            );
         };
         // Read first to avoid aliasing issues when src_bank == dst_bank.
         let mut buffer = Vec::with_capacity(count as usize);
@@ -358,15 +342,12 @@ impl RLOperation for CpyrngOp {
             buffer.push(read_int_slot(vm, src_bank, src_idx));
         }
         for (offset, value) in buffer.into_iter().enumerate() {
-            let offset_u16 = match u16::try_from(offset) {
-                Ok(value) => value,
-                Err(_) => {
-                    return warn_and_advance(
-                        vm,
-                        MemOpcode::Cpyrng,
-                        format!("offset out of range: {offset}"),
-                    );
-                }
+            let Ok(offset_u16) = u16::try_from(offset) else {
+                return warn_and_advance(
+                    vm,
+                    MemOpcode::Cpyrng,
+                    format!("offset out of range: {offset}"),
+                );
             };
             let dst_idx = match checked_idx_add(dst_start, offset_u16, MemOpcode::Cpyrng) {
                 Ok(idx) => idx,
@@ -423,15 +404,12 @@ impl RLOperation for SetarrayStepped {
             );
         }
         for i in 0..count {
-            let value = match args[4 + i].as_int() {
-                Some(value) => value,
-                None => {
-                    return warn_and_advance(
-                        vm,
-                        MemOpcode::SetarrayStepped,
-                        format!("arg[{}] expected Int(value), got Bytes", 4 + i),
-                    );
-                }
+            let Some(value) = args[4 + i].as_int() else {
+                return warn_and_advance(
+                    vm,
+                    MemOpcode::SetarrayStepped,
+                    format!("arg[{}] expected Int(value), got Bytes", 4 + i),
+                );
             };
             let offset_u32 = (i as u32)
                 .checked_mul(step)
@@ -440,15 +418,12 @@ impl RLOperation for SetarrayStepped {
                 Ok(value) => value,
                 Err(reason) => return warn_and_advance(vm, MemOpcode::SetarrayStepped, reason),
             };
-            let offset = match u16::try_from(offset_u32) {
-                Ok(value) => value,
-                Err(_) => {
-                    return warn_and_advance(
-                        vm,
-                        MemOpcode::SetarrayStepped,
-                        format!("offset out of range: {offset_u32}"),
-                    );
-                }
+            let Ok(offset) = u16::try_from(offset_u32) else {
+                return warn_and_advance(
+                    vm,
+                    MemOpcode::SetarrayStepped,
+                    format!("offset out of range: {offset_u32}"),
+                );
             };
             let idx = match checked_idx_add(base, offset, MemOpcode::SetarrayStepped) {
                 Ok(idx) => idx,
@@ -501,25 +476,19 @@ impl RLOperation for SetrngStepped {
         let step = step_i as u32;
         let count = count_i as usize;
         for i in 0..count {
-            let offset_u32 = match (i as u32).checked_mul(step) {
-                Some(value) => value,
-                None => {
-                    return warn_and_advance(
-                        vm,
-                        MemOpcode::SetrngStepped,
-                        format!("offset overflow i={i} step={step}"),
-                    );
-                }
+            let Some(offset_u32) = (i as u32).checked_mul(step) else {
+                return warn_and_advance(
+                    vm,
+                    MemOpcode::SetrngStepped,
+                    format!("offset overflow i={i} step={step}"),
+                );
             };
-            let offset = match u16::try_from(offset_u32) {
-                Ok(value) => value,
-                Err(_) => {
-                    return warn_and_advance(
-                        vm,
-                        MemOpcode::SetrngStepped,
-                        format!("offset out of range: {offset_u32}"),
-                    );
-                }
+            let Ok(offset) = u16::try_from(offset_u32) else {
+                return warn_and_advance(
+                    vm,
+                    MemOpcode::SetrngStepped,
+                    format!("offset out of range: {offset_u32}"),
+                );
             };
             let idx = match checked_idx_add(start, offset, MemOpcode::SetrngStepped) {
                 Ok(idx) => idx,
@@ -603,11 +572,8 @@ impl RLOperation for SumOp {
             Ok(value) => value,
             Err(reason) => return warn_and_advance(vm, MemOpcode::Sum, reason),
         };
-        let end = match u16::try_from(end_i) {
-            Ok(value) => value,
-            Err(_) => {
-                return warn_and_advance(vm, MemOpcode::Sum, format!("end out of range: {end_i}"));
-            }
+        let Ok(end) = u16::try_from(end_i) else {
+            return warn_and_advance(vm, MemOpcode::Sum, format!("end out of range: {end_i}"));
         };
         if end < src_start {
             // Zero-size range → 0.
@@ -675,15 +641,8 @@ impl RLOperation for SumsOp {
                 Ok(value) => value,
                 Err(reason) => return warn_and_advance(vm, MemOpcode::Sums, reason),
             };
-            let end = match u16::try_from(end_i) {
-                Ok(value) => value,
-                Err(_) => {
-                    return warn_and_advance(
-                        vm,
-                        MemOpcode::Sums,
-                        format!("end out of range: {end_i}"),
-                    );
-                }
+            let Ok(end) = u16::try_from(end_i) else {
+                return warn_and_advance(vm, MemOpcode::Sums, format!("end out of range: {end_i}"));
             };
             if end < src_start {
                 continue;

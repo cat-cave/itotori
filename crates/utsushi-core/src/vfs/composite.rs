@@ -234,9 +234,8 @@ impl AssetPackage for CompositeAssetPackage {
                 revision: self.revision.clone(),
             });
         }
-        let (source_index, stored) = match self.locate(stripped)? {
-            Some(found) => found,
-            None => return Err(VfsError::AssetMissing { id: id.clone() }),
+        let Some((source_index, stored)) = self.locate(stripped)? else {
+            return Err(VfsError::AssetMissing { id: id.clone() });
         };
         match &self.sources[source_index] {
             CompositeSource::PlaintextDir(dir) => {
@@ -277,9 +276,8 @@ impl AssetPackage for CompositeAssetPackage {
         if id.is_directory() {
             return Err(VfsError::AssetNotFile { id: id.clone() });
         }
-        let (source_index, stored) = match self.locate(id.path())? {
-            Some(found) => found,
-            None => return Err(VfsError::AssetMissing { id: id.clone() }),
+        let Some((source_index, stored)) = self.locate(id.path())? else {
+            return Err(VfsError::AssetMissing { id: id.clone() });
         };
         match &self.sources[source_index] {
             CompositeSource::PlaintextDir(dir) => {

@@ -112,15 +112,12 @@ pub fn decompress_avg32(compressed: &[u8], dst_len: usize) -> Result<Vec<u8>, De
     let mut mask_idx: u8 = AVG32_COMPRESSED_PREAMBLE_LEN as u8;
     let mut bit: u32 = 1;
 
-    let mut flag = match xor_consume(compressed, &mut src_pos, &mut mask_idx) {
-        Some(byte) => byte,
-        None => {
-            return Err(DecompressError::TruncatedInput {
-                observed_len: compressed.len(),
-                position: src_pos,
-                needed: 1,
-            });
-        }
+    let Some(mut flag) = xor_consume(compressed, &mut src_pos, &mut mask_idx) else {
+        return Err(DecompressError::TruncatedInput {
+            observed_len: compressed.len(),
+            position: src_pos,
+            needed: 1,
+        });
     };
 
     while dst.len() < dst_len {

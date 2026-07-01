@@ -455,19 +455,19 @@ pub fn build_siglus_static_key_stub(
     let gameexe = encrypt_known_plaintext(STUB_KEY_CORRECT);
     let executable = match scenario {
         SiglusStaticKeyStubScenario::Valid => {
-            build_stub_executable(STUB_EXE_TAG_OK, Some(STUB_KEY_CORRECT))
+            build_stub_executable(*STUB_EXE_TAG_OK, Some(STUB_KEY_CORRECT))
         }
         SiglusStaticKeyStubScenario::WrongKey => {
-            build_stub_executable(STUB_EXE_TAG_OK, Some(STUB_KEY_WRONG))
+            build_stub_executable(*STUB_EXE_TAG_OK, Some(STUB_KEY_WRONG))
         }
         SiglusStaticKeyStubScenario::UnsupportedPacker => {
-            build_stub_executable(STUB_EXE_TAG_PACKED, Some(STUB_KEY_CORRECT))
+            build_stub_executable(*STUB_EXE_TAG_PACKED, Some(STUB_KEY_CORRECT))
         }
         SiglusStaticKeyStubScenario::ProtectedExecutable => {
-            build_stub_executable(STUB_EXE_TAG_PROTECTED, Some(STUB_KEY_CORRECT))
+            build_stub_executable(*STUB_EXE_TAG_PROTECTED, Some(STUB_KEY_CORRECT))
         }
         SiglusStaticKeyStubScenario::KeyRegionMissing => {
-            build_stub_executable(STUB_EXE_TAG_OK, None)
+            build_stub_executable(*STUB_EXE_TAG_OK, None)
         }
     };
     SiglusStaticKeyStubInputs {
@@ -476,9 +476,9 @@ pub fn build_siglus_static_key_stub(
     }
 }
 
-fn build_stub_executable(tag: &[u8; 8], key: Option<&[u8]>) -> Vec<u8> {
+fn build_stub_executable(tag: [u8; 8], key: Option<&[u8]>) -> Vec<u8> {
     let mut bytes = Vec::new();
-    bytes.extend_from_slice(tag);
+    bytes.extend_from_slice(&tag);
     bytes.extend_from_slice(STUB_FILLER);
     if let Some(key) = key {
         bytes.extend_from_slice(STATIC_KEY_MARKER);
@@ -1091,8 +1091,7 @@ fn sanitize_file_name(name: &str) -> String {
     Path::new(name)
         .file_name()
         .and_then(|component| component.to_str())
-        .map(ToString::to_string)
-        .unwrap_or_else(|| "siglus-static-key.json".to_string())
+        .map_or_else(|| "siglus-static-key.json".to_string(), ToString::to_string)
 }
 
 #[cfg(test)]
@@ -1136,8 +1135,7 @@ mod tests {
     fn has_finding(report: &SiglusStaticKeyReport, entry_id: &str, code: &str) -> bool {
         report
             .entry(entry_id)
-            .map(|entry| entry.findings.iter().any(|finding| finding.code == code))
-            .unwrap_or(false)
+            .is_some_and(|entry| entry.findings.iter().any(|finding| finding.code == code))
     }
 
     // --- The manifest is green and evidence-driven. ------------------------
@@ -1310,6 +1308,7 @@ mod tests {
 
     #[test]
     fn report_never_carries_raw_key_material() {
+        use std::fmt::Write as _;
         let report = discover(&load_fixture());
         let json = report.stable_json().expect("stable json");
 
@@ -1318,8 +1317,10 @@ mod tests {
         assert!(!json.contains(key_text.as_ref()), "raw key leaked");
         let key_hex: String = STUB_KEY_CORRECT
             .iter()
-            .map(|byte| format!("{byte:02x}"))
-            .collect();
+            .fold(String::new(), |mut acc, byte| {
+                let _ = write!(acc, "{byte:02x}");
+                acc
+            });
         assert!(!json.contains(&key_hex), "raw key hex leaked");
 
         // The key-ref carries a one-way commitment + count, not the key.

@@ -277,7 +277,7 @@ fn derive_status_from(
                     if let Some(limitation) = report.limitation.clone() {
                         unsupported_reasons.push(limitation);
                     } else {
-                        unsupported_reasons.push(format!("{:?} reported Unsupported", capability));
+                        unsupported_reasons.push(format!("{capability:?} reported Unsupported"));
                     }
                 }
             },

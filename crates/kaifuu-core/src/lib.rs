@@ -1392,12 +1392,7 @@ fn is_rpg_maker_system_json(root: &Path, path: &Path) -> bool {
     };
     let parts = relative_path
         .components()
-        .filter_map(|component| {
-            component
-                .as_os_str()
-                .to_str()
-                .map(|part| part.to_ascii_lowercase())
-        })
+        .filter_map(|component| component.as_os_str().to_str().map(str::to_ascii_lowercase))
         .collect::<Vec<_>>();
     parts.ends_with(&["data".to_string(), "system.json".to_string()])
         || parts.ends_with(&[
@@ -2304,14 +2299,12 @@ fn rpg_maker_mv_mz_key_validation_report(
         RpgMakerMvMzFixtureKeyValidationDiagnosticCode::MissingSystemJson => {
             SemanticErrorCode::MissingKeyProfile
         }
-        RpgMakerMvMzFixtureKeyValidationDiagnosticCode::MissingImageEvidence => {
+        RpgMakerMvMzFixtureKeyValidationDiagnosticCode::MissingImageEvidence
+        | RpgMakerMvMzFixtureKeyValidationDiagnosticCode::BadKey => {
             SemanticErrorCode::KeyValidationFailed
         }
         RpgMakerMvMzFixtureKeyValidationDiagnosticCode::MissingKey => {
             SemanticErrorCode::MissingKeyMaterial
-        }
-        RpgMakerMvMzFixtureKeyValidationDiagnosticCode::BadKey => {
-            SemanticErrorCode::KeyValidationFailed
         }
         RpgMakerMvMzFixtureKeyValidationDiagnosticCode::UnsupportedSurface => {
             SemanticErrorCode::UnsupportedVariantEncrypted
@@ -2928,7 +2921,7 @@ impl GameProfile {
         };
         let mut validation = validate_profile_value(&value);
         if validation.requirements.is_empty() {
-            validation.requirements = self.requirements.clone();
+            validation.requirements.clone_from(&self.requirements);
         }
         validation
     }
@@ -3046,8 +3039,7 @@ fn validate_engine(failures: &mut Vec<ProfileValidationFailure>, engine: Option<
         && !engine_version.is_null()
         && engine_version
             .as_str()
-            .map(|version| version.trim().is_empty())
-            .unwrap_or(true)
+            .is_none_or(|version| version.trim().is_empty())
     {
         failures.push(ProfileValidationFailure {
             code: "invalid_engine_version".to_string(),
@@ -3084,7 +3076,7 @@ fn add_profile_helper_execution_field_failures_at(
     };
     for (key, child) in object {
         let child_field = if field == "$" {
-            key.to_string()
+            key.clone()
         } else {
             format!("{field}.{key}")
         };
@@ -3696,8 +3688,7 @@ fn validate_assets(
             && !source_hash.is_null()
             && source_hash
                 .as_str()
-                .map(|hash| hash.trim().is_empty())
-                .unwrap_or(true)
+                .is_none_or(|hash| hash.trim().is_empty())
         {
             failures.push(ProfileValidationFailure {
                 code: "invalid_source_hash".to_string(),
@@ -4139,7 +4130,7 @@ fn validate_capability_report(
     if matches!(
         status.as_deref(),
         Some("limited" | "unsupported" | "requires_user_input")
-    ) && limitation.map(str::trim).unwrap_or("").is_empty()
+    ) && limitation.map_or("", str::trim).is_empty()
     {
         failures.push(ProfileValidationFailure {
             code: "missing_capability_limitation".to_string(),
@@ -4257,10 +4248,10 @@ fn validate_requirements(
         {
             failures.push(ProfileValidationFailure {
                 code: SemanticErrorCode::MissingKeyMaterial.to_string(),
-                field: key
-                    .as_deref()
-                    .map(|key| format!("requirements.{key}"))
-                    .unwrap_or_else(|| format!("requirements.{index}")),
+                field: key.as_deref().map_or_else(
+                    || format!("requirements.{index}"),
+                    |key| format!("requirements.{key}"),
+                ),
                 message: description.clone().unwrap_or_else(|| {
                     "required local key material could not be resolved".to_string()
                 }),
@@ -4280,10 +4271,10 @@ fn validate_requirements(
                 } else {
                     "unsupported_requirement".to_string()
                 },
-                field: key
-                    .as_deref()
-                    .map(|key| format!("requirements.{key}"))
-                    .unwrap_or_else(|| format!("requirements.{index}")),
+                field: key.as_deref().map_or_else(
+                    || format!("requirements.{index}"),
+                    |key| format!("requirements.{key}"),
+                ),
                 message: description
                     .clone()
                     .unwrap_or_else(|| "profile requirement is not satisfied".to_string()),
@@ -4317,15 +4308,7 @@ fn required_string_value(
     let key = field.rsplit('.').next().unwrap_or(field);
     match value.get(key).and_then(Value::as_str) {
         Some(text) if !text.trim().is_empty() => Some(text.to_string()),
-        Some(_) => {
-            failures.push(ProfileValidationFailure {
-                code: "missing_required_field".to_string(),
-                field: field.to_string(),
-                message: format!("{field} must not be empty"),
-            });
-            None
-        }
-        None => {
+        Some(_) | None => {
             failures.push(ProfileValidationFailure {
                 code: "missing_required_field".to_string(),
                 field: field.to_string(),
@@ -4571,7 +4554,7 @@ impl fmt::Debug for ResolvedKeyMaterial {
             .debug_struct("ResolvedKeyMaterial")
             .field(
                 "bytes",
-                &format_args!("[REDACTED:{}]", SEMANTIC_SECRET_REDACTED),
+                &format_args!("[REDACTED:{SEMANTIC_SECRET_REDACTED}]"),
             )
             .field("byte_len", &self.bytes.len())
             .finish()
@@ -4872,12 +4855,11 @@ impl HelperDiagnosticCode {
         match self {
             Self::Success => "kaifuu.helper_result.success",
             Self::MissingKey => SEMANTIC_MISSING_KEY_MATERIAL,
-            Self::WrongKey => SEMANTIC_KEY_VALIDATION_FAILED,
+            Self::WrongKey | Self::ValidationFailed => SEMANTIC_KEY_VALIDATION_FAILED,
             Self::HelperRequired => SEMANTIC_HELPER_REQUIRED,
             Self::HelperUnavailable => SEMANTIC_HELPER_UNAVAILABLE,
             Self::HelperAuthorizationDenied => SEMANTIC_HELPER_AUTHORIZATION_DENIED,
             Self::HelperTimeout => SEMANTIC_HELPER_TIMEOUT,
-            Self::ValidationFailed => SEMANTIC_KEY_VALIDATION_FAILED,
             Self::UnsupportedProtectedExecutable => SEMANTIC_PROTECTED_EXECUTABLE_UNSUPPORTED,
             Self::RedactionFailure => SEMANTIC_HELPER_REDACTION_FAILURE,
         }
@@ -5465,8 +5447,7 @@ fn siglus_parser_boundary_key_refs(
     request
         .get("keyRefs")
         .and_then(Value::as_array)
-        .map(Vec::as_slice)
-        .unwrap_or(&[])
+        .map_or(&[][..], Vec::as_slice)
         .iter()
         .filter_map(|key_ref| {
             let requirement_id = key_ref.get("requirementId")?.as_str()?;
@@ -6197,25 +6178,25 @@ fn evaluate_xp3_crypt_profile(
     diagnostics: &mut Vec<Xp3ProfileProofDiagnostic>,
 ) -> Xp3ProfileProofCryptProfile {
     match (classification, crypt_profile) {
-        (Xp3ProfileClassification::Plain, _)
-        | (Xp3ProfileClassification::Compressed, _)
-        | (Xp3ProfileClassification::UnsupportedProtectedExecutable, _) => {
-            Xp3ProfileProofCryptProfile {
-                status: Xp3CryptProfileStatus::NotRequired,
-                crypt_profile_id: crypt_profile.map(|profile| profile.crypt_profile_id.clone()),
-                key_ref_requirement_present: crypt_profile
-                    .and_then(|profile| profile.key_ref_requirement.as_ref())
-                    .is_some(),
-                requirement_id: crypt_profile
-                    .and_then(|profile| profile.key_ref_requirement.as_ref())
-                    .map(|requirement| requirement.requirement_id.clone()),
-                secret_ref: crypt_profile
-                    .and_then(|profile| profile.key_ref_requirement.as_ref())
-                    .map(|requirement| requirement.secret_ref.clone()),
-            }
-        }
-        (Xp3ProfileClassification::Encrypted, None)
-        | (Xp3ProfileClassification::HelperRequired, None) => {
+        (
+            Xp3ProfileClassification::Plain
+            | Xp3ProfileClassification::Compressed
+            | Xp3ProfileClassification::UnsupportedProtectedExecutable,
+            _,
+        ) => Xp3ProfileProofCryptProfile {
+            status: Xp3CryptProfileStatus::NotRequired,
+            crypt_profile_id: crypt_profile.map(|profile| profile.crypt_profile_id.clone()),
+            key_ref_requirement_present: crypt_profile
+                .and_then(|profile| profile.key_ref_requirement.as_ref())
+                .is_some(),
+            requirement_id: crypt_profile
+                .and_then(|profile| profile.key_ref_requirement.as_ref())
+                .map(|requirement| requirement.requirement_id.clone()),
+            secret_ref: crypt_profile
+                .and_then(|profile| profile.key_ref_requirement.as_ref())
+                .map(|requirement| requirement.secret_ref.clone()),
+        },
+        (Xp3ProfileClassification::Encrypted | Xp3ProfileClassification::HelperRequired, None) => {
             diagnostics.push(Xp3ProfileProofDiagnostic {
                 code: "xp3.crypt_profile.missing".to_string(),
                 severity: PartialDiagnosticSeverity::P0,
@@ -6238,8 +6219,10 @@ fn evaluate_xp3_crypt_profile(
                 secret_ref: None,
             }
         }
-        (Xp3ProfileClassification::Encrypted, Some(profile))
-        | (Xp3ProfileClassification::HelperRequired, Some(profile)) => {
+        (
+            Xp3ProfileClassification::Encrypted | Xp3ProfileClassification::HelperRequired,
+            Some(profile),
+        ) => {
             let recognized =
                 XP3_RECOGNIZED_CRYPT_PROFILE_IDS.contains(&profile.crypt_profile_id.as_str());
             let key_ref = profile.key_ref_requirement.as_ref();
@@ -6910,17 +6893,15 @@ fn read_encrypted_media_system_json(game_dir: &Path) -> Option<EncryptedMediaSys
                 .and_then(Value::as_str)
                 .map(str::trim)
                 .filter(|key| !key.is_empty());
-            let well_formed = key
-                .map(|key| {
-                    // MV/MZ asset XOR key is 16 bytes encoded as 32
-                    // lowercase hex chars.
-                    key.len() == 32
-                        && key.chars().all(|c| {
-                            c.is_ascii_hexdigit()
-                                && (!c.is_ascii_alphabetic() || c.is_ascii_lowercase())
-                        })
-                })
-                .unwrap_or(false);
+            let well_formed = key.is_some_and(|key| {
+                // MV/MZ asset XOR key is 16 bytes encoded as 32
+                // lowercase hex chars.
+                key.len() == 32
+                    && key.chars().all(|c| {
+                        c.is_ascii_hexdigit()
+                            && (!c.is_ascii_alphabetic() || c.is_ascii_lowercase())
+                    })
+            });
             let key_hash = if well_formed {
                 key.and_then(|key| ProofHash::new(sha256_hash_bytes(key.as_bytes())).ok())
             } else {
@@ -7043,12 +7024,10 @@ pub fn encrypted_media_proof(
     let system_json_present = system_json.is_some();
     let system_json_key_present = system_json
         .as_ref()
-        .map(|sj| sj.encryption_key_present)
-        .unwrap_or(false);
+        .is_some_and(|sj| sj.encryption_key_present);
     let system_json_key_well_formed = system_json
         .as_ref()
-        .map(|sj| sj.encryption_key_well_formed)
-        .unwrap_or(false);
+        .is_some_and(|sj| sj.encryption_key_well_formed);
     let system_json_proof_hash = system_json.as_ref().and_then(|sj| sj.proof_hash.clone());
     let system_json_key_hash = system_json
         .as_ref()
@@ -7172,8 +7151,7 @@ pub fn encrypted_media_proof(
                 severity: PartialDiagnosticSeverity::P1,
                 field: format!("assets[{}].path", fixture_asset.asset_id),
                 message: format!(
-                    "asset suffix .{} has no profiled MV/MZ media mapping",
-                    suffix
+                    "asset suffix .{suffix} has no profiled MV/MZ media mapping"
                 ),
                 semantic_code: Some(SEMANTIC_UNKNOWN_ENGINE_VARIANT.to_string()),
                 remediation: Some(
@@ -7853,7 +7831,7 @@ fn validate_helper_result_allowed_object_keys(
     for key in object.keys() {
         if !allowed.contains(&key.as_str()) {
             let child_field = if field == "$" {
-                key.to_string()
+                key.clone()
             } else {
                 format!("{field}.{key}")
             };
@@ -7879,7 +7857,7 @@ fn validate_helper_result_forbidden_metadata_fields(
     };
     for (key, child) in object {
         let child_field = if field == "$" {
-            key.to_string()
+            key.clone()
         } else {
             format!("{field}.{key}")
         };
@@ -8253,7 +8231,7 @@ fn validate_helper_result_execution(
     }
     if !execution
         .get("networkAccess")
-        .is_some_and(|network_access| network_access.is_boolean())
+        .is_some_and(serde_json::Value::is_boolean)
     {
         helper_result_failure(
             failures,
@@ -9196,7 +9174,7 @@ fn validate_helper_registry_request_binding(
 
     match input.get("expectedRedactedLogHash") {
         Some(Value::String(expected_redacted_log_hash)) => {
-            if ProofHash::new(expected_redacted_log_hash.to_string()).is_err() {
+            if ProofHash::new(expected_redacted_log_hash.clone()).is_err() {
                 diagnostics.push(LocalKeyImportDiagnostic {
                     code: "invalid_proof_hash".to_string(),
                     field: "expectedRedactedLogHash".to_string(),
@@ -9822,10 +9800,10 @@ impl HelperExecutableAdapter for FixtureHelperStubAdapter {
                 })
                 .unwrap_or(SEMANTIC_KEY_VALIDATION_FAILED);
             let diagnostic_code = match code {
-                SEMANTIC_FORBIDDEN_PUBLIC_SERIALIZATION => "redaction_failure",
                 SEMANTIC_MISSING_KEY_MATERIAL => "missing_key",
-                SEMANTIC_HELPER_REQUEST_MISSING_REDACTED_OUTPUT_EXPECTATION => "redaction_failure",
-                SEMANTIC_HELPER_REQUEST_REDACTED_OUTPUT_MISMATCH => "redaction_failure",
+                SEMANTIC_FORBIDDEN_PUBLIC_SERIALIZATION
+                | SEMANTIC_HELPER_REQUEST_MISSING_REDACTED_OUTPUT_EXPECTATION
+                | SEMANTIC_HELPER_REQUEST_REDACTED_OUTPUT_MISMATCH => "redaction_failure",
                 _ => "validation_failed",
             };
             let secret_refs = if diagnostic_code == "missing_key" {
@@ -10357,7 +10335,7 @@ fn validate_helper_registry_execution_policy(
     );
     if !policy
         .get("networkAccess")
-        .is_some_and(|network_access| network_access.is_boolean())
+        .is_some_and(serde_json::Value::is_boolean)
     {
         helper_registry_failure(
             diagnostics,
@@ -10681,7 +10659,7 @@ fn validate_helper_registry_allowed_object_keys(
     for key in object.keys() {
         if !allowed.contains(&key.as_str()) {
             let child_field = if field == "$" {
-                key.to_string()
+                key.clone()
             } else {
                 format!("{field}.{key}")
             };
@@ -10707,7 +10685,7 @@ fn validate_helper_registry_forbidden_execution_fields(
     };
     for (key, child) in object {
         let child_field = if field == "$" {
-            key.to_string()
+            key.clone()
         } else {
             format!("{field}.{key}")
         };
@@ -10856,8 +10834,7 @@ fn validate_helper_registry_output(
         .unwrap_or_default();
     if output_helper_id != entry.helper_id || output_helper_version != entry.helper_version {
         return Err(format!(
-            "{}: helper output provenance does not match registry entry",
-            SEMANTIC_HELPER_REGISTRY_INCOMPATIBLE_OUTPUT_SCHEMA
+            "{SEMANTIC_HELPER_REGISTRY_INCOMPATIBLE_OUTPUT_SCHEMA}: helper output provenance does not match registry entry"
         )
         .into());
     }
@@ -10935,8 +10912,7 @@ fn validate_helper_registry_invocation(
         || !is_sha256_ref(&allowlist_entry.sha256_hash)
     {
         return Err(format!(
-            "{}: helper allowlist entry does not match registered id, version, hash, and capability",
-            SEMANTIC_HELPER_ALLOWLIST_UNDECLARED_CAPABILITY
+            "{SEMANTIC_HELPER_ALLOWLIST_UNDECLARED_CAPABILITY}: helper allowlist entry does not match registered id, version, hash, and capability"
         )
         .into());
     }
@@ -11734,7 +11710,7 @@ impl fmt::Debug for LocalSecretDirectoryStore {
             .debug_struct("LocalSecretDirectoryStore")
             .field(
                 "root",
-                &format_args!("[REDACTED:{}]", SEMANTIC_SECRET_REDACTED),
+                &format_args!("[REDACTED:{SEMANTIC_SECRET_REDACTED}]"),
             )
             .field("max_secret_bytes", &self.max_secret_bytes)
             .finish()
@@ -11826,7 +11802,7 @@ impl fmt::Debug for KeyResolverPolicy {
             .debug_struct("KeyResolverPolicy")
             .field(
                 "allowed_local_secret_prefixes",
-                &format_args!("[REDACTED:{}]", SEMANTIC_SECRET_REDACTED),
+                &format_args!("[REDACTED:{SEMANTIC_SECRET_REDACTED}]"),
             )
             .field(
                 "allowed_local_secret_prefix_count",
@@ -12238,7 +12214,7 @@ fn redact_secret_bearing_value_at(
             let mut redacted = serde_json::Map::new();
             for (key, child) in object {
                 let child_field = if field == "$" {
-                    key.to_string()
+                    key.clone()
                 } else {
                     format!("{field}.{key}")
                 };
@@ -12250,7 +12226,7 @@ fn redact_secret_bearing_value_at(
                     });
                     redacted.insert(
                         key.clone(),
-                        Value::String(format!("[REDACTED:{}]", SEMANTIC_SECRET_REDACTED)),
+                        Value::String(format!("[REDACTED:{SEMANTIC_SECRET_REDACTED}]")),
                     );
                 } else {
                     redacted.insert(
@@ -12313,7 +12289,7 @@ fn secret_redaction_reason<'a>(key: &str, field: &str, value: &'a Value) -> Opti
 
 fn normalize_secret_field_name(key: &str) -> String {
     key.chars()
-        .filter(|character| character.is_ascii_alphanumeric())
+        .filter(char::is_ascii_alphanumeric)
         .flat_map(char::to_lowercase)
         .collect()
 }
@@ -12561,7 +12537,7 @@ fn is_sha256_ref(value: &str) -> bool {
 
 pub fn redact_for_log_or_report(text: &str) -> String {
     if text_requires_redaction(text) {
-        format!("[REDACTED:{}]", SEMANTIC_SECRET_REDACTED)
+        format!("[REDACTED:{SEMANTIC_SECRET_REDACTED}]")
     } else {
         text.to_string()
     }
@@ -12577,14 +12553,14 @@ fn redact_report_value_at(value: &Value, field: &str) -> Value {
             let mut redacted = serde_json::Map::new();
             for (key, child) in object {
                 let child_field = if field == "$" {
-                    key.to_string()
+                    key.clone()
                 } else {
                     format!("{field}.{key}")
                 };
                 if secret_redaction_reason(key, &child_field, child).is_some() {
                     redacted.insert(
                         key.clone(),
-                        Value::String(format!("[REDACTED:{}]", SEMANTIC_SECRET_REDACTED)),
+                        Value::String(format!("[REDACTED:{SEMANTIC_SECRET_REDACTED}]")),
                     );
                 } else {
                     redacted.insert(key.clone(), redact_report_value_at(child, &child_field));
@@ -12606,7 +12582,7 @@ fn redact_report_value_at(value: &Value, field: &str) -> Value {
 
 fn redact_asset_ref_for_report(asset_ref: &str) -> String {
     if asset_ref_requires_redaction(asset_ref) {
-        format!("[REDACTED:{}]", SEMANTIC_SECRET_REDACTED)
+        format!("[REDACTED:{SEMANTIC_SECRET_REDACTED}]")
     } else {
         asset_ref.to_string()
     }
@@ -13120,8 +13096,7 @@ impl AssetInventoryManifest {
             ) && surface
                 .source_text
                 .as_deref()
-                .map(str::trim)
-                .unwrap_or("")
+                .map_or("", str::trim)
                 .is_empty()
             {
                 failures.push(AssetInventoryValidationFailure {
@@ -13149,8 +13124,7 @@ impl AssetInventoryManifest {
                 .patching
                 .limitation
                 .as_deref()
-                .map(str::trim)
-                .unwrap_or("")
+                .map_or("", str::trim)
                 .is_empty()
             {
                 failures.push(AssetInventoryValidationFailure {
@@ -13245,11 +13219,7 @@ fn validate_asset_inventory_source_location(
         }
     }
     if let Some(container_key) = location.get("containerKey")
-        && container_key
-            .as_str()
-            .map(str::trim)
-            .unwrap_or("")
-            .is_empty()
+        && container_key.as_str().map_or("", str::trim).is_empty()
     {
         failures.push(AssetInventoryValidationFailure {
             code: "invalid_source_location".to_string(),
@@ -13267,7 +13237,7 @@ fn validate_asset_inventory_source_location(
             return;
         };
         for (index, entry) in entry_path.iter().enumerate() {
-            if entry.as_str().map(str::trim).unwrap_or("").is_empty() {
+            if entry.as_str().map_or("", str::trim).is_empty() {
                 failures.push(AssetInventoryValidationFailure {
                     code: "invalid_source_location".to_string(),
                     field: format!("{field}.entryPath.{index}"),
@@ -13580,19 +13550,19 @@ impl ProtectedSpan {
 
     fn merge_missing_metadata_from(&mut self, other: &Self) {
         if self.parsed_name.is_none() {
-            self.parsed_name = other.parsed_name.clone();
+            self.parsed_name.clone_from(&other.parsed_name);
         }
         if self.arguments.is_none() {
-            self.arguments = other.arguments.clone();
+            self.arguments.clone_from(&other.arguments);
         }
         if self.variable_name.is_none() {
-            self.variable_name = other.variable_name.clone();
+            self.variable_name.clone_from(&other.variable_name);
         }
         if self.format_hint.is_none() {
-            self.format_hint = other.format_hint.clone();
+            self.format_hint.clone_from(&other.format_hint);
         }
         if self.example_values.is_none() {
-            self.example_values = other.example_values.clone();
+            self.example_values.clone_from(&other.example_values);
         }
         if self.base_start_byte.is_none() {
             self.base_start_byte = other.base_start_byte;
@@ -13607,13 +13577,13 @@ impl ProtectedSpan {
             self.annotation_end_byte = other.annotation_end_byte;
         }
         if self.annotation_text.is_none() {
-            self.annotation_text = other.annotation_text.clone();
+            self.annotation_text.clone_from(&other.annotation_text);
         }
         if self.annotation_locale.is_none() {
-            self.annotation_locale = other.annotation_locale.clone();
+            self.annotation_locale.clone_from(&other.annotation_locale);
         }
         if self.display_mode.is_none() {
-            self.display_mode = other.display_mode.clone();
+            self.display_mode.clone_from(&other.display_mode);
         }
     }
 }
@@ -13711,8 +13681,7 @@ fn source_slice_for_span<'a>(
     let actual = &source_text[start..end];
     if actual != expected_raw {
         return Err(format!(
-            "protected span raw {:?} must match sourceText byte range {:?}",
-            expected_raw, actual
+            "protected span raw {expected_raw:?} must match sourceText byte range {actual:?}"
         )
         .into());
     }
@@ -15392,8 +15361,7 @@ impl LayeredAccessPreflightReport {
                     surface
                         .key_requirement_refs
                         .first()
-                        .map(String::as_str)
-                        .unwrap_or(surface.surface_id.as_str()),
+                        .map_or(surface.surface_id.as_str(), String::as_str),
                     format!(
                         "layered surface {} requires crypto key material before patching",
                         surface.surface_id
@@ -16413,7 +16381,7 @@ pub fn deterministic_id(kind: &str, index: usize) -> String {
     while compact.len() < 8 {
         compact.push('0');
     }
-    format!("019ed000-0000-7000-8000-{}{:04}", compact, index)
+    format!("019ed000-0000-7000-8000-{compact}{index:04}")
 }
 
 pub fn content_hash(input: &str) -> String {
@@ -16723,9 +16691,10 @@ mod plain_xp3_payload_serde {
     }
 
     fn hex_encode(bytes: &[u8]) -> String {
+        use std::fmt::Write as _;
         let mut output = String::with_capacity(bytes.len() * 2);
         for byte in bytes {
-            output.push_str(&format!("{byte:02x}"));
+            let _ = write!(output, "{byte:02x}");
         }
         output
     }
@@ -16840,11 +16809,12 @@ impl PlainXp3WriterError {
     pub fn semantic_code(&self) -> &'static str {
         match self {
             Self::UnsupportedEncrypted => SEMANTIC_UNSUPPORTED_VARIANT_ENCRYPTED,
-            Self::UnsupportedCompressed => SEMANTIC_UNSUPPORTED_VARIANT_PACKED,
+            Self::UnsupportedCompressed | Self::UnsupportedCompressedReplacement(_) => {
+                SEMANTIC_UNSUPPORTED_VARIANT_PACKED
+            }
             Self::UnsupportedHelperRequired => SEMANTIC_HELPER_REQUIRED,
             Self::UnsupportedProtectedExecutable => SEMANTIC_PROTECTED_EXECUTABLE_UNSUPPORTED,
             Self::UnsupportedVariant(_) => SEMANTIC_UNSUPPORTED_ENGINE_VARIANT,
-            Self::UnsupportedCompressedReplacement(_) => SEMANTIC_UNSUPPORTED_VARIANT_PACKED,
             Self::InventoryError(_)
             | Self::InconsistentManifest(_)
             | Self::Io(_)
@@ -17144,7 +17114,7 @@ pub fn encode_xp3(archive: &PlainXp3Archive) -> Result<Vec<u8>, PlainXp3WriterEr
         for unit in path_units {
             info.extend_from_slice(&unit.to_le_bytes());
         }
-        append_plain_xp3_chunk(&mut file, b"info", &info);
+        append_plain_xp3_chunk(&mut file, *b"info", &info);
 
         let mut segm = Vec::with_capacity(entry.segments.len() * 28);
         for (segment, segment_offset) in entry.segments.iter().zip(offsets) {
@@ -17153,13 +17123,13 @@ pub fn encode_xp3(archive: &PlainXp3Archive) -> Result<Vec<u8>, PlainXp3WriterEr
             segm.extend_from_slice(&segment.original_size.to_le_bytes());
             segm.extend_from_slice(&segment.archive_size.to_le_bytes());
         }
-        append_plain_xp3_chunk(&mut file, b"segm", &segm);
+        append_plain_xp3_chunk(&mut file, *b"segm", &segm);
 
         if let Some(adler) = entry.stored_adler32 {
-            append_plain_xp3_chunk(&mut file, b"adlr", &adler.to_le_bytes());
+            append_plain_xp3_chunk(&mut file, *b"adlr", &adler.to_le_bytes());
         }
 
-        append_plain_xp3_chunk(&mut index, b"File", &file);
+        append_plain_xp3_chunk(&mut index, *b"File", &file);
     }
 
     // Index encoding (plain) + size + content.
@@ -17174,8 +17144,8 @@ pub fn encode_xp3(archive: &PlainXp3Archive) -> Result<Vec<u8>, PlainXp3WriterEr
     Ok(bytes)
 }
 
-fn append_plain_xp3_chunk(output: &mut Vec<u8>, name: &[u8; 4], content: &[u8]) {
-    output.extend_from_slice(name);
+fn append_plain_xp3_chunk(output: &mut Vec<u8>, name: [u8; 4], content: &[u8]) {
+    output.extend_from_slice(&name);
     output.extend_from_slice(&(content.len() as u64).to_le_bytes());
     output.extend_from_slice(content);
 }
@@ -17236,7 +17206,7 @@ pub fn unpack_plain_xp3_to_directory(
         validate_safe_relative_path(&entry.path)
             .map_err(|_| PlainXp3WriterError::UnsafeRelativePath(entry.path.clone()))?;
         let flat = entry.path.replace('/', "__");
-        let payload_relative = format!("payload/{index:0width$}-{flat}.bin", width = width);
+        let payload_relative = format!("payload/{index:0width$}-{flat}.bin");
         let payload_path = dir.join(&payload_relative);
         if let Some(parent) = payload_path.parent() {
             fs::create_dir_all(parent)
@@ -17620,6 +17590,7 @@ fn checked_end(
 }
 
 fn sha256_hex(input: &[u8]) -> String {
+    use std::fmt::Write as _;
     const INITIAL: [u32; 8] = [
         0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab,
         0x5be0cd19,
@@ -17709,9 +17680,10 @@ fn sha256_hex(input: &[u8]) -> String {
         h[7] = h[7].wrapping_add(hh);
     }
 
-    h.iter()
-        .map(|word| format!("{word:08x}"))
-        .collect::<String>()
+    h.iter().fold(String::new(), |mut acc, word| {
+        let _ = write!(acc, "{word:08x}");
+        acc
+    })
 }
 
 pub fn safe_join_relative(root: &Path, relative_path: &str) -> KaifuuResult<PathBuf> {
@@ -17851,8 +17823,7 @@ pub fn promote_staged_directory_no_clobber(
             Err(output_already_exists_error(output_label, output_dir))
         }
         Err(error) => Err(format!(
-            "{output_label} promotion failed without replacing an existing output path: {}",
-            error
+            "{output_label} promotion failed without replacing an existing output path: {error}"
         )
         .into()),
     }
@@ -17881,6 +17852,10 @@ fn output_already_exists_error(
         target_arch = "x86_64"
     )
 ))]
+// reason: no-clobber directory promotion needs the raw renameat2 syscall
+// (RENAME_NOREPLACE); there is no safe std wrapper. The FFI decl + call are the
+// minimal unsafe surface; unsafe is denied everywhere else in the crate.
+#[allow(unsafe_code)]
 fn rename_directory_no_replace(staging_dir: &Path, output_dir: &Path) -> io::Result<()> {
     use std::os::raw::{c_char, c_long};
     use std::os::unix::ffi::OsStrExt;
@@ -17915,9 +17890,9 @@ fn rename_directory_no_replace(staging_dir: &Path, output_dir: &Path) -> io::Res
         syscall(
             SYS_RENAMEAT2,
             AT_FDCWD,
-            staging.as_ptr() as *const c_char,
+            staging.as_ptr().cast::<c_char>(),
             AT_FDCWD,
-            output.as_ptr() as *const c_char,
+            output.as_ptr().cast::<c_char>(),
             RENAME_NOREPLACE,
         )
     };
@@ -17948,6 +17923,10 @@ fn rename_directory_no_replace(_staging_dir: &Path, _output_dir: &Path) -> io::R
 }
 
 #[cfg(target_os = "macos")]
+// reason: no-clobber directory promotion needs the renamex_np(RENAME_EXCL) FFI;
+// there is no safe std wrapper. Minimal unsafe surface; unsafe is denied
+// everywhere else in the crate.
+#[allow(unsafe_code)]
 fn rename_directory_no_replace(staging_dir: &Path, output_dir: &Path) -> io::Result<()> {
     use std::os::raw::{c_char, c_int};
     use std::os::unix::ffi::OsStrExt;
@@ -18059,17 +18038,17 @@ where
     T: Serialize,
 {
     let pretty = serde_json::to_string_pretty(value)?;
-    Ok(format!("{}\n", compact_primitive_json_arrays(&pretty)?))
+    Ok(format!("{}\n", compact_primitive_json_arrays(&pretty)))
 }
 
-fn compact_primitive_json_arrays(pretty: &str) -> KaifuuResult<String> {
+fn compact_primitive_json_arrays(pretty: &str) -> String {
     let lines = pretty.lines().collect::<Vec<_>>();
     let mut formatted = Vec::with_capacity(lines.len());
     let mut index = 0;
 
     while index < lines.len() {
         let line = lines[index];
-        if let Some(compacted) = compact_primitive_json_array(&lines, index)? {
+        if let Some(compacted) = compact_primitive_json_array(&lines, index) {
             formatted.push(compacted.line);
             index = compacted.next_index;
         } else {
@@ -18078,7 +18057,7 @@ fn compact_primitive_json_arrays(pretty: &str) -> KaifuuResult<String> {
         }
     }
 
-    Ok(formatted.join("\n"))
+    formatted.join("\n")
 }
 
 struct CompactedJsonArray {
@@ -18086,18 +18065,13 @@ struct CompactedJsonArray {
     next_index: usize,
 }
 
-fn compact_primitive_json_array(
-    lines: &[&str],
-    start_index: usize,
-) -> KaifuuResult<Option<CompactedJsonArray>> {
+fn compact_primitive_json_array(lines: &[&str], start_index: usize) -> Option<CompactedJsonArray> {
     let line = lines[start_index];
     let trimmed = line.trim_end();
     if trimmed == "[" || !trimmed.ends_with('[') {
-        return Ok(None);
+        return None;
     }
-    let Some(open_index) = line.rfind('[') else {
-        return Ok(None);
-    };
+    let open_index = line.rfind('[')?;
     let prefix = &line[..open_index];
     let mut items = Vec::new();
     let mut index = start_index + 1;
@@ -18106,17 +18080,17 @@ fn compact_primitive_json_array(
         let trimmed_candidate = candidate.trim();
         if trimmed_candidate == "]" || trimmed_candidate == "]," {
             if items.is_empty() {
-                return Ok(None);
+                return None;
             }
             let trailing_comma = if trimmed_candidate.ends_with(',') {
                 ","
             } else {
                 ""
             };
-            return Ok(Some(CompactedJsonArray {
+            return Some(CompactedJsonArray {
                 line: format!("{prefix}[{}]{trailing_comma}", items.join(", ")),
                 next_index: index + 1,
-            }));
+            });
         }
 
         let item = trimmed_candidate
@@ -18124,16 +18098,16 @@ fn compact_primitive_json_array(
             .unwrap_or(trimmed_candidate);
         let parsed: Value = match serde_json::from_str(item) {
             Ok(value) => value,
-            Err(_) => return Ok(None),
+            Err(_) => return None,
         };
         if !is_primitive_json_value(&parsed) {
-            return Ok(None);
+            return None;
         }
         items.push(item.to_string());
         index += 1;
     }
 
-    Ok(None)
+    None
 }
 
 fn is_primitive_json_value(value: &Value) -> bool {
@@ -18995,25 +18969,22 @@ fn report_v02_source_compatibility(
         }
     };
 
-    let entries = match patch_export["entries"].as_array() {
-        Some(entries) => entries,
-        None => {
-            record_golden_failure(
-                report,
-                GoldenFailure {
-                    code: "translated_patch_entries_missing".to_string(),
-                    phase: "translated_source_compatibility".to_string(),
-                    adapter_id: adapter_id.to_string(),
-                    message: "translated patch export is missing entries".to_string(),
-                    asset_ref: None,
-                    source_unit_key: None,
-                    support_boundary: None,
-                    expected: Some("entries array".to_string()),
-                    actual: None,
-                },
-            );
-            return;
-        }
+    let Some(entries) = patch_export["entries"].as_array() else {
+        record_golden_failure(
+            report,
+            GoldenFailure {
+                code: "translated_patch_entries_missing".to_string(),
+                phase: "translated_source_compatibility".to_string(),
+                adapter_id: adapter_id.to_string(),
+                message: "translated patch export is missing entries".to_string(),
+                asset_ref: None,
+                source_unit_key: None,
+                support_boundary: None,
+                expected: Some("entries array".to_string()),
+                actual: None,
+            },
+        );
+        return;
     };
 
     let mut compatible = 0_usize;
@@ -19320,28 +19291,25 @@ fn report_translated_target_equivalence(
         }
     };
 
-    let units = match source["units"].as_array() {
-        Some(units) => units,
-        None => {
-            record_golden_failure(
-                report,
-                GoldenFailure {
-                    code: "translated_target_units_missing".to_string(),
-                    phase: "translated_target_equivalence".to_string(),
-                    adapter_id: adapter_id.to_string(),
-                    message: "translated patch output is missing a units array".to_string(),
-                    asset_ref: Some("source.json".to_string()),
-                    source_unit_key: None,
-                    support_boundary: Some(
-                        "translated target equivalence requires fixture JSON output with units"
-                            .to_string(),
-                    ),
-                    expected: Some("units array".to_string()),
-                    actual: None,
-                },
-            );
-            return;
-        }
+    let Some(units) = source["units"].as_array() else {
+        record_golden_failure(
+            report,
+            GoldenFailure {
+                code: "translated_target_units_missing".to_string(),
+                phase: "translated_target_equivalence".to_string(),
+                adapter_id: adapter_id.to_string(),
+                message: "translated patch output is missing a units array".to_string(),
+                asset_ref: Some("source.json".to_string()),
+                source_unit_key: None,
+                support_boundary: Some(
+                    "translated target equivalence requires fixture JSON output with units"
+                        .to_string(),
+                ),
+                expected: Some("units array".to_string()),
+                actual: None,
+            },
+        );
+        return;
     };
 
     let targets_by_key = units
@@ -19644,16 +19612,16 @@ mod tests {
             for unit in path_units {
                 info.extend_from_slice(&unit.to_le_bytes());
             }
-            append_xp3_chunk(&mut file, b"info", &info);
+            append_xp3_chunk(&mut file, *b"info", &info);
 
             let mut segment = Vec::new();
             segment.extend_from_slice(&(u32::from(entry.compressed)).to_le_bytes());
             segment.extend_from_slice(&offset.to_le_bytes());
             segment.extend_from_slice(&(entry.payload.len() as u64).to_le_bytes());
             segment.extend_from_slice(&(entry.payload.len() as u64).to_le_bytes());
-            append_xp3_chunk(&mut file, b"segm", &segment);
-            append_xp3_chunk(&mut file, b"adlr", &entry.adler32.to_le_bytes());
-            append_xp3_chunk(&mut index, b"File", &file);
+            append_xp3_chunk(&mut file, *b"segm", &segment);
+            append_xp3_chunk(&mut file, *b"adlr", &entry.adler32.to_le_bytes());
+            append_xp3_chunk(&mut index, *b"File", &file);
         }
 
         bytes.push(0);
@@ -19664,8 +19632,8 @@ mod tests {
         bytes
     }
 
-    fn append_xp3_chunk(output: &mut Vec<u8>, name: &[u8; 4], content: &[u8]) {
-        output.extend_from_slice(name);
+    fn append_xp3_chunk(output: &mut Vec<u8>, name: [u8; 4], content: &[u8]) {
+        output.extend_from_slice(&name);
         output.extend_from_slice(&(content.len() as u64).to_le_bytes());
         output.extend_from_slice(content);
     }
@@ -22170,6 +22138,22 @@ mod tests {
 
     #[test]
     fn fixture_helper_registry_rejects_missing_capability_and_bad_output() {
+        struct BadOutputAdapter;
+
+        impl HelperExecutableAdapter for BadOutputAdapter {
+            fn helper_id(&self) -> &'static str {
+                FIXTURE_HELPER_REGISTRY_ID
+            }
+
+            fn invoke(
+                &self,
+                _entry: &HelperRegistryEntry,
+                _request: HelperRegistryInvocationRequest<'_>,
+            ) -> KaifuuResult<Value> {
+                Ok(serde_json::json!({"not": "a helper result"}))
+            }
+        }
+
         let registry = fixture_helper_registry().unwrap();
         let input = serde_json::json!({"fixture": true});
         let missing_capability = registry.invoke(HelperRegistryInvocationRequest {
@@ -22186,22 +22170,6 @@ mod tests {
                 .to_string()
                 .contains(SEMANTIC_HELPER_REGISTRY_MISSING_CAPABILITY)
         );
-
-        struct BadOutputAdapter;
-
-        impl HelperExecutableAdapter for BadOutputAdapter {
-            fn helper_id(&self) -> &'static str {
-                FIXTURE_HELPER_REGISTRY_ID
-            }
-
-            fn invoke(
-                &self,
-                _entry: &HelperRegistryEntry,
-                _request: HelperRegistryInvocationRequest<'_>,
-            ) -> KaifuuResult<Value> {
-                Ok(serde_json::json!({"not": "a helper result"}))
-            }
-        }
 
         let mut bad_registry = HelperRegistry::new();
         bad_registry
@@ -23667,7 +23635,7 @@ mod tests {
         let redacted = redact_secret_bearing_value(&profile);
         assert_eq!(
             redacted.value["archiveParameters"][0]["value"],
-            format!("[REDACTED:{}]", SEMANTIC_SECRET_REDACTED)
+            format!("[REDACTED:{SEMANTIC_SECRET_REDACTED}]")
         );
         assert!(
             !serde_json::to_string(&redacted.value)
@@ -23701,7 +23669,7 @@ mod tests {
             let redacted = redact_secret_bearing_value(&profile);
             assert_eq!(
                 redacted.value["archiveParameters"][0]["value"],
-                format!("[REDACTED:{}]", SEMANTIC_SECRET_REDACTED)
+                format!("[REDACTED:{SEMANTIC_SECRET_REDACTED}]")
             );
             assert!(
                 !serde_json::to_string(&redacted.value)
@@ -23834,7 +23802,7 @@ mod tests {
             let redacted = redact_for_log_or_report(text);
             assert_eq!(
                 redacted,
-                format!("[REDACTED:{}]", SEMANTIC_SECRET_REDACTED),
+                format!("[REDACTED:{SEMANTIC_SECRET_REDACTED}]"),
                 "{text} should be redacted"
             );
         }
@@ -26104,12 +26072,10 @@ mod tests {
         fs::create_dir_all(&data_dir).unwrap();
         let body = match key {
             Some(key) => format!(
-                "{{\"hasEncryptedImages\":{},\"hasEncryptedAudio\":{},\"encryptionKey\":\"{}\"}}",
-                has_encrypted_images, has_encrypted_audio, key
+                "{{\"hasEncryptedImages\":{has_encrypted_images},\"hasEncryptedAudio\":{has_encrypted_audio},\"encryptionKey\":\"{key}\"}}"
             ),
             None => format!(
-                "{{\"hasEncryptedImages\":{},\"hasEncryptedAudio\":{}}}",
-                has_encrypted_images, has_encrypted_audio
+                "{{\"hasEncryptedImages\":{has_encrypted_images},\"hasEncryptedAudio\":{has_encrypted_audio}}}"
             ),
         };
         fs::write(data_dir.join("System.json"), body).unwrap();
@@ -26315,8 +26281,7 @@ mod tests {
                 .key_profile
                 .system_json_proof_hash
                 .as_ref()
-                .map(|hash| hash.as_str().starts_with("sha256:"))
-                .unwrap_or(false)
+                .is_some_and(|hash| hash.as_str().starts_with("sha256:"))
         );
         for asset in &report.assets {
             assert!(asset.asset_evidence_hash.as_str().starts_with("sha256:"));

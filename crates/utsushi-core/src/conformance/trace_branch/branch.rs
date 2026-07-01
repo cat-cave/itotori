@@ -215,10 +215,10 @@ fn first_divergence_index(left: &[ChoiceIndex], right: &[ChoiceIndex]) -> Option
             return Some(idx);
         }
     }
-    if left.len() != right.len() {
-        Some(left.len().min(right.len()))
-    } else {
+    if left.len() == right.len() {
         None
+    } else {
+        Some(left.len().min(right.len()))
     }
 }
 
@@ -333,8 +333,9 @@ fn summarise_branch_failure(mismatches: &[BranchMismatch]) -> (String, String) {
     }
     let dominant_code = mismatches
         .first()
-        .map(|first| branch_mismatch_code(first.kind))
-        .unwrap_or(codes::BRANCH_MISSING)
+        .map_or(codes::BRANCH_MISSING, |first| {
+            branch_mismatch_code(first.kind)
+        })
         .to_string();
     let mut detail = format!(
         "{total} branch mismatches: missing={missing} unexpected={unexpected} \
@@ -382,7 +383,7 @@ impl BranchMismatch {
         Self {
             kind,
             expected_branch_id: expected_branch_id.to_string(),
-            observed_branch_id: observed_branch_id.map(|s| s.to_string()),
+            observed_branch_id: observed_branch_id.map(std::string::ToString::to_string),
             detail,
         }
     }
@@ -412,10 +413,9 @@ pub fn accepts_branch_capture_evidence(evidence: &EvidenceRef) -> bool {
         | EvidenceRef::BridgeUnit { .. }
         | EvidenceRef::ReplayLogRef { .. }
         | EvidenceRef::ImplMapFixture { .. } => true,
-        EvidenceRef::FrameArtifactRef { .. } => false,
         // `EvidenceRef::StatePath` (UTSUSHI-028) belongs to the
         // snapshot-restore profile only.
-        EvidenceRef::StatePath { .. } => false,
+        EvidenceRef::FrameArtifactRef { .. } | EvidenceRef::StatePath { .. } => false,
         EvidenceRef::RuntimeArtifact { kind, .. } => matches!(
             kind,
             RuntimeArtifactKind::TraceLog | RuntimeArtifactKind::ConformanceReport
@@ -430,7 +430,7 @@ fn validate_branch_id_field(value: &str) -> Result<(), ConformanceError> {
             reason: "branch_id is empty".to_string(),
         });
     }
-    if value.chars().any(|c| c.is_whitespace()) {
+    if value.chars().any(char::is_whitespace) {
         return Err(ConformanceError::EvidenceRefInvalid {
             artifact_kind: "branch",
             reason: "branch_id contains whitespace".to_string(),

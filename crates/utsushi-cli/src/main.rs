@@ -175,12 +175,12 @@ fn descriptor_output(descriptor: RuntimeAdapterDescriptor) -> Value {
         "capabilities": descriptor
             .capabilities
             .into_iter()
-            .map(|capability| capability.as_str())
+            .map(utsushi_core::RuntimeCapability::as_str)
             .collect::<Vec<_>>(),
         "approximationTiers": descriptor
             .approximation_tiers
             .into_iter()
-            .map(|approximation_tier| approximation_tier.as_str())
+            .map(utsushi_core::ApproximationTier::as_str)
             .collect::<Vec<_>>(),
         "diagnostics": descriptor
             .diagnostics
@@ -273,18 +273,14 @@ mod tests {
             Self { calls }
         }
 
-        fn report(
-            &self,
-            operation: &'static str,
-            request: &RuntimeRequest<'_>,
-        ) -> UtsushiResult<Value> {
+        fn report(&self, operation: &'static str, request: &RuntimeRequest<'_>) -> Value {
             self.calls.borrow_mut().push(operation);
-            Ok(json!({
+            json!({
                 "adapterName": TEST_ADAPTER_NAME,
                 "operation": operation,
                 "inputRoot": request.input_root.display().to_string(),
                 "artifactRoot": request.artifact_root.map(|path| path.display().to_string())
-            }))
+            })
         }
     }
 
@@ -308,15 +304,15 @@ mod tests {
         }
 
         fn trace(&self, request: &RuntimeRequest<'_>) -> UtsushiResult<Value> {
-            self.report("trace", request)
+            Ok(self.report("trace", request))
         }
 
         fn capture(&self, request: &RuntimeRequest<'_>) -> UtsushiResult<Value> {
-            self.report("capture", request)
+            Ok(self.report("capture", request))
         }
 
         fn smoke_validate(&self, request: &RuntimeRequest<'_>) -> UtsushiResult<Value> {
-            self.report("smoke", request)
+            Ok(self.report("smoke", request))
         }
     }
 
@@ -396,7 +392,7 @@ mod tests {
         dir
     }
 
-    fn registry_with<'a>(adapter: &'a dyn RuntimeAdapter) -> RuntimeAdapterRegistry<'a> {
+    fn registry_with(adapter: &dyn RuntimeAdapter) -> RuntimeAdapterRegistry<'_> {
         let mut registry = RuntimeAdapterRegistry::new();
         registry.register(adapter).unwrap();
         registry

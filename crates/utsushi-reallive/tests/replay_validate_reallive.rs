@@ -198,8 +198,7 @@ fn synthetic_patched_seen_txt_replay_contains_sentinel() {
                 && event
                     .get("bodyUtf8")
                     .and_then(|body| body.as_str())
-                    .map(|body| body.contains(EN_US_SENTINEL_SUBSTR))
-                    .unwrap_or(false)
+                    .is_some_and(|body| body.contains(EN_US_SENTINEL_SUBSTR))
         })
         .count();
     assert!(

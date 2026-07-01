@@ -809,10 +809,7 @@ fn has_windows_absolute_path(value: &str) -> bool {
 fn has_unc_path(value: &str) -> bool {
     let bytes = value.as_bytes();
     bytes.windows(2).enumerate().any(|(index, window)| {
-        window == b"\\\\"
-            && bytes
-                .get(index + 2)
-                .is_some_and(|byte| byte.is_ascii_alphanumeric())
+        window == b"\\\\" && bytes.get(index + 2).is_some_and(u8::is_ascii_alphanumeric)
     })
 }
 
@@ -867,6 +864,7 @@ fn is_sha256_hex(value: &str) -> bool {
 }
 
 fn sha256_hex(input: &[u8]) -> String {
+    use std::fmt::Write as _;
     const INITIAL_STATE: [u32; 8] = [
         0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab,
         0x5be0cd19,
@@ -957,10 +955,10 @@ fn sha256_hex(input: &[u8]) -> String {
         state[7] = state[7].wrapping_add(h);
     }
 
-    state
-        .iter()
-        .map(|word| format!("{word:08x}"))
-        .collect::<String>()
+    state.iter().fold(String::new(), |mut acc, word| {
+        let _ = write!(acc, "{word:08x}");
+        acc
+    })
 }
 
 #[cfg(test)]
@@ -1242,7 +1240,7 @@ mod tests {
             fs::write(&mismatch_artifact_path, SCREENSHOT_BYTES).unwrap();
         }
 
-        let report = runtime_report_json(artifact_uri, &variant);
+        let report = runtime_report_json(artifact_uri, variant);
         fs::write(
             root.join("runtime-report.json"),
             serde_json::to_string_pretty(&report).unwrap(),
@@ -1317,7 +1315,7 @@ mod tests {
         corpus_path
     }
 
-    fn runtime_report_json(artifact_uri: &str, variant: &FixtureVariant) -> Value {
+    fn runtime_report_json(artifact_uri: &str, variant: FixtureVariant) -> Value {
         let capture_artifact_uri = match variant {
             FixtureVariant::TopLevelCaptureUnmanifested => {
                 "artifacts/utsushi/runtime/019ed003-0000-7000-8000-000010000001/screenshots/019ed003-0000-7000-8000-000040000999.png"

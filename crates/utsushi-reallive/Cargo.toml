@@ -1,6 +1,7 @@
 [package]
 name = "utsushi-reallive"
 version = "0.0.0"
+publish = false
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
@@ -54,3 +55,6 @@ files-referenced = [
 kaifuu-core = { path = "../kaifuu-core" }
 kaifuu-reallive = { path = "../kaifuu-reallive" }
 serde_json.workspace = true
+
+[lints]
+workspace = true

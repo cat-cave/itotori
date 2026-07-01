@@ -195,8 +195,7 @@ impl Runner {
                 capture: capture_outcome,
                 shutdown,
             }),
-            (Err(error), _) => Err(error),
-            (Ok(_), Err(error)) => Err(error),
+            (Err(error), _) | (Ok(_), Err(error)) => Err(error),
         }
     }
 

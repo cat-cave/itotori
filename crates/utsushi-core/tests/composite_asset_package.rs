@@ -269,6 +269,6 @@ fn composite_list_merges_immediate_children_across_sources() {
 
     let root = utsushi_core::AssetId::from_parts("composite", "").unwrap();
     let children = composite.list(&root).unwrap();
-    let names: Vec<&str> = children.iter().map(|id| id.path()).collect();
+    let names: Vec<&str> = children.iter().map(utsushi_core::AssetId::path).collect();
     assert_eq!(names, vec!["a.txt", "b.txt", "c.bin", "d.bin"]);
 }

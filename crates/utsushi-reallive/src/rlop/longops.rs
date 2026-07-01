@@ -93,7 +93,7 @@ impl PauseLongOp {
     /// payload; the magic byte lets the snapshot path round-trip the
     /// shape without ambiguity.
     pub fn into_longop(self) -> LongOp {
-        let dismissed_flag = if self.dismissed { 0x01 } else { 0x00 };
+        let dismissed_flag = u8::from(self.dismissed);
         LongOp::new(self.id, vec![PAUSE_PRIVATE_STATE_MAGIC, dismissed_flag])
     }
 

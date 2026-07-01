@@ -405,7 +405,9 @@ impl fmt::Display for VfsError {
                 "{code}: invalid asset id (reason={})",
                 reason.as_str()
             ),
-            Self::AssetMissing { id } => write!(formatter, "{code}: asset id={id}"),
+            Self::AssetMissing { id }
+            | Self::AssetNotDirectory { id }
+            | Self::AssetNotFile { id } => write!(formatter, "{code}: asset id={id}"),
             Self::AssetOutsidePackage { id, package } => {
                 write!(formatter, "{code}: asset id={id} package={package}")
             }
@@ -434,8 +436,6 @@ impl fmt::Display for VfsError {
                 "{code}: asset id={id} transform={}",
                 transform.as_str()
             ),
-            Self::AssetNotDirectory { id } => write!(formatter, "{code}: asset id={id}"),
-            Self::AssetNotFile { id } => write!(formatter, "{code}: asset id={id}"),
             Self::PackageIo { id, summary } => write!(
                 formatter,
                 "{code}: asset id={id} summary={}",

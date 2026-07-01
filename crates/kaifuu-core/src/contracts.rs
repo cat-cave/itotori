@@ -467,7 +467,7 @@ pub fn validate_alpha_vertical_proof_manifest_v02(value: &Value) -> BridgeContra
     }
     let mut provider_proof_id_set = HashSet::new();
     for (index, provider_proof_id) in provider_proof_ids.iter().enumerate() {
-        if !provider_proof_id_set.insert(provider_proof_id.to_string()) {
+        if !provider_proof_id_set.insert(provider_proof_id.clone()) {
             return error(format!(
                 "AlphaVerticalProofManifestV02.providerProofIds[{index}] must not duplicate {provider_proof_id}"
             ));
@@ -1329,18 +1329,19 @@ fn compute_patch_result_output_hash_rollup_v02(
     touched_assets: &[PatchTouchedAssetSummary],
 ) -> String {
     use sha2::{Digest, Sha256};
+    use std::fmt::Write as _;
     let mut sorted: Vec<&PatchTouchedAssetSummary> = touched_assets.iter().collect();
     sorted.sort_by(|a, b| a.asset_id.cmp(&b.asset_id));
-    let payload: String = sorted
-        .iter()
-        .map(|asset| format!("{}\n{}\n", asset.asset_id, asset.output_hash))
-        .collect();
+    let payload: String = sorted.iter().fold(String::new(), |mut acc, asset| {
+        let _ = write!(acc, "{}\n{}\n", asset.asset_id, asset.output_hash);
+        acc
+    });
     let mut hasher = Sha256::new();
     hasher.update(payload.as_bytes());
     let digest = hasher.finalize();
     let mut hex = String::with_capacity(64);
     for byte in digest {
-        hex.push_str(&format!("{byte:02x}"));
+        let _ = write!(hex, "{byte:02x}");
     }
     format!("sha256:{hex}")
 }
@@ -4836,7 +4837,7 @@ fn validate_benchmark_penalty_summary(
             "critical" => 25.0,
             "major" => 5.0,
             "minor" => 1.0,
-            "neutral" => 0.0,
+            // "neutral" and any other severity contribute no penalty.
             _ => 0.0,
         })
         .sum();
@@ -5179,7 +5180,7 @@ fn asset_kinds_for_patch_mode(patch_mode: &str) -> &'static [&'static str] {
         ],
         "region_redraw_required" => &["image", "video", "ui_texture"],
         "font_substitution_required" => &["font"],
-        "no_patch_required" | "unsupported" => &[],
+        // "no_patch_required", "unsupported", and any other strategy require no assets.
         _ => &[],
     }
 }
@@ -5589,10 +5590,10 @@ fn assert_runtime_capability_class_ceiling(
     label: &str,
 ) -> BridgeContractResult<()> {
     let (fidelity_ceiling, evidence_ceiling) = match capability_class {
-        "static_trace" => ("trace_only", "E1"),
         "launch_capture" => ("layout_probe", "E2"),
         "instrumented_runtime" | "partial_vm" => ("replay_review", "E3"),
         "reference_vm" => ("reference_fidelity", "E4"),
+        // "static_trace" and any unrecognized class get the most conservative ceiling.
         _ => ("trace_only", "E1"),
     };
     assert_maximum_runtime_fidelity_tier(
@@ -6337,7 +6338,13 @@ fn assert_fixture_path(value: &str, label: &str) -> BridgeContractResult<()> {
             "{label} must be a relative fixture path starting with ./"
         ));
     }
-    if value.contains("..") || value.contains("//") || !value.ends_with(".json") {
+    // reason: this validates an already-normalized relative fixture path against
+    // a deliberate literal lowercase `.json` suffix contract (not a filesystem
+    // extension probe); a case-insensitive `Path::extension` match would weaken
+    // the normalization guarantee and change accepted inputs.
+    #[allow(clippy::case_sensitive_file_extension_comparisons)]
+    let is_json_suffix = value.ends_with(".json");
+    if value.contains("..") || value.contains("//") || !is_json_suffix {
         return error(format!("{label} must be a normalized JSON fixture path"));
     }
     assert_portable_path(value, label)

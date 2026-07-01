@@ -191,8 +191,7 @@ impl std::fmt::Debug for UtsushiSiglusPortContext {
                 &self
                     .asset_package
                     .as_ref()
-                    .map(|_| "<present>")
-                    .unwrap_or("<absent>"),
+                    .map_or("<absent>", |_| "<present>"),
             )
             .finish()
     }

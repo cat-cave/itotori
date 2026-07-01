@@ -631,9 +631,7 @@ fn parse_syscom_label(raw: &str) -> SyscomLabel {
         (SyscomVisibility::Unspecified, trimmed)
     };
     let body = body.trim();
-    let label = strip_outer_quotes(body)
-        .map(str::to_string)
-        .unwrap_or_else(|| body.to_string());
+    let label = strip_outer_quotes(body).map_or_else(|| body.to_string(), str::to_string);
     SyscomLabel { visibility, label }
 }
 
@@ -653,9 +651,7 @@ fn take_quoted_string(text: &str) -> Option<(&str, &str)> {
 /// Skip leading whitespace and a single occurrence of `separator`.
 fn skip_separator(text: &str, separator: char) -> &str {
     let text = text.trim_start();
-    text.strip_prefix(separator)
-        .map(str::trim_start)
-        .unwrap_or(text)
+    text.strip_prefix(separator).map_or(text, str::trim_start)
 }
 
 /// Split `text` at the first occurrence of `delimiter`, returning

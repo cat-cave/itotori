@@ -203,7 +203,10 @@ impl fmt::Display for SnapshotError {
             Self::SchemaVersionMismatch { observed, expected } => {
                 write!(formatter, "{code}: observed={observed} expected={expected}")
             }
-            Self::InvalidStatePath { raw, reason } => {
+            Self::InvalidStatePath { raw, reason }
+            | Self::InvalidSnapshotId { raw, reason }
+            | Self::InvalidInspectableId { raw, reason }
+            | Self::InvalidGeneratedAt { raw, reason } => {
                 write!(formatter, "{code}: raw={raw} reason={reason}")
             }
             Self::UnknownStateNamespace { raw, observed_root } => {
@@ -255,15 +258,6 @@ impl fmt::Display for SnapshotError {
                 claimed.as_str(),
                 ceiling.as_str()
             ),
-            Self::InvalidSnapshotId { raw, reason } => {
-                write!(formatter, "{code}: raw={raw} reason={reason}")
-            }
-            Self::InvalidInspectableId { raw, reason } => {
-                write!(formatter, "{code}: raw={raw} reason={reason}")
-            }
-            Self::InvalidGeneratedAt { raw, reason } => {
-                write!(formatter, "{code}: raw={raw} reason={reason}")
-            }
             Self::EmptyStateTree => write!(formatter, "{code}: state tree must not be empty"),
             Self::SerializationFailure { reason } => write!(formatter, "{code}: reason={reason}"),
         }

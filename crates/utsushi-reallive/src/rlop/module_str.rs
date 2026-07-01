@@ -270,7 +270,10 @@ impl StrRuntime {
     }
 
     fn next_line_id(&self) -> String {
-        let mut guard = self.inner.lock().unwrap_or_else(|err| err.into_inner());
+        let mut guard = self
+            .inner
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let id = guard.next_line_seq;
         guard.next_line_seq = guard.next_line_seq.saturating_add(1);
         format!("utsushi-reallive-str-line-{id:08x}")
@@ -1139,8 +1142,7 @@ impl RLOperation for StrposOp {
             Err(reason) => return warn_and_advance(vm, StrOpcode::Strpos, reason),
         };
         let result = byte_find_first(&haystack, &needle)
-            .map(|idx| i32::try_from(idx).unwrap_or(i32::MAX))
-            .unwrap_or(-1);
+            .map_or(-1, |idx| i32::try_from(idx).unwrap_or(i32::MAX));
         if let Err(reason) = write_int_bank(vm, dst_bank, dst_idx, result) {
             return warn_and_advance(vm, StrOpcode::Strpos, reason);
         }
@@ -1168,8 +1170,7 @@ impl RLOperation for StrlposOp {
             Err(reason) => return warn_and_advance(vm, StrOpcode::Strlpos, reason),
         };
         let result = byte_find_last(&haystack, &needle)
-            .map(|idx| i32::try_from(idx).unwrap_or(i32::MAX))
-            .unwrap_or(-1);
+            .map_or(-1, |idx| i32::try_from(idx).unwrap_or(i32::MAX));
         if let Err(reason) = write_int_bank(vm, dst_bank, dst_idx, result) {
             return warn_and_advance(vm, StrOpcode::Strlpos, reason);
         }

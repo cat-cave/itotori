@@ -951,11 +951,11 @@ fn decode_type2(
 
 /// Parse the LZSS section preamble at offset `preamble_off` into a
 /// typed [`LzssSection`].
-fn parse_lzss_section<'a>(
-    input: &'a [u8],
+fn parse_lzss_section(
+    input: &[u8],
     preamble_off: usize,
     g00_type: G00Type,
-) -> Result<LzssSection<'a>, G00DecodeError> {
+) -> Result<LzssSection<'_>, G00DecodeError> {
     if input.len() < preamble_off + 8 {
         return Err(G00DecodeError::TruncatedHeader {
             g00_type,

@@ -160,7 +160,7 @@ pub fn synthetic_frame_capture_check_three_artifacts_at_e2() -> FrameCaptureConf
 /// Helper: build one frame artifact ref at E2 with `frame_index = i`
 /// and `frame_id = format!("frame-{i:04}")`.
 pub fn synthetic_frame_artifact_ref_at_e2(frame_index: u64) -> FrameArtifactRef {
-    let artifact_id = format!("frame-{:04}", frame_index);
+    let artifact_id = format!("frame-{frame_index:04}");
     let uri = runtime_artifact_uri(
         "synthetic-run",
         RuntimeArtifactKind::FrameCapture,
@@ -187,7 +187,7 @@ pub fn synthetic_frame_artifact_ref_at_e2(frame_index: u64) -> FrameArtifactRef 
 pub fn synthetic_recording_check_metadata_only() -> RecordingConformanceCheck {
     let frame_refs: Vec<ObservationArtifactRef> = (1..=3u32)
         .map(|i| {
-            let id = format!("frame-{:04}", i);
+            let id = format!("frame-{i:04}");
             let uri = runtime_artifact_uri("synthetic-run", RuntimeArtifactKind::FrameCapture, &id)
                 .expect("uri");
             ObservationArtifactRef {
@@ -848,7 +848,7 @@ mod tests {
             })
             .collect();
         let mut sorted = paths.clone();
-        sorted.sort();
+        sorted.sort_unstable();
         assert_eq!(paths, sorted, "evidence must be sorted ascending");
         assert_eq!(paths, vec!["port.frame", "port.last"]);
     }

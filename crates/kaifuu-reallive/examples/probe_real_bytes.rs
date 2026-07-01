@@ -53,8 +53,7 @@ fn probe_seen_txt(path: &str) -> Result<(), Box<dyn std::error::Error>> {
                     let instruction_count = outcome
                         .scene
                         .as_ref()
-                        .map(|scene| scene.instructions.len())
-                        .unwrap_or(0);
+                        .map_or(0, |scene| scene.instructions.len());
                     println!(
                         "  parse_scene[first]: status={:?} instructions={} diagnostics={}",
                         outcome.status,

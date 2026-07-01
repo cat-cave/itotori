@@ -100,8 +100,8 @@ pub fn read_embedded_metadata(
     let embedded_canonical_id = value
         .get("canonical_id")
         .and_then(|v| v.as_str())
-        .map(|s| s.to_string());
-    if embedded_canonical_id.as_deref().map(str::is_empty) != Some(false) {
+        .map(std::string::ToString::to_string);
+    if embedded_canonical_id.as_deref().is_none_or(str::is_empty) {
         return Err(VaultSourceError::EmbeddedMetadataInvalid {
             tree_root: tree_root.to_path_buf(),
             canonical_id: canonical_id.to_string(),
@@ -129,7 +129,7 @@ pub fn read_embedded_metadata(
         .and_then(|v| v.as_array())
         .map(|arr| {
             arr.iter()
-                .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                .filter_map(|v| v.as_str().map(std::string::ToString::to_string))
                 .collect()
         })
         .unwrap_or_default();
@@ -137,12 +137,12 @@ pub fn read_embedded_metadata(
     let engine = value
         .get("engine")
         .and_then(|v| v.as_str())
-        .map(|s| s.to_string());
+        .map(std::string::ToString::to_string);
     let canonical_title = value
         .get("work")
         .and_then(|w| w.get("canonical_title"))
         .and_then(|v| v.as_str())
-        .map(|s| s.to_string());
+        .map(std::string::ToString::to_string);
 
     Ok(EmbeddedMetadata {
         canonical_id: embedded_canonical_id,

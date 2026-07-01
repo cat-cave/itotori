@@ -344,6 +344,7 @@ impl<'a> Scanner<'a> {
 /// Printable ASCII passes through verbatim. This keeps a patched string
 /// stylistically identical to the editor's own output.
 pub fn encode_json_string_ascii_safe(text: &str) -> String {
+    use std::fmt::Write as _;
     let mut out = String::with_capacity(text.len() + 2);
     out.push('"');
     for ch in text.chars() {
@@ -356,14 +357,18 @@ pub fn encode_json_string_ascii_safe(text: &str) -> String {
             '\n' => out.push_str("\\n"),
             '\r' => out.push_str("\\r"),
             '\t' => out.push_str("\\t"),
-            _ if code < 0x20 => out.push_str(&format!("\\u{code:04x}")),
+            _ if code < 0x20 => {
+                let _ = write!(out, "\\u{code:04x}");
+            }
             _ if code < 0x80 => out.push(ch),
-            _ if code <= 0xFFFF => out.push_str(&format!("\\u{code:04x}")),
+            _ if code <= 0xFFFF => {
+                let _ = write!(out, "\\u{code:04x}");
+            }
             _ => {
                 let v = code - 0x10000;
                 let hi = 0xD800 + (v >> 10);
                 let lo = 0xDC00 + (v & 0x3FF);
-                out.push_str(&format!("\\u{hi:04x}\\u{lo:04x}"));
+                let _ = write!(out, "\\u{hi:04x}\\u{lo:04x}");
             }
         }
     }
@@ -376,7 +381,10 @@ mod tests {
     use super::*;
 
     fn locate_text(bytes: &[u8], tokens: &[&str]) -> Result<String, LocateError> {
-        let owned: Vec<String> = tokens.iter().map(|t| t.to_string()).collect();
+        let owned: Vec<String> = tokens
+            .iter()
+            .map(std::string::ToString::to_string)
+            .collect();
         let mut scanner = Scanner::new(bytes);
         let span = scanner.locate(&owned)?;
         Scanner::decode_span(bytes, span)

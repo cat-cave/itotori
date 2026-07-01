@@ -349,7 +349,7 @@ impl JumpTargetSet {
 }
 
 fn has_whitespace(value: &str) -> bool {
-    value.chars().any(|ch| ch.is_whitespace())
+    value.chars().any(char::is_whitespace)
 }
 
 fn reject_unredacted_local_paths_in_value(

@@ -878,31 +878,28 @@ impl Vm {
                 ..
             } => {
                 let key = RlopKey::new(module_type, module_id, opcode);
-                match registry.get(key) {
-                    Some(op) => {
-                        // Decode the element's own argument list and
-                        // dispatch with the REAL values. Previously this
-                        // passed `&[]`, so every argument-taking op — all
-                        // control-flow ops (goto / farcall / …) included —
-                        // saw an empty slice and took its warn-and-advance
-                        // path, making jumps dead in the integration path.
-                        let args = self.decode_command_args(&raw_bytes);
-                        let outcome = op.dispatch(self, &args);
-                        self.apply_outcome(&outcome, post_pc)?;
-                        Ok(VmEvent::CommandDispatched { key, outcome })
-                    }
-                    None => {
-                        self.warnings.push(VmWarning::MissingRlop {
-                            key,
-                            scene: self.scene,
-                            pc: self.pc,
-                        });
-                        self.pc = post_pc;
-                        Ok(VmEvent::CommandDispatched {
-                            key,
-                            outcome: DispatchOutcome::Advance,
-                        })
-                    }
+                if let Some(op) = registry.get(key) {
+                    // Decode the element's own argument list and
+                    // dispatch with the REAL values. Previously this
+                    // passed `&[]`, so every argument-taking op — all
+                    // control-flow ops (goto / farcall / …) included —
+                    // saw an empty slice and took its warn-and-advance
+                    // path, making jumps dead in the integration path.
+                    let args = self.decode_command_args(&raw_bytes);
+                    let outcome = op.dispatch(self, &args);
+                    self.apply_outcome(&outcome, post_pc)?;
+                    Ok(VmEvent::CommandDispatched { key, outcome })
+                } else {
+                    self.warnings.push(VmWarning::MissingRlop {
+                        key,
+                        scene: self.scene,
+                        pc: self.pc,
+                    });
+                    self.pc = post_pc;
+                    Ok(VmEvent::CommandDispatched {
+                        key,
+                        outcome: DispatchOutcome::Advance,
+                    })
                 }
             }
         }
@@ -1016,21 +1013,18 @@ impl Vm {
         &mut self,
         node: &ExprNode,
     ) -> Result<(bool, i32), ExpressionWrapError> {
-        match node {
-            ExprNode::Assignment { .. } => {
-                let value = evaluate_assignment(node, &mut self.banks)
-                    .map_err(ExpressionWrapError::Eval)?;
-                Ok((true, value))
-            }
-            _ => {
-                let value = evaluate(node, &self.banks).map_err(ExpressionWrapError::Eval)?;
-                // Plain-expression result lands in the store register
-                // per the §H VM-dispatch documentation — the store
-                // register is the engine's "expression-result holder"
-                // between command boundaries.
-                self.banks.set_store(value as u32);
-                Ok((false, value))
-            }
+        if let ExprNode::Assignment { .. } = node {
+            let value =
+                evaluate_assignment(node, &mut self.banks).map_err(ExpressionWrapError::Eval)?;
+            Ok((true, value))
+        } else {
+            let value = evaluate(node, &self.banks).map_err(ExpressionWrapError::Eval)?;
+            // Plain-expression result lands in the store register
+            // per the §H VM-dispatch documentation — the store
+            // register is the engine's "expression-result holder"
+            // between command boundaries.
+            self.banks.set_store(value as u32);
+            Ok((false, value))
         }
     }
 
@@ -1392,13 +1386,6 @@ impl Restorable for Vm {
                     manifest_seen = true;
                     consumed.push(path.clone());
                 }
-                (MANIFEST_PATH, other) => {
-                    return Err(SnapshotError::RestoreTypeMismatch {
-                        path: path.clone(),
-                        expected: "string",
-                        found: other.type_tag(),
-                    });
-                }
                 (SCENE_PATH, StateValue::Uint { value }) => {
                     if *value > u16::MAX as u64 {
                         return Err(SnapshotError::RestoreValueOutOfRange {
@@ -1409,13 +1396,6 @@ impl Restorable for Vm {
                     new_scene = *value as SceneId;
                     scene_seen = true;
                     consumed.push(path.clone());
-                }
-                (SCENE_PATH, other) => {
-                    return Err(SnapshotError::RestoreTypeMismatch {
-                        path: path.clone(),
-                        expected: "uint",
-                        found: other.type_tag(),
-                    });
                 }
                 (PC_PATH, StateValue::Uint { value }) => {
                     if *value > u32::MAX as u64 {
@@ -1428,23 +1408,9 @@ impl Restorable for Vm {
                     pc_seen = true;
                     consumed.push(path.clone());
                 }
-                (PC_PATH, other) => {
-                    return Err(SnapshotError::RestoreTypeMismatch {
-                        path: path.clone(),
-                        expected: "uint",
-                        found: other.type_tag(),
-                    });
-                }
                 (HALTED_PATH, StateValue::Bool { value }) => {
                     new_halted = *value;
                     consumed.push(path.clone());
-                }
-                (HALTED_PATH, other) => {
-                    return Err(SnapshotError::RestoreTypeMismatch {
-                        path: path.clone(),
-                        expected: "bool",
-                        found: other.type_tag(),
-                    });
                 }
                 (STACK_PATH, StateValue::String { value }) => {
                     new_stack = decode_stack(value).map_err(|reason| {
@@ -1455,13 +1421,6 @@ impl Restorable for Vm {
                     })?;
                     consumed.push(path.clone());
                 }
-                (STACK_PATH, other) => {
-                    return Err(SnapshotError::RestoreTypeMismatch {
-                        path: path.clone(),
-                        expected: "string",
-                        found: other.type_tag(),
-                    });
-                }
                 (LONGOP_PATH, StateValue::String { value }) => {
                     new_longop_queue = decode_longop_queue(value).map_err(|reason| {
                         SnapshotError::RestoreValueOutOfRange {
@@ -1471,7 +1430,23 @@ impl Restorable for Vm {
                     })?;
                     consumed.push(path.clone());
                 }
-                (LONGOP_PATH, other) => {
+                // Type-mismatch fallbacks: each sits after every typed arm so
+                // the `other` binding never shadows a specific-type match.
+                (SCENE_PATH | PC_PATH, other) => {
+                    return Err(SnapshotError::RestoreTypeMismatch {
+                        path: path.clone(),
+                        expected: "uint",
+                        found: other.type_tag(),
+                    });
+                }
+                (HALTED_PATH, other) => {
+                    return Err(SnapshotError::RestoreTypeMismatch {
+                        path: path.clone(),
+                        expected: "bool",
+                        found: other.type_tag(),
+                    });
+                }
+                (MANIFEST_PATH | STACK_PATH | LONGOP_PATH, other) => {
                     return Err(SnapshotError::RestoreTypeMismatch {
                         path: path.clone(),
                         expected: "string",

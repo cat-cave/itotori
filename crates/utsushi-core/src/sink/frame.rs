@@ -161,10 +161,7 @@ mod tests {
     const HARNESS_FRAME_ID: &str = "0190a000-0000-7000-8000-0000000000bb";
 
     fn managed_uri() -> String {
-        format!(
-            "{}/{}/screenshots/{}.png",
-            RUNTIME_ARTIFACT_URI_ROOT, HARNESS_RUN_ID, HARNESS_FRAME_ID
-        )
+        format!("{RUNTIME_ARTIFACT_URI_ROOT}/{HARNESS_RUN_ID}/screenshots/{HARNESS_FRAME_ID}.png")
     }
 
     fn sample_artifact_ref(uri: &str, artifact_kind: &str) -> ObservationArtifactRef {
@@ -292,8 +289,7 @@ mod tests {
         let sink = CollectingFrameSink::supported();
         for kind in ["screenshot", "frame_capture", "recording"] {
             let uri = format!(
-                "{}/{}/screenshots/{}-{}.png",
-                RUNTIME_ARTIFACT_URI_ROOT, HARNESS_RUN_ID, HARNESS_FRAME_ID, kind
+                "{RUNTIME_ARTIFACT_URI_ROOT}/{HARNESS_RUN_ID}/screenshots/{HARNESS_FRAME_ID}-{kind}.png"
             );
             let frame = sample_frame(EvidenceTier::E2, sample_artifact_ref(&uri, kind));
             sink.emit_frame(frame)

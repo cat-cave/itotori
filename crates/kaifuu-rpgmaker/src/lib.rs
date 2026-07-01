@@ -153,8 +153,13 @@ pub fn extract_game_dir(
         .filter_map(Result::ok)
         .filter(|entry| entry.path().is_file())
         .filter_map(|entry| {
-            let name = entry.file_name().to_string_lossy().into_owned();
-            name.ends_with(".json").then(|| (name, entry.path()))
+            let path = entry.path();
+            if path.extension().is_some_and(|ext| ext == "json") {
+                let name = entry.file_name().to_string_lossy().into_owned();
+                Some((name, path))
+            } else {
+                None
+            }
         })
         .collect();
     json_files.sort();
@@ -236,12 +241,13 @@ fn is_map_file(file: &str) -> bool {
 }
 
 fn sha256_canonical(bytes: &[u8]) -> String {
+    use std::fmt::Write as _;
     let mut hasher = Sha256::new();
     hasher.update(bytes);
     let digest = hasher.finalize();
     let mut hex = String::with_capacity(64);
-    for byte in digest.iter() {
-        hex.push_str(&format!("{byte:02x}"));
+    for byte in &digest {
+        let _ = write!(hex, "{byte:02x}");
     }
     format!("sha256:{hex}")
 }

@@ -54,7 +54,7 @@ impl OnDiskG00Package {
 }
 
 impl AssetPackage for OnDiskG00Package {
-    fn id(&self) -> &str {
+    fn id(&self) -> &'static str {
         "render-g00-on-disk"
     }
 
@@ -120,8 +120,7 @@ fn pick_varied_type0_g00(g00_dir: &Path) -> Option<(String, G00Image)> {
         .filter(|p| {
             p.extension()
                 .and_then(|x| x.to_str())
-                .map(|x| x.eq_ignore_ascii_case("g00"))
-                .unwrap_or(false)
+                .is_some_and(|x| x.eq_ignore_ascii_case("g00"))
         })
         .collect();
     entries.sort();

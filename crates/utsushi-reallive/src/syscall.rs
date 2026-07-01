@@ -1252,7 +1252,7 @@ mod tests {
         assert_eq!(vm.pc(), 80);
         // Ensure the scheduler reference is touched so the import is
         // not dead-stripped (substrate seam for the VM step loop).
-        let _scheduler = AlwaysReadyScheduler;
+        let _ = AlwaysReadyScheduler;
     }
 
     #[test]
@@ -1294,7 +1294,7 @@ mod tests {
         ];
         assert_eq!(kinds.len(), SYSCALL_KIND_COUNT);
         let mut discriminants: Vec<u8> = kinds.iter().map(|kind| kind.discriminant()).collect();
-        discriminants.sort();
+        discriminants.sort_unstable();
         discriminants.dedup();
         assert_eq!(discriminants.len(), SYSCALL_KIND_COUNT);
     }

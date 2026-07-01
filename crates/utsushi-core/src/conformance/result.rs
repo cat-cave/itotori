@@ -30,6 +30,10 @@ use super::{CONFORMANCE_SCHEMA_VERSION, ProfileId};
 /// existing enum at the crate root (which is owned by other concerns).
 /// The wire shape is the same `snake_case` string `artifact_kind()`
 /// already returns.
+// reason: serde `serialize_with` callbacks must take the field by shared
+// reference (`&T`); passing `RuntimeArtifactKind` by value would not match the
+// signature serde expects.
+#[allow(clippy::trivially_copy_pass_by_ref)]
 fn serialize_runtime_artifact_kind<S>(
     kind: &RuntimeArtifactKind,
     serializer: S,
@@ -197,7 +201,7 @@ fn validate_id_string(
             reason: format!("{field} is empty"),
         });
     }
-    if value.chars().any(|c| c.is_whitespace()) {
+    if value.chars().any(char::is_whitespace) {
         return Err(ConformanceError::EvidenceRefInvalid {
             artifact_kind,
             reason: format!("{field} contains whitespace"),
@@ -315,10 +319,8 @@ impl ConformanceResult {
             ResultOutcome::Fail {
                 semantic_code,
                 detail: _,
-            } => {
-                validate_semantic_code(semantic_code)?;
             }
-            ResultOutcome::Skip {
+            | ResultOutcome::Skip {
                 semantic_code,
                 reason: _,
             } => {

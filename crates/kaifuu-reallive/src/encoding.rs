@@ -237,21 +237,21 @@ mod tests {
                 assert_eq!(*byte_offset, 0);
                 assert_eq!(*bytes, b"Hi");
             }
-            other => panic!("expected text segment, got {:?}", other),
+            SliceSegment::Control { .. } => panic!("expected text segment, got a control segment"),
         }
         match &segments[1] {
             SliceSegment::Control { byte_offset, byte } => {
                 assert_eq!(*byte_offset, 2);
                 assert_eq!(*byte, 0x0a);
             }
-            other => panic!("expected control segment, got {:?}", other),
+            SliceSegment::Text { .. } => panic!("expected control segment, got a text segment"),
         }
         match &segments[2] {
             SliceSegment::Text { byte_offset, bytes } => {
                 assert_eq!(*byte_offset, 3);
                 assert_eq!(*bytes, b"Bye");
             }
-            other => panic!("expected text segment, got {:?}", other),
+            SliceSegment::Control { .. } => panic!("expected text segment, got a control segment"),
         }
     }
 

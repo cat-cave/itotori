@@ -35,6 +35,8 @@ check:
     pnpm exec vp run ts:typecheck
     cargo fmt --check
     cargo check --workspace
+    cargo clippy --workspace --all-targets --all-features -- -D warnings
+    cargo deny check
 
 impl-map-schema-validate:
     pnpm exec node scripts/validate-impl-map-schema.mjs
@@ -69,9 +71,9 @@ itotori-scale-smoke: itotori-scale-build db-up db-wait
 itotori-scale-large: itotori-scale-build db-up db-wait
     node scripts/itotori-scale-harness.mjs --profile large
 
+# clippy + `cargo deny check` now live in the `check` recipe (single source of
+# truth), which `ci` depends on, so every local gate enforces them.
 ci: check build db-migrate test ci-real-bytes
-    cargo clippy --workspace --all-targets --all-features -- -D warnings
-    cargo deny check
 
 # reallive-real-bytes-tests-in-ci: run EVERY `#[ignore]`-gated real-bytes
 # RealLive suite (kaifuu-reallive + utsushi-reallive) against the staged

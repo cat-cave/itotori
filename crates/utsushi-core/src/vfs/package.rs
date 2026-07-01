@@ -367,7 +367,7 @@ mod tests {
         let err = validate_logical_path("hello", "../etc/passwd").unwrap_err();
         match err {
             VfsError::AssetPathUnsafe { kind, .. } => {
-                assert_eq!(kind, TraversalKind::ParentEscape)
+                assert_eq!(kind, TraversalKind::ParentEscape);
             }
             other => panic!("expected AssetPathUnsafe, got {other:?}"),
         }
@@ -378,7 +378,7 @@ mod tests {
         let err = validate_logical_path("hello", "foo/../bar").unwrap_err();
         match err {
             VfsError::AssetPathUnsafe { kind, .. } => {
-                assert_eq!(kind, TraversalKind::ParentEscape)
+                assert_eq!(kind, TraversalKind::ParentEscape);
             }
             other => panic!("expected AssetPathUnsafe, got {other:?}"),
         }
@@ -389,7 +389,7 @@ mod tests {
         let err = validate_logical_path("hello", "/etc/passwd").unwrap_err();
         match err {
             VfsError::AssetPathUnsafe { kind, .. } => {
-                assert_eq!(kind, TraversalKind::AbsoluteRoot)
+                assert_eq!(kind, TraversalKind::AbsoluteRoot);
             }
             other => panic!("expected AssetPathUnsafe, got {other:?}"),
         }
@@ -400,7 +400,7 @@ mod tests {
         let err = validate_logical_path("hello", "C:/Windows/system32").unwrap_err();
         match err {
             VfsError::AssetPathUnsafe { kind, .. } => {
-                assert_eq!(kind, TraversalKind::AbsoluteRoot)
+                assert_eq!(kind, TraversalKind::AbsoluteRoot);
             }
             other => panic!("expected AssetPathUnsafe, got {other:?}"),
         }
@@ -411,7 +411,7 @@ mod tests {
         let err = validate_logical_path("hello", "foo\\bar").unwrap_err();
         match err {
             VfsError::AssetPathUnsafe { kind, .. } => {
-                assert_eq!(kind, TraversalKind::BackslashSeparator)
+                assert_eq!(kind, TraversalKind::BackslashSeparator);
             }
             other => panic!("expected AssetPathUnsafe, got {other:?}"),
         }
@@ -422,7 +422,7 @@ mod tests {
         let err = validate_logical_path("hello", "foo\0bar").unwrap_err();
         match err {
             VfsError::AssetPathUnsafe { kind, .. } => {
-                assert_eq!(kind, TraversalKind::NulByte)
+                assert_eq!(kind, TraversalKind::NulByte);
             }
             other => panic!("expected AssetPathUnsafe, got {other:?}"),
         }

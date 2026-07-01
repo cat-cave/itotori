@@ -113,6 +113,10 @@ fn default_vault_root() -> PathBuf {
     }
 }
 
+// reason: the return is only infallible on Linux (where clippy evaluates this);
+// the macOS/Windows arms below legitimately return `Err` when no cache/appdata
+// dir exists, so the `Result` wrapper is required for those targets.
+#[allow(clippy::unnecessary_wraps)]
 fn default_scratch_root() -> Result<PathBuf, VaultSourceError> {
     #[cfg(target_os = "linux")]
     {
@@ -155,22 +159,16 @@ fn default_scratch_root() -> Result<PathBuf, VaultSourceError> {
 /// `catalog.db` must be a regular file; `artifacts/by-id/` must be a
 /// directory.
 pub fn validate_vault_root(root: &Path) -> Result<(), VaultSourceError> {
-    let meta = match std::fs::symlink_metadata(root) {
-        Ok(m) => m,
-        Err(_) => {
-            return Err(VaultSourceError::VaultRootMissing {
-                path: root.to_path_buf(),
-            });
-        }
+    let Ok(meta) = std::fs::symlink_metadata(root) else {
+        return Err(VaultSourceError::VaultRootMissing {
+            path: root.to_path_buf(),
+        });
     };
     // A symlink at the root is fine (contract allows it). canonicalize once.
-    let canonical = match std::fs::canonicalize(root) {
-        Ok(c) => c,
-        Err(_) => {
-            return Err(VaultSourceError::VaultRootMissing {
-                path: root.to_path_buf(),
-            });
-        }
+    let Ok(canonical) = std::fs::canonicalize(root) else {
+        return Err(VaultSourceError::VaultRootMissing {
+            path: root.to_path_buf(),
+        });
     };
     let canonical_meta =
         std::fs::metadata(&canonical).map_err(|_| VaultSourceError::VaultRootMissing {
@@ -186,7 +184,7 @@ pub fn validate_vault_root(root: &Path) -> Result<(), VaultSourceError> {
 
     let catalog = canonical.join("catalog.db");
     let catalog_meta = std::fs::metadata(&catalog);
-    if catalog_meta.as_ref().map(|m| m.is_file()).unwrap_or(false) {
+    if catalog_meta.as_ref().is_ok_and(std::fs::Metadata::is_file) {
         // ok
     } else {
         return Err(VaultSourceError::VaultRootIncomplete {
@@ -197,7 +195,7 @@ pub fn validate_vault_root(root: &Path) -> Result<(), VaultSourceError> {
 
     let by_id = canonical.join("artifacts/by-id");
     let by_id_meta = std::fs::metadata(&by_id);
-    if by_id_meta.as_ref().map(|m| m.is_dir()).unwrap_or(false) {
+    if by_id_meta.as_ref().is_ok_and(std::fs::Metadata::is_dir) {
         // ok
     } else {
         return Err(VaultSourceError::VaultRootIncomplete {
@@ -210,6 +208,10 @@ pub fn validate_vault_root(root: &Path) -> Result<(), VaultSourceError> {
 }
 
 #[cfg(test)]
+// reason: the EnvGuard test helpers mutate process env via the unavoidably
+// unsafe std::env::{set_var,remove_var} (edition 2024); serialized behind
+// ENV_LOCK. Test-only; src stays unsafe-free.
+#[allow(unsafe_code)]
 mod tests {
     use super::*;
     use tempfile::tempdir;

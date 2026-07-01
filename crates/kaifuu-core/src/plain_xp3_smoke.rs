@@ -775,8 +775,7 @@ fn evaluate_negative(
                         severity: PartialDiagnosticSeverity::P0,
                         field: "member.segments.flags".to_string(),
                         message: format!(
-                            "member rejected: unsupported segment flag 0x{flags:08x} (only 0x{:08x} is supported)",
-                            PLAIN_XP3_SMOKE_SUPPORTED_SEGMENT_FLAGS
+                            "member rejected: unsupported segment flag 0x{flags:08x} (only 0x{PLAIN_XP3_SMOKE_SUPPORTED_SEGMENT_FLAGS:08x} is supported)"
                         ),
                         semantic_code: Some(SEMANTIC_SMOKE_UNSUPPORTED_MEMBER_FLAGS.to_string()),
                         member_id: Some(member_id.clone()),
@@ -951,9 +950,9 @@ mod tests {
     // --- In-code reconstruction of the committed negative archives (proves the
     //     binary fixtures are reproducible byte-for-byte from this source). ---
 
-    fn chunk(name: &[u8; 4], content: &[u8]) -> Vec<u8> {
+    fn chunk(name: [u8; 4], content: &[u8]) -> Vec<u8> {
         let mut out = Vec::new();
-        out.extend_from_slice(name);
+        out.extend_from_slice(&name);
         out.extend_from_slice(&(content.len() as u64).to_le_bytes());
         out.extend_from_slice(content);
         out
@@ -999,10 +998,10 @@ mod tests {
         segm.extend_from_slice(&(payload.len() as u64).to_le_bytes());
 
         let mut file = Vec::new();
-        file.extend_from_slice(&chunk(b"info", &info));
-        file.extend_from_slice(&chunk(b"segm", &segm));
-        file.extend_from_slice(&chunk(b"adlr", &0x1a2b_3c4d_u32.to_le_bytes()));
-        let index = chunk(b"File", &file);
+        file.extend_from_slice(&chunk(*b"info", &info));
+        file.extend_from_slice(&chunk(*b"segm", &segm));
+        file.extend_from_slice(&chunk(*b"adlr", &0x1a2b_3c4d_u32.to_le_bytes()));
+        let index = chunk(*b"File", &file);
 
         bytes.push(0);
         bytes.extend_from_slice(&(index.len() as u64).to_le_bytes());

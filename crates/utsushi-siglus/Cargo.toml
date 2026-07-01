@@ -1,6 +1,7 @@
 [package]
 name = "utsushi-siglus"
 version = "0.0.0"
+publish = false
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
@@ -48,3 +49,6 @@ files-referenced = ["README.md", "docs/format-overview.md"]
 # direction (utsushi-reallive depending on utsushi-siglus) would
 # contradict the project's RealLive-only alpha posture.
 utsushi-reallive = { path = "../utsushi-reallive" }
+
+[lints]
+workspace = true

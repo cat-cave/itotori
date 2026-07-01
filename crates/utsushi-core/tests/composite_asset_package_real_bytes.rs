@@ -178,7 +178,7 @@ fn composite_asset_package_real_bytes_sweetie_hd_realivedata() {
         };
 
         let folder_ok = folder_dir_id.is_ok();
-        let archive_ok = archive_id.as_ref().is_some_and(|result| result.is_ok());
+        let archive_ok = archive_id.as_ref().is_some_and(std::result::Result::is_ok);
 
         if folder_ok || archive_ok {
             resolved_count += 1;
@@ -265,19 +265,18 @@ fn composite_asset_package_real_bytes_sweetie_hd_realivedata() {
 
 #[test]
 fn composite_asset_package_real_bytes_lust_memory_www_data_system_json() {
-    let env_path = match env::var(RPG_MAKER_MV_MZ_ROOT_ENV) {
-        Ok(value) => PathBuf::from(value),
-        Err(_) => {
-            // Visible-skip per UTSUSHI-222 acceptance criteria.
-            assert!(env::var(RPG_MAKER_MV_MZ_ROOT_ENV).is_err());
-            eprintln!(
-                "SKIP composite_asset_package_real_bytes_lust_memory_www_data_system_json: \
-                 {RPG_MAKER_MV_MZ_ROOT_ENV} is unset; \
-                 multi-engine validation needs both ITOTORI_REAL_GAME_ROOT and \
-                 {RPG_MAKER_MV_MZ_ROOT_ENV} to confirm cross-engine genericity"
-            );
-            return;
-        }
+    let env_path = if let Ok(value) = env::var(RPG_MAKER_MV_MZ_ROOT_ENV) {
+        PathBuf::from(value)
+    } else {
+        // Visible-skip per UTSUSHI-222 acceptance criteria.
+        assert!(env::var(RPG_MAKER_MV_MZ_ROOT_ENV).is_err());
+        eprintln!(
+            "SKIP composite_asset_package_real_bytes_lust_memory_www_data_system_json: \
+             {RPG_MAKER_MV_MZ_ROOT_ENV} is unset; \
+             multi-engine validation needs both ITOTORI_REAL_GAME_ROOT and \
+             {RPG_MAKER_MV_MZ_ROOT_ENV} to confirm cross-engine genericity"
+        );
+        return;
     };
 
     let www = locate_subdir(&env_path, "www").unwrap_or_else(|| {

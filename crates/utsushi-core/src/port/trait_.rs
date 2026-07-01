@@ -155,7 +155,12 @@ impl std::fmt::Debug for PortRequest<'_> {
         formatter
             .debug_struct("PortRequest")
             .field("input_root", &self.input_root)
-            .field("artifact_root", &self.artifact_root.map(|root| root.path()))
+            .field(
+                "artifact_root",
+                &self
+                    .artifact_root
+                    .map(super::super::RuntimeArtifactRoot::path),
+            )
             .field("vfs", &self.vfs.as_ref().map(|_| "Arc<dyn RuntimeVfs>"))
             .field("cancellation", &self.cancellation)
             .field("env_len", &self.env.len())

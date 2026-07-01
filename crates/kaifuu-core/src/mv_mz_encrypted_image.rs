@@ -1103,8 +1103,7 @@ fn sanitize_file_name(name: &str) -> String {
     Path::new(name)
         .file_name()
         .and_then(|component| component.to_str())
-        .map(ToString::to_string)
-        .unwrap_or_else(|| "encrypted-image.json".to_string())
+        .map_or_else(|| "encrypted-image.json".to_string(), ToString::to_string)
 }
 
 #[cfg(test)]
@@ -1147,8 +1146,7 @@ mod tests {
     fn has_finding(report: &MvMzEncryptedImageReport, entry_id: &str, code: &str) -> bool {
         report
             .entry(entry_id)
-            .map(|entry| entry.findings.iter().any(|finding| finding.code == code))
-            .unwrap_or(false)
+            .is_some_and(|entry| entry.findings.iter().any(|finding| finding.code == code))
     }
 
     // --- The path declaration is canonical and self-consistent. -------------
@@ -1371,14 +1369,17 @@ mod tests {
 
     #[test]
     fn report_never_carries_raw_key_material() {
+        use std::fmt::Write as _;
         let report = run(&load_fixture());
         let json = report.stable_json().expect("stable json");
         let key_text = String::from_utf8_lossy(SYNTHETIC_KEY_CORRECT);
         assert!(!json.contains(key_text.as_ref()), "raw key leaked");
         let key_hex: String = SYNTHETIC_KEY_CORRECT
             .iter()
-            .map(|byte| format!("{byte:02x}"))
-            .collect();
+            .fold(String::new(), |mut acc, byte| {
+                let _ = write!(acc, "{byte:02x}");
+                acc
+            });
         assert!(!json.contains(&key_hex), "raw key hex leaked");
 
         // The proof carries a one-way commitment + count, not the key.

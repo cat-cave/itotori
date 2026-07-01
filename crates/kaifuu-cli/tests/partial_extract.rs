@@ -268,7 +268,6 @@ fn verify_exits_nonzero_when_seen_txt_envelope_fails() {
     assert_eq!(report["partial"], true);
     assert!(
         report["severityCounts"]["p0"].as_u64().unwrap_or(0) >= 1,
-        "expected ≥1 P0 SEEN.TXT envelope failure: {}",
-        report
+        "expected ≥1 P0 SEEN.TXT envelope failure: {report}"
     );
 }

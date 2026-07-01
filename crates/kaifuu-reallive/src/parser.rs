@@ -209,43 +209,44 @@ fn project_opcode(
     Vec<crate::ast::StringSlotRef>,
 ) {
     let named: Option<NamedOpcode> = match opcode {
+        // No NamedOpcode: meta/structural variants, plus the un-catalogued
+        // generic `Command` and the desync `Unknown` (the only NOT-recognised
+        // command variants) — so the AST marks these `Unrecognized`, agreeing
+        // with `is_recognized()` == false.
         RealLiveOpcode::MetaLine { .. }
         | RealLiveOpcode::MetaEntrypoint { .. }
         | RealLiveOpcode::MetaKidoku { .. }
         | RealLiveOpcode::Comma
-        | RealLiveOpcode::Expression { .. } => None,
-        RealLiveOpcode::Textout { .. } => Some(NamedOpcode::TextDisplay),
-        RealLiveOpcode::TextDisplay { .. } => Some(NamedOpcode::TextDisplay),
+        | RealLiveOpcode::Expression { .. }
+        | RealLiveOpcode::Command { .. }
+        | RealLiveOpcode::Unknown { .. } => None,
+        RealLiveOpcode::Textout { .. } | RealLiveOpcode::TextDisplay { .. } => {
+            Some(NamedOpcode::TextDisplay)
+        }
         RealLiveOpcode::CharacterTextDisplay => Some(NamedOpcode::SetSpeaker),
         RealLiveOpcode::Choice { .. } => Some(NamedOpcode::Choice),
         RealLiveOpcode::Branch | RealLiveOpcode::If => Some(NamedOpcode::Jump),
         RealLiveOpcode::Jump | RealLiveOpcode::Goto | RealLiveOpcode::Call => {
             Some(NamedOpcode::Jump)
         }
-        RealLiveOpcode::Return => Some(NamedOpcode::Return),
+        RealLiveOpcode::Return | RealLiveOpcode::End => Some(NamedOpcode::Return),
         RealLiveOpcode::Wait { .. } => Some(NamedOpcode::Pause),
-        RealLiveOpcode::Background { .. } => Some(NamedOpcode::SetVar),
-        RealLiveOpcode::VoicePlay { .. } => Some(NamedOpcode::SetVar),
-        RealLiveOpcode::SetVariable => Some(NamedOpcode::SetVar),
-        RealLiveOpcode::End => Some(NamedOpcode::Return),
         // Semantic command families (selection / message-window / system /
         // variable / audio / screen / display-object). The legacy Scene-AST
         // surface is coarse: these are all non-dialogue state operations, so
         // they project to the neutral `SetVar` named opcode while the rich
         // taxonomy lives on `RealLiveOpcode`. Each is RECOGNISED, so the
         // parser AST agrees with `is_recognized()` (Named, not Unrecognized).
-        RealLiveOpcode::SelectionControl { .. }
+        RealLiveOpcode::Background { .. }
+        | RealLiveOpcode::VoicePlay { .. }
+        | RealLiveOpcode::SetVariable
+        | RealLiveOpcode::SelectionControl { .. }
         | RealLiveOpcode::MessageControl { .. }
         | RealLiveOpcode::SystemControl { .. }
         | RealLiveOpcode::VariableOp { .. }
         | RealLiveOpcode::Audio { .. }
         | RealLiveOpcode::ScreenControl { .. }
         | RealLiveOpcode::GraphicsObject { .. } => Some(NamedOpcode::SetVar),
-        // The un-catalogued generic Command and the desync `Unknown` are the
-        // only NOT-recognised command variants: no NamedOpcode, so the AST
-        // marks them `Unrecognized` — agreeing with `is_recognized()` == false.
-        RealLiveOpcode::Command { .. } => None,
-        RealLiveOpcode::Unknown { .. } => None,
     };
 
     let kind = match opcode {

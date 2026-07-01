@@ -95,9 +95,8 @@ impl FixtureCase {
         // validate" semantics. Single-branch and looping each have a single
         // target so the chosen index is 0.
         match self {
-            Self::SingleBranch => 0,
+            Self::SingleBranch | Self::Looping => 0,
             Self::MultiBranch => 1,
-            Self::Looping => 0,
         }
     }
 }

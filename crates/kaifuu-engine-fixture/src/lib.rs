@@ -279,9 +279,7 @@ impl FixtureAdapter {
             protected_raws.insert(*raw);
         }
         for raw in protected_raws {
-            let required_count = required_spans_by_raw
-                .get(raw)
-                .map_or(0, |spans| spans.len());
+            let required_count = required_spans_by_raw.get(raw).map_or(0, std::vec::Vec::len);
             let declared_count = declared_counts.get(raw).copied().unwrap_or_default();
             if declared_count < required_count {
                 failures.push(Self::patch_failure(
@@ -460,11 +458,7 @@ impl FixtureAdapter {
             metadata: BTreeMap::new(),
         }];
 
-        for asset in source["assets"]
-            .as_array()
-            .map(Vec::as_slice)
-            .unwrap_or(&[])
-        {
+        for asset in source["assets"].as_array().map_or(&[][..], Vec::as_slice) {
             let asset_id = require_str(asset, "assetId")?;
             let asset_key = require_str(asset, "assetKey")?;
             let asset_kind = Self::asset_inventory_asset_kind(require_str(asset, "assetKind")?)?;
@@ -492,15 +486,12 @@ impl FixtureAdapter {
     ) -> KaifuuResult<Vec<AssetInventorySurface>> {
         source["assetSurfaces"]
             .as_array()
-            .map(Vec::as_slice)
-            .unwrap_or(&[])
+            .map_or(&[][..], Vec::as_slice)
             .iter()
             .enumerate()
             .map(|(index, surface)| {
                 let surface_id = surface["surfaceId"]
-                    .as_str()
-                    .map(str::to_string)
-                    .unwrap_or_else(|| deterministic_id("asset-surface", index + 1));
+                    .as_str().map_or_else(|| deterministic_id("asset-surface", index + 1), str::to_string);
                 let source_text = surface["sourceText"].as_str().map(str::to_string);
                 let source_hash = surface["sourceHash"]
                     .as_str()
@@ -533,8 +524,7 @@ impl FixtureAdapter {
                     ),
                     notes: surface["notes"]
                         .as_array()
-                        .map(Vec::as_slice)
-                        .unwrap_or(&[])
+                        .map_or(&[][..], Vec::as_slice)
                         .iter()
                         .filter_map(Value::as_str)
                         .map(str::to_string)
@@ -755,8 +745,7 @@ impl FixtureAdapter {
     ) -> KaifuuResult<Vec<ProtectedSpan>> {
         unit["protectedSpans"]
             .as_array()
-            .map(Vec::as_slice)
-            .unwrap_or(&[])
+            .map_or(&[][..], Vec::as_slice)
             .iter()
             .map(|span| {
                 let raw = require_str(span, "raw")?;
@@ -3403,8 +3392,7 @@ impl RealLiveProfileDetectorAdapter {
         let resolved_relative = resolved_reallive_data_dir.as_deref().map(|resolved| {
             resolved
                 .strip_prefix(game_dir)
-                .map(std::path::Path::to_path_buf)
-                .unwrap_or_else(|_| resolved.to_path_buf())
+                .map_or_else(|_| resolved.to_path_buf(), std::path::Path::to_path_buf)
         });
         RealLiveFixtureState {
             seen_txt_exists,
@@ -4381,14 +4369,11 @@ impl EngineAdapter for RealLiveProfileDetectorAdapter {
             ));
         }
         let seen_path = Self::seen_txt_path(request.game_dir);
-        let archive_bytes = match fs::read(&seen_path) {
-            Ok(bytes) => bytes,
-            Err(_) => {
-                return Ok(self.unsupported_patch_result(
-                    request.patch_export.patch_export_id.clone(),
-                    state.variant,
-                ));
-            }
+        let Ok(archive_bytes) = fs::read(&seen_path) else {
+            return Ok(self.unsupported_patch_result(
+                request.patch_export.patch_export_id.clone(),
+                state.variant,
+            ));
         };
         let Ok(scene_index) = kaifuu_reallive::parse_archive(&archive_bytes) else {
             return Ok(self.unsupported_patch_result(
@@ -4436,18 +4421,15 @@ impl EngineAdapter for RealLiveProfileDetectorAdapter {
         let resolved = Self::resolve_reallive_data_dir(request.game_dir);
         let seen_path = Self::seen_txt_path(request.game_dir);
         let archive_bytes = fs::read(&seen_path)?;
-        let scene_index = match kaifuu_reallive::parse_archive(&archive_bytes) {
-            Ok(index) => index,
-            Err(_) => {
-                // Synthetic-magic-only fixtures (KAIFUU-172 detector
-                // smoke) do not present a parseable archive envelope.
-                // Return the legacy unsupported-patch result so the
-                // detector contract stays observable through `patch`.
-                return Ok(self.unsupported_patch_result(
-                    request.patch_export.patch_export_id.clone(),
-                    state.variant,
-                ));
-            }
+        // Synthetic-magic-only fixtures (KAIFUU-172 detector smoke) do not
+        // present a parseable archive envelope. Return the legacy
+        // unsupported-patch result so the detector contract stays observable
+        // through `patch`.
+        let Ok(scene_index) = kaifuu_reallive::parse_archive(&archive_bytes) else {
+            return Ok(self.unsupported_patch_result(
+                request.patch_export.patch_export_id.clone(),
+                state.variant,
+            ));
         };
         let variant = Self::detected_variant(state.variant);
         let patch_export_id = request.patch_export.patch_export_id.clone();
@@ -4649,24 +4631,21 @@ impl EngineAdapter for RealLiveProfileDetectorAdapter {
         let state = Self::inspect(request.game_dir);
         let variant = Self::detected_variant(state.variant).to_string();
         let seen_path = Self::seen_txt_path(request.game_dir);
-        let archive_bytes = match fs::read(&seen_path) {
-            Ok(bytes) => bytes,
-            Err(_) => {
-                return Ok(VerificationResult {
-                    schema_version: "0.1.0".to_string(),
-                    patch_result_id: deterministic_id("reallive-verify", 174),
-                    status: OperationStatus::Failed,
-                    output_hash: content_hash(REALLIVE_SUPPORT_BOUNDARY),
-                    failures: vec![Self::unsupported_failure(
-                        SemanticErrorCode::UnsupportedLayeredTransform,
-                        Capability::Verification,
-                        variant,
-                        REALLIVE_SEEN_TXT_PATH,
-                        "patched SEEN.TXT not present at the requested game directory",
-                        "run patch first to populate the output directory",
-                    )],
-                });
-            }
+        let Ok(archive_bytes) = fs::read(&seen_path) else {
+            return Ok(VerificationResult {
+                schema_version: "0.1.0".to_string(),
+                patch_result_id: deterministic_id("reallive-verify", 174),
+                status: OperationStatus::Failed,
+                output_hash: content_hash(REALLIVE_SUPPORT_BOUNDARY),
+                failures: vec![Self::unsupported_failure(
+                    SemanticErrorCode::UnsupportedLayeredTransform,
+                    Capability::Verification,
+                    variant,
+                    REALLIVE_SEEN_TXT_PATH,
+                    "patched SEEN.TXT not present at the requested game directory",
+                    "run patch first to populate the output directory",
+                )],
+            });
         };
         let mut failures = Vec::new();
         match kaifuu_reallive::parse_archive(&archive_bytes) {
@@ -5026,9 +5005,7 @@ fn gameexe_ini_detail(exists: bool, keys: GameexeIniKeyHits) -> String {
 }
 
 fn file_starts_with(path: &Path, expected: &[u8]) -> bool {
-    fs::read(path)
-        .map(|bytes| bytes.starts_with(expected))
-        .unwrap_or(false)
+    fs::read(path).is_ok_and(|bytes| bytes.starts_with(expected))
 }
 
 // KAIFUU-189: normalises a `Path` to a forward-slash string for the

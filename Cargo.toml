@@ -22,6 +22,71 @@ edition = "2024"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/cat-cave/itotori"
 
+# Uniform, maximal-practical lint strictness as the DEFAULT (not a CLI flag).
+# Every crate opts in via `[lints] workspace = true`. See clippy.toml for the
+# restriction-lint / test-allowance knobs.
+[workspace.lints.rust]
+# Legitimate FFI (renamex_np, kill, env set_var under edition 2024) lives in
+# four crates that carry a documented crate-level `#![allow(unsafe_code)]`;
+# everywhere else new `unsafe` is a hard error. `deny` (not `forbid`) so those
+# four documented opt-outs are possible.
+unsafe_code = "deny"
+unused = "deny"
+deprecated = "deny"
+
+[workspace.lints.clippy]
+# Codify the de-facto level (previously only the ad-hoc `-D warnings` CLI flag)
+# so it is uniform and enforced by default.
+all = { level = "deny", priority = -1 }
+# Curated, high-signal subset of `pedantic` (plus a couple of adjacent style
+# lints) that the codebase passes with small, mostly machine-applied fixes.
+# The full pedantic/nursery groups are intentionally NOT enabled: the bulk
+# (must_use_candidate, doc_markdown, unreadable_literal, missing_errors_doc,
+# the cast_* family, too_many_lines, return_self_not_must_use,
+# trivially_copy_pass_by_ref, unused_self, ...) would each need a large
+# mechanical/doc cleanup and are deferred to a follow-up node.
+manual_let_else = "deny"
+explicit_iter_loop = "deny"
+semicolon_if_nothing_returned = "deny"
+redundant_closure_for_method_calls = "deny"
+map_unwrap_or = "deny"
+unnested_or_patterns = "deny"
+uninlined_format_args = "deny"
+match_same_arms = "deny"
+single_match_else = "deny"
+match_wildcard_for_single_variants = "deny"
+bool_to_int_with_if = "deny"
+stable_sort_primitive = "deny"
+implicit_clone = "deny"
+assigning_clones = "deny"
+format_collect = "deny"
+format_push_string = "deny"
+needless_raw_string_hashes = "deny"
+manual_string_new = "deny"
+manual_is_variant_and = "deny"
+default_trait_access = "deny"
+enum_glob_use = "deny"
+range_plus_one = "deny"
+needless_continue = "deny"
+single_char_pattern = "deny"
+ptr_as_ptr = "deny"
+ref_as_ptr = "deny"
+unnecessary_wraps = "deny"
+case_sensitive_file_extension_comparisons = "deny"
+if_not_else = "deny"
+items_after_statements = "deny"
+# DEFERRED (follow-up node): trivially_copy_pass_by_ref + unused_self cascade
+# through the Copy-ZST fixture-adapter structs in kaifuu-engine-fixture (and
+# downstream cli/siglus crates) — a large method-receiver + call-site refactor,
+# not the "small fixes" this curated set targets.
+no_effect_underscore_binding = "deny"
+used_underscore_binding = "deny"
+elidable_lifetime_names = "deny"
+struct_field_names = "deny"
+unnecessary_literal_bound = "deny"
+unnecessary_debug_formatting = "deny"
+ignore_without_reason = "deny"
+
 [workspace.dependencies]
 bytes = "1"
 dirs = "6"

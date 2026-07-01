@@ -265,7 +265,10 @@ impl SysRuntime {
     /// want to fold a fresh `LogicalClock::tick()` into the rng
     /// stream between scene-level transitions.
     pub fn reseed_from_clock(&self, tick: LogicalClockTick) {
-        let mut guard = self.inner.lock().unwrap_or_else(|err| err.into_inner());
+        let mut guard = self
+            .inner
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         guard.rng = XorShift64State::seed_from_tick(tick);
     }
 
@@ -273,7 +276,10 @@ impl SysRuntime {
     /// the snapshot path without going through the full
     /// `inspect_state` round trip.
     pub fn rng_state(&self) -> XorShift64State {
-        let guard = self.inner.lock().unwrap_or_else(|err| err.into_inner());
+        let guard = self
+            .inner
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         guard.rng
     }
 
@@ -284,7 +290,10 @@ impl SysRuntime {
         if max <= 1 {
             return 0;
         }
-        let mut guard = self.inner.lock().unwrap_or_else(|err| err.into_inner());
+        let mut guard = self
+            .inner
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let raw = guard.rng.next_u32();
         let modulus = max as u32;
         (raw % modulus) as i32
@@ -367,7 +376,10 @@ impl Restorable for SysRuntime {
                 reason: "sys_runtime rng_state must be non-zero".to_string(),
             });
         }
-        let mut guard = self.inner.lock().unwrap_or_else(|err| err.into_inner());
+        let mut guard = self
+            .inner
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         guard.rng = XorShift64State { state: new_state };
         Ok(RestoreReport {
             consumed_paths: consumed,

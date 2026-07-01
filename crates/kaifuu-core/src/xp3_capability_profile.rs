@@ -114,14 +114,13 @@ impl Xp3CapabilityVariant {
     /// (it is a triage workflow over archives nothing else can patch back).
     fn expected_classification(self) -> Option<Xp3ProfileClassification> {
         match self {
-            Self::PlaintextKs => None,
             Self::PlainXp3 => Some(Xp3ProfileClassification::Plain),
             Self::EncryptedXp3 => Some(Xp3ProfileClassification::Encrypted),
             Self::HelperRequiredXp3 => Some(Xp3ProfileClassification::HelperRequired),
             Self::ProtectedExecutable => {
                 Some(Xp3ProfileClassification::UnsupportedProtectedExecutable)
             }
-            Self::UniversalDump => None,
+            Self::PlaintextKs | Self::UniversalDump => None,
         }
     }
 
@@ -919,9 +918,7 @@ fn validate_detector_evidence(
             format!(
                 "entry declared classification {} but evidence routed {}",
                 declared.as_str(),
-                actual
-                    .map(Xp3ProfileClassification::as_str)
-                    .unwrap_or("none")
+                actual.map_or("none", Xp3ProfileClassification::as_str)
             ),
             SEMANTIC_CAPABILITY_EVIDENCE_MISMATCH,
         ));
@@ -1004,8 +1001,10 @@ fn sanitize_file_name(name: &str) -> String {
     Path::new(name)
         .file_name()
         .and_then(|component| component.to_str())
-        .map(|component| component.to_string())
-        .unwrap_or_else(|| "xp3-capability-profile.json".to_string())
+        .map_or_else(
+            || "xp3-capability-profile.json".to_string(),
+            std::string::ToString::to_string,
+        )
 }
 
 #[cfg(test)]
@@ -1048,8 +1047,7 @@ mod tests {
     fn has_finding(report: &Xp3CapabilityProfileReport, entry_id: &str, code: &str) -> bool {
         report
             .entry(entry_id)
-            .map(|entry| entry.findings.iter().any(|finding| finding.code == code))
-            .unwrap_or(false)
+            .is_some_and(|entry| entry.findings.iter().any(|finding| finding.code == code))
     }
 
     // --- Generation is evidence-driven and the happy path is green. --------

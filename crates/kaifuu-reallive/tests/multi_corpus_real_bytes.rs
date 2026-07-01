@@ -535,6 +535,7 @@ mod sha256 {
     ];
 
     pub fn digest_hex(data: &[u8]) -> String {
+        use std::fmt::Write as _;
         let mut h: [u32; 8] = [
             0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab,
             0x5be0cd19,
@@ -589,7 +590,7 @@ mod sha256 {
 
         let mut out = String::with_capacity(64);
         for word in h {
-            out.push_str(&format!("{word:08x}"));
+            let _ = write!(out, "{word:08x}");
         }
         out
     }

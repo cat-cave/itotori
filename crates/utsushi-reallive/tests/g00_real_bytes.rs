@@ -209,14 +209,12 @@ fn assert_type0_corpus_coherent(title: &str, g00_dir: &PathBuf) {
         let path = entry.expect("DirEntry").path();
         if !path
             .extension()
-            .map(|e| e.eq_ignore_ascii_case("g00"))
-            .unwrap_or(false)
+            .is_some_and(|e| e.eq_ignore_ascii_case("g00"))
         {
             continue;
         }
-        let bytes = match fs::read(&path) {
-            Ok(b) => b,
-            Err(_) => continue,
+        let Ok(bytes) = fs::read(&path) else {
+            continue;
         };
         if bytes.first() != Some(&G00_TYPE_RAW_BGR) {
             continue;
@@ -310,8 +308,7 @@ fn g00_corpus_histogram_real_bytes_2450_files() {
         let path = entry.path();
         if !path
             .extension()
-            .map(|ext| ext.eq_ignore_ascii_case("g00"))
-            .unwrap_or(false)
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("g00"))
         {
             continue;
         }
@@ -326,8 +323,7 @@ fn g00_corpus_histogram_real_bytes_2450_files() {
     assert_eq!(
         histogram.total(),
         SWEETIE_HD_G00_CORPUS_SIZE,
-        "Sweetie HD g00 corpus size is pinned at {} files in UTSUSHI-216's acceptance block",
-        SWEETIE_HD_G00_CORPUS_SIZE,
+        "Sweetie HD g00 corpus size is pinned at {SWEETIE_HD_G00_CORPUS_SIZE} files in UTSUSHI-216's acceptance block",
     );
     eprintln!(
         "Sweetie HD g00 lead-byte histogram: type0={} type1={} type2={} unknown={} unreadable={}",

@@ -134,8 +134,7 @@ fn validate_engine_family(map: &ImplementationMap, errors: &mut Vec<ImplMapError
         let notes_empty = map
             .engine_family_notes
             .as_ref()
-            .map(|notes| notes.trim().is_empty())
-            .unwrap_or(true);
+            .is_none_or(|notes| notes.trim().is_empty());
         if notes_empty {
             errors.push(ImplMapError::EngineFamilyOtherWithoutNotes);
         }
@@ -289,8 +288,7 @@ fn validate_subsystem_fixture(subsystem: &Subsystem, errors: &mut Vec<ImplMapErr
         let notes_empty = fixture
             .kind_notes
             .as_ref()
-            .map(|notes| notes.trim().is_empty())
-            .unwrap_or(true);
+            .is_none_or(|notes| notes.trim().is_empty());
         if notes_empty {
             errors.push(ImplMapError::FixtureKindOtherWithoutNotes {
                 subsystem_id: subsystem.id.clone(),
@@ -462,7 +460,7 @@ fn validate_each_command(map: &ImplementationMap, errors: &mut Vec<ImplMapError>
             if let Some(token) = first_unsafe_token(raw) {
                 errors.push(ImplMapError::ValidationCommandUnsafeShape {
                     id: command.id.clone(),
-                    offending_token: token.to_string(),
+                    offending_token: token.clone(),
                 });
             }
             if !RESERVED_COMMAND_PREFIXES

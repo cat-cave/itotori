@@ -83,7 +83,10 @@ fn mz_run_emits_real_text_stream_capture_and_snapshot() {
     assert_eq!(lines[3].text, "Not yet");
     // The MZ layout addresses assets under the `game` package.
     assert_eq!(
-        lines[0].source_asset.as_ref().map(|id| id.as_str()),
+        lines[0]
+            .source_asset
+            .as_ref()
+            .map(utsushi_core::AssetId::as_str),
         Some("vfs://game/data/Map002.json")
     );
 

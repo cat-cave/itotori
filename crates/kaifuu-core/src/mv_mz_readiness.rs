@@ -315,7 +315,9 @@ impl MvMzFixtureProfile {
 
     /// The canonical KAIFUU-109..112 consumer profiles.
     pub fn canonical() -> Vec<Self> {
-        use MvMzSurfaceRole::*;
+        use MvMzSurfaceRole::{
+            CommonEvents, Database, Maps, PluginProfileDiagnostics, System, Terms,
+        };
         vec![
             Self::new(
                 "KAIFUU-109",

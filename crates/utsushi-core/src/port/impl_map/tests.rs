@@ -1102,15 +1102,12 @@ mod corpus {
         ];
         for name in names {
             let value = read_fixture(name);
-            match serde_json::from_value::<ImplementationMap>(value) {
-                Ok(map) => {
-                    let _ = validate(&map).expect_err(&format!(
-                        "negative fixture {name} unexpectedly passed Rust validation"
-                    ));
-                }
-                Err(_) => {
-                    // Acceptable: schema rejection at deserialize time.
-                }
+            if let Ok(map) = serde_json::from_value::<ImplementationMap>(value) {
+                let _ = validate(&map).expect_err(&format!(
+                    "negative fixture {name} unexpectedly passed Rust validation"
+                ));
+            } else {
+                // Acceptable: schema rejection at deserialize time.
             }
         }
     }

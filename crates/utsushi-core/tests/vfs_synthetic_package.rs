@@ -260,12 +260,6 @@ fn parse_minimal_toml(
     CaseRule,
     HashMap<String, AccessPolicy>,
 ) {
-    let mut id = String::new();
-    let mut public_source = String::new();
-    let mut case_rule = CaseRule::Sensitive;
-    let mut policies = HashMap::new();
-    let mut current_policy: Option<PolicyBuilder> = None;
-
     fn extract_string(value: &str) -> String {
         let trimmed = value.trim();
         trimmed
@@ -274,6 +268,12 @@ fn parse_minimal_toml(
             .unwrap_or(trimmed)
             .to_string()
     }
+
+    let mut id = String::new();
+    let mut public_source = String::new();
+    let mut case_rule = CaseRule::Sensitive;
+    let mut policies = HashMap::new();
+    let mut current_policy: Option<PolicyBuilder> = None;
 
     for line in text.lines() {
         let trimmed = line.trim();
@@ -379,7 +379,7 @@ fn synthetic_package_list_root_returns_three_subdirectories() {
     let package = fixture_package();
     let root = AssetId::from_parts("synthetic", "").unwrap();
     let children = package.list(&root).unwrap();
-    let names: Vec<&str> = children.iter().map(|id| id.path()).collect();
+    let names: Vec<&str> = children.iter().map(utsushi_core::AssetId::path).collect();
     assert_eq!(names, vec!["encrypted/", "hello/", "helper-gated/"]);
 }
 

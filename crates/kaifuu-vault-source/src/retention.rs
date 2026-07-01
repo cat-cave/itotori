@@ -26,10 +26,12 @@ pub fn apply_retention(
     outcome: RunOutcome,
 ) -> std::io::Result<()> {
     match (policy, outcome) {
-        (RetentionPolicy::KeepNone, _) => remove_run_dir(paths),
-        (RetentionPolicy::KeepOnFailure, RunOutcome::Success) => remove_run_dir(paths),
-        (RetentionPolicy::KeepOnFailure, RunOutcome::Failure) => Ok(()),
-        (RetentionPolicy::KeepAll, _) => Ok(()),
+        (RetentionPolicy::KeepNone, _) | (RetentionPolicy::KeepOnFailure, RunOutcome::Success) => {
+            remove_run_dir(paths)
+        }
+        (RetentionPolicy::KeepOnFailure, RunOutcome::Failure) | (RetentionPolicy::KeepAll, _) => {
+            Ok(())
+        }
         (RetentionPolicy::KeepExtractedForGame, _) => {
             // Promote `extracted/` to `<game-id>/extracted/` so a subsequent
             // run with the same game id can reuse it.

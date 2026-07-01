@@ -216,11 +216,9 @@ fn str_mem_sys_registries_dispatch_against_reallive_real_bytes_scene_one() {
     while steps < REAL_BYTES_STEP_BUDGET {
         match vm.step(&store, &registry, &mut scheduler) {
             Ok(outcome) => match outcome {
-                StepOutcome::Halted | StepOutcome::EndOfScene { .. } => {
-                    last = Some(outcome);
-                    break;
-                }
-                StepOutcome::Suspended { .. } => {
+                StepOutcome::Halted
+                | StepOutcome::EndOfScene { .. }
+                | StepOutcome::Suspended { .. } => {
                     last = Some(outcome);
                     break;
                 }

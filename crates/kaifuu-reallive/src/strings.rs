@@ -43,9 +43,10 @@ pub(crate) fn make_slot(
 /// Uppercase-hex byte encoder. Bypasses bringing in a hex crate; the
 /// parser is the only emitter.
 pub(crate) fn hex_encode_upper(bytes: &[u8]) -> String {
+    use std::fmt::Write as _;
     let mut out = String::with_capacity(bytes.len() * 2);
     for byte in bytes {
-        out.push_str(&format!("{byte:02X}"));
+        let _ = write!(out, "{byte:02X}");
     }
     out
 }

@@ -458,25 +458,22 @@ fn build_entry(
     }
 
     // Surface ids are the synthetic in-archive asset ids from the profile.
-    let surface_ids = match profile {
-        Some(profile) => {
-            let mut ids: Vec<String> = profile.content.iter().map(|c| c.asset_id.clone()).collect();
-            ids.sort();
-            ids
-        }
-        None => {
-            findings.push(finding(
-                "alpha.encrypted.fixture_input_missing",
-                PartialDiagnosticSeverity::P0,
-                "profileId",
-                format!(
-                    "no readable profile fixture for validated entry {}",
-                    validation_entry.profile_id
-                ),
-                SemanticErrorCode::UnknownEngineVariant,
-            ));
-            Vec::new()
-        }
+    let surface_ids = if let Some(profile) = profile {
+        let mut ids: Vec<String> = profile.content.iter().map(|c| c.asset_id.clone()).collect();
+        ids.sort();
+        ids
+    } else {
+        findings.push(finding(
+            "alpha.encrypted.fixture_input_missing",
+            PartialDiagnosticSeverity::P0,
+            "profileId",
+            format!(
+                "no readable profile fixture for validated entry {}",
+                validation_entry.profile_id
+            ),
+            SemanticErrorCode::UnknownEngineVariant,
+        ));
+        Vec::new()
     };
 
     // --- Key / helper metadata presence (the report MUST name them). -------
@@ -626,8 +623,10 @@ fn build_entry(
 /// Compute the `sha256:` report hash over the canonical serialization of the
 /// (already-sorted-by-profile-id) entries.
 fn compute_report_hash(entries: &[AlphaEncryptedReadinessEntry]) -> KaifuuResult<ProofHash> {
-    let redacted: Vec<AlphaEncryptedReadinessEntry> =
-        entries.iter().map(|e| e.redacted_for_report()).collect();
+    let redacted: Vec<AlphaEncryptedReadinessEntry> = entries
+        .iter()
+        .map(AlphaEncryptedReadinessEntry::redacted_for_report)
+        .collect();
     let canonical = stable_json(&redacted)?;
     ProofHash::new(sha256_hash_bytes(canonical.as_bytes())).map_err(Into::into)
 }
@@ -666,8 +665,7 @@ fn read_patch_artifacts(
             && path
                 .file_name()
                 .and_then(|name| name.to_str())
-                .map(|name| name.ends_with(".patch.json"))
-                .unwrap_or(false)
+                .is_some_and(|name| name.ends_with(".patch.json"))
         {
             files.push(path);
         }
@@ -730,8 +728,7 @@ fn read_profiles(dir: &Path) -> KaifuuResult<BTreeMap<String, PackedEngineReadin
             && path
                 .file_name()
                 .and_then(|name| name.to_str())
-                .map(|name| name.ends_with(".profile.json"))
-                .unwrap_or(false);
+                .is_some_and(|name| name.ends_with(".profile.json"));
         if is_profile && let Ok(profile) = read_json::<PackedEngineReadinessProfile>(&path) {
             by_id.insert(profile.profile_id.clone(), profile);
         }
@@ -911,7 +908,7 @@ mod tests {
                         entry.profile_id
                     );
                 }
-                _ => {}
+                PackedReadinessPosture::ProfileReady => {}
             }
         }
     }

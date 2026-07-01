@@ -38,9 +38,10 @@ fn require_live_vault() -> Option<PathBuf> {
 /// A throwaway scratch root that lives OUTSIDE the vault (large extractions:
 /// prefer a real disk, not tmpfs).
 fn scratch_base() -> PathBuf {
-    let base = std::env::var("ITOTORI_SCRATCH_ROOT")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| PathBuf::from("/scratch/itotori-vault-by-id-test"));
+    let base = std::env::var("ITOTORI_SCRATCH_ROOT").map_or_else(
+        |_| PathBuf::from("/scratch/itotori-vault-by-id-test"),
+        PathBuf::from,
+    );
     let unique = base.join(format!("run-{}", std::process::id()));
     std::fs::create_dir_all(&unique).expect("create scratch base");
     unique
@@ -59,8 +60,7 @@ fn find_named(root: &Path, target_lower: &str) -> Option<PathBuf> {
             } else if p
                 .file_name()
                 .and_then(|n| n.to_str())
-                .map(|n| n.eq_ignore_ascii_case(target_lower))
-                .unwrap_or(false)
+                .is_some_and(|n| n.eq_ignore_ascii_case(target_lower))
             {
                 return Some(p);
             }
@@ -70,13 +70,14 @@ fn find_named(root: &Path, target_lower: &str) -> Option<PathBuf> {
 }
 
 fn sha256_file(path: &Path) -> String {
+    use std::fmt::Write as _;
     let bytes = std::fs::read(path).expect("read seen file");
     let mut h = Sha256::new();
     h.update(&bytes);
     let d = h.finalize();
     let mut s = String::with_capacity(64);
-    for b in d.iter() {
-        s.push_str(&format!("{b:02x}"));
+    for b in &d {
+        let _ = write!(s, "{b:02x}");
     }
     s
 }

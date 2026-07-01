@@ -185,7 +185,7 @@ mod tests {
             } => {
                 assert_eq!(evidence_tier_ceiling, EvidenceTier::E1);
             }
-            other => panic!("expected Supported, got {other:?}"),
+            SinkCapability::Unsupported => panic!("expected Supported, got Unsupported"),
         }
     }
 }

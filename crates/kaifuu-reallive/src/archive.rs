@@ -164,13 +164,14 @@ fn read_u32_le(bytes: &[u8], offset: usize) -> u32 {
 }
 
 pub(crate) fn preview_hex(bytes: &[u8], start: usize) -> Option<String> {
+    use std::fmt::Write as _;
     if start >= bytes.len() {
         return None;
     }
     let end = (start + DIAGNOSTIC_HEX_PREVIEW_LEN).min(bytes.len());
     let mut hex = String::with_capacity((end - start) * 2);
     for byte in &bytes[start..end] {
-        hex.push_str(&format!("{byte:02X}"));
+        let _ = write!(hex, "{byte:02X}");
     }
     Some(hex)
 }

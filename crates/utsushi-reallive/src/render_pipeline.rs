@@ -389,11 +389,11 @@ mod font {
             'L' => [0b100, 0b100, 0b100, 0b100, 0b111],
             'M' => [0b101, 0b111, 0b111, 0b101, 0b101],
             'N' => [0b101, 0b111, 0b111, 0b111, 0b101],
-            'O' => [0b111, 0b101, 0b101, 0b101, 0b111],
+            'O' | '0' => [0b111, 0b101, 0b101, 0b101, 0b111],
             'P' => [0b111, 0b101, 0b111, 0b100, 0b100],
             'Q' => [0b111, 0b101, 0b101, 0b111, 0b001],
             'R' => [0b111, 0b101, 0b110, 0b101, 0b101],
-            'S' => [0b111, 0b100, 0b111, 0b001, 0b111],
+            'S' | '5' => [0b111, 0b100, 0b111, 0b001, 0b111],
             'T' => [0b111, 0b010, 0b010, 0b010, 0b010],
             'U' => [0b101, 0b101, 0b101, 0b101, 0b111],
             'V' => [0b101, 0b101, 0b101, 0b101, 0b010],
@@ -401,12 +401,10 @@ mod font {
             'X' => [0b101, 0b101, 0b010, 0b101, 0b101],
             'Y' => [0b101, 0b101, 0b010, 0b010, 0b010],
             'Z' => [0b111, 0b001, 0b010, 0b100, 0b111],
-            '0' => [0b111, 0b101, 0b101, 0b101, 0b111],
             '1' => [0b010, 0b110, 0b010, 0b010, 0b111],
             '2' => [0b111, 0b001, 0b111, 0b100, 0b111],
             '3' => [0b111, 0b001, 0b111, 0b001, 0b111],
             '4' => [0b101, 0b101, 0b111, 0b001, 0b001],
-            '5' => [0b111, 0b100, 0b111, 0b001, 0b111],
             '6' => [0b111, 0b100, 0b111, 0b101, 0b111],
             '7' => [0b111, 0b001, 0b010, 0b010, 0b010],
             '8' => [0b111, 0b101, 0b111, 0b101, 0b111],
@@ -831,7 +829,7 @@ impl RenderPass {
         sink: &dyn FrameArtifactSink,
     ) -> Result<FrameArtifact, RenderEmitError> {
         let (framebuffer, text_pixels) = self.rasterise_with_text(stack, text);
-        self.reject_blank_localized(text, text_pixels)?;
+        Self::reject_blank_localized(text, text_pixels)?;
         self.announce_framebuffer(&framebuffer, root, run_id, sink)
     }
 
@@ -863,7 +861,7 @@ impl RenderPass {
         // complete.
         let (mut full_fb, report) = self.rasterise_reporting(stack, RedactionPolicy::Full);
         let full_text_pixels = full_fb.draw_text(text);
-        self.reject_blank_localized(text, full_text_pixels)?;
+        Self::reject_blank_localized(text, full_text_pixels)?;
 
         let private_png = encode_png_rgba_deterministic(&full_fb);
         let private_sha = sha256_hex(&private_png);
@@ -904,11 +902,7 @@ impl RenderPass {
     }
 
     /// Reject a non-empty localized text layer that painted zero pixels.
-    fn reject_blank_localized(
-        &self,
-        text: &TextLayer,
-        text_pixels: u64,
-    ) -> Result<(), RenderEmitError> {
+    fn reject_blank_localized(text: &TextLayer, text_pixels: u64) -> Result<(), RenderEmitError> {
         if text.char_count() > 0 && text_pixels == 0 {
             return Err(RenderEmitError::BlankLocalizedText {
                 code: RENDER_PIPELINE_BLANK_LOCALIZED_TEXT_CODE.to_string(),
@@ -1348,7 +1342,6 @@ fn write_iend_chunk(out: &mut Vec<u8>) {
 /// well-known `0x78 0x01` (deflate, no compression, no dictionary,
 /// `FCHECK` chosen so `(CMF*256 + FLG) % 31 == 0`).
 fn wrap_as_zlib_stored(data: &[u8]) -> Vec<u8> {
-    let mut out = Vec::with_capacity(data.len() + 16);
     // CMF: deflate, 32K window. FLG: FCHECK chosen so the RFC 1950
     // header-check invariant `(CMF*256 + FLG) % 31 == 0` holds.
     const ZLIB_CMF: u8 = 0x78;
@@ -1360,10 +1353,12 @@ fn wrap_as_zlib_stored(data: &[u8]) -> Vec<u8> {
         ((ZLIB_CMF as u16) * 256 + ZLIB_FLG as u16).is_multiple_of(31),
         "zlib header (CMF, FLG) pair must satisfy (CMF*256 + FLG) % 31 == 0",
     );
+    const MAX_STORED_BLOCK_LEN: usize = 65_535;
+
+    let mut out = Vec::with_capacity(data.len() + 16);
     out.push(ZLIB_CMF);
     out.push(ZLIB_FLG);
 
-    const MAX_STORED_BLOCK_LEN: usize = 65_535;
     if data.is_empty() {
         // Emit a single empty final stored block.
         out.push(0x01); // BFINAL=1, BTYPE=00
@@ -1375,7 +1370,7 @@ fn wrap_as_zlib_stored(data: &[u8]) -> Vec<u8> {
             let remaining = data.len() - offset;
             let take = remaining.min(MAX_STORED_BLOCK_LEN);
             let is_final = offset + take == data.len();
-            let header = if is_final { 0x01u8 } else { 0x00u8 };
+            let header = u8::from(is_final);
             out.push(header);
             let len = take as u16;
             let nlen = !len;

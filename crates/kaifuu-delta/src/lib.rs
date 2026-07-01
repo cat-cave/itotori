@@ -33,6 +33,11 @@ const DELTA_HASH_VERSION: &str = "kaifuu-delta-root-v0.2";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+// reason: `delta_package_id` mirrors its `deltaPackageId` serialized key and
+// stays name-aligned with the `PartialSourceRefused.delta_package_id` error
+// field that carries the same id; renaming to `package_id` would desync the
+// wire contract and the mirrored id field.
+#[allow(clippy::struct_field_names)]
 struct DeltaPackage {
     schema_version: String,
     delta_package_id: String,

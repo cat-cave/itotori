@@ -525,12 +525,11 @@ fn walk_dir(
                 let Component::Normal(os_segment) = component else {
                     continue;
                 };
-                match os_segment.to_str() {
-                    Some(segment) => segments.push(segment.to_string()),
-                    None => {
-                        valid = false;
-                        break;
-                    }
+                if let Some(segment) = os_segment.to_str() {
+                    segments.push(segment.to_string());
+                } else {
+                    valid = false;
+                    break;
                 }
             }
             if !valid || segments.is_empty() {
@@ -596,7 +595,10 @@ mod tests {
         );
         let prefix = AssetId::from_parts("lex", "").unwrap();
         let children = package.list(&prefix).unwrap();
-        let names: Vec<&str> = children.iter().map(|id| id.path()).collect();
+        let names: Vec<&str> = children
+            .iter()
+            .map(super::super::id::AssetId::path)
+            .collect();
         assert_eq!(names, vec!["a.txt", "b.txt", "c.txt"]);
     }
 
@@ -632,8 +634,8 @@ mod tests {
     #[test]
     fn case_folded_index_is_built_once_and_cached() {
         let (_temp, package) = make_temp_package(CaseRule::Sensitive);
-        let first = package.case_folded_index().unwrap() as *const CaseFoldedIndex;
-        let second = package.case_folded_index().unwrap() as *const CaseFoldedIndex;
+        let first = std::ptr::from_ref::<CaseFoldedIndex>(package.case_folded_index().unwrap());
+        let second = std::ptr::from_ref::<CaseFoldedIndex>(package.case_folded_index().unwrap());
         assert_eq!(first, second, "OnceLock must hand back the same reference");
     }
 

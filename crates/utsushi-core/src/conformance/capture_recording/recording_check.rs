@@ -110,7 +110,7 @@ impl RecordingConformanceCheck {
                 reason: "recording_id is empty".to_string(),
             });
         }
-        if id.chars().any(|c| c.is_whitespace()) {
+        if id.chars().any(char::is_whitespace) {
             return Err(ConformanceError::RecordingIdMalformed {
                 reason: "recording_id contains whitespace".to_string(),
             });

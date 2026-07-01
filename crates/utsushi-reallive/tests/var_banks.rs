@@ -269,7 +269,7 @@ fn variable_banks_inspect_state_emits_only_set_indices() {
         .expect("clean set");
     // IntB is intentionally not touched.
     let tree = banks.inspect_state().expect("inspect");
-    let paths: Vec<&str> = tree.paths().map(|path| path.as_str()).collect();
+    let paths: Vec<&str> = tree.paths().map(utsushi_core::StatePath::as_str).collect();
     assert!(paths.iter().any(|p| p.contains("int_a")));
     assert!(
         !paths.iter().any(|p| p.contains("int_b")),

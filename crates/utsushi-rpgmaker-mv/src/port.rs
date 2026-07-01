@@ -334,23 +334,20 @@ impl EnginePort for UtsushiRpgmakerMvPort {
                 source: None,
             });
         }
-        match self.pending.pop() {
-            Some(line) => {
-                self.sinks
-                    .text
-                    .emit_line(line)
-                    .map_err(|error| EnginePortError::Lifecycle {
-                        stage: LifecycleStage::Observe,
-                        message: format!("rpgmaker-mv text emit failed: {error}"),
-                        source: None,
-                    })?;
-                self.lines_emitted += 1;
-                Ok(())
-            }
-            None => {
-                self.state = PortState::Drained;
-                Ok(())
-            }
+        if let Some(line) = self.pending.pop() {
+            self.sinks
+                .text
+                .emit_line(line)
+                .map_err(|error| EnginePortError::Lifecycle {
+                    stage: LifecycleStage::Observe,
+                    message: format!("rpgmaker-mv text emit failed: {error}"),
+                    source: None,
+                })?;
+            self.lines_emitted += 1;
+            Ok(())
+        } else {
+            self.state = PortState::Drained;
+            Ok(())
         }
     }
 
@@ -445,7 +442,7 @@ impl UtsushiRpgmakerMvPort {
         serde_json::json!({
             "schema": "utsushi-rpgmaker-mv-text-trace/0.1.0-alpha",
             "portId": PORT_ID,
-            "layout": self.layout.map(|l| l.as_str()).unwrap_or("unlaunched"),
+            "layout": self.layout.map_or("unlaunched", super::event_data::DataLayout::as_str),
             "filesLoaded": self.files_loaded,
             "lineCount": self.lines_total,
             "lines": lines,
@@ -479,8 +476,7 @@ impl Inspectable for UtsushiRpgmakerMvPort {
             StateValue::String {
                 value: self
                     .layout
-                    .map(DataLayout::as_str)
-                    .unwrap_or("unlaunched")
+                    .map_or("unlaunched", DataLayout::as_str)
                     .to_string(),
             },
         )?;

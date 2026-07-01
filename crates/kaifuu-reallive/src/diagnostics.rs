@@ -137,14 +137,11 @@ pub fn semantic_error_code_for_parser_diagnostic(
             Some(SemanticErrorCode::UnknownEngineVariant)
         }
         ParseDiagnosticCode::TruncatedScene => Some(SemanticErrorCode::UnknownEngineVariant),
-        ParseDiagnosticCode::TruncatedInstruction => {
+        ParseDiagnosticCode::TruncatedInstruction | ParseDiagnosticCode::InvalidStringSlot => {
             Some(SemanticErrorCode::UnsupportedLayeredTransform)
         }
-        ParseDiagnosticCode::UnrecognizedInstruction => None,
-        ParseDiagnosticCode::UnrecognizedOperandShape => None,
-        ParseDiagnosticCode::InvalidStringSlot => {
-            Some(SemanticErrorCode::UnsupportedLayeredTransform)
-        }
+        ParseDiagnosticCode::UnrecognizedInstruction
+        | ParseDiagnosticCode::UnrecognizedOperandShape => None,
         ParseDiagnosticCode::OutOfProfileInput => Some(SemanticErrorCode::UnsupportedEngineVariant),
     }
 }

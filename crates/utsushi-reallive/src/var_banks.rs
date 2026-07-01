@@ -685,13 +685,8 @@ impl Restorable for VarBanks {
                     });
                 }
                 (raw, value) if raw.starts_with("port.var_banks.") => {
-                    let bank = match resolve_bank_from_path(raw) {
-                        Some(id) => id,
-                        None => {
-                            return Err(SnapshotError::RestoreStatePathUnknown {
-                                path: path.clone(),
-                            });
-                        }
+                    let Some(bank) = resolve_bank_from_path(raw) else {
+                        return Err(SnapshotError::RestoreStatePathUnknown { path: path.clone() });
                     };
                     let payload = match value {
                         StateValue::String { value } => value,

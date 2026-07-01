@@ -36,7 +36,7 @@ const MATCH_OK_CODE: &str = "utsushi.reallive.replay_text_match_ok";
 /// exit path.
 const MATCH_FAILED_CODE: &str = "utsushi.reallive.replay_text_match_failed";
 
-const HELP: &str = r#"utsushi replay-validate — patched Seen.txt replay-and-verify smoke
+const HELP: &str = r"utsushi replay-validate — patched Seen.txt replay-and-verify smoke
 
 USAGE:
   utsushi-cli replay-validate \
@@ -67,7 +67,7 @@ SUBSTRING CONTRACT:
   The substring must be unique to the patched copy. Pick a stable excerpt
   from the first translated unit's first sentence; verify by re-running
   against the original unpatched copy and confirming it does not match.
-"#;
+";
 
 /// Execute the `replay-validate` subcommand. The argv layout is:
 ///
@@ -277,7 +277,7 @@ mod tests {
             "--scene".into(),
             "1".into(),
             "--expect-textline-contains".into(),
-            "".into(),
+            String::new(),
         ];
         let err = run_replay_validate_command(&args).expect_err("empty substring rejected");
         assert!(err.to_string().contains("empty_substring"));

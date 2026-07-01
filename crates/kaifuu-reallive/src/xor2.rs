@@ -136,12 +136,13 @@ struct Xor2Key {
 
 impl Xor2Key {
     fn sha256_hex(&self) -> String {
+        use std::fmt::Write as _;
         let mut hasher = Sha256::new();
         hasher.update(self.bytes);
         let digest = hasher.finalize();
         let mut out = String::with_capacity(64);
         for byte in digest {
-            out.push_str(&format!("{byte:02x}"));
+            let _ = write!(out, "{byte:02x}");
         }
         out
     }
@@ -213,7 +214,9 @@ fn recover_candidate_key(scenes: &[&[u8]]) -> Option<[u8; XOR2_KEY_LEN]> {
 /// unrecognised (`Unknown`) commands — the 100%-decompilation bar.
 fn decodes_clean(bytecode: &[u8]) -> bool {
     match parse_real_bytecode(bytecode) {
-        Ok(opcodes) => opcodes.iter().all(|opcode| opcode.is_recognized()),
+        Ok(opcodes) => opcodes
+            .iter()
+            .all(super::opcode::RealLiveOpcode::is_recognized),
         Err(_) => false,
     }
 }
@@ -426,6 +429,7 @@ mod tests {
 
     #[test]
     fn recovers_and_decrypts_synthetic_corpus_then_validates() {
+        use std::fmt::Write as _;
         let planted = [
             0x97, 0x02, 0xcb, 0x5a, 0x83, 0x0f, 0x5e, 0x30, 0xa7, 0x66, 0xe5, 0x37, 0x62, 0x3f,
             0x9a, 0xdc,
@@ -451,11 +455,10 @@ mod tests {
         // recovery without revealing bytes.
         let mut hasher = Sha256::new();
         hasher.update(planted);
-        let expected: String = hasher
-            .finalize()
-            .iter()
-            .map(|b| format!("{b:02x}"))
-            .collect();
+        let expected: String = hasher.finalize().iter().fold(String::new(), |mut acc, b| {
+            let _ = write!(acc, "{b:02x}");
+            acc
+        });
         assert_eq!(report.key_sha256.as_deref(), Some(expected.as_str()));
         // Every scene is now the original plaintext (decrypted in place).
         for scene in &scenes {

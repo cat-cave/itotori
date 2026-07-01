@@ -304,10 +304,7 @@ impl EnginePort for FixtureEnginePort {
         // `capture` runs and there is an artifact root available.
         let run_id = format!("019ed003-0000-7000-8000-{:032x}", 0x1u128);
         let artifact_id = format!("019ed003-0000-7000-8000-{:032x}", 0x4u128);
-        let uri = format!(
-            "{}/{}/screenshots/{}.png",
-            RUNTIME_ARTIFACT_URI_ROOT, run_id, artifact_id
-        );
+        let uri = format!("{RUNTIME_ARTIFACT_URI_ROOT}/{run_id}/screenshots/{artifact_id}.png");
         let bridge_ref = ObservationBridgeRef {
             bridge_unit_id: Some(deterministic_bridge_unit_id(&game_id, 0)),
             source_unit_key: units[0]
@@ -431,7 +428,7 @@ fn pop_front<T>(buffer: &mut Vec<T>) -> Option<T> {
 }
 
 fn deterministic_line_id(game_id: &str, index: usize) -> String {
-    format!("fixture-line:{}:{index:04}", game_id)
+    format!("fixture-line:{game_id}:{index:04}")
 }
 
 fn deterministic_bridge_unit_id(game_id: &str, index: usize) -> String {
