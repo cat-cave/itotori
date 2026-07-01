@@ -99,7 +99,7 @@ ci-real-bytes:
     echo "ci-real-bytes: corpus-1 (Sweetie HD) = $ITOTORI_REAL_GAME_ROOT"
     echo "ci-real-bytes: corpus-2 (Kanon)      = $ITOTORI_REAL_GAME_ROOT_2"
     echo "ci-real-bytes: running #[ignore]-gated real-bytes RealLive suites with ITOTORI_REQUIRE_REAL_BYTES=1"
-    cargo test -p kaifuu-reallive -p utsushi-reallive -- --ignored
+    cargo test -p kaifuu-reallive -p utsushi-reallive -p kaifuu-cli -p utsushi-cli -- --ignored
 
 qd-full-ci:
     node scripts/qd-full-ci.mjs

@@ -1,326 +1,42 @@
-//! UTSUSHI-227 real-bytes + synthetic integration test for
-//! `validate_replay_contains`.
+//! UTSUSHI-227 synthetic integration tests for
+//! `validate_replay_contains` / `validate_log_contains`.
 //!
-//! Three test bodies:
+//! Test bodies (all synthetic; no real bytes, no `Command::new`, no Wine):
 //!
-//! 1. **`patched_reallive_real_bytes_replay_contains_en_us_sentinel`** —
-//!    env-gated on `ITOTORI_REAL_GAME_ROOT`. Loads the real
-//!    Sweetie HD `Seen.txt`, runs the KAIFUU-210 producer to build a
-//!    v0.2 BridgeBundle, **synthesises** a translated bundle by
-//!    replacing every unit's `target.text` with the en-US sentinel
-//!    `"「STELLA-ALPHA-EN-US-SENTINEL」"`, applies
-//!    [`kaifuu_reallive::apply_translated_bundle`] to write a patched
-//!    `Seen.txt` to a tmp file, then asserts the four UTSUSHI-227
-//!    acceptance criteria:
-//!
-//!    - `validate_replay_contains(patched, 1, "STELLA-ALPHA-EN-US-SENTINEL")`
-//!      returns `Ok(Matched)`.
-//!    - `validate_replay_contains(original, 1, "STELLA-ALPHA-EN-US-SENTINEL")`
-//!      returns `Ok(NoMatch)` — **regression sentinel**. If the
-//!      original also matches, the substring picker is broken.
-//!    - Two invocations against the patched copy produce byte-equal
-//!      `to_deterministic_json` output.
-//!    - The serialised `ReplayLog` JSON contains at least one TextLine
-//!      whose `bodyUtf8` field carries the sentinel substring.
-//!
-//! 2. **`synthetic_patched_seen_txt_replay_contains_sentinel`** —
+//! 1. **`synthetic_patched_seen_txt_replay_contains_sentinel`** —
 //!    drives the validator on a one-scene synthetic envelope that
 //!    embeds the en-US sentinel as the Textout body. Confirms the
 //!    library API matches the binary's surface without needing the
 //!    real bytes.
 //!
-//! 3. **`synthetic_unpatched_envelope_returns_no_match`** — the
+//! 2. **`synthetic_unpatched_envelope_returns_no_match`** — the
 //!    regression sentinel for the synthetic path. A synthetic envelope
 //!    whose Textout body is NOT the sentinel returns `Ok(NoMatch)`.
 //!
+//! 3. **`synthetic_envelope_textline_event_is_observable`** — smoke:
+//!    the synthetic envelope always produces at least one TextLine
+//!    event.
+//!
 //! Linux-only: no `Command::new`, no Wine, no Windows helper.
 
-#[path = "support/real_corpus.rs"]
-mod real_corpus;
+// Hollow planted-sentinel proof removed; real replay/render evidence is delivered by the utsushi-real-runtime-evidence-no-sentinel node.
 
-use std::env;
-use std::fs;
-use std::path::PathBuf;
-
-use kaifuu_reallive::{
-    BridgeOpts, PatchbackOpts, RealLiveOpcode, SceneHeader, TranslatedBundleV02,
-    apply_translated_bundle, decompress_avg32, gameexe::parse_gameexe_inventory, parse_archive,
-    parse_real_bytecode, produce_bundle,
-};
 use utsushi_reallive::{
-    ReplayEvent, ReplayOpts, ReplayValidation, replay_scene, replay_scene_bytes,
-    validate_log_contains, validate_replay_contains,
+    ReplayEvent, ReplayOpts, ReplayValidation, replay_scene_bytes, validate_log_contains,
 };
 
-// Relative path under the Sweetie HD extraction root that holds the
-// raw `Seen.txt` envelope. Mirrors UTSUSHI-220's real-bytes test.
-// Relative path under the Sweetie HD extraction root that holds the
-// Gameexe.ini sidecar (used by the KAIFUU-210 producer for NAMAE
-// resolution).
-
-/// English-language sentinel used by the regression-sentinel
-/// assertion. The leading `「` (SJIS `0x81 0x75`) is required so the
-/// KAIFUU-191 parser recognises the run as a Textout opcode (ASCII
-/// leads classify as `Unknown`); see the patchback real-bytes test for
-/// the same convention.
+/// English-language sentinel embedded as the synthetic Textout body. The
+/// leading `「` (SJIS `0x81 0x75`) is required so the KAIFUU-191 parser
+/// recognises the run as a Textout opcode (ASCII leads classify as
+/// `Unknown`).
 ///
 /// The interior payload (`STELLA-ALPHA-EN-US-SENTINEL`) is the part the
-/// validator's substring picker looks for. The string is intentionally
-/// distinctive — every byte of it is ASCII, and the prefix `STELLA-`
-/// does not appear in either Sweetie HD's ja-JP scene-1 text (which
-/// is all Shift-JIS) or in any UTSUSHI-220 artefact.
+/// validator's substring picker looks for. It is a synthetic ASCII string
+/// (never real game text).
 const EN_US_SENTINEL: &str = "「STELLA-ALPHA-EN-US-SENTINEL」";
 
-/// The substring the validator's picker contracts on. Stable across
-/// the patched-copy match and the original-copy no-match arms.
+/// The substring the validator's picker contracts on.
 const EN_US_SENTINEL_SUBSTR: &str = "STELLA-ALPHA-EN-US-SENTINEL";
-
-fn real_seen_txt_path() -> Option<PathBuf> {
-    real_corpus::seen_txt_path()
-}
-
-fn real_gameexe_ini_path() -> Option<PathBuf> {
-    real_corpus::gameexe_ini_path()
-}
-
-/// Build a patched `Seen.txt` whose scene 1 carries the en-US
-/// sentinel in every Textout body. Returns the patched bytes.
-fn patch_reallive_real_bytes_with_sentinel(seen_bytes: &[u8]) -> Vec<u8> {
-    let index = parse_archive(seen_bytes).expect("real Seen.txt envelope must parse");
-    let entry = index
-        .entries
-        .iter()
-        .find(|entry| entry.scene_id == 1)
-        .expect("scene 1 must exist in the directory");
-    let blob_start = entry.byte_offset as usize;
-    let blob_end = blob_start + entry.byte_len as usize;
-    let scene_blob = &seen_bytes[blob_start..blob_end];
-
-    let header = SceneHeader::parse(scene_blob).expect("scene header must parse");
-    let bytecode = &scene_blob[header.bytecode_offset as usize
-        ..(header.bytecode_offset + header.bytecode_compressed_size) as usize];
-    let decompressed = decompress_avg32(bytecode, header.bytecode_uncompressed_size as usize)
-        .expect("AVG32 decompression must succeed");
-
-    let gameexe_bytes = real_gameexe_ini_path()
-        .and_then(|path| fs::read(path).ok())
-        .unwrap_or_default();
-    let gameexe_inventory = parse_gameexe_inventory(&gameexe_bytes);
-
-    let opts = BridgeOpts {
-        game_id: "reallive",
-        game_version: "1.0.0",
-        source_profile_id: "kaifuu-reallive-real-bytes",
-        source_locale: "ja-JP",
-        extractor_name: "kaifuu-reallive-bridge",
-        extractor_version: "0.1.0",
-        scene_kidoku_count: header.kidoku_count,
-    };
-    let produced = produce_bundle(1, scene_blob, &decompressed, &gameexe_inventory, &opts)
-        .expect("v0.2 bundle must build from real Sweetie HD scene 1");
-
-    let mut translated_value = produced.json.clone();
-    {
-        let units = translated_value["units"]
-            .as_array_mut()
-            .expect("units must be a JSON array");
-        for unit in units.iter_mut() {
-            unit["target"] = serde_json::json!({
-                "locale": "en-US",
-                "text": EN_US_SENTINEL,
-            });
-        }
-    }
-    let translated =
-        TranslatedBundleV02::from_json(&translated_value).expect("translated bundle parses");
-    apply_translated_bundle(seen_bytes, &translated, &PatchbackOpts::shift_jis())
-        .expect("apply_translated_bundle must succeed on Sweetie HD scene 1")
-}
-
-#[test]
-#[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
-fn patched_reallive_real_bytes_replay_contains_en_us_sentinel() {
-    let Some(seen_path) = real_seen_txt_path() else {
-        eprintln!(
-            "ITOTORI_REAL_GAME_ROOT unset; skipping UTSUSHI-227 real-bytes Sweetie HD \
-             patched-replay validation (no silent pass: re-run with \
-             ITOTORI_REAL_GAME_ROOT=/path/to/reallive-game-root)",
-        );
-        return;
-    };
-
-    let seen_bytes = fs::read(&seen_path)
-        .unwrap_or_else(|err| panic!("failed to read {}: {err}", seen_path.display()));
-
-    // Sanity: the original copy must NOT contain the sentinel — that
-    // is the regression-sentinel contract. Re-walking the original
-    // decompressed bytecode and confirming the sentinel is absent
-    // BEFORE we run the validator catches a broken substring picker
-    // earlier than the validator's NoMatch arm would.
-    let index = parse_archive(&seen_bytes).expect("envelope parses");
-    let entry = index
-        .entries
-        .iter()
-        .find(|entry| entry.scene_id == 1)
-        .expect("scene 1");
-    let blob_start = entry.byte_offset as usize;
-    let blob_end = blob_start + entry.byte_len as usize;
-    let scene_blob = &seen_bytes[blob_start..blob_end];
-    let header = SceneHeader::parse(scene_blob).expect("scene header");
-    let bytecode = &scene_blob[header.bytecode_offset as usize
-        ..(header.bytecode_offset + header.bytecode_compressed_size) as usize];
-    let decompressed =
-        decompress_avg32(bytecode, header.bytecode_uncompressed_size as usize).expect("decompress");
-    let opcodes = parse_real_bytecode(&decompressed).expect("parse bytecode");
-    let mut original_textout_count = 0usize;
-    for op in &opcodes {
-        if let RealLiveOpcode::Textout { raw_bytes, .. } = op {
-            original_textout_count += 1;
-            let (decoded, _, _) = encoding_rs::SHIFT_JIS.decode(raw_bytes);
-            assert!(
-                !decoded.contains(EN_US_SENTINEL_SUBSTR),
-                "regression-sentinel precondition: the substring {EN_US_SENTINEL_SUBSTR:?} \
-                 MUST NOT appear in the original Sweetie HD scene-1 Textout bytes (this would \
-                 mean the substring picker is matching pre-existing bytes)"
-            );
-        }
-    }
-    eprintln!(
-        "[UTSUSHI-227 real-bytes] precondition: original scene-1 has {original_textout_count} \
-         Textout opcodes and none carry the sentinel substring"
-    );
-
-    // Write the patched Seen.txt to a tmp file so the validator's
-    // path-based API gets exercised end-to-end.
-    let tmp_dir = env::temp_dir().join(format!(
-        "utsushi-reallive-utsushi-227-{}",
-        std::process::id()
-    ));
-    let _ = fs::remove_dir_all(&tmp_dir);
-    fs::create_dir_all(&tmp_dir).expect("mkdir tmp");
-    let patched_path = tmp_dir.join("Seen.txt");
-    let patched_bytes = patch_reallive_real_bytes_with_sentinel(&seen_bytes);
-    fs::write(&patched_path, &patched_bytes).expect("write patched Seen.txt");
-
-    eprintln!(
-        "[UTSUSHI-227 real-bytes] patched archive: source={} bytes, patched={} bytes (ratio={:.3})",
-        seen_bytes.len(),
-        patched_bytes.len(),
-        (patched_bytes.len() as f64) / (seen_bytes.len() as f64),
-    );
-
-    // ---- Acceptance #0: validator matches on the patched copy. ----
-    let validation = validate_replay_contains(&patched_path, 1, EN_US_SENTINEL_SUBSTR)
-        .expect("validate patched");
-    match &validation {
-        ReplayValidation::Matched {
-            matching_event_index,
-            body_utf8,
-        } => {
-            eprintln!(
-                "[UTSUSHI-227 real-bytes] alpha-evidence: patched copy MATCHED \
-                 event_index={matching_event_index} body_utf8={body_utf8:?}"
-            );
-            assert!(
-                body_utf8.contains(EN_US_SENTINEL_SUBSTR),
-                "Matched body_utf8 must contain the sentinel"
-            );
-        }
-        ReplayValidation::NoMatch {
-            textline_count,
-            sample_bodies,
-        } => {
-            panic!(
-                "real-bytes acceptance #0: patched copy MUST match the sentinel; got NoMatch \
-                 with textline_count={textline_count} and {sample_count} sample bodies: \
-                 {sample_bodies:?}",
-                sample_count = sample_bodies.len(),
-            );
-        }
-    }
-
-    // ---- Acceptance #1: regression sentinel — original NoMatch. ----
-    let original_validation =
-        validate_replay_contains(&seen_path, 1, EN_US_SENTINEL_SUBSTR).expect("validate original");
-    match &original_validation {
-        ReplayValidation::NoMatch {
-            textline_count,
-            sample_bodies,
-        } => {
-            eprintln!(
-                "[UTSUSHI-227 real-bytes] regression sentinel: original copy NoMatch \
-                 textline_count={textline_count} sample_count={}",
-                sample_bodies.len()
-            );
-            assert!(
-                *textline_count > 0,
-                "original Sweetie HD scene-1 replay should still produce at least one TextLine; \
-                 a zero-count NoMatch would mean the VM never reached text, which is a \
-                 UTSUSHI-220 regression"
-            );
-        }
-        ReplayValidation::Matched {
-            matching_event_index,
-            body_utf8,
-        } => {
-            panic!(
-                "real-bytes acceptance #1 (regression sentinel): original UNPATCHED copy MUST \
-                 NOT match the sentinel {EN_US_SENTINEL_SUBSTR:?}; got Matched at \
-                 event_index={matching_event_index} body_utf8={body_utf8:?}. This means the \
-                 substring picker is matching pre-existing bytes — the test is broken."
-            );
-        }
-    }
-
-    // ---- Acceptance #2: deterministic JSON across two runs. ----
-    let opts = ReplayOpts::default();
-    let log_a = replay_scene(&patched_path, 1, &opts).expect("first replay");
-    let log_b = replay_scene(&patched_path, 1, &opts).expect("second replay");
-    let json_a = log_a.to_deterministic_json().expect("serialise a");
-    let json_b = log_b.to_deterministic_json().expect("serialise b");
-    eprintln!(
-        "[UTSUSHI-227 real-bytes] determinism: json_a.len()={} json_b.len()={}",
-        json_a.len(),
-        json_b.len()
-    );
-    assert_eq!(
-        json_a, json_b,
-        "real-bytes acceptance #2: two replays of the patched Seen.txt MUST produce byte-equal \
-         deterministic JSON",
-    );
-
-    // ---- Acceptance #3: JSON inspection — at least one TextLine
-    //     event's bodyUtf8 field contains the substring. ----
-    let parsed: serde_json::Value =
-        serde_json::from_str(&json_a).expect("ReplayLog JSON parses back");
-    let events = parsed
-        .get("events")
-        .and_then(|value| value.as_array())
-        .expect("ReplayLog JSON has events array");
-    let matching_textline_count = events
-        .iter()
-        .filter(|event| {
-            event.get("kind").and_then(|kind| kind.as_str()) == Some("text_line")
-                && event
-                    .get("bodyUtf8")
-                    .and_then(|body| body.as_str())
-                    .map(|body| body.contains(EN_US_SENTINEL_SUBSTR))
-                    .unwrap_or(false)
-        })
-        .count();
-    eprintln!(
-        "[UTSUSHI-227 real-bytes] JSON inspection: {matching_textline_count} TextLine event(s) \
-         have bodyUtf8 containing the sentinel substring"
-    );
-    assert!(
-        matching_textline_count >= 1,
-        "real-bytes acceptance #3: at least one TextLine event's bodyUtf8 field must contain \
-         the substring {EN_US_SENTINEL_SUBSTR:?}; got 0 of {total_events} events",
-        total_events = events.len(),
-    );
-
-    let _ = fs::remove_dir_all(&tmp_dir);
-}
 
 /// Slot-byte width of one (offset, length) record in the 10 000-slot
 /// Seen.txt directory. Mirrors `tests/replay_scene_synthetic.rs`.

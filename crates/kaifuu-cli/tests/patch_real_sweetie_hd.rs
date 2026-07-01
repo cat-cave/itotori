@@ -10,11 +10,19 @@
 //!   × 8-byte slot table).
 //! - The source root's `Seen.txt` is sha256-unchanged after the run.
 //! - The patched archive re-parses with the source's scene count.
-//! - **Byte-fidelity (ALPHA-006c):** every NON-translated scene blob is
-//!   byte-identical to the source after patch; the translated scene keeps
-//!   every opcode/header byte identical and changes ONLY the translatable
-//!   Textout body bytes; and the patched translated scene re-decompiles
-//!   with ZERO unknown opcodes (100%-decompile gate, no relaxed floor).
+//! - **Byte-fidelity (ALPHA-006c), DIALOGUE-ONLY scope:** this test
+//!   exercises a single VALID user translation config — `scope =
+//!   dialogue-only`. It translates ONLY the `dialogue` Textout units and
+//!   leaves every non-dialogue unit (RealLive `choice_label` / select
+//!   options) UNtranslated. The byte-fidelity contract is config-driven:
+//!   everything INSIDE the chosen scope changes (dialogue Textout bodies →
+//!   SJIS sentinel) and everything OUTSIDE it stays byte-identical to the
+//!   source — the Choice/select command (its `NextString` tokens intact),
+//!   binary data tables, and every opcode/header byte. The patched scene
+//!   re-decompiles with ZERO new unknown opcodes (no relaxed floor).
+//!   Translating choices is the separate
+//!   `config-driven-translation-scope-and-choice-translation` node — NOT
+//!   this one.
 //!
 //! The bootstrap extract targets dialogue scene **2011** (the scene the
 //! `kaifuu-reallive` `bridge_real_bytes` test uses). Scene 1 is binary-only
@@ -30,8 +38,9 @@ use std::path::PathBuf;
 use std::process::Command;
 
 use kaifuu_reallive::{
-    RealLiveOpcode, RealLiveSceneIndex, SceneEntry, SceneHeader, decode_dialogue_textout,
-    decompress_avg32, encode_shift_jis_slot, parse_real_bytecode,
+    RealLiveOpcode, RealLiveSceneIndex, SceneEntry, SceneHeader, Xor2DecScene,
+    compiler_version_uses_xor2, decode_dialogue_textout, decompress_avg32, encode_shift_jis_slot,
+    parse_real_bytecode, recover_archive_cipher,
 };
 
 /// The dialogue scene the bootstrap extract targets (scene 1 is
@@ -117,21 +126,48 @@ fn cli_patch_engine_reallive_writes_patched_seen_txt_under_writable_target() {
         String::from_utf8_lossy(&extract_status.stderr)
     );
 
-    // Synthesise a translated bundle by reading the source and adding
-    // a target.text per unit.
+    // Synthesise a DIALOGUE-ONLY translated bundle. Config-driven scope:
+    // translate ONLY the `dialogue` Textout units; SKIP every non-dialogue
+    // unit (RealLive `choice_label` / select options) by DROPPING it from
+    // the bundle entirely, so the patchback never resolves an edit for it
+    // and its scene bytes — including the whole Choice/select command — are
+    // carried verbatim. This is a valid user config: the SEPARATE
+    // `config-driven-translation-scope-and-choice-translation` node covers
+    // translating choices; here they stay untranslated and must byte-match.
     let source_bundle_bytes =
         fs::read(tmp.path().join("scene-2011-source.json")).expect("read source bundle");
     let mut bundle_value: serde_json::Value =
         serde_json::from_slice(&source_bundle_bytes).expect("source bundle JSON parses");
+    let mut dialogue_units_translated = 0usize;
+    let mut non_dialogue_units_skipped = 0usize;
     {
         let units = bundle_value["units"].as_array_mut().expect("units array");
-        for unit in units.iter_mut() {
-            unit["target"] = serde_json::json!({
-                "locale": "en-US",
-                "text": EN_SENTINEL,
-            });
+        let mut kept: Vec<serde_json::Value> = Vec::with_capacity(units.len());
+        for mut unit in std::mem::take(units) {
+            if unit["surfaceKind"].as_str() == Some("dialogue") {
+                unit["target"] = serde_json::json!({
+                    "locale": "en-US",
+                    "text": EN_SENTINEL,
+                });
+                dialogue_units_translated += 1;
+                kept.push(unit);
+            } else {
+                // Out-of-scope: left untranslated (dropped from the bundle).
+                non_dialogue_units_skipped += 1;
+            }
         }
+        *units = kept;
     }
+    assert!(
+        dialogue_units_translated > 0,
+        "scene {DIALOGUE_SCENE_ID} must surface at least one dialogue unit to translate"
+    );
+    assert!(
+        non_dialogue_units_skipped > 0,
+        "scene {DIALOGUE_SCENE_ID} must surface at least one NON-dialogue (choice_label) unit \
+         that the dialogue-only scope leaves untranslated — proving the scope boundary is real, \
+         not vacuous"
+    );
     fs::write(
         &bundle_out,
         serde_json::to_vec_pretty(&bundle_value).expect("serialize translated bundle"),
@@ -221,8 +257,19 @@ fn cli_patch_engine_reallive_writes_patched_seen_txt_under_writable_target() {
     // (Meta, Command headers, expressions, Choice, binary catch-all
     // Textout runs) must be byte-identical; ONLY translatable Textout
     // bodies may change, and they must carry the SJIS-encoded sentinel.
-    let src_decompressed = decompress_scene(&source_seen_bytes, DIALOGUE_SCENE_ID);
-    let tgt_decompressed = decompress_scene(&target_seen_bytes, DIALOGUE_SCENE_ID);
+    // Recover the per-game xor_2 cipher ONCE from the pristine source archive
+    // (every source scene decodes clean, so the key validates) and reuse it to
+    // decrypt BOTH the source and the patched target scene. The key is
+    // per-game and identical for both; re-recovering it independently from the
+    // patched archive is fragile because the strict "every scene decodes clean"
+    // validation bar is a property of the corpus, not the key.
+    let src_index = kaifuu_reallive::parse_archive(&source_seen_bytes).expect("source parses");
+    let xor2_cipher = recover_archive_xor2_cipher(&source_seen_bytes, &src_index)
+        .expect("pristine Sweetie HD source must yield a validated xor_2 cipher");
+    let src_decompressed =
+        decompress_scene(&source_seen_bytes, DIALOGUE_SCENE_ID, Some(&xor2_cipher));
+    let tgt_decompressed =
+        decompress_scene(&target_seen_bytes, DIALOGUE_SCENE_ID, Some(&xor2_cipher));
     let src_ops =
         parse_real_bytecode(&src_decompressed).expect("source scene bytecode must decode");
     let tgt_ops =
@@ -238,8 +285,20 @@ fn cli_patch_engine_reallive_writes_patched_seen_txt_under_writable_target() {
     let sentinel_sjis = encode_shift_jis_slot(EN_SENTINEL).expect("sentinel encodes as Shift-JIS");
     let mut translated_bodies = 0usize;
     let mut binary_runs = 0usize;
+    let mut choices_identical = 0usize;
     for (i, (src_op, tgt_op)) in src_ops.iter().zip(tgt_ops.iter()).enumerate() {
         match (src_op, tgt_op) {
+            // OUT-OF-SCOPE: the Choice/select command. Dialogue-only scope
+            // must never touch it — every byte (including the option
+            // `NextString` tokens) survives verbatim.
+            (RealLiveOpcode::Choice { .. }, RealLiveOpcode::Choice { .. }) => {
+                assert_eq!(
+                    src_op, tgt_op,
+                    "out-of-scope Choice/select command element #{i} must be byte-identical after \
+                     a dialogue-only patch (its NextString tokens must not be corrupted)"
+                );
+                choices_identical += 1;
+            }
             (
                 RealLiveOpcode::Textout {
                     raw_bytes: src_raw, ..
@@ -279,6 +338,12 @@ fn cli_patch_engine_reallive_writes_patched_seen_txt_under_writable_target() {
         translated_bodies > 0,
         "scene {DIALOGUE_SCENE_ID} must have at least one translated Textout body"
     );
+    assert!(
+        choices_identical > 0,
+        "scene {DIALOGUE_SCENE_ID} must contain at least one Choice/select command left \
+         byte-identical by the dialogue-only scope — proving an out-of-scope command survives \
+         patchback untouched"
+    );
 
     // ---- ALPHA-006c byte-fidelity: ZERO NEW unknown opcodes. ----
     // The patch must not introduce a single new unknown span: the patched
@@ -299,9 +364,10 @@ fn cli_patch_engine_reallive_writes_patched_seen_txt_under_writable_target() {
         tgt_ops.len()
     );
     eprintln!(
-        "ALPHA-006c byte-fidelity: untranslated_scenes_identical={untranslated_checked}, \
-         scene {DIALOGUE_SCENE_ID} translated_bodies={translated_bodies}, \
-         binary_runs_identical={binary_runs}, elements={}, \
+        "ALPHA-006c dialogue-only byte-fidelity: untranslated_scenes_identical={untranslated_checked}, \
+         scene {DIALOGUE_SCENE_ID} dialogue_units_translated={dialogue_units_translated}, \
+         non_dialogue_units_skipped={non_dialogue_units_skipped}, translated_bodies={translated_bodies}, \
+         choices_identical={choices_identical}, binary_runs_identical={binary_runs}, elements={}, \
          unknown source={source_unknown} patched={patched_unknown} (zero new)",
         tgt_ops.len()
     );
@@ -324,8 +390,20 @@ fn scene_blob_bytes(seen_bytes: &[u8], entry: &SceneEntry) -> Vec<u8> {
 }
 
 /// Resolve a scene by id from a Seen.txt archive and return its
-/// AVG32-decompressed bytecode (the layer the opcode parser consumes).
-fn decompress_scene(seen_bytes: &[u8], scene_id: u16) -> Vec<u8> {
+/// AVG32-decompressed, `xor_2`-DECRYPTED bytecode (the plaintext layer the
+/// opcode parser consumes).
+///
+/// Sweetie HD (compiler_version 110002) is encrypted-at-rest: both the source
+/// archive and the patchback output carry the second-level `xor_2` cipher over
+/// `[256, 513)` of every `use_xor_2` scene. This helper mirrors the read
+/// pipeline — decompress, then decrypt with the per-game key recovered
+/// cross-scene from the whole archive — so the byte-fidelity comparison runs on
+/// the real plaintext bytecode of both the source and the patched target.
+fn decompress_scene(
+    seen_bytes: &[u8],
+    scene_id: u16,
+    xor2_cipher: Option<&kaifuu_reallive::Xor2Cipher>,
+) -> Vec<u8> {
     let index: RealLiveSceneIndex =
         kaifuu_reallive::parse_archive(seen_bytes).expect("Seen.txt envelope must parse");
     let entry = index
@@ -337,9 +415,46 @@ fn decompress_scene(seen_bytes: &[u8], scene_id: u16) -> Vec<u8> {
     let header = SceneHeader::parse(&blob).expect("scene header must parse");
     let bytecode_start = header.bytecode_offset as usize;
     let bytecode_end = bytecode_start + header.bytecode_compressed_size as usize;
-    decompress_avg32(
+    let mut decompressed = decompress_avg32(
         &blob[bytecode_start..bytecode_end],
         header.bytecode_uncompressed_size as usize,
     )
-    .expect("scene bytecode must decompress")
+    .expect("scene bytecode must decompress");
+
+    if compiler_version_uses_xor2(header.compiler_version) {
+        xor2_cipher
+            .expect("a use_xor_2 scene requires a recovered xor_2 cipher to decrypt")
+            .apply_segment(&mut decompressed);
+    }
+    decompressed
+}
+
+/// Recover the validated per-game `xor_2` cipher by decompressing every scene
+/// of the archive (the cross-scene known-plaintext key recovery). Returns
+/// `None` when the archive carries no `use_xor_2` scenes or no key validates.
+fn recover_archive_xor2_cipher(
+    seen_bytes: &[u8],
+    index: &RealLiveSceneIndex,
+) -> Result<kaifuu_reallive::Xor2Cipher, kaifuu_reallive::Xor2Report> {
+    let mut scenes: Vec<Xor2DecScene> = Vec::with_capacity(index.entries.len());
+    for entry in &index.entries {
+        let blob = scene_blob_bytes(seen_bytes, entry);
+        let Ok(header) = SceneHeader::parse(&blob) else {
+            continue;
+        };
+        let bo = header.bytecode_offset as usize;
+        let bc = header.bytecode_compressed_size as usize;
+        let bu = header.bytecode_uncompressed_size as usize;
+        if bo + bc > blob.len() {
+            continue;
+        }
+        let Ok(decompressed) = decompress_avg32(&blob[bo..bo + bc], bu) else {
+            continue;
+        };
+        scenes.push(Xor2DecScene {
+            compiler_version: header.compiler_version,
+            bytecode: decompressed,
+        });
+    }
+    recover_archive_cipher(&scenes)
 }

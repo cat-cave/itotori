@@ -110,9 +110,16 @@ impl BinarySmokeOutcome {
     }
 }
 
-/// Compiler version stamped in the synthetic scene header (matches the
-/// real Sweetie HD scene-1 compiler version, KAIFUU-191).
-const SYNTHETIC_COMPILER_VERSION: u32 = 110_002;
+/// Compiler version stamped in the synthetic scene header. This fixture's
+/// bytecode is PLAINTEXT, so it deliberately uses a NON-`xor_2` version:
+/// `compiler_version_uses_xor2` triggers on `110002`/`1110002`, and stamping
+/// one of those would (correctly) make the patchback try to recover an
+/// `xor_2` key from unencrypted bytes and abort. This smoke fixture exercises
+/// the patch-pipeline mechanics on a plaintext game; the real `xor_2`
+/// encrypt/decrypt round-trip is covered by the real Sweetie HD (110002)
+/// `patch_real_sweetie_hd` test. A synthetic *encrypted* fixture is future
+/// work under `publishable-synthetic-corpora-differential-validated`.
+const SYNTHETIC_COMPILER_VERSION: u32 = 110_001;
 
 /// Canonical v0.2 sourceUnitKey for the synthetic dialogue unit
 /// (`reallive:scene-NNNN#OOOO`). Scene 1, occurrence 0 — the first (and

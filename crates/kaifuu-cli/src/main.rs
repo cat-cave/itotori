@@ -324,8 +324,9 @@ fn run_with_args_and_registry(
 /// `--bundle-output`.
 fn run_extract_reallive_bundle(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
     use kaifuu_reallive::{
-        BridgeOpts, REALLIVE_SEEN_TXT_DIRECTORY_BYTE_LEN, SceneHeader, decompress_avg32,
-        gameexe::parse_gameexe_inventory, parse_archive, produce_bundle,
+        BridgeOpts, REALLIVE_SEEN_TXT_DIRECTORY_BYTE_LEN, SceneHeader, Xor2DecScene,
+        compiler_version_uses_xor2, decompress_avg32, gameexe::parse_gameexe_inventory,
+        parse_archive, produce_bundle, recover_and_decrypt_archive,
     };
 
     let game_id = required_reallive_metadata_flag(args, "--game-id")?;
@@ -415,6 +416,74 @@ fn run_extract_reallive_bundle(args: &[String]) -> Result<(), Box<dyn std::error
         .map_err(|err| -> Box<dyn std::error::Error> {
             format!("kaifuu.reallive.decompress: {err}").into()
         })?;
+
+    // Second-level `xor_2` cipher. Titles like Sweetie HD
+    // (compiler_version 110002) encrypt a bounded `[256, 513)` segment of
+    // every scene's decompressed bytecode under a per-game key that is NOT
+    // shipped in the game tree and must be recovered in-process from the
+    // encrypted corpus (a cross-scene known-plaintext attack). Without this
+    // the decompressed bytecode is still ciphertext -> garbage argc ->
+    // `truncated_command_args`. Mirror the decompiler's decompress -> xor_2
+    // -> parse ordering (see kaifuu-reallive `multi_corpus_real_bytes`):
+    // build the full corpus of decompressed scenes, recover + validate the
+    // per-game key over the archive, then take the now-decrypted target
+    // scene. Gated on `compiler_version_uses_xor2`, so non-xor2 titles
+    // (e.g. Kanon's 10002) take the original single-scene path unchanged.
+    let decompressed = if compiler_version_uses_xor2(header.compiler_version) {
+        let mut scenes: Vec<Xor2DecScene> = Vec::with_capacity(index.entries.len());
+        let mut target_index: Option<usize> = None;
+        for other in &index.entries {
+            let off = other.byte_offset as usize;
+            let end = off + other.byte_len as usize;
+            if end > seen_bytes.len() {
+                continue;
+            }
+            let blob = &seen_bytes[off..end];
+            let Ok(other_header) = SceneHeader::parse(blob) else {
+                continue;
+            };
+            let bo = other_header.bytecode_offset as usize;
+            let bc = other_header.bytecode_compressed_size as usize;
+            let bu = other_header.bytecode_uncompressed_size as usize;
+            if bo + bc > blob.len() {
+                continue;
+            }
+            let Ok(dec) = decompress_avg32(&blob[bo..bo + bc], bu) else {
+                continue;
+            };
+            if other.scene_id == scene_id {
+                target_index = Some(scenes.len());
+            }
+            scenes.push(Xor2DecScene {
+                compiler_version: other_header.compiler_version,
+                bytecode: dec,
+            });
+        }
+        // Recover + validate-before-consume the per-game key over the whole
+        // archive; scenes whose compiler_version does not set use_xor_2 are
+        // left untouched. The raw key never crosses this boundary (only a
+        // one-way sha256 commitment is surfaced by the report).
+        let report = recover_and_decrypt_archive(&mut scenes);
+        if !report.validated {
+            return Err(format!(
+                "kaifuu.reallive.xor2.decrypt_failed: scene {scene_id} sets use_xor_2 \
+                 (compiler_version={}) but no per-game xor_2 key validated over the \
+                 archive: {}",
+                header.compiler_version,
+                report
+                    .finding
+                    .as_deref()
+                    .unwrap_or("no eligible scene reached the xor_2 segment"),
+            )
+            .into());
+        }
+        let idx = target_index.ok_or_else(|| -> Box<dyn std::error::Error> {
+            format!("scene {scene_id} vanished from archive during xor_2 recovery").into()
+        })?;
+        scenes.swap_remove(idx).bytecode
+    } else {
+        decompressed
+    };
 
     let gameexe_path = game_root_gameexe_path(&resolved_game_root);
     let gameexe_bytes = read_gameexe_inventory_bytes(&gameexe_path)?;

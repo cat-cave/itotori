@@ -33,8 +33,9 @@ use std::path::PathBuf;
 
 use kaifuu_reallive::{
     BridgeOpts, PatchbackOpts, REALLIVE_SEEN_TXT_DIRECTORY_BYTE_LEN, RealLiveOpcode, SceneHeader,
-    TranslatedBundleV02, apply_translated_bundle, decode_dialogue_textout, decompress_avg32,
-    gameexe::parse_gameexe_inventory, parse_archive, parse_real_bytecode, produce_bundle,
+    TranslatedBundleV02, Xor2DecScene, apply_translated_bundle, compiler_version_uses_xor2,
+    decode_dialogue_textout, decompress_avg32, gameexe::parse_gameexe_inventory, parse_archive,
+    parse_real_bytecode, produce_bundle, recover_archive_cipher,
 };
 
 const SWEETIE_HD_GAME_ID: &str = "sweetie-hd";
@@ -81,6 +82,15 @@ fn bridge_opts(scene_kidoku_count: u32) -> BridgeOpts<'static> {
 }
 
 /// `(scene_blob, decompressed_bytecode, header)` for a scene id.
+///
+/// The bytecode is returned as the real PLAINTEXT the interpreter executes:
+/// after AVG32 decompression, Sweetie HD's second-level `xor_2` segment
+/// (`compiler_version=110002`) over `[256, 513)` is decrypted with the
+/// per-game key recovered cross-scene from the whole archive. Comparing at
+/// the plaintext layer is the only correct fidelity check for an
+/// encrypted-at-rest game: the patchback re-encrypts edited scenes, so a raw
+/// (still-ciphertext) comparison would see the position-fixed xor_2 window
+/// shift whenever a length-changing splice moved content under it.
 fn scene_bytes(seen_bytes: &[u8], scene_id: u16) -> (Vec<u8>, Vec<u8>, SceneHeader) {
     let index = parse_archive(seen_bytes).expect("envelope parses");
     let entry = index
@@ -94,9 +104,47 @@ fn scene_bytes(seen_bytes: &[u8], scene_id: u16) -> (Vec<u8>, Vec<u8>, SceneHead
     let header = SceneHeader::parse(&scene_blob).expect("scene header must parse");
     let bytecode = &scene_blob[header.bytecode_offset as usize
         ..(header.bytecode_offset + header.bytecode_compressed_size) as usize];
-    let decompressed = decompress_avg32(bytecode, header.bytecode_uncompressed_size as usize)
+    let mut decompressed = decompress_avg32(bytecode, header.bytecode_uncompressed_size as usize)
         .expect("AVG32 decompression must succeed");
+    if compiler_version_uses_xor2(header.compiler_version) {
+        recover_archive_xor2_cipher(seen_bytes)
+            .expect("Sweetie HD archive must yield a validated xor_2 cipher")
+            .apply_segment(&mut decompressed);
+    }
     (scene_blob, decompressed, header)
+}
+
+/// Recover the validated per-game `xor_2` cipher by decompressing every scene
+/// of the archive (the cross-scene known-plaintext key recovery). `None` when
+/// the archive carries no `use_xor_2` scenes or no key validates.
+fn recover_archive_xor2_cipher(seen_bytes: &[u8]) -> Option<kaifuu_reallive::Xor2Cipher> {
+    let index = parse_archive(seen_bytes).expect("envelope parses");
+    let mut scenes: Vec<Xor2DecScene> = Vec::with_capacity(index.entries.len());
+    for entry in &index.entries {
+        let blob_start = entry.byte_offset as usize;
+        let blob_end = blob_start + entry.byte_len as usize;
+        if blob_end > seen_bytes.len() {
+            continue;
+        }
+        let blob = &seen_bytes[blob_start..blob_end];
+        let Ok(header) = SceneHeader::parse(blob) else {
+            continue;
+        };
+        let bo = header.bytecode_offset as usize;
+        let bc = header.bytecode_compressed_size as usize;
+        let bu = header.bytecode_uncompressed_size as usize;
+        if bo + bc > blob.len() {
+            continue;
+        }
+        let Ok(decompressed) = decompress_avg32(&blob[bo..bo + bc], bu) else {
+            continue;
+        };
+        scenes.push(Xor2DecScene {
+            compiler_version: header.compiler_version,
+            bytecode: decompressed,
+        });
+    }
+    recover_archive_cipher(&scenes).ok()
 }
 
 #[test]
@@ -218,9 +266,19 @@ fn patches_dialogue_scene_with_en_us_sentinel_and_preserves_binary_runs_byte_ide
     let new_header = SceneHeader::parse(new_scene_blob).expect("patched scene header parses");
     let new_bytecode = &new_scene_blob[new_header.bytecode_offset as usize
         ..(new_header.bytecode_offset + new_header.bytecode_compressed_size) as usize];
-    let new_decompressed =
+    let mut new_decompressed =
         decompress_avg32(new_bytecode, new_header.bytecode_uncompressed_size as usize)
             .expect("patched bytecode must decompress cleanly");
+    // Decrypt the patched scene to the PLAINTEXT layer — the same layer the
+    // binary runs were captured at and the layer the interpreter executes.
+    // The per-game key is recovered from the pristine SOURCE archive (every
+    // source scene decodes clean, so the key validates); it is identical for
+    // the patched archive, whose edited scene the patchback re-encrypted.
+    if compiler_version_uses_xor2(new_header.compiler_version) {
+        recover_archive_xor2_cipher(&seen_bytes)
+            .expect("Sweetie HD source archive must yield a validated xor_2 cipher")
+            .apply_segment(&mut new_decompressed);
+    }
 
     // ---- Acceptance: EVERY binary run survives byte-identical. ----
     for (i, run) in binary_runs.iter().enumerate() {

@@ -34,7 +34,12 @@ fn synthetic_seen_txt() -> Vec<u8> {
 
     let mut header = vec![0u8; SCENE_HEADER_BYTE_LEN];
     header[0..4].copy_from_slice(&(SCENE_HEADER_BYTE_LEN as u32).to_le_bytes());
-    header[4..8].copy_from_slice(&110_002u32.to_le_bytes());
+    // Plaintext synthetic bytecode -> use a NON-`xor_2` compiler version
+    // (110001, not 110002/1110002): stamping an `xor_2` version would make the
+    // extract try to recover an `xor_2` key from unencrypted bytes and abort
+    // (`xor2.key_region_unsampled`). The real `xor_2` path is covered by the
+    // real Sweetie HD real-bytes tests.
+    header[4..8].copy_from_slice(&110_001u32.to_le_bytes());
     header[0x20..0x24].copy_from_slice(&(SCENE_HEADER_BYTE_LEN as u32).to_le_bytes());
     header[0x24..0x28].copy_from_slice(&(plaintext.len() as u32).to_le_bytes());
     header[0x28..0x2c].copy_from_slice(&(compressed.len() as u32).to_le_bytes());

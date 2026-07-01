@@ -218,13 +218,11 @@ fn decodes_clean(bytecode: &[u8]) -> bool {
     }
 }
 
-/// Recover the per-game `xor_2` key from an archive's decompressed scenes and,
-/// **iff** the candidate decrypts every `use_xor_2` scene to a clean decode,
-/// apply it in place to those scenes. Scenes whose `compiler_version` does not
-/// set `use_xor_2` (e.g. Kanon's `10002`) are never touched.
-///
-/// Returns a sanitized [`Xor2Report`]. The raw key never crosses this boundary.
-pub fn recover_and_decrypt_archive(scenes: &mut [Xor2DecScene]) -> Xor2Report {
+/// Recover + validate the per-game key over an archive's decompressed scenes
+/// WITHOUT mutating them. Returns the sanitized report plus the validated key
+/// (only `Some` when `report.validated`). `report.scenes_decrypted` is left at
+/// `0` — application/accounting is the caller's responsibility.
+fn recover_validated_key(scenes: &[Xor2DecScene]) -> (Xor2Report, Option<Xor2Key>) {
     let scenes_total = scenes.len();
     let eligible: Vec<usize> = scenes
         .iter()
@@ -236,8 +234,8 @@ pub fn recover_and_decrypt_archive(scenes: &mut [Xor2DecScene]) -> Xor2Report {
 
     let mut report = Xor2Report::empty(scenes_total, scenes_eligible);
     if eligible.is_empty() {
-        // No `use_xor_2` scenes: nothing to recover, nothing to decrypt.
-        return report;
+        // No `use_xor_2` scenes: nothing to recover.
+        return (report, None);
     }
 
     report.baseline_clean = eligible
@@ -255,7 +253,7 @@ pub fn recover_and_decrypt_archive(scenes: &mut [Xor2DecScene]) -> Xor2Report {
              xor_2 segment offset; cannot recover a key"
                 .to_string(),
         );
-        return report;
+        return (report, None);
     };
     let key = Xor2Key { bytes: key_bytes };
 
@@ -272,20 +270,96 @@ pub fn recover_and_decrypt_archive(scenes: &mut [Xor2DecScene]) -> Xor2Report {
     report.after_clean = after_clean;
 
     if after_clean == scenes_eligible {
-        for &index in &eligible {
-            apply_xor2_segment(&mut scenes[index].bytecode, &key.bytes);
-        }
         report.validated = true;
-        report.scenes_decrypted = scenes_eligible;
         report.key_sha256 = Some(key.sha256_hex());
+        (report, Some(key))
     } else {
         report.finding = Some(format!(
             "kaifuu.reallive.xor2.validation_failed: candidate key decrypts only \
              {after_clean}/{scenes_eligible} eligible scenes to a clean decode (the bar is \
              all eligible scenes); no decryption applied"
         ));
+        (report, None)
+    }
+}
+
+/// Recover the per-game `xor_2` key from an archive's decompressed scenes and,
+/// **iff** the candidate decrypts every `use_xor_2` scene to a clean decode,
+/// apply it in place to those scenes. Scenes whose `compiler_version` does not
+/// set `use_xor_2` (e.g. Kanon's `10002`) are never touched.
+///
+/// Returns a sanitized [`Xor2Report`]. The raw key never crosses this boundary.
+pub fn recover_and_decrypt_archive(scenes: &mut [Xor2DecScene]) -> Xor2Report {
+    let (mut report, key) = recover_validated_key(scenes);
+    if let Some(key) = key {
+        for scene in scenes.iter_mut() {
+            if compiler_version_uses_xor2(scene.compiler_version) {
+                apply_xor2_segment(&mut scene.bytecode, &key.bytes);
+            }
+        }
+        report.scenes_decrypted = report.scenes_eligible;
     }
     report
+}
+
+/// An opaque, validated per-game `xor_2` cipher recovered from an archive's
+/// decompressed scenes. The raw 16-byte key is held privately in a
+/// zeroize-on-drop, `Debug`-redacted [`Xor2Key`] and never crosses this
+/// boundary; the type exposes only in-place segment transforms and the
+/// sanitized recovery [`Xor2Report`].
+///
+/// Unlike [`recover_and_decrypt_archive`] (which decrypts a whole corpus in
+/// place, one direction only), this hands the caller a reusable cipher so a
+/// single scene can be **decrypted for editing and then re-encrypted** before
+/// it is written back — the patchback round-trip. The transform is XOR and
+/// therefore self-inverse: [`Xor2Cipher::apply_segment`] decrypts an encrypted
+/// scene and re-encrypts a plaintext one with the same call.
+pub struct Xor2Cipher {
+    key: Xor2Key,
+    report: Xor2Report,
+}
+
+impl std::fmt::Debug for Xor2Cipher {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("Xor2Cipher")
+            .field("key", &self.key)
+            .field("report", &self.report)
+            .finish()
+    }
+}
+
+impl Xor2Cipher {
+    /// The sanitized recovery report (counts / offsets / one-way key sha256).
+    #[must_use]
+    pub fn report(&self) -> &Xor2Report {
+        &self.report
+    }
+
+    /// Apply the `xor_2` segment transform to one scene's decompressed
+    /// bytecode in place (`data[256 + i] ^= key[i % 16]` over `[256, 513)`).
+    /// Self-inverse: decrypts an encrypted scene, re-encrypts a plaintext one.
+    /// Scenes shorter than the segment offset are a no-op.
+    pub fn apply_segment(&self, bytecode: &mut [u8]) {
+        apply_xor2_segment(bytecode, &self.key.bytes);
+    }
+}
+
+/// Recover + validate the per-game `xor_2` key over a whole archive's
+/// decompressed scenes and return a reusable [`Xor2Cipher`], WITHOUT mutating
+/// the scenes. The candidate must decrypt EVERY `use_xor_2` scene to a clean
+/// decode (the same 100% bar as [`recover_and_decrypt_archive`]).
+///
+/// # Errors
+/// Returns the sanitized [`Xor2Report`] when the archive has no `use_xor_2`
+/// scenes, no eligible scene reaches the segment, no key can be sampled, or no
+/// candidate validates. The caller decides whether that is fatal.
+pub fn recover_archive_cipher(scenes: &[Xor2DecScene]) -> Result<Xor2Cipher, Xor2Report> {
+    let (report, key) = recover_validated_key(scenes);
+    match key {
+        Some(key) => Ok(Xor2Cipher { key, report }),
+        None => Err(report),
+    }
 }
 
 #[cfg(test)]
@@ -387,6 +461,57 @@ mod tests {
         for scene in &scenes {
             assert!(decodes_clean(&scene.bytecode));
         }
+    }
+
+    #[test]
+    fn cipher_round_trips_decrypt_then_reencrypt() {
+        let planted = [
+            0x97, 0x02, 0xcb, 0x5a, 0x83, 0x0f, 0x5e, 0x30, 0xa7, 0x66, 0xe5, 0x37, 0x62, 0x3f,
+            0x9a, 0xdc,
+        ];
+        let scenes: Vec<Xor2DecScene> = (0..6)
+            .map(|n| {
+                let mut bytecode = synthetic_clean_scene(220 + n * 7);
+                apply_xor2_segment(&mut bytecode, &planted); // "encrypt"
+                Xor2DecScene {
+                    compiler_version: 110002,
+                    bytecode,
+                }
+            })
+            .collect();
+
+        // Recover the cipher WITHOUT mutating the scenes (unlike
+        // recover_and_decrypt_archive).
+        let cipher = recover_archive_cipher(&scenes).expect("cipher must recover");
+        assert!(cipher.report().validated);
+        assert!(cipher.report().key_sha256.is_some());
+        // The cipher does not consume the input: the scenes handed in are
+        // untouched (recover_archive_cipher takes `&[..]`).
+        let encrypted = scenes[0].bytecode.clone();
+
+        // Decrypt one scene in a copy: the xor_2 segment must actually change
+        // and the result must decode clean.
+        let mut scene = encrypted.clone();
+        cipher.apply_segment(&mut scene); // decrypt
+        assert_ne!(scene, encrypted, "decrypt must transform the xor_2 segment");
+        assert!(decodes_clean(&scene), "decrypted scene must decode clean");
+
+        // Re-encrypt (self-inverse): must reproduce the original ciphertext
+        // exactly — the patchback round-trip's correctness contract.
+        cipher.apply_segment(&mut scene);
+        assert_eq!(scene, encrypted, "re-encrypt must restore the ciphertext");
+    }
+
+    #[test]
+    fn cipher_recovery_fails_on_non_eligible_corpus() {
+        let scenes = vec![Xor2DecScene {
+            compiler_version: 10002,
+            bytecode: synthetic_clean_scene(300),
+        }];
+        let err = recover_archive_cipher(&scenes)
+            .expect_err("a corpus with no use_xor_2 scenes must not yield a cipher");
+        assert_eq!(err.scenes_eligible, 0);
+        assert!(!err.validated);
     }
 
     #[test]

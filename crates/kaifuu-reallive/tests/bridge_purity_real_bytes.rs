@@ -321,14 +321,13 @@ fn bridge_bundles_carry_zero_non_dialogue_units_on_both_corpora_real_bytes() {
     }
 
     // Multi-game-validation: the purity gate must hold on >= 2 distinct
-    // RealLive titles. With ITOTORI_REQUIRE_REAL_BYTES=1 a single corpus is a
-    // hard failure.
-    if reports.len() < 2 {
-        assert!(
-            !real_corpus::require_real_bytes(),
-            "{}=1 demands multi-game coverage, but only one RealLive corpus resolved; set {}",
-            real_corpus::REQUIRE_REAL_BYTES_ENV,
-            real_corpus::REAL_GAME_ROOT_2_ENV,
-        );
-    }
+    // RealLive titles. Real-bytes coverage is unconditionally required, so a
+    // single resolved corpus is always a hard failure.
+    assert!(
+        reports.len() >= 2,
+        "multi-game validation requires >= 2 distinct RealLive corpora, but only \
+         {} resolved; stage the second corpus or set {}",
+        reports.len(),
+        real_corpus::REAL_GAME_ROOT_2_ENV,
+    );
 }

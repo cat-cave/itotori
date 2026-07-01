@@ -48,6 +48,7 @@ use crate::decompressor::decompress_avg32;
 use crate::encoding::{ShiftJisEncodeError, encode_shift_jis_slot};
 use crate::opcode::{RealLiveOpcode, decode_dialogue_textout, parse_real_bytecode};
 use crate::scene_header::{SCENE_HEADER_BYTE_LEN, SceneHeader, SceneHeaderError};
+use crate::xor2::{Xor2Cipher, Xor2DecScene, compiler_version_uses_xor2, recover_archive_cipher};
 
 /// Stable error codes published per the KAIFUU-211 acceptance criteria.
 pub const PATCHBACK_PROVENANCE_MISMATCH_CODE: &str =
@@ -323,6 +324,21 @@ pub fn apply_translated_bundle(
             .push(resolved);
     }
 
+    // Second-level `xor_2` cipher. If any EDITED scene sets `use_xor_2`
+    // (e.g. Sweetie HD, compiler_version 110002), its decompressed bytecode
+    // is still ciphertext over the `[256, 513)` segment — the re-walk would
+    // read garbage argc and fail with `truncated_command_args`, exactly as
+    // the CLI extract did before its own xor_2 fix. Recover + validate the
+    // per-game key over the WHOLE archive (a cross-scene known-plaintext
+    // attack needs every eligible scene), then hand `patch_scene_blob` a
+    // reusable cipher so it can decrypt before the re-walk/splice and
+    // re-encrypt before recompression (keeping the patched scene
+    // encrypted-at-rest, byte-consistent with the untouched scenes and
+    // loadable by the retail interpreter). Gated on `compiler_version_uses_xor2`
+    // so non-xor2 titles (Kanon's 10002) are untouched and pay no cost.
+    let xor2_cipher =
+        recover_xor2_cipher_if_needed(original_seen_txt, &scene_index, &edits_by_scene_index)?;
+
     // For every populated scene, prepare a `(scene_id, scene_bytes)`
     // tuple. Edited scenes get re-emitted; untouched ones keep their
     // original blob bytes verbatim.
@@ -345,7 +361,8 @@ pub fn apply_translated_bundle(
         let original_blob = &original_seen_txt[blob_start..blob_end];
 
         if let Some(edits) = edits_by_scene_index.get(&entry_index) {
-            let patched = patch_scene_blob(entry.scene_id, original_blob, edits)?;
+            let patched =
+                patch_scene_blob(entry.scene_id, original_blob, edits, xor2_cipher.as_ref())?;
             emitted_scene_blobs.push((entry.scene_id, patched));
         } else {
             emitted_scene_blobs.push((entry.scene_id, original_blob.to_vec()));
@@ -417,6 +434,85 @@ pub fn apply_translated_bundle(
         });
     }
     Ok(output)
+}
+
+/// Decompress the whole archive and recover a validated `xor_2` cipher IFF at
+/// least one EDITED scene sets `use_xor_2`. Returns `Ok(None)` when no edited
+/// scene needs it (non-xor2 titles decompress nothing and pay no cost). Once a
+/// cipher is needed it is required: an un-recoverable / un-validated key is a
+/// typed failure, never a silent skip that would leave the re-walk reading
+/// ciphertext.
+fn recover_xor2_cipher_if_needed(
+    original_seen_txt: &[u8],
+    scene_index: &RealLiveSceneIndex,
+    edits_by_scene_index: &BTreeMap<usize, Vec<ResolvedEdit>>,
+) -> Result<Option<Xor2Cipher>, PatchbackError> {
+    // Peek each EDITED scene's header: does any set use_xor_2?
+    let mut needs_xor2 = false;
+    for &entry_index in edits_by_scene_index.keys() {
+        let entry = &scene_index.entries[entry_index];
+        let blob_start = entry.byte_offset as usize;
+        let blob_end = blob_start + entry.byte_len as usize;
+        if blob_end > original_seen_txt.len() {
+            // The emit loop surfaces the out-of-range error with full context.
+            continue;
+        }
+        let blob = &original_seen_txt[blob_start..blob_end];
+        if let Ok(header) = SceneHeader::parse(blob)
+            && compiler_version_uses_xor2(header.compiler_version)
+        {
+            needs_xor2 = true;
+            break;
+        }
+    }
+    if !needs_xor2 {
+        return Ok(None);
+    }
+
+    // Decompress every populated scene for the cross-scene key recovery (the
+    // known-plaintext attack samples the `[256, 513)` segment of every eligible
+    // scene). Scenes that fail to decompress are skipped here; if the EDITED
+    // scene itself is undecodable the emit loop surfaces it with context.
+    let mut scenes: Vec<Xor2DecScene> = Vec::with_capacity(scene_index.entries.len());
+    for entry in &scene_index.entries {
+        let blob_start = entry.byte_offset as usize;
+        let blob_end = blob_start + entry.byte_len as usize;
+        if blob_end > original_seen_txt.len() {
+            continue;
+        }
+        let blob = &original_seen_txt[blob_start..blob_end];
+        let Ok(header) = SceneHeader::parse(blob) else {
+            continue;
+        };
+        let bo = header.bytecode_offset as usize;
+        let bc = header.bytecode_compressed_size as usize;
+        let bu = header.bytecode_uncompressed_size as usize;
+        if bo < SCENE_HEADER_BYTE_LEN || bo + bc > blob.len() {
+            continue;
+        }
+        let Ok(decompressed) = decompress_avg32(&blob[bo..bo + bc], bu) else {
+            continue;
+        };
+        scenes.push(Xor2DecScene {
+            compiler_version: header.compiler_version,
+            bytecode: decompressed,
+        });
+    }
+
+    match recover_archive_cipher(&scenes) {
+        Ok(cipher) => Ok(Some(cipher)),
+        Err(report) => Err(PatchbackError::DecompressFailure {
+            scene_id: 0,
+            message: format!(
+                "kaifuu.reallive.patchback_xor2_recovery_failed: an edited scene sets \
+                 use_xor_2 but no per-game xor_2 key validated over the archive: {}",
+                report
+                    .finding
+                    .as_deref()
+                    .unwrap_or("no eligible scene reached the xor_2 segment"),
+            ),
+        }),
+    }
 }
 
 /// Edit resolved against the source archive. Carries the indices and
@@ -596,6 +692,7 @@ fn patch_scene_blob(
     scene_id: u16,
     original_blob: &[u8],
     edits: &[ResolvedEdit],
+    xor2_cipher: Option<&Xor2Cipher>,
 ) -> Result<Vec<u8>, PatchbackError> {
     let header = SceneHeader::parse(original_blob).map_err(|err| match err {
         SceneHeaderError::TruncatedHeader { .. } => PatchbackError::SceneHeaderInvalid {
@@ -637,6 +734,26 @@ fn patch_scene_blob(
             scene_id,
             message: format!("{err}"),
         })?;
+
+    // Second-level `xor_2`: if this scene sets `use_xor_2`, the decompressed
+    // bytecode is still ciphertext over `[256, 513)`. Decrypt it with the
+    // archive-recovered cipher BEFORE the re-walk/splice so the parser reads
+    // real command boundaries; the same cipher re-encrypts the spliced
+    // bytecode below, before recompression, so the scene stays
+    // encrypted-at-rest. Self-inverse XOR, so decrypt and re-encrypt are the
+    // same call.
+    let xor2_cipher = if compiler_version_uses_xor2(header.compiler_version) {
+        let cipher = xor2_cipher.ok_or_else(|| PatchbackError::DecompressFailure {
+            scene_id,
+            message: "kaifuu.reallive.patchback_xor2_missing_cipher: scene sets use_xor_2 but \
+                      no xor_2 cipher was recovered for the archive"
+                .to_string(),
+        })?;
+        cipher.apply_segment(&mut decompressed);
+        Some(cipher)
+    } else {
+        None
+    };
 
     // Re-walk the bytecode to recover the exact byte range of every
     // text-emitting opcode. The KAIFUU-210 producer cursored
@@ -686,6 +803,14 @@ fn patch_scene_blob(
     planned_splices.sort_by_key(|splice| std::cmp::Reverse(splice.start_byte));
     for splice in planned_splices {
         decompressed.splice(splice.start_byte..splice.end_byte, splice.new_bytes);
+    }
+
+    // Re-encrypt the `[256, 513)` segment of the SPLICED bytecode so the scene
+    // is written back encrypted-at-rest (the retail interpreter decrypts it on
+    // load exactly as it does the untouched scenes). Self-inverse with the
+    // decrypt above.
+    if let Some(cipher) = xor2_cipher {
+        cipher.apply_segment(&mut decompressed);
     }
 
     // Re-compress and re-emit the blob.
@@ -939,7 +1064,11 @@ mod tests {
         // immediately after the 0x1d0-byte header.
         let mut header = vec![0u8; SCENE_HEADER_BYTE_LEN];
         header[0..4].copy_from_slice(&(SCENE_HEADER_BYTE_LEN as u32).to_le_bytes());
-        header[4..8].copy_from_slice(&110_002u32.to_le_bytes()); // compiler version
+        // Plaintext synthetic scene -> NON-`xor_2` compiler version (110001,
+        // not 110002/1110002): an `xor_2` version makes patchback try to
+        // recover a key from unencrypted bytes and abort. Real `xor_2` is
+        // covered by the real Sweetie HD real-bytes tests.
+        header[4..8].copy_from_slice(&110_001u32.to_le_bytes()); // compiler version (non-xor_2)
         // bytecode_offset at 0x20.
         header[0x20..0x24].copy_from_slice(&(SCENE_HEADER_BYTE_LEN as u32).to_le_bytes());
         // bytecode_uncompressed_size at 0x24.
@@ -989,7 +1118,7 @@ mod tests {
         // bounds — proving the NEW lower-bound guard is what fires.
         blob[0x28..0x2c].copy_from_slice(&4u32.to_le_bytes());
 
-        let err = patch_scene_blob(42, &blob, &[])
+        let err = patch_scene_blob(42, &blob, &[], None)
             .expect_err("bytecode_offset inside the header must be rejected");
         assert!(
             matches!(err, PatchbackError::SceneHeaderInvalid { scene_id: 42, .. }),
@@ -1214,7 +1343,11 @@ mod tests {
         let compressed = compress_avg32_literal(plaintext).expect("compress scene");
         let mut header = vec![0u8; SCENE_HEADER_BYTE_LEN];
         header[0..4].copy_from_slice(&(SCENE_HEADER_BYTE_LEN as u32).to_le_bytes());
-        header[4..8].copy_from_slice(&110_002u32.to_le_bytes());
+        // Plaintext scene -> NON-`xor_2` compiler version (110001, not
+        // 110002/1110002): an `xor_2` version would make patchback try to
+        // recover a key from unencrypted bytes and abort. The real `xor_2`
+        // round-trip is covered by the real Sweetie HD real-bytes tests.
+        header[4..8].copy_from_slice(&110_001u32.to_le_bytes());
         header[0x20..0x24].copy_from_slice(&(SCENE_HEADER_BYTE_LEN as u32).to_le_bytes());
         header[0x24..0x28].copy_from_slice(&(plaintext.len() as u32).to_le_bytes());
         header[0x28..0x2c].copy_from_slice(&(compressed.len() as u32).to_le_bytes());

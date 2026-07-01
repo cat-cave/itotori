@@ -476,26 +476,23 @@ fn multi_game_validation_runs_against_two_distinct_reallive_corpora() {
         }
     }
 
-    // Multi-game-validation core assertion: when two corpora are staged they
-    // must be DIFFERENT games. Directly defeats the FIX-4 audit-focus
-    // "2nd corpus actually Sweetie HD again".
-    if reports.len() >= 2 {
-        assert_ne!(
-            reports[0].seen_sha256, reports[1].seen_sha256,
-            "multi-game validation requires two DISTINCT RealLive titles; both \
-             corpus roots resolved to the same SEEN archive (sha256 match)"
-        );
-    } else {
-        // With ITOTORI_REQUIRE_REAL_BYTES=1 the operator demanded the full
-        // multi-game run; a single corpus is then a hard failure.
-        assert!(
-            !real_corpus::require_real_bytes(),
-            "{}=1 demands multi-game coverage, but only one RealLive corpus \
-             resolved; set {} to a second, distinct RealLive title",
-            real_corpus::REQUIRE_REAL_BYTES_ENV,
-            real_corpus::REAL_GAME_ROOT_2_ENV,
-        );
-    }
+    // Multi-game-validation core assertion. Real-bytes coverage is
+    // unconditionally required, so both corpora must resolve AND be DIFFERENT
+    // games. A single resolved corpus is a hard failure; two identical corpora
+    // (same SEEN sha256) defeat the FIX-4 audit-focus "2nd corpus actually
+    // Sweetie HD again".
+    assert!(
+        reports.len() >= 2,
+        "multi-game validation requires >= 2 RealLive corpora, but only {} \
+         resolved; set {} to a second, distinct RealLive title",
+        reports.len(),
+        real_corpus::REAL_GAME_ROOT_2_ENV,
+    );
+    assert_ne!(
+        reports[0].seen_sha256, reports[1].seen_sha256,
+        "multi-game validation requires two DISTINCT RealLive titles; both \
+         corpus roots resolved to the same SEEN archive (sha256 match)"
+    );
 
     // Honest 100%-decompilation status line (NOT an assertion — the floor is
     // never relaxed, and completeness is owned by a follow-up extension node).
