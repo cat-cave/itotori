@@ -7,9 +7,46 @@ use std::path::{Path, PathBuf};
 pub const REAL_GAME_ROOT_ENV: &str = "ITOTORI_REAL_GAME_ROOT";
 pub const REAL_GAME_ROOT_2_ENV: &str = "ITOTORI_REAL_GAME_ROOT_2";
 
+/// Opt-in flag (`ITOTORI_REQUIRE_REAL_BYTES=1`) that turns an absent corpus
+/// from a silent skip into a hard failure. Mirrors the kaifuu-reallive
+/// support module so the CI real-bytes lane (which stages Sweetie HD + Kanon
+/// and sets this flag) can never report a green PASS while exercising zero
+/// real bytes.
+pub const REQUIRE_REAL_BYTES_ENV: &str = "ITOTORI_REQUIRE_REAL_BYTES";
+
+/// `true` when the operator demanded real-bytes coverage actually run, via
+/// `ITOTORI_REQUIRE_REAL_BYTES=1`.
+pub fn require_real_bytes() -> bool {
+    env::var_os(REQUIRE_REAL_BYTES_ENV).is_some_and(|value| value == "1")
+}
+
+/// Resolve the corpus-unavailable branch of an env-gated real-bytes test.
+///
+/// Single chokepoint mirroring `kaifuu-reallive`'s helper: with
+/// `ITOTORI_REQUIRE_REAL_BYTES=1` an absent corpus is a hard failure (panics,
+/// naming the missing [`REAL_GAME_ROOT_ENV`]); otherwise it emits an explicit
+/// non-silent skip notice and returns.
+pub fn skip_or_require_real_bytes(test_name: &str) {
+    let detail = format!(
+        "{REAL_GAME_ROOT_ENV} unset; {test_name} did not exercise real bytes \
+         (re-run with {REAL_GAME_ROOT_ENV}=/path/to/reallive-game-root)"
+    );
+    assert!(
+        !require_real_bytes(),
+        "{REQUIRE_REAL_BYTES_ENV}=1 demands real-bytes coverage, but {detail}"
+    );
+    eprintln!("SKIP (no silent pass): {detail}");
+}
+
 pub fn game_root() -> Option<PathBuf> {
-    let root = PathBuf::from(env::var_os(REAL_GAME_ROOT_ENV)?);
-    resolve_reallive_game_root(&root)
+    let resolved = env::var_os(REAL_GAME_ROOT_ENV)
+        .and_then(|root| resolve_reallive_game_root(&PathBuf::from(root)));
+    assert!(
+        !(resolved.is_none() && require_real_bytes()),
+        "{REQUIRE_REAL_BYTES_ENV}=1 demands real-bytes coverage, but {REAL_GAME_ROOT_ENV} is \
+         unset or resolves to no REALLIVEDATA game root"
+    );
+    resolved
 }
 
 /// Locate the g00 asset directory reachable from the game root named by

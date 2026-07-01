@@ -69,9 +69,37 @@ itotori-scale-smoke: itotori-scale-build db-up db-wait
 itotori-scale-large: itotori-scale-build db-up db-wait
     node scripts/itotori-scale-harness.mjs --profile large
 
-ci: check build db-migrate test
+ci: check build db-migrate test ci-real-bytes
     cargo clippy --workspace --all-targets --all-features -- -D warnings
     cargo deny check
+
+# reallive-real-bytes-tests-in-ci: run EVERY `#[ignore]`-gated real-bytes
+# RealLive suite (kaifuu-reallive + utsushi-reallive) against the staged
+# Sweetie HD (corpus-1) + Kanon (corpus-2) corpora. Reads the corpora in
+# place, read-only; NEVER copies copyrighted bytes. Sets
+# ITOTORI_REQUIRE_REAL_BYTES=1 so an absent corpus turns each test into a hard
+# failure instead of a silent skip, and PRE-CHECKS both corpus dirs up front
+# so a missing corpus fails cleanly (non-zero) even if zero ignored tests
+# match — a green run can never mean "zero real bytes exercised". Corpus roots
+# are overridable via the two env vars for machines that stage elsewhere.
+ci-real-bytes:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    export ITOTORI_REAL_GAME_ROOT="${ITOTORI_REAL_GAME_ROOT:-/scratch/itotori-research/sweetie-hd}"
+    export ITOTORI_REAL_GAME_ROOT_2="${ITOTORI_REAL_GAME_ROOT_2:-/scratch/itotori-research/kanon}"
+    export ITOTORI_REQUIRE_REAL_BYTES=1
+    for var in ITOTORI_REAL_GAME_ROOT ITOTORI_REAL_GAME_ROOT_2; do
+      dir="${!var}"
+      if [ ! -d "$dir" ]; then
+        echo "ci-real-bytes: required real-bytes corpus $var=$dir is missing (dir not found);" >&2
+        echo "  refusing to pass with zero real-bytes coverage. Stage the corpus or override $var." >&2
+        exit 1
+      fi
+    done
+    echo "ci-real-bytes: corpus-1 (Sweetie HD) = $ITOTORI_REAL_GAME_ROOT"
+    echo "ci-real-bytes: corpus-2 (Kanon)      = $ITOTORI_REAL_GAME_ROOT_2"
+    echo "ci-real-bytes: running #[ignore]-gated real-bytes RealLive suites with ITOTORI_REQUIRE_REAL_BYTES=1"
+    cargo test -p kaifuu-reallive -p utsushi-reallive -- --ignored
 
 qd-full-ci:
     node scripts/qd-full-ci.mjs
