@@ -63,9 +63,9 @@ pub mod module_str;
 pub mod module_sys;
 
 pub use longops::{
-    DEFAULT_PAUSE_POLLS, PAUSE_PRIVATE_STATE_MAGIC, PauseLongOp, PauseLongOpDecodeError,
-    SELECT_PRIVATE_STATE_MAGIC, SelectLongOp, SelectLongOpDecodeError,
-    SelectionChoiceCountScheduler,
+    DEFAULT_PAUSE_POLLS, HeadlessChoicePolicy, HeadlessInputScheduler, PAUSE_PRIVATE_STATE_MAGIC,
+    PauseLongOp, PauseLongOpDecodeError, SELECT_PRIVATE_STATE_MAGIC, SelectLongOp,
+    SelectLongOpDecodeError, SelectionChoiceCountScheduler,
 };
 pub use module_msg::{
     LongOpIdSequence, MSG_MODULE_ID, MSG_MODULE_TYPE, MsgFontColorOp, MsgFontSizeOp,
@@ -171,6 +171,32 @@ pub enum DispatchOutcome {
         target_scene: SceneId,
         /// pc to begin executing at the target scene.
         target_pc: u32,
+    },
+    /// Cross-scene jump addressed by `(scene, entrypoint)` rather than by
+    /// a resolved pc. Used by the real branch-following `jump` op, whose
+    /// target pc lives in ANOTHER scene and can only be resolved against
+    /// the [`crate::vm::SceneStore`] (which the op layer cannot see). The
+    /// VM resolves `entrypoint` to a byte-offset pc via
+    /// [`crate::vm::Scene::entrypoint_pc`] and rewrites this into a plain
+    /// [`DispatchOutcome::Jump`] before applying it — a missing scene
+    /// surfaces a typed [`crate::vm::VmError::SceneNotFound`], a missing
+    /// entrypoint a [`crate::vm::VmError::EntrypointNotFound`].
+    JumpToScene {
+        /// Destination scene id.
+        target_scene: SceneId,
+        /// Entrypoint index within `target_scene` (`0` = scene start).
+        entrypoint: u16,
+    },
+    /// Cross-scene subroutine call addressed by `(scene, entrypoint)`.
+    /// Used by the real branch-following `farcall` / `farcall_with` ops.
+    /// The VM captures the current `(scene, post_pc)` as the return frame
+    /// and resolves `entrypoint` to a byte-offset pc in `target_scene`
+    /// before pushing a far-call frame and jumping. `rtl` pops it.
+    FarCallToScene {
+        /// Destination scene id.
+        target_scene: SceneId,
+        /// Entrypoint index within `target_scene` (`0` = scene start).
+        entrypoint: u16,
     },
     /// Pop a subroutine frame and resume at its `return_pc`. Used by
     /// `ret`. The VM produces a typed `VmError::EmptyStack` if the

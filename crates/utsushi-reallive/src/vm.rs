@@ -168,6 +168,12 @@ pub struct Scene {
     pub bytecode_len: u32,
     /// `byte_offset → element index` lookup.
     offset_to_index: BTreeMap<u32, usize>,
+    /// `entrypoint_index → byte_offset` lookup, built from the scene's
+    /// [`BytecodeElement::MetaEntrypoint`] markers. A cross-scene
+    /// `farcall(scene, entrypoint)` / `jump(scene, entrypoint)` resolves
+    /// a non-zero entrypoint through this map; entrypoint `0` maps to pc
+    /// `0` (scene start) whether or not a marker names it.
+    entrypoints: BTreeMap<u16, u32>,
 }
 
 impl Scene {
@@ -185,9 +191,18 @@ impl Scene {
             return None;
         }
         let mut offset_to_index = BTreeMap::new();
+        let mut entrypoints = BTreeMap::new();
         for (idx, element) in elements.iter().enumerate() {
             let offset = u32::try_from(element.byte_offset()).ok()?;
             offset_to_index.insert(offset, idx);
+            if let BytecodeElement::MetaEntrypoint {
+                entrypoint_index, ..
+            } = element
+            {
+                // The marker's byte offset is the pc a cross-scene call
+                // into that entrypoint resumes at.
+                entrypoints.insert(*entrypoint_index, offset);
+            }
         }
         let last = elements.last()?;
         let last_offset = u32::try_from(last.byte_offset()).ok()?;
@@ -198,7 +213,24 @@ impl Scene {
             elements,
             bytecode_len,
             offset_to_index,
+            entrypoints,
         })
+    }
+
+    /// Resolve an entrypoint index to a byte-offset pc within this scene.
+    ///
+    /// Entrypoint `0` is the scene start (`pc 0`) whether or not an
+    /// explicit [`BytecodeElement::MetaEntrypoint`] marker names it — this
+    /// matches the RealLive convention that a bare `farcall(scene)` /
+    /// `jump(scene)` (no explicit entrypoint arg) enters at the top. A
+    /// non-zero entrypoint resolves through the marker map; an index with
+    /// no marker returns `None` so the VM surfaces a typed
+    /// [`VmError::EntrypointNotFound`] instead of silently landing at 0.
+    pub fn entrypoint_pc(&self, entrypoint: u16) -> Option<u32> {
+        if entrypoint == 0 {
+            return Some(self.entrypoints.get(&0).copied().unwrap_or(0));
+        }
+        self.entrypoints.get(&entrypoint).copied()
     }
 
     /// Resolve `pc` (a byte offset) to the element starting at that
@@ -459,6 +491,17 @@ pub enum VmError {
         /// Scene id that was not in the store.
         scene: SceneId,
     },
+    /// A cross-scene `jump` / `farcall` referenced an entrypoint index
+    /// that the target scene does not declare (no matching
+    /// [`BytecodeElement::MetaEntrypoint`] marker). Surfaced instead of
+    /// silently landing at pc `0` so a genuine gap is never masked.
+    #[error("utsushi.reallive.vm.entrypoint_not_found: scene={scene} entrypoint={entrypoint}")]
+    EntrypointNotFound {
+        /// Target scene id.
+        scene: SceneId,
+        /// Entrypoint index that could not be resolved.
+        entrypoint: u16,
+    },
     /// `pc` did not land on the start of any element (it pointed into
     /// the middle of a decoded element — a Jump / FarCall produced an
     /// invalid target).
@@ -573,6 +616,14 @@ pub struct Vm {
     longop_queue: VecDeque<LongOp>,
     halted: bool,
     warnings: Vec<VmWarning>,
+    /// Byte offset immediately past the command currently being
+    /// dispatched. Set transiently by [`Vm::dispatch_element`] before an
+    /// op's `dispatch`, so a control-flow op (`gosub` / `farcall`) can
+    /// read the return pc it must push without the VM having to prepend
+    /// it as a synthetic argument. Not part of the substrate snapshot —
+    /// it is only meaningful mid-step and defaults to `0` at every tick
+    /// boundary.
+    post_pc: u32,
 }
 
 impl Vm {
@@ -587,7 +638,16 @@ impl Vm {
             longop_queue: VecDeque::new(),
             halted: false,
             warnings: Vec::new(),
+            post_pc: 0,
         }
+    }
+
+    /// Byte offset immediately past the command currently being
+    /// dispatched. Only meaningful while an op's `dispatch` is executing
+    /// (the branch-following `gosub` / `farcall` ops read it to obtain the
+    /// return pc); `0` outside a dispatch.
+    pub fn post_pc(&self) -> u32 {
+        self.post_pc
     }
 
     /// Borrow the scene id the VM is currently positioned in.
@@ -788,7 +848,7 @@ impl Vm {
                 reason: "pc + element_len overflows u32".to_string(),
             })?;
 
-        let event = self.dispatch_element(element, post_pc, registry)?;
+        let event = self.dispatch_element(scenes, element, post_pc, registry)?;
         Ok(StepOutcome::Advanced { event })
     }
 
@@ -829,6 +889,7 @@ impl Vm {
     /// the `Advance` and `Subroutine` / `FarCall` paths.
     fn dispatch_element(
         &mut self,
+        scenes: &dyn SceneStore,
         element: BytecodeElement,
         post_pc: u32,
         registry: &RlopRegistry,
@@ -903,9 +964,24 @@ impl Vm {
                     for target in &goto_targets {
                         args.push(ExprValue::Int(i32::from_ne_bytes(target.to_ne_bytes())));
                     }
+                    // Expose the post-command pc so branch-following
+                    // `gosub` / `farcall` ops can read the return pc they
+                    // must push, without the VM prepending a synthetic arg.
+                    self.post_pc = post_pc;
                     let outcome = op.dispatch(self, &args);
-                    self.apply_outcome(&outcome, post_pc)?;
-                    Ok(VmEvent::CommandDispatched { key, outcome })
+                    self.post_pc = 0;
+                    // Cross-scene outcomes address a target by
+                    // `(scene, entrypoint)`; resolve the entrypoint to a
+                    // concrete pc against the store (which the op layer
+                    // cannot see) before applying. The resolved outcome is
+                    // what the VmEvent reports, so downstream sees the real
+                    // scene/pc transfer.
+                    let resolved = self.resolve_scene_outcome(scenes, &outcome, post_pc)?;
+                    self.apply_outcome(&resolved, post_pc)?;
+                    Ok(VmEvent::CommandDispatched {
+                        key,
+                        outcome: resolved,
+                    })
                 } else {
                     self.warnings.push(VmWarning::MissingRlop {
                         key,
@@ -1045,6 +1121,68 @@ impl Vm {
         }
     }
 
+    /// Rewrite a cross-scene [`DispatchOutcome::JumpToScene`] /
+    /// [`DispatchOutcome::FarCallToScene`] into a concrete
+    /// [`DispatchOutcome::Jump`] / [`DispatchOutcome::FarCall`] by
+    /// resolving the target scene's entrypoint against `scenes`. Every
+    /// other outcome passes through unchanged.
+    ///
+    /// A target scene absent from the store surfaces
+    /// [`VmError::SceneNotFound`]; a non-zero entrypoint the target scene
+    /// does not declare surfaces [`VmError::EntrypointNotFound`]. Neither
+    /// is masked with a fail-soft advance — a cross-scene gap is a real
+    /// gap.
+    fn resolve_scene_outcome(
+        &self,
+        scenes: &dyn SceneStore,
+        outcome: &DispatchOutcome,
+        post_pc: u32,
+    ) -> Result<DispatchOutcome, VmError> {
+        match outcome {
+            DispatchOutcome::JumpToScene {
+                target_scene,
+                entrypoint,
+            } => {
+                let pc = self.resolve_entrypoint(scenes, *target_scene, *entrypoint)?;
+                Ok(DispatchOutcome::Jump {
+                    scene: *target_scene,
+                    pc,
+                })
+            }
+            DispatchOutcome::FarCallToScene {
+                target_scene,
+                entrypoint,
+            } => {
+                let pc = self.resolve_entrypoint(scenes, *target_scene, *entrypoint)?;
+                Ok(DispatchOutcome::FarCall {
+                    return_scene: self.scene,
+                    return_pc: post_pc,
+                    target_scene: *target_scene,
+                    target_pc: pc,
+                })
+            }
+            other => Ok(other.clone()),
+        }
+    }
+
+    /// Resolve `(target_scene, entrypoint)` to a byte-offset pc.
+    fn resolve_entrypoint(
+        &self,
+        scenes: &dyn SceneStore,
+        target_scene: SceneId,
+        entrypoint: u16,
+    ) -> Result<u32, VmError> {
+        let scene = scenes.fetch(target_scene).ok_or(VmError::SceneNotFound {
+            scene: target_scene,
+        })?;
+        scene
+            .entrypoint_pc(entrypoint)
+            .ok_or(VmError::EntrypointNotFound {
+                scene: target_scene,
+                entrypoint,
+            })
+    }
+
     /// Apply a [`DispatchOutcome`] from a command-dispatch path. The
     /// `post_pc` argument is the byte offset immediately past the
     /// dispatching command — used by `Advance` / `Subroutine` /
@@ -1059,6 +1197,19 @@ impl Vm {
                 self.scene = *scene;
                 self.pc = *pc;
                 Ok(())
+            }
+            DispatchOutcome::JumpToScene { .. } | DispatchOutcome::FarCallToScene { .. } => {
+                // These must be resolved into Jump / FarCall against the
+                // scene store by `resolve_scene_outcome` before reaching
+                // here. If one arrives (e.g. via the public
+                // `apply_dispatch_outcome` test seam, which has no store),
+                // refuse it rather than silently mis-transferring.
+                Err(VmError::UnexpectedDispatchOutcome {
+                    scene: self.scene,
+                    pc: self.pc,
+                    expected: "resolved_jump_or_farcall",
+                    found: "unresolved_cross_scene_outcome",
+                })
             }
             DispatchOutcome::Subroutine {
                 return_pc,
@@ -1556,6 +1707,21 @@ mod tests {
         }
         b.push(b')');
         b
+    }
+
+    #[test]
+    fn scene_entrypoint_pc_resolves_markers_and_defaults_zero() {
+        // A goto (12 bytes) at offset 0, then a MetaEntrypoint `!4` marker
+        // (`0x21 <idx u16>`) at offset 12.
+        let mut bytes = goto_command(12);
+        bytes.extend_from_slice(&[0x21, 0x04, 0x00]);
+        let scene = build_scene(1, &bytes);
+        // Non-zero entrypoint resolves through the marker map.
+        assert_eq!(scene.entrypoint_pc(4), Some(12));
+        // Entrypoint 0 defaults to the scene start even with no marker.
+        assert_eq!(scene.entrypoint_pc(0), Some(0));
+        // An undeclared entrypoint is None (VM surfaces EntrypointNotFound).
+        assert_eq!(scene.entrypoint_pc(9), None);
     }
 
     #[test]

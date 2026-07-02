@@ -259,12 +259,12 @@ pub use g00::{
 };
 
 pub use replay::{
-    DEFAULT_REPLAY_STEP_BUDGET, DecompressedScene, REPLAY_LOG_SCHEMA_VERSION, ReplayEngine,
-    ReplayError, ReplayEvent, ReplayLog, ReplayOpts, ReplayOutcome, SceneStoreBundle,
-    SceneStoreStats, SnapshotIdentityReport, build_scene_store,
-    build_scene_store_from_decompressed, decompress_all_scenes, full_registry_rlop_count,
-    replay_scene, replay_scene_bytes, replay_until_first_pause, restore_into_fresh_vm,
-    verify_snapshot_restore_each_tick,
+    BranchReplayReport, BranchTerminus, ControlTransferCounts, DEFAULT_REPLAY_STEP_BUDGET,
+    DecompressedScene, REPLAY_LOG_SCHEMA_VERSION, ReplayEngine, ReplayError, ReplayEvent,
+    ReplayLog, ReplayOpts, ReplayOutcome, SceneStoreBundle, SceneStoreStats,
+    SnapshotIdentityReport, build_scene_store, build_scene_store_from_decompressed,
+    decompress_all_scenes, full_registry_rlop_count, replay_scene, replay_scene_bytes,
+    replay_until_first_pause, restore_into_fresh_vm, verify_snapshot_restore_each_tick,
 };
 pub use replay_validate::{
     NO_MATCH_SAMPLE_BODIES_CAP, NO_MATCH_SAMPLE_BODY_BYTE_CAP, ReplayValidation,
@@ -309,19 +309,20 @@ pub use var_banks::{
 
 pub use rlop::{
     AfterNPollsScheduler, AlwaysReadyScheduler, ChoiceInputScheduler, DEFAULT_PAUSE_POLLS,
-    DispatchOutcome, ExprValue, LongOp, LongOpId, LongOpIdSequence, LongOpReadiness,
-    LongOpScheduler, MSG_MODULE_ID, MSG_MODULE_TYPE, MsgFontColorOp, MsgFontSizeOp, MsgLineBreakOp,
-    MsgLineNumberOp, MsgMsgClearOp, MsgMsgHideOp, MsgNameCloseOp, MsgNameOpenOp, MsgOpcode,
-    MsgPageOp, MsgParagraphBreakOp, MsgPauseOp, MsgRuntime, MsgTextWindowOp, NeverReadyScheduler,
-    OPCODE_FONT_COLOR, OPCODE_FONT_SIZE, OPCODE_LINE_BREAK, OPCODE_LINE_NUMBER, OPCODE_MSG_CLEAR,
-    OPCODE_MSG_HIDE, OPCODE_NAME_CLOSE, OPCODE_NAME_OPEN, OPCODE_PAGE, OPCODE_PARAGRAPH_BREAK,
-    OPCODE_PAUSE, OPCODE_SELECT_OBJBTN, OPCODE_SELECT_S, OPCODE_SELECT_W,
-    OPCODE_SELECT_W_SWEETIE_HD_ALIAS, OPCODE_TEXT_WINDOW, PAUSE_PRIVATE_STATE_MAGIC, PauseLongOp,
-    PauseLongOpDecodeError, RLOperation, RlopKey, RlopRegistry, SEL_MODULE_ID, SEL_MODULE_TYPE,
-    SEL_OPCODE_SELECT, SEL_RLOP_COUNT, SELECT_PRIVATE_STATE_MAGIC, SelRuntime, SelRuntimeWarning,
-    SelectLongOp, SelectLongOpDecodeError, SelectObjbtnOp, SelectOp, SelectSOp, SelectVariant,
-    SelectWOp, SelectionChoiceCountScheduler, dispatch_textout, register_sel_rlops,
-    register_text_rlops, text_module_msg_keys,
+    DispatchOutcome, ExprValue, HeadlessChoicePolicy, HeadlessInputScheduler, LongOp, LongOpId,
+    LongOpIdSequence, LongOpReadiness, LongOpScheduler, MSG_MODULE_ID, MSG_MODULE_TYPE,
+    MsgFontColorOp, MsgFontSizeOp, MsgLineBreakOp, MsgLineNumberOp, MsgMsgClearOp, MsgMsgHideOp,
+    MsgNameCloseOp, MsgNameOpenOp, MsgOpcode, MsgPageOp, MsgParagraphBreakOp, MsgPauseOp,
+    MsgRuntime, MsgTextWindowOp, NeverReadyScheduler, OPCODE_FONT_COLOR, OPCODE_FONT_SIZE,
+    OPCODE_LINE_BREAK, OPCODE_LINE_NUMBER, OPCODE_MSG_CLEAR, OPCODE_MSG_HIDE, OPCODE_NAME_CLOSE,
+    OPCODE_NAME_OPEN, OPCODE_PAGE, OPCODE_PARAGRAPH_BREAK, OPCODE_PAUSE, OPCODE_SELECT_OBJBTN,
+    OPCODE_SELECT_S, OPCODE_SELECT_W, OPCODE_SELECT_W_SWEETIE_HD_ALIAS, OPCODE_TEXT_WINDOW,
+    PAUSE_PRIVATE_STATE_MAGIC, PauseLongOp, PauseLongOpDecodeError, RLOperation, RlopKey,
+    RlopRegistry, SEL_MODULE_ID, SEL_MODULE_TYPE, SEL_OPCODE_SELECT, SEL_RLOP_COUNT,
+    SELECT_PRIVATE_STATE_MAGIC, SelRuntime, SelRuntimeWarning, SelectLongOp,
+    SelectLongOpDecodeError, SelectObjbtnOp, SelectOp, SelectSOp, SelectVariant, SelectWOp,
+    SelectionChoiceCountScheduler, dispatch_textout, register_sel_rlops, register_text_rlops,
+    text_module_msg_keys,
 };
 
 pub use rlop::module_mem::{
@@ -380,7 +381,7 @@ pub use rlop::module_ctrl::{
     KEY_GOTO_ON, KEY_GOTO_UNLESS, KEY_HALT, KEY_RET, KEY_RTL, MODULE_JMP_ID, MODULE_JMP_TYPE,
     OPCODE_FARCALL, OPCODE_FARCALL_WITH_ARGS, OPCODE_GOSUB, OPCODE_GOSUB_IF, OPCODE_GOTO,
     OPCODE_GOTO_IF, OPCODE_GOTO_ON, OPCODE_GOTO_UNLESS, OPCODE_HALT, OPCODE_RET, OPCODE_RTL, RetOp,
-    RtlOp, register_control_flow_rlops,
+    RtlOp, register_control_flow_branch_following, register_control_flow_rlops,
 };
 
 pub use vm::{

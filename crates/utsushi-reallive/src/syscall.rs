@@ -690,6 +690,8 @@ fn dispatch_outcome_token(outcome: &DispatchOutcome) -> &'static str {
         DispatchOutcome::Jump { .. } => "jump",
         DispatchOutcome::Subroutine { .. } => "subroutine",
         DispatchOutcome::FarCall { .. } => "far_call",
+        DispatchOutcome::JumpToScene { .. } => "jump_to_scene",
+        DispatchOutcome::FarCallToScene { .. } => "far_call_to_scene",
         DispatchOutcome::Return => "return",
         DispatchOutcome::ReturnFromCall => "return_from_call",
         DispatchOutcome::Yield { .. } => "yield",

@@ -1,0 +1,335 @@
+//! Real-bytes acceptance for `reallive-utsushi-headless-branch-execution`.
+//!
+//! Drives a full scene of BOTH titles (Sweetie HD + Kanon) to its NATURAL
+//! TERMINUS by EXECUTING real RealLive control flow — Jump / Subroutine /
+//! FarCall FOLLOWED across the multi-scene store, NOT linear-walked — using
+//! a deterministic headless input-provider ([`HeadlessInputScheduler`],
+//! policy = always the first choice) to advance past pause / wait-for-click
+//! yields and to resolve choices.
+//!
+//! # What "natural terminus" means here
+//!
+//! A RealLive scene ends either by running off its bytecode / halting
+//! ([`BranchTerminus::EndOfScene`]) or, for a scene that is itself a
+//! subroutine (entered by a parent via `farcall`), by executing its
+//! top-level `ret` / `rtl` ([`BranchTerminus::ReturnedToCaller`] when driven
+//! STANDALONE with an empty call stack). Both are natural termini: the scene
+//! ran its real control flow to completion. On the proven corpora, no scene
+//! reaches `EndOfScene` (opening scenes `farcall` into subsystems and every
+//! scene is entered as a subroutine), so the natural terminus of a
+//! standalone drive is `ReturnedToCaller`.
+//!
+//! # Acceptance asserted
+//!  1. A deterministic headless input-provider advances past waits + selects
+//!     choices (documented AlwaysFirst policy; determinism asserted).
+//!  2. For BOTH titles, a full scene drives to its natural terminus by
+//!     EXECUTING real control flow (transfers > 0, incl. subroutine/far
+//!     calls + returns), with ZERO fail-soft Unknown skips and ZERO
+//!     SceneNotFound on the executed path.
+//!  3. Cross-scene Jump/FarCall is FOLLOWED across the store (≥1 scene
+//!     visits >1 scene).
+//!  4. Byte-deterministic (two runs → identical report) + snapshot/restore
+//!     identity at every tick boundary.
+//!  5. Branch-following is DISTINCT from the retained linear-walk
+//!     cataloguing registrar (same scene: linear-walk → EndOfScene with zero
+//!     transfer state; branch-following → executed transfers > 0).
+//!
+//! Env-gated + STRICT-BY-DEFAULT: an absent corpus hard-fails unless
+//! `ITOTORI_ALLOW_MISSING_CORPUS=1`. Run with
+//! `ITOTORI_REAL_GAME_ROOT=<sweetie> ITOTORI_REAL_GAME_ROOT_2=<kanon>
+//! cargo test -p utsushi-reallive --test headless_branch_execution_real_bytes
+//! -- --ignored`.
+
+#[path = "support/real_corpus.rs"]
+mod real_corpus;
+
+use std::fs;
+
+use kaifuu_reallive::{Xor2DecScene, recover_and_decrypt_archive};
+use utsushi_reallive::{
+    BranchReplayReport, BranchTerminus, HeadlessChoicePolicy, ReplayEngine, ReplayOpts,
+    ReplayOutcome, build_scene_store_from_decompressed, decompress_all_scenes,
+};
+
+/// Step budget for a per-scene branch-following drive. Sized so a clean
+/// natural-terminus scene completes and an event-gated spin loop is bounded
+/// (classified BudgetExhausted and excluded).
+const SCAN_BUDGET: u32 = 200_000;
+
+/// Stage a [`ReplayEngine`] from a Seen.txt envelope, interposing the
+/// dev-only `kaifuu-reallive` `use_xor_2` recovery between the AVG32
+/// first-level inflate and the bytecode decode (a no-op for Kanon). Mirrors
+/// the full-module replay test's staging.
+fn staged_engine(seen_bytes: &[u8]) -> ReplayEngine {
+    let index_len = utsushi_reallive::RealSceneIndex::parse(seen_bytes)
+        .expect("parse scene index")
+        .entries
+        .len();
+    let mut decompressed = decompress_all_scenes(seen_bytes).expect("decompress archive");
+    let mut xor2: Vec<Xor2DecScene> = decompressed
+        .iter()
+        .map(|s| Xor2DecScene {
+            compiler_version: s.compiler_version,
+            bytecode: s.bytecode.clone(),
+        })
+        .collect();
+    let _ = recover_and_decrypt_archive(&mut xor2);
+    for (s, d) in decompressed.iter_mut().zip(xor2) {
+        s.bytecode = d.bytecode;
+    }
+    let (store, shift_jis, _stats) =
+        build_scene_store_from_decompressed(&decompressed, index_len).expect("build store");
+    ReplayEngine::from_store(store, shift_jis)
+}
+
+fn corpora_or_skip(test_name: &str) -> Vec<real_corpus::RealCorpus> {
+    let corpora = real_corpus::corpora();
+    if corpora.len() < 2 {
+        real_corpus::skip_or_require_real_bytes(test_name);
+        return Vec::new();
+    }
+    corpora
+}
+
+fn scan_opts() -> ReplayOpts {
+    ReplayOpts {
+        step_budget: SCAN_BUDGET,
+        stop_at_first_pause: false,
+    }
+}
+
+/// Pick, deterministically, the scene that reaches a NATURAL terminus by
+/// executing the MOST control transfers with ZERO unknown opcodes and ZERO
+/// SceneNotFound. Tie-break by lowest scene id. Also returns aggregate
+/// facts used by the acceptance assertions.
+struct TitleSurvey {
+    best: Option<(u16, BranchReplayReport)>,
+    natural_scenes: usize,
+    max_scenes_visited: usize,
+    total_unknown_on_executed_paths: usize,
+    aggregate_transfers: u64,
+}
+
+fn survey(engine: &ReplayEngine) -> TitleSurvey {
+    let opts = scan_opts();
+    let mut best: Option<(u16, BranchReplayReport)> = None;
+    let mut natural_scenes = 0usize;
+    let mut max_scenes_visited = 0usize;
+    let mut total_unknown = 0usize;
+    let mut aggregate_transfers = 0u64;
+    for id in engine.scene_ids() {
+        let r = engine.branch_following_report(id, &opts, HeadlessChoicePolicy::AlwaysFirst);
+        total_unknown += r.unknown_opcode_keys.len();
+        max_scenes_visited = max_scenes_visited.max(r.scenes_visited.len());
+        aggregate_transfers += r.transfers.total();
+        if r.terminus.is_natural() {
+            natural_scenes += 1;
+        }
+        let clean = r.terminus.is_natural()
+            && r.unknown_opcode_keys.is_empty()
+            && r.scene_not_found.is_none()
+            && r.transfers.total() > 0;
+        if clean {
+            let better = match &best {
+                None => true,
+                Some((_, b)) => r.transfers.total() > b.transfers.total(),
+            };
+            if better {
+                best = Some((id, r));
+            }
+        }
+    }
+    TitleSurvey {
+        best,
+        natural_scenes,
+        max_scenes_visited,
+        total_unknown_on_executed_paths: total_unknown,
+        aggregate_transfers,
+    }
+}
+
+#[test]
+#[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT + _2"]
+fn headless_branch_following_drives_both_titles_to_natural_terminus() {
+    let corpora =
+        corpora_or_skip("headless_branch_following_drives_both_titles_to_natural_terminus");
+    if corpora.is_empty() {
+        return;
+    }
+    let opts = scan_opts();
+    for corpus in &corpora {
+        let bytes = fs::read(&corpus.seen_txt).expect("read seen.txt");
+        let engine = staged_engine(&bytes);
+        let s = survey(&engine);
+
+        let (scene_id, report) = s.best.clone().unwrap_or_else(|| {
+            panic!(
+                "[{}] no scene reached a NATURAL terminus (EndOfScene/ReturnedToCaller) with \
+                 zero-unknown + zero-SceneNotFound + real control transfers; \
+                 natural_scenes={} aggregate_transfers={} total_unknown_on_executed_paths={}",
+                corpus.label,
+                s.natural_scenes,
+                s.aggregate_transfers,
+                s.total_unknown_on_executed_paths,
+            )
+        });
+
+        eprintln!(
+            "[{}] BRANCH-FOLLOWING natural terminus: scene {scene_id} terminus={:?} steps={} \
+             transfers={:?} scenes_visited={} text={} pauses={} choices={}",
+            corpus.label,
+            report.terminus,
+            report.steps,
+            report.transfers,
+            report.scenes_visited.len(),
+            report.text_lines,
+            report.pauses_advanced,
+            report.choices_made,
+        );
+        eprintln!(
+            "[{}] title survey: natural_scenes={} of {} | aggregate_transfers={} | \
+             max_scenes_visited={} | zero-unknown-on-ALL-executed-paths={}",
+            corpus.label,
+            s.natural_scenes,
+            engine.scene_ids().len(),
+            s.aggregate_transfers,
+            s.max_scenes_visited,
+            s.total_unknown_on_executed_paths == 0,
+        );
+
+        // (2) Natural terminus by executing real control flow, zero unknown,
+        // zero SceneNotFound on the executed path.
+        assert!(report.terminus.is_natural());
+        assert!(
+            report.unknown_opcode_keys.is_empty(),
+            "[{}] scene {scene_id} executed path must be ZERO unknown; got {:?}",
+            corpus.label,
+            report.unknown_opcode_keys,
+        );
+        assert_eq!(report.scene_not_found, None);
+        assert!(
+            report.transfers.total() > 0,
+            "[{}] scene {scene_id} must have EXECUTED real control transfers (branch-following)",
+            corpus.label,
+        );
+        // The scene exercised subroutine/return control flow (not just a
+        // straight-line advance): at least one call and one return.
+        let t = report.transfers;
+        assert!(
+            t.subroutine_calls + t.far_calls > 0 && t.returns + t.returns_from_call > 0,
+            "[{}] scene {scene_id} must execute a call+return pair; transfers={t:?}",
+            corpus.label,
+        );
+
+        // ZERO unknown on EVERY scene's executed path (whole-title).
+        assert_eq!(
+            s.total_unknown_on_executed_paths, 0,
+            "[{}] every branch-following executed path must be ZERO unknown",
+            corpus.label,
+        );
+
+        // (3) Cross-scene Jump/FarCall FOLLOWED across the multi-scene store
+        // by at least one scene of this title.
+        assert!(
+            s.max_scenes_visited > 1,
+            "[{}] at least one scene must FOLLOW a cross-scene transfer into another present scene",
+            corpus.label,
+        );
+
+        // (4a) Byte-determinism.
+        let again =
+            engine.branch_following_report(scene_id, &opts, HeadlessChoicePolicy::AlwaysFirst);
+        assert_eq!(
+            report, again,
+            "[{}] two branch-following runs of scene {scene_id} must be byte-identical",
+            corpus.label,
+        );
+
+        // (4b) Snapshot/restore identity at every tick boundary.
+        let snap = engine
+            .verify_branch_snapshot_restore_each_tick(
+                scene_id,
+                &opts,
+                HeadlessChoicePolicy::AlwaysFirst,
+            )
+            .expect("snapshot identity");
+        assert!(
+            snap.ticks_verified > 0,
+            "[{}] scene {scene_id} must verify snapshot/restore identity at >0 tick boundaries",
+            corpus.label,
+        );
+
+        // (5) DISTINCT from the retained linear-walk cataloguing registrar:
+        // the same scene under the linear walk reaches EndOfScene with ZERO
+        // unknown (coverage check), while branch-following EXECUTED real
+        // transfers (> 0) — which a linear walk records none of.
+        let linear = engine.replay_from(scene_id, &opts);
+        assert!(
+            linear.unknown_opcode_keys().is_empty(),
+            "[{}] linear-walk coverage check must be zero-unknown on scene {scene_id}",
+            corpus.label,
+        );
+        assert!(
+            matches!(linear.final_outcome, ReplayOutcome::EndOfScene { .. }),
+            "[{}] linear-walk must reach EndOfScene on scene {scene_id} (got {:?})",
+            corpus.label,
+            linear.final_outcome,
+        );
+        assert!(
+            report.transfers.total() > 0,
+            "[{}] branch-following must execute transfers the linear walk does not",
+            corpus.label,
+        );
+    }
+}
+
+/// The deterministic headless input-provider is exercised end-to-end: it
+/// advances past every pause / wait yield and resolves every choice with a
+/// documented, reproducible policy. Verified by driving the whole store and
+/// asserting the provider is deterministic (identical activity across two
+/// full drives) and never deadlocks a scene on an input-gated longop (a
+/// scene that does NOT reach its terminus does so for a control-flow reason
+/// — SceneNotFound / spin — not a suspended longop).
+#[test]
+#[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT + _2"]
+fn headless_input_provider_is_deterministic_and_never_deadlocks_on_input() {
+    let corpora =
+        corpora_or_skip("headless_input_provider_is_deterministic_and_never_deadlocks_on_input");
+    if corpora.is_empty() {
+        return;
+    }
+    let opts = scan_opts();
+    for corpus in &corpora {
+        let bytes = fs::read(&corpus.seen_txt).expect("read seen.txt");
+        let engine = staged_engine(&bytes);
+
+        let mut total_pauses = 0u64;
+        let mut total_choices = 0u64;
+        for id in engine.scene_ids() {
+            let a = engine.branch_following_report(id, &opts, HeadlessChoicePolicy::AlwaysFirst);
+            let b = engine.branch_following_report(id, &opts, HeadlessChoicePolicy::AlwaysFirst);
+            assert_eq!(
+                a, b,
+                "[{}] scene {id} branch report must be deterministic",
+                corpus.label
+            );
+            total_pauses += a.pauses_advanced;
+            total_choices += a.choices_made;
+            // No terminus is a suspended longop: the input-provider resumes
+            // every pause/choice/longop, so a non-natural terminus is always
+            // a control-flow gap, never an input deadlock.
+            assert!(
+                !matches!(a.terminus, BranchTerminus::BudgetExhausted) || a.transfers.total() > 0,
+                "[{}] scene {id} budget-exhausted with no transfers would imply an input \
+                 deadlock; transfers={:?}",
+                corpus.label,
+                a.transfers,
+            );
+        }
+        eprintln!(
+            "[{}] input-provider activity across store: pauses_advanced={total_pauses} \
+             choices_made={total_choices}",
+            corpus.label,
+        );
+    }
+}

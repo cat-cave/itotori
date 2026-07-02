@@ -52,7 +52,9 @@ use crate::bytecode_element::{BytecodeElement, TextoutEncoding, decode_bytecode_
 use crate::decompressor::AvgDecompressor;
 use crate::rlop::module_audio::{AudioRuntime, register_audio_rlops};
 use crate::rlop::module_catalog::register_catalog_rlops;
-use crate::rlop::module_ctrl::register_control_flow_linear_walk;
+use crate::rlop::module_ctrl::{
+    register_control_flow_branch_following, register_control_flow_linear_walk,
+};
 use crate::rlop::module_grp::register_grp_rlops;
 use crate::rlop::module_mem::register_mem_rlops;
 use crate::rlop::module_msg::{
@@ -63,7 +65,10 @@ use crate::rlop::module_obj::{GraphicsRuntime, register_obj_rlops};
 use crate::rlop::module_sel::{SelRuntime, register_sel_rlops};
 use crate::rlop::module_str::{StrRuntime, register_str_rlops};
 use crate::rlop::module_sys::{SysRuntime, register_sys_rlops};
-use crate::rlop::{AlwaysReadyScheduler, RlopKey, RlopRegistry};
+use crate::rlop::{
+    AlwaysReadyScheduler, DispatchOutcome, HeadlessChoicePolicy, HeadlessInputScheduler, RlopKey,
+    RlopRegistry,
+};
 use crate::scene_header::{SCENE_HEADER_BYTE_LEN, SceneHeader};
 use crate::scene_index::RealSceneIndex;
 use crate::vm::{InMemorySceneStore, Scene, SceneId, SceneStore, StepOutcome, Vm, VmEvent};
@@ -927,19 +932,52 @@ pub fn build_scene_store(seen_bytes: &[u8]) -> Result<SceneStoreBundle, ReplayEr
 /// The per-family runtimes are cloned into the registry's op table, so
 /// they stay alive for the registry's lifetime without the caller
 /// holding a separate handle.
+/// Which `module_jmp` control-flow registrar a registry mount installs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ControlFlowMount {
+    /// Exhaustive-linear-walk cataloguing (`Advance` dispatch): VISIT
+    /// every command; never follow a branch. Used by the whole-store
+    /// opcode-coverage replay.
+    LinearWalk,
+    /// Real branch-FOLLOWING execution: goto/gosub/farcall rewrite the
+    /// pc / call stack / scene. Used by the headless branch-execution
+    /// replay.
+    BranchFollowing,
+}
+
 fn mount_full_registry(
     sink: Arc<dyn TextSurfaceSink>,
     msg_runtime: Arc<MsgRuntime>,
 ) -> RlopRegistry {
+    mount_registry(sink, msg_runtime, ControlFlowMount::LinearWalk)
+}
+
+/// Mount all nine opcode families + the catalog gap-fill, choosing the
+/// `module_jmp` control-flow registrar per `control_flow`. Shared by the
+/// cataloguing ([`ControlFlowMount::LinearWalk`]) and branch-following
+/// ([`ControlFlowMount::BranchFollowing`]) replay paths so every OTHER
+/// family (text/grp/obj/audio/sel/sys/mem/str) is identical between them.
+fn mount_registry(
+    sink: Arc<dyn TextSurfaceSink>,
+    msg_runtime: Arc<MsgRuntime>,
+    control_flow: ControlFlowMount,
+) -> RlopRegistry {
     let mut registry = RlopRegistry::new();
 
-    // Text (msg) + control-flow — the original 2-of-9 pair. The
-    // cataloguing replay mounts control flow in EXHAUSTIVE-LINEAR-WALK
-    // mode (real numbering, `Advance` dispatch) so it visits every command
-    // and never spins on input-gated loops; see
-    // [`register_control_flow_linear_walk`].
+    // Text (msg) + control-flow. The cataloguing replay mounts control
+    // flow in EXHAUSTIVE-LINEAR-WALK mode (real numbering, `Advance`
+    // dispatch) so it visits every command and never spins on input-gated
+    // loops; the branch-following replay mounts the REAL branch semantics
+    // so a scene EXECUTES its actual control flow.
     register_text_rlops(&mut registry, msg_runtime);
-    register_control_flow_linear_walk(&mut registry);
+    match control_flow {
+        ControlFlowMount::LinearWalk => {
+            register_control_flow_linear_walk(&mut registry);
+        }
+        ControlFlowMount::BranchFollowing => {
+            register_control_flow_branch_following(&mut registry);
+        }
+    }
 
     // Graphics: grp + obj share one GraphicsRuntime (obj re-orders the
     // same layer stack grp populates).
@@ -1104,7 +1142,15 @@ impl ReplayEngine {
         let runtime = Arc::new(MsgRuntime::with_sink(Arc::clone(&sink_dyn)));
         let registry = mount_full_registry(sink_dyn, runtime);
         let mut vm = Vm::new(scene_id, 0);
-        snapshot_identity_loop(&mut vm, &self.store, &registry, opts, scene_id)
+        let mut scheduler = AlwaysReadyScheduler;
+        snapshot_identity_loop(
+            &mut vm,
+            &self.store,
+            &registry,
+            &mut scheduler,
+            opts,
+            scene_id,
+        )
     }
 
     /// Replay from `scene_id` to its terminus against the shared store.
@@ -1123,6 +1169,72 @@ impl ReplayEngine {
             shift_jis: &self.shift_jis,
         };
         drive_loop(&mut vm, &refs, opts, scene_id)
+    }
+
+    /// Drive `scene_id` to its natural terminus by EXECUTING real control
+    /// flow (jumps / calls FOLLOWED, not linear-walked), using a
+    /// deterministic headless [`HeadlessInputScheduler`] to advance past
+    /// pause / wait-for-click yields and to resolve choices by `policy`.
+    ///
+    /// This is the branch-following counterpart to [`Self::replay_from`]
+    /// (which linear-walks for cataloguing): a fresh registry mounts the
+    /// REAL `module_jmp` branch semantics
+    /// ([`register_control_flow_branch_following`]) in place of the
+    /// exhaustive-linear-walk registrar, so the VM follows the scene's
+    /// ACTUAL Jump / Subroutine / FarCall transfers across the multi-scene
+    /// store. Returns a typed [`BranchReplayReport`] recording the
+    /// terminus, the executed control-transfer counts, and the
+    /// input-provider activity.
+    pub fn branch_following_report(
+        &self,
+        scene_id: SceneId,
+        opts: &ReplayOpts,
+        policy: HeadlessChoicePolicy,
+    ) -> BranchReplayReport {
+        let sink: Arc<ReplayTextSink> = Arc::new(ReplayTextSink::default());
+        let sink_dyn: Arc<dyn TextSurfaceSink> = Arc::clone(&sink) as Arc<dyn TextSurfaceSink>;
+        let runtime = Arc::new(MsgRuntime::with_sink(Arc::clone(&sink_dyn)));
+        let registry = mount_registry(
+            sink_dyn,
+            Arc::clone(&runtime),
+            ControlFlowMount::BranchFollowing,
+        );
+        let mut vm = Vm::new(scene_id, 0);
+        let mut scheduler = HeadlessInputScheduler::new(policy);
+        let refs = DriveRefs {
+            store: &self.store,
+            registry: &registry,
+            runtime: &runtime,
+            sink: &sink,
+            shift_jis: &self.shift_jis,
+        };
+        drive_branch_following(&mut vm, &refs, &mut scheduler, opts, scene_id)
+    }
+
+    /// Snapshot/restore identity at every tick boundary while driving
+    /// `scene_id` to its terminus with the BRANCH-FOLLOWING registry +
+    /// the deterministic headless input-provider. The branch-following
+    /// counterpart to [`Self::verify_snapshot_restore_each_tick`].
+    pub fn verify_branch_snapshot_restore_each_tick(
+        &self,
+        scene_id: SceneId,
+        opts: &ReplayOpts,
+        policy: HeadlessChoicePolicy,
+    ) -> Result<SnapshotIdentityReport, ReplayError> {
+        let sink: Arc<ReplayTextSink> = Arc::new(ReplayTextSink::default());
+        let sink_dyn: Arc<dyn TextSurfaceSink> = Arc::clone(&sink) as Arc<dyn TextSurfaceSink>;
+        let runtime = Arc::new(MsgRuntime::with_sink(Arc::clone(&sink_dyn)));
+        let registry = mount_registry(sink_dyn, runtime, ControlFlowMount::BranchFollowing);
+        let mut vm = Vm::new(scene_id, 0);
+        let mut scheduler = HeadlessInputScheduler::new(policy);
+        snapshot_identity_loop(
+            &mut vm,
+            &self.store,
+            &registry,
+            &mut scheduler,
+            opts,
+            scene_id,
+        )
     }
 }
 
@@ -1231,21 +1343,30 @@ pub fn verify_snapshot_restore_each_tick(
     opts: &ReplayOpts,
 ) -> Result<SnapshotIdentityReport, ReplayError> {
     let mut ctx = stage_replay_context(seen_bytes, scene_id)?;
-    snapshot_identity_loop(&mut ctx.vm, &ctx.store, &ctx.registry, opts, scene_id)
+    let mut scheduler = AlwaysReadyScheduler;
+    snapshot_identity_loop(
+        &mut ctx.vm,
+        &ctx.store,
+        &ctx.registry,
+        &mut scheduler,
+        opts,
+        scene_id,
+    )
 }
 
-/// Drive `vm` against `store`/`registry` to its terminus, asserting the
-/// substrate snapshot round-trips byte-identically at every tick
-/// boundary. Shared by the free [`verify_snapshot_restore_each_tick`] and
-/// [`ReplayEngine::verify_snapshot_restore_each_tick`].
+/// Drive `vm` against `store`/`registry` to its terminus with `scheduler`,
+/// asserting the substrate snapshot round-trips byte-identically at every
+/// tick boundary. Shared by the cataloguing snapshot-identity checks (with
+/// [`AlwaysReadyScheduler`]) and the branch-following one (with
+/// [`HeadlessInputScheduler`]).
 fn snapshot_identity_loop(
     vm: &mut Vm,
     store: &dyn SceneStore,
     registry: &RlopRegistry,
+    scheduler: &mut dyn crate::rlop::LongOpScheduler,
     opts: &ReplayOpts,
     scene_id: u16,
 ) -> Result<SnapshotIdentityReport, ReplayError> {
-    let mut scheduler = AlwaysReadyScheduler;
     let mut steps_executed: u32 = 0;
     let mut ticks_verified: u32 = 0;
 
@@ -1258,7 +1379,7 @@ fn snapshot_identity_loop(
             break ReplayOutcome::BudgetExhausted { events: 0 };
         }
         let pc_before = vm.pc();
-        let step = match vm.step(store, registry, &mut scheduler) {
+        let step = match vm.step(store, registry, scheduler) {
             Ok(step) => step,
             Err(err) => {
                 break ReplayOutcome::FatalDiagnostic {
@@ -1466,9 +1587,259 @@ fn drive_loop(vm: &mut Vm, refs: &DriveRefs<'_>, opts: &ReplayOpts, scene_id: u1
     }
 }
 
+/// Counts of the real control-flow transfers a branch-following replay
+/// EXECUTED — the evidence that jumps/calls were FOLLOWED (not
+/// linear-walked). A linear walk would record ZERO of every field; a
+/// branch-following walk records non-zero transfers and, crucially,
+/// backward jumps + cross-scene transfers a linear walk can never produce.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ControlTransferCounts {
+    /// Intra-scene `goto`-family jumps executed (pc rewritten within the
+    /// same scene).
+    pub intra_scene_jumps: u64,
+    /// Of `intra_scene_jumps`, how many jumped BACKWARD (target pc < the
+    /// jumping command's pc) — a loop/re-entry a linear walk cannot make.
+    pub backward_jumps: u64,
+    /// Cross-scene `jump` transfers executed (target scene differs).
+    pub cross_scene_jumps: u64,
+    /// Intra-scene `gosub` subroutine calls executed.
+    pub subroutine_calls: u64,
+    /// Cross-scene `farcall` calls executed.
+    pub far_calls: u64,
+    /// `ret` returns executed (subroutine frame popped).
+    pub returns: u64,
+    /// `rtl` returns executed (far-call frame popped).
+    pub returns_from_call: u64,
+}
+
+impl ControlTransferCounts {
+    /// Total control transfers executed. `> 0` proves the walk FOLLOWED
+    /// branches rather than linear-walking.
+    pub fn total(&self) -> u64 {
+        self.intra_scene_jumps
+            + self.cross_scene_jumps
+            + self.subroutine_calls
+            + self.far_calls
+            + self.returns
+            + self.returns_from_call
+    }
+}
+
+/// How a branch-following walk terminated.
+///
+/// A RealLive scene reaches its natural end in one of two ways: it runs
+/// off the end of its bytecode / halts (`EndOfScene`), or — for a scene
+/// that is itself a subroutine (entered by the parent via `farcall` /
+/// `gosub`) — it executes its top-level `ret` / `rtl`. Driven STANDALONE
+/// (with an empty call stack, rather than being called into), that
+/// top-level return pops an empty stack; the driver classifies it as
+/// [`BranchTerminus::ReturnedToCaller`] — a NATURAL terminus, not a fault,
+/// because the scene ran its real control flow to its return point. Both
+/// are natural termini ([`BranchTerminus::is_natural`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BranchTerminus {
+    /// pc ran past the end of the scene, or a `Halt` was executed.
+    EndOfScene,
+    /// A top-level `ret` / `rtl` popped the (empty) call stack — the
+    /// standalone-driven subroutine scene returned to its notional caller.
+    ReturnedToCaller,
+    /// A cross-scene `jump` / `farcall` targeted a scene absent from the
+    /// store (for the proven corpora: a scene the bytecode decoder has not
+    /// yet recovered, or a genuinely-absent sentinel scene). NOT a natural
+    /// terminus — records the missing target.
+    SceneNotFound(SceneId),
+    /// A cross-scene transfer named an entrypoint the target scene does
+    /// not declare.
+    EntrypointNotFound(SceneId, u16),
+    /// The step budget was exhausted (e.g. an event-gated spin loop a
+    /// headless walk cannot break). NOT a natural terminus.
+    BudgetExhausted,
+    /// Any other typed VM error (carries the stable semantic code).
+    OtherFatal(String),
+}
+
+impl BranchTerminus {
+    /// Whether this terminus is a NATURAL end of execution (the scene ran
+    /// its real control flow to completion), as opposed to a gap
+    /// (unresolved cross-scene target / budget spin / fault).
+    pub fn is_natural(&self) -> bool {
+        matches!(self, Self::EndOfScene | Self::ReturnedToCaller)
+    }
+}
+
+/// Typed result of a branch-following replay
+/// ([`ReplayEngine::branch_following_report`]). `PartialEq` so a test can
+/// assert two runs of the same scene produce a byte-identical report
+/// (determinism).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BranchReplayReport {
+    /// Scene the walk started from.
+    pub scene_id: SceneId,
+    /// How the walk terminated (natural end vs gap).
+    pub terminus: BranchTerminus,
+    /// Number of `Advanced` / `LongOpResumed` steps executed.
+    pub steps: u32,
+    /// Executed control-transfer counts (the branch-following evidence).
+    pub transfers: ControlTransferCounts,
+    /// Distinct scene ids the walk actually entered (`>1` iff a
+    /// cross-scene transfer was followed into a resolvable scene).
+    pub scenes_visited: std::collections::BTreeSet<SceneId>,
+    /// Sorted, de-duplicated `(module_type, module_id, opcode)` tuples the
+    /// walk could not dispatch on the EXECUTED path. The acceptance
+    /// asserts this is EMPTY.
+    pub unknown_opcode_keys: Vec<(u8, u8, u16)>,
+    /// `Some(scene)` iff the walk terminated because a cross-scene
+    /// transfer targeted a scene absent from the store. The acceptance
+    /// asserts this is `None`.
+    pub scene_not_found: Option<SceneId>,
+    /// Text lines surfaced through the substrate sink during the walk.
+    pub text_lines: usize,
+    /// Pause / wait-for-click yields the input-provider auto-dismissed.
+    pub pauses_advanced: u64,
+    /// Choice prompts the input-provider resolved.
+    pub choices_made: u64,
+}
+
+/// Drive `vm` to its natural terminus by FOLLOWING real control flow,
+/// using `scheduler` (a deterministic headless input-provider) to advance
+/// past pause/wait yields and resolve choices. Records the executed
+/// control-transfer counts + terminus into a [`BranchReplayReport`].
+fn drive_branch_following(
+    vm: &mut Vm,
+    refs: &DriveRefs<'_>,
+    scheduler: &mut HeadlessInputScheduler,
+    opts: &ReplayOpts,
+    scene_id: u16,
+) -> BranchReplayReport {
+    let mut steps: u32 = 0;
+    let mut transfers = ControlTransferCounts::default();
+    let mut scenes_visited: std::collections::BTreeSet<SceneId> = std::collections::BTreeSet::new();
+    scenes_visited.insert(scene_id);
+    let mut unknown: Vec<(u8, u8, u16)> = Vec::new();
+    let mut text_lines: usize = 0;
+
+    let terminus: BranchTerminus = loop {
+        if steps >= opts.step_budget {
+            break BranchTerminus::BudgetExhausted;
+        }
+        let pc_before = vm.pc();
+        let scene_before = vm.scene();
+        let step = match vm.step(refs.store, refs.registry, scheduler) {
+            Ok(step) => step,
+            Err(err) => {
+                break match err {
+                    crate::VmError::SceneNotFound { scene } => BranchTerminus::SceneNotFound(scene),
+                    crate::VmError::EntrypointNotFound { scene, entrypoint } => {
+                        BranchTerminus::EntrypointNotFound(scene, entrypoint)
+                    }
+                    // A top-level `ret` / `rtl` popping the empty stack is
+                    // the natural return of a standalone-driven subroutine
+                    // scene — the scene executed its real control flow to
+                    // its return point. Count it so the transfer totals
+                    // reflect the final return.
+                    crate::VmError::EmptyStack { expected, .. } => {
+                        if expected == "far_call" {
+                            transfers.returns_from_call += 1;
+                        } else {
+                            transfers.returns += 1;
+                        }
+                        BranchTerminus::ReturnedToCaller
+                    }
+                    other => BranchTerminus::OtherFatal(vm_error_semantic_code(&other).to_string()),
+                };
+            }
+        };
+
+        match step {
+            StepOutcome::Advanced { event } => {
+                match &event {
+                    VmEvent::Textout { raw_bytes }
+                        if refs.shift_jis.contains(&(scene_before, pc_before)) =>
+                    {
+                        dispatch_textout(refs.runtime, raw_bytes);
+                        if let Some(op) = refs.registry.get(RlopKey::new(
+                            MSG_MODULE_TYPE,
+                            MSG_MODULE_ID,
+                            OPCODE_LINE_BREAK,
+                        )) {
+                            let _ = op.dispatch(vm, &[]);
+                        }
+                        text_lines += refs.sink.drain().len();
+                    }
+                    VmEvent::CommandDispatched { key, outcome } if key.module_id == 1 => {
+                        // Count the real control transfer this jmp op
+                        // executed. `outcome` is the RESOLVED outcome
+                        // (cross-scene entrypoints already resolved to a
+                        // concrete scene/pc), so scene comparison is honest.
+                        match outcome {
+                            DispatchOutcome::Jump { scene, pc } => {
+                                if *scene == scene_before {
+                                    transfers.intra_scene_jumps += 1;
+                                    if *pc < pc_before {
+                                        transfers.backward_jumps += 1;
+                                    }
+                                } else {
+                                    transfers.cross_scene_jumps += 1;
+                                }
+                            }
+                            DispatchOutcome::Subroutine { .. } => transfers.subroutine_calls += 1,
+                            DispatchOutcome::FarCall { .. } => transfers.far_calls += 1,
+                            DispatchOutcome::Return => transfers.returns += 1,
+                            DispatchOutcome::ReturnFromCall => transfers.returns_from_call += 1,
+                            _ => {}
+                        }
+                    }
+                    _ => {}
+                }
+                scenes_visited.insert(vm.scene());
+                for warning in vm.take_warnings() {
+                    if let crate::VmWarning::MissingRlop { key, .. } = warning {
+                        unknown.push((key.module_type, key.module_id, key.opcode));
+                    }
+                }
+            }
+            StepOutcome::LongOpResumed { .. } => {}
+            StepOutcome::Suspended { .. } => {
+                // The headless input-provider resumes every longop, so a
+                // Suspended here would be a provider bug. Bail bounded.
+                break BranchTerminus::BudgetExhausted;
+            }
+            StepOutcome::EndOfScene { .. } | StepOutcome::Halted => {
+                break BranchTerminus::EndOfScene;
+            }
+        }
+
+        steps = steps.saturating_add(1);
+    };
+
+    unknown.sort_unstable();
+    unknown.dedup();
+
+    let scene_not_found = if let BranchTerminus::SceneNotFound(scene) = &terminus {
+        Some(*scene)
+    } else {
+        None
+    };
+
+    BranchReplayReport {
+        scene_id,
+        terminus,
+        steps,
+        transfers,
+        scenes_visited,
+        unknown_opcode_keys: unknown,
+        scene_not_found,
+        text_lines,
+        pauses_advanced: scheduler.pauses_advanced(),
+        choices_made: scheduler.choices_made(),
+    }
+}
+
 fn vm_error_semantic_code(err: &crate::VmError) -> &'static str {
     match err {
         crate::VmError::SceneNotFound { .. } => "utsushi.reallive.vm.scene_not_found",
+        crate::VmError::EntrypointNotFound { .. } => "utsushi.reallive.vm.entrypoint_not_found",
         crate::VmError::UnalignedPc { .. } => "utsushi.reallive.vm.unaligned_pc",
         crate::VmError::EmptyStack { .. } => "utsushi.reallive.vm.empty_stack",
         crate::VmError::FrameKindMismatch { .. } => "utsushi.reallive.vm.frame_kind_mismatch",
