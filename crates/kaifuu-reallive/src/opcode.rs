@@ -901,6 +901,60 @@ pub fn is_recognized_opener(byte: u8) -> bool {
 /// Width of a goto-family jump-target pointer (`i32` LE).
 const GOTO_POINTER_LEN: usize = 4;
 
+/// One captured goto-family jump-target pointer inside a scene's
+/// decompressed (and, for `xor_2` titles, decrypted) bytecode.
+///
+/// RealLive control-flow commands (`goto`/`goto_if`/`goto_on`/`goto_case`/
+/// `gosub*`/`farcall*`) carry trailing `i32 LE` pointers whose value is the
+/// **absolute byte offset** of the jump destination within the same scene
+/// bytecode stream (rlvm `libreallive` resolves each pointer against the
+/// scene's `Pointers` table, which is a byte-offset index). When a
+/// length-changing text splice shifts everything after the edit, every
+/// pointer whose destination sits at/after the edit must be re-based by the
+/// cumulative byte delta — the patchback drives that off this record.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct GotoPointerSite {
+    /// Absolute byte offset (within the scene bytecode) of the 4-byte
+    /// `i32 LE` pointer itself — where the recalculated value is written back.
+    pub pointer_offset: usize,
+    /// The current jump-target byte offset the pointer encodes (its `i32`
+    /// value, absolute within the same scene bytecode stream).
+    pub target: i32,
+}
+
+/// Walk a decompressed (and, for `xor_2` titles, decrypted) scene bytecode
+/// stream and collect every goto-family jump-target pointer site.
+///
+/// Drives off the single-source-of-truth element decoder ([`decode_element`]
+/// / [`decode_command`]) so the pointer offsets can never drift from the
+/// authoritative command framing: for a Command opener the pointer-recording
+/// [`decode_command`] is called; every other element is advanced by
+/// [`decode_element`]. The returned offsets/values are absolute within
+/// `bytes` (the same coordinate space the text-splice offsets use), so the
+/// patchback can re-base each target by the cumulative splice delta and write
+/// the new value back at `pointer_offset`.
+pub fn collect_goto_pointer_sites(
+    bytes: &[u8],
+) -> Result<Vec<GotoPointerSite>, RealLiveParseError> {
+    if bytes.is_empty() {
+        return Err(RealLiveParseError::TruncatedBytecode { input_len: 0 });
+    }
+    let mut sites: Vec<GotoPointerSite> = Vec::new();
+    let mut pos: usize = 0;
+    while pos < bytes.len() {
+        let consumed = if bytes[pos] == opener::COMMAND {
+            let (_op, consumed) = decode_command(bytes, pos, &mut sites)?;
+            consumed
+        } else {
+            let (_op, consumed) = decode_element(bytes, pos)?;
+            consumed
+        };
+        debug_assert!(consumed > 0, "decode must make forward progress");
+        pos += consumed;
+    }
+    Ok(sites)
+}
+
 /// Goto-family classification of a Command, keyed on the 32-bit command
 /// id `(module_type << 24) | (module_id << 16) | opcode_u16` (rlvm
 /// `libreallive/bytecode.cc::BytecodeElement::Read`). These are the
@@ -1298,7 +1352,11 @@ fn parse_arg_list(
 
 /// Decode a single Command at `pos` into a `RealLiveOpcode` plus the
 /// number of bytes consumed. `pos` points at the `0x23` opener byte.
-fn decode_command(bytes: &[u8], pos: usize) -> Result<(RealLiveOpcode, usize), RealLiveParseError> {
+fn decode_command(
+    bytes: &[u8],
+    pos: usize,
+    goto_sites: &mut Vec<GotoPointerSite>,
+) -> Result<(RealLiveOpcode, usize), RealLiveParseError> {
     if bytes.len() - pos < COMMAND_HEADER_LEN {
         return Err(RealLiveParseError::TruncatedCommandHeader {
             offset: pos as u64,
@@ -1327,13 +1385,26 @@ fn decode_command(bytes: &[u8], pos: usize) -> Result<(RealLiveOpcode, usize), R
     let mut consumed = COMMAND_HEADER_LEN;
     let mut args_bytes: Vec<CommandArg> = Vec::new();
 
-    // Helper: consume `count` trailing `i32` jump-target pointers.
-    let consume_pointers = |consumed: &mut usize, count: usize| -> Result<(), RealLiveParseError> {
+    // Helper: consume `count` trailing `i32` jump-target pointers, recording
+    // each pointer's absolute byte offset + current target value so the
+    // patchback can re-base it after a length-changing splice.
+    let mut consume_pointers = |consumed: &mut usize,
+                                count: usize|
+     -> Result<(), RealLiveParseError> {
         let need = count * GOTO_POINTER_LEN;
         if pos + *consumed + need > bytes.len() {
             return Err(RealLiveParseError::TruncatedCommandArgs {
                 offset: pos as u64,
                 argc,
+            });
+        }
+        for k in 0..count {
+            let ptr = pos + *consumed + k * GOTO_POINTER_LEN;
+            let target =
+                i32::from_le_bytes([bytes[ptr], bytes[ptr + 1], bytes[ptr + 2], bytes[ptr + 3]]);
+            goto_sites.push(GotoPointerSite {
+                pointer_offset: ptr,
+                target,
             });
         }
         *consumed += need;
@@ -1700,7 +1771,12 @@ pub(crate) fn decode_element(
             let raw_bytes = bytes[pos + 1..pos + len].to_vec();
             Ok((RealLiveOpcode::Expression { raw_bytes }, len))
         }
-        opener::COMMAND => decode_command(bytes, pos),
+        opener::COMMAND => {
+            // The single-element decode path discards goto-pointer sites;
+            // `collect_goto_pointer_sites` is the accumulating walker.
+            let mut goto_sites = Vec::new();
+            decode_command(bytes, pos, &mut goto_sites)
+        }
         _ => {
             let (raw_bytes, consumed) = scan_textout(bytes, pos);
             Ok((
@@ -2397,7 +2473,8 @@ mod tests {
             (argc >> 8) as u8,
             0, // overload
         ];
-        let err = decode_command(&bytes, 0).expect_err("missing jump targets must error");
+        let err = decode_command(&bytes, 0, &mut Vec::new())
+            .expect_err("missing jump targets must error");
         assert!(
             matches!(
                 err,

@@ -18,9 +18,17 @@
 //! - KAIFUU-174 adds Shift-JIS decode/encode via `encoding_rs` (WHATWG-
 //!   spec implementation, not a copy of rlvm or RLDEV), a bounded
 //!   protected-span catalogue derived from public RLDEV documentation,
-//!   and length-preserving patch-back. Offset-table rewriting and
-//!   jump-target recalculation are not implemented; length-changing edits
-//!   emit `kaifuu.reallive.patchback_offset_overflow` Fatal.
+//!   and slot patch-back.
+//! - The canonical real-bytes patch driver
+//!   ([`apply_translated_bundle`]) supports **length-CHANGING** edits: a
+//!   translated body longer or shorter than the source rewrites the
+//!   10,000-slot scene offset table AND recalculates every goto-family
+//!   jump-target pointer (`goto`/`goto_if`/`goto_on`/`goto_case`/`gosub*`/
+//!   `farcall*`) by the cumulative byte delta of the splices before its
+//!   destination — so a jump to opcode X still points to opcode X at its
+//!   new offset. A jump landing strictly inside an edited body surfaces
+//!   `kaifuu.reallive.patchback_goto_target_unresolvable` Fatal. Proven on
+//!   Sweetie HD scene 8509 (91 goto pointers, longer + shorter bodies).
 //! - KAIFUU-191 replaces the synthetic `0x23 ('#') opener + named opcode
 //!   byte` shape with the **real** RealLive bytecode opener-byte switch
 //!   documented in `docs/research/reallive-engine.md` §D and confirmed
@@ -164,20 +172,21 @@ pub use inventory::{
     build_scene_inventory,
 };
 pub use opcode::{
-    COMMAND_HEADER_LEN, CommandArg, Expr, RealLiveOpcode, RealLiveParseError, TextEncoding,
-    decode_dialogue_textout, encode_choice_option_next_string_safe, is_recognized_opener,
-    is_shift_jis_textout_lead, is_structural_opener, parse_expression, parse_real_bytecode,
-    parse_real_bytecode_spans,
+    COMMAND_HEADER_LEN, CommandArg, Expr, GotoPointerSite, RealLiveOpcode, RealLiveParseError,
+    TextEncoding, collect_goto_pointer_sites, decode_dialogue_textout,
+    encode_choice_option_next_string_safe, is_recognized_opener, is_shift_jis_textout_lead,
+    is_structural_opener, parse_expression, parse_real_bytecode, parse_real_bytecode_spans,
 };
 pub use opcodes::NamedOpcode;
 pub use parser::{parse_scene, parse_scene_into_ast};
 pub use patchback::bundle_driven::{
     PATCHBACK_ARCHIVE_PARSE_FAILURE_CODE, PATCHBACK_BUNDLE_SCHEMA_INVALID_CODE,
     PATCHBACK_COMPRESS_FAILURE_CODE, PATCHBACK_DECOMPRESS_FAILURE_CODE,
-    PATCHBACK_PROVENANCE_MISMATCH_CODE, PATCHBACK_SCENE_HEADER_INVALID_CODE,
-    PATCHBACK_SCENE_PACKING_OVERFLOW_CODE, PATCHBACK_TARGET_ENCODE_FAILURE_CODE,
-    PATCHBACK_TARGET_NONEMPTY_CODE, PatchbackEncoding, PatchbackError, PatchbackOpts,
-    TranslatedBundleV02, TranslatedUnitTarget, apply_translated_bundle,
+    PATCHBACK_GOTO_TARGET_UNRESOLVABLE_CODE, PATCHBACK_PROVENANCE_MISMATCH_CODE,
+    PATCHBACK_SCENE_HEADER_INVALID_CODE, PATCHBACK_SCENE_PACKING_OVERFLOW_CODE,
+    PATCHBACK_TARGET_ENCODE_FAILURE_CODE, PATCHBACK_TARGET_NONEMPTY_CODE, PatchbackEncoding,
+    PatchbackError, PatchbackOpts, TranslatedBundleV02, TranslatedUnitTarget,
+    apply_translated_bundle,
 };
 pub use protected_spans::{
     PROTECTED_SPAN_DECODED_RANGE_CODE, PROTECTED_SPAN_UNKNOWN_CONTROL_CODE, ProtectedSpanError,

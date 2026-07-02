@@ -70,6 +70,8 @@ pub const PATCHBACK_DECOMPRESS_FAILURE_CODE: &str = "kaifuu.reallive.patchback_d
 pub const PATCHBACK_COMPRESS_FAILURE_CODE: &str = "kaifuu.reallive.patchback_compress_failure";
 pub const PATCHBACK_ARCHIVE_PARSE_FAILURE_CODE: &str =
     "kaifuu.reallive.patchback_archive_parse_failure";
+pub const PATCHBACK_GOTO_TARGET_UNRESOLVABLE_CODE: &str =
+    "kaifuu.reallive.patchback_goto_target_unresolvable";
 
 /// Fatal errors raised by [`apply_translated_bundle`].
 #[derive(Debug, Clone, Error)]
@@ -127,6 +129,21 @@ pub enum PatchbackError {
         "{PATCHBACK_SCENE_PACKING_OVERFLOW_CODE}: patched archive size {observed_size} exceeds the encodable budget; {reason}"
     )]
     ScenePackingOverflow { observed_size: u64, reason: String },
+    /// A goto-family jump-target pointer could not be recalculated after a
+    /// length-changing splice: its destination fell strictly INSIDE an edited
+    /// text body (a jump into the middle of the bytes being replaced), so the
+    /// re-based offset would be ambiguous. Reported precisely rather than
+    /// silently mis-patched.
+    #[error(
+        "{PATCHBACK_GOTO_TARGET_UNRESOLVABLE_CODE}: scene {scene_id:04} jump pointer at byte {pointer_offset:#x} targets byte {target} which lies strictly inside an edited text body [{body_start:#x}, {body_end:#x}); cannot re-base"
+    )]
+    GotoTargetUnresolvable {
+        scene_id: u16,
+        pointer_offset: usize,
+        target: i64,
+        body_start: usize,
+        body_end: usize,
+    },
 }
 
 impl From<BridgeContractValidationError> for PatchbackError {
@@ -835,6 +852,24 @@ fn patch_scene_blob(
         });
     }
 
+    // LENGTH-CHANGING SUPPORT — jump-target recalculation.
+    //
+    // A text splice that changes byte length shifts every byte AFTER the
+    // edit. RealLive control-flow commands (`goto`/`goto_if`/`goto_on`/
+    // `goto_case`/`gosub*`/`farcall*`) carry trailing `i32 LE` pointers whose
+    // value is the ABSOLUTE byte offset of the jump destination within this
+    // same decompressed scene bytecode (rlvm resolves each against the scene
+    // `Pointers` byte-offset table). Left untouched they would point at stale
+    // offsets — into the middle of a command after a longer edit, or past a
+    // now-shorter body. Re-base every pointer whose destination sits at/after
+    // an edit by the cumulative delta of the splices that precede it. The
+    // pointer VALUES are rewritten in place at their PRE-splice offsets; the
+    // subsequent `splice` calls then carry those (already-corrected) pointer
+    // bytes to their new positions verbatim (goto pointers live in Command
+    // bodies, disjoint from the Textout / choice bodies being spliced, so no
+    // splice range overlaps a pointer's 4 bytes).
+    rebase_goto_targets(scene_id, &mut decompressed, &planned_splices)?;
+
     // Apply splices highest-offset-first so earlier splices don't
     // shift later ones.
     planned_splices.sort_by_key(|splice| std::cmp::Reverse(splice.start_byte));
@@ -903,6 +938,107 @@ fn patch_scene_blob(
     }
     output.extend_from_slice(&compressed_new);
     Ok(output)
+}
+
+/// Re-base every goto-family jump-target pointer in `decompressed` for the
+/// length change the `splices` introduce, writing the corrected `i32 LE`
+/// value in place at each pointer's PRE-splice byte offset.
+///
+/// Coordinate space: pointer offsets and pointer target values, and the
+/// splice `start_byte`/`end_byte`, are all absolute within the same
+/// pre-splice decompressed bytecode stream. A splice replaces `[s, e)` with
+/// `new_bytes` (length `n`), a per-splice delta of `n - (e - s)`.
+///
+/// For a jump target `T`:
+/// - `T <= s` for a splice: that splice is entirely at/after `T`, so it does
+///   NOT move `T` (a jump to the very start `s` of an edited element still
+///   lands at the new start of the replacement text).
+/// - `T >= e` for a splice: the whole edited body sits before `T`, so `T`
+///   shifts by that splice's delta.
+/// - `s < T < e`: the target lands strictly inside the bytes being replaced
+///   — a jump into the middle of an edited text body. This is not
+///   recalculable (the interior offset has no stable image), so it is a
+///   typed [`PatchbackError::GotoTargetUnresolvable`] rather than a silent
+///   mis-patch.
+///
+/// The corrected value is `T + Σ delta_i` over every splice with `e_i <= T`.
+/// Negative sentinels (`T < 0`) and out-of-splice targets are left unchanged
+/// (no splice satisfies `e_i <= T` for a negative `T`). Pointer bytes never
+/// overlap a splice range (goto pointers live in Command bodies, splices in
+/// Textout / choice bodies — disjoint elements), so writing at the pre-splice
+/// offset and then splicing carries the corrected pointer to its new home
+/// verbatim.
+fn rebase_goto_targets(
+    scene_id: u16,
+    decompressed: &mut [u8],
+    splices: &[PlannedSplice],
+) -> Result<(), PatchbackError> {
+    // No length change ⇒ nothing to re-base (length-preserving fast path).
+    if splices
+        .iter()
+        .all(|s| s.new_bytes.len() == s.end_byte - s.start_byte)
+    {
+        return Ok(());
+    }
+
+    let sites = crate::opcode::collect_goto_pointer_sites(decompressed).map_err(|err| {
+        PatchbackError::DecompressFailure {
+            scene_id,
+            message: format!("goto-pointer collection failed during jump recalculation: {err}"),
+        }
+    })?;
+
+    for site in &sites {
+        let target = site.target;
+        // Negative / null sentinel: never a byte offset into this stream;
+        // leave verbatim.
+        if target < 0 {
+            continue;
+        }
+        let target_usize = target as usize;
+
+        let mut cumulative_delta: i64 = 0;
+        for splice in splices {
+            let delta =
+                splice.new_bytes.len() as i64 - (splice.end_byte - splice.start_byte) as i64;
+            if delta == 0 {
+                continue;
+            }
+            if target_usize > splice.start_byte && target_usize < splice.end_byte {
+                // Strictly inside an edited body — unresolvable.
+                return Err(PatchbackError::GotoTargetUnresolvable {
+                    scene_id,
+                    pointer_offset: site.pointer_offset,
+                    target: target as i64,
+                    body_start: splice.start_byte,
+                    body_end: splice.end_byte,
+                });
+            }
+            if splice.end_byte <= target_usize {
+                cumulative_delta += delta;
+            }
+        }
+
+        if cumulative_delta == 0 {
+            continue;
+        }
+
+        let new_target = target as i64 + cumulative_delta;
+        let new_target_i32: i32 =
+            new_target
+                .try_into()
+                .map_err(|_| PatchbackError::GotoTargetUnresolvable {
+                    scene_id,
+                    pointer_offset: site.pointer_offset,
+                    target: target as i64,
+                    body_start: 0,
+                    body_end: 0,
+                })?;
+        let ptr = site.pointer_offset;
+        decompressed[ptr..ptr + 4].copy_from_slice(&new_target_i32.to_le_bytes());
+    }
+
+    Ok(())
 }
 
 /// Authoritative byte-range record for one text-emitting opcode in a
@@ -1691,6 +1827,89 @@ mod tests {
         let err = TranslatedBundleV02::from_json(&bundle_json)
             .expect_err("missing target object must surface typed error");
         assert!(matches!(err, PatchbackError::BundleSchemaInvalid { .. }));
+    }
+
+    /// Build a synthetic single-scene archive whose bytecode is
+    /// `Textout("ハ") · goto(@target) · MetaLine`, where the `goto` pointer
+    /// targets the trailing MetaLine (an element boundary AFTER the edited
+    /// dialogue). Returns `(archive, goto_target_offset, metaline_offset)`.
+    fn build_archive_with_goto() -> (Vec<u8>, i32, usize) {
+        let mut plaintext: Vec<u8> = Vec::new();
+        // occ0 dialogue "ハ" at decompressed offset 0..2.
+        plaintext.extend_from_slice(&[0x83, 0x6E]);
+        // `goto` command (command_id 0x0001_0000): 0x23 opener, module_type=0,
+        // module_id=1 (JMP), opcode=0, argc=0, overload=0, then one i32 target.
+        // Header occupies offset 2..10; the i32 pointer occupies 10..14.
+        plaintext.extend_from_slice(&[0x23, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00]);
+        let metaline_offset: usize = 14;
+        plaintext.extend_from_slice(&(metaline_offset as i32).to_le_bytes());
+        // The jump target: the MetaLine at offset 14.
+        plaintext.extend_from_slice(&[0x0A, 0x05, 0x00]);
+        assert_eq!(plaintext.len(), 17);
+
+        let blob = scene_blob_from_plaintext(&plaintext);
+        let archive = assemble_archive(&[(1, blob)]);
+        (archive, metaline_offset as i32, metaline_offset)
+    }
+
+    /// A length-changing dialogue edit (both longer and shorter) re-bases the
+    /// trailing `goto` pointer so it still targets the MetaLine at its NEW
+    /// offset — never a stale offset that would land mid-command.
+    #[test]
+    fn length_changing_edit_recalculates_goto_target() {
+        for target_text in ["HELLO WORLD FROM KAIFUU PATCHBACK", "A"] {
+            let (archive, orig_target, _orig_metaline) = build_archive_with_goto();
+            let new_body = encode_shift_jis_slot(target_text).expect("encode");
+            let delta = new_body.len() as i64 - 2; // source "ハ" is 2 bytes.
+            assert_ne!(delta, 0, "test needs a genuine length change");
+
+            let bundle_json =
+                make_bundle_json(REALLIVE_SEEN_TXT_DIRECTORY_BYTE_LEN, 0, 2, target_text);
+            let bundle = TranslatedBundleV02::from_json(&bundle_json).expect("bundle parses");
+            let patched = apply_translated_bundle(
+                &archive,
+                &bundle,
+                &PatchbackOpts::shift_jis(TranslationScope::DialogueOnly),
+            )
+            .expect("length-changing patch with a goto must succeed");
+
+            let new_decompressed = decompress_scene(&patched, 1);
+
+            // The goto pointer was re-based by the length delta.
+            let sites = crate::opcode::collect_goto_pointer_sites(&new_decompressed)
+                .expect("patched scene goto pointers collect");
+            assert_eq!(sites.len(), 1, "the synthetic scene has exactly one goto");
+            let expected_target = orig_target as i64 + delta;
+            assert_eq!(
+                sites[0].target as i64, expected_target,
+                "goto target must be re-based by {delta} (source {orig_target} -> {expected_target})"
+            );
+
+            // The re-based target still lands on an element boundary — the
+            // MetaLine that moved with the length change.
+            let spans =
+                parse_real_bytecode(&new_decompressed).expect("patched bytecode re-decodes");
+            let mut cursor = 0usize;
+            let mut lands_on_metaline = false;
+            for op in &spans {
+                if cursor == sites[0].target as usize {
+                    assert!(
+                        matches!(op, RealLiveOpcode::MetaLine { .. }),
+                        "goto must still target the MetaLine, got {}",
+                        op.label()
+                    );
+                    lands_on_metaline = true;
+                }
+                let (_o, w) = crate::opcode::decode_element(&new_decompressed, cursor)
+                    .expect("element decodes");
+                cursor += w;
+            }
+            assert!(
+                lands_on_metaline,
+                "re-based goto target {} must land on an element boundary",
+                sites[0].target
+            );
+        }
     }
 
     #[test]

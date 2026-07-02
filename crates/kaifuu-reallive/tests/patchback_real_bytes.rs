@@ -34,9 +34,10 @@ use std::path::PathBuf;
 use kaifuu_reallive::{
     BridgeOpts, PatchbackOpts, REALLIVE_SEEN_TXT_DIRECTORY_BYTE_LEN, RealLiveOpcode, SceneHeader,
     TranslatedBundleV02, TranslationScope, Xor2Cipher, Xor2DecScene, apply_translated_bundle,
-    compiler_version_uses_xor2, decode_dialogue_textout, decompress_avg32,
-    encode_choice_option_next_string_safe, gameexe::parse_gameexe_inventory, parse_archive,
-    parse_real_bytecode, produce_bundle, recover_archive_cipher,
+    collect_goto_pointer_sites, compiler_version_uses_xor2, decode_dialogue_textout,
+    decompress_avg32, encode_choice_option_next_string_safe, gameexe::parse_gameexe_inventory,
+    parse_archive, parse_real_bytecode, parse_real_bytecode_spans, produce_bundle,
+    recover_archive_cipher,
 };
 
 const SWEETIE_HD_GAME_ID: &str = "sweetie-hd";
@@ -706,6 +707,248 @@ fn scope_dialogue_only_carries_scene_2011_choice_byte_identical() {
          ({} options), dialogue translated",
         source_choice.len()
     );
+}
+
+/// A goto-rich Sweetie HD dialogue scene used by the length-changing
+/// jump-recalculation test. Scene 8509 decodes 100% clean (0 unknown, 0
+/// generic Command), surfaces 72 translatable dialogue units, and carries
+/// **91 goto-family jump-target pointers**, every one of whose destination
+/// sits AFTER the first dialogue body — so a length-changing edit to the
+/// dialogue shifts all 91 targets and forces the recalculation path.
+const GOTO_SCENE_ID: u16 = 8509;
+
+/// A LONGER en-US replacement body. Deliberately long enough that even
+/// replacing a multi-byte Shift-JIS source line (2 bytes/char) grows the
+/// total scene bytecode — a genuine length-INCREASING edit. Carries NO
+/// structural-opener byte (`0x00 0x0A 0x21 0x23 0x24 0x2C 0x40`, i.e. no
+/// `,` `!` `#` `$` `@`) so it re-decodes as exactly ONE Textout element and
+/// the scene's element count is preserved (the same-logical-element jump
+/// assertion below keys on that 1:1 element correspondence).
+const LONG_SENTINEL: &str = "「[EN] This is a deliberately long English localization line \
+    padded well beyond the original Japanese so that even after the two-byte-per-character \
+    Shift-JIS source is removed the patched scene bytecode is strictly larger exercising the \
+    forward jump-target recalculation path across every downstream goto pointer in the scene」";
+/// A SHORTER en-US replacement body (shrinks the multi-byte JA dialogue).
+/// Leading/trailing full-width brackets keep it a valid Shift-JIS Textout run.
+const SHORT_SENTINEL: &str = "「A」";
+
+/// Map each element-boundary byte offset in `bytecode` to its element
+/// ordinal (index into the decoded element stream), plus a synthetic
+/// end-of-stream ordinal for fall-through targets. Every well-formed goto
+/// target lands on one of these boundaries.
+fn boundary_ordinals(bytecode: &[u8]) -> std::collections::BTreeMap<usize, (usize, &'static str)> {
+    let spans = parse_real_bytecode_spans(bytecode).expect("bytecode spans decode");
+    let mut map = std::collections::BTreeMap::new();
+    let mut cursor = 0usize;
+    for (ordinal, (op, width)) in spans.iter().enumerate() {
+        map.insert(cursor, (ordinal, op.label()));
+        cursor += width;
+    }
+    // End-of-stream boundary: a jump-to-end / fall-through target.
+    map.insert(cursor, (spans.len(), "<end-of-stream>"));
+    map
+}
+
+/// Exercise the length-changing patchback's jump-target recalculation on a
+/// real, goto-rich Sweetie HD scene, for BOTH a longer and a shorter
+/// translated body. Proves:
+///  - the archive re-parses with the same 198-scene count and a correctly
+///    rewritten scene offset table;
+///  - the patched scene re-decompiles with ZERO new unknown / generic
+///    opcodes and ZERO malformed framing (`parse_real_bytecode_spans` Ok);
+///  - EVERY one of the 91 goto pointers was recalculated to a NEW byte
+///    offset that still lands on an element boundary AND still targets the
+///    SAME logical element (same ordinal + same opcode label) it pointed to
+///    in the source — i.e. a jump that pointed to opcode X still points to
+///    opcode X at its new offset, never into the middle of a command.
+#[test]
+#[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
+fn length_changing_patch_recalculates_goto_targets_on_real_scene() {
+    let Some(seen_path) = real_seen_txt_path() else {
+        real_corpus::skip_or_require_real_bytes(
+            "length_changing_patch_recalculates_goto_targets_on_real_scene",
+        );
+        return;
+    };
+    let seen_bytes = fs::read(&seen_path).expect("read Seen.txt");
+    let cipher = recover_archive_xor2_cipher(&seen_bytes)
+        .expect("Sweetie HD must yield a validated xor_2 cipher");
+
+    let source_seen_len = seen_bytes.len();
+
+    // ---- Source-side ground truth: element boundaries + goto sites. ----
+    let source_bytecode = decrypt_scene(&seen_bytes, GOTO_SCENE_ID, &cipher);
+    let source_boundaries = boundary_ordinals(&source_bytecode);
+    let source_sites =
+        collect_goto_pointer_sites(&source_bytecode).expect("source scene goto pointers collect");
+    assert!(
+        source_sites.len() >= 50,
+        "test scene must be goto-rich; got {} sites",
+        source_sites.len()
+    );
+    // Every source target lands on a boundary and targets a known element.
+    let source_target_ordinals: Vec<(usize, &'static str)> = source_sites
+        .iter()
+        .map(|site| {
+            assert!(site.target >= 0, "source goto target must be non-negative");
+            *source_boundaries
+                .get(&(site.target as usize))
+                .unwrap_or_else(|| {
+                    panic!(
+                        "source goto target {:#x} does not land on an element boundary",
+                        site.target
+                    )
+                })
+        })
+        .collect();
+
+    // The source bundle (KAIFUU-210 producer), reused for both directions.
+    let (scene_blob, decompressed, header) = scene_bytes(&seen_bytes, GOTO_SCENE_ID);
+    let gameexe_bytes = real_gameexe_ini_path()
+        .and_then(|path| fs::read(path).ok())
+        .unwrap_or_default();
+    let gameexe_inventory = parse_gameexe_inventory(&gameexe_bytes);
+    let opts = bridge_opts(header.kidoku_count);
+    let produced = produce_bundle(
+        GOTO_SCENE_ID,
+        &scene_blob,
+        &decompressed,
+        &gameexe_inventory,
+        &opts,
+    )
+    .expect("v0.2 bundle builds from the goto-rich scene");
+    let dialogue_units = produced
+        .bundle
+        .units
+        .iter()
+        .filter(|u| u.surface_kind == "dialogue")
+        .count();
+    assert!(dialogue_units > 0, "scene must carry dialogue units");
+
+    for (label, sentinel, expect_longer) in [
+        ("LONGER", LONG_SENTINEL, true),
+        ("SHORTER", SHORT_SENTINEL, false),
+    ] {
+        // Translate every dialogue unit to the sentinel of this direction.
+        let mut translated_value = produced.json.clone();
+        {
+            let units = translated_value["units"]
+                .as_array_mut()
+                .expect("units array");
+            for unit in units.iter_mut() {
+                unit["target"] = serde_json::json!({"locale": "en-US", "text": sentinel});
+            }
+        }
+        let translated =
+            TranslatedBundleV02::from_json(&translated_value).expect("translated bundle parses");
+
+        let patched = apply_translated_bundle(
+            &seen_bytes,
+            &translated,
+            &PatchbackOpts::shift_jis(TranslationScope::DialogueOnly),
+        )
+        .unwrap_or_else(|err| panic!("{label}: length-changing patch must succeed: {err}"));
+
+        // ---- Offset table rewritten; same scene count. ----
+        let reparsed = parse_archive(&patched).expect("patched archive re-parses");
+        assert_eq!(
+            reparsed.entries.len(),
+            198,
+            "{label}: patched archive must keep the 198-scene directory"
+        );
+
+        // ---- Patched scene re-decompiles clean at the plaintext layer. ----
+        let patched_bytecode = decrypt_scene(&patched, GOTO_SCENE_ID, &cipher);
+        let patched_ops = parse_real_bytecode(&patched_bytecode)
+            .unwrap_or_else(|err| panic!("{label}: patched scene must re-decompile: {err}"));
+        let unknown = patched_ops
+            .iter()
+            .filter(|o| matches!(o, RealLiveOpcode::Unknown { .. }))
+            .count();
+        let generic = patched_ops
+            .iter()
+            .filter(|o| matches!(o, RealLiveOpcode::Command { .. }))
+            .count();
+        assert_eq!(unknown, 0, "{label}: zero unknown opcodes required");
+        assert_eq!(
+            generic, 0,
+            "{label}: zero generic (un-catalogued) commands required"
+        );
+        // Framing must still partition exactly (no MalformedExpression / drift).
+        parse_real_bytecode_spans(&patched_bytecode)
+            .unwrap_or_else(|err| panic!("{label}: patched framing must partition: {err}"));
+
+        // ---- Direction of the length change is as intended. ----
+        if expect_longer {
+            assert!(
+                patched_bytecode.len() > source_bytecode.len(),
+                "{label}: patched bytecode ({}) must be longer than source ({})",
+                patched_bytecode.len(),
+                source_bytecode.len()
+            );
+        } else {
+            assert!(
+                patched_bytecode.len() < source_bytecode.len(),
+                "{label}: patched bytecode ({}) must be shorter than source ({})",
+                patched_bytecode.len(),
+                source_bytecode.len()
+            );
+        }
+
+        // ---- Every goto target recalculated: same count, lands on a
+        //      boundary, targets the SAME logical element. ----
+        let patched_boundaries = boundary_ordinals(&patched_bytecode);
+        let patched_sites = collect_goto_pointer_sites(&patched_bytecode)
+            .expect("patched scene goto pointers collect");
+        assert_eq!(
+            patched_sites.len(),
+            source_sites.len(),
+            "{label}: goto pointer count must be preserved"
+        );
+
+        let mut changed_targets = 0usize;
+        for (i, (src, pat)) in source_sites.iter().zip(patched_sites.iter()).enumerate() {
+            assert!(
+                pat.target >= 0,
+                "{label}: patched goto target #{i} must be non-negative"
+            );
+            let (pat_ord, pat_label) = *patched_boundaries
+                .get(&(pat.target as usize))
+                .unwrap_or_else(|| {
+                    panic!(
+                        "{label}: patched goto target #{i} = {:#x} does NOT land on an element \
+                         boundary (would jump into the middle of a command)",
+                        pat.target
+                    )
+                });
+            let (src_ord, src_label) = source_target_ordinals[i];
+            assert_eq!(
+                (pat_ord, pat_label),
+                (src_ord, src_label),
+                "{label}: goto #{i} must still target the same logical element \
+                 (source ordinal {src_ord}/{src_label}); got {pat_ord}/{pat_label}"
+            );
+            if pat.target != src.target {
+                changed_targets += 1;
+            }
+        }
+        // A length change that shifts content under the jumps MUST move at
+        // least some targets (proving recalculation ran, not a silent no-op).
+        assert!(
+            changed_targets > 0,
+            "{label}: expected at least one goto target to be re-based by the length delta"
+        );
+
+        eprintln!(
+            "scene {GOTO_SCENE_ID} {label}: seen {source_seen_len}->{} bytes, scene bytecode \
+             {}->{} bytes, {} goto pointers all land on element boundaries & target the same \
+             elements ({changed_targets} re-based)",
+            patched.len(),
+            source_bytecode.len(),
+            patched_bytecode.len(),
+            patched_sites.len(),
+        );
+    }
 }
 
 /// Cheap byte-checksum used by the test for "byte slice unchanged"
