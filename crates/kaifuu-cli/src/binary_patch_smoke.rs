@@ -573,21 +573,24 @@ pub fn run_binary_patch_smoke(config: BinaryPatchSmokeConfig<'_>) -> BinarySmoke
         }
     };
 
-    let patched_bytes =
-        match apply_translated_bundle(&archive_bytes, &translated, &PatchbackOpts::shift_jis()) {
-            Ok(bytes) => bytes,
-            Err(error) => {
-                // The smoke never reached the transaction harness; emit a
-                // v0.2 Failed JSON directly from the mapping table.
-                return emit_direct_failure(
-                    &output_seen_path,
-                    &patch_result_path,
-                    config.run_id,
-                    &archive_bytes,
-                    &error,
-                );
-            }
-        };
+    let patched_bytes = match apply_translated_bundle(
+        &archive_bytes,
+        &translated,
+        &PatchbackOpts::shift_jis(kaifuu_reallive::TranslationScope::DialogueAndChoices),
+    ) {
+        Ok(bytes) => bytes,
+        Err(error) => {
+            // The smoke never reached the transaction harness; emit a
+            // v0.2 Failed JSON directly from the mapping table.
+            return emit_direct_failure(
+                &output_seen_path,
+                &patch_result_path,
+                config.run_id,
+                &archive_bytes,
+                &error,
+            );
+        }
+    };
 
     // Stash the source bytes at the output path so the transaction
     // harness reads them back during preflight.

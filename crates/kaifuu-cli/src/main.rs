@@ -511,7 +511,13 @@ fn run_extract_reallive_bundle(args: &[String]) -> Result<(), Box<dyn std::error
 }
 
 /// KAIFUU-211 — `patch --engine reallive --source <readonly> --target <writable>
-/// --bundle bridge-bundle-translated.json [--force]`.
+/// --bundle bridge-bundle-translated.json --scope <dialogue-only|dialogue+choices> [--force]`.
+///
+/// `--scope` is the user's translation-scope config and is REQUIRED: it
+/// drives the config-driven byte-fidelity contract. `dialogue-only`
+/// translates only dialogue Textout bodies and carries every choice /
+/// non-dialogue surface byte-identical; `dialogue+choices` additionally
+/// re-emits `module_sel` choice options NextString-safe.
 ///
 /// Reads the translated v0.2 BridgeBundle, copies the readonly source
 /// tree to the writable target (per the readonly-source / writable-
@@ -522,7 +528,8 @@ fn run_extract_reallive_bundle(args: &[String]) -> Result<(), Box<dyn std::error
 /// command.
 fn run_patch_reallive_bundle(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
     use kaifuu_reallive::{
-        PATCHBACK_TARGET_NONEMPTY_CODE, PatchbackOpts, TranslatedBundleV02, apply_translated_bundle,
+        PATCHBACK_TARGET_NONEMPTY_CODE, PatchbackOpts, TranslatedBundleV02, TranslationScope,
+        apply_translated_bundle,
     };
 
     let source_root = PathBuf::from(flag(args, "--source")?);
@@ -530,8 +537,24 @@ fn run_patch_reallive_bundle(args: &[String]) -> Result<(), Box<dyn std::error::
     let bundle_path = PathBuf::from(flag(args, "--bundle")?);
     let force = flag_optional(args, "--force").is_some();
 
+    // Validate the untrusted target path BEFORE anything else (symlink
+    // rejection must not depend on other flags being well-formed).
     validate_patch_target_root(&source_root, &target_root, "patch target directory")?;
     reject_reallive_target_tree_symlinks(&target_root)?;
+
+    // The caller declares the translation scope; it drives the config-driven
+    // byte-fidelity contract (out-of-scope surfaces carried byte-identical,
+    // in-scope surfaces round-tripped byte-correct). No silent default —
+    // `--scope` is required and its token must be recognised.
+    let scope_token = flag(args, "--scope")?;
+    let scope = TranslationScope::parse_token(scope_token).ok_or_else(
+        || -> Box<dyn std::error::Error> {
+            format!(
+                "--scope must be one of `dialogue-only` | `dialogue+choices`; got {scope_token:?}"
+            )
+            .into()
+        },
+    )?;
 
     // Refuse to overwrite a non-empty target without --force. The error
     // code is the documented patchback_target_nonempty Fatal from
@@ -578,9 +601,12 @@ fn run_patch_reallive_bundle(args: &[String]) -> Result<(), Box<dyn std::error::
     // overwrite.
     let target_seen_path = resolve_reallive_seen_path(&target_root)?;
 
-    let patched =
-        apply_translated_bundle(&source_seen_bytes, &translated, &PatchbackOpts::shift_jis())
-            .map_err(|err| -> Box<dyn std::error::Error> { format!("{err}").into() })?;
+    let patched = apply_translated_bundle(
+        &source_seen_bytes,
+        &translated,
+        &PatchbackOpts::shift_jis(scope),
+    )
+    .map_err(|err| -> Box<dyn std::error::Error> { format!("{err}").into() })?;
     fs::write(&target_seen_path, &patched).map_err(|err| -> Box<dyn std::error::Error> {
         reallive_patch_write_target_error(&target_seen_path, &err).into()
     })?;

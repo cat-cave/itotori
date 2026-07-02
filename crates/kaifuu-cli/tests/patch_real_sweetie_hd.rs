@@ -39,8 +39,9 @@ use std::process::Command;
 
 use kaifuu_reallive::{
     RealLiveOpcode, RealLiveSceneIndex, SceneEntry, SceneHeader, Xor2DecScene,
-    compiler_version_uses_xor2, decode_dialogue_textout, decompress_avg32, encode_shift_jis_slot,
-    parse_real_bytecode, recover_archive_cipher,
+    compiler_version_uses_xor2, decode_dialogue_textout, decompress_avg32,
+    encode_choice_option_next_string_safe, encode_shift_jis_slot, parse_real_bytecode,
+    recover_archive_cipher,
 };
 
 /// The dialogue scene the bootstrap extract targets (scene 1 is
@@ -56,6 +57,14 @@ const DIALOGUE_SCENE_ID: u16 = 2011;
 /// carry no structural opener, so the whole sentinel stays one Textout
 /// run.
 const EN_SENTINEL: &str = "「[EN] hello from kaifuu CLI patch」";
+
+/// A NextString-hostile en-US choice translation: it opens with `[` (0x5B),
+/// the byte that terminates an unquoted RealLive NextString token, and
+/// carries `.`/`!`/`(`/`)` — none of which are unquoted string-token bytes.
+/// A naive raw splice would truncate the option and corrupt the `module_sel`
+/// select command. Under `dialogue-only` scope it must be ignored entirely;
+/// under `dialogue+choices` it must be re-emitted NextString-safe.
+const HOSTILE_CHOICE: &str = "[EN] Pick me! (really)";
 
 fn kaifuu_cli_binary() -> PathBuf {
     let mut path = PathBuf::from(env!("CARGO_BIN_EXE_kaifuu-cli"));
@@ -127,46 +136,42 @@ fn cli_patch_engine_reallive_writes_patched_seen_txt_under_writable_target() {
         String::from_utf8_lossy(&extract_status.stderr)
     );
 
-    // Synthesise a DIALOGUE-ONLY translated bundle. Config-driven scope:
-    // translate ONLY the `dialogue` Textout units; SKIP every non-dialogue
-    // unit (RealLive `choice_label` / select options) by DROPPING it from
-    // the bundle entirely, so the patchback never resolves an edit for it
-    // and its scene bytes — including the whole Choice/select command — are
-    // carried verbatim. This is a valid user config: the SEPARATE
-    // `config-driven-translation-scope-and-choice-translation` node covers
-    // translating choices; here they stay untranslated and must byte-match.
+    // Synthesise a translated bundle under the CONFIG-DRIVEN dialogue-only
+    // scope. Every unit — dialogue AND choice — is KEPT in the bundle and
+    // carries a `target`; the choice options are given a deliberately
+    // NextString-HOSTILE `[`-bearing target. Under `--scope dialogue-only`
+    // the patchback must IGNORE those choice targets and carry the whole
+    // Choice/select command byte-identical: the SCOPE CONFIG, not bundle
+    // omission, enforces the boundary. (Translating choices is exercised by
+    // the separate `dialogue+choices` run below.)
     let source_bundle_bytes =
         fs::read(tmp.path().join("scene-2011-source.json")).expect("read source bundle");
     let mut bundle_value: serde_json::Value =
         serde_json::from_slice(&source_bundle_bytes).expect("source bundle JSON parses");
     let mut dialogue_units_translated = 0usize;
-    let mut non_dialogue_units_skipped = 0usize;
+    let mut non_dialogue_units_carried = 0usize;
     {
         let units = bundle_value["units"].as_array_mut().expect("units array");
-        let mut kept: Vec<serde_json::Value> = Vec::with_capacity(units.len());
-        for mut unit in std::mem::take(units) {
+        for unit in units.iter_mut() {
             if unit["surfaceKind"].as_str() == Some("dialogue") {
-                unit["target"] = serde_json::json!({
-                    "locale": "en-US",
-                    "text": EN_SENTINEL,
-                });
+                unit["target"] = serde_json::json!({"locale": "en-US", "text": EN_SENTINEL});
                 dialogue_units_translated += 1;
-                kept.push(unit);
             } else {
-                // Out-of-scope: left untranslated (dropped from the bundle).
-                non_dialogue_units_skipped += 1;
+                // Out-of-scope under dialogue-only: a corrupting `[`-target
+                // the config must refuse to apply.
+                unit["target"] = serde_json::json!({"locale": "en-US", "text": HOSTILE_CHOICE});
+                non_dialogue_units_carried += 1;
             }
         }
-        *units = kept;
     }
     assert!(
         dialogue_units_translated > 0,
         "scene {DIALOGUE_SCENE_ID} must surface at least one dialogue unit to translate"
     );
     assert!(
-        non_dialogue_units_skipped > 0,
+        non_dialogue_units_carried > 0,
         "scene {DIALOGUE_SCENE_ID} must surface at least one NON-dialogue (choice_label) unit \
-         that the dialogue-only scope leaves untranslated — proving the scope boundary is real, \
+         that the dialogue-only scope leaves byte-identical — proving the scope boundary is real, \
          not vacuous"
     );
     fs::write(
@@ -175,7 +180,7 @@ fn cli_patch_engine_reallive_writes_patched_seen_txt_under_writable_target() {
     )
     .expect("write translated bundle");
 
-    // Step 2: run the patch command.
+    // Step 2: run the patch command with the dialogue-only scope config.
     let patch_output = Command::new(kaifuu_cli_binary())
         .arg("patch")
         .arg("--engine")
@@ -186,6 +191,8 @@ fn cli_patch_engine_reallive_writes_patched_seen_txt_under_writable_target() {
         .arg(&target_root)
         .arg("--bundle")
         .arg(&bundle_out)
+        .arg("--scope")
+        .arg("dialogue-only")
         .output()
         .expect("kaifuu-cli patch must run");
     assert!(
@@ -367,10 +374,109 @@ fn cli_patch_engine_reallive_writes_patched_seen_txt_under_writable_target() {
     eprintln!(
         "ALPHA-006c dialogue-only byte-fidelity: untranslated_scenes_identical={untranslated_checked}, \
          scene {DIALOGUE_SCENE_ID} dialogue_units_translated={dialogue_units_translated}, \
-         non_dialogue_units_skipped={non_dialogue_units_skipped}, translated_bodies={translated_bodies}, \
+         non_dialogue_units_carried={non_dialogue_units_carried}, translated_bodies={translated_bodies}, \
          choices_identical={choices_identical}, binary_runs_identical={binary_runs}, elements={}, \
          unknown source={source_unknown} patched={patched_unknown} (zero new)",
         tgt_ops.len()
+    );
+
+    // ---- CONFIG-DRIVEN SCOPE: dialogue+choices run. ----
+    // Re-patch the SAME source into a second target, this time translating
+    // the choice options too under `--scope dialogue+choices`. The choice
+    // options must round-trip NextString-safe: the patched select command
+    // re-decompiles cleanly and each option carries its translated bytes
+    // (including the hostile `[`) without corrupting the `NextString` token.
+    let target_root_dc = tmp.path().join("target-patched-dialogue-choices");
+    let bundle_out_dc = tmp.path().join("bridge-bundle-dialogue-choices.json");
+    let tricky = ["[EN] Yes, today! (maybe)", "[EN] No - not really... [skip]"];
+    {
+        let mut value: serde_json::Value =
+            serde_json::from_slice(&source_bundle_bytes).expect("source bundle JSON parses");
+        let mut choice_idx = 0usize;
+        {
+            let units = value["units"].as_array_mut().expect("units array");
+            for unit in units.iter_mut() {
+                if unit["surfaceKind"].as_str() == Some("choice_label") {
+                    let text = tricky[choice_idx.min(tricky.len() - 1)];
+                    choice_idx += 1;
+                    unit["target"] = serde_json::json!({"locale": "en-US", "text": text});
+                } else {
+                    unit["target"] = serde_json::json!({"locale": "en-US", "text": EN_SENTINEL});
+                }
+            }
+        }
+        assert!(
+            choice_idx > 0,
+            "scene {DIALOGUE_SCENE_ID} must surface a choice_label to translate under \
+             dialogue+choices"
+        );
+        fs::write(
+            &bundle_out_dc,
+            serde_json::to_vec_pretty(&value).expect("serialize dc bundle"),
+        )
+        .expect("write dc bundle");
+    }
+    let patch_dc = Command::new(kaifuu_cli_binary())
+        .arg("patch")
+        .arg("--engine")
+        .arg("reallive")
+        .arg("--source")
+        .arg(&source_root)
+        .arg("--target")
+        .arg(&target_root_dc)
+        .arg("--bundle")
+        .arg(&bundle_out_dc)
+        .arg("--scope")
+        .arg("dialogue+choices")
+        .output()
+        .expect("kaifuu-cli patch (dialogue+choices) must run");
+    assert!(
+        patch_dc.status.success(),
+        "dialogue+choices patch exited non-zero: stdout={}\nstderr={}",
+        String::from_utf8_lossy(&patch_dc.stdout),
+        String::from_utf8_lossy(&patch_dc.stderr)
+    );
+    let dc_seen_bytes =
+        fs::read(target_root_dc.join("REALLIVEDATA").join("Seen.txt")).expect("read dc Seen.txt");
+    let dc_index = kaifuu_reallive::parse_archive(&dc_seen_bytes).expect("dc target parses");
+    let dc_cipher = recover_archive_xor2_cipher(&source_seen_bytes, &src_index)
+        .expect("source must yield xor_2 cipher for dc verify");
+    let dc_decompressed = decompress_scene(&dc_seen_bytes, DIALOGUE_SCENE_ID, Some(&dc_cipher));
+    let _ = &dc_index;
+    let dc_ops = parse_real_bytecode(&dc_decompressed)
+        .expect("dialogue+choices patched scene must re-decompile cleanly (select framing intact)");
+    let dc_choices = dc_ops
+        .iter()
+        .find_map(|op| match op {
+            RealLiveOpcode::Choice { choices } => Some(choices),
+            _ => None,
+        })
+        .expect("dialogue+choices patched scene must still carry the module_sel Choice");
+    assert_eq!(
+        dc_choices.len(),
+        2,
+        "both choice options must survive the NextString-safe splice"
+    );
+    for (i, expected_text) in tricky.iter().enumerate() {
+        let expected_bytes =
+            encode_choice_option_next_string_safe(expected_text).expect("tricky encodes");
+        assert_eq!(
+            dc_choices[i].bytes, expected_bytes,
+            "dialogue+choices option {i} must be the NextString-safe encoding of the translation"
+        );
+        assert!(
+            decode_dialogue_textout(&dc_choices[i].bytes).is_some(),
+            "dialogue+choices option {i} must decode cleanly"
+        );
+        assert!(
+            dc_choices[i].bytes.contains(&b'['),
+            "dialogue+choices option {i} must carry the literal `[` byte (not truncated)"
+        );
+    }
+    eprintln!(
+        "config-driven scope: dialogue+choices CLI run round-tripped scene {DIALOGUE_SCENE_ID} \
+         choice NextString-safe ({} options)",
+        dc_choices.len()
     );
 
     // ---- Acceptance: source sha256-unchanged. ----

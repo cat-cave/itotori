@@ -46,8 +46,12 @@ use crate::archive::{
 use crate::compressor::{CompressError, compress_avg32_literal};
 use crate::decompressor::decompress_avg32;
 use crate::encoding::{ShiftJisEncodeError, encode_shift_jis_slot};
-use crate::opcode::{RealLiveOpcode, decode_dialogue_textout, parse_real_bytecode};
+use crate::opcode::{
+    RealLiveOpcode, decode_dialogue_textout, encode_choice_option_next_string_safe,
+    parse_real_bytecode,
+};
 use crate::scene_header::{SCENE_HEADER_BYTE_LEN, SceneHeader, SceneHeaderError};
+use crate::scope::TranslationScope;
 use crate::xor2::{Xor2Cipher, Xor2DecScene, compiler_version_uses_xor2, recover_archive_cipher};
 
 /// Stable error codes published per the KAIFUU-211 acceptance criteria.
@@ -138,20 +142,31 @@ impl From<BridgeContractValidationError> for PatchbackError {
 /// All fields are required; there are no implicit defaults. The
 /// encoding choice is named here in code (per the KAIFUU-211 audit-
 /// focus row "Encoding choice (UTF-8 vs Shift-JIS) defaulted instead of
-/// named in code").
+/// named in code"). The translation scope is likewise declared by the
+/// caller — the byte-fidelity contract is CONFIG-DRIVEN, not hard-coded to
+/// "only Textout dialogue may change".
 #[derive(Debug, Clone, Copy)]
 pub struct PatchbackOpts {
     /// Target text-encoding for the patched bytes. RealLive's runtime
     /// reads Shift-JIS Textout bodies from the bytecode stream; the
     /// canonical patchback emits [`PatchbackEncoding::ShiftJis`].
     pub target_encoding: PatchbackEncoding,
+    /// The translation scope the user configured. Drives the byte-fidelity
+    /// contract: a bundle unit whose `surfaceKind` is IN scope round-trips
+    /// byte-correctly (its bytes are re-emitted, choices NextString-safe);
+    /// every OUT-of-scope surface is carried byte-identical (no edit is
+    /// resolved for it, so its bytes — including a whole `module_sel`
+    /// Choice command and its `NextString` tokens — survive verbatim).
+    pub scope: TranslationScope,
 }
 
 impl PatchbackOpts {
-    /// The canonical KAIFUU-211 emission mode: Shift-JIS target text.
-    pub const fn shift_jis() -> Self {
+    /// The canonical KAIFUU-211 emission mode (Shift-JIS target text) with
+    /// an explicitly-declared translation `scope`.
+    pub const fn shift_jis(scope: TranslationScope) -> Self {
         Self {
             target_encoding: PatchbackEncoding::ShiftJis,
+            scope,
         }
     }
 }
@@ -314,9 +329,20 @@ pub fn apply_translated_bundle(
             message: format!("{}: {}", diag.code, diag.message),
         })?;
 
-    // Resolve each translation to a (scene_entry_index, edit) tuple.
+    // Resolve each IN-SCOPE translation to a (scene_entry_index, edit)
+    // tuple. The byte-fidelity contract is CONFIG-DRIVEN by `opts.scope`:
+    // a unit whose `surfaceKind` is OUT of scope has NO edit resolved for
+    // it, so its scene bytes — including a whole `module_sel` Choice
+    // command and its `NextString` tokens under `DialogueOnly` — are
+    // carried byte-identical by the re-packer. This replaces the old
+    // hard-coded "only Textout dialogue may change" assumption: which
+    // surfaces change is exactly the scope the caller declared.
     let mut edits_by_scene_index: BTreeMap<usize, Vec<ResolvedEdit>> = BTreeMap::new();
     for (target, unit) in bundle.targets.iter().zip(bundle.source.units.iter()) {
+        if !opts.scope.includes_surface_kind(&unit.surface_kind) {
+            // Out-of-scope surface: carried byte-identical (no splice).
+            continue;
+        }
         let resolved = resolve_edit(target, unit, &scene_index, *opts)?;
         edits_by_scene_index
             .entry(resolved.scene_entry_index)
@@ -642,15 +668,26 @@ fn resolve_edit(
             ),
         })?;
 
-    // Encode the target text per the named PatchbackOpts policy.
+    // Encode the target text per the named PatchbackOpts policy. A
+    // `choice_label` (`module_sel` option) MUST be NextString-safe: a raw
+    // Shift-JIS splice of a translation carrying `[` / `,` / `.` / `!` /
+    // `(` … would truncate the option and let the trailing bytes be
+    // misread as select structure, corrupting the command. Dialogue
+    // Textout bodies have no such framing and take the plain Shift-JIS
+    // slot encoding.
     let new_textout_bytes = match opts.target_encoding {
         PatchbackEncoding::ShiftJis => {
-            encode_shift_jis_slot(&target.target_text).map_err(|err: ShiftJisEncodeError| {
-                PatchbackError::TargetEncodeFailure {
+            let encoded = if unit.surface_kind == "choice_label" {
+                encode_choice_option_next_string_safe(&target.target_text)
+            } else {
+                encode_shift_jis_slot(&target.target_text)
+            };
+            encoded.map_err(
+                |err: ShiftJisEncodeError| PatchbackError::TargetEncodeFailure {
                     bridge_unit_id: target.bridge_unit_id.clone(),
                     message: err.message,
-                }
-            })?
+                },
+            )?
         }
     };
 
@@ -1293,8 +1330,12 @@ mod tests {
             "Hi", // 2-byte ASCII fits the source 2-byte SJIS body
         );
         let bundle = TranslatedBundleV02::from_json(&bundle_json).expect("bundle parses");
-        let patched = apply_translated_bundle(&archive, &bundle, &PatchbackOpts::shift_jis())
-            .expect("apply succeeds");
+        let patched = apply_translated_bundle(
+            &archive,
+            &bundle,
+            &PatchbackOpts::shift_jis(TranslationScope::DialogueOnly),
+        )
+        .expect("apply succeeds");
         // Re-parse must yield a directory with the same number of
         // populated entries.
         let reparsed = parse_archive(&patched).expect("patched archive re-parses");
@@ -1311,8 +1352,12 @@ mod tests {
         bundle_json["units"][0]["patchRef"]["sourceUnitKey"] =
             serde_json::json!("reallive:scene-9999#0000");
         let bundle = TranslatedBundleV02::from_json(&bundle_json).expect("bundle parses");
-        let err = apply_translated_bundle(&archive, &bundle, &PatchbackOpts::shift_jis())
-            .expect_err("must reject a unit naming an absent scene");
+        let err = apply_translated_bundle(
+            &archive,
+            &bundle,
+            &PatchbackOpts::shift_jis(TranslationScope::DialogueOnly),
+        )
+        .expect_err("must reject a unit naming an absent scene");
         assert!(
             matches!(err, PatchbackError::ProvenanceMismatch { .. }),
             "expected ProvenanceMismatch, got {err:?}"
@@ -1396,8 +1441,12 @@ mod tests {
         // old containment logic this mis-resolved to scene 2.
         let bundle_json = make_bundle_json(scene2_file_offset, 0, 2, "Hi");
         let bundle = TranslatedBundleV02::from_json(&bundle_json).expect("bundle parses");
-        let patched = apply_translated_bundle(&archive, &bundle, &PatchbackOpts::shift_jis())
-            .expect("must resolve to owning scene 1 and apply");
+        let patched = apply_translated_bundle(
+            &archive,
+            &bundle,
+            &PatchbackOpts::shift_jis(TranslationScope::DialogueOnly),
+        )
+        .expect("must resolve to owning scene 1 and apply");
 
         // Scene 1 was patched (now starts with SJIS "Hi"); scene 2 is
         // byte-identical to its original decompressed bytecode.
@@ -1467,21 +1516,30 @@ mod tests {
         }
         let translated =
             TranslatedBundleV02::from_json(&translated_value).expect("translated parses");
-        let patched = apply_translated_bundle(&archive, &translated, &PatchbackOpts::shift_jis())
-            .expect("apply must succeed (no occurrence drift)");
+        // scope=dialogue+choices: the two choice options are IN scope and get
+        // re-emitted NextString-safe (`"b"` / `"c"`); the two dialogue units
+        // take the plain Shift-JIS slot encoding (`a` / `d`).
+        let patched = apply_translated_bundle(
+            &archive,
+            &translated,
+            &PatchbackOpts::shift_jis(TranslationScope::DialogueAndChoices),
+        )
+        .expect("apply must succeed (no occurrence drift)");
 
-        // Correct-unit splice: every edit landed at its true position.
+        // Correct-unit splice: every edit landed at its true position. The
+        // choice options are quoted NextString runs (opening `"` 0x22,
+        // body, closing `"` 0x22); the dialogue units are bare Shift-JIS.
         let expected: Vec<u8> = vec![
-            0x61, // occ0 -> "a"
+            0x61, // occ0 dialogue -> "a"
             0x23, 0x00, 0x02, 0x01, 0x00, 0x02, 0x00, 0x00, // select header
             0x7b, // '{'
-            0x62, // occ1 "A" -> "b"
+            0x22, 0x62, 0x22, // occ1 "A" -> NextString-safe "b"
             0x0a, 0x05, 0x00, // \n + line
             0x0a, 0x06, 0x00, // empty option (untouched)
-            0x63, // occ2 "B" -> "c"
+            0x22, 0x63, 0x22, // occ2 "B" -> NextString-safe "c"
             0x0a, 0x07, 0x00, // \n + line
             0x7d, // '}'
-            0x64, // occ3 -> "d"
+            0x64, // occ3 dialogue -> "d"
             0x0a, 0x05, 0x00, // MetaLine
         ];
         let actual = decompress_scene(&patched, 1);
@@ -1489,6 +1547,21 @@ mod tests {
             actual, expected,
             "trailing dialogue unit must splice at its own position with no drift"
         );
+
+        // The patched select command re-parses cleanly with both options
+        // recovered as their NextString-safe forms — proving the choice
+        // splice did not corrupt the `module_sel` framing.
+        let ops = parse_real_bytecode(&actual).expect("patched bytecode must re-parse");
+        let choice = ops
+            .iter()
+            .find_map(|op| match op {
+                RealLiveOpcode::Choice { choices } => Some(choices),
+                _ => None,
+            })
+            .expect("patched scene must still carry a Choice command");
+        assert_eq!(choice.len(), 2, "both options must survive");
+        assert_eq!(choice[0].bytes, b"\"b\"");
+        assert_eq!(choice[1].bytes, b"\"c\"");
     }
 
     #[test]
@@ -1540,8 +1613,12 @@ mod tests {
         }
         let translated =
             TranslatedBundleV02::from_json(&translated_value).expect("translated parses");
-        let patched = apply_translated_bundle(&archive, &translated, &PatchbackOpts::shift_jis())
-            .expect("apply must succeed");
+        let patched = apply_translated_bundle(
+            &archive,
+            &translated,
+            &PatchbackOpts::shift_jis(TranslationScope::DialogueOnly),
+        )
+        .expect("apply must succeed");
 
         let new_decompressed = decompress_scene(&patched, 1);
 
@@ -1629,8 +1706,12 @@ mod tests {
             target,
         );
         let bundle = TranslatedBundleV02::from_json(&bundle_json).expect("bundle parses");
-        let patched = apply_translated_bundle(&archive, &bundle, &PatchbackOpts::shift_jis())
-            .expect("apply succeeds despite length growth");
+        let patched = apply_translated_bundle(
+            &archive,
+            &bundle,
+            &PatchbackOpts::shift_jis(TranslationScope::DialogueOnly),
+        )
+        .expect("apply succeeds despite length growth");
         let reparsed = parse_archive(&patched).expect("patched archive re-parses");
         assert_eq!(reparsed.entries.len(), 1);
         let new_entry = &reparsed.entries[0];

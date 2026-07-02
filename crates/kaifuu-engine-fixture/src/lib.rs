@@ -4616,7 +4616,12 @@ impl EngineAdapter for RealLiveProfileDetectorAdapter {
         match kaifuu_reallive::apply_translated_bundle(
             &archive_bytes,
             &translated,
-            &kaifuu_reallive::PatchbackOpts::shift_jis(),
+            // The fixture patch surface applies the FULL curated bundle it is
+            // handed (dialogue + any choices), so it declares the widest alpha
+            // scope; a dialogue-only bundle simply has no choice units.
+            &kaifuu_reallive::PatchbackOpts::shift_jis(
+                kaifuu_reallive::TranslationScope::DialogueAndChoices,
+            ),
         ) {
             Ok(patched) => {
                 write_output(&patched)?;

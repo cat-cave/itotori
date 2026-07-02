@@ -122,6 +122,7 @@ mod parser;
 pub mod patchback;
 pub mod protected_spans;
 pub mod scene_header;
+pub mod scope;
 mod strings;
 #[cfg(test)]
 mod test_fixtures;
@@ -162,8 +163,9 @@ pub use inventory::{
 };
 pub use opcode::{
     COMMAND_HEADER_LEN, CommandArg, Expr, RealLiveOpcode, RealLiveParseError, TextEncoding,
-    decode_dialogue_textout, is_recognized_opener, is_shift_jis_textout_lead, is_structural_opener,
-    parse_expression, parse_real_bytecode, parse_real_bytecode_spans,
+    decode_dialogue_textout, encode_choice_option_next_string_safe, is_recognized_opener,
+    is_shift_jis_textout_lead, is_structural_opener, parse_expression, parse_real_bytecode,
+    parse_real_bytecode_spans,
 };
 pub use opcodes::NamedOpcode;
 pub use parser::{parse_scene, parse_scene_into_ast};
@@ -181,6 +183,7 @@ pub use protected_spans::{
     detect_protected_spans,
 };
 pub use scene_header::{SCENE_HEADER_BYTE_LEN, SceneHeader, SceneHeaderError};
+pub use scope::TranslationScope;
 pub use xor2::{
     XOR2_KEY_LEN, XOR2_SEGMENT_LENGTH, XOR2_SEGMENT_OFFSET, Xor2Cipher, Xor2DecScene, Xor2Report,
     compiler_version_uses_xor2, recover_and_decrypt_archive, recover_archive_cipher,

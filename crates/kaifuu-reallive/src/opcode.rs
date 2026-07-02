@@ -979,9 +979,20 @@ fn is_next_string_byte(byte: u8) -> bool {
 /// Length in bytes of the string token beginning at `pos`, mirroring rlvm
 /// `NextString`: a run of [`is_next_string_byte`] bytes with Shift-JIS
 /// double-byte pairs consumed whole, `"`-quoted spans that ignore the
-/// boundary set until the closing quote (honouring the `\"` escape), and
-/// the embedded `###PRINT(<expr>)` interpolation form. Returns `0` when
-/// `pos` does not begin a string token.
+/// boundary set until the closing quote, and the embedded
+/// `###PRINT(<expr>)` interpolation form. Returns `0` when `pos` does not
+/// begin a string token.
+///
+/// Inside a `"`-quoted span the backslash (`0x5C`) is the general escape
+/// introducer (rlvm `NextString` quoted state): `\<byte>` consumes the
+/// backslash and the following byte verbatim, whatever that byte is
+/// (`\"` → literal quote, `\\` → literal backslash, `\x` → literal `x`).
+/// This is what makes a translated choice option NextString-SAFE: the
+/// producer ([`encode_choice_option_next_string_safe`]) escapes every
+/// interior `"`/`\`, so the only *unescaped* `"` the decoder can reach is
+/// the producer's closing quote — no interior byte (`[`, `,`, `!`, a
+/// Shift-JIS trail byte equal to `"`, …) can terminate the token early or
+/// run it past its close.
 fn next_string_len(bytes: &[u8], pos: usize) -> usize {
     const PRINT_TAG: &[u8] = b"###PRINT(";
     let mut end = pos;
@@ -989,34 +1000,45 @@ fn next_string_len(bytes: &[u8], pos: usize) -> usize {
     while end < bytes.len() {
         let b = bytes[end];
         if quoted {
-            if b == b'\\' && bytes.get(end + 1) == Some(&b'"') {
-                // Escaped quote — skip both bytes, stay quoted.
-                end += 2;
+            if b == b'\\' {
+                // General escape: consume the backslash and the escaped
+                // byte together. A trailing lone backslash (no following
+                // byte) consumes just itself so `end` never exceeds the
+                // buffer length.
+                end += if end + 1 < bytes.len() { 2 } else { 1 };
                 continue;
             }
             if b == b'"' {
                 end += 1; // closing quote
                 break;
             }
-        } else {
-            if bytes[end..].starts_with(PRINT_TAG) {
-                end += PRINT_TAG.len();
-                match parse_expression(bytes, end) {
-                    // `+ 1` consumes the closing `)` of the `###PRINT(…)`
-                    // interpolation (rlvm `end += 1 + NextExpression(end)`).
-                    Ok((_expr, len)) => end += len + 1,
-                    Err(_) => break,
-                }
-                continue;
-            }
-            if b == b'"' {
-                quoted = true;
+            // Ordinary quoted byte: Shift-JIS double-byte pairs are
+            // consumed whole so a trail byte equal to `"`/`\` cannot be
+            // misread as a close/escape.
+            if matches!(b, 0x81..=0x9F | 0xE0..=0xEF) && end + 1 < bytes.len() {
+                end += 2;
+            } else {
                 end += 1;
-                continue;
             }
-            if !is_next_string_byte(b) {
-                break;
+            continue;
+        }
+        if bytes[end..].starts_with(PRINT_TAG) {
+            end += PRINT_TAG.len();
+            match parse_expression(bytes, end) {
+                // `+ 1` consumes the closing `)` of the `###PRINT(…)`
+                // interpolation (rlvm `end += 1 + NextExpression(end)`).
+                Ok((_expr, len)) => end += len + 1,
+                Err(_) => break,
             }
+            continue;
+        }
+        if b == b'"' {
+            quoted = true;
+            end += 1;
+            continue;
+        }
+        if !is_next_string_byte(b) {
+            break;
         }
         if matches!(b, 0x81..=0x9F | 0xE0..=0xEF) && end + 1 < bytes.len() {
             end += 2;
@@ -1025,6 +1047,58 @@ fn next_string_len(bytes: &[u8], pos: usize) -> usize {
         }
     }
     end - pos
+}
+
+/// Encode a translated `module_sel` choice option NextString-SAFE.
+///
+/// A raw Shift-JIS splice of translated choice text corrupts the
+/// `SelectElement` framing: an option is decoded by [`next_string_len`],
+/// whose *unquoted* state ends at the first byte that is not an
+/// [`is_next_string_byte`] — so a translation carrying `[`, `,`, `.`, `!`,
+/// `(`, `-`, … (all outside the unquoted string-token set) truncates the
+/// option and lets the trailing bytes be misread as select structure
+/// (`\n`+line markers, the `}` close, the next option), structurally
+/// corrupting the command.
+///
+/// This encoder wraps the whole option in a `"`-quoted NextString and
+/// escapes every interior single-byte `"` / `\` with a backslash. In the
+/// quoted state [`next_string_len`] consumes ANY byte (arbitrary
+/// punctuation, Shift-JIS pairs whose trail byte equals `"`/`\`) verbatim
+/// and terminates ONLY at the producer's unescaped closing quote — so the
+/// select structure and the option's `NextString` token can never be
+/// corrupted, for ANY UTF-8 / Shift-JIS choice text. The escaping is done
+/// per Shift-JIS *character* (not per raw byte) so a double-byte glyph
+/// whose trail byte happens to equal `0x22`/`0x5C` is never split by a
+/// spurious escape.
+///
+/// Returns the same [`ShiftJisEncodeError`] as [`encode_shift_jis_slot`]
+/// (with the accurate first-unmappable char index) when the target text
+/// carries a character outside Shift-JIS.
+pub fn encode_choice_option_next_string_safe(
+    text: &str,
+) -> Result<Vec<u8>, crate::encoding::ShiftJisEncodeError> {
+    // Validate mappability once up-front so the error carries the accurate
+    // char index; the per-char re-encode below is then guaranteed to
+    // succeed.
+    crate::encoding::encode_shift_jis_slot(text)?;
+
+    let mut out = Vec::with_capacity(text.len() + 2);
+    out.push(b'"'); // opening quote
+    let mut ch_buf = [0u8; 4];
+    for ch in text.chars() {
+        let sjis = crate::encoding::encode_shift_jis_slot(ch.encode_utf8(&mut ch_buf))
+            .expect("char validated mappable above");
+        // Only single-byte `"` / `\` need escaping; a Shift-JIS lead byte
+        // (or its trail byte) is emitted as part of a whole 2-byte pair and
+        // is consumed as a pair by the decoder, so it can never be mistaken
+        // for a close/escape.
+        if sjis.len() == 1 && (sjis[0] == b'"' || sjis[0] == b'\\') {
+            out.push(b'\\');
+        }
+        out.extend_from_slice(&sjis);
+    }
+    out.push(b'"'); // closing quote
+    Ok(out)
 }
 
 /// Decode a `module_sel` selection Command's `SelectElement` body and
