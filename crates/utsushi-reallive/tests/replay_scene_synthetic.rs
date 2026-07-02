@@ -69,7 +69,7 @@ fn build_scene_blob() -> Vec<u8> {
     let pause_command: [u8; 8] = [
         0x23, // command lead
         0x01, // module_type (MSG_MODULE_TYPE)
-        0x05, // module_id (MSG_MODULE_ID)
+        0x03, // module_id (MSG_MODULE_ID = 3, real RealLive msg id)
         0x03, // opcode lo (OPCODE_PAUSE = 3)
         0x00, // opcode hi
         0x00, // arg_count
@@ -201,12 +201,16 @@ fn synthetic_scene_emits_one_text_line_and_reaches_first_pause() {
         "synthetic scene must surface at least one TextLine; got events={:?}",
         log.events,
     );
+    // The scene ends in a `msg.pause` command. With the corrected
+    // module ids (msg=3, so pause is (1, 3, 3), distinct from
+    // sel.select_objbtn at (1, 2, 3)) the pause op is dispatched and
+    // yields, so the replay MUST reach FirstPauseReached — not silently
+    // run to EndOfScene (which is what a clobbered/misdispatched pause
+    // key would produce). This is the end-to-end proof the (1, 5, 3)
+    // collision no longer breaks Pause detection.
     assert!(
-        matches!(
-            log.final_outcome,
-            ReplayOutcome::FirstPauseReached { .. } | ReplayOutcome::EndOfScene { .. }
-        ),
-        "synthetic scene must reach FirstPauseReached or EndOfScene; got {:?}",
+        matches!(log.final_outcome, ReplayOutcome::FirstPauseReached { .. }),
+        "synthetic scene ending in msg.pause MUST reach FirstPauseReached; got {:?}",
         log.final_outcome,
     );
 

@@ -12,12 +12,12 @@
 //!
 //! # Module addressing
 //!
-//! `module_str` is registered at `(module_type=1, module_id=2)` —
-//! consistent with the `(1, X)` convention pinned by
-//! [`crate::rlop::module_msg`] (`(1, 5)`),
-//! [`crate::rlop::module_sel`] (`(1, 5)`), and
-//! [`crate::rlop::module_sys`] (`(1, 4)`, observed in the Sweetie HD
-//! scene-1 byte histogram). The opcode numbers below are re-derived
+//! `module_str` is registered at `(module_type=1, module_id=10)` —
+//! the REAL RealLive semantic id for the string family (matching the
+//! `kaifuu-reallive` decompiler), consistent with the `(1, X)`
+//! convention pinned by [`crate::rlop::module_msg`] (`(1, 3)`),
+//! [`crate::rlop::module_sel`] (`(1, 2)`), and
+//! [`crate::rlop::module_sys`] (`(1, 4)`). The opcode numbers below are re-derived
 //! clean-room from the RLDEV name table (see
 //! `docs/research/reallive-engine.md`) and pinned as `const u16`
 //! constants so audit tooling can assert "the registry covers
@@ -98,9 +98,12 @@ use crate::vm::{Vm, VmWarning};
 /// [`crate::rlop::module_msg`] / [`crate::rlop::module_sel`] /
 /// [`crate::rlop::module_sys`].
 pub const STR_MODULE_TYPE: u8 = 1;
-/// `module_str` module id byte. Pinned at the rlvm-documented
-/// `module_id = 2` for the string-manipulation family.
-pub const STR_MODULE_ID: u8 = 2;
+/// `module_str` module id byte. This is the REAL RealLive semantic id
+/// `10` used by the `kaifuu-reallive` decompiler
+/// (`opcode::module_id::STR`) and validated on the real bytecode. An
+/// earlier revision mislabelled it `2` (which is actually `SEL`).
+/// Corrected to `10`.
+pub const STR_MODULE_ID: u8 = 10;
 
 /// `strcpy` — `strX[dst] := strX[src]`.
 pub const OPCODE_STRCPY: u16 = 0x0000;

@@ -82,7 +82,7 @@ fn build_textout_then_pause(textout_bytes: &[u8]) -> Vec<u8> {
     let pause_command: [u8; 8] = [
         0x23, // command lead
         0x01, // MSG_MODULE_TYPE
-        0x05, // MSG_MODULE_ID
+        0x03, // MSG_MODULE_ID (= 3, real RealLive msg id)
         0x03, // OPCODE_PAUSE
         0x00, 0x00, 0x00, 0x00,
     ];

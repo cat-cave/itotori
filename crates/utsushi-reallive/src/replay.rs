@@ -1511,6 +1511,55 @@ mod tests {
         assert!(!opts.stop_at_first_pause);
     }
 
+    /// Regression for the `(module_type=1, module_id=5, opcode=3)` key
+    /// COLLISION: `msg.pause` and `sel.select_objbtn` used to share a key
+    /// because `module_id`s were mislabelled (both 5), so `sel` silently
+    /// clobbered `msg.pause` in the shared registry and Pause-event
+    /// detection dispatched the wrong op. With the real ids (msg=3,
+    /// sel=2) the two ops occupy DISTINCT keys and `mount_full_registry`
+    /// registers both with no displacement (the dup-key guard would panic
+    /// on any collision).
+    #[test]
+    fn msg_pause_and_sel_select_objbtn_occupy_distinct_registry_keys() {
+        let pause_key = RlopKey::new(
+            MSG_MODULE_TYPE,
+            MSG_MODULE_ID,
+            crate::rlop::module_msg::OPCODE_PAUSE,
+        );
+        let objbtn_key = RlopKey::new(
+            crate::rlop::module_sel::SEL_MODULE_TYPE,
+            crate::rlop::module_sel::SEL_MODULE_ID,
+            crate::rlop::module_sel::OPCODE_SELECT_OBJBTN,
+        );
+        // The corrected real ids.
+        assert_eq!(pause_key, RlopKey::new(1, 3, 3), "msg.pause is (1, 3, 3)");
+        assert_eq!(
+            objbtn_key,
+            RlopKey::new(1, 2, 3),
+            "sel.select_objbtn is (1, 2, 3)"
+        );
+        assert_ne!(
+            pause_key, objbtn_key,
+            "msg.pause and sel.select_objbtn MUST NOT share a key"
+        );
+
+        // Mounting the full registry must NOT panic (the dup-key guard
+        // proves there is no displacement anywhere in the 9-family +
+        // catalog mount), and both keys must resolve to their own op.
+        let sink: Arc<ReplayTextSink> = Arc::new(ReplayTextSink::default());
+        let sink_dyn: Arc<dyn TextSurfaceSink> = Arc::clone(&sink) as Arc<dyn TextSurfaceSink>;
+        let runtime = Arc::new(MsgRuntime::with_sink(Arc::clone(&sink_dyn)));
+        let registry = mount_full_registry(sink_dyn, runtime);
+        assert!(
+            registry.get(pause_key).is_some(),
+            "msg.pause must resolve at its own key"
+        );
+        assert!(
+            registry.get(objbtn_key).is_some(),
+            "sel.select_objbtn must resolve at its own key"
+        );
+    }
+
     #[test]
     fn empty_replay_log_serialises_deterministically() {
         let log = ReplayLog {

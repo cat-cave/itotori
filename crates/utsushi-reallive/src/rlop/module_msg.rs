@@ -53,20 +53,25 @@ use utsushi_core::substrate::{EvidenceTier, SinkError, TextLine, TextSurfaceSink
 use super::{DispatchOutcome, ExprValue, LongOp, LongOpId, RLOperation, RlopKey, RlopRegistry};
 use crate::vm::Vm;
 // `msg.select` lived here briefly (UTSUSHI-209) as a placeholder for the
-// `(1, 5, 120)` Sweetie-HD-observed `select_w` byte. UTSUSHI-211 moves
-// the four-variant choice family into `module_sel` at its proper
-// `module_id=5` address; the placeholder was deleted in the same change
-// per the no-legacy-compat rule.
+// `(1, 5, 120)` Sweetie-HD-observed byte. UTSUSHI-211 moved the
+// four-variant choice family into `module_sel` at its proper
+// `module_id=2` address; the placeholder was deleted in the same change
+// per the no-legacy-compat rule. (The raw `(1, 5, 120)` byte is a `SYS2`
+// op — `id=5` — and is catalogued in `module_catalog`.)
 
 /// `module_type` byte the Sweetie HD corpus exhibits for the
 /// message-control submodule. Pinned at the byte observed at scene 1
 /// offset `0x001e` (research doc §4.2).
 pub const MSG_MODULE_TYPE: u8 = 1;
 
-/// `module_id` byte the Sweetie HD corpus exhibits for the
-/// message-control submodule. Pinned at the byte observed at scene 1
-/// offset `0x001e` (research doc §4.2).
-pub const MSG_MODULE_ID: u8 = 5;
+/// `module_id` byte of the message-control submodule (`msg`). This is
+/// the REAL RealLive semantic id `3` used by the `kaifuu-reallive`
+/// decompiler (`opcode::module_id::MSG`) and validated on the Sweetie HD
+/// / Kanon bytecode. An earlier revision mislabelled it `5` (which is
+/// actually `SYS2`); that clobbered `sel.select_objbtn` and `msg.pause`
+/// onto the same `(1, 5, 3)` key. Corrected to `3` so `msg` and `sel`
+/// occupy distinct keys.
+pub const MSG_MODULE_ID: u8 = 3;
 
 // --- Opcode numerics --------------------------------------------------
 //

@@ -26,7 +26,7 @@
 //! The choice (`select` / `select_s` / `select_w` / `select_objbtn`)
 //! family is **not** a control-flow opcode in RealLive — it lives in
 //! `module_sel` ([`crate::rlop::module_sel`]) at `(module_type=1,
-//! module_id=5)`. The speculative `module_jmp` `select` slot that
+//! module_id=2)`. The speculative `module_jmp` `select` slot that
 //! UTSUSHI-210 introduced was deleted in UTSUSHI-211 per the
 //! no-legacy-compat rule.
 //!

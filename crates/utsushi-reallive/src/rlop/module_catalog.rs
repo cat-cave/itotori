@@ -211,13 +211,20 @@ const REAL_CATALOG: &[CatalogEntry] = &[
     (4, 3501),
     (4, 3502),
     (4, 3503),
-    // module_str (string / indexed-variable ops).
-    (10, 0),
+    // module_sys2 (system control, real module_id 5). No per-family
+    // table claims id 5 (`module_sys` is id 4), so these real-bytes
+    // tuples are catalogued here. They were previously masked because
+    // the mislabelled `msg`/`sel` tables sat on id 5 and accidentally
+    // resolved them; with the labels corrected (msg=3, sel=2) they are
+    // genuine gaps. `(1, 5, 120)` is Sweetie HD's scene-1 `0x001e` byte;
+    // `(1, 5, 0)` is observed in Kanon.
+    (5, 0),
+    (5, 120),
+    // module_str (string / indexed-variable ops, real module_id 10).
+    // `module_str` (now correctly at id 10) already claims the string
+    // opcodes it implements (0, 2, 3, 14, 17, …), so only the two
+    // real-bytes opcodes it does NOT implement are catalogued here.
     (10, 1),
-    (10, 2),
-    (10, 3),
-    (10, 14),
-    (10, 17),
     (10, 100),
     // audio: bgm / se / koe.
     (20, 5),

@@ -161,10 +161,14 @@ fn register_text_rlops_registers_exactly_twelve_opcodes() {
 }
 
 #[test]
-fn text_module_msg_keys_all_target_module_one_five() {
+fn text_module_msg_keys_all_target_module_one_three() {
+    // msg is the REAL RealLive semantic module_id 3 (an earlier revision
+    // mislabelled it 5, which is SYS2 — that clobbered sel.select_objbtn
+    // and msg.pause onto the same (1, 5, 3) key).
     for key in text_module_msg_keys() {
-        assert_eq!(key.module_type, 1);
-        assert_eq!(key.module_id, 5);
+        assert_eq!(key.module_type, MSG_MODULE_TYPE);
+        assert_eq!(key.module_id, MSG_MODULE_ID);
+        assert_eq!(key.module_id, 3);
     }
 }
 

@@ -23,10 +23,12 @@
 //!
 //! # Module addressing
 //!
-//! The choice family lives at `(module_type=1, module_id=5)` per the
-//! Sweetie HD scene 1 byte observation that pinned `(1, 5, opcode=120)`
-//! at offset `0x001e` as a `select_w`-shaped Command (see
-//! `RealLive encryption research notes` §4.2).
+//! The choice family lives at `(module_type=1, module_id=2)` — the REAL
+//! RealLive semantic id for `sel` (matching the `kaifuu-reallive`
+//! decompiler). The raw byte `(1, 5, opcode=120)` observed at Sweetie HD
+//! scene 1 offset `0x001e` was originally misread as a `select_w` here;
+//! `id=5` is actually `SYS2`, so that byte is a system op and is
+//! catalogued in [`crate::rlop::module_catalog`], not `sel`.
 //! The four canonical opcodes are pinned at the small-block layout
 //! `0x0000..=0x0003` (matching the rlvm `module_sel.cc` registration
 //! shape — re-derived clean-room from RLDEV docs, not vendored). The
@@ -94,9 +96,13 @@ use crate::vm::Vm;
 /// Sweetie HD scene 1 offset `0x001e` (`type=1`).
 pub const SEL_MODULE_TYPE: u8 = 1;
 
-/// `module_sel` module id byte. Pinned at the byte observed at Sweetie
-/// HD scene 1 offset `0x001e` (`id=5`).
-pub const SEL_MODULE_ID: u8 = 5;
+/// `module_sel` module id byte. This is the REAL RealLive semantic id
+/// `2` used by the `kaifuu-reallive` decompiler
+/// (`opcode::module_id::SEL`) and validated on the real bytecode. An
+/// earlier revision mislabelled it `5` (which is actually `SYS2`), so
+/// `sel.select_objbtn` collided with `msg.pause` at `(1, 5, 3)`.
+/// Corrected to `2`.
+pub const SEL_MODULE_ID: u8 = 2;
 
 // ---- Opcode numerics --------------------------------------------------
 
@@ -109,10 +115,13 @@ pub const OPCODE_SELECT_W: u16 = 0x0002;
 /// `module_sel` `select_objbtn` opcode (object-button choice).
 pub const OPCODE_SELECT_OBJBTN: u16 = 0x0003;
 
-/// Sweetie-HD-observed alias for `select_w`. Scene 1 offset `0x001e`
-/// emits `(type=1, id=5, opcode=120)`. The alias is registered so
-/// real-bytes dispatch resolves through the canonical
-/// [`SelectWOp`] without re-parsing the bytecode.
+/// Retained `select_w` alias at opcode `120`. Historically justified by
+/// the Sweetie HD scene 1 offset `0x001e` byte `(type=1, id=5,
+/// opcode=120)`; that raw byte is now understood as a `SYS2` (`id=5`)
+/// op and is catalogued in [`crate::rlop::module_catalog`], so this
+/// alias — registered under the corrected `sel` id `2` at `(1, 2, 120)`
+/// — is a defensive mapping only (no real-bytes tuple currently lands
+/// on it).
 pub const OPCODE_SELECT_W_SWEETIE_HD_ALIAS: u16 = 120;
 
 /// Stable enum naming the four choice variants. Used by the typed

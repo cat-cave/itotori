@@ -79,20 +79,25 @@ fn resolve_savedata_path(file_name: &str) -> Option<PathBuf> {
     real_corpus::save_file_path(file_name)
 }
 
-fn load_required(file_name: &str) -> Vec<u8> {
-    let path = resolve_savedata_path(file_name).unwrap_or_else(|| {
-        panic!(
-            "Sweetie HD real-bytes assertion requires ITOTORI_REAL_GAME_ROOT to point at a \
-             RealLive game root containing SAVEDATA/{file_name}; this test is #[ignore]-gated \
-             so missing private inputs must not report success"
-        )
-    });
-    fs::read(&path).unwrap_or_else(|err| {
+/// Load a required SAVEDATA file, honouring the shared strict-by-default
+/// real-bytes gate. When the corpus is absent this defers to
+/// [`real_corpus::skip_or_require_real_bytes`] — a HARD FAILURE unless the
+/// operator set `ITOTORI_ALLOW_MISSING_CORPUS=1`, in which case it logs a
+/// loud skip and returns `None` (the caller then early-returns). This
+/// replaces the bespoke unconditional panic so this test honours the
+/// opt-out flag uniformly with the other real-bytes tests.
+fn load_required(file_name: &str) -> Option<Vec<u8>> {
+    let Some(path) = resolve_savedata_path(file_name) else {
+        real_corpus::skip_or_require_real_bytes(&format!("save_real_bytes:{file_name}"));
+        return None;
+    };
+    let bytes = fs::read(&path).unwrap_or_else(|err| {
         panic!(
             "ITOTORI_REAL_GAME_ROOT is set but SAVEDATA/{file_name} could not be read at {}: {err}",
             path.display(),
         )
-    })
+    });
+    Some(bytes)
 }
 
 #[test]
@@ -111,7 +116,9 @@ fn save_real_bytes_are_ignored_without_private_corpus() {
 // ---------------------------------------------------------------------
 
 fn verify_system_save() {
-    let bytes = load_required("REALLIVE.sav");
+    let Some(bytes) = load_required("REALLIVE.sav") else {
+        return;
+    };
     assert_eq!(
         bytes.len(),
         SWEETIE_HD_SYSTEM_SAVE_BYTES,
@@ -178,7 +185,9 @@ fn save_real_bytes_system_save_round_trips() {
 // ---------------------------------------------------------------------
 
 fn verify_global_save() {
-    let bytes = load_required("save999.sav");
+    let Some(bytes) = load_required("save999.sav") else {
+        return;
+    };
     assert_eq!(bytes.len(), SWEETIE_HD_GLOBAL_SAVE_BYTES);
 
     let save = GlobalSave::decode(&bytes).expect("save999.sav must decode");
@@ -219,7 +228,9 @@ fn save_real_bytes_global_save_round_trips() {
 // ---------------------------------------------------------------------
 
 fn verify_read_flags() {
-    let bytes = load_required("read.sav");
+    let Some(bytes) = load_required("read.sav") else {
+        return;
+    };
     assert_eq!(bytes.len(), SWEETIE_HD_READ_FLAGS_BYTES);
 
     let flags = ReadFlags::decode(&bytes).expect("read.sav must decode");

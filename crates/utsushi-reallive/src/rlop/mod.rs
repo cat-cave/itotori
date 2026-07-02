@@ -274,14 +274,36 @@ impl RlopRegistry {
         Self::default()
     }
 
-    /// Register an [`RLOperation`] under `key`. Returns the previously
-    /// registered implementor (if any), so a caller that wants to
-    /// detect duplicate registration can assert on `None`.
+    /// Register an [`RLOperation`] under `key`.
+    ///
+    /// # Duplicate-key guard
+    ///
+    /// Registration is **displacement-free**: every stored op is
+    /// non-`None`, so a `key` that is already present would clobber a
+    /// live op. That is always a registrar bug (two families claiming the
+    /// same `(module_type, module_id, opcode)` — e.g. the historical
+    /// `msg.pause` / `sel.select_objbtn` collision at `(1, 5, 3)` caused
+    /// by mislabelled `module_id`s), so it **panics** rather than
+    /// silently overwriting. This turns any future key collision into a
+    /// loud failure at registration/test time instead of a silent
+    /// mis-dispatch at runtime.
+    ///
+    /// Gap-fill callers (e.g. [`crate::rlop::module_catalog`]) must guard
+    /// with [`Self::get`] `.is_none()` before registering; they do.
+    ///
+    /// Returns `None` (there is never a displaced op to return); the
+    /// return type is retained so callers can still `assert!(… .is_none())`.
     pub fn register(
         &mut self,
         key: RlopKey,
         op: Arc<dyn RLOperation>,
     ) -> Option<Arc<dyn RLOperation>> {
+        assert!(
+            !self.entries.contains_key(&key),
+            "RlopRegistry key collision: {key} is already registered; a second registrar would \
+             displace a live op (this is the class of bug the mislabelled-module_id `(1, 5, 3)` \
+             msg.pause/sel.select_objbtn collision was — fix the offending module_id/opcode)"
+        );
         self.entries.insert(key, op)
     }
 
