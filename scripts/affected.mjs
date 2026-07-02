@@ -1,5 +1,10 @@
 import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { fileURLToPath } from "node:url";
+
+const scriptDir = path.dirname(fileURLToPath(import.meta.url));
+const repoRoot = path.resolve(scriptDir, "..");
 
 function git(args) {
   try {
@@ -119,6 +124,161 @@ export function affectedTasks(changedPaths) {
   }
 
   return taskOrder.filter((task) => tasks.has(task));
+}
+
+// ---------------------------------------------------------------------------
+// qd-full-ci affected-lane selection
+//
+// affectedTasks() (above) maps a changed-path set to the fine-grained project
+// gates. affectedCiLanes() layers the coarse `just ci` sub-lanes on top so the
+// per-gate qd-full-ci run can pay only for what a diff can affect:
+//
+//   * broad / shared / foundational change (workspace Cargo.toml, justfile,
+//     scripts/, .github/, root files) -> affectedTasks() collapses to the `ci`
+//     sentinel, so affectedCiLanes() returns exactly ["ci"] (the FULL gate).
+//   * apps/itotori-only / TS-only change -> ci-itotori (+ check); NO rust
+//     build/test and NO ci-real-bytes lane.
+//   * a crates/kaifuu-* or crates/utsushi-* change -> that family's rust gate
+//     PLUS the (monolithic) ci-real-bytes lane, expanded dependency-graph-
+//     correct: a change to a crate family that another family depends on also
+//     runs the dependents' gate (utsushi depends on kaifuu, so a kaifuu change
+//     runs ci-utsushi too).
+//
+// The dependency direction is derived from the workspace Cargo.toml manifests
+// (buildCrateFamilyDependents), never hard-coded, so it stays correct as deps
+// change. Bias is conservative: when in doubt a lane is selected, never skipped.
+// ---------------------------------------------------------------------------
+
+const laneOrder = [
+  "ci",
+  "check",
+  "schema",
+  "ci-itotori",
+  "ci-kaifuu",
+  "ci-utsushi",
+  "ci-real-bytes",
+  "fixtures-validate",
+  "localize-project-test",
+  "alpha-proof",
+  "roadmap-validate",
+];
+
+const rustFamilyGate = new Map([
+  ["kaifuu", "ci-kaifuu"],
+  ["utsushi", "ci-utsushi"],
+]);
+
+function crateFamilyOf(packageName) {
+  return packageName.split("-")[0];
+}
+
+function readWorkspaceMembers(root) {
+  const cargo = readFileSync(path.join(root, "Cargo.toml"), "utf8");
+  const match = cargo.match(/^\[workspace\][\s\S]*?^members\s*=\s*\[([\s\S]*?)^\]/m);
+  if (!match) return [];
+  return [...match[1].matchAll(/"([^"]+)"/g)].map((member) => member[1]);
+}
+
+function readPackageName(root, member) {
+  const manifest = readFileSync(path.join(root, member, "Cargo.toml"), "utf8");
+  let inPackageSection = false;
+  for (const line of manifest.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (trimmed === "[package]") {
+      inPackageSection = true;
+      continue;
+    }
+    if (inPackageSection && trimmed.startsWith("[") && trimmed.endsWith("]")) break;
+    const name = inPackageSection ? trimmed.match(/^name\s*=\s*"([^"]+)"/) : null;
+    if (name) return name[1];
+  }
+  return path.basename(member);
+}
+
+function workspaceDependencyNames(manifest, packageNames) {
+  const names = new Set();
+  for (const line of manifest.split(/\r?\n/)) {
+    const match = line.match(/^([A-Za-z0-9_-]+)\b/);
+    if (match && packageNames.has(match[1])) names.add(match[1]);
+  }
+  return names;
+}
+
+// Build the crate-FAMILY reverse-dependency closure from the workspace manifests.
+// Returns Map<family, string[]> where the value lists every family that (transitively)
+// depends on the key family. Example here: { kaifuu -> ["utsushi"] } (utsushi crates
+// depend on kaifuu crates; nothing depends on utsushi).
+export function buildCrateFamilyDependents(root = repoRoot) {
+  const members = readWorkspaceMembers(root).filter((member) => member.startsWith("crates/"));
+  const packageFamily = new Map();
+  const memberByPackage = new Map();
+  for (const member of members) {
+    const pkg = readPackageName(root, member);
+    packageFamily.set(pkg, crateFamilyOf(pkg));
+    memberByPackage.set(pkg, member);
+  }
+  const packageNames = new Set(packageFamily.keys());
+
+  const directDependents = new Map(); // family -> Set(families that directly depend on it)
+  for (const [pkg, member] of memberByPackage) {
+    const family = packageFamily.get(pkg);
+    const manifest = readFileSync(path.join(root, member, "Cargo.toml"), "utf8");
+    for (const dep of workspaceDependencyNames(manifest, packageNames)) {
+      const depFamily = packageFamily.get(dep);
+      if (!depFamily || depFamily === family) continue;
+      if (!directDependents.has(depFamily)) directDependents.set(depFamily, new Set());
+      directDependents.get(depFamily).add(family);
+    }
+  }
+
+  const closure = new Map();
+  for (const family of new Set(packageFamily.values())) {
+    const seen = new Set();
+    const stack = [...(directDependents.get(family) ?? [])];
+    while (stack.length > 0) {
+      const next = stack.pop();
+      if (seen.has(next)) continue;
+      seen.add(next);
+      for (const downstream of directDependents.get(next) ?? []) stack.push(downstream);
+    }
+    if (seen.size > 0) closure.set(family, [...seen].sort());
+  }
+  return closure;
+}
+
+// Map a changed-path set to the ordered list of `just` lanes qd-full-ci should run.
+// Returns ["ci"] for a full gate, [] for a docs-only diff, or a fine-grained subset.
+export function affectedCiLanes(changedPaths, options = {}) {
+  const root = options.root ?? repoRoot;
+  const base = affectedTasks(changedPaths);
+
+  // Broad / shared / foundational change: run the complete gate unchanged.
+  if (base.includes("ci")) return ["ci"];
+  if (base.length === 0) return []; // docs-only / nothing code-affecting
+
+  const familyDependents = options.familyDependents ?? buildCrateFamilyDependents(root);
+  const lanes = new Set(base);
+
+  // The foundational base gate (fmt/lint/typecheck/spec-dag/node-suites) runs for
+  // any code change.
+  lanes.add("check");
+
+  // Dependency-graph expansion: a change to a crate family also runs the gates of
+  // every family that depends on it.
+  for (const [family, gate] of rustFamilyGate) {
+    if (!lanes.has(gate)) continue;
+    for (const dependent of familyDependents.get(family) ?? []) {
+      const dependentGate = rustFamilyGate.get(dependent);
+      if (dependentGate) lanes.add(dependentGate);
+    }
+  }
+
+  // Any rust crate family in scope runs the monolithic real-bytes lane. ci-real-bytes
+  // is a single recipe spanning every crate's real-bytes suite, so any crate change
+  // that could touch it selects the whole lane (conservative, never partial).
+  if (lanes.has("ci-kaifuu") || lanes.has("ci-utsushi")) lanes.add("ci-real-bytes");
+
+  return laneOrder.filter((lane) => lanes.has(lane));
 }
 
 function main() {

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
-import { affectedTasks } from "./affected.mjs";
+import { affectedCiLanes, affectedTasks, buildCrateFamilyDependents } from "./affected.mjs";
 
 function parseWorkspaceMembers(cargoToml) {
   const match = cargoToml.match(/^\[workspace\][\s\S]*?^members\s*=\s*\[([\s\S]*?)^\]/m);
@@ -111,4 +111,71 @@ test("check gate runs localize-project node tests", () => {
     localizeProjectTestBody,
     /^\s*node --test suite\/scripts\/localize-project\/\*\.test\.mjs$/m,
   );
+});
+
+// ---------------------------------------------------------------------------
+// qd-full-ci affected-lane selection (affectedCiLanes / buildCrateFamilyDependents)
+// ---------------------------------------------------------------------------
+
+test("crate family dependency graph: utsushi depends on kaifuu, nothing depends on utsushi", () => {
+  const dependents = buildCrateFamilyDependents();
+  // A kaifuu change must also run the utsushi family (utsushi crates depend on kaifuu).
+  assert.deepEqual([...(dependents.get("kaifuu") ?? [])], ["utsushi"]);
+  // Nothing depends on the utsushi family, so a utsushi change stays within utsushi.
+  assert.equal(dependents.has("utsushi"), false);
+});
+
+test("qd-full-ci lanes: apps/itotori-only diff excludes the rust build/test + real-bytes lanes", () => {
+  const lanes = affectedCiLanes(["apps/itotori/src/server.ts"]);
+  assert.ok(lanes.includes("ci-itotori"), "itotori change runs the itotori gate");
+  assert.ok(lanes.includes("check"), "itotori change still runs the base check gate");
+  assert.ok(!lanes.includes("ci-real-bytes"), "itotori-only must NOT run the rust real-bytes lane");
+  assert.ok(!lanes.includes("ci-kaifuu"));
+  assert.ok(!lanes.includes("ci-utsushi"));
+  assert.ok(!lanes.includes("ci"), "itotori-only must NOT escalate to the full ci gate");
+});
+
+test("qd-full-ci lanes: a packages/itotori-db diff also stays off the rust real-bytes lane", () => {
+  const lanes = affectedCiLanes(["packages/itotori-db/src/index.ts"]);
+  assert.ok(lanes.includes("ci-itotori"));
+  assert.ok(!lanes.includes("ci-real-bytes"));
+});
+
+test("qd-full-ci lanes: a utsushi crate diff includes the utsushi rust + real-bytes lanes", () => {
+  const lanes = affectedCiLanes(["crates/utsushi-reallive/src/lib.rs"]);
+  assert.ok(lanes.includes("ci-utsushi"), "utsushi change runs the utsushi gate");
+  assert.ok(lanes.includes("ci-real-bytes"), "utsushi change runs the real-bytes lane");
+  assert.ok(lanes.includes("check"));
+  assert.ok(!lanes.includes("ci"), "a crate change must not escalate to the full ci sentinel");
+});
+
+test("qd-full-ci lanes: a kaifuu crate diff runs kaifuu AND utsushi (dep direction) + real-bytes", () => {
+  const lanes = affectedCiLanes(["crates/kaifuu-reallive/src/lib.rs"]);
+  assert.ok(lanes.includes("ci-kaifuu"));
+  assert.ok(
+    lanes.includes("ci-utsushi"),
+    "utsushi depends on kaifuu, so a kaifuu change must also run utsushi's lane",
+  );
+  assert.ok(lanes.includes("ci-real-bytes"));
+});
+
+test("qd-full-ci lanes: a shared-file diff selects the full ci gate (everything)", () => {
+  assert.deepEqual(affectedCiLanes(["justfile"]), ["ci"]);
+  assert.deepEqual(affectedCiLanes(["Cargo.toml"]), ["ci"]);
+  assert.deepEqual(affectedCiLanes(["Cargo.lock"]), ["ci"]);
+  assert.deepEqual(affectedCiLanes(["scripts/qd-full-ci.mjs"]), ["ci"]);
+  assert.deepEqual(affectedCiLanes([".github/workflows/ci.yml"]), ["ci"]);
+});
+
+test("qd-full-ci lanes: a docs-only diff selects no build/real-bytes lane", () => {
+  assert.deepEqual(affectedCiLanes(["docs/foo.md"]), []);
+  assert.deepEqual(affectedCiLanes(["README.md"]), []);
+});
+
+test("qd-full-ci lanes: an itotori + utsushi diff runs both gates + real-bytes but not full ci", () => {
+  const lanes = affectedCiLanes(["apps/itotori/src/server.ts", "crates/utsushi-siglus/src/lib.rs"]);
+  assert.ok(lanes.includes("ci-itotori"));
+  assert.ok(lanes.includes("ci-utsushi"));
+  assert.ok(lanes.includes("ci-real-bytes"));
+  assert.ok(!lanes.includes("ci"));
 });

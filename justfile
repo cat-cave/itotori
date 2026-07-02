@@ -75,7 +75,17 @@ itotori-scale-large: itotori-scale-build db-up db-wait
 
 # clippy + `cargo deny check` now live in the `check` recipe (single source of
 # truth), which `ci` depends on, so every local gate enforces them.
+#
+# `ci` is the COMPLETE gate and always runs every lane (including the ~30-45min
+# rust real-bytes lane). The per-gate `qd-full-ci` wrapper runs an AFFECTED-AWARE
+# subset by default (only the lanes a diff can touch — e.g. an apps/itotori-only
+# change skips the rust real-bytes lane); force the full gate there with
+# `node scripts/qd-full-ci.mjs --all`. See scripts/qd-full-ci.mjs + affected.mjs.
 ci: check build db-migrate test ci-real-bytes
+
+# Explicit alias for the COMPLETE gate (same as `just ci`), for callers that want
+# to be unambiguous that no affected-lane pruning is applied.
+ci-full: ci
 
 # real-bytes-tests-in-ci: run EVERY crate's real-bytes suite against its staged
 # real corpus. Reads the corpora in place, read-only; NEVER copies copyrighted
@@ -123,6 +133,12 @@ ci-real-bytes:
     # kaifuu-vault-source: only the live-vault #[ignore] proofs (avoid unrelated KAIFUU-236/237 ignores).
     cargo test -p kaifuu-vault-source --test live_vault_open_test --test live_vault_by_id_test -- --ignored
 
+# Per-gate CI entrypoint. Affected-aware by default: selects only the lanes the
+# diff (vs ITOTORI_QD_AFFECTED_BASE, default `main`) can touch — apps/itotori-only
+# changes run the itotori gate + check and SKIP the rust real-bytes lane; crate
+# changes run that family's gate (+ dependents) + ci-real-bytes; shared/foundational
+# changes run the full `ci`. Nothing is permanently skipped: `just ci` / `just
+# ci-full` / `node scripts/qd-full-ci.mjs --all` still run everything.
 qd-full-ci:
     node scripts/qd-full-ci.mjs
 

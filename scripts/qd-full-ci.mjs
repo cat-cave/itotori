@@ -7,6 +7,7 @@ import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { affectedCiLanes } from "./affected.mjs";
 
 const defaultDatabaseUrl = "postgres://itotori:itotori@127.0.0.1:55433/itotori";
 const defaultComposeEnvPath = path.join(".tmp", "itotori-db", "compose.env");
@@ -22,8 +23,35 @@ if (import.meta.url === pathToMainUrl(process.argv[1])) {
   });
 }
 
+// qd-full-ci is the per-gate CI entrypoint. Instead of always running the full
+// `just ci` (check + build + db-migrate + test + ci-real-bytes, ~30-45min on the
+// rust real-bytes lane), it selects only the lanes a diff can affect:
+//
+//   * shared / foundational change (workspace Cargo.toml, justfile, scripts/,
+//     .github/, root files) OR `--all` / ITOTORI_QD_FULL_CI_ALL=1 -> full `just ci`.
+//   * apps/itotori-only / TS-only change -> ci-itotori (+ check); the rust
+//     build/test and ci-real-bytes lanes are SKIPPED (apps/itotori has no kaifuu/
+//     utsushi dependency).
+//   * a crates/kaifuu-* or crates/utsushi-* change -> that family's rust gate +
+//     ci-real-bytes, dependency-graph-expanded (utsushi depends on kaifuu, so a
+//     kaifuu change also runs ci-utsushi). See affectedCiLanes() in affected.mjs.
+//
+// Lane selection is dependency-graph-correct and conservative (when in doubt a
+// lane runs; nothing is permanently skipped — the full gate is always available
+// via `just ci` / `just ci-full` / `node scripts/qd-full-ci.mjs --all`).
+//
+// The qd-managed disposable Postgres is only started for the full `ci` lane
+// (which owns db-migrate/test); the fine-grained ci-itotori gate self-manages its
+// own DB, so fine-grained runs skip the extra db-up/db-down.
 async function main() {
   const root = findProjectRoot(process.cwd());
+  const lanes = selectLanes(root, process.env);
+  const needsManagedDb = lanes.includes("ci");
+  console.log(
+    `qd-full-ci affected-lane selection: ${lanes.join(" ") || "(none)"}` +
+      (needsManagedDb ? "" : " [fine-grained; qd-managed Postgres skipped]"),
+  );
+
   const reservation = await reserveDbPort(root, process.env);
   let status = 0;
   let teardown = null;
@@ -41,15 +69,17 @@ async function main() {
     let exiting = false;
 
     teardown = () => {
-      if (!dbAttempted || exiting) return 0;
-      exiting = true;
-      try {
-        const result = runJust(root, childEnv, ["db-down"]);
-        return result.status ?? 1;
-      } finally {
-        exiting = false;
-        removeOwnedComposeEnv(root, settings);
+      let downStatus = 0;
+      if (dbAttempted && !exiting) {
+        exiting = true;
+        try {
+          downStatus = runJust(root, childEnv, ["db-down"]).status ?? 1;
+        } finally {
+          exiting = false;
+        }
       }
+      removeOwnedComposeEnv(root, settings);
+      return downStatus;
     };
 
     installSignalHandlers(teardown);
@@ -63,10 +93,15 @@ async function main() {
       ].join(" "),
     );
 
-    dbAttempted = true;
-    status = runJust(root, childEnv, ["db-up"]).status ?? 1;
-    if (status === 0) status = runJust(root, childEnv, ["db-wait"]).status ?? 1;
-    if (status === 0) status = runJust(root, childEnv, ["ci"]).status ?? 1;
+    if (needsManagedDb) {
+      dbAttempted = true;
+      status = runJust(root, childEnv, ["db-up"]).status ?? 1;
+      if (status === 0) status = runJust(root, childEnv, ["db-wait"]).status ?? 1;
+    }
+    for (const lane of lanes) {
+      if (status !== 0) break;
+      status = runJust(root, childEnv, [lane]).status ?? 1;
+    }
   } finally {
     try {
       const downStatus = teardown ? teardown() : 0;
@@ -90,6 +125,70 @@ function runJust(root, env, args) {
   });
   if (result.error) throw result.error;
   return result;
+}
+
+// Choose the lanes to run for this gate. `--all` (or ITOTORI_QD_FULL_CI_ALL=1)
+// forces the complete gate. Otherwise the diff vs the base branch (ITOTORI_QD_
+// AFFECTED_BASE, default `main`) drives affected-lane selection. Any inability to
+// determine the diff falls back to the full `ci` gate (conservative).
+export function selectLanes(root, env = process.env, argv = process.argv) {
+  if (argv.includes("--all") || env.ITOTORI_QD_FULL_CI_ALL === "1") return ["ci"];
+
+  const changed = computeChangedPaths(root, env);
+  if (changed === null) return ["ci"]; // cannot determine the diff -> full gate
+  if (changed.size === 0) return ["ci"]; // no diff vs base -> full gate (conservative)
+
+  const lanes = affectedCiLanes([...changed], { root });
+  // Docs-only diffs affect no build lane; still run the fast base gate so a gate
+  // run is never a zero-verification green.
+  return lanes.length > 0 ? lanes : ["check"];
+}
+
+function gitOutput(root, args) {
+  const result = spawnSync("git", args, { cwd: root, encoding: "utf8" });
+  if (result.error || result.status !== 0 || typeof result.stdout !== "string") return null;
+  return result.stdout;
+}
+
+function splitPathLines(text) {
+  return text
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+// Union of (a) commits on this branch since it diverged from the base branch,
+// (b) unstaged/staged working-tree changes, and (c) untracked files. Returns null
+// when the diff cannot be determined (not a git worktree, or every git query failed).
+function computeChangedPaths(root, env) {
+  if (!existsSync(path.join(root, ".git"))) return null;
+
+  const base = env.ITOTORI_QD_AFFECTED_BASE || "main";
+  const paths = new Set();
+  let anySucceeded = false;
+
+  const mergeBase = gitOutput(root, ["merge-base", "HEAD", base]);
+  if (mergeBase) {
+    const committed = gitOutput(root, ["diff", "--name-only", `${mergeBase.trim()}...HEAD`]);
+    if (committed !== null) {
+      anySucceeded = true;
+      for (const line of splitPathLines(committed)) paths.add(line);
+    }
+  }
+
+  const worktree = gitOutput(root, ["diff", "--name-only", "HEAD"]);
+  if (worktree !== null) {
+    anySucceeded = true;
+    for (const line of splitPathLines(worktree)) paths.add(line);
+  }
+
+  const untracked = gitOutput(root, ["ls-files", "--others", "--exclude-standard"]);
+  if (untracked !== null) {
+    anySucceeded = true;
+    for (const line of splitPathLines(untracked)) paths.add(line);
+  }
+
+  return anySucceeded ? paths : null;
 }
 
 function installSignalHandlers(teardown) {
