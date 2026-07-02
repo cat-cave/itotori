@@ -72,6 +72,36 @@ pub fn extract_archive(
     archive_path: &Path,
     paths: &ScratchPaths,
 ) -> Result<ExtractedTree, VaultSourceError> {
+    // Pre-scan the archive header and reject any unsafe entry BEFORE writing
+    // a single byte or invoking the decoder. sevenz-rust2 (>=0.21) carries
+    // its own path-escape guard that aborts `decompress_file_with_extract_fn`
+    // with a generic `"unsafe entry path escapes destination"` error *before*
+    // our per-entry `extract_fn` ever runs for the offending entry — so the
+    // callback below never gets to classify it, and the failure would surface
+    // as a bare `ExtractionFailed{7z decoder error}` rather than the typed
+    // `ExtractionUnsafePath` the contract mandates. Validating the header
+    // entry names ourselves first makes our guard authoritative (and matches
+    // the contract's "rejected before any byte is written" invariant): the
+    // precise reason (`parent-dir` / `absolute-path` / `drive-prefix` /
+    // `vault-collision` / …) comes from our own `validate_entry_name`, not a
+    // string-matched upstream message.
+    let header = sevenz_rust2::Archive::open(archive_path).map_err(|e| {
+        VaultSourceError::ExtractionFailed {
+            archive_path: archive_path.to_path_buf(),
+            reason: format!("could not read archive header to validate entry paths: {e}"),
+            bytes_written: 0,
+        }
+    })?;
+    for entry in &header.files {
+        if let Some(reason) = classify_unsafe_entry(entry) {
+            return Err(VaultSourceError::ExtractionUnsafePath {
+                archive_path: archive_path.to_path_buf(),
+                entry: entry.name.clone(),
+                reason,
+            });
+        }
+    }
+
     // Ensure scratch is writable.
     if let Err(e) = std::fs::create_dir_all(&paths.extracted_root) {
         return Err(VaultSourceError::ScratchUnwritable {
@@ -187,6 +217,29 @@ pub fn extract_archive(
 struct UnsafeReason {
     entry: String,
     reason: &'static str,
+}
+
+/// Classify a single archive header entry as unsafe, returning the short
+/// reason string for [`VaultSourceError::ExtractionUnsafePath`] (or `None`
+/// if the entry is safe to extract). This mirrors — and runs ahead of — the
+/// per-entry validation in the extraction callback so an unsafe path is
+/// rejected from the archive *header* before any decode/write occurs. The
+/// two checks are the ones the callback applies to file entries: the entry
+/// name must pass [`validate_entry_name`] (rejecting parent-dir traversal,
+/// absolute paths, drive prefixes, backslash segments, empty/NUL names), and
+/// a non-`metadata.json` `_vault/…` file is a `vault-collision`.
+fn classify_unsafe_entry(entry: &ArchiveEntry) -> Option<&'static str> {
+    let safe_rel = match validate_entry_name(&entry.name) {
+        Ok(p) => p,
+        Err(r) => return Some(r),
+    };
+    if !entry.is_directory
+        && let Some(rel) = strip_leading(&safe_rel, "_vault")
+        && rel.to_string_lossy() != "metadata.json"
+    {
+        return Some("vault-collision");
+    }
+    None
 }
 
 /// Confirm the on-disk tree contains every file entry the archive header

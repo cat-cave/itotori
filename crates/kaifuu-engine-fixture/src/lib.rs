@@ -7706,8 +7706,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "KAIFUU-191: bridge-inventory-001 fixture uses pre-KAIFUU-191 synthetic 0x23-opener shape; \
-                follow-up node will regenerate it against the real opener-byte stream"]
     fn reallive_adapter_extract_emits_bridge_bundle_with_scene_dialogue_units() {
         let dir = reallive_174_fixture_dir("kaifuu-174-extract-bridge-bundle");
         let result = RealLiveProfileDetectorAdapter
@@ -7753,8 +7751,17 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "KAIFUU-191: bridge-inventory-001 fixture uses pre-KAIFUU-191 synthetic 0x23-opener shape; \
-                follow-up node will regenerate the fixture against the real opener-byte stream"]
+    #[ignore = "KAIFUU-191 blocker (adapter-path divergence, NOT a fixture defect): the \
+                bridge-inventory-001 fixture is now the real post-KAIFUU-191 CommandElement shape and \
+                `extract` passes, but this round-trip cannot. The RealLive adapter's `extract` consumes \
+                the scene slot as RAW decompressed bytecode via inventory::build_scene_inventory (which \
+                mints random now_v7 bridgeUnitIds), while `patch` parses a SceneHeader + AVG32-decompresses \
+                and rebuilds units via bridge::produce_bundle (deterministic bridgeUnitIds). A single \
+                fixture cannot satisfy both framings, and the PatchExport bridgeUnitId minted by extract \
+                never matches produce_bundle's deterministic id (observed failure: 'bridgeUnitId is not \
+                present in any scene's v0.2 bridge'). Un-ignore once extract and patch are unified onto \
+                the produce_bundle path (decompress in extract + one bridge-unit-id scheme), which also \
+                requires re-framing this fixture as a SceneHeader + AVG32-compressed blob."]
     fn reallive_adapter_patch_round_trips_length_preserving_translation() {
         let dir = reallive_174_fixture_dir("kaifuu-174-patch-length-preserving");
         // First extract to learn the slot id for the dialogue slot.
@@ -7765,7 +7772,7 @@ mod tests {
             .bridge
             .units
             .iter()
-            .find(|u| u.text_surface == "dialogue" && u.source_text == "Hello!")
+            .find(|u| u.text_surface == "dialogue" && u.source_text == "Hello")
             .expect("dialogue 'Hello!' unit");
         let export = PatchExport {
             patch_export_id: "kaifuu-reallive-translate".to_string(),
@@ -7800,8 +7807,13 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "KAIFUU-191: bridge-inventory-001 fixture uses pre-KAIFUU-191 synthetic 0x23-opener shape; \
-                follow-up node will regenerate the fixture against the real opener-byte stream"]
+    #[ignore = "KAIFUU-191 blocker (adapter-path divergence, NOT a fixture defect): same root cause as \
+                reallive_adapter_patch_round_trips_length_preserving_translation — the adapter's `extract` \
+                (raw-bytecode inventory walk, random now_v7 bridgeUnitIds) and `patch` (SceneHeader + \
+                AVG32-decompress + produce_bundle, deterministic bridgeUnitIds) use divergent scene-blob \
+                framings and bridge-unit-id schemes, so a PatchExport keyed on extract's id never matches \
+                a patch-side unit. Un-ignore once extract and patch are unified onto the produce_bundle \
+                path (and this fixture is re-framed as SceneHeader + AVG32-compressed)."]
     fn reallive_adapter_patch_rejects_length_overflow_with_unsupported_layered_transform_semantic_error()
      {
         let dir = reallive_174_fixture_dir("kaifuu-174-patch-overflow");
@@ -7812,7 +7824,7 @@ mod tests {
             .bridge
             .units
             .iter()
-            .find(|u| u.text_surface == "dialogue" && u.source_text == "Hello!")
+            .find(|u| u.text_surface == "dialogue" && u.source_text == "Hello")
             .expect("dialogue 'Hello!' unit");
         let export = PatchExport {
             patch_export_id: "kaifuu-reallive-overflow".to_string(),

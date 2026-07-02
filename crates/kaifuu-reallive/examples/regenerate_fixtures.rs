@@ -109,15 +109,59 @@ fn protected_spans_001() -> Vec<u8> {
 }
 
 fn bridge_inventory_001() -> Vec<u8> {
+    // KAIFUU-191: the pre-KAIFUU-191 synthetic `0x23 ('#') opener + named
+    // opcode byte + operand-count` string-operand shape is deleted. This
+    // scene is authored in the REAL post-KAIFUU-191 byte shape decoded by
+    // `parse_real_bytecode` (8-byte `CommandElement` headers + inline
+    // Shift-JIS Textout runs + a `module_sel` `{ … }` SelectElement block),
+    // the same shape `kaifuu-cli::binary_patch_smoke::synthetic_scene_bytecode`
+    // uses. The RealLive detector adapter's `extract` consumes the scene
+    // slot as the **decompressed** bytecode stream (it does not parse a
+    // scene header or AVG32-decompress), so the slot payload here is the
+    // raw decompressed bytecode.
+    //
+    // The scene exercises the three alpha string surfaces the KAIFUU-174
+    // inventory walk classifies:
+    // - SetSpeaker  (module_msg opcode 3 → CharacterTextDisplay) → speaker_name
+    // - Textout     (inline "Hello") → dialogue
+    // - TextDisplay (module_msg opcode 10) → dialogue marker
+    // - Choice      (module_sel opcode 0, `{ "Yes" \n "No" \n }`) → choice_label
+    // - Textout     (inline "bg/sample.g00") → dialogue + asset reference
+    // Note the dialogue run cannot contain a structural-opener byte
+    // (`0x00 0x0A 0x21 0x23 0x24 0x2C 0x40`) — `0x21` ('!') would terminate
+    // the Textout run — so the readable dialogue is "Hello" (no trailing
+    // bang), which is what the real decoder yields.
     let mut scene = Vec::new();
-    scene.extend(instruction(0x02, &[string_operand(b"Aoi")]));
-    scene.extend(instruction(0x01, &[string_operand(b"Hello!")]));
-    scene.extend(instruction(
-        0x03,
-        &[string_operand(b"Yes"), string_operand(b"No")],
-    ));
-    scene.extend(instruction(0x01, &[string_operand(b"bg/sample.g00")]));
+    scene.extend_from_slice(&command_header(MODULE_TYPE_KEPAGO, MODULE_MSG, 3, 0)); // SetSpeaker
+    scene.extend_from_slice(b"Hello"); // Textout dialogue run
+    scene.extend_from_slice(&command_header(MODULE_TYPE_KEPAGO, MODULE_MSG, 10, 0)); // TextDisplay
+    scene.extend_from_slice(&command_header(MODULE_TYPE_SEL, MODULE_SEL, 0, 0)); // Choice select_w
+    scene.push(0x7B); // '{' SelectElement block open
+    scene.extend_from_slice(b"Yes");
+    scene.extend_from_slice(&[0x0A, 0x00, 0x00]); // \n + i16 line marker
+    scene.extend_from_slice(b"No");
+    scene.extend_from_slice(&[0x0A, 0x00, 0x00]); // \n + i16 line marker
+    scene.push(0x7D); // '}' SelectElement block close
+    scene.extend_from_slice(b"bg/sample.g00"); // Textout asset-reference run
+    scene.extend_from_slice(&command_header(MODULE_TYPE_KEPAGO, MODULE_SYS, 17, 0)); // End
     single_scene_archive(&scene)
+}
+
+// module_type 1 = Kepago RLOperation namespace (msg / sys); the select /
+// Choice family lives in module_type 0, module_id 2 (`module_sel`). Module
+// ids per the documented rlvm `module_*.cc` catalogue (research anchor only).
+const MODULE_TYPE_KEPAGO: u8 = 1;
+const MODULE_TYPE_SEL: u8 = 0;
+const MODULE_MSG: u8 = 3;
+const MODULE_SEL: u8 = 2;
+const MODULE_SYS: u8 = 4;
+
+/// An 8-byte real `CommandElement` header (rlvm `bytecode.h:CommandElement`
+/// — research anchor only): `0x23`, module_type, module_id, opcode_u16_le
+/// (lo, hi), argc, overload, reserved.
+fn command_header(module_type: u8, module_id: u8, opcode: u16, argc: u8) -> [u8; 8] {
+    let [op_lo, op_hi] = opcode.to_le_bytes();
+    [0x23, module_type, module_id, op_lo, op_hi, argc, 0x00, 0x00]
 }
 
 fn single_scene_archive(scene: &[u8]) -> Vec<u8> {

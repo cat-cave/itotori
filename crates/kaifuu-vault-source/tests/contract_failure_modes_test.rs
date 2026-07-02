@@ -14,6 +14,7 @@ use kaifuu_vault_source::{
 };
 
 fn open_source(v: &common::SyntheticVault) -> VaultSource {
+    common::isolate_ambient_vault_env();
     VaultSource::open(
         &VaultConfig {
             vault_root_override: Some(v.vault_root.clone()),
@@ -27,6 +28,7 @@ fn open_source(v: &common::SyntheticVault) -> VaultSource {
 
 #[test]
 fn vault_root_missing_when_configured_path_does_not_exist() {
+    common::isolate_ambient_vault_env();
     let err = VaultSource::open(
         &VaultConfig {
             vault_root_override: Some(PathBuf::from("/tmp/kaifuu-vault-source-nonexistent-please")),
@@ -39,6 +41,7 @@ fn vault_root_missing_when_configured_path_does_not_exist() {
 
 #[test]
 fn vault_root_incomplete_when_artifacts_by_id_subdir_is_absent() {
+    common::isolate_ambient_vault_env();
     let td = tempfile::tempdir().unwrap();
     std::fs::write(td.path().join("catalog.db"), b"x").unwrap();
     let err = VaultSource::open(
@@ -59,6 +62,7 @@ fn vault_root_incomplete_when_artifacts_by_id_subdir_is_absent() {
 
 #[test]
 fn catalog_open_failed_when_catalog_db_is_a_directory() {
+    common::isolate_ambient_vault_env();
     let td = tempfile::tempdir().unwrap();
     std::fs::create_dir_all(td.path().join("catalog.db")).unwrap();
     std::fs::create_dir_all(td.path().join("artifacts/by-id")).unwrap();
@@ -88,8 +92,8 @@ fn catalog_open_failed_when_catalog_db_is_a_directory() {
 }
 
 #[test]
-#[ignore = "CI-only failure: passes locally on nix devshell (rusqlite from nix), fails on Ubuntu CI. Suspected rusqlite/SQLite version skew. Tracked by KAIFUU-237."]
 fn catalog_schema_unsupported_when_schema_version_row_is_absent() {
+    common::isolate_ambient_vault_env();
     let td = tempfile::tempdir().unwrap();
     std::fs::create_dir_all(td.path().join("artifacts/by-id")).unwrap();
     let cat_path = td.path().join("catalog.db");
@@ -112,8 +116,8 @@ fn catalog_schema_unsupported_when_schema_version_row_is_absent() {
 }
 
 #[test]
-#[ignore = "CI-only failure: passes locally on nix devshell, fails on Ubuntu CI. Same root cause as catalog_schema_unsupported_when_schema_version_row_is_absent. Tracked by KAIFUU-237."]
 fn catalog_schema_unsupported_when_schema_version_exceeds_supported() {
+    common::isolate_ambient_vault_env();
     let td = tempfile::tempdir().unwrap();
     std::fs::create_dir_all(td.path().join("artifacts/by-id")).unwrap();
     let cat_path = td.path().join("catalog.db");
@@ -143,6 +147,7 @@ fn catalog_schema_unsupported_when_schema_version_exceeds_supported() {
 
 #[test]
 fn scratch_unwritable_when_scratch_root_parent_is_read_only() {
+    common::isolate_ambient_vault_env();
     // We can't easily make a directory read-only in CI; instead use
     // a path under /proc/1 which is genuinely unwritable on Linux.
     let v = common::SyntheticVault::build();
