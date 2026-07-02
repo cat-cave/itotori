@@ -49,9 +49,12 @@ fire and pieces can be swapped."
 1. **Substrate extensions M.1–M.3 landed.** `UTSUSHI-222` (composite asset
    package + try-dir-then-archive resolver), `UTSUSHI-223` (snapshot
    envelope size class), `UTSUSHI-224` (`EnginePort` → substrate-sinks
-   bridge, legacy `ObservationHookEvent` deleted). Each ships with
-   multi-engine validation against ≥2 real-bytes corpora and same-change
-   legacy deletion.
+   bridge, the legacy Rust runtime `ObservationHookEvent` enum deleted
+   from `crates/`). Each ships with multi-engine validation against ≥2
+   real-bytes corpora and same-change legacy deletion. (The distinct TS
+   bridge wire type `ObservationHookEvent` in
+   `packages/localization-bridge-schema` is unaffected and remains live
+   as an `observationHookEvents` field of `RuntimeEvidenceReportV02`.)
 2. **Non-synthetic engine port crate scaffolded.** `UTSUSHI-200` registers
    conformance against the substrate with the smallest credible opcode
    subset (call/return/text-display/wait); does not depend on author-fixture

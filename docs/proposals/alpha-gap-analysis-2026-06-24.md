@@ -157,7 +157,10 @@ string` REQUIRED to `ModelInvocationRequest`; delete the
 `modelId?`-optional surface; propagate through every caller. Make the
 OpenRouter client emit `provider: { only: [providerId] }` and verify
 post-response that `upstreamProvider === providerId` (mismatch →
-`ModelProviderError` with new `pair_mismatch` code). Re-key recorded
+`ModelProviderError` with new `pair_mismatch` code). <!-- SUPERSEDED
+(ITOTORI-243): the `only`-pin + `pair_mismatch` guard was removed;
+pinning relaxed to OR-side fallback (`order` + `allow_fallbacks:true`),
+provider identity is no longer a failure axis. --> Re-key recorded
 bundles by `(modelId, providerId, promptHash, inputClassification)`;
 old key shape deleted same change per no-legacy-compat. Migrate the
 ledger to add `provider_id NOT NULL`; backfill from recorded upstream
@@ -275,7 +278,9 @@ is unchanged (mtime + sha256).
 every `EnginePortAdapter` lifecycle stage returning `Unimplemented`)
 and UTSUSHI-222/223/224 (substrate M.1–M.3 — composite asset package,
 snapshot envelope size class, `EnginePort` → substrate-sinks bridge
-with the legacy `ObservationHookEvent` deleted).
+with the legacy Rust runtime `ObservationHookEvent` enum deleted from
+`crates/`; the distinct TS bridge wire type `ObservationHookEvent` in
+`packages/localization-bridge-schema` remains live).
 
 **What does NOT exist.** UTSUSHI-201..218 are all `planned, continuous`.
 UTSUSHI-219 (XOR-2 key resolution) is cancelled as research-shaped;

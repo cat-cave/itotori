@@ -113,9 +113,11 @@ state this explicitly, so it was probed via toy call. From
 ```
 
 This is the authoritative routing-layer rejection envelope. itotori
-**must** surface this 404 as a typed
-`AccountZdrPolicyRejectionError(message, suggestedSettingsUrl)` — never
-retry, never widen the candidate set, never downgrade `zdr`.
+**must** surface this 404 as a typed `ModelProviderError` (code
+`provider_http_error`) — never retry, never widen the candidate set,
+never downgrade `zdr`. (The related process-startup ZDR gate is a
+separate `AccountZdrAssertionError`, thrown when
+`OPENROUTER_ZDR_ACCOUNT_ASSERTED` is unset.)
 
 Note the differently-shaped envelope from call_5 (pinning to a
 nonexistent provider tag):
@@ -134,10 +136,12 @@ nonexistent provider tag):
 ```
 
 OR's error envelope **distinguishes** "no provider matches the policy"
-from "no provider matches the explicit `only` list". itotori's
-typed-error layer (ITOTORI-227's
-`AccountZdrAssertionError`/`AccountZdrPolicyRejectionError` pair) should
-mirror that distinction.
+from "no provider matches the explicit `only` list". Since ITOTORI-243
+dropped the `only` list (OR-side fallback, §3.2), itotori no longer
+emits the second variant; the policy-rejection 404 surfaces through the
+coded `ModelProviderError` (`provider_http_error`) HTTP-error path, with
+the startup `AccountZdrAssertionError` gate as the separate load-bearing
+posture check.
 
 ### §2.4 — Response shape under ZDR
 
@@ -615,16 +619,21 @@ is optional).
 
 ### §8.2 — itotori's typed-error mapping
 
-| OR error envelope                                                             | itotori typed error                                                                                             | Source      |
-| ----------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- | ----------- |
-| 404 + "No endpoints found matching your data policy (Zero data retention)..." | `AccountZdrPolicyRejectionError`                                                                                | ITOTORI-227 |
-| 404 + "No allowed providers are available for the selected model."            | `ProviderPinUnreachableError` (with the `available_providers` array attached for the human reading the message) | ITOTORI-227 |
-| 404 + "Generation <id> not found"                                             | `GenerationLookupNotReadyError` (transient; reconciler may retry)                                               | ITOTORI-235 |
-| non-2xx + missing `usage.cost` field                                          | `ProviderResponseInvalidError`                                                                                  | ITOTORI-225 |
-| non-2xx + cost-cap excess detected in `usage.cost`                            | `CostCapExceededError`                                                                                          | ITOTORI-225 |
+| OR error envelope                                                             | itotori typed error                                                                                                    | Source      |
+| ----------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- | ----------- |
+| 404 + "No endpoints found matching your data policy (Zero data retention)..." | `ModelProviderError` (code `provider_http_error`); the process-startup ZDR gate is `AccountZdrAssertionError`          | ITOTORI-227 |
+| 404 + "Generation <id> not found"                                             | `ModelProviderError` (code `provider_http_error`, `retryable`; the documented /generation eventual-consistency window) | ITOTORI-235 |
+| non-2xx + missing/invalid `usage.cost` field                                  | `ModelProviderError` (code `provider_response_invalid`)                                                                | ITOTORI-225 |
+| pre-flight per-process cost-cap hit                                           | `OpenRouterCostCapError`                                                                                               | ITOTORI-225 |
+| recorded-bundle merge with a colliding, non-equal captured cost               | `RecordedCostMismatchError`                                                                                            | ITOTORI-228 |
+
+The `only`-list "No allowed providers are available for the selected
+model." 404 no longer applies: ITOTORI-243 relaxed provider pinning to
+OR-side fallback (`order` + `allow_fallbacks:true`, no `only` list), so
+provider identity is no longer a failure axis — see §3.2.
 
 No silent retries on any of these except the generation-lookup 404
-(which is a documented eventual-consistency window).
+(which is a documented eventual-consistency window, surfaced `retryable`).
 
 ### §8.3 — Rate limits
 
@@ -730,7 +739,7 @@ This doc anchors the corrective-node landing surface. Per-node hooks:
 | §5.2 — `usage.cost` is real     | ITOTORI-225                           | `normalizeOpenRouterCost` returns `costKind: "billed"` from `usage.cost`, raises on missing.                                              |
 | §5.3 — cache annotations        | ITOTORI-233                           | `TokenUsage.cacheReadTokens/cacheWriteTokens`; `ProviderCost.cacheDiscountMicrosUsd`.                                                     |
 | §5.4 — `/generation` reconciler | ITOTORI-235                           | `openrouter-cost-reconciler.ts` honours the eventual-consistency window (call_6 succeeded after ~8s; reconciler must back off similarly). |
-| §2.3 — ZDR rejection envelope   | ITOTORI-227                           | `AccountZdrPolicyRejectionError` typed at the seam.                                                                                       |
+| §2.3 — ZDR rejection envelope   | ITOTORI-227                           | Runtime 404 typed as a coded `ModelProviderError` (`provider_http_error`) at the seam; startup gate is `AccountZdrAssertionError`.        |
 | §2.4 — ZDR proof posture        | ITOTORI-230                           | `ProviderRunRecord.routingPosture` mirrors `{order, allow_fallbacks, data_collection, zdr, require_parameters}`.                          |
 | §7.2 — metadata header gate     | ITOTORI-233                           | Endpoint-pricing fallback path kept-and-fixed (header IS the gate, header IS sent today).                                                 |
 | §3.2 — alpha routing posture    | ITOTORI-227                           | `buildOpenRouterProviderRouting` defaults `provider.zdr=true` for non-public input.                                                       |

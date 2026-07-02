@@ -243,3 +243,57 @@ fn supplied_fixture_that_cannot_be_read_aborts_instead_of_silently_synthesizing(
         other => panic!("expected Aborted on unreadable fixture, got {other:?}"),
     }
 }
+
+#[test]
+fn inject_failure_parse_maps_every_cli_token_and_rejects_unknown() {
+    // Covers the CLI `--inject-failure` token parser (used by main.rs's
+    // dispatch arm). Exercised here so the integration-test compilation of
+    // the module also uses it — no `#[allow(dead_code)]` masking needed.
+    assert_eq!(InjectFailure::parse("none"), Ok(InjectFailure::None));
+    assert_eq!(
+        InjectFailure::parse("preflight-byte-budget"),
+        Ok(InjectFailure::PreflightByteBudget)
+    );
+    assert_eq!(
+        InjectFailure::parse("preflight-source-hash"),
+        Ok(InjectFailure::PreflightSourceHash)
+    );
+    assert_eq!(
+        InjectFailure::parse("verify-hash-mismatch"),
+        Ok(InjectFailure::VerifyHashMismatch)
+    );
+    let err = InjectFailure::parse("bogus").expect_err("unknown token must error");
+    assert!(
+        err.contains("bogus"),
+        "error names the bad token, got {err:?}"
+    );
+}
+
+#[test]
+fn write_smoke_summary_emits_status_line_per_outcome() {
+    // Covers the stdout-summary writer (used by main.rs). Exercised here so
+    // the module's integration-test compilation also uses it.
+    let mut passed = Vec::new();
+    binary_patch_smoke::write_smoke_summary(&mut passed, &BinarySmokeOutcome::Passed);
+    assert_eq!(
+        String::from_utf8(passed).unwrap(),
+        "binary-patch-smoke status=passed exit=0\n"
+    );
+
+    let mut failed = Vec::new();
+    binary_patch_smoke::write_smoke_summary(&mut failed, &BinarySmokeOutcome::Failed);
+    assert_eq!(
+        String::from_utf8(failed).unwrap(),
+        "binary-patch-smoke status=failed exit=1\n"
+    );
+
+    let mut aborted = Vec::new();
+    binary_patch_smoke::write_smoke_summary(
+        &mut aborted,
+        &BinarySmokeOutcome::Aborted("boom".to_string()),
+    );
+    assert_eq!(
+        String::from_utf8(aborted).unwrap(),
+        "binary-patch-smoke aborted: boom\n"
+    );
+}

@@ -302,6 +302,12 @@ error envelope and never reaches a provider.
   with `ModelProviderError("pair_mismatch", ...)`. Hashes the routing
   block into `routeSettingsHash` for the ledger.
 
+  > **SUPERSEDED (ITOTORI-243): the `pair_mismatch` guard was removed.**
+  > Provider pinning was relaxed to OR-side fallback (`order` +
+  > `allow_fallbacks:true`); provider identity is no longer a failure axis,
+  > so there is no `pair_mismatch` code — see `ModelProviderError` in
+  > `apps/itotori/src/providers/types.ts`.
+
 The provider-routing block written today (`buildOpenRouterProviderRouting`,
 lines 457–515) sets:
 
