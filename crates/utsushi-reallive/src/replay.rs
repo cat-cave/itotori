@@ -45,17 +45,28 @@ use utsushi_core::substrate::{
 };
 use utsushi_core::{EvidenceTier, SnapshotEnvelope};
 
+use utsushi_core::clock::LogicalClockTick;
+
+use crate::audio::AudioEventEmitter;
 use crate::bytecode_element::{BytecodeElement, TextoutEncoding, decode_bytecode_stream};
 use crate::decompressor::AvgDecompressor;
-use crate::rlop::module_ctrl::register_control_flow_rlops;
+use crate::rlop::module_audio::{AudioRuntime, register_audio_rlops};
+use crate::rlop::module_catalog::register_catalog_rlops;
+use crate::rlop::module_ctrl::register_control_flow_linear_walk;
+use crate::rlop::module_grp::register_grp_rlops;
+use crate::rlop::module_mem::register_mem_rlops;
 use crate::rlop::module_msg::{
     MSG_MODULE_ID, MSG_MODULE_TYPE, MsgRuntime, OPCODE_LINE_BREAK, dispatch_textout,
     register_text_rlops,
 };
+use crate::rlop::module_obj::{GraphicsRuntime, register_obj_rlops};
+use crate::rlop::module_sel::{SelRuntime, register_sel_rlops};
+use crate::rlop::module_str::{StrRuntime, register_str_rlops};
+use crate::rlop::module_sys::{SysRuntime, register_sys_rlops};
 use crate::rlop::{AlwaysReadyScheduler, RlopKey, RlopRegistry};
 use crate::scene_header::{SCENE_HEADER_BYTE_LEN, SceneHeader};
 use crate::scene_index::RealSceneIndex;
-use crate::vm::{InMemorySceneStore, Scene, StepOutcome, Vm, VmEvent};
+use crate::vm::{InMemorySceneStore, Scene, SceneId, SceneStore, StepOutcome, Vm, VmEvent};
 
 /// Stable schema version for [`ReplayLog`]. Pinned so a future bump is
 /// detected at restore time by any consumer that deserialises the JSON.
@@ -238,6 +249,30 @@ impl ReplayLog {
             .iter()
             .filter(|event| matches!(event, ReplayEvent::UnknownOpcode { .. }))
             .count()
+    }
+
+    /// Sorted, de-duplicated list of every `(module_type, module_id,
+    /// opcode)` the replay could not dispatch (each recorded as a
+    /// [`ReplayEvent::UnknownOpcode`]). The full-scene acceptance test
+    /// asserts this is EMPTY — an unknown opcode is a HARD failure of the
+    /// traversal, never a silent fail-soft advance.
+    pub fn unknown_opcode_keys(&self) -> Vec<(u8, u8, u16)> {
+        let mut keys: Vec<(u8, u8, u16)> = self
+            .events
+            .iter()
+            .filter_map(|event| match event {
+                ReplayEvent::UnknownOpcode {
+                    module_type,
+                    module_id,
+                    opcode,
+                    ..
+                } => Some((*module_type, *module_id, *opcode)),
+                _ => None,
+            })
+            .collect();
+        keys.sort_unstable();
+        keys.dedup();
+        keys
     }
 
     /// First non-empty Shift-JIS-decoded body, or `None` if no TextLine
@@ -582,41 +617,67 @@ struct ReplayContext {
     registry: RlopRegistry,
     runtime: Arc<MsgRuntime>,
     sink: Arc<ReplayTextSink>,
-    shift_jis_textout_offsets: HashSet<u32>,
+    /// Byte offsets of every Shift-JIS-tagged textout run, keyed by the
+    /// `(scene_id, byte_offset)` pair so a multi-scene traversal drives
+    /// `dispatch_textout` only when the VM's *current* scene/pc lands on
+    /// a Shift-JIS run.
+    shift_jis_textout_offsets: HashSet<(SceneId, u32)>,
 }
 
-/// Decode a Seen.txt envelope and stage a [`ReplayContext`] positioned
-/// at `(scene_id, 0)`. Centralised so [`replay_scene`] and
-/// [`replay_until_first_pause`] consume the same build path.
-fn stage_replay_context(seen_bytes: &[u8], scene_id: u16) -> Result<ReplayContext, ReplayError> {
-    let index = RealSceneIndex::parse(seen_bytes).map_err(|err| ReplayError::SceneIndexParse {
-        reason: err.to_string(),
-    })?;
-    let entry = index
-        .lookup(scene_id)
-        .ok_or(ReplayError::SceneNotFound { scene: scene_id })?;
-    let blob_start =
-        usize::try_from(entry.byte_offset).map_err(|_| ReplayError::SliceOverflow {
-            scene: scene_id,
-            reason: format!("byte_offset {} exceeds usize::MAX", entry.byte_offset),
-        })?;
-    let blob_len = entry.byte_len as usize;
-    let blob_end = blob_start
-        .checked_add(blob_len)
-        .ok_or(ReplayError::SliceOverflow {
-            scene: scene_id,
-            reason: format!("blob_start {blob_start} + byte_len {blob_len} overflows usize"),
-        })?;
-    if blob_end > seen_bytes.len() {
-        return Err(ReplayError::SliceOverflow {
-            scene: scene_id,
-            reason: format!(
-                "blob_end {blob_end} exceeds seen_bytes.len() {}",
-                seen_bytes.len()
-            ),
-        });
-    }
-    let blob = &seen_bytes[blob_start..blob_end];
+/// The multi-scene store, its `(scene, offset)` Shift-JIS textout set,
+/// and the build diagnostics — the tuple [`build_scene_store`] returns.
+pub type SceneStoreBundle = (InMemorySceneStore, HashSet<(SceneId, u32)>, SceneStoreStats);
+
+/// Diagnostic counts produced while building the multi-scene store.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SceneStoreStats {
+    /// Populated directory slots observed in the Seen.txt index.
+    pub populated: usize,
+    /// Scenes that decompressed + decoded into a non-empty element list
+    /// and were inserted into the store.
+    pub loaded: usize,
+    /// Populated scenes that failed to decompress / decode / were empty
+    /// and were skipped. A cross-scene Jump/FarCall into a skipped scene
+    /// surfaces as a typed `SceneNotFound` at the VM layer, so skips are
+    /// never silent.
+    pub skipped: usize,
+}
+
+/// One decoded scene: its id, decompressed bytecode elements, and the
+/// byte offsets of its Shift-JIS-tagged textout runs. Produced by
+/// [`decode_one_scene`] and consumed by [`build_scene_store`].
+struct DecodedScene {
+    scene: Scene,
+    shift_jis_offsets: Vec<u32>,
+}
+
+/// One decompressed-but-not-yet-decoded scene: its id, plaintext
+/// `compiler_version` (decides `use_xor_2`), and its AVG32-decompressed
+/// bytecode. This is the seam a real-bytes test uses to interpose the
+/// dev-only `kaifuu-reallive` `use_xor_2` segment-cipher recovery between
+/// the first-level AVG32 inflate (owned here) and the bytecode decode:
+/// the test decompresses the whole archive via [`decompress_all_scenes`],
+/// hands the eligible scenes to the recovery, then rebuilds the store via
+/// [`build_scene_store_from_decompressed`]. No key material lives in this
+/// crate.
+#[derive(Debug, Clone)]
+pub struct DecompressedScene {
+    /// Scene-directory slot id.
+    pub scene_id: SceneId,
+    /// Plaintext compiler version from the scene header.
+    pub compiler_version: u32,
+    /// AVG32-decompressed (still `use_xor_2`-ciphered, when eligible)
+    /// bytecode bytes.
+    pub bytecode: Vec<u8>,
+}
+
+/// Decompress a single scene blob: slice its compressed bytecode and run
+/// the AVG32 first-level XOR + LZSS inflate. Returns the plaintext
+/// compiler version plus the decompressed bytecode. The second-level
+/// `use_xor_2` segment cipher (Sweetie HD, compiler `110002`) is NOT
+/// applied here — a caller that needs it interposes the dev-only
+/// `kaifuu-reallive` recovery on [`DecompressedScene::bytecode`].
+fn decompress_one_scene(blob: &[u8], scene_id: SceneId) -> Result<DecompressedScene, ReplayError> {
     if blob.len() < SCENE_HEADER_BYTE_LEN {
         return Err(ReplayError::SceneHeaderParse {
             scene: scene_id,
@@ -665,8 +726,21 @@ fn stage_replay_context(seen_bytes: &[u8], scene_id: u16) -> Result<ReplayContex
             scene: scene_id,
             reason: err.to_string(),
         })?;
+    Ok(DecompressedScene {
+        scene_id,
+        compiler_version: header.compiler_version,
+        bytecode: decompressed,
+    })
+}
+
+/// Decode already-decompressed (and, when applicable, `use_xor_2`-
+/// decrypted) bytecode into a [`DecodedScene`].
+fn decode_decompressed(
+    decompressed: &[u8],
+    scene_id: SceneId,
+) -> Result<DecodedScene, ReplayError> {
     let elements =
-        decode_bytecode_stream(&decompressed).map_err(|err| ReplayError::BytecodeDecode {
+        decode_bytecode_stream(decompressed).map_err(|err| ReplayError::BytecodeDecode {
             scene: scene_id,
             reason: err.to_string(),
         })?;
@@ -675,11 +749,9 @@ fn stage_replay_context(seen_bytes: &[u8], scene_id: u16) -> Result<ReplayContex
     }
 
     // Pre-walk: collect the byte offsets of every Shift-JIS-tagged
-    // textout run. The runtime's `flush_pending_line` path only
-    // surfaces a TextLine when the body decodes cleanly; we use this
-    // set to drive `dispatch_textout` from the dispatch loop only when
-    // the pc lands on a Shift-JIS run.
-    let mut shift_jis_textout_offsets: HashSet<u32> = HashSet::new();
+    // textout run. The dispatch loop drives `dispatch_textout` only when
+    // the VM's (scene, pc) lands on a Shift-JIS run.
+    let mut shift_jis_offsets: Vec<u32> = Vec::new();
     for element in &elements {
         if let BytecodeElement::Textout {
             encoding_hint,
@@ -688,23 +760,248 @@ fn stage_replay_context(seen_bytes: &[u8], scene_id: u16) -> Result<ReplayContex
         } = element
             && matches!(encoding_hint, TextoutEncoding::ShiftJis)
         {
-            let offset = u32::try_from(*byte_offset).unwrap_or(u32::MAX);
-            shift_jis_textout_offsets.insert(offset);
+            shift_jis_offsets.push(u32::try_from(*byte_offset).unwrap_or(u32::MAX));
         }
     }
 
     let scene =
         Scene::new(scene_id, elements).ok_or(ReplayError::EmptyScene { scene: scene_id })?;
+    Ok(DecodedScene {
+        scene,
+        shift_jis_offsets,
+    })
+}
+
+/// Decompress + decode a single scene blob (no `use_xor_2` recovery).
+fn decode_one_scene(blob: &[u8], scene_id: SceneId) -> Result<DecodedScene, ReplayError> {
+    let decompressed = decompress_one_scene(blob, scene_id)?;
+    decode_decompressed(&decompressed.bytecode, scene_id)
+}
+
+/// Decompress EVERY populated scene of a Seen.txt envelope through the
+/// AVG32 first-level inflate, returning one [`DecompressedScene`] per
+/// scene that decompressed cleanly. Scenes whose blob slice / header /
+/// inflate fails are dropped (the same skip policy as
+/// [`build_scene_store`]); the returned count vs the index length is the
+/// caller's skip diagnostic.
+///
+/// This is the entry point a real-bytes test uses to stage the dev-only
+/// `use_xor_2` recovery: decompress here, decrypt the eligible scenes
+/// externally, then rebuild via [`build_scene_store_from_decompressed`].
+pub fn decompress_all_scenes(seen_bytes: &[u8]) -> Result<Vec<DecompressedScene>, ReplayError> {
+    let index = RealSceneIndex::parse(seen_bytes).map_err(|err| ReplayError::SceneIndexParse {
+        reason: err.to_string(),
+    })?;
+    let mut out = Vec::with_capacity(index.entries.len());
+    for entry in &index.entries {
+        let scene_id = entry.scene_id;
+        if let Ok(decompressed) =
+            slice_scene_blob(seen_bytes, scene_id, entry.byte_offset, entry.byte_len)
+                .and_then(|blob| decompress_one_scene(blob, scene_id))
+        {
+            out.push(decompressed);
+        }
+    }
+    Ok(out)
+}
+
+/// Build a multi-scene store from a list of already-decompressed (and,
+/// when applicable, `use_xor_2`-decrypted) scenes. `populated` should be
+/// the Seen.txt index length so [`SceneStoreStats::skipped`] reflects the
+/// scenes that did not survive decompress + decode.
+pub fn build_scene_store_from_decompressed(
+    scenes: &[DecompressedScene],
+    populated: usize,
+) -> Result<SceneStoreBundle, ReplayError> {
     let mut store = InMemorySceneStore::new();
-    store.insert(scene);
+    let mut shift_jis_textout_offsets: HashSet<(SceneId, u32)> = HashSet::new();
+    let mut loaded = 0usize;
+    for scene in scenes {
+        // A scene that fails to decode is SKIPPED (reflected in
+        // `skipped`), never silently masked: a cross-scene reference into
+        // it would surface a typed `SceneNotFound` at the VM layer.
+        if let Ok(decoded) = decode_decompressed(&scene.bytecode, scene.scene_id) {
+            for offset in decoded.shift_jis_offsets {
+                shift_jis_textout_offsets.insert((scene.scene_id, offset));
+            }
+            store.insert(decoded.scene);
+            loaded += 1;
+        }
+    }
+    let stats = SceneStoreStats {
+        populated,
+        loaded,
+        skipped: populated.saturating_sub(loaded),
+    };
+    Ok((store, shift_jis_textout_offsets, stats))
+}
+
+/// Locate + slice one populated scene's blob out of the Seen.txt
+/// envelope by its directory entry. Returns a typed slice-overflow error
+/// if the declared range exceeds the envelope.
+fn slice_scene_blob(
+    seen_bytes: &[u8],
+    scene_id: SceneId,
+    byte_offset: u64,
+    byte_len: u32,
+) -> Result<&[u8], ReplayError> {
+    let blob_start = usize::try_from(byte_offset).map_err(|_| ReplayError::SliceOverflow {
+        scene: scene_id,
+        reason: format!("byte_offset {byte_offset} exceeds usize::MAX"),
+    })?;
+    let blob_len = byte_len as usize;
+    let blob_end = blob_start
+        .checked_add(blob_len)
+        .ok_or(ReplayError::SliceOverflow {
+            scene: scene_id,
+            reason: format!("blob_start {blob_start} + byte_len {blob_len} overflows usize"),
+        })?;
+    if blob_end > seen_bytes.len() {
+        return Err(ReplayError::SliceOverflow {
+            scene: scene_id,
+            reason: format!(
+                "blob_end {blob_end} exceeds seen_bytes.len() {}",
+                seen_bytes.len()
+            ),
+        });
+    }
+    Ok(&seen_bytes[blob_start..blob_end])
+}
+
+/// Build a MULTI-scene [`InMemorySceneStore`] from EVERY populated scene
+/// in a Seen.txt envelope so cross-scene Jump/FarCall resolves against a
+/// real archive. Returns the store, the Shift-JIS textout offset set
+/// keyed by `(scene, offset)`, and diagnostic [`SceneStoreStats`].
+///
+/// A scene that fails to decompress / decode / is empty is SKIPPED (and
+/// counted in [`SceneStoreStats::skipped`]) rather than aborting the
+/// whole build — an unresolved cross-scene jump into a skipped scene
+/// surfaces as a typed `SceneNotFound` at the VM layer, so a genuine gap
+/// is never silently masked.
+pub fn build_scene_store(seen_bytes: &[u8]) -> Result<SceneStoreBundle, ReplayError> {
+    let index = RealSceneIndex::parse(seen_bytes).map_err(|err| ReplayError::SceneIndexParse {
+        reason: err.to_string(),
+    })?;
+    let mut store = InMemorySceneStore::new();
+    let mut shift_jis_textout_offsets: HashSet<(SceneId, u32)> = HashSet::new();
+    let mut loaded = 0usize;
+    let mut skipped = 0usize;
+    let populated = index.entries.len();
+    for entry in &index.entries {
+        let scene_id = entry.scene_id;
+        let decoded = slice_scene_blob(seen_bytes, scene_id, entry.byte_offset, entry.byte_len)
+            .and_then(|blob| decode_one_scene(blob, scene_id));
+        match decoded {
+            Ok(decoded) => {
+                for offset in decoded.shift_jis_offsets {
+                    shift_jis_textout_offsets.insert((scene_id, offset));
+                }
+                store.insert(decoded.scene);
+                loaded += 1;
+            }
+            Err(_) => {
+                skipped += 1;
+            }
+        }
+    }
+    let stats = SceneStoreStats {
+        populated,
+        loaded,
+        skipped,
+    };
+    Ok((store, shift_jis_textout_offsets, stats))
+}
+
+/// Mount ALL NINE opcode-module registrars onto a fresh registry.
+///
+/// This is the acceptance-criterion-#1 surface: `rg -n
+/// 'register_.*_rlops' src/replay.rs` shows all nine
+/// (`register_text_rlops`, `register_control_flow_rlops`,
+/// `register_grp_rlops`, `register_obj_rlops`, `register_audio_rlops`,
+/// `register_sel_rlops`, `register_sys_rlops`, `register_mem_rlops`,
+/// `register_str_rlops`). The text family threads the supplied
+/// [`MsgRuntime`]; every other family is backed by a fixed-seed runtime
+/// so the traversal is byte-deterministic (the `sys` clock/RNG is seeded
+/// from `LogicalClockTick(0)`).
+///
+/// The per-family runtimes are cloned into the registry's op table, so
+/// they stay alive for the registry's lifetime without the caller
+/// holding a separate handle.
+fn mount_full_registry(
+    sink: Arc<dyn TextSurfaceSink>,
+    msg_runtime: Arc<MsgRuntime>,
+) -> RlopRegistry {
+    let mut registry = RlopRegistry::new();
+
+    // Text (msg) + control-flow — the original 2-of-9 pair. The
+    // cataloguing replay mounts control flow in EXHAUSTIVE-LINEAR-WALK
+    // mode (real numbering, `Advance` dispatch) so it visits every command
+    // and never spins on input-gated loops; see
+    // [`register_control_flow_linear_walk`].
+    register_text_rlops(&mut registry, msg_runtime);
+    register_control_flow_linear_walk(&mut registry);
+
+    // Graphics: grp + obj share one GraphicsRuntime (obj re-orders the
+    // same layer stack grp populates).
+    let graphics_runtime = Arc::new(GraphicsRuntime::new());
+    register_grp_rlops(&mut registry, Arc::clone(&graphics_runtime));
+    register_obj_rlops(&mut registry, graphics_runtime);
+
+    // Audio.
+    let audio_emitter = Arc::new(AudioEventEmitter::new());
+    let audio_runtime = Arc::new(AudioRuntime::new(audio_emitter));
+    register_audio_rlops(&mut registry, audio_runtime);
+
+    // Selection (choices). Backed by the same text sink so choice lines
+    // surface through the substrate text surface.
+    let sel_runtime = Arc::new(SelRuntime::with_sink(Arc::clone(&sink)));
+    register_sel_rlops(&mut registry, sel_runtime);
+
+    // System (fixed-seed clock/RNG → deterministic replay).
+    let sys_runtime = Arc::new(SysRuntime::new(LogicalClockTick(0)));
+    register_sys_rlops(&mut registry, sys_runtime);
+
+    // Memory (no runtime).
+    register_mem_rlops(&mut registry);
+
+    // String ops.
+    let str_runtime = Arc::new(StrRuntime::new(sink));
+    register_str_rlops(&mut registry, str_runtime);
+
+    // Real-bytes opcode-catalog completion: gap-fill every
+    // `(module_type, module_id, opcode)` tuple observed on the proven
+    // corpora that the nine per-family tables above do not already claim,
+    // so a full-scene replay traverses with ZERO unknown opcodes. Mounted
+    // LAST and gap-fill-only, so it never shadows a real-semantics op.
+    register_catalog_rlops(&mut registry);
+
+    registry
+}
+
+/// Number of RLOps registered by a full 9-module mount. Runtime proof
+/// (beyond the source-level `rg`) that all nine registrars actually run
+/// and populate the shared registry.
+pub fn full_registry_rlop_count() -> usize {
+    let sink: Arc<ReplayTextSink> = Arc::new(ReplayTextSink::default());
+    let sink_dyn: Arc<dyn TextSurfaceSink> = Arc::clone(&sink) as Arc<dyn TextSurfaceSink>;
+    let runtime = Arc::new(MsgRuntime::with_sink(Arc::clone(&sink_dyn)));
+    mount_full_registry(sink_dyn, runtime).len()
+}
+
+/// Decode a Seen.txt envelope and stage a [`ReplayContext`] positioned
+/// at `(scene_id, 0)` against a MULTI-scene store holding every
+/// populated scene. Centralised so [`replay_scene`] and
+/// [`replay_until_first_pause`] consume the same build path.
+fn stage_replay_context(seen_bytes: &[u8], scene_id: u16) -> Result<ReplayContext, ReplayError> {
+    let (store, shift_jis_textout_offsets, _stats) = build_scene_store(seen_bytes)?;
+    if store.fetch(scene_id).is_none() {
+        return Err(ReplayError::SceneNotFound { scene: scene_id });
+    }
 
     let sink: Arc<ReplayTextSink> = Arc::new(ReplayTextSink::default());
-    let runtime = Arc::new(MsgRuntime::with_sink(
-        Arc::clone(&sink) as Arc<dyn TextSurfaceSink>
-    ));
-    let mut registry = RlopRegistry::new();
-    register_text_rlops(&mut registry, Arc::clone(&runtime));
-    register_control_flow_rlops(&mut registry);
+    let sink_dyn: Arc<dyn TextSurfaceSink> = Arc::clone(&sink) as Arc<dyn TextSurfaceSink>;
+    let runtime = Arc::new(MsgRuntime::with_sink(Arc::clone(&sink_dyn)));
+    let registry = mount_full_registry(sink_dyn, Arc::clone(&runtime));
 
     let vm = Vm::new(scene_id, 0);
 
@@ -716,6 +1013,117 @@ fn stage_replay_context(seen_bytes: &[u8], scene_id: u16) -> Result<ReplayContex
         sink,
         shift_jis_textout_offsets,
     })
+}
+
+impl ReplayContext {
+    /// Drive this context's VM through [`drive_loop`], borrowing the
+    /// owned store/registry/sink/runtime.
+    fn drive(&mut self, opts: &ReplayOpts, scene_id: u16) -> ReplayLog {
+        let refs = DriveRefs {
+            store: &self.store,
+            registry: &self.registry,
+            runtime: &self.runtime,
+            sink: &self.sink,
+            shift_jis: &self.shift_jis_textout_offsets,
+        };
+        drive_loop(&mut self.vm, &refs, opts, scene_id)
+    }
+}
+
+/// A reusable replay engine over ONE multi-scene store: decompress +
+/// decode the whole Seen.txt archive ONCE, then replay from any scene id
+/// without re-inflating the archive. Each [`ReplayEngine::replay_from`]
+/// mounts a fresh 9-module registry + fresh VM/sink so per-scene runs are
+/// independent and byte-deterministic (the `sys` clock/RNG re-seeds from
+/// `LogicalClockTick(0)` every call).
+///
+/// Also accepts an externally-built store via [`ReplayEngine::from_store`]
+/// — the path a real-bytes test uses to feed scenes whose second-level
+/// segment cipher (`use_xor_2` titles) was decrypted by the dev-only
+/// `kaifuu-reallive` recovery before staging.
+#[derive(Debug)]
+pub struct ReplayEngine {
+    store: InMemorySceneStore,
+    shift_jis: HashSet<(SceneId, u32)>,
+    stats: SceneStoreStats,
+}
+
+impl ReplayEngine {
+    /// Build an engine by decompressing + decoding every populated scene
+    /// of a Seen.txt envelope through the pure-utsushi decode path.
+    pub fn from_seen_bytes(seen_bytes: &[u8]) -> Result<Self, ReplayError> {
+        let (store, shift_jis, stats) = build_scene_store(seen_bytes)?;
+        Ok(Self {
+            store,
+            shift_jis,
+            stats,
+        })
+    }
+
+    /// Build an engine over a pre-decoded store. `shift_jis` names the
+    /// `(scene, byte_offset)` pairs at which Shift-JIS textout runs begin
+    /// (so text surfaces through the substrate sink).
+    pub fn from_store(store: InMemorySceneStore, shift_jis: HashSet<(SceneId, u32)>) -> Self {
+        let stats = SceneStoreStats {
+            populated: store.len(),
+            loaded: store.len(),
+            skipped: 0,
+        };
+        Self {
+            store,
+            shift_jis,
+            stats,
+        }
+    }
+
+    /// Diagnostic store-build counts.
+    pub fn stats(&self) -> SceneStoreStats {
+        self.stats
+    }
+
+    /// Every scene id present in the store, ascending.
+    pub fn scene_ids(&self) -> Vec<SceneId> {
+        self.store.scene_ids()
+    }
+
+    /// Verify snapshot/restore identity at every tick boundary while
+    /// driving `scene_id` to its terminus against THIS engine's store.
+    ///
+    /// The engine-based counterpart to the free
+    /// [`verify_snapshot_restore_each_tick`] — used by real-bytes tests
+    /// whose store was staged externally (e.g. `use_xor_2` titles whose
+    /// scenes were decrypted before staging), where the free function's
+    /// pure-`utsushi` rebuild path would not resolve the scene.
+    pub fn verify_snapshot_restore_each_tick(
+        &self,
+        scene_id: SceneId,
+        opts: &ReplayOpts,
+    ) -> Result<SnapshotIdentityReport, ReplayError> {
+        let sink: Arc<ReplayTextSink> = Arc::new(ReplayTextSink::default());
+        let sink_dyn: Arc<dyn TextSurfaceSink> = Arc::clone(&sink) as Arc<dyn TextSurfaceSink>;
+        let runtime = Arc::new(MsgRuntime::with_sink(Arc::clone(&sink_dyn)));
+        let registry = mount_full_registry(sink_dyn, runtime);
+        let mut vm = Vm::new(scene_id, 0);
+        snapshot_identity_loop(&mut vm, &self.store, &registry, opts, scene_id)
+    }
+
+    /// Replay from `scene_id` to its terminus against the shared store.
+    /// A fresh 9-module registry, VM, and text sink are built per call.
+    pub fn replay_from(&self, scene_id: SceneId, opts: &ReplayOpts) -> ReplayLog {
+        let sink: Arc<ReplayTextSink> = Arc::new(ReplayTextSink::default());
+        let sink_dyn: Arc<dyn TextSurfaceSink> = Arc::clone(&sink) as Arc<dyn TextSurfaceSink>;
+        let runtime = Arc::new(MsgRuntime::with_sink(Arc::clone(&sink_dyn)));
+        let registry = mount_full_registry(sink_dyn, Arc::clone(&runtime));
+        let mut vm = Vm::new(scene_id, 0);
+        let refs = DriveRefs {
+            store: &self.store,
+            registry: &registry,
+            runtime: &runtime,
+            sink: &sink,
+            shift_jis: &self.shift_jis,
+        };
+        drive_loop(&mut vm, &refs, opts, scene_id)
+    }
 }
 
 /// Drive a Seen.txt envelope through the VM and return a typed
@@ -784,7 +1192,7 @@ pub fn replay_until_first_pause(
         stop_at_first_pause: true,
     };
     let mut ctx = stage_replay_context(&bytes, scene_id)?;
-    let log = drive_loop(&mut ctx, &opts, scene_id);
+    let log = ctx.drive(&opts, scene_id);
     let snapshot = snapshot_vm(&ctx.vm)?;
     Ok((log, snapshot))
 }
@@ -795,10 +1203,135 @@ fn drive_replay(
     opts: &ReplayOpts,
 ) -> Result<ReplayLog, ReplayError> {
     let mut ctx = stage_replay_context(seen_bytes, scene_id)?;
-    Ok(drive_loop(&mut ctx, opts, scene_id))
+    Ok(ctx.drive(opts, scene_id))
 }
 
-fn drive_loop(ctx: &mut ReplayContext, opts: &ReplayOpts, scene_id: u16) -> ReplayLog {
+/// Outcome of [`verify_snapshot_restore_each_tick`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SnapshotIdentityReport {
+    /// Number of tick boundaries at which the snapshot round-trip was
+    /// verified identical (includes the pre-first-step boundary).
+    pub ticks_verified: u32,
+    /// Terminal outcome the traversal reached.
+    pub terminus: ReplayOutcome,
+}
+
+/// Drive a full scene to its terminus and, at EVERY tick boundary
+/// (before the first step, and after each `Advanced` / `LongOpResumed`
+/// step), assert the VM's substrate snapshot round-trips byte-identically
+/// into a fresh VM. Acceptance criterion #3 (snapshot/restore identity
+/// holds at every tick boundary).
+///
+/// Returns the count of verified boundaries plus the terminus, or a typed
+/// [`ReplayError::SnapshotFailure`] naming the first tick whose round-trip
+/// diverged.
+pub fn verify_snapshot_restore_each_tick(
+    seen_bytes: &[u8],
+    scene_id: u16,
+    opts: &ReplayOpts,
+) -> Result<SnapshotIdentityReport, ReplayError> {
+    let mut ctx = stage_replay_context(seen_bytes, scene_id)?;
+    snapshot_identity_loop(&mut ctx.vm, &ctx.store, &ctx.registry, opts, scene_id)
+}
+
+/// Drive `vm` against `store`/`registry` to its terminus, asserting the
+/// substrate snapshot round-trips byte-identically at every tick
+/// boundary. Shared by the free [`verify_snapshot_restore_each_tick`] and
+/// [`ReplayEngine::verify_snapshot_restore_each_tick`].
+fn snapshot_identity_loop(
+    vm: &mut Vm,
+    store: &dyn SceneStore,
+    registry: &RlopRegistry,
+    opts: &ReplayOpts,
+    scene_id: u16,
+) -> Result<SnapshotIdentityReport, ReplayError> {
+    let mut scheduler = AlwaysReadyScheduler;
+    let mut steps_executed: u32 = 0;
+    let mut ticks_verified: u32 = 0;
+
+    // Verify the pre-first-step boundary too.
+    assert_snapshot_round_trip(vm, scene_id, ticks_verified)?;
+    ticks_verified += 1;
+
+    let terminus = loop {
+        if steps_executed >= opts.step_budget {
+            break ReplayOutcome::BudgetExhausted { events: 0 };
+        }
+        let pc_before = vm.pc();
+        let step = match vm.step(store, registry, &mut scheduler) {
+            Ok(step) => step,
+            Err(err) => {
+                break ReplayOutcome::FatalDiagnostic {
+                    code: vm_error_semantic_code(&err).to_string(),
+                    byte_offset_in_scene: pc_before,
+                };
+            }
+        };
+        // Drain warnings so the VM's internal buffer does not grow
+        // unboundedly across the walk (it is not part of the snapshot).
+        let _ = vm.take_warnings();
+        match step {
+            StepOutcome::Advanced { .. } | StepOutcome::LongOpResumed { .. } => {
+                steps_executed = steps_executed.saturating_add(1);
+                assert_snapshot_round_trip(vm, scene_id, ticks_verified)?;
+                ticks_verified += 1;
+            }
+            StepOutcome::Suspended { .. } => {
+                break ReplayOutcome::BudgetExhausted { events: 0 };
+            }
+            StepOutcome::EndOfScene { .. } | StepOutcome::Halted => {
+                break ReplayOutcome::EndOfScene { events: 0 };
+            }
+        }
+    };
+
+    Ok(SnapshotIdentityReport {
+        ticks_verified,
+        terminus,
+    })
+}
+
+/// Snapshot `vm`, restore into a fresh VM, re-snapshot, and assert the
+/// two state trees serialise byte-equally. Returns a typed
+/// [`ReplayError::SnapshotFailure`] naming `tick` on divergence.
+fn assert_snapshot_round_trip(vm: &Vm, scene_id: u16, tick: u32) -> Result<(), ReplayError> {
+    let snapshot = snapshot_vm(vm)?;
+    let restored = restore_into_fresh_vm(&snapshot, scene_id)?;
+    let restored_snapshot = snapshot_vm(&restored)?;
+    let original_json = snapshot
+        .to_json_value()
+        .map_err(|err| ReplayError::SnapshotFailure {
+            reason: err.to_string(),
+        })?;
+    let restored_json =
+        restored_snapshot
+            .to_json_value()
+            .map_err(|err| ReplayError::SnapshotFailure {
+                reason: err.to_string(),
+            })?;
+    if original_json.get("stateTree") != restored_json.get("stateTree") {
+        return Err(ReplayError::SnapshotFailure {
+            reason: format!(
+                "snapshot/restore identity diverged at tick {tick}: restored VM state tree \
+                 does not equal original"
+            ),
+        });
+    }
+    Ok(())
+}
+
+/// Borrowed view of the pieces [`drive_loop`] needs, so a [`ReplayEngine`]
+/// can drive many scenes against ONE store without re-decompressing the
+/// whole archive per scene.
+struct DriveRefs<'a> {
+    store: &'a InMemorySceneStore,
+    registry: &'a RlopRegistry,
+    runtime: &'a Arc<MsgRuntime>,
+    sink: &'a ReplayTextSink,
+    shift_jis: &'a HashSet<(SceneId, u32)>,
+}
+
+fn drive_loop(vm: &mut Vm, refs: &DriveRefs<'_>, opts: &ReplayOpts, scene_id: u16) -> ReplayLog {
     let mut events: Vec<ReplayEvent> = Vec::new();
     let mut scheduler = AlwaysReadyScheduler;
     let mut steps_executed: u32 = 0;
@@ -811,8 +1344,9 @@ fn drive_loop(ctx: &mut ReplayContext, opts: &ReplayOpts, scene_id: u16) -> Repl
                 events: events.len() as u32,
             };
         }
-        let pc_before = ctx.vm.pc();
-        let step = ctx.vm.step(&ctx.store, &ctx.registry, &mut scheduler);
+        let pc_before = vm.pc();
+        let scene_before = vm.scene();
+        let step = vm.step(refs.store, refs.registry, &mut scheduler);
         let step = match step {
             Ok(step) => step,
             Err(err) => {
@@ -834,26 +1368,26 @@ fn drive_loop(ctx: &mut ReplayContext, opts: &ReplayOpts, scene_id: u16) -> Repl
             StepOutcome::Advanced { event } => {
                 match event {
                     VmEvent::Textout { raw_bytes }
-                        if ctx.shift_jis_textout_offsets.contains(&pc_before) =>
+                        if refs.shift_jis.contains(&(scene_before, pc_before)) =>
                     {
-                        dispatch_textout(&ctx.runtime, &raw_bytes);
+                        dispatch_textout(refs.runtime, &raw_bytes);
                         // Flush immediately via OPCODE_LINE_BREAK so
                         // each Shift-JIS run surfaces as a distinct
                         // TextLine before any control opcode lands.
                         // Mirrors the UTSUSHI-209 real-bytes test
                         // strategy — keeps the per-run audit trail
                         // honest.
-                        if let Some(op) = ctx.registry.get(RlopKey::new(
+                        if let Some(op) = refs.registry.get(RlopKey::new(
                             MSG_MODULE_TYPE,
                             MSG_MODULE_ID,
                             OPCODE_LINE_BREAK,
                         )) {
-                            let _ = op.dispatch(&mut ctx.vm, &[]);
+                            let _ = op.dispatch(vm, &[]);
                         }
                         // Drain any sink emissions produced by the
                         // flush and convert to TextLine events with
                         // the original Shift-JIS bytes as evidence.
-                        for line in ctx.sink.drain() {
+                        for line in refs.sink.drain() {
                             let body_shift_jis = raw_bytes.clone();
                             events.push(ReplayEvent::TextLine {
                                 byte_offset_in_scene: pc_before,
@@ -875,7 +1409,7 @@ fn drive_loop(ctx: &mut ReplayContext, opts: &ReplayOpts, scene_id: u16) -> Repl
                         // MissingRlop warning and returns an Advance
                         // outcome on the caller's behalf).
                         events.push(ReplayEvent::Pause {
-                            byte_offset_in_scene: ctx.vm.pc(),
+                            byte_offset_in_scene: vm.pc(),
                         });
                         first_pause_seen = true;
                     }
@@ -885,7 +1419,7 @@ fn drive_loop(ctx: &mut ReplayContext, opts: &ReplayOpts, scene_id: u16) -> Repl
                 // VM and convert them into UnknownOpcode events. The
                 // warning carries the typed key + the pc the miss
                 // landed at, which is exactly what the spec demands.
-                let warnings = ctx.vm.take_warnings();
+                let warnings = vm.take_warnings();
                 for warning in warnings {
                     if let crate::VmWarning::MissingRlop { key, pc, .. } = warning {
                         events.push(ReplayEvent::UnknownOpcode {

@@ -227,6 +227,7 @@ fn scene1_element_stream_partition_and_first_command_header() {
                 raw_bytes,
                 byte_offset,
                 byte_len,
+                ..
             } => Some((
                 *module_type,
                 *module_id,
@@ -274,11 +275,12 @@ fn scene1_element_stream_partition_and_first_command_header() {
     );
     assert_eq!(
         arg_count, 0,
-        "first Command element's arg_count must equal byte 5 of the header (research: 0)",
+        "first Command element's arg_count must equal u16 LE bytes 5..7 of the header \
+         (research: 0)",
     );
     assert_eq!(
         overload, 0,
-        "first Command element's overload must equal byte 6 of the header (research: 0)",
+        "first Command element's overload must equal byte 7 of the header (research: 0)",
     );
     eprintln!(
         "[UTSUSHI-204 real-bytes] first Command at byte_offset=0x{first_command_offset:04x} \

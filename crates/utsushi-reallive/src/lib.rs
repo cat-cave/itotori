@@ -259,9 +259,12 @@ pub use g00::{
 };
 
 pub use replay::{
-    DEFAULT_REPLAY_STEP_BUDGET, REPLAY_LOG_SCHEMA_VERSION, ReplayError, ReplayEvent, ReplayLog,
-    ReplayOpts, ReplayOutcome, replay_scene, replay_scene_bytes, replay_until_first_pause,
-    restore_into_fresh_vm,
+    DEFAULT_REPLAY_STEP_BUDGET, DecompressedScene, REPLAY_LOG_SCHEMA_VERSION, ReplayEngine,
+    ReplayError, ReplayEvent, ReplayLog, ReplayOpts, ReplayOutcome, SceneStoreBundle,
+    SceneStoreStats, SnapshotIdentityReport, build_scene_store,
+    build_scene_store_from_decompressed, decompress_all_scenes, full_registry_rlop_count,
+    replay_scene, replay_scene_bytes, replay_until_first_pause, restore_into_fresh_vm,
+    verify_snapshot_restore_each_tick,
 };
 pub use replay_validate::{
     NO_MATCH_SAMPLE_BODIES_CAP, NO_MATCH_SAMPLE_BODY_BYTE_CAP, ReplayValidation,

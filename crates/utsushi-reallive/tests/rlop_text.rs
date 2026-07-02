@@ -93,6 +93,7 @@ fn command_element(offset: usize, opcode: u16) -> BytecodeElement {
         opcode,
         arg_count: 0,
         overload: 0,
+        goto_targets: vec![],
         raw_bytes: vec![
             0x23,
             MSG_MODULE_TYPE,

@@ -52,6 +52,7 @@ use crate::vm::{SceneId, Vm};
 // [`module_sys`].
 pub mod longops;
 pub mod module_audio;
+pub mod module_catalog;
 pub mod module_ctrl;
 pub mod module_grp;
 pub mod module_mem;

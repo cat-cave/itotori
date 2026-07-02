@@ -153,12 +153,14 @@ pub enum BytecodeElement {
         /// Total length in bytes (always 3 for this variant).
         byte_len: usize,
     },
-    /// `0x23 <module_type><module_id><opcode:u16 LE><arg_count><overload><reserved>`
+    /// `0x23 <module_type><module_id><opcode:u16 LE><arg_count:u16 LE><overload>`
     /// followed by an optional `(`-delimited expression argument list
-    /// terminated by `)`.
+    /// terminated by `)`, and — for the goto-family commands — one or
+    /// more trailing `i32 LE` jump-target pointers (see
+    /// [`command_goto_kind`]).
     ///
     /// `raw_bytes` carries the full 8-byte header plus any argument-list
-    /// bytes. UTSUSHI-205 will decode the argument list semantically.
+    /// bytes and any trailing goto-pointer bytes.
     Command {
         /// Byte 1 of the header — module-type lattice id.
         module_type: u8,
@@ -166,18 +168,24 @@ pub enum BytecodeElement {
         module_id: u8,
         /// Bytes 3..5 of the header — opcode (u16 LE).
         opcode: u16,
-        /// Byte 5 of the header — declared argument count.
-        arg_count: u8,
-        /// Byte 6 of the header — overload variant selector.
+        /// Bytes 5..7 of the header — declared argument count (`u16 LE`).
+        /// For `goto_on` / `goto_case` this is the number of trailing
+        /// jump targets / cases.
+        arg_count: u16,
+        /// Byte 7 of the header — overload variant selector.
         overload: u8,
-        /// The full element bytes, including the 8-byte header and any
-        /// `(`-delimited argument list. Owned so callers can re-slice
-        /// without re-walking the source.
+        /// Absolute byte offsets (into the decompressed scene bytecode)
+        /// of the trailing goto-family jump-target pointers, in order.
+        /// Empty for every non-goto command. `goto`/`gosub` carry one;
+        /// `goto_on`/`goto_case` carry `arg_count`.
+        goto_targets: Vec<u32>,
+        /// The full element bytes, including the 8-byte header, any
+        /// `(`-delimited argument list, and any trailing goto pointers.
+        /// Owned so callers can re-slice without re-walking the source.
         raw_bytes: Vec<u8>,
         /// Byte offset of the lead byte within the decoded input slice.
         byte_offset: usize,
-        /// Total length in bytes (8 if `arg_count == 0`, otherwise
-        /// 8 + argument-list length).
+        /// Total length in bytes.
         byte_len: usize,
     },
     /// `0x24 <expression-body>` — standalone expression element.
@@ -504,33 +512,142 @@ fn decode_command(bytes: &[u8], pos: usize) -> Result<BytecodeElement, BytecodeD
     let module_type = bytes[pos + 1];
     let module_id = bytes[pos + 2];
     let opcode = u16::from_le_bytes([bytes[pos + 3], bytes[pos + 4]]);
-    let arg_count = bytes[pos + 5];
-    let overload = bytes[pos + 6];
-    // byte 7 is "reserved" per the RLDEV header table; preserved
-    // inside raw_bytes but not surfaced as a typed field.
+    // Bytes 5..7 are the `u16 LE` argument / target count; byte 7 is the
+    // overload selector (re-derived from rlvm `bytecode.h:CommandElement`,
+    // research anchor only). For `goto_on`/`goto_case`, `arg_count` is the
+    // number of trailing jump targets / cases.
+    let arg_count = u16::from_le_bytes([bytes[pos + 5], bytes[pos + 6]]);
+    let overload = bytes[pos + 7];
+    let command_id =
+        (u32::from(module_type) << 24) | (u32::from(module_id) << 16) | u32::from(opcode);
 
-    let mut end = header_end;
-    if header_end < bytes.len() && bytes[header_end] == b'(' {
-        // Argument list: `(<data>...)`. We do not evaluate the
-        // arguments; we only walk them to know the byte length.
-        end = walk_command_arg_list(bytes, header_end).map_err(|err| match err {
-            BytecodeDecodeError::Truncated {
-                observed_len,
-                position,
-                needed,
-                message,
-            } => BytecodeDecodeError::Truncated {
-                observed_len,
-                position,
-                needed,
-                message: format!(
-                    "command at position {pos} (arg_count={arg_count}) truncated mid arg-list: {message}",
-                ),
-            },
-            other => other,
+    let mut cursor = header_end;
+    let mut goto_targets: Vec<u32> = Vec::new();
+
+    // Walk the optional `(...)` argument list, advancing `cursor` past it.
+    let walk_optional_args = |cursor: &mut usize| -> Result<(), BytecodeDecodeError> {
+        if *cursor < bytes.len() && bytes[*cursor] == b'(' {
+            *cursor = walk_command_arg_list(bytes, *cursor).map_err(|err| match err {
+                BytecodeDecodeError::Truncated {
+                    observed_len,
+                    position,
+                    needed,
+                    message,
+                } => BytecodeDecodeError::Truncated {
+                    observed_len,
+                    position,
+                    needed,
+                    message: format!(
+                        "command at position {pos} (arg_count={arg_count}) truncated mid arg-list: {message}",
+                    ),
+                },
+                other => other,
+            })?;
+        }
+        Ok(())
+    };
+
+    // Consume `count` trailing `i32 LE` jump-target pointers, recording
+    // each as an absolute byte offset into `goto_targets`.
+    let consume_pointers = |cursor: &mut usize,
+                            count: usize,
+                            targets: &mut Vec<u32>|
+     -> Result<(), BytecodeDecodeError> {
+        let need = count.checked_mul(GOTO_POINTER_BYTE_LEN).ok_or_else(|| {
+            BytecodeDecodeError::MalformedElement {
+                position: pos,
+                message: "goto pointer count overflowed usize".to_string(),
+            }
         })?;
+        let end =
+            cursor
+                .checked_add(need)
+                .ok_or_else(|| BytecodeDecodeError::MalformedElement {
+                    position: pos,
+                    message: "goto pointer span overflowed usize".to_string(),
+                })?;
+        if end > bytes.len() {
+            return Err(BytecodeDecodeError::Truncated {
+                observed_len: bytes.len(),
+                position: *cursor,
+                needed: end - bytes.len(),
+                message: format!(
+                    "command at position {pos} truncated before {count} goto pointer(s)",
+                ),
+            });
+        }
+        for _ in 0..count {
+            let raw = u32::from_le_bytes([
+                bytes[*cursor],
+                bytes[*cursor + 1],
+                bytes[*cursor + 2],
+                bytes[*cursor + 3],
+            ]);
+            targets.push(raw);
+            *cursor += GOTO_POINTER_BYTE_LEN;
+        }
+        Ok(())
+    };
+
+    match command_goto_kind(command_id) {
+        GotoKind::Goto => {
+            // 8-byte header + one i32 target; no argument list.
+            consume_pointers(&mut cursor, 1, &mut goto_targets)?;
+        }
+        GotoKind::GotoIf | GotoKind::GosubWith => {
+            walk_optional_args(&mut cursor)?;
+            consume_pointers(&mut cursor, 1, &mut goto_targets)?;
+        }
+        GotoKind::GotoOn => {
+            // Discriminant `(expr)`, then a `{`-delimited block of
+            // `arg_count` raw i32 jump targets.
+            walk_optional_args(&mut cursor)?;
+            let braced = bytes.get(cursor) == Some(&SELECT_BLOCK_OPEN);
+            if braced {
+                cursor += 1;
+            }
+            consume_pointers(&mut cursor, arg_count as usize, &mut goto_targets)?;
+            if braced {
+                expect_block_close(bytes, pos, &mut cursor)?;
+            }
+        }
+        GotoKind::GotoCase => {
+            // Discriminant `(expr)`, then a `{`-delimited block of
+            // `arg_count` entries, each a `(case-expr)` followed by an
+            // i32 target.
+            walk_optional_args(&mut cursor)?;
+            let braced = bytes.get(cursor) == Some(&SELECT_BLOCK_OPEN);
+            if braced {
+                cursor += 1;
+            }
+            for _ in 0..arg_count {
+                if bytes.get(cursor) != Some(&b'(') {
+                    return Err(BytecodeDecodeError::MalformedElement {
+                        position: cursor,
+                        message: format!(
+                            "goto_case at position {pos}: expected '(' opening a case expression",
+                        ),
+                    });
+                }
+                cursor = walk_command_arg_list(bytes, cursor)?;
+                consume_pointers(&mut cursor, 1, &mut goto_targets)?;
+            }
+            if braced {
+                expect_block_close(bytes, pos, &mut cursor)?;
+            }
+        }
+        GotoKind::Select => {
+            // `module_sel` selection commands carry a `{ ... }` option
+            // block (SelectElement framing) rather than a `(...)` list.
+            walk_optional_args(&mut cursor)?;
+            cursor = walk_select_block(bytes, pos, cursor)?;
+        }
+        GotoKind::None => {
+            walk_optional_args(&mut cursor)?;
+        }
     }
 
+    let end = cursor;
     let raw_bytes = bytes[pos..end].to_vec();
     Ok(BytecodeElement::Command {
         module_type,
@@ -538,10 +655,127 @@ fn decode_command(bytes: &[u8], pos: usize) -> Result<BytecodeElement, BytecodeD
         opcode,
         arg_count,
         overload,
+        goto_targets,
         raw_bytes,
         byte_offset: pos,
         byte_len: end - pos,
     })
+}
+
+/// Fixed byte length of a goto-family jump-target pointer (`i32 LE`).
+pub const GOTO_POINTER_BYTE_LEN: usize = 4;
+
+/// SelectElement block open brace (`{`).
+const SELECT_BLOCK_OPEN: u8 = 0x7B;
+/// SelectElement block close brace (`}`).
+const SELECT_BLOCK_CLOSE: u8 = 0x7D;
+
+/// Framing class of a Command, keyed on its
+/// `(module_type << 24) | (module_id << 16) | opcode` id.
+///
+/// The goto-family commands (`module_jmp` and its cross-scene `0x05`/`0x06`
+/// module variants) carry trailing `i32` jump-target pointers after any
+/// argument list — a structure a length-only argument scan cannot see.
+/// Re-derived from rlvm `libreallive/bytecode.cc`'s `BytecodeElement::Read`
+/// dispatch (research anchor only; not vendored).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum GotoKind {
+    /// `goto` / `gosub`: 8-byte header + one `i32` target, no arglist.
+    Goto,
+    /// `goto_if` / `goto_unless` / `gosub_if` / `gosub_with`: header +
+    /// `(cond|args)` + one `i32` target.
+    GotoIf,
+    /// `goto_on`: header + `(expr)` + `{` + `arg_count` × `i32` + `}`.
+    GotoOn,
+    /// `goto_case`: header + `(expr)` + `{` + `arg_count` × (`(case)` +
+    /// `i32`) + `}`.
+    GotoCase,
+    /// `gosub_with`: header + `(args)` + one `i32` target.
+    GosubWith,
+    /// `module_sel` selection command with a `{ … }` option block.
+    Select,
+    /// Not a goto-family / select command — ordinary `(...)` framing.
+    None,
+}
+
+/// Map a command id to its [`GotoKind`]. Id sets restated from rlvm
+/// `libreallive/bytecode.cc` (`BytecodeElement::Read`).
+fn command_goto_kind(command_id: u32) -> GotoKind {
+    match command_id {
+        0x0001_0000 | 0x0001_0005 | 0x0005_0001 | 0x0005_0005 | 0x0006_0001 | 0x0006_0005 => {
+            GotoKind::Goto
+        }
+        0x0001_0001 | 0x0001_0002 | 0x0001_0006 | 0x0001_0007 | 0x0005_0002 | 0x0005_0006
+        | 0x0005_0007 | 0x0006_0000 | 0x0006_0002 | 0x0006_0006 | 0x0006_0007 => GotoKind::GotoIf,
+        0x0001_0003 | 0x0001_0008 | 0x0005_0003 | 0x0005_0008 | 0x0006_0003 | 0x0006_0008 => {
+            GotoKind::GotoOn
+        }
+        0x0001_0004 | 0x0001_0009 | 0x0005_0004 | 0x0005_0009 | 0x0006_0004 | 0x0006_0009 => {
+            GotoKind::GotoCase
+        }
+        0x0001_0010 | 0x0006_0010 => GotoKind::GosubWith,
+        0x0002_0000 | 0x0002_0001 | 0x0002_0002 | 0x0002_0003 | 0x0002_0010 => GotoKind::Select,
+        _ => GotoKind::None,
+    }
+}
+
+/// Assert `bytes[*cursor]` is a `}` block-close and step past it.
+fn expect_block_close(
+    bytes: &[u8],
+    pos: usize,
+    cursor: &mut usize,
+) -> Result<(), BytecodeDecodeError> {
+    if bytes.get(*cursor) != Some(&SELECT_BLOCK_CLOSE) {
+        return Err(BytecodeDecodeError::MalformedElement {
+            position: *cursor,
+            message: format!("command at position {pos}: expected '}}' closing the target block"),
+        });
+    }
+    *cursor += 1;
+    Ok(())
+}
+
+/// Walk a `module_sel` SelectElement `{ ... }` option block starting at
+/// `cursor` (which must point at the `{`). Returns the index past the
+/// matching `}`.
+///
+/// The block is a sequence of options separated by `\` bytes (rlvm
+/// `SelectElement`). Each option is: an optional condition-`(...)` list,
+/// zero or more `0x30..=0x34` option-flag markers each with their own
+/// `(...)` payload, and the option text (a string / textout run). We walk
+/// bytes structurally — consuming `(...)` lists whole and skipping any
+/// other byte — until the matching `}`.
+fn walk_select_block(bytes: &[u8], pos: usize, start: usize) -> Result<usize, BytecodeDecodeError> {
+    if bytes.get(start) != Some(&SELECT_BLOCK_OPEN) {
+        // No block present (some select variants may omit it); nothing
+        // to consume.
+        return Ok(start);
+    }
+    let mut p = start + 1;
+    loop {
+        match bytes.get(p) {
+            None => {
+                return Err(BytecodeDecodeError::Truncated {
+                    observed_len: bytes.len(),
+                    position: p,
+                    needed: 1,
+                    message: format!(
+                        "select block at position {pos} truncated before closing '}}'",
+                    ),
+                });
+            }
+            Some(&SELECT_BLOCK_CLOSE) => return Ok(p + 1),
+            Some(&b'(') => {
+                p = walk_command_arg_list(bytes, p)?;
+            }
+            Some(&lead) if is_shift_jis_lead(lead) && p + 1 < bytes.len() => {
+                p += 2;
+            }
+            Some(_) => {
+                p += 1;
+            }
+        }
+    }
 }
 
 /// Walk a `(...)`-delimited command argument list starting at

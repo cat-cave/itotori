@@ -257,6 +257,11 @@ impl InMemorySceneStore {
     pub fn is_empty(&self) -> bool {
         self.scenes.is_empty()
     }
+
+    /// Every scene id present, in ascending order.
+    pub fn scene_ids(&self) -> Vec<SceneId> {
+        self.scenes.keys().copied().collect()
+    }
 }
 
 impl SceneStore for InMemorySceneStore {
@@ -875,6 +880,7 @@ impl Vm {
                 module_id,
                 opcode,
                 raw_bytes,
+                goto_targets,
                 ..
             } => {
                 let key = RlopKey::new(module_type, module_id, opcode);
@@ -885,7 +891,18 @@ impl Vm {
                     // control-flow ops (goto / farcall / …) included —
                     // saw an empty slice and took its warn-and-advance
                     // path, making jumps dead in the integration path.
-                    let args = self.decode_command_args(&raw_bytes);
+                    //
+                    // The goto-family jump-target pointers live OUTSIDE
+                    // the `(...)` argument list (the decoder framed them
+                    // as trailing `i32`s). Append them as trailing `Int`
+                    // args so a control-flow op sees `[cond?.., target..]`
+                    // — the layout `GotoOp` / `GotoIfOp` / `GotoOnOp`
+                    // expect. Non-goto commands carry no targets, so this
+                    // is a no-op for them.
+                    let mut args = self.decode_command_args(&raw_bytes);
+                    for target in &goto_targets {
+                        args.push(ExprValue::Int(i32::from_ne_bytes(target.to_ne_bytes())));
+                    }
                     let outcome = op.dispatch(self, &args);
                     self.apply_outcome(&outcome, post_pc)?;
                     Ok(VmEvent::CommandDispatched { key, outcome })
@@ -1514,12 +1531,15 @@ mod tests {
         b
     }
 
-    /// Encode a single `goto(target_pc)` command (module 0/1, opcode 0)
-    /// with one int-literal argument.
+    /// Encode a single `goto(target_pc)` command (module 0/1, opcode 0).
+    /// Real `goto` framing per rlvm `bytecode.cc`: the 8-byte header is
+    /// followed by ONE trailing `i32 LE` jump-target pointer — NOT a
+    /// `(...)` argument list. The decoder frames the pointer into
+    /// `Command::goto_targets`; the VM appends it as the sole `Int` arg
+    /// so `GotoOp` jumps to it.
     fn goto_command(target_pc: i32) -> Vec<u8> {
-        let mut b = vec![0x23, 0x00, 0x01, 0x00, 0x00, 0x01, 0x00, 0x00, b'('];
-        b.extend_from_slice(&int_literal_bytes(target_pc));
-        b.push(b')');
+        let mut b = vec![0x23, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00];
+        b.extend_from_slice(&target_pc.to_le_bytes());
         b
     }
 

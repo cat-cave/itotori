@@ -48,6 +48,7 @@ fn command(offset: usize, module_type: u8, module_id: u8, opcode: u16) -> Byteco
         opcode,
         arg_count: 0,
         overload: 0,
+        goto_targets: vec![],
         raw_bytes: vec![
             0x23,
             module_type,
