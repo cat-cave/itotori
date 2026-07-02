@@ -5,7 +5,6 @@
     "modelId": "deepseek/deepseek-v4-flash",
     "providerId": "fireworks"
   },
-  "enUsSentinel": "SMOKE-FIXTURE-EN-US-SENTINEL",
   "sceneId": 0,
   "stages": {
     "context": {

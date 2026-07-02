@@ -80,7 +80,7 @@ function ioFixture(reads: Map<string, unknown>): {
 }
 
 describe("UTSUSHI-228 parseLocalizeProjectPairPolicy", () => {
-  it("accepts the production preset shape and exposes pair + sentinel", () => {
+  it("accepts the production preset shape and exposes the pair + sceneId", () => {
     const parsed = parseLocalizeProjectPairPolicy(loadPreset());
     expect(parsed.policyId).toBeTypeOf("string");
     expect(parsed.policyId.length).toBeGreaterThan(0);
@@ -88,19 +88,14 @@ describe("UTSUSHI-228 parseLocalizeProjectPairPolicy", () => {
       modelId: "deepseek/deepseek-v4-flash",
       providerId: "fireworks",
     });
-    expect(parsed.enUsSentinel).toBe("STELLA-ALPHA-EN-US-SENTINEL");
     expect(parsed.sceneId).toBe(1);
+    // The obsolete planted-sentinel field is gone from the schema.
+    expect(parsed).not.toHaveProperty("enUsSentinel");
   });
 
   it("rejects an object without policyId", () => {
     const preset = loadPreset() as Record<string, unknown>;
     delete preset.policyId;
-    expect(() => parseLocalizeProjectPairPolicy(preset)).toThrow(LocalizeProjectPairPolicyError);
-  });
-
-  it("rejects an object with an empty enUsSentinel", () => {
-    const preset = loadPreset() as Record<string, unknown>;
-    preset.enUsSentinel = "";
     expect(() => parseLocalizeProjectPairPolicy(preset)).toThrow(LocalizeProjectPairPolicyError);
   });
 
@@ -215,7 +210,7 @@ describe("UTSUSHI-228 runLocalizeProjectStageCommand", () => {
     ).rejects.toBeInstanceOf(LocalizeProjectMissingProviderRunArtifactsDirectoryError);
   });
 
-  it("writes all three artifacts, embeds the sentinel, and pins every invocation to the policy pair (fake provider, opt-in)", async () => {
+  it("writes all three artifacts with the real translated draft, and pins every invocation to the policy pair (fake provider, opt-in)", async () => {
     const prevAllow = process.env.ITOTORI_ALLOW_FAKE_LOCALIZE_PROVIDER;
     process.env.ITOTORI_ALLOW_FAKE_LOCALIZE_PROVIDER = "1";
     try {
@@ -273,9 +268,11 @@ describe("UTSUSHI-228 runLocalizeProjectStageCommand", () => {
           expect(invocation.seed).toBeGreaterThanOrEqual(0);
         }
       }
-      // The fake provider embeds the sentinel into the draft text so we
-      // can assert the orchestrator surfaced it through final-draft.
-      expect(bundle.finalDraft.draftText ?? "").toContain("STELLA-ALPHA-EN-US-SENTINEL");
+      // The fake provider emits a deterministic stand-in translation
+      // (`[en-US] <source>`), no sentinel; assert the orchestrator
+      // surfaced the REAL draft through final-draft.
+      const draftText = bundle.finalDraft.draftText ?? "";
+      expect(draftText.startsWith("[en-US] ")).toBe(true);
 
       // ----- Translated bridge bundle -----
       const translated = writes.get("out/translated-bridge.json") as {
@@ -285,17 +282,19 @@ describe("UTSUSHI-228 runLocalizeProjectStageCommand", () => {
       expect(translated.units.length).toBeGreaterThan(0);
       for (const unit of translated.units) {
         expect(unit.target.locale).toBe("en-US");
+        // RealLive bracket wrap is an encoding requirement; the interior
+        // is the REAL translated draft verbatim.
         expect(unit.target.text.startsWith("「")).toBe(true);
         expect(unit.target.text.endsWith("」")).toBe(true);
-        expect(unit.target.text).toContain("STELLA-ALPHA-EN-US-SENTINEL");
+        expect(unit.target.text).toContain(draftText);
       }
 
       // ----- Patch report -----
       const patchReport = writes.get("out/patch-report.json") as {
         schemaVersion: string;
         pair: { modelId: string; providerId: string };
-        enUsSentinel: string;
         sceneId: number;
+        finalDraftText: string;
         translatedTargetText: string;
       };
       expect(patchReport).toBeDefined();
@@ -304,9 +303,12 @@ describe("UTSUSHI-228 runLocalizeProjectStageCommand", () => {
         modelId: "deepseek/deepseek-v4-flash",
         providerId: "fireworks",
       });
-      expect(patchReport.enUsSentinel).toBe("STELLA-ALPHA-EN-US-SENTINEL");
+      expect(patchReport).not.toHaveProperty("enUsSentinel");
       expect(patchReport.sceneId).toBe(1);
-      expect(patchReport.translatedTargetText).toContain("STELLA-ALPHA-EN-US-SENTINEL");
+      // The patch-report records the REAL translated text the downstream
+      // replay must OBSERVE — not a planted sentinel.
+      expect(patchReport.finalDraftText).toBe(draftText);
+      expect(patchReport.translatedTargetText).toBe(`「${draftText}」`);
     } finally {
       if (prevAllow === undefined) {
         delete process.env.ITOTORI_ALLOW_FAKE_LOCALIZE_PROVIDER;
@@ -457,17 +459,20 @@ function alwaysFailingFactory(error: ModelProviderError): AgenticLoopProviderFac
 
 /**
  * Build a fake provider factory keyed to a (modelId, providerId) pair
- * that emits structurally-correct sentinel-carrying payloads. Mirrors
- * the production sentinelFakeFactory so a downstream agentic-loop run
- * actually succeeds when this factory is adopted.
+ * that emits structurally-correct payloads whose translated draft
+ * carries a caller-supplied `marker` string. Mirrors the production
+ * fakeTranslationFactory so a downstream agentic-loop run actually
+ * succeeds when this factory is adopted. The marker is an ordinary
+ * test-double tracer for asserting the draft flowed through the
+ * orchestrator — NOT a runtime-evidence sentinel.
  *
  * The bridgeUnitId is captured here so the speaker-label citation
  * resolver finds a known unit; the smoke bridge fixture's first unit
  * is the canonical alpha-closer scene-1 unit 0.
  */
-function workingSentinelFactory(
+function workingTranslationFactory(
   pair: PairChoice["pair"],
-  sentinel: string,
+  marker: string,
   bridgeUnitId: string,
 ): AgenticLoopProviderFactory {
   return ({ stage, agentLabel }) =>
@@ -500,7 +505,7 @@ function workingSentinelFactory(
                 bridgeUnitId,
                 sourceLocale: "ja-JP",
                 targetLocale: "en-US",
-                draftText: `${sentinel} translated`,
+                draftText: `${marker} translated`,
                 protectedSpanRefs: [],
                 citationRefs: [],
                 agentRationale: "test working translation",
@@ -575,7 +580,7 @@ describe("OpenRouter-side fallback resilience", () => {
           | undefined;
       },
     ): AgenticLoopProviderFactory => {
-      const delegateFactory = workingSentinelFactory(
+      const delegateFactory = workingTranslationFactory(
         pair,
         "STELLA-ALPHA-EN-US-SENTINEL",
         firstBridgeUnitId,
@@ -677,7 +682,7 @@ describe("OpenRouter-side fallback resilience", () => {
           | undefined;
       },
     ): AgenticLoopProviderFactory => {
-      const delegateFactory = workingSentinelFactory(
+      const delegateFactory = workingTranslationFactory(
         pair,
         "STELLA-ALPHA-EN-US-SENTINEL",
         firstBridgeUnitId,
@@ -765,7 +770,7 @@ describe("OpenRouter-side fallback resilience", () => {
           | undefined;
       },
     ): AgenticLoopProviderFactory => {
-      const delegateFactory = workingSentinelFactory(
+      const delegateFactory = workingTranslationFactory(
         pair,
         "STELLA-ALPHA-EN-US-SENTINEL",
         firstBridgeUnitId,

@@ -34,7 +34,6 @@ function minimalV03(): Record<string, unknown> {
     schemaVersion: PAIR_POLICY_SCHEMA_VERSION,
     policyId: "fixture-policy",
     pair: { modelId: "deepseek/deepseek-v4-flash", providerId: "fireworks" },
-    enUsSentinel: "FIXTURE-SENTINEL",
     sceneId: 0,
     stages: {
       context: {

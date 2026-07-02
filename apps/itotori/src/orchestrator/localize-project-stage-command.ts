@@ -5,10 +5,11 @@
 // `agentic-loop-smoke` because that command HARD-REFUSES live providers
 // (it is a synthetic CI smoke). This command does the opposite: it
 // hard-requires the live OpenRouter provider via OPENROUTER_API_KEY,
-// loads the pair-policy from a JSON file (NO defaulting), and weaves
-// the en-US sentinel into the prompt so the translated draft text the
-// LLM emits is guaranteed to include the substring the patchback +
-// replay-validate pipeline asserts on.
+// loads the pair-policy from a JSON file (NO defaulting), and patches
+// the REAL translated draft the LLM emits into the target bundle. The
+// downstream runtime evidence is asserted over the engine's OBSERVED
+// decode of those real translated bytes — there is no injected
+// sentinel substring anywhere in this pipeline.
 //
 // Resilience model — OpenRouter-side fallback (post-ITOTORI-241):
 //
@@ -37,14 +38,14 @@
 //   1. <output>                       — the AgenticLoopBundle.v0 JSON
 //   2. <translated-bundle-output>     — a translated v0.2 BridgeBundle
 //                                       where every unit's
-//                                       `target.text` is set to
-//                                       `「{sentinel} {draftText}」` so
-//                                       (a) the sentinel always
-//                                       reaches the patched Seen.txt,
-//                                       and (b) the leading SJIS
-//                                       bracket lets the KAIFUU-191
-//                                       lexer classify the bytes as a
-//                                       Textout run.
+//                                       `target.text` is the REAL
+//                                       translated draft. For RealLive
+//                                       it is `「{draftText}」`: the
+//                                       leading SJIS bracket is an
+//                                       ENCODING requirement so the
+//                                       KAIFUU-191 lexer classifies the
+//                                       bytes as a Textout run (NOT a
+//                                       sentinel).
 //   3. <patch-report-output>          — a deterministic
 //                                       `patch-report.json` shape
 //                                       summarising which pair drove
@@ -56,13 +57,15 @@
 //                                       have fallen back to, lives in
 //                                       the per-invocation provider-run
 //                                       records), the bridge unit
-//                                       count, and the sentinel
-//                                       substring. The Rust patchback
-//                                       crate does not emit a
-//                                       per-file report today, so the
-//                                       driver synthesises one here
-//                                       to satisfy the UTSUSHI-228
-//                                       artifact contract.
+//                                       count, and the REAL translated
+//                                       text (`finalDraftText` /
+//                                       `translatedTargetText`) the
+//                                       downstream replay must OBSERVE.
+//                                       The Rust patchback crate does
+//                                       not emit a per-file report
+//                                       today, so the driver synthesises
+//                                       one here to satisfy the
+//                                       UTSUSHI-228 artifact contract.
 //
 // The pair-policy file is REQUIRED. Missing OPENROUTER_API_KEY is a
 // hard failure (no fallback to RecordedModelProvider — that violates
@@ -124,10 +127,10 @@ export type LocalizeProjectStageArgs = {
   unitIndex?: number;
   /**
    * Engine profile controlling translated-bundle synthesis. `reallive`
-   * (default) overwrites EVERY unit's `target` with the SJIS-bracket
-   * sentinel-wrapped draft so the KAIFUU-191 lexer captures the patched
+   * (default) overwrites EVERY unit's `target` with the SJIS-bracket-
+   * wrapped REAL draft so the KAIFUU-191 lexer captures the patched
    * run as a Textout opcode. `rpg-maker-mv-mz` translates ONLY the
-   * targeted `--unit-index` unit (sentinel-prefixed, no bracket wrap —
+   * targeted `--unit-index` unit (plain literal, no bracket wrap —
    * RPG Maker stores JSON string literals) and keeps every other unit's
    * `target.text === sourceText` (a byte no-op), so the kaifuu-rpgmaker
    * patchback emits a single-surface, byte-correct `.kaifuu` delta rather
@@ -139,8 +142,8 @@ export type LocalizeProjectStageArgs = {
   log?: (message: string) => void;
   /**
    * Test-only escape hatch: when set to "fake", the command builds a
-   * deterministic FakeModelProvider whose translation output ALWAYS
-   * contains the sentinel substring. Refused at runtime unless the
+   * deterministic FakeModelProvider whose translation output is a
+   * deterministic stand-in (`[en-US] <source>`). Refused at runtime unless the
    * caller also sets `ITOTORI_ALLOW_FAKE_LOCALIZE_PROVIDER=1` — keeps
    * a stray flag from silently downgrading the recipe to fake. The
    * production driver never sets this.
@@ -230,7 +233,6 @@ export { PairPolicyVersionMismatchError };
  *   "schemaVersion": "itotori.pair-policy.v0.3",
  *   "policyId": "localize-project-alpha-1",
  *   "pair": { "modelId": "...", "providerId": "..." },
- *   "enUsSentinel": "STELLA-ALPHA-EN-US-SENTINEL",
  *   "sceneId": 1,
  *   "openrouterPresetSlug": "optional",
  *   "stages": { ...per-stage StagePostureV03 leaves... }
@@ -261,7 +263,6 @@ export { PairPolicyVersionMismatchError };
 export function parseLocalizeProjectPairPolicy(value: unknown): {
   policyId: string;
   pair: { modelId: string; providerId: string };
-  enUsSentinel: string;
   sceneId: number;
   openrouterPresetSlug?: string;
   pairPolicy: PairPolicy;
@@ -292,7 +293,6 @@ export function parseLocalizeProjectPairPolicy(value: unknown): {
   const out: {
     policyId: string;
     pair: { modelId: string; providerId: string };
-    enUsSentinel: string;
     sceneId: number;
     openrouterPresetSlug?: string;
     pairPolicy: PairPolicy;
@@ -300,7 +300,6 @@ export function parseLocalizeProjectPairPolicy(value: unknown): {
   } = {
     policyId: parsed.policyId,
     pair: { modelId: parsed.pair.modelId, providerId: parsed.pair.providerId },
-    enUsSentinel: parsed.enUsSentinel,
     sceneId: parsed.sceneId,
     pairPolicy: parsed.stages,
     policyV03: parsed,
@@ -347,10 +346,9 @@ export async function runLocalizeProjectStageCommand(
   }
 
   const rawPolicy = args.io.readJson(args.pairPolicyPath);
-  const { policyId, pair, enUsSentinel, sceneId, pairPolicy } =
-    parseLocalizeProjectPairPolicy(rawPolicy);
+  const { policyId, pair, sceneId, pairPolicy } = parseLocalizeProjectPairPolicy(rawPolicy);
   log(
-    `localize-project-stage: pair=(${pair.modelId}, ${pair.providerId}) sentinel=${enUsSentinel} (OpenRouter-side fallback handles 429s within the ZDR allow-list)`,
+    `localize-project-stage: pair=(${pair.modelId}, ${pair.providerId}) (OpenRouter-side fallback handles 429s within the ZDR allow-list)`,
   );
 
   const providerKind = args.providerKind ?? "live";
@@ -398,14 +396,10 @@ export async function runLocalizeProjectStageCommand(
   // `runAgenticLoopForUnit` surfaces it verbatim as a `ModelProviderError`.
   const factory: AgenticLoopProviderFactory =
     providerKind === "fake"
-      ? sentinelFakeFactory(unit, policy, enUsSentinel)
+      ? fakeTranslationFactory(unit, policy)
       : args.liveFactoryOverride !== undefined
-        ? withStagePostureInjectionFactory(
-            args.liveFactoryOverride(pair, { artifactRecorder }),
-            enUsSentinel,
-          )
+        ? withStagePostureInjectionFactory(args.liveFactoryOverride(pair, { artifactRecorder }))
         : liveOpenRouterFactory({
-            enUsSentinel,
             costCapUsd: args.costCapUsd ?? DEFAULT_COST_CAP_USD,
             artifactRecorder,
           });
@@ -417,16 +411,21 @@ export async function runLocalizeProjectStageCommand(
   log(`localize-project-stage: wrote ${args.outputPath}`);
 
   // Synthesise the translated bridge bundle: clone the source JSON,
-  // overwrite each unit's `target` block with the sentinel-wrapped
-  // draft text. We wrap with the SJIS bracket pair so the KAIFUU-191
-  // lexer captures the run as a Textout opcode rather than silently
-  // dropping the ASCII bytes as `Unknown`.
+  // overwrite each unit's `target` block with the REAL translated draft
+  // text the agentic loop produced. For RealLive we wrap with the SJIS
+  // bracket pair (`「…」`) — an ENCODING requirement so the KAIFUU-191
+  // lexer captures the run as a Textout opcode rather than dropping the
+  // ASCII bytes as `Unknown`; it is NOT a sentinel. The exact text
+  // written here is what a downstream replay/render must OBSERVE, so it
+  // is recorded verbatim in the patch-report as `translatedTargetText`.
   const draftText = bundle.finalDraft.draftText ?? `[en-US] ${unit.sourceText}`;
   const engineProfile = args.engineProfile ?? "reallive";
+  const translatedTargetText =
+    engineProfile === "rpg-maker-mv-mz" ? draftText : bracketWrapForRealLive(draftText);
   const translatedBridge =
     engineProfile === "rpg-maker-mv-mz"
-      ? synthesiseRpgMakerMvMzTranslatedBridge(rawBridge, draftText, enUsSentinel, unitIndex)
-      : synthesiseTranslatedBridge(rawBridge, draftText, enUsSentinel);
+      ? synthesiseRpgMakerMvMzTranslatedBridge(rawBridge, draftText, unitIndex)
+      : synthesiseTranslatedBridge(rawBridge, draftText);
   args.io.writeJson(args.translatedBundleOutputPath, translatedBridge);
   log(`localize-project-stage: wrote ${args.translatedBundleOutputPath}`);
 
@@ -445,12 +444,20 @@ export async function runLocalizeProjectStageCommand(
     schemaVersion: "itotori.localize-project.patch-report.v0",
     policyId,
     pair,
-    enUsSentinel,
     sceneId,
     bridgeUnitId: unit.bridgeUnitId,
     unitCount: bridge.units.length,
     finalDraftTextLength: draftText.length,
-    translatedTargetText: wrapWithSentinel(draftText, enUsSentinel),
+    // The REAL translated draft the LLM produced. This is the exact
+    // English text the downstream replay/render must OBSERVE in an
+    // emitted TextLine — the observed-output evidence is asserted
+    // against this, NOT against a harness-planted sentinel.
+    finalDraftText: draftText,
+    // The exact target text written into the translated bundle (RealLive
+    // is SJIS-bracket-wrapped for the lexer; RPG Maker is the plain
+    // literal). `finalDraftText` is the substring guaranteed to appear
+    // in the engine's observed TextLine regardless of the wrap.
+    translatedTargetText,
   };
   args.io.writeJson(args.patchReportOutputPath, patchReport);
   log(`localize-project-stage: wrote ${args.patchReportOutputPath}`);
@@ -459,7 +466,6 @@ export async function runLocalizeProjectStageCommand(
 }
 
 function liveOpenRouterFactory(opts: {
-  enUsSentinel: string;
   costCapUsd: number;
   artifactRecorder: ProviderRunArtifactRecorder | undefined;
 }): AgenticLoopProviderFactory {
@@ -479,7 +485,7 @@ function liveOpenRouterFactory(opts: {
         artifactRecorder: opts.artifactRecorder,
       });
     }
-    return new SentinelInjectingProviderWrapper({
+    return new StagePostureProviderWrapper({
       inner: provider,
       stage,
       agentLabel,
@@ -489,37 +495,31 @@ function liveOpenRouterFactory(opts: {
       // OpenRouter request as provider.max_price and remains locally
       // enforceable after the provider reports usage.cost.
       pair,
-      sentinel: opts.enUsSentinel,
     });
   };
 }
 
 function withStagePostureInjectionFactory(
   factory: AgenticLoopProviderFactory,
-  enUsSentinel: string,
 ): AgenticLoopProviderFactory {
   return ({ stage, agentLabel, pair }) =>
-    new SentinelInjectingProviderWrapper({
+    new StagePostureProviderWrapper({
       inner: factory({ stage, agentLabel, pair }),
       stage,
       agentLabel,
       pair,
-      sentinel: enUsSentinel,
     });
 }
 
 /**
- * Provider wrapper that augments every translation request with an
- * instruction to embed the sentinel substring in the translated
- * draft. Other stage requests pass through unmodified. The wrapper
- * never modifies the provider response — the synthesis step
- * (`wrapWithSentinel` below) is what ultimately guarantees the
- * sentinel reaches the patched bytes, but the prompt augmentation
- * gives the LLM a chance to ALSO produce it (so the translated
- * draftText that lands in the agentic-loop-bundle carries the
- * sentinel in the model's own words, not just in our wrapper).
+ * Provider wrapper that threads the per-stage posture (maxPriceUsd) into
+ * every invocation and surfaces the per-pair capability descriptor. It
+ * NEVER rewrites prompts or responses: the translated draft is whatever
+ * the model actually produced, and the downstream runtime evidence is
+ * asserted over the engine's observed decode of the REAL translated
+ * bytes — there is no injected sentinel substring.
  */
-class SentinelInjectingProviderWrapper implements ModelProvider {
+class StagePostureProviderWrapper implements ModelProvider {
   readonly descriptor: ModelProvider["descriptor"];
   constructor(
     private readonly opts: {
@@ -527,7 +527,6 @@ class SentinelInjectingProviderWrapper implements ModelProvider {
       stage: string;
       agentLabel: string;
       pair: StagePostureV03;
-      sentinel: string;
     },
   ) {
     // ITOTORI-237 — surface the per-pair capability sheet to agents
@@ -539,21 +538,8 @@ class SentinelInjectingProviderWrapper implements ModelProvider {
     this.descriptor = descriptorForStagePair(opts.inner, opts.pair.pair);
   }
   async invoke(request: ModelInvocationRequest): Promise<ModelInvocationResult> {
-    const isTranslation = request.taskKind === "draft_translation";
-    const messages = isTranslation
-      ? request.messages.map((message, index) => {
-          if (index === 0 && message.role === "system" && typeof message.content === "string") {
-            return {
-              ...message,
-              content: `${message.content}\n\nIMPORTANT (localize-project-stage): your translated draft MUST include the literal ASCII substring "${this.opts.sentinel}" exactly once. The downstream replay-validate step asserts on it.`,
-            };
-          }
-          return message;
-        })
-      : request.messages;
     return this.opts.inner.invoke({
       ...request,
-      messages,
       maxPriceUsd: this.opts.pair.maxPriceUsd,
     });
   }
@@ -579,12 +565,13 @@ function descriptorForStagePair(
  * Deterministic fake provider used by the unit-test path (refused at
  * runtime unless `ITOTORI_ALLOW_FAKE_LOCALIZE_PROVIDER=1`). Emits
  * structurally-correct stage payloads where the translation stage's
- * draft text always contains the sentinel substring.
+ * draft text is a deterministic stand-in for a real translation
+ * (`[en-US] <source>`). It carries NO sentinel: the downstream runtime
+ * evidence is asserted over the engine's observed decode of THIS text.
  */
-function sentinelFakeFactory(
+function fakeTranslationFactory(
   unit: LocalizationUnitV02,
   policy: AgenticLoopPolicy,
-  sentinel: string,
 ): AgenticLoopProviderFactory {
   return ({ stage, agentLabel }) =>
     new FakeModelProvider({
@@ -615,9 +602,8 @@ function sentinelFakeFactory(
                 bridgeUnitId: unit.bridgeUnitId,
                 sourceLocale: unit.sourceLocale,
                 targetLocale: policy.targetLocale,
-                // The sentinel is embedded verbatim so the unit test
-                // can assert it lands in the final-draft draftText.
-                draftText: `${sentinel} ${unit.sourceText}`,
+                // A deterministic stand-in translation (no sentinel).
+                draftText: `[en-US] ${unit.sourceText}`,
                 protectedSpanRefs: [],
                 citationRefs: [],
                 agentRationale: "localize-project-fake translation",
@@ -639,16 +625,14 @@ function sentinelFakeFactory(
 
 /**
  * Build the v0.2 translated BridgeBundle JSON: clone the source
- * bridge, overwrite each unit's `target` block. We wrap the draft
- * with the SJIS bracket pair (`「…」`) because the KAIFUU-191 lexer
- * classifies ASCII-leading bytes as `Unknown` — without the bracket
- * the patched bytes would not surface as a Textout opcode at replay.
+ * bridge, overwrite each unit's `target` block with the REAL translated
+ * draft text. We wrap the draft with the SJIS bracket pair (`「…」`)
+ * because the KAIFUU-191 lexer classifies ASCII-leading bytes as
+ * `Unknown` — without the bracket the patched bytes would not surface as
+ * a Textout opcode at replay. The bracket is an ENCODING requirement,
+ * not a sentinel.
  */
-function synthesiseTranslatedBridge(
-  rawBridge: unknown,
-  draftText: string,
-  enUsSentinel: string,
-): unknown {
+function synthesiseTranslatedBridge(rawBridge: unknown, draftText: string): unknown {
   if (typeof rawBridge !== "object" || rawBridge === null || Array.isArray(rawBridge)) {
     throw new Error("localize-project-stage refused: bridge JSON must be an object");
   }
@@ -658,7 +642,7 @@ function synthesiseTranslatedBridge(
   if (!Array.isArray(units)) {
     throw new Error("localize-project-stage refused: bridge.units must be an array");
   }
-  const wrappedText = wrapWithSentinel(draftText, enUsSentinel);
+  const wrappedText = bracketWrapForRealLive(draftText);
   for (const unit of units) {
     if (typeof unit !== "object" || unit === null) {
       throw new Error("localize-project-stage refused: bridge unit must be an object");
@@ -674,18 +658,18 @@ function synthesiseTranslatedBridge(
 /**
  * Build the v0.2 translated BridgeBundle JSON for the RPG Maker MV/MZ
  * vertical slice. Unlike the RealLive synthesis (which rewrites every
- * unit to the same bracket-wrapped sentinel), this translates ONLY the
+ * unit to the same bracket-wrapped draft), this translates ONLY the
  * targeted `unitIndex` unit and leaves every other unit's
  * `target.text === sourceText` — a byte no-op the kaifuu-rpgmaker
  * patchback collapses to zero edits. The result is a single-surface,
  * byte-correct `.kaifuu` delta. No SJIS bracket wrap: RPG Maker stores
- * plain JSON string literals, so the sentinel is prefixed directly so the
- * downstream runtime trace can assert it lands in an emitted TextLine.
+ * plain JSON string literals, so the REAL translated draft is written
+ * directly so the downstream runtime trace can assert the engine
+ * observes it in an emitted TextLine.
  */
 function synthesiseRpgMakerMvMzTranslatedBridge(
   rawBridge: unknown,
   draftText: string,
-  enUsSentinel: string,
   unitIndex: number,
 ): unknown {
   if (typeof rawBridge !== "object" || rawBridge === null || Array.isArray(rawBridge)) {
@@ -696,7 +680,7 @@ function synthesiseRpgMakerMvMzTranslatedBridge(
   if (!Array.isArray(units)) {
     throw new Error("localize-project-stage refused: bridge.units must be an array");
   }
-  const targetedText = `${enUsSentinel} ${draftText}`;
+  const targetedText = draftText;
   for (const [index, unit] of units.entries()) {
     if (typeof unit !== "object" || unit === null) {
       throw new Error("localize-project-stage refused: bridge unit must be an object");
@@ -718,11 +702,15 @@ function synthesiseRpgMakerMvMzTranslatedBridge(
   return clone;
 }
 
-function wrapWithSentinel(draftText: string, sentinel: string): string {
-  // Always include the sentinel verbatim; if the LLM already produced
-  // it (which the prompt requests), append it once more is fine — the
-  // validator asserts substring presence, not uniqueness.
-  return `「${sentinel} ${draftText}」`;
+/**
+ * Wrap the REAL translated draft in the SJIS bracket pair (`「…」`).
+ * This is an ENCODING requirement: the KAIFUU-191 RealLive lexer
+ * classifies ASCII-leading bytes as `Unknown`, so the leading bracket
+ * is what makes the patched bytes surface as a Textout opcode at
+ * replay. The interior text is the model's real translation verbatim.
+ */
+function bracketWrapForRealLive(draftText: string): string {
+  return `「${draftText}」`;
 }
 
 function assertBridgeBundleV02Shape(value: unknown): BridgeBundleV02 {

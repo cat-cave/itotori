@@ -1,26 +1,23 @@
 //! UTSUSHI-227 — `utsushi-cli replay-validate --engine reallive` command.
 //!
-//! Drives [`utsushi_reallive::replay_scene`] against a Seen.txt path
-//! and asserts that at least one captured
-//! [`utsushi_reallive::ReplayEvent::TextLine`] body carries the
-//! expected substring. This generic subcommand is the active replay
-//! validation surface for RealLive titles.
+//! Drives [`utsushi_reallive::replay_scene`] against a (patched) Seen.txt
+//! path and EMITS the engine's OBSERVED output: the captured
+//! [`utsushi_reallive::ReplayEvent::TextLine`] bodies (stdout) plus the
+//! deterministic [`utsushi_reallive::ReplayLog`] JSON (`--print-replay-log`).
 //!
-//! The substring-source contract (acceptance criterion #1 — regression
-//! sentinel) is the caller's: pick a substring unique to the patched
-//! copy. The integration test
-//! `crates/utsushi-reallive/tests/replay_validate_reallive.rs`
-//! validates the contract by running the validator on both the
-//! patched and the original copy and asserting only the patched copy
-//! matches.
+//! This command performs NO substring assertion of its own. The runtime
+//! evidence is validated by the caller (the localize-project driver),
+//! which reads the emitted ReplayLog and asserts that the engine's
+//! observed TextLine bodies reflect the REAL translated text it patched
+//! into Seen.txt (recorded in `patch-report.json`). There is no
+//! harness-planted sentinel: the assertion is over what the engine
+//! actually decoded from the patched bytes.
 
 use std::error::Error;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use utsushi_reallive::{
-    ReplayEvent, ReplayLog, ReplayOpts, ReplayValidation, replay_scene, validate_log_contains,
-};
+use utsushi_reallive::{ReplayEvent, ReplayLog, ReplayOpts, replay_scene};
 
 /// Stable string naming the engine the replay-validate command targets.
 /// Mirrors the `replay` subcommand's constraint — only `reallive` is
@@ -28,45 +25,40 @@ use utsushi_reallive::{
 /// fallback).
 const SUPPORTED_ENGINE: &str = "reallive";
 
-/// Stable diagnostic-code prefix the subcommand prints on the success
-/// exit path. Matches the reallive validator library diagnostic so a
-/// pipeline matcher can grep for it consistently.
-const MATCH_OK_CODE: &str = "utsushi.reallive.replay_text_match_ok";
-/// Stable diagnostic-code prefix the subcommand prints on the no-match
-/// exit path.
-const MATCH_FAILED_CODE: &str = "utsushi.reallive.replay_text_match_failed";
+/// Stable diagnostic-code prefix printed on the success exit path (the
+/// scene replayed and its observed TextLine evidence was emitted).
+const REPLAY_OK_CODE: &str = "utsushi.reallive.replay_observed_textlines_emitted";
 
-const HELP: &str = r"utsushi replay-validate — patched Seen.txt replay-and-verify smoke
+const HELP: &str = r"utsushi replay-validate — patched Seen.txt replay + observed-output emit
 
 USAGE:
   utsushi-cli replay-validate \
     --engine reallive \
     --seen <PATH> \
     --scene <N> \
-    --expect-textline-contains <SUBSTR> \
-    [--print-textlines] \
-    [--print-replay-log <PATH>]
+    --print-replay-log <PATH> \
+    [--print-textlines]
 
 FLAGS:
-  --engine reallive                   Replay engine. Only `reallive` is supported.
-  --seen <PATH>                       Path to a RealLive Seen.txt envelope.
-  --scene <N>                         Scene id (u16) to drive through the VM.
-  --expect-textline-contains <SUBSTR> Substring expected in at least one
-                                      captured TextLine event's body (UTF-8 or
-                                      Shift-JIS redecode).
-  --print-textlines                   Print every TextLine body to stdout.
-  --print-replay-log <PATH>           Write the ReplayLog (deterministic JSON)
-                                      to <PATH> in addition to validating.
-  -h, --help                          Print this message and exit.
+  --engine reallive           Replay engine. Only `reallive` is supported.
+  --seen <PATH>               Path to a RealLive Seen.txt envelope.
+  --scene <N>                 Scene id (u16) to drive through the VM.
+  --print-replay-log <PATH>   Write the ReplayLog (deterministic JSON) to <PATH>.
+                              This is the OBSERVED-OUTPUT evidence the caller
+                              validates against the real translated text.
+  --print-textlines           Also print every observed TextLine body to stdout.
+  -h, --help                  Print this message and exit.
 
 EXIT CODES:
-  0  utsushi.reallive.replay_text_match_ok      — substring matched.
-  1  utsushi.reallive.replay_text_match_failed  — no TextLine body matched.
+  0  utsushi.reallive.replay_observed_textlines_emitted — scene replayed and
+     its observed TextLine evidence (ReplayLog) was written.
+  1  driver error (read / parse / decode / serialise / write).
 
-SUBSTRING CONTRACT:
-  The substring must be unique to the patched copy. Pick a stable excerpt
-  from the first translated unit's first sentence; verify by re-running
-  against the original unpatched copy and confirming it does not match.
+VALIDATION CONTRACT:
+  This command does NOT assert on any substring. The caller reads the
+  emitted ReplayLog's `text_line` events and asserts that the engine's
+  observed body reflects the REAL translated text patched into Seen.txt
+  (the localize-project driver derives that text from patch-report.json).
 ";
 
 /// Execute the `replay-validate` subcommand. The argv layout is:
@@ -76,15 +68,14 @@ SUBSTRING CONTRACT:
 ///   --engine reallive \
 ///   --seen <PATH> \
 ///   --scene <N> \
-///   --expect-textline-contains <SUBSTR> \
-///   [--print-textlines] \
-///   [--print-replay-log <PATH>]
+///   --print-replay-log <PATH> \
+///   [--print-textlines]
 /// ```
 ///
-/// Returns `Err` if the underlying driver fails OR if the substring
-/// does not appear in any TextLine body (so the caller's
-/// non-zero-exit-on-`Err` contract surfaces a regression-sentinel
-/// failure correctly).
+/// Returns `Err` only when the underlying driver fails (read, parse,
+/// decode) or the ReplayLog cannot be serialised/written. A scene that
+/// emits zero TextLine events is NOT an error here — the caller's
+/// observed-output validation surfaces that as a failed match.
 pub fn run_replay_validate_command(args: &[String]) -> Result<(), Box<dyn Error>> {
     if args.iter().any(|arg| arg == "--help" || arg == "-h") {
         print!("{HELP}");
@@ -102,32 +93,17 @@ pub fn run_replay_validate_command(args: &[String]) -> Result<(), Box<dyn Error>
     let scene_id: u16 = required_flag(args, "--scene")?.parse().map_err(|err| {
         format!("utsushi.cli.replay_validate.scene_parse: --scene must be a u16: {err}")
     })?;
-    let expected_substring = required_flag(args, "--expect-textline-contains")?.to_string();
-    if expected_substring.is_empty() {
-        return Err(
-            "utsushi.cli.replay_validate.empty_substring: --expect-textline-contains must be \
-             non-empty"
-                .into(),
-        );
-    }
+    let print_replay_log = PathBuf::from(required_flag(args, "--print-replay-log")?);
     let print_textlines = args.iter().any(|arg| arg == "--print-textlines");
-    let print_replay_log = optional_flag(args, "--print-replay-log").map(PathBuf::from);
 
-    drive(
-        &seen_path,
-        scene_id,
-        &expected_substring,
-        print_textlines,
-        print_replay_log.as_deref(),
-    )
+    drive(&seen_path, scene_id, &print_replay_log, print_textlines)
 }
 
 fn drive(
     seen_path: &Path,
     scene_id: u16,
-    expected_substring: &str,
+    replay_log_path: &Path,
     print_textlines: bool,
-    print_replay_log: Option<&Path>,
 ) -> Result<(), Box<dyn Error>> {
     let opts = ReplayOpts::default();
     let log = replay_scene(seen_path, scene_id, &opts)
@@ -136,57 +112,18 @@ fn drive(
     if print_textlines {
         emit_textlines(&log);
     }
-    if let Some(path) = print_replay_log {
-        let json = log
-            .to_deterministic_json()
-            .map_err(|err| format!("utsushi.cli.replay_validate.serialise: {err}"))?;
-        fs::write(path, json).map_err(|err| format!("utsushi.cli.replay_validate.write: {err}"))?;
-    }
 
-    match validate_log_contains(&log, expected_substring) {
-        ReplayValidation::Matched {
-            matching_event_index,
-            body_utf8,
-        } => {
-            println!(
-                "{MATCH_OK_CODE}: scene={scene_id} substring={expected_substring:?} \
-                 matching_event_index={matching_event_index} body_utf8={body_utf8:?}",
-            );
-            Ok(())
-        }
-        ReplayValidation::NoMatch {
-            textline_count,
-            sample_bodies,
-        } => {
-            println!(
-                "{MATCH_FAILED_CODE}: scene={scene_id} substring={expected_substring:?} \
-                 textline_count={textline_count}",
-            );
-            // Mirror the library validator's diagnostic posture:
-            // ReplayLog JSON to stderr.
-            match log.to_deterministic_json() {
-                Ok(json) => {
-                    eprintln!("--- ReplayLog (deterministic JSON) ---");
-                    eprintln!("{json}");
-                }
-                Err(err) => {
-                    eprintln!(
-                        "utsushi.cli.replay_validate.serialise: failed to render ReplayLog \
-                         for no-match diagnostic: {err}"
-                    );
-                }
-            }
-            eprintln!("--- Sample TextLine bodies ({}) ---", sample_bodies.len());
-            for (index, body) in sample_bodies.iter().enumerate() {
-                eprintln!("  [{index}] {body:?}");
-            }
-            Err(format!(
-                "utsushi.cli.replay_validate.no_match: scene={scene_id} \
-                 substring={expected_substring:?} textline_count={textline_count}"
-            )
-            .into())
-        }
-    }
+    let json = log
+        .to_deterministic_json()
+        .map_err(|err| format!("utsushi.cli.replay_validate.serialise: {err}"))?;
+    fs::write(replay_log_path, json)
+        .map_err(|err| format!("utsushi.cli.replay_validate.write: {err}"))?;
+
+    println!(
+        "{REPLAY_OK_CODE}: scene={scene_id} textline_count={}",
+        log.text_line_count(),
+    );
+    Ok(())
 }
 
 fn emit_textlines(log: &ReplayLog) {
@@ -230,8 +167,8 @@ mod tests {
             "/tmp/nothing".into(),
             "--scene".into(),
             "1".into(),
-            "--expect-textline-contains".into(),
-            "STELLA".into(),
+            "--print-replay-log".into(),
+            "/tmp/replay-log.json".into(),
         ];
         let err = run_replay_validate_command(&args).expect_err("siglus is not supported");
         assert!(err.to_string().contains("unsupported_engine"));
@@ -244,8 +181,8 @@ mod tests {
             "reallive".into(),
             "--scene".into(),
             "1".into(),
-            "--expect-textline-contains".into(),
-            "STELLA".into(),
+            "--print-replay-log".into(),
+            "/tmp/replay-log.json".into(),
         ];
         let err = run_replay_validate_command(&args).expect_err("missing --seen");
         assert!(err.to_string().contains("--seen"));
@@ -260,15 +197,15 @@ mod tests {
             "/tmp/nothing".into(),
             "--scene".into(),
             "notanint".into(),
-            "--expect-textline-contains".into(),
-            "STELLA".into(),
+            "--print-replay-log".into(),
+            "/tmp/replay-log.json".into(),
         ];
         let err = run_replay_validate_command(&args).expect_err("scene parse must fail");
         assert!(err.to_string().contains("scene_parse"));
     }
 
     #[test]
-    fn rejects_empty_expected_substring() {
+    fn rejects_missing_replay_log_flag() {
         let args: Vec<String> = vec![
             "--engine".into(),
             "reallive".into(),
@@ -276,19 +213,17 @@ mod tests {
             "/tmp/nothing".into(),
             "--scene".into(),
             "1".into(),
-            "--expect-textline-contains".into(),
-            String::new(),
         ];
-        let err = run_replay_validate_command(&args).expect_err("empty substring rejected");
-        assert!(err.to_string().contains("empty_substring"));
+        let err = run_replay_validate_command(&args).expect_err("missing --print-replay-log");
+        assert!(err.to_string().contains("--print-replay-log"));
     }
 
     #[test]
-    fn help_documents_generic_alpha_replay_path() {
-        assert!(HELP.contains("utsushi-cli replay-validate"));
+    fn help_documents_observed_output_contract() {
+        assert!(HELP.contains("utsushi replay-validate"));
         assert!(HELP.contains("--engine reallive"));
-        assert!(HELP.contains("--expect-textline-contains <SUBSTR>"));
-        assert!(HELP.contains("unique to the patched copy"));
+        assert!(HELP.contains("OBSERVED-OUTPUT evidence"));
+        assert!(!HELP.contains("expect-textline-contains"));
     }
 
     #[test]
@@ -298,7 +233,7 @@ mod tests {
     }
 
     #[test]
-    fn canonical_generic_alpha_invocation_reaches_reallive_driver() {
+    fn canonical_invocation_reaches_reallive_driver() {
         let missing_seen_path = std::env::temp_dir().join(format!(
             "utsushi-cli-replay-validate-missing-seen-{}",
             std::process::id()
@@ -310,8 +245,6 @@ mod tests {
             missing_seen_path.display().to_string(),
             "--scene".into(),
             "1".into(),
-            "--expect-textline-contains".into(),
-            "STELLA-ALPHA-EN-US-SENTINEL".into(),
             "--print-replay-log".into(),
             missing_seen_path
                 .with_extension("json")
@@ -324,7 +257,7 @@ mod tests {
         assert!(
             err.to_string()
                 .contains("utsushi.cli.replay_validate.driver"),
-            "canonical generic invocation should parse and reach the replay driver, got: {err}"
+            "canonical invocation should parse and reach the replay driver, got: {err}"
         );
     }
 }

@@ -14,11 +14,13 @@ const OLD_MODEL_ID = "deepseek/deepseek-chat-v4";
 const PROVIDER_ID = "fireworks";
 const PROJECT_ID = "sweetie-hd-alpha";
 const RUN_ID = "openrouter-proof-1";
-const SENTINEL = "STELLA-ALPHA-EN-US-SENTINEL";
+// The REAL translated draft the patchback wrote; the engine's replay log
+// must OBSERVE it (no planted sentinel).
+const EXPECTED_TRANSLATED_TEXT = "Well then, shall we begin?";
 const STARTED_AT = "2026-06-27T12:00:00.000Z";
 const COMPLETED_AT = "2026-06-27T12:00:01.000Z";
 
-test("verify-artifacts proves provider-run, telemetry, ZDR, billed cost, sentinel, and hashes offline", () => {
+test("verify-artifacts proves provider-run, telemetry, ZDR, billed cost, observed translated text, and hashes offline", () => {
   const fixture = createFixture();
   const result = runVerifier(fixture);
 
@@ -30,7 +32,7 @@ test("verify-artifacts proves provider-run, telemetry, ZDR, billed cost, sentine
   assert.equal(report.providerRunArtifactCount, 1);
   assert.equal(report.telemetryProof.billedCount, 1);
   assert.equal(report.telemetryProof.metadata.projectId, PROJECT_ID);
-  assert.equal(report.replaySentinelTextLineCount, 1);
+  assert.equal(report.replayObservedTranslatedTextLineCount, 1);
   // The title promises "hashes" (plural): assert EVERY recorded artifact hash
   // is a well-formed sha256 hex digest, not just the patch-report one.
   const hashEntries = Object.entries(report.artifactSha256);
@@ -382,7 +384,8 @@ function patchReport() {
   return {
     schemaVersion: "itotori.localize-project.patch-report.v0",
     pair: { modelId: MODEL_ID, providerId: PROVIDER_ID },
-    enUsSentinel: SENTINEL,
+    finalDraftText: EXPECTED_TRANSLATED_TEXT,
+    translatedTargetText: `「${EXPECTED_TRANSLATED_TEXT}」`,
   };
 }
 
@@ -393,7 +396,7 @@ function replayLog() {
     events: [
       {
         kind: "text_line",
-        bodyUtf8: `translated ${SENTINEL} line`,
+        bodyUtf8: `「${EXPECTED_TRANSLATED_TEXT}」`,
         bodyShiftJisHex: "74657374",
         byteOffsetInScene: 1,
       },

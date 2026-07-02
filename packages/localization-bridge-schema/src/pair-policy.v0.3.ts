@@ -3,7 +3,7 @@
 // A v0.3 policy declares the SINGLE (modelId, providerId) pair that
 // drives every stage of the agentic loop, plus a per-stage posture
 // (pair + zdr + fallbackModels + seed + maxPriceUsd) for each leaf and
-// the top-level enUsSentinel / sceneId / optional openrouterPresetSlug.
+// the top-level sceneId / optional openrouterPresetSlug.
 //
 // Resilience is OpenRouter-side, NOT in this schema. On the wire the
 // OpenRouter provider sends `provider.order = [providerId]` +
@@ -110,7 +110,6 @@ export type PairPolicyV03Stages = {
 export type PairPolicyV03 = {
   schemaVersion: PairPolicySchemaVersion;
   policyId: string;
-  enUsSentinel: string;
   sceneId: number;
   openrouterPresetSlug?: string;
   pair: PairPolicyV03Pair;
@@ -256,7 +255,6 @@ export function parsePairPolicyV03(
   }
 
   const policyId = expectNonEmptyString(record, "policyId");
-  const enUsSentinel = expectNonEmptyString(record, "enUsSentinel");
   const sceneId = expectNonNegativeInteger(record, "sceneId");
   const pair = expectPair(record, "pair");
   const openrouterPresetSlug = expectOptionalNonEmptyString(record, "openrouterPresetSlug");
@@ -391,7 +389,6 @@ export function parsePairPolicyV03(
   const parsed: PairPolicyV03 = {
     schemaVersion: PAIR_POLICY_SCHEMA_VERSION,
     policyId,
-    enUsSentinel,
     sceneId,
     pair,
     stages,

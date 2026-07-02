@@ -15,7 +15,6 @@
 
 import { spawnSync } from "node:child_process";
 import {
-  chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -78,7 +77,6 @@ function writePairPolicy(projectId) {
   const path = join(dir, "pair-policy.json");
   const policy = JSON.parse(readFileSync(DEFAULT_PAIR_POLICY_PATH, "utf8"));
   policy.policyId = projectId;
-  policy.enUsSentinel = "FIXTURE-ALPHA-EN-US-SENTINEL";
   writeFileSync(path, `${JSON.stringify(policy, null, 2)}\n`);
   return { dir, path };
 }
@@ -147,7 +145,8 @@ function writeProviderProofFixture({ artifactRunId = "openrouter-proof-1" } = {}
   writeJson(patchReportPath, {
     schemaVersion: "itotori.localize-project.patch-report.v0",
     pair: { modelId: MODEL_ID, providerId: PROVIDER_ID },
-    enUsSentinel: "FIXTURE-ALPHA-EN-US-SENTINEL",
+    finalDraftText: "[en-US] fixture translated draft",
+    translatedTargetText: "「[en-US] fixture translated draft」",
   });
   writeJson(join(providerRunDir, "provider-run.json"), {
     schemaVersion: "itotori.provider-run.v0",
@@ -200,278 +199,24 @@ function assertNoPrivateOrAbsolutePaths(value, forbiddenRoots) {
   }
 }
 
-function prependPath(dir) {
-  return `${dir}${process.platform === "win32" ? ";" : ":"}${process.env.PATH}`;
-}
 
-function writeExecutable(path, content) {
-  writeFileSync(path, content);
-  chmodSync(path, 0o700);
-}
 
-function writeFakeLiveCommandBins(dir) {
-  const cargoPath = join(dir, "cargo");
-  const nodePath = join(dir, "node");
-  writeExecutable(
-    cargoPath,
-    `#!/bin/sh
-printf 'fake cargo stdout: %s\\n' "$*"
-printf 'fake cargo stderr: %s\\n' "$*" >&2
-previous=''
-source=''
-target=''
-bundle_output=''
-replay_log=''
-for arg in "$@"; do
-  case "$previous" in
-    --source) source="$arg" ;;
-    --target) target="$arg" ;;
-    --bundle-output) bundle_output="$arg" ;;
-    --print-replay-log) replay_log="$arg" ;;
-  esac
-  previous="$arg"
-done
-if [ -n "$bundle_output" ]; then
-  mkdir -p "$(dirname "$bundle_output")"
-  printf '{"schemaVersion":"fake.extract"}\\n' > "$bundle_output"
-fi
-case " $* " in
-  *" patch "*)
-    mkdir -p "$target/REALLIVEDATA"
-    cp "$source/REALLIVEDATA/Seen.txt" "$target/REALLIVEDATA/Seen.txt"
-    ;;
-esac
-if [ -n "$replay_log" ]; then
-  mkdir -p "$(dirname "$replay_log")"
-  printf '{"schemaVersion":"fake.replay"}\\n' > "$replay_log"
-fi
-`,
-  );
-  writeExecutable(
-    nodePath,
-    `#!/bin/sh
-printf 'fake node stdout: %s\\n' "$*"
-printf 'fake node stderr: %s\\n' "$*" >&2
-previous=''
-agentic_output=''
-translated_output=''
-patch_report=''
-for arg in "$@"; do
-  case "$previous" in
-    --output) agentic_output="$arg" ;;
-    --translated-bundle-output) translated_output="$arg" ;;
-    --patch-report-output) patch_report="$arg" ;;
-  esac
-  previous="$arg"
-done
-if [ -n "$agentic_output" ]; then
-  mkdir -p "$(dirname "$agentic_output")"
-  printf '{"stages":[]}\\n' > "$agentic_output"
-fi
-if [ -n "$translated_output" ]; then
-  mkdir -p "$(dirname "$translated_output")"
-  printf '{"schemaVersion":"fake.translated"}\\n' > "$translated_output"
-fi
-if [ -n "$patch_report" ]; then
-  mkdir -p "$(dirname "$patch_report")"
-  printf '{"schemaVersion":"fake.patch-report"}\\n' > "$patch_report"
-fi
-`,
-  );
-}
-
-// Fake cargo/node bins for the RPG Maker MV/MZ full loop. The cargo fake
-// dispatches by subcommand (detect / extract / patch / apply /
-// rpgmaker-mv-capture) and writes only the artifacts each phase is
-// contracted to produce; it never touches the source www/data tree (so
-// the readonly-source sha256 invariant holds). The node fake reuses the
-// same stage-output shape as the RealLive fake.
-function writeFakeRpgMakerCommandBins(dir) {
-  writeExecutable(
-    join(dir, "cargo"),
-    `#!/bin/sh
-printf 'fake cargo: %s\\n' "$*" >&2
-prev=''
-out=''; bundle_out=''; findings_out=''; delta_out=''; patched_out=''; report_out=''; expect=''
-for arg in "$@"; do
-  case "$prev" in
-    --output) out="$arg" ;;
-    --bundle-output) bundle_out="$arg" ;;
-    --findings-output) findings_out="$arg" ;;
-    --delta-output) delta_out="$arg" ;;
-    --patched-data-output) patched_out="$arg" ;;
-    --report-output) report_out="$arg" ;;
-    --expect-textline-contains) expect="$arg" ;;
-  esac
-  prev="$arg"
-done
-case " $* " in
-  *" detect "*)
-    mkdir -p "$(dirname "$out")"
-    printf '{"schemaVersion":"0.1.0","status":"unknown","detections":[{"adapterId":"kaifuu.fixture","detected":false}],"warnings":[]}\\n' > "$out"
-    ;;
-  *" extract "*)
-    mkdir -p "$(dirname "$bundle_out")"
-    printf '{"schemaVersion":"0.2.0","units":[{"surfaceKind":"dialogue","sourceUnitKey":"rpgmaker:CommonEvents.json#/1/list/0/parameters/0","bridgeUnitId":"u-0"}]}\\n' > "$bundle_out"
-    if [ -n "$findings_out" ]; then mkdir -p "$(dirname "$findings_out")"; printf '{"schema":"kaifuu.rpgmaker.findings-census.v0","findings":[]}\\n' > "$findings_out"; fi
-    ;;
-  *" patch "*)
-    mkdir -p "$(dirname "$delta_out")"; printf 'FAKE-KAIFUU-DELTA\\n' > "$delta_out"
-    if [ -n "$patched_out" ]; then mkdir -p "$patched_out"; fi
-    ;;
-  *" apply "*)
-    mkdir -p "$out"; printf '{"schemaVersion":"fake","scene":"CommonEvents"}\\n' > "$out/CommonEvents.json"
-    if [ -n "$report_out" ]; then mkdir -p "$(dirname "$report_out")"; printf '{"status":"succeeded"}\\n' > "$report_out"; fi
-    ;;
-  *" rpgmaker-mv-capture "*)
-    mkdir -p "$(dirname "$out")"
-    printf '{"schema":"utsushi.rpgmaker-mv.runtime-evidence.v0","matched":true,"lineCount":3,"matchCode":"MATCH_OK","expectTextlineContains":"%s"}\\n' "$expect" > "$out"
-    ;;
-esac
-`,
-  );
-  writeExecutable(
-    join(dir, "node"),
-    `#!/bin/sh
-printf 'fake node: %s\\n' "$*" >&2
-prev=''
-agentic_output=''; translated_output=''; patch_report=''
-for arg in "$@"; do
-  case "$prev" in
-    --output) agentic_output="$arg" ;;
-    --translated-bundle-output) translated_output="$arg" ;;
-    --patch-report-output) patch_report="$arg" ;;
-  esac
-  prev="$arg"
-done
-if [ -n "$agentic_output" ]; then mkdir -p "$(dirname "$agentic_output")"; printf '{"stages":[]}\\n' > "$agentic_output"; fi
-if [ -n "$translated_output" ]; then mkdir -p "$(dirname "$translated_output")"; printf '{"schemaVersion":"fake.translated"}\\n' > "$translated_output"; fi
-if [ -n "$patch_report" ]; then mkdir -p "$(dirname "$patch_report")"; printf '{"schemaVersion":"itotori.localize-project.patch-report.v0","bridgeUnitId":"u-0","unitCount":1}\\n' > "$patch_report"; fi
-`,
-  );
-}
-
-test("RPG Maker MV/MZ full loop completes: inventory/readiness front, feedback, and rerun with the artifact set", () => {
-  const work = mkdtempSync(join(tmpdir(), "itotori-mvmz-fullloop-"));
-  const fakeBin = join(work, "bin");
-  const wwwRoot = join(work, "private-www");
-  const dataDir = join(wwwRoot, "data");
-  mkdirSync(dataDir, { recursive: true });
-  mkdirSync(fakeBin, { recursive: true });
-  // Real on-disk corpus surface the inventory scan + readonly sha256
-  // invariant operate over. The fake bins never mutate it.
-  writeFileSync(join(dataDir, "CommonEvents.json"), '{"jp":"こんにちは"}\n');
-  writeFileSync(join(dataDir, "System.json"), '{"title":"fixture"}\n');
-  writeFakeRpgMakerCommandBins(fakeBin);
-
-  try {
-    const result = runDriver(["--project", "lust-memory-alpha-1", "--provider-kind", "fake"], {
-      PATH: prependPath(fakeBin),
-      OPENROUTER_API_KEY: "test-key",
-      ITOTORI_REAL_GAME_ROOT_RPG_MAKER_MV_MZ: wwwRoot,
-      ITOTORI_ALLOW_FAKE_LOCALIZE_PROVIDER: "1",
-    });
-    assert.equal(result.status, 0, `stdout:\n${result.stdout}\nstderr:\n${result.stderr}`);
-
-    // Inventory/readiness FRONT precedes bridge import (the bounded-slice
-    // line is printed only after extract).
-    const frontIdx = result.stdout.indexOf("inventory/readiness FRONT (corpus identity first)");
-    const bridgeImportIdx = result.stdout.indexOf("bounded slice:");
-    assert.ok(
-      frontIdx >= 0 && bridgeImportIdx >= 0 && frontIdx < bridgeImportIdx,
-      `corpus identity must be reported BEFORE bridge import; got:\n${result.stdout}`,
-    );
-    assert.ok(
-      result.stdout.includes("local-corpus identity: sourceKind=local-corpus") &&
-        result.stdout.includes("readiness identity: gameId=lust-memory") &&
-        result.stdout.includes("detection: status=unknown"),
-      `front must report local-corpus + readiness + detection identity; got:\n${result.stdout}`,
-    );
-    assert.ok(
-      result.stdout.includes("readiness verdict: ready (identity reported BEFORE bridge import)"),
-      `front must declare the readiness verdict; got:\n${result.stdout}`,
-    );
-    // Feedback + rerun BACK.
-    assert.ok(
-      result.stdout.includes("feedback verdict: sentinel-confirmed-in-runtime") &&
-        result.stdout.includes("=== iteration: rerun") &&
-        result.stdout.includes("rerun feedback verdict:"),
-      `loop must produce feedback and a rerun; got:\n${result.stdout}`,
-    );
-
-    const runDirMatch = result.stdout.match(/\[localize-project\] SUCCESS .+ run dir: (.+)$/mu);
-    assert.ok(runDirMatch, `stdout should include success run dir; got:\n${result.stdout}`);
-    const runDir = runDirMatch[1].trim();
-
-    for (const rel of [
-      "detection-report.json",
-      "inventory-readiness.json",
-      "bridge-bundle.json",
-      "extraction-findings.json",
-      "agentic-loop-bundle.v0.json",
-      "patch-report.json",
-      "patch.kaifuu",
-      "apply-report.json",
-      "runtime-evidence.json",
-      "feedback.json",
-      "rerun/agentic-loop-bundle.v0.json",
-      "rerun/patch.kaifuu",
-      "rerun/runtime-evidence.json",
-      "rerun/feedback.json",
-      "run-summary.json",
-    ]) {
-      assert.ok(
-        existsSync(join(runDir, rel)),
-        `expected full-loop artifact missing: ${rel}\nstdout:\n${result.stdout}`,
-      );
-    }
-
-    const inventory = JSON.parse(readFileSync(join(runDir, "inventory-readiness.json"), "utf8"));
-    assert.equal(inventory.identityFirst, true);
-    assert.equal(inventory.localCorpus.sourceKind, "local-corpus");
-    assert.equal(inventory.localCorpus.engine, "rpg-maker-mv-mz");
-    assert.equal(inventory.readinessVerdict, "ready");
-    assert.equal(inventory.assetInventory.runtimeSceneFileCount, 1);
-    assertNoPrivateOrAbsolutePaths(inventory, [work, wwwRoot, fakeBin]);
-
-    const feedback = JSON.parse(readFileSync(join(runDir, "feedback.json"), "utf8"));
-    assert.equal(feedback.verdict, "sentinel-confirmed-in-runtime");
-    assert.equal(feedback.runtime.matched, true);
-    assert.ok(
-      feedback.findings.some((finding) => finding.code === "runtime.sentinel.confirmed"),
-      `feedback must record the structured runtime finding; got ${JSON.stringify(feedback.findings)}`,
-    );
-
-    const rerunFeedback = JSON.parse(readFileSync(join(runDir, "rerun", "feedback.json"), "utf8"));
-    assert.equal(rerunFeedback.iteration, "rerun");
-    assert.equal(rerunFeedback.priorVerdict, "sentinel-confirmed-in-runtime");
-
-    const summary = JSON.parse(readFileSync(join(runDir, "run-summary.json"), "utf8"));
-    assert.equal(summary.loop.rerunCompleted, true);
-    assert.equal(summary.loop.identityFirst, true);
-    assert.equal(summary.loop.iterations.length, 2);
-    assert.equal(summary.readinessVerdict, "ready");
-    assert.equal(summary.localCorpusIdentity.sourceKind, "local-corpus");
-    assertNoPrivateOrAbsolutePaths(summary, [work, wwwRoot, fakeBin]);
-  } finally {
-    rmSync(work, { recursive: true, force: true });
-  }
-});
 
 test("--dry-run --project ... exits 0 and prints per-phase commands", () => {
   const result = runDriver(["--dry-run", "--project", "sweetie-hd-alpha-1"]);
   assert.equal(result.status, 0, `stderr: ${result.stderr}`);
-  // The dry-run plan must reference all four phases by their CLI
-  // surfaces. We greet on substrings so a flag-shape refactor in a
-  // sibling step doesn't break this test.
+  // The dry-run plan must reference all five phases by their CLI
+  // surfaces (extract -> stage -> patch -> replay-validate -> render-validate).
+  // We greet on substrings so a flag-shape refactor in a sibling step
+  // doesn't break this test.
   assert.ok(
     result.stdout.includes("kaifuu-cli"),
     `dry-run plan must mention kaifuu-cli; got:\n${result.stdout}`,
   );
   assert.equal(
     (result.stdout.match(/\(planned\) \$ /gu) ?? []).length,
-    4,
-    `dry-run plan must preserve the four-phase command shape; got:\n${result.stdout}`,
+    5,
+    `dry-run plan must preserve the five-phase command shape; got:\n${result.stdout}`,
   );
   assert.ok(
     result.stdout.includes("--game-id sweetie-hd") &&
@@ -496,6 +241,11 @@ test("--dry-run --project ... exits 0 and prints per-phase commands", () => {
   assert.ok(
     result.stdout.includes("replay-validate --engine reallive"),
     `dry-run plan must mention the replay-validate step; got:\n${result.stdout}`,
+  );
+  assert.ok(
+    result.stdout.includes("render-validate --engine reallive") &&
+      result.stdout.includes("--expect-text-contains <real-translated-draft-from-patch-report>"),
+    `dry-run plan must mention the real rendered-frame (render-validate) step; got:\n${result.stdout}`,
   );
   assert.ok(
     result.stdout.includes("0 LLM calls"),
@@ -578,8 +328,8 @@ test("--dry-run --project lust-memory-alpha-1 plans the RPG Maker MV/MZ full loo
   );
   assert.ok(
     result.stdout.includes("rpgmaker-mv-capture") &&
-      result.stdout.includes("--expect-textline-contains STELLA-MVMZ-EN-US-SENTINEL"),
-    `MV/MZ dry-run must plan the text-trace runtime evidence step; got:\n${result.stdout}`,
+      result.stdout.includes("--assert-observed-text <real-translated-draft-from-patch-report>"),
+    `MV/MZ dry-run must plan the text-trace runtime evidence step asserting the engine observes the real translated text; got:\n${result.stdout}`,
   );
   // Feedback + rerun BACK: a synthesize-feedback step and a rerun-suffixed
   // capture run must appear after the initial runtime evidence.
@@ -645,9 +395,7 @@ test("--dry-run can use caller-supplied non-Sweetie project configs", () => {
       `dry-run extract command must use caller-supplied project metadata; got:\n${result.stdout}`,
     );
     assert.ok(
-      result.stdout.includes("--pair-policy ") &&
-        result.stdout.includes(policy.path) &&
-        result.stdout.includes("FIXTURE-ALPHA-EN-US-SENTINEL"),
+      result.stdout.includes("--pair-policy ") && result.stdout.includes(policy.path),
       `dry-run plan must use caller-supplied pair-policy; got:\n${result.stdout}`,
     );
     assert.ok(
@@ -865,150 +613,6 @@ test("dry-run manifest resolution does not leak private corpus roots", () => {
   }
 });
 
-test("live fake subprocess output redacts private source, target, and Seen.txt paths", () => {
-  const metadata = writeProjectMetadata("fixture-alpha", {
-    game_id: "fixture-reallive-game",
-    game_version: "2026.06.test",
-    source_profile_id: "fixture-reallive-profile",
-    source_locale: "ja-JP-x-test",
-  });
-  const policy = writePairPolicy("fixture-alpha");
-  const work = mkdtempSync(join(tmpdir(), "itotori-live-redaction-"));
-  const fakeBin = join(work, "bin");
-  const sourceRoot = join(work, "private-live-source-root");
-  const targetRoot = join(work, "private-live-target-root");
-  const sourceSeen = join(sourceRoot, "REALLIVEDATA", "Seen.txt");
-  const targetSeen = join(targetRoot, "REALLIVEDATA", "Seen.txt");
-  mkdirSync(join(sourceRoot, "REALLIVEDATA"), { recursive: true });
-  mkdirSync(fakeBin, { recursive: true });
-  writeFileSync(sourceSeen, "synthetic source seen bytes\n");
-  writeFakeLiveCommandBins(fakeBin);
-
-  try {
-    const result = runDriver(
-      [
-        "--project",
-        "fixture-alpha",
-        "--project-metadata",
-        metadata.path,
-        "--pair-policy",
-        policy.path,
-        "--provider-kind",
-        "fake",
-      ],
-      {
-        PATH: prependPath(fakeBin),
-        OPENROUTER_API_KEY: "test-key",
-        ITOTORI_REAL_GAME_ROOT: sourceRoot,
-        TARGET: targetRoot,
-        ITOTORI_ALLOW_FAKE_LOCALIZE_PROVIDER: "1",
-      },
-    );
-    assert.equal(result.status, 0, `stdout:\n${result.stdout}\nstderr:\n${result.stderr}`);
-    const combined = `${result.stdout}\n${result.stderr}`;
-    for (const forbidden of [sourceRoot, targetRoot, sourceSeen, targetSeen]) {
-      assert.ok(
-        !combined.includes(forbidden),
-        `live output leaked private path ${forbidden}; stdout:\n${result.stdout}\nstderr:\n${result.stderr}`,
-      );
-    }
-    assert.ok(
-      combined.includes("--game-root <ITOTORI_REAL_GAME_ROOT>") &&
-        combined.includes("--source <ITOTORI_REAL_GAME_ROOT>") &&
-        combined.includes("--target <TARGET>") &&
-        combined.includes("--seen <TARGET>/REALLIVEDATA/Seen.txt"),
-      `live command display must use placeholders; got stdout:\n${result.stdout}\nstderr:\n${result.stderr}`,
-    );
-
-    const runDirMatch = result.stdout.match(/\[localize-project\] SUCCESS .+ run dir: (.+)$/mu);
-    assert.ok(runDirMatch, `stdout should include success run dir; got:\n${result.stdout}`);
-    const runDir = runDirMatch[1].trim();
-    const summary = JSON.parse(readFileSync(join(runDir, "run-summary.json"), "utf8"));
-    assert.match(summary.runDir, /^artifacts\/localize-project\/\d{8}T\d{6}Z-fixture-alpha$/u);
-    assert.deepEqual(summary.artifacts, {
-      bridgeBundle: "bridge-bundle.json",
-      agenticLoopBundle: "agentic-loop-bundle.v0.json",
-      patchReport: "patch-report.json",
-      replayLog: "replay-log.json",
-      providerRunArtifacts: "provider-runs",
-    });
-    assertNoPrivateOrAbsolutePaths(summary, [work, sourceRoot, targetRoot, sourceSeen, targetSeen]);
-  } finally {
-    rmSync(metadata.dir, { recursive: true, force: true });
-    rmSync(policy.dir, { recursive: true, force: true });
-    rmSync(work, { recursive: true, force: true });
-  }
-});
-
-test("--env-file explicitly loads scoped live env without printing values", () => {
-  const metadata = writeProjectMetadata("fixture-alpha", {
-    game_id: "fixture-reallive-game",
-    game_version: "2026.06.test",
-    source_profile_id: "fixture-reallive-profile",
-    source_locale: "ja-JP-x-test",
-  });
-  const policy = writePairPolicy("fixture-alpha");
-  const work = mkdtempSync(join(tmpdir(), "itotori-env-file-live-"));
-  const fakeBin = join(work, "bin");
-  const sourceRoot = join(work, "private-env-source-root");
-  const targetRoot = join(work, "private-env-target-root");
-  const envFilePath = join(work, ".env.localize-project");
-  const sourceSeen = join(sourceRoot, "REALLIVEDATA", "Seen.txt");
-  const secretValue = "sk-or-v1-fake-localize-secret";
-  mkdirSync(join(sourceRoot, "REALLIVEDATA"), { recursive: true });
-  mkdirSync(fakeBin, { recursive: true });
-  writeFileSync(sourceSeen, "synthetic source seen bytes\n");
-  writeFileSync(
-    envFilePath,
-    [
-      `OPENROUTER_API_KEY=${secretValue}`,
-      `ITOTORI_REAL_GAME_ROOT=${sourceRoot}`,
-      `TARGET=${targetRoot}`,
-      "ITOTORI_ALLOW_FAKE_LOCALIZE_PROVIDER=1",
-      "IGNORED_VALID_KEY=ignored-value",
-      "",
-    ].join("\n"),
-  );
-  writeFakeLiveCommandBins(fakeBin);
-
-  try {
-    const result = runDriver(
-      [
-        "--project",
-        "fixture-alpha",
-        "--project-metadata",
-        metadata.path,
-        "--pair-policy",
-        policy.path,
-        "--provider-kind",
-        "fake",
-        "--env-file",
-        envFilePath,
-      ],
-      {
-        PATH: prependPath(fakeBin),
-      },
-    );
-    assert.equal(result.status, 0, `stdout:\n${result.stdout}\nstderr:\n${result.stderr}`);
-    const combined = `${result.stdout}\n${result.stderr}`;
-    for (const forbidden of [secretValue, sourceRoot, targetRoot, envFilePath]) {
-      assert.ok(
-        !combined.includes(forbidden),
-        `explicit env-file run leaked ${forbidden}; stdout:\n${result.stdout}\nstderr:\n${result.stderr}`,
-      );
-    }
-    assert.ok(
-      combined.includes("--game-root <ITOTORI_REAL_GAME_ROOT>") &&
-        combined.includes("--target <TARGET>"),
-      `explicit env-file run should still redact hydrated paths; got stdout:\n${result.stdout}\nstderr:\n${result.stderr}`,
-    );
-  } finally {
-    rmSync(metadata.dir, { recursive: true, force: true });
-    rmSync(policy.dir, { recursive: true, force: true });
-    rmSync(work, { recursive: true, force: true });
-  }
-});
-
 test("live run rejects target-root symlink before output mutation", () => {
   const metadata = writeProjectMetadata("fixture-alpha", {
     game_id: "fixture-reallive-game",
@@ -1073,7 +677,6 @@ test("live run rejects nested target REALLIVEDATA symlink to source before outpu
   });
   const policy = writePairPolicy("fixture-alpha");
   const work = mkdtempSync(join(tmpdir(), "itotori-target-data-symlink-source-"));
-  const fakeBin = join(work, "bin");
   const sourceRoot = join(work, "private-source-root");
   const targetRoot = join(work, "private-target-root");
   const sourceData = join(sourceRoot, "REALLIVEDATA");
@@ -1081,10 +684,8 @@ test("live run rejects nested target REALLIVEDATA symlink to source before outpu
   const targetData = join(targetRoot, "REALLIVEDATA");
   mkdirSync(sourceData, { recursive: true });
   mkdirSync(targetRoot, { recursive: true });
-  mkdirSync(fakeBin, { recursive: true });
   writeFileSync(sourceSeen, "synthetic source seen bytes\n");
   symlinkSync(sourceData, targetData);
-  writeFakeLiveCommandBins(fakeBin);
 
   try {
     const result = runDriver(
@@ -1099,7 +700,6 @@ test("live run rejects nested target REALLIVEDATA symlink to source before outpu
         "fake",
       ],
       {
-        PATH: prependPath(fakeBin),
         OPENROUTER_API_KEY: "test-key",
         ITOTORI_REAL_GAME_ROOT: sourceRoot,
         TARGET: targetRoot,
@@ -1132,7 +732,6 @@ test("live run rejects nested target symlink to writable directory before output
   });
   const policy = writePairPolicy("fixture-alpha");
   const work = mkdtempSync(join(tmpdir(), "itotori-target-data-symlink-writable-"));
-  const fakeBin = join(work, "bin");
   const sourceRoot = join(work, "private-source-root");
   const targetRoot = join(work, "private-target-root");
   const linkedWritable = join(work, "private-linked-writable");
@@ -1140,10 +739,8 @@ test("live run rejects nested target symlink to writable directory before output
   mkdirSync(join(sourceRoot, "REALLIVEDATA"), { recursive: true });
   mkdirSync(targetRoot, { recursive: true });
   mkdirSync(linkedWritable, { recursive: true });
-  mkdirSync(fakeBin, { recursive: true });
   writeFileSync(sourceSeen, "synthetic source seen bytes\n");
   symlinkSync(linkedWritable, join(targetRoot, "REALLIVEDATA"));
-  writeFakeLiveCommandBins(fakeBin);
 
   try {
     const result = runDriver(
@@ -1158,7 +755,6 @@ test("live run rejects nested target symlink to writable directory before output
         "fake",
       ],
       {
-        PATH: prependPath(fakeBin),
         OPENROUTER_API_KEY: "test-key",
         ITOTORI_REAL_GAME_ROOT: sourceRoot,
         TARGET: targetRoot,

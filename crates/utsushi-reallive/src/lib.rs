@@ -180,12 +180,6 @@ pub mod vm;
 // `TextLine` events.
 pub mod replay;
 
-// UTSUSHI-227: patched-Seen.txt replay-and-verify smoke. Consumes a
-// `ReplayLog` (or drives one via `replay_scene`) and reports whether
-// any captured `TextLine` body carries an expected substring. The
-// alpha-defining "verifiable patch landed" gate.
-pub mod replay_validate;
-
 // UTSUSHI-216: g00 image-format decoder (types 0, 1, 2). Owns the
 // shared LZSS variants and the corpus-wide lead-byte histogram that
 // emits `utsushi.reallive.g00_no_type_N_in_corpus` for types not
@@ -266,11 +260,6 @@ pub use replay::{
     decompress_all_scenes, full_registry_rlop_count, replay_scene, replay_scene_bytes,
     replay_until_first_pause, restore_into_fresh_vm, verify_snapshot_restore_each_tick,
 };
-pub use replay_validate::{
-    NO_MATCH_SAMPLE_BODIES_CAP, NO_MATCH_SAMPLE_BODY_BYTE_CAP, ReplayValidation,
-    validate_log_contains, validate_replay_contains,
-};
-
 pub use scene_header::{
     COMPILER_VERSION_1_0, COMPILER_VERSION_1_10, COMPILER_VERSION_1_1110,
     ENTRYPOINT_TABLE_BYTE_OFFSET, ENTRYPOINT_TABLE_LEN, EntrypointEntry,

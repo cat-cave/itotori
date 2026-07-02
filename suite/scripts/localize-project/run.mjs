@@ -402,7 +402,7 @@ function loadPairPolicy(pairPolicyPath) {
       `pair-policy at ${pairPolicyPath} has schemaVersion='${String(parsed.schemaVersion)}'; expected '${EXPECTED_SCHEMA}' (v0.1 and v0.2 files are no longer accepted — ITOTORI-238 no-legacy-compat)`,
     );
   }
-  const requiredKeys = ["policyId", "pair", "enUsSentinel", "sceneId", "stages"];
+  const requiredKeys = ["policyId", "pair", "sceneId", "stages"];
   for (const key of requiredKeys) {
     if (!(key in parsed)) {
       throw new Error(`pair-policy at ${pairPolicyPath} missing required key '${key}'`);
@@ -1247,15 +1247,15 @@ function synthesizeRpgMakerFeedback({
   const findings = [];
   if (runtimeEvidence.matched !== true) {
     findings.push({
-      code: "runtime.sentinel.not_matched",
+      code: "runtime.observed_text.not_matched",
       severity: "blocking",
-      message: `runtime trace (lines=${runtimeEvidence.lineCount}) did not contain the localized sentinel '${runtimeEvidence.expectTextlineContains}' (matchCode=${runtimeEvidence.matchCode})`,
+      message: `the engine's runtime trace (lines=${runtimeEvidence.lineCount}) did not observe the real translated text in any emitted TextLine (matchCode=${runtimeEvidence.matchCode})`,
     });
   } else {
     findings.push({
-      code: "runtime.sentinel.confirmed",
+      code: "runtime.observed_text.confirmed",
       severity: "info",
-      message: `localized sentinel confirmed in the runtime text trace (lines=${runtimeEvidence.lineCount})`,
+      message: `the engine observed the real translated text in its runtime trace (lines=${runtimeEvidence.lineCount})`,
     });
   }
   const applyStatus =
@@ -1275,7 +1275,7 @@ function synthesizeRpgMakerFeedback({
     });
   }
   const blocking = findings.filter((finding) => finding.severity === "blocking");
-  const verdict = blocking.length === 0 ? "sentinel-confirmed-in-runtime" : "needs-iteration";
+  const verdict = blocking.length === 0 ? "observed-text-confirmed-in-runtime" : "needs-iteration";
   return {
     schemaVersion: "itotori.localize-project.rpg-maker-mv-mz.feedback.v0",
     iteration,
@@ -1285,7 +1285,7 @@ function synthesizeRpgMakerFeedback({
       matched: runtimeEvidence.matched,
       lineCount: runtimeEvidence.lineCount,
       matchCode: runtimeEvidence.matchCode,
-      expectTextlineContains: runtimeEvidence.expectTextlineContains,
+      assertObservedText: runtimeEvidence.assertObservedText,
     },
     patch: {
       bridgeUnitId: patchReport?.bridgeUnitId ?? null,
@@ -1317,7 +1317,6 @@ async function runRpgMakerSliceIteration({
   gameRoot,
   unitIndex,
   sceneFile,
-  sentinelSubstring,
   runId,
   redact,
 }) {
@@ -1355,6 +1354,18 @@ async function runRpgMakerSliceIteration({
     });
     process.stdout.write(
       `[localize-project] [${iterationLabel}] provider-run artifacts: ${providerProof.providerRunArtifactCount} verified for ${providerProof.invocations.length} live invocation(s)\n`,
+    );
+  }
+
+  // The REAL translated draft the stage produced. The runtime capture
+  // asserts the engine OBSERVES this text in an emitted TextLine — the
+  // observed-output evidence is the intersection of the LLM's real
+  // translation and the engine's real decode, not a planted sentinel.
+  const patchReport = JSON.parse(readFileSync(paths.patchReportPath, "utf8"));
+  const expectedObservedText = patchReport.finalDraftText;
+  if (typeof expectedObservedText !== "string" || expectedObservedText.length === 0) {
+    throw new Error(
+      `runtime evidence: patch-report at ${paths.patchReportPath} has no non-empty finalDraftText to assert the runtime capture against`,
     );
   }
 
@@ -1421,8 +1432,8 @@ async function runRpgMakerSliceIteration({
       paths.runtimeArtifactsDir,
       "--run-id",
       runId,
-      "--expect-textline-contains",
-      sentinelSubstring,
+      "--assert-observed-text",
+      expectedObservedText,
       "--output",
       paths.runtimeEvidencePath,
     ],
@@ -1431,7 +1442,6 @@ async function runRpgMakerSliceIteration({
   );
 
   const runtimeEvidence = JSON.parse(readFileSync(paths.runtimeEvidencePath, "utf8"));
-  const patchReport = JSON.parse(readFileSync(paths.patchReportPath, "utf8"));
   const applyReport = JSON.parse(readFileSync(paths.applyReportPath, "utf8"));
   const costSummary =
     args.providerKind === "fake"
@@ -1470,7 +1480,6 @@ async function runRpgMakerMvMzPipeline(ctx) {
     policy,
     pairPolicyPath,
     projectMetadata,
-    sentinelSubstring,
     runDir,
     bridgeBundlePath,
     agenticLoopBundlePath,
@@ -1528,12 +1537,12 @@ async function runRpgMakerMvMzPipeline(ctx) {
         `node apps/itotori/dist/cli.js localize-project-stage --bridge ${bridgeBundlePath} --pair-policy ${pairPolicyPath} --unit-index <first-dialogue-scene-unit> --engine-profile rpg-maker-mv-mz --output ${agenticLoopBundlePath} --translated-bundle-output ${translatedBundlePath} --patch-report-output ${patchReportPath} --provider-run-artifacts-dir ${providerRunArtifactsDir}`,
         `cargo run -p kaifuu-cli -- patch --engine rpgmaker --source ${realCorpusSource.placeholder} --bundle ${translatedBundlePath} --delta-output ${initialPaths.deltaPath} --patched-data-output ${initialPaths.patchedDataDir}`,
         `cargo run -p kaifuu-cli -- apply ${realCorpusSource.placeholder}/data --patch ${initialPaths.deltaPath} --output ${initialPaths.appliedDataDir} --report-output ${initialPaths.applyReportPath}`,
-        `cargo run -p utsushi-cli -- rpgmaker-mv-capture --game-dir ${initialPaths.runtimeInputDir} --artifact-root ${initialPaths.runtimeArtifactsDir} --run-id ${runId} --expect-textline-contains ${sentinelSubstring} --output ${initialPaths.runtimeEvidencePath}`,
+        `cargo run -p utsushi-cli -- rpgmaker-mv-capture --game-dir ${initialPaths.runtimeInputDir} --artifact-root ${initialPaths.runtimeArtifactsDir} --run-id ${runId} --assert-observed-text <real-translated-draft-from-patch-report> --output ${initialPaths.runtimeEvidencePath}`,
         `(in-driver) synthesize feedback -> ${feedbackPath}`,
         `node apps/itotori/dist/cli.js localize-project-stage --bridge ${bridgeBundlePath} --pair-policy ${pairPolicyPath} --unit-index <first-dialogue-scene-unit> --engine-profile rpg-maker-mv-mz --output ${rerunPaths.agenticLoopBundlePath} --translated-bundle-output ${rerunPaths.translatedBundlePath} --patch-report-output ${rerunPaths.patchReportPath} --provider-run-artifacts-dir ${rerunPaths.providerRunArtifactsDir}`,
         `cargo run -p kaifuu-cli -- patch --engine rpgmaker --source ${realCorpusSource.placeholder} --bundle ${rerunPaths.translatedBundlePath} --delta-output ${rerunPaths.deltaPath} --patched-data-output ${rerunPaths.patchedDataDir}`,
         `cargo run -p kaifuu-cli -- apply ${realCorpusSource.placeholder}/data --patch ${rerunPaths.deltaPath} --output ${rerunPaths.appliedDataDir} --report-output ${rerunPaths.applyReportPath}`,
-        `cargo run -p utsushi-cli -- rpgmaker-mv-capture --game-dir ${rerunPaths.runtimeInputDir} --artifact-root ${rerunPaths.runtimeArtifactsDir} --run-id ${runId}-rerun --expect-textline-contains ${sentinelSubstring} --output ${rerunPaths.runtimeEvidencePath}`,
+        `cargo run -p utsushi-cli -- rpgmaker-mv-capture --game-dir ${rerunPaths.runtimeInputDir} --artifact-root ${rerunPaths.runtimeArtifactsDir} --run-id ${runId}-rerun --assert-observed-text <real-translated-draft-from-patch-report> --output ${rerunPaths.runtimeEvidencePath}`,
         `(in-driver) synthesize rerun feedback -> ${join(rerunDir, "feedback.json")}`,
       ],
       flattenPostures(policy),
@@ -1646,7 +1655,6 @@ async function runRpgMakerMvMzPipeline(ctx) {
     gameRoot,
     unitIndex,
     sceneFile,
-    sentinelSubstring,
     runId,
     redact,
   });
@@ -1687,7 +1695,6 @@ async function runRpgMakerMvMzPipeline(ctx) {
     gameRoot,
     unitIndex,
     sceneFile,
-    sentinelSubstring,
     runId: `${runId}-rerun`,
     redact,
   });
@@ -1757,7 +1764,6 @@ async function runRpgMakerMvMzPipeline(ctx) {
     },
     sourceLocale: projectMetadata.sourceLocale,
     pair: policy.pair,
-    enUsSentinel: policy.enUsSentinel,
     sourceDataTreeSha256: sourceTreeSha256Before,
     localCorpusIdentity: inventoryReadiness.localCorpus,
     readinessVerdict: inventoryReadiness.readinessVerdict,
@@ -1792,6 +1798,50 @@ async function runRpgMakerMvMzPipeline(ctx) {
   process.stdout.write(`[localize-project] SUCCESS — run dir: ${runDir}\n`);
 }
 
+/**
+ * Runtime-evidence assertion (RealLive). Reads the engine's own replay
+ * log (its OBSERVED, decoded TextLine bodies) and the patch-report's
+ * `finalDraftText` (the REAL translated draft the LLM produced and the
+ * patchback wrote into Seen.txt), then asserts the engine actually
+ * decoded that translated text from the patched bytes. The evidence is
+ * the intersection of two independently-produced real artifacts — the
+ * VM's decode output and the LLM's translation — NOT a substring the
+ * harness planted into both sides.
+ */
+function assertReplayObservedTranslatedText({ replayLogPath, patchReportPath }) {
+  const patchReport = JSON.parse(readFileSync(patchReportPath, "utf8"));
+  const expected = patchReport.finalDraftText;
+  if (typeof expected !== "string" || expected.length === 0) {
+    throw new Error(
+      `runtime evidence: patch-report at ${patchReportPath} has no non-empty finalDraftText to validate the replay against`,
+    );
+  }
+  const replayLog = JSON.parse(readFileSync(replayLogPath, "utf8"));
+  const events = Array.isArray(replayLog.events) ? replayLog.events : [];
+  const sjisDecoder = new TextDecoder("shift_jis", { fatal: false });
+  let textLineCount = 0;
+  let matchingTextLineCount = 0;
+  for (const event of events) {
+    if (!event || typeof event !== "object" || event.kind !== "text_line") continue;
+    textLineCount += 1;
+    const bodyUtf8 = typeof event.bodyUtf8 === "string" ? event.bodyUtf8 : "";
+    let observed = bodyUtf8.includes(expected);
+    if (!observed && typeof event.bodyShiftJisHex === "string") {
+      // Byte-stable fallback: re-decode the raw Shift-JIS bytes the
+      // engine captured, in case the sink's UTF-8 flush coalesced.
+      const bytes = Buffer.from(event.bodyShiftJisHex, "hex");
+      observed = sjisDecoder.decode(bytes).includes(expected);
+    }
+    if (observed) matchingTextLineCount += 1;
+  }
+  if (matchingTextLineCount === 0) {
+    throw new Error(
+      `runtime evidence: the engine's replay produced ${textLineCount} decoded TextLine(s), none of which observed the real translated text patched into Seen.txt (see ${replayLogPath}); the patched bytes did not round-trip through the VM's decode`,
+    );
+  }
+  return { textLineCount, matchingTextLineCount, expectedText: expected };
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const requestedEnvFilePath =
@@ -1801,7 +1851,6 @@ async function main() {
   }
   const { pairPolicy: policy, pairPolicyPath, projectMetadata } = loadProjectConfig(args);
   validateProjectSelection(args.project, projectMetadata, policy);
-  const sentinelSubstring = policy.enUsSentinel;
   const sceneId = policy.sceneId ?? args.scene;
   const ts = isoTimestampUtc();
   const runDirName = `${ts}-${args.project}`;
@@ -1812,6 +1861,8 @@ async function main() {
   const translatedBundlePath = join(runDir, "translated-bridge.json");
   const patchReportPath = join(runDir, "patch-report.json");
   const replayLogPath = join(runDir, "replay-log.json");
+  const renderEvidencePath = join(runDir, "render-evidence.json");
+  const renderArtifactsDir = join(runDir, "render-artifacts");
   const providerRunArtifactsDir = join(runDir, "provider-runs");
 
   const dryRun = args.dryRun;
@@ -1852,7 +1903,6 @@ async function main() {
       policy,
       pairPolicyPath,
       projectMetadata,
-      sentinelSubstring,
       runDir,
       bridgeBundlePath,
       agenticLoopBundlePath,
@@ -1884,7 +1934,8 @@ async function main() {
         `cargo run -p kaifuu-cli -- extract --engine reallive --game-root ${realCorpusSource.placeholder} --game-id ${projectMetadata.gameId} --game-version ${projectMetadata.gameVersion} --source-profile-id ${projectMetadata.sourceProfileId} --source-locale ${projectMetadata.sourceLocale} --scene ${sceneId} --bundle-output ${bridgeBundlePath}`,
         `node apps/itotori/dist/cli.js localize-project-stage --bridge ${bridgeBundlePath} --pair-policy ${pairPolicyPath} --unit-index ${args.unitIndex} --output ${agenticLoopBundlePath} --translated-bundle-output ${translatedBundlePath} --patch-report-output ${patchReportPath} --provider-run-artifacts-dir ${providerRunArtifactsDir}`,
         `cargo run -p kaifuu-cli -- patch --engine reallive --source ${realCorpusSource.placeholder} --target <TARGET> --bundle ${translatedBundlePath} --force`,
-        `cargo run -p utsushi-cli -- replay-validate --engine reallive --seen <TARGET>/REALLIVEDATA/Seen.txt --scene ${sceneId} --expect-textline-contains ${sentinelSubstring} --print-replay-log ${replayLogPath}`,
+        `cargo run -p utsushi-cli -- replay-validate --engine reallive --seen <TARGET>/REALLIVEDATA/Seen.txt --scene ${sceneId} --print-replay-log ${replayLogPath}`,
+        `cargo run -p utsushi-cli -- render-validate --engine reallive --seen <TARGET>/REALLIVEDATA/Seen.txt --scene ${sceneId} --artifact-root ${renderArtifactsDir} --expect-text-contains <real-translated-draft-from-patch-report> --redaction on --output ${renderEvidencePath}`,
       ],
       flattenPostures(policy),
       realCorpusSource,
@@ -2021,13 +2072,67 @@ async function main() {
       targetSeenPath,
       "--scene",
       String(sceneId),
-      "--expect-textline-contains",
-      sentinelSubstring,
       "--print-replay-log",
       replayLogPath,
     ],
     process.env,
     { redact: liveReplayRedactor },
+  );
+
+  // ---- Observed-output evidence: assert the ENGINE decoded the REAL
+  // translated text from the patched bytes. This is derived from the
+  // engine's own replay log (its observed TextLine bodies), compared
+  // against the real translated draft the LLM produced (recorded in
+  // patch-report.json) — NOT a harness-planted sentinel substring.
+  const runtimeObservation = assertReplayObservedTranslatedText({
+    replayLogPath,
+    patchReportPath,
+  });
+  process.stdout.write(
+    `[localize-project] runtime evidence: engine OBSERVED the real translated text in ${runtimeObservation.matchingTextLineCount} of ${runtimeObservation.textLineCount} decoded TextLine(s) (observed-output-confirmed)\n`,
+  );
+
+  // ---- Real rendered frame (E2): rasterize the localized scene through
+  // the real g00 render pipeline and assert the rendered text layer (built
+  // from the engine's OBSERVED TextLine bodies) reflects the real
+  // translated text. Redaction defaults ON so no copyrighted pixels are
+  // published; only the deterministic report (hashes/counts + the frame
+  // pointer) is retained here.
+  runCommand(
+    "cargo",
+    [
+      "run",
+      "-p",
+      "utsushi-cli",
+      "--quiet",
+      "--",
+      "render-validate",
+      "--engine",
+      "reallive",
+      "--seen",
+      targetSeenPath,
+      "--scene",
+      String(sceneId),
+      "--artifact-root",
+      renderArtifactsDir,
+      "--expect-text-contains",
+      runtimeObservation.expectedText,
+      "--redaction",
+      "on",
+      "--output",
+      renderEvidencePath,
+    ],
+    process.env,
+    { redact: liveReplayRedactor },
+  );
+  const renderEvidence = JSON.parse(readFileSync(renderEvidencePath, "utf8"));
+  if (renderEvidence.containsExpected !== true) {
+    throw new Error(
+      `runtime evidence: the real rendered frame's localized text layer did not contain the real translated text (see ${renderEvidencePath})`,
+    );
+  }
+  process.stdout.write(
+    `[localize-project] render evidence: E2 frame ${renderEvidence.evidenceTier} rendered ${renderEvidence.renderedLineCount} localized line(s); rendered-text sha256=${renderEvidence.renderedTextSha256} redaction=${renderEvidence.redaction}\n`,
   );
 
   // ---- Readonly-source invariant: re-hash + assert no drift. ----
@@ -2049,6 +2154,7 @@ async function main() {
     agenticLoopBundlePath,
     patchReportPath,
     replayLogPath,
+    renderEvidencePath,
   ]) {
     if (!existsSync(artifact)) {
       throw new Error(`expected artifact missing after successful run: ${artifact}`);
@@ -2067,13 +2173,13 @@ async function main() {
     },
     sourceLocale: projectMetadata.sourceLocale,
     pair: policy.pair,
-    enUsSentinel: policy.enUsSentinel,
     sourceSeenSha256: sourceSeenSha256Before,
     artifacts: {
       bridgeBundle: portableRelativePath(runDir, bridgeBundlePath),
       agenticLoopBundle: portableRelativePath(runDir, agenticLoopBundlePath),
       patchReport: portableRelativePath(runDir, patchReportPath),
       replayLog: portableRelativePath(runDir, replayLogPath),
+      renderEvidence: portableRelativePath(runDir, renderEvidencePath),
       providerRunArtifacts: portableRelativePath(runDir, providerRunArtifactsDir),
     },
   };

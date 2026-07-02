@@ -5,13 +5,16 @@
 //! the `utsushi-core` [`Runner`] against a (patched/delta-applied)
 //! extracted RPG Maker MV/MZ game directory, writes the text-trace capture
 //! artifact under a managed [`RuntimeArtifactRoot`], and — when
-//! `--expect-textline-contains <SUBSTR>` is supplied — asserts that
-//! substring lands in at least one emitted `TextLine` body. This mirrors
-//! the RealLive `replay-validate` contract for the MV/MZ engine family so
-//! the localize-project driver can close the loop with runtime evidence.
+//! `--assert-observed-text <TEXT>` is supplied — asserts that the engine
+//! OBSERVED that text in at least one emitted `TextLine` body. The
+//! expected text is the REAL translated draft the localize-project driver
+//! patched into the game data (from `patch-report.json`), NOT a planted
+//! sentinel: the assertion is over the engine's real decoded output.
 //!
-//! The emitted summary carries counts + the capture-artifact pointer and
-//! the caller-provided ASCII sentinel only — never verbatim game text.
+//! The emitted summary carries counts + the capture-artifact pointer +
+//! the boolean match result only — never verbatim game text (the
+//! expected translated text is passed in, not echoed back), so committed
+//! runtime evidence stays redaction-safe.
 
 use std::error::Error;
 use std::path::PathBuf;
@@ -34,17 +37,19 @@ Usage:
     --artifact-root <DIR> \
     --output <PATH> \
     [--run-id <ID>] \
-    [--expect-textline-contains <SUBSTR>]
+    [--assert-observed-text <TEXT>]
 
-  --game-dir <DIR>                    Extracted MV (`www/data/`) or MZ (`data/`) tree.
-  --artifact-root <DIR>               Managed root for the capture artifact.
-  --output <PATH>                     Runtime-evidence summary JSON.
-  --run-id <ID>                       Trace run id (default rpgmaker-mv-mz-evidence-0001).
-  --expect-textline-contains <SUBSTR> Fail unless some emitted TextLine contains SUBSTR.
+  --game-dir <DIR>                Extracted MV (`www/data/`) or MZ (`data/`) tree.
+  --artifact-root <DIR>           Managed root for the capture artifact.
+  --output <PATH>                 Runtime-evidence summary JSON (counts + match only).
+  --run-id <ID>                   Trace run id (default rpgmaker-mv-mz-evidence-0001).
+  --assert-observed-text <TEXT>   Fail unless the engine OBSERVED this text in some
+                                  emitted TextLine. This is the REAL translated draft
+                                  the patchback wrote, not a planted sentinel.
 
 Exit codes:
-  0  utsushi.rpgmaker_mv.replay_text_match_ok      — substring matched (or no expectation).
-  1  utsushi.rpgmaker_mv.replay_text_match_failed  — no TextLine body matched.
+  0  utsushi.rpgmaker_mv.replay_text_match_ok      — observed text matched (or no expectation).
+  1  utsushi.rpgmaker_mv.replay_text_match_failed  — no TextLine body observed the text.
 ";
 
 /// Execute the `rpgmaker-mv-capture` subcommand. Argv excludes the leading
@@ -59,7 +64,7 @@ pub fn run_rpgmaker_mv_capture_command(args: &[String]) -> Result<(), Box<dyn Er
     let artifact_root_path = PathBuf::from(required_flag(args, "--artifact-root")?);
     let output = PathBuf::from(required_flag(args, "--output")?);
     let run_id = optional_flag(args, "--run-id").unwrap_or("rpgmaker-mv-mz-evidence-0001");
-    let expect = optional_flag(args, "--expect-textline-contains");
+    let expect = optional_flag(args, "--assert-observed-text");
 
     let artifact_root = RuntimeArtifactRoot::new(&artifact_root_path);
     artifact_root.prepare()?;
@@ -86,19 +91,24 @@ pub fn run_rpgmaker_mv_capture_command(args: &[String]) -> Result<(), Box<dyn Er
         .as_ref()
         .and_then(|capture| capture.artifact_path.clone());
 
-    let matched = expect.map(|substr| texts.iter().any(|text| text.contains(substr)));
+    let matched = expect.map(|text| texts.iter().any(|line| line.contains(text)));
     let match_code = match matched {
         Some(false) => MATCH_FAILED_CODE,
         _ => MATCH_OK_CODE,
     };
 
+    // Redaction-safe: the committed summary records only counts + the
+    // boolean match + a length for the expected text — never the verbatim
+    // text (source OR translated). The expected translated text is passed
+    // IN by the caller (from patch-report.json), not echoed back.
     let summary = json!({
         "schema": "utsushi.rpgmaker-mv.runtime-evidence.v0",
         "portId": "utsushi-rpgmaker-mv",
         "runId": run_id,
         "lineCount": line_count,
         "captureArtifact": artifact_path.as_ref().map(|path| path.display().to_string()),
-        "expectTextlineContains": expect,
+        "assertObservedText": expect.is_some(),
+        "assertObservedTextLength": expect.map(str::len),
         "matched": matched,
         "matchCode": match_code,
     });
@@ -106,7 +116,7 @@ pub fn run_rpgmaker_mv_capture_command(args: &[String]) -> Result<(), Box<dyn Er
 
     if matched == Some(false) {
         return Err(format!(
-            "{MATCH_FAILED_CODE}: no emitted TextLine contained the expected substring (lines={line_count})"
+            "{MATCH_FAILED_CODE}: no emitted TextLine observed the expected translated text (lines={line_count})"
         )
         .into());
     }

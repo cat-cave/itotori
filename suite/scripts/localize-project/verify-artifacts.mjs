@@ -137,16 +137,23 @@ function collectInvocations(bundle) {
   return stages.flatMap((stage) => (Array.isArray(stage.invocations) ? stage.invocations : []));
 }
 
-function findSentinelTextLines(replayLog, sentinel) {
+// Return the engine's OBSERVED TextLine events whose decoded body
+// reflects the REAL translated text (either the sink's UTF-8 form or a
+// byte-stable Shift-JIS redecode of the captured raw bytes). This is the
+// intersection of the VM's real decode output and the LLM's real
+// translation — NOT a harness-planted sentinel.
+function findObservedTranslatedTextLines(replayLog, expectedText) {
   const events = Array.isArray(replayLog.events) ? replayLog.events : [];
-  return events.filter(
-    (event) =>
-      event &&
-      typeof event === "object" &&
-      event.kind === "text_line" &&
-      typeof event.bodyUtf8 === "string" &&
-      event.bodyUtf8.includes(sentinel),
-  );
+  const sjisDecoder = new TextDecoder("shift_jis", { fatal: false });
+  return events.filter((event) => {
+    if (!event || typeof event !== "object" || event.kind !== "text_line") return false;
+    if (typeof event.bodyUtf8 === "string" && event.bodyUtf8.includes(expectedText)) return true;
+    if (typeof event.bodyShiftJisHex === "string") {
+      const bytes = Buffer.from(event.bodyShiftJisHex, "hex");
+      if (sjisDecoder.decode(bytes).includes(expectedText)) return true;
+    }
+    return false;
+  });
 }
 
 function pairKey(pair) {
@@ -693,10 +700,15 @@ export function verify(args) {
   });
   const { patchReport, invocations, modelId, providerId } = providerProof;
 
-  const sentinel = assertNonEmptyString(patchReport.enUsSentinel, "patch-report.enUsSentinel");
-  const sentinelTextLines = findSentinelTextLines(replayLog, sentinel);
-  if (sentinelTextLines.length === 0) {
-    throw new Error(`replay-log contains no text_line bodyUtf8 with sentinel ${sentinel}`);
+  const expectedText = assertNonEmptyString(
+    patchReport.finalDraftText,
+    "patch-report.finalDraftText",
+  );
+  const observedTextLines = findObservedTranslatedTextLines(replayLog, expectedText);
+  if (observedTextLines.length === 0) {
+    throw new Error(
+      "replay-log contains no text_line whose engine-decoded body observed the real translated text (patch-report.finalDraftText); the patched bytes did not round-trip through the VM's decode",
+    );
   }
 
   const telemetryProof = verifyTelemetry({
@@ -735,11 +747,10 @@ export function verify(args) {
     runDir: ".",
     expectedModelId: args.expectedModelId,
     patchReportPair: { modelId, providerId },
-    enUsSentinel: sentinel,
     invocationCount: invocations.length,
     agenticLoopZdrEnforcedCount: invocations.length,
     providerRunArtifactCount: providerProof.artifacts.length,
-    replaySentinelTextLineCount: sentinelTextLines.length,
+    replayObservedTranslatedTextLineCount: observedTextLines.length,
     telemetryProof,
     artifacts: portableArtifacts,
     artifactSha256,
