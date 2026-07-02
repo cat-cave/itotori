@@ -19,6 +19,9 @@ dirs.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
+# Real-bytes proof: decode a Kanon (Delta+BCJ2) scene straight from the
+# vault-materialised tree, so the by-id path is proven byte-usable end to end.
+kaifuu-reallive = { path = "../kaifuu-reallive" }
 
 [build-dependencies]
 rusqlite = { workspace = true }

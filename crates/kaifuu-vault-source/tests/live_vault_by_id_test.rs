@@ -15,9 +15,12 @@
 
 use std::path::{Path, PathBuf};
 
+use kaifuu_reallive::{
+    RealLiveOpcode, SceneHeader, decompress_avg32, parse_archive, parse_real_bytecode,
+};
 use kaifuu_vault_source::{
     ClaimQuery, LocalCorpusSource, MaterializeOptions, RunOutcome, ScratchConfig, VaultConfig,
-    VaultSource, VaultSourceError,
+    VaultSource,
 };
 use sha2::{Digest, Sha256};
 
@@ -36,13 +39,22 @@ fn require_live_vault() -> Option<PathBuf> {
 }
 
 /// A throwaway scratch root that lives OUTSIDE the vault (large extractions:
-/// prefer a real disk, not tmpfs).
+/// prefer a real disk, not tmpfs). Each call returns a DISTINCT directory:
+/// tests in this binary run in parallel (cargo default), and every test
+/// `rm -rf`s its own scratch dir on the way out. A `run-{pid}`-only path is
+/// shared across tests in the same process, so one test's cleanup would
+/// clobber another's in-flight extraction (observed as a spurious
+/// "incomplete extraction"). The per-call atomic counter guarantees each
+/// test owns a disjoint dir and only removes its own.
 fn scratch_base() -> PathBuf {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    static COUNTER: AtomicUsize = AtomicUsize::new(0);
     let base = std::env::var("ITOTORI_SCRATCH_ROOT").map_or_else(
         |_| PathBuf::from("/scratch/itotori-vault-by-id-test"),
         PathBuf::from,
     );
-    let unique = base.join(format!("run-{}", std::process::id()));
+    let seq = COUNTER.fetch_add(1, Ordering::Relaxed);
+    let unique = base.join(format!("run-{}-{seq}", std::process::id()));
     std::fs::create_dir_all(&unique).expect("create scratch base");
     unique
 }
@@ -178,33 +190,106 @@ fn resolves_kanon_by_id_and_materializes_reallive_tree() {
         candidate.release_id
     );
 
-    // Materialize. Kanon's by-id archive uses a Delta+BCJ2 multi-coder folder
-    // the pure-Rust sevenz-rust2 0.21 decoder cannot fully decode; that now
-    // surfaces as a typed ExtractionFailed rather than a silent partial tree.
-    // Either outcome is acceptable here: a full materialize proves the whole
-    // by-id path; a typed ExtractionFailed documents the (read-only,
-    // vault-curation-owned) decoder gap precisely without faking a hash.
-    match source.materialize(&candidate, MaterializeOptions::default()) {
-        Ok(mat) => {
-            assert_eq!(mat.artifact_canonical_id, KANON_CANONICAL_ID);
-            let seen = find_named(&mat.tree_root, "seen.txt")
-                .unwrap_or_else(|| panic!("SEEN.TXT not found under {}", mat.tree_root.display()));
-            let sha = sha256_file(&seen);
-            let _ = source.release(&mat, RunOutcome::Success);
-            let _ = std::fs::remove_dir_all(&scratch);
-            eprintln!("[kanon] by-id -> SEEN.TXT sha256 = {sha}");
-            assert_eq!(sha.len(), 64);
-        }
-        Err(VaultSourceError::ExtractionFailed { reason, .. }) => {
-            let _ = std::fs::remove_dir_all(&scratch);
-            eprintln!(
-                "[kanon] by-id resolved + present on disk; full materialize blocked by a \
-                 pure-Rust decoder gap: {reason}"
-            );
-        }
-        Err(other) => {
-            let _ = std::fs::remove_dir_all(&scratch);
-            panic!("unexpected Kanon materialize error: {other:?}");
+    // Materialize. Kanon's by-id archive layers a Delta filter on top of a
+    // BCJ2 coder (`Method = Delta BCJ2`). sevenz-rust2 <= 0.21.1 could not
+    // decode that multi-coder folder and the decode loop returned `Ok(())`
+    // having silently skipped its entries; the `verify_complete_extraction`
+    // guard then turned that partial tree into a typed `ExtractionFailed`.
+    // sevenz-rust2 0.21.2 (upstream PR #117) decodes Delta+BCJ2 folders, so a
+    // complete materialize is now REQUIRED — a full `Ok(mat)` here *is* the
+    // proof that `verify_complete_extraction` passed (every archive-declared
+    // file entry landed on disk; missing == 0). The guard is kept as
+    // defence-in-depth against any future silent-skip regression.
+    let mat = source
+        .materialize(&candidate, MaterializeOptions::default())
+        .expect(
+            "Kanon (Delta+BCJ2) must materialize COMPLETELY from the vault by-id with \
+             sevenz-rust2 0.21.2 (PR #117); a partial tree would surface as ExtractionFailed \
+             via verify_complete_extraction",
+        );
+    assert_eq!(mat.artifact_canonical_id, KANON_CANONICAL_ID);
+
+    let extracted_files = count_regular_files(&mat.tree_root);
+    let seen = find_named(&mat.tree_root, "seen.txt")
+        .unwrap_or_else(|| panic!("SEEN.TXT not found under {}", mat.tree_root.display()));
+    let sha = sha256_file(&seen);
+    assert_eq!(sha.len(), 64);
+    eprintln!(
+        "[kanon] by-id COMPLETE extraction (verify_complete_extraction PASS): \
+         extracted_regular_files={extracted_files}, SEEN.TXT sha256={sha}"
+    );
+
+    // Byte-usable proof: the RealLive decompiler parses a real scene straight
+    // from the VAULT-materialised Seen.txt (NOT the /scratch pre-extraction
+    // workaround the Delta+BCJ2 bug previously forced Kanon onto).
+    let seen_bytes = std::fs::read(&seen).expect("read vault-materialised SEEN.TXT");
+    let (populated_scenes, first_opcodes, first_unknown) = decode_first_scene(&seen_bytes);
+    eprintln!(
+        "[kanon] vault-sourced decode: populated_scenes={populated_scenes}, \
+         first_scene_opcodes={first_opcodes}, first_scene_unrecognised={first_unknown}"
+    );
+    assert!(
+        populated_scenes > 0,
+        "vault-materialised Kanon Seen.txt must parse into >= 1 populated scene"
+    );
+    assert!(
+        first_opcodes > 0,
+        "the RealLive decompiler must decode >= 1 opcode from the vault-sourced first scene"
+    );
+
+    let _ = source.release(&mat, RunOutcome::Success);
+    let _ = std::fs::remove_dir_all(&scratch);
+}
+
+/// Count regular files (not directories) under `root`, recursively. Used only
+/// to report the size of a COMPLETE extraction — the completeness invariant
+/// itself is enforced by `verify_complete_extraction` inside `materialize`.
+fn count_regular_files(root: &Path) -> u64 {
+    let mut stack = vec![root.to_path_buf()];
+    let mut n = 0u64;
+    while let Some(dir) = stack.pop() {
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for e in entries.flatten() {
+            let p = e.path();
+            if p.is_dir() {
+                stack.push(p);
+            } else {
+                n += 1;
+            }
         }
     }
+    n
+}
+
+/// Decode the first populated scene of a RealLive `Seen.txt` envelope, reusing
+/// the shared decompiler pipeline (envelope -> scene header -> AVG32 decompress
+/// -> bytecode dispatch). Returns `(populated_scene_count, first_scene_opcodes,
+/// first_scene_unrecognised)`. Kanon's compiler version does not use the
+/// second-level `xor_2`, so no key recovery is needed for a single scene.
+fn decode_first_scene(seen_bytes: &[u8]) -> (usize, usize, usize) {
+    let index = parse_archive(seen_bytes).expect("vault-sourced Seen.txt must parse as envelope");
+    let Some(entry) = index.entries.first() else {
+        return (0, 0, 0);
+    };
+    let off = entry.byte_offset as usize;
+    let end = off + entry.byte_len as usize;
+    assert!(
+        end <= seen_bytes.len(),
+        "scene payload runs past end of file"
+    );
+    let blob = &seen_bytes[off..end];
+    let header = SceneHeader::parse(blob).expect("first scene header must parse");
+    let bo = header.bytecode_offset as usize;
+    let bc = header.bytecode_compressed_size as usize;
+    let bu = header.bytecode_uncompressed_size as usize;
+    assert!(bo + bc <= blob.len(), "compressed bytecode runs past scene");
+    let decompressed = decompress_avg32(&blob[bo..bo + bc], bu).expect("AVG32 decompress");
+    let opcodes = parse_real_bytecode(&decompressed).expect("first scene bytecode must decode");
+    let unknown = opcodes
+        .iter()
+        .filter(|op: &&RealLiveOpcode| !op.is_recognized())
+        .count();
+    (index.entries.len(), opcodes.len(), unknown)
 }
