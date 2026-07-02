@@ -13,7 +13,9 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use kaifuu_reallive::REALLIVE_SEEN_TXT_DIRECTORY_BYTE_LEN;
+use kaifuu_reallive::{
+    REALLIVE_SEEN_TXT_DIRECTORY_BYTE_LEN, SCENE_HEADER_BYTE_LEN, compress_avg32_literal,
+};
 
 const SLOT: u16 = 1;
 
@@ -109,42 +111,68 @@ fn protected_spans_001() -> Vec<u8> {
 }
 
 fn bridge_inventory_001() -> Vec<u8> {
-    // KAIFUU-191: the pre-KAIFUU-191 synthetic `0x23 ('#') opener + named
-    // opcode byte + operand-count` string-operand shape is deleted. This
-    // scene is authored in the REAL post-KAIFUU-191 byte shape decoded by
-    // `parse_real_bytecode` (8-byte `CommandElement` headers + inline
-    // Shift-JIS Textout runs + a `module_sel` `{ … }` SelectElement block),
-    // the same shape `kaifuu-cli::binary_patch_smoke::synthetic_scene_bytecode`
-    // uses. The RealLive detector adapter's `extract` consumes the scene
-    // slot as the **decompressed** bytecode stream (it does not parse a
-    // scene header or AVG32-decompress), so the slot payload here is the
-    // raw decompressed bytecode.
+    // KAIFUU-191 / adapter-unify: the scene bytecode is authored in the REAL
+    // post-KAIFUU-191 byte shape decoded by `parse_real_bytecode` (8-byte
+    // `CommandElement` headers + inline Shift-JIS Textout runs + a
+    // `module_sel` `{ … }` SelectElement block), the same shape
+    // `kaifuu-cli::binary_patch_smoke::synthetic_scene_bytecode` uses.
     //
-    // The scene exercises the three alpha string surfaces the KAIFUU-174
-    // inventory walk classifies:
-    // - SetSpeaker  (module_msg opcode 3 → CharacterTextDisplay) → speaker_name
-    // - Textout     (inline "Hello") → dialogue
-    // - TextDisplay (module_msg opcode 10) → dialogue marker
-    // - Choice      (module_sel opcode 0, `{ "Yes" \n "No" \n }`) → choice_label
-    // - Textout     (inline "bg/sample.g00") → dialogue + asset reference
-    // Note the dialogue run cannot contain a structural-opener byte
-    // (`0x00 0x0A 0x21 0x23 0x24 0x2C 0x40`) — `0x21` ('!') would terminate
-    // the Textout run — so the readable dialogue is "Hello" (no trailing
-    // bang), which is what the real decoder yields.
-    let mut scene = Vec::new();
-    scene.extend_from_slice(&command_header(MODULE_TYPE_KEPAGO, MODULE_MSG, 3, 0)); // SetSpeaker
-    scene.extend_from_slice(b"Hello"); // Textout dialogue run
-    scene.extend_from_slice(&command_header(MODULE_TYPE_KEPAGO, MODULE_MSG, 10, 0)); // TextDisplay
-    scene.extend_from_slice(&command_header(MODULE_TYPE_SEL, MODULE_SEL, 0, 0)); // Choice select_w
-    scene.push(0x7B); // '{' SelectElement block open
-    scene.extend_from_slice(b"Yes");
-    scene.extend_from_slice(&[0x0A, 0x00, 0x00]); // \n + i16 line marker
-    scene.extend_from_slice(b"No");
-    scene.extend_from_slice(&[0x0A, 0x00, 0x00]); // \n + i16 line marker
-    scene.push(0x7D); // '}' SelectElement block close
-    scene.extend_from_slice(b"bg/sample.g00"); // Textout asset-reference run
-    scene.extend_from_slice(&command_header(MODULE_TYPE_KEPAGO, MODULE_SYS, 17, 0)); // End
-    single_scene_archive(&scene)
+    // Unified adapter path: `extract` and `patch` BOTH parse a `SceneHeader`,
+    // AVG32-decompress the bytecode, and walk it through
+    // `bridge::produce_bundle` (deterministic bridgeUnitIds). The slot payload
+    // is therefore a real `SceneHeader` (0x1d0 bytes) followed by the
+    // AVG32-LZSS-compressed bytecode — NOT the raw decompressed stream.
+    //
+    // The scene exercises the two translatable alpha string surfaces the
+    // `produce_bundle` walk emits:
+    // - Textout (inline "Hello") → dialogue
+    // - Choice  (module_sel opcode 0, `{ "Yes" \n "No" \n }`) → choice_label
+    // (SetSpeaker/TextDisplay/End are structural commands carried verbatim;
+    // the speaker is embedded on the dialogue unit's speaker field, not a
+    // separate surface.) The dialogue run cannot contain a structural-opener
+    // byte (`0x00 0x0A 0x21 0x23 0x24 0x2C 0x40`) — `0x21` ('!') would
+    // terminate the Textout run — so the readable dialogue is "Hello" (no
+    // trailing bang), which is what the real decoder yields.
+    let mut bytecode = Vec::new();
+    bytecode.extend_from_slice(&command_header(MODULE_TYPE_KEPAGO, MODULE_MSG, 3, 0)); // SetSpeaker
+    bytecode.extend_from_slice(b"Hello"); // Textout dialogue run
+    bytecode.extend_from_slice(&command_header(MODULE_TYPE_KEPAGO, MODULE_MSG, 10, 0)); // TextDisplay
+    bytecode.extend_from_slice(&command_header(MODULE_TYPE_SEL, MODULE_SEL, 0, 0)); // Choice select_w
+    bytecode.push(0x7B); // '{' SelectElement block open
+    bytecode.extend_from_slice(b"Yes");
+    bytecode.extend_from_slice(&[0x0A, 0x00, 0x00]); // \n + i16 line marker
+    bytecode.extend_from_slice(b"No");
+    bytecode.extend_from_slice(&[0x0A, 0x00, 0x00]); // \n + i16 line marker
+    bytecode.push(0x7D); // '}' SelectElement block close
+    bytecode.extend_from_slice(&command_header(MODULE_TYPE_KEPAGO, MODULE_SYS, 17, 0)); // End
+    single_scene_archive(&scene_header_wrapped(&bytecode))
+}
+
+/// Wrap raw decompressed `bytecode` in a real `SceneHeader` (0x1d0 bytes) +
+/// AVG32-LZSS-compressed bytecode, matching the shape `SceneHeader::parse` +
+/// `decompress_avg32` expect. `compiler_version` is a non-`xor_2` value
+/// (Sweetie HD's `110002` triggers the second-level cipher; `10002` does
+/// not), so the synthetic scene decompresses to plaintext bytecode directly.
+fn scene_header_wrapped(bytecode: &[u8]) -> Vec<u8> {
+    let compressed = compress_avg32_literal(bytecode).expect("synthetic bytecode compresses");
+    let header_len = SCENE_HEADER_BYTE_LEN;
+    let mut blob = vec![0u8; header_len];
+    // header_size at 0x00 (informational).
+    blob[0x00..0x04].copy_from_slice(&(header_len as u32).to_le_bytes());
+    // compiler_version at 0x04 (non-xor_2).
+    blob[0x04..0x08].copy_from_slice(&10002u32.to_le_bytes());
+    // kidoku_offset at 0x08 (empty kidoku table, sits at bytecode start).
+    blob[0x08..0x0c].copy_from_slice(&(header_len as u32).to_le_bytes());
+    // kidoku_count at 0x0c (0 — no read-tracking table entries).
+    blob[0x0c..0x10].copy_from_slice(&0u32.to_le_bytes());
+    // bytecode_offset at 0x20 (immediately after the header).
+    blob[0x20..0x24].copy_from_slice(&(header_len as u32).to_le_bytes());
+    // bytecode_uncompressed_size at 0x24.
+    blob[0x24..0x28].copy_from_slice(&(bytecode.len() as u32).to_le_bytes());
+    // bytecode_compressed_size at 0x28.
+    blob[0x28..0x2c].copy_from_slice(&(compressed.len() as u32).to_le_bytes());
+    blob.extend_from_slice(&compressed);
+    blob
 }
 
 // module_type 1 = Kepago RLOperation namespace (msg / sys); the select /

@@ -47,8 +47,8 @@
 //! - [`parse_scene`] — decode a single **decompressed** scene-bytecode
 //!   byte stream into the documented [`RealLiveOpcode`] sequence.
 //! - [`parse_scene_into_ast`] — adapter that wraps [`parse_scene`] and
-//!   builds the [`Scene`] tree consumed by [`build_scene_inventory`]
-//!   and the bundle-driven patchback driver.
+//!   builds the [`Scene`] tree consumed by the bundle-driven patchback
+//!   driver.
 //!
 //! # SEEN.TXT envelope (real 10,000-slot fixed-offset-table — KAIFUU-188)
 //!
@@ -124,7 +124,6 @@ mod diagnostics;
 pub mod encoding;
 pub mod framing;
 pub mod gameexe;
-pub mod inventory;
 pub mod opcode;
 mod opcodes;
 mod parser;
@@ -164,12 +163,6 @@ pub use framing::{FramingError, FramingSpan, framing_manifest, reemit_scene};
 pub use gameexe::{
     GameexeIniDiagnostic, GameexeInventoryEntry, GameexeInventoryReport, GameexeKeyFamily,
     GameexeKeyTreatment, UNKNOWN_GAMEEXE_KEY_CODE, UnknownReason, parse_gameexe_inventory,
-};
-pub use inventory::{
-    AssetReference, AssetReferenceInventory, AssetReferenceKind,
-    INVENTORY_UNATTRIBUTED_DIALOGUE_CODE, INVENTORY_UNKNOWN_ASSET_EXTENSION_CODE,
-    INVENTORY_UNSUPPORTED_TEXT_SHAPE_CODE, InventoryReport, InventoryWarning, InventoryWarningCode,
-    build_scene_inventory,
 };
 pub use opcode::{
     COMMAND_HEADER_LEN, CommandArg, Expr, GotoPointerSite, RealLiveOpcode, RealLiveParseError,

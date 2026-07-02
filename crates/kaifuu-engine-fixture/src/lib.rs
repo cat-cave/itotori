@@ -4302,6 +4302,7 @@ impl EngineAdapter for RealLiveProfileDetectorAdapter {
                 state.variant,
             )));
         }
+        let resolved = Self::resolve_reallive_data_dir(request.game_dir);
         let seen_path = Self::seen_txt_path(request.game_dir);
         let archive_bytes = fs::read(&seen_path)?;
         let scene_index = match kaifuu_reallive::parse_archive(&archive_bytes) {
@@ -4314,30 +4315,24 @@ impl EngineAdapter for RealLiveProfileDetectorAdapter {
                 )));
             }
         };
-        let mut scenes = Vec::new();
-        let mut adapter_warnings: Vec<kaifuu_core::AdapterWarning> = Vec::new();
-        for entry in &scene_index.entries {
-            let blob = &archive_bytes[entry.byte_offset as usize
-                ..(entry.byte_offset + u64::from(entry.byte_len)) as usize];
-            let outcome =
-                kaifuu_reallive::parse_scene_into_ast(blob, entry.scene_id, entry.byte_offset);
-            for diagnostic in &outcome.diagnostics {
-                adapter_warnings.push(kaifuu_core::AdapterWarning {
-                    code: diagnostic.code.as_str().to_string(),
-                    message: diagnostic.message.clone(),
-                });
+        // Unified extract/patch path (adapter-unify): extract projects each
+        // scene through the SAME SceneHeader + AVG32-decompress +
+        // `produce_bundle` pipeline `patch` uses, minting the deterministic
+        // bridgeUnitIds `patch` re-derives — so a PatchExport keyed on
+        // extract's ids resolves in patch with no id mismatch. Gameexe.ini
+        // feeds the producer's NAMAE speaker resolution (best-effort;
+        // absent -> empty inventory).
+        let gameexe_path =
+            Self::gameexe_ini_path_with_resolved(request.game_dir, resolved.as_deref());
+        let gameexe_bytes = fs::read(&gameexe_path).unwrap_or_default();
+        let gameexe_inventory = kaifuu_reallive::parse_gameexe_inventory(&gameexe_bytes);
+        let produced =
+            Self::produce_scene_bundles(&archive_bytes, &scene_index, &gameexe_inventory);
+        let mut units: Vec<BridgeUnit> = Vec::new();
+        for (_scene_id, bundle) in &produced {
+            for unit in &bundle.bundle.units {
+                units.push(Self::bridge_unit_from_v02(unit));
             }
-            if let Some(scene) = outcome.scene {
-                scenes.push(scene);
-            }
-        }
-        let inventory =
-            kaifuu_reallive::build_scene_inventory(&archive_bytes, &scene_index, &scenes);
-        for warning in &inventory.warnings {
-            adapter_warnings.push(kaifuu_core::AdapterWarning {
-                code: warning.code.clone(),
-                message: warning.message.clone(),
-            });
         }
         let profile = self.profile_from_state(state.clone())?;
         let bridge = BridgeBundle {
@@ -4347,13 +4342,13 @@ impl EngineAdapter for RealLiveProfileDetectorAdapter {
             source_locale: "ja-JP".to_string(),
             extractor_name: "kaifuu-reallive".to_string(),
             extractor_version: env!("CARGO_PKG_VERSION").to_string(),
-            units: inventory.bridge_units,
+            units,
         };
         Ok(ExtractionResult {
             adapter_id: REALLIVE_DETECTOR_ADAPTER_ID.to_string(),
             profile,
             bridge,
-            warnings: adapter_warnings,
+            warnings: vec![],
         })
     }
 
@@ -4445,9 +4440,9 @@ impl EngineAdapter for RealLiveProfileDetectorAdapter {
 
         // Canonical patch-back route (KAIFUU-211 / ALPHA-006c): rebuild
         // the v0.2 BridgeBundle per scene via `produce_bundle`, match the
-        // PatchExport entries to bridge units by `bridgeUnitId`, and apply
-        // through `bundle_driven::apply_translated_bundle`. There is no
-        // length-preserving legacy splice path. Gameexe.ini feeds the
+        // PatchExport entries to bridge units by `bridgeUnitId`, enforce the
+        // KAIFUU-174 length-preserving budget, and apply through
+        // `bundle_driven::apply_translated_bundle`. Gameexe.ini feeds the
         // producer's voice/asset inventory (best-effort; absent ->
         // empty).
         let gameexe_path =
@@ -4455,47 +4450,25 @@ impl EngineAdapter for RealLiveProfileDetectorAdapter {
         let gameexe_bytes = fs::read(&gameexe_path).unwrap_or_default();
         let gameexe_inventory = kaifuu_reallive::parse_gameexe_inventory(&gameexe_bytes);
 
+        // Unified extract/patch path (adapter-unify): patch rebuilds the
+        // per-scene v0.2 bridge through the SAME `produce_scene_bundles`
+        // walk `extract` uses, so the PatchExport's bridgeUnitIds (minted
+        // by extract) match the ids re-derived here.
+        let produced_scenes =
+            Self::produce_scene_bundles(&archive_bytes, &scene_index, &gameexe_inventory);
         let mut matched_entry_ids: BTreeSet<String> = BTreeSet::new();
         let mut touched: Vec<(u16, serde_json::Value)> = Vec::new();
-        for entry in &scene_index.entries {
-            let blob = &archive_bytes[entry.byte_offset as usize
-                ..(entry.byte_offset + u64::from(entry.byte_len)) as usize];
-            let Ok(header) = kaifuu_reallive::SceneHeader::parse(blob) else {
-                // A scene whose header does not parse carries no
-                // translatable v0.2 units; it is left verbatim by the
-                // repacker, so skip it here rather than fail the run.
-                continue;
-            };
-            let bytecode_start = header.bytecode_offset as usize;
-            let bytecode_end = bytecode_start + header.bytecode_compressed_size as usize;
-            if bytecode_end > blob.len() {
-                continue;
-            }
-            let Ok(decompressed) = kaifuu_reallive::decompress_avg32(
-                &blob[bytecode_start..bytecode_end],
-                header.bytecode_uncompressed_size as usize,
-            ) else {
-                continue;
-            };
-            let opts = kaifuu_reallive::BridgeOpts {
-                game_id: REALLIVE_GAME_ID,
-                game_version: "1.0.0",
-                source_profile_id: REALLIVE_PROFILE_ID,
-                source_locale: "ja-JP",
-                extractor_name: "kaifuu-reallive-bridge",
-                extractor_version: "0.1.0",
-                scene_kidoku_count: header.kidoku_count,
-            };
-            let Ok(produced) = kaifuu_reallive::produce_bundle(
-                entry.scene_id,
-                blob,
-                &decompressed,
-                &gameexe_inventory,
-                &opts,
-            ) else {
-                continue;
-            };
-
+        // Length-preserving budget failures (adapter-unify): the KAIFUU-174
+        // adapter slice declares a LENGTH-PRESERVING patch contract (see
+        // `capabilities()` — Patching is Limited: "length-changing edits
+        // return kaifuu.reallive.patchback_offset_overflow Fatal"). The
+        // underlying `apply_translated_bundle` gained a length-CHANGING path
+        // (reallive-patchback-length-changing, scoped to crates/kaifuu-reallive),
+        // but this adapter does not yet EXPOSE it: an edit whose target
+        // Shift-JIS bytes do not match the source unit's replaced-body byte
+        // budget is rejected here so the declared contract holds.
+        let mut budget_failures: Vec<AdapterFailure> = Vec::new();
+        for (scene_id, produced) in &produced_scenes {
             let mut translated_json = produced.json.clone();
             let mut scene_matched = 0usize;
             if let Some(units_json) = translated_json["units"].as_array_mut() {
@@ -4506,6 +4479,11 @@ impl EngineAdapter for RealLiveProfileDetectorAdapter {
                         .iter()
                         .find(|e| e.bridge_unit_id == unit.bridge_unit_id)
                     {
+                        if let Some(failure) =
+                            Self::length_preserving_budget_failure(variant, unit, export_entry)
+                        {
+                            budget_failures.push(failure);
+                        }
                         units_json[i]["target"] = serde_json::json!({
                             "locale": request.patch_export.target_locale,
                             "text": export_entry.target_text,
@@ -4531,13 +4509,13 @@ impl EngineAdapter for RealLiveProfileDetectorAdapter {
                         "scene {scene:04} is partially translated ({scene_matched}/{total} \
                          bridge units); the bundle-driven patch-back requires a target for \
                          every unit in a patched scene",
-                        scene = entry.scene_id,
+                        scene = scene_id,
                         total = produced.bundle.units.len()
                     ),
                     "translate every unit of the scene, or re-extract a scene-scoped bundle",
                 )]));
             }
-            touched.push((entry.scene_id, translated_json));
+            touched.push((*scene_id, translated_json));
         }
 
         // Any export entry that matched no bridge unit is a stale/unknown
@@ -4560,6 +4538,11 @@ impl EngineAdapter for RealLiveProfileDetectorAdapter {
             .collect();
         if !unmatched.is_empty() {
             return Ok(failed(unmatched));
+        }
+        // Length-preserving contract: reject length-changing edits before
+        // touching the archive so the adapter's declared budget holds.
+        if !budget_failures.is_empty() {
+            return Ok(failed(budget_failures));
         }
 
         let passed = |output_hash: String| PatchResult {
@@ -4817,6 +4800,158 @@ impl RealLiveProfileDetectorAdapter {
                  (kaifuu.reallive.patchback_* semantic codes)",
             ),
         )
+    }
+
+    // Shared extract/patch scene-walk (adapter-unify): parse each scene's
+    // `SceneHeader`, AVG32-decompress its bytecode, and project it into a
+    // v0.2 `BridgeBundle` via `bridge::produce_bundle`. Both `extract` and
+    // `patch` drive off this ONE path, so the deterministic bridgeUnitIds a
+    // PatchExport is keyed on (from `extract`) are exactly the ids
+    // `produce_bundle` re-derives during `patch` — no id-scheme divergence.
+    // A scene whose header does not parse, whose compressed range runs past
+    // the blob, whose bytecode fails to decompress, or that carries no
+    // translatable text unit is skipped (it has no v0.2 bridge units and is
+    // carried verbatim by the repacker).
+    fn produce_scene_bundles(
+        archive_bytes: &[u8],
+        scene_index: &kaifuu_reallive::RealLiveSceneIndex,
+        gameexe_inventory: &kaifuu_reallive::GameexeInventoryReport,
+    ) -> Vec<(u16, kaifuu_reallive::ProducedBundle)> {
+        let mut bundles = Vec::new();
+        for entry in &scene_index.entries {
+            let blob = &archive_bytes[entry.byte_offset as usize
+                ..(entry.byte_offset + u64::from(entry.byte_len)) as usize];
+            let Ok(header) = kaifuu_reallive::SceneHeader::parse(blob) else {
+                continue;
+            };
+            let bytecode_start = header.bytecode_offset as usize;
+            let bytecode_end = bytecode_start + header.bytecode_compressed_size as usize;
+            if bytecode_end > blob.len() {
+                continue;
+            }
+            let Ok(decompressed) = kaifuu_reallive::decompress_avg32(
+                &blob[bytecode_start..bytecode_end],
+                header.bytecode_uncompressed_size as usize,
+            ) else {
+                continue;
+            };
+            let opts = kaifuu_reallive::BridgeOpts {
+                game_id: REALLIVE_GAME_ID,
+                game_version: "1.0.0",
+                source_profile_id: REALLIVE_PROFILE_ID,
+                source_locale: "ja-JP",
+                extractor_name: "kaifuu-reallive-bridge",
+                extractor_version: "0.1.0",
+                scene_kidoku_count: header.kidoku_count,
+            };
+            let Ok(produced) = kaifuu_reallive::produce_bundle(
+                entry.scene_id,
+                blob,
+                &decompressed,
+                gameexe_inventory,
+                &opts,
+            ) else {
+                continue;
+            };
+            bundles.push((entry.scene_id, produced));
+        }
+        bundles
+    }
+
+    // Project a validated v0.2 localization unit onto the v0.1
+    // `kaifuu_core::BridgeUnit` the `ExtractionResult.bridge` contract
+    // carries. The `bridgeUnitId` / `sourceUnitKey` / `sourceHash` are the
+    // deterministic values `produce_bundle` minted, so a PatchExport keyed
+    // on them resolves against the same producer during `patch`.
+    fn bridge_unit_from_v02(unit: &kaifuu_core::LocalizationUnitV02) -> BridgeUnit {
+        let speaker = unit
+            .speaker
+            .as_ref()
+            .and_then(|speaker| speaker.raw_speaker_text.clone())
+            .unwrap_or_default();
+        let protected_spans = unit
+            .spans
+            .iter()
+            .map(Self::protected_span_from_v02)
+            .collect();
+        BridgeUnit {
+            bridge_unit_id: unit.bridge_unit_id.clone(),
+            source_unit_key: unit.source_unit_key.clone(),
+            occurrence_id: unit.occurrence_id.clone(),
+            source_hash: unit.source_hash.clone(),
+            source_locale: unit.source_locale.clone(),
+            source_text: unit.source_text.clone(),
+            speaker,
+            text_surface: unit.surface_kind.clone(),
+            protected_spans,
+            patch_ref: PatchRef {
+                asset_id: "reallive-seen-txt".to_string(),
+                write_mode: "replace".to_string(),
+                source_unit_key: unit.source_unit_key.clone(),
+            },
+        }
+    }
+
+    fn protected_span_from_v02(span: &kaifuu_core::BridgeSpanV02) -> ProtectedSpan {
+        let mut mapped = ProtectedSpan::new(
+            span.span_kind.clone(),
+            span.raw.clone(),
+            span.start_byte,
+            span.end_byte,
+            span.preserve_mode.clone(),
+        );
+        mapped.parsed_name = span
+            .parsed_name
+            .as_ref()
+            .and_then(|value| value.as_str())
+            .map(str::to_string);
+        mapped
+    }
+
+    // Length-preserving budget check for a single matched unit. Returns a
+    // typed `kaifuu.reallive.patchback_offset_overflow` failure when the
+    // target's Shift-JIS byte length does not equal the source unit's
+    // replaced-body byte budget (its decompressed-bytecode range length —
+    // the exact bytes `apply_translated_bundle` would splice), or a typed
+    // encode failure when the target is not Shift-JIS-representable. `None`
+    // means the edit is length-preserving and may proceed.
+    fn length_preserving_budget_failure(
+        variant: &str,
+        unit: &kaifuu_core::LocalizationUnitV02,
+        export_entry: &kaifuu_core::PatchExportEntry,
+    ) -> Option<AdapterFailure> {
+        let range = &unit.source_location["range"];
+        let body_len = range["endByte"]
+            .as_u64()
+            .unwrap_or_default()
+            .saturating_sub(range["startByte"].as_u64().unwrap_or_default());
+        match kaifuu_reallive::encode_shift_jis_slot(&export_entry.target_text) {
+            Ok(target_bytes) if target_bytes.len() as u64 == body_len => None,
+            Ok(target_bytes) => Some(Self::unsupported_failure(
+                SemanticErrorCode::UnsupportedLayeredTransform,
+                Capability::PatchBack,
+                variant,
+                unit.source_unit_key.clone(),
+                format!(
+                    "kaifuu.reallive.patchback_offset_overflow: length-changing edit for unit \
+                     {key}: target encodes to {got} Shift-JIS bytes but the length-preserving \
+                     budget is {budget} bytes",
+                    key = unit.source_unit_key,
+                    got = target_bytes.len(),
+                    budget = body_len,
+                ),
+                "keep the translation length-preserving (equal Shift-JIS byte count) at the \
+                 KAIFUU-174 adapter slice",
+            )),
+            Err(err) => Some(Self::unsupported_failure(
+                SemanticErrorCode::UnsupportedLayeredTransform,
+                Capability::PatchBack,
+                variant,
+                unit.source_unit_key.clone(),
+                format!("kaifuu.reallive.patchback_target_encode_failure: {err}"),
+                "replace characters outside Shift-JIS with mappable substitutes",
+            )),
+        }
     }
 }
 
@@ -7724,9 +7859,25 @@ mod tests {
             .iter()
             .map(|u| u.text_surface.clone())
             .collect();
+        // Adapter-unify: extract now shares `patch`'s produce_bundle path, so
+        // the emitted surfaces are exactly `produce_bundle`'s v0.2
+        // `surfaceKind`s — `dialogue` and `choice_label`. The former
+        // `speaker_name` surface is gone: a speaker is embedded on the
+        // dialogue unit's `speaker` field (NAMAE-resolved), not minted as a
+        // standalone translatable unit.
         assert!(surfaces.contains("dialogue"));
-        assert!(surfaces.contains("speaker_name"));
         assert!(surfaces.contains("choice_label"));
+        // Deterministic source-unit keys (produce_bundle scheme), NOT the
+        // former random-UUID inventory ids — this is what lets a PatchExport
+        // keyed on extract's ids resolve during patch.
+        let dialogue = result
+            .bridge
+            .units
+            .iter()
+            .find(|u| u.text_surface == "dialogue")
+            .expect("dialogue unit present");
+        assert_eq!(dialogue.source_text, "Hello");
+        assert_eq!(dialogue.source_unit_key, "reallive:scene-0001#0000");
         let _ = fs::remove_dir_all(dir);
     }
 
@@ -7755,42 +7906,74 @@ mod tests {
         let _ = fs::remove_dir_all(output_dir);
     }
 
-    #[test]
-    #[ignore = "KAIFUU-191 blocker (adapter-path divergence, NOT a fixture defect): the \
-                bridge-inventory-001 fixture is now the real post-KAIFUU-191 CommandElement shape and \
-                `extract` passes, but this round-trip cannot. The RealLive adapter's `extract` consumes \
-                the scene slot as RAW decompressed bytecode via inventory::build_scene_inventory (which \
-                mints random now_v7 bridgeUnitIds), while `patch` parses a SceneHeader + AVG32-decompresses \
-                and rebuilds units via bridge::produce_bundle (deterministic bridgeUnitIds). A single \
-                fixture cannot satisfy both framings, and the PatchExport bridgeUnitId minted by extract \
-                never matches produce_bundle's deterministic id (observed failure: 'bridgeUnitId is not \
-                present in any scene's v0.2 bridge'). Un-ignore once extract and patch are unified onto \
-                the produce_bundle path (decompress in extract + one bridge-unit-id scheme), which also \
-                requires re-framing this fixture as a SceneHeader + AVG32-compressed blob."]
-    fn reallive_adapter_patch_round_trips_length_preserving_translation() {
-        let dir = reallive_174_fixture_dir("kaifuu-174-patch-length-preserving");
-        // First extract to learn the slot id for the dialogue slot.
-        let extract = RealLiveProfileDetectorAdapter
-            .extract(ExtractRequest { game_dir: &dir })
-            .unwrap();
-        let dialogue_unit = extract
+    // Build a PatchExport that translates EVERY extracted unit (the
+    // adapter's "no silent partial" rule requires a target per unit in a
+    // touched scene). `override_dialogue` replaces the "Hello" dialogue
+    // unit's target; every other unit is carried through identity (source
+    // text as its own target, which is length-preserving by construction).
+    fn reallive_all_units_export(
+        extract: &ExtractionResult,
+        override_dialogue: &str,
+    ) -> PatchExport {
+        let entries = extract
             .bridge
             .units
             .iter()
-            .find(|u| u.text_surface == "dialogue" && u.source_text == "Hello")
-            .expect("dialogue 'Hello!' unit");
-        let export = PatchExport {
-            patch_export_id: "kaifuu-reallive-translate".to_string(),
+            .map(|unit| kaifuu_core::PatchExportEntry {
+                bridge_unit_id: unit.bridge_unit_id.clone(),
+                source_unit_key: unit.source_unit_key.clone(),
+                source_hash: unit.source_hash.clone(),
+                target_text: if unit.text_surface == "dialogue" {
+                    override_dialogue.to_string()
+                } else {
+                    unit.source_text.clone()
+                },
+                protected_span_mappings: vec![],
+            })
+            .collect();
+        PatchExport {
+            patch_export_id: "kaifuu-reallive-all-units".to_string(),
             source_locale: "ja-JP".to_string(),
             target_locale: "en-US".to_string(),
-            entries: vec![kaifuu_core::PatchExportEntry {
-                bridge_unit_id: dialogue_unit.bridge_unit_id.clone(),
-                source_unit_key: dialogue_unit.source_unit_key.clone(),
-                source_hash: dialogue_unit.source_hash.clone(),
-                target_text: "Bye!!!".to_string(),
-                protected_span_mappings: vec![],
-            }],
-        };
+            entries,
+        }
+    }
+
+    // Decompress the AVG32-compressed bytecode of scene 1 from a patched
+    // SEEN.TXT so a translated sentinel can be asserted on the plaintext
+    // bytecode (the on-disk archive stores the bytecode compressed, so a raw
+    // byte search would split the sentinel across LZSS flag bytes).
+    fn reallive_decompressed_scene_1(archive_bytes: &[u8]) -> Vec<u8> {
+        let index = kaifuu_reallive::parse_archive(archive_bytes).expect("patched archive parses");
+        let entry = index
+            .entries
+            .iter()
+            .find(|e| e.scene_id == 1)
+            .expect("scene 1 present");
+        let blob = &archive_bytes
+            [entry.byte_offset as usize..(entry.byte_offset + u64::from(entry.byte_len)) as usize];
+        let header =
+            kaifuu_reallive::SceneHeader::parse(blob).expect("patched scene header parses");
+        let start = header.bytecode_offset as usize;
+        let end = start + header.bytecode_compressed_size as usize;
+        kaifuu_reallive::decompress_avg32(
+            &blob[start..end],
+            header.bytecode_uncompressed_size as usize,
+        )
+        .expect("patched bytecode decompresses")
+    }
+
+    #[test]
+    fn reallive_adapter_patch_round_trips_length_preserving_translation() {
+        let dir = reallive_174_fixture_dir("kaifuu-174-patch-length-preserving");
+        // Extract via the unified produce_bundle path; the PatchExport is
+        // keyed on extract's deterministic bridgeUnitIds, which patch
+        // re-derives — so the round-trip resolves with no id mismatch.
+        let extract = RealLiveProfileDetectorAdapter
+            .extract(ExtractRequest { game_dir: &dir })
+            .unwrap();
+        // "Hello" (5 Shift-JIS bytes) -> "World" (5 bytes): length-preserving.
+        let export = reallive_all_units_export(&extract, "World");
         let output_dir = temp_dir("kaifuu-174-patch-length-preserving-out");
         let result = RealLiveProfileDetectorAdapter
             .patch(PatchRequest {
@@ -7805,45 +7988,37 @@ mod tests {
             "failures: {:?}",
             result.failures
         );
+        // The patched scene decompresses to bytecode carrying the translated
+        // dialogue body byte-for-byte, and re-extract observes it as the new
+        // dialogue source text — a byte-correct round trip.
         let patched = fs::read(output_dir.join(REALLIVE_SEEN_TXT_PATH)).unwrap();
-        assert!(patched.windows(6).any(|w| w == b"Bye!!!"));
+        let decompressed = reallive_decompressed_scene_1(&patched);
+        assert!(
+            decompressed.windows(5).any(|w| w == b"World"),
+            "translated dialogue body 'World' missing from patched bytecode"
+        );
+        assert!(
+            !decompressed.windows(5).any(|w| w == b"Hello"),
+            "source dialogue body 'Hello' still present after length-preserving patch"
+        );
         let _ = fs::remove_dir_all(dir);
         let _ = fs::remove_dir_all(output_dir);
     }
 
     #[test]
-    #[ignore = "KAIFUU-191 blocker (adapter-path divergence, NOT a fixture defect): same root cause as \
-                reallive_adapter_patch_round_trips_length_preserving_translation — the adapter's `extract` \
-                (raw-bytecode inventory walk, random now_v7 bridgeUnitIds) and `patch` (SceneHeader + \
-                AVG32-decompress + produce_bundle, deterministic bridgeUnitIds) use divergent scene-blob \
-                framings and bridge-unit-id schemes, so a PatchExport keyed on extract's id never matches \
-                a patch-side unit. Un-ignore once extract and patch are unified onto the produce_bundle \
-                path (and this fixture is re-framed as SceneHeader + AVG32-compressed)."]
     fn reallive_adapter_patch_rejects_length_overflow_with_unsupported_layered_transform_semantic_error()
      {
         let dir = reallive_174_fixture_dir("kaifuu-174-patch-overflow");
         let extract = RealLiveProfileDetectorAdapter
             .extract(ExtractRequest { game_dir: &dir })
             .unwrap();
-        let dialogue_unit = extract
-            .bridge
-            .units
-            .iter()
-            .find(|u| u.text_surface == "dialogue" && u.source_text == "Hello")
-            .expect("dialogue 'Hello!' unit");
-        let export = PatchExport {
-            patch_export_id: "kaifuu-reallive-overflow".to_string(),
-            source_locale: "ja-JP".to_string(),
-            target_locale: "en-US".to_string(),
-            entries: vec![kaifuu_core::PatchExportEntry {
-                bridge_unit_id: dialogue_unit.bridge_unit_id.clone(),
-                source_unit_key: dialogue_unit.source_unit_key.clone(),
-                source_hash: dialogue_unit.source_hash.clone(),
-                // Too long (10 bytes vs 6 budgeted).
-                target_text: "ByeByeBye!".to_string(),
-                protected_span_mappings: vec![],
-            }],
-        };
+        // "Hello" (5 bytes) -> "Greetings!" (10 bytes): LENGTH-CHANGING. The
+        // KAIFUU-174 adapter slice declares a length-preserving patch
+        // contract, so this is rejected with the typed
+        // kaifuu.reallive.patchback_offset_overflow support boundary (even
+        // though the lower-level bundle_driven engine supports length
+        // changes — the adapter does not expose that path at this slice).
+        let export = reallive_all_units_export(&extract, "Greetings!");
         let output_dir = temp_dir("kaifuu-174-patch-overflow-out");
         let result = RealLiveProfileDetectorAdapter
             .patch(PatchRequest {
