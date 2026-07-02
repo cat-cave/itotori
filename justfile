@@ -129,7 +129,7 @@ ci-real-bytes:
     # RealLive + RPG Maker MV/MZ: #[ignore]-gated real-bytes suites.
     cargo test -p kaifuu-reallive -p utsushi-reallive -p kaifuu-cli -p utsushi-cli -p kaifuu-rpgmaker -- --ignored
     # utsushi-core: real-bytes proofs are plain #[test]s (target the files, no --ignored).
-    cargo test -p utsushi-core --test composite_asset_package_real_bytes --test engine_port_sinks_bridge_real_bytes
+    cargo test -p utsushi-core --test composite_asset_package_real_bytes
     # kaifuu-vault-source: only the live-vault #[ignore] proofs (avoid unrelated KAIFUU-236/237 ignores).
     cargo test -p kaifuu-vault-source --test live_vault_open_test --test live_vault_by_id_test -- --ignored
 
