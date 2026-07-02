@@ -5,6 +5,7 @@ mod common;
 use kaifuu_vault_source::{ClaimQuery, LocalCorpusSource, ScratchConfig, VaultConfig, VaultSource};
 
 fn open_source(v: &common::SyntheticVault) -> VaultSource {
+    common::isolate_ambient_vault_env();
     VaultSource::open(
         &VaultConfig {
             vault_root_override: Some(v.vault_root.clone()),
