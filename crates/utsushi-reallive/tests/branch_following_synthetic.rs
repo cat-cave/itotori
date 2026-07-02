@@ -315,3 +315,92 @@ fn cross_scene_farcall_to_missing_scene_is_typed_scene_not_found() {
     assert_eq!(report.scene_not_found, Some(999));
     assert!(!report.terminus.is_natural());
 }
+
+#[test]
+fn event_gated_self_loop_is_broken_by_deterministic_event_model() {
+    // A bare `goto(0)` self-loop is an event-gated spin a headless walk
+    // cannot otherwise exit. The deterministic event-flag model PROVES the
+    // spin (the `(scene, pc, stack, memory)` fingerprint repeats) and
+    // models the awaited event as fired, suppressing the loop-closing
+    // transfer to a fall-through — so the scene runs off its end to a
+    // NATURAL terminus instead of BudgetExhausting.
+    let scene = Scene::new(1, vec![jmp_targeted(0, 0, vec![0])]).expect("scene1");
+    let mut store = InMemorySceneStore::new();
+    store.insert(scene);
+    let engine = ReplayEngine::from_store(store, HashSet::new());
+    let opts = ReplayOpts {
+        step_budget: 10_000,
+        stop_at_first_pause: false,
+    };
+    let report = engine.branch_following_report(1, &opts, HeadlessChoicePolicy::AlwaysFirst);
+    assert_eq!(report.terminus, BranchTerminus::EndOfScene);
+    assert!(report.terminus.is_natural());
+    assert!(
+        report.modeled_events >= 1,
+        "the event-flag model must have fired at least once: {report:?}",
+    );
+    // Determinism: fingerprint-driven, no clock/RNG.
+    let again = engine.branch_following_report(1, &opts, HeadlessChoicePolicy::AlwaysFirst);
+    assert_eq!(report, again);
+}
+
+#[test]
+fn nested_event_gated_spin_unwinds_to_caller_via_depth_scoped_break() {
+    // A spin INSIDE a far-called scene: the model must unwind the stuck
+    // frame (suppress its transfers until it `rtl`s) and RESUME normal
+    // branch-following in the caller, which then reaches EndOfScene.
+    //   scene1: @0 farcall(2) → scene2 ; @16 goto(28) → EndOfScene
+    //   scene2: @0 goto(0) self-loop ; @12 rtl → return to scene1 @16
+    let scene1 = Scene::new(
+        1,
+        vec![jmp_scene_arg(0, 12, 2), jmp_targeted(16, 0, vec![28])],
+    )
+    .expect("scene1");
+    let scene2 =
+        Scene::new(2, vec![jmp_targeted(0, 0, vec![0]), jmp_bare(12, 13)]).expect("scene2");
+    let mut store = InMemorySceneStore::new();
+    store.insert(scene1);
+    store.insert(scene2);
+    let engine = ReplayEngine::from_store(store, HashSet::new());
+    let opts = ReplayOpts {
+        step_budget: 10_000,
+        stop_at_first_pause: false,
+    };
+    let report = engine.branch_following_report(1, &opts, HeadlessChoicePolicy::AlwaysFirst);
+    assert_eq!(report.terminus, BranchTerminus::EndOfScene);
+    assert!(report.modeled_events >= 1);
+    // The far-call was followed into scene 2 and its `rtl` returned.
+    assert!(report.scenes_visited.contains(&2));
+    assert_eq!(report.transfers.far_calls, 1);
+    assert_eq!(report.transfers.returns_from_call, 1);
+}
+
+#[test]
+fn null_scene_sentinel_farcall_falls_through_deterministically() {
+    // A `farcall(0)` targets the null-scene sentinel — the game's guarded
+    // "nothing to call" path. It must fall through (no transfer, no
+    // SceneNotFound), letting the scene run to its natural end. This is the
+    // "absent-but-guarded" case, DISTINCT from the event-model spin break:
+    // no fingerprint spin is involved (modeled_events stays 0).
+    //   scene1: @0 farcall(0) → fall through ; @16 goto(28) → EndOfScene
+    let scene = Scene::new(
+        1,
+        vec![jmp_scene_arg(0, 12, 0), jmp_targeted(16, 0, vec![28])],
+    )
+    .expect("scene1");
+    let mut store = InMemorySceneStore::new();
+    store.insert(scene);
+    let engine = ReplayEngine::from_store(store, HashSet::new());
+    let opts = ReplayOpts {
+        step_budget: 100,
+        stop_at_first_pause: false,
+    };
+    let report = engine.branch_following_report(1, &opts, HeadlessChoicePolicy::AlwaysFirst);
+    assert_eq!(report.terminus, BranchTerminus::EndOfScene);
+    assert_eq!(report.scene_not_found, None);
+    // The sentinel farcall was NOT counted as a transfer and did NOT invoke
+    // the spin-break model.
+    assert_eq!(report.transfers.far_calls, 0);
+    assert_eq!(report.modeled_events, 0);
+    assert_eq!(report.scenes_visited.len(), 1);
+}

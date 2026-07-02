@@ -74,6 +74,22 @@ pub fn corpora() -> Vec<RealCorpus> {
     [corpus_1(), corpus_2()].into_iter().flatten().collect()
 }
 
+impl RealCorpus {
+    /// The game's configured ENTRY scene, read from `#SEEN_START` in the
+    /// `Gameexe.ini` that sits beside the SEEN archive (Sweetie HD: scene
+    /// 1; Kanon: scene 9030). This is the scene the engine begins the
+    /// game at — the target of the entry-scene-to-terminus acceptance.
+    /// Returns `None` if the Gameexe cannot be located / parsed or does
+    /// not declare `#SEEN_START`.
+    pub fn entry_scene(&self) -> Option<u16> {
+        let dir = self.seen_txt.parent()?;
+        let gameexe = find_child_ci(dir, "Gameexe.ini")?;
+        let bytes = fs::read(gameexe).ok()?;
+        let gx = utsushi_reallive::Gameexe::parse(&bytes).ok()?;
+        u16::try_from(gx.get_int("SEEN_START")?).ok()
+    }
+}
+
 fn corpus_for_env(label: &'static str, env_name: &str) -> Option<RealCorpus> {
     let root = PathBuf::from(env::var_os(env_name)?);
     let resolved = resolve_corpus_root(&root)?;

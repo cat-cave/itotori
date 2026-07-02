@@ -14,10 +14,10 @@
 //! subroutine (entered by a parent via `farcall`), by executing its
 //! top-level `ret` / `rtl` ([`BranchTerminus::ReturnedToCaller`] when driven
 //! STANDALONE with an empty call stack). Both are natural termini: the scene
-//! ran its real control flow to completion. On the proven corpora, no scene
-//! reaches `EndOfScene` (opening scenes `farcall` into subsystems and every
-//! scene is entered as a subroutine), so the natural terminus of a
-//! standalone drive is `ReturnedToCaller`.
+//! ran its real control flow to completion. A standalone-driven subroutine
+//! scene typically reaches `ReturnedToCaller`; an ENTRY scene driven with the
+//! deterministic event-flag model (see `headless_entry_scene_*` below) runs
+//! its full opening and reaches `EndOfScene`.
 //!
 //! # Acceptance asserted
 //!  1. A deterministic headless input-provider advances past waits + selects
@@ -51,9 +51,11 @@ use utsushi_reallive::{
     ReplayOutcome, build_scene_store_from_decompressed, decompress_all_scenes,
 };
 
-/// Step budget for a per-scene branch-following drive. Sized so a clean
-/// natural-terminus scene completes and an event-gated spin loop is bounded
-/// (classified BudgetExhausted and excluded).
+/// Step budget for a per-scene branch-following drive. Sized so an entry
+/// scene runs its full opening (the event-flag model breaks its wait loops)
+/// and reaches a natural terminus; a scene that still cannot progress is
+/// bounded (a typed `EventGatedSpin` diagnostic, or `BudgetExhausted` for a
+/// genuinely long scenario chain that exceeds the scan budget).
 const SCAN_BUDGET: u32 = 200_000;
 
 /// Stage a [`ReplayEngine`] from a Seen.txt envelope, interposing the
@@ -278,6 +280,118 @@ fn headless_branch_following_drives_both_titles_to_natural_terminus() {
         assert!(
             report.transfers.total() > 0,
             "[{}] branch-following must execute transfers the linear walk does not",
+            corpus.label,
+        );
+    }
+}
+
+/// ENTRY-SCENE acceptance (`reallive-utsushi-headless-event-flag-modeling`).
+///
+/// This is the piece the branch-execution node could not reach: driving the
+/// game's CONFIGURED ENTRY scene (`#SEEN_START` — Sweetie HD scene 1, Kanon
+/// scene 9030) all the way to a NATURAL terminus. The entry scene opens the
+/// game and busy-`goto`s on event flags a headless walk never sets (title /
+/// animation / message wait loops); the deterministic event-flag model
+/// PROVES each spin (a repeated `(scene, pc, stack, memory)` fingerprint) and
+/// models the awaited events as fired, unwinding the stuck frame so the scene
+/// runs its real control flow to a natural end.
+///
+/// Asserted, for BOTH titles:
+///  - the entry scene reaches a NATURAL terminus (`EndOfScene` / top-level
+///    `ReturnedToCaller`) — NOT `BudgetExhausted`, NOT `EventGatedSpin`, NOT a
+///    spurious `SceneNotFound` / `EntrypointNotFound` on the sentinel targets;
+///  - the event-flag model actually fired (`modeled_events > 0`) — the entry
+///    scene genuinely spun and was progressed past;
+///  - real control flow executed (transfers > 0) across >1 scene;
+///  - the drive is byte-deterministic (two runs → identical report).
+#[test]
+#[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT + _2"]
+fn headless_entry_scene_drives_to_natural_terminus() {
+    let corpora = corpora_or_skip("headless_entry_scene_drives_to_natural_terminus");
+    if corpora.is_empty() {
+        return;
+    }
+    let opts = scan_opts();
+    for corpus in &corpora {
+        let entry = corpus.entry_scene().unwrap_or_else(|| {
+            panic!(
+                "[{}] could not resolve #SEEN_START entry scene from Gameexe.ini",
+                corpus.label
+            )
+        });
+        let bytes = fs::read(&corpus.seen_txt).expect("read seen.txt");
+        let engine = staged_engine(&bytes);
+
+        let report =
+            engine.branch_following_report(entry, &opts, HeadlessChoicePolicy::AlwaysFirst);
+        eprintln!(
+            "[{}] ENTRY scene {entry}: terminus={:?} steps={} transfers={} \
+             scenes_visited={} modeled_events={} text={}",
+            corpus.label,
+            report.terminus,
+            report.steps,
+            report.transfers.total(),
+            report.scenes_visited.len(),
+            report.modeled_events,
+            report.text_lines,
+        );
+
+        // (1) Natural terminus — the entry scene ran its real control flow
+        // to a natural end, NOT a budget spin / event-gated dead spin / a
+        // spurious cross-scene gap.
+        assert!(
+            report.terminus.is_natural(),
+            "[{}] entry scene {entry} must reach a NATURAL terminus \
+             (EndOfScene / ReturnedToCaller); got {:?}",
+            corpus.label,
+            report.terminus,
+        );
+        assert!(
+            !matches!(report.terminus, BranchTerminus::BudgetExhausted),
+            "[{}] entry scene {entry} must not BudgetExhaust",
+            corpus.label,
+        );
+        assert_eq!(
+            report.scene_not_found, None,
+            "[{}] entry scene {entry} must not hit a spurious SceneNotFound",
+            corpus.label,
+        );
+
+        // (2) The deterministic event-flag model fired: the entry scene
+        // genuinely spun on an event-gated loop and was progressed past it.
+        assert!(
+            report.modeled_events > 0,
+            "[{}] entry scene {entry} must exercise the event-flag model \
+             (a real event-gated spin was broken); modeled_events={}",
+            corpus.label,
+            report.modeled_events,
+        );
+
+        // (3) Real control flow executed across the multi-scene store.
+        assert!(
+            report.transfers.total() > 0,
+            "[{}] entry scene {entry} must EXECUTE real control transfers",
+            corpus.label,
+        );
+        assert!(
+            report.scenes_visited.len() > 1,
+            "[{}] entry scene {entry} must FOLLOW control flow across >1 scene; visited {:?}",
+            corpus.label,
+            report.scenes_visited,
+        );
+        assert!(
+            report.unknown_opcode_keys.is_empty(),
+            "[{}] entry scene {entry} executed path must be ZERO unknown; got {:?}",
+            corpus.label,
+            report.unknown_opcode_keys,
+        );
+
+        // (4) Byte-deterministic (fingerprint-driven event model, no
+        // clock/RNG): two runs produce an identical report.
+        let again = engine.branch_following_report(entry, &opts, HeadlessChoicePolicy::AlwaysFirst);
+        assert_eq!(
+            report, again,
+            "[{}] two branch-following runs of entry scene {entry} must be byte-identical",
             corpus.label,
         );
     }

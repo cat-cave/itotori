@@ -624,6 +624,21 @@ pub struct Vm {
     /// it is only meaningful mid-step and defaults to `0` at every tick
     /// boundary.
     post_pc: u32,
+    /// One-shot deterministic spin-break request. When `true`, the NEXT
+    /// executed control-transfer command (goto / goto_if / goto_on /
+    /// gosub / farcall — anything whose [`DispatchOutcome`] would move the
+    /// pc off the natural fall-through) is FORCED to fall through to its
+    /// post-command pc instead, and the flag is cleared. Set by the
+    /// branch-following driver's provable-spin detector to MODEL the
+    /// deterministic event the loop was polling for having fired (so the
+    /// poll takes its exit edge). Never part of a snapshot — it is a
+    /// transient driver control, `false` at every tick boundary.
+    suppress_next_transfer: bool,
+    /// Set to `true` by [`Vm::dispatch_element`] iff the most recent step
+    /// actually consumed a [`Self::suppress_next_transfer`] request (i.e.
+    /// a real control transfer was rewritten to a fall-through). Lets the
+    /// driver confirm the modeled event landed on a genuine transfer.
+    last_transfer_suppressed: bool,
 }
 
 impl Vm {
@@ -639,7 +654,60 @@ impl Vm {
             halted: false,
             warnings: Vec::new(),
             post_pc: 0,
+            suppress_next_transfer: false,
+            last_transfer_suppressed: false,
         }
+    }
+
+    /// Fold the FULL deterministic control state — active `(scene, pc)`,
+    /// the call-stack shape (each frame's return scene / pc / kind), and
+    /// the complete mutable memory ([`VarBanks::fingerprint`]) — into a
+    /// 64-bit fingerprint.
+    ///
+    /// Two VMs sharing a `control_fingerprint` will, under the same store
+    /// / registry / (deterministic) scheduler, execute an IDENTICAL next
+    /// step: stepping is a pure function of exactly this state. The
+    /// branch-following driver uses the fingerprint to PROVE a spin — a
+    /// walk that returns to an already-seen fingerprint is in a
+    /// deterministic infinite loop (no clock / RNG can perturb it), which
+    /// is the trigger for the driver's event-flag model.
+    pub fn control_fingerprint(&self) -> u64 {
+        const FNV_OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
+        const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
+        let mut hash = FNV_OFFSET;
+        let mut fold = |bytes: &[u8]| {
+            for byte in bytes {
+                hash ^= u64::from(*byte);
+                hash = hash.wrapping_mul(FNV_PRIME);
+            }
+        };
+        fold(&self.scene.to_le_bytes());
+        fold(&self.pc.to_le_bytes());
+        fold(&(self.stack.len() as u64).to_le_bytes());
+        for frame in &self.stack {
+            fold(&frame.return_scene.unwrap_or(u16::MAX).to_le_bytes());
+            fold(&frame.return_pc.to_le_bytes());
+            fold(&[frame.frame_kind as u8]);
+        }
+        fold(&[u8::from(self.halted)]);
+        // Combine with the memory fingerprint (already an FNV fold).
+        fold(&self.banks.fingerprint().to_le_bytes());
+        hash
+    }
+
+    /// Request that the NEXT executed control-transfer command fall
+    /// through to its post-command pc instead of transferring. See
+    /// [`Self::suppress_next_transfer`]. One-shot: cleared as soon as a
+    /// transfer consumes it (or the flag is explicitly reset).
+    pub fn request_suppress_next_transfer(&mut self) {
+        self.suppress_next_transfer = true;
+    }
+
+    /// Whether the most recent [`Vm::step`] rewrote a real control
+    /// transfer into a fall-through because a
+    /// [`Self::request_suppress_next_transfer`] was pending.
+    pub fn last_transfer_suppressed(&self) -> bool {
+        self.last_transfer_suppressed
     }
 
     /// Byte offset immediately past the command currently being
@@ -779,6 +847,10 @@ impl Vm {
         if self.halted {
             return Ok(StepOutcome::Halted);
         }
+        // Reset the per-step "did we suppress a transfer" flag; the
+        // Command-dispatch path sets it back to `true` iff this step
+        // rewrites a control transfer into a fall-through.
+        self.last_transfer_suppressed = false;
         // Longop queue: poll the head before fetching the next
         // element. A `Pending` reading suspends the VM; a `Ready`
         // reading pops the head and lets the next step resume the
@@ -992,6 +1064,25 @@ impl Vm {
                     self.post_pc = post_pc;
                     let outcome = op.dispatch(self, &args);
                     self.post_pc = 0;
+                    // Deterministic spin-break / event model: if the
+                    // branch-following driver armed a one-shot suppression
+                    // (it PROVED the walk is re-entering an identical
+                    // `(scene, pc, stack, memory)` state — a deterministic
+                    // infinite loop) and THIS command is a pc-moving
+                    // control transfer (a backward `goto` closing the poll
+                    // loop, or a computed `farcall`/`gosub` into an event
+                    // subsystem), rewrite it to a fall-through. This models
+                    // the polled event having fired: the poll takes its
+                    // exit edge instead of looping. `ret` / `rtl` unwinds
+                    // are never rewritten (that would corrupt the stack).
+                    let outcome =
+                        if self.suppress_next_transfer && outcome_is_pc_moving_transfer(&outcome) {
+                            self.suppress_next_transfer = false;
+                            self.last_transfer_suppressed = true;
+                            DispatchOutcome::Advance
+                        } else {
+                            outcome
+                        };
                     // Cross-scene outcomes address a target by
                     // `(scene, entrypoint)`; resolve the entrypoint to a
                     // concrete pc against the store (which the op layer
@@ -1195,12 +1286,51 @@ impl Vm {
     /// does not declare surfaces [`VmError::EntrypointNotFound`]. Neither
     /// is masked with a fail-soft advance — a cross-scene gap is a real
     /// gap.
+    ///
+    /// # System-return sentinels
+    ///
+    /// Two cross-scene targets are RealLive control-flow SENTINELS rather
+    /// than real content scenes, and resolve to a deterministic
+    /// FALL-THROUGH (`Advance` to `post_pc`) instead of a transfer or a
+    /// spurious `SceneNotFound` / `EntrypointNotFound`:
+    ///
+    /// - **The null scene (`scene 0`)** — RealLive scene ids are 1-based,
+    ///   so scene `0` is the "no scene" sentinel. A `farcall(0, …)` /
+    ///   `jump(0)` is the game's own guarded "nothing to call" path (Kanon
+    ///   emits `farcall(0, 10)`); the engine takes no transfer. This is
+    ///   the "absent-but-guarded" case: the guard is intrinsic (the target
+    ///   is null), so the path is not taken at runtime.
+    /// - **The scenario-return entrypoint (`entrypoint 99`)** — entrypoint
+    ///   `99` is the last slot of the 100-slot entrypoint lattice and is
+    ///   reserved as the "return to title / scenario complete" marker. A
+    ///   present system scene (Sweetie's SEEN9999, which declares real
+    ///   entrypoints `0..=15`) is entered at `99` only as this end idiom;
+    ///   the headless model treats it as a fall-through so the scene runs
+    ///   its real control flow to a natural terminus.
+    ///
+    /// Any OTHER absent scene (a real content scene missing from the
+    /// store) or out-of-range entrypoint is a GENUINE gap and still
+    /// surfaces the typed `SceneNotFound` / `EntrypointNotFound`.
     fn resolve_scene_outcome(
         &self,
         scenes: &dyn SceneStore,
         outcome: &DispatchOutcome,
         post_pc: u32,
     ) -> Result<DispatchOutcome, VmError> {
+        // System-return sentinels short-circuit to a fall-through before
+        // any store lookup — the transfer is not taken at runtime.
+        if let DispatchOutcome::JumpToScene {
+            target_scene,
+            entrypoint,
+        }
+        | DispatchOutcome::FarCallToScene {
+            target_scene,
+            entrypoint,
+        } = outcome
+            && is_system_return_sentinel(*target_scene, *entrypoint)
+        {
+            return Ok(DispatchOutcome::Advance);
+        }
         match outcome {
             DispatchOutcome::JumpToScene {
                 target_scene,
@@ -1384,6 +1514,46 @@ impl Vm {
     pub fn enqueue_longop(&mut self, longop: LongOp) {
         self.longop_queue.push_back(longop);
     }
+}
+
+/// The null-scene sentinel: RealLive scene ids are 1-based, so scene `0`
+/// is "no scene". A cross-scene transfer to it is the game's own guarded
+/// "nothing to call" path and takes no transfer at runtime.
+pub const NULL_SCENE_SENTINEL: SceneId = 0;
+
+/// The scenario-return entrypoint sentinel: entrypoint `99` is the last
+/// slot of the 100-slot entrypoint lattice, reserved as the "return to
+/// title / scenario complete" marker. A cross-scene transfer THROUGH it
+/// is the end-of-scenario idiom, not a real entrypoint call.
+pub const SCENARIO_RETURN_ENTRYPOINT: u16 = 99;
+
+/// Whether a cross-scene `(target_scene, entrypoint)` is a RealLive
+/// system-return SENTINEL (the null scene, or the scenario-return
+/// entrypoint) rather than a real content target. Sentinels resolve to a
+/// deterministic fall-through in [`Vm::resolve_scene_outcome`]; every
+/// other absent scene / out-of-range entrypoint remains a typed gap.
+fn is_system_return_sentinel(target_scene: SceneId, entrypoint: u16) -> bool {
+    target_scene == NULL_SCENE_SENTINEL || entrypoint == SCENARIO_RETURN_ENTRYPOINT
+}
+
+/// Whether a [`DispatchOutcome`] moves the pc OFF the natural
+/// fall-through by transferring control (an intra- or cross-scene jump,
+/// a `gosub`, or a `farcall`) — the outcomes the deterministic
+/// spin-break model may rewrite to a fall-through.
+///
+/// Stack-UNWINDING outcomes (`Return` / `ReturnFromCall`) are excluded:
+/// rewriting a `ret` into a fall-through would leave an orphaned frame
+/// on the stack and desynchronise the call depth. `Advance` / `Yield` /
+/// `Halt` are not transfers.
+fn outcome_is_pc_moving_transfer(outcome: &DispatchOutcome) -> bool {
+    matches!(
+        outcome,
+        DispatchOutcome::Jump { .. }
+            | DispatchOutcome::Subroutine { .. }
+            | DispatchOutcome::FarCall { .. }
+            | DispatchOutcome::JumpToScene { .. }
+            | DispatchOutcome::FarCallToScene { .. }
+    )
 }
 
 /// Internal wrapper around an `EvaluationError` so the dispatch path
@@ -1785,6 +1955,82 @@ mod tests {
         assert_eq!(scene.entrypoint_pc(0), Some(0));
         // An undeclared entrypoint is None (VM surfaces EntrypointNotFound).
         assert_eq!(scene.entrypoint_pc(9), None);
+    }
+
+    #[test]
+    fn cross_scene_sentinels_fall_through_but_real_gaps_surface() {
+        // Scene 7 present: a `goto` (12 bytes) then a MetaEntrypoint `!5`
+        // marker at offset 12 — so entrypoints 0 (start) and 5 resolve.
+        let mut store = InMemorySceneStore::new();
+        let mut bytes = goto_command(12);
+        bytes.extend_from_slice(&[0x21, 0x05, 0x00]);
+        store.insert(build_scene(7, &bytes));
+        let vm = Vm::new(7, 0);
+
+        // Null-scene sentinel (scene 0): a farcall / jump to it is the
+        // game's guarded "nothing to call" path — resolves to a
+        // fall-through Advance, NOT a transfer, NOT a SceneNotFound.
+        for outcome in [
+            DispatchOutcome::FarCallToScene {
+                target_scene: NULL_SCENE_SENTINEL,
+                entrypoint: 10,
+            },
+            DispatchOutcome::JumpToScene {
+                target_scene: NULL_SCENE_SENTINEL,
+                entrypoint: 0,
+            },
+        ] {
+            assert_eq!(
+                vm.resolve_scene_outcome(&store, &outcome, 99).unwrap(),
+                DispatchOutcome::Advance,
+            );
+        }
+
+        // Scenario-return entrypoint 99 of a PRESENT scene: the end idiom —
+        // falls through rather than surfacing EntrypointNotFound.
+        assert_eq!(
+            vm.resolve_scene_outcome(
+                &store,
+                &DispatchOutcome::FarCallToScene {
+                    target_scene: 7,
+                    entrypoint: SCENARIO_RETURN_ENTRYPOINT,
+                },
+                99,
+            )
+            .unwrap(),
+            DispatchOutcome::Advance,
+        );
+
+        // A genuinely-taken transfer to an ABSENT (non-sentinel) scene
+        // STILL surfaces a typed SceneNotFound — real gaps are not masked.
+        assert!(matches!(
+            vm.resolve_scene_outcome(
+                &store,
+                &DispatchOutcome::FarCallToScene {
+                    target_scene: 5,
+                    entrypoint: 0,
+                },
+                99,
+            ),
+            Err(VmError::SceneNotFound { scene: 5 }),
+        ));
+
+        // A present scene with a MISSING non-sentinel entrypoint STILL
+        // surfaces EntrypointNotFound.
+        assert!(matches!(
+            vm.resolve_scene_outcome(
+                &store,
+                &DispatchOutcome::JumpToScene {
+                    target_scene: 7,
+                    entrypoint: 8,
+                },
+                99,
+            ),
+            Err(VmError::EntrypointNotFound {
+                scene: 7,
+                entrypoint: 8
+            }),
+        ));
     }
 
     #[test]

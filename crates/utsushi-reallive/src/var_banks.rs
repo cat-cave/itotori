@@ -185,6 +185,32 @@ impl BankId {
         }
     }
 
+    /// A stable, distinct byte code per bank, used only to disambiguate
+    /// banks inside [`VarBanks::fingerprint`]. Integer banks reuse their
+    /// pinned bank byte (`0x00..=0x0C`); string banks use their reserved
+    /// codes (`0x0D`, `0x0E`, `0x12`). Not a wire format — purely a
+    /// fingerprint discriminator.
+    pub fn discriminant_byte(self) -> u8 {
+        match self {
+            Self::IntA => 0x00,
+            Self::IntB => 0x01,
+            Self::IntC => 0x02,
+            Self::IntD => 0x03,
+            Self::IntE => 0x04,
+            Self::IntF => 0x05,
+            Self::IntG => 0x06,
+            Self::IntH => 0x07,
+            Self::IntI => 0x08,
+            Self::IntJ => 0x09,
+            Self::IntK => 0x0A,
+            Self::IntL => 0x0B,
+            Self::IntM => BANK_BYTE_INT_M,
+            Self::StrM => BANK_BYTE_STR_M,
+            Self::StrK => BANK_BYTE_STR_K,
+            Self::StrS => BANK_BYTE_STR_S,
+        }
+    }
+
     /// Whether the bank holds integer values.
     pub fn is_int(self) -> bool {
         matches!(
@@ -466,6 +492,49 @@ impl VarBanks {
     /// Total number of set indices across every string bank.
     pub fn str_index_count(&self) -> usize {
         self.str_banks.values().map(BTreeMap::len).sum()
+    }
+
+    /// Fold the FULL mutable memory state (every set integer- and
+    /// string-bank slot, plus the store register) into a 64-bit
+    /// fingerprint. Two `VarBanks` fingerprint equal iff they carry an
+    /// identical set of `(bank, index, value)` entries and the same store
+    /// register — the sparse maps iterate in a deterministic (`BTreeMap`)
+    /// order, so the fold is reproducible with no clock / RNG input.
+    ///
+    /// This is the memory half of the branch-following runtime's
+    /// provable-spin fingerprint (`docs`: event-flag modeling): a headless
+    /// walk that returns to an already-seen `(scene, pc, stack, memory)`
+    /// state is in a deterministic infinite loop, because the next step is
+    /// a pure function of that state.
+    pub fn fingerprint(&self) -> u64 {
+        // FNV-1a 64-bit over the sparse entries. Bank ids fold in as their
+        // stable byte code so two different banks with the same index/value
+        // never collide.
+        const FNV_OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
+        const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
+        let mut hash = FNV_OFFSET;
+        let fold = |bytes: &[u8], hash: &mut u64| {
+            for byte in bytes {
+                *hash ^= u64::from(*byte);
+                *hash = hash.wrapping_mul(FNV_PRIME);
+            }
+        };
+        for (bank, slots) in &self.int_banks {
+            for (idx, value) in slots {
+                fold(&[bank.discriminant_byte()], &mut hash);
+                fold(&idx.to_le_bytes(), &mut hash);
+                fold(&value.to_le_bytes(), &mut hash);
+            }
+        }
+        for (bank, slots) in &self.str_banks {
+            for (idx, bytes) in slots {
+                fold(&[bank.discriminant_byte()], &mut hash);
+                fold(&idx.to_le_bytes(), &mut hash);
+                fold(bytes, &mut hash);
+            }
+        }
+        fold(&self.store.to_le_bytes(), &mut hash);
+        hash
     }
 }
 

@@ -1655,6 +1655,24 @@ pub enum BranchTerminus {
     /// The step budget was exhausted (e.g. an event-gated spin loop a
     /// headless walk cannot break). NOT a natural terminus.
     BudgetExhausted,
+    /// A deterministic infinite loop was PROVEN (the walk re-entered an
+    /// identical `(scene, pc, stack, memory)` fingerprint) AND the
+    /// event-flag model could not break it: even after modelling the
+    /// polled event as fired (taking the loop's exit edge), the walk
+    /// returned to the same provable-spin fingerprint. This is the
+    /// bounded-progress typed diagnostic — a scene that genuinely cannot
+    /// progress under the headless model, naming exactly where it is
+    /// stuck, in place of a silent [`Self::BudgetExhausted`]. NOT a
+    /// natural terminus.
+    EventGatedSpin {
+        /// Scene the walk was stuck spinning in.
+        scene: SceneId,
+        /// pc at the proven-spin fingerprint.
+        pc: u32,
+        /// How many deterministic events the model fired before giving
+        /// up on this scene (each is a suppressed loop-closing transfer).
+        modeled_events: u64,
+    },
     /// Any other typed VM error (carries the stable semantic code).
     OtherFatal(String),
 }
@@ -1699,6 +1717,12 @@ pub struct BranchReplayReport {
     pub pauses_advanced: u64,
     /// Choice prompts the input-provider resolved.
     pub choices_made: u64,
+    /// Deterministic events the spin-break model fired during the walk:
+    /// each is a PROVEN infinite-loop closing transfer that the model
+    /// rewrote to a fall-through (modelling the polled event as having
+    /// occurred). `0` for a scene that reached its terminus with no
+    /// event-gated spin. Reproducible (fingerprint-driven, no clock/RNG).
+    pub modeled_events: u64,
 }
 
 /// Drive `vm` to its natural terminus by FOLLOWING real control flow,
@@ -1712,12 +1736,46 @@ fn drive_branch_following(
     opts: &ReplayOpts,
     scene_id: u16,
 ) -> BranchReplayReport {
+    // Break-mode step cap: a proven-infinite frame that does not unwind
+    // within this many suppressed steps surfaces the bounded-progress
+    // typed diagnostic instead of a silent budget spin.
+    const BREAK_MODE_STEP_CAP: u64 = 1_000_000;
+
     let mut steps: u32 = 0;
     let mut transfers = ControlTransferCounts::default();
     let mut scenes_visited: std::collections::BTreeSet<SceneId> = std::collections::BTreeSet::new();
     scenes_visited.insert(scene_id);
     let mut unknown: Vec<(u8, u8, u16)> = Vec::new();
     let mut text_lines: usize = 0;
+
+    // --- Deterministic event-flag modeling (provable-spin break) ---
+    //
+    // A headless walk has no player / windowing event source, so a scene
+    // that busy-polls an event flag the event system would set spins
+    // forever (`goto`-loop on a memory cell that never changes). We PROVE
+    // such a spin deterministically: at every control-transfer boundary we
+    // fold the FULL machine state — `(scene, pc, stack, ALL memory)` — into
+    // a fingerprint. Re-entering an already-seen fingerprint is a provable
+    // infinite loop: stepping is a pure function of that state, so the
+    // future is identical forever (no clock/RNG can perturb it — the sys
+    // clock is fixed-seed and every RNG draw lands in memory, which the
+    // fingerprint captures).
+    //
+    // On proving a spin we MODEL the awaited events as having fired by
+    // entering depth-scoped "break mode": every subsequent control
+    // transfer is suppressed to a fall-through until the stuck frame
+    // unwinds (its stack depth drops below the depth at which the spin was
+    // proven), so a gated wait loop takes its exit edge and the scene runs
+    // its remaining control flow to a natural terminus. A break mode that
+    // never unwinds within `BREAK_MODE_STEP_CAP` surfaces the
+    // bounded-progress typed diagnostic [`BranchTerminus::EventGatedSpin`]
+    // instead of a silent budget spin.
+    let mut transfer_states: std::collections::HashSet<u64> = std::collections::HashSet::new();
+    let mut modeled_events: u64 = 0;
+    // `Some(exit_depth)` while modelling a proven-infinite frame; the walk
+    // resumes normal branch-following once the stack unwinds below it.
+    let mut break_mode: Option<usize> = None;
+    let mut break_mode_steps: u64 = 0;
 
     let terminus: BranchTerminus = loop {
         if steps >= opts.step_budget {
@@ -1751,8 +1809,30 @@ fn drive_branch_following(
             }
         };
 
+        // Did this step take a LOOP-CLOSING control transfer? Any cycle in
+        // the control-flow graph must contain a "back edge" — a BACKWARD
+        // intra-scene jump, a CROSS-scene jump, or a `ret` / `rtl` unwind —
+        // so we only fold the (relatively expensive) full-state fingerprint
+        // at those edges. Forward `goto` / `gosub` / `farcall` calls cannot
+        // close a loop and are skipped, keeping the per-step cost off the
+        // hot path of a long linear scene.
+        let suppressed = vm.last_transfer_suppressed();
+        let mut is_loop_closing = suppressed;
+
         match step {
             StepOutcome::Advanced { event } => {
+                if let VmEvent::CommandDispatched { outcome, .. } = &event {
+                    is_loop_closing |= match outcome {
+                        // A cross-scene jump, or an intra-scene jump to the
+                        // SAME or an EARLIER pc (`<=` catches a `goto`-to-self
+                        // spin), is a back edge that can close a loop.
+                        DispatchOutcome::Jump { scene, pc } => {
+                            *scene != scene_before || *pc <= pc_before
+                        }
+                        DispatchOutcome::Return | DispatchOutcome::ReturnFromCall => true,
+                        _ => false,
+                    };
+                }
                 match &event {
                     VmEvent::Textout { raw_bytes }
                         if refs.shift_jis.contains(&(scene_before, pc_before)) =>
@@ -1772,6 +1852,9 @@ fn drive_branch_following(
                         // executed. `outcome` is the RESOLVED outcome
                         // (cross-scene entrypoints already resolved to a
                         // concrete scene/pc), so scene comparison is honest.
+                        // A model-suppressed transfer arrives here as
+                        // `Advance` and is (correctly) NOT counted — it did
+                        // not transfer.
                         match outcome {
                             DispatchOutcome::Jump { scene, pc } => {
                                 if *scene == scene_before {
@@ -1810,6 +1893,50 @@ fn drive_branch_following(
             }
         }
 
+        if suppressed {
+            modeled_events += 1;
+        }
+
+        if let Some(exit_depth) = break_mode {
+            // We are inside a proven-infinite frame, modelling every
+            // pending event as fired: keep suppressing each control
+            // transfer so the walk FALLS THROUGH the wait loop's gating
+            // branches and unwinds. A `ret` / `rtl` is never suppressed
+            // (see `outcome_is_pc_moving_transfer`), so the stack depth
+            // strictly decreases until it drops below the depth at which
+            // the spin was proven — at which point the stuck frame has
+            // returned and normal branch-following resumes. The loop's
+            // `EndOfScene` / empty-stack-`ret` arms above still fire, so a
+            // top-level spin unwinds to a natural terminus.
+            break_mode_steps += 1;
+            if vm.stack().len() < exit_depth {
+                break_mode = None;
+            } else if break_mode_steps > BREAK_MODE_STEP_CAP {
+                // The model fired for far too long without unwinding — a
+                // genuine dead spin. Surface the bounded-progress typed
+                // diagnostic instead of a silent budget spin.
+                break BranchTerminus::EventGatedSpin {
+                    scene: vm.scene(),
+                    pc: vm.pc(),
+                    modeled_events,
+                };
+            } else {
+                vm.request_suppress_next_transfer();
+            }
+        } else if is_loop_closing {
+            // Provable-spin detection: fold the full deterministic state at
+            // each loop-closing edge. A repeated fingerprint proves an
+            // infinite loop (stepping is a pure function of that state), so
+            // enter depth-scoped break mode to model the awaited events as
+            // fired and unwind the stuck frame.
+            let fingerprint = vm.control_fingerprint();
+            if !transfer_states.insert(fingerprint) {
+                break_mode = Some(vm.stack().len());
+                break_mode_steps = 0;
+                vm.request_suppress_next_transfer();
+            }
+        }
+
         steps = steps.saturating_add(1);
     };
 
@@ -1833,6 +1960,7 @@ fn drive_branch_following(
         text_lines,
         pauses_advanced: scheduler.pauses_advanced(),
         choices_made: scheduler.choices_made(),
+        modeled_events,
     }
 }
 
