@@ -57,6 +57,15 @@ const SWEETIE_HD_SCENE_ONE_BYTECODE_UNCOMPRESSED_SIZE: u32 = 1660;
 const ELEMENT_COUNT_MIN: usize = 50;
 const ELEMENT_COUNT_MAX: usize = 300;
 
+/// Exact number of recognised `SelectionOption` markers in the Sweetie
+/// HD scene #0001 element stream. The real bytes carry 8 markers
+/// (`0x30`×6, `0x31`×1, `0x34`×1 — see the per-element `eprintln!`
+/// trace), matching the `selection_option: 8` row of the per-variant
+/// histogram. Pinned exactly so a regression that drops a marker (e.g.
+/// a dispatch path collapsing `SelectionOption` into `Textout`) fails
+/// the test instead of passing a `<= element_count` tautology.
+const SWEETIE_HD_SCENE_ONE_SELECTION_MARKER_COUNT: usize = 8;
+
 #[test]
 #[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
 fn scene1_element_stream_partition_and_first_command_header() {
@@ -302,17 +311,20 @@ fn scene1_element_stream_partition_and_first_command_header() {
         "[UTSUSHI-204 real-bytes] Sweetie HD scene #0001 selection-option marker count = \
          {selection_marker_count} (markers in 0x{SELECTION_OPTION_MARKER_MIN:02x}..=0x{SELECTION_OPTION_MARKER_MAX:02x})",
     );
-    // The spec allows EITHER "at least one marker recognised" OR
-    // "the test asserts no selections in this scene". Scene #0001 is
-    // a script-preamble scene; we therefore record whichever the
-    // real bytes produce. The assertion below is the OR-branch: the
-    // count is bounded but not required to be non-zero. The
-    // canary is that the dispatch path exists — i.e. the synthetic
-    // suite proves SelectionOption is recognised distinct from
-    // textout, and this test surfaces the real-bytes count.
-    assert!(
-        selection_marker_count <= element_count,
-        "selection-marker count cannot exceed element count",
+    // STRICT positive assertion: scene #0001 carries exactly 8
+    // recognised SelectionOption markers (all inside the documented
+    // 0x30..=0x34 range). Asserting the exact count — rather than the
+    // `<= element_count` tautology, which passed with ZERO markers
+    // recognised — makes this a real canary: it proves the dispatch
+    // path recognises SelectionOption distinct from Textout on the real
+    // bytes, and it fails if a future change drops or misclassifies a
+    // marker.
+    assert_eq!(
+        selection_marker_count, SWEETIE_HD_SCENE_ONE_SELECTION_MARKER_COUNT,
+        "Sweetie HD scene #0001 must yield exactly {SWEETIE_HD_SCENE_ONE_SELECTION_MARKER_COUNT} \
+         recognised SelectionOption markers (0x{SELECTION_OPTION_MARKER_MIN:02x}..=\
+         0x{SELECTION_OPTION_MARKER_MAX:02x}); got {selection_marker_count} of {element_count} \
+         total elements",
     );
 }
 

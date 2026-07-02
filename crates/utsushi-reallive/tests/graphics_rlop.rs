@@ -138,9 +138,14 @@ fn registry_mounts_alpha_tier_opcode_union() {
 
 #[test]
 fn alpha_tier_opcode_count_at_least_25_per_spec() {
-    // The spec's "~25 opcodes" target is the alpha-tier coverage
-    // frontier. We pin `>= 25` so a future split that drops below
-    // surfaces in the audit trail. The const-block is required by
+    // justification: `>= 25` is a genuine domain bound, not a relaxed
+    // floor. The spec's "~25 opcodes" is the alpha-tier coverage
+    // frontier; this test asserts we clear it. It is NOT masking an
+    // unknown real count — the EXACT shipped count (31) is pinned
+    // separately by `registry_mounts_alpha_tier_opcode_union`
+    // (`grp + obj == 31`, `registry.len() == 31`). This `>= 25`
+    // additionally documents that a future opcode split may not drop
+    // below the spec frontier. The const-block is required by
     // clippy::assertions_on_constants because both inputs are const.
     const _: () = {
         assert!(GRP_RLOP_COUNT + OBJ_RLOP_COUNT >= 25);

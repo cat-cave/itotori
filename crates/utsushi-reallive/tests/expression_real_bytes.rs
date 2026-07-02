@@ -8,11 +8,13 @@
 //!
 //! The single real RealLive corpus currently staged is Sweetie HD; the
 //! test is `#[ignore]`-gated and reads its asset root from
-//! `ITOTORI_REAL_GAME_ROOT`. The acceptance bounds match the
-//! UTSUSHI-205 spec node: ≥17 of 20 (85 %) of the Expression elements
-//! must parse without any [`utsushi_reallive::ExpressionWarning`]; the
-//! remaining ≤3 may emit `UnknownOperator` warnings against the
-//! documented operator table.
+//! `ITOTORI_REAL_GAME_ROOT`. The acceptance bound is STRICT: every one
+//! of the 20 Expression elements must parse without any
+//! [`utsushi_reallive::ExpressionWarning`] (0 `UnknownOperator`) and
+//! with zero hard failures. The Sweetie HD scene #0001 Expression
+//! stream uses only the documented operator table (all 20 are
+//! `\x1E`-shifted assignments over `$`-tokens), so the clean-parse rate
+//! is exactly 20/20 — the earlier 85 % floor masked nothing here.
 //!
 //! Each parsed expression is also evaluated against a zeroed
 //! [`utsushi_reallive::VarBanks`] snapshot so the test surfaces any
@@ -43,9 +45,11 @@ use utsushi_reallive::{
 /// histogram).
 const SCENE_ONE_EXPECTED_EXPRESSION_COUNT: usize = 20;
 
-/// Minimum number of expressions that must parse with no warning
-/// (acceptance criterion from the UTSUSHI-205 task: ≥17 of 20 = 85 %).
-const MIN_CLEAN_PARSE_COUNT: usize = 17;
+/// Number of expressions that must parse with no warning. STRICT: the
+/// entire scene #0001 Expression stream must be clean, so this equals
+/// [`SCENE_ONE_EXPECTED_EXPRESSION_COUNT`]. Kept as a named symbol so
+/// the assertion and the summary `eprintln!` share one source of truth.
+const REQUIRED_CLEAN_PARSE_COUNT: usize = SCENE_ONE_EXPECTED_EXPRESSION_COUNT;
 
 #[test]
 #[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
@@ -217,7 +221,7 @@ fn scene1_expression_elements_parse_and_evaluate() {
     eprintln!(
         "[UTSUSHI-205 real-bytes] clean_parse_count={clean_parse_count} \
          warning_parse_count={warning_parse_count} \
-         hard_failures={} (threshold: clean ≥ {MIN_CLEAN_PARSE_COUNT})",
+         hard_failures={} (STRICT threshold: clean == {REQUIRED_CLEAN_PARSE_COUNT})",
         hard_failures.len(),
     );
 
@@ -230,11 +234,18 @@ fn scene1_expression_elements_parse_and_evaluate() {
         hard_failures.len(),
     );
 
-    // -- Clean-parse rate (acceptance criterion) --
-    assert!(
-        // TODO(strictness-fix-relaxed-floors-to-strict): relaxed clean-parse floor below EXPECTED; tighten to require all clean.
-        clean_parse_count >= MIN_CLEAN_PARSE_COUNT,
-        "at least {MIN_CLEAN_PARSE_COUNT} of {SCENE_ONE_EXPECTED_EXPRESSION_COUNT} \
+    // -- Clean-parse rate (STRICT acceptance criterion) --
+    // Every Expression element on the real bytes must parse with zero
+    // ExpressionWarnings. The Sweetie HD scene #0001 stream uses only
+    // the documented operator table, so the exact rate is 20/20.
+    assert_eq!(
+        warning_parse_count, 0,
+        "STRICT: no Sweetie HD scene #0001 Expression element may emit an ExpressionWarning; \
+         got with_warnings={warning_parse_count} (clean={clean_parse_count})",
+    );
+    assert_eq!(
+        clean_parse_count, REQUIRED_CLEAN_PARSE_COUNT,
+        "STRICT: all {REQUIRED_CLEAN_PARSE_COUNT} of {SCENE_ONE_EXPECTED_EXPRESSION_COUNT} \
          Sweetie HD scene #0001 Expression elements must parse without warnings; got \
          clean={clean_parse_count}, with_warnings={warning_parse_count}",
     );
