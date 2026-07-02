@@ -27,8 +27,10 @@ use utsushi_core::substrate::{
 use utsushi_reallive::{
     GraphicsObject, GraphicsObjectStack, GraphicsPlane, RecordingFrameArtifactSink,
     RedactionPolicy, RenderPass, ReplayEvent, ReplayOpts, SceneEmit, TextLayer, WipeColour,
-    replay_scene, sha256_hex,
+    sha256_hex,
 };
+
+use crate::staged_replay::replay_scene_staged;
 
 /// Only `reallive` is supported (no silent fallback).
 const SUPPORTED_ENGINE: &str = "reallive";
@@ -159,8 +161,11 @@ struct Params<'a> {
 
 fn drive(params: Params<'_>) -> Result<(), Box<dyn Error>> {
     // 1. Replay the (localized) scene and collect the localized text.
+    //    Stage the dev-only `use_xor_2` recovery for xor2 titles so the
+    //    rendered text layer is built from REAL decoded text (not the
+    //    still-ciphered segment's mojibake).
     let opts = ReplayOpts::default();
-    let log = replay_scene(params.seen_path, params.scene_id, &opts)
+    let log = replay_scene_staged(params.seen_path, params.scene_id, &opts)
         .map_err(|err| format!("utsushi.cli.render_validate.driver: {err}"))?;
 
     let mut rendered_lines: Vec<String> = Vec::new();

@@ -8,17 +8,26 @@ repository.workspace = true
 
 [dependencies]
 serde_json.workspace = true
+# utsushi-cli-single-scene-xor2-staging: the top-level binary owns the
+# dev-only `use_xor_2` segment-cipher recovery so the single-scene
+# replay-validate / render-validate surfaces decode REAL text on xor2
+# titles (Sweetie HD, compiler 110002). The architectural boundary keeps
+# `utsushi-reallive` itself free of any `kaifuu-reallive` dependency (see
+# utsushi-reallive/Cargo.toml); the recovery is staged here in the
+# orchestration layer instead, reusing the proven `recover_and_decrypt_archive`.
+kaifuu-reallive = { path = "../kaifuu-reallive" }
 utsushi-core = { path = "../utsushi-core" }
 utsushi-fixture = { path = "../utsushi-fixture" }
 utsushi-reallive = { path = "../utsushi-reallive" }
 utsushi-rpgmaker-mv = { path = "../utsushi-rpgmaker-mv" }
 
 [dev-dependencies]
-# ALPHA-006b real-bytes test: synthesises a localized (English) patched
-# Seen.txt from real Sweetie HD scene 1 via the kaifuu patchback, then
-# drives the render-validate screenshot surface against it.
+# Real-bytes single-scene xor2 replay test: synthesises a localized
+# (English) patched Seen.txt from a real Sweetie HD dialogue scene via the
+# kaifuu patchback, then drives the replay-validate binary against it and
+# asserts the engine's OBSERVED TextLine bodies decode the real translated
+# text (not mojibake).
 encoding_rs.workspace = true
-kaifuu-reallive = { path = "../kaifuu-reallive" }
 
 [lints]
 workspace = true

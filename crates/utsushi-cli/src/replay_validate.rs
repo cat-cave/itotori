@@ -17,7 +17,9 @@ use std::error::Error;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use utsushi_reallive::{ReplayEvent, ReplayLog, ReplayOpts, replay_scene};
+use utsushi_reallive::{ReplayEvent, ReplayLog, ReplayOpts};
+
+use crate::staged_replay::replay_scene_staged;
 
 /// Stable string naming the engine the replay-validate command targets.
 /// Mirrors the `replay` subcommand's constraint — only `reallive` is
@@ -106,7 +108,11 @@ fn drive(
     print_textlines: bool,
 ) -> Result<(), Box<dyn Error>> {
     let opts = ReplayOpts::default();
-    let log = replay_scene(seen_path, scene_id, &opts)
+    // Stage the dev-only `use_xor_2` recovery for xor2 titles (Sweetie HD,
+    // compiler 110002) so the observed TextLine bodies decode REAL text
+    // instead of the still-ciphered segment's mojibake. Non-xor2 titles fall
+    // through to the pure-`utsushi-reallive` decode path unchanged.
+    let log = replay_scene_staged(seen_path, scene_id, &opts)
         .map_err(|err| format!("utsushi.cli.replay_validate.driver: {err}"))?;
 
     if print_textlines {

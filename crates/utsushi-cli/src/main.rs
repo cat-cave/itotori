@@ -2,6 +2,7 @@ mod render_validate;
 mod replay;
 mod replay_validate;
 mod rpgmaker_mv_capture;
+mod staged_replay;
 
 use std::path::PathBuf;
 
