@@ -93,8 +93,26 @@ export function affectedTasks(changedPaths) {
       add(tasks, "alpha-proof");
     } else if (path.startsWith("fixtures/")) {
       addFixtureGates(tasks);
+    } else if (path.startsWith("presets/")) {
+      // presets/*.json are consumed by the ci-itotori localize-project-stage
+      // vitest (e.g. presets/localize-project.pair-policy.json). `just check`
+      // never runs app vitest, so a preset change must select ci-itotori.
+      add(tasks, "ci-itotori");
+    } else if (
+      path.startsWith("suite/scripts/alpha-public-fixture/") ||
+      path.startsWith("suite/scripts/itotori-fixture-iteration/") ||
+      path.startsWith("suite/scripts/itotori-iteration-fixture/")
+    ) {
+      // These suites are EXECUTED by the alpha-proof gate (`vp run
+      // alpha:public-fixture`), not by `just check`, so route them there.
+      add(tasks, "alpha-proof");
     } else if (path.startsWith("suite/scripts/localize-project/")) {
       add(tasks, "localize-project-test");
+    } else if (path.startsWith("packages/spec-dag-dashboard/")) {
+      // spec-dag-dashboard vitest (incl. the db-audit-findings suite that needs
+      // ci Postgres) runs in NO fine-grained lane — only the full `ci` gate's
+      // recursive `vp run -r test`. Route it to the complete gate.
+      add(tasks, "ci");
     } else if (path.startsWith("apps/itotori/") || path.startsWith("packages/itotori-db/")) {
       add(tasks, "ci-itotori");
     } else if (path.startsWith("apps/runtime-web-review/")) {
@@ -263,17 +281,24 @@ export function affectedCiLanes(changedPaths, options = {}) {
   // any code change.
   lanes.add("check");
 
-  // Repo-root fixtures/** bytes are byte-asserted by rust tests (kaifuu + utsushi
-  // read them via repo_fixture_path — e.g. fixtures/kaifuu/kirikiri/plain.xp3, the
-  // encrypted-matrix trees, the hello-game). Those assertions only run under
-  // `cargo test` (fixtures-validate + `cargo check` never execute them), so a
-  // fixture-byte change that diverges from a rust expectation would ship UNCAUGHT.
-  // Route repo-root fixtures to the rust gates + real-bytes. (Package-local
-  // fixtures like apps/itotori/test/fixtures/** classify via apps/itotori ->
-  // ci-itotori and never reach this branch — they are not read by rust.)
+  // Repo-root fixtures/** bytes are byte-asserted by BOTH the rust tests AND the
+  // apps/itotori vitest suite, neither of which runs under `just check`:
+  //   * rust: kaifuu + utsushi read them via repo_fixture_path (e.g.
+  //     fixtures/kaifuu/kirikiri/plain.xp3, the encrypted-matrix trees, the
+  //     hello-game); those assertions run only under `cargo test` (fixtures-
+  //     validate + `cargo check` never execute them).
+  //   * ci-itotori: ~18 apps/itotori/test/*.test.ts files byte-assert repo-root
+  //     fixtures/** via ../../../fixtures/ (cli, ingest-conformance, provider-
+  //     proof, benchmark-harness, ...); those run only under `pnpm --filter
+  //     @itotori/app test` (the ci-itotori lane), NOT under `just check`.
+  // A fixture-byte change diverging from either expectation would ship UNCAUGHT,
+  // so route repo-root fixtures to the rust gates + real-bytes AND ci-itotori.
+  // (Package-local fixtures like apps/itotori/test/fixtures/** classify via
+  // apps/itotori -> ci-itotori and never reach this branch.)
   if (changedPaths.some((rawPath) => rawPath.replaceAll("\\", "/").startsWith("fixtures/"))) {
     lanes.add("ci-kaifuu");
     lanes.add("ci-utsushi");
+    lanes.add("ci-itotori");
   }
 
   // Dependency-graph expansion: a change to a crate family also runs the gates of

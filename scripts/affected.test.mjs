@@ -175,13 +175,18 @@ test("qd-full-ci lanes: a docs-only diff selects no build/real-bytes lane", () =
   assert.deepEqual(affectedCiLanes(["README.md"]), []);
 });
 
-test("qd-full-ci lanes: a repo-root fixtures/ diff selects the rust lanes incl ci-real-bytes", () => {
+test("qd-full-ci lanes: a repo-root fixtures/ diff selects the rust lanes incl ci-real-bytes + ci-itotori", () => {
   const lanes = affectedCiLanes(["fixtures/kaifuu/kirikiri/plain.xp3"]);
-  // Root fixtures are byte-asserted by rust tests (kaifuu + utsushi read repo_fixture_path),
-  // so a fixture-byte change must run the rust test lanes — NOT be skipped.
+  // Root fixtures are byte-asserted by rust tests (kaifuu + utsushi read repo_fixture_path)
+  // AND by ~18 apps/itotori vitest files (via ../../../fixtures/), neither of which runs
+  // under `just check`, so a fixture-byte change must run BOTH sets of test lanes.
   assert.ok(lanes.includes("ci-real-bytes"), "root fixtures change must run the real-bytes lane");
   assert.ok(lanes.includes("ci-kaifuu"), "root fixtures change must run the kaifuu rust lane");
   assert.ok(lanes.includes("ci-utsushi"), "root fixtures change must run the utsushi rust lane");
+  assert.ok(
+    lanes.includes("ci-itotori"),
+    "root fixtures change must run the ci-itotori lane (apps/itotori vitest byte-asserts fixtures/)",
+  );
   assert.ok(
     lanes.includes("fixtures-validate"),
     "root fixtures change still runs fixtures-validate",
@@ -202,6 +207,40 @@ test("qd-full-ci selectLanes: an undeterminable diff falls back to the full ci g
   // conservative: the complete ci gate, never a pruned subset.
   const noGitDir = mkdtempSync(path.join(os.tmpdir(), "affected-nogit-"));
   assert.deepEqual(selectLanes(noGitDir, {}, ["node", "qd-full-ci"]), ["ci"]);
+});
+
+test("affected + lanes: a presets/ diff selects ci-itotori (localize-project-stage vitest reads it)", () => {
+  // presets/localize-project.pair-policy.json is consumed by the ci-itotori
+  // localize-project-stage vitest, which `just check` never runs.
+  assert.deepEqual(affectedTasks(["presets/localize-project.pair-policy.json"]), ["ci-itotori"]);
+  const lanes = affectedCiLanes(["presets/localize-project.pair-policy.json"]);
+  assert.ok(lanes.includes("ci-itotori"), "preset change must run the ci-itotori lane");
+  assert.ok(lanes.includes("check"), "preset change still runs the base check gate");
+  assert.ok(!lanes.includes("ci"), "preset change stays fine-grained, not the full ci sentinel");
+});
+
+test("affected + lanes: the alpha-public-fixture + iteration suites select alpha-proof (the gate that executes them)", () => {
+  for (const p of [
+    "suite/scripts/alpha-public-fixture/run.mjs",
+    "suite/scripts/itotori-fixture-iteration/schema-validate.mjs",
+    "suite/scripts/itotori-iteration-fixture/schema-validate.mjs",
+  ]) {
+    assert.deepEqual(affectedTasks([p]), ["alpha-proof"], `${p} routes to alpha-proof`);
+    const lanes = affectedCiLanes([p]);
+    assert.ok(lanes.includes("alpha-proof"), `${p} lane selection includes alpha-proof`);
+    assert.ok(!lanes.includes("ci"), `${p} stays fine-grained, not the full ci sentinel`);
+  }
+});
+
+test("affected + lanes: a packages/spec-dag-dashboard diff selects the full ci gate", () => {
+  // spec-dag-dashboard vitest (incl. the ci-Postgres db-audit-findings suite)
+  // runs in no fine-grained lane, only the full `ci` gate's recursive test run.
+  assert.deepEqual(affectedTasks(["packages/spec-dag-dashboard/src/generate.ts"]), ["ci"]);
+  assert.deepEqual(affectedCiLanes(["packages/spec-dag-dashboard/src/generate.ts"]), ["ci"]);
+  assert.deepEqual(
+    affectedCiLanes(["packages/spec-dag-dashboard/test/db-audit-findings.test.ts"]),
+    ["ci"],
+  );
 });
 
 test("qd-full-ci lanes: an itotori + utsushi diff runs both gates + real-bytes but not full ci", () => {
