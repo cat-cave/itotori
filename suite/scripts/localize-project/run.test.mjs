@@ -199,9 +199,6 @@ function assertNoPrivateOrAbsolutePaths(value, forbiddenRoots) {
   }
 }
 
-
-
-
 test("--dry-run --project ... exits 0 and prints per-phase commands", () => {
   const result = runDriver(["--dry-run", "--project", "sweetie-hd-alpha-1"]);
   assert.equal(result.status, 0, `stderr: ${result.stderr}`);
