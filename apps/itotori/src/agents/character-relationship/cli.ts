@@ -1,6 +1,6 @@
 import type { AuthorizationActor, ItotoriCharacterRelationshipRepositoryPort } from "@itotori/db";
-import { FakeModelProvider } from "../../providers/fake.js";
 import type { ModelProvider, ProviderFamily } from "../../providers/types.js";
+import { resolveSemanticAgentProvider } from "../../providers/fake.js";
 import {
   generateCharacterRelationships,
   type GenerateCharacterRelationshipsOptions,
@@ -68,22 +68,19 @@ export type CharacterRelationshipCliDependencies = {
 };
 
 /**
- * Construct a default provider for the CLI. Live providers are opt-in via
- * env: `ITOTORI_LIVE_PROVIDER=1` must be set to allow any non-fake family.
- * Mirrors the scene-summary CLI posture (ADR 0002).
+ * Construct the provider for the character-relationship CLI. The `fake`
+ * family is reachable ONLY via the explicit
+ * `ITOTORI_ALLOW_FAKE_SEMANTIC_AGENT=1` test/dev opt-in; every live family
+ * loud-refuses with a typed error until the real per-agent implementation is
+ * built — a real run therefore never feeds fake-derived character context
+ * into real translation prompts.
  */
 export function resolveCharacterRelationshipProvider(family: ProviderFamily): ModelProvider {
-  if (family === "fake") {
-    return new FakeModelProvider({ providerName: "itotori-character-relationship-fake" });
-  }
-  if (process.env.ITOTORI_LIVE_PROVIDER !== "1") {
-    throw new Error(
-      `character-relationship CLI refused to construct provider family '${family}': set ITOTORI_LIVE_PROVIDER=1 to opt in`,
-    );
-  }
-  throw new Error(
-    `character-relationship CLI does not yet support provider family '${family}' in this entry point`,
-  );
+  return resolveSemanticAgentProvider({
+    agentName: "character-relationship",
+    family,
+    fakeProviderName: "itotori-character-relationship-fake",
+  });
 }
 
 export async function runGenerateCharacterRelationshipsCli(

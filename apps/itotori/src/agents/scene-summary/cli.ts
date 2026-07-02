@@ -4,8 +4,8 @@ import type {
   ItotoriTranslationBatchRepositoryPort,
   TranslationBatchRecord,
 } from "@itotori/db";
-import { FakeModelProvider } from "../../providers/fake.js";
 import type { ModelProvider, ProviderFamily } from "../../providers/types.js";
+import { resolveSemanticAgentProvider } from "../../providers/fake.js";
 import type { GlossaryRef } from "../../batch-planner/shapes.js";
 import { generateSceneSummary, type GenerateSceneSummaryOptions } from "./agent.js";
 import { persistSceneSummary } from "./persistence.js";
@@ -63,21 +63,18 @@ export type SceneSummaryCliDependencies = {
 };
 
 /**
- * Construct a default provider for the CLI. Live providers are opt-in via
- * env: `ITOTORI_LIVE_PROVIDER=1` must be set to allow any non-fake family.
+ * Construct the provider for the scene-summary CLI. The `fake` family is
+ * reachable ONLY via the explicit `ITOTORI_ALLOW_FAKE_SEMANTIC_AGENT=1`
+ * test/dev opt-in; every live family loud-refuses with a typed error until
+ * the real per-agent implementation is built — a real run therefore never
+ * feeds fake-derived summaries into real translation context.
  */
 export function resolveSceneSummaryProvider(family: ProviderFamily): ModelProvider {
-  if (family === "fake") {
-    return new FakeModelProvider({ providerName: "itotori-scene-summary-fake" });
-  }
-  if (process.env.ITOTORI_LIVE_PROVIDER !== "1") {
-    throw new Error(
-      `scene-summary CLI refused to construct provider family '${family}': set ITOTORI_LIVE_PROVIDER=1 to opt in`,
-    );
-  }
-  throw new Error(
-    `scene-summary CLI does not yet support provider family '${family}' in this entry point`,
-  );
+  return resolveSemanticAgentProvider({
+    agentName: "scene-summary",
+    family,
+    fakeProviderName: "itotori-scene-summary-fake",
+  });
 }
 
 export async function runGenerateSceneSummariesCli(

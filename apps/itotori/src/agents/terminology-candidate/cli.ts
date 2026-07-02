@@ -1,6 +1,6 @@
 import type { AuthorizationActor, ItotoriTerminologyCandidateRepositoryPort } from "@itotori/db";
-import { FakeModelProvider } from "../../providers/fake.js";
 import type { ModelProvider, ProviderFamily } from "../../providers/types.js";
+import { resolveSemanticAgentProvider } from "../../providers/fake.js";
 import {
   generateTerminologyCandidates,
   type GenerateTerminologyCandidatesOptions,
@@ -62,23 +62,19 @@ export type TerminologyCandidateCliDependencies = {
 };
 
 /**
- * Construct a default provider for the CLI. Live providers are opt-in via
- * env: `ITOTORI_LIVE_PROVIDER=1` must be set to allow any non-fake family.
- * Mirrors the character-relationship and route-choice-map CLI posture
- * (ADR 0002).
+ * Construct the provider for the terminology-candidate CLI. The `fake`
+ * family is reachable ONLY via the explicit
+ * `ITOTORI_ALLOW_FAKE_SEMANTIC_AGENT=1` test/dev opt-in; every live family
+ * loud-refuses with a typed error until the real per-agent implementation is
+ * built — a real run therefore never feeds fake-derived terminology into
+ * real translation context.
  */
 export function resolveTerminologyCandidateProvider(family: ProviderFamily): ModelProvider {
-  if (family === "fake") {
-    return new FakeModelProvider({ providerName: "itotori-terminology-candidate-fake" });
-  }
-  if (process.env.ITOTORI_LIVE_PROVIDER !== "1") {
-    throw new Error(
-      `terminology-candidate CLI refused to construct provider family '${family}': set ITOTORI_LIVE_PROVIDER=1 to opt in`,
-    );
-  }
-  throw new Error(
-    `terminology-candidate CLI does not yet support provider family '${family}' in this entry point`,
-  );
+  return resolveSemanticAgentProvider({
+    agentName: "terminology-candidate",
+    family,
+    fakeProviderName: "itotori-terminology-candidate-fake",
+  });
 }
 
 export async function runGenerateTerminologyCandidatesCli(

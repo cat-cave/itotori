@@ -5,6 +5,7 @@ import type {
   ModelInvocationResult,
   ModelProvider,
   ProviderDescriptor,
+  ProviderFamily,
   ProviderRunRecord,
 } from "./types.js";
 import { createProviderRunId, localOnlyRoutingPosture } from "./types.js";
@@ -159,4 +160,82 @@ function countApproximateTokens(text: string): number {
     return 0;
   }
   return Math.max(1, Math.ceil(normalized.length / 4));
+}
+
+/**
+ * itotori-semantic-agent-clis-no-fake-context-on-real-path — shared
+ * provider-resolution policy for the semantic-agent CLIs (scene-summary,
+ * route-choice-map, character-relationship, terminology-candidate).
+ *
+ * Strict-proof rule: FAKES BELONG ONLY IN TESTS. These CLIs feed their
+ * output into REAL translation-context DB artifacts, so on a real path they
+ * must NEVER silently produce (or fall back to) fake-derived context.
+ *
+ * - The `fake` family is reachable ONLY behind an EXPLICIT test/dev opt-in
+ *   (`ITOTORI_ALLOW_FAKE_SEMANTIC_AGENT=1`); without it the CLI refuses
+ *   LOUDLY with a typed error rather than fabricating context.
+ * - Any live provider family whose real per-agent implementation is not yet
+ *   built refuses LOUDLY with a typed error rather than substituting a fake.
+ */
+
+/** Env opt-in that makes the fake semantic-agent provider reachable. */
+export const ALLOW_FAKE_SEMANTIC_AGENT_ENV = "ITOTORI_ALLOW_FAKE_SEMANTIC_AGENT";
+
+/**
+ * Thrown when a semantic-agent CLI is asked for the `fake` provider family
+ * without the explicit test/dev opt-in. The fake provider is test-only; a
+ * production run must never silently receive one.
+ */
+export class SemanticAgentFakeProviderNotAllowedError extends Error {
+  readonly agentName: string;
+  constructor(agentName: string) {
+    super(
+      `semantic-agent '${agentName}' refused to construct a FakeModelProvider: ` +
+        `the fake provider is test-only and must never feed fake context into real DB artifacts. ` +
+        `Set ${ALLOW_FAKE_SEMANTIC_AGENT_ENV}=1 to opt in for tests/dev, or run with a real provider family.`,
+    );
+    this.name = "SemanticAgentFakeProviderNotAllowedError";
+    this.agentName = agentName;
+  }
+}
+
+/**
+ * Thrown when a semantic-agent CLI is asked for a live provider family whose
+ * real per-agent implementation is not yet built. The CLI refuses loudly
+ * rather than falling back to a fake, so a real run can only produce real
+ * context or a typed error — never fake-derived context.
+ */
+export class SemanticAgentLiveProviderNotImplementedError extends Error {
+  readonly agentName: string;
+  readonly family: ProviderFamily;
+  constructor(agentName: string, family: ProviderFamily) {
+    super(
+      `live semantic-agent '${agentName}' not implemented for provider family '${family}': ` +
+        `this CLI has no real per-agent implementation for that family yet. It refuses rather than ` +
+        `writing fake-derived context to real DB artifacts; build the live implementation first.`,
+    );
+    this.name = "SemanticAgentLiveProviderNotImplementedError";
+    this.agentName = agentName;
+    this.family = family;
+  }
+}
+
+/**
+ * Resolve the model provider for a semantic-agent CLI. The `fake` family is
+ * gated behind an explicit opt-in; every live family loud-refuses until its
+ * real per-agent implementation is wired here.
+ */
+export function resolveSemanticAgentProvider(options: {
+  agentName: string;
+  family: ProviderFamily;
+  fakeProviderName: string;
+}): ModelProvider {
+  const { agentName, family, fakeProviderName } = options;
+  if (family === "fake") {
+    if (process.env[ALLOW_FAKE_SEMANTIC_AGENT_ENV] !== "1") {
+      throw new SemanticAgentFakeProviderNotAllowedError(agentName);
+    }
+    return new FakeModelProvider({ providerName: fakeProviderName });
+  }
+  throw new SemanticAgentLiveProviderNotImplementedError(agentName, family);
 }

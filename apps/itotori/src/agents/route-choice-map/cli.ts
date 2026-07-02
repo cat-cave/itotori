@@ -1,6 +1,6 @@
 import type { AuthorizationActor, ItotoriRouteChoiceMapRepositoryPort } from "@itotori/db";
-import { FakeModelProvider } from "../../providers/fake.js";
 import type { ModelProvider, ProviderFamily } from "../../providers/types.js";
+import { resolveSemanticAgentProvider } from "../../providers/fake.js";
 import { generateRouteChoiceMap, type GenerateRouteChoiceMapOptions } from "./agent.js";
 import { persistRouteChoice, persistRouteMap } from "./persistence.js";
 import { PROMPT_TEMPLATE_VERSION_V1 } from "./prompt-template.js";
@@ -63,22 +63,18 @@ export type RouteChoiceMapCliDependencies = {
 };
 
 /**
- * Construct a default provider for the CLI. Live providers are opt-in via
- * env: `ITOTORI_LIVE_PROVIDER=1` must be set to allow any non-fake family.
- * Mirrors the character-relationship CLI posture (ADR 0002).
+ * Construct the provider for the route-choice-map CLI. The `fake` family is
+ * reachable ONLY via the explicit `ITOTORI_ALLOW_FAKE_SEMANTIC_AGENT=1`
+ * test/dev opt-in; every live family loud-refuses with a typed error until
+ * the real per-agent implementation is built — a real run therefore never
+ * feeds fake-derived route/choice maps into real translation context.
  */
 export function resolveRouteChoiceMapProvider(family: ProviderFamily): ModelProvider {
-  if (family === "fake") {
-    return new FakeModelProvider({ providerName: "itotori-route-choice-map-fake" });
-  }
-  if (process.env.ITOTORI_LIVE_PROVIDER !== "1") {
-    throw new Error(
-      `route-choice-map CLI refused to construct provider family '${family}': set ITOTORI_LIVE_PROVIDER=1 to opt in`,
-    );
-  }
-  throw new Error(
-    `route-choice-map CLI does not yet support provider family '${family}' in this entry point`,
-  );
+  return resolveSemanticAgentProvider({
+    agentName: "route-choice-map",
+    family,
+    fakeProviderName: "itotori-route-choice-map-fake",
+  });
 }
 
 export async function runGenerateRouteMapsCli(
