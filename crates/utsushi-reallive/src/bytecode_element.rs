@@ -179,6 +179,17 @@ pub enum BytecodeElement {
         /// Empty for every non-goto command. `goto`/`gosub` carry one;
         /// `goto_on`/`goto_case` carry `arg_count`.
         goto_targets: Vec<u32>,
+        /// Per-case match EXPRESSIONS for a `goto_case` / `gosub_case`
+        /// command, in case order — one entry per `goto_targets` entry.
+        /// Each is the raw expression bytes inside that case's `(…)`
+        /// (i.e. between the `(` and its matching `)`); the default case
+        /// is the empty `()` and is recorded as an empty `Vec`. Empty for
+        /// every command that is not `goto_case` / `gosub_case`. The VM
+        /// evaluates these against the discriminant to reproduce the exact
+        /// `value == case_i` selection instead of the discriminant-as-index
+        /// approximation.
+        #[serde(default)]
+        goto_case_exprs: Vec<Vec<u8>>,
         /// The full element bytes, including the 8-byte header, any
         /// `(`-delimited argument list, and any trailing goto pointers.
         /// Owned so callers can re-slice without re-walking the source.
@@ -523,6 +534,7 @@ fn decode_command(bytes: &[u8], pos: usize) -> Result<BytecodeElement, BytecodeD
 
     let mut cursor = header_end;
     let mut goto_targets: Vec<u32> = Vec::new();
+    let mut goto_case_exprs: Vec<Vec<u8>> = Vec::new();
 
     // Walk the optional `(...)` argument list, advancing `cursor` past it.
     let walk_optional_args = |cursor: &mut usize| -> Result<(), BytecodeDecodeError> {
@@ -629,7 +641,13 @@ fn decode_command(bytes: &[u8], pos: usize) -> Result<BytecodeElement, BytecodeD
                         ),
                     });
                 }
+                let case_open = cursor;
                 cursor = walk_command_arg_list(bytes, cursor)?;
+                // The case's match expression is the bytes strictly inside
+                // the `(…)` (between the `(` at `case_open` and its matching
+                // `)` at `cursor - 1`). An empty `()` is the default case and
+                // is recorded as an empty `Vec`.
+                goto_case_exprs.push(bytes[case_open + 1..cursor - 1].to_vec());
                 consume_pointers(&mut cursor, 1, &mut goto_targets)?;
             }
             if braced {
@@ -639,7 +657,9 @@ fn decode_command(bytes: &[u8], pos: usize) -> Result<BytecodeElement, BytecodeD
         GotoKind::Select => {
             // `module_sel` selection commands carry a `{ ... }` option
             // block (SelectElement framing) rather than a `(...)` list.
-            walk_optional_args(&mut cursor)?;
+            // `walk_select_block` consumes the optional leading `(param)`
+            // expression and the whole `{ ... }` option block, mirroring
+            // the proven `kaifuu-reallive` `decode_select`.
             cursor = walk_select_block(bytes, pos, cursor)?;
         }
         GotoKind::None => {
@@ -656,6 +676,7 @@ fn decode_command(bytes: &[u8], pos: usize) -> Result<BytecodeElement, BytecodeD
         arg_count,
         overload,
         goto_targets,
+        goto_case_exprs,
         raw_bytes,
         byte_offset: pos,
         byte_len: end - pos,
@@ -735,47 +756,190 @@ fn expect_block_close(
     Ok(())
 }
 
-/// Walk a `module_sel` SelectElement `{ ... }` option block starting at
-/// `cursor` (which must point at the `{`). Returns the index past the
-/// matching `}`.
+/// Walk a `module_sel` SelectElement command's framing starting at
+/// `header_start` (the first byte past the 8-byte command header):
+/// the optional leading `(param)` expression, then the mandatory
+/// `{ ... }` option block. Returns the index immediately past the
+/// matching `}` (plus any trailing `\n`+i16 line markers).
 ///
-/// The block is a sequence of options separated by `\` bytes (rlvm
-/// `SelectElement`). Each option is: an optional condition-`(...)` list,
-/// zero or more `0x30..=0x34` option-flag markers each with their own
-/// `(...)` payload, and the option text (a string / textout run). We walk
-/// bytes structurally — consuming `(...)` lists whole and skipping any
-/// other byte — until the matching `}`.
-fn walk_select_block(bytes: &[u8], pos: usize, start: usize) -> Result<usize, BytecodeDecodeError> {
-    if bytes.get(start) != Some(&SELECT_BLOCK_OPEN) {
-        // No block present (some select variants may omit it); nothing
-        // to consume.
-        return Ok(start);
+/// This is a faithful restatement of the proven `kaifuu-reallive`
+/// `decode_select` (rlvm `SelectElement`): the option block is a
+/// sequence of options, each an optional condition group `( <effect…> )`
+/// followed by the option's `NextString` text and a trailing `\n`+i16
+/// line marker. `\n`+i16 MetaLine markers, `,` separators and the
+/// condition group are recognised structurally — a length-only byte scan
+/// (which the previous implementation used) misreads a MetaLine
+/// line-number byte that happens to equal `0x28` (`'('`) as an
+/// argument-list opener and desyncs.
+fn walk_select_block(
+    bytes: &[u8],
+    pos: usize,
+    header_start: usize,
+) -> Result<usize, BytecodeDecodeError> {
+    let truncated = |cursor: usize| BytecodeDecodeError::Truncated {
+        observed_len: bytes.len(),
+        position: cursor,
+        needed: 1,
+        message: format!("select command at position {pos} truncated mid option-block"),
+    };
+    let mut cursor = header_start;
+
+    // Optional window / parameter expression `( … )` (mirrors kaifuu
+    // `parse_expression` over the leading group).
+    if bytes.get(cursor) == Some(&b'(') {
+        cursor += next_expression(bytes, cursor)?;
     }
-    let mut p = start + 1;
+    // Mandatory `{` block open.
+    if bytes.get(cursor) != Some(&SELECT_BLOCK_OPEN) {
+        return Err(BytecodeDecodeError::MalformedElement {
+            position: cursor,
+            message: format!(
+                "select command at position {pos}: expected '{{' opening the option block; \
+                 observed {:?}",
+                bytes.get(cursor),
+            ),
+        });
+    }
+    cursor += 1;
+    // Optional first-line `\n`+i16 marker.
+    if bytes.get(cursor) == Some(&META_LINE_LEAD_BYTE) {
+        cursor += 3;
+    }
+
     loop {
-        match bytes.get(p) {
-            None => {
-                return Err(BytecodeDecodeError::Truncated {
-                    observed_len: bytes.len(),
-                    position: p,
-                    needed: 1,
-                    message: format!(
-                        "select block at position {pos} truncated before closing '}}'",
-                    ),
-                });
+        match bytes.get(cursor) {
+            None => return Err(truncated(cursor)),
+            Some(&SELECT_BLOCK_CLOSE) => {
+                cursor += 1;
+                break;
             }
-            Some(&SELECT_BLOCK_CLOSE) => return Ok(p + 1),
-            Some(&b'(') => {
-                p = walk_command_arg_list(bytes, p)?;
-            }
-            Some(&lead) if is_shift_jis_lead(lead) && p + 1 < bytes.len() => {
-                p += 2;
-            }
-            Some(_) => {
-                p += 1;
+            _ => {}
+        }
+        // Skip inter-option separators (`,`) and stray line markers.
+        while bytes.get(cursor) == Some(&COMMA_LEAD_BYTE_ALT) {
+            cursor += 1;
+        }
+        if bytes.get(cursor) == Some(&META_LINE_LEAD_BYTE) {
+            cursor += 3;
+        }
+        if bytes.get(cursor) == Some(&SELECT_BLOCK_CLOSE) {
+            cursor += 1;
+            break;
+        }
+        // Optional condition group `( … )`.
+        if bytes.get(cursor) == Some(&b'(') {
+            cursor += 1; // '('
+            loop {
+                match bytes.get(cursor) {
+                    None => return Err(truncated(cursor)),
+                    Some(&b')') => {
+                        cursor += 1;
+                        break;
+                    }
+                    Some(&b'(') => {
+                        cursor += next_expression(bytes, cursor)?;
+                    }
+                    Some(&effect) => {
+                        cursor += 1; // the single effect-code byte
+                        // The `'2'`/`'3'` effect codes take no operand;
+                        // any other effect code that is not immediately
+                        // followed by `)` or a digit introduces a `\`/`$`
+                        // expression operand.
+                        if effect != b'2' && effect != b'3' {
+                            let next = bytes.get(cursor).copied();
+                            let stop =
+                                next == Some(b')') || next.is_some_and(|b| b.is_ascii_digit());
+                            if !stop && next.is_some() {
+                                cursor += next_expression(bytes, cursor)?;
+                            }
+                        }
+                    }
+                }
             }
         }
+        // Option text (a `NextString` token).
+        let text_len = next_select_string_len(bytes, cursor);
+        cursor += text_len;
+        // Trailing `\n`+i16 line marker for this option.
+        if bytes.get(cursor) == Some(&META_LINE_LEAD_BYTE) {
+            cursor += 3;
+        } else if text_len == 0 {
+            // No text and no line marker — the cursor would not advance
+            // and the loop would spin. Surface a typed framing error.
+            return Err(truncated(cursor));
+        }
     }
+    // Trailing junk: `\n`+i16 markers after the closing brace.
+    while bytes.get(cursor) == Some(&META_LINE_LEAD_BYTE) {
+        cursor += 3;
+    }
+    Ok(cursor)
+}
+
+/// `true` if `byte` continues a RealLive **string token** in the
+/// unquoted state (rlvm `NextString`): a Shift-JIS lead byte, an ASCII
+/// alphanumeric, space, `?`, `_`, `"` or `\`. Restated from
+/// `kaifuu-reallive` `is_next_string_byte`.
+fn is_next_string_byte(byte: u8) -> bool {
+    matches!(byte, 0x81..=0x9F | 0xE0..=0xEF)
+        || byte.is_ascii_alphanumeric()
+        || matches!(byte, b' ' | b'?' | b'_' | b'"' | b'\\')
+}
+
+/// Length in bytes of the `NextString` option token beginning at `pos`,
+/// a faithful restatement of `kaifuu-reallive` `next_string_len`: a run
+/// of [`is_next_string_byte`] bytes with Shift-JIS pairs consumed whole,
+/// `"`-quoted spans (backslash-escaped) that ignore the boundary set
+/// until the closing quote, and the embedded `###PRINT(<expr>)`
+/// interpolation form. Returns `0` when `pos` does not begin a string
+/// token. Used only by the SelectElement option walker so the two
+/// decoders frame choice options identically.
+fn next_select_string_len(bytes: &[u8], pos: usize) -> usize {
+    const PRINT_TAG: &[u8] = b"###PRINT(";
+    let mut end = pos;
+    let mut quoted = false;
+    while end < bytes.len() {
+        let b = bytes[end];
+        if quoted {
+            if b == b'\\' {
+                end += if end + 1 < bytes.len() { 2 } else { 1 };
+                continue;
+            }
+            if b == b'"' {
+                end += 1; // closing quote
+                break;
+            }
+            if matches!(b, 0x81..=0x9F | 0xE0..=0xEF) && end + 1 < bytes.len() {
+                end += 2;
+            } else {
+                end += 1;
+            }
+            continue;
+        }
+        if bytes[end..].starts_with(PRINT_TAG) {
+            end += PRINT_TAG.len();
+            match next_expression(bytes, end) {
+                // `+ 1` consumes the closing `)` of the interpolation.
+                Ok(len) => end += len + 1,
+                Err(_) => break,
+            }
+            continue;
+        }
+        if b == b'"' {
+            quoted = true;
+            end += 1;
+            continue;
+        }
+        if !is_next_string_byte(b) {
+            break;
+        }
+        if matches!(b, 0x81..=0x9F | 0xE0..=0xEF) && end + 1 < bytes.len() {
+            end += 2;
+        } else {
+            end += 1;
+        }
+    }
+    end - pos
 }
 
 /// Walk a `(...)`-delimited command argument list starting at
@@ -969,6 +1133,92 @@ fn decode_textout(bytes: &[u8], pos: usize) -> BytecodeElement {
 /// unary minus).
 const EXPRESSION_BACKSLASH: u8 = 0x5C;
 
+/// Integer-literal introducer (`0xFF`): `0xFF <i32 LE>` (5 bytes), or
+/// `$ 0xFF <i32 LE>` (6 bytes) in the `$`-typed form.
+const EXPR_INT_LITERAL: u8 = 0xFF;
+/// Store-register token (`0xC8`): the `store` pseudo-register — 1 byte
+/// bare, or `$ 0xC8` (2 bytes) in the `$`-prefixed idiom.
+const EXPR_STORE_REGISTER: u8 = 0xC8;
+/// Special-parameter introducer (`0x61`, ASCII `'a'`): `0x61 <tag>
+/// <item>` where `<tag>` is a single byte (or `0xFF`+`i32` in the wide
+/// form) and `<item>` is a contained data value (per rlvm
+/// `SpecialExpressionPiece`).
+const EXPR_SPECIAL: u8 = 0x61;
+
+/// `true` when `byte` opens an arithmetic-expression **token** (rlvm
+/// `GetExpressionToken`): an integer literal (`0xFF`), the store register
+/// (`0xC8`), a `$`-prefixed memory reference / typed literal (`0x24`), or
+/// a `\`-operator (`0x5C`). Every other lead byte at a data position is a
+/// string constant. Restated from `kaifuu-reallive` `opcode.rs`
+/// `is_expr_token_lead` so the two decoders classify data leads
+/// identically.
+fn is_expr_token_lead(byte: u8) -> bool {
+    matches!(
+        byte,
+        EXPR_INT_LITERAL | EXPR_STORE_REGISTER | EXPRESSION_LEAD_BYTE | EXPRESSION_BACKSLASH
+    )
+}
+
+/// `true` when `byte` opens a **non-string** data item — a complex
+/// parameter (`(`), a special parameter (`0x61`), or an
+/// arithmetic-expression token. Used to disambiguate a genuine special
+/// parameter from a bare string that merely begins with `0x61` (`'a'`).
+/// Restated from `kaifuu-reallive` `is_nonstring_data_lead`.
+fn is_nonstring_data_lead(byte: u8) -> bool {
+    matches!(byte, b'(' | EXPR_SPECIAL) || is_expr_token_lead(byte)
+}
+
+/// `true` when `pos` begins a special parameter (`0x61 <tag> <item>`).
+///
+/// The compiler emits a special parameter as the `0x61` introducer, a tag
+/// (a single byte, or `0xFF`+`i32` in the wide form), and then its
+/// contained data item — across the Sweetie HD and Kanon archives that
+/// item is always a complex `(` group or a `$`-prefixed memory / literal
+/// reference, i.e. a **non-string** data lead. Requiring that lead
+/// disambiguates a genuine special parameter from a bare string constant
+/// that merely begins with the byte `0x61` (`'a'`). Restated from
+/// `kaifuu-reallive` `is_special_param_lead`.
+fn is_special_param_lead(bytes: &[u8], pos: usize) -> bool {
+    if bytes.get(pos) != Some(&EXPR_SPECIAL) {
+        return false;
+    }
+    let content_pos = match bytes.get(pos + 1) {
+        // Wide tag: `0x61 0xFF <i32> <item>`.
+        Some(&EXPR_INT_LITERAL) => pos + 6,
+        // Single-byte tag: `0x61 <tag> <item>`.
+        Some(_) => pos + 2,
+        None => return false,
+    };
+    bytes
+        .get(content_pos)
+        .copied()
+        .is_some_and(is_nonstring_data_lead)
+}
+
+/// Compute the byte length of a special parameter `0x61 <tag> <item>`
+/// starting at `bytes[pos]` (which must point at the `0x61` introducer).
+/// `<tag>` is a single discriminant byte, or `0xFF`+`i32` in the wide
+/// form; `<item>` is the contained [`next_data_value`] value (in practice
+/// a `Complex` group or a `$`-prefixed reference). Restated from
+/// `kaifuu-reallive` `parse_special_param`.
+fn next_special_param(bytes: &[u8], pos: usize) -> Result<usize, BytecodeDecodeError> {
+    let tag_len = match bytes.get(pos + 1) {
+        Some(&EXPR_INT_LITERAL) => 5,
+        Some(_) => 1,
+        None => {
+            return Err(BytecodeDecodeError::Truncated {
+                observed_len: bytes.len(),
+                position: pos,
+                needed: 1,
+                message: "special parameter (`0x61`) missing tag byte".to_string(),
+            });
+        }
+    };
+    let content_pos = pos + 1 + tag_len;
+    let content_len = next_data_value(bytes, content_pos)?;
+    Ok(1 + tag_len + content_len)
+}
+
 /// Read the byte at `bytes[pos]` if available; return `None` if `pos`
 /// is past the end of the slice. Centralised so the walker family
 /// can share a single bounds-check helper.
@@ -994,6 +1244,25 @@ fn next_token(bytes: &[u8], pos: usize) -> Result<usize, BytecodeDecodeError> {
     let Some(b0) = peek(bytes, pos) else {
         return Ok(0);
     };
+    // Bare (non-`$`-prefixed) token forms, mirroring `kaifuu-reallive`
+    // `parse_token`: an integer literal `0xFF <i32 LE>` (5 bytes) and the
+    // bare store register `0xC8` (1 byte). Without these the walker
+    // returns 0 for a data item that is a bare literal / store register
+    // and the arg-list loop cannot make progress.
+    if b0 == EXPR_INT_LITERAL {
+        if pos + 5 > bytes.len() {
+            return Err(BytecodeDecodeError::Truncated {
+                observed_len: bytes.len(),
+                position: pos,
+                needed: pos + 5 - bytes.len(),
+                message: "token: bare 5-byte int-constant truncated".to_string(),
+            });
+        }
+        return Ok(5);
+    }
+    if b0 == EXPR_STORE_REGISTER {
+        return Ok(1);
+    }
     if b0 != b'$' {
         return Ok(0);
     }
@@ -1257,12 +1526,29 @@ fn next_data_value(bytes: &[u8], pos: usize) -> Result<usize, BytecodeDecodeErro
             message: "data: input exhausted".to_string(),
         });
     };
+    // Dispatch order mirrors `kaifuu-reallive` `parse_data` (the proven
+    // reference decoder) so the two decoders compute identical widths:
+    //  1. a disambiguated special parameter (`0x61 <tag> <item>`) wins
+    //     over the bare-string reading of `0x61` (`'a'`);
+    //  2. a `(` opens a complex parameter / grouped sub-expression;
+    //  3. an arithmetic-expression token lead (`0xFF`/`0xC8`/`$`/`\`) is a
+    //     full expression;
+    //  4. every other lead byte is a string constant.
+    if is_special_param_lead(bytes, pos) {
+        return next_special_param(bytes, pos);
+    }
+    if b0 == b'(' {
+        return next_complex_data(bytes, pos);
+    }
+    if is_expr_token_lead(b0) {
+        return next_expression(bytes, pos);
+    }
     if is_data_string_lead(b0) {
         return next_string(bytes, pos);
     }
-    if b0 == b'a' || b0 == b'(' {
-        return next_complex_data(bytes, pos);
-    }
+    // Fall back to the expression grammar for any residual lead so a
+    // genuine (non-string, non-token) data byte still surfaces a typed
+    // error via the walker rather than silently stalling.
     next_expression(bytes, pos)
 }
 
@@ -1294,15 +1580,18 @@ pub(crate) struct CommandArg {
 }
 
 /// Classify a command-argument value by its lead byte, mirroring the
-/// dispatch order in [`next_data_value`] (string lead wins over the
-/// `(`-complex branch).
-fn command_arg_shape(lead: u8) -> CommandArgShape {
-    if is_data_string_lead(lead) {
-        CommandArgShape::String
-    } else if lead == b'a' || lead == b'(' {
+/// dispatch order in [`next_data_value`]: a disambiguated special
+/// parameter (`0x61`) and a `(`-complex parameter are `Complex`, an
+/// arithmetic-expression token lead is `Expression`, and every other lead
+/// byte is a `String`.
+fn command_arg_shape(bytes: &[u8], pos: usize) -> CommandArgShape {
+    let lead = bytes.get(pos).copied().unwrap_or(0);
+    if is_special_param_lead(bytes, pos) || lead == b'(' {
         CommandArgShape::Complex
-    } else {
+    } else if is_expr_token_lead(lead) {
         CommandArgShape::Expression
+    } else {
+        CommandArgShape::String
     }
 }
 
@@ -1351,7 +1640,7 @@ pub(crate) fn decode_command_arg_values(
                 ),
             });
         }
-        let shape = command_arg_shape(raw_bytes[p]);
+        let shape = command_arg_shape(raw_bytes, p);
         args.push(CommandArg {
             shape,
             bytes: raw_bytes[p..p + value_len].to_vec(),
@@ -1747,6 +2036,81 @@ mod tests {
     fn decode_command_arg_values_empty_for_header_only_command() {
         let raw = vec![0x23, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00];
         assert!(decode_command_arg_values(&raw).expect("decodes").is_empty());
+    }
+
+    #[test]
+    fn special_parameter_is_not_misread_as_a_string() {
+        // Ordinary function command (module_id 3 msg, opcode 100 — NOT a
+        // goto-family opcode) + `( $FF<0> 0x61 <tag=1> ( $FF<9> ) )`: the
+        // `0x61` special-parameter introducer must be consumed as a special
+        // parameter (tag + contained `($FF<9>)` group), NOT as a bare `'a'`
+        // string — the bug that failed 65 Sweetie / 63 Kanon scenes.
+        let mut raw = vec![0x23, 0x00, 0x03, 0x64, 0x00, 0x01, 0x00, 0x00, b'('];
+        raw.extend_from_slice(&[0x24, 0xFF]);
+        raw.extend_from_slice(&0_i32.to_le_bytes());
+        // special parameter: 0x61 <tag=1> ( $FF<9> )
+        raw.push(0x61);
+        raw.push(0x01);
+        raw.push(b'(');
+        raw.extend_from_slice(&[0x24, 0xFF]);
+        raw.extend_from_slice(&9_i32.to_le_bytes());
+        raw.push(b')');
+        raw.push(b')');
+        // The whole element must length-walk cleanly (no stall on the
+        // special-parameter tag byte) and consume every byte.
+        let elements = decode_bytecode_stream(&raw).expect("special-param arg list must decode");
+        let total: usize = elements.iter().map(BytecodeElement::byte_len).sum();
+        assert_eq!(total, raw.len(), "element partition must cover every byte");
+        assert!(matches!(elements[0], BytecodeElement::Command { .. }));
+    }
+
+    #[test]
+    fn goto_case_captures_per_case_match_expressions_and_targets() {
+        // `goto_case` (module_jmp opcode 4), argc=2:
+        //   header + (disc=$FF<5>) + { ($FF<5>) @100 () @200 }
+        // The decoder must record BOTH case match expressions (the second is
+        // the empty default `()`) alongside their two jump targets.
+        let mut raw = vec![0x23, 0x00, 0x01, 0x04, 0x00, 0x02, 0x00, 0x00];
+        // discriminant (disc)
+        raw.push(b'(');
+        raw.extend_from_slice(&[0x24, 0xFF]);
+        raw.extend_from_slice(&5_i32.to_le_bytes());
+        raw.push(b')');
+        // { block
+        raw.push(0x7B);
+        // case 0: ($FF<5>) then target 100
+        raw.push(b'(');
+        raw.extend_from_slice(&[0x24, 0xFF]);
+        raw.extend_from_slice(&5_i32.to_le_bytes());
+        raw.push(b')');
+        raw.extend_from_slice(&100_u32.to_le_bytes());
+        // case 1 (default): () then target 200
+        raw.push(b'(');
+        raw.push(b')');
+        raw.extend_from_slice(&200_u32.to_le_bytes());
+        // } block close
+        raw.push(0x7D);
+
+        let element = decode_one_element(&raw, 0).expect("goto_case decodes");
+        match element {
+            BytecodeElement::Command {
+                goto_targets,
+                goto_case_exprs,
+                byte_len,
+                ..
+            } => {
+                assert_eq!(byte_len, raw.len(), "goto_case must consume every byte");
+                assert_eq!(goto_targets, vec![100, 200]);
+                assert_eq!(goto_case_exprs.len(), 2);
+                // Case 0's match expression is the `$FF<5>` literal bytes.
+                let mut expected = vec![0x24u8, 0xFF];
+                expected.extend_from_slice(&5_i32.to_le_bytes());
+                assert_eq!(goto_case_exprs[0], expected);
+                // Case 1 is the default `()` — an empty match expression.
+                assert!(goto_case_exprs[1].is_empty());
+            }
+            other => panic!("expected Command, got {other:?}"),
+        }
     }
 
     #[test]

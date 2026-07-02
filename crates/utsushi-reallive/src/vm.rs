@@ -942,6 +942,7 @@ impl Vm {
                 opcode,
                 raw_bytes,
                 goto_targets,
+                goto_case_exprs,
                 ..
             } => {
                 let key = RlopKey::new(module_type, module_id, opcode);
@@ -961,8 +962,29 @@ impl Vm {
                     // expect. Non-goto commands carry no targets, so this
                     // is a no-op for them.
                     let mut args = self.decode_command_args(&raw_bytes);
-                    for target in &goto_targets {
-                        args.push(ExprValue::Int(i32::from_ne_bytes(target.to_ne_bytes())));
+                    if goto_case_exprs.is_empty() {
+                        for target in &goto_targets {
+                            args.push(ExprValue::Int(i32::from_ne_bytes(target.to_ne_bytes())));
+                        }
+                    } else {
+                        // `goto_case` / `gosub_case`: the decoded `(disc)`
+                        // list left the discriminant in `args[0]`. Evaluate
+                        // each case's match EXPRESSION against it (in real VM
+                        // memory context) and pre-resolve the matched target,
+                        // reproducing the exact `value == case_i` selection.
+                        // The op receives the single resolved target (or an
+                        // empty arg list ⇒ no case matched and no default `()`
+                        // case, so control falls through).
+                        let discriminant = args.first().and_then(ExprValue::as_int);
+                        let selected = self.select_goto_case_target(
+                            discriminant,
+                            &goto_targets,
+                            &goto_case_exprs,
+                        );
+                        args.clear();
+                        if let Some(target) = selected {
+                            args.push(ExprValue::Int(i32::from_ne_bytes(target.to_ne_bytes())));
+                        }
                     }
                     // Expose the post-command pc so branch-following
                     // `gosub` / `farcall` ops can read the return pc they
@@ -1060,6 +1082,47 @@ impl Vm {
             }
         }
         values
+    }
+
+    /// Select the matched `goto_case` / `gosub_case` jump target by
+    /// evaluating each case's match expression against the discriminant.
+    ///
+    /// Faithful to rlvm `GotoCaseElement`: the cases are checked in order;
+    /// a non-empty case `(expr)` matches when `eval(expr) == discriminant`,
+    /// and the default case (the empty `()`, recorded as an empty
+    /// expression) matches unconditionally. Returns the absolute target pc
+    /// of the first matching case, or `None` when no case matches and no
+    /// default `()` case is present (control falls through past the block).
+    ///
+    /// Case expressions are evaluated read-only against the current memory
+    /// banks (no store-register side effect), so probing the cases never
+    /// perturbs VM state.
+    fn select_goto_case_target(
+        &self,
+        discriminant: Option<i32>,
+        targets: &[u32],
+        cases: &[Vec<u8>],
+    ) -> Option<u32> {
+        let discriminant = discriminant?;
+        for (index, case) in cases.iter().enumerate() {
+            let matched = if case.is_empty() {
+                // The default `()` case matches any discriminant.
+                true
+            } else {
+                match parse_expression(case) {
+                    Ok((node, _consumed)) => {
+                        evaluate(&node, &self.banks).is_ok_and(|value| value == discriminant)
+                    }
+                    // A case whose bytes do not parse as an expression
+                    // cannot match; skip it rather than fail the drive.
+                    Err(_) => false,
+                }
+            };
+            if matched {
+                return targets.get(index).copied();
+            }
+        }
+        None
     }
 
     /// Evaluate the supplied expression element raw bytes and surface a

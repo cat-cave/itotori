@@ -94,6 +94,7 @@ fn command_element(offset: usize, opcode: u16) -> BytecodeElement {
         arg_count: 0,
         overload: 0,
         goto_targets: vec![],
+        goto_case_exprs: vec![],
         raw_bytes: vec![
             0x23,
             MSG_MODULE_TYPE,

@@ -82,6 +82,7 @@ fn sel_command(offset: usize, opcode: u16) -> BytecodeElement {
         arg_count: 0,
         overload: 0,
         goto_targets: vec![],
+        goto_case_exprs: vec![],
         raw_bytes: vec![
             0x23,
             SEL_MODULE_TYPE,

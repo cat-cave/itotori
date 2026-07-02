@@ -713,7 +713,10 @@ pub fn register_control_flow_linear_walk(registry: &mut RlopRegistry) -> usize {
 //   goto_if (1)       : [cond, target]               ((cond) + 1 target)
 //   goto_unless (2)   : [cond, target]
 //   goto_on (3)       : [value, t0, t1, …]           ((value) + N targets)
-//   goto_case (4)     : [discriminant, t0, …, tN]    (case exprs NOT decoded)
+//   goto_case (4)     : [target]                     (VM pre-resolves the
+//                                                      matched case via
+//                                                      Command::goto_case_exprs;
+//                                                      empty ⇒ fall through)
 //   gosub (5)         : [target]                     (return pc from vm.post_pc())
 //   gosub_if (6)      : [cond, target]
 //   ret (10)          : []                            (pop subroutine frame)
@@ -777,41 +780,29 @@ impl RLOperation for JmpGotoOn {
     }
 }
 
-/// `goto_case(discriminant, [targets])` — value-matched jump (real opcode
-/// 4).
+/// `goto_case(value) { (c0) @t0; (c1) @t1; … }` — value-matched jump
+/// (real opcode 4).
 ///
-/// LIMITATION: the bytecode decoder records the case TARGET pointers but
-/// discards the per-case match EXPRESSIONS (they live inside the `{ … }`
-/// block and are length-walked, not surfaced). Without them the exact
-/// `value == case_i` selection cannot be reproduced, so this op treats the
-/// discriminant as an index into the target table (identical to
-/// `goto_on`) when it is in range, and otherwise takes the last target as
-/// the `else` sink. This is a best-effort branch that keeps execution
-/// moving; a scene whose terminus depends on precise case-expression
-/// matching is a documented gap (case-expression decoding is unplumbed).
+/// The exact `value == case_i` selection is reproduced: the bytecode
+/// decoder now records each case's match EXPRESSION
+/// (`Command::goto_case_exprs`) and the VM evaluates them against the
+/// discriminant in real memory context, passing the single pre-resolved
+/// target pc as `args[0]`. An empty arg list means no case matched and no
+/// default `()` case is present, so control falls through past the block
+/// ([`DispatchOutcome::Advance`]). This supersedes the previous
+/// discriminant-as-index approximation.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct JmpGotoCase;
 impl RLOperation for JmpGotoCase {
     fn dispatch(&self, vm: &mut Vm, args: &[ExprValue]) -> DispatchOutcome {
-        if args.is_empty() {
-            return warn_and_advance(vm, "goto_case", "expected at least 1 arg".to_string());
-        }
-        let value = match arg_cond(&args[0], "discriminant") {
-            Ok(v) => v,
-            Err(reason) => return warn_and_advance(vm, "goto_case", reason),
-        };
-        let table = &args[1..];
-        if table.is_empty() {
-            return DispatchOutcome::Advance;
-        }
-        let idx = usize::try_from(value).unwrap_or(usize::MAX);
-        let target = table.get(idx).or_else(|| table.last());
-        match target.map(|t| arg_pc(t, "target_pc")) {
+        match args.first().map(|t| arg_pc(t, "target_pc")) {
             Some(Ok(pc)) => DispatchOutcome::Jump {
                 scene: vm.scene(),
                 pc,
             },
-            _ => DispatchOutcome::Advance,
+            Some(Err(reason)) => warn_and_advance(vm, "goto_case", reason),
+            // No matching case and no default `()` case — fall through.
+            None => DispatchOutcome::Advance,
         }
     }
 }
@@ -928,36 +919,24 @@ impl RLOperation for JmpGosubOn {
     }
 }
 
-/// `gosub_case(discriminant, [targets])` — value-matched subroutine (real
-/// opcode 9). Shares the `goto_case` best-effort limitation (case
-/// expressions unplumbed): treats the discriminant as a target index.
+/// `gosub_case(value) { (c0) @t0; … }` — value-matched subroutine (real
+/// opcode 9). Same case-expression selection as [`JmpGotoCase`]: the VM
+/// evaluates each case's match expression against the discriminant and
+/// passes the single pre-resolved target pc as `args[0]` (empty ⇒ no case
+/// matched and no default `()`, so control falls through).
 #[derive(Debug, Clone, Copy, Default)]
 pub struct JmpGosubCase;
 impl RLOperation for JmpGosubCase {
     fn dispatch(&self, vm: &mut Vm, args: &[ExprValue]) -> DispatchOutcome {
-        if args.is_empty() {
-            return warn_and_advance(vm, "gosub_case", "expected at least 1 arg".to_string());
-        }
-        let value = match arg_cond(&args[0], "discriminant") {
-            Ok(v) => v,
-            Err(reason) => return warn_and_advance(vm, "gosub_case", reason),
-        };
-        let table = &args[1..];
-        if table.is_empty() {
-            return DispatchOutcome::Advance;
-        }
-        let idx = usize::try_from(value).unwrap_or(usize::MAX);
-        match table
-            .get(idx)
-            .or_else(|| table.last())
-            .map(|t| arg_pc(t, "target_pc"))
-        {
+        match args.first().map(|t| arg_pc(t, "target_pc")) {
             Some(Ok(target_pc)) => DispatchOutcome::Subroutine {
                 return_pc: vm.post_pc(),
                 target_scene: vm.scene(),
                 target_pc,
             },
-            _ => DispatchOutcome::Advance,
+            Some(Err(reason)) => warn_and_advance(vm, "gosub_case", reason),
+            // No matching case and no default `()` case — fall through.
+            None => DispatchOutcome::Advance,
         }
     }
 }
