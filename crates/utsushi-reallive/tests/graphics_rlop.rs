@@ -223,10 +223,8 @@ fn alloc_dc_produces_observable_state_snapshot_mutation() {
 #[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
 fn grp_openbg_bg01a1_registers_bg_plane() {
     let Some(g00_dir) = real_g00_dir() else {
-        eprintln!(
-            "ITOTORI_REAL_GAME_ROOT unset; skipping Sweetie HD real-bytes test for \
-             UTSUSHI-215 grp.openBg(BG01A1.g00) (no silent pass: re-run with \
-             ITOTORI_REAL_GAME_ROOT=/path/to/reallive-game-root)",
+        real_corpus::skip_or_require_real_bytes(
+            "utsushi-reallive grp_openbg_bg01a1_registers_bg_plane",
         );
         return;
     };

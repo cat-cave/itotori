@@ -8,46 +8,47 @@ use std::path::{Path, PathBuf};
 pub const REAL_GAME_ROOT_ENV: &str = "ITOTORI_REAL_GAME_ROOT";
 pub const REAL_GAME_ROOT_2_ENV: &str = "ITOTORI_REAL_GAME_ROOT_2";
 
-/// Opt-in flag (`ITOTORI_REQUIRE_REAL_BYTES=1`) that turns an absent corpus
-/// from a silent skip into a hard failure. Mirrors the kaifuu-reallive
-/// support module so the CI real-bytes lane (which stages Sweetie HD + Kanon
-/// and sets this flag) can never report a green PASS while exercising zero
+/// Loud opt-OUT flag (`ITOTORI_ALLOW_MISSING_CORPUS=1`). Real-bytes coverage is
+/// STRICT BY DEFAULT: an absent corpus is a hard failure. Mirrors the
+/// kaifuu-reallive support module. Setting this flag is the only escape valve —
+/// it downgrades the hard failure to an explicit, loudly-logged skip, for the
+/// rare context (a corpus-less dev checkout) that knowingly forgoes real-bytes
+/// coverage. The CI real-bytes lane (which stages Sweetie HD + Kanon) never
+/// sets it, so that lane can never report a green PASS while exercising zero
 /// real bytes.
-pub const REQUIRE_REAL_BYTES_ENV: &str = "ITOTORI_REQUIRE_REAL_BYTES";
+pub const ALLOW_MISSING_CORPUS_ENV: &str = "ITOTORI_ALLOW_MISSING_CORPUS";
 
-/// `true` when the operator demanded real-bytes coverage actually run, via
-/// `ITOTORI_REQUIRE_REAL_BYTES=1`.
-pub fn require_real_bytes() -> bool {
-    env::var_os(REQUIRE_REAL_BYTES_ENV).is_some_and(|value| value == "1")
+/// `true` when the operator explicitly opted OUT of real-bytes enforcement via
+/// `ITOTORI_ALLOW_MISSING_CORPUS=1`.
+pub fn allow_missing_corpus() -> bool {
+    env::var_os(ALLOW_MISSING_CORPUS_ENV).is_some_and(|value| value == "1")
 }
 
 /// Resolve the corpus-unavailable branch of an env-gated real-bytes test.
 ///
-/// Single chokepoint mirroring `kaifuu-reallive`'s helper: with
-/// `ITOTORI_REQUIRE_REAL_BYTES=1` an absent corpus is a hard failure (panics,
-/// naming the missing [`REAL_GAME_ROOT_ENV`]); otherwise it emits an explicit
-/// non-silent skip notice and returns.
+/// Single chokepoint mirroring `kaifuu-reallive`'s helper. Real-bytes coverage
+/// is STRICT BY DEFAULT: by default an absent corpus is a HARD FAILURE (panics,
+/// naming the missing [`REAL_GAME_ROOT_ENV`]); only the explicit opt-OUT
+/// `ITOTORI_ALLOW_MISSING_CORPUS=1` downgrades it to a LOUD, non-silent skip
+/// notice that returns.
 pub fn skip_or_require_real_bytes(test_name: &str) {
     let detail = format!(
         "{REAL_GAME_ROOT_ENV} unset; {test_name} did not exercise real bytes \
          (re-run with {REAL_GAME_ROOT_ENV}=/path/to/reallive-game-root)"
     );
     assert!(
-        !require_real_bytes(),
-        "{REQUIRE_REAL_BYTES_ENV}=1 demands real-bytes coverage, but {detail}"
+        allow_missing_corpus(),
+        "real-bytes coverage is STRICT BY DEFAULT: {detail}. Set \
+         {ALLOW_MISSING_CORPUS_ENV}=1 to explicitly opt out (knowingly forgoing real bytes)."
     );
-    eprintln!("SKIP (no silent pass): {detail}");
+    eprintln!(
+        "WARNING: {ALLOW_MISSING_CORPUS_ENV}=1 set — SKIPPING real-bytes coverage (opted out): {detail}"
+    );
 }
 
 pub fn game_root() -> Option<PathBuf> {
-    let resolved = env::var_os(REAL_GAME_ROOT_ENV)
-        .and_then(|root| resolve_reallive_game_root(&PathBuf::from(root)));
-    assert!(
-        !(resolved.is_none() && require_real_bytes()),
-        "{REQUIRE_REAL_BYTES_ENV}=1 demands real-bytes coverage, but {REAL_GAME_ROOT_ENV} is \
-         unset or resolves to no REALLIVEDATA game root"
-    );
-    resolved
+    env::var_os(REAL_GAME_ROOT_ENV)
+        .and_then(|root| resolve_reallive_game_root(&PathBuf::from(root)))
 }
 
 /// Locate the g00 asset directory reachable from the game root named by

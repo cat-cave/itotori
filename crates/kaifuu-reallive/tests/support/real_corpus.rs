@@ -14,10 +14,12 @@ pub const REAL_GAME_ROOT_ENV: &str = "ITOTORI_REAL_GAME_ROOT";
 /// be exercised against a second, independently-authored bytecode corpus.
 pub const REAL_GAME_ROOT_2_ENV: &str = "ITOTORI_REAL_GAME_ROOT_2";
 
-/// Opt-in flag (`ITOTORI_REQUIRE_REAL_BYTES=1`) that turns an absent corpus
-/// from a skip into a hard failure, for contexts where real-bytes coverage is
-/// expected to actually run (e.g. CI that stages Sweetie HD).
-pub const REQUIRE_REAL_BYTES_ENV: &str = "ITOTORI_REQUIRE_REAL_BYTES";
+/// Loud opt-OUT flag (`ITOTORI_ALLOW_MISSING_CORPUS=1`). Real-bytes coverage is
+/// STRICT BY DEFAULT: an absent corpus is a hard failure. Setting this flag is
+/// the only escape valve — it downgrades the hard failure to an explicit,
+/// loudly-logged skip, for the rare context (a corpus-less dev checkout) that
+/// knowingly forgoes real-bytes coverage. CI never sets it.
+pub const ALLOW_MISSING_CORPUS_ENV: &str = "ITOTORI_ALLOW_MISSING_CORPUS";
 
 /// A resolved real-bytes RealLive corpus: the game root plus the located
 /// SEEN archive.
@@ -136,33 +138,38 @@ pub fn skip_message(test_name: &str) -> String {
     format!("{REAL_GAME_ROOT_ENV} unset or no REALLIVEDATA directory found; skipping {test_name}")
 }
 
-/// `true` when the operator demanded real-bytes coverage actually run, via
-/// `ITOTORI_REQUIRE_REAL_BYTES=1`.
-pub fn require_real_bytes() -> bool {
-    env::var_os(REQUIRE_REAL_BYTES_ENV).is_some_and(|value| value == "1")
+/// `true` when the operator explicitly opted OUT of real-bytes enforcement via
+/// `ITOTORI_ALLOW_MISSING_CORPUS=1`.
+pub fn allow_missing_corpus() -> bool {
+    env::var_os(ALLOW_MISSING_CORPUS_ENV).is_some_and(|value| value == "1")
 }
 
 /// Resolve the corpus-unavailable branch of an env-gated real-bytes test.
 ///
 /// This is the single chokepoint for the "no silent pass" contract: a
 /// real-bytes test must never report a green PASS when it asserted nothing.
+/// Real-bytes coverage is STRICT BY DEFAULT.
 ///
-/// - With `ITOTORI_REQUIRE_REAL_BYTES=1` set, an absent corpus is a hard
-///   failure: this panics, naming the missing [`REAL_GAME_ROOT_ENV`], so the
-///   absence of real bytes can never masquerade as success.
-/// - Otherwise it emits an explicit, non-silent skip notice and returns; the
-///   caller then returns from the (already `#[ignore]`-d) test so the run
-///   reports it as ignored/skipped rather than passed.
+/// - By DEFAULT an absent corpus is a HARD FAILURE: this panics, naming the
+///   missing [`REAL_GAME_ROOT_ENV`], so the absence of real bytes can never
+///   masquerade as success.
+/// - Only the explicit opt-OUT `ITOTORI_ALLOW_MISSING_CORPUS=1` downgrades this
+///   to a LOUD, non-silent skip notice that returns; the caller then returns
+///   from the (already `#[ignore]`-d) test so the run reports it as
+///   ignored/skipped rather than passed.
 pub fn skip_or_require_real_bytes(test_name: &str) {
     let detail = format!(
         "{REAL_GAME_ROOT_ENV} unset; {test_name} did not exercise real bytes \
          (re-run with {REAL_GAME_ROOT_ENV}=/path/to/reallive-game-root)"
     );
     assert!(
-        !require_real_bytes(),
-        "{REQUIRE_REAL_BYTES_ENV}=1 demands real-bytes coverage, but {detail}"
+        allow_missing_corpus(),
+        "real-bytes coverage is STRICT BY DEFAULT: {detail}. Set \
+         {ALLOW_MISSING_CORPUS_ENV}=1 to explicitly opt out (knowingly forgoing real bytes)."
     );
-    eprintln!("SKIP (no silent pass): {detail}");
+    eprintln!(
+        "WARNING: {ALLOW_MISSING_CORPUS_ENV}=1 set — SKIPPING real-bytes coverage (opted out): {detail}"
+    );
 }
 
 fn file_in_reallivedata(name: &str) -> Option<PathBuf> {

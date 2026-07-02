@@ -122,11 +122,7 @@ fn vertical_row_mad(rgba: &[u8], width: usize, height: usize) -> f64 {
 #[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
 fn g00_type0_back_decodes() {
     let Some(g00_dir) = real_g00_dir() else {
-        eprintln!(
-            "ITOTORI_REAL_GAME_ROOT unset; skipping Sweetie HD real-bytes test for \
-             utsushi-reallive g00 type-0 BACK.g00 decode (no silent pass: re-run with \
-             ITOTORI_REAL_GAME_ROOT=/path/to/reallive-game-root)",
-        );
+        real_corpus::skip_or_require_real_bytes("utsushi-reallive g00_type0_back_decodes");
         return;
     };
     let path = g00_dir.join(SWEETIE_HD_TYPE0_BACK_FILENAME);
@@ -280,9 +276,8 @@ fn g00_type0_corpus_coherence_both_titles() {
         }
     }
     if !ran {
-        eprintln!(
-            "Neither ITOTORI_REAL_GAME_ROOT nor ITOTORI_REAL_GAME_ROOT_2 set; skipping g00 type-0 \
-             corpus coherence test (no silent pass).",
+        real_corpus::skip_or_require_real_bytes(
+            "utsushi-reallive g00 type-0 corpus coherence (needs ITOTORI_REAL_GAME_ROOT or ITOTORI_REAL_GAME_ROOT_2)",
         );
     }
 }
@@ -291,10 +286,8 @@ fn g00_type0_corpus_coherence_both_titles() {
 #[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
 fn g00_corpus_histogram_real_bytes_2450_files() {
     let Some(g00_dir) = real_g00_dir() else {
-        eprintln!(
-            "ITOTORI_REAL_GAME_ROOT unset; skipping Sweetie HD real-bytes test for \
-             utsushi-reallive g00 corpus histogram (no silent pass: re-run with \
-             ITOTORI_REAL_GAME_ROOT=/path/to/reallive-game-root)",
+        real_corpus::skip_or_require_real_bytes(
+            "utsushi-reallive g00_corpus_histogram_real_bytes_2450_files",
         );
         return;
     };
@@ -378,10 +371,8 @@ fn g00_corpus_histogram_real_bytes_2450_files() {
 #[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
 fn g00_type2_btn000_decodes_header_and_regions() {
     let Some(g00_dir) = real_g00_dir() else {
-        eprintln!(
-            "ITOTORI_REAL_GAME_ROOT unset; skipping Sweetie HD real-bytes test for \
-             utsushi-reallive g00 type-2 btn000.g00 decode (no silent pass: re-run with \
-             ITOTORI_REAL_GAME_ROOT=/path/to/reallive-game-root)",
+        real_corpus::skip_or_require_real_bytes(
+            "utsushi-reallive g00_type2_btn000_decodes_header_and_regions",
         );
         return;
     };

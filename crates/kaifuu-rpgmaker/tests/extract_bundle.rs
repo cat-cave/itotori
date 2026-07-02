@@ -11,9 +11,51 @@
 //!   non-trivial unit count + structure only — never verbatim text.
 
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use kaifuu_rpgmaker::{BridgeOpts, ExtractError, FindingKind, extract_game_dir};
+
+/// Descend (bounded BFS) from the staged corpus root to the RPG Maker `www`
+/// directory (the one that holds `data/`). The LustMemory corpus is staged
+/// with an extra title-specific parent (`extracted/LustMemory/www`), so the
+/// env var points at the corpus ROOT and the test resolves the game dir —
+/// mirroring the utsushi-core composite real-bytes test's `locate_subdir`.
+fn resolve_www_dir(root: &Path) -> PathBuf {
+    fn find(dir: &Path, depth: usize) -> Option<PathBuf> {
+        if dir
+            .file_name()
+            .and_then(|n| n.to_str())
+            .is_some_and(|n| n.eq_ignore_ascii_case("www"))
+            && dir.join("data").is_dir()
+        {
+            return Some(dir.to_path_buf());
+        }
+        if depth == 0 {
+            return None;
+        }
+        let mut children: Vec<PathBuf> = fs::read_dir(dir)
+            .into_iter()
+            .flatten()
+            .flatten()
+            .map(|entry| entry.path())
+            .filter(|path| path.is_dir())
+            .collect();
+        children.sort();
+        children
+            .into_iter()
+            .find_map(|child| find(&child, depth - 1))
+    }
+    if root.join("data").is_dir() {
+        return root.to_path_buf();
+    }
+    find(root, 5).unwrap_or_else(|| {
+        panic!(
+            "ITOTORI_REAL_GAME_ROOT_RPG_MAKER_MV_MZ={} contains no `www/` dir with a `data/` \
+             subdirectory (expected an RPG Maker MV/MZ install tree)",
+            root.display()
+        )
+    })
+}
 
 fn opts() -> BridgeOpts<'static> {
     BridgeOpts {
@@ -161,7 +203,8 @@ fn non_rpg_maker_directory_is_rejected() {
 fn real_bytes_lustmemory_extracts_non_trivial_unit_count() {
     let root = std::env::var("ITOTORI_REAL_GAME_ROOT_RPG_MAKER_MV_MZ")
         .expect("ITOTORI_REAL_GAME_ROOT_RPG_MAKER_MV_MZ must be set for the real-bytes test");
-    let www = Path::new(&root);
+    let www_root = resolve_www_dir(Path::new(&root));
+    let www = www_root.as_path();
 
     let result = extract_game_dir(www, &opts()).expect("real corpus extraction must succeed");
     let units = &result.bundle.bundle.units;

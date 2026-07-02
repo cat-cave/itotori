@@ -2986,11 +2986,11 @@ mod tests {
     /// run against the real vault with:
     ///
     /// ```text
-    /// ITOTORI_VAULT_ROOT=/archive/vault ITOTORI_REQUIRE_REAL_BYTES=1 \
+    /// ITOTORI_VAULT_ROOT=/archive/vault \
     ///   cargo test -p kaifuu-cli vault_sourced_extract -- --ignored --nocapture
     /// ```
     #[test]
-    #[ignore = "requires ITOTORI_VAULT_ROOT=/archive/vault + ITOTORI_REQUIRE_REAL_BYTES=1"]
+    #[ignore = "requires ITOTORI_VAULT_ROOT=/archive/vault (live read-only vault)"]
     fn vault_sourced_extract_resolves_sweetie_hd_by_id_to_known_seen_bytes() {
         use sha2::{Digest, Sha256};
         use std::fmt::Write as _;
@@ -3000,12 +3000,22 @@ mod tests {
         const SWEETIE_SEEN_SHA256: &str =
             "903f538b821a9b1e6cb3d399582915c0bcf73b0a058ecc907caf6017a4fa209f";
 
-        if std::env::var("ITOTORI_REQUIRE_REAL_BYTES").ok().as_deref() != Some("1") {
-            eprintln!("skipping: set ITOTORI_REQUIRE_REAL_BYTES=1 to run this proof");
-            return;
-        }
+        // Real-bytes coverage is strict by default (see the real_corpus support
+        // helper): this ignored proof only runs when the live vault is staged.
+        // With the explicit opt-out set we loudly skip rather than hard-fail.
         if std::env::var("ITOTORI_VAULT_ROOT").ok().as_deref() != Some("/archive/vault") {
-            eprintln!("skipping: set ITOTORI_VAULT_ROOT=/archive/vault to run this proof");
+            assert!(
+                std::env::var("ITOTORI_ALLOW_MISSING_CORPUS")
+                    .ok()
+                    .as_deref()
+                    == Some("1"),
+                "real-bytes coverage is STRICT BY DEFAULT: set ITOTORI_VAULT_ROOT=/archive/vault \
+                 to run this vault-sourced proof, or ITOTORI_ALLOW_MISSING_CORPUS=1 to opt out"
+            );
+            eprintln!(
+                "WARNING: ITOTORI_ALLOW_MISSING_CORPUS=1 set — SKIPPING vault-sourced extract proof \
+                 (opted out); set ITOTORI_VAULT_ROOT=/archive/vault to run it"
+            );
             return;
         }
 

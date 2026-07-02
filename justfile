@@ -77,22 +77,33 @@ itotori-scale-large: itotori-scale-build db-up db-wait
 # truth), which `ci` depends on, so every local gate enforces them.
 ci: check build db-migrate test ci-real-bytes
 
-# reallive-real-bytes-tests-in-ci: run EVERY `#[ignore]`-gated real-bytes
-# RealLive suite (kaifuu-reallive + utsushi-reallive) against the staged
-# Sweetie HD (corpus-1) + Kanon (corpus-2) corpora. Reads the corpora in
-# place, read-only; NEVER copies copyrighted bytes. Sets
-# ITOTORI_REQUIRE_REAL_BYTES=1 so an absent corpus turns each test into a hard
-# failure instead of a silent skip, and PRE-CHECKS both corpus dirs up front
-# so a missing corpus fails cleanly (non-zero) even if zero ignored tests
-# match — a green run can never mean "zero real bytes exercised". Corpus roots
-# are overridable via the two env vars for machines that stage elsewhere.
+# real-bytes-tests-in-ci: run EVERY crate's real-bytes suite against its staged
+# real corpus. Reads the corpora in place, read-only; NEVER copies copyrighted
+# bytes. Real-bytes coverage is STRICT BY DEFAULT (the real_corpus support
+# helper hard-fails an absent corpus unless ITOTORI_ALLOW_MISSING_CORPUS=1 is
+# explicitly set — which this lane NEVER sets), so a green run can never mean
+# "zero real bytes exercised". PRE-CHECKS every corpus root up front so a
+# missing corpus fails cleanly (non-zero) even if zero ignored tests match.
+# Corpus roots are overridable via env for machines that stage elsewhere.
+#
+# Coverage spans four engine/source families across four corpus roots:
+#   - RealLive        Sweetie HD + Kanon   ITOTORI_REAL_GAME_ROOT{,_2}
+#   - RPG Maker MV/MZ LustMemory           ITOTORI_REAL_GAME_ROOT_RPG_MAKER_MV_MZ
+#   - vault source    live read-only vault ITOTORI_VAULT_ROOT
+#
+# Invocation is split per crate because a blanket `-- --ignored` is unsafe for
+# two crates: utsushi-core's real-bytes proofs are plain `#[test]`s (its OTHER
+# `#[ignore]`s are child-process harness entry points that must NOT run
+# standalone), and kaifuu-vault-source carries unrelated tracked `#[ignore]`s
+# (KAIFUU-236/237) that are not real-bytes coverage.
 ci-real-bytes:
     #!/usr/bin/env bash
     set -euo pipefail
     export ITOTORI_REAL_GAME_ROOT="${ITOTORI_REAL_GAME_ROOT:-/scratch/itotori-research/sweetie-hd}"
     export ITOTORI_REAL_GAME_ROOT_2="${ITOTORI_REAL_GAME_ROOT_2:-/scratch/itotori-research/kanon}"
-    export ITOTORI_REQUIRE_REAL_BYTES=1
-    for var in ITOTORI_REAL_GAME_ROOT ITOTORI_REAL_GAME_ROOT_2; do
+    export ITOTORI_REAL_GAME_ROOT_RPG_MAKER_MV_MZ="${ITOTORI_REAL_GAME_ROOT_RPG_MAKER_MV_MZ:-/scratch/itotori-research/rpg-maker-mv-mz}"
+    export ITOTORI_VAULT_ROOT="${ITOTORI_VAULT_ROOT:-/archive/vault}"
+    for var in ITOTORI_REAL_GAME_ROOT ITOTORI_REAL_GAME_ROOT_2 ITOTORI_REAL_GAME_ROOT_RPG_MAKER_MV_MZ ITOTORI_VAULT_ROOT; do
       dir="${!var}"
       if [ ! -d "$dir" ]; then
         echo "ci-real-bytes: required real-bytes corpus $var=$dir is missing (dir not found);" >&2
@@ -100,10 +111,17 @@ ci-real-bytes:
         exit 1
       fi
     done
-    echo "ci-real-bytes: corpus-1 (Sweetie HD) = $ITOTORI_REAL_GAME_ROOT"
-    echo "ci-real-bytes: corpus-2 (Kanon)      = $ITOTORI_REAL_GAME_ROOT_2"
-    echo "ci-real-bytes: running #[ignore]-gated real-bytes RealLive suites with ITOTORI_REQUIRE_REAL_BYTES=1"
-    cargo test -p kaifuu-reallive -p utsushi-reallive -p kaifuu-cli -p utsushi-cli -- --ignored
+    echo "ci-real-bytes: RealLive corpus-1 (Sweetie HD) = $ITOTORI_REAL_GAME_ROOT"
+    echo "ci-real-bytes: RealLive corpus-2 (Kanon)      = $ITOTORI_REAL_GAME_ROOT_2"
+    echo "ci-real-bytes: RPG Maker MV/MZ (LustMemory)   = $ITOTORI_REAL_GAME_ROOT_RPG_MAKER_MV_MZ"
+    echo "ci-real-bytes: vault source (live vault)      = $ITOTORI_VAULT_ROOT"
+    echo "ci-real-bytes: strict by default (no ITOTORI_ALLOW_MISSING_CORPUS); running real-bytes suites"
+    # RealLive + RPG Maker MV/MZ: #[ignore]-gated real-bytes suites.
+    cargo test -p kaifuu-reallive -p utsushi-reallive -p kaifuu-cli -p utsushi-cli -p kaifuu-rpgmaker -- --ignored
+    # utsushi-core: real-bytes proofs are plain #[test]s (target the files, no --ignored).
+    cargo test -p utsushi-core --test composite_asset_package_real_bytes --test engine_port_sinks_bridge_real_bytes
+    # kaifuu-vault-source: only the live-vault #[ignore] proofs (avoid unrelated KAIFUU-236/237 ignores).
+    cargo test -p kaifuu-vault-source --test live_vault_open_test --test live_vault_by_id_test -- --ignored
 
 qd-full-ci:
     node scripts/qd-full-ci.mjs

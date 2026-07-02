@@ -20,10 +20,10 @@
 //! - The original source byte slice is unchanged (returned `Vec<u8>`
 //!   is a fresh allocation).
 //!
-//! Env-gated; without `ITOTORI_REAL_GAME_ROOT` it prints an
-//! explicit skip notice and returns (no silent pass). Set
-//! `ITOTORI_REQUIRE_REAL_BYTES=1` to turn the absent corpus into a
-//! hard failure instead of a skip.
+//! Env-gated and STRICT BY DEFAULT: without `ITOTORI_REAL_GAME_ROOT` an absent
+//! corpus is a HARD FAILURE. Set the explicit opt-out
+//! `ITOTORI_ALLOW_MISSING_CORPUS=1` to downgrade it to a loudly-logged skip
+//! (knowingly forgoing real-bytes coverage).
 
 #[path = "support/real_corpus.rs"]
 mod real_corpus;

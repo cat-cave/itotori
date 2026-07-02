@@ -668,11 +668,8 @@ fn rect_has_non_colour_pixel(
 #[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var (title 1)"]
 fn render_pass_applies_state_and_rasterises_g00_title1_real_bytes() {
     let Some(g00_dir) = real_corpus::g00_dir_for_env(real_corpus::REAL_GAME_ROOT_ENV) else {
-        eprintln!(
-            "{} unset or no g00 dir found; skipping render real-bytes proof (title 1). \
-             Re-run with {}=/path/to/reallive-game-root (no silent pass).",
-            real_corpus::REAL_GAME_ROOT_ENV,
-            real_corpus::REAL_GAME_ROOT_ENV,
+        real_corpus::skip_or_require_real_bytes(
+            "utsushi-reallive render_pass_applies_state_and_rasterises_g00_title1_real_bytes",
         );
         return;
     };
@@ -683,11 +680,8 @@ fn render_pass_applies_state_and_rasterises_g00_title1_real_bytes() {
 #[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT_2 env var (title 2)"]
 fn render_pass_applies_state_and_rasterises_g00_title2_real_bytes() {
     let Some(g00_dir) = real_corpus::g00_dir_for_env(real_corpus::REAL_GAME_ROOT_2_ENV) else {
-        eprintln!(
-            "{} unset or no g00 dir found; skipping render real-bytes proof (title 2). \
-             Re-run with {}=/path/to/second-reallive-game-root (no silent pass).",
-            real_corpus::REAL_GAME_ROOT_2_ENV,
-            real_corpus::REAL_GAME_ROOT_2_ENV,
+        real_corpus::skip_or_require_real_bytes(
+            "utsushi-reallive render_pass_applies_state_and_rasterises_g00_title2_real_bytes (title 2 / ITOTORI_REAL_GAME_ROOT_2)",
         );
         return;
     };

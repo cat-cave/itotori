@@ -81,10 +81,8 @@ fn real_seen_txt_path() -> Option<PathBuf> {
 #[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
 fn str_mem_sys_registries_dispatch_against_reallive_real_bytes_scene_one() {
     let Some(seen_path) = real_seen_txt_path() else {
-        eprintln!(
-            "ITOTORI_REAL_GAME_ROOT unset; skipping Sweetie HD real-bytes test \
-             for UTSUSHI-212 (str/mem/sys families). Re-run with \
-             ITOTORI_REAL_GAME_ROOT=/path/to/reallive-game-root",
+        real_corpus::skip_or_require_real_bytes(
+            "utsushi-reallive str_mem_sys_registries_dispatch_against_reallive_real_bytes_scene_one",
         );
         return;
     };

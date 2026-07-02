@@ -40,10 +40,8 @@ fn real_seen_txt_path() -> Option<PathBuf> {
 #[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
 fn reallive_real_bytes_scene_one_replay_emits_textline() {
     let Some(seen_path) = real_seen_txt_path() else {
-        eprintln!(
-            "ITOTORI_REAL_GAME_ROOT unset; skipping UTSUSHI-220 real-bytes Sweetie HD \
-             scene-1 replay test (no silent pass: re-run with \
-             ITOTORI_REAL_GAME_ROOT=/path/to/reallive-game-root)",
+        real_corpus::skip_or_require_real_bytes(
+            "utsushi-reallive reallive_real_bytes_scene_one_replay_emits_textline",
         );
         return;
     };
@@ -146,7 +144,9 @@ fn reallive_real_bytes_scene_one_replay_emits_textline() {
 #[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
 fn reallive_real_bytes_scene_one_replay_is_byte_deterministic() {
     let Some(seen_path) = real_seen_txt_path() else {
-        eprintln!("ITOTORI_REAL_GAME_ROOT unset; skipping UTSUSHI-220 byte-determinism test",);
+        real_corpus::skip_or_require_real_bytes(
+            "utsushi-reallive reallive_real_bytes_scene_one_replay_is_byte_deterministic",
+        );
         return;
     };
 
@@ -181,7 +181,9 @@ fn reallive_real_bytes_scene_one_replay_is_byte_deterministic() {
 #[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
 fn reallive_real_bytes_scene_one_snapshot_round_trips() {
     let Some(seen_path) = real_seen_txt_path() else {
-        eprintln!("ITOTORI_REAL_GAME_ROOT unset; skipping UTSUSHI-220 snapshot identity test",);
+        real_corpus::skip_or_require_real_bytes(
+            "utsushi-reallive reallive_real_bytes_scene_one_snapshot_round_trips",
+        );
         return;
     };
 

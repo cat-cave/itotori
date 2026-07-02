@@ -26,6 +26,14 @@
 //      `ci-real-bytes` justfile lane does NOT run, and that is not on the
 //      transitional allowlist owned by
 //      `strictness-invert-real-bytes-default-and-full-crate-coverage`.
+//   6. Committed code or the build config ENABLING the real-bytes opt-out
+//      (`ITOTORI_ALLOW_MISSING_CORPUS`): a shell/justfile assignment
+//      (`[export] ITOTORI_ALLOW_MISSING_CORPUS=…`) or a Rust `.env(…)` /
+//      `set_var(…)` / `remove_var(…)` on it. Real-bytes coverage is strict by
+//      default; the opt-out exists only for an interactive corpus-less run and
+//      must never be baked into CI/committed code. READING the flag (the
+//      real_corpus helper's `env::var_os` + const) is how strictness is
+//      enforced and is NOT flagged.
 //
 // Exit codes:
 //   0 — no violations
@@ -45,18 +53,14 @@ const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(here, "..");
 
 // ---------------------------------------------------------------------------
-// Rule 5 allowlist. These crates own real-bytes / live-corpus `#[ignore]`
-// tests but are NOT yet in the `ci-real-bytes` lane. Extending the lane to
-// cover them is the SEPARATE node
-// `strictness-invert-real-bytes-default-and-full-crate-coverage`; until that
-// lands, the guard stays honest (still lists them) but green. When that node
-// adds them to the lane it MUST delete them from this allowlist so the guard
-// tightens automatically.
-const RULE5_TRANSITIONAL_ALLOWLIST = new Set([
-  "kaifuu-rpgmaker",
-  "utsushi-core",
-  "kaifuu-vault-source",
-]);
+// Rule 5 allowlist. Previously carried kaifuu-rpgmaker / utsushi-core /
+// kaifuu-vault-source, whose real-bytes / live-corpus tests were not yet in the
+// `ci-real-bytes` lane. The node
+// `strictness-invert-real-bytes-default-and-full-crate-coverage` added ALL of
+// them to the lane, so the allowlist is now EMPTY — every crate that owns a
+// real-bytes test must be in the lane, no exceptions. Adding a crate here again
+// is a laxity regression the guard exists to prevent.
+const RULE5_TRANSITIONAL_ALLOWLIST = new Set([]);
 const RULE5_ALLOWLIST_NODE = "strictness-invert-real-bytes-default-and-full-crate-coverage";
 
 // Rule 4 justification markers: an assert-line floor is exempt when the line
@@ -300,6 +304,43 @@ export function evaluateRealBytesCoverage(realBytesCrates, laneCrates) {
   return found;
 }
 
+// ---- Rule 6: enabling the ITOTORI_ALLOW_MISSING_CORPUS opt-out ------------
+// Real-bytes coverage is STRICT BY DEFAULT. The only escape valve,
+// `ITOTORI_ALLOW_MISSING_CORPUS=1`, is for an interactive corpus-less run and
+// must never be baked into committed code or the CI/build config. These
+// patterns match the "enable it" shapes (an actual assignment/export, or a
+// Rust `.env`/`set_var`/`remove_var` that mutates it) — NOT a READ
+// (`env::var_os(ALLOW_MISSING_CORPUS_ENV)`) nor the const definition, so the
+// real_corpus helper is never flagged.
+const ALLOW_MISSING_ENV = "ITOTORI_ALLOW_MISSING_CORPUS";
+const ALLOW_MISSING_ENABLE_PATTERNS = [
+  // shell / justfile assignment: `[export] ITOTORI_ALLOW_MISSING_CORPUS=…`
+  /^\s*(?:export\s+)?ITOTORI_ALLOW_MISSING_CORPUS\s*=/u,
+  // Rust process-env mutation of the flag.
+  /(?:set_var|remove_var)\s*\(\s*"ITOTORI_ALLOW_MISSING_CORPUS"/u,
+  /\.env(?:_remove)?\s*\(\s*"ITOTORI_ALLOW_MISSING_CORPUS"/u,
+];
+
+export function checkAllowMissingOptOut(path, contents) {
+  const found = [];
+  const lines = contents.split(/\r?\n/u);
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i];
+    for (const pat of ALLOW_MISSING_ENABLE_PATTERNS) {
+      if (pat.test(line)) {
+        found.push({
+          file: path,
+          line: i + 1,
+          rule: `${ALLOW_MISSING_ENV} opt-out enabled in committed code/CI`,
+          excerpt: line.trim().slice(0, 200),
+        });
+        break;
+      }
+    }
+  }
+  return found;
+}
+
 // ---------------------------------------------------------------------------
 function listTrackedRustFiles() {
   const out = execSync("git ls-files crates", { cwd: repoRoot, encoding: "utf8" });
@@ -328,6 +369,7 @@ function runAudit() {
     violations.push(...checkBareIgnore(relPath, contents));
     violations.push(...checkUnreasonedAllow(relPath, contents));
     violations.push(...checkRelaxedFloors(relPath, contents));
+    violations.push(...checkAllowMissingOptOut(relPath, contents));
     if (crateOwnsRealBytes(relPath, contents)) {
       const crate = crateOfPath(relPath);
       if (crate) realBytesCrates.add(crate);
@@ -349,6 +391,9 @@ function runAudit() {
   const justfile = readRepoFile("justfile");
   const laneCrates = justfile ? parseLaneCrates(justfile) : new Set();
   violations.push(...evaluateRealBytesCoverage(realBytesCrates, laneCrates));
+  if (justfile !== undefined) {
+    violations.push(...checkAllowMissingOptOut("justfile", justfile));
+  }
 
   if (violations.length > 0) {
     process.stderr.write(

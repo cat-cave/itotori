@@ -248,9 +248,8 @@ fn render_wipe_solid_colour_deterministic_png() {
 #[ignore = "requires ITOTORI_REAL_GAME_ROOT; opt in with --include-ignored"]
 fn graphics_pipeline_honours_reallive_real_bytes_gameexe_screen_size() {
     let Some(gameexe_path) = real_gameexe_ini_path() else {
-        eprintln!(
-            "ITOTORI_REAL_GAME_ROOT not set — graphics_pipeline_honours_reallive_real_bytes_gameexe_screen_size \
-             skipped (run with --include-ignored to enable)"
+        real_corpus::skip_or_require_real_bytes(
+            "utsushi-reallive graphics_pipeline_honours_reallive_real_bytes_gameexe_screen_size",
         );
         return;
     };

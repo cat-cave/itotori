@@ -51,10 +51,8 @@ const SWEETIE_HD_SCENE_ONE_DECOMPRESSED_FIRST_EIGHT_BYTES: [u8; 8] =
 #[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
 fn scene1_decompressor_matches_reallive_real_bytes_outcome_a() {
     let Some(seen_path) = real_seen_txt_path() else {
-        eprintln!(
-            "ITOTORI_REAL_GAME_ROOT unset; skipping Sweetie HD real-bytes test for \
-             utsushi-reallive decompressor (no silent pass: re-run with \
-             ITOTORI_REAL_GAME_ROOT=/path/to/reallive-game-root)",
+        real_corpus::skip_or_require_real_bytes(
+            "utsushi-reallive scene1_decompressor_matches_reallive_real_bytes_outcome_a",
         );
         return;
     };

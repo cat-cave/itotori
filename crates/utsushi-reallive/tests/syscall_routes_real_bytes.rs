@@ -182,9 +182,8 @@ fn verify_syscall_routes_match_section_h(gameexe: &Gameexe) {
 #[ignore = "requires ITOTORI_REAL_GAME_ROOT; opt in with --include-ignored"]
 fn syscall_routes_match_reallive_real_bytes() {
     let Some(gameexe) = load_reallive_real_bytes_gameexe() else {
-        eprintln!(
-            "ITOTORI_REAL_GAME_ROOT not set or no REALLIVEDATA directory found — syscall_routes_match_reallive_real_bytes \
-             is a no-op."
+        real_corpus::skip_or_require_real_bytes(
+            "utsushi-reallive syscall_routes_match_reallive_real_bytes",
         );
         return;
     };

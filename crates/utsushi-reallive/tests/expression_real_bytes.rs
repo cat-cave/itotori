@@ -51,10 +51,8 @@ const MIN_CLEAN_PARSE_COUNT: usize = 17;
 #[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
 fn scene1_expression_elements_parse_and_evaluate() {
     let Some(seen_path) = real_seen_txt_path() else {
-        eprintln!(
-            "ITOTORI_REAL_GAME_ROOT unset; skipping Sweetie HD real-bytes test for \
-             utsushi-reallive expression parser/evaluator (no silent pass: re-run with \
-             ITOTORI_REAL_GAME_ROOT=/path/to/reallive-game-root)",
+        real_corpus::skip_or_require_real_bytes(
+            "utsushi-reallive scene1_expression_elements_parse_and_evaluate",
         );
         return;
     };

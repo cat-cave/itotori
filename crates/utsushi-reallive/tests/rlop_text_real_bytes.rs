@@ -66,10 +66,8 @@ fn real_seen_txt_path() -> Option<PathBuf> {
 #[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
 fn reallive_real_bytes_scene_one_emits_at_least_one_text_line_through_sink() {
     let Some(seen_path) = real_seen_txt_path() else {
-        eprintln!(
-            "ITOTORI_REAL_GAME_ROOT unset; skipping Sweetie HD real-bytes test for \
-             utsushi-reallive module_msg RLOperation family (no silent pass: re-run with \
-             ITOTORI_REAL_GAME_ROOT=/path/to/reallive-game-root)",
+        real_corpus::skip_or_require_real_bytes(
+            "utsushi-reallive reallive_real_bytes_scene_one_emits_at_least_one_text_line_through_sink",
         );
         return;
     };

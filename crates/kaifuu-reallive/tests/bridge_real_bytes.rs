@@ -20,10 +20,10 @@
 //!   `xor_2` segment, owned by the decompressor follow-up node — so it can
 //!   no longer be decoded end-to-end and is not a valid clean fixture.)
 //!
-//! The test is env-gated; without `ITOTORI_REAL_GAME_ROOT` it
-//! emits an explicit skip notice and returns (no silent pass).
-//! Set `ITOTORI_REQUIRE_REAL_BYTES=1` to turn the absent corpus
-//! into a hard failure instead of a skip.
+//! The test is env-gated and STRICT BY DEFAULT; without
+//! `ITOTORI_REAL_GAME_ROOT` an absent corpus is a HARD FAILURE. Set the
+//! explicit opt-out `ITOTORI_ALLOW_MISSING_CORPUS=1` to downgrade it to a
+//! loudly-logged skip (knowingly forgoing real-bytes coverage).
 
 #[path = "support/real_corpus.rs"]
 mod real_corpus;

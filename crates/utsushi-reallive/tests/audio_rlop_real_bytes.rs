@@ -58,9 +58,8 @@ fn load_reallive_real_bytes_gameexe() -> Option<Arc<Gameexe>> {
 #[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
 fn koe_play_resolves_through_namae_table() {
     let Some(gameexe) = load_reallive_real_bytes_gameexe() else {
-        eprintln!(
-            "ITOTORI_REAL_GAME_ROOT unset or Gameexe.ini missing; skipping \
-             koe_play_resolves_through_namae_table",
+        real_corpus::skip_or_require_real_bytes(
+            "utsushi-reallive koe_play_resolves_through_namae_table",
         );
         return;
     };
@@ -149,9 +148,8 @@ fn koe_play_resolves_through_namae_table() {
 #[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
 fn bgm_play_resolves_through_foldname_bgm() {
     let Some(gameexe) = load_reallive_real_bytes_gameexe() else {
-        eprintln!(
-            "ITOTORI_REAL_GAME_ROOT unset or Gameexe.ini missing; skipping \
-             bgm_play_resolves_through_foldname_bgm",
+        real_corpus::skip_or_require_real_bytes(
+            "utsushi-reallive bgm_play_resolves_through_foldname_bgm",
         );
         return;
     };
@@ -194,9 +192,8 @@ fn bgm_play_resolves_through_foldname_bgm() {
 #[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
 fn bgm_play_asset_id_resolves_against_real_asa_nwa_path() {
     let Some(gameexe) = load_reallive_real_bytes_gameexe() else {
-        eprintln!(
-            "ITOTORI_REAL_GAME_ROOT unset; skipping \
-             bgm_play_asset_id_resolves_against_real_asa_nwa_path",
+        real_corpus::skip_or_require_real_bytes(
+            "utsushi-reallive bgm_play_asset_id_resolves_against_real_asa_nwa_path",
         );
         return;
     };

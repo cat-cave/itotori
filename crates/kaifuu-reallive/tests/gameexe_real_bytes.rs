@@ -13,11 +13,10 @@
 //! invariant (analogous to KAIFUU-189's reasoning); second-corpus
 //! retroactive validation is welcome but not blocking.
 //!
-//! Env-gating: this test reads bytes only when
-//! `ITOTORI_REAL_GAME_ROOT` is set; otherwise it prints an explicit
-//! skip notice and returns (no silent pass). Set
-//! `ITOTORI_REQUIRE_REAL_BYTES=1` to turn the absent corpus into a
-//! hard failure instead of a skip.
+//! Env-gating, STRICT BY DEFAULT: this test reads bytes only when
+//! `ITOTORI_REAL_GAME_ROOT` is set; otherwise an absent corpus is a HARD
+//! FAILURE. Set the explicit opt-out `ITOTORI_ALLOW_MISSING_CORPUS=1` to
+//! downgrade it to a loudly-logged skip.
 
 #[path = "support/real_corpus.rs"]
 mod real_corpus;

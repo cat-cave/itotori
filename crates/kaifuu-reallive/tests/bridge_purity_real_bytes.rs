@@ -25,10 +25,11 @@
 //! Per the data rule, the test asserts only on byte-category invariants and
 //! reports counts / categories — never decoded dialogue strings.
 //!
-//! Env-gated like the rest of the real-bytes suite: needs
-//! `ITOTORI_REAL_GAME_ROOT` (Sweetie HD) and `ITOTORI_REAL_GAME_ROOT_2`
-//! (Kanon). Without them it emits an explicit skip notice (no silent pass);
-//! `ITOTORI_REQUIRE_REAL_BYTES=1` makes an absent corpus a hard failure.
+//! Env-gated like the rest of the real-bytes suite and STRICT BY DEFAULT:
+//! needs `ITOTORI_REAL_GAME_ROOT` (Sweetie HD) and `ITOTORI_REAL_GAME_ROOT_2`
+//! (Kanon). Without them an absent corpus is a HARD FAILURE; the explicit
+//! opt-out `ITOTORI_ALLOW_MISSING_CORPUS=1` downgrades it to a loudly-logged
+//! skip.
 
 #[path = "support/real_corpus.rs"]
 mod real_corpus;
