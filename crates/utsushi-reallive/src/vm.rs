@@ -660,9 +660,10 @@ impl Vm {
     }
 
     /// Fold the FULL deterministic control state — active `(scene, pc)`,
-    /// the call-stack shape (each frame's return scene / pc / kind), and
-    /// the complete mutable memory ([`VarBanks::fingerprint`]) — into a
-    /// 64-bit fingerprint.
+    /// the call-stack shape (each frame's return scene / pc / kind), the
+    /// complete mutable memory ([`VarBanks::fingerprint`]), and the
+    /// suspended-longop queue (length + each longop's id / private
+    /// state) — into a 64-bit fingerprint.
     ///
     /// Two VMs sharing a `control_fingerprint` will, under the same store
     /// / registry / (deterministic) scheduler, execute an IDENTICAL next
@@ -692,6 +693,22 @@ impl Vm {
         fold(&[u8::from(self.halted)]);
         // Combine with the memory fingerprint (already an FNV fold).
         fold(&self.banks.fingerprint().to_le_bytes());
+        // Fold the suspended-longop queue. `step()` polls the queue head
+        // BEFORE fetching the next element, so the next step is a pure
+        // function of the folded state ONLY when the queue's contents are
+        // also captured. Folding the length plus each queued longop's
+        // identity (`id`) and full private state means two genuinely
+        // different queue states cannot collide — an evolving wait/event
+        // longop (whose private state advances between polls) produces a
+        // DISTINCT fingerprint each step, so the spin-break cannot
+        // false-positive on it, while a truly stable pure-state repeat
+        // still yields a repeated fingerprint.
+        fold(&(self.longop_queue.len() as u64).to_le_bytes());
+        for longop in &self.longop_queue {
+            fold(&longop.id.0.to_le_bytes());
+            fold(&(longop.private_state.len() as u64).to_le_bytes());
+            fold(&longop.private_state);
+        }
         hash
     }
 
@@ -2193,5 +2210,82 @@ mod tests {
         assert_eq!(hex, "deadbeef");
         let back = hex_to_bytes(&hex).expect("decode");
         assert_eq!(back, bytes);
+    }
+
+    /// Soundness of the event-flag spin-break: `control_fingerprint`
+    /// MUST fold the suspended-longop queue. `step()` polls the queue
+    /// head before fetching the next element, so on a wait/event-poll
+    /// loop the next step is NOT a pure function of (scene, pc, stack,
+    /// banks) alone when the queue is non-empty and evolving. If the
+    /// queue were omitted, a back-edge that returns to the same
+    /// (scene, pc) with a DIFFERENT — still-evolving — queue would
+    /// present a REPEATED fingerprint and be falsely proven an infinite
+    /// spin, silently rewriting a real transfer to `Advance`.
+    ///
+    /// This asserts:
+    ///  1. false-positive guard — an evolving queue (same scene/pc/
+    ///     stack/banks) yields a DISTINCT fingerprint each step, so the
+    ///     spin-break cannot fire on it; and
+    ///  2. the spin-break is not weakened — a genuine pure-state repeat
+    ///     (queue byte-identical) still yields a REPEATED fingerprint.
+    #[test]
+    fn control_fingerprint_folds_evolving_longop_queue() {
+        let mut vm = Vm::new(7, 42);
+
+        // Baseline: empty queue.
+        let fp_empty = vm.control_fingerprint();
+
+        // Enqueuing a longop changes the fingerprint (queue length +
+        // contents are folded), even though scene/pc/stack/banks are
+        // unchanged.
+        vm.enqueue_longop(LongOp::new(LongOpId(1), vec![0x00]));
+        let fp_q0 = vm.control_fingerprint();
+        assert_ne!(
+            fp_empty, fp_q0,
+            "a non-empty queue must not share a fingerprint with the empty queue"
+        );
+
+        // Fingerprint is a pure function of state: recomputing with the
+        // queue unchanged yields the SAME value — a genuine pure-state
+        // spin (queue stable) still breaks.
+        assert_eq!(
+            fp_q0,
+            vm.control_fingerprint(),
+            "a byte-identical pure state must repeat its fingerprint (spin-break preserved)"
+        );
+
+        // False-positive guard: an evolving wait/event longop advances
+        // its private_state between polls while scene/pc/stack/banks
+        // stay fixed. The fingerprint MUST differ so the back-edge is
+        // not proven an infinite spin.
+        vm.longop_queue
+            .front_mut()
+            .expect("queue head present")
+            .private_state = vec![0x01];
+        let fp_q1 = vm.control_fingerprint();
+        assert_ne!(
+            fp_q0, fp_q1,
+            "an evolving longop queue must produce distinct fingerprints (no false-positive spin)"
+        );
+
+        // Distinct queue depth also perturbs the fingerprint.
+        vm.enqueue_longop(LongOp::new(LongOpId(2), vec![0x01]));
+        let fp_q2 = vm.control_fingerprint();
+        assert_ne!(
+            fp_q1, fp_q2,
+            "queue depth must be folded (a deeper queue differs)"
+        );
+
+        // Distinct longop identity (same private_state, different id)
+        // must not collide.
+        let mut vm_a = Vm::new(7, 42);
+        vm_a.enqueue_longop(LongOp::new(LongOpId(10), vec![0xAB]));
+        let mut vm_b = Vm::new(7, 42);
+        vm_b.enqueue_longop(LongOp::new(LongOpId(11), vec![0xAB]));
+        assert_ne!(
+            vm_a.control_fingerprint(),
+            vm_b.control_fingerprint(),
+            "distinct longop ids must not collide under an identical private_state"
+        );
     }
 }
