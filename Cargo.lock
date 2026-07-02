@@ -614,6 +614,8 @@ name = "kaifuu-vault-source"
 version = "0.0.0"
 dependencies = [
  "dirs",
+ "kaifuu-core",
+ "kaifuu-engine-fixture",
  "kaifuu-reallive",
  "rusqlite",
  "serde",

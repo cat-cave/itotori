@@ -22,6 +22,11 @@ tempfile.workspace = true
 # Real-bytes proof: decode a Kanon (Delta+BCJ2) scene straight from the
 # vault-materialised tree, so the by-id path is proven byte-usable end to end.
 kaifuu-reallive = { path = "../kaifuu-reallive" }
+# Real-bytes proof for the Siglus corpus (Karetoshi + Gamekoi portable
+# installs): materialise each portable install from the vault by-id and run
+# the Siglus detector against the plaintext Scene.pck/Gameexe.dat tree.
+kaifuu-core = { path = "../kaifuu-core" }
+kaifuu-engine-fixture = { path = "../kaifuu-engine-fixture" }
 
 [build-dependencies]
 rusqlite = { workspace = true }

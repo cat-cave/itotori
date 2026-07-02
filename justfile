@@ -96,10 +96,22 @@ ci-full: ci
 # missing corpus fails cleanly (non-zero) even if zero ignored tests match.
 # Corpus roots are overridable via env for machines that stage elsewhere.
 #
-# Coverage spans four engine/source families across four corpus roots:
+# Coverage spans five engine/source families across the corpus roots below:
 #   - RealLive        Sweetie HD + Kanon   ITOTORI_REAL_GAME_ROOT{,_2}
 #   - RPG Maker MV/MZ LustMemory           ITOTORI_REAL_GAME_ROOT_RPG_MAKER_MV_MZ
 #   - vault source    live read-only vault ITOTORI_VAULT_ROOT
+#   - Siglus          Karetoshi + Gamekoi  ITOTORI_VAULT_ROOT (vault-materialized)
+#
+# The Siglus corpus is NOT a copied corpus: both titles are vaulted PORTABLE
+# INSTALLS (bare by-id artifacts) that the `live_vault_siglus_test` materializes
+# on demand from ITOTORI_VAULT_ROOT into throwaway scratch, exactly like the
+# RealLive vault-source lane. Downstream Siglus real-bytes nodes therefore
+# consume the corpus via the vault (ITOTORI_VAULT_ROOT + the two canonical ids
+# pinned in that test), never a staged copy. The RealLive-style env override
+# `ITOTORI_REAL_GAME_ROOT_SIGLUS{,_2}` is reserved for pointing a downstream
+# test at a pre-materialized plaintext Siglus game tree (a directory holding
+# Scene.pck + Gameexe.dat + SiglusEngine.exe); when unset, vault-materialize is
+# the canonical path.
 #
 # Invocation is split per crate because a blanket `-- --ignored` is unsafe for
 # two crates: utsushi-core's real-bytes proofs are plain `#[test]`s (its OTHER
@@ -125,13 +137,15 @@ ci-real-bytes:
     echo "ci-real-bytes: RealLive corpus-2 (Kanon)      = $ITOTORI_REAL_GAME_ROOT_2"
     echo "ci-real-bytes: RPG Maker MV/MZ (LustMemory)   = $ITOTORI_REAL_GAME_ROOT_RPG_MAKER_MV_MZ"
     echo "ci-real-bytes: vault source (live vault)      = $ITOTORI_VAULT_ROOT"
+    echo "ci-real-bytes: Siglus (Karetoshi + Gamekoi)   = $ITOTORI_VAULT_ROOT (vault-materialized)"
     echo "ci-real-bytes: strict by default (no ITOTORI_ALLOW_MISSING_CORPUS); running real-bytes suites"
     # RealLive + RPG Maker MV/MZ: #[ignore]-gated real-bytes suites.
     cargo test -p kaifuu-reallive -p utsushi-reallive -p kaifuu-cli -p utsushi-cli -p kaifuu-rpgmaker -- --ignored
     # utsushi-core: real-bytes proofs are plain #[test]s (target the files, no --ignored).
     cargo test -p utsushi-core --test composite_asset_package_real_bytes
     # kaifuu-vault-source: only the live-vault #[ignore] proofs (avoid unrelated KAIFUU-236/237 ignores).
-    cargo test -p kaifuu-vault-source --test live_vault_open_test --test live_vault_by_id_test -- --ignored
+    # live_vault_siglus_test materializes both Siglus portable installs (Karetoshi + Gamekoi) by-id.
+    cargo test -p kaifuu-vault-source --test live_vault_open_test --test live_vault_by_id_test --test live_vault_siglus_test -- --ignored
 
 # Per-gate CI entrypoint. Affected-aware by default: selects only the lanes the
 # diff (vs ITOTORI_QD_AFFECTED_BASE, default `main`) can touch — apps/itotori-only
