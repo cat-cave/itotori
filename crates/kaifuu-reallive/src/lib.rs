@@ -114,6 +114,7 @@ pub mod decompressor;
 pub mod detector;
 mod diagnostics;
 pub mod encoding;
+pub mod framing;
 pub mod gameexe;
 pub mod inventory;
 pub mod opcode;
@@ -151,6 +152,7 @@ pub use encoding::{
     SHIFT_JIS_DECODE_FAILURE_CODE, ShiftJisDecode, ShiftJisDecodeDiagnostic, ShiftJisEncodeError,
     decode_shift_jis_slot, encode_shift_jis_slot, slice_control_bytes,
 };
+pub use framing::{FramingError, FramingSpan, framing_manifest, reemit_scene};
 pub use gameexe::{
     GameexeIniDiagnostic, GameexeInventoryEntry, GameexeInventoryReport, GameexeKeyFamily,
     GameexeKeyTreatment, UNKNOWN_GAMEEXE_KEY_CODE, UnknownReason, parse_gameexe_inventory,
