@@ -159,15 +159,10 @@ pub struct RuntimeRequest<'a> {
     /// `Arc<ReplayLog>` keeps cloning cheap when the runner shares the log
     /// across multiple adapter invocations.
     pub replay: Option<Arc<ReplayLog>>,
-    /// Optional, additive handoff for adapters that emit into the
-    /// UTSUSHI-022 headless sink contracts. Adapters that do not consume
-    /// sinks ignore the field; the existing `RuntimeRequest::new` call
-    /// sites stay valid because the field defaults to `None`. The signature
-    /// decision for `RuntimeAdapter` is deferred to UTSUSHI-103.
-    pub sinks: Option<SinkSet>,
-    /// Cancellation token plumbed by UTSUSHI-103. The `EnginePortAdapter`
-    /// shim reads this when bridging to `EnginePort::launch`; legacy
-    /// adapters can ignore the field.
+    /// Cancellation token. The `EnginePortAdapter` bridge forwards this
+    /// into `EnginePort::launch`/`observe`/`capture` so a long-running
+    /// port honours cooperative cancellation; adapters that do not run a
+    /// cancellable loop ignore the field.
     pub cancellation: Option<RunnerCancellation>,
     /// Optional snapshot anchor (UTSUSHI-023). When `Some`, the runner is
     /// being asked to restore the snapshot at `start` and replay from the
@@ -192,14 +187,6 @@ impl std::fmt::Debug for RuntimeRequest<'_> {
             .field("vfs", &self.vfs.as_ref().map(|_| "Arc<dyn RuntimeVfs>"))
             .field("replay", &self.replay.as_ref().map(|_| "Arc<ReplayLog>"))
             .field(
-                "sinks",
-                &if self.sinks.is_some() {
-                    "<present>"
-                } else {
-                    "<absent>"
-                },
-            )
-            .field(
                 "cancellation",
                 &self.cancellation.as_ref().map(|_| "RunnerCancellation"),
             )
@@ -222,7 +209,6 @@ impl<'a> RuntimeRequest<'a> {
             artifact_root: None,
             vfs: None,
             replay: None,
-            sinks: None,
             cancellation: None,
             snapshot: None,
         }
@@ -240,11 +226,6 @@ impl<'a> RuntimeRequest<'a> {
 
     pub fn with_replay(mut self, replay: Arc<ReplayLog>) -> Self {
         self.replay = Some(replay);
-        self
-    }
-
-    pub fn with_sinks(mut self, sinks: SinkSet) -> Self {
-        self.sinks = Some(sinks);
         self
     }
 

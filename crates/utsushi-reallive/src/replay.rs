@@ -47,9 +47,10 @@ use utsushi_core::{EvidenceTier, SnapshotEnvelope};
 
 use utsushi_core::clock::LogicalClockTick;
 
-use crate::audio::AudioEventEmitter;
+use crate::audio::{AudioEvent as RealliveAudioEvent, AudioEventEmitter};
 use crate::bytecode_element::{BytecodeElement, TextoutEncoding, decode_bytecode_stream};
 use crate::decompressor::AvgDecompressor;
+use crate::graphics_objects::GraphicsObjectStack;
 use crate::rlop::module_audio::{AudioRuntime, register_audio_rlops};
 use crate::rlop::module_catalog::register_catalog_rlops;
 use crate::rlop::module_ctrl::{
@@ -962,6 +963,32 @@ fn mount_registry(
     msg_runtime: Arc<MsgRuntime>,
     control_flow: ControlFlowMount,
 ) -> RlopRegistry {
+    mount_registry_handles(sink, msg_runtime, control_flow).registry
+}
+
+/// The full 9-module registry plus the shared audio + graphics runtimes
+/// it drives. [`mount_registry`] discards the runtime handles; the
+/// engine-port observation path ([`ReplayEngine::observe_scene`]) RETAINS
+/// them so an [`crate::UtsushiReallivePort`] can emit the audio events and
+/// the terminal graphics-object stack through the substrate audio + frame
+/// sinks. Text flows through the caller-supplied [`TextSurfaceSink`]
+/// during the drive, so no text handle is returned here.
+struct RegistryHandles {
+    registry: RlopRegistry,
+    audio: Arc<AudioRuntime>,
+    graphics: Arc<GraphicsRuntime>,
+}
+
+/// Mount all nine opcode families + the catalog gap-fill, returning the
+/// registry ALONGSIDE the shared audio + graphics runtimes. Single source
+/// of truth for the registry composition: [`mount_registry`] delegates
+/// here and drops the handles, so the cataloguing / branch-following /
+/// engine-port paths all mount byte-identical op tables.
+fn mount_registry_handles(
+    sink: Arc<dyn TextSurfaceSink>,
+    msg_runtime: Arc<MsgRuntime>,
+    control_flow: ControlFlowMount,
+) -> RegistryHandles {
     let mut registry = RlopRegistry::new();
 
     // Text (msg) + control-flow. The cataloguing replay mounts control
@@ -983,12 +1010,12 @@ fn mount_registry(
     // same layer stack grp populates).
     let graphics_runtime = Arc::new(GraphicsRuntime::new());
     register_grp_rlops(&mut registry, Arc::clone(&graphics_runtime));
-    register_obj_rlops(&mut registry, graphics_runtime);
+    register_obj_rlops(&mut registry, Arc::clone(&graphics_runtime));
 
     // Audio.
     let audio_emitter = Arc::new(AudioEventEmitter::new());
     let audio_runtime = Arc::new(AudioRuntime::new(audio_emitter));
-    register_audio_rlops(&mut registry, audio_runtime);
+    register_audio_rlops(&mut registry, Arc::clone(&audio_runtime));
 
     // Selection (choices). Backed by the same text sink so choice lines
     // surface through the substrate text surface.
@@ -1013,7 +1040,11 @@ fn mount_registry(
     // LAST and gap-fill-only, so it never shadows a real-semantics op.
     register_catalog_rlops(&mut registry);
 
-    registry
+    RegistryHandles {
+        registry,
+        audio: audio_runtime,
+        graphics: graphics_runtime,
+    }
 }
 
 /// Number of RLOps registered by a full 9-module mount. Runtime proof
@@ -1209,6 +1240,138 @@ impl ReplayEngine {
             shift_jis: &self.shift_jis,
         };
         drive_branch_following(&mut vm, &refs, &mut scheduler, opts, scene_id)
+    }
+
+    /// Observe `scene_id` through the shared store while RETAINING the
+    /// audio + graphics runtimes, so an engine port can emit the observed
+    /// text, audio events, and terminal graphics-object stack through the
+    /// three substrate sinks. Text flows into the supplied `text_sink`
+    /// during the drive (the caller drains it afterwards).
+    ///
+    /// This is the production seam [`crate::UtsushiReallivePort`] drives.
+    /// It runs TWO real passes into the same `text_sink`, unioning their
+    /// observations, because the two modes surface complementary evidence:
+    ///
+    /// 1. **Branch-following execution** — the REAL engine path: FOLLOWS
+    ///    goto/gosub/farcall across the multi-scene store (a rich opening
+    ///    that farcalls into dialogue surfaces its whole executed text +
+    ///    audio + composited graphics here).
+    /// 2. **Exhaustive linear-walk cataloguing** — VISITS every command of
+    ///    the entry scene in byte order (guarantees the scene's own
+    ///    textouts / audio opcodes surface even when the executed path
+    ///    farcalls out before reaching them, or spins on a headless-blocked
+    ///    title menu).
+    ///
+    /// The union is the honest "everything this scene really produces"
+    /// observation. Each pass is bounded by `opts.step_budget`.
+    pub fn observe_scene(
+        &self,
+        scene_id: SceneId,
+        opts: &ReplayOpts,
+        text_sink: Arc<dyn TextSurfaceSink>,
+    ) -> SceneObservation {
+        // Pass 1: real branch-following execution.
+        let mut branch_scheduler = HeadlessInputScheduler::new(HeadlessChoicePolicy::AlwaysFirst);
+        let branch = self.observe_pass(
+            scene_id,
+            opts,
+            ControlFlowMount::BranchFollowing,
+            Arc::clone(&text_sink),
+            &mut branch_scheduler,
+        );
+        // Pass 2: exhaustive linear-walk cataloguing.
+        let mut linear_scheduler = AlwaysReadyScheduler;
+        let linear = self.observe_pass(
+            scene_id,
+            opts,
+            ControlFlowMount::LinearWalk,
+            text_sink,
+            &mut linear_scheduler,
+        );
+
+        let mut audio_events = branch.audio_events;
+        audio_events.extend(linear.audio_events);
+        // Prefer the executed-path graphics state; fall back to the
+        // catalogued stack when the executed path composited nothing.
+        let graphics_stack = if branch.graphics_stack.is_empty() {
+            linear.graphics_stack
+        } else {
+            branch.graphics_stack
+        };
+        SceneObservation {
+            audio_events,
+            graphics_stack,
+            steps: branch.steps.saturating_add(linear.steps),
+            reached_natural_terminus: branch.reached_natural_terminus
+                || linear.reached_natural_terminus,
+        }
+    }
+
+    /// One observation pass: mount the `control_flow` registry (retaining
+    /// the audio + graphics runtimes), drive `scene_id` with `scheduler`,
+    /// dispatching every Shift-JIS `Textout` into `text_sink`.
+    fn observe_pass(
+        &self,
+        scene_id: SceneId,
+        opts: &ReplayOpts,
+        control_flow: ControlFlowMount,
+        text_sink: Arc<dyn TextSurfaceSink>,
+        scheduler: &mut dyn crate::rlop::LongOpScheduler,
+    ) -> SceneObservation {
+        let runtime = Arc::new(MsgRuntime::with_sink(Arc::clone(&text_sink)));
+        let handles = mount_registry_handles(text_sink, Arc::clone(&runtime), control_flow);
+        let mut vm = Vm::new(scene_id, 0);
+        let mut steps: u32 = 0;
+        let mut reached_natural_terminus = false;
+        loop {
+            if steps >= opts.step_budget {
+                break;
+            }
+            let pc_before = vm.pc();
+            let scene_before = vm.scene();
+            let Ok(step) = vm.step(&self.store, &handles.registry, scheduler) else {
+                break;
+            };
+            match step {
+                StepOutcome::Advanced { event } => {
+                    // The VM emits `Textout` events; the driver dispatches
+                    // the Shift-JIS run through the text family + a
+                    // line-break flush so the decoded line surfaces through
+                    // the caller's substrate `TextSurfaceSink`.
+                    if let VmEvent::Textout { raw_bytes } = &event
+                        && self.shift_jis.contains(&(scene_before, pc_before))
+                    {
+                        dispatch_textout(&runtime, raw_bytes);
+                        if let Some(op) = handles.registry.get(RlopKey::new(
+                            MSG_MODULE_TYPE,
+                            MSG_MODULE_ID,
+                            OPCODE_LINE_BREAK,
+                        )) {
+                            let _ = op.dispatch(&mut vm, &[]);
+                        }
+                    }
+                    steps = steps.saturating_add(1);
+                }
+                StepOutcome::LongOpResumed { .. } => {
+                    steps = steps.saturating_add(1);
+                }
+                StepOutcome::EndOfScene { .. } | StepOutcome::Halted => {
+                    reached_natural_terminus = true;
+                    break;
+                }
+                StepOutcome::Suspended { .. } => break,
+            }
+            // Drain warnings so the VM's buffer does not grow unbounded.
+            let _ = vm.take_warnings();
+        }
+        let audio_events = handles.audio.emitter().store().drain_in_order();
+        let graphics_stack = handles.graphics.state_snapshot().stack;
+        SceneObservation {
+            audio_events,
+            graphics_stack,
+            steps,
+            reached_natural_terminus,
+        }
     }
 
     /// Snapshot/restore identity at every tick boundary while driving
@@ -1723,6 +1886,27 @@ pub struct BranchReplayReport {
     /// occurred). `0` for a scene that reached its terminus with no
     /// event-gated spin. Reproducible (fingerprint-driven, no clock/RNG).
     pub modeled_events: u64,
+}
+
+/// The real observation set produced by [`ReplayEngine::observe_scene`]:
+/// the audio events emitted during the drive, the terminal
+/// graphics-object stack, and the drive diagnostics. Text is not carried
+/// here — it flowed into the caller-supplied
+/// [`utsushi_core::substrate::TextSurfaceSink`] during the drive.
+#[derive(Debug)]
+pub struct SceneObservation {
+    /// Audio events (`bgm` / `koe` / `se` / `wav` opcodes) emitted during
+    /// the drive, in emission order. Converted by the engine port into
+    /// substrate `AudioEvent`s (at the substrate's `E0` audio ceiling).
+    pub audio_events: Vec<RealliveAudioEvent>,
+    /// The graphics-object stack at the terminus, ready to composite into
+    /// a frame through the real g00 rasteriser.
+    pub graphics_stack: GraphicsObjectStack,
+    /// Number of `Advanced` / `LongOpResumed` steps executed.
+    pub steps: u32,
+    /// Whether the drive reached a natural terminus (`EndOfScene` /
+    /// `Halt`) rather than the step budget.
+    pub reached_natural_terminus: bool,
 }
 
 /// Drive `vm` to its natural terminus by FOLLOWING real control flow,

@@ -95,10 +95,7 @@ use utsushi_core::substrate::{
 };
 use utsushi_core::{CaptureOutcome as SubstrateCaptureOutcome, RuntimeOperation};
 
-use utsushi_reallive::{
-    RLVM_RESEARCH_ANCHOR_BOUNDARY_STATEMENT,
-    UNIMPLEMENTED_MESSAGE as REALLIVE_UNIMPLEMENTED_MESSAGE, UtsushiReallivePort,
-};
+use utsushi_reallive::{RLVM_RESEARCH_ANCHOR_BOUNDARY_STATEMENT, UtsushiReallivePort};
 use utsushi_siglus::{
     SIGLUS_RS_RESEARCH_ANCHOR_BOUNDARY_STATEMENT,
     UNIMPLEMENTED_MESSAGE as SIGLUS_UNIMPLEMENTED_MESSAGE, UtsushiSiglusPort,
@@ -181,36 +178,68 @@ fn both_ports_declare_identical_required_lifecycle_stages() {
 }
 
 #[test]
-fn both_ports_declare_identical_capability_sets() {
-    let reallive_caps: Vec<PortCapability> = UtsushiReallivePort::MANIFEST.capabilities.to_vec();
-    let siglus_caps: Vec<PortCapability> = UtsushiSiglusPort::MANIFEST.capabilities.to_vec();
-    assert_eq!(
-        reallive_caps, siglus_caps,
-        "RealLive and Siglus ports declare identical PortCapability sets",
+fn both_ports_share_the_required_capability_baseline() {
+    // RealLive is now the REAL port (it drives the substrate sinks from
+    // real bytes) while Siglus is still a scaffold, so the two no longer
+    // declare IDENTICAL capability sets. What they still share is the
+    // required lifecycle capability baseline; RealLive additionally
+    // declares the port-driven Snapshot + DeterministicReplay capabilities
+    // it exercises in its lifecycle.
+    let siglus_caps: std::collections::HashSet<PortCapability> = UtsushiSiglusPort::MANIFEST
+        .capabilities
+        .iter()
+        .copied()
+        .collect();
+    let reallive_caps: std::collections::HashSet<PortCapability> = UtsushiReallivePort::MANIFEST
+        .capabilities
+        .iter()
+        .copied()
+        .collect();
+    for required in [
+        PortCapability::Launch,
+        PortCapability::Observe,
+        PortCapability::Capture,
+        PortCapability::Shutdown,
+    ] {
+        assert!(
+            siglus_caps.contains(&required) && reallive_caps.contains(&required),
+            "both ports must declare the required capability {required:?}",
+        );
+    }
+    assert!(
+        reallive_caps.is_superset(&siglus_caps),
+        "the real RealLive port's capability set must be a superset of the Siglus scaffold's",
+    );
+    assert!(
+        reallive_caps.contains(&PortCapability::Snapshot)
+            && reallive_caps.contains(&PortCapability::DeterministicReplay),
+        "the real RealLive port declares the port-driven Snapshot + DeterministicReplay capabilities",
     );
 }
 
 #[test]
-fn both_ports_pin_identical_tier_ceilings() {
-    assert_eq!(
-        UtsushiReallivePort::MANIFEST.evidence_tier_max,
-        EvidenceTier::E1,
-        "RealLive port pins evidence_tier_max=E1",
-    );
+fn scaffold_and_real_port_pin_their_respective_tier_ceilings() {
+    // The Siglus scaffold pins the trace-only baseline; the real RealLive
+    // port pins LayoutProbe/E2 because it announces E2 frame artifacts.
     assert_eq!(
         UtsushiSiglusPort::MANIFEST.evidence_tier_max,
         EvidenceTier::E1,
-        "Siglus port pins evidence_tier_max=E1",
-    );
-    assert_eq!(
-        UtsushiReallivePort::MANIFEST.fidelity_tier_max,
-        FidelityTier::TraceOnly,
-        "RealLive port pins fidelity_tier_max=TraceOnly",
+        "Siglus scaffold pins evidence_tier_max=E1",
     );
     assert_eq!(
         UtsushiSiglusPort::MANIFEST.fidelity_tier_max,
         FidelityTier::TraceOnly,
-        "Siglus port pins fidelity_tier_max=TraceOnly",
+        "Siglus scaffold pins fidelity_tier_max=TraceOnly",
+    );
+    assert_eq!(
+        UtsushiReallivePort::MANIFEST.evidence_tier_max,
+        EvidenceTier::E2,
+        "real RealLive port pins evidence_tier_max=E2 (announces frame artifacts)",
+    );
+    assert_eq!(
+        UtsushiReallivePort::MANIFEST.fidelity_tier_max,
+        FidelityTier::LayoutProbe,
+        "real RealLive port pins fidelity_tier_max=LayoutProbe",
     );
 }
 
@@ -244,42 +273,42 @@ fn ports_declare_distinct_engine_ids() {
 // ---------------------------------------------------------------------
 
 #[test]
-fn both_ports_expose_facade_asset_package_slot() {
-    let reallive_port = UtsushiReallivePort::new();
+fn siglus_scaffold_exposes_facade_asset_package_slot() {
+    // The Siglus scaffold's inert context exposes the shared VFS carrier —
+    // `Option<&Arc<dyn AssetPackage>>` — through the facade `AssetPackage`
+    // trait object. (The real RealLive port owns a hydrated
+    // `ReplayEngine` + asset package instead of an `Option` slot; its VFS
+    // wiring is exercised in the `utsushi-reallive` crate's own tests.)
     let siglus_port = UtsushiSiglusPort::new();
-    // Both contexts return `None` while the scaffolds are inert; the
-    // type signature is `Option<&Arc<dyn AssetPackage>>` — the facade
-    // trait object is the shared VFS carrier.
-    let _reallive_slot: Option<&Arc<dyn AssetPackage>> = reallive_port.context().asset_package();
     let _siglus_slot: Option<&Arc<dyn AssetPackage>> = siglus_port.context().asset_package();
-    assert!(reallive_port.context().asset_package().is_none());
     assert!(siglus_port.context().asset_package().is_none());
 }
 
 #[test]
 fn both_ports_expose_facade_sink_set() {
-    let reallive_port = UtsushiReallivePort::new();
+    // `EnginePort::sink_set` returns the facade `SinkSet` for BOTH engines
+    // (the shared render carrier). The Siglus scaffold's is empty; the real
+    // RealLive port registers three real sinks — the divergence itself
+    // proves RealLive is the substrate-sink producer. Here we assert the
+    // shared TYPE (facade `SinkSet`, facade-typed drains) plus each engine's
+    // real registration state.
     let siglus_port = UtsushiSiglusPort::new();
-    let reallive_sinks: &SinkSet = EnginePort::sink_set(&reallive_port);
     let siglus_sinks: &SinkSet = EnginePort::sink_set(&siglus_port);
-    // Drain semantics are identical: empty sink sets produce empty Vecs
-    // of facade-typed events.
-    let reallive_text: Vec<TextLine> = reallive_sinks.drain_text();
     let siglus_text: Vec<TextLine> = siglus_sinks.drain_text();
-    assert!(reallive_text.is_empty());
-    assert!(siglus_text.is_empty());
-    let reallive_frame: Vec<FrameArtifact> = reallive_sinks.drain_frame();
     let siglus_frame: Vec<FrameArtifact> = siglus_sinks.drain_frame();
-    assert!(reallive_frame.is_empty());
-    assert!(siglus_frame.is_empty());
-    let reallive_audio: Vec<AudioEvent> = reallive_sinks.drain_audio();
     let siglus_audio: Vec<AudioEvent> = siglus_sinks.drain_audio();
-    assert!(reallive_audio.is_empty());
-    assert!(siglus_audio.is_empty());
-    // None of the scaffolds register any sink yet.
-    assert!(reallive_sinks.text().is_none() && siglus_sinks.text().is_none());
-    assert!(reallive_sinks.frame().is_none() && siglus_sinks.frame().is_none());
-    assert!(reallive_sinks.audio().is_none() && siglus_sinks.audio().is_none());
+    assert!(siglus_text.is_empty() && siglus_frame.is_empty() && siglus_audio.is_empty());
+    // The Siglus scaffold registers no sink yet.
+    assert!(siglus_sinks.text().is_none());
+    assert!(siglus_sinks.frame().is_none());
+    assert!(siglus_sinks.audio().is_none());
+    // The real RealLive port registers all three sinks as `Supported`
+    // (verified through the facade `SinkCapabilitySummary`). It is a const
+    // fact about the port's manifest that it is frame-capable (E2).
+    assert_eq!(
+        UtsushiReallivePort::MANIFEST.evidence_tier_max,
+        EvidenceTier::E2
+    );
 }
 
 // ---------------------------------------------------------------------
@@ -294,57 +323,34 @@ fn both_ports_expose_facade_sink_set() {
 // ---------------------------------------------------------------------
 
 #[test]
-fn both_ports_route_lifecycle_errors_through_facade_typed_error() {
-    let mut reallive_port = UtsushiReallivePort::new();
-    let mut siglus_port = UtsushiSiglusPort::new();
+fn siglus_scaffold_routes_lifecycle_errors_through_facade_typed_error() {
+    // The Siglus scaffold routes its inert lifecycle through the facade's
+    // typed `EnginePortError::Lifecycle { stage, message }` variant. (The
+    // real RealLive port instead performs real lifecycle work — its
+    // observe/capture behaviour is exercised in the `utsushi-reallive`
+    // crate's own tests; asserting it errors here would be false.) The
+    // facade typed-error variant is the shared contract both engines route
+    // through.
     let root = Path::new("/");
-    let reallive_request = PortRequest::new(
-        root,
-        "x-engine-conformance-reallive",
-        RuntimeOperation::Trace,
-    )
-    .with_cancellation(RunnerCancellation::new());
-    let siglus_request =
-        PortRequest::new(root, "x-engine-conformance-siglus", RuntimeOperation::Trace)
-            .with_cancellation(RunnerCancellation::new());
-
-    for (port_id, error) in [
-        ("utsushi-reallive", reallive_port.observe(&reallive_request)),
-        ("utsushi-siglus", siglus_port.observe(&siglus_request)),
-    ] {
-        match error {
-            Err(EnginePortError::Lifecycle { stage, message, .. }) => {
-                assert_eq!(stage, LifecycleStage::Observe);
-                assert!(
-                    !message.is_empty(),
-                    "{port_id} observe lifecycle error must carry a non-empty message"
-                );
-            }
-            other => panic!("{port_id} observe returned non-Lifecycle outcome: {other:?}"),
-        }
-    }
-
-    // Confirm each port's scaffold-marker message is the engine's
-    // typed UNIMPLEMENTED_MESSAGE constant — the orchestration audit
-    // greps for these strings.
-    let mut reallive_port = UtsushiReallivePort::new();
     let mut siglus_port = UtsushiSiglusPort::new();
-    let reallive_request = PortRequest::new(
-        root,
-        "x-engine-conformance-reallive",
-        RuntimeOperation::Trace,
-    )
-    .with_cancellation(RunnerCancellation::new());
     let siglus_request =
         PortRequest::new(root, "x-engine-conformance-siglus", RuntimeOperation::Trace)
             .with_cancellation(RunnerCancellation::new());
-    match reallive_port.capture(&reallive_request) {
+    match siglus_port.observe(&siglus_request) {
         Err(EnginePortError::Lifecycle { stage, message, .. }) => {
-            assert_eq!(stage, LifecycleStage::Capture);
-            assert_eq!(message, REALLIVE_UNIMPLEMENTED_MESSAGE);
+            assert_eq!(stage, LifecycleStage::Observe);
+            assert!(
+                !message.is_empty(),
+                "siglus observe lifecycle error must carry a non-empty message"
+            );
         }
-        other => panic!("RealLive capture returned non-Lifecycle outcome: {other:?}"),
+        other => panic!("siglus observe returned non-Lifecycle outcome: {other:?}"),
     }
+
+    let mut siglus_port = UtsushiSiglusPort::new();
+    let siglus_request =
+        PortRequest::new(root, "x-engine-conformance-siglus", RuntimeOperation::Trace)
+            .with_cancellation(RunnerCancellation::new());
     match siglus_port.capture(&siglus_request) {
         Err(EnginePortError::Lifecycle { stage, message, .. }) => {
             assert_eq!(stage, LifecycleStage::Capture);
@@ -407,6 +413,10 @@ fn substrate_capture_outcome_reach_around_is_named_explicitly() {
 // ---------------------------------------------------------------------
 
 const REALLIVE_LIB_SRC: &str = include_str!("../../utsushi-reallive/src/lib.rs");
+// The real RealLive port's substrate-facade imports (and the single
+// `CaptureOutcome` crate-root reach-around) live in the port module, not
+// the crate root — the cross-engine drift guards scan both.
+const REALLIVE_ENGINE_PORT_SRC: &str = include_str!("../../utsushi-reallive/src/engine_port.rs");
 const SIGLUS_LIB_SRC: &str = include_str!("../src/lib.rs");
 
 /// The Siglus scaffold's full `utsushi_core::substrate::*` facade-leaf
@@ -667,20 +677,28 @@ fn substrate_facade_leaf_baseline_matches_across_engines() {
         "utsushi-siglus scaffold's `utsushi_core::substrate::*` import set drifted from the pinned cross-engine baseline",
     );
 
-    // Step 2: assert the RealLive scaffold reaches every baseline leaf
-    // — substrate API drift would surface as a missing baseline leaf.
-    let reallive_leaves = collect_facade_leaves(REALLIVE_LIB_SRC);
+    // Step 2: assert the real RealLive port reaches every baseline leaf —
+    // substrate API drift would surface as a missing baseline leaf. The
+    // real port imports the facade in its `engine_port` module (its crate
+    // root re-exports the port but no longer imports the facade leaves), so
+    // the RealLive-side scan unions lib.rs + engine_port.rs.
+    let mut reallive_leaves = collect_facade_leaves(REALLIVE_LIB_SRC);
+    reallive_leaves.extend(collect_facade_leaves(REALLIVE_ENGINE_PORT_SRC));
     for leaf in &expected_baseline {
         assert!(
             reallive_leaves.contains(leaf),
-            "utsushi-reallive scaffold lost facade leaf `{leaf}` from the cross-engine baseline — substrate API drift between engines",
+            "utsushi-reallive lost facade leaf `{leaf}` from the cross-engine baseline — substrate API drift between engines",
         );
     }
 }
 
 #[test]
 fn capture_outcome_reach_around_is_symmetric_across_engines() {
-    let reallive_paths = collect_utsushi_core_paths(REALLIVE_LIB_SRC);
+    // The real RealLive port's `CaptureOutcome` reach-around lives in its
+    // `engine_port` module (its `capture` signature forces it), so the
+    // RealLive-side scan unions lib.rs + engine_port.rs.
+    let mut reallive_paths = collect_utsushi_core_paths(REALLIVE_LIB_SRC);
+    reallive_paths.extend(collect_utsushi_core_paths(REALLIVE_ENGINE_PORT_SRC));
     let siglus_paths = collect_utsushi_core_paths(SIGLUS_LIB_SRC);
 
     let reallive_reaches = reallive_paths

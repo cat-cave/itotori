@@ -12,8 +12,8 @@ use tempfile::TempDir;
 use utsushi_core::{
     AssetId, AudioEvent, AudioEventKind, AudioEventSink, EvidenceTier, FrameArtifact,
     FrameArtifactSink, ObservationArtifactRef, ObservationBridgeRef, RUNTIME_ARTIFACT_URI_ROOT,
-    RuntimeArtifactRoot, RuntimeRequest, SinkCapability, SinkError, SinkKind, SinkResult, SinkSet,
-    TextLine, TextSurfaceSink, redaction::reject_unredacted_local_paths,
+    RuntimeArtifactRoot, SinkCapability, SinkError, SinkKind, SinkResult, SinkSet, TextLine,
+    TextSurfaceSink, redaction::reject_unredacted_local_paths,
 };
 
 struct Collector<T> {
@@ -199,28 +199,9 @@ fn sink_output_passes_reject_unredacted_local_paths() {
         .expect("cross-sink clean emission passes redaction filter");
 }
 
-#[test]
-fn runtime_request_with_sinks_preserves_existing_vfs_field() {
-    use std::path::Path;
-    let input_root = Path::new("/dev/null/inputs");
-    let request = RuntimeRequest::new(input_root).with_sinks(SinkSet::new());
-    assert!(request.vfs.is_none(), "vfs field is independent of sinks");
-    assert!(request.sinks.is_some(), "sinks field is populated");
-    assert_eq!(request.input_root, input_root);
-}
-
-#[test]
-fn runtime_request_debug_does_not_expose_sink_implementor_type() {
-    use std::path::Path;
-    let input_root = Path::new("/dev/null/inputs");
-    let text: Arc<Collector<TextLine>> =
-        Arc::new(Collector::supported("synthetic-json", EvidenceTier::E1));
-    let request = RuntimeRequest::new(input_root).with_sinks(SinkSet::new().with_text(text));
-    let rendered = format!("{request:?}");
-    assert!(rendered.contains("sinks"));
-    assert!(rendered.contains("<present>"));
-    assert!(
-        !rendered.contains("Collector"),
-        "Debug must not expose the concrete sink implementor type: {rendered}"
-    );
-}
+// The former `runtime_request_with_sinks_*` tests pinned a dead
+// `RuntimeRequest.sinks` field. That legacy plumbing was deleted: a port
+// owns its sinks through `EnginePort::sink_set()` and the runner drains
+// them per tick, so `RuntimeRequest` no longer carries a `SinkSet`. The
+// "Debug does not expose the implementor type" invariant now lives on
+// `SinkSet` itself (`sink::set::tests::sink_set_debug_does_not_expose_implementor_type`).

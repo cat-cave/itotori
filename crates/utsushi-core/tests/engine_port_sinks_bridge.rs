@@ -4,9 +4,10 @@
 //! drive the sink set without going through the deleted
 //! observation-hook envelope.
 //!
-//! The `_real_bytes` companion test (in `engine_port_sinks_bridge_real_bytes.rs`)
-//! exercises the same path against the Sweetie HD VFS layout when
-//! `ITOTORI_REAL_GAME_ROOT` is set.
+//! This is the substrate-side, in-crate smoke (a labelled `SmokePort`,
+//! not an engine). The REAL-bytes producer proof — a real RealLive port
+//! driving all three sinks from decoded Sweetie HD / Kanon bytes — lives
+//! in `utsushi-reallive`'s `tests/engine_port_real_bytes.rs`.
 
 use std::sync::{Arc, Mutex};
 

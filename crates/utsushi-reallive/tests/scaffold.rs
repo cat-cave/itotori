@@ -1,196 +1,100 @@
-//! UTSUSHI-200 scaffold conformance test (the spec's `scaffold` test
-//! filter targets the items in this file).
+//! Structural conformance test for the real [`UtsushiReallivePort`].
 //!
-//! This is a **structural** smoke. It verifies:
+//! (Formerly the UTSUSHI-200 *scaffold* smoke that pinned an inert port
+//! returning `UNIMPLEMENTED_MESSAGE` on every lifecycle method. That
+//! scaffold was the substrate-honesty gap the re-grounding flagged and is
+//! now deleted — the port is the real substrate-sink producer.) This test
+//! verifies the structural surface:
 //!
-//! 1. The crate compiles with `#![forbid(unsafe_code)]` (transitively
-//!    proven by the test compiling at all).
-//! 2. `UtsushiReallivePort: EnginePort` is satisfied. The bound is
-//!    enforced via a generic helper function so the failure mode is a
-//!    compile-time error, not a runtime panic.
-//! 3. `EnginePort::sink_set` returns a `SinkSet` whose three drain
-//!    methods return empty `Vec`s (no sinks registered).
-//! 4. Every required lifecycle method returns the typed
-//!    `EnginePortError::Lifecycle { stage, message: UNIMPLEMENTED_MESSAGE }`
-//!    pinned-by-constant pair.
-//! 5. The rlvm research-anchor boundary statement is reachable as a
-//!    public `const &str` whose value carries the load-bearing phrases
-//!    "research anchor", "does not depend on rlvm", and
-//!    "does not mechanically translate".
-//!
-//! No author-fixture-only behavioural assertions live here. The
-//! scaffold's purpose is structural; the behavioural surface lands in
-//! UTSUSHI-201..UTSUSHI-221.
+//! 1. The crate compiles with `#![forbid(unsafe_code)]`.
+//! 2. `UtsushiReallivePort: EnginePort` is satisfied (compile-time bound).
+//! 3. `EnginePort::sink_set` registers all THREE substrate sinks
+//!    (text / frame / audio) as `Supported` — the port is NOT an empty
+//!    `SinkSet`.
+//! 4. The manifest declares the driven capabilities (incl. `Snapshot` +
+//!    `DeterministicReplay`) and passes substrate structural validation.
+//! 5. The rlvm research-anchor boundary statement is reachable.
 
-use std::path::Path;
+#[path = "support/port_support.rs"]
+mod port_support;
 
-use utsushi_core::RuntimeOperation;
+use std::sync::Arc;
+
 use utsushi_core::substrate::{
-    EnginePort, EnginePortError, LifecycleStage, PortRequest, RunnerCancellation,
+    AssetPackage, EnginePort, EvidenceTier, FidelityTier, PortCapability, SinkCapability,
 };
 
-use utsushi_reallive::{
-    RLVM_RESEARCH_ANCHOR_BOUNDARY_STATEMENT, UNIMPLEMENTED_MESSAGE, UtsushiReallivePort,
-    UtsushiReallivePortContext,
-};
+use utsushi_reallive::{RLVM_RESEARCH_ANCHOR_BOUNDARY_STATEMENT, UtsushiReallivePort};
 
-/// Generic bound-witness. Calling this with `UtsushiReallivePort` is a
-/// compile-time proof that the type implements `EnginePort`. The body is
-/// intentionally empty.
+use port_support::{NullAssetPackage, synthetic_engine};
+
+/// Compile-time proof that the type implements `EnginePort`.
 fn assert_implements_engine_port<P: EnginePort>() {}
 
-fn fresh_request<'a>(root: &'a Path, run_id: &'a str) -> PortRequest<'a> {
-    PortRequest::new(root, run_id, RuntimeOperation::Trace)
-        .with_cancellation(RunnerCancellation::new())
+fn build_port() -> UtsushiReallivePort {
+    let assets: Arc<dyn AssetPackage> = Arc::new(NullAssetPackage);
+    UtsushiReallivePort::new(synthetic_engine(), assets, 1)
 }
 
 #[test]
-fn engine_port_trait_bound_is_satisfied_at_compile_time() {
+fn port_implements_engine_port() {
     assert_implements_engine_port::<UtsushiReallivePort>();
 }
 
 #[test]
-fn scaffold_constructs_with_default_inert_context() {
-    let port = UtsushiReallivePort::new();
-    let context: &UtsushiReallivePortContext = port.context();
+fn port_registers_all_three_substrate_sinks() {
+    let port = build_port();
+    let summary = port.sink_set().capabilities();
     assert!(
-        context.asset_package().is_none(),
-        "scaffold context must start with no asset package wired"
+        matches!(summary.text, SinkCapability::Supported { .. }),
+        "port must register a text sink"
     );
     assert!(
-        context.scene_index().is_none(),
-        "scaffold context must start with no scene index wired"
+        matches!(summary.frame, SinkCapability::Supported { .. }),
+        "port must register a frame sink"
     );
-    assert_eq!(
-        context.cross_reference_entry_count(),
-        0,
-        "inert context reports zero cross-reference entries"
+    assert!(
+        matches!(summary.audio, SinkCapability::Supported { .. }),
+        "port must register an audio sink"
     );
 }
 
 #[test]
-fn sink_set_is_empty_and_all_drains_return_zero_items() {
-    let port = UtsushiReallivePort::new();
-    let sink_set = EnginePort::sink_set(&port);
-    assert!(sink_set.text().is_none(), "scaffold registers no text sink");
-    assert!(
-        sink_set.frame().is_none(),
-        "scaffold registers no frame sink"
-    );
-    assert!(
-        sink_set.audio().is_none(),
-        "scaffold registers no audio sink"
-    );
-    assert!(
-        sink_set.drain_text().is_empty(),
-        "drain_text on empty sink set returns an empty Vec"
-    );
-    assert!(
-        sink_set.drain_frame().is_empty(),
-        "drain_frame on empty sink set returns an empty Vec"
-    );
-    assert!(
-        sink_set.drain_audio().is_empty(),
-        "drain_audio on empty sink set returns an empty Vec"
-    );
-}
-
-#[test]
-fn observe_returns_typed_unimplemented_lifecycle_error() {
-    let mut port = UtsushiReallivePort::new();
-    let root = Path::new("/");
-    let request = fresh_request(root, "scaffold-observe-run");
-    let error = port
-        .observe(&request)
-        .expect_err("scaffold observe must return an Err");
-    match error {
-        EnginePortError::Lifecycle { stage, message, .. } => {
-            assert_eq!(
-                stage,
-                LifecycleStage::Observe,
-                "observe lifecycle error carries the observe stage"
-            );
-            assert_eq!(
-                message, UNIMPLEMENTED_MESSAGE,
-                "observe lifecycle error carries the pinned UNIMPLEMENTED_MESSAGE"
-            );
-        }
-        other => panic!("expected Lifecycle error, got {other:?}"),
+fn manifest_declares_driven_capabilities_and_validates() {
+    let manifest = &UtsushiReallivePort::MANIFEST;
+    assert_eq!(manifest.id, "utsushi-reallive");
+    assert_eq!(manifest.abi_version, 1);
+    assert_eq!(manifest.fidelity_tier_max, FidelityTier::LayoutProbe);
+    assert_eq!(manifest.evidence_tier_max, EvidenceTier::E2);
+    for capability in [
+        PortCapability::Launch,
+        PortCapability::Observe,
+        PortCapability::Capture,
+        PortCapability::Shutdown,
+        PortCapability::Snapshot,
+        PortCapability::DeterministicReplay,
+    ] {
+        assert!(
+            manifest.capabilities.contains(&capability),
+            "manifest must declare {capability:?}"
+        );
     }
+    manifest
+        .validate()
+        .expect("real port manifest passes substrate-level structural validation");
 }
 
 #[test]
-fn launch_returns_typed_unimplemented_lifecycle_error() {
-    let mut port = UtsushiReallivePort::new();
-    let root = Path::new("/");
-    let request = fresh_request(root, "scaffold-launch-run");
-    let error = port
-        .launch(&request)
-        .expect_err("scaffold launch must return an Err");
-    match error {
-        EnginePortError::Lifecycle { stage, message, .. } => {
-            assert_eq!(stage, LifecycleStage::Launch);
-            assert_eq!(message, UNIMPLEMENTED_MESSAGE);
-        }
-        other => panic!("expected Lifecycle error, got {other:?}"),
-    }
-}
-
-#[test]
-fn capture_returns_typed_unimplemented_lifecycle_error() {
-    let mut port = UtsushiReallivePort::new();
-    let root = Path::new("/");
-    let request = fresh_request(root, "scaffold-capture-run");
-    let error = port
-        .capture(&request)
-        .expect_err("scaffold capture must return an Err");
-    match error {
-        EnginePortError::Lifecycle { stage, message, .. } => {
-            assert_eq!(stage, LifecycleStage::Capture);
-            assert_eq!(message, UNIMPLEMENTED_MESSAGE);
-        }
-        other => panic!("expected Lifecycle error, got {other:?}"),
-    }
-}
-
-#[test]
-fn shutdown_returns_typed_unimplemented_lifecycle_error() {
-    let mut port = UtsushiReallivePort::new();
-    let error = port
-        .shutdown()
-        .expect_err("scaffold shutdown must return an Err");
-    match error {
-        EnginePortError::Lifecycle { stage, message, .. } => {
-            assert_eq!(stage, LifecycleStage::Shutdown);
-            assert_eq!(message, UNIMPLEMENTED_MESSAGE);
-        }
-        other => panic!("expected Lifecycle error, got {other:?}"),
-    }
-}
-
-#[test]
-fn boundary_statement_carries_required_clean_room_phrases() {
+fn rlvm_boundary_statement_carries_load_bearing_phrases() {
     let statement = RLVM_RESEARCH_ANCHOR_BOUNDARY_STATEMENT;
-    assert!(
-        !statement.is_empty(),
-        "boundary statement must be a non-empty const &str"
-    );
-    for required in [
-        "rlvm",
+    for phrase in [
         "research anchor",
         "does not depend on rlvm",
         "does not mechanically translate",
     ] {
         assert!(
-            statement.contains(required),
-            "boundary statement missing required phrase: {required}; got: {statement}"
+            statement.contains(phrase),
+            "boundary statement must carry the phrase {phrase:?}: {statement}"
         );
     }
-}
-
-#[test]
-fn manifest_validates_against_substrate_rules() {
-    UtsushiReallivePort::MANIFEST
-        .validate()
-        .expect("UTSUSHI-200 scaffold manifest passes substrate-level structural validation");
 }

@@ -11,15 +11,21 @@ use super::diagnostics::{DriftKind, EnginePortError, ManifestError};
 
 /// Capability classes an `EnginePort` may declare.
 ///
-/// `Snapshot` and `DeterministicReplay` are reserved for follow-up nodes
-/// (UTSUSHI-023, UTSUSHI-021). They are inert at this ABI version: declaring
-/// them is accepted, but the runner currently performs no lifecycle work for
-/// them.
+/// `Snapshot` and `DeterministicReplay` are **port-driven, self-verifying**
+/// capabilities (as opposed to `Launch`/`Observe`/`Capture`/`Shutdown`,
+/// which map to runner-invoked lifecycle stages). They have no lifecycle
+/// stage: a port that declares them exercises the substrate's snapshot
+/// (`Snapshot`/`Inspectable`/`Restorable`) and deterministic-replay
+/// (`ReplayLog`) primitives inside its OWN lifecycle and self-verifies the
+/// result — e.g. `utsushi-reallive`'s port asserts snapshot/restore
+/// identity at every replay tick boundary and byte-deterministic replay
+/// during `launch`. Declaring one is therefore a claim the port BACKS with
+/// exercised machinery, not an advertisement the runner leaves inert.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum PortCapability {
     /// Required: load and prepare for observation.
     Launch,
-    /// Required: emit observation hook events.
+    /// Required: drive observation emissions into the substrate sink set.
     Observe,
     /// Required: produce artifact-store-backed capture evidence.
     Capture,
@@ -27,9 +33,13 @@ pub enum PortCapability {
     Shutdown,
     /// Optional: jump to a moment id (UTSUSHI-104/106).
     Jump,
-    /// Reserved for UTSUSHI-023 snapshot primitives.
+    /// Port-driven: the port takes and restores substrate snapshots
+    /// (UTSUSHI-023 `Snapshot`/`Inspectable`/`Restorable`) and
+    /// self-verifies round-trip identity within its own lifecycle.
     Snapshot,
-    /// Reserved for UTSUSHI-021 deterministic input/clock replay.
+    /// Port-driven: the port drives byte-deterministic input/clock replay
+    /// (UTSUSHI-021 `ReplayLog`) and self-verifies determinism within its
+    /// own lifecycle.
     DeterministicReplay,
 }
 

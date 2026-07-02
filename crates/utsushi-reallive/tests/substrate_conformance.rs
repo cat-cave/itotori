@@ -1,57 +1,52 @@
-//! UTSUSHI-200 substrate-conformance test.
+//! Substrate-facade conformance test.
 //!
-//! Pins that the `utsushi-reallive` scaffold consumes **only** the public
-//! substrate facade (`utsushi_core::substrate::*`) — no internal
-//! `__internal::*` paths, no `sealed::*` paths, no direct
+//! Pins that the `utsushi-reallive` port consumes the public substrate
+//! facade (`utsushi_core::substrate::*`) for its substrate types — no
+//! internal `__internal::*` / `sealed::*` paths, no direct
 //! `utsushi_core::port::*` / `utsushi_core::vfs::*` reaches around the
 //! facade.
 //!
-//! Strategy: this is a compile-time test. The body imports
-//! `UtsushiReallivePort` and pins the trait bound through the substrate
-//! facade exclusively. If the scaffold ever grows a non-facade
-//! `utsushi_core::*` import, the assertion fixture in this file will
-//! still compile (the test cannot reach into the scaffold's private
-//! imports). The substrate-only guarantee is therefore enforced two
-//! ways:
-//!
-//! 1. **At the import site here**: every `utsushi_core::*` symbol used
-//!    in this file is imported through `utsushi_core::substrate::*`. If
-//!    a future substrate refactor moves one of these symbols out of the
-//!    facade, this test breaks at the import statement.
-//! 2. **At the scaffold's import site**: `src/lib.rs` itself imports
-//!    every `utsushi_core::*` symbol through `utsushi_core::substrate::*`.
-//!    The acceptance grep enforced by the UTSUSHI-200 hard-constraint
-//!    block (the one targeting `utsushi_core` sealed / internal paths)
-//!    returns zero hits. This file pairs with that grep — if the grep
-//!    starts returning a hit, the audit fails before the compile-time
-//!    check runs.
+//! Strategy: every `utsushi_core::*` substrate symbol used in this file is
+//! imported through `utsushi_core::substrate::*`. If a future substrate
+//! refactor moves one of these symbols out of the facade, this test breaks
+//! at the import statement. It pairs with the acceptance grep that asserts
+//! `src/lib.rs` / `src/engine_port.rs` reach `utsushi_core` substrate types
+//! through the facade (the only non-facade root types they touch —
+//! `CaptureOutcome`, `RuntimeArtifactRoot`, `runtime_artifact_uri` — are
+//! public crate-root types the facade does not (yet) re-export, exactly as
+//! `render_pipeline.rs` reaches them).
+
+#[path = "support/port_support.rs"]
+mod port_support;
+
+use std::sync::Arc;
 
 use utsushi_core::substrate::{
-    AssetPackage, EnginePort, EnginePortError, EvidenceTier, FidelityTier, LifecycleStage,
-    PortCapability, PortManifest, PortRequest, PortShutdownOutcome, RunnerCancellation, SinkSet,
+    AssetPackage, EnginePort, EvidenceTier, FidelityTier, PortCapability, PortManifest, SinkSet,
 };
 
-use utsushi_reallive::{UNIMPLEMENTED_MESSAGE, UtsushiReallivePort, UtsushiReallivePortContext};
+use utsushi_reallive::UtsushiReallivePort;
+
+use port_support::{NullAssetPackage, synthetic_engine};
 
 /// Compile-time witness that `UtsushiReallivePort` resolves the
 /// `EnginePort` bound through the facade's re-export — not through a
 /// direct `utsushi_core::port::EnginePort` reach-around.
 fn assert_port_resolves_facade_engine_port_bound<P: EnginePort>() {}
 
+fn build_port() -> UtsushiReallivePort {
+    let assets: Arc<dyn AssetPackage> = Arc::new(NullAssetPackage);
+    UtsushiReallivePort::new(synthetic_engine(), assets, 1)
+}
+
 #[test]
-fn scaffold_consumes_only_facade_engine_port_trait() {
+fn port_consumes_only_facade_engine_port_trait() {
     assert_port_resolves_facade_engine_port_bound::<UtsushiReallivePort>();
 }
 
 #[test]
-fn scaffold_constructs_through_facade_only() {
-    // Every type touched on this path is sourced through the substrate
-    // facade. The scaffold's public API (`UtsushiReallivePort::new`,
-    // `UtsushiReallivePortContext::empty`) round-trips through facade
-    // types only.
-    let port = UtsushiReallivePort::new();
-    let context: &UtsushiReallivePortContext = port.context();
-    let _asset_package_slot: Option<&std::sync::Arc<dyn AssetPackage>> = context.asset_package();
+fn port_constructs_through_facade_only() {
+    let port = build_port();
     let manifest: &PortManifest = &UtsushiReallivePort::MANIFEST;
     assert_eq!(manifest.abi_version, 1);
     assert_eq!(manifest.id, "utsushi-reallive");
@@ -61,49 +56,20 @@ fn scaffold_constructs_through_facade_only() {
     );
     assert_eq!(
         manifest.evidence_tier_max,
-        EvidenceTier::E1,
-        "scaffold pins its evidence tier ceiling at E1 (trace-only baseline)"
+        EvidenceTier::E2,
+        "port pins its evidence tier ceiling at E2 (frame-artifact capable)"
     );
     assert_eq!(
         manifest.fidelity_tier_max,
-        FidelityTier::TraceOnly,
-        "scaffold pins its fidelity tier ceiling at TraceOnly"
+        FidelityTier::LayoutProbe,
+        "port pins its fidelity tier ceiling at LayoutProbe"
     );
+    // The sink set the port exposes is a facade `SinkSet` carrying the
+    // three registered sinks.
     let sink_set: &SinkSet = EnginePort::sink_set(&port);
-    assert!(sink_set.drain_text().is_empty());
-}
-
-#[test]
-fn scaffold_lifecycle_errors_route_through_facade_engine_port_error() {
-    let mut port = UtsushiReallivePort::new();
-    let request = PortRequest::new(
-        std::path::Path::new("/"),
-        "facade-conformance",
-        utsushi_core::RuntimeOperation::Trace,
-    )
-    .with_cancellation(RunnerCancellation::new());
-
-    let observe_error: EnginePortError = port
-        .observe(&request)
-        .expect_err("observe scaffold returns Err");
-    match observe_error {
-        EnginePortError::Lifecycle { stage, message, .. } => {
-            assert_eq!(stage, LifecycleStage::Observe);
-            assert_eq!(message, UNIMPLEMENTED_MESSAGE);
-        }
-        other => panic!("expected facade EnginePortError::Lifecycle, got {other:?}"),
-    }
-
-    let shutdown_error: EnginePortError =
-        port.shutdown().expect_err("shutdown scaffold returns Err");
-    let _: PortShutdownOutcome = match shutdown_error {
-        EnginePortError::Lifecycle { stage, .. } => {
-            assert_eq!(stage, LifecycleStage::Shutdown);
-            // We never reach a real PortShutdownOutcome value here, but
-            // the type annotation pins that the substrate facade exports
-            // the type the scaffold's `shutdown` signature references.
-            PortShutdownOutcome::clean()
-        }
-        other => panic!("expected facade EnginePortError::Lifecycle, got {other:?}"),
-    };
+    let summary = sink_set.capabilities();
+    assert!(matches!(
+        summary.text,
+        utsushi_core::substrate::SinkCapability::Supported { .. }
+    ));
 }
