@@ -1,8 +1,11 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import test from "node:test";
 
 import { affectedCiLanes, affectedTasks, buildCrateFamilyDependents } from "./affected.mjs";
+import { selectLanes } from "./qd-full-ci.mjs";
 
 function parseWorkspaceMembers(cargoToml) {
   const match = cargoToml.match(/^\[workspace\][\s\S]*?^members\s*=\s*\[([\s\S]*?)^\]/m);
@@ -170,6 +173,35 @@ test("qd-full-ci lanes: a shared-file diff selects the full ci gate (everything)
 test("qd-full-ci lanes: a docs-only diff selects no build/real-bytes lane", () => {
   assert.deepEqual(affectedCiLanes(["docs/foo.md"]), []);
   assert.deepEqual(affectedCiLanes(["README.md"]), []);
+});
+
+test("qd-full-ci lanes: a repo-root fixtures/ diff selects the rust lanes incl ci-real-bytes", () => {
+  const lanes = affectedCiLanes(["fixtures/kaifuu/kirikiri/plain.xp3"]);
+  // Root fixtures are byte-asserted by rust tests (kaifuu + utsushi read repo_fixture_path),
+  // so a fixture-byte change must run the rust test lanes — NOT be skipped.
+  assert.ok(lanes.includes("ci-real-bytes"), "root fixtures change must run the real-bytes lane");
+  assert.ok(lanes.includes("ci-kaifuu"), "root fixtures change must run the kaifuu rust lane");
+  assert.ok(lanes.includes("ci-utsushi"), "root fixtures change must run the utsushi rust lane");
+  assert.ok(
+    lanes.includes("fixtures-validate"),
+    "root fixtures change still runs fixtures-validate",
+  );
+  assert.ok(!lanes.includes("ci"), "stays fine-grained, not the full ci sentinel");
+});
+
+test("qd-full-ci lanes: package-local (apps/itotori) fixtures stay itotori-only (no real-bytes)", () => {
+  const lanes = affectedCiLanes(["apps/itotori/test/fixtures/agentic-loop-smoke-bridge.json"]);
+  assert.ok(lanes.includes("ci-itotori"));
+  assert.ok(!lanes.includes("ci-real-bytes"), "package-local fixtures are not read by rust");
+  assert.ok(!lanes.includes("ci-kaifuu"));
+  assert.ok(!lanes.includes("ci-utsushi"));
+});
+
+test("qd-full-ci selectLanes: an undeterminable diff falls back to the full ci gate", () => {
+  // A directory that is not a git worktree cannot be diffed, so selection is
+  // conservative: the complete ci gate, never a pruned subset.
+  const noGitDir = mkdtempSync(path.join(os.tmpdir(), "affected-nogit-"));
+  assert.deepEqual(selectLanes(noGitDir, {}, ["node", "qd-full-ci"]), ["ci"]);
 });
 
 test("qd-full-ci lanes: an itotori + utsushi diff runs both gates + real-bytes but not full ci", () => {

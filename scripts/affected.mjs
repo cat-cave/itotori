@@ -263,6 +263,19 @@ export function affectedCiLanes(changedPaths, options = {}) {
   // any code change.
   lanes.add("check");
 
+  // Repo-root fixtures/** bytes are byte-asserted by rust tests (kaifuu + utsushi
+  // read them via repo_fixture_path — e.g. fixtures/kaifuu/kirikiri/plain.xp3, the
+  // encrypted-matrix trees, the hello-game). Those assertions only run under
+  // `cargo test` (fixtures-validate + `cargo check` never execute them), so a
+  // fixture-byte change that diverges from a rust expectation would ship UNCAUGHT.
+  // Route repo-root fixtures to the rust gates + real-bytes. (Package-local
+  // fixtures like apps/itotori/test/fixtures/** classify via apps/itotori ->
+  // ci-itotori and never reach this branch — they are not read by rust.)
+  if (changedPaths.some((rawPath) => rawPath.replaceAll("\\", "/").startsWith("fixtures/"))) {
+    lanes.add("ci-kaifuu");
+    lanes.add("ci-utsushi");
+  }
+
   // Dependency-graph expansion: a change to a crate family also runs the gates of
   // every family that depends on it.
   for (const [family, gate] of rustFamilyGate) {
