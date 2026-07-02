@@ -41,6 +41,7 @@ import {
   DEFAULT_INPUTS,
   REPO_ROOT,
   assertPublicInputPath,
+  assertRuntimeProofIsRealRun,
   composeVertical,
   listPublicInputs,
   loadVerticalInputs,
@@ -211,9 +212,29 @@ async function main() {
 
     const composed = composeVertical(inputs, { now: args.now ?? new Date() });
 
-    // Carry forward any hash-addressing findings from input loading.
+    // Artifact-bytes guard: re-EXECUTE the fixture and REJECT the emitted
+    // runtime-observation proof unless its renderHash reproduces a genuine,
+    // localized, span-preserving run. A re-emitted/placeholder record cannot
+    // pass (it never executes the patch over the source).
+    const { findings: runtimeGuardFindings } = assertRuntimeProofIsRealRun(
+      composed.runtimeObservationProof,
+      {
+        bridge: inputs.loadedArtifacts.bridgeBundle,
+        patchExport: inputs.loadedArtifacts.patchExport,
+        runtimeSceneLog: inputs.loadedArtifacts.runtimeReport,
+        proof: inputs.proof,
+      },
+    );
+
+    // Carry forward hash-addressing findings from input loading, the executed
+    // runtime render's own findings, and the artifact-bytes guard findings.
     const { verdict, findings } = validateLinkage(composed.linkage);
-    const allFindings = [...inputs.hashFindings, ...findings];
+    const allFindings = [
+      ...inputs.hashFindings,
+      ...composed.runtimeRun.findings,
+      ...runtimeGuardFindings,
+      ...findings,
+    ];
     const blocking = allFindings.filter((f) => f.severity === "blocking");
     composed.linkage.verdict = blocking.length === 0 ? "linked" : "broken";
     composed.linkage.findings = allFindings;

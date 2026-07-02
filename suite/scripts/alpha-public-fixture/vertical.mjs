@@ -31,6 +31,9 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve as resolvePath, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import { assertRuntimeProofIsRealRun, replayFixtureRuntime } from "./runtime-replay.mjs";
+
+export { assertRuntimeProofIsRealRun, replayFixtureRuntime };
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = resolvePath(HERE, "..", "..", "..");
@@ -285,13 +288,13 @@ export function composeVertical(inputs, { now = new Date() } = {}) {
   const patchExport = loadedArtifacts.patchExport;
   const patchResult = loadedArtifacts.patchResult;
   const deltaPackage = loadedArtifacts.deltaPackage;
-  const runtimeReport = loadedArtifacts.runtimeReport;
+  // The committed runtime_report is the Utsushi scene LOG (the runtime timeline
+  // the engine replays) — NOT the runtime proof. Its observed text / status /
+  // counts are re-derived by executing the patch over the source (see below);
+  // nothing from it is copied into the emitted runtime-observation proof.
+  const runtimeSceneLog = loadedArtifacts.runtimeReport;
 
-  const targetLocale =
-    patchExport?.content?.targetLocale ??
-    runtimeReport?.content?.targetLocale ??
-    proof.fixture?.targetLocale ??
-    null;
+  const targetLocale = patchExport?.content?.targetLocale ?? proof.fixture?.targetLocale ?? null;
 
   const verticalFixture = {
     fixtureId,
@@ -304,32 +307,43 @@ export function composeVertical(inputs, { now = new Date() } = {}) {
     targetLocale,
   };
 
-  // ---- Utsushi runtime observation proof (emitted) ----
-  const rt = runtimeReport?.content ?? {};
-  const traceEvents = Array.isArray(rt.traceEvents) ? rt.traceEvents : [];
-  const branchEvents = Array.isArray(rt.branchEvents) ? rt.branchEvents : [];
+  // ---- Utsushi runtime observation proof (emitted) — a REAL run ----
+  // EXECUTE the fixture: the replay engine renders the localized runtime script
+  // by applying the patch-export target text over the bridge source bytes
+  // (verifying protected-span preservation + that the source was actually
+  // localized). status, trace/branch/observed-line counts, and the renderHash
+  // are DERIVED FROM THAT EXECUTED OUTPUT — never copied from the checked-in
+  // runtime_report (which is used only as the scene log the engine replays).
+  const runtimeRun = replayFixtureRuntime({
+    bridge,
+    patchExport,
+    runtimeSceneLog,
+    proof,
+  });
   const runtimeObservationProof = {
     schemaVersion: RUNTIME_OBSERVATION_SCHEMA_VERSION,
     generatedAt,
     fixtureId,
     sourceBridgeId,
     sourceBundleHash,
-    sourceLocale: rt.sourceLocale ?? null,
-    targetLocale: rt.targetLocale ?? null,
-    runtimeReportId: rt.runtimeReportId,
-    runtimeReportUri: runtimeReport?.ref?.uri,
-    runtimeReportHash: runtimeReport?.actualHash,
+    sourceLocale: runtimeRun.provenance.sourceLocale,
+    targetLocale: runtimeRun.provenance.targetLocale,
+    runtimeReportId: runtimeRun.provenance.runtimeReportId,
+    runtimeReportUri: runtimeRun.provenance.runtimeReportUri,
+    runtimeReportHash: runtimeRun.provenance.runtimeReportHash,
     runtimeTargetIds: Array.isArray(proof.runtimeTargetIds) ? proof.runtimeTargetIds : [],
-    adapterName: rt.adapterName ?? null,
-    adapterVersion: rt.adapterVersion ?? null,
-    evidenceTier: rt.evidenceTier ?? null,
-    fidelityTier: rt.fidelityTier ?? null,
-    status: rt.status,
-    traceEventCount: traceEvents.length,
-    branchEventCount: branchEvents.length,
-    observedTextLineCount: traceEvents.filter(
-      (e) => typeof e.observedText === "string" && e.observedText.length > 0,
-    ).length,
+    adapterName: runtimeRun.adapter.name,
+    adapterVersion: runtimeRun.adapter.version,
+    evidenceTier: runtimeRun.adapter.evidenceTier,
+    fidelityTier: runtimeRun.adapter.fidelityTier,
+    status: runtimeRun.status,
+    traceEventCount: runtimeRun.counts.traceEventCount,
+    branchEventCount: runtimeRun.counts.branchEventCount,
+    observedTextLineCount: runtimeRun.counts.observedTextLineCount,
+    // Artifact-bytes proof: sha256 over the produced localized render. The
+    // placeholder-rejection guard re-executes and rejects any proof whose
+    // renderHash does not reproduce a genuine, localized, span-preserving run.
+    renderHash: runtimeRun.renderHash,
   };
 
   // ---- Sanitized provider proof (emitted) ----
@@ -505,6 +519,7 @@ export function composeVertical(inputs, { now = new Date() } = {}) {
   return {
     generatedAt,
     runtimeObservationProof,
+    runtimeRun,
     providerProof,
     benchmarkReport,
     readModelIngestion,

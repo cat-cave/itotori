@@ -142,6 +142,34 @@ test("validator catches a tampered emitted artifact (hash drift -> exit 1)", () 
   });
 });
 
+test("validator re-executes the render and rejects a placeholder runtime proof even when hash-addressing is consistent", () => {
+  withTmp((outDir) => {
+    runDriver([], outDir);
+    // Swap the emitted runtime-observation-proof's renderHash for a fabricated
+    // one (a re-emitted/placeholder record) and UPDATE the manifest hash to
+    // match, so pure hash-addressing passes. The independent validator must
+    // still reject it because it re-executes the fixture and the renderHash no
+    // longer reproduces a real run.
+    const proofPath = join(outDir, "runtime-observation-proof.json");
+    const proof = JSON.parse(readFileSync(proofPath, "utf8"));
+    proof.renderHash = `sha256:${"0".repeat(64)}`;
+    const bytes = `${JSON.stringify(proof, null, 2)}\n`;
+    writeFileSync(proofPath, bytes);
+    const newHash = `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
+
+    const manifestPath = join(outDir, "vertical-manifest.json");
+    const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+    for (const e of manifest.emittedArtifacts) {
+      if (e.role === "runtime-observation-proof") e.hash = newHash;
+    }
+    writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+
+    const result = runValidator(outDir);
+    assert.equal(result.status, 1, result.stdout);
+    assert.match(result.stdout, /runtime\.render_not_reproducible/);
+  });
+});
+
 test("validator fails (exit 1) when no manifest is present", () => {
   withTmp((outDir) => {
     const result = runValidator(outDir);

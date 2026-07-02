@@ -20,7 +20,13 @@ import { join, resolve as resolvePath } from "node:path";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
 import { schemaErrors } from "./schema-validate.mjs";
-import { REPO_ROOT, sha256OfBytes, validateLinkage } from "./vertical.mjs";
+import {
+  REPO_ROOT,
+  assertRuntimeProofIsRealRun,
+  loadVerticalInputs,
+  sha256OfBytes,
+  validateLinkage,
+} from "./vertical.mjs";
 
 const DEFAULT_DIR = join(REPO_ROOT, "artifacts", "alpha", "public-fixture");
 
@@ -66,6 +72,7 @@ export function validateEmittedDir(dir) {
   // Re-read each emitted artifact; check existence, schema, and hash-addressing.
   const byRole = new Map((manifest.emittedArtifacts ?? []).map((x) => [x.role, x]));
   let linkage;
+  let runtimeObservationProof;
   for (const { role, filename } of EMITTED) {
     const path = join(dir, filename);
     if (!existsSync(path)) {
@@ -82,6 +89,7 @@ export function validateEmittedDir(dir) {
     const bytes = readFileSync(path);
     const value = JSON.parse(bytes.toString("utf8"));
     if (role === "shared-025-manifest-linkage") linkage = value;
+    if (role === "runtime-observation-proof") runtimeObservationProof = value;
 
     // Hash-addressing: the manifest must record this file's exact content hash.
     const recorded = byRole.get(role);
@@ -118,6 +126,34 @@ export function validateEmittedDir(dir) {
           "blocking",
           filename,
           `benchmark-report.json producedBy='${value.producedBy}' (expected ITOTORI-026; placeholder files are rejected)`,
+        ),
+      );
+    }
+  }
+
+  // Re-EXECUTE the runtime observation from the public fixture bytes and REJECT
+  // the emitted proof unless its renderHash reproduces a genuine, localized,
+  // span-preserving run. This is the independent artifact-bytes proof: the
+  // validator re-renders the patch over the source instead of trusting the
+  // emitted (or any checked-in) runtime report.
+  if (runtimeObservationProof !== undefined && linkage?.sharedManifest?.uri) {
+    try {
+      const inputs = loadVerticalInputs({ proofManifestPath: linkage.sharedManifest.uri });
+      findings.push(...inputs.hashFindings);
+      const { findings: guardFindings } = assertRuntimeProofIsRealRun(runtimeObservationProof, {
+        bridge: inputs.loadedArtifacts.bridgeBundle,
+        patchExport: inputs.loadedArtifacts.patchExport,
+        runtimeSceneLog: inputs.loadedArtifacts.runtimeReport,
+        proof: inputs.proof,
+      });
+      findings.push(...guardFindings);
+    } catch (error) {
+      findings.push(
+        finding(
+          "validator.runtime_reexecution_failed",
+          "blocking",
+          "runtime-observation-proof.json",
+          `could not re-execute the runtime observation from public fixtures: ${error.message}`,
         ),
       );
     }
