@@ -357,6 +357,18 @@ export async function withDatabaseItotoriServices<T>(
       projectWorkflow: new ItotoriProjectWorkflowService(
         projectRepository,
         localUserActor,
+        // itotori-purge-fakemodelprovider-from-production — the draft
+        // model provider slot. The old wiring left this `undefined`, which
+        // silently defaulted to a zero-cost FakeModelProvider so the shipped
+        // `projects.draft` route + CLI `draft` drafted REAL translations with
+        // a FAKE at zero cost. The fake default is gone: when no real
+        // provider is configured, `draftProject` now refuses LOUDLY with a
+        // typed `DraftProviderNotConfiguredError` (never a fake draft). A
+        // live draft requires injecting an `OpenRouterModelProvider` here
+        // (real call, real cost); that live wiring — API key + provider-run
+        // artifact recorder + cost cap threaded through `withServices` — is
+        // not yet built for the DB-backed single-shot draft path, so the
+        // honest shipped behavior is the typed refusal.
         undefined,
         modelLedgerRepository,
         translationMemoryService,

@@ -32,6 +32,7 @@ import {
   type ProviderRunRecord,
 } from "../src/providers/index.js";
 import {
+  DraftProviderNotConfiguredError,
   ItotoriProjectWorkflowService,
   type ProjectState,
 } from "../src/services/project-workflow.js";
@@ -64,10 +65,32 @@ describe("ItotoriProjectWorkflowService", () => {
     );
   });
 
+  it("refuses to draft with a typed error when no real provider is configured", async () => {
+    // itotori-purge-fakemodelprovider-from-production — the production wiring
+    // no longer silently defaults to a zero-cost FakeModelProvider. With no
+    // provider injected, draftProject must refuse LOUDLY rather than draft a
+    // fake translation. It must refuse BEFORE touching the repository.
+    const repository = repositoryFixture();
+    const service = new ItotoriProjectWorkflowService(repository, actor);
+    const project = projectFixture({ drafts: {} });
+
+    await expect(service.draftProject(project, "fr-FR")).rejects.toBeInstanceOf(
+      DraftProviderNotConfiguredError,
+    );
+    expect(repository.saveDrafts).not.toHaveBeenCalled();
+  });
+
   it("drafts deterministic translations before saving drafts", async () => {
     const repository = repositoryFixture();
     const ledger = ledgerFixture();
-    const service = new ItotoriProjectWorkflowService(repository, actor, undefined, ledger);
+    // itotori-purge-fakemodelprovider-from-production — the service no longer
+    // defaults to a fake; the test injects the test double explicitly.
+    const service = new ItotoriProjectWorkflowService(
+      repository,
+      actor,
+      new FakeModelProvider(),
+      ledger,
+    );
     const project = projectFixture({ drafts: {} });
 
     const drafted = await service.draftProject(project, "fr-FR");
@@ -384,7 +407,12 @@ describe("ItotoriProjectWorkflowService", () => {
   it("uses distinct provider run ids when drafts are rerun", async () => {
     const repository = repositoryFixture();
     const ledger = ledgerFixture();
-    const service = new ItotoriProjectWorkflowService(repository, actor, undefined, ledger);
+    const service = new ItotoriProjectWorkflowService(
+      repository,
+      actor,
+      new FakeModelProvider(),
+      ledger,
+    );
     const project = projectFixture({ drafts: {} });
 
     await service.draftProject(project, "fr-FR");
@@ -489,7 +517,12 @@ describe("ItotoriProjectWorkflowService", () => {
   it("drafts two target locales with ledger-enabled immutable prompt presets", async () => {
     const repository = repositoryFixture();
     const ledger = driftDetectingLedgerFixture();
-    const service = new ItotoriProjectWorkflowService(repository, actor, undefined, ledger);
+    const service = new ItotoriProjectWorkflowService(
+      repository,
+      actor,
+      new FakeModelProvider(),
+      ledger,
+    );
     const project = projectFixture({ drafts: {} });
 
     await service.draftProject(project, "fr-FR");

@@ -19,7 +19,10 @@ export {
   type DevPairCapabilities,
   type ModelProviderPair,
 } from "./dev-pair.js";
-export { FakeModelProvider, fakeModelCapabilities } from "./fake.js";
+// itotori-purge-fakemodelprovider-from-production — FakeModelProvider is a
+// zero-cost canned-output test double and MUST NOT be reachable from the
+// providers public barrel (that made it reachable from production wiring).
+// Test code imports it directly from "./fake.js"; production code never does.
 export {
   RECORDED_PROVIDER_BUNDLE_SCHEMA_VERSION,
   RecordedBundleMissingError,

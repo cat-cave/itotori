@@ -1,7 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
+// itotori-purge-fakemodelprovider-from-production — FakeModelProvider is no
+// longer exported from the providers public barrel; tests import the test
+// double directly from the fake module.
+import { FakeModelProvider } from "../src/providers/fake.js";
 import {
   AccountZdrAssertionError,
-  FakeModelProvider,
   LocalOpenAICompatibleProvider,
   ModelProviderError,
   OpenRouterModelProvider,

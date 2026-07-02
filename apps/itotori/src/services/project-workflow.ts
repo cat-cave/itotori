@@ -35,7 +35,6 @@ import {
   ConformanceIngestionError,
   computePatchResultOutputHashRollupV02,
 } from "@itotori/localization-bridge-schema";
-import { FakeModelProvider } from "../providers/fake.js";
 import { assertProviderInvocationSupported } from "../providers/capability-guard.js";
 import {
   ModelProviderError,
@@ -128,6 +127,27 @@ export type ConformanceIngestResult = {
   }>;
 };
 
+/**
+ * itotori-purge-fakemodelprovider-from-production — the DB-backed draft
+ * workflow (`projects.draft` HTTP route + CLI `draft`) MUST draft with a
+ * REAL model provider whose cost is read from the live call. Per the
+ * strict-proof rule "fakes and mocks ONLY belong in tests, NEVER in real
+ * code", the service no longer defaults to a zero-cost FakeModelProvider.
+ * When the production wiring has no real provider configured, `draftProject`
+ * refuses LOUDLY with this typed error rather than silently drafting a fake,
+ * zero-cost translation. Tests inject an explicit test double.
+ */
+export class DraftProviderNotConfiguredError extends Error {
+  constructor() {
+    super(
+      "draftProject refused: no real model provider is configured for the draft workflow. " +
+        "The production draft path must inject a live OpenRouterModelProvider (real call, real cost); " +
+        "refusing to draft with a fake, zero-cost provider. Tests must inject an explicit test double.",
+    );
+    this.name = "DraftProviderNotConfiguredError";
+  }
+}
+
 export class PatchResultIngestionError extends Error {
   constructor(
     readonly diagnostic: PatchResultIngestionDiagnostic,
@@ -193,7 +213,7 @@ export class ItotoriProjectWorkflowService implements ItotoriProjectWorkflowPort
   constructor(
     private readonly repository: ItotoriProjectRepositoryPort,
     private readonly actor: AuthorizationActor,
-    private readonly draftModelProvider: ModelProvider = new FakeModelProvider(),
+    private readonly draftModelProvider?: ModelProvider,
     private readonly modelLedger?: ItotoriModelLedgerRepositoryPort,
     private readonly translationMemory?: Pick<ItotoriTranslationMemoryService, "prefillDrafts">,
     private readonly conformanceRepository?: ItotoriConformanceRepositoryPort,
@@ -235,6 +255,12 @@ export class ItotoriProjectWorkflowService implements ItotoriProjectWorkflowPort
   }
 
   async draftProject(project: ProjectState, locale: string): Promise<ProjectState> {
+    // itotori-purge-fakemodelprovider-from-production — refuse LOUDLY when no
+    // real provider is wired rather than silently drafting a zero-cost fake.
+    const provider = this.draftModelProvider;
+    if (provider === undefined) {
+      throw new DraftProviderNotConfiguredError();
+    }
     const nextProject: ProjectState = {
       ...project,
       targetLocale: locale,
@@ -248,13 +274,12 @@ export class ItotoriProjectWorkflowService implements ItotoriProjectWorkflowPort
       const prompt = draftPromptPreset();
       const request: ModelInvocationRequest = {
         taskKind: "draft_translation",
-        modelId: this.draftModelProvider.descriptor.defaultModelId,
+        modelId: provider.descriptor.defaultModelId,
         // ITOTORI-220 — pin the descriptor's providerName as the
-        // providerId for this internal workflow path. The fake provider
-        // surfaces "itotori-fixture", the recorded provider surfaces the
-        // captured upstream identity, and the live providers will
-        // surface their pinned providerId.
-        providerId: this.draftModelProvider.descriptor.providerName,
+        // providerId for this internal workflow path. The recorded
+        // provider surfaces the captured upstream identity, and the live
+        // providers will surface their pinned providerId.
+        providerId: provider.descriptor.providerName,
         inputClassification: "private_corpus",
         prompt,
         messages: [
@@ -277,13 +302,19 @@ export class ItotoriProjectWorkflowService implements ItotoriProjectWorkflowPort
       const invocationStartedAt = new Date();
       try {
         assertProviderInvocationSupported({
-          descriptor: this.draftModelProvider.descriptor,
+          descriptor: provider.descriptor,
           request,
-          requestedModelId: request.modelId ?? this.draftModelProvider.descriptor.defaultModelId,
+          requestedModelId: request.modelId ?? provider.descriptor.defaultModelId,
         });
-        result = await this.draftModelProvider.invoke(request);
+        result = await provider.invoke(request);
       } catch (error) {
-        await this.recordProviderFailure(nextProject, request, invocationStartedAt, error);
+        await this.recordProviderFailure(
+          provider,
+          nextProject,
+          request,
+          invocationStartedAt,
+          error,
+        );
         throw error;
       }
       if (result.content === null) {
@@ -295,7 +326,13 @@ export class ItotoriProjectWorkflowService implements ItotoriProjectWorkflowPort
           failedRun,
           result.adapterMetadata,
         );
-        await this.recordProviderFailure(nextProject, request, invocationStartedAt, error);
+        await this.recordProviderFailure(
+          provider,
+          nextProject,
+          request,
+          invocationStartedAt,
+          error,
+        );
         throw error;
       }
       await this.recordProviderRun(nextProject, result);
@@ -713,6 +750,7 @@ export class ItotoriProjectWorkflowService implements ItotoriProjectWorkflowPort
   }
 
   private async recordProviderFailure(
+    provider: ModelProvider,
     project: ProjectState,
     request: ModelInvocationRequest,
     startedAt: Date,
@@ -725,7 +763,7 @@ export class ItotoriProjectWorkflowService implements ItotoriProjectWorkflowPort
       error instanceof ModelProviderError && error.providerRun !== undefined
         ? error.providerRun
         : failedProviderRunFromRequest({
-            descriptor: this.draftModelProvider.descriptor,
+            descriptor: provider.descriptor,
             request,
             startedAt,
             error,
