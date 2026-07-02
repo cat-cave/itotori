@@ -8,13 +8,20 @@
 //! dispatches the plaintext bytecode through the new
 //! [`kaifuu_reallive::parse_real_bytecode`].
 //!
-//! # Multi-game validation status
+//! # Scope: a SCENE-1 pin, NOT the full-archive 100% gate
 //!
-//! Single RealLive corpus (Sweetie HD); second-corpus retroactive
-//! validation welcome but not blocking. This mirrors the KAIFUU-188
-//! pattern documented in `tests/parse_archive_real_bytes.rs` —
-//! the orchestrator will not approve completion until a second RealLive
-//! title is staged and exercised by an additional integration test.
+//! This test pins the decode of **Sweetie HD scene 1 only**. It is an
+//! honest single-scene regression pin — it asserts that scene 1's known
+//! prologue, text/voice structure and byte-framing decode correctly and
+//! that scene 1 in particular carries zero un-recognised elements. It does
+//! **NOT** prove full-archive / 100% decompilation: that claim is owned
+//! solely by `tests/multi_corpus_real_bytes.rs`
+//! (`multi_game_validation_runs_against_two_distinct_reallive_corpora`),
+//! which asserts the SEMANTIC-zero bar (zero generic `Command`, zero
+//! `Unknown`, zero `MalformedExpression`, zero parse-failure) across EVERY
+//! populated scene of BOTH full archives (Sweetie HD + Kanon). A single
+//! scene being clean says nothing about the other 197 Sweetie / 79 Kanon
+//! scenes — only the multi-corpus gate does.
 //!
 //! # Decompressor provenance
 //!
@@ -26,7 +33,7 @@
 //! cycle (flag-byte, literal-XOR, back-reference) are documented
 //! behavior of a fixed file format.
 //!
-//! # Acceptance criteria (per KAIFUU-191 deliverable 4)
+//! # Scene-1 pin criteria (per KAIFUU-191 deliverable 4)
 //!
 //! 1. First decoded opcode is in the documented opener set
 //!    (`MetaLine(2)` per research doc §D first bytes
@@ -36,12 +43,14 @@
 //!    via [`RealLiveOpcode::label`]).
 //! 3. The scene contains ≥1 voice-line reference (`VoicePlay` if
 //!    recognised, otherwise the test records the count for diagnostics).
-//! 4. The unknown-opcode count is EXACTLY zero (100% recognition) — the
-//!    full ExpressionPiece evaluator, goto-family pointer handling, and
-//!    catch-all Textout partition resolve every byte to a typed element.
+//! 4. Scene 1's own un-recognised-element count is EXACTLY zero — the full
+//!    ExpressionPiece evaluator, goto-family pointer handling, and catch-all
+//!    Textout partition resolve every byte of THIS scene to a typed element.
+//!    This is a scene-1 regression pin, not a full-archive completeness
+//!    claim (that is `multi_corpus_real_bytes`' gate).
 //!
-//! The recognition rate is reported via `eprintln!` so the orchestration
-//! report can quote it directly.
+//! The scene-1 recognition count is reported via `eprintln!` so the
+//! orchestration report can quote it directly.
 
 #[path = "support/real_corpus.rs"]
 mod real_corpus;
@@ -56,7 +65,7 @@ use kaifuu_reallive::{
 
 #[test]
 #[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
-fn dispatches_sweetie_hd_scene_1_with_zero_unknown_opcodes_full_recognition() {
+fn pins_sweetie_hd_scene_1_dispatch_with_zero_unknown_opcodes() {
     let Some(seen_path) = real_seen_txt_path() else {
         real_corpus::skip_or_require_real_bytes("Sweetie HD scene-1 dispatch test");
         return;
@@ -196,7 +205,7 @@ fn dispatches_sweetie_hd_scene_1_with_zero_unknown_opcodes_full_recognition() {
         );
     }
 
-    // ---- Acceptance 4: unknown-opcode count < 10% of total. ----
+    // ---- Scene-1 pin: this scene's own un-recognised-element count. ----
     let total = opcodes.len();
     let unknown = opcodes.iter().filter(|op| !op.is_recognized()).count();
     let recognized = total - unknown;
@@ -246,18 +255,19 @@ fn dispatches_sweetie_hd_scene_1_with_zero_unknown_opcodes_full_recognition() {
     for ((module_type, module_id, opcode), count) in &unknown_command_signatures {
         eprintln!("  ({module_type:>3}, {module_id:>3}, {opcode:>5}): {count}");
     }
-    // ALPHA-006e law: the full ExpressionPiece evaluator + goto-family
-    // pointer handling + catch-all Textout partition resolves EVERY byte
-    // of real Sweetie HD scene 1 into a typed BytecodeElement. There is
-    // no residual unknown bucket — `unknown` must be exactly zero
-    // (`recognition_rate == 1.0`). Any non-zero count is incomplete
-    // decompilation, not an acceptable floor.
+    // Scene-1 regression pin: the full ExpressionPiece evaluator +
+    // goto-family pointer handling + catch-all Textout partition resolve
+    // EVERY byte of real Sweetie HD scene 1 into a typed BytecodeElement, so
+    // scene 1 carries zero un-recognised elements. This pins scene 1 only;
+    // it is NOT a full-archive completeness claim — the SEMANTIC-zero bar
+    // across every scene of both full archives is asserted solely by
+    // `multi_corpus_real_bytes`.
     assert_eq!(
         unknown,
         0,
-        "decompilation must be 100% complete: every byte of Sweetie HD scene 1 must resolve to a \
-         typed BytecodeElement (recognized={recognized}, unknown={unknown}, total={total}, \
-         recognition_rate={:.2}%)",
+        "scene-1 pin: every byte of Sweetie HD scene 1 must resolve to a typed \
+         BytecodeElement (recognized={recognized}, unknown={unknown}, total={total}, \
+         scene_1_recognition_rate={:.2}%)",
         recognition_rate * 100.0
     );
 }
