@@ -519,6 +519,143 @@ fn multi_game_validation_runs_against_two_distinct_reallive_corpora() {
     }
 }
 
+/// Known Sweetie HD (`ITOTORI_REAL_GAME_ROOT`, corpus-1) SEEN sha256, recorded
+/// from this harness's own `[corpus-1] seen_sha256=...` line. The Kanon-only
+/// generalization test below asserts corpus-2's SEEN archive does NOT match it,
+/// so `ITOTORI_REAL_GAME_ROOT_2` accidentally re-pointed at Sweetie HD is caught
+/// even when corpus-1 is not staged in the same run. (One-way digest of an
+/// already-committed corpus fingerprint — no raw bytes.)
+const SWEETIE_HD_SEEN_SHA256: &str =
+    "903f538b821a9b1e6cb3d399582915c0bcf73b0a058ecc907caf6017a4fa209f";
+
+/// alpha-006e-multigame-validation: the 2nd-title 100%-decompilation law.
+///
+/// Distinct from
+/// [`multi_game_validation_runs_against_two_distinct_reallive_corpora`] (which
+/// needs BOTH corpora staged), this test gates on `ITOTORI_REAL_GAME_ROOT_2`
+/// (Kanon) ALONE and proves the Sweetie-HD opcode coverage GENERALIZES to a
+/// second, independently-authored RealLive title: the SAME command catalogue
+/// and expression grammar decode the whole Kanon archive at the hard SEMANTIC
+/// zero bar (zero generic `Command`, zero `Unknown`, zero malformed
+/// expressions, zero parse failures) across every populated scene.
+///
+/// Kanon is a 1.2.6.8 (`10002`) title that carries NO second-level `xor_2`, so
+/// it is decoded by the catalogue alone with no game-specific decrypt path —
+/// which is precisely why it is the generalization witness: nothing
+/// Sweetie-HD-specific is in the loop, and no game-specific special-casing or
+/// generic-`Command` escape may mask an unknown (the `is_recognized()` bar is
+/// `false` for the generic blob, so a masked tuple would fail this test, not
+/// pass it). No raw copyrighted bytes/text are emitted — counts, opcode
+/// signatures and sha256 only.
+#[test]
+#[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT_2 (2nd RealLive title, e.g. Kanon)"]
+fn kanon_second_corpus_decompiles_zero_unknown() {
+    let Some(corpus) = real_corpus::corpus_2() else {
+        real_corpus::skip_or_require_real_bytes(
+            "kanon_second_corpus_decompiles_zero_unknown \
+             (set ITOTORI_REAL_GAME_ROOT_2 to a 2nd RealLive title, e.g. Kanon)",
+        );
+        return;
+    };
+
+    let report = decompile_corpus(&corpus);
+    print_report(&report);
+
+    // (0) The 2nd corpus is a genuinely DIFFERENT title from Sweetie HD — not
+    // corpus-1 re-pointed. Structural: Kanon (10002) carries NO second-level
+    // xor_2, whereas Sweetie HD (110002) is xor_2-encrypted; AND the SEEN
+    // sha256 must not equal Sweetie HD's. This catches "2nd corpus actually
+    // Sweetie HD again" even with corpus-1 unstaged.
+    assert_ne!(
+        report.seen_sha256, SWEETIE_HD_SEEN_SHA256,
+        "ITOTORI_REAL_GAME_ROOT_2 resolved to the Sweetie HD SEEN archive; \
+         multi-game validation needs a DISTINCT 2nd RealLive title"
+    );
+    assert_eq!(
+        report.xor2.scenes_eligible, 0,
+        "[{}] 2nd corpus reports second-level xor_2 scenes — expected a plain \
+         (non-xor2) RealLive title distinct from Sweetie HD",
+        report.label
+    );
+
+    // (1) The 2nd corpus is a real, populated RealLive archive the merged
+    // decompiler actually engaged (at least one real scene decoded).
+    assert!(
+        report.populated_scenes > 0,
+        "[{}] 2nd corpus SEEN archive has zero populated scenes",
+        report.label
+    );
+    assert!(
+        report.total_opcodes > 0,
+        "[{}] decompiler ran but produced no opcodes for the 2nd corpus",
+        report.label
+    );
+    assert!(
+        report.clean_scenes > 0,
+        "[{}] no scene of the 2nd corpus decoded 0-unknown \
+         (the law requires >= 1 real scene at recognition_rate 100%)",
+        report.label
+    );
+
+    // (2) The hard SEMANTIC zero bar on the FULL 2nd archive (same
+    // `is_recognized()` bar as Sweetie HD). Split by failure mode so a
+    // regression names exactly which generalization gap opened.
+    assert_eq!(
+        report.total_generic_command, 0,
+        "[{}] {} command(s) decode to the generic `Command` blob on Kanon \
+         — a generalization gap: every in-space tuple must map to a SEMANTIC \
+         family (catalogue it in opcode.rs; do NOT relax the bar). Signatures \
+         printed above.",
+        report.label, report.total_generic_command
+    );
+    assert_eq!(
+        report.total_unknown_desync, 0,
+        "[{}] {} `Unknown` desync tripwire(s) on Kanon",
+        report.label, report.total_unknown_desync
+    );
+    assert_eq!(
+        report.histogram.get("command").copied().unwrap_or(0),
+        0,
+        "[{}] opcode histogram still has a `command` bucket — un-catalogued \
+         tuples remain on the 2nd corpus",
+        report.label
+    );
+    assert_eq!(
+        report.total_unknown, 0,
+        "[{}] {} command(s) fail recognition on the full Kanon archive \
+         (the bar is zero unknown; no floor may be relaxed)",
+        report.label, report.total_unknown
+    );
+    assert_eq!(
+        report.scenes_with_unknown, 0,
+        "[{}] {} Kanon scene(s) still carry an Unknown command",
+        report.label, report.scenes_with_unknown
+    );
+    assert_eq!(
+        report.malformed_expression_scenes, 0,
+        "[{}] {} Kanon scene(s) still fail with MalformedExpression",
+        report.label, report.malformed_expression_scenes
+    );
+    assert_eq!(
+        report.parse_failures, 0,
+        "[{}] {} Kanon scene(s) still hit a parse failure \
+         (zero unknown + zero parse-failure is the bar)",
+        report.label, report.parse_failures
+    );
+    assert_eq!(
+        report.clean_scenes, report.populated_scenes,
+        "[{}] only {}/{} Kanon scenes decode 100% clean (every populated scene must)",
+        report.label, report.clean_scenes, report.populated_scenes
+    );
+
+    eprintln!(
+        "[{}] GENERALIZATION PROVEN: Sweetie-HD opcode coverage decodes a 2nd \
+         RealLive title (Kanon) — {}/{} scenes, {} opcodes, 0 unknown, 0 parse \
+         failures, no game-specific special-casing.",
+        report.label, report.clean_scenes, report.populated_scenes, report.total_opcodes,
+    );
+}
+
 /// Dependency-free SHA-256 for corpus distinctness checks.
 mod sha256 {
     const K: [u32; 64] = [
