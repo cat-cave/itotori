@@ -142,7 +142,7 @@ ci-real-bytes:
     echo "ci-real-bytes: Siglus (Karetoshi + Gamekoi)   = $ITOTORI_VAULT_ROOT (vault-materialized)"
     echo "ci-real-bytes: strict by default (no ITOTORI_ALLOW_MISSING_CORPUS); running real-bytes suites"
     # RealLive + RPG Maker MV/MZ: #[ignore]-gated real-bytes suites.
-    cargo test -p kaifuu-reallive -p utsushi-reallive -p kaifuu-cli -p utsushi-cli -p kaifuu-rpgmaker -- --ignored
+    cargo test -p kaifuu-reallive -p utsushi-reallive -p kaifuu-cli -p utsushi-cli -p kaifuu-rpgmaker -p kaifuu-engine-fixture -- --ignored
     # utsushi-core: real-bytes proofs are plain #[test]s (target the files, no --ignored).
     cargo test -p utsushi-core --test composite_asset_package_real_bytes
     # kaifuu-vault-source: only the live-vault #[ignore] proofs (avoid unrelated KAIFUU-236/237 ignores).
