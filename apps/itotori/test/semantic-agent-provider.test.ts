@@ -6,14 +6,17 @@ import { resolveTerminologyCandidateProvider } from "../src/agents/terminology-c
 import {
   ALLOW_FAKE_SEMANTIC_AGENT_ENV,
   SemanticAgentFakeProviderNotAllowedError,
-  SemanticAgentLiveProviderNotImplementedError,
+  SemanticAgentUnsupportedLiveFamilyError,
 } from "../src/providers/fake.js";
+import { AccountZdrAssertionError } from "../src/providers/account-zdr.js";
 import type { ModelProvider, ProviderFamily } from "../src/providers/types.js";
 
-// itotori-semantic-agent-clis-no-fake-context-on-real-path — proves the four
-// semantic-agent CLIs NEVER silently produce fake context on a real path:
-// a live provider family loud-refuses with a typed error, and the fake
-// provider is reachable ONLY behind the explicit env opt-in.
+// itotori-semantic-agents-live-provider-wiring — proves the four semantic-agent
+// CLIs (a) NEVER silently produce fake context on a real path, and (b) route
+// the `openrouter` family to the REAL, ZDR-gated OpenRouter provider (not a
+// stub). Offline this test only exercises the resolution seam: it never issues
+// a live call. The live proof (a real ZDR call with cost from usage.cost) lives
+// in semantic-agent-live.test.ts, gated on ITOTORI_LIVE_PROVIDER=1.
 const RESOLVERS: ReadonlyArray<{
   name: string;
   resolve: (family: ProviderFamily) => ModelProvider;
@@ -24,18 +27,28 @@ const RESOLVERS: ReadonlyArray<{
   { name: "terminology-candidate", resolve: resolveTerminologyCandidateProvider },
 ];
 
-const LIVE_FAMILIES: ReadonlyArray<ProviderFamily> = [
-  "openrouter",
+// Non-fake families that this resolver does NOT wire (they need a recorded
+// bundle / a base URL that the resolver does not carry). They must refuse
+// loudly rather than substituting a fake.
+const UNSUPPORTED_LIVE_FAMILIES: ReadonlyArray<ProviderFamily> = [
   "recorded",
   "local-openai-compatible",
 ];
 
 describe("semantic-agent provider resolution (no fake context on a real path)", () => {
   let priorAllow: string | undefined;
+  let priorZdr: string | undefined;
 
   beforeEach(() => {
     priorAllow = process.env[ALLOW_FAKE_SEMANTIC_AGENT_ENV];
     delete process.env[ALLOW_FAKE_SEMANTIC_AGENT_ENV];
+    // The `openrouter` live path asserts the account-wide ZDR posture FIRST
+    // in the OpenRouterModelProvider constructor. Clear it so the openrouter
+    // assertion below deterministically hits the ZDR gate (proving the
+    // resolver builds the REAL live provider, not a stub) regardless of the
+    // ambient environment.
+    priorZdr = process.env.OPENROUTER_ZDR_ACCOUNT_ASSERTED;
+    delete process.env.OPENROUTER_ZDR_ACCOUNT_ASSERTED;
   });
 
   afterEach(() => {
@@ -44,19 +57,32 @@ describe("semantic-agent provider resolution (no fake context on a real path)", 
     } else {
       process.env[ALLOW_FAKE_SEMANTIC_AGENT_ENV] = priorAllow;
     }
+    if (priorZdr === undefined) {
+      delete process.env.OPENROUTER_ZDR_ACCOUNT_ASSERTED;
+    } else {
+      process.env.OPENROUTER_ZDR_ACCOUNT_ASSERTED = priorZdr;
+    }
   });
 
   for (const { name, resolve } of RESOLVERS) {
-    for (const family of LIVE_FAMILIES) {
-      it(`${name}: live family '${family}' fails loudly with a typed error (never a fake)`, () => {
-        expect(() => resolve(family)).toThrow(SemanticAgentLiveProviderNotImplementedError);
+    it(`${name}: 'openrouter' builds the REAL ZDR-gated live provider (fails closed on ZDR, never a fake)`, () => {
+      // No fake fallback: the live path constructs a real
+      // OpenRouterModelProvider, whose constructor asserts the account-wide
+      // ZDR posture BEFORE anything else. Without the assertion env var it
+      // throws AccountZdrAssertionError — proving the resolver reaches the
+      // real live wiring (fail-closed) rather than fabricating context.
+      expect(() => resolve("openrouter")).toThrow(AccountZdrAssertionError);
+    });
+
+    for (const family of UNSUPPORTED_LIVE_FAMILIES) {
+      it(`${name}: unsupported live family '${family}' fails loudly with a typed error (never a fake)`, () => {
+        expect(() => resolve(family)).toThrow(SemanticAgentUnsupportedLiveFamilyError);
         try {
           resolve(family);
           throw new Error("expected resolve to throw");
         } catch (error) {
-          expect(error).toBeInstanceOf(SemanticAgentLiveProviderNotImplementedError);
-          expect((error as SemanticAgentLiveProviderNotImplementedError).family).toBe(family);
-          expect((error as Error).message).toContain("not implemented");
+          expect(error).toBeInstanceOf(SemanticAgentUnsupportedLiveFamilyError);
+          expect((error as SemanticAgentUnsupportedLiveFamilyError).family).toBe(family);
         }
       });
     }

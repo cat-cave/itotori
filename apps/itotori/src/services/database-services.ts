@@ -433,12 +433,13 @@ export async function withDatabaseItotoriServices<T>(
         // silently populated REAL DB context artifacts with FAKE summaries
         // that then fed real translation prompts. The default family is now
         // the real production family (`openrouter`) with its intended
-        // (modelId, providerId) pair; until the live scene-summary
-        // implementation is wired, `resolveSceneSummaryProvider` refuses
-        // LOUDLY with a typed `SemanticAgentLiveProviderNotImplementedError`
-        // instead of substituting a fake. A fake provider is reachable only
-        // via the explicit `ITOTORI_ALLOW_FAKE_SEMANTIC_AGENT=1` opt-in plus
-        // `--provider fake` (test/dev), never as a production default.
+        // (modelId, providerId) pair. `resolveSceneSummaryProvider` now WIRES
+        // that live path to the real, ZDR-gated `OpenRouterModelProvider`
+        // (config-driven pair, cost from real `usage.cost`; the account-wide
+        // ZDR assertion + missing-key refusal fire in its constructor). A fake
+        // provider is reachable only via the explicit
+        // `ITOTORI_ALLOW_FAKE_SEMANTIC_AGENT=1` opt-in plus `--provider fake`
+        // (test/dev), never as a production default.
         defaultModelId: "anthropic/claude-3-5-sonnet",
         defaultProviderId: "anthropic",
         defaultProviderFamily: "openrouter",

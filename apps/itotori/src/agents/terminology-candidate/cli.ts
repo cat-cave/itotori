@@ -1,6 +1,9 @@
 import type { AuthorizationActor, ItotoriTerminologyCandidateRepositoryPort } from "@itotori/db";
 import type { ModelProvider, ProviderFamily } from "../../providers/types.js";
-import { resolveSemanticAgentProvider } from "../../providers/fake.js";
+import {
+  resolveSemanticAgentProvider,
+  type SemanticAgentLiveProviderOptions,
+} from "../../providers/fake.js";
 import {
   generateTerminologyCandidates,
   type GenerateTerminologyCandidatesOptions,
@@ -64,16 +67,21 @@ export type TerminologyCandidateCliDependencies = {
 /**
  * Construct the provider for the terminology-candidate CLI. The `fake`
  * family is reachable ONLY via the explicit
- * `ITOTORI_ALLOW_FAKE_SEMANTIC_AGENT=1` test/dev opt-in; every live family
- * loud-refuses with a typed error until the real per-agent implementation is
- * built — a real run therefore never feeds fake-derived terminology into
- * real translation context.
+ * `ITOTORI_ALLOW_FAKE_SEMANTIC_AGENT=1` test/dev opt-in. The `openrouter`
+ * family is the LIVE path: a real, ZDR-gated `OpenRouterModelProvider`
+ * (config-driven pair, cost from real `usage.cost`). Any other non-fake
+ * family loud-refuses with a typed error — a real run therefore never feeds
+ * fake-derived terminology into real translation context.
  */
-export function resolveTerminologyCandidateProvider(family: ProviderFamily): ModelProvider {
+export function resolveTerminologyCandidateProvider(
+  family: ProviderFamily,
+  live?: SemanticAgentLiveProviderOptions,
+): ModelProvider {
   return resolveSemanticAgentProvider({
     agentName: "terminology-candidate",
     family,
     fakeProviderName: "itotori-terminology-candidate-fake",
+    ...(live !== undefined ? { live } : {}),
   });
 }
 

@@ -1,4 +1,6 @@
 import { assertProviderInvocationSupported } from "./capability-guard.js";
+import { LocalProviderRunArtifactRecorder } from "./artifacts.js";
+import { DEFAULT_COST_CAP_USD, OpenRouterModelProvider } from "./openrouter.js";
 import type {
   ModelCapabilities,
   ModelInvocationRequest,
@@ -6,6 +8,7 @@ import type {
   ModelProvider,
   ProviderDescriptor,
   ProviderFamily,
+  ProviderRunArtifactRecorder,
   ProviderRunRecord,
 } from "./types.js";
 import { createProviderRunId, localOnlyRoutingPosture } from "./types.js";
@@ -174,8 +177,17 @@ function countApproximateTokens(text: string): number {
  * - The `fake` family is reachable ONLY behind an EXPLICIT test/dev opt-in
  *   (`ITOTORI_ALLOW_FAKE_SEMANTIC_AGENT=1`); without it the CLI refuses
  *   LOUDLY with a typed error rather than fabricating context.
- * - Any live provider family whose real per-agent implementation is not yet
- *   built refuses LOUDLY with a typed error rather than substituting a fake.
+ * - The live provider family (`openrouter`) is WIRED to the real, ZDR-gated
+ *   OpenRouter provider — the SAME `OpenRouterModelProvider` the translation
+ *   path uses. Its (modelId, providerId) routing is config-driven: the pair
+ *   travels on each request from the agent's `modelProfile` (never hard-coded
+ *   here). The account-wide ZDR assertion + the missing-API-key refusal fire
+ *   inside that provider's constructor (fail-closed), and cost is recorded
+ *   from the real `usage.cost` on every call.
+ * - Any other non-fake family (`recorded` / `local-openai-compatible`) needs
+ *   explicit per-call config (a recorded bundle / a base URL) that this
+ *   resolver does not carry, so it refuses LOUDLY with a typed error rather
+ *   than substituting a fake.
  */
 
 /** Env opt-in that makes the fake semantic-agent provider reachable. */
@@ -200,35 +212,63 @@ export class SemanticAgentFakeProviderNotAllowedError extends Error {
 }
 
 /**
- * Thrown when a semantic-agent CLI is asked for a live provider family whose
- * real per-agent implementation is not yet built. The CLI refuses loudly
- * rather than falling back to a fake, so a real run can only produce real
- * context or a typed error — never fake-derived context.
+ * Thrown when a semantic-agent CLI is asked for a non-fake provider family
+ * that this resolver does not wire (`recorded` / `local-openai-compatible`).
+ * Those families need per-call config (a recorded bundle / a base URL) that
+ * `resolveSemanticAgentProvider` does not carry; the live semantic-agent path
+ * is the ZDR OpenRouter provider. The CLI refuses loudly rather than falling
+ * back to a fake, so a real run can only produce real context or a typed
+ * error — never fake-derived context.
  */
-export class SemanticAgentLiveProviderNotImplementedError extends Error {
+export class SemanticAgentUnsupportedLiveFamilyError extends Error {
   readonly agentName: string;
   readonly family: ProviderFamily;
   constructor(agentName: string, family: ProviderFamily) {
     super(
-      `live semantic-agent '${agentName}' not implemented for provider family '${family}': ` +
-        `this CLI has no real per-agent implementation for that family yet. It refuses rather than ` +
-        `writing fake-derived context to real DB artifacts; build the live implementation first.`,
+      `semantic-agent '${agentName}' has no wired live provider for family '${family}': ` +
+        `the live semantic-agent path is the ZDR OpenRouter provider ('openrouter'). ` +
+        `The '${family}' family needs explicit per-call config (a recorded bundle / a base URL) ` +
+        `that this resolver does not carry, so it refuses rather than substituting a fake.`,
     );
-    this.name = "SemanticAgentLiveProviderNotImplementedError";
+    this.name = "SemanticAgentUnsupportedLiveFamilyError";
     this.agentName = agentName;
     this.family = family;
   }
 }
 
 /**
- * Resolve the model provider for a semantic-agent CLI. The `fake` family is
- * gated behind an explicit opt-in; every live family loud-refuses until its
- * real per-agent implementation is wired here.
+ * Live-path construction knobs for the ZDR OpenRouter semantic-agent provider.
+ * All optional: production defaults mirror the translation path (the shared
+ * per-process `DEFAULT_COST_CAP_USD` cap + a `LocalProviderRunArtifactRecorder`
+ * writing to its default directory). The (modelId, providerId) routing is NOT
+ * here — it is config-driven, travelling on each request from the agent's
+ * `modelProfile`. Tests inject a scratch `artifactRecorder` + `env`.
+ */
+export type SemanticAgentLiveProviderOptions = {
+  costCapUsd?: number;
+  artifactRecorder?: ProviderRunArtifactRecorder;
+  env?: Readonly<Record<string, string | undefined>>;
+  providerName?: string;
+};
+
+/**
+ * Resolve the model provider for a semantic-agent CLI.
+ *
+ * - `fake` is gated behind the explicit `ITOTORI_ALLOW_FAKE_SEMANTIC_AGENT=1`
+ *   test/dev opt-in.
+ * - `openrouter` is the LIVE path: it builds the real, ZDR-gated
+ *   `OpenRouterModelProvider` (the same one the translation path uses). The
+ *   account-wide ZDR assertion + the missing-key refusal fire in that
+ *   provider's constructor (fail-closed); cost is recorded from the real
+ *   `usage.cost`; and the (modelId, providerId) pair is config-driven per
+ *   request via the agent's `modelProfile`.
+ * - every other non-fake family loud-refuses with a typed error.
  */
 export function resolveSemanticAgentProvider(options: {
   agentName: string;
   family: ProviderFamily;
   fakeProviderName: string;
+  live?: SemanticAgentLiveProviderOptions;
 }): ModelProvider {
   const { agentName, family, fakeProviderName } = options;
   if (family === "fake") {
@@ -237,5 +277,19 @@ export function resolveSemanticAgentProvider(options: {
     }
     return new FakeModelProvider({ providerName: fakeProviderName });
   }
-  throw new SemanticAgentLiveProviderNotImplementedError(agentName, family);
+  if (family === "openrouter") {
+    const live = options.live ?? {};
+    // Mirror the translation path (see localize-project-stage-command.ts
+    // `liveOpenRouterFactory`): construct the real OpenRouterModelProvider,
+    // which asserts the account-wide ZDR posture and refuses on a missing
+    // API key in its constructor, routes the request's (modelId, providerId)
+    // pair with `provider.zdr=true`, and records real `usage.cost`.
+    return new OpenRouterModelProvider({
+      costCapUsd: live.costCapUsd ?? DEFAULT_COST_CAP_USD,
+      artifactRecorder: live.artifactRecorder ?? new LocalProviderRunArtifactRecorder(),
+      ...(live.env !== undefined ? { env: live.env } : {}),
+      ...(live.providerName !== undefined ? { providerName: live.providerName } : {}),
+    });
+  }
+  throw new SemanticAgentUnsupportedLiveFamilyError(agentName, family);
 }
