@@ -118,28 +118,28 @@ The keys group into the following category buckets. Counts refer to the
 **number of lines emitted for that category** in Sweetie HD's `Gameexe.ini`
 (verified via `grep -c`):
 
-| Category                               | Example keys                                                           | Lines | Notes                                                                      |
-| -------------------------------------- | ---------------------------------------------------------------------- | ----: | -------------------------------------------------------------------------- |
-| Engine bootstrap / window              | `SCREENSIZE_MOD`, `CAPTION`, `REGNAME`, `DISKMARK`                     |     ~ | One-shot scalar values                                                     |
-| Scene routing                          | `SEEN_START`, `SEEN_MENU`, `CANCELCALL`, `SYSTEMCALL_*`                |   ~12 | Each call uses `<scene_id>,<entrypoint>` pair                              |
-| Asset folder remap                     | `FOLDNAME.*`                                                           |    13 | Triple-valued `subdir=mode:pakname`                                        |
-| Save spec                              | `SAVE_USE`, `SAVE_FORMAT`, `SAVE_CNT`, `SAVE_THUMBNAIL`, `SAVE_NODATA` |   ~10 | Drives `SAVEDATA/REALLIVE.sav` shape                                       |
+| Category                               | Example keys                                                           | Lines | Notes                                                                                                                                                                      |
+| -------------------------------------- | ---------------------------------------------------------------------- | ----: | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Engine bootstrap / window              | `SCREENSIZE_MOD`, `CAPTION`, `REGNAME`, `DISKMARK`                     |     ~ | One-shot scalar values                                                                                                                                                     |
+| Scene routing                          | `SEEN_START`, `SEEN_MENU`, `CANCELCALL`, `SYSTEMCALL_*`                |   ~12 | Each call uses `<scene_id>,<entrypoint>` pair                                                                                                                              |
+| Asset folder remap                     | `FOLDNAME.*`                                                           |    13 | Triple-valued `subdir=mode:pakname`                                                                                                                                        |
+| Save spec                              | `SAVE_USE`, `SAVE_FORMAT`, `SAVE_CNT`, `SAVE_THUMBNAIL`, `SAVE_NODATA` |   ~10 | Drives `SAVEDATA/REALLIVE.sav` shape                                                                                                                                       |
 | Speaker / character roster (`NAMAE`)   | `#NAMAE="和人" = "和人" = (1,016, -1)`                                 |    11 | Maps display key → canonical (box-shown) name + `(mode, color_table_index, reserved)`; MIDDLE field is a `#COLOR_TABLE` row index (dialogue text colour), NOT a voice slot |
-| Voice on/off menu                      | `KOEONOFF.000.(000).ON="凛"` etc.                                      |     6 | Per-character voice toggle in syscom menu                                  |
-| `SYSCOM.NNN` system command catalogue  | `SYSCOM.005.000="フルスクリーン"`                                      |   ~70 | 32 system-menu items, each with label + subitems                           |
-| `WAKU.NNN.*` text window decoration    | `WAKU.000.000.NAME="_waku10"` etc.                                     |   209 | 8 text-window themes × ~25 fields each                                     |
-| `SELBTN.NNN.*` choice button styling   | `SELBTN.000.NAME="_selbtn00"`                                          |    62 | 3 choice-button themes × ~20 fields                                        |
-| `BTNOBJ.*` button-object animation     | `BTNOBJ.ACTION.000.HIT`, `BTNOBJ.SE.000.DECIDE`                        |    99 | 16 button-object families × HIT/NORMAL/PUSH/RPUSH/STATE1/STATE2            |
-| `SYSBTN.000.*` system button positions | `SYSBTN.000.NAME`, `SYSBTN.000.CLEAR_BTN`                              |   ~50 | One row of system-bar buttons                                              |
-| `MOUSE_CURSOR_WINDOWBUTTON_*`          | per-button cursor table                                                |   ~15 | Maps mouse hover region to cursor sprite id                                |
-| `WBCALL.NNN`                           | `WBCALL.000=9999,00`                                                   |     8 | Per-system-button callback into scene/entrypoint pair                      |
-| Object render layers                   | `OBJECT_MAX`, `INIT_OBJECT1_ONOFF_MOD`                                 |     ~ |                                                                            |
-| `HINT.AUTOMODE.*`, `HINT.READJUMP.*`   | hint-icon graphics + animation parameters                              |    12 |                                                                            |
-| Debug flags                            | `DEBUG_MESSAGE_LOG`, `DEBUG_SAVE_HISTORY_CNT`                          |     5 | Set in retail builds                                                       |
-| Sound defaults / fades                 | `BGM_KOEFADE_USE`, `BGM_KOEFADE_VOL`, `SOUND_DEFAULT`                  |     ~ |                                                                            |
-| Read-jump / text-skip                  | `READJUMP_SYSTEM_USE`, `UNREADJUMP_STR`                                |     ~ |                                                                            |
-| Localisation surface                   | `LOCALNAME.A`, `NAME.A`, `NAME_MAXLEN`, `CAPTION`, `VERSION_STR`       |     ~ | The handful of strings that need translation directly out of Gameexe       |
-| Color palette                          | `COLOR_TABLE.000` … `COLOR_TABLE.NNN`                                  |     ~ |                                                                            |
+| Voice on/off menu                      | `KOEONOFF.000.(000).ON="凛"` etc.                                      |     6 | Per-character voice toggle in syscom menu                                                                                                                                  |
+| `SYSCOM.NNN` system command catalogue  | `SYSCOM.005.000="フルスクリーン"`                                      |   ~70 | 32 system-menu items, each with label + subitems                                                                                                                           |
+| `WAKU.NNN.*` text window decoration    | `WAKU.000.000.NAME="_waku10"` etc.                                     |   209 | 8 text-window themes × ~25 fields each                                                                                                                                     |
+| `SELBTN.NNN.*` choice button styling   | `SELBTN.000.NAME="_selbtn00"`                                          |    62 | 3 choice-button themes × ~20 fields                                                                                                                                        |
+| `BTNOBJ.*` button-object animation     | `BTNOBJ.ACTION.000.HIT`, `BTNOBJ.SE.000.DECIDE`                        |    99 | 16 button-object families × HIT/NORMAL/PUSH/RPUSH/STATE1/STATE2                                                                                                            |
+| `SYSBTN.000.*` system button positions | `SYSBTN.000.NAME`, `SYSBTN.000.CLEAR_BTN`                              |   ~50 | One row of system-bar buttons                                                                                                                                              |
+| `MOUSE_CURSOR_WINDOWBUTTON_*`          | per-button cursor table                                                |   ~15 | Maps mouse hover region to cursor sprite id                                                                                                                                |
+| `WBCALL.NNN`                           | `WBCALL.000=9999,00`                                                   |     8 | Per-system-button callback into scene/entrypoint pair                                                                                                                      |
+| Object render layers                   | `OBJECT_MAX`, `INIT_OBJECT1_ONOFF_MOD`                                 |     ~ |                                                                                                                                                                            |
+| `HINT.AUTOMODE.*`, `HINT.READJUMP.*`   | hint-icon graphics + animation parameters                              |    12 |                                                                                                                                                                            |
+| Debug flags                            | `DEBUG_MESSAGE_LOG`, `DEBUG_SAVE_HISTORY_CNT`                          |     5 | Set in retail builds                                                                                                                                                       |
+| Sound defaults / fades                 | `BGM_KOEFADE_USE`, `BGM_KOEFADE_VOL`, `SOUND_DEFAULT`                  |     ~ |                                                                                                                                                                            |
+| Read-jump / text-skip                  | `READJUMP_SYSTEM_USE`, `UNREADJUMP_STR`                                |     ~ |                                                                                                                                                                            |
+| Localisation surface                   | `LOCALNAME.A`, `NAME.A`, `NAME_MAXLEN`, `CAPTION`, `VERSION_STR`       |     ~ | The handful of strings that need translation directly out of Gameexe                                                                                                       |
+| Color palette                          | `COLOR_TABLE.000` … `COLOR_TABLE.NNN`                                  |     ~ |                                                                                                                                                                            |
 
 Detailed key reference for the engine subsystems:
 
@@ -149,7 +149,7 @@ Detailed key reference for the engine subsystems:
   TEXT COLOUR — **not** a voice pattern id. The AUTHORITATIVE voice cue is
   carried by `koePlay` bytecode arguments, not by `#NAMAE`. (An earlier
   labelling read the triple as `(voice_archive_id, voice_pattern_id,
-  voice_pitch)`; that mistook the colour index for a voice slot. The
+voice_pitch)`; that mistook the colour index for a voice slot. The
   `mode * 1000 + color_table_index` product happens to coincide with the
   `koe/z<NNNN>.ovk` archive number for this title's character speakers,
   which is what led to the confusion — a numbering coincidence, not the
