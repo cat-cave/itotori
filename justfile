@@ -31,6 +31,8 @@ check:
     node scripts/audit-strictness.mjs
     node --test scripts/generate-engine-capability-matrix.test.mjs
     node scripts/generate-engine-capability-matrix.mjs --check
+    node --test scripts/synthetic-coverage-manifest.test.mjs
+    node scripts/synthetic-coverage-manifest.mjs --check
     node --test scripts/alpha-readiness-checklist.test.mjs
     node scripts/alpha-readiness-checklist.mjs
     just fixtures-validate
