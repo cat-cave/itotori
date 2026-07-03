@@ -82,6 +82,7 @@ function repositoryFixture(): ItotoriProjectRepositoryPort {
     linkArtifact: vi.fn(async () => {}),
     recordBenchmarkArtifactWithProviderLedger: vi.fn(async () => {}),
     listLocaleBranchIdentities: vi.fn(async () => []),
+    listBenchmarkReports: vi.fn(async () => []),
     getDashboardStatus: vi.fn(async () => {
       throw new Error("not used");
     }),

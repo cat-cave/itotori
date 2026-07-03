@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import type {
+  BenchmarkReportSummary,
   CatalogBenchmarkSeedFinderReadModel,
   CatalogCompletenessBenchmarkPools,
   CatalogConflictReviewReadModel,
@@ -10,6 +11,7 @@ import type {
   RuntimeDashboardStatus,
   TerminologySearchReadModel,
 } from "@itotori/db";
+import { summarizeQaAgents } from "../src/benchmark-report-summary.js";
 import type {
   BenchmarkReportV02,
   BridgeBundle,
@@ -925,6 +927,26 @@ export const findingRecordFixture = readFixture<{ finding: FindingRecordV02 }>(
 export const benchmarkReportFixture = readFixture<BenchmarkReportV02>(
   "../../../packages/localization-bridge-schema/test/examples/benchmark-report-v0.2.json",
 );
+
+// ITOTORI-027 — the dashboard benchmark read model derived from the REAL
+// recorded benchmark report fixture (same QA calibration the workflow
+// persists), so the MSW handler stays in lockstep with the real schema.
+export const benchmarkReportSummaryFixture: BenchmarkReportSummary = {
+  benchmarkRunId: benchmarkReportFixture.benchmarkRunId,
+  projectId: "project-1",
+  localeBranchId: benchmarkReportFixture.localeBranchId ?? null,
+  benchmarkName: benchmarkReportFixture.benchmarkName,
+  status: benchmarkReportFixture.status,
+  createdAt: benchmarkReportFixture.createdAt,
+  sourceLocale: benchmarkReportFixture.sourceLocale,
+  targetLocale: benchmarkReportFixture.targetLocale,
+  systemCount: benchmarkReportFixture.systemsCompared.length,
+  findingCount: benchmarkReportFixture.findingRecords.length,
+  penaltyTotal: benchmarkReportFixture.penaltySummary.penaltyTotal,
+  qaAgents: summarizeQaAgents(benchmarkReportFixture),
+};
+
+export const benchmarkReportsFixture: BenchmarkReportSummary[] = [benchmarkReportSummaryFixture];
 
 function readFixture<T>(path: string): T {
   return JSON.parse(readFileSync(new URL(path, import.meta.url), "utf8")) as T;

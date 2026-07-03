@@ -1,4 +1,5 @@
 import type {
+  BenchmarkReportSummary,
   DashboardDecisionReadModel,
   DashboardPendingDecision,
   ProjectCostReport,
@@ -31,8 +32,15 @@ export type DashboardEndpoints = {
   decisions: string;
   reviewerQueue: string;
   cost: string;
+  benchmarks: string;
   runtime: string;
 };
+
+// ITOTORI-027 — the indie-localization cost target the dashboard tracks
+// EMPIRICALLY. The progress bar compares real recorded billed cost
+// (ProjectCostReport.billedMicrosUsd, sourced from OpenRouter's
+// usage.cost) against this ceiling; it is never an estimate.
+export const INDIE_LOCALIZATION_COST_TARGET_MICROS_USD = 25_000_000;
 
 export type DashboardEndpointConfig = Partial<DashboardEndpoints> | string;
 
@@ -42,7 +50,10 @@ type DashboardReadRouteId =
   | "projects.decisions"
   | "reviewer.queue"
   | "projects.cost"
+  | "projects.benchmarks"
   | "runtime.status";
+
+type BenchmarkReportsResponse = { reports: BenchmarkReportSummary[] };
 
 type DashboardReadResponses = {
   "projects.list": ApiProjectsResponse;
@@ -50,6 +61,7 @@ type DashboardReadResponses = {
   "projects.decisions": DashboardDecisionReadModel;
   "reviewer.queue": ReviewerQueueDashboardReadModel;
   "projects.cost": ProjectCostReport;
+  "projects.benchmarks": BenchmarkReportsResponse;
   "runtime.status": RuntimeDashboardStatus;
 };
 
@@ -61,6 +73,7 @@ type DashboardData =
       decisions: DashboardDecisionReadModel;
       reviewerQueue: ReviewerQueueDashboardReadModel;
       cost: ProjectCostReport;
+      benchmarks: BenchmarkReportSummary[];
       runtime: RuntimeDashboardStatus;
       styleGuide: StyleGuideBuilderContext;
     }
@@ -75,6 +88,7 @@ const defaultDashboardEndpoints: DashboardEndpoints = {
   decisions: "/api/projects/decisions",
   reviewerQueue: "/api/reviewer/queue",
   cost: "/api/projects/cost",
+  benchmarks: "/api/projects/benchmarks",
   runtime: "/api/runtime/v0.2/status",
 };
 
@@ -104,10 +118,11 @@ export async function fetchDashboardData(
     return { state: "empty", projects: [] };
   }
 
-  const [status, decisions, cost, runtime] = await Promise.all([
+  const [status, decisions, cost, benchmarksResponse, runtime] = await Promise.all([
     fetchApi("projects.status", endpoints.status),
     fetchApi("projects.decisions", endpoints.decisions),
     fetchApi("projects.cost", endpoints.cost),
+    fetchApi("projects.benchmarks", endpoints.benchmarks),
     fetchApi("runtime.status", endpoints.runtime),
   ]);
   assertDecisionReadMatchesStatus(status, decisions);
@@ -130,6 +145,7 @@ export async function fetchDashboardData(
     decisions,
     reviewerQueue,
     cost,
+    benchmarks: benchmarksResponse.reports,
     runtime,
     styleGuide,
   };
@@ -225,7 +241,7 @@ function renderWorkbench(
   root: HTMLElement,
   data: Extract<DashboardData, { state: "ready" }>,
 ): void {
-  const { status, cost, runtime, projects } = data;
+  const { status, cost, runtime, projects, benchmarks } = data;
   const { decisions, reviewerQueue, styleGuide } = data;
   root.innerHTML = `
     ${dashboardStyles()}
@@ -257,7 +273,10 @@ function renderWorkbench(
         ${navLink("Reviewer queue", "reviewer-queue")}
         ${navLink("Pending decisions", "pending-decisions")}
         ${navLink("Runtime evidence", "runtime-evidence")}
+        ${navLink("Cost target", "cost")}
         ${navLink("Benchmarks", "benchmarks")}
+        ${navLink("QA agent metrics", "qa-agent-metrics")}
+        ${navLink("Benchmark reports", "benchmark-reports")}
       </nav>
 
       <section class="decision-band" aria-label="Pending decisions" id="pending-decisions">
@@ -278,8 +297,10 @@ function renderWorkbench(
         ${renderQaFindings(decisions)}
         ${renderReviewerQueue(reviewerQueue)}
         ${renderRuntimeEvidence(runtime)}
-        ${renderBenchmarks(cost, status)}
         ${renderCost(cost)}
+        ${renderBenchmarks(benchmarks, cost, status)}
+        ${renderQaAgentMetrics(benchmarks)}
+        ${renderBenchmarkReports(benchmarks)}
       </section>
     </main>
   `;
@@ -559,30 +580,43 @@ function renderRuntimeEvidence(runtime: RuntimeDashboardStatus): string {
   );
 }
 
-function renderBenchmarks(cost: ProjectCostReport, status: ProjectDashboardStatus): string {
-  const benchmarkRuns = cost.recentRuns.filter((run) => run.taskKind.includes("benchmark"));
-  if (benchmarkRuns.length === 0) {
+// ITOTORI-027 — benchmark dashboard view driven by REAL recorded
+// benchmark reports (persisted benchmark_report artifacts), not a
+// cost-run heuristic. Each row is a recorded run with its quality
+// penalty + QA-agent count; the provider-run cost that the same
+// benchmark generated is tracked through the ledger (Jobs / Model cost).
+function renderBenchmarks(
+  reports: BenchmarkReportSummary[],
+  cost: ProjectCostReport,
+  status: ProjectDashboardStatus,
+): string {
+  const benchmarkCostRuns = cost.recentRuns.filter((run) => run.taskKind.includes("benchmark"));
+  const benchmarkCostMicros = benchmarkCostRuns.reduce(
+    (sum, run) => sum + (run.amountMicrosUsd ?? 0),
+    0,
+  );
+  if (reports.length === 0) {
     return panel(
       "benchmarks",
       "Benchmarks",
       emptyText(
         status.latestEventKind?.includes("benchmark") === true
           ? `Latest benchmark event: ${status.latestEventKind}`
-          : "No benchmark runs were returned by the API.",
+          : "No benchmark reports were returned by the API.",
       ),
     );
   }
-  const rows = benchmarkRuns
+  const rows = reports
     .map(
-      (run) => `
+      (report) => `
         <tr>
-          <td>${escapeHtml(run.taskKind)}</td>
-          <td>${statusBadge(run.status)}</td>
-          <td>${escapeHtml(run.promptPresetId)}@${escapeHtml(run.promptTemplateVersion)}</td>
-          <td>${run.retryCount}</td>
-          <td>${formatFallback(run)}</td>
-          <td>${formatDataPolicy(run)}</td>
-          <td>${formatMicrosUsd(run.amountMicrosUsd)}</td>
+          <td><a href="#benchmark-report-${escapeHtml(report.benchmarkRunId)}">${escapeHtml(report.benchmarkName)}</a></td>
+          <td>${statusBadge(report.status)}</td>
+          <td>${escapeHtml(report.sourceLocale)} &rarr; ${escapeHtml(report.targetLocale)}</td>
+          <td>${report.systemCount}</td>
+          <td>${report.findingCount}</td>
+          <td>${report.penaltyTotal}</td>
+          <td>${report.qaAgents.length}</td>
         </tr>
       `,
     )
@@ -591,22 +625,164 @@ function renderBenchmarks(cost: ProjectCostReport, status: ProjectDashboardStatu
     "benchmarks",
     "Benchmarks",
     `
+      <dl class="metric-list metric-list-compact">
+        <div><dt>Reports</dt><dd>${reports.length}</dd></div>
+        <div><dt>QA evaluations</dt><dd>${reports.reduce((sum, report) => sum + report.qaAgents.length, 0)}</dd></div>
+        <div><dt>Benchmark cost</dt><dd>${formatMicrosUsd(benchmarkCostMicros)}</dd></div>
+        <div><dt>Runs</dt><dd>${benchmarkCostRuns.length}</dd></div>
+      </dl>
       <table>
         <thead>
           <tr>
-            <th>Run</th>
+            <th>Benchmark</th>
             <th>Status</th>
-            <th>Prompt</th>
-            <th>Retries</th>
-            <th>Fallback</th>
-            <th>Data policy</th>
-            <th>Cost</th>
+            <th>Locales</th>
+            <th>Systems</th>
+            <th>Findings</th>
+            <th>Penalty</th>
+            <th>QA agents</th>
           </tr>
         </thead>
         <tbody>${rows}</tbody>
       </table>
     `,
   );
+}
+
+// ITOTORI-027 — QA-agent metrics with an explicit false-positive /
+// false-negative representation. Counts are the recorded per-agent
+// calibration (never re-estimated); precision/recall/F1 are the recorded
+// metrics from the benchmark report.
+function renderQaAgentMetrics(reports: BenchmarkReportSummary[]): string {
+  const agents = reports.flatMap((report) => report.qaAgents.map((agent) => ({ report, agent })));
+  if (agents.length === 0) {
+    return panel(
+      "qa-agent-metrics",
+      "QA agent metrics",
+      emptyText("No QA-agent evaluations were returned by the API."),
+    );
+  }
+  const totals = agents.reduce(
+    (acc, { agent }) => ({
+      truePositives: acc.truePositives + agent.truePositives,
+      falsePositives: acc.falsePositives + agent.falsePositives,
+      falseNegatives: acc.falseNegatives + agent.falseNegatives,
+    }),
+    { truePositives: 0, falsePositives: 0, falseNegatives: 0 },
+  );
+  const rows = agents
+    .map(
+      ({ report, agent }) => `
+        <tr>
+          <td>${escapeHtml(agent.qaAgentId)}@${escapeHtml(agent.qaAgentVersion)}</td>
+          <td>${escapeHtml(report.benchmarkName)}</td>
+          <td>${escapeHtml(agent.evaluatedSystemId)}</td>
+          <td>${agent.truePositives}</td>
+          <td class="qa-fp">${agent.falsePositives}</td>
+          <td class="qa-fn">${agent.falseNegatives}</td>
+          <td>${formatRatio(agent.seededPrecision)}</td>
+          <td>${formatRatio(agent.seededRecall)}</td>
+          <td>${formatRatio(agent.f1)}</td>
+        </tr>
+      `,
+    )
+    .join("");
+  return panel(
+    "qa-agent-metrics",
+    "QA agent metrics",
+    `
+      <dl class="metric-list metric-list-compact">
+        <div><dt>True positives</dt><dd>${totals.truePositives}</dd></div>
+        <div><dt>False positives</dt><dd class="qa-fp">${totals.falsePositives}</dd></div>
+        <div><dt>False negatives</dt><dd class="qa-fn">${totals.falseNegatives}</dd></div>
+        <div><dt>Evaluations</dt><dd>${agents.length}</dd></div>
+      </dl>
+      <table>
+        <thead>
+          <tr>
+            <th>QA agent</th>
+            <th>Benchmark</th>
+            <th>System</th>
+            <th>TP</th>
+            <th>FP</th>
+            <th>FN</th>
+            <th>Precision</th>
+            <th>Recall</th>
+            <th>F1</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    `,
+  );
+}
+
+// ITOTORI-027 — per-report drilldown. Each recorded benchmark report is
+// rendered as an anchored details block (linked from the Benchmarks
+// table) exposing the full quality + QA-agent breakdown.
+function renderBenchmarkReports(reports: BenchmarkReportSummary[]): string {
+  if (reports.length === 0) {
+    return panel(
+      "benchmark-reports",
+      "Benchmark reports",
+      emptyText("No benchmark reports were returned by the API."),
+    );
+  }
+  const body = reports.map(renderBenchmarkReportDetail).join("");
+  return panel("benchmark-reports", "Benchmark reports", body);
+}
+
+function renderBenchmarkReportDetail(report: BenchmarkReportSummary): string {
+  const qaRows = report.qaAgents
+    .map(
+      (agent) => `
+        <tr>
+          <td>${escapeHtml(agent.qaAgentId)}@${escapeHtml(agent.qaAgentVersion)}</td>
+          <td>${escapeHtml(agent.evaluatedSystemId)}</td>
+          <td>${agent.truePositives}</td>
+          <td class="qa-fp">${agent.falsePositives}</td>
+          <td class="qa-fn">${agent.falseNegatives}</td>
+          <td>${formatRatio(agent.seededPrecision)}</td>
+          <td>${formatRatio(agent.seededRecall)}</td>
+          <td>${formatRatio(agent.f1)}</td>
+        </tr>
+      `,
+    )
+    .join("");
+  const qaTable =
+    report.qaAgents.length === 0
+      ? emptyText("No QA-agent evaluations recorded for this benchmark.")
+      : `
+        <table>
+          <thead>
+            <tr>
+              <th>QA agent</th>
+              <th>System</th>
+              <th>TP</th>
+              <th>FP</th>
+              <th>FN</th>
+              <th>Precision</th>
+              <th>Recall</th>
+              <th>F1</th>
+            </tr>
+          </thead>
+          <tbody>${qaRows}</tbody>
+        </table>
+      `;
+  return `
+    <details class="report-drilldown" id="benchmark-report-${escapeHtml(report.benchmarkRunId)}">
+      <summary>${escapeHtml(report.benchmarkName)} — ${statusBadge(report.status)}</summary>
+      <dl class="metric-list metric-list-compact">
+        <div><dt>Run id</dt><dd><code>${escapeHtml(report.benchmarkRunId)}</code></dd></div>
+        <div><dt>Locales</dt><dd>${escapeHtml(report.sourceLocale)} &rarr; ${escapeHtml(report.targetLocale)}</dd></div>
+        <div><dt>Systems</dt><dd>${report.systemCount}</dd></div>
+        <div><dt>Findings</dt><dd>${report.findingCount}</dd></div>
+        <div><dt>Penalty</dt><dd>${report.penaltyTotal}</dd></div>
+        <div><dt>Recorded</dt><dd>${escapeHtml(report.createdAt)}</dd></div>
+      </dl>
+      ${qaTable}
+    </details>
+  `;
 }
 
 function renderCost(cost: ProjectCostReport): string {
@@ -639,6 +815,7 @@ function renderCost(cost: ProjectCostReport): string {
     "cost",
     "Model cost",
     `
+      ${renderCostTarget(cost)}
       <dl class="metric-list metric-list-compact">
         <div><dt>Billed</dt><dd>${formatMicrosUsd(cost.billedMicrosUsd)}</dd></div>
         <div><dt>Runs</dt><dd>${cost.runCount}</dd></div>
@@ -677,6 +854,38 @@ function renderCost(cost: ProjectCostReport): string {
       </table>
     `,
   );
+}
+
+// ITOTORI-027 — track the $25 indie-localization target EMPIRICALLY:
+// the spent figure is the real recorded billed cost
+// (ProjectCostReport.billedMicrosUsd, sourced from OpenRouter usage.cost),
+// never an estimate. The remaining line goes negative once real spend
+// exceeds the target so an over-budget run is visible, not hidden.
+function renderCostTarget(cost: ProjectCostReport): string {
+  const target = INDIE_LOCALIZATION_COST_TARGET_MICROS_USD;
+  const spent = cost.billedMicrosUsd;
+  const percentage = target <= 0 ? 0 : Math.round((spent / target) * 100);
+  const remainingMicros = target - spent;
+  const overBudget = remainingMicros < 0;
+  return `
+    <div class="cost-target" aria-label="Indie localization cost target">
+      <dl class="metric-list metric-list-compact">
+        <div><dt>Spent (real)</dt><dd>${formatMicrosUsd(spent)}</dd></div>
+        <div><dt>Target</dt><dd>${formatMicrosUsd(target)}</dd></div>
+        <div>
+          <dt>${overBudget ? "Over budget" : "Remaining"}</dt>
+          <dd class="${overBudget ? "qa-fp" : ""}">${formatSignedMicrosUsd(remainingMicros)}</dd>
+        </div>
+        <div><dt>Used</dt><dd>${percentage}%</dd></div>
+      </dl>
+      <div
+        class="progress${overBudget ? " progress-over" : ""}"
+        aria-label="${percentage}% of $25 target used"
+      >
+        <span style="width: ${Math.max(0, Math.min(100, percentage))}%"></span>
+      </div>
+    </div>
+  `;
 }
 
 function renderPendingDecisionList(decisions: DashboardDecisionReadModel): string {
@@ -857,6 +1066,7 @@ function resolveDashboardEndpoints(config: DashboardEndpointConfig): DashboardEn
       decisions: `${origin}/api/projects/decisions`,
       reviewerQueue: `${origin}/api/reviewer/queue`,
       cost: `${origin}/api/projects/cost`,
+      benchmarks: `${origin}/api/projects/benchmarks`,
       runtime: `${origin}/api/runtime/v0.2/status`,
     };
   }
@@ -958,6 +1168,18 @@ function formatMicrosUsd(value: number | null): string {
     return "unknown";
   }
   return `$${(value / 1_000_000).toFixed(6)}`;
+}
+
+function formatSignedMicrosUsd(value: number): string {
+  const sign = value < 0 ? "-" : "";
+  return `${sign}$${(Math.abs(value) / 1_000_000).toFixed(6)}`;
+}
+
+function formatRatio(value: number): string {
+  if (!Number.isFinite(value)) {
+    return "n/a";
+  }
+  return `${(value * 100).toFixed(1)}%`;
 }
 
 function formatTokens(value: number | null): string {
@@ -1239,6 +1461,37 @@ function dashboardStyles(): string {
         display: block;
         height: 100%;
         background: #2f7d68;
+      }
+
+      .progress-over span {
+        background: #b4402c;
+      }
+
+      .cost-target {
+        margin-bottom: 12px;
+      }
+
+      .qa-fp {
+        color: #8a2e1c;
+        font-weight: 800;
+      }
+
+      .qa-fn {
+        color: #8a5a1c;
+        font-weight: 800;
+      }
+
+      .report-drilldown {
+        margin-bottom: 12px;
+        border: 1px solid #d8dee2;
+        border-radius: 8px;
+        padding: 12px;
+        background: #fbfcfd;
+      }
+
+      .report-drilldown summary {
+        cursor: pointer;
+        font-weight: 800;
       }
 
       .empty-copy {

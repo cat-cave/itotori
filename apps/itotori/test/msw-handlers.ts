@@ -5,6 +5,7 @@ import {
   type ItotoriApiRouteId,
 } from "../src/api-schema.js";
 import {
+  benchmarkReportsFixture,
   costReportFixture,
   dashboardDecisionsFixture,
   dashboardStatusFixture,
@@ -25,6 +26,9 @@ export const itotoriApiMswHandlers = [
   ),
   http.get("http://itotori.test/api/projects/cost", () =>
     apiJson("projects.cost", costReportFixture),
+  ),
+  http.get("http://itotori.test/api/projects/benchmarks", () =>
+    apiJson("projects.benchmarks", { reports: benchmarkReportsFixture }),
   ),
   http.get("http://itotori.test/api/projects", () =>
     apiJson("projects.list", { projects: [dashboardStatusFixture] }),

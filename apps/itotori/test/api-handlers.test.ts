@@ -43,6 +43,7 @@ import {
 } from "../src/workspace/index.js";
 import {
   benchmarkReportFixture,
+  benchmarkReportsFixture,
   bridgeFixture,
   catalogBenchmarkSeedsFixture,
   catalogCompletenessFixture,
@@ -78,7 +79,11 @@ const candidateAssetApiFixture: CandidateAssetRecord = {
 type ApiMutationPermissionGateId = keyof typeof apiMutationPermissionGates;
 type MutatingProjectWorkflowService = Exclude<
   keyof ItotoriApiServices["projectWorkflow"],
-  "getDashboardStatus" | "getDashboardDecisions" | "getRuntimeStatus" | "getCostReport"
+  | "getDashboardStatus"
+  | "getDashboardDecisions"
+  | "getRuntimeStatus"
+  | "getCostReport"
+  | "getBenchmarkReports"
 >;
 
 type ApiMutationPermissionCase = {
@@ -103,6 +108,7 @@ const readOnlyProjectWorkflowServices = new Set<keyof ItotoriApiServices["projec
   "getDashboardDecisions",
   "getRuntimeStatus",
   "getCostReport",
+  "getBenchmarkReports",
 ]);
 
 const readOnlyPostApiRoutes = new Set([
@@ -180,6 +186,10 @@ describe("Itotori API handlers", () => {
       { method: "GET", pathname: "/api/projects/cost" },
       services,
     );
+    const benchmarkReports = await handleItotoriApiRequest(
+      { method: "GET", pathname: "/api/projects/benchmarks" },
+      services,
+    );
     const decisions = await handleItotoriApiRequest(
       { method: "GET", pathname: "/api/projects/decisions" },
       services,
@@ -246,6 +256,11 @@ describe("Itotori API handlers", () => {
       ]),
     });
     expect(costStatus).toEqual({ statusCode: 200, body: costReportFixture });
+    expect(benchmarkReports).toEqual({
+      statusCode: 200,
+      body: { reports: benchmarkReportsFixture },
+    });
+    expect(services.projectWorkflow.getBenchmarkReports).toHaveBeenCalledTimes(1);
     expect(decisions).toEqual({ statusCode: 200, body: dashboardDecisionsFixture });
     expect(catalogConflicts).toEqual({ statusCode: 200, body: catalogConflictReviewFixture });
     expect(catalogCompleteness).toEqual({ statusCode: 200, body: catalogCompletenessFixture });
@@ -2318,6 +2333,7 @@ function serviceFixture(): ItotoriApiServices {
       getRuntimeStatus: vi.fn(async () => runtimeStatusFixture),
       getDashboardDecisions: vi.fn(async () => dashboardDecisionsFixture),
       getCostReport: vi.fn(async () => costReportFixture),
+      getBenchmarkReports: vi.fn(async () => benchmarkReportsFixture),
       importBridge: vi.fn(async () => projectFixture),
       draftProject: vi.fn(async () => projectFixture),
       recordFinding: vi.fn(async () => ({

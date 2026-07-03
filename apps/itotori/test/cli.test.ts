@@ -804,6 +804,7 @@ function servicesFixture(): ItotoriCliServices {
       getDashboardStatus: vi.fn(async () => dashboardStatusFixture),
       getDashboardDecisions: vi.fn(async () => dashboardDecisionsFixture),
       getCostReport: vi.fn(async () => costReportFixture),
+      getBenchmarkReports: vi.fn(async () => []),
       getRuntimeStatus: vi.fn(async () => ({
         finalStatus: "hello_world_passed",
         runtimeRunId: "runtime-1",

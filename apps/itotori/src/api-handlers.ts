@@ -52,6 +52,7 @@ import {
   type ApiDraftBranchResponse,
   type ApiErrorResponse,
   type ApiAssetDecisionsResponse,
+  type ApiBenchmarkReportsResponse,
   type ApiCandidateAssetsResponse,
   type ApiProjectImportResponse,
   type ApiProjectsResponse,
@@ -158,6 +159,7 @@ export type ItotoriApiServices = {
     | "getDashboardDecisions"
     | "getRuntimeStatus"
     | "getCostReport"
+    | "getBenchmarkReports"
     | "importBridge"
     | "draftProject"
     | "recordFinding"
@@ -201,6 +203,12 @@ async function routeItotoriApiRequest(
 
   if (request.method === "GET" && request.pathname === "/api/projects/cost") {
     return ok("projects.cost", await services.projectWorkflow.getCostReport());
+  }
+
+  if (request.method === "GET" && request.pathname === "/api/projects/benchmarks") {
+    return ok("projects.benchmarks", {
+      reports: await services.projectWorkflow.getBenchmarkReports(),
+    });
   }
 
   if (
@@ -446,6 +454,7 @@ async function routeItotoriApiRequest(
     request.pathname === "/api/projects/status" ||
     request.pathname === "/api/projects/decisions" ||
     request.pathname === "/api/projects/cost" ||
+    request.pathname === "/api/projects/benchmarks" ||
     request.pathname === "/api/hello/status" ||
     request.pathname === "/api/catalog/conflicts" ||
     request.pathname === "/api/catalog/completeness" ||
@@ -1169,6 +1178,7 @@ function ok(
 function ok(routeId: "projects.status", body: ProjectDashboardStatus): ApiJsonResponse;
 function ok(routeId: "projects.decisions", body: DashboardDecisionReadModel): ApiJsonResponse;
 function ok(routeId: "projects.cost", body: ProjectCostReport): ApiJsonResponse;
+function ok(routeId: "projects.benchmarks", body: ApiBenchmarkReportsResponse): ApiJsonResponse;
 function ok(routeId: "runtime.status", body: RuntimeDashboardStatus): ApiJsonResponse;
 function ok(routeId: "imports.bridge", body: ApiProjectImportResponse): ApiJsonResponse;
 function ok(routeId: "branches.draft", body: ApiDraftBranchResponse): ApiJsonResponse;

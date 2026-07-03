@@ -315,6 +315,49 @@ export type DashboardDecisionReadModel = {
   pendingDecisions: DashboardPendingDecision[];
 };
 
+/**
+ * ITOTORI-027 — per-(qa agent, evaluated system) calibration recorded
+ * with a benchmark report. `truePositives` / `falsePositives` /
+ * `falseNegatives` are the QA FP/FN representation the cost & quality
+ * dashboard surfaces; they are computed at record time from the report's
+ * seeded-defect oracle (never re-estimated) and persisted in the
+ * benchmark_report artifact metadata.
+ */
+export type BenchmarkQaAgentSummary = {
+  qaAgentId: string;
+  qaAgentVersion: string;
+  evaluatedSystemId: string;
+  truePositives: number;
+  falsePositives: number;
+  falseNegatives: number;
+  seededPrecision: number;
+  seededRecall: number;
+  f1: number;
+  findingsEmitted: number;
+  scorableFindings: number;
+};
+
+/**
+ * ITOTORI-027 — a recorded benchmark report as read back for the cost &
+ * quality dashboard's benchmark views + report drilldown. Sourced from
+ * the persisted benchmark_report artifact; the cost side is tracked
+ * separately through the ledger (`ProjectCostReport`).
+ */
+export type BenchmarkReportSummary = {
+  benchmarkRunId: string;
+  projectId: string;
+  localeBranchId: string | null;
+  benchmarkName: string;
+  status: string;
+  createdAt: string;
+  sourceLocale: string;
+  targetLocale: string;
+  systemCount: number;
+  findingCount: number;
+  penaltyTotal: number;
+  qaAgents: BenchmarkQaAgentSummary[];
+};
+
 export interface ItotoriProjectRepositoryPort {
   reset(actor: AuthorizationActor): Promise<void>;
   importSourceBundle(
@@ -341,6 +384,7 @@ export interface ItotoriProjectRepositoryPort {
     input: BenchmarkArtifactLedgerInput,
   ): Promise<void>;
   listLocaleBranchIdentities(projectId: string): Promise<LocaleBranchIdentity[]>;
+  listBenchmarkReports(projectId: string): Promise<BenchmarkReportSummary[]>;
   getDashboardStatus(): Promise<ProjectDashboardStatus>;
   getRuntimeStatus(runtimeRunId?: string): Promise<RuntimeDashboardStatus>;
   getDashboardDecisions(projectId?: string): Promise<DashboardDecisionReadModel>;
@@ -1314,6 +1358,22 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
         await insertProviderRunLedgerRows(tx, providerRun);
       }
     });
+  }
+
+  async listBenchmarkReports(projectId: string): Promise<BenchmarkReportSummary[]> {
+    const result = await this.db.execute(sql`
+      select
+        a.artifact_id,
+        a.project_id,
+        a.locale_branch_id,
+        a.metadata,
+        a.created_at
+      from ${artifacts} a
+      where a.project_id = ${projectId}
+        and a.artifact_kind = 'benchmark_report'
+      order by a.created_at desc, a.artifact_id desc
+    `);
+    return (result.rows as Array<Record<string, unknown>>).map(benchmarkReportSummaryFromRow);
   }
 
   async listLocaleBranchIdentities(projectId: string): Promise<LocaleBranchIdentity[]> {
@@ -3820,6 +3880,46 @@ function isRuntimeEvidenceReportV02(
 
 function nullableString(value: unknown): string | null {
   return value === null || value === undefined ? null : String(value);
+}
+
+function benchmarkReportSummaryFromRow(row: Record<string, unknown>): BenchmarkReportSummary {
+  const metadata = isRecord(row.metadata) ? row.metadata : {};
+  const createdAt =
+    row.created_at instanceof Date
+      ? row.created_at.toISOString()
+      : String(row.created_at ?? metadata.createdAt ?? "");
+  const qaAgentsRaw = Array.isArray(metadata.qaAgents) ? metadata.qaAgents : [];
+  return {
+    benchmarkRunId: String(row.artifact_id),
+    projectId: String(row.project_id),
+    localeBranchId: nullableString(row.locale_branch_id),
+    benchmarkName: String(metadata.benchmarkName ?? ""),
+    status: String(metadata.status ?? "unknown"),
+    createdAt,
+    sourceLocale: String(metadata.sourceLocale ?? ""),
+    targetLocale: String(metadata.targetLocale ?? ""),
+    systemCount: Number(metadata.systemCount ?? 0),
+    findingCount: Number(metadata.findingCount ?? 0),
+    penaltyTotal: Number(metadata.penaltyTotal ?? 0),
+    qaAgents: qaAgentsRaw.map(benchmarkQaAgentSummaryFromMetadata),
+  };
+}
+
+function benchmarkQaAgentSummaryFromMetadata(value: unknown): BenchmarkQaAgentSummary {
+  const record = isRecord(value) ? value : {};
+  return {
+    qaAgentId: String(record.qaAgentId ?? ""),
+    qaAgentVersion: String(record.qaAgentVersion ?? ""),
+    evaluatedSystemId: String(record.evaluatedSystemId ?? ""),
+    truePositives: Number(record.truePositives ?? 0),
+    falsePositives: Number(record.falsePositives ?? 0),
+    falseNegatives: Number(record.falseNegatives ?? 0),
+    seededPrecision: Number(record.seededPrecision ?? 0),
+    seededRecall: Number(record.seededRecall ?? 0),
+    f1: Number(record.f1 ?? 0),
+    findingsEmitted: Number(record.findingsEmitted ?? 0),
+    scorableFindings: Number(record.scorableFindings ?? 0),
+  };
 }
 
 async function getApprovedStyleGuideVersionIdInTx(

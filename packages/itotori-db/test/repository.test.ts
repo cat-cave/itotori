@@ -2890,6 +2890,83 @@ describe("ItotoriProjectRepository", () => {
     }
   });
 
+  it("lists recorded benchmark reports with persisted QA calibration", async () => {
+    const context = await migratedContext();
+    try {
+      const repo = new ItotoriProjectRepository(context.db);
+      await repo.reset(localActor);
+      await repo.importSourceBundle(localActor, projectFixture());
+
+      await repo.recordBenchmarkArtifactWithProviderLedger(localActor, {
+        artifact: {
+          artifactId: "benchmark-qa-calibration",
+          projectId: "project-test",
+          localeBranchId: "locale-en-us",
+          artifactKind: "benchmark_report",
+          metadata: {
+            schemaVersion: "0.2.0",
+            benchmarkName: "QA calibration fixture",
+            status: "passed",
+            createdAt: "2026-06-27T00:00:00.000Z",
+            sourceLocale: "ja-JP",
+            targetLocale: "en-US",
+            systemCount: 2,
+            findingCount: 3,
+            penaltyTotal: 10,
+            qaAgents: [
+              {
+                qaAgentId: "terminology-qa-agent",
+                qaAgentVersion: "0.2.0",
+                evaluatedSystemId: "itotori-draft",
+                truePositives: 1,
+                falsePositives: 2,
+                falseNegatives: 1,
+                seededPrecision: 0.333333,
+                seededRecall: 0.5,
+                f1: 0.4,
+                findingsEmitted: 3,
+                scorableFindings: 3,
+              },
+            ],
+          },
+        },
+        providerRuns: [],
+      });
+
+      const reports = await repo.listBenchmarkReports("project-test");
+      expect(reports).toHaveLength(1);
+      expect(reports[0]).toMatchObject({
+        benchmarkRunId: "benchmark-qa-calibration",
+        projectId: "project-test",
+        localeBranchId: "locale-en-us",
+        benchmarkName: "QA calibration fixture",
+        status: "passed",
+        sourceLocale: "ja-JP",
+        targetLocale: "en-US",
+        systemCount: 2,
+        findingCount: 3,
+        penaltyTotal: 10,
+      });
+      expect(reports[0]?.qaAgents).toEqual([
+        {
+          qaAgentId: "terminology-qa-agent",
+          qaAgentVersion: "0.2.0",
+          evaluatedSystemId: "itotori-draft",
+          truePositives: 1,
+          falsePositives: 2,
+          falseNegatives: 1,
+          seededPrecision: 0.333333,
+          seededRecall: 0.5,
+          f1: 0.4,
+          findingsEmitted: 3,
+          scorableFindings: 3,
+        },
+      ]);
+    } finally {
+      await context.close();
+    }
+  });
+
   it("records append-only events, findings, and artifact links", async () => {
     const context = await migratedContext();
     try {

@@ -3,7 +3,11 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { HttpResponse, http } from "msw";
 import { setupServer } from "msw/node";
 import { renderDashboard, type DashboardEndpoints } from "../src/dashboard.js";
-import { dashboardDecisionsFixture, dashboardStatusFixture } from "./api-fixtures.js";
+import {
+  benchmarkReportsFixture,
+  dashboardDecisionsFixture,
+  dashboardStatusFixture,
+} from "./api-fixtures.js";
 import { apiJson, itotoriApiMswHandlers } from "./msw-handlers.js";
 
 const server = setupServer(...itotoriApiMswHandlers);
@@ -14,6 +18,7 @@ const dashboardEndpoints: DashboardEndpoints = {
   decisions: "http://itotori.test/api/projects/decisions",
   reviewerQueue: "http://itotori.test/api/reviewer/queue",
   cost: "http://itotori.test/api/projects/cost",
+  benchmarks: "http://itotori.test/api/projects/benchmarks",
   runtime: "http://itotori.test/api/runtime/v0.2/status",
 };
 
@@ -109,6 +114,34 @@ describe("Itotori dashboard", () => {
     // api-fixtures.ts uses the canonical alpha posture.
     expect(root.textContent).toContain("zdr=true; data_collection=deny");
     expect(root.textContent).toContain("hello_world_failed");
+
+    // ITOTORI-027 — the $25 indie-localization target is tracked from the
+    // REAL recorded billed cost, not an estimate.
+    const cost = root.querySelector('[aria-label="Model cost"]');
+    expect(cost?.textContent).toContain("Spent (real)");
+    expect(cost?.textContent).toContain("Target");
+    expect(cost?.textContent).toContain("$25.000000");
+    expect(cost?.querySelector('[aria-label="Indie localization cost target"]')).not.toBeNull();
+
+    // ITOTORI-027 — benchmark views + report drilldown from real recorded
+    // benchmark reports.
+    const [report] = benchmarkReportsFixture;
+    expect(report).toBeDefined();
+    const benchmarks = root.querySelector('[aria-label="Benchmarks"]');
+    expect(benchmarks?.textContent).toContain(report!.benchmarkName);
+    const drilldown = root.querySelector(`#benchmark-report-${report!.benchmarkRunId}`);
+    expect(drilldown).not.toBeNull();
+    expect(drilldown?.textContent).toContain(report!.benchmarkRunId);
+
+    // ITOTORI-027 — QA false positives / false negatives are represented.
+    const qaMetrics = root.querySelector('[aria-label="QA agent metrics"]');
+    expect(qaMetrics?.textContent).toContain("False positives");
+    expect(qaMetrics?.textContent).toContain("False negatives");
+    const qaAgent = report!.qaAgents[0];
+    expect(qaAgent).toBeDefined();
+    expect(qaMetrics?.textContent).toContain(qaAgent!.qaAgentId);
+    expect(qaMetrics?.querySelector(".qa-fp")).not.toBeNull();
+    expect(qaMetrics?.querySelector(".qa-fn")).not.toBeNull();
   });
 
   it("renders a loading state before API reads settle", async () => {
@@ -160,6 +193,21 @@ describe("Itotori dashboard", () => {
   it("checks MSW project fixtures against the real API response schema", () => {
     expect(() => apiJson("projects.status", dashboardStatusFixture)).not.toThrow();
     expect(() => apiJson("projects.decisions", dashboardDecisionsFixture)).not.toThrow();
+    // ITOTORI-027 — the benchmark MSW handler shape is checked against the
+    // real BenchmarkReportSummary schema so it cannot drift.
+    expect(() =>
+      apiJson("projects.benchmarks", { reports: benchmarkReportsFixture }),
+    ).not.toThrow();
+    expect(() =>
+      apiJson("projects.benchmarks", {
+        reports: [
+          {
+            ...benchmarkReportsFixture[0],
+            qaAgents: [{ ...benchmarkReportsFixture[0]!.qaAgents[0], falsePositives: -1 }],
+          },
+        ],
+      } as never),
+    ).toThrow("falsePositives");
     expect(() =>
       apiJson("projects.decisions", {
         ...dashboardDecisionsFixture,

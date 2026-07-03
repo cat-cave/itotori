@@ -125,6 +125,8 @@ export {
 export type {
   ArtifactInput,
   BenchmarkArtifactLedgerInput,
+  BenchmarkQaAgentSummary,
+  BenchmarkReportSummary,
   BridgeImportDiffCounts,
   BridgeImportFutureReferences,
   BridgeImportRevisionDiffCounts,

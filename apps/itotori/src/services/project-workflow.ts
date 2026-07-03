@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import type {
   AuthorizationActor,
+  BenchmarkReportSummary,
   DashboardDecisionReadModel,
   ItotoriConformanceRepositoryPort,
   ItotoriModelLedgerRepositoryPort,
@@ -36,6 +37,7 @@ import {
   computePatchResultOutputHashRollupV02,
 } from "@itotori/localization-bridge-schema";
 import { assertProviderInvocationSupported } from "../providers/capability-guard.js";
+import { summarizeBenchmarkReportMetadata } from "../benchmark-report-summary.js";
 import {
   ModelProviderError,
   type JsonObject,
@@ -164,6 +166,7 @@ export interface ItotoriProjectWorkflowPort {
   getRuntimeStatus(runtimeRunId?: string): Promise<RuntimeDashboardStatus>;
   getDashboardDecisions(projectId?: string): Promise<DashboardDecisionReadModel>;
   getCostReport(projectId?: string): Promise<ProjectCostReport>;
+  getBenchmarkReports(projectId?: string): Promise<BenchmarkReportSummary[]>;
   importBridge(bridge: BridgeBundle | BridgeBundleV02): Promise<ProjectState>;
   draftProject(project: ProjectState, locale: string): Promise<ProjectState>;
   exportPatch(project: ProjectState): Promise<{
@@ -240,6 +243,11 @@ export class ItotoriProjectWorkflowService implements ItotoriProjectWorkflowPort
       return emptyCostReport(projectId ?? "unknown");
     }
     return await this.modelLedger.getProjectCostReport(projectId);
+  }
+
+  async getBenchmarkReports(projectId?: string): Promise<BenchmarkReportSummary[]> {
+    const targetProjectId = projectId ?? (await this.repository.getDashboardStatus()).projectId;
+    return await this.repository.listBenchmarkReports(targetProjectId);
   }
 
   async importBridge(bridge: BridgeBundle | BridgeBundleV02): Promise<ProjectState> {
@@ -678,16 +686,10 @@ export class ItotoriProjectWorkflowService implements ItotoriProjectWorkflowPort
         artifactId: report.benchmarkRunId,
         projectId,
         artifactKind: "benchmark_report",
-        metadata: {
-          schemaVersion: report.schemaVersion,
-          benchmarkName: report.benchmarkName,
-          status: report.status,
-          sourceLocale: report.sourceLocale,
-          targetLocale: report.targetLocale,
-          systemCount: report.systemsCompared.length,
-          findingCount: report.findingRecords.length,
-          penaltyTotal: report.penaltySummary.penaltyTotal,
-        },
+        // ITOTORI-027 — persist the QA-agent calibration (incl. FP/FN)
+        // + cost/quality headline alongside the benchmark artifact so the
+        // dashboard reads REAL recorded data, never a re-estimate.
+        metadata: summarizeBenchmarkReportMetadata(report),
         localeBranchId,
       },
       providerRuns: report.providerModelCostRecords.map((providerRun) =>

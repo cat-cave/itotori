@@ -8,6 +8,7 @@ import type { ItotoriApplicationServices } from "../src/services/database-servic
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   benchmarkReportFixture,
+  benchmarkReportsFixture,
   bridgeFixture,
   costReportFixture,
   dashboardDecisionsFixture,
@@ -23,6 +24,7 @@ const requirePermission = vi.fn<[Permission], Promise<void>>(async () => {});
 const getDashboardStatus = vi.fn(async () => dashboardStatusFixture);
 const getRuntimeStatus = vi.fn(async () => runtimeStatusFixture);
 const getCostReport = vi.fn(async () => costReportFixture);
+const getBenchmarkReports = vi.fn(async () => benchmarkReportsFixture);
 const getDashboardDecisions = vi.fn(async () => dashboardDecisionsFixture);
 const importBridge = vi.fn(async () => projectFixture);
 
@@ -342,6 +344,7 @@ async function serviceFactory<T>(
       getRuntimeStatus,
       getDashboardDecisions,
       getCostReport,
+      getBenchmarkReports,
       importBridge,
       draftProject: vi.fn(async () => projectFixture),
       exportPatch: vi.fn(async () => {

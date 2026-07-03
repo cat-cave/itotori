@@ -17,6 +17,8 @@ import type {
   CatalogRawContentRedactionClass,
   CatalogSource,
   CatalogSourceRecordKind,
+  BenchmarkQaAgentSummary,
+  BenchmarkReportSummary,
   DashboardDecisionReadModel,
   ProjectCostReport,
   ProjectDashboardStatus,
@@ -125,6 +127,7 @@ export type ItotoriApiRouteId =
   | "projects.status"
   | "projects.decisions"
   | "projects.cost"
+  | "projects.benchmarks"
   | "runtime.status"
   | "imports.bridge"
   | "branches.draft"
@@ -143,6 +146,10 @@ export type ApiProjectsResponse = {
 };
 
 export type ApiProjectCostResponse = ProjectCostReport;
+
+export type ApiBenchmarkReportsResponse = {
+  reports: BenchmarkReportSummary[];
+};
 
 export type ApiDashboardDecisionsResponse = DashboardDecisionReadModel;
 
@@ -265,6 +272,7 @@ export type ItotoriApiResponseBody =
   | ProjectDashboardStatus
   | ApiDashboardDecisionsResponse
   | ApiProjectCostResponse
+  | ApiBenchmarkReportsResponse
   | RuntimeDashboardStatus
   | ApiProjectImportResponse
   | ApiDraftBranchResponse
@@ -478,6 +486,9 @@ export function assertItotoriApiResponse(
       return;
     case "projects.cost":
       assertProjectCostReport(value);
+      return;
+    case "projects.benchmarks":
+      assertApiBenchmarkReportsResponse(value);
       return;
     case "runtime.status":
       assertRuntimeDashboardStatus(value);
@@ -2536,6 +2547,57 @@ function assertDecisionCount(value: unknown, expected: number, label: string): v
   if (Number(value) !== expected) {
     throw new Error(`${label} must match pendingDecisions`);
   }
+}
+
+function assertApiBenchmarkReportsResponse(
+  value: unknown,
+  label = "ApiBenchmarkReportsResponse",
+): asserts value is ApiBenchmarkReportsResponse {
+  const response = asStrictRecord(value, label, ["reports"]);
+  const reports = asArray(response.reports, `${label}.reports`);
+  for (const [index, report] of reports.entries()) {
+    assertBenchmarkReportSummary(report, `${label}.reports[${index}]`);
+  }
+}
+
+function assertBenchmarkReportSummary(
+  value: unknown,
+  label: string,
+): asserts value is BenchmarkReportSummary {
+  const report = asRecord(value, label);
+  assertString(report.benchmarkRunId, `${label}.benchmarkRunId`);
+  assertString(report.projectId, `${label}.projectId`);
+  assertNullableString(report.localeBranchId, `${label}.localeBranchId`);
+  assertString(report.benchmarkName, `${label}.benchmarkName`);
+  assertString(report.status, `${label}.status`);
+  assertString(report.createdAt, `${label}.createdAt`);
+  assertString(report.sourceLocale, `${label}.sourceLocale`);
+  assertString(report.targetLocale, `${label}.targetLocale`);
+  assertNonNegativeInteger(report.systemCount, `${label}.systemCount`);
+  assertNonNegativeInteger(report.findingCount, `${label}.findingCount`);
+  assertNonNegativeNumber(report.penaltyTotal, `${label}.penaltyTotal`);
+  const qaAgents = asArray(report.qaAgents, `${label}.qaAgents`);
+  for (const [index, agent] of qaAgents.entries()) {
+    assertBenchmarkQaAgentSummary(agent, `${label}.qaAgents[${index}]`);
+  }
+}
+
+function assertBenchmarkQaAgentSummary(
+  value: unknown,
+  label: string,
+): asserts value is BenchmarkQaAgentSummary {
+  const agent = asRecord(value, label);
+  assertString(agent.qaAgentId, `${label}.qaAgentId`);
+  assertString(agent.qaAgentVersion, `${label}.qaAgentVersion`);
+  assertString(agent.evaluatedSystemId, `${label}.evaluatedSystemId`);
+  assertNonNegativeInteger(agent.truePositives, `${label}.truePositives`);
+  assertNonNegativeInteger(agent.falsePositives, `${label}.falsePositives`);
+  assertNonNegativeInteger(agent.falseNegatives, `${label}.falseNegatives`);
+  assertNonNegativeNumber(agent.seededPrecision, `${label}.seededPrecision`);
+  assertNonNegativeNumber(agent.seededRecall, `${label}.seededRecall`);
+  assertNonNegativeNumber(agent.f1, `${label}.f1`);
+  assertNonNegativeInteger(agent.findingsEmitted, `${label}.findingsEmitted`);
+  assertNonNegativeInteger(agent.scorableFindings, `${label}.scorableFindings`);
 }
 
 export function assertProjectCostReport(

@@ -1010,6 +1010,7 @@ function repositoryFixture(): ItotoriProjectRepositoryPort {
     linkArtifact: vi.fn(async () => {}),
     recordBenchmarkArtifactWithProviderLedger: vi.fn(async () => {}),
     listLocaleBranchIdentities: vi.fn(async () => []),
+    listBenchmarkReports: vi.fn(async () => []),
     getDashboardStatus: vi.fn(async () => dashboardStatusFixture),
     getRuntimeStatus: vi.fn(async () => runtimeStatusFixture),
     getDashboardDecisions: vi.fn(async () => dashboardDecisionsFixture),
