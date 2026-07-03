@@ -19,9 +19,9 @@
 //!   ceiling) and emitted through [`AudioEventSink`].
 //! - **Frame**: the real terminal graphics-object stack from that drive is
 //!   composited through the real g00 rasteriser ([`RenderPass`]) — real
-//!   decoded g00 art in the private full-fidelity buffer, publish-redacted
-//!   markers in the announced public frame — and announced through
-//!   [`FrameArtifactSink`] at `EvidenceTier::E2`.
+//!   decoded g00 art in the private full-fidelity buffer, a copyright-safe
+//!   edge-outline of that art in the announced public frame — and
+//!   announced through [`FrameArtifactSink`] at `EvidenceTier::E2`.
 //!
 //! The port ALSO drives its declared `Snapshot` and `DeterministicReplay`
 //! capabilities for real: it self-verifies snapshot/restore identity at
@@ -58,7 +58,7 @@ use utsushi_core::{
 };
 
 use crate::audio::{AudioEvent as RealliveAudioEvent, AudioEventPayload};
-use crate::render_pipeline::{RecordingFrameArtifactSink, RenderPass, TextLayer};
+use crate::render_pipeline::{RecordingFrameArtifactSink, RenderPass, SceneEmit, TextLayer};
 use crate::replay::{ReplayEngine, ReplayOpts, SceneObservation};
 use crate::rlop::HeadlessChoicePolicy;
 use crate::vm::SceneId;
@@ -339,10 +339,20 @@ impl UtsushiReallivePort {
         &self.frame_text_lines
     }
 
-    /// Render the terminal graphics stack into a publish-redacted E2 frame
-    /// artifact through the real g00 rasteriser, compositing the REAL
-    /// engine-decoded dialogue `overlay_lines` into the frame's localized
-    /// text layer, and persisting the PNG under the managed artifact `root`.
+    /// Render the terminal graphics stack into BOTH a full-fidelity
+    /// PRIVATE frame and the publish-redacted public E2 frame through the
+    /// real g00 rasteriser, compositing the REAL engine-decoded dialogue
+    /// `overlay_lines` into a VN dialogue box over the composite.
+    ///
+    /// - The PRIVATE frame (real decoded g00 + dialogue) is written,
+    ///   uncommitted and hashable, under `<root>/private-full/`.
+    /// - The PUBLIC frame composites a copyright-safe edge-outline of the
+    ///   g00 (scene structure/layout, no source pixels) with the SAME
+    ///   dialogue box on top, and is announced through the substrate frame
+    ///   sink at E2. Redaction is ON by default.
+    ///
+    /// The decoded dialogue text IS the localization proof; the public
+    /// frame republishes no copyrighted-source pixels.
     fn render_frame(
         &self,
         observation: &SceneObservation,
@@ -353,16 +363,28 @@ impl UtsushiReallivePort {
         let mut pass = RenderPass::with_dimensions(PORT_FRAME_WIDTH, PORT_FRAME_HEIGHT)
             .map_err(|error| format!("render pass build failed: {error}"))?
             .with_assets(Arc::clone(&self.assets));
-        // Composite the REAL engine-decoded dialogue line(s) — the exact
-        // text the substrate text sink emits for this scene — into the
-        // frame's text layer over the real g00 composite. The announced
-        // public frame is publish-redacted by default (copyrighted g00 image
-        // rects → REDACTION_MARKER); the decoded dialogue text IS the
-        // localization proof, not copyrighted-source pixels.
-        let text = TextLayer::localized(overlay_lines.to_vec());
+        let text = TextLayer::localized(overlay_lines.to_vec())
+            .with_dialogue_box(PORT_FRAME_WIDTH, PORT_FRAME_HEIGHT);
+        // Full-fidelity private frames live beside the managed public root
+        // but are never announced/committed.
+        let private_dir = root.path().join("private-full");
         let throwaway = RecordingFrameArtifactSink::new();
-        pass.emit_localized_screenshot(&observation.graphics_stack, &text, root, run_id, &throwaway)
-            .map_err(|error| format!("frame emit failed: {error}"))
+        let shots = pass
+            .emit_scene_screenshots(
+                &observation.graphics_stack,
+                &text,
+                SceneEmit {
+                    root,
+                    run_id,
+                    sink: &throwaway,
+                    private_dir: &private_dir,
+                    // Redaction ON: the announced public frame is the
+                    // proof-preserving edge-outline, not the real art.
+                    public_redact: true,
+                },
+            )
+            .map_err(|error| format!("frame emit failed: {error}"))?;
+        Ok(shots.public)
     }
 
     fn lifecycle_error(stage: LifecycleStage, message: String) -> EnginePortError {

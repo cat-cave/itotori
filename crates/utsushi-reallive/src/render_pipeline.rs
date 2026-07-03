@@ -24,14 +24,18 @@
 //! Copyright redaction is a POLICY applied at the artifact-emit
 //! boundary, NOT hard-enforced in the render path. [`RedactionPolicy`]
 //! selects whether a rendered frame carries the real decoded art
-//! ([`RedactionPolicy::Full`]) or a synthetic redaction marker in place
-//! of every image object's rect ([`RedactionPolicy::Redact`], the
-//! default). [`RenderPass::emit_scene_screenshots`] writes the
-//! full-fidelity buffer to a PRIVATE, uncommitted path (hashable, never
-//! committed) and announces the public (policy-selected) buffer through
-//! the substrate frame sink — so a committed/CI proof publishes no
-//! copyrighted art while a locally-authorized run can toggle redaction
-//! off.
+//! ([`RedactionPolicy::Full`]) or a copyright-safe EDGE-OUTLINE of every
+//! image object's rect ([`RedactionPolicy::Redact`], the default). The
+//! edge-outline (see [`redact_edge_map`]) is a PROOF-PRESERVING
+//! redaction: the scene's structure/layout stays visible for proof value
+//! while the art's colour, tone, and texture are discarded and no
+//! verbatim decoded run is republished — a marked improvement over a
+//! solid fill, which showed nothing. [`RenderPass::emit_scene_screenshots`]
+//! writes the full-fidelity buffer to a PRIVATE, uncommitted path
+//! (hashable, never committed) and announces the public
+//! (policy-selected) buffer through the substrate frame sink — so a
+//! committed/CI proof publishes no copyrighted art while a
+//! locally-authorized run can toggle redaction off.
 //!
 //! # Substrate frame-artifact emission (E2)
 //!
@@ -129,18 +133,6 @@ pub const SCREENSHOT_ARTIFACT_KIND: &str = "screenshot";
 /// framebuffer row.
 const PNG_FILTER_NONE: u8 = 0;
 
-/// Opaque synthetic marker painted over an image object's rect when the
-/// render pass runs under [`RedactionPolicy::Redact`]. It is a fixed,
-/// obviously-synthetic value that shares NONE of the decoded g00 byte
-/// content, so a redacted public frame provably embeds no source art
-/// while still marking WHERE the (redacted) art would sit.
-pub const REDACTION_MARKER: WipeColour = WipeColour {
-    red: 0x7F,
-    green: 0x00,
-    blue: 0x7F,
-    alpha: 0xFF,
-};
-
 /// Copyright-redaction policy applied at the artifact-emit boundary.
 ///
 /// This is NOT hard-enforced inside the compositing loop: the render
@@ -152,9 +144,11 @@ pub enum RedactionPolicy {
     /// uncommitted full-fidelity artifact and for locally-authorized
     /// (redaction-off) public frames.
     Full,
-    /// Replace every image object's rect with [`REDACTION_MARKER`] so the
-    /// emitted frame publishes no copyrighted art. The default for
-    /// committed / CI proof.
+    /// Replace every image object's rect with a copyright-safe
+    /// EDGE-OUTLINE of the decoded g00 (see [`redact_edge_map`]): the
+    /// scene's structure/layout survives for proof value while colour,
+    /// tone, and texture are discarded and no verbatim art is republished.
+    /// The default for committed / CI proof.
     Redact,
 }
 
@@ -209,17 +203,9 @@ impl Framebuffer {
         }
     }
 
-    /// Set a single pixel to `colour` (RGBA order). Out-of-bounds
-    /// coordinates are clipped (no-op).
-    fn set_pixel(&mut self, x: u32, y: u32, colour: WipeColour) {
-        if x >= self.width || y >= self.height {
-            return;
-        }
-        let offset = ((y as usize) * (self.width as usize) + (x as usize)) * RGBA_BYTES_PER_PIXEL;
-        self.pixels[offset] = colour.red;
-        self.pixels[offset + 1] = colour.green;
-        self.pixels[offset + 2] = colour.blue;
-        self.pixels[offset + 3] = colour.alpha;
+    /// Whether `(x, y)` addresses a real pixel in this framebuffer.
+    fn in_bounds(&self, x: u32, y: u32) -> bool {
+        x < self.width && y < self.height
     }
 
     /// Source-over composite one RGBA `src` pixel at `(x, y)`, modulating
@@ -227,8 +213,7 @@ impl Framebuffer {
     /// source coverage is `src.a * object_alpha / 255`; the result is the
     /// standard non-premultiplied source-over of `src` onto the current
     /// destination pixel. `object_alpha == 255` with an opaque `src`
-    /// (`src[3] == 255`) writes `src` verbatim, so the opaque path is
-    /// byte-identical to [`Self::set_pixel`]. Out-of-bounds coordinates
+    /// (`src[3] == 255`) writes `src` verbatim. Out-of-bounds coordinates
     /// are clipped (no-op).
     fn blend_pixel(&mut self, x: u32, y: u32, src: [u8; RGBA_BYTES_PER_PIXEL], object_alpha: u8) {
         if x >= self.width || y >= self.height {
@@ -265,53 +250,42 @@ impl Framebuffer {
         }
     }
 
-    /// Paint a [`TextLayer`] over the framebuffer using the in-crate
-    /// [`font`] bitmap. Each glyph cell is `font::GLYPH_WIDTH ×
-    /// font::GLYPH_HEIGHT` font-pixels, scaled up by `layer.scale`, with
-    /// a one-font-pixel inter-glyph gap and a two-font-pixel inter-line
-    /// gap. Returns the number of set framebuffer pixels (so callers can
-    /// assert the layer actually drew something — a blank layer is a
-    /// regression).
-    pub fn draw_text(&mut self, layer: &TextLayer) -> u64 {
-        let scale = layer.scale.max(1);
-        let colour = layer.colour;
-        let advance_x = (font::GLYPH_WIDTH as u32 + 1) * scale;
-        let advance_y = (font::GLYPH_HEIGHT as u32 + 2) * scale;
-        let mut set_pixels: u64 = 0;
-        for (line_index, line) in layer.lines.iter().enumerate() {
-            let line_top = layer.origin_y + (line_index as u32) * advance_y;
-            if line_top >= self.height {
-                break;
-            }
-            for (char_index, character) in line.chars().enumerate() {
-                let glyph = font::glyph(character);
-                let cell_left = layer.origin_x + (char_index as u32) * advance_x;
-                if cell_left >= self.width {
-                    break;
-                }
-                for (row, row_bits) in glyph.iter().enumerate() {
-                    for col in 0..font::GLYPH_WIDTH {
-                        let mask = 1u8 << (font::GLYPH_WIDTH - 1 - col);
-                        if row_bits & mask == 0 {
-                            continue;
-                        }
-                        let block_x = cell_left + (col as u32) * scale;
-                        let block_y = line_top + (row as u32) * scale;
-                        for dy in 0..scale {
-                            for dx in 0..scale {
-                                let px = block_x + dx;
-                                let py = block_y + dy;
-                                if px < self.width && py < self.height {
-                                    self.set_pixel(px, py, colour);
-                                    set_pixels += 1;
-                                }
-                            }
-                        }
-                    }
-                }
+    /// Source-over blend a filled rectangle of `colour` (its own
+    /// `colour.alpha` is honoured) at `(x, y)` with extent `w × h`.
+    /// Out-of-bounds portions are clipped. Used to paint the translucent
+    /// dialogue-box backdrop behind the localized text so mixed-case
+    /// glyphs stay legible over an arbitrary composited background.
+    pub fn fill_rect_blended(&mut self, x: u32, y: u32, w: u32, h: u32, colour: WipeColour) {
+        let src = [colour.red, colour.green, colour.blue, colour.alpha];
+        for py in y..y.saturating_add(h) {
+            for px in x..x.saturating_add(w) {
+                self.blend_pixel(px, py, src, 0xFF);
             }
         }
-        set_pixels
+    }
+
+    /// Paint a [`TextLayer`] over the framebuffer.
+    ///
+    /// If the layer carries a [`TextBackdrop`], the translucent box is
+    /// blended first so the glyphs read against a controlled backing (the
+    /// dialogue-box look). The lines are then rasterised through the
+    /// bundled TrueType [`font`] (DejaVu Sans) at `layer.scale`-derived
+    /// pixel height, with real horizontal advances + kerning and
+    /// anti-aliased coverage. Returns the number of GLYPH-coverage pixels
+    /// painted (the backdrop fill is NOT counted), so the non-vacuous
+    /// guard in the emit path still rejects a layer whose text drew
+    /// nothing.
+    pub fn draw_text(&mut self, layer: &TextLayer) -> u64 {
+        if let Some(backdrop) = layer.backdrop {
+            self.fill_rect_blended(
+                backdrop.x,
+                backdrop.y,
+                backdrop.width,
+                backdrop.height,
+                backdrop.colour,
+            );
+        }
+        font::draw_lines(self, layer)
     }
 }
 
@@ -327,23 +301,79 @@ pub struct TextLayer {
     /// Top-left origin (framebuffer pixels).
     pub origin_x: u32,
     pub origin_y: u32,
-    /// Integer upscale factor for each font pixel (`>= 1`).
+    /// Glyph pixel height (the `em` size the TrueType [`font`] is scaled
+    /// to). Named `scale` for source-compatibility; it is now an actual
+    /// point size in framebuffer pixels rather than an integer bitmap
+    /// upscale. `>= 1`.
     pub scale: u32,
     /// Glyph colour (RGBA).
+    pub colour: WipeColour,
+    /// Optional translucent backdrop box painted behind the text (the
+    /// dialogue-box backing). `None` paints glyphs directly over the
+    /// composited frame.
+    pub backdrop: Option<TextBackdrop>,
+}
+
+/// A translucent filled box painted behind a [`TextLayer`]'s glyphs so
+/// mixed-case dialogue stays legible over an arbitrary background — the
+/// VN dialogue-box backing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TextBackdrop {
+    pub x: u32,
+    pub y: u32,
+    pub width: u32,
+    pub height: u32,
+    /// Fill colour; its `alpha` controls how much of the frame shows
+    /// through.
     pub colour: WipeColour,
 }
 
 impl TextLayer {
     /// Construct a text layer with the documented default placement
-    /// (origin `(16, 16)`, scale `4`, opaque white glyphs).
+    /// (origin `(16, 16)`, `24`px glyphs, opaque white, no backdrop).
     pub fn localized(lines: Vec<String>) -> Self {
         Self {
             lines,
             origin_x: 16,
             origin_y: 16,
-            scale: 4,
+            scale: 24,
             colour: WipeColour::WHITE,
+            backdrop: None,
         }
+    }
+
+    /// Place the lines inside a bottom-anchored VN dialogue box sized to
+    /// a `width × height` framebuffer, with a translucent dark backdrop.
+    /// Returns `self` so it chains off [`Self::localized`]. This is the
+    /// placement the engine port and the sample-frame emitter use so the
+    /// translated dialogue reads like an in-game text box.
+    pub fn with_dialogue_box(mut self, frame_width: u32, frame_height: u32) -> Self {
+        // Bottom third, inset from the frame edges.
+        let margin = frame_width / 24;
+        let box_height = frame_height / 4;
+        let box_x = margin;
+        let box_y = frame_height.saturating_sub(box_height + margin);
+        let box_w = frame_width.saturating_sub(margin * 2);
+        self.backdrop = Some(TextBackdrop {
+            x: box_x,
+            y: box_y,
+            width: box_w,
+            height: box_height,
+            // Dark, ~78% opaque slate so the composited scene stays
+            // faintly visible at the box edges while white text is crisp.
+            colour: WipeColour {
+                red: 0x0C,
+                green: 0x10,
+                blue: 0x18,
+                alpha: 0xC8,
+            },
+        });
+        let pad = box_height / 5;
+        self.origin_x = box_x + pad;
+        self.origin_y = box_y + pad;
+        self.scale = (frame_height / 24).max(16);
+        self.colour = WipeColour::WHITE;
+        self
     }
 
     /// Total number of characters across all lines.
@@ -352,80 +382,105 @@ impl TextLayer {
     }
 }
 
-/// A compact deterministic 3×5 ASCII bitmap font. Uppercase letters,
-/// digits, and common punctuation render as legible glyphs; lowercase
-/// maps to uppercase; every other code point (including the non-ASCII
-/// Shift-JIS bytes of the untranslated source) renders as a solid
-/// "tofu" box, so a localized (English/ASCII) text layer is provably
-/// distinct from the Japanese source layer at the pixel level.
+/// Real TrueType glyph rasteriser for the localized text layer.
+///
+/// Renders LEGIBLE mixed-case English dialogue with the bundled DejaVu
+/// Sans font (`assets/DejaVuSans.ttf`, compiled in with `include_bytes!`
+/// — no runtime font lookup, no network). Glyphs are laid out with real
+/// horizontal advances + kerning and anti-aliased coverage, so lowercase
+/// is genuine lowercase (not folded to uppercase) and text reads at a
+/// readable size. A code point the font has no glyph for (every CJK
+/// Shift-JIS source character) falls back to the font's `.notdef` box, so
+/// a localized English layer is still provably distinct — at the pixel
+/// level — from the untranslated Japanese source.
 mod font {
-    /// Glyph cell width in font-pixels.
-    pub const GLYPH_WIDTH: usize = 3;
-    /// Glyph cell height in font-pixels.
-    pub const GLYPH_HEIGHT: usize = 5;
+    use std::sync::OnceLock;
 
-    /// Solid box drawn for any code point with no authored glyph.
-    const TOFU: [u8; GLYPH_HEIGHT] = [0b111, 0b111, 0b111, 0b111, 0b111];
-    const BLANK: [u8; GLYPH_HEIGHT] = [0, 0, 0, 0, 0];
+    use ab_glyph::{Font, FontRef, PxScale, ScaleFont, point};
 
-    /// Return the 5-row bitmap for `character`. Each row's low
-    /// [`GLYPH_WIDTH`] bits are columns left→right (MSB of the field is
-    /// the left column).
-    pub fn glyph(character: char) -> [u8; GLYPH_HEIGHT] {
-        let upper = character.to_ascii_uppercase();
-        match upper {
-            ' ' => BLANK,
-            'A' => [0b111, 0b101, 0b111, 0b101, 0b101],
-            'B' => [0b110, 0b101, 0b110, 0b101, 0b110],
-            'C' => [0b111, 0b100, 0b100, 0b100, 0b111],
-            'D' => [0b110, 0b101, 0b101, 0b101, 0b110],
-            'E' => [0b111, 0b100, 0b110, 0b100, 0b111],
-            'F' => [0b111, 0b100, 0b110, 0b100, 0b100],
-            'G' => [0b111, 0b100, 0b101, 0b101, 0b111],
-            'H' => [0b101, 0b101, 0b111, 0b101, 0b101],
-            'I' => [0b111, 0b010, 0b010, 0b010, 0b111],
-            'J' => [0b001, 0b001, 0b001, 0b101, 0b111],
-            'K' => [0b101, 0b101, 0b110, 0b101, 0b101],
-            'L' => [0b100, 0b100, 0b100, 0b100, 0b111],
-            'M' => [0b101, 0b111, 0b111, 0b101, 0b101],
-            'N' => [0b101, 0b111, 0b111, 0b111, 0b101],
-            'O' | '0' => [0b111, 0b101, 0b101, 0b101, 0b111],
-            'P' => [0b111, 0b101, 0b111, 0b100, 0b100],
-            'Q' => [0b111, 0b101, 0b101, 0b111, 0b001],
-            'R' => [0b111, 0b101, 0b110, 0b101, 0b101],
-            'S' | '5' => [0b111, 0b100, 0b111, 0b001, 0b111],
-            'T' => [0b111, 0b010, 0b010, 0b010, 0b010],
-            'U' => [0b101, 0b101, 0b101, 0b101, 0b111],
-            'V' => [0b101, 0b101, 0b101, 0b101, 0b010],
-            'W' => [0b101, 0b101, 0b111, 0b111, 0b101],
-            'X' => [0b101, 0b101, 0b010, 0b101, 0b101],
-            'Y' => [0b101, 0b101, 0b010, 0b010, 0b010],
-            'Z' => [0b111, 0b001, 0b010, 0b100, 0b111],
-            '1' => [0b010, 0b110, 0b010, 0b010, 0b111],
-            '2' => [0b111, 0b001, 0b111, 0b100, 0b111],
-            '3' => [0b111, 0b001, 0b111, 0b001, 0b111],
-            '4' => [0b101, 0b101, 0b111, 0b001, 0b001],
-            '6' => [0b111, 0b100, 0b111, 0b101, 0b111],
-            '7' => [0b111, 0b001, 0b010, 0b010, 0b010],
-            '8' => [0b111, 0b101, 0b111, 0b101, 0b111],
-            '9' => [0b111, 0b101, 0b111, 0b001, 0b111],
-            '-' => [0, 0, 0b111, 0, 0],
-            '.' => [0, 0, 0, 0, 0b010],
-            ',' => [0, 0, 0, 0b010, 0b100],
-            '!' => [0b010, 0b010, 0b010, 0, 0b010],
-            '?' => [0b111, 0b001, 0b010, 0, 0b010],
-            ':' => [0, 0b010, 0, 0b010, 0],
-            ';' => [0, 0b010, 0, 0b010, 0b100],
-            '\'' => [0b010, 0b010, 0, 0, 0],
-            '"' => [0b101, 0b101, 0, 0, 0],
-            '/' => [0b001, 0b001, 0b010, 0b100, 0b100],
-            '(' => [0b001, 0b010, 0b010, 0b010, 0b001],
-            ')' => [0b100, 0b010, 0b010, 0b010, 0b100],
-            // Any other code point — including every non-ASCII
-            // Shift-JIS byte of the untranslated Japanese source —
-            // renders as a solid box.
-            _ => TOFU,
+    use super::{Framebuffer, TextLayer};
+
+    /// Bundled font bytes. Compiled into the binary; never read from disk
+    /// or the network at runtime.
+    const FONT_BYTES: &[u8] = include_bytes!("../assets/DejaVuSans.ttf");
+
+    /// Parse the bundled font once. The bytes are a fixed compiled-in
+    /// asset, so a parse failure is a build-time-shipped-corrupt-asset
+    /// bug, not a runtime condition — `expect` is the honest contract.
+    fn font() -> &'static FontRef<'static> {
+        static FONT: OnceLock<FontRef<'static>> = OnceLock::new();
+        FONT.get_or_init(|| {
+            FontRef::try_from_slice(FONT_BYTES).expect("bundled DejaVuSans.ttf must parse")
+        })
+    }
+
+    /// Rasterise every line of `layer` through the TrueType font. Returns
+    /// the count of glyph-coverage framebuffer pixels painted (coverage
+    /// `> 0`), so the emit path can prove the localized text actually
+    /// drew something.
+    pub fn draw_lines(framebuffer: &mut Framebuffer, layer: &TextLayer) -> u64 {
+        let font = font();
+        let px = PxScale::from(layer.scale.max(1) as f32);
+        let scaled = font.as_scaled(px);
+        let line_advance = scaled.height() + scaled.line_gap();
+        let colour = layer.colour;
+        let mut painted: u64 = 0;
+
+        for (line_index, line) in layer.lines.iter().enumerate() {
+            // Baseline for this line: origin + ascent + N line advances.
+            let baseline_y =
+                layer.origin_y as f32 + scaled.ascent() + (line_index as f32) * line_advance;
+            if baseline_y - scaled.ascent() >= framebuffer.height as f32 {
+                break;
+            }
+            let mut caret_x = layer.origin_x as f32;
+            let mut previous = None;
+
+            for character in line.chars() {
+                let glyph_id = font.glyph_id(character);
+                if let Some(previous_id) = previous {
+                    caret_x += scaled.kern(previous_id, glyph_id);
+                }
+                let glyph = glyph_id.with_scale_and_position(px, point(caret_x, baseline_y));
+                caret_x += scaled.h_advance(glyph_id);
+                previous = Some(glyph_id);
+
+                let Some(outline) = font.outline_glyph(glyph) else {
+                    // No outline (e.g. a space) — advance only.
+                    continue;
+                };
+                let bounds = outline.px_bounds();
+                let base_x = bounds.min.x as i32;
+                let base_y = bounds.min.y as i32;
+                outline.draw(|gx, gy, coverage| {
+                    if coverage <= 0.0 {
+                        return;
+                    }
+                    let px_x = base_x + gx as i32;
+                    let px_y = base_y + gy as i32;
+                    if px_x < 0 || px_y < 0 {
+                        return;
+                    }
+                    // Coverage (0..=1) modulates the glyph colour's alpha
+                    // for anti-aliased edges.
+                    let cover = (coverage.clamp(0.0, 1.0) * 255.0).round() as u8;
+                    if cover == 0 {
+                        return;
+                    }
+                    if !framebuffer.in_bounds(px_x as u32, px_y as u32) {
+                        return;
+                    }
+                    framebuffer.blend_pixel(
+                        px_x as u32,
+                        px_y as u32,
+                        [colour.red, colour.green, colour.blue, colour.alpha],
+                        cover,
+                    );
+                    painted += 1;
+                });
+            }
         }
+        painted
     }
 }
 
@@ -729,7 +784,7 @@ impl RenderPass {
 
     /// Rasterise `stack` into a fresh framebuffer under the default
     /// [`RedactionPolicy::Redact`] policy (no text layer). Image objects
-    /// are replaced by [`REDACTION_MARKER`]; use
+    /// are rendered as a copyright-safe edge-outline; use
     /// [`Self::rasterise_with_policy`] with [`RedactionPolicy::Full`] to
     /// composite the real decoded g00 art.
     pub fn rasterise(&self, stack: &GraphicsObjectStack) -> Framebuffer {
@@ -810,9 +865,9 @@ impl RenderPass {
     /// persist it to `root` under a managed `screenshots/<artifact_id>.png`
     /// URI, and announce a [`FrameArtifact`] at [`EvidenceTier::E2`]
     /// through `sink`. This is the public, redacted single-frame emit: an
-    /// image object contributes only [`REDACTION_MARKER`] pixels, so the
-    /// emitted PNG publishes no source art. The full-fidelity path is
-    /// [`Self::emit_scene_screenshots`].
+    /// image object contributes only a copyright-safe edge-outline (see
+    /// [`redact_edge_map`]), so the emitted PNG publishes no source art.
+    /// The full-fidelity path is [`Self::emit_scene_screenshots`].
     ///
     /// NON-VACUOUS LOCALIZATION PROOF: a non-empty `text` layer that
     /// paints ZERO framebuffer pixels (off-screen origin, all-whitespace,
@@ -842,9 +897,10 @@ impl RenderPass {
     ///    disk. Its pixels are byte-derived from the decoded g00.
     /// 2. The public framebuffer is rendered under
     ///    [`RedactionPolicy::public_toggle`]`(emit.public_redact)`: with
-    ///    `public_redact == true` (the default) image rects carry only
-    ///    [`REDACTION_MARKER`]; with `false` the public buffer equals the
-    ///    full-fidelity buffer. It is announced through `emit.sink` at E2.
+    ///    `public_redact == true` (the default) image rects carry only a
+    ///    copyright-safe edge-outline (see [`redact_edge_map`]); with
+    ///    `false` the public buffer equals the full-fidelity buffer. It is
+    ///    announced through `emit.sink` at E2.
     ///
     /// Redaction is thus a policy at THIS emit boundary — the render path
     /// itself always produces the full-fidelity buffer.
@@ -1013,9 +1069,11 @@ impl RenderPass {
     /// package, decode the g00 bytes, and composite the decoded bitmap
     /// into `framebuffer` at the object's position, applying its scale
     /// (nearest-neighbour resample), colour tone, and alpha. Under
-    /// [`RedactionPolicy::Redact`] the same destination rect is filled
-    /// with [`REDACTION_MARKER`] instead of the decoded pixels, so the
-    /// emitted frame publishes no source art. If no asset package is
+    /// [`RedactionPolicy::Redact`] the same destination rect carries a
+    /// copyright-safe edge-outline of the decoded pixels (see
+    /// [`redact_edge_map`]) instead of the art itself, so the emitted
+    /// frame publishes the scene's layout without its pixels. If no asset
+    /// package is
     /// bound, or resolution / decoding fails, the object contributes no
     /// pixels — a fail-soft gap, never a panic. Every such gap is RECORDED
     /// on `report` (and logged) via [`Self::record_skip`] so the dropped
@@ -1130,6 +1188,24 @@ impl RenderPass {
             );
             return;
         }
+        // Select the source-space RGBA buffer the blit samples from.
+        //
+        // - `Full` composites the REAL decoded g00 (with the object's
+        //   colour tone) — the private, full-fidelity buffer.
+        // - `Redact` composites a copyright-safe EDGE-OUTLINE of the g00
+        //   ([`redact_edge_map`]): the scene's structure/layout survives
+        //   for proof value while colour, tone, and texture are discarded
+        //   and no verbatim decoded run is republished. This REPLACES the
+        //   old solid-marker fill, which painted over the whole frame and
+        //   showed nothing.
+        let redacted = match policy {
+            RedactionPolicy::Full => None,
+            RedactionPolicy::Redact => Some(redact_edge_map(&image.pixels_rgba, src_w, src_h)),
+        };
+        let source_pixels: &[u8] = match &redacted {
+            Some(edges) => edges,
+            None => &image.pixels_rgba,
+        };
         let src_stride = (src_w as usize) * RGBA_BYTES_PER_PIXEL;
         for dy in 0..dst_h {
             let py = object.position.y + dy as i32;
@@ -1143,37 +1219,81 @@ impl RenderPass {
                 if px < 0 || px >= framebuffer.width as i32 {
                     continue;
                 }
-                match policy {
-                    RedactionPolicy::Redact => {
-                        // Redaction: emit only the synthetic marker. No
-                        // decoded g00 byte is read into the framebuffer.
-                        let marker = [
-                            REDACTION_MARKER.red,
-                            REDACTION_MARKER.green,
-                            REDACTION_MARKER.blue,
-                            REDACTION_MARKER.alpha,
-                        ];
-                        framebuffer.blend_pixel(px as u32, py as u32, marker, object.alpha.0);
-                    }
-                    RedactionPolicy::Full => {
-                        let sx = ((dx as u64 * src_w as u64) / dst_w as u64) as u32;
-                        let sidx =
-                            (sy as usize) * src_stride + (sx as usize) * RGBA_BYTES_PER_PIXEL;
-                        let src = apply_tone_rgba(
-                            [
-                                image.pixels_rgba[sidx],
-                                image.pixels_rgba[sidx + 1],
-                                image.pixels_rgba[sidx + 2],
-                                image.pixels_rgba[sidx + 3],
-                            ],
-                            object.colour_tone,
-                        );
-                        framebuffer.blend_pixel(px as u32, py as u32, src, object.alpha.0);
-                    }
-                }
+                let sx = ((dx as u64 * src_w as u64) / dst_w as u64) as u32;
+                let sidx = (sy as usize) * src_stride + (sx as usize) * RGBA_BYTES_PER_PIXEL;
+                let sample = [
+                    source_pixels[sidx],
+                    source_pixels[sidx + 1],
+                    source_pixels[sidx + 2],
+                    source_pixels[sidx + 3],
+                ];
+                // The object's colour tone applies to the real art only;
+                // the synthetic edge-outline carries no source tone.
+                let src = match policy {
+                    RedactionPolicy::Full => apply_tone_rgba(sample, object.colour_tone),
+                    RedactionPolicy::Redact => sample,
+                };
+                framebuffer.blend_pixel(px as u32, py as u32, src, object.alpha.0);
             }
         }
     }
+}
+
+/// Build a copyright-safe, non-reconstructable redaction of a decoded
+/// g00 image: a monochrome EDGE-OUTLINE (the scene's structure/layout)
+/// over a dark base, honouring each source pixel's alpha so the object's
+/// SILHOUETTE is preserved while its colour, tone, and texture are
+/// discarded. The output is a derived line-drawing — it shares no
+/// verbatim run with the source pixel buffer — so a public frame built
+/// from it shows the scene's LAYOUT for proof value without republishing
+/// any decoded art. Replaces the old opaque solid-marker fill, which
+/// painted a solid block over the whole image and showed nothing.
+fn redact_edge_map(pixels_rgba: &[u8], width: u32, height: u32) -> Vec<u8> {
+    // Dark base + light edge; both obviously-synthetic redaction colours.
+    const BASE: [i32; 3] = [0x12, 0x10, 0x1A];
+    const EDGE: [i32; 3] = [0x9A, 0xA6, 0xC0];
+    const THRESHOLD: i32 = 22;
+    let w = width as usize;
+    let h = height as usize;
+    // Rec.601-ish luminance, fixed-point (>>8).
+    let luminance = |x: usize, y: usize| -> i32 {
+        let idx = (y * w + x) * RGBA_BYTES_PER_PIXEL;
+        let r = pixels_rgba[idx] as i32;
+        let g = pixels_rgba[idx + 1] as i32;
+        let b = pixels_rgba[idx + 2] as i32;
+        (r * 54 + g * 183 + b * 19) >> 8
+    };
+    let mut out = vec![0u8; pixels_rgba.len()];
+    for y in 0..h {
+        for x in 0..w {
+            let idx = (y * w + x) * RGBA_BYTES_PER_PIXEL;
+            let alpha = pixels_rgba[idx + 3];
+            let x_minus = x.saturating_sub(1);
+            let x_plus = (x + 1).min(w - 1);
+            let y_minus = y.saturating_sub(1);
+            let y_plus = (y + 1).min(h - 1);
+            let gradient = (luminance(x_plus, y) - luminance(x_minus, y)).abs()
+                + (luminance(x, y_plus) - luminance(x, y_minus)).abs();
+            let rgb = if gradient > THRESHOLD {
+                // Brighten the edge with the gradient strength.
+                let strength = (gradient - THRESHOLD).clamp(0, 255);
+                let mix =
+                    |base: i32, edge: i32| -> u8 { (base + (edge - base) * strength / 255) as u8 };
+                [
+                    mix(BASE[0], EDGE[0]),
+                    mix(BASE[1], EDGE[1]),
+                    mix(BASE[2], EDGE[2]),
+                ]
+            } else {
+                [BASE[0] as u8, BASE[1] as u8, BASE[2] as u8]
+            };
+            out[idx] = rgb[0];
+            out[idx + 1] = rgb[1];
+            out[idx + 2] = rgb[2];
+            out[idx + 3] = alpha;
+        }
+    }
+    out
 }
 
 /// Scale `dimension` (pixels) by `thousandths` (`1000` = identity),
@@ -1771,12 +1891,12 @@ mod tests {
     #[test]
     fn english_layer_differs_from_japanese_source_layer() {
         // Localized English renders as legible glyphs; the Japanese
-        // source (non-ASCII) renders as solid tofu boxes — provably
-        // different pixels, so the screenshot reflects the localized
-        // layer rather than the source.
-        let pass = RenderPass::with_dimensions(160, 32).expect("non-zero screen");
+        // source (outside DejaVu Sans' coverage) renders as `.notdef`
+        // boxes — provably different pixels, so the screenshot reflects
+        // the localized layer rather than the source.
+        let pass = RenderPass::with_dimensions(320, 64).expect("non-zero screen");
         let stack = wipe_stack(WipeColour::BLACK);
-        let english = TextLayer::localized(vec!["STELLA-EN".to_string()]);
+        let english = TextLayer::localized(vec!["Stella-EN".to_string()]);
         let japanese = TextLayer::localized(vec!["ステラ".to_string()]);
         let mut fb_en = pass.rasterise(&stack);
         let mut fb_ja = pass.rasterise(&stack);
@@ -1786,6 +1906,121 @@ mod tests {
             fb_en.pixels(),
             fb_ja.pixels(),
             "English and Japanese text layers must produce different pixels"
+        );
+    }
+
+    /// Render a single glyph on a black canvas and return (painted-pixel
+    /// count, count of DISTINCT non-black RGBA values). Legible
+    /// anti-aliased glyphs have MANY distinct edge shades; a flat solid
+    /// tofu box has ~one.
+    fn glyph_shape(character: char) -> (u64, usize) {
+        let pass = RenderPass::with_dimensions(96, 96).expect("non-zero screen");
+        let mut fb = pass.rasterise(&wipe_stack(WipeColour::BLACK));
+        let mut layer = TextLayer::localized(vec![character.to_string()]);
+        layer.origin_x = 8;
+        layer.origin_y = 8;
+        layer.scale = 64;
+        let painted = fb.draw_text(&layer);
+        let mut distinct: std::collections::BTreeSet<[u8; 4]> = std::collections::BTreeSet::new();
+        for chunk in fb.pixels().chunks(RGBA_BYTES_PER_PIXEL) {
+            if chunk != [0x00, 0x00, 0x00, 0xFF] {
+                distinct.insert([chunk[0], chunk[1], chunk[2], chunk[3]]);
+            }
+        }
+        (painted, distinct.len())
+    }
+
+    #[test]
+    fn font_renders_legible_antialiased_glyphs_not_tofu() {
+        // A real font produces PROPORTIONAL glyphs with ANTI-ALIASED
+        // edges: a wide 'W' paints many more pixels than a narrow 'i', and
+        // each glyph carries multiple distinct coverage shades (not one
+        // flat block). A tofu/solid-box font would make these equal and
+        // single-shade.
+        let (w_painted, w_shades) = glyph_shape('W');
+        let (i_painted, i_shades) = glyph_shape('i');
+        assert!(
+            w_painted > i_painted * 3 / 2,
+            "proportional font: 'W' ({w_painted}px) must be much wider than 'i' ({i_painted}px)"
+        );
+        assert!(
+            w_shades >= 4 && i_shades >= 4,
+            "anti-aliased glyphs must carry multiple edge shades (not a flat tofu box): \
+             W={w_shades} i={i_shades}"
+        );
+    }
+
+    #[test]
+    fn font_distinguishes_mixed_case() {
+        // The old 3x5 bitmap folded lowercase to uppercase; the real font
+        // must render 'a' and 'A' as genuinely different shapes.
+        let pass = RenderPass::with_dimensions(64, 64).expect("non-zero screen");
+        let mut lower = pass.rasterise(&wipe_stack(WipeColour::BLACK));
+        let mut upper = pass.rasterise(&wipe_stack(WipeColour::BLACK));
+        let mut la = TextLayer::localized(vec!["a".to_string()]);
+        la.scale = 48;
+        let mut ua = la.clone();
+        ua.lines = vec!["A".to_string()];
+        lower.draw_text(&la);
+        upper.draw_text(&ua);
+        assert_ne!(
+            lower.pixels(),
+            upper.pixels(),
+            "lowercase 'a' and uppercase 'A' must render as distinct glyphs (mixed case)"
+        );
+    }
+
+    #[test]
+    fn redact_edge_map_shows_structure_and_is_not_solid() {
+        // An image with a real vertical edge (left black | right white)
+        // must redact to a structure-bearing edge-outline: MULTIPLE
+        // distinct colours (base + edge), not a single solid fill.
+        let (w, h) = (8u32, 4u32);
+        let mut pixels = vec![0u8; (w * h) as usize * RGBA_BYTES_PER_PIXEL];
+        for y in 0..h {
+            for x in 0..w {
+                let idx = ((y * w + x) as usize) * RGBA_BYTES_PER_PIXEL;
+                let v = if x >= w / 2 { 0xFF } else { 0x00 };
+                pixels[idx] = v;
+                pixels[idx + 1] = v;
+                pixels[idx + 2] = v;
+                pixels[idx + 3] = 0xFF;
+            }
+        }
+        let edges = redact_edge_map(&pixels, w, h);
+        assert_eq!(edges.len(), pixels.len());
+        let distinct: std::collections::BTreeSet<[u8; 4]> = edges
+            .chunks(RGBA_BYTES_PER_PIXEL)
+            .map(|c| [c[0], c[1], c[2], c[3]])
+            .collect();
+        assert!(
+            distinct.len() >= 2,
+            "edge-outline of a structured image must NOT be a single solid colour; \
+             got {} distinct colours",
+            distinct.len()
+        );
+        // Alpha is preserved (silhouette survives).
+        assert!(edges.chunks(RGBA_BYTES_PER_PIXEL).all(|c| c[3] == 0xFF));
+        // The edge-outline is NOT the source art.
+        assert_ne!(edges, pixels, "redaction must transform, not copy, the art");
+    }
+
+    #[test]
+    fn redact_edge_map_of_flat_image_is_solid_base() {
+        // A featureless (edgeless) image has no structure to outline, so
+        // it redacts to the solid dark base — confirming the edges in the
+        // test above genuinely came from image structure.
+        let (w, h) = (6u32, 6u32);
+        let pixels = vec![0x40u8; (w * h) as usize * RGBA_BYTES_PER_PIXEL];
+        let edges = redact_edge_map(&pixels, w, h);
+        let distinct: std::collections::BTreeSet<[u8; 3]> = edges
+            .chunks(RGBA_BYTES_PER_PIXEL)
+            .map(|c| [c[0], c[1], c[2]])
+            .collect();
+        assert_eq!(
+            distinct.len(),
+            1,
+            "a flat image has no edges, so it redacts to a single base colour"
         );
     }
 

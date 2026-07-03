@@ -2,39 +2,112 @@
 //! rasterizer, exercised entirely with the FIX-3 **synthetic** g00
 //! fixtures (zero retail bytes).
 //!
-//! The render pass paints only our synthetic `Wipe` fills and the
-//! localized `TextLayer`; `GraphicsObjectKind::Image` objects are
-//! recorded but NEVER dereferenced into the framebuffer. These tests
-//! pin that contract structurally:
+//! The public (`Redact`) frame is PROOF-PRESERVING: an
+//! `GraphicsObjectKind::Image` object is composited as a copyright-safe
+//! EDGE-OUTLINE of the decoded g00 — the scene's structure/layout stays
+//! visible while the art's colour/tone/texture, and every VERBATIM byte
+//! run of the decoded pixels, are gone. These tests pin that contract:
 //!
-//! 1. `image_object_is_not_dereferenced_into_framebuffer` — a stack that
+//! 1. `redacted_image_is_transformed_structure_not_solid` — a stack that
 //!    carries an `Image` object backed by a *decodable* synthetic g00
-//!    rasterises to zero painted pixels for that object.
+//!    rasterises, under `Redact`, to a NON-SOLID edge-outline that
+//!    DIFFERS from the full-fidelity (`Full`) composite.
 //! 2. `emitted_png_embeds_zero_g00_bytes` — the deterministic PNG
 //!    emitted through the substrate frame sink contains NONE of the
 //!    decoded synthetic g00's pixel bytes, and none of the raw on-disk
-//!    g00 file bytes either.
+//!    g00 file bytes either — so the transformed public frame still
+//!    republishes no source art.
 //!
 //! Because the fixture is a *real* decodable g00 (it round-trips
-//! through `decode_g00` with a genuine BGRA canvas), the no-op assertion
-//! is not tautological: the bytes that WOULD leak if the Image branch
-//! dereferenced the asset are concrete and checked for absence.
+//! through `decode_g00` with a genuine BGRA canvas), the assertions are
+//! not tautological: the bytes that WOULD leak if the redaction re-blit
+//! the art are concrete and checked for absence.
 
 #[path = "support/g00_synthetic.rs"]
 mod g00_synthetic;
 
+use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use g00_synthetic::{
     SYNTHETIC_TYPE0_STEM, SYNTHETIC_TYPE2_STEM, synthetic_type0_g00, synthetic_type2_g00,
-    write_synthetic_g00_dir,
 };
 use utsushi_core::RuntimeArtifactRoot;
-use utsushi_core::substrate::EvidenceTier;
+use utsushi_core::substrate::{
+    AssetBytes, AssetId, AssetKind, AssetMetadata, AssetPackage, AssetSize, CaseRule, EvidenceTier,
+    PackageDescriptor, PackageKind, PackageSource, VfsError, VfsResult,
+};
 use utsushi_reallive::{
     G00Image, GraphicsObject, GraphicsObjectStack, GraphicsPlane, PNG_FILE_MAGIC,
-    RecordingFrameArtifactSink, RenderPass, TextLayer, WipeColour, decode_g00,
+    RecordingFrameArtifactSink, RedactionPolicy, RenderPass, TextLayer, WipeColour, decode_g00,
 };
+
+/// Minimal in-memory [`AssetPackage`] that serves the synthetic g00
+/// fixtures by stem (`g00/<STEM>.g00`) from bytes held in memory — no
+/// disk staging needed for the redaction-transform proof.
+#[derive(Debug)]
+struct InMemoryG00Package {
+    entries: Vec<(String, Vec<u8>)>,
+}
+
+impl InMemoryG00Package {
+    fn stem_of<'a>(&self, id: &'a AssetId) -> &'a str {
+        let logical = id.path();
+        let stem = logical.strip_prefix("g00/").unwrap_or(logical);
+        stem.strip_suffix(".g00").unwrap_or(stem)
+    }
+    fn bytes_for(&self, stem: &str) -> Option<&[u8]> {
+        self.entries
+            .iter()
+            .find(|(name, _)| name == stem)
+            .map(|(_, bytes)| bytes.as_slice())
+    }
+}
+
+impl AssetPackage for InMemoryG00Package {
+    fn id(&self) -> &'static str {
+        "redaction-in-memory-g00"
+    }
+    fn descriptor(&self) -> PackageDescriptor {
+        PackageDescriptor {
+            id: self.id().to_string(),
+            kind: PackageKind::Plaintext,
+            case_rule: CaseRule::Sensitive,
+            source: PackageSource::PublicName(self.id().to_string()),
+            revision: None,
+        }
+    }
+    fn case_rule(&self) -> CaseRule {
+        CaseRule::Sensitive
+    }
+    fn resolve(&self, logical: &str) -> VfsResult<AssetId> {
+        AssetId::from_parts(self.id(), logical)
+    }
+    fn exists(&self, id: &AssetId) -> VfsResult<bool> {
+        Ok(self.bytes_for(self.stem_of(id)).is_some())
+    }
+    fn stat(&self, id: &AssetId) -> VfsResult<AssetMetadata> {
+        let len = self
+            .bytes_for(self.stem_of(id))
+            .ok_or_else(|| VfsError::AssetMissing { id: id.clone() })?
+            .len();
+        Ok(AssetMetadata {
+            id: id.clone(),
+            kind: AssetKind::File,
+            size: AssetSize::Bytes(len as u64),
+            revision: None,
+        })
+    }
+    fn open(&self, id: &AssetId) -> VfsResult<AssetBytes> {
+        let bytes = self
+            .bytes_for(self.stem_of(id))
+            .ok_or_else(|| VfsError::AssetMissing { id: id.clone() })?;
+        Ok(AssetBytes::from(bytes.to_vec()))
+    }
+    fn list(&self, _prefix: &AssetId) -> VfsResult<Vec<AssetId>> {
+        Ok(Vec::new())
+    }
+}
 
 fn temp_artifact_root(tag: &str) -> RuntimeArtifactRoot {
     static COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -76,11 +149,19 @@ fn synthetic_fixture_actually_decodes_so_the_redaction_proof_is_not_vacuous() {
 }
 
 #[test]
-fn image_object_is_not_dereferenced_into_framebuffer() {
-    // Build a stack with ONLY an Image object backed by the synthetic
-    // type-0 fixture's stem. The render pass must paint zero pixels for
-    // it (the framebuffer stays at the transparent initial pattern).
-    let pass = RenderPass::with_dimensions(8, 8).expect("non-zero screen");
+fn redacted_image_is_transformed_structure_not_solid() {
+    // Stage the decodable synthetic type-0 fixture and build a stack with
+    // ONLY that Image object. Rasterise it under BOTH policies. The
+    // `Redact` frame must be a proof-preserving edge-outline: it carries
+    // structure (NOT a single solid colour), and it DIFFERS from the
+    // `Full` composite (the redaction transform genuinely ran instead of
+    // re-blitting the art).
+    let assets: Arc<dyn AssetPackage> = Arc::new(InMemoryG00Package {
+        entries: vec![(SYNTHETIC_TYPE0_STEM.to_string(), synthetic_type0_g00())],
+    });
+    let pass = RenderPass::with_dimensions(8, 8)
+        .expect("non-zero screen")
+        .with_assets(assets);
     let mut stack = GraphicsObjectStack::new();
     stack
         .set(
@@ -89,33 +170,55 @@ fn image_object_is_not_dereferenced_into_framebuffer() {
             GraphicsObject::image(SYNTHETIC_TYPE0_STEM),
         )
         .expect("set image");
-    let fb = pass.rasterise(&stack);
+
+    let redacted = pass.rasterise_with_policy(&stack, RedactionPolicy::Redact);
+    let full = pass.rasterise_with_policy(&stack, RedactionPolicy::Full);
+
+    // Something was painted (the object WAS dereferenced and redacted).
     assert!(
-        fb.pixels().iter().all(|&byte| byte == 0),
-        "Image object must NOT be dereferenced into the framebuffer"
+        redacted.pixels().iter().any(|&b| b != 0),
+        "redacted image object must paint its edge-outline (not stay blank)"
+    );
+    // Not a single solid colour — the edge-outline carries structure.
+    let distinct: std::collections::BTreeSet<[u8; 4]> = redacted
+        .pixels()
+        .chunks(4)
+        .map(|c| [c[0], c[1], c[2], c[3]])
+        .collect();
+    assert!(
+        distinct.len() >= 2,
+        "redacted frame must not be a single solid colour; got {} distinct",
+        distinct.len()
+    );
+    // The redaction is a TRANSFORM, not a copy of the art.
+    assert_ne!(
+        redacted.pixels(),
+        full.pixels(),
+        "redacted frame must differ from the full-fidelity composite"
     );
 }
 
 #[test]
 fn emitted_png_embeds_zero_g00_bytes() {
-    // Stage both synthetic fixtures on disk (as an AssetPackage would
-    // see them), decode them in-memory, and build a render stack whose
-    // background is a synthetic Wipe + an Image object referencing the
-    // staged fixture. Emit the screenshot with a localized English text
-    // layer and assert the PNG embeds NONE of the g00 bytes.
-    let staging = temp_artifact_root("g00-staging-dir");
-    let g00_dir = staging.path().join("g00");
-    let (type0_path, type2_path) =
-        write_synthetic_g00_dir(&g00_dir).expect("stage synthetic g00 fixtures");
-
+    // Bind an AssetPackage that serves both decodable fixtures, build a
+    // render stack whose background is a synthetic Wipe + Image objects
+    // referencing them, and emit the DEFAULT (redacted) screenshot with a
+    // localized English text layer. The redaction now GENUINELY reads and
+    // transforms the g00 (an edge-outline) — so the copyright proof is
+    // stronger than the old no-deref no-op: the emitted PNG must embed
+    // NONE of the decoded g00 pixel bytes even though the pass dereferenced
+    // and processed them.
     let type0_raw = synthetic_type0_g00();
     let type2_raw = synthetic_type2_g00();
     let (type0_decoded, _) = decode_g00(&type0_raw).expect("type0 decodes");
     let (type2_decoded, _) = decode_g00(&type2_raw).expect("type2 decodes");
 
-    // Sanity: the staged on-disk bytes match what we decode in-memory.
-    assert_eq!(std::fs::read(&type0_path).unwrap(), type0_raw);
-    assert_eq!(std::fs::read(&type2_path).unwrap(), type2_raw);
+    let assets: Arc<dyn AssetPackage> = Arc::new(InMemoryG00Package {
+        entries: vec![
+            (SYNTHETIC_TYPE0_STEM.to_string(), type0_raw.clone()),
+            (SYNTHETIC_TYPE2_STEM.to_string(), type2_raw.clone()),
+        ],
+    });
 
     let mut stack = GraphicsObjectStack::new();
     stack
@@ -125,8 +228,8 @@ fn emitted_png_embeds_zero_g00_bytes() {
             GraphicsObject::wipe(WipeColour::opaque_rgb(0x08, 0x10, 0x18)),
         )
         .expect("set wipe");
-    // Two Image objects that genuinely reference the decodable
-    // fixtures; the render pass must keep them no-ops.
+    // Two Image objects that genuinely reference the decodable fixtures;
+    // the redaction dereferences and edge-outlines them.
     stack
         .set(
             GraphicsPlane::Foreground,
@@ -142,8 +245,10 @@ fn emitted_png_embeds_zero_g00_bytes() {
         )
         .expect("set type2 image");
 
-    let text = TextLayer::localized(vec!["SCENE 1 EN-US".to_string()]);
-    let mut pass = RenderPass::with_dimensions(128, 48).expect("non-zero screen");
+    let text = TextLayer::localized(vec!["Scene 1 EN-US".to_string()]);
+    let mut pass = RenderPass::with_dimensions(128, 48)
+        .expect("non-zero screen")
+        .with_assets(assets);
     let root = temp_artifact_root("g00-redaction");
     let sink = RecordingFrameArtifactSink::new();
     let artifact = pass
@@ -182,6 +287,5 @@ fn emitted_png_embeds_zero_g00_bytes() {
         "raw type-2 g00 file bytes MUST NOT appear in the emitted PNG"
     );
 
-    let _ = std::fs::remove_dir_all(staging.path());
     let _ = std::fs::remove_dir_all(root.path());
 }

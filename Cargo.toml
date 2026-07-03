@@ -88,6 +88,7 @@ unnecessary_debug_formatting = "deny"
 ignore_without_reason = "deny"
 
 [workspace.dependencies]
+ab_glyph = "0.2"
 bytes = "1"
 dirs = "6"
 encoding_rs = "0.8"

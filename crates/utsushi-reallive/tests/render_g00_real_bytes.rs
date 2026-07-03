@@ -473,22 +473,32 @@ fn run_title_render_proof(g00_dir: PathBuf, title: &str) {
         "{title}: with redaction ON the public frame differs from the full-fidelity buffer"
     );
 
-    // The redacted public frame carries the synthetic marker (not art) in
-    // the object rect — proof the public frame publishes no source pixels.
-    let marker_rgba = [
-        utsushi_reallive::REDACTION_MARKER.red,
-        utsushi_reallive::REDACTION_MARKER.green,
-        utsushi_reallive::REDACTION_MARKER.blue,
-        utsushi_reallive::REDACTION_MARKER.alpha,
-    ];
-    // Sample a pixel near the rect centre (avoids the text layer at the
-    // top-left origin).
-    let sample_x = (pos_x + dst_w / 2) as u32;
-    let sample_y = (pos_y + dst_h * 3 / 4) as u32;
-    assert_eq!(
-        pixel_at(&redacted_public.0, sample_x, sample_y),
-        marker_rgba,
-        "{title}: redacted public frame must show the synthetic marker in the object rect"
+    // The redacted public frame shows the scene's STRUCTURE (a
+    // copyright-safe edge-outline), NOT the old solid marker and NOT the
+    // full-fidelity art. Two proofs over the object rect:
+    //
+    //  1. it is NOT a single solid colour — the edge-outline carries
+    //     structure, so a human sees the scene's layout rather than a
+    //     blank block (the exact failure the old solid marker had);
+    //  2. it differs from the full-fidelity rect — the redaction transform
+    //     genuinely ran and did not just re-blit the decoded art.
+    let distinct =
+        distinct_rect_colours(&redacted_public.0, pos_x, pos_y, dst_w as u32, dst_h as u32);
+    assert!(
+        distinct >= 2,
+        "{title}: redacted public frame must show structure (>=2 distinct colours in the \
+         object rect), not a single solid fill; got {distinct}"
+    );
+    assert!(
+        rect_differs(
+            &redacted_public.0,
+            &full_fidelity.0,
+            pos_x,
+            pos_y,
+            dst_w as u32,
+            dst_h as u32,
+        ),
+        "{title}: redacted object rect must differ from the full-fidelity rect (transform ran)"
     );
 
     // Clean up the private artifacts (they are uncommitted anyway).
@@ -655,6 +665,57 @@ fn rect_has_non_colour_pixel(
                 continue;
             }
             if pixel_at(fb, x as u32, y as u32) != colour {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+/// Count DISTINCT RGBA pixel values inside the given rect (capped at a
+/// small ceiling — we only need "more than one"). A single-colour solid
+/// fill returns `1`; an edge-outline returns many.
+fn distinct_rect_colours(
+    fb: &utsushi_reallive::Framebuffer,
+    x0: i32,
+    y0: i32,
+    w: u32,
+    h: u32,
+) -> usize {
+    let mut seen: std::collections::HashSet<[u8; 4]> = std::collections::HashSet::new();
+    for dy in 0..h {
+        for dx in 0..w {
+            let x = x0 + dx as i32;
+            let y = y0 + dy as i32;
+            if x < 0 || y < 0 || x >= fb.width() as i32 || y >= fb.height() as i32 {
+                continue;
+            }
+            seen.insert(pixel_at(fb, x as u32, y as u32));
+            if seen.len() >= 8 {
+                return seen.len();
+            }
+        }
+    }
+    seen.len()
+}
+
+/// True if the two framebuffers differ at any pixel inside the rect.
+fn rect_differs(
+    a: &utsushi_reallive::Framebuffer,
+    b: &utsushi_reallive::Framebuffer,
+    x0: i32,
+    y0: i32,
+    w: u32,
+    h: u32,
+) -> bool {
+    for dy in 0..h {
+        for dx in 0..w {
+            let x = x0 + dx as i32;
+            let y = y0 + dy as i32;
+            if x < 0 || y < 0 || x >= a.width() as i32 || y >= a.height() as i32 {
+                continue;
+            }
+            if pixel_at(a, x as u32, y as u32) != pixel_at(b, x as u32, y as u32) {
                 return true;
             }
         }
