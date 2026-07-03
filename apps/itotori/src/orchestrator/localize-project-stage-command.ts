@@ -420,12 +420,20 @@ export async function runLocalizeProjectStageCommand(
   // is recorded verbatim in the patch-report as `translatedTargetText`.
   const draftText = bundle.finalDraft.draftText ?? `[en-US] ${unit.sourceText}`;
   const engineProfile = args.engineProfile ?? "reallive";
+  // For RealLive, strip the producer's OUT-OF-BAND control markup
+  // (`<reallive.kidoku …>`) the model reproduced inline: it has no byte run in
+  // the Textout body and the patchback re-emits the kidoku control bytes
+  // byte-identical from the untouched bytecode. `bodyDraftText` is the exact
+  // translated dialogue body the engine observes — recorded verbatim below.
+  // (RPG Maker carries no such markup; its draft passes through unchanged.)
+  const bodyDraftText =
+    engineProfile === "rpg-maker-mv-mz" ? draftText : stripOutOfBandControlMarkup(draftText);
   const translatedTargetText =
-    engineProfile === "rpg-maker-mv-mz" ? draftText : bracketWrapForRealLive(draftText);
+    engineProfile === "rpg-maker-mv-mz" ? bodyDraftText : bracketWrapForRealLive(bodyDraftText);
   const translatedBridge =
     engineProfile === "rpg-maker-mv-mz"
-      ? synthesiseRpgMakerMvMzTranslatedBridge(rawBridge, draftText, unitIndex)
-      : synthesiseTranslatedBridge(rawBridge, draftText);
+      ? synthesiseRpgMakerMvMzTranslatedBridge(rawBridge, bodyDraftText, unitIndex)
+      : synthesiseTranslatedBridge(rawBridge, bodyDraftText);
   args.io.writeJson(args.translatedBundleOutputPath, translatedBridge);
   log(`localize-project-stage: wrote ${args.translatedBundleOutputPath}`);
 
@@ -447,12 +455,14 @@ export async function runLocalizeProjectStageCommand(
     sceneId,
     bridgeUnitId: unit.bridgeUnitId,
     unitCount: bridge.units.length,
-    finalDraftTextLength: draftText.length,
-    // The REAL translated draft the LLM produced. This is the exact
-    // English text the downstream replay/render must OBSERVE in an
-    // emitted TextLine — the observed-output evidence is asserted
-    // against this, NOT against a harness-planted sentinel.
-    finalDraftText: draftText,
+    finalDraftTextLength: bodyDraftText.length,
+    // The REAL translated dialogue body the LLM produced, with the producer's
+    // out-of-band control markup (`<reallive.kidoku …>`) stripped so it matches
+    // exactly what the patchback splices. This is the exact English text the
+    // downstream replay/render must OBSERVE in an emitted TextLine — the
+    // observed-output evidence is asserted against this, NOT against a
+    // harness-planted sentinel.
+    finalDraftText: bodyDraftText,
     // The exact target text written into the translated bundle (RealLive
     // is SJIS-bracket-wrapped for the lexer; RPG Maker is the plain
     // literal). `finalDraftText` is the substring guaranteed to appear
@@ -703,14 +713,66 @@ function synthesiseRpgMakerMvMzTranslatedBridge(
 }
 
 /**
- * Wrap the REAL translated draft in the SJIS bracket pair (`「…」`).
- * This is an ENCODING requirement: the KAIFUU-191 RealLive lexer
- * classifies ASCII-leading bytes as `Unknown`, so the leading bracket
- * is what makes the patched bytes surface as a Textout opcode at
- * replay. The interior text is the model's real translation verbatim.
+ * Reserved syntactic form of the KAIFUU-210 producer's OUT-OF-BAND
+ * control-markup marker: `<reallive.kidoku …>`.
+ *
+ * RealLive read-flag (kidoku) state is NOT stored in the Textout body — it is
+ * a separate `MetaKidoku` opcode / the scene-header kidoku table. The producer
+ * surfaces it as a SYNTHETIC readable marker prepended to `sourceText`, and the
+ * translation prompt reproduces every protected span inline, so the model's
+ * draft carries the `<reallive.kidoku N>` literal. That literal must NOT be
+ * written into the translated Textout body: the kaifuu-reallive patchback
+ * re-emits the kidoku control bytes byte-identical from the untouched bytecode
+ * and strips this marker before splicing (see
+ * `kaifuu_reallive::REALLIVE_OUT_OF_BAND_MARKER_OPEN`). We strip it here too so
+ * the recorded `finalDraftText` / `translatedTargetText` are exactly the
+ * translated dialogue body the engine actually observes.
  */
-function bracketWrapForRealLive(draftText: string): string {
-  return `「${draftText}」`;
+const REALLIVE_OUT_OF_BAND_MARKER_OPEN = "<reallive.kidoku ";
+
+/**
+ * Remove every out-of-band control-markup marker (`<reallive.kidoku …>`) from
+ * a translated draft. Keyed on the reserved marker SYNTAX (not a specific
+ * unit's span raw) so a draft carrying any kidoku index — or several, as
+ * Kanon's double-kidoku dialogue does — is fully cleaned. In-body protected
+ * markup (the `【話者】` name token, asset refs, font tones) is real Textout
+ * body content and is left untouched.
+ */
+export function stripOutOfBandControlMarkup(text: string): string {
+  let out = "";
+  let rest = text;
+  for (;;) {
+    const open = rest.indexOf(REALLIVE_OUT_OF_BAND_MARKER_OPEN);
+    if (open === -1) {
+      return out + rest;
+    }
+    out += rest.slice(0, open);
+    const afterOpen = rest.slice(open + REALLIVE_OUT_OF_BAND_MARKER_OPEN.length);
+    const close = afterOpen.indexOf(">");
+    if (close === -1) {
+      // Unterminated marker: keep the remainder verbatim, never truncate.
+      return out + rest.slice(open);
+    }
+    rest = afterOpen.slice(close + 1);
+  }
+}
+
+/**
+ * Wrap the REAL translated draft in the SJIS bracket pair (`「…」`) WHEN it
+ * would otherwise start with an ASCII byte. This is an ENCODING requirement:
+ * the KAIFUU-191 RealLive lexer classifies ASCII-leading bytes as `Unknown`,
+ * so the leading bracket is what makes the patched bytes surface as a Textout
+ * opcode at replay. A body that already starts with a full-width Shift-JIS
+ * character — e.g. a `【話者】` name marker re-emitted as the leading body
+ * bytes, or a `「…」`-quoted line — already lexes as a Textout run and MUST NOT
+ * be double-wrapped (that would shove the name marker inside a spurious quote
+ * and change the speaker-label structure). The interior text is the model's
+ * real translation verbatim.
+ */
+export function bracketWrapForRealLive(draftText: string): string {
+  const first = draftText.codePointAt(0);
+  const needsWrap = first === undefined || first <= 0x7f;
+  return needsWrap ? `「${draftText}」` : draftText;
 }
 
 function assertBridgeBundleV02Shape(value: unknown): BridgeBundleV02 {

@@ -64,6 +64,28 @@ pub const PATCHBACK_BUNDLE_SCHEMA_INVALID_CODE: &str =
     "kaifuu.reallive.patchback_bundle_schema_invalid";
 pub const PATCHBACK_TARGET_ENCODE_FAILURE_CODE: &str =
     "kaifuu.reallive.patchback_target_encode_failure";
+pub const PATCHBACK_CONTROL_MARKUP_ONLY_TARGET_CODE: &str =
+    "kaifuu.reallive.patchback_control_markup_only_target";
+
+/// Reserved syntactic form of the KAIFUU-210 producer's OUT-OF-BAND
+/// control-markup marker: `<reallive.kidoku ...>`.
+///
+/// RealLive's kidoku (read-flag) state is NOT stored in the Textout body —
+/// it is a separate `MetaKidoku` opcode / the scene-header kidoku table. The
+/// producer surfaces it as a SYNTHETIC readable marker prepended to
+/// `sourceText` (so the v0.2 "span byte range must match sourceText"
+/// invariant holds and the read surface is visible to QA), but there is no
+/// corresponding byte run inside the Textout body for the patchback to
+/// re-emit. The translation prompt reproduces every protected span inline, so
+/// a draft — and thus a unit's `target.text` — carries the
+/// `<reallive.kidoku N>` literal. Splicing that literal into the Textout body
+/// is the control-markup round-trip bug (the retail lexer truncates the run
+/// at `<reallive.kidoku `). The patchback therefore STRIPS every out-of-band
+/// marker from `target.text` before encoding: those control bytes are
+/// re-emitted byte-identical from the untouched `MetaKidoku` opcodes / header
+/// table (they are never spliced), and only the translated dialogue body
+/// (in-body markup + prose) is written into the Textout run.
+pub const REALLIVE_OUT_OF_BAND_MARKER_OPEN: &str = "<reallive.kidoku ";
 pub const PATCHBACK_SCENE_HEADER_INVALID_CODE: &str =
     "kaifuu.reallive.patchback_scene_header_invalid";
 pub const PATCHBACK_DECOMPRESS_FAILURE_CODE: &str = "kaifuu.reallive.patchback_decompress_failure";
@@ -122,6 +144,14 @@ pub enum PatchbackError {
         bridge_unit_id: String,
         message: String,
     },
+    /// After stripping the out-of-band control markup (`<reallive.kidoku …>`)
+    /// the translated `target.text` carried NO translatable dialogue body.
+    /// Splicing an empty body would delete the Textout run and corrupt the
+    /// scene framing, so this is surfaced instead of a silent collapse.
+    #[error(
+        "{PATCHBACK_CONTROL_MARKUP_ONLY_TARGET_CODE}: unit {bridge_unit_id} target text carried only out-of-band control markup ({REALLIVE_OUT_OF_BAND_MARKER_OPEN}…>) and no translatable dialogue body"
+    )]
+    ControlMarkupOnlyTarget { bridge_unit_id: String },
     /// After re-compression, the patched archive's directory could not
     /// fit the new scene sizes within `u32::MAX` total bytes (or some
     /// slot's `byte_offset + byte_len` would have overflowed).
@@ -685,6 +715,22 @@ fn resolve_edit(
             ),
         })?;
 
+    // Strip the producer's OUT-OF-BAND control markup (`<reallive.kidoku …>`)
+    // from the translated body before encoding. That marker is a synthetic
+    // readable representation of a read-flag that lives OUTSIDE the Textout
+    // body (a `MetaKidoku` opcode / the header kidoku table), which the
+    // re-packer carries byte-identical without any splice. Leaving the literal
+    // in the spliced body is the control-markup round-trip bug. See
+    // [`REALLIVE_OUT_OF_BAND_MARKER_OPEN`]. In-body protected markup (name
+    // token, asset ref, font tone) is NOT stripped — it is real Textout body
+    // content that re-encodes Shift-JIS byte-identical.
+    let body_target_text = strip_out_of_band_control_markup(&target.target_text);
+    if body_target_text.is_empty() {
+        return Err(PatchbackError::ControlMarkupOnlyTarget {
+            bridge_unit_id: target.bridge_unit_id.clone(),
+        });
+    }
+
     // Encode the target text per the named PatchbackOpts policy. A
     // `choice_label` (`module_sel` option) MUST be NextString-safe: a raw
     // Shift-JIS splice of a translation carrying `[` / `,` / `.` / `!` /
@@ -695,9 +741,9 @@ fn resolve_edit(
     let new_textout_bytes = match opts.target_encoding {
         PatchbackEncoding::ShiftJis => {
             let encoded = if unit.surface_kind == "choice_label" {
-                encode_choice_option_next_string_safe(&target.target_text)
+                encode_choice_option_next_string_safe(&body_target_text)
             } else {
-                encode_shift_jis_slot(&target.target_text)
+                encode_shift_jis_slot(&body_target_text)
             };
             encoded.map_err(
                 |err: ShiftJisEncodeError| PatchbackError::TargetEncodeFailure {
@@ -727,6 +773,44 @@ fn parse_scene_and_occurrence(key: &str) -> Option<(u16, usize)> {
     let scene_id = scene_str.parse::<u16>().ok()?;
     let occurrence_index = occurrence_str.parse::<usize>().ok()?;
     Some((scene_id, occurrence_index))
+}
+
+/// Remove every OUT-OF-BAND control-markup marker (`<reallive.kidoku …>`)
+/// from a translated body string.
+///
+/// The markers are the KAIFUU-210 producer's synthetic readable
+/// representation of RealLive read-flag (kidoku) state, which is stored as a
+/// separate `MetaKidoku` opcode / the scene-header kidoku table — NOT as bytes
+/// inside the Textout body. The producer prepends them to `sourceText` and the
+/// translation prompt reproduces every protected span inline, so a unit's
+/// `target.text` carries the literal. The patchback must NOT splice it into the
+/// Textout body (see [`REALLIVE_OUT_OF_BAND_MARKER_OPEN`]); the kidoku control
+/// bytes are re-emitted byte-identical from the untouched bytecode instead.
+///
+/// The strip keys on the reserved marker SYNTAX rather than a specific unit's
+/// `span.raw`, so it is robust to a translated body that carries any kidoku
+/// index (or several) — every `<reallive.kidoku …>` run, whatever its
+/// argument, is removed. A prose translation never legitimately contains the
+/// reserved marker prefix.
+pub fn strip_out_of_band_control_markup(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(open) = rest.find(REALLIVE_OUT_OF_BAND_MARKER_OPEN) {
+        // Everything up to the marker survives verbatim.
+        out.push_str(&rest[..open]);
+        let after_open = &rest[open + REALLIVE_OUT_OF_BAND_MARKER_OPEN.len()..];
+        if let Some(close) = after_open.find('>') {
+            // Drop `<reallive.kidoku …>` (open-prefix .. close `>` inclusive).
+            rest = &after_open[close + 1..];
+        } else {
+            // Unterminated marker: nothing more to strip; keep the remainder
+            // verbatim so we never silently truncate real content.
+            out.push_str(&rest[open..]);
+            return out;
+        }
+    }
+    out.push_str(rest);
+    out
 }
 
 /// Re-emit a scene blob with the given edits applied.
@@ -1277,6 +1361,32 @@ mod tests {
     }
 
     #[test]
+    fn strip_out_of_band_control_markup_removes_kidoku_keeps_name_and_prose() {
+        // Inline (single) kidoku marker + in-body name token + prose.
+        assert_eq!(
+            strip_out_of_band_control_markup("<reallive.kidoku 1>【和人】「hello」"),
+            "【和人】「hello」"
+        );
+        // Synthesised table-form marker.
+        assert_eq!(
+            strip_out_of_band_control_markup("<reallive.kidoku table:1>narration"),
+            "narration"
+        );
+        // Multiple markers (Kanon double-kidoku) anywhere in the string.
+        assert_eq!(
+            strip_out_of_band_control_markup("<reallive.kidoku 26><reallive.kidoku 27>「x」"),
+            "「x」"
+        );
+        // No marker: verbatim.
+        assert_eq!(strip_out_of_band_control_markup("「plain」"), "「plain」");
+        // Unterminated marker: keep the remainder, never silently truncate.
+        assert_eq!(
+            strip_out_of_band_control_markup("<reallive.kidoku 1"),
+            "<reallive.kidoku 1"
+        );
+    }
+
+    #[test]
     fn patch_scene_blob_rejects_bytecode_offset_inside_header_region() {
         // 006 regression: patch_scene_blob guarded only the upper bound
         // (bytecode_end > blob.len()); a header declaring bytecode_offset
@@ -1476,6 +1586,64 @@ mod tests {
         // populated entries.
         let reparsed = parse_archive(&patched).expect("patched archive re-parses");
         assert_eq!(reparsed.entries.len(), 1);
+    }
+
+    #[test]
+    fn apply_strips_out_of_band_kidoku_marker_and_splices_only_the_body() {
+        // A target carrying the producer's synthetic `<reallive.kidoku N>`
+        // marker (as the translation prompt reproduces it inline) must have
+        // that marker STRIPPED before the splice: the literal ASCII bytes of
+        // `<reallive.kidoku` must never reach the patched bytecode, and the
+        // real body ("Hi") must be spliced.
+        let SyntheticArchive { archive, .. } = build_synthetic_archive();
+        let bundle_json = make_bundle_json(
+            REALLIVE_SEEN_TXT_DIRECTORY_BYTE_LEN,
+            0,
+            2,
+            "<reallive.kidoku 1>Hi",
+        );
+        let bundle = TranslatedBundleV02::from_json(&bundle_json).expect("bundle parses");
+        let patched = apply_translated_bundle(
+            &archive,
+            &bundle,
+            &PatchbackOpts::shift_jis(TranslationScope::DialogueOnly),
+        )
+        .expect("apply succeeds after stripping the out-of-band marker");
+        let decompressed = decompress_scene(&patched, 1);
+        let marker_bytes = REALLIVE_OUT_OF_BAND_MARKER_OPEN.as_bytes();
+        assert!(
+            !decompressed
+                .windows(marker_bytes.len())
+                .any(|w| w == marker_bytes),
+            "the `<reallive.kidoku ` literal must NOT appear in the patched bytecode"
+        );
+        let hi = encode_shift_jis_slot("Hi").expect("encode Hi");
+        assert!(
+            decompressed.windows(hi.len()).any(|w| w == hi.as_slice()),
+            "the translated body 'Hi' must be spliced into the patched bytecode"
+        );
+    }
+
+    #[test]
+    fn apply_rejects_target_that_is_only_out_of_band_control_markup() {
+        let SyntheticArchive { archive, .. } = build_synthetic_archive();
+        let bundle_json = make_bundle_json(
+            REALLIVE_SEEN_TXT_DIRECTORY_BYTE_LEN,
+            0,
+            2,
+            "<reallive.kidoku 1>",
+        );
+        let bundle = TranslatedBundleV02::from_json(&bundle_json).expect("bundle parses");
+        let err = apply_translated_bundle(
+            &archive,
+            &bundle,
+            &PatchbackOpts::shift_jis(TranslationScope::DialogueOnly),
+        )
+        .expect_err("a control-markup-only target must be rejected");
+        assert!(
+            matches!(err, PatchbackError::ControlMarkupOnlyTarget { .. }),
+            "expected ControlMarkupOnlyTarget, got {err:?}"
+        );
     }
 
     #[test]

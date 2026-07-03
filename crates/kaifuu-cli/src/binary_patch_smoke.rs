@@ -34,11 +34,12 @@ use kaifuu_core::{
 };
 use kaifuu_reallive::{
     PATCHBACK_ARCHIVE_PARSE_FAILURE_CODE, PATCHBACK_BUNDLE_SCHEMA_INVALID_CODE,
-    PATCHBACK_COMPRESS_FAILURE_CODE, PATCHBACK_DECOMPRESS_FAILURE_CODE,
-    PATCHBACK_GOTO_TARGET_UNRESOLVABLE_CODE, PATCHBACK_PROVENANCE_MISMATCH_CODE,
-    PATCHBACK_SCENE_HEADER_INVALID_CODE, PATCHBACK_SCENE_PACKING_OVERFLOW_CODE,
-    PATCHBACK_TARGET_ENCODE_FAILURE_CODE, PatchbackError, PatchbackOpts, SCENE_HEADER_BYTE_LEN,
-    TranslatedBundleV02, apply_translated_bundle, compress_avg32_literal, parse_archive,
+    PATCHBACK_COMPRESS_FAILURE_CODE, PATCHBACK_CONTROL_MARKUP_ONLY_TARGET_CODE,
+    PATCHBACK_DECOMPRESS_FAILURE_CODE, PATCHBACK_GOTO_TARGET_UNRESOLVABLE_CODE,
+    PATCHBACK_PROVENANCE_MISMATCH_CODE, PATCHBACK_SCENE_HEADER_INVALID_CODE,
+    PATCHBACK_SCENE_PACKING_OVERFLOW_CODE, PATCHBACK_TARGET_ENCODE_FAILURE_CODE, PatchbackError,
+    PatchbackOpts, SCENE_HEADER_BYTE_LEN, TranslatedBundleV02, apply_translated_bundle,
+    compress_avg32_literal, parse_archive,
 };
 use serde_json::{Value, json};
 
@@ -430,6 +431,12 @@ pub fn map_patchback_error_to_v02_failure(error: &PatchbackError) -> Value {
         PatchbackError::TargetEncodeFailure { .. } => {
             ("patch_write_failed", PATCHBACK_TARGET_ENCODE_FAILURE_CODE)
         }
+        // A target that carried only out-of-band control markup (no
+        // translatable dialogue body) is a malformed edit, not a write fault.
+        PatchbackError::ControlMarkupOnlyTarget { .. } => (
+            "source_incompatible",
+            PATCHBACK_CONTROL_MARKUP_ONLY_TARGET_CODE,
+        ),
         PatchbackError::ScenePackingOverflow { .. } => {
             ("patch_write_failed", PATCHBACK_SCENE_PACKING_OVERFLOW_CODE)
         }
@@ -850,12 +857,22 @@ mod tests {
                 "patch_write_failed",
                 PATCHBACK_SCENE_PACKING_OVERFLOW_CODE,
             ),
+            (
+                PatchbackError::ControlMarkupOnlyTarget {
+                    bridge_unit_id: "u".into(),
+                },
+                "source_incompatible",
+                PATCHBACK_CONTROL_MARKUP_ONLY_TARGET_CODE,
+            ),
         ];
 
         // Guards exhaustiveness: if a PatchbackError variant is added, this
-        // count must be updated alongside a new table row. (Mirrors the
-        // 8-variant bundle_driven `PatchbackError` enum.)
-        assert_eq!(table.len(), 8, "every PatchbackError variant is pinned");
+        // count must be updated alongside a new table row.
+        assert_eq!(
+            table.len(),
+            9,
+            "every mapped PatchbackError variant is pinned"
+        );
 
         for (error, expected_category, expected_diagnostic) in &table {
             let value = map_patchback_error_to_v02_failure(error);
