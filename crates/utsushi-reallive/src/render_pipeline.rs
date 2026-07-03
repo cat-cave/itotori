@@ -396,7 +396,9 @@ impl TextLayer {
 mod font {
     use std::sync::OnceLock;
 
-    use ab_glyph::{Font, FontRef, PxScale, ScaleFont, point};
+    use swash::FontRef;
+    use swash::scale::{Render, ScaleContext, Source};
+    use swash::zeno::Format;
 
     use super::{Framebuffer, TextLayer};
 
@@ -407,77 +409,97 @@ mod font {
     /// Parse the bundled font once. The bytes are a fixed compiled-in
     /// asset, so a parse failure is a build-time-shipped-corrupt-asset
     /// bug, not a runtime condition — `expect` is the honest contract.
-    fn font() -> &'static FontRef<'static> {
+    fn font() -> FontRef<'static> {
         static FONT: OnceLock<FontRef<'static>> = OnceLock::new();
-        FONT.get_or_init(|| {
-            FontRef::try_from_slice(FONT_BYTES).expect("bundled DejaVuSans.ttf must parse")
+        *FONT.get_or_init(|| {
+            FontRef::from_index(FONT_BYTES, 0).expect("bundled DejaVuSans.ttf must parse")
         })
     }
 
-    /// Rasterise every line of `layer` through the TrueType font. Returns
-    /// the count of glyph-coverage framebuffer pixels painted (coverage
-    /// `> 0`), so the emit path can prove the localized text actually
-    /// drew something.
+    /// Rasterise every line of `layer` through the TrueType font (via the
+    /// maintained `swash` scaler + `zeno` rasteriser — the `fontations`
+    /// stack, `cargo deny`-clean). Returns the count of glyph-coverage
+    /// framebuffer pixels painted (coverage `> 0`), so the emit path can
+    /// prove the localized text actually drew something.
     pub fn draw_lines(framebuffer: &mut Framebuffer, layer: &TextLayer) -> u64 {
         let font = font();
-        let px = PxScale::from(layer.scale.max(1) as f32);
-        let scaled = font.as_scaled(px);
-        let line_advance = scaled.height() + scaled.line_gap();
+        let px = layer.scale.max(1) as f32;
+        // Per-em-scaled vertical + horizontal metrics.
+        let metrics = font.metrics(&[]).scale(px);
+        let glyph_metrics = font.glyph_metrics(&[]).scale(px);
+        let charmap = font.charmap();
+        // Line-to-line advance: ascent above the baseline, descent below,
+        // plus the font's recommended leading (matches the previous
+        // `height + line_gap`).
+        let line_advance = metrics.ascent + metrics.descent.abs() + metrics.leading;
         let colour = layer.colour;
         let mut painted: u64 = 0;
+
+        // Reused per-call scaler context + alpha (8-bit coverage) renderer.
+        let mut context = ScaleContext::new();
+        let mut scaler = context.builder(font).size(px).hint(false).build();
+        let mut render = Render::new(&[Source::Outline]);
+        render.format(Format::Alpha);
 
         for (line_index, line) in layer.lines.iter().enumerate() {
             // Baseline for this line: origin + ascent + N line advances.
             let baseline_y =
-                layer.origin_y as f32 + scaled.ascent() + (line_index as f32) * line_advance;
-            if baseline_y - scaled.ascent() >= framebuffer.height as f32 {
+                layer.origin_y as f32 + metrics.ascent + (line_index as f32) * line_advance;
+            if baseline_y - metrics.ascent >= framebuffer.height as f32 {
                 break;
             }
             let mut caret_x = layer.origin_x as f32;
-            let mut previous = None;
 
             for character in line.chars() {
-                let glyph_id = font.glyph_id(character);
-                if let Some(previous_id) = previous {
-                    caret_x += scaled.kern(previous_id, glyph_id);
-                }
-                let glyph = glyph_id.with_scale_and_position(px, point(caret_x, baseline_y));
-                caret_x += scaled.h_advance(glyph_id);
-                previous = Some(glyph_id);
+                // A code point the font lacks maps to glyph 0 (`.notdef`,
+                // the box), so a localized English layer stays provably
+                // distinct — at the pixel level — from the untranslated
+                // Shift-JIS source.
+                let glyph_id = charmap.map(character);
+                let advance = glyph_metrics.advance_width(glyph_id);
 
-                let Some(outline) = font.outline_glyph(glyph) else {
-                    // No outline (e.g. a space) — advance only.
+                let Some(image) = render.render(&mut scaler, glyph_id) else {
+                    // No rasterised outline (e.g. a space) — advance only.
+                    caret_x += advance;
                     continue;
                 };
-                let bounds = outline.px_bounds();
-                let base_x = bounds.min.x as i32;
-                let base_y = bounds.min.y as i32;
-                outline.draw(|gx, gy, coverage| {
-                    if coverage <= 0.0 {
-                        return;
+                let placement = image.placement;
+                if placement.width == 0 || placement.height == 0 {
+                    caret_x += advance;
+                    continue;
+                }
+                // `placement.left` is the pixel offset right of the pen
+                // origin; `placement.top` the offset ABOVE the baseline to
+                // the top of the coverage bitmap.
+                let base_x = caret_x.round() as i32 + placement.left;
+                let base_y = baseline_y.round() as i32 - placement.top;
+
+                for gy in 0..placement.height {
+                    for gx in 0..placement.width {
+                        // 8-bit alpha mask: one coverage byte per pixel,
+                        // row-major, for anti-aliased edges.
+                        let cover = image.data[(gy * placement.width + gx) as usize];
+                        if cover == 0 {
+                            continue;
+                        }
+                        let px_x = base_x + gx as i32;
+                        let px_y = base_y + gy as i32;
+                        if px_x < 0 || px_y < 0 {
+                            continue;
+                        }
+                        if !framebuffer.in_bounds(px_x as u32, px_y as u32) {
+                            continue;
+                        }
+                        framebuffer.blend_pixel(
+                            px_x as u32,
+                            px_y as u32,
+                            [colour.red, colour.green, colour.blue, colour.alpha],
+                            cover,
+                        );
+                        painted += 1;
                     }
-                    let px_x = base_x + gx as i32;
-                    let px_y = base_y + gy as i32;
-                    if px_x < 0 || px_y < 0 {
-                        return;
-                    }
-                    // Coverage (0..=1) modulates the glyph colour's alpha
-                    // for anti-aliased edges.
-                    let cover = (coverage.clamp(0.0, 1.0) * 255.0).round() as u8;
-                    if cover == 0 {
-                        return;
-                    }
-                    if !framebuffer.in_bounds(px_x as u32, px_y as u32) {
-                        return;
-                    }
-                    framebuffer.blend_pixel(
-                        px_x as u32,
-                        px_y as u32,
-                        [colour.red, colour.green, colour.blue, colour.alpha],
-                        cover,
-                    );
-                    painted += 1;
-                });
+                }
+                caret_x += advance;
             }
         }
         painted

@@ -13,8 +13,13 @@ description = "UTSUSHI-200 alpha-gate scaffold: pure-Rust RealLive engine port t
 # bundled `assets/DejaVuSans.ttf` is compiled in with `include_bytes!`,
 # so legible mixed-case English dialogue renders with NO font lookup and
 # NO network at runtime. (The no-shell-out rule governs external
-# localization TOOLS, not Rust font deps.)
-ab_glyph.workspace = true
+# localization TOOLS, not Rust font deps.) `swash` is the maintained
+# `fontations` scaler + `zeno` rasteriser (MIT/Apache-2.0) — it does NOT
+# depend on the unmaintained `ttf-parser` (RUSTSEC-2026-0192, which
+# `ab_glyph` and `fontdue` both pull), so the render path stays
+# `cargo deny`-clean while producing the same anti-aliased legible
+# mixed-case output.
+swash.workspace = true
 # Intentionally NO `kaifuu-reallive` dependency. UTSUSHI-201 + UTSUSHI-207's
 # architectural constraint is that `utsushi-reallive` owns its own
 # `Seen.txt` and `Gameexe.ini` parsers — the formats are identical to
