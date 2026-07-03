@@ -31,6 +31,8 @@ check:
     node scripts/audit-strictness.mjs
     node --test scripts/generate-engine-capability-matrix.test.mjs
     node scripts/generate-engine-capability-matrix.mjs --check
+    node --test scripts/alpha-readiness-checklist.test.mjs
+    node scripts/alpha-readiness-checklist.mjs
     just fixtures-validate
     just impl-map-schema-validate
     node scripts/verify-toolchain-policy.mjs
@@ -227,6 +229,20 @@ db-reset: db-migrate
 alpha-proof:
     pnpm exec vp run alpha:public-fixture
     pnpm exec vp run alpha:public-fixture-validate
+
+# ALPHA-005: fresh-clone public-fixture demo entry point. Public-fixture-only,
+# deterministic, no DB / creds / private corpora / real bytes — it delegates to
+# the alpha proof so a new user can prove a fresh clone end-to-end in one command.
+# See docs/alpha-readiness.md and docs/install.md.
+alpha-demo: alpha-proof
+
+# ALPHA-005: alpha localization-project readiness checklist. Re-derives the
+# readiness-doc claims from the GENERATED capability matrix + the SHARED-025
+# proof manifest (never hand-maintained claims), validates the evidence node
+# references, and confirms the UTSUSHI-119 patched-output runtime proof consumed
+# a PatchResult + SHARED-025 manifest ids. Also run inside `just check`.
+alpha-readiness-checklist:
+    node scripts/alpha-readiness-checklist.mjs
 
 # ALPHA-009: `hello` is retained ONLY as a compatibility alias for nodes that
 # still declare `just hello` as a verification. It cannot diverge from the alpha

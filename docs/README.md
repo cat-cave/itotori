@@ -17,9 +17,18 @@ These docs describe the monorepo as a three-project suite:
 - Kaifuu: extraction, patching, verification, and delta packages.
 - Utsushi: runtime validation evidence.
 
-Start with [alpha-proof.md](alpha-proof.md), then read [architecture.md](architecture.md).
-The alpha localization project readiness definition and check matrix live in
-[alpha-localization-project-readiness.md](project-readiness.md).
+New users start with [alpha-readiness.md](alpha-readiness.md) (the checked alpha
+readiness README) and [install.md](install.md) (fresh-clone setup + the
+public-fixture demo), then [security-and-limitations.md](security-and-limitations.md)
+for the security posture, legal boundaries, and honest limitations. The alpha
+readiness checklist command
+([`scripts/alpha-readiness-checklist.mjs`](../scripts/alpha-readiness-checklist.mjs),
+`just alpha-readiness-checklist`) re-derives those readiness claims from the
+generated capability + benchmark artifacts so the docs cannot drift.
+
+Then read [alpha-proof.md](alpha-proof.md) and [architecture.md](architecture.md).
+The alpha localization project readiness definition and tier matrix live in
+[project-readiness.md](project-readiness.md).
 The current spec dashboard is documented in
 [`packages/spec-dag-dashboard/README.md`](../packages/spec-dag-dashboard/README.md),
 and the current runtime evidence dashboard is documented in

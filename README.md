@@ -1,21 +1,47 @@
 # Itotori
 
-Itotori is an agentic localization toolkit for games. It brings together extraction, patching, localization state, QA, and runtime validation into one public monorepo.
+Itotori is an agentic games-localization pipeline, not a translation box. It
+brings the whole workflow into one public monorepo:
+**catalog → inventory → readiness → extraction → localization → patching →
+validation**.
 
 The suite has three first-class subprojects:
 
-- **Itotori**: localization graph, fake/provider-backed drafting, QA, feedback, benchmarks, and dashboard surfaces.
-- **Kaifuu**: deterministic game extraction, patching, verification, and `.kaifuu` delta packages.
-- **Utsushi**: validation runtimes for trace, replay, capture, screenshots, and runtime evidence.
+- **Itotori**: catalog/inventory, localization graph, agentic drafting + QA,
+  feedback, benchmarks, and dashboard surfaces.
+- **Kaifuu**: deterministic game extraction, patching, verification, and
+  `.kaifuu` delta packages.
+- **Utsushi**: validation runtimes for trace, replay, capture, screenshots, and
+  runtime evidence.
 
-The current scaffold is a functional public-fixture path. The alpha proof (the `ALPHA-007` public-fixture vertical, gated by `ALPHA-009`) is the deterministic guardrail that exercises the intended end-to-end contract across all three projects without copyrighted bytes; the first real-engine vertical is the explicit alpha proof target `ALPHA-006`, sourced from `/archive/vault/`.
+## Alpha = readiness to _start_ a real localization project
 
-## Quickstart
+The **alpha milestone is readiness to _start_ a first real localization
+project**, not a finished product and not a terminal release. It means the whole
+pipeline fires end-to-end on a single real game (RealLive) and every stage is
+swappable; output quality is explicitly not the bar at alpha. The full readiness
+statement, the generated capability claims, and the evidence node references
+live in [docs/alpha-readiness.md](docs/alpha-readiness.md). Tier definitions
+(real-game-testing-ready → alpha → beta → full release) live in
+[docs/project-readiness.md](docs/project-readiness.md).
+
+The alpha proof (the `ALPHA-007` public-fixture vertical, gated by `ALPHA-009`)
+is the deterministic guardrail that exercises the end-to-end contract across all
+three projects without copyrighted bytes; the first real-engine vertical is the
+explicit alpha proof target `ALPHA-006`, sourced read-only from `/archive/vault/`.
+
+## Quickstart (fresh clone — no secrets, no real bytes)
 
 ```sh
-just install
-just alpha-proof
+just install                    # install workspace deps
+just alpha-demo                 # public-fixture end-to-end demo (deterministic)
+just alpha-readiness-checklist  # verify docs against generated artifacts
 ```
+
+See [docs/install.md](docs/install.md) for the full fresh-clone path and
+[docs/security-and-limitations.md](docs/security-and-limitations.md) for the
+security posture, legal boundaries, and honest limitations. `just alpha-demo`
+delegates to the alpha proof below.
 
 `just alpha-proof` is the required cross-project integration command: it runs `pnpm exec vp run alpha:public-fixture` and then re-proves cross-artifact linkage with `pnpm exec vp run alpha:public-fixture-validate`. It is public-fixture-only and deterministic — no database, no live credentials, no private corpora — and proves the contract end-to-end through schema-valid, hash-addressed artifact linkage rather than a `status=hello_world_passed` success string. See [docs/alpha-proof.md](docs/alpha-proof.md). Future real-corpus docs should teach generic project runners and corpus descriptors, not new title-specific commands, environment variables, artifact schemas, or preset names. The title-reference allowlist and review command live in [docs/fixtures-and-corpora.md](docs/fixtures-and-corpora.md#title-reference-allowlist-for-active-docs).
 
@@ -51,8 +77,17 @@ Vite+ and Vite Task are the high-level TypeScript/web workspace surface. Cargo r
 
 ## Status
 
-This repository is scaffolded for DAG-driven development from the public-fixture
-alpha proof toward `ALPHA-006`, the explicit first real-engine alpha proof target.
+This repository is at the **alpha readiness** milestone: ready to _start_ a first
+real localization project, with the whole pipeline proven end-to-end on the
+public fixtures and on the first real-engine vertical (`ALPHA-006`). It is not a
+terminal product release; beta (≥2 games per engine, encrypted variants) and full
+release are later tiers ([docs/project-readiness.md](docs/project-readiness.md)).
+
+Readiness is enforced, not asserted: `just alpha-readiness-checklist`
+([scripts/alpha-readiness-checklist.mjs](scripts/alpha-readiness-checklist.mjs))
+re-derives the readiness-doc claims from the generated capability + benchmark
+artifacts and the SHARED-025 proof manifest, so the docs cannot drift. It runs
+inside `just check` / `just ci`.
 
 The canonical roadmap is tracked as machine-readable data in `roadmap/spec-dag.json`.
 Use `just roadmap-validate`, `just roadmap-ready`, and `just roadmap-pop` to inspect
