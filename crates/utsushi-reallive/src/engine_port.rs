@@ -91,6 +91,18 @@ const SNAPSHOT_PROOF_STEP_BUDGET: u32 = 2_000;
 /// replay, serialised twice and compared).
 const DETERMINISM_PROOF_STEP_BUDGET: u32 = 50_000;
 
+/// Env var that overrides how many leading play-order messages the
+/// playthrough sequence renders — one frame per message. A real scene can
+/// produce hundreds of messages; the bound keeps `launch` from emitting
+/// thousands of frames while still rendering a playable through-line.
+/// Overridden per-port by [`UtsushiReallivePort::with_playthrough_max`].
+const PLAYTHROUGH_MAX_ENV: &str = "ITOTORI_PLAYTHROUGH_MAX";
+
+/// Default playthrough-sequence bound when neither
+/// [`UtsushiReallivePort::with_playthrough_max`] nor [`PLAYTHROUGH_MAX_ENV`]
+/// is set: render the first N play-order messages, each to its own frame.
+const DEFAULT_PLAYTHROUGH_MAX: usize = 8;
+
 // -------------------------------------------------------------------------
 // Production sink collectors
 //
@@ -227,10 +239,21 @@ pub struct UtsushiReallivePort {
     buffered_audio: Vec<AudioEvent>,
     /// The REAL play-order message bodies (single pass, branch-following)
     /// the scene produces — the SAME decoded text the substrate text sink
-    /// emits for the driven scene, in the order a player sees them. The
-    /// emitted frame renders ONE of these (the current message) in the
-    /// Gameexe box; this field carries the whole play-order stream.
+    /// emits for the driven scene, in the order a player sees them. Each
+    /// leading message (up to the playthrough bound) is rendered to its OWN
+    /// frame; this field carries the whole play-order stream.
     frame_text_lines: Vec<String>,
+    /// The play-order message body rendered into each emitted playthrough
+    /// frame, in frame order: `playthrough_frame_messages[i]` is the message
+    /// composited into frame `i`. Equals `frame_text_lines[..N]` where `N`
+    /// is the rendered count (the play-order length capped at the bound).
+    /// This is the audit-grade frame→message mapping: a regression that
+    /// rendered only message #0, or repeated one message, would break the
+    /// 1:1 correspondence recorded here.
+    playthrough_frame_messages: Vec<String>,
+    /// Optional per-port override for the playthrough-sequence bound. `None`
+    /// falls back to [`PLAYTHROUGH_MAX_ENV`] then [`DEFAULT_PLAYTHROUGH_MAX`].
+    playthrough_max: Option<usize>,
     emitted: bool,
     launched: bool,
     shut_down: bool,
@@ -325,6 +348,8 @@ impl UtsushiReallivePort {
             buffered_frames: Vec::new(),
             buffered_audio: Vec::new(),
             frame_text_lines: Vec::new(),
+            playthrough_frame_messages: Vec::new(),
+            playthrough_max: None,
             emitted: false,
             launched: false,
             shut_down: false,
@@ -333,6 +358,39 @@ impl UtsushiReallivePort {
             observation_steps: 0,
             reached_natural_terminus: false,
         }
+    }
+
+    /// Override the playthrough-sequence bound for this port: render the
+    /// first `max` play-order messages, each to its own frame. Takes
+    /// precedence over [`PLAYTHROUGH_MAX_ENV`]. A `max` of 0 is clamped to
+    /// 1 (a playthrough renders at least its first message). Builder-style
+    /// so tests can pin a deterministic bound without touching process env.
+    pub fn with_playthrough_max(mut self, max: usize) -> Self {
+        self.playthrough_max = Some(max);
+        self
+    }
+
+    /// The effective playthrough-sequence bound: the per-port override if
+    /// set, else [`PLAYTHROUGH_MAX_ENV`], else [`DEFAULT_PLAYTHROUGH_MAX`].
+    /// Always ≥ 1.
+    fn resolved_playthrough_max(&self) -> usize {
+        if let Some(max) = self.playthrough_max {
+            return max.max(1);
+        }
+        std::env::var(PLAYTHROUGH_MAX_ENV)
+            .ok()
+            .and_then(|raw| raw.trim().parse::<usize>().ok())
+            .filter(|parsed| *parsed >= 1)
+            .unwrap_or(DEFAULT_PLAYTHROUGH_MAX)
+    }
+
+    /// The play-order message body rendered into each emitted playthrough
+    /// frame, in frame order (`[i]` = the message composited into frame
+    /// `i`). This is the prefix of [`Self::frame_text_lines`] capped at the
+    /// playthrough bound — the frame→message correspondence proof. Empty
+    /// until `launch` runs.
+    pub fn playthrough_frame_messages(&self) -> &[String] {
+        &self.playthrough_frame_messages
     }
 
     /// Tick boundaries at which the port verified snapshot/restore
@@ -354,10 +412,11 @@ impl UtsushiReallivePort {
 
     /// The REAL play-order message bodies (single pass, branch-following)
     /// the driven scene produces during [`Self::launch`] — the SAME decoded
-    /// lines, in the SAME order, the substrate text sink emits. The emitted
-    /// frame renders ONE of these (message #0) in the Gameexe box; this is
-    /// the whole play-order stream. Empty until `launch` runs (or when the
-    /// driven scene produced no message).
+    /// lines, in the SAME order, the substrate text sink emits. Each leading
+    /// message (up to the playthrough bound, see
+    /// [`Self::playthrough_frame_messages`]) is rendered to its OWN frame;
+    /// this is the whole play-order stream. Empty until `launch` runs (or
+    /// when the driven scene produced no message).
     pub fn frame_text_lines(&self) -> &[String] {
         &self.frame_text_lines
     }
@@ -465,24 +524,34 @@ impl EnginePort for UtsushiReallivePort {
 
         // The play-order message bodies — the exact `TextLine.text` values
         // that flow, single pass, to the substrate text sink for this
-        // scene. The emitted frame renders ONE of these (message #0).
+        // scene. The playthrough sequence renders each leading one (up to
+        // the bound) to its own frame.
         let overlay_lines: Vec<String> = text_lines.iter().map(|line| line.text.clone()).collect();
 
-        // --- 2. Frame: composite the real graphics stack through the real
-        //         g00 rasteriser, overlay ONE real decoded message (the
-        //         current message, message #0) in the Gameexe-configured
-        //         box, and announce an E2 artifact. Requires a managed
-        //         artifact root to persist the PNG. A scene with no decoded
-        //         message produces no frame (nothing to display yet).
-        let frames = match (request.artifact_root, text_lines.first()) {
-            (Some(root), Some(message)) => {
+        // --- 2. Frame: a bounded PLAYTHROUGH SEQUENCE. Composite the real
+        //         graphics stack through the real g00 rasteriser and render
+        //         EACH leading play-order message to its OWN E2 frame (frame
+        //         `i` = play-order message `i`, with its speaker/name-box +
+        //         word-wrap over the same composited background) — the
+        //         through-line a player walks by click-advancing, one
+        //         message per frame. The count is capped at
+        //         `resolved_playthrough_max()` so a scene with hundreds of
+        //         messages cannot emit thousands of frames. Requires a
+        //         managed artifact root to persist the PNGs; a scene with no
+        //         decoded message produces no frame (nothing to display).
+        let playthrough_max = self.resolved_playthrough_max();
+        let mut frames: Vec<FrameArtifact> = Vec::new();
+        let mut rendered_messages: Vec<String> = Vec::new();
+        if let Some(root) = request.artifact_root {
+            for message in text_lines.iter().take(playthrough_max) {
+                request.cancellation.check(LifecycleStage::Launch)?;
                 let frame = self
                     .render_frame(&observation, message, root, request.run_id)
-                    .map_err(|message| Self::lifecycle_error(LifecycleStage::Launch, message))?;
-                vec![frame]
+                    .map_err(|error| Self::lifecycle_error(LifecycleStage::Launch, error))?;
+                frames.push(frame);
+                rendered_messages.push(message.text.clone());
             }
-            _ => Vec::new(),
-        };
+        }
 
         // --- 3. Drive the `Snapshot` capability: snapshot/restore identity
         //         at every tick boundary of the entry scene.
@@ -542,6 +611,7 @@ impl EnginePort for UtsushiReallivePort {
         }
 
         self.frame_text_lines = overlay_lines;
+        self.playthrough_frame_messages = rendered_messages;
         self.buffered_text = text_lines;
         self.buffered_frames = frames;
         self.buffered_audio = audio;

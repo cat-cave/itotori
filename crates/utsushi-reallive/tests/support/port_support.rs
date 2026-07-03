@@ -200,6 +200,51 @@ fn build_envelope(scene_id: u16, scene_blob: &[u8]) -> Vec<u8> {
     envelope
 }
 
+/// A synthetic multi-message single-scene [`ReplayEngine`]: scene 1 emits
+/// `count` DISTINCT Shift-JIS text lines, each followed by `msg.pause`, so
+/// [`ReplayEngine::observe_for_port`] yields `count` distinct play-order
+/// messages. Used to prove the playthrough sequence renders frame `i` ==
+/// play-order message `i` (a regression emitting one frame, or repeating
+/// message #0, fails the correspondence assertions). The messages differ in
+/// LENGTH (1, 2, 3 chars) so they render to distinct pixels — and thus
+/// distinct sha256 frame ids — independent of font glyph coverage. `count`
+/// must be in `1..=3`.
+pub fn synthetic_multi_message_engine(count: usize) -> ReplayEngine {
+    let blob = build_scene_blob_from_bytecode(&multi_message_bytecode(count));
+    let envelope = build_envelope(1, &blob);
+    ReplayEngine::from_seen_bytes(&envelope).expect("multi-message synthetic engine builds")
+}
+
+fn multi_message_bytecode(count: usize) -> Vec<u8> {
+    // Distinct hiragana messages of DISTINCT LENGTHS (1, 2, 3 chars). The
+    // RealLive text decoder recognises 2-byte Shift-JIS runs (0x82 lead) as
+    // text; ASCII bytes are not emitted as text, so hiragana it is. The
+    // bundled DejaVu font has no Japanese glyphs, so each char renders as a
+    // `.notdef` box — but the messages differ in LENGTH, so they paint
+    // DIFFERENT pixel widths ⇒ distinct sha256 frame ids. That is what
+    // proves each playthrough frame renders a DIFFERENT play-order message
+    // rather than repeating message #0 (a glyph-coverage-independent check).
+    const MESSAGES: [&[[u8; 2]]; 3] = [
+        &[[0x82, 0xa0]],                             // あ      (len 1)
+        &[[0x82, 0xa9], [0x82, 0xab]],               // かき    (len 2)
+        &[[0x82, 0xb3], [0x82, 0xb5], [0x82, 0xb7]], // さしす  (len 3)
+    ];
+    assert!(
+        count >= 1 && count <= MESSAGES.len(),
+        "count must be 1..={}",
+        MESSAGES.len()
+    );
+    let pause_command: [u8; 8] = [0x23, 0x01, 0x03, 0x03, 0x00, 0x00, 0x00, 0x00];
+    let mut bytecode: Vec<u8> = Vec::new();
+    for message in &MESSAGES[..count] {
+        for pair in *message {
+            bytecode.extend_from_slice(pair);
+        }
+        bytecode.extend_from_slice(&pause_command);
+    }
+    bytecode
+}
+
 fn build_scene_blob() -> Vec<u8> {
     let textout: Vec<u8> = vec![
         0x82, 0xa0, // あ
@@ -212,8 +257,11 @@ fn build_scene_blob() -> Vec<u8> {
     let mut bytecode: Vec<u8> = Vec::new();
     bytecode.extend_from_slice(&textout);
     bytecode.extend_from_slice(&pause_command);
+    build_scene_blob_from_bytecode(&bytecode)
+}
 
-    let compressed = compress_avg32(&bytecode);
+fn build_scene_blob_from_bytecode(bytecode: &[u8]) -> Vec<u8> {
+    let compressed = compress_avg32(bytecode);
 
     let bytecode_offset_u32 = u32::try_from(SCENE_HEADER_BYTE_LEN).expect("header fits");
     let bytecode_uncompressed_size_u32 =

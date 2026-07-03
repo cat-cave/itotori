@@ -39,6 +39,11 @@ use real_corpus::RealCorpus;
 /// Per-scene probe budget for [`pick_all_three_sink_scene`].
 const PROBE_STEP_BUDGET: u32 = 20_000;
 
+/// Playthrough-sequence bound pinned for the real-bytes run so the
+/// frame-count assertion is deterministic: the port renders the first
+/// `PLAYTHROUGH_BOUND` play-order messages, each to its own frame.
+const PLAYTHROUGH_BOUND: usize = 4;
+
 /// Build a [`ReplayEngine`] from a Seen.txt envelope, staging the dev-only
 /// `kaifuu-reallive` `use_xor_2` segment-cipher recovery between the AVG32
 /// first-level inflate (owned by `utsushi-reallive`) and the bytecode
@@ -132,13 +137,17 @@ fn run_title(corpus: &RealCorpus, g00_env: &str, label: &str) {
     let screen_size = gameexe.screen_size_px();
 
     let assets: Arc<dyn AssetPackage> = Arc::new(OnDiskG00Package::new(g00_dir));
+    // Pin the playthrough-sequence bound so the frame-count assertion below
+    // is deterministic on real bytes regardless of the env/default: the port
+    // renders EACH leading play-order message to its own frame, capped here.
     let mut port = UtsushiReallivePort::new(
         staged_engine(&seen_bytes),
         assets,
         scene,
         window_config,
         screen_size,
-    );
+    )
+    .with_playthrough_max(PLAYTHROUGH_BOUND);
 
     let artifact_dir = managed_temp_dir(&format!("{label}-artifact"));
     let artifact_root = RuntimeArtifactRoot::new(artifact_dir);
@@ -191,14 +200,38 @@ fn run_title(corpus: &RealCorpus, g00_env: &str, label: &str) {
         "[{label}] DeterministicReplay capability: two replays must be byte-identical"
     );
 
-    // ONE message per frame: exactly one frame is announced, no matter how
-    // many messages the scene produces (the flatten-all-messages-in-one-box
-    // defect announced one giant box; the fixed port renders the CURRENT
-    // message alone). Sweetie scene 1 produces thousands of messages yet
-    // announces a single frame.
+    // PLAYTHROUGH SEQUENCE, one message per frame: the port renders EACH
+    // leading play-order message to its OWN frame (a bounded through-line a
+    // player click-advances), NOT one giant flatten-all-messages box and NOT
+    // just message #0. Each individual frame still renders exactly one
+    // message (the per-frame message-window contract); the SCENE now emits a
+    // bounded SEQUENCE of them. The count equals the play-order length
+    // capped at the pinned bound — so a scene with thousands of messages
+    // (Sweetie scene 1) announces exactly `PLAYTHROUGH_BOUND` frames, not one
+    // and not thousands.
+    let expected_frames = port.frame_text_lines().len().min(PLAYTHROUGH_BOUND);
+    assert!(
+        expected_frames >= 1,
+        "[{label}] the driven scene must yield at least one play-order message"
+    );
     assert_eq!(
-        frame_total, 1,
-        "[{label}] the port must announce exactly ONE message frame, not one box per scene"
+        frame_total, expected_frames,
+        "[{label}] the playthrough must announce one frame per leading play-order message \
+         (min(play_order_len, {PLAYTHROUGH_BOUND})); got {frame_total}"
+    );
+    // Frame i renders play-order message i: the recorded frame→message
+    // mapping is the play-order prefix, in order — a regression that renders
+    // only message #0, or repeats it, breaks this correspondence.
+    assert_eq!(
+        port.playthrough_frame_messages().len(),
+        frame_total,
+        "[{label}] one recorded frame->message entry per announced frame"
+    );
+    assert_eq!(
+        port.playthrough_frame_messages(),
+        &port.frame_text_lines()[..frame_total],
+        "[{label}] frame i must render play-order message i (recorded mapping == play-order \
+         prefix, in order)"
     );
 
     // The port's play-order message stream is SINGLE PASS (branch-following
