@@ -93,6 +93,18 @@ describe("Utsushi embed ABI fixture", () => {
     expect(root.querySelector('[data-state="blocked-uri"]')).toBeNull();
   });
 
+  it("labels the rendered envelope as a fixture, not live runtime state", () => {
+    const state = loadGolden();
+    renderEmbedState(root, state);
+    // The embed view renders a canned EmbedState golden; it must not be
+    // presented as a live measurement of a running engine port.
+    const main = root.querySelector('[data-route="embed-state"]');
+    expect(main?.getAttribute("data-embed-source")).toBe("fixture");
+    const notice = root.querySelector("[data-embed-fixture-notice]");
+    expect(notice).not.toBeNull();
+    expect(notice?.textContent ?? "").toContain("NOT live runtime state");
+  });
+
   it("refuses to render an envelope with an unknown schema version", () => {
     const state = loadGolden();
     state.schemaVersion = "0.0.0";

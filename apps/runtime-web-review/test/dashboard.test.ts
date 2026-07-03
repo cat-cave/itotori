@@ -152,6 +152,49 @@ describe("Utsushi runtime dashboard", () => {
     expect(root.querySelectorAll<HTMLAnchorElement>("a")).toHaveLength(0);
   });
 
+  it("derives the frame-capture and screenshot metrics from real artifacts, never the phantom scalar counters", async () => {
+    // The scalar summary counters historically double-counted a single
+    // capture (frameCaptureCount === screenshotArtifactCount === total
+    // captures), so the dashboard must reflect the ACTUAL persisted
+    // artifacts instead. This fixture's scalar counters claim 99 captures
+    // while the real artifact list holds 2 `frame_capture` + 1 `screenshot`.
+    const base = runtimeFixture("passed-e2-capture");
+    currentFixture = {
+      ...base,
+      frameCaptureCount: 99,
+      screenshotArtifactCount: 99,
+      artifacts: [...base.artifacts, frameArtifact("frame-a"), frameArtifact("frame-b")],
+    };
+    const root = document.createElement("div");
+    document.body.append(root);
+
+    await renderRuntimeDashboard(root, "http://itotori.test/api/runtime/v0.2/status");
+
+    const frames = root.querySelector('[data-metric="frame-captures"]');
+    const screenshots = root.querySelector('[data-metric="screenshots"]');
+    expect(frames?.textContent).toBe("2");
+    expect(screenshots?.textContent).toBe("1");
+    // The phantom scalar (99) must never be displayed as a live capture metric.
+    expect(frames?.textContent).not.toBe("99");
+    expect(screenshots?.textContent).not.toBe("99");
+  });
+
+  it("shows a real zero capture metric rather than a fabricated non-zero scalar", async () => {
+    // passed-e2-capture reports scalar frameCaptureCount = 1, but ZERO
+    // `frame_capture` artifacts exist (the single capture is a screenshot).
+    // The dashboard must render the real 0, never the always-derivable
+    // phantom 1, so an always-zero producer is never shown as a live
+    // non-zero measurement.
+    currentFixture = runtimeFixture("passed-e2-capture");
+    const root = document.createElement("div");
+    document.body.append(root);
+
+    await renderRuntimeDashboard(root, "http://itotori.test/api/runtime/v0.2/status");
+
+    expect(root.querySelector('[data-metric="frame-captures"]')?.textContent).toBe("0");
+    expect(root.querySelector('[data-metric="screenshots"]')?.textContent).toBe("1");
+  });
+
   it("keeps explicit hello status endpoint compatibility through the same schema", async () => {
     currentFixture = runtimeFixture("passed-e2-capture");
     const root = document.createElement("div");
@@ -233,6 +276,20 @@ function assertRuntimeStatus(value: {
   limitations: string[];
 }): void {
   void value;
+}
+
+function frameArtifact(id: string): RuntimeDashboardStatus["artifacts"][number] {
+  return {
+    artifactId: `frame:${id}`,
+    artifactKind: "frame_capture",
+    uri: `artifacts/utsushi/runtime/run-passed-e2-capture/frames/${id}.png`,
+    hash: `sha256:${id}`,
+    mediaType: "image/png",
+    byteSize: 4096,
+    bridgeUnitId: "bridge-unit-1",
+    sourceUnitKey: "hello.scene.001.line.001",
+    diagnostic: null,
+  };
 }
 
 function runtimeFixture(

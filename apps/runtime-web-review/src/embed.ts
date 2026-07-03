@@ -124,10 +124,19 @@ export function renderEmbedState(root: HTMLElement, state: EmbedState): void {
     return;
   }
   root.innerHTML = `
-    <main style="${pageStyle()}" data-route="embed-state">
+    <main style="${pageStyle()}" data-route="embed-state" data-embed-source="fixture">
       <header style="margin-bottom: 1.5rem">
         <p style="margin: 0 0 .25rem; color: #53606f; font-size: .875rem">Embed ABI fixture</p>
         <h1 style="margin: 0 0 .5rem">Utsushi Embed</h1>
+        <p
+          role="note"
+          data-embed-fixture-notice
+          style="margin: 0 0 .5rem; padding: .5rem .75rem; border: 1px solid #d1d5db; border-radius: 6px; background: #f9fafb; color: #4b5563"
+        >
+          Deterministic ABI fixture — NOT live runtime state. This view renders a
+          canned <code>EmbedState</code> envelope (the stable JSON wire contract),
+          not a measurement of a running engine port.
+        </p>
         <p style="margin: 0; color: #4b5563">
           ${escapeHtml(state.adapterId)} v${escapeHtml(state.adapterVersion)} —
           schema ${escapeHtml(state.schemaVersion)}

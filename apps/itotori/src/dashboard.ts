@@ -561,6 +561,16 @@ function renderReviewerQueueRow(row: ReviewerQueueDashboardRow): string {
 }
 
 function renderRuntimeEvidence(runtime: RuntimeDashboardStatus): string {
+  // Frames / Screenshots are DERIVED from the real persisted runtime
+  // artifacts (artifact_kind `frame_capture` / `screenshot`, emitted by the
+  // engine port's substrate frame sink), NOT from the scalar summary counters.
+  // The scalar `frameCaptureCount` / `screenshotArtifactCount` both resolve to
+  // the total capture count (a single capture is counted as both a frame and a
+  // screenshot), so rendering them would present a phantom / double-counted
+  // number as a live measurement. Counting the actual artifacts keeps each
+  // metric backed by a real producer.
+  const frameCaptureCount = countRuntimeArtifactsByKind(runtime, "frame_capture");
+  const screenshotCount = countRuntimeArtifactsByKind(runtime, "screenshot");
   return panel(
     "runtime-evidence",
     "Runtime evidence",
@@ -572,12 +582,19 @@ function renderRuntimeEvidence(runtime: RuntimeDashboardStatus): string {
         <div><dt>Fidelity tier</dt><dd>${escapeHtml(runtime.fidelityTier ?? "none")}</dd></div>
         <div><dt>Evidence tier</dt><dd>${escapeHtml(runtime.evidenceTier ?? "none")}</dd></div>
         <div><dt>Text events</dt><dd>${runtime.textEventCount}</dd></div>
-        <div><dt>Frames</dt><dd>${runtime.frameCaptureCount}</dd></div>
-        <div><dt>Screenshots</dt><dd>${runtime.screenshotArtifactCount}</dd></div>
+        <div><dt>Frames</dt><dd data-metric="frame-captures">${frameCaptureCount}</dd></div>
+        <div><dt>Screenshots</dt><dd data-metric="screenshots">${screenshotCount}</dd></div>
         <div><dt>Recordings</dt><dd>${runtime.recordingArtifactCount}</dd></div>
       </dl>
     `,
   );
+}
+
+function countRuntimeArtifactsByKind(
+  runtime: RuntimeDashboardStatus,
+  artifactKind: string,
+): number {
+  return runtime.artifacts.filter((artifact) => artifact.artifactKind === artifactKind).length;
 }
 
 // ITOTORI-027 — benchmark dashboard view driven by REAL recorded

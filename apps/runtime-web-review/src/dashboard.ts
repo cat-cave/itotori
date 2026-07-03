@@ -6,8 +6,6 @@ type RuntimeStatus = {
   fidelityTier: string | null;
   evidenceTier: string | null;
   textEventCount: number;
-  frameCaptureCount: number;
-  screenshotArtifactCount: number;
   recordingArtifactCount: number;
   validationFindingCount: number;
   traceEvents: RuntimeTraceRow[];
@@ -120,6 +118,16 @@ function renderRuntimeEvidence(status: RuntimeStatus, routeRuntimeRunId: string 
     status.runtimeRunId !== null &&
     routeRuntimeRunId !== status.runtimeRunId;
   const artifactById = new Map(status.artifacts.map((artifact) => [artifact.artifactId, artifact]));
+  // Frame-capture / screenshot counts are DERIVED from the real runtime
+  // artifacts persisted by the engine port's frame sink (artifact_kind
+  // `frame_capture` / `screenshot` from the substrate render pipeline), NOT
+  // from a scalar summary counter. The historical scalar counters double-
+  // counted a single capture (frameCaptureCount === screenshotArtifactCount
+  // === total captures), so they were phantom/always-derivable numbers rather
+  // than a measurement of the artifacts that actually exist. Counting the real
+  // artifacts keeps each metric backed by a real producer.
+  const frameCaptureCount = countArtifactsByKind(status.artifacts, "frame_capture");
+  const screenshotCount = countArtifactsByKind(status.artifacts, "screenshot");
   return `
     <main style="${pageStyle()}" data-route="runtime-evidence">
       <header style="margin-bottom: 1.5rem">
@@ -136,8 +144,8 @@ function renderRuntimeEvidence(status: RuntimeStatus, routeRuntimeRunId: string 
           ${field("Fidelity tier", status.fidelityTier)}
           ${field("Evidence tier", status.evidenceTier)}
           ${field("Trace text events", String(status.textEventCount))}
-          ${field("Frame captures", String(status.frameCaptureCount))}
-          ${field("Screenshots", String(status.screenshotArtifactCount))}
+          ${metricField("Frame captures", "frame-captures", frameCaptureCount)}
+          ${metricField("Screenshots", "screenshots", screenshotCount)}
           ${field("Recordings", String(status.recordingArtifactCount))}
           ${field("Validation findings", String(status.validationFindingCount))}
         </dl>
@@ -381,6 +389,18 @@ function renderList(title: string, values: string[]): string {
 
 function field(label: string, value: string | null): string {
   return `<dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value ?? "missing")}</dd>`;
+}
+
+// A capture metric whose value is derived from the real runtime artifact list
+// (not a scalar summary counter). The `data-metric` hook lets tests assert the
+// rendered number reflects the actual producer count rather than a phantom
+// always-zero / double-counted scalar.
+function metricField(label: string, metricId: string, count: number): string {
+  return `<dt>${escapeHtml(label)}</dt><dd data-metric="${escapeHtml(metricId)}">${count}</dd>`;
+}
+
+function countArtifactsByKind(artifacts: RuntimeArtifact[], artifactKind: string): number {
+  return artifacts.filter((artifact) => artifact.artifactKind === artifactKind).length;
 }
 
 function diagnostic(value: string): string {
