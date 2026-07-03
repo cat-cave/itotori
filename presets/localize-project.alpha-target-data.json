@@ -9,7 +9,10 @@
         "game_id": "sweetie-hd",
         "game_version": "1.0.0",
         "source_profile_id": "kaifuu-reallive-sweetie-hd",
-        "source_locale": "ja-JP"
+        "source_locale": "ja-JP",
+        "vault_canonical_id": "oshioki-sweetie-koi-suru-onee-san-wa-urahara-desu.vj013077.v1-0.ja",
+        "translation_scope": "dialogue-only",
+        "stable_artifact_subdir": "sweetie-hd-alpha"
       }
     },
     {

@@ -461,7 +461,29 @@ function parseProjectMetadataRecord(parsed, metadataPath) {
     gameVersion: requireMetadataString(block, "game_version", metadataPath),
     sourceProfileId: requireMetadataString(block, "source_profile_id", metadataPath),
     sourceLocale: requireMetadataString(block, "source_locale", metadataPath),
+    // alpha-006a — optional vault by-id sourcing key. When present (and
+    // ITOTORI_VAULT_ROOT is set) the RealLive extract sources the corpus
+    // read-only through the vault adapter instead of a raw --game-root.
+    vaultCanonicalId: optionalMetadataString(block, "vault_canonical_id", metadataPath),
+    // Config-driven translation scope (drives the byte-fidelity contract on
+    // patchback). Defaults to `dialogue-only` when unset.
+    translationScope:
+      optionalMetadataString(block, "translation_scope", metadataPath) ?? "dialogue-only",
+    // Opt-in stable artifact subdir under `artifacts/` (alpha capstone lands
+    // its acceptance bundle at a fixed path, not a timestamped run dir).
+    stableArtifactSubdir: optionalMetadataString(block, "stable_artifact_subdir", metadataPath),
   };
+}
+
+function optionalMetadataString(record, key, metadataPath) {
+  const value = record[key];
+  if (value === undefined) return undefined;
+  if (typeof value !== "string" || value.trim().length === 0) {
+    throw new Error(
+      `project metadata at ${metadataPath} field '${key}' must be a non-empty string when present`,
+    );
+  }
+  return value;
 }
 
 function requireManifestString(record, key, manifestPath, entryLabel) {
@@ -1229,6 +1251,91 @@ function summarizeProviderBilledCost(providerRunArtifactsDir) {
 }
 
 /**
+ * Build the localized-bundle artifact for the alpha capstone: the primary
+ * (model, provider) pair + localized English line from patch-report.json,
+ * plus the SERVED pair, the REAL /generation cost, and the ZDR posture of
+ * every live invocation pulled from the per-invocation provider-run
+ * records. Aggregates into ONE readable file the acceptance can point at.
+ */
+function buildLocalizedBundleArtifact({
+  runDir,
+  patchReportPath,
+  providerRunArtifactsDir,
+  decompileReportPath,
+  sceneOnePngPath,
+  zdrAccountAsserted,
+}) {
+  const patchReport = JSON.parse(readFileSync(patchReportPath, "utf8"));
+  const decompileReport = existsSync(decompileReportPath)
+    ? JSON.parse(readFileSync(decompileReportPath, "utf8"))
+    : {};
+  const invocations = [];
+  let totalCostUsd = 0;
+  let allServedZdr = true;
+  if (existsSync(providerRunArtifactsDir)) {
+    const dirs = readdirSync(providerRunArtifactsDir, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name)
+      .sort();
+    for (const name of dirs) {
+      const artifactPath = join(providerRunArtifactsDir, name, "provider-run.json");
+      if (!existsSync(artifactPath)) continue;
+      const artifact = JSON.parse(readFileSync(artifactPath, "utf8"));
+      const run = artifact.run ?? {};
+      const provider = run.provider ?? {};
+      const cost = run.cost ?? {};
+      const posture = run.routingPosture ?? {};
+      // Authoritative full-precision billed cost (OpenRouter usage.cost),
+      // mirrored verbatim on cost.amountUsd and usageResponseJson.cost.
+      const generationCost = run.usageResponseJson?.cost ?? cost.amountUsd ?? "0";
+      const parsed = Number.parseFloat(String(generationCost));
+      if (Number.isFinite(parsed)) totalCostUsd += parsed;
+      const zdr = posture.zdr === true;
+      if (!zdr) allServedZdr = false;
+      invocations.push({
+        runId: run.runId,
+        taskKind: run.taskKind,
+        status: run.status,
+        requestedModelId: provider.requestedModelId,
+        requestedProviderId: provider.requestedProviderId,
+        servedModelId: provider.actualModelId,
+        servedProviderId: provider.upstreamProvider ?? provider.requestedProviderId,
+        costKind: cost.costKind,
+        generationCostUsd: String(generationCost),
+        routingPosture: {
+          zdr,
+          allow_fallbacks: posture.allow_fallbacks === true,
+          data_collection: posture.data_collection,
+          order: Array.isArray(posture.order) ? posture.order : [],
+        },
+      });
+    }
+  }
+  return {
+    schemaVersion: "itotori.localize-project.localized-bundle.v0",
+    policyId: patchReport.policyId,
+    sceneId: patchReport.sceneId,
+    // The single primary pair the request preferred (provider.order[0]).
+    primaryPair: patchReport.pair,
+    // The exact localized English line the live LLM produced.
+    localizedText: patchReport.finalDraftText,
+    translatedTargetText: patchReport.translatedTargetText,
+    decompile: {
+      unknownOpcodes: decompileReport.unknownOpcodes,
+      sourceSeenSha256: decompileReport.sourceSeenSha256,
+    },
+    zdr: {
+      accountAsserted: zdrAccountAsserted === true,
+      allServedZdr,
+    },
+    billedCallCount: invocations.length,
+    totalCostUsd: totalCostUsd.toFixed(10),
+    invocations,
+    redactedScenePng: portableRelativePath(runDir, sceneOnePngPath),
+  };
+}
+
+/**
  * Synthesize the structured feedback record from a completed iteration's
  * runtime + patch + apply + cost evidence. This is the FEEDBACK half of
  * the iterate cycle: every anomaly is a structured finding, and the
@@ -1854,7 +1961,15 @@ async function main() {
   const sceneId = policy.sceneId ?? args.scene;
   const ts = isoTimestampUtc();
   const runDirName = `${ts}-${args.project}`;
-  const runDir = join(REPO_ROOT, "artifacts", "localize-project", runDirName);
+  const dryRun = args.dryRun;
+  // Alpha capstone: land the acceptance bundle at a stable path
+  // (artifacts/<subdir>/) rather than a timestamped run dir, so the node's
+  // declared acceptance greps resolve verbatim. Dry-run keeps the
+  // timestamped dir (nothing is written there).
+  const runDir =
+    projectMetadata.stableArtifactSubdir !== undefined && !dryRun
+      ? join(REPO_ROOT, "artifacts", projectMetadata.stableArtifactSubdir)
+      : join(REPO_ROOT, "artifacts", "localize-project", runDirName);
 
   const bridgeBundlePath = join(runDir, "bridge-bundle.json");
   const agenticLoopBundlePath = join(runDir, "agentic-loop-bundle.v0.json");
@@ -1864,8 +1979,9 @@ async function main() {
   const renderEvidencePath = join(runDir, "render-evidence.json");
   const renderArtifactsDir = join(runDir, "render-artifacts");
   const providerRunArtifactsDir = join(runDir, "provider-runs");
-
-  const dryRun = args.dryRun;
+  const decompileReportPath = join(runDir, "decompile-report.json");
+  const sceneOnePngPath = join(runDir, "scene-1.png");
+  const localizedBundlePath = join(runDir, "localized-bundle.json");
 
   // ------- Phase 0: environment + pair-policy validation -------
   const openrouterApiKey = process.env.OPENROUTER_API_KEY;
@@ -1886,12 +2002,36 @@ async function main() {
     }
   }
 
-  const realCorpusSource = resolveRealCorpusSource({
-    dryRun,
-    projectMetadata,
-    corpusId: args.corpus,
-  });
-  const gameRoot = realCorpusSource.root;
+  // alpha-006a — vault by-id sourcing. When the project declares a vault
+  // canonical id AND ITOTORI_VAULT_ROOT is set, the RealLive extract sources
+  // the corpus read-only through the vault adapter (materialised to scratch)
+  // instead of a raw --game-root. The materialised game-root is not known
+  // until `extract` runs, so in vault mode `resolveRealCorpusSource` is
+  // skipped and the source path is read back from the decompile report.
+  const vaultRoot = process.env.ITOTORI_VAULT_ROOT;
+  const vaultMode =
+    projectMetadata.engine === "reallive" &&
+    !dryRun &&
+    projectMetadata.vaultCanonicalId !== undefined &&
+    vaultRoot !== undefined &&
+    vaultRoot.length > 0;
+
+  const realCorpusSource = vaultMode
+    ? {
+        envName: "ITOTORI_VAULT_ROOT",
+        // Resolved after extract materialises the vault tree to scratch.
+        root: undefined,
+        placeholder: "<VAULT_MATERIALIZED_ROOT>",
+        dryRunLabel: `ITOTORI_VAULT_ROOT vault-canonical-id=${projectMetadata.vaultCanonicalId} projectId=${projectMetadata.projectId}`,
+      }
+    : resolveRealCorpusSource({
+        dryRun,
+        projectMetadata,
+        corpusId: args.corpus,
+      });
+  // In vault mode this is filled in after Phase 1 extract resolves the
+  // materialised tree; in raw-path mode it is the configured source root.
+  let gameRoot = realCorpusSource.root;
 
   // RPG Maker MV/MZ vertical slice: a self-contained engine pipeline that
   // writes the patched copy + delta under the run dir (no external TARGET),
@@ -1917,23 +2057,25 @@ async function main() {
   }
 
   const targetRoot = process.env.TARGET;
-  const livePathRedactor = buildPathRedactor([
+  let livePathRedactor = buildPathRedactor([
     { path: gameRoot, replacement: realCorpusSource.placeholder },
     { path: targetRoot, replacement: "<TARGET>" },
   ]);
   if (!dryRun && (targetRoot === undefined || targetRoot.length === 0)) {
     throw new Error("TARGET (writable path for the patched copy) must be set unless --dry-run");
   }
-  if (!dryRun) {
+  // In vault mode the source root is not known until extract materialises
+  // the tree; the source-vs-target distinctness check runs after Phase 1.
+  if (!dryRun && !vaultMode) {
     ensureWritableTargetDistinctFromSource(gameRoot, targetRoot, livePathRedactor);
   }
 
   if (dryRun) {
     printDryRunPlan(
       [
-        `cargo run -p kaifuu-cli -- extract --engine reallive --game-root ${realCorpusSource.placeholder} --game-id ${projectMetadata.gameId} --game-version ${projectMetadata.gameVersion} --source-profile-id ${projectMetadata.sourceProfileId} --source-locale ${projectMetadata.sourceLocale} --scene ${sceneId} --bundle-output ${bridgeBundlePath}`,
+        `cargo run -p kaifuu-cli -- extract --engine reallive --game-root ${realCorpusSource.placeholder} --game-id ${projectMetadata.gameId} --game-version ${projectMetadata.gameVersion} --source-profile-id ${projectMetadata.sourceProfileId} --source-locale ${projectMetadata.sourceLocale} --scene ${sceneId} --bundle-output ${bridgeBundlePath} --decompile-report-output ${decompileReportPath}`,
         `node apps/itotori/dist/cli.js localize-project-stage --bridge ${bridgeBundlePath} --pair-policy ${pairPolicyPath} --unit-index ${args.unitIndex} --output ${agenticLoopBundlePath} --translated-bundle-output ${translatedBundlePath} --patch-report-output ${patchReportPath} --provider-run-artifacts-dir ${providerRunArtifactsDir}`,
-        `cargo run -p kaifuu-cli -- patch --engine reallive --source ${realCorpusSource.placeholder} --target <TARGET> --bundle ${translatedBundlePath} --force`,
+        `cargo run -p kaifuu-cli -- patch --engine reallive --source ${realCorpusSource.placeholder} --target <TARGET> --bundle ${translatedBundlePath} --scope ${projectMetadata.translationScope} --force`,
         `cargo run -p utsushi-cli -- replay-validate --engine reallive --seen <TARGET>/REALLIVEDATA/Seen.txt --scene ${sceneId} --print-replay-log ${replayLogPath}`,
         `cargo run -p utsushi-cli -- render-validate --engine reallive --seen <TARGET>/REALLIVEDATA/Seen.txt --scene ${sceneId} --artifact-root ${renderArtifactsDir} --expect-text-contains <real-translated-draft-from-patch-report> --redaction on --output ${renderEvidencePath}`,
       ],
@@ -1945,10 +2087,70 @@ async function main() {
 
   mkdirSync(runDir, { recursive: true });
 
-  // Capture source sha256 BEFORE any work.
+  const targetPlaceholder = "<TARGET>";
+
+  if (vaultMode) {
+    // ---- Phase 1 (vault): kaifuu extract via the read-only vault adapter
+    // (alpha-006a). The vault materialises the corpus to scratch; the
+    // resolved game-root + source Seen.txt sha256 come back in the
+    // decompile report, which the driver reads to source the rest of the
+    // chain (no raw --game-root). --decompile-report-output emits the
+    // alpha-006e zero-unknown report at the same time.
+    runCommand(
+      "cargo",
+      [
+        "run",
+        "-p",
+        "kaifuu-cli",
+        "--quiet",
+        "--",
+        "extract",
+        "--engine",
+        "reallive",
+        "--vault-canonical-id",
+        projectMetadata.vaultCanonicalId,
+        ...realliveIdentityArgs(projectMetadata),
+        "--scene",
+        String(sceneId),
+        "--bundle-output",
+        bridgeBundlePath,
+        "--decompile-report-output",
+        decompileReportPath,
+      ],
+      process.env,
+      { redact: livePathRedactor },
+    );
+    const decompileReport = JSON.parse(readFileSync(decompileReportPath, "utf8"));
+    if (
+      typeof decompileReport.resolvedGameRoot !== "string" ||
+      decompileReport.resolvedGameRoot.length === 0
+    ) {
+      throw new Error(
+        `decompile report at ${decompileReportPath} missing resolvedGameRoot; cannot source the vault-materialised tree`,
+      );
+    }
+    gameRoot = decompileReport.resolvedGameRoot;
+    // Source root is now known: enforce source-vs-target distinctness.
+    ensureWritableTargetDistinctFromSource(
+      gameRoot,
+      targetRoot,
+      buildPathRedactor([
+        { path: gameRoot, replacement: realCorpusSource.placeholder },
+        { path: targetRoot, replacement: targetPlaceholder },
+      ]),
+    );
+  }
+
+  // Capture source sha256 BEFORE any mutating work (raw mode: before
+  // extract; vault mode: after the read-only extract materialised the
+  // pristine tree). Both hash the SAME resolved path so the post-run drift
+  // guard compares like-for-like.
   const sourceSeenPath = resolveReallivedataSeen(gameRoot);
   const sourceSeenPlaceholder = `${realCorpusSource.placeholder}/REALLIVEDATA/Seen.txt`;
-  const targetPlaceholder = "<TARGET>";
+  livePathRedactor = buildPathRedactor([
+    { path: gameRoot, replacement: realCorpusSource.placeholder },
+    { path: targetRoot, replacement: targetPlaceholder },
+  ]);
   const liveCommandRedactor = buildPathRedactor([
     { path: sourceSeenPath, replacement: sourceSeenPlaceholder },
     { path: gameRoot, replacement: realCorpusSource.placeholder },
@@ -1959,29 +2161,34 @@ async function main() {
     `[localize-project] source Seen.txt sha256 (pre): ${sourceSeenSha256Before}\n`,
   );
 
-  // ------------------- Phase 1: kaifuu extract --------------------
-  runCommand(
-    "cargo",
-    [
-      "run",
-      "-p",
-      "kaifuu-cli",
-      "--quiet",
-      "--",
-      "extract",
-      "--engine",
-      "reallive",
-      "--game-root",
-      gameRoot,
-      ...realliveIdentityArgs(projectMetadata),
-      "--scene",
-      String(sceneId),
-      "--bundle-output",
-      bridgeBundlePath,
-    ],
-    process.env,
-    { redact: liveCommandRedactor },
-  );
+  if (!vaultMode) {
+    // ---- Phase 1 (raw path): kaifuu extract from a raw --game-root
+    // (env-gated test helper). Emits the same alpha-006e decompile report.
+    runCommand(
+      "cargo",
+      [
+        "run",
+        "-p",
+        "kaifuu-cli",
+        "--quiet",
+        "--",
+        "extract",
+        "--engine",
+        "reallive",
+        "--game-root",
+        gameRoot,
+        ...realliveIdentityArgs(projectMetadata),
+        "--scene",
+        String(sceneId),
+        "--bundle-output",
+        bridgeBundlePath,
+        "--decompile-report-output",
+        decompileReportPath,
+      ],
+      process.env,
+      { redact: liveCommandRedactor },
+    );
+  }
 
   // -------------- Phase 2: agentic loop (live LLM) ----------------
   const stageArgs = [
@@ -2043,6 +2250,8 @@ async function main() {
       targetRoot,
       "--bundle",
       translatedBundlePath,
+      "--scope",
+      projectMetadata.translationScope,
       "--force",
     ],
     process.env,
@@ -2135,6 +2344,44 @@ async function main() {
     `[localize-project] render evidence: E2 frame ${renderEvidence.evidenceTier} rendered ${renderEvidence.renderedLineCount} localized line(s); rendered-text sha256=${renderEvidence.renderedTextSha256} redaction=${renderEvidence.redaction}\n`,
   );
 
+  // ---- Copy the emitted redacted public PNG to the stable scene-1.png
+  // acceptance path (consume alpha-006b). Redaction is ON (default), so the
+  // committed frame carries no copyrighted g00 pixels — assert that before
+  // landing it.
+  if (renderEvidence.redaction !== "on") {
+    throw new Error(
+      `render evidence redaction is '${String(renderEvidence.redaction)}'; refusing to land a non-redacted scene-1.png`,
+    );
+  }
+  if (typeof renderEvidence.artifactPath !== "string" || renderEvidence.artifactPath.length === 0) {
+    throw new Error(`render evidence at ${renderEvidencePath} missing artifactPath`);
+  }
+  copyFileSync(renderEvidence.artifactPath, sceneOnePngPath);
+  process.stdout.write(
+    `[localize-project] redacted scene frame -> ${portableRelativePath(runDir, sceneOnePngPath)} (redaction=on, no g00 pixels)\n`,
+  );
+
+  // ---- Localized-bundle artifact: surface the served (model, provider)
+  // pair(s), the REAL /generation cost, and the ZDR posture pulled from the
+  // per-invocation provider-run records into ONE readable file, alongside
+  // the primary pair + localized English line from patch-report.json. This
+  // satisfies the "localized bundle from a live ZDR call, cost recorded"
+  // acceptance in a single artifact.
+  if (args.providerKind !== "fake") {
+    const localizedBundle = buildLocalizedBundleArtifact({
+      runDir,
+      patchReportPath,
+      providerRunArtifactsDir,
+      decompileReportPath,
+      sceneOnePngPath,
+      zdrAccountAsserted: process.env.OPENROUTER_ZDR_ACCOUNT_ASSERTED === "1",
+    });
+    writeFileSync(localizedBundlePath, `${JSON.stringify(localizedBundle, null, 2)}\n`);
+    process.stdout.write(
+      `[localize-project] localized bundle: primary ${localizedBundle.primaryPair.modelId}@${localizedBundle.primaryPair.providerId}; ${localizedBundle.invocations.length} live ZDR invocation(s); total /generation cost USD ${localizedBundle.totalCostUsd}; all-served-ZDR=${localizedBundle.zdr.allServedZdr}\n`,
+    );
+  }
+
   // ---- Readonly-source invariant: re-hash + assert no drift. ----
   const sourceSeenSha256After = sha256OfFile(sourceSeenPath);
   process.stdout.write(
@@ -2174,6 +2421,9 @@ async function main() {
     sourceLocale: projectMetadata.sourceLocale,
     pair: policy.pair,
     sourceSeenSha256: sourceSeenSha256Before,
+    sourcedVia: vaultMode ? "vault-canonical-id" : realCorpusSource.envName,
+    vaultCanonicalId: vaultMode ? projectMetadata.vaultCanonicalId : undefined,
+    translationScope: projectMetadata.translationScope,
     artifacts: {
       bridgeBundle: portableRelativePath(runDir, bridgeBundlePath),
       agenticLoopBundle: portableRelativePath(runDir, agenticLoopBundlePath),
@@ -2181,6 +2431,12 @@ async function main() {
       replayLog: portableRelativePath(runDir, replayLogPath),
       renderEvidence: portableRelativePath(runDir, renderEvidencePath),
       providerRunArtifacts: portableRelativePath(runDir, providerRunArtifactsDir),
+      decompileReport: portableRelativePath(runDir, decompileReportPath),
+      sceneOnePng: portableRelativePath(runDir, sceneOnePngPath),
+      localizedBundle:
+        args.providerKind !== "fake"
+          ? portableRelativePath(runDir, localizedBundlePath)
+          : undefined,
     },
   };
   writeFileSync(join(runDir, "run-summary.json"), `${JSON.stringify(summary, null, 2)}\n`);

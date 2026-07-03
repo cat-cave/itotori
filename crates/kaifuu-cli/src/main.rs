@@ -325,7 +325,7 @@ fn run_extract_reallive_bundle(args: &[String]) -> Result<(), Box<dyn std::error
     use kaifuu_reallive::{
         BridgeOpts, REALLIVE_SEEN_TXT_DIRECTORY_BYTE_LEN, SceneHeader, Xor2DecScene,
         compiler_version_uses_xor2, decompress_avg32, gameexe::parse_gameexe_inventory,
-        parse_archive, produce_bundle, recover_and_decrypt_archive,
+        parse_archive, parse_real_bytecode, produce_bundle, recover_and_decrypt_archive,
     };
 
     let game_id = required_reallive_metadata_flag(args, "--game-id")?;
@@ -507,6 +507,39 @@ fn run_extract_reallive_bundle(args: &[String]) -> Result<(), Box<dyn std::error
     })?;
 
     write_json(&bundle_output, &produced.json)?;
+
+    // alpha-006e — machine-readable decompile report. The zero-unknown
+    // property is guaranteed by the decompiler (a well-formed scene stream
+    // partitions every byte into a typed element; any byte outside a
+    // structural opener is a catch-all Textout — see kaifuu-reallive
+    // `parse_real_bytecode`). This surfaces that property as an auditable
+    // artifact: it re-walks the fully-decrypted bytecode and counts any
+    // element the dispatcher did NOT recognise. For a real RealLive scene
+    // the count is 0; a non-zero count means the 100%-decompilation bar
+    // was not met and the caller can fail closed on it.
+    if let Some(report_path) = flag_optional(args, "--decompile-report-output") {
+        let opcodes =
+            parse_real_bytecode(&decompressed).map_err(|err| -> Box<dyn std::error::Error> {
+                format!("kaifuu.reallive.decompile_report_parse: {err}").into()
+            })?;
+        let total_opcodes = opcodes.len();
+        let unknown_opcodes = opcodes.iter().filter(|op| !op.is_recognized()).count();
+        let recognized_opcodes = total_opcodes - unknown_opcodes;
+        let source_seen_sha256 = sha256_hash_bytes(&seen_bytes);
+        let report = serde_json::json!({
+            "schemaVersion": "itotori.kaifuu.decompile-report.v0",
+            "engine": "reallive",
+            "gameId": opts.game_id,
+            "gameVersion": opts.game_version,
+            "sceneId": scene_id,
+            "totalOpcodes": total_opcodes,
+            "recognizedOpcodes": recognized_opcodes,
+            "unknownOpcodes": unknown_opcodes,
+            "sourceSeenSha256": source_seen_sha256,
+            "resolvedGameRoot": resolved_game_root.display().to_string(),
+        });
+        write_json(&PathBuf::from(report_path), &report)?;
+    }
     Ok(())
 }
 

@@ -88,7 +88,7 @@ describe("UTSUSHI-228 parseLocalizeProjectPairPolicy", () => {
       modelId: "deepseek/deepseek-v4-flash",
       providerId: "fireworks",
     });
-    expect(parsed.sceneId).toBe(1);
+    expect(parsed.sceneId).toBe(1017);
     // The obsolete planted-sentinel field is gone from the schema.
     expect(parsed).not.toHaveProperty("enUsSentinel");
   });
@@ -304,7 +304,7 @@ describe("UTSUSHI-228 runLocalizeProjectStageCommand", () => {
         providerId: "fireworks",
       });
       expect(patchReport).not.toHaveProperty("enUsSentinel");
-      expect(patchReport.sceneId).toBe(1);
+      expect(patchReport.sceneId).toBe(1017);
       // The patch-report records the REAL translated text the downstream
       // replay must OBSERVE — not a planted sentinel.
       expect(patchReport.finalDraftText).toBe(draftText);
