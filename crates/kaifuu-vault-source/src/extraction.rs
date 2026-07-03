@@ -177,13 +177,17 @@ pub fn extract_archive(
 
     match result {
         Ok(()) => {
-            // Defence against a silently-incomplete extraction: some real
-            // archives contain folders whose codec combination the pure-Rust
-            // decoder cannot fully decode, and the decode loop can return
-            // `Ok(())` having skipped them. A partial tree must never be
-            // surfaced as success (the contract: "partial extractions are not
-            // used"). Re-read the archive header and confirm every file entry
-            // actually landed on disk.
+            // Defence-in-depth against a silently-incomplete extraction. When
+            // a folder's codec combination is unsupported, sevenz-rust2 0.21.1's
+            // `decompress_file_with_extract_fn` PROPAGATES the decode error
+            // (e.g. "Unsupported method") — it lands in the `Err` arm below; it
+            // does NOT return `Ok(())` with the folder silently skipped. This
+            // re-verification is therefore not load-bearing for that path; it is
+            // kept as a guard against any FUTURE regression that could surface a
+            // partial tree as success. A partial tree must never be surfaced as
+            // success (the contract: "partial extractions are not used"), so
+            // re-read the archive header and confirm every file entry actually
+            // landed on disk.
             verify_complete_extraction(&archive_path_owned, &extracted_root, &paths.run_root)?;
             Ok(ExtractedTree {
                 extracted_root,

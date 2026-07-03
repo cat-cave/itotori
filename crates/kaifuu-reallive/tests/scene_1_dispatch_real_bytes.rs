@@ -38,9 +38,10 @@
 //! 1. First decoded opcode is in the documented opener set
 //!    (`MetaLine(2)` per research doc §D first bytes
 //!    `0a 02 00 0a 03 00 21 ...`).
-//! 2. The scene contains ≥1 `TextDisplay` opcode (or `Unknown` if it
-//!    falls outside the alpha classification — but explicitly labeled
-//!    via [`RealLiveOpcode::label`]).
+//! 2. The scene contains ≥1 text-display opcode (`TextDisplay` /
+//!    `CharacterTextDisplay` / `Textout`), each resolving to a typed
+//!    variant. Scene 1 carries zero un-recognised elements (see criterion
+//!    4), so no `Unknown` fallback is exercised here.
 //! 3. The scene contains ≥1 voice-line reference (`VoicePlay` if
 //!    recognised, otherwise the test records the count for diagnostics).
 //! 4. Scene 1's own un-recognised-element count is EXACTLY zero — the full

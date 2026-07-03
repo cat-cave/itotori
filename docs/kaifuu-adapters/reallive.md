@@ -1,11 +1,44 @@
 # RealLive Adapter Readiness Record
 
+## Current state — supersedes the slice-scoped framing in the historical addenda below
+
+The RealLive adapter is no longer the identify-only detector / eight-opcode
+smoke parser the historical KAIFUU-172/173 addenda below describe. As delivered
+through KAIFUU-174 + KAIFUU-211 and the semantic-command-cataloguing work, the
+`kaifuu-reallive` crate is a **100% semantic RealLive decompiler**:
+
+- **Zero-unknown on real bytes across two independent full archives.** Every
+  populated scene of BOTH Oshioki Sweetie HD (compiler `110002`, second-level
+  `xor_2` encrypted) and Kanon (compiler `10002`, no `xor_2`) decodes to typed
+  `BytecodeElement`s with zero generic `Command`, zero `Unknown`, zero
+  `MalformedExpression`, and zero parse failures. This is asserted across every
+  scene of both archives by
+  `crates/kaifuu-reallive/tests/multi_corpus_real_bytes.rs` (the multi-game
+  gate) and pinned per-scene by `tests/scene_1_dispatch_real_bytes.rs`.
+- **Full `ExpressionPiece` evaluator.** Arg/expression spans are driven off the
+  real `parse_expression` evaluator (the single source of truth
+  `parse_real_bytecode_spans` exposes), not a fixed-width guess — so a legal
+  expression byte equal to a `)`/`,` delimiter is consumed whole. The
+  named-opcode catalogue is a full semantic command catalogue keyed on
+  `module_id` (system / message / background / branch / call / goto / voice /
+  textout families), not the eight-opcode smoke set documented below.
+- **Length-changing patch-back.** `apply_translated_bundle`
+  (`src/patchback/bundle_driven.rs`) rewrites the 10,000-slot Seen.txt offset
+  table and recalculates every goto-family jump pointer, so a translation that
+  grows or shrinks the Shift-JIS body round-trips byte-correct — proven on real
+  Sweetie HD scene 8509 (91 goto pointers) and on non-`xor_2` Kanon scenes.
+
+The sections below are retained as the historical, slice-by-slice readiness
+record (KAIFUU-172 detector → 173 parser smoke → 174 inventory + patch-back →
+211 length-changing). Where an individual addendum bullet describes a boundary
+or gap that a later slice closed, it is marked inline.
+
 - Roadmap node: KAIFUU-172 (detector); successor scopes KAIFUU-173 (Scene/SEEN parser-boundary smoke), KAIFUU-174 (text inventory adapter), UTSUSHI-146 (runtime port). KAIFUU-172 establishes only the identify/inventory boundary.
 - Owner: kaifuu engine-research track.
 - Adapter id: `kaifuu.reallive`
 - Crate or module: `kaifuu-engine-fixture` (struct `RealLiveProfileDetectorAdapter`); archive-matrix row `reallive-seen-txt` in `kaifuu-core`. A dedicated `kaifuu-reallive` crate is deferred to KAIFUU-173/174 once the parser/extractor lands.
 - Engine family: RealLive (VisualArt's / Key — same VM lineage as AVG32 and Siglus, but distinct on-disk shape).
-- Supported versions and variants: synthetic detector fixtures only at this slice. The detector accepts both a synthetic short-circuit (SEEN.TXT and Gameexe.ini matching the synthetic magic bytes) and a generic real-shape envelope (SEEN.TXT little-endian count + offset table fits inside file length AND Gameexe.ini contains at least one RealLive-specific key prefix). Real-game disambiguation is exercised in CI through synthetic positive + Siglus-cross / AVG32-cross negative fixtures; real RealLive titles (including the ALPHA-006 vertical Sweetie HD Remaster + Sweets) become positive evidence after KAIFUU-172 ships and are exercised at ALPHA-006.
+- Supported versions and variants: synthetic detector fixtures only at this KAIFUU-172 detector slice (SUPERSEDED — see **Current state**: the real Sweetie HD + Kanon full archives are now positive, zero-unknown decompile evidence, not just detector fixtures). The detector accepts both a synthetic short-circuit (SEEN.TXT and Gameexe.ini matching the synthetic magic bytes) and a generic real-shape envelope (SEEN.TXT little-endian count + offset table fits inside file length AND Gameexe.ini contains at least one RealLive-specific key prefix). Real-game disambiguation is exercised in CI through synthetic positive + Siglus-cross / AVG32-cross negative fixtures; real RealLive titles (including the ALPHA-006 vertical Sweetie HD Remaster + Sweets) become positive evidence after KAIFUU-172 ships and are exercised at ALPHA-006.
 - Explicitly excluded versions and variants:
   - AVG32 (`.PDT`-bearing or Gameexe-dat-bearing scenes) → semantic `kaifuu.unsupported_engine_variant`.
   - Siglus (`Scene.pck`/`Gameexe.dat`) → routes to the Siglus detector; co-presence with RealLive markers → `kaifuu.ambiguous_engine_variant`.
@@ -87,7 +120,7 @@ behavior-only / clean-room. The auditor uses this list verbatim.
 
 - Roadmap node: KAIFUU-173 (Scene/SEEN parser-boundary smoke).
 - Crate or module: `kaifuu-reallive` (new workspace member at `crates/kaifuu-reallive/`). Library-only — no `EngineAdapter` impl. Public surface: `parse_archive`, `parse_scene`, AST types (`Scene`, `Instruction`, `StringSlot`, `ParseOutcome`, `ParseDiagnostic`), bounded `NamedOpcode` catalogue, and the `semantic_error_code_for_parser_diagnostic` mapping helper.
-- Initial support boundary (parser scope): smoke — single fixture-safe scene per archive, eight named opcodes (`TextDisplay`, `SetSpeaker`, `Choice`, `SetVar`, `Jump`, `Return`, `ClearScreen`, `Pause`), and a documented synthetic instruction shape (opener `0x23`, opcode byte, operand-count byte, then `i`/`s`/`l` operand tags). Unrecognized opener bytes and opcodes emit `kaifuu.reallive.unrecognized_instruction` warnings paired with an `Unrecognized` AST node carrying the raw opener — never silent skip.
+- Initial support boundary (parser scope) **[SUPERSEDED — see Current state: the KAIFUU-174/211 semantic catalogue decodes both real full archives zero-unknown; the eight-opcode set below was the KAIFUU-173 smoke slice only]**: smoke — single fixture-safe scene per archive, eight named opcodes (`TextDisplay`, `SetSpeaker`, `Choice`, `SetVar`, `Jump`, `Return`, `ClearScreen`, `Pause`), and a documented synthetic instruction shape (opener `0x23`, opcode byte, operand-count byte, then `i`/`s`/`l` operand tags). Unrecognized opener bytes and opcodes emit `kaifuu.reallive.unrecognized_instruction` warnings paired with an `Unrecognized` AST node carrying the raw opener — never silent skip.
 - Unsupported or gated boundary at this slice: real-game variability beyond the synthetic fixture (per-scene headers, real-game-only operand shapes, the long tail of RealLive opcodes); Shift-JIS decode (KAIFUU-174 codec stage); encrypted SEEN.TXT (future node); patch-back (KAIFUU-174); jump resolution / scene-graph linking / expression evaluation / VM execution (UTSUSHI-146); CLI inventory subcommand (KAIFUU-174). All emit `kaifuu.unsupported_layered_transform` or stay outside the parser surface entirely.
 - Public fixture ids: `smoke-scene-001`, `truncated-scene-001`, `unknown-opcode-001` (crate-local under `crates/kaifuu-reallive/tests/fixtures/`; **not** promoted to `fixtures/public/manifest.schema.json` per §9.2 of the plan — KAIFUU-174 may promote them when bridge-bundle goldens land).
 - Public fixture source class: synthetic.
@@ -112,7 +145,7 @@ behavior-only / clean-room. The auditor uses this list verbatim.
 - Known gaps (P2/P3 follow-ups):
   - KAIFUU-174 — text inventory adapter (Scene/SEEN/Gameexe text slots, Shift-JIS decode, protected markup, asset references, patch-back, `EncodedStringSlot` projection from the parser AST).
   - UTSUSHI-146 — native RealLive runtime port (opcode execution semantics, jump resolution, VM port).
-  - Real-game opcode-coverage discovery at ALPHA-006 — expansion of the named-opcode catalogue follows the per-game evidence-first rule (each new opcode requires a paired synthetic fixture).
+  - **[DELIVERED — see Current state]** Real-game opcode-coverage discovery at ALPHA-006 — the full semantic command catalogue now decodes Sweetie HD + Kanon zero-unknown; expansion still follows the per-game evidence-first rule (each new opcode requires a paired real/synthetic fixture).
   - Offset-map / logical-id layer for patch-back-stability (the byte-position-derived string-slot ids in this slice are intentionally physical-position ids; the logical layer is KAIFUU-174's offset-map scope).
 
 ### KAIFUU-173 rlvm clean-room worker checklist
@@ -144,13 +177,19 @@ behavior-only / clean-room. The auditor uses this list verbatim.
   - `kaifuu.reallive.inventory.unknown_asset_extension` (Warning).
   - `kaifuu.reallive.inventory.unknown_gameexe_key` (Warning).
   - `kaifuu.reallive.unsupported_text_shape` (Warning).
-  - `kaifuu.reallive.patchback_offset_overflow` (Fatal; length-changing edits).
-  - `kaifuu.reallive.patchback_shift_jis_encode_failure` (Fatal; encoder hit `had_unmappable_characters`).
-  - `kaifuu.reallive.patchback_unsupported_length_policy` (Fatal; `FixedBudget` requested).
-  - `kaifuu.reallive.patchback_parser_regression` (Fatal; re-parse self-check failed).
-  - `kaifuu.reallive.patchback_unknown_slot_id` (Fatal; edit references an unknown slot id).
-  - `kaifuu.reallive.patchback_stale_source_hash` (Fatal; expected source hash mismatched).
-  - `kaifuu.reallive.patchback_protected_span_lost` (Fatal; edited text dropped a protected span).
+- Patch-back diagnostic codes — the canonical set is emitted by the bundle-driven driver `apply_translated_bundle` (`crates/kaifuu-reallive/src/patchback/bundle_driven.rs`), all Fatal. The older KAIFUU-174 slot-API codes (`patchback_offset_overflow`, `patchback_unsupported_length_policy`, `patchback_unknown_slot_id`, `patchback_stale_source_hash`, `patchback_protected_span_lost`, `patchback_parser_regression`) are **RETIRED**: length-changing edits succeed through the bundle-driven path (offset table rewritten, goto pointers recalculated), so there is no `patchback_offset_overflow`.
+  - `kaifuu.reallive.patchback_bundle_schema_invalid` — translated bundle failed v0.2 validation, or a unit lacked a `target.text`.
+  - `kaifuu.reallive.patchback_archive_parse_failure` — the source Seen.txt envelope failed to parse.
+  - `kaifuu.reallive.patchback_provenance_mismatch` — a unit's source byte range did not resolve to a scene Textout body.
+  - `kaifuu.reallive.patchback_scene_header_invalid` — a scene header failed to parse after decompression.
+  - `kaifuu.reallive.patchback_decompress_failure` — AVG32 decompression of an original scene's bytecode failed.
+  - `kaifuu.reallive.patchback_compress_failure` — AVG32 re-compression of a patched scene's bytecode failed.
+  - `kaifuu.reallive.patchback_target_encode_failure` — the translated `target.text` could not be encoded as Shift-JIS.
+  - `kaifuu.reallive.patchback_control_markup_only_target` — after stripping out-of-band control markup (`<reallive.kidoku …>`) the target carried no translatable dialogue body.
+  - `kaifuu.reallive.patchback_scene_packing_overflow` — the re-packed archive exceeded the encodable size/offset budget.
+  - `kaifuu.reallive.patchback_goto_target_unresolvable` — a goto-family jump target fell strictly inside an edited text body and could not be re-based.
+  - `kaifuu.reallive.patchback_xor2_recovery_failed` — an edited `xor_2`-encrypted scene's cipher could not be recovered for re-encryption.
+  - `kaifuu.reallive.patchback_xor2_missing_cipher` — a scene sets `use_xor_2` but no cipher was available for re-encryption.
 - Reference implementations and docs:
   - Haeleth's RLDEV documentation (`https://dev.haeleth.net/rldev.shtml`) — `behavior-only-clean-room`. Used to derive the bounded protected-span catalogue and the bounded Gameexe.ini key catalogue.
   - rlvm (`https://github.com/eglaysher/rlvm`) — `behavior-only-clean-room`. Not linked, not derived.

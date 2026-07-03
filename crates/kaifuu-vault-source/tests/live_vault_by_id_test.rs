@@ -192,9 +192,10 @@ fn resolves_kanon_by_id_and_materializes_reallive_tree() {
 
     // Materialize. Kanon's by-id archive layers a Delta filter on top of a
     // BCJ2 coder (`Method = Delta BCJ2`). sevenz-rust2 <= 0.21.1 could not
-    // decode that multi-coder folder and the decode loop returned `Ok(())`
-    // having silently skipped its entries; the `verify_complete_extraction`
-    // guard then turned that partial tree into a typed `ExtractionFailed`.
+    // decode that multi-coder folder: `decompress_file_with_extract_fn`
+    // PROPAGATED the decode error (Unsupported method) rather than returning
+    // `Ok(())` with the entries silently skipped, and the extraction worker
+    // mapped that Err into a typed `ExtractionFailed`.
     // sevenz-rust2 0.21.2 (upstream PR #117) decodes Delta+BCJ2 folders, so a
     // complete materialize is now REQUIRED — a full `Ok(mat)` here *is* the
     // proof that `verify_complete_extraction` passed (every archive-declared
