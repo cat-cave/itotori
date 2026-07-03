@@ -7939,13 +7939,15 @@ mod tests {
                 "RealLive adapter missing unsupported {unsupported:?}"
             );
         }
-        // Patching is Limited per KAIFUU-174 (§3.3).
+        // Patching is Limited per KAIFUU-174 (§3.3): length-changing Scene/SEEN
+        // text-slot replacement, but limited to one scene-scoped bundle per
+        // call and to the configured text scope (not image-overlaid .g00 text).
         assert!(
             reallive_caps.reports.iter().any(|report| {
                 report.capability == Capability::Patching
                     && report.status == CapabilityStatus::Limited
             }),
-            "RealLive adapter must report Patching as Limited at KAIFUU-174 (length-preserving only)"
+            "RealLive adapter must report Patching as Limited at KAIFUU-174 (length-changing single-scene text-slot replacement)"
         );
     }
 

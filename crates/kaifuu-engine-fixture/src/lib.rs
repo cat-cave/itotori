@@ -4038,7 +4038,7 @@ impl EngineAdapter for RealLiveProfileDetectorAdapter {
                 PatchBackTransform::ReplaceFile,
                 PatchBackTransform::RecompileBytecode,
             ],
-            support_boundary: Some("Scene/SEEN bridge unit extraction with stable KAIFUU-173 slot ids (length-preserving patch-back at the Patch contract)".to_string()),
+            support_boundary: Some("Scene/SEEN bridge unit extraction with stable KAIFUU-173 slot ids (length-changing bundle-driven patch-back at the Patch contract)".to_string()),
         };
         let patch = LayeredAccessOperationContract {
             status: CapabilityStatus::Supported,
@@ -4049,7 +4049,7 @@ impl EngineAdapter for RealLiveProfileDetectorAdapter {
             supported_codecs: vec![CodecTransform::ShiftJisText, CodecTransform::BytecodeDecompile],
             supported_patch_back: vec![PatchBackTransform::RecompileBytecode],
             support_boundary: Some(
-                "Length-preserving slot replacement only; length-changing edits emit kaifuu.reallive.patchback_offset_overflow Fatal."
+                "Length-changing slot replacement: bundle-driven patch-back rewrites the offset table and recalculates jump targets, so a translation that grows or shrinks the Shift-JIS body round-trips byte-correct. Genuinely-unencodable edits (a non-Shift-JIS codepoint, a goto target left strictly inside an edited body, or a scene-packing overflow) are rejected with the typed kaifuu.reallive.patchback_* Fatal."
                     .to_string(),
             ),
         };
@@ -4067,7 +4067,7 @@ impl EngineAdapter for RealLiveProfileDetectorAdapter {
                 CapabilityReport::supported(Capability::PatchBack),
                 CapabilityReport::limited(
                     Capability::Patching,
-                    "length-preserving slot replacement only; length-changing edits return kaifuu.reallive.patchback_offset_overflow Fatal",
+                    "length-changing Scene/SEEN text-slot replacement (offset table rewritten + jump targets recalculated) applied through the bundle-driven driver; limited to one scene-scoped bundle per call and to the configured text scope (dialogue/speaker/choice), not image-overlaid .g00 text",
                 ),
                 CapabilityReport::limited(
                     Capability::AssetTextPatching,
@@ -4112,7 +4112,7 @@ impl EngineAdapter for RealLiveProfileDetectorAdapter {
                     "image-overlaid text inside .g00 is not in scope".to_string(),
                 ]),
                 CapabilityLevelStatus::unsupported(
-                    "no full patch path yet; KAIFUU-053 reports patch as Unsupported at the matrix even though KAIFUU-174 supports length-preserving slot replacement",
+                    "no full multi-scene archive-rebuild patch path yet; KAIFUU-053 reports patch as Unsupported at the matrix even though KAIFUU-174 supports length-changing single-scene slot replacement through the bundle-driven driver",
                 ),
             ),
         )
@@ -4458,16 +4458,16 @@ impl EngineAdapter for RealLiveProfileDetectorAdapter {
             Self::produce_scene_bundles(&archive_bytes, &scene_index, &gameexe_inventory);
         let mut matched_entry_ids: BTreeSet<String> = BTreeSet::new();
         let mut touched: Vec<(u16, serde_json::Value)> = Vec::new();
-        // Length-preserving budget failures (adapter-unify): the KAIFUU-174
-        // adapter slice declares a LENGTH-PRESERVING patch contract (see
-        // `capabilities()` — Patching is Limited: "length-changing edits
-        // return kaifuu.reallive.patchback_offset_overflow Fatal"). The
-        // underlying `apply_translated_bundle` gained a length-CHANGING path
-        // (reallive-patchback-length-changing, scoped to crates/kaifuu-reallive),
-        // but this adapter does not yet EXPOSE it: an edit whose target
-        // Shift-JIS bytes do not match the source unit's replaced-body byte
-        // budget is rejected here so the declared contract holds.
-        let mut budget_failures: Vec<AdapterFailure> = Vec::new();
+        // Length-CHANGING patch-back (reallive-adapter-expose-length-changing-
+        // patchback): the KAIFUU-174 adapter routes every matched edit straight
+        // through `bundle_driven::apply_translated_bundle`, which rewrites the
+        // archive offset table and recalculates jump targets so a translation
+        // that grows or shrinks the Shift-JIS body round-trips byte-correct.
+        // There is NO length-preserving budget gate here — a plain length change
+        // is a supported edit, not a failure. Genuinely-unencodable edits (a
+        // non-Shift-JIS codepoint, a goto target left strictly inside an edited
+        // body, a scene-packing overflow) are rejected by the driver itself with
+        // its typed `kaifuu.reallive.patchback_*` Fatal, surfaced below.
         for (scene_id, produced) in &produced_scenes {
             let mut translated_json = produced.json.clone();
             let mut scene_matched = 0usize;
@@ -4479,11 +4479,6 @@ impl EngineAdapter for RealLiveProfileDetectorAdapter {
                         .iter()
                         .find(|e| e.bridge_unit_id == unit.bridge_unit_id)
                     {
-                        if let Some(failure) =
-                            Self::length_preserving_budget_failure(variant, unit, export_entry)
-                        {
-                            budget_failures.push(failure);
-                        }
                         units_json[i]["target"] = serde_json::json!({
                             "locale": request.patch_export.target_locale,
                             "text": export_entry.target_text,
@@ -4538,11 +4533,6 @@ impl EngineAdapter for RealLiveProfileDetectorAdapter {
             .collect();
         if !unmatched.is_empty() {
             return Ok(failed(unmatched));
-        }
-        // Length-preserving contract: reject length-changing edits before
-        // touching the archive so the adapter's declared budget holds.
-        if !budget_failures.is_empty() {
-            return Ok(failed(budget_failures));
         }
 
         let passed = |output_hash: String| PatchResult {
@@ -4724,7 +4714,7 @@ impl RealLiveProfileDetectorAdapter {
                     break;
                 }
             }
-            let Some(slot) = found_slot else {
+            if found_slot.is_none() {
                 failures.push(Self::unsupported_failure(
                     SemanticErrorCode::UnsupportedLayeredTransform,
                     Capability::PatchBack,
@@ -4734,35 +4724,15 @@ impl RealLiveProfileDetectorAdapter {
                     "re-extract the bridge bundle before re-applying this patch",
                 ));
                 continue;
-            };
-            // Check Shift-JIS encoding budget (text bytes only;
-            // patch-back re-injects control bytes from the source).
+            }
+            // Check the target is Shift-JIS-representable. Length is NOT
+            // budgeted here: the bundle-driven patch path is length-changing
+            // (offset table rewritten + jump targets recalculated), so a
+            // translation that grows or shrinks the body is a supported edit,
+            // not a preflight failure. Only a genuinely-unencodable target
+            // (a codepoint outside Shift-JIS) is rejected at preflight.
             match kaifuu_reallive::encode_shift_jis_slot(&entry.target_text) {
-                Ok(encoded) => {
-                    let source_control_bytes = parse_hex_bytes(&slot.raw_bytes_hex)
-                        .unwrap_or_default()
-                        .into_iter()
-                        .filter(|b| *b < 0x20)
-                        .count();
-                    let allowed = slot.byte_len as usize - source_control_bytes;
-                    if encoded.len() != allowed {
-                        failures.push(Self::unsupported_failure(
-                            SemanticErrorCode::UnsupportedLayeredTransform,
-                            Capability::PatchBack,
-                            variant,
-                            &entry.source_unit_key,
-                            format!(
-                                "length-preserving budget violated for slot {}: {} encoded bytes \
-                                 vs {} allowed (source had {} control bytes)",
-                                entry.source_unit_key,
-                                encoded.len(),
-                                allowed,
-                                source_control_bytes
-                            ),
-                            "shorten the translation or expand a future length-changing slot",
-                        ));
-                    }
-                }
+                Ok(_encoded) => {}
                 Err(err) => {
                     failures.push(Self::unsupported_failure(
                         SemanticErrorCode::UnsupportedLayeredTransform,
@@ -4906,52 +4876,6 @@ impl RealLiveProfileDetectorAdapter {
             .and_then(|value| value.as_str())
             .map(str::to_string);
         mapped
-    }
-
-    // Length-preserving budget check for a single matched unit. Returns a
-    // typed `kaifuu.reallive.patchback_offset_overflow` failure when the
-    // target's Shift-JIS byte length does not equal the source unit's
-    // replaced-body byte budget (its decompressed-bytecode range length —
-    // the exact bytes `apply_translated_bundle` would splice), or a typed
-    // encode failure when the target is not Shift-JIS-representable. `None`
-    // means the edit is length-preserving and may proceed.
-    fn length_preserving_budget_failure(
-        variant: &str,
-        unit: &kaifuu_core::LocalizationUnitV02,
-        export_entry: &kaifuu_core::PatchExportEntry,
-    ) -> Option<AdapterFailure> {
-        let range = &unit.source_location["range"];
-        let body_len = range["endByte"]
-            .as_u64()
-            .unwrap_or_default()
-            .saturating_sub(range["startByte"].as_u64().unwrap_or_default());
-        match kaifuu_reallive::encode_shift_jis_slot(&export_entry.target_text) {
-            Ok(target_bytes) if target_bytes.len() as u64 == body_len => None,
-            Ok(target_bytes) => Some(Self::unsupported_failure(
-                SemanticErrorCode::UnsupportedLayeredTransform,
-                Capability::PatchBack,
-                variant,
-                unit.source_unit_key.clone(),
-                format!(
-                    "kaifuu.reallive.patchback_offset_overflow: length-changing edit for unit \
-                     {key}: target encodes to {got} Shift-JIS bytes but the length-preserving \
-                     budget is {budget} bytes",
-                    key = unit.source_unit_key,
-                    got = target_bytes.len(),
-                    budget = body_len,
-                ),
-                "keep the translation length-preserving (equal Shift-JIS byte count) at the \
-                 KAIFUU-174 adapter slice",
-            )),
-            Err(err) => Some(Self::unsupported_failure(
-                SemanticErrorCode::UnsupportedLayeredTransform,
-                Capability::PatchBack,
-                variant,
-                unit.source_unit_key.clone(),
-                format!("kaifuu.reallive.patchback_target_encode_failure: {err}"),
-                "replace characters outside Shift-JIS with mappable substitutes",
-            )),
-        }
     }
 }
 
@@ -8006,20 +7930,87 @@ mod tests {
     }
 
     #[test]
-    fn reallive_adapter_patch_rejects_length_overflow_with_unsupported_layered_transform_semantic_error()
-     {
-        let dir = reallive_174_fixture_dir("kaifuu-174-patch-overflow");
+    fn reallive_adapter_patch_applies_length_changing_translation_through_bundle_driver() {
+        // reallive-adapter-expose-length-changing-patchback: the adapter routes
+        // a LENGTH-CHANGING edit straight through the bundle-driven driver
+        // (offset table rewritten + jump targets recalculated) instead of the
+        // old length-preserving budget gate. "Hello" (5 Shift-JIS bytes) ->
+        // "Hello there" (11 bytes) grows the body; the patch must SUCCEED and
+        // round-trip byte-correct.
+        let dir = reallive_174_fixture_dir("kaifuu-174-patch-length-changing");
         let extract = RealLiveProfileDetectorAdapter
             .extract(ExtractRequest { game_dir: &dir })
             .unwrap();
-        // "Hello" (5 bytes) -> "Greetings!" (10 bytes): LENGTH-CHANGING. The
-        // KAIFUU-174 adapter slice declares a length-preserving patch
-        // contract, so this is rejected with the typed
-        // kaifuu.reallive.patchback_offset_overflow support boundary (even
-        // though the lower-level bundle_driven engine supports length
-        // changes — the adapter does not expose that path at this slice).
-        let export = reallive_all_units_export(&extract, "Greetings!");
-        let output_dir = temp_dir("kaifuu-174-patch-overflow-out");
+        let export = reallive_all_units_export(&extract, "Hello there");
+        let output_dir = temp_dir("kaifuu-174-patch-length-changing-out");
+        let result = RealLiveProfileDetectorAdapter
+            .patch(PatchRequest {
+                game_dir: &dir,
+                patch_export: &export,
+                output_dir: &output_dir,
+            })
+            .unwrap();
+        assert_eq!(
+            result.status,
+            OperationStatus::Passed,
+            "failures: {:?}",
+            result.failures
+        );
+        let patched = fs::read(output_dir.join(REALLIVE_SEEN_TXT_PATH)).unwrap();
+        let original = fs::read(dir.join(REALLIVE_SEEN_TXT_PATH)).unwrap();
+        // A length change grows the archive: the patched bytes are NOT the
+        // source bytes (offset table + scene body rewritten), and the archive
+        // still re-parses.
+        assert_ne!(
+            patched, original,
+            "length-changing patch must rewrite bytes"
+        );
+        let reparsed = kaifuu_reallive::parse_archive(&patched).expect("patched archive re-parses");
+        assert!(!reparsed.entries.is_empty());
+        // The patched scene re-decompiles to bytecode carrying the LONGER
+        // translated body, with the source body gone, and zero unknown opcodes.
+        let decompressed = reallive_decompressed_scene_1(&patched);
+        assert!(
+            decompressed.windows(11).any(|w| w == b"Hello there"),
+            "longer translated dialogue body 'Hello there' missing from patched bytecode"
+        );
+        assert!(
+            !decompressed.windows(5).any(|w| w == b"Hello")
+                || decompressed.windows(11).any(|w| w == b"Hello there"),
+            "source-only 'Hello' body must not survive a length-changing replacement"
+        );
+        let ops = kaifuu_reallive::parse_real_bytecode(&decompressed)
+            .expect("patched scene bytecode re-decompiles");
+        let unknown = ops
+            .iter()
+            .filter(|o| matches!(o, kaifuu_reallive::RealLiveOpcode::Unknown { .. }))
+            .count();
+        assert_eq!(
+            unknown, 0,
+            "zero unknown opcodes required after length change"
+        );
+        let _ = fs::remove_dir_all(dir);
+        let _ = fs::remove_dir_all(output_dir);
+    }
+
+    #[test]
+    fn reallive_adapter_patch_rejects_unencodable_target_with_typed_patchback_failure() {
+        // reallive-adapter-expose-length-changing-patchback reframe: a plain
+        // length change is NO LONGER a failure (the adapter routes through the
+        // length-changing bundle-driven driver). This test asserts a
+        // GENUINELY-unencodable edit is still rejected loudly and typed. The
+        // target "Hi 😀" both CHANGES length (so it exercises the length-
+        // changing path) AND carries U+1F600, a codepoint that has no Shift-JIS
+        // mapping — the RealLive Textout body cannot represent it. The driver
+        // therefore returns kaifuu.reallive.patchback_target_encode_failure
+        // Fatal (surfaced as the kaifuu.unsupported_layered_transform semantic
+        // error), NOT because the byte length changed.
+        let dir = reallive_174_fixture_dir("kaifuu-174-patch-unencodable");
+        let extract = RealLiveProfileDetectorAdapter
+            .extract(ExtractRequest { game_dir: &dir })
+            .unwrap();
+        let export = reallive_all_units_export(&extract, "Hi 😀");
+        let output_dir = temp_dir("kaifuu-174-patch-unencodable-out");
         let result = RealLiveProfileDetectorAdapter
             .patch(PatchRequest {
                 game_dir: &dir,
@@ -8028,13 +8019,22 @@ mod tests {
             })
             .unwrap();
         assert_eq!(result.status, OperationStatus::Failed);
+        // The rejection is the DRIVER's typed patch-back failure (the length
+        // change itself was accepted and routed through the bundle-driven
+        // path; the unmappable codepoint is what the encoder cannot represent).
+        // The driver-mapped remediation names the stable
+        // `kaifuu.reallive.patchback_*` code family, distinguishing this from
+        // the adapter's other unsupported paths. (The support_boundary carries
+        // the exact `kaifuu.reallive.patchback_target_encode_failure` code but
+        // is report-redacted because the driver message embeds the unit UUID.)
         assert!(
-            result
-                .failures
-                .iter()
-                .any(|f| f.error_code == "kaifuu.unsupported_layered_transform"
-                    && f.support_boundary
-                        .contains("kaifuu.reallive.patchback_offset_overflow")),
+            result.failures.iter().any(|f| {
+                f.error_code == "kaifuu.unsupported_layered_transform"
+                    && f.required_capability == Some(Capability::PatchBack)
+                    && f.remediation
+                        .as_deref()
+                        .is_some_and(|r| r.contains("kaifuu.reallive.patchback_"))
+            }),
             "failures: {:?}",
             result.failures
         );

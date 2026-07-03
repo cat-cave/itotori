@@ -356,7 +356,7 @@
         {
           "capability": "patching",
           "status": "limited",
-          "limitation": "length-preserving slot replacement only; length-changing edits return kaifuu.reallive.patchback_offset_overflow Fatal"
+          "limitation": "length-changing Scene/SEEN text-slot replacement (offset table rewritten + jump targets recalculated) applied through the bundle-driven driver; limited to one scene-scoped bundle per call and to the configured text scope (dialogue/speaker/choice), not image-overlaid .g00 text"
         },
         {
           "capability": "profile_generation",
