@@ -215,6 +215,10 @@ pub struct UtsushiReallivePort {
     buffered_text: Vec<TextLine>,
     buffered_frames: Vec<FrameArtifact>,
     buffered_audio: Vec<AudioEvent>,
+    /// The real engine-decoded dialogue line bodies composited into the
+    /// emitted frame's localized text layer — the SAME decoded text the
+    /// substrate text sink emits for the driven scene (never a placeholder).
+    frame_text_lines: Vec<String>,
     emitted: bool,
     launched: bool,
     shut_down: bool,
@@ -235,6 +239,7 @@ impl std::fmt::Debug for UtsushiReallivePort {
             .field("buffered_text", &self.buffered_text.len())
             .field("buffered_frames", &self.buffered_frames.len())
             .field("buffered_audio", &self.buffered_audio.len())
+            .field("frame_text_lines", &self.frame_text_lines.len())
             .field("snapshot_ticks_verified", &self.snapshot_ticks_verified)
             .field(
                 "deterministic_replay_verified",
@@ -269,7 +274,6 @@ impl UtsushiReallivePort {
         fidelity_tier_max: FidelityTier::LayoutProbe,
         evidence_tier_max: EvidenceTier::E2,
         limitations: &[
-            "Localized frame text is a deterministic ASCII placeholder; the real translation overlay lands in the localization pipeline (out of this node's scope).",
             "Encrypted titles (use_xor_2, e.g. Sweetie HD) require the dev-only kaifuu-reallive segment-cipher recovery staged by the caller before constructing the port; no key material lives in this crate.",
             "rlvm is referenced as a research anchor only; no rlvm source is vendored, linked, or mechanically translated.",
         ],
@@ -297,6 +301,7 @@ impl UtsushiReallivePort {
             buffered_text: Vec::new(),
             buffered_frames: Vec::new(),
             buffered_audio: Vec::new(),
+            frame_text_lines: Vec::new(),
             emitted: false,
             launched: false,
             shut_down: false,
@@ -324,24 +329,37 @@ impl UtsushiReallivePort {
         self.observation_steps
     }
 
+    /// The real engine-decoded dialogue line bodies composited into the
+    /// emitted frame's localized text layer during [`Self::launch`]. These
+    /// are the SAME decoded lines the substrate text sink emits for the
+    /// driven scene — the localization overlay the redacted E2 screenshot
+    /// renders, NOT a placeholder. Empty until `launch` runs (or when the
+    /// driven scene produced no dialogue).
+    pub fn frame_text_lines(&self) -> &[String] {
+        &self.frame_text_lines
+    }
+
     /// Render the terminal graphics stack into a publish-redacted E2 frame
-    /// artifact through the real g00 rasteriser, persisting the PNG under
-    /// the managed artifact `root`.
+    /// artifact through the real g00 rasteriser, compositing the REAL
+    /// engine-decoded dialogue `overlay_lines` into the frame's localized
+    /// text layer, and persisting the PNG under the managed artifact `root`.
     fn render_frame(
         &self,
         observation: &SceneObservation,
+        overlay_lines: &[String],
         root: &RuntimeArtifactRoot,
         run_id: &str,
     ) -> Result<FrameArtifact, String> {
         let mut pass = RenderPass::with_dimensions(PORT_FRAME_WIDTH, PORT_FRAME_HEIGHT)
             .map_err(|error| format!("render pass build failed: {error}"))?
             .with_assets(Arc::clone(&self.assets));
-        // The localized overlay is a deterministic ASCII placeholder (the
-        // real translation is produced by a separate pipeline). It paints
-        // real glyph pixels so the emit is non-vacuous; the announced
-        // public frame is publish-redacted by default.
-        let text =
-            TextLayer::localized(vec![format!("UTSUSHI REALLIVE SCENE {}", self.entry_scene)]);
+        // Composite the REAL engine-decoded dialogue line(s) — the exact
+        // text the substrate text sink emits for this scene — into the
+        // frame's text layer over the real g00 composite. The announced
+        // public frame is publish-redacted by default (copyrighted g00 image
+        // rects → REDACTION_MARKER); the decoded dialogue text IS the
+        // localization proof, not copyrighted-source pixels.
+        let text = TextLayer::localized(overlay_lines.to_vec());
         let throwaway = RecordingFrameArtifactSink::new();
         pass.emit_localized_screenshot(&observation.graphics_stack, &text, root, run_id, &throwaway)
             .map_err(|error| format!("frame emit failed: {error}"))
@@ -386,13 +404,19 @@ impl EnginePort for UtsushiReallivePort {
             .map(to_substrate_audio)
             .collect();
 
+        // The frame's localized text layer composites the REAL decoded
+        // dialogue bodies — the exact `TextLine.text` values that flow to
+        // the substrate text sink for this scene — not a placeholder.
+        let overlay_lines: Vec<String> = text_lines.iter().map(|line| line.text.clone()).collect();
+
         // --- 2. Frame: composite the real graphics stack through the real
-        //         g00 rasteriser and announce an E2 artifact. Requires a
-        //         managed artifact root to persist the PNG.
+        //         g00 rasteriser, overlay the real decoded dialogue, and
+        //         announce an E2 artifact. Requires a managed artifact root
+        //         to persist the PNG.
         let frames = match request.artifact_root {
             Some(root) => {
                 let frame = self
-                    .render_frame(&observation, root, request.run_id)
+                    .render_frame(&observation, &overlay_lines, root, request.run_id)
                     .map_err(|message| Self::lifecycle_error(LifecycleStage::Launch, message))?;
                 vec![frame]
             }
@@ -456,6 +480,7 @@ impl EnginePort for UtsushiReallivePort {
             ));
         }
 
+        self.frame_text_lines = overlay_lines;
         self.buffered_text = text_lines;
         self.buffered_frames = frames;
         self.buffered_audio = audio;

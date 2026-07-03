@@ -176,6 +176,42 @@ fn run_title(corpus: &RealCorpus, g00_env: &str, label: &str) {
         port.deterministic_replay_verified(),
         "[{label}] DeterministicReplay capability: two replays must be byte-identical"
     );
+
+    // The emitted frame's localized text layer composites the REAL
+    // engine-decoded dialogue — the SAME decoded lines the substrate text
+    // sink emits for the driven scene — NOT the retired `UTSUSHI REALLIVE
+    // SCENE N` placeholder. Assert the frame overlay bodies equal the text
+    // the substrate sink surfaced from the same real-bytes run.
+    let sink_bodies: Vec<String> = outcome
+        .observations
+        .iter()
+        .flat_map(|tick| tick.text.iter().map(|line| line.text.clone()))
+        .collect();
+    let frame_overlay = port.frame_text_lines();
+    let overlay_chars: usize = frame_overlay.iter().map(|line| line.chars().count()).sum();
+    eprintln!(
+        "[{label}] frame_overlay_lines={} frame_overlay_chars={overlay_chars} \
+         sink_bodies={}",
+        frame_overlay.len(),
+        sink_bodies.len(),
+    );
+    assert!(
+        !frame_overlay.is_empty(),
+        "[{label}] the frame's localized text layer must carry the real decoded dialogue; got 0 \
+         lines"
+    );
+    assert_eq!(
+        frame_overlay,
+        sink_bodies.as_slice(),
+        "[{label}] the frame text layer must composite the SAME real decoded dialogue the \
+         substrate text sink emitted, not a placeholder"
+    );
+    assert!(
+        frame_overlay
+            .iter()
+            .all(|line| !line.contains("UTSUSHI REALLIVE SCENE")),
+        "[{label}] the retired ASCII placeholder must never appear in the frame text layer"
+    );
 }
 
 #[test]
