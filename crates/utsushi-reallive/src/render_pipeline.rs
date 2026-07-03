@@ -488,6 +488,23 @@ impl TextLayer {
         screen_size: (u32, u32),
         frame_size: (u32, u32),
     ) -> Self {
+        Self::message_window_colored(text, speaker, None, config, screen_size, frame_size)
+    }
+
+    /// [`Self::message_window`] with an explicit per-speaker dialogue
+    /// text colour. When `text_color` is `Some`, BOTH the main dialogue
+    /// glyphs and the attached `NAME_MOD=1` name-box glyphs are painted
+    /// in that colour (the RealLive `#NAMAE` → `#COLOR_TABLE` speaker
+    /// colour); `None` paints opaque white (the legacy default).
+    pub fn message_window_colored(
+        text: &str,
+        speaker: Option<&str>,
+        text_color: Option<WipeColour>,
+        config: &MessageWindowConfig,
+        screen_size: (u32, u32),
+        frame_size: (u32, u32),
+    ) -> Self {
+        let glyph_colour = text_color.unwrap_or(WipeColour::WHITE);
         let scale_y = frame_size.1 as f32 / (screen_size.1.max(1) as f32);
         let scale_x = frame_size.0 as f32 / (screen_size.0.max(1) as f32);
         let to_x = |v: i32| (v as f32 * scale_x).round().max(0.0) as u32;
@@ -541,7 +558,7 @@ impl TextLayer {
             origin_x,
             origin_y,
             scale,
-            colour: WipeColour::WHITE,
+            colour: glyph_colour,
             backdrop: Some(backdrop),
             name_box: None,
             line_height: Some(line_height),
@@ -581,7 +598,7 @@ impl TextLayer {
                 origin_x: name_x.saturating_add(name_scale / 4),
                 origin_y: name_top.saturating_add(name_scale / 6),
                 scale: name_scale,
-                colour: WipeColour::WHITE,
+                colour: glyph_colour,
                 backdrop: Some(name_backdrop),
                 name_box: None,
                 // Single-line name: font-natural leading (unchanged).

@@ -273,6 +273,7 @@ impl UtsushiRpgmakerMvPort {
             evidence_tier: EvidenceTier::E1,
             text: line.text.clone(),
             speaker: line.speaker.clone(),
+            color: None,
             text_surface: Some(line.role.surface_label().to_string()),
             bridge_ref: Some(ObservationBridgeRef {
                 bridge_unit_id: None,

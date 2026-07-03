@@ -53,6 +53,11 @@ pub struct TextLine {
     /// register, MV/MZ event speaker). Never a host identifier.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub speaker: Option<String>,
+    /// Optional per-speaker dialogue text colour (RGB), resolved from the
+    /// engine's palette (e.g. RealLive `#NAMAE` middle field →
+    /// `#COLOR_TABLE` row). `None` = the surface's default glyph colour.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub color: Option<[u8; 3]>,
     /// Optional engine-supplied surface label (e.g. "ADV", "NVL", "Choice",
     /// "Database.terms"). Engine-neutral string; the sink does not interpret.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -149,6 +154,7 @@ mod tests {
             evidence_tier,
             text: "hello".to_string(),
             speaker: Some("narrator".to_string()),
+            color: None,
             text_surface: Some("adv".to_string()),
             bridge_ref: Some(sample_bridge_ref()),
             source_asset: Some(

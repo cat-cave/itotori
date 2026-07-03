@@ -109,6 +109,7 @@ mod tests {
             evidence_tier: EvidenceTier::E1,
             text: "hello".to_string(),
             speaker: Some("narrator".to_string()),
+            color: None,
             text_surface: Some("adv".to_string()),
             bridge_ref: Some(ObservationBridgeRef {
                 bridge_unit_id: Some("0190a000-0000-7000-8000-000000000001".to_string()),

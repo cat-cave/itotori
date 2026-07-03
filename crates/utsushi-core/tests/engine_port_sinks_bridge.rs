@@ -139,6 +139,7 @@ impl EnginePort for SmokePort {
                 evidence_tier: EvidenceTier::E1,
                 text: format!("smoke line {tick}"),
                 speaker: None,
+                color: None,
                 text_surface: None,
                 bridge_ref: None,
                 source_asset: None,

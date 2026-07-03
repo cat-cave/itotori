@@ -286,6 +286,7 @@ impl EnginePort for FixtureEnginePort {
                 evidence_tier: EvidenceTier::E1,
                 text,
                 speaker: unit["speaker"].as_str().map(ToString::to_string),
+                color: None,
                 text_surface: unit["textSurface"].as_str().map(ToString::to_string),
                 bridge_ref: Some(ObservationBridgeRef {
                     bridge_unit_id: Some(deterministic_bridge_unit_id(&game_id, index)),

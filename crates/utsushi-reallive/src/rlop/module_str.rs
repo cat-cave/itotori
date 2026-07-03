@@ -289,6 +289,7 @@ impl StrRuntime {
             evidence_tier: EvidenceTier::E1,
             text,
             speaker: None,
+            color: None,
             text_surface: Some(text_surface.to_string()),
             bridge_ref: None,
             source_asset: None,

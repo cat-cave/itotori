@@ -51,6 +51,7 @@ use std::sync::{Arc, Mutex};
 use utsushi_core::substrate::{EvidenceTier, SinkError, TextLine, TextSurfaceSink};
 
 use super::{DispatchOutcome, ExprValue, LongOp, LongOpId, RLOperation, RlopKey, RlopRegistry};
+use crate::gameexe::NamaeResolver;
 use crate::vm::Vm;
 // `msg.select` lived here briefly (UTSUSHI-209) as a placeholder for the
 // `(1, 5, 120)` Sweetie-HD-observed byte. UTSUSHI-211 moved the
@@ -291,6 +292,14 @@ struct MsgRuntimeInner {
     /// shape does not match the declared contract. Drained via
     /// [`MsgRuntime::take_warnings`].
     warnings: Vec<MsgRuntimeWarning>,
+    /// Optional `【key】 → (display_name, colour)` resolver built from the
+    /// game's `#NAMAE` + `#COLOR_TABLE` tables. When present, a spoken
+    /// line whose Shift-JIS body opens with a full-width lenticular
+    /// `【…】` name prefix (the `#NAMAE` lookup key) has that prefix
+    /// stripped from the emitted text and its speaker + text colour
+    /// populated on the [`TextLine`]. `None` (the default) preserves the
+    /// legacy nameOpen/nameClose-only speaker behaviour.
+    speaker_resolver: Option<Arc<NamaeResolver>>,
 }
 
 /// Typed warning the [`MsgRuntime`] records on a sink failure or a
@@ -356,6 +365,18 @@ impl MsgRuntime {
     /// Borrow the sink.
     pub fn sink(&self) -> &Arc<dyn TextSurfaceSink> {
         &self.sink
+    }
+
+    /// Install (or clear) the `#NAMAE` + `#COLOR_TABLE` speaker resolver.
+    /// With a resolver set, [`Self::flush_pending_line`] parses a leading
+    /// `【…】` name prefix off each spoken line, sets the resolved
+    /// speaker + text colour, and strips the prefix from the body.
+    pub fn set_speaker_resolver(&self, resolver: Option<Arc<NamaeResolver>>) {
+        let mut guard = self
+            .inner
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        guard.speaker_resolver = resolver;
     }
 
     /// Borrow the id sequence.
@@ -442,7 +463,7 @@ impl MsgRuntime {
     /// single [`TextLine`]. Returns whether a line was actually
     /// emitted — an empty pending body produces no emission.
     fn flush_pending_line(&self, opcode: MsgOpcode) -> bool {
-        let (body_bytes, speaker, text_window) = {
+        let (body_bytes, mut speaker, text_window, resolver) = {
             let mut guard = self
                 .inner
                 .lock()
@@ -452,6 +473,7 @@ impl MsgRuntime {
                 body,
                 guard.pending_speaker.clone(),
                 guard.current_text_window,
+                guard.speaker_resolver.clone(),
             )
         };
         if body_bytes.is_empty() && speaker.is_none() {
@@ -478,12 +500,30 @@ impl MsgRuntime {
                 }
             }
         };
+        // Resolve a leading full-width lenticular `【…】` speaker prefix
+        // (the `#NAMAE` lookup key) into a speaker + text colour, and
+        // strip the prefix from the rendered body. Only applies when no
+        // nameOpen/nameClose speaker is already active AND the resolver
+        // recognises the key — an unrecognised `【…】` (or narration with
+        // no prefix) is left byte-for-byte intact.
+        let mut color: Option<[u8; 3]> = None;
+        let mut text = text;
+        if speaker.is_none()
+            && let Some(resolver) = resolver.as_ref()
+            && let Some((key, rest)) = split_leading_lenticular(&text)
+            && let Some(resolved) = resolver.resolve(key)
+        {
+            speaker = Some(resolved.display_name.clone());
+            color = Some(resolved.color);
+            text = rest.to_string();
+        }
         let line_id = self.next_line_id();
         let line = TextLine {
             line_id,
             evidence_tier: EvidenceTier::E1,
             text,
             speaker,
+            color,
             text_surface: Some(text_window_label(text_window)),
             bridge_ref: None,
             source_asset: None,
@@ -568,6 +608,21 @@ fn text_window_label(window: Option<u32>) -> String {
 
 fn sink_error_reason(err: &SinkError) -> String {
     err.to_string()
+}
+
+/// Split a leading full-width lenticular `【…】` name prefix off a
+/// decoded line. Returns `(inner_key, remainder)` when `text` opens with
+/// `【` and has a matching `】`; the remainder is the byte run after the
+/// closing bracket (the spoken dialogue, typically opening with `「`).
+/// Returns `None` when there is no leading `【` (narration) or no closing
+/// `】`. The `【` (U+3010) / `】` (U+3011) pair is Shift-JIS `81 79` /
+/// `81 7A`; here it is matched in the already-decoded UTF-8 string.
+fn split_leading_lenticular(text: &str) -> Option<(&str, &str)> {
+    let after_open = text.strip_prefix('【')?;
+    let close = after_open.find('】')?;
+    let inner = &after_open[..close];
+    let rest = &after_open[close + '】'.len_utf8()..];
+    Some((inner, rest))
 }
 
 /// Decode `bytes` as Shift-JIS. Returns `None` if encoding_rs reports a
@@ -1141,6 +1196,59 @@ mod tests {
         assert_eq!(runtime.pending_body_len(), 2);
         dispatch_textout(&runtime, &[0x82, 0xa1]);
         assert_eq!(runtime.pending_body_len(), 4);
+    }
+
+    #[test]
+    fn split_leading_lenticular_extracts_name_prefix() {
+        // 【和人】「dialogue」 → key "和人", remainder "「dialogue」".
+        let (key, rest) = split_leading_lenticular("【和人】「dialogue」").expect("named line");
+        assert_eq!(key, "和人");
+        assert_eq!(rest, "「dialogue」");
+        // Narration (no leading 【) → None; an unmatched open → None.
+        assert!(split_leading_lenticular("「just narration」").is_none());
+        assert!(split_leading_lenticular("【unclosed").is_none());
+    }
+
+    #[test]
+    fn flush_resolves_lenticular_prefix_to_speaker_and_color_and_strips_body() {
+        use crate::gameexe::Gameexe;
+        // Build a resolver: 和人 → COLOR_TABLE.016 = (204,204,255). The
+        // Gameexe parser decodes its input as Shift-JIS, so the source
+        // text must be encoded to Shift-JIS bytes first.
+        let (gx_bytes, _, _) = encoding_rs::SHIFT_JIS
+            .encode("#COLOR_TABLE.016=204,204,255\r\n#NAMAE=\"和人\" = \"和人\" = (1,016, -1)\r\n");
+        let gx = Gameexe::parse(&gx_bytes).expect("parse gameexe");
+        let sink = Arc::new(CollectingSink::supported());
+        let runtime = MsgRuntime::with_sink(Arc::clone(&sink) as Arc<dyn TextSurfaceSink>);
+        runtime.set_speaker_resolver(Some(Arc::new(gx.namae_resolver())));
+
+        // Shift-JIS bytes for 【和人】「あ」 (the lenticular prefix + one
+        // kana of dialogue in corner brackets).
+        let (body, _, had_err) = encoding_rs::SHIFT_JIS.encode("【和人】「あ」");
+        assert!(!had_err);
+        runtime.handle_textout(&body);
+        assert!(runtime.flush_pending_line(MsgOpcode::LineBreak));
+
+        let lines = sink.lines.lock().expect("lock");
+        assert_eq!(lines.len(), 1);
+        let line = &lines[0];
+        assert_eq!(line.speaker.as_deref(), Some("和人"));
+        assert_eq!(line.color, Some([204, 204, 255]));
+        // The 【…】 prefix is stripped; the body is just the dialogue.
+        assert_eq!(line.text, "「あ」");
+    }
+
+    #[test]
+    fn flush_without_resolver_leaves_prefix_and_no_speaker() {
+        let sink = Arc::new(CollectingSink::supported());
+        let runtime = MsgRuntime::with_sink(Arc::clone(&sink) as Arc<dyn TextSurfaceSink>);
+        let (body, _, _) = encoding_rs::SHIFT_JIS.encode("【和人】「あ」");
+        runtime.handle_textout(&body);
+        assert!(runtime.flush_pending_line(MsgOpcode::LineBreak));
+        let lines = sink.lines.lock().expect("lock");
+        assert_eq!(lines[0].speaker, None);
+        assert_eq!(lines[0].color, None);
+        assert_eq!(lines[0].text, "【和人】「あ」");
     }
 
     #[test]

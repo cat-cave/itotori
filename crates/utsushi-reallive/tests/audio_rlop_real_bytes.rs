@@ -113,20 +113,22 @@ fn koe_play_resolves_through_namae_table() {
     // Sweetie HD bytes — pick a speaker named in the corpus. The
     // Sweetie HD shape:
     //   #NAMAE="凛" = "凛" = (1, 015, -1)
-    // The parser stores (archive=1, pattern=15, pitch=-1); the
-    // composite archive id the koe filename uses is
-    // `archive * 1000 + pattern = 1015`, matching the on-disk
-    // `koe/z1015.ovk` file.
+    // The parser stores (mode=1, color_table_index=15, reserved=-1); the
+    // best-effort composite voice-archive id (a numbering coincidence in
+    // this title) is `mode * 1000 + color_table_index = 1015`, matching
+    // the on-disk `koe/z1015.ovk` file. (The MIDDLE field is a
+    // #COLOR_TABLE index — the speaker's text colour — not a voice slot;
+    // the authoritative voice cue is koePlay.)
     if let Some(entry) = gameexe.get_namae("NAMAE.凛") {
         assert_eq!(
-            entry.archive, 1,
-            "Sweetie HD's NAMAE.凛 row's archive field is literally 1 (the second comma-separated \
-             integer 015 becomes the pattern field)",
+            entry.mode, 1,
+            "Sweetie HD's NAMAE.凛 row's mode field is literally 1 (the second comma-separated \
+             integer 015 is the color_table_index field)",
         );
         assert_eq!(
-            entry.pattern, 15,
-            "Sweetie HD's NAMAE.凛 row pins pattern=15; composite archive id = 1*1000 + 15 = 1015 \
-             ↔ koe/z1015.ovk",
+            entry.color_table_index, 15,
+            "Sweetie HD's NAMAE.凛 row pins color_table_index=15; composite voice-archive id = \
+             1*1000 + 15 = 1015 ↔ koe/z1015.ovk",
         );
         // Switching speaker re-routes the next koePlay through the
         // composite archive id.

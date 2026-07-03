@@ -123,10 +123,21 @@ pub enum ReplayEvent {
         /// `BytecodeElement::Textout` element.
         body_shift_jis: Vec<u8>,
         /// UTF-8 decode of the body — `String::from_utf8_lossy`
-        /// equivalent through `encoding_rs::SHIFT_JIS`. Always present;
-        /// callers that want byte-stable evidence consult
-        /// `body_shift_jis`.
+        /// equivalent through `encoding_rs::SHIFT_JIS`. The leading
+        /// `【…】` speaker prefix (when resolved) is STRIPPED here so the
+        /// body is just the dialogue; `body_shift_jis` retains the
+        /// verbatim bytes.
         body_utf8: String,
+        /// Resolved speaker display name, when the line opened with a
+        /// recognised `【…】` `#NAMAE` name prefix (or a
+        /// nameOpen/nameClose bracket). `None` for narration.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        speaker: Option<String>,
+        /// Resolved per-speaker dialogue text colour (RGB) from
+        /// `#COLOR_TABLE[#NAMAE.color_table_index]`. `None` when no
+        /// speaker was resolved.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        color: Option<[u8; 3]>,
     },
     /// A `msg.pause` opcode landed and the VM emitted a
     /// [`crate::DispatchOutcome::Yield`]. The pc is recorded so a
@@ -328,6 +339,8 @@ fn event_to_canonical_value(event: &ReplayEvent) -> serde_json::Value {
             byte_offset_in_scene,
             body_shift_jis,
             body_utf8,
+            speaker,
+            color,
         } => {
             map.insert(
                 "bodyShiftJisHex".to_string(),
@@ -341,10 +354,27 @@ fn event_to_canonical_value(event: &ReplayEvent) -> serde_json::Value {
                 "byteOffsetInScene".to_string(),
                 serde_json::Value::Number((*byte_offset_in_scene).into()),
             );
+            if let Some(color) = color {
+                map.insert(
+                    "color".to_string(),
+                    serde_json::Value::Array(
+                        color
+                            .iter()
+                            .map(|channel| serde_json::Value::Number((*channel).into()))
+                            .collect(),
+                    ),
+                );
+            }
             map.insert(
                 "kind".to_string(),
                 serde_json::Value::String("text_line".to_string()),
             );
+            if let Some(speaker) = speaker {
+                map.insert(
+                    "speaker".to_string(),
+                    serde_json::Value::String(speaker.clone()),
+                );
+            }
         }
         ReplayEvent::Pause {
             byte_offset_in_scene,
@@ -1123,6 +1153,12 @@ pub struct ReplayEngine {
     store: InMemorySceneStore,
     shift_jis: HashSet<(SceneId, u32)>,
     stats: SceneStoreStats,
+    /// Optional `#NAMAE` + `#COLOR_TABLE` speaker resolver, installed into
+    /// every per-run [`MsgRuntime`] so the `Textout` → `TextLine` path
+    /// resolves a leading `【…】` name prefix into a speaker + text
+    /// colour. `None` (the default) leaves lines speaker-less unless the
+    /// scene emits nameOpen/nameClose brackets.
+    speaker_resolver: Option<Arc<crate::gameexe::NamaeResolver>>,
 }
 
 impl ReplayEngine {
@@ -1134,7 +1170,18 @@ impl ReplayEngine {
             store,
             shift_jis,
             stats,
+            speaker_resolver: None,
         })
+    }
+
+    /// Install a `#NAMAE` + `#COLOR_TABLE` speaker resolver (built from
+    /// the game's `Gameexe.ini` via [`crate::Gameexe::namae_resolver`]).
+    /// Every subsequent replay / observation run resolves a leading
+    /// `【…】` name prefix into a speaker + dialogue text colour.
+    #[must_use]
+    pub fn with_namae_resolver(mut self, resolver: crate::gameexe::NamaeResolver) -> Self {
+        self.speaker_resolver = Some(Arc::new(resolver));
+        self
     }
 
     /// Build an engine over a pre-decoded store. `shift_jis` names the
@@ -1150,6 +1197,7 @@ impl ReplayEngine {
             store,
             shift_jis,
             stats,
+            speaker_resolver: None,
         }
     }
 
@@ -1198,6 +1246,7 @@ impl ReplayEngine {
         let sink: Arc<ReplayTextSink> = Arc::new(ReplayTextSink::default());
         let sink_dyn: Arc<dyn TextSurfaceSink> = Arc::clone(&sink) as Arc<dyn TextSurfaceSink>;
         let runtime = Arc::new(MsgRuntime::with_sink(Arc::clone(&sink_dyn)));
+        runtime.set_speaker_resolver(self.speaker_resolver.clone());
         let registry = mount_full_registry(sink_dyn, Arc::clone(&runtime));
         let mut vm = Vm::new(scene_id, 0);
         let refs = DriveRefs {
@@ -1233,6 +1282,7 @@ impl ReplayEngine {
         let sink: Arc<ReplayTextSink> = Arc::new(ReplayTextSink::default());
         let sink_dyn: Arc<dyn TextSurfaceSink> = Arc::clone(&sink) as Arc<dyn TextSurfaceSink>;
         let runtime = Arc::new(MsgRuntime::with_sink(Arc::clone(&sink_dyn)));
+        runtime.set_speaker_resolver(self.speaker_resolver.clone());
         let registry = mount_registry(
             sink_dyn,
             Arc::clone(&runtime),
@@ -1504,6 +1554,7 @@ impl ReplayEngine {
         scheduler: &mut dyn crate::rlop::LongOpScheduler,
     ) -> PassObservation {
         let runtime = Arc::new(MsgRuntime::with_sink(Arc::clone(&text_sink)));
+        runtime.set_speaker_resolver(self.speaker_resolver.clone());
         let handles = mount_registry_handles(text_sink, Arc::clone(&runtime), control_flow);
         let mut vm = Vm::new(scene_id, 0);
         let mut steps: u32 = 0;
@@ -1873,6 +1924,8 @@ fn drive_loop(vm: &mut Vm, refs: &DriveRefs<'_>, opts: &ReplayOpts, scene_id: u1
                                 byte_offset_in_scene: pc_before,
                                 body_shift_jis,
                                 body_utf8: line.text,
+                                speaker: line.speaker,
+                                color: line.color,
                             });
                             text_emitted = text_emitted.saturating_add(1);
                         }
@@ -2562,6 +2615,8 @@ mod tests {
                     byte_offset_in_scene: 12,
                     body_shift_jis: vec![0x82, 0xa0],
                     body_utf8: "あ".to_string(),
+                    speaker: None,
+                    color: None,
                 },
                 ReplayEvent::Pause {
                     byte_offset_in_scene: 20,
@@ -2580,6 +2635,8 @@ mod tests {
             byte_offset_in_scene: 0,
             body_shift_jis: vec![0xde, 0xad, 0xbe, 0xef],
             body_utf8: String::new(),
+            speaker: None,
+            color: None,
         };
         let value = event_to_canonical_value(&event);
         let obj = value.as_object().expect("object");

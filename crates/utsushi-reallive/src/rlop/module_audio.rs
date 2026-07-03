@@ -401,12 +401,16 @@ impl AudioRuntime {
     ///
     /// The on-disk Sweetie HD `Gameexe.ini` NAMAE rows look like
     /// `#NAMAE = "凛" = "凛" = (1, 015, -1)` — three comma-separated
-    /// integers. The first two compose the voice-archive id the
-    /// `koe/z<archive:04>.ovk` filename uses: `composite_archive =
-    /// archive_field * 1000 + pattern_field`. So `(1, 015, -1)` ↔
-    /// `z1015.ovk`, `(1, 016, -1)` ↔ `z1016.ovk`, `(0, 011, -1)` ↔
-    /// `z0011.ovk`. The third field is the pitch override (unused for
-    /// archive resolution).
+    /// integers `(mode, color_table_index, reserved)`. The middle field
+    /// is a `#COLOR_TABLE` row index (the speaker's dialogue text
+    /// colour); the AUTHORITATIVE voice cue is carried by `koePlay`
+    /// bytecode arguments, NOT by `#NAMAE`. This helper is a best-effort
+    /// sticky-speaker fallback that exploits a numbering coincidence in
+    /// THIS title: `mode * 1000 + color_table_index` happens to equal
+    /// the `koe/z<NNNN>.ovk` archive number for its character speakers
+    /// (`(1, 015, -1)` ↔ `z1015.ovk`, `(1, 016, -1)` ↔ `z1016.ovk`,
+    /// `(0, 011, -1)` ↔ `z0011.ovk`). The last field is reserved
+    /// (unused here).
     ///
     /// This composition matches the file listing under Sweetie HD's
     /// `REALLIVEDATA/koe/` exactly (we observe `z1011`, `z1014`,
@@ -422,7 +426,7 @@ impl AudioRuntime {
                 .gameexe
                 .as_ref()
                 .and_then(|gx| gx.get_namae(&key))
-                .map(|entry| Self::namae_to_archive_id(entry.archive, entry.pattern))
+                .map(|entry| Self::namae_to_archive_id(entry.mode, entry.color_table_index))
         };
         if let Some(archive_id) = composite_archive_opt {
             self.lock_inner().current_speaker_archive_id = archive_id;
@@ -432,13 +436,15 @@ impl AudioRuntime {
         }
     }
 
-    /// Compose the voice-archive id from a NAMAE row's
-    /// `(archive_field, pattern_field)` pair. See
-    /// [`Self::select_speaker_by_display_name`] for the format rule.
-    pub fn namae_to_archive_id(archive_field: i32, pattern_field: i32) -> i32 {
-        archive_field
+    /// Compose the best-effort voice-archive id from a NAMAE row's
+    /// `(mode, color_table_index)` pair. See
+    /// [`Self::select_speaker_by_display_name`] for the numbering
+    /// coincidence this exploits (the authoritative voice cue is
+    /// `koePlay`, not `#NAMAE`).
+    pub fn namae_to_archive_id(mode_field: i32, color_index_field: i32) -> i32 {
+        mode_field
             .saturating_mul(1000)
-            .saturating_add(pattern_field)
+            .saturating_add(color_index_field)
     }
 
     /// Current sticky speaker archive id.

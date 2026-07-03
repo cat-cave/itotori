@@ -108,24 +108,80 @@ pub enum SyscomVisibility {
 /// One parsed `NAMAE` registry entry.
 ///
 /// The RealLive engine's speaker registry keys each entry by the
-/// display string and exposes the canonical name plus the voice slot
-/// tuple `(archive, pattern, pitch)`. The
-/// `docs/research/reallive-engine.md` §B reference describes this
-/// shape. Pitch is sometimes `-1` (meaning "engine default"); the
-/// integer is stored as-is, not coerced to `Option<i32>`.
+/// authored display string and exposes the canonical (box-shown) name
+/// plus a `(mode, color_table_index, reserved)` triple. The MIDDLE
+/// field is a `#COLOR_TABLE` row index — the per-speaker DIALOGUE TEXT
+/// COLOUR — NOT a voice pattern id. Voice playback is carried by
+/// `koePlay` bytecode arguments, not by `#NAMAE`. (The historical
+/// `(archive, pattern, pitch)` labelling mistook this colour index for
+/// a voice slot; see `docs/research/reallive-engine.md` §B.) The
+/// reserved field is the `-1` engine-default sentinel; the integer is
+/// stored as-is, not coerced to `Option<i32>`.
+///
+/// Example: `#NAMAE="和人" = "和人" = (1,016, -1)` → `mode = 1`,
+/// `color_table_index = 16` (→ `#COLOR_TABLE.016 = 204,204,255`,
+/// Kazuto's pale text), `reserved = -1`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NamaeEntry {
-    /// Display name as authored (e.g. `"和人"`, `"？？？／凛"`).
+    /// Display key as authored (e.g. `"和人"`, `"？？？／凛"`). This is
+    /// the `#NAMAE` lookup key an inline `【…】` name prefix carries.
     pub display: String,
-    /// Canonical / non-censored display name.
+    /// Canonical (box-shown) name (e.g. `"和人"`, or `"？？？"` for a
+    /// still-hidden character).
     pub canonical: String,
-    /// Voice archive id.
-    pub archive: i32,
-    /// Voice pattern id within the archive.
-    pub pattern: i32,
-    /// Voice pitch override (`-1` is the engine-default sentinel).
-    pub pitch: i32,
+    /// First tuple field — an engine mode flag (`0` / `1`), NOT a voice
+    /// archive id.
+    pub mode: i32,
+    /// Middle tuple field — the `#COLOR_TABLE.<NNN>` row index that
+    /// gives this speaker's dialogue text colour.
+    pub color_table_index: i32,
+    /// Last tuple field — reserved (`-1` is the engine-default
+    /// sentinel).
+    pub reserved: i32,
+}
+
+/// A speaker resolved from the `#NAMAE` + `#COLOR_TABLE` tables: the
+/// name to paint in the message-window name box, and the RGB colour the
+/// speaker's dialogue text is drawn in.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResolvedSpeaker {
+    /// Box-shown name (the `#NAMAE` canonical field).
+    pub display_name: String,
+    /// Dialogue text colour, resolved from `#COLOR_TABLE[color_table_index]`.
+    pub color: [u8; 3],
+}
+
+/// Owned `【key】 → (display_name, colour)` table.
+///
+/// Built from a parsed [`Gameexe`] via [`Gameexe::namae_resolver`] and
+/// cloned into the message runtime so the `Textout` → `TextLine` path
+/// can resolve a leading full-width lenticular `【…】` speaker prefix
+/// (the `#NAMAE` lookup key) into a display name + text colour WITHOUT
+/// borrowing the whole `Gameexe`. Keyed by the `#NAMAE` display key (the
+/// exact bytes an authored `【…】` prefix carries).
+#[derive(Debug, Clone, Default)]
+pub struct NamaeResolver {
+    by_key: HashMap<String, ResolvedSpeaker>,
+}
+
+impl NamaeResolver {
+    /// Resolve a `【…】` prefix key (the inner string, e.g. `"和人"`) to
+    /// its display name + dialogue colour. `None` for a key with no
+    /// `#NAMAE` row (narration, or an unregistered one-off token).
+    pub fn resolve(&self, key: &str) -> Option<&ResolvedSpeaker> {
+        self.by_key.get(key)
+    }
+
+    /// Number of registered `#NAMAE` keys.
+    pub fn len(&self) -> usize {
+        self.by_key.len()
+    }
+
+    /// `true` when no `#NAMAE` rows were registered.
+    pub fn is_empty(&self) -> bool {
+        self.by_key.is_empty()
+    }
 }
 
 /// One parsed `SYSCOM` label entry.
@@ -441,6 +497,55 @@ impl Gameexe {
             GameexeValue::Namae(entry) => Some(entry),
             _ => None,
         }
+    }
+
+    /// Resolve a `#COLOR_TABLE.<index>` row to an RGB triple. The table
+    /// is authored with zero-padded 3-digit indices
+    /// (`#COLOR_TABLE.016=204,204,255`); a bare `<index>` form is
+    /// accepted as a fallback. Returns `None` for a missing / malformed
+    /// / negative index.
+    pub fn color_table_rgb(&self, index: i32) -> Option<[u8; 3]> {
+        if index < 0 {
+            return None;
+        }
+        let padded = format!("COLOR_TABLE.{index:03}");
+        let arr = self
+            .get_int_array(&padded)
+            .or_else(|| self.get_int_array(&format!("COLOR_TABLE.{index}")))?;
+        if arr.len() < 3 {
+            return None;
+        }
+        let clamp = |v: i32| v.clamp(0, 255) as u8;
+        Some([clamp(arr[0]), clamp(arr[1]), clamp(arr[2])])
+    }
+
+    /// Build an owned `【key】 → (display_name, colour)` resolver from the
+    /// parsed `#NAMAE` + `#COLOR_TABLE` tables.
+    ///
+    /// Each `#NAMAE` row is keyed by its display key (the exact bytes an
+    /// authored inline `【…】` name prefix carries); the resolved
+    /// display name is the row's canonical (box-shown) field and the
+    /// colour is `#COLOR_TABLE[color_table_index]` (falling back to
+    /// opaque white when the row's index has no palette entry).
+    pub fn namae_resolver(&self) -> NamaeResolver {
+        let mut by_key = HashMap::new();
+        for key in self.list_namespace("NAMAE") {
+            let Some(entry) = self.get_namae(key) else {
+                continue;
+            };
+            let display_key = key.strip_prefix("NAMAE.").unwrap_or(key).to_string();
+            let color = self
+                .color_table_rgb(entry.color_table_index)
+                .unwrap_or([255, 255, 255]);
+            by_key.insert(
+                display_key,
+                ResolvedSpeaker {
+                    display_name: entry.canonical.clone(),
+                    color,
+                },
+            );
+        }
+        NamaeResolver { by_key }
     }
 
     /// Enumerate every key under the given dotted-path namespace.
@@ -807,17 +912,17 @@ fn parse_namae_entry(raw: &str) -> Option<(String, GameexeValue)> {
     if parts.len() != 3 {
         return None;
     }
-    let archive: i32 = parts[0].parse().ok()?;
-    let pattern: i32 = parts[1].parse().ok()?;
-    let pitch: i32 = parts[2].parse().ok()?;
+    let mode: i32 = parts[0].parse().ok()?;
+    let color_table_index: i32 = parts[1].parse().ok()?;
+    let reserved: i32 = parts[2].parse().ok()?;
     Some((
         display.to_string(),
         GameexeValue::Namae(NamaeEntry {
             display: display.to_string(),
             canonical: canonical.to_string(),
-            archive,
-            pattern,
-            pitch,
+            mode,
+            color_table_index,
+            reserved,
         }),
     ))
 }
@@ -1029,9 +1134,35 @@ mod tests {
             .expect("NAMAE.<display> must be reachable");
         assert_eq!(entry.display, "和人");
         assert_eq!(entry.canonical, "和人");
-        assert_eq!(entry.archive, 1);
-        assert_eq!(entry.pattern, 16);
-        assert_eq!(entry.pitch, -1);
+        assert_eq!(entry.mode, 1);
+        assert_eq!(entry.color_table_index, 16);
+        assert_eq!(entry.reserved, -1);
+    }
+
+    #[test]
+    fn namae_resolver_maps_key_to_display_and_color_table_rgb() {
+        // NAMAE middle field is a #COLOR_TABLE index, not a voice slot.
+        // 和人 → idx 16 → COLOR_TABLE.016 = (204,204,255) pale;
+        // 真理子 → idx 14 → COLOR_TABLE.014 = (255,153,204) pink.
+        let gx = parse_str(
+            "#COLOR_TABLE.014=255,153,204\r\n\
+             #COLOR_TABLE.016=204,204,255\r\n\
+             #NAMAE=\"和人\" = \"和人\" = (1,016, -1)\r\n\
+             #NAMAE=\"真理子\" = \"真理子\" = (1,014, -1)\r\n\
+             #NAMAE=\"？？？／凛\" = \"？？？\" = (1,015, -1)\r\n",
+        );
+        let resolver = gx.namae_resolver();
+        let kazuto = resolver.resolve("和人").expect("和人 resolves");
+        assert_eq!(kazuto.display_name, "和人");
+        assert_eq!(kazuto.color, [204, 204, 255]);
+        let mariko = resolver.resolve("真理子").expect("真理子 resolves");
+        assert_eq!(mariko.display_name, "真理子");
+        assert_eq!(mariko.color, [255, 153, 204]);
+        // Censored key shows the canonical box name (？？？), not the key.
+        let hidden = resolver.resolve("？？？／凛").expect("？？？／凛 resolves");
+        assert_eq!(hidden.display_name, "？？？");
+        // Narration / unregistered key → no speaker.
+        assert!(resolver.resolve("ナレーション").is_none());
     }
 
     #[test]

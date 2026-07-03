@@ -146,11 +146,15 @@ fn write_png(path: &Path, fb: &Framebuffer) {
 }
 
 /// Rasterise the observed graphics stack + ONE message into a full frame.
+// reason: a diagnostic renderer over distinct render inputs; a params struct
+// would relocate the arity without clarity.
+#[allow(clippy::too_many_arguments)]
 fn render_message_frame(
     pass: &RenderPass,
     stack: &utsushi_reallive::GraphicsObjectStack,
     text: &str,
     speaker: Option<&str>,
+    color: Option<[u8; 3]>,
     config: &utsushi_reallive::MessageWindowConfig,
     screen_size: (u32, u32),
     frame_size: (u32, u32),
@@ -162,7 +166,15 @@ fn render_message_frame(
     if stack.is_empty() {
         fb.fill(WipeColour::opaque_rgb(0x1a, 0x1e, 0x2c));
     }
-    let layer = TextLayer::message_window(text, speaker, config, screen_size, frame_size);
+    let text_color = color.map(|[r, g, b]| WipeColour::opaque_rgb(r, g, b));
+    let layer = TextLayer::message_window_colored(
+        text,
+        speaker,
+        text_color,
+        config,
+        screen_size,
+        frame_size,
+    );
     let painted = fb.draw_text(&layer);
     assert!(painted > 0, "message glyphs must paint");
     fb
@@ -219,8 +231,12 @@ fn main() {
     let frame_size = screen_size;
 
     // --- Real play-order message stream (branch-following, single pass). ---
+    // Install the #NAMAE + #COLOR_TABLE resolver so a leading 【…】 name
+    // prefix in a spoken line resolves into a speaker + text colour.
+    let resolver = gameexe.namae_resolver();
+    println!("namae_resolver: {} keys", resolver.len());
     let seen_bytes = std::fs::read(&seen_path).expect("read Seen.txt");
-    let engine = staged_engine(&seen_bytes);
+    let engine = staged_engine(&seen_bytes).with_namae_resolver(gameexe.namae_resolver());
     let opts = ReplayOpts {
         step_budget: OBSERVE_BUDGET,
         stop_at_first_pause: false,
@@ -244,13 +260,24 @@ fn main() {
     // Message stream to render: real decoded play order, OR the staged
     // translated messages when supplied.
     let used_staged = !staged.is_empty();
-    let messages: Vec<(Option<String>, String)> = if used_staged {
+    let messages: Vec<(Option<String>, Option<[u8; 3]>, String)> = if used_staged {
+        // Staged translated messages: resolve each speaker's colour from
+        // the real #NAMAE + #COLOR_TABLE tables by its display key.
         staged
+            .into_iter()
+            .map(|(speaker, text)| {
+                let color = speaker
+                    .as_deref()
+                    .and_then(|name| resolver.resolve(name))
+                    .map(|resolved| resolved.color);
+                (speaker, color, text)
+            })
+            .collect()
     } else {
         observation
             .play_order_lines
             .iter()
-            .map(|line| (line.speaker.clone(), line.text.clone()))
+            .map(|line| (line.speaker.clone(), line.color, line.text.clone()))
             .collect()
     };
     println!(
@@ -272,12 +299,13 @@ fn main() {
     let stack = &observation.scene.graphics_stack;
 
     // --- <prefix>-01.png: message #0 ALONE. ---
-    let (first_speaker, first_text) = &messages[0];
+    let (first_speaker, first_color, first_text) = &messages[0];
     let frame0 = render_message_frame(
         &pass,
         stack,
         first_text,
         first_speaker.as_deref(),
+        *first_color,
         &config,
         screen_size,
         frame_size,
@@ -298,12 +326,13 @@ fn main() {
         frame_size.1 * take as u32 + gap * (take as u32 - 1),
     );
     sheet.fill(WipeColour::opaque_rgb(0x00, 0x00, 0x00));
-    for (i, (speaker, text)) in messages.iter().take(take).enumerate() {
+    for (i, (speaker, color, text)) in messages.iter().take(take).enumerate() {
         let frame = render_message_frame(
             &pass,
             stack,
             text,
             speaker.as_deref(),
+            *color,
             &config,
             screen_size,
             frame_size,

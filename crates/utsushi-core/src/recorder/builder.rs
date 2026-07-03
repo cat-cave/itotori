@@ -154,6 +154,7 @@ mod tests {
             evidence_tier: EvidenceTier::E1,
             text: body.to_string(),
             speaker: Some("narrator".to_string()),
+            color: None,
             text_surface: Some("adv".to_string()),
             bridge_ref: Some(sample_bridge_ref()),
             source_asset: Some(

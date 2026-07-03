@@ -72,6 +72,7 @@ fn reallive_real_bytes_scene_one_replay_emits_textline() {
                 byte_offset_in_scene,
                 body_shift_jis,
                 body_utf8,
+                ..
             } => Some((
                 *byte_offset_in_scene,
                 body_shift_jis.clone(),

@@ -125,6 +125,7 @@ fn synthetic_text_line(line_id: &str) -> TextLine {
         evidence_tier: EvidenceTier::E1,
         text: "synthetic text observation".to_string(),
         speaker: None,
+        color: None,
         text_surface: None,
         bridge_ref: None,
         source_asset: None,

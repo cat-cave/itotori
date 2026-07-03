@@ -365,6 +365,7 @@ impl SelRuntime {
             evidence_tier: EvidenceTier::E1,
             text,
             speaker: None,
+            color: None,
             text_surface: Some(text_surface),
             bridge_ref: None,
             source_asset: None,

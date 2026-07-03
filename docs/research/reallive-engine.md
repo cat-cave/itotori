@@ -124,7 +124,7 @@ The keys group into the following category buckets. Counts refer to the
 | Scene routing                          | `SEEN_START`, `SEEN_MENU`, `CANCELCALL`, `SYSTEMCALL_*`                |   ~12 | Each call uses `<scene_id>,<entrypoint>` pair                              |
 | Asset folder remap                     | `FOLDNAME.*`                                                           |    13 | Triple-valued `subdir=mode:pakname`                                        |
 | Save spec                              | `SAVE_USE`, `SAVE_FORMAT`, `SAVE_CNT`, `SAVE_THUMBNAIL`, `SAVE_NODATA` |   ~10 | Drives `SAVEDATA/REALLIVE.sav` shape                                       |
-| Speaker / character roster (`NAMAE`)   | `#NAMAE="和人" = "和人" = (1,016, -1)`                                 |    11 | Maps display name to canonical name + (voice_archive_id, voice_pattern_id) |
+| Speaker / character roster (`NAMAE`)   | `#NAMAE="和人" = "和人" = (1,016, -1)`                                 |    11 | Maps display key → canonical (box-shown) name + `(mode, color_table_index, reserved)`; MIDDLE field is a `#COLOR_TABLE` row index (dialogue text colour), NOT a voice slot |
 | Voice on/off menu                      | `KOEONOFF.000.(000).ON="凛"` etc.                                      |     6 | Per-character voice toggle in syscom menu                                  |
 | `SYSCOM.NNN` system command catalogue  | `SYSCOM.005.000="フルスクリーン"`                                      |   ~70 | 32 system-menu items, each with label + subitems                           |
 | `WAKU.NNN.*` text window decoration    | `WAKU.000.000.NAME="_waku10"` etc.                                     |   209 | 8 text-window themes × ~25 fields each                                     |
@@ -144,11 +144,24 @@ The keys group into the following category buckets. Counts refer to the
 Detailed key reference for the engine subsystems:
 
 - **`#NAMAE` (speaker registry):** triple-valued —
-  `display_name = canonical_name = (koe_archive_id, koe_pattern_id, voice_pitch)`.
-  Example: `#NAMAE="和人" = "和人" = (1,016, -1)` ↔ speaker Kazuto uses voice
-  archive 1, entry 016. The `？？？／和人` line maps the censored display
-  `？？？` to the same voice slot. Total entries in Sweetie HD: 11 (5 named
-  characters × {plain, censored} + speaker pair 「和人・しずね」). [V]
+  `display_key = canonical_name = (mode, color_table_index, reserved)`. The
+  MIDDLE tuple field is a `#COLOR_TABLE` row index — the speaker's DIALOGUE
+  TEXT COLOUR — **not** a voice pattern id. The AUTHORITATIVE voice cue is
+  carried by `koePlay` bytecode arguments, not by `#NAMAE`. (An earlier
+  labelling read the triple as `(voice_archive_id, voice_pattern_id,
+  voice_pitch)`; that mistook the colour index for a voice slot. The
+  `mode * 1000 + color_table_index` product happens to coincide with the
+  `koe/z<NNNN>.ovk` archive number for this title's character speakers,
+  which is what led to the confusion — a numbering coincidence, not the
+  semantics.) Example: `#NAMAE="和人" = "和人" = (1,016, -1)` → `mode = 1`,
+  `color_table_index = 16` → `#COLOR_TABLE.016 = 204,204,255` (Kazuto's pale
+  dialogue text), `reserved = -1`. A leading full-width lenticular `【和人】`
+  prefix inside a spoken `Textout` body (Shift-JIS `81 79 … 81 7A`) is this
+  registry's LOOKUP KEY: the decoder resolves it to the speaker name box +
+  text colour. The `？？？／凛` display key maps the censored box name
+  `？？？` (its own colour) to that hidden character. Total entries in
+  Sweetie HD: 11 (5 named characters × {plain, censored} + speaker pair
+  「和人・しずね」). [V]
 - **`#KOEONOFF.NNN.(MMM).ON="label"`:** maps each `KOEONOFF` menu line to a set
   of speaker ids. Example: `#KOEONOFF.005.(000,002,003,004).ON="女の子全て"`
   groups all four girls under one toggle. [V]
@@ -404,9 +417,7 @@ constructor populates `(sample_num, offset, length)` tuples. [P]
 
 `z1001.ovk` (44.6 MB) carries 0x117 = 279 entries (matches the per-speaker
 volume of a typical visual novel). Sweetie HD's `koe/` directory has 139
-`.ovk` files; the leading `z` plus the voice-archive id maps via
-`#NAMAE="..." = "..." = (archive_id, sample_id, pitch)` lines in
-`Gameexe.ini` — but the actual `z` numbering scheme is `z<archive_id>.ovk`
+`.ovk` files; the `z` numbering scheme is `z<archive_id>.ovk`
 where `archive_id` is `0001` for system-event voices and `1xxx` for
 character-line voices. [V — visible in the file naming]
 

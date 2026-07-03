@@ -200,6 +200,9 @@ struct ProtoUnit {
     spans: Vec<ProtoSpan>,
     /// Resolved speaker text, if any (raw nametoken contents).
     raw_speaker: Option<String>,
+    /// Resolved per-speaker dialogue text colour (RGB) from the matching
+    /// `#NAMAE` row's `#COLOR_TABLE` index. `None` when unresolved.
+    text_color: Option<[u8; 3]>,
     /// Scene-blob-relative byte offset of the text-display body.
     decompressed_byte_offset: u64,
     /// Length of the text-display body bytes (in the decompressed
@@ -299,6 +302,7 @@ fn collect_units(
                         control_prefix,
                         spans,
                         raw_speaker: raw_speaker.or_else(|| last_speaker.clone()),
+                        text_color: None,
                         decompressed_byte_offset: cursor,
                         decompressed_byte_len: raw_bytes.len() as u64,
                         voice_archive_id: None,
@@ -350,6 +354,7 @@ fn collect_units(
                         control_prefix,
                         spans,
                         raw_speaker: None,
+                        text_color: None,
                         decompressed_byte_offset: cursor,
                         decompressed_byte_len: choice_bytes.len() as u64,
                         voice_archive_id: None,
@@ -438,6 +443,7 @@ fn collect_units(
     }
     for unit in &mut units {
         if let Some(speaker) = unit.raw_speaker.clone() {
+            unit.text_color = resolve_speaker_color(&speaker, gameexe_inventory);
             unit.raw_speaker = Some(normalize_speaker(&speaker, gameexe_inventory));
         }
     }
@@ -506,10 +512,12 @@ fn build_control_prefix(
 }
 
 fn extract_name_token_spans(decoded: &str, prefix_offset: u64) -> (Option<String>, Vec<ProtoSpan>) {
-    // Sweetie HD name tokens appear as `【話者】` (full-width bracketed)
-    // or `「話者」`. We look for the first occurrence and pin a span
-    // around it.
-    let candidates = [('【', '】'), ('「', '」')];
+    // A RealLive speaker name token is the full-width lenticular
+    // `【話者】` prefix (the `#NAMAE` lookup key). The `「話者」` corner
+    // brackets are the DIALOGUE quote, NOT a name token — matching them
+    // here misattributed every quote-only narration line to a speaker, so
+    // that fallback is dropped.
+    let candidates = [('【', '】')];
     for (open, close) in candidates {
         if let Some(open_pos) = decoded.find(open)
             && let Some(close_offset) = decoded[open_pos + open.len_utf8()..].find(close)
@@ -613,13 +621,72 @@ fn extract_choice_marker_spans(
 
 fn normalize_speaker(raw: &str, gameexe_inventory: &GameexeInventoryReport) -> String {
     // Walk the NAMAE entries; if any entry's value contains the raw
-    // speaker text, surface the canonical NAMAE value.
+    // speaker text, surface the entry's DISPLAY name (the first
+    // `"…"` field) — NOT the whole `"display" = "canonical" = (…)`
+    // line, which is engine config, not a reader-facing name.
     for entry in &gameexe_inventory.entries {
-        if matches!(entry.family, GameexeKeyFamily::Namae) && entry.value.contains(raw) {
-            return entry.value.clone();
+        if matches!(entry.family, GameexeKeyFamily::Namae)
+            && entry.value.contains(raw)
+            && let Some(display) = namae_display(&entry.value)
+        {
+            return display;
         }
     }
     raw.to_string()
+}
+
+/// The first `"…"` quoted field of a `#NAMAE` RHS
+/// (`"display" = "canonical" = (mode, color_table_index, reserved)`).
+fn namae_display(value: &str) -> Option<String> {
+    let start = value.find('"')? + 1;
+    let end = value[start..].find('"')? + start;
+    Some(value[start..end].to_string())
+}
+
+/// The middle tuple field of a `#NAMAE` RHS — the `#COLOR_TABLE` row
+/// index (the speaker's dialogue text colour), NOT a voice slot.
+fn namae_color_index(value: &str) -> Option<i32> {
+    let open = value.find('(')?;
+    let close = value[open..].find(')')? + open;
+    let inner = &value[open + 1..close];
+    let mut parts = inner.split(',');
+    let _mode = parts.next()?;
+    parts.next()?.trim().parse::<i32>().ok()
+}
+
+/// Resolve a raw speaker label to its `#COLOR_TABLE` RGB colour via the
+/// matching `#NAMAE` row's middle field. `None` when no NAMAE row
+/// matches, the row has no colour index, or the palette lacks that row.
+fn resolve_speaker_color(raw: &str, gameexe_inventory: &GameexeInventoryReport) -> Option<[u8; 3]> {
+    let color_index = gameexe_inventory
+        .entries
+        .iter()
+        .find(|entry| matches!(entry.family, GameexeKeyFamily::Namae) && entry.value.contains(raw))
+        .and_then(|entry| namae_color_index(&entry.value))?;
+    color_table_rgb(color_index, gameexe_inventory)
+}
+
+/// Look up `#COLOR_TABLE.<index>` in the inventory and parse its
+/// `r,g,b` value into an RGB triple. Indices are authored zero-padded
+/// to three digits (`#COLOR_TABLE.016`); a bare form is accepted too.
+fn color_table_rgb(index: i32, gameexe_inventory: &GameexeInventoryReport) -> Option<[u8; 3]> {
+    if index < 0 {
+        return None;
+    }
+    let padded = format!("{index:03}");
+    let bare = index.to_string();
+    let entry = gameexe_inventory.entries.iter().find(|entry| {
+        matches!(&entry.family, GameexeKeyFamily::ColorTable { index: idx } if *idx == padded || *idx == bare)
+    })?;
+    let mut parts = entry
+        .value
+        .split(',')
+        .map(|part| part.trim().parse::<i32>());
+    let r = parts.next()?.ok()?;
+    let g = parts.next()?.ok()?;
+    let b = parts.next()?.ok()?;
+    let clamp = |v: i32| v.clamp(0, 255) as u8;
+    Some([clamp(r), clamp(g), clamp(b)])
 }
 
 // ---------------------------------------------------------------------
@@ -842,11 +909,20 @@ fn build_unit_json(
     });
 
     let speaker = match (&unit.raw_speaker, unit.surface_kind) {
-        (Some(speaker), "dialogue") => json!({
-            "knowledgeState": "parser_unknown",
-            "rawSpeakerText": speaker,
-            "evidence": "namae_lookup_or_inline_name_token",
-        }),
+        (Some(speaker), "dialogue") => {
+            let mut speaker_json = json!({
+                "knowledgeState": "parser_unknown",
+                "rawSpeakerText": speaker,
+                "displayName": speaker,
+                "evidence": "namae_lookup_or_inline_name_token",
+            });
+            // Emit the resolved per-speaker dialogue text colour (the
+            // `#NAMAE` middle field → `#COLOR_TABLE` row) when known.
+            if let Some([r, g, b]) = unit.text_color {
+                speaker_json["textColor"] = json!([r, g, b]);
+            }
+            speaker_json
+        }
         _ => json!({"knowledgeState": "not_applicable"}),
     };
 
@@ -1150,6 +1226,7 @@ mod tests {
             control_prefix: String::new(),
             spans,
             raw_speaker: None,
+            text_color: None,
             decompressed_byte_offset: 0,
             decompressed_byte_len: 6,
             voice_archive_id: None,
