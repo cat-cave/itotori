@@ -1989,15 +1989,23 @@ export const RUN_REPORT_SCHEMA = "itotori.localize-project.run-report.v0";
 // outside the current profile". Any of these anywhere in a failure's text
 // (thrown message + captured child stdout/stderr) classifies the whole chain
 // as out-of-profile-diagnostic — an honest unsupported-construct signal, not
-// an in-profile bug. Sourced verbatim from the emitting components:
+// an in-profile bug. Every signature is a DOTTED structured code emitted
+// verbatim by its component; bare enum-variant names are deliberately NOT
+// listed — a variant name like `OutOfProfileCompression` is redundant with
+// the dotted code its error always carries, and matching the bare substring
+// only adds false-positive surface (an unrelated crash whose Debug output or
+// child stderr merely contains that substring would be silently downgraded
+// out of a real bug, violating the alpha-006f fail-closed bar). Sourced
+// verbatim from the emitting components:
 //   - kaifuu-reallive diagnostics.rs (SEMANTIC_REALLIVE_OUT_OF_PROFILE_INPUT)
 //   - kaifuu-cli partial path (kaifuu.reallive.partial.out_of_profile_input)
-//   - utsushi-reallive nwa.rs (NwaDecodeError::OutOfProfileCompression)
+//   - utsushi-reallive nwa.rs (NWA_OUT_OF_PROFILE_COMPRESSION_CODE — the
+//     dotted code NwaDecodeError::OutOfProfileCompression always carries in
+//     its `({code})` Display/Debug tail)
 const OUT_OF_PROFILE_CODE_SIGNATURES = Object.freeze([
   "kaifuu.reallive.out_of_profile_input",
   "kaifuu.reallive.partial.out_of_profile_input",
   "utsushi.reallive.nwa.out_of_profile_compression",
-  "OutOfProfileCompression",
 ]);
 
 /**

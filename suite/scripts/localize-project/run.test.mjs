@@ -1041,6 +1041,29 @@ test("out-of-profile: a REAL utsushi NWA OutOfProfileCompression -> out-of-profi
   assert.equal(classified.phase, "replay-validate");
 });
 
+test("in-profile-bug fail-closed: a crash whose stderr merely CONTAINS the bare `OutOfProfileCompression` variant name (but NO dotted code) is NOT downgraded", () => {
+  // classify-chain-failure-bare-signature-false-positive: the classifier must
+  // match ONLY the dotted structured out-of-profile codes, never the bare
+  // enum-variant name. A genuine crash whose Debug output or child stderr
+  // happens to contain the substring `OutOfProfileCompression` (e.g. a panic
+  // formatting an unrelated NwaDecodeError value, or an unwrap deep in the
+  // render path) carries NO dotted code — it is a real in-profile bug and MUST
+  // fail closed, not be silently masked as an out-of-profile diagnostic.
+  const error = new Error(
+    "command exited with status 101: cargo run -p utsushi-cli -- render-validate ...",
+  );
+  error.childStderr =
+    "thread 'main' panicked at 'called `Result::unwrap()` on an `Err` value: " +
+    'OutOfProfileCompression { code: "", mode: 3 }\', src/render.rs:412:18\n';
+  const classified = classifyChainFailure(error, { phase: "render-validate" });
+  assert.equal(classified.outcome, CHAIN_OUTCOMES.bug);
+  assert.equal(classified.outcome, "in-profile-bug");
+  assert.equal(classified.diagnosticCode, "chain.in_profile_bug");
+  assert.equal(classified.phase, "render-validate");
+  // Explicitly NOT downgraded to an out-of-profile diagnostic.
+  assert.notEqual(classified.outcome, CHAIN_OUTCOMES.outOfProfile);
+});
+
 test("in-profile-bug: a supported-input crash with no component code -> in-profile-bug", () => {
   // A replay/render break on supported input: the child failed but printed
   // no out-of-profile semantic code. This is something that SHOULD work.
