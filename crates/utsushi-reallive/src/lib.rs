@@ -87,8 +87,9 @@ pub use ovk::{
 };
 
 pub use gameexe::{
-    GAMEEXE_SHIFT_JIS_DECODE_FAILURE_CODE, Gameexe, GameexeParseError, GameexeValue, NamaeEntry,
-    SyscomLabel, SyscomVisibility, parse_into_arc as parse_gameexe_into_arc,
+    GAMEEXE_SHIFT_JIS_DECODE_FAILURE_CODE, Gameexe, GameexeParseError, GameexeValue,
+    MessageWindowConfig, NamaeEntry, SyscomLabel, SyscomVisibility,
+    parse_into_arc as parse_gameexe_into_arc,
 };
 
 // UTSUSHI-201: `utsushi-reallive` owns its own `Seen.txt` parser. The
@@ -230,11 +231,12 @@ pub use g00::{
 
 pub use replay::{
     BranchReplayReport, BranchTerminus, ControlTransferCounts, DEFAULT_REPLAY_STEP_BUDGET,
-    DecompressedScene, REPLAY_LOG_SCHEMA_VERSION, ReplayEngine, ReplayError, ReplayEvent,
-    ReplayLog, ReplayOpts, ReplayOutcome, SceneStoreBundle, SceneStoreStats,
-    SnapshotIdentityReport, build_scene_store, build_scene_store_from_decompressed,
-    decompress_all_scenes, full_registry_rlop_count, replay_scene, replay_scene_bytes,
-    replay_until_first_pause, restore_into_fresh_vm, verify_snapshot_restore_each_tick,
+    DecompressedScene, PortObservation, REPLAY_LOG_SCHEMA_VERSION, ReplayEngine, ReplayError,
+    ReplayEvent, ReplayLog, ReplayOpts, ReplayOutcome, SceneObservation, SceneStoreBundle,
+    SceneStoreStats, SnapshotIdentityReport, build_scene_store,
+    build_scene_store_from_decompressed, decompress_all_scenes, full_registry_rlop_count,
+    replay_scene, replay_scene_bytes, replay_until_first_pause, restore_into_fresh_vm,
+    verify_snapshot_restore_each_tick,
 };
 pub use scene_header::{
     COMPILER_VERSION_1_0, COMPILER_VERSION_1_10, COMPILER_VERSION_1_1110,

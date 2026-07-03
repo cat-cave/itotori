@@ -30,7 +30,8 @@ use utsushi_core::substrate::{
 };
 use utsushi_reallive::{
     Framebuffer, GraphicsObject, GraphicsObjectStack, GraphicsPlane, GraphicsScale,
-    RedactionPolicy, RenderPass, TextLayer, WipeColour, decode_g00, encode_png_rgba_deterministic,
+    MessageWindowConfig, RedactionPolicy, RenderPass, TextLayer, WipeColour, decode_g00,
+    encode_png_rgba_deterministic,
 };
 
 #[derive(Debug)]
@@ -156,12 +157,17 @@ fn main() {
     };
     stack.set(GraphicsPlane::Background, 1, bg).unwrap();
 
-    // STAGED English translation of the opening line (see module note).
-    let dialogue = TextLayer::localized(vec![
-        "Stella: Welcome home, Master. Dinner is almost ready.".to_string(),
-        "\"...You're early today. Did something happen at work?\"".to_string(),
-    ])
-    .with_dialogue_box(W, H);
+    // STAGED English translation of the opening line (see module note),
+    // laid out as ONE message in the default message-window box (no
+    // Gameexe here — this is the g00 + redaction diag, not the
+    // config-driven message-window diag; see the `msgwin_diag` example).
+    let dialogue = TextLayer::message_window(
+        "\"...You're early today. Did something happen at work?\"",
+        None,
+        &MessageWindowConfig::default(),
+        (W, H),
+        (W, H),
+    );
 
     // --- fix-01: full-fidelity PRIVATE frame (real art + English text).
     let (mut full_fb, report) = pass.rasterise_reporting(&stack, RedactionPolicy::Full);

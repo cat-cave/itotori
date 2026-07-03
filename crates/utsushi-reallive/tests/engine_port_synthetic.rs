@@ -23,7 +23,7 @@ use std::sync::Arc;
 
 use utsushi_core::substrate::{AssetPackage, PortCapability, PortRequest, Runner};
 use utsushi_core::{RuntimeArtifactRoot, RuntimeOperation};
-use utsushi_reallive::UtsushiReallivePort;
+use utsushi_reallive::{MessageWindowConfig, UtsushiReallivePort};
 
 use port_support::{NullAssetPackage, managed_temp_dir, synthetic_engine};
 
@@ -31,7 +31,15 @@ use port_support::{NullAssetPackage, managed_temp_dir, synthetic_engine};
 fn port_drives_text_and_frame_sinks_over_synthetic_engine() {
     let engine = synthetic_engine();
     let assets: Arc<dyn AssetPackage> = Arc::new(NullAssetPackage);
-    let mut port = UtsushiReallivePort::new(engine, assets, 1);
+    // No Gameexe in this synthetic wiring proof, so the port uses the
+    // documented default message-window box.
+    let mut port = UtsushiReallivePort::new(
+        engine,
+        assets,
+        1,
+        MessageWindowConfig::default(),
+        (1280, 720),
+    );
 
     let artifact_dir = managed_temp_dir("syn-artifact");
     let artifact_root = RuntimeArtifactRoot::new(artifact_dir);

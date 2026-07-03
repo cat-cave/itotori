@@ -77,6 +77,7 @@ use std::sync::Arc;
 use sha2::{Digest, Sha256};
 
 use crate::g00::{G00Warning, decode_g00};
+use crate::gameexe::MessageWindowConfig;
 use crate::graphics_objects::{
     GraphicsColourTone, GraphicsObject, GraphicsObjectKind, GraphicsObjectStack, GraphicsPlane,
     WipeColour,
@@ -203,6 +204,32 @@ impl Framebuffer {
         }
     }
 
+    /// Copy every pixel of `src` into this framebuffer with its top-left
+    /// at `(dst_x, dst_y)` (verbatim overwrite, no blending). Portions
+    /// that fall outside this framebuffer are clipped. Used to stack
+    /// several rendered message frames into one contact-sheet image for
+    /// the message-window diagnostics.
+    pub fn blit(&mut self, src: &Framebuffer, dst_x: u32, dst_y: u32) {
+        for sy in 0..src.height {
+            let py = dst_y + sy;
+            if py >= self.height {
+                break;
+            }
+            for sx in 0..src.width {
+                let px = dst_x + sx;
+                if px >= self.width {
+                    break;
+                }
+                let src_off =
+                    ((sy as usize) * (src.width as usize) + sx as usize) * RGBA_BYTES_PER_PIXEL;
+                let dst_off =
+                    ((py as usize) * (self.width as usize) + px as usize) * RGBA_BYTES_PER_PIXEL;
+                self.pixels[dst_off..dst_off + RGBA_BYTES_PER_PIXEL]
+                    .copy_from_slice(&src.pixels[src_off..src_off + RGBA_BYTES_PER_PIXEL]);
+            }
+        }
+    }
+
     /// Whether `(x, y)` addresses a real pixel in this framebuffer.
     fn in_bounds(&self, x: u32, y: u32) -> bool {
         x < self.width && y < self.height
@@ -285,7 +312,13 @@ impl Framebuffer {
                 backdrop.colour,
             );
         }
-        font::draw_lines(self, layer)
+        let mut painted = font::draw_lines(self, layer);
+        // Paint the separate speaker name box (RealLive NAME_MOD=1) on
+        // top, so its backdrop + glyphs land after the message box.
+        if let Some(name_box) = &layer.name_box {
+            painted += self.draw_text(name_box);
+        }
+        painted
     }
 }
 
@@ -312,6 +345,10 @@ pub struct TextLayer {
     /// dialogue-box backing). `None` paints glyphs directly over the
     /// composited frame.
     pub backdrop: Option<TextBackdrop>,
+    /// Optional separate speaker name box (RealLive `NAME_MOD=1`),
+    /// painted as its own backdrop + glyph layer floating above the main
+    /// message box. `None` for narration or `NAME_MOD=0`.
+    pub name_box: Option<Box<TextLayer>>,
 }
 
 /// A translucent filled box painted behind a [`TextLayer`]'s glyphs so
@@ -339,47 +376,162 @@ impl TextLayer {
             scale: 24,
             colour: WipeColour::WHITE,
             backdrop: None,
+            name_box: None,
         }
     }
 
-    /// Place the lines inside a bottom-anchored VN dialogue box sized to
-    /// a `width × height` framebuffer, with a translucent dark backdrop.
-    /// Returns `self` so it chains off [`Self::localized`]. This is the
-    /// placement the engine port and the sample-frame emitter use so the
-    /// translated dialogue reads like an in-game text box.
-    pub fn with_dialogue_box(mut self, frame_width: u32, frame_height: u32) -> Self {
-        // Bottom third, inset from the frame edges.
-        let margin = frame_width / 24;
-        let box_height = frame_height / 4;
-        let box_x = margin;
-        let box_y = frame_height.saturating_sub(box_height + margin);
-        let box_w = frame_width.saturating_sub(margin * 2);
-        self.backdrop = Some(TextBackdrop {
-            x: box_x,
-            y: box_y,
-            width: box_w,
-            height: box_height,
-            // Dark, ~78% opaque slate so the composited scene stays
-            // faintly visible at the box edges while white text is crisp.
+    /// Lay out a SINGLE RealLive message inside its Gameexe-configured
+    /// dialogue box — the message-window subsystem's core placement.
+    ///
+    /// `text` is the ONE current message (never a whole scene concatenated
+    /// — the caller advances one message per frame). `speaker` is the
+    /// message's `NAME`-register speaker, if any. `config` is the real
+    /// `#WINDOW.000` set read from `Gameexe.ini`; `screen_size` is the
+    /// game's declared virtual space the config coordinates live in
+    /// ([`crate::Gameexe::screen_size_px`]); `frame_size` is the actual
+    /// framebuffer. The box position / colour / alpha / font-size / insets
+    /// are all driven from `config`, scaled `screen_size → frame_size`.
+    ///
+    /// When `config.name_mod == 1` AND `speaker` is present, a SEPARATE
+    /// name box is attached (per `NAME_POS` / `NAME_MOJI_SIZE`); narration
+    /// (no speaker) or `NAME_MOD=0` attaches none.
+    pub fn message_window(
+        text: &str,
+        speaker: Option<&str>,
+        config: &MessageWindowConfig,
+        screen_size: (u32, u32),
+        frame_size: (u32, u32),
+    ) -> Self {
+        let (vw, vh) = (screen_size.0.max(1) as i32, screen_size.1.max(1) as i32);
+        let scale_x = frame_size.0 as f32 / vw as f32;
+        let scale_y = frame_size.1 as f32 / vh as f32;
+        let to_x = |v: i32| (v as f32 * scale_x).round().max(0.0) as u32;
+        let to_y = |v: i32| (v as f32 * scale_y).round().max(0.0) as u32;
+
+        // --- Box rectangle in the game's virtual screen space. ---
+        // The waku (frame graphic) that sizes a real RealLive window is
+        // not decoded in this port, so the box extent is derived from the
+        // POS offsets: POS.x is the horizontal inset (symmetric), and the
+        // POS origin type + POS.y anchor the vertical band. This is a
+        // documented, config-driven approximation — POS.x=0 yields the
+        // full-width bottom box the rlvm oracle shows for Kanon.
+        let inset = config.pos_x.max(0);
+        let box_left = inset;
+        let box_right = (vw - inset).max(box_left + 1);
+        let (box_top, box_bottom) = match config.origin {
+            // Top-anchored: POS.y is the box top; extend to the bottom
+            // edge with a margin symmetric to the horizontal inset.
+            0 | 1 => (config.pos_y.max(0), (vh - inset).max(config.pos_y + 1)),
+            // Bottom-anchored (2, 3, or unknown): POS.y is measured up
+            // from the bottom edge; height comes from the MOJI metrics.
+            _ => {
+                let bottom = (vh - config.pos_y.max(0)).clamp(1, vh);
+                let height = box_text_height_virtual(config, vh);
+                ((bottom - height).max(0), bottom)
+            }
+        };
+
+        let bx = to_x(box_left);
+        let by = to_y(box_top);
+        let bw = to_x(box_right).saturating_sub(bx).max(1);
+        let bh = to_y(box_bottom).saturating_sub(by).max(1);
+        let (r, g, b, alpha) = config.attr_rgba;
+        let backdrop = TextBackdrop {
+            x: bx,
+            y: by,
+            width: bw,
+            height: bh,
             colour: WipeColour {
-                red: 0x0C,
-                green: 0x10,
-                blue: 0x18,
-                alpha: 0xC8,
+                red: r,
+                green: g,
+                blue: b,
+                alpha,
             },
-        });
-        let pad = box_height / 5;
-        self.origin_x = box_x + pad;
-        self.origin_y = box_y + pad;
-        self.scale = (frame_height / 24).max(16);
-        self.colour = WipeColour::WHITE;
-        self
+        };
+
+        // Text origin inside the box: MOJI_POS (upper, lower, left, right)
+        // padding, left + upper applied at the top-left.
+        let (pad_upper, _pad_lower, pad_left, _pad_right) = config.moji_pad;
+        let origin_x = bx.saturating_add(to_x(pad_left.max(0)));
+        let origin_y = by.saturating_add(to_y(pad_upper.max(0)));
+        let scale = ((config.moji_size as f32) * scale_y).round().max(10.0) as u32;
+
+        let mut layer = Self {
+            lines: vec![text.to_string()],
+            origin_x,
+            origin_y,
+            scale,
+            colour: WipeColour::WHITE,
+            backdrop: Some(backdrop),
+            name_box: None,
+        };
+
+        // --- Separate speaker name box (NAME_MOD=1 + a real speaker). ---
+        if config.name_mod == 1
+            && let Some(name) = speaker.map(str::trim).filter(|s| !s.is_empty())
+        {
+            let name_scale = ((config.name_moji_size as f32) * scale_y).round().max(10.0) as u32;
+            let (name_off_x, name_off_y) = config.name_pos;
+            // Height for one line + vertical padding; width sized to the
+            // name plus a small horizontal pad.
+            let name_h = name_scale + name_scale / 2;
+            let approx_glyph_w = (name_scale * 6 / 10).max(1);
+            let name_w = (name.chars().count() as u32 + 2) * approx_glyph_w;
+            let name_x = bx.saturating_add(to_x(name_off_x.max(0)));
+            // NAME_POS.y offsets down from the box top; the box floats
+            // ABOVE the message box top by its own height (rlvm places the
+            // name waku at `window.y + name_y_offset - namebox_height`).
+            let name_top =
+                (by as i32 + to_y(name_off_y.max(0)) as i32 - name_h as i32).max(0) as u32;
+            let name_backdrop = TextBackdrop {
+                x: name_x,
+                y: name_top,
+                width: name_w,
+                height: name_h,
+                colour: WipeColour {
+                    red: r,
+                    green: g,
+                    blue: b,
+                    alpha,
+                },
+            };
+            layer.name_box = Some(Box::new(Self {
+                lines: vec![name.to_string()],
+                origin_x: name_x.saturating_add(name_scale / 4),
+                origin_y: name_top.saturating_add(name_scale / 6),
+                scale: name_scale,
+                colour: WipeColour::WHITE,
+                backdrop: Some(name_backdrop),
+                name_box: None,
+            }));
+        }
+
+        layer
     }
 
-    /// Total number of characters across all lines.
+    /// Total number of characters across all lines, INCLUDING the
+    /// attached name box if any.
     pub fn char_count(&self) -> usize {
-        self.lines.iter().map(|line| line.chars().count()).sum()
+        let main: usize = self.lines.iter().map(|line| line.chars().count()).sum();
+        main + self.name_box.as_ref().map_or(0, |name| name.char_count())
     }
+}
+
+/// Box text-area height (virtual px) for a bottom-anchored window when no
+/// waku frame graphic is available: the RealLive
+/// `y_chars * (font + y_spacing + ruby)` formula plus the vertical
+/// padding, falling back to a quarter-screen band when `MOJI_CNT` is
+/// absent.
+fn box_text_height_virtual(config: &MessageWindowConfig, virtual_height: i32) -> i32 {
+    let (pad_upper, pad_lower, _, _) = config.moji_pad;
+    let vertical_pad = pad_upper.max(0) + pad_lower.max(0);
+    let line_stride = config.moji_size as i32 + config.moji_rep.1 + config.ruby_size.max(0);
+    let y_chars = config.moji_cnt.map(|(_, y)| y).filter(|y| *y > 0);
+    let base = match y_chars {
+        Some(rows) => rows * line_stride,
+        None => virtual_height / 4,
+    };
+    (base + vertical_pad).clamp(1, virtual_height)
 }
 
 /// Real TrueType glyph rasteriser for the localized text layer.
@@ -1789,6 +1941,151 @@ mod tests {
             .expect("real localized text emits");
         assert_eq!(sink.len(), 1);
         let _ = std::fs::remove_dir_all(root.path());
+    }
+
+    fn kanon_like_config() -> MessageWindowConfig {
+        // Kanon-shaped: top-left origin, bottom box, full width (POS.x=0),
+        // narration only (NAME_MOD=0).
+        MessageWindowConfig {
+            origin: 0,
+            pos_x: 0,
+            pos_y: 345,
+            attr_rgba: (100, 100, 160, 200),
+            moji_size: 25,
+            moji_pad: (19, 0, 53, 0),
+            moji_cnt: Some((22, 3)),
+            moji_rep: (-1, 3),
+            ruby_size: 0,
+            name_mod: 0,
+            message_mod: 0,
+            name_moji_size: 25,
+            name_pos: (0, 0),
+        }
+    }
+
+    #[test]
+    fn message_window_renders_one_message_not_the_whole_scene() {
+        // The message window carries exactly the ONE current message —
+        // never a whole scene concatenated. This is the regression guard
+        // for the "all messages in one box" defect: laying out three
+        // messages must produce THREE single-line layers, not one
+        // three-line box.
+        let messages = ["First message.", "Second message.", "Third message."];
+        let cfg = kanon_like_config();
+        for text in messages {
+            let layer = TextLayer::message_window(text, None, &cfg, (640, 480), (640, 480));
+            assert_eq!(
+                layer.lines,
+                vec![text.to_string()],
+                "each frame renders exactly one message"
+            );
+        }
+        // A flatten-all layer (the OLD behaviour) is structurally distinct:
+        // it would hold every message in one layer. Assert message_window
+        // never does that.
+        let one = TextLayer::message_window(messages[0], None, &cfg, (640, 480), (640, 480));
+        assert_eq!(one.lines.len(), 1, "one message per frame, not flattened");
+    }
+
+    #[test]
+    fn message_window_box_is_driven_by_gameexe_values() {
+        // Kanon POS=0:0,345 in 640x480 → a bottom, full-width box: top at
+        // y=345, spanning the full width. Change the config and the box
+        // moves — proving it is config-driven, not hardcoded.
+        let cfg = kanon_like_config();
+        let layer = TextLayer::message_window("narration", None, &cfg, (640, 480), (640, 480));
+        let backdrop = layer.backdrop.expect("message box has a backdrop");
+        assert_eq!(backdrop.x, 0, "POS.x=0 → box hugs the left edge");
+        assert_eq!(backdrop.y, 345, "POS.y=345 → box top at the configured y");
+        assert_eq!(backdrop.width, 640, "POS.x=0 → full-width box");
+        assert_eq!(backdrop.height, 480 - 345, "box extends to the bottom edge");
+        // Colour + alpha come straight from ATTR.
+        assert_eq!(
+            (
+                backdrop.colour.red,
+                backdrop.colour.green,
+                backdrop.colour.blue,
+                backdrop.colour.alpha
+            ),
+            (100, 100, 160, 200)
+        );
+        // Font size is MOJI_SIZE (scale 1.0 here).
+        assert_eq!(layer.scale, 25);
+
+        // Same config scaled 2x horizontally / 1.5x vertically to a
+        // 1280x720 frame moves the box proportionally.
+        let scaled = TextLayer::message_window("narration", None, &cfg, (640, 480), (1280, 720));
+        let scaled_box = scaled.backdrop.expect("backdrop");
+        assert_eq!(scaled_box.width, 1280, "full width scales to the frame");
+        assert_eq!(scaled_box.y, (345.0 * 1.5_f32).round() as u32);
+    }
+
+    #[test]
+    fn message_window_moving_pos_moves_the_box() {
+        // Independent proof the box is not hardcoded: a DIFFERENT POS
+        // yields a DIFFERENT rect.
+        let mut cfg = kanon_like_config();
+        cfg.pos_x = 40;
+        cfg.pos_y = 300;
+        let layer = TextLayer::message_window("x", None, &cfg, (640, 480), (640, 480));
+        let backdrop = layer.backdrop.expect("backdrop");
+        assert_eq!(backdrop.x, 40);
+        assert_eq!(backdrop.y, 300);
+        assert_eq!(backdrop.width, 640 - 2 * 40, "symmetric horizontal inset");
+    }
+
+    #[test]
+    fn message_window_name_box_present_only_with_speaker_and_name_mod() {
+        let mut cfg = kanon_like_config();
+        cfg.name_mod = 1;
+        cfg.name_moji_size = 25;
+        cfg.name_pos = (18, 26);
+
+        // Speaker + NAME_MOD=1 → a separate name box layer.
+        let with_speaker =
+            TextLayer::message_window("Hello.", Some("Yuuichi"), &cfg, (640, 480), (640, 480));
+        let name_box = with_speaker
+            .name_box
+            .as_ref()
+            .expect("NAME_MOD=1 + speaker → name box");
+        assert_eq!(name_box.lines, vec!["Yuuichi".to_string()]);
+        assert!(name_box.backdrop.is_some(), "name box has its own backdrop");
+
+        // Narration (no speaker) → NO name box, even with NAME_MOD=1.
+        let narration = TextLayer::message_window("Hello.", None, &cfg, (640, 480), (640, 480));
+        assert!(
+            narration.name_box.is_none(),
+            "narration renders no name box"
+        );
+
+        // NAME_MOD=0 → NO name box, even with a speaker.
+        cfg.name_mod = 0;
+        let mod_off =
+            TextLayer::message_window("Hello.", Some("Yuuichi"), &cfg, (640, 480), (640, 480));
+        assert!(mod_off.name_box.is_none(), "NAME_MOD=0 renders no name box");
+    }
+
+    #[test]
+    fn message_window_name_box_glyphs_paint() {
+        // The name box actually draws: painting a message-window layer with
+        // a name box paints MORE glyph pixels than the same message with no
+        // speaker (the name glyphs are additive).
+        let mut cfg = kanon_like_config();
+        cfg.name_mod = 1;
+        let pass = RenderPass::with_dimensions(640, 480).expect("non-zero screen");
+        let stack = wipe_stack(WipeColour::BLACK);
+
+        let narration =
+            TextLayer::message_window("Hello there.", None, &cfg, (640, 480), (640, 480));
+        let named =
+            TextLayer::message_window("Hello there.", Some("Nayuki"), &cfg, (640, 480), (640, 480));
+        let (_, narration_px) = pass.rasterise_with_text(&stack, &narration);
+        let (_, named_px) = pass.rasterise_with_text(&stack, &named);
+        assert!(narration_px > 0, "message glyphs paint");
+        assert!(
+            named_px > narration_px,
+            "the name box adds glyph pixels ({named_px} vs {narration_px})"
+        );
     }
 
     #[test]

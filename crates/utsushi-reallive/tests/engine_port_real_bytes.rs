@@ -123,8 +123,22 @@ fn run_title(corpus: &RealCorpus, g00_env: &str, label: &str) {
         pick_all_three_scene(&probe_engine, entry_scene, label)
     };
 
+    // Config-driven message-window box: read #WINDOW.000 + the declared
+    // screen size from the game's real Gameexe.ini.
+    let gameexe = corpus.gameexe().unwrap_or_else(|| {
+        panic!("[{label}] Gameexe.ini must parse for the message-window config")
+    });
+    let window_config = gameexe.message_window(0);
+    let screen_size = gameexe.screen_size_px();
+
     let assets: Arc<dyn AssetPackage> = Arc::new(OnDiskG00Package::new(g00_dir));
-    let mut port = UtsushiReallivePort::new(staged_engine(&seen_bytes), assets, scene);
+    let mut port = UtsushiReallivePort::new(
+        staged_engine(&seen_bytes),
+        assets,
+        scene,
+        window_config,
+        screen_size,
+    );
 
     let artifact_dir = managed_temp_dir(&format!("{label}-artifact"));
     let artifact_root = RuntimeArtifactRoot::new(artifact_dir);
@@ -177,11 +191,21 @@ fn run_title(corpus: &RealCorpus, g00_env: &str, label: &str) {
         "[{label}] DeterministicReplay capability: two replays must be byte-identical"
     );
 
-    // The emitted frame's localized text layer composites the REAL
-    // engine-decoded dialogue — the SAME decoded lines the substrate text
-    // sink emits for the driven scene — NOT the retired `UTSUSHI REALLIVE
-    // SCENE N` placeholder. Assert the frame overlay bodies equal the text
-    // the substrate sink surfaced from the same real-bytes run.
+    // ONE message per frame: exactly one frame is announced, no matter how
+    // many messages the scene produces (the flatten-all-messages-in-one-box
+    // defect announced one giant box; the fixed port renders the CURRENT
+    // message alone). Sweetie scene 1 produces thousands of messages yet
+    // announces a single frame.
+    assert_eq!(
+        frame_total, 1,
+        "[{label}] the port must announce exactly ONE message frame, not one box per scene"
+    );
+
+    // The port's play-order message stream is SINGLE PASS (branch-following
+    // play order, or the byte-order catalogue fallback) — the SAME decoded
+    // lines, in the SAME order, the substrate text sink emits, NOT the
+    // former ~2× two-pass union and NOT the retired `UTSUSHI REALLIVE SCENE
+    // N` placeholder.
     let sink_bodies: Vec<String> = outcome
         .observations
         .iter()
@@ -197,14 +221,14 @@ fn run_title(corpus: &RealCorpus, g00_env: &str, label: &str) {
     );
     assert!(
         !frame_overlay.is_empty(),
-        "[{label}] the frame's localized text layer must carry the real decoded dialogue; got 0 \
-         lines"
+        "[{label}] the port's play-order message stream must carry the real decoded dialogue; got \
+         0 lines"
     );
     assert_eq!(
         frame_overlay,
         sink_bodies.as_slice(),
-        "[{label}] the frame text layer must composite the SAME real decoded dialogue the \
-         substrate text sink emitted, not a placeholder"
+        "[{label}] the port's play-order stream must equal, single pass, the SAME real decoded \
+         dialogue the substrate text sink emitted (no two-pass doubling, no placeholder)"
     );
     assert!(
         frame_overlay

@@ -58,6 +58,7 @@ use utsushi_core::{
 };
 
 use crate::audio::{AudioEvent as RealliveAudioEvent, AudioEventPayload};
+use crate::gameexe::MessageWindowConfig;
 use crate::render_pipeline::{RecordingFrameArtifactSink, RenderPass, SceneEmit, TextLayer};
 use crate::replay::{ReplayEngine, ReplayOpts, SceneObservation};
 use crate::rlop::HeadlessChoicePolicy;
@@ -206,6 +207,15 @@ pub struct UtsushiReallivePort {
     engine: ReplayEngine,
     assets: Arc<dyn AssetPackage>,
     entry_scene: SceneId,
+    /// The `#WINDOW.000` message-window layout read from the game's
+    /// `Gameexe.ini` — drives the dialogue box position/colour/alpha/
+    /// font-size/insets + the `NAME_MOD` name box. Config-driven, not
+    /// hardcoded.
+    window_config: MessageWindowConfig,
+    /// The game's declared virtual screen space the `window_config`
+    /// coordinates live in (`Gameexe.screen_size_px`). The renderer scales
+    /// these to [`PORT_FRAME_WIDTH`]×[`PORT_FRAME_HEIGHT`].
+    screen_size: (u32, u32),
 
     text_sink: Arc<PortTextSink>,
     frame_sink: Arc<PortFrameSink>,
@@ -215,9 +225,11 @@ pub struct UtsushiReallivePort {
     buffered_text: Vec<TextLine>,
     buffered_frames: Vec<FrameArtifact>,
     buffered_audio: Vec<AudioEvent>,
-    /// The real engine-decoded dialogue line bodies composited into the
-    /// emitted frame's localized text layer — the SAME decoded text the
-    /// substrate text sink emits for the driven scene (never a placeholder).
+    /// The REAL play-order message bodies (single pass, branch-following)
+    /// the scene produces — the SAME decoded text the substrate text sink
+    /// emits for the driven scene, in the order a player sees them. The
+    /// emitted frame renders ONE of these (the current message) in the
+    /// Gameexe box; this field carries the whole play-order stream.
     frame_text_lines: Vec<String>,
     emitted: bool,
     launched: bool,
@@ -280,9 +292,18 @@ impl UtsushiReallivePort {
     };
 
     /// Construct the port over a pre-decoded [`ReplayEngine`], the g00
-    /// asset package the frame compositor reads, and the entry scene to
-    /// drive from (the game's `#SEEN_START`).
-    pub fn new(engine: ReplayEngine, assets: Arc<dyn AssetPackage>, entry_scene: SceneId) -> Self {
+    /// asset package the frame compositor reads, the entry scene to drive
+    /// from (the game's `#SEEN_START`), the `#WINDOW.000` message-window
+    /// layout ([`crate::Gameexe::message_window`]) that drives the dialogue
+    /// box, and the game's declared virtual screen size
+    /// ([`crate::Gameexe::screen_size_px`]) the config coordinates live in.
+    pub fn new(
+        engine: ReplayEngine,
+        assets: Arc<dyn AssetPackage>,
+        entry_scene: SceneId,
+        window_config: MessageWindowConfig,
+        screen_size: (u32, u32),
+    ) -> Self {
         let text_sink = Arc::new(PortTextSink::default());
         let frame_sink = Arc::new(PortFrameSink::default());
         let audio_sink = Arc::new(PortAudioSink::default());
@@ -294,6 +315,8 @@ impl UtsushiReallivePort {
             engine,
             assets,
             entry_scene,
+            window_config,
+            screen_size,
             text_sink,
             frame_sink,
             audio_sink,
@@ -329,26 +352,33 @@ impl UtsushiReallivePort {
         self.observation_steps
     }
 
-    /// The real engine-decoded dialogue line bodies composited into the
-    /// emitted frame's localized text layer during [`Self::launch`]. These
-    /// are the SAME decoded lines the substrate text sink emits for the
-    /// driven scene — the localization overlay the redacted E2 screenshot
-    /// renders, NOT a placeholder. Empty until `launch` runs (or when the
-    /// driven scene produced no dialogue).
+    /// The REAL play-order message bodies (single pass, branch-following)
+    /// the driven scene produces during [`Self::launch`] — the SAME decoded
+    /// lines, in the SAME order, the substrate text sink emits. The emitted
+    /// frame renders ONE of these (message #0) in the Gameexe box; this is
+    /// the whole play-order stream. Empty until `launch` runs (or when the
+    /// driven scene produced no message).
     pub fn frame_text_lines(&self) -> &[String] {
         &self.frame_text_lines
     }
 
     /// Render the terminal graphics stack into BOTH a full-fidelity
     /// PRIVATE frame and the publish-redacted public E2 frame through the
-    /// real g00 rasteriser, compositing the REAL engine-decoded dialogue
-    /// `overlay_lines` into a VN dialogue box over the composite.
+    /// real g00 rasteriser, compositing ONE real engine-decoded `message`
+    /// (with its speaker) into the Gameexe-configured message box over the
+    /// composite.
+    ///
+    /// ONE message per frame — the current message, NOT the whole scene
+    /// concatenated. The box position/colour/alpha/font-size/insets come
+    /// from `self.window_config` (`#WINDOW.000`), scaled from the game's
+    /// `self.screen_size` to the port frame. A speaker + `NAME_MOD=1`
+    /// yields a separate name box; narration renders none.
     ///
     /// - The PRIVATE frame (real decoded g00 + dialogue) is written,
     ///   uncommitted and hashable, under `<root>/private-full/`.
     /// - The PUBLIC frame composites a copyright-safe edge-outline of the
     ///   g00 (scene structure/layout, no source pixels) with the SAME
-    ///   dialogue box on top, and is announced through the substrate frame
+    ///   message box on top, and is announced through the substrate frame
     ///   sink at E2. Redaction is ON by default.
     ///
     /// The decoded dialogue text IS the localization proof; the public
@@ -356,15 +386,20 @@ impl UtsushiReallivePort {
     fn render_frame(
         &self,
         observation: &SceneObservation,
-        overlay_lines: &[String],
+        message: &TextLine,
         root: &RuntimeArtifactRoot,
         run_id: &str,
     ) -> Result<FrameArtifact, String> {
         let mut pass = RenderPass::with_dimensions(PORT_FRAME_WIDTH, PORT_FRAME_HEIGHT)
             .map_err(|error| format!("render pass build failed: {error}"))?
             .with_assets(Arc::clone(&self.assets));
-        let text = TextLayer::localized(overlay_lines.to_vec())
-            .with_dialogue_box(PORT_FRAME_WIDTH, PORT_FRAME_HEIGHT);
+        let text = TextLayer::message_window(
+            &message.text,
+            message.speaker.as_deref(),
+            &self.window_config,
+            self.screen_size,
+            (PORT_FRAME_WIDTH, PORT_FRAME_HEIGHT),
+        );
         // Full-fidelity private frames live beside the managed public root
         // but are never announced/committed.
         let private_dir = root.path().join("private-full");
@@ -405,44 +440,48 @@ impl EnginePort for UtsushiReallivePort {
             return Ok(());
         }
 
-        // --- 1. ONE real branch-following replay: text + audio + graphics.
+        // --- 1. ONE real replay observation: the REAL PLAY-ORDER message
+        //         stream (branch-following, single pass) kept distinct from
+        //         the frame/audio observation. This replaces the former
+        //         two-pass `observe_scene` drain, whose union DOUBLED every
+        //         message (catalogue order, not play order).
         let observe_opts = ReplayOpts {
             step_budget: OBSERVE_STEP_BUDGET,
             stop_at_first_pause: false,
         };
-        let text_collector = Arc::new(PortTextSink::default());
-        let observation = self.engine.observe_scene(
-            self.entry_scene,
-            &observe_opts,
-            Arc::clone(&text_collector) as Arc<dyn TextSurfaceSink>,
-        );
+        let port_observation = self
+            .engine
+            .observe_for_port(self.entry_scene, &observe_opts);
+        let observation = port_observation.scene;
+        let text_lines = port_observation.play_order_lines;
         self.observation_steps = observation.steps;
         self.reached_natural_terminus = observation.reached_natural_terminus;
 
-        let text_lines = text_collector.drain_lines();
         let audio: Vec<AudioEvent> = observation
             .audio_events
             .iter()
             .map(to_substrate_audio)
             .collect();
 
-        // The frame's localized text layer composites the REAL decoded
-        // dialogue bodies — the exact `TextLine.text` values that flow to
-        // the substrate text sink for this scene — not a placeholder.
+        // The play-order message bodies — the exact `TextLine.text` values
+        // that flow, single pass, to the substrate text sink for this
+        // scene. The emitted frame renders ONE of these (message #0).
         let overlay_lines: Vec<String> = text_lines.iter().map(|line| line.text.clone()).collect();
 
         // --- 2. Frame: composite the real graphics stack through the real
-        //         g00 rasteriser, overlay the real decoded dialogue, and
-        //         announce an E2 artifact. Requires a managed artifact root
-        //         to persist the PNG.
-        let frames = match request.artifact_root {
-            Some(root) => {
+        //         g00 rasteriser, overlay ONE real decoded message (the
+        //         current message, message #0) in the Gameexe-configured
+        //         box, and announce an E2 artifact. Requires a managed
+        //         artifact root to persist the PNG. A scene with no decoded
+        //         message produces no frame (nothing to display yet).
+        let frames = match (request.artifact_root, text_lines.first()) {
+            (Some(root), Some(message)) => {
                 let frame = self
-                    .render_frame(&observation, &overlay_lines, root, request.run_id)
+                    .render_frame(&observation, message, root, request.run_id)
                     .map_err(|message| Self::lifecycle_error(LifecycleStage::Launch, message))?;
                 vec![frame]
             }
-            None => Vec::new(),
+            _ => Vec::new(),
         };
 
         // --- 3. Drive the `Snapshot` capability: snapshot/restore identity

@@ -466,6 +466,193 @@ impl Gameexe {
             .iter()
             .filter_map(|key| self.entries.get(key).map(|value| (key.as_str(), value)))
     }
+
+    /// The game's declared framebuffer size, read from
+    /// `#SCREENSIZE_MOD`. The message-window `POS` / `MOJI_POS` /
+    /// `NAME_POS` coordinates are authored in THIS space.
+    ///
+    /// - `#SCREENSIZE_MOD=0` → classic `640x480` (Kanon and other
+    ///   1.2.6.x titles).
+    /// - `#SCREENSIZE_MOD=1` → `800x600`.
+    /// - `#SCREENSIZE_MOD=999,w,h` → the explicit `w x h` (Sweetie HD:
+    ///   `999,1280,720`).
+    /// - missing / malformed → classic `640x480`.
+    pub fn screen_size_px(&self) -> (u32, u32) {
+        match self.get_int_array("SCREENSIZE_MOD") {
+            Some([_mode, w, h, ..]) if *w > 0 && *h > 0 => (*w as u32, *h as u32),
+            Some([1]) => (800, 600),
+            _ => (640, 480),
+        }
+    }
+
+    /// Resolve the [`MessageWindowConfig`] for the `#WINDOW.<index>` set
+    /// (typically index `0`, `#WINDOW.000`). Every field is a REAL
+    /// Gameexe value read from disk — the dialogue box position, colour,
+    /// alpha, font size and insets are config-driven, never hardcoded.
+    ///
+    /// The `ATTR` RGBA is resolved through the RealLive `ATTR_MOD`
+    /// indirection exactly as the engine does: when
+    /// `#WINDOW.<index>.ATTR_MOD=0` the global `#WINDOW_ATTR` supplies the
+    /// colour; otherwise the window-local `#WINDOW.<index>.ATTR` does.
+    /// Keys the game omits fall back to RealLive's documented defaults.
+    pub fn message_window(&self, index: u32) -> MessageWindowConfig {
+        let base = format!("WINDOW.{index:03}");
+        let key = |suffix: &str| format!("{base}.{suffix}");
+
+        // POS is stored as a `Str` ("type:x,y") because the leading
+        // `type:` token defeats the plain int-array parser.
+        let (origin, pos_x, pos_y) = self
+            .get_str(&key("POS"))
+            .and_then(parse_pos_triple)
+            .unwrap_or((2, 0, 0));
+
+        // ATTR_MOD indirection: 0 (or absent) → global #WINDOW_ATTR;
+        // otherwise the window-local ATTR.
+        let attr_mod = self.get_int(&key("ATTR_MOD")).unwrap_or(0);
+        let attr_source = if attr_mod == 0 {
+            self.get_int_array("WINDOW_ATTR")
+        } else {
+            self.get_int_array(&key("ATTR"))
+        };
+        let attr_rgba = attr_source.filter(|attr| attr.len() >= 4).map_or(
+            // Dark, mostly-opaque slate fallback for a Gameexe with no
+            // window colour declared at all.
+            (10, 16, 24, 200),
+            |attr| {
+                (
+                    clamp_u8(attr[0]),
+                    clamp_u8(attr[1]),
+                    clamp_u8(attr[2]),
+                    clamp_u8(attr[3]),
+                )
+            },
+        );
+
+        let moji_size = self.get_int(&key("MOJI_SIZE")).unwrap_or(25).max(1) as u32;
+        // MOJI_POS is (upper, lower, left, right) per the RealLive
+        // text-box padding convention.
+        let moji_pad = self
+            .get_int_array(&key("MOJI_POS"))
+            .filter(|pad| pad.len() >= 4)
+            .map_or((0, 0, 0, 0), |pad| (pad[0], pad[1], pad[2], pad[3]));
+        let moji_cnt = self
+            .get_int_array(&key("MOJI_CNT"))
+            .filter(|cnt| cnt.len() >= 2)
+            .map(|cnt| (cnt[0], cnt[1]));
+        let moji_rep = self
+            .get_int_array(&key("MOJI_REP"))
+            .filter(|rep| rep.len() >= 2)
+            .map_or((0, 0), |rep| (rep[0], rep[1]));
+        let ruby_size = self.get_int(&key("LUBY_SIZE")).unwrap_or(0);
+
+        let name_mod = self.get_int(&key("NAME_MOD")).unwrap_or(0);
+        let message_mod = self.get_int(&key("MESSAGE_MOD")).unwrap_or(0);
+        let name_moji_size = self
+            .get_int(&key("NAME_MOJI_SIZE"))
+            .map_or(moji_size, |value| value.max(1) as u32);
+        let name_pos = self.get_int_pair(&key("NAME_POS")).unwrap_or((0, 0));
+
+        MessageWindowConfig {
+            origin,
+            pos_x,
+            pos_y,
+            attr_rgba,
+            moji_size,
+            moji_pad,
+            moji_cnt,
+            moji_rep,
+            ruby_size,
+            name_mod,
+            message_mod,
+            name_moji_size,
+            name_pos,
+        }
+    }
+}
+
+/// Resolved `#WINDOW.<index>` message-window layout, read from
+/// `Gameexe.ini` by [`Gameexe::message_window`]. All coordinates are in
+/// the game's declared screen space ([`Gameexe::screen_size_px`]); the
+/// renderer scales them to the actual framebuffer.
+///
+/// This is the config the message-window subsystem drives the dialogue
+/// box position / colour / alpha / font-size / insets from, plus the
+/// `NAME_MOD` separate-name-box mechanism. Nothing here is hardcoded — a
+/// game with a different `Gameexe.ini` yields a different box.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MessageWindowConfig {
+    /// `POS` origin/anchor type: `0`=top-left, `1`=top-right,
+    /// `2`=bottom-left, `3`=bottom-right.
+    pub origin: i32,
+    /// `POS` x offset from the anchor (screen-space px).
+    pub pos_x: i32,
+    /// `POS` y offset from the anchor (screen-space px).
+    pub pos_y: i32,
+    /// Resolved backdrop colour `(r, g, b, alpha)` — `ATTR` after the
+    /// `ATTR_MOD` indirection. `alpha` is opacity (`255` = opaque).
+    pub attr_rgba: (u8, u8, u8, u8),
+    /// `MOJI_SIZE` message font pixel height.
+    pub moji_size: u32,
+    /// `MOJI_POS` box padding `(upper, lower, left, right)`.
+    pub moji_pad: (i32, i32, i32, i32),
+    /// `MOJI_CNT` window size in characters `(x_chars, y_chars)`, if
+    /// declared. Drives the box text-area size when no waku frame is
+    /// available.
+    pub moji_cnt: Option<(i32, i32)>,
+    /// `MOJI_REP` inter-character spacing `(x_spacing, y_spacing)`.
+    pub moji_rep: (i32, i32),
+    /// `LUBY_SIZE` ruby (furigana) text size (adds to line height).
+    pub ruby_size: i32,
+    /// `NAME_MOD`: `1` = separate name box, `0` = inline / no name box.
+    pub name_mod: i32,
+    /// `MESSAGE_MOD`: `0` = ADV (one message box), `1` = NVL (full-screen
+    /// accumulating). Recorded for the renderer; the port currently
+    /// renders one message per frame regardless.
+    pub message_mod: i32,
+    /// `NAME_MOJI_SIZE` name-box font pixel height.
+    pub name_moji_size: u32,
+    /// `NAME_POS` name-box offset `(x, y)` from the message box origin.
+    pub name_pos: (i32, i32),
+}
+
+impl Default for MessageWindowConfig {
+    /// A neutral bottom-anchored ADV box. This is ONLY the fallback for a
+    /// context with no `Gameexe.ini` at all (e.g. a synthetic-bytecode
+    /// unit test); every real title supplies its own config via
+    /// [`Gameexe::message_window`].
+    fn default() -> Self {
+        Self {
+            origin: 2,
+            pos_x: 0,
+            pos_y: 0,
+            attr_rgba: (12, 16, 24, 200),
+            moji_size: 25,
+            moji_pad: (0, 0, 0, 0),
+            moji_cnt: None,
+            moji_rep: (0, 0),
+            ruby_size: 0,
+            name_mod: 0,
+            message_mod: 0,
+            name_moji_size: 25,
+            name_pos: (0, 0),
+        }
+    }
+}
+
+/// Parse a RealLive `#WINDOW.xxx.POS` value (`"type:x,y"`) into
+/// `(origin_type, x, y)`. Returns `None` when the shape does not match.
+fn parse_pos_triple(raw: &str) -> Option<(i32, i32, i32)> {
+    let (type_text, coords) = raw.split_once(':')?;
+    let origin: i32 = type_text.trim().parse().ok()?;
+    let (x_text, y_text) = coords.split_once(',')?;
+    let x: i32 = x_text.trim().parse().ok()?;
+    let y: i32 = y_text.trim().parse().ok()?;
+    Some((origin, x, y))
+}
+
+/// Clamp an `i32` Gameexe colour/alpha channel into `u8` range.
+fn clamp_u8(value: i32) -> u8 {
+    value.clamp(0, 255) as u8
 }
 
 /// Convenience builder so the runtime can hand the parsed tree around
@@ -693,6 +880,79 @@ mod tests {
         assert_eq!(gx.get_int("SEEN_START"), Some(1));
         assert_eq!(gx.get_int_array("SEEN_START"), Some(&[1][..]));
         assert!(gx.get_str("SEEN_START").is_none());
+    }
+
+    #[test]
+    fn screen_size_reads_screensize_mod() {
+        assert_eq!(
+            parse_str("#SCREENSIZE_MOD=0\r\n").screen_size_px(),
+            (640, 480)
+        );
+        assert_eq!(
+            parse_str("#SCREENSIZE_MOD=1\r\n").screen_size_px(),
+            (800, 600)
+        );
+        assert_eq!(
+            parse_str("#SCREENSIZE_MOD=999,1280,720\r\n").screen_size_px(),
+            (1280, 720)
+        );
+        // Missing → classic default, never a panic.
+        assert_eq!(parse_str("#CAPTION=\"x\"\r\n").screen_size_px(), (640, 480));
+    }
+
+    #[test]
+    fn message_window_reads_kanon_shaped_window() {
+        // Kanon #WINDOW.000: top-left bottom box, ATTR_MOD=0 so the global
+        // #WINDOW_ATTR supplies the colour, NAME_MOD=0 (narration only).
+        let gx = parse_str(
+            "#WINDOW_ATTR=100,100,160,200,0\r\n\
+             #WINDOW.000.POS=0:0,345\r\n\
+             #WINDOW.000.ATTR_MOD=0\r\n\
+             #WINDOW.000.ATTR=080,112,160,255,0\r\n\
+             #WINDOW.000.MOJI_SIZE=25\r\n\
+             #WINDOW.000.MOJI_POS=19,0,53,0\r\n\
+             #WINDOW.000.MOJI_CNT=22,3\r\n\
+             #WINDOW.000.MOJI_REP=-1,3\r\n\
+             #WINDOW.000.NAME_MOD=0\r\n\
+             #WINDOW.000.MESSAGE_MOD=0\r\n",
+        );
+        let cfg = gx.message_window(0);
+        assert_eq!(cfg.origin, 0);
+        assert_eq!((cfg.pos_x, cfg.pos_y), (0, 345));
+        // ATTR_MOD=0 → global WINDOW_ATTR wins over the window-local ATTR.
+        assert_eq!(cfg.attr_rgba, (100, 100, 160, 200));
+        assert_eq!(cfg.moji_size, 25);
+        assert_eq!(cfg.moji_pad, (19, 0, 53, 0));
+        assert_eq!(cfg.moji_cnt, Some((22, 3)));
+        assert_eq!(cfg.moji_rep, (-1, 3));
+        assert_eq!(cfg.name_mod, 0);
+    }
+
+    #[test]
+    fn message_window_reads_sweetie_shaped_name_box_and_local_attr() {
+        // Sweetie HD #WINDOW.000 with ATTR_MOD=1 → the window-local ATTR
+        // is used; NAME_MOD=1 → separate name box.
+        let gx = parse_str(
+            "#WINDOW_ATTR=100,100,160,200,0\r\n\
+             #WINDOW.000.POS=2:220,0\r\n\
+             #WINDOW.000.ATTR_MOD=1\r\n\
+             #WINDOW.000.ATTR=10,20,30,240,0\r\n\
+             #WINDOW.000.MOJI_SIZE=36\r\n\
+             #WINDOW.000.MOJI_POS=48,0,12,0\r\n\
+             #WINDOW.000.NAME_MOD=1\r\n\
+             #WINDOW.000.NAME_MOJI_SIZE=25\r\n\
+             #WINDOW.000.NAME_POS=18,26\r\n\
+             #WINDOW.000.MESSAGE_MOD=0\r\n",
+        );
+        let cfg = gx.message_window(0);
+        assert_eq!(cfg.origin, 2);
+        assert_eq!((cfg.pos_x, cfg.pos_y), (220, 0));
+        // ATTR_MOD=1 → window-local ATTR, NOT the global.
+        assert_eq!(cfg.attr_rgba, (10, 20, 30, 240));
+        assert_eq!(cfg.moji_size, 36);
+        assert_eq!(cfg.name_mod, 1);
+        assert_eq!(cfg.name_moji_size, 25);
+        assert_eq!(cfg.name_pos, (18, 26));
     }
 
     #[test]

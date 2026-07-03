@@ -25,7 +25,7 @@ use utsushi_core::substrate::{
     AssetPackage, EnginePort, EvidenceTier, FidelityTier, PortCapability, PortManifest, SinkSet,
 };
 
-use utsushi_reallive::UtsushiReallivePort;
+use utsushi_reallive::{MessageWindowConfig, UtsushiReallivePort};
 
 use port_support::{NullAssetPackage, synthetic_engine};
 
@@ -36,7 +36,13 @@ fn assert_port_resolves_facade_engine_port_bound<P: EnginePort>() {}
 
 fn build_port() -> UtsushiReallivePort {
     let assets: Arc<dyn AssetPackage> = Arc::new(NullAssetPackage);
-    UtsushiReallivePort::new(synthetic_engine(), assets, 1)
+    UtsushiReallivePort::new(
+        synthetic_engine(),
+        assets,
+        1,
+        MessageWindowConfig::default(),
+        (1280, 720),
+    )
 }
 
 #[test]

@@ -82,11 +82,17 @@ impl RealCorpus {
     /// Returns `None` if the Gameexe cannot be located / parsed or does
     /// not declare `#SEEN_START`.
     pub fn entry_scene(&self) -> Option<u16> {
+        u16::try_from(self.gameexe()?.get_int("SEEN_START")?).ok()
+    }
+
+    /// Parse the `Gameexe.ini` that sits beside the SEEN archive. Used to
+    /// drive the config-driven message-window box (`#WINDOW.000`) and the
+    /// declared screen size.
+    pub fn gameexe(&self) -> Option<utsushi_reallive::Gameexe> {
         let dir = self.seen_txt.parent()?;
         let gameexe = find_child_ci(dir, "Gameexe.ini")?;
         let bytes = fs::read(gameexe).ok()?;
-        let gx = utsushi_reallive::Gameexe::parse(&bytes).ok()?;
-        u16::try_from(gx.get_int("SEEN_START")?).ok()
+        utsushi_reallive::Gameexe::parse(&bytes).ok()
     }
 }
 

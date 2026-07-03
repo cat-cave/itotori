@@ -595,6 +595,14 @@ impl TextSurfaceSink for ReplayTextSink {
     }
 }
 
+impl ReplayTextSink {
+    /// Take (and clear) the buffered lines. Used by the play-order
+    /// observation to recover the branch-following text stream.
+    fn take_lines(&self) -> Vec<TextLine> {
+        std::mem::take(&mut *self.lines.lock().expect("ReplayTextSink mutex poisoned"))
+    }
+}
+
 impl std::fmt::Debug for ReplayTextSink {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter
@@ -1307,6 +1315,87 @@ impl ReplayEngine {
         }
     }
 
+    /// Observe `scene_id` for an engine PORT: recover the REAL play-order
+    /// message stream separately from the frame/audio observation.
+    ///
+    /// The defect this replaces: [`Self::observe_scene`] drains the union
+    /// of the branch-following AND linear-catalogue passes into ONE text
+    /// sink, so the port saw every message ~twice (the doubled
+    /// "everything this scene produces" catalogue, not the play order).
+    ///
+    /// Here the two passes are captured SEPARATELY (never unioned) and the
+    /// play-order stream is chosen — SINGLE pass, so no message is doubled:
+    ///
+    /// 1. **Branch-following** (the REAL engine path a player walks) is the
+    ///    true play order. When the headless drive reaches dialogue, its
+    ///    emitted [`TextLine`]s — in order, single pass — ARE
+    ///    [`PortObservation::play_order_lines`].
+    /// 2. **Linear-catalogue** (every command of the scene in byte order,
+    ///    single pass) is the WORKAROUND for titles whose real dialogue is
+    ///    gated behind a menu/選択 the headless input-provider cannot walk
+    ///    into (e.g. Kanon's `#SEEN_START` title scene branch-follows into
+    ///    a spin before any message). The byte-order catalogue surfaces
+    ///    each message ONCE, so it is still a faithful single-pass stream —
+    ///    it is used for `play_order_lines` ONLY when the branch pass
+    ///    reached no dialogue. It is NEVER added to the branch stream (that
+    ///    union was the ~2× inflation defect).
+    ///
+    /// Graphics + audio are taken from the executed (branch) path, backfilled
+    /// from the linear catalogue only when the branch path composited/played
+    /// nothing before yielding.
+    pub fn observe_for_port(&self, scene_id: SceneId, opts: &ReplayOpts) -> PortObservation {
+        // Pass 1: branch-following = real play order. Capture its text.
+        let branch_sink: Arc<ReplayTextSink> = Arc::new(ReplayTextSink::default());
+        let mut branch_scheduler = HeadlessInputScheduler::new(HeadlessChoicePolicy::AlwaysFirst);
+        let branch = self.observe_pass(
+            scene_id,
+            opts,
+            ControlFlowMount::BranchFollowing,
+            Arc::clone(&branch_sink) as Arc<dyn TextSurfaceSink>,
+            &mut branch_scheduler,
+        );
+        let branch_lines = branch_sink.take_lines();
+
+        // Pass 2: linear byte-order catalogue. Capture its text SEPARATELY
+        // (single pass) so it can serve as the play-order fallback; it is
+        // used for graphics/audio backfill regardless.
+        let linear_sink: Arc<ReplayTextSink> = Arc::new(ReplayTextSink::default());
+        let mut linear_scheduler = AlwaysReadyScheduler;
+        let linear = self.observe_pass(
+            scene_id,
+            opts,
+            ControlFlowMount::LinearWalk,
+            Arc::clone(&linear_sink) as Arc<dyn TextSurfaceSink>,
+            &mut linear_scheduler,
+        );
+
+        // Choose the play order: branch when it reached dialogue, else the
+        // single-pass byte-order catalogue. NEVER both (no doubling).
+        let play_order_lines = if branch_lines.is_empty() {
+            linear_sink.take_lines()
+        } else {
+            branch_lines
+        };
+
+        let mut audio_events = branch.audio_events;
+        audio_events.extend(linear.audio_events);
+        let graphics_stack = if branch.graphics_stack.is_empty() {
+            linear.graphics_stack
+        } else {
+            branch.graphics_stack
+        };
+        PortObservation {
+            play_order_lines,
+            scene: SceneObservation {
+                audio_events,
+                graphics_stack,
+                steps: branch.steps.saturating_add(linear.steps),
+                reached_natural_terminus: branch.reached_natural_terminus
+                    || linear.reached_natural_terminus,
+            },
+        }
+    }
+
     /// One observation pass: mount the `control_flow` registry (retaining
     /// the audio + graphics runtimes), drive `scene_id` with `scheduler`,
     /// dispatching every Shift-JIS `Textout` into `text_sink`.
@@ -1907,6 +1996,22 @@ pub struct SceneObservation {
     /// Whether the drive reached a natural terminus (`EndOfScene` /
     /// `Halt`) rather than the step budget.
     pub reached_natural_terminus: bool,
+}
+
+/// The port-facing observation produced by
+/// [`ReplayEngine::observe_for_port`]: the REAL play-order message stream
+/// kept distinct from the frame/audio observation.
+#[derive(Debug)]
+pub struct PortObservation {
+    /// The branch-following (real play-order) message stream, single pass,
+    /// in the order a player sees the messages. This is what the message
+    /// window renders one-per-frame and what the substrate text sink
+    /// surfaces — NOT the doubled two-pass catalogue.
+    pub play_order_lines: Vec<TextLine>,
+    /// Frame + audio observation (graphics stack, audio events, drive
+    /// diagnostics). Its graphics/audio may be backfilled from the linear
+    /// catalogue pass; its text is not used (see `play_order_lines`).
+    pub scene: SceneObservation,
 }
 
 /// Drive `vm` to its natural terminus by FOLLOWING real control flow,
