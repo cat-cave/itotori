@@ -1250,6 +1250,37 @@ impl ReplayEngine {
         drive_branch_following(&mut vm, &refs, &mut scheduler, opts, scene_id)
     }
 
+    /// Drive `scene_id` branch-following under `policy`, capturing the
+    /// play-order [`TextLine`] stream (single pass, no doubling) — including
+    /// the `select` prompt's choice-option lines (tagged
+    /// `text_surface = "choice:<idx>"`) and the branch text the resolved
+    /// choice leads into.
+    ///
+    /// This is the seam the choice-ACT proof drives: running the SAME scene
+    /// under [`HeadlessChoicePolicy::Fixed`]`(0)` vs `Fixed(1)` yields
+    /// DIFFERENT subsequent messages, proving that acting on option K drives
+    /// the branch for option K (not always-first). Unlike
+    /// [`Self::branch_following_report`] (which returns only a text-line
+    /// COUNT), this returns the actual lines so a caller can diff the
+    /// branches.
+    pub fn branch_following_lines(
+        &self,
+        scene_id: SceneId,
+        opts: &ReplayOpts,
+        policy: HeadlessChoicePolicy,
+    ) -> Vec<TextLine> {
+        let sink: Arc<ReplayTextSink> = Arc::new(ReplayTextSink::default());
+        let mut scheduler = HeadlessInputScheduler::new(policy);
+        let _ = self.observe_pass(
+            scene_id,
+            opts,
+            ControlFlowMount::BranchFollowing,
+            Arc::clone(&sink) as Arc<dyn TextSurfaceSink>,
+            &mut scheduler,
+        );
+        sink.take_lines()
+    }
+
     /// Observe `scene_id` through the shared store while RETAINING the
     /// audio + graphics runtimes, so an engine port can emit the observed
     /// text, audio events, and terminal graphics-object stack through the

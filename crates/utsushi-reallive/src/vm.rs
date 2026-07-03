@@ -48,6 +48,7 @@ use utsushi_core::substrate::{
 
 use crate::bytecode_element::{
     BytecodeDecodeError, BytecodeElement, CommandArgShape, decode_command_arg_values,
+    extract_select_choice_texts,
 };
 use crate::expression::{ExprNode, parse_expression};
 use crate::expression_eval::{EvaluationError, evaluate, evaluate_assignment};
@@ -1050,7 +1051,25 @@ impl Vm {
                     // — the layout `GotoOp` / `GotoIfOp` / `GotoOnOp`
                     // expect. Non-goto commands carry no targets, so this
                     // is a no-op for them.
-                    let mut args = self.decode_command_args(&raw_bytes);
+                    let mut args = if module_type == crate::rlop::SEL_MODULE_TYPE
+                        && module_id == crate::rlop::SEL_MODULE_ID
+                    {
+                        // `module_sel` SelectElement: the selectable choice
+                        // labels live in the trailing `{ ... }` option block,
+                        // NOT the `(...)` argument list (which carries only the
+                        // optional window/param expression). Extract the option
+                        // strings and hand them to the choice op as the choice
+                        // labels, so the selection screen renders the REAL
+                        // options and the resolved index drives the matching
+                        // branch. See
+                        // [`crate::bytecode_element::extract_select_choice_texts`].
+                        extract_select_choice_texts(&raw_bytes)
+                            .into_iter()
+                            .map(ExprValue::Bytes)
+                            .collect()
+                    } else {
+                        self.decode_command_args(&raw_bytes)
+                    };
                     if goto_case_exprs.is_empty() {
                         for target in &goto_targets {
                             args.push(ExprValue::Int(i32::from_ne_bytes(target.to_ne_bytes())));

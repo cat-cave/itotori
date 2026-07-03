@@ -942,6 +942,123 @@ fn next_select_string_len(bytes: &[u8], pos: usize) -> usize {
     end - pos
 }
 
+/// Extract the option TEXT byte-strings from a `module_sel`
+/// SelectElement command's `{ ... }` option block.
+///
+/// `raw_bytes` is the full command element (8-byte header + optional
+/// leading `(param)` window/selection expression + the `{ options }`
+/// block). Returns each option's raw `NextString` bytes (Shift-JIS), in
+/// option order — the selectable choice labels the SelectElement framing
+/// carries.
+///
+/// This is the choice-render / choice-act seam: the VM feeds these
+/// byte-strings to the `module_sel` [`crate::rlop::SelectOp`] as the
+/// selectable choice labels, so the selection screen renders the REAL
+/// options and the resolved index drives the matching branch. It mirrors
+/// the framing [`walk_select_block`] length-walks (the proven
+/// `kaifuu-reallive` `decode_select` shape), but captures each option's
+/// text slice instead of only its length.
+///
+/// Lenient by construction: a truncated / malformed block returns the
+/// options decoded so far rather than an error, matching the fail-soft
+/// dispatch loop. Returns an empty `Vec` when `raw_bytes` carries no
+/// option block (e.g. a header-only synthetic command, or a non-`sel`
+/// command).
+pub fn extract_select_choice_texts(raw_bytes: &[u8]) -> Vec<Vec<u8>> {
+    let bytes = raw_bytes;
+    let mut choices: Vec<Vec<u8>> = Vec::new();
+    if bytes.len() <= COMMAND_HEADER_BYTE_LEN {
+        return choices;
+    }
+    let mut cursor = COMMAND_HEADER_BYTE_LEN;
+    // Optional leading `(param)` window / selection expression.
+    if bytes.get(cursor) == Some(&b'(') {
+        match next_expression(bytes, cursor) {
+            Ok(len) if len > 0 => cursor += len,
+            _ => return choices,
+        }
+    }
+    // Mandatory `{` option-block open.
+    if bytes.get(cursor) != Some(&SELECT_BLOCK_OPEN) {
+        return choices;
+    }
+    cursor += 1;
+    // Optional first-line `\n`+i16 marker.
+    if bytes.get(cursor) == Some(&META_LINE_LEAD_BYTE) {
+        cursor += 3;
+    }
+    loop {
+        let progress_start = cursor;
+        match bytes.get(cursor) {
+            None | Some(&SELECT_BLOCK_CLOSE) => break,
+            _ => {}
+        }
+        // Skip inter-option separators (`,`) and stray line markers.
+        while bytes.get(cursor) == Some(&COMMA_LEAD_BYTE_ALT) {
+            cursor += 1;
+        }
+        if bytes.get(cursor) == Some(&META_LINE_LEAD_BYTE) {
+            cursor += 3;
+        }
+        if bytes.get(cursor) == Some(&SELECT_BLOCK_CLOSE) {
+            break;
+        }
+        // Optional condition group `( … )` — recognised structurally so a
+        // MetaLine line-number byte that equals `(` cannot desync the walk.
+        // The condition is not option TEXT, so it is skipped, not captured.
+        if bytes.get(cursor) == Some(&b'(') {
+            cursor += 1; // '('
+            loop {
+                match bytes.get(cursor) {
+                    None => return choices,
+                    Some(&b')') => {
+                        cursor += 1;
+                        break;
+                    }
+                    Some(&b'(') => match next_expression(bytes, cursor) {
+                        Ok(len) if len > 0 => cursor += len,
+                        _ => return choices,
+                    },
+                    Some(&effect) => {
+                        cursor += 1;
+                        if effect != b'2' && effect != b'3' {
+                            let next = bytes.get(cursor).copied();
+                            let stop =
+                                next == Some(b')') || next.is_some_and(|b| b.is_ascii_digit());
+                            if !stop && next.is_some() {
+                                match next_expression(bytes, cursor) {
+                                    Ok(len) if len > 0 => cursor += len,
+                                    _ => return choices,
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        // Option text (a `NextString` token).
+        let text_len = next_select_string_len(bytes, cursor);
+        if text_len > 0 {
+            choices.push(bytes[cursor..cursor + text_len].to_vec());
+        }
+        cursor += text_len;
+        // Trailing `\n`+i16 line marker for this option.
+        if bytes.get(cursor) == Some(&META_LINE_LEAD_BYTE) {
+            cursor += 3;
+        } else if text_len == 0 {
+            // No text and no marker — cursor cannot advance; stop rather
+            // than spin.
+            break;
+        }
+        if cursor <= progress_start {
+            // Defensive: guarantee forward progress so a pathological
+            // block can never loop unbounded.
+            break;
+        }
+    }
+    choices
+}
+
 /// Walk a `(...)`-delimited command argument list starting at
 /// `bytes[start]` (which must be the `(` byte). Returns the input
 /// index immediately past the matching `)`.

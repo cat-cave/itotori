@@ -568,6 +568,29 @@ impl Gameexe {
             name_pos,
         }
     }
+
+    /// The `#WINDOW.<index>` set index the engine renders a `select`
+    /// prompt into, read from the real `#DEFAULT_SEL_WINDOW` Gameexe key
+    /// (Kanon `#DEFAULT_SEL_WINDOW=000`, Sweetie HD `=031`). RealLive uses
+    /// this number to pick the `#WINDOW.NNN` box that frames the choice
+    /// options — the selection window is a `#WINDOW` set, exactly like the
+    /// message window. A value `< 0` (the "use the standard text window"
+    /// sentinel) or a missing key falls back to index `0`.
+    pub fn sel_window_index(&self) -> u32 {
+        match self.get_int("DEFAULT_SEL_WINDOW") {
+            Some(index) if index >= 0 => index as u32,
+            _ => 0,
+        }
+    }
+
+    /// Resolve the [`MessageWindowConfig`] the engine frames a `select`
+    /// prompt's option list into: the `#WINDOW.<index>` set named by
+    /// [`Gameexe::sel_window_index`] (`#DEFAULT_SEL_WINDOW`). Config-driven
+    /// exactly like [`Gameexe::message_window`] — position / colour / alpha
+    /// / font-size / insets are the real Gameexe values, never hardcoded.
+    pub fn sel_window(&self) -> MessageWindowConfig {
+        self.message_window(self.sel_window_index())
+    }
 }
 
 /// Resolved `#WINDOW.<index>` message-window layout, read from

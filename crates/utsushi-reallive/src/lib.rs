@@ -209,7 +209,7 @@ pub use graphics_objects::{
     GraphicsScale, GraphicsStackError, ImageRef, WipeColour,
 };
 pub use render_pipeline::{
-    Framebuffer, ObjectWarning, PNG_BIT_DEPTH, PNG_COLOUR_TYPE_RGBA, PNG_FILE_MAGIC,
+    ChoiceWindow, Framebuffer, ObjectWarning, PNG_BIT_DEPTH, PNG_COLOUR_TYPE_RGBA, PNG_FILE_MAGIC,
     RENDER_PIPELINE_BLANK_LOCALIZED_TEXT_CODE, RENDER_PIPELINE_OBJECT_SKIPPED_CODE,
     RENDER_PIPELINE_ZERO_SCREEN_SIZE_CODE, RGBA_BYTES_PER_PIXEL, RecordingFrameArtifactSink,
     RedactionPolicy, RenderEmitError, RenderPass, RenderPassBuildError, RenderReport,
@@ -250,7 +250,7 @@ pub use bytecode_element::{
     COMMAND_HEADER_BYTE_LEN, COMMAND_LEAD_BYTE, EXPRESSION_LEAD_BYTE, META_ELEMENT_BYTE_LEN,
     META_ENTRYPOINT_LEAD_BYTE, META_KIDOKU_LEAD_BYTE, META_LINE_LEAD_BYTE,
     SELECTION_OPTION_MARKER_MAX, SELECTION_OPTION_MARKER_MIN, TextoutEncoding,
-    decode_bytecode_stream,
+    decode_bytecode_stream, extract_select_choice_texts,
 };
 pub use decompressor::{
     AVG32_COMPRESSED_PREAMBLE_LEN, AVG32_LZSS_MAX_BACK_DISTANCE, AVG32_LZSS_MAX_RUN,

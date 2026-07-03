@@ -320,6 +320,73 @@ impl Framebuffer {
         }
         painted
     }
+
+    /// Paint a [`ChoiceWindow`] selection screen: the config-driven box
+    /// backdrop, a highlight strip behind the focused option row, and each
+    /// option label as its own cursor-prefixed line (the focused option in
+    /// bright white, the rest dimmed). Returns the number of GLYPH-coverage
+    /// pixels painted, so the non-vacuous emit guard still rejects a choice
+    /// window whose options drew nothing.
+    ///
+    /// The stronger per-row highlight (vs. the flat [`ChoiceWindow::to_text_layer`])
+    /// makes the focused option unambiguous in a diagnostic frame — the
+    /// visual proof that selecting option K focuses option K.
+    pub fn draw_choice_window(&mut self, choice: &ChoiceWindow) -> u64 {
+        // Config-driven box backdrop.
+        let backdrop = choice.backdrop;
+        self.fill_rect_blended(
+            backdrop.x,
+            backdrop.y,
+            backdrop.width,
+            backdrop.height,
+            backdrop.colour,
+        );
+        let mut painted = 0u64;
+        for (index, option) in choice.options.iter().enumerate() {
+            let focused = index == choice.selected;
+            let row_y = choice
+                .origin_y
+                .saturating_add((index as u32).saturating_mul(choice.line_height));
+            if focused {
+                // Highlight strip behind the focused option row (a
+                // translucent accent so the underlying box still reads).
+                self.fill_rect_blended(
+                    backdrop.x,
+                    row_y.saturating_sub(2),
+                    backdrop.width,
+                    choice.line_height.saturating_add(4),
+                    WipeColour {
+                        red: 52,
+                        green: 88,
+                        blue: 148,
+                        alpha: 160,
+                    },
+                );
+            }
+            let colour = if focused {
+                WipeColour::WHITE
+            } else {
+                WipeColour {
+                    red: 176,
+                    green: 182,
+                    blue: 200,
+                    alpha: 255,
+                }
+            };
+            let row = TextLayer {
+                lines: vec![format!("{}{option}", choice.prefix(index))],
+                origin_x: choice.origin_x,
+                origin_y: row_y,
+                scale: choice.scale,
+                colour,
+                backdrop: None,
+                name_box: None,
+                line_height: Some(choice.line_height),
+            };
+            painted += self.draw_text(&row);
+        }
+        painted
+    }
 }
 
 /// A localized text layer painted on top of the rasterised graphics
@@ -421,59 +488,25 @@ impl TextLayer {
         screen_size: (u32, u32),
         frame_size: (u32, u32),
     ) -> Self {
-        let (vw, vh) = (screen_size.0.max(1) as i32, screen_size.1.max(1) as i32);
-        let scale_x = frame_size.0 as f32 / vw as f32;
-        let scale_y = frame_size.1 as f32 / vh as f32;
+        let scale_y = frame_size.1 as f32 / (screen_size.1.max(1) as f32);
+        let scale_x = frame_size.0 as f32 / (screen_size.0.max(1) as f32);
         let to_x = |v: i32| (v as f32 * scale_x).round().max(0.0) as u32;
         let to_y = |v: i32| (v as f32 * scale_y).round().max(0.0) as u32;
 
-        // --- Box rectangle in the game's virtual screen space. ---
+        // --- Config-driven box rectangle + text metrics (shared with the
+        // choice/selection window via `window_box_geometry`). ---
         // The waku (frame graphic) that sizes a real RealLive window is
         // not decoded in this port, so the box extent is derived from the
         // POS offsets: POS.x is the horizontal inset (symmetric), and the
-        // POS origin type + POS.y anchor the vertical band. This is a
-        // documented, config-driven approximation — POS.x=0 yields the
-        // full-width bottom box the rlvm oracle shows for Kanon.
-        let inset = config.pos_x.max(0);
-        let box_left = inset;
-        let box_right = (vw - inset).max(box_left + 1);
-        let (box_top, box_bottom) = match config.origin {
-            // Top-anchored: POS.y is the box top; extend to the bottom
-            // edge with a margin symmetric to the horizontal inset.
-            0 | 1 => (config.pos_y.max(0), (vh - inset).max(config.pos_y + 1)),
-            // Bottom-anchored (2, 3, or unknown): POS.y is measured up
-            // from the bottom edge; height comes from the MOJI metrics.
-            _ => {
-                let bottom = (vh - config.pos_y.max(0)).clamp(1, vh);
-                let height = box_text_height_virtual(config, vh);
-                ((bottom - height).max(0), bottom)
-            }
-        };
-
-        let bx = to_x(box_left);
-        let by = to_y(box_top);
-        let bw = to_x(box_right).saturating_sub(bx).max(1);
-        let bh = to_y(box_bottom).saturating_sub(by).max(1);
+        // POS origin type + POS.y anchor the vertical band — a documented,
+        // config-driven approximation.
+        let geometry = window_box_geometry(config, screen_size, frame_size);
+        let backdrop = geometry.backdrop;
+        let (bx, by) = (backdrop.x, backdrop.y);
         let (r, g, b, alpha) = config.attr_rgba;
-        let backdrop = TextBackdrop {
-            x: bx,
-            y: by,
-            width: bw,
-            height: bh,
-            colour: WipeColour {
-                red: r,
-                green: g,
-                blue: b,
-                alpha,
-            },
-        };
-
-        // Text origin inside the box: MOJI_POS (upper, lower, left, right)
-        // padding, left + upper applied at the top-left.
-        let (pad_upper, _pad_lower, pad_left, pad_right) = config.moji_pad;
-        let origin_x = bx.saturating_add(to_x(pad_left.max(0)));
-        let origin_y = by.saturating_add(to_y(pad_upper.max(0)));
-        let scale = ((config.moji_size as f32) * scale_y).round().max(10.0) as u32;
+        let origin_x = geometry.origin_x;
+        let origin_y = geometry.origin_y;
+        let scale = geometry.scale;
 
         // --- Word-wrap the message body at the MOJI_CNT boundary. ---
         // RealLive wraps message text at `MOJI_CNT.x` characters per line.
@@ -486,17 +519,13 @@ impl TextLayer {
         // box's inner text width (box extent minus the MOJI_POS left/right
         // insets) so no glyph can ever cross the box's right inset even if
         // MOJI_CNT is generous.
-        let text_area_width = bw
-            .saturating_sub(to_x(pad_left.max(0)))
-            .saturating_sub(to_x(pad_right.max(0)))
-            .max(1);
         let wrap_width = match config.moji_cnt {
             Some((x_chars, _)) if x_chars > 0 => {
                 let cell_w = (config.moji_size as i32 + config.moji_rep.0).max(1);
-                to_x(x_chars * cell_w).min(text_area_width).max(1)
+                to_x(x_chars * cell_w).min(geometry.text_area_width).max(1)
             }
             // No MOJI_CNT declared: wrap at the box's inner text width.
-            _ => text_area_width,
+            _ => geometry.text_area_width,
         };
         let lines = font::wrap_words(text, scale as f32, wrap_width as f32);
 
@@ -505,9 +534,7 @@ impl TextLayer {
         // `box_text_height_virtual` sizes the box from — so N wrapped lines
         // occupy exactly the N-row text area, rather than the font's larger
         // natural leading which would push later lines past the box bottom.
-        let line_stride =
-            (config.moji_size as i32 + config.moji_rep.1 + config.ruby_size.max(0)).max(1);
-        let line_height = to_y(line_stride).max(1);
+        let line_height = geometry.line_height;
 
         let mut layer = Self {
             lines,
@@ -588,6 +615,215 @@ fn box_text_height_virtual(config: &MessageWindowConfig, virtual_height: i32) ->
         None => virtual_height / 4,
     };
     (base + vertical_pad).clamp(1, virtual_height)
+}
+
+/// Config-driven window-box geometry shared by the message window
+/// ([`TextLayer::message_window`]) and the choice / selection window
+/// ([`ChoiceWindow::from_config`]).
+///
+/// Every field is derived from a `#WINDOW.NNN` [`MessageWindowConfig`],
+/// scaled from the game's virtual screen space to the actual framebuffer —
+/// the backdrop rectangle (POS-anchored, ATTR-coloured), the text origin
+/// (MOJI_POS insets), the glyph size (MOJI_SIZE), the inner text width, and
+/// the engine's fixed row stride (MOJI_SIZE + MOJI_REP.y + LUBY_SIZE).
+/// Nothing here is hardcoded: a game with a different `Gameexe.ini` yields a
+/// different box, and the SAME box math frames a message and a choice list.
+#[derive(Debug, Clone, Copy)]
+struct WindowBoxGeometry {
+    backdrop: TextBackdrop,
+    origin_x: u32,
+    origin_y: u32,
+    scale: u32,
+    text_area_width: u32,
+    line_height: u32,
+}
+
+/// Compute the [`WindowBoxGeometry`] for `config` scaled from `screen_size`
+/// (the game's virtual space) to `frame_size` (the framebuffer). This is the
+/// exact box placement [`TextLayer::message_window`] used inline before the
+/// choice window shared it; behaviour is unchanged.
+fn window_box_geometry(
+    config: &MessageWindowConfig,
+    screen_size: (u32, u32),
+    frame_size: (u32, u32),
+) -> WindowBoxGeometry {
+    let (vw, vh) = (screen_size.0.max(1) as i32, screen_size.1.max(1) as i32);
+    let scale_x = frame_size.0 as f32 / vw as f32;
+    let scale_y = frame_size.1 as f32 / vh as f32;
+    let to_x = |v: i32| (v as f32 * scale_x).round().max(0.0) as u32;
+    let to_y = |v: i32| (v as f32 * scale_y).round().max(0.0) as u32;
+
+    let inset = config.pos_x.max(0);
+    let box_left = inset;
+    let box_right = (vw - inset).max(box_left + 1);
+    let (box_top, box_bottom) = match config.origin {
+        0 | 1 => (config.pos_y.max(0), (vh - inset).max(config.pos_y + 1)),
+        _ => {
+            let bottom = (vh - config.pos_y.max(0)).clamp(1, vh);
+            let height = box_text_height_virtual(config, vh);
+            ((bottom - height).max(0), bottom)
+        }
+    };
+
+    let bx = to_x(box_left);
+    let by = to_y(box_top);
+    let bw = to_x(box_right).saturating_sub(bx).max(1);
+    let bh = to_y(box_bottom).saturating_sub(by).max(1);
+    let (r, g, b, alpha) = config.attr_rgba;
+    let backdrop = TextBackdrop {
+        x: bx,
+        y: by,
+        width: bw,
+        height: bh,
+        colour: WipeColour {
+            red: r,
+            green: g,
+            blue: b,
+            alpha,
+        },
+    };
+
+    let (pad_upper, _pad_lower, pad_left, pad_right) = config.moji_pad;
+    let origin_x = bx.saturating_add(to_x(pad_left.max(0)));
+    let origin_y = by.saturating_add(to_y(pad_upper.max(0)));
+    let scale = ((config.moji_size as f32) * scale_y).round().max(10.0) as u32;
+
+    let text_area_width = bw
+        .saturating_sub(to_x(pad_left.max(0)))
+        .saturating_sub(to_x(pad_right.max(0)))
+        .max(1);
+
+    let line_stride =
+        (config.moji_size as i32 + config.moji_rep.1 + config.ruby_size.max(0)).max(1);
+    let line_height = to_y(line_stride).max(1);
+
+    WindowBoxGeometry {
+        backdrop,
+        origin_x,
+        origin_y,
+        scale,
+        text_area_width,
+        line_height,
+    }
+}
+
+/// A RealLive `select` prompt rendered as a selection SCREEN: the choice
+/// options laid out as a legible, cursor-highlighted list inside the
+/// Gameexe-configured selection window (`#DEFAULT_SEL_WINDOW` →
+/// `#WINDOW.NNN`, resolved by [`crate::Gameexe::sel_window`]).
+///
+/// The option strings are OUR translated (localized) choice labels
+/// (NextString-safe) — the render paints them through the in-crate bitmap
+/// [`font`], never the source g00 pixels. [`ChoiceWindow::from_config`]
+/// places the list with the SAME config-driven box math the message window
+/// uses ([`window_box_geometry`]); the `selected` option carries a cursor
+/// marker (`> `) plus a brighter highlight strip so the frame shows WHICH
+/// option the engine has focused.
+///
+/// This is the visual counterpart to the `select option K → branch K` act:
+/// re-rendering with `selected == K` moves the cursor onto option K, and
+/// the play stream continues down branch K (see
+/// [`crate::ReplayEngine::branch_following_lines`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChoiceWindow {
+    /// Localized (translated) option labels, top to bottom.
+    pub options: Vec<String>,
+    /// Index of the focused / cursor-highlighted option (clamped into
+    /// range at construction).
+    pub selected: usize,
+    /// The Gameexe-configured selection-window backdrop rectangle.
+    pub backdrop: TextBackdrop,
+    /// Text origin (framebuffer px) of the first option row.
+    pub origin_x: u32,
+    pub origin_y: u32,
+    /// Glyph pixel height (MOJI_SIZE-derived).
+    pub scale: u32,
+    /// Baseline-to-baseline row stride between stacked options
+    /// (MOJI_SIZE + MOJI_REP.y + LUBY_SIZE, scaled) — the engine's fixed
+    /// row pitch.
+    pub line_height: u32,
+}
+
+impl ChoiceWindow {
+    /// Cursor prefix for the focused option.
+    const CURSOR_PREFIX: &'static str = "> ";
+    /// Padding prefix (same width) for the unfocused options, so the
+    /// labels stay column-aligned whether or not the cursor is on them.
+    const IDLE_PREFIX: &'static str = "  ";
+
+    /// Lay out `options` as a selection screen inside the sel-window
+    /// `config` (typically [`crate::Gameexe::sel_window`]), with `selected`
+    /// cursor-highlighted. `screen_size` is the game's virtual space the
+    /// config lives in; `frame_size` is the framebuffer. Box position /
+    /// colour / alpha / font-size / insets are all config-driven.
+    pub fn from_config(
+        options: &[String],
+        selected: usize,
+        config: &MessageWindowConfig,
+        screen_size: (u32, u32),
+        frame_size: (u32, u32),
+    ) -> Self {
+        let geometry = window_box_geometry(config, screen_size, frame_size);
+        let selected = if options.is_empty() {
+            0
+        } else {
+            selected.min(options.len() - 1)
+        };
+        Self {
+            options: options.to_vec(),
+            selected,
+            backdrop: geometry.backdrop,
+            origin_x: geometry.origin_x,
+            origin_y: geometry.origin_y,
+            scale: geometry.scale,
+            line_height: geometry.line_height,
+        }
+    }
+
+    /// Total number of glyph characters across all option rows, INCLUDING
+    /// the cursor / padding prefixes — the non-vacuous-render denominator.
+    pub fn char_count(&self) -> usize {
+        self.options
+            .iter()
+            .map(|option| option.chars().count() + Self::CURSOR_PREFIX.chars().count())
+            .sum()
+    }
+
+    /// The prefix for option `index` (cursor for the focused option, an
+    /// equal-width pad otherwise).
+    fn prefix(&self, index: usize) -> &'static str {
+        if index == self.selected {
+            Self::CURSOR_PREFIX
+        } else {
+            Self::IDLE_PREFIX
+        }
+    }
+
+    /// A single [`TextLayer`] carrying the box backdrop + every option row
+    /// (cursor-prefixed), so the choice screen can flow straight through
+    /// the FrameArtifact emit path
+    /// ([`RenderPass::emit_localized_screenshot`]) exactly like a
+    /// message-window frame. The focused option is cursor-marked; the
+    /// stronger per-row highlight is a [`Framebuffer::draw_choice_window`]
+    /// nicety not expressible on a single flat layer.
+    pub fn to_text_layer(&self) -> TextLayer {
+        let lines = self
+            .options
+            .iter()
+            .enumerate()
+            .map(|(index, option)| format!("{}{option}", self.prefix(index)))
+            .collect();
+        TextLayer {
+            lines,
+            origin_x: self.origin_x,
+            origin_y: self.origin_y,
+            scale: self.scale,
+            colour: WipeColour::WHITE,
+            backdrop: Some(self.backdrop),
+            name_box: None,
+            line_height: Some(self.line_height),
+        }
+    }
 }
 
 /// Real TrueType glyph rasteriser for the localized text layer.
