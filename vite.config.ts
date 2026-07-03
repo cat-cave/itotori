@@ -14,6 +14,7 @@ export default defineConfig({
     ignorePatterns: [
       "crates/utsushi-fixture/tests/fixtures/jump_targets/replay_logs/**",
       "apps/itotori/src/engine-capability/**",
+      "fixtures/synthetic/**",
     ],
   },
   resolve: {
