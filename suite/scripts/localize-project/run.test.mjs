@@ -38,7 +38,13 @@ const DEFAULT_ALPHA_TARGET_DATA_PATH = resolve(
   REPO_ROOT,
   "presets/localize-project.alpha-target-data.json",
 );
-const { verifyProviderRunArtifactsAfterStage } = await import(DRIVER_PATH);
+const {
+  verifyProviderRunArtifactsAfterStage,
+  classifyChainFailure,
+  assertZeroUnknownOpcodes,
+  CHAIN_OUTCOMES,
+  RUN_REPORT_SCHEMA,
+} = await import(DRIVER_PATH);
 const MODEL_ID = "deepseek/deepseek-v4-flash";
 const PROVIDER_ID = "fireworks";
 
@@ -989,6 +995,156 @@ test("missing OPENROUTER_API_KEY without --dry-run exits non-zero", () => {
     result.stderr.includes("OPENROUTER_API_KEY"),
     `stderr should mention OPENROUTER_API_KEY; got:\n${result.stderr}`,
   );
+});
+
+// ---------- ALPHA-006 criterion 5 — three-way chain-outcome classification ----------
+
+test("CHAIN_OUTCOMES pins exactly the three ALPHA-006 outcome literals", () => {
+  assert.deepEqual(
+    { ...CHAIN_OUTCOMES },
+    {
+      pass: "in-profile-pass",
+      bug: "in-profile-bug",
+      outOfProfile: "out-of-profile-diagnostic",
+    },
+  );
+  assert.equal(RUN_REPORT_SCHEMA, "itotori.localize-project.run-report.v0");
+});
+
+test("out-of-profile: a REAL kaifuu out_of_profile_input diagnostic -> out-of-profile-diagnostic (not a bug)", () => {
+  // Shape of a real kaifuu-cli extract failure: runCommand throws a generic
+  // 'command exited' message but attaches the child's redacted stderr, which
+  // carries the component semantic code verbatim.
+  const error = new Error("command exited with status 1: cargo run -p kaifuu-cli -- extract ...");
+  error.childStderr =
+    "kaifuu.reallive.out_of_profile_input: scene stream carries an unsupported construct at byte 0x40\n";
+  error.itotoriPhase = "extract";
+  const classified = classifyChainFailure(error);
+  assert.equal(classified.outcome, "out-of-profile-diagnostic");
+  assert.equal(classified.diagnosticCode, "kaifuu.reallive.out_of_profile_input");
+  assert.equal(classified.phase, "extract");
+  // Explicitly NOT an in-profile bug.
+  assert.notEqual(classified.outcome, CHAIN_OUTCOMES.bug);
+});
+
+test("out-of-profile: a REAL utsushi NWA OutOfProfileCompression -> out-of-profile-diagnostic", () => {
+  const error = new Error(
+    "command exited with status 1: cargo run -p utsushi-cli -- replay-validate ...",
+  );
+  // The NwaDecodeError::OutOfProfileCompression Display string carries the
+  // stable code; match on that.
+  error.childStderr =
+    "nwa header carries out-of-profile compression_mode = 99 (expected -1..=5) (utsushi.reallive.nwa.out_of_profile_compression)\n";
+  const classified = classifyChainFailure(error, { phase: "replay-validate" });
+  assert.equal(classified.outcome, "out-of-profile-diagnostic");
+  assert.equal(classified.diagnosticCode, "utsushi.reallive.nwa.out_of_profile_compression");
+  assert.equal(classified.phase, "replay-validate");
+});
+
+test("in-profile-bug: a supported-input crash with no component code -> in-profile-bug", () => {
+  // A replay/render break on supported input: the child failed but printed
+  // no out-of-profile semantic code. This is something that SHOULD work.
+  const error = new Error(
+    "command exited with status 101: cargo run -p utsushi-cli -- render-validate ...",
+  );
+  error.childStderr = "thread 'main' panicked at 'index out of bounds'\n";
+  const classified = classifyChainFailure(error, { phase: "render-validate" });
+  assert.equal(classified.outcome, "in-profile-bug");
+  assert.equal(classified.diagnosticCode, "chain.in_profile_bug");
+  assert.equal(classified.phase, "render-validate");
+});
+
+test("in-profile-bug fail-closed: unknownOpcodes != 0 throws a classified in-profile-bug", () => {
+  const dir = mkdtempSync(join(tmpdir(), "itotori-decompile-report-nonzero-"));
+  const reportPath = join(dir, "decompile-report.json");
+  try {
+    writeJson(reportPath, {
+      schemaVersion: "itotori.kaifuu.decompile-report.v0",
+      engine: "reallive",
+      sceneId: 1017,
+      totalOpcodes: 100,
+      recognizedOpcodes: 97,
+      // A non-zero count is a REAL decompile bug: the 100%-decompilation bar
+      // requires 0. The chain must fail CLOSED, classified in-profile-bug.
+      unknownOpcodes: 3,
+      sourceSeenSha256: "deadbeef",
+    });
+    let thrown;
+    assert.throws(
+      () => assertZeroUnknownOpcodes(reportPath),
+      (error) => {
+        thrown = error;
+        return /kaifuu\.decompile\.unknown_opcodes_nonzero/u.test(error.message);
+      },
+    );
+    // The thrown error is pre-classified: in-profile-bug, phase extract.
+    const classified = classifyChainFailure(thrown);
+    assert.equal(classified.outcome, "in-profile-bug");
+    assert.equal(classified.diagnosticCode, "kaifuu.decompile.unknown_opcodes_nonzero");
+    assert.equal(classified.phase, "extract");
+    // A non-zero unknown-opcode count is a BUG, never an out-of-profile input.
+    assert.notEqual(classified.outcome, CHAIN_OUTCOMES.outOfProfile);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("in-profile-pass precondition: a zero-unknown decompile report passes the fail-closed bar", () => {
+  const dir = mkdtempSync(join(tmpdir(), "itotori-decompile-report-zero-"));
+  const reportPath = join(dir, "decompile-report.json");
+  try {
+    writeJson(reportPath, {
+      schemaVersion: "itotori.kaifuu.decompile-report.v0",
+      engine: "reallive",
+      sceneId: 1017,
+      totalOpcodes: 100,
+      recognizedOpcodes: 100,
+      unknownOpcodes: 0,
+      sourceSeenSha256: "deadbeef",
+    });
+    // Returns the (zero) count without throwing — the happy path stays open
+    // to resolve as in-profile-pass.
+    assert.equal(assertZeroUnknownOpcodes(reportPath), 0);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a non-integer unknownOpcodes count fails closed as in-profile-bug", () => {
+  const dir = mkdtempSync(join(tmpdir(), "itotori-decompile-report-missing-"));
+  const reportPath = join(dir, "decompile-report.json");
+  try {
+    writeJson(reportPath, {
+      schemaVersion: "itotori.kaifuu.decompile-report.v0",
+      engine: "reallive",
+      sceneId: 1017,
+      // unknownOpcodes intentionally absent — cannot prove the bar.
+    });
+    let thrown;
+    assert.throws(
+      () => assertZeroUnknownOpcodes(reportPath),
+      (error) => {
+        thrown = error;
+        return true;
+      },
+    );
+    const classified = classifyChainFailure(thrown);
+    assert.equal(classified.outcome, "in-profile-bug");
+    assert.equal(classified.diagnosticCode, "kaifuu.decompile.unknown_opcodes_missing");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a driver-pre-classified out-of-profile error passes through verbatim", () => {
+  const error = new Error("some wrapped message");
+  error.itotoriOutcome = "out-of-profile-diagnostic";
+  error.itotoriDiagnosticCode = "utsushi.reallive.nwa.out_of_profile_compression";
+  error.itotoriPhase = "replay-validate";
+  const classified = classifyChainFailure(error, { phase: "ignored" });
+  assert.equal(classified.outcome, "out-of-profile-diagnostic");
+  assert.equal(classified.diagnosticCode, "utsushi.reallive.nwa.out_of_profile_compression");
+  assert.equal(classified.phase, "replay-validate");
 });
 
 test("OPENROUTER_LIVE=1 without OPENROUTER_API_KEY emits the no-fallback message", () => {

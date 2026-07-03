@@ -960,11 +960,24 @@ function runCommand(command, args, env = process.env, options = {}) {
   if (result.stderr !== undefined && result.stderr.length > 0) {
     process.stderr.write(redact(result.stderr));
   }
+  // Capture the (already-redacted) child output on any thrown error so the
+  // chain-outcome classifier can inspect it for component semantic codes
+  // (e.g. a kaifuu/utsushi out-of-profile diagnostic printed to stderr).
+  const childStdout = result.stdout !== undefined ? redact(result.stdout) : "";
+  const childStderr = result.stderr !== undefined ? redact(result.stderr) : "";
   if (result.error) {
-    throw new Error(`command failed to start: ${printableRedacted}: ${result.error.message}`);
+    const error = new Error(
+      `command failed to start: ${printableRedacted}: ${result.error.message}`,
+    );
+    error.childStdout = childStdout;
+    error.childStderr = childStderr;
+    throw error;
   }
   if (result.status !== 0) {
-    throw new Error(`command exited with status ${result.status}: ${printableRedacted}`);
+    const error = new Error(`command exited with status ${result.status}: ${printableRedacted}`);
+    error.childStdout = childStdout;
+    error.childStderr = childStderr;
+    throw error;
   }
 }
 
@@ -1949,6 +1962,125 @@ function assertReplayObservedTranslatedText({ replayLogPath, patchReportPath }) 
   return { textLineCount, matchingTextLineCount, expectedText: expected };
 }
 
+// ---------- ALPHA-006 criterion 5 — three-way chain-outcome classification ----------
+//
+// The RealLive localize-project chain resolves to exactly ONE of three
+// honest outcomes, and the run report records which:
+//
+//   in-profile-pass            every phase succeeded on supported input.
+//   in-profile-bug             something that SHOULD work broke — a crash,
+//                              a byte-mismatch, a replay/render failure on
+//                              supported input, or a non-zero unknown-opcode
+//                              count (the 100%-decompilation bar; fail-closed).
+//   out-of-profile-diagnostic  a component honestly reported an input
+//                              construct outside the CURRENT support profile
+//                              (NOT a bug — a "we don't handle this yet"
+//                              signal). Distinguished from a bug so the
+//                              chain never mislabels an unsupported construct.
+export const CHAIN_OUTCOMES = Object.freeze({
+  pass: "in-profile-pass",
+  bug: "in-profile-bug",
+  outOfProfile: "out-of-profile-diagnostic",
+});
+
+export const RUN_REPORT_SCHEMA = "itotori.localize-project.run-report.v0";
+
+// Component-layer semantic codes that mean "the input carries a construct
+// outside the current profile". Any of these anywhere in a failure's text
+// (thrown message + captured child stdout/stderr) classifies the whole chain
+// as out-of-profile-diagnostic — an honest unsupported-construct signal, not
+// an in-profile bug. Sourced verbatim from the emitting components:
+//   - kaifuu-reallive diagnostics.rs (SEMANTIC_REALLIVE_OUT_OF_PROFILE_INPUT)
+//   - kaifuu-cli partial path (kaifuu.reallive.partial.out_of_profile_input)
+//   - utsushi-reallive nwa.rs (NwaDecodeError::OutOfProfileCompression)
+const OUT_OF_PROFILE_CODE_SIGNATURES = Object.freeze([
+  "kaifuu.reallive.out_of_profile_input",
+  "kaifuu.reallive.partial.out_of_profile_input",
+  "utsushi.reallive.nwa.out_of_profile_compression",
+  "OutOfProfileCompression",
+]);
+
+/**
+ * Build an Error the driver has already classified into one of the three
+ * chain outcomes. `classifyChainFailure` returns the carried classification
+ * verbatim — this is how the unknownOpcodes fail-closed assertion and the
+ * source-mutation guard force `in-profile-bug` regardless of message text.
+ */
+function classifiedChainError(message, { outcome, diagnosticCode, phase }) {
+  const error = new Error(message);
+  error.itotoriOutcome = outcome;
+  error.itotoriDiagnosticCode = diagnosticCode;
+  error.itotoriPhase = phase;
+  return error;
+}
+
+/**
+ * Classify a caught chain failure into one of the three ALPHA-006 outcomes.
+ * Precedence:
+ *   1. A driver-pre-classified error (carries `itotoriOutcome`) wins verbatim.
+ *   2. A component out-of-profile semantic code anywhere in the error text
+ *      (message + captured child stdout/stderr) -> out-of-profile-diagnostic.
+ *   3. Anything else is a genuine in-profile chain bug (a crash, a byte
+ *      mismatch, a replay/render break on supported input).
+ */
+export function classifyChainFailure(error, { phase } = {}) {
+  const resolvedPhase = error?.itotoriPhase ?? phase ?? "unknown";
+  if (typeof error?.itotoriOutcome === "string") {
+    return {
+      outcome: error.itotoriOutcome,
+      diagnosticCode: error.itotoriDiagnosticCode ?? "chain.unclassified",
+      phase: resolvedPhase,
+    };
+  }
+  const haystack = [error?.message, error?.childStdout, error?.childStderr]
+    .filter((part) => typeof part === "string")
+    .join("\n");
+  for (const code of OUT_OF_PROFILE_CODE_SIGNATURES) {
+    if (haystack.includes(code)) {
+      return { outcome: CHAIN_OUTCOMES.outOfProfile, diagnosticCode: code, phase: resolvedPhase };
+    }
+  }
+  return {
+    outcome: CHAIN_OUTCOMES.bug,
+    diagnosticCode: "chain.in_profile_bug",
+    phase: resolvedPhase,
+  };
+}
+
+/**
+ * Fail-closed on the 100%-decompilation bar (alpha-chain-fail-closed).
+ * Reads the alpha-006e decompile report and asserts a ZERO unknown-opcode
+ * count. A non-zero count is a REAL decompile bug (not an out-of-profile
+ * input), so it throws a pre-classified `in-profile-bug` error the chain
+ * hard-fails on — the count is no longer merely recorded. Returns the (zero)
+ * count on success.
+ */
+export function assertZeroUnknownOpcodes(decompileReportPath) {
+  const report = JSON.parse(readFileSync(decompileReportPath, "utf8"));
+  const unknown = report.unknownOpcodes;
+  if (typeof unknown !== "number" || !Number.isInteger(unknown) || unknown < 0) {
+    throw classifiedChainError(
+      `kaifuu.decompile.unknown_opcodes_missing: decompile report at ${decompileReportPath} has non-integer unknownOpcodes='${String(unknown)}'; cannot prove the zero-unknown decompilation bar`,
+      {
+        outcome: CHAIN_OUTCOMES.bug,
+        diagnosticCode: "kaifuu.decompile.unknown_opcodes_missing",
+        phase: "extract",
+      },
+    );
+  }
+  if (unknown !== 0) {
+    throw classifiedChainError(
+      `kaifuu.decompile.unknown_opcodes_nonzero: extract decompiled ${unknown} unrecognised opcode(s); the 100%-decompilation bar requires 0 — failing closed as an in-profile bug (alpha-chain-fail-closed)`,
+      {
+        outcome: CHAIN_OUTCOMES.bug,
+        diagnosticCode: "kaifuu.decompile.unknown_opcodes_nonzero",
+        phase: "extract",
+      },
+    );
+  }
+  return unknown;
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const requestedEnvFilePath =
@@ -2089,81 +2221,173 @@ async function main() {
 
   const targetPlaceholder = "<TARGET>";
 
-  if (vaultMode) {
-    // ---- Phase 1 (vault): kaifuu extract via the read-only vault adapter
-    // (alpha-006a). The vault materialises the corpus to scratch; the
-    // resolved game-root + source Seen.txt sha256 come back in the
-    // decompile report, which the driver reads to source the rest of the
-    // chain (no raw --game-root). --decompile-report-output emits the
-    // alpha-006e zero-unknown report at the same time.
-    runCommand(
-      "cargo",
-      [
-        "run",
-        "-p",
-        "kaifuu-cli",
-        "--quiet",
-        "--",
-        "extract",
-        "--engine",
-        "reallive",
-        "--vault-canonical-id",
-        projectMetadata.vaultCanonicalId,
-        ...realliveIdentityArgs(projectMetadata),
-        "--scene",
-        String(sceneId),
-        "--bundle-output",
-        bridgeBundlePath,
-        "--decompile-report-output",
-        decompileReportPath,
-      ],
-      process.env,
-      { redact: livePathRedactor },
-    );
-    const decompileReport = JSON.parse(readFileSync(decompileReportPath, "utf8"));
-    if (
-      typeof decompileReport.resolvedGameRoot !== "string" ||
-      decompileReport.resolvedGameRoot.length === 0
-    ) {
-      throw new Error(
-        `decompile report at ${decompileReportPath} missing resolvedGameRoot; cannot source the vault-materialised tree`,
+  // ALPHA-006 criterion 5 — classify + ALWAYS emit the run report, on
+  // success AND on failure. `currentPhase` tracks which phase is executing
+  // so a caught failure records the phase it broke in; `sourceSeenShaForReport`
+  // captures the source hash once known so even a mid-chain failure report
+  // carries it.
+  let currentPhase = "extract";
+  let sourceSeenShaForReport;
+  const reportRedactor = (text) => livePathRedactor(String(text ?? ""));
+  const writeClassifiedRunReport = (report) => {
+    writeFileSync(join(runDir, "run-summary.json"), `${JSON.stringify(report, null, 2)}\n`);
+  };
+  try {
+    if (vaultMode) {
+      // ---- Phase 1 (vault): kaifuu extract via the read-only vault adapter
+      // (alpha-006a). The vault materialises the corpus to scratch; the
+      // resolved game-root + source Seen.txt sha256 come back in the
+      // decompile report, which the driver reads to source the rest of the
+      // chain (no raw --game-root). --decompile-report-output emits the
+      // alpha-006e zero-unknown report at the same time.
+      runCommand(
+        "cargo",
+        [
+          "run",
+          "-p",
+          "kaifuu-cli",
+          "--quiet",
+          "--",
+          "extract",
+          "--engine",
+          "reallive",
+          "--vault-canonical-id",
+          projectMetadata.vaultCanonicalId,
+          ...realliveIdentityArgs(projectMetadata),
+          "--scene",
+          String(sceneId),
+          "--bundle-output",
+          bridgeBundlePath,
+          "--decompile-report-output",
+          decompileReportPath,
+        ],
+        process.env,
+        { redact: livePathRedactor },
+      );
+      const decompileReport = JSON.parse(readFileSync(decompileReportPath, "utf8"));
+      if (
+        typeof decompileReport.resolvedGameRoot !== "string" ||
+        decompileReport.resolvedGameRoot.length === 0
+      ) {
+        throw new Error(
+          `decompile report at ${decompileReportPath} missing resolvedGameRoot; cannot source the vault-materialised tree`,
+        );
+      }
+      gameRoot = decompileReport.resolvedGameRoot;
+      // Source root is now known: enforce source-vs-target distinctness.
+      ensureWritableTargetDistinctFromSource(
+        gameRoot,
+        targetRoot,
+        buildPathRedactor([
+          { path: gameRoot, replacement: realCorpusSource.placeholder },
+          { path: targetRoot, replacement: targetPlaceholder },
+        ]),
       );
     }
-    gameRoot = decompileReport.resolvedGameRoot;
-    // Source root is now known: enforce source-vs-target distinctness.
-    ensureWritableTargetDistinctFromSource(
-      gameRoot,
-      targetRoot,
-      buildPathRedactor([
-        { path: gameRoot, replacement: realCorpusSource.placeholder },
-        { path: targetRoot, replacement: targetPlaceholder },
-      ]),
+
+    // Capture source sha256 BEFORE any mutating work (raw mode: before
+    // extract; vault mode: after the read-only extract materialised the
+    // pristine tree). Both hash the SAME resolved path so the post-run drift
+    // guard compares like-for-like.
+    const sourceSeenPath = resolveReallivedataSeen(gameRoot);
+    const sourceSeenPlaceholder = `${realCorpusSource.placeholder}/REALLIVEDATA/Seen.txt`;
+    livePathRedactor = buildPathRedactor([
+      { path: gameRoot, replacement: realCorpusSource.placeholder },
+      { path: targetRoot, replacement: targetPlaceholder },
+    ]);
+    const liveCommandRedactor = buildPathRedactor([
+      { path: sourceSeenPath, replacement: sourceSeenPlaceholder },
+      { path: gameRoot, replacement: realCorpusSource.placeholder },
+      { path: targetRoot, replacement: targetPlaceholder },
+    ]);
+    const sourceSeenSha256Before = sha256OfFile(sourceSeenPath);
+    sourceSeenShaForReport = sourceSeenSha256Before;
+    process.stdout.write(
+      `[localize-project] source Seen.txt sha256 (pre): ${sourceSeenSha256Before}\n`,
     );
-  }
 
-  // Capture source sha256 BEFORE any mutating work (raw mode: before
-  // extract; vault mode: after the read-only extract materialised the
-  // pristine tree). Both hash the SAME resolved path so the post-run drift
-  // guard compares like-for-like.
-  const sourceSeenPath = resolveReallivedataSeen(gameRoot);
-  const sourceSeenPlaceholder = `${realCorpusSource.placeholder}/REALLIVEDATA/Seen.txt`;
-  livePathRedactor = buildPathRedactor([
-    { path: gameRoot, replacement: realCorpusSource.placeholder },
-    { path: targetRoot, replacement: targetPlaceholder },
-  ]);
-  const liveCommandRedactor = buildPathRedactor([
-    { path: sourceSeenPath, replacement: sourceSeenPlaceholder },
-    { path: gameRoot, replacement: realCorpusSource.placeholder },
-    { path: targetRoot, replacement: targetPlaceholder },
-  ]);
-  const sourceSeenSha256Before = sha256OfFile(sourceSeenPath);
-  process.stdout.write(
-    `[localize-project] source Seen.txt sha256 (pre): ${sourceSeenSha256Before}\n`,
-  );
+    if (!vaultMode) {
+      // ---- Phase 1 (raw path): kaifuu extract from a raw --game-root
+      // (env-gated test helper). Emits the same alpha-006e decompile report.
+      runCommand(
+        "cargo",
+        [
+          "run",
+          "-p",
+          "kaifuu-cli",
+          "--quiet",
+          "--",
+          "extract",
+          "--engine",
+          "reallive",
+          "--game-root",
+          gameRoot,
+          ...realliveIdentityArgs(projectMetadata),
+          "--scene",
+          String(sceneId),
+          "--bundle-output",
+          bridgeBundlePath,
+          "--decompile-report-output",
+          decompileReportPath,
+        ],
+        process.env,
+        { redact: liveCommandRedactor },
+      );
+    }
 
-  if (!vaultMode) {
-    // ---- Phase 1 (raw path): kaifuu extract from a raw --game-root
-    // (env-gated test helper). Emits the same alpha-006e decompile report.
+    // ---- Fail-closed on the 100%-decompilation bar (alpha-chain-fail-closed).
+    // A non-zero unknown-opcode count is a REAL decompile bug — hard-fail
+    // classified as in-profile-bug, distinct from an out-of-profile diagnostic.
+    const unknownOpcodeCount = assertZeroUnknownOpcodes(decompileReportPath);
+    process.stdout.write(
+      `[localize-project] decompile: ${unknownOpcodeCount} unknown opcode(s) (zero-unknown bar met)\n`,
+    );
+
+    // -------------- Phase 2: agentic loop (live LLM) ----------------
+    currentPhase = "agentic-loop";
+    const stageArgs = [
+      join(REPO_ROOT, "apps", "itotori", "dist", "cli.js"),
+      "localize-project-stage",
+      "--bridge",
+      bridgeBundlePath,
+      "--pair-policy",
+      pairPolicyPath,
+      "--unit-index",
+      String(args.unitIndex),
+      "--output",
+      agenticLoopBundlePath,
+      "--translated-bundle-output",
+      translatedBundlePath,
+      "--patch-report-output",
+      patchReportPath,
+      "--provider-run-artifacts-dir",
+      providerRunArtifactsDir,
+    ];
+    if (args.providerKind !== undefined) {
+      stageArgs.push("--provider-kind", args.providerKind);
+    }
+    runCommand("node", stageArgs, process.env, { redact: liveCommandRedactor });
+
+    if (args.providerKind !== "fake") {
+      const providerProof = verifyProviderRunArtifactsAfterStage({
+        agenticLoopBundlePath,
+        patchReportPath,
+        providerRunArtifactsDir,
+        expectedPair: policy.pair,
+      });
+      process.stdout.write(
+        `[localize-project] provider-run artifacts: ${providerProof.providerRunArtifactCount} verified for ${providerProof.invocations.length} live invocation(s) under ${providerRunArtifactsDir}\n`,
+      );
+    }
+
+    // ----------------- Phase 3: kaifuu patch -----------------------
+    currentPhase = "patch";
+    // Run kaifuu-cli `patch --engine reallive`. The CLI itself copies the
+    // source tree into TARGET and bumps writable mode; it expects TARGET to
+    // be empty unless `--force` is passed (we pass it, since TARGET was
+    // already writability-checked earlier via ensureWritableTargetDistinctFromSource).
+    // We let kaifuu-cli own the copy + writable-mode bumping in one place;
+    // that's why the driver does not pre-copy the tree here.
     runCommand(
       "cargo",
       [
@@ -2172,275 +2396,265 @@ async function main() {
         "kaifuu-cli",
         "--quiet",
         "--",
-        "extract",
+        "patch",
         "--engine",
         "reallive",
-        "--game-root",
+        "--source",
         gameRoot,
-        ...realliveIdentityArgs(projectMetadata),
-        "--scene",
-        String(sceneId),
-        "--bundle-output",
-        bridgeBundlePath,
-        "--decompile-report-output",
-        decompileReportPath,
+        "--target",
+        targetRoot,
+        "--bundle",
+        translatedBundlePath,
+        "--scope",
+        projectMetadata.translationScope,
+        "--force",
       ],
       process.env,
       { redact: liveCommandRedactor },
     );
-  }
 
-  // -------------- Phase 2: agentic loop (live LLM) ----------------
-  const stageArgs = [
-    join(REPO_ROOT, "apps", "itotori", "dist", "cli.js"),
-    "localize-project-stage",
-    "--bridge",
-    bridgeBundlePath,
-    "--pair-policy",
-    pairPolicyPath,
-    "--unit-index",
-    String(args.unitIndex),
-    "--output",
-    agenticLoopBundlePath,
-    "--translated-bundle-output",
-    translatedBundlePath,
-    "--patch-report-output",
-    patchReportPath,
-    "--provider-run-artifacts-dir",
-    providerRunArtifactsDir,
-  ];
-  if (args.providerKind !== undefined) {
-    stageArgs.push("--provider-kind", args.providerKind);
-  }
-  runCommand("node", stageArgs, process.env, { redact: liveCommandRedactor });
+    // --------------- Phase 4: replay-validate ----------------------
+    currentPhase = "replay-validate";
+    const targetSeenPath = resolveReallivedataSeen(targetRoot);
+    const liveReplayRedactor = buildPathRedactor([
+      { path: sourceSeenPath, replacement: sourceSeenPlaceholder },
+      { path: targetSeenPath, replacement: `${targetPlaceholder}/REALLIVEDATA/Seen.txt` },
+      { path: gameRoot, replacement: realCorpusSource.placeholder },
+      { path: targetRoot, replacement: targetPlaceholder },
+    ]);
+    runCommand(
+      "cargo",
+      [
+        "run",
+        "-p",
+        "utsushi-cli",
+        "--quiet",
+        "--",
+        "replay-validate",
+        "--engine",
+        "reallive",
+        "--seen",
+        targetSeenPath,
+        "--scene",
+        String(sceneId),
+        "--print-replay-log",
+        replayLogPath,
+      ],
+      process.env,
+      { redact: liveReplayRedactor },
+    );
 
-  if (args.providerKind !== "fake") {
-    const providerProof = verifyProviderRunArtifactsAfterStage({
+    // ---- Observed-output evidence: assert the ENGINE decoded the REAL
+    // translated text from the patched bytes. This is derived from the
+    // engine's own replay log (its observed TextLine bodies), compared
+    // against the real translated draft the LLM produced (recorded in
+    // patch-report.json) — NOT a harness-planted sentinel substring.
+    const runtimeObservation = assertReplayObservedTranslatedText({
+      replayLogPath,
+      patchReportPath,
+    });
+    process.stdout.write(
+      `[localize-project] runtime evidence: engine OBSERVED the real translated text in ${runtimeObservation.matchingTextLineCount} of ${runtimeObservation.textLineCount} decoded TextLine(s) (observed-output-confirmed)\n`,
+    );
+
+    // ---- Real rendered frame (E2): rasterize the localized scene through
+    // the real g00 render pipeline and assert the rendered text layer (built
+    // from the engine's OBSERVED TextLine bodies) reflects the real
+    // translated text. Redaction defaults ON so no copyrighted pixels are
+    // published; only the deterministic report (hashes/counts + the frame
+    // pointer) is retained here.
+    currentPhase = "render-validate";
+    runCommand(
+      "cargo",
+      [
+        "run",
+        "-p",
+        "utsushi-cli",
+        "--quiet",
+        "--",
+        "render-validate",
+        "--engine",
+        "reallive",
+        "--seen",
+        targetSeenPath,
+        "--scene",
+        String(sceneId),
+        "--artifact-root",
+        renderArtifactsDir,
+        "--expect-text-contains",
+        runtimeObservation.expectedText,
+        "--redaction",
+        "on",
+        "--output",
+        renderEvidencePath,
+      ],
+      process.env,
+      { redact: liveReplayRedactor },
+    );
+    const renderEvidence = JSON.parse(readFileSync(renderEvidencePath, "utf8"));
+    if (renderEvidence.containsExpected !== true) {
+      throw new Error(
+        `runtime evidence: the real rendered frame's localized text layer did not contain the real translated text (see ${renderEvidencePath})`,
+      );
+    }
+    process.stdout.write(
+      `[localize-project] render evidence: E2 frame ${renderEvidence.evidenceTier} rendered ${renderEvidence.renderedLineCount} localized line(s); rendered-text sha256=${renderEvidence.renderedTextSha256} redaction=${renderEvidence.redaction}\n`,
+    );
+
+    // ---- Copy the emitted redacted public PNG to the stable scene-1.png
+    // acceptance path (consume alpha-006b). Redaction is ON (default), so the
+    // committed frame carries no copyrighted g00 pixels — assert that before
+    // landing it.
+    if (renderEvidence.redaction !== "on") {
+      throw new Error(
+        `render evidence redaction is '${String(renderEvidence.redaction)}'; refusing to land a non-redacted scene-1.png`,
+      );
+    }
+    if (
+      typeof renderEvidence.artifactPath !== "string" ||
+      renderEvidence.artifactPath.length === 0
+    ) {
+      throw new Error(`render evidence at ${renderEvidencePath} missing artifactPath`);
+    }
+    copyFileSync(renderEvidence.artifactPath, sceneOnePngPath);
+    process.stdout.write(
+      `[localize-project] redacted scene frame -> ${portableRelativePath(runDir, sceneOnePngPath)} (redaction=on, no g00 pixels)\n`,
+    );
+
+    // ---- Localized-bundle artifact: surface the served (model, provider)
+    // pair(s), the REAL /generation cost, and the ZDR posture pulled from the
+    // per-invocation provider-run records into ONE readable file, alongside
+    // the primary pair + localized English line from patch-report.json. This
+    // satisfies the "localized bundle from a live ZDR call, cost recorded"
+    // acceptance in a single artifact.
+    if (args.providerKind !== "fake") {
+      const localizedBundle = buildLocalizedBundleArtifact({
+        runDir,
+        patchReportPath,
+        providerRunArtifactsDir,
+        decompileReportPath,
+        sceneOnePngPath,
+        zdrAccountAsserted: process.env.OPENROUTER_ZDR_ACCOUNT_ASSERTED === "1",
+      });
+      writeFileSync(localizedBundlePath, `${JSON.stringify(localizedBundle, null, 2)}\n`);
+      process.stdout.write(
+        `[localize-project] localized bundle: primary ${localizedBundle.primaryPair.modelId}@${localizedBundle.primaryPair.providerId}; ${localizedBundle.invocations.length} live ZDR invocation(s); total /generation cost USD ${localizedBundle.totalCostUsd}; all-served-ZDR=${localizedBundle.zdr.allServedZdr}\n`,
+      );
+    }
+
+    // ---- Readonly-source invariant: re-hash + assert no drift. ----
+    currentPhase = "finalize";
+    const sourceSeenSha256After = sha256OfFile(sourceSeenPath);
+    process.stdout.write(
+      `[localize-project] source Seen.txt sha256 (post): ${sourceSeenSha256After}\n`,
+    );
+    if (sourceSeenSha256Before !== sourceSeenSha256After) {
+      // The read-only source changed during a run on supported input — a real
+      // in-profile chain bug (fail-closed), NOT an out-of-profile diagnostic.
+      throw classifiedChainError(
+        liveCommandRedactor(
+          `kaifuu.reallive.source_mutated: source Seen.txt at ${sourceSeenPath} changed during the run (pre=${sourceSeenSha256Before}, post=${sourceSeenSha256After})`,
+        ),
+        {
+          outcome: CHAIN_OUTCOMES.bug,
+          diagnosticCode: "kaifuu.reallive.source_mutated",
+          phase: "finalize",
+        },
+      );
+    }
+
+    // ---- Final summary: every artifact exists. ----
+    for (const artifact of [
+      bridgeBundlePath,
       agenticLoopBundlePath,
       patchReportPath,
-      providerRunArtifactsDir,
-      expectedPair: policy.pair,
-    });
-    process.stdout.write(
-      `[localize-project] provider-run artifacts: ${providerProof.providerRunArtifactCount} verified for ${providerProof.invocations.length} live invocation(s) under ${providerRunArtifactsDir}\n`,
-    );
-  }
-
-  // ----------------- Phase 3: kaifuu patch -----------------------
-  // Run kaifuu-cli `patch --engine reallive`. The CLI itself copies the
-  // source tree into TARGET and bumps writable mode; it expects TARGET to
-  // be empty unless `--force` is passed (we pass it, since TARGET was
-  // already writability-checked earlier via ensureWritableTargetDistinctFromSource).
-  // We let kaifuu-cli own the copy + writable-mode bumping in one place;
-  // that's why the driver does not pre-copy the tree here.
-  runCommand(
-    "cargo",
-    [
-      "run",
-      "-p",
-      "kaifuu-cli",
-      "--quiet",
-      "--",
-      "patch",
-      "--engine",
-      "reallive",
-      "--source",
-      gameRoot,
-      "--target",
-      targetRoot,
-      "--bundle",
-      translatedBundlePath,
-      "--scope",
-      projectMetadata.translationScope,
-      "--force",
-    ],
-    process.env,
-    { redact: liveCommandRedactor },
-  );
-
-  // --------------- Phase 4: replay-validate ----------------------
-  const targetSeenPath = resolveReallivedataSeen(targetRoot);
-  const liveReplayRedactor = buildPathRedactor([
-    { path: sourceSeenPath, replacement: sourceSeenPlaceholder },
-    { path: targetSeenPath, replacement: `${targetPlaceholder}/REALLIVEDATA/Seen.txt` },
-    { path: gameRoot, replacement: realCorpusSource.placeholder },
-    { path: targetRoot, replacement: targetPlaceholder },
-  ]);
-  runCommand(
-    "cargo",
-    [
-      "run",
-      "-p",
-      "utsushi-cli",
-      "--quiet",
-      "--",
-      "replay-validate",
-      "--engine",
-      "reallive",
-      "--seen",
-      targetSeenPath,
-      "--scene",
-      String(sceneId),
-      "--print-replay-log",
       replayLogPath,
-    ],
-    process.env,
-    { redact: liveReplayRedactor },
-  );
-
-  // ---- Observed-output evidence: assert the ENGINE decoded the REAL
-  // translated text from the patched bytes. This is derived from the
-  // engine's own replay log (its observed TextLine bodies), compared
-  // against the real translated draft the LLM produced (recorded in
-  // patch-report.json) — NOT a harness-planted sentinel substring.
-  const runtimeObservation = assertReplayObservedTranslatedText({
-    replayLogPath,
-    patchReportPath,
-  });
-  process.stdout.write(
-    `[localize-project] runtime evidence: engine OBSERVED the real translated text in ${runtimeObservation.matchingTextLineCount} of ${runtimeObservation.textLineCount} decoded TextLine(s) (observed-output-confirmed)\n`,
-  );
-
-  // ---- Real rendered frame (E2): rasterize the localized scene through
-  // the real g00 render pipeline and assert the rendered text layer (built
-  // from the engine's OBSERVED TextLine bodies) reflects the real
-  // translated text. Redaction defaults ON so no copyrighted pixels are
-  // published; only the deterministic report (hashes/counts + the frame
-  // pointer) is retained here.
-  runCommand(
-    "cargo",
-    [
-      "run",
-      "-p",
-      "utsushi-cli",
-      "--quiet",
-      "--",
-      "render-validate",
-      "--engine",
-      "reallive",
-      "--seen",
-      targetSeenPath,
-      "--scene",
-      String(sceneId),
-      "--artifact-root",
-      renderArtifactsDir,
-      "--expect-text-contains",
-      runtimeObservation.expectedText,
-      "--redaction",
-      "on",
-      "--output",
       renderEvidencePath,
-    ],
-    process.env,
-    { redact: liveReplayRedactor },
-  );
-  const renderEvidence = JSON.parse(readFileSync(renderEvidencePath, "utf8"));
-  if (renderEvidence.containsExpected !== true) {
-    throw new Error(
-      `runtime evidence: the real rendered frame's localized text layer did not contain the real translated text (see ${renderEvidencePath})`,
-    );
-  }
-  process.stdout.write(
-    `[localize-project] render evidence: E2 frame ${renderEvidence.evidenceTier} rendered ${renderEvidence.renderedLineCount} localized line(s); rendered-text sha256=${renderEvidence.renderedTextSha256} redaction=${renderEvidence.redaction}\n`,
-  );
-
-  // ---- Copy the emitted redacted public PNG to the stable scene-1.png
-  // acceptance path (consume alpha-006b). Redaction is ON (default), so the
-  // committed frame carries no copyrighted g00 pixels — assert that before
-  // landing it.
-  if (renderEvidence.redaction !== "on") {
-    throw new Error(
-      `render evidence redaction is '${String(renderEvidence.redaction)}'; refusing to land a non-redacted scene-1.png`,
-    );
-  }
-  if (typeof renderEvidence.artifactPath !== "string" || renderEvidence.artifactPath.length === 0) {
-    throw new Error(`render evidence at ${renderEvidencePath} missing artifactPath`);
-  }
-  copyFileSync(renderEvidence.artifactPath, sceneOnePngPath);
-  process.stdout.write(
-    `[localize-project] redacted scene frame -> ${portableRelativePath(runDir, sceneOnePngPath)} (redaction=on, no g00 pixels)\n`,
-  );
-
-  // ---- Localized-bundle artifact: surface the served (model, provider)
-  // pair(s), the REAL /generation cost, and the ZDR posture pulled from the
-  // per-invocation provider-run records into ONE readable file, alongside
-  // the primary pair + localized English line from patch-report.json. This
-  // satisfies the "localized bundle from a live ZDR call, cost recorded"
-  // acceptance in a single artifact.
-  if (args.providerKind !== "fake") {
-    const localizedBundle = buildLocalizedBundleArtifact({
-      runDir,
-      patchReportPath,
-      providerRunArtifactsDir,
-      decompileReportPath,
-      sceneOnePngPath,
-      zdrAccountAsserted: process.env.OPENROUTER_ZDR_ACCOUNT_ASSERTED === "1",
-    });
-    writeFileSync(localizedBundlePath, `${JSON.stringify(localizedBundle, null, 2)}\n`);
-    process.stdout.write(
-      `[localize-project] localized bundle: primary ${localizedBundle.primaryPair.modelId}@${localizedBundle.primaryPair.providerId}; ${localizedBundle.invocations.length} live ZDR invocation(s); total /generation cost USD ${localizedBundle.totalCostUsd}; all-served-ZDR=${localizedBundle.zdr.allServedZdr}\n`,
-    );
-  }
-
-  // ---- Readonly-source invariant: re-hash + assert no drift. ----
-  const sourceSeenSha256After = sha256OfFile(sourceSeenPath);
-  process.stdout.write(
-    `[localize-project] source Seen.txt sha256 (post): ${sourceSeenSha256After}\n`,
-  );
-  if (sourceSeenSha256Before !== sourceSeenSha256After) {
-    throw new Error(
-      liveCommandRedactor(
-        `kaifuu.reallive.source_mutated: source Seen.txt at ${sourceSeenPath} changed during the run (pre=${sourceSeenSha256Before}, post=${sourceSeenSha256After})`,
-      ),
-    );
-  }
-
-  // ---- Final summary: every artifact exists. ----
-  for (const artifact of [
-    bridgeBundlePath,
-    agenticLoopBundlePath,
-    patchReportPath,
-    replayLogPath,
-    renderEvidencePath,
-  ]) {
-    if (!existsSync(artifact)) {
-      throw new Error(`expected artifact missing after successful run: ${artifact}`);
+    ]) {
+      if (!existsSync(artifact)) {
+        throw new Error(`expected artifact missing after successful run: ${artifact}`);
+      }
     }
-  }
 
-  // Emit a one-line run summary so callers can scrape it.
-  const summary = {
-    runDir: repoRelativePath(runDir),
-    project: args.project,
-    sceneId,
-    sourceGame: {
-      gameId: projectMetadata.gameId,
-      gameVersion: projectMetadata.gameVersion,
-      sourceProfileId: projectMetadata.sourceProfileId,
-    },
-    sourceLocale: projectMetadata.sourceLocale,
-    pair: policy.pair,
-    sourceSeenSha256: sourceSeenSha256Before,
-    sourcedVia: vaultMode ? "vault-canonical-id" : realCorpusSource.envName,
-    vaultCanonicalId: vaultMode ? projectMetadata.vaultCanonicalId : undefined,
-    translationScope: projectMetadata.translationScope,
-    artifacts: {
-      bridgeBundle: portableRelativePath(runDir, bridgeBundlePath),
-      agenticLoopBundle: portableRelativePath(runDir, agenticLoopBundlePath),
-      patchReport: portableRelativePath(runDir, patchReportPath),
-      replayLog: portableRelativePath(runDir, replayLogPath),
-      renderEvidence: portableRelativePath(runDir, renderEvidencePath),
-      providerRunArtifacts: portableRelativePath(runDir, providerRunArtifactsDir),
-      decompileReport: portableRelativePath(runDir, decompileReportPath),
-      sceneOnePng: portableRelativePath(runDir, sceneOnePngPath),
-      localizedBundle:
-        args.providerKind !== "fake"
-          ? portableRelativePath(runDir, localizedBundlePath)
-          : undefined,
-    },
-  };
-  writeFileSync(join(runDir, "run-summary.json"), `${JSON.stringify(summary, null, 2)}\n`);
-  process.stdout.write(`[localize-project] SUCCESS — run dir: ${runDir}\n`);
+    // Emit the classified run report — a full SUCCESS run resolves to
+    // in-profile-pass (ALPHA-006 criterion 5). The same run-summary.json is
+    // written on failure by the catch below, so every run is classified.
+    const summary = {
+      schemaVersion: RUN_REPORT_SCHEMA,
+      outcome: CHAIN_OUTCOMES.pass,
+      diagnosticCode: null,
+      failingPhase: null,
+      unknownOpcodes: unknownOpcodeCount,
+      runDir: repoRelativePath(runDir),
+      project: args.project,
+      sceneId,
+      sourceGame: {
+        gameId: projectMetadata.gameId,
+        gameVersion: projectMetadata.gameVersion,
+        sourceProfileId: projectMetadata.sourceProfileId,
+      },
+      sourceLocale: projectMetadata.sourceLocale,
+      pair: policy.pair,
+      sourceSeenSha256: sourceSeenSha256Before,
+      sourcedVia: vaultMode ? "vault-canonical-id" : realCorpusSource.envName,
+      vaultCanonicalId: vaultMode ? projectMetadata.vaultCanonicalId : undefined,
+      translationScope: projectMetadata.translationScope,
+      artifacts: {
+        bridgeBundle: portableRelativePath(runDir, bridgeBundlePath),
+        agenticLoopBundle: portableRelativePath(runDir, agenticLoopBundlePath),
+        patchReport: portableRelativePath(runDir, patchReportPath),
+        replayLog: portableRelativePath(runDir, replayLogPath),
+        renderEvidence: portableRelativePath(runDir, renderEvidencePath),
+        providerRunArtifacts: portableRelativePath(runDir, providerRunArtifactsDir),
+        decompileReport: portableRelativePath(runDir, decompileReportPath),
+        sceneOnePng: portableRelativePath(runDir, sceneOnePngPath),
+        localizedBundle:
+          args.providerKind !== "fake"
+            ? portableRelativePath(runDir, localizedBundlePath)
+            : undefined,
+      },
+    };
+    writeClassifiedRunReport(summary);
+    process.stdout.write(
+      `[localize-project] OUTCOME=${CHAIN_OUTCOMES.pass} — run dir: ${runDir}\n`,
+    );
+    process.stdout.write(`[localize-project] SUCCESS — run dir: ${runDir}\n`);
+  } catch (error) {
+    // ALPHA-006 criterion 5 — DO NOT collapse the failure into a bare
+    // exit(1). Classify it into one of the three outcomes, ALWAYS emit the
+    // run report with that classification, print it, then rethrow so the
+    // top-level handler exits non-zero with the classification visible.
+    const { outcome, diagnosticCode, phase } = classifyChainFailure(error, {
+      phase: currentPhase,
+    });
+    const failureReport = {
+      schemaVersion: RUN_REPORT_SCHEMA,
+      outcome,
+      diagnosticCode,
+      failingPhase: phase,
+      diagnosticMessage: reportRedactor(error?.message),
+      runDir: repoRelativePath(runDir),
+      project: args.project,
+      engine: projectMetadata.engine,
+      sceneId,
+      sourceGame: {
+        gameId: projectMetadata.gameId,
+        gameVersion: projectMetadata.gameVersion,
+        sourceProfileId: projectMetadata.sourceProfileId,
+      },
+      sourceLocale: projectMetadata.sourceLocale,
+      pair: policy.pair,
+      sourceSeenSha256: sourceSeenShaForReport ?? null,
+      sourcedVia: vaultMode ? "vault-canonical-id" : realCorpusSource.envName,
+      vaultCanonicalId: vaultMode ? projectMetadata.vaultCanonicalId : undefined,
+      translationScope: projectMetadata.translationScope,
+    };
+    writeClassifiedRunReport(failureReport);
+    process.stderr.write(
+      `[localize-project] OUTCOME=${outcome} code=${diagnosticCode} phase=${phase} — run report: ${join(repoRelativePath(runDir), "run-summary.json")}\n`,
+    );
+    throw error;
+  }
 }
 
 if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href) {
