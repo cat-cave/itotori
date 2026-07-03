@@ -7,61 +7,86 @@
     {
       "id": "realliveCatalog",
       "path": "crates/utsushi-reallive/src/rlop/module_catalog.rs",
-      "symbols": ["REAL_CATALOG", "family_for"],
+      "symbols": [
+        "REAL_CATALOG",
+        "family_for"
+      ],
       "role": "utsushi RealLive module_catalog: the union of every (module_id, opcode) observed as an unresolved command across ALL scenes of both proven corpora (Sweetie HD + Kanon), evidence-first (no speculative opcodes)."
     },
     {
       "id": "realliveOpcode",
       "path": "crates/kaifuu-reallive/src/opcode.rs",
-      "symbols": ["RealLiveOpcode", "Expr", "opener"],
+      "symbols": [
+        "RealLiveOpcode",
+        "Expr",
+        "opener"
+      ],
       "role": "kaifuu RealLive decoder element taxonomy: RealLiveOpcode element forms (framing edges: kidoku markup, command argc/overload, goto-family, choice/select-block), Expr data-lead forms (ExpressionPiece), and the opener-byte marker switch."
     },
     {
       "id": "realliveNamedOpcode",
       "path": "crates/kaifuu-reallive/src/opcodes.rs",
-      "symbols": ["NamedOpcode"],
+      "symbols": [
+        "NamedOpcode"
+      ],
       "role": "kaifuu RealLive bridge semantic command catalogue (NamedOpcode)."
     },
     {
       "id": "realliveXor2",
       "path": "crates/kaifuu-reallive/src/xor2.rs",
-      "symbols": ["compiler_version_uses_xor2 assertions"],
+      "symbols": [
+        "compiler_version_uses_xor2 assertions"
+      ],
       "role": "kaifuu RealLive second-level cipher cases: the compiler-version xor2/plaintext decision, pinned by the compiler_version_uses_xor2 unit assertions (110002/1110002 use xor2; 10002 plaintext)."
     },
     {
       "id": "realliveG00",
       "path": "crates/utsushi-reallive/src/g00.rs",
-      "symbols": ["G00_TYPE_RAW_BGR", "G00_TYPE_PALETTED_LZSS", "G00_TYPE_REGIONED_LZSS"],
+      "symbols": [
+        "G00_TYPE_RAW_BGR",
+        "G00_TYPE_PALETTED_LZSS",
+        "G00_TYPE_REGIONED_LZSS"
+      ],
       "role": "utsushi RealLive g00 image type/edge matrix + LZSS cases."
     },
     {
       "id": "realliveDecoderParity",
       "path": "crates/utsushi-reallive/tests/decoder_parity_real_bytes.rs",
-      "symbols": ["expected_populated"],
+      "symbols": [
+        "expected_populated"
+      ],
       "role": "utsushi RealLive decoder-parity set: the populated-scene counts per staged corpus the full-module linear-walk replay must decode (Sweetie HD 198, Kanon 79)."
     },
     {
       "id": "rpgMakerCodes",
       "path": "crates/kaifuu-rpgmaker/src/codes.rs",
-      "symbols": ["classify"],
+      "symbols": [
+        "classify"
+      ],
       "role": "kaifuu RPG Maker MV/MZ event-command code catalogue: classify() — every top-level event `code` the extractor recognises (text-bearing, text-adjacent, and structural), exercised by the LustMemory real-bytes bundle test."
     },
     {
       "id": "xp3Capability",
       "path": "crates/kaifuu-core/src/xp3_capability_profile.rs",
-      "symbols": ["Xp3CapabilityVariant"],
+      "symbols": [
+        "Xp3CapabilityVariant"
+      ],
       "role": "kaifuu KiriKiri XP3 capability-variant catalogue. XP3 is a container-detection surface (no bytecode opcode catalogue); its unique components are the capability variants."
     },
     {
       "id": "siglusOpcode",
       "path": "crates/kaifuu-siglus/src/opcode.rs",
-      "symbols": ["SiglusOpcode"],
+      "symbols": [
+        "SiglusOpcode"
+      ],
       "role": "kaifuu Siglus scene-bytecode opcode catalogue — currently a siglus-05 SKELETON STUB (only the Unknown catch-all; parse_scene_bytecode returns a typed not_implemented). No real opcode catalogue exists yet."
     },
     {
       "id": "realliveCompressor",
       "path": "crates/kaifuu-reallive/src/compressor.rs",
-      "symbols": ["compress_avg32_literal"],
+      "symbols": [
+        "compress_avg32_literal"
+      ],
       "role": "kaifuu RealLive AVG32 LZSS re-compressor (literal-only emission case)."
     }
   ],
@@ -1616,7 +1641,15 @@
           "source": "crates/kaifuu-reallive/src/opcodes.rs#NamedOpcode",
           "derivation": "extracted",
           "count": 7,
-          "components": ["TextDisplay", "SetSpeaker", "Choice", "SetVar", "Jump", "Return", "Pause"]
+          "components": [
+            "TextDisplay",
+            "SetSpeaker",
+            "Choice",
+            "SetVar",
+            "Jump",
+            "Return",
+            "Pause"
+          ]
         },
         "cipher_case": {
           "source": "crates/kaifuu-reallive/src/xor2.rs#compiler_version_uses_xor2 assertions",
@@ -2330,7 +2363,9 @@
           "source": "crates/kaifuu-siglus/src/opcode.rs#SiglusOpcode",
           "derivation": "extracted",
           "count": 1,
-          "components": ["Unknown"]
+          "components": [
+            "Unknown"
+          ]
         }
       }
     }
