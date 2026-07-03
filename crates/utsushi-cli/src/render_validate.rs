@@ -327,11 +327,11 @@ fn drive(params: Params<'_>) -> Result<(), Box<dyn Error>> {
         })?;
         // Decode the real g00 up front to size the cover scale (fail typed
         // if the named stem is missing/undecodable — never a fake fill).
-        let raw = fs::read(g00_dir.join(format!("{bg_stem}.g00"))).map_err(|err| {
-            format!("utsushi.cli.render_validate.bg_read: {bg_stem}.g00: {err}")
+        let raw = fs::read(g00_dir.join(format!("{bg_stem}.g00")))
+            .map_err(|err| format!("utsushi.cli.render_validate.bg_read: {bg_stem}.g00: {err}"))?;
+        let (img, _warns) = decode_g00(&raw).map_err(|err| {
+            format!("utsushi.cli.render_validate.bg_decode: {bg_stem}.g00: {err}")
         })?;
-        let (img, _warns) = decode_g00(&raw)
-            .map_err(|err| format!("utsushi.cli.render_validate.bg_decode: {bg_stem}.g00: {err}"))?;
         let scale = cover_scale(frame_size, img.width, img.height);
         fallback_stack
             .set(
@@ -407,7 +407,10 @@ fn drive(params: Params<'_>) -> Result<(), Box<dyn Error>> {
     // One real play-order message rendered per frame; the speaker + colour
     // presence is recorded (never the raw speaker/text) so the evidence
     // shows the message-window subsystem exercised the NAME box + colour.
-    let has_speaker = speaker.as_deref().map(str::trim).is_some_and(|s| !s.is_empty());
+    let has_speaker = speaker
+        .as_deref()
+        .map(str::trim)
+        .is_some_and(|s| !s.is_empty());
     let report = json!({
         "schemaVersion": "0.1.0",
         "engine": SUPPORTED_ENGINE,
