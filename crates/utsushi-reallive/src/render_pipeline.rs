@@ -349,6 +349,14 @@ pub struct TextLayer {
     /// painted as its own backdrop + glyph layer floating above the main
     /// message box. `None` for narration or `NAME_MOD=0`.
     pub name_box: Option<Box<TextLayer>>,
+    /// Optional baseline-to-baseline line advance in framebuffer pixels.
+    /// The message window sets this to the `MOJI_SIZE`-derived row stride
+    /// (`MOJI_SIZE + MOJI_REP.y + LUBY_SIZE`, scaled) so wrapped lines pack
+    /// at the SAME stride the Gameexe-driven box height is sized from
+    /// (`box_text_height_virtual`) — the engine's fixed row pitch, not the
+    /// font's natural leading. `None` falls back to the font's natural
+    /// ascent+descent+leading (narration / name box / [`Self::localized`]).
+    pub line_height: Option<u32>,
 }
 
 /// A translucent filled box painted behind a [`TextLayer`]'s glyphs so
@@ -377,6 +385,7 @@ impl TextLayer {
             colour: WipeColour::WHITE,
             backdrop: None,
             name_box: None,
+            line_height: None,
         }
     }
 
@@ -391,6 +400,16 @@ impl TextLayer {
     /// ([`crate::Gameexe::screen_size_px`]); `frame_size` is the actual
     /// framebuffer. The box position / colour / alpha / font-size / insets
     /// are all driven from `config`, scaled `screen_size → frame_size`.
+    ///
+    /// The message body is WORD-WRAPPED at the `MOJI_CNT` boundary so a
+    /// long message does not overflow the box horizontally: the per-line
+    /// character budget is turned into a pixel budget (`MOJI_CNT.x` cells of
+    /// `MOJI_SIZE + MOJI_REP.x`), clamped to the box inner width (the
+    /// `MOJI_POS` left/right insets), and the text is broken on WORD
+    /// boundaries within it — the faithful proportional-font approximation
+    /// of RealLive's fixed-cell wrap (see [`font::wrap_words`]). Wrapped
+    /// lines advance by the `MOJI_SIZE`-derived line height in
+    /// [`font::draw_lines`]. The name box is NOT wrapped.
     ///
     /// When `config.name_mod == 1` AND `speaker` is present, a SEPARATE
     /// name box is attached (per `NAME_POS` / `NAME_MOJI_SIZE`); narration
@@ -451,19 +470,54 @@ impl TextLayer {
 
         // Text origin inside the box: MOJI_POS (upper, lower, left, right)
         // padding, left + upper applied at the top-left.
-        let (pad_upper, _pad_lower, pad_left, _pad_right) = config.moji_pad;
+        let (pad_upper, _pad_lower, pad_left, pad_right) = config.moji_pad;
         let origin_x = bx.saturating_add(to_x(pad_left.max(0)));
         let origin_y = by.saturating_add(to_y(pad_upper.max(0)));
         let scale = ((config.moji_size as f32) * scale_y).round().max(10.0) as u32;
 
+        // --- Word-wrap the message body at the MOJI_CNT boundary. ---
+        // RealLive wraps message text at `MOJI_CNT.x` characters per line.
+        // With the game's fixed-width CJK font that is a hard glyph-cell
+        // count; we render a PROPORTIONAL Latin font, so the faithful
+        // approximation is a PIXEL budget derived from that same character
+        // count — `MOJI_CNT.x` cells of `MOJI_SIZE + MOJI_REP.x` px each —
+        // wrapped on WORD boundaries so a line reads naturally and never
+        // exceeds the engine's line width. That budget is clamped to the
+        // box's inner text width (box extent minus the MOJI_POS left/right
+        // insets) so no glyph can ever cross the box's right inset even if
+        // MOJI_CNT is generous.
+        let text_area_width = bw
+            .saturating_sub(to_x(pad_left.max(0)))
+            .saturating_sub(to_x(pad_right.max(0)))
+            .max(1);
+        let wrap_width = match config.moji_cnt {
+            Some((x_chars, _)) if x_chars > 0 => {
+                let cell_w = (config.moji_size as i32 + config.moji_rep.0).max(1);
+                to_x(x_chars * cell_w).min(text_area_width).max(1)
+            }
+            // No MOJI_CNT declared: wrap at the box's inner text width.
+            _ => text_area_width,
+        };
+        let lines = font::wrap_words(text, scale as f32, wrap_width as f32);
+
+        // Wrapped lines advance by the MOJI_SIZE-derived ROW STRIDE
+        // (MOJI_SIZE + MOJI_REP.y + LUBY_SIZE, scaled) — the SAME stride
+        // `box_text_height_virtual` sizes the box from — so N wrapped lines
+        // occupy exactly the N-row text area, rather than the font's larger
+        // natural leading which would push later lines past the box bottom.
+        let line_stride =
+            (config.moji_size as i32 + config.moji_rep.1 + config.ruby_size.max(0)).max(1);
+        let line_height = to_y(line_stride).max(1);
+
         let mut layer = Self {
-            lines: vec![text.to_string()],
+            lines,
             origin_x,
             origin_y,
             scale,
             colour: WipeColour::WHITE,
             backdrop: Some(backdrop),
             name_box: None,
+            line_height: Some(line_height),
         };
 
         // --- Separate speaker name box (NAME_MOD=1 + a real speaker). ---
@@ -503,6 +557,8 @@ impl TextLayer {
                 colour: WipeColour::WHITE,
                 backdrop: Some(name_backdrop),
                 name_box: None,
+                // Single-line name: font-natural leading (unchanged).
+                line_height: None,
             }));
         }
 
@@ -580,10 +636,14 @@ mod font {
         let metrics = font.metrics(&[]).scale(px);
         let glyph_metrics = font.glyph_metrics(&[]).scale(px);
         let charmap = font.charmap();
-        // Line-to-line advance: ascent above the baseline, descent below,
-        // plus the font's recommended leading (matches the previous
-        // `height + line_gap`).
-        let line_advance = metrics.ascent + metrics.descent.abs() + metrics.leading;
+        // Line-to-line advance: the message window pins this to its
+        // MOJI_SIZE-derived row stride (`layer.line_height`) so wrapped
+        // lines pack into the Gameexe-sized box exactly; otherwise the
+        // font's natural ascent + descent + recommended leading.
+        let line_advance = match layer.line_height {
+            Some(h) => h as f32,
+            None => metrics.ascent + metrics.descent.abs() + metrics.leading,
+        };
         let colour = layer.colour;
         let mut painted: u64 = 0;
 
@@ -655,6 +715,91 @@ mod font {
             }
         }
         painted
+    }
+
+    /// Rendered pixel width of `text` at `px` em size through the bundled
+    /// proportional font (sum of glyph advances). The measure the message
+    /// wrap and its regression test agree on.
+    pub fn line_width(text: &str, px: f32) -> f32 {
+        let font = font();
+        let glyph_metrics = font.glyph_metrics(&[]).scale(px.max(1.0));
+        let charmap = font.charmap();
+        text.chars()
+            .map(|ch| glyph_metrics.advance_width(charmap.map(ch)))
+            .sum()
+    }
+
+    /// Greedily word-wrap `text` so that each returned line, when
+    /// rasterised at `px` em size through the bundled PROPORTIONAL font,
+    /// stays within `max_width` framebuffer pixels.
+    ///
+    /// This is the message-window body wrap: RealLive breaks message text
+    /// at the `MOJI_CNT` character boundary, but that count assumes a
+    /// fixed-width CJK cell. Our Latin font is proportional, so wrapping on
+    /// WORD boundaries within the MOJI_CNT-derived pixel budget (see
+    /// [`super::TextLayer::message_window`]) is the faithful approximation —
+    /// the line breaks where the engine's line fills, and the text reads
+    /// naturally rather than snapping mid-word. Whitespace runs are
+    /// collapsed to single spaces (dialogue carries no significant runs). A
+    /// single word wider than `max_width` is hard-broken by characters so
+    /// the invariant "no glyph exceeds the box inner width" always holds.
+    pub fn wrap_words(text: &str, px: f32, max_width: f32) -> Vec<String> {
+        let font = font();
+        let glyph_metrics = font.glyph_metrics(&[]).scale(px.max(1.0));
+        let charmap = font.charmap();
+        let advance = |ch: char| glyph_metrics.advance_width(charmap.map(ch));
+
+        // Degenerate budget or empty text: a single line (unchanged text).
+        if max_width <= 0.0 || text.trim().is_empty() {
+            return vec![text.to_string()];
+        }
+
+        let mut lines: Vec<String> = Vec::new();
+        let mut current = String::new();
+        let mut current_w = 0.0f32;
+        let space_w = line_width(" ", px);
+
+        for word in text.split_whitespace() {
+            let word_w = line_width(word, px);
+            // Flush the current line if appending this word would overflow.
+            if !current.is_empty() && current_w + space_w + word_w > max_width {
+                lines.push(std::mem::take(&mut current));
+                current_w = 0.0;
+            }
+            // A single word wider than a whole line: hard-break by chars.
+            if word_w > max_width {
+                if !current.is_empty() {
+                    lines.push(std::mem::take(&mut current));
+                }
+                let mut piece = String::new();
+                let mut piece_w = 0.0f32;
+                for ch in word.chars() {
+                    let cw = advance(ch);
+                    if !piece.is_empty() && piece_w + cw > max_width {
+                        lines.push(std::mem::take(&mut piece));
+                        piece_w = 0.0;
+                    }
+                    piece.push(ch);
+                    piece_w += cw;
+                }
+                current = piece;
+                current_w = piece_w;
+                continue;
+            }
+            if !current.is_empty() {
+                current.push(' ');
+                current_w += space_w;
+            }
+            current.push_str(word);
+            current_w += word_w;
+        }
+        if !current.is_empty() {
+            lines.push(current);
+        }
+        if lines.is_empty() {
+            lines.push(String::new());
+        }
+        lines
     }
 }
 
@@ -2032,6 +2177,70 @@ mod tests {
         assert_eq!(backdrop.x, 40);
         assert_eq!(backdrop.y, 300);
         assert_eq!(backdrop.width, 640 - 2 * 40, "symmetric horizontal inset");
+    }
+
+    #[test]
+    fn message_window_wraps_long_message_at_moji_cnt_within_the_box() {
+        // A Sweetie-shaped window: 1280x720, MOJI_SIZE=36, MOJI_CNT=22,3,
+        // MOJI_REP=0,2, MOJI_POS=48,0,12,0, POS bottom-anchored inset 220.
+        let cfg = MessageWindowConfig {
+            origin: 2,
+            pos_x: 220,
+            pos_y: 0,
+            attr_rgba: (10, 16, 24, 220),
+            moji_size: 36,
+            moji_pad: (48, 0, 12, 0),
+            moji_cnt: Some((22, 3)),
+            moji_rep: (0, 2),
+            ruby_size: 0,
+            name_mod: 1,
+            message_mod: 0,
+            name_moji_size: 25,
+            name_pos: (18, 26),
+        };
+        let screen = (1280u32, 720u32);
+
+        // A message far longer than one MOJI_CNT line.
+        let long = "The rain kept falling long after the festival lanterns \
+                    had gone dark, and neither of us wanted to be the first \
+                    to say goodnight.";
+        let layer = TextLayer::message_window(long, None, &cfg, screen, screen);
+
+        // Non-vacuous #1: it actually wrapped to multiple lines.
+        assert!(
+            layer.lines.len() >= 2,
+            "a long message must wrap to >=2 lines, got {:?}",
+            layer.lines
+        );
+
+        // Non-vacuous #2: the WHOLE message on one line would overflow the
+        // box inner width — so wrapping was genuinely required. Disabling
+        // the wrap (a single-line layer) fails THIS assertion because the
+        // one line's width exceeds the inner width.
+        let backdrop = layer.backdrop.expect("message box backdrop");
+        let (_, _, _pad_left, pad_right) = cfg.moji_pad;
+        let inner_right = backdrop.x + backdrop.width - pad_right.max(0) as u32;
+        let inner_width = (inner_right - layer.origin_x) as f32;
+        assert!(
+            font::line_width(long, layer.scale as f32) > inner_width,
+            "the single-line message must be wider than the box (else the \
+             wrap test is vacuous)"
+        );
+
+        // Every wrapped line stays within the box's right inset: no glyph
+        // advances past the inner right edge.
+        for line in &layer.lines {
+            let w = font::line_width(line, layer.scale as f32);
+            assert!(
+                w <= inner_width,
+                "wrapped line {line:?} width {w} exceeds box inner width {inner_width}"
+            );
+        }
+
+        // A short message stays a single line (wrapping is body-only, not
+        // an unconditional line split).
+        let short = TextLayer::message_window("Yes.", None, &cfg, screen, screen);
+        assert_eq!(short.lines, vec!["Yes.".to_string()]);
     }
 
     #[test]
