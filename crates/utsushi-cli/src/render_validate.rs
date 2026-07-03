@@ -1,17 +1,31 @@
 //! ALPHA-006b — `utsushi-cli render-validate --engine reallive` command.
 //!
-//! Drives [`utsushi_reallive::replay_scene`] against a (localized)
-//! Seen.txt, collects the localized [`ReplayEvent::TextLine`] bodies,
-//! paints them as a [`TextLayer`] over a synthetic-fill graphics stack,
-//! and emits a deterministic rasterized PNG **screenshot** through the
-//! substrate [`utsushi_core::substrate::FrameArtifactSink`] at
+//! Drives the REAL RealLive message-window render pipeline over a
+//! (localized) Seen.txt and emits a deterministic rasterized PNG
+//! **screenshot** through the substrate
+//! [`utsushi_core::substrate::FrameArtifactSink`] at
 //! [`utsushi_core::substrate::EvidenceTier::E2`].
 //!
-//! COPYRIGHT REDACTION (PROJECT LAW): the rasterizer never dereferences
-//! a copyrighted g00 bitmap. Only our own synthetic `Wipe` fills and the
-//! localized (translated) text layer are painted; the emitted PNG
-//! embeds zero source-asset pixels. This command is the rasterized
-//! successor to the text-only `replay-validate` capture surface.
+//! The frame is the product surface, not a synthetic-fill placeholder:
+//!
+//!   * The scene is observed through [`utsushi_reallive::ReplayEngine::observe_for_port`]
+//!     — the real branch-following PLAY-ORDER message stream, each message
+//!     carrying its `NAME`-register speaker + `#NAMAE`→`#COLOR_TABLE`
+//!     colour. ONE message is rendered per frame (never the whole scene
+//!     concatenated).
+//!   * The real g00 graphics-object stack the drive observed is composited
+//!     into the full-fidelity buffer (the real decoded background art).
+//!   * The message is laid out inside the game's real `#WINDOW.000`
+//!     dialogue box read from `Gameexe.ini` (position / colour / alpha /
+//!     font-size / insets), word-wrapped at the `MOJI_CNT` boundary, with
+//!     a separate `NAME_MOD=1` speaker name box in the speaker's colour.
+//!
+//! COPYRIGHT REDACTION (PROJECT LAW): the PUBLIC frame is redacted by
+//! default — the real g00 image rects are replaced by a synthetic marker
+//! so the committed PNG embeds zero source-asset pixels; the translated
+//! English message glyphs stay legible. The full-fidelity PRIVATE frame
+//! (real g00 art) is written only to the gitignored `.private-render`
+//! tree for local visual verification, never committed.
 
 use std::error::Error;
 use std::fs;
@@ -25,12 +39,12 @@ use utsushi_core::substrate::{
     PackageDescriptor, PackageKind, PackageSource, VfsError, VfsResult,
 };
 use utsushi_reallive::{
-    GraphicsObject, GraphicsObjectStack, GraphicsPlane, RecordingFrameArtifactSink,
-    RedactionPolicy, RenderPass, ReplayEvent, ReplayOpts, SceneEmit, TextLayer, WipeColour,
-    sha256_hex,
+    Gameexe, GraphicsObject, GraphicsObjectStack, GraphicsPlane, GraphicsScale,
+    RecordingFrameArtifactSink, RedactionPolicy, RenderPass, ReplayOpts, SceneEmit, TextLayer,
+    WipeColour, decode_g00, sha256_hex,
 };
 
-use crate::staged_replay::replay_scene_staged;
+use crate::staged_replay::staged_engine;
 
 /// Only `reallive` is supported (no silent fallback).
 const SUPPORTED_ENGINE: &str = "reallive";
@@ -38,25 +52,20 @@ const SUPPORTED_ENGINE: &str = "reallive";
 /// Stable diagnostic code printed on the success exit path.
 const RENDER_OK_CODE: &str = "utsushi.reallive.render_validate_screenshot_ok";
 
-/// Default Sweetie HD framebuffer (`SCREENSIZE_MOD=999,1280,720`).
-const DEFAULT_WIDTH: u32 = 1280;
-const DEFAULT_HEIGHT: u32 = 720;
+/// Step budget for the play-order port observation (a bounded headless
+/// drive; the same budget the msgwin diagnostic uses).
+const OBSERVE_BUDGET: u32 = 50_000;
 
-/// Bounds on the painted text layer so a pathological scene cannot
-/// produce an unbounded frame. Lines beyond the cap are dropped; the
-/// render is a validation artifact, not a faithful typeset page.
-const MAX_RENDERED_LINES: usize = 24;
-const MAX_RENDERED_LINE_CHARS: usize = 64;
-
-const HELP: &str = r"utsushi render-validate — rasterized localized scene screenshot (E2 frame artifact)
+const HELP: &str = r"utsushi render-validate — real message-window scene screenshot (E2 frame artifact)
 
 USAGE:
   utsushi-cli render-validate \
     --engine reallive \
     --seen <PATH> \
     --scene <N> \
+    --gameexe <PATH> \
+    --game-dir <DIR> \
     --artifact-root <DIR> \
-    [--game-dir <DIR>] [--bg-asset <STEM>] \
     [--private-artifact-root <DIR>] [--redaction on|off] \
     [--run-id <ID>] \
     [--expect-text-contains <SUBSTR>] \
@@ -66,27 +75,42 @@ USAGE:
 FLAGS:
   --engine reallive             Replay engine. Only `reallive` is supported.
   --seen <PATH>                 Path to a (localized) RealLive Seen.txt envelope.
-  --scene <N>                   Scene id (u16) to drive through the VM.
+  --scene <N>                   Scene id (u16) to observe for the play-order message stream.
+  --gameexe <PATH>              Real Gameexe.ini. Drives the #WINDOW.000 message box
+                                geometry/colour/font + the #NAMAE/#COLOR_TABLE speaker
+                                colours. REQUIRED — the box is never hardcoded.
+  --game-dir <DIR>              Game root containing the g00 asset directory; the real
+                                decoded g00 stack the drive observed is composited.
+  --source-seen <PATH>          Pristine (pre-patch) source Seen.txt. Recovers the REAL
+                                per-speaker #NAMAE colour when a dialogue-only translation
+                                rewrote the inline 【…】 name so it no longer matches the
+                                Japanese #NAMAE key on the patched line.
+  --bg-asset <STEM>             Real g00 background stem composited when the observed
+                                play-order scene set no graphics of its own (a headless
+                                dialogue drive inherits its background from a prior scene).
+                                The stem's REAL decoded g00 art is cover-scaled in.
   --artifact-root <DIR>         Managed runtime-artifact root the PUBLIC PNG is written under.
-  --game-dir <DIR>              Game root containing the g00 asset directory. When given
-                                with --bg-asset, the real g00 background is composited.
-  --bg-asset <STEM>             g00 asset stem (e.g. BACK) composited as the scene background.
   --private-artifact-root <DIR> Directory the PRIVATE full-fidelity PNG is written to.
                                 Default: the repo's gitignored /.private-render/ tree. NEVER
                                 committed (it carries real decoded g00 art).
   --redaction on|off            PUBLIC-frame redaction toggle (default: on). `on` replaces
-                                image rects with a synthetic marker; `off` publishes the
-                                full-fidelity buffer (authorized local sharing only).
+                                image rects with a synthetic marker (the translated glyphs
+                                stay legible); `off` publishes the full-fidelity buffer
+                                (authorized local sharing only).
   --run-id <ID>                 Run id segment for the artifact URI (default: render-validate).
-  --expect-text-contains <S>    Assert the rendered (localized) text layer contains <S>.
-  --width <N> / --height <N>    Framebuffer size (default 1280x720).
+  --expect-text-contains <S>    Select + assert the rendered message contains <S> (the real
+                                translated draft). The play-order message carrying it is the
+                                one rendered.
+  --width <N> / --height <N>    Framebuffer size override (default: the Gameexe screen size).
   --output <PATH>               Write the deterministic JSON report to <PATH>.
   -h, --help                    Print this message and exit.
 
-The render pass composites the REAL decoded g00 background into the
-full-fidelity buffer; the private PNG carries it verbatim while the public
-frame (announced through the substrate FrameArtifactSink at EvidenceTier::E2
-as a `screenshot`) is redacted by default so no copyrighted art is published.
+ONE real play-order message (observed through the branch-following port
+drive) is laid out in the game's real Gameexe message box over the real
+decoded g00 stack; the private PNG carries the g00 art verbatim while the
+public frame (announced through the substrate FrameArtifactSink at
+EvidenceTier::E2 as a `screenshot`) is redacted by default so no
+copyrighted art is published — the translated English glyphs stay legible.
 ";
 
 /// Execute the `render-validate` subcommand.
@@ -110,10 +134,12 @@ pub fn run_render_validate_command(args: &[String]) -> Result<(), Box<dyn Error>
     let artifact_root = PathBuf::from(required_flag(args, "--artifact-root")?);
     let run_id = optional_flag(args, "--run-id").unwrap_or("render-validate");
     let expect_text_contains = optional_flag(args, "--expect-text-contains").map(str::to_string);
-    let width = parse_dimension(args, "--width", DEFAULT_WIDTH)?;
-    let height = parse_dimension(args, "--height", DEFAULT_HEIGHT)?;
+    let width = parse_dimension_override(args, "--width")?;
+    let height = parse_dimension_override(args, "--height")?;
     let output = optional_flag(args, "--output").map(PathBuf::from);
-    let game_dir = optional_flag(args, "--game-dir").map(PathBuf::from);
+    let gameexe_path = PathBuf::from(required_flag(args, "--gameexe")?);
+    let game_dir = PathBuf::from(required_flag(args, "--game-dir")?);
+    let source_seen = optional_flag(args, "--source-seen").map(PathBuf::from);
     let bg_asset = optional_flag(args, "--bg-asset").map(str::to_string);
     let private_artifact_root = optional_flag(args, "--private-artifact-root").map(PathBuf::from);
     let public_redact = match optional_flag(args, "--redaction") {
@@ -137,7 +163,9 @@ pub fn run_render_validate_command(args: &[String]) -> Result<(), Box<dyn Error>
         width,
         height,
         output: output.as_deref(),
-        game_dir: game_dir.as_deref(),
+        gameexe_path: &gameexe_path,
+        game_dir: &game_dir,
+        source_seen: source_seen.as_deref(),
         bg_asset: bg_asset.as_deref(),
         private_artifact_root: private_artifact_root.as_deref(),
         public_redact,
@@ -150,108 +178,209 @@ struct Params<'a> {
     artifact_root: &'a Path,
     run_id: &'a str,
     expect_text_contains: Option<&'a str>,
-    width: u32,
-    height: u32,
+    /// Framebuffer width override; `None` uses the Gameexe screen width.
+    width: Option<u32>,
+    /// Framebuffer height override; `None` uses the Gameexe screen height.
+    height: Option<u32>,
     output: Option<&'a Path>,
-    game_dir: Option<&'a Path>,
+    gameexe_path: &'a Path,
+    game_dir: &'a Path,
+    /// Pristine (pre-patch) source Seen.txt. Used to recover the REAL
+    /// per-speaker #NAMAE colour when a dialogue-only translation rewrote
+    /// the inline 【…】 name prefix into the target language (the Japanese
+    /// #NAMAE key no longer matches on the patched line). `None` renders
+    /// the translated name box without a recovered colour.
+    source_seen: Option<&'a Path>,
+    /// Real g00 background stem composited when the observed play-order
+    /// scene set no graphics of its own (a headless dialogue-scene drive
+    /// inherits its background from a prior scene, so its own terminal
+    /// stack can be empty). The named stem's REAL decoded g00 art is
+    /// cover-scaled into the frame so the composite is always real art.
     bg_asset: Option<&'a str>,
     private_artifact_root: Option<&'a Path>,
     public_redact: bool,
 }
 
 fn drive(params: Params<'_>) -> Result<(), Box<dyn Error>> {
-    // 1. Replay the (localized) scene and collect the localized text.
-    //    Stage the dev-only `use_xor_2` recovery for xor2 titles so the
-    //    rendered text layer is built from REAL decoded text (not the
-    //    still-ciphered segment's mojibake).
-    let opts = ReplayOpts::default();
-    let log = replay_scene_staged(params.seen_path, params.scene_id, &opts)
-        .map_err(|err| format!("utsushi.cli.render_validate.driver: {err}"))?;
+    // 1. Parse the real Gameexe.ini → the #WINDOW.000 message-box config,
+    //    the game's declared virtual screen size the config coordinates
+    //    live in, and the #NAMAE → #COLOR_TABLE speaker/colour resolver.
+    //    Nothing about the box is hardcoded.
+    let gameexe_bytes = fs::read(params.gameexe_path).map_err(|err| {
+        format!(
+            "utsushi.cli.render_validate.gameexe_read: {}: {err}",
+            params.gameexe_path.display()
+        )
+    })?;
+    let gameexe = Gameexe::parse(&gameexe_bytes)
+        .map_err(|err| format!("utsushi.cli.render_validate.gameexe_parse: {err}"))?;
+    let config = gameexe.message_window(0);
+    let screen_size = gameexe.screen_size_px();
 
-    let mut rendered_lines: Vec<String> = Vec::new();
-    let mut textline_count: usize = 0;
-    for event in &log.events {
-        if let ReplayEvent::TextLine { body_utf8, .. } = event {
-            textline_count += 1;
-            let trimmed = body_utf8.trim();
-            if trimmed.is_empty() || rendered_lines.len() >= MAX_RENDERED_LINES {
-                continue;
-            }
-            rendered_lines.push(truncate_chars(trimmed, MAX_RENDERED_LINE_CHARS));
-        }
-    }
-    if rendered_lines.is_empty() {
+    // 2. Stage a ReplayEngine (dev-only `use_xor_2` recovery for encrypted
+    //    titles; no-op for plaintext), install the #NAMAE resolver, and
+    //    observe the REAL branch-following PLAY-ORDER message stream for
+    //    the scene — each message carries its NAME-register speaker and
+    //    resolved dialogue colour. This is what the message window renders
+    //    one-per-frame (NOT the doubled two-pass catalogue).
+    let engine = staged_engine(params.seen_path)
+        .map_err(|err| format!("utsushi.cli.render_validate.driver: {err}"))?
+        .with_namae_resolver(gameexe.namae_resolver());
+    let opts = ReplayOpts {
+        step_budget: OBSERVE_BUDGET,
+        stop_at_first_pause: false,
+    };
+    let observation = engine.observe_for_port(params.scene_id, &opts);
+    let play_order = &observation.play_order_lines;
+    let textline_count = play_order.len();
+    if play_order.is_empty() {
         return Err(format!(
-            "utsushi.cli.render_validate.no_text: scene={} produced no non-empty TextLine bodies \
-             to render",
+            "utsushi.cli.render_validate.no_text: scene={} produced no play-order message to \
+             render",
             params.scene_id
         )
         .into());
     }
 
-    // The localized text the screenshot will carry (joined for hashing
-    // and substring checks; never written verbatim to the report so no
-    // raw source bytes can leak into an artifact).
-    let rendered_text = rendered_lines.join("\n");
+    // 3. Select the ONE message to render. When --expect-text-contains is
+    //    given (the real translated draft), render the play-order message
+    //    that carries it — the honest proof that the localized English is
+    //    what the box shows. Fail typed when no message carries it (a real
+    //    round-trip mismatch, not a silently substituted frame). Otherwise
+    //    render the first play-order message.
+    let (chosen_index, chosen) = match params.expect_text_contains {
+        Some(needle) => play_order
+            .iter()
+            .enumerate()
+            .find(|(_, line)| line.text.contains(needle))
+            .ok_or_else(|| {
+                format!(
+                    "utsushi.cli.render_validate.expect_text_missing: no play-order message in \
+                     scene {} contains {needle:?}",
+                    params.scene_id
+                )
+            })?,
+        None => (0, &play_order[0]),
+    };
     let contains_expected = params
         .expect_text_contains
-        .map(|needle| rendered_text.contains(needle));
-    if let (Some(needle), Some(false)) = (params.expect_text_contains, contains_expected) {
-        return Err(format!(
-            "utsushi.cli.render_validate.expect_text_missing: rendered localized text layer does \
-             not contain {needle:?}"
-        )
-        .into());
-    }
+        .map(|needle| chosen.text.contains(needle));
 
-    // 2. Build the render stack: a synthetic background fill, the REAL
-    //    g00 scene background (when a game dir + bg asset are supplied),
-    //    and the localized text layer painted on top.
-    let mut stack = GraphicsObjectStack::new();
-    stack
-        .set(
-            GraphicsPlane::Background,
-            0,
-            GraphicsObject::wipe(WipeColour::opaque_rgb(0x10, 0x14, 0x1c)),
-        )
-        .map_err(|err| format!("utsushi.cli.render_validate.stack: {err}"))?;
+    // Speaker + colour + rendered body. When the engine already resolved a
+    // #NAMAE speaker on the (patched) line, honour it. Otherwise, a
+    // dialogue-only translation has rewritten the inline 【…】 name prefix
+    // into the target language (e.g. 【菊次朗】→【Kazuto】), which no longer
+    // matches the Japanese #NAMAE key — so split the translated inline name
+    // into the NAME_MOD name box ourselves, and recover the REAL
+    // per-speaker colour from the PRISTINE source Seen (the #NAMAE colour is
+    // a property of the character, untouched by dialogue-only patchback).
+    // The source play-order aligns 1:1 with the patched one (same scene,
+    // same structure), so the colour at the same index is this speaker's.
+    let (rendered_text, speaker, resolved_color) = if chosen.speaker.is_some() {
+        (chosen.text.clone(), chosen.speaker.clone(), chosen.color)
+    } else {
+        let (inline_name, body) = split_inline_name(&chosen.text);
+        let source_color = params
+            .source_seen
+            .map(|source_seen| {
+                source_speaker_color_at(
+                    source_seen,
+                    params.scene_id,
+                    chosen_index,
+                    &gameexe.namae_resolver(),
+                )
+            })
+            .transpose()?
+            .flatten();
+        (body, inline_name, source_color)
+    };
+    let text_color = resolved_color.map(|[r, g, b]| WipeColour::opaque_rgb(r, g, b));
 
-    // Bind a real g00 asset package + composite the named scene
-    // background when both --game-dir and --bg-asset are supplied.
-    let mut assets: Option<Arc<dyn AssetPackage>> = None;
-    let mut composited_bg_asset: Option<String> = None;
-    if let (Some(game_dir), Some(bg_asset)) = (params.game_dir, params.bg_asset) {
-        let g00_dir = find_g00_dir(game_dir).ok_or_else(|| {
+    // 4. Composite REAL decoded g00 art. Prefer the graphics stack the
+    //    drive OBSERVED (the engine's real terminal state). A headless
+    //    dialogue-scene drive can inherit its background from a prior scene
+    //    and set no graphics of its own, leaving an empty terminal stack;
+    //    in that case composite the named --bg-asset stem's REAL decoded
+    //    g00 art (cover-scaled) so the frame is never a synthetic fill.
+    let g00_dir = find_g00_dir(params.game_dir).ok_or_else(|| {
+        format!(
+            "utsushi.cli.render_validate.g00_dir_missing: no g00 directory found under {}",
+            params.game_dir.display()
+        )
+    })?;
+
+    // Render at the game's real screen size (so the config-driven box lines
+    // up with the g00 art) unless an explicit override is given.
+    let frame_width = params.width.unwrap_or(screen_size.0);
+    let frame_height = params.height.unwrap_or(screen_size.1);
+    let frame_size = (frame_width, frame_height);
+
+    let observed_stack = &observation.scene.graphics_stack;
+    let mut fallback_stack = GraphicsObjectStack::new();
+    let composited_bg_asset = if observed_stack.is_empty() {
+        let bg_stem = params.bg_asset.ok_or_else(|| {
             format!(
-                "utsushi.cli.render_validate.g00_dir_missing: no g00 directory found under {}",
-                game_dir.display()
+                "utsushi.cli.render_validate.no_graphics: scene {} observed no graphics and no \
+                 --bg-asset was supplied to composite a real g00 background",
+                params.scene_id
             )
         })?;
-        assets = Some(Arc::new(OnDiskG00Package::new(g00_dir)));
-        stack
+        // Decode the real g00 up front to size the cover scale (fail typed
+        // if the named stem is missing/undecodable — never a fake fill).
+        let raw = fs::read(g00_dir.join(format!("{bg_stem}.g00"))).map_err(|err| {
+            format!("utsushi.cli.render_validate.bg_read: {bg_stem}.g00: {err}")
+        })?;
+        let (img, _warns) = decode_g00(&raw)
+            .map_err(|err| format!("utsushi.cli.render_validate.bg_decode: {bg_stem}.g00: {err}"))?;
+        let scale = cover_scale(frame_size, img.width, img.height);
+        fallback_stack
             .set(
                 GraphicsPlane::Background,
-                1,
-                GraphicsObject::image(bg_asset.to_string()),
+                0,
+                GraphicsObject::wipe(WipeColour::opaque_rgb(0x08, 0x08, 0x0c)),
             )
             .map_err(|err| format!("utsushi.cli.render_validate.stack: {err}"))?;
-        composited_bg_asset = Some(bg_asset.to_string());
-    }
-    let text = TextLayer::localized(rendered_lines.clone());
+        let mut bg = GraphicsObject::image(bg_stem.to_string());
+        bg.scale = GraphicsScale {
+            x_thousandths: scale,
+            y_thousandths: scale,
+        };
+        fallback_stack
+            .set(GraphicsPlane::Background, 1, bg)
+            .map_err(|err| format!("utsushi.cli.render_validate.stack: {err}"))?;
+        Some(bg_stem.to_string())
+    } else {
+        None
+    };
+    let stack = if composited_bg_asset.is_some() {
+        &fallback_stack
+    } else {
+        observed_stack
+    };
+    let assets: Arc<dyn AssetPackage> = Arc::new(OnDiskG00Package::new(g00_dir));
 
-    // 3. Emit the private full-fidelity PNG + the public (redacted by
+    // 5. Lay the ONE message into the real Gameexe message box: word-wrapped
+    //    body in the speaker's colour + a NAME_MOD=1 speaker name box.
+    let text = TextLayer::message_window_colored(
+        &rendered_text,
+        speaker.as_deref(),
+        text_color,
+        &config,
+        screen_size,
+        frame_size,
+    );
+
+    // 6. Emit the private full-fidelity PNG + the public (redacted by
     //    default) screenshot through the substrate frame sink at E2.
-    let mut pass = RenderPass::with_dimensions(params.width, params.height)
-        .map_err(|err| format!("utsushi.cli.render_validate.render_pass: {err}"))?;
-    if let Some(assets) = assets {
-        pass = pass.with_assets(assets);
-    }
+    let mut pass = RenderPass::with_dimensions(frame_size.0, frame_size.1)
+        .map_err(|err| format!("utsushi.cli.render_validate.render_pass: {err}"))?
+        .with_assets(assets);
     let root = RuntimeArtifactRoot::new(params.artifact_root);
     let sink = RecordingFrameArtifactSink::new();
     let private_dir = private_artifact_dir(params.private_artifact_root, params.run_id);
     let shots = pass
         .emit_scene_screenshots(
-            &stack,
+            stack,
             &text,
             SceneEmit {
                 root: &root,
@@ -275,6 +404,10 @@ fn drive(params: Params<'_>) -> Result<(), Box<dyn Error>> {
         .artifact_path(&artifact.artifact_ref.uri)
         .map_err(|err| format!("utsushi.cli.render_validate.artifact_path: {err}"))?;
 
+    // One real play-order message rendered per frame; the speaker + colour
+    // presence is recorded (never the raw speaker/text) so the evidence
+    // shows the message-window subsystem exercised the NAME box + colour.
+    let has_speaker = speaker.as_deref().map(str::trim).is_some_and(|s| !s.is_empty());
     let report = json!({
         "schemaVersion": "0.1.0",
         "engine": SUPPORTED_ENGINE,
@@ -288,12 +421,16 @@ fn drive(params: Params<'_>) -> Result<(), Box<dyn Error>> {
         "width": artifact.width,
         "height": artifact.height,
         "textlineCount": textline_count,
-        "renderedLineCount": rendered_lines.len(),
+        "renderedLineCount": 1,
         "renderedTextSha256": sha256_hex(rendered_text.as_bytes()),
         "expectTextContains": params.expect_text_contains,
         "containsExpected": contains_expected,
         "framesAnnounced": sink.len(),
+        "hasSpeakerNameBox": has_speaker && config.name_mod == 1,
+        "hasSpeakerColor": text_color.is_some(),
+        "graphicsObjectCount": stack.len(),
         "compositedBgAsset": composited_bg_asset,
+        "bgSource": if composited_bg_asset.is_some() { "bg-asset" } else { "observed-stack" },
         "redaction": if shots.redaction == RedactionPolicy::Redact { "on" } else { "off" },
         "privateArtifactPath": shots.private_png_path.display().to_string(),
         "privateArtifactSha256": shots.private_png_sha256,
@@ -308,13 +445,14 @@ fn drive(params: Params<'_>) -> Result<(), Box<dyn Error>> {
 
     println!(
         "{RENDER_OK_CODE}: scene={} artifact_id={} uri={} evidence_tier={} \
-         rendered_lines={} textline_count={} redaction={} private={}",
+         play_order_messages={} name_box={} color={} redaction={} private={}",
         params.scene_id,
         artifact.artifact_ref.artifact_id,
         artifact.artifact_ref.uri,
         artifact.evidence_tier.as_str(),
-        rendered_lines.len(),
         textline_count,
+        has_speaker && config.name_mod == 1,
+        text_color.is_some(),
         if shots.redaction == RedactionPolicy::Redact {
             "on"
         } else {
@@ -325,13 +463,12 @@ fn drive(params: Params<'_>) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-fn truncate_chars(input: &str, max_chars: usize) -> String {
-    input.chars().take(max_chars).collect()
-}
-
-fn parse_dimension(args: &[String], name: &str, default: u32) -> Result<u32, Box<dyn Error>> {
+/// Parse an optional `--width` / `--height` dimension override. Absent →
+/// `None` (the caller falls back to the Gameexe screen size); present →
+/// parsed and rejected if zero.
+fn parse_dimension_override(args: &[String], name: &str) -> Result<Option<u32>, Box<dyn Error>> {
     match optional_flag(args, name) {
-        None => Ok(default),
+        None => Ok(None),
         Some(value) => value
             .parse::<u32>()
             .map_err(|err| {
@@ -345,7 +482,7 @@ fn parse_dimension(args: &[String], name: &str, default: u32) -> Result<u32, Box
                             .into(),
                     )
                 } else {
-                    Ok(parsed)
+                    Ok(Some(parsed))
                 }
             }),
     }
@@ -381,6 +518,61 @@ fn private_artifact_dir(explicit: Option<&Path>, run_id: &str) -> PathBuf {
             .join("render-validate")
             .join(run_id)
     }
+}
+
+/// Split a leading full-width lenticular `【…】` speaker prefix off a
+/// message body. Returns `(Some(inner_name), remaining_body)` when the
+/// text opens with `【…】` (the RealLive inline-name convention this game
+/// uses); otherwise `(None, text_verbatim)`. Mirrors the engine's own
+/// prefix strip — used when a dialogue-only translation rewrote the name
+/// so it no longer matches the #NAMAE table and the engine left it inline.
+fn split_inline_name(text: &str) -> (Option<String>, String) {
+    const OPEN: char = '\u{3010}'; // 【
+    const CLOSE: char = '\u{3011}'; // 】
+    if let Some(rest) = text.strip_prefix(OPEN)
+        && let Some(close_idx) = rest.find(CLOSE)
+    {
+        let name = rest[..close_idx].trim().to_string();
+        let body = rest[close_idx + CLOSE.len_utf8()..].to_string();
+        if !name.is_empty() {
+            return (Some(name), body);
+        }
+    }
+    (None, text.to_string())
+}
+
+/// Observe the PRISTINE source scene and return the engine-resolved
+/// per-speaker colour of the play-order message at `index`. The source
+/// #NAMAE name is untranslated, so the engine resolves it here; the colour
+/// is the character's, unchanged by a dialogue-only patchback, so it is the
+/// real colour for the same-index patched (translated) message.
+fn source_speaker_color_at(
+    source_seen: &Path,
+    scene_id: u16,
+    index: usize,
+    resolver: &utsushi_reallive::NamaeResolver,
+) -> Result<Option<[u8; 3]>, Box<dyn Error>> {
+    let engine = staged_engine(source_seen)
+        .map_err(|err| format!("utsushi.cli.render_validate.source_driver: {err}"))?
+        .with_namae_resolver(resolver.clone());
+    let opts = ReplayOpts {
+        step_budget: OBSERVE_BUDGET,
+        stop_at_first_pause: false,
+    };
+    let observation = engine.observe_for_port(scene_id, &opts);
+    Ok(observation
+        .play_order_lines
+        .get(index)
+        .and_then(|line| line.color))
+}
+
+/// Scale (thousandths) that makes a `src_w x src_h` source fill the
+/// `frame` (cover — no letterbox): the larger of the two axis ratios.
+/// Mirrors the `render_diag` example's cover fit.
+fn cover_scale(frame: (u32, u32), src_w: u32, src_h: u32) -> i32 {
+    let sx = (u64::from(frame.0) * 1000) / u64::from(src_w.max(1));
+    let sy = (u64::from(frame.1) * 1000) / u64::from(src_h.max(1));
+    i32::try_from(sx.max(sy)).unwrap_or(i32::MAX)
 }
 
 /// Breadth-first search from `game_dir` (bounded depth 4) for a
@@ -578,7 +770,49 @@ mod tests {
     }
 
     #[test]
-    fn missing_seen_reaches_replay_driver() {
+    fn requires_gameexe_flag() {
+        let args: Vec<String> = vec![
+            "--engine".into(),
+            "reallive".into(),
+            "--seen".into(),
+            "/tmp/nothing".into(),
+            "--scene".into(),
+            "1".into(),
+            "--artifact-root".into(),
+            "/tmp/art".into(),
+            "--game-dir".into(),
+            "/tmp/game".into(),
+        ];
+        let err = run_render_validate_command(&args).expect_err("--gameexe is required");
+        assert!(
+            err.to_string().contains("--gameexe"),
+            "expected the missing --gameexe flag error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn requires_game_dir_flag() {
+        let args: Vec<String> = vec![
+            "--engine".into(),
+            "reallive".into(),
+            "--seen".into(),
+            "/tmp/nothing".into(),
+            "--scene".into(),
+            "1".into(),
+            "--artifact-root".into(),
+            "/tmp/art".into(),
+            "--gameexe".into(),
+            "/tmp/Gameexe.ini".into(),
+        ];
+        let err = run_render_validate_command(&args).expect_err("--game-dir is required");
+        assert!(
+            err.to_string().contains("--game-dir"),
+            "expected the missing --game-dir flag error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn missing_gameexe_file_surfaces_read_error() {
         let missing = std::env::temp_dir().join(format!(
             "utsushi-cli-render-validate-missing-{}",
             std::process::id()
@@ -587,18 +821,22 @@ mod tests {
             "--engine".into(),
             "reallive".into(),
             "--seen".into(),
-            missing.display().to_string(),
+            missing.join("Seen.txt").display().to_string(),
             "--scene".into(),
             "1".into(),
+            "--gameexe".into(),
+            missing.join("Gameexe.ini").display().to_string(),
+            "--game-dir".into(),
+            missing.display().to_string(),
             "--artifact-root".into(),
             missing.join("artifacts").display().to_string(),
         ];
-        let err =
-            run_render_validate_command(&args).expect_err("missing Seen.txt should fail in driver");
+        let err = run_render_validate_command(&args)
+            .expect_err("missing Gameexe.ini should fail before the replay driver");
         assert!(
             err.to_string()
-                .contains("utsushi.cli.render_validate.driver"),
-            "expected the replay driver error, got: {err}"
+                .contains("utsushi.cli.render_validate.gameexe_read"),
+            "expected the gameexe read error, got: {err}"
         );
     }
 }

@@ -472,6 +472,11 @@ function parseProjectMetadataRecord(parsed, metadataPath) {
     // Opt-in stable artifact subdir under `artifacts/` (alpha capstone lands
     // its acceptance bundle at a fixed path, not a timestamped run dir).
     stableArtifactSubdir: optionalMetadataString(block, "stable_artifact_subdir", metadataPath),
+    // Real g00 background stem the render composites when the pinned
+    // dialogue scene's headless drive inherits its background from a prior
+    // scene (empty terminal graphics stack). Real art, never a synthetic
+    // fill; RealLive only.
+    renderBgAsset: optionalMetadataString(block, "render_bg_asset", metadataPath),
   };
 }
 
@@ -2217,7 +2222,7 @@ async function main() {
         `node apps/itotori/dist/cli.js localize-project-stage --bridge ${bridgeBundlePath} --pair-policy ${pairPolicyPath} --unit-index ${args.unitIndex} --output ${agenticLoopBundlePath} --translated-bundle-output ${translatedBundlePath} --patch-report-output ${patchReportPath} --provider-run-artifacts-dir ${providerRunArtifactsDir}`,
         `cargo run -p kaifuu-cli -- patch --engine reallive --source ${realCorpusSource.placeholder} --target <TARGET> --bundle ${translatedBundlePath} --scope ${projectMetadata.translationScope} --force`,
         `cargo run -p utsushi-cli -- replay-validate --engine reallive --seen <TARGET>/REALLIVEDATA/Seen.txt --scene ${sceneId} --print-replay-log ${replayLogPath}`,
-        `cargo run -p utsushi-cli -- render-validate --engine reallive --seen <TARGET>/REALLIVEDATA/Seen.txt --scene ${sceneId} --artifact-root ${renderArtifactsDir} --expect-text-contains <real-translated-draft-from-patch-report> --redaction on --output ${renderEvidencePath}`,
+        `cargo run -p utsushi-cli -- render-validate --engine reallive --seen <TARGET>/REALLIVEDATA/Seen.txt --scene ${sceneId} --gameexe <TARGET>/REALLIVEDATA/Gameexe.ini --game-dir <TARGET>/REALLIVEDATA --artifact-root ${renderArtifactsDir} --expect-text-contains <real-translated-draft-from-patch-report> --redaction on --output ${renderEvidencePath}`,
       ],
       flattenPostures(policy),
       realCorpusSource,
@@ -2472,6 +2477,21 @@ async function main() {
     // published; only the deterministic report (hashes/counts + the frame
     // pointer) is retained here.
     currentPhase = "render-validate";
+    // The message-window render reads the game's real Gameexe.ini (box
+    // geometry + #NAMAE/#COLOR_TABLE speaker colours) and composites the
+    // real decoded g00 stack. Both live in the patched TARGET tree
+    // alongside the localized Seen.txt (dialogue-only scope leaves them
+    // byte-identical to source): REALLIVEDATA/{Gameexe.ini,g00}.
+    const targetReallivedataDir = dirname(targetSeenPath);
+    const targetGameexePath = join(targetReallivedataDir, "Gameexe.ini");
+    // A headless drive of the pinned dialogue scene inherits its
+    // background from a prior scene, so its own terminal graphics stack
+    // can be empty; the render composites this REAL g00 background stem's
+    // decoded art in that case (config-driven fallback, real art — never a
+    // synthetic fill). Overridable per project via renderBgAsset.
+    const renderBgArgs = projectMetadata.renderBgAsset
+      ? ["--bg-asset", projectMetadata.renderBgAsset]
+      : [];
     runCommand(
       "cargo",
       [
@@ -2487,6 +2507,16 @@ async function main() {
         targetSeenPath,
         "--scene",
         String(sceneId),
+        "--gameexe",
+        targetGameexePath,
+        "--game-dir",
+        targetReallivedataDir,
+        // Pristine source Seen.txt: recovers the REAL per-speaker #NAMAE
+        // colour for the message-window name box when a dialogue-only
+        // translation rewrote the inline 【…】 name off the Japanese key.
+        "--source-seen",
+        sourceSeenPath,
+        ...renderBgArgs,
         "--artifact-root",
         renderArtifactsDir,
         "--expect-text-contains",

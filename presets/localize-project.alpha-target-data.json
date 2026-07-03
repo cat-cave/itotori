@@ -12,7 +12,8 @@
         "source_locale": "ja-JP",
         "vault_canonical_id": "oshioki-sweetie-koi-suru-onee-san-wa-urahara-desu.vj013077.v1-0.ja",
         "translation_scope": "dialogue-only",
-        "stable_artifact_subdir": "sweetie-hd-alpha"
+        "stable_artifact_subdir": "sweetie-hd-alpha",
+        "render_bg_asset": "BG01A1"
       }
     },
     {

@@ -159,6 +159,58 @@ pub fn replay_scene_staged(
     Ok(engine.replay_from(scene_id, opts))
 }
 
+/// Build a [`ReplayEngine`] from a Seen.txt envelope with the SAME
+/// `use_xor_2` staging as [`replay_scene_staged`], but hand back the
+/// engine itself instead of a single-scene [`ReplayLog`]. This is the
+/// entry the render surface uses so it can drive
+/// [`ReplayEngine::observe_for_port`] (the real play-order message
+/// stream with per-message speaker + colour) and install the Gameexe
+/// `#NAMAE`/`#COLOR_TABLE` resolver via
+/// [`ReplayEngine::with_namae_resolver`].
+///
+/// Non-`use_xor_2` titles (`scenes_eligible == 0`) build the store
+/// straight from the first-level-inflated bytecode; `use_xor_2` titles
+/// fold the recovered plaintext segments back first (and fail typed via
+/// [`Xor2ValidationFailed`] when eligible-but-unvalidated, exactly like
+/// [`replay_scene_staged`]).
+pub fn staged_engine(seen_path: &Path) -> Result<ReplayEngine, Box<dyn Error>> {
+    let bytes = fs::read(seen_path).map_err(|err| {
+        format!(
+            "utsushi.cli.staged_replay.read: {}: {err}",
+            seen_path.display()
+        )
+    })?;
+
+    let mut decompressed = decompress_all_scenes(&bytes)
+        .map_err(|err| format!("utsushi.cli.staged_replay.decompress: {err}"))?;
+
+    let mut xor2: Vec<Xor2DecScene> = decompressed
+        .iter()
+        .map(|scene| Xor2DecScene {
+            compiler_version: scene.compiler_version,
+            bytecode: scene.bytecode.clone(),
+        })
+        .collect();
+    let report = recover_and_decrypt_archive(&mut xor2);
+
+    if report.scenes_eligible > 0 {
+        // xor2-eligible: refuse to present still-ciphered mojibake, then
+        // fold the decrypted segments back into the store input.
+        xor2_staging_guard(&report)?;
+        for (scene, dec) in decompressed.iter_mut().zip(xor2) {
+            scene.bytecode = dec.bytecode;
+        }
+    }
+
+    let index_len = RealSceneIndex::parse(&bytes)
+        .map_err(|err| format!("utsushi.cli.staged_replay.index: {err}"))?
+        .entries
+        .len();
+    let (store, shift_jis, _stats) = build_scene_store_from_decompressed(&decompressed, index_len)
+        .map_err(|err| format!("utsushi.cli.staged_replay.store: {err}"))?;
+    Ok(ReplayEngine::from_store(store, shift_jis))
+}
+
 /// Guard the staging seam against handing back still-ciphered mojibake.
 ///
 /// Returns [`Xor2ValidationFailed`] iff the archive is `use_xor_2`-eligible
