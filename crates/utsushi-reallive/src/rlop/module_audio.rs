@@ -1385,7 +1385,7 @@ mod tests {
     #[test]
     fn select_speaker_walks_namae_table_and_composes_archive_id() {
         let runtime = synth_runtime();
-        // Sweetie HD shape: NAMAE = "<speaker>" = "<canonical>" = (archive, pattern, pitch).
+        // Sweetie HD shape: NAMAE = "<speaker>" = "<canonical>" = (mode, color_table_index, reserved).
         // The composite archive id is `archive * 1000 + pattern` —
         // (1, 15, -1) ↔ z1015.ovk, (1, 16, -1) ↔ z1016.ovk.
         let gameexe = synth_gameexe(

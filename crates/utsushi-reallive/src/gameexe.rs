@@ -42,7 +42,7 @@
 //! 4. **`FOLDNAME` triple** — `#FOLDNAME.G00 = "G00" = 0 : "G00.PAK"`.
 //!    Stored as [`GameexeValue::Tuple3`] with `(name, mode, archive)`.
 //! 5. **`NAMAE` quintuple** —
-//!    `#NAMAE = "display" = "canonical" = (archive, pattern, pitch)`.
+//!    `#NAMAE = "display" = "canonical" = (mode, color_table_index, reserved)`.
 //!    Stored as [`GameexeValue::Namae`]. Keyed by `NAMAE.<display>`
 //!    so the file's 11 entries land under a queryable dotted-path
 //!    namespace.
@@ -281,7 +281,7 @@ pub enum GameexeParseError {
     /// shape.
     #[error(
         "malformed NAMAE entry on line {line_number}: expected `\"<display>\" = \"<canonical>\" \
-         = (<archive>, <pattern>, <pitch>)`, got {raw:?}"
+         = (<mode>, <color_table_index>, <reserved>)`, got {raw:?}"
     )]
     MalformedNamae {
         /// 1-based line number.
@@ -897,7 +897,7 @@ fn parse_foldname_triple(raw: &str) -> Option<GameexeValue> {
 }
 
 /// Parse a `NAMAE` RHS:
-/// `"<display>" = "<canonical>" = (<archive>, <pattern>, <pitch>)`.
+/// `"<display>" = "<canonical>" = (<mode>, <color_table_index>, <reserved>)`.
 /// Returns the parsed display key alongside the value so the caller
 /// can route the entry under `NAMAE.<display>` in the flat map.
 fn parse_namae_entry(raw: &str) -> Option<(String, GameexeValue)> {
