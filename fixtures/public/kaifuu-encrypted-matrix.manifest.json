@@ -48,8 +48,8 @@
       "path": "fixtures/public/kaifuu-encrypted-matrix/expected/siglus-detection-report-v0.1.json",
       "role": "expected-output",
       "mediaType": "application/json",
-      "sha256": "4ad17a9be294a6461bb0c6e66257a4eba4b04a44c334692e59047919567afb63",
-      "bytes": 31879,
+      "sha256": "2f0875af8414b0139e28b4d480b4fe0bf8be2356efcbbecb43bce22cab988af3",
+      "bytes": 32038,
       "redistributable": true
     },
     {
@@ -96,8 +96,8 @@
       "path": "fixtures/public/kaifuu-encrypted-matrix/expected/xp3-unknown-detection-report-v0.1.json",
       "role": "expected-output",
       "mediaType": "application/json",
-      "sha256": "55efce359e01246439c6e5ac549002dd9b3edf2b509dc422d4b976b0f7821d79",
-      "bytes": 29302,
+      "sha256": "4e7d49f0df91d07c4c66e730fbd17f7be279ac4ed10d49ba358c7d0c599cdb00",
+      "bytes": 29461,
       "redistributable": true
     },
     {
