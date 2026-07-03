@@ -1280,22 +1280,26 @@ impl ReplayEngine {
     ) -> SceneObservation {
         // Pass 1: real branch-following execution.
         let mut branch_scheduler = HeadlessInputScheduler::new(HeadlessChoicePolicy::AlwaysFirst);
-        let branch = self.observe_pass(
-            scene_id,
-            opts,
-            ControlFlowMount::BranchFollowing,
-            Arc::clone(&text_sink),
-            &mut branch_scheduler,
-        );
+        let branch = self
+            .observe_pass(
+                scene_id,
+                opts,
+                ControlFlowMount::BranchFollowing,
+                Arc::clone(&text_sink),
+                &mut branch_scheduler,
+            )
+            .scene;
         // Pass 2: exhaustive linear-walk cataloguing.
         let mut linear_scheduler = AlwaysReadyScheduler;
-        let linear = self.observe_pass(
-            scene_id,
-            opts,
-            ControlFlowMount::LinearWalk,
-            text_sink,
-            &mut linear_scheduler,
-        );
+        let linear = self
+            .observe_pass(
+                scene_id,
+                opts,
+                ControlFlowMount::LinearWalk,
+                text_sink,
+                &mut linear_scheduler,
+            )
+            .scene;
 
         let mut audio_events = branch.audio_events;
         audio_events.extend(linear.audio_events);
@@ -1347,13 +1351,15 @@ impl ReplayEngine {
         // Pass 1: branch-following = real play order. Capture its text.
         let branch_sink: Arc<ReplayTextSink> = Arc::new(ReplayTextSink::default());
         let mut branch_scheduler = HeadlessInputScheduler::new(HeadlessChoicePolicy::AlwaysFirst);
-        let branch = self.observe_pass(
+        let branch_pass = self.observe_pass(
             scene_id,
             opts,
             ControlFlowMount::BranchFollowing,
             Arc::clone(&branch_sink) as Arc<dyn TextSurfaceSink>,
             &mut branch_scheduler,
         );
+        let first_cross_scene = branch_pass.first_cross_scene;
+        let branch = branch_pass.scene;
         let branch_lines = branch_sink.take_lines();
 
         // Pass 2: linear byte-order catalogue. Capture its text SEPARATELY
@@ -1361,13 +1367,15 @@ impl ReplayEngine {
         // used for graphics/audio backfill regardless.
         let linear_sink: Arc<ReplayTextSink> = Arc::new(ReplayTextSink::default());
         let mut linear_scheduler = AlwaysReadyScheduler;
-        let linear = self.observe_pass(
-            scene_id,
-            opts,
-            ControlFlowMount::LinearWalk,
-            Arc::clone(&linear_sink) as Arc<dyn TextSurfaceSink>,
-            &mut linear_scheduler,
-        );
+        let linear = self
+            .observe_pass(
+                scene_id,
+                opts,
+                ControlFlowMount::LinearWalk,
+                Arc::clone(&linear_sink) as Arc<dyn TextSurfaceSink>,
+                &mut linear_scheduler,
+            )
+            .scene;
 
         // Choose the play order: branch when it reached dialogue, else the
         // single-pass byte-order catalogue. NEVER both (no doubling).
@@ -1386,6 +1394,7 @@ impl ReplayEngine {
         };
         PortObservation {
             play_order_lines,
+            first_cross_scene,
             scene: SceneObservation {
                 audio_events,
                 graphics_stack,
@@ -1396,9 +1405,65 @@ impl ReplayEngine {
         }
     }
 
+    /// Follow the real RealLive scene-dispatch ACROSS scene boundaries to
+    /// produce a bounded, continuous MULTI-SCENE play-order stream — the
+    /// play-loop a player walks THROUGH the game, not one scene in isolation.
+    ///
+    /// Starting from `entry`, each scene is observed with
+    /// [`Self::observe_for_port`] (its own single-pass play-order messages +
+    /// its own composited background / audio). The next scene is the FIRST
+    /// cross-scene dispatch target that scene's branch-following walk followed
+    /// ([`PortObservation::first_cross_scene`] — a real `jump` / `farcall` /
+    /// entrypoint resolution into a scene present in the store). The loop
+    /// chains into it and continues, so scene A's messages are followed by
+    /// scene B's messages in the correct dispatch order.
+    ///
+    /// Bounded three ways so it renders a playable through-line rather than
+    /// the whole game: at most `max_scenes` scenes are observed; a scene id
+    /// already visited stops the chain (loop guard — a scene that dispatches
+    /// back to an ancestor does not spin); and each scene's own observation
+    /// is bounded by `opts.step_budget`. A scene whose dispatch stays within
+    /// itself (no cross-scene transfer) ends the chain naturally.
+    ///
+    /// `max_scenes` is clamped to ≥ 1 (a playthrough observes at least its
+    /// entry scene). The returned [`ScenePlaythrough`] preserves dispatch
+    /// order and records the distinct scene ids the play-loop crossed.
+    pub fn observe_playthrough(
+        &self,
+        entry: SceneId,
+        opts: &ReplayOpts,
+        max_scenes: usize,
+    ) -> ScenePlaythrough {
+        let max_scenes = max_scenes.max(1);
+        let mut segments: Vec<ScenePlaySegment> = Vec::new();
+        let mut visited: std::collections::HashSet<SceneId> = std::collections::HashSet::new();
+        let mut current = Some(entry);
+        while let Some(scene_id) = current {
+            if segments.len() >= max_scenes {
+                break;
+            }
+            // Loop guard: a scene that dispatches back to an already-observed
+            // scene stops the chain (no infinite re-entry).
+            if !visited.insert(scene_id) {
+                break;
+            }
+            let observation = self.observe_for_port(scene_id, opts);
+            let next = observation.first_cross_scene;
+            segments.push(ScenePlaySegment {
+                scene_id,
+                observation,
+            });
+            current = next.filter(|target| !visited.contains(target));
+        }
+        ScenePlaythrough { segments }
+    }
+
     /// One observation pass: mount the `control_flow` registry (retaining
     /// the audio + graphics runtimes), drive `scene_id` with `scheduler`,
-    /// dispatching every Shift-JIS `Textout` into `text_sink`.
+    /// dispatching every Shift-JIS `Textout` into `text_sink`. Also reports
+    /// the first cross-scene dispatch target the pass followed (only the
+    /// branch-following mount can leave the start scene), so the play-loop
+    /// can chain into the next scene.
     fn observe_pass(
         &self,
         scene_id: SceneId,
@@ -1406,12 +1471,13 @@ impl ReplayEngine {
         control_flow: ControlFlowMount,
         text_sink: Arc<dyn TextSurfaceSink>,
         scheduler: &mut dyn crate::rlop::LongOpScheduler,
-    ) -> SceneObservation {
+    ) -> PassObservation {
         let runtime = Arc::new(MsgRuntime::with_sink(Arc::clone(&text_sink)));
         let handles = mount_registry_handles(text_sink, Arc::clone(&runtime), control_flow);
         let mut vm = Vm::new(scene_id, 0);
         let mut steps: u32 = 0;
         let mut reached_natural_terminus = false;
+        let mut first_cross_scene: Option<SceneId> = None;
         loop {
             if steps >= opts.step_budget {
                 break;
@@ -1439,6 +1505,13 @@ impl ReplayEngine {
                             let _ = op.dispatch(&mut vm, &[]);
                         }
                     }
+                    // Record the first cross-scene dispatch boundary the pass
+                    // followed (a real `jump` / `farcall` / entrypoint
+                    // resolution into a scene present in the store).
+                    let scene_now = vm.scene();
+                    if first_cross_scene.is_none() && scene_now != scene_id {
+                        first_cross_scene = Some(scene_now);
+                    }
                     steps = steps.saturating_add(1);
                 }
                 StepOutcome::LongOpResumed { .. } => {
@@ -1455,11 +1528,14 @@ impl ReplayEngine {
         }
         let audio_events = handles.audio.emitter().store().drain_in_order();
         let graphics_stack = handles.graphics.state_snapshot().stack;
-        SceneObservation {
-            audio_events,
-            graphics_stack,
-            steps,
-            reached_natural_terminus,
+        PassObservation {
+            scene: SceneObservation {
+                audio_events,
+                graphics_stack,
+                steps,
+                reached_natural_terminus,
+            },
+            first_cross_scene,
         }
     }
 
@@ -1975,6 +2051,15 @@ pub struct BranchReplayReport {
     /// occurred). `0` for a scene that reached its terminus with no
     /// event-gated spin. Reproducible (fingerprint-driven, no clock/RNG).
     pub modeled_events: u64,
+    /// The FIRST scene id, in dispatch order, the walk entered that differs
+    /// from [`Self::scene_id`] — the real cross-scene dispatch target a
+    /// `jump` / `farcall` / entrypoint resolution transferred into (always
+    /// present in the store, since a transfer to an absent scene errors as
+    /// [`BranchTerminus::SceneNotFound`] before the pc lands). `None` when
+    /// the walk never left its start scene. This is the "next scene" the
+    /// play-loop continues into ([`ReplayEngine::observe_playthrough`] chains
+    /// on it to produce a multi-scene play-order stream).
+    pub first_cross_scene: Option<SceneId>,
 }
 
 /// The real observation set produced by [`ReplayEngine::observe_scene`]:
@@ -2008,10 +2093,65 @@ pub struct PortObservation {
     /// window renders one-per-frame and what the substrate text sink
     /// surfaces — NOT the doubled two-pass catalogue.
     pub play_order_lines: Vec<TextLine>,
+    /// The first cross-scene dispatch target the branch-following pass
+    /// followed (a real `jump` / `farcall` / entrypoint resolution into a
+    /// scene present in the store), or `None` when play stayed within this
+    /// scene. This is the "next scene" the play-loop continues into;
+    /// [`ReplayEngine::observe_playthrough`] chains on it.
+    pub first_cross_scene: Option<SceneId>,
     /// Frame + audio observation (graphics stack, audio events, drive
     /// diagnostics). Its graphics/audio may be backfilled from the linear
     /// catalogue pass; its text is not used (see `play_order_lines`).
     pub scene: SceneObservation,
+}
+
+/// One observation pass' outputs: the [`SceneObservation`] plus the first
+/// cross-scene dispatch target the pass followed (only the branch-following
+/// mount can leave the start scene; the linear-walk mount always reports
+/// `None`).
+struct PassObservation {
+    scene: SceneObservation,
+    first_cross_scene: Option<SceneId>,
+}
+
+/// A bounded, continuous MULTI-SCENE play-order stream produced by
+/// [`ReplayEngine::observe_playthrough`]: the play-loop followed the real
+/// RealLive scene-dispatch across ≥1 scene boundary, in dispatch order.
+#[derive(Debug)]
+pub struct ScenePlaythrough {
+    /// The observed scenes, in the dispatch order the play-loop crossed them
+    /// (`segments[0]` is the entry scene; each subsequent segment is the
+    /// cross-scene dispatch target the previous one followed).
+    pub segments: Vec<ScenePlaySegment>,
+}
+
+impl ScenePlaythrough {
+    /// The scene ids the play-loop crossed, in dispatch order. `len() >= 2`
+    /// proves the stream spanned a real scene boundary (a regression that
+    /// stops at the entry scene yields `len() == 1`).
+    pub fn scene_ids(&self) -> Vec<SceneId> {
+        self.segments.iter().map(|s| s.scene_id).collect()
+    }
+
+    /// Total play-order messages across every observed scene.
+    pub fn total_messages(&self) -> usize {
+        self.segments
+            .iter()
+            .map(|s| s.observation.play_order_lines.len())
+            .sum()
+    }
+}
+
+/// One scene of a [`ScenePlaythrough`]: its id plus the full port
+/// observation (single-pass play-order messages + its own composited
+/// background / audio) the play-loop rendered for it.
+#[derive(Debug)]
+pub struct ScenePlaySegment {
+    /// The scene id this segment's messages/background belong to.
+    pub scene_id: SceneId,
+    /// The scene's port observation: play-order messages + its own frame /
+    /// audio observation (its background is `observation.scene.graphics_stack`).
+    pub observation: PortObservation,
 }
 
 /// Drive `vm` to its natural terminus by FOLLOWING real control flow,
@@ -2034,6 +2174,10 @@ fn drive_branch_following(
     let mut transfers = ControlTransferCounts::default();
     let mut scenes_visited: std::collections::BTreeSet<SceneId> = std::collections::BTreeSet::new();
     scenes_visited.insert(scene_id);
+    // The first scene id the walk transfers INTO that differs from the start
+    // scene, captured in dispatch order (the ordered `scenes_visited` set
+    // loses this). Drives cross-scene play-loop chaining.
+    let mut first_cross_scene: Option<SceneId> = None;
     let mut unknown: Vec<(u8, u8, u16)> = Vec::new();
     let mut text_lines: usize = 0;
 
@@ -2164,7 +2308,16 @@ fn drive_branch_following(
                     }
                     _ => {}
                 }
-                scenes_visited.insert(vm.scene());
+                let scene_now = vm.scene();
+                scenes_visited.insert(scene_now);
+                if first_cross_scene.is_none() && scene_now != scene_id {
+                    // The pc landed in a DIFFERENT scene: the walk followed a
+                    // real cross-scene `jump` / `farcall` / entrypoint
+                    // resolution into a scene present in the store (an absent
+                    // target would have errored before landing). Record it as
+                    // the first dispatch boundary in play order.
+                    first_cross_scene = Some(scene_now);
+                }
                 for warning in vm.take_warnings() {
                     if let crate::VmWarning::MissingRlop { key, .. } = warning {
                         unknown.push((key.module_type, key.module_id, key.opcode));
@@ -2250,6 +2403,7 @@ fn drive_branch_following(
         pauses_advanced: scheduler.pauses_advanced(),
         choices_made: scheduler.choices_made(),
         modeled_events,
+        first_cross_scene,
     }
 }
 

@@ -122,6 +122,42 @@ fn branch_following_executes_every_transfer_kind_to_natural_terminus() {
         "followed farcall into scene 2"
     );
     assert_eq!(report.scenes_visited.len(), 2);
+    // The first cross-scene dispatch boundary, in dispatch order, was scene 2
+    // (the farcall target) — the "next scene" the play-loop continues into.
+    assert_eq!(
+        report.first_cross_scene,
+        Some(2),
+        "first cross-scene dispatch target must be the farcall's scene 2",
+    );
+}
+
+/// The multi-scene play-loop follows the real scene-dispatch ACROSS the
+/// boundary: `observe_playthrough` from scene 1 chains into scene 2 (the
+/// farcall target), producing a 2-scene play stream in dispatch order. A
+/// regression that stopped at scene 1 would yield a single scene id.
+#[test]
+fn observe_playthrough_crosses_scene_boundary_in_dispatch_order() {
+    let engine = two_scene_engine();
+    let opts = ReplayOpts {
+        step_budget: 1_000,
+        stop_at_first_pause: false,
+    };
+    let playthrough = engine.observe_playthrough(1, &opts, 4);
+
+    // The play-loop crossed ≥1 boundary: scene 1 then scene 2, in the order
+    // the real dispatch (farcall) transferred.
+    assert_eq!(
+        playthrough.scene_ids(),
+        vec![1, 2],
+        "play stream must span scene 1 then scene 2 in dispatch order",
+    );
+    assert!(
+        playthrough.scene_ids().len() >= 2,
+        "a regression that stops at scene 1 must FAIL this",
+    );
+    // The chain is bounded: `max_scenes = 1` observes only the entry scene.
+    let bounded = engine.observe_playthrough(1, &opts, 1);
+    assert_eq!(bounded.scene_ids(), vec![1], "max_scenes bounds the chain");
 }
 
 /// Build a `goto_case` (`module_jmp` opcode 4) `Command` at `offset` with a

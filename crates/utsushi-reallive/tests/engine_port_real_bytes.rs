@@ -200,38 +200,73 @@ fn run_title(corpus: &RealCorpus, g00_env: &str, label: &str) {
         "[{label}] DeterministicReplay capability: two replays must be byte-identical"
     );
 
-    // PLAYTHROUGH SEQUENCE, one message per frame: the port renders EACH
-    // leading play-order message to its OWN frame (a bounded through-line a
-    // player click-advances), NOT one giant flatten-all-messages box and NOT
-    // just message #0. Each individual frame still renders exactly one
-    // message (the per-frame message-window contract); the SCENE now emits a
-    // bounded SEQUENCE of them. The count equals the play-order length
-    // capped at the pinned bound — so a scene with thousands of messages
-    // (Sweetie scene 1) announces exactly `PLAYTHROUGH_BOUND` frames, not one
-    // and not thousands.
-    let expected_frames = port.frame_text_lines().len().min(PLAYTHROUGH_BOUND);
+    // MULTI-SCENE PLAYTHROUGH SEQUENCE, one message per frame: the port now
+    // follows the REAL scene-dispatch ACROSS scene boundaries, rendering a
+    // bounded through-line that CROSSES ≥1 boundary — leading messages of
+    // scene A over A's background, then leading messages of scene B over B's
+    // OWN background — each message to its OWN frame (the per-frame
+    // message-window contract), NOT one giant flatten-all-messages box, NOT
+    // just message #0, and NOT one scene in isolation. Per-scene capping
+    // guarantees a long scene A (Sweetie scene 1's thousands of messages)
+    // cannot consume the whole budget before scene B appears; the total is
+    // bounded by the pinned `PLAYTHROUGH_BOUND`.
+    let frame_scene_ids = port.playthrough_frame_scene_ids();
     assert!(
-        expected_frames >= 1,
-        "[{label}] the driven scene must yield at least one play-order message"
+        (1..=PLAYTHROUGH_BOUND).contains(&frame_total),
+        "[{label}] the playthrough must announce between 1 and {PLAYTHROUGH_BOUND} frames \
+         (bounded through-line); got {frame_total}"
     );
-    assert_eq!(
-        frame_total, expected_frames,
-        "[{label}] the playthrough must announce one frame per leading play-order message \
-         (min(play_order_len, {PLAYTHROUGH_BOUND})); got {frame_total}"
-    );
-    // Frame i renders play-order message i: the recorded frame→message
-    // mapping is the play-order prefix, in order — a regression that renders
-    // only message #0, or repeats it, breaks this correspondence.
+    // One recorded frame→message AND frame→scene entry per announced frame.
     assert_eq!(
         port.playthrough_frame_messages().len(),
         frame_total,
         "[{label}] one recorded frame->message entry per announced frame"
     );
     assert_eq!(
-        port.playthrough_frame_messages(),
-        &port.frame_text_lines()[..frame_total],
-        "[{label}] frame i must render play-order message i (recorded mapping == play-order \
-         prefix, in order)"
+        frame_scene_ids.len(),
+        frame_total,
+        "[{label}] one recorded frame->scene entry per announced frame"
+    );
+    // Each rendered playthrough message is a REAL decoded play-order message
+    // drawn from the multi-scene stream (no fabricated/placeholder message);
+    // and the rendered messages appear in the full play-order stream in the
+    // same relative order (a regression that repeats message #0 breaks this).
+    let full_stream = port.frame_text_lines();
+    let mut cursor = 0usize;
+    for message in port.playthrough_frame_messages() {
+        let found = full_stream[cursor..]
+            .iter()
+            .position(|line| line == message)
+            .map(|offset| cursor + offset);
+        cursor = found.unwrap_or_else(|| {
+            panic!(
+                "[{label}] rendered playthrough message {message:?} must be a real play-order \
+                 message appearing in-order in the multi-scene stream"
+            )
+        }) + 1;
+    }
+    // The rendered playthrough CROSSED the scene boundary: it spans ≥2
+    // DISTINCT scene ids (the entry scene A, then the dispatch target B), in
+    // dispatch order — a regression that stopped at scene A yields a single
+    // distinct id and FAILS here.
+    let distinct_scenes: std::collections::BTreeSet<u16> =
+        frame_scene_ids.iter().copied().collect();
+    assert!(
+        distinct_scenes.len() >= 2,
+        "[{label}] the rendered playthrough must CROSS a scene boundary (≥2 distinct scene ids); \
+         got frames from {frame_scene_ids:?} (a regression that stops at the entry scene fails)"
+    );
+    // The scene ids are non-decreasing runs in dispatch order (scene A's
+    // frames, then scene B's), never interleaved back and forth.
+    let mut boundaries = 0usize;
+    for window in frame_scene_ids.windows(2) {
+        if window[0] != window[1] {
+            boundaries += 1;
+        }
+    }
+    assert!(
+        boundaries >= 1,
+        "[{label}] the rendered frames must show ≥1 A→B scene transition; got {frame_scene_ids:?}"
     );
 
     // The port's play-order message stream is SINGLE PASS (branch-following

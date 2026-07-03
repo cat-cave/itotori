@@ -103,6 +103,13 @@ const PLAYTHROUGH_MAX_ENV: &str = "ITOTORI_PLAYTHROUGH_MAX";
 /// is set: render the first N play-order messages, each to its own frame.
 const DEFAULT_PLAYTHROUGH_MAX: usize = 8;
 
+/// How many consecutive scenes the multi-scene playthrough observation
+/// follows across the real scene-dispatch (jump / farcall / return into
+/// another SEEN present in the store) before stopping. Keeps `launch` from
+/// walking the whole game while still crossing ≥1 scene boundary so the
+/// rendered through-line spans scene A → scene B.
+const PLAYTHROUGH_MAX_SCENES: usize = 4;
+
 // -------------------------------------------------------------------------
 // Production sink collectors
 //
@@ -251,6 +258,12 @@ pub struct UtsushiReallivePort {
     /// rendered only message #0, or repeated one message, would break the
     /// 1:1 correspondence recorded here.
     playthrough_frame_messages: Vec<String>,
+    /// The scene id each emitted playthrough frame belongs to, in frame order
+    /// (`playthrough_frame_scene_ids[i]` is the scene of frame `i`). Distinct
+    /// values across the vector prove the rendered playthrough CROSSED a scene
+    /// boundary (a regression that stopped at the entry scene yields a single
+    /// distinct id). Parallel to [`Self::playthrough_frame_messages`].
+    playthrough_frame_scene_ids: Vec<SceneId>,
     /// Optional per-port override for the playthrough-sequence bound. `None`
     /// falls back to [`PLAYTHROUGH_MAX_ENV`] then [`DEFAULT_PLAYTHROUGH_MAX`].
     playthrough_max: Option<usize>,
@@ -349,6 +362,7 @@ impl UtsushiReallivePort {
             buffered_audio: Vec::new(),
             frame_text_lines: Vec::new(),
             playthrough_frame_messages: Vec::new(),
+            playthrough_frame_scene_ids: Vec::new(),
             playthrough_max: None,
             emitted: false,
             launched: false,
@@ -391,6 +405,15 @@ impl UtsushiReallivePort {
     /// until `launch` runs.
     pub fn playthrough_frame_messages(&self) -> &[String] {
         &self.playthrough_frame_messages
+    }
+
+    /// The scene id each emitted playthrough frame belongs to, in frame order
+    /// (`[i]` = the scene of frame `i`). More than one DISTINCT value proves
+    /// the rendered playthrough crossed a scene boundary (scene A's messages
+    /// over A's background, then scene B's over B's). Parallel to
+    /// [`Self::playthrough_frame_messages`]. Empty until `launch` runs.
+    pub fn playthrough_frame_scene_ids(&self) -> &[SceneId] {
+        &self.playthrough_frame_scene_ids
     }
 
     /// Tick boundaries at which the port verified snapshot/restore
@@ -499,57 +522,98 @@ impl EnginePort for UtsushiReallivePort {
             return Ok(());
         }
 
-        // --- 1. ONE real replay observation: the REAL PLAY-ORDER message
-        //         stream (branch-following, single pass) kept distinct from
-        //         the frame/audio observation. This replaces the former
-        //         two-pass `observe_scene` drain, whose union DOUBLED every
-        //         message (catalogue order, not play order).
+        // --- 1. ONE real MULTI-SCENE replay observation: follow the real
+        //         RealLive scene-dispatch ACROSS scene boundaries (jump /
+        //         farcall / return into another SEEN present in the store) to
+        //         recover a bounded, continuous play-order stream that spans
+        //         ≥1 scene boundary — the play-loop a player walks THROUGH the
+        //         game, not one scene in isolation. Each segment carries its
+        //         OWN single-pass play-order messages + its OWN composited
+        //         background (so scene B renders with B's background).
         let observe_opts = ReplayOpts {
             step_budget: OBSERVE_STEP_BUDGET,
             stop_at_first_pause: false,
         };
-        let port_observation = self
-            .engine
-            .observe_for_port(self.entry_scene, &observe_opts);
-        let observation = port_observation.scene;
-        let text_lines = port_observation.play_order_lines;
-        self.observation_steps = observation.steps;
-        self.reached_natural_terminus = observation.reached_natural_terminus;
+        let playthrough = self.engine.observe_playthrough(
+            self.entry_scene,
+            &observe_opts,
+            PLAYTHROUGH_MAX_SCENES,
+        );
 
-        let audio: Vec<AudioEvent> = observation
-            .audio_events
+        // Entry-scene drive diagnostics (the capability the manifest advertises
+        // is the entry scene's; step total is aggregated across the chain).
+        let entry_observation = playthrough
+            .segments
+            .first()
+            .map(|segment| &segment.observation.scene);
+        self.observation_steps = playthrough
+            .segments
             .iter()
+            .map(|segment| segment.observation.scene.steps)
+            .sum();
+        self.reached_natural_terminus =
+            entry_observation.is_some_and(|scene| scene.reached_natural_terminus);
+
+        // Audio across every observed scene, in dispatch order.
+        let audio: Vec<AudioEvent> = playthrough
+            .segments
+            .iter()
+            .flat_map(|segment| segment.observation.scene.audio_events.iter())
             .map(to_substrate_audio)
             .collect();
 
-        // The play-order message bodies — the exact `TextLine.text` values
-        // that flow, single pass, to the substrate text sink for this
-        // scene. The playthrough sequence renders each leading one (up to
-        // the bound) to its own frame.
+        // The whole multi-scene play-order stream (all segments flattened in
+        // dispatch order) — the exact `TextLine`s that flow, single pass, to
+        // the substrate text sink. `frame_text_lines` is this full stream; the
+        // rendered playthrough sequence (below) is a bounded through-line
+        // drawn from it.
+        let text_lines: Vec<TextLine> = playthrough
+            .segments
+            .iter()
+            .flat_map(|segment| segment.observation.play_order_lines.iter().cloned())
+            .collect();
         let overlay_lines: Vec<String> = text_lines.iter().map(|line| line.text.clone()).collect();
 
-        // --- 2. Frame: a bounded PLAYTHROUGH SEQUENCE. Composite the real
-        //         graphics stack through the real g00 rasteriser and render
-        //         EACH leading play-order message to its OWN E2 frame (frame
-        //         `i` = play-order message `i`, with its speaker/name-box +
-        //         word-wrap over the same composited background) — the
-        //         through-line a player walks by click-advancing, one
-        //         message per frame. The count is capped at
-        //         `resolved_playthrough_max()` so a scene with hundreds of
-        //         messages cannot emit thousands of frames. Requires a
-        //         managed artifact root to persist the PNGs; a scene with no
-        //         decoded message produces no frame (nothing to display).
+        // --- 2. Frame: a bounded MULTI-SCENE PLAYTHROUGH SEQUENCE. Render a
+        //         through-line that CROSSES the scene boundary: leading
+        //         messages of scene A over A's background, then leading
+        //         messages of scene B over B's OWN background, in dispatch
+        //         order — each message to its OWN E2 frame (its speaker /
+        //         name-box + word-wrap). Per-scene capping guarantees a long
+        //         scene A cannot consume the whole budget before scene B
+        //         appears (so the render actually crosses the boundary); the
+        //         total is capped at `resolved_playthrough_max()`. For a
+        //         SINGLE-scene playthrough the per-scene cap is the whole
+        //         budget, so this reduces to the leading-prefix render.
         let playthrough_max = self.resolved_playthrough_max();
+        let segment_count = playthrough.segments.len();
+        let per_scene_cap = if segment_count <= 1 {
+            playthrough_max
+        } else {
+            (playthrough_max / segment_count).max(1)
+        };
         let mut frames: Vec<FrameArtifact> = Vec::new();
         let mut rendered_messages: Vec<String> = Vec::new();
+        let mut rendered_scene_ids: Vec<SceneId> = Vec::new();
         if let Some(root) = request.artifact_root {
-            for message in text_lines.iter().take(playthrough_max) {
-                request.cancellation.check(LifecycleStage::Launch)?;
-                let frame = self
-                    .render_frame(&observation, message, root, request.run_id)
-                    .map_err(|error| Self::lifecycle_error(LifecycleStage::Launch, error))?;
-                frames.push(frame);
-                rendered_messages.push(message.text.clone());
+            'segments: for segment in &playthrough.segments {
+                for message in segment
+                    .observation
+                    .play_order_lines
+                    .iter()
+                    .take(per_scene_cap)
+                {
+                    if rendered_messages.len() >= playthrough_max {
+                        break 'segments;
+                    }
+                    request.cancellation.check(LifecycleStage::Launch)?;
+                    let frame = self
+                        .render_frame(&segment.observation.scene, message, root, request.run_id)
+                        .map_err(|error| Self::lifecycle_error(LifecycleStage::Launch, error))?;
+                    frames.push(frame);
+                    rendered_messages.push(message.text.clone());
+                    rendered_scene_ids.push(segment.scene_id);
+                }
             }
         }
 
@@ -612,6 +676,7 @@ impl EnginePort for UtsushiReallivePort {
 
         self.frame_text_lines = overlay_lines;
         self.playthrough_frame_messages = rendered_messages;
+        self.playthrough_frame_scene_ids = rendered_scene_ids;
         self.buffered_text = text_lines;
         self.buffered_frames = frames;
         self.buffered_audio = audio;
