@@ -42,6 +42,69 @@ fn load_reallive_real_bytes_gameexe() -> Option<Gameexe> {
     Some(Gameexe::parse(&bytes).expect("real Gameexe.ini must parse without error"))
 }
 
+/// Collect the distinct `NNN` indices declared by any
+/// `#MOUSEACTIONCALL.NNN.` line in a raw (Shift-JIS) Gameexe byte
+/// buffer, ascending. The RealLive key namespace is ASCII inside the
+/// Shift-JIS file, so a byte scan is exact and encoding-independent.
+fn mouseactioncall_indices(bytes: &[u8]) -> Vec<u8> {
+    let prefix = b"#MOUSEACTIONCALL.";
+    let mut indices = std::collections::BTreeSet::new();
+    for line in bytes.split(|&b| b == b'\n') {
+        let line = line.strip_suffix(b"\r").unwrap_or(line);
+        if let Some(rest) = line.strip_prefix(prefix.as_slice())
+            && rest.len() >= 4
+            && rest[3] == b'.'
+            && rest[..3].iter().all(u8::is_ascii_digit)
+        {
+            let digits = std::str::from_utf8(&rest[..3]).expect("ascii digits");
+            if let Ok(index) = digits.parse::<u8>() {
+                indices.insert(index);
+            }
+        }
+    }
+    indices.into_iter().collect()
+}
+
+/// Derive a NON-CONTIGUOUS `MOUSEACTIONCALL` namespace from real bytes.
+///
+/// Lifts every real `#MOUSEACTIONCALL.{src:03}.*` line out of `bytes` and
+/// re-emits it at each index in `new_indices`, appended to a copy of the
+/// buffer. Each emitted line is a byte-for-byte copy of a real line with
+/// ONLY its 3-digit `NNN` index relabelled — so the derived slots carry
+/// real Gameexe structure (real `.MOD`/`.SEEN`/`.AREA` shapes and
+/// values), not a hand-authored synthetic mock. Choosing `new_indices`
+/// with gaps (e.g. `[2, 3, 5]` past a present `000`, leaving 1 and 4
+/// absent) yields a real-derived sparse table the staged corpus does not
+/// itself contain.
+fn inject_relabelled_indices(bytes: &[u8], src: u8, new_indices: &[u8]) -> Vec<u8> {
+    let prefix = format!("#MOUSEACTIONCALL.{src:03}.").into_bytes();
+    let mut src_lines: Vec<Vec<u8>> = Vec::new();
+    for line in bytes.split(|&b| b == b'\n') {
+        let line = line.strip_suffix(b"\r").unwrap_or(line);
+        if line.starts_with(prefix.as_slice()) {
+            src_lines.push(line.to_vec());
+        }
+    }
+    assert!(
+        !src_lines.is_empty(),
+        "no real #MOUSEACTIONCALL.{src:03}.* lines to derive from",
+    );
+    let mut out = bytes.to_vec();
+    if !out.ends_with(b"\n") {
+        out.extend_from_slice(b"\r\n");
+    }
+    for &index in new_indices {
+        let new_prefix = format!("#MOUSEACTIONCALL.{index:03}.").into_bytes();
+        for src_line in &src_lines {
+            let mut relabelled = new_prefix.clone();
+            relabelled.extend_from_slice(&src_line[prefix.len()..]);
+            out.extend_from_slice(&relabelled);
+            out.extend_from_slice(b"\r\n");
+        }
+    }
+    out
+}
+
 /// Build a synthetic `Gameexe.ini` byte slice for the parts of
 /// § H the spec exercises. Used by every non-env-gated test below.
 fn synthetic_reallive_real_bytes_section_h() -> Vec<u8> {
@@ -292,4 +355,121 @@ fn syscall_routes_synthetic_eight_kinds_pinned() {
     let dispatcher = SyscallDispatcher::from_gameexe(&gameexe).expect("dispatcher must build");
     // With EXAFTERCALL_MOD=1 the synthetic shape carries all 8 kinds.
     assert_eq!(dispatcher.route_count(), SYSCALL_KIND_COUNT);
+}
+
+/// Real-bytes regression guard for the `MOUSEACTIONCALL.NNN`
+/// namespace-scan against a NON-CONTIGUOUS index set.
+///
+/// # Why this exists
+///
+/// `SyscallDispatcher::from_gameexe` once broke out of its scan at the
+/// first absent slot past index 0
+/// (`if index > 0 && area.is_none() { break; }`), a "last index"
+/// sentinel that silently dropped every declared slot beyond the first
+/// gap. The repair (walk the whole bounded `000..=255` namespace,
+/// skipping absent slots) was verified only against a synthetic unit
+/// fixture — "Sweetie HD is contiguous, so the regression is not
+/// observable in the corpus." A sister RealLive title with index gaps
+/// would still have silently lost opcodes.
+///
+/// # What it verifies, and on real bytes
+///
+/// The staged corpus cannot exercise the gap directly: Sweetie HD
+/// declares exactly `MOUSEACTIONCALL.000` and Kanon declares none — both
+/// contiguous. So this test *derives* a sparse namespace from the real
+/// Sweetie HD Gameexe.ini: it lifts the real
+/// `#MOUSEACTIONCALL.000.{MOD,SEEN,AREA}` lines verbatim out of the real
+/// bytes and re-emits them at indices 2, 3 and 5, leaving GAPS at 1 and
+/// 4. Every emitted line is a byte-for-byte copy of a real line with
+/// only its `NNN` index relabelled — real Gameexe structure, not a
+/// hand-authored mock. It then asserts EVERY declared index past the
+/// first gap is scanned (exact discovered set `{0, 2, 3, 5}`, zero
+/// dropped, zero phantom) and the gaps stay unrouted.
+///
+/// # Regression bite
+///
+/// Under the pre-repair stop-at-first-gap behaviour the scan breaks at
+/// the absent index 1 and never reaches 2, 3 or 5, so the discovered set
+/// collapses to `{0}` — both the per-index probes and the exact-set
+/// assertion below FAIL. (Verified locally by reverting the repair to
+/// the `break` form and observing this test fail, then restoring.)
+#[test]
+#[ignore = "requires ITOTORI_REAL_GAME_ROOT; opt in with --include-ignored"]
+fn mouseactioncall_scan_discovers_real_bytes_non_contiguous_namespace() {
+    let Some(path) = resolve_gameexe_path() else {
+        real_corpus::skip_or_require_real_bytes(
+            "utsushi-reallive mouseactioncall_scan_discovers_real_bytes_non_contiguous_namespace",
+        );
+        return;
+    };
+    let real_bytes = fs::read(&path).unwrap_or_else(|err| {
+        panic!(
+            "ITOTORI_REAL_GAME_ROOT is set but Gameexe.ini at {} could not be read: {err}",
+            path.display(),
+        )
+    });
+
+    // Premise of the derivation: the staged corpus is CONTIGUOUS, so it
+    // cannot exercise a gap without derivation. Pin the premise so a
+    // future multi-slot corpus can't silently make this test vacuous.
+    assert_eq!(
+        mouseactioncall_indices(&real_bytes),
+        vec![0],
+        "real Sweetie HD is expected to declare exactly MOUSEACTIONCALL.000 (contiguous)",
+    );
+
+    // Derive a non-contiguous namespace from the real bytes: re-emit the
+    // real index-0 slot at 2, 3 and 5, leaving gaps at 1 and 4.
+    let declared: [u8; 4] = [0, 2, 3, 5];
+    let gaps: [u8; 2] = [1, 4];
+    let sparse = inject_relabelled_indices(&real_bytes, 0, &declared[1..]);
+    assert_eq!(
+        mouseactioncall_indices(&sparse),
+        declared.to_vec(),
+        "derived buffer must declare exactly {declared:?} with gaps at {gaps:?}",
+    );
+
+    let gameexe = Gameexe::parse(&sparse).expect("derived real-bytes Gameexe must parse");
+    let dispatcher = SyscallDispatcher::from_gameexe(&gameexe).expect("dispatcher must build");
+
+    // Every declared index PAST the first gap (index 1) must be scanned.
+    // Pre-repair this loop fails: the scan breaks at absent index 1 and
+    // never reaches 2, 3 or 5.
+    for &index in &declared {
+        assert!(
+            dispatcher
+                .route_for_kind(SyscallRouteKind::MouseAction { index })
+                .is_some(),
+            "MOUSEACTIONCALL.{index:03} must be discovered — the scan must not stop at the gap",
+        );
+    }
+
+    // Exact discovered set: 0 dropped past the gap AND no phantom slot
+    // fabricated. Enumerate the built routes rather than trusting only
+    // the per-index probes above.
+    let mut discovered: Vec<u8> = dispatcher
+        .routes()
+        .iter()
+        .filter_map(|route| match route.kind {
+            SyscallRouteKind::MouseAction { index } => Some(index),
+            _ => None,
+        })
+        .collect();
+    discovered.sort_unstable();
+    assert_eq!(
+        discovered,
+        declared.to_vec(),
+        "every declared MOUSEACTIONCALL index must be routed exactly once (0 dropped past the gap)",
+    );
+
+    // The gaps stay unrouted — the scan skips absent slots, it does not
+    // fabricate them.
+    for &gap in &gaps {
+        assert!(
+            dispatcher
+                .route_for_kind(SyscallRouteKind::MouseAction { index: gap })
+                .is_none(),
+            "absent MOUSEACTIONCALL.{gap:03} must stay unrouted",
+        );
+    }
 }
