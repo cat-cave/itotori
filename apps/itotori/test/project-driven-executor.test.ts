@@ -54,12 +54,17 @@ import {
   OpenRouterModelProvider,
   assertOpenRouterZdrAccount,
 } from "../src/providers/index.js";
-import type { ModelInvocationRequest } from "../src/providers/types.js";
+import type {
+  ModelInvocationRequest,
+  ModelInvocationResult,
+  ModelProvider,
+} from "../src/providers/types.js";
 import {
   parseNarrativeStructure,
   type NarrativeStructure,
 } from "../src/agents/structure-informed-context/index.js";
 import {
+  DEFAULT_DRIVEN_CONCURRENCY,
   runProjectDrivenExecutor,
   unitSurfaceKindInScope,
   type DrivenDraftRecord,
@@ -508,6 +513,362 @@ describe("runProjectDrivenExecutor (itotori-project-level-driven-executor)", () 
     for (const draft of sinks.drafts) {
       expect(draft.sceneId).toBeUndefined();
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// itotori-batched-concurrent-translation-scheduling — bounded-concurrent pool.
+//
+// Proves the driven executor schedules up to `concurrency` units'
+// `runAgenticLoopForUnit` at once (a client-side worker pool over the canonical
+// unit list) while keeping: (a) the budget cap (stops DISPATCHING before
+// overspend), (b) per-unit failure isolation, (c) DETERMINISTIC canonical result
+// ordering regardless of completion order. Driven with an INSTRUMENTED fake
+// provider (small artificial per-call delay + an in-flight concurrency meter);
+// no live LLM. Because the loop fires provider calls SEQUENTIALLY within a unit,
+// the max in-flight invocation count IS the unit-level concurrency.
+// ---------------------------------------------------------------------------
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** Tracks max simultaneous in-flight provider invocations (== unit concurrency). */
+class ConcurrencyMeter {
+  inFlight = 0;
+  maxInFlight = 0;
+  totalCalls = 0;
+  enter(): void {
+    this.inFlight += 1;
+    this.totalCalls += 1;
+    if (this.inFlight > this.maxInFlight) {
+      this.maxInFlight = this.inFlight;
+    }
+  }
+  exit(): void {
+    this.inFlight -= 1;
+  }
+}
+
+/**
+ * Wraps a FakeModelProvider with an artificial delay + the concurrency meter,
+ * and OPTIONALLY overrides each invocation's cost to a fixed billed amount so a
+ * budget-cap test accumulates real (fake) spend.
+ */
+class InstrumentedProvider implements ModelProvider {
+  constructor(
+    private readonly inner: FakeModelProvider,
+    private readonly meter: ConcurrencyMeter,
+    private readonly delayMs: number,
+    private readonly costPerCallUsd: number,
+  ) {}
+  get descriptor() {
+    return this.inner.descriptor;
+  }
+  async invoke(request: ModelInvocationRequest): Promise<ModelInvocationResult> {
+    this.meter.enter();
+    try {
+      await sleep(this.delayMs);
+      const result = await this.inner.invoke(request);
+      if (this.costPerCallUsd <= 0) {
+        return result;
+      }
+      const micros = Math.round(this.costPerCallUsd * 1_000_000);
+      return {
+        ...result,
+        providerRun: {
+          ...result.providerRun,
+          cost: {
+            costKind: "billed",
+            currency: "USD",
+            amountUsd: this.costPerCallUsd.toFixed(6),
+            amountMicrosUsd: micros,
+          },
+        },
+      };
+    } finally {
+      this.meter.exit();
+    }
+  }
+}
+
+/** The same clean/POISON/DEFER generate logic as `drivenProviderFactory`. */
+function drivenGenerate(agentLabel: string, request: ModelInvocationRequest): string {
+  const blob = JSON.stringify(request);
+  if (request.taskKind === "experiment" && agentLabel !== "speaker-label") {
+    return fakeSemanticContextContent(agentLabel);
+  }
+  if (request.taskKind === "experiment" && agentLabel === "speaker-label") {
+    return speakerLabelContent(bridgeUnitIdOf(request));
+  }
+  if (request.taskKind === "draft_translation") {
+    if (blob.includes(POISON_MARKER)) {
+      return JSON.stringify({ schemaVersion: "totally.wrong.v0", drafts: [] });
+    }
+    return translationContent(bridgeUnitIdOf(request));
+  }
+  if (request.taskKind === "llm_qa") {
+    if (blob.includes(DEFER_MARKER)) {
+      return criticalQaContent(bridgeUnitIdOf(request));
+    }
+    return cleanQaContent();
+  }
+  return "";
+}
+
+function instrumentedFactory(opts: {
+  meter: ConcurrencyMeter;
+  delayMs: number;
+  costPerCallUsd?: number;
+}): AgenticLoopProviderFactory {
+  return ({ stage, agentLabel }) => {
+    const inner = new FakeModelProvider({
+      providerName: `driven-conc-${stage}-${agentLabel}`,
+      generate: (request: ModelInvocationRequest): string => drivenGenerate(agentLabel, request),
+    });
+    return new InstrumentedProvider(inner, opts.meter, opts.delayMs, opts.costPerCallUsd ?? 0);
+  };
+}
+
+/** A bridge of `count` distinct clean dialogue units, optionally poison/defer at indices. */
+function makeManyUnitBridge(
+  count: number,
+  markers?: { poisonAt?: number; deferAt?: number },
+): { bridge: BridgeBundleV02; orderedInScopeIds: string[] } {
+  const units: LocalizationUnitV02[] = [];
+  const orderedInScopeIds: string[] = [];
+  for (let i = 0; i < count; i += 1) {
+    const id = `019ed0aa-0000-7000-8000-${String(i + 1).padStart(12, "0")}`;
+    let sourceText = `おはよう、和人。${i}`;
+    if (markers?.poisonAt === i) {
+      sourceText = `これは${POISON_MARKER}。${i}`;
+    } else if (markers?.deferAt === i) {
+      sourceText = `今日は${DEFER_MARKER}だね。${i}`;
+    }
+    units.push(makeUnit(id, sourceText, "dialogue", i + 1));
+    orderedInScopeIds.push(id);
+  }
+  const bridge = {
+    schemaVersion: "0.2.0",
+    bridgeId: "driven-executor-concurrency-fixture",
+    sourceLocale: "ja-JP",
+    units,
+  } as unknown as BridgeBundleV02;
+  return { bridge, orderedInScopeIds };
+}
+
+function concurrencyBaseInput(args: {
+  bridge: BridgeBundleV02;
+  factory: AgenticLoopProviderFactory;
+  sinks: InMemorySinks;
+  queue?: InMemoryReviewerQueue;
+}) {
+  const structure = makeStructure();
+  return {
+    bridge: args.bridge,
+    rawBridge: JSON.parse(JSON.stringify(args.bridge)) as unknown,
+    pairPolicy: DEV_POLICY,
+    pair: { modelId: DEV_PAIR.modelId, providerId: DEV_PAIR.providerId },
+    projectId: PROJECT_ID,
+    localeBranchId: LOCALE_BRANCH_ID,
+    sourceRevisionId: REVISION_ID,
+    actor: ACTOR,
+    providerFactory: args.factory,
+    maxRepairAttempts: 0,
+    resolveUnitContext: (): DrivenUnitContext => ({
+      narrativeStructure: structure,
+      sceneId: SCENE_ID,
+    }),
+    translationScope: "dialogue-only" as const,
+    engineProfile: "reallive" as const,
+    sinks: args.sinks,
+    ...(args.queue !== undefined ? { reviewerQueue: { repository: args.queue } } : {}),
+  };
+}
+
+describe("runProjectDrivenExecutor (bounded-concurrent scheduling)", () => {
+  it("exposes a conservative default concurrency", () => {
+    expect(DEFAULT_DRIVEN_CONCURRENCY).toBe(8);
+  });
+
+  it("runs units CONCURRENTLY up to the bound (counter reaches K) with a wall-clock speedup", async () => {
+    const UNIT_COUNT = 8;
+    const CONCURRENCY = 4;
+    const DELAY_MS = 15;
+
+    // Sequential baseline (concurrency 1) for the wall-clock comparison.
+    const seqMeter = new ConcurrencyMeter();
+    const seqSinks = new InMemorySinks();
+    const { bridge: seqBridge } = makeManyUnitBridge(UNIT_COUNT);
+    const seqStart = Date.now();
+    const seqResult = await runProjectDrivenExecutor({
+      ...concurrencyBaseInput({
+        bridge: seqBridge,
+        factory: instrumentedFactory({ meter: seqMeter, delayMs: DELAY_MS }),
+        sinks: seqSinks,
+      }),
+      concurrency: 1,
+    });
+    const seqMs = Date.now() - seqStart;
+    expect(seqResult.unitsRun).toBe(UNIT_COUNT);
+    expect(seqMeter.maxInFlight).toBe(1); // strictly sequential.
+
+    // Concurrent run (concurrency K).
+    const meter = new ConcurrencyMeter();
+    const sinks = new InMemorySinks();
+    const { bridge } = makeManyUnitBridge(UNIT_COUNT);
+    const start = Date.now();
+    const result = await runProjectDrivenExecutor({
+      ...concurrencyBaseInput({
+        bridge,
+        factory: instrumentedFactory({ meter, delayMs: DELAY_MS }),
+        sinks,
+      }),
+      concurrency: CONCURRENCY,
+    });
+    const concMs = Date.now() - start;
+
+    // Concurrency counter reached the bound (never exceeds it — only K workers).
+    expect(meter.maxInFlight).toBe(CONCURRENCY);
+    // All N units ran + persisted (accepted, since all clean).
+    expect(result.unitsRun).toBe(UNIT_COUNT);
+    expect(result.draftsPersisted).toBe(UNIT_COUNT);
+    expect(result.providerRunsPersisted).toBe(UNIT_COUNT);
+    expect(result.acceptedDraftCount).toBe(UNIT_COUNT);
+    expect(result.patchExportCount).toBe(1);
+    expect(sinks.drafts).toHaveLength(UNIT_COUNT);
+    // Same number of provider calls, but wall-clock is far below the sequential
+    // sum (bounded speedup ~K). A conservative < 0.6x threshold avoids flake.
+    expect(meter.totalCalls).toBe(seqMeter.totalCalls);
+    expect(concMs).toBeLessThan(seqMs * 0.6);
+  });
+
+  it("isolates a poison unit while the concurrent pool keeps running", async () => {
+    const UNIT_COUNT = 8;
+    const meter = new ConcurrencyMeter();
+    const sinks = new InMemorySinks();
+    const { bridge } = makeManyUnitBridge(UNIT_COUNT, { poisonAt: 3 });
+    const result = await runProjectDrivenExecutor({
+      ...concurrencyBaseInput({
+        bridge,
+        factory: instrumentedFactory({ meter, delayMs: 5 }),
+        sinks,
+      }),
+      concurrency: 4,
+    });
+    // One poison unit isolated; the other 7 ran + persisted; ONE patch export.
+    expect(result.failures).toHaveLength(1);
+    expect(result.unitsRun).toBe(UNIT_COUNT - 1);
+    expect(result.draftsPersisted).toBe(UNIT_COUNT - 1);
+    expect(result.acceptedDraftCount).toBe(UNIT_COUNT - 1);
+    expect(result.patchExportCount).toBe(1);
+    expect(meter.maxInFlight).toBeGreaterThan(1); // genuinely concurrent.
+  });
+
+  it("persists drafts + provider-runs + queue-items in CANONICAL order, deterministically", async () => {
+    const UNIT_COUNT = 9;
+    // A mix: clean units + a mid-list deferral (queue item) + a poison (isolated).
+    const markers = { deferAt: 2, poisonAt: 6 };
+
+    const runOnce = async (): Promise<{
+      draftOrder: string[];
+      providerRunOrder: string[];
+      queueOrder: string[];
+      orderedInScopeIds: string[];
+    }> => {
+      const meter = new ConcurrencyMeter();
+      const sinks = new InMemorySinks();
+      const queue = new InMemoryReviewerQueue();
+      const { bridge, orderedInScopeIds } = makeManyUnitBridge(UNIT_COUNT, markers);
+      await runProjectDrivenExecutor({
+        ...concurrencyBaseInput({
+          bridge,
+          factory: instrumentedFactory({ meter, delayMs: 6 }),
+          sinks,
+          queue,
+        }),
+        concurrency: 4,
+      });
+      expect(meter.maxInFlight).toBeGreaterThan(1);
+      return {
+        draftOrder: sinks.drafts.map((d) => d.bridgeUnitId),
+        providerRunOrder: sinks.providerRuns.map((r) => r.bridgeUnitId),
+        queueOrder: queue.items.map((i) => i.sourceItemRef),
+        orderedInScopeIds,
+      };
+    };
+
+    const first = await runOnce();
+    const second = await runOnce();
+
+    // Canonical order == the enumerated in-scope order MINUS the isolated poison.
+    const expectedDraftOrder = first.orderedInScopeIds.filter(
+      (_id, index) => index !== markers.poisonAt,
+    );
+    expect(first.draftOrder).toEqual(expectedDraftOrder);
+    expect(first.providerRunOrder).toEqual(expectedDraftOrder);
+    // The single deferral (index 2) is the only queue item.
+    expect(first.queueOrder).toEqual([`agentic-loop:${first.orderedInScopeIds[markers.deferAt]}`]);
+
+    // DETERMINISM: identical persisted order across independent runs.
+    expect(second.draftOrder).toEqual(first.draftOrder);
+    expect(second.providerRunOrder).toEqual(first.providerRunOrder);
+    expect(second.queueOrder).toEqual(first.queueOrder);
+  });
+
+  it("budget cap STOPS dispatching before overspend under concurrency (unspent units not run)", async () => {
+    const UNIT_COUNT = 12;
+    const COST_PER_CALL = 0.001; // ~10 calls/unit -> ~$0.01/unit.
+    const BUDGET_CAP = 0.03; // trips after ~3 units.
+    const meter = new ConcurrencyMeter();
+    const sinks = new InMemorySinks();
+    const { bridge } = makeManyUnitBridge(UNIT_COUNT);
+    const result = await runProjectDrivenExecutor({
+      ...concurrencyBaseInput({
+        bridge,
+        factory: instrumentedFactory({ meter, delayMs: 4, costPerCallUsd: COST_PER_CALL }),
+        sinks,
+      }),
+      concurrency: 2,
+      budgetCapUsd: BUDGET_CAP,
+    });
+    // The cap stopped scheduling: not every unit ran, but at least one did.
+    expect(result.budgetStopped).toBe(true);
+    expect(result.unitsRun).toBeGreaterThan(0);
+    expect(result.unitsRun).toBeLessThan(UNIT_COUNT);
+    // Persisted count matches what actually ran (unspent units never dispatched).
+    expect(sinks.drafts).toHaveLength(result.unitsRun);
+    expect(sinks.providerRuns).toHaveLength(result.unitsRun);
+    // Real spend accumulated, bounded: at most `concurrency - 1` in-flight units
+    // can overshoot past the cap (here <= ~1 extra unit's worth).
+    expect(result.totalUsageCostUsd).toBeGreaterThan(0);
+    expect(result.totalUsageCostUsd).toBeLessThan(BUDGET_CAP + 0.02);
+  });
+
+  it("budget cap at concurrency=1 stops with ZERO overshoot (sequential guard preserved)", async () => {
+    const UNIT_COUNT = 12;
+    const COST_PER_CALL = 0.001;
+    const BUDGET_CAP = 0.025;
+    const meter = new ConcurrencyMeter();
+    const sinks = new InMemorySinks();
+    const { bridge } = makeManyUnitBridge(UNIT_COUNT);
+    const result = await runProjectDrivenExecutor({
+      ...concurrencyBaseInput({
+        bridge,
+        factory: instrumentedFactory({ meter, delayMs: 1, costPerCallUsd: COST_PER_CALL }),
+        sinks,
+      }),
+      concurrency: 1,
+      budgetCapUsd: BUDGET_CAP,
+    });
+    expect(result.budgetStopped).toBe(true);
+    expect(result.unitsRun).toBeGreaterThan(0);
+    expect(result.unitsRun).toBeLessThan(UNIT_COUNT);
+    expect(meter.maxInFlight).toBe(1);
+    // Sequential: the run stops the FIRST time completed cost reaches the cap, so
+    // the total is exactly the sum through the crossing unit (one unit's worth of
+    // overshoot at most — the unit that crossed).
+    expect(result.totalUsageCostUsd).toBeGreaterThanOrEqual(BUDGET_CAP);
   });
 });
 

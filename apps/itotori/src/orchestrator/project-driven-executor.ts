@@ -38,7 +38,12 @@
 // downgrades ZDR, never widens scope — it threads the caller's parsed policy
 // into every `runAgenticLoopForUnit` call verbatim.
 
-import type { AuthorizationActor } from "@itotori/db";
+import type {
+  AuthorizationActor,
+  CreateReviewerQueueItemInput,
+  ReviewerQueueItemRecord,
+} from "@itotori/db";
+import { ReviewerQueueRepositoryError, reviewerQueueItemStateValues } from "@itotori/db";
 import type {
   AgenticLoopBundle,
   BridgeBundleV02,
@@ -280,14 +285,38 @@ export type ProjectDrivenExecutorInput = {
    */
   maxUnits?: number;
   /**
-   * USD budget cap on the REAL total `usage.cost`. After a unit pushes the
-   * running total at/above the cap, the executor stops enumerating further
-   * units (records `budgetStopped`). A bounded, cost-safe pilot guard.
+   * USD budget cap on the REAL total `usage.cost`. Once the running total of
+   * COMPLETED units reaches the cap, the pool stops DISPATCHING further units
+   * (records `budgetStopped`). Under bounded concurrency the check gates the
+   * NEXT dispatch, so at most `concurrency - 1` already-in-flight units can push
+   * the realized total marginally past the cap; the provider's own
+   * `costCapUsd` is the hard per-call backstop. A bounded, cost-safe pilot
+   * guard.
    */
   budgetCapUsd?: number;
+  /**
+   * itotori-batched-concurrent-translation-scheduling — the CLIENT-SIDE
+   * bounded-concurrency cap: at most this many units run their agentic loop
+   * (`runAgenticLoopForUnit`) simultaneously. The OpenRouter-side provider
+   * fallback + rate limits are the real backpressure; this bound is the client
+   * cap that keeps a whole-route run from stampeding the provider. Defaults to
+   * {@link DEFAULT_DRIVEN_CONCURRENCY}. Clamped to `>= 1` (a value `<= 1` runs
+   * strictly sequentially, the pre-concurrency behaviour).
+   */
+  concurrency?: number;
   now?: () => Date;
   log?: (message: string) => void;
 };
+
+/**
+ * Default client-side concurrency bound. A deliberately CONSERVATIVE value: the
+ * per-unit loop fires ~10 provider calls, so 8 concurrent units is ~80 in-flight
+ * calls — comfortably below typical OpenRouter per-key rate ceilings while still
+ * an ~8x wall-clock win over the old sequential driver. Raise it only with
+ * evidence the served provider tolerates the higher call rate (a lower value is
+ * the safe direction if rate-limit 429s appear).
+ */
+export const DEFAULT_DRIVEN_CONCURRENCY = 8;
 
 export type ProjectDrivenExecutorResult = {
   unitsEnumerated: number;
@@ -359,110 +388,126 @@ export async function runProjectDrivenExecutor(
   let zdrConfirmed = true;
   let budgetStopped = false;
 
+  // itotori-batched-concurrent-translation-scheduling — the pilot must scale to
+  // a whole route/game, but the per-unit loop fires ~10 ZDR calls, so running
+  // units strictly sequentially is ~25 min for four units. We schedule up to
+  // `concurrency` units' `runAgenticLoopForUnit` at once via a bounded
+  // worker-pool over the canonical unit list. The pool RUNS units concurrently
+  // but PERSISTS in canonical order (below), so completion order never leaks
+  // into the stored drafts / provider-runs / queue-items.
+  const concurrency = Math.max(1, Math.floor(input.concurrency ?? DEFAULT_DRIVEN_CONCURRENCY));
+
+  // `maxUnits` is a DISPATCH cap: the pool drives AT MOST this many in-scope
+  // units (canonical prefix). A failed unit is isolated but still consumes a
+  // dispatch slot — the cap bounds provider calls, not successes.
   const maxUnits = input.maxUnits ?? enumerated.length;
+  const plannedUnits = enumerated.slice(0, Math.max(0, maxUnits));
 
-  for (const enumeratedUnit of enumerated) {
-    if (unitsRun >= maxUnits) {
-      break;
-    }
-    if (input.budgetCapUsd !== undefined && totalUsageCostUsd >= input.budgetCapUsd) {
-      budgetStopped = true;
-      log(
-        `project-driven-executor: budget cap $${input.budgetCapUsd} reached ($${totalUsageCostUsd.toFixed(6)}); stopping before unit ${enumeratedUnit.unit.sourceUnitKey}`,
-      );
-      break;
-    }
+  // Result slots, one per planned unit, addressed by CANONICAL index. A slot is
+  // filled by whichever worker ran that unit; `undefined` means the unit was
+  // never dispatched (budget cap tripped first). Persistence walks these slots
+  // in index order, so the stored order is canonical regardless of which worker
+  // finished when — deterministic for identical inputs.
+  const slots: Array<UnitRunResult | undefined> = Array.from({ length: plannedUnits.length });
 
-    const { unit, unitIndex, plannerSceneId } = enumeratedUnit;
-    // PER-UNIT ISOLATION — one unit's failure (incl. a live semantic-agent
-    // malformed pack, the filed P2) NEVER aborts the whole run.
-    try {
-      const context = input.resolveUnitContext?.({ unit, unitIndex, plannerSceneId });
-      const unitInput: AgenticLoopUnitInput = {
-        unit,
-        sceneUnits: [],
-        // itotori-live-loop-style-glossary-injection — feed the run's ACTIVE
-        // glossary + style-guide (caller-resolved) into every unit's loop.
-        glossary: input.glossary ?? [],
-        protectedSpans: [],
-        knownCharacters: [],
-        ...(input.styleGuide !== undefined ? { styleGuide: input.styleGuide } : {}),
-        ...(context !== undefined
-          ? { narrativeStructure: context.narrativeStructure, sceneId: context.sceneId }
-          : {}),
-        actor: input.actor,
-        ...(input.reviewerQueue !== undefined ? { reviewerQueue: input.reviewerQueue } : {}),
-      };
+  // Realized cost from COMPLETED units — the budget gate. JS is single-threaded,
+  // so the read-check-and-claim below runs atomically between `await`s; no lock
+  // is needed. Under concurrency `K` at most `K - 1` already-dispatched units
+  // can push this marginally past the cap before the gate trips; the provider's
+  // own `costCapUsd` is the hard per-call backstop (see `budgetCapUsd` docs).
+  let realizedCostUsd = 0;
+  let nextIndex = 0;
 
-      const bundle = await runAgenticLoopForUnit(
-        unitInput,
-        input.pairPolicy,
-        policy,
-        input.providerFactory,
-      );
-      unitsRun += 1;
-
-      // (c) PERSIST — the draft outcome FIRST. The DB provider-run ledger's FK
-      // references the draft attempt persistDraft creates, so the draft must
-      // land before the provider-run row (the shared adapter keys the attempt
-      // id by bridgeUnitId).
-      const accepted = bundle.finalDraft.draftText !== undefined;
-      const draftRecord: DrivenDraftRecord = {
-        bridgeUnitId: unit.bridgeUnitId,
-        sourceUnitKey: unit.sourceUnitKey,
-        sceneId: context?.sceneId,
-        outcome: bundle.routingSummary.outcome,
-        accepted,
-        targetLocale,
-        draftText: bundle.finalDraft.draftText,
-        deferredReason: bundle.finalDraft.deferredReason,
-      };
-      await input.sinks.draft.persistDraft(draftRecord);
-      draftsPersisted += 1;
-
-      // (c) PERSIST — provider-run summary (real usage.cost + ZDR).
-      const telemetry = summariseProviderTelemetry(bundle, input.pair);
-      totalUsageCostUsd += telemetry.totalCostUsd;
-      zdrConfirmed = zdrConfirmed && telemetry.zdr;
-      await input.sinks.providerRun.persistProviderRun({
-        bridgeUnitId: unit.bridgeUnitId,
-        ...telemetry,
-      });
-      providerRunsPersisted += 1;
-
-      if (accepted && bundle.finalDraft.draftText !== undefined) {
-        acceptedDraftCount += 1;
-        // (d) accumulate the accepted body for the ONE patch export. Strip the
-        // out-of-band kidoku markup so the recorded body matches the patchback
-        // splice (mirrors the single-unit driver).
-        const body =
-          engineProfile === "rpg-maker-mv-mz"
-            ? bundle.finalDraft.draftText
-            : stripOutOfBandControlMarkup(bundle.finalDraft.draftText);
-        acceptedBodies.set(unit.bridgeUnitId, body);
-        acceptedUnits.push({
-          bridgeUnitId: unit.bridgeUnitId,
-          sourceUnitKey: unit.sourceUnitKey,
-          finalDraftText: body,
-        });
-      } else {
-        deferredCount += 1;
+  const runWorker = async (): Promise<void> => {
+    for (;;) {
+      // (a) BUDGET GATE — stop DISPATCHING once completed cost reaches the cap.
+      if (input.budgetCapUsd !== undefined && realizedCostUsd >= input.budgetCapUsd) {
+        if (!budgetStopped) {
+          budgetStopped = true;
+          log(
+            `project-driven-executor: budget cap $${input.budgetCapUsd} reached ($${realizedCostUsd.toFixed(6)}); stopping dispatch (concurrency=${concurrency})`,
+          );
+        }
+        return;
       }
-    } catch (error) {
-      failures.push({
-        bridgeUnitId: unit.bridgeUnitId,
-        sourceUnitKey: unit.sourceUnitKey,
-        errorClass: error instanceof Error ? error.name : "UnknownError",
-        errorMessage: error instanceof Error ? error.message : String(error),
+      // Claim the next canonical index atomically (no await between read+bump).
+      const index = nextIndex;
+      if (index >= plannedUnits.length) {
+        return;
+      }
+      nextIndex += 1;
+
+      const enumeratedUnit = plannedUnits[index]!;
+      const result = await runSingleDrivenUnit({
+        enumeratedUnit,
+        input,
+        policy,
+        targetLocale,
+        engineProfile,
+        log,
       });
-      log(
-        `project-driven-executor: unit ${unit.sourceUnitKey} FAILED (isolated, run continues): ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      );
-      // No draft / provider-run persisted for a failed unit; its target stays
-      // a byte no-op (source === target) on the patch export.
+      slots[index] = result;
+      if (result.status === "success") {
+        // Only completed cost gates further dispatch (PROJECT LAW: real cost).
+        realizedCostUsd += result.telemetry.totalCostUsd;
+      }
+    }
+  };
+
+  const workerCount = Math.min(concurrency, plannedUnits.length);
+  await Promise.all(Array.from({ length: workerCount }, () => runWorker()));
+
+  // (c) PERSIST in CANONICAL order — walk the slots by index. Completion order
+  // is irrelevant here: drafts, provider-runs, and the loop-bridged queue items
+  // (buffered per unit during the concurrent phase) all land in unit order.
+  for (const slot of slots) {
+    if (slot === undefined) {
+      continue; // never dispatched (budget cap) — a byte no-op on the export.
+    }
+    if (slot.status === "failure") {
+      // PER-UNIT ISOLATION — the failing unit was caught in its worker; it
+      // persisted nothing and its target stays a byte no-op (source === target).
+      failures.push(slot.failure);
       continue;
+    }
+
+    unitsRun += 1;
+
+    // PERSIST — the draft outcome FIRST. The DB provider-run ledger's FK
+    // references the draft attempt persistDraft creates, so the draft must land
+    // before the provider-run row (the shared adapter keys the attempt id by
+    // bridgeUnitId).
+    await input.sinks.draft.persistDraft(slot.draftRecord);
+    draftsPersisted += 1;
+
+    // PERSIST — provider-run summary (real usage.cost + ZDR).
+    totalUsageCostUsd += slot.telemetry.totalCostUsd;
+    zdrConfirmed = zdrConfirmed && slot.telemetry.zdr;
+    await input.sinks.providerRun.persistProviderRun({
+      bridgeUnitId: slot.unit.bridgeUnitId,
+      ...slot.telemetry,
+    });
+    providerRunsPersisted += 1;
+
+    // PERSIST — the reviewer_queue_items the loop's bridge produced for this
+    // unit, replayed onto the REAL sink in canonical order (they were buffered
+    // during the concurrent run so completion interleaving never reorders them).
+    if (input.reviewerQueue !== undefined) {
+      for (const captured of slot.queueCaptures) {
+        await flushCapturedReviewerQueueItem(input.reviewerQueue, captured);
+      }
+    }
+
+    if (slot.accepted && slot.acceptedBody !== undefined) {
+      acceptedDraftCount += 1;
+      acceptedBodies.set(slot.unit.bridgeUnitId, slot.acceptedBody);
+      acceptedUnits.push({
+        bridgeUnitId: slot.unit.bridgeUnitId,
+        sourceUnitKey: slot.unit.sourceUnitKey,
+        finalDraftText: slot.acceptedBody,
+      });
+    } else {
+      deferredCount += 1;
     }
   }
 
@@ -517,6 +562,224 @@ export async function runProjectDrivenExecutor(
     zdrConfirmed,
     budgetStopped,
     patchReport,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Bounded-concurrent unit scheduling — per-unit worker + deterministic buffers
+// ---------------------------------------------------------------------------
+
+/**
+ * The fully-computed outcome of driving ONE unit through the agentic loop,
+ * captured (NOT persisted) inside a worker so the pool can run units
+ * concurrently and the caller can persist them in CANONICAL order afterwards.
+ */
+type UnitRunResult = UnitRunSuccess | UnitRunFailure;
+
+type UnitRunSuccess = {
+  status: "success";
+  unit: LocalizationUnitV02;
+  draftRecord: DrivenDraftRecord;
+  telemetry: ReturnType<typeof summariseProviderTelemetry>;
+  accepted: boolean;
+  /** The stripped/bracket-wrapped accepted body; `undefined` on a defer. */
+  acceptedBody: string | undefined;
+  /** Reviewer-queue writes the loop's bridge buffered for ordered replay. */
+  queueCaptures: CapturedReviewerQueueCreate[];
+};
+
+type UnitRunFailure = {
+  status: "failure";
+  failure: DrivenUnitFailure;
+};
+
+/**
+ * Drive ONE unit through `runAgenticLoopForUnit` and capture everything the
+ * caller needs to persist it later — WITHOUT touching the draft / provider-run
+ * sinks (those persist in canonical order after the whole pool drains) and with
+ * the reviewer-queue writes BUFFERED (replayed in order later). PER-UNIT
+ * ISOLATION: a thrown error (incl. a live semantic-agent malformed pack, the
+ * filed P2) is caught here and returned as a failure so one bad unit never
+ * aborts the pool. Config-driven scope + the (modelId, providerId) pinning +
+ * ZDR posture all thread through the loop UNCHANGED.
+ */
+async function runSingleDrivenUnit(args: {
+  enumeratedUnit: EnumeratedUnit;
+  input: ProjectDrivenExecutorInput;
+  policy: AgenticLoopPolicy;
+  targetLocale: string;
+  engineProfile: DrivenEngineProfile;
+  log: (message: string) => void;
+}): Promise<UnitRunResult> {
+  const { enumeratedUnit, input, policy, targetLocale, engineProfile, log } = args;
+  const { unit, unitIndex, plannerSceneId } = enumeratedUnit;
+  try {
+    const context = input.resolveUnitContext?.({ unit, unitIndex, plannerSceneId });
+
+    // Buffer the loop's reviewer-queue writes so they persist in CANONICAL unit
+    // order after the concurrent phase — completion interleaving must not
+    // reorder them. `loadItemsByBranch` still delegates to the real repository
+    // so the bridge's idempotency pre-check sees already-persisted rows.
+    const queueCaptures: CapturedReviewerQueueCreate[] = [];
+    const bufferedQueue =
+      input.reviewerQueue !== undefined
+        ? makeBufferingReviewerQueueSink(input.reviewerQueue, queueCaptures)
+        : undefined;
+
+    const unitInput: AgenticLoopUnitInput = {
+      unit,
+      sceneUnits: [],
+      // itotori-live-loop-style-glossary-injection — feed the run's ACTIVE
+      // glossary + style-guide (caller-resolved) into every unit's loop.
+      glossary: input.glossary ?? [],
+      protectedSpans: [],
+      knownCharacters: [],
+      ...(input.styleGuide !== undefined ? { styleGuide: input.styleGuide } : {}),
+      ...(context !== undefined
+        ? { narrativeStructure: context.narrativeStructure, sceneId: context.sceneId }
+        : {}),
+      actor: input.actor,
+      ...(bufferedQueue !== undefined ? { reviewerQueue: bufferedQueue } : {}),
+    };
+
+    const bundle = await runAgenticLoopForUnit(
+      unitInput,
+      input.pairPolicy,
+      policy,
+      input.providerFactory,
+    );
+
+    const accepted = bundle.finalDraft.draftText !== undefined;
+    const draftRecord: DrivenDraftRecord = {
+      bridgeUnitId: unit.bridgeUnitId,
+      sourceUnitKey: unit.sourceUnitKey,
+      sceneId: context?.sceneId,
+      outcome: bundle.routingSummary.outcome,
+      accepted,
+      targetLocale,
+      draftText: bundle.finalDraft.draftText,
+      deferredReason: bundle.finalDraft.deferredReason,
+    };
+    const telemetry = summariseProviderTelemetry(bundle, input.pair);
+
+    let acceptedBody: string | undefined;
+    if (accepted && bundle.finalDraft.draftText !== undefined) {
+      // Strip the out-of-band kidoku markup so the recorded body matches the
+      // patchback splice (mirrors the single-unit driver).
+      acceptedBody =
+        engineProfile === "rpg-maker-mv-mz"
+          ? bundle.finalDraft.draftText
+          : stripOutOfBandControlMarkup(bundle.finalDraft.draftText);
+    }
+
+    return {
+      status: "success",
+      unit,
+      draftRecord,
+      telemetry,
+      accepted,
+      acceptedBody,
+      queueCaptures,
+    };
+  } catch (error) {
+    log(
+      `project-driven-executor: unit ${unit.sourceUnitKey} FAILED (isolated, run continues): ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+    return {
+      status: "failure",
+      failure: {
+        bridgeUnitId: unit.bridgeUnitId,
+        sourceUnitKey: unit.sourceUnitKey,
+        errorClass: error instanceof Error ? error.name : "UnknownError",
+        errorMessage: error instanceof Error ? error.message : String(error),
+      },
+    };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Reviewer-queue write buffering — deterministic, canonical-order replay
+// ---------------------------------------------------------------------------
+
+type CapturedReviewerQueueCreate = {
+  actor: AuthorizationActor;
+  input: CreateReviewerQueueItemInput;
+};
+
+/**
+ * Wrap the real reviewer-queue sink so the loop's `createItem` writes are
+ * CAPTURED (not persisted) during the concurrent phase, then replayed in
+ * canonical unit order afterwards. `loadItemsByBranch` passes through to the
+ * real repository so the bridge's idempotency pre-check still sees persisted
+ * rows. The loop discards the `createItem` return value, but a faithful record
+ * is synthesised so the port contract holds.
+ */
+function makeBufferingReviewerQueueSink(
+  real: AgenticLoopReviewerQueueSink,
+  buffer: CapturedReviewerQueueCreate[],
+): AgenticLoopReviewerQueueSink {
+  let localSeq = 0;
+  return {
+    repository: {
+      createItem: async (actor, createInput) => {
+        buffer.push({ actor, input: createInput });
+        localSeq += 1;
+        return synthesiseBufferedQueueRecord(createInput, localSeq);
+      },
+      loadItemsByBranch: (actor, localeBranchId) =>
+        real.repository.loadItemsByBranch(actor, localeBranchId),
+    },
+  };
+}
+
+/** Replay one buffered reviewer-queue write onto the real sink (idempotent). */
+async function flushCapturedReviewerQueueItem(
+  sink: AgenticLoopReviewerQueueSink,
+  captured: CapturedReviewerQueueCreate,
+): Promise<void> {
+  try {
+    await sink.repository.createItem(captured.actor, captured.input);
+  } catch (error) {
+    // A duplicate (unique key already present) is a no-op — exactly as the
+    // bridge treats it — so a re-run against shared storage never throws.
+    if (
+      error instanceof ReviewerQueueRepositoryError &&
+      error.code === "reviewer_queue_item_duplicate"
+    ) {
+      return;
+    }
+    throw error;
+  }
+}
+
+function synthesiseBufferedQueueRecord(
+  createInput: CreateReviewerQueueItemInput,
+  seq: number,
+): ReviewerQueueItemRecord {
+  const createdAt = createInput.createdAt ?? new Date();
+  return {
+    reviewItemId: `driven-buffered-${seq}`,
+    projectId: createInput.projectId,
+    localeBranchId: createInput.localeBranchId,
+    sourceRevisionId: createInput.sourceRevisionId,
+    itemKind: createInput.itemKind,
+    sourceItemRef: createInput.sourceItemRef,
+    state: reviewerQueueItemStateValues.pending,
+    priority: createInput.priority ?? 0,
+    summary: createInput.summary,
+    affectedArtifactIds: createInput.affectedArtifactIds ?? [],
+    evidenceTier: createInput.evidenceTier ?? null,
+    observationEventIds: createInput.observationEventIds ?? null,
+    artifactHashes: createInput.artifactHashes ?? null,
+    payload: createInput.payload ?? {},
+    metadata: createInput.metadata ?? {},
+    createdByUserId: createInput.createdByUserId ?? null,
+    assignedToUserId: createInput.assignedToUserId ?? null,
+    createdAt,
+    updatedAt: createdAt,
+    resolvedAt: null,
   };
 }
 
