@@ -1,0 +1,31 @@
+{
+  "schemaVersion": "0.1.0",
+  "profileId": "packed/wolf/bad-patch",
+  "fixtureId": "alpha.readiness.wolf-bad-patch",
+  "sourceNodeId": "KAIFUU-056",
+  "prerequisiteProof": "wolf_archive_readiness_fixture",
+  "engineFamily": "wolf",
+  "capabilities": {
+    "adapterId": "kaifuu.packed.wolf",
+    "identify": {
+      "kind": "supported"
+    },
+    "inventory": {
+      "kind": "supported"
+    },
+    "extract": {
+      "kind": "supported"
+    },
+    "patch": {
+      "kind": "supported"
+    }
+  },
+  "helperKey": {
+    "keyStatus": "not_required",
+    "helperStatus": "not_required"
+  },
+  "patchBack": "unsupported",
+  "provenance": {
+    "fromPublicSyntheticFixture": true
+  }
+}

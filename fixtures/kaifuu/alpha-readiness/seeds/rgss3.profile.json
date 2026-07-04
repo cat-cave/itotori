@@ -1,0 +1,35 @@
+{
+  "schemaVersion": "0.1.0",
+  "profileId": "packed/rgss3/alpha",
+  "fixtureId": "alpha.readiness.rgss3",
+  "sourceNodeId": "KAIFUU-056",
+  "prerequisiteProof": "rgss3_header_key_readiness_fixture",
+  "engineFamily": "rgss3",
+  "capabilities": {
+    "adapterId": "kaifuu.packed.rgss3",
+    "identify": {
+      "kind": "supported"
+    },
+    "inventory": {
+      "kind": "partial",
+      "limitations": ["alpha: RGSSAD entry listing proven on synthetic archive; not retail-blessed"]
+    },
+    "extract": {
+      "kind": "unsupported",
+      "reason": "alpha: RGSSAD extraction not yet blessed"
+    },
+    "patch": {
+      "kind": "unsupported",
+      "reason": "alpha: RGSSAD extraction not yet blessed"
+    }
+  },
+  "helperKey": {
+    "keyStatus": "resolved",
+    "keyRef": "local-secret:rgss3-header-xor-key",
+    "helperStatus": "not_required"
+  },
+  "patchBack": "unsupported",
+  "provenance": {
+    "fromPublicSyntheticFixture": true
+  }
+}

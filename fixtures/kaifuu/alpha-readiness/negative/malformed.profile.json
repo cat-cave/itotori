@@ -1,0 +1,6 @@
+{
+  "schemaVersion": "0.1.0",
+  "profileId": "packed/malformed",
+  "engineFamily": "siglus",
+  "this_is_not": "a valid alpha readiness profile"
+}

@@ -1557,8 +1557,9 @@ fn run_readiness_command(args: &[String]) -> Result<(), Box<dyn std::error::Erro
     match positional(args, 1)? {
         "validate" => run_readiness_validate(args),
         "alpha-encrypted" => run_readiness_alpha_encrypted(args),
+        "alpha-profile" => run_readiness_alpha_profile(args),
         other => Err(format!(
-            "usage: kaifuu readiness <validate|alpha-encrypted> ...; got {other:?}"
+            "usage: kaifuu readiness <validate|alpha-encrypted|alpha-profile> ...; got {other:?}"
         )
         .into()),
     }
@@ -1673,6 +1674,78 @@ fn run_readiness_alpha_encrypted(args: &[String]) -> Result<(), Box<dyn std::err
             codes.join("; ")
         )
         .into());
+    }
+    Ok(())
+}
+
+/// KAIFUU-056 — `kaifuu readiness alpha-profile [--fixtures-dir <dir>]
+/// [--output <report.json>] [--summary-output <summary.json>]`.
+///
+/// Validates the alpha packed/encrypted-engine readiness-PROFILE subset (the
+/// Siglus / KiriKiri XP3 / Wolf / RGSS3 / BGI seeds by default) and renders the
+/// alpha capability-level summary. Writes a detailed, redacted validation report
+/// (per-operation status + classified findings) and a README-safe capability
+/// summary, and prints the capability table. Validation FAILS on any missing
+/// required capability / fixture / key / helper / patch-back field; the exit is
+/// non-zero. Reports carry only synthetic ids, kinds, and counts — never keys,
+/// paths, decrypted content, or filenames.
+fn run_readiness_alpha_profile(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
+    use kaifuu_core::{render_alpha_capability_summary_dir, validate_alpha_readiness_dir};
+
+    let fixtures_dir = PathBuf::from(
+        flag_optional(args, "--fixtures-dir").unwrap_or("fixtures/kaifuu/alpha-readiness/seeds"),
+    );
+    let output = PathBuf::from(
+        flag_optional(args, "--output").unwrap_or("target/kaifuu/alpha-readiness-validation.json"),
+    );
+    let summary_output = PathBuf::from(
+        flag_optional(args, "--summary-output")
+            .unwrap_or("target/kaifuu/alpha-readiness.summary.json"),
+    );
+
+    // Validate the public synthetic profile fixtures into a detailed report and
+    // render the README-safe capability summary from the same directory. Both
+    // paths tolerate malformed fixtures (failed entry/row, never a panic).
+    let report = validate_alpha_readiness_dir(&fixtures_dir)?;
+    let summary = render_alpha_capability_summary_dir(&fixtures_dir)?;
+
+    atomic_write_text(&output, &report.stable_json()?)?;
+    atomic_write_text(&summary_output, &summary.stable_json()?)?;
+
+    println!(
+        "kaifuu readiness alpha-profile: status={:?} engines={} detectorOnly={} patchCapable={}",
+        summary.status,
+        summary.engine_count,
+        summary.detector_only_count,
+        summary.patch_capable_count,
+    );
+    print!("{}", summary.render_text_table());
+
+    if report.status == kaifuu_core::OperationStatus::Failed {
+        let failures = report
+            .entries
+            .iter()
+            .filter(|entry| entry.status == kaifuu_core::OperationStatus::Failed)
+            .map(|entry| {
+                let codes = entry
+                    .findings
+                    .iter()
+                    .filter(|finding| finding.severity.is_blocking())
+                    .map(|finding| {
+                        format!(
+                            "{}:{}:{}",
+                            finding.severity.as_str(),
+                            finding.failure_class.as_str(),
+                            finding.code
+                        )
+                    })
+                    .collect::<Vec<_>>()
+                    .join(",");
+                format!("{} [{}]", entry.profile_id, codes)
+            })
+            .collect::<Vec<_>>()
+            .join("; ");
+        return Err(format!("alpha readiness-profile validation failed: {failures}").into());
     }
     Ok(())
 }

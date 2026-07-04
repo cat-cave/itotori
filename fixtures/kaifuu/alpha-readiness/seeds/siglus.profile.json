@@ -1,0 +1,33 @@
+{
+  "schemaVersion": "0.1.0",
+  "profileId": "packed/siglus/alpha",
+  "fixtureId": "alpha.readiness.siglus",
+  "sourceNodeId": "KAIFUU-056",
+  "prerequisiteProof": "siglus_profile_proof",
+  "engineFamily": "siglus",
+  "capabilities": {
+    "adapterId": "kaifuu.packed.siglus",
+    "identify": {
+      "kind": "supported"
+    },
+    "inventory": {
+      "kind": "supported"
+    },
+    "extract": {
+      "kind": "supported"
+    },
+    "patch": {
+      "kind": "partial",
+      "limitations": ["alpha: synthetic scene patch-back proven; retail-scale repack not yet blessed"]
+    }
+  },
+  "helperKey": {
+    "keyStatus": "resolved",
+    "keyRef": "local-secret:siglus-scene-static-key",
+    "helperStatus": "not_required"
+  },
+  "patchBack": "repack_archive",
+  "provenance": {
+    "fromPublicSyntheticFixture": true
+  }
+}

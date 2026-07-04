@@ -1,0 +1,34 @@
+{
+  "schemaVersion": "0.1.0",
+  "profileId": "packed/bgi/alpha",
+  "fixtureId": "alpha.readiness.bgi",
+  "sourceNodeId": "KAIFUU-056",
+  "prerequisiteProof": "KAIFUU-041.bgi-detection",
+  "engineFamily": "bgi",
+  "capabilities": {
+    "adapterId": "kaifuu.packed.bgi",
+    "identify": {
+      "kind": "supported"
+    },
+    "inventory": {
+      "kind": "unsupported",
+      "reason": "detector/profile evidence only (KAIFUU-041); no archive parser or patch support"
+    },
+    "extract": {
+      "kind": "unsupported",
+      "reason": "detector/profile evidence only (KAIFUU-041); no archive parser or patch support"
+    },
+    "patch": {
+      "kind": "unsupported",
+      "reason": "detector/profile evidence only (KAIFUU-041); no archive parser or patch support"
+    }
+  },
+  "helperKey": {
+    "keyStatus": "not_required",
+    "helperStatus": "not_required"
+  },
+  "patchBack": "unsupported",
+  "provenance": {
+    "fromPublicSyntheticFixture": true
+  }
+}

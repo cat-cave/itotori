@@ -177,6 +177,7 @@ pub const STRING_RELOCATION_INVALID_SOURCE_BYTES: &str =
 pub const XP3_PLAIN_MAGIC: &[u8] = b"XP3\r\n \n\x1a\x8b\x67\x01";
 
 pub mod alpha_encrypted_readiness;
+pub mod alpha_readiness_profile;
 pub mod compat_profile;
 pub mod contracts;
 pub mod mv_mz_asset_xor;
@@ -272,6 +273,18 @@ pub use alpha_encrypted_readiness::{
     AlphaEncryptedFinding, AlphaEncryptedPatchArtifact, AlphaEncryptedPatchResultRef,
     AlphaEncryptedReadinessEntry, AlphaEncryptedReadinessReport, AlphaEncryptedReadinessSummary,
     ConsumedValidationReport, generate_alpha_encrypted_readiness,
+};
+pub use alpha_readiness_profile::{
+    ALPHA_READINESS_PROFILE_GLOB, ALPHA_READINESS_PROFILE_SCHEMA_VERSION,
+    ALPHA_READINESS_SOURCE_NODE_ID, ALPHA_READINESS_SUMMARY_SCHEMA_VERSION,
+    ALPHA_READINESS_SUPPORT_BOUNDARY, AlphaCapabilityRow, AlphaCapabilitySummary,
+    AlphaHelperKeyStatus, AlphaOperationStatuses, AlphaReadinessEntry, AlphaReadinessFinding,
+    AlphaReadinessProfile, AlphaReadinessProvenance, AlphaReadinessValidationReport,
+    ReadinessFailureClass, alpha_readiness_profile_template, alpha_readiness_seed_bgi,
+    alpha_readiness_seed_kirikiri_xp3, alpha_readiness_seed_rgss3, alpha_readiness_seed_siglus,
+    alpha_readiness_seed_wolf, alpha_readiness_seeds, render_alpha_capability_summary,
+    render_alpha_capability_summary_dir, validate_alpha_readiness_dir,
+    validate_alpha_readiness_profile, validate_alpha_readiness_profiles,
 };
 pub use packed_engine_readiness::{
     EngineProfileSpec, PACKED_ENGINE_PROFILE_GLOB, PACKED_ENGINE_READINESS_SCHEMA_VERSION,

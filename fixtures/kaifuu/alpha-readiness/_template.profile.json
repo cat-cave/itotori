@@ -1,0 +1,34 @@
+{
+  "schemaVersion": "0.1.0",
+  "profileId": "packed/_template",
+  "fixtureId": "alpha.readiness.template",
+  "sourceNodeId": "KAIFUU-056",
+  "prerequisiteProof": "packed_engine_readiness.EngineProfileSpec",
+  "engineFamily": "bgi",
+  "capabilities": {
+    "adapterId": "kaifuu.packed.bgi",
+    "identify": {
+      "kind": "supported"
+    },
+    "inventory": {
+      "kind": "unsupported",
+      "reason": "template: raise this rung only when a prerequisite proof node backs it"
+    },
+    "extract": {
+      "kind": "unsupported",
+      "reason": "template: raise this rung only when a prerequisite proof node backs it"
+    },
+    "patch": {
+      "kind": "unsupported",
+      "reason": "template: raise this rung only when a prerequisite proof node backs it"
+    }
+  },
+  "helperKey": {
+    "keyStatus": "not_required",
+    "helperStatus": "not_required"
+  },
+  "patchBack": "unsupported",
+  "provenance": {
+    "fromPublicSyntheticFixture": true
+  }
+}
