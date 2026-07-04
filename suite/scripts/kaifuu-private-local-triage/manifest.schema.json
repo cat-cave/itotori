@@ -1,0 +1,78 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "itotori.kaifuu-private-local-triage-manifest.v0.1",
+  "title": "Kaifuu private-local encrypted corpus triage manifest",
+  "description": "Operator-authored, ALREADY-REDACTED description of one or more private-local encrypted owned-game corpora. This file lives under fixtures/private-local/ and is git-ignored. It records ONLY redacted evidence (logical ids, helper classes, proof HASHES, detector results, aggregate counts, readiness bins, redacted command lines) — never raw keys, encrypted bytes, decrypted text, retail filenames, or local absolute paths.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "corpora"],
+  "properties": {
+    "schemaVersion": { "const": "itotori.kaifuu-private-local-triage-manifest.v0.1" },
+    "corpora": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/entry" }
+    }
+  },
+  "definitions": {
+    "logicalId": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]*$",
+      "description": "Lowercase logical id — no slashes, no absolute paths, no retail filenames."
+    },
+    "proofHash": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["corpusId", "engine", "readinessBin"],
+      "properties": {
+        "corpusId": { "$ref": "#/definitions/logicalId" },
+        "engine": {
+          "enum": ["rpg-maker-mv", "rpg-maker-mz", "kirikiri-xp3", "siglus", "wolf", "rgss3-vx-ace"]
+        },
+        "readinessBin": {
+          "enum": [
+            "ready",
+            "helper_required",
+            "key_missing",
+            "unsupported_variant",
+            "detector_unknown",
+            "blocked"
+          ]
+        },
+        "keyProfileIdRedacted": {
+          "oneOf": [{ "$ref": "#/definitions/logicalId" }, { "type": "null" }]
+        },
+        "helperClass": {
+          "enum": ["staticParser", "runtimeHelper", "patchDatabase", "executableAnalysis", "none"]
+        },
+        "helperVersion": { "type": ["string", "null"] },
+        "helperAvailable": { "type": "boolean" },
+        "proofHashes": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/proofHash" }
+        },
+        "detectorResults": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "counts": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "assets": { "type": "integer", "minimum": 0 },
+            "encryptedAssets": { "type": "integer", "minimum": 0 },
+            "textUnits": { "type": "integer", "minimum": 0 },
+            "archives": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "commandLines": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    }
+  }
+}

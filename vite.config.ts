@@ -152,6 +152,24 @@ export default defineConfig({
           "node --test suite/scripts/itotori-iteration-fixture/run.test.mjs suite/scripts/itotori-iteration-fixture/iteration-fixture.test.mjs",
         cache: false,
       },
+      // KAIFUU-036: private-local encrypted corpus triage. A FIRST-CLASS LOCAL
+      // workflow that is intentionally ABSENT from per-gate CI — no `just
+      // check`/`ci` lane and no affected.mjs / qd-full-ci.mjs selection runs it.
+      // With no private inputs (the public/default case) it emits the
+      // deterministic REDACTED no-corpus artifact under
+      // .tmp/kaifuu-private-local/; with an operator manifest it emits the safe
+      // aggregate readiness report. Never reads raw keys/bytes, never shells out.
+      "kaifuu:private-local-triage": {
+        command: "node suite/scripts/kaifuu-private-local-triage/run.mjs",
+        cache: false,
+      },
+      // KAIFUU-036: deterministic unit + integration tests (no-corpus
+      // determinism + redacted aggregate + secret-leak rejection + schema
+      // validation). Hermetic; no private corpora.
+      "kaifuu:private-local-triage-test": {
+        command: "node --test suite/scripts/kaifuu-private-local-triage/run.test.mjs",
+        cache: false,
+      },
     },
   },
 });

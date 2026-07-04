@@ -1,0 +1,135 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "itotori.kaifuu-private-local-triage-report.v0.1",
+  "title": "Kaifuu private-local encrypted corpus triage aggregate readiness report",
+  "description": "SAFE AGGREGATE readiness evidence emitted by the kaifuu:private-local-triage workflow. Publicly citable by aggregate/hash metadata. Contains ONLY redacted fields: logical corpus/profile ids, helper classes, proof HASHES, detector results, aggregate counts, and per-engine readiness bins. The `skipped` status is the deterministic REDACTED no-corpus artifact emitted when no private inputs exist.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "status",
+    "reason",
+    "command",
+    "generatedBy",
+    "aggregateCounts",
+    "engineReadinessBins",
+    "entries"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "itotori.kaifuu-private-local-triage-report.v0.1" },
+    "status": { "enum": ["ok", "skipped"] },
+    "reason": {
+      "oneOf": [{ "const": "private_inputs_absent" }, { "type": "null" }]
+    },
+    "command": { "type": "string" },
+    "generatedBy": { "const": "suite/scripts/kaifuu-private-local-triage/run.mjs" },
+    "checkedPaths": {
+      "type": "array",
+      "description": "Present only on the no-corpus artifact: checked inputs redacted to logical ids.",
+      "items": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]*$" }
+    },
+    "aggregateCounts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["corpora", "entries", "assets", "encryptedAssets", "textUnits", "archives"],
+      "properties": {
+        "corpora": { "type": "integer", "minimum": 0 },
+        "entries": { "type": "integer", "minimum": 0 },
+        "assets": { "type": "integer", "minimum": 0 },
+        "encryptedAssets": { "type": "integer", "minimum": 0 },
+        "textUnits": { "type": "integer", "minimum": 0 },
+        "archives": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "engineReadinessBins": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "rpg-maker-mv",
+        "rpg-maker-mz",
+        "kirikiri-xp3",
+        "siglus",
+        "wolf",
+        "rgss3-vx-ace"
+      ],
+      "patternProperties": {
+        "^(rpg-maker-mv|rpg-maker-mz|kirikiri-xp3|siglus|wolf|rgss3-vx-ace)$": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "ready",
+            "helper_required",
+            "key_missing",
+            "unsupported_variant",
+            "detector_unknown",
+            "blocked"
+          ],
+          "properties": {
+            "ready": { "type": "integer", "minimum": 0 },
+            "helper_required": { "type": "integer", "minimum": 0 },
+            "key_missing": { "type": "integer", "minimum": 0 },
+            "unsupported_variant": { "type": "integer", "minimum": 0 },
+            "detector_unknown": { "type": "integer", "minimum": 0 },
+            "blocked": { "type": "integer", "minimum": 0 }
+          }
+        }
+      }
+    },
+    "entries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["corpusId", "engine", "readinessBin"],
+        "properties": {
+          "corpusId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]*$" },
+          "engine": {
+            "enum": [
+              "rpg-maker-mv",
+              "rpg-maker-mz",
+              "kirikiri-xp3",
+              "siglus",
+              "wolf",
+              "rgss3-vx-ace"
+            ]
+          },
+          "readinessBin": {
+            "enum": [
+              "ready",
+              "helper_required",
+              "key_missing",
+              "unsupported_variant",
+              "detector_unknown",
+              "blocked"
+            ]
+          },
+          "keyProfileIdRedacted": {
+            "oneOf": [{ "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]*$" }, { "type": "null" }]
+          },
+          "helperClass": {
+            "enum": ["staticParser", "runtimeHelper", "patchDatabase", "executableAnalysis", "none"]
+          },
+          "helperVersion": { "type": ["string", "null"] },
+          "helperAvailable": { "type": "boolean" },
+          "proofHashes": {
+            "type": "array",
+            "items": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
+          },
+          "detectorResults": { "type": "array", "items": { "type": "string" } },
+          "counts": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["assets", "encryptedAssets", "textUnits", "archives"],
+            "properties": {
+              "assets": { "type": "integer", "minimum": 0 },
+              "encryptedAssets": { "type": "integer", "minimum": 0 },
+              "textUnits": { "type": "integer", "minimum": 0 },
+              "archives": { "type": "integer", "minimum": 0 }
+            }
+          },
+          "commandLines": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    }
+  }
+}

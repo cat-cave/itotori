@@ -1,0 +1,67 @@
+{
+  "aggregateCounts": {
+    "archives": 0,
+    "assets": 0,
+    "corpora": 0,
+    "encryptedAssets": 0,
+    "entries": 0,
+    "textUnits": 0
+  },
+  "checkedPaths": ["private-local-root"],
+  "command": "vp run kaifuu:private-local-triage -- --no-corpus",
+  "engineReadinessBins": {
+    "kirikiri-xp3": {
+      "blocked": 0,
+      "detector_unknown": 0,
+      "helper_required": 0,
+      "key_missing": 0,
+      "ready": 0,
+      "unsupported_variant": 0
+    },
+    "rgss3-vx-ace": {
+      "blocked": 0,
+      "detector_unknown": 0,
+      "helper_required": 0,
+      "key_missing": 0,
+      "ready": 0,
+      "unsupported_variant": 0
+    },
+    "rpg-maker-mv": {
+      "blocked": 0,
+      "detector_unknown": 0,
+      "helper_required": 0,
+      "key_missing": 0,
+      "ready": 0,
+      "unsupported_variant": 0
+    },
+    "rpg-maker-mz": {
+      "blocked": 0,
+      "detector_unknown": 0,
+      "helper_required": 0,
+      "key_missing": 0,
+      "ready": 0,
+      "unsupported_variant": 0
+    },
+    "siglus": {
+      "blocked": 0,
+      "detector_unknown": 0,
+      "helper_required": 0,
+      "key_missing": 0,
+      "ready": 0,
+      "unsupported_variant": 0
+    },
+    "wolf": {
+      "blocked": 0,
+      "detector_unknown": 0,
+      "helper_required": 0,
+      "key_missing": 0,
+      "ready": 0,
+      "unsupported_variant": 0
+    }
+  },
+  "entries": [],
+  "generatedBy": "suite/scripts/kaifuu-private-local-triage/run.mjs",
+  "reason": "private_inputs_absent",
+  "schemaVersion": "itotori.kaifuu-private-local-triage-report.v0.1",
+  "status": "skipped"
+}

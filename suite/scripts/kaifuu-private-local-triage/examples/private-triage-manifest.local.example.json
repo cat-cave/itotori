@@ -1,0 +1,83 @@
+{
+  "schemaVersion": "itotori.kaifuu-private-local-triage-manifest.v0.1",
+  "corpora": [
+    {
+      "corpusId": "operator-corpus-mv-01",
+      "engine": "rpg-maker-mv",
+      "readinessBin": "ready",
+      "keyProfileIdRedacted": "profile-mv-encrypted-media-01",
+      "helperClass": "staticParser",
+      "helperVersion": "kaifuu-rpg-maker/0.1.0",
+      "helperAvailable": true,
+      "proofHashes": ["sha256:2c22b6c9e76383ee06844122c0bd099a0bddacc12c78f81b01cd0d0dc5be0532"],
+      "detectorResults": ["rpg-maker-mv-encrypted-media", "system-json-has-encryption-key"],
+      "counts": { "assets": 128, "encryptedAssets": 96, "textUnits": 5400, "archives": 0 },
+      "commandLines": ["kaifuu rpg-maker readiness-report --game <private-corpus-root>"]
+    },
+    {
+      "corpusId": "operator-corpus-mz-01",
+      "engine": "rpg-maker-mz",
+      "readinessBin": "helper_required",
+      "keyProfileIdRedacted": "profile-mz-encrypted-media-01",
+      "helperClass": "staticParser",
+      "helperVersion": "kaifuu-rpg-maker/0.1.0",
+      "helperAvailable": false,
+      "proofHashes": [],
+      "detectorResults": ["rpg-maker-mz-encrypted-media"],
+      "counts": { "assets": 64, "encryptedAssets": 40, "textUnits": 2100, "archives": 0 },
+      "commandLines": ["kaifuu rpg-maker readiness-report --game <private-corpus-root>"]
+    },
+    {
+      "corpusId": "operator-corpus-xp3-01",
+      "engine": "kirikiri-xp3",
+      "readinessBin": "key_missing",
+      "keyProfileIdRedacted": "profile-xp3-encrypted-01",
+      "helperClass": "executableAnalysis",
+      "helperVersion": "kaifuu-xp3/0.1.0",
+      "helperAvailable": false,
+      "proofHashes": [],
+      "detectorResults": ["xp3-encrypted-archive"],
+      "counts": { "assets": 210, "encryptedAssets": 210, "textUnits": 0, "archives": 3 },
+      "commandLines": ["kaifuu xp3 readiness-report --game <private-corpus-root>"]
+    },
+    {
+      "corpusId": "operator-corpus-siglus-01",
+      "engine": "siglus",
+      "readinessBin": "helper_required",
+      "keyProfileIdRedacted": "profile-siglus-secondary-key-01",
+      "helperClass": "staticParser",
+      "helperVersion": "kaifuu-siglus/0.1.0",
+      "helperAvailable": true,
+      "proofHashes": ["sha256:8a14979472c4c27f0183a34e9dd37c0935d46e9379a790d22063d7b32ec4b87f"],
+      "detectorResults": ["siglus-scene-pck-secondary-key"],
+      "counts": { "assets": 12, "encryptedAssets": 12, "textUnits": 8800, "archives": 2 },
+      "commandLines": ["kaifuu siglus readiness-report --game <private-corpus-root>"]
+    },
+    {
+      "corpusId": "operator-corpus-wolf-01",
+      "engine": "wolf",
+      "readinessBin": "unsupported_variant",
+      "keyProfileIdRedacted": "profile-wolf-encrypted-01",
+      "helperClass": "none",
+      "helperVersion": null,
+      "helperAvailable": false,
+      "proofHashes": [],
+      "detectorResults": ["wolf-encrypted-archive-protected"],
+      "counts": { "assets": 300, "encryptedAssets": 300, "textUnits": 0, "archives": 4 },
+      "commandLines": ["kaifuu wolf readiness-report --game <private-corpus-root>"]
+    },
+    {
+      "corpusId": "operator-corpus-rgss3-01",
+      "engine": "rgss3-vx-ace",
+      "readinessBin": "detector_unknown",
+      "keyProfileIdRedacted": null,
+      "helperClass": "none",
+      "helperVersion": null,
+      "helperAvailable": false,
+      "proofHashes": [],
+      "detectorResults": ["rgss3-rgssad-unknown-variant"],
+      "counts": { "assets": 512, "encryptedAssets": 0, "textUnits": 0, "archives": 1 },
+      "commandLines": ["kaifuu rgss3 readiness-report --game <private-corpus-root>"]
+    }
+  ]
+}
