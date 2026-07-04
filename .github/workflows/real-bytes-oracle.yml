@@ -1,0 +1,88 @@
+name: Real-Bytes Periodic Oracle
+
+# real-bytes-periodic-ground-truth-oracle (P2) — the strict-proof ANCHOR for the
+# synthetic-CI collapse. This workflow is the SCHEDULING mechanism for the
+# periodic oracle; it is deliberately SEPARATE from ci.yml / the per-gate
+# qd-full-ci path so a per-gate green never pays for (or waits on) it.
+#
+# Cadence:
+#   * schedule: nightly cron (00:17 UTC).
+#   * workflow_dispatch: on-demand, with a `stage` input to run the full oracle,
+#     drift-only, or ground-truth-only.
+#
+# What a red run means: the synthetic fixtures / coverage manifest DRIFTED away
+# from what the real bytes exercise. RE-DERIVE the synthetic (regenerate the
+# manifest with `node scripts/synthetic-coverage-manifest.mjs`, re-validate the
+# synthetic fixtures against the real corpora) and land the update before
+# trusting per-gate green. See docs/real-bytes-periodic-oracle.md.
+
+on:
+  schedule:
+    # Nightly at 00:17 UTC (off the top of the hour to avoid cron congestion).
+    - cron: "17 0 * * *"
+  workflow_dispatch:
+    inputs:
+      stage:
+        description: "Which oracle stage(s) to run"
+        type: choice
+        default: full
+        options:
+          - full # (A) real-bytes ground truth + (B) synthetic-vs-real drift
+          - drift-only # (B) only — repo sources, no corpora required
+          - ground-truth-only # (A) only
+
+jobs:
+  # DRIFT CHECK — repo-only (no corpora), so it runs on a hosted runner every
+  # night regardless of where the real bytes are staged. Catches synthetic /
+  # coverage-manifest drift away from the live source-of-truth catalogues.
+  drift-check:
+    if: ${{ github.event_name == 'schedule' || inputs.stage == 'full' || inputs.stage == 'drift-only' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      - run: sudo snap install just --classic
+      - run: just real-bytes-oracle-drift
+
+  # GROUND TRUTH — the FULL real-bytes suite + drift check against the real
+  # corpora. Requires a runner that has the real corpora staged (self-hosted,
+  # label `itotori-corpora`), since Sweetie HD / Kanon / LustMemory / the vault
+  # live under /scratch + /archive/vault and are never committed. On a runner
+  # without the corpora, `just ci-real-bytes` pre-checks the roots and FAILS
+  # LOUD (nonzero) rather than passing with zero real bytes — a red run, never a
+  # false green. Corpus roots are overridable via the ITOTORI_REAL_GAME_ROOT*
+  # / ITOTORI_VAULT_ROOT env for machines that stage elsewhere.
+  ground-truth:
+    if: ${{ github.event_name == 'schedule' || inputs.stage == 'full' || inputs.stage == 'ground-truth-only' }}
+    runs-on: [self-hosted, itotori-corpora]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      - run: sudo snap install just --classic
+      # The full oracle: stage (A) real-bytes ground truth + stage (B) the
+      # synthetic-vs-real drift check, both against the staged corpora. (The
+      # hosted drift-check job re-runs (B) without corpora; the small overlap is
+      # intentional so a corpora-less nightly still catches manifest drift.)
+      - run: just real-bytes-oracle

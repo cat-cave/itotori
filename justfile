@@ -151,6 +151,26 @@ ci-real-bytes:
     # live_vault_siglus_test materializes both Siglus portable installs (Karetoshi + Gamekoi) by-id.
     cargo test -p kaifuu-vault-source --test live_vault_open_test --test live_vault_by_id_test --test live_vault_siglus_test -- --ignored
 
+# real-bytes-periodic-ground-truth-oracle (P2): the strict-proof ANCHOR for the
+# synthetic-CI collapse. PERIODIC (nightly + on-demand), invoked OUTSIDE per-gate
+# CI — it is deliberately NOT in affected.mjs / qd-full-ci (that is the whole
+# point: per-gate green never pays for or waits on this ~30-45min run). It (A)
+# re-runs the FULL real-bytes suite (`ci-real-bytes`) against the real corpora as
+# GROUND TRUTH, then (B) re-derives the coverage manifest from the SAME live
+# source-of-truth catalogues and diffs it against the committed manifest — a
+# SYNTHETIC-vs-REAL DRIFT CHECK. Any divergence FAILS LOUD (nonzero) telling the
+# operator to RE-DERIVE the synthetic. Real corpora are read-only; no copyrighted
+# bytes are copied. Cadence + failure-meaning: docs/real-bytes-periodic-oracle.md.
+real-bytes-oracle:
+    node scripts/real-bytes-oracle.mjs
+
+# Drift-only slice of the oracle: the SYNTHETIC-vs-REAL drift check WITHOUT the
+# corpora-bound ground-truth suite (repo sources only). Runs anywhere (incl.
+# hosted CI runners with no corpora) so drift can be caught nightly even where
+# the real bytes are not staged. Still OUTSIDE per-gate CI.
+real-bytes-oracle-drift:
+    node scripts/real-bytes-oracle.mjs --drift-only
+
 # Per-gate CI entrypoint. Affected-aware by default: selects only the lanes the
 # diff (vs ITOTORI_QD_AFFECTED_BASE, default `main`) can touch — apps/itotori-only
 # changes run the itotori gate + check and SKIP the rust real-bytes lane; crate
