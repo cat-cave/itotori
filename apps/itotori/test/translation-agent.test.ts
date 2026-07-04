@@ -376,15 +376,16 @@ describe("TranslationAgent.invokeTranslation malformed responses", () => {
     }
   });
 
-  it("rejects a response with a trailing comma (repairableTrailingCommaFixture, no silent repair)", async () => {
+  it("salvages a response with a trailing comma via bounded json-repair (repairableTrailingCommaFixture)", async () => {
+    // Patchback-safety: json-repair is now the primary structured-output
+    // decode path. A trailing comma that a raw JSON.parse rejects is
+    // deterministically stripped before schema validation, so the agent
+    // recovers the (here empty-drafts) response instead of throwing.
     const input = inputFixture();
     const provider = buildFakeTranslationProvider(() => repairableTrailingCommaFixture());
     const agent = new TranslationAgent({ provider });
-    const error = await agent.invokeTranslation(FIXED_ACTOR, input).catch((e: unknown) => e);
-    expect(error).toBeInstanceOf(TranslationDraftResponseValidationError);
-    if (error instanceof TranslationDraftResponseValidationError) {
-      expect(error.rule).toBe("json");
-    }
+    const result = await agent.invokeTranslation(FIXED_ACTOR, input);
+    expect(result.drafts).toEqual([]);
   });
 
   it("rejects a response with an invalid confidenceFloor enum", async () => {

@@ -44,6 +44,7 @@ import {
   type StructuredTranslationDraftOutput,
   type TranslationDraft,
 } from "@itotori/localization-bridge-schema";
+import { repairJsonObject } from "../../localization/patchback-safety.js";
 import { assertReportedTokenUsage } from "../../providers/token-accounting.js";
 import { selectStructuredOutputRequest } from "../../providers/structured-output.js";
 import { RecordedModelProvider } from "../../providers/recorded.js";
@@ -152,7 +153,7 @@ export class TranslationAgent {
       );
     }
 
-    const parsed = parseStructuredTranslationDraftOutput(rawContent);
+    const parsed = this.parseWithBoundedRepair(rawContent);
     this.assertBridgeUnitsResolve(parsed, input);
     this.assertLocaleConsistency(parsed, input);
     this.assertCitationsResolve(parsed, input);
@@ -237,6 +238,33 @@ export class TranslationAgent {
         this.options.provider.descriptor.family,
         error instanceof Error ? error.message : String(error),
       );
+    }
+  }
+
+  /**
+   * Parse the provider's structured-output content into a validated
+   * `StructuredTranslationDraftOutput`. Patchback-safety: a truncated /
+   * fenced / trailing-comma response is deterministically salvaged via
+   * `repairJsonObject` (bounded, never fabricates fields) BEFORE the typed
+   * validation error is surfaced. This is the primary structured-output
+   * decode path — the model no longer has to emit byte-perfect JSON for the
+   * loop to make progress; only a genuinely-unrecoverable response throws.
+   */
+  private parseWithBoundedRepair(rawContent: string): StructuredTranslationDraftOutput {
+    try {
+      return parseStructuredTranslationDraftOutput(rawContent);
+    } catch (error) {
+      if (!(error instanceof TranslationDraftResponseValidationError)) {
+        throw error;
+      }
+      const repaired = repairJsonObject(rawContent);
+      if (repaired === null || typeof repaired !== "object") {
+        // Nothing to salvage — surface the original typed validation error.
+        throw error;
+      }
+      // Re-run the SAME strict schema validation on the repaired object; a
+      // still-invalid shape throws its own TranslationDraftResponseValidationError.
+      return parseStructuredTranslationDraftOutput(JSON.stringify(repaired));
     }
   }
 

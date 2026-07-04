@@ -29,7 +29,6 @@ import {
   AGENTIC_LOOP_BUNDLE_SCHEMA_VERSION,
   type AgenticLoopBundle,
   type AgenticLoopInvocation,
-  type AgenticLoopProviderPair,
   type AgenticLoopRoutingOutcome,
   type AgenticLoopRoutingSummary,
   type AgenticLoopStageName,
@@ -66,6 +65,12 @@ import type {
   DraftProtectedSpanViolation,
   DraftSourceProtectedSpan,
 } from "../draft/protected-span-validator.js";
+import {
+  normalizeToSjisSafe,
+  reconstructTarget,
+  splitProtectedSpans,
+} from "../localization/patchback-safety.js";
+import type { ProtectedSpanRef, TranslationDraft } from "@itotori/localization-bridge-schema";
 import { FindingTriageRouter } from "../triage/router.js";
 import type { FindingTriageResult } from "../triage/router.js";
 import type { ModelInvocationRequest, ModelProvider, ProviderFamily } from "../providers/types.js";
@@ -827,22 +832,39 @@ async function invokeTranslationStage(args: {
   agentLabel: string;
 }): Promise<TranslationInvocationResult> {
   const agent = new TranslationAgent({ provider: args.provider });
+
+  // PATCHBACK-SAFETY (primary, deterministic). Strip EVERY protected control
+  // span — out-of-band kidoku markers, the leading 【name】 speaker token, and
+  // the 「…」 quote wrapper — OFF the source before the LLM. The model only
+  // ever sees `skeleton.body` (the pure translatable dialogue/narration), so
+  // it CANNOT drop or mutate the control markup: the deterministic re-inject
+  // below owns it. This is config-coherent with the translation scope — the
+  // same split applies uniformly to whatever unit is in scope (a choice_label
+  // / ui_label with no name/quotes splits to a bare body and re-injects
+  // unchanged; the DraftProtectedSpanValidator downstream is now a SAFETY NET,
+  // no longer the primary preservation mechanism).
+  const skeleton = splitProtectedSpans(args.input.unit.sourceText);
+
   const protectedSpansBySource = new Map<string, ReadonlyArray<TranslationProtectedSpanInput>>();
   // The translation agent enforces byte-equal preservation for source_unit
-  // / markup / variable spans only. Glossary spans are NOT given to the
-  // agent — they live on the second-layer deterministic check, which
-  // validates capitalization + presence of the expected target form.
+  // / markup / variable spans that remain IN the stripped body only. Glossary
+  // spans are NOT given to the agent — they live on the second-layer
+  // deterministic check. Spans consumed by the skeleton (name / quotes /
+  // kidoku) are dropped from the agent catalog: they are re-injected
+  // deterministically and never reach the model.
+  const inBodySpans = args.input.protectedSpans
+    .filter((s) => s.spanKind !== "glossary")
+    .filter((s) => skeleton.body.includes(s.sourceText));
   protectedSpansBySource.set(
     args.input.unit.bridgeUnitId,
-    args.input.protectedSpans
-      .filter((s) => s.spanKind !== "glossary")
-      .map((s) => ({ refId: s.refId, sourceText: s.sourceText })),
+    inBodySpans.map((s) => ({ refId: s.refId, sourceText: s.sourceText })),
   );
   const sourceBridgeUnits: TranslationBridgeUnit[] = [
     {
       bridgeUnitId: args.input.unit.bridgeUnitId,
       sourceUnitKey: args.input.unit.sourceUnitKey,
-      sourceText: args.input.unit.sourceText,
+      // Model sees ONLY the body — control markup is stripped.
+      sourceText: skeleton.body,
       sourceHash: args.input.unit.sourceHash,
     },
   ];
@@ -868,7 +890,78 @@ async function invokeTranslationStage(args: {
     },
     promptTemplateVersion: TRANSLATION_PROMPT_TEMPLATE_VERSION_V1,
   };
-  return agent.invokeTranslation(args.input.actor, invocationInput);
+  const result = await agent.invokeTranslation(args.input.actor, invocationInput);
+
+  // Deterministically reconstruct the patchback-safe target for the unit:
+  //   (b) SJIS-normalize the LLM body (curly quotes / em-dash / … folded to a
+  //       Shift_JIS-representable equivalent, genuine CJK kept);
+  //   (c) re-inject the stripped 【name】 + 「…」 + trailing around it, applying
+  //       any glossary-driven name romanization.
+  // The refs are then recomputed against the reconstructed target so the
+  // downstream deterministic checks + validator score the FINAL, patchback-
+  // safe text (not the model's body-relative offsets).
+  const nameRomanization = buildNameRomanization(args.input.glossary);
+  const rebuiltDrafts: TranslationDraft[] = result.drafts.map((draft) => {
+    if (draft.bridgeUnitId !== args.input.unit.bridgeUnitId) {
+      return draft;
+    }
+    const normalizedBody = normalizeToSjisSafe(draft.draftText);
+    const finalTarget = reconstructTarget(skeleton, normalizedBody, nameRomanization);
+    return {
+      ...draft,
+      draftText: finalTarget,
+      protectedSpanRefs: relocateProtectedSpanRefs(finalTarget, inBodySpans),
+    };
+  });
+  return { ...result, drafts: rebuiltDrafts };
+}
+
+/**
+ * Recompute each in-body protected span's `(startInDraft, endInDraft)` range
+ * against the reconstructed patchback-safe target by locating its literal
+ * source text. Because the deterministic layer is now primary, the loop no
+ * longer trusts the model's body-relative offsets — it derives them from the
+ * final target. A span that cannot be located (destroyed by the model) is
+ * simply omitted, leaving the DraftProtectedSpanValidator safety-net to report
+ * the divergence.
+ */
+function relocateProtectedSpanRefs(
+  finalTarget: string,
+  inBodySpans: ReadonlyArray<{ refId: string; sourceText: string }>,
+): ProtectedSpanRef[] {
+  const refs: ProtectedSpanRef[] = [];
+  for (const span of inBodySpans) {
+    const start = finalTarget.indexOf(span.sourceText);
+    if (start < 0) {
+      continue;
+    }
+    refs.push({
+      refId: span.refId,
+      startInDraft: start,
+      endInDraft: start + span.sourceText.length,
+    });
+  }
+  refs.sort((a, b) => a.startInDraft - b.startInDraft);
+  return refs;
+}
+
+/**
+ * Build the deterministic name-romanization map consumed by
+ * `reconstructTarget`. Config-coherent with the glossary: a glossary entry
+ * with a `preferredTargetForm` maps its bracketed speaker token
+ * `【source】` → `【target】`. A name absent from the map keeps its original
+ * (Shift_JIS-safe) token, so a speaker name is never dropped or corrupted.
+ */
+function buildNameRomanization(
+  glossary: ReadonlyArray<TranslationGlossaryEntry>,
+): ReadonlyMap<string, string> {
+  const map = new Map<string, string>();
+  for (const entry of glossary) {
+    if (entry.preferredTargetForm !== undefined && entry.preferredTargetForm.length > 0) {
+      map.set(`【${entry.preferredSourceForm}】`, `【${entry.preferredTargetForm}】`);
+    }
+  }
+  return map;
 }
 
 function providerTelemetryFromTranslation(

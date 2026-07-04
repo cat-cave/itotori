@@ -11,7 +11,7 @@
 //   - validTranslationDraftFixture      : known-good 3-draft response
 //   - malformedJsonFixture              : invalid JSON
 //   - missingProtectedSpanFixture       : output drops a required ref
-//   - repairableTrailingCommaFixture    : trailing-comma JSON (no silent repair)
+//   - repairableTrailingCommaFixture    : trailing-comma JSON (bounded json-repair salvages it)
 //   - fallbackTimeoutFixture            : empty response simulating provider timeout
 
 import {
@@ -150,9 +150,11 @@ export function missingProtectedSpanFixture(): string {
 }
 
 /**
- * Provider response with a trailing comma — RFC 8259 forbids them
- * and the parser refuses (no silent repair). Used to assert the
- * parse-error diagnostic surface.
+ * Provider response with a trailing comma — RFC 8259 forbids them, so a raw
+ * JSON.parse refuses. The TranslationAgent's bounded `repairJsonObject` salvage
+ * (patchback-safety) strips the trailing comma before schema validation, so
+ * this response is now recovered rather than rejected. Used to assert the
+ * deterministic json-repair path.
  */
 export function repairableTrailingCommaFixture(): string {
   // Hand-built so we can include the trailing comma directly.
