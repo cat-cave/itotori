@@ -1,0 +1,21 @@
+{
+  "gameTitle": "Itotori K112 Golden Fixture",
+  "currencyUnit": "G",
+  "hasEncryptedImages": true,
+  "hasEncryptedAudio": true,
+  "locale": "en_US",
+  "terms": {
+    "basic": ["Level", "Lv", "HP", "MP"],
+    "params": ["Max HP", "Max MP", "Attack"],
+    "commands": [null, "Fight", "Escape", "Item"],
+    "messages": {
+      "actorDamage": "%1 took %2 damage!",
+      "actorRecovery": "%1 recovered %2 HP!"
+    }
+  },
+  "equipTypes": ["", "Weapon", "Shield"],
+  "skillTypes": ["", "Magic", "Special"],
+  "weaponTypes": ["", "Dagger"],
+  "armorTypes": ["", "Light Armor"],
+  "elements": ["", "Fire", "Ice"]
+}

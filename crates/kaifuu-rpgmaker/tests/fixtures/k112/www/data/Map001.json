@@ -1,0 +1,32 @@
+{
+  "autoplayBgm": false,
+  "displayName": "Golden Fixture Town",
+  "events": [
+    null,
+    {
+      "id": 1,
+      "name": "EV001",
+      "x": 5,
+      "y": 7,
+      "pages": [
+        {
+          "conditions": { "switch1Valid": false },
+          "list": [
+            { "code": 101, "indent": 0, "parameters": ["Actor1", 0, 0, 2, "Guide"] },
+            { "code": 401, "indent": 0, "parameters": ["Welcome \\v[1] to the golden fixture."] },
+            { "code": 401, "indent": 0, "parameters": ["This synthetic line has no retail text."] },
+            { "code": 102, "indent": 0, "parameters": [["Continue", "Leave"], 1, 0, 2, 0] },
+            { "code": 402, "indent": 1, "parameters": [0, "Continue"] },
+            { "code": 401, "indent": 2, "parameters": ["Onward, then."] },
+            { "code": 402, "indent": 1, "parameters": [1, "Leave"] },
+            { "code": 404, "indent": 1, "parameters": [] },
+            { "code": 105, "indent": 0, "parameters": [2, false] },
+            { "code": 405, "indent": 0, "parameters": ["The synthetic gates creak open slowly."] },
+            { "code": 356, "indent": 0, "parameters": ["FixturePlugin demo"] },
+            { "code": 0, "indent": 0, "parameters": [] }
+          ]
+        }
+      ]
+    }
+  ]
+}

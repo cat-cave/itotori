@@ -51,6 +51,7 @@ mod codes;
 mod database_terms;
 mod escape;
 mod extract;
+mod integration;
 mod json_locate;
 mod map_common_event;
 mod patchback;
@@ -78,6 +79,15 @@ pub use escape::{EscapeSpan, scan_escape_spans};
 pub use extract::{
     ExtractAcc, Finding, FindingKind, ProtoUnit, SurfaceKind, is_database_file, walk_common_events,
     walk_database, walk_map, walk_system, walk_troops,
+};
+pub use integration::{
+    CapabilityLevel, CapabilityScope, ChangedFile, FindingRecord, FullSurfaceError,
+    FullSurfaceExtraction, FullSurfaceExtractionManifest, FullSurfacePatch,
+    FullSurfacePatchManifest, K112_FIXTURE_PROFILE_ID, K112_FULL_SURFACE_SCHEMA_VERSION,
+    MediaAsset, MvMzCapabilityTuple, MvMzSurfaceRole, OutOfScope, PATCH_ESCAPING,
+    PluginDiagnosticRecord, SCOPE_ENCRYPTED_MEDIA, SCOPE_JSON_TEXT, SCOPE_PLUGIN_JS_LOGIC,
+    SCOPE_PLUGIN_PROFILE, SurfaceCoverage, extract_full_surface, patch_full_surface_trivial,
+    role_for_data_key, trivial_target,
 };
 pub use json_locate::{LocateError, QuotedSpan, Scanner, encode_json_string_ascii_safe};
 pub use map_common_event::{
