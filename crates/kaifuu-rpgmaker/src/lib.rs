@@ -54,6 +54,7 @@ mod extract;
 mod json_locate;
 mod map_common_event;
 mod patchback;
+mod plugin_profile;
 mod recognize;
 
 use std::fs;
@@ -92,6 +93,13 @@ pub use patchback::{
     PATCHBACK_UNRESOLVED_SURFACE_CODE, PATCHBACK_VERIFICATION_FAILED_CODE, PatchbackError,
     PatchbackOpts, ProducedDelta, TranslatedBundleV02, TranslatedUnitTarget,
     apply_translated_bundle, produce_delta_package,
+};
+pub use plugin_profile::{
+    FIXTURE_PROFILE_ID as K111_FIXTURE_PROFILE_ID, PLUGINS_JS_FILE, Patchability, PluginDiagnostic,
+    PluginDiagnosticKind, PluginExtractError, PluginExtraction, PluginParamPointer,
+    PluginPatchError, PluginProfile, PluginTextRole, PluginTranslation, ProfiledPlugin,
+    StablePluginTextUnit, extract_plugins as extract_plugin_units, extract_plugins_file,
+    patch_file as patch_plugins_file,
 };
 pub use recognize::{RecognizedCommand, recognize_plugin_command};
 
