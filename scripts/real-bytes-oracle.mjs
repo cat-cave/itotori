@@ -118,11 +118,10 @@ function runGroundTruth() {
 // suite so a silent parser break can't mask a real drift as "no diff".
 function runExtractorSelfTest() {
   banner("stage B.1 — manifest extractor self-test");
-  const result = spawnSync(
-    "node",
-    ["--test", "scripts/synthetic-coverage-manifest.test.mjs"],
-    { cwd: repoRoot, stdio: "inherit" },
-  );
+  const result = spawnSync("node", ["--test", "scripts/synthetic-coverage-manifest.test.mjs"], {
+    cwd: repoRoot,
+    stdio: "inherit",
+  });
   if (result.status !== 0) {
     throw new OracleDriftError(
       `the coverage-manifest extractor self-test failed (exit ${result.status}); ` +

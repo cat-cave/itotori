@@ -23,7 +23,7 @@ Two stages, run by `scripts/real-bytes-oracle.mjs`. Either failing fails the
 whole run (nonzero exit):
 
 - **(A) Ground truth** — re-runs the full real-bytes suite (`just
-  ci-real-bytes`) against the real corpora (Sweetie HD + Kanon RealLive,
+ci-real-bytes`) against the real corpora (Sweetie HD + Kanon RealLive,
   LustMemory RPG Maker MV/MZ, and the vault-materialized Siglus installs),
   read-only, never copying copyrighted bytes. Passing proves the
   source-of-truth catalogues (`REAL_CATALOG`, `NamedOpcode`, `classify()`, the
@@ -48,10 +48,10 @@ whole run (nonzero exit):
 
 They chain:
 
-| stage | proves |
-| ----- | ------ |
+| stage | proves                                                         |
+| ----- | -------------------------------------------------------------- |
 | (A)   | catalogues **==** real bytes (0 unknown opcodes on real bytes) |
-| (B)   | manifest **==** catalogues (re-derived diff is empty) |
+| (B)   | manifest **==** catalogues (re-derived diff is empty)          |
 | ∴     | manifest (the synthetic's coverage contract) **==** real bytes |
 
 If the synthetic ever silently diverged from reality, one of these links breaks
@@ -71,7 +71,7 @@ and the run goes red.
   - `workflow_dispatch` takes a `stage` input: `full`, `drift-only`, or
     `ground-truth-only`.
 - **On-demand locally**: `just real-bytes-oracle` (full) or `just
-  real-bytes-oracle-drift` (drift check only, no corpora).
+real-bytes-oracle-drift` (drift check only, no corpora).
 
 ## It is NOT in the per-gate CI path
 
@@ -88,7 +88,7 @@ A red oracle means the synthetic fixtures / coverage manifest **drifted** away
 from what the real bytes exercise. **Re-derive the synthetic**:
 
 1. Regenerate the coverage manifest with `node
-   scripts/synthetic-coverage-manifest.mjs`.
+scripts/synthetic-coverage-manifest.mjs`.
 2. Re-author / re-validate the synthetic fixtures against the real corpora.
 3. Land the update **before** trusting per-gate green again.
 
