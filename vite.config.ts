@@ -11,10 +11,16 @@ export default defineConfig({
     // The ALPHA-004 engine capability matrix artifact is byte-pinned to the
     // output of `scripts/generate-engine-capability-matrix.mjs` (its `--check`
     // staleness gate compares exact bytes); the formatter must not rewrite it.
+    //
+    // The KAIFUU-111 RPG Maker MV/MZ `plugins.js` data fixtures embed a
+    // `$plugins` array the extractor parses as STRICT JSON (quoted keys).
+    // Formatting them as JavaScript would unquote the object keys and break
+    // the strict-JSON parse, so they must stay strict-JSON-parseable.
     ignorePatterns: [
       "crates/utsushi-fixture/tests/fixtures/jump_targets/replay_logs/**",
       "apps/itotori/src/engine-capability/**",
       "fixtures/synthetic/**",
+      "crates/kaifuu-rpgmaker/tests/fixtures/**",
     ],
   },
   resolve: {
