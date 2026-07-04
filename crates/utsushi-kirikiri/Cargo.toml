@@ -1,0 +1,32 @@
+[package]
+name = "utsushi-kirikiri"
+version = "0.0.0"
+publish = false
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "UTSUSHI-037 KAG plaintext REPLAY skeleton: deterministically replays an already-plaintext KiriKiri/KAG `.ks` script into a typed trace of message text, speaker/name state, choices, and jumps. Skeleton only — NOT full TJS scripting or the encrypted-XP3 container runtime; unsupported TJS/macros/[iscript] surface as typed semantic diagnostics. No shell-outs."
+
+[dependencies]
+# The `.ks` source is decoded once (UTF-8 / Shift-JIS) and every control-flow
+# scan runs over the decoded `&str`, so the encoding-safety hazard KAIFUU-009
+# handles at the byte level (a Shift-JIS trailing byte equal to an ASCII
+# delimiter) is dissolved before scanning. `encoding_rs` is the same decoder
+# `kaifuu-kirikiri` uses.
+encoding_rs.workspace = true
+serde = { workspace = true }
+serde_json.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+# KAIFUU-009's KAG `.ks` PARSER is a dev-dependency ORACLE, not a production
+# coupling — mirroring how `utsushi-reallive` keeps `kaifuu-reallive` as a
+# dev-dep oracle so a regression in one project cannot poison the other. The
+# text+name cross-validation test asserts this crate's independent replay
+# reproduces KAIFUU-009's authoritative `(dialogue text, speaker)` extraction
+# byte-for-byte on the shared dialect, so the reuse is proven against real
+# parse OUTPUT rather than by production linkage.
+kaifuu-kirikiri = { path = "../kaifuu-kirikiri" }
+
+[lints]
+workspace = true

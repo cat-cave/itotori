@@ -1334,6 +1334,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "utsushi-kirikiri"
+version = "0.0.0"
+dependencies = [
+ "encoding_rs",
+ "kaifuu-kirikiri",
+ "serde",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
 name = "utsushi-reallive"
 version = "0.0.0"
 dependencies = [

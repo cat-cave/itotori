@@ -15,6 +15,7 @@ members = [
   "crates/utsushi-reallive",
   "crates/utsushi-rpgmaker-mv",
   "crates/utsushi-siglus",
+  "crates/utsushi-kirikiri",
   "crates/utsushi-cli",
 ]
 
