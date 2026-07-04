@@ -82,6 +82,30 @@ export function buildTranslationPrompt(
     }
   }
 
+  // itotori-structure-informed-context-building — inject the structurally-
+  // grounded context (from the Kaifuu/Utsushi decode) when present. STRICTLY
+  // ADDITIVE: when `structuredContext` is undefined nothing is emitted, so the
+  // no-structure baseline prompt (and every recorded fixture keyed by its
+  // hash) is byte-identical to the pre-feature template.
+  if (input.structuredContext !== undefined) {
+    const ctx = input.structuredContext;
+    lines.push("");
+    lines.push(
+      "Structure-informed context (decoded from the game's real scene graph, " +
+        "choice/branch subsystem, and speaker table — authoritative, not guesswork):",
+    );
+    lines.push(`- Scene summary: ${ctx.sceneSummaryText}`);
+    lines.push(`- Route/branch position: ${ctx.routePositionText}`);
+    for (const arcLine of ctx.characterArcsText.split("\n")) {
+      lines.push(`- ${arcLine}`);
+    }
+    lines.push(
+      "Use this to keep speaker voice consistent, resolve referents from the " +
+        "scene, and stay branch-aware. Cite the artifact refs you rely on: " +
+        `${[...ctx.artifactRefs].sort().join(", ")}.`,
+    );
+  }
+
   lines.push("");
   lines.push("Units (canonical order):");
   const units = canonicalizeUnits(input.sourceBridgeUnits);

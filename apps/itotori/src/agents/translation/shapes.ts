@@ -24,6 +24,7 @@ import type {
   ProviderRunRecord,
 } from "../../providers/types.js";
 import type { Bcp47Locale, Uuid7 } from "../../batch-planner/shapes.js";
+import type { StructuredContextInjection } from "../structure-informed-context/shapes.js";
 
 export const TRANSLATION_PROMPT_TEMPLATE_VERSION_V1 = "itotori-translation-agent-v1";
 export const TRANSLATION_DEFAULT_STRUCTURED_OUTPUT_NAME =
@@ -117,6 +118,19 @@ export type TranslationInvocationInput = {
    * permitted citations and need not be repeated here.
    */
   contextArtifactRefs?: ReadonlyArray<string>;
+  /**
+   * itotori-structure-informed-context-building — the structurally-grounded
+   * context injected from the Kaifuu/Utsushi decode: the scene summary, the
+   * slice's position in the route/branch map, and the speakers' character
+   * arcs. Built by
+   * `agents/structure-informed-context` (a deterministic reduction of the
+   * decode, NOT an LLM guess). When present the prompt template renders a
+   * dedicated "Structure-informed context" block; when ABSENT the prompt is
+   * byte-identical to the pre-feature template (the no-structure baseline).
+   * Its `artifactRefs` should also be listed in `contextArtifactRefs` so the
+   * agent may cite them.
+   */
+  structuredContext?: StructuredContextInjection | undefined;
   modelProfile: TranslationModelProfile;
   promptTemplateVersion: string;
   now?: (() => Date) | undefined;
