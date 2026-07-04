@@ -369,9 +369,17 @@ pub fn repoint_script(
             RawCommand::Select {
                 text_pointer,
                 text_ptr_field_offset,
+                decoupled_label,
                 ..
             } => {
+                // The immediate carries the label in the v21465 variant; the
+                // out-of-pool sentinel (v60663) is skipped by the map lookup.
                 fields.push((text_ptr_field_offset, text_pointer));
+                // The v60663 decoupled label lives in a separate field earlier in
+                // the menu block — repoint it too when the choice was translated.
+                if let Some(dl) = decoupled_label {
+                    fields.push((dl.field_offset, dl.pointer));
+                }
             }
         }
     }

@@ -75,10 +75,10 @@ pub use patchback::{
     SOFTPAL_PATCHBACK_ERROR_MARKER, TranslationMap, patchback, rebuild_textdat, repoint_script,
 };
 pub use script::{
-    COMMAND_NAME_PTR_OFFSET, COMMAND_TEXT_PTR_OFFSET, ChoiceUnit, DialogueUnit, Disassembly,
-    NO_SPEAKER_POINTER, PointerResolution, RawCommand, SCRIPT_COMMAND_MARKER,
-    SCRIPT_HEADER_BYTE_LEN, SCRIPT_MAGIC_PREFIX, SELECT_COMMAND_BYTE_LEN, SELECT_MARKER_OFFSET,
-    SELECT_WORD_HI, SELECT_WORD_LO, ScriptError, ScriptHeader, ScriptScan,
+    COMMAND_NAME_PTR_OFFSET, COMMAND_TEXT_PTR_OFFSET, ChoiceUnit, DecoupledLabel, DialogueUnit,
+    Disassembly, NO_SPEAKER_POINTER, PointerResolution, RawCommand, SCRIPT_COMMAND_MARKER,
+    SCRIPT_HEADER_BYTE_LEN, SCRIPT_MAGIC_PREFIX, SELECT_COMMAND_BYTE_LEN, SELECT_LABEL_SLOT_TAG,
+    SELECT_MARKER_OFFSET, SELECT_WORD_HI, SELECT_WORD_LO, ScriptError, ScriptHeader, ScriptScan,
     TEXT_SHOW_COMMAND_BYTE_LEN, TEXT_SHOW_MARKER_OFFSET, TEXT_SHOW_TYPE_WORDS, TEXT_SHOW_WORD_HI,
     TextRef,
 };
@@ -111,8 +111,10 @@ pub const SOFTPAL_PAC_SUPPORT_BOUNDARY: &str = "kaifuu-softpal enumerates and ex
     (16-byte header + flag-gated keyless ROL+XOR decrypt/encrypt + 4-byte-index/cp932/NUL record \
     parser with absolute byte offsets), AND disassembles the SCRIPT.SRC dialogue+speaker+choice \
     surfaces (Sv-version plaintext bytecode: TEXT-SHOW 32-byte + SELECT 16-byte commands scanned \
-    by marker+discriminator, their 4-byte TEXT.DAT pointers resolved to record boundaries, \
-    byte-locatable pointer fields for patch-back), AND patches translated dialogue+choices back \
+    by marker+discriminator, their 4-byte TEXT.DAT pointers resolved to record boundaries — SELECT \
+    labels via BOTH variants: v21465 immediate-is-label and v60663 decoupled label pushed to the \
+    choice-label slot 0x40000002 and recovered by the Sv20 stack walk, genuine system selects left \
+    out-of-pool — byte-locatable pointer fields for patch-back), AND patches translated dialogue+choices back \
     (rebuild TEXT.DAT with an old->new offset map + re-encrypt when the original was, repoint the \
     SCRIPT.SRC pointer fields, drop both as loose files with no PAC repack), AND catalogs the full \
     Sv20 opcode table (arity-driven walk of the whole plaintext token stream: the 33-entry \

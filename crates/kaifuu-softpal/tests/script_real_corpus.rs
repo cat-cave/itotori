@@ -49,16 +49,20 @@ const GAMES: [GameExpectation; 2] = [
         text_bearing_choice_count: 11,
         nontext_select_count: 0,
     },
-    // v60663 — SELECTs are system/branch ops (immediate 0x40000000, no inline
-    // text); the choice labels are decoupled from the opcode in this variant.
+    // v60663 — DECOUPLED-select variant: the SELECT immediate is the typed-nil
+    // 0x40000000; the choice label is pushed earlier in the menu block to the
+    // choice-label slot (0x40000002) and recovered via the Sv20 stack walk. 16 of
+    // the 21 selects carry a decoupled label (real story choices); the remaining 5
+    // (an identical cluster at script start) push no label slot — genuine
+    // system/menu selects that stay out-of-pool (honestly not force-resolved).
     GameExpectation {
         subdir: "v60663",
         pac_count: 160,
         text_show_count: 39832,
         with_speaker_count: 28665,
         select_count: 21,
-        text_bearing_choice_count: 0,
-        nontext_select_count: 21,
+        text_bearing_choice_count: 16,
+        nontext_select_count: 5,
     },
 ];
 
