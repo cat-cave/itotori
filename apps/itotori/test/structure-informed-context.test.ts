@@ -48,6 +48,7 @@ const SYNTHETIC_STRUCTURE: NarrativeStructure = {
         {
           optionIndex: 0,
           label: "Apologize",
+          branchEntryScene: null,
           branchMessages: [
             { order: 0, speaker: "Mari", text: "Fine, hurry up.", textSurface: null },
           ],
@@ -55,6 +56,7 @@ const SYNTHETIC_STRUCTURE: NarrativeStructure = {
         {
           optionIndex: 1,
           label: "Stay quiet",
+          branchEntryScene: null,
           branchMessages: [
             { order: 0, speaker: "Mari", text: "...Whatever.", textSurface: null },
             { order: 1, speaker: "Aoi", text: "...", textSurface: null },

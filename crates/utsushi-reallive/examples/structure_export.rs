@@ -130,9 +130,19 @@ fn main() {
         let mut choices: Vec<Value> = Vec::new();
         for idx in &choice_indices {
             let label = choice_label(&segment.observation.play_order_lines, *idx);
-            let branch_lines =
-                engine.branch_following_lines(scene_id, &opts, HeadlessChoicePolicy::Fixed(*idx));
-            let branch_messages: Vec<Value> = branch_lines
+            // Follow option `idx` and read BOTH its play-order branch text AND
+            // the scene it dispatches into (`first_cross_scene` — the real
+            // `goto_on($store)` / `jump` target). For the archive's opening
+            // game-select this `branchEntryScene` is the ROOT of the work that
+            // option selects (Sweetie HD: base-game vs fandisk) — the signal
+            // the itotori work-scope carve reads to root a per-WORK structure.
+            let branch = engine.branch_following_observation(
+                scene_id,
+                &opts,
+                HeadlessChoicePolicy::Fixed(*idx),
+            );
+            let branch_messages: Vec<Value> = branch
+                .lines
                 .iter()
                 .filter(|line| !is_choice_line(line))
                 .enumerate()
@@ -141,6 +151,10 @@ fn main() {
             choices.push(json!({
                 "optionIndex": idx,
                 "label": label,
+                "branchEntryScene": match branch.first_cross_scene {
+                    Some(id) => json!(id),
+                    None => Value::Null,
+                },
                 "branchMessages": branch_messages,
             }));
         }

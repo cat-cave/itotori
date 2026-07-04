@@ -32,6 +32,19 @@ export type NarrativeChoice = {
   optionIndex: number;
   /** The option's display label (the `choice:<idx>`-tagged play-order line). */
   label: string;
+  /**
+   * The scene this option DISPATCHES INTO — the branch-following walk's
+   * `first_cross_scene` (the real `goto_on($store)` / `jump` target), or null
+   * when the branch stays within the select's own scene. For the archive's
+   * opening game-select (Sweetie HD: base-game vs fandisk) this is the ROOT
+   * of the work the option selects — the decode signal the work-scope carve
+   * reads to root a per-WORK narrative structure (NOT a hardcoded work list).
+   *
+   * Optional in the parse for backward compatibility with pre-enrichment
+   * exporter JSON (absent → null); the enriched `structure_export.rs` always
+   * emits it.
+   */
+  branchEntryScene: number | null;
   /** The messages that acting on this option leads into (choice lines filtered out). */
   branchMessages: NarrativeMessage[];
 };

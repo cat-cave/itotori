@@ -131,6 +131,35 @@ fn branch_following_executes_every_transfer_kind_to_natural_terminus() {
     );
 }
 
+/// `branch_following_observation` reports the SAME first cross-scene dispatch
+/// target the report exposes — the signal the itotori work-scope carve reads
+/// off a `select` option to root a per-WORK narrative structure. For the
+/// archive's opening game-select each option's `first_cross_scene` is the root
+/// of the work that option selects; here the followed farcall roots into
+/// scene 2.
+#[test]
+fn branch_following_observation_reports_branch_entry_scene() {
+    let engine = two_scene_engine();
+    let opts = ReplayOpts {
+        step_budget: 1_000,
+        stop_at_first_pause: false,
+    };
+    let obs = engine.branch_following_observation(1, &opts, HeadlessChoicePolicy::AlwaysFirst);
+    // The branch dispatched across the store into scene 2 — the "branch entry
+    // scene" a work-scope carve roots the selected work at.
+    assert_eq!(
+        obs.first_cross_scene,
+        Some(2),
+        "branch_following_observation must expose the option's dispatch target",
+    );
+    // The lines it returns match `branch_following_lines` (same drive).
+    assert_eq!(
+        obs.lines,
+        engine.branch_following_lines(1, &opts, HeadlessChoicePolicy::AlwaysFirst),
+        "observation lines must equal branch_following_lines",
+    );
+}
+
 /// The multi-scene play-loop follows the real scene-dispatch ACROSS the
 /// boundary: `observe_playthrough` from scene 1 chains into scene 2 (the
 /// farcall target), producing a 2-scene play stream in dispatch order. A

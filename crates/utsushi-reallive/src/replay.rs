@@ -1319,16 +1319,38 @@ impl ReplayEngine {
         opts: &ReplayOpts,
         policy: HeadlessChoicePolicy,
     ) -> Vec<TextLine> {
+        self.branch_following_observation(scene_id, opts, policy)
+            .lines
+    }
+
+    /// Like [`Self::branch_following_lines`], but ALSO reports the first
+    /// cross-scene dispatch target the resolved branch followed
+    /// (`first_cross_scene` — the real `jump` / `farcall` / `goto_on($store)`
+    /// entry the option transfers into). For a `select` prompt this is the
+    /// scene each option DISPATCHES INTO — i.e. for the archive's opening
+    /// game-select (Sweetie HD: the base-game vs fandisk pick) each option's
+    /// `branch_entry_scene` is the ROOT of that work's scene subtree. The
+    /// itotori work-scope carve consumes this to root a per-WORK narrative
+    /// structure from the decode (never a hardcoded work list).
+    pub fn branch_following_observation(
+        &self,
+        scene_id: SceneId,
+        opts: &ReplayOpts,
+        policy: HeadlessChoicePolicy,
+    ) -> BranchFollowingObservation {
         let sink: Arc<ReplayTextSink> = Arc::new(ReplayTextSink::default());
         let mut scheduler = HeadlessInputScheduler::new(policy);
-        let _ = self.observe_pass(
+        let pass = self.observe_pass(
             scene_id,
             opts,
             ControlFlowMount::BranchFollowing,
             Arc::clone(&sink) as Arc<dyn TextSurfaceSink>,
             &mut scheduler,
         );
-        sink.take_lines()
+        BranchFollowingObservation {
+            lines: sink.take_lines(),
+            first_cross_scene: pass.first_cross_scene,
+        }
     }
 
     /// Observe `scene_id` through the shared store while RETAINING the
@@ -2187,6 +2209,23 @@ pub struct PortObservation {
     /// diagnostics). Its graphics/audio may be backfilled from the linear
     /// catalogue pass; its text is not used (see `play_order_lines`).
     pub scene: SceneObservation,
+}
+
+/// The outcome of a single branch-following drive under a fixed choice
+/// policy ([`ReplayEngine::branch_following_observation`]): the play-order
+/// text lines the branch produced PLUS the first cross-scene dispatch target
+/// it followed. For a `select` option this `first_cross_scene` is the scene
+/// the option DISPATCHES INTO (its branch root) — the signal the itotori
+/// work-scope carve reads off the archive's opening game-select.
+#[derive(Debug, Clone)]
+pub struct BranchFollowingObservation {
+    /// The branch's play-order text lines (single pass, choice-option lines
+    /// included, tagged `text_surface = "choice:<idx>"`).
+    pub lines: Vec<TextLine>,
+    /// The first cross-scene dispatch target the resolved branch followed
+    /// (`jump` / `farcall` / `goto_on($store)`), or `None` when the branch
+    /// stayed within its start scene.
+    pub first_cross_scene: Option<SceneId>,
 }
 
 /// One observation pass' outputs: the [`SceneObservation`] plus the first

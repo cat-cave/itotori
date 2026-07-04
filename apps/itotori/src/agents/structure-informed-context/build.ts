@@ -96,9 +96,21 @@ function parseScene(value: unknown, index: number): NarrativeScene {
         `scenes[${index}].choices[${i}].branchMessages must be an array`,
       );
     }
+    // `branchEntryScene` is optional for backward compatibility with
+    // pre-enrichment exporter JSON: absent → null; present must be number|null.
+    if (
+      cr.branchEntryScene !== undefined &&
+      cr.branchEntryScene !== null &&
+      typeof cr.branchEntryScene !== "number"
+    ) {
+      throw new NarrativeStructureParseError(
+        `scenes[${index}].choices[${i}].branchEntryScene must be a number or null`,
+      );
+    }
     return {
       optionIndex: cr.optionIndex,
       label: cr.label,
+      branchEntryScene: (cr.branchEntryScene as number | null | undefined) ?? null,
       branchMessages: cr.branchMessages.map((m, j) =>
         parseMessage(m, `scenes[${index}].choices[${i}].branchMessages[${j}]`),
       ),

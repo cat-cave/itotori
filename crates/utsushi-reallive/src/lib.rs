@@ -231,13 +231,13 @@ pub use g00::{
 };
 
 pub use replay::{
-    BranchReplayReport, BranchTerminus, ControlTransferCounts, DEFAULT_REPLAY_STEP_BUDGET,
-    DecompressedScene, PortObservation, REPLAY_LOG_SCHEMA_VERSION, ReplayEngine, ReplayError,
-    ReplayEvent, ReplayLog, ReplayOpts, ReplayOutcome, SceneObservation, ScenePlaySegment,
-    ScenePlaythrough, SceneStoreBundle, SceneStoreStats, SnapshotIdentityReport, build_scene_store,
-    build_scene_store_from_decompressed, decompress_all_scenes, full_registry_rlop_count,
-    replay_scene, replay_scene_bytes, replay_until_first_pause, restore_into_fresh_vm,
-    verify_snapshot_restore_each_tick,
+    BranchFollowingObservation, BranchReplayReport, BranchTerminus, ControlTransferCounts,
+    DEFAULT_REPLAY_STEP_BUDGET, DecompressedScene, PortObservation, REPLAY_LOG_SCHEMA_VERSION,
+    ReplayEngine, ReplayError, ReplayEvent, ReplayLog, ReplayOpts, ReplayOutcome, SceneObservation,
+    ScenePlaySegment, ScenePlaythrough, SceneStoreBundle, SceneStoreStats, SnapshotIdentityReport,
+    build_scene_store, build_scene_store_from_decompressed, decompress_all_scenes,
+    full_registry_rlop_count, replay_scene, replay_scene_bytes, replay_until_first_pause,
+    restore_into_fresh_vm, verify_snapshot_restore_each_tick,
 };
 pub use scene_header::{
     COMPILER_VERSION_1_0, COMPILER_VERSION_1_10, COMPILER_VERSION_1_1110,
