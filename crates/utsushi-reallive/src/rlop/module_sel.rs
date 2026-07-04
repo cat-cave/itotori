@@ -23,18 +23,22 @@
 //!
 //! # Module addressing
 //!
-//! The choice family lives at `(module_type=1, module_id=2)` — the REAL
-//! RealLive semantic id for `sel` (matching the `kaifuu-reallive`
-//! decompiler). The raw byte `(1, 5, opcode=120)` observed at Sweetie HD
-//! scene 1 offset `0x001e` was originally misread as a `select_w` here;
-//! `id=5` is actually `SYS2`, so that byte is a system op and is
-//! catalogued in [`crate::rlop::module_catalog`], not `sel`.
+//! The choice family lives at `(module_type=0, module_id=2)` — the REAL
+//! RealLive `Sel` module (matching rlvm's `RLModule("Sel", 0, 2)` and the
+//! `kaifuu-reallive` decompiler). This was VALIDATED against real bytecode:
+//! surveying all 198 Sweetie HD scenes, every one of the 117 real
+//! selects is `select_w` at `(module_type=0, module_id=2, opcode=2)`, each
+//! framed with a `{ … }` option block. An earlier revision registered the
+//! family at `module_type=1` (a WRONG constant misread from a
+//! `(1, 5, opcode=120)` `SYS2` byte at Sweetie HD scene 1 offset `0x001e`);
+//! that mis-registration meant the real `(0, 2, 2)` selects never
+//! dispatched through this pipeline — they were gap-filled by
+//! [`crate::rlop::module_catalog`] as `Advance` no-ops, leaving the choice
+//! machinery DORMANT on real bytes (recognized 0-unknown, but never
+//! presented, never driving a branch). Corrected to `module_type=0`.
 //! The four canonical opcodes are pinned at the small-block layout
-//! `0x0000..=0x0003` (matching the rlvm `module_sel.cc` registration
-//! shape — re-derived clean-room from RLDEV docs, not vendored). The
-//! Sweetie-HD-observed `select_w` byte (`0x0078 = 120`) is additionally
-//! registered as an alias so the real-bytes path resolves through the
-//! same op.
+//! `0x0000..=0x0003`. The historical `0x0078 = 120` byte is additionally
+//! registered as a defensive `select_w` alias.
 //!
 //! # Opcode coverage
 //!
@@ -92,16 +96,20 @@ use super::{
 use crate::gameexe::Gameexe;
 use crate::vm::Vm;
 
-/// `module_sel` module type byte. Pinned at the byte observed at
-/// Sweetie HD scene 1 offset `0x001e` (`type=1`).
-pub const SEL_MODULE_TYPE: u8 = 1;
+/// `module_sel` module type byte. The REAL RealLive `Sel` module lives at
+/// `module_type = 0` (matching rlvm's `RLModule("Sel", 0, 2)` and the
+/// Sweetie HD + Kanon bytecode: every real `select_w` is `(0, 2, 2)`). An
+/// earlier revision pinned this at `1` — a WRONG constant misread from a
+/// `(type=1, id=5, opcode=120)` `SYS2` byte — so the real `(0, 2, 2)`
+/// selects never dispatched through the choice pipeline (they were
+/// gap-filled by the opcode catalog as `Advance` no-ops and the choice
+/// machinery was dormant on real bytes). Corrected to `0`.
+pub const SEL_MODULE_TYPE: u8 = 0;
 
 /// `module_sel` module id byte. This is the REAL RealLive semantic id
 /// `2` used by the `kaifuu-reallive` decompiler
-/// (`opcode::module_id::SEL`) and validated on the real bytecode. An
-/// earlier revision mislabelled it `5` (which is actually `SYS2`), so
-/// `sel.select_objbtn` collided with `msg.pause` at `(1, 5, 3)`.
-/// Corrected to `2`.
+/// (`opcode::module_id::SEL`) and validated on the real bytecode (every
+/// real Sweetie HD / Kanon select is `module_id = 2`).
 pub const SEL_MODULE_ID: u8 = 2;
 
 // ---- Opcode numerics --------------------------------------------------
@@ -119,9 +127,9 @@ pub const OPCODE_SELECT_OBJBTN: u16 = 0x0003;
 /// the Sweetie HD scene 1 offset `0x001e` byte `(type=1, id=5,
 /// opcode=120)`; that raw byte is now understood as a `SYS2` (`id=5`)
 /// op and is catalogued in [`crate::rlop::module_catalog`], so this
-/// alias — registered under the corrected `sel` id `2` at `(1, 2, 120)`
-/// — is a defensive mapping only (no real-bytes tuple currently lands
-/// on it).
+/// alias — registered under the corrected `sel` addressing at
+/// `(0, 2, 120)` — is a defensive mapping only (no real-bytes tuple
+/// currently lands on it; the real selects are all `(0, 2, 2)`).
 pub const OPCODE_SELECT_W_SWEETIE_HD_ALIAS: u16 = 120;
 
 /// Stable enum naming the four choice variants. Used by the typed
@@ -561,6 +569,20 @@ fn dispatch_select(
     }
     if args.is_empty() {
         runtime.record_warning(SelRuntimeWarning::MissingChoices { variant });
+    }
+    // A select command that recovered ZERO choice labels is not a
+    // presentable prompt — advance it instead of yielding an empty
+    // SelectLongOp. Now that the family is registered at the REAL
+    // `module_type=0`, this guard keeps the OTHER `(0, 2, x)` sel-family
+    // opcodes that carry no inline `{ … }` option block (e.g. an
+    // option-less `select_s` that reads from the string table, or a
+    // selection-control op that slips through) fail-soft as `Advance` —
+    // exactly as the opcode catalog gap-filled them before — rather than
+    // parking a bogus empty choice that would inflate `choices_made` and
+    // write a spurious `$store = 0`. Real `select_w (0, 2, 2)` prompts
+    // always carry an option block, so they still yield + drive a branch.
+    if choices.is_empty() {
+        return DispatchOutcome::Advance;
     }
     let id = runtime.id_sequence().allocate();
     let select = SelectLongOp::new(id, choices);

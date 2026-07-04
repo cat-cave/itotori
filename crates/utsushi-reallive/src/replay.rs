@@ -2557,12 +2557,14 @@ mod tests {
             crate::rlop::module_sel::SEL_MODULE_ID,
             crate::rlop::module_sel::OPCODE_SELECT_OBJBTN,
         );
-        // The corrected real ids.
+        // The corrected real ids. `sel` lives at the real RealLive `Sel`
+        // module (module_type=0, module_id=2); `msg` at (1, 3). They no
+        // longer share a module_type, so the two keys are trivially distinct.
         assert_eq!(pause_key, RlopKey::new(1, 3, 3), "msg.pause is (1, 3, 3)");
         assert_eq!(
             objbtn_key,
-            RlopKey::new(1, 2, 3),
-            "sel.select_objbtn is (1, 2, 3)"
+            RlopKey::new(0, 2, 3),
+            "sel.select_objbtn is (0, 2, 3)"
         );
         assert_ne!(
             pause_key, objbtn_key,

@@ -98,6 +98,49 @@ fn sel_command(offset: usize, opcode: u16) -> BytecodeElement {
     }
 }
 
+/// A `module_sel` select command framed as a REAL `SelectElement`: an
+/// 8-byte header followed by a `{ opt0 \n opt1 }` option block — the exact
+/// framing `extract_select_choice_texts` walks on real Sweetie/Kanon bytes.
+/// The VM's dispatch path recovers the option labels from this block (a
+/// select with no options is not a presentable prompt and is advanced), so
+/// a VM-stepped select must carry one.
+fn sel_command_with_options(offset: usize, opcode: u16, options: &[&str]) -> BytecodeElement {
+    const SELECT_BLOCK_OPEN: u8 = 0x7B; // '{'
+    const SELECT_BLOCK_CLOSE: u8 = 0x7D; // '}'
+    const META_LINE_LEAD: u8 = 0x0A;
+    let mut raw = vec![
+        0x23,
+        SEL_MODULE_TYPE,
+        SEL_MODULE_ID,
+        opcode as u8,
+        (opcode >> 8) as u8,
+        0,
+        0,
+        0,
+    ];
+    raw.push(SELECT_BLOCK_OPEN);
+    for (i, option) in options.iter().enumerate() {
+        if i > 0 {
+            raw.extend_from_slice(&[META_LINE_LEAD, 0x00, 0x00]);
+        }
+        raw.extend_from_slice(option.as_bytes());
+    }
+    raw.push(SELECT_BLOCK_CLOSE);
+    let byte_len = raw.len();
+    BytecodeElement::Command {
+        module_type: SEL_MODULE_TYPE,
+        module_id: SEL_MODULE_ID,
+        opcode,
+        arg_count: 0,
+        overload: 0,
+        goto_targets: vec![],
+        goto_case_exprs: vec![],
+        raw_bytes: raw,
+        byte_offset: offset,
+        byte_len,
+    }
+}
+
 // ---------------------------------------------------------------------
 // Spec acceptance 1: select_s emits 3 TextLines then suspends
 // ---------------------------------------------------------------------
@@ -309,7 +352,15 @@ fn scheduler_keeps_vm_suspended_until_choice_recorded() {
     let (_sink, runtime) = build_runtime(None);
     let mut registry = RlopRegistry::new();
     register_sel_rlops(&mut registry, Arc::clone(&runtime));
-    let scene = Scene::new(1, vec![sel_command(0, OPCODE_SELECT_W)]).expect("scene");
+    let scene = Scene::new(
+        1,
+        vec![sel_command_with_options(
+            0,
+            OPCODE_SELECT_W,
+            &["left", "right"],
+        )],
+    )
+    .expect("scene");
     let mut store = InMemorySceneStore::new();
     store.insert(scene);
     let mut vm = Vm::new(1, 0);
@@ -375,7 +426,11 @@ fn never_ready_scheduler_keeps_select_longop_pending() {
     let (_sink, runtime) = build_runtime(None);
     let mut registry = RlopRegistry::new();
     register_sel_rlops(&mut registry, Arc::clone(&runtime));
-    let scene = Scene::new(1, vec![sel_command(0, OPCODE_SELECT_S)]).expect("scene");
+    let scene = Scene::new(
+        1,
+        vec![sel_command_with_options(0, OPCODE_SELECT_S, &["yes", "no"])],
+    )
+    .expect("scene");
     let mut store = InMemorySceneStore::new();
     store.insert(scene);
     let mut vm = Vm::new(1, 0);

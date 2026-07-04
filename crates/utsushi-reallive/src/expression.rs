@@ -51,17 +51,20 @@
 //!
 //! | Byte (after `\`) | Operator | Variant                  |
 //! | ---------------- | -------- | ------------------------ |
-//! | `0x14`           | `=`      | [`AssignOp::Plain`]      |
-//! | `0x15`           | `+=`     | [`AssignOp::AddAssign`]  |
-//! | `0x16`           | `-=`     | [`AssignOp::SubAssign`]  |
-//! | `0x17`           | `*=`     | [`AssignOp::MulAssign`]  |
-//! | `0x18`           | `/=`     | [`AssignOp::DivAssign`]  |
-//! | `0x19`           | `%=`     | [`AssignOp::ModAssign`]  |
-//! | `0x1A`           | `&=`     | [`AssignOp::AndAssign`]  |
-//! | `0x1B`           | `\|=`    | [`AssignOp::OrAssign`]   |
-//! | `0x1C`           | `^=`     | [`AssignOp::XorAssign`]  |
-//! | `0x1D`           | `<<=`    | [`AssignOp::ShlAssign`]  |
-//! | `0x1E`           | `>>=`    | [`AssignOp::ShrAssign`]  |
+//! | `0x14`           | `+=`     | [`AssignOp::AddAssign`]  |
+//! | `0x15`           | `-=`     | [`AssignOp::SubAssign`]  |
+//! | `0x16`           | `*=`     | [`AssignOp::MulAssign`]  |
+//! | `0x17`           | `/=`     | [`AssignOp::DivAssign`]  |
+//! | `0x18`           | `%=`     | [`AssignOp::ModAssign`]  |
+//! | `0x19`           | `&=`     | [`AssignOp::AndAssign`]  |
+//! | `0x1A`           | `\|=`    | [`AssignOp::OrAssign`]   |
+//! | `0x1B`           | `^=`     | [`AssignOp::XorAssign`]  |
+//! | `0x1C`           | `<<=`    | [`AssignOp::ShlAssign`]  |
+//! | `0x1D`           | `>>=`    | [`AssignOp::ShrAssign`]  |
+//! | `0x1E`           | `=`      | [`AssignOp::Plain`]      |
+//!
+//! (This matches rlvm's `libreallive/expression.cc`: op `30`/`0x1E` is the
+//! special-cased plain `=`, `0x14..=0x1D` are the compound forms.)
 //!
 //! The `0x1F..=0x24` slots are accepted by the bytecode walker but
 //! their semantics are not documented in RLDEV; the parser surfaces
@@ -228,50 +231,58 @@ impl UnaryOp {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[repr(u8)]
 pub enum AssignOp {
-    /// `=` — plain assignment.
-    Plain = 0x14,
     /// `+=`
-    AddAssign = 0x15,
+    AddAssign = 0x14,
     /// `-=`
-    SubAssign = 0x16,
+    SubAssign = 0x15,
     /// `*=`
-    MulAssign = 0x17,
+    MulAssign = 0x16,
     /// `/=`
-    DivAssign = 0x18,
+    DivAssign = 0x17,
     /// `%=`
-    ModAssign = 0x19,
+    ModAssign = 0x18,
     /// `&=`
-    AndAssign = 0x1A,
+    AndAssign = 0x19,
     /// `|=`
-    OrAssign = 0x1B,
+    OrAssign = 0x1A,
     /// `^=`
-    XorAssign = 0x1C,
-    /// `<<=` — left-shift assign (extends the spec-node table to cover
-    /// the full documented assignment-op range used by Sweetie HD).
-    ShlAssign = 0x1D,
-    /// `>>=` — right-shift assign. Observed against Sweetie HD scene
-    /// #0001 (all 20 Expression elements use `\\\x1E` as their
-    /// assignment op).
-    ShrAssign = 0x1E,
+    XorAssign = 0x1B,
+    /// `<<=` — left-shift assign.
+    ShlAssign = 0x1C,
+    /// `>>=` — right-shift assign.
+    ShrAssign = 0x1D,
+    /// `=` — plain assignment. RealLive encodes plain `=` as operator
+    /// `30` (`0x1E`), the SPECIAL-CASED assignment op — NOT `0x14`, which
+    /// is `+=` (see rlvm `libreallive/expression.cc`: op `30` prints `=`
+    /// with no trailing `=`, while ops `0x14..=0x1D` are the compound
+    /// forms). A prior revision mis-pinned `0x14` as plain `=` and slid
+    /// every compound op up one slot, so real assignments like
+    /// `intX[Y] = store` (op `0x1E`) were mis-decoded as `>>=`
+    /// (`intX[Y] = intX[Y] >> store` = `0 >> store` = `0`) — which broke
+    /// real select→branch driving (the chosen index never reached the
+    /// `goto_case` / `goto_on` discriminant). Corrected to rlvm's table.
+    Plain = 0x1E,
 }
 
 impl AssignOp {
     /// Map the byte after `\` in the assignment-operator slot to the
     /// typed [`AssignOp`] variant. Returns `None` for any byte outside
-    /// the documented `0x14..=0x1E` range.
+    /// the documented `0x14..=0x1E` range. The mapping matches rlvm's
+    /// operator table: `0x14..=0x1D` are the compound assignments
+    /// (`+=` … `>>=`) and `0x1E` (`30`) is the plain `=`.
     pub fn from_byte(byte: u8) -> Option<Self> {
         Some(match byte {
-            0x14 => Self::Plain,
-            0x15 => Self::AddAssign,
-            0x16 => Self::SubAssign,
-            0x17 => Self::MulAssign,
-            0x18 => Self::DivAssign,
-            0x19 => Self::ModAssign,
-            0x1A => Self::AndAssign,
-            0x1B => Self::OrAssign,
-            0x1C => Self::XorAssign,
-            0x1D => Self::ShlAssign,
-            0x1E => Self::ShrAssign,
+            0x14 => Self::AddAssign,
+            0x15 => Self::SubAssign,
+            0x16 => Self::MulAssign,
+            0x17 => Self::DivAssign,
+            0x18 => Self::ModAssign,
+            0x19 => Self::AndAssign,
+            0x1A => Self::OrAssign,
+            0x1B => Self::XorAssign,
+            0x1C => Self::ShlAssign,
+            0x1D => Self::ShrAssign,
+            0x1E => Self::Plain,
             _ => return None,
         })
     }
@@ -1008,9 +1019,10 @@ mod tests {
 
     #[test]
     fn assignment_shape_yields_assignment_node() {
-        // $ 01 [ $ FF 00 00 00 00 ] \ 14 $ FF 07 00 00 00  — intB[0] = 7
+        // $ 01 [ $ FF 00 00 00 00 ] \ 1E $ FF 07 00 00 00  — intB[0] = 7
+        // (plain `=` is op 0x1E per rlvm's table).
         let bytes = [
-            0x24, 0x01, 0x5B, 0x24, 0xFF, 0x00, 0x00, 0x00, 0x00, 0x5D, 0x5C, 0x14, 0x24, 0xFF,
+            0x24, 0x01, 0x5B, 0x24, 0xFF, 0x00, 0x00, 0x00, 0x00, 0x5D, 0x5C, 0x1E, 0x24, 0xFF,
             0x07, 0x00, 0x00, 0x00,
         ];
         let (node, consumed) = parse_expression(&bytes).expect("parse");
@@ -1062,14 +1074,17 @@ mod tests {
 
     #[test]
     fn assign_op_byte_table_pins_each_variant() {
-        assert_eq!(AssignOp::Plain.as_byte(), 0x14);
-        assert_eq!(AssignOp::AddAssign.as_byte(), 0x15);
-        assert_eq!(AssignOp::SubAssign.as_byte(), 0x16);
-        assert_eq!(AssignOp::MulAssign.as_byte(), 0x17);
-        assert_eq!(AssignOp::DivAssign.as_byte(), 0x18);
-        assert_eq!(AssignOp::ModAssign.as_byte(), 0x19);
-        assert_eq!(AssignOp::AndAssign.as_byte(), 0x1A);
-        assert_eq!(AssignOp::OrAssign.as_byte(), 0x1B);
-        assert_eq!(AssignOp::XorAssign.as_byte(), 0x1C);
+        // rlvm table: 0x14..=0x1D compound, 0x1E plain `=`.
+        assert_eq!(AssignOp::AddAssign.as_byte(), 0x14);
+        assert_eq!(AssignOp::SubAssign.as_byte(), 0x15);
+        assert_eq!(AssignOp::MulAssign.as_byte(), 0x16);
+        assert_eq!(AssignOp::DivAssign.as_byte(), 0x17);
+        assert_eq!(AssignOp::ModAssign.as_byte(), 0x18);
+        assert_eq!(AssignOp::AndAssign.as_byte(), 0x19);
+        assert_eq!(AssignOp::OrAssign.as_byte(), 0x1A);
+        assert_eq!(AssignOp::XorAssign.as_byte(), 0x1B);
+        assert_eq!(AssignOp::ShlAssign.as_byte(), 0x1C);
+        assert_eq!(AssignOp::ShrAssign.as_byte(), 0x1D);
+        assert_eq!(AssignOp::Plain.as_byte(), 0x1E);
     }
 }
