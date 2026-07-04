@@ -16,6 +16,16 @@ const defaultPortSpan = 2000;
 const scriptPath = fileURLToPath(import.meta.url);
 const repoRoot = path.resolve(path.dirname(scriptPath), "..");
 
+// Sentinel returned by the committed-diff-base resolver to force the conservative
+// full `ci` gate (merge commit / no HEAD~1 / etc). DECLARED HERE, above the
+// top-level main() invocation below, because main() -> selectLanes() ->
+// computeChangedPaths() runs SYNCHRONOUSLY during module evaluation when this file
+// is the entrypoint, and it references FULL_CI. A `const` referenced before its own
+// declaration line throws a temporal-dead-zone error ("Cannot access 'FULL_CI'
+// before initialization"), so this must sit before line-of-first-use (the main()
+// call), not down beside computeChangedPaths().
+const FULL_CI = Symbol("qd-full-ci-full-gate");
+
 if (import.meta.url === pathToMainUrl(process.argv[1])) {
   main().catch((error) => {
     console.error(error instanceof Error ? error.message : String(error));
@@ -130,8 +140,9 @@ function runJust(root, env, args) {
 }
 
 // Choose the lanes to run for this gate. `--all` (or ITOTORI_QD_FULL_CI_ALL=1)
-// forces the complete gate. Otherwise the diff vs the base branch (ITOTORI_QD_
-// AFFECTED_BASE, default `main`) drives affected-lane selection. Any inability to
+// forces the complete gate. Otherwise the diff vs the affected base
+// (ITOTORI_QD_AFFECTED_BASE, default `main`, but see computeChangedPaths for the
+// DIRECT-TO-MAIN HEAD~1 default) drives affected-lane selection. Any inability to
 // determine the diff falls back to the full `ci` gate (conservative).
 export function selectLanes(root, env = process.env, argv = process.argv) {
   if (argv.includes("--all") || env.ITOTORI_QD_FULL_CI_ALL === "1") return ["ci"];
@@ -159,19 +170,22 @@ function splitPathLines(text) {
     .filter(Boolean);
 }
 
-// Union of (a) commits on this branch since it diverged from the base branch,
-// (b) unstaged/staged working-tree changes, and (c) untracked files. Returns null
-// when the diff cannot be determined (not a git worktree, or every git query failed).
+// Union of (a) the committed diff vs the resolved base (see
+// resolveCommittedDiffBase), (b) unstaged/staged working-tree changes, and
+// (c) untracked files. Returns null when the diff cannot be determined (not a git
+// worktree, every git query failed) OR when a conservative fallback forces the full
+// gate (merge commit / no HEAD~1).
 function computeChangedPaths(root, env) {
   if (!existsSync(path.join(root, ".git"))) return null;
 
-  const base = env.ITOTORI_QD_AFFECTED_BASE || "main";
+  const committedBase = resolveCommittedDiffBase(root, env);
+  if (committedBase === FULL_CI) return null; // conservative fallback -> full `ci`
+
   const paths = new Set();
   let anySucceeded = false;
 
-  const mergeBase = gitOutput(root, ["merge-base", "HEAD", base]);
-  if (mergeBase) {
-    const committed = gitOutput(root, ["diff", "--name-only", `${mergeBase.trim()}...HEAD`]);
+  if (committedBase !== null) {
+    const committed = gitOutput(root, ["diff", "--name-only", `${committedBase}...HEAD`]);
     if (committed !== null) {
       anySucceeded = true;
       for (const line of splitPathLines(committed)) paths.add(line);
@@ -191,6 +205,55 @@ function computeChangedPaths(root, env) {
   }
 
   return anySucceeded ? paths : null;
+}
+
+// Resolve the commit to use as the three-dot base for the committed-diff term.
+//
+// Normally this is the merge-base of HEAD with the affected base branch
+// (ITOTORI_QD_AFFECTED_BASE, default `main`) -> `mergeBase...HEAD` is exactly this
+// branch's commits since it diverged from the base.
+//
+// But this repo is DIRECT-TO-MAIN: the orchestrator squash-merges to main and gates
+// ON main, so HEAD == main and that merge-base IS HEAD -> `HEAD...HEAD` is EMPTY and
+// the old conservative fallback ran the FULL `ci` on every gate. When the resolved
+// base is the SAME commit as HEAD (and no explicit override was given), DEFAULT to
+// this commit's own changes: the single parent of HEAD, so `<parent>...HEAD` ==
+// `HEAD~1...HEAD`.
+//
+// Returns a commit-ish string to diff against, `null` (base unavailable -> the
+// committed term is skipped and selection relies on worktree/untracked only), or the
+// FULL_CI sentinel (merge commit / root commit with no HEAD~1 -> conservative full
+// gate). An explicit ITOTORI_QD_AFFECTED_BASE override is always honored verbatim
+// (never re-pointed at HEAD~1).
+function resolveCommittedDiffBase(root, env) {
+  const explicit = env.ITOTORI_QD_AFFECTED_BASE;
+  const base = explicit || "main";
+
+  const mergeBase = gitOutput(root, ["merge-base", "HEAD", base]);
+  const head = gitOutput(root, ["rev-parse", "HEAD"]);
+  if (mergeBase === null || head === null) return null; // base unavailable
+
+  const mergeBaseSha = mergeBase.trim();
+  if (mergeBaseSha !== head.trim()) return mergeBaseSha; // ordinary feature-branch diff
+
+  // HEAD == base. An explicit override is taken at face value (the operator asked
+  // for exactly that base, even if it yields an empty diff); otherwise this is the
+  // direct-to-main case -> default to HEAD~1.
+  if (explicit) return mergeBaseSha;
+  return resolveHeadParentBase(root);
+}
+
+// The single parent commit of HEAD, so `<parent>...HEAD` == `HEAD~1...HEAD`.
+// Returns the FULL_CI sentinel for the conservative fallbacks: a merge commit
+// (2+ parents -> ambiguous "own changes" scope) or a root commit (no HEAD~1) both
+// escalate to the full `ci` gate.
+function resolveHeadParentBase(root) {
+  const line = gitOutput(root, ["rev-list", "--parents", "-n", "1", "HEAD"]);
+  if (line === null) return FULL_CI;
+  const shas = line.trim().split(/\s+/u).filter(Boolean);
+  const parents = shas.slice(1); // shas[0] is HEAD's own sha
+  if (parents.length !== 1) return FULL_CI; // 0 = root commit; >=2 = merge commit
+  return parents[0];
 }
 
 function installSignalHandlers(teardown) {

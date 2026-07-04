@@ -12,7 +12,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-import { buildDbSettings, dbPortCandidates, reserveDbPort } from "./qd-full-ci.mjs";
+import { buildDbSettings, dbPortCandidates, reserveDbPort, selectLanes } from "./qd-full-ci.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const scriptPath = path.join(scriptDir, "qd-full-ci.mjs");
@@ -148,6 +148,119 @@ test("qd full CI honors an explicit compose env path override in wrapper subproc
   }
   assert.equal(existsSync(composeEnvPath), true);
   assert.equal(readFileSync(composeEnvPath, "utf8").includes("itotori:itotori"), true);
+});
+
+// ---------------------------------------------------------------------------
+// DIRECT-TO-MAIN affected-base default: when HEAD == the resolved base (main),
+// selectLanes defaults the diff to this commit's own changes (HEAD~1...HEAD)
+// instead of conservatively re-running the full `ci` on an empty merge-base diff.
+// These exercise REAL temporary git repositories.
+// ---------------------------------------------------------------------------
+
+function runGit(cwd, args) {
+  const result = spawnSync("git", args, { cwd, encoding: "utf8" });
+  assert.equal(
+    result.status,
+    0,
+    `git ${args.join(" ")} failed: ${[result.stdout, result.stderr].filter(Boolean).join("\n")}`,
+  );
+  return (result.stdout ?? "").trim();
+}
+
+// Build a temp repo whose default branch is `main`, applying `commits` in order.
+// Each commit is { files: { "relative/path": "contents" } }. Returns the repo root
+// plus the ordered commit shas (shas[0] is the first/root commit).
+function makeGitRepo(commits) {
+  const root = mkdtempSync(path.join(os.tmpdir(), "qd-affected-git-"));
+  runGit(root, ["init", "-q", "-b", "main"]);
+  runGit(root, ["config", "user.email", "ci@itotori.test"]);
+  runGit(root, ["config", "user.name", "Itotori CI"]);
+  runGit(root, ["config", "commit.gpgsign", "false"]);
+
+  const shas = [];
+  for (const commit of commits) {
+    for (const [relPath, contents] of Object.entries(commit.files)) {
+      const abs = path.join(root, relPath);
+      mkdirSync(path.dirname(abs), { recursive: true });
+      writeFileSync(abs, contents);
+    }
+    runGit(root, ["add", "-A"]);
+    runGit(root, ["commit", "-q", "-m", commit.message ?? "commit"]);
+    shas.push(runGit(root, ["rev-parse", "HEAD"]));
+  }
+  return { root, shas };
+}
+
+// A minimal workspace manifest so affectedCiLanes -> buildCrateFamilyDependents can
+// read Cargo.toml (empty members => no crate families) for fine-grained selections.
+const EMPTY_WORKSPACE_CARGO = '[workspace]\nresolver = "2"\nmembers = [\n]\n';
+
+test("selectLanes direct-to-main: HEAD==main itotori-only commit selects the fast ci-itotori lane (not full ci)", () => {
+  const { root } = makeGitRepo([
+    { files: { "Cargo.toml": EMPTY_WORKSPACE_CARGO, "README.md": "base\n" } },
+    { files: { "apps/itotori/src/server.ts": "export const x = 1;\n" } },
+  ]);
+
+  // HEAD == main, so the merge-base diff is empty; the HEAD~1 default must kick in
+  // and scope to this commit's own change (apps/itotori -> ci-itotori).
+  const lanes = selectLanes(root, {}, ["node", "qd-full-ci"]);
+  assert.ok(lanes.includes("ci-itotori"), `expected ci-itotori, got ${JSON.stringify(lanes)}`);
+  assert.ok(!lanes.includes("ci"), "must NOT escalate to the full ci gate on HEAD==main");
+});
+
+test("selectLanes direct-to-main: HEAD==main docs-only commit selects only [check]", () => {
+  const { root } = makeGitRepo([
+    { files: { "README.md": "base\n" } },
+    { files: { "docs/notes.md": "docs change\n" } },
+  ]);
+
+  assert.deepEqual(selectLanes(root, {}, ["node", "qd-full-ci"]), ["check"]);
+});
+
+test("selectLanes: explicit ITOTORI_QD_AFFECTED_BASE override is honored (not re-pointed at HEAD~1)", () => {
+  const { root, shas } = makeGitRepo([
+    { files: { "Cargo.toml": EMPTY_WORKSPACE_CARGO, "README.md": "base\n" } },
+    { files: { "apps/itotori/src/server.ts": "export const x = 1;\n" } },
+    { files: { "docs/notes.md": "docs change\n" } },
+  ]);
+
+  // HEAD~1 (the docs commit) alone would select only [check]; pointing the base at
+  // the root commit must include the itotori change from the middle commit.
+  const lanes = selectLanes(root, { ITOTORI_QD_AFFECTED_BASE: shas[0] }, ["node", "qd-full-ci"]);
+  assert.ok(lanes.includes("ci-itotori"), `expected ci-itotori, got ${JSON.stringify(lanes)}`);
+});
+
+test("selectLanes: --all and ITOTORI_QD_FULL_CI_ALL=1 force the full ci gate", () => {
+  const { root } = makeGitRepo([
+    { files: { "apps/itotori/src/server.ts": "export const x = 1;\n" } },
+  ]);
+  assert.deepEqual(selectLanes(root, {}, ["node", "qd-full-ci", "--all"]), ["ci"]);
+  assert.deepEqual(selectLanes(root, { ITOTORI_QD_FULL_CI_ALL: "1" }, ["node", "qd-full-ci"]), [
+    "ci",
+  ]);
+});
+
+test("selectLanes conservative fallback: HEAD==main merge commit runs the full ci gate", () => {
+  const { root } = makeGitRepo([{ files: { "README.md": "base\n" } }]);
+  runGit(root, ["checkout", "-q", "-b", "feature"]);
+  mkdirSync(path.join(root, "apps/itotori/src"), { recursive: true });
+  writeFileSync(path.join(root, "apps/itotori/src/server.ts"), "export const y = 2;\n");
+  runGit(root, ["add", "-A"]);
+  runGit(root, ["commit", "-q", "-m", "feature work"]);
+  runGit(root, ["checkout", "-q", "main"]);
+  // A true merge commit (2 parents) on HEAD==main.
+  runGit(root, ["merge", "--no-ff", "-q", "-m", "merge feature", "feature"]);
+  assert.equal(runGit(root, ["rev-list", "--parents", "-n", "1", "HEAD"]).split(/\s+/).length, 3);
+
+  assert.deepEqual(selectLanes(root, {}, ["node", "qd-full-ci"]), ["ci"]);
+});
+
+test("selectLanes conservative fallback: a root commit with no HEAD~1 runs the full ci gate", () => {
+  const { root } = makeGitRepo([
+    { files: { "apps/itotori/src/server.ts": "export const x = 1;\n" } },
+  ]);
+  // Single root commit: HEAD==main and there is no HEAD~1 -> conservative full gate.
+  assert.deepEqual(selectLanes(root, {}, ["node", "qd-full-ci"]), ["ci"]);
 });
 
 const qdWrapperEnvKeys = [
