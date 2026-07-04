@@ -148,6 +148,20 @@ export const MUTATIONS = [
     realFamily: "reallive",
   },
   {
+    id: "assignop_plain_eq_to_shr",
+    category: "swapped assignment operator (AssignOp table: plain `=` mis-decoded)",
+    file: "crates/utsushi-reallive/src/expression.rs",
+    // The exact historical bug: pin op 0x1E (plain `=`) back to `>>=`, so
+    // every `intX[Y] = <expr>` silently executes as `intX[Y] >>= <expr>`.
+    // The synthetic `synth_42_plain_assign_into_intb` fixture (intB[0] = 7)
+    // then evaluates to `0 >> 7 = 0` and the assertion turns red — the
+    // guardrail that catches an AssignOp-table regression WITHOUT real bytes.
+    find: "            0x1E => Self::Plain,",
+    replace: "            0x1E => Self::ShrAssign,",
+    guardCrates: ["utsushi-reallive"],
+    realFamily: "reallive",
+  },
+  {
     id: "g00_paletted_reorder",
     category: "broken decode step (type-1 paletted-LZSS G00 palette B/R reorder)",
     file: "crates/utsushi-reallive/src/g00.rs",
