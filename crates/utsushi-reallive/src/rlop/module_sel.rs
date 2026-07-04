@@ -174,6 +174,24 @@ impl SelectVariant {
             Self::SelectObjbtn => "sel.select_objbtn",
         }
     }
+
+    /// Whether this variant is a SPATIAL / graphical select — the
+    /// object-button (`select_objbtn`) family RealLive drives from
+    /// button SPRITES laid out on screen rather than a vertical text
+    /// list. Sweetie HD's route / love-interest pick (its first choice)
+    /// is this variant: two character option graphics side-by-side, the
+    /// hovered one in full colour, the other dimmed / grayscale.
+    ///
+    /// The recognition is already 0-unknown (the opcode is registered at
+    /// `(1, 2, 3)`); this predicate is the INTERPRETATION seam — it lets
+    /// the emitter tag the option lines `;spatial` so the render layer
+    /// selects the side-by-side [`crate::SpatialChoiceWindow`] modality
+    /// instead of the vertical [`crate::ChoiceWindow`] list, while the
+    /// ACT path (chosen index → store register → `goto_on`) stays
+    /// identical to the text select.
+    pub fn is_spatial(self) -> bool {
+        matches!(self, Self::SelectObjbtn)
+    }
 }
 
 /// Number of `(module_sel)` rlops [`register_sel_rlops`] populates.
@@ -356,10 +374,20 @@ impl SelRuntime {
     /// errors are recorded as fail-soft warnings.
     fn emit_choice(&self, variant: SelectVariant, choice_index: usize, text: String) {
         let line_id = self.next_line_id();
-        let text_surface = match self.selbtn_style_suffix(choice_index) {
-            Some(suffix) => format!("choice:{choice_index};{suffix}"),
-            None => format!("choice:{choice_index}"),
-        };
+        // Compose the choice surface from parts: the base `choice:<idx>`
+        // (what `branch_following_lines` filters on), an optional
+        // `;spatial` marker so the render layer picks the side-by-side
+        // spatial modality for the object-button select, and the optional
+        // Gameexe `SELBTN.NNN.*` styling suffix. Every variant keeps the
+        // `choice:<idx>` prefix, so the choice/act filtering is unchanged.
+        let mut text_surface = format!("choice:{choice_index}");
+        if variant.is_spatial() {
+            text_surface.push_str(";spatial");
+        }
+        if let Some(suffix) = self.selbtn_style_suffix(choice_index) {
+            text_surface.push(';');
+            text_surface.push_str(&suffix);
+        }
         let line = TextLine {
             line_id,
             evidence_tier: EvidenceTier::E1,
@@ -721,6 +749,55 @@ mod tests {
         assert_eq!(SelectVariant::SelectS.as_str(), "sel.select_s");
         assert_eq!(SelectVariant::SelectW.as_str(), "sel.select_w");
         assert_eq!(SelectVariant::SelectObjbtn.as_str(), "sel.select_objbtn");
+    }
+
+    #[test]
+    fn only_objbtn_is_spatial() {
+        // The object-button select is the SPATIAL / graphical variant
+        // (Sweetie HD's route pick); the three text variants are not.
+        assert!(SelectVariant::SelectObjbtn.is_spatial());
+        assert!(!SelectVariant::Select.is_spatial());
+        assert!(!SelectVariant::SelectS.is_spatial());
+        assert!(!SelectVariant::SelectW.is_spatial());
+    }
+
+    #[test]
+    fn spatial_variant_tags_choice_surface_with_spatial_marker() {
+        // The spatial (objbtn) select tags each emitted option
+        // `choice:<idx>;spatial` so the render layer selects the
+        // side-by-side spatial modality; the base `choice:<idx>` prefix
+        // is preserved so choice/act filtering is unchanged.
+        let sink = Arc::new(CollectingSink::new());
+        let runtime = Arc::new(SelRuntime::with_sink(
+            Arc::clone(&sink) as Arc<dyn TextSurfaceSink>
+        ));
+        let op = SelectObjbtnOp::new(runtime);
+        op.dispatch(
+            &mut Vm::new(1, 0),
+            &[
+                ExprValue::Bytes(b"L".to_vec()),
+                ExprValue::Bytes(b"R".to_vec()),
+            ],
+        );
+        let lines = sink.lines.lock().expect("lock");
+        let surfaces: Vec<Option<&str>> = lines
+            .iter()
+            .map(|line| line.text_surface.as_deref())
+            .collect();
+        assert_eq!(
+            surfaces,
+            vec![Some("choice:0;spatial"), Some("choice:1;spatial")],
+        );
+        // A text select does NOT carry the spatial marker.
+        let sink2 = Arc::new(CollectingSink::new());
+        let runtime2 = Arc::new(SelRuntime::with_sink(
+            Arc::clone(&sink2) as Arc<dyn TextSurfaceSink>
+        ));
+        SelectOp::new(runtime2).dispatch(&mut Vm::new(1, 0), &[ExprValue::Bytes(b"x".to_vec())]);
+        assert_eq!(
+            sink2.lines.lock().expect("lock")[0].text_surface.as_deref(),
+            Some("choice:0"),
+        );
     }
 
     #[test]

@@ -213,8 +213,9 @@ pub use render_pipeline::{
     RENDER_PIPELINE_BLANK_LOCALIZED_TEXT_CODE, RENDER_PIPELINE_OBJECT_SKIPPED_CODE,
     RENDER_PIPELINE_ZERO_SCREEN_SIZE_CODE, RGBA_BYTES_PER_PIXEL, RecordingFrameArtifactSink,
     RedactionPolicy, RenderEmitError, RenderPass, RenderPassBuildError, RenderReport,
-    SCREENSHOT_ARTIFACT_KIND, SceneEmit, SceneScreenshots, SkipReason, SkippedObject, TextBackdrop,
-    TextLayer, adler32, crc32_ieee, encode_png_rgba_deterministic, sha256_hex,
+    SCREENSHOT_ARTIFACT_KIND, SceneEmit, SceneScreenshots, SkipReason, SkippedObject,
+    SpatialChoiceWindow, SpatialOption, TextBackdrop, TextLayer, adler32, crc32_ieee,
+    encode_png_rgba_deterministic, sha256_hex,
 };
 
 pub use save::{

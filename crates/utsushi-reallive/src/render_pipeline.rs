@@ -387,6 +387,123 @@ impl Framebuffer {
         }
         painted
     }
+
+    /// Paint a [`SpatialChoiceWindow`] — the SIDE-BY-SIDE graphical select
+    /// (Sweetie HD's route / love-interest pick, driven by
+    /// `sel.select_objbtn`). Each option is a panel laid out horizontally;
+    /// the focused / hovered option is painted in FULL COLOUR with a bright
+    /// border and its name/label below, every other option is DIMMED to
+    /// grayscale with a dim border (the real screen greys the un-hovered
+    /// characters and colours only the hovered one). Returns the number of
+    /// GLYPH-coverage pixels painted (the selected option's name), so the
+    /// non-vacuous emit guard still rejects a spatial window that drew no
+    /// label.
+    ///
+    /// The option ART (the character option graphics) is not decoded on
+    /// this path, so each panel is a faithful PLACEHOLDER: a per-option
+    /// solid fill (full-colour when focused, desaturated + dimmed when not)
+    /// standing in for the option's g00 art. Decoding the real option art
+    /// is a follow-up; the spatial LAYOUT, the hover colour/grayscale
+    /// state, and the name label are the real behaviour.
+    pub fn draw_spatial_choice_window(&mut self, choice: &SpatialChoiceWindow) -> u64 {
+        let mut painted = 0u64;
+        for (index, option) in choice.options.iter().enumerate() {
+            let focused = index == choice.selected;
+            // Placeholder option-art panel: full colour when focused, a
+            // desaturated + dimmed grayscale when not (the real screen
+            // renders the un-hovered character grayscale).
+            let panel_colour = if focused {
+                option.art_colour
+            } else {
+                desaturate_dim(option.art_colour)
+            };
+            self.fill_rect_blended(option.x, option.y, option.w, option.h, panel_colour);
+
+            // Border: a bright accent frame around the focused option, a
+            // dim frame around the rest — a second, shape-level cue that
+            // the selection is unambiguous.
+            let (border_colour, border_thickness) = if focused {
+                (WipeColour::opaque_rgb(0xFF, 0xE0, 0x66), 5u32)
+            } else {
+                (WipeColour::opaque_rgb(0x50, 0x54, 0x60), 2u32)
+            };
+            self.stroke_rect(
+                option.x,
+                option.y,
+                option.w,
+                option.h,
+                border_thickness,
+                border_colour,
+            );
+
+            // The focused option's NAME / label in a bottom-centre panel
+            // (the real screen shows the hovered character's name + profile
+            // at bottom-centre). Only the focused option is labelled, to
+            // match the hover behaviour.
+            if focused {
+                let label_h = choice.label_height.max(1);
+                let label_y = option
+                    .y
+                    .saturating_add(option.h)
+                    .saturating_sub(label_h)
+                    .max(option.y);
+                let backdrop = TextBackdrop {
+                    x: option.x,
+                    y: label_y,
+                    width: option.w,
+                    height: label_h,
+                    colour: WipeColour {
+                        red: 16,
+                        green: 20,
+                        blue: 34,
+                        alpha: 210,
+                    },
+                };
+                let layer = TextLayer {
+                    lines: vec![option.label.clone()],
+                    origin_x: option.x.saturating_add(choice.label_scale / 2),
+                    origin_y: label_y.saturating_add(label_h / 4),
+                    scale: choice.label_scale,
+                    colour: WipeColour::WHITE,
+                    backdrop: Some(backdrop),
+                    name_box: None,
+                    line_height: Some(label_h),
+                };
+                painted += self.draw_text(&layer);
+            }
+        }
+        painted
+    }
+
+    /// Paint a hollow rectangle border of `colour`, `thickness` px wide,
+    /// along the inside edge of the `(x, y, w, h)` rect. Used to frame a
+    /// [`SpatialChoiceWindow`] option panel.
+    fn stroke_rect(&mut self, x: u32, y: u32, w: u32, h: u32, thickness: u32, colour: WipeColour) {
+        let t = thickness.min(w).min(h).max(1);
+        // Top + bottom edges.
+        self.fill_rect_blended(x, y, w, t, colour);
+        self.fill_rect_blended(x, y.saturating_add(h).saturating_sub(t), w, t, colour);
+        // Left + right edges.
+        self.fill_rect_blended(x, y, t, h, colour);
+        self.fill_rect_blended(x.saturating_add(w).saturating_sub(t), y, t, h, colour);
+    }
+}
+
+/// Desaturate a colour to its Rec.601 luminance and dim it — the
+/// grayscale look the spatial select paints on an UN-hovered option
+/// panel. Alpha is preserved.
+fn desaturate_dim(colour: WipeColour) -> WipeColour {
+    // Rec.601 luma in 0..=255 (integer-weighted: 0.299, 0.587, 0.114).
+    let luma = ((colour.red as u32 * 299 + colour.green as u32 * 587 + colour.blue as u32 * 114)
+        / 1000) as u8;
+    // Dim toward black so the un-hovered panel reads as recessed.
+    let dimmed = ((luma as u32) * 60 / 100) as u8;
+    WipeColour {
+        red: dimmed,
+        green: dimmed,
+        blue: dimmed,
+        alpha: colour.alpha,
+    }
 }
 
 /// A localized text layer painted on top of the rasterised graphics
@@ -840,6 +957,135 @@ impl ChoiceWindow {
             name_box: None,
             line_height: Some(self.line_height),
         }
+    }
+}
+
+/// A single option in a [`SpatialChoiceWindow`]: its localized name /
+/// label and the panel rectangle it occupies. `art_colour` is the
+/// placeholder fill standing in for the not-yet-decoded option g00 art
+/// (full-colour when the option is focused; [`desaturate_dim`]-ed when
+/// not).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SpatialOption {
+    /// Localized (translated) option label — e.g. the character / route
+    /// name shown for the hovered option.
+    pub label: String,
+    /// Panel top-left (framebuffer px).
+    pub x: u32,
+    pub y: u32,
+    /// Panel extent (framebuffer px).
+    pub w: u32,
+    pub h: u32,
+    /// Placeholder option-art fill (stands in for the decoded g00
+    /// character graphic).
+    pub art_colour: WipeColour,
+}
+
+/// A RealLive `select_objbtn` (object-button) prompt rendered as a
+/// SPATIAL, side-by-side graphical select — Sweetie HD's route /
+/// love-interest pick (the game's first choice: two characters
+/// side-by-side, the hovered one in full colour, the other grayscale,
+/// with the hovered one's name shown).
+///
+/// This is a distinct RENDER modality from the vertical text-list
+/// [`ChoiceWindow`]: the options are laid out HORIZONTALLY (one panel
+/// per option), and the focused option is cued by COLOUR (full colour
+/// vs. desaturated grayscale) + a bright border + a name label, rather
+/// than a `> ` cursor on a stacked row. The ACT half is unchanged: the
+/// selected index still resolves through the store register + `goto_on`
+/// (see [`crate::ReplayEngine::branch_following_lines`]), so option K →
+/// route branch K exactly like the text select.
+///
+/// The option labels are OUR translated (localized) strings; the render
+/// paints them through the in-crate bitmap [`font`], never the source
+/// g00 pixels.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SpatialChoiceWindow {
+    /// The option panels, left to right.
+    pub options: Vec<SpatialOption>,
+    /// Index of the focused / hovered option (clamped into range at
+    /// construction).
+    pub selected: usize,
+    /// Glyph pixel height for the option name label.
+    pub label_scale: u32,
+    /// Height (framebuffer px) of the bottom-centre name-label band on
+    /// the focused option panel.
+    pub label_height: u32,
+}
+
+impl SpatialChoiceWindow {
+    /// Default palette the placeholder option panels cycle through so two
+    /// side-by-side options are visually distinct even before the real
+    /// g00 art is decoded. Deterministic per option index.
+    const PLACEHOLDER_PALETTE: &'static [WipeColour] = &[
+        WipeColour::opaque_rgb(0xC8, 0x4B, 0x6E), // warm rose (left)
+        WipeColour::opaque_rgb(0x4B, 0x74, 0xC8), // cool blue (right)
+        WipeColour::opaque_rgb(0x5A, 0xA0, 0x60), // green
+        WipeColour::opaque_rgb(0xC8, 0x9B, 0x4B), // amber
+    ];
+
+    /// Lay out `options` as a horizontal, side-by-side spatial select in
+    /// a `screen`-sized framebuffer, with `selected` focused. The panels
+    /// split the screen width into equal columns (a small gutter between
+    /// them), inset from the frame edges; each gets a placeholder art
+    /// colour from [`Self::PLACEHOLDER_PALETTE`].
+    ///
+    /// `screen` is the framebuffer size in px. The layout is derived from
+    /// the frame geometry (a spatial 2-option select occupies the full
+    /// screen split down the middle), not a `#WINDOW.NNN` text box — the
+    /// object-button select is placed by its button sprites, not a sel
+    /// window.
+    pub fn from_options(options: &[String], selected: usize, screen: (u32, u32)) -> Self {
+        let (sw, sh) = (screen.0.max(1), screen.1.max(1));
+        let n = options.len().max(1) as u32;
+        let selected = if options.is_empty() {
+            0
+        } else {
+            selected.min(options.len() - 1)
+        };
+        // Outer margin + inter-panel gutter, scaled modestly to the frame.
+        let margin_x = (sw / 24).max(4);
+        let margin_y = (sh / 12).max(4);
+        let gutter = (sw / 48).max(4);
+        let usable_w = sw
+            .saturating_sub(margin_x * 2)
+            .saturating_sub(gutter * (n - 1))
+            .max(n);
+        let panel_w = (usable_w / n).max(1);
+        let panel_h = sh.saturating_sub(margin_y * 2).max(1);
+        let label_scale = (sh / 24).clamp(14, 48);
+        let label_height = (label_scale * 2).min(panel_h);
+
+        let spatial_options = options
+            .iter()
+            .enumerate()
+            .map(|(index, label)| {
+                let x = margin_x + (panel_w + gutter) * index as u32;
+                SpatialOption {
+                    label: label.clone(),
+                    x,
+                    y: margin_y,
+                    w: panel_w,
+                    h: panel_h,
+                    art_colour: Self::PLACEHOLDER_PALETTE[index % Self::PLACEHOLDER_PALETTE.len()],
+                }
+            })
+            .collect();
+
+        Self {
+            options: spatial_options,
+            selected,
+            label_scale,
+            label_height,
+        }
+    }
+
+    /// Total number of glyph characters shown (the focused option's
+    /// label) — the non-vacuous-render denominator.
+    pub fn char_count(&self) -> usize {
+        self.options
+            .get(self.selected)
+            .map_or(0, |option| option.label.chars().count())
     }
 }
 

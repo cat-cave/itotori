@@ -358,6 +358,11 @@ fn select_objbtn_emits_choices_like_other_variants() {
     let lines = sink.drain();
     assert_eq!(lines.len(), 1);
     assert_eq!(lines[0].text, "go");
+    // Recognition (0-unknown preserved) + interpretation: the objbtn
+    // variant is the SPATIAL select, so its emitted option carries the
+    // `;spatial` render marker on top of the shared `choice:<idx>` base.
+    assert_eq!(lines[0].text_surface.as_deref(), Some("choice:0;spatial"));
+    assert!(SelectVariant::SelectObjbtn.is_spatial());
 }
 
 // ---------------------------------------------------------------------
