@@ -9,15 +9,23 @@
 //
 // HOW IT WORKS (source-level mutation runner — the faithful, strict-proof form):
 //   For each realistic decoder/patchback/replay bug in MUTATIONS, the runner
-//   applies a targeted one-line SOURCE PATCH to the REAL decoder/patchback code,
+//   applies a targeted one-line SOURCE PATCH to the decoder/patchback code,
 //   recompiles, and runs the owning engine family's SYNTHETIC (default,
 //   non-`#[ignore]`, no-real-bytes) test suite. The synthetic suite MUST turn
 //   red (the mutation is "killed"). A mutation that the synthetic suite lets
 //   pass ("escaped") is a coverage hole and FAILS this lane loud.
 //
-//   The mutations are NEVER shipped in the real code path: they live only here,
-//   are applied to a working copy, and are ALWAYS reverted (the original file
-//   bytes are restored, then verified byte-identical, in a finally block).
+//   The mutations are NEVER applied to the LIVE in-tree source. The runner first
+//   copies the workspace into a throwaway per-run SANDBOX (its own source tree +
+//   its own isolated CARGO_TARGET_DIR) and mutates/recompiles ONLY inside that
+//   sandbox, which is deleted when the run ends. The live `crates/**/src` is
+//   therefore byte-identical before and after — never opened for write — so a
+//   CONCURRENTLY-running per-gate lane (e.g. `just check`'s source-reading
+//   self-test, or `cargo fmt/clippy`) can never observe a half-mutated source
+//   file. This removes the earlier in-place-mutation concurrency race
+//   (mutation-differential-source-mutation-concurrency-race) at the root: two
+//   full-CI runs sharing a checkout no longer collide, because each run mutates
+//   only its own disposable copy, never the shared tree.
 //
 // WHY 100% SYNTHETIC KILL ⇒ synthetic >= real: the mutation set is drawn from
 //   the representative real-regression classes, each landing in a code path the
@@ -44,10 +52,19 @@
 // The cargo driver is `cargo` by default; override with ITOTORI_MUTATION_CARGO
 // (e.g. `direnv exec . cargo`) for a devshell that wraps the toolchain.
 
-import { readFileSync, writeFileSync } from "node:fs";
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { spawnSync } from "node:child_process";
+import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join, relative, resolve, sep } from "node:path";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(here, "..");
@@ -225,20 +242,73 @@ function cargoBin() {
   return process.env.ITOTORI_MUTATION_CARGO || "cargo";
 }
 
-function runCargoTest({ crates, ignored }) {
+function runCargoTest({ crates, ignored, cwd, env }) {
   const pflags = crates.map((c) => `-p ${c}`).join(" ");
   const ignoredFlag = ignored ? " -- --ignored" : "";
   const cmd = `${cargoBin()} test ${pflags} --quiet${ignoredFlag}`;
   const started = Date.now();
   const res = spawnSync(cmd, {
     shell: true,
-    cwd: repoRoot,
+    cwd,
     encoding: "utf8",
     maxBuffer: 64 * 1024 * 1024,
-    env: process.env,
+    env,
   });
   const output = `${res.stdout || ""}${res.stderr || ""}`;
   return { status: res.status, output, elapsedMs: Date.now() - started, cmd };
+}
+
+// ---------------------------------------------------------------------------
+// Disposable per-run sandbox.
+//
+// The mutation runner NEVER writes to the live in-tree source. It copies the
+// workspace into a throwaway directory (excluding heavy/irrelevant build caches)
+// with its OWN isolated CARGO_TARGET_DIR, mutates + recompiles only there, then
+// deletes the whole sandbox. Because the copy is unique per run (mkdtemp), two
+// concurrent full-CI runs sharing a checkout never collide, and no concurrent
+// lane can ever read a source file this runner has mid-mutated.
+// ---------------------------------------------------------------------------
+const SANDBOX_SKIP_DIRS = new Set([
+  ".git",
+  "target",
+  "node_modules",
+  ".tmp",
+  ".corepack",
+  ".direnv",
+]);
+
+function sandboxBaseDir() {
+  if (process.env.ITOTORI_MUTATION_SANDBOX_DIR) return process.env.ITOTORI_MUTATION_SANDBOX_DIR;
+  // Prefer the fast scratch RAID0 the devshell already uses for build artifacts.
+  if (existsSync("/scratch/cache/itotori")) return "/scratch/cache/itotori/mutdiff";
+  return join(tmpdir(), "itotori-mutdiff");
+}
+
+function prepareSandbox() {
+  const base = sandboxBaseDir();
+  mkdirSync(base, { recursive: true });
+  const sandboxRoot = mkdtempSync(join(base, `run-${process.pid}-`));
+  const srcRoot = join(sandboxRoot, "src");
+  const targetDir = join(sandboxRoot, "target");
+
+  cpSync(repoRoot, srcRoot, {
+    recursive: true,
+    dereference: false,
+    filter: (src) => {
+      const rel = relative(repoRoot, src);
+      if (rel === "") return true;
+      return !rel.split(sep).some((segment) => SANDBOX_SKIP_DIRS.has(segment));
+    },
+  });
+
+  // Isolated target dir so the sandbox cold-builds into its own space and never
+  // fights (or invalidates) the live worktree's CARGO_TARGET_DIR.
+  const env = { ...process.env, CARGO_TARGET_DIR: targetDir };
+  return {
+    root: srcRoot,
+    env,
+    cleanup: () => rmSync(sandboxRoot, { recursive: true, force: true }),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -248,8 +318,9 @@ function guardSignature(crates) {
   return crates.slice().sort().join(",");
 }
 
-function runOne(mutation, { withReal }) {
-  const absPath = join(repoRoot, mutation.file);
+function runOne(mutation, { withReal, sandbox }) {
+  // Mutate ONLY the sandbox copy — never the live in-tree source.
+  const absPath = join(sandbox.root, mutation.file);
   const original = readFileSync(absPath, "utf8");
   const result = {
     id: mutation.id,
@@ -264,7 +335,12 @@ function runOne(mutation, { withReal }) {
     const mutated = applyMutation(original, mutation);
     writeFileSync(absPath, mutated);
 
-    const synth = runCargoTest({ crates: mutation.guardCrates, ignored: false });
+    const synth = runCargoTest({
+      crates: mutation.guardCrates,
+      ignored: false,
+      cwd: sandbox.root,
+      env: sandbox.env,
+    });
     result.outcome = classifyOutcome({ status: synth.status, output: synth.output });
     result.syntheticElapsedMs = synth.elapsedMs;
     result.syntheticStatus = synth.status;
@@ -272,17 +348,26 @@ function runOne(mutation, { withReal }) {
     if (withReal && result.outcome !== "compile_error") {
       const guard = REAL_GUARDS[mutation.realFamily];
       if (guard) {
-        const real = runCargoTest({ crates: guard.crates, ignored: guard.ignored });
+        const real = runCargoTest({
+          crates: guard.crates,
+          ignored: guard.ignored,
+          cwd: sandbox.root,
+          env: sandbox.env,
+        });
         result.realOutcome = classifyOutcome({ status: real.status, output: real.output });
         result.realElapsedMs = real.elapsedMs;
       }
     }
   } finally {
-    // Always restore the pristine source, then verify byte-identity.
+    // Restore the sandbox copy's pristine bytes so the NEXT mutation targeting
+    // the same file applies cleanly, then verify byte-identity (within the
+    // sandbox — the live tree is never touched at all).
     writeFileSync(absPath, original);
     const restored = readFileSync(absPath, "utf8");
     if (restored !== original) {
-      throw new Error(`failed to restore ${mutation.file} to its pristine bytes after mutation`);
+      throw new Error(
+        `failed to restore sandbox copy of ${mutation.file} to its pristine bytes after mutation`,
+      );
     }
   }
   return result;
@@ -322,43 +407,53 @@ function main() {
 
   const mutations = selectMutations(opts.only);
 
-  // Baseline: every distinct synthetic guard must be GREEN before we mutate, so
-  // a red run can only mean the mutation (not a pre-existing failure).
-  const baselines = new Map();
-  const uniqueGuards = new Map();
-  for (const m of mutations) uniqueGuards.set(guardSignature(m.guardCrates), m.guardCrates);
-  for (const [sig, crates] of uniqueGuards) {
-    const base = runCargoTest({ crates, ignored: false });
-    const green = base.status === 0;
-    baselines.set(sig, green);
-    if (!opts.json) {
-      process.stderr.write(
-        `baseline  ${sig.padEnd(38)} ${green ? "GREEN" : "RED"}  (${base.elapsedMs}ms)\n`,
-      );
-    }
-    if (!green) {
-      process.stderr.write(
-        `mutation-differential: baseline synthetic suite for [${sig}] is not green; ` +
-          "cannot attribute a red run to a mutation.\n" +
-          base.output.split("\n").slice(-25).join("\n") +
-          "\n",
-      );
-      return 1;
-    }
+  // Stage a throwaway per-run sandbox copy of the workspace up front; ALL cargo
+  // work (baselines + mutations) runs there so the live tree is never mutated.
+  const sandbox = prepareSandbox();
+  if (!opts.json) {
+    process.stderr.write(`sandbox   ${sandbox.root}  (isolated CARGO_TARGET_DIR)\n`);
   }
 
-  const results = [];
-  for (const m of mutations) {
-    const r = runOne(m, { withReal: opts.withReal });
-    results.push(r);
-    if (!opts.json) {
-      const tag =
-        r.outcome === "killed" ? "KILLED " : r.outcome === "escaped" ? "ESCAPED" : "INVALID";
-      const realTag = r.realOutcome ? `  real=${r.realOutcome}` : "";
-      process.stderr.write(
-        `mutation  ${m.id.padEnd(30)} ${tag} by synthetic (${r.syntheticElapsedMs}ms)${realTag}\n`,
-      );
+  let results;
+  try {
+    // Baseline: every distinct synthetic guard must be GREEN before we mutate, so
+    // a red run can only mean the mutation (not a pre-existing failure).
+    const uniqueGuards = new Map();
+    for (const m of mutations) uniqueGuards.set(guardSignature(m.guardCrates), m.guardCrates);
+    for (const [sig, crates] of uniqueGuards) {
+      const base = runCargoTest({ crates, ignored: false, cwd: sandbox.root, env: sandbox.env });
+      const green = base.status === 0;
+      if (!opts.json) {
+        process.stderr.write(
+          `baseline  ${sig.padEnd(38)} ${green ? "GREEN" : "RED"}  (${base.elapsedMs}ms)\n`,
+        );
+      }
+      if (!green) {
+        process.stderr.write(
+          `mutation-differential: baseline synthetic suite for [${sig}] is not green; ` +
+            "cannot attribute a red run to a mutation.\n" +
+            base.output.split("\n").slice(-25).join("\n") +
+            "\n",
+        );
+        return 1;
+      }
     }
+
+    results = [];
+    for (const m of mutations) {
+      const r = runOne(m, { withReal: opts.withReal, sandbox });
+      results.push(r);
+      if (!opts.json) {
+        const tag =
+          r.outcome === "killed" ? "KILLED " : r.outcome === "escaped" ? "ESCAPED" : "INVALID";
+        const realTag = r.realOutcome ? `  real=${r.realOutcome}` : "";
+        process.stderr.write(
+          `mutation  ${m.id.padEnd(30)} ${tag} by synthetic (${r.syntheticElapsedMs}ms)${realTag}\n`,
+        );
+      }
+    }
+  } finally {
+    sandbox.cleanup();
   }
 
   const killed = results.filter((r) => r.outcome === "killed").length;
