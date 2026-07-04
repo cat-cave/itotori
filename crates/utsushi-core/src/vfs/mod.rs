@@ -18,6 +18,7 @@ pub mod diagnostics;
 pub mod id;
 pub mod package;
 pub mod runtime;
+pub mod xp3_handoff;
 
 pub use archive::{AssetArchiveReader, CaseFoldedIndex, CaseFoldedIndexEntry};
 pub use composite::{CompositeAssetPackage, CompositeSource};
@@ -31,3 +32,8 @@ pub use package::{
     PackageKind, PackageSource, case_rule_matches, validate_logical_path,
 };
 pub use runtime::{MountedVfs, PlaintextDirPackage, RuntimeVfs};
+pub use xp3_handoff::{
+    XP3_HANDOFF_PACKAGE_ID, XP3_HANDOFF_SCHEMA_VERSION, XP3_HANDOFF_SUPPORT_BOUNDARY,
+    Xp3ExtractedMember, Xp3HandoffAdmission, Xp3HandoffArchiveReader, Xp3HandoffDiagnostic,
+    Xp3HandoffManifest, Xp3HandoffMetadata, Xp3HandoffProfile, admit_xp3_handoff,
+};

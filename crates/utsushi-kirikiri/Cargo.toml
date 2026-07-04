@@ -17,6 +17,11 @@ encoding_rs.workspace = true
 serde = { workspace = true }
 serde_json.workspace = true
 thiserror.workspace = true
+# UTSUSHI-039: the shared VFS boundary + the sealed XP3-backed handoff reader.
+# Utsushi consumes Kaifuu-owned extracted output through this VFS (no
+# Utsushi-side archive decryption); the KAG replay smoke reads the `.ks`
+# through the VFS.
+utsushi-core = { path = "../utsushi-core" }
 
 [dev-dependencies]
 # KAIFUU-009's KAG `.ks` PARSER is a dev-dependency ORACLE, not a production
@@ -27,6 +32,12 @@ thiserror.workspace = true
 # byte-for-byte on the shared dialect, so the reuse is proven against real
 # parse OUTPUT rather than by production linkage.
 kaifuu-kirikiri = { path = "../kaifuu-kirikiri" }
+# UTSUSHI-039: kaifuu-core is a dev-dependency ORACLE used to build + EXTRACT a
+# synthetic plain XP3 (Kaifuu owns the container bytes and the extraction) so
+# the handoff smoke hands REAL Kaifuu-extracted members to Utsushi's VFS.
+# Utsushi never links kaifuu-core in production — it consumes only the
+# already-extracted output shape.
+kaifuu-core = { path = "../kaifuu-core" }
 
 [lints]
 workspace = true

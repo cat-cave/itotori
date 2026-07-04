@@ -68,6 +68,7 @@
 mod encoding;
 mod parse;
 mod replay;
+mod xp3_vfs_replay;
 
 pub use encoding::KagEncoding;
 pub use parse::{
@@ -77,6 +78,10 @@ pub use replay::{
     ChoiceOption, DEFAULT_STEP_BUDGET, KAG_TRACE_SCHEMA_VERSION, KagDiagnostic, KagDiagnosticKind,
     KagEvent, KagOutcome, KagReplayOpts, KagTrace, KagTraceError, VarValue, replay_kag,
     replay_kag_with_opts,
+};
+pub use xp3_vfs_replay::{
+    KAG_VFS_CAPABILITY_ID, KAG_VFS_EVIDENCE_SCHEMA_VERSION, KAG_VFS_SUPPORT_BOUNDARY, KagVfsError,
+    KagVfsEvidence, KagVfsHandoffError, admit_and_replay, replay_kag_through_vfs,
 };
 
 /// One-line honest-scope statement, embedded so the boundary is queryable

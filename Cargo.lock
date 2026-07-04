@@ -1349,10 +1349,12 @@ name = "utsushi-kirikiri"
 version = "0.0.0"
 dependencies = [
  "encoding_rs",
+ "kaifuu-core",
  "kaifuu-kirikiri",
  "serde",
  "serde_json",
  "thiserror",
+ "utsushi-core",
 ]
 
 [[package]]
