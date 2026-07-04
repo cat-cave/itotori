@@ -501,6 +501,114 @@
           "limitation": "runtime support belongs to future Utsushi/Siglus work, not this detector fixture"
         }
       ]
+    },
+    {
+      "adapterId": "kaifuu.softpal",
+      "detected": false,
+      "evidence": [
+        {
+          "path": "SCRIPT.SRC",
+          "kind": "softpal_script_src_magic",
+          "status": "missing",
+          "detail": "no loose SCRIPT.SRC with the Sv<nn> magic"
+        },
+        {
+          "path": "TEXT.DAT",
+          "kind": "softpal_text_dat_magic",
+          "status": "missing",
+          "detail": "no loose TEXT.DAT with the [$_]TEXT_LIST__ magic"
+        },
+        {
+          "path": "data.pac",
+          "kind": "softpal_pac_script_text_entries",
+          "status": "missing",
+          "detail": "[REDACTED:kaifuu.secret_redacted]"
+        },
+        {
+          "path": "dll/Pal.dll",
+          "kind": "softpal_pal_dll",
+          "status": "missing",
+          "detail": "dll/Pal.dll not found"
+        }
+      ],
+      "requirements": [],
+      "capabilities": [
+        {
+          "capability": "asset_inventory",
+          "status": "unsupported",
+          "limitation": "Softpal asset inventory is a later Softpal node, not the detector"
+        },
+        {
+          "capability": "asset_listing",
+          "status": "unsupported",
+          "limitation": "Softpal PAC entry listing is a later Softpal node, not the detector"
+        },
+        {
+          "capability": "asset_text_patching",
+          "status": "unsupported",
+          "limitation": "no Softpal text surfaces are patched by this detector"
+        },
+        {
+          "capability": "codec_access",
+          "status": "unsupported",
+          "limitation": "[REDACTED:kaifuu.secret_redacted]"
+        },
+        {
+          "capability": "container_access",
+          "status": "unsupported",
+          "limitation": "PAC archive parsing is outside the detector"
+        },
+        {
+          "capability": "crypto_access",
+          "status": "unsupported",
+          "limitation": "TEXT.DAT/PAC decryption is outside the detector"
+        },
+        {
+          "capability": "delta_patching",
+          "status": "unsupported",
+          "limitation": ".kaifuu delta packages do not apply to the detector-only Softpal profile"
+        },
+        {
+          "capability": "detection",
+          "status": "supported",
+          "limitation": null
+        },
+        {
+          "capability": "encrypted_input",
+          "status": "unsupported",
+          "limitation": "encrypted TEXT.DAT payloads are identified only, never decrypted"
+        },
+        {
+          "capability": "extraction",
+          "status": "unsupported",
+          "limitation": "the Softpal detector does not extract PAC archives"
+        },
+        {
+          "capability": "non_text_surface_extraction",
+          "status": "unsupported",
+          "limitation": "[REDACTED:kaifuu.secret_redacted]"
+        },
+        {
+          "capability": "patch_back",
+          "status": "unsupported",
+          "limitation": "Softpal patch-back/repack support is outside the detector"
+        },
+        {
+          "capability": "patching",
+          "status": "unsupported",
+          "limitation": "the Softpal detector does not patch or rebuild Softpal assets"
+        },
+        {
+          "capability": "profile_generation",
+          "status": "supported",
+          "limitation": null
+        },
+        {
+          "capability": "runtime_vm",
+          "status": "unsupported",
+          "limitation": "runtime support belongs to future Utsushi/Softpal work, not this detector"
+        }
+      ]
     }
   ],
   "archiveDetection": {
@@ -876,7 +984,5 @@
       }
     ]
   },
-  "warnings": [
-    "no registered extraction adapter matched this directory; archive detection reported unsupported input diagnostics"
-  ]
+  "warnings": ["no registered extraction adapter matched this directory; archive detection reported unsupported input diagnostics"]
 }

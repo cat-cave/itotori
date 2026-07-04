@@ -121,6 +121,59 @@ const REALLIVE_GAMEEXE_INI_MAGIC: &[u8] = b"# RealLive Gameexe.ini fixture";
 const REALLIVE_PROFILE_ID: &str = "019ed000-0000-7000-8000-000000172001";
 const REALLIVE_GAME_ID: &str = "kaifuu-reallive-synthetic-scene-seen";
 const REALLIVE_SUPPORT_BOUNDARY: &str = "RealLive detector profile identifies SEEN.TXT/Gameexe.ini/SEEN.GAN fixtures for identify and (in a single later slice) profile/asset-inventory only; parser, extraction, decryption, patch-back, and runtime support are not claimed.";
+
+// Softpal ADV (Amuse Craft / "Pal") engine detector (SOFTPAL-DETECTOR).
+//
+// Provenance: these constants encode the publicly observable file shape of the
+// Softpal ADV System, cross-checked against two owned titles (Kizuna Kirameku
+// Koi Iroha / v21465 and Dimension Totsu Lovers / v60663). No copyrighted bytes
+// are embedded — only fixed format signatures (the same magics any Softpal
+// title exposes) are encoded, and recognition stays at identify level: PAC
+// extraction, SCRIPT.SRC decompilation, TEXT.DAT decode/decrypt, and repack are
+// intentionally NOT claimed (they are later Softpal nodes; the Softpal core is
+// not implemented yet).
+//
+// Signatures (all observed on both real titles):
+//   * `dll/Pal.dll` present — the definitive Softpal ("Pal" engine) marker.
+//   * `.pac` archives open with magic `PAC ` (`50 41 43 20`) and, in the case
+//     of `data.pac`, list `SCRIPT.SRC` and `TEXT.DAT` entries in the file table.
+//   * The `SCRIPT.SRC` payload opens with `Sv20` (`53 76 32 30`); the `Sv`
+//     followed by a two-digit version tolerates other script-format revisions
+//     (e.g. `Sv10`).
+//   * The `TEXT.DAT` payload opens with a one-byte encryption flag then
+//     `TEXT_LIST__`; the flag is `$` (encrypted — v21465) or `_` (plaintext —
+//     v60663), so BOTH real titles' enc-flag states are recognised.
+pub const SOFTPAL_DETECTOR_ADAPTER_ID: &str = "kaifuu.softpal";
+// `PAC ` — trailing space is part of the 4-byte magic.
+const SOFTPAL_PAC_MAGIC: &[u8] = b"PAC ";
+const SOFTPAL_DATA_PAC_NAME: &str = "data.pac";
+const SOFTPAL_PAL_DLL_DIR: &str = "dll";
+const SOFTPAL_PAL_DLL_NAME: &str = "Pal.dll";
+const SOFTPAL_SCRIPT_SRC_NAME: &str = "SCRIPT.SRC";
+const SOFTPAL_TEXT_DAT_NAME: &str = "TEXT.DAT";
+// Entry-name byte sequences searched for inside a `.pac` file table.
+const SOFTPAL_SCRIPT_SRC_ENTRY: &[u8] = b"SCRIPT.SRC";
+const SOFTPAL_TEXT_DAT_ENTRY: &[u8] = b"TEXT.DAT";
+// `SCRIPT.SRC` payload magic prefix (`Sv`, then a two-digit version).
+const SOFTPAL_SCRIPT_SRC_MAGIC_PREFIX: &[u8] = b"Sv";
+// `TEXT.DAT` payload tag following the one-byte encryption flag.
+const SOFTPAL_TEXT_LIST_TAG: &[u8] = b"TEXT_LIST__";
+// Encryption-flag byte that precedes `TEXT_LIST__`: `$` encrypted, `_` plaintext.
+const SOFTPAL_TEXT_DAT_ENC_ENCRYPTED: u8 = b'$';
+const SOFTPAL_TEXT_DAT_ENC_PLAINTEXT: u8 = b'_';
+// Bound the PAC file-table prefix scan so a multi-megabyte / tens-of-MB `.pac`
+// is never fully read merely to recognise its entry names. Real `data.pac`
+// tables list `SCRIPT.SRC`/`TEXT.DAT` within the first few KB (v21465 @16092,
+// v60663 @7812); a 1 MiB window gives a wide margin for larger archives'
+// file tables while staying bounded and identify-level.
+const SOFTPAL_PAC_TABLE_SCAN_LEN: usize = 1 << 20;
+// Sanity bound on the PAC entry count (LE u32 @ offset 8) so a file that merely
+// opens with `PAC ` cannot pass the container check with a garbage table.
+const SOFTPAL_PAC_MAX_ENTRIES: u32 = 1_000_000;
+const SOFTPAL_PROFILE_ID: &str = "019ed000-0000-7000-8000-0000000c1001";
+const SOFTPAL_GAME_ID: &str = "kaifuu-softpal-detected-title";
+const SOFTPAL_SUPPORT_BOUNDARY: &str = "Softpal detector identifies the Amuse Craft/Pal (Softpal ADV) engine by Pal.dll, a PAC archive listing SCRIPT.SRC/TEXT.DAT, and the Sv-version/TEXT_LIST script magics, for identify only; PAC extraction, SCRIPT.SRC decompilation, TEXT.DAT decode/decryption, patch-back, and runtime support are not claimed.";
+
 #[derive(Debug, Default, Clone, Copy)]
 pub struct FixtureAdapter;
 
@@ -151,6 +204,14 @@ pub struct SiglusProfileDetectorAdapter;
 //   All of those nodes inherit the same clean-room posture.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct RealLiveProfileDetectorAdapter;
+
+// Softpal ADV (Amuse Craft / "Pal") engine detector. Identify-only: it
+// classifies `engine=softpal` from Pal.dll / PAC+SCRIPT.SRC/TEXT.DAT / script
+// magics; PAC extraction, decompilation, decryption, and patch-back are later
+// Softpal nodes and are reported Unsupported here. See the `SOFTPAL_*`
+// constants above for the signature provenance and false-positive rationale.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct SoftpalProfileDetectorAdapter;
 
 impl FixtureAdapter {
     fn source_path(game_dir: &Path) -> std::path::PathBuf {
@@ -5168,6 +5229,701 @@ fn gameexe_ini_detail(exists: bool, keys: GameexeIniKeyHits) -> String {
     format!("Gameexe.ini RealLive keys matched: {}", matched.join(", "))
 }
 
+// =====================================================================
+// Softpal ADV (Amuse Craft / "Pal") engine detector.
+//
+// Detection is a small deterministic decision over three independent,
+// Softpal-specific signals (see the `SOFTPAL_*` constant provenance block):
+//   1. `dll/Pal.dll` present            — definitive Pal-engine marker.
+//   2. a `.pac` (`PAC ` magic) whose file table names both `SCRIPT.SRC`
+//      and `TEXT.DAT`                    — the ADV script/text container.
+//   3. loose `SCRIPT.SRC` (`Sv<nn>`) AND `TEXT.DAT` (`[$_]TEXT_LIST__`)
+//      script magics                     — enc-flag-robust script pair.
+// Any one of (1), (2), or (3) classifies `engine=softpal` at identify level.
+// =====================================================================
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SoftpalVariant {
+    // `dll/Pal.dll` present — the strongest, definitive Softpal signal.
+    PalDll,
+    // A `.pac` archive lists both `SCRIPT.SRC` and `TEXT.DAT` (no Pal.dll).
+    PacScripts,
+    // Loose `SCRIPT.SRC` + `TEXT.DAT` script magics (no Pal.dll, no PAC table).
+    LooseScripts,
+    // A `.pac` opened with `PAC ` magic but its table did not name the Softpal
+    // scripts, or a Softpal-named file was present without a recognised
+    // signature. Diagnostic — reported, but NOT `detected` (false-positive
+    // guard: bare `PAC ` magic is not enough to claim the Softpal engine).
+    UnknownPacOnly,
+    NotSoftpal,
+}
+
+#[derive(Debug, Clone)]
+struct SoftpalState {
+    pal_dll_present: bool,
+    // Any `.pac` in the game dir opened with the `PAC ` magic.
+    pac_present: bool,
+    // A `.pac` whose file table names both `SCRIPT.SRC` and `TEXT.DAT`.
+    pac_scripts: bool,
+    // Relative name of the `.pac` that matched the scripts signature.
+    scripts_pac_name: Option<String>,
+    // Loose `SCRIPT.SRC` opening with the `Sv<nn>` script magic.
+    loose_script_src: bool,
+    // Loose `TEXT.DAT` opening with `[$_]TEXT_LIST__`.
+    loose_text_dat: bool,
+    // Encryption-flag byte observed on a loose `TEXT.DAT` (`$`/`_`), if any.
+    text_dat_enc_flag: Option<u8>,
+    variant: SoftpalVariant,
+}
+
+impl SoftpalState {
+    fn enc_flag_label(&self) -> &'static str {
+        match self.text_dat_enc_flag {
+            Some(SOFTPAL_TEXT_DAT_ENC_ENCRYPTED) => "encrypted ($)",
+            Some(SOFTPAL_TEXT_DAT_ENC_PLAINTEXT) => "plaintext (_)",
+            _ => "unobserved",
+        }
+    }
+
+    fn engine_evidence(&self) -> Vec<String> {
+        let mut evidence = Vec::new();
+        if self.pal_dll_present {
+            evidence.push(format!("{SOFTPAL_PAL_DLL_DIR}/{SOFTPAL_PAL_DLL_NAME}"));
+        }
+        if let Some(name) = &self.scripts_pac_name {
+            evidence.push(name.clone());
+        } else if self.pac_present {
+            evidence.push("*.pac".to_string());
+        }
+        if self.loose_script_src {
+            evidence.push(SOFTPAL_SCRIPT_SRC_NAME.to_string());
+        }
+        if self.loose_text_dat {
+            evidence.push(SOFTPAL_TEXT_DAT_NAME.to_string());
+        }
+        evidence
+    }
+
+    fn metadata(&self) -> BTreeMap<String, String> {
+        let mut metadata = BTreeMap::new();
+        metadata.insert("engineFamily".to_string(), "softpal".to_string());
+        metadata.insert(
+            "signal.palDll".to_string(),
+            self.pal_dll_present.to_string(),
+        );
+        metadata.insert(
+            "signal.pacScripts".to_string(),
+            self.pac_scripts.to_string(),
+        );
+        metadata.insert(
+            "signal.looseScriptSrc".to_string(),
+            self.loose_script_src.to_string(),
+        );
+        metadata.insert(
+            "signal.looseTextDat".to_string(),
+            self.loose_text_dat.to_string(),
+        );
+        metadata.insert(
+            "textDatEncFlag".to_string(),
+            self.enc_flag_label().to_string(),
+        );
+        metadata.insert(
+            "supportBoundary".to_string(),
+            SOFTPAL_SUPPORT_BOUNDARY.to_string(),
+        );
+        metadata
+    }
+
+    fn detection_requirements(&self) -> Vec<ProfileRequirement> {
+        vec![
+            ProfileRequirement {
+                category: RequirementCategory::File,
+                key: format!("{SOFTPAL_PAL_DLL_DIR}/{SOFTPAL_PAL_DLL_NAME}"),
+                status: if self.pal_dll_present {
+                    RequirementStatus::Satisfied
+                } else {
+                    RequirementStatus::NotRequired
+                },
+                description: "Softpal Pal.dll engine marker".to_string(),
+                placeholder: None,
+                secret: false,
+            },
+            ProfileRequirement {
+                category: RequirementCategory::File,
+                key: SOFTPAL_DATA_PAC_NAME.to_string(),
+                status: if self.pac_scripts {
+                    RequirementStatus::Satisfied
+                } else {
+                    RequirementStatus::NotRequired
+                },
+                description: "Softpal PAC archive listing SCRIPT.SRC and TEXT.DAT".to_string(),
+                placeholder: None,
+                secret: false,
+            },
+            ProfileRequirement {
+                category: RequirementCategory::Platform,
+                key: "softpal-pac-parser".to_string(),
+                status: RequirementStatus::Unsupported,
+                description:
+                    "PAC archive parsing / SCRIPT.SRC decompilation / TEXT.DAT decode are outside the Softpal detector (later Softpal nodes)"
+                        .to_string(),
+                placeholder: None,
+                secret: false,
+            },
+        ]
+    }
+}
+
+impl SoftpalProfileDetectorAdapter {
+    fn pal_dll_path(game_dir: &Path) -> Option<std::path::PathBuf> {
+        let dll_dir = case_insensitive_find(game_dir, SOFTPAL_PAL_DLL_DIR)?;
+        if !dll_dir.is_dir() {
+            return None;
+        }
+        case_insensitive_find(&dll_dir, SOFTPAL_PAL_DLL_NAME).filter(|path| path.is_file())
+    }
+
+    // Recognise a `.pac` whose file table names both `SCRIPT.SRC` and
+    // `TEXT.DAT`. Reads only a bounded header/table prefix (never the whole
+    // archive) and requires the `PAC ` magic plus a sane entry count before
+    // searching for the entry names, so a bare `PAC ` file cannot false-positive.
+    fn pac_names_softpal_scripts(path: &Path) -> bool {
+        let Some(prefix) = read_file_prefix(path, SOFTPAL_PAC_TABLE_SCAN_LEN) else {
+            return false;
+        };
+        if !prefix.starts_with(SOFTPAL_PAC_MAGIC) {
+            return false;
+        }
+        let Some(entry_count) = read_u32_le(&prefix, 8) else {
+            return false;
+        };
+        if entry_count == 0 || entry_count > SOFTPAL_PAC_MAX_ENTRIES {
+            return false;
+        }
+        bytes_contains(&prefix, SOFTPAL_SCRIPT_SRC_ENTRY)
+            && bytes_contains(&prefix, SOFTPAL_TEXT_DAT_ENTRY)
+    }
+
+    fn pac_has_magic(path: &Path) -> bool {
+        read_file_prefix(path, SOFTPAL_PAC_MAGIC.len())
+            .is_some_and(|prefix| prefix.starts_with(SOFTPAL_PAC_MAGIC))
+    }
+
+    // Loose `SCRIPT.SRC` opens with `Sv` followed by a two-digit version
+    // (`Sv20` observed; `Sv<nn>` tolerates other script-format revisions).
+    fn loose_script_src_ok(path: &Path) -> bool {
+        let Some(prefix) = read_file_prefix(path, 4) else {
+            return false;
+        };
+        prefix.len() >= 4
+            && prefix.starts_with(SOFTPAL_SCRIPT_SRC_MAGIC_PREFIX)
+            && prefix[2].is_ascii_digit()
+            && prefix[3].is_ascii_digit()
+    }
+
+    // Loose `TEXT.DAT` opens with a one-byte encryption flag (`$` encrypted or
+    // `_` plaintext) followed by `TEXT_LIST__`. Returns the flag byte so the
+    // detector can report enc-flag robustness across variants.
+    fn loose_text_dat_flag(path: &Path) -> Option<u8> {
+        let want = 1 + SOFTPAL_TEXT_LIST_TAG.len();
+        let prefix = read_file_prefix(path, want)?;
+        if prefix.len() < want {
+            return None;
+        }
+        let flag = prefix[0];
+        if flag != SOFTPAL_TEXT_DAT_ENC_ENCRYPTED && flag != SOFTPAL_TEXT_DAT_ENC_PLAINTEXT {
+            return None;
+        }
+        if &prefix[1..want] == SOFTPAL_TEXT_LIST_TAG {
+            Some(flag)
+        } else {
+            None
+        }
+    }
+
+    fn inspect(game_dir: &Path) -> SoftpalState {
+        let pal_dll_present = Self::pal_dll_path(game_dir).is_some();
+
+        // Scan the game dir's `.pac` archives (bounded). `data.pac` carries the
+        // scripts, but iterate all `.pac` to stay robust to packaging variants.
+        let mut pac_present = false;
+        let mut pac_scripts = false;
+        let mut scripts_pac_name: Option<String> = None;
+        if let Ok(entries) = fs::read_dir(game_dir) {
+            let mut pac_paths: Vec<std::path::PathBuf> = entries
+                .flatten()
+                .map(|entry| entry.path())
+                .filter(|path| {
+                    path.is_file()
+                        && path
+                            .extension()
+                            .and_then(|ext| ext.to_str())
+                            .is_some_and(|ext| ext.eq_ignore_ascii_case("pac"))
+                })
+                .collect();
+            // Deterministic order; probe `data.pac` first so it wins the report.
+            pac_paths.sort();
+            pac_paths.sort_by_key(|path| {
+                !path
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .is_some_and(|name| name.eq_ignore_ascii_case(SOFTPAL_DATA_PAC_NAME))
+            });
+            for path in pac_paths {
+                if Self::pac_has_magic(&path) {
+                    pac_present = true;
+                }
+                if !pac_scripts && Self::pac_names_softpal_scripts(&path) {
+                    pac_scripts = true;
+                    scripts_pac_name = path
+                        .file_name()
+                        .and_then(|name| name.to_str())
+                        .map(str::to_string);
+                }
+            }
+        }
+
+        let loose_script_src = case_insensitive_find(game_dir, SOFTPAL_SCRIPT_SRC_NAME)
+            .is_some_and(|path| Self::loose_script_src_ok(&path));
+        let text_dat_enc_flag = case_insensitive_find(game_dir, SOFTPAL_TEXT_DAT_NAME)
+            .and_then(|path| Self::loose_text_dat_flag(&path));
+        let loose_text_dat = text_dat_enc_flag.is_some();
+
+        let variant = if pal_dll_present {
+            SoftpalVariant::PalDll
+        } else if pac_scripts {
+            SoftpalVariant::PacScripts
+        } else if loose_script_src && loose_text_dat {
+            SoftpalVariant::LooseScripts
+        } else if pac_present || loose_script_src || loose_text_dat {
+            SoftpalVariant::UnknownPacOnly
+        } else {
+            SoftpalVariant::NotSoftpal
+        };
+
+        SoftpalState {
+            pal_dll_present,
+            pac_present,
+            pac_scripts,
+            scripts_pac_name,
+            loose_script_src,
+            loose_text_dat,
+            text_dat_enc_flag,
+            variant,
+        }
+    }
+
+    fn detected_variant(variant: SoftpalVariant) -> &'static str {
+        match variant {
+            SoftpalVariant::PalDll => "pal-dll",
+            SoftpalVariant::PacScripts => "pac-script-src-text-dat",
+            SoftpalVariant::LooseScripts => "loose-script-src-text-dat",
+            SoftpalVariant::UnknownPacOnly => "unknown-softpal-signature",
+            SoftpalVariant::NotSoftpal => "not-softpal",
+        }
+    }
+
+    fn is_detected(variant: SoftpalVariant) -> bool {
+        matches!(
+            variant,
+            SoftpalVariant::PalDll | SoftpalVariant::PacScripts | SoftpalVariant::LooseScripts
+        )
+    }
+
+    fn unsupported_failure(
+        code: SemanticErrorCode,
+        required_capability: Capability,
+        variant: impl Into<String>,
+        asset_ref: impl Into<String>,
+        support_boundary: impl Into<String>,
+        remediation: impl Into<String>,
+    ) -> AdapterFailure {
+        AdapterFailure::semantic(
+            AdapterFailureSemanticParams::new(code, SOFTPAL_DETECTOR_ADAPTER_ID, support_boundary)
+                .engine("softpal")
+                .detected_variant(variant)
+                .asset_ref(asset_ref)
+                .required_capability(required_capability)
+                .remediation(remediation),
+        )
+    }
+
+    fn parser_boundary_failure(variant: impl Into<String>) -> AdapterFailure {
+        Self::unsupported_failure(
+            SemanticErrorCode::UnsupportedLayeredTransform,
+            Capability::ContainerAccess,
+            variant,
+            SOFTPAL_DATA_PAC_NAME,
+            "Softpal PAC extraction / SCRIPT.SRC decompilation / TEXT.DAT decode is outside the detector",
+            "use identify (detect/profile) output only; do not request asset-list, extract, or patch for this detector",
+        )
+    }
+
+    fn diagnostic_error(failure: AdapterFailure) -> Box<dyn std::error::Error> {
+        match kaifuu_core::stable_json(&failure) {
+            Ok(serialized) => serialized.into(),
+            Err(error) => error,
+        }
+    }
+
+    fn unsupported_patch_result(
+        &self,
+        patch_export_id: String,
+        variant: SoftpalVariant,
+    ) -> PatchResult {
+        let detected_variant = Self::detected_variant(variant).to_string();
+        PatchResult {
+            schema_version: "0.1.0".to_string(),
+            patch_result_id: deterministic_id("softpal-patch", 12),
+            patch_export_id,
+            status: OperationStatus::Failed,
+            output_hash: content_hash(SOFTPAL_SUPPORT_BOUNDARY),
+            failures: vec![
+                Self::unsupported_failure(
+                    SemanticErrorCode::MissingContainerCapability,
+                    Capability::ContainerAccess,
+                    detected_variant.clone(),
+                    SOFTPAL_DATA_PAC_NAME,
+                    "Softpal PAC archive container access is not implemented by the detector",
+                    "use identify output only",
+                ),
+                Self::parser_boundary_failure(detected_variant.clone()),
+                Self::unsupported_failure(
+                    SemanticErrorCode::MissingPatchBackCapability,
+                    Capability::PatchBack,
+                    detected_variant,
+                    SOFTPAL_DATA_PAC_NAME,
+                    "Softpal patch-back/repack support is not implemented by the detector",
+                    "add an explicit Softpal patch-back adapter before writing patched PAC output",
+                ),
+            ],
+        }
+    }
+
+    fn profile_from_state(&self, state: SoftpalState) -> KaifuuResult<GameProfile> {
+        if !Self::is_detected(state.variant) {
+            return Err(Self::diagnostic_error(Self::unsupported_failure(
+                SemanticErrorCode::UnknownEngineVariant,
+                Capability::Detection,
+                Self::detected_variant(state.variant),
+                format!("{SOFTPAL_PAL_DLL_DIR}/{SOFTPAL_PAL_DLL_NAME}"),
+                "Softpal detector requires a recognised Pal.dll / PAC+SCRIPT.SRC/TEXT.DAT / script-magic signature",
+                "run detect against a Softpal title or select another adapter",
+            )));
+        }
+        let mut profile = GameProfile {
+            schema_version: "0.1.0".to_string(),
+            profile_id: SOFTPAL_PROFILE_ID.to_string(),
+            game_id: SOFTPAL_GAME_ID.to_string(),
+            title: "Softpal title (detector profile)".to_string(),
+            source_locale: "ja-JP".to_string(),
+            engine: EngineProfile {
+                adapter_id: SOFTPAL_DETECTOR_ADAPTER_ID.to_string(),
+                engine_family: "softpal".to_string(),
+                engine_version: None,
+                detected_variant: Self::detected_variant(state.variant).to_string(),
+            },
+            source_fingerprint: Some(SourceFingerprint {
+                game_root_hash: None,
+                engine_evidence: state.engine_evidence(),
+            }),
+            key_requirements: vec![],
+            archive_parameters: vec![ArchiveParameter {
+                parameter_id: "softpal-pac-archive".to_string(),
+                name: "pacArchive".to_string(),
+                kind: ArchiveParameterKind::ArchiveFormat,
+                value: SOFTPAL_DATA_PAC_NAME.to_string(),
+                source: Some(ArchiveParameterSource::Detected),
+            }],
+            helper_evidence: None,
+            assets: vec![],
+            layered_access: None,
+            capabilities: self.capabilities().reports,
+            requirements: state.detection_requirements(),
+            metadata: state.metadata(),
+        };
+        profile.normalize();
+        Ok(profile)
+    }
+}
+
+impl EngineAdapter for SoftpalProfileDetectorAdapter {
+    fn id(&self) -> &'static str {
+        SOFTPAL_DETECTOR_ADAPTER_ID
+    }
+
+    fn name(&self) -> &'static str {
+        "Kaifuu Softpal ADV (Amuse Craft/Pal) detector adapter"
+    }
+
+    fn capabilities(&self) -> AdapterCapabilities {
+        let identify = LayeredAccessOperationContract {
+            status: CapabilityStatus::Supported,
+            required_capabilities: vec![Capability::Detection, Capability::ProfileGeneration],
+            supported_surfaces: vec![SurfaceTransform::Identity],
+            supported_containers: vec![ContainerTransform::LooseFile],
+            supported_crypto: vec![CryptoTransform::Unknown],
+            supported_codecs: vec![CodecTransform::Unknown],
+            supported_patch_back: vec![PatchBackTransform::Unsupported],
+            support_boundary: Some(
+                "identify/profile reads only file names, container magics, and script signatures"
+                    .to_string(),
+            ),
+        };
+        let unsupported = |required_capabilities| LayeredAccessOperationContract {
+            status: CapabilityStatus::Unsupported,
+            required_capabilities,
+            supported_surfaces: vec![],
+            supported_containers: vec![],
+            supported_crypto: vec![],
+            supported_codecs: vec![],
+            supported_patch_back: vec![],
+            support_boundary: Some(SOFTPAL_SUPPORT_BOUNDARY.to_string()),
+        };
+        AdapterCapabilities::new(
+            SOFTPAL_DETECTOR_ADAPTER_ID,
+            vec![
+                CapabilityReport::supported(Capability::Detection),
+                CapabilityReport::supported(Capability::ProfileGeneration),
+                CapabilityReport::unsupported(
+                    Capability::AssetListing,
+                    "Softpal PAC entry listing is a later Softpal node, not the detector",
+                ),
+                CapabilityReport::unsupported(
+                    Capability::AssetInventory,
+                    "Softpal asset inventory is a later Softpal node, not the detector",
+                ),
+                CapabilityReport::unsupported(
+                    Capability::Extraction,
+                    "the Softpal detector does not extract PAC archives",
+                ),
+                CapabilityReport::unsupported(
+                    Capability::Patching,
+                    "the Softpal detector does not patch or rebuild Softpal assets",
+                ),
+                CapabilityReport::unsupported(
+                    Capability::ContainerAccess,
+                    "PAC archive parsing is outside the detector",
+                ),
+                CapabilityReport::unsupported(
+                    Capability::CryptoAccess,
+                    "TEXT.DAT/PAC decryption is outside the detector",
+                ),
+                CapabilityReport::unsupported(
+                    Capability::CodecAccess,
+                    "SCRIPT.SRC decompilation / TEXT.DAT decode is outside the detector",
+                ),
+                CapabilityReport::unsupported(
+                    Capability::PatchBack,
+                    "Softpal patch-back/repack support is outside the detector",
+                ),
+                CapabilityReport::unsupported(
+                    Capability::RuntimeVm,
+                    "runtime support belongs to future Utsushi/Softpal work, not this detector",
+                ),
+                CapabilityReport::unsupported(
+                    Capability::EncryptedInput,
+                    "encrypted TEXT.DAT payloads are identified only, never decrypted",
+                ),
+                CapabilityReport::unsupported(
+                    Capability::AssetTextPatching,
+                    "no Softpal text surfaces are patched by this detector",
+                ),
+                CapabilityReport::unsupported(
+                    Capability::DeltaPatching,
+                    ".kaifuu delta packages do not apply to the detector-only Softpal profile",
+                ),
+                CapabilityReport::unsupported(
+                    Capability::NonTextSurfaceExtraction,
+                    "no non-text extraction or OCR is performed by the Softpal detector",
+                ),
+            ],
+            AdapterCapabilityMatrix::identify_only(
+                SOFTPAL_DETECTOR_ADAPTER_ID,
+                "Softpal detector is identify-only; PAC extraction, SCRIPT.SRC decompilation, TEXT.DAT decode/decryption, and patch-back are unsupported (later Softpal nodes)",
+            ),
+        )
+        .with_access_contract(LayeredAccessCapabilityContract {
+            identify,
+            inventory: unsupported(vec![Capability::AssetListing, Capability::AssetInventory]),
+            extract: unsupported(vec![Capability::Extraction]),
+            patch: unsupported(vec![Capability::Patching, Capability::PatchBack]),
+        })
+    }
+
+    fn detect(&self, request: DetectRequest<'_>) -> KaifuuResult<DetectionResult> {
+        let state = Self::inspect(request.game_dir);
+        let detected = Self::is_detected(state.variant);
+        let diagnostic_only = state.variant == SoftpalVariant::UnknownPacOnly;
+        let mut result = DetectionResult {
+            adapter_id: SOFTPAL_DETECTOR_ADAPTER_ID.to_string(),
+            detected,
+            engine_family: detected.then(|| "softpal".to_string()),
+            engine_version: None,
+            detected_variant: (detected || diagnostic_only)
+                .then(|| Self::detected_variant(state.variant).to_string()),
+            evidence: vec![
+                DetectionEvidence {
+                    path: format!("{SOFTPAL_PAL_DLL_DIR}/{SOFTPAL_PAL_DLL_NAME}"),
+                    kind: "softpal_pal_dll".to_string(),
+                    status: if state.pal_dll_present {
+                        EvidenceStatus::Matched
+                    } else {
+                        EvidenceStatus::Missing
+                    },
+                    detail: if state.pal_dll_present {
+                        "dll/Pal.dll present (definitive Softpal engine marker)".to_string()
+                    } else {
+                        "dll/Pal.dll not found".to_string()
+                    },
+                },
+                DetectionEvidence {
+                    path: state
+                        .scripts_pac_name
+                        .clone()
+                        .unwrap_or_else(|| SOFTPAL_DATA_PAC_NAME.to_string()),
+                    kind: "softpal_pac_script_text_entries".to_string(),
+                    status: if state.pac_scripts {
+                        EvidenceStatus::Matched
+                    } else if state.pac_present {
+                        EvidenceStatus::Invalid
+                    } else {
+                        EvidenceStatus::Missing
+                    },
+                    detail: if state.pac_scripts {
+                        "PAC archive (\"PAC \" magic) lists SCRIPT.SRC and TEXT.DAT entries"
+                            .to_string()
+                    } else if state.pac_present {
+                        "a .pac with \"PAC \" magic is present but does not list SCRIPT.SRC/TEXT.DAT"
+                            .to_string()
+                    } else {
+                        "no Softpal PAC archive found".to_string()
+                    },
+                },
+                DetectionEvidence {
+                    path: SOFTPAL_SCRIPT_SRC_NAME.to_string(),
+                    kind: "softpal_script_src_magic".to_string(),
+                    status: if state.loose_script_src {
+                        EvidenceStatus::Matched
+                    } else {
+                        EvidenceStatus::Missing
+                    },
+                    detail: if state.loose_script_src {
+                        "loose SCRIPT.SRC opens with the Sv<nn> script magic".to_string()
+                    } else {
+                        "no loose SCRIPT.SRC with the Sv<nn> magic".to_string()
+                    },
+                },
+                DetectionEvidence {
+                    path: SOFTPAL_TEXT_DAT_NAME.to_string(),
+                    kind: "softpal_text_dat_magic".to_string(),
+                    status: if state.loose_text_dat {
+                        EvidenceStatus::Matched
+                    } else {
+                        EvidenceStatus::Missing
+                    },
+                    detail: if state.loose_text_dat {
+                        format!(
+                            "loose TEXT.DAT opens with [$_]TEXT_LIST__ (enc flag: {})",
+                            state.enc_flag_label()
+                        )
+                    } else {
+                        "no loose TEXT.DAT with the [$_]TEXT_LIST__ magic".to_string()
+                    },
+                },
+            ],
+            requirements: if detected || diagnostic_only {
+                state.detection_requirements()
+            } else {
+                vec![]
+            },
+            capabilities: self.capabilities().reports,
+        };
+        result.normalize();
+        Ok(result)
+    }
+
+    fn profile(&self, request: ProfileRequest<'_>) -> KaifuuResult<GameProfile> {
+        self.profile_from_state(Self::inspect(request.game_dir))
+    }
+
+    fn list_assets(&self, request: AssetListRequest<'_>) -> KaifuuResult<AssetList> {
+        let state = Self::inspect(request.game_dir);
+        Err(Self::diagnostic_error(Self::unsupported_failure(
+            SemanticErrorCode::MissingContainerCapability,
+            Capability::AssetListing,
+            Self::detected_variant(state.variant),
+            SOFTPAL_DATA_PAC_NAME,
+            "Softpal PAC entry listing is a later Softpal node, not the detector",
+            "use identify (detect/profile) output only",
+        )))
+    }
+
+    fn asset_inventory(
+        &self,
+        request: AssetInventoryRequest<'_>,
+    ) -> KaifuuResult<AssetInventoryManifest> {
+        let state = Self::inspect(request.game_dir);
+        Err(Self::diagnostic_error(Self::unsupported_failure(
+            SemanticErrorCode::MissingContainerCapability,
+            Capability::AssetInventory,
+            Self::detected_variant(state.variant),
+            SOFTPAL_DATA_PAC_NAME,
+            "Softpal asset inventory is a later Softpal node, not the detector",
+            "use identify (detect/profile) output only",
+        )))
+    }
+
+    fn extract(&self, request: ExtractRequest<'_>) -> KaifuuResult<ExtractionResult> {
+        let state = Self::inspect(request.game_dir);
+        Err(Self::diagnostic_error(Self::parser_boundary_failure(
+            Self::detected_variant(state.variant),
+        )))
+    }
+
+    fn patch_preflight(&self, request: PatchPreflightRequest<'_>) -> KaifuuResult<PatchResult> {
+        let state = Self::inspect(request.game_dir);
+        Ok(self
+            .unsupported_patch_result(request.patch_export.patch_export_id.clone(), state.variant))
+    }
+
+    fn patch(&self, request: PatchRequest<'_>) -> KaifuuResult<PatchResult> {
+        let state = Self::inspect(request.game_dir);
+        Ok(self
+            .unsupported_patch_result(request.patch_export.patch_export_id.clone(), state.variant))
+    }
+
+    fn verify(&self, request: VerifyRequest<'_>) -> KaifuuResult<VerificationResult> {
+        let state = Self::inspect(request.game_dir);
+        Ok(VerificationResult {
+            schema_version: "0.1.0".to_string(),
+            patch_result_id: deterministic_id("softpal-verify", 12),
+            status: OperationStatus::Failed,
+            output_hash: content_hash(SOFTPAL_SUPPORT_BOUNDARY),
+            failures: vec![Self::unsupported_failure(
+                SemanticErrorCode::UnsupportedLayeredTransform,
+                Capability::RuntimeVm,
+                Self::detected_variant(state.variant),
+                SOFTPAL_DATA_PAC_NAME,
+                "runtime/parser verification is outside the Softpal detector",
+                "use detect or profile only",
+            )],
+        })
+    }
+}
+
+// Bounded byte-substring search used to recognise Softpal PAC entry names in a
+// header/table prefix. `haystack` is at most `SOFTPAL_PAC_TABLE_SCAN_LEN` and
+// `needle` is a short entry name, so the naive scan is comfortably bounded.
+fn bytes_contains(haystack: &[u8], needle: &[u8]) -> bool {
+    if needle.is_empty() || needle.len() > haystack.len() {
+        return false;
+    }
+    haystack
+        .windows(needle.len())
+        .any(|window| window == needle)
+}
+
 fn file_starts_with(path: &Path, expected: &[u8]) -> bool {
     fs::read(path).is_ok_and(|bytes| bytes.starts_with(expected))
 }
@@ -5366,6 +6122,7 @@ pub fn registry() -> kaifuu_core::AdapterRegistry {
     registry.register(Xp3ProfileDetectorAdapter);
     registry.register(SiglusProfileDetectorAdapter);
     registry.register(RealLiveProfileDetectorAdapter);
+    registry.register(SoftpalProfileDetectorAdapter);
     registry
 }
 
@@ -6820,6 +7577,7 @@ mod tests {
             Xp3ProfileDetectorAdapter.capabilities(),
             SiglusProfileDetectorAdapter.capabilities(),
             RealLiveProfileDetectorAdapter.capabilities(),
+            SoftpalProfileDetectorAdapter.capabilities(),
         ] {
             let derived = AdapterCapabilityMatrix::derive_from_reports(
                 &capabilities.adapter_id,
@@ -6834,6 +7592,212 @@ mod tests {
                 capabilities.adapter_id
             );
         }
+    }
+
+    // ---- Softpal detector tests ------------------------------------------
+    //
+    // Synthetic fixtures carry only the fixed Softpal FORMAT signatures (the
+    // same magics any Softpal title exposes); no copyrighted content bytes are
+    // embedded or committed. The real two-title validation lives behind an
+    // env-gated `#[ignore]` integration test (see
+    // `tests/live_softpal_detector_test.rs`).
+
+    // Build a synthetic Softpal `.pac`: `PAC ` magic, a sane entry count, then
+    // a header/table region naming `SCRIPT.SRC` and `TEXT.DAT` (as the real
+    // `data.pac` file table does).
+    fn synthetic_softpal_pac(with_scripts: bool) -> Vec<u8> {
+        let mut pac = Vec::new();
+        pac.extend_from_slice(b"PAC "); // magic 50 41 43 20
+        pac.extend_from_slice(&[0u8; 4]); // reserved
+        pac.extend_from_slice(&2u32.to_le_bytes()); // entry count @ offset 8
+        pac.extend_from_slice(&[0u8; 32]); // header padding
+        if with_scripts {
+            pac.extend_from_slice(b"SCRIPT.SRC\0\0\0\0\0\0");
+            pac.extend_from_slice(&[0u8; 8]);
+            pac.extend_from_slice(b"TEXT.DAT\0\0\0\0\0\0\0\0");
+            pac.extend_from_slice(&[0u8; 16]);
+        } else {
+            // Some other, non-Softpal-script entry names.
+            pac.extend_from_slice(b"IMAGE00.PNG\0\0\0\0\0");
+            pac.extend_from_slice(&[0u8; 16]);
+        }
+        pac
+    }
+
+    fn detect_softpal(dir: &Path) -> DetectionResult {
+        SoftpalProfileDetectorAdapter
+            .detect(DetectRequest { game_dir: dir })
+            .unwrap()
+    }
+
+    #[test]
+    fn softpal_detects_pal_dll_marker() {
+        let dir = temp_dir("softpal-pal-dll");
+        fs::create_dir_all(dir.join("dll")).unwrap();
+        fs::write(dir.join("dll/Pal.dll"), b"MZ\x90\x00 synthetic pe stub").unwrap();
+
+        let detection = detect_softpal(&dir);
+        assert!(detection.detected, "Pal.dll must classify as Softpal");
+        assert_eq!(detection.engine_family.as_deref(), Some("softpal"));
+        assert_eq!(detection.detected_variant.as_deref(), Some("pal-dll"));
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn softpal_detects_pac_listing_script_and_text() {
+        let dir = temp_dir("softpal-pac-scripts");
+        fs::write(dir.join("data.pac"), synthetic_softpal_pac(true)).unwrap();
+
+        let detection = detect_softpal(&dir);
+        assert!(detection.detected, "PAC + SCRIPT.SRC/TEXT.DAT must detect");
+        assert_eq!(detection.engine_family.as_deref(), Some("softpal"));
+        assert_eq!(
+            detection.detected_variant.as_deref(),
+            Some("pac-script-src-text-dat")
+        );
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn softpal_detects_loose_scripts_across_both_enc_flags() {
+        // The two owned titles differ in the TEXT.DAT enc flag: `$` encrypted
+        // (v21465) and `_` plaintext (v60663). The detector must recognise both.
+        for (name, enc_flag, want_label) in [
+            ("softpal-loose-enc", b'$', "encrypted ($)"),
+            ("softpal-loose-plain", b'_', "plaintext (_)"),
+        ] {
+            let dir = temp_dir(name);
+            fs::write(dir.join("SCRIPT.SRC"), b"Sv20\x00\x00\x00\x00synthetic").unwrap();
+            let mut text_dat = vec![enc_flag];
+            text_dat.extend_from_slice(b"TEXT_LIST__");
+            text_dat.extend_from_slice(&[0u8; 16]);
+            fs::write(dir.join("TEXT.DAT"), &text_dat).unwrap();
+
+            let detection = detect_softpal(&dir);
+            assert!(
+                detection.detected,
+                "{name}: loose Sv20 SCRIPT.SRC + [$_]TEXT_LIST__ TEXT.DAT must detect"
+            );
+            assert_eq!(detection.engine_family.as_deref(), Some("softpal"));
+            assert_eq!(
+                detection.detected_variant.as_deref(),
+                Some("loose-script-src-text-dat")
+            );
+            let text_evidence = detection
+                .evidence
+                .iter()
+                .find(|e| e.kind == "softpal_text_dat_magic")
+                .expect("text.dat evidence row");
+            assert_eq!(text_evidence.status, EvidenceStatus::Matched);
+            assert!(
+                text_evidence.detail.contains(want_label),
+                "{name}: enc flag `{want_label}` must be reported, got {:?}",
+                text_evidence.detail
+            );
+            let _ = fs::remove_dir_all(&dir);
+        }
+    }
+
+    #[test]
+    fn softpal_rejects_unrelated_directory() {
+        let dir = temp_dir("softpal-negative");
+        fs::write(dir.join("readme.txt"), b"not a softpal game").unwrap();
+        fs::write(dir.join("config.ini"), b"[settings]\nvolume=100\n").unwrap();
+
+        let detection = detect_softpal(&dir);
+        assert!(!detection.detected, "unrelated dir must not detect Softpal");
+        assert_eq!(detection.engine_family, None);
+        assert_eq!(detection.detected_variant, None);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn softpal_bare_pac_magic_without_scripts_is_not_detected() {
+        // False-positive guard: a `.pac` with the generic `PAC ` magic but no
+        // SCRIPT.SRC/TEXT.DAT entries must NOT claim the Softpal engine.
+        let dir = temp_dir("softpal-bare-pac");
+        fs::write(dir.join("data.pac"), synthetic_softpal_pac(false)).unwrap();
+
+        let detection = detect_softpal(&dir);
+        assert!(
+            !detection.detected,
+            "bare PAC magic without Softpal scripts must not detect"
+        );
+        assert_eq!(detection.engine_family, None);
+        // Diagnostic-only variant is surfaced, but detection stays false.
+        assert_eq!(
+            detection.detected_variant.as_deref(),
+            Some("unknown-softpal-signature")
+        );
+        let pac_evidence = detection
+            .evidence
+            .iter()
+            .find(|e| e.kind == "softpal_pac_script_text_entries")
+            .expect("pac evidence row");
+        assert_eq!(pac_evidence.status, EvidenceStatus::Invalid);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn softpal_detector_level_matrix_is_identify_only() {
+        use kaifuu_core::CapabilityLevel;
+        let matrix = SoftpalProfileDetectorAdapter.capabilities().level_matrix;
+        assert_eq!(matrix.adapter_id, SOFTPAL_DETECTOR_ADAPTER_ID);
+        assert!(matrix.supports(CapabilityLevel::Identify));
+        assert!(matrix.inventory.is_unsupported());
+        assert!(matrix.extract.is_unsupported());
+        assert!(matrix.patch.is_unsupported());
+    }
+
+    #[test]
+    fn softpal_extract_list_and_inventory_are_unsupported() {
+        let dir = temp_dir("softpal-unsupported-ops");
+        fs::create_dir_all(dir.join("dll")).unwrap();
+        fs::write(dir.join("dll/Pal.dll"), b"MZ synthetic").unwrap();
+        let adapter = SoftpalProfileDetectorAdapter;
+
+        assert!(
+            adapter.extract(ExtractRequest { game_dir: &dir }).is_err(),
+            "extract must be unsupported (no PAC extraction claim)"
+        );
+        assert!(
+            adapter
+                .list_assets(AssetListRequest { game_dir: &dir })
+                .is_err(),
+            "list_assets must be unsupported"
+        );
+        assert!(
+            adapter
+                .asset_inventory(AssetInventoryRequest { game_dir: &dir })
+                .is_err(),
+            "asset_inventory must be unsupported"
+        );
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn softpal_profile_classifies_engine_softpal() {
+        let dir = temp_dir("softpal-profile");
+        fs::write(dir.join("data.pac"), synthetic_softpal_pac(true)).unwrap();
+        let profile = SoftpalProfileDetectorAdapter
+            .profile(ProfileRequest { game_dir: &dir })
+            .unwrap();
+        assert_eq!(profile.engine.engine_family, "softpal");
+        assert_eq!(profile.engine.adapter_id, SOFTPAL_DETECTOR_ADAPTER_ID);
+        assert_eq!(profile.engine.detected_variant, "pac-script-src-text-dat");
+        assert_eq!(
+            profile.metadata.get("engineFamily").map(String::as_str),
+            Some("softpal")
+        );
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn softpal_registered_in_engine_registry() {
+        assert!(
+            registry().get(SOFTPAL_DETECTOR_ADAPTER_ID).is_some(),
+            "Softpal detector must be registered in the shared engine registry"
+        );
     }
 
     fn siglus_fixture_dir(name: &str, scene: Option<&[u8]>, gameexe: Option<&[u8]>) -> PathBuf {
