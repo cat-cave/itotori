@@ -1,0 +1,236 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "itotori.kaifuu-encrypted-readiness-integration.v0.1",
+  "title": "Kaifuu alpha encrypted-readiness evidence integration composed report",
+  "description": "The alpha-readiness composed-evidence artifact emitted by the kaifuu:encrypted-readiness workflow (KAIFUU-042). It NAMES + aggregates the prerequisite surfaces/adapters/command-evidence/proof artifacts (KAIFUU-103 packed-engine readiness + KAIFUU-104 alpha-encrypted evidence) by content HASH, and carries the private-encrypted-corpus readiness aggregate. The `skipped` status with reason `private_inputs_absent` is the deterministic REDACTED no-corpus artifact emitted when no private encrypted corpus is configured. Contains ONLY redacted fields: logical ids, source-node ids, sha256 proof hashes, aggregate counts, and per-engine readiness bins. Never key material, decrypted content, or local paths.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "status",
+    "reason",
+    "command",
+    "generatedBy",
+    "composes",
+    "composedEvidenceHash",
+    "prerequisiteFindings",
+    "aggregateCounts",
+    "engineReadinessBins",
+    "entries"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "itotori.kaifuu-encrypted-readiness-integration.v0.1" },
+    "status": { "enum": ["ok", "skipped", "failed"] },
+    "reason": {
+      "oneOf": [{ "const": "private_inputs_absent" }, { "type": "null" }]
+    },
+    "command": { "type": "string" },
+    "generatedBy": {
+      "const": "suite/scripts/kaifuu-encrypted-readiness-integration/run.mjs"
+    },
+    "composedEvidenceHash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "composes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["surfaces", "adapters", "commandEvidence", "artifacts", "prerequisiteCounts"],
+      "properties": {
+        "surfaces": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "sourceNodeId"],
+            "properties": {
+              "id": { "type": "string" },
+              "sourceNodeId": { "type": "string" }
+            }
+          }
+        },
+        "adapters": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "engineFamily"],
+            "properties": {
+              "id": { "type": "string" },
+              "engineFamily": { "type": "string" }
+            }
+          }
+        },
+        "commandEvidence": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "command"],
+            "properties": {
+              "id": { "type": "string" },
+              "command": { "type": "string" }
+            }
+          }
+        },
+        "artifacts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["artifactId", "kind", "sourceNodeId", "engineFamily", "contentHash"],
+            "properties": {
+              "artifactId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]*$" },
+              "kind": { "enum": ["readiness_profile", "readiness_patch_evidence"] },
+              "sourceNodeId": { "type": "string" },
+              "engineFamily": { "type": ["string", "null"] },
+              "contentHash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
+            }
+          }
+        },
+        "prerequisiteCounts": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "surfaces",
+            "adapters",
+            "commandEvidence",
+            "readinessProfiles",
+            "patchEvidence",
+            "coveredSourceNodes",
+            "coveredEngineFamilies"
+          ],
+          "properties": {
+            "surfaces": { "type": "integer", "minimum": 0 },
+            "adapters": { "type": "integer", "minimum": 0 },
+            "commandEvidence": { "type": "integer", "minimum": 0 },
+            "readinessProfiles": { "type": "integer", "minimum": 0 },
+            "patchEvidence": { "type": "integer", "minimum": 0 },
+            "coveredSourceNodes": { "type": "integer", "minimum": 0 },
+            "coveredEngineFamilies": { "type": "integer", "minimum": 0 }
+          }
+        }
+      }
+    },
+    "prerequisiteFindings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["code", "field", "message"],
+        "properties": {
+          "code": { "type": "string" },
+          "field": { "type": "string" },
+          "message": { "type": "string" }
+        }
+      }
+    },
+    "checkedInputs": {
+      "type": "array",
+      "description": "Present only on the no-corpus artifact: checked private inputs redacted to logical ids.",
+      "items": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]*$" }
+    },
+    "corpusIds": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]*$" }
+    },
+    "aggregateCounts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "corpora",
+        "entries",
+        "encryptedArchives",
+        "encryptedAssets",
+        "keyProfiles",
+        "helperProfiles"
+      ],
+      "properties": {
+        "corpora": { "type": "integer", "minimum": 0 },
+        "entries": { "type": "integer", "minimum": 0 },
+        "encryptedArchives": { "type": "integer", "minimum": 0 },
+        "encryptedAssets": { "type": "integer", "minimum": 0 },
+        "keyProfiles": { "type": "integer", "minimum": 0 },
+        "helperProfiles": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "engineReadinessBins": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "rpg-maker-mv",
+        "rpg-maker-mz",
+        "kirikiri-xp3",
+        "siglus",
+        "wolf",
+        "rgss3-vx-ace"
+      ],
+      "patternProperties": {
+        "^(rpg-maker-mv|rpg-maker-mz|kirikiri-xp3|siglus|wolf|rgss3-vx-ace)$": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "ready",
+            "helper_required",
+            "key_missing",
+            "unsupported_variant",
+            "detector_unknown",
+            "blocked"
+          ],
+          "properties": {
+            "ready": { "type": "integer", "minimum": 0 },
+            "helper_required": { "type": "integer", "minimum": 0 },
+            "key_missing": { "type": "integer", "minimum": 0 },
+            "unsupported_variant": { "type": "integer", "minimum": 0 },
+            "detector_unknown": { "type": "integer", "minimum": 0 },
+            "blocked": { "type": "integer", "minimum": 0 }
+          }
+        }
+      }
+    },
+    "entries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "corpusIdRedacted",
+          "engine",
+          "readinessBin",
+          "proofHash",
+          "encryptedArchives",
+          "encryptedAssets",
+          "keyProfiles",
+          "helperProfiles"
+        ],
+        "properties": {
+          "corpusIdRedacted": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]*$" },
+          "engine": {
+            "enum": [
+              "rpg-maker-mv",
+              "rpg-maker-mz",
+              "kirikiri-xp3",
+              "siglus",
+              "wolf",
+              "rgss3-vx-ace"
+            ]
+          },
+          "readinessBin": {
+            "enum": [
+              "ready",
+              "helper_required",
+              "key_missing",
+              "unsupported_variant",
+              "detector_unknown",
+              "blocked"
+            ]
+          },
+          "proofHash": {
+            "oneOf": [{ "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }, { "type": "null" }]
+          },
+          "encryptedArchives": { "type": "integer", "minimum": 0 },
+          "encryptedAssets": { "type": "integer", "minimum": 0 },
+          "keyProfiles": { "type": "integer", "minimum": 0 },
+          "helperProfiles": { "type": "integer", "minimum": 0 }
+        }
+      }
+    }
+  }
+}

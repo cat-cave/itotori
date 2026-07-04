@@ -126,20 +126,20 @@ The alpha readiness gate validates that each of these DAG nodes resolves in
 gates: CI, the alpha-proof / public-fixture vertical, the benchmark smoke, and
 recorded-or-opted-in real-provider proof.
 
-| node          | proves                                                                                                                                              |
-| ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ALPHA-006`   | first real-engine end-to-end alpha vertical (RealLive); the live provider path (`alpha-006d` full-chain + `agentic-repair-live` residue) is opt-in. |
-| `ALPHA-007`   | suite public-fixture vertical run (`just alpha-proof` / `just alpha-demo`).                                                                         |
-| `ALPHA-008`   | sanitized live-provider proof bundle.                                                                                                               |
-| `ITOTORI-116` | public real-LLM proof harness (recorded by default; `--live` opt-in).                                                                               |
-| `ITOTORI-117` | real-LLM degenerate raw-MTL baseline proof through the same harness.                                                                                |
-| `KAIFUU-042`  | alpha encrypted-readiness evidence integration.                                                                                                     |
-| `UTSUSHI-119` | MV/MZ patched-output runtime proof: runtime observation consumes a `PatchResult` + SHARED-025 manifest ids (not a static/pre-patch read).           |
-| `SHARED-025`  | alpha vertical proof manifest contract (ties bridge / patch / runtime / provider / benchmark ids + content hashes).                                 |
-| `UNIV-013`    | self-contained DB test + scale smoke recipe.                                                                                                        |
-| `SHARED-013`  | permission-gate negative test matrix.                                                                                                               |
-| `SHARED-014`  | permission constant + migration drift guard.                                                                                                        |
-| `UNIV-021`    | spec-DAG implementability lint.                                                                                                                     |
+| node          | proves                                                                                                                                                  |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ALPHA-006`   | first real-engine end-to-end alpha vertical (RealLive); the live provider path (`alpha-006d` full-chain + `agentic-repair-live` residue) is opt-in.     |
+| `ALPHA-007`   | suite public-fixture vertical run (`just alpha-proof` / `just alpha-demo`).                                                                             |
+| `ALPHA-008`   | sanitized live-provider proof bundle.                                                                                                                   |
+| `ITOTORI-116` | public real-LLM proof harness (recorded by default; `--live` opt-in).                                                                                   |
+| `ITOTORI-117` | real-LLM degenerate raw-MTL baseline proof through the same harness.                                                                                    |
+| `KAIFUU-042`  | alpha encrypted-readiness evidence integration: composes the KAIFUU-103 / KAIFUU-104 encrypted-readiness proofs; deterministic redacted no-corpus skip. |
+| `UTSUSHI-119` | MV/MZ patched-output runtime proof: runtime observation consumes a `PatchResult` + SHARED-025 manifest ids (not a static/pre-patch read).               |
+| `SHARED-025`  | alpha vertical proof manifest contract (ties bridge / patch / runtime / provider / benchmark ids + content hashes).                                     |
+| `UNIV-013`    | self-contained DB test + scale smoke recipe.                                                                                                            |
+| `SHARED-013`  | permission-gate negative test matrix.                                                                                                                   |
+| `SHARED-014`  | permission constant + migration drift guard.                                                                                                            |
+| `UNIV-021`    | spec-DAG implementability lint.                                                                                                                         |
 
 ### Patched-output runtime proof (UTSUSHI-119 × SHARED-025)
 
@@ -153,6 +153,37 @@ than a static read. `just alpha-readiness-checklist` re-verifies every one of
 those artifact hashes against the committed fixtures and confirms the runtime
 report's source matches the manifest (a mismatched revision or a missing patch
 result fails the gate).
+
+### Encrypted-readiness evidence integration (KAIFUU-042)
+
+The `kaifuu:encrypted-readiness` workflow
+([`../suite/scripts/kaifuu-encrypted-readiness-integration/run.mjs`](../suite/scripts/kaifuu-encrypted-readiness-integration/run.mjs))
+**composes** the already-generated encrypted-readiness EVIDENCE of the
+prerequisite slices — the KAIFUU-103 packed-engine readiness surface and the
+KAIFUU-104 alpha-encrypted readiness evidence generator — into an alpha-readiness
+composed-evidence artifact. It does **not** re-own those slices: the committed
+[`prerequisites.manifest.json`](../suite/scripts/kaifuu-encrypted-readiness-integration/prerequisites.manifest.json)
+NAMES the prerequisite surfaces, adapters, command evidence, and proof
+artifacts, and the workflow AGGREGATES each committed proof artifact by content
+hash (`composedEvidenceHash`). A missing, tampered (wrong source node), or
+UNSUPPORTED prerequisite becomes a structured **semantic diagnostic**
+(`status: failed`) — never a hidden success.
+
+Like the KAIFUU-036 / KAIFUU-067 / KAIFUU-094 private-local workflows this is a
+FIRST-CLASS LOCAL lane, intentionally absent from per-gate CI. When **no private
+encrypted corpus is configured** (the public/default case, or `--no-corpus`) it
+emits the deterministic REDACTED no-corpus artifact
+`.tmp/kaifuu-private-local/encrypted-readiness-no-corpus-skipped.json` with
+`status: skipped`, `reason: private_inputs_absent`, redacted (empty) corpus ids,
+zero aggregate counts, and no local paths — byte-stable and matching the committed
+[`no-corpus-skipped.example.json`](../suite/scripts/kaifuu-encrypted-readiness-integration/examples/no-corpus-skipped.example.json).
+With an operator's already-redacted private-corpus manifest it instead emits the
+safe aggregate readiness report. No raw keys, encrypted bytes, or decrypted
+content ever reach any artifact.
+
+```sh
+pnpm exec vp run kaifuu:encrypted-readiness -- --no-corpus
+```
 
 ## 5. Required gates (CI + workflows)
 

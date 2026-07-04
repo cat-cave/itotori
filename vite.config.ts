@@ -222,6 +222,33 @@ export default defineConfig({
         command: "node --test suite/scripts/kaifuu-key-hunt/key-hunt.test.mjs",
         cache: false,
       },
+      // KAIFUU-042: alpha encrypted-readiness evidence INTEGRATION. Composes the
+      // already-generated encrypted-readiness evidence of the prerequisite
+      // slices (KAIFUU-103 packed-engine readiness surface + KAIFUU-104
+      // alpha-encrypted readiness evidence) into an alpha-readiness composed
+      // -evidence artifact by content HASH — it never re-owns a prerequisite
+      // slice. Like KAIFUU-036/067/094 it is a FIRST-CLASS LOCAL workflow,
+      // intentionally ABSENT from per-gate CI. With NO private encrypted corpus
+      // (the public/default case, or --no-corpus) it emits the deterministic
+      // REDACTED no-corpus artifact
+      // .tmp/kaifuu-private-local/encrypted-readiness-no-corpus-skipped.json
+      // (status skipped / reason private_inputs_absent / redacted ids / zero
+      // counts / no local paths); with an operator manifest it emits the safe
+      // aggregate report. A missing/tampered/unsupported prerequisite is a
+      // semantic diagnostic (status failed), never a hidden success. Never reads
+      // raw keys/bytes, never shells out.
+      "kaifuu:encrypted-readiness": {
+        command: "node suite/scripts/kaifuu-encrypted-readiness-integration/run.mjs",
+        cache: false,
+      },
+      // KAIFUU-042: deterministic unit + integration tests (no-corpus
+      // determinism + prerequisite composition + boundary regression on a
+      // tampered/missing/unsupported prerequisite + secret-leak rejection +
+      // schema validation). Hermetic; no private corpora.
+      "kaifuu:encrypted-readiness-test": {
+        command: "node --test suite/scripts/kaifuu-encrypted-readiness-integration/run.test.mjs",
+        cache: false,
+      },
     },
   },
 });

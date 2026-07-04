@@ -1,0 +1,87 @@
+{
+  "schemaVersion": "itotori.kaifuu-encrypted-readiness-prerequisites.v0.1",
+  "description": "The EXPLICIT manifest of prerequisite surfaces, adapters, command evidence, and proof artifacts that KAIFUU-042 aggregates into alpha-readiness. KAIFUU-042 does NOT re-own these slices — it composes their committed proofs by content hash. Every artifact path is a committed PUBLIC synthetic fixture; no private corpora, no local paths.",
+  "surfaces": [
+    {
+      "id": "packed-engine-readiness",
+      "sourceNodeId": "KAIFUU-103",
+      "description": "Packed-engine readiness validator surface (posture/outcome authority)."
+    },
+    {
+      "id": "alpha-encrypted-readiness-evidence",
+      "sourceNodeId": "KAIFUU-104",
+      "description": "Alpha public encrypted-readiness evidence generator that composes KAIFUU-103 output with synthetic patch artifacts."
+    }
+  ],
+  "adapters": [
+    {
+      "id": "kirikiri-xp3",
+      "engineFamily": "kirikiri_xp3",
+      "description": "KiriKiri XP3 packed-archive adapter."
+    },
+    {
+      "id": "siglus",
+      "engineFamily": "siglus",
+      "description": "SiglusEngine packed Scene.pck adapter."
+    },
+    {
+      "id": "rpg-maker-mv-mz-encrypted-media",
+      "engineFamily": "rpg_maker_mv_mz_media",
+      "description": "RPG Maker MV/MZ encrypted-media adapter."
+    }
+  ],
+  "commandEvidence": [
+    {
+      "id": "kaifuu-readiness-validate",
+      "command": "kaifuu readiness validate --fixtures-dir fixtures/kaifuu/alpha-encrypted"
+    },
+    {
+      "id": "kaifuu-readiness-alpha-encrypted",
+      "command": "kaifuu readiness alpha-encrypted --fixtures-dir fixtures/kaifuu/alpha-encrypted"
+    }
+  ],
+  "artifacts": [
+    {
+      "id": "kirikiri-xp3.positive.profile",
+      "kind": "readiness_profile",
+      "sourceNodeId": "KAIFUU-103",
+      "path": "fixtures/kaifuu/alpha-encrypted/kirikiri-xp3.positive.profile.json"
+    },
+    {
+      "id": "kirikiri-xp3.helper-required.profile",
+      "kind": "readiness_profile",
+      "sourceNodeId": "KAIFUU-103",
+      "path": "fixtures/kaifuu/alpha-encrypted/kirikiri-xp3.helper-required.profile.json"
+    },
+    {
+      "id": "siglus.positive.profile",
+      "kind": "readiness_profile",
+      "sourceNodeId": "KAIFUU-103",
+      "path": "fixtures/kaifuu/alpha-encrypted/siglus.positive.profile.json"
+    },
+    {
+      "id": "siglus.missing-key.profile",
+      "kind": "readiness_profile",
+      "sourceNodeId": "KAIFUU-103",
+      "path": "fixtures/kaifuu/alpha-encrypted/siglus.missing-key.profile.json"
+    },
+    {
+      "id": "mv-mz-media.positive.profile",
+      "kind": "readiness_profile",
+      "sourceNodeId": "KAIFUU-103",
+      "path": "fixtures/kaifuu/alpha-encrypted/mv-mz-media.positive.profile.json"
+    },
+    {
+      "id": "kirikiri-xp3.positive.patch",
+      "kind": "readiness_patch_evidence",
+      "sourceNodeId": "KAIFUU-104",
+      "path": "fixtures/kaifuu/alpha-encrypted/kirikiri-xp3.positive.patch.json"
+    },
+    {
+      "id": "siglus.positive.patch",
+      "kind": "readiness_patch_evidence",
+      "sourceNodeId": "KAIFUU-104",
+      "path": "fixtures/kaifuu/alpha-encrypted/siglus.positive.patch.json"
+    }
+  ]
+}

@@ -1,0 +1,53 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "itotori.kaifuu-encrypted-readiness-private-corpus-manifest.v0.1",
+  "title": "Kaifuu private-encrypted-corpus manifest (operator, already-redacted)",
+  "description": "An operator authors this ALREADY-REDACTED locally to describe an owned encrypted corpus for the kaifuu:encrypted-readiness integration. It carries ONLY redacted fields: logical redacted corpus ids, engine, readiness bin, sha256 proof hashes, and aggregate counts. Never raw keys, encrypted bytes, decrypted content, or local paths. It lives OUTSIDE the repo and is never committed.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["schemaVersion", "corpora"],
+  "properties": {
+    "schemaVersion": {
+      "const": "itotori.kaifuu-encrypted-readiness-private-corpus-manifest.v0.1"
+    },
+    "description": { "type": "string" },
+    "corpora": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["corpusIdRedacted", "engine", "readinessBin"],
+        "properties": {
+          "corpusIdRedacted": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]*$" },
+          "engine": {
+            "enum": [
+              "rpg-maker-mv",
+              "rpg-maker-mz",
+              "kirikiri-xp3",
+              "siglus",
+              "wolf",
+              "rgss3-vx-ace"
+            ]
+          },
+          "readinessBin": {
+            "enum": [
+              "ready",
+              "helper_required",
+              "key_missing",
+              "unsupported_variant",
+              "detector_unknown",
+              "blocked"
+            ]
+          },
+          "proofHash": {
+            "oneOf": [{ "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }, { "type": "null" }]
+          },
+          "encryptedArchives": { "type": "integer", "minimum": 0 },
+          "encryptedAssets": { "type": "integer", "minimum": 0 },
+          "keyProfiles": { "type": "integer", "minimum": 0 },
+          "helperProfiles": { "type": "integer", "minimum": 0 }
+        }
+      }
+    }
+  }
+}

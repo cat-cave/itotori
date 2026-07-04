@@ -1,0 +1,35 @@
+{
+  "schemaVersion": "itotori.kaifuu-encrypted-readiness-private-corpus-manifest.v0.1",
+  "description": "MOCK operator private-encrypted-corpus manifest (example only). An operator authors this ALREADY-REDACTED locally to describe an owned encrypted corpus: logical redacted corpus ids, engine, readiness bin, sha256 proof hashes, and aggregate counts. It NEVER carries raw keys, encrypted bytes, decrypted text, or local paths. In real use it lives OUTSIDE the repo under fixtures/private-local/ and is never committed.",
+  "corpora": [
+    {
+      "corpusIdRedacted": "corpus-alpha",
+      "engine": "kirikiri-xp3",
+      "readinessBin": "ready",
+      "proofHash": "sha256:351634f2805d69a4ef69cee095cd590aa3828d1a9d5e6f988fcd93aaa388fe6d",
+      "encryptedArchives": 3,
+      "encryptedAssets": 128,
+      "keyProfiles": 1,
+      "helperProfiles": 0
+    },
+    {
+      "corpusIdRedacted": "corpus-beta",
+      "engine": "siglus",
+      "readinessBin": "helper_required",
+      "proofHash": "sha256:f69b67a78bf6568ab9ecdadff5bc49952cdb2861fea44b635bce3e877af7a919",
+      "encryptedArchives": 1,
+      "encryptedAssets": 64,
+      "keyProfiles": 1,
+      "helperProfiles": 1
+    },
+    {
+      "corpusIdRedacted": "corpus-gamma",
+      "engine": "rpg-maker-mz",
+      "readinessBin": "key_missing",
+      "encryptedArchives": 2,
+      "encryptedAssets": 256,
+      "keyProfiles": 0,
+      "helperProfiles": 0
+    }
+  ]
+}
