@@ -904,6 +904,8 @@ export function assertWorkspaceCorrectionSubmitReadModel(
     "decisionQueueReportIds",
     "needsContextReportIds",
     "affectedBridgeUnitIds",
+    "writebacks",
+    "scheduledRerunJobIds",
     "diagnostics",
   ]);
   assertLiteral(model.schemaVersion, "workspace.correction_submit.v0.1", `${label}.schemaVersion`);
@@ -953,6 +955,23 @@ export function assertWorkspaceCorrectionSubmitReadModel(
   assertStringArray(model.decisionQueueReportIds, `${label}.decisionQueueReportIds`);
   assertStringArray(model.needsContextReportIds, `${label}.needsContextReportIds`);
   assertStringArray(model.affectedBridgeUnitIds, `${label}.affectedBridgeUnitIds`);
+  const writebacks = asArray(model.writebacks, `${label}.writebacks`);
+  for (const [index, writebackValue] of writebacks.entries()) {
+    const writebackLabel = `${label}.writebacks[${index}]`;
+    const writeback = asStrictRecord(writebackValue, writebackLabel, [
+      "bridgeUnitId",
+      "memorySegmentId",
+      "termId",
+      "affectedBridgeUnitIds",
+      "scheduledJobIds",
+    ]);
+    assertString(writeback.bridgeUnitId, `${writebackLabel}.bridgeUnitId`);
+    assertNullableString(writeback.memorySegmentId, `${writebackLabel}.memorySegmentId`);
+    assertNullableString(writeback.termId, `${writebackLabel}.termId`);
+    assertStringArray(writeback.affectedBridgeUnitIds, `${writebackLabel}.affectedBridgeUnitIds`);
+    assertStringArray(writeback.scheduledJobIds, `${writebackLabel}.scheduledJobIds`);
+  }
+  assertStringArray(model.scheduledRerunJobIds, `${label}.scheduledRerunJobIds`);
   assertWorkspaceCorrectionDiagnostics(model.diagnostics, `${label}.diagnostics`);
 }
 

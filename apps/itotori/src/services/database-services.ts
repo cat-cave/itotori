@@ -2,6 +2,7 @@ import {
   EngineCapabilityReportRepository,
   ItotoriAssetLocalizationDecisionRepository,
   ItotoriDraftAttemptProviderLedgerRepository,
+  ItotoriEventQueueRepository,
   ItotoriFeedbackRepository,
   ItotoriExactSearchDocumentRepository,
   ItotoriCatalogExactExternalIdLinkerService,
@@ -84,6 +85,7 @@ import {
   WorkspaceCorrectionService,
   type WorkspaceCorrectionServicePort,
 } from "../workspace/correction-service.js";
+import { WorkspaceCorrectionFeedbackLoop } from "../workspace/correction-feedback-loop.js";
 import {
   ItotoriProjectWorkflowService,
   type ItotoriProjectWorkflowPort,
@@ -340,6 +342,21 @@ export async function withDatabaseItotoriServices<T>(
     // edit-history repository, and the reviewer-detail comparison read-model
     // for the before/after preview. Repository calls are bound to the local
     // authorization actor, exactly like the read workspace.
+    // itotori-correction-feedback-writeback-e2e — the feedback loop's RETURN
+    // path: a repair-candidate correction writes its corrected target back into
+    // the translation-memory (+ glossary when term-scoped) stores and schedules
+    // an affected rerun over every unit sharing that source, so the next draft
+    // reflects the correction. Composes the existing TM + terminology repos and
+    // the shared reviewer-rerun job queue; no new store.
+    const eventQueueRepository = new ItotoriEventQueueRepository(context.db);
+    const workspaceCorrectionFeedbackLoop = new WorkspaceCorrectionFeedbackLoop({
+      actor: localUserActor,
+      translationMemory: translationMemoryRepository,
+      glossary: terminologyRepository,
+      rerunQueue: {
+        enqueueJobs: (actor, inputs) => eventQueueRepository.enqueueJobs(actor, inputs),
+      },
+    });
     const workspaceCorrectionService = new WorkspaceCorrectionService({
       importPort: manualFeedbackService,
       editRepository: {
@@ -351,6 +368,7 @@ export async function withDatabaseItotoriServices<T>(
       comparisonPort: {
         loadComparisonContext: (input) => reviewerQueueApiService.loadDetailContext(input),
       },
+      feedbackLoop: workspaceCorrectionFeedbackLoop,
     });
     return await callback({
       authorization: new ItotoriAuthorizationService(context.db, localUserActor),

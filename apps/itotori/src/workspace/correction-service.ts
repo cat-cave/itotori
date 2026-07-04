@@ -50,7 +50,9 @@ import {
   type WorkspaceCorrectionPreviewReadModel,
   type WorkspaceCorrectionPreviewUnit,
   type WorkspaceCorrectionSubmitReadModel,
+  type WorkspaceCorrectionWritebackView,
 } from "./correction-model.js";
+import type { WorkspaceCorrectionFeedbackLoopPort } from "./correction-feedback-loop.js";
 import type { WorkspaceRuntimeEvidenceLink } from "./read-model.js";
 
 /** Actor-bound persistence port (the DB wiring binds the authorization actor). */
@@ -71,6 +73,15 @@ export type WorkspaceCorrectionServiceDeps = {
   importPort: ManualFeedbackImportPort;
   editRepository: WorkspaceCorrectionEditPersistPort;
   comparisonPort: WorkspaceCorrectionComparisonPort;
+  /**
+   * The feedback loop's RETURN path. When wired, every repair-candidate
+   * correction writes its corrected target back into the translation-memory /
+   * glossary stores AND schedules an affected rerun so the next draft for every
+   * unit sharing that source reflects the correction. Optional so the read-only
+   * and no-DB composition tests need not stand up the writeback stores; the live
+   * DB wiring always provides it.
+   */
+  feedbackLoop?: WorkspaceCorrectionFeedbackLoopPort;
   now?: () => Date;
 };
 
@@ -81,6 +92,12 @@ export type WorkspaceCorrectionSubmission = {
   reason: string;
   correctedText: string;
   draftText?: string;
+  /**
+   * When the correction fixes a glossary term, the source term to write back
+   * (sourceTerm → correctedText) so the glossary carries the corrected
+   * preferred translation. Absent for a plain segment-level correction.
+   */
+  sourceTerm?: string;
   feedbackType?: FeedbackType;
   attachments?: ManualFeedbackAttachment[];
   metadata?: Record<string, unknown>;
@@ -184,6 +201,8 @@ export class WorkspaceCorrectionService implements WorkspaceCorrectionServicePor
         decisionQueueReportIds: [],
         needsContextReportIds: [],
         affectedBridgeUnitIds: [],
+        writebacks: [],
+        scheduledRerunJobIds: [],
         diagnostics: [
           {
             code: workspaceCorrectionDiagnosticCodeValues.mutationPermissionDenied,
@@ -209,11 +228,15 @@ export class WorkspaceCorrectionService implements WorkspaceCorrectionServicePor
         decisionQueueReportIds: [],
         needsContextReportIds: [],
         affectedBridgeUnitIds: [],
+        writebacks: [],
+        scheduledRerunJobIds: [],
         diagnostics,
       };
     }
 
     const edits: WorkspaceCorrectionEditView[] = [];
+    const writebacks: WorkspaceCorrectionWritebackView[] = [];
+    const scheduledRerunJobIds = new Set<string>();
     const repairCandidateReportIds: string[] = [];
     const decisionQueueReportIds: string[] = [];
     const needsContextReportIds: string[] = [];
@@ -253,6 +276,40 @@ export class WorkspaceCorrectionService implements WorkspaceCorrectionServicePor
       affected.add(correction.bridgeUnitId);
       if (disposition === workspaceCorrectionDispositionValues.repairCandidate) {
         repairCandidateReportIds.push(result.feedbackReportId);
+        // Feedback loop RETURN path: persist the corrected target into the
+        // translation-memory (+ glossary when term-scoped) stores and schedule
+        // an affected rerun, so the next draft for every unit sharing this
+        // source reflects the correction. Only repair-candidate corrections
+        // (objective defects) auto-return; style disputes and needs-context
+        // corrections stay in the human decision queue.
+        if (this.deps.feedbackLoop !== undefined && !record.duplicate) {
+          const writeback = await this.deps.feedbackLoop.applyCorrectionWriteback({
+            projectId: input.projectId,
+            localeBranchId: input.localeBranchId,
+            sourceRevisionId: correction.sourceRevisionId,
+            bridgeUnitId: correction.bridgeUnitId,
+            correctedText: correction.correctedText,
+            feedbackReportId: result.feedbackReportId,
+            batchId,
+            reason: correction.reason,
+            ...(correction.sourceTerm === undefined ? {} : { sourceTerm: correction.sourceTerm }),
+          });
+          if (writeback.writtenBack) {
+            for (const unitId of writeback.affectedBridgeUnitIds) {
+              affected.add(unitId);
+            }
+            for (const jobId of writeback.scheduledJobIds) {
+              scheduledRerunJobIds.add(jobId);
+            }
+            writebacks.push({
+              bridgeUnitId: correction.bridgeUnitId,
+              memorySegmentId: writeback.memorySegmentId,
+              termId: writeback.termId,
+              affectedBridgeUnitIds: writeback.affectedBridgeUnitIds,
+              scheduledJobIds: writeback.scheduledJobIds,
+            });
+          }
+        }
       } else if (disposition === workspaceCorrectionDispositionValues.decisionQueue) {
         decisionQueueReportIds.push(result.feedbackReportId);
       } else {
@@ -280,6 +337,8 @@ export class WorkspaceCorrectionService implements WorkspaceCorrectionServicePor
       decisionQueueReportIds: sortedUnique(decisionQueueReportIds),
       needsContextReportIds: sortedUnique(needsContextReportIds),
       affectedBridgeUnitIds: sortedUnique([...affected]),
+      writebacks,
+      scheduledRerunJobIds: sortedUnique([...scheduledRerunJobIds]),
       diagnostics,
     };
   }

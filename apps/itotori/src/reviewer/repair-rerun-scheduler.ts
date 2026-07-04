@@ -51,6 +51,8 @@ export const reviewerTriggeredRerunReasonCodeValues = {
   glossaryInvalidated: "glossary_invalidated",
   policyInvalidated: "policy_invalidated",
   runtimeFeedbackRerun: "runtime_feedback_rerun",
+  reviewerCorrectionWriteback: "reviewer_correction_writeback",
+  translationMemoryInvalidated: "translation_memory_invalidated",
 } as const;
 
 export type ReviewerTriggeredRerunReasonCode =
@@ -132,7 +134,20 @@ export function buildReviewerTriggeredRerunJobInputs(
     return [];
   }
 
-  const context = payloadContext(result, reasonCodes);
+  return buildRerunJobInputsFromPayloadContext(payloadContext(result, reasonCodes));
+}
+
+/**
+ * Fan a fully-assembled rerun payload context out into the ordered
+ * `draft-repair → qa-replay → export-regeneration → runtime-validation` job
+ * chain. This is the shared lowering used both by reviewer-queue actions
+ * (`buildReviewerTriggeredRerunJobInputs`) and by the workspace correction
+ * writeback loop, which assembles its own context (correction reason codes,
+ * affected units sharing the corrected source) rather than a queue transition.
+ */
+export function buildRerunJobInputsFromPayloadContext(
+  context: Omit<ReviewerTriggeredRerunPayload, "stage">,
+): JobQueueInput[] {
   const inputs: JobQueueInput[] = [];
   for (const stage of rerunStageOrder) {
     const payload: ReviewerTriggeredRerunPayload = { ...context, stage };

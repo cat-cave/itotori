@@ -117,6 +117,23 @@ export type WorkspaceCorrectionEditView = {
   duplicate: boolean;
 };
 
+/**
+ * The feedback loop's RETURN path for one correction: what was written back to
+ * the translation-memory / glossary stores and which units the correction
+ * scheduled an affected rerun for. Empty for corrections parked for context.
+ */
+export type WorkspaceCorrectionWritebackView = {
+  bridgeUnitId: string;
+  /** The reusable translation-memory segment the corrected target was written to. */
+  memorySegmentId: string | null;
+  /** The glossary term written, when the correction was term-scoped. */
+  termId: string | null;
+  /** Every bridge unit sharing the corrected source — the rerun scope. */
+  affectedBridgeUnitIds: string[];
+  /** The reviewer-rerun jobs scheduled to re-draft the affected units. */
+  scheduledJobIds: string[];
+};
+
 export type WorkspaceCorrectionSubmitReadModel = {
   schemaVersion: "workspace.correction_submit.v0.1";
   generatedAt: Date;
@@ -134,5 +151,13 @@ export type WorkspaceCorrectionSubmitReadModel = {
   needsContextReportIds: string[];
   /** Union of every bridge unit corrected in the batch — the rerun scope. */
   affectedBridgeUnitIds: string[];
+  /**
+   * Per-correction feedback-loop return path: the glossary/TM writeback + the
+   * affected rerun scheduled for each repair-candidate correction. Empty when no
+   * feedback loop is wired or every correction was parked for context.
+   */
+  writebacks: WorkspaceCorrectionWritebackView[];
+  /** Union of every reviewer-rerun job scheduled by the batch's writebacks. */
+  scheduledRerunJobIds: string[];
   diagnostics: WorkspaceCorrectionDiagnostic[];
 };

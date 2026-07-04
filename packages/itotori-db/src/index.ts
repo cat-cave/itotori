@@ -321,6 +321,7 @@ export type {
   ItotoriTranslationMemoryRepositoryPort,
   ListTranslationMemoryPrefillTargetsInput,
   ListTranslationMemoryReuseEventsInput,
+  ListUnitsSharingSourceInput,
   PrefillTranslationMemoryDraftsInput,
   RecordTranslationMemoryReuseInput,
   TranslationMemoryDiagnostic,
@@ -335,6 +336,7 @@ export type {
   TranslationMemorySegmentRecord,
   TranslationMemorySourceScopeErrorCode,
   TranslationMemoryUnitContext,
+  UnitsSharingSourceResult,
   UpsertTranslationMemorySegmentInput,
 } from "./repositories/translation-memory-repository.js";
 export {

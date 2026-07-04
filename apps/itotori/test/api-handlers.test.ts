@@ -2862,6 +2862,8 @@ function serviceFixture(): ItotoriApiServices {
         decisionQueueReportIds: [],
         needsContextReportIds: [],
         affectedBridgeUnitIds: [],
+        writebacks: [],
+        scheduledRerunJobIds: [],
         diagnostics: permission.canManageQueue
           ? []
           : [

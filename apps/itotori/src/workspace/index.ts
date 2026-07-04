@@ -71,7 +71,17 @@ export type {
   WorkspaceCorrectionPreviewReadModel,
   WorkspaceCorrectionPreviewUnit,
   WorkspaceCorrectionSubmitReadModel,
+  WorkspaceCorrectionWritebackView,
 } from "./correction-model.js";
+export { WorkspaceCorrectionFeedbackLoop } from "./correction-feedback-loop.js";
+export type {
+  WorkspaceCorrectionFeedbackLoopDeps,
+  WorkspaceCorrectionFeedbackLoopPort,
+  WorkspaceCorrectionGlossaryPort,
+  WorkspaceCorrectionTranslationMemoryPort,
+  WorkspaceCorrectionWritebackInput,
+  WorkspaceCorrectionWritebackResult,
+} from "./correction-feedback-loop.js";
 export { WorkspaceCorrectionService } from "./correction-service.js";
 export type {
   LoadWorkspaceCorrectionPreviewInput,

@@ -179,6 +179,24 @@ export type ListTranslationMemoryReuseEventsInput = {
   targetBridgeUnitId?: string;
 };
 
+export type ListUnitsSharingSourceInput = {
+  projectId: string;
+  localeBranchId: string;
+  bridgeUnitId: string;
+};
+
+/**
+ * The set of locale-branch units that share a source segment with a given
+ * bridge unit — i.e. every unit whose next draft a reviewer correction on
+ * that unit should propagate to via translation-memory reuse. `bridgeUnitIds`
+ * always includes the anchor unit itself.
+ */
+export type UnitsSharingSourceResult = {
+  sourceRevisionId: string;
+  sourceHash: string;
+  bridgeUnitIds: string[];
+};
+
 export interface ItotoriTranslationMemoryRepositoryPort {
   upsertSegment(
     actor: AuthorizationActor,
@@ -197,6 +215,9 @@ export interface ItotoriTranslationMemoryRepositoryPort {
   listReuseEvents(
     input: ListTranslationMemoryReuseEventsInput,
   ): Promise<TranslationMemoryReuseEventRecord[]>;
+  listUnitsSharingSource(
+    input: ListUnitsSharingSourceInput,
+  ): Promise<UnitsSharingSourceResult | null>;
 }
 
 export class ItotoriTranslationMemoryRepository implements ItotoriTranslationMemoryRepositoryPort {
@@ -541,6 +562,43 @@ export class ItotoriTranslationMemoryRepository implements ItotoriTranslationMem
       );
 
     return rows.map(reuseEventRecordFromRow);
+  }
+
+  async listUnitsSharingSource(
+    input: ListUnitsSharingSourceInput,
+  ): Promise<UnitsSharingSourceResult | null> {
+    const anchor = await this.getUnitContext(
+      input.projectId,
+      input.localeBranchId,
+      input.bridgeUnitId,
+    );
+    if (anchor === null) {
+      return null;
+    }
+    const rows = await this.db
+      .select({ bridgeUnitId: sourceUnits.bridgeUnitId })
+      .from(localeBranches)
+      .innerJoin(
+        localeBranchUnits,
+        eq(localeBranchUnits.localeBranchId, localeBranches.localeBranchId),
+      )
+      .innerJoin(sourceBundles, eq(sourceBundles.sourceBundleId, localeBranches.sourceBundleId))
+      .innerJoin(sourceUnits, eq(sourceUnits.bridgeUnitId, localeBranchUnits.bridgeUnitId))
+      .where(
+        sql`${localeBranches.projectId} = ${input.projectId}
+          and ${localeBranches.localeBranchId} = ${input.localeBranchId}
+          and ${sourceUnits.sourceBundleId} = ${localeBranches.sourceBundleId}
+          and ${sourceUnits.sourceHash} = ${anchor.sourceHash}`,
+      )
+      .orderBy(asc(sourceUnits.bridgeUnitId));
+    const bridgeUnitIds = [...new Set(rows.map((row) => row.bridgeUnitId))].sort((a, b) =>
+      a.localeCompare(b),
+    );
+    return {
+      sourceRevisionId: anchor.sourceRevisionId,
+      sourceHash: anchor.sourceHash,
+      bridgeUnitIds,
+    };
   }
 
   private async getUnitContext(
