@@ -83,6 +83,10 @@ import {
 import type { ProtectedSpanRef, TranslationDraft } from "@itotori/localization-bridge-schema";
 import { FindingTriageRouter } from "../triage/router.js";
 import type { FindingTriageResult } from "../triage/router.js";
+import {
+  bridgeAgenticLoopToReviewerQueue,
+  type AgenticLoopReviewerQueueSink,
+} from "./reviewer-queue-bridge.js";
 import type { ModelProvider, ProviderFamily, ProviderRunRecord } from "../providers/types.js";
 import { assertBilledCost } from "../providers/cost.js";
 import { assertReportedTokenUsage } from "../providers/token-accounting.js";
@@ -285,6 +289,18 @@ export type AgenticLoopUnitInput = {
    * for downstream provenance.
    */
   actor: AuthorizationActor;
+  /**
+   * itotori-loop-to-review-queue-bridge — the reviewer-queue write surface a
+   * DRIVEN run wires so the loop's `deferred_to_human` /
+   * `short_circuit_deterministic_p0` outcome (or a threshold-exceeding QA
+   * finding) lands a context-rich `reviewer_queue_items` record automatically.
+   * This is the DEFAULT path for a driven run: when the sink is present the
+   * loop bridges its outcome into the HITL queue with the full decision context
+   * (source / draft / context / evidence / reasoning / options). When absent
+   * (the synthetic smoke path, which has no DB) the loop still returns its
+   * bundle but persists nothing.
+   */
+  reviewerQueue?: AgenticLoopReviewerQueueSink;
 };
 
 // ---------------------------------------------------------------------------
@@ -474,7 +490,7 @@ export async function runAgenticLoopForUnit(
     finalStage.outcome = "deferred_to_human";
     stages.push(finalStage);
 
-    return finalizeBundle({
+    const shortCircuitBundle = finalizeBundle({
       bridgeUnitId: input.unit.bridgeUnitId,
       policy,
       stages,
@@ -490,6 +506,20 @@ export async function runAgenticLoopForUnit(
         deferredReason: `deterministic_checks short-circuited on P0: ${deterministicResult.firstP0Kind ?? "unknown"}`,
       },
     });
+    // itotori-loop-to-review-queue-bridge — a P0 short-circuit is a deferral;
+    // surface it to the reviewer queue with the rejected draft + the violations
+    // that fired so a human sees WHY it was held (not a random line).
+    await maybeBridgeLoopOutcomeToReviewerQueue({
+      input,
+      now,
+      bundle: shortCircuitBundle,
+      draftText: primaryDraftText,
+      deferredReason: shortCircuitBundle.finalDraft.deferredReason,
+      qaFindings: [],
+      deterministicViolations: deterministicResult.violations,
+      contextArtifactRefs: contextResult.contextArtifactRefs,
+    });
+    return shortCircuitBundle;
   }
 
   // The four focused QA agents run SEQUENTIALLY here (one awaited
@@ -637,7 +667,7 @@ export async function runAgenticLoopForUnit(
   finalStage.outcome = routingOutcome;
   stages.push(finalStage);
 
-  return finalizeBundle({
+  const finalBundle = finalizeBundle({
     bridgeUnitId: input.unit.bridgeUnitId,
     policy,
     stages,
@@ -656,6 +686,57 @@ export async function runAgenticLoopForUnit(
             deferredReason:
               deferredReason ?? "agentic loop deferred to human without specific reason",
           },
+  });
+  // itotori-loop-to-review-queue-bridge — DEFAULT loop path. When the outcome
+  // is `deferred_to_human` (or a QA finding crossed the review severity floor
+  // even on an accepted draft) this lands ONE context-rich reviewer_queue_items
+  // record. `finalDraftText ?? primaryDraftText` carries the accepted draft, or
+  // the REJECTED draft on a defer, so the reviewer never judges an isolated line.
+  await maybeBridgeLoopOutcomeToReviewerQueue({
+    input,
+    now,
+    bundle: finalBundle,
+    draftText: finalDraftText ?? primaryDraftText,
+    ...(deferredReason !== undefined ? { deferredReason } : {}),
+    qaFindings,
+    deterministicViolations: deterministicResult.violations,
+    contextArtifactRefs: contextResult.contextArtifactRefs,
+  });
+  return finalBundle;
+}
+
+/**
+ * itotori-loop-to-review-queue-bridge — thin adapter that hands a finished loop
+ * pass to the reviewer-queue bridge WHEN a driven run wired a sink. No sink
+ * (the synthetic smoke path) → no-op. The bridge itself decides whether the
+ * outcome warrants a human decision and is idempotent per unit+revision.
+ */
+async function maybeBridgeLoopOutcomeToReviewerQueue(args: {
+  input: AgenticLoopUnitInput;
+  now: () => Date;
+  bundle: AgenticLoopBundle;
+  draftText?: string | undefined;
+  deferredReason?: string | undefined;
+  qaFindings: ReadonlyArray<QaFinding>;
+  deterministicViolations: ReadonlyArray<DraftProtectedSpanViolation>;
+  contextArtifactRefs: ReadonlyArray<string>;
+}): Promise<void> {
+  const sink = args.input.reviewerQueue;
+  if (sink === undefined) {
+    return;
+  }
+  await bridgeAgenticLoopToReviewerQueue({
+    actor: args.input.actor,
+    sink,
+    bundle: args.bundle,
+    unit: args.input.unit,
+    draftText: args.draftText,
+    deferredReason: args.deferredReason,
+    qaFindings: args.qaFindings,
+    deterministicViolations: args.deterministicViolations,
+    contextArtifactRefs: args.contextArtifactRefs,
+    now: args.now,
+    ...(args.input.sceneId !== undefined ? { sceneId: args.input.sceneId } : {}),
   });
 }
 
