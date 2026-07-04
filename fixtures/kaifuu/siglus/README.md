@@ -1,3 +1,33 @@
+# Siglus fixtures (KAIFUU-069 static-key, KAIFUU-070 known-key smoke)
+
+## KAIFUU-070 — known-key Scene/Gameexe extract-patch-verify smoke
+
+`siglus-knownkey-smoke.json` drives a **narrow, honestly-scoped** known-key
+smoke (`kaifuu_siglus::run_known_key_smoke_from_fixture`): for one declared
+profile it extracts profiled `Scene`/`Gameexe` text + metadata, applies a
+trivial translated patch, and verifies the round-trip. It is **NOT** broad
+Siglus support — the real `Scene.pck`/`Gameexe.dat` constant-256-XOR-table +
+per-game second-layer strip and proprietary-LZSS codec stay skeleton stubs
+(siglus-04/siglus-06).
+
+- **Profiled synthetic, no retail bytes.** The `synthetic-stub` container
+  sources materialise a clearly-fake `Scene`/`Gameexe` container in-process,
+  masked with a clearly-fake constant known key (`KSIG-SMOKE-KEY01`). The
+  optional `{ "local-file": { "path": "…" } }` source reads scoped local bytes
+  in-process (never shelled out to); the committed fixture uses `synthetic-stub`.
+- **Known key stays redacted.** The raw key lives only in a module-private,
+  zeroize-on-drop, `Debug`-redacting holder — never serialized, logged, or
+  written to disk. The report carries the structured `secretRef`
+  (`local-secret:siglus-secondary-key`, shared with the KAIFUU-069 key) + a
+  one-way sha256 commitment + the key length; no extracted or translated text
+  (only sha256 digests).
+- **Out-of-profile is typed not-implemented.** A container flagged with the
+  out-of-profile proprietary-LZSS compression is refused with
+  `kaifuu.siglus.known_key_smoke.out_of_profile_compression_not_implemented`,
+  never a silent pass.
+
+---
+
 # Siglus static-key helper fixtures (KAIFUU-069)
 
 Fixtures for `kaifuu siglus static-key --fixture

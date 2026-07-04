@@ -12,7 +12,15 @@
 //!
 //! # Skeleton status (siglus-05)
 //!
-//! Every public entry point here is a **typed stub**. The bytes-dependent
+//! Every public entry point in the **core format stack** ([`archive`],
+//! [`decrypt`], [`decompress`], [`compress`], [`gameexe`], [`opcode`],
+//! [`expression`], [`bridge`], [`patchback`]) is a **typed stub**. The one
+//! exception is [`known_key_smoke`] (KAIFUU-070): a NARROW, honestly-scoped
+//! known-key Scene/Gameexe extract-patch-verify smoke over a single declared
+//! profiled format. It is a real implementation of that narrow profile only —
+//! it does NOT claim broad Siglus support, does NOT alias around the core-stack
+//! stubs, and returns a typed `not_implemented` for any out-of-profile case.
+//! The bytes-dependent
 //! Siglus work (real Scene.pck reading, key recovery, LZSS, decompilation,
 //! patchback) is gated behind the blocked-external `siglus-01`/`siglus-02`
 //! recon+realization nodes — there is no plaintext Siglus game tree to
@@ -63,6 +71,7 @@ pub mod decompress;
 pub mod decrypt;
 pub mod expression;
 pub mod gameexe;
+pub mod known_key_smoke;
 pub mod opcode;
 pub mod patchback;
 
@@ -111,6 +120,18 @@ pub use decrypt::{
 };
 pub use expression::{SiglusExpr, SiglusExpressionError, decode_expression};
 pub use gameexe::{GameexeDatEntry, GameexeDatError, GameexeDatReport, parse_gameexe_dat};
+pub use known_key_smoke::{
+    GameexeEntryDigest, GameexeExtractionReport, KNOWN_KEY_SMOKE_CAPABILITY_ID,
+    KNOWN_KEY_SMOKE_SCHEMA_VERSION, KNOWN_KEY_SMOKE_SUPPORT_BOUNDARY, KnownKeySmokeError,
+    OutOfProfileReport, PatchRoundTripReport, SceneExtractionReport, ScenePatchVerification,
+    SceneUnitDigest, SiglusGameexeEntry, SiglusGameexeExtraction, SiglusKnownKeyCapability,
+    SiglusKnownKeyCompression, SiglusKnownKeyContainerSource, SiglusKnownKeyEncoding,
+    SiglusKnownKeyPatchSpec, SiglusKnownKeyProfile, SiglusKnownKeySmokeFixture,
+    SiglusKnownKeySmokeReport, SiglusSceneExtraction, SiglusSceneUnit,
+    build_synthetic_gameexe_fixture, build_synthetic_out_of_profile_scene_fixture,
+    build_synthetic_scene_fixture, extract_gameexe, extract_scene, patch_and_verify_scene,
+    patch_scene_unit, run_known_key_smoke_from_fixture,
+};
 pub use opcode::{SiglusOpcode, SiglusParseError, parse_scene_bytecode};
 pub use patchback::bundle_driven::{
     PATCHBACK_ARCHIVE_PARSE_FAILURE_CODE, PATCHBACK_NOT_IMPLEMENTED_CODE,

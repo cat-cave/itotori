@@ -1,0 +1,18 @@
+{
+  "schemaVersion": "0.1.0",
+  "capabilityId": "kaifuu-siglus-knownkey-smoke",
+  "sourceNodeId": "KAIFUU-070",
+  "engineFamily": "siglus",
+  "profile": {
+    "profileId": "siglus-knownkey-smoke-fixture",
+    "secretRef": "local-secret:siglus-secondary-key",
+    "encoding": "utf16-le",
+    "compression": "uncompressed",
+    "sceneSource": "synthetic-stub",
+    "gameexeSource": "synthetic-stub"
+  },
+  "patch": {
+    "targetSourceUnitKey": "siglus:scene-0001#0000",
+    "translatedText": "[synthetic-translation-EN-0]"
+  }
+}
