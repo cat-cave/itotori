@@ -552,13 +552,16 @@ fn run_extract_reallive_bundle(args: &[String]) -> Result<(), Box<dyn std::error
 /// non-dialogue surface byte-identical; `dialogue+choices` additionally
 /// re-emits `module_sel` choice options NextString-safe.
 ///
-/// Reads the translated v0.2 BridgeBundle, copies the readonly source
-/// tree to the writable target (per the readonly-source / writable-
-/// target discipline called out in the KAIFUU-211 audit-focus row),
-/// patches the target's `REALLIVEDATA/Seen.txt` via
-/// [`kaifuu_reallive::apply_translated_bundle`], and writes the patched
-/// archive in place. The source tree is sha256-unchanged after the
-/// command.
+/// Reads the translated v0.2 BridgeBundle, patches the source's
+/// `REALLIVEDATA/Seen.txt` via [`kaifuu_reallive::apply_translated_bundle`],
+/// and writes the patched archive to the SAME relative path under the
+/// writable target (per the readonly-source / writable-target discipline
+/// called out in the KAIFUU-211 audit-focus row). Only the target archive
+/// is touched: the multi-GB voice/image siblings of a real game tree are
+/// never read, copied, or written
+/// (`kaifuu-patch-touch-archive-not-copy-game-tree`) — a per-scene patch
+/// stays target-archive-sized, not full-tree-sized. The source tree is
+/// sha256-unchanged after the command.
 fn run_patch_reallive_bundle(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
     use kaifuu_reallive::{
         PATCHBACK_TARGET_NONEMPTY_CODE, PatchbackOpts, TranslatedBundleV02, TranslationScope,
@@ -624,15 +627,31 @@ fn run_patch_reallive_bundle(args: &[String]) -> Result<(), Box<dyn std::error::
         })?;
     let source_seen_hash = sha256_hash_bytes(&source_seen_bytes);
 
-    // Copy the readonly source tree to the writable target. We mirror
-    // the directory layout under `<target_root>/<inner_dirs>` so the
-    // resolved `REALLIVEDATA/Seen.txt` sits at the same relative path
-    // as the source.
-    copy_directory_tree(&source_root, &target_root)?;
-
-    // Re-resolve under the target so we know exactly which file to
-    // overwrite.
-    let target_seen_path = resolve_reallive_seen_path(&target_root)?;
+    // Pilot throughput (kaifuu-patch-touch-archive-not-copy-game-tree):
+    // TOUCH ONLY THE TARGET ARCHIVE. A RealLive game tree is dominated by
+    // multi-GB voice + image siblings (~5.7GB) surrounding a ~3.7MB
+    // Seen.txt; copying the whole tree to patch one archive is infeasible
+    // per scene. We materialise the patched Seen.txt at the SAME relative
+    // path under the target as it holds under the source, creating ONLY its
+    // enclosing `REALLIVEDATA/` directory. The voice/image siblings are
+    // never read, copied, or touched — the patch footprint is exactly the
+    // target archive.
+    let source_seen_rel = source_seen_path.strip_prefix(&source_root).map_err(
+        |_| -> Box<dyn std::error::Error> {
+            format!(
+                "kaifuu.reallive.patchback_seen_path_outside_source_root: resolved Seen.txt {} is not under source root {}",
+                local_path_for_diagnostic(&source_seen_path),
+                local_path_for_diagnostic(&source_root),
+            )
+            .into()
+        },
+    )?;
+    let target_seen_path = target_root.join(source_seen_rel);
+    if let Some(parent) = target_seen_path.parent() {
+        fs::create_dir_all(parent).map_err(|err| -> Box<dyn std::error::Error> {
+            reallive_patch_write_target_error(&target_seen_path, &err).into()
+        })?;
+    }
 
     let patched = apply_translated_bundle(
         &source_seen_bytes,
@@ -827,74 +846,6 @@ fn reject_reallive_target_tree_symlinks(
         }
     }
     Ok(())
-}
-
-/// Recursively copy `src` into `dst` and make every copied file
-/// user-writable. Skips symlinks (returns an error if any are
-/// encountered — RealLive game trees do not contain symlinks, and
-/// silently following one would be a security footgun).
-///
-/// The user-writable bump is required because RealLive source trees
-/// frequently ship every file as read-only (mode 0o444). `fs::copy`
-/// preserves the mode and the subsequent in-place rewrite of
-/// `REALLIVEDATA/Seen.txt` then fails with EACCES. The bump is local
-/// to the target tree (the readonly source is left untouched per the
-/// KAIFUU-211 "Readonly source mutated by the copy step" audit-focus
-/// row).
-fn copy_directory_tree(src: &Path, dst: &Path) -> Result<(), Box<dyn std::error::Error>> {
-    fs::create_dir_all(dst)?;
-    let mut stack: Vec<(PathBuf, PathBuf)> = vec![(src.to_path_buf(), dst.to_path_buf())];
-    while let Some((src_dir, dst_dir)) = stack.pop() {
-        for entry in fs::read_dir(&src_dir)? {
-            let entry = entry?;
-            let metadata = entry.file_type()?;
-            let dst_entry = dst_dir.join(entry.file_name());
-            if metadata.is_symlink() {
-                return Err(format!(
-                    "kaifuu.reallive.patchback_source_symlink: refusing to follow symlink at {}",
-                    entry.path().display()
-                )
-                .into());
-            }
-            if metadata.is_dir() {
-                fs::create_dir_all(&dst_entry)?;
-                stack.push((entry.path(), dst_entry));
-            } else if metadata.is_file() {
-                fs::copy(entry.path(), &dst_entry)?;
-                make_writable(&dst_entry)?;
-            }
-        }
-    }
-    Ok(())
-}
-
-/// Ensure the file at `path` is user-writable (Unix mode bits |= 0o200).
-/// Best-effort on non-Unix platforms.
-fn make_writable(path: &Path) -> io::Result<()> {
-    let metadata = fs::metadata(path)?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt as _;
-        let mut perms = metadata.permissions();
-        let mode = perms.mode();
-        let writable = mode | 0o200;
-        if writable != mode {
-            perms.set_mode(writable);
-            fs::set_permissions(path, perms)?;
-        }
-        Ok(())
-    }
-    #[cfg(not(unix))]
-    {
-        let mut perms = metadata.permissions();
-        if perms.readonly() {
-            // reason: set_readonly(false) is the only cross-platform clear of the read-only bit; the richer API is unix-only.
-            #[allow(deprecated)]
-            perms.set_readonly(false);
-            fs::set_permissions(path, perms)?;
-        }
-        Ok(())
-    }
 }
 
 fn resolve_reallive_seen_path(game_root: &Path) -> Result<PathBuf, Box<dyn std::error::Error>> {
@@ -6994,6 +6945,162 @@ mod tests {
             b"synthetic source seen bytes\n"
         );
         assert!(fs::read_dir(&linked_writable).unwrap().next().is_none());
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    /// kaifuu-patch-touch-archive-not-copy-game-tree (pilot throughput):
+    /// the reallive patch flow must TOUCH ONLY the target archive — it must
+    /// NOT copy the multi-GB voice/image siblings of the game tree. This
+    /// test seeds a source tree with the real-shape `REALLIVEDATA/Seen.txt`
+    /// PLUS two large siblings (`voice/`, `image/`) standing in for the
+    /// ~5.7GB of assets a real title carries, runs the patch, and asserts:
+    ///
+    /// - the ONLY file materialised under the target is
+    ///   `REALLIVEDATA/Seen.txt` (no sibling was copied — the filesystem
+    ///   footprint is exactly the target archive, so a per-scene patch is
+    ///   target-sized, not full-tree-sized);
+    /// - the patched target archive is byte-for-byte the canonical
+    ///   `apply_translated_bundle` output (declared text changes only — the
+    ///   same byte-correct-patchback contract the round-trip tests assert);
+    /// - the source tree (Seen.txt AND both siblings) is untouched.
+    #[test]
+    fn patch_reallive_touches_only_target_archive_not_multi_gb_siblings() {
+        use crate::binary_patch_smoke::{
+            build_synthetic_seen_txt, build_synthetic_translated_bundle_json,
+        };
+
+        let root = temp_dir("patch-reallive-touch-archive-only");
+        let source_root = root.join("source-game-tree");
+        let source_data = source_root.join("REALLIVEDATA");
+        fs::create_dir_all(&source_data).unwrap();
+
+        let source_seen_bytes = build_synthetic_seen_txt();
+        let source_seen_path = source_data.join("Seen.txt");
+        fs::write(&source_seen_path, &source_seen_bytes).unwrap();
+        let source_seen_hash_before = sha256_hash_bytes(&source_seen_bytes);
+
+        // Large siblings standing in for the multi-GB voice/image trees a
+        // real title ships. If the patch flow copied the whole tree these
+        // would be duplicated under the target (~infeasible at scale). ~1MB
+        // each keeps the test fast while remaining clearly "not the 3.7MB
+        // archive".
+        let big_sibling = vec![0xABu8; 1_048_576];
+        let voice_dir = source_root.join("voice");
+        let image_dir = source_root.join("image");
+        fs::create_dir_all(&voice_dir).unwrap();
+        fs::create_dir_all(&image_dir).unwrap();
+        fs::write(voice_dir.join("z0001.ogg"), &big_sibling).unwrap();
+        fs::write(image_dir.join("bg0001.g00"), &big_sibling).unwrap();
+
+        // A valid translated bundle over the synthetic dialogue unit.
+        let bundle_value =
+            build_synthetic_translated_bundle_json("うえ", "reallive:scene-0001#0000");
+        let bundle_path = root.join("translated-bundle.json");
+        fs::write(
+            &bundle_path,
+            serde_json::to_vec_pretty(&bundle_value).unwrap(),
+        )
+        .unwrap();
+
+        let target_root = root.join("target-patched");
+
+        run_patch_reallive_bundle(
+            &[
+                "patch",
+                "--engine",
+                "reallive",
+                "--source",
+                source_root.to_str().unwrap(),
+                "--target",
+                target_root.to_str().unwrap(),
+                "--bundle",
+                bundle_path.to_str().unwrap(),
+                "--scope",
+                "dialogue-only",
+            ]
+            .iter()
+            .map(std::string::ToString::to_string)
+            .collect::<Vec<_>>(),
+        )
+        .expect("patch must succeed");
+
+        // ---- Only the target archive was materialised. ----
+        let target_seen_path = target_root.join("REALLIVEDATA").join("Seen.txt");
+        assert!(
+            target_seen_path.is_file(),
+            "patched target Seen.txt must exist"
+        );
+
+        // Walk the whole target tree and collect every regular file. The
+        // ONLY file must be REALLIVEDATA/Seen.txt — no voice/image sibling
+        // was copied.
+        let mut files: Vec<PathBuf> = Vec::new();
+        let mut stack = vec![target_root.clone()];
+        while let Some(dir) = stack.pop() {
+            for entry in fs::read_dir(&dir).unwrap() {
+                let entry = entry.unwrap();
+                let path = entry.path();
+                if path.is_dir() {
+                    stack.push(path);
+                } else {
+                    files.push(path);
+                }
+            }
+        }
+        assert_eq!(
+            files,
+            vec![target_seen_path.clone()],
+            "the patch must touch ONLY the target archive; the multi-GB voice/image \
+             siblings must NOT be copied into the target (found: {files:?})"
+        );
+        assert!(
+            !target_root.join("voice").exists(),
+            "voice sibling tree must not be copied to the target"
+        );
+        assert!(
+            !target_root.join("image").exists(),
+            "image sibling tree must not be copied to the target"
+        );
+
+        // ---- Byte-correct patchback: target == canonical apply output. ----
+        let target_seen_bytes = fs::read(&target_seen_path).unwrap();
+        let translated =
+            kaifuu_reallive::TranslatedBundleV02::from_json(&bundle_value).expect("bundle parses");
+        let expected = kaifuu_reallive::apply_translated_bundle(
+            &source_seen_bytes,
+            &translated,
+            &kaifuu_reallive::PatchbackOpts::shift_jis(
+                kaifuu_reallive::TranslationScope::DialogueOnly,
+            ),
+        )
+        .expect("canonical patchback succeeds");
+        assert_eq!(
+            target_seen_bytes, expected,
+            "patched target archive must be byte-for-byte the canonical patchback output \
+             (declared text changes only)"
+        );
+        // The patched archive still re-parses to the source's scene count.
+        let src_index = kaifuu_reallive::parse_archive(&source_seen_bytes).unwrap();
+        let tgt_index = kaifuu_reallive::parse_archive(&target_seen_bytes).unwrap();
+        assert_eq!(tgt_index.entries.len(), src_index.entries.len());
+
+        // ---- Source tree untouched. ----
+        assert_eq!(
+            sha256_hash_bytes(&fs::read(&source_seen_path).unwrap()),
+            source_seen_hash_before,
+            "source Seen.txt must be sha256-unchanged"
+        );
+        assert_eq!(
+            fs::read(voice_dir.join("z0001.ogg")).unwrap(),
+            big_sibling,
+            "source voice sibling must be untouched"
+        );
+        assert_eq!(
+            fs::read(image_dir.join("bg0001.g00")).unwrap(),
+            big_sibling,
+            "source image sibling must be untouched"
+        );
 
         let _ = fs::remove_dir_all(root);
     }

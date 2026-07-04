@@ -249,7 +249,10 @@ pub fn build_synthetic_seen_txt() -> Vec<u8> {
 /// shape `kaifuu_core::BridgeBundleV02::validate_json` accepts) augmented
 /// with a per-unit `target` object. `source_unit_key` is parameterised so
 /// the failure-injection seam can point it at an unresolvable occurrence.
-fn build_synthetic_translated_bundle_json(target_text: &str, source_unit_key: &str) -> Value {
+pub(crate) fn build_synthetic_translated_bundle_json(
+    target_text: &str,
+    source_unit_key: &str,
+) -> Value {
     let bridge_id = "01970000-0000-7000-8000-000000000001";
     let revision_id = "01970000-0000-7000-8000-000000000002";
     let asset_id = "01970000-0000-7000-8000-000000000003";
