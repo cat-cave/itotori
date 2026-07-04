@@ -1384,6 +1384,9 @@ dependencies = [
 name = "utsushi-siglus"
 version = "0.0.0"
 dependencies = [
+ "serde",
+ "serde_json",
+ "thiserror",
  "utsushi-core",
  "utsushi-reallive",
 ]

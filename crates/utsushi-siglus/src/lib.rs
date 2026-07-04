@@ -88,6 +88,8 @@
 #![forbid(unsafe_code)]
 #![deny(missing_debug_implementations)]
 
+pub mod runtime_profile;
+
 use std::sync::Arc;
 
 use utsushi_core::substrate::{
