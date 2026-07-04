@@ -209,13 +209,13 @@ pub use graphics_objects::{
     GraphicsScale, GraphicsStackError, ImageRef, WipeColour,
 };
 pub use render_pipeline::{
-    ChoiceWindow, Framebuffer, ObjectWarning, PNG_BIT_DEPTH, PNG_COLOUR_TYPE_RGBA, PNG_FILE_MAGIC,
-    RENDER_PIPELINE_BLANK_LOCALIZED_TEXT_CODE, RENDER_PIPELINE_OBJECT_SKIPPED_CODE,
-    RENDER_PIPELINE_ZERO_SCREEN_SIZE_CODE, RGBA_BYTES_PER_PIXEL, RecordingFrameArtifactSink,
-    RedactionPolicy, RenderEmitError, RenderPass, RenderPassBuildError, RenderReport,
-    SCREENSHOT_ARTIFACT_KIND, SceneEmit, SceneScreenshots, SkipReason, SkippedObject,
-    SpatialChoiceWindow, SpatialOption, TextBackdrop, TextLayer, adler32, crc32_ieee,
-    encode_png_rgba_deterministic, sha256_hex,
+    ChoiceWindow, Framebuffer, ImageGridCell, ImageGridChoiceWindow, ObjectWarning, PNG_BIT_DEPTH,
+    PNG_COLOUR_TYPE_RGBA, PNG_FILE_MAGIC, RENDER_PIPELINE_BLANK_LOCALIZED_TEXT_CODE,
+    RENDER_PIPELINE_OBJECT_SKIPPED_CODE, RENDER_PIPELINE_ZERO_SCREEN_SIZE_CODE,
+    RGBA_BYTES_PER_PIXEL, RecordingFrameArtifactSink, RedactionPolicy, RenderEmitError, RenderPass,
+    RenderPassBuildError, RenderReport, SCREENSHOT_ARTIFACT_KIND, SceneEmit, SceneScreenshots,
+    SkipReason, SkippedObject, SpatialChoiceWindow, SpatialOption, TextBackdrop, TextLayer,
+    adler32, crc32_ieee, encode_png_rgba_deterministic, sha256_hex,
 };
 
 pub use save::{
@@ -277,20 +277,20 @@ pub use var_banks::{
 
 pub use rlop::{
     AfterNPollsScheduler, AlwaysReadyScheduler, ChoiceInputScheduler, DEFAULT_PAUSE_POLLS,
-    DispatchOutcome, ExprValue, HeadlessChoicePolicy, HeadlessInputScheduler, LongOp, LongOpId,
-    LongOpIdSequence, LongOpReadiness, LongOpScheduler, MSG_MODULE_ID, MSG_MODULE_TYPE,
-    MsgFontColorOp, MsgFontSizeOp, MsgLineBreakOp, MsgLineNumberOp, MsgMsgClearOp, MsgMsgHideOp,
-    MsgNameCloseOp, MsgNameOpenOp, MsgOpcode, MsgPageOp, MsgParagraphBreakOp, MsgPauseOp,
-    MsgRuntime, MsgTextWindowOp, NeverReadyScheduler, OPCODE_FONT_COLOR, OPCODE_FONT_SIZE,
-    OPCODE_LINE_BREAK, OPCODE_LINE_NUMBER, OPCODE_MSG_CLEAR, OPCODE_MSG_HIDE, OPCODE_NAME_CLOSE,
-    OPCODE_NAME_OPEN, OPCODE_PAGE, OPCODE_PARAGRAPH_BREAK, OPCODE_PAUSE, OPCODE_SELECT_OBJBTN,
-    OPCODE_SELECT_S, OPCODE_SELECT_W, OPCODE_SELECT_W_SWEETIE_HD_ALIAS, OPCODE_TEXT_WINDOW,
-    PAUSE_PRIVATE_STATE_MAGIC, PauseLongOp, PauseLongOpDecodeError, RLOperation, RlopKey,
-    RlopRegistry, SEL_MODULE_ID, SEL_MODULE_TYPE, SEL_OPCODE_SELECT, SEL_RLOP_COUNT,
-    SELECT_PRIVATE_STATE_MAGIC, SelRuntime, SelRuntimeWarning, SelectLongOp,
-    SelectLongOpDecodeError, SelectObjbtnOp, SelectOp, SelectSOp, SelectVariant, SelectWOp,
-    SelectionChoiceCountScheduler, dispatch_textout, register_sel_rlops, register_text_rlops,
-    text_module_msg_keys,
+    DispatchOutcome, ExprValue, HeadlessChoicePolicy, HeadlessInputScheduler,
+    IMAGE_GRID_MIN_OPTIONS, LongOp, LongOpId, LongOpIdSequence, LongOpReadiness, LongOpScheduler,
+    MSG_MODULE_ID, MSG_MODULE_TYPE, MsgFontColorOp, MsgFontSizeOp, MsgLineBreakOp, MsgLineNumberOp,
+    MsgMsgClearOp, MsgMsgHideOp, MsgNameCloseOp, MsgNameOpenOp, MsgOpcode, MsgPageOp,
+    MsgParagraphBreakOp, MsgPauseOp, MsgRuntime, MsgTextWindowOp, NeverReadyScheduler,
+    OPCODE_FONT_COLOR, OPCODE_FONT_SIZE, OPCODE_LINE_BREAK, OPCODE_LINE_NUMBER, OPCODE_MSG_CLEAR,
+    OPCODE_MSG_HIDE, OPCODE_NAME_CLOSE, OPCODE_NAME_OPEN, OPCODE_PAGE, OPCODE_PARAGRAPH_BREAK,
+    OPCODE_PAUSE, OPCODE_SELECT_OBJBTN, OPCODE_SELECT_S, OPCODE_SELECT_W,
+    OPCODE_SELECT_W_SWEETIE_HD_ALIAS, OPCODE_TEXT_WINDOW, PAUSE_PRIVATE_STATE_MAGIC, PauseLongOp,
+    PauseLongOpDecodeError, RLOperation, RlopKey, RlopRegistry, SEL_MODULE_ID, SEL_MODULE_TYPE,
+    SEL_OPCODE_SELECT, SEL_RLOP_COUNT, SELECT_PRIVATE_STATE_MAGIC, SelRuntime, SelRuntimeWarning,
+    SelectLongOp, SelectLongOpDecodeError, SelectModality, SelectObjbtnOp, SelectOp, SelectSOp,
+    SelectVariant, SelectWOp, SelectionChoiceCountScheduler, dispatch_textout, register_sel_rlops,
+    register_text_rlops, select_modality, text_module_msg_keys,
 };
 
 pub use rlop::module_mem::{

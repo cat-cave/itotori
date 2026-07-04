@@ -475,6 +475,88 @@ impl Framebuffer {
         painted
     }
 
+    /// Paint an [`ImageGridChoiceWindow`] — the IMAGE-GRID graphical select
+    /// (Sweetie HD's clothing / costume pick), a horizontal STRIP of small
+    /// icon boxes near the top of the frame. The SELECTED box is painted in
+    /// FULL COLOUR with a bright highlight border; every other box is DIMMED
+    /// to grayscale with a dim border (the real screen highlights only the
+    /// clicked costume box). The selected option's name is shown in a
+    /// caption band below the strip — that caption is the glyph coverage the
+    /// return value counts, so a not-rendered / no-caption regression still
+    /// trips the non-vacuous emit guard.
+    ///
+    /// Like [`Self::draw_spatial_choice_window`], the option ART (the real
+    /// costume icon graphics) is not decoded here: each box is a faithful
+    /// per-option placeholder fill. The grid LAYOUT, the selected
+    /// colour/highlight state, and the caption are the real behaviour; this
+    /// select is followed by a standard dialogue-style CONFIRM (a
+    /// [`ChoiceWindow`]) — the "pick image → confirm" flow.
+    pub fn draw_image_grid_choice_window(&mut self, choice: &ImageGridChoiceWindow) -> u64 {
+        let mut painted = 0u64;
+        for (index, cell) in choice.cells.iter().enumerate() {
+            let selected = index == choice.selected;
+            // Placeholder icon fill: full colour when selected, desaturated
+            // grayscale when not.
+            let fill = if selected {
+                cell.art_colour
+            } else {
+                desaturate_dim(cell.art_colour)
+            };
+            self.fill_rect_blended(cell.x, cell.y, cell.w, cell.h, fill);
+            // Bright highlight frame around the selected box, a dim frame
+            // around the rest — a shape-level cue on top of the colour cue.
+            let (border_colour, border_thickness) = if selected {
+                (WipeColour::opaque_rgb(0xFF, 0xE0, 0x66), 4u32)
+            } else {
+                (WipeColour::opaque_rgb(0x50, 0x54, 0x60), 2u32)
+            };
+            self.stroke_rect(
+                cell.x,
+                cell.y,
+                cell.w,
+                cell.h,
+                border_thickness,
+                border_colour,
+            );
+        }
+        // Caption band below the strip: the SELECTED option's name, centred
+        // under the grid (the costume the player has highlighted).
+        if let Some(cell) = choice.cells.get(choice.selected) {
+            let strip_bottom = choice
+                .cells
+                .iter()
+                .map(|c| c.y.saturating_add(c.h))
+                .max()
+                .unwrap_or(cell.y.saturating_add(cell.h));
+            let caption_h = choice.caption_height.max(1);
+            let caption_y = strip_bottom.saturating_add(choice.caption_gap);
+            let backdrop = TextBackdrop {
+                x: choice.caption_x,
+                y: caption_y,
+                width: choice.caption_width,
+                height: caption_h,
+                colour: WipeColour {
+                    red: 16,
+                    green: 20,
+                    blue: 34,
+                    alpha: 210,
+                },
+            };
+            let layer = TextLayer {
+                lines: vec![cell.label.clone()],
+                origin_x: choice.caption_x.saturating_add(choice.caption_scale / 2),
+                origin_y: caption_y.saturating_add(caption_h / 4),
+                scale: choice.caption_scale,
+                colour: WipeColour::WHITE,
+                backdrop: Some(backdrop),
+                name_box: None,
+                line_height: Some(caption_h),
+            };
+            painted += self.draw_text(&layer);
+        }
+        painted
+    }
+
     /// Paint a hollow rectangle border of `colour`, `thickness` px wide,
     /// along the inside edge of the `(x, y, w, h)` rect. Used to frame a
     /// [`SpatialChoiceWindow`] option panel.
@@ -1086,6 +1168,152 @@ impl SpatialChoiceWindow {
         self.options
             .get(self.selected)
             .map_or(0, |option| option.label.chars().count())
+    }
+}
+
+/// A single box in an [`ImageGridChoiceWindow`]: its localized name /
+/// label and the small icon rectangle it occupies. `art_colour` is the
+/// placeholder fill standing in for the not-yet-decoded costume-icon g00
+/// art (full-colour when selected; [`desaturate_dim`]-ed when not).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ImageGridCell {
+    /// Localized (translated) option label — e.g. the costume name shown
+    /// in the caption when this box is selected.
+    pub label: String,
+    /// Box top-left (framebuffer px).
+    pub x: u32,
+    pub y: u32,
+    /// Box extent (framebuffer px).
+    pub w: u32,
+    pub h: u32,
+    /// Placeholder icon fill (stands in for the decoded costume g00 art).
+    pub art_colour: WipeColour,
+}
+
+/// A RealLive `select_objbtn` (object-button) prompt rendered as an
+/// IMAGE GRID — Sweetie HD's clothing / costume pick, the game's THIRD
+/// choice modality: a horizontal STRIP of small costume-icon boxes near
+/// the top of the frame, one highlighted, and (in the real flow) a
+/// follow-on dialogue-style CONFIRM once a box is picked ("pick image →
+/// confirm").
+///
+/// This is a distinct RENDER modality from BOTH the vertical text-list
+/// [`ChoiceWindow`] AND the side-by-side [`SpatialChoiceWindow`]: the
+/// options are laid out as a horizontal GRID of many small icon boxes
+/// (rather than two big character panels or a vertical list), and the
+/// selected box is cued by a bright highlight border + full colour +
+/// a caption naming it. Both graphical modalities ride the SAME
+/// `select_objbtn` opcode `(1, 2, 3)`; the image-grid interpretation is
+/// keyed on the option COUNT (see [`crate::IMAGE_GRID_MIN_OPTIONS`] /
+/// [`crate::select_modality`]), tagged `choice:<idx>;imagegrid`.
+///
+/// The ACT half is unchanged: the selected index still resolves through
+/// the store register + `goto_on` (see
+/// [`crate::ReplayEngine::branch_following_lines`]), so selecting box K
+/// drives branch K exactly like the text / spatial select; the follow-on
+/// confirm is a subsequent standard select rendered as a [`ChoiceWindow`].
+///
+/// The option labels are OUR translated (localized) strings; the render
+/// paints them through the in-crate bitmap [`font`], never the source g00
+/// pixels.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ImageGridChoiceWindow {
+    /// The icon boxes, left to right.
+    pub cells: Vec<ImageGridCell>,
+    /// Index of the selected / highlighted box (clamped into range at
+    /// construction).
+    pub selected: usize,
+    /// Glyph pixel height for the selected-option caption.
+    pub caption_scale: u32,
+    /// Caption band top-left x (framebuffer px).
+    pub caption_x: u32,
+    /// Caption band width (framebuffer px).
+    pub caption_width: u32,
+    /// Caption band height (framebuffer px).
+    pub caption_height: u32,
+    /// Vertical gap between the icon strip and the caption band (px).
+    pub caption_gap: u32,
+}
+
+impl ImageGridChoiceWindow {
+    /// Default palette the placeholder icon boxes cycle through so the
+    /// costume options are visually distinct even before the real g00 art
+    /// is decoded. Deterministic per box index.
+    const PLACEHOLDER_PALETTE: &'static [WipeColour] = &[
+        WipeColour::opaque_rgb(0x6E, 0xB4, 0xD8), // sky
+        WipeColour::opaque_rgb(0xD8, 0x6E, 0x9B), // rose
+        WipeColour::opaque_rgb(0x8E, 0xC8, 0x74), // leaf
+        WipeColour::opaque_rgb(0xD8, 0xB4, 0x6E), // gold
+        WipeColour::opaque_rgb(0xA0, 0x8E, 0xD8), // violet
+        WipeColour::opaque_rgb(0xD8, 0x8E, 0x6E), // clay
+    ];
+
+    /// Lay out `options` as a horizontal image-grid strip near the top of
+    /// a `screen`-sized framebuffer, with `selected` highlighted. The
+    /// boxes split the usable strip width into equal small icon cells (a
+    /// gutter between them); each gets a placeholder art colour from
+    /// [`Self::PLACEHOLDER_PALETTE`]. A caption band under the strip shows
+    /// the selected option's name.
+    ///
+    /// `screen` is the framebuffer size in px. The strip is placed by the
+    /// object-button sprites (the costume icons), not a `#WINDOW.NNN` text
+    /// box — matching the real clothing-strip layout at the top of the
+    /// scene.
+    pub fn from_options(options: &[String], selected: usize, screen: (u32, u32)) -> Self {
+        let (sw, sh) = (screen.0.max(1), screen.1.max(1));
+        let n = options.len().max(1) as u32;
+        let selected = if options.is_empty() {
+            0
+        } else {
+            selected.min(options.len() - 1)
+        };
+        let margin_x = (sw / 16).max(4);
+        let strip_top = (sh / 12).max(4);
+        let gutter = (sw / 96).max(3);
+        let usable_w = sw
+            .saturating_sub(margin_x * 2)
+            .saturating_sub(gutter * (n - 1))
+            .max(n);
+        let cell_w = (usable_w / n).max(1);
+        // Square-ish icon boxes, capped so a long strip stays a strip.
+        let cell_h = cell_w.min(sh / 4).max(1);
+        let caption_scale = (sh / 26).clamp(14, 44);
+        let caption_height = (caption_scale * 2).min(sh.saturating_sub(strip_top + cell_h).max(1));
+        let caption_gap = (sh / 40).max(2);
+
+        let cells = options
+            .iter()
+            .enumerate()
+            .map(|(index, label)| {
+                let x = margin_x + (cell_w + gutter) * index as u32;
+                ImageGridCell {
+                    label: label.clone(),
+                    x,
+                    y: strip_top,
+                    w: cell_w,
+                    h: cell_h,
+                    art_colour: Self::PLACEHOLDER_PALETTE[index % Self::PLACEHOLDER_PALETTE.len()],
+                }
+            })
+            .collect();
+
+        Self {
+            cells,
+            selected,
+            caption_scale,
+            caption_x: margin_x,
+            caption_width: sw.saturating_sub(margin_x * 2).max(1),
+            caption_height,
+            caption_gap,
+        }
+    }
+
+    /// Total number of glyph characters shown (the selected option's
+    /// caption label) — the non-vacuous-render denominator.
+    pub fn char_count(&self) -> usize {
+        self.cells
+            .get(self.selected)
+            .map_or(0, |cell| cell.label.chars().count())
     }
 }
 
