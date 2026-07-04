@@ -308,11 +308,12 @@ describe("OpenRouterModelProvider — request shape (ITOTORI-220 pair pin)", () 
     expect(recordedRequireParameters).toBe(observedBody?.provider.require_parameters);
   });
 
-  it("ITOTORI-241: agentic structured-mode selection falls back to json_object when the active pair's ZDR pool lacks json_schema", () => {
-    // The DEV_PAIR sheet registered at construction marks json_schema
-    // 'unsupported' (ZDR 404) and json_object 'supported'. The agentic
-    // loop's pair-driven selector must therefore resolve to json_object,
-    // never force the unroutable json_schema.
+  it("plain-json-fallback-under-zdr: agentic selection falls back to plain_json when the pair's ZDR pool routes neither json_schema nor json_object", () => {
+    // The DEV_PAIR sheet registered at construction marks BOTH json_schema
+    // and json_object 'unsupported' (ZDR 404 on either response_format —
+    // the account ZDR allow-list ∩ response_format-advertising providers is
+    // empty). The pair-driven selector must therefore resolve to the plain
+    // completion (`plain_json`), never force an unroutable response_format.
     const provider = new OpenRouterModelProvider({
       env: { OPENROUTER_API_KEY: "abc", OPENROUTER_ZDR_ACCOUNT_ASSERTED: "1" },
       httpClient: vi.fn() as unknown as typeof fetch,
@@ -321,15 +322,37 @@ describe("OpenRouterModelProvider — request shape (ITOTORI-220 pair pin)", () 
     });
     const capabilities = provider.descriptorForPair(DEV_PAIR).capabilities;
     expect(capabilities.structuredOutputs.jsonSchema).toBe("unsupported");
+    expect(capabilities.structuredOutputs.jsonObject).toBe("unsupported");
+    expect(capabilities.structuredOutputs.plainJsonExtraction).toBe("supported");
 
     const selected = selectStructuredOutputRequest(capabilities, {
       name: "itotori_agentic_schema",
       schema: { type: "object", additionalProperties: false, properties: {} },
       strict: true,
     });
-    expect(selected).toEqual({ mode: "json_object" });
+    expect(selected).toEqual({ mode: "plain_json" });
 
-    // Contrast: a pair whose sheet validates json_schema as ZDR-supported
+    // Contrast 1: a pair whose sheet validates json_object as ZDR-supported
+    // PREFERS the structured wire mode — the fallback is used only when
+    // needed, never in place of a routable structured mode.
+    const jsonObjectPair = selectStructuredOutputRequest(
+      {
+        ...capabilities,
+        structuredOutputs: {
+          ...capabilities.structuredOutputs,
+          jsonObject: "supported",
+          preferredModes: ["json_object", "plain_json"],
+        },
+      },
+      {
+        name: "itotori_agentic_schema",
+        schema: { type: "object", additionalProperties: false, properties: {} },
+        strict: true,
+      },
+    );
+    expect(jsonObjectPair).toEqual({ mode: "json_object" });
+
+    // Contrast 2: a pair whose sheet validates json_schema as ZDR-supported
     // still gets json_schema (selection is pair-driven, not hardcoded).
     const jsonSchemaPair = selectStructuredOutputRequest(
       {
@@ -337,7 +360,7 @@ describe("OpenRouterModelProvider — request shape (ITOTORI-220 pair pin)", () 
         structuredOutputs: {
           ...capabilities.structuredOutputs,
           jsonSchema: "supported",
-          preferredModes: ["json_schema", "json_object"],
+          preferredModes: ["json_schema", "json_object", "plain_json"],
         },
       },
       {
@@ -347,6 +370,72 @@ describe("OpenRouterModelProvider — request shape (ITOTORI-220 pair pin)", () 
       },
     );
     expect(jsonSchemaPair.mode).toBe("json_schema");
+
+    // Contrast 3: a pair that advertises NONE of the three fails loud rather
+    // than silently degrading.
+    expect(() =>
+      selectStructuredOutputRequest(
+        {
+          ...capabilities,
+          structuredOutputs: {
+            ...capabilities.structuredOutputs,
+            jsonSchema: "unsupported",
+            jsonObject: "unsupported",
+            plainJsonExtraction: "unsupported",
+            preferredModes: [],
+          },
+        },
+        {
+          name: "itotori_agentic_schema",
+          schema: { type: "object", additionalProperties: false, properties: {} },
+          strict: true,
+        },
+      ),
+    ).toThrow(/no ZDR-routable structured-output mode/u);
+  });
+
+  it("plain-json-fallback-under-zdr: a plain_json request omits response_format AND require_parameters on the wire, and the recorded posture matches (no posture/wire drift)", async () => {
+    // The whole point of the plain fallback is to NOT narrow the ZDR pool:
+    // it must send neither response_format nor require_parameters. And — as
+    // for json_object — the recorded posture must be byte-identical to the
+    // wire, so an operator auditing the ledger sees exactly what went out.
+    let observedBody:
+      | {
+          provider: { require_parameters?: boolean };
+          response_format?: unknown;
+        }
+      | undefined;
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      observedBody = JSON.parse(String(init?.body ?? "{}"));
+      return successResponse({});
+    }) as unknown as typeof fetch;
+    const recorder = memoryRecorder();
+    const provider = new OpenRouterProvider({
+      modelId: DEV_PAIR.modelId,
+      apiKey: "abc",
+      fetch: fetchMock,
+      capabilities: {
+        ...openRouterDefaultCapabilities,
+        structuredOutputs: {
+          ...openRouterDefaultCapabilities.structuredOutputs,
+          plainJsonExtraction: "supported",
+          preferredModes: ["plain_json"],
+        },
+      },
+      live: { enabled: true, artifactRecorder: recorder, rawCapture: "disabled" },
+    });
+    await provider.invoke(baseRequest({ structuredOutput: { mode: "plain_json" } }));
+
+    // (a) wire carries NO response_format and NO require_parameters.
+    expect(observedBody?.response_format).toBeUndefined();
+    expect(observedBody?.provider.require_parameters).toBeUndefined();
+
+    // (b) recorded posture matches the wire — require_parameters is false
+    // (the omitted-on-the-wire, not-required semantics), not a dishonest true.
+    expect(recorder.artifacts).toHaveLength(1);
+    const recordedRequireParameters = recorder.artifacts[0]!.run.routingPosture.require_parameters;
+    expect(recordedRequireParameters).toBe(false);
+    expect(recordedRequireParameters).toBe(observedBody?.provider.require_parameters ?? false);
   });
 
   it("sends request maxPriceUsd as provider.max_price.request", async () => {
@@ -1210,7 +1299,7 @@ describe("OpenRouterModelProvider — ITOTORI-237 descriptorForPair", () => {
   // reflect the per-(modelId, providerId) sheet registered in the
   // provider's CapabilityGuard at construction.
 
-  it("ITOTORI-241: returns a descriptor whose capabilities reflect the registered DEV_PAIR sheet (jsonSchema='unsupported' under ZDR, jsonObject='supported')", () => {
+  it("plain-json-fallback-under-zdr: returns a descriptor whose capabilities reflect the registered DEV_PAIR sheet (jsonSchema AND jsonObject 'unsupported' under ZDR, plainJsonExtraction 'supported')", () => {
     const provider = new OpenRouterModelProvider({
       env: { OPENROUTER_API_KEY: "abc", OPENROUTER_ZDR_ACCOUNT_ASSERTED: "1" },
       httpClient: vi.fn() as unknown as typeof fetch,
@@ -1218,10 +1307,12 @@ describe("OpenRouterModelProvider — ITOTORI-237 descriptorForPair", () => {
       artifactRecorder: memoryRecorder(),
     });
     const descriptor = provider.descriptorForPair(DEV_PAIR);
-    // ITOTORI-241 — json_schema is unroutable under ZDR for this pair
-    // (HTTP 404); json_object is the proven-routable structured mode.
+    // plain-json-fallback-under-zdr — BOTH json_schema and json_object are
+    // unroutable under ZDR for this pair (HTTP 404 on either response_format);
+    // the plain completion is the proven-routable mode.
     expect(descriptor.capabilities.structuredOutputs.jsonSchema).toBe("unsupported");
-    expect(descriptor.capabilities.structuredOutputs.jsonObject).toBe("supported");
+    expect(descriptor.capabilities.structuredOutputs.jsonObject).toBe("unsupported");
+    expect(descriptor.capabilities.structuredOutputs.plainJsonExtraction).toBe("supported");
     expect(descriptor.capabilities.toolCalls.support).toBe("supported");
     // The non-capabilities fields stay identical to the class-level descriptor.
     expect(descriptor.family).toBe(provider.descriptor.family);

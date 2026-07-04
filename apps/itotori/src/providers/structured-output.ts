@@ -55,8 +55,9 @@ export type StructuredOutputSchemaSpec = {
 };
 
 /**
- * ITOTORI-241 — capability-driven, ZDR-correct structured-mode selection
- * for the agentic loop (style-guide + speaker-label + translation + qa).
+ * ITOTORI-241 / itotori-structured-output-plain-json-fallback-under-zdr —
+ * capability-driven, ZDR-correct structured-mode selection for the agentic
+ * loop (style-guide + speaker-label + translation + qa).
  *
  * The agentic path no longer FORCES `json_schema`. Live testing of the
  * ITOTORI-241 routing fix proved that `response_format: json_schema`
@@ -64,19 +65,30 @@ export type StructuredOutputSchemaSpec = {
  * (deepseek/deepseek-v4-flash via Fireworks): OpenRouter returns HTTP 404
  * "No endpoints found that can handle the requested parameters" because
  * no ZDR-allow-list provider for that pair advertises json_schema and
- * `require_parameters:true` narrows the routable pool to empty. The
- * proven-routable deterministic structured mode under ZDR is `json_object`.
+ * `require_parameters:true` narrows the routable pool to empty. Two later
+ * live runs (at-scale-v2 + structure-informed-context) proved the SAME 404
+ * for `response_format: json_object`: the ZDR-allow-list providers ∩
+ * structured-mode-advertising providers is EMPTY for this pair, so ANY
+ * `response_format` + `require_parameters:true` combination empties the
+ * routable pool. The only ZDR-routable mode for such a pair is a PLAIN
+ * completion (`plain_json`): no `response_format`, no `require_parameters`,
+ * so the pool is not narrowed. The JSON is prompt-enforced and salvaged by
+ * the caller's bounded JSON repair, then validated against the SAME strict
+ * schema as the structured path (a malformed/schema-violating plain
+ * response is still rejected — no silent acceptance of garbage).
  *
- * Selection is PAIR-DRIVEN, never hardcoded to a provider: `json_schema`
- * is chosen only when the active pair's capability sheet validates it as
- * `"supported"` (i.e. its ZDR providers advertise it); otherwise the call
- * falls back to `json_object` when that is `"supported"`. A pair whose
- * sheet supports neither throws `capability_unsupported` rather than
- * silently degrading.
+ * Selection is PAIR-DRIVEN, never hardcoded to a provider, and PREFERS the
+ * structured wire mode whenever it is routable: `json_schema` is chosen
+ * when the active pair's sheet validates it `"supported"`; else `json_object`
+ * when that is `"supported"`; else `plain_json` when the pair advertises
+ * plain-JSON extraction. Only a pair whose sheet supports NONE of the three
+ * throws `capability_unsupported` rather than silently degrading. This is a
+ * single selector with a fallback chain — not a parallel plain-only path.
  */
 const AGENTIC_STRUCTURED_MODE_PREFERENCE: readonly StructuredOutputMode[] = [
   "json_schema",
   "json_object",
+  "plain_json",
 ];
 
 export function selectStructuredOutputRequest(
@@ -86,14 +98,23 @@ export function selectStructuredOutputRequest(
   const mode = selectStructuredOutputMode(capabilities, [...AGENTIC_STRUCTURED_MODE_PREFERENCE]);
   if (mode === undefined) {
     throw new ModelProviderError(
-      `no ZDR-routable structured-output mode (json_schema or json_object) is supported for this pair ` +
-        `(jsonSchema=${capabilities.structuredOutputs.jsonSchema}, jsonObject=${capabilities.structuredOutputs.jsonObject})`,
+      `no ZDR-routable structured-output mode (json_schema, json_object, or plain_json) is supported ` +
+        `for this pair (jsonSchema=${capabilities.structuredOutputs.jsonSchema}, ` +
+        `jsonObject=${capabilities.structuredOutputs.jsonObject}, ` +
+        `plainJsonExtraction=${capabilities.structuredOutputs.plainJsonExtraction})`,
       "capability_unsupported",
       false,
     );
   }
   if (mode === "json_schema") {
     return { mode, name: spec.name, schema: spec.schema, strict: spec.strict };
+  }
+  if (mode === "plain_json") {
+    // plain_json — the ZDR fallback when no structured wire mode is
+    // routable for the pair. Emits NO `response_format`/`require_parameters`
+    // (so the ZDR pool is not emptied); the schema is enforced entirely by
+    // the caller's bounded-repair + strict post-parse validation.
+    return { mode: "plain_json" };
   }
   // json_object — the schema is enforced by the caller's post-parse
   // validation, so it is intentionally not forwarded to the wire.

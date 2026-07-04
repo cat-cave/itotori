@@ -632,12 +632,16 @@ function buildOpenRouterProviderRouting(
  *   - require_parameters: `true` whenever the request carries a
  *     `response_format` (json_schema OR json_object), a forced structured
  *     tool, or any tools — see `structuredOutputRequiresStrictParameters`;
- *     otherwise mirrors caller, defaulting to `true` per the canonical ZDR
- *     posture (docs/openrouter-integration.md §3) when the caller is
- *     silent. With fallback now ON this is load-bearing: it confines
- *     fallback to providers that actually support the request's tools /
- *     response_format so the agentic loop cannot silently degrade onto a
- *     provider that ignores them.
+ *     otherwise mirrors the caller, defaulting to `false` (i.e. the wire
+ *     OMITS the field, OpenRouter's not-required default) when the caller is
+ *     silent. This keeps the recorded posture byte-identical to
+ *     `buildOpenRouterProviderRouting` — a silent-caller `plain_json`
+ *     fallback omits require_parameters on the wire precisely so the ZDR
+ *     pool is not narrowed, and the posture must not claim otherwise. When
+ *     strict mode DOES apply this is load-bearing: it confines fallback to
+ *     providers that actually support the request's tools / response_format
+ *     so the agentic loop cannot silently degrade onto a provider that
+ *     ignores them.
  */
 function buildOpenRouterRoutingPosture(
   routing: OpenRouterProviderRouting,
@@ -656,9 +660,18 @@ function buildOpenRouterRoutingPosture(
   // skips the field for public input; both are recoverable from the
   // posture + classification).
   const zdr = routing.zdr !== undefined ? routing.zdr : request.inputClassification !== "public";
+  // ITOTORI-241 / plain-json-fallback-under-zdr — the recorded posture MUST
+  // match the bytes on the wire (buildOpenRouterProviderRouting): the wire
+  // emits provider.require_parameters ONLY when strict mode applies OR the
+  // caller set it explicitly, and OMITS it otherwise (OpenRouter then treats
+  // it as not-required). A `plain_json` fallback is exactly this omitted
+  // case — recording `true` here while the wire omits the field would be the
+  // very posture/wire drift ITOTORI-241 removed for json_object, and would
+  // misreport a call whose whole point is NOT to narrow the ZDR pool. So the
+  // silent-caller default mirrors the wire's omission (not-required).
   const requireParameters = structuredOutputRequiresStrictParameters(request)
     ? true
-    : (routing.requireParameters ?? true);
+    : (routing.requireParameters ?? false);
   return {
     order,
     allow_fallbacks: true,
@@ -722,8 +735,14 @@ function openRouterRoutingPostureFromBlock(
       false,
     );
   }
+  // plain-json-fallback-under-zdr — the posture MUST equal the bytes: when
+  // the wire block OMITS require_parameters (the `plain_json` ZDR fallback,
+  // whose whole point is to NOT narrow the pool), OpenRouter treats it as
+  // not-required, so the recorded posture is `false`. Defaulting an absent
+  // field to `true` here was the posture/wire drift — it made the ledger
+  // claim a pool-narrowing the bytes never sent.
   const requireParameters =
-    typeof block.require_parameters === "boolean" ? block.require_parameters : true;
+    typeof block.require_parameters === "boolean" ? block.require_parameters : false;
   return {
     order: order as string[],
     allow_fallbacks: block.allow_fallbacks,

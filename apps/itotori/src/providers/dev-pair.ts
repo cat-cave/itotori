@@ -147,23 +147,28 @@ function buildPairCapabilityTable(): ReadonlyArray<PairCapabilityEntry> {
       modelCapabilities: {
         ...openRouterDefaultCapabilities,
         structuredOutputs: {
-          // ITOTORI-241 — `json_schema` is UNROUTABLE under ZDR for this
-          // pair. The live proof posted `response_format:{type:json_schema}`
-          // (strict AND non-strict) with the ZDR posture and OpenRouter
-          // returned HTTP 404 "No endpoints found that can handle the
-          // requested parameters": no ZDR-allow-list provider for
-          // deepseek/deepseek-v4-flash advertises json_schema, and
-          // `require_parameters:true` correctly narrows the routable pool
-          // to empty. So json_schema is `unsupported` for THIS (ZDR-routed)
-          // pair regardless of what the bare model can do off-ZDR. The
-          // proven-routable deterministic structured mode is `json_object`
-          // (served by Fireworks, billed $0.00001708 in the live proof);
-          // the agentic loop selects it via selectStructuredOutputRequest.
+          // ITOTORI-241 / plain-json-fallback-under-zdr — BOTH `json_schema`
+          // and `json_object` are UNROUTABLE under ZDR for this pair. The
+          // ITOTORI-241 proof already showed json_schema 404s; two later
+          // live runs (at-scale-v2 + structure-informed-context) proved the
+          // SAME HTTP 404 "No endpoints found that can handle the requested
+          // parameters" for `response_format:{type:json_object}`: the
+          // account ZDR allow-list ∩ providers that advertise a structured
+          // `response_format` is EMPTY for deepseek/deepseek-v4-flash, so
+          // `require_parameters:true` narrows the routable pool to empty for
+          // EITHER response_format. Both are therefore `unsupported` for
+          // THIS (ZDR-routed) pair regardless of what the bare model can do
+          // off-ZDR. The only ZDR-routable mode is a PLAIN completion
+          // (`plain_json`): no response_format / no require_parameters, so
+          // the pool is not narrowed (verified HTTP 200, served by
+          // Fireworks). The agentic loop selects it via
+          // selectStructuredOutputRequest; the schema is enforced by the
+          // caller's bounded-repair + strict post-parse validation.
           jsonSchema: "unsupported",
-          jsonObject: "supported",
+          jsonObject: "unsupported",
           toolCallArguments: "supported",
           plainJsonExtraction: "supported",
-          preferredModes: ["json_object", "tool_call_arguments", "plain_json"],
+          preferredModes: ["plain_json", "tool_call_arguments"],
         },
         toolCalls: {
           support: "supported",
