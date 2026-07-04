@@ -649,6 +649,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "kaifuu-softpal"
+version = "0.0.0"
+dependencies = [
+ "serde",
+ "sha2",
+ "thiserror",
+]
+
+[[package]]
 name = "kaifuu-vault-source"
 version = "0.0.0"
 dependencies = [

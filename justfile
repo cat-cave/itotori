@@ -226,7 +226,7 @@ ci-itotori:
     pnpm --filter @itotori/app build
 
 ci-kaifuu:
-    cargo test -p kaifuu-core -p kaifuu-delta -p kaifuu-engine-fixture -p kaifuu-reallive -p kaifuu-siglus -p kaifuu-cli -p kaifuu-vault-source -p kaifuu-rpgmaker -p kaifuu-kirikiri
+    cargo test -p kaifuu-core -p kaifuu-delta -p kaifuu-engine-fixture -p kaifuu-reallive -p kaifuu-siglus -p kaifuu-cli -p kaifuu-vault-source -p kaifuu-rpgmaker -p kaifuu-kirikiri -p kaifuu-softpal
 
 ci-utsushi:
     pnpm --filter @itotori/runtime-web-review typecheck

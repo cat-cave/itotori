@@ -1,0 +1,18 @@
+[package]
+name = "kaifuu-softpal"
+version = "0.0.0"
+publish = false
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Pure-Rust Softpal / Amuse-Craft (\"Pal\" engine) PAC container reader: deterministic enumerate + extract of the `PAC ` archive (magic + u32 count @0x08 + 0x804 reserved header + 40-byte name/size/offset index). CONTAINER level only — NOT the TEXT.DAT codec or SCRIPT.SRC disassembler (separate nodes). No compression, no index encryption, no shell-outs."
+
+[dependencies]
+serde = { workspace = true }
+thiserror.workspace = true
+
+[dev-dependencies]
+sha2.workspace = true
+
+[lints]
+workspace = true
