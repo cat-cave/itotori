@@ -1037,7 +1037,7 @@ mod tests {
     use crate::read_json;
 
     fn manifest_dir() -> PathBuf {
-        Path::new(env!("CARGO_MANIFEST_DIR"))
+        crate::test_manifest_dir()
             .join("../..")
             .join("fixtures/kaifuu/rpgmaker")
     }

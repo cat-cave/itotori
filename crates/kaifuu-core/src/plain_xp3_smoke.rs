@@ -924,9 +924,7 @@ mod tests {
     use std::path::PathBuf;
 
     fn repo_fixture_path(relative_path: &str) -> PathBuf {
-        Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../..")
-            .join(relative_path)
+        crate::test_manifest_dir().join("../..").join(relative_path)
     }
 
     fn kirikiri_dir() -> PathBuf {

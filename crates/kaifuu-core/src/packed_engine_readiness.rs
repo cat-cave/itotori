@@ -1026,7 +1026,7 @@ mod tests {
     use std::path::PathBuf;
 
     fn fixtures_dir() -> PathBuf {
-        Path::new(env!("CARGO_MANIFEST_DIR"))
+        crate::test_manifest_dir()
             .join("../..")
             .join("fixtures/kaifuu/packed-engine")
     }

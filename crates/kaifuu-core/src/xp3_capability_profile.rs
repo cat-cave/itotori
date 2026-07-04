@@ -1014,7 +1014,7 @@ mod tests {
     use super::*;
 
     fn manifest_dir() -> PathBuf {
-        Path::new(env!("CARGO_MANIFEST_DIR"))
+        crate::test_manifest_dir()
             .join("../..")
             .join("fixtures/kaifuu/kirikiri")
     }

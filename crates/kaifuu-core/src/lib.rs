@@ -11,6 +11,29 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 pub type KaifuuResult<T> = Result<T, Box<dyn std::error::Error>>;
+
+/// Resolve this crate's manifest directory for locating tracked test fixtures.
+///
+/// Tests read read-only fixtures under `<workspace>/fixtures/...` anchored at
+/// this crate's directory. The obvious anchor, `env!("CARGO_MANIFEST_DIR")`, is
+/// baked into the binary at COMPILE time — so when cargo reuses a test binary
+/// that was compiled in a different (and possibly since-removed) worktree, that
+/// baked path no longer exists and EVERY fixture read fails with an opaque
+/// `Os { code: 2, NotFound }`, taking down the whole fixture-reading suite while
+/// in-memory tests stay green.
+///
+/// `cargo test` sets `CARGO_MANIFEST_DIR` in the test binary's RUNTIME
+/// environment (and its CWD) to the LIVE crate directory of the current
+/// invocation, which stays valid regardless of where the binary was built.
+/// Prefer that runtime value; fall back to the compile-time constant only when
+/// the binary is run outside cargo (no env var set). This is a lookup only — it
+/// never writes, so tracked fixtures remain strictly read-only.
+#[cfg(test)]
+pub(crate) fn test_manifest_dir() -> PathBuf {
+    std::env::var_os("CARGO_MANIFEST_DIR")
+        .map_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")), PathBuf::from)
+}
+
 pub const PROFILE_SCHEMA_VERSION: &str = "0.1.0";
 pub const HELPER_RESULT_SCHEMA_VERSION: &str = "0.1.0";
 pub const HELPER_REGISTRY_SCHEMA_VERSION: &str = "0.1.0";
@@ -19559,9 +19582,7 @@ mod tests {
     }
 
     fn repo_fixture_path(relative_path: &str) -> PathBuf {
-        Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../..")
-            .join(relative_path)
+        crate::test_manifest_dir().join("../..").join(relative_path)
     }
 
     fn bridge_v02_fixture_value() -> Value {
@@ -21401,7 +21422,7 @@ mod tests {
     }
 
     fn public_helper_binary_path(name: &str) -> PathBuf {
-        Path::new(env!("CARGO_MANIFEST_DIR"))
+        crate::test_manifest_dir()
             .join("../..")
             .join("fixtures/public/kaifuu-helper-results/helper-binaries")
             .join(name)

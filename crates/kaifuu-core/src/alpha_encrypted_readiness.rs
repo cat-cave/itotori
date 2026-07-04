@@ -832,7 +832,7 @@ mod tests {
     use std::path::PathBuf;
 
     fn fixtures_dir() -> PathBuf {
-        Path::new(env!("CARGO_MANIFEST_DIR"))
+        crate::test_manifest_dir()
             .join("../..")
             .join("fixtures/kaifuu/alpha-encrypted")
     }
@@ -1002,13 +1002,11 @@ mod tests {
 
     #[test]
     fn empty_dir_reports_missing_inputs() {
-        let tmp = std::env::temp_dir().join(format!(
-            "kaifuu-alpha-encrypted-empty-{}",
-            std::process::id()
-        ));
-        std::fs::create_dir_all(&tmp).unwrap();
-        let report = generate_alpha_encrypted_readiness(&tmp).unwrap();
-        std::fs::remove_dir_all(&tmp).ok();
+        // A per-test tempdir (unique, auto-cleaned on drop) — never a shared or
+        // fixed temp path, so this test is self-contained and cannot race with
+        // any other.
+        let tmp = tempfile::tempdir().unwrap();
+        let report = generate_alpha_encrypted_readiness(tmp.path()).unwrap();
         assert_eq!(report.status, OperationStatus::Failed);
         assert!(
             report
