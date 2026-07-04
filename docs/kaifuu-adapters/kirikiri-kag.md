@@ -13,7 +13,7 @@ presented as commercial-KiriKiri coverage.**
 
 KiriKiri ships its assets — including the KAG scenario scripts — inside `.xp3`
 archives. **Commercial** KiriKiri titles almost always ship those archives
-*encrypted* (a per-title cipher / `.tpm`-style filter). Reading a commercial
+_encrypted_ (a per-title cipher / `.tpm`-style filter). Reading a commercial
 title's scripts therefore requires:
 
 1. the **XP3 container layer** (index parse, segment/compression handling), and
@@ -27,9 +27,9 @@ packed-engine readiness profile
 decrypts, or unpacks an XP3 archive.
 
 `kaifuu-kirikiri` handles the opposite, **null-container** end of the spectrum:
-a `.ks` file that is *already plaintext on disk* — an unencrypted / `plain` XP3
+a `.ks` file that is _already plaintext on disk_ — an unencrypted / `plain` XP3
 whose members were already extracted, an author's development tree, or a
-fan-distributed plaintext script. Supporting it proves the KAG *dialect*
+fan-distributed plaintext script. Supporting it proves the KAG _dialect_
 (tags, commands, speaker convention) and byte-preserving patchback — it does
 **not** prove any commercial title is readable end-to-end. That claim is gated
 on the encrypted-XP3 work.
