@@ -1,0 +1,104 @@
+{
+  "schemaVersion": "0.1.0",
+  "pathId": "kaifuu-rpgmaker-mv-mz-asset-replacement",
+  "sourceNodeId": "KAIFUU-117",
+  "engineFamily": "rpgmaker",
+  "entries": [
+    {
+      "entryId": "replace-image-pictures",
+      "requirementId": "rpgmaker-mv-mz-asset-key",
+      "secretRef": "local-secret:rpgmaker-mv-mz-asset-key",
+      "keyCommitmentSha256": "sha256:ba7c4541c63e07f62ba9fd7241da8d5ce026f3bf6b540b528803feac8e44dccb",
+      "mediaKind": "image",
+      "surfaceId": "mv_mz/image/pictures",
+      "surfaceCodec": "png_image",
+      "replacementSha256": "sha256:095f7f38d6f333d6c331eb6d6a45355f0717858ecd0a32f8214234de5129d7d2",
+      "scenario": "valid",
+      "expected": "replaced"
+    },
+    {
+      "entryId": "replace-audio-bgm",
+      "requirementId": "rpgmaker-mv-mz-asset-key",
+      "secretRef": "local-secret:rpgmaker-mv-mz-asset-key",
+      "keyCommitmentSha256": "sha256:ba7c4541c63e07f62ba9fd7241da8d5ce026f3bf6b540b528803feac8e44dccb",
+      "mediaKind": "audio",
+      "surfaceId": "mv_mz/audio/bgm",
+      "surfaceCodec": "ogg_audio",
+      "replacementSha256": "sha256:3988b3bd4b72913ee184f005234efd33c4ec3219a36e98ae534eab532127deee",
+      "scenario": "valid",
+      "expected": "replaced"
+    },
+    {
+      "entryId": "replace-image-wrong-key",
+      "requirementId": "rpgmaker-mv-mz-asset-key",
+      "secretRef": "local-secret:rpgmaker-mv-mz-asset-key",
+      "keyCommitmentSha256": "sha256:ba7c4541c63e07f62ba9fd7241da8d5ce026f3bf6b540b528803feac8e44dccb",
+      "mediaKind": "image",
+      "surfaceId": "mv_mz/image/pictures",
+      "surfaceCodec": "png_image",
+      "replacementSha256": "sha256:095f7f38d6f333d6c331eb6d6a45355f0717858ecd0a32f8214234de5129d7d2",
+      "scenario": "wrong_key",
+      "expected": "wrong_key_rejected"
+    },
+    {
+      "entryId": "replace-image-tampered",
+      "requirementId": "rpgmaker-mv-mz-asset-key",
+      "secretRef": "local-secret:rpgmaker-mv-mz-asset-key",
+      "keyCommitmentSha256": "sha256:ba7c4541c63e07f62ba9fd7241da8d5ce026f3bf6b540b528803feac8e44dccb",
+      "mediaKind": "image",
+      "surfaceId": "mv_mz/image/titles",
+      "surfaceCodec": "png_image",
+      "replacementSha256": "sha256:095f7f38d6f333d6c331eb6d6a45355f0717858ecd0a32f8214234de5129d7d2",
+      "scenario": "tampered",
+      "expected": "tamper_rejected"
+    },
+    {
+      "entryId": "replace-audio-tampered",
+      "requirementId": "rpgmaker-mv-mz-asset-key",
+      "secretRef": "local-secret:rpgmaker-mv-mz-asset-key",
+      "keyCommitmentSha256": "sha256:ba7c4541c63e07f62ba9fd7241da8d5ce026f3bf6b540b528803feac8e44dccb",
+      "mediaKind": "audio",
+      "surfaceId": "mv_mz/audio/se",
+      "surfaceCodec": "ogg_audio",
+      "replacementSha256": "sha256:3988b3bd4b72913ee184f005234efd33c4ec3219a36e98ae534eab532127deee",
+      "scenario": "tampered",
+      "expected": "tamper_rejected"
+    },
+    {
+      "entryId": "replace-image-missing-key",
+      "requirementId": "rpgmaker-mv-mz-asset-key",
+      "secretRef": "local-secret:rpgmaker-mv-mz-asset-key",
+      "keyCommitmentSha256": "sha256:ba7c4541c63e07f62ba9fd7241da8d5ce026f3bf6b540b528803feac8e44dccb",
+      "mediaKind": "image",
+      "surfaceId": "mv_mz/image/faces",
+      "surfaceCodec": "png_image",
+      "replacementSha256": "sha256:095f7f38d6f333d6c331eb6d6a45355f0717858ecd0a32f8214234de5129d7d2",
+      "scenario": "missing_key",
+      "expected": "missing_key"
+    },
+    {
+      "entryId": "replace-audio-unsupported-surface",
+      "requirementId": "rpgmaker-mv-mz-asset-key",
+      "secretRef": "local-secret:rpgmaker-mv-mz-asset-key",
+      "keyCommitmentSha256": "sha256:ba7c4541c63e07f62ba9fd7241da8d5ce026f3bf6b540b528803feac8e44dccb",
+      "mediaKind": "audio",
+      "surfaceId": "mv_mz/audio/bgm",
+      "surfaceCodec": "png_image",
+      "replacementSha256": "sha256:3988b3bd4b72913ee184f005234efd33c4ec3219a36e98ae534eab532127deee",
+      "scenario": "unsupported_surface",
+      "expected": "unsupported_surface"
+    },
+    {
+      "entryId": "replace-image-not-media",
+      "requirementId": "rpgmaker-mv-mz-asset-key",
+      "secretRef": "local-secret:rpgmaker-mv-mz-asset-key",
+      "keyCommitmentSha256": "sha256:ba7c4541c63e07f62ba9fd7241da8d5ce026f3bf6b540b528803feac8e44dccb",
+      "mediaKind": "image",
+      "surfaceId": "mv_mz/image/characters",
+      "surfaceCodec": "png_image",
+      "replacementSha256": "sha256:b94bd613a0693a518f9e3548af3b223ccee732d11708aa7efe2adfb1423402c0",
+      "scenario": "replacement_not_media",
+      "expected": "replacement_not_media"
+    }
+  ]
+}

@@ -53,17 +53,23 @@
 //! no real keys are ever vendored; the report carries only hashes / counts /
 //! secret-refs.
 
-use std::fmt;
 use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
+use crate::mv_mz_asset_xor::{
+    MvMzAssetKey, RPGMAKER_ASSET_XOR_PREFIX_LEN, decrypt_rpgmaker_asset, encrypt_rpgmaker_asset,
+};
 use crate::{
     CodecTransform, ContainerTransform, CryptoTransform, KaifuuResult, KeyMaterialKind,
     KeyValidationMethod, KeyValidationProof, OperationStatus, PartialDiagnosticSeverity,
     PatchBackTransform, ProofHash, RPGMAKER_MV_ENCRYPTED_MEDIA_HEADER, SecretRef, SurfaceTransform,
     redact_for_log_or_report, sha256_hash_bytes, stable_json,
 };
+
+/// The canonical RPGMV-header variant error. Re-exported under the historical
+/// audio-path name; the single implementation lives in [`crate::mv_mz_asset_xor`].
+pub use crate::mv_mz_asset_xor::MvMzAssetVariantError as MvMzAudioVariantError;
 
 pub const MV_MZ_ENCRYPTED_AUDIO_SCHEMA_VERSION: &str = "0.1.0";
 
@@ -90,7 +96,8 @@ pub const MV_MZ_ENCRYPTED_AUDIO_SUPPORT_BOUNDARY: &str = "Kaifuu RPG Maker MV/MZ
 pub const OGG_SIGNATURE: &[u8; 4] = b"OggS";
 
 /// The number of leading bytes the RPGMV scheme XOR-masks (the key length).
-pub const RPGMAKER_AUDIO_XOR_PREFIX_LEN: usize = 16;
+/// Aliases the shared [`RPGMAKER_ASSET_XOR_PREFIX_LEN`].
+pub const RPGMAKER_AUDIO_XOR_PREFIX_LEN: usize = RPGMAKER_ASSET_XOR_PREFIX_LEN;
 
 // --- Semantic + finding codes -----------------------------------------------
 
@@ -430,90 +437,14 @@ impl MvMzEncryptedAudioPath {
     }
 }
 
-// --- Native crypto (in-process, no shell-out) -------------------------------
+// --- Native crypto (shared core, in-process, no shell-out) ------------------
+//
+// The XOR primitive, key type, decrypt, and re-encrypt all live in the single
+// canonical `crate::mv_mz_asset_xor` module (imported above); this path never
+// re-implements them. `AudioAssetKey` is the historical local name for the
+// shared key type.
 
-/// A recovered/candidate 16-byte asset key. Raw bytes are private, never
-/// serialized, redacted in `Debug`, and zeroized on drop.
-struct AudioAssetKey {
-    bytes: Vec<u8>,
-}
-
-impl AudioAssetKey {
-    fn byte_len(&self) -> usize {
-        self.bytes.len()
-    }
-
-    /// One-way sha256 commitment to the key bytes (never the bytes themselves).
-    fn material_hash(&self) -> KaifuuResult<ProofHash> {
-        Ok(ProofHash::new(sha256_hash_bytes(&self.bytes))?)
-    }
-}
-
-impl Drop for AudioAssetKey {
-    fn drop(&mut self) {
-        self.bytes.fill(0);
-    }
-}
-
-impl fmt::Debug for AudioAssetKey {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter
-            .debug_struct("AudioAssetKey")
-            .field("bytes", &"[REDACTED:kaifuu.secret_redacted]")
-            .field("byte_len", &self.bytes.len())
-            .finish()
-    }
-}
-
-/// Why an asset could not be treated as a well-formed RPGMV-header audio asset.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum MvMzAudioVariantError {
-    /// Asset is shorter than the 16-byte RPGMV header.
-    TooShort,
-    /// Asset does not begin with the RPGMV header magic.
-    MissingHeaderMagic,
-}
-
-/// XOR the first `RPGMAKER_AUDIO_XOR_PREFIX_LEN` bytes of `region` with `key`
-/// (the MV/MZ asset mask). Bytes beyond the prefix are untouched.
-fn xor_asset_prefix(region: &mut [u8], key: &[u8]) {
-    let span = region.len().min(RPGMAKER_AUDIO_XOR_PREFIX_LEN);
-    for (index, byte) in region[..span].iter_mut().enumerate() {
-        *byte ^= key[index % key.len()];
-    }
-}
-
-/// Decrypt an RPGMV-header encrypted audio asset to its plaintext OGG bytes.
-/// Strips the 16-byte header and unmasks the first 16 body bytes. Returns a
-/// structured [`MvMzAudioVariantError`] for any asset that is not a well-formed
-/// RPGMV-header asset — no panic, no partial output.
-fn decrypt_rpgmaker_audio(
-    encrypted: &[u8],
-    key: &AudioAssetKey,
-) -> Result<Vec<u8>, MvMzAudioVariantError> {
-    let header_len = RPGMAKER_MV_ENCRYPTED_MEDIA_HEADER.len();
-    if encrypted.len() < header_len {
-        return Err(MvMzAudioVariantError::TooShort);
-    }
-    if &encrypted[..header_len] != RPGMAKER_MV_ENCRYPTED_MEDIA_HEADER {
-        return Err(MvMzAudioVariantError::MissingHeaderMagic);
-    }
-    let mut plaintext = encrypted[header_len..].to_vec();
-    xor_asset_prefix(&mut plaintext, &key.bytes);
-    Ok(plaintext)
-}
-
-/// Re-encrypt plaintext OGG bytes into an RPGMV-header encrypted audio asset:
-/// prepend the 16-byte header and mask the first 16 plaintext bytes. The
-/// inverse of [`decrypt_rpgmaker_audio`] for the same key.
-fn encrypt_rpgmaker_audio(plaintext: &[u8], key: &AudioAssetKey) -> Vec<u8> {
-    let header_len = RPGMAKER_MV_ENCRYPTED_MEDIA_HEADER.len();
-    let mut out = Vec::with_capacity(header_len + plaintext.len());
-    out.extend_from_slice(RPGMAKER_MV_ENCRYPTED_MEDIA_HEADER);
-    out.extend_from_slice(plaintext);
-    xor_asset_prefix(&mut out[header_len..], &key.bytes);
-    out
-}
+type AudioAssetKey = MvMzAssetKey;
 
 /// True iff `bytes` begins with the OGG `OggS` capture pattern — the wrong-key
 /// discriminator for a decrypted RPG Maker audio asset.
@@ -525,10 +456,7 @@ fn is_ogg(bytes: &[u8]) -> bool {
 /// [`SYNTHETIC_OGG`] masked with the given key. Public helper so callers can
 /// exercise the native decrypt path on synthetic bytes without any retail asset.
 pub fn encrypt_synthetic_audio(key_bytes: &[u8]) -> Vec<u8> {
-    let key = AudioAssetKey {
-        bytes: key_bytes.to_vec(),
-    };
-    encrypt_rpgmaker_audio(SYNTHETIC_OGG, &key)
+    encrypt_rpgmaker_asset(SYNTHETIC_OGG, &MvMzAssetKey::from_bytes(key_bytes))
 }
 
 // --- Fixture (input manifest) -----------------------------------------------
@@ -799,16 +727,12 @@ fn resolve_entry_inputs(scenario: MvMzEncryptedAudioScenario) -> ResolvedEntryIn
         MvMzEncryptedAudioScenario::Valid | MvMzEncryptedAudioScenario::UnsupportedSurface => {
             ResolvedEntryInputs {
                 encrypted: encrypt_synthetic_audio(SYNTHETIC_KEY_CORRECT),
-                key: Some(AudioAssetKey {
-                    bytes: SYNTHETIC_KEY_CORRECT.to_vec(),
-                }),
+                key: Some(MvMzAssetKey::from_bytes(SYNTHETIC_KEY_CORRECT)),
             }
         }
         MvMzEncryptedAudioScenario::WrongKey => ResolvedEntryInputs {
             encrypted: encrypt_synthetic_audio(SYNTHETIC_KEY_CORRECT),
-            key: Some(AudioAssetKey {
-                bytes: SYNTHETIC_KEY_WRONG.to_vec(),
-            }),
+            key: Some(MvMzAssetKey::from_bytes(SYNTHETIC_KEY_WRONG)),
         },
         MvMzEncryptedAudioScenario::MissingKey => ResolvedEntryInputs {
             encrypted: encrypt_synthetic_audio(SYNTHETIC_KEY_CORRECT),
@@ -817,9 +741,7 @@ fn resolve_entry_inputs(scenario: MvMzEncryptedAudioScenario) -> ResolvedEntryIn
         MvMzEncryptedAudioScenario::UnsupportedVariant => ResolvedEntryInputs {
             // Plaintext OGG with NO RPGMV header — not a valid encrypted asset.
             encrypted: SYNTHETIC_OGG.to_vec(),
-            key: Some(AudioAssetKey {
-                bytes: SYNTHETIC_KEY_CORRECT.to_vec(),
-            }),
+            key: Some(MvMzAssetKey::from_bytes(SYNTHETIC_KEY_CORRECT)),
         },
     }
 }
@@ -934,7 +856,7 @@ fn process_entry(
     };
 
     // (2) Decrypt — a non-RPGMV-header asset is an unsupported variant.
-    let plaintext = match decrypt_rpgmaker_audio(&encrypted, &key) {
+    let plaintext = match decrypt_rpgmaker_asset(&encrypted, &key) {
         Ok(plaintext) => plaintext,
         Err(error) => {
             findings.push(finding(
@@ -978,7 +900,7 @@ fn process_entry(
     }
 
     // (4) Re-encrypt (the patch write) and prove byte-correctness.
-    let reencrypted = encrypt_rpgmaker_audio(&plaintext, &key);
+    let reencrypted = encrypt_rpgmaker_asset(&plaintext, &key);
     let encrypted_source_hash = ProofHash::new(sha256_hash_bytes(&encrypted))?;
     let reencrypted_hash = ProofHash::new(sha256_hash_bytes(&reencrypted))?;
     let byte_correct = reencrypted == encrypted;
@@ -1235,19 +1157,17 @@ mod tests {
 
     #[test]
     fn decrypt_re_encrypt_is_byte_correct_round_trip() {
-        let key = AudioAssetKey {
-            bytes: SYNTHETIC_KEY_CORRECT.to_vec(),
-        };
+        let key = MvMzAssetKey::from_bytes(SYNTHETIC_KEY_CORRECT);
         let encrypted = encrypt_synthetic_audio(SYNTHETIC_KEY_CORRECT);
         // The encrypted asset carries the RPGMV header magic.
         assert_eq!(
             &encrypted[..RPGMAKER_MV_ENCRYPTED_MEDIA_HEADER.len()],
             RPGMAKER_MV_ENCRYPTED_MEDIA_HEADER
         );
-        let plaintext = decrypt_rpgmaker_audio(&encrypted, &key).expect("decrypts");
+        let plaintext = decrypt_rpgmaker_asset(&encrypted, &key).expect("decrypts");
         assert_eq!(plaintext, SYNTHETIC_OGG, "decrypt recovers the OGG exactly");
         assert!(is_ogg(&plaintext));
-        let reencrypted = encrypt_rpgmaker_audio(&plaintext, &key);
+        let reencrypted = encrypt_rpgmaker_asset(&plaintext, &key);
         assert_eq!(
             reencrypted, encrypted,
             "re-encrypt reproduces the source bytes (byte-correct)"
@@ -1261,24 +1181,20 @@ mod tests {
     #[test]
     fn wrong_key_decrypt_does_not_yield_an_ogg() {
         let encrypted = encrypt_synthetic_audio(SYNTHETIC_KEY_CORRECT);
-        let wrong = AudioAssetKey {
-            bytes: SYNTHETIC_KEY_WRONG.to_vec(),
-        };
-        let plaintext = decrypt_rpgmaker_audio(&encrypted, &wrong).expect("strips header");
+        let wrong = MvMzAssetKey::from_bytes(SYNTHETIC_KEY_WRONG);
+        let plaintext = decrypt_rpgmaker_asset(&encrypted, &wrong).expect("strips header");
         assert!(!is_ogg(&plaintext), "wrong key must not recover the OGG");
     }
 
     #[test]
     fn malformed_header_is_a_variant_error() {
-        let key = AudioAssetKey {
-            bytes: SYNTHETIC_KEY_CORRECT.to_vec(),
-        };
+        let key = MvMzAssetKey::from_bytes(SYNTHETIC_KEY_CORRECT);
         assert_eq!(
-            decrypt_rpgmaker_audio(SYNTHETIC_OGG, &key).err(),
+            decrypt_rpgmaker_asset(SYNTHETIC_OGG, &key).err(),
             Some(MvMzAudioVariantError::MissingHeaderMagic)
         );
         assert_eq!(
-            decrypt_rpgmaker_audio(b"RPGMV", &key).err(),
+            decrypt_rpgmaker_asset(b"RPGMV", &key).err(),
             Some(MvMzAudioVariantError::TooShort)
         );
     }
@@ -1434,9 +1350,7 @@ mod tests {
 
     #[test]
     fn key_debug_is_redacted_and_zeroized() {
-        let key = AudioAssetKey {
-            bytes: SYNTHETIC_KEY_CORRECT.to_vec(),
-        };
+        let key = MvMzAssetKey::from_bytes(SYNTHETIC_KEY_CORRECT);
         let rendered = format!("{key:?}");
         assert!(rendered.contains("REDACTED"));
         assert!(!rendered.contains(&String::from_utf8_lossy(SYNTHETIC_KEY_CORRECT).into_owned()));

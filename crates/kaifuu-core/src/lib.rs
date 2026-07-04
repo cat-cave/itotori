@@ -155,6 +155,8 @@ pub const XP3_PLAIN_MAGIC: &[u8] = b"XP3\r\n \n\x1a\x8b\x67\x01";
 
 pub mod alpha_encrypted_readiness;
 pub mod contracts;
+pub mod mv_mz_asset_xor;
+pub mod mv_mz_encrypted_asset_replacement;
 pub mod mv_mz_encrypted_audio;
 pub mod mv_mz_encrypted_image;
 pub mod mv_mz_readiness;
@@ -195,6 +197,27 @@ pub use mv_mz_encrypted_image::{
     SEMANTIC_MV_MZ_IMAGE_MISSING_KEY, SEMANTIC_MV_MZ_IMAGE_UNSUPPORTED_SURFACE,
     SEMANTIC_MV_MZ_IMAGE_UNSUPPORTED_VARIANT, SEMANTIC_MV_MZ_IMAGE_WRONG_KEY,
     encrypt_synthetic_image, run_mv_mz_encrypted_image,
+};
+
+pub use mv_mz_asset_xor::{
+    MvMzAssetKey, MvMzAssetVariantError, RPGMAKER_ASSET_XOR_PREFIX_LEN, decrypt_rpgmaker_asset,
+    encrypt_rpgmaker_asset,
+};
+
+pub use mv_mz_encrypted_asset_replacement::{
+    MV_MZ_ASSET_REPLACEMENT_CRYPTO_PROFILE_ID, MV_MZ_ASSET_REPLACEMENT_ENGINE_FAMILY,
+    MV_MZ_ASSET_REPLACEMENT_FIXTURE_ID, MV_MZ_ASSET_REPLACEMENT_REQUIREMENT_ID,
+    MV_MZ_ASSET_REPLACEMENT_SCHEMA_VERSION, MV_MZ_ASSET_REPLACEMENT_SUPPORT_BOUNDARY,
+    MV_MZ_ASSET_REPLACEMENT_VARIANT, MvMzAssetReplacementDiagnosticDeclaration,
+    MvMzAssetReplacementEntry, MvMzAssetReplacementEntryReport, MvMzAssetReplacementFinding,
+    MvMzAssetReplacementManifest, MvMzAssetReplacementOutcome, MvMzAssetReplacementPath,
+    MvMzAssetReplacementPathViolation, MvMzAssetReplacementReport, MvMzAssetReplacementRequest,
+    MvMzAssetReplacementScenario, MvMzReplacementProof, ReplacementMediaKind,
+    ReplacementMediaKindDeclaration, RpgMakerReplacementCryptoProfile,
+    SEMANTIC_REPLACEMENT_MISSING_KEY, SEMANTIC_REPLACEMENT_NOT_MEDIA,
+    SEMANTIC_REPLACEMENT_REPLACED, SEMANTIC_REPLACEMENT_TAMPERED,
+    SEMANTIC_REPLACEMENT_UNSUPPORTED_SURFACE, SEMANTIC_REPLACEMENT_WRONG_KEY,
+    run_mv_mz_asset_replacement,
 };
 
 pub use mv_mz_readiness::{

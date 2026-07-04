@@ -16,6 +16,31 @@
 > unsupported-variant (malformed header) entries. Encrypted audio is
 > owned by the sibling KAIFUU-116; JSON text stays with KAIFUU-108.
 
+> ## Sibling: `encrypted-asset-replacement.json` (KAIFUU-117)
+>
+> `encrypted-asset-replacement.json` is the KAIFUU-117 encrypted-asset
+> **replacement** manifest (`kaifuu_core::mv_mz_encrypted_asset_replacement`).
+> Where KAIFUU-115/116 prove a byte-correct *identity* round-trip, this
+> path proves a genuine **replacement**: a new synthetic media asset is
+> encrypted with the game key (resolved via a declared secret ref) and
+> patched in, then the patch is VERIFIED — `decrypt(patched) ==
+> replacement`, the RPGMV header + non-replaced tail bytes are exact, the
+> patch differs from the original, and `decrypt(patched)` matches the
+> manifest's declared `replacementSha256`. Both image (`png_image`) and
+> audio (`ogg_audio`) media kinds are covered, with MV vs MZ extension
+> notes (image `.rpgmvp`/`.png_`, audio `.rpgmvo`/`.ogg_`). The manifest
+> carries **only** secret-refs + sha256 commitments (`keyCommitmentSha256`
+> for the game key, `replacementSha256` for the intended replacement) —
+> never raw key material. A wrong-key patch (resolved-key sha256 fails the
+> commitment gate) and a tampered patch (decrypt no longer recovers the
+> replacement) are REJECTED with typed findings and publish no consumable
+> patch. All bytes are synthetic: the original media reuses the
+> KAIFUU-115/116 synthetic media, the replacement is a clearly-synthetic
+> signature-bearing blob, and the key is a clearly-fake 16-byte test key.
+> The MV/MZ asset-XOR crypto is the single shared
+> `kaifuu_core::mv_mz_asset_xor` core (image, audio, and replacement all
+> consume it — none re-implements the primitive).
+
 These fixtures back the `kaifuu rpgmaker encrypted-media-proof` command
 (KAIFUU-039). They are intentionally **synthetic**:
 
