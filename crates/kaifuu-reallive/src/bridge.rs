@@ -512,11 +512,21 @@ fn build_control_prefix(
 }
 
 fn extract_name_token_spans(decoded: &str, prefix_offset: u64) -> (Option<String>, Vec<ProtoSpan>) {
-    // A RealLive speaker name token is the full-width lenticular
-    // `【話者】` prefix (the `#NAMAE` lookup key). The `「話者」` corner
-    // brackets are the DIALOGUE quote, NOT a name token — matching them
-    // here misattributed every quote-only narration line to a speaker, so
-    // that fallback is dropped.
+    // A speaker name token is the full-width lenticular `【話者】` prefix (the
+    // `#NAMAE` lookup key). The `「話者」` corner brackets are the DIALOGUE
+    // quote, NOT a name token — matching them here misattributed every
+    // quote-only narration line to a speaker, so that fallback is dropped.
+    //
+    // PROVENANCE (2nd-corpus calibration,
+    // `reallive-bridge-second-corpus-protected-span-calibration`): the inline
+    // `【】` speaker bracket is a TITLE / ERA-CALIBRATED convention, NOT
+    // RealLive-engine-universal. It fires 16,862× on Sweetie HD (an rlBabel-era
+    // title) but ZERO times on classic Kanon (1.2.6.8), which does not
+    // inline-bracket speaker names. The detector is correct where the
+    // convention is used and simply emits no span where it is not — it keys on
+    // an exact `【…】` literal, so it cannot MIS-fire on a title that omits it.
+    // See `tests/protected_span_second_corpus_real_bytes.rs`. Do NOT re-describe
+    // this as an engine-general rule (no-overclaim).
     let candidates = [('【', '】')];
     for (open, close) in candidates {
         if let Some(open_pos) = decoded.find(open)
@@ -541,6 +551,12 @@ fn extract_name_token_spans(decoded: &str, prefix_offset: u64) -> (Option<String
 fn extract_asset_ref_spans(decoded: &str, prefix_offset: u64) -> Vec<ProtoSpan> {
     // `#FACE(...)` and `#GANBMP(...)` inline asset-ref tags. Match the
     // tag name and any immediately-following `(...)` arg group.
+    //
+    // PROVENANCE (2nd-corpus calibration): TITLE-CALIBRATED, speculative
+    // Sweetie-HD vocabulary. These exact tag literals emit ZERO spans on BOTH
+    // real corpora (they do not fire even on Sweetie HD's real bytes, and
+    // `#GANBMP` in particular is Sweetie authoring vocabulary). Keying on an
+    // exact literal, they cannot mis-fire on Kanon. Not RealLive-engine-general.
     let mut spans = Vec::new();
     for tag in ["#FACE", "#GANBMP"] {
         let mut start = 0usize;
@@ -569,6 +585,11 @@ fn extract_asset_ref_spans(decoded: &str, prefix_offset: u64) -> Vec<ProtoSpan> 
 fn extract_font_tone_spans(decoded: &str, prefix_offset: u64) -> Vec<ProtoSpan> {
     // Font-tone tags such as `#FONT_BIG` or `#COLOR(123)` — keep the
     // scan narrow to the documented Sweetie HD vocabulary.
+    //
+    // PROVENANCE (2nd-corpus calibration): TITLE-CALIBRATED Sweetie-HD
+    // vocabulary. These exact tag literals emit ZERO spans on BOTH real corpora
+    // (Sweetie HD and Kanon). Keying on an exact literal, they cannot mis-fire
+    // on Kanon. Not RealLive-engine-general.
     let mut spans = Vec::new();
     for tag in ["#FONT_BIG", "#FONT_SMALL", "#COLOR"] {
         let mut start = 0usize;
@@ -600,6 +621,12 @@ fn extract_choice_marker_spans(
 ) -> Vec<ProtoSpan> {
     // Choice markers are control bytes `0x30..0x34` per spec — when
     // present they survive Shift-JIS decode as ASCII digits `'0'..'4'`.
+    //
+    // PROVENANCE (2nd-corpus calibration): TITLE-CALIBRATED heuristic (not an
+    // RLDEV-documented marker). Emits ZERO spans on BOTH real corpora — real
+    // RealLive selection is carried by `module_sel` Choice opcodes, not inline
+    // ASCII-digit bytes in the choice body. Kept bounded (first match only) so
+    // it cannot mis-fire; not RealLive-engine-general.
     let mut spans = Vec::new();
     for byte in [0x30u8, 0x31, 0x32, 0x33] {
         let ch = byte as char;
