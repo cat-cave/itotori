@@ -178,25 +178,50 @@ pub struct SiglusKnownKeyProfile {
 
 // --- Module-private key holder ----------------------------------------------
 
-/// The resolved known-key bytes. Raw material is module-private, never
+/// The resolved known-key bytes. Raw material is crate-private, never
 /// serialized, redacted in `Debug`, and zeroized on drop. Nothing public
 /// returns or logs these bytes.
-struct KnownKeyMaterial {
+///
+/// The KAIFUU-022 pure adapter ([`crate::adapter`]) reuses this holder as the
+/// single place raw key bytes ever live: it constructs one via
+/// [`KnownKeyMaterial::from_resolved_bytes`] from an *already-resolved* secret
+/// ref (the adapter never does key discovery) and passes it to the key-injected
+/// `*_with` primitives below.
+pub(crate) struct KnownKeyMaterial {
     bytes: Vec<u8>,
 }
 
 impl KnownKeyMaterial {
-    fn byte_len(&self) -> usize {
+    /// Wrap already-resolved raw key bytes. The bytes came from the key
+    /// discovery / secret-store layer — this holder only guarantees they are
+    /// never serialized, logged, or written past this boundary.
+    pub(crate) fn from_resolved_bytes(bytes: Vec<u8>) -> Self {
+        Self { bytes }
+    }
+
+    pub(crate) fn byte_len(&self) -> usize {
         self.bytes.len()
     }
 
     /// One-way sha256 commitment to the key bytes (never the bytes themselves).
-    fn material_hash(&self) -> KaifuuResult<ProofHash> {
+    pub(crate) fn material_hash(&self) -> KaifuuResult<ProofHash> {
         Ok(ProofHash::new(sha256_hash_bytes(&self.bytes))?)
     }
 
-    fn xor_cycle(&self, data: &[u8]) -> Vec<u8> {
+    pub(crate) fn xor_cycle(&self, data: &[u8]) -> Vec<u8> {
         xor_cycled(data, &self.bytes)
+    }
+
+    /// Reject-on-secret probe: does the raw key material appear as a contiguous
+    /// byte window inside `haystack`? Used to refuse writing any artifact that
+    /// would leak the key. Returns only a boolean — never the bytes.
+    pub(crate) fn appears_in(&self, haystack: &[u8]) -> bool {
+        if self.bytes.is_empty() || self.bytes.len() > haystack.len() {
+            return false;
+        }
+        haystack
+            .windows(self.bytes.len())
+            .any(|window| window == self.bytes)
     }
 }
 
@@ -363,18 +388,29 @@ pub fn extract_scene(
     profile: &SiglusKnownKeyProfile,
     container: &[u8],
 ) -> Result<SiglusSceneExtraction, KnownKeySmokeError> {
+    extract_scene_with(profile, container, &resolve_known_key(profile))
+}
+
+/// Key-injected [`extract_scene`]: identical parse, but the caller supplies the
+/// already-resolved key material instead of the module resolving it. This is the
+/// seam the KAIFUU-022 pure adapter consumes — it separates parsing from key
+/// discovery (the adapter never discovers keys; it is handed a resolved one).
+pub(crate) fn extract_scene_with(
+    profile: &SiglusKnownKeyProfile,
+    container: &[u8],
+    key: &KnownKeyMaterial,
+) -> Result<SiglusSceneExtraction, KnownKeySmokeError> {
     let mut reader = Reader::new(container);
     reader.expect_magic(SCENE_SMOKE_MAGIC, "Scene")?;
     check_in_profile(profile, &mut reader)?;
 
-    let key = resolve_known_key(profile);
     let scene_id = reader.u32()?;
     let unit_count = reader.u32()?;
 
     let mut units = Vec::with_capacity(unit_count as usize);
     for _ in 0..unit_count {
         let unit_index = reader.u32()?;
-        let text = reader.encrypted_utf16le(&key)?;
+        let text = reader.encrypted_utf16le(key)?;
         units.push(SiglusSceneUnit {
             source_unit_key: source_unit_key(scene_id, unit_index),
             unit_index,
@@ -384,23 +420,77 @@ pub fn extract_scene(
     Ok(SiglusSceneExtraction { scene_id, units })
 }
 
+/// The byte-exact record layout of a profiled `Scene` container: the header
+/// scalars plus each unit's *still-encrypted* payload slice, in on-disk order.
+///
+/// The adapter uses this to prove identity round-trips (re-emit == input,
+/// byte-identical) and out-of-scope byte-identity (every non-edited unit's
+/// encrypted bytes survive unchanged) WITHOUT ever decrypting.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct SceneRecordLayout {
+    pub(crate) scene_id: u32,
+    pub(crate) compression: SiglusKnownKeyCompression,
+    /// `(unit_index, still-encrypted payload bytes)` in on-disk order.
+    pub(crate) records: Vec<(u32, Vec<u8>)>,
+}
+
+/// Read a profiled `Scene` container into its byte-exact [`SceneRecordLayout`]
+/// without decrypting any text. Out-of-profile compression is the usual typed
+/// not-implemented.
+pub(crate) fn read_scene_record_layout(
+    profile: &SiglusKnownKeyProfile,
+    container: &[u8],
+) -> Result<SceneRecordLayout, KnownKeySmokeError> {
+    let mut reader = Reader::new(container);
+    reader.expect_magic(SCENE_SMOKE_MAGIC, "Scene")?;
+    check_in_profile(profile, &mut reader)?;
+    let scene_id = reader.u32()?;
+    let unit_count = reader.u32()?;
+    let mut records = Vec::with_capacity(unit_count as usize);
+    for _ in 0..unit_count {
+        let unit_index = reader.u32()?;
+        let encrypted = reader.encrypted_slice()?.to_vec();
+        records.push((unit_index, encrypted));
+    }
+    Ok(SceneRecordLayout {
+        scene_id,
+        compression: SiglusKnownKeyCompression::Uncompressed,
+        records,
+    })
+}
+
+/// Re-emit a profiled `Scene` container from a byte-exact record layout. Feeding
+/// back an untouched [`read_scene_record_layout`] result reproduces the input
+/// byte-for-byte (the identity round-trip the adapter proves).
+pub(crate) fn reemit_scene_records(layout: &SceneRecordLayout) -> Vec<u8> {
+    build_scene_container(layout.scene_id, layout.compression, &layout.records)
+}
+
 /// Extract the profiled `Gameexe` container's key/value inventory using the
 /// profile's known key. Out-of-profile compression is a typed not-implemented.
 pub fn extract_gameexe(
     profile: &SiglusKnownKeyProfile,
     container: &[u8],
 ) -> Result<SiglusGameexeExtraction, KnownKeySmokeError> {
+    extract_gameexe_with(profile, container, &resolve_known_key(profile))
+}
+
+/// Key-injected [`extract_gameexe`] (see [`extract_scene_with`]).
+pub(crate) fn extract_gameexe_with(
+    profile: &SiglusKnownKeyProfile,
+    container: &[u8],
+    key: &KnownKeyMaterial,
+) -> Result<SiglusGameexeExtraction, KnownKeySmokeError> {
     let mut reader = Reader::new(container);
     reader.expect_magic(GAMEEXE_SMOKE_MAGIC, "Gameexe")?;
     check_in_profile(profile, &mut reader)?;
 
-    let key = resolve_known_key(profile);
     let entry_count = reader.u32()?;
 
     let mut entries = Vec::with_capacity(entry_count as usize);
     for _ in 0..entry_count {
-        let key_text = reader.encrypted_utf16le(&key)?;
-        let value_text = reader.encrypted_utf16le(&key)?;
+        let key_text = reader.encrypted_utf16le(key)?;
+        let value_text = reader.encrypted_utf16le(key)?;
         entries.push(SiglusGameexeEntry {
             key: key_text,
             value: value_text,
@@ -449,6 +539,23 @@ pub fn patch_scene_unit(
     target_source_unit_key: &str,
     translated_text: &str,
 ) -> Result<Vec<u8>, KnownKeySmokeError> {
+    patch_scene_unit_with(
+        profile,
+        container,
+        target_source_unit_key,
+        translated_text,
+        &resolve_known_key(profile),
+    )
+}
+
+/// Key-injected [`patch_scene_unit`] (see [`extract_scene_with`]).
+pub(crate) fn patch_scene_unit_with(
+    profile: &SiglusKnownKeyProfile,
+    container: &[u8],
+    target_source_unit_key: &str,
+    translated_text: &str,
+    key: &KnownKeyMaterial,
+) -> Result<Vec<u8>, KnownKeySmokeError> {
     let (_, target_index) = parse_source_unit_key(target_source_unit_key)?;
 
     // Parse the existing container into (unit_index, original encrypted text
@@ -456,7 +563,6 @@ pub fn patch_scene_unit(
     let mut reader = Reader::new(container);
     reader.expect_magic(SCENE_SMOKE_MAGIC, "Scene")?;
     check_in_profile(profile, &mut reader)?;
-    let key = resolve_known_key(profile);
     let scene_id = reader.u32()?;
     let unit_count = reader.u32()?;
 
@@ -515,15 +621,41 @@ pub fn patch_and_verify_scene(
     target_source_unit_key: &str,
     translated_text: &str,
 ) -> Result<(Vec<u8>, ScenePatchVerification), KnownKeySmokeError> {
-    let original = extract_scene(profile, container)?;
-    let patched_bytes =
-        patch_scene_unit(profile, container, target_source_unit_key, translated_text)?;
+    patch_and_verify_scene_with(
+        profile,
+        container,
+        target_source_unit_key,
+        translated_text,
+        &resolve_known_key(profile),
+    )
+}
+
+/// Key-injected [`patch_and_verify_scene`] (see [`extract_scene_with`]). The
+/// KAIFUU-022 adapter routes translated round-trips through this so the resolved
+/// key is threaded end-to-end (patch, re-extract, verify) with no hidden
+/// re-resolution.
+pub(crate) fn patch_and_verify_scene_with(
+    profile: &SiglusKnownKeyProfile,
+    container: &[u8],
+    target_source_unit_key: &str,
+    translated_text: &str,
+    key: &KnownKeyMaterial,
+) -> Result<(Vec<u8>, ScenePatchVerification), KnownKeySmokeError> {
+    let original = extract_scene_with(profile, container, key)?;
+    let patched_bytes = patch_scene_unit_with(
+        profile,
+        container,
+        target_source_unit_key,
+        translated_text,
+        key,
+    )?;
     let verification = verify_scene_patch(
         profile,
         &original,
         &patched_bytes,
         target_source_unit_key,
         translated_text,
+        key,
     )?;
     if !verification.verified() {
         return Err(KnownKeySmokeError::VerifyMismatch {
@@ -542,9 +674,10 @@ fn verify_scene_patch(
     patched_bytes: &[u8],
     target_source_unit_key: &str,
     translated_text: &str,
+    key: &KnownKeyMaterial,
 ) -> Result<ScenePatchVerification, KnownKeySmokeError> {
     let (_, target_index) = parse_source_unit_key(target_source_unit_key)?;
-    let patched = extract_scene(profile, patched_bytes)?;
+    let patched = extract_scene_with(profile, patched_bytes, key)?;
 
     if patched.units.len() != original.units.len() {
         return Err(KnownKeySmokeError::VerifyMismatch {
@@ -618,19 +751,120 @@ pub fn build_synthetic_gameexe_fixture() -> Vec<u8> {
     let key = KnownKeyMaterial {
         bytes: SYNTHETIC_KNOWN_KEY.to_vec(),
     };
+    let records: Vec<(Vec<u8>, Vec<u8>)> = FIXTURE_GAMEEXE_ENTRIES
+        .iter()
+        .map(|(config_key, value)| {
+            (
+                key.xor_cycle(&utf16le_encode(config_key)),
+                key.xor_cycle(&utf16le_encode(value)),
+            )
+        })
+        .collect();
+    build_gameexe_container(SiglusKnownKeyCompression::Uncompressed, &records)
+}
+
+/// The byte-exact record layout of a profiled `Gameexe` container: each
+/// entry's *still-encrypted* key + value slices in on-disk order. Feeding an
+/// untouched layout back through [`reemit_gameexe_records`] reproduces the input
+/// byte-for-byte (the Gameexe identity round-trip).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct GameexeRecordLayout {
+    pub(crate) compression: SiglusKnownKeyCompression,
+    /// `(still-encrypted key bytes, still-encrypted value bytes)` per entry.
+    pub(crate) records: Vec<(Vec<u8>, Vec<u8>)>,
+}
+
+/// Read a profiled `Gameexe` container into its byte-exact layout without
+/// decrypting. Out-of-profile compression is the usual typed not-implemented.
+pub(crate) fn read_gameexe_record_layout(
+    profile: &SiglusKnownKeyProfile,
+    container: &[u8],
+) -> Result<GameexeRecordLayout, KnownKeySmokeError> {
+    let mut reader = Reader::new(container);
+    reader.expect_magic(GAMEEXE_SMOKE_MAGIC, "Gameexe")?;
+    check_in_profile(profile, &mut reader)?;
+    let entry_count = reader.u32()?;
+    let mut records = Vec::with_capacity(entry_count as usize);
+    for _ in 0..entry_count {
+        let key_bytes = reader.encrypted_slice()?.to_vec();
+        let value_bytes = reader.encrypted_slice()?.to_vec();
+        records.push((key_bytes, value_bytes));
+    }
+    Ok(GameexeRecordLayout {
+        compression: SiglusKnownKeyCompression::Uncompressed,
+        records,
+    })
+}
+
+/// Re-emit a profiled `Gameexe` container from a byte-exact record layout.
+pub(crate) fn reemit_gameexe_records(layout: &GameexeRecordLayout) -> Vec<u8> {
+    build_gameexe_container(layout.compression, &layout.records)
+}
+
+/// Patch a single `Gameexe` value (config key matched by decoded text), keeping
+/// every other entry's encrypted key + value byte-identical. The caller supplies
+/// the already-resolved key.
+pub(crate) fn patch_gameexe_value_with(
+    profile: &SiglusKnownKeyProfile,
+    container: &[u8],
+    target_config_key: &str,
+    translated_value: &str,
+    key: &KnownKeyMaterial,
+) -> Result<Vec<u8>, KnownKeySmokeError> {
+    let layout = read_gameexe_record_layout(profile, container)?;
+    let mut records = Vec::with_capacity(layout.records.len());
+    let mut matched = false;
+    for (enc_key, enc_val) in layout.records {
+        let decoded_key = utf16le_decode(&key.xor_cycle(&enc_key), 0)?;
+        if decoded_key == target_config_key {
+            let new_val = key.xor_cycle(&utf16le_encode(translated_value));
+            records.push((enc_key, new_val));
+            matched = true;
+        } else {
+            records.push((enc_key, enc_val));
+        }
+    }
+    if !matched {
+        return Err(KnownKeySmokeError::UnitNotFound {
+            source_unit_key: format!("gameexe:{target_config_key}"),
+        });
+    }
+    Ok(build_gameexe_container(
+        SiglusKnownKeyCompression::Uncompressed,
+        &records,
+    ))
+}
+
+fn build_gameexe_container(
+    compression: SiglusKnownKeyCompression,
+    records: &[(Vec<u8>, Vec<u8>)],
+) -> Vec<u8> {
+    let flag = match compression {
+        SiglusKnownKeyCompression::Uncompressed => COMPRESSION_UNCOMPRESSED,
+        SiglusKnownKeyCompression::Lzss => COMPRESSION_LZSS,
+    };
     let mut bytes = Vec::new();
     bytes.extend_from_slice(GAMEEXE_SMOKE_MAGIC);
-    bytes.push(COMPRESSION_UNCOMPRESSED);
+    bytes.push(flag);
     bytes.extend_from_slice(
-        &u32::try_from(FIXTURE_GAMEEXE_ENTRIES.len())
-            .expect("fixture entry count fits in u32")
+        &u32::try_from(records.len())
+            .expect("gameexe entry count fits in u32")
             .to_le_bytes(),
     );
-    for (config_key, value) in FIXTURE_GAMEEXE_ENTRIES {
-        push_encrypted(&mut bytes, &key, config_key);
-        push_encrypted(&mut bytes, &key, value);
+    for (enc_key, enc_val) in records {
+        push_encrypted_slice(&mut bytes, enc_key);
+        push_encrypted_slice(&mut bytes, enc_val);
     }
     bytes
+}
+
+fn push_encrypted_slice(bytes: &mut Vec<u8>, encrypted: &[u8]) {
+    bytes.extend_from_slice(
+        &u32::try_from(encrypted.len())
+            .expect("encrypted slice length fits in u32")
+            .to_le_bytes(),
+    );
+    bytes.extend_from_slice(encrypted);
 }
 
 fn build_scene_container(
@@ -661,16 +895,6 @@ fn build_scene_container(
         bytes.extend_from_slice(encrypted);
     }
     bytes
-}
-
-fn push_encrypted(bytes: &mut Vec<u8>, key: &KnownKeyMaterial, text: &str) {
-    let encrypted = key.xor_cycle(&utf16le_encode(text));
-    bytes.extend_from_slice(
-        &u32::try_from(encrypted.len())
-            .expect("encrypted text length fits in u32")
-            .to_le_bytes(),
-    );
-    bytes.extend_from_slice(&encrypted);
 }
 
 // --- Byte reader ------------------------------------------------------------
@@ -753,7 +977,7 @@ fn xor_cycled(data: &[u8], key: &[u8]) -> Vec<u8> {
         .collect()
 }
 
-fn utf16le_encode(text: &str) -> Vec<u8> {
+pub(crate) fn utf16le_encode(text: &str) -> Vec<u8> {
     let mut bytes = Vec::with_capacity(text.len() * 2);
     for unit in text.encode_utf16() {
         bytes.extend_from_slice(&unit.to_le_bytes());
@@ -774,6 +998,12 @@ fn utf16le_decode(bytes: &[u8], byte_offset: usize) -> Result<String, KnownKeySm
 
 fn source_unit_key(scene_id: u32, unit_index: u32) -> String {
     format!("siglus:scene-{scene_id:04}#{unit_index:04}")
+}
+
+/// Parse just the unit index out of a canonical `siglus:scene-NNNN#OOOO` key.
+/// Used by the KAIFUU-022 adapter to identify edited units.
+pub(crate) fn parse_source_unit_index(key: &str) -> Result<u32, KnownKeySmokeError> {
+    parse_source_unit_key(key).map(|(_, unit_index)| unit_index)
 }
 
 fn parse_source_unit_key(key: &str) -> Result<(u32, u32), KnownKeySmokeError> {

@@ -17836,6 +17836,13 @@ fn unsafe_relative_path_error(relative_path: &str) -> Box<dyn std::error::Error>
 }
 
 pub fn atomic_write_text(path: &Path, content: &str) -> KaifuuResult<()> {
+    atomic_write_bytes(path, content.as_bytes())
+}
+
+/// Atomically write arbitrary bytes to `path` (create-new temp + fsync +
+/// rename), mirroring [`atomic_write_text`]. Used for binary patch-back outputs
+/// (e.g. a re-emitted profiled Siglus container) that are not valid UTF-8.
+pub fn atomic_write_bytes(path: &Path, content: &[u8]) -> KaifuuResult<()> {
     let parent = path.parent().unwrap_or_else(|| Path::new("."));
     let file_name = path
         .file_name()
@@ -18046,8 +18053,8 @@ fn rename_directory_no_replace(_staging_dir: &Path, _output_dir: &Path) -> io::R
     ))
 }
 
-fn write_and_sync(file: &mut File, content: &str) -> KaifuuResult<()> {
-    file.write_all(content.as_bytes())?;
+fn write_and_sync(file: &mut File, content: &[u8]) -> KaifuuResult<()> {
+    file.write_all(content)?;
     file.sync_all()?;
     Ok(())
 }

@@ -64,6 +64,7 @@
 #![forbid(unsafe_code)]
 #![deny(missing_debug_implementations)]
 
+pub mod adapter;
 pub mod archive;
 pub mod bridge;
 pub mod compress;
@@ -107,6 +108,17 @@ pub const SIGLUS_RS_RESEARCH_ANCHOR_BOUNDARY_STATEMENT: &str = concat!(
     "re-tested against a real Siglus title's bytes before being encoded.",
 );
 
+pub use adapter::{
+    ADAPTER_CAPABILITY_ID, ADAPTER_SCHEMA_VERSION, ADAPTER_SOURCE_NODE_ID,
+    ADAPTER_SUPPORT_BOUNDARY, AdapterError, AdapterPatchReport, IdentityRoundTrip, InScopeChange,
+    RejectOnSecretReport, ResolvedSiglusKey, SecretLeakFinding, SiglusAdapterCapability,
+    SiglusContainerKind, SiglusSupportedVariant, SiglusTranslatedEdit, TranslatedRoundTrip,
+    TranslatedRoundTripReport, apply_gameexe_translation, apply_scene_translation,
+    build_profiled_gameexe_container, build_profiled_scene_container,
+    extract_gameexe as adapter_extract_gameexe, extract_scene as adapter_extract_scene,
+    patch_container_file, roundtrip_identity_gameexe, roundtrip_identity_scene,
+    scan_for_secret_leak,
+};
 pub use archive::{
     SCENE_PCK_HEADER_BYTE_LEN, SiglusArchiveError, SiglusSceneEntry, SiglusSceneIndex,
     parse_scene_pck,
