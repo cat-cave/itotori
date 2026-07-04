@@ -289,7 +289,7 @@ describe("runVisionGate (mechanism, fake provider)", () => {
 
   it("records the REAL billed cost via cost-or-throw (never approximated)", async () => {
     const provider = fakeVisionProvider(goodVerdictJson(), {
-      cost: { costKind: "billed", currency: "USD", amountUsd: "0.00001976", amountMicrosUsd: 20 },
+      cost: { costKind: "billed", currency: "USD", amountUsd: "0.00001976", amountMicrosUsd: 20 }, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
     });
     const result = await runVisionGate({ ...baseArgs, provider });
     expect(result.artifact.costUsd).toBe("0.00001976");

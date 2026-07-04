@@ -611,7 +611,7 @@ describe("LedgerTelemetryQuery.countZdrEnforcedCallsByPair (ITOTORI-230)", () =>
           providerId: "fireworks",
           costKind: "billed",
           invocationCount: 12,
-          amountMicrosUsd: 3456,
+          amountMicrosUsd: 3456, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
         },
       ],
     );
@@ -626,7 +626,7 @@ describe("LedgerTelemetryQuery.countZdrEnforcedCallsByPair (ITOTORI-230)", () =>
         pair: buildPairKey("deepseek-ai/deepseek-v3.2-exp", "fireworks"),
         costKind: "billed",
         invocationCount: 12,
-        amountMicrosUsd: 3456,
+        amountMicrosUsd: 3456, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
       },
     ]);
   });
@@ -883,7 +883,7 @@ describe("telemetry CLI renderTextSummary — ITOTORI-233", () => {
                 pair,
                 costKind: "billed" as const,
                 invocationCount: 1,
-                amountMicrosUsd: 1,
+                amountMicrosUsd: 1, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
               },
             ];
           },
@@ -913,7 +913,7 @@ describe("telemetry CLI renderTextSummary — ITOTORI-233", () => {
         },
         costKind: {
           invocationCount: 1,
-          rows: [{ pair, costKind: "billed", invocationCount: 1, amountMicrosUsd: 1 }],
+          rows: [{ pair, costKind: "billed", invocationCount: 1, amountMicrosUsd: 1 }], // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
         },
       },
     });
@@ -1032,7 +1032,7 @@ describe("provider-run-artifact telemetry source (UTSUSHI-231)", () => {
         startedAt: "2026-06-27T12:00:00.000Z",
         completedAt: "2026-06-27T12:00:01.000Z",
         amountUsd: "0.00000602",
-        amountMicrosUsd: 6,
+        amountMicrosUsd: 6, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
         promptTokens: 100,
         completionTokens: 50,
         latencyMs: 200,
@@ -1046,7 +1046,7 @@ describe("provider-run-artifact telemetry source (UTSUSHI-231)", () => {
         startedAt: "2026-06-27T12:00:02.000Z",
         completedAt: "2026-06-27T12:00:03.000Z",
         amountUsd: "0.00000400",
-        amountMicrosUsd: 4,
+        amountMicrosUsd: 4, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
         promptTokens: 20,
         completionTokens: 10,
         latencyMs: 100,
@@ -1067,7 +1067,7 @@ describe("provider-run-artifact telemetry source (UTSUSHI-231)", () => {
 
     expect(zdrRows).toEqual([{ pair, invocationCount: 2, zdrEnforcedCount: 2 }]);
     expect(costKindRows).toEqual([
-      { pair, costKind: "billed", invocationCount: 2, amountMicrosUsd: 10 },
+      { pair, costKind: "billed", invocationCount: 2, amountMicrosUsd: 10 }, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
     ]);
   });
 
@@ -1082,7 +1082,7 @@ describe("provider-run-artifact telemetry source (UTSUSHI-231)", () => {
         startedAt: "2026-06-27T12:00:00.000Z",
         completedAt: "2026-06-27T12:00:01.000Z",
         amountUsd: "0.00000600",
-        amountMicrosUsd: 6,
+        amountMicrosUsd: 6, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
         upstreamProvider: "DigitalOcean",
       }),
       providerRunArtifact({
@@ -1090,7 +1090,7 @@ describe("provider-run-artifact telemetry source (UTSUSHI-231)", () => {
         startedAt: "2026-06-27T12:00:02.000Z",
         completedAt: "2026-06-27T12:00:03.000Z",
         amountUsd: "0.00000500",
-        amountMicrosUsd: 5,
+        amountMicrosUsd: 5, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
         upstreamProvider: "Fireworks",
       }),
       providerRunArtifact({
@@ -1098,7 +1098,7 @@ describe("provider-run-artifact telemetry source (UTSUSHI-231)", () => {
         startedAt: "2026-06-27T12:00:04.000Z",
         completedAt: "2026-06-27T12:00:05.000Z",
         amountUsd: "0.00000100",
-        amountMicrosUsd: 1,
+        amountMicrosUsd: 1, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
         upstreamProvider: "fireworks",
       }),
     ];
@@ -1143,7 +1143,7 @@ describe("provider-run-artifact telemetry source (UTSUSHI-231)", () => {
         startedAt: "2026-06-27T12:00:00.000Z",
         completedAt: "2026-06-27T12:00:01.000Z",
         amountUsd: "0.00000700",
-        amountMicrosUsd: 7,
+        amountMicrosUsd: 7, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
         upstreamProvider: "Fireworks",
       }),
       providerRunArtifact({
@@ -1151,7 +1151,7 @@ describe("provider-run-artifact telemetry source (UTSUSHI-231)", () => {
         startedAt: "2026-06-27T12:00:02.000Z",
         completedAt: "2026-06-27T12:00:03.000Z",
         amountUsd: "0.00000300",
-        amountMicrosUsd: 3,
+        amountMicrosUsd: 3, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
         // upstreamProvider omitted entirely
       }),
     ];
@@ -1173,7 +1173,7 @@ describe("provider-run-artifact telemetry source (UTSUSHI-231)", () => {
         startedAt: "2026-06-27T12:00:00.000Z",
         completedAt: "2026-06-27T12:00:01.000Z",
         amountUsd: "0.00000600",
-        amountMicrosUsd: 6,
+        amountMicrosUsd: 6, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
         upstreamProvider: "DigitalOcean",
       }),
       providerRunArtifact({
@@ -1181,7 +1181,7 @@ describe("provider-run-artifact telemetry source (UTSUSHI-231)", () => {
         startedAt: "2026-06-27T12:00:02.000Z",
         completedAt: "2026-06-27T12:00:03.000Z",
         amountUsd: "0.00000500",
-        amountMicrosUsd: 5,
+        amountMicrosUsd: 5, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
         upstreamProvider: "Fireworks",
       }),
     ];
@@ -1209,7 +1209,7 @@ describe("provider-run-artifact telemetry source (UTSUSHI-231)", () => {
         startedAt: "2026-06-27T12:00:00.000Z",
         completedAt: "2026-06-27T12:00:01.000Z",
         amountUsd: "0.00000500",
-        amountMicrosUsd: 5,
+        amountMicrosUsd: 5, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
         cacheReadTokens: 50,
         cacheDiscountMicrosUsd: 3,
       }),
@@ -1228,7 +1228,7 @@ describe("provider-run-artifact telemetry source (UTSUSHI-231)", () => {
         startedAt: "2026-06-27T12:00:00.000Z",
         completedAt: "2026-06-27T12:00:05.000Z",
         amountUsd: "0.00000100",
-        amountMicrosUsd: 1,
+        amountMicrosUsd: 1, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
       }),
     ];
     const output = buildTelemetrySummaryFromProviderRunArtifacts({

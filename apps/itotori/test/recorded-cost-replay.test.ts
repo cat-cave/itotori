@@ -177,7 +177,7 @@ describe("ITOTORI-228 — RecordedModelProvider replays captured real cost", () 
       costKind: "billed",
       currency: "USD",
       amountUsd: "0.012345",
-      amountMicrosUsd: 12_345,
+      amountMicrosUsd: 12_345, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
     };
     const request = baseRequest();
     const provider = new RecordedModelProvider({
@@ -371,7 +371,7 @@ describe("ITOTORI-228 — RecordedModelProvider replays captured real cost", () 
           },
           // ITOTORI-232 — supply a valid usageResponseJson so the
           // costKind check fires before the usage-block check.
-          usageResponseJson: { cost: 0.000005 },
+          usageResponseJson: { cost: 0.000005 }, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
         },
       },
     } as unknown as RecordedProviderBundle;
@@ -526,7 +526,7 @@ describe("ITOTORI-228 — RecordedModelProvider replays captured real cost", () 
           content: "captured-response",
           finishReason: "stop",
           // captured ProviderCost claims $0.01 USD …
-          cost: { costKind: "billed", currency: "USD", amountUsd: "0.01", amountMicrosUsd: 10_000 },
+          cost: { costKind: "billed", currency: "USD", amountUsd: "0.01", amountMicrosUsd: 10_000 }, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
           routingPosture: {
             order: [request.providerId],
             allow_fallbacks: false,
@@ -537,7 +537,7 @@ describe("ITOTORI-228 — RecordedModelProvider replays captured real cost", () 
           // … but the captured usage block says $99 USD. The replay
           // would silently disagree with itself; bundle construction
           // must reject this before any caller sees the bundle.
-          usageResponseJson: { cost: 99 },
+          usageResponseJson: { cost: 99 }, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
         },
       },
     } as unknown as RecordedProviderBundle;
@@ -553,12 +553,12 @@ describe("ITOTORI-228 — RecordedModelProvider replays captured real cost", () 
 
     const left: RecordedProviderBundle = bundleWith(
       request,
-      { costKind: "billed", currency: "USD", amountUsd: "0.0001", amountMicrosUsd: 100 },
+      { costKind: "billed", currency: "USD", amountUsd: "0.0001", amountMicrosUsd: 100 }, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
       { bundleId: "left-bundle" },
     );
     const right: RecordedProviderBundle = bundleWith(
       request,
-      { costKind: "billed", currency: "USD", amountUsd: "0.0002", amountMicrosUsd: 200 },
+      { costKind: "billed", currency: "USD", amountUsd: "0.0002", amountMicrosUsd: 200 }, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
       { bundleId: "right-bundle" },
     );
 
@@ -584,7 +584,7 @@ describe("ITOTORI-228 — RecordedModelProvider replays captured real cost", () 
       costKind: "billed",
       currency: "USD",
       amountUsd: "0.000007",
-      amountMicrosUsd: 7,
+      amountMicrosUsd: 7, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
     };
     const left = bundleWith(request, cost, { bundleId: "left-bundle" });
     const right = bundleWith(request, cost, { bundleId: "right-bundle" });

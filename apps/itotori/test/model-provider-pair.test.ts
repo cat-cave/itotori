@@ -87,7 +87,7 @@ describe("ITOTORI-220 — (modelId, providerId) pair contract", () => {
             message: { role: "assistant", content: "ok" },
           },
         ],
-        usage: { prompt_tokens: 3, completion_tokens: 1, total_tokens: 4, cost: 0.000003 },
+        usage: { prompt_tokens: 3, completion_tokens: 1, total_tokens: 4, cost: 0.000003 }, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
         openrouter_metadata: {
           endpoints: {
             available: [{ provider: "OpenAI", model: "openai/gpt-4o-mini", selected: true }],
@@ -125,7 +125,7 @@ describe("ITOTORI-220 — (modelId, providerId) pair contract", () => {
             message: { role: "assistant", content: "ok" },
           },
         ],
-        usage: { prompt_tokens: 3, completion_tokens: 1, total_tokens: 4, cost: 0.000003 },
+        usage: { prompt_tokens: 3, completion_tokens: 1, total_tokens: 4, cost: 0.000003 }, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
         openrouter_metadata: {
           endpoints: {
             available: [{ provider: "Together", model: "openai/gpt-4o-mini", selected: true }],

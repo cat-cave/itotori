@@ -31,7 +31,7 @@ export const costReportFixture: ProjectCostReport = {
     {
       costKind: "billed",
       runCount: 2,
-      amountMicrosUsd: 2180,
+      amountMicrosUsd: 2180, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
       promptTokens: 22,
       completionTokens: 14,
       totalTokens: 36,
@@ -67,7 +67,7 @@ export const costReportFixture: ProjectCostReport = {
       fallbackUsed: false,
       fallbackPlan: ["itotori-fake-draft-v0"],
       costKind: "billed",
-      amountMicrosUsd: 1200,
+      amountMicrosUsd: 1200, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
       tokenCountSource: "provider_reported",
       promptTokens: 12,
       completionTokens: 8,
@@ -109,7 +109,7 @@ export const costReportFixture: ProjectCostReport = {
       // run actually carried a real upstream charge captured from
       // `usage.cost`, so it correctly tags as `billed`.
       costKind: "billed",
-      amountMicrosUsd: 980,
+      amountMicrosUsd: 980, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
       tokenCountSource: "estimated",
       promptTokens: 10,
       completionTokens: 6,

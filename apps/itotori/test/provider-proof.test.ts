@@ -230,7 +230,7 @@ describe("provider-proof harness (live mode opt-in)", () => {
         id: "gen-provider-proof",
         model: "deepseek/deepseek-v4-flash",
         choices: [{ finish_reason: "stop", message: { role: "assistant", content } }],
-        usage: { prompt_tokens: 30, completion_tokens: 18, total_tokens: 48, cost: 0.00001 },
+        usage: { prompt_tokens: 30, completion_tokens: 18, total_tokens: 48, cost: 0.00001 }, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
         openrouter_metadata: {
           requested: "deepseek/deepseek-v4-flash",
           strategy: "direct",

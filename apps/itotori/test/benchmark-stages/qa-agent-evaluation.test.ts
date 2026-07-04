@@ -55,7 +55,7 @@ function providerRun() {
       completionTokens: 10,
       totalTokens: 30,
     },
-    cost: { costKind: "billed" as const, currency: "USD" as const, amountMicrosUsd: 980 },
+    cost: { costKind: "billed" as const, currency: "USD" as const, amountMicrosUsd: 980 }, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
   };
 }
 

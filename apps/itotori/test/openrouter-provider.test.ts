@@ -578,7 +578,7 @@ describe("OpenRouterModelProvider — request shape (ITOTORI-220 pair pin)", () 
             // Served by deepinfra, NOT the preferred 'fireworks'.
             provider: "deepinfra",
             choices: [{ finish_reason: "stop", message: { role: "assistant", content: "hi" } }],
-            usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15, cost: 0.001 },
+            usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15, cost: 0.001 }, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
             openrouter_metadata: {
               requested: DEV_PAIR.modelId,
               strategy: "fallback",
@@ -710,7 +710,7 @@ describe("OpenRouterModelProvider — request shape (ITOTORI-220 pair pin)", () 
             model: DEV_PAIR.modelId,
             provider: "deepinfra",
             choices: [{ finish_reason: "stop", message: { role: "assistant", content: "hi" } }],
-            usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15, cost: 0.001 },
+            usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15, cost: 0.001 }, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
             openrouter_metadata: { strategy: "fallback", attempt: 2 },
           }),
           { status: 200, headers: { "Content-Type": "application/json" } },
@@ -790,7 +790,7 @@ describe("OpenRouterModelProvider — request shape (ITOTORI-220 pair pin)", () 
                 message: { role: "assistant", content: rawResponse },
               },
             ],
-            usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15, cost: 0.000006 },
+            usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15, cost: 0.000006 }, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
           }),
           { status: 200, headers: { "Content-Type": "application/json" } },
         ),
@@ -815,7 +815,7 @@ describe("OpenRouterModelProvider — request shape (ITOTORI-220 pair pin)", () 
       prompt_tokens: 10,
       completion_tokens: 5,
       total_tokens: 15,
-      cost: 0.000006,
+      cost: 0.000006, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
     });
     expect(artifact.request.rawTextCaptured).toBe(false);
     const serialized = JSON.stringify(artifact);
@@ -852,11 +852,11 @@ describe("OpenRouterModelProvider — per-process cost cap", () => {
         costKind: "billed",
         currency: "USD",
         amountUsd: "0.000003",
-        amountMicrosUsd: 3,
+        amountMicrosUsd: 3, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
         cacheDiscountMicrosUsd: 0,
       });
       expect(error.providerRun?.usageResponseJson).toMatchObject({
-        cost: 0.000003,
+        cost: 0.000003, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
         _cost_cap_exceeded: true,
       });
     }
@@ -867,11 +867,11 @@ describe("OpenRouterModelProvider — per-process cost cap", () => {
       costKind: "billed",
       currency: "USD",
       amountUsd: "0.000003",
-      amountMicrosUsd: 3,
+      amountMicrosUsd: 3, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
       cacheDiscountMicrosUsd: 0,
     });
     expect(recorder.artifacts[0]?.run.usageResponseJson).toMatchObject({
-      cost: 0.000003,
+      cost: 0.000003, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
       _cost_cap_exceeded: true,
     });
   });
@@ -973,14 +973,14 @@ describe("OpenRouterModelProvider — ITOTORI-225 real-cost contract", () => {
       expectedMicros: number;
       expectedAmountUsd: string;
     }> = [
-      { cost: 0.000019, expectedMicros: 19, expectedAmountUsd: "0.000019" },
+      { cost: 0.000019, expectedMicros: 19, expectedAmountUsd: "0.000019" }, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
       { cost: "0.000006", expectedMicros: 6, expectedAmountUsd: "0.000006" },
       { cost: 0, expectedMicros: 0, expectedAmountUsd: "0" },
       // ITOTORI-232 — sub-micro values: `amountMicrosUsd` rounds (and can
       // truncate to 0) but `amountUsd` carries the EXACT upstream decimal
       // so the ledger persists full precision.
-      { cost: 0.00000049, expectedMicros: 0, expectedAmountUsd: "0.00000049" },
-      { cost: 0.0000005, expectedMicros: 1, expectedAmountUsd: "0.0000005" },
+      { cost: 0.00000049, expectedMicros: 0, expectedAmountUsd: "0.00000049" }, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
+      { cost: 0.0000005, expectedMicros: 1, expectedAmountUsd: "0.0000005" }, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
     ];
     for (const { cost, expectedMicros, expectedAmountUsd } of cases) {
       const fetchMock = vi.fn(async () =>

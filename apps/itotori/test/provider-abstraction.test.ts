@@ -108,7 +108,7 @@ describe("OpenRouterModelProvider wire-level provider.zdr posture (ITOTORI-227)"
             message: { role: "assistant", content: "Hello." },
           },
         ],
-        usage: { prompt_tokens: 4, completion_tokens: 2, total_tokens: 6, cost: 0.000003 },
+        usage: { prompt_tokens: 4, completion_tokens: 2, total_tokens: 6, cost: 0.000003 }, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
         provider: "fireworks",
       });
     }) as unknown as typeof fetch;
@@ -213,7 +213,7 @@ describe("OpenRouterProvider", () => {
           prompt_tokens: 11,
           completion_tokens: 7,
           total_tokens: 18,
-          cost: 0.000019,
+          cost: 0.000019, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
         },
         openrouter_metadata: {
           requested: "openai/gpt-4o-mini",
@@ -254,7 +254,7 @@ describe("OpenRouterProvider", () => {
       costKind: "billed",
       currency: "USD",
       amountUsd: "0.000019",
-      amountMicrosUsd: 19,
+      amountMicrosUsd: 19, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
       // ITOTORI-233 — synthetic response has no usage.cost_details so
       // the cache discount lands as 0.
       cacheDiscountMicrosUsd: 0,
@@ -314,7 +314,7 @@ describe("OpenRouterProvider", () => {
             prompt_tokens: 11,
             completion_tokens: 7,
             total_tokens: 18,
-            cost: 0.000019,
+            cost: 0.000019, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
           },
         }),
       ) as unknown as typeof fetch;
@@ -365,7 +365,7 @@ describe("OpenRouterProvider", () => {
           prompt_tokens: 11,
           completion_tokens: 7,
           total_tokens: 18,
-          cost: 0.000019,
+          cost: 0.000019, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
         },
       }),
     ) as unknown as typeof fetch;
@@ -595,7 +595,7 @@ describe("OpenRouterProvider", () => {
             },
           },
         ],
-        usage: { prompt_tokens: 5, completion_tokens: 3, total_tokens: 8, cost: 0.000005 },
+        usage: { prompt_tokens: 5, completion_tokens: 3, total_tokens: 8, cost: 0.000005 }, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
       });
     }) as unknown as typeof fetch;
     const provider = new OpenRouterProvider({
@@ -633,7 +633,7 @@ describe("OpenRouterProvider", () => {
             },
           },
         ],
-        usage: { prompt_tokens: 5, completion_tokens: 3, total_tokens: 8, cost: 0.000005 },
+        usage: { prompt_tokens: 5, completion_tokens: 3, total_tokens: 8, cost: 0.000005 }, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
       });
     }) as unknown as typeof fetch;
     const provider = new OpenRouterProvider({
@@ -684,7 +684,7 @@ describe("OpenRouterProvider", () => {
             },
           },
         ],
-        usage: { prompt_tokens: 5, completion_tokens: 3, total_tokens: 8, cost: 0.000005 },
+        usage: { prompt_tokens: 5, completion_tokens: 3, total_tokens: 8, cost: 0.000005 }, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
       });
     }) as unknown as typeof fetch;
     const provider = new OpenRouterProvider({
@@ -763,7 +763,7 @@ describe("OpenRouterProvider", () => {
           prompt_tokens: 9,
           completion_tokens: 5,
           total_tokens: 14,
-          cost: 0.000014,
+          cost: 0.000014, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
         },
         openrouter_metadata: {
           requested: "openai/gpt-4o-mini",

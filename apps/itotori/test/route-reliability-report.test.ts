@@ -170,7 +170,7 @@ describe("ITOTORI-100 — cost reconciliation (cross-check, not restate)", () =>
         costKind: "billed",
         currency: "USD",
         amountUsd: "0.00000602",
-        amountMicrosUsd: 6,
+        amountMicrosUsd: 6, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
       } as ProviderCost,
     });
     const ledger: ProviderLedgerEntry = {
@@ -191,7 +191,7 @@ describe("ITOTORI-100 — cost reconciliation (cross-check, not restate)", () =>
   it("flags a cost mismatch (cross-check catches a ledger that disagrees with the artifact)", () => {
     const art = artifact({
       cellId: "cost-drift",
-      cost: { costKind: "billed", currency: "USD", amountUsd: "0.00000602", amountMicrosUsd: 6 },
+      cost: { costKind: "billed", currency: "USD", amountUsd: "0.00000602", amountMicrosUsd: 6 }, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
     });
     const ledger: ProviderLedgerEntry = { ...ledgerFor(art), costAmountUsd: "0.00009999" };
     const report = reconcileRouteCost({ ...input([art]), ledgerEntries: [ledger] });
@@ -346,7 +346,7 @@ describe("ITOTORI-100 — micros <-> USD helpers (the only cost arithmetic)", ()
 // ─────────────────────────────────────────────────────────────────────────
 
 function billedCost(): ProviderCost {
-  return { costKind: "billed", currency: "USD", amountUsd: "0.00000602", amountMicrosUsd: 6 };
+  return { costKind: "billed", currency: "USD", amountUsd: "0.00000602", amountMicrosUsd: 6 }; // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
 }
 
 function dbRowWith(

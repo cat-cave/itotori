@@ -53,37 +53,81 @@ const ALLOW_LIST = [
   "packages/itotori-db/migrations/0006_model_registry_cost_ledger.sql",
 ];
 
-// Cost-literal exemption: paths that legitimately synthesize provider
-// cost responses / ledger rows to exercise the cost-tracking pipeline.
-// A test that cannot construct a non-zero `amountMicrosUsd` or a bundle's
-// `usage.cost` cannot verify the machinery that records real spend, so the
-// hardcoded-cost-literal patterns (and ONLY those — see `costLiteral`
-// below) are skipped here. The legacy-enum / cost-tier patterns still
-// fire everywhere so a revived `unknown`/`provider_estimate` literal is
-// caught even inside a test. A path is cost-literal-exempt when it lives
-// under a `test/` tree or the top-level `fixtures/` tree.
+// NO blanket cost-literal exemption for `test/` / `fixtures/` trees.
 //
-// NB: no source-tree (`src/`) module is listed here. PROJECT LAW forbids a
-// fabricated cost literal in scanned production source, even in a "test
-// fixture". apps/itotori/src/draft/draft-attempt-fixtures.ts used to be
-// exempted here while it carried invented billed amounts; it now carries
-// only the canonical ZERO_COST sentinel, so it passes the audit with NO
-// exemption. A fixture that needs a non-zero billed cost must source it
-// from a captured recorded-bundle under the allow-listed
-// apps/itotori/test/fixtures/recorded-bundles/ tree, never from a literal.
-const COST_FIXTURE_FILES = [];
+// Earlier revisions of this guard skipped the hardcoded-cost-literal
+// patterns for ANY path under a `test/` tree or the top-level `fixtures/`
+// tree. That blanket exemption directly contradicted the guard's own
+// standing rule ("no hardcoded model cost anywhere ... ever"): fabricated
+// billed-cost literals could live undetected across the entire test corpus.
+// It is removed.
+//
+// A test or fixture that genuinely needs a non-zero billed cost has these
+// auditable options:
+//   (a) SOURCE it from a captured recorded-bundle under the allow-listed
+//       apps/itotori/test/fixtures/recorded-bundles/ tree (real spend,
+//       preserved verbatim — see ALLOW_LIST above), OR
+//   (b) carry an EXPLICIT per-line `// itotori-225-audit-allow: <reason>`
+//       marker on the offending line — a documented, reviewer-auditable
+//       per-line opt-out (NOT a blanket tree exemption). The reason string
+//       is mandatory so a reviewer can judge each exemption individually.
+//   (c) for a JSON fixture ONLY — JSON has no line-comment syntax, so a
+//       per-line marker is physically impossible — an EXPLICIT per-file
+//       entry in COST_LITERAL_ALLOW below (path -> reason). This exempts
+//       that one file from the cost-literal patterns ONLY; the legacy-enum
+//       / token-fabrication patterns still fire on it. It is an enumerated,
+//       individually-justified file list, NOT a blanket `test/`/`fixtures/`
+//       tree exemption: a NEW un-listed JSON fixture with a cost literal
+//       still fails the guard.
+//
+// PROJECT LAW is unchanged: a fabricated cost literal in scanned production
+// source (`src/`) is never permitted, and there is no path-level cost-literal
+// allowance for any `src/` module. The cost-literal patterns fire in EVERY
+// scanned file except the enumerated JSON fixtures in (c); a new un-annotated
+// cost literal in a `.ts`/`.tsx`/`.js` test tree fails the guard exactly as
+// it would in production source.
 
-function isCostFixturePath(path) {
-  if (COST_FIXTURE_FILES.includes(path)) return true;
-  if (path === "fixtures" || path.startsWith("fixtures/")) return true;
-  return /(?:^|\/)test\//u.test(path);
-}
+// COST_LITERAL_ALLOW — explicit, enumerated JSON fixtures permitted to carry
+// synthetic non-zero cost literals. These are deterministic PUBLIC fixtures
+// (no live credentials, no real captured spend) that replay through the
+// recorded-cost / benchmark / experiment paths and therefore must embed a
+// non-zero `amountMicrosUsd` / `cost` to exercise the ledger. Because JSON
+// cannot host a `// itotori-225-audit-allow:` marker, each such file is
+// listed here with its reason. Cost-literal patterns are skipped for these
+// exact paths; every other pattern (revived `unknown` costKind, token
+// fabrication, cost-tier) still fires. A `.ts`/`.tsx` fixture is NEVER
+// eligible here — it can and must carry per-line markers instead.
+const COST_LITERAL_ALLOW = new Map([
+  [
+    "fixtures/benchmark-stages/public-fixture.json",
+    "deterministic public benchmark-stages fixture; synthetic recorded-run costs exercise the raw-MTL-vs-draft report",
+  ],
+  [
+    "fixtures/itotori-experiment-report/experiment-matrix-run-manifest.json",
+    "deterministic experiment-matrix run manifest fixture; synthetic per-cell costs exercise the experiment-report roll-up",
+  ],
+  [
+    "fixtures/itotori-style-guide/provider-smoke-suggestion.json",
+    "deterministic style-guide provider-smoke fixture; synthetic provider-result cost exercises the smoke-suggestion path",
+  ],
+  [
+    "fixtures/provider-proof/recorded-fallback-proof-input.json",
+    "deterministic provider-proof replay input (fallback); synthetic per-attempt costs exercise the recorded-fallback proof",
+  ],
+  [
+    "fixtures/provider-proof/recorded-proof-input.json",
+    "deterministic provider-proof replay input; synthetic per-attempt costs exercise the recorded-provider proof",
+  ],
+  [
+    "fixtures/provider-proof/recorded-raw-mtl-baseline-input.json",
+    "deterministic raw-MTL-baseline replay input; synthetic per-attempt costs exercise the raw-MTL baseline proof",
+  ],
+]);
 
 // Patterns: each pattern fires a violation if matched on a line outside the
-// allow-list. `label` is human-readable for the error report. Patterns
-// flagged `costLiteral: true` target hardcoded cost numbers and are skipped
-// for cost-fixture paths (see `isCostFixturePath`); all other patterns fire
-// everywhere a file is scanned.
+// allow-list, unless the line carries the per-line audit-allow marker.
+// `label` is human-readable for the error report. Every pattern fires in
+// every scanned file; there is no per-tree exemption.
 //
 // The cost-literal patterns deliberately match only NON-ZERO numbers:
 // `amountMicrosUsd: 0` / `cost: 0` / `amount: "0.00000000"` are the
@@ -143,8 +187,8 @@ const FORBIDDEN_PATTERNS = [
     // provider output (mirror of the no-hardcoded-cost rule). The legitimate
     // pre-flight uses (`estimateTokens(...)` in batch-planner, and the
     // explicitly-named `inputTokenEstimate = estimateTokens(...)`) do NOT use
-    // the `?? estimateTokens(` fallback form, so they are untouched. Fires
-    // everywhere (not a cost-literal), so it cannot regress in a test either.
+    // the `?? estimateTokens(` fallback form, so they are untouched. Like
+    // every pattern here it fires in every scanned file, tests included.
     label: "token-count fabrication: `?? estimateTokens(...)` fallback in a recording path",
     regex: /\?\?\s*estimateTokens\s*\(/u,
   },
@@ -201,7 +245,10 @@ function shouldScan(path) {
 // cost-literal patterns apply). Exported for the regression suite.
 export function findViolations(path, contents) {
   const found = [];
-  const costFixture = isCostFixturePath(path);
+  // Enumerated JSON fixtures (option (c)) skip the cost-literal patterns
+  // ONLY. Every other pattern still fires on them. `.ts`/`.tsx`/`.js` paths
+  // are never eligible — they use per-line markers.
+  const costLiteralAllowed = COST_LITERAL_ALLOW.has(path);
   const lines = contents.split(/\r?\n/u);
   for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
     const line = lines[lineIndex];
@@ -219,16 +266,18 @@ export function findViolations(path, contents) {
     ) {
       continue;
     }
-    // Per-line escape hatch: `// itotori-225-audit-allow: <reason>`
-    // marks a line whose legacy-enum or hardcoded-cost reference is
-    // load-bearing (e.g. a boundary test asserting the narrower rejects
-    // the legacy value). Reasons must be supplied so a reviewer can
-    // judge the exemption.
-    if (/itotori-225-audit-allow:/u.test(line)) {
+    // Per-line escape hatch: `// itotori-225-audit-allow: <reason>` marks a
+    // single line whose legacy-enum or hardcoded-cost reference is
+    // load-bearing (e.g. a boundary test asserting the narrower rejects the
+    // legacy value, or a synthetic fixture that must carry a non-zero billed
+    // amount to exercise the ledger). This is the ONLY per-line opt-out; a
+    // non-empty reason must follow the marker so a reviewer can judge each
+    // exemption individually. There is no blanket per-tree exemption.
+    if (/itotori-225-audit-allow:\s*\S/u.test(line)) {
       continue;
     }
     for (const pattern of FORBIDDEN_PATTERNS) {
-      if (pattern.costLiteral && costFixture) continue;
+      if (pattern.costLiteral && costLiteralAllowed) continue;
       if (pattern.regex.test(line)) {
         found.push({
           file: path,

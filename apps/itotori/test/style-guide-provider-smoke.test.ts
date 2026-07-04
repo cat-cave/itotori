@@ -115,7 +115,7 @@ describe("style-guide provider smoke", () => {
       },
       cost: {
         costKind: "billed",
-        amountMicrosUsd: 42,
+        amountMicrosUsd: 42, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
       },
       // ITOTORI-227 — per-pair `dataHandling` / privacy axes are gone;
       // privacy is enforced account-wide (ZDR assertion) plus
@@ -161,7 +161,7 @@ describe("style-guide provider smoke", () => {
           prompt_tokens: 100,
           completion_tokens: 42,
           total_tokens: 142,
-          cost: 0.000123,
+          cost: 0.000123, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
         },
         openrouter_metadata: {
           requested: "openai/gpt-4o-mini",
@@ -197,7 +197,7 @@ describe("style-guide provider smoke", () => {
       costKind: "billed",
       currency: "USD",
       amountUsd: "0.000123",
-      amountMicrosUsd: 123,
+      amountMicrosUsd: 123, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
       // ITOTORI-233 — synthetic response has no usage.cost_details so
       // the cache discount lands as 0.
       cacheDiscountMicrosUsd: 0,
@@ -209,7 +209,7 @@ describe("style-guide provider smoke", () => {
             costKind: "billed",
             currency: "USD",
             amountUsd: "0.000123",
-            amountMicrosUsd: 123,
+            amountMicrosUsd: 123, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
             cacheDiscountMicrosUsd: 0,
           },
         }),

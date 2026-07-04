@@ -302,7 +302,7 @@ const BILLED_COST: ProviderCost = {
   costKind: "billed",
   currency: "USD",
   amountUsd: "0.00000602",
-  amountMicrosUsd: 6,
+  amountMicrosUsd: 6, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
 };
 
 function devPairGuard(): CapabilityGuard {

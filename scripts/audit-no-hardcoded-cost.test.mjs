@@ -2,9 +2,12 @@
 //
 // Proves the three canonical cost shapes the guard previously MISSED are
 // now caught, that the legitimate ZERO_COST shapes are not, that the
-// cost-literal patterns are skipped inside synthetic fixture trees, and
-// that the legacy-enum patterns still fire everywhere (so the fixture
-// exemption does not weaken the rip-out guard).
+// cost-literal patterns now fire INSIDE test/fixture trees too (the old
+// blanket `test/`+`fixtures/` exemption is gone), that the per-line
+// `itotori-225-audit-allow:` marker (with a mandatory non-empty reason) is
+// the only per-line opt-out, that the enumerated comment-incapable JSON
+// fixtures (COST_LITERAL_ALLOW) are exempted per-file but an UN-listed JSON
+// fixture is not, and that the legacy-enum patterns still fire everywhere.
 
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -90,14 +93,41 @@ test("does not flag cost/amount object forms or variable assignments", () => {
   assert.deepEqual(labels(PROD_PATH, '    refund: { unit: "usd", amount: "5.00" },'), []);
 });
 
-test("skips cost-literal patterns inside fixture/test trees", () => {
+test("FIRES cost-literal patterns inside test/fixture trees (no blanket exemption)", () => {
+  // The old blanket `test/`+`fixtures/` cost-literal exemption is removed: an
+  // UN-annotated cost literal in a test tree now fails exactly as in src/.
   const shape = "    amountMicrosUsd: 12_500,";
-  assert.deepEqual(labels("apps/itotori/test/some.test.ts", shape), []);
-  assert.deepEqual(labels("packages/itotori-db/test/x.test.ts", shape), []);
-  assert.deepEqual(
-    labels("fixtures/itotori-style-guide/provider-smoke-suggestion.json", shape),
-    [],
-  );
+  assert.deepEqual(labels("apps/itotori/test/some.test.ts", shape), [
+    "hardcoded non-zero amountMicrosUsd literal",
+  ]);
+  assert.deepEqual(labels("packages/itotori-db/test/x.test.ts", shape), [
+    "hardcoded non-zero amountMicrosUsd literal",
+  ]);
+  // An arbitrary (un-listed) JSON fixture under fixtures/ also fires now.
+  assert.deepEqual(labels("fixtures/some-new-fixture.json", '  "amountMicrosUsd": 12500,'), [
+    "hardcoded non-zero amountMicrosUsd literal",
+  ]);
+});
+
+test("per-line audit-allow marker (with a reason) passes; without one it still fires", () => {
+  const withMarker =
+    "    amountMicrosUsd: 12_500, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount";
+  assert.deepEqual(labels("apps/itotori/test/some.test.ts", withMarker), []);
+  // A bare marker with NO reason is inert — the literal still fires.
+  const noReason = "    amountMicrosUsd: 12_500, // itotori-225-audit-allow:";
+  assert.deepEqual(labels("apps/itotori/test/some.test.ts", noReason), [
+    "hardcoded non-zero amountMicrosUsd literal",
+  ]);
+});
+
+test("enumerated JSON fixtures skip cost-literal patterns but nothing else", () => {
+  // COST_LITERAL_ALLOW files (JSON has no line-comment syntax) skip ONLY the
+  // cost-literal patterns; a revived legacy enum in them still fires.
+  const listed = "fixtures/itotori-style-guide/provider-smoke-suggestion.json";
+  assert.deepEqual(labels(listed, '    "amountMicrosUsd": 42,'), []);
+  assert.deepEqual(labels(listed, '    "cost": 0.000123,'), []);
+  // A non-cost-literal pattern (deprecated costTier) still fires on the file.
+  assert.deepEqual(labels(listed, '    "costTier": 2,'), ["deprecated costTier field/enum"]);
 });
 
 test("fires cost-literal patterns inside scanned src/ even for fixture modules", () => {

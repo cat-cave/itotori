@@ -81,7 +81,7 @@ function baseLedgerInput(draftJobAttemptId: string): RecordLedgerEntryInput {
       prompt_tokens: 500,
       completion_tokens: 200,
       total_tokens: 700,
-      cost: 0.0125,
+      cost: 0.0125, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
     },
     latencyMs: 1200,
     fallbackChain: [],
@@ -124,7 +124,7 @@ describe.skipIf(!process.env.DATABASE_URL)("ItotoriDraftAttemptProviderLedgerRep
         prompt_tokens: 500,
         completion_tokens: 200,
         total_tokens: 700,
-        cost: 0.0125,
+        cost: 0.0125, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
       });
       expect(entry.latencyMs).toBe(1200);
       expect(entry.fallbackChain).toEqual([]);
@@ -160,7 +160,7 @@ describe.skipIf(!process.env.DATABASE_URL)("ItotoriDraftAttemptProviderLedgerRep
           prompt_tokens: 500,
           completion_tokens: 200,
           total_tokens: 700,
-          cost: 0.00000602,
+          cost: 0.00000602, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
         },
       });
 
@@ -194,7 +194,7 @@ describe.skipIf(!process.env.DATABASE_URL)("ItotoriDraftAttemptProviderLedgerRep
             prompt_tokens: 500,
             completion_tokens: 200,
             total_tokens: 700,
-            cost: 0.00000602,
+            cost: 0.00000602, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
           },
         });
       } catch (error) {
@@ -325,7 +325,7 @@ describe.skipIf(!process.env.DATABASE_URL)("ItotoriDraftAttemptProviderLedgerRep
           prompt_tokens: 500,
           completion_tokens: 200,
           total_tokens: 700,
-          cost: 0.005,
+          cost: 0.005, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
         },
       });
 
@@ -426,21 +426,21 @@ describe.skipIf(!process.env.DATABASE_URL)("ItotoriDraftAttemptProviderLedgerRep
         providerProofId: "proof-a",
         modelId: "anthropic/claude-3.5-sonnet",
         costAmount: "0.01000000",
-        usageResponseJson: { prompt_tokens: 500, completion_tokens: 200, cost: 0.01 },
+        usageResponseJson: { prompt_tokens: 500, completion_tokens: 200, cost: 0.01 }, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
       });
       await repo.recordLedgerEntry(localActor, {
         ...baseLedgerInput(attemptId),
         providerProofId: "proof-b",
         modelId: "anthropic/claude-3.5-sonnet",
         costAmount: "0.02000000",
-        usageResponseJson: { prompt_tokens: 500, completion_tokens: 200, cost: 0.02 },
+        usageResponseJson: { prompt_tokens: 500, completion_tokens: 200, cost: 0.02 }, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
       });
       await repo.recordLedgerEntry(localActor, {
         ...baseLedgerInput(attemptId),
         providerProofId: "proof-c",
         modelId: "openai/gpt-4o-mini",
         costAmount: "0.00500000",
-        usageResponseJson: { prompt_tokens: 500, completion_tokens: 200, cost: 0.005 },
+        usageResponseJson: { prompt_tokens: 500, completion_tokens: 200, cost: 0.005 }, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
       });
 
       const window = {
@@ -489,7 +489,7 @@ describe.skipIf(!process.env.DATABASE_URL)("ItotoriDraftAttemptProviderLedgerRep
         ...nullModelInput,
         providerProofId: "proof-null-model",
         costAmount: "0.01000000",
-        usageResponseJson: { prompt_tokens: 500, completion_tokens: 200, cost: 0.01 },
+        usageResponseJson: { prompt_tokens: 500, completion_tokens: 200, cost: 0.01 }, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
       } as RecordLedgerEntryInput);
       // A row whose model is LITERALLY the string "unknown".
       await repo.recordLedgerEntry(localActor, {
@@ -497,7 +497,7 @@ describe.skipIf(!process.env.DATABASE_URL)("ItotoriDraftAttemptProviderLedgerRep
         providerProofId: "proof-literal-unknown",
         modelId: "unknown",
         costAmount: "0.02000000",
-        usageResponseJson: { prompt_tokens: 500, completion_tokens: 200, cost: 0.02 },
+        usageResponseJson: { prompt_tokens: 500, completion_tokens: 200, cost: 0.02 }, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
       });
 
       const window = {
@@ -581,21 +581,21 @@ describe.skipIf(!process.env.DATABASE_URL)("ItotoriDraftAttemptProviderLedgerRep
         providerProofId: "proof-prov-a",
         providerId: "anthropic",
         costAmount: "0.01500000",
-        usageResponseJson: { prompt_tokens: 500, completion_tokens: 200, cost: 0.015 },
+        usageResponseJson: { prompt_tokens: 500, completion_tokens: 200, cost: 0.015 }, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
       });
       await repo.recordLedgerEntry(localActor, {
         ...baseLedgerInput(attemptId),
         providerProofId: "proof-prov-b",
         providerId: "anthropic",
         costAmount: "0.02500000",
-        usageResponseJson: { prompt_tokens: 500, completion_tokens: 200, cost: 0.025 },
+        usageResponseJson: { prompt_tokens: 500, completion_tokens: 200, cost: 0.025 }, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
       });
       await repo.recordLedgerEntry(localActor, {
         ...baseLedgerInput(attemptId),
         providerProofId: "proof-prov-c",
         providerId: "openai",
         costAmount: "0.00750000",
-        usageResponseJson: { prompt_tokens: 500, completion_tokens: 200, cost: 0.0075 },
+        usageResponseJson: { prompt_tokens: 500, completion_tokens: 200, cost: 0.0075 }, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
       });
 
       const window = {
@@ -631,7 +631,7 @@ describe.skipIf(!process.env.DATABASE_URL)("ItotoriDraftAttemptProviderLedgerRep
         tokensIn: 100,
         tokensOut: 50,
         latencyMs: 1000,
-        usageResponseJson: { prompt_tokens: 100, completion_tokens: 50, cost: 0.01 },
+        usageResponseJson: { prompt_tokens: 100, completion_tokens: 50, cost: 0.01 }, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
       });
       await repo.recordLedgerEntry(localActor, {
         ...baseLedgerInput(attemptId),
@@ -642,7 +642,7 @@ describe.skipIf(!process.env.DATABASE_URL)("ItotoriDraftAttemptProviderLedgerRep
         tokensIn: 200,
         tokensOut: 100,
         latencyMs: 3000,
-        usageResponseJson: { prompt_tokens: 200, completion_tokens: 100, cost: 0.02 },
+        usageResponseJson: { prompt_tokens: 200, completion_tokens: 100, cost: 0.02 }, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
       });
       await repo.recordLedgerEntry(localActor, {
         ...baseLedgerInput(attemptId),
@@ -653,7 +653,7 @@ describe.skipIf(!process.env.DATABASE_URL)("ItotoriDraftAttemptProviderLedgerRep
         tokensIn: 50,
         tokensOut: 25,
         latencyMs: 500,
-        usageResponseJson: { prompt_tokens: 50, completion_tokens: 25, cost: 0.005 },
+        usageResponseJson: { prompt_tokens: 50, completion_tokens: 25, cost: 0.005 }, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
       });
 
       const window = {
@@ -702,7 +702,7 @@ describe.skipIf(!process.env.DATABASE_URL)("ItotoriDraftAttemptProviderLedgerRep
         modelId: "anthropic/claude-3.5-sonnet",
         providerId: "anthropic",
         costAmount: "0.01000000",
-        usageResponseJson: { prompt_tokens: 500, completion_tokens: 200, cost: 0.01 },
+        usageResponseJson: { prompt_tokens: 500, completion_tokens: 200, cost: 0.01 }, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
       });
       await repo.recordLedgerEntry(localActor, {
         ...baseLedgerInput(attemptId),
@@ -710,7 +710,7 @@ describe.skipIf(!process.env.DATABASE_URL)("ItotoriDraftAttemptProviderLedgerRep
         modelId: "anthropic/claude-3.5-sonnet",
         providerId: "anthropic",
         costAmount: "0.02000000",
-        usageResponseJson: { prompt_tokens: 500, completion_tokens: 200, cost: 0.02 },
+        usageResponseJson: { prompt_tokens: 500, completion_tokens: 200, cost: 0.02 }, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
       });
 
       const window = {
@@ -819,7 +819,7 @@ describe.skipIf(!process.env.DATABASE_URL)("ItotoriDraftAttemptProviderLedgerRep
           usageResponseJson: {
             prompt_tokens: 500,
             completion_tokens: 200,
-            cost: 0.000005,
+            cost: 0.000005, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
           },
         });
       } catch (error) {
@@ -933,7 +933,7 @@ describe.skipIf(!process.env.DATABASE_URL)("ItotoriDraftAttemptProviderLedgerRep
         ...baseLedgerInput(attemptId),
         providerProofId: "provider-proof-tight-match-01",
         costAmount: "0.00001234",
-        usageResponseJson: { cost: 0.00001234 },
+        usageResponseJson: { cost: 0.00001234 }, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
       });
       expect(entry.costAmount).toBe("0.00001234");
     } finally {
