@@ -1,0 +1,19 @@
+{
+  "schemaVersion": "0.1.0",
+  "fixtureId": "kaifuu-siglus-synthetic-profile-proof",
+  "profileId": "019ed000-0000-7000-8000-000000091001",
+  "detectorGameDir": "../../public/kaifuu-encrypted-matrix/raw/siglus",
+  "parser": {
+    "parserProfileId": "019ed000-0000-7000-8000-000000091001",
+    "scene": "../../public/kaifuu-encrypted-matrix/raw/siglus/Scene.pck",
+    "gameexe": "../../public/kaifuu-encrypted-matrix/raw/siglus/Gameexe.dat",
+    "keyRequest": "../../public/kaifuu-helper-results/helper-request/siglus-secondary-key-request.json",
+    "variant": "parser-boundary-success"
+  },
+  "keyProfile": {
+    "keyProfileId": "siglus-secondary-key",
+    "secretRef": "local-secret:fixture/siglus/secondary-key-ref"
+  },
+  "compatTuple": "../compat-profile/siglus.extract.tuple.json",
+  "capabilityLevel": "known-key-extract"
+}

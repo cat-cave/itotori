@@ -1155,9 +1155,12 @@ fn run_siglus_command(args: &[String]) -> Result<(), Box<dyn std::error::Error>>
         "static-key" => {
             return run_siglus_static_key(args);
         }
+        "profile-proof" => {
+            return run_siglus_profile_proof(args);
+        }
         _ => {
             return Err(
-                "usage: kaifuu siglus <parser-boundary-smoke|static-key> ...\n  parser-boundary-smoke --scene <Scene.pck> --gameexe <Gameexe.dat> --key-request <helper-request.json> --output <report.json> [--variant parser-boundary-success|helper-required|missing-key|unsupported-opcode|out-of-profile]\n  static-key --fixture <manifest.json> [--output <report.json>]"
+                "usage: kaifuu siglus <parser-boundary-smoke|static-key|profile-proof> ...\n  parser-boundary-smoke --scene <Scene.pck> --gameexe <Gameexe.dat> --key-request <helper-request.json> --output <report.json> [--variant parser-boundary-success|helper-required|missing-key|unsupported-opcode|out-of-profile]\n  static-key --fixture <manifest.json> [--output <report.json>]\n  profile-proof --fixture <synthetic-profile.json> --out <report.json>"
                     .into(),
             );
         }
@@ -1217,6 +1220,84 @@ fn run_siglus_static_key(args: &[String]) -> Result<(), Box<dyn std::error::Erro
             .collect::<Vec<_>>()
             .join("; ");
         return Err(format!("Siglus static-key discovery failed: {failures}").into());
+    }
+    Ok(())
+}
+
+/// KAIFUU-015 — `kaifuu siglus profile-proof --fixture <synthetic-profile.json>
+/// --out <report.json>`.
+///
+/// COMPOSES the Siglus detector, known-key key-profile, parser-boundary, and
+/// redacted compat-profile validation slices into one honestly-scoped proof
+/// report over a SYNTHETIC profile fixture. It runs each real slice in-process:
+///
+/// 1. the `SiglusProfileDetectorAdapter` over the fixture's `detectorGameDir` →
+///    detector evidence;
+/// 2. `run_siglus_known_key_parser_boundary_smoke` over the fixture's synthetic
+///    `Scene.pck` / `Gameexe.dat` / key-request → parser profile id + key-refs;
+/// 3. `validate_claimed_support_tuple` over the fixture's compat tuple →
+///    capability-level honesty (KAIFUU-105).
+///
+/// The composed report records detector evidence, key-profile id, parser-profile
+/// id, capability level, and a redaction summary. Before the artifact is
+/// written it is deep-scanned (KAIFUU-036/094): a seeded raw key, helper dump,
+/// private path, or decrypted private text makes the composition fail loud and
+/// nothing is persisted. The command claims NO broad commercial Siglus
+/// compatibility — the extract/decrypt/repack core is NotImplemented.
+fn run_siglus_profile_proof(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
+    let fixture_path = PathBuf::from(flag(args, "--fixture")?);
+    let out = PathBuf::from(flag(args, "--out")?);
+    let fixture: kaifuu_core::SiglusProfileProofFixture = read_json(&fixture_path)?;
+    let fixture_dir = fixture_path
+        .parent()
+        .ok_or("fixture path must have a parent directory")?;
+
+    // --- Detector slice -----------------------------------------------------
+    let detector_game_dir = fixture_dir.join(&fixture.detector_game_dir);
+    let detector = kaifuu_engine_fixture::SiglusProfileDetectorAdapter;
+    let detection = detector.detect(kaifuu_core::DetectRequest {
+        game_dir: &detector_game_dir,
+    })?;
+
+    // --- Parser-boundary slice ---------------------------------------------
+    let scene_path = fixture_dir.join(&fixture.parser.scene);
+    let gameexe_path = fixture_dir.join(&fixture.parser.gameexe);
+    let key_request_path = fixture_dir.join(&fixture.parser.key_request);
+    let key_request: serde_json::Value = read_json(&key_request_path)?;
+    let variant = parse_siglus_parser_boundary_variant(&fixture.parser.variant)?;
+    let parser_boundary =
+        run_siglus_known_key_parser_boundary_smoke(SiglusParserBoundarySmokeRequest {
+            scene_path: &scene_path,
+            gameexe_path: &gameexe_path,
+            key_request: Some(&key_request),
+            variant,
+        })?;
+
+    // --- Redacted compat-profile validation slice (KAIFUU-105) -------------
+    let compat_tuple_path = fixture_dir.join(&fixture.compat_tuple);
+    let compat_tuple: kaifuu_core::compat_profile::ClaimedSupportTuple =
+        read_json(&compat_tuple_path)?;
+    let compat_entry = kaifuu_core::compat_profile::validate_claimed_support_tuple(&compat_tuple);
+
+    // --- Compose (fail-loud deep-scan happens inside) ----------------------
+    let report =
+        kaifuu_core::compose_siglus_profile_proof(kaifuu_core::SiglusProfileProofComposeInput {
+            fixture: &fixture,
+            detection: &detection,
+            parser_boundary: &parser_boundary,
+            compat_entry: &compat_entry,
+        })?;
+
+    atomic_write_text(&out, &report.stable_json()?)?;
+    if report.status == kaifuu_core::OperationStatus::Failed {
+        let codes = report
+            .diagnostics
+            .iter()
+            .filter(|diagnostic| diagnostic.severity.is_blocking())
+            .map(|diagnostic| format!("{}:{}", diagnostic.severity.as_str(), diagnostic.code))
+            .collect::<Vec<_>>()
+            .join(", ");
+        return Err(format!("Siglus profile proof failed: {codes}").into());
     }
     Ok(())
 }
@@ -8259,6 +8340,178 @@ mod tests {
                 assert!(!serialized.contains(forbidden), "leaked {forbidden}");
             }
         }
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    /// Build a KAIFUU-015 synthetic profile-proof fixture into `dir`, wiring the
+    /// composed slices at absolute paths to the committed synthetic fixtures. The
+    /// optional `seed_key_profile_id` overrides `keyProfile.keyProfileId` so the
+    /// deep-scan reject tests can inject secret-shaped material; `capability_level`
+    /// overrides the honest default.
+    fn write_siglus_profile_proof_fixture(
+        dir: &Path,
+        seed_key_profile_id: Option<&str>,
+        capability_level: &str,
+    ) -> PathBuf {
+        let raw = public_fixture_path("fixtures/public/kaifuu-encrypted-matrix/raw/siglus");
+        let key_request = public_fixture_path(
+            "fixtures/public/kaifuu-helper-results/helper-request/siglus-secondary-key-request.json",
+        );
+        let compat =
+            public_fixture_path("fixtures/kaifuu/compat-profile/siglus.extract.tuple.json");
+        let fixture = serde_json::json!({
+            "schemaVersion": "0.1.0",
+            "fixtureId": "kaifuu-siglus-synthetic-profile-proof",
+            "profileId": "019ed000-0000-7000-8000-000000091001",
+            "detectorGameDir": raw.to_str().unwrap(),
+            "parser": {
+                "parserProfileId": "019ed000-0000-7000-8000-000000091001",
+                "scene": raw.join("Scene.pck").to_str().unwrap(),
+                "gameexe": raw.join("Gameexe.dat").to_str().unwrap(),
+                "keyRequest": key_request.to_str().unwrap(),
+                "variant": "parser-boundary-success"
+            },
+            "keyProfile": {
+                "keyProfileId": seed_key_profile_id.unwrap_or("siglus-secondary-key"),
+                "secretRef": "local-secret:fixture/siglus/secondary-key-ref"
+            },
+            "compatTuple": compat.to_str().unwrap(),
+            "capabilityLevel": capability_level
+        });
+        let path = dir.join("synthetic-profile.json");
+        fs::write(&path, serde_json::to_string_pretty(&fixture).unwrap()).unwrap();
+        path
+    }
+
+    #[test]
+    fn siglus_profile_proof_composes_slices_into_honest_redacted_report() {
+        let root = temp_dir("siglus-profile-proof-happy");
+        let fixture = write_siglus_profile_proof_fixture(&root, None, "known-key-extract");
+        let out = root.join("profile-proof.json");
+
+        run_with_args(vec![
+            "siglus".to_string(),
+            "profile-proof".to_string(),
+            "--fixture".to_string(),
+            fixture.to_str().unwrap().to_string(),
+            "--out".to_string(),
+            out.to_str().unwrap().to_string(),
+        ])
+        .unwrap();
+
+        let report: serde_json::Value = read_json(&out).unwrap();
+        assert_eq!(report["status"], "passed");
+        // (1) records detector evidence + key-profile-id + parser-profile-id +
+        // capability-level + redaction-summary.
+        assert_eq!(report["detector"]["detected"], true);
+        assert_eq!(report["detector"]["engineFamily"], "siglus");
+        assert!(
+            report["detector"]["evidence"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|evidence| evidence["status"] == "matched")
+        );
+        assert_eq!(report["keyProfile"]["keyProfileId"], "siglus-secondary-key");
+        assert_eq!(report["keyProfile"]["extractCoreStatus"], "not_implemented");
+        assert_eq!(
+            report["parserProfile"]["parserProfileId"],
+            "019ed000-0000-7000-8000-000000091001"
+        );
+        assert_eq!(
+            report["parserProfile"]["outcome"],
+            "parser_boundary_success"
+        );
+        assert_eq!(report["capabilityLevel"], "known-key-extract");
+        assert_eq!(report["redactionSummary"]["deepScanPerformed"], true);
+        assert_eq!(report["redactionSummary"]["secretLeakFindings"], 0);
+        assert_eq!(report["redactionSummary"]["redactionBoundaryOk"], true);
+        // Honest scope: never claims broad commercial Siglus support.
+        assert_eq!(report["broadCommercialClaim"], false);
+        assert_eq!(report["compat"]["honest"], true);
+        assert_eq!(report["compat"]["patchBackMode"], "unsupported");
+
+        // Deterministic: a second run over the same fixture is byte-identical.
+        let out2 = root.join("profile-proof-2.json");
+        run_with_args(vec![
+            "siglus".to_string(),
+            "profile-proof".to_string(),
+            "--fixture".to_string(),
+            fixture.to_str().unwrap().to_string(),
+            "--out".to_string(),
+            out2.to_str().unwrap().to_string(),
+        ])
+        .unwrap();
+        assert_eq!(
+            fs::read_to_string(&out).unwrap(),
+            fs::read_to_string(&out2).unwrap()
+        );
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn siglus_profile_proof_rejects_seeded_secrets_before_write() {
+        // A raw key, helper dump, private path, and decrypted private text seeded
+        // into the input are each REJECTED from the persisted artifact: the
+        // command fails loud and writes nothing.
+        for seed in [
+            "00112233445566778899aabbccddeeff00112233",
+            "helper dump of the secondary key state",
+            "/home/trevor/games/siglus/private/Scene.pck",
+            "decrypted script: secret dialogue",
+        ] {
+            let root = temp_dir("siglus-profile-proof-seed");
+            let fixture =
+                write_siglus_profile_proof_fixture(&root, Some(seed), "known-key-extract");
+            let out = root.join("profile-proof.json");
+
+            let result = run_with_args(vec![
+                "siglus".to_string(),
+                "profile-proof".to_string(),
+                "--fixture".to_string(),
+                fixture.to_str().unwrap().to_string(),
+                "--out".to_string(),
+                out.to_str().unwrap().to_string(),
+            ]);
+            assert!(result.is_err(), "seed {seed:?} should be rejected");
+            assert!(
+                !out.exists(),
+                "seed {seed:?} must persist no artifact before write"
+            );
+            let _ = fs::remove_dir_all(root);
+        }
+    }
+
+    #[test]
+    fn siglus_profile_proof_rejects_capability_overclaim() {
+        // Declaring known-key-patch-verify overclaims past the evidence ceiling
+        // (the extract/patch core is NotImplemented): the proof fails.
+        let root = temp_dir("siglus-profile-proof-overclaim");
+        let fixture = write_siglus_profile_proof_fixture(&root, None, "known-key-patch-verify");
+        let out = root.join("profile-proof.json");
+
+        let result = run_with_args(vec![
+            "siglus".to_string(),
+            "profile-proof".to_string(),
+            "--fixture".to_string(),
+            fixture.to_str().unwrap().to_string(),
+            "--out".to_string(),
+            out.to_str().unwrap().to_string(),
+        ]);
+        assert!(result.is_err());
+        // The Failed report IS written (no secret leak), recording the overclaim.
+        let report: serde_json::Value = read_json(&out).unwrap();
+        assert_eq!(report["status"], "failed");
+        assert!(
+            report["diagnostics"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|diagnostic| diagnostic["semanticCode"]
+                    == kaifuu_core::SEMANTIC_SIGLUS_PROFILE_PROOF_CAPABILITY_OVERCLAIM)
+        );
 
         let _ = fs::remove_dir_all(root);
     }

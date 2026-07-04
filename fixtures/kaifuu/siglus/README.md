@@ -1,5 +1,30 @@
 # Siglus fixtures (KAIFUU-069 static-key, KAIFUU-070 known-key smoke)
 
+## KAIFUU-015 — synthetic profile-proof composition
+
+`synthetic-profile.json` drives `kaifuu siglus profile-proof --fixture
+fixtures/kaifuu/siglus/synthetic-profile.json --out <report.json>`, which
+COMPOSES four already-built Siglus slices into one honestly-scoped, redacted
+proof report over a **synthetic** profile:
+
+- the **detector** slice (`SiglusProfileDetectorAdapter`) over
+  `fixtures/public/kaifuu-encrypted-matrix/raw/siglus` → detector evidence;
+- the **key-boundary** slice (KAIFUU-070 known-key `secretRef`, surfaced through
+  the parser-boundary key-refs) → key-profile id;
+- the **parser-boundary** slice
+  (`run_siglus_known_key_parser_boundary_smoke`) → parser-profile id + outcome;
+- the **redacted validation** slice (KAIFUU-105 compat-profile validator over
+  `../compat-profile/siglus.extract.tuple.json`) → capability-level honesty.
+
+The report records detector evidence, key-profile id, parser-profile id,
+capability level, and a redaction summary. **Honest scope:** it claims **no**
+broad commercial Siglus compatibility — the real Scene.pck/Gameexe.dat
+decrypt/extract/repack core is `NotImplemented`, so the capability level is
+capped at `known-key-extract` and `broadCommercialClaim` is always `false`.
+Before the artifact is written it is **deep-scanned** (KAIFUU-036/094): a seeded
+raw key, helper dump, private path, or decrypted private text makes the command
+fail loud and persist nothing.
+
 ## KAIFUU-070 — known-key Scene/Gameexe extract-patch-verify smoke
 
 `siglus-knownkey-smoke.json` drives a **narrow, honestly-scoped** known-key

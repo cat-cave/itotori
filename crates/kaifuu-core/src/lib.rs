@@ -190,6 +190,7 @@ pub mod packed_engine_readiness;
 pub mod patch_transaction;
 pub mod plain_xp3_smoke;
 pub mod registry;
+pub mod siglus_profile_proof;
 pub mod siglus_static_key;
 pub mod wine_proton_helper;
 pub mod xp3_capability_profile;
@@ -279,6 +280,18 @@ pub use packed_engine_readiness::{
     PackedReadinessOutcome, PackedReadinessPosture, PackedReadinessValidationReport,
     PackedTransformStack, derive_packed_readiness_outcome, recompute_content_hash,
     validate_packed_engine_readiness_dir, validate_packed_engine_readiness_profile,
+};
+
+pub use siglus_profile_proof::{
+    SEMANTIC_SIGLUS_PROFILE_PROOF_CAPABILITY_OVERCLAIM,
+    SEMANTIC_SIGLUS_PROFILE_PROOF_DETECTOR_MISMATCH, SEMANTIC_SIGLUS_PROFILE_PROOF_SECRET_LEAK,
+    SEMANTIC_SIGLUS_PROFILE_PROOF_SLICE_FAILED, SIGLUS_PROFILE_PROOF_SCHEMA_VERSION,
+    SIGLUS_PROFILE_PROOF_SUPPORT_BOUNDARY, SiglusProfileCapabilityLevel,
+    SiglusProfileProofComposeInput, SiglusProfileProofDetector, SiglusProfileProofDetectorEvidence,
+    SiglusProfileProofFixture, SiglusProfileProofFixtureKeyProfile,
+    SiglusProfileProofFixtureParser, SiglusProfileProofKeyProfile, SiglusProfileProofKeyRef,
+    SiglusProfileProofParserProfile, SiglusProfileProofRedactionSummary, SiglusProfileProofReport,
+    compose_siglus_profile_proof,
 };
 
 pub use siglus_static_key::{
