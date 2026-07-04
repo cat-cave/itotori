@@ -17,20 +17,22 @@
 //! the resolved choice index via `HeadlessChoicePolicy`); only the RENDER
 //! modality (image-grid strip + a follow-on confirm) and the option count
 //! (3+ vs. the pair's 2) differ. Both graphical modalities ride the SAME
-//! `select_objbtn` opcode `(1,2,3)`; the image-grid vs. spatial-pair split
+//! `select_objbtn` opcode `(0,2,4)`; the image-grid vs. spatial-pair split
 //! is an INTERPRETATION of the one recognized op keyed on option count
-//! (`IMAGE_GRID_MIN_OPTIONS`), NOT a distinct opcode — the bytecode
+//! (≥3 placed buttons → grid), NOT a distinct opcode — the bytecode
 //! carries no opcode to tell the two graphical layouts apart.
 //!
 //! Synthetic scene (fast + deterministic, CI-friendly) that exercises the
 //! REAL seams: the `select_objbtn` command is framed exactly as RealLive's
 //! SelectElement (`{ opt \n opt \n opt }`), so the VM's real
-//! `extract_select_choice_texts` path pulls the option labels, the choice
-//! op tags them `choice:<idx>;imagegrid`, and `goto_on($store)` jumps to
+//! `extract_select_choice_texts` path pulls the option labels, the modality
+//! classifier keys on the button-object SelectionControl signal (a
+//! `select_objbtn` op → graphical, ≥3 → the ImageGrid layout), and
+//! `goto_on($store)` jumps to
 //! the branch for the resolved index; each image branch converges on a
 //! second, dialogue-style confirm select whose own `goto_on($store)`
 //! resolves the confirm. A real-bytes Sweetie HD clothing-select scene was
-//! not cheaply reachable on this path; the recognition (opcode `(1,2,3)`),
+//! not cheaply reachable on this path; the recognition (opcode `(0,2,4)`),
 //! the image-grid interpretation (option-count keyed), and the act/render
 //! seams are the real ones. Real costume ART is a follow-up — the icon
 //! boxes are faithful placeholders.
@@ -40,10 +42,10 @@ use std::collections::HashSet;
 use utsushi_reallive::bytecode_element::BytecodeElement;
 use utsushi_reallive::vm::{InMemorySceneStore, Scene};
 use utsushi_reallive::{
-    ChoiceWindow, Framebuffer, HeadlessChoicePolicy, IMAGE_GRID_MIN_OPTIONS, ImageGridChoiceWindow,
-    MessageWindowConfig, OPCODE_SELECT_OBJBTN, RGBA_BYTES_PER_PIXEL, ReplayEngine, ReplayOpts,
-    SEL_MODULE_ID, SEL_MODULE_TYPE, SEL_OPCODE_SELECT, SelectModality, WipeColour,
-    encode_png_rgba_deterministic, extract_select_choice_texts, select_modality,
+    ChoiceWindow, Framebuffer, HeadlessChoicePolicy, ImageGridChoiceWindow, MessageWindowConfig,
+    OPCODE_SELECT_OBJBTN, RGBA_BYTES_PER_PIXEL, ReplayEngine, ReplayOpts, SEL_MODULE_ID,
+    SEL_MODULE_TYPE, SEL_OPCODE_SELECT, SelectModality, WipeColour, encode_png_rgba_deterministic,
+    extract_select_choice_texts, select_modality, selection_control_signal,
 };
 
 // -- Byte constants for the hand-laid select scene --------------------------
@@ -355,14 +357,17 @@ fn observed_branch_messages(engine: &ReplayEngine, policy: HeadlessChoicePolicy)
 }
 
 // -------------------------------------------------------------------------
-// RECOGNIZE: the image-grid select is the object-button `(1,2,3)` variant
-// and — because it offers 3+ options — carries the `;imagegrid` render
-// marker (0-unknown preserved). The 2-option confirm select stays a plain
-// text list.
+// RECOGNIZE: the image-grid select is the object-button `(0,2,4)` variant.
+// Because a `select_objbtn` op is itself a button-object SelectionControl
+// setup op, the scene's SelectionControl SIGNAL is `ButtonObject` → a
+// graphical modality (the ≥3 placed buttons lay out as an image grid). The
+// modality is derived from the REAL SelectionControl signal, NOT the option
+// count. Dispatch emits the plain `choice:<idx>` base surface (no marker) —
+// the graphical modality is a scene-context property, not a per-command one.
 // -------------------------------------------------------------------------
 
 #[test]
-fn image_grid_select_is_objbtn_and_carries_the_imagegrid_marker() {
+fn image_grid_select_is_objbtn_and_classifies_graphical_from_the_signal() {
     let (grid_el, _) = select_command(0, OPCODE_SELECT_OBJBTN, &COSTUMES);
     let BytecodeElement::Command {
         module_type,
@@ -375,14 +380,12 @@ fn image_grid_select_is_objbtn_and_carries_the_imagegrid_marker() {
         panic!("select_objbtn is a Command");
     };
     // Recognition: the image-grid select is the object-button opcode
-    // (1,2,3) — the SAME opcode as the spatial route-select (0-unknown).
+    // (0,2,4) — the REAL rlvm value.
     assert_eq!(
         (*module_type, *module_id, *opcode),
         (SEL_MODULE_TYPE, SEL_MODULE_ID, OPCODE_SELECT_OBJBTN),
-        "image-grid select is sel.select_objbtn at (1,2,3)"
+        "image-grid select is sel.select_objbtn at the real (0,2,4)"
     );
-    // The SelectElement `{ ... }` framing yields the three costume labels —
-    // the same seam a real Seen.txt hits.
     let choices = extract_select_choice_texts(raw_bytes);
     let decoded: Vec<String> = choices
         .iter()
@@ -393,34 +396,25 @@ fn image_grid_select_is_objbtn_and_carries_the_imagegrid_marker() {
         COSTUMES.iter().map(ToString::to_string).collect::<Vec<_>>()
     );
 
-    // Interpretation: 3 options → the IMAGE-GRID modality (option-count
-    // keyed on IMAGE_GRID_MIN_OPTIONS), distinct from the 2-option pair.
-    assert_eq!(COSTUMES.len(), IMAGE_GRID_MIN_OPTIONS);
+    // Interpretation: the SelectionControl signal from a scene containing a
+    // `select_objbtn` (a button-object setup op) is `ButtonObject`; with ≥3
+    // placed option-buttons the layout is the IMAGE GRID.
+    let signal = selection_control_signal([*opcode]);
     assert_eq!(
-        select_modality(
-            utsushi_reallive::SelectVariant::SelectObjbtn,
-            COSTUMES.len()
-        ),
+        select_modality(signal, COSTUMES.len()),
         SelectModality::ImageGrid
     );
 
-    // The emitted grid-option lines carry `choice:<idx>;imagegrid`; the
-    // follow-on confirm (2 plain-select options) carries a bare
-    // `choice:<idx>` (a text list). Drive the FIRST costume so the walk
-    // reaches the confirm.
+    // Dispatch emits the plain `choice:<idx>` base surface for EVERY option —
+    // no `;imagegrid` marker (dispatch has no scene context; the modality is
+    // applied by the render / analysis layer).
     let engine = build_clothing_select_engine();
     let lines = observed_choice_lines(&engine, HeadlessChoicePolicy::Scripted(vec![0, 0]));
     let surfaces: Vec<&str> = lines.iter().map(|(_, s)| s.as_str()).collect();
     assert_eq!(
         surfaces,
-        vec![
-            "choice:0;imagegrid",
-            "choice:1;imagegrid",
-            "choice:2;imagegrid",
-            "choice:0",
-            "choice:1",
-        ],
-        "grid options are ;imagegrid, the follow-on confirm options are a plain text list"
+        vec!["choice:0", "choice:1", "choice:2", "choice:0", "choice:1"],
+        "dispatch emits the plain base surface; the graphical modality is scene-context"
     );
 }
 

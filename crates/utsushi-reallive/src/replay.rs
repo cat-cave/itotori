@@ -2563,8 +2563,8 @@ mod tests {
         assert_eq!(pause_key, RlopKey::new(1, 3, 3), "msg.pause is (1, 3, 3)");
         assert_eq!(
             objbtn_key,
-            RlopKey::new(0, 2, 3),
-            "sel.select_objbtn is (0, 2, 3)"
+            RlopKey::new(0, 2, 4),
+            "sel.select_objbtn is the REAL rlvm opcode (0, 2, 4)"
         );
         assert_ne!(
             pause_key, objbtn_key,

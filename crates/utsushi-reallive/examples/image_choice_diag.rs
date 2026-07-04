@@ -15,8 +15,8 @@
 //!     the "pick image -> confirm" flow.
 //!
 //! Both graphical modalities (the 2-way route pick and this N-icon grid)
-//! ride the SAME `select_objbtn` opcode `(1,2,3)`; the image-grid
-//! interpretation is keyed on the option COUNT (`IMAGE_GRID_MIN_OPTIONS`),
+//! ride the SAME `select_objbtn` opcode `(0,2,4)`; the image-grid
+//! interpretation is keyed on the placed-button LAYOUT count (≥3 → grid),
 //! tagged `choice:<idx>;imagegrid`. The costume ART (the real icon
 //! graphics) is a faithful PLACEHOLDER box; the grid LAYOUT, the selected
 //! colour/highlight state, the caption, and the follow-on confirm are the

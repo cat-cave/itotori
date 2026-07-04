@@ -47,8 +47,29 @@
 //! | `0x0000` (`select`)  | basic     | Plain choice prompt.                     |
 //! | `0x0001` (`select_s`)| stringy   | Choice with explicit string-table args.  |
 //! | `0x0002` (`select_w`)| windowed  | Choice rendered into a window slot.      |
-//! | `0x0003` (`select_objbtn`) | objbtn | Choice driven by object-button sprites. |
+//! | `0x0004` (`select_objbtn`) | objbtn | Choice driven by object-button sprites. |
 //! | `0x0078` (alias)     | alias     | Sweetie HD's observed `select_w` byte.   |
+//!
+//! # Choice MODALITY — the graphical / text split (real-bytes-derived)
+//!
+//! WHICH graphical presentation a select renders as is NOT a function of the
+//! option count (the retired heuristic). It is derived from the surrounding
+//! [`SelectionControl`] button-setup ops — see [`SelectionControlSignal`] and
+//! [`select_modality`]. Surveying all 198 real Sweetie HD scenes, the
+//! button-object SelectionControl setup ops are `objbtn_init` (`(0,2,20)`,
+//! 43×) and `select_objbtn` (`(0,2,4)`, 33×). A select that sits in a scene
+//! carrying those ops is a GRAPHICAL button-object select; a select with no
+//! such setup is a plain vertical TEXT list. The count-based route-vs-clothing
+//! split had no real-bytes basis (a 2-option and a ≥3-option select are the
+//! same `select_w` opcode) and is removed. NOTE (honest finding): the real
+//! route (character-panel) and clothing (costume-strip) PICK screens are the
+//! `select_objbtn` button-object ops themselves (NO inline option block); the
+//! button-object-context `select_w` selects in the real corpus are
+//! gallery / scene-jump / time-of-day menus. The SelectionControl ops do NOT
+//! carry a route-vs-clothing discriminator, so pair-vs-grid is only a LAYOUT
+//! arrangement of the placed option-buttons, not a semantic claim.
+//!
+//! [`SelectionControl`]: crate::rlop::module_catalog
 //!
 //! Every variant yields the same [`SelectLongOp`] carrier — the variant
 //! distinction lives in the [`SelectVariant`] enum so audit tooling can
@@ -120,8 +141,27 @@ pub const OPCODE_SELECT: u16 = 0x0000;
 pub const OPCODE_SELECT_S: u16 = 0x0001;
 /// `module_sel` `select_w` opcode (windowed choice).
 pub const OPCODE_SELECT_W: u16 = 0x0002;
-/// `module_sel` `select_objbtn` opcode (object-button choice).
-pub const OPCODE_SELECT_OBJBTN: u16 = 0x0003;
+/// `module_sel` `select_objbtn` opcode (object-button choice). REAL RealLive
+/// value `4` (rlvm `module_sel.cc` — `AddOpcode(4, 0, "select_objbtn")`),
+/// VALIDATED against real Sweetie HD bytes: `(0, 2, 4)` occurs 33× across the
+/// archive (the button-object graphical select — the route love-interest and
+/// clothing/costume picks, driven by on-screen button SPRITES, carrying NO
+/// inline `{ … }` option block). An earlier revision pinned this at `3` — a
+/// FICTIONAL value with ZERO occurrences on real bytes; `select_objbtn` is `4`.
+pub const OPCODE_SELECT_OBJBTN: u16 = 0x0004;
+/// `module_sel` `objbtn_init` opcode (button-object group setup). REAL
+/// RealLive value `20` (rlvm `AddOpcode(20, *, "objbtn_init")`), VALIDATED on
+/// real Sweetie HD bytes: `(0, 2, 20)` occurs 43× — it INITIALISES the
+/// on-screen button-object group a following `select_objbtn` selects over.
+/// This is the load-bearing SelectionControl button-setup op: its presence in
+/// a scene is the real signal that the scene's select is a GRAPHICAL
+/// button-object select rather than a plain text-window select.
+pub const OPCODE_OBJBTN_INIT: u16 = 20;
+/// `module_sel` `select_objbtn_cancel` opcode (cancelable button-object
+/// select). REAL RealLive value `14` (rlvm `AddOpcode(14, *,
+/// "select_objbtn_cancel")`), observed 3× on real Sweetie HD bytes. A second
+/// button-object SelectionControl setup op.
+pub const OPCODE_SELECT_OBJBTN_CANCEL: u16 = 14;
 
 /// Retained `select_w` alias at opcode `120`. Historically justified by
 /// the Sweetie HD scene 1 offset `0x001e` byte `(type=1, id=5,
@@ -183,69 +223,93 @@ impl SelectVariant {
         }
     }
 
-    /// Whether this variant is a GRAPHICAL / object-button select — the
-    /// object-button (`select_objbtn`) family RealLive drives from
-    /// button SPRITES laid out on screen rather than a vertical text
-    /// list. Two of Sweetie HD's three choice modalities ride this one
-    /// opcode:
+    /// The canonical [`SelectionControl`] button-object SETUP opcodes — the
+    /// real-bytes signal that a scene presents its select GRAPHICALLY (button
+    /// sprites placed on screen) rather than as a plain text-window list. On
+    /// real Sweetie HD these are `objbtn_init` ([`OPCODE_OBJBTN_INIT`] = 20,
+    /// 43×), `select_objbtn` ([`OPCODE_SELECT_OBJBTN`] = 4, 33×), and
+    /// `select_objbtn_cancel` ([`OPCODE_SELECT_OBJBTN_CANCEL`] = 14, 3×). A
+    /// select whose scene carries any of these is a GRAPHICAL button-object
+    /// select; a select with none is a plain text list. This is the signal
+    /// [`selection_control_signal`] tests for.
     ///
-    /// - the route / love-interest pick (its FIRST choice): two character
-    ///   option graphics SIDE-BY-SIDE, the hovered one in full colour,
-    ///   the other dimmed / grayscale — the [`SelectModality::SpatialPair`]
-    ///   render;
-    /// - the clothing / costume pick: a horizontal STRIP of small icon
-    ///   boxes (an image GRID), the selected box highlighted, then a
-    ///   follow-on dialogue-style confirm — the
-    ///   [`SelectModality::ImageGrid`] render.
-    ///
-    /// The recognition is already 0-unknown (the opcode is registered at
-    /// `(1, 2, 3)`); this predicate is the INTERPRETATION seam — it names
-    /// "this select is object-button graphical, not a vertical text list".
-    /// WHICH graphical render (side-by-side pair vs. image grid) is a
-    /// finer interpretation carried by [`SelectModality`] (keyed on the
-    /// option COUNT — see [`select_modality`]), because the bytecode does
-    /// NOT carry a distinct opcode for the two graphical layouts. The ACT
-    /// path (chosen index → store register → `goto_on`) is identical for
-    /// every modality — only the render layer differs.
-    pub fn is_spatial(self) -> bool {
-        matches!(self, Self::SelectObjbtn)
+    /// [`SelectionControl`]: crate::rlop::module_catalog
+    pub const BUTTON_OBJECT_SETUP_OPCODES: &'static [u16] = &[
+        OPCODE_OBJBTN_INIT,
+        OPCODE_SELECT_OBJBTN,
+        OPCODE_SELECT_OBJBTN_CANCEL,
+    ];
+}
+
+/// The real-bytes modality SIGNAL a select is classified by. Derived NOT from
+/// the option count (the retired heuristic) but from the presence of
+/// [`SelectionControl`] button-object setup ops around the select — see
+/// [`SelectVariant::BUTTON_OBJECT_SETUP_OPCODES`] and
+/// [`selection_control_signal`].
+///
+/// [`SelectionControl`]: crate::rlop::module_catalog
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SelectionControlSignal {
+    /// No button-object SelectionControl setup ops around the select — a
+    /// plain text-window select (the vast majority of real selects: the
+    /// dialogue yes/no choices). Renders as [`SelectModality::TextList`].
+    TextWindow,
+    /// Button-object SelectionControl setup ops (`objbtn_init` /
+    /// `select_objbtn`) are present in the scene — the select is presented
+    /// GRAPHICALLY, with on-screen button sprites. Renders as a graphical
+    /// modality (see [`select_modality`]).
+    ButtonObject,
+}
+
+/// Derive the [`SelectionControlSignal`] for a select from the
+/// `module_id == 2` opcodes that appear in its scene BEFORE it (or, for the
+/// menu selects, anywhere the button-object group is set up). `preceding_sel_opcodes`
+/// is the ordered list of `module_id == 2` command opcodes seen in the scene
+/// up to and including the select's group. Returns [`SelectionControlSignal::ButtonObject`]
+/// iff any [`SelectVariant::BUTTON_OBJECT_SETUP_OPCODES`] appears, else
+/// [`SelectionControlSignal::TextWindow`].
+///
+/// This is the REAL signal that replaces the option-count heuristic: it keys
+/// off the actual SelectionControl button-setup ops the RealLive bytecode
+/// emits to place on-screen selection buttons, exactly as rlvm's
+/// `objbtn_init` / `select_objbtn` do.
+pub fn selection_control_signal(
+    sel_opcodes: impl IntoIterator<Item = u16>,
+) -> SelectionControlSignal {
+    if sel_opcodes
+        .into_iter()
+        .any(|op| SelectVariant::BUTTON_OBJECT_SETUP_OPCODES.contains(&op))
+    {
+        SelectionControlSignal::ButtonObject
+    } else {
+        SelectionControlSignal::TextWindow
     }
 }
 
-/// Minimum option count at which an object-button (`select_objbtn`)
-/// graphical select is interpreted as an IMAGE GRID (the clothing /
-/// costume strip) rather than the SIDE-BY-SIDE pair (the route /
-/// love-interest pick).
-///
-/// The two graphical modalities share the ONE `select_objbtn` opcode
-/// `(1, 2, 3)` — the bytecode carries no distinct opcode to tell a
-/// 2-way side-by-side pick apart from an N-icon grid, so the split is an
-/// INTERPRETATION of the same recognized op, keyed on how many option
-/// buttons the select offers. Sweetie HD's route pick offers exactly two
-/// (`SpatialPair`); the clothing strip offers a row of costume icons
-/// (`ImageGrid`). Three is the smallest count that cannot be a
-/// left/right binary pick, so it is the honest grid threshold.
-pub const IMAGE_GRID_MIN_OPTIONS: usize = 3;
-
-/// The RENDER modality the emitter tags a choice-option line with, so the
-/// render layer picks the matching window. This is pure INTERPRETATION of
-/// an already-recognized (0-unknown) select opcode — it never changes
-/// which opcode was recognized, only how the recognized options are laid
-/// out on screen. The ACT path (chosen index → store register →
-/// `goto_on`) is identical for all three.
+/// The RENDER modality the render layer picks a window for. This is pure
+/// INTERPRETATION of an already-recognized (0-unknown) select — it never
+/// changes which opcode was recognized, only how the options are laid out on
+/// screen. The ACT path (chosen index → store register → `goto_on`) is
+/// identical for all forms.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SelectModality {
-    /// Vertical text list — the plain `select` / `select_s` / `select_w`
-    /// prompt, rendered by [`crate::ChoiceWindow`]. No render marker.
+    /// Vertical text list — a select with NO button-object SelectionControl
+    /// setup ([`SelectionControlSignal::TextWindow`]), rendered by
+    /// [`crate::ChoiceWindow`]. No render marker.
     TextList,
-    /// Side-by-side graphical pair — a 2-option `select_objbtn` (Sweetie
-    /// HD's route / love-interest pick), rendered by
+    /// Side-by-side graphical pair — a button-object select
+    /// ([`SelectionControlSignal::ButtonObject`]) whose placed option-buttons
+    /// lay out as ≤2 side-by-side panels, rendered by
     /// [`crate::SpatialChoiceWindow`]. Marked `;spatial`.
     SpatialPair,
-    /// Image grid — an `select_objbtn` with [`IMAGE_GRID_MIN_OPTIONS`] or
-    /// more option buttons (Sweetie HD's clothing / costume strip),
-    /// rendered by [`crate::ImageGridChoiceWindow`] then a follow-on
-    /// dialogue-style confirm. Marked `;imagegrid`.
+    /// Image grid — a button-object select
+    /// ([`SelectionControlSignal::ButtonObject`]) whose placed option-buttons
+    /// lay out as a strip / grid of ≥3 icon boxes, rendered by
+    /// [`crate::ImageGridChoiceWindow`]. Marked `;imagegrid`.
+    ///
+    /// NOTE: pair-vs-grid is a LAYOUT arrangement of the placed buttons, NOT a
+    /// route-vs-clothing semantic — the SelectionControl ops carry no such
+    /// discriminator on real bytes.
     ImageGrid,
 }
 
@@ -263,20 +327,32 @@ impl SelectModality {
     }
 }
 
-/// Interpret which [`SelectModality`] a recognized `variant` with
-/// `choice_count` options renders as. Non-graphical variants are always
-/// [`SelectModality::TextList`]; the object-button (`select_objbtn`)
-/// graphical variant splits on the option count at
-/// [`IMAGE_GRID_MIN_OPTIONS`] (see that constant for why the split is an
-/// interpretation of the one opcode rather than a distinct opcode).
-pub fn select_modality(variant: SelectVariant, choice_count: usize) -> SelectModality {
-    if !variant.is_spatial() {
-        return SelectModality::TextList;
-    }
-    if choice_count >= IMAGE_GRID_MIN_OPTIONS {
-        SelectModality::ImageGrid
-    } else {
-        SelectModality::SpatialPair
+/// Interpret which [`SelectModality`] a recognized select renders as, from its
+/// real-bytes [`SelectionControlSignal`] and its placed option/button count.
+///
+/// - [`SelectionControlSignal::TextWindow`] → [`SelectModality::TextList`]
+///   (regardless of count — a plain text-window select).
+/// - [`SelectionControlSignal::ButtonObject`] → a GRAPHICAL modality: the
+///   placed option-buttons are ARRANGED as a side-by-side pair
+///   ([`SelectModality::SpatialPair`], ≤2) or a strip / grid
+///   ([`SelectModality::ImageGrid`], ≥3). This count is a LAYOUT arrangement of
+///   the already-graphical button-object select, NOT the graphical-vs-text
+///   decision (that is the SelectionControl signal) and NOT a route-vs-clothing
+///   semantic (the ops carry no such discriminator).
+///
+/// This REPLACES the retired `select_modality(variant, count)` heuristic that
+/// keyed graphical-vs-text on the option count alone (which had no real-bytes
+/// basis: route, clothing, and text picks are all the same `select_w` opcode).
+pub fn select_modality(signal: SelectionControlSignal, option_count: usize) -> SelectModality {
+    match signal {
+        SelectionControlSignal::TextWindow => SelectModality::TextList,
+        SelectionControlSignal::ButtonObject => {
+            if option_count >= 3 {
+                SelectModality::ImageGrid
+            } else {
+                SelectModality::SpatialPair
+            }
+        }
     }
 }
 
@@ -459,27 +535,19 @@ impl SelRuntime {
     /// render-modality marker and the SELBTN styling tags when the
     /// Gameexe exposes them). Sink-side errors are recorded as fail-soft
     /// warnings.
-    fn emit_choice(
-        &self,
-        variant: SelectVariant,
-        modality: SelectModality,
-        choice_index: usize,
-        text: String,
-    ) {
+    fn emit_choice(&self, variant: SelectVariant, choice_index: usize, text: String) {
         let line_id = self.next_line_id();
         // Compose the choice surface from parts: the base `choice:<idx>`
-        // (what `branch_following_lines` filters on), an optional render
-        // modality marker (`;spatial` for the side-by-side object-button
-        // pair, `;imagegrid` for the object-button clothing/costume grid)
-        // so the render layer picks the matching graphical window, and the
-        // optional Gameexe `SELBTN.NNN.*` styling suffix. Every variant
-        // keeps the `choice:<idx>` prefix, so the choice/act filtering is
-        // unchanged.
+        // (what `branch_following_lines` filters on) plus the optional Gameexe
+        // `SELBTN.NNN.*` styling suffix. The render MODALITY (graphical
+        // button-object vs. plain text list) is NOT a per-command property —
+        // it is a SCENE-context property derived from the surrounding
+        // [`SelectionControl`] button-setup ops (see [`select_modality`] /
+        // [`selection_control_signal`]), applied by the render / analysis
+        // layer that has the whole scene, not by this single-command dispatch.
+        //
+        // [`SelectionControl`]: crate::rlop::module_catalog
         let mut text_surface = format!("choice:{choice_index}");
-        if let Some(marker) = modality.render_marker() {
-            text_surface.push(';');
-            text_surface.push_str(marker);
-        }
         if let Some(suffix) = self.selbtn_style_suffix(choice_index) {
             text_surface.push(';');
             text_surface.push_str(&suffix);
@@ -522,17 +590,6 @@ fn dispatch_select(
     _vm: &mut Vm,
     args: &[ExprValue],
 ) -> DispatchOutcome {
-    // Interpret the render modality up front from the number of stored
-    // (Bytes) choices — the object-button select splits into the
-    // side-by-side pair vs. the image grid on this count, so it must be
-    // known before the first `emit_choice` (which tags each line with the
-    // modality marker). Non-Bytes args never become stored choices, so
-    // they are excluded from the count exactly as they are from `choices`.
-    let choice_count = args
-        .iter()
-        .filter(|arg| matches!(arg, ExprValue::Bytes(_)))
-        .count();
-    let modality = select_modality(variant, choice_count);
     let mut choices: Vec<Vec<u8>> = Vec::with_capacity(args.len());
     for (idx, arg) in args.iter().enumerate() {
         let bytes = match arg {
@@ -564,7 +621,7 @@ fn dispatch_select(
             });
             String::from_utf8_lossy(&bytes).into_owned()
         };
-        runtime.emit_choice(variant, modality, choice_index, text);
+        runtime.emit_choice(variant, choice_index, text);
         choices.push(bytes);
     }
     if args.is_empty() {
@@ -873,80 +930,95 @@ mod tests {
     }
 
     #[test]
-    fn only_objbtn_is_spatial() {
-        // The object-button select is the SPATIAL / graphical variant
-        // (Sweetie HD's route pick); the three text variants are not.
-        assert!(SelectVariant::SelectObjbtn.is_spatial());
-        assert!(!SelectVariant::Select.is_spatial());
-        assert!(!SelectVariant::SelectS.is_spatial());
-        assert!(!SelectVariant::SelectW.is_spatial());
+    fn objbtn_opcode_is_real_rlvm_value_four() {
+        // The real RealLive `select_objbtn` opcode is 4 (rlvm
+        // `AddOpcode(4, 0, "select_objbtn")`), VALIDATED on real Sweetie HD
+        // bytes (33 occurrences of `(0,2,4)`). The old fictional value 3 has
+        // ZERO occurrences on real bytes.
+        assert_eq!(OPCODE_SELECT_OBJBTN, 4);
+        assert_eq!(SelectVariant::SelectObjbtn.opcode(), 4);
+        assert_eq!(OPCODE_OBJBTN_INIT, 20);
+        assert_eq!(OPCODE_SELECT_OBJBTN_CANCEL, 14);
+        // The button-object SETUP opcodes are the real modality signal.
+        assert_eq!(SelectVariant::BUTTON_OBJECT_SETUP_OPCODES, &[20u16, 4, 14]);
     }
 
     #[test]
-    fn spatial_variant_tags_choice_surface_with_spatial_marker() {
-        // The spatial (objbtn) select tags each emitted option
-        // `choice:<idx>;spatial` so the render layer selects the
-        // side-by-side spatial modality; the base `choice:<idx>` prefix
-        // is preserved so choice/act filtering is unchanged.
+    fn dispatch_emits_base_surface_without_a_modality_marker() {
+        // Dispatch has NO scene context, so it never tags a graphical marker
+        // — every variant emits the plain `choice:<idx>` base surface. The
+        // graphical-vs-text modality is a SCENE-context property applied by
+        // `select_modality` at the render / analysis layer, not by dispatch.
         let sink = Arc::new(CollectingSink::new());
         let runtime = Arc::new(SelRuntime::with_sink(
             Arc::clone(&sink) as Arc<dyn TextSurfaceSink>
         ));
-        let op = SelectObjbtnOp::new(runtime);
-        op.dispatch(
+        SelectObjbtnOp::new(runtime).dispatch(
             &mut Vm::new(1, 0),
             &[
                 ExprValue::Bytes(b"L".to_vec()),
                 ExprValue::Bytes(b"R".to_vec()),
             ],
         );
-        let lines = sink.lines.lock().expect("lock");
-        let surfaces: Vec<Option<&str>> = lines
+        let surfaces: Vec<Option<String>> = sink
+            .lines
+            .lock()
+            .expect("lock")
             .iter()
-            .map(|line| line.text_surface.as_deref())
+            .map(|line| line.text_surface.clone())
             .collect();
         assert_eq!(
             surfaces,
-            vec![Some("choice:0;spatial"), Some("choice:1;spatial")],
-        );
-        // A text select does NOT carry the spatial marker.
-        let sink2 = Arc::new(CollectingSink::new());
-        let runtime2 = Arc::new(SelRuntime::with_sink(
-            Arc::clone(&sink2) as Arc<dyn TextSurfaceSink>
-        ));
-        SelectOp::new(runtime2).dispatch(&mut Vm::new(1, 0), &[ExprValue::Bytes(b"x".to_vec())]);
-        assert_eq!(
-            sink2.lines.lock().expect("lock")[0].text_surface.as_deref(),
-            Some("choice:0"),
+            vec![Some("choice:0".to_string()), Some("choice:1".to_string())],
+            "dispatch emits the plain base surface with no ;spatial/;imagegrid marker"
         );
     }
 
     #[test]
-    fn select_modality_splits_objbtn_on_option_count() {
-        // Non-graphical variants are always a plain text list, regardless
-        // of option count.
+    fn selection_control_signal_keys_on_button_object_setup_ops() {
+        // No button-object setup ops in the scene → a plain text-window
+        // select.
         assert_eq!(
-            select_modality(SelectVariant::Select, 5),
+            selection_control_signal([OPCODE_SELECT_W, OPCODE_SELECT_W]),
+            SelectionControlSignal::TextWindow
+        );
+        // `objbtn_init` (20) present → button-object graphical select.
+        assert_eq!(
+            selection_control_signal([OPCODE_OBJBTN_INIT, OPCODE_SELECT_W]),
+            SelectionControlSignal::ButtonObject
+        );
+        // `select_objbtn` (4) present → button-object graphical select.
+        assert_eq!(
+            selection_control_signal([OPCODE_SELECT_OBJBTN, OPCODE_SELECT_W]),
+            SelectionControlSignal::ButtonObject
+        );
+    }
+
+    #[test]
+    fn select_modality_keys_on_the_real_signal_not_the_count() {
+        // TextWindow signal → TextList, REGARDLESS of option count (the
+        // count no longer decides graphical-vs-text — the retired heuristic).
+        assert_eq!(
+            select_modality(SelectionControlSignal::TextWindow, 2),
             SelectModality::TextList
         );
         assert_eq!(
-            select_modality(SelectVariant::SelectS, 2),
+            select_modality(SelectionControlSignal::TextWindow, 5),
             SelectModality::TextList
         );
-        // The object-button graphical select splits on the option count:
-        // 2 options → the side-by-side pair (route pick), 3+ → the image
-        // grid (clothing strip). Both ride the SAME `select_objbtn` opcode
-        // — the split is interpretation, not a distinct opcode.
+        // ButtonObject signal → a GRAPHICAL modality; the placed-button count
+        // is only a LAYOUT arrangement (pair vs grid), not the graphical-vs-
+        // text decision and not a route-vs-clothing semantic.
         assert_eq!(
-            select_modality(SelectVariant::SelectObjbtn, 2),
+            select_modality(SelectionControlSignal::ButtonObject, 2),
             SelectModality::SpatialPair
         );
         assert_eq!(
-            select_modality(SelectVariant::SelectObjbtn, IMAGE_GRID_MIN_OPTIONS),
+            select_modality(SelectionControlSignal::ButtonObject, 3),
             SelectModality::ImageGrid
         );
         assert_eq!(
-            select_modality(SelectVariant::SelectObjbtn, 6),
+            select_modality(SelectionControlSignal::ButtonObject, 6),
             SelectModality::ImageGrid
         );
     }
@@ -956,64 +1028,6 @@ mod tests {
         assert_eq!(SelectModality::TextList.render_marker(), None);
         assert_eq!(SelectModality::SpatialPair.render_marker(), Some("spatial"));
         assert_eq!(SelectModality::ImageGrid.render_marker(), Some("imagegrid"));
-    }
-
-    #[test]
-    fn objbtn_image_grid_tags_choice_surface_with_imagegrid_marker() {
-        // A `select_objbtn` offering THREE option buttons is the clothing /
-        // costume image-grid modality: each emitted option carries
-        // `choice:<idx>;imagegrid` (distinct from the 2-option pair's
-        // `;spatial`), while the base `choice:<idx>` prefix is preserved so
-        // the choice/act filtering is unchanged.
-        let sink = Arc::new(CollectingSink::new());
-        let runtime = Arc::new(SelRuntime::with_sink(
-            Arc::clone(&sink) as Arc<dyn TextSurfaceSink>
-        ));
-        let op = SelectObjbtnOp::new(runtime);
-        op.dispatch(
-            &mut Vm::new(1, 0),
-            &[
-                ExprValue::Bytes(b"swimsuit".to_vec()),
-                ExprValue::Bytes(b"qipao".to_vec()),
-                ExprValue::Bytes(b"uniform".to_vec()),
-            ],
-        );
-        let lines = sink.lines.lock().expect("lock");
-        let surfaces: Vec<Option<&str>> = lines
-            .iter()
-            .map(|line| line.text_surface.as_deref())
-            .collect();
-        assert_eq!(
-            surfaces,
-            vec![
-                Some("choice:0;imagegrid"),
-                Some("choice:1;imagegrid"),
-                Some("choice:2;imagegrid"),
-            ],
-        );
-
-        // The SAME opcode with only TWO options stays the side-by-side pair
-        // (`;spatial`), proving the split is the option count, not the op.
-        let sink2 = Arc::new(CollectingSink::new());
-        let runtime2 = Arc::new(SelRuntime::with_sink(
-            Arc::clone(&sink2) as Arc<dyn TextSurfaceSink>
-        ));
-        SelectObjbtnOp::new(runtime2).dispatch(
-            &mut Vm::new(1, 0),
-            &[
-                ExprValue::Bytes(b"L".to_vec()),
-                ExprValue::Bytes(b"R".to_vec()),
-            ],
-        );
-        let lines2 = sink2.lines.lock().expect("lock");
-        let surfaces2: Vec<Option<&str>> = lines2
-            .iter()
-            .map(|line| line.text_surface.as_deref())
-            .collect();
-        assert_eq!(
-            surfaces2,
-            vec![Some("choice:0;spatial"), Some("choice:1;spatial")],
-        );
     }
 
     #[test]

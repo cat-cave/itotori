@@ -409,11 +409,14 @@ fn select_objbtn_emits_choices_like_other_variants() {
     let lines = sink.drain();
     assert_eq!(lines.len(), 1);
     assert_eq!(lines[0].text, "go");
-    // Recognition (0-unknown preserved) + interpretation: the objbtn
-    // variant is the SPATIAL select, so its emitted option carries the
-    // `;spatial` render marker on top of the shared `choice:<idx>` base.
-    assert_eq!(lines[0].text_surface.as_deref(), Some("choice:0;spatial"));
-    assert!(SelectVariant::SelectObjbtn.is_spatial());
+    // Recognition (0-unknown preserved): the objbtn variant dispatches like
+    // every other select and emits the plain `choice:<idx>` base surface.
+    // Dispatch no longer tags a graphical marker — the graphical-vs-text
+    // modality is derived from the surrounding SelectionControl ops at the
+    // render / analysis layer (see `select_modality`), not per-command.
+    assert_eq!(lines[0].text_surface.as_deref(), Some("choice:0"));
+    // The real select_objbtn opcode is 4 (rlvm), a button-object SETUP op.
+    assert_eq!(OPCODE_SELECT_OBJBTN, 4);
 }
 
 // ---------------------------------------------------------------------

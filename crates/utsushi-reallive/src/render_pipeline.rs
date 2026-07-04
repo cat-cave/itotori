@@ -1202,10 +1202,13 @@ pub struct ImageGridCell {
 /// options are laid out as a horizontal GRID of many small icon boxes
 /// (rather than two big character panels or a vertical list), and the
 /// selected box is cued by a bright highlight border + full colour +
-/// a caption naming it. Both graphical modalities ride the SAME
-/// `select_objbtn` opcode `(1, 2, 3)`; the image-grid interpretation is
-/// keyed on the option COUNT (see [`crate::IMAGE_GRID_MIN_OPTIONS`] /
-/// [`crate::select_modality`]), tagged `choice:<idx>;imagegrid`.
+/// a caption naming it. A select is a GRAPHICAL button-object modality when
+/// its scene carries button-object SelectionControl setup ops (`objbtn_init` /
+/// `select_objbtn`, the REAL opcodes 20 / 4) — see
+/// [`crate::SelectionControlSignal`] / [`crate::select_modality`]. Within a
+/// button-object select the image-GRID vs. side-by-side-PAIR choice is a
+/// LAYOUT arrangement of the placed option-buttons (≥3 → grid), tagged
+/// `choice:<idx>;imagegrid`.
 ///
 /// The ACT half is unchanged: the selected index still resolves through
 /// the store register + `goto_on` (see

@@ -12,14 +12,18 @@
 //! Surveying every `module_sel` command across all 198 scenes of the real
 //! Sweetie HD `Seen.txt` (SEEN_START = scene 1), the reality is:
 //!
-//!  * EVERY real choice/select is `select_w` at `(module_type=0,
+//!  * EVERY real OPTION-BLOCK choice/select is `select_w` at `(module_type=0,
 //!    module_id=2, opcode=2)` — 117 occurrences, EACH framed with the
 //!    `SelectElement` `{ … }` option block (so `extract_select_choice_texts`
-//!    recovers the real option count).
-//!  * There are ZERO `select_objbtn` (opcode 3) commands anywhere in the
-//!    archive. The route / love-interest pick and the clothing / costume
-//!    pick — the two GRAPHICAL modalities — are NOT distinct object-button
-//!    opcodes. They ride the SAME `select_w` opcode as a plain text choice.
+//!    recovers the real option count). These include plain dialogue yes/no
+//!    choices AND gallery / scene-jump / time-of-day menus.
+//!  * The GRAPHICAL route / clothing PICK screens are the `select_objbtn`
+//!    button-object ops — REAL opcode `4` (rlvm `AddOpcode(4, 0,
+//!    "select_objbtn")`), `(0,2,4)`, 33× — NOT the fictional opcode `3` the old
+//!    code used (0×), and NOT the `select_w` option-block form. They carry no
+//!    inline option block; the graphical presentation is set up by button-object
+//!    SelectionControl ops (`objbtn_init=20` / `select_objbtn=4`). Those ops are
+//!    the real modality signal ([`selection_control_signal`]).
 //!  * The real select_w commands live at `module_type = 0`, which is now
 //!    where the choice machinery registers: `SEL_MODULE_TYPE` was corrected
 //!    from `1` (a wrong constant misread from a `(1,5,120)` `SYS2` byte) to
@@ -34,47 +38,54 @@
 //!    and the chosen index writes `$store` so `goto_on($store)` drives the
 //!    matching branch.
 //!
-//! # Consequences for the count-heuristic (the MISclassification)
+//! # Modality is keyed on the real SelectionControl signal (P1 re-derivation)
 //!
-//! `select_modality(variant, count)` splits an object-button select on the
-//! option count (`2` → `SpatialPair` route pick, `≥3` → `ImageGrid` clothing
-//! grid) — but ONLY for the `SelectObjbtn` variant (`is_spatial()`), which
-//! never occurs on real bytes. Every real select is `SelectW`, so
-//! `select_modality` classifies EVERY real Sweetie choice — the route pick,
-//! the clothing pick, and plain text choices ALIKE — as `TextList`. The
-//! SpatialPair / ImageGrid modalities NEVER fire on real Sweetie bytes, and
-//! the count-based route-vs-clothing split has no real-bytes basis: a
-//! 2-option select_w and a ≥3-option select_w are the SAME opcode, so the
-//! option count cannot tell a route pick from a clothing grid from a text
-//! choice. This gate DOCUMENTS that misclassification rather than silently
-//! passing it, and routes the "needs-a-better-signal" heuristic work to a
-//! follow-up (the graphical presentation is driven by the surrounding
-//! `objbtn`/button-setup `SelectionControl` commands — `(0,2,20)`, `(0,2,30..36)`,
-//! `(0,2,122)` — NOT by a distinct select opcode or the option count).
+//! The retired heuristic `select_modality(variant, count)` split an
+//! object-button select on the option count (`2` → `SpatialPair`, `≥3` →
+//! `ImageGrid`) — but that count-based route-vs-clothing split had NO
+//! real-bytes basis: a 2-option `select_w` and a ≥3-option `select_w` are the
+//! SAME opcode. `select_modality` now keys on the REAL SelectionControl
+//! SIGNAL: the presence of button-object setup ops in the select's scene. On
+//! real Sweetie those setup ops are `objbtn_init` (`(0,2,20)`, 43×) and
+//! `select_objbtn` (the REAL opcode `4` — NOT the fictional `3` — `(0,2,4)`,
+//! 33×). A select whose scene carries them is GRAPHICAL (button-object);
+//! a select with none is a plain vertical TEXT list.
+//!
+//! HONEST finding (from decoding the real button-object scenes): the real
+//! route (character-panel) and clothing (costume-strip) PICK screens are the
+//! `select_objbtn` button-object ops themselves (no inline option block); the
+//! button-object-context `select_w` selects in this corpus are gallery /
+//! scene-jump / time-of-day menus. The SelectionControl ops do NOT carry a
+//! route-vs-clothing discriminator, so pair-vs-grid is only a LAYOUT
+//! arrangement of the placed option-buttons (≤2 → side-by-side, ≥3 → grid),
+//! not a route-vs-clothing semantic. The prompt's hypothesised `(0,2,30..36)`
+//! / `(0,2,122)` ops are NOT the story signal — they live in the 999x system
+//! menu-builder scenes.
 //!
 //! # What this gate asserts on real bytes
 //!
 //!  1. Real select commands EXIST and decode 0-unknown.
-//!  2. They are ALL `select_w (0,2,2)`; ZERO `select_objbtn (0,2,3)`.
-//!  3. Both count-signatures the heuristic keys on are present (a 2-option
-//!     select AND a ≥3-option select) — yet BOTH classify to `TextList`
-//!     (the documented misclassification: neither reaches SpatialPair /
-//!     ImageGrid because neither is an object-button select).
+//!  2. Every OPTION-BLOCK select is `select_w (0,2,2)`; and the button-object
+//!     SelectionControl setup ops (`objbtn_init=20` / `select_objbtn=4`) are
+//!     PRESENT — the real graphical modality signal.
+//!  3. Modality is derived from that signal, NOT the count: a button-object
+//!     select classifies GRAPHICAL (`SpatialPair` for ≤2, `ImageGrid` for ≥3)
+//!     while a plain select classifies `TextList`. A 2-option graphical select
+//!     and a 2-option plain select classify DIFFERENTLY — proving the count is
+//!     no longer the driver (the misclassification is RESOLVED).
 //!  4. Branch-following through the select-bearing scenes is 0-unknown AND
 //!     now emits `choice:<idx>` surfaces and makes `choices_made > 0` — the
 //!     choice machinery is LIVE on real bytes (correct `module_type=0`
 //!     registration), and acting on a real select drives a DISTINCT branch:
 //!     resolving a select-bearing scene under `Fixed(0)` vs `Fixed(1)`
-//!     produces a different executed observation (different scenes visited /
-//!     text stream) for at least one real select scene.
-//!  5. The render layer CAN lay out the real recovered option structure
-//!     (real option counts, JP labels → `.notdef`) — three smoke PNGs are
-//!     written for the orchestrator to visually verify vs the real
-//!     screenshots. The pipeline classifies all three as `TextList` (the
-//!     graphical route/clothing modality re-derivation from the surrounding
-//!     `SelectionControl` ops is a SEPARATE follow-up, P1
-//!     `sweetie-choice-graphical-modality-from-selection-control`), so all
-//!     three render as the config-driven text-list `ChoiceWindow`.
+//!     produces a different executed observation for at least one scene.
+//!  5. The render layer lays out the real recovered option structure per its
+//!     modality — the route-signature select as the side-by-side
+//!     `SpatialChoiceWindow`, the clothing-signature select as the
+//!     `ImageGridChoiceWindow` icon strip, the plain text select as the
+//!     vertical `ChoiceWindow` — three smoke PNGs for the orchestrator to
+//!     visually verify vs the real screenshots (real g00 option ART is a
+//!     follow-up; the LAYOUT / modality is the deliverable).
 //!
 //! Env-gated + STRICT: run with
 //! `ITOTORI_REAL_GAME_ROOT=/scratch/itotori-research/sweetie-hd
@@ -90,10 +101,11 @@ use std::path::PathBuf;
 use kaifuu_reallive::{Xor2DecScene, recover_and_decrypt_archive};
 use utsushi_reallive::vm::SceneStore;
 use utsushi_reallive::{
-    BytecodeElement, ChoiceWindow, Framebuffer, HeadlessChoicePolicy, RealSceneIndex, ReplayEngine,
-    ReplayOpts, SelectModality, SelectVariant, WipeColour, build_scene_store_from_decompressed,
+    BytecodeElement, ChoiceWindow, Framebuffer, HeadlessChoicePolicy, ImageGridChoiceWindow,
+    RealSceneIndex, ReplayEngine, ReplayOpts, SelectModality, SelectVariant,
+    SelectionControlSignal, SpatialChoiceWindow, WipeColour, build_scene_store_from_decompressed,
     decompress_all_scenes, encode_png_rgba_deterministic, extract_select_choice_texts,
-    select_modality,
+    select_modality, selection_control_signal,
 };
 
 /// The absolute diag directory the orchestrator reads for visual verification
@@ -110,22 +122,23 @@ struct RealSelect {
     opcode: u16,
     option_count: usize,
     options: Vec<Vec<u8>>,
+    /// Every `module_id == 2` command opcode present in this select's scene —
+    /// the raw material [`selection_control_signal`] classifies the modality
+    /// from (button-object SelectionControl setup ops present → graphical).
+    scene_sel_opcodes: Vec<u16>,
 }
 
 impl RealSelect {
-    /// Derive the [`SelectVariant`] from the REAL opcode byte.
-    fn variant(&self) -> Option<SelectVariant> {
-        SelectVariant::ALL
-            .iter()
-            .copied()
-            .find(|v| v.opcode() == self.opcode)
+    /// The REAL SelectionControl signal for this select — derived from the
+    /// button-object setup ops in its scene, NOT the option count.
+    fn signal(&self) -> SelectionControlSignal {
+        selection_control_signal(self.scene_sel_opcodes.iter().copied())
     }
 
-    /// The modality `select_modality` classifies this real select into (from
-    /// its real variant + real option count).
-    fn classified_modality(&self) -> Option<SelectModality> {
-        self.variant()
-            .map(|v| select_modality(v, self.option_count))
+    /// The modality `select_modality` classifies this real select into, from
+    /// its REAL SelectionControl signal + placed option count.
+    fn classified_modality(&self) -> SelectModality {
+        select_modality(self.signal(), self.option_count)
     }
 }
 
@@ -168,6 +181,18 @@ fn scan_real_selects(store: &utsushi_reallive::vm::InMemorySceneStore) -> Vec<Re
     let mut out = Vec::new();
     for id in ids {
         let scene = store.fetch(id).expect("scene present");
+        // Every module_id==2 command opcode in the scene — the SelectionControl
+        // signal material (button-object setup ops mark a graphical scene).
+        let scene_sel_opcodes: Vec<u16> = scene
+            .elements
+            .iter()
+            .filter_map(|el| match el {
+                BytecodeElement::Command {
+                    module_id, opcode, ..
+                } if *module_id == 2 => Some(*opcode),
+                _ => None,
+            })
+            .collect();
         for el in &scene.elements {
             if let BytecodeElement::Command {
                 module_type,
@@ -192,6 +217,7 @@ fn scan_real_selects(store: &utsushi_reallive::vm::InMemorySceneStore) -> Vec<Re
                     opcode: *opcode,
                     option_count: options.len(),
                     options,
+                    scene_sel_opcodes: scene_sel_opcodes.clone(),
                 });
             }
         }
@@ -206,11 +232,13 @@ fn opts() -> ReplayOpts {
     }
 }
 
-/// Render a real select's real option structure through the config-driven
-/// text-list [`ChoiceWindow`] (the modality the pipeline actually assigns),
-/// write it as `name` under [`DIAG_DIR`], and return the PNG bytes. Option
-/// labels are the real JP bytes (rendered `.notdef` — the STRUCTURE is what
-/// is validated).
+/// Render a real select's real option structure through the window its REAL
+/// SelectionControl-signal modality assigns — the text-list [`ChoiceWindow`]
+/// for a plain select, the side-by-side [`SpatialChoiceWindow`] or icon-strip
+/// [`ImageGridChoiceWindow`] for a button-object graphical select — write it as
+/// `name` under [`DIAG_DIR`], and return the PNG bytes. Option labels are the
+/// real JP bytes (rendered `.notdef` — the LAYOUT / modality is what is
+/// validated; the real g00 option ART is a follow-up, faithful placeholder).
 fn render_smoke_png(
     sel: &RealSelect,
     config: &utsushi_reallive::MessageWindowConfig,
@@ -224,21 +252,36 @@ fn render_smoke_png(
         .collect();
     let mut fb = Framebuffer::new(screen.0, screen.1);
     fb.fill(WipeColour::opaque_rgb(0x14, 0x18, 0x26));
-    let cw = ChoiceWindow::from_config(&labels, 0, config, screen, screen);
-    let _painted = fb.draw_choice_window(&cw);
+    let modality = sel.classified_modality();
+    let painted = match modality {
+        SelectModality::TextList => {
+            let cw = ChoiceWindow::from_config(&labels, 0, config, screen, screen);
+            fb.draw_choice_window(&cw)
+        }
+        SelectModality::SpatialPair => {
+            let sw = SpatialChoiceWindow::from_options(&labels, 0, screen);
+            fb.draw_spatial_choice_window(&sw)
+        }
+        SelectModality::ImageGrid => {
+            let ig = ImageGridChoiceWindow::from_options(&labels, 0, screen);
+            fb.draw_image_grid_choice_window(&ig)
+        }
+    };
+    assert!(painted > 0, "the {modality:?} window must paint pixels");
     let bytes = encode_png_rgba_deterministic(&fb);
     assert_eq!(&bytes[..4], &[0x89, 0x50, 0x4E, 0x47], "valid PNG magic");
     fs::create_dir_all(DIAG_DIR).ok();
     let out = PathBuf::from(DIAG_DIR).join(name);
     fs::write(&out, &bytes).expect("write smoke png");
     eprintln!(
-        "wrote {} ({} bytes) — scene {} off {:#06x} count={} modality={:?}",
+        "wrote {} ({} bytes) — scene {} off {:#06x} count={} signal={:?} modality={:?}",
         out.display(),
         bytes.len(),
         sel.scene_id,
         sel.byte_offset,
         sel.option_count,
-        sel.classified_modality(),
+        sel.signal(),
+        modality,
     );
     bytes
 }
@@ -275,89 +318,114 @@ fn sweetie_real_bytes_choice_smoke_all_modalities() {
         opcodes,
     );
 
-    // FINDING: every real select is select_w (0,2,2); ZERO select_objbtn.
-    let objbtn = selects
-        .iter()
-        .filter(|s| s.opcode == SelectVariant::SelectObjbtn.opcode())
-        .count();
-    assert_eq!(
-        objbtn, 0,
-        "FINDING would be violated: real Sweetie HD has NO select_objbtn (opcode 3); \
-         the graphical route/clothing picks are NOT object-button selects"
-    );
+    // FINDING: every OPTION-BLOCK select is select_w (0,2,2). The graphical
+    // route/clothing PICK screens are NOT these — they are `select_objbtn`
+    // button-object ops (REAL opcode 4, no inline option block), and the
+    // graphical presentation is set up by the button-object SelectionControl
+    // ops (`objbtn_init` = 20, `select_objbtn` = 4). Those are what the modality
+    // signal keys on now — NOT the option count.
     for s in &selects {
         assert_eq!(
             (s.module_type, s.module_id, s.opcode),
             (0, 2, SelectVariant::SelectW.opcode()),
-            "every real Sweetie select is select_w at (0,2,2); found {:?} at scene {} off {:#06x}",
+            "every real Sweetie option-block select is select_w at (0,2,2); found {:?} at scene {} off {:#06x}",
             (s.module_type, s.module_id, s.opcode),
             s.scene_id,
             s.byte_offset,
         );
-        // FIXED: the real select module_type (0) now MATCHES the registered
-        // SEL_MODULE_TYPE — the choice machinery dispatches these commands
-        // through the SelRuntime instead of the catalog gap-fill.
         assert_eq!(
             s.module_type,
             utsushi_reallive::SEL_MODULE_TYPE,
-            "real select module_type ({}) must match the registered \
-             SEL_MODULE_TYPE ({}) so the choice machinery dispatches it",
+            "real select module_type ({}) must match the registered SEL_MODULE_TYPE ({})",
             s.module_type,
             utsushi_reallive::SEL_MODULE_TYPE,
         );
     }
 
-    // ---- (3) Both count-signatures present, yet BOTH classify TextList ------
-    // The heuristic keys the route-vs-clothing split on the option COUNT
-    // (2 -> SpatialPair route, >=3 -> ImageGrid clothing). Real bytes carry
-    // BOTH signatures, but because every select is select_w (not objbtn),
-    // select_modality classifies BOTH as TextList — the documented
-    // misclassification.
-    let route_like = selects
+    // The button-object SelectionControl SETUP ops EXIST on real bytes — this
+    // is the real graphical signal. `select_objbtn` is the REAL opcode 4 (rlvm
+    // `AddOpcode(4, 0, "select_objbtn")`), NOT the fictional 3 the old code
+    // used; `objbtn_init` is opcode 20. Count them across the archive.
+    let button_object_setup_ops: usize = selects
         .iter()
-        .find(|s| s.option_count == 2)
-        .expect("a 2-option select_w (the 'route pair' count-signature) exists on real bytes");
-    let grid_like = selects
-        .iter()
-        .find(|s| s.option_count >= 3)
-        .expect("a >=3-option select_w (the 'clothing grid' count-signature) exists on real bytes");
-    // Also surface a plain text choice example (any select_w).
-    let text_like = selects
-        .iter()
-        .find(|s| s.scene_id != route_like.scene_id && s.option_count >= 2)
-        .unwrap_or(route_like);
-
-    eprintln!(
-        "route-signature: scene {} off {:#06x} count={} variant={:?} modality={:?}",
-        route_like.scene_id,
-        route_like.byte_offset,
-        route_like.option_count,
-        route_like.variant(),
-        route_like.classified_modality(),
+        .flat_map(|s| s.scene_sel_opcodes.iter().copied())
+        .filter(|op| SelectVariant::BUTTON_OBJECT_SETUP_OPCODES.contains(op))
+        .count();
+    assert!(
+        button_object_setup_ops > 0,
+        "real Sweetie HD must carry button-object SelectionControl setup ops \
+         (objbtn_init=20 / select_objbtn=4) — the real graphical modality signal"
     );
     eprintln!(
-        "clothing-signature: scene {} off {:#06x} count={} variant={:?} modality={:?}",
-        grid_like.scene_id,
-        grid_like.byte_offset,
-        grid_like.option_count,
-        grid_like.variant(),
-        grid_like.classified_modality(),
+        "button-object SelectionControl setup ops seen across select-bearing scenes: \
+         {button_object_setup_ops}"
     );
 
-    // The MISCLASSIFICATION: a real 2-option select is NOT SpatialPair and a
-    // real >=3-option select is NOT ImageGrid — both are TextList, because
-    // neither is an object-button select.
+    // ---- (3) Modality is now keyed on the REAL SelectionControl signal ------
+    // A select in a scene WITHOUT button-object setup ops is a plain TEXT
+    // list; a select in a scene WITH button-object setup ops is GRAPHICAL —
+    // laid out as a side-by-side pair (≤2 buttons) or an icon grid (≥3). The
+    // option COUNT no longer decides graphical-vs-text (the retired heuristic).
+    let plain_text = selects
+        .iter()
+        .find(|s| s.signal() == SelectionControlSignal::TextWindow)
+        .expect("a plain text-window select (no button-object setup) exists on real bytes");
+    let graphical_pair = selects
+        .iter()
+        .find(|s| s.signal() == SelectionControlSignal::ButtonObject && s.option_count <= 2)
+        .expect("a ≤2-option button-object (graphical PAIR) select exists on real bytes");
+    let graphical_grid = selects
+        .iter()
+        .find(|s| s.signal() == SelectionControlSignal::ButtonObject && s.option_count >= 3)
+        .expect("a ≥3-option button-object (graphical GRID) select exists on real bytes");
+
+    let route_like = graphical_pair;
+    let grid_like = graphical_grid;
+    let text_like = plain_text;
+
+    for (label, s) in [
+        ("graphical-pair(route)", route_like),
+        ("graphical-grid(clothing)", grid_like),
+        ("plain-text", text_like),
+    ] {
+        eprintln!(
+            "{label}: scene {} off {:#06x} count={} signal={:?} modality={:?}",
+            s.scene_id,
+            s.byte_offset,
+            s.option_count,
+            s.signal(),
+            s.classified_modality(),
+        );
+    }
+
+    // RESOLUTION of the misclassification: modality is derived from the real
+    // SelectionControl signal, NOT the option count.
     assert_eq!(
         route_like.classified_modality(),
-        Some(SelectModality::TextList),
-        "the real 2-option route pick classifies TextList, NOT SpatialPair \
-         (it is select_w, not select_objbtn) — MISCLASSIFICATION vs the graphical screenshot"
+        SelectModality::SpatialPair,
+        "a ≤2-option BUTTON-OBJECT select classifies as the graphical SpatialPair \
+         (side-by-side) — from the SelectionControl signal, not the count"
     );
     assert_eq!(
         grid_like.classified_modality(),
-        Some(SelectModality::TextList),
-        "the real >=3-option clothing pick classifies TextList, NOT ImageGrid \
-         (it is select_w, not select_objbtn) — MISCLASSIFICATION vs the graphical screenshot"
+        SelectModality::ImageGrid,
+        "a ≥3-option BUTTON-OBJECT select classifies as the graphical ImageGrid \
+         (icon strip) — from the SelectionControl signal, not the count"
+    );
+    assert_eq!(
+        text_like.classified_modality(),
+        SelectModality::TextList,
+        "a plain select with NO button-object setup classifies as TextList"
+    );
+    // The clincher: a graphical PAIR and a plain TEXT select can share the
+    // SAME option count (2) yet classify DIFFERENTLY — proving the option
+    // count is no longer the driver; the SelectionControl signal is.
+    assert_eq!(route_like.option_count, text_like.option_count);
+    assert_ne!(
+        route_like.classified_modality(),
+        text_like.classified_modality(),
+        "two 2-option selects classify differently by SelectionControl signal — \
+         the count-based misclassification is RESOLVED"
     );
 
     // ---- (4) Recognized 0-unknown AND the choice machinery is LIVE ---------
@@ -510,7 +578,11 @@ fn sweetie_real_bytes_choice_smoke_all_modalities() {
          — the choice is not driving the branch"
     );
 
-    // ---- (5) Render the three smoke PNGs from the real option structure ----
+    // ---- (5) Render the three smoke PNGs per their REAL modality -----------
+    // The route-signature (button-object, ≤2) renders as the side-by-side
+    // SpatialChoiceWindow; the clothing-signature (button-object, ≥3) as the
+    // ImageGridChoiceWindow icon strip; the plain text select as the vertical
+    // ChoiceWindow — each picked by its real SelectionControl-signal modality.
     let gameexe = real_corpus::corpus_1()
         .and_then(|c| c.gameexe())
         .expect("parse real Gameexe.ini");
@@ -531,11 +603,12 @@ fn sweetie_real_bytes_choice_smoke_all_modalities() {
     }
 
     eprintln!(
-        "GATE OUTCOME: real Sweetie choice machinery is now LIVE — all {} selects are \
-         select_w at (0,2,2); zero select_objbtn; SEL_MODULE_TYPE corrected 1->0 so they \
-         dispatch through the SelRuntime: total choices_made={}, total choice_surfaces={}, \
-         distinct-branch scene={:?}. The graphical route/clothing modality re-derivation \
-         (all still classify TextList) is left to the P1 follow-up.",
+        "GATE OUTCOME: real Sweetie choice machinery is LIVE and modality is now keyed on \
+         the REAL SelectionControl signal (button-object setup ops), NOT the option count: \
+         {} option-block selects (all select_w at (0,2,2)); button-object setup ops (objbtn_init=20 \
+         / select_objbtn=4) present; a button-object select classifies graphical (SpatialPair / \
+         ImageGrid) while a plain select classifies TextList — the count-based misclassification \
+         is RESOLVED. total choices_made={}, total choice_surfaces={}, distinct-branch scene={:?}.",
         selects.len(),
         total_choices_made,
         total_choice_surfaces,

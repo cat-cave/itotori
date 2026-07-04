@@ -17,10 +17,12 @@
 //! Synthetic scene (fast + deterministic, CI-friendly) that exercises the
 //! REAL seams: the `select_objbtn` command is framed exactly as RealLive's
 //! SelectElement (`{ opt \n opt }`), so the VM's real
-//! `extract_select_choice_texts` path pulls the option labels, the choice op
-//! tags them `choice:<idx>;spatial`, and `goto_on($store)` jumps to the
+//! `extract_select_choice_texts` path pulls the option labels, the modality
+//! classifier keys on the button-object SelectionControl signal (a
+//! `select_objbtn` op → graphical, ≤2 → the SpatialPair layout), and
+//! `goto_on($store)` jumps to the
 //! branch for the resolved index. A real-bytes Sweetie HD route-select scene
-//! was not cheaply reachable on this path; the recognition (opcode `(1,2,3)`)
+//! was not cheaply reachable on this path; the recognition (opcode `(0,2,4)`)
 //! and the act/render seams are the real ones. Real option ART is a
 //! follow-up — the panels are faithful placeholders.
 
@@ -46,7 +48,7 @@ const OPCODE_GOTO: u16 = 0;
 const OPCODE_GOTO_ON: u16 = 3;
 
 /// A `module_sel.select_objbtn` command framed as a real SelectElement:
-/// `{ opt0 \n opt1 }`. This is the SPATIAL (object-button) opcode `(1,2,3)`;
+/// `{ opt0 \n opt1 }`. This is the SPATIAL (object-button) opcode `(0,2,4)`;
 /// the option labels live in the `{ ... }` block the VM's
 /// `extract_select_choice_texts` walks.
 fn select_objbtn_command(offset: usize, options: &[&str]) -> (BytecodeElement, usize) {
@@ -227,7 +229,7 @@ fn opts() -> ReplayOpts {
     }
 }
 
-/// Option lines the spatial select emitted, tagged `choice:<idx>;spatial`.
+/// Option lines the spatial select emitted (the plain `choice:<idx>` base).
 fn observed_spatial_choice_lines(
     engine: &ReplayEngine,
     policy: HeadlessChoicePolicy,
@@ -261,12 +263,16 @@ fn observed_branch_messages(engine: &ReplayEngine, policy: HeadlessChoicePolicy)
 }
 
 // -------------------------------------------------------------------------
-// RECOGNIZE: the spatial select is the object-button `(1,2,3)` variant and
-// its options carry the `;spatial` render marker (0-unknown preserved).
+// RECOGNIZE: the spatial select is the object-button `(0,2,4)` variant. A
+// `select_objbtn` op is itself a button-object SelectionControl setup op, so
+// the scene's SelectionControl SIGNAL is `ButtonObject` → a graphical
+// modality (≤2 placed buttons → the side-by-side pair). Modality is derived
+// from the REAL SelectionControl signal, NOT the option count; dispatch emits
+// the plain `choice:<idx>` base surface (no marker).
 // -------------------------------------------------------------------------
 
 #[test]
-fn spatial_select_options_carry_the_spatial_render_marker() {
+fn spatial_select_is_objbtn_and_classifies_graphical_from_the_signal() {
     let (select_el, _) = select_objbtn_command(0, &[OPTION_LEFT, OPTION_RIGHT]);
     let BytecodeElement::Command {
         module_type,
@@ -278,11 +284,11 @@ fn spatial_select_options_carry_the_spatial_render_marker() {
     else {
         panic!("select_objbtn is a Command");
     };
-    // Recognition: the SPATIAL select is the object-button opcode (1,2,3).
+    // Recognition: the SPATIAL select is the object-button opcode (0,2,4).
     assert_eq!(
         (*module_type, *module_id, *opcode),
         (SEL_MODULE_TYPE, SEL_MODULE_ID, OPCODE_SELECT_OBJBTN),
-        "spatial select is sel.select_objbtn at (1,2,3)"
+        "spatial select is sel.select_objbtn at the real (0,2,4)"
     );
     // The SelectElement `{ ... }` framing yields the two option labels — the
     // same seam a real Seen.txt hits.
@@ -296,11 +302,20 @@ fn spatial_select_options_carry_the_spatial_render_marker() {
         vec![OPTION_LEFT.to_string(), OPTION_RIGHT.to_string()]
     );
 
-    // Interpretation: the emitted option lines carry `choice:<idx>;spatial`.
+    // Interpretation: the SelectionControl signal from a `select_objbtn`
+    // button-object op is `ButtonObject`; ≤2 placed buttons → the SPATIAL pair.
+    let signal = utsushi_reallive::selection_control_signal([*opcode]);
+    assert_eq!(
+        utsushi_reallive::select_modality(signal, 2),
+        utsushi_reallive::SelectModality::SpatialPair
+    );
+
+    // Dispatch emits the plain `choice:<idx>` base surface — no `;spatial`
+    // marker (the graphical modality is a scene-context property).
     let engine = build_route_select_engine();
     let lines = observed_spatial_choice_lines(&engine, HeadlessChoicePolicy::Fixed(0));
     let surfaces: Vec<&str> = lines.iter().map(|(_, s)| s.as_str()).collect();
-    assert_eq!(surfaces, vec!["choice:0;spatial", "choice:1;spatial"]);
+    assert_eq!(surfaces, vec!["choice:0", "choice:1"]);
 }
 
 // -------------------------------------------------------------------------
