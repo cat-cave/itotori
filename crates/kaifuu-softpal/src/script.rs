@@ -1,6 +1,7 @@
-//! Softpal `SCRIPT.SRC` (`Sv`-version) dialogue disassembler: scan the
-//! **plaintext** bytecode for the two text-bearing command shapes, recover their
-//! `TEXT.DAT` pointer fields, and resolve those pointers to decoded lines via the
+//! Softpal `SCRIPT.SRC` (`Sv`-version) dialogue disassembler: **derive** the two
+//! text-bearing command surfaces from the [`crate::opcode`] arity-driven
+//! stack-machine walk (the single source of truth), recover their `TEXT.DAT`
+//! pointer fields, and resolve those pointers to decoded lines via the
 //! [`crate::TextDat`] codec.
 //!
 //! `SCRIPT.SRC` is **plaintext** (`Sv20` magic, `Sv<nn>` version-tolerant; not
@@ -9,37 +10,51 @@
 //! where each pointer is the absolute byte offset of a record's 4-byte index
 //! field ([`crate::TextRecord::offset`]).
 //!
-//! # The two text-bearing command shapes
+//! # Single source of truth: the opcode-catalog stack walk
 //!
-//! Both are keyed by the 4-byte marker `17 00 01 00` followed by two 16-bit
-//! words. Writing the marker at byte offset `m`, `word_lo = bytes[m+4..m+6]`,
-//! `word_hi = bytes[m+6..m+8]`:
+//! `SCRIPT.SRC` is a typed **stack machine** (12-byte program header, then 4-byte
+//! tokens; see [`crate::opcode`]). Rendering-relevant commands are all the single
+//! `Call` opcode `0x17` dispatching on a packed [`CallTarget`](crate::CallTarget)
+//! `{ category, function }`. This disassembler runs the **arity-driven walk**
+//! ([`crate::OpcodeScan`]) — which steps operator→operands→operator and so can
+//! never mistake an operand whose bits *happen* to look like an operator for a
+//! command — and reads the two text-bearing surfaces straight off its typed
+//! instruction stream:
 //!
-//! - **TEXT-SHOW (32 bytes)** — `word_hi == 02 00` and `word_lo` is a *text
-//!   type* ∈ {`02 00`, `0F 00`, `10 00`, `11 00`, `12 00`, `13 00`, `14 00`}.
-//!   The marker sits 24 bytes into the command, so the command spans
-//!   `[m-24, m+8)`. Within the command, `bytes[4..8]` is the **text pointer**
-//!   and `bytes[12..16]` is the **speaker name pointer** (`0x0FFFFFFF` = no
-//!   speaker / narration).
-//! - **SELECT / choice (16 bytes)** — `word_lo == 02 00` and `word_hi == 06 00`.
-//!   The marker sits 8 bytes into the command, so the command spans `[m-8, m+8)`.
-//!   Within the command, `bytes[4..8]` is the immediate (the operand the operator
-//!   immediately preceding the `Call` pushes). A choice never carries a speaker.
+//! - **TEXT-SHOW** = [`CommandFamily::TextShow`](crate::CommandFamily) — a `Call`
+//!   with category `0x0002` and a text-type function ∈ {`0x02`, `0x0F`, `0x10`,
+//!   `0x11`, `0x12`, `0x13`, `0x14`}. The engine pushes the text pointer and the
+//!   speaker name pointer just before the `Call`: writing the `Call` operator
+//!   offset as `m`, the **text pointer** is the typed operand at `m-20` and the
+//!   **speaker name pointer** the typed operand at `m-12` (`0x0FFFFFFF` = no
+//!   speaker / narration). The command spans `[m-24, m+8)` (32 bytes).
+//! - **SELECT / choice** = [`CommandFamily::Select`](crate::CommandFamily) — a
+//!   `Call` with category `0x0006`, function `0x0002`. The **immediate** (the
+//!   operand the operator immediately before the `Call` pushes) is the typed
+//!   operand at `m-4`; the command spans `[m-8, m+8)` (16 bytes). A choice never
+//!   carries a speaker.
+//!
+//! Because the surfaces are read from `Call` operators the *arity walk* produced
+//! (never from a raw `17 00 01 00` byte scan), an operator-looking operand
+//! immediate — e.g. the raw value `0x0001_0017`, whose little-endian bytes are
+//! exactly `17 00 01 00` — is consumed as an operand and is **never** mis-read as
+//! a phantom command.
 //!
 //! # Two SELECT-label variants (both handled)
 //!
 //! The choice **label** for a SELECT is recovered by one of two mechanisms,
 //! keyed off whether the immediate is itself a `TEXT.DAT` pointer:
 //!
-//! - **v21465 (immediate-is-label)** — `bytes[4..8]` is a `TEXT.DAT` pointer: the
-//!   operator immediately before the `Call` pushes the label directly. Resolves
-//!   straight to a record (all 11 choices on the profiled title).
+//! - **v21465 (immediate-is-label)** — the operand at `m-4` is a `TEXT.DAT`
+//!   pointer: the operator immediately before the `Call` pushes the label
+//!   directly. Resolves straight to a record (all 11 choices on the profiled
+//!   title).
 //! - **v60663 (decoupled label)** — the immediate is the non-pointer typed-nil
 //!   `0x40000000`; the label is **decoupled** from the `Call` and pushed earlier
 //!   in the menu setup block as an assignment to the choice-label typed slot
 //!   [`SELECT_LABEL_SLOT_TAG`] (`0x40000002`): the nearest preceding instruction
 //!   with `operand[0] == 0x40000002` and a **plain** (tag `0x0`) `operand[1]` is
-//!   the label pointer. The backward search — driven by the [`crate::opcode`]
+//!   the label pointer. The backward search — over the same [`crate::opcode`]
 //!   arity-driven stack walk — is bounded by the previous SELECT / TEXT-SHOW so it
 //!   never crosses out of the current menu block. On the profiled v60663 title
 //!   **16 of 21** SELECTs resolve this way to real story-choice labels; the
@@ -52,17 +67,14 @@
 //! `SCRIPT.SRC`, byte-locatable — and [`ScriptScan::resolve`] classifies the
 //! immediate first, then the decoupled candidate, against the pool.
 //!
-//! The marker `17 00 01 00` alone is *not* a reliable key — it occurs tens of
-//! thousands of times as part of unrelated commands; only the marker **plus**
-//! the two discriminator words identify a text-bearing command.
-//!
 //! # Honest scope: TEXT-SHOW + SELECT surfaces only
 //!
 //! This module scopes the two text-extraction surfaces (dialogue + speaker +
 //! choice) and their `TEXT.DAT` pointers. It is **not** the full `Sv20` opcode
 //! table / control-flow decompiler (scene dispatch, branches, voice/animation
-//! commands) — that is the separate replay node. Bytes that are not one of the
-//! two shapes above are deliberately ignored, not decoded.
+//! commands) — that is the separate replay node; the full command catalog it
+//! *does* build is [`crate::OpcodeScan`]. `Call` targets that are neither
+//! TEXT-SHOW nor SELECT are deliberately not surfaced here.
 //!
 //! # Byte-locatable for patch-back
 //!
@@ -82,7 +94,10 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::TextDat;
-use crate::opcode::{CommandFamily, OpcodeScan};
+use crate::opcode::{
+    CALL_CATEGORY_SELECT, CALL_CATEGORY_TEXT, CommandFamily, OpcodeScan, SELECT_FUNCTION,
+    TEXT_TYPE_FUNCTIONS,
+};
 
 /// The 2-byte magic prefix every `SCRIPT.SRC` opens with (`"Sv"`); the two
 /// following bytes are the version (`"20"` on the profiled titles), captured but
@@ -92,30 +107,40 @@ pub const SCRIPT_MAGIC_PREFIX: &[u8; 2] = b"Sv";
 /// Total length of the fixed `SCRIPT.SRC` header (`"Sv"` + 2 version bytes).
 pub const SCRIPT_HEADER_BYTE_LEN: usize = 4;
 
-/// The 4-byte marker that opens every text-bearing command. **Not** sufficient
-/// on its own — see the module docs — but a necessary prefix.
+/// The 4-byte `Call` (opcode `0x17`) operator token dword — little-endian
+/// `17 00 01 00` (opcode id `0x17` low word, operator tag `0x0001` high word).
+/// Every TEXT-SHOW / SELECT command is a `Call`, so this dword sits at the
+/// command's `Call` operator offset `m`. It is **not** a scan key: an operand
+/// whose bits equal this dword is consumed as an operand by the arity walk, never
+/// treated as a command.
 pub const SCRIPT_COMMAND_MARKER: &[u8; 4] = &[0x17, 0x00, 0x01, 0x00];
 
-/// The `word_hi` (`bytes[m+6..m+8]`) value that, together with a text-type
-/// `word_lo`, identifies a TEXT-SHOW command (`02 00`).
-pub const TEXT_SHOW_WORD_HI: u16 = 0x0002;
+/// The `Call`-target **category** (high word) that dispatches a TEXT-SHOW
+/// (`0x0002`). Alias of [`crate::CALL_CATEGORY_TEXT`] — the opcode catalog is the
+/// single source of truth for the dispatch discriminators.
+pub const TEXT_SHOW_WORD_HI: u16 = CALL_CATEGORY_TEXT;
 
-/// The set of valid `word_lo` (`bytes[m+4..m+6]`) *text type* values for a
-/// TEXT-SHOW command: `{02, 0F, 10, 11, 12, 13, 14}` (each as a `?? 00` word).
-pub const TEXT_SHOW_TYPE_WORDS: [u16; 7] = [0x0002, 0x000F, 0x0010, 0x0011, 0x0012, 0x0013, 0x0014];
+/// The valid TEXT-SHOW `Call`-target **functions** (low word): the text-type set
+/// `{0x02, 0x0F, 0x10, 0x11, 0x12, 0x13, 0x14}`. Alias of
+/// [`crate::TEXT_TYPE_FUNCTIONS`].
+pub const TEXT_SHOW_TYPE_WORDS: [u16; 7] = TEXT_TYPE_FUNCTIONS;
 
-/// The `word_lo` value identifying a SELECT command (`02 00`).
-pub const SELECT_WORD_LO: u16 = 0x0002;
-/// The `word_hi` value identifying a SELECT command (`06 00`).
-pub const SELECT_WORD_HI: u16 = 0x0006;
+/// The SELECT `Call`-target **function** (low word, `0x0002`). Alias of
+/// [`crate::SELECT_FUNCTION`].
+pub const SELECT_WORD_LO: u16 = SELECT_FUNCTION;
+/// The SELECT `Call`-target **category** (high word, `0x0006`). Alias of
+/// [`crate::CALL_CATEGORY_SELECT`].
+pub const SELECT_WORD_HI: u16 = CALL_CATEGORY_SELECT;
 
 /// Total byte length of a TEXT-SHOW command.
 pub const TEXT_SHOW_COMMAND_BYTE_LEN: usize = 32;
-/// Byte offset of the marker **within** a TEXT-SHOW command.
+/// Byte offset of the `Call` operator **within** a TEXT-SHOW command (the command
+/// spans `[m - TEXT_SHOW_MARKER_OFFSET, m + 8)` around its `Call` at `m`).
 pub const TEXT_SHOW_MARKER_OFFSET: usize = 24;
 /// Total byte length of a SELECT command.
 pub const SELECT_COMMAND_BYTE_LEN: usize = 16;
-/// Byte offset of the marker **within** a SELECT command.
+/// Byte offset of the `Call` operator **within** a SELECT command (the command
+/// spans `[m - SELECT_MARKER_OFFSET, m + 8)` around its `Call` at `m`).
 pub const SELECT_MARKER_OFFSET: usize = 8;
 
 /// Offset of the text pointer's 4-byte field within either command shape.
@@ -249,16 +274,6 @@ pub struct ScriptScan {
     pub commands: Vec<RawCommand>,
 }
 
-/// Read a little-endian `u16` at `off`. Caller guarantees `off + 2 <= len`.
-fn read_u16_le(bytes: &[u8], off: usize) -> u16 {
-    u16::from_le_bytes([bytes[off], bytes[off + 1]])
-}
-
-/// Read a little-endian `u32` at `off`. Caller guarantees `off + 4 <= len`.
-fn read_u32_le(bytes: &[u8], off: usize) -> u32 {
-    u32::from_le_bytes([bytes[off], bytes[off + 1], bytes[off + 2], bytes[off + 3]])
-}
-
 /// Recover the **decoupled** choice-label pointer for each SELECT (v60663
 /// variant) from a typed [`OpcodeScan`]: `Call`-offset → `(label pointer, its
 /// 4-byte field offset)`.
@@ -301,90 +316,137 @@ fn decoupled_select_labels(scan: &OpcodeScan) -> HashMap<usize, (u32, usize)> {
 }
 
 impl ScriptScan {
-    /// Scan a whole `SCRIPT.SRC` buffer for TEXT-SHOW + SELECT commands.
+    /// Derive every TEXT-SHOW + SELECT command from the arity-driven opcode-catalog
+    /// walk ([`crate::OpcodeScan`]) — the single source of truth.
     ///
-    /// The scan walks the buffer on 4-byte boundaries (every command is 4-byte
-    /// aligned) looking for the `17 00 01 00` marker; each match is
-    /// disambiguated by its two following words into a TEXT-SHOW, a SELECT, or
-    /// (the common case) neither — non-matching bytes are ignored, not decoded.
+    /// The walk types every token operator→operands→operator, so every `Call`
+    /// operator it reports is a genuine command (an operand whose bytes resemble a
+    /// `Call` operator is consumed as an operand, never mis-read as one). For each
+    /// `Call` classified [`CommandFamily::TextShow`] / [`CommandFamily::Select`]
+    /// this reads the text / speaker-name / immediate pointers straight off the
+    /// walk's typed operands at the command's fixed field offsets (writing the
+    /// `Call` operator offset as `m`: text at `m-20`, speaker name at `m-12`,
+    /// SELECT immediate at `m-4`), preserving the byte-locatable field offsets a
+    /// patch-back repoints. Commands are yielded in play (ascending offset) order.
     ///
     /// # Errors
     ///
     /// [`ScriptError::TruncatedHeader`] / [`ScriptError::BadMagic`] from the
-    /// header parse, or [`ScriptError::TruncatedCommand`] if a marker+word pair
-    /// identifies a command shape but the buffer lacks the bytes before the
-    /// marker to hold the whole command (a truncated command, never silently
+    /// header parse, or [`ScriptError::TruncatedCommand`] if a `Call` is classified
+    /// as a text-bearing command but the buffer/stream lacks the tokens before it
+    /// to hold the command's pointer fields (a truncated command, never silently
     /// dropped).
     pub fn parse(bytes: &[u8]) -> Result<Self, ScriptError> {
         let header = ScriptHeader::parse(bytes)?;
-        let mut commands = Vec::new();
+
+        // Single source of truth: the arity-driven stack-machine walk. On a buffer
+        // too short/malformed for the 12-byte `Sv20` program header the walk yields
+        // nothing, so a valid-magic buffer with no token stream has no commands.
+        let Ok(walk) = OpcodeScan::parse(bytes) else {
+            return Ok(Self {
+                header,
+                commands: Vec::new(),
+            });
+        };
 
         // Decoupled-select labels (v60663 variant), keyed by the SELECT `Call`
-        // operator offset (== the `17 00 01 00` marker offset `m`). Computed via
-        // the arity-driven opcode stack walk; on a stream too short/malformed for
-        // the 12-byte `Sv20` program header the walk yields nothing and every
-        // SELECT falls back to its immediate (v21465 / system-select behaviour).
-        let decoupled = OpcodeScan::parse(bytes)
-            .map(|scan| decoupled_select_labels(&scan))
-            .unwrap_or_default();
+        // operator offset, via the same walk (bounded backward stack scan).
+        let decoupled = decoupled_select_labels(&walk);
 
-        // Walk 4-byte-aligned marker candidates. `m + 8 <= len` guarantees both
-        // the marker dword and the two discriminator words are readable.
-        let mut m = 0usize;
-        while m + 8 <= bytes.len() {
-            if &bytes[m..m + 4] != SCRIPT_COMMAND_MARKER {
-                m += 4;
-                continue;
+        // The typed operand values the walk recovered, indexed by their absolute
+        // 4-byte field offset. A TEXT-SHOW / SELECT reads its pointer fields from
+        // *these* operand positions the arity walk actually produced — so a value
+        // whose bytes look like a command is never re-read as one.
+        let mut operand_by_offset: HashMap<usize, u32> =
+            HashMap::with_capacity(walk.instructions.len());
+        for ins in &walk.instructions {
+            for op in ins.operands() {
+                operand_by_offset.insert(op.field_offset, op.raw);
             }
-            let word_lo = read_u16_le(bytes, m + 4);
-            let word_hi = read_u16_le(bytes, m + 6);
+        }
+        // Fetch the typed operand at `field_offset`, or a truncated-command error
+        // (the command's pointer push is not in the stream).
+        let operand_at = |field_offset: usize,
+                          marker_offset: usize,
+                          needed_before: usize,
+                          kind: &'static str|
+         -> Result<u32, ScriptError> {
+            operand_by_offset
+                .get(&field_offset)
+                .copied()
+                .ok_or(ScriptError::TruncatedCommand {
+                    marker_offset,
+                    needed_before,
+                    kind,
+                })
+        };
 
-            if word_hi == TEXT_SHOW_WORD_HI && TEXT_SHOW_TYPE_WORDS.contains(&word_lo) {
-                // TEXT-SHOW: marker sits 24 bytes into a 32-byte command.
-                let command_offset = m.checked_sub(TEXT_SHOW_MARKER_OFFSET).ok_or(
-                    ScriptError::TruncatedCommand {
-                        marker_offset: m,
-                        needed_before: TEXT_SHOW_MARKER_OFFSET,
-                        kind: "text-show",
-                    },
-                )?;
-                let text_ptr_field_offset = command_offset + COMMAND_TEXT_PTR_OFFSET;
-                let name_ptr_field_offset = command_offset + COMMAND_NAME_PTR_OFFSET;
-                let text_pointer = read_u32_le(bytes, text_ptr_field_offset);
-                let raw_name = read_u32_le(bytes, name_ptr_field_offset);
-                let name_pointer = (raw_name != NO_SPEAKER_POINTER).then_some(raw_name);
-                commands.push(RawCommand::TextShow {
-                    command_offset,
-                    text_pointer,
-                    text_ptr_field_offset,
-                    name_pointer,
-                    name_ptr_field_offset,
-                });
-            } else if word_lo == SELECT_WORD_LO && word_hi == SELECT_WORD_HI {
-                // SELECT: marker sits 8 bytes into a 16-byte command.
-                let command_offset =
-                    m.checked_sub(SELECT_MARKER_OFFSET)
-                        .ok_or(ScriptError::TruncatedCommand {
+        let mut commands = Vec::new();
+        for ins in &walk.instructions {
+            // `m` is the `Call` operator offset (== the old marker offset).
+            let m = ins.offset;
+            match ins.family {
+                CommandFamily::TextShow { .. } => {
+                    // The command spans `[m-24, m+8)`; its pointer fields precede
+                    // the `Call` (text at m-20, speaker name at m-12).
+                    let command_offset = m.checked_sub(TEXT_SHOW_MARKER_OFFSET).ok_or(
+                        ScriptError::TruncatedCommand {
+                            marker_offset: m,
+                            needed_before: TEXT_SHOW_MARKER_OFFSET,
+                            kind: "text-show",
+                        },
+                    )?;
+                    let text_ptr_field_offset = command_offset + COMMAND_TEXT_PTR_OFFSET;
+                    let name_ptr_field_offset = command_offset + COMMAND_NAME_PTR_OFFSET;
+                    let text_pointer = operand_at(
+                        text_ptr_field_offset,
+                        m,
+                        TEXT_SHOW_MARKER_OFFSET,
+                        "text-show",
+                    )?;
+                    let raw_name = operand_at(
+                        name_ptr_field_offset,
+                        m,
+                        TEXT_SHOW_MARKER_OFFSET,
+                        "text-show",
+                    )?;
+                    let name_pointer = (raw_name != NO_SPEAKER_POINTER).then_some(raw_name);
+                    commands.push(RawCommand::TextShow {
+                        command_offset,
+                        text_pointer,
+                        text_ptr_field_offset,
+                        name_pointer,
+                        name_ptr_field_offset,
+                    });
+                }
+                CommandFamily::Select => {
+                    // The command spans `[m-8, m+8)`; the immediate is at m-4.
+                    let command_offset = m.checked_sub(SELECT_MARKER_OFFSET).ok_or(
+                        ScriptError::TruncatedCommand {
                             marker_offset: m,
                             needed_before: SELECT_MARKER_OFFSET,
                             kind: "select",
-                        })?;
-                let text_ptr_field_offset = command_offset + COMMAND_TEXT_PTR_OFFSET;
-                let text_pointer = read_u32_le(bytes, text_ptr_field_offset);
-                commands.push(RawCommand::Select {
-                    command_offset,
-                    text_pointer,
-                    text_ptr_field_offset,
-                    // `m` (the marker offset) is the SELECT `Call` operator offset.
-                    decoupled_label: decoupled.get(&m).map(|&(pointer, field_offset)| {
-                        DecoupledLabel {
-                            pointer,
-                            field_offset,
-                        }
-                    }),
-                });
+                        },
+                    )?;
+                    let text_ptr_field_offset = command_offset + COMMAND_TEXT_PTR_OFFSET;
+                    let text_pointer =
+                        operand_at(text_ptr_field_offset, m, SELECT_MARKER_OFFSET, "select")?;
+                    commands.push(RawCommand::Select {
+                        command_offset,
+                        text_pointer,
+                        text_ptr_field_offset,
+                        decoupled_label: decoupled.get(&m).map(|&(pointer, field_offset)| {
+                            DecoupledLabel {
+                                pointer,
+                                field_offset,
+                            }
+                        }),
+                    });
+                }
+                // Every other `Call` target + all non-`Call` operators are outside
+                // this module's two text-bearing surfaces.
+                _ => {}
             }
-            m += 4;
         }
 
         Ok(Self { header, commands })
@@ -701,13 +763,14 @@ pub enum ScriptError {
          offset 0, found {found:02X?}"
     )]
     BadMagic { expected: [u8; 2], found: [u8; 2] },
-    /// A marker + discriminator-word pair identifies a command shape, but the
-    /// buffer lacks the `needed_before` bytes ahead of the marker to hold the
-    /// whole command — a truncated command, surfaced rather than dropped.
+    /// The walk classified a `Call` at `marker_offset` as a text-bearing command,
+    /// but the stream lacks the `needed_before` bytes / typed pointer-push operands
+    /// ahead of the `Call` to hold the whole command — a truncated command,
+    /// surfaced rather than dropped.
     #[error(
-        "kaifuu.softpal.script.truncated_command: {kind} marker at offset {marker_offset} needs \
-         {needed_before} bytes before it to hold the command, but the marker is too close to the \
-         start of the buffer"
+        "kaifuu.softpal.script.truncated_command: {kind} Call at offset {marker_offset} needs \
+         {needed_before} bytes and its pointer-push operands before it to hold the command, but \
+         they are not present in the token stream"
     )]
     TruncatedCommand {
         marker_offset: usize,
@@ -720,6 +783,20 @@ pub enum ScriptError {
 mod tests {
     use super::*;
     use crate::{TEXTDAT_FLAG_PLAINTEXT, TEXTDAT_MAGIC_TAIL};
+
+    // ---- Sv20 token-stream fixtures ------------------------------------------
+    //
+    // Every fixture is a real `Sv20` program (12-byte program header + 4-byte
+    // arity-aligned tokens) so the arity-driven walk the disassembler now consumes
+    // types it exactly as the real bytecode. TEXT-SHOW / SELECT are built as the
+    // engine's push-then-`Call` idiom, matching the real layout the walk recovers:
+    // the text pointer is pushed to `m-20`, the speaker name to `m-12`, and the
+    // SELECT immediate to `m-4`, where `m` is the `Call` operator offset.
+
+    /// Read a little-endian `u32` at `off` (test-only helper).
+    fn read_u32_le(bytes: &[u8], off: usize) -> u32 {
+        u32::from_le_bytes([bytes[off], bytes[off + 1], bytes[off + 2], bytes[off + 3]])
+    }
 
     /// Build a plaintext `TEXT.DAT` from `(index, cp932 text)` records and return
     /// `(bytes, record_offsets)` so tests can point commands at exact records.
@@ -738,49 +815,74 @@ mod tests {
         (buf, offsets)
     }
 
-    /// Emit a 32-byte TEXT-SHOW command with the given pointers. The marker sits
-    /// at command byte 24; `word_lo`/`word_hi` follow it.
-    fn text_show_cmd(text_ptr: u32, name_ptr: u32, word_lo: u16, word_hi: u16) -> Vec<u8> {
-        let mut c = vec![0u8; TEXT_SHOW_COMMAND_BYTE_LEN];
-        c[COMMAND_TEXT_PTR_OFFSET..COMMAND_TEXT_PTR_OFFSET + 4]
-            .copy_from_slice(&text_ptr.to_le_bytes());
-        c[COMMAND_NAME_PTR_OFFSET..COMMAND_NAME_PTR_OFFSET + 4]
-            .copy_from_slice(&name_ptr.to_le_bytes());
-        c[TEXT_SHOW_MARKER_OFFSET..TEXT_SHOW_MARKER_OFFSET + 4]
-            .copy_from_slice(SCRIPT_COMMAND_MARKER);
-        c[TEXT_SHOW_MARKER_OFFSET + 4..TEXT_SHOW_MARKER_OFFSET + 6]
-            .copy_from_slice(&word_lo.to_le_bytes());
-        c[TEXT_SHOW_MARKER_OFFSET + 6..TEXT_SHOW_MARKER_OFFSET + 8]
-            .copy_from_slice(&word_hi.to_le_bytes());
-        c
+    /// One operator token `(id, 0x0001)`.
+    fn opc(id: u16) -> [u8; 4] {
+        let mut t = [0u8; 4];
+        t[0..2].copy_from_slice(&id.to_le_bytes());
+        t[2..4].copy_from_slice(&0x0001u16.to_le_bytes());
+        t
+    }
+    /// One raw operand/word token.
+    fn word(v: u32) -> [u8; 4] {
+        v.to_le_bytes()
+    }
+    /// A `Call` first-operand (dispatch target) word from `(category, function)`.
+    fn call_target(category: u16, function: u16) -> u32 {
+        (u32::from(category) << 16) | u32::from(function)
     }
 
-    /// Emit a 16-byte SELECT command with the given text pointer.
-    fn select_cmd(text_ptr: u32) -> Vec<u8> {
-        let mut c = vec![0u8; SELECT_COMMAND_BYTE_LEN];
-        c[COMMAND_TEXT_PTR_OFFSET..COMMAND_TEXT_PTR_OFFSET + 4]
-            .copy_from_slice(&text_ptr.to_le_bytes());
-        c[SELECT_MARKER_OFFSET..SELECT_MARKER_OFFSET + 4].copy_from_slice(SCRIPT_COMMAND_MARKER);
-        c[SELECT_MARKER_OFFSET + 4..SELECT_MARKER_OFFSET + 6]
-            .copy_from_slice(&SELECT_WORD_LO.to_le_bytes());
-        c[SELECT_MARKER_OFFSET + 6..SELECT_MARKER_OFFSET + 8]
-            .copy_from_slice(&SELECT_WORD_HI.to_le_bytes());
-        c
+    /// The push-then-`Call` **TEXT-SHOW** idiom: three arity-1 pushes (text ptr,
+    /// speaker name ptr, a filler window/message value) then `Call 0x17` to the
+    /// text category with the given text-type function. Lands text at `m-20`,
+    /// speaker name at `m-12` (`m` = the `Call` operator offset).
+    fn text_show_tokens(text_ptr: u32, name_ptr: u32, text_type: u16) -> Vec<[u8; 4]> {
+        vec![
+            opc(0x1f),
+            word(text_ptr),
+            opc(0x1f),
+            word(name_ptr),
+            opc(0x1f),
+            word(0x0000_0000),
+            opc(0x17),
+            word(call_target(TEXT_SHOW_WORD_HI, text_type)),
+            word(0x0000_0000),
+        ]
     }
 
-    fn script_with(header_version: &[u8; 2], bodies: &[Vec<u8>]) -> Vec<u8> {
+    /// The push-then-`Call` **SELECT** idiom: one arity-1 push of the immediate,
+    /// then `Call 0x17` to the select target. Lands the immediate at `m-4`.
+    fn select_tokens(immediate: u32) -> Vec<[u8; 4]> {
+        vec![
+            opc(0x1f),
+            word(immediate),
+            opc(0x17),
+            word(call_target(SELECT_WORD_HI, SELECT_WORD_LO)),
+            word(0x0000_0000),
+        ]
+    }
+
+    /// A decoupled choice-label push: assign a `TEXT.DAT` label pointer to the
+    /// choice-label typed slot `0x40000002` (the v60663 mechanism).
+    fn label_push_tokens(label_ptr: u32) -> Vec<[u8; 4]> {
+        vec![opc(0x01), word(SELECT_LABEL_SLOT_TAG), word(label_ptr)]
+    }
+
+    /// A 12-byte `Sv20` program header (`"Sv20"` + two header dwords) + tokens.
+    fn sv_program(tokens: &[[u8; 4]]) -> Vec<u8> {
         let mut s = Vec::new();
         s.extend_from_slice(SCRIPT_MAGIC_PREFIX);
-        s.extend_from_slice(header_version);
-        for b in bodies {
-            s.extend_from_slice(b);
+        s.extend_from_slice(b"20");
+        s.extend_from_slice(&0u32.to_le_bytes());
+        s.extend_from_slice(&0u32.to_le_bytes());
+        for t in tokens {
+            s.extend_from_slice(t);
         }
         s
     }
 
     #[test]
     fn header_parses_version_and_rejects_bad_magic() {
-        let s = script_with(b"20", &[]);
+        let s = sv_program(&[]);
         assert_eq!(ScriptHeader::parse(&s).unwrap().version, *b"20");
         assert_eq!(ScriptHeader::parse(&s).unwrap().version_str(), "20");
 
@@ -796,7 +898,7 @@ mod tests {
     }
 
     #[test]
-    fn scans_text_show_and_select_with_correct_offsets_and_speaker() {
+    fn derives_text_show_and_select_with_correct_offsets_and_speaker() {
         // Two records so a text pointer and a name pointer both resolve. ASCII
         // text keeps the fixture cp932-clean (the codec decodes Shift-JIS).
         let (textdat_bytes, recs) = build_textdat(&[(0, b"Hello there"), (1, b"Alice")]);
@@ -805,26 +907,29 @@ mod tests {
 
         // Stream: a text-show WITH speaker, a narration text-show (no speaker),
         // then a select — in that play order.
-        let c0 = text_show_cmd(text_ptr, name_ptr, 0x0002, TEXT_SHOW_WORD_HI);
-        let c1 = text_show_cmd(text_ptr, NO_SPEAKER_POINTER, 0x0010, TEXT_SHOW_WORD_HI);
-        let c2 = select_cmd(text_ptr);
-        let script = script_with(b"20", &[c0, c1, c2]);
+        let mut tokens = Vec::new();
+        tokens.extend(text_show_tokens(text_ptr, name_ptr, 0x0002));
+        tokens.extend(text_show_tokens(text_ptr, NO_SPEAKER_POINTER, 0x0010));
+        tokens.extend(select_tokens(text_ptr));
+        let script = sv_program(&tokens);
 
         let scan = ScriptScan::parse(&script).unwrap();
         assert_eq!(scan.text_show_count(), 2);
         assert_eq!(scan.text_show_with_speaker_count(), 1);
         assert_eq!(scan.select_count(), 1);
 
-        // Command offsets follow the 4-byte header, 32B, 32B.
-        assert_eq!(scan.commands[0].command_offset(), SCRIPT_HEADER_BYTE_LEN);
-        assert_eq!(
-            scan.commands[1].command_offset(),
-            SCRIPT_HEADER_BYTE_LEN + TEXT_SHOW_COMMAND_BYTE_LEN
-        );
-        assert_eq!(
-            scan.commands[2].command_offset(),
-            SCRIPT_HEADER_BYTE_LEN + 2 * TEXT_SHOW_COMMAND_BYTE_LEN
-        );
+        // Command offset is the `Call` operator offset minus its in-command offset
+        // (24 for text-show, 8 for select). A text-show idiom is 9 tokens (36
+        // bytes) with its `Call` at token 6 (+24); a select idiom is 5 tokens (20
+        // bytes) with its `Call` at token 2 (+8). Tokens begin after the 12-byte
+        // program header.
+        let base = crate::SV_PROGRAM_HEADER_BYTE_LEN;
+        let first_call = base + 24; // TS0 idiom @ base, Call at +24
+        assert_eq!(scan.commands[0].command_offset(), first_call - 24);
+        let second_call = base + 36 + 24; // TS1 idiom @ base+36
+        assert_eq!(scan.commands[1].command_offset(), second_call - 24);
+        let third_call = base + 72 + 8; // SELECT idiom @ base+72, Call at +8
+        assert_eq!(scan.commands[2].command_offset(), third_call - 8);
 
         let textdat = TextDat::parse(&textdat_bytes).unwrap();
         let dis = scan.resolve(&textdat);
@@ -835,17 +940,12 @@ mod tests {
         // Unit 0: resolved dialogue + resolved speaker, byte-locatable fields.
         let d0 = &dis.dialogue[0];
         assert_eq!(d0.text.pointer, text_ptr);
-        assert_eq!(
-            d0.text.field_offset,
-            SCRIPT_HEADER_BYTE_LEN + COMMAND_TEXT_PTR_OFFSET
-        );
+        assert_eq!(d0.text.field_offset, first_call - 20);
+        assert_eq!(read_u32_le(&script, d0.text.field_offset), text_ptr);
         assert_eq!(d0.text.resolved_text(), Some("Hello there"));
         let sp = d0.speaker.as_ref().expect("has speaker");
         assert_eq!(sp.pointer, name_ptr);
-        assert_eq!(
-            sp.field_offset,
-            SCRIPT_HEADER_BYTE_LEN + COMMAND_NAME_PTR_OFFSET
-        );
+        assert_eq!(sp.field_offset, first_call - 12);
         assert_eq!(sp.resolved_text(), Some("Alice"));
 
         // Unit 1: narration => 0x0FFFFFFF => speaker None.
@@ -859,21 +959,57 @@ mod tests {
     }
 
     #[test]
-    fn text_show_type_word_02_is_not_misread_as_select() {
-        // word_lo == 02 with word_hi == 02 is a TEXT-SHOW, not a SELECT (SELECT
-        // needs word_hi == 06). Guards the discriminator ordering.
+    fn text_show_type_function_02_is_not_misread_as_select() {
+        // A text-show with function 0x0002 dispatches to the TEXT category
+        // (0x0002), NOT the SELECT category (0x0006). Guards the discriminator.
         let (textdat_bytes, recs) = build_textdat(&[(0, b"x")]);
-        let c = text_show_cmd(
-            recs[0] as u32,
-            NO_SPEAKER_POINTER,
-            0x0002,
-            TEXT_SHOW_WORD_HI,
-        );
-        let script = script_with(b"20", &[c]);
+        let tokens = text_show_tokens(recs[0] as u32, NO_SPEAKER_POINTER, 0x0002);
+        let script = sv_program(&tokens);
         let scan = ScriptScan::parse(&script).unwrap();
         assert_eq!(scan.text_show_count(), 1);
         assert_eq!(scan.select_count(), 0);
         let _ = TextDat::parse(&textdat_bytes).unwrap();
+    }
+
+    #[test]
+    fn operator_looking_operand_is_not_misread_as_command() {
+        // THE consolidation guarantee: an operand whose little-endian bytes are
+        // exactly the `Call` operator dword `17 00 01 00` (raw value 0x0001_0017),
+        // immediately followed by an operand whose bytes are `02 00 02 00` (a
+        // TEXT-SHOW discriminator), is consumed by the arity walk as two operands
+        // of a binary Expr op — NOT re-read as a phantom TEXT-SHOW `Call`. The old
+        // `17 00 01 00` marker scan WOULD have emitted a phantom command here.
+        let (textdat_bytes, recs) = build_textdat(&[(0, b"real choice")]);
+
+        // Some nullary filler so the trap operands are deep enough that the old
+        // marker scan would compute a valid (non-underflowing) command offset.
+        let mut tokens = vec![opc(0x18), opc(0x18), opc(0x18)];
+        // A binary op whose two operands are the operator-looking trap bytes.
+        tokens.push(opc(0x01));
+        tokens.push(word(0x0001_0017)); // bytes: 17 00 01 00 (the Call dword)
+        tokens.push(word(call_target(TEXT_SHOW_WORD_HI, 0x0002))); // bytes: 02 00 02 00
+        // One genuine SELECT so there is a real command to count against.
+        tokens.extend(select_tokens(recs[0] as u32));
+        let script = sv_program(&tokens);
+
+        // The trap operand really carries the Call dword bytes (offset 28: after
+        // the 12-byte header, 3 nullary operators and 1 binary operator token).
+        let trap_field = crate::SV_PROGRAM_HEADER_BYTE_LEN + 4 * 4;
+        assert_eq!(&script[trap_field..trap_field + 4], SCRIPT_COMMAND_MARKER);
+
+        let scan = ScriptScan::parse(&script).unwrap();
+        // No phantom TEXT-SHOW from the trap operand; exactly the genuine SELECT.
+        assert_eq!(
+            scan.text_show_count(),
+            0,
+            "trap operand not a phantom command"
+        );
+        assert_eq!(scan.select_count(), 1);
+
+        let dis = scan.resolve(&TextDat::parse(&textdat_bytes).unwrap());
+        assert_eq!(dis.dialogue.len(), 0);
+        assert_eq!(dis.choices[0].text.resolved_text(), Some("real choice"));
+        assert!(dis.is_fully_resolved());
     }
 
     #[test]
@@ -882,8 +1018,8 @@ mod tests {
         // pool (so name_ptr lands mid-record => Dangling, not OutOfPool).
         let (textdat_bytes, recs) = build_textdat(&[(0, b"a real dialogue line")]);
         let bogus = recs[0] as u32 + 1; // inside the pool, off a boundary
-        let c = text_show_cmd(recs[0] as u32, bogus, 0x0002, TEXT_SHOW_WORD_HI);
-        let script = script_with(b"20", &[c]);
+        let tokens = text_show_tokens(recs[0] as u32, bogus, 0x0002);
+        let script = sv_program(&tokens);
         let scan = ScriptScan::parse(&script).unwrap();
         let dis = scan.resolve(&TextDat::parse(&textdat_bytes).unwrap());
         assert_eq!(dis.unresolved_dialogue_text_count(), 0);
@@ -902,10 +1038,8 @@ mod tests {
         // Mirrors v60663: a SELECT whose immediate (0x40000000) lies far past the
         // pool => OutOfPool (a system/branch select), NOT a dangling failure.
         let (textdat_bytes, _recs) = build_textdat(&[(0, b"only record")]);
-        let mut c = select_cmd(0); // placeholder, overwrite the immediate below
-        c[COMMAND_TEXT_PTR_OFFSET..COMMAND_TEXT_PTR_OFFSET + 4]
-            .copy_from_slice(&0x4000_0000u32.to_le_bytes());
-        let script = script_with(b"20", &[c]);
+        let tokens = select_tokens(0x4000_0000);
+        let script = sv_program(&tokens);
         let scan = ScriptScan::parse(&script).unwrap();
         let dis = scan.resolve(&TextDat::parse(&textdat_bytes).unwrap());
         assert_eq!(dis.choices.len(), 1);
@@ -919,20 +1053,20 @@ mod tests {
 
     #[test]
     fn truncated_command_is_typed_error() {
-        // A marker+discriminator for a text-show placed too close to offset 0
-        // (only the header before it) => TruncatedCommand, not a silent drop.
-        // Header "Sv20" (4 bytes) then a marker at offset 4: 4 < 24 needed.
-        let mut s = Vec::new();
-        s.extend_from_slice(SCRIPT_MAGIC_PREFIX);
-        s.extend_from_slice(b"20");
-        s.extend_from_slice(SCRIPT_COMMAND_MARKER); // marker at offset 4
-        s.extend_from_slice(&0x0002u16.to_le_bytes()); // word_lo (text type)
-        s.extend_from_slice(&TEXT_SHOW_WORD_HI.to_le_bytes()); // word_hi
+        // A `Call` classified TEXT-SHOW at the very first token offset (12): its
+        // text pointer field would sit at 12-20 (underflow) — the pushes that
+        // carry it are not in the stream => TruncatedCommand, not a silent drop.
+        let tokens = [
+            opc(0x17),
+            word(call_target(TEXT_SHOW_WORD_HI, 0x0002)),
+            word(0x0000_0000),
+        ];
+        let s = sv_program(&tokens);
         let err = ScriptScan::parse(&s).expect_err("truncated text-show command");
         assert!(matches!(
             err,
             ScriptError::TruncatedCommand {
-                marker_offset: 4,
+                marker_offset: 12,
                 needed_before: 24,
                 kind: "text-show"
             }
@@ -944,17 +1078,17 @@ mod tests {
     }
 
     #[test]
-    fn unrelated_marker_bytes_are_ignored() {
-        // A bare marker with non-command discriminator words is not a command.
-        let mut s = Vec::new();
-        s.extend_from_slice(SCRIPT_MAGIC_PREFIX);
-        s.extend_from_slice(b"20");
-        // 24 bytes of filler so a marker at offset 28 has room, but give it a
-        // discriminator that matches neither shape (word_hi == 07).
-        s.extend_from_slice(&[0u8; 24]);
-        s.extend_from_slice(SCRIPT_COMMAND_MARKER);
-        s.extend_from_slice(&0x0002u16.to_le_bytes());
-        s.extend_from_slice(&0x0007u16.to_le_bytes());
+    fn non_text_call_targets_are_ignored() {
+        // A `Call` to an unrelated engine built-in (graphics category 0x0011) is
+        // neither TEXT-SHOW nor SELECT — it produces no command in this module.
+        let tokens = [
+            opc(0x1f),
+            word(0x0000_0001),
+            opc(0x17),
+            word(call_target(0x0011, 0x0008)),
+            word(0x0000_0005),
+        ];
+        let s = sv_program(&tokens);
         let scan = ScriptScan::parse(&s).unwrap();
         assert_eq!(scan.commands.len(), 0);
     }
@@ -965,43 +1099,14 @@ mod tests {
             ScriptScan::parse(&[]),
             Err(ScriptError::TruncatedHeader { observed_len: 0 })
         ));
+        // A valid 4-byte header but no `Sv20` token stream => no commands (the walk
+        // needs the 12-byte program header before it yields anything).
+        let scan = ScriptScan::parse(b"Sv20").unwrap();
+        assert_eq!(scan.commands.len(), 0);
+        assert_eq!(scan.header.version, *b"20");
     }
 
     // --- v60663 decoupled-select label mechanism (opcode-aligned tokens) --------
-    //
-    // These build a *token-aligned* `Sv20` stream (12-byte program header + 4-byte
-    // operator/operand tokens) so both the marker scan and the arity-driven opcode
-    // walk agree, mirroring the real v60663 select layout: a label push to the
-    // choice-label slot (`op[0x40000002, <text ptr>]`), then the operator whose
-    // operand is the nil SELECT immediate, then the `Call` SELECT.
-
-    /// One operator token `(id, 0x0001)`.
-    fn opc(id: u16) -> [u8; 4] {
-        let mut t = [0u8; 4];
-        t[0..2].copy_from_slice(&id.to_le_bytes());
-        t[2..4].copy_from_slice(&0x0001u16.to_le_bytes());
-        t
-    }
-    /// One raw operand/word token.
-    fn word(v: u32) -> [u8; 4] {
-        v.to_le_bytes()
-    }
-    /// A `Call` first-operand (target) word from `(category, function)`.
-    fn call_target(category: u16, function: u16) -> u32 {
-        (u32::from(category) << 16) | u32::from(function)
-    }
-    /// A 12-byte `Sv20` program header (`"Sv20"` + two header dwords) + tokens.
-    fn sv_program(tokens: &[[u8; 4]]) -> Vec<u8> {
-        let mut s = Vec::new();
-        s.extend_from_slice(SCRIPT_MAGIC_PREFIX);
-        s.extend_from_slice(b"20");
-        s.extend_from_slice(&0u32.to_le_bytes());
-        s.extend_from_slice(&0u32.to_le_bytes());
-        for t in tokens {
-            s.extend_from_slice(t);
-        }
-        s
-    }
 
     #[test]
     fn decoupled_select_resolves_via_label_slot() {
@@ -1010,25 +1115,18 @@ mod tests {
         let label = recs[0] as u32; // small offset => plain tag 0x0
         assert_eq!(label >> 28, 0, "label pointer is a plain word");
 
-        let tokens = [
-            // Decoupled label push: assign the label text ptr to slot 0x40000002.
-            opc(0x01),
-            word(SELECT_LABEL_SLOT_TAG),
-            word(label),
-            // The operator immediately before the Call pushes the nil immediate.
-            opc(0x1f),
-            word(0x4000_0000),
-            // Call -> SELECT (immediate is NOT the label in this variant).
-            opc(0x17),
-            word(call_target(SELECT_WORD_HI, SELECT_WORD_LO)),
-            word(0x0000_0000),
-        ];
+        let mut tokens = Vec::new();
+        // Decoupled label push: assign the label text ptr to slot 0x40000002.
+        tokens.extend(label_push_tokens(label));
+        // The SELECT (immediate is the nil sentinel, not the label in this variant).
+        tokens.extend(select_tokens(0x4000_0000));
         let s = sv_program(&tokens);
         let scan = ScriptScan::parse(&s).unwrap();
         assert_eq!(scan.select_count(), 1);
 
         // The SELECT immediate is the nil sentinel; the decoupled label is captured
-        // with a byte-locatable field (for patch-back).
+        // with a byte-locatable field (for patch-back). The label operand sits at
+        // the 3rd token (offset 20).
         match &scan.commands[0] {
             RawCommand::Select {
                 text_pointer,
@@ -1038,8 +1136,8 @@ mod tests {
                 assert_eq!(*text_pointer, 0x4000_0000);
                 let dl = decoupled_label.expect("decoupled label recovered");
                 assert_eq!(dl.pointer, label);
+                assert_eq!(dl.field_offset, 20);
                 assert!(dl.field_offset + 4 <= s.len());
-                // The field really holds the label pointer.
                 assert_eq!(read_u32_le(&s, dl.field_offset), label);
             }
             other @ RawCommand::TextShow { .. } => panic!("expected Select, got {other:?}"),
@@ -1048,8 +1146,8 @@ mod tests {
         let dis = scan.resolve(&TextDat::parse(&td_bytes).unwrap());
         assert_eq!(dis.choices.len(), 1);
         assert_eq!(dis.choices[0].text.resolved_text(), Some("Attack"));
-        // The resolved choice points at the DECOUPLED label field (the 3rd token,
-        // at byte 20), NOT at the SELECT immediate field (byte 28).
+        // The resolved choice points at the DECOUPLED label field (token 3, byte
+        // 20), NOT at the SELECT immediate field.
         assert_eq!(dis.choices[0].text.field_offset, 20);
         assert_eq!(dis.choices[0].text.pointer, label);
         assert_eq!(dis.text_bearing_choice_count(), 1);
@@ -1063,14 +1161,8 @@ mod tests {
         // A SELECT with a nil immediate and NO label-slot push before it => a
         // system/menu select that must remain OutOfPool (never force-resolved).
         let (td_bytes, _recs) = build_textdat(&[(0, b"only record")]);
-        let tokens = [
-            opc(0x18), // nullary control filler (no operands)
-            opc(0x1f),
-            word(0x4000_0000), // nil immediate
-            opc(0x17),
-            word(call_target(SELECT_WORD_HI, SELECT_WORD_LO)),
-            word(0x0000_0000),
-        ];
+        let mut tokens = vec![opc(0x18)]; // nullary control filler (no operands)
+        tokens.extend(select_tokens(0x4000_0000));
         let s = sv_program(&tokens);
         let scan = ScriptScan::parse(&s).unwrap();
         assert_eq!(scan.select_count(), 1);
@@ -1089,27 +1181,15 @@ mod tests {
 
     #[test]
     fn decoupled_scan_is_bounded_by_intervening_text_show() {
-        // A label-slot push, then a TEXT-SHOW, then the SELECT: the backward scan
-        // must STOP at the TEXT-SHOW (dialogue never sits between a label push and
-        // its select), so the far label is NOT picked up (non-vacuous bound).
-        let (td_bytes, recs) = build_textdat(&[(0, b"FarLabel")]);
-        let label = recs[0] as u32;
-        let tokens = [
-            // Far label push (before an intervening text-show).
-            opc(0x01),
-            word(SELECT_LABEL_SLOT_TAG),
-            word(label),
-            // An intervening TEXT-SHOW (Call category 0x0002, text-type function).
-            opc(0x17),
-            word(call_target(TEXT_SHOW_WORD_HI, 0x0002)),
-            word(0x0000_0000),
-            // The SELECT with a nil immediate.
-            opc(0x1f),
-            word(0x4000_0000),
-            opc(0x17),
-            word(call_target(SELECT_WORD_HI, SELECT_WORD_LO)),
-            word(0x0000_0000),
-        ];
+        // A label-slot push, then a full TEXT-SHOW idiom, then the SELECT: the
+        // backward scan must STOP at the TEXT-SHOW (dialogue never sits between a
+        // label push and its select), so the far label is NOT picked up.
+        let (td_bytes, recs) = build_textdat(&[(0, b"FarLabel"), (1, b"a line")]);
+        let far_label = recs[0] as u32;
+        let mut tokens = Vec::new();
+        tokens.extend(label_push_tokens(far_label));
+        tokens.extend(text_show_tokens(recs[1] as u32, NO_SPEAKER_POINTER, 0x0002));
+        tokens.extend(select_tokens(0x4000_0000));
         let s = sv_program(&tokens);
         let scan = ScriptScan::parse(&s).unwrap();
         let sel = scan
@@ -1128,7 +1208,7 @@ mod tests {
         }
         // And it stays OutOfPool on resolve.
         let dis = scan.resolve(&TextDat::parse(&td_bytes).unwrap());
-        let choice = &dis.choices[0];
+        let choice = dis.choices.first().expect("a choice");
         assert!(choice.text.is_out_of_pool());
     }
 
@@ -1139,18 +1219,10 @@ mod tests {
         let (td_bytes, recs) = build_textdat(&[(0, b"ImmChoice"), (1, b"SlotChoice")]);
         let immediate = recs[0] as u32;
         let slot_label = recs[1] as u32;
-        let tokens = [
-            // A decoupled slot push (would resolve) BUT the immediate also resolves.
-            opc(0x01),
-            word(SELECT_LABEL_SLOT_TAG),
-            word(slot_label),
-            // The operator before the Call pushes the immediate = a real text ptr.
-            opc(0x1f),
-            word(immediate),
-            opc(0x17),
-            word(call_target(SELECT_WORD_HI, SELECT_WORD_LO)),
-            word(0x0000_0000),
-        ];
+        let mut tokens = Vec::new();
+        // A decoupled slot push (would resolve) BUT the immediate also resolves.
+        tokens.extend(label_push_tokens(slot_label));
+        tokens.extend(select_tokens(immediate));
         let s = sv_program(&tokens);
         let scan = ScriptScan::parse(&s).unwrap();
         let dis = scan.resolve(&TextDat::parse(&td_bytes).unwrap());

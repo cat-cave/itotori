@@ -34,8 +34,9 @@
 //! **`TEXT.DAT`** string pool (header + flag-gated cipher + record framing +
 //! cp932 decode), (c) disassembles the **dialogue + speaker + choice
 //! surfaces** of the plaintext `SCRIPT.SRC` (`Sv`-version) bytecode
-//! ([`ScriptScan`] / [`Disassembly`]): it scans for the TEXT-SHOW (32-byte) and
-//! SELECT (16-byte) commands and resolves their 4-byte `TEXT.DAT` pointers to
+//! ([`ScriptScan`] / [`Disassembly`]): it **derives** the TEXT-SHOW (32-byte) and
+//! SELECT (16-byte) commands from the [`opcode`] arity-driven stack walk (the
+//! single source of truth) and resolves their 4-byte `TEXT.DAT` pointers to
 //! decoded lines, and (d) **patches translated dialogue / choices back**
 //! ([`patchback`]): it rebuilds `TEXT.DAT` with new strings (old→new offset map,
 //! re-encrypting when the original was), repoints the `SCRIPT.SRC` pointer fields,
@@ -110,11 +111,12 @@ pub const SOFTPAL_PAC_SUPPORT_BOUNDARY: &str = "kaifuu-softpal enumerates and ex
     name/size/offset index) deterministically, decodes the inner `TEXT.DAT` string pool \
     (16-byte header + flag-gated keyless ROL+XOR decrypt/encrypt + 4-byte-index/cp932/NUL record \
     parser with absolute byte offsets), AND disassembles the SCRIPT.SRC dialogue+speaker+choice \
-    surfaces (Sv-version plaintext bytecode: TEXT-SHOW 32-byte + SELECT 16-byte commands scanned \
-    by marker+discriminator, their 4-byte TEXT.DAT pointers resolved to record boundaries — SELECT \
-    labels via BOTH variants: v21465 immediate-is-label and v60663 decoupled label pushed to the \
-    choice-label slot 0x40000002 and recovered by the Sv20 stack walk, genuine system selects left \
-    out-of-pool — byte-locatable pointer fields for patch-back), AND patches translated dialogue+choices back \
+    surfaces (Sv-version plaintext bytecode: TEXT-SHOW 32-byte + SELECT 16-byte commands DERIVED \
+    from the Sv20 arity-driven stack walk (the Call 0x17 dispatch stream, single source of truth), \
+    their 4-byte TEXT.DAT pointers read from the walk's typed operands and resolved to record \
+    boundaries — SELECT labels via BOTH variants: v21465 immediate-is-label and v60663 decoupled \
+    label pushed to the choice-label slot 0x40000002 and recovered by the same stack walk, genuine \
+    system selects left out-of-pool — byte-locatable pointer fields for patch-back), AND patches translated dialogue+choices back \
     (rebuild TEXT.DAT with an old->new offset map + re-encrypt when the original was, repoint the \
     SCRIPT.SRC pointer fields, drop both as loose files with no PAC repack), AND catalogs the full \
     Sv20 opcode table (arity-driven walk of the whole plaintext token stream: the 33-entry \

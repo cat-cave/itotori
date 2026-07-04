@@ -435,10 +435,8 @@ pub fn patchback(
 mod tests {
     use super::*;
     use crate::{
-        COMMAND_NAME_PTR_OFFSET, COMMAND_TEXT_PTR_OFFSET, NO_SPEAKER_POINTER,
-        SCRIPT_COMMAND_MARKER, SCRIPT_HEADER_BYTE_LEN, SCRIPT_MAGIC_PREFIX, SELECT_MARKER_OFFSET,
-        SELECT_WORD_HI, SELECT_WORD_LO, TEXT_SHOW_COMMAND_BYTE_LEN, TEXT_SHOW_MARKER_OFFSET,
-        TEXT_SHOW_WORD_HI, TextDat,
+        NO_SPEAKER_POINTER, SCRIPT_MAGIC_PREFIX, SELECT_WORD_HI, SELECT_WORD_LO, TEXT_SHOW_WORD_HI,
+        TextDat,
     };
 
     /// Build a plaintext `TEXT.DAT` from `(index, cp932 text)` records and return
@@ -458,39 +456,58 @@ mod tests {
         (buf, offsets)
     }
 
-    fn text_show_cmd(text_ptr: u32, name_ptr: u32, word_lo: u16, word_hi: u16) -> Vec<u8> {
-        let mut c = vec![0u8; TEXT_SHOW_COMMAND_BYTE_LEN];
-        c[COMMAND_TEXT_PTR_OFFSET..COMMAND_TEXT_PTR_OFFSET + 4]
-            .copy_from_slice(&text_ptr.to_le_bytes());
-        c[COMMAND_NAME_PTR_OFFSET..COMMAND_NAME_PTR_OFFSET + 4]
-            .copy_from_slice(&name_ptr.to_le_bytes());
-        c[TEXT_SHOW_MARKER_OFFSET..TEXT_SHOW_MARKER_OFFSET + 4]
-            .copy_from_slice(SCRIPT_COMMAND_MARKER);
-        c[TEXT_SHOW_MARKER_OFFSET + 4..TEXT_SHOW_MARKER_OFFSET + 6]
-            .copy_from_slice(&word_lo.to_le_bytes());
-        c[TEXT_SHOW_MARKER_OFFSET + 6..TEXT_SHOW_MARKER_OFFSET + 8]
-            .copy_from_slice(&word_hi.to_le_bytes());
-        c
+    // The disassembler now derives commands from the `Sv20` arity-driven stack
+    // walk, so patch-back fixtures are real `Sv20` token programs (12-byte header +
+    // 4-byte tokens) built as the engine's push-then-`Call` TEXT-SHOW / SELECT
+    // idiom — the byte-locatable pointer fields the repointer rewrites.
+
+    fn opc(id: u16) -> [u8; 4] {
+        let mut t = [0u8; 4];
+        t[0..2].copy_from_slice(&id.to_le_bytes());
+        t[2..4].copy_from_slice(&0x0001u16.to_le_bytes());
+        t
+    }
+    fn word(v: u32) -> [u8; 4] {
+        v.to_le_bytes()
+    }
+    fn call_target(category: u16, function: u16) -> u32 {
+        (u32::from(category) << 16) | u32::from(function)
     }
 
-    fn select_cmd(text_ptr: u32) -> Vec<u8> {
-        let mut c = vec![0u8; crate::SELECT_COMMAND_BYTE_LEN];
-        c[COMMAND_TEXT_PTR_OFFSET..COMMAND_TEXT_PTR_OFFSET + 4]
-            .copy_from_slice(&text_ptr.to_le_bytes());
-        c[SELECT_MARKER_OFFSET..SELECT_MARKER_OFFSET + 4].copy_from_slice(SCRIPT_COMMAND_MARKER);
-        c[SELECT_MARKER_OFFSET + 4..SELECT_MARKER_OFFSET + 6]
-            .copy_from_slice(&SELECT_WORD_LO.to_le_bytes());
-        c[SELECT_MARKER_OFFSET + 6..SELECT_MARKER_OFFSET + 8]
-            .copy_from_slice(&SELECT_WORD_HI.to_le_bytes());
-        c
+    /// TEXT-SHOW idiom: text-ptr push, name-ptr push, filler push, then the `Call`.
+    fn text_show_tokens(text_ptr: u32, name_ptr: u32, text_type: u16) -> Vec<[u8; 4]> {
+        vec![
+            opc(0x1f),
+            word(text_ptr),
+            opc(0x1f),
+            word(name_ptr),
+            opc(0x1f),
+            word(0x0000_0000),
+            opc(0x17),
+            word(call_target(TEXT_SHOW_WORD_HI, text_type)),
+            word(0x0000_0000),
+        ]
     }
 
-    fn script_with(version: &[u8; 2], bodies: &[Vec<u8>]) -> Vec<u8> {
+    /// SELECT idiom: immediate push then the `Call`.
+    fn select_tokens(immediate: u32) -> Vec<[u8; 4]> {
+        vec![
+            opc(0x1f),
+            word(immediate),
+            opc(0x17),
+            word(call_target(SELECT_WORD_HI, SELECT_WORD_LO)),
+            word(0x0000_0000),
+        ]
+    }
+
+    fn sv_program(tokens: &[[u8; 4]]) -> Vec<u8> {
         let mut s = Vec::new();
         s.extend_from_slice(SCRIPT_MAGIC_PREFIX);
-        s.extend_from_slice(version);
-        for b in bodies {
-            s.extend_from_slice(b);
+        s.extend_from_slice(b"20");
+        s.extend_from_slice(&0u32.to_le_bytes());
+        s.extend_from_slice(&0u32.to_le_bytes());
+        for t in tokens {
+            s.extend_from_slice(t);
         }
         s
     }
@@ -504,15 +521,11 @@ mod tests {
             (2, b"line two is a good deal longer"),
             (3, b"a choice"),
         ]);
-        let d0 = text_show_cmd(recs[0] as u32, recs[1] as u32, 0x0002, TEXT_SHOW_WORD_HI);
-        let d1 = text_show_cmd(
-            recs[2] as u32,
-            NO_SPEAKER_POINTER,
-            0x0010,
-            TEXT_SHOW_WORD_HI,
-        );
-        let sel = select_cmd(recs[3] as u32);
-        let script = script_with(b"20", &[d0, d1, sel]);
+        let mut tokens = Vec::new();
+        tokens.extend(text_show_tokens(recs[0] as u32, recs[1] as u32, 0x0002));
+        tokens.extend(text_show_tokens(recs[2] as u32, NO_SPEAKER_POINTER, 0x0010));
+        tokens.extend(select_tokens(recs[3] as u32));
+        let script = sv_program(&tokens);
         (textdat, recs, script)
     }
 
@@ -636,24 +649,33 @@ mod tests {
     fn out_of_pool_select_and_narration_left_untouched() {
         // A narration text-show (no speaker) + a system SELECT (0x40000000).
         let (textdat, recs) = build_textdat(&[(0, b"only dialogue")]);
-        let d = text_show_cmd(
-            recs[0] as u32,
-            NO_SPEAKER_POINTER,
-            0x0002,
-            TEXT_SHOW_WORD_HI,
-        );
-        let mut sel = select_cmd(0);
-        sel[COMMAND_TEXT_PTR_OFFSET..COMMAND_TEXT_PTR_OFFSET + 4]
-            .copy_from_slice(&0x4000_0000u32.to_le_bytes());
-        let script = script_with(b"20", &[d, sel]);
+        let mut tokens = Vec::new();
+        tokens.extend(text_show_tokens(recs[0] as u32, NO_SPEAKER_POINTER, 0x0002));
+        tokens.extend(select_tokens(0x4000_0000));
+        let script = sv_program(&tokens);
+
+        // The absolute field offset of the system SELECT immediate, from the scan.
+        let orig = ScriptScan::parse(&script).unwrap();
+        let sel_field = orig
+            .commands
+            .iter()
+            .find_map(|c| match c {
+                RawCommand::Select {
+                    text_ptr_field_offset,
+                    ..
+                } => Some(*text_ptr_field_offset),
+                RawCommand::TextShow { .. } => None,
+            })
+            .expect("a select");
 
         let translations = TranslationMap::new().with(recs[0] as u32, "translated");
         let pb = patchback(&textdat, &script, &translations).unwrap();
 
         // The system SELECT immediate (0x40000000) must be byte-identical.
-        let sel_off = SCRIPT_HEADER_BYTE_LEN + TEXT_SHOW_COMMAND_BYTE_LEN;
-        let field = sel_off + COMMAND_TEXT_PTR_OFFSET;
-        assert_eq!(&pb.script[field..field + 4], &0x4000_0000u32.to_le_bytes());
+        assert_eq!(
+            &pb.script[sel_field..sel_field + 4],
+            &0x4000_0000u32.to_le_bytes()
+        );
         // Exactly one pointer field (the dialogue text) repointed.
         assert_eq!(pb.repointed_field_count, 1);
 
