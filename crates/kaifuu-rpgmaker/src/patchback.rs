@@ -256,12 +256,16 @@ impl TranslatedBundleV02 {
 
 /// One resolved edit: the JSON-pointer tokens, the target text, and the
 /// source-hash gate, all attributed to a single `www/data/*.json` file.
+///
+/// `pub(crate)` so the KAIFUU-109 map/common-event slice
+/// ([`crate::map_common_event`]) reuses the same proven byte-surgical
+/// splice + stale-source gate instead of re-implementing patchback.
 #[derive(Debug, Clone)]
-struct FileEdit {
-    source_unit_key: String,
-    tokens: Vec<String>,
-    target_text: String,
-    expected_source_hash: String,
+pub(crate) struct FileEdit {
+    pub(crate) source_unit_key: String,
+    pub(crate) tokens: Vec<String>,
+    pub(crate) target_text: String,
+    pub(crate) expected_source_hash: String,
 }
 
 /// Parse a `rpgmaker:<file>#<json-pointer>` surface key into the file name
@@ -297,7 +301,7 @@ fn parse_surface_key(key: &str) -> Result<(String, Vec<String>), PatchbackError>
 /// Returns bytes byte-identical to `original` outside the targeted string
 /// literals. When every edit is a no-op (`target == source`), the original
 /// bytes are returned verbatim.
-fn patch_file_bytes(
+pub(crate) fn patch_file_bytes(
     file: &str,
     original: &[u8],
     edits: &[FileEdit],

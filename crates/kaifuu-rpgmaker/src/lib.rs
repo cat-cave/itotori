@@ -51,6 +51,7 @@ mod codes;
 mod escape;
 mod extract;
 mod json_locate;
+mod map_common_event;
 mod patchback;
 mod recognize;
 
@@ -70,6 +71,12 @@ pub use extract::{
     walk_database, walk_map, walk_system, walk_troops,
 };
 pub use json_locate::{LocateError, QuotedSpan, Scanner, encode_json_string_ascii_safe};
+pub use map_common_event::{
+    CommandContainer, CommandDiagnostic, CommandDiagnosticKind, CommandTextRole,
+    CommandTranslation, FIXTURE_PROFILE_ID, MapExtractError, MapExtraction, StableCommandUnit,
+    extract_common_events as extract_common_event_units, extract_common_events_file,
+    extract_map as extract_map_units, extract_map_file, patch_file as patch_command_file,
+};
 pub use patchback::{
     JsonStringEscaping, PATCHBACK_BUNDLE_SCHEMA_INVALID_CODE, PATCHBACK_DELTA_PRODUCE_CODE,
     PATCHBACK_IO_CODE, PATCHBACK_OVERLAPPING_SURFACES_CODE, PATCHBACK_STALE_SOURCE_CODE,

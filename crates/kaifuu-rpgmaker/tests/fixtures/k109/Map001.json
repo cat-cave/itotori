@@ -1,0 +1,33 @@
+{
+  "autoplayBgm": false,
+  "displayName": "Town Square",
+  "events": [
+    null,
+    {
+      "id": 1,
+      "name": "EV001",
+      "x": 5,
+      "y": 7,
+      "pages": [
+        {
+          "conditions": { "switch1Valid": false },
+          "list": [
+            { "code": 101, "indent": 0, "parameters": ["", 0, 0, 2, "Guard"] },
+            { "code": 401, "indent": 0, "parameters": ["Halt! Who goes there?"] },
+            { "code": 401, "indent": 0, "parameters": ["State your business."] },
+            { "code": 102, "indent": 0, "parameters": [["A traveler", "A merchant"], 1, 0, 2, 0] },
+            { "code": 402, "indent": 1, "parameters": [0, "A traveler"] },
+            { "code": 401, "indent": 2, "parameters": ["Pass through, then."] },
+            { "code": 402, "indent": 1, "parameters": [1, "A merchant"] },
+            { "code": 404, "indent": 1, "parameters": [] },
+            { "code": 105, "indent": 0, "parameters": [2, false] },
+            { "code": 405, "indent": 0, "parameters": ["The gates creak open slowly."] },
+            { "code": 108, "indent": 0, "parameters": ["NOTE: guard intro sequence"] },
+            { "code": 408, "indent": 0, "parameters": ["author: synthetic fixture"] },
+            { "code": 0, "indent": 0, "parameters": [] }
+          ]
+        }
+      ]
+    }
+  ]
+}
