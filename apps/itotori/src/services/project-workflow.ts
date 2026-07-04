@@ -231,7 +231,13 @@ export class ItotoriProjectWorkflowService implements ItotoriProjectWorkflowPort
   }
 
   async getRuntimeStatus(runtimeRunId?: string): Promise<RuntimeDashboardStatus> {
-    return await this.repository.getRuntimeStatus(runtimeRunId);
+    // gate-runtime-status-reads-and-redact-evidence-previews — thread the
+    // workflow actor into the repository read so the repository-layer
+    // permission gate enforces the privileged runtime report even for this
+    // internal caller (defense in depth). The HTTP handler additionally
+    // redacts the evidence previews / finding text / artifact URIs for
+    // unprivileged callers, but the actor check lives where the data is read.
+    return await this.repository.getRuntimeStatus(this.actor, runtimeRunId);
   }
 
   async getDashboardDecisions(projectId?: string): Promise<DashboardDecisionReadModel> {

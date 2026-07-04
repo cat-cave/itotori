@@ -386,7 +386,21 @@ export interface ItotoriProjectRepositoryPort {
   listLocaleBranchIdentities(projectId: string): Promise<LocaleBranchIdentity[]>;
   listBenchmarkReports(projectId: string): Promise<BenchmarkReportSummary[]>;
   getDashboardStatus(): Promise<ProjectDashboardStatus>;
-  getRuntimeStatus(runtimeRunId?: string): Promise<RuntimeDashboardStatus>;
+  /**
+   * gate-runtime-status-reads-and-redact-evidence-previews — the runtime
+   * status read requires the actor to hold the project/ledger read
+   * permission (`catalog.read`, the same gate the sibling
+   * `getProjectCostReport` cost read uses). The detailed report exposes
+   * evidence text previews (`traceEvents[].textPreview`, sourced from
+   * observedText/promptText), finding free text (`findings[].message`), and
+   * managed artifact URIs + hashes, so it is actor-checked where the data
+   * is read. Unprivileged HTTP callers receive a redacted summary at the
+   * API boundary.
+   */
+  getRuntimeStatus(
+    actor: AuthorizationActor,
+    runtimeRunId?: string,
+  ): Promise<RuntimeDashboardStatus>;
   getDashboardDecisions(projectId?: string): Promise<DashboardDecisionReadModel>;
 }
 
@@ -1787,7 +1801,19 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
     return project.projectId;
   }
 
-  async getRuntimeStatus(runtimeRunId?: string): Promise<RuntimeDashboardStatus> {
+  /**
+   * gate-runtime-status-reads-and-redact-evidence-previews — actor-checked
+   * HERE (repository layer, where the data is read) so an internal caller
+   * running as an unprivileged actor cannot bypass the gate and read the
+   * evidence-text previews, finding free text, or artifact URIs/hashes.
+   * The API boundary additionally redacts the report for unprivileged HTTP
+   * callers; this check is the defense-in-depth backstop.
+   */
+  async getRuntimeStatus(
+    actor: AuthorizationActor,
+    runtimeRunId?: string,
+  ): Promise<RuntimeDashboardStatus> {
+    await requirePermission(this.db, actor, permissionValues.catalogRead);
     const requestedRuntimeRunId = runtimeRunId ?? null;
     const result = await this.db.execute(sql`
       with requested_runtime_run as (

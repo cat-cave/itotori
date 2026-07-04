@@ -39,7 +39,9 @@ import {
 import type { ItotoriAuthorizationPort } from "./auth.js";
 import {
   ApiValidationError,
+  REDACTED_RUNTIME_FINDING_MESSAGE,
   assertItotoriApiResponse,
+  assertRedactedRuntimeDashboardStatus,
   parseDraftBranchRequest,
   parseProjectImportRequest,
   parseRecordBenchmarkRequest,
@@ -221,10 +223,24 @@ async function routeItotoriApiRequest(
     request.method === "GET" &&
     (request.pathname === "/api/hello/status" || request.pathname === "/api/runtime/v0.2/status")
   ) {
-    return ok(
-      "runtime.status",
-      await services.projectWorkflow.getRuntimeStatus(parseRuntimeRunIdQuery(request.search)),
+    // gate-runtime-status-reads-and-redact-evidence-previews — the runtime
+    // status read requires catalog.read for the DETAILED evidence report.
+    // An unprivileged / absent-permission caller instead receives a redacted
+    // summary that omits the evidence-text previews, finding free text, and
+    // artifact URIs/hashes. Both the /api/runtime/v0.2/status and the legacy
+    // /api/hello/status alias share this gate — there is no parallel ungated
+    // path to the same data.
+    const canRead = await resolveProjectReadPermission(services);
+    const status = await services.projectWorkflow.getRuntimeStatus(
+      parseRuntimeRunIdQuery(request.search),
     );
+    if (canRead) {
+      return ok("runtime.status", status);
+    }
+    const redacted = redactRuntimeDashboardStatus(status);
+    // Reject a leakage-shaped redaction before it can be emitted.
+    assertRedactedRuntimeDashboardStatus(redacted);
+    return ok("runtime.status", redacted);
   }
 
   if (request.method === "GET" && request.pathname === "/api/catalog/conflicts") {
@@ -628,6 +644,39 @@ function redactProjectDashboardStatus(status: ProjectDashboardStatus): ProjectDa
   return {
     ...status,
     cost: redactProjectCostReport(status.cost),
+  };
+}
+
+/**
+ * gate-runtime-status-reads-and-redact-evidence-previews — the redacted
+ * PUBLIC runtime status summary for unprivileged callers. Keeps the safe
+ * aggregates (final/runtime status, tiers, counts, non-sensitive ids,
+ * approximation/limitation/unsupported-capability metadata) and strips the
+ * sensitive evidence payloads:
+ *   - `traceEvents[].textPreview` — evidence text previews sourced from
+ *     observedText / promptText → null.
+ *   - `findings[].message` — finding free text → the redaction sentinel
+ *     (a non-empty placeholder that keeps the shape valid while carrying no
+ *     free text).
+ *   - `artifacts[].uri` / `artifacts[].hash` — managed artifact locators
+ *     and content hashes → null.
+ */
+function redactRuntimeDashboardStatus(status: RuntimeDashboardStatus): RuntimeDashboardStatus {
+  return {
+    ...status,
+    traceEvents: status.traceEvents.map((event) => ({
+      ...event,
+      textPreview: null,
+    })),
+    findings: status.findings.map((finding) => ({
+      ...finding,
+      message: REDACTED_RUNTIME_FINDING_MESSAGE,
+    })),
+    artifacts: status.artifacts.map((artifact) => ({
+      ...artifact,
+      uri: null,
+      hash: null,
+    })),
   };
 }
 

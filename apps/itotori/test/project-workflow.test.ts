@@ -161,6 +161,47 @@ describe("ItotoriProjectWorkflowService", () => {
     });
   });
 
+  it("threads the workflow actor into the runtime status read and propagates a denial (defense in depth)", async () => {
+    // A repository that only serves the runtime evidence report to an actor
+    // holding the catalog.read gate — mirrors the real repository-layer
+    // permission check that lives where the data is read.
+    const gatedRuntimeRead = vi.fn(
+      async (readActor: AuthorizationActor, _runtimeRunId?: string) => {
+        if (readActor.userId !== actor.userId) {
+          throw new AuthorizationError(readActor, permissionValues.catalogRead);
+        }
+        return runtimeStatusFixture;
+      },
+    );
+    const gatedRepository: ItotoriProjectRepositoryPort = {
+      ...repositoryFixture(),
+      getRuntimeStatus: gatedRuntimeRead,
+    };
+
+    const authorizedService = new ItotoriProjectWorkflowService(
+      gatedRepository,
+      actor,
+      new FakeModelProvider(),
+    );
+    await expect(authorizedService.getRuntimeStatus("runtime-1")).resolves.toMatchObject({
+      runtimeRunId: runtimeStatusFixture.runtimeRunId,
+    });
+    expect(gatedRuntimeRead).toHaveBeenCalledWith(actor, "runtime-1");
+
+    // An internal caller running as an unprivileged actor is rejected at the
+    // read site, not silently served the evidence-text previews / finding
+    // free text / artifact URIs.
+    const unprivilegedService = new ItotoriProjectWorkflowService(
+      gatedRepository,
+      { userId: "workflow-actor-without-catalog-read" },
+      new FakeModelProvider(),
+    );
+    await expect(unprivilegedService.getRuntimeStatus("runtime-1")).rejects.toMatchObject({
+      name: "AuthorizationError",
+      permission: permissionValues.catalogRead,
+    });
+  });
+
   it("uses translation memory prefill results to skip provider calls for reused units", async () => {
     const repository = repositoryFixture();
     const ledger = ledgerFixture();

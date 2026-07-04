@@ -2925,6 +2925,61 @@ export function assertRuntimeDashboardStatus(
   assertStringArray(status.limitations, `${label}.limitations`);
 }
 
+/**
+ * gate-runtime-status-reads-and-redact-evidence-previews — the sentinel a
+ * redacted runtime status uses in place of a finding's free-text message.
+ * A non-empty string keeps the shape valid under
+ * `assertRuntimeDashboardStatus` (which rejects empty strings) while
+ * carrying no evidence text.
+ */
+export const REDACTED_RUNTIME_FINDING_MESSAGE = "[redacted]";
+
+/**
+ * gate-runtime-status-reads-and-redact-evidence-previews — validates the
+ * UNPRIVILEGED (redacted) runtime status shape and REJECTS any
+ * leakage-shaped response. On top of the structural
+ * `assertRuntimeDashboardStatus` check it requires that every sensitive
+ * field is redacted: no `traceEvents[].textPreview` (evidence text from
+ * observedText/promptText), no `findings[].message` free text (only the
+ * redaction sentinel), and no `artifacts[].uri` / `artifacts[].hash`
+ * (managed artifact locators + content hashes). Emitting a response that
+ * still carries any of these on the unprivileged path throws here, so a
+ * leak-shaped body cannot be returned to an unprivileged caller.
+ */
+export function assertRedactedRuntimeDashboardStatus(
+  value: unknown,
+  label = "RedactedRuntimeDashboardStatus",
+): asserts value is RuntimeDashboardStatus {
+  assertRuntimeDashboardStatus(value, label);
+  const status = value as RuntimeDashboardStatus;
+  for (const [index, event] of status.traceEvents.entries()) {
+    if (event.textPreview !== null) {
+      throw new Error(
+        `${label}.traceEvents[${index}].textPreview must be redacted (null) but leaked evidence text`,
+      );
+    }
+  }
+  for (const [index, finding] of status.findings.entries()) {
+    if (finding.message !== REDACTED_RUNTIME_FINDING_MESSAGE) {
+      throw new Error(
+        `${label}.findings[${index}].message must be redacted to the sentinel but leaked finding free text`,
+      );
+    }
+  }
+  for (const [index, artifact] of status.artifacts.entries()) {
+    if (artifact.uri !== null) {
+      throw new Error(
+        `${label}.artifacts[${index}].uri must be redacted (null) but leaked an artifact URI`,
+      );
+    }
+    if (artifact.hash !== null) {
+      throw new Error(
+        `${label}.artifacts[${index}].hash must be redacted (null) but leaked an artifact hash`,
+      );
+    }
+  }
+}
+
 function assertRuntimeDashboardTraceEvents(value: unknown, label: string): void {
   const rows = asArray(value, label);
   for (const [index, rowValue] of rows.entries()) {

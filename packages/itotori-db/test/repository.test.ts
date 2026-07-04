@@ -413,7 +413,7 @@ describe("ItotoriProjectRepository", () => {
       });
       expect(status.importStatus.importedAt).toContain("T");
 
-      const runtimeStatus = await repo.getRuntimeStatus();
+      const runtimeStatus = await repo.getRuntimeStatus(localActor);
       expect(runtimeStatus).toEqual({
         finalStatus: "hello_world_passed",
         runtimeRunId: "runtime-test",
@@ -1358,7 +1358,7 @@ describe("ItotoriProjectRepository", () => {
         "patch-result-v02",
       );
 
-      const runtimeStatus = await repo.getRuntimeStatus();
+      const runtimeStatus = await repo.getRuntimeStatus(localActor);
       expect(runtimeStatus).toMatchObject({
         runtimeRunId: "019ed003-0000-7000-8000-000000000001",
         runtimeReportId: "019ed003-0000-7000-8000-000000000001",
@@ -1603,7 +1603,7 @@ describe("ItotoriProjectRepository", () => {
         },
       ]);
 
-      await expect(repo.getRuntimeStatus()).resolves.toMatchObject({
+      await expect(repo.getRuntimeStatus(localActor)).resolves.toMatchObject({
         finalStatus: "hello_world_failed",
         runtimeReportId: "019ed003-0000-7000-8000-000000000902",
         runtimeStatus: "failed",
@@ -1611,7 +1611,7 @@ describe("ItotoriProjectRepository", () => {
       });
 
       await expect(
-        repo.getRuntimeStatus("019ed003-0000-7000-8000-000000000901"),
+        repo.getRuntimeStatus(localActor, "019ed003-0000-7000-8000-000000000901"),
       ).resolves.toMatchObject({
         finalStatus: "hello_world_passed",
         runtimeRunId: "019ed003-0000-7000-8000-000000000901",
@@ -2301,7 +2301,7 @@ describe("ItotoriProjectRepository", () => {
         "patch-result-reingest-new",
       );
 
-      await expect(repo.getRuntimeStatus()).resolves.toMatchObject({
+      await expect(repo.getRuntimeStatus(localActor)).resolves.toMatchObject({
         runtimeReportId,
         runtimeStatus: "passed",
         frameCaptureCount: 1,

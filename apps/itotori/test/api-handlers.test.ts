@@ -24,6 +24,10 @@ import {
   type ItotoriApiServices,
 } from "../src/api-handlers.js";
 import { ItotoriProjectWorkflowService } from "../src/services/project-workflow.js";
+import {
+  REDACTED_RUNTIME_FINDING_MESSAGE,
+  assertRedactedRuntimeDashboardStatus,
+} from "../src/api-schema.js";
 import { translateTextFixture } from "../src/asset-decisions/decision-fixtures.js";
 import {
   fixtureAllAllowedPreview,
@@ -283,12 +287,15 @@ describe("Itotori API handlers", () => {
     });
     // gate-project-status-and-cost-reads — /api/projects, /status, and /cost
     // now resolve the catalog.read gate. serviceFixture grants it, so the
-    // full detail is returned; the three project reads are the only routes
-    // that consult the permission port.
+    // full detail is returned.
+    // gate-runtime-status-reads-and-redact-evidence-previews — the two
+    // runtime status reads (/api/hello/status + /api/runtime/v0.2/status)
+    // additionally resolve the same catalog.read gate for the detailed
+    // evidence report. 3 project reads + 2 runtime reads = 5 gate checks.
     expect(services.authorization.requirePermission).toHaveBeenCalledWith(
       permissionValues.catalogRead,
     );
-    expect(services.authorization.requirePermission).toHaveBeenCalledTimes(3);
+    expect(services.authorization.requirePermission).toHaveBeenCalledTimes(5);
   });
 
   it("returns full project/cost detail to a caller holding catalog.read", async () => {
@@ -376,6 +383,106 @@ describe("Itotori API handlers", () => {
     // Non-sensitive dashboard identity/counts remain visible.
     expect(status.body.projectId).toBe(dashboardStatusFixture.projectId);
     expect(status.body.unitCount).toBe(dashboardStatusFixture.unitCount);
+  });
+
+  it("returns the full runtime evidence report to a caller holding catalog.read", async () => {
+    const services = serviceFixture();
+
+    for (const pathname of ["/api/hello/status", "/api/runtime/v0.2/status"]) {
+      const response = await handleItotoriApiRequest({ method: "GET", pathname }, services);
+      // Privileged callers see the full detail: evidence-text previews,
+      // finding free text, and artifact URIs + hashes.
+      expect(response).toEqual({ statusCode: 200, body: runtimeStatusFixture });
+      const serialized = JSON.stringify(response.body);
+      expect(serialized).toContain("Hello, {player}.");
+      expect(serialized).toContain("Observed runtime text did not match the draft text.");
+      expect(serialized).toContain(
+        "artifacts/utsushi/runtime/runtime-1/screenshots/screenshot-1.png",
+      );
+      expect(serialized).toContain("sha256:runtime-screenshot");
+    }
+  });
+
+  it("redacts /api/runtime/v0.2/status evidence previews without catalog.read", async () => {
+    const services = serviceFixture();
+    vi.mocked(services.authorization.requirePermission).mockImplementation(async (permission) => {
+      if (permission === permissionValues.catalogRead) {
+        throw new AuthorizationError({ userId: "api-user-without-catalog-read" }, permission);
+      }
+    });
+
+    for (const pathname of ["/api/hello/status", "/api/runtime/v0.2/status"]) {
+      const response = await handleItotoriApiRequest({ method: "GET", pathname }, services);
+      const body = response.body as typeof runtimeStatusFixture;
+
+      // Evidence-text previews (observedText/promptText) are stripped.
+      for (const event of body.traceEvents) {
+        expect(event.textPreview).toBeNull();
+      }
+      // Finding FREE TEXT is stripped to the redaction sentinel.
+      for (const finding of body.findings) {
+        expect(finding.message).toBe(REDACTED_RUNTIME_FINDING_MESSAGE);
+      }
+      // Managed artifact URIs + content hashes are stripped.
+      for (const artifact of body.artifacts) {
+        expect(artifact.uri).toBeNull();
+        expect(artifact.hash).toBeNull();
+      }
+
+      // The sensitive strings must be ABSENT from the unprivileged response
+      // (the fixture actually contains them — see the privileged test above).
+      const serialized = JSON.stringify(response.body);
+      expect(serialized).not.toContain("Hello, {player}.");
+      expect(serialized).not.toContain("Observed runtime text did not match the draft text.");
+      expect(serialized).not.toContain(
+        "artifacts/utsushi/runtime/runtime-1/screenshots/screenshot-1.png",
+      );
+      expect(serialized).not.toContain("sha256:runtime-screenshot");
+      expect(serialized).not.toContain("sha256:runtime-trace");
+
+      // Safe aggregates + non-sensitive ids survive so the public dashboard
+      // still renders.
+      expect(body.finalStatus).toBe(runtimeStatusFixture.finalStatus);
+      expect(body.validationFindingCount).toBe(runtimeStatusFixture.validationFindingCount);
+      expect(body.textEventCount).toBe(runtimeStatusFixture.textEventCount);
+      expect(body.traceEvents[0]?.runtimeEventId).toBe("runtime-1:trace-1");
+      expect(body.findings[0]?.findingKind).toBe("text_mismatch");
+      expect(body.artifacts[0]?.artifactId).toBe("runtime-1:screenshot-1");
+    }
+  });
+
+  it("rejects a leakage-shaped redacted runtime status before it can be emitted", () => {
+    // The unredacted fixture carries evidence text / finding free text /
+    // artifact URIs — the redacted-shape validator must reject it.
+    expect(() => assertRedactedRuntimeDashboardStatus(runtimeStatusFixture)).toThrow(
+      /textPreview must be redacted/u,
+    );
+    // A response that only redacts the trace preview but still leaks the
+    // finding free text is also rejected.
+    expect(() =>
+      assertRedactedRuntimeDashboardStatus({
+        ...runtimeStatusFixture,
+        traceEvents: runtimeStatusFixture.traceEvents.map((event) => ({
+          ...event,
+          textPreview: null,
+        })),
+      }),
+    ).toThrow(/message must be redacted/u);
+    // A response that redacts previews + finding text but still leaks an
+    // artifact URI is rejected.
+    expect(() =>
+      assertRedactedRuntimeDashboardStatus({
+        ...runtimeStatusFixture,
+        traceEvents: runtimeStatusFixture.traceEvents.map((event) => ({
+          ...event,
+          textPreview: null,
+        })),
+        findings: runtimeStatusFixture.findings.map((finding) => ({
+          ...finding,
+          message: REDACTED_RUNTIME_FINDING_MESSAGE,
+        })),
+      }),
+    ).toThrow(/uri must be redacted/u);
   });
 
   it("routes reviewer queue dashboard, detail, batch preview, and batch confirm through typed services", async () => {
