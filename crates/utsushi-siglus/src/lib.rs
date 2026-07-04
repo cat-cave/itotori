@@ -89,6 +89,8 @@
 #![deny(missing_debug_implementations)]
 
 pub mod runtime_profile;
+pub mod vm;
+pub mod vm_impl_map;
 
 use std::sync::Arc;
 
