@@ -64,7 +64,40 @@ const SIGLUS_SCENE_MAGIC: &[u8] = b"SIGLUS-SCENE-PCK";
 const SIGLUS_GAMEEXE_MAGIC: &[u8] = b"SIGLUS-GAMEEXE-DAT";
 const SIGLUS_PROFILE_ID: &str = "019ed000-0000-7000-8000-000000091001";
 const SIGLUS_GAME_ID: &str = "kaifuu-siglus-synthetic-scene-pck";
+const SIGLUS_REAL_GAME_ID: &str = "kaifuu-siglus-real-scene-pck";
 const SIGLUS_SUPPORT_BOUNDARY: &str = "Siglus detector profile identifies synthetic Scene.pck/Gameexe.dat fixtures for identify and inventory only; parser, extraction, decryption, patch-back, and runtime support are not claimed.";
+// Real (non-synthetic) Siglus signature recognition (KAIFUU-091).
+//
+// Provenance: these constants encode the publicly observable file shape of
+// real Siglus Scene.pck / Gameexe.dat archives, cross-checked against owned
+// Siglus titles (Karetoshi, Gamekoi) and the documented `0x5C` header anchor
+// carried by `kaifuu_siglus::archive::SCENE_PCK_HEADER_BYTE_LEN`. No
+// copyrighted bytes are embedded — only the structural signature is encoded,
+// and recognition stays at identify/inventory level (the Scene.pck parser,
+// decryptor, and repacker remain NotImplemented in `kaifuu_siglus`).
+//
+// Real Scene.pck opens with a plaintext little-endian header whose first
+// dword is the fixed header size (`0x5C` = 92 bytes) and whose second dword
+// equals that header size (the first index section begins immediately after
+// the header). The remaining header dwords are `(offset, count)`
+// index-section pairs whose offsets ascend monotonically and stay within the
+// file; real titles expose 10 such ascending offsets before a trailing flag
+// pair.
+const SIGLUS_SCENE_REAL_HEADER_SIZE: u32 = 0x5C;
+// Require a strong leading run of ascending, in-bounds index-section offsets
+// so a file that merely opens with `5c 00 00 00` cannot false-positive.
+// Real Karetoshi/Gamekoi expose 10; 8 keeps a two-section margin.
+const SIGLUS_SCENE_REAL_MIN_ASCENDING_OFFSETS: usize = 8;
+// Real Gameexe.dat opens with a zero dword then a `1` version dword, followed
+// by an encrypted (high-entropy) payload.
+const SIGLUS_GAMEEXE_REAL_VERSION: u32 = 1;
+// Minimum body bytes examined for the encrypted-payload entropy gate, and the
+// Shannon-entropy floor (bits/byte) the body must clear. Real Gameexe.dat
+// bodies measure ~7.97 bits/byte; 6.5 rejects plaintext/low-entropy files
+// that merely share the 8-byte prefix.
+const SIGLUS_GAMEEXE_REAL_MIN_BODY_LEN: usize = 256;
+const SIGLUS_GAMEEXE_REAL_ENTROPY_WINDOW: usize = 4096;
+const SIGLUS_GAMEEXE_REAL_MIN_ENTROPY_BITS: f64 = 6.5;
 
 // RealLive detector constants (KAIFUU-172). See the module-level RealLive
 // provenance block above `RealLiveProfileDetectorAdapter` for clean-room rules.
@@ -2471,6 +2504,10 @@ impl EngineAdapter for Xp3ProfileDetectorAdapter {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum SiglusFixtureVariant {
     CompleteSyntheticPair,
+    // Both Scene.pck and Gameexe.dat carry the REAL Siglus archive-header
+    // signatures (not the synthetic fixture magic). Detected + inventoryable
+    // at identify level; parser/extraction/decryption remain unclaimed.
+    CompleteRealPair,
     MissingGameexeDat,
     MissingScenePck,
     UnknownNamedPair,
@@ -2481,8 +2518,16 @@ enum SiglusFixtureVariant {
 struct SiglusFixtureState {
     scene_exists: bool,
     gameexe_exists: bool,
+    // `*_signature` is the recognition OR: synthetic fixture magic OR real
+    // archive-header signature. Downstream evidence/requirements key off this
+    // so both fixture and real inputs satisfy the same detector contract.
     scene_signature: bool,
     gameexe_signature: bool,
+    // Whether the REAL (non-synthetic) archive-header signature matched, kept
+    // separate so evidence and the detected variant can report honestly which
+    // signature class was recognised.
+    scene_real: bool,
+    gameexe_real: bool,
     scene_hash: Option<String>,
     gameexe_hash: Option<String>,
     variant: SiglusFixtureVariant,
@@ -2502,14 +2547,23 @@ impl SiglusProfileDetectorAdapter {
         let gameexe_path = Self::gameexe_path(game_dir);
         let scene_exists = scene_path.is_file();
         let gameexe_exists = gameexe_path.is_file();
-        let scene_signature = file_starts_with(&scene_path, SIGLUS_SCENE_MAGIC);
-        let gameexe_signature = file_starts_with(&gameexe_path, SIGLUS_GAMEEXE_MAGIC);
+        let scene_synthetic = file_starts_with(&scene_path, SIGLUS_SCENE_MAGIC);
+        let gameexe_synthetic = file_starts_with(&gameexe_path, SIGLUS_GAMEEXE_MAGIC);
+        // Only probe the real archive-header signature when the synthetic magic
+        // did not already match, so a synthetic fixture is never re-classified.
+        let scene_real = !scene_synthetic && siglus_scene_pck_real_signature_ok(&scene_path);
+        let gameexe_real =
+            !gameexe_synthetic && siglus_gameexe_dat_real_signature_ok(&gameexe_path);
+        let scene_signature = scene_synthetic || scene_real;
+        let gameexe_signature = gameexe_synthetic || gameexe_real;
+        let any_real = scene_real || gameexe_real;
         let variant = match (
             scene_signature,
             gameexe_signature,
             scene_exists,
             gameexe_exists,
         ) {
+            (true, true, _, _) if any_real => SiglusFixtureVariant::CompleteRealPair,
             (true, true, _, _) => SiglusFixtureVariant::CompleteSyntheticPair,
             (true, false, _, _) => SiglusFixtureVariant::MissingGameexeDat,
             (false, true, _, _) => SiglusFixtureVariant::MissingScenePck,
@@ -2523,6 +2577,8 @@ impl SiglusProfileDetectorAdapter {
             gameexe_exists,
             scene_signature,
             gameexe_signature,
+            scene_real,
+            gameexe_real,
             scene_hash: scene_exists
                 .then(|| sha256_file_ref(&scene_path).ok())
                 .flatten(),
@@ -2536,6 +2592,7 @@ impl SiglusProfileDetectorAdapter {
     fn detected_variant(variant: SiglusFixtureVariant) -> &'static str {
         match variant {
             SiglusFixtureVariant::CompleteSyntheticPair => "scene-pck-gameexe-dat-synthetic",
+            SiglusFixtureVariant::CompleteRealPair => "scene-pck-gameexe-dat-real",
             SiglusFixtureVariant::MissingGameexeDat => "scene-pck-missing-gameexe-dat",
             SiglusFixtureVariant::MissingScenePck => "gameexe-dat-missing-scene-pck",
             SiglusFixtureVariant::UnknownNamedPair => "unknown-siglus-named-files",
@@ -2544,7 +2601,10 @@ impl SiglusProfileDetectorAdapter {
     }
 
     fn is_detected(variant: SiglusFixtureVariant) -> bool {
-        matches!(variant, SiglusFixtureVariant::CompleteSyntheticPair)
+        matches!(
+            variant,
+            SiglusFixtureVariant::CompleteSyntheticPair | SiglusFixtureVariant::CompleteRealPair
+        )
     }
 
     fn can_inventory(variant: SiglusFixtureVariant) -> bool {
@@ -2557,11 +2617,20 @@ impl SiglusProfileDetectorAdapter {
                 state.variant,
             )));
         }
+        let is_real = matches!(state.variant, SiglusFixtureVariant::CompleteRealPair);
         let mut profile = GameProfile {
             schema_version: "0.1.0".to_string(),
             profile_id: SIGLUS_PROFILE_ID.to_string(),
-            game_id: SIGLUS_GAME_ID.to_string(),
-            title: "Siglus fixture".to_string(),
+            game_id: if is_real {
+                SIGLUS_REAL_GAME_ID.to_string()
+            } else {
+                SIGLUS_GAME_ID.to_string()
+            },
+            title: if is_real {
+                "Siglus title (detector profile)".to_string()
+            } else {
+                "Siglus fixture".to_string()
+            },
             source_locale: "ja-JP".to_string(),
             engine: EngineProfile {
                 adapter_id: SIGLUS_DETECTOR_ADAPTER_ID.to_string(),
@@ -2675,7 +2744,8 @@ impl SiglusProfileDetectorAdapter {
                 "Siglus detector profile requires recognized synthetic Scene.pck/Gameexe.dat fixture evidence",
                 "run detection with a complete synthetic Siglus fixture or select another adapter",
             ),
-            SiglusFixtureVariant::CompleteSyntheticPair => (
+            SiglusFixtureVariant::CompleteSyntheticPair
+            | SiglusFixtureVariant::CompleteRealPair => (
                 SemanticErrorCode::UnsupportedLayeredTransform,
                 Capability::CodecAccess,
                 SIGLUS_SCENE_PATH,
@@ -2889,7 +2959,11 @@ impl SiglusFixtureState {
                 } else {
                     RequirementStatus::Missing
                 },
-                description: "synthetic Siglus Scene.pck signature fixture".to_string(),
+                description: if self.scene_real {
+                    "real Siglus Scene.pck archive-header signature".to_string()
+                } else {
+                    "synthetic Siglus Scene.pck signature fixture".to_string()
+                },
                 placeholder: None,
                 secret: false,
             },
@@ -2901,7 +2975,11 @@ impl SiglusFixtureState {
                 } else {
                     RequirementStatus::Missing
                 },
-                description: "synthetic Siglus Gameexe.dat signature fixture".to_string(),
+                description: if self.gameexe_real {
+                    "real Siglus Gameexe.dat archive-header signature".to_string()
+                } else {
+                    "synthetic Siglus Gameexe.dat signature fixture".to_string()
+                },
                 placeholder: None,
                 secret: false,
             },
@@ -2984,7 +3062,12 @@ impl SiglusFixtureState {
 
     fn metadata(&self) -> BTreeMap<String, String> {
         let mut metadata = BTreeMap::new();
-        metadata.insert("fixtureOnly".to_string(), "true".to_string());
+        // Real archive-header signatures are not fixtures; report honestly so
+        // downstream consumers do not treat a real Siglus title as synthetic.
+        // Synthetic fixtures keep `fixtureOnly=true` (byte-identical output);
+        // a real pair reports `false`.
+        let real_pair = matches!(self.variant, SiglusFixtureVariant::CompleteRealPair);
+        metadata.insert("fixtureOnly".to_string(), (!real_pair).to_string());
         metadata.insert(
             "profileDiagnostics.missingPair".to_string(),
             (!self.scene_signature || !self.gameexe_signature).to_string(),
@@ -3132,22 +3215,38 @@ impl EngineAdapter for SiglusProfileDetectorAdapter {
             evidence: vec![
                 DetectionEvidence {
                     path: SIGLUS_SCENE_PATH.to_string(),
-                    kind: "synthetic_siglus_scene_pck_signature".to_string(),
+                    kind: if state.scene_real {
+                        "real_siglus_scene_pck_signature".to_string()
+                    } else {
+                        "synthetic_siglus_scene_pck_signature".to_string()
+                    },
                     status: evidence_status(state.scene_exists, state.scene_signature),
                     detail: signature_detail(
                         state.scene_exists,
                         state.scene_signature,
-                        "Scene.pck synthetic signature",
+                        if state.scene_real {
+                            "Scene.pck real archive-header signature"
+                        } else {
+                            "Scene.pck synthetic signature"
+                        },
                     ),
                 },
                 DetectionEvidence {
                     path: SIGLUS_GAMEEXE_PATH.to_string(),
-                    kind: "synthetic_siglus_gameexe_dat_signature".to_string(),
+                    kind: if state.gameexe_real {
+                        "real_siglus_gameexe_dat_signature".to_string()
+                    } else {
+                        "synthetic_siglus_gameexe_dat_signature".to_string()
+                    },
                     status: evidence_status(state.gameexe_exists, state.gameexe_signature),
                     detail: signature_detail(
                         state.gameexe_exists,
                         state.gameexe_signature,
-                        "Gameexe.dat synthetic signature",
+                        if state.gameexe_real {
+                            "Gameexe.dat real archive-header signature"
+                        } else {
+                            "Gameexe.dat synthetic signature"
+                        },
                     ),
                 },
             ],
@@ -5073,6 +5172,137 @@ fn file_starts_with(path: &Path, expected: &[u8]) -> bool {
     fs::read(path).is_ok_and(|bytes| bytes.starts_with(expected))
 }
 
+// Read up to `len` leading bytes of `path` without loading the whole file
+// (Scene.pck archives are multi-megabyte; the detector only needs the header).
+fn read_file_prefix(path: &Path, len: usize) -> Option<Vec<u8>> {
+    use std::io::Read;
+    let mut file = fs::File::open(path).ok()?;
+    let mut buf = vec![0u8; len];
+    let mut filled = 0;
+    while filled < len {
+        match file.read(&mut buf[filled..]) {
+            Ok(0) => break,
+            Ok(read) => filled += read,
+            Err(_) => return None,
+        }
+    }
+    buf.truncate(filled);
+    Some(buf)
+}
+
+fn read_u32_le(bytes: &[u8], offset: usize) -> Option<u32> {
+    let slice = bytes.get(offset..offset + 4)?;
+    Some(u32::from_le_bytes([slice[0], slice[1], slice[2], slice[3]]))
+}
+
+// Shannon entropy (bits/byte) over `bytes`. Used only to distinguish an
+// encrypted Siglus Gameexe.dat payload from a plaintext file that happens to
+// share the 8-byte prefix; not a cryptographic measure.
+fn shannon_entropy_bits(bytes: &[u8]) -> f64 {
+    if bytes.is_empty() {
+        return 0.0;
+    }
+    let mut counts = [0u64; 256];
+    for &byte in bytes {
+        counts[byte as usize] += 1;
+    }
+    let len = bytes.len() as f64;
+    let mut entropy = 0.0;
+    for &count in &counts {
+        if count > 0 {
+            let probability = count as f64 / len;
+            entropy -= probability * probability.log2();
+        }
+    }
+    entropy
+}
+
+// Recognise a REAL (non-synthetic) Siglus `Scene.pck` archive by its plaintext
+// header shape: the header-size dword equals the fixed `0x5C`, the second
+// dword equals that header size (the first index section starts immediately
+// after the header), and the header's `(offset, count)` index-section pairs
+// expose a monotonically ascending, in-bounds run of offsets. Identify-level
+// only: the archive body is neither parsed nor decrypted here. See the
+// `SIGLUS_SCENE_REAL_*` constants for provenance and the false-positive
+// analysis in the KAIFUU-091 tests.
+fn siglus_scene_pck_real_signature_ok(path: &Path) -> bool {
+    let Ok(metadata) = fs::metadata(path) else {
+        return false;
+    };
+    let file_len = metadata.len();
+    let header_len = u64::from(SIGLUS_SCENE_REAL_HEADER_SIZE);
+    // The first index section starts at `header_size`, so a real archive is
+    // always strictly longer than its header.
+    if file_len <= header_len {
+        return false;
+    }
+    let header_size_usize = SIGLUS_SCENE_REAL_HEADER_SIZE as usize;
+    let Some(header) = read_file_prefix(path, header_size_usize) else {
+        return false;
+    };
+    if header.len() < header_size_usize {
+        return false;
+    }
+    let Some(header_size) = read_u32_le(&header, 0) else {
+        return false;
+    };
+    if header_size != SIGLUS_SCENE_REAL_HEADER_SIZE {
+        return false;
+    }
+    let Some(first_offset) = read_u32_le(&header, 4) else {
+        return false;
+    };
+    if first_offset != header_size {
+        return false;
+    }
+    // Header layout: `header_size` dword followed by `(offset, count)` pairs.
+    // Walk the offset slots (odd dword indices) and count the leading run that
+    // is strictly ascending, at/after the header, and inside the file.
+    let dword_count = (header_size / 4) as usize;
+    let mut previous_offset = 0u32;
+    let mut ascending_offsets = 0usize;
+    let mut index = 1usize;
+    while index < dword_count {
+        let Some(offset) = read_u32_le(&header, index * 4) else {
+            break;
+        };
+        if u64::from(offset) >= file_len
+            || offset <= previous_offset
+            || u64::from(offset) < header_len
+        {
+            break;
+        }
+        previous_offset = offset;
+        ascending_offsets += 1;
+        index += 2;
+    }
+    ascending_offsets >= SIGLUS_SCENE_REAL_MIN_ASCENDING_OFFSETS
+}
+
+// Recognise a REAL (non-synthetic) Siglus `Gameexe.dat` by its plaintext
+// 8-byte prefix (a zero dword followed by the `1` version dword) plus an
+// encrypted, high-entropy payload. Identify-level only: the payload is not
+// decrypted. The entropy gate keeps a plaintext file that happens to share
+// the prefix from false-positiving.
+fn siglus_gameexe_dat_real_signature_ok(path: &Path) -> bool {
+    let Some(prefix) = read_file_prefix(path, 8 + SIGLUS_GAMEEXE_REAL_ENTROPY_WINDOW) else {
+        return false;
+    };
+    if prefix.len() < 8 + SIGLUS_GAMEEXE_REAL_MIN_BODY_LEN {
+        return false;
+    }
+    let Some(reserved) = read_u32_le(&prefix, 0) else {
+        return false;
+    };
+    let Some(version) = read_u32_le(&prefix, 4) else {
+        return false;
+    };
+    if reserved != 0 || version != SIGLUS_GAMEEXE_REAL_VERSION {
+        return false;
+    }
+    shannon_entropy_bits(&prefix[8..]) >= SIGLUS_GAMEEXE_REAL_MIN_ENTROPY_BITS
+}
+
 // KAIFUU-189: normalises a `Path` to a forward-slash string for the
 // JSON-serialised `DetectionEvidence.path` field. Detector evidence is
 // always reported with `/` separators because the detection report is
@@ -6617,6 +6847,50 @@ mod tests {
         dir
     }
 
+    // Build a REALISTIC (non-synthetic) Siglus `Scene.pck` bearing the real
+    // archive-header signature: `header_size` dword `0x5C`, a second dword
+    // equal to the header size, then `ascending_offsets` `(offset, count)`
+    // index-section pairs whose offsets ascend and stay in bounds, followed by
+    // a body large enough to keep every offset valid. Contains NO copyrighted
+    // bytes — only the structural signature shape observed on real titles.
+    fn realistic_real_scene_pck(ascending_offsets: usize) -> Vec<u8> {
+        let header_size: u32 = 0x5C;
+        let dword_count = (header_size / 4) as usize; // 23 dwords in the header
+        let mut header = vec![0u32; dword_count];
+        header[0] = header_size;
+        let mut offset = header_size;
+        let mut produced = 0usize;
+        let mut idx = 1usize;
+        while idx + 1 < dword_count && produced < ascending_offsets {
+            header[idx] = offset; // ascending index-section offset
+            header[idx + 1] = 7; // arbitrary index-section count
+            offset += 0x100;
+            produced += 1;
+            idx += 2;
+        }
+        let body_len = offset as usize + 0x100;
+        let mut bytes = Vec::with_capacity(body_len);
+        for value in &header {
+            bytes.extend_from_slice(&value.to_le_bytes());
+        }
+        bytes.resize(body_len, 0);
+        bytes
+    }
+
+    // Build a REALISTIC (non-synthetic) Siglus `Gameexe.dat`: the plaintext
+    // 8-byte prefix (zero dword + `1` version dword) then a maximum-entropy
+    // body standing in for the encrypted payload (every byte value 0..=255
+    // appears equally → 8.0 bits/byte). No copyrighted bytes.
+    fn realistic_real_gameexe_dat() -> Vec<u8> {
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(&0u32.to_le_bytes());
+        bytes.extend_from_slice(&1u32.to_le_bytes());
+        for i in 0..4096usize {
+            bytes.push((i % 256) as u8);
+        }
+        bytes
+    }
+
     fn adapter_failure_from_error(error: Box<dyn std::error::Error>) -> AdapterFailure {
         serde_json::from_str(&error.to_string()).unwrap()
     }
@@ -7084,6 +7358,246 @@ mod tests {
         let _ = fs::remove_dir_all(complete_dir);
         let _ = fs::remove_dir_all(missing_pair_dir);
         let _ = fs::remove_dir_all(unknown_dir);
+    }
+
+    #[test]
+    fn siglus_detects_real_signature_pair_at_identify_level() {
+        let real_dir = siglus_fixture_dir(
+            "siglus-real-signature-pair",
+            Some(&realistic_real_scene_pck(10)),
+            Some(&realistic_real_gameexe_dat()),
+        );
+        let adapter = SiglusProfileDetectorAdapter;
+
+        let detection = adapter
+            .detect(DetectRequest {
+                game_dir: &real_dir,
+            })
+            .unwrap();
+        assert!(
+            detection.detected,
+            "real Scene.pck + Gameexe.dat signatures must be detected"
+        );
+        assert_eq!(detection.engine_family.as_deref(), Some("siglus"));
+        assert_eq!(
+            detection.detected_variant.as_deref(),
+            Some("scene-pck-gameexe-dat-real")
+        );
+        // Evidence reports the REAL signature class honestly, not synthetic.
+        let scene_evidence = detection
+            .evidence
+            .iter()
+            .find(|row| row.path == SIGLUS_SCENE_PATH)
+            .expect("Scene.pck evidence row");
+        assert_eq!(scene_evidence.kind, "real_siglus_scene_pck_signature");
+        assert_eq!(scene_evidence.status, EvidenceStatus::Matched);
+        let gameexe_evidence = detection
+            .evidence
+            .iter()
+            .find(|row| row.path == SIGLUS_GAMEEXE_PATH)
+            .expect("Gameexe.dat evidence row");
+        assert_eq!(gameexe_evidence.kind, "real_siglus_gameexe_dat_signature");
+        assert_eq!(gameexe_evidence.status, EvidenceStatus::Matched);
+
+        // Profile + inventory succeed at identify level and report honestly.
+        let profile = adapter
+            .profile(ProfileRequest {
+                game_dir: &real_dir,
+            })
+            .unwrap();
+        assert_eq!(
+            profile.engine.detected_variant,
+            "scene-pck-gameexe-dat-real"
+        );
+        assert_eq!(profile.game_id, "kaifuu-siglus-real-scene-pck");
+        assert_eq!(profile.title, "Siglus title (detector profile)");
+        assert_eq!(
+            profile.metadata.get("fixtureOnly").map(String::as_str),
+            Some("false")
+        );
+        assert!(
+            adapter
+                .asset_inventory(AssetInventoryRequest {
+                    game_dir: &real_dir
+                })
+                .is_ok()
+        );
+
+        // Stays identify/inventory-level: extraction and patching still fail
+        // with the documented boundary (no overclaim of decrypt/repack).
+        assert!(
+            adapter
+                .extract(ExtractRequest {
+                    game_dir: &real_dir
+                })
+                .is_err(),
+            "detector must not claim extraction on real bytes"
+        );
+
+        let _ = fs::remove_dir_all(real_dir);
+    }
+
+    #[test]
+    fn siglus_synthetic_pair_still_detected_after_real_signature_support() {
+        // Regression guard: adding real-signature recognition must not drop
+        // the synthetic-fixture path (no-legacy-compat: both work).
+        let synthetic_dir = siglus_fixture_dir(
+            "siglus-synthetic-still-detected",
+            Some(SIGLUS_SCENE_MAGIC),
+            Some(SIGLUS_GAMEEXE_MAGIC),
+        );
+        let adapter = SiglusProfileDetectorAdapter;
+        let detection = adapter
+            .detect(DetectRequest {
+                game_dir: &synthetic_dir,
+            })
+            .unwrap();
+        assert!(detection.detected);
+        assert_eq!(
+            detection.detected_variant.as_deref(),
+            Some("scene-pck-gameexe-dat-synthetic")
+        );
+        let scene_evidence = detection
+            .evidence
+            .iter()
+            .find(|row| row.path == SIGLUS_SCENE_PATH)
+            .expect("Scene.pck evidence row");
+        assert_eq!(scene_evidence.kind, "synthetic_siglus_scene_pck_signature");
+        let profile = adapter
+            .profile(ProfileRequest {
+                game_dir: &synthetic_dir,
+            })
+            .unwrap();
+        assert_eq!(
+            profile.metadata.get("fixtureOnly").map(String::as_str),
+            Some("true")
+        );
+        assert_eq!(profile.game_id, "kaifuu-siglus-synthetic-scene-pck");
+        let _ = fs::remove_dir_all(synthetic_dir);
+    }
+
+    #[test]
+    fn siglus_real_signature_does_not_false_positive() {
+        let adapter = SiglusProfileDetectorAdapter;
+
+        // A Scene.pck opening with the 0x5C header but only a short (<8)
+        // ascending offset run is NOT recognized as a real archive.
+        let weak_scene = siglus_fixture_dir(
+            "siglus-weak-ascending-offsets",
+            Some(&realistic_real_scene_pck(3)),
+            Some(&realistic_real_gameexe_dat()),
+        );
+        let weak_detection = adapter
+            .detect(DetectRequest {
+                game_dir: &weak_scene,
+            })
+            .unwrap();
+        assert!(
+            !weak_detection.detected,
+            "0x5C header with a short offset run must not be recognized"
+        );
+
+        // An unrelated file that merely opens with `5c 00 00 00` then
+        // non-ascending garbage is rejected.
+        let mut noisy = vec![0x5Cu8, 0x00, 0x00, 0x00];
+        noisy.extend_from_slice(&[0xFF; 0x60]);
+        let noisy_scene = siglus_fixture_dir(
+            "siglus-noisy-0x5c-prefix",
+            Some(&noisy),
+            Some(&realistic_real_gameexe_dat()),
+        );
+        assert!(
+            !adapter
+                .detect(DetectRequest {
+                    game_dir: &noisy_scene,
+                })
+                .unwrap()
+                .detected
+        );
+
+        // A Gameexe.dat with the correct 8-byte prefix but a low-entropy
+        // (all-zero) body is rejected by the entropy gate.
+        let mut low_entropy_gameexe = Vec::new();
+        low_entropy_gameexe.extend_from_slice(&0u32.to_le_bytes());
+        low_entropy_gameexe.extend_from_slice(&1u32.to_le_bytes());
+        low_entropy_gameexe.resize(8 + 4096, 0);
+        let low_entropy_dir = siglus_fixture_dir(
+            "siglus-low-entropy-gameexe",
+            Some(&realistic_real_scene_pck(10)),
+            Some(&low_entropy_gameexe),
+        );
+        let low_detection = adapter
+            .detect(DetectRequest {
+                game_dir: &low_entropy_dir,
+            })
+            .unwrap();
+        assert!(
+            !low_detection.detected,
+            "low-entropy Gameexe.dat body must not be recognized as encrypted"
+        );
+
+        // A plain text pair is not Siglus at all.
+        let text_dir = siglus_fixture_dir(
+            "siglus-plain-text",
+            Some(b"just some plain text that is not a Siglus archive at all"),
+            Some(b"another plain text file"),
+        );
+        let text_detection = adapter
+            .detect(DetectRequest {
+                game_dir: &text_dir,
+            })
+            .unwrap();
+        assert!(!text_detection.detected);
+        assert_eq!(
+            text_detection.detected_variant.as_deref(),
+            Some("unknown-siglus-named-files")
+        );
+
+        let _ = fs::remove_dir_all(weak_scene);
+        let _ = fs::remove_dir_all(noisy_scene);
+        let _ = fs::remove_dir_all(low_entropy_dir);
+        let _ = fs::remove_dir_all(text_dir);
+    }
+
+    // Real-corpus validation (≥2 titles). Ignored by default because it needs
+    // owned, uncommitted Siglus game trees; point `KAIFUU_SIGLUS_REAL_DIRS` at
+    // a `:`-separated list of directories each holding a real `Scene.pck` +
+    // `Gameexe.dat` (e.g. materialized Karetoshi + Gamekoi) and run with
+    // `--ignored`. Reads only the header signature; commits no game bytes.
+    #[test]
+    #[ignore = "requires owned Siglus corpus via KAIFUU_SIGLUS_REAL_DIRS"]
+    fn siglus_detects_real_corpus_titles() {
+        let Ok(dirs) = std::env::var("KAIFUU_SIGLUS_REAL_DIRS") else {
+            panic!("set KAIFUU_SIGLUS_REAL_DIRS to a :-separated list of Siglus game dirs");
+        };
+        let adapter = SiglusProfileDetectorAdapter;
+        let mut recognized = 0usize;
+        for dir in dirs.split(':').filter(|d| !d.is_empty()) {
+            let game_dir = PathBuf::from(dir);
+            let detection = adapter
+                .detect(DetectRequest {
+                    game_dir: &game_dir,
+                })
+                .unwrap();
+            eprintln!(
+                "[siglus-real-corpus] {dir} detected={} variant={:?}",
+                detection.detected, detection.detected_variant
+            );
+            assert!(
+                detection.detected,
+                "real Siglus title must be detected: {dir}"
+            );
+            assert_eq!(
+                detection.detected_variant.as_deref(),
+                Some("scene-pck-gameexe-dat-real"),
+                "real Siglus title must report the real variant: {dir}"
+            );
+            recognized += 1;
+        }
+        assert!(
+            recognized >= 2,
+            "expected >=2 real Siglus titles, recognized {recognized}"
+        );
     }
 
     #[test]

@@ -303,15 +303,16 @@ fn karetoshi_materializes_to_plaintext_siglus_tree() {
     let scratch = scratch_base();
     let variant = materialize_confirm_siglus("karetoshi", KARETOSHI_CANONICAL_ID, &scratch);
     let _ = std::fs::remove_dir_all(&scratch);
-    // The detector recognises Scene.pck + Gameexe.dat by name; the synthetic
-    // KAIFUU-091 signature magic is absent on real bytes, so it classifies the
-    // real pair as `unknown-siglus-named-files` (real-signature detection is a
-    // downstream node). Recording the exact variant keeps that gap honest.
+    // The detector now recognises the REAL Siglus archive-header signatures
+    // (Scene.pck `0x5C` header + ascending index-section offsets; Gameexe.dat
+    // zero/`1` prefix + encrypted high-entropy body), so the real pair
+    // classifies as `scene-pck-gameexe-dat-real` at identify level (extraction
+    // /decryption remain unclaimed). Recording the exact variant keeps the
+    // detect-vs-extract boundary honest.
     eprintln!("[karetoshi] detector variant = {variant}");
     assert_eq!(
-        variant, "unknown-siglus-named-files",
-        "current detector is synthetic-signature-gated: real Scene.pck/Gameexe.dat classify as \
-         unknown-siglus-named-files (see report; real-signature detection is downstream work)"
+        variant, "scene-pck-gameexe-dat-real",
+        "real-signature detector must recognise the real Karetoshi Scene.pck/Gameexe.dat pair"
     );
 }
 
@@ -327,8 +328,7 @@ fn gamekoi_materializes_to_plaintext_siglus_tree() {
     let _ = std::fs::remove_dir_all(&scratch);
     eprintln!("[gamekoi] detector variant = {variant}");
     assert_eq!(
-        variant, "unknown-siglus-named-files",
-        "current detector is synthetic-signature-gated: real Scene.pck/Gameexe.dat classify as \
-         unknown-siglus-named-files (see report; real-signature detection is downstream work)"
+        variant, "scene-pck-gameexe-dat-real",
+        "real-signature detector must recognise the real Gamekoi Scene.pck/Gameexe.dat pair"
     );
 }
