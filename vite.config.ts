@@ -21,6 +21,7 @@ export default defineConfig({
       "apps/itotori/src/engine-capability/**",
       "fixtures/synthetic/**",
       "crates/kaifuu-rpgmaker/tests/fixtures/**",
+      "fixtures/kaifuu/repro-bundle/**",
     ],
   },
   resolve: {
