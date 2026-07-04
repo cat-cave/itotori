@@ -80,7 +80,7 @@ describe("ItotoriModelLedgerRepository", () => {
       );
       await ledger.recordProviderRun(localActor, runInput("run-zero", "zero", 0));
 
-      const report = await ledger.getProjectCostReport("project-test");
+      const report = await ledger.getProjectCostReport(localActor, "project-test");
 
       expect(report).toMatchObject({
         projectId: "project-test",
@@ -177,7 +177,7 @@ describe("ItotoriModelLedgerRepository", () => {
         }),
       );
 
-      const report = await ledger.getProjectCostReport("project-test");
+      const report = await ledger.getProjectCostReport(localActor, "project-test");
       expect(report).toMatchObject({
         runCount: 1,
         zeroRunCount: 1,
@@ -251,7 +251,7 @@ describe("ItotoriModelLedgerRepository", () => {
         ),
       ).rejects.toThrow(/totalTokens/u);
 
-      const report = await ledger.getProjectCostReport("project-test");
+      const report = await ledger.getProjectCostReport(localActor, "project-test");
       expect(report.runCount).toBe(0);
     } finally {
       await context.close();
@@ -280,7 +280,7 @@ describe("ItotoriModelLedgerRepository", () => {
         ),
       ).rejects.toThrow(/reasoningTokens/u);
 
-      const report = await ledger.getProjectCostReport("project-test");
+      const report = await ledger.getProjectCostReport(localActor, "project-test");
       expect(report.runCount).toBe(0);
     } finally {
       await context.close();
@@ -311,7 +311,7 @@ describe("ItotoriModelLedgerRepository", () => {
         }),
       );
 
-      const report = await ledger.getProjectCostReport("project-test");
+      const report = await ledger.getProjectCostReport(localActor, "project-test");
       expect(report.recentRuns[0]).toMatchObject({
         providerRunId: "run-unknown-token-components",
         tokenCountSource: "unknown",
@@ -358,6 +358,7 @@ describe("ItotoriModelLedgerRepository", () => {
       });
 
       const report = await new ItotoriModelLedgerRepository(context.db).getProjectCostReport(
+        localActor,
         "project-test",
       );
       expect(report).toMatchObject({
@@ -433,7 +434,7 @@ describe("ItotoriModelLedgerRepository", () => {
         existing_provider_count: 1,
       });
 
-      const report = await ledger.getProjectCostReport("project-test");
+      const report = await ledger.getProjectCostReport(localActor, "project-test");
       expect(report).toMatchObject({
         runCount: 1,
         zeroRunCount: 1,
@@ -464,7 +465,7 @@ describe("ItotoriModelLedgerRepository", () => {
         ),
       ).rejects.toThrow(/unknown tokenCountSource/u);
 
-      const report = await ledger.getProjectCostReport("project-test");
+      const report = await ledger.getProjectCostReport(localActor, "project-test");
       expect(report.runCount).toBe(0);
     } finally {
       await context.close();
@@ -492,7 +493,7 @@ describe("ItotoriModelLedgerRepository", () => {
         ),
       ).rejects.toThrow(/tokenUsage\.tokenCountSource/u);
 
-      const report = await ledger.getProjectCostReport("project-test");
+      const report = await ledger.getProjectCostReport(localActor, "project-test");
       expect(report.runCount).toBe(0);
     } finally {
       await context.close();
@@ -511,7 +512,7 @@ describe("ItotoriModelLedgerRepository", () => {
         ledger.recordProviderRun(localActor, runInput("run-append-only", "billed", 999)),
       ).rejects.toThrow();
 
-      const report = await ledger.getProjectCostReport("project-test");
+      const report = await ledger.getProjectCostReport(localActor, "project-test");
       expect(report).toMatchObject({
         runCount: 1,
         billedMicrosUsd: 100,

@@ -242,7 +242,12 @@ export class ItotoriProjectWorkflowService implements ItotoriProjectWorkflowPort
     if (!this.modelLedger) {
       return emptyCostReport(projectId ?? "unknown");
     }
-    return await this.modelLedger.getProjectCostReport(projectId);
+    // gate-project-status-and-cost-reads — thread the workflow actor into
+    // the ledger read so the repository-layer permission gate enforces the
+    // privileged cost report even for this internal caller (defense in
+    // depth). The HTTP handler additionally redacts for unprivileged
+    // callers, but the actor check lives where the data is read.
+    return await this.modelLedger.getProjectCostReport(this.actor, projectId);
   }
 
   async getBenchmarkReports(projectId?: string): Promise<BenchmarkReportSummary[]> {

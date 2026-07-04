@@ -1,10 +1,12 @@
 import { readFileSync } from "node:fs";
 import {
+  AuthorizationError,
   ItotoriModelLedgerRepository,
   ItotoriProjectRepository,
   ItotoriTranslationMemoryRepository,
   ItotoriTranslationMemoryService,
   localUserId,
+  permissionValues,
   translationMemoryMatchKindValues,
   translationMemoryReuseStatusValues,
   type AuthorizationActor,
@@ -117,6 +119,46 @@ describe("ItotoriProjectWorkflowService", () => {
       }),
     );
     expect(project.drafts).toEqual({});
+  });
+
+  it("threads the workflow actor into the ledger cost read and propagates a denial (defense in depth)", async () => {
+    const repository = repositoryFixture();
+    // A ledger that only serves the cost report to an actor holding the
+    // catalog.read gate — mirrors the real repository-layer permission
+    // check that lives where the data is read.
+    const gatedLedger: ItotoriModelLedgerRepositoryPort = {
+      recordProviderRun: vi.fn(async () => costReportFixture.recentRuns[0]!),
+      getProjectCostReport: vi.fn(async (readActor: AuthorizationActor) => {
+        if (readActor.userId !== actor.userId) {
+          throw new AuthorizationError(readActor, permissionValues.catalogRead);
+        }
+        return costReportFixture;
+      }),
+    };
+
+    const authorizedService = new ItotoriProjectWorkflowService(
+      repository,
+      actor,
+      new FakeModelProvider(),
+      gatedLedger,
+    );
+    await expect(authorizedService.getCostReport("project-test")).resolves.toMatchObject({
+      projectId: costReportFixture.projectId,
+    });
+    expect(gatedLedger.getProjectCostReport).toHaveBeenCalledWith(actor, "project-test");
+
+    // An internal caller running as an unprivileged actor is rejected at
+    // the read site, not silently served the ledger internals.
+    const unprivilegedService = new ItotoriProjectWorkflowService(
+      repository,
+      { userId: "workflow-actor-without-catalog-read" },
+      new FakeModelProvider(),
+      gatedLedger,
+    );
+    await expect(unprivilegedService.getCostReport("project-test")).rejects.toMatchObject({
+      name: "AuthorizationError",
+      permission: permissionValues.catalogRead,
+    });
   });
 
   it("uses translation memory prefill results to skip provider calls for reused units", async () => {
@@ -275,7 +317,7 @@ describe("ItotoriProjectWorkflowService", () => {
           }),
         });
 
-        const costReport = await modelLedger.getProjectCostReport(importedProject.projectId);
+        const costReport = await modelLedger.getProjectCostReport(actor, importedProject.projectId);
         expect(costReport.translationMemoryReuse).toMatchObject({
           reuseEventCount: 1,
           appliedCount: 1,

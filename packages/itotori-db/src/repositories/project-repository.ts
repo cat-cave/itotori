@@ -1686,7 +1686,16 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
       );
 
     const projectId = String(first.project_id);
-    const cost = await new ItotoriModelLedgerRepository(this.db).getProjectCostReport(projectId);
+    // gate-project-status-and-cost-reads — the dashboard status embeds the
+    // full cost report via the unchecked same-package assembler. The
+    // dashboard summary is available to unprivileged callers, so its cost
+    // sub-object is NOT gated here; the privileged internals (recentRuns +
+    // translation-memory targetText) are redacted at the API boundary for
+    // unprivileged callers, while the standalone cost report read is
+    // actor-checked in `getProjectCostReport`.
+    const cost = await new ItotoriModelLedgerRepository(this.db).assembleProjectCostReport(
+      projectId,
+    );
     const selectedStyleGuideBranch =
       branches.find((branch) => branch.currentStyleGuidePolicyVersionId !== null) ??
       branches[0] ??

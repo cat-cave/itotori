@@ -217,7 +217,15 @@ export interface ItotoriModelLedgerRepositoryPort {
     actor: AuthorizationActor,
     input: ProviderRunLedgerInput,
   ): Promise<ProviderRunCostSummary>;
-  getProjectCostReport(projectId?: string): Promise<ProjectCostReport>;
+  /**
+   * gate-project-status-and-cost-reads — the privileged cost report read.
+   * Requires the actor to hold the project/ledger read permission
+   * (`catalog.read`, the same gate the sibling `count*ByPair` ledger reads
+   * use). The report exposes provider/model/routing internals, the run
+   * ledger, and translation-memory targetText, so it is never returned to
+   * an unprivileged caller.
+   */
+  getProjectCostReport(actor: AuthorizationActor, projectId?: string): Promise<ProjectCostReport>;
   /**
    * ITOTORI-230 — count provider runs per (modelId, providerId) over
    * the window, split by whether the captured routing posture has
@@ -268,7 +276,25 @@ export class ItotoriModelLedgerRepository implements ItotoriModelLedgerRepositor
     return run;
   }
 
-  async getProjectCostReport(projectId?: string): Promise<ProjectCostReport> {
+  /**
+   * gate-project-status-and-cost-reads — the privileged cost report read.
+   * Actor-checked HERE (repository layer, where the data is read) so an
+   * internal caller with an unprivileged actor cannot bypass the gate.
+   * The unchecked assembly lives in `assembleProjectCostReport`, which is
+   * NOT part of the port contract and is only consumed same-package by the
+   * dashboard-status assembly — whose sensitive fields (recentRuns +
+   * translation-memory targetText) are redacted at the API boundary for
+   * unprivileged callers.
+   */
+  async getProjectCostReport(
+    actor: AuthorizationActor,
+    projectId?: string,
+  ): Promise<ProjectCostReport> {
+    await requirePermission(this.db, actor, permissionValues.catalogRead);
+    return this.assembleProjectCostReport(projectId);
+  }
+
+  async assembleProjectCostReport(projectId?: string): Promise<ProjectCostReport> {
     const targetProjectId = projectId ?? (await this.latestProjectId());
     const totalsResult = await this.db.execute(sql`
       select

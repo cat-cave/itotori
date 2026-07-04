@@ -189,12 +189,16 @@ async function routeItotoriApiRequest(
   services: ItotoriApiServices,
 ): Promise<ApiJsonResponse> {
   if (request.method === "GET" && request.pathname === "/api/projects") {
+    const canRead = await resolveProjectReadPermission(services);
     const status = await services.projectWorkflow.getDashboardStatus();
-    return ok("projects.list", { projects: [status] });
+    const view = canRead ? status : redactProjectDashboardStatus(status);
+    return ok("projects.list", { projects: [view] });
   }
 
   if (request.method === "GET" && request.pathname === "/api/projects/status") {
-    return ok("projects.status", await services.projectWorkflow.getDashboardStatus());
+    const canRead = await resolveProjectReadPermission(services);
+    const status = await services.projectWorkflow.getDashboardStatus();
+    return ok("projects.status", canRead ? status : redactProjectDashboardStatus(status));
   }
 
   if (request.method === "GET" && request.pathname === "/api/projects/decisions") {
@@ -202,7 +206,9 @@ async function routeItotoriApiRequest(
   }
 
   if (request.method === "GET" && request.pathname === "/api/projects/cost") {
-    return ok("projects.cost", await services.projectWorkflow.getCostReport());
+    const canRead = await resolveProjectReadPermission(services);
+    const cost = await services.projectWorkflow.getCostReport();
+    return ok("projects.cost", canRead ? cost : redactProjectCostReport(cost));
   }
 
   if (request.method === "GET" && request.pathname === "/api/projects/benchmarks") {
@@ -577,6 +583,52 @@ async function tryApiPermission(
     }
     throw error;
   }
+}
+
+/**
+ * gate-project-status-and-cost-reads — the project dashboard / list / cost
+ * read paths require this explicit READ permission to return the full
+ * detail. An unprivileged / absent-permission caller instead receives a
+ * redacted public dashboard summary (aggregate status + counts only). The
+ * gate reuses `catalog.read`, the same permission the sibling
+ * ledger-count reads (`countZdrEnforcedByPair`, `countCostKindsByPair`)
+ * and the cost report repository read enforce, so the HTTP boundary and
+ * the repository defense-in-depth check agree on the required permission.
+ */
+async function resolveProjectReadPermission(services: ItotoriApiServices): Promise<boolean> {
+  const [canRead] = await tryApiPermission(services, permissionValues.catalogRead);
+  return canRead;
+}
+
+/**
+ * gate-project-status-and-cost-reads — the redacted PUBLIC cost summary.
+ * Keeps only safe aggregates (run/token/USD totals + the translation
+ * memory reuse counts). Strips the run-ledger detail (`recentRuns`, which
+ * carries provider/model/routing internals) and the translation-memory
+ * reuse events (which carry `targetText`). These are privileged-only.
+ */
+function redactProjectCostReport(cost: ProjectCostReport): ProjectCostReport {
+  return {
+    ...cost,
+    recentRuns: [],
+    translationMemoryReuse: {
+      ...cost.translationMemoryReuse,
+      recentEvents: [],
+    },
+  };
+}
+
+/**
+ * gate-project-status-and-cost-reads — the redacted PUBLIC dashboard
+ * summary. Every top-level field is a safe aggregate (project identity,
+ * counts, locale-branch rollups); the only sensitive nested payload is the
+ * embedded cost report, which is redacted to aggregates.
+ */
+function redactProjectDashboardStatus(status: ProjectDashboardStatus): ProjectDashboardStatus {
+  return {
+    ...status,
+    cost: redactProjectCostReport(status.cost),
+  };
 }
 
 function deniedReviewerDetailApiResponse(

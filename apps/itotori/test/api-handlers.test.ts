@@ -163,7 +163,7 @@ const apiMutationPermissionMatrix = [
 ] as const satisfies readonly ApiMutationPermissionCase[];
 
 describe("Itotori API handlers", () => {
-  it("routes project and runtime status reads without permission checks", async () => {
+  it("routes project and runtime status reads, gating project reads on catalog.read", async () => {
     const services = serviceFixture();
 
     const projects = await handleItotoriApiRequest(
@@ -281,7 +281,101 @@ describe("Itotori API handlers", () => {
       localeBranchId: "locale-1",
       query: "Hero",
     });
-    expect(services.authorization.requirePermission).not.toHaveBeenCalled();
+    // gate-project-status-and-cost-reads — /api/projects, /status, and /cost
+    // now resolve the catalog.read gate. serviceFixture grants it, so the
+    // full detail is returned; the three project reads are the only routes
+    // that consult the permission port.
+    expect(services.authorization.requirePermission).toHaveBeenCalledWith(
+      permissionValues.catalogRead,
+    );
+    expect(services.authorization.requirePermission).toHaveBeenCalledTimes(3);
+  });
+
+  it("returns full project/cost detail to a caller holding catalog.read", async () => {
+    const services = serviceFixture();
+
+    const projects = await handleItotoriApiRequest(
+      { method: "GET", pathname: "/api/projects" },
+      services,
+    );
+    const status = await handleItotoriApiRequest(
+      { method: "GET", pathname: "/api/projects/status" },
+      services,
+    );
+    const cost = await handleItotoriApiRequest(
+      { method: "GET", pathname: "/api/projects/cost" },
+      services,
+    );
+
+    // Privileged callers see the full run ledger + translation-memory
+    // targetText + provider/model/routing internals.
+    expect((cost.body as ProjectCostReport).recentRuns).toHaveLength(2);
+    expect((cost.body as ProjectCostReport).translationMemoryReuse.recentEvents).toHaveLength(1);
+    expect(projects.body.projects[0]?.cost.recentRuns).toHaveLength(2);
+    expect(status.body.cost.recentRuns).toHaveLength(2);
+    for (const response of [projects, status, cost]) {
+      const serialized = JSON.stringify(response.body);
+      expect(serialized).toContain("Hello again.");
+      expect(serialized).toContain("openrouter");
+      expect(serialized).toContain("provider-run-1");
+    }
+  });
+
+  it("redacts project/status/cost reads to a public summary without catalog.read", async () => {
+    const services = serviceFixture();
+    vi.mocked(services.authorization.requirePermission).mockImplementation(async (permission) => {
+      if (permission === permissionValues.catalogRead) {
+        throw new AuthorizationError({ userId: "api-user-without-catalog-read" }, permission);
+      }
+    });
+
+    const projects = await handleItotoriApiRequest(
+      { method: "GET", pathname: "/api/projects" },
+      services,
+    );
+    const status = await handleItotoriApiRequest(
+      { method: "GET", pathname: "/api/projects/status" },
+      services,
+    );
+    const cost = await handleItotoriApiRequest(
+      { method: "GET", pathname: "/api/projects/cost" },
+      services,
+    );
+
+    const costBody = cost.body as ProjectCostReport;
+    const dashboardCosts = [
+      projects.body.projects[0]?.cost,
+      status.body.cost,
+      costBody,
+    ] as ProjectCostReport[];
+
+    for (const redacted of dashboardCosts) {
+      // Run-ledger detail (provider/model/routing internals) is stripped.
+      expect(redacted.recentRuns).toEqual([]);
+      // Translation-memory reuse events (carrying targetText) are stripped.
+      expect(redacted.translationMemoryReuse.recentEvents).toEqual([]);
+      // Safe aggregates survive so the public dashboard still renders.
+      expect(redacted.runCount).toBe(2);
+      expect(redacted.billedMicrosUsd).toBe(2180);
+      expect(redacted.totalsByCostKind).toHaveLength(2);
+      expect(redacted.translationMemoryReuse.reuseEventCount).toBe(1);
+    }
+
+    // The sensitive strings must be ABSENT from every unprivileged response.
+    for (const response of [projects, status, cost]) {
+      const serialized = JSON.stringify(response.body);
+      // translation-memory targetText
+      expect(serialized).not.toContain("Hello again.");
+      // provider / model / routing internals + run-ledger identity
+      expect(serialized).not.toContain("provider-run-1");
+      expect(serialized).not.toContain("openrouter");
+      expect(serialized).not.toContain("itotori-fake-draft-v0");
+      expect(serialized).not.toContain("routingPosture");
+    }
+
+    // Non-sensitive dashboard identity/counts remain visible.
+    expect(status.body.projectId).toBe(dashboardStatusFixture.projectId);
+    expect(status.body.unitCount).toBe(dashboardStatusFixture.unitCount);
   });
 
   it("routes reviewer queue dashboard, detail, batch preview, and batch confirm through typed services", async () => {
