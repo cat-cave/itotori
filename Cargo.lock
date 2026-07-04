@@ -600,6 +600,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "kaifuu-kirikiri"
+version = "0.0.0"
+dependencies = [
+ "encoding_rs",
+ "serde",
+ "sha2",
+ "thiserror",
+]
+
+[[package]]
 name = "kaifuu-reallive"
 version = "0.0.0"
 dependencies = [

@@ -7,6 +7,7 @@ members = [
   "crates/kaifuu-reallive",
   "crates/kaifuu-siglus",
   "crates/kaifuu-rpgmaker",
+  "crates/kaifuu-kirikiri",
   "crates/kaifuu-cli",
   "crates/kaifuu-vault-source",
   "crates/utsushi-core",
