@@ -1,0 +1,48 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://itotori.dev/schemas/kaifuu/reproduction-bundle.schema.json",
+  "title": "Kaifuu redacted compatibility reproduction bundle (KAIFUU-106)",
+  "description": "A shareable PUBLIC artifact that reproduces kaifuu's compatibility results without any private corpora. It carries KAIFUU-105 claimed-support tuples (exact shape) plus reproduction proofs (public fixture id + sha256 proof hash). It NEVER carries private assets: raw keys, private paths, retail bytes, screenshots, prompt logs, or story text are rejected by the validator (crate::repro_bundle::validate_repro_bundle) with a bundle/tuple/field-named error. The proof hashes + fixture ids are sufficient to reproduce the public-fixture results with no private-corpus reference. Mirrors crate::repro_bundle::ReproBundle (serde camelCase).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "bundleId",
+    "supportTuples",
+    "reproductionProofs"
+  ],
+  "properties": {
+    "schemaVersion": { "type": "string", "const": "0.1.0" },
+    "bundleId": { "type": "string", "minLength": 1 },
+    "supportTuples": {
+      "type": "array",
+      "minItems": 1,
+      "description": "The embedded KAIFUU-105 claimed-support tuples (exact shape).",
+      "items": {
+        "$ref": "https://itotori.dev/schemas/kaifuu/claimed-support-tuple.schema.json"
+      }
+    },
+    "reproductionProofs": {
+      "type": "array",
+      "description": "Public reproduction proofs. Each pins the expected public-fixture result for one embedded tuple. tupleId must match a supportTuples[].profileOrFixtureId; fixtureId is a public fixture id (never a private path/corpus).",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["tupleId", "fixtureId", "proofHash"],
+        "properties": {
+          "tupleId": { "type": "string", "minLength": 1 },
+          "fixtureId": { "type": "string", "minLength": 1 },
+          "proofHash": {
+            "type": "string",
+            "pattern": "^sha256:[0-9a-f]{64}$"
+          }
+        }
+      }
+    },
+    "notes": {
+      "type": "array",
+      "description": "Optional bundle-level notes. Redaction-clean free text only — scanned for the six private-asset classes like every other string field.",
+      "items": { "type": "string" }
+    }
+  }
+}

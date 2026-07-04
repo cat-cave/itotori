@@ -1,0 +1,97 @@
+{
+  "schemaVersion": "0.1.0",
+  "bundleId": "repro/kaifuu/siglus-and-kag",
+  "supportTuples": [
+    {
+      "schemaVersion": "0.1.0",
+      "engineFamily": "siglus",
+      "engineVariant": "siglus_pck_static_key",
+      "container": "siglus_pck",
+      "crypto": "fixed_key",
+      "codec": "utf16_text",
+      "surface": "archive_entry",
+      "patchBackMode": "unsupported",
+      "profileOrFixtureId": "compat/siglus/known-key-extract",
+      "secretRequirementIds": [
+        {
+          "requirementId": "siglus.scene-pck.static-key",
+          "secretRef": "local-secret:siglus-scene-static-key"
+        }
+      ],
+      "diagnostics": [
+        {
+          "layer": "crypto",
+          "status": "known_key_only",
+          "reasonId": "kaifuu.missing_key_material",
+          "severity": "P2",
+          "detail": "extraction is limited to catalogued known static keys"
+        },
+        {
+          "layer": "patch_back",
+          "status": "not_implemented",
+          "reasonId": "kaifuu.missing_capability.patch_back",
+          "severity": "P2",
+          "detail": "Siglus patch-back is not yet proven"
+        }
+      ],
+      "claimedLevel": "extract",
+      "evidence": {
+        "extraction": {
+          "evidenceId": "evidence/extract/siglus",
+          "proofHash": "sha256:e78d48eddeb9f6c7bed67e5595e1747ede39e674791c28098133569b9ac9cfd3"
+        }
+      }
+    },
+    {
+      "schemaVersion": "0.1.0",
+      "engineFamily": "kirikiri_kag_plaintext",
+      "engineVariant": "kirikiri_kag_plaintext_ks",
+      "container": "loose_file",
+      "crypto": "null_key",
+      "codec": "shift_jis_text",
+      "surface": "identity",
+      "patchBackMode": "replace_file",
+      "profileOrFixtureId": "compat/kirikiri-kag/plaintext-patch",
+      "secretRequirementIds": [],
+      "diagnostics": [
+        {
+          "layer": "container",
+          "status": "not_implemented",
+          "reasonId": "kaifuu.unsupported_variant.encrypted",
+          "severity": "P3",
+          "detail": "plaintext KAG only — encrypted commercial XP3 is NOT covered"
+        }
+      ],
+      "claimedLevel": "patch",
+      "evidence": {
+        "extraction": {
+          "evidenceId": "evidence/extract/kag",
+          "proofHash": "sha256:7cc08c91888a18610f7cc3c78064f8b686bd29f973b0091a3c213a357f2ca5ae"
+        },
+        "validation": {
+          "evidenceId": "evidence/validate/kag",
+          "proofHash": "sha256:34c6bfba22b920ceee757f29108b9300a09bab0559a5cc3dacec7b9e3ff08626"
+        },
+        "patchBack": {
+          "evidenceId": "evidence/patch/kag",
+          "proofHash": "sha256:14b1ff9de06c436c4256cae72b52d96b9a9efc5921bcefefc85e35244258fed5"
+        }
+      }
+    }
+  ],
+  "reproductionProofs": [
+    {
+      "tupleId": "compat/siglus/known-key-extract",
+      "fixtureId": "public/siglus-known-key-extract",
+      "proofHash": "sha256:bd08c39a3d640b5abd5df02e21700d89b7bf5bc6c675ba8be1ce86dcce8fd250"
+    },
+    {
+      "tupleId": "compat/kirikiri-kag/plaintext-patch",
+      "fixtureId": "public/kirikiri-kag-plaintext-patch",
+      "proofHash": "sha256:3090f0a13cb37e7c207334048a3996aea5cdd8b170d0ffb81c51236d0cf90ceb"
+    }
+  ],
+  "notes": [
+    "reproduce by running the named public fixtures and matching the proof hashes"
+  ]
+}
