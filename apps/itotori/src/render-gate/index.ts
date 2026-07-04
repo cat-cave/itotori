@@ -1,0 +1,30 @@
+// visual-inspection-gate-for-all-render-nodes — public barrel.
+export {
+  VISION_GATE_VERDICT_SCHEMA_VERSION,
+  assertVisionGatePassed,
+  buildVisionVerdictRequest,
+  evaluateVisionGate,
+  parseVisionVerdict,
+  runVisionGate,
+  visionGateCapabilities,
+  visionGateSummary,
+  VisionGateRejectedError,
+  VisionVerdictValidationError,
+  type RedactionMode,
+  type RunVisionGateArgs,
+  type VisionGateArtifact,
+  type VisionGateEvaluation,
+  type VisionGateRequestArgs,
+  type VisionGateResult,
+  type VisionVerdict,
+} from "./vision-gate.js";
+export {
+  VISION_GATE_LIVE_FLAG,
+  VISION_GATE_LIVE_MAX_PRICE_USD,
+  VISION_GATE_MODEL_ENV,
+  VISION_GATE_PROVIDER_ID_ENV,
+  VISION_PAIR,
+  runVisionGateCommand,
+  type VisionGateCommandOptions,
+  type VisionGateCommandResult,
+} from "./command.js";

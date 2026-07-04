@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
 import {
   assertConformanceManifestV01,
   assertConformanceResultV01,
@@ -108,6 +109,12 @@ import {
   type AlphaReadinessPrivateLocalHandle,
 } from "./alpha-readiness/index.js";
 import { scanCatalogLocalRoot } from "./services/catalog-local-scan.js";
+import {
+  runVisionGateCommand,
+  visionGateSummary,
+  VisionGateRejectedError,
+  type RedactionMode,
+} from "./render-gate/index.js";
 
 export type JsonFileStore = {
   readJson(path: string): unknown;
@@ -293,6 +300,9 @@ export async function runItotoriCliCommand(
     case "alpha-readiness-run":
       await runAlphaReadinessHandler(args, dependencies);
       break;
+    case "vision-inspect":
+      await runVisionInspectHandler(args, dependencies);
+      break;
     default:
       throw new Error(`unknown itotori command: ${String(command)}`);
   }
@@ -441,6 +451,70 @@ async function runAgenticLoopSmoke(
     },
     ...(draftArtifactOutputPath === undefined ? {} : { draftArtifactOutputPath }),
   });
+}
+
+/**
+ * visual-inspection-gate-for-all-render-nodes — the eyes-on-pixels
+ * enforcement step every render/screenshot node runs on its emitted proof
+ * frame. Sends the frame to a ZDR-routed OpenRouter VISION model, records the
+ * structured verdict alongside render-evidence, and EXITS NONZERO when the
+ * verdict marks the frame incoherent / target-text-illegible / redaction-
+ * wrong. Live only (`ITOTORI_VISION_GATE_LIVE=1` + exported OpenRouter key +
+ * account ZDR assertion); a non-live invocation is reported as `skipped`.
+ *
+ * Flags:
+ *   --frame <png>              rendered proof-frame PNG (required)
+ *   --expected-text <s>        localized target text expected in the frame
+ *   --expected-text-file <p>   ...or read it from a file (model input only)
+ *   --redaction on|off         the frame's redaction posture (required)
+ *   --classification <c>       provider input classification (default private_corpus)
+ *   --verdict-out <json>       write the verdict artifact here (private/uncommitted)
+ */
+async function runVisionInspectHandler(
+  args: string[],
+  dependencies: ItotoriCliDependencies,
+): Promise<void> {
+  const framePath = requiredFlag(args, "--frame");
+  const redactionRaw = requiredFlag(args, "--redaction");
+  if (redactionRaw !== "on" && redactionRaw !== "off") {
+    throw new Error(`vision-inspect: --redaction must be 'on' or 'off', got '${redactionRaw}'`);
+  }
+  const redactionMode: RedactionMode = redactionRaw;
+  const expectedTextInline = optionalFlag(args, "--expected-text");
+  const expectedTextFile = optionalFlag(args, "--expected-text-file");
+  const expectedText =
+    expectedTextInline ??
+    (expectedTextFile !== undefined ? readFileSync(expectedTextFile, "utf8") : undefined);
+  if (expectedText === undefined) {
+    throw new Error("vision-inspect: provide --expected-text or --expected-text-file");
+  }
+  const classification = optionalFlag(args, "--classification");
+  const verdictOut = optionalFlag(args, "--verdict-out");
+
+  const outcome = await runVisionGateCommand({
+    framePath,
+    expectedText,
+    redactionMode,
+    ...(classification === undefined ? {} : { inputClassification: classification as never }),
+  });
+
+  if (outcome.status === "skipped") {
+    process.stdout.write(
+      `${JSON.stringify({ status: "skipped", reason: outcome.reason }, null, 2)}\n`,
+    );
+    return;
+  }
+
+  const { artifact } = outcome.result;
+  if (verdictOut !== undefined) {
+    dependencies.io.writeJson(verdictOut, artifact);
+  }
+  process.stdout.write(`${JSON.stringify(visionGateSummary(artifact), null, 2)}\n`);
+
+  // GATE: a rejected frame FAILS the render proof (nonzero exit).
+  if (outcome.status === "rejected") {
+    throw new VisionGateRejectedError(outcome.result.gate.failures);
+  }
 }
 
 async function runProviderProof(

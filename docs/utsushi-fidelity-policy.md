@@ -27,6 +27,44 @@ Reports may include multiple tiers. The lowest tier involved in a claim must be
 visible beside the claim. For example, a patch can be "E0 valid" and still have
 no evidence that the localized line renders in-game.
 
+## Mandatory Orchestrator Visual Verification (E2 frame captures)
+
+An E2 frame capture claim is NOT satisfied by metadata alone. A redaction
+flag, a non-zero blank-guard pixel count, and a line-count check all passed on
+a garbage render (a solid/near-solid canvas with EN-US tofu boxes and no
+legible dialogue) — because none of those checks looked at the pixels. The
+lesson is a hard rule:
+
+> **Every render/screenshot proof frame MUST be visually inspected before its
+> E2 claim is accepted or audited.** The inspection is an eyes-on-pixels
+> judgment: is this a real composited scene (background art + UI), is the
+> localized target-language text legible (not tofu / mojibake / clipped / wrong
+> script), and does the frame match its declared redaction mode.
+
+This is enforced automatically by the vision gate
+(`apps/itotori/src/render-gate/`, CLI `itotori vision-inspect`): the emitted
+frame is sent to a vision-capable model over the SAME ZDR-routed OpenRouter
+path the drafting path uses (real (model, providerId) pair, per-request
+`provider.zdr=true`, `usage.cost`-or-throw), which returns a STRUCTURED verdict
+`{coherent, target_text_legible, redaction_correct, no_copyright_leak, notes}`.
+The verdict is recorded as a `itotori.vision-gate-verdict.v0` artifact
+alongside render-evidence. A frame whose verdict marks it incoherent,
+target-text-illegible, or redaction-wrong **FAILS the render proof** (the
+gate exits nonzero). `no_copyright_leak` is enforced only for a PUBLIC
+(`--redaction on`) frame; a PRIVATE full-fidelity frame legitimately shows
+copyrighted art.
+
+Acceptance + audit checklist for any render/screenshot (E2+) node:
+
+- [ ] The frame was produced by the real render path (not a text-stub `.png`).
+- [ ] `itotori vision-inspect --frame <png> --redaction on|off --expected-text <localized line>` was run and the recorded verdict artifact is present alongside render-evidence.
+- [ ] The verdict `gate.passed` is `true` (coherent + legible + redaction-correct; no copyright leak for a public frame).
+- [ ] The verdict records the REAL served (model, providerId) pair, real `usage.cost`, and `zdr:true`.
+
+The real vision call is billed + live-only; the deterministic mechanism
+(verdict parsing/validation + the gate failing on a `coherent:false` verdict)
+is covered in CI with a fake vision provider (`test/vision-gate.test.ts`).
+
 ## Runtime Evidence Schema
 
 Runtime evidence v0.2 exposes `evidenceTier` as the canonical claim tier and
