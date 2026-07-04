@@ -36,8 +36,10 @@ export type WorkCarveDerivation = {
    * game-select; each of its ≥2 enumerable option branches is a work.
    * `game-select-unresolved-options` — a button-object game-select IDENTIFIES
    * the archive as multi-work, but its option branches are not enumerable on
-   * the select scene (Sweetie HD scene 2: option art + dispatch set up
-   * upstream at the title); rooting the works needs upstream/operator context.
+   * the select scene (Sweetie HD scene 2: a title MENU whose goto_case($store)
+   * branches dispatch to menu/config scenes + a store-relative New-Game routine
+   * that does not decode, not to enumerable per-work story roots); rooting the
+   * works needs upstream/operator context the decode does not provide.
    * `single-work-no-game-select` — no button-object game-select present, the
    * whole archive is ONE work (any text-window selects are in-story branches).
    */

@@ -22,13 +22,24 @@
 //     its options are enumerable on the select scene — each option's LABEL and
 //     dispatch target (`branchEntryScene`), enough to carve N disjoint works.
 //   * What it does NOT always give: the REAL Sweetie HD first-screen
-//     game-select (scene 2) is a `select_objbtn` whose option ART + per-option
-//     branch dispatch are set up UPSTREAM at the title screen; the select
-//     scene itself carries NO inline option block, so its works are NOT
-//     enumerable from the select scene alone by headless replay. The carve
-//     then still IDENTIFIES the game-select (button-object marker) but reports
-//     `game-select-unresolved-options` — the archive is known-multi-work, but
-//     rooting the works needs upstream/operator context.
+//     `select_objbtn` (scene 2) is the TITLE MENU, not a clean base-vs-fandisk
+//     story fork. Its `goto_case($store)` dispatch (opcode (0,1,4), 6 targets)
+//     routes to 6 INTRA-scene labels whose non-loop branches `jump`/`farcall`
+//     cross-scene to MENU/config scenes (scene 3 = config/gallery, scene 10 =
+//     the extra sub-menu) and the New-Game routine (farcall scene 9996,
+//     op (0,1,18)) — NOT to two disjoint story roots. The New-Game path
+//     (scene 9996) FAILS TO DECODE in BOTH kaifuu (`MalformedExpression`
+//     @~offset 271) and utsushi (`MalformedElement` @~259), so the story entry
+//     the New-Game button leads into is unreachable statically; and even were
+//     it decodable, the base-vs-fandisk pick is store-relative RUNTIME menu
+//     state (which objbtn button was pressed), not a static 2-way branch.
+//     Gameexe.ini carries NO per-work entry-scene list either (option (a)).
+//     The carve therefore still IDENTIFIES the game-select (button-object
+//     marker) but reports `game-select-unresolved-options` — the archive is
+//     known-multi-work, but the works CANNOT be rooted from the decode: the
+//     split needs the undecodable New-Game routine + runtime title-menu state.
+//     (Traced 2026-07-04 with the `boot_dispatch_scan` example over the real
+//     Seen.txt; scene-ids/opcode-ids only, no copyrighted text.)
 //   * It never gives a SEMANTIC "this is the base game / that is the fandisk".
 //     Naming rides on the option labels when present; otherwise it needs
 //     another signal (Gameexe title metadata, scene-id ranges, operator input).
@@ -178,9 +189,10 @@ export function carveArchiveIntoWorks(
 
   // The button-object game-select is IDENTIFIED but its per-option branches are
   // not enumerable on the select scene (Sweetie HD scene 2: a `select_objbtn`
-  // whose option art + branch dispatch are set up UPSTREAM at the title — the
-  // select scene carries no inline option block). The archive is KNOWN
-  // multi-work, but the works cannot be rooted from the select scene alone.
+  // title MENU whose goto_case($store) branches dispatch to menu/config scenes
+  // + a store-relative New-Game routine, not to enumerable per-work story roots
+  // — the select scene carries no inline option block). The archive is KNOWN
+  // multi-work, but the works cannot be rooted from the decode alone.
   if (scene.choices.length < MIN_GAME_SELECT_OPTIONS) {
     return {
       archiveRef,
@@ -193,7 +205,7 @@ export function carveArchiveIntoWorks(
         namingSignal: "unknown",
         notes:
           `A button-object game-select (scene ${gameSelectScene}) marks this archive as multi-work, but the select scene carries ` +
-          `${scene.choices.length} enumerable option branch(es) (<${MIN_GAME_SELECT_OPTIONS}): its option art + per-option dispatch are set up UPSTREAM (the title screen), so the works cannot be rooted from the select scene alone. Rooting them needs upstream/operator context (a per-work entry-scene list).`,
+          `${scene.choices.length} enumerable option branch(es) (<${MIN_GAME_SELECT_OPTIONS}): the select is a title MENU whose branches dispatch (goto_case on $store) to menu/config scenes and/or a store-relative New-Game routine, NOT to enumerable per-work story roots. The works cannot be rooted from the decode alone; rooting them needs upstream/operator context (a per-work entry-scene list) — which for Sweetie HD the decode does not provide (see the module doc: the New-Game routine does not decode and the split is runtime menu state).`,
       },
     };
   }

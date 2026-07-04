@@ -220,7 +220,9 @@ describe("carveArchiveIntoWorks (derive works FROM the decoded game-select)", ()
 
   it("identifies a button-object game-select even when its options are NOT enumerable", () => {
     // The REAL Sweetie HD first-screen game-select (scene 2): a `select_objbtn`
-    // whose option art + per-option dispatch are set up UPSTREAM at the title,
+    // that is the TITLE MENU. Its goto_case($store) branches dispatch to
+    // menu/config scenes + the store-relative New-Game routine (traced with the
+    // boot_dispatch_scan example), NOT to two enumerable per-work story roots,
     // so the select scene carries NO inline option block. The carve still
     // IDENTIFIES it (button-object marker) but reports the works are
     // unresolved — honest, not a synthetic 2-work fabrication.
@@ -243,7 +245,8 @@ describe("carveArchiveIntoWorks (derive works FROM the decoded game-select)", ()
     expect(carve.derivation.gameSelectScene).toBe(2);
     expect(carve.derivation.gameSelectSelectedBy).toBe("button-object-select");
     expect(carve.derivation.selectionControl).toBe("button-object");
-    expect(carve.derivation.notes).toContain("UPSTREAM");
+    expect(carve.derivation.notes).toContain("title MENU");
+    expect(carve.derivation.notes).toContain("New-Game routine");
   });
 
   it("rejects a carve whose options collide on the same work root (not disjoint)", () => {
@@ -560,8 +563,10 @@ describe("REAL Sweetie HD — hardened game-select signal on the actual decode",
     }
 
     // (3) Feed the REAL decoded signals through the carve.
-    //   (a) The button-object game-select (scene 2) IS identified — its options
-    //       are set up upstream at the title, so the works are unresolved (the
+    //   (a) The button-object game-select (scene 2) IS identified — it is the
+    //       title MENU whose goto_case($store) branches dispatch to menu/config
+    //       scenes + a store-relative New-Game routine (which does not decode),
+    //       not to two per-work story roots, so the works are unresolved (the
     //       honest real boundary), NOT a synthetic 2-work fabrication.
     const gameSelectStructure: NarrativeStructure = {
       schemaVersion: "utsushi.narrative-structure.v1",
