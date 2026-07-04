@@ -1,0 +1,143 @@
+{
+  "aggregateCounts": {
+    "attempts": 5,
+    "corpora": 5
+  },
+  "command": "vp run kaifuu:key-hunt -- --manifest <private-manifest>",
+  "commandLines": [
+    "kaifuu key-hunt --engine kirikiri-xp3 --attempt xp3-key",
+    "kaifuu key-hunt --engine rpg-maker-mv --attempt mv-mz-key",
+    "kaifuu key-hunt --engine siglus --attempt known-key --profile profile-siglus-known-key-01",
+    "kaifuu key-hunt --engine wolf --attempt wolf-archive-key"
+  ],
+  "engineOutcomeBins": {
+    "kirikiri-xp3": {
+      "attempted": 0,
+      "failed": 1,
+      "skipped": 0,
+      "succeeded": 0,
+      "unsupported": 0
+    },
+    "rgss3-vx-ace": {
+      "attempted": 0,
+      "failed": 0,
+      "skipped": 0,
+      "succeeded": 0,
+      "unsupported": 0
+    },
+    "rpg-maker-mv": {
+      "attempted": 1,
+      "failed": 0,
+      "skipped": 0,
+      "succeeded": 0,
+      "unsupported": 0
+    },
+    "rpg-maker-mz": {
+      "attempted": 0,
+      "failed": 0,
+      "skipped": 0,
+      "succeeded": 0,
+      "unsupported": 0
+    },
+    "siglus": {
+      "attempted": 0,
+      "failed": 0,
+      "skipped": 0,
+      "succeeded": 1,
+      "unsupported": 1
+    },
+    "wolf": {
+      "attempted": 0,
+      "failed": 0,
+      "skipped": 1,
+      "succeeded": 0,
+      "unsupported": 0
+    }
+  },
+  "generatedBy": "suite/scripts/kaifuu-key-hunt/run.mjs",
+  "helperAttempts": [
+    {
+      "attemptKind": "mv-mz-key",
+      "capabilityLevel": "static-known-key",
+      "commandLines": ["kaifuu key-hunt --engine rpg-maker-mv --attempt mv-mz-key"],
+      "corpusId": "corpus-mv-01",
+      "engine": "rpg-maker-mv",
+      "helperClass": "staticParser",
+      "helperId": "kaifuu.rpgmaker.mv-mz-key",
+      "helperVersion": "0.1.0",
+      "keyProfileId": null,
+      "outcome": "attempted",
+      "proofHashes": []
+    },
+    {
+      "attemptKind": "siglus-known-key",
+      "capabilityLevel": "static-known-key",
+      "commandLines": [
+        "kaifuu key-hunt --engine siglus --attempt known-key --profile profile-siglus-known-key-01"
+      ],
+      "corpusId": "corpus-siglus-known-key-01",
+      "engine": "siglus",
+      "helperClass": "staticParser",
+      "helperId": "kaifuu.siglus.known-key",
+      "helperVersion": "0.1.0",
+      "keyProfileId": "profile-siglus-known-key-01",
+      "outcome": "succeeded",
+      "proofHashes": ["sha256:8a14979472c4c27f0183a34e9dd37c0935d46e9379a790d22063d7b32ec4b87f"]
+    },
+    {
+      "attemptKind": "none",
+      "capabilityLevel": "detect-only",
+      "commandLines": [],
+      "corpusId": "corpus-siglus-variant-01",
+      "engine": "siglus",
+      "helperClass": "none",
+      "helperId": "none",
+      "helperVersion": null,
+      "keyProfileId": null,
+      "outcome": "unsupported",
+      "proofHashes": []
+    },
+    {
+      "attemptKind": "wolf-archive-key",
+      "capabilityLevel": "detect-only",
+      "commandLines": ["kaifuu key-hunt --engine wolf --attempt wolf-archive-key"],
+      "corpusId": "corpus-wolf-01",
+      "engine": "wolf",
+      "helperClass": "runtimeHelper",
+      "helperId": "kaifuu.wolf.archive-key",
+      "helperVersion": "0.1.0",
+      "keyProfileId": null,
+      "outcome": "skipped",
+      "proofHashes": []
+    },
+    {
+      "attemptKind": "xp3-key",
+      "capabilityLevel": "static-known-key",
+      "commandLines": ["kaifuu key-hunt --engine kirikiri-xp3 --attempt xp3-key"],
+      "corpusId": "corpus-xp3-01",
+      "engine": "kirikiri-xp3",
+      "helperClass": "staticParser",
+      "helperId": "kaifuu.kirikiri.xp3-key",
+      "helperVersion": "0.1.0",
+      "keyProfileId": null,
+      "outcome": "failed",
+      "proofHashes": []
+    }
+  ],
+  "outcomeBins": {
+    "attempted": 1,
+    "failed": 1,
+    "skipped": 1,
+    "succeeded": 1,
+    "unsupported": 1
+  },
+  "reason": null,
+  "schemaVersion": "itotori.kaifuu-key-hunt-report.v0.1",
+  "status": "ok",
+  "toolVersions": [
+    "kaifuu.kirikiri.xp3-key@0.1.0",
+    "kaifuu.rpgmaker.mv-mz-key@0.1.0",
+    "kaifuu.siglus.known-key@0.1.0",
+    "kaifuu.wolf.archive-key@0.1.0"
+  ]
+}

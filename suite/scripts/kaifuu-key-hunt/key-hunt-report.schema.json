@@ -1,0 +1,155 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "itotori.kaifuu-key-hunt-report.v0.1",
+  "title": "Kaifuu private-local key-hunt report",
+  "description": "The SAFE AGGREGATE redacted report emitted by the kaifuu:key-hunt workflow, or the deterministic REDACTED no-corpus artifact. Carries ONLY aggregate outcome counts, per-engine and overall outcome bins, logical key-profile ids, proof hashes, tool versions, and redacted command lines. It NEVER carries raw keys, local-secret refs, decrypted bytes, or absolute local paths.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "status",
+    "reason",
+    "command",
+    "generatedBy",
+    "aggregateCounts",
+    "outcomeBins",
+    "engineOutcomeBins",
+    "toolVersions",
+    "commandLines",
+    "helperAttempts"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "itotori.kaifuu-key-hunt-report.v0.1" },
+    "status": { "enum": ["ok", "skipped"] },
+    "reason": {
+      "oneOf": [{ "type": "null" }, { "const": "private_inputs_absent" }]
+    },
+    "command": { "type": "string" },
+    "generatedBy": { "const": "suite/scripts/kaifuu-key-hunt/run.mjs" },
+    "checkedPaths": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/logicalId" }
+    },
+    "aggregateCounts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["corpora", "attempts"],
+      "properties": {
+        "corpora": { "type": "integer", "minimum": 0 },
+        "attempts": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "outcomeBins": { "$ref": "#/definitions/outcomeBins" },
+    "engineOutcomeBins": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "rpg-maker-mv",
+        "rpg-maker-mz",
+        "kirikiri-xp3",
+        "siglus",
+        "wolf",
+        "rgss3-vx-ace"
+      ],
+      "properties": {
+        "rpg-maker-mv": { "$ref": "#/definitions/outcomeBins" },
+        "rpg-maker-mz": { "$ref": "#/definitions/outcomeBins" },
+        "kirikiri-xp3": { "$ref": "#/definitions/outcomeBins" },
+        "siglus": { "$ref": "#/definitions/outcomeBins" },
+        "wolf": { "$ref": "#/definitions/outcomeBins" },
+        "rgss3-vx-ace": { "$ref": "#/definitions/outcomeBins" }
+      }
+    },
+    "toolVersions": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "commandLines": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "helperAttempts": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/reportAttempt" }
+    }
+  },
+  "definitions": {
+    "logicalId": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]*$"
+    },
+    "proofHash": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "outcomeBins": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["attempted", "succeeded", "failed", "skipped", "unsupported"],
+      "properties": {
+        "attempted": { "type": "integer", "minimum": 0 },
+        "succeeded": { "type": "integer", "minimum": 0 },
+        "failed": { "type": "integer", "minimum": 0 },
+        "skipped": { "type": "integer", "minimum": 0 },
+        "unsupported": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "reportAttempt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "corpusId",
+        "engine",
+        "capabilityLevel",
+        "attemptKind",
+        "helperClass",
+        "helperId",
+        "helperVersion",
+        "outcome",
+        "keyProfileId",
+        "proofHashes",
+        "commandLines"
+      ],
+      "properties": {
+        "corpusId": { "$ref": "#/definitions/logicalId" },
+        "engine": {
+          "enum": ["rpg-maker-mv", "rpg-maker-mz", "kirikiri-xp3", "siglus", "wolf", "rgss3-vx-ace"]
+        },
+        "capabilityLevel": {
+          "enum": ["detect-only", "static-known-key", "wine-local", "native-windows"]
+        },
+        "attemptKind": {
+          "enum": [
+            "siglus-known-key",
+            "xp3-key",
+            "mv-mz-key",
+            "wolf-archive-key",
+            "rgss3-key",
+            "none"
+          ]
+        },
+        "helperClass": {
+          "enum": ["staticParser", "runtimeHelper", "patchDatabase", "executableAnalysis", "none"]
+        },
+        "helperId": { "$ref": "#/definitions/logicalId" },
+        "helperVersion": {
+          "oneOf": [{ "type": "string" }, { "type": "null" }]
+        },
+        "outcome": {
+          "enum": ["attempted", "succeeded", "failed", "skipped", "unsupported"]
+        },
+        "keyProfileId": {
+          "oneOf": [{ "$ref": "#/definitions/logicalId" }, { "type": "null" }]
+        },
+        "proofHashes": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/proofHash" }
+        },
+        "commandLines": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    }
+  }
+}

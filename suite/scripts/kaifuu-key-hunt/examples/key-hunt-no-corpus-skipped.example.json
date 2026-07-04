@@ -1,0 +1,66 @@
+{
+  "aggregateCounts": {
+    "attempts": 0,
+    "corpora": 0
+  },
+  "checkedPaths": ["private-local-root"],
+  "command": "vp run kaifuu:key-hunt -- --no-corpus",
+  "commandLines": [],
+  "engineOutcomeBins": {
+    "kirikiri-xp3": {
+      "attempted": 0,
+      "failed": 0,
+      "skipped": 0,
+      "succeeded": 0,
+      "unsupported": 0
+    },
+    "rgss3-vx-ace": {
+      "attempted": 0,
+      "failed": 0,
+      "skipped": 0,
+      "succeeded": 0,
+      "unsupported": 0
+    },
+    "rpg-maker-mv": {
+      "attempted": 0,
+      "failed": 0,
+      "skipped": 0,
+      "succeeded": 0,
+      "unsupported": 0
+    },
+    "rpg-maker-mz": {
+      "attempted": 0,
+      "failed": 0,
+      "skipped": 0,
+      "succeeded": 0,
+      "unsupported": 0
+    },
+    "siglus": {
+      "attempted": 0,
+      "failed": 0,
+      "skipped": 0,
+      "succeeded": 0,
+      "unsupported": 0
+    },
+    "wolf": {
+      "attempted": 0,
+      "failed": 0,
+      "skipped": 0,
+      "succeeded": 0,
+      "unsupported": 0
+    }
+  },
+  "generatedBy": "suite/scripts/kaifuu-key-hunt/run.mjs",
+  "helperAttempts": [],
+  "outcomeBins": {
+    "attempted": 0,
+    "failed": 0,
+    "skipped": 0,
+    "succeeded": 0,
+    "unsupported": 0
+  },
+  "reason": "private_inputs_absent",
+  "schemaVersion": "itotori.kaifuu-key-hunt-report.v0.1",
+  "status": "skipped",
+  "toolVersions": []
+}

@@ -1,0 +1,96 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "itotori.kaifuu-key-hunt-manifest.v0.1",
+  "title": "Kaifuu private-local key-hunt manifest",
+  "description": "Operator-authored, ALREADY-REDACTED description of one or more private-local key-hunting helper ATTEMPTS against owned encrypted games. This file lives under fixtures/private-local/ and is git-ignored. It records ONLY redacted evidence (logical corpus / helper / key-profile ids, detected engine, capability level, attempt kind, helper class, tool version, redacted command lines, per-attempt OUTCOME, proof HASHES). A CONFIRMED key is recorded ONLY as a local-secret: ref plus a sha256: proof hash in keyValidation — never a raw key, decrypted bytes, or a local absolute path.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "helperAttempts"],
+  "properties": {
+    "schemaVersion": { "const": "itotori.kaifuu-key-hunt-manifest.v0.1" },
+    "helperAttempts": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/attempt" }
+    }
+  },
+  "definitions": {
+    "logicalId": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]*$",
+      "description": "Lowercase logical id — no slashes, no absolute paths, no filenames."
+    },
+    "proofHash": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "secretRef": {
+      "type": "string",
+      "pattern": "^local-secret:[a-z0-9][a-z0-9._/-]*$",
+      "description": "A reference into the private-local secret store — never a raw key."
+    },
+    "attempt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "corpusId",
+        "engine",
+        "capabilityLevel",
+        "attemptKind",
+        "helperClass",
+        "outcome"
+      ],
+      "properties": {
+        "corpusId": { "$ref": "#/definitions/logicalId" },
+        "engine": {
+          "enum": ["rpg-maker-mv", "rpg-maker-mz", "kirikiri-xp3", "siglus", "wolf", "rgss3-vx-ace"]
+        },
+        "capabilityLevel": {
+          "enum": ["detect-only", "static-known-key", "wine-local", "native-windows"]
+        },
+        "attemptKind": {
+          "enum": [
+            "siglus-known-key",
+            "xp3-key",
+            "mv-mz-key",
+            "wolf-archive-key",
+            "rgss3-key",
+            "none"
+          ]
+        },
+        "helperClass": {
+          "enum": ["staticParser", "runtimeHelper", "patchDatabase", "executableAnalysis", "none"]
+        },
+        "helperId": { "$ref": "#/definitions/logicalId" },
+        "helperVersion": {
+          "oneOf": [{ "type": "string" }, { "type": "null" }]
+        },
+        "outcome": {
+          "enum": ["attempted", "succeeded", "failed", "skipped", "unsupported"]
+        },
+        "keyValidation": {
+          "oneOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["keyProfileId", "secretRef", "proofHash"],
+              "properties": {
+                "keyProfileId": { "$ref": "#/definitions/logicalId" },
+                "secretRef": { "$ref": "#/definitions/secretRef" },
+                "proofHash": { "$ref": "#/definitions/proofHash" }
+              }
+            },
+            { "type": "null" }
+          ]
+        },
+        "proofHashes": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/proofHash" }
+        },
+        "commandLines": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    }
+  }
+}

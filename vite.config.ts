@@ -191,6 +191,30 @@ export default defineConfig({
           "node --test suite/scripts/siglus-private-local-validation-renderer/render.test.mjs",
         cache: false,
       },
+      // KAIFUU-067: private-local key-hunting run workflow. Like KAIFUU-036 and
+      // KAIFUU-094 this is a FIRST-CLASS LOCAL workflow, intentionally ABSENT
+      // from per-gate CI — no `just check`/`ci` lane and no affected.mjs /
+      // qd-full-ci.mjs selection runs it. It PLANS the applicable helper attempts
+      // per detected engine + capability (Siglus known-key / XP3 / MV-MZ / Wolf /
+      // RGSS3 — plan, never brute-force), then aggregates operator-recorded
+      // per-attempt outcomes (attempted / succeeded / failed / skipped /
+      // unsupported) into a redacted report. A CONFIRMED key is recorded ONLY as
+      // a local-secret: ref + a sha256: proof hash; the report surfaces only the
+      // key-profile id + proof hash. With no private inputs it emits the
+      // deterministic REDACTED no-corpus artifact under
+      // .tmp/kaifuu-private-local/. Never reads raw keys/bytes, never shells out.
+      "kaifuu:key-hunt": {
+        command: "node suite/scripts/kaifuu-key-hunt/run.mjs",
+        cache: false,
+      },
+      // KAIFUU-067: deterministic unit + integration tests (five outcome
+      // categories + attempt planner by engine/capability + key-validation
+      // ref-only schema + secret-leak rejection + no-corpus determinism + schema
+      // validation). Hermetic; no private corpora, no Wine/Windows, no network.
+      "kaifuu:key-hunt-test": {
+        command: "node --test suite/scripts/kaifuu-key-hunt/key-hunt.test.mjs",
+        cache: false,
+      },
     },
   },
 });

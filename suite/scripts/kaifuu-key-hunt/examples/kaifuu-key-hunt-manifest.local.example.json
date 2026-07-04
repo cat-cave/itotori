@@ -1,0 +1,71 @@
+{
+  "schemaVersion": "itotori.kaifuu-key-hunt-manifest.v0.1",
+  "helperAttempts": [
+    {
+      "corpusId": "corpus-siglus-known-key-01",
+      "engine": "siglus",
+      "capabilityLevel": "static-known-key",
+      "attemptKind": "siglus-known-key",
+      "helperClass": "staticParser",
+      "helperId": "kaifuu.siglus.known-key",
+      "helperVersion": "0.1.0",
+      "outcome": "succeeded",
+      "keyValidation": {
+        "keyProfileId": "profile-siglus-known-key-01",
+        "secretRef": "local-secret:fixture/siglus/known-key",
+        "proofHash": "sha256:8a14979472c4c27f0183a34e9dd37c0935d46e9379a790d22063d7b32ec4b87f"
+      },
+      "proofHashes": ["sha256:8a14979472c4c27f0183a34e9dd37c0935d46e9379a790d22063d7b32ec4b87f"],
+      "commandLines": [
+        "kaifuu key-hunt --engine siglus --attempt known-key --profile profile-siglus-known-key-01"
+      ]
+    },
+    {
+      "corpusId": "corpus-xp3-01",
+      "engine": "kirikiri-xp3",
+      "capabilityLevel": "static-known-key",
+      "attemptKind": "xp3-key",
+      "helperClass": "staticParser",
+      "helperId": "kaifuu.kirikiri.xp3-key",
+      "helperVersion": "0.1.0",
+      "outcome": "failed",
+      "proofHashes": [],
+      "commandLines": ["kaifuu key-hunt --engine kirikiri-xp3 --attempt xp3-key"]
+    },
+    {
+      "corpusId": "corpus-mv-01",
+      "engine": "rpg-maker-mv",
+      "capabilityLevel": "static-known-key",
+      "attemptKind": "mv-mz-key",
+      "helperClass": "staticParser",
+      "helperId": "kaifuu.rpgmaker.mv-mz-key",
+      "helperVersion": "0.1.0",
+      "outcome": "attempted",
+      "proofHashes": [],
+      "commandLines": ["kaifuu key-hunt --engine rpg-maker-mv --attempt mv-mz-key"]
+    },
+    {
+      "corpusId": "corpus-wolf-01",
+      "engine": "wolf",
+      "capabilityLevel": "detect-only",
+      "attemptKind": "wolf-archive-key",
+      "helperClass": "runtimeHelper",
+      "helperId": "kaifuu.wolf.archive-key",
+      "helperVersion": "0.1.0",
+      "outcome": "skipped",
+      "proofHashes": [],
+      "commandLines": ["kaifuu key-hunt --engine wolf --attempt wolf-archive-key"]
+    },
+    {
+      "corpusId": "corpus-siglus-variant-01",
+      "engine": "siglus",
+      "capabilityLevel": "detect-only",
+      "attemptKind": "none",
+      "helperClass": "none",
+      "helperId": "none",
+      "outcome": "unsupported",
+      "proofHashes": [],
+      "commandLines": []
+    }
+  ]
+}
