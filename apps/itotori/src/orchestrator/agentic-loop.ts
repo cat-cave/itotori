@@ -34,6 +34,7 @@ import {
   type AgenticLoopRoutingSummary,
   type AgenticLoopStageName,
   type AgenticLoopStageRecord,
+  type DroppedContextEnrichment,
   type LocalizationUnitV02,
   type QaFinding,
   type StagePostureV03,
@@ -361,6 +362,12 @@ type StageAccumulator = {
   tokensOut: number;
   costMicros: bigint;
   latencyMs: number;
+  /**
+   * Best-effort semantic-enrichment agents that were DROPPED on this stage
+   * (context stage only). Empty for every other stage and for an all-succeed
+   * context stage; surfaced into the bundle record only when non-empty.
+   */
+  droppedEnrichments: DroppedContextEnrichment[];
 };
 
 type RawProviderTelemetry = {
@@ -423,7 +430,14 @@ export async function runAgenticLoopForUnit(
   for (const invocation of contextResult.telemetry) {
     pushInvocation(contextStage, invocation);
   }
-  contextStage.outcome = "succeeded";
+  // Best-effort semantic enrichment: agents whose live output threw / was
+  // malformed / uncitable are recorded here (never fail the unit). The
+  // deterministic structure-informed context below is still injected.
+  contextStage.droppedEnrichments = contextResult.droppedEnrichments;
+  contextStage.outcome =
+    contextResult.droppedEnrichments.length > 0
+      ? `succeeded:enrichment-degraded:${contextResult.droppedEnrichments.length}-dropped`
+      : "succeeded";
   stages.push(contextStage);
 
   // ----------------------- pre-translation stage ---------------------
@@ -776,6 +790,7 @@ function startStage(stageName: AgenticLoopStageName): StageAccumulator {
     tokensOut: 0,
     costMicros: 0n,
     latencyMs: 0,
+    droppedEnrichments: [],
   };
 }
 
@@ -812,6 +827,12 @@ function stageAccumulatorToRecord(stage: StageAccumulator): AgenticLoopStageReco
     tokensOut: stage.tokensOut,
     costUsd: microsToAmount(stage.costMicros),
     latencyMs: stage.latencyMs,
+    // Present only when a best-effort semantic agent was dropped; an all-succeed
+    // context stage (and every non-context stage) omits the field entirely so
+    // the bundle shape is byte-identical to the pre-robustness path.
+    ...(stage.droppedEnrichments.length > 0
+      ? { droppedEnrichments: stage.droppedEnrichments }
+      : {}),
   };
 }
 
@@ -888,7 +909,54 @@ type SemanticContextStageResult = {
   telemetry: RawProviderTelemetry[];
   structuredContext?: StructuredContextInjection | undefined;
   contextArtifactRefs: string[];
+  /**
+   * Best-effort semantic agents that were DROPPED (threw / malformed /
+   * uncitable pack). Empty on the all-succeed path. Each entry names the
+   * dropped agent and why, so enrichment loss is telemetry, never silent.
+   */
+  droppedEnrichments: DroppedContextEnrichment[];
 };
+
+/**
+ * Reason string for a dropped best-effort semantic enrichment. Uses the
+ * error's constructor name + message (e.g. `TerminologyCandidateParseError:
+ * ...`) so a downstream reader can tell malformed-pack from uncitable-pack
+ * from a transport failure without re-deriving it.
+ */
+function describeEnrichmentDrop(error: unknown): string {
+  if (error instanceof Error) {
+    const name = error.name.length > 0 ? error.name : "Error";
+    return error.message.length > 0 ? `${name}: ${error.message}` : name;
+  }
+  return `NonError: ${String(error)}`;
+}
+
+/**
+ * Run ONE best-effort semantic enrichment agent. A thrown error / malformed /
+ * uncitable pack is CAUGHT and recorded as a dropped-enrichment signal; the
+ * unit then PROCEEDS on the deterministic structure context + whichever agents
+ * DID succeed. Telemetry + artifact refs are only committed on success, so a
+ * dropped agent contributes neither a citable ref nor a phantom invocation.
+ */
+async function runBestEffortEnrichment(
+  agentLabel: string,
+  sink: {
+    telemetry: RawProviderTelemetry[];
+    artifactRefs: Set<string>;
+    droppedEnrichments: DroppedContextEnrichment[];
+  },
+  run: () => Promise<{ telemetry: RawProviderTelemetry; refs: string[] }>,
+): Promise<void> {
+  try {
+    const { telemetry, refs } = await run();
+    sink.telemetry.push(telemetry);
+    for (const ref of refs) {
+      sink.artifactRefs.add(ref);
+    }
+  } catch (error) {
+    sink.droppedEnrichments.push({ agentLabel, reason: describeEnrichmentDrop(error) });
+  }
+}
 
 async function invokeSemanticContextStage(args: {
   input: AgenticLoopUnitInput;
@@ -900,8 +968,14 @@ async function invokeSemanticContextStage(args: {
   const { input, policy, pairPolicy, providerFactory, now } = args;
   const telemetry: RawProviderTelemetry[] = [];
   const artifactRefs = new Set<string>();
+  const droppedEnrichments: DroppedContextEnrichment[] = [];
+  const sink = { telemetry, artifactRefs, droppedEnrichments };
 
-  // (a) DETERMINISTIC base — the structure-informed context slice.
+  // (a) DETERMINISTIC base — the structure-informed context slice. This is the
+  //     LOAD-BEARING, never-failing artifact: it is built + injected regardless
+  //     of whether any of the (b) best-effort semantic agents succeed. A bad
+  //     structure input is a real invariant error and is NOT swallowed here —
+  //     only the LLM enrichment in (b) is best-effort.
   let structuredContext: StructuredContextInjection | undefined;
   if (input.narrativeStructure !== undefined) {
     if (input.sceneId === undefined) {
@@ -916,12 +990,16 @@ async function invokeSemanticContextStage(args: {
     }
   }
 
-  // (b) LIVE enrichment — the four semantic agents.
+  // (b) LIVE enrichment — the four semantic agents, each BEST-EFFORT. A live
+  //     failure (thrown error / malformed / uncitable pack — the first live
+  //     real-run hit exactly this) is caught, recorded as a dropped-enrichment
+  //     signal, and the unit proceeds on (a) + whichever agents succeeded. The
+  //     unit NEVER fails solely because a semantic agent produced a bad pack.
   const units = [buildSemanticBridgeUnit(input.unit)];
   const roster = deriveCharacterRoster(input);
 
   // scene-summary.
-  {
+  await runBestEffortEnrichment("scene-summary", sink, async () => {
     const pair = pairPolicy.context.sceneSummary;
     const provider = providerFactory({ stage: "context", agentLabel: "scene-summary", pair });
     const output = await generateSceneSummary(
@@ -938,45 +1016,55 @@ async function invokeSemanticContextStage(args: {
       },
       { provider },
     );
-    telemetry.push(providerTelemetryFromSemanticRun(output.providerRun, pair, "scene-summary"));
-    artifactRefs.add(`scene-summary:${output.summary.id}`);
-  }
+    return {
+      telemetry: providerTelemetryFromSemanticRun(output.providerRun, pair, "scene-summary"),
+      refs: [`scene-summary:${output.summary.id}`],
+    };
+  });
 
   // character-relationship — only when a character anchor exists.
   if (roster.length > 0 || buildSemanticBridgeUnit(input.unit).speaker !== undefined) {
-    const pair = pairPolicy.context.characterRelationship;
-    const provider = providerFactory({
-      stage: "context",
-      agentLabel: "character-relationship",
-      pair,
+    await runBestEffortEnrichment("character-relationship", sink, async () => {
+      const pair = pairPolicy.context.characterRelationship;
+      const provider = providerFactory({
+        stage: "context",
+        agentLabel: "character-relationship",
+        pair,
+      });
+      const output = await generateCharacterRelationships(
+        {
+          projectId: policy.projectId,
+          localeBranchId: policy.localeBranchId,
+          sourceRevisionId: input.unit.sourceRevision.revisionId,
+          sourceLocale: policy.sourceLocale,
+          units,
+          curatedCharacters: roster,
+          glossaryExcerpt: [],
+          modelProfile: semanticModelProfile(provider, pair),
+          now,
+        },
+        { provider },
+      );
+      const refs: string[] = [];
+      for (const bio of output.bios) {
+        refs.push(`character-bio:${bio.characterId}`);
+      }
+      for (const rel of output.relationships) {
+        refs.push(`character-rel:${rel.fromCharacterId}->${rel.toCharacterId}`);
+      }
+      return {
+        telemetry: providerTelemetryFromSemanticRun(
+          output.providerRun,
+          pair,
+          "character-relationship",
+        ),
+        refs,
+      };
     });
-    const output = await generateCharacterRelationships(
-      {
-        projectId: policy.projectId,
-        localeBranchId: policy.localeBranchId,
-        sourceRevisionId: input.unit.sourceRevision.revisionId,
-        sourceLocale: policy.sourceLocale,
-        units,
-        curatedCharacters: roster,
-        glossaryExcerpt: [],
-        modelProfile: semanticModelProfile(provider, pair),
-        now,
-      },
-      { provider },
-    );
-    telemetry.push(
-      providerTelemetryFromSemanticRun(output.providerRun, pair, "character-relationship"),
-    );
-    for (const bio of output.bios) {
-      artifactRefs.add(`character-bio:${bio.characterId}`);
-    }
-    for (const rel of output.relationships) {
-      artifactRefs.add(`character-rel:${rel.fromCharacterId}->${rel.toCharacterId}`);
-    }
   }
 
   // terminology-candidate.
-  {
+  await runBestEffortEnrichment("terminology-candidate", sink, async () => {
     const pair = pairPolicy.context.terminologyCandidate;
     const provider = providerFactory({
       stage: "context",
@@ -996,16 +1084,18 @@ async function invokeSemanticContextStage(args: {
       },
       { provider },
     );
-    telemetry.push(
-      providerTelemetryFromSemanticRun(output.providerRun, pair, "terminology-candidate"),
-    );
-    for (const candidate of output.candidates) {
-      artifactRefs.add(`terminology-candidate:${candidate.surfaceForm}`);
-    }
-  }
+    return {
+      telemetry: providerTelemetryFromSemanticRun(
+        output.providerRun,
+        pair,
+        "terminology-candidate",
+      ),
+      refs: output.candidates.map((candidate) => `terminology-candidate:${candidate.surfaceForm}`),
+    };
+  });
 
   // route-choice-map.
-  {
+  await runBestEffortEnrichment("route-choice-map", sink, async () => {
     const pair = pairPolicy.context.routeChoiceMap;
     const provider = providerFactory({ stage: "context", agentLabel: "route-choice-map", pair });
     const output = await generateRouteChoiceMap(
@@ -1021,19 +1111,24 @@ async function invokeSemanticContextStage(args: {
       },
       { provider },
     );
-    telemetry.push(providerTelemetryFromSemanticRun(output.providerRun, pair, "route-choice-map"));
+    const refs: string[] = [];
     for (const route of output.routes) {
-      artifactRefs.add(`route:${route.routeKey}`);
+      refs.push(`route:${route.routeKey}`);
     }
     for (const choice of output.choices) {
-      artifactRefs.add(`choice:${choice.choiceKey}`);
+      refs.push(`choice:${choice.choiceKey}`);
     }
-  }
+    return {
+      telemetry: providerTelemetryFromSemanticRun(output.providerRun, pair, "route-choice-map"),
+      refs,
+    };
+  });
 
   return {
     telemetry,
     structuredContext,
     contextArtifactRefs: [...artifactRefs].sort(),
+    droppedEnrichments,
   };
 }
 
