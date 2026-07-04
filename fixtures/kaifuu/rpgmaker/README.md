@@ -20,11 +20,11 @@
 >
 > `encrypted-asset-replacement.json` is the KAIFUU-117 encrypted-asset
 > **replacement** manifest (`kaifuu_core::mv_mz_encrypted_asset_replacement`).
-> Where KAIFUU-115/116 prove a byte-correct *identity* round-trip, this
+> Where KAIFUU-115/116 prove a byte-correct _identity_ round-trip, this
 > path proves a genuine **replacement**: a new synthetic media asset is
 > encrypted with the game key (resolved via a declared secret ref) and
 > patched in, then the patch is VERIFIED — `decrypt(patched) ==
-> replacement`, the RPGMV header + non-replaced tail bytes are exact, the
+replacement`, the RPGMV header + non-replaced tail bytes are exact, the
 > patch differs from the original, and `decrypt(patched)` matches the
 > manifest's declared `replacementSha256`. Both image (`png_image`) and
 > audio (`ogg_audio`) media kinds are covered, with MV vs MZ extension
