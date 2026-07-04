@@ -322,10 +322,50 @@
       "sha256": "bb0e75f69e3390dbd5e8781f7032b1803e63a585b2fabd7f509e457bdafc5385",
       "bytes": 1312,
       "redistributable": true
+    },
+    {
+      "path": "fixtures/public/kaifuu-helper-results/wine-proton/dry-run-wine-request.json",
+      "role": "metadata",
+      "mediaType": "application/json",
+      "sha256": "43060af25d99add6a36cbbdbad99e404c67842b31106db06173c7d962bba042d",
+      "bytes": 405,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/public/kaifuu-helper-results/wine-proton/dry-run-wine-resolution.json",
+      "role": "metadata",
+      "mediaType": "application/json",
+      "sha256": "776a198e8b53fe3e15e7c26bb340739b62fe0b174cd0e1944222dc1a4c82c95e",
+      "bytes": 1874,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/public/kaifuu-helper-results/wine-proton/dry-run-proton-unavailable-request.json",
+      "role": "metadata",
+      "mediaType": "application/json",
+      "sha256": "71f3f962dc638bb61b985ff4108d5b24f6fa15486b424604a779a9b21c0252de",
+      "bytes": 427,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/public/kaifuu-helper-results/wine-proton/dry-run-proton-unavailable-resolution.json",
+      "role": "metadata",
+      "mediaType": "application/json",
+      "sha256": "2c8d99a01eb86b6dfb2b0fc51cda8419ca5706c1b908f6c262ca9cc35327f7fa",
+      "bytes": 1921,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/public/kaifuu-helper-results/wine-proton/invalid/dry-run-raw-secret-request.json",
+      "role": "metadata",
+      "mediaType": "application/json",
+      "sha256": "4c55b7de6889f713b605e751406f416173b8b5460b653068448d1d9ae2678a52",
+      "bytes": 410,
+      "redistributable": true
     }
   ],
   "aggregateStats": {
-    "files": 38,
+    "files": 43,
     "textUnits": 0,
     "sourceTextUtf16CodeUnits": 0,
     "protectedSpans": 0,
@@ -336,7 +376,7 @@
       "kaifuu-helper-request",
       "kaifuu-helper-result"
     ],
-    "notes": "Covers success, missing_key, wrong_key, helper_required, helper_unavailable, helper_authorization_denied, helper_timeout, validation_failed, unsupported_protected_executable, redaction_failure diagnostics, static parser, known-key import, manual-entry, Wine, Windows, helper registry validation, helper binary allowlist fixtures, local key-ref helper request/import boundary fixtures, Siglus secondary-key helper-boundary request fixtures, and XP3 helper-required, missing-key, wrong-key, validation-failed, and protected-executable semantic fixtures."
+    "notes": "Covers success, missing_key, wrong_key, helper_required, helper_unavailable, helper_authorization_denied, helper_timeout, validation_failed, unsupported_protected_executable, redaction_failure diagnostics, static parser, known-key import, manual-entry, Wine, Windows, helper registry validation, helper binary allowlist fixtures, local key-ref helper request/import boundary fixtures, Siglus secondary-key helper-boundary request fixtures, XP3 helper-required, missing-key, wrong-key, validation-failed, and protected-executable semantic fixtures, and Wine/Proton dry-run helper resolution fixtures (available + unavailable platform + raw-secret rejection) that resolve the intended command without launching untrusted game code."
   },
   "benchmarkUse": {
     "allowedInPublicCi": true,

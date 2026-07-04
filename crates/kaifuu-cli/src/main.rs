@@ -2034,11 +2034,50 @@ fn run_helper_result_command(args: &[String]) -> Result<(), Box<dyn std::error::
 fn run_helper_command(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
     match positional(args, 1)? {
         "run" => run_helper_run_command(args),
+        "dry-run" => run_helper_dry_run_command(args),
         _ => Err(
-            "usage: kaifuu helper run --out <helper-result.json> [--input <request.json>] [--mode stub]"
+            "usage: kaifuu helper <run|dry-run> ...\n  run --out <helper-result.json> [--input <request.json>] [--mode stub]\n  dry-run --input <wine-proton-request.json> --out <resolution.json>"
                 .into(),
         ),
     }
+}
+
+/// Resolves a Wine/Proton dry-run: names the helper binary id, platform
+/// adapter, intended command, profile id, and redaction policy WITHOUT ever
+/// launching untrusted game code. No Wine/Proton install is required — the
+/// synthetic request declares availability, and an unavailable platform yields
+/// a typed `helper_unavailable` diagnostic rather than a crash. A resolution
+/// carrying raw secret material (or asserting a launch) fails.
+fn run_helper_dry_run_command(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
+    // The dry-run path never spawns a process, but reject execution-config
+    // flags anyway for a consistent posture with `helper run`.
+    reject_helper_execution_config_flags(args)?;
+    let input_path = PathBuf::from(flag(args, "--input")?);
+    reject_env_file_path(&input_path)?;
+    let output = PathBuf::from(flag(args, "--out").or_else(|_| flag(args, "--output"))?);
+
+    let value: serde_json::Value = read_json(&input_path)?;
+    let request: kaifuu_core::WineProtonDryRunRequest = serde_json::from_value(value)
+        .map_err(|error| format!("invalid Wine/Proton dry-run request: {error}"))?;
+    let resolution = kaifuu_core::resolve_wine_proton_dry_run(&request);
+
+    let validation = resolution.validate();
+    if validation.status == kaifuu_core::OperationStatus::Failed {
+        return Err(format!(
+            "Wine/Proton dry-run resolution failed validation for fixture {}: {}",
+            validation.fixture_id.as_deref().unwrap_or("<unknown>"),
+            validation
+                .failures
+                .iter()
+                .map(|failure| format!("{}:{}", failure.field, failure.code))
+                .collect::<Vec<_>>()
+                .join(", ")
+        )
+        .into());
+    }
+
+    atomic_write_text(&output, &resolution.stable_json()?)?;
+    Ok(())
 }
 
 fn run_helper_run_command(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
@@ -3406,6 +3445,147 @@ mod tests {
         assert_eq!(report["status"], "passed");
         assert_eq!(report["fixtureId"], "kaifuu-helper-success");
         assert_eq!(report["failures"].as_array().unwrap().len(), 0);
+    }
+
+    #[test]
+    fn helper_dry_run_names_five_fields_without_launching_and_matches_fixture() {
+        // Public CI: no Wine/Proton, no private assets. The dry-run must resolve
+        // the intended command from the synthetic request alone.
+        let root = temp_dir("helper-dry-run-wine");
+        let output = root.join("resolution.json");
+        let request = public_fixture_path(
+            "fixtures/public/kaifuu-helper-results/wine-proton/dry-run-wine-request.json",
+        );
+
+        run_cli(&[
+            "helper",
+            "dry-run",
+            "--input",
+            request.to_str().unwrap(),
+            "--out",
+            output.to_str().unwrap(),
+        ]);
+
+        let resolution: serde_json::Value = read_json(&output).unwrap();
+        // (1) helper-binary-id, (2) platform-adapter, (3) intended-command,
+        // (4) profile-id, (5) redaction-policy.
+        assert_eq!(
+            resolution["helperBinaryId"],
+            "kaifuu.fixture.wine-local-windows"
+        );
+        assert_eq!(resolution["platformAdapter"], "wine-local");
+        assert_eq!(resolution["intendedCommand"]["programRef"], "wine");
+        assert_eq!(
+            resolution["profileId"],
+            "019ed000-0000-7000-8000-profile00090"
+        );
+        assert_eq!(
+            resolution["redactionPolicy"],
+            "redact-raw-logs-and-secret-refs"
+        );
+        // No launch.
+        assert_eq!(resolution["launched"], false);
+        assert_eq!(
+            resolution["intendedCommand"]["launchesUntrustedCode"],
+            false
+        );
+        // KAIFUU-085 execution object carries no launch command; no raw secret.
+        let serialized = fs::read_to_string(&output).unwrap();
+        assert!(!serialized.contains("\"command\""));
+        assert!(!serialized.contains("\"argv\""));
+        assert!(!serialized.contains("\"env\""));
+
+        // The committed resolution fixture must stay semantically identical to
+        // the CLI output (formatting is owned by the repo formatter).
+        let committed: serde_json::Value = read_json(&public_fixture_path(
+            "fixtures/public/kaifuu-helper-results/wine-proton/dry-run-wine-resolution.json",
+        ))
+        .unwrap();
+        assert_eq!(resolution, committed);
+    }
+
+    #[test]
+    fn helper_dry_run_unavailable_platform_emits_typed_diagnostic() {
+        let root = temp_dir("helper-dry-run-unavailable");
+        let output = root.join("resolution.json");
+        let request = public_fixture_path(
+            "fixtures/public/kaifuu-helper-results/wine-proton/dry-run-proton-unavailable-request.json",
+        );
+
+        run_cli(&[
+            "helper",
+            "dry-run",
+            "--input",
+            request.to_str().unwrap(),
+            "--out",
+            output.to_str().unwrap(),
+        ]);
+
+        let resolution: serde_json::Value = read_json(&output).unwrap();
+        assert_eq!(resolution["platformAdapter"], "proton-local");
+        assert_eq!(
+            resolution["helperResult"]["diagnostic"]["code"],
+            "helper_unavailable"
+        );
+        assert!(
+            resolution["helperResult"]["diagnostic"]["message"]
+                .as_str()
+                .unwrap()
+                .contains("kaifuu.helper_unavailable")
+        );
+        assert_eq!(resolution["launched"], false);
+
+        let committed: serde_json::Value = read_json(&public_fixture_path(
+            "fixtures/public/kaifuu-helper-results/wine-proton/dry-run-proton-unavailable-resolution.json",
+        ))
+        .unwrap();
+        assert_eq!(resolution, committed);
+    }
+
+    #[test]
+    fn helper_dry_run_rejects_raw_secret_material() {
+        let root = temp_dir("helper-dry-run-raw-secret");
+        let output = root.join("resolution.json");
+        let request = public_fixture_path(
+            "fixtures/public/kaifuu-helper-results/wine-proton/invalid/dry-run-raw-secret-request.json",
+        );
+
+        let result = run_with_args(vec![
+            "helper".to_string(),
+            "dry-run".to_string(),
+            "--input".to_string(),
+            request.to_str().unwrap().to_string(),
+            "--out".to_string(),
+            output.to_str().unwrap().to_string(),
+        ]);
+
+        assert!(result.is_err());
+        let message = result.unwrap_err().to_string();
+        assert!(message.contains("kaifuu.wine_proton.dry_run.secret_leak"));
+        // The failing resolution must not be persisted at all.
+        assert!(!output.exists());
+    }
+
+    #[test]
+    fn helper_dry_run_rejects_execution_config_flags() {
+        let root = temp_dir("helper-dry-run-exec-flag");
+        let output = root.join("resolution.json");
+        let request = public_fixture_path(
+            "fixtures/public/kaifuu-helper-results/wine-proton/dry-run-wine-request.json",
+        );
+
+        let result = run_with_args(vec![
+            "helper".to_string(),
+            "dry-run".to_string(),
+            "--input".to_string(),
+            request.to_str().unwrap().to_string(),
+            "--out".to_string(),
+            output.to_str().unwrap().to_string(),
+            "--command".to_string(),
+            "wine game.exe".to_string(),
+        ]);
+
+        assert!(result.is_err());
     }
 
     #[test]

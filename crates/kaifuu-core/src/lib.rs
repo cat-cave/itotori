@@ -167,6 +167,7 @@ pub mod patch_transaction;
 pub mod plain_xp3_smoke;
 pub mod registry;
 pub mod siglus_static_key;
+pub mod wine_proton_helper;
 pub mod xp3_capability_profile;
 
 pub use registry::{AdapterCapabilityMatrix, CapabilityLevel, CapabilityLevelStatus};
@@ -265,6 +266,15 @@ pub use siglus_static_key::{
     SiglusStaticKeyOutcome, SiglusStaticKeyRef, SiglusStaticKeyReport, SiglusStaticKeyRequest,
     SiglusStaticKeyStubInputs, SiglusStaticKeyStubScenario, build_siglus_static_key_stub,
     discover_siglus_static_key,
+};
+
+pub use wine_proton_helper::{
+    HelperRedactionPolicy, PlatformAvailability, ResolvedHelperCommand,
+    SEMANTIC_WINE_PROTON_DRY_RUN_HELPER_RESULT_INVALID,
+    SEMANTIC_WINE_PROTON_DRY_RUN_LAUNCH_FORBIDDEN, SEMANTIC_WINE_PROTON_DRY_RUN_SECRET_LEAK,
+    WINE_PROTON_HELPER_SCHEMA_VERSION, WINE_PROTON_HELPER_SUPPORT_BOUNDARY,
+    WineProtonDryRunFailure, WineProtonDryRunRequest, WineProtonDryRunResolution,
+    WineProtonDryRunValidation, WineProtonPlatformAdapter, resolve_wine_proton_dry_run,
 };
 
 pub use patch_transaction::{
@@ -12393,7 +12403,7 @@ fn is_key_like_context(normalized: &str, field: &str) -> bool {
         || field.contains(".keyRequirements.")
 }
 
-fn looks_like_raw_key_material(text: &str) -> bool {
+pub(crate) fn looks_like_raw_key_material(text: &str) -> bool {
     let text = text.trim();
     if text.starts_with("sha256:") || is_valid_secret_ref(text) {
         return false;
@@ -12413,7 +12423,7 @@ fn is_archive_parameter_value_field(field: &str) -> bool {
             .is_some_and(|segment| segment.parse::<usize>().is_ok())
 }
 
-fn is_local_absolute_path(text: &str) -> bool {
+pub(crate) fn is_local_absolute_path(text: &str) -> bool {
     text.starts_with('/')
         || text.starts_with('\\')
         || path_has_windows_drive_prefix_component(text)

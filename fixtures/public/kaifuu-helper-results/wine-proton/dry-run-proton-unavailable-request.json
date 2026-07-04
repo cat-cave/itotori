@@ -1,0 +1,11 @@
+{
+  "schemaVersion": "0.1.0",
+  "fixtureId": "kaifuu-wine-proton-dry-run-proton-unavailable",
+  "helperBinaryId": "kaifuu.fixture.proton-local-windows",
+  "allowlistEntryId": "kaifuu-fixture-proton-local-allowlist",
+  "platformAdapter": "proton-local",
+  "profileId": "019ed000-0000-7000-8000-profile00091",
+  "redactionPolicy": "redact-raw-logs-and-secret-refs",
+  "platformAvailability": "unavailable",
+  "timeoutMs": 5000
+}

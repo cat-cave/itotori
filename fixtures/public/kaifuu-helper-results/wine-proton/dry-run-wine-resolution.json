@@ -1,0 +1,56 @@
+{
+  "schemaVersion": "0.1.0",
+  "fixtureId": "kaifuu-wine-proton-dry-run-wine",
+  "helperBinaryId": "kaifuu.fixture.wine-local-windows",
+  "platformAdapter": "wine-local",
+  "intendedCommand": {
+    "programRef": "wine",
+    "argumentTemplate": [
+      "--platform",
+      "wine-local-windows",
+      "--helper-binary-id",
+      "kaifuu.fixture.wine-local-windows",
+      "--profile-id",
+      "019ed000-0000-7000-8000-profile00090",
+      "--redaction-policy",
+      "redact-raw-logs-and-secret-refs",
+      "--dry-run"
+    ],
+    "workingDirectoryPolicy": "sandboxed-read-only-game-copy",
+    "launchesUntrustedCode": false
+  },
+  "profileId": "019ed000-0000-7000-8000-profile00090",
+  "redactionPolicy": "redact-raw-logs-and-secret-refs",
+  "launched": false,
+  "helperResult": {
+    "schemaVersion": "0.1.0",
+    "fixtureId": "kaifuu-wine-proton-dry-run-wine",
+    "helperResultId": "helper-result-kaifuu-wine-proton-dry-run-wine",
+    "profileId": "019ed000-0000-7000-8000-profile00090",
+    "helper": {
+      "helperId": "kaifuu.fixture.wine-local-windows",
+      "helperVersion": "0.1.0",
+      "helperKind": "wineLocalWindowsHelper"
+    },
+    "capabilityLevel": "wineLocal",
+    "execution": {
+      "mode": "platformHelper",
+      "platform": "wine-local-windows",
+      "bounded": true,
+      "timeoutMs": 5000,
+      "durationMs": 0,
+      "networkAccess": false,
+      "filesystemAccess": "localGameReadOnly"
+    },
+    "diagnostic": {
+      "code": "helper_required",
+      "message": "dry-run resolved the intended wine-local-windows helper command without launching untrusted game code; running the helper is required to actually recover material"
+    },
+    "redaction": {
+      "status": "redacted",
+      "redactedLogHash": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+    },
+    "secretRefs": [],
+    "proofHashes": []
+  }
+}

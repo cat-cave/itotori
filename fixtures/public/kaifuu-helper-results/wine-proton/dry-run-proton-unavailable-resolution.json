@@ -1,0 +1,56 @@
+{
+  "schemaVersion": "0.1.0",
+  "fixtureId": "kaifuu-wine-proton-dry-run-proton-unavailable",
+  "helperBinaryId": "kaifuu.fixture.proton-local-windows",
+  "platformAdapter": "proton-local",
+  "intendedCommand": {
+    "programRef": "proton",
+    "argumentTemplate": [
+      "--platform",
+      "proton-local-windows",
+      "--helper-binary-id",
+      "kaifuu.fixture.proton-local-windows",
+      "--profile-id",
+      "019ed000-0000-7000-8000-profile00091",
+      "--redaction-policy",
+      "redact-raw-logs-and-secret-refs",
+      "--dry-run"
+    ],
+    "workingDirectoryPolicy": "sandboxed-read-only-game-copy",
+    "launchesUntrustedCode": false
+  },
+  "profileId": "019ed000-0000-7000-8000-profile00091",
+  "redactionPolicy": "redact-raw-logs-and-secret-refs",
+  "launched": false,
+  "helperResult": {
+    "schemaVersion": "0.1.0",
+    "fixtureId": "kaifuu-wine-proton-dry-run-proton-unavailable",
+    "helperResultId": "helper-result-kaifuu-wine-proton-dry-run-proton-unavailable",
+    "profileId": "019ed000-0000-7000-8000-profile00091",
+    "helper": {
+      "helperId": "kaifuu.fixture.proton-local-windows",
+      "helperVersion": "0.1.0",
+      "helperKind": "wineLocalWindowsHelper"
+    },
+    "capabilityLevel": "wineLocal",
+    "execution": {
+      "mode": "platformHelper",
+      "platform": "proton-local-windows",
+      "bounded": true,
+      "timeoutMs": 5000,
+      "durationMs": 0,
+      "networkAccess": false,
+      "filesystemAccess": "localGameReadOnly"
+    },
+    "diagnostic": {
+      "code": "helper_unavailable",
+      "message": "kaifuu.helper_unavailable: proton-local-windows platform helper is unavailable on this runner; dry-run resolved the intended command without launching"
+    },
+    "redaction": {
+      "status": "redacted",
+      "redactedLogHash": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+    },
+    "secretRefs": [],
+    "proofHashes": []
+  }
+}
