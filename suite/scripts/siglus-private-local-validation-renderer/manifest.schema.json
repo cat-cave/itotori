@@ -1,0 +1,95 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "itotori.siglus-private-local-validation-manifest.v0.1",
+  "title": "Siglus private-local validation manifest",
+  "description": "Operator-authored, ALREADY-REDACTED description of one or more private-local Siglus VALIDATION runs (local known-key / decrypt / patch-verify runs against owned Scene.pck / Gameexe.dat). This file lives under fixtures/private-local/ and is git-ignored. It records ONLY redacted evidence (logical profile ids, capability levels, helper OUTCOME CATEGORIES, validation STATUSES, failure CATEGORIES, aggregate COUNTS, proof HASHES) — never raw keys, decrypted script text, story/scene filenames, helper raw dumps, or local absolute paths.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "runs"],
+  "properties": {
+    "schemaVersion": { "const": "itotori.siglus-private-local-validation-manifest.v0.1" },
+    "runs": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/run" }
+    }
+  },
+  "definitions": {
+    "logicalId": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]*$",
+      "description": "Lowercase logical id — no slashes, no absolute paths, no story/scene filenames."
+    },
+    "proofHash": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "run": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["profileId", "capabilityLevel", "validationStatus", "helperOutcomeCategory"],
+      "properties": {
+        "profileId": { "$ref": "#/definitions/logicalId" },
+        "capabilityLevel": {
+          "enum": [
+            "detect-only",
+            "known-key-extract",
+            "known-key-patch-verify",
+            "broad-unsupported"
+          ]
+        },
+        "validationStatus": {
+          "enum": [
+            "passed",
+            "helper_required",
+            "unknown_profile",
+            "unsupported_variant",
+            "out_of_profile",
+            "failed",
+            "skipped"
+          ]
+        },
+        "helperOutcomeCategory": {
+          "enum": [
+            "not_required",
+            "available_passed",
+            "required_missing",
+            "out_of_profile",
+            "error"
+          ]
+        },
+        "failureCategory": {
+          "oneOf": [
+            {
+              "enum": [
+                "none",
+                "out_of_profile_compression",
+                "bad_magic",
+                "truncated",
+                "invalid_utf16le",
+                "bad_unit_key",
+                "unit_not_found",
+                "verify_mismatch",
+                "unknown"
+              ]
+            },
+            { "type": "null" }
+          ]
+        },
+        "counts": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "scenesValidated": { "type": "integer", "minimum": 0 },
+            "unitsValidated": { "type": "integer", "minimum": 0 },
+            "gameexeEntriesValidated": { "type": "integer", "minimum": 0 },
+            "filesProcessed": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "proofHashes": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/proofHash" }
+        }
+      }
+    }
+  }
+}

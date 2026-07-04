@@ -1,0 +1,107 @@
+{
+  "aggregateCounts": {
+    "filesProcessed": 23,
+    "gameexeEntriesValidated": 243,
+    "profiles": 4,
+    "runs": 4,
+    "scenesValidated": 13,
+    "unitsValidated": 8803
+  },
+  "capabilityLevelBins": {
+    "broad-unsupported": 1,
+    "detect-only": 1,
+    "known-key-extract": 1,
+    "known-key-patch-verify": 1
+  },
+  "command": "vp run siglus:private-local-validation-render -- --manifest <private-manifest>",
+  "engineFamily": "siglus",
+  "failureCategoryBins": {
+    "bad_magic": 1,
+    "bad_unit_key": 0,
+    "invalid_utf16le": 0,
+    "none": 2,
+    "out_of_profile_compression": 1,
+    "truncated": 0,
+    "unit_not_found": 0,
+    "unknown": 0,
+    "verify_mismatch": 0
+  },
+  "generatedBy": "suite/scripts/siglus-private-local-validation-renderer/run.mjs",
+  "helperOutcomeBins": {
+    "available_passed": 0,
+    "error": 1,
+    "not_required": 1,
+    "out_of_profile": 1,
+    "required_missing": 1
+  },
+  "reason": null,
+  "runs": [
+    {
+      "capabilityLevel": "known-key-patch-verify",
+      "counts": {
+        "filesProcessed": 2,
+        "gameexeEntriesValidated": 3,
+        "scenesValidated": 1,
+        "unitsValidated": 3
+      },
+      "failureCategory": "none",
+      "helperOutcomeCategory": "not_required",
+      "profileId": "profile-siglus-knownkey-smoke-01",
+      "proofHashes": ["sha256:8a14979472c4c27f0183a34e9dd37c0935d46e9379a790d22063d7b32ec4b87f"],
+      "validationStatus": "passed"
+    },
+    {
+      "capabilityLevel": "broad-unsupported",
+      "counts": {
+        "filesProcessed": 6,
+        "gameexeEntriesValidated": 0,
+        "scenesValidated": 0,
+        "unitsValidated": 0
+      },
+      "failureCategory": "out_of_profile_compression",
+      "helperOutcomeCategory": "out_of_profile",
+      "profileId": "profile-siglus-lzss-scene-01",
+      "proofHashes": [],
+      "validationStatus": "out_of_profile"
+    },
+    {
+      "capabilityLevel": "known-key-extract",
+      "counts": {
+        "filesProcessed": 14,
+        "gameexeEntriesValidated": 240,
+        "scenesValidated": 12,
+        "unitsValidated": 8800
+      },
+      "failureCategory": "none",
+      "helperOutcomeCategory": "required_missing",
+      "profileId": "profile-siglus-secondary-key-01",
+      "proofHashes": [],
+      "validationStatus": "helper_required"
+    },
+    {
+      "capabilityLevel": "detect-only",
+      "counts": {
+        "filesProcessed": 1,
+        "gameexeEntriesValidated": 0,
+        "scenesValidated": 0,
+        "unitsValidated": 0
+      },
+      "failureCategory": "bad_magic",
+      "helperOutcomeCategory": "error",
+      "profileId": "profile-siglus-unknown-variant-01",
+      "proofHashes": [],
+      "validationStatus": "unknown_profile"
+    }
+  ],
+  "schemaVersion": "itotori.siglus-private-local-validation-report.v0.1",
+  "status": "ok",
+  "validationStatusBins": {
+    "failed": 0,
+    "helper_required": 1,
+    "out_of_profile": 1,
+    "passed": 1,
+    "skipped": 0,
+    "unknown_profile": 1,
+    "unsupported_variant": 0
+  }
+}

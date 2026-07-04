@@ -170,6 +170,27 @@ export default defineConfig({
         command: "node --test suite/scripts/kaifuu-private-local-triage/run.test.mjs",
         cache: false,
       },
+      // KAIFUU-094: Siglus private-local redacted VALIDATION SUMMARY renderer.
+      // Like KAIFUU-036 this is a FIRST-CLASS LOCAL workflow that is
+      // intentionally ABSENT from per-gate CI — no `just check`/`ci` lane and
+      // no affected.mjs / qd-full-ci.mjs selection runs it. With no private
+      // inputs (the public/default case) it emits the deterministic REDACTED
+      // no-corpus artifact under .tmp/siglus-private-local/; with an operator
+      // validation manifest it emits the safe aggregate validation summary
+      // (capability-level / helper-outcome / status / failure bins + counts).
+      // Never reads raw keys/Scene.pck bytes/decrypted text, never shells out.
+      "siglus:private-local-validation-render": {
+        command: "node suite/scripts/siglus-private-local-validation-renderer/run.mjs",
+        cache: false,
+      },
+      // KAIFUU-094: deterministic unit + integration tests (no-corpus
+      // determinism + redacted aggregate + per-category secret-leak rejection +
+      // schema validation). Hermetic; no private corpora.
+      "siglus:private-local-validation-render-test": {
+        command:
+          "node --test suite/scripts/siglus-private-local-validation-renderer/render.test.mjs",
+        cache: false,
+      },
     },
   },
 });

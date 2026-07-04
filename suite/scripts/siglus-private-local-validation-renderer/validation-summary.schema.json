@@ -1,0 +1,212 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "itotori.siglus-private-local-validation-report.v0.1",
+  "title": "Siglus private-local redacted validation summary",
+  "description": "SAFE AGGREGATE Siglus validation evidence emitted by the siglus:private-local-validation-render workflow. Publicly citable by aggregate/hash metadata. Contains ONLY redacted fields: logical profile ids, capability-level bins, helper OUTCOME CATEGORY bins, validation STATUS bins, failure CATEGORY bins, aggregate COUNTS (scenes/units/gameexe-entries validated, files processed), and proof HASHES. The `skipped` status is the deterministic REDACTED no-corpus artifact emitted when no private inputs exist.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "status",
+    "reason",
+    "command",
+    "generatedBy",
+    "engineFamily",
+    "aggregateCounts",
+    "capabilityLevelBins",
+    "helperOutcomeBins",
+    "validationStatusBins",
+    "failureCategoryBins",
+    "runs"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "itotori.siglus-private-local-validation-report.v0.1" },
+    "status": { "enum": ["ok", "skipped"] },
+    "reason": {
+      "oneOf": [{ "const": "private_inputs_absent" }, { "type": "null" }]
+    },
+    "command": { "type": "string" },
+    "generatedBy": {
+      "const": "suite/scripts/siglus-private-local-validation-renderer/run.mjs"
+    },
+    "engineFamily": { "const": "siglus" },
+    "checkedPaths": {
+      "type": "array",
+      "description": "Present only on the no-corpus artifact: checked inputs redacted to logical ids.",
+      "items": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]*$" }
+    },
+    "aggregateCounts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "profiles",
+        "runs",
+        "scenesValidated",
+        "unitsValidated",
+        "gameexeEntriesValidated",
+        "filesProcessed"
+      ],
+      "properties": {
+        "profiles": { "type": "integer", "minimum": 0 },
+        "runs": { "type": "integer", "minimum": 0 },
+        "scenesValidated": { "type": "integer", "minimum": 0 },
+        "unitsValidated": { "type": "integer", "minimum": 0 },
+        "gameexeEntriesValidated": { "type": "integer", "minimum": 0 },
+        "filesProcessed": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "capabilityLevelBins": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "detect-only",
+        "known-key-extract",
+        "known-key-patch-verify",
+        "broad-unsupported"
+      ],
+      "patternProperties": {
+        "^(detect-only|known-key-extract|known-key-patch-verify|broad-unsupported)$": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "helperOutcomeBins": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "not_required",
+        "available_passed",
+        "required_missing",
+        "out_of_profile",
+        "error"
+      ],
+      "patternProperties": {
+        "^(not_required|available_passed|required_missing|out_of_profile|error)$": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "validationStatusBins": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "passed",
+        "helper_required",
+        "unknown_profile",
+        "unsupported_variant",
+        "out_of_profile",
+        "failed",
+        "skipped"
+      ],
+      "patternProperties": {
+        "^(passed|helper_required|unknown_profile|unsupported_variant|out_of_profile|failed|skipped)$": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "failureCategoryBins": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "none",
+        "out_of_profile_compression",
+        "bad_magic",
+        "truncated",
+        "invalid_utf16le",
+        "bad_unit_key",
+        "unit_not_found",
+        "verify_mismatch",
+        "unknown"
+      ],
+      "patternProperties": {
+        "^(none|out_of_profile_compression|bad_magic|truncated|invalid_utf16le|bad_unit_key|unit_not_found|verify_mismatch|unknown)$": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "runs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "profileId",
+          "capabilityLevel",
+          "validationStatus",
+          "helperOutcomeCategory",
+          "failureCategory",
+          "counts",
+          "proofHashes"
+        ],
+        "properties": {
+          "profileId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]*$" },
+          "capabilityLevel": {
+            "enum": [
+              "detect-only",
+              "known-key-extract",
+              "known-key-patch-verify",
+              "broad-unsupported"
+            ]
+          },
+          "validationStatus": {
+            "enum": [
+              "passed",
+              "helper_required",
+              "unknown_profile",
+              "unsupported_variant",
+              "out_of_profile",
+              "failed",
+              "skipped"
+            ]
+          },
+          "helperOutcomeCategory": {
+            "enum": [
+              "not_required",
+              "available_passed",
+              "required_missing",
+              "out_of_profile",
+              "error"
+            ]
+          },
+          "failureCategory": {
+            "enum": [
+              "none",
+              "out_of_profile_compression",
+              "bad_magic",
+              "truncated",
+              "invalid_utf16le",
+              "bad_unit_key",
+              "unit_not_found",
+              "verify_mismatch",
+              "unknown"
+            ]
+          },
+          "counts": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "scenesValidated",
+              "unitsValidated",
+              "gameexeEntriesValidated",
+              "filesProcessed"
+            ],
+            "properties": {
+              "scenesValidated": { "type": "integer", "minimum": 0 },
+              "unitsValidated": { "type": "integer", "minimum": 0 },
+              "gameexeEntriesValidated": { "type": "integer", "minimum": 0 },
+              "filesProcessed": { "type": "integer", "minimum": 0 }
+            }
+          },
+          "proofHashes": {
+            "type": "array",
+            "items": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
+          }
+        }
+      }
+    }
+  }
+}
