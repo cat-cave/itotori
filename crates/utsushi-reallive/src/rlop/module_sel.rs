@@ -357,10 +357,11 @@ pub fn select_modality(signal: SelectionControlSignal, option_count: usize) -> S
 }
 
 /// Number of `(module_sel)` rlops [`register_sel_rlops`] populates.
-/// Four canonical variants plus one Sweetie-HD-observed alias for
-/// `select_w` (opcode `120`). Pinned so audit tooling can assert
-/// "registry covers exactly the UTSUSHI-211 surface".
-pub const SEL_RLOP_COUNT: usize = SelectVariant::ALL.len() + 1;
+/// Four canonical variants, one Sweetie-HD-observed alias for `select_w`
+/// (opcode `120`), plus the `objbtn_init` (`0x0014` = 20) button-object
+/// group-setup op. Pinned so audit tooling can assert "registry covers
+/// exactly the UTSUSHI-211 surface".
+pub const SEL_RLOP_COUNT: usize = SelectVariant::ALL.len() + 2;
 
 /// Runtime carrier the per-op [`RLOperation`] impls thread through to
 /// the [`TextSurfaceSink`], the [`Gameexe`] (for `SELBTN.NNN.*`
@@ -708,8 +709,55 @@ impl RLOperation for SelectWOp {
     }
 }
 
-/// `select_objbtn` — object-button choice. Same arg shape as
-/// [`SelectOp`].
+/// Build the synthetic option label for one recovered button object. The
+/// real objbtn scenes carry NO inline `{ … }` option text (the on-screen
+/// art is the g00 button sprite), so the pipeline label is a stable ASCII
+/// placeholder keyed on the button's real ordinal — it decodes cleanly
+/// (no `InvalidShiftJis` warning) and the render layer lays the buttons
+/// out from the real recovered count.
+fn objbtn_option_label(number: i32) -> Vec<u8> {
+    format!("objbtn {number}").into_bytes()
+}
+
+/// Dispatch a `select_objbtn` (`sel (0,2,4)`) as a REAL select driven by
+/// the scene's recovered button-object group.
+///
+/// rlvm's `Sel_select_objbtn` pushes a `ButtonObjectSelectLongOperation`
+/// that collects every on-screen graphics object whose button group
+/// matches the select's group, and resolves to the picked button's
+/// number → `set_store_register`. This port mirrors that: the linear walk
+/// has already executed the scene's `objbtn_init` + `objButtonOpts` setup
+/// ops, which populated [`Vm::objbtn_buttons`]. Here we CONSUME that group
+/// ([`Vm::objbtn_take`]) and dispatch it through the ordinary choice seam —
+/// one `choice:<idx>` surface per button, a queued [`SelectLongOp`], and
+/// (on resume) the picked index written to the store register. The scene's
+/// own `intL[0] = store` assignment + `goto_on(intL[0])` then drive the
+/// matching route branch — exactly the bytecode that follows every real
+/// Sweetie `select_objbtn`.
+///
+/// When no button group was set up (the setup ops did not run, or the walk
+/// reached the select without them) the op falls back to the shared
+/// [`dispatch_select`] over its inline args — which, for a real objbtn (no
+/// option block), fail-soft `Advance`s exactly as before.
+fn dispatch_select_objbtn(
+    runtime: &SelRuntime,
+    vm: &mut Vm,
+    args: &[ExprValue],
+) -> DispatchOutcome {
+    let buttons = vm.objbtn_take();
+    if buttons.is_empty() {
+        return dispatch_select(SelectVariant::SelectObjbtn, runtime, vm, args);
+    }
+    let synth: Vec<ExprValue> = buttons
+        .iter()
+        .map(|button| ExprValue::Bytes(objbtn_option_label(button.number)))
+        .collect();
+    dispatch_select(SelectVariant::SelectObjbtn, runtime, vm, &synth)
+}
+
+/// `select_objbtn` — object-button (graphical) choice. Unlike the other
+/// three variants it carries NO inline option block; its option set is the
+/// scene's recovered button-object group (see [`dispatch_select_objbtn`]).
 #[derive(Debug)]
 pub struct SelectObjbtnOp {
     runtime: Arc<SelRuntime>,
@@ -723,7 +771,30 @@ impl SelectObjbtnOp {
 
 impl RLOperation for SelectObjbtnOp {
     fn dispatch(&self, vm: &mut Vm, args: &[ExprValue]) -> DispatchOutcome {
-        dispatch_select(SelectVariant::SelectObjbtn, &self.runtime, vm, args)
+        dispatch_select_objbtn(&self.runtime, vm, args)
+    }
+}
+
+/// `objbtn_init` (`sel (0,2,20)`) — button-object group setup boundary. In
+/// rlvm this is a no-op (`objbtn_init_0/1` have empty bodies); here it
+/// CLEARS the pending [`Vm::objbtn_buttons`] group so the `objButtonOpts`
+/// ops that follow build a fresh option set for the next `select_objbtn`.
+/// Recognized 0-unknown either way; this op gives it its real setup-reset
+/// semantics instead of a catalog `Advance`.
+#[derive(Debug, Default)]
+pub struct ObjbtnInitOp;
+
+impl ObjbtnInitOp {
+    /// Construct the op (stateless — it mutates the VM's button group).
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl RLOperation for ObjbtnInitOp {
+    fn dispatch(&self, vm: &mut Vm, _args: &[ExprValue]) -> DispatchOutcome {
+        vm.objbtn_reset();
+        DispatchOutcome::Advance
     }
 }
 
@@ -757,6 +828,15 @@ pub fn register_sel_rlops(registry: &mut RlopRegistry, runtime: Arc<SelRuntime>)
             OPCODE_SELECT_W_SWEETIE_HD_ALIAS,
         ),
         Arc::new(SelectWOp::new(Arc::clone(&runtime))),
+    );
+    // `objbtn_init` — the button-object group-setup boundary. Registered
+    // with its real reset semantics (clears the pending button group) so a
+    // `select_objbtn` that follows recovers a fresh option set. `runtime`
+    // is unused by this op (it mutates the VM's button group), so it is not
+    // threaded in.
+    registry.register(
+        RlopKey::new(SEL_MODULE_TYPE, SEL_MODULE_ID, OPCODE_OBJBTN_INIT),
+        Arc::new(ObjbtnInitOp::new()),
     );
     SEL_RLOP_COUNT
 }

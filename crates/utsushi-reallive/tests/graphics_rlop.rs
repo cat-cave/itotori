@@ -132,8 +132,8 @@ fn registry_mounts_alpha_tier_opcode_union() {
     let obj = register_obj_rlops(&mut registry, Arc::clone(&runtime));
     assert_eq!(grp, GRP_RLOP_COUNT);
     assert_eq!(obj, OBJ_RLOP_COUNT);
-    assert_eq!(grp + obj, 31);
-    assert_eq!(registry.len(), 31);
+    assert_eq!(grp + obj, 33);
+    assert_eq!(registry.len(), 33);
 }
 
 #[test]

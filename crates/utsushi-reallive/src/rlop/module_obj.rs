@@ -92,6 +92,17 @@ pub const OPCODE_OBJ_SHOW: u16 = 0x0014;
 /// `objHide(int slot)` — clear the slot's visibility flag.
 pub const OPCODE_OBJ_HIDE: u16 = 0x0015;
 
+/// `objButtonOpts` opcode (button-object setup). REAL RealLive value
+/// `1064` (rlvm `AddOpcode(1064, 2, "objButtonOpts")` →
+/// `GraphicsObject::SetButtonOpts`), VALIDATED on real Sweetie HD bytes:
+/// `(1, {81, 82}, 1064)` occurs once per selectable button object — its
+/// args carry the button's 0-based ordinal (arg 0) and group id (arg 1).
+/// The COUNT of these ops before a `select_objbtn` (`sel (0,2,4)`) is the
+/// real source of that graphical select's option count (the objbtn scenes
+/// carry no inline `{ … }` option block). Registered on both the fg (`81`)
+/// and bg (`82`) planes.
+pub const OPCODE_OBJ_BUTTON_OPTS: u16 = 1064;
+
 /// Default ticks-per-millisecond rate the `module_grp::fade` longop
 /// uses to compute its `total_ticks`. One tick per ms keeps the
 /// substrate-honest "no wall-clock" posture intact — the substrate
@@ -201,8 +212,9 @@ impl ObjFgBgOpcode {
 }
 
 /// Total opcode count [`register_obj_rlops`] mounts: 4 management +
-/// 6 per-plane setters × 2 planes = 16.
-pub const OBJ_RLOP_COUNT: usize = ObjMgmtOpcode::ALL.len() + ObjFgBgOpcode::ALL.len() * 2;
+/// 6 per-plane setters × 2 planes + the `objButtonOpts` button-setup op on
+/// both planes = 18.
+pub const OBJ_RLOP_COUNT: usize = ObjMgmtOpcode::ALL.len() + ObjFgBgOpcode::ALL.len() * 2 + 2;
 
 // ---- runtime warnings -----------------------------------------------
 
@@ -1117,6 +1129,39 @@ impl RLOperation for ObjFgBgOp {
 
 // ---- registry helper ------------------------------------------------
 
+/// `objButtonOpts` (`obj (1,{81,82},1064)`) — button-object setup. rlvm's
+/// `objButtonOpts` calls `GraphicsObject::SetButtonOpts(action, se, group,
+/// button_number)`, marking the object a selectable button that a
+/// `select_objbtn` collects for its group. This port records the button on
+/// the VM's pending button group ([`Vm::objbtn_register`]) so the following
+/// `select_objbtn` (`sel (0,2,4)`) can recover the option set (count +
+/// per-button ordinal). It does NOT touch the graphics stack — the button's
+/// sprite / position are placed by separate `objOfFile` / `objSetPos` ops —
+/// so it carries no [`GraphicsRuntime`].
+///
+/// Args (real Sweetie bytes): arg 0 = button ordinal, arg 1 = group id.
+/// Mis-shaped / missing args fail soft — the button is still appended (its
+/// ordinal defaults to the append position, group to `0`) so the recovered
+/// option COUNT stays faithful to the number of setup ops.
+#[derive(Debug, Default)]
+pub struct ObjButtonOptsOp;
+
+impl ObjButtonOptsOp {
+    /// Construct the op (stateless — it mutates the VM's button group).
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl RLOperation for ObjButtonOptsOp {
+    fn dispatch(&self, vm: &mut Vm, args: &[ExprValue]) -> DispatchOutcome {
+        let number = arg_int(args, 0, "button_number").unwrap_or(vm.objbtn_buttons().len() as i32);
+        let group = arg_int(args, 1, "group").unwrap_or(0);
+        vm.objbtn_register(number, group);
+        DispatchOutcome::Advance
+    }
+}
+
 /// Mount every `module_obj_management` + `module_obj_fg_bg` op this
 /// module ships. Returns the registered op count.
 pub fn register_obj_rlops(registry: &mut RlopRegistry, runtime: Arc<GraphicsRuntime>) -> usize {
@@ -1151,6 +1196,15 @@ pub fn register_obj_rlops(registry: &mut RlopRegistry, runtime: Arc<GraphicsRunt
             );
         }
     }
+    // `objButtonOpts` on both planes — button-object setup that feeds the
+    // `select_objbtn` option set. Stateless (mutates the VM's button
+    // group), so it takes no `runtime`.
+    for module_id in [OBJ_FG_MODULE_ID, OBJ_BG_MODULE_ID] {
+        register(
+            RlopKey::new(OBJ_FG_MODULE_TYPE, module_id, OPCODE_OBJ_BUTTON_OPTS),
+            Arc::new(ObjButtonOptsOp::new()),
+        );
+    }
     // Touch the GraphicsObjectKind import so the audit grep that
     // pins "no unused imports" remains green.
     let _ = std::marker::PhantomData::<GraphicsObjectKind>;
@@ -1183,7 +1237,28 @@ mod tests {
         let mut registry = RlopRegistry::new();
         let count = register_obj_rlops(&mut registry, runtime());
         assert_eq!(count, OBJ_RLOP_COUNT);
-        assert_eq!(count, 16);
+        assert_eq!(count, 18);
+        // `objButtonOpts` mounted on both planes (button-object setup).
+        assert!(
+            registry
+                .get(RlopKey::new(
+                    OBJ_FG_MODULE_TYPE,
+                    OBJ_FG_MODULE_ID,
+                    OPCODE_OBJ_BUTTON_OPTS
+                ))
+                .is_some(),
+            "objButtonOpts resolves on the fg plane"
+        );
+        assert!(
+            registry
+                .get(RlopKey::new(
+                    OBJ_BG_MODULE_TYPE,
+                    OBJ_BG_MODULE_ID,
+                    OPCODE_OBJ_BUTTON_OPTS
+                ))
+                .is_some(),
+            "objButtonOpts resolves on the bg plane"
+        );
         for op in ObjMgmtOpcode::ALL {
             assert!(registry.get(op.rlop_key()).is_some(), "{op:?} resolves");
         }
