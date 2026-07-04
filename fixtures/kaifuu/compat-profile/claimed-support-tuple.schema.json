@@ -1,0 +1,204 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://itotori.dev/schemas/kaifuu/claimed-support-tuple.schema.json",
+  "title": "Kaifuu claimed-support compatibility tuple (KAIFUU-105)",
+  "description": "The single cross-family declaration of what kaifuu CLAIMS for a (family, variant, transform stack), at what support level, backed by what evidence, gated by which secrets, with explicit typed diagnostics for the honest gaps. Mirrors crate::compat_profile::ClaimedSupportTuple (serde camelCase). Evidence is synthetic, redacted, ref-only: no raw secrets, no retail bytes.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "engineFamily",
+    "engineVariant",
+    "container",
+    "crypto",
+    "codec",
+    "surface",
+    "patchBackMode",
+    "profileOrFixtureId",
+    "secretRequirementIds",
+    "diagnostics",
+    "claimedLevel",
+    "evidence"
+  ],
+  "properties": {
+    "schemaVersion": { "type": "string", "const": "0.1.0" },
+    "engineFamily": {
+      "type": "string",
+      "enum": [
+        "siglus",
+        "kirikiri_kag_plaintext",
+        "kirikiri_xp3",
+        "rpg_maker_mv_mz_json",
+        "rpg_maker_mv_mz_encrypted_asset",
+        "reallive_runtime",
+        "unknown"
+      ]
+    },
+    "engineVariant": { "type": "string", "minLength": 1 },
+    "container": {
+      "type": "string",
+      "enum": [
+        "identity",
+        "directory",
+        "loose_file",
+        "project_asset",
+        "archive",
+        "xp3",
+        "siglus_pck",
+        "rgssad",
+        "wolf_archive",
+        "asset_bundle",
+        "unknown"
+      ]
+    },
+    "crypto": {
+      "type": "string",
+      "enum": [
+        "null_key",
+        "xor",
+        "fixed_key",
+        "key_profile",
+        "rpg_maker_asset_xor",
+        "rpg_maker_asset_key",
+        "helper_gated",
+        "unknown"
+      ]
+    },
+    "codec": {
+      "type": "string",
+      "enum": [
+        "identity",
+        "png_image",
+        "m4a_audio",
+        "ogg_audio",
+        "utf8_text",
+        "utf16_text",
+        "shift_jis_text",
+        "json_text",
+        "rpg_maker_mv_mz_json",
+        "ruby_marshal",
+        "bytecode_decompile",
+        "binary_table",
+        "unknown"
+      ]
+    },
+    "surface": {
+      "type": "string",
+      "enum": [
+        "identity",
+        "json_pointer",
+        "archive_entry",
+        "binary_offset",
+        "table_record",
+        "runtime_trace",
+        "ocr_region",
+        "unknown"
+      ]
+    },
+    "patchBackMode": {
+      "type": "string",
+      "enum": [
+        "identity",
+        "replace_file",
+        "rewrite_json",
+        "repack_archive",
+        "recompile_bytecode",
+        "replace_asset",
+        "unsupported",
+        "unknown"
+      ]
+    },
+    "profileOrFixtureId": { "type": "string", "minLength": 1 },
+    "secretRequirementIds": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["requirementId", "secretRef"],
+        "properties": {
+          "requirementId": { "type": "string", "minLength": 1 },
+          "secretRef": {
+            "type": "string",
+            "description": "Local-scheme secret reference, never raw key material.",
+            "pattern": "^(local-secret|os-keychain|secret-manager|prompt):"
+          }
+        }
+      }
+    },
+    "diagnostics": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/compatDiagnostic" }
+    },
+    "claimedLevel": {
+      "type": "string",
+      "enum": ["identify", "inventory", "extract", "patch", "helper", "runtime"]
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "The evidence chain. Which legs are REQUIRED is decided per claimedLevel by the validator: extract needs extraction; patch/helper need extraction+validation+patchBack; runtime additionally needs a runtime leg.",
+      "properties": {
+        "extraction": { "$ref": "#/$defs/evidenceRef" },
+        "validation": { "$ref": "#/$defs/evidenceRef" },
+        "patchBack": { "$ref": "#/$defs/evidenceRef" },
+        "runtime": { "$ref": "#/$defs/evidenceRef" }
+      }
+    }
+  },
+  "$defs": {
+    "evidenceRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["evidenceId", "proofHash"],
+      "properties": {
+        "evidenceId": { "type": "string", "minLength": 1 },
+        "proofHash": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        }
+      }
+    },
+    "compatDiagnostic": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["layer", "status", "reasonId", "severity"],
+      "properties": {
+        "layer": {
+          "type": "string",
+          "enum": [
+            "variant",
+            "container",
+            "crypto",
+            "codec",
+            "surface",
+            "patch_back",
+            "key",
+            "helper",
+            "evidence",
+            "runtime"
+          ]
+        },
+        "status": {
+          "type": "string",
+          "description": "Typed status — deliberately NO bare 'unsupported'; an honest diagnostic states why.",
+          "enum": [
+            "supported",
+            "not_implemented",
+            "helper_required",
+            "missing_key",
+            "unknown_variant",
+            "known_key_only",
+            "media_non_extractable",
+            "evidence_missing"
+          ]
+        },
+        "reasonId": {
+          "type": "string",
+          "description": "Typed SemanticErrorCode string (e.g. kaifuu.unknown_engine_variant)."
+        },
+        "severity": { "type": "string", "enum": ["P0", "P1", "P2", "P3"] },
+        "detail": { "type": "string" }
+      }
+    }
+  }
+}

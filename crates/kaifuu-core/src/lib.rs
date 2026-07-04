@@ -154,6 +154,7 @@ pub const STRING_RELOCATION_INVALID_SOURCE_BYTES: &str =
 pub const XP3_PLAIN_MAGIC: &[u8] = b"XP3\r\n \n\x1a\x8b\x67\x01";
 
 pub mod alpha_encrypted_readiness;
+pub mod compat_profile;
 pub mod contracts;
 pub mod mv_mz_asset_xor;
 pub mod mv_mz_encrypted_asset_replacement;

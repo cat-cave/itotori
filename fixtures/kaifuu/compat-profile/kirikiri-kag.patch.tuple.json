@@ -1,0 +1,36 @@
+{
+  "schemaVersion": "0.1.0",
+  "engineFamily": "kirikiri_kag_plaintext",
+  "engineVariant": "kirikiri_kag_plaintext_ks",
+  "container": "loose_file",
+  "crypto": "null_key",
+  "codec": "shift_jis_text",
+  "surface": "identity",
+  "patchBackMode": "replace_file",
+  "profileOrFixtureId": "compat/kirikiri-kag/plaintext-patch",
+  "secretRequirementIds": [],
+  "diagnostics": [
+    {
+      "layer": "container",
+      "status": "not_implemented",
+      "reasonId": "kaifuu.unsupported_variant.encrypted",
+      "severity": "P3",
+      "detail": "plaintext KAG only — encrypted commercial XP3 is NOT covered"
+    }
+  ],
+  "claimedLevel": "patch",
+  "evidence": {
+    "extraction": {
+      "evidenceId": "evidence/extract/kag",
+      "proofHash": "sha256:e601f346d78636bb8845fec360561bc359cc30e531eb11b7e634290b01613918"
+    },
+    "validation": {
+      "evidenceId": "evidence/validate/kag",
+      "proofHash": "sha256:de30816f0a7b8e8f15b66d19e67328edab740c16fb8e495292bce94eb9429b79"
+    },
+    "patchBack": {
+      "evidenceId": "evidence/patch/kag",
+      "proofHash": "sha256:d05bef4a12714f7b65754ec4abb874d75f731edaa03bb1cc9d707eda995a0690"
+    }
+  }
+}

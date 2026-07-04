@@ -1,0 +1,15 @@
+{
+  "schemaVersion": "0.1.0",
+  "engineFamily": "siglus",
+  "engineVariant": "siglus_pck_static_key",
+  "container": "siglus_pck",
+  "crypto": "fixed_key",
+  "codec": "utf16_text",
+  "surface": "archive_entry",
+  "patchBackMode": "unsupported",
+  "profileOrFixtureId": "compat/siglus/OVERCLAIM-patch",
+  "secretRequirementIds": [],
+  "diagnostics": [],
+  "claimedLevel": "patch",
+  "evidence": {}
+}

@@ -1,0 +1,40 @@
+{
+  "schemaVersion": "0.1.0",
+  "engineFamily": "siglus",
+  "engineVariant": "siglus_pck_static_key",
+  "container": "siglus_pck",
+  "crypto": "fixed_key",
+  "codec": "utf16_text",
+  "surface": "archive_entry",
+  "patchBackMode": "unsupported",
+  "profileOrFixtureId": "compat/siglus/known-key-extract",
+  "secretRequirementIds": [
+    {
+      "requirementId": "siglus.scene-pck.static-key",
+      "secretRef": "local-secret:siglus-scene-static-key"
+    }
+  ],
+  "diagnostics": [
+    {
+      "layer": "crypto",
+      "status": "known_key_only",
+      "reasonId": "kaifuu.missing_key_material",
+      "severity": "P2",
+      "detail": "extraction is limited to catalogued known static keys"
+    },
+    {
+      "layer": "patch_back",
+      "status": "not_implemented",
+      "reasonId": "kaifuu.missing_capability.patch_back",
+      "severity": "P2",
+      "detail": "Siglus patch-back is not yet proven"
+    }
+  ],
+  "claimedLevel": "extract",
+  "evidence": {
+    "extraction": {
+      "evidenceId": "evidence/extract/siglus",
+      "proofHash": "sha256:0556a2ccd0d75557e6b358221dd8e16b71e13ac2d3f6d19aa1f1f6eb9cb06833"
+    }
+  }
+}
