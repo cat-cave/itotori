@@ -18,6 +18,7 @@ use serde_json::{Map, Value, json};
 
 use sha2::{Digest, Sha256};
 
+#[cfg(any(debug_assertions, test))]
 use crate::contracts::validate_patch_result_v02;
 use crate::{
     AdapterCapabilities, BRIDGE_SCHEMA_VERSION_V02, CapabilityStatus,
