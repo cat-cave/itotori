@@ -49,10 +49,28 @@ export type NarrativeChoice = {
   branchMessages: NarrativeMessage[];
 };
 
+/**
+ * The scene's decoded `module_sel` SelectionControl signal — the REAL-bytes
+ * marker (from `structure_export.rs`, statically decoded per scene) of WHAT
+ * KIND of select the scene carries:
+ *   - `button-object`: a GRAPHICAL button-object select (`select_objbtn`
+ *     (0,2,4) / `objbtn_init` (0,2,20) — Sweetie HD's base-vs-fandisk
+ *     game-select + the route / clothing picks). This is the archive-carve
+ *     game-select marker.
+ *   - `text-window`: a plain text `select`/`select_w` option block (the
+ *     in-story dialogue yes/no branches — NOT an archive boundary).
+ *   - `none`: no select in the scene.
+ * Optional in the parse for backward compatibility with pre-enrichment
+ * exporter JSON (absent → `none`).
+ */
+export type SelectionControlSignal = "button-object" | "text-window" | "none";
+
 /** One scene of the decoded playthrough. */
 export type NarrativeScene = {
   /** RealLive scene id. */
   sceneId: number;
+  /** The scene's decoded SelectionControl signal (button-object vs text-window). */
+  selectionControl: SelectionControlSignal;
   /**
    * The first cross-scene dispatch target this scene's branch-following walk
    * followed (a real `jump`/`farcall`/entrypoint resolution), or null when

@@ -32,16 +32,30 @@ import type { NarrativeStructure } from "../structure-informed-context/index.js"
  */
 export type WorkCarveDerivation = {
   /**
-   * `game-select-option-branches` — the archive carved on a ≥2-option select
-   * at/near the entry scene; each option is a work.
-   * `single-work-no-game-select` — no game-select present, the whole archive
-   * is ONE work.
+   * `game-select-option-branches` — the archive carved on the button-object
+   * game-select; each of its ≥2 enumerable option branches is a work.
+   * `game-select-unresolved-options` — a button-object game-select IDENTIFIES
+   * the archive as multi-work, but its option branches are not enumerable on
+   * the select scene (Sweetie HD scene 2: option art + dispatch set up
+   * upstream at the title); rooting the works needs upstream/operator context.
+   * `single-work-no-game-select` — no button-object game-select present, the
+   * whole archive is ONE work (any text-window selects are in-story branches).
    */
-  signal: "game-select-option-branches" | "single-work-no-game-select";
+  signal:
+    | "game-select-option-branches"
+    | "game-select-unresolved-options"
+    | "single-work-no-game-select";
   /** The scene whose select carves the archive (the game-select), or null. */
   gameSelectScene: number | null;
   /** How that scene was picked as the game-select. */
-  gameSelectSelectedBy: "provided" | "entry-scene-select" | "first-scene-with-choices" | "none";
+  gameSelectSelectedBy: "provided" | "button-object-select" | "none";
+  /**
+   * The decoded `selectionControl` marker of the picked game-select scene —
+   * the HARDENED identification signal. `button-object` is the archive
+   * game-select (`select_objbtn`); a `text-window` select is never picked as
+   * the archive boundary. `none` when no game-select was found.
+   */
+  selectionControl: "button-object" | "text-window" | "none";
   /**
    * What names the works. The decode gives the option LABELS (the
    * `choice:<idx>` text) — a naming signal when non-empty — but NOT a

@@ -1,23 +1,43 @@
 // itotori-multi-work-context-scope-model — the archive→works carve.
 //
 // DERIVES the narrative works FROM the decoded game-select — never a hardcoded
-// list. The game-select is the archive's opening ≥2-option `select` (Sweetie
-// HD: the base-game vs fandisk pick, decoded as the drivable `select_objbtn`).
+// list. The game-select is the archive's opening GRAPHICAL button-object
+// select (Sweetie HD: the base-game vs fandisk pick, decoded as the
+// `select_objbtn` (0,2,4) / `objbtn_init` (0,2,20) SelectionControl marker).
 // Each option is a WORK; the option's decoded `branchEntryScene` (the
 // `goto_on($store)` / `jump` target the branch-following walk followed) is the
 // ROOT of that work's scene subtree.
 //
+// HARDENED game-select identification (real Sweetie HD validation): the carve
+// no longer identifies the game-select by POSITION + option-COUNT alone (a
+// deep in-story ≥2-option branch could be mistaken). It keys on the decoded
+// `selectionControl` marker — the archive game-select is a `button-object`
+// select (a `select_objbtn` graphical pick), whereas the mid-story dialogue
+// yes/no branches are `text-window` `select_w` blocks. A `text-window` select
+// is NEVER carved as the archive boundary, so a mid-story branch cannot be
+// mis-carved into a spurious "work".
+//
 // Honest boundary (reported in `WorkCarveDerivation`):
-//   * What the decode GIVES: the game-select scene, its option COUNT, each
-//     option's LABEL, and each option's dispatch target (`branchEntryScene`).
-//     That is enough to carve the archive into N disjoint works and root a
-//     per-work structure export — deterministically, from bytes.
-//   * What it does NOT give: a SEMANTIC "this is the base game / that is the
-//     fandisk". Naming rides on the option labels when present; otherwise it
-//     needs another signal (Gameexe title metadata, scene-id ranges, operator
-//     input). The carve records which naming signal it used.
+//   * What the decode GIVES: the button-object game-select scene, and — WHEN
+//     its options are enumerable on the select scene — each option's LABEL and
+//     dispatch target (`branchEntryScene`), enough to carve N disjoint works.
+//   * What it does NOT always give: the REAL Sweetie HD first-screen
+//     game-select (scene 2) is a `select_objbtn` whose option ART + per-option
+//     branch dispatch are set up UPSTREAM at the title screen; the select
+//     scene itself carries NO inline option block, so its works are NOT
+//     enumerable from the select scene alone by headless replay. The carve
+//     then still IDENTIFIES the game-select (button-object marker) but reports
+//     `game-select-unresolved-options` — the archive is known-multi-work, but
+//     rooting the works needs upstream/operator context.
+//   * It never gives a SEMANTIC "this is the base game / that is the fandisk".
+//     Naming rides on the option labels when present; otherwise it needs
+//     another signal (Gameexe title metadata, scene-id ranges, operator input).
 
-import type { NarrativeMessage, NarrativeStructure } from "../structure-informed-context/index.js";
+import type {
+  NarrativeMessage,
+  NarrativeStructure,
+  SelectionControlSignal,
+} from "../structure-informed-context/index.js";
 import {
   WorkCarveError,
   type CarvedWork,
@@ -25,7 +45,7 @@ import {
   type WorkCarveDerivation,
 } from "./shapes.js";
 
-/** A scene qualifies as a game-select when its `select` offers ≥2 options. */
+/** A game-select's options are enumerable into works only with ≥2 branches. */
 const MIN_GAME_SELECT_OPTIONS = 2;
 
 export type CarveOptions = {
@@ -33,7 +53,8 @@ export type CarveOptions = {
   archiveRef?: string;
   /**
    * Force a specific scene as the game-select (overrides auto-detection).
-   * Use when the operator knows the carve scene (e.g. from Gameexe).
+   * Use when the operator knows the carve scene (e.g. from Gameexe or the
+   * button-object game-select the headless decode cannot cross into).
    */
   gameSelectScene?: number;
 };
@@ -50,52 +71,59 @@ function distinctSpeakers(messages: ReadonlyArray<NarrativeMessage>): string[] {
   return order;
 }
 
+/** Scenes in dispatch order, falling back to declaration order. */
+function orderedScenes(structure: NarrativeStructure): number[] {
+  return structure.sceneDispatchOrder.length > 0
+    ? structure.sceneDispatchOrder
+    : structure.scenes.map((s) => s.sceneId);
+}
+
 /**
- * Pick the game-select scene from the decoded structure. Preference order:
- *   1. an explicit `gameSelectScene` override;
- *   2. the entry scene, when it offers ≥2 options (the archive's FIRST screen —
- *      Sweetie HD's game-select sits here);
- *   3. the first scene in dispatch order with ≥2 options.
- * Returns null when no scene offers a multi-option select (a single-work
- * archive).
+ * Pick the archive game-select scene from the decoded structure — HARDENED to
+ * key on the `selectionControl` marker, NOT position + option-count.
+ *
+ * Preference order:
+ *   1. an explicit `gameSelectScene` override (operator knows the scene — e.g.
+ *      the button-object game-select the headless decode cannot cross into);
+ *   2. the EARLIEST scene (dispatch order, else declaration order) whose
+ *      `selectionControl === "button-object"` — a `select_objbtn` graphical
+ *      pick. This IS the archive game-select marker (Sweetie HD: base-vs-
+ *      fandisk). A mid-story `text-window` `select_w` dialogue branch is
+ *      deliberately NOT eligible, so it can never be mis-carved as the archive
+ *      boundary.
+ * Returns null when no button-object select exists: the archive is a single
+ * work (its `text-window` selects are IN-STORY branches, subdivided at
+ * route level, not the archive carve).
  */
 function pickGameSelectScene(
   structure: NarrativeStructure,
   override: number | undefined,
-): { sceneId: number | null; how: WorkCarveDerivation["gameSelectSelectedBy"] } {
+): {
+  sceneId: number | null;
+  how: WorkCarveDerivation["gameSelectSelectedBy"];
+  selectionControl: SelectionControlSignal;
+} {
   if (override !== undefined) {
     const scene = structure.scenes.find((s) => s.sceneId === override);
     if (scene === undefined) {
       throw new WorkCarveError(`gameSelectScene ${override} not present in the decoded structure`);
     }
-    if (scene.choices.length < MIN_GAME_SELECT_OPTIONS) {
-      throw new WorkCarveError(
-        `gameSelectScene ${override} offers ${scene.choices.length} option(s); a game-select needs ≥${MIN_GAME_SELECT_OPTIONS}`,
-      );
-    }
-    return { sceneId: override, how: "provided" };
+    return { sceneId: override, how: "provided", selectionControl: scene.selectionControl };
   }
 
-  const entry = structure.scenes.find((s) => s.sceneId === structure.entryScene);
-  if (entry !== undefined && entry.choices.length >= MIN_GAME_SELECT_OPTIONS) {
-    return { sceneId: entry.sceneId, how: "entry-scene-select" };
-  }
-
-  // First scene in dispatch order (falling back to scene declaration order)
-  // that offers a multi-option select.
-  const orderedIds =
-    structure.sceneDispatchOrder.length > 0
-      ? structure.sceneDispatchOrder
-      : structure.scenes.map((s) => s.sceneId);
   const byId = new Map(structure.scenes.map((s) => [s.sceneId, s] as const));
-  for (const id of orderedIds) {
+  for (const id of orderedScenes(structure)) {
     const scene = byId.get(id);
-    if (scene !== undefined && scene.choices.length >= MIN_GAME_SELECT_OPTIONS) {
-      return { sceneId: scene.sceneId, how: "first-scene-with-choices" };
+    if (scene !== undefined && scene.selectionControl === "button-object") {
+      return {
+        sceneId: scene.sceneId,
+        how: "button-object-select",
+        selectionControl: "button-object",
+      };
     }
   }
 
-  return { sceneId: null, how: "none" };
+  return { sceneId: null, how: "none", selectionControl: "none" };
 }
 
 /**
@@ -109,39 +137,65 @@ export function carveArchiveIntoWorks(
   options: CarveOptions = {},
 ): WorkCarve {
   const archiveRef = options.archiveRef ?? "archive";
-  const { sceneId: gameSelectScene, how } = pickGameSelectScene(structure, options.gameSelectScene);
+  const {
+    sceneId: gameSelectScene,
+    how,
+    selectionControl,
+  } = pickGameSelectScene(structure, options.gameSelectScene);
 
-  // No game-select: the whole archive is ONE work.
+  const wholeArchiveWork = (): CarvedWork => ({
+    workId: `${archiveRef}#work:single`,
+    optionIndex: 0,
+    optionLabel: "",
+    branchEntryScene: structure.entryScene,
+    branchMessageCount: structure.scenes.reduce((n, s) => n + s.messages.length, 0),
+    branchSpeakers: distinctSpeakers(structure.scenes.flatMap((s) => s.messages)),
+  });
+
+  // No button-object game-select: the whole archive is ONE work. Any
+  // `text-window` (in-story) selects present are route-level branches, NOT the
+  // archive carve — so a mid-story branch is never mis-carved as a work.
   if (gameSelectScene === null) {
-    const branchSpeakers = distinctSpeakers(structure.scenes.flatMap((s) => s.messages));
-    const branchMessageCount = structure.scenes.reduce((n, s) => n + s.messages.length, 0);
     return {
       archiveRef,
-      works: [
-        {
-          workId: `${archiveRef}#work:single`,
-          optionIndex: 0,
-          optionLabel: "",
-          branchEntryScene: structure.entryScene,
-          branchMessageCount,
-          branchSpeakers,
-        },
-      ],
+      works: [wholeArchiveWork()],
       derivation: {
         signal: "single-work-no-game-select",
         gameSelectScene: null,
         gameSelectSelectedBy: "none",
+        selectionControl: "none",
         namingSignal: "unknown",
         notes:
-          "No ≥2-option select at/near the entry scene: the decode shows a single narrative work spanning the whole archive (no archive→works carve).",
+          "No button-object game-select in the decode: the archive is a single narrative work. Any text-window selects present are in-story (route-level) branches, not an archive→works boundary.",
       },
     };
   }
 
   const scene = structure.scenes.find((s) => s.sceneId === gameSelectScene);
-  // pickGameSelectScene guarantees presence + ≥2 options.
   if (scene === undefined) {
     throw new WorkCarveError(`game-select scene ${gameSelectScene} vanished`);
+  }
+
+  // The button-object game-select is IDENTIFIED but its per-option branches are
+  // not enumerable on the select scene (Sweetie HD scene 2: a `select_objbtn`
+  // whose option art + branch dispatch are set up UPSTREAM at the title — the
+  // select scene carries no inline option block). The archive is KNOWN
+  // multi-work, but the works cannot be rooted from the select scene alone.
+  if (scene.choices.length < MIN_GAME_SELECT_OPTIONS) {
+    return {
+      archiveRef,
+      works: [wholeArchiveWork()],
+      derivation: {
+        signal: "game-select-unresolved-options",
+        gameSelectScene,
+        gameSelectSelectedBy: how,
+        selectionControl,
+        namingSignal: "unknown",
+        notes:
+          `A button-object game-select (scene ${gameSelectScene}) marks this archive as multi-work, but the select scene carries ` +
+          `${scene.choices.length} enumerable option branch(es) (<${MIN_GAME_SELECT_OPTIONS}): its option art + per-option dispatch are set up UPSTREAM (the title screen), so the works cannot be rooted from the select scene alone. Rooting them needs upstream/operator context (a per-work entry-scene list).`,
+      },
+    };
   }
 
   const works: CarvedWork[] = scene.choices.map((choice) => ({
@@ -185,6 +239,7 @@ export function carveArchiveIntoWorks(
       signal: "game-select-option-branches",
       gameSelectScene,
       gameSelectSelectedBy: how,
+      selectionControl,
       namingSignal,
       notes: `${rootNote} ${nameNote}`,
     },

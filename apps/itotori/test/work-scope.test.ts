@@ -13,8 +13,13 @@
 //       the parent scope;
 //   (5) determinism.
 
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import type { NarrativeStructure } from "../src/agents/structure-informed-context/index.js";
+import type {
+  NarrativeScene,
+  NarrativeStructure,
+  SelectionControlSignal,
+} from "../src/agents/structure-informed-context/index.js";
 import {
   buildScopeGraph,
   buildWorkScopedContext,
@@ -30,10 +35,15 @@ import {
 const ARCHIVE = "sweetie-hd";
 
 // The archive-level decode: the FIRST screen is the game-select. This mirrors
-// the exact JSON shape `structure_export.rs` emits — a game-select scene whose
-// two `select` options each dispatch (decoded `branchEntryScene`) into a
-// DISTINCT work subtree: option 0 → the base game (root scene 100), option 1 →
-// the fandisk (root scene 500). Text is invented; the SHAPE is the decode's.
+// the exact JSON shape `structure_export.rs` emits — a `button-object`
+// game-select (the real Sweetie HD marker: a `select_objbtn` graphical pick)
+// whose two options each dispatch (decoded `branchEntryScene`) into a DISTINCT
+// work subtree: option 0 → the base game (root scene 100), option 1 → the
+// fandisk (root scene 500). Text is invented; the SHAPE + the `button-object`
+// SelectionControl marker are the decode's. (This is the ENUMERABLE game-select
+// case — a gallery/menu-style objbtn select carrying inline option branches;
+// the real first-screen game-select — scene 2 — is the UNRESOLVED case, see the
+// real-bytes test below.)
 const GAME_SELECT_DECODE: NarrativeStructure = {
   schemaVersion: "utsushi.narrative-structure.v1",
   entryScene: 10,
@@ -41,6 +51,7 @@ const GAME_SELECT_DECODE: NarrativeStructure = {
   scenes: [
     {
       sceneId: 10,
+      selectionControl: "button-object",
       nextScene: null,
       messages: [{ order: 0, speaker: null, text: "Select a story.", textSurface: null }],
       choices: [
@@ -74,6 +85,7 @@ const BASE_WORK_STRUCTURE: NarrativeStructure = {
   scenes: [
     {
       sceneId: 100,
+      selectionControl: "none",
       nextScene: 101,
       messages: [
         { order: 0, speaker: "Rin", text: "Good morning!", textSurface: null },
@@ -83,6 +95,7 @@ const BASE_WORK_STRUCTURE: NarrativeStructure = {
     },
     {
       sceneId: 101,
+      selectionControl: "none",
       nextScene: null,
       messages: [{ order: 0, speaker: "Rin", text: "Let's go.", textSurface: null }],
       choices: [],
@@ -99,6 +112,7 @@ const FANDISK_WORK_STRUCTURE: NarrativeStructure = {
   scenes: [
     {
       sceneId: 500,
+      selectionControl: "none",
       nextScene: null,
       messages: [
         { order: 0, speaker: "Rin", text: "It's been a while.", textSurface: null },
@@ -140,7 +154,10 @@ describe("carveArchiveIntoWorks (derive works FROM the decoded game-select)", ()
     // The works are the game-select OPTIONS — not a hardcoded list.
     expect(carve.derivation.signal).toBe("game-select-option-branches");
     expect(carve.derivation.gameSelectScene).toBe(10);
-    expect(carve.derivation.gameSelectSelectedBy).toBe("entry-scene-select");
+    // HARDENED: the game-select is identified by the button-object marker, NOT
+    // by position + option-count.
+    expect(carve.derivation.gameSelectSelectedBy).toBe("button-object-select");
+    expect(carve.derivation.selectionControl).toBe("button-object");
     // Each option dispatches into a DISTINCT work subtree (decoded roots).
     expect(carve.works.map((w) => w.branchEntryScene)).toEqual([100, 500]);
     expect(carve.works[0]?.optionLabel).toContain("original");
@@ -149,15 +166,84 @@ describe("carveArchiveIntoWorks (derive works FROM the decoded game-select)", ()
     expect(carve.derivation.namingSignal).toBe("option-label");
   });
 
-  it("is NOT hardcoded: with no game-select the same archive is ONE work", () => {
-    // Drop the game-select scene's choices → no ≥2-option select anywhere.
+  it("is NOT hardcoded: with no button-object select the same archive is ONE work", () => {
+    // Drop the game-select marker AND its choices → no button-object select.
     const noSelect: NarrativeStructure = {
       ...GAME_SELECT_DECODE,
-      scenes: [{ ...GAME_SELECT_DECODE.scenes[0]!, choices: [] }],
+      scenes: [{ ...GAME_SELECT_DECODE.scenes[0]!, selectionControl: "none", choices: [] }],
     };
     const carve = carveArchiveIntoWorks(noSelect, { archiveRef: ARCHIVE });
     expect(carve.works).toHaveLength(1);
     expect(carve.derivation.signal).toBe("single-work-no-game-select");
+  });
+
+  it("HARDENED: a mid-story TEXT-window select is NOT mis-carved as the archive boundary", () => {
+    // A structure whose EARLIEST ≥2-option select is an in-story dialogue
+    // yes/no branch (a `text-window` `select_w`, exactly the real Sweetie HD
+    // scenes 1018 / 4004 / 6001 / 6011 / 6013 / 8003) — the old position +
+    // option-count heuristic would mistake it for the game-select and carve a
+    // spurious 2-work split. The hardened button-object signal does NOT: the
+    // archive stays ONE work, the branch is left to route-level subdivision.
+    const midStoryTextSelect: NarrativeStructure = {
+      schemaVersion: "utsushi.narrative-structure.v1",
+      entryScene: 6011,
+      sceneDispatchOrder: [6011],
+      scenes: [
+        {
+          sceneId: 6011,
+          selectionControl: "text-window",
+          nextScene: null,
+          messages: [{ order: 0, speaker: "Rin", text: "Which do you pick?", textSurface: null }],
+          choices: [
+            {
+              optionIndex: 0,
+              label: "Yes",
+              branchEntryScene: 6012,
+              branchMessages: [{ order: 0, speaker: "Rin", text: "Ok.", textSurface: null }],
+            },
+            {
+              optionIndex: 1,
+              label: "No",
+              branchEntryScene: 6013,
+              branchMessages: [{ order: 0, speaker: "Rin", text: "Fine.", textSurface: null }],
+            },
+          ],
+        },
+      ],
+    };
+    const carve = carveArchiveIntoWorks(midStoryTextSelect, { archiveRef: ARCHIVE });
+    expect(carve.works).toHaveLength(1);
+    expect(carve.derivation.signal).toBe("single-work-no-game-select");
+    expect(carve.derivation.gameSelectScene).toBeNull();
+    expect(carve.derivation.selectionControl).toBe("none");
+  });
+
+  it("identifies a button-object game-select even when its options are NOT enumerable", () => {
+    // The REAL Sweetie HD first-screen game-select (scene 2): a `select_objbtn`
+    // whose option art + per-option dispatch are set up UPSTREAM at the title,
+    // so the select scene carries NO inline option block. The carve still
+    // IDENTIFIES it (button-object marker) but reports the works are
+    // unresolved — honest, not a synthetic 2-work fabrication.
+    const upstreamGameSelect: NarrativeStructure = {
+      schemaVersion: "utsushi.narrative-structure.v1",
+      entryScene: 2,
+      sceneDispatchOrder: [2],
+      scenes: [
+        {
+          sceneId: 2,
+          selectionControl: "button-object",
+          nextScene: null,
+          messages: [],
+          choices: [],
+        },
+      ],
+    };
+    const carve = carveArchiveIntoWorks(upstreamGameSelect, { archiveRef: ARCHIVE });
+    expect(carve.derivation.signal).toBe("game-select-unresolved-options");
+    expect(carve.derivation.gameSelectScene).toBe(2);
+    expect(carve.derivation.gameSelectSelectedBy).toBe("button-object-select");
+    expect(carve.derivation.selectionControl).toBe("button-object");
+    expect(carve.derivation.notes).toContain("UPSTREAM");
   });
 
   it("rejects a carve whose options collide on the same work root (not disjoint)", () => {
@@ -363,5 +449,143 @@ describe("WORK-SCOPED context building (per-work structure + shared scope)", () 
     const { graph: g2 } = fullGraph();
     const id = g1.titleToWorks[ARCHIVE]![0]!;
     expect(buildWorkScopedContext(g1, id)).toEqual(buildWorkScopedContext(g2, id));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// REAL Sweetie HD bytes — the hardened game-select signal validated on the
+// actual decode (not synthetic-shaped structures).
+//
+// Gated on `ITOTORI_MWCARVE_SCAN_CSV` = the path to the CSV emitted by
+//   cargo run -p utsushi-reallive --example game_select_scan -- <Seen.txt>
+// over the real Sweetie HD bytes (held OUTSIDE the repo — the CSV carries only
+// scene ids + per-scene `module_sel` opcode COUNTS, never copyrighted text).
+// When unset the test prints a visible skip note and returns (no silent pass).
+//
+// Columns: scene,parse_ok,objbtn_init,select_objbtn,objbtn_cancel,choice_blocks,goto_on_if
+//
+// It maps each real scene's decoded sel-family counts to the SAME
+// `selectionControl` signal `structure_export.rs` emits (button-object iff any
+// objbtn/select_objbtn/cancel op; else text-window iff any text Choice block;
+// else none), then proves:
+//   * the real first-screen game-select (scene 2) decodes to `button-object`
+//     — the archive-carve marker the hardened signal keys on;
+//   * the real mid-story dialogue branches (1018 / 4004 / 6001 / 6011 / 6013 /
+//     8003) decode to `text-window` — and are NOT mis-carved as the archive
+//     boundary;
+//   * every one of those scenes parsed (parse_ok=1) — the decode recognised
+//     the sel family (0-unknown on the load-bearing scenes).
+type ScanRow = {
+  scene: number;
+  parseOk: boolean;
+  objbtnInit: number;
+  selectObjbtn: number;
+  objbtnCancel: number;
+  choiceBlocks: number;
+};
+
+function parseScanCsv(text: string): Map<number, ScanRow> {
+  const rows = new Map<number, ScanRow>();
+  for (const line of text.split(/\r?\n/u)) {
+    const trimmed = line.trim();
+    if (trimmed.length === 0 || trimmed.startsWith("scene,")) {
+      continue;
+    }
+    const cols = trimmed.split(",").map((c) => Number(c));
+    if (cols.length < 7 || cols.some((n) => Number.isNaN(n))) {
+      continue;
+    }
+    const [scene, parseOk, objbtnInit, selectObjbtn, objbtnCancel, choiceBlocks] = cols as number[];
+    rows.set(scene!, {
+      scene: scene!,
+      parseOk: parseOk === 1,
+      objbtnInit: objbtnInit!,
+      selectObjbtn: selectObjbtn!,
+      objbtnCancel: objbtnCancel!,
+      choiceBlocks: choiceBlocks!,
+    });
+  }
+  return rows;
+}
+
+/** The SAME mapping `structure_export.rs::selection_control_signal` applies. */
+function signalOf(row: ScanRow): SelectionControlSignal {
+  if (row.objbtnInit + row.selectObjbtn + row.objbtnCancel > 0) {
+    return "button-object";
+  }
+  if (row.choiceBlocks > 0) {
+    return "text-window";
+  }
+  return "none";
+}
+
+function realScene(sceneId: number, signal: SelectionControlSignal): NarrativeScene {
+  return { sceneId, selectionControl: signal, nextScene: null, messages: [], choices: [] };
+}
+
+describe("REAL Sweetie HD — hardened game-select signal on the actual decode", () => {
+  const csvPath = process.env.ITOTORI_MWCARVE_SCAN_CSV;
+  const enabled = typeof csvPath === "string" && csvPath.length > 0;
+
+  it("carves on the real button-object game-select; a mid-story text-select is NOT mis-carved", () => {
+    if (!enabled) {
+      // eslint-disable-next-line no-console
+      console.warn(
+        "[mwcarve] skipping real Sweetie HD validation — set ITOTORI_MWCARVE_SCAN_CSV=<path to " +
+          "game_select_scan CSV over the real Seen.txt> to run it",
+      );
+      return;
+    }
+    const rows = parseScanCsv(readFileSync(csvPath, "utf8"));
+
+    // (1) The real first-screen game-select (scene 2) is a button-object
+    // `select_objbtn` — the archive-carve marker.
+    const gameSelect = rows.get(2);
+    expect(gameSelect, "scene 2 present in the real scan").toBeDefined();
+    expect(gameSelect!.parseOk).toBe(true);
+    expect(gameSelect!.selectObjbtn).toBeGreaterThanOrEqual(1);
+    expect(signalOf(gameSelect!)).toBe("button-object");
+
+    // (2) The real mid-story dialogue branches are plain text-window selects
+    // (a text Choice block, NO objbtn setup) — exactly what a position+count
+    // heuristic would mis-carve.
+    const midStoryTextScenes = [1018, 4004, 6001, 6011, 6013, 8003];
+    for (const id of midStoryTextScenes) {
+      const row = rows.get(id);
+      expect(row, `mid-story scene ${id} present`).toBeDefined();
+      expect(row!.parseOk, `scene ${id} decoded (0-unknown)`).toBe(true);
+      expect(row!.selectObjbtn + row!.objbtnInit + row!.objbtnCancel).toBe(0);
+      expect(row!.choiceBlocks).toBeGreaterThanOrEqual(1);
+      expect(signalOf(row!)).toBe("text-window");
+    }
+
+    // (3) Feed the REAL decoded signals through the carve.
+    //   (a) The button-object game-select (scene 2) IS identified — its options
+    //       are set up upstream at the title, so the works are unresolved (the
+    //       honest real boundary), NOT a synthetic 2-work fabrication.
+    const gameSelectStructure: NarrativeStructure = {
+      schemaVersion: "utsushi.narrative-structure.v1",
+      entryScene: 2,
+      sceneDispatchOrder: [2],
+      scenes: [realScene(2, signalOf(gameSelect!))],
+    };
+    const gsCarve = carveArchiveIntoWorks(gameSelectStructure, { archiveRef: ARCHIVE });
+    expect(gsCarve.derivation.selectionControl).toBe("button-object");
+    expect(gsCarve.derivation.gameSelectScene).toBe(2);
+    expect(gsCarve.derivation.gameSelectSelectedBy).toBe("button-object-select");
+    expect(gsCarve.derivation.signal).toBe("game-select-unresolved-options");
+
+    //   (b) A structure of ONLY the real mid-story text-window branches carves
+    //       to a SINGLE work — the mid-story branch is NOT the archive boundary.
+    const midStoryStructure: NarrativeStructure = {
+      schemaVersion: "utsushi.narrative-structure.v1",
+      entryScene: midStoryTextScenes[0]!,
+      sceneDispatchOrder: midStoryTextScenes,
+      scenes: midStoryTextScenes.map((id) => realScene(id, signalOf(rows.get(id)!))),
+    };
+    const msCarve = carveArchiveIntoWorks(midStoryStructure, { archiveRef: ARCHIVE });
+    expect(msCarve.works).toHaveLength(1);
+    expect(msCarve.derivation.signal).toBe("single-work-no-game-select");
+    expect(msCarve.derivation.gameSelectScene).toBeNull();
   });
 });

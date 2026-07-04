@@ -73,6 +73,19 @@ function parseScene(value: unknown, index: number): NarrativeScene {
   if (!Array.isArray(record.choices)) {
     throw new NarrativeStructureParseError(`scenes[${index}].choices must be an array`);
   }
+  // `selectionControl` is optional for backward compatibility with
+  // pre-enrichment exporter JSON (absent → "none"); the enriched
+  // `structure_export.rs` always emits it.
+  if (
+    record.selectionControl !== undefined &&
+    record.selectionControl !== "button-object" &&
+    record.selectionControl !== "text-window" &&
+    record.selectionControl !== "none"
+  ) {
+    throw new NarrativeStructureParseError(
+      `scenes[${index}].selectionControl must be "button-object" | "text-window" | "none"`,
+    );
+  }
   const messages = record.messages.map((m, i) =>
     parseMessage(m, `scenes[${index}].messages[${i}]`),
   );
@@ -118,6 +131,8 @@ function parseScene(value: unknown, index: number): NarrativeScene {
   });
   return {
     sceneId: record.sceneId,
+    selectionControl:
+      (record.selectionControl as "button-object" | "text-window" | "none" | undefined) ?? "none",
     nextScene: (record.nextScene as number | null) ?? null,
     messages,
     choices,

@@ -26,17 +26,68 @@
 //!   cargo run -p utsushi-reallive --example structure_export -- \
 //!     <Gameexe.ini> <Seen.txt> [max_scenes] > /scratch/.../structure.json
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
 use std::path::PathBuf;
 
+use kaifuu_reallive::{RealLiveOpcode, parse_scene};
 use serde_json::{Map, Value, json};
 use utsushi_core::TextLine;
 use utsushi_reallive::{
-    Gameexe, HeadlessChoicePolicy, ReplayEngine, ReplayOpts, build_scene_store_from_decompressed,
-    decompress_all_scenes,
+    Gameexe, HeadlessChoicePolicy, ReplayEngine, ReplayOpts, SceneId,
+    build_scene_store_from_decompressed, decompress_all_scenes,
 };
 
 const CHOICE_SURFACE_PREFIX: &str = "choice:";
+
+// `module_sel` (module_type=0, module_id=2) SelectionControl button-object
+// setup opcodes — the real-bytes marker that a scene's select is a GRAPHICAL
+// button-object select (Sweetie HD's base-vs-fandisk game-select + route /
+// clothing picks) rather than a plain text-window `select`/`select_w` (the
+// in-story dialogue branches). rlvm module_sel.cc: select_objbtn=4,
+// objbtn_init=20, select_objbtn_cancel=14.
+const OP_SELECT_OBJBTN: u16 = 4;
+const OP_OBJBTN_INIT: u16 = 20;
+const OP_SELECT_OBJBTN_CANCEL: u16 = 14;
+
+/// The per-scene SelectionControl signal, STATICALLY decoded (kaifuu
+/// `parse_scene`) from the scene's own bytecode — independent of headless
+/// reachability, so it is available even for a game-select scene the
+/// playthrough cannot cross into from the title. Emitted on every scene as
+/// `selectionControl`; the itotori work-scope carve reads it to distinguish
+/// the archive game-select (`button-object`) from mid-story text branches
+/// (`text-window`).
+///   - `button-object`: the scene carries an objbtn setup / select_objbtn op.
+///   - `text-window`: the scene carries a plain `select`/`select_w` Choice
+///     option block (and no button-object op).
+///   - `none`: the scene carries no select at all.
+fn selection_control_signal(bytecode: &[u8]) -> &'static str {
+    let Ok(ops) = parse_scene(bytecode) else {
+        return "none";
+    };
+    let mut has_button_object = false;
+    let mut has_text_choice = false;
+    for op in &ops {
+        match op {
+            RealLiveOpcode::SelectionControl { opcode }
+                if matches!(
+                    *opcode,
+                    OP_SELECT_OBJBTN | OP_OBJBTN_INIT | OP_SELECT_OBJBTN_CANCEL
+                ) =>
+            {
+                has_button_object = true;
+            }
+            RealLiveOpcode::Choice { .. } => has_text_choice = true,
+            _ => {}
+        }
+    }
+    if has_button_object {
+        "button-object"
+    } else if has_text_choice {
+        "text-window"
+    } else {
+        "none"
+    }
+}
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
@@ -63,6 +114,15 @@ fn main() {
         .entries
         .len();
     let decompressed = decompress_all_scenes(&seen_bytes).expect("decompress scenes");
+
+    // Per-scene SelectionControl signal, STATICALLY decoded from each scene's
+    // own bytecode (independent of headless reachability). This is the marker
+    // the work-scope carve hardens the game-select identification on.
+    let selection_control: HashMap<SceneId, &'static str> = decompressed
+        .iter()
+        .map(|scene| (scene.scene_id, selection_control_signal(&scene.bytecode)))
+        .collect();
+
     let (store, shift_jis, _stats) =
         build_scene_store_from_decompressed(&decompressed, index_len).expect("build scene store");
     let engine = ReplayEngine::from_store(store, shift_jis).with_namae_resolver(resolver);
@@ -84,9 +144,10 @@ fn main() {
                 .iter()
                 .filter(|l| !is_choice_line(l))
                 .count();
-            if msgs > 0 || choices > 0 {
+            let sel = selection_control.get(&scene_id).copied().unwrap_or("none");
+            if msgs > 0 || choices > 0 || sel != "none" {
                 eprintln!(
-                    "scene {scene_id}: messages={msgs} choiceOptions={choices} next={:?}",
+                    "scene {scene_id}: messages={msgs} choiceOptions={choices} selectionControl={sel} next={:?}",
                     obs.first_cross_scene
                 );
             }
@@ -161,6 +222,10 @@ fn main() {
 
         let mut scene = Map::new();
         scene.insert("sceneId".into(), json!(scene_id));
+        scene.insert(
+            "selectionControl".into(),
+            json!(selection_control.get(&scene_id).copied().unwrap_or("none")),
+        );
         scene.insert(
             "nextScene".into(),
             match next_scene {
