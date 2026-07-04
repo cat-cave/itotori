@@ -33,6 +33,9 @@ check:
     node scripts/generate-engine-capability-matrix.mjs --check
     node --test scripts/synthetic-coverage-manifest.test.mjs
     node scripts/synthetic-coverage-manifest.mjs --check
+    node --test scripts/mutation-differential.test.mjs
+    node --test scripts/coverage-parity.test.mjs
+    node scripts/coverage-parity.mjs
     node --test scripts/alpha-readiness-checklist.test.mjs
     node scripts/alpha-readiness-checklist.mjs
     just fixtures-validate
@@ -85,7 +88,27 @@ itotori-scale-large: itotori-scale-build db-up db-wait
 # subset by default (only the lanes a diff can touch — e.g. an apps/itotori-only
 # change skips the rust real-bytes lane); force the full gate there with
 # `node scripts/qd-full-ci.mjs --all`. See scripts/qd-full-ci.mjs + affected.mjs.
-ci: check build db-migrate test ci-real-bytes
+ci: check build db-migrate test mutation-differential ci-real-bytes
+
+# synthetic-fixture-differential-validation: the guardrail that certifies the
+# fast, copyright-free SYNTHETIC fixtures are AS STRONG AS the ~30-minute
+# real-bytes lanes at catching regressions, so a per-gate lane MAY run synthetic
+# instead of the real archives without losing regression-detection power.
+#
+# The source-level MUTATION harness applies each realistic decoder/patchback/
+# replay bug (wrong offset, mis-typed opcode, off-by-one framing, skipped xor_2,
+# broken AVG32 back-ref, patchback jump-recalc error, dropped choice, paletted
+# G00 decode, cross-family RPG Maker code) to the REAL source, recompiles, and
+# asserts the SYNTHETIC (default, no-real-bytes) suite turns RED. It FAILS LOUD
+# (exit 1) if any mutation ESCAPES — i.e. if the synthetic fixtures are ever
+# weaker than the real lanes. The mutations are never shipped: each is reverted
+# and verified byte-identical. Deterministic; fast (~90s), no ~30-min real lane.
+#
+# The lighter coverage-parity + unit lanes (synthetic ⊇ real component surface,
+# harness logic) run in `just check`; this recipe is the heavy Rust-recompiling
+# kill-matrix. See docs/synthetic-differential-validation.md.
+mutation-differential:
+    node scripts/mutation-differential.mjs
 
 # Explicit alias for the COMPLETE gate (same as `just ci`), for callers that want
 # to be unambiguous that no affected-lane pruning is applied.

@@ -32,7 +32,7 @@
 use std::fs;
 use std::path::Path;
 
-use utsushi_reallive::{G00_TYPE_RAW_BGR, G00_TYPE_REGIONED_LZSS};
+use utsushi_reallive::{G00_TYPE_PALETTED_LZSS, G00_TYPE_RAW_BGR, G00_TYPE_REGIONED_LZSS};
 
 /// File stem used when [`write_synthetic_g00_dir`] stages the type-0
 /// fixture (`<stem>.g00`).
@@ -229,6 +229,65 @@ pub fn synthetic_type2_g00() -> Vec<u8> {
     bytes.extend_from_slice(&(h as i32 - 1).to_le_bytes());
     bytes.extend_from_slice(&0i32.to_le_bytes());
     bytes.extend_from_slice(&0i32.to_le_bytes());
+    bytes.extend_from_slice(&((lzss.len() + 8) as u32).to_le_bytes());
+    bytes.extend_from_slice(&(uncompressed_size as u32).to_le_bytes());
+    bytes.extend_from_slice(&lzss);
+    bytes
+}
+
+/// Synthetic type-1 canvas width (px). Small, and unlike any retail file.
+pub const SYNTHETIC_TYPE1_WIDTH: u16 = 4;
+/// Synthetic type-1 canvas height (px).
+pub const SYNTHETIC_TYPE1_HEIGHT: u16 = 4;
+/// Synthetic type-1 palette entry count (BGRA colour table).
+pub const SYNTHETIC_TYPE1_PALETTE_LEN: usize = 4;
+
+/// A structurally-faithful synthetic **type-1** (8-bpp paletted + SCN2k
+/// LZSS) g00 file. Decodes cleanly through [`utsushi_reallive::decode_g00`]
+/// to [`utsushi_reallive::G00Type::PalettedLzss`].
+///
+/// # Why this closes the former real-only gap
+///
+/// The type-1 decode path (SCN2k LZSS -> `u16 LE` colour-table count ->
+/// `count` × BGRA entries -> one palette index per pixel, with the on-disk
+/// B,G,R,A -> R,G,B,A reorder) was previously exercised ONLY by real bytes
+/// — no synthetic paletted fixture existed, so the differential-validation
+/// mutation harness surfaced a paletted-decode mutation as an ESCAPE. This
+/// builder uses the SAME SCN2k literal encoding the type-2 fixture uses
+/// ([`encode_all_literals`] with `unit = 1`), so the paletted decode path is
+/// now driven by a synthetic fixture through the REAL decoder.
+///
+/// The decoded LZSS payload layout is exactly what `decode_type1` expects:
+/// `[u16 LE colortable_count][count × (B,G,R,A)][width*height palette
+/// indices]`. The header `uncompressed_size` is the payload length; the
+/// decoder over-allocates the target by one (AVG2000 quirk) and the
+/// all-literal stream saturates it exactly.
+pub fn synthetic_type1_g00() -> Vec<u8> {
+    let w = SYNTHETIC_TYPE1_WIDTH;
+    let h = SYNTHETIC_TYPE1_HEIGHT;
+    let pixel_count = w as usize * h as usize;
+    let palette_len = SYNTHETIC_TYPE1_PALETTE_LEN;
+
+    // Colour table: `u16 LE count`, then `count` × 4-byte BGRA entries.
+    // Entry 0 is B=0x11,G=0x22,R=0x33,A=0xff so a skipped B/R reorder is
+    // observable (B != R). Entries authored from a deterministic gradient.
+    let mut unc: Vec<u8> = Vec::new();
+    unc.extend_from_slice(&(palette_len as u16).to_le_bytes());
+    unc.extend_from_slice(&[0x11, 0x22, 0x33, 0xff]);
+    for i in 1..palette_len {
+        let n = i as u8;
+        unc.extend_from_slice(&[0x40 ^ n, 0x60 ^ n, 0x80 ^ n, 0xff]);
+    }
+    // Index stream: one palette index per pixel (cycles through the table).
+    for p in 0..pixel_count {
+        unc.push((p % palette_len) as u8);
+    }
+    let uncompressed_size = unc.len();
+
+    let lzss = encode_all_literals(&unc, 1);
+    let mut bytes = vec![G00_TYPE_PALETTED_LZSS];
+    bytes.extend_from_slice(&w.to_le_bytes());
+    bytes.extend_from_slice(&h.to_le_bytes());
     bytes.extend_from_slice(&((lzss.len() + 8) as u32).to_le_bytes());
     bytes.extend_from_slice(&(uncompressed_size as u32).to_le_bytes());
     bytes.extend_from_slice(&lzss);

@@ -885,29 +885,49 @@ fn synthetic_archives_carry_no_copyrighted_bytes() {
     }
 }
 
-/// Every `g00_type` in the manifest is instantiated: the RAW_BGR (type 0) and
-/// REGIONED_LZSS (type 2) synthetic images decode through the REAL `decode_g00`
-/// to exactly their declared type; the PALETTED_LZSS (type 1) case is covered
-/// by its source-of-truth constant/enum identity (no synthetic paletted-LZSS
-/// AVG2000 encoder exists to build a decodable fixture — see the report).
+/// Every `g00_type` in the manifest is instantiated: the RAW_BGR (type 0),
+/// PALETTED_LZSS (type 1) and REGIONED_LZSS (type 2) synthetic images all
+/// decode through the REAL `decode_g00` to exactly their declared type. The
+/// type-1 paletted-LZSS fixture was added by
+/// `synthetic-fixture-differential-validation` to close a real-only decode gap
+/// the mutation harness surfaced (a paletted-decode mutation previously escaped
+/// the synthetic suite because no synthetic paletted fixture existed).
 #[test]
 fn synthetic_g00_images_instantiate_every_g00_type() {
     let manifest = manifest_value();
 
-    // Type 0 and type 2 decode through the REAL decoder to their declared type.
+    // Type 0, type 1 and type 2 all decode through the REAL decoder to their
+    // declared type — no constant-identity fallback.
     let (t0, _) = decode_g00(&g00_synthetic::synthetic_type0_g00())
         .expect("synthetic type-0 G00 decodes through decode_g00");
     assert_eq!(t0.g00_type, G00Type::RawBgr);
+    let (t1, _) = decode_g00(&g00_synthetic::synthetic_type1_g00())
+        .expect("synthetic type-1 (paletted LZSS) G00 decodes through decode_g00");
+    assert_eq!(t1.g00_type, G00Type::PalettedLzss);
+    // The paletted decode actually ran: the first pixel is palette entry 0,
+    // whose on-disk BGRA (0x11,0x22,0x33,0xff) reorders to RGBA
+    // (0x33,0x22,0x11,0xff). A skipped B/R reorder or a broken paletted decode
+    // changes these bytes, so a mutation there is now caught.
+    assert!(
+        t1.pixels_rgba.len() >= 4,
+        "type-1 fixture must decode at least one pixel"
+    );
+    assert_eq!(
+        &t1.pixels_rgba[0..4],
+        &[0x33, 0x22, 0x11, 0xff],
+        "type-1 first pixel must be palette entry 0 reordered BGRA->RGBA"
+    );
     let (t2, _) = decode_g00(&g00_synthetic::synthetic_type2_g00())
         .expect("synthetic type-2 G00 decodes through decode_g00");
     assert_eq!(t2.g00_type, G00Type::RegionedLzss);
 
     let mut covered_type_bytes: BTreeSet<u8> = BTreeSet::new();
     covered_type_bytes.insert(t0.g00_type.lead_byte());
+    covered_type_bytes.insert(t1.g00_type.lead_byte());
     covered_type_bytes.insert(t2.g00_type.lead_byte());
-    // Type 1 (PalettedLzss): source-of-truth constant identity.
+    // Redundant source-of-truth constant identity for type 1 (now also
+    // exercised by the real decode above).
     covered_type_bytes.insert(G00_TYPE_PALETTED_LZSS);
-    covered_type_bytes.insert(G00Type::PalettedLzss.lead_byte());
 
     for component in reallive_group(&manifest, "g00_type")["components"]
         .as_array()
