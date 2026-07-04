@@ -1,11 +1,11 @@
-; Synthetic KAG .ks fixture (CC0, authored) — unsupported TJS/macros/commands.
-; Every construct below is OUTSIDE the plaintext text/name/choice/jump
-; skeleton and MUST surface as a typed semantic diagnostic (not a crash,
-; not a silent skip). Plain text still replays around them.
+; Synthetic KAG .ks fixture (CC0, authored) — constructs OUTSIDE the supported
+; macro/storage subset. Every construct below MUST surface as a typed semantic
+; diagnostic (not a crash, not a silent skip, not a faked value). Plain text
+; still replays around them.
 *start
 Plain narration replays fine.
-[eval exp="f.count = f.count + 1"]
-[emb exp="f.playerName"]
+[eval exp="f.score = f.score * 2"]
+[emb exp="f.a + f.b"]
 [if exp="f.flag == 1"]
 Conditional body text.
 [endif]
@@ -14,9 +14,7 @@ Conditional body text.
 var x = 10;
 f.total = x * 2;
 [endscript]
-[macro name="greet"]
-Hello from a macro.
-[endmacro]
+[erasemacro name="greet"]
 [jump storage="other_scene.ks" target=*elsewhere]
 [unknownwidget mode=fancy]
 Narration after the diagnostics.

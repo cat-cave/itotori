@@ -1,12 +1,15 @@
-//! UTSUSHI-037 acceptance — unsupported KAG commands + TJS surface as typed
-//! SEMANTIC diagnostics (not a crash, not a silent skip).
+//! UTSUSHI-037 + UTSUSHI-038 acceptance — constructs OUTSIDE the supported
+//! macro/storage subset surface as typed SEMANTIC diagnostics (not a crash,
+//! not a silent skip, not a faked value). This pins the SUBSET BOUNDARY: each
+//! `[eval]`/`[emb]` here is deliberately just past the supported form.
 //!
 //! Fixture is synthetic, authored, CC0 (`fixtures/unsupported_tjs.ks`). It
-//! exercises `[eval]`/`[emb]` TJS expressions, an `[if]…[endif]` TJS
-//! conditional, an `[iscript]…[endscript]` TJS block, a `[macro]…[endmacro]`
-//! definition, a cross-`storage=` jump, and an unknown widget tag. Each must
-//! produce a distinct typed diagnostic, plain text must still replay around
-//! them, and the run must NOT panic.
+//! exercises an out-of-subset `[eval]` (a `*` multiplication) and `[emb]` (a
+//! compound `f.a + f.b` read), an `[if]…[endif]` TJS conditional, an
+//! `[iscript]…[endscript]` TJS block, an `[erasemacro]` runtime macro op, a
+//! cross-`storage=` jump, and an unknown widget tag. Each must produce a
+//! distinct typed diagnostic, plain text must still replay around them, and
+//! the run must NOT panic.
 
 use std::path::PathBuf;
 
@@ -41,7 +44,7 @@ fn unsupported_constructs_emit_typed_semantic_diagnostics() {
             ("utsushi.kirikiri.kag.unsupported_tjs_conditional", "if"),
             ("utsushi.kirikiri.kag.unsupported_tjs_conditional", "endif"),
             ("utsushi.kirikiri.kag.unsupported_tjs_block", "iscript"),
-            ("utsushi.kirikiri.kag.unsupported_macro", "macro"),
+            ("utsushi.kirikiri.kag.unsupported_macro", "erasemacro"),
             (
                 "utsushi.kirikiri.kag.unsupported_cross_storage_jump",
                 "other_scene.ks",

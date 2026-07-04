@@ -9,23 +9,42 @@
 //! posture (an unsupported command records a semantic diagnostic and
 //! advances; it never panics and never silently skips).
 //!
-//! ## Honest scope
+//! ## Honest scope (UTSUSHI-038 macro + storage subset)
 //!
 //! This is a plaintext KAG REPLAY *skeleton*. It replays the structural
 //! flow — message text, name state, choices, jumps — of a `.ks` script that
-//! is ALREADY plaintext on disk. It does NOT evaluate TJS
-//! (`[eval]`/`[emb]`/`[if]`/`[iscript]`/macros), and it does NOT open or
-//! decrypt XP3 containers. Every one of those surfaces as a typed
-//! [`KagDiagnostic`], so the boundary is visible in the trace, not hidden.
-//! See [`crate::capability_note`].
+//! is ALREADY plaintext on disk, plus a BOUNDED subset of macro expansion
+//! (handled in [`crate::parse`]) and storage variables:
+//!
+//! - **Storage variables (bounded subset).** `[eval exp="f.x = …"]` performs a
+//!   SIMPLE assignment to an `f.` (game flag) or `sf.` (system flag) variable
+//!   whose right-hand side is an integer literal, a quoted string literal,
+//!   another already-bound `f.`/`sf.` variable (a copy), or a single spaced
+//!   `A + B` / `A - B` over integer operands (so `f.count = f.count + 1`
+//!   counters work). `[emb exp="f.x"]` reads a single already-bound variable
+//!   and records its value. Variable state is visible as
+//!   [`KagEvent::VariableSet`] / [`KagEvent::EmbeddedValue`] events and in the
+//!   final [`KagTrace::variables`] snapshot.
+//! - **Everything else is a typed diagnostic, never faked.** Any `[eval]`/
+//!   `[emb]` expression outside that subset (multiplication, comparisons,
+//!   function/method calls, string concatenation, multi-statement, a
+//!   non-`f.`/`sf.` target) is an `unsupported_tjs_expression`; a read/copy of
+//!   an UNBOUND variable is an `unresolved_variable`; `[if]` conditionals,
+//!   `[iscript]` blocks, and out-of-subset macros surface as their own typed
+//!   diagnostics. It does NOT open or decrypt XP3 containers. Every
+//!   unsupported construct is a [`KagDiagnostic`], so the boundary is visible
+//!   in the trace, not hidden. See [`crate::capability_note`].
+
+use std::collections::BTreeMap;
 
 use serde::Serialize;
 
 use crate::parse::{BlockKind, Command, Instr, KagScript};
 
 /// Stable schema label for [`KagTrace`], pinned so a consumer detects a
-/// future bump at parse time.
-pub const KAG_TRACE_SCHEMA_VERSION: &str = "utsushi-kirikiri-kag-trace/0.1.0-beta";
+/// future bump at parse time. Bumped for UTSUSHI-038 (macro expansion +
+/// storage-variable events and the `variables` snapshot).
+pub const KAG_TRACE_SCHEMA_VERSION: &str = "utsushi-kirikiri-kag-trace/0.2.0-beta";
 
 /// Default replay step budget. Sized to walk a synthetic fixture to its
 /// terminus while terminating deterministically on a jump cycle.
@@ -52,8 +71,23 @@ impl Default for KagReplayOpts {
     }
 }
 
-/// One replay observation. Covers exactly the four structural surfaces the
-/// node scopes: text, name state, choices, jumps.
+/// A KAG storage-variable value. KAG flag variables are integers or strings;
+/// the supported subset models exactly those two (no floats, so the
+/// deterministic JSON stays byte-stable). Serialised externally-tagged
+/// (`{"int": 2}` / `{"str": "Alice"}`) so a consumer never has to guess the
+/// type from the JSON shape.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum VarValue {
+    /// An integer flag value.
+    Int(i64),
+    /// A string flag value.
+    Str(String),
+}
+
+/// One replay observation. Covers the four structural surfaces the skeleton
+/// scopes (text, name state, choices, jumps) plus the two storage-variable
+/// surfaces of the UTSUSHI-038 subset (a set, and an embedded read).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum KagEvent {
@@ -93,6 +127,24 @@ pub enum KagEvent {
         /// Destination label name (`*` stripped).
         to_label: String,
     },
+    /// A supported `[eval]` storage assignment was applied: variable `name`
+    /// now holds `value`. The [`KagTrace::variables`] snapshot reflects the
+    /// cumulative state; this event marks each individual change in order.
+    VariableSet {
+        /// Fully-qualified variable name (`f.x` / `sf.x`).
+        name: String,
+        /// The value assigned.
+        value: VarValue,
+    },
+    /// A supported `[emb exp="f.x"]` read embedded the CURRENT value of an
+    /// already-bound variable. Emitted (rather than folded into a message run)
+    /// so an embedded storage value is never confused with authored dialogue.
+    EmbeddedValue {
+        /// The variable read.
+        name: String,
+        /// Its value at the moment of the read.
+        value: VarValue,
+    },
 }
 
 /// One option of a [`KagEvent::Choice`] menu.
@@ -127,8 +179,16 @@ pub enum KagDiagnosticKind {
     UnsupportedTjsConditional,
     /// A swallowed `[iscript]…[endscript]` TJS block.
     UnsupportedTjsBlock,
-    /// A macro definition (`[macro]…[endmacro]`) or macro invocation.
+    /// A macro construct OUTSIDE the supported expansion subset: an
+    /// invocation whose `%param`s could not be resolved, a nameless/malformed
+    /// `[macro]` definition, an invocation nested too deep, or a runtime
+    /// macro op (`[erasemacro]`). A supported definition + invocation expands
+    /// silently (in [`crate::parse`]) and produces no diagnostic.
     UnsupportedMacro,
+    /// A read/copy of an `f.`/`sf.` storage variable that has not been bound
+    /// by a prior supported `[eval]` assignment. The subset does NOT invent a
+    /// value (no fake `0`/`""`) — it records this and advances.
+    UnresolvedVariable,
     /// A jump/link/call to a different `storage=` (another `.ks` file). The
     /// skeleton replays a single already-extracted script only.
     UnsupportedCrossStorageJump,
@@ -148,6 +208,7 @@ impl KagDiagnosticKind {
             Self::UnsupportedTjsConditional => "utsushi.kirikiri.kag.unsupported_tjs_conditional",
             Self::UnsupportedTjsBlock => "utsushi.kirikiri.kag.unsupported_tjs_block",
             Self::UnsupportedMacro => "utsushi.kirikiri.kag.unsupported_macro",
+            Self::UnresolvedVariable => "utsushi.kirikiri.kag.unresolved_variable",
             Self::UnsupportedCrossStorageJump => {
                 "utsushi.kirikiri.kag.unsupported_cross_storage_jump"
             }
@@ -187,6 +248,10 @@ pub struct KagTrace {
     pub events: Vec<KagEvent>,
     /// Typed semantic diagnostics, in the order they were met.
     pub diagnostics: Vec<KagDiagnostic>,
+    /// Final storage-variable snapshot (name → value) after the walk. A
+    /// `BTreeMap` so the serialised order is deterministic. Empty for a script
+    /// with no supported storage assignments.
+    pub variables: BTreeMap<String, VarValue>,
     /// Terminal outcome.
     pub outcome: KagOutcome,
 }
@@ -219,6 +284,13 @@ impl KagTrace {
     #[must_use]
     pub fn has_diagnostic(&self, code: &str) -> bool {
         self.diagnostics.iter().any(|d| d.code == code)
+    }
+
+    /// The final value of storage variable `name`, if it was bound by a
+    /// supported assignment during the walk.
+    #[must_use]
+    pub fn variable(&self, name: &str) -> Option<&VarValue> {
+        self.variables.get(name)
     }
 
     /// Byte-deterministic JSON: sorted keys at every level, no floats. Two
@@ -290,6 +362,7 @@ pub fn replay_kag_with_opts(script: &KagScript, opts: &KagReplayOpts) -> KagTrac
         speaker: None,
         current_label: None,
         choice_cursor: 0,
+        variables: BTreeMap::new(),
     };
     let outcome = engine.run(opts);
     KagTrace {
@@ -298,6 +371,7 @@ pub fn replay_kag_with_opts(script: &KagScript, opts: &KagReplayOpts) -> KagTrac
         encoding: script.encoding.as_str().to_string(),
         events: engine.events,
         diagnostics: engine.diagnostics,
+        variables: engine.variables,
         outcome,
     }
 }
@@ -311,6 +385,9 @@ struct Engine<'a> {
     /// How many choice menus have been resolved (indexes into
     /// `opts.selections`).
     choice_cursor: usize,
+    /// Live storage-variable state (`f.`/`sf.` name → value), evolving as
+    /// supported `[eval]` assignments execute.
+    variables: BTreeMap<String, VarValue>,
 }
 
 /// What a command handler decided about the program counter.
@@ -356,6 +433,10 @@ impl Engine<'_> {
                     self.push_block_diagnostic(*kind);
                     Flow::Next
                 }
+                Instr::UnexpandedMacro(name) => {
+                    self.push(KagDiagnosticKind::UnsupportedMacro, name);
+                    Flow::Next
+                }
                 Instr::Command(command) => self.handle_command(command, pc, opts),
             };
             match flow {
@@ -377,14 +458,15 @@ impl Engine<'_> {
                 self.push(KagDiagnosticKind::UnsupportedTjsConditional, name);
                 Flow::Next
             }
+            // `[macro]`/`[endmacro]` are consumed in the parser (supported
+            // definitions expand silently); a stray one, or `[erasemacro]`
+            // (runtime macro deletion, out of subset), is a diagnostic.
             "macro" | "endmacro" | "erasemacro" => {
                 self.push(KagDiagnosticKind::UnsupportedMacro, name);
                 Flow::Next
             }
-            "eval" | "emb" => {
-                self.push(KagDiagnosticKind::UnsupportedTjsExpression, name);
-                Flow::Next
-            }
+            "eval" => self.handle_eval(command),
+            "emb" => self.handle_emb(command),
             "jump" => self.handle_jump(command),
             "call" => {
                 // `[call storage=…]` enters another script — out of scope for
@@ -519,9 +601,153 @@ impl Engine<'_> {
     fn push_block_diagnostic(&mut self, kind: BlockKind) {
         let diag = match kind {
             BlockKind::IScript => KagDiagnosticKind::UnsupportedTjsBlock,
-            BlockKind::Macro => KagDiagnosticKind::UnsupportedMacro,
         };
         self.push(diag, kind.as_str());
+    }
+
+    /// Handle `[eval exp="…"]`. A supported simple assignment updates variable
+    /// state and records a [`KagEvent::VariableSet`]; a read of an unbound
+    /// variable is an `unresolved_variable` diagnostic; anything else is an
+    /// `unsupported_tjs_expression` (never a faked value).
+    fn handle_eval(&mut self, command: &Command) -> Flow {
+        let Some(exp) = command.attr("exp") else {
+            self.push(KagDiagnosticKind::UnsupportedTjsExpression, "eval");
+            return Flow::Next;
+        };
+        match self.eval_assignment(exp) {
+            EvalOutcome::Assigned { name, value } => {
+                self.variables.insert(name.clone(), value.clone());
+                self.events.push(KagEvent::VariableSet { name, value });
+            }
+            EvalOutcome::UnresolvedVar(var) => {
+                self.push(KagDiagnosticKind::UnresolvedVariable, &var);
+            }
+            EvalOutcome::Unsupported => {
+                self.push(KagDiagnosticKind::UnsupportedTjsExpression, "eval");
+            }
+        }
+        Flow::Next
+    }
+
+    /// Handle `[emb exp="f.x"]`. A read of a single already-bound variable
+    /// records a [`KagEvent::EmbeddedValue`]; an unbound bare variable is an
+    /// `unresolved_variable` diagnostic; any richer expression is an
+    /// `unsupported_tjs_expression`.
+    fn handle_emb(&mut self, command: &Command) -> Flow {
+        let Some(exp) = command.attr("exp") else {
+            self.push(KagDiagnosticKind::UnsupportedTjsExpression, "emb");
+            return Flow::Next;
+        };
+        match parse_var_name(exp.trim()) {
+            Some(name) => match self.variables.get(name) {
+                Some(value) => self.events.push(KagEvent::EmbeddedValue {
+                    name: name.to_string(),
+                    value: value.clone(),
+                }),
+                None => self.push(KagDiagnosticKind::UnresolvedVariable, name),
+            },
+            None => self.push(KagDiagnosticKind::UnsupportedTjsExpression, "emb"),
+        }
+        Flow::Next
+    }
+
+    /// Parse a supported storage assignment `exp` (`f.x = RHS` / `sf.x = RHS`).
+    /// Returns [`EvalOutcome::Unsupported`] for anything outside the subset —
+    /// the target must be an `f.`/`sf.` variable and the RHS one of: an
+    /// integer literal, a quoted string, another bound variable (copy), or a
+    /// single spaced `A + B` / `A - B` over integer operands.
+    fn eval_assignment(&self, exp: &str) -> EvalOutcome {
+        let exp = exp.trim();
+        // Reject comparisons/compound-assignments up front so a `==` is never
+        // mistaken for the assignment `=`.
+        if exp.contains("==")
+            || exp.contains("!=")
+            || exp.contains(">=")
+            || exp.contains("<=")
+            || exp.contains("+=")
+            || exp.contains("-=")
+        {
+            return EvalOutcome::Unsupported;
+        }
+        let Some((lhs, rhs)) = exp.split_once('=') else {
+            return EvalOutcome::Unsupported;
+        };
+        let Some(target) = parse_var_name(lhs.trim()) else {
+            return EvalOutcome::Unsupported;
+        };
+        match self.eval_rhs(rhs.trim()) {
+            RhsOutcome::Value(value) => EvalOutcome::Assigned {
+                name: target.to_string(),
+                value,
+            },
+            RhsOutcome::UnresolvedVar(var) => EvalOutcome::UnresolvedVar(var),
+            RhsOutcome::Unsupported => EvalOutcome::Unsupported,
+        }
+    }
+
+    /// Evaluate a supported right-hand side.
+    fn eval_rhs(&self, rhs: &str) -> RhsOutcome {
+        // A single operand: int literal, string literal, or a variable copy.
+        match self.resolve_operand(rhs) {
+            OperandOutcome::Value(v) => return RhsOutcome::Value(v),
+            OperandOutcome::UnresolvedVar(var) => return RhsOutcome::UnresolvedVar(var),
+            OperandOutcome::Unsupported => {}
+        }
+        // A single spaced `A + B` / `A - B` over integer operands.
+        if let Some((a, op, b)) = split_binary(rhs) {
+            let ai = match self.resolve_int(a) {
+                IntOutcome::Value(v) => v,
+                IntOutcome::UnresolvedVar(var) => return RhsOutcome::UnresolvedVar(var),
+                IntOutcome::Unsupported => return RhsOutcome::Unsupported,
+            };
+            let bi = match self.resolve_int(b) {
+                IntOutcome::Value(v) => v,
+                IntOutcome::UnresolvedVar(var) => return RhsOutcome::UnresolvedVar(var),
+                IntOutcome::Unsupported => return RhsOutcome::Unsupported,
+            };
+            let result = match op {
+                '+' => ai.checked_add(bi),
+                '-' => ai.checked_sub(bi),
+                _ => None,
+            };
+            return match result {
+                Some(v) => RhsOutcome::Value(VarValue::Int(v)),
+                None => RhsOutcome::Unsupported, // overflow — refuse to fake
+            };
+        }
+        RhsOutcome::Unsupported
+    }
+
+    /// Resolve a single operand to a [`VarValue`] (int literal, string
+    /// literal, or a bound-variable copy).
+    fn resolve_operand(&self, s: &str) -> OperandOutcome {
+        let s = s.trim();
+        if let Some(text) = string_literal(s) {
+            return OperandOutcome::Value(VarValue::Str(text));
+        }
+        if let Ok(n) = s.parse::<i64>() {
+            return OperandOutcome::Value(VarValue::Int(n));
+        }
+        if let Some(name) = parse_var_name(s) {
+            return match self.variables.get(name) {
+                Some(v) => OperandOutcome::Value(v.clone()),
+                None => OperandOutcome::UnresolvedVar(name.to_string()),
+            };
+        }
+        OperandOutcome::Unsupported
+    }
+
+    /// Resolve a single operand that MUST be an integer (literal or an
+    /// int-valued bound variable) for arithmetic.
+    fn resolve_int(&self, s: &str) -> IntOutcome {
+        match self.resolve_operand(s) {
+            OperandOutcome::Value(VarValue::Int(n)) => IntOutcome::Value(n),
+            OperandOutcome::UnresolvedVar(var) => IntOutcome::UnresolvedVar(var),
+            // A string operand or an unrecognised shape is not integer arithmetic.
+            OperandOutcome::Value(VarValue::Str(_)) | OperandOutcome::Unsupported => {
+                IntOutcome::Unsupported
+            }
+        }
     }
 
     fn push(&mut self, kind: KagDiagnosticKind, detail: &str) {
@@ -568,4 +794,87 @@ fn collect_link_text(instrs: &[Instr], start: usize) -> (String, usize) {
 
 fn strip_label_star(target: &str) -> &str {
     target.strip_prefix('*').unwrap_or(target)
+}
+
+/// Outcome of evaluating an `[eval]` expression against the supported subset.
+enum EvalOutcome {
+    /// A supported assignment: `name` := `value`.
+    Assigned { name: String, value: VarValue },
+    /// A recognised assignment shape that reads an UNBOUND variable.
+    UnresolvedVar(String),
+    /// Outside the supported subset entirely.
+    Unsupported,
+}
+
+/// Outcome of evaluating a right-hand side.
+enum RhsOutcome {
+    Value(VarValue),
+    UnresolvedVar(String),
+    Unsupported,
+}
+
+/// Outcome of resolving a single operand.
+enum OperandOutcome {
+    Value(VarValue),
+    UnresolvedVar(String),
+    Unsupported,
+}
+
+/// Outcome of resolving an operand constrained to an integer.
+enum IntOutcome {
+    Value(i64),
+    UnresolvedVar(String),
+    Unsupported,
+}
+
+/// If `s` is exactly an `f.IDENT` / `sf.IDENT` variable name, return it
+/// (whole, including the prefix). `IDENT` is `[A-Za-z0-9_]+` with no further
+/// `.`, so `f.a.b`, `game.x`, and `f.` are rejected.
+fn parse_var_name(s: &str) -> Option<&str> {
+    let s = s.trim();
+    for prefix in ["f.", "sf."] {
+        if let Some(rest) = s.strip_prefix(prefix)
+            && !rest.is_empty()
+            && rest.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+        {
+            return Some(s);
+        }
+    }
+    None
+}
+
+/// If `s` is a `"…"` / `'…'` string literal (no embedded quote of the same
+/// kind, no escapes — the bounded subset), return its inner text.
+fn string_literal(s: &str) -> Option<String> {
+    let s = s.trim();
+    let bytes = s.as_bytes();
+    if bytes.len() >= 2
+        && (bytes[0] == b'"' || bytes[0] == b'\'')
+        && bytes[bytes.len() - 1] == bytes[0]
+    {
+        let inner = &s[1..s.len() - 1];
+        // A closing quote in the middle would be a concatenation/second token
+        // — outside the single-literal subset.
+        if !inner.contains(bytes[0] as char) {
+            return Some(inner.to_string());
+        }
+    }
+    None
+}
+
+/// Split a right-hand side into a single spaced binary `A OP B` where OP is
+/// `+` or `-` (surrounding spaces REQUIRED, so a negative literal `-1` is one
+/// operand, not an operator). Rejects a chained expression (a second top-level
+/// operator) to stay inside the bounded subset.
+fn split_binary(rhs: &str) -> Option<(&str, char, &str)> {
+    for (token, op) in [(" + ", '+'), (" - ", '-')] {
+        if let Some((a, b)) = rhs.split_once(token) {
+            // A chain (`a + b + c`) is out of subset.
+            if b.contains(" + ") || b.contains(" - ") {
+                return None;
+            }
+            return Some((a.trim(), op, b.trim()));
+        }
+    }
+    None
 }

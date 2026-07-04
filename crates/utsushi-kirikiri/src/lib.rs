@@ -27,12 +27,17 @@
 //!   file that is already plaintext on disk (an unencrypted / `plain` XP3
 //!   whose members were extracted, an author's tree, or a fan-distributed
 //!   script).
-//! - **Structural flow, NOT TJS.** The skeleton replays text/name/choice/
-//!   jump control flow. It does NOT evaluate TJS: `[eval]`, `[emb]`, `[if]`
-//!   conditionals, `[iscript]…[endscript]` blocks, and macros all surface as
-//!   typed [`KagDiagnostic`]s (never faked, never a panic, never a silent
-//!   skip). A cross-`storage=` jump/call (into another script) is likewise a
-//!   typed diagnostic, because the skeleton replays one script.
+//! - **Structural flow + a bounded macro/storage subset, NOT full TJS.** The
+//!   skeleton replays text/name/choice/jump control flow, expands a defined
+//!   subset of macros (`[macro]…[endmacro]` definition + `%param` invocation),
+//!   and evaluates a defined subset of storage variables (simple `f.`/`sf.`
+//!   `[eval]` assignments and `[emb]` reads — see [`capability_note`]). It
+//!   does NOT evaluate general TJS: richer `[eval]`/`[emb]` expressions,
+//!   `[if]` conditionals, `[iscript]…[endscript]` blocks, out-of-subset or
+//!   unresolved macros, and reads of unbound variables all surface as typed
+//!   [`KagDiagnostic`]s (never faked, never a panic, never a silent skip). A
+//!   cross-`storage=` jump/call (into another script) is likewise a typed
+//!   diagnostic, because the skeleton replays one script.
 //!
 //! Presenting this as full-KiriKiri coverage would be dishonest; the trace
 //! makes every unsupported construct visible so a reduced render can never
@@ -65,10 +70,13 @@ mod parse;
 mod replay;
 
 pub use encoding::KagEncoding;
-pub use parse::{Attr, BlockKind, Command, Instr, KagScript, parse_kag, parse_kag_with_encoding};
+pub use parse::{
+    Attr, BlockKind, Command, Instr, KagScript, MAX_MACRO_DEPTH, parse_kag, parse_kag_with_encoding,
+};
 pub use replay::{
     ChoiceOption, DEFAULT_STEP_BUDGET, KAG_TRACE_SCHEMA_VERSION, KagDiagnostic, KagDiagnosticKind,
-    KagEvent, KagOutcome, KagReplayOpts, KagTrace, KagTraceError, replay_kag, replay_kag_with_opts,
+    KagEvent, KagOutcome, KagReplayOpts, KagTrace, KagTraceError, VarValue, replay_kag,
+    replay_kag_with_opts,
 };
 
 /// One-line honest-scope statement, embedded so the boundary is queryable
@@ -77,11 +85,20 @@ pub use replay::{
 pub fn capability_note() -> &'static str {
     "utsushi-kirikiri REPLAYS a plaintext, already-extracted KiriKiri/KAG `.ks` \
      script into a deterministic trace of message text, speaker/name state, \
-     choices, and jumps. This is a plaintext REPLAY SKELETON, NOT a full \
-     KiriKiri runtime: it does not evaluate TJS (`[eval]`/`[iscript]`/macros \
-     surface as typed semantic diagnostics) and it does not open or decrypt \
-     XP3 containers (a separate capability). Commercial encrypted-XP3 titles \
-     are out of scope."
+     choices, and jumps, plus a BOUNDED subset of macros and storage \
+     variables. Supported subset: a `[macro name=x]…[endmacro]` definition + \
+     later `[x arg=…]` invocation EXPANDS with `%param` (and `%param|default`) \
+     textual substitution; `[eval exp=\"f.x = …\"]` performs a SIMPLE `f.`/`sf.` \
+     assignment (int literal, quoted string, a bound-variable copy, or a single \
+     spaced `+`/`-` over integers) and `[emb exp=\"f.x\"]` reads one bound \
+     variable, with variable state visible as VariableSet/EmbeddedValue events \
+     and the final `variables` snapshot. This is a plaintext REPLAY SKELETON, \
+     NOT a full KiriKiri runtime: every construct OUTSIDE that subset is a \
+     typed semantic diagnostic, never a faked value — richer TJS in \
+     `[eval]`/`[emb]`, `[if]` conditionals, `[iscript]` blocks, out-of-subset \
+     or unresolved macros, and reads of unbound variables all surface as \
+     [`KagDiagnostic`]s. It does not open or decrypt XP3 containers (a separate \
+     capability); commercial encrypted-XP3 titles are out of scope."
 }
 
 #[cfg(test)]
