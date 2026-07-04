@@ -44,6 +44,16 @@ import {
   type SpeakerLabelInvocationResult,
 } from "../agents/speaker-label/shapes.js";
 import { TranslationAgent } from "../agents/translation/agent.js";
+import { generateSceneSummary } from "../agents/scene-summary/agent.js";
+import { generateCharacterRelationships } from "../agents/character-relationship/agent.js";
+import { generateTerminologyCandidates } from "../agents/terminology-candidate/agent.js";
+import { generateRouteChoiceMap } from "../agents/route-choice-map/agent.js";
+import {
+  buildSliceStructuredContext,
+  buildStructureContextArtifacts,
+  type NarrativeStructure,
+  type StructuredContextInjection,
+} from "../agents/structure-informed-context/index.js";
 import {
   TRANSLATION_PROMPT_TEMPLATE_VERSION_V1,
   type TranslationBridgeUnit,
@@ -73,7 +83,7 @@ import {
 import type { ProtectedSpanRef, TranslationDraft } from "@itotori/localization-bridge-schema";
 import { FindingTriageRouter } from "../triage/router.js";
 import type { FindingTriageResult } from "../triage/router.js";
-import type { ModelInvocationRequest, ModelProvider, ProviderFamily } from "../providers/types.js";
+import type { ModelProvider, ProviderFamily, ProviderRunRecord } from "../providers/types.js";
 import { assertBilledCost } from "../providers/cost.js";
 import { assertReportedTokenUsage } from "../providers/token-accounting.js";
 
@@ -252,6 +262,25 @@ export type AgenticLoopUnitInput = {
     maskedDisplayName?: string;
   }>;
   /**
+   * itotori-agentic-loop-real-context-stage — the decoded narrative structure
+   * (`utsushi.narrative-structure.v1`, emitted by the Kaifuu/Utsushi decode)
+   * for the work this unit belongs to. When present the context stage builds
+   * the DETERMINISTIC structure-informed context (per-scene summaries +
+   * route/branch map + character arcs — a pure reduction of the decode, NOT an
+   * LLM guess) and injects the per-scene slice into the translation prompt. This
+   * is the project's core advantage: the translator receives the KNOWN scene /
+   * route / speaker structure rather than re-inferring it from prose. When
+   * absent, the loop runs the four semantic agents live for enrichment but
+   * injects no deterministic structure block (legacy smoke path).
+   */
+  narrativeStructure?: NarrativeStructure;
+  /**
+   * The numeric scene id (within `narrativeStructure`) this unit belongs to.
+   * Selects the per-scene structured-context slice injected into translation.
+   * REQUIRED when `narrativeStructure` is set.
+   */
+  sceneId?: number;
+  /**
    * Actor that owns the run. Threaded through every agent invocation
    * for downstream provenance.
    */
@@ -334,32 +363,25 @@ export async function runAgenticLoopForUnit(
   const stages: StageAccumulator[] = [];
 
   // -------------------------- context stage --------------------------
+  // The REAL context stage (itotori-agentic-loop-real-context-stage):
+  //   (1) builds the DETERMINISTIC structure-informed context slice from the
+  //       decoded narrative structure (the always-available base), and
+  //       injects it into the translation prompt below; and
+  //   (2) runs the four semantic context agents LIVE (scene-summary,
+  //       character-relationship, terminology-candidate, route-choice-map) to
+  //       ENRICH the citable context. Each fires one real provider call whose
+  //       telemetry is captured; their produced artifact refs join the slice's.
+  // This SUPERSEDES the old `invokeContextLikeProbe`, which fired a provider
+  // call and DISCARDED its output so no context ever reached the translator.
   const contextStage = startStage("context");
-  // Context agents emit one provider call each — for the smoke /
-  // synthetic case we record the call telemetry without persisting
-  // their domain artifacts. Production callers can wire the full
-  // scene-summary / character-relationship / terminology-candidate
-  // / route-choice-map agents into this slot via a richer factory.
-  // The orchestrator commits ONLY to: every context agent fires once
-  // with its pinned pair, and the telemetry is captured.
-  for (const entry of [
-    { agentLabel: "scene-summary", pair: pairPolicy.context.sceneSummary },
-    { agentLabel: "character-relationship", pair: pairPolicy.context.characterRelationship },
-    { agentLabel: "terminology-candidate", pair: pairPolicy.context.terminologyCandidate },
-    { agentLabel: "route-choice-map", pair: pairPolicy.context.routeChoiceMap },
-  ]) {
-    const provider = providerFactory({
-      stage: "context",
-      agentLabel: entry.agentLabel,
-      pair: entry.pair,
-    });
-    const invocation = await invokeContextLikeProbe(
-      provider,
-      entry.pair,
-      entry.agentLabel,
-      input.unit,
-      now,
-    );
+  const contextResult = await invokeSemanticContextStage({
+    input,
+    policy,
+    pairPolicy,
+    providerFactory,
+    now,
+  });
+  for (const invocation of contextResult.telemetry) {
     pushInvocation(contextStage, invocation);
   }
   contextStage.outcome = "succeeded";
@@ -395,6 +417,8 @@ export async function runAgenticLoopForUnit(
     input,
     policy,
     agentLabel: "translation-primary",
+    structuredContext: contextResult.structuredContext,
+    contextArtifactRefs: contextResult.contextArtifactRefs,
   });
   pushInvocation(
     translationStage,
@@ -564,6 +588,10 @@ export async function runAgenticLoopForUnit(
         input,
         policy,
         agentLabel: `repair-primary[${attempt}]`,
+        // Repair re-translates carrying the SAME structure-informed context so
+        // the retry is still branch/scene/speaker aware, not context-stripped.
+        structuredContext: contextResult.structuredContext,
+        contextArtifactRefs: contextResult.contextArtifactRefs,
       });
       pushInvocation(
         repairStage,
@@ -704,65 +732,308 @@ function finalizeBundle(args: {
 }
 
 // ---------------------------------------------------------------------------
-// Context stage — synthetic provider probe.
+// Context stage — REAL structure-informed context + live semantic enrichment.
 //
-// The four context agents (scene-summary, character-relationship,
-// terminology-candidate, route-choice-map) each have their own
-// elaborate input shapes. For ITOTORI-222 we commit to: every context
-// agent fires once with its pinned pair, and the resulting
-// ProviderRunRecord is captured in the bundle's invocation array.
-// Persisting the full SceneSummary / CharacterBio shapes is deferred
-// to caller-driven extensions of this orchestrator (e.g. when the
-// Sweetie HD wiring lands in UTSUSHI-227+228).
+// itotori-agentic-loop-real-context-stage. This SUPERSEDES the old
+// `invokeContextLikeProbe` (which fired a provider call and discarded the
+// output) AND the `genaudit1-01-agentic-loop-context-probe-coerces-mis` /
+// `itotori-semantic-agent-clis-no-fake-context-on-real-path` nodes: the probe
+// is gone and the four semantic agents now run live.
+//
+//   (a) DETERMINISTIC base — `buildStructureContextArtifacts` reduces the
+//       decoded `NarrativeStructure` (scene-dispatch graph + choice/branch
+//       subsystem + `#NAMAE` speakers + per-scene message stream) into the
+//       three context artifacts, and `buildSliceStructuredContext` selects this
+//       unit's scene slice. That slice is injected into the translation prompt
+//       (see `invokeTranslationStage`) so the draft carries the KNOWN structure
+//       rather than re-inferring it from prose. Always available when the
+//       structure is supplied; never an LLM guess.
+//   (b) LIVE enrichment — the four semantic agents (scene-summary,
+//       character-relationship, terminology-candidate, route-choice-map) each
+//       fire ONE real provider call (routed under ZDR via the DEV_PAIR plain-
+//       json path). Their real telemetry is captured; their produced artifact
+//       refs join the citable set. `character-relationship` runs only when the
+//       unit / structure supplies a character anchor (a narration-only unit has
+//       no relationships to extract — a domain fact, not a silent fallback).
 // ---------------------------------------------------------------------------
 
-async function invokeContextLikeProbe(
+/**
+ * The minimal VALID content a fake/synthetic provider must return for each
+ * semantic context agent so the (now-real) context stage parses it without a
+ * live call. Used by the smoke command + the loop's own tests. scene-summary
+ * accepts any free text; the other three parse a structured (possibly empty)
+ * pack. Empty packs are valid — the fake asserts the stage RUNS, not that it
+ * invents context.
+ */
+export function fakeSemanticContextContent(agentLabel: string): string {
+  switch (agentLabel) {
+    case "scene-summary":
+      return "Synthetic scene summary (smoke/unit context stage — no live call).";
+    case "character-relationship":
+      return JSON.stringify({ bios: [], relationships: [] });
+    case "terminology-candidate":
+      return JSON.stringify({ candidates: [] });
+    case "route-choice-map":
+      return JSON.stringify({ routes: [], choices: [] });
+    default:
+      return `context:${agentLabel}`;
+  }
+}
+
+type SemanticContextStageResult = {
+  telemetry: RawProviderTelemetry[];
+  structuredContext?: StructuredContextInjection | undefined;
+  contextArtifactRefs: string[];
+};
+
+async function invokeSemanticContextStage(args: {
+  input: AgenticLoopUnitInput;
+  policy: AgenticLoopPolicy;
+  pairPolicy: PairPolicy;
+  providerFactory: AgenticLoopProviderFactory;
+  now: () => Date;
+}): Promise<SemanticContextStageResult> {
+  const { input, policy, pairPolicy, providerFactory, now } = args;
+  const telemetry: RawProviderTelemetry[] = [];
+  const artifactRefs = new Set<string>();
+
+  // (a) DETERMINISTIC base — the structure-informed context slice.
+  let structuredContext: StructuredContextInjection | undefined;
+  if (input.narrativeStructure !== undefined) {
+    if (input.sceneId === undefined) {
+      throw new AgenticLoopInvariantError(
+        "narrativeStructure supplied without sceneId: cannot select the unit's scene slice",
+      );
+    }
+    const artifacts = buildStructureContextArtifacts(input.narrativeStructure);
+    structuredContext = buildSliceStructuredContext(artifacts, input.sceneId);
+    for (const ref of structuredContext.artifactRefs) {
+      artifactRefs.add(ref);
+    }
+  }
+
+  // (b) LIVE enrichment — the four semantic agents.
+  const units = [buildSemanticBridgeUnit(input.unit)];
+  const roster = deriveCharacterRoster(input);
+
+  // scene-summary.
+  {
+    const pair = pairPolicy.context.sceneSummary;
+    const provider = providerFactory({ stage: "context", agentLabel: "scene-summary", pair });
+    const output = await generateSceneSummary(
+      {
+        projectId: policy.projectId,
+        localeBranchId: policy.localeBranchId,
+        sourceRevisionId: input.unit.sourceRevision.revisionId,
+        sourceLocale: policy.sourceLocale,
+        sceneId: input.sceneId !== undefined ? String(input.sceneId) : input.unit.sourceUnitKey,
+        units,
+        glossaryExcerpt: [],
+        modelProfile: semanticModelProfile(provider, pair),
+        now,
+      },
+      { provider },
+    );
+    telemetry.push(providerTelemetryFromSemanticRun(output.providerRun, pair, "scene-summary"));
+    artifactRefs.add(`scene-summary:${output.summary.id}`);
+  }
+
+  // character-relationship — only when a character anchor exists.
+  if (roster.length > 0 || buildSemanticBridgeUnit(input.unit).speaker !== undefined) {
+    const pair = pairPolicy.context.characterRelationship;
+    const provider = providerFactory({
+      stage: "context",
+      agentLabel: "character-relationship",
+      pair,
+    });
+    const output = await generateCharacterRelationships(
+      {
+        projectId: policy.projectId,
+        localeBranchId: policy.localeBranchId,
+        sourceRevisionId: input.unit.sourceRevision.revisionId,
+        sourceLocale: policy.sourceLocale,
+        units,
+        curatedCharacters: roster,
+        glossaryExcerpt: [],
+        modelProfile: semanticModelProfile(provider, pair),
+        now,
+      },
+      { provider },
+    );
+    telemetry.push(
+      providerTelemetryFromSemanticRun(output.providerRun, pair, "character-relationship"),
+    );
+    for (const bio of output.bios) {
+      artifactRefs.add(`character-bio:${bio.characterId}`);
+    }
+    for (const rel of output.relationships) {
+      artifactRefs.add(`character-rel:${rel.fromCharacterId}->${rel.toCharacterId}`);
+    }
+  }
+
+  // terminology-candidate.
+  {
+    const pair = pairPolicy.context.terminologyCandidate;
+    const provider = providerFactory({
+      stage: "context",
+      agentLabel: "terminology-candidate",
+      pair,
+    });
+    const output = await generateTerminologyCandidates(
+      {
+        projectId: policy.projectId,
+        localeBranchId: policy.localeBranchId,
+        sourceRevisionId: input.unit.sourceRevision.revisionId,
+        sourceLocale: policy.sourceLocale,
+        units,
+        existingGlossary: [],
+        modelProfile: semanticModelProfile(provider, pair),
+        now,
+      },
+      { provider },
+    );
+    telemetry.push(
+      providerTelemetryFromSemanticRun(output.providerRun, pair, "terminology-candidate"),
+    );
+    for (const candidate of output.candidates) {
+      artifactRefs.add(`terminology-candidate:${candidate.surfaceForm}`);
+    }
+  }
+
+  // route-choice-map.
+  {
+    const pair = pairPolicy.context.routeChoiceMap;
+    const provider = providerFactory({ stage: "context", agentLabel: "route-choice-map", pair });
+    const output = await generateRouteChoiceMap(
+      {
+        projectId: policy.projectId,
+        localeBranchId: policy.localeBranchId,
+        sourceRevisionId: input.unit.sourceRevision.revisionId,
+        sourceLocale: policy.sourceLocale,
+        units,
+        curatedRoutes: [],
+        modelProfile: semanticModelProfile(provider, pair),
+        now,
+      },
+      { provider },
+    );
+    telemetry.push(providerTelemetryFromSemanticRun(output.providerRun, pair, "route-choice-map"));
+    for (const route of output.routes) {
+      artifactRefs.add(`route:${route.routeKey}`);
+    }
+    for (const choice of output.choices) {
+      artifactRefs.add(`choice:${choice.choiceKey}`);
+    }
+  }
+
+  return {
+    telemetry,
+    structuredContext,
+    contextArtifactRefs: [...artifactRefs].sort(),
+  };
+}
+
+/** The common (modelId, providerId)-driven model profile for every semantic agent. */
+function semanticModelProfile(
   provider: ModelProvider,
   pair: PairChoice,
-  agentLabel: string,
-  unit: LocalizationUnitV02,
-  now: () => Date,
-): Promise<RawProviderTelemetry> {
-  const promptHashUsed = createHash("sha256")
-    .update(
-      `${agentLabel}|${unit.bridgeUnitId}|${unit.sourceText}|${pair.pair.modelId}|${pair.pair.providerId}`,
-    )
-    .digest("hex");
-  const request: ModelInvocationRequest = {
-    taskKind: "experiment",
+): {
+  providerFamily: ProviderFamily;
+  modelId: string;
+  providerId: string;
+  contextWindowTokens: number;
+} {
+  return {
+    providerFamily: providerFamilyOf(provider),
     modelId: pair.pair.modelId,
     providerId: pair.pair.providerId,
-    inputClassification: "private_corpus",
-    messages: [
-      { role: "system", content: `itotori agentic-loop context probe (${agentLabel})` },
-      { role: "user", content: unit.sourceText },
-    ],
-    prompt: {
-      presetId: `itotori-agentic-loop-${agentLabel}`,
-      templateVersion: "itotori-agentic-loop-context-v0",
-      promptHash: `sha256:${promptHashUsed}`,
-    },
+    contextWindowTokens: 128_000,
   };
-  const startedAt = now();
-  const invocation = await provider.invoke(request);
-  const endedAt = now();
-  // PROJECT LAW: token counts come ONLY from real provider output. A
-  // provider omitting a count is a real failure (mirror of the
-  // assertBilledCost guard immediately below), NOT a silent coercion to
-  // zero that would understate real usage in the persisted bundle.
+}
+
+/**
+ * Project the loop's `LocalizationUnitV02` into the minimal bridge-unit shape
+ * every semantic agent consumes. The `speaker` is derived from the unit's
+ * decoded speaker context (`#NAMAE`), never invented.
+ */
+function buildSemanticBridgeUnit(unit: LocalizationUnitV02): {
+  bridgeUnitId: string;
+  sourceUnitKey: string;
+  sourceText: string;
+  sourceHash: string;
+  speaker?: string;
+} {
+  const speaker = unitSpeakerName(unit);
+  return {
+    bridgeUnitId: unit.bridgeUnitId,
+    sourceUnitKey: unit.sourceUnitKey,
+    sourceText: unit.sourceText,
+    sourceHash: unit.sourceHash,
+    ...(speaker !== undefined ? { speaker } : {}),
+  };
+}
+
+/** The decoded speaker display name for a unit, or undefined for narration. */
+function unitSpeakerName(unit: LocalizationUnitV02): string | undefined {
+  const speaker = unit.speaker;
+  if (speaker === undefined) {
+    return undefined;
+  }
+  if (speaker.knowledgeState === "known" || speaker.knowledgeState === "reader_unknown") {
+    return speaker.displayName;
+  }
+  return undefined;
+}
+
+/**
+ * The closed character roster the character-relationship agent may emit records
+ * for. Scoped to characters ACTUALLY present in the units handed to the agent —
+ * the caller-supplied known characters plus this unit's own decoded speaker.
+ *
+ * It deliberately does NOT pull in every speaker from the whole decoded
+ * structure: those characters speak in OTHER units not in this slice, so
+ * offering them as roster entries only tempts the model to emit a bio it cannot
+ * cite (the agent strictly rejects a bio/edge that cites a unit outside
+ * `input.units`). The loop never invents a character; it only names the ones
+ * this slice references.
+ */
+function deriveCharacterRoster(
+  input: AgenticLoopUnitInput,
+): Array<{ characterId: string; displayName: string }> {
+  const byId = new Map<string, string>();
+  for (const known of input.knownCharacters ?? []) {
+    if (known.characterId.trim().length > 0) {
+      byId.set(known.characterId, known.displayName);
+    }
+  }
+  const speaker = unitSpeakerName(input.unit);
+  if (speaker !== undefined && !byId.has(speaker)) {
+    byId.set(speaker, speaker);
+  }
+  return [...byId].map(([characterId, displayName]) => ({ characterId, displayName }));
+}
+
+function providerTelemetryFromSemanticRun(
+  providerRun: ProviderRunRecord,
+  pair: PairChoice,
+  agentLabel: string,
+): RawProviderTelemetry {
+  // PROJECT LAW: token counts + cost come ONLY from real provider output; an
+  // omitted count is a real failure (mirror of assertBilledCost), never a
+  // silent coercion to zero that would understate the persisted usage.
   const { tokensIn, tokensOut } = assertReportedTokenUsage(
-    invocation.providerRun.tokenUsage,
-    invocation.providerRun.runId,
+    providerRun.tokenUsage,
+    providerRun.runId,
   );
   return {
-    invocationId: `context:${agentLabel}:${invocation.providerRun.runId}`,
+    invocationId: `context:${agentLabel}:${providerRun.runId}`,
     agentLabel,
     pair,
     tokensIn,
     tokensOut,
-    costMicros: assertBilledCost(invocation.providerRun.cost),
-    latencyMs: Math.max(invocation.providerRun.latencyMs, endedAt.getTime() - startedAt.getTime()),
-    providerProofId: invocation.providerRun.runId,
+    costMicros: assertBilledCost(providerRun.cost),
+    latencyMs: providerRun.latencyMs,
+    providerProofId: providerRun.runId,
     seed: pair.seed,
   };
 }
@@ -830,6 +1101,14 @@ async function invokeTranslationStage(args: {
   input: AgenticLoopUnitInput;
   policy: AgenticLoopPolicy;
   agentLabel: string;
+  /**
+   * Structure-informed context slice for this unit's scene (deterministic
+   * reduction of the decode). Rendered into the translation prompt so the
+   * draft carries the KNOWN scene summary / route position / speaker arcs.
+   */
+  structuredContext?: StructuredContextInjection | undefined;
+  /** Citable artifact refs (the slice's refs + the semantic agents' refs). */
+  contextArtifactRefs?: ReadonlyArray<string>;
 }): Promise<TranslationInvocationResult> {
   const agent = new TranslationAgent({ provider: args.provider });
 
@@ -881,7 +1160,13 @@ async function invokeTranslationStage(args: {
     protectedSpansBySource,
     glossary: args.input.glossary,
     styleGuide: [],
-    contextArtifactRefs: [],
+    // itotori-agentic-loop-real-context-stage — the translator now RECEIVES the
+    // structure-informed context (the discard-probe is gone). `structuredContext`
+    // renders the decoded scene/route/speaker block into the prompt;
+    // `contextArtifactRefs` are the citable refs (the slice's + the semantic
+    // agents' enrichment).
+    contextArtifactRefs: [...(args.contextArtifactRefs ?? [])],
+    ...(args.structuredContext !== undefined ? { structuredContext: args.structuredContext } : {}),
     modelProfile: {
       providerFamily: providerFamilyOf(args.provider),
       modelId: args.pair.pair.modelId,

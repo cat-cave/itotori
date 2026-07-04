@@ -42,7 +42,11 @@ import {
   type ProviderRunRecord,
 } from "../src/providers/types.js";
 import { FakeModelProvider } from "../src/providers/fake.js";
-import type { AgenticLoopProviderFactory, PairChoice } from "../src/orchestrator/agentic-loop.js";
+import {
+  fakeSemanticContextContent,
+  type AgenticLoopProviderFactory,
+  type PairChoice,
+} from "../src/orchestrator/agentic-loop.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(HERE, "../../..");
@@ -495,7 +499,7 @@ function workingTranslationFactory(
           });
         }
         if (request.taskKind === "experiment") {
-          return `test-working:context:${agentLabel}`;
+          return fakeSemanticContextContent(agentLabel);
         }
         if (request.taskKind === "draft_translation") {
           return JSON.stringify({

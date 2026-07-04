@@ -89,6 +89,7 @@ import {
   type PairPolicyV03,
   type StagePostureV03,
 } from "@itotori/localization-bridge-schema";
+import { parseNarrativeStructure } from "../agents/structure-informed-context/index.js";
 import { DEFAULT_COST_CAP_USD, OpenRouterModelProvider } from "../providers/openrouter.js";
 import { LocalProviderRunArtifactRecorder } from "../providers/artifacts.js";
 import { FakeModelProvider } from "../providers/fake.js";
@@ -99,6 +100,7 @@ import type {
   ProviderRunArtifactRecorder,
 } from "../providers/types.js";
 import {
+  fakeSemanticContextContent,
   runAgenticLoopForUnit,
   type AgenticLoopPolicy,
   type AgenticLoopProviderFactory,
@@ -125,6 +127,18 @@ export type LocalizeProjectStageArgs = {
    * runs against scene-1, unit 0 (the first dialogue unit) by default.
    */
   unitIndex?: number;
+  /**
+   * itotori-agentic-loop-real-context-stage — optional path to the decoded
+   * `utsushi.narrative-structure.v1` JSON (emitted by
+   * `utsushi-reallive/examples/structure_export.rs`, held OUTSIDE the repo as
+   * it carries copyrighted script text). When provided, the loop's context
+   * stage builds the DETERMINISTIC structure-informed context slice for the
+   * pair-policy `sceneId` and injects it into the translation prompt — the
+   * translator receives the KNOWN scene / route / speaker structure instead of
+   * re-inferring it. When absent the loop still runs the four semantic agents
+   * live but injects no deterministic structure block.
+   */
+  structureJsonPath?: string;
   /**
    * Engine profile controlling translated-bundle synthesis. `reallive`
    * (default) overwrites EVERY unit's `target` with the SJIS-bracket-
@@ -376,12 +390,24 @@ export async function runLocalizeProjectStageCommand(
     now: deterministicNow(),
   };
 
+  // itotori-agentic-loop-real-context-stage — when a decoded structure is
+  // supplied, thread it (+ the pair-policy sceneId) so the context stage builds
+  // and injects the DETERMINISTIC structure-informed context slice.
+  const narrativeStructure =
+    args.structureJsonPath !== undefined
+      ? parseNarrativeStructure(args.io.readJson(args.structureJsonPath))
+      : undefined;
+  if (narrativeStructure !== undefined) {
+    log(`localize-project-stage: structure-informed context enabled (scene ${sceneId})`);
+  }
+
   const input: AgenticLoopUnitInput = {
     unit,
     sceneUnits: [],
     glossary: [],
     protectedSpans: [],
     knownCharacters: [],
+    ...(narrativeStructure !== undefined ? { narrativeStructure, sceneId } : {}),
     actor: args.actor,
   };
 
@@ -602,7 +628,9 @@ function fakeTranslationFactory(
           });
         }
         if (request.taskKind === "experiment") {
-          return `localize-project-fake:context:${agentLabel}`;
+          // Context stage runs the four real semantic agents; the fake returns
+          // each agent's minimal-valid pack so the fake path parses.
+          return fakeSemanticContextContent(agentLabel);
         }
         if (request.taskKind === "draft_translation") {
           return JSON.stringify({

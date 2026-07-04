@@ -32,6 +32,7 @@ import {
 } from "@itotori/localization-bridge-schema";
 import {
   DEV_POLICY,
+  fakeSemanticContextContent,
   PairPolicyMissingEntryError,
   runAgenticLoopForUnit,
   type AgenticLoopPolicy,
@@ -71,6 +72,13 @@ function makeUnit(): LocalizationUnitV02 {
     },
     sourceAssetRef: { assetId: ASSET_ID, assetKey: "fixture-asset" },
     sourceLocation: { containerKey: "fixture-asset" },
+    // A decoded speaker anchors the character-relationship context agent (a
+    // narration-only unit has no relationships to extract).
+    speaker: {
+      knowledgeState: "known",
+      speakerId: "019ed079-0000-7000-8000-00000000sp01",
+      displayName: "Yui",
+    },
     context: {},
     spans: [],
     patchRef: {
@@ -205,7 +213,7 @@ function happyPathProviderFactory(): AgenticLoopProviderFactory {
         }
         if (request.taskKind === "experiment") {
           // Context probes — no schema requirements.
-          return `context-probe:${agentLabel}`;
+          return fakeSemanticContextContent(agentLabel);
         }
         if (request.taskKind === "draft_translation") {
           return makeTranslationContent({
@@ -240,7 +248,7 @@ function findingsProviderFactory(args: {
           return makeSpeakerLabelContent(makeUnit());
         }
         if (request.taskKind === "experiment") {
-          return `context-probe:${agentLabel}`;
+          return fakeSemanticContextContent(agentLabel);
         }
         if (request.taskKind === "draft_translation") {
           translationCallCount += 1;
@@ -388,7 +396,7 @@ describe("runAgenticLoopForUnit (ITOTORI-222)", () => {
             return makeSpeakerLabelContent({ ...makeUnit(), sourceText: "勇者{player}" });
           }
           if (request.taskKind === "experiment") {
-            return `context-probe:${agentLabel}`;
+            return fakeSemanticContextContent(agentLabel);
           }
           if (request.taskKind === "draft_translation") {
             return translationContent;

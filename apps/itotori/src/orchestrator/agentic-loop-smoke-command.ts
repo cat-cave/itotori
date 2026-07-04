@@ -33,6 +33,7 @@ import { DEFAULT_COST_CAP_USD } from "../providers/openrouter.js";
 import { FakeModelProvider } from "../providers/fake.js";
 import type { ModelInvocationRequest } from "../providers/types.js";
 import {
+  fakeSemanticContextContent,
   runAgenticLoopForUnit,
   type AgenticLoopPolicy,
   type AgenticLoopProviderFactory,
@@ -318,7 +319,10 @@ function smokeProviderFactory(
           return makeSmokeSpeakerLabel(unit);
         }
         if (request.taskKind === "experiment") {
-          return `agentic-loop-smoke:context:${agentLabel}`;
+          // The context stage runs the four real semantic agents; the fake
+          // returns each agent's minimal-valid (empty) pack so the smoke path
+          // parses without a live call.
+          return fakeSemanticContextContent(agentLabel);
         }
         if (request.taskKind === "draft_translation") {
           return makeSmokeTranslation(unit, draftText, policy);

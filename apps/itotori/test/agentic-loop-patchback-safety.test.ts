@@ -22,6 +22,7 @@ import {
 } from "@itotori/localization-bridge-schema";
 import {
   DEV_POLICY,
+  fakeSemanticContextContent,
   runAgenticLoopForUnit,
   type AgenticLoopPolicy,
   type AgenticLoopProviderFactory,
@@ -167,7 +168,7 @@ function providerFactoryReturning(translationRaw: string): AgenticLoopProviderFa
           return speakerLabelContent();
         }
         if (request.taskKind === "experiment") {
-          return `context-probe:${agentLabel}`;
+          return fakeSemanticContextContent(agentLabel);
         }
         if (request.taskKind === "draft_translation") {
           return translationRaw;
