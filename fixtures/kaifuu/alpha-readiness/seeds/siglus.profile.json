@@ -18,7 +18,9 @@
     },
     "patch": {
       "kind": "partial",
-      "limitations": ["alpha: synthetic scene patch-back proven; retail-scale repack not yet blessed"]
+      "limitations": [
+        "alpha: synthetic scene patch-back proven; retail-scale repack not yet blessed"
+      ]
     }
   },
   "helperKey": {
