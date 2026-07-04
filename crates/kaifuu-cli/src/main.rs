@@ -2035,8 +2035,9 @@ fn run_helper_command(args: &[String]) -> Result<(), Box<dyn std::error::Error>>
     match positional(args, 1)? {
         "run" => run_helper_run_command(args),
         "dry-run" => run_helper_dry_run_command(args),
+        "quoting-fixture" => run_helper_quoting_fixture_command(args),
         _ => Err(
-            "usage: kaifuu helper <run|dry-run> ...\n  run --out <helper-result.json> [--input <request.json>] [--mode stub]\n  dry-run --input <wine-proton-request.json> --out <resolution.json>"
+            "usage: kaifuu helper <run|dry-run|quoting-fixture> ...\n  run --out <helper-result.json> [--input <request.json>] [--mode stub]\n  dry-run [--platform wine-proton|native-windows] --input <request.json> --out <resolution.json>\n  quoting-fixture --out <fixture.json>"
                 .into(),
         ),
     }
@@ -2052,6 +2053,17 @@ fn run_helper_dry_run_command(args: &[String]) -> Result<(), Box<dyn std::error:
     // The dry-run path never spawns a process, but reject execution-config
     // flags anyway for a consistent posture with `helper run`.
     reject_helper_execution_config_flags(args)?;
+    match flag_optional(args, "--platform").unwrap_or("wine-proton") {
+        "wine-proton" => run_wine_proton_dry_run_command(args),
+        "native-windows" => run_native_windows_dry_run_command(args),
+        other => Err(format!(
+            "unsupported dry-run platform {other:?}; expected wine-proton or native-windows"
+        )
+        .into()),
+    }
+}
+
+fn run_wine_proton_dry_run_command(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
     let input_path = PathBuf::from(flag(args, "--input")?);
     reject_env_file_path(&input_path)?;
     let output = PathBuf::from(flag(args, "--out").or_else(|_| flag(args, "--output"))?);
@@ -2077,6 +2089,70 @@ fn run_helper_dry_run_command(args: &[String]) -> Result<(), Box<dyn std::error:
     }
 
     atomic_write_text(&output, &resolution.stable_json()?)?;
+    Ok(())
+}
+
+/// Resolves a native-Windows dry-run (KAIFUU-129): records the platform adapter
+/// (native-windows), helper binary id, command argv + CommandLineToArgvW-quoted
+/// command line, working-directory policy, profile id, and redaction policy
+/// WITHOUT launching untrusted game code. No Windows host is required — the
+/// synthetic request declares availability, and a non-Windows runner yields a
+/// typed `helper_unavailable` diagnostic rather than a failure. A resolution
+/// carrying raw secret material (or asserting a launch) fails and writes nothing.
+fn run_native_windows_dry_run_command(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
+    let input_path = PathBuf::from(flag(args, "--input")?);
+    reject_env_file_path(&input_path)?;
+    let output = PathBuf::from(flag(args, "--out").or_else(|_| flag(args, "--output"))?);
+
+    let value: serde_json::Value = read_json(&input_path)?;
+    let request: kaifuu_core::NativeWindowsDryRunRequest = serde_json::from_value(value)
+        .map_err(|error| format!("invalid native-Windows dry-run request: {error}"))?;
+    let resolution = kaifuu_core::resolve_native_windows_dry_run(&request);
+
+    let validation = resolution.validate();
+    if validation.status == kaifuu_core::OperationStatus::Failed {
+        return Err(format!(
+            "native-Windows dry-run resolution failed validation for fixture {}: {}",
+            validation.fixture_id.as_deref().unwrap_or("<unknown>"),
+            validation
+                .failures
+                .iter()
+                .map(|failure| format!("{}:{}", failure.field, failure.code))
+                .collect::<Vec<_>>()
+                .join(", ")
+        )
+        .into());
+    }
+
+    atomic_write_text(&output, &resolution.stable_json()?)?;
+    Ok(())
+}
+
+/// Emits the native-Windows CommandLineToArgvW quoting fixture (KAIFUU-129): a
+/// resolved descriptor showing correct quoting of args with spaces, quotes, and
+/// backslashes. Every case is proven to round-trip (quote -> command line ->
+/// parse recovers the original argv); the fixture never launches anything.
+fn run_helper_quoting_fixture_command(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
+    reject_helper_execution_config_flags(args)?;
+    let output = PathBuf::from(flag(args, "--out").or_else(|_| flag(args, "--output"))?);
+    let fixture = kaifuu_core::resolve_windows_command_line_quoting_fixture();
+
+    let validation = fixture.validate();
+    if validation.status == kaifuu_core::OperationStatus::Failed {
+        return Err(format!(
+            "native-Windows quoting fixture failed validation for {}: {}",
+            validation.fixture_id.as_deref().unwrap_or("<unknown>"),
+            validation
+                .failures
+                .iter()
+                .map(|failure| format!("{}:{}", failure.field, failure.code))
+                .collect::<Vec<_>>()
+                .join(", ")
+        )
+        .into());
+    }
+
+    atomic_write_text(&output, &fixture.stable_json()?)?;
     Ok(())
 }
 
@@ -3586,6 +3662,225 @@ mod tests {
         ]);
 
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn native_windows_dry_run_records_six_fields_without_launching_and_matches_fixture() {
+        // Public CI: non-Windows runner, no private assets. The dry-run must
+        // resolve the intended command from the synthetic request alone.
+        let root = temp_dir("helper-dry-run-native-windows");
+        let output = root.join("resolution.json");
+        let request = public_fixture_path(
+            "fixtures/public/kaifuu-helper-results/native-windows/dry-run-native-windows-request.json",
+        );
+
+        run_cli(&[
+            "helper",
+            "dry-run",
+            "--platform",
+            "native-windows",
+            "--input",
+            request.to_str().unwrap(),
+            "--out",
+            output.to_str().unwrap(),
+        ]);
+
+        let resolution: serde_json::Value = read_json(&output).unwrap();
+        // (1) platform-adapter, (2) helper-binary-id, (3) command-argv + quoted
+        // command line, (4) working-directory-policy, (5) profile-id,
+        // (6) redaction-policy.
+        assert_eq!(resolution["platformAdapterId"], "native-windows");
+        assert_eq!(resolution["platformAdapter"], "native-windows-local");
+        assert_eq!(
+            resolution["helperBinaryId"],
+            "kaifuu.fixture.native-windows-local"
+        );
+        assert_eq!(
+            resolution["intendedCommand"]["programRef"],
+            "native-windows-helper"
+        );
+        assert!(
+            resolution["intendedCommand"]["argumentTemplate"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|token| token == "--dry-run")
+        );
+        assert_eq!(
+            resolution["intendedCommand"]["quotingRules"],
+            "CommandLineToArgvW"
+        );
+        assert!(
+            resolution["intendedCommand"]["commandLine"]
+                .as_str()
+                .unwrap()
+                .starts_with("native-windows-helper --platform native-windows-local")
+        );
+        assert_eq!(
+            resolution["intendedCommand"]["workingDirectoryPolicy"],
+            "sandboxed-read-only-game-copy"
+        );
+        assert_eq!(
+            resolution["profileId"],
+            "019ed000-0000-7000-8000-profile00129"
+        );
+        assert_eq!(
+            resolution["redactionPolicy"],
+            "redact-raw-logs-and-secret-refs"
+        );
+        // No launch.
+        assert_eq!(resolution["launched"], false);
+        assert_eq!(
+            resolution["intendedCommand"]["launchesUntrustedCode"],
+            false
+        );
+        // The KAIFUU-085 execution object carries no launch command; the quoted
+        // descriptor lives under `commandLine`, not `command`/`argv`/`env`.
+        let serialized = fs::read_to_string(&output).unwrap();
+        assert!(!serialized.contains("\"command\""));
+        assert!(!serialized.contains("\"argv\""));
+        assert!(!serialized.contains("\"env\""));
+
+        // The committed resolution fixture must stay semantically identical to
+        // the CLI output.
+        let committed: serde_json::Value = read_json(&public_fixture_path(
+            "fixtures/public/kaifuu-helper-results/native-windows/dry-run-native-windows-resolution.json",
+        ))
+        .unwrap();
+        assert_eq!(resolution, committed);
+    }
+
+    #[test]
+    fn native_windows_dry_run_unavailable_platform_emits_typed_diagnostic() {
+        // Non-Windows public CI: availability is a synthetic request field, so
+        // "unavailable" yields a typed helper_unavailable diagnostic, not a
+        // platform-absence failure.
+        let root = temp_dir("helper-dry-run-native-windows-unavailable");
+        let output = root.join("resolution.json");
+        let request = public_fixture_path(
+            "fixtures/public/kaifuu-helper-results/native-windows/dry-run-native-windows-unavailable-request.json",
+        );
+
+        run_cli(&[
+            "helper",
+            "dry-run",
+            "--platform",
+            "native-windows",
+            "--input",
+            request.to_str().unwrap(),
+            "--out",
+            output.to_str().unwrap(),
+        ]);
+
+        let resolution: serde_json::Value = read_json(&output).unwrap();
+        assert_eq!(resolution["platformAdapterId"], "native-windows");
+        assert_eq!(
+            resolution["helperResult"]["diagnostic"]["code"],
+            "helper_unavailable"
+        );
+        assert!(
+            resolution["helperResult"]["diagnostic"]["message"]
+                .as_str()
+                .unwrap()
+                .contains("kaifuu.helper_unavailable")
+        );
+        assert_eq!(resolution["launched"], false);
+
+        let committed: serde_json::Value = read_json(&public_fixture_path(
+            "fixtures/public/kaifuu-helper-results/native-windows/dry-run-native-windows-unavailable-resolution.json",
+        ))
+        .unwrap();
+        assert_eq!(resolution, committed);
+    }
+
+    #[test]
+    fn native_windows_dry_run_rejects_raw_secret_material() {
+        let root = temp_dir("helper-dry-run-native-windows-raw-secret");
+        let output = root.join("resolution.json");
+        let request = public_fixture_path(
+            "fixtures/public/kaifuu-helper-results/native-windows/invalid/dry-run-native-windows-raw-secret-request.json",
+        );
+
+        let result = run_with_args(vec![
+            "helper".to_string(),
+            "dry-run".to_string(),
+            "--platform".to_string(),
+            "native-windows".to_string(),
+            "--input".to_string(),
+            request.to_str().unwrap().to_string(),
+            "--out".to_string(),
+            output.to_str().unwrap().to_string(),
+        ]);
+
+        assert!(result.is_err());
+        let message = result.unwrap_err().to_string();
+        assert!(message.contains("kaifuu.native_windows.dry_run.secret_leak"));
+        // The failing resolution must not be persisted at all.
+        assert!(!output.exists());
+    }
+
+    #[test]
+    fn native_windows_dry_run_rejects_execution_config_flags() {
+        let root = temp_dir("helper-dry-run-native-windows-exec-flag");
+        let output = root.join("resolution.json");
+        let request = public_fixture_path(
+            "fixtures/public/kaifuu-helper-results/native-windows/dry-run-native-windows-request.json",
+        );
+
+        let result = run_with_args(vec![
+            "helper".to_string(),
+            "dry-run".to_string(),
+            "--platform".to_string(),
+            "native-windows".to_string(),
+            "--input".to_string(),
+            request.to_str().unwrap().to_string(),
+            "--out".to_string(),
+            output.to_str().unwrap().to_string(),
+            "--argv".to_string(),
+            "game.exe".to_string(),
+        ]);
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn native_windows_quoting_fixture_matches_committed_and_round_trips() {
+        let root = temp_dir("helper-quoting-fixture");
+        let output = root.join("quoting-fixture.json");
+
+        run_cli(&[
+            "helper",
+            "quoting-fixture",
+            "--out",
+            output.to_str().unwrap(),
+        ]);
+
+        let fixture: serde_json::Value = read_json(&output).unwrap();
+        assert_eq!(fixture["quotingRules"], "CommandLineToArgvW");
+        assert_eq!(fixture["launchesUntrustedCode"], false);
+
+        // Cross-check a couple of adversarial cases against the CommandLineToArgvW
+        // rules (space, embedded quote, backslash-before-quote).
+        let cases = fixture["cases"].as_array().unwrap();
+        let quoted_for = |raw: &str| -> String {
+            cases
+                .iter()
+                .find(|case| case["raw"] == raw)
+                .and_then(|case| case["quoted"].as_str())
+                .unwrap()
+                .to_string()
+        };
+        assert_eq!(quoted_for("arg with spaces"), "\"arg with spaces\"");
+        assert_eq!(
+            quoted_for("bs before quote\\\""),
+            "\"bs before quote\\\\\\\"\""
+        );
+
+        let committed: serde_json::Value = read_json(&public_fixture_path(
+            "fixtures/public/kaifuu-helper-results/native-windows/quoting-fixture.json",
+        ))
+        .unwrap();
+        assert_eq!(fixture, committed);
     }
 
     #[test]

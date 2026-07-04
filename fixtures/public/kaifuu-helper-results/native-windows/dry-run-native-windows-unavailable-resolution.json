@@ -1,0 +1,59 @@
+{
+  "schemaVersion": "0.1.0",
+  "fixtureId": "kaifuu-native-windows-dry-run-unavailable",
+  "platformAdapter": "native-windows-local",
+  "platformAdapterId": "native-windows",
+  "helperBinaryId": "kaifuu.fixture.native-windows-local",
+  "intendedCommand": {
+    "programRef": "native-windows-helper",
+    "argumentTemplate": [
+      "--platform",
+      "native-windows-local",
+      "--helper-binary-id",
+      "kaifuu.fixture.native-windows-local",
+      "--profile-id",
+      "019ed000-0000-7000-8000-profile00130",
+      "--redaction-policy",
+      "redact-raw-logs-and-secret-refs",
+      "--dry-run"
+    ],
+    "commandLine": "native-windows-helper --platform native-windows-local --helper-binary-id kaifuu.fixture.native-windows-local --profile-id 019ed000-0000-7000-8000-profile00130 --redaction-policy redact-raw-logs-and-secret-refs --dry-run",
+    "quotingRules": "CommandLineToArgvW",
+    "workingDirectoryPolicy": "sandboxed-read-only-game-copy",
+    "launchesUntrustedCode": false
+  },
+  "profileId": "019ed000-0000-7000-8000-profile00130",
+  "redactionPolicy": "redact-raw-logs-and-secret-refs",
+  "launched": false,
+  "helperResult": {
+    "schemaVersion": "0.1.0",
+    "fixtureId": "kaifuu-native-windows-dry-run-unavailable",
+    "helperResultId": "helper-result-kaifuu-native-windows-dry-run-unavailable",
+    "profileId": "019ed000-0000-7000-8000-profile00130",
+    "helper": {
+      "helperId": "kaifuu.fixture.native-windows-local",
+      "helperVersion": "0.1.0",
+      "helperKind": "wineLocalWindowsHelper"
+    },
+    "capabilityLevel": "windowsLocal",
+    "execution": {
+      "mode": "platformHelper",
+      "platform": "native-windows-local",
+      "bounded": true,
+      "timeoutMs": 5000,
+      "durationMs": 0,
+      "networkAccess": false,
+      "filesystemAccess": "localGameReadOnly"
+    },
+    "diagnostic": {
+      "code": "helper_unavailable",
+      "message": "kaifuu.helper_unavailable: native-windows-local platform helper is unavailable on this runner; dry-run resolved the intended command without launching"
+    },
+    "redaction": {
+      "status": "redacted",
+      "redactedLogHash": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    },
+    "secretRefs": [],
+    "proofHashes": []
+  }
+}

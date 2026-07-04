@@ -1,0 +1,11 @@
+{
+  "schemaVersion": "0.1.0",
+  "fixtureId": "kaifuu-native-windows-dry-run-unavailable",
+  "helperBinaryId": "kaifuu.fixture.native-windows-local",
+  "allowlistEntryId": "kaifuu-fixture-native-windows-local-allowlist",
+  "platformAdapter": "native-windows-local",
+  "profileId": "019ed000-0000-7000-8000-profile00130",
+  "redactionPolicy": "redact-raw-logs-and-secret-refs",
+  "platformAvailability": "unavailable",
+  "timeoutMs": 5000
+}

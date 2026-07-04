@@ -362,10 +362,58 @@
       "sha256": "4c55b7de6889f713b605e751406f416173b8b5460b653068448d1d9ae2678a52",
       "bytes": 410,
       "redistributable": true
+    },
+    {
+      "path": "fixtures/public/kaifuu-helper-results/native-windows/dry-run-native-windows-request.json",
+      "role": "metadata",
+      "mediaType": "application/json",
+      "sha256": "7f103845ab3d596d1d7b245948aa627530b5b10c318d155e360e05aa02f2b214",
+      "bytes": 425,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/public/kaifuu-helper-results/native-windows/dry-run-native-windows-resolution.json",
+      "role": "metadata",
+      "mediaType": "application/json",
+      "sha256": "7cf2ee5803b0226883e9d5424c36fccd3329cae4cd1f0fc1306ca2469d8b5db1",
+      "bytes": 2235,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/public/kaifuu-helper-results/native-windows/dry-run-native-windows-unavailable-request.json",
+      "role": "metadata",
+      "mediaType": "application/json",
+      "sha256": "eddbac5c63de5430eb1c66bd15ffb29562a2931c858137d91c504b25dc44badc",
+      "bytes": 439,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/public/kaifuu-helper-results/native-windows/dry-run-native-windows-unavailable-resolution.json",
+      "role": "metadata",
+      "mediaType": "application/json",
+      "sha256": "b638fbc962edfd7d10d6883f663a4c59621115667e7e777d45c5bf02dca9cd73",
+      "bytes": 2260,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/public/kaifuu-helper-results/native-windows/quoting-fixture.json",
+      "role": "metadata",
+      "mediaType": "application/json",
+      "sha256": "6618acaa63fde54d715ad1add34c4551047bde541e4be44bcac76be92483f0a7",
+      "bytes": 827,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/public/kaifuu-helper-results/native-windows/invalid/dry-run-native-windows-raw-secret-request.json",
+      "role": "metadata",
+      "mediaType": "application/json",
+      "sha256": "608ac2376a6951ba3b00bbcdc3667d7f1b3d69253d59d4567b5af70c69ef2ca9",
+      "bytes": 433,
+      "redistributable": true
     }
   ],
   "aggregateStats": {
-    "files": 43,
+    "files": 49,
     "textUnits": 0,
     "sourceTextUtf16CodeUnits": 0,
     "protectedSpans": 0,
@@ -376,7 +424,7 @@
       "kaifuu-helper-request",
       "kaifuu-helper-result"
     ],
-    "notes": "Covers success, missing_key, wrong_key, helper_required, helper_unavailable, helper_authorization_denied, helper_timeout, validation_failed, unsupported_protected_executable, redaction_failure diagnostics, static parser, known-key import, manual-entry, Wine, Windows, helper registry validation, helper binary allowlist fixtures, local key-ref helper request/import boundary fixtures, Siglus secondary-key helper-boundary request fixtures, XP3 helper-required, missing-key, wrong-key, validation-failed, and protected-executable semantic fixtures, and Wine/Proton dry-run helper resolution fixtures (available + unavailable platform + raw-secret rejection) that resolve the intended command without launching untrusted game code."
+    "notes": "Covers success, missing_key, wrong_key, helper_required, helper_unavailable, helper_authorization_denied, helper_timeout, validation_failed, unsupported_protected_executable, redaction_failure diagnostics, static parser, known-key import, manual-entry, Wine, Windows, helper registry validation, helper binary allowlist fixtures, local key-ref helper request/import boundary fixtures, Siglus secondary-key helper-boundary request fixtures, XP3 helper-required, missing-key, wrong-key, validation-failed, and protected-executable semantic fixtures, and Wine/Proton dry-run helper resolution fixtures (available + unavailable platform + raw-secret rejection) that resolve the intended command without launching untrusted game code, and native-Windows dry-run helper resolution fixtures (available + unavailable platform + raw-secret rejection) plus a CommandLineToArgvW command-line quoting fixture that resolves the intended command (argv + quoted command line) without launching untrusted game code."
   },
   "benchmarkUse": {
     "allowedInPublicCi": true,

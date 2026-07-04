@@ -161,6 +161,7 @@ pub mod mv_mz_encrypted_asset_replacement;
 pub mod mv_mz_encrypted_audio;
 pub mod mv_mz_encrypted_image;
 pub mod mv_mz_readiness;
+pub mod native_windows_helper;
 mod offset_map;
 pub mod packed_engine_readiness;
 pub mod patch_transaction;
@@ -275,6 +276,19 @@ pub use wine_proton_helper::{
     WINE_PROTON_HELPER_SCHEMA_VERSION, WINE_PROTON_HELPER_SUPPORT_BOUNDARY,
     WineProtonDryRunFailure, WineProtonDryRunRequest, WineProtonDryRunResolution,
     WineProtonDryRunValidation, WineProtonPlatformAdapter, resolve_wine_proton_dry_run,
+};
+
+pub use native_windows_helper::{
+    NATIVE_WINDOWS_HELPER_SCHEMA_VERSION, NATIVE_WINDOWS_HELPER_SUPPORT_BOUNDARY,
+    NATIVE_WINDOWS_PLATFORM_ADAPTER_ID, NATIVE_WINDOWS_PLATFORM_ID, NATIVE_WINDOWS_QUOTING_RULES,
+    NativeWindowsDryRunFailure, NativeWindowsDryRunRequest, NativeWindowsDryRunResolution,
+    NativeWindowsDryRunValidation, NativeWindowsPlatformAdapter, ResolvedWindowsHelperCommand,
+    SEMANTIC_NATIVE_WINDOWS_DRY_RUN_HELPER_RESULT_INVALID,
+    SEMANTIC_NATIVE_WINDOWS_DRY_RUN_LAUNCH_FORBIDDEN, SEMANTIC_NATIVE_WINDOWS_DRY_RUN_SECRET_LEAK,
+    SEMANTIC_NATIVE_WINDOWS_QUOTING_NOT_REVERSIBLE, WindowsCommandLineQuotingFixture,
+    WindowsQuotingCase, resolve_native_windows_dry_run,
+    resolve_windows_command_line_quoting_fixture, windows_command_line,
+    windows_command_line_to_argv, windows_quote_argument,
 };
 
 pub use patch_transaction::{

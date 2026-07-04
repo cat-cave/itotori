@@ -1,0 +1,33 @@
+{
+  "schemaVersion": "0.1.0",
+  "fixtureId": "kaifuu-native-windows-command-line-quoting",
+  "quotingRules": "CommandLineToArgvW",
+  "cases": [
+    {
+      "raw": "plain",
+      "quoted": "plain"
+    },
+    {
+      "raw": "arg with spaces",
+      "quoted": "\"arg with spaces\""
+    },
+    {
+      "raw": "say \"hi\"",
+      "quoted": "\"say \\\"hi\\\"\""
+    },
+    {
+      "raw": "share\\folder name",
+      "quoted": "\"share\\folder name\""
+    },
+    {
+      "raw": "ends with backslash\\",
+      "quoted": "\"ends with backslash\\\\\""
+    },
+    {
+      "raw": "bs before quote\\\"",
+      "quoted": "\"bs before quote\\\\\\\"\""
+    }
+  ],
+  "commandLine": "plain \"arg with spaces\" \"say \\\"hi\\\"\" \"share\\folder name\" \"ends with backslash\\\\\" \"bs before quote\\\\\\\"\"",
+  "launchesUntrustedCode": false
+}

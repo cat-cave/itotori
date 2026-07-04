@@ -1,0 +1,59 @@
+{
+  "schemaVersion": "0.1.0",
+  "fixtureId": "kaifuu-native-windows-dry-run",
+  "platformAdapter": "native-windows-local",
+  "platformAdapterId": "native-windows",
+  "helperBinaryId": "kaifuu.fixture.native-windows-local",
+  "intendedCommand": {
+    "programRef": "native-windows-helper",
+    "argumentTemplate": [
+      "--platform",
+      "native-windows-local",
+      "--helper-binary-id",
+      "kaifuu.fixture.native-windows-local",
+      "--profile-id",
+      "019ed000-0000-7000-8000-profile00129",
+      "--redaction-policy",
+      "redact-raw-logs-and-secret-refs",
+      "--dry-run"
+    ],
+    "commandLine": "native-windows-helper --platform native-windows-local --helper-binary-id kaifuu.fixture.native-windows-local --profile-id 019ed000-0000-7000-8000-profile00129 --redaction-policy redact-raw-logs-and-secret-refs --dry-run",
+    "quotingRules": "CommandLineToArgvW",
+    "workingDirectoryPolicy": "sandboxed-read-only-game-copy",
+    "launchesUntrustedCode": false
+  },
+  "profileId": "019ed000-0000-7000-8000-profile00129",
+  "redactionPolicy": "redact-raw-logs-and-secret-refs",
+  "launched": false,
+  "helperResult": {
+    "schemaVersion": "0.1.0",
+    "fixtureId": "kaifuu-native-windows-dry-run",
+    "helperResultId": "helper-result-kaifuu-native-windows-dry-run",
+    "profileId": "019ed000-0000-7000-8000-profile00129",
+    "helper": {
+      "helperId": "kaifuu.fixture.native-windows-local",
+      "helperVersion": "0.1.0",
+      "helperKind": "wineLocalWindowsHelper"
+    },
+    "capabilityLevel": "windowsLocal",
+    "execution": {
+      "mode": "platformHelper",
+      "platform": "native-windows-local",
+      "bounded": true,
+      "timeoutMs": 5000,
+      "durationMs": 0,
+      "networkAccess": false,
+      "filesystemAccess": "localGameReadOnly"
+    },
+    "diagnostic": {
+      "code": "helper_required",
+      "message": "dry-run resolved the intended native-windows-local helper command without launching untrusted game code; running the helper is required to actually recover material"
+    },
+    "redaction": {
+      "status": "redacted",
+      "redactedLogHash": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    },
+    "secretRefs": [],
+    "proofHashes": []
+  }
+}
