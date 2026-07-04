@@ -88,8 +88,10 @@ import {
   type LocalizationUnitV02,
   type PairPolicyV03,
   type StagePostureV03,
+  type StyleGuidePolicyV0Draft,
 } from "@itotori/localization-bridge-schema";
 import { parseNarrativeStructure } from "../agents/structure-informed-context/index.js";
+import type { TranslationGlossaryEntry } from "../agents/translation/shapes.js";
 import { DEFAULT_COST_CAP_USD, OpenRouterModelProvider } from "../providers/openrouter.js";
 import { LocalProviderRunArtifactRecorder } from "../providers/artifacts.js";
 import { FakeModelProvider } from "../providers/fake.js";
@@ -139,6 +141,16 @@ export type LocalizeProjectStageArgs = {
    * live but injects no deterministic structure block.
    */
   structureJsonPath?: string;
+  /**
+   * itotori-live-loop-style-glossary-injection — the ACTIVE glossary + style
+   * guide for this unit's locale branch, resolved by the caller from the
+   * glossary / style-guide tables/services (the READ path) and threaded into
+   * the loop the same way `structureJsonPath` supplies the decoded structure.
+   * The translation prompt + QA terminology lane then enforce the real house
+   * glossary + style. Omitted → the loop degrades gracefully to empty.
+   */
+  glossary?: ReadonlyArray<TranslationGlossaryEntry>;
+  styleGuide?: StyleGuidePolicyV0Draft;
   /**
    * Engine profile controlling translated-bundle synthesis. `reallive`
    * (default) overwrites EVERY unit's `target` with the SJIS-bracket-
@@ -404,9 +416,12 @@ export async function runLocalizeProjectStageCommand(
   const input: AgenticLoopUnitInput = {
     unit,
     sceneUnits: [],
-    glossary: [],
+    // itotori-live-loop-style-glossary-injection — feed the caller-resolved
+    // ACTIVE glossary + style-guide into the live loop (empty when unset).
+    glossary: args.glossary ?? [],
     protectedSpans: [],
     knownCharacters: [],
+    ...(args.styleGuide !== undefined ? { styleGuide: args.styleGuide } : {}),
     ...(narrativeStructure !== undefined ? { narrativeStructure, sceneId } : {}),
     actor: args.actor,
   };

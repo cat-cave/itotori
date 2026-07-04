@@ -27,6 +27,7 @@ import { createHash } from "node:crypto";
 import type { AuthorizationActor } from "@itotori/db";
 import {
   AGENTIC_LOOP_BUNDLE_SCHEMA_VERSION,
+  STYLE_GUIDE_POLICY_SECTIONS,
   type AgenticLoopBundle,
   type AgenticLoopInvocation,
   type AgenticLoopRoutingOutcome,
@@ -36,6 +37,7 @@ import {
   type LocalizationUnitV02,
   type QaFinding,
   type StagePostureV03,
+  type StyleGuidePolicyV0Draft,
 } from "@itotori/localization-bridge-schema";
 import { SpeakerLabelAgent } from "../agents/speaker-label/agent.js";
 import {
@@ -61,6 +63,7 @@ import {
   type TranslationInvocationInput,
   type TranslationInvocationResult,
   type TranslationProtectedSpanInput,
+  type TranslationStyleGuideRule,
 } from "../agents/translation/shapes.js";
 import { QaAgent } from "../agents/qa/agent.js";
 import {
@@ -69,6 +72,7 @@ import {
   type QaGlossaryEntry,
   type QaInvocationInput,
   type QaInvocationResult,
+  type QaStyleGuideRule,
 } from "../agents/qa/shapes.js";
 import { DraftProtectedSpanValidator } from "../draft/protected-span-validator.js";
 import type {
@@ -284,6 +288,25 @@ export type AgenticLoopUnitInput = {
    * REQUIRED when `narrativeStructure` is set.
    */
   sceneId?: number;
+  /**
+   * itotori-live-loop-style-glossary-injection — the ACTIVE (approved)
+   * style-guide policy version for this unit's locale branch. Resolved the SAME
+   * way `narrativeStructure` is: the caller (the driven executor / stage command)
+   * owns the read of the active version from the style-guide tables/services and
+   * threads the resolved policy in as a deterministic anchor — the loop consumes
+   * a KNOWN policy, it does not re-derive one. Its `sections`
+   * (tone / terminology / honorifics / formatting / protectedSpans) are flattened
+   * DETERMINISTICALLY into the translation + QA style-guide rule lists so the
+   * draft is written — and terminology-QA'd — against the real house style.
+   * When absent the loop degrades gracefully to an empty style guide (the prompt
+   * renders `Style guide: (empty)`), exactly as before this seam.
+   *
+   * The glossary is threaded alongside via `glossary` (above): both the
+   * translation prompt and the QA terminology lane already consume
+   * `input.glossary`, so an active glossary term reaches every stage that
+   * enforces it.
+   */
+  styleGuide?: StyleGuidePolicyV0Draft;
   /**
    * Actor that owns the run. Threaded through every agent invocation
    * for downstream provenance.
@@ -1173,6 +1196,40 @@ function providerTelemetryFromSpeakerLabel(
 }
 
 // ---------------------------------------------------------------------------
+// Style-guide resolution (itotori-live-loop-style-glossary-injection)
+// ---------------------------------------------------------------------------
+
+/**
+ * Flatten the ACTIVE style-guide policy version into the flat rule list every
+ * stage consumes. DETERMINISTIC: sections are walked in the canonical
+ * `STYLE_GUIDE_POLICY_SECTIONS` order and rules in their declared order, so two
+ * runs on the same policy produce a byte-equal list (the prompt templates then
+ * apply their own canonical sort). The `StyleGuidePolicyV0Draft` section names
+ * are exactly the stage rule `section` union
+ * (tone / terminology / honorifics / formatting / protectedSpans), so this is a
+ * lossless 1:1 projection, NOT a category guess.
+ *
+ * The result is structurally identical to both `TranslationStyleGuideRule` and
+ * `QaStyleGuideRule` (`{ ruleId, section, guidance }`), so a single resolution
+ * feeds the translation stage AND the QA terminology lane. When no active policy
+ * is threaded the list is empty — the graceful no-style-guide degrade.
+ */
+function resolveStyleGuideRules(
+  styleGuide: StyleGuidePolicyV0Draft | undefined,
+): TranslationStyleGuideRule[] {
+  if (styleGuide === undefined) {
+    return [];
+  }
+  const rules: TranslationStyleGuideRule[] = [];
+  for (const section of STYLE_GUIDE_POLICY_SECTIONS) {
+    for (const rule of styleGuide.sections[section]) {
+      rules.push({ ruleId: rule.ruleId, section, guidance: rule.guidance });
+    }
+  }
+  return rules;
+}
+
+// ---------------------------------------------------------------------------
 // Translation stage
 // ---------------------------------------------------------------------------
 
@@ -1240,7 +1297,10 @@ async function invokeTranslationStage(args: {
     sourceBridgeUnits,
     protectedSpansBySource,
     glossary: args.input.glossary,
-    styleGuide: [],
+    // itotori-live-loop-style-glossary-injection — the translator now writes
+    // against the ACTIVE style-guide policy (deterministic flatten of the
+    // caller-resolved version). Empty only when no active policy is threaded.
+    styleGuide: resolveStyleGuideRules(args.input.styleGuide),
     // itotori-agentic-loop-real-context-stage — the translator now RECEIVES the
     // structure-informed context (the discard-probe is gone). `structuredContext`
     // renders the decoded scene/route/speaker block into the prompt;
@@ -1406,7 +1466,10 @@ async function invokeQaStage(args: {
     targetLocale: args.policy.targetLocale,
     units: [qaUnit],
     glossary,
-    styleGuide: [],
+    // itotori-live-loop-style-glossary-injection — the QA terminology/style
+    // lanes now validate the draft against the SAME active style-guide policy
+    // the translator wrote against (structurally identical rule shape).
+    styleGuide: resolveStyleGuideRules(args.input.styleGuide) satisfies QaStyleGuideRule[],
     modelProfile: {
       providerFamily: providerFamilyOf(args.provider),
       modelId: args.pair.pair.modelId,

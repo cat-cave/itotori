@@ -43,10 +43,12 @@ import type {
   AgenticLoopBundle,
   BridgeBundleV02,
   LocalizationUnitV02,
+  StyleGuidePolicyV0Draft,
 } from "@itotori/localization-bridge-schema";
 import { planBatches } from "../batch-planner/planner.js";
 import { resolveModelProfile } from "../batch-planner/model-profiles.js";
 import type { NarrativeStructure } from "../agents/structure-informed-context/index.js";
+import type { TranslationGlossaryEntry } from "../agents/translation/shapes.js";
 import type { AgenticLoopReviewerQueueSink } from "./reviewer-queue-bridge.js";
 import {
   runAgenticLoopForUnit,
@@ -245,6 +247,23 @@ export type ProjectDrivenExecutorInput = {
   reviewerQueue?: AgenticLoopReviewerQueueSink;
   /** Per-unit real-context resolver (per P0#1). */
   resolveUnitContext?: DrivenUnitContextResolver;
+  /**
+   * itotori-live-loop-style-glossary-injection — the ACTIVE glossary for this
+   * run's locale branch. The caller resolves the active version from the
+   * glossary tables/services (the READ path) and threads it in; the executor
+   * hands it to every unit's loop so the translation prompt + QA terminology
+   * lane enforce the real glossary. Omitted → the loop runs with an empty
+   * glossary (graceful degrade).
+   */
+  glossary?: ReadonlyArray<TranslationGlossaryEntry>;
+  /**
+   * itotori-live-loop-style-glossary-injection — the ACTIVE (approved)
+   * style-guide policy version for this run's locale branch, resolved by the
+   * caller the SAME way as the glossary. Threaded into every unit's loop so the
+   * draft is written — and QA'd — against the house style. Omitted → empty
+   * style guide (graceful degrade).
+   */
+  styleGuide?: StyleGuidePolicyV0Draft;
   /** Config-driven translation scope. Defaults to dialogue-only. */
   translationScope?: TranslationScope;
   /** Engine profile controlling the translated-bundle synthesis. */
@@ -362,9 +381,12 @@ export async function runProjectDrivenExecutor(
       const unitInput: AgenticLoopUnitInput = {
         unit,
         sceneUnits: [],
-        glossary: [],
+        // itotori-live-loop-style-glossary-injection — feed the run's ACTIVE
+        // glossary + style-guide (caller-resolved) into every unit's loop.
+        glossary: input.glossary ?? [],
         protectedSpans: [],
         knownCharacters: [],
+        ...(input.styleGuide !== undefined ? { styleGuide: input.styleGuide } : {}),
         ...(context !== undefined
           ? { narrativeStructure: context.narrativeStructure, sceneId: context.sceneId }
           : {}),
