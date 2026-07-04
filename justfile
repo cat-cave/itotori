@@ -83,12 +83,15 @@ itotori-scale-large: itotori-scale-build db-up db-wait
 # clippy + `cargo deny check` now live in the `check` recipe (single source of
 # truth), which `ci` depends on, so every local gate enforces them.
 #
-# `ci` is the COMPLETE gate and always runs every lane (including the ~30-45min
-# rust real-bytes lane). The per-gate `qd-full-ci` wrapper runs an AFFECTED-AWARE
-# subset by default (only the lanes a diff can touch — e.g. an apps/itotori-only
-# change skips the rust real-bytes lane); force the full gate there with
+# `ci` is the COMPLETE per-gate gate and is SINGLE-MODE SYNTHETIC: it runs the
+# fast, copyright-free synthetic suites (via `test`) plus the `mutation-differential`
+# differential guardrail (synthetic >= real for regression detection). It does
+# NOT run the ~30-45min real-bytes lane — that lane is the PERIODIC ground-truth
+# oracle only (`just real-bytes-oracle`), outside per-gate CI, so `ci` needs NO
+# real corpora. The per-gate `qd-full-ci` wrapper runs an AFFECTED-AWARE subset by
+# default (only the lanes a diff can touch); force the full gate with
 # `node scripts/qd-full-ci.mjs --all`. See scripts/qd-full-ci.mjs + affected.mjs.
-ci: check build db-migrate test mutation-differential ci-real-bytes
+ci: check build db-migrate test mutation-differential
 
 # synthetic-fixture-differential-validation: the guardrail that certifies the
 # fast, copyright-free SYNTHETIC fixtures are AS STRONG AS the ~30-minute
@@ -115,13 +118,16 @@ mutation-differential:
 ci-full: ci
 
 # real-bytes-tests-in-ci: run EVERY crate's real-bytes suite against its staged
-# real corpus. Reads the corpora in place, read-only; NEVER copies copyrighted
-# bytes. Real-bytes coverage is STRICT BY DEFAULT (the real_corpus support
-# helper hard-fails an absent corpus unless ITOTORI_ALLOW_MISSING_CORPUS=1 is
-# explicitly set — which this lane NEVER sets), so a green run can never mean
-# "zero real bytes exercised". PRE-CHECKS every corpus root up front so a
-# missing corpus fails cleanly (non-zero) even if zero ignored tests match.
-# Corpus roots are overridable via env for machines that stage elsewhere.
+# real corpus. This lane is PERIODIC-ONLY — it is the ground-truth oracle
+# (`just real-bytes-oracle`), deliberately OUTSIDE per-gate CI. Per-gate CI is
+# single-mode synthetic (fast, copyright-free); this ~30-45min real-bytes lane
+# runs nightly/on-demand as the anchor + drift detector, NOT on every gate.
+# Reads the corpora in place, read-only; NEVER copies copyrighted bytes.
+# Real-bytes coverage is STRICT: the real_corpus support helper HARD-FAILS on an
+# absent corpus (no opt-out), so a green run can never mean "zero real bytes
+# exercised". PRE-CHECKS every corpus root up front so a missing corpus fails
+# cleanly (non-zero) even if zero ignored tests match. Corpus roots are
+# overridable via env for machines that stage elsewhere.
 #
 # Coverage spans five engine/source families across the corpus roots below:
 #   - RealLive        Sweetie HD + Kanon   ITOTORI_REAL_GAME_ROOT{,_2}
@@ -165,7 +171,7 @@ ci-real-bytes:
     echo "ci-real-bytes: RPG Maker MV/MZ (LustMemory)   = $ITOTORI_REAL_GAME_ROOT_RPG_MAKER_MV_MZ"
     echo "ci-real-bytes: vault source (live vault)      = $ITOTORI_VAULT_ROOT"
     echo "ci-real-bytes: Siglus (Karetoshi + Gamekoi)   = $ITOTORI_VAULT_ROOT (vault-materialized)"
-    echo "ci-real-bytes: strict by default (no ITOTORI_ALLOW_MISSING_CORPUS); running real-bytes suites"
+    echo "ci-real-bytes: strict (missing corpus hard-fails, no opt-out); running real-bytes suites"
     # RealLive + RPG Maker MV/MZ: #[ignore]-gated real-bytes suites.
     cargo test -p kaifuu-reallive -p utsushi-reallive -p kaifuu-cli -p utsushi-cli -p kaifuu-rpgmaker -p kaifuu-engine-fixture -- --ignored
     # utsushi-core: real-bytes proofs are plain #[test]s (target the files, no --ignored).
@@ -196,10 +202,12 @@ real-bytes-oracle-drift:
 
 # Per-gate CI entrypoint. Affected-aware by default: selects only the lanes the
 # diff (vs ITOTORI_QD_AFFECTED_BASE, default `main`) can touch — apps/itotori-only
-# changes run the itotori gate + check and SKIP the rust real-bytes lane; crate
-# changes run that family's gate (+ dependents) + ci-real-bytes; shared/foundational
-# changes run the full `ci`. Nothing is permanently skipped: `just ci` / `just
-# ci-full` / `node scripts/qd-full-ci.mjs --all` still run everything.
+# changes run the itotori gate + check; crate changes run that family's gate (+
+# dependents) + the synthetic `mutation-differential` guardrail; shared/foundational
+# changes run the full `ci`. Per-gate CI is single-mode synthetic (copyright-free,
+# needs no real corpora); the real-bytes lane is periodic-only (real-bytes-oracle).
+# Nothing is permanently skipped: `just ci` / `just ci-full` /
+# `node scripts/qd-full-ci.mjs --all` still run everything.
 qd-full-ci:
     node scripts/qd-full-ci.mjs
 

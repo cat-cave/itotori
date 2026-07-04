@@ -20,10 +20,10 @@
 //!   `xor_2` segment, owned by the decompressor follow-up node — so it can
 //!   no longer be decoded end-to-end and is not a valid clean fixture.)
 //!
-//! The test is env-gated and STRICT BY DEFAULT; without
-//! `ITOTORI_REAL_GAME_ROOT` an absent corpus is a HARD FAILURE. Set the
-//! explicit opt-out `ITOTORI_ALLOW_MISSING_CORPUS=1` to downgrade it to a
-//! loudly-logged skip (knowingly forgoing real-bytes coverage).
+//! The test is env-gated and STRICT; without `ITOTORI_REAL_GAME_ROOT` an
+//! absent corpus is an unconditional HARD FAILURE (no opt-out). This
+//! `#[ignore]`-d suite runs only in the periodic ground-truth oracle
+//! (`just real-bytes-oracle`), where the corpus is staged.
 
 #[path = "support/real_corpus.rs"]
 mod real_corpus;
@@ -103,7 +103,7 @@ fn bridge_opts(scene_kidoku_count: u32) -> BridgeOpts<'static> {
 #[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
 fn scene_1_all_textouts_are_binary_and_produce_no_translatable_units_real_bytes() {
     let Some(seen_path) = real_seen_txt_path() else {
-        real_corpus::skip_or_require_real_bytes(
+        real_corpus::require_real_bytes(
             "scene_1_all_textouts_are_binary_and_produce_no_translatable_units_real_bytes",
         );
         return;
@@ -190,7 +190,7 @@ fn scene_1_all_textouts_are_binary_and_produce_no_translatable_units_real_bytes(
 #[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
 fn dialogue_scene_surfaces_readable_sjis_textouts_as_translatable_units_real_bytes() {
     let Some(seen_path) = real_seen_txt_path() else {
-        real_corpus::skip_or_require_real_bytes(
+        real_corpus::require_real_bytes(
             "dialogue_scene_surfaces_readable_sjis_textouts_as_translatable_units_real_bytes",
         );
         return;

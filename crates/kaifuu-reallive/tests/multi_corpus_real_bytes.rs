@@ -317,7 +317,7 @@ fn print_report(report: &CoverageReport) {
 fn multi_game_validation_runs_against_two_distinct_reallive_corpora() {
     let corpora = real_corpus::corpora();
     if corpora.is_empty() {
-        real_corpus::skip_or_require_real_bytes(
+        real_corpus::require_real_bytes(
             "multi_game_validation_runs_against_two_distinct_reallive_corpora \
              (set ITOTORI_REAL_GAME_ROOT and ITOTORI_REAL_GAME_ROOT_2)",
         );
@@ -551,7 +551,7 @@ const SWEETIE_HD_SEEN_SHA256: &str =
 #[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT_2 (2nd RealLive title, e.g. Kanon)"]
 fn kanon_second_corpus_decompiles_zero_unknown() {
     let Some(corpus) = real_corpus::corpus_2() else {
-        real_corpus::skip_or_require_real_bytes(
+        real_corpus::require_real_bytes(
             "kanon_second_corpus_decompiles_zero_unknown \
              (set ITOTORI_REAL_GAME_ROOT_2 to a 2nd RealLive title, e.g. Kanon)",
         );

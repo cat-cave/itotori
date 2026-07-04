@@ -3059,24 +3059,17 @@ mod tests {
         const SWEETIE_SEEN_SHA256: &str =
             "903f538b821a9b1e6cb3d399582915c0bcf73b0a058ecc907caf6017a4fa209f";
 
-        // Real-bytes coverage is strict by default (see the real_corpus support
-        // helper): this ignored proof only runs when the live vault is staged.
-        // With the explicit opt-out set we loudly skip rather than hard-fail.
-        if std::env::var("ITOTORI_VAULT_ROOT").ok().as_deref() != Some("/archive/vault") {
-            assert!(
-                std::env::var("ITOTORI_ALLOW_MISSING_CORPUS")
-                    .ok()
-                    .as_deref()
-                    == Some("1"),
-                "real-bytes coverage is STRICT BY DEFAULT: set ITOTORI_VAULT_ROOT=/archive/vault \
-                 to run this vault-sourced proof, or ITOTORI_ALLOW_MISSING_CORPUS=1 to opt out"
-            );
-            eprintln!(
-                "WARNING: ITOTORI_ALLOW_MISSING_CORPUS=1 set — SKIPPING vault-sourced extract proof \
-                 (opted out); set ITOTORI_VAULT_ROOT=/archive/vault to run it"
-            );
-            return;
-        }
+        // Real-bytes coverage is STRICT (see the real_corpus support helper):
+        // this ignored proof runs only in the periodic ground-truth oracle,
+        // where the live vault is staged. An absent vault is an unconditional
+        // hard failure — there is NO opt-out.
+        assert_eq!(
+            std::env::var("ITOTORI_VAULT_ROOT").ok().as_deref(),
+            Some("/archive/vault"),
+            "real-bytes coverage is STRICT: set ITOTORI_VAULT_ROOT=/archive/vault to run this \
+             vault-sourced proof (it runs in the periodic ground-truth oracle where the vault \
+             is staged)"
+        );
 
         let tree_root = resolve_reallive_game_root_via_vault(SWEETIE_CANONICAL_ID)
             .expect("by-id vault sourcing must resolve Sweetie HD");

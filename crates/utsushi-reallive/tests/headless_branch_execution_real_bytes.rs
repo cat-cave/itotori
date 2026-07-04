@@ -34,8 +34,10 @@
 //!     cataloguing registrar (same scene: linear-walk → EndOfScene with zero
 //!     transfer state; branch-following → executed transfers > 0).
 //!
-//! Env-gated + STRICT-BY-DEFAULT: an absent corpus hard-fails unless
-//! `ITOTORI_ALLOW_MISSING_CORPUS=1`. Run with
+//! Env-gated + STRICT: an absent corpus is an unconditional HARD FAILURE
+//! (no opt-out; these `#[ignore]`-d suites run only in the periodic
+//! ground-truth oracle, `just real-bytes-oracle`, where corpora are staged).
+//! Run with
 //! `ITOTORI_REAL_GAME_ROOT=<sweetie> ITOTORI_REAL_GAME_ROOT_2=<kanon>
 //! cargo test -p utsushi-reallive --test headless_branch_execution_real_bytes
 //! -- --ignored`.
@@ -87,7 +89,7 @@ fn staged_engine(seen_bytes: &[u8]) -> ReplayEngine {
 fn corpora_or_skip(test_name: &str) -> Vec<real_corpus::RealCorpus> {
     let corpora = real_corpus::corpora();
     if corpora.len() < 2 {
-        real_corpus::skip_or_require_real_bytes(test_name);
+        real_corpus::require_real_bytes(test_name);
         return Vec::new();
     }
     corpora

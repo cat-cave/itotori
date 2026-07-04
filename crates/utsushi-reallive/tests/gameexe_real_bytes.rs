@@ -54,7 +54,7 @@ fn load_or_skip() -> Option<Vec<u8>> {
 /// names) can call it without forking the assertion list.
 fn verify_real_bytes_known_values() {
     let Some(bytes) = load_or_skip() else {
-        real_corpus::skip_or_require_real_bytes("utsushi-reallive verify_real_bytes_known_values");
+        real_corpus::require_real_bytes("utsushi-reallive verify_real_bytes_known_values");
         return;
     };
     let gameexe = Gameexe::parse(&bytes).expect("real Gameexe.ini must parse without error");
@@ -192,7 +192,7 @@ fn verify_real_bytes_known_values() {
 /// names) can call it without forking the assertion list.
 fn verify_dotted_path_lookup() {
     let Some(bytes) = load_or_skip() else {
-        real_corpus::skip_or_require_real_bytes("utsushi-reallive verify_dotted_path_lookup");
+        real_corpus::require_real_bytes("utsushi-reallive verify_dotted_path_lookup");
         return;
     };
     let gameexe = Gameexe::parse(&bytes).expect("real Gameexe.ini must parse without error");

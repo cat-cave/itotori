@@ -35,8 +35,8 @@
 //! Both proofs run over EVERY populated scene of BOTH corpora (Sweetie HD,
 //! `110002`, second-level `xor_2` decrypted in-process; Kanon, `10002`, no
 //! `xor_2`), far exceeding the ">= 1 scene per title" acceptance floor, and
-//! are strict-by-default real-bytes tests (a missing corpus is a hard failure
-//! unless `ITOTORI_ALLOW_MISSING_CORPUS=1`).
+//! are STRICT real-bytes tests (a missing corpus is an unconditional hard
+//! failure, no opt-out; they run in the periodic real-bytes oracle).
 //!
 //! No raw copyrighted bytes or text are emitted — counts / offsets / sha-free
 //! structural metadata only.
@@ -101,7 +101,7 @@ fn staged_scene_bytecodes(corpus: &RealCorpus) -> Vec<Vec<u8>> {
 fn framing_is_byte_exact_and_round_trips_on_real_bytes() {
     let corpora = real_corpus::corpora();
     if corpora.is_empty() {
-        real_corpus::skip_or_require_real_bytes(
+        real_corpus::require_real_bytes(
             "framing_is_byte_exact_and_round_trips_on_real_bytes \
              (set ITOTORI_REAL_GAME_ROOT and ITOTORI_REAL_GAME_ROOT_2)",
         );

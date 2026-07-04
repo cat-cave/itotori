@@ -15,8 +15,10 @@ lane **only when**:
 > `mutation-kill(synthetic) >= mutation-kill(real)` **AND** `coverage-parity(synthetic ⊇ real)`.
 
 The real ground-truth corpora are **not** deleted — they remain the periodic
-ground truth in `just ci-real-bytes` (the complete gate). This lane certifies
-that the _per-gate_ synthetic lane loses nothing between those runs.
+ground truth in `just ci-real-bytes`, run OUTSIDE per-gate CI as the nightly
+`real-bytes-oracle` (see `docs/real-bytes-periodic-oracle.md`). Per-gate CI is
+single-mode synthetic; this differential validation certifies the per-gate
+synthetic lane loses nothing between those periodic runs.
 
 ---
 
@@ -124,16 +126,23 @@ elsewhere — no decode-correctness regression can escape the synthetic suite.
 
 ## How it is wired into CI
 
+Per-gate CI is **single-mode synthetic** — it runs the fast synthetic suites +
+these two safeguards, and needs **no** real corpora. The ~30-45min real-bytes
+lane is periodic-only (`just real-bytes-oracle`), never per-gate.
+
 - **`just check`** (fast, always-run per-gate lane):
   `node --test scripts/mutation-differential.test.mjs` +
   `node --test scripts/coverage-parity.test.mjs` +
   `node scripts/coverage-parity.mjs`.
   Cheap: harness-logic regression tests + the static component-surface parity
-  check. No Rust recompile.
-- **`just mutation-differential`** (heavy kill-matrix, run by `just ci`):
+  check (Safeguard 2). No Rust recompile.
+- **`just mutation-differential`** (heavy kill-matrix, run by `just ci` AND
+  selected per-gate for any crate-family diff via `scripts/affected.mjs`):
   `node scripts/mutation-differential.mjs` — the source-level mutation kill
-  matrix. Deterministic; ~90 s; fails loud on an escaped mutation. Runs in the
-  complete gate alongside `ci-real-bytes` (the periodic real ground truth).
+  matrix (Safeguard 1). Deterministic; ~90 s; fails loud on an escaped mutation.
+  This is the per-gate lane that **replaced** the old ~30-45min real-bytes lane:
+  a crate change now runs the family's synthetic rust gate + this guardrail, NOT
+  `ci-real-bytes`. The real corpora are re-run only in the periodic oracle.
 
 The cargo driver defaults to `cargo`; override with `ITOTORI_MUTATION_CARGO`
 (e.g. `direnv exec . cargo`) outside the devshell.

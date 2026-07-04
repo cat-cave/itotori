@@ -77,7 +77,7 @@ fn staged_store(seen_bytes: &[u8]) -> (ReplayEngine, ReplayEngine) {
 #[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var (Sweetie HD)"]
 fn sweetie_named_lines_resolve_speaker_and_color_narration_none_zero_unknown_preserved() {
     let Some(corpus) = real_corpus::corpus_1() else {
-        real_corpus::skip_or_require_real_bytes(
+        real_corpus::require_real_bytes(
             "utsushi-reallive sweetie_named_lines_resolve_speaker_and_color",
         );
         return;

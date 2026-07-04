@@ -12,8 +12,10 @@
 //! boundaries; two replays byte-identical), so those manifest capabilities
 //! are backed by exercised machinery rather than advertised-but-inert.
 //!
-//! Env-gated + STRICT-BY-DEFAULT: an absent corpus hard-fails unless
-//! `ITOTORI_ALLOW_MISSING_CORPUS=1`. Run with
+//! Env-gated + STRICT: an absent corpus is an unconditional HARD FAILURE
+//! (no opt-out; these `#[ignore]`-d suites run only in the periodic
+//! ground-truth oracle, `just real-bytes-oracle`, where corpora are staged).
+//! Run with
 //! `ITOTORI_REAL_GAME_ROOT=<sweetie> ITOTORI_REAL_GAME_ROOT_2=<kanon>
 //! cargo test -p utsushi-reallive --test engine_port_real_bytes -- --ignored`.
 
@@ -310,7 +312,7 @@ fn run_title(corpus: &RealCorpus, g00_env: &str, label: &str) {
 #[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT (title 1)"]
 fn port_drives_all_three_sinks_title1_real_bytes() {
     let Some(corpus) = real_corpus::corpus_1() else {
-        real_corpus::skip_or_require_real_bytes(
+        real_corpus::require_real_bytes(
             "utsushi-reallive port_drives_all_three_sinks_title1_real_bytes",
         );
         return;
@@ -322,7 +324,7 @@ fn port_drives_all_three_sinks_title1_real_bytes() {
 #[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT_2 (title 2)"]
 fn port_drives_all_three_sinks_title2_real_bytes() {
     let Some(corpus) = real_corpus::corpus_2() else {
-        real_corpus::skip_or_require_real_bytes(
+        real_corpus::require_real_bytes(
             "utsushi-reallive port_drives_all_three_sinks_title2_real_bytes (title 2 / ITOTORI_REAL_GAME_ROOT_2)",
         );
         return;

@@ -1,9 +1,8 @@
 // strictness-ci-guard-bans-laxity-reintroduction — regression suite.
 //
-// Proves each of the guard's six rules fires on a synthetic VIOLATING
-// snippet and stays silent on a synthetic COMPLIANT one, and that the CLI
-// exits 0 on the current (green) repo. Mirrors
-// scripts/audit-no-hardcoded-cost.test.mjs.
+// Proves each of the guard's rules fires on a synthetic VIOLATING snippet and
+// stays silent on a synthetic COMPLIANT one, and that the CLI exits 0 on the
+// current (green) repo. Mirrors scripts/audit-no-hardcoded-cost.test.mjs.
 
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -19,7 +18,6 @@ import {
   parseLaneCrates,
   crateOwnsRealBytes,
   evaluateRealBytesCoverage,
-  checkAllowMissingOptOut,
 } from "./audit-strictness.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -181,59 +179,9 @@ test("rule 5 flags every uncovered real-bytes crate (allowlist is now empty)", (
   assert.match(regressed[0].rule, /kaifuu-rpgmaker/u);
 });
 
-// ---- Rule 6: enabling the ITOTORI_ALLOW_MISSING_CORPUS opt-out ------------
-test("rule 6 flags enabling the ITOTORI_ALLOW_MISSING_CORPUS opt-out", () => {
-  assert.deepEqual(
-    rules(checkAllowMissingOptOut("justfile", "    export ITOTORI_ALLOW_MISSING_CORPUS=1")),
-    ["ITOTORI_ALLOW_MISSING_CORPUS opt-out enabled in committed code/CI"],
-  );
-  assert.deepEqual(
-    rules(checkAllowMissingOptOut("x.sh", "ITOTORI_ALLOW_MISSING_CORPUS=1 cargo test")),
-    ["ITOTORI_ALLOW_MISSING_CORPUS opt-out enabled in committed code/CI"],
-  );
-  assert.deepEqual(
-    rules(checkAllowMissingOptOut(RS, '    .env("ITOTORI_ALLOW_MISSING_CORPUS", "1")')),
-    ["ITOTORI_ALLOW_MISSING_CORPUS opt-out enabled in committed code/CI"],
-  );
-  assert.deepEqual(
-    rules(
-      checkAllowMissingOptOut(RS, '    std::env::set_var("ITOTORI_ALLOW_MISSING_CORPUS", "1");'),
-    ),
-    ["ITOTORI_ALLOW_MISSING_CORPUS opt-out enabled in committed code/CI"],
-  );
-});
-
-test("rule 6 stays silent on READING the flag (helper enforcement) and prose", () => {
-  // The real_corpus helper defines the const and reads it — that is how the
-  // strict default is ENFORCED and must never be flagged.
-  assert.deepEqual(
-    checkAllowMissingOptOut(
-      RS,
-      'pub const ALLOW_MISSING_CORPUS_ENV: &str = "ITOTORI_ALLOW_MISSING_CORPUS";',
-    ),
-    [],
-  );
-  assert.deepEqual(
-    checkAllowMissingOptOut(
-      RS,
-      '    env::var_os(ALLOW_MISSING_CORPUS_ENV).is_some_and(|v| v == "1")',
-    ),
-    [],
-  );
-  // An error/doc string mentioning the flag (even `=1`) is not an assignment.
-  assert.deepEqual(
-    checkAllowMissingOptOut(
-      RS,
-      '        "Set ITOTORI_ALLOW_MISSING_CORPUS=1 to explicitly opt out"',
-    ),
-    [],
-  );
-  // A justfile comment referencing it (no `=`) is fine.
-  assert.deepEqual(
-    checkAllowMissingOptOut("justfile", "    # never set ITOTORI_ALLOW_MISSING_CORPUS here"),
-    [],
-  );
-});
+// (Rule 6 — banning the real-bytes corpus opt-out flag — was deleted with the
+// flag itself in the synthetic-CI collapse. Real-bytes coverage is now
+// unconditionally strict, so there is no opt-out to guard against.)
 
 // ---- CLI smoke: the guard is green on the current repo -------------------
 test("CLI exits 0 on the current (green) repo", () => {

@@ -83,7 +83,7 @@ fn real_koe_dir() -> Option<PathBuf> {
 #[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
 fn ovk_z0001_two_entries() {
     let Some(koe_dir) = real_koe_dir() else {
-        real_corpus::skip_or_require_real_bytes("utsushi-reallive ovk_z0001_two_entries");
+        real_corpus::require_real_bytes("utsushi-reallive ovk_z0001_two_entries");
         return;
     };
     let path = koe_dir.join(Z0001_OVK);

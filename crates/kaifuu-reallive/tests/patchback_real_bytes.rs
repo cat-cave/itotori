@@ -20,10 +20,10 @@
 //! - The original source byte slice is unchanged (returned `Vec<u8>`
 //!   is a fresh allocation).
 //!
-//! Env-gated and STRICT BY DEFAULT: without `ITOTORI_REAL_GAME_ROOT` an absent
-//! corpus is a HARD FAILURE. Set the explicit opt-out
-//! `ITOTORI_ALLOW_MISSING_CORPUS=1` to downgrade it to a loudly-logged skip
-//! (knowingly forgoing real-bytes coverage).
+//! Env-gated and STRICT: without `ITOTORI_REAL_GAME_ROOT` an absent corpus is
+//! an unconditional HARD FAILURE (no opt-out). This `#[ignore]`-d suite runs
+//! only in the periodic ground-truth oracle (`just real-bytes-oracle`), where
+//! the corpus is staged.
 
 #[path = "support/real_corpus.rs"]
 mod real_corpus;
@@ -153,7 +153,7 @@ fn recover_archive_xor2_cipher(seen_bytes: &[u8]) -> Option<kaifuu_reallive::Xor
 #[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
 fn patches_dialogue_scene_with_en_us_sentinel_and_preserves_binary_runs_byte_identical() {
     let Some(seen_path) = real_seen_txt_path() else {
-        real_corpus::skip_or_require_real_bytes(
+        real_corpus::require_real_bytes(
             "patches_dialogue_scene_with_en_us_sentinel_and_preserves_binary_runs_byte_identical",
         );
         return;
@@ -366,7 +366,7 @@ fn patches_dialogue_scene_with_en_us_sentinel_and_preserves_binary_runs_byte_ide
 #[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
 fn provenance_mismatch_byte_range_emits_typed_error_on_real_bytes() {
     let Some(seen_path) = real_seen_txt_path() else {
-        real_corpus::skip_or_require_real_bytes(
+        real_corpus::require_real_bytes(
             "provenance_mismatch_byte_range_emits_typed_error_on_real_bytes",
         );
         return;
@@ -425,7 +425,7 @@ fn provenance_mismatch_byte_range_emits_typed_error_on_real_bytes() {
 #[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
 fn missing_target_payload_surfaces_typed_schema_invalid_on_real_bytes() {
     let Some(seen_path) = real_seen_txt_path() else {
-        real_corpus::skip_or_require_real_bytes(
+        real_corpus::require_real_bytes(
             "missing_target_payload_surfaces_typed_schema_invalid_on_real_bytes",
         );
         return;
@@ -533,7 +533,7 @@ const TRICKY_CHOICE_1: &str = "[EN] No way - I'd rather not... [skip]";
 #[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
 fn scope_dialogue_and_choices_patches_scene_2011_choice_nextstring_safe_round_trip() {
     let Some(seen_path) = real_seen_txt_path() else {
-        real_corpus::skip_or_require_real_bytes(
+        real_corpus::require_real_bytes(
             "scope_dialogue_and_choices_patches_scene_2011_choice_nextstring_safe_round_trip",
         );
         return;
@@ -620,7 +620,7 @@ fn scope_dialogue_and_choices_patches_scene_2011_choice_nextstring_safe_round_tr
 #[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
 fn scope_dialogue_only_carries_scene_2011_choice_byte_identical() {
     let Some(seen_path) = real_seen_txt_path() else {
-        real_corpus::skip_or_require_real_bytes(
+        real_corpus::require_real_bytes(
             "scope_dialogue_only_carries_scene_2011_choice_byte_identical",
         );
         return;
@@ -765,7 +765,7 @@ fn boundary_ordinals(bytecode: &[u8]) -> std::collections::BTreeMap<usize, (usiz
 #[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
 fn length_changing_patch_recalculates_goto_targets_on_real_scene() {
     let Some(seen_path) = real_seen_txt_path() else {
-        real_corpus::skip_or_require_real_bytes(
+        real_corpus::require_real_bytes(
             "length_changing_patch_recalculates_goto_targets_on_real_scene",
         );
         return;
@@ -1006,7 +1006,7 @@ const SELECT_OPT_1: &str = "[EN] Wait - not yet, hold on...";
 #[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
 fn select_block_patchback_round_trips_byte_correct_on_real_scene_1018() {
     let Some(seen_path) = real_seen_txt_path() else {
-        real_corpus::skip_or_require_real_bytes(
+        real_corpus::require_real_bytes(
             "select_block_patchback_round_trips_byte_correct_on_real_scene_1018",
         );
         return;

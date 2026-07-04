@@ -79,16 +79,14 @@ fn resolve_savedata_path(file_name: &str) -> Option<PathBuf> {
     real_corpus::save_file_path(file_name)
 }
 
-/// Load a required SAVEDATA file, honouring the shared strict-by-default
-/// real-bytes gate. When the corpus is absent this defers to
-/// [`real_corpus::skip_or_require_real_bytes`] — a HARD FAILURE unless the
-/// operator set `ITOTORI_ALLOW_MISSING_CORPUS=1`, in which case it logs a
-/// loud skip and returns `None` (the caller then early-returns). This
-/// replaces the bespoke unconditional panic so this test honours the
-/// opt-out flag uniformly with the other real-bytes tests.
+/// Load a required SAVEDATA file, honouring the shared STRICT real-bytes
+/// gate. When the corpus is absent this defers to
+/// [`real_corpus::require_real_bytes`], an unconditional HARD FAILURE (no
+/// opt-out): it panics, so the `return None` below is never reached. These
+/// `#[ignore]`-d suites run only in the periodic real-bytes oracle.
 fn load_required(file_name: &str) -> Option<Vec<u8>> {
     let Some(path) = resolve_savedata_path(file_name) else {
-        real_corpus::skip_or_require_real_bytes(&format!("save_real_bytes:{file_name}"));
+        real_corpus::require_real_bytes(&format!("save_real_bytes:{file_name}"));
         return None;
     };
     let bytes = fs::read(&path).unwrap_or_else(|err| {

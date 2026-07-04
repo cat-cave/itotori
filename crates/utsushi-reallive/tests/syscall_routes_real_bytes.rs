@@ -245,7 +245,7 @@ fn verify_syscall_routes_match_section_h(gameexe: &Gameexe) {
 #[ignore = "requires ITOTORI_REAL_GAME_ROOT; opt in with --include-ignored"]
 fn syscall_routes_match_reallive_real_bytes() {
     let Some(gameexe) = load_reallive_real_bytes_gameexe() else {
-        real_corpus::skip_or_require_real_bytes(
+        real_corpus::require_real_bytes(
             "utsushi-reallive syscall_routes_match_reallive_real_bytes",
         );
         return;
@@ -397,7 +397,7 @@ fn syscall_routes_synthetic_eight_kinds_pinned() {
 #[ignore = "requires ITOTORI_REAL_GAME_ROOT; opt in with --include-ignored"]
 fn mouseactioncall_scan_discovers_real_bytes_non_contiguous_namespace() {
     let Some(path) = resolve_gameexe_path() else {
-        real_corpus::skip_or_require_real_bytes(
+        real_corpus::require_real_bytes(
             "utsushi-reallive mouseactioncall_scan_discovers_real_bytes_non_contiguous_namespace",
         );
         return;

@@ -383,7 +383,7 @@ fn real_corpus_gameexe(corpus: &real_corpus::RealCorpus) -> Option<Vec<u8>> {
 fn kidoku_and_name_control_markup_round_trips_on_two_reallive_titles() {
     let corpora = real_corpus::corpora();
     if corpora.is_empty() {
-        real_corpus::skip_or_require_real_bytes(
+        real_corpus::require_real_bytes(
             "kidoku_and_name_control_markup_round_trips_on_two_reallive_titles",
         );
         return;

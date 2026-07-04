@@ -70,7 +70,7 @@ const SWEETIE_HD_SCENE_ONE_SELECTION_MARKER_COUNT: usize = 8;
 #[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
 fn scene1_element_stream_partition_and_first_command_header() {
     let Some(seen_path) = real_seen_txt_path() else {
-        real_corpus::skip_or_require_real_bytes(
+        real_corpus::require_real_bytes(
             "utsushi-reallive scene1_element_stream_partition_and_first_command_header",
         );
         return;

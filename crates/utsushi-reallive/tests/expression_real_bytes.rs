@@ -55,7 +55,7 @@ const REQUIRED_CLEAN_PARSE_COUNT: usize = SCENE_ONE_EXPECTED_EXPRESSION_COUNT;
 #[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
 fn scene1_expression_elements_parse_and_evaluate() {
     let Some(seen_path) = real_seen_txt_path() else {
-        real_corpus::skip_or_require_real_bytes(
+        real_corpus::require_real_bytes(
             "utsushi-reallive scene1_expression_elements_parse_and_evaluate",
         );
         return;

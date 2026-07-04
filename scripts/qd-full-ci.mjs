@@ -23,18 +23,20 @@ if (import.meta.url === pathToMainUrl(process.argv[1])) {
   });
 }
 
-// qd-full-ci is the per-gate CI entrypoint. Instead of always running the full
-// `just ci` (check + build + db-migrate + test + ci-real-bytes, ~30-45min on the
-// rust real-bytes lane), it selects only the lanes a diff can affect:
+// qd-full-ci is the per-gate CI entrypoint. Per-gate CI is single-mode SYNTHETIC
+// (fast, copyright-free): it runs the synthetic suites + the mutation-differential
+// guardrail, NOT the ~30-45min real-bytes lane (that lane is periodic-only, via
+// `just real-bytes-oracle`). Instead of always running the full `just ci`, it
+// selects only the lanes a diff can affect:
 //
 //   * shared / foundational change (workspace Cargo.toml, justfile, scripts/,
 //     .github/, root files) OR `--all` / ITOTORI_QD_FULL_CI_ALL=1 -> full `just ci`.
 //   * apps/itotori-only / TS-only change -> ci-itotori (+ check); the rust
-//     build/test and ci-real-bytes lanes are SKIPPED (apps/itotori has no kaifuu/
-//     utsushi dependency).
+//     build/test and mutation-differential lanes are SKIPPED (apps/itotori has no
+//     kaifuu/utsushi dependency).
 //   * a crates/kaifuu-* or crates/utsushi-* change -> that family's rust gate +
-//     ci-real-bytes, dependency-graph-expanded (utsushi depends on kaifuu, so a
-//     kaifuu change also runs ci-utsushi). See affectedCiLanes() in affected.mjs.
+//     mutation-differential, dependency-graph-expanded (utsushi depends on kaifuu,
+//     so a kaifuu change also runs ci-utsushi). See affectedCiLanes() in affected.mjs.
 //
 // Lane selection is dependency-graph-correct and conservative (when in doubt a
 // lane runs; nothing is permanently skipped — the full gate is always available

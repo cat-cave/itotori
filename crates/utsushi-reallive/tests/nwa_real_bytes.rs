@@ -101,7 +101,7 @@ fn real_wav_dir() -> Option<PathBuf> {
 #[allow(non_snake_case)]
 fn nwa_asa_decodes_33M_frames() {
     let Some(bgm_dir) = real_bgm_dir() else {
-        real_corpus::skip_or_require_real_bytes("utsushi-reallive nwa_asa_decodes_33M_frames");
+        real_corpus::require_real_bytes("utsushi-reallive nwa_asa_decodes_33M_frames");
         return;
     };
     let path = bgm_dir.join(ASA_NWA);
@@ -192,9 +192,7 @@ fn nwa_asa_decodes_33M_frames() {
 #[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
 fn nwa_chime_decodes_raw_pcm_header() {
     let Some(wav_dir) = real_wav_dir() else {
-        real_corpus::skip_or_require_real_bytes(
-            "utsushi-reallive nwa_chime_decodes_raw_pcm_header",
-        );
+        real_corpus::require_real_bytes("utsushi-reallive nwa_chime_decodes_raw_pcm_header");
         return;
     };
     let path = wav_dir.join(CHIME_NWA);

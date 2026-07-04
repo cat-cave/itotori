@@ -68,7 +68,7 @@ use kaifuu_reallive::{
 #[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
 fn pins_sweetie_hd_scene_1_dispatch_with_zero_unknown_opcodes() {
     let Some(seen_path) = real_seen_txt_path() else {
-        real_corpus::skip_or_require_real_bytes("Sweetie HD scene-1 dispatch test");
+        real_corpus::require_real_bytes("Sweetie HD scene-1 dispatch test");
         return;
     };
 
@@ -331,7 +331,7 @@ fn decompressed_scene_1(seen_path: &PathBuf) -> Vec<u8> {
 #[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
 fn scene_1_arg_expression_framing_offsets_are_pinned_byte_exact() {
     let Some(seen_path) = real_seen_txt_path() else {
-        real_corpus::skip_or_require_real_bytes("Sweetie HD scene-1 framing-offset pin");
+        real_corpus::require_real_bytes("Sweetie HD scene-1 framing-offset pin");
         return;
     };
     let decompressed = decompressed_scene_1(&seen_path);

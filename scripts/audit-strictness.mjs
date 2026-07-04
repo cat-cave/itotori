@@ -23,17 +23,14 @@
 //      justification (`// reason:` / `// justification:` / a
 //      `TODO(strictness-fix-relaxed-floors-to-strict)` reference).
 //   5. A real-bytes `#[ignore]` / `*_real_bytes.rs` test in a crate that the
-//      `ci-real-bytes` justfile lane does NOT run, and that is not on the
-//      transitional allowlist owned by
+//      `ci-real-bytes` justfile lane (the periodic ground-truth oracle) does
+//      NOT run, and that is not on the transitional allowlist owned by
 //      `strictness-invert-real-bytes-default-and-full-crate-coverage`.
-//   6. Committed code or the build config ENABLING the real-bytes opt-out
-//      (`ITOTORI_ALLOW_MISSING_CORPUS`): a shell/justfile assignment
-//      (`[export] ITOTORI_ALLOW_MISSING_CORPUS=…`) or a Rust `.env(…)` /
-//      `set_var(…)` / `remove_var(…)` on it. Real-bytes coverage is strict by
-//      default; the opt-out exists only for an interactive corpus-less run and
-//      must never be baked into CI/committed code. READING the flag (the
-//      real_corpus helper's `env::var_os` + const) is how strictness is
-//      enforced and is NOT flagged.
+//
+// (A former rule 6 banned enabling the real-bytes corpus opt-out flag. The
+// synthetic-CI collapse REMOVED that opt-out entirely — real-bytes coverage is
+// now unconditionally strict, so there is no opt-out to guard. The rule and its
+// regression tests were deleted with the flag, per no-legacy-compat.)
 //
 // Exit codes:
 //   0 — no violations
@@ -304,43 +301,6 @@ export function evaluateRealBytesCoverage(realBytesCrates, laneCrates) {
   return found;
 }
 
-// ---- Rule 6: enabling the ITOTORI_ALLOW_MISSING_CORPUS opt-out ------------
-// Real-bytes coverage is STRICT BY DEFAULT. The only escape valve,
-// `ITOTORI_ALLOW_MISSING_CORPUS=1`, is for an interactive corpus-less run and
-// must never be baked into committed code or the CI/build config. These
-// patterns match the "enable it" shapes (an actual assignment/export, or a
-// Rust `.env`/`set_var`/`remove_var` that mutates it) — NOT a READ
-// (`env::var_os(ALLOW_MISSING_CORPUS_ENV)`) nor the const definition, so the
-// real_corpus helper is never flagged.
-const ALLOW_MISSING_ENV = "ITOTORI_ALLOW_MISSING_CORPUS";
-const ALLOW_MISSING_ENABLE_PATTERNS = [
-  // shell / justfile assignment: `[export] ITOTORI_ALLOW_MISSING_CORPUS=…`
-  /^\s*(?:export\s+)?ITOTORI_ALLOW_MISSING_CORPUS\s*=/u,
-  // Rust process-env mutation of the flag.
-  /(?:set_var|remove_var)\s*\(\s*"ITOTORI_ALLOW_MISSING_CORPUS"/u,
-  /\.env(?:_remove)?\s*\(\s*"ITOTORI_ALLOW_MISSING_CORPUS"/u,
-];
-
-export function checkAllowMissingOptOut(path, contents) {
-  const found = [];
-  const lines = contents.split(/\r?\n/u);
-  for (let i = 0; i < lines.length; i += 1) {
-    const line = lines[i];
-    for (const pat of ALLOW_MISSING_ENABLE_PATTERNS) {
-      if (pat.test(line)) {
-        found.push({
-          file: path,
-          line: i + 1,
-          rule: `${ALLOW_MISSING_ENV} opt-out enabled in committed code/CI`,
-          excerpt: line.trim().slice(0, 200),
-        });
-        break;
-      }
-    }
-  }
-  return found;
-}
-
 // ---------------------------------------------------------------------------
 function listTrackedRustFiles() {
   const out = execSync("git ls-files crates", { cwd: repoRoot, encoding: "utf8" });
@@ -369,7 +329,6 @@ function runAudit() {
     violations.push(...checkBareIgnore(relPath, contents));
     violations.push(...checkUnreasonedAllow(relPath, contents));
     violations.push(...checkRelaxedFloors(relPath, contents));
-    violations.push(...checkAllowMissingOptOut(relPath, contents));
     if (crateOwnsRealBytes(relPath, contents)) {
       const crate = crateOfPath(relPath);
       if (crate) realBytesCrates.add(crate);
@@ -391,9 +350,6 @@ function runAudit() {
   const justfile = readRepoFile("justfile");
   const laneCrates = justfile ? parseLaneCrates(justfile) : new Set();
   violations.push(...evaluateRealBytesCoverage(realBytesCrates, laneCrates));
-  if (justfile !== undefined) {
-    violations.push(...checkAllowMissingOptOut("justfile", justfile));
-  }
 
   if (violations.length > 0) {
     process.stderr.write(

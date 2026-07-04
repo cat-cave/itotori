@@ -17,8 +17,10 @@
 //! any decode divergence is purely a decoder-logic difference, not an input
 //! difference.
 //!
-//! Env-gated + STRICT-BY-DEFAULT: an absent corpus hard-fails unless
-//! `ITOTORI_ALLOW_MISSING_CORPUS=1`. Run with
+//! Env-gated + STRICT: an absent corpus is an unconditional HARD FAILURE
+//! (no opt-out; these `#[ignore]`-d suites run only in the periodic
+//! ground-truth oracle, `just real-bytes-oracle`, where corpora are staged).
+//! Run with
 //! `ITOTORI_REAL_GAME_ROOT=<sweetie> ITOTORI_REAL_GAME_ROOT_2=<kanon>
 //! cargo test -p utsushi-reallive --test decoder_parity_real_bytes --
 //! --ignored`.
@@ -71,7 +73,7 @@ fn staged_scene_bytecode(seen_bytes: &[u8]) -> Vec<(u16, Vec<u8>)> {
 fn utsushi_decode_reaches_kaifuu_parity_on_every_populated_scene() {
     let corpora = real_corpus::corpora();
     if corpora.is_empty() {
-        real_corpus::skip_or_require_real_bytes(
+        real_corpus::require_real_bytes(
             "utsushi_decode_reaches_kaifuu_parity_on_every_populated_scene \
              (set ITOTORI_REAL_GAME_ROOT and ITOTORI_REAL_GAME_ROOT_2)",
         );

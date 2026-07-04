@@ -228,9 +228,7 @@ fn alloc_dc_produces_observable_state_snapshot_mutation() {
 #[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
 fn grp_openbg_bg01a1_registers_bg_plane() {
     let Some(g00_dir) = real_g00_dir() else {
-        real_corpus::skip_or_require_real_bytes(
-            "utsushi-reallive grp_openbg_bg01a1_registers_bg_plane",
-        );
+        real_corpus::require_real_bytes("utsushi-reallive grp_openbg_bg01a1_registers_bg_plane");
         return;
     };
     let bg01a1_path = g00_dir.join(BG01A1_FILENAME);

@@ -25,11 +25,11 @@
 //! Per the data rule, the test asserts only on byte-category invariants and
 //! reports counts / categories — never decoded dialogue strings.
 //!
-//! Env-gated like the rest of the real-bytes suite and STRICT BY DEFAULT:
-//! needs `ITOTORI_REAL_GAME_ROOT` (Sweetie HD) and `ITOTORI_REAL_GAME_ROOT_2`
-//! (Kanon). Without them an absent corpus is a HARD FAILURE; the explicit
-//! opt-out `ITOTORI_ALLOW_MISSING_CORPUS=1` downgrades it to a loudly-logged
-//! skip.
+//! Env-gated like the rest of the real-bytes suite and STRICT: needs
+//! `ITOTORI_REAL_GAME_ROOT` (Sweetie HD) and `ITOTORI_REAL_GAME_ROOT_2`
+//! (Kanon). Without them an absent corpus is an unconditional HARD FAILURE
+//! (no opt-out). These `#[ignore]`-d suites run only in the periodic
+//! ground-truth oracle (`just real-bytes-oracle`), where corpora are staged.
 
 #[path = "support/real_corpus.rs"]
 mod real_corpus;
@@ -288,7 +288,7 @@ fn print_report(report: &PurityReport) {
 fn bridge_bundles_carry_zero_non_dialogue_units_on_both_corpora_real_bytes() {
     let corpora = real_corpus::corpora();
     if corpora.is_empty() {
-        real_corpus::skip_or_require_real_bytes(
+        real_corpus::require_real_bytes(
             "bridge_bundles_carry_zero_non_dialogue_units_on_both_corpora_real_bytes \
              (set ITOTORI_REAL_GAME_ROOT and ITOTORI_REAL_GAME_ROOT_2)",
         );

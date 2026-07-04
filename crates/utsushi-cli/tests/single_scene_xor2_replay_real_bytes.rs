@@ -28,8 +28,9 @@
 //!      (no staging) does NOT observe the translated text on the SAME patched
 //!      bytes — proving the xor2 staging is load-bearing.
 //!
-//! Env-gated + STRICT BY DEFAULT: an absent corpus is a HARD FAILURE unless
-//! `ITOTORI_ALLOW_MISSING_CORPUS=1`. Run with
+//! Env-gated + STRICT: an absent corpus is an unconditional HARD FAILURE
+//! (no opt-out; runs only in the periodic ground-truth oracle,
+//! `just real-bytes-oracle`, where corpora are staged). Run with
 //! `ITOTORI_REAL_GAME_ROOT=<sweetie-hd> cargo test -p utsushi-cli
 //! --test single_scene_xor2_replay_real_bytes -- --ignored`.
 
@@ -235,7 +236,7 @@ fn cli_bin() -> &'static str {
 #[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT (Sweetie HD, xor_2 / 110002)"]
 fn single_scene_replay_validate_decodes_real_text_on_xor2_title() {
     let Some(seen_path) = real_corpus::seen_txt_path() else {
-        real_corpus::skip_or_require_real_bytes(
+        real_corpus::require_real_bytes(
             "single_scene_replay_validate_decodes_real_text_on_xor2_title",
         );
         return;

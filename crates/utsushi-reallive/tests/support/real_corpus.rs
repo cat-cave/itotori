@@ -8,41 +8,20 @@ use std::path::{Path, PathBuf};
 pub const REAL_GAME_ROOT_ENV: &str = "ITOTORI_REAL_GAME_ROOT";
 pub const REAL_GAME_ROOT_2_ENV: &str = "ITOTORI_REAL_GAME_ROOT_2";
 
-/// Loud opt-OUT flag (`ITOTORI_ALLOW_MISSING_CORPUS=1`). Real-bytes coverage is
-/// STRICT BY DEFAULT: an absent corpus is a hard failure. Mirrors the
-/// kaifuu-reallive support module. Setting this flag is the only escape valve —
-/// it downgrades the hard failure to an explicit, loudly-logged skip, for the
-/// rare context (a corpus-less dev checkout) that knowingly forgoes real-bytes
-/// coverage. The CI real-bytes lane (which stages Sweetie HD + Kanon) never
-/// sets it, so that lane can never report a green PASS while exercising zero
-/// real bytes.
-pub const ALLOW_MISSING_CORPUS_ENV: &str = "ITOTORI_ALLOW_MISSING_CORPUS";
-
-/// `true` when the operator explicitly opted OUT of real-bytes enforcement via
-/// `ITOTORI_ALLOW_MISSING_CORPUS=1`.
-pub fn allow_missing_corpus() -> bool {
-    env::var_os(ALLOW_MISSING_CORPUS_ENV).is_some_and(|value| value == "1")
-}
-
 /// Resolve the corpus-unavailable branch of an env-gated real-bytes test.
 ///
 /// Single chokepoint mirroring `kaifuu-reallive`'s helper. Real-bytes coverage
-/// is STRICT BY DEFAULT: by default an absent corpus is a HARD FAILURE (panics,
-/// naming the missing [`REAL_GAME_ROOT_ENV`]); only the explicit opt-OUT
-/// `ITOTORI_ALLOW_MISSING_CORPUS=1` downgrades it to a LOUD, non-silent skip
-/// notice that returns.
-pub fn skip_or_require_real_bytes(test_name: &str) {
-    let detail = format!(
-        "{REAL_GAME_ROOT_ENV} unset; {test_name} did not exercise real bytes \
-         (re-run with {REAL_GAME_ROOT_ENV}=/path/to/reallive-game-root)"
-    );
-    assert!(
-        allow_missing_corpus(),
-        "real-bytes coverage is STRICT BY DEFAULT: {detail}. Set \
-         {ALLOW_MISSING_CORPUS_ENV}=1 to explicitly opt out (knowingly forgoing real bytes)."
-    );
-    eprintln!(
-        "WARNING: {ALLOW_MISSING_CORPUS_ENV}=1 set — SKIPPING real-bytes coverage (opted out): {detail}"
+/// is STRICT: an absent corpus is an UNCONDITIONAL HARD FAILURE (panics, naming
+/// the missing [`REAL_GAME_ROOT_ENV`]). There is NO opt-out — the real-bytes
+/// suites are `#[ignore]`-d and run only in the periodic ground-truth oracle
+/// (`just real-bytes-oracle`), where the corpora are always staged. Returns `()`
+/// (not `!`) so the early-return call sites keep their `return` without an
+/// `unreachable_code` lint.
+pub fn require_real_bytes(test_name: &str) {
+    panic!(
+        "real-bytes coverage is STRICT: {REAL_GAME_ROOT_ENV} unset; {test_name} did not \
+         exercise real bytes (re-run with {REAL_GAME_ROOT_ENV}=/path/to/reallive-game-root; \
+         these suites run in the periodic ground-truth oracle where the corpora are staged)."
     );
 }
 

@@ -12,8 +12,10 @@
 //!     identity at every tick boundary.
 //!  4. Holds on the real bytes of both titles.
 //!
-//! Env-gated + STRICT-BY-DEFAULT: an absent corpus hard-fails unless
-//! `ITOTORI_ALLOW_MISSING_CORPUS=1`. Run with
+//! Env-gated + STRICT: an absent corpus is an unconditional HARD FAILURE
+//! (no opt-out; these `#[ignore]`-d suites run only in the periodic
+//! ground-truth oracle, `just real-bytes-oracle`, where corpora are staged).
+//! Run with
 //! `ITOTORI_REAL_GAME_ROOT=<sweetie> ITOTORI_REAL_GAME_ROOT_2=<kanon>
 //! cargo test -p utsushi-reallive --test full_module_replay_real_bytes --
 //! --ignored`.
@@ -120,13 +122,13 @@ fn full_module_replay_all_scenes_zero_unknown() {
     }
 }
 
-/// Resolve both corpora or resolve the strict-by-default skip. Returns an
-/// empty vec only when the operator opted out via
-/// `ITOTORI_ALLOW_MISSING_CORPUS=1`.
+/// Resolve both corpora, or HARD-FAIL when fewer than two are staged.
+/// Real-bytes coverage is STRICT (no opt-out): `require_real_bytes` panics,
+/// so the `return Vec::new()` below is never reached.
 fn corpora_or_skip(test_name: &str) -> Vec<real_corpus::RealCorpus> {
     let corpora = real_corpus::corpora();
     if corpora.len() < 2 {
-        real_corpus::skip_or_require_real_bytes(test_name);
+        real_corpus::require_real_bytes(test_name);
         return Vec::new();
     }
     corpora

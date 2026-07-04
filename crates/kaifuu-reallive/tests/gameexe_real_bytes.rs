@@ -13,10 +13,10 @@
 //! invariant (analogous to KAIFUU-189's reasoning); second-corpus
 //! retroactive validation is welcome but not blocking.
 //!
-//! Env-gating, STRICT BY DEFAULT: this test reads bytes only when
-//! `ITOTORI_REAL_GAME_ROOT` is set; otherwise an absent corpus is a HARD
-//! FAILURE. Set the explicit opt-out `ITOTORI_ALLOW_MISSING_CORPUS=1` to
-//! downgrade it to a loudly-logged skip.
+//! Env-gating, STRICT: this test reads bytes only when
+//! `ITOTORI_REAL_GAME_ROOT` is set; otherwise an absent corpus is an
+//! unconditional HARD FAILURE (no opt-out). It runs only in the periodic
+//! ground-truth oracle (`just real-bytes-oracle`), where the corpus is staged.
 
 #[path = "support/real_corpus.rs"]
 mod real_corpus;
@@ -31,7 +31,7 @@ use kaifuu_reallive::{GameexeKeyFamily, GameexeKeyTreatment, parse_gameexe_inven
 #[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
 fn classifies_sweetie_hd_gameexe_ini_to_at_least_ninety_percent_coverage() {
     let Some(ini_path) = real_gameexe_ini_path() else {
-        real_corpus::skip_or_require_real_bytes("Sweetie HD Gameexe.ini real-bytes test");
+        real_corpus::require_real_bytes("Sweetie HD Gameexe.ini real-bytes test");
         return;
     };
 

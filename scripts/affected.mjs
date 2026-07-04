@@ -155,12 +155,15 @@ export function affectedTasks(changedPaths) {
 //     scripts/, .github/, root files) -> affectedTasks() collapses to the `ci`
 //     sentinel, so affectedCiLanes() returns exactly ["ci"] (the FULL gate).
 //   * apps/itotori-only / TS-only change -> ci-itotori (+ check); NO rust
-//     build/test and NO ci-real-bytes lane.
+//     build/test and NO mutation-differential lane.
 //   * a crates/kaifuu-* or crates/utsushi-* change -> that family's rust gate
-//     PLUS the (monolithic) ci-real-bytes lane, expanded dependency-graph-
-//     correct: a change to a crate family that another family depends on also
-//     runs the dependents' gate (utsushi depends on kaifuu, so a kaifuu change
-//     runs ci-utsushi too).
+//     (the fast, copyright-free SYNTHETIC suites) PLUS the mutation-differential
+//     differential guardrail (proving synthetic >= real for regression
+//     detection), expanded dependency-graph-correct: a change to a crate family
+//     that another family depends on also runs the dependents' gate (utsushi
+//     depends on kaifuu, so a kaifuu change runs ci-utsushi too). The ~30-45min
+//     real-bytes lane is NOT selected per-gate — it is periodic-only
+//     (`just real-bytes-oracle`). coverage-parity runs in the base `check` gate.
 //
 // The dependency direction is derived from the workspace Cargo.toml manifests
 // (buildCrateFamilyDependents), never hard-coded, so it stays correct as deps
@@ -174,7 +177,7 @@ const laneOrder = [
   "ci-itotori",
   "ci-kaifuu",
   "ci-utsushi",
-  "ci-real-bytes",
+  "mutation-differential",
   "fixtures-validate",
   "localize-project-test",
   "alpha-proof",
@@ -292,7 +295,8 @@ export function affectedCiLanes(changedPaths, options = {}) {
   //     proof, benchmark-harness, ...); those run only under `pnpm --filter
   //     @itotori/app test` (the ci-itotori lane), NOT under `just check`.
   // A fixture-byte change diverging from either expectation would ship UNCAUGHT,
-  // so route repo-root fixtures to the rust gates + real-bytes AND ci-itotori.
+  // so route repo-root fixtures to the rust gates (which drive the synthetic +
+  // fixture byte assertions) AND ci-itotori.
   // (Package-local fixtures like apps/itotori/test/fixtures/** classify via
   // apps/itotori -> ci-itotori and never reach this branch.)
   if (changedPaths.some((rawPath) => rawPath.replaceAll("\\", "/").startsWith("fixtures/"))) {
@@ -311,10 +315,13 @@ export function affectedCiLanes(changedPaths, options = {}) {
     }
   }
 
-  // Any rust crate family in scope runs the monolithic real-bytes lane. ci-real-bytes
-  // is a single recipe spanning every crate's real-bytes suite, so any crate change
-  // that could touch it selects the whole lane (conservative, never partial).
-  if (lanes.has("ci-kaifuu") || lanes.has("ci-utsushi")) lanes.add("ci-real-bytes");
+  // Any rust crate family in scope runs the synthetic differential guardrail.
+  // mutation-differential is the source-level mutation kill matrix that certifies
+  // the fast synthetic suites are AS STRONG AS the real-bytes lanes at catching
+  // regressions (synthetic >= real), so per-gate CI can stay copyright-free and
+  // needs no real corpora. It is deterministic (~90s) and replaces the old
+  // ~30-45min per-gate real-bytes lane (now periodic-only via real-bytes-oracle).
+  if (lanes.has("ci-kaifuu") || lanes.has("ci-utsushi")) lanes.add("mutation-differential");
 
   return laneOrder.filter((lane) => lanes.has(lane));
 }
