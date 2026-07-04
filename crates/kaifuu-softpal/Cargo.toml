@@ -5,9 +5,10 @@ publish = false
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Pure-Rust Softpal / Amuse-Craft (\"Pal\" engine) PAC container reader: deterministic enumerate + extract of the `PAC ` archive (magic + u32 count @0x08 + 0x804 reserved header + 40-byte name/size/offset index). CONTAINER level only — NOT the TEXT.DAT codec or SCRIPT.SRC disassembler (separate nodes). No compression, no index encryption, no shell-outs."
+description = "Pure-Rust Softpal / Amuse-Craft (\"Pal\" engine) reader: deterministic enumerate + extract of the `PAC ` archive (magic + u32 count @0x08 + 0x804 reserved header + 40-byte name/size/offset index), plus the inner TEXT.DAT string-pool codec (16-byte header + flag-gated keyless ROL+XOR decrypt/encrypt + 4-byte-index/cp932/NUL record parser with absolute byte offsets). NOT the SCRIPT.SRC disassembler or patch-back (separate nodes). No shell-outs."
 
 [dependencies]
+encoding_rs.workspace = true
 serde = { workspace = true }
 thiserror.workspace = true
 

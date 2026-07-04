@@ -1,10 +1,13 @@
-//! Pure-Rust **Softpal / Amuse-Craft ("Pal" engine) PAC container** reader.
+//! Pure-Rust **Softpal / Amuse-Craft ("Pal" engine)** reader: the `PAC `
+//! container envelope plus the inner `TEXT.DAT` string-pool codec.
 //!
 //! Softpal ADV (aka Amuse Craft / "Pal"; used by CRYSTALiA, Hearts, Us:track,
 //! Unison Shift, …) ships its assets in a single flat `PAC ` archive
 //! (`data.pac`, `system.pac`, `csv.pac`, …). This crate owns the **container
-//! envelope**: it parses the header + directory index and slices an entry's
-//! bytes out deterministically.
+//! envelope** — it parses the header + directory index and slices an entry's
+//! bytes out deterministically — and the **`TEXT.DAT` codec** ([`TextDat`]):
+//! flag-gated keyless decrypt/encrypt plus the record parser that exposes each
+//! string's absolute byte offset.
 //!
 //! # Format (all little-endian)
 //!
@@ -25,13 +28,15 @@
 //! SoftPal-Tool `pac_unpack.py` are **extraction oracles only** — this reader
 //! is reimplemented deterministically in Rust and never shells out.
 //!
-//! # Honest scope: container level, NOT the inner codecs
+//! # Honest scope: PAC container + `TEXT.DAT` codec, NOT the script
 //!
-//! This crate identifies / inventories / extracts **archive entries**. It does
-//! **not** decode or decrypt the inner files: the `TEXT.DAT` codec and the
-//! `SCRIPT.SRC` (`Sv`-version) disassembler are **separate Softpal nodes**.
-//! Extracting `SCRIPT.SRC` here yields its raw (still engine-encoded) bytes,
-//! byte-identical to the oracle — nothing more.
+//! This crate (a) enumerates / extracts **archive entries** and (b) decodes the
+//! **`TEXT.DAT`** string pool (header + flag-gated cipher + record framing +
+//! cp932 decode). It does **not** disassemble the `SCRIPT.SRC` (`Sv`-version)
+//! bytecode nor resolve which `TEXT.DAT` record a line of dialogue uses, and it
+//! does **not** patch edited text back into a repacked pool — those are
+//! **separate Softpal nodes**. Extracting `SCRIPT.SRC` here yields its raw
+//! (still engine-encoded) bytes, byte-identical to the oracle — nothing more.
 //!
 //! # Determinism / no shell-outs
 //!
@@ -40,10 +45,17 @@
 //! a typed [`PacError`].
 
 mod archive;
+mod textdat;
 
 pub use archive::{
     PAC_COUNT_OFFSET, PAC_ENTRY_NAME_BYTE_LEN, PAC_HEADER_BYTE_LEN, PAC_INDEX_ENTRY_BYTE_LEN,
     PAC_MAGIC, PAC_MAX_ENTRIES, PacArchive, PacEntry, PacError,
+};
+pub use textdat::{
+    EncFlag, TEXTDAT_COUNT_OFFSET, TEXTDAT_FLAG_ENCRYPTED, TEXTDAT_FLAG_PLAINTEXT,
+    TEXTDAT_HEADER_BYTE_LEN, TEXTDAT_INITIAL_SHIFT, TEXTDAT_MAGIC_TAIL,
+    TEXTDAT_RECORD_INDEX_BYTE_LEN, TEXTDAT_XOR_A, TEXTDAT_XOR_B, TextDat, TextDatError,
+    TextDatHeader, TextRecord, decrypt, encrypt, parse_records,
 };
 
 /// Grep-pinnable namespace marker every [`PacError`] display string carries.
@@ -51,9 +63,16 @@ pub use archive::{
 /// the concrete variant.
 pub const SOFTPAL_PAC_ERROR_MARKER: &str = "kaifuu.softpal.pac";
 
+/// Grep-pinnable namespace marker every [`TextDatError`] display string
+/// carries, mirroring [`SOFTPAL_PAC_ERROR_MARKER`] for the `TEXT.DAT` codec.
+pub const SOFTPAL_TEXTDAT_ERROR_MARKER: &str = "kaifuu.softpal.textdat";
+
 /// One-line capability boundary, mirroring the Softpal detector's
-/// `SOFTPAL_SUPPORT_BOUNDARY`: this crate is the CONTAINER reader only.
-pub const SOFTPAL_PAC_SUPPORT_BOUNDARY: &str = "kaifuu-softpal PAC reader enumerates and extracts \
-    entries of the Softpal `PAC ` container (magic + u32 count @0x08 + 0x804 reserved header + \
-    40-byte name/size/offset index) deterministically; TEXT.DAT decoding, SCRIPT.SRC \
-    disassembly/decompilation, decryption, and patch-back are NOT claimed (separate Softpal nodes).";
+/// `SOFTPAL_SUPPORT_BOUNDARY`: this crate is the PAC container reader plus the
+/// `TEXT.DAT` string-pool codec.
+pub const SOFTPAL_PAC_SUPPORT_BOUNDARY: &str = "kaifuu-softpal enumerates and extracts entries of \
+    the Softpal `PAC ` container (magic + u32 count @0x08 + 0x804 reserved header + 40-byte \
+    name/size/offset index) deterministically, AND decodes the inner `TEXT.DAT` string pool \
+    (16-byte header + flag-gated keyless ROL+XOR decrypt/encrypt + 4-byte-index/cp932/NUL record \
+    parser with absolute byte offsets); SCRIPT.SRC disassembly/decompilation, string-pointer \
+    resolution, and patch-back are NOT claimed (separate Softpal nodes).";

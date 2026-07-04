@@ -652,6 +652,7 @@ dependencies = [
 name = "kaifuu-softpal"
 version = "0.0.0"
 dependencies = [
+ "encoding_rs",
  "serde",
  "sha2",
  "thiserror",
