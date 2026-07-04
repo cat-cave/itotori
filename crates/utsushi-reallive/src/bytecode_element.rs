@@ -1116,74 +1116,53 @@ fn walk_command_arg_list(bytes: &[u8], start: usize) -> Result<usize, BytecodeDe
 
 /// Decode a standalone `0x24` ExpressionElement at `bytes[pos]`.
 ///
-/// The on-disk shape of an ExpressionElement (per rlvm
+/// The `0x24` element opener doubles as the `$` of the first
+/// ExpressionPiece token (per rlvm
 /// `bytecode.cc::ExpressionElement::ExpressionElement` and
-/// `expression.cc::GetAssignment`, research anchor only) is an
-/// **assignment**: a destination term, a backslash-prefixed compound
-/// assignment operator (`\<op>` with `op` in `0x14..=0x24`), and a
-/// source expression. The `0x24` lead byte is itself the `$` that
-/// starts the destination term.
+/// `expression.cc::GetExpression`, research anchor only), so the whole
+/// element is framed with the general expression walker
+/// ([`next_expression`]) starting at `pos`. This is a faithful
+/// restatement of the proven `kaifuu-reallive` `decode_element`, which
+/// frames the `0x24` element with `parse_expression(bytes, pos)`.
 ///
-/// The byte-length walker therefore starts at `pos` (not `pos + 1`)
-/// and consumes:
-///
-/// 1. [`next_term`] — a term starting with the `$` lead byte.
-/// 2. The 2-byte `\<assign_op>` separator.
-/// 3. [`next_expression`] — the source expression.
+/// The compound-assignment idiom (`<dest_term> \<op> <source_expr>`) is
+/// the common on-disk shape, but it is just one instance of a general
+/// expression: the `\<op>` join and its operand are folded in by the
+/// binary-operator continuation in [`next_arith`], which accepts **any**
+/// op byte after the `\` prefix. The previous implementation hard-coded
+/// the assignment form and rejected any op byte outside `0x14..=0x24`,
+/// which desynced on real Sweetie HD scene 2 (an expression element whose
+/// `\<op>` is `0x03`) where the kaifuu decoder — and the general walker —
+/// frame it cleanly. Restricting the `0x24` element to the assignment
+/// form was a decoder divergence from kaifuu, not a real grammar rule.
 fn decode_expression_element(
     bytes: &[u8],
     pos: usize,
 ) -> Result<BytecodeElement, BytecodeDecodeError> {
-    let term_len = next_term(bytes, pos)?;
-    let sep_start =
-        pos.checked_add(term_len)
-            .ok_or_else(|| BytecodeDecodeError::MalformedElement {
-                position: pos,
-                message: "expression-element term-length addition overflowed usize".to_string(),
-            })?;
-    if sep_start + 2 > bytes.len() {
-        return Err(BytecodeDecodeError::Truncated {
-            observed_len: bytes.len(),
-            position: sep_start,
-            needed: sep_start + 2 - bytes.len(),
-            message: "expression-element assignment separator (`\\<op>`) truncated".to_string(),
-        });
-    }
-    if bytes[sep_start] != EXPRESSION_BACKSLASH {
-        return Err(BytecodeDecodeError::MalformedElement {
-            position: sep_start,
-            message: format!(
-                "expression-element assignment requires '\\' (0x5C) before the op byte; \
-                 observed 0x{:02x}",
-                bytes[sep_start],
-            ),
-        });
-    }
-    let op = bytes[sep_start + 1];
-    if !(0x14..=0x24).contains(&op) {
-        return Err(BytecodeDecodeError::MalformedElement {
-            position: sep_start + 1,
-            message: format!(
-                "expression-element assignment op byte must be in 0x14..=0x24; observed 0x{op:02x}",
-            ),
-        });
-    }
-    let rhs_start = sep_start + 2;
-    let rhs_len = next_expression(bytes, rhs_start)?;
-    let end =
-        rhs_start
-            .checked_add(rhs_len)
-            .ok_or_else(|| BytecodeDecodeError::MalformedElement {
-                position: rhs_start,
-                message: "expression-element source-expression length addition overflowed usize"
-                    .to_string(),
-            })?;
+    let expr_len = next_expression(bytes, pos)?;
+    let end = pos
+        .checked_add(expr_len)
+        .ok_or_else(|| BytecodeDecodeError::MalformedElement {
+            position: pos,
+            message: "expression-element length addition overflowed usize".to_string(),
+        })?;
     if end > bytes.len() {
         return Err(BytecodeDecodeError::Truncated {
             observed_len: bytes.len(),
-            position: rhs_start,
+            position: pos,
             needed: end - bytes.len(),
-            message: "expression-element source expression extends past end of input".to_string(),
+            message: "expression-element extends past end of input".to_string(),
+        });
+    }
+    // The `0x24` lead byte is itself the `$` of the first token, so the
+    // walker always consumes at least the 2-byte `$ <bank>` form — a
+    // zero-width expression element is impossible and would stall the
+    // outer decode loop. Guard it as a typed error rather than a silent
+    // non-advance.
+    if end == pos {
+        return Err(BytecodeDecodeError::MalformedElement {
+            position: pos,
+            message: "expression-element consumed zero bytes".to_string(),
         });
     }
     let raw_bytes = bytes[pos..end].to_vec();
