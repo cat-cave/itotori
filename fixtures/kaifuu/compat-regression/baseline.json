@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "0.1.0",
+  "entries": [
+    {
+      "tupleId": "compat/siglus/known-key-extract",
+      "diagnosticsFingerprint": "sha256:458604879b39dd04b6ef735bfa43c6b53c28b220e2ca945165710b1ce03a4267"
+    },
+    {
+      "tupleId": "compat/kirikiri-kag/plaintext-patch",
+      "diagnosticsFingerprint": "sha256:b0bc2ae56c2072c7518a27253c4cca0717f7bfc5565d989715b184ca5defb3ef"
+    }
+  ]
+}
+

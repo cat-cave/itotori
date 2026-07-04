@@ -562,7 +562,7 @@ impl ClaimedSupportEntryReport {
         self.status == OperationStatus::Passed
     }
 
-    fn redacted_for_report(&self) -> Self {
+    pub(crate) fn redacted_for_report(&self) -> Self {
         Self {
             profile_or_fixture_id: redact_for_log_or_report(&self.profile_or_fixture_id),
             engine_family: self.engine_family,
