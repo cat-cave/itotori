@@ -28,17 +28,20 @@
 //! SoftPal-Tool `pac_unpack.py` are **extraction oracles only** — this reader
 //! is reimplemented deterministically in Rust and never shells out.
 //!
-//! # Honest scope: PAC container + `TEXT.DAT` codec + dialogue disassembler
+//! # Honest scope: PAC container + `TEXT.DAT` codec + disassembler + patch-back
 //!
 //! This crate (a) enumerates / extracts **archive entries**, (b) decodes the
 //! **`TEXT.DAT`** string pool (header + flag-gated cipher + record framing +
-//! cp932 decode), and (c) disassembles the **dialogue + speaker + choice
+//! cp932 decode), (c) disassembles the **dialogue + speaker + choice
 //! surfaces** of the plaintext `SCRIPT.SRC` (`Sv`-version) bytecode
 //! ([`ScriptScan`] / [`Disassembly`]): it scans for the TEXT-SHOW (32-byte) and
 //! SELECT (16-byte) commands and resolves their 4-byte `TEXT.DAT` pointers to
-//! decoded lines. It does **not** decode the full `Sv20` opcode table / control
-//! flow (scene dispatch, branches, voice/animation — the replay node), and it
-//! does **not** patch edited text back into a repacked pool (patch-back node).
+//! decoded lines, and (d) **patches translated dialogue / choices back**
+//! ([`patchback`]): it rebuilds `TEXT.DAT` with new strings (old→new offset map,
+//! re-encrypting when the original was), repoints the `SCRIPT.SRC` pointer fields,
+//! and drops both as **loose files** (no PAC repack). It does **not** decode the
+//! full `Sv20` opcode table / control flow (scene dispatch, branches,
+//! voice/animation — the replay node).
 //!
 //! # Determinism / no shell-outs
 //!
@@ -47,12 +50,17 @@
 //! a typed [`PacError`].
 
 mod archive;
+mod patchback;
 mod script;
 mod textdat;
 
 pub use archive::{
     PAC_COUNT_OFFSET, PAC_ENTRY_NAME_BYTE_LEN, PAC_HEADER_BYTE_LEN, PAC_INDEX_ENTRY_BYTE_LEN,
     PAC_MAGIC, PAC_MAX_ENTRIES, PacArchive, PacEntry, PacError,
+};
+pub use patchback::{
+    OffsetMap, PATCHBACK_SCRIPT_NAME, PATCHBACK_TEXTDAT_NAME, Patchback, PatchbackError,
+    SOFTPAL_PATCHBACK_ERROR_MARKER, TranslationMap, patchback, rebuild_textdat, repoint_script,
 };
 pub use script::{
     COMMAND_NAME_PTR_OFFSET, COMMAND_TEXT_PTR_OFFSET, ChoiceUnit, DialogueUnit, Disassembly,
@@ -92,5 +100,7 @@ pub const SOFTPAL_PAC_SUPPORT_BOUNDARY: &str = "kaifuu-softpal enumerates and ex
     parser with absolute byte offsets), AND disassembles the SCRIPT.SRC dialogue+speaker+choice \
     surfaces (Sv-version plaintext bytecode: TEXT-SHOW 32-byte + SELECT 16-byte commands scanned \
     by marker+discriminator, their 4-byte TEXT.DAT pointers resolved to record boundaries, \
-    byte-locatable pointer fields for patch-back); the full Sv20 opcode table / control-flow \
-    decompile (replay node) and patch-back repack are NOT claimed (separate Softpal nodes).";
+    byte-locatable pointer fields for patch-back), AND patches translated dialogue+choices back \
+    (rebuild TEXT.DAT with an old->new offset map + re-encrypt when the original was, repoint the \
+    SCRIPT.SRC pointer fields, drop both as loose files with no PAC repack); the full Sv20 opcode \
+    table / control-flow decompile (replay node) is NOT claimed (separate Softpal node).";
