@@ -160,6 +160,10 @@ export type {
   ReviewerQueueDashboardRow,
   ReviewerQueueDashboardState,
   ReviewerQueueReadRepositoryPort,
+  ReviewerSingleAction,
+  ReviewerSingleActionInput,
+  ReviewerSingleActionRequest,
+  ReviewerSingleActionResult,
 } from "./api-service.js";
 
 export {

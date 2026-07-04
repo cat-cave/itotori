@@ -49,6 +49,7 @@ import {
   parseRecordFindingRequest,
   parseReviewerBatchExecuteRequest,
   parseReviewerBatchPreviewRequest,
+  parseReviewerSingleActionRequest,
   parseRuntimeEvidenceRequest,
   parseWorkspaceCorrectionSubmitRequest,
   type ApiDraftBranchResponse,
@@ -60,6 +61,7 @@ import {
   type ApiProjectsResponse,
   type ApiReviewerBatchExecuteResponse,
   type ApiReviewerBatchPreviewResponse,
+  type ApiReviewerSingleActionResponse,
   type ApiReviewerDetailResponse,
   type ApiReviewerQueueDashboardResponse,
   type ItotoriApiResponseBody,
@@ -77,6 +79,7 @@ import {
   reviewerDetailDiagnosticCodeValues,
 } from "./reviewer/detail-fixtures.js";
 import type { ReviewerQueueApiServicePort } from "./reviewer/api-service.js";
+import { reviewerBatchPreviewStatusValues } from "./reviewer/batch-preview.js";
 import type { ReviewerQueuePermissionView } from "./auth.js";
 import type {
   LocalizationWorkspaceApiServicePort,
@@ -472,6 +475,31 @@ async function routeItotoriApiRequest(
     );
   }
 
+  const reviewerSingleActionRoute = parseReviewerSingleActionApiRoute(request.pathname);
+  if (request.method === "POST" && reviewerSingleActionRoute !== null) {
+    // ITOTORI-082 — single-item reviewer action. Reuses the batch route's
+    // actor-gating (the SAME permission view), validation, and
+    // consequence disclosure via `actionSingleItem` (a batch-of-one over
+    // ReviewerQueueActionService). No new auth path, service, or
+    // migration. A refused outcome (unknown item / invalid transition /
+    // already-actioned / stale / permission) becomes a typed HTTP error
+    // rather than an in-band 200 or a 500.
+    const body = parseReviewerSingleActionRequest(
+      request.body,
+      reviewerSingleActionRoute.reviewItemId,
+    );
+    const permission = await resolveApiReviewerQueuePermissionView(services, body.actorUserId);
+    const result = await services.reviewerQueue.actionSingleItem({
+      actor: { userId: body.actorUserId },
+      request: body,
+      permission,
+    });
+    if (result.outcome.kind === "refused") {
+      return reviewerSingleActionRefusal(result.outcome.status, result.outcome.message);
+    }
+    return ok("reviewer.itemAction", result);
+  }
+
   if (
     request.pathname === "/api/projects/status" ||
     request.pathname === "/api/projects/decisions" ||
@@ -487,10 +515,12 @@ async function routeItotoriApiRequest(
     request.pathname === "/api/reviewer/queue" ||
     request.pathname === "/api/reviewer/queue/batch-preview" ||
     request.pathname === "/api/reviewer/queue/batch-confirm" ||
+    reviewerSingleActionRoute !== null ||
     reviewerDetailRoute !== null
   ) {
     return request.pathname === "/api/reviewer/queue/batch-preview" ||
-      request.pathname === "/api/reviewer/queue/batch-confirm"
+      request.pathname === "/api/reviewer/queue/batch-confirm" ||
+      reviewerSingleActionRoute !== null
       ? methodNotAllowed(["POST"])
       : methodNotAllowed(["GET"]);
   }
@@ -847,6 +877,34 @@ function parseReviewerDetailApiRoute(pathname: string): { reviewItemId: string }
     return null;
   }
   return { reviewItemId: decodeURIComponent(match[1]) };
+}
+
+function parseReviewerSingleActionApiRoute(pathname: string): { reviewItemId: string } | null {
+  const match = /^\/api\/reviewer\/queue\/([^/]+)\/action$/u.exec(pathname);
+  if (match === null || match[1] === undefined || match[1].length === 0) {
+    return null;
+  }
+  return { reviewItemId: decodeURIComponent(match[1]) };
+}
+
+/**
+ * Map a single-item action refusal (the same closed status taxonomy the
+ * batch preview/execute uses) to a typed HTTP error — never a 500. A
+ * missing item is a 404; a permission denial is a 403; every remaining
+ * refusal (invalid transition, already-actioned, stale revision,
+ * concurrent modification, runtime-evidence invariant, invalid input,
+ * duplicate) is a 400 bad_request carrying the refusal message.
+ */
+function reviewerSingleActionRefusal(status: string, message: string): ApiJsonResponse {
+  switch (status) {
+    case reviewerBatchPreviewStatusValues.notFound:
+      return errorBody(404, "not_found", message);
+    case reviewerBatchPreviewStatusValues.permissionDeniedRead:
+    case reviewerBatchPreviewStatusValues.permissionDeniedManage:
+      return errorBody(403, "forbidden", message);
+    default:
+      return errorBody(400, "bad_request", message);
+  }
 }
 
 function parseAssetDecisionApiRoute(pathname: string): {
@@ -1259,6 +1317,7 @@ function ok(
   routeId: "reviewer.batchExecute",
   body: ApiReviewerBatchExecuteResponse,
 ): ApiJsonResponse;
+function ok(routeId: "reviewer.itemAction", body: ApiReviewerSingleActionResponse): ApiJsonResponse;
 function ok(routeId: "terminology.search", body: TerminologySearchReadModel): ApiJsonResponse;
 function ok(
   routeId: "workspace.projects",

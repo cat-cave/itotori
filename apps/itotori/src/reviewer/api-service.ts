@@ -15,6 +15,7 @@ import {
 import type { ReviewerDetailContext } from "./detail-fixtures.js";
 import {
   ReviewerBatchPreviewService,
+  type BatchPreviewItem,
   type ReviewerBatchActionRequest,
   type ReviewerBatchConsequenceResolverPort,
   type ReviewerBatchPreview,
@@ -23,6 +24,7 @@ import {
   ReviewerBatchActionService,
   type BatchActionPayload,
   type BatchActionPayloadResolver,
+  type BatchExecuteOutcome,
   type ReviewerBatchExecuteResult,
 } from "./batch-execute.js";
 import type { ReviewerQueueActionServicePort } from "./action-service.js";
@@ -86,6 +88,54 @@ export type ReviewerQueueApiServiceDeps = {
   now?: () => Date;
 };
 
+/**
+ * ITOTORI-082 — single-item reviewer action HTTP seam.
+ *
+ * The batch surface (preview + confirm) already carries the full
+ * consequence-disclosure + atomic-write machinery over
+ * `ReviewerQueueActionService`. A reviewer acting on ONE item should
+ * not have to construct a batch-of-one: `ReviewerSingleActionRequest`
+ * names a single review item + the reviewer's action inputs, and
+ * `actionSingleItem` runs it through the SAME batch preview + execute
+ * path (batch-of-one), so the state machine, actor-gating, and
+ * consequence disclosure are identical to the batch route. Only the 5
+ * per-item reviewer verbs are exposed here (accept/reject/defer/
+ * escalate/request_repair — `edit` in the UI maps to request_repair per
+ * the qa-kind taxonomy); the glossary/style/runtime-feedback verbs stay
+ * batch/agentic-loop concerns.
+ */
+export type ReviewerSingleActionInput =
+  | { action: "approve" }
+  | { action: "reject" }
+  | { action: "defer"; deferReason: string }
+  | { action: "escalate"; escalationReason: string; escalationTarget: string }
+  | { action: "request_repair"; repairHint: string };
+
+export type ReviewerSingleAction = ReviewerSingleActionInput["action"];
+
+export type ReviewerSingleActionRequest = {
+  reviewItemId: string;
+  actorUserId: string;
+  expectedSourceRevisionId: string;
+} & ReviewerSingleActionInput;
+
+/**
+ * Result of a single-item action. `preview` is the one
+ * consequence-disclosure row the reviewer would have seen; `outcome`
+ * mirrors what batch-confirm returns for one item — `kind: "applied"`
+ * carries the persisted item + transition (the new state), `kind:
+ * "refused"` carries the typed refusal (unknown item / invalid
+ * transition / already-actioned / stale / permission), which the HTTP
+ * seam maps to a typed status code instead of a 500.
+ */
+export type ReviewerSingleActionResult = {
+  request: ReviewerSingleActionRequest;
+  preview: BatchPreviewItem;
+  outcome: BatchExecuteOutcome;
+  applied: boolean;
+  refused: boolean;
+};
+
 export type ReviewerQueueApiServicePort = {
   loadDashboard(input: {
     localeBranchId: string;
@@ -104,6 +154,11 @@ export type ReviewerQueueApiServicePort = {
     request: ReviewerBatchActionRequest;
     permission: ReviewerQueuePermissionView;
   }): Promise<ReviewerBatchExecuteResult>;
+  actionSingleItem(input: {
+    actor: AuthorizationActor;
+    request: ReviewerSingleActionRequest;
+    permission: ReviewerQueuePermissionView;
+  }): Promise<ReviewerSingleActionResult>;
 };
 
 export class ReviewerQueueApiService implements ReviewerQueueApiServicePort {
@@ -193,6 +248,51 @@ export class ReviewerQueueApiService implements ReviewerQueueApiServicePort {
     return service.execute(input.actor, input.request, input.permission);
   }
 
+  async actionSingleItem(input: {
+    actor: AuthorizationActor;
+    request: ReviewerSingleActionRequest;
+    permission: ReviewerQueuePermissionView;
+  }): Promise<ReviewerSingleActionResult> {
+    if (this.deps.actionService === undefined) {
+      throw new Error("reviewer single-item action requires an action service");
+    }
+    const singleActionId = `single-action-${this.now()
+      .toISOString()
+      .replace(/[^0-9A-Za-z]/gu, "")}`;
+    // Run the single item through the SAME batch preview + execute path
+    // (a batch-of-one) so the transition validator, atomic write through
+    // ReviewerQueueActionService, and consequence disclosure are
+    // identical to the batch route — no parallel state machine.
+    const batchRequest: ReviewerBatchActionRequest = {
+      action: input.request.action,
+      actorUserId: input.request.actorUserId,
+      selections: [
+        {
+          reviewItemId: input.request.reviewItemId,
+          expectedSourceRevisionId: input.request.expectedSourceRevisionId,
+        },
+      ],
+    };
+    const service = new ReviewerBatchActionService({
+      previewService: new ReviewerBatchPreviewService(this.consequenceResolver),
+      actionService: this.deps.actionService,
+      resolvePayload: singleActionPayloadResolver(input.request, singleActionId),
+    });
+    const result = await service.execute(input.actor, batchRequest, input.permission);
+    const outcome = result.applied[0];
+    const preview = result.preview.items[0];
+    if (outcome === undefined || preview === undefined) {
+      throw new Error("single-item reviewer action produced no outcome");
+    }
+    return {
+      request: input.request,
+      preview,
+      outcome,
+      applied: outcome.kind === "applied",
+      refused: outcome.kind === "refused",
+    };
+  }
+
   private async dashboardRow(item: ReviewerQueueItemRecord): Promise<ReviewerQueueDashboardRow> {
     const transitions = await this.deps.repository.loadTransitionsByItem(item.reviewItemId);
     const latestTransition = transitions.at(-1) ?? null;
@@ -258,6 +358,48 @@ function defaultBatchPayloadResolver(
   batchActionId: string,
 ): BatchActionPayloadResolver {
   return (item) => defaultBatchPayload(action, item, batchActionId);
+}
+
+/**
+ * Single-item payload resolver — unlike the batch defaults (which
+ * synthesize canned reasons because a batch spans many items), the
+ * single-item route carries the reviewer's OWN inputs (defer reason,
+ * escalation reason/target, repair hint) verbatim. The resolver ignores
+ * the loaded item and returns the reviewer-supplied payload.
+ */
+function singleActionPayloadResolver(
+  request: ReviewerSingleActionRequest,
+  singleActionId: string,
+): BatchActionPayloadResolver {
+  return () => singleActionPayload(request, singleActionId);
+}
+
+function singleActionPayload(
+  request: ReviewerSingleActionRequest,
+  singleActionId: string,
+): BatchActionPayload {
+  const metadata = { singleActionId };
+  switch (request.action) {
+    case reviewerQueueActionValues.approve:
+      return { kind: "approve", metadata };
+    case reviewerQueueActionValues.reject:
+      return { kind: "reject", metadata };
+    case reviewerQueueActionValues.defer:
+      return { kind: "defer", deferReason: request.deferReason, metadata };
+    case reviewerQueueActionValues.escalate:
+      return {
+        kind: "escalate",
+        escalationReason: request.escalationReason,
+        escalationTarget: request.escalationTarget,
+        metadata,
+      };
+    case reviewerQueueActionValues.requestRepair:
+      return { kind: "requestRepair", repairHint: request.repairHint, metadata };
+    default: {
+      const exhaustive: never = request;
+      throw new Error(`unhandled single reviewer action: ${JSON.stringify(exhaustive)}`);
+    }
+  }
 }
 
 function defaultBatchPayload(

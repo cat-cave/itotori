@@ -34,8 +34,11 @@ import {
   readyContextFixture,
   reviewQueueDashboardFixtures,
   reviewerBatchPreviewStatusValues,
+  type BatchPreviewItem,
   type ReviewerBatchExecuteResult,
   type ReviewerQueueDashboardReadModel,
+  type ReviewerSingleActionRequest,
+  type ReviewerSingleActionResult,
 } from "../src/reviewer/index.js";
 import {
   workspaceAssetBrowseFixture,
@@ -632,6 +635,202 @@ describe("Itotori API handlers", () => {
         permission: expect.objectContaining({ canManageQueue: false }),
       }),
     );
+  });
+
+  it("routes a single-item reviewer action through the typed service and returns the new state", async () => {
+    const services = serviceFixture();
+    const response = await handleItotoriApiRequest(
+      {
+        method: "POST",
+        pathname: "/api/reviewer/queue/reviewer-queue-7/action",
+        body: {
+          action: reviewerQueueActionValues.approve,
+          actorUserId: "reviewer-user",
+          expectedSourceRevisionId: "source-revision-1",
+        },
+      },
+      services,
+    );
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toMatchObject({
+      request: expect.objectContaining({
+        reviewItemId: "reviewer-queue-7",
+        action: reviewerQueueActionValues.approve,
+        actorUserId: "reviewer-user",
+      }),
+      applied: true,
+      refused: false,
+      outcome: expect.objectContaining({
+        kind: "applied",
+        reviewItemId: "reviewer-queue-7",
+        result: expect.objectContaining({
+          transition: expect.objectContaining({ nextState: "accepted" }),
+        }),
+      }),
+    });
+    // Reuses the batch route's actor-gating: the SAME resolved permission
+    // view (queue.read + queue.manage) flows into the single-item service.
+    expect(services.reviewerQueue.actionSingleItem).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actor: { userId: "reviewer-user" },
+        request: expect.objectContaining({
+          reviewItemId: "reviewer-queue-7",
+          action: reviewerQueueActionValues.approve,
+          expectedSourceRevisionId: "source-revision-1",
+        }),
+        permission: expect.objectContaining({
+          actorUserId: "reviewer-user",
+          canReadQueue: true,
+          canManageQueue: true,
+        }),
+      }),
+    );
+    expect(services.reviewerQueue.executeBatch).not.toHaveBeenCalled();
+  });
+
+  it("threads a reviewer-supplied defer reason through the single-item action body", async () => {
+    const services = serviceFixture();
+    const response = await handleItotoriApiRequest(
+      {
+        method: "POST",
+        pathname: "/api/reviewer/queue/reviewer-queue-7/action",
+        body: {
+          action: reviewerQueueActionValues.defer,
+          actorUserId: "reviewer-user",
+          expectedSourceRevisionId: "source-revision-1",
+          deferReason: "waiting on runtime evidence",
+        },
+      },
+      services,
+    );
+
+    expect(response.statusCode).toBe(200);
+    expect(services.reviewerQueue.actionSingleItem).toHaveBeenCalledWith(
+      expect.objectContaining({
+        request: expect.objectContaining({
+          action: reviewerQueueActionValues.defer,
+          deferReason: "waiting on runtime evidence",
+        }),
+      }),
+    );
+  });
+
+  it("maps a single-item action refused for queue.manage to a 403 forbidden", async () => {
+    const services = serviceFixture();
+    vi.mocked(services.reviewerQueue.actionSingleItem).mockResolvedValueOnce(
+      refusedSingleActionResult(
+        "reviewer-queue-7",
+        reviewerQueueActionValues.approve,
+        reviewerBatchPreviewStatusValues.permissionDeniedManage,
+        "user reviewer-user is missing permission queue.manage",
+      ),
+    );
+
+    const response = await handleItotoriApiRequest(
+      {
+        method: "POST",
+        pathname: "/api/reviewer/queue/reviewer-queue-7/action",
+        body: {
+          action: reviewerQueueActionValues.approve,
+          actorUserId: "reviewer-user",
+          expectedSourceRevisionId: "source-revision-1",
+        },
+      },
+      services,
+    );
+
+    expect(response.statusCode).toBe(403);
+    expect(response.body).toMatchObject({ code: "forbidden" });
+  });
+
+  it("maps a single-item action on an unknown item to a 404 not_found", async () => {
+    const services = serviceFixture();
+    vi.mocked(services.reviewerQueue.actionSingleItem).mockResolvedValueOnce(
+      refusedSingleActionResult(
+        "reviewer-queue-missing",
+        reviewerQueueActionValues.approve,
+        reviewerBatchPreviewStatusValues.notFound,
+        "reviewer queue item reviewer-queue-missing not found",
+      ),
+    );
+
+    const response = await handleItotoriApiRequest(
+      {
+        method: "POST",
+        pathname: "/api/reviewer/queue/reviewer-queue-missing/action",
+        body: {
+          action: reviewerQueueActionValues.approve,
+          actorUserId: "reviewer-user",
+          expectedSourceRevisionId: "source-revision-1",
+        },
+      },
+      services,
+    );
+
+    expect(response.statusCode).toBe(404);
+    expect(response.body).toMatchObject({ code: "not_found" });
+  });
+
+  it("maps an already-actioned single item (invalid transition) to a 400 bad_request", async () => {
+    const services = serviceFixture();
+    vi.mocked(services.reviewerQueue.actionSingleItem).mockResolvedValueOnce(
+      refusedSingleActionResult(
+        "reviewer-queue-7",
+        reviewerQueueActionValues.approve,
+        reviewerBatchPreviewStatusValues.invalidTransition,
+        "reviewer queue item reviewer-queue-7 is already accepted",
+      ),
+    );
+
+    const response = await handleItotoriApiRequest(
+      {
+        method: "POST",
+        pathname: "/api/reviewer/queue/reviewer-queue-7/action",
+        body: {
+          action: reviewerQueueActionValues.approve,
+          actorUserId: "reviewer-user",
+          expectedSourceRevisionId: "source-revision-1",
+        },
+      },
+      services,
+    );
+
+    expect(response.statusCode).toBe(400);
+    expect(response.body).toMatchObject({ code: "bad_request" });
+  });
+
+  it("rejects an unsupported single-item action verb with a 400 bad_request", async () => {
+    const services = serviceFixture();
+    const response = await handleItotoriApiRequest(
+      {
+        method: "POST",
+        pathname: "/api/reviewer/queue/reviewer-queue-7/action",
+        body: {
+          // update_glossary is a batch/agentic-loop verb, not a per-item verb.
+          action: reviewerQueueActionValues.updateGlossary,
+          actorUserId: "reviewer-user",
+          expectedSourceRevisionId: "source-revision-1",
+        },
+      },
+      services,
+    );
+
+    expect(response.statusCode).toBe(400);
+    expect(response.body).toMatchObject({ code: "bad_request" });
+    expect(services.reviewerQueue.actionSingleItem).not.toHaveBeenCalled();
+  });
+
+  it("rejects a GET on the single-item action route with 405 method_not_allowed", async () => {
+    const services = serviceFixture();
+    const response = await handleItotoriApiRequest(
+      { method: "GET", pathname: "/api/reviewer/queue/reviewer-queue-7/action" },
+      services,
+    );
+
+    expect(response.statusCode).toBe(405);
+    expect(response.body).toMatchObject({ code: "method_not_allowed" });
+    expect(services.reviewerQueue.actionSingleItem).not.toHaveBeenCalled();
   });
 
   it("returns denied reviewer detail without calling the evidence-backed detail service", async () => {
@@ -2602,6 +2801,9 @@ function serviceFixture(): ItotoriApiServices {
       executeBatch: vi.fn(async ({ request, permission }) =>
         makeApiBatchExecuteResult(request, permission),
       ),
+      actionSingleItem: vi.fn(async ({ request, permission }) =>
+        makeApiSingleActionResult(request, permission),
+      ),
     },
     assetDecisions: {
       loadActiveDecisions: vi.fn(async () => [assetDecisionApiFixture]),
@@ -2739,6 +2941,87 @@ function makeApiBatchExecuteResult(
     })),
     refusedAll: false,
     appliedAll: true,
+  };
+}
+
+function makeApiSingleActionResult(
+  request: ReviewerSingleActionRequest,
+  permission: Parameters<ItotoriApiServices["reviewerQueue"]["executeBatch"]>[0]["permission"],
+): ReviewerSingleActionResult {
+  // Reuse the batch-of-one path so the mock mirrors what the real
+  // ReviewerQueueApiService.actionSingleItem returns.
+  const batch = makeApiBatchExecuteResult(
+    {
+      action: request.action,
+      actorUserId: request.actorUserId,
+      selections: [
+        {
+          reviewItemId: request.reviewItemId,
+          expectedSourceRevisionId: request.expectedSourceRevisionId,
+        },
+      ],
+    },
+    permission,
+  );
+  const outcome = batch.applied[0];
+  const templatePreview = fixtureAllAllowedPreview().items[0];
+  if (outcome === undefined || templatePreview === undefined) {
+    throw new Error("single action mock requires an outcome + preview template");
+  }
+  const preview: BatchPreviewItem = {
+    ...templatePreview,
+    reviewItemId: request.reviewItemId,
+    expectedSourceRevisionId: request.expectedSourceRevisionId,
+    action: request.action,
+  };
+  return {
+    request,
+    preview,
+    outcome,
+    applied: outcome.kind === "applied",
+    refused: outcome.kind === "refused",
+  };
+}
+
+function refusedSingleActionResult(
+  reviewItemId: string,
+  action: ReviewerSingleActionRequest["action"],
+  status: (typeof reviewerBatchPreviewStatusValues)[keyof typeof reviewerBatchPreviewStatusValues],
+  message: string,
+): ReviewerSingleActionResult {
+  const templatePreview = fixtureAllAllowedPreview().items[0];
+  if (templatePreview === undefined) {
+    throw new Error("single action refusal mock requires a preview template");
+  }
+  const preview: BatchPreviewItem = {
+    ...templatePreview,
+    reviewItemId,
+    action,
+    status,
+    item: null,
+    nextState: null,
+    consequences: [],
+    diagnostics: [{ code: "reviewer_single_action_refused", message }],
+    message,
+  };
+  return {
+    request: {
+      reviewItemId,
+      action: "approve",
+      actorUserId: "reviewer-user",
+      expectedSourceRevisionId: "source-revision-1",
+    },
+    preview,
+    outcome: {
+      kind: "refused",
+      reviewItemId,
+      status,
+      code: "reviewer_queue_item_invalid_transition",
+      message,
+      diagnostics: [{ code: "reviewer_single_action_refused", message }],
+    },
+    applied: false,
+    refused: true,
   };
 }
 

@@ -75,6 +75,8 @@ import type {
   ReviewerQueueDashboardReadModel,
   ReviewerQueueDashboardRow,
   ReviewerQueueDashboardState,
+  ReviewerSingleActionRequest,
+  ReviewerSingleActionResult,
 } from "./reviewer/api-service.js";
 import { reviewerQueueDashboardStateValues } from "./reviewer/api-service.js";
 import type { ReviewerBatchActionRequest, ReviewerBatchPreview } from "./reviewer/batch-preview.js";
@@ -115,6 +117,7 @@ export type ItotoriApiRouteId =
   | "reviewer.detail"
   | "reviewer.batchPreview"
   | "reviewer.batchExecute"
+  | "reviewer.itemAction"
   | "terminology.search"
   | "workspace.projects"
   | "workspace.scenes"
@@ -194,6 +197,11 @@ export type ApiReviewerBatchExecuteRequest = ReviewerBatchActionRequest;
 
 export type ApiReviewerBatchExecuteResponse = ReviewerBatchExecuteResult;
 
+/** ITOTORI-082 — single-item reviewer action. */
+export type ApiReviewerSingleActionRequest = ReviewerSingleActionRequest;
+
+export type ApiReviewerSingleActionResponse = ReviewerSingleActionResult;
+
 export type ApiAssetDecisionsResponse = {
   decisions: AssetDecisionRecord[];
 };
@@ -260,6 +268,7 @@ export type ItotoriApiResponseBody =
   | ApiReviewerDetailResponse
   | ApiReviewerBatchPreviewResponse
   | ApiReviewerBatchExecuteResponse
+  | ApiReviewerSingleActionResponse
   | ApiTerminologySearchResponse
   | ApiWorkspaceProjectBrowseResponse
   | ApiWorkspaceSceneBrowseResponse
@@ -416,6 +425,90 @@ export function parseReviewerBatchExecuteRequest(body: unknown): ApiReviewerBatc
   return parseReviewerBatchActionRequestBody(body, "ApiReviewerBatchExecuteRequest");
 }
 
+/**
+ * ITOTORI-082 — single-item reviewer action. Only the 5 per-item verbs
+ * are accepted here (accept/reject/defer/escalate/request_repair); the
+ * glossary/style/runtime-feedback verbs stay batch/agentic-loop
+ * concerns. `reviewItemId` is threaded in from the URL path, never the
+ * body, so the item acted upon always matches the route.
+ */
+export const reviewerSingleActionList = [
+  "approve",
+  "reject",
+  "defer",
+  "escalate",
+  "request_repair",
+] as const satisfies readonly ReviewerQueueAction[];
+
+export function parseReviewerSingleActionRequest(
+  body: unknown,
+  reviewItemId: string,
+): ApiReviewerSingleActionRequest {
+  return parseRequest("ApiReviewerSingleActionRequest", () => {
+    assertString(reviewItemId, "ApiReviewerSingleActionRequest.reviewItemId");
+    const preview = asRecord(body, "ApiReviewerSingleActionRequest");
+    assertEnum(preview.action, reviewerSingleActionList, "ApiReviewerSingleActionRequest.action");
+    const allowedKeys = allowedKeysForSingleAction(preview.action);
+    const request = asStrictRecord(body, "ApiReviewerSingleActionRequest", allowedKeys);
+    assertString(request.actorUserId, "ApiReviewerSingleActionRequest.actorUserId");
+    assertString(
+      request.expectedSourceRevisionId,
+      "ApiReviewerSingleActionRequest.expectedSourceRevisionId",
+    );
+    const base = {
+      reviewItemId,
+      actorUserId: request.actorUserId,
+      expectedSourceRevisionId: request.expectedSourceRevisionId,
+    };
+    switch (preview.action) {
+      case "approve":
+        return { ...base, action: "approve" };
+      case "reject":
+        return { ...base, action: "reject" };
+      case "defer":
+        assertString(request.deferReason, "ApiReviewerSingleActionRequest.deferReason");
+        return { ...base, action: "defer", deferReason: request.deferReason };
+      case "escalate":
+        assertString(request.escalationReason, "ApiReviewerSingleActionRequest.escalationReason");
+        assertString(request.escalationTarget, "ApiReviewerSingleActionRequest.escalationTarget");
+        return {
+          ...base,
+          action: "escalate",
+          escalationReason: request.escalationReason,
+          escalationTarget: request.escalationTarget,
+        };
+      case "request_repair":
+        assertString(request.repairHint, "ApiReviewerSingleActionRequest.repairHint");
+        return { ...base, action: "request_repair", repairHint: request.repairHint };
+      default: {
+        const exhaustive: never = preview.action;
+        throw new Error(`unhandled single reviewer action: ${String(exhaustive)}`);
+      }
+    }
+  });
+}
+
+function allowedKeysForSingleAction(
+  action: (typeof reviewerSingleActionList)[number],
+): readonly string[] {
+  const base = ["action", "actorUserId", "expectedSourceRevisionId"] as const;
+  switch (action) {
+    case "approve":
+    case "reject":
+      return base;
+    case "defer":
+      return [...base, "deferReason"];
+    case "escalate":
+      return [...base, "escalationReason", "escalationTarget"];
+    case "request_repair":
+      return [...base, "repairHint"];
+    default: {
+      const exhaustive: never = action;
+      throw new Error(`unhandled single reviewer action: ${String(exhaustive)}`);
+    }
+  }
+}
+
 export function assertItotoriApiResponse(
   routeId: ItotoriApiRouteId,
   value: unknown,
@@ -450,6 +543,9 @@ export function assertItotoriApiResponse(
       return;
     case "reviewer.batchExecute":
       assertReviewerBatchExecuteResult(value);
+      return;
+    case "reviewer.itemAction":
+      assertReviewerSingleActionResult(value);
       return;
     case "terminology.search":
       assertTerminologySearchReadModel(value);
@@ -1376,6 +1472,42 @@ function assertReviewerBatchExecuteResult(
   }
   assertBoolean(result.refusedAll, `${label}.refusedAll`);
   assertBoolean(result.appliedAll, `${label}.appliedAll`);
+}
+
+function assertReviewerSingleActionResult(
+  value: unknown,
+  label = "ReviewerSingleActionResult",
+): asserts value is ReviewerSingleActionResult {
+  const result = asStrictRecord(value, label, [
+    "request",
+    "preview",
+    "outcome",
+    "applied",
+    "refused",
+  ]);
+  assertReviewerSingleActionRequest(result.request, `${label}.request`);
+  // `preview` is one BatchPreviewItem; the batch preview schema only
+  // asserts the item array shape, so assert the load-bearing fields here.
+  const preview = asRecord(result.preview, `${label}.preview`);
+  assertString(preview.reviewItemId, `${label}.preview.reviewItemId`);
+  assertString(preview.status, `${label}.preview.status`);
+  assertEnum(
+    preview.action,
+    reviewerQueueActionList as readonly ReviewerQueueAction[],
+    `${label}.preview.action`,
+  );
+  // `outcome` mirrors a single batch-confirm outcome (applied | refused).
+  assertReviewerBatchExecuteOutcome(result.outcome, `${label}.outcome`);
+  assertBoolean(result.applied, `${label}.applied`);
+  assertBoolean(result.refused, `${label}.refused`);
+}
+
+function assertReviewerSingleActionRequest(value: unknown, label: string): void {
+  const request = asRecord(value, label);
+  assertString(request.reviewItemId, `${label}.reviewItemId`);
+  assertString(request.actorUserId, `${label}.actorUserId`);
+  assertString(request.expectedSourceRevisionId, `${label}.expectedSourceRevisionId`);
+  assertEnum(request.action, reviewerSingleActionList, `${label}.action`);
 }
 
 function assertReviewerBatchExecuteOutcome(value: unknown, label: string): void {
