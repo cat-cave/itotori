@@ -39,9 +39,14 @@
 //! decoded lines, and (d) **patches translated dialogue / choices back**
 //! ([`patchback`]): it rebuilds `TEXT.DAT` with new strings (old→new offset map,
 //! re-encrypting when the original was), repoints the `SCRIPT.SRC` pointer fields,
-//! and drops both as **loose files** (no PAC repack). It does **not** decode the
-//! full `Sv20` opcode table / control flow (scene dispatch, branches,
-//! voice/animation — the replay node).
+//! and drops both as **loose files** (no PAC repack), and (e) **catalogs the full
+//! `Sv20` opcode table** ([`opcode`] / [`OpcodeScan`]): it walks the whole
+//! plaintext token stream arity-driven and types *every* command (the 33-entry
+//! `0x01..=0x21` opcode table with fixed operand shapes, plus the `Call` engine
+//! dispatch surface — TEXT-SHOW / SELECT / every other `(category, function)`
+//! built-in), to a **0-unknown exhaustive** accounting on ≥2 real games. It does
+//! **not** *execute* the stack machine (evaluate expressions, resolve jumps,
+//! drive rendering) — that is the Utsushi Softpal replay runtime, a separate node.
 //!
 //! # Determinism / no shell-outs
 //!
@@ -50,6 +55,7 @@
 //! a typed [`PacError`].
 
 mod archive;
+mod opcode;
 mod patchback;
 mod script;
 mod textdat;
@@ -57,6 +63,12 @@ mod textdat;
 pub use archive::{
     PAC_COUNT_OFFSET, PAC_ENTRY_NAME_BYTE_LEN, PAC_HEADER_BYTE_LEN, PAC_INDEX_ENTRY_BYTE_LEN,
     PAC_MAGIC, PAC_MAX_ENTRIES, PacArchive, PacEntry, PacError,
+};
+pub use opcode::{
+    CALL_CATEGORY_SELECT, CALL_CATEGORY_TEXT, CallTarget, CommandFamily, Instruction, OpcodeError,
+    OpcodeScan, Operand, OperandTag, SELECT_FUNCTION, SOFTPAL_OPCODE_ERROR_MARKER, SV_MAX_OPCODE,
+    SV_OPERATOR_TAG, SV_PROGRAM_HEADER_BYTE_LEN, SV_TOKEN_BYTE_LEN, SvOpcode, SvProgramHeader,
+    TEXT_TYPE_FUNCTIONS, UnknownToken,
 };
 pub use patchback::{
     OffsetMap, PATCHBACK_SCRIPT_NAME, PATCHBACK_TEXTDAT_NAME, Patchback, PatchbackError,
@@ -102,5 +114,9 @@ pub const SOFTPAL_PAC_SUPPORT_BOUNDARY: &str = "kaifuu-softpal enumerates and ex
     by marker+discriminator, their 4-byte TEXT.DAT pointers resolved to record boundaries, \
     byte-locatable pointer fields for patch-back), AND patches translated dialogue+choices back \
     (rebuild TEXT.DAT with an old->new offset map + re-encrypt when the original was, repoint the \
-    SCRIPT.SRC pointer fields, drop both as loose files with no PAC repack); the full Sv20 opcode \
-    table / control-flow decompile (replay node) is NOT claimed (separate Softpal node).";
+    SCRIPT.SRC pointer fields, drop both as loose files with no PAC repack), AND catalogs the full \
+    Sv20 opcode table (arity-driven walk of the whole plaintext token stream: the 33-entry \
+    0x01..=0x21 operator table with fixed operand shapes + operand structural tags + the Call \
+    (0x17) engine-dispatch surface keyed by (category, function) incl. TEXT-SHOW/SELECT, to a \
+    0-unknown exhaustive accounting on two real games); executing the Sv20 stack machine \
+    (expression eval, jump resolution, rendering — the Utsushi replay runtime) is NOT claimed.";
