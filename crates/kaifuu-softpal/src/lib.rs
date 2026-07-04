@@ -28,15 +28,17 @@
 //! SoftPal-Tool `pac_unpack.py` are **extraction oracles only** — this reader
 //! is reimplemented deterministically in Rust and never shells out.
 //!
-//! # Honest scope: PAC container + `TEXT.DAT` codec, NOT the script
+//! # Honest scope: PAC container + `TEXT.DAT` codec + dialogue disassembler
 //!
-//! This crate (a) enumerates / extracts **archive entries** and (b) decodes the
+//! This crate (a) enumerates / extracts **archive entries**, (b) decodes the
 //! **`TEXT.DAT`** string pool (header + flag-gated cipher + record framing +
-//! cp932 decode). It does **not** disassemble the `SCRIPT.SRC` (`Sv`-version)
-//! bytecode nor resolve which `TEXT.DAT` record a line of dialogue uses, and it
-//! does **not** patch edited text back into a repacked pool — those are
-//! **separate Softpal nodes**. Extracting `SCRIPT.SRC` here yields its raw
-//! (still engine-encoded) bytes, byte-identical to the oracle — nothing more.
+//! cp932 decode), and (c) disassembles the **dialogue + speaker + choice
+//! surfaces** of the plaintext `SCRIPT.SRC` (`Sv`-version) bytecode
+//! ([`ScriptScan`] / [`Disassembly`]): it scans for the TEXT-SHOW (32-byte) and
+//! SELECT (16-byte) commands and resolves their 4-byte `TEXT.DAT` pointers to
+//! decoded lines. It does **not** decode the full `Sv20` opcode table / control
+//! flow (scene dispatch, branches, voice/animation — the replay node), and it
+//! does **not** patch edited text back into a repacked pool (patch-back node).
 //!
 //! # Determinism / no shell-outs
 //!
@@ -45,11 +47,20 @@
 //! a typed [`PacError`].
 
 mod archive;
+mod script;
 mod textdat;
 
 pub use archive::{
     PAC_COUNT_OFFSET, PAC_ENTRY_NAME_BYTE_LEN, PAC_HEADER_BYTE_LEN, PAC_INDEX_ENTRY_BYTE_LEN,
     PAC_MAGIC, PAC_MAX_ENTRIES, PacArchive, PacEntry, PacError,
+};
+pub use script::{
+    COMMAND_NAME_PTR_OFFSET, COMMAND_TEXT_PTR_OFFSET, ChoiceUnit, DialogueUnit, Disassembly,
+    NO_SPEAKER_POINTER, PointerResolution, RawCommand, SCRIPT_COMMAND_MARKER,
+    SCRIPT_HEADER_BYTE_LEN, SCRIPT_MAGIC_PREFIX, SELECT_COMMAND_BYTE_LEN, SELECT_MARKER_OFFSET,
+    SELECT_WORD_HI, SELECT_WORD_LO, ScriptError, ScriptHeader, ScriptScan,
+    TEXT_SHOW_COMMAND_BYTE_LEN, TEXT_SHOW_MARKER_OFFSET, TEXT_SHOW_TYPE_WORDS, TEXT_SHOW_WORD_HI,
+    TextRef,
 };
 pub use textdat::{
     EncFlag, TEXTDAT_COUNT_OFFSET, TEXTDAT_FLAG_ENCRYPTED, TEXTDAT_FLAG_PLAINTEXT,
@@ -67,12 +78,19 @@ pub const SOFTPAL_PAC_ERROR_MARKER: &str = "kaifuu.softpal.pac";
 /// carries, mirroring [`SOFTPAL_PAC_ERROR_MARKER`] for the `TEXT.DAT` codec.
 pub const SOFTPAL_TEXTDAT_ERROR_MARKER: &str = "kaifuu.softpal.textdat";
 
+/// Grep-pinnable namespace marker every [`ScriptError`] display string carries,
+/// mirroring [`SOFTPAL_PAC_ERROR_MARKER`] for the `SCRIPT.SRC` disassembler.
+pub const SOFTPAL_SCRIPT_ERROR_MARKER: &str = "kaifuu.softpal.script";
+
 /// One-line capability boundary, mirroring the Softpal detector's
 /// `SOFTPAL_SUPPORT_BOUNDARY`: this crate is the PAC container reader plus the
 /// `TEXT.DAT` string-pool codec.
 pub const SOFTPAL_PAC_SUPPORT_BOUNDARY: &str = "kaifuu-softpal enumerates and extracts entries of \
     the Softpal `PAC ` container (magic + u32 count @0x08 + 0x804 reserved header + 40-byte \
-    name/size/offset index) deterministically, AND decodes the inner `TEXT.DAT` string pool \
+    name/size/offset index) deterministically, decodes the inner `TEXT.DAT` string pool \
     (16-byte header + flag-gated keyless ROL+XOR decrypt/encrypt + 4-byte-index/cp932/NUL record \
-    parser with absolute byte offsets); SCRIPT.SRC disassembly/decompilation, string-pointer \
-    resolution, and patch-back are NOT claimed (separate Softpal nodes).";
+    parser with absolute byte offsets), AND disassembles the SCRIPT.SRC dialogue+speaker+choice \
+    surfaces (Sv-version plaintext bytecode: TEXT-SHOW 32-byte + SELECT 16-byte commands scanned \
+    by marker+discriminator, their 4-byte TEXT.DAT pointers resolved to record boundaries, \
+    byte-locatable pointer fields for patch-back); the full Sv20 opcode table / control-flow \
+    decompile (replay node) and patch-back repack are NOT claimed (separate Softpal nodes).";
