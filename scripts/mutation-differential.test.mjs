@@ -45,10 +45,7 @@ test("applyMutation rejects an ambiguous find token (>1 occurrence)", () => {
 // classifyOutcome — the fail-loud contract.
 // ---------------------------------------------------------------------------
 test("classifyOutcome: a red synthetic suite (non-zero status, no compile error) is KILLED", () => {
-  assert.equal(
-    classifyOutcome({ status: 101, output: "test result: FAILED. 1 failed" }),
-    "killed",
-  );
+  assert.equal(classifyOutcome({ status: 101, output: "test result: FAILED. 1 failed" }), "killed");
 });
 
 test("classifyOutcome: a green synthetic suite (status 0) is ESCAPED — the fail-loud case", () => {
@@ -92,7 +89,9 @@ test("mutation ids are unique and reference a known real-bytes guard family", ()
 });
 
 test("the mutation set covers each representative real-regression class", () => {
-  const cats = MUTATIONS.map((m) => m.category).join(" | ").toLowerCase();
+  const cats = MUTATIONS.map((m) => m.category)
+    .join(" | ")
+    .toLowerCase();
   for (const needle of [
     "wrong offset",
     "opcode",

@@ -1,13 +1,13 @@
 # Synthetic-fixture differential validation
 
-**What this proves:** the fast, copyright-free **synthetic** fixtures are *as
-strong as* the ~30-minute **real-bytes** lanes at **catching regressions**, so a
+**What this proves:** the fast, copyright-free **synthetic** fixtures are _as
+strong as_ the ~30-minute **real-bytes** lanes at **catching regressions**, so a
 per-gate CI lane may run the synthetic corpus **instead of** re-parsing whole
 real archives **without losing regression-detection power**. This is the
 guardrail that makes single-mode synthetic CI strict-proof-compliant and kills
 the real-bytes gate drag.
 
-It is **not** a claim that synthetic bytes *are* real bytes. It is a claim about
+It is **not** a claim that synthetic bytes _are_ real bytes. It is a claim about
 **detection power**, established by two independent safeguards that must **both**
 hold. A synthetic fixture qualifies to replace a real-bytes test in a per-gate
 lane **only when**:
@@ -16,7 +16,7 @@ lane **only when**:
 
 The real ground-truth corpora are **not** deleted — they remain the periodic
 ground truth in `just ci-real-bytes` (the complete gate). This lane certifies
-that the *per-gate* synthetic lane loses nothing between those runs.
+that the _per-gate_ synthetic lane loses nothing between those runs.
 
 ---
 
@@ -29,7 +29,7 @@ realistic decoder/patchback/replay bug it:
    code (never a mock, never a data corruption — the real algorithm is broken);
 2. recompiles and runs the owning engine family's **synthetic** (default,
    non-`#[ignore]`, no-real-bytes) test suite;
-3. asserts the synthetic suite turns **RED** (the mutation is *killed*);
+3. asserts the synthetic suite turns **RED** (the mutation is _killed_);
 4. **always reverts** the source and verifies it is byte-identical to the
    original (the mutations are never shipped in the real code path — they live
    only in the harness).
@@ -40,17 +40,17 @@ legitimate kill) and also fails.
 
 ### The mutation set (representative real-regression classes)
 
-| id | class | file |
-| --- | --- | --- |
-| `header_wrong_offset` | wrong offset (off-by-one header read) | `kaifuu-reallive/src/scene_header.rs` |
-| `opcode_byteswap` | swapped / mis-typed opcode | `kaifuu-reallive/src/opcode.rs` |
-| `framing_off_by_one` | off-by-one framing (header width) | `kaifuu-reallive/src/opcode.rs` |
-| `xor2_skip_cipher` | skipped / incorrect cipher (xor_2) | `kaifuu-reallive/src/xor2.rs` |
-| `avg32_broken_backref` | broken AVG32 LZSS back-reference run length | `utsushi-reallive/src/decompressor.rs` |
-| `patchback_no_rebase` | patchback jump-recalc error (goto not re-based) | `kaifuu-reallive/src/patchback/bundle_driven.rs` |
-| `choice_drop_option` | dropped choice option | `kaifuu-reallive/src/opcode.rs` |
-| `g00_paletted_reorder` | broken paletted-LZSS G00 palette B/R reorder | `utsushi-reallive/src/g00.rs` |
-| `rpgmaker_misclassify_dialogue` | mis-typed opcode (cross-family: RPG Maker code) | `kaifuu-rpgmaker/src/codes.rs` |
+| id                              | class                                           | file                                             |
+| ------------------------------- | ----------------------------------------------- | ------------------------------------------------ |
+| `header_wrong_offset`           | wrong offset (off-by-one header read)           | `kaifuu-reallive/src/scene_header.rs`            |
+| `opcode_byteswap`               | swapped / mis-typed opcode                      | `kaifuu-reallive/src/opcode.rs`                  |
+| `framing_off_by_one`            | off-by-one framing (header width)               | `kaifuu-reallive/src/opcode.rs`                  |
+| `xor2_skip_cipher`              | skipped / incorrect cipher (xor_2)              | `kaifuu-reallive/src/xor2.rs`                    |
+| `avg32_broken_backref`          | broken AVG32 LZSS back-reference run length     | `utsushi-reallive/src/decompressor.rs`           |
+| `patchback_no_rebase`           | patchback jump-recalc error (goto not re-based) | `kaifuu-reallive/src/patchback/bundle_driven.rs` |
+| `choice_drop_option`            | dropped choice option                           | `kaifuu-reallive/src/opcode.rs`                  |
+| `g00_paletted_reorder`          | broken paletted-LZSS G00 palette B/R reorder    | `utsushi-reallive/src/g00.rs`                    |
+| `rpgmaker_misclassify_dialogue` | mis-typed opcode (cross-family: RPG Maker code) | `kaifuu-rpgmaker/src/codes.rs`                   |
 
 **Result: 9/9 killed by the synthetic suite (kill rate 100%), ~90 s total.**
 
@@ -67,7 +67,7 @@ synthetic_kills (= N)  >=  real_kills (<= N)
 — there is **no** mutation real could catch that synthetic misses, because
 synthetic catches all of them. The proof therefore does **not** require running
 the slow real lane. `node scripts/mutation-differential.mjs --with-real` runs the
-real-bytes lane per mutation as *corroborating* evidence only (needs the staged
+real-bytes lane per mutation as _corroborating_ evidence only (needs the staged
 corpora + env).
 
 ### One gap the harness found — and how it was closed
@@ -79,8 +79,8 @@ synthetic suite green. This was closed (not documented away) by authoring a
 synthetic type-1 G00 fixture (`synthetic_type1_g00`, using the same SCN2k literal
 encoder the type-2 fixture uses) and a first-pixel assertion in
 `synthetic_g00_images_instantiate_every_g00_type`. The mutation is now **killed**.
-This is the intended workflow: *a real-only gap the harness surfaces is closed by
-strengthening the synthetic fixture until it catches it* (or, when genuinely
+This is the intended workflow: _a real-only gap the harness surfaces is closed by
+strengthening the synthetic fixture until it catches it_ (or, when genuinely
 unclosable, recorded in the real-only ledger below).
 
 ---
@@ -100,7 +100,7 @@ mismatch:
    test file + `#[test]` fn that drives that group's components through the real
    decoder and asserts 100% instantiation. A manifest group with no synthetic
    instantiation test ⇒ synthetic is **not** ⊇ real ⇒ **FAIL**. (This makes
-   "synthetic ⊇ real" *enforced*, not asserted in prose — adding a manifest group
+   "synthetic ⊇ real" _enforced_, not asserted in prose — adding a manifest group
    without a synthetic test breaks the lane.)
 3. **`REAL_ONLY_SURFACES`** — the honest, reviewed list of residual surfaces only
    real bytes exercise, each with its reason and where its underlying decode
@@ -111,11 +111,11 @@ KiriKiri XP3, Siglus) map to a synthetic instantiation test → synthetic ⊇ re
 
 ### Documented real-only residual surfaces (nothing hidden)
 
-| id | surface | why real-only | decode logic still covered by |
-| --- | --- | --- | --- |
-| `avg32_scn2k_tail_clip_under_backreference` | AVG32/SCN2k "clip final back-ref to declared size" branch | synthetic corpora are literal-only, so decode is input-bounded and never reaches the out_size clip | back-ref *copy* logic covered by the decompressor synthetic unit tests + type-0 G00 trailing back-ref |
-| `reallive_real_scene_plaintext_variety_for_xor2_recovery` | xor_2 key recovery over real scenes' natural plaintext distribution | synthetic stages a planted key over uniform padding for exact recovery | recovery+validate+decrypt *algorithm* runs on the synthetic xor2 corpus; mutation-killed by `xor2_skip_cipher` |
-| `siglus_real_opcode_catalogue` | real Siglus opcode semantics | the Siglus opcode catalogue is still a skeleton stub (only `Unknown`) | manifest records `status=stub_no_catalogue`; synthetic instantiates the stub opcode; add real opcodes + remove this entry when the catalogue lands |
+| id                                                        | surface                                                             | why real-only                                                                                      | decode logic still covered by                                                                                                                      |
+| --------------------------------------------------------- | ------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `avg32_scn2k_tail_clip_under_backreference`               | AVG32/SCN2k "clip final back-ref to declared size" branch           | synthetic corpora are literal-only, so decode is input-bounded and never reaches the out_size clip | back-ref _copy_ logic covered by the decompressor synthetic unit tests + type-0 G00 trailing back-ref                                              |
+| `reallive_real_scene_plaintext_variety_for_xor2_recovery` | xor_2 key recovery over real scenes' natural plaintext distribution | synthetic stages a planted key over uniform padding for exact recovery                             | recovery+validate+decrypt _algorithm_ runs on the synthetic xor2 corpus; mutation-killed by `xor2_skip_cipher`                                     |
+| `siglus_real_opcode_catalogue`                            | real Siglus opcode semantics                                        | the Siglus opcode catalogue is still a skeleton stub (only `Unknown`)                              | manifest records `status=stub_no_catalogue`; synthetic instantiates the stub opcode; add real opcodes + remove this entry when the catalogue lands |
 
 Each residual is an **integration** surface whose decode **logic** is covered
 elsewhere — no decode-correctness regression can escape the synthetic suite.
