@@ -1,0 +1,35 @@
+[
+  null,
+  {
+    "id": 1,
+    "name": "Ariel",
+    "nickname": "The Bold",
+    "profile": "A wandering knight who seeks the lost citadel.",
+    "note": "<sprite:hero>",
+    "initialLevel": 1,
+    "maxLevel": 99,
+    "characterName": "Actor1",
+    "characterIndex": 0,
+    "faceName": "Actor1",
+    "faceIndex": 0,
+    "classId": 1,
+    "equips": [1, 0, 2, 0, 0],
+    "traits": []
+  },
+  {
+    "id": 2,
+    "name": "Bram",
+    "nickname": "",
+    "profile": "A gruff smith with a soft heart.",
+    "note": "",
+    "initialLevel": 1,
+    "maxLevel": 99,
+    "characterName": "Actor1",
+    "characterIndex": 1,
+    "faceName": "Actor1",
+    "faceIndex": 1,
+    "classId": 2,
+    "equips": [3, 0, 0, 0, 0],
+    "traits": []
+  }
+]

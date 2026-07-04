@@ -48,6 +48,7 @@
 
 mod bridge;
 mod codes;
+mod database_terms;
 mod escape;
 mod extract;
 mod json_locate;
@@ -65,6 +66,13 @@ use kaifuu_core::{ArchiveDetectionReport, ArchiveEngineFamily};
 
 pub use bridge::{BridgeOpts, BridgeProduceError, FileAsset, ProducedBundle};
 pub use codes::{CodeClass, TextRole, classify};
+pub use database_terms::{
+    DatabaseDiagnostic, DatabaseDiagnosticKind, DatabaseExtractError, DatabaseExtraction,
+    DatabaseTermRole, DatabaseTranslation, FIXTURE_PROFILE_ID as K110_FIXTURE_PROFILE_ID,
+    StableDatabaseUnit, UnitContainer, extract_database as extract_database_units,
+    extract_database_file, extract_system as extract_system_units, extract_system_file,
+    is_database_file as is_k110_database_file, patch_file as patch_database_file,
+};
 pub use escape::{EscapeSpan, scan_escape_spans};
 pub use extract::{
     ExtractAcc, Finding, FindingKind, ProtoUnit, SurfaceKind, is_database_file, walk_common_events,

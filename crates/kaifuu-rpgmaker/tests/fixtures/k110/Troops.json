@@ -1,0 +1,23 @@
+[
+  null,
+  {
+    "id": 1,
+    "name": "Slime*2",
+    "members": [
+      { "enemyId": 1, "x": 130, "y": 320, "hidden": false },
+      { "enemyId": 1, "x": 400, "y": 320, "hidden": false }
+    ],
+    "pages": [
+      {
+        "conditions": { "turnEnding": false, "turnValid": false },
+        "span": 0,
+        "list": [
+          { "code": 101, "indent": 0, "parameters": ["", 0, 0, 2] },
+          { "code": 401, "indent": 0, "parameters": ["The slimes ooze forward!"] },
+          { "code": 405, "indent": 0, "parameters": ["A hush falls over the battlefield."] },
+          { "code": 0, "indent": 0, "parameters": [] }
+        ]
+      }
+    ]
+  }
+]

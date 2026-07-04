@@ -1,0 +1,26 @@
+[
+  null,
+  {
+    "id": 1,
+    "name": "Fire",
+    "iconIndex": 64,
+    "description": "Deals \\c[2]fire\\c[0] damage to one enemy.",
+    "message1": " unleashes a gout of flame!",
+    "message2": "",
+    "note": "",
+    "mpCost": 5,
+    "tpCost": 0,
+    "stypeId": 1,
+    "scope": 1,
+    "occasion": 1,
+    "speed": 0,
+    "successRate": 100,
+    "damage": {
+      "type": 1,
+      "elementId": 2,
+      "formula": "a.mat * 4 - b.mdf * 2",
+      "variance": 20,
+      "critical": false
+    }
+  }
+]

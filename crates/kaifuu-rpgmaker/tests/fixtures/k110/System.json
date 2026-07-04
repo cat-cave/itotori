@@ -1,0 +1,41 @@
+{
+  "gameTitle": "Citadel of Echoes",
+  "currencyUnit": "G",
+  "versionId": 84719201,
+  "locale": "en_US",
+  "optDrawTitle": true,
+  "startMapId": 1,
+  "startX": 8,
+  "startY": 6,
+  "elements": ["", "Physical", "Fire", "Ice", "Thunder"],
+  "equipTypes": ["", "Weapon", "Shield", "Head", "Body", "Accessory"],
+  "skillTypes": ["", "Magic", "Special"],
+  "weaponTypes": ["", "Sword", "Axe", "Bow"],
+  "armorTypes": ["", "General Armor", "Magic Armor", "Light Armor"],
+  "switches": ["", "Intro Seen", "Boss Defeated"],
+  "variables": ["", "Gold Earned", "Steps Taken"],
+  "terms": {
+    "basic": ["Level", "Lv", "HP", "HP", "MP", "MP", "TP", "TP", "EXP", "EXP"],
+    "commands": [
+      "Fight",
+      "Escape",
+      "Attack",
+      "Guard",
+      "Item",
+      "Skill",
+      "Equip",
+      "Status",
+      "",
+      "Save"
+    ],
+    "params": ["Max HP", "Max MP", "Attack", "Defense", "M.Attack", "M.Defense", "Agility", "Luck"],
+    "messages": {
+      "actionFailure": "There was no effect on %1!",
+      "actorDamage": "%1 took %2 damage!",
+      "emerge": "%1 emerged!",
+      "levelUp": "%1 is now %2 %3!",
+      "obtainGold": "Found %1\\G!",
+      "possession": "Possession"
+    }
+  }
+}

@@ -1,0 +1,29 @@
+[
+  null,
+  {
+    "id": 1,
+    "name": "Potion",
+    "iconIndex": 176,
+    "description": "Restores a small amount of HP.",
+    "note": "",
+    "price": 50,
+    "consumable": true,
+    "itypeId": 1,
+    "scope": 7,
+    "occasion": 0,
+    "effects": [{ "code": 11, "dataId": 0, "value1": 0.0, "value2": 500 }]
+  },
+  {
+    "id": 2,
+    "name": "Ether",
+    "iconIndex": 177,
+    "description": "Restores a small amount of MP.",
+    "note": "<category:magic>",
+    "price": 120,
+    "consumable": true,
+    "itypeId": 1,
+    "scope": 7,
+    "occasion": 0,
+    "effects": [{ "code": 12, "dataId": 0, "value1": 0.0, "value2": 200 }]
+  }
+]
