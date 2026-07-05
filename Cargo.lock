@@ -662,6 +662,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "kaifuu-tyrano"
+version = "0.0.0"
+dependencies = [
+ "encoding_rs",
+ "kaifuu-core",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror",
+]
+
+[[package]]
 name = "kaifuu-vault-source"
 version = "0.0.0"
 dependencies = [

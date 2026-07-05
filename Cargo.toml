@@ -8,6 +8,7 @@ members = [
   "crates/kaifuu-siglus",
   "crates/kaifuu-rpgmaker",
   "crates/kaifuu-kirikiri",
+  "crates/kaifuu-tyrano",
   "crates/kaifuu-softpal",
   "crates/kaifuu-cli",
   "crates/kaifuu-vault-source",

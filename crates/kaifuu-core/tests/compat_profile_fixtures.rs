@@ -49,6 +49,27 @@ fn kag_fixture_is_honest_at_patch_loose_file() {
 }
 
 #[test]
+fn tyranoscript_fixture_is_honest_at_patch_layered_identity_null_key() {
+    let tuple = load("tyranoscript.patch.tuple.json");
+    assert_eq!(tuple.engine_family, CompatEngineFamily::TyranoScript);
+    assert_eq!(tuple.claimed_level, ClaimedSupportLevel::Patch);
+    // The layered pipeline: identity container + null-key crypto + the
+    // tyrano-script-markup codec.
+    assert_eq!(tuple.container, kaifuu_core::ContainerTransform::Identity);
+    assert_eq!(tuple.crypto, kaifuu_core::CryptoTransform::NullKey);
+    assert_eq!(tuple.codec, kaifuu_core::CodecTransform::TyranoScriptMarkup);
+    // The on-disk fixture is byte-equivalent to the in-code tuple.
+    assert_eq!(
+        tuple,
+        kaifuu_core::compat_profile::fixtures::level_patch_tyranoscript()
+    );
+    let entry = validate_claimed_support_tuple(&tuple);
+    assert_eq!(entry.status, OperationStatus::Passed);
+    assert!(entry.claimed_level.claims_patch_back());
+    assert!(entry.secret_requirement_ids.is_empty());
+}
+
+#[test]
 fn overclaim_fixture_fails_anti_overclaim_gate() {
     let tuple = load("siglus.overclaim-patch.tuple.json");
     let entry = validate_claimed_support_tuple(&tuple);

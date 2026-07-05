@@ -90,6 +90,11 @@ pub enum CompatEngineFamily {
     KirikiriKagPlaintext,
     /// KiriKiri XP3 commercial archives (per-title key material / helper-gated).
     KirikiriXp3,
+    /// TyranoScript `.ks` plaintext scenario scripts (identity container,
+    /// null-key crypto, `tyrano_script_markup` codec — the null-key/plaintext
+    /// floor, mirroring KAG's shape but an independent adapter).
+    #[serde(rename = "tyranoscript")]
+    TyranoScript,
     /// RPG Maker MV/MZ project JSON text (`data/*.json`).
     RpgMakerMvMzJson,
     /// RPG Maker MV/MZ encrypted media assets (`*.rpgmvp` / `*.rpgmvo` …).
@@ -107,6 +112,7 @@ impl CompatEngineFamily {
             Self::Siglus => "siglus",
             Self::KirikiriKagPlaintext => "kirikiri_kag_plaintext",
             Self::KirikiriXp3 => "kirikiri_xp3",
+            Self::TyranoScript => "tyranoscript",
             Self::RpgMakerMvMzJson => "rpg_maker_mv_mz_json",
             Self::RpgMakerMvMzEncryptedAsset => "rpg_maker_mv_mz_encrypted_asset",
             Self::RealLiveRuntime => "reallive_runtime",
@@ -115,11 +121,12 @@ impl CompatEngineFamily {
     }
 
     /// The recognized (non-`Unknown`) families in canonical order.
-    pub fn recognized() -> [Self; 6] {
+    pub fn recognized() -> [Self; 7] {
         [
             Self::Siglus,
             Self::KirikiriKagPlaintext,
             Self::KirikiriXp3,
+            Self::TyranoScript,
             Self::RpgMakerMvMzJson,
             Self::RpgMakerMvMzEncryptedAsset,
             Self::RealLiveRuntime,
@@ -926,6 +933,35 @@ pub mod fixtures {
         }
     }
 
+    /// LEVEL: `patch`. TyranoScript plaintext `.ks` scenario markup, expressed
+    /// as the layered pipeline: `identity` container (loose files on disk),
+    /// `null_key` crypto (plaintext), `tyrano_script_markup` codec. Extracts
+    /// dialogue + choice/link + speaker text and patches back preserving all
+    /// structure (tags/labels/jumps/variables). Full evidence chain. The
+    /// adapter lives in `kaifuu-tyrano`.
+    pub fn level_patch_tyranoscript() -> ClaimedSupportTuple {
+        ClaimedSupportTuple {
+            schema_version: CLAIMED_SUPPORT_SCHEMA_VERSION.to_string(),
+            engine_family: CompatEngineFamily::TyranoScript,
+            engine_variant: "tyranoscript_ks".to_string(),
+            container: ContainerTransform::Identity,
+            crypto: CryptoTransform::NullKey,
+            codec: CodecTransform::TyranoScriptMarkup,
+            surface: SurfaceTransform::Identity,
+            patch_back_mode: PatchBackTransform::ReplaceFile,
+            profile_or_fixture_id: "compat/tyranoscript/plaintext-patch".to_string(),
+            secret_requirement_ids: vec![],
+            diagnostics: vec![],
+            claimed_level: ClaimedSupportLevel::Patch,
+            evidence: SupportEvidence {
+                extraction: Some(extraction("tyrano")),
+                validation: Some(validation("tyrano")),
+                patch_back: Some(patch_back("tyrano")),
+                runtime: None,
+            },
+        }
+    }
+
     /// A second HONEST `patch` tuple: RPG Maker MV/MZ project JSON text at the
     /// declared JSON-pointer surface. Extract + patch, no crypto.
     pub fn patch_rpg_maker_mv_mz_json() -> ClaimedSupportTuple {
@@ -1084,6 +1120,7 @@ pub mod fixtures {
             level_inventory(),
             level_extract_siglus(),
             level_patch_kirikiri_kag_plaintext(),
+            level_patch_tyranoscript(),
             patch_rpg_maker_mv_mz_json(),
             level_helper_kirikiri_xp3(),
             patch_rpg_maker_encrypted_asset(),

@@ -1,0 +1,22 @@
+[package]
+name = "kaifuu-tyrano"
+version = "0.0.0"
+publish = false
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Pure-Rust TyranoScript `.ks` scenario-script text-extraction + byte-preserving patch adapter, built on the layered pipeline (identity container + null-key crypto + tyrano-script-markup codec). Plaintext KAG-style markup: extracts dialogue + choice/link text, preserves tags/labels/jumps/variables. Deterministic, encoding-aware, no shell-outs."
+
+[dependencies]
+encoding_rs.workspace = true
+kaifuu-core = { path = "../kaifuu-core" }
+serde = { workspace = true }
+serde_json.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+encoding_rs.workspace = true
+
+[lints]
+workspace = true

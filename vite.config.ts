@@ -41,6 +41,11 @@ export default defineConfig({
       "apps/itotori/src/engine-capability/**",
       "fixtures/synthetic/**",
       "crates/kaifuu-rpgmaker/tests/fixtures/**",
+      // KAIFUU-016 TyranoScript `.ks` scenario fixture is load-bearing at the
+      // byte level: the identity round-trip test asserts extract → re-pack is
+      // byte-identical, so the formatter must not rewrite it. (Biome does not
+      // format `.ks`, but pin it alongside the other byte-golden corpora.)
+      "crates/kaifuu-tyrano/fixtures/**",
       "fixtures/kaifuu/repro-bundle/**",
       "crates/utsushi-fixture/tests/fixtures/mvmz_observation/**",
     ],

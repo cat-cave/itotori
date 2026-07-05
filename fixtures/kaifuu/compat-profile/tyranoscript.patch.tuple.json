@@ -1,0 +1,28 @@
+{
+  "schemaVersion": "0.1.0",
+  "engineFamily": "tyranoscript",
+  "engineVariant": "tyranoscript_ks",
+  "container": "identity",
+  "crypto": "null_key",
+  "codec": "tyrano_script_markup",
+  "surface": "identity",
+  "patchBackMode": "replace_file",
+  "profileOrFixtureId": "compat/tyranoscript/plaintext-patch",
+  "secretRequirementIds": [],
+  "diagnostics": [],
+  "claimedLevel": "patch",
+  "evidence": {
+    "extraction": {
+      "evidenceId": "evidence/extract/tyrano",
+      "proofHash": "sha256:59831704e383d208ef6219f2401372bb0faf04dced97b9532c8ea3a1400d636c"
+    },
+    "validation": {
+      "evidenceId": "evidence/validate/tyrano",
+      "proofHash": "sha256:e0ec931535e693b702fa4542b85b36268e60c759e4fa5bb0a851d4e2c7a88710"
+    },
+    "patchBack": {
+      "evidenceId": "evidence/patch/tyrano",
+      "proofHash": "sha256:54ca63f4a66d7defad2a29a889b8fd33e05eb1049ac40adadb206937d2439265"
+    }
+  }
+}

@@ -749,6 +749,9 @@ pub enum CodecTransform {
     ShiftJisText,
     JsonText,
     RpgMakerMvMzJson,
+    /// TyranoScript KAG-style square-bracket scenario markup (`.ks`): the
+    /// `kaifuu-tyrano` plaintext codec (dialogue + choice/link + speaker text).
+    TyranoScriptMarkup,
     RubyMarshal,
     BytecodeDecompile,
     BinaryTable,
