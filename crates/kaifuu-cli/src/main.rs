@@ -1922,7 +1922,7 @@ fn run_key_command(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
         }
         _ => {
             return Err(
-                "usage: kaifuu key import --secret-store <dir> --secret-ref <local-secret:id> --purpose <id> --engine-profile-id <id> (--key-hex <hex>|--key-file <path>) --output <metadata.json> [--source-hash sha256:<hash>] [--source manual|known-key]"
+                "usage: kaifuu key import --secret-store <dir> --secret-ref <local-secret:id> --purpose <id> --engine-profile-id <id> --key-file <path> --output <metadata.json> [--source-hash sha256:<hash>] [--source manual|known-key]\n  Provide key material with --key-file <path> (recommended): the raw key is read from a local file, so it never appears in shell history or the process list.\n  The report persists only a sha256 hash of the key material; the raw key is written solely to the local secret store and is never echoed.\n  [--key-hex <hex>] is also accepted but DISCOURAGED: a hex key typed on the command line leaks into shell history and is visible to other users via `ps` / the process list. Prefer --key-file."
                     .into(),
             );
         }
@@ -1937,7 +1937,7 @@ fn import_key_material_from_args(args: &[String]) -> Result<Vec<u8>, Box<dyn std
         (Some(_), Some(_)) => Err("choose either --key-hex or --key-file, not both".into()),
         (Some(hex), None) => Ok(parse_hex_bytes(hex)?),
         (None, Some(path)) => Ok(fs::read(path)?),
-        (None, None) => Err("key import requires --key-hex or --key-file".into()),
+        (None, None) => Err("key import requires --key-file <path> (recommended: shell-history-safe) or --key-hex <hex> (discouraged: leaks into shell history and the process list)".into()),
     }
 }
 
@@ -4607,6 +4607,83 @@ mod tests {
         assert!(!serialized.contains("000102030405060708090a0b0c0d0e0f"));
         assert!(!serialized.contains("rawKey"));
         assert!(!serialized.contains("keyMaterial"));
+    }
+
+    #[test]
+    fn key_import_usage_steers_away_from_command_line_hex_key() {
+        // KAIFUU-155: the key-import usage text must not advertise `--key-hex`
+        // as the primary manual-entry path (a hex key on the command line leaks
+        // into shell history + the process list). It must recommend the
+        // shell-history-safe `--key-file` path, warn about the hex hazard, and
+        // retain the hash-only report explanation.
+        let err = run_with_args(vec!["key".to_string(), "not-a-subcommand".to_string()])
+            .expect_err("unknown key subcommand must surface the usage text");
+        let usage = err.to_string();
+
+        // `--key-file` is the advertised/primary path and appears before the
+        // discouraged `--key-hex` option.
+        let key_file_at = usage
+            .find("--key-file")
+            .expect("usage must mention --key-file");
+        let key_hex_at = usage
+            .find("--key-hex")
+            .expect("usage must still document --key-hex");
+        assert!(
+            key_file_at < key_hex_at,
+            "--key-file must be advertised before --key-hex; usage: {usage}"
+        );
+
+        // The required-argument slot advertises --key-file, not a
+        // `(--key-hex|...)` primary choice.
+        assert!(
+            usage.contains("--engine-profile-id <id> --key-file <path>"),
+            "usage must advertise --key-file as the primary key input; usage: {usage}"
+        );
+        assert!(
+            !usage.contains("(--key-hex <hex>|--key-file <path>)"),
+            "usage must not advertise --key-hex as a primary manual-entry path; usage: {usage}"
+        );
+
+        // The safe method is recommended and the shell-history hazard is called
+        // out.
+        assert!(
+            usage.contains("recommended"),
+            "usage must recommend the shell-history-safe path; usage: {usage}"
+        );
+        assert!(
+            usage.contains("shell history"),
+            "usage must warn about shell-history exposure; usage: {usage}"
+        );
+        assert!(
+            usage.contains("process list"),
+            "usage must warn about process-list exposure; usage: {usage}"
+        );
+        assert!(
+            usage.contains("DISCOURAGED"),
+            "usage must mark --key-hex as discouraged; usage: {usage}"
+        );
+
+        // The hash-only report explanation is retained.
+        assert!(
+            usage.contains("sha256 hash"),
+            "usage must retain the hash-only report explanation; usage: {usage}"
+        );
+
+        // The missing-material error also steers toward the safe path.
+        let empty: Vec<String> = Vec::new();
+        let material_err = import_key_material_from_args(&empty)
+            .expect_err("missing key material must error with guidance");
+        let material_msg = material_err.to_string();
+        let file_at = material_msg
+            .find("--key-file")
+            .expect("error must mention --key-file");
+        let hex_at = material_msg
+            .find("--key-hex")
+            .expect("error must mention --key-hex");
+        assert!(
+            file_at < hex_at,
+            "missing-material error must lead with --key-file: {material_msg}"
+        );
     }
 
     #[test]

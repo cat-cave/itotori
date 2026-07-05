@@ -347,10 +347,17 @@ kaifuu key import \
   --output ./redacted-import-metadata.json
 ```
 
-`--key-hex` is accepted for local manual entry and tests, but command output and
-public fixtures must contain only `secretRef`, key purpose, engine profile id,
-source hash, material hash, byte count, source kind, and redaction status. The
-raw key is written only under the ignored local secret store. Helper requests
+`--key-file` is the recommended way to supply manual key material: the raw key
+is read from a local file, so it never lands in shell history or the process
+list. `--key-hex` is still accepted for tests and quick local entry, but it is
+**discouraged**: a hex key typed on the command line leaks into shell history
+and is visible to other local users via `ps` / the process list. Prefer
+`--key-file` (or a `prompt:`/stdin-style local input) for any real key material.
+The security posture does not depend on which input path is used — regardless of
+input, command output and public fixtures must contain only `secretRef`, key
+purpose, engine profile id, source hash, material hash, byte count, source kind,
+and redaction status. The raw key is written only under the ignored local secret
+store, and only its sha256 hash is persisted in the report. Helper requests
 receive bounded key-ref metadata through the registry boundary and reject
 missing refs, wrong engine profile ids, source-hash mismatches, or any raw key
 serialization before invoking helper logic.
