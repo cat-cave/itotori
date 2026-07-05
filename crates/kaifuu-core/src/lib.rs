@@ -539,6 +539,24 @@ pub enum Capability {
     RuntimeVm,
 }
 
+impl Capability {
+    /// KAIFUU-142: the container/crypto/codec/patch "transform axes" whose
+    /// `Supported` reports are prone to being over-read as broad transform
+    /// support. The identity/null-key-only annotation
+    /// ([`CapabilityReport::identity_or_null_key_only`]) is meaningful ONLY for
+    /// these capabilities — for anything else there is no broad-transform claim
+    /// to over-read.
+    pub fn is_transform_bearing(&self) -> bool {
+        matches!(
+            self,
+            Capability::ContainerAccess
+                | Capability::CryptoAccess
+                | Capability::CodecAccess
+                | Capability::PatchBack
+        )
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CapabilityStatus {
@@ -548,12 +566,39 @@ pub enum CapabilityStatus {
     RequiresUserInput,
 }
 
+/// KAIFUU-142: canonical limitation note attached to an identity/null-key-only
+/// capability report ([`CapabilityReport::identity_or_null_key_only`]). A
+/// consumer reading only the free-text `limitation` still sees the boundary;
+/// the machine-checkable [`CapabilityReport::identity_or_null_key_only`] marker
+/// is the authoritative signal.
+pub const IDENTITY_OR_NULL_KEY_ONLY_LIMITATION: &str = "identity/null-key-only: this capability is Supported only at the identity \
+     rung of the layered access contract (null-key crypto, no archive repack, \
+     no binary codec, no bytecode patch-back); no broader container/crypto/\
+     codec/patch transform is claimed";
+
+fn is_false(value: &bool) -> bool {
+    !*value
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CapabilityReport {
     pub capability: Capability,
     pub status: CapabilityStatus,
     pub limitation: Option<String>,
+    /// KAIFUU-142: guards against OVER-READING a `Supported`
+    /// container/crypto/codec/patch report as broad transform support. When
+    /// `true`, the adapter implements only the identity / null-key rung of the
+    /// layered access contract ([[KAIFUU-032]]) for this capability — no real
+    /// archive repack, non-null crypto, binary codec, or bytecode patch-back.
+    ///
+    /// Skipped in JSON when `false`, so existing payloads round-trip unchanged
+    /// and an ABSENT marker means "no identity/null-key-only claim" — the
+    /// report is either a genuine broader transform or a non-transform
+    /// capability. Only meaningful for [`Capability::is_transform_bearing`]
+    /// capabilities.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub identity_or_null_key_only: bool,
 }
 
 impl CapabilityReport {
@@ -562,6 +607,7 @@ impl CapabilityReport {
             capability,
             status: CapabilityStatus::Supported,
             limitation: None,
+            identity_or_null_key_only: false,
         }
     }
 
@@ -570,6 +616,7 @@ impl CapabilityReport {
             capability,
             status: CapabilityStatus::Limited,
             limitation: Some(limitation.into()),
+            identity_or_null_key_only: false,
         }
     }
 
@@ -578,6 +625,7 @@ impl CapabilityReport {
             capability,
             status: CapabilityStatus::Unsupported,
             limitation: Some(limitation.into()),
+            identity_or_null_key_only: false,
         }
     }
 
@@ -586,7 +634,42 @@ impl CapabilityReport {
             capability,
             status: CapabilityStatus::RequiresUserInput,
             limitation: Some(limitation.into()),
+            identity_or_null_key_only: false,
         }
+    }
+
+    /// KAIFUU-142: a container/crypto/codec/patch capability that WORKS
+    /// (`Supported`) but only at the identity / null-key rung of the layered
+    /// access contract. The report is explicitly annotated
+    /// ([`identity_or_null_key_only`](Self::identity_or_null_key_only) = `true`)
+    /// AND carries the canonical [`IDENTITY_OR_NULL_KEY_ONLY_LIMITATION`] note,
+    /// so a consumer cannot over-read it as broad transform support.
+    pub fn identity_or_null_key_only(capability: Capability) -> Self {
+        Self {
+            capability,
+            status: CapabilityStatus::Supported,
+            limitation: Some(IDENTITY_OR_NULL_KEY_ONLY_LIMITATION.to_string()),
+            identity_or_null_key_only: true,
+        }
+    }
+
+    /// KAIFUU-142: annotate an existing report as identity/null-key-only,
+    /// stating the canonical limitation when none is present. Use when an
+    /// adapter has built a `Supported` transform report but its real behaviour
+    /// is only the identity/null-key rung.
+    pub fn into_identity_or_null_key_only(mut self) -> Self {
+        self.identity_or_null_key_only = true;
+        if self.limitation.is_none() {
+            self.limitation = Some(IDENTITY_OR_NULL_KEY_ONLY_LIMITATION.to_string());
+        }
+        self
+    }
+
+    /// KAIFUU-142: `true` iff this report explicitly declares identity/null-key
+    /// -only behaviour. Consumers use this to DISTINGUISH a genuine broad
+    /// transform report (marker absent) from an identity/null-key-only one.
+    pub fn is_identity_or_null_key_only(&self) -> bool {
+        self.identity_or_null_key_only
     }
 
     pub fn redacted_for_report(&self) -> Self {
@@ -594,6 +677,7 @@ impl CapabilityReport {
             capability: self.capability.clone(),
             status: self.status.clone(),
             limitation: self.limitation.as_deref().map(redact_for_log_or_report),
+            identity_or_null_key_only: self.identity_or_null_key_only,
         }
     }
 }
@@ -674,6 +758,39 @@ impl AdapterCapabilities {
         self.helper_requirements = helper_requirements;
         self.normalize();
         self
+    }
+
+    /// KAIFUU-142: `true` iff this adapter declares a layered access contract
+    /// that goes BEYOND the identity/null-key rung (a real container/crypto/
+    /// codec/patch transform). When `false` — no contract, or a contract that
+    /// is itself identity/null-key-only — any `Supported`
+    /// container/crypto/codec/patch report is, at most, identity/null-key
+    /// support and MUST be annotated as such to avoid over-read.
+    pub fn declares_broader_transform_support(&self) -> bool {
+        self.access_contract
+            .as_ref()
+            .is_some_and(|contract| !contract.is_identity_or_null_key_only())
+    }
+
+    /// KAIFUU-142: over-read detector. Returns the transform-bearing
+    /// capabilities whose reports are `Supported` but neither annotated
+    /// identity/null-key-only NOR backed by a broader transform contract — i.e.
+    /// reports a consumer could over-read as broad support. Empty when every
+    /// such report is honestly annotated or genuinely backed by broader
+    /// support, letting a consumer DISTINGUISH the two.
+    pub fn identity_or_null_key_overreads(&self) -> Vec<Capability> {
+        if self.declares_broader_transform_support() {
+            return Vec::new();
+        }
+        self.reports
+            .iter()
+            .filter(|report| {
+                report.capability.is_transform_bearing()
+                    && report.status == CapabilityStatus::Supported
+                    && !report.is_identity_or_null_key_only()
+            })
+            .map(|report| report.capability.clone())
+            .collect()
     }
 
     pub fn normalize(&mut self) {
@@ -979,6 +1096,17 @@ impl LayeredAccessCapabilityContract {
             patch: self.patch.redacted_for_report(),
         }
     }
+
+    /// KAIFUU-142: `true` iff EVERY operation in this contract stays within the
+    /// identity / null-key rung. When true, the contract itself declares no
+    /// broader transform support, so any `Supported` container/crypto/codec/
+    /// patch report backed only by this contract is identity/null-key-only.
+    pub fn is_identity_or_null_key_only(&self) -> bool {
+        self.identify.is_identity_or_null_key_only()
+            && self.inventory.is_identity_or_null_key_only()
+            && self.extract.is_identity_or_null_key_only()
+            && self.patch.is_identity_or_null_key_only()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1037,6 +1165,52 @@ impl LayeredAccessOperationContract {
             .as_deref()
             .map(redact_for_log_or_report);
         contract
+    }
+
+    /// KAIFUU-142: `true` iff every declared transform stays within the
+    /// identity / null-key rung — only identity/loose-file/directory
+    /// containers, null-key crypto, plaintext-text codecs, identity/JSON-pointer
+    /// surfaces, and identity/JSON-rewrite patch-back. This is exactly the
+    /// surface produced by [`Self::supported_identity`]; anything beyond (an
+    /// archive container, a non-null crypto, a binary codec, an archive/bytecode
+    /// patch-back) makes it `false`, i.e. a genuine broader-transform claim a
+    /// consumer can distinguish from identity/null-key-only.
+    pub fn is_identity_or_null_key_only(&self) -> bool {
+        self.supported_containers.iter().all(|container| {
+            matches!(
+                container,
+                ContainerTransform::Identity
+                    | ContainerTransform::LooseFile
+                    | ContainerTransform::Directory
+            )
+        }) && self
+            .supported_crypto
+            .iter()
+            .all(|crypto| matches!(crypto, CryptoTransform::NullKey))
+            && self.supported_surfaces.iter().all(|surface| {
+                matches!(
+                    surface,
+                    SurfaceTransform::Identity | SurfaceTransform::JsonPointer
+                )
+            })
+            && self.supported_codecs.iter().all(|codec| {
+                matches!(
+                    codec,
+                    CodecTransform::Identity
+                        | CodecTransform::JsonText
+                        | CodecTransform::Utf8Text
+                        | CodecTransform::Utf16Text
+                        | CodecTransform::ShiftJisText
+                        | CodecTransform::RpgMakerMvMzJson
+                        | CodecTransform::TyranoScriptMarkup
+                )
+            })
+            && self.supported_patch_back.iter().all(|patch_back| {
+                matches!(
+                    patch_back,
+                    PatchBackTransform::Identity | PatchBackTransform::RewriteJson
+                )
+            })
     }
 }
 
@@ -4269,6 +4443,22 @@ fn validate_capability_report(
         &["supported", "limited", "unsupported", "requires_user_input"],
     );
     let limitation = report.get("limitation").and_then(Value::as_str);
+    // KAIFUU-142: the machine-checkable identity/null-key-only marker (see
+    // `CapabilityReport::identity_or_null_key_only`). Absent → `false`.
+    let identity_or_null_key_only = report
+        .get("identityOrNullKeyOnly")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    if report
+        .get("identityOrNullKeyOnly")
+        .is_some_and(|value| !value.is_boolean())
+    {
+        failures.push(ProfileValidationFailure {
+            code: "invalid_field_type".to_string(),
+            field: format!("{field}.identityOrNullKeyOnly"),
+            message: "identityOrNullKeyOnly must be a boolean".to_string(),
+        });
+    }
     if matches!(
         status.as_deref(),
         Some("limited" | "unsupported" | "requires_user_input")
@@ -4281,14 +4471,43 @@ fn validate_capability_report(
                 .to_string(),
         });
     }
+    // KAIFUU-142: a `supported` report normally must not carry a limitation,
+    // EXCEPT the explicit identity/null-key-only annotation, which STATES the
+    // layered-access boundary so the report cannot be over-read as broad
+    // container/crypto/codec/patch transform support.
     if status.as_deref() == Some("supported")
         && limitation.is_some_and(|text| !text.trim().is_empty())
+        && !identity_or_null_key_only
     {
         failures.push(ProfileValidationFailure {
             code: "unexpected_capability_limitation".to_string(),
             field: format!("{field}.limitation"),
-            message: "supported capabilities must not carry a limitation".to_string(),
+            message:
+                "supported capabilities must not carry a limitation unless annotated identityOrNullKeyOnly"
+                    .to_string(),
         });
+    }
+    // KAIFUU-142: the identity/null-key-only marker is valid only on a
+    // `supported` report and MUST state its boundary via a limitation, so the
+    // annotation is never silently empty.
+    if identity_or_null_key_only {
+        if status.as_deref() != Some("supported") {
+            failures.push(ProfileValidationFailure {
+                code: "invalid_identity_or_null_key_marker".to_string(),
+                field: format!("{field}.identityOrNullKeyOnly"),
+                message: "identityOrNullKeyOnly is only valid on a supported capability"
+                    .to_string(),
+            });
+        }
+        if limitation.map_or("", str::trim).is_empty() {
+            failures.push(ProfileValidationFailure {
+                code: "missing_identity_or_null_key_limitation".to_string(),
+                field: format!("{field}.limitation"),
+                message:
+                    "identity/null-key-only capabilities must state the boundary in a limitation"
+                        .to_string(),
+            });
+        }
     }
     capability
 }
@@ -20926,6 +21145,219 @@ mod tests {
         Arc,
         atomic::{AtomicUsize, Ordering},
     };
+
+    // ------------------------------------------------------------------
+    // KAIFUU-142: identity/null-key-only capability annotation.
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn identity_or_null_key_only_report_carries_explicit_limitation_and_marker() {
+        // A container/crypto/codec/patch capability that only works at the
+        // identity/null-key rung must be Supported (it works) BUT explicitly
+        // annotated so a consumer cannot over-read it as broad transform
+        // support.
+        for capability in [
+            Capability::ContainerAccess,
+            Capability::CryptoAccess,
+            Capability::CodecAccess,
+            Capability::PatchBack,
+        ] {
+            let report = CapabilityReport::identity_or_null_key_only(capability.clone());
+            assert_eq!(report.status, CapabilityStatus::Supported);
+            assert!(report.is_identity_or_null_key_only());
+            assert_eq!(
+                report.limitation.as_deref(),
+                Some(IDENTITY_OR_NULL_KEY_ONLY_LIMITATION)
+            );
+            assert!(capability.is_transform_bearing());
+        }
+    }
+
+    #[test]
+    fn plain_supported_report_does_not_falsely_claim_identity_or_null_key_only() {
+        // A report claiming genuine broad support must NOT carry the marker,
+        // so a consumer can distinguish it from identity/null-key-only.
+        let broad = CapabilityReport::supported(Capability::CryptoAccess);
+        assert!(!broad.is_identity_or_null_key_only());
+        assert!(broad.limitation.is_none());
+
+        let annotated = CapabilityReport::identity_or_null_key_only(Capability::CryptoAccess);
+        assert_ne!(
+            broad.is_identity_or_null_key_only(),
+            annotated.is_identity_or_null_key_only()
+        );
+    }
+
+    #[test]
+    fn identity_or_null_key_marker_serializes_only_when_true() {
+        let plain = CapabilityReport::supported(Capability::ContainerAccess);
+        let plain_json = serde_json::to_value(&plain).expect("serialize");
+        assert!(
+            plain_json.get("identityOrNullKeyOnly").is_none(),
+            "false marker must be skipped so existing payloads round-trip unchanged"
+        );
+
+        let annotated = CapabilityReport::identity_or_null_key_only(Capability::ContainerAccess);
+        let annotated_json = serde_json::to_value(&annotated).expect("serialize");
+        assert_eq!(
+            annotated_json["identityOrNullKeyOnly"],
+            serde_json::json!(true)
+        );
+        let round: CapabilityReport = serde_json::from_value(annotated_json).expect("deserialize");
+        assert_eq!(round, annotated);
+    }
+
+    #[test]
+    fn into_identity_or_null_key_only_annotates_and_states_boundary() {
+        let annotated =
+            CapabilityReport::supported(Capability::PatchBack).into_identity_or_null_key_only();
+        assert!(annotated.is_identity_or_null_key_only());
+        assert_eq!(
+            annotated.limitation.as_deref(),
+            Some(IDENTITY_OR_NULL_KEY_ONLY_LIMITATION)
+        );
+    }
+
+    #[test]
+    fn plaintext_identity_operation_contract_is_identity_or_null_key_only() {
+        let contract = LayeredAccessCapabilityContract::plaintext_identity();
+        assert!(
+            contract.is_identity_or_null_key_only(),
+            "the plaintext-identity contract declares no broader transform support"
+        );
+    }
+
+    #[test]
+    fn contract_with_real_transform_is_not_identity_or_null_key_only() {
+        // A real archive container + non-null crypto is a genuine broader
+        // transform — distinguishable from the identity/null-key rung.
+        let mut op =
+            LayeredAccessOperationContract::supported_identity(vec![Capability::Extraction]);
+        assert!(op.is_identity_or_null_key_only());
+        op.supported_containers.push(ContainerTransform::Xp3);
+        op.supported_crypto.push(CryptoTransform::KeyProfile);
+        assert!(!op.is_identity_or_null_key_only());
+    }
+
+    #[test]
+    fn adapter_overread_detector_flags_unannotated_supported_transform_reports() {
+        // No access contract + a plain Supported CryptoAccess report ->
+        // over-read risk a consumer can catch.
+        let reports = vec![
+            CapabilityReport::supported(Capability::Detection),
+            CapabilityReport::supported(Capability::CryptoAccess),
+        ];
+        let matrix = AdapterCapabilityMatrix::identify_only("kaifuu.overread", "detector-only");
+        let caps = AdapterCapabilities::new("kaifuu.overread", reports, matrix);
+        assert!(!caps.declares_broader_transform_support());
+        assert_eq!(
+            caps.identity_or_null_key_overreads(),
+            vec![Capability::CryptoAccess]
+        );
+    }
+
+    #[test]
+    fn adapter_overread_detector_clears_when_annotated_or_backed_by_broader_support() {
+        let matrix = AdapterCapabilityMatrix::identify_only("kaifuu.honest", "detector-only");
+
+        // Annotated identity/null-key-only -> no over-read.
+        let annotated = AdapterCapabilities::new(
+            "kaifuu.honest",
+            vec![
+                CapabilityReport::supported(Capability::Detection),
+                CapabilityReport::identity_or_null_key_only(Capability::CryptoAccess),
+            ],
+            matrix.clone(),
+        );
+        assert!(annotated.identity_or_null_key_overreads().is_empty());
+
+        // Backed by a broader (real-transform) access contract -> no over-read,
+        // and the plain Supported report is understood as genuine broad support.
+        let mut broad_contract = LayeredAccessCapabilityContract::plaintext_identity();
+        broad_contract
+            .extract
+            .supported_crypto
+            .push(CryptoTransform::KeyProfile);
+        broad_contract
+            .extract
+            .supported_containers
+            .push(ContainerTransform::Xp3);
+        let broad = AdapterCapabilities::new(
+            "kaifuu.honest",
+            vec![
+                CapabilityReport::supported(Capability::Detection),
+                CapabilityReport::supported(Capability::CryptoAccess),
+            ],
+            matrix,
+        )
+        .with_access_contract(broad_contract);
+        assert!(broad.declares_broader_transform_support());
+        assert!(broad.identity_or_null_key_overreads().is_empty());
+    }
+
+    #[test]
+    fn validator_permits_supported_limitation_only_with_identity_marker() {
+        // Supported + limitation + marker=true -> valid (the KAIFUU-142 path).
+        let ok = serde_json::json!({
+            "capability": "crypto_access",
+            "status": "supported",
+            "limitation": IDENTITY_OR_NULL_KEY_ONLY_LIMITATION,
+            "identityOrNullKeyOnly": true,
+        });
+        let mut failures = Vec::new();
+        validate_capability_report(&mut failures, Some(&ok), "capabilities[0]");
+        assert!(failures.is_empty(), "unexpected failures: {failures:?}");
+
+        // Supported + limitation but NO marker -> still rejected (over-read
+        // guard: a silent free-text limitation on a Supported report).
+        let bad = serde_json::json!({
+            "capability": "crypto_access",
+            "status": "supported",
+            "limitation": "reads encrypted archives",
+        });
+        let mut failures = Vec::new();
+        validate_capability_report(&mut failures, Some(&bad), "capabilities[0]");
+        assert!(
+            failures
+                .iter()
+                .any(|f| f.code == "unexpected_capability_limitation"),
+            "expected unexpected_capability_limitation, got {failures:?}"
+        );
+    }
+
+    #[test]
+    fn validator_requires_marker_to_be_supported_with_a_limitation() {
+        // marker=true but status != supported -> rejected.
+        let bad_status = serde_json::json!({
+            "capability": "crypto_access",
+            "status": "limited",
+            "limitation": "x",
+            "identityOrNullKeyOnly": true,
+        });
+        let mut failures = Vec::new();
+        validate_capability_report(&mut failures, Some(&bad_status), "c");
+        assert!(
+            failures
+                .iter()
+                .any(|f| f.code == "invalid_identity_or_null_key_marker"),
+            "got {failures:?}"
+        );
+
+        // marker=true but no limitation -> rejected (must state the boundary).
+        let bad_missing = serde_json::json!({
+            "capability": "crypto_access",
+            "status": "supported",
+            "identityOrNullKeyOnly": true,
+        });
+        let mut failures = Vec::new();
+        validate_capability_report(&mut failures, Some(&bad_missing), "c");
+        assert!(
+            failures
+                .iter()
+                .any(|f| f.code == "missing_identity_or_null_key_limitation"),
+            "got {failures:?}"
+        );
+    }
 
     fn partial_report_with(adapter_id: &str, message: &str) -> PartialAdapterReport {
         PartialAdapterReport::new(
