@@ -1381,6 +1381,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "utsushi-kirikiri-xp3"
+version = "0.0.0"
+dependencies = [
+ "utsushi-core",
+]
+
+[[package]]
 name = "utsushi-reallive"
 version = "0.0.0"
 dependencies = [
