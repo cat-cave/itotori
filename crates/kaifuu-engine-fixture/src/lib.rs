@@ -121,13 +121,17 @@ const SIGLUS_GAMEEXE_REAL_MIN_ENTROPY_BITS: f64 = 6.5;
 const REALLIVE_SEEN_TXT_PATH: &str = "SEEN.TXT";
 const REALLIVE_SEEN_GAN_PATH: &str = "SEEN.GAN";
 const REALLIVE_GAMEEXE_INI_PATH: &str = "Gameexe.ini";
-// KAIFUU-189 resolved-data-dir evidence kind. Emitted whenever the
+// KAIFUU-192 nested-data-dir-resolved evidence code. Emitted whenever the
 // detector walks past the game root and locates a nested REALLIVEDATA/
 // subdirectory (e.g. Sweetie HD ships its REALLIVEDATA under a
 // Japanese-named title subdir). The evidence carries the on-disk path
 // relative to the game root so downstream `extract` / `profile` /
-// `verify` can re-use it without re-walking.
-const REALLIVE_RESOLVED_DATA_DIR_KIND: &str = "reallive_resolved_data_dir";
+// `verify` can re-use the resolved data dir without re-walking. The
+// identifier is namespaced under the stable `kaifuu.reallive.*` evidence
+// code namespace so downstream consumers can key off a single stable
+// string (KAIFUU-192 supersedes the KAIFUU-189 `reallive_resolved_data_dir`
+// kind).
+const REALLIVE_NESTED_DATA_DIR_RESOLVED_CODE: &str = "kaifuu.reallive.nested_data_dir_resolved";
 // Synthetic fixture short-circuit signatures. Public CI uses these to assert
 // detector wiring without needing observed real-game SEEN.TXT bytes. The
 // generic envelope check (see `reallive_seen_txt_envelope_ok`) is what
@@ -3460,7 +3464,7 @@ struct RealLiveFixtureState {
     variant: RealLiveFixtureVariant,
     // KAIFUU-189: when the depth-N walk locates a nested REALLIVEDATA/
     // subdirectory, the relative path is recorded here so the detector
-    // can surface it as evidence (`reallive_resolved_data_dir`). `None`
+    // can surface it as evidence (`kaifuu.reallive.nested_data_dir_resolved`). `None`
     // means the SEEN.TXT/Gameexe.ini lookups fell back to the game root
     // (synthetic fixtures or `kaifuu detect` invoked directly against a
     // REALLIVEDATA-named directory).
@@ -4423,7 +4427,7 @@ impl EngineAdapter for RealLiveProfileDetectorAdapter {
         if let Some(resolved_display) = resolved_data_dir_display.as_deref() {
             evidence_rows.push(DetectionEvidence {
                 path: resolved_display.to_string(),
-                kind: REALLIVE_RESOLVED_DATA_DIR_KIND.to_string(),
+                kind: REALLIVE_NESTED_DATA_DIR_RESOLVED_CODE.to_string(),
                 status: EvidenceStatus::Matched,
                 detail: format!(
                     "RealLive REALLIVEDATA/ engine asset root resolved at relative path {resolved_display} (KAIFUU-189 depth-N descent)",
@@ -8951,7 +8955,7 @@ mod tests {
         let resolved_row = detection
             .evidence
             .iter()
-            .find(|row| row.kind == REALLIVE_RESOLVED_DATA_DIR_KIND)
+            .find(|row| row.kind == REALLIVE_NESTED_DATA_DIR_RESOLVED_CODE)
             .expect("resolved REALLIVEDATA evidence row must be emitted");
         assert_eq!(resolved_row.status, EvidenceStatus::Matched);
         assert!(
@@ -9020,7 +9024,7 @@ mod tests {
         let resolved_row = detection
             .evidence
             .iter()
-            .find(|row| row.kind == REALLIVE_RESOLVED_DATA_DIR_KIND);
+            .find(|row| row.kind == REALLIVE_NESTED_DATA_DIR_RESOLVED_CODE);
         assert!(
             resolved_row.is_none(),
             "no nested REALLIVEDATA/ marker means no resolved-data-dir evidence row; got {resolved_row:?}",

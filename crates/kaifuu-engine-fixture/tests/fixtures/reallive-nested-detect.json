@@ -1,0 +1,180 @@
+{
+  "adapterId": "kaifuu.reallive",
+  "detected": true,
+  "engineFamily": "reallive",
+  "detectedVariant": "reallive-positive-live-layout",
+  "evidence": [
+    {
+      "path": "*.g00",
+      "kind": "reallive_g00_extension_count",
+      "status": "matched",
+      "detail": "RealLive .g00 image asset count: 1"
+    },
+    {
+      "path": "*.ovk|*.koe|*.nwk",
+      "kind": "reallive_voice_archive_count",
+      "status": "matched",
+      "detail": "RealLive voice archive extension count: 1"
+    },
+    {
+      "path": "*.pdt",
+      "kind": "avg32_cross_check_pdt_count",
+      "status": "missing",
+      "detail": "AVG32 .PDT image asset count (informational): 0"
+    },
+    {
+      "path": "Gameexe.dat",
+      "kind": "siglus_cross_check_gameexe_dat",
+      "status": "missing",
+      "detail": "Gameexe.dat not present"
+    },
+    {
+      "path": "Scene.pck",
+      "kind": "siglus_cross_check_scene_pck",
+      "status": "missing",
+      "detail": "Scene.pck not present"
+    },
+    {
+      "path": "game-install/REALLIVEDATA",
+      "kind": "kaifuu.reallive.nested_data_dir_resolved",
+      "status": "matched",
+      "detail": "RealLive REALLIVEDATA/ engine asset root resolved at relative path game-install/REALLIVEDATA (KAIFUU-189 depth-N descent)"
+    },
+    {
+      "path": "game-install/REALLIVEDATA/Gameexe.ini",
+      "kind": "reallive_gameexe_ini_keys",
+      "status": "matched",
+      "detail": "Gameexe.ini RealLive keys matched: #GAMEEXE_VERSION, #REGNAME, #KOE*"
+    },
+    {
+      "path": "game-install/REALLIVEDATA/SEEN.GAN",
+      "kind": "reallive_seen_gan_marker",
+      "status": "missing",
+      "detail": "SEEN.GAN marker is missing"
+    },
+    {
+      "path": "game-install/REALLIVEDATA/SEEN.TXT",
+      "kind": "reallive_seen_txt_envelope",
+      "status": "matched",
+      "detail": "SEEN.TXT envelope matched"
+    }
+  ],
+  "requirements": [
+    {
+      "category": "file",
+      "key": "Gameexe.ini",
+      "status": "satisfied",
+      "description": "RealLive Gameexe.ini with at least one RealLive-specific key (#GAMEEXE_VERSION, #REGNAME, #G00*, #KOE*, #SEEN*)",
+      "placeholder": null,
+      "secret": false
+    },
+    {
+      "category": "file",
+      "key": "SEEN.TXT",
+      "status": "satisfied",
+      "description": "RealLive SEEN.TXT envelope (synthetic magic or generic shape)",
+      "placeholder": null,
+      "secret": false
+    },
+    {
+      "category": "platform",
+      "key": "reallive-parser",
+      "status": "unsupported",
+      "description": "Scene/SEEN parser/decompiler boundary is unsupported for KAIFUU-172",
+      "placeholder": null,
+      "secret": false
+    }
+  ],
+  "capabilities": [
+    {
+      "capability": "asset_inventory",
+      "status": "supported",
+      "limitation": null
+    },
+    {
+      "capability": "asset_listing",
+      "status": "supported",
+      "limitation": null
+    },
+    {
+      "capability": "asset_text_patching",
+      "status": "limited",
+      "limitation": "Scene/SEEN dialogue/speaker/choice slots only; image-overlaid text inside .g00 is not in scope"
+    },
+    {
+      "capability": "codec_access",
+      "status": "supported",
+      "limitation": null
+    },
+    {
+      "capability": "container_access",
+      "status": "supported",
+      "limitation": null
+    },
+    {
+      "capability": "crypto_access",
+      "status": "unsupported",
+      "limitation": "RealLive voice archive obfuscation handling is outside this slice"
+    },
+    {
+      "capability": "delta_patching",
+      "status": "unsupported",
+      "limitation": ".kaifuu delta packages do not apply to RealLive at this slice"
+    },
+    {
+      "capability": "detection",
+      "status": "supported",
+      "limitation": null
+    },
+    {
+      "capability": "encrypted_input",
+      "status": "unsupported",
+      "limitation": "encrypted SEEN.TXT is out of scope at KAIFUU-174"
+    },
+    {
+      "capability": "extraction",
+      "status": "supported",
+      "limitation": null
+    },
+    {
+      "capability": "key_profile",
+      "status": "unsupported",
+      "limitation": "alpha-vertical RealLive titles do not require user-provided keys; encrypted variants are a separate node"
+    },
+    {
+      "capability": "line_parity_patching",
+      "status": "limited",
+      "limitation": "patch-back is per-slot, not per-line; the KAIFUU-052 line-parity contract is not claimed at this slice"
+    },
+    {
+      "capability": "non_text_surface_extraction",
+      "status": "unsupported",
+      "limitation": "no non-text extraction or OCR is performed for RealLive fixtures"
+    },
+    {
+      "capability": "patch_back",
+      "status": "supported",
+      "limitation": null
+    },
+    {
+      "capability": "patching",
+      "status": "limited",
+      "limitation": "length-changing Scene/SEEN text-slot replacement (offset table rewritten + jump targets recalculated) applied through the bundle-driven driver; limited to one scene-scoped bundle per call and to the configured text scope (dialogue/speaker/choice), not image-overlaid .g00 text"
+    },
+    {
+      "capability": "profile_generation",
+      "status": "supported",
+      "limitation": null
+    },
+    {
+      "capability": "runtime_vm",
+      "status": "unsupported",
+      "limitation": "runtime support belongs to UTSUSHI-146, not this slice"
+    },
+    {
+      "capability": "verification",
+      "status": "supported",
+      "limitation": null
+    }
+  ]
+}
