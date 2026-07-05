@@ -12251,8 +12251,27 @@ impl KeyResolverPolicy {
             || self
                 .allowed_local_secret_prefixes
                 .iter()
-                .any(|prefix| local_secret_id.starts_with(prefix))
+                .any(|prefix| allow_prefix_authorizes_local_secret_id(prefix, local_secret_id))
     }
+}
+
+/// Segment-aware local-secret allow-prefix match.
+///
+/// An allow-prefix authorizes an id iff the id EQUALS the prefix (exact) or the
+/// id continues past the prefix on a `/`-delimited path SEGMENT boundary
+/// (`prefix + "/"`). A trailing `/` on the configured prefix is normalized away
+/// so `foo/` and `foo` behave identically.
+///
+/// This deliberately rejects raw string-prefix over-matches: an allow-prefix
+/// `private/customer/account` authorizes `private/customer/account` and
+/// `private/customer/account/key`, but NOT the sibling
+/// `private/customer/accounting/key` (segment `accounting` != `account`).
+fn allow_prefix_authorizes_local_secret_id(prefix: &str, local_secret_id: &str) -> bool {
+    let boundary = prefix.trim_end_matches('/');
+    local_secret_id == boundary
+        || local_secret_id
+            .strip_prefix(boundary)
+            .is_some_and(|rest| rest.starts_with('/'))
 }
 
 impl Default for KeyResolverPolicy {
@@ -25614,6 +25633,38 @@ mod tests {
             invalid_error.semantic_code(),
             SemanticErrorCode::KeyValidationFailed
         );
+    }
+
+    #[test]
+    fn local_secret_allow_prefix_matches_on_path_segment_boundaries_not_raw_string() {
+        let policy = KeyResolverPolicy::allow_prefixes(["private/customer/account"]);
+
+        // Exact match is authorized.
+        assert!(policy.permits_local_secret_id("private/customer/account"));
+        // Child ids under a whole-segment boundary are authorized.
+        assert!(policy.permits_local_secret_id("private/customer/account/key"));
+        assert!(policy.permits_local_secret_id("private/customer/account/nested/key"));
+
+        // Sibling id whose leading segment merely starts with the prefix's last
+        // segment (`accounting` vs `account`) is REJECTED — the historical
+        // raw-string-prefix bug wrongly authorized this.
+        assert!(!policy.permits_local_secret_id("private/customer/accounting/key"));
+        assert!(!policy.permits_local_secret_id("private/customer/accountant"));
+
+        // A shorter, non-segment-aligned prefix is rejected too.
+        let partial_segment_policy = KeyResolverPolicy::allow_prefixes(["private/customer/acc"]);
+        assert!(!partial_segment_policy.permits_local_secret_id("private/customer/account/key"));
+        assert!(!partial_segment_policy.permits_local_secret_id("private/customer/account"));
+
+        // A trailing slash on the configured prefix is normalized and still
+        // authorizes whole-segment children.
+        let trailing_slash_policy = KeyResolverPolicy::allow_prefixes(["fixture/"]);
+        assert!(trailing_slash_policy.permits_local_secret_id("fixture/password"));
+        assert!(trailing_slash_policy.permits_local_secret_id("fixture"));
+        assert!(!trailing_slash_policy.permits_local_secret_id("fixtures/password"));
+
+        // Empty allow-list permits everything (allow-all-local).
+        assert!(KeyResolverPolicy::allow_all_local().permits_local_secret_id("anything/goes"));
     }
 
     #[test]
