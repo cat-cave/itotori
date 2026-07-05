@@ -40,6 +40,16 @@ export {
   localOpenAICompatibleDefaultCapabilities,
 } from "./local-openai-compatible.js";
 export {
+  describeLocalProviderCapabilityGaps,
+  localProviderCapabilityGapReport,
+  summarizeLocalProviderCapabilityGaps,
+  type CapabilityGapDimension,
+  type CapabilityGapKind,
+  type DescribeLocalCapabilityGapsOptions,
+  type LocalProviderCapabilityGap,
+  type LocalProviderCapabilityGapReport,
+} from "./local-capability-gaps.js";
+export {
   OpenRouterCostCapError,
   OpenRouterMissingArtifactRecorderError,
   OpenRouterMissingApiKeyError,
