@@ -382,18 +382,18 @@ raw-mtl-baseline-proof: build
 hello-replay:
     cargo test -p utsushi-reallive --test replay_scene_synthetic -- --nocapture
 
-# UTSUSHI-227: patched-Seen.txt replay-and-verify smoke. Runs the
-# synthetic + validator integration tests through `cargo test` (no real
-# bytes required) so a fresh-clone reviewer can verify the
-# `validate_replay_contains` library API and the generic
-# `utsushi-cli replay-validate --engine reallive` surface match
-# without touching the vault. The
-# real-bytes variant lives in the same integration test file
-# (`tests/replay_validate_reallive.rs`) under the env-gated
-# ignored test; run it separately with ITOTORI_REAL_GAME_ROOT set
-# per the spec verification block.
+# UTSUSHI-227: patched-Seen.txt replay-validate surface smoke. Runs the
+# in-crate `replay-validate` command unit tests (no real bytes required)
+# so a fresh-clone reviewer can verify the
+# `utsushi-cli replay-validate --engine reallive` surface — argv parsing,
+# engine gating, and the observed-output help contract — plus the live
+# `--help` output, without touching the vault. Replay validation of the
+# actual observed engine output now lives on the caller side (the
+# localize-project driver) and in the real-bytes lane
+# (`crates/utsushi-cli/tests/single_scene_xor2_replay_real_bytes.rs`),
+# run separately with ITOTORI_REAL_GAME_ROOT set per the spec block.
 hello-replay-validate:
-    cargo test -p utsushi-reallive --test replay_validate_reallive -- --nocapture
+    cargo test -p utsushi-cli --bins replay_validate -- --nocapture
     cargo run -p utsushi-cli -- replay-validate --help
 
 # UTSUSHI-228 — alpha closer. Wraps every other alpha node into one
