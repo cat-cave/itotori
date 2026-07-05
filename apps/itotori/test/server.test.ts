@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -271,6 +271,68 @@ describe("Itotori server API contracts", () => {
 
         const externalResponse = await fetch(`${origin}/artifact-store/file:///tmp/secret.json`);
         expect(externalResponse.status).toBe(400);
+      } finally {
+        await closeServer(server);
+      }
+    });
+  });
+
+  // UTSUSHI-140 — defense-in-depth regression coverage. The artifact-store
+  // server confines managed reads to the configured root via realpath
+  // canonicalization (see `readRootedFile` in src/server.ts). A symlink whose
+  // name is an ordinary path segment (so it passes the lexical `..`/scheme
+  // guards) but whose target resolves OUTSIDE the managed root must NOT be
+  // served — otherwise it would be a directory-escape leak. This test would
+  // fail if the realpath confinement in `readRootedFile` were removed, because
+  // the lexical checks alone treat the symlink path as in-root and would read
+  // the outside target's contents.
+  it("refuses artifact-store symlinks that escape the managed root while still serving in-root files", async () => {
+    await withTempDir(async (directory) => {
+      const webRoot = join(directory, "web");
+      const managedArtifactRoot = join(directory, "managed-artifacts");
+      await mkdir(webRoot, { recursive: true });
+      await mkdir(join(managedArtifactRoot, "runtime-1", "traces"), { recursive: true });
+
+      // A legitimate managed runtime artifact that must remain servable.
+      await writeFile(
+        join(managedArtifactRoot, "runtime-1", "traces", "trace-1.json"),
+        '{"source":"managed"}',
+        "utf8",
+      );
+
+      // A synthetic file OUTSIDE the managed root (no real secret). A symlink
+      // under the root — with an ordinary segment name — points at it.
+      const outsideSecret = join(directory, "outside-secret.json");
+      await writeFile(outsideSecret, '{"source":"outside-root"}', "utf8");
+      await symlink(outsideSecret, join(managedArtifactRoot, "runtime-1", "traces", "escape.json"));
+
+      const server = createItotoriServer({
+        serviceFactory,
+        webRoot: directoryUrl(webRoot),
+        managedArtifactRoot: directoryUrl(managedArtifactRoot),
+      });
+      await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+      try {
+        const address = server.address() as AddressInfo;
+        const origin = `http://127.0.0.1:${address.port}`;
+
+        // The out-of-root symlink target must not be served, and its contents
+        // must never leak into the response body.
+        const escapeResponse = await fetch(
+          `${origin}/artifact-store/artifacts/utsushi/runtime/runtime-1/traces/escape.json`,
+        );
+        expect(escapeResponse.status).toBe(404);
+        const escapeBody = await escapeResponse.text();
+        expect(escapeBody).toBe("not found");
+        expect(escapeBody).not.toContain("outside-root");
+
+        // A normal managed runtime artifact under the root is still served —
+        // the confinement does not break legitimate reads.
+        const managedResponse = await fetch(
+          `${origin}/artifact-store/artifacts/utsushi/runtime/runtime-1/traces/trace-1.json`,
+        );
+        expect(managedResponse.status).toBe(200);
+        await expect(managedResponse.json()).resolves.toEqual({ source: "managed" });
       } finally {
         await closeServer(server);
       }
