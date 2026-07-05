@@ -6017,10 +6017,15 @@ mod tests {
             other => panic!("expected BudgetExhausted, got {other:?}"),
         }
 
-        // The rejected write must not have created the artifact.
-        let over_uri =
-            runtime_artifact_uri("run", RuntimeArtifactKind::Screenshot, "frame").unwrap();
-        assert_eq!(over_uri, uri);
+        // The rejected over-budget write must not have mutated the artifact:
+        // it targets the same managed path as the under-budget write (same
+        // URI), so that on-disk file must still hold the under-budget payload
+        // exactly — never the over-budget bytes that were rejected.
+        assert_eq!(
+            fs::read(&ok).unwrap(),
+            b"12345678",
+            "rejected over-budget write must leave the artifact bytes unchanged"
+        );
 
         let _ = fs::remove_dir_all(temp);
     }
