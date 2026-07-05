@@ -455,6 +455,76 @@ describe("WorkspaceCorrectionService — submit", () => {
     expect(en[0]?.correctionEditId).not.toBe(fr[0]?.correctionEditId);
   });
 
+  it("rejects a mid-batch invalid correction at the service boundary with NO partial mutation", async () => {
+    const { service, feedbackRepo, reviewerQueue, editRepo } = buildService();
+
+    const result = await service.submitCorrections({
+      ...submitBase,
+      corrections: [
+        {
+          bridgeUnitId: "unit-a",
+          sourceRevisionId: SOURCE_REVISION_ID,
+          reason: "Valid fix",
+          correctedText: "Valid corrected text.",
+        },
+        {
+          bridgeUnitId: "unit-b",
+          sourceRevisionId: SOURCE_REVISION_ID,
+          reason: "Valid fix two",
+          correctedText: "Second valid text.",
+        },
+        {
+          // Correction #3 is invalid: empty corrected text + blank reason.
+          bridgeUnitId: "unit-c",
+          sourceRevisionId: SOURCE_REVISION_ID,
+          reason: "   ",
+          correctedText: "",
+        },
+      ],
+    });
+
+    // Rejected at the service boundary.
+    expect(result.submittedCount).toBe(0);
+    expect(result.edits).toEqual([]);
+    const codes = result.diagnostics.map((diagnostic) => diagnostic.code);
+    expect(codes).toContain("workspace_correction_invalid_correction");
+    // The diagnostic identifies the offending correction index + fields.
+    const messages = result.diagnostics.map((diagnostic) => diagnostic.message).join("\n");
+    expect(messages).toContain("correction[2]");
+    expect(messages).toContain("reason");
+    expect(messages).toContain("correctedText");
+
+    // NO partial mutation: not one feedback row, queue item, or edit-history
+    // row was written for ANY correction in the batch — including the two valid
+    // corrections that precede the invalid one.
+    expect(feedbackRepo.imported).toEqual([]);
+    expect(reviewerQueue.created).toEqual([]);
+    expect(editRepo.recorded).toEqual([]);
+  });
+
+  it("rejects a batch whose first correction is missing corrected text before any side effect", async () => {
+    const { service, feedbackRepo, editRepo } = buildService();
+
+    const result = await service.submitCorrections({
+      ...submitBase,
+      corrections: [
+        {
+          bridgeUnitId: "unit-a",
+          sourceRevisionId: SOURCE_REVISION_ID,
+          reason: "Missing corrected text",
+          correctedText: "",
+        },
+      ],
+    });
+
+    expect(result.submittedCount).toBe(0);
+    expect(result.diagnostics.map((diagnostic) => diagnostic.code)).toContain(
+      "workspace_correction_invalid_correction",
+    );
+    expect(feedbackRepo.imported).toEqual([]);
+    expect(editRepo.recorded).toEqual([]);
+  });
+
   it("refuses an empty batch with a structured diagnostic", async () => {
     const { service } = buildService();
     const result = await service.submitCorrections({ ...submitBase, corrections: [] });

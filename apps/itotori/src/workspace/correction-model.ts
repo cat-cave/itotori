@@ -30,6 +30,7 @@ export const workspaceCorrectionDiagnosticCodeValues = {
   branchConflationGuard: "workspace_correction_branch_conflation_guard",
   previewContextUnavailable: "workspace_correction_preview_context_unavailable",
   emptyBatch: "workspace_correction_empty_batch",
+  invalidCorrection: "workspace_correction_invalid_correction",
   needsContext: "workspace_correction_needs_context",
   duplicate: "workspace_correction_duplicate",
 } as const;

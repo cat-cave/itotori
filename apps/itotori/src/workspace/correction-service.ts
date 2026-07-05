@@ -234,6 +234,32 @@ export class WorkspaceCorrectionService implements WorkspaceCorrectionServicePor
       };
     }
 
+    // Validate EVERY correction (and the batch-level identity fields) at the
+    // service boundary BEFORE any `importManualFeedback` call. The downstream
+    // edit repository (`normalizeCorrectionEdit`) rejects the same fields, but
+    // it only runs AFTER a feedback row is already created — so a mid-batch
+    // invalid correction would leave feedback rows written for the earlier
+    // items (a fail-open partial mutation). Failing the whole batch up front,
+    // before the first side effect, guarantees no partial mutation. The checks
+    // below mirror the repository's `normalizeCorrectionEdit` checks exactly
+    // (same required fields, same trimmed-vs-length constraints).
+    const validationDiagnostics = validateCorrectionBatch(input);
+    if (validationDiagnostics.length > 0) {
+      return {
+        ...base,
+        batchId,
+        submittedCount: 0,
+        edits: [],
+        repairCandidateReportIds: [],
+        decisionQueueReportIds: [],
+        needsContextReportIds: [],
+        affectedBridgeUnitIds: [],
+        writebacks: [],
+        scheduledRerunJobIds: [],
+        diagnostics: validationDiagnostics,
+      };
+    }
+
     const edits: WorkspaceCorrectionEditView[] = [];
     const writebacks: WorkspaceCorrectionWritebackView[] = [];
     const scheduledRerunJobIds = new Set<string>();
@@ -342,6 +368,63 @@ export class WorkspaceCorrectionService implements WorkspaceCorrectionServicePor
       diagnostics,
     };
   }
+}
+
+/**
+ * Service-boundary validation mirroring the edit repository's
+ * `normalizeCorrectionEdit` checks (workspace-correction-repository.ts). Runs
+ * over the WHOLE batch before any side effect so a later-item failure never
+ * leaves earlier-item feedback rows written (no partial mutation). Returns one
+ * structured diagnostic per invalid field, identifying the correction index,
+ * the field, and the reason.
+ */
+function validateCorrectionBatch(
+  input: SubmitWorkspaceCorrectionsInput,
+): WorkspaceCorrectionDiagnostic[] {
+  const diagnostics: WorkspaceCorrectionDiagnostic[] = [];
+  const invalid = (index: number | null, field: string, reason: string): void => {
+    const where =
+      index === null
+        ? "batch"
+        : `correction[${index}] (bridgeUnitId ${input.corrections[index]?.bridgeUnitId ?? "?"})`;
+    diagnostics.push({
+      code: workspaceCorrectionDiagnosticCodeValues.invalidCorrection,
+      message: `Correction batch refused: ${where} field ${field} is invalid: ${reason}. No feedback report, edit-history row, or queue item was created for any correction in the batch (no partial mutation).`,
+    });
+  };
+
+  // Batch-level identity fields the repository requires non-empty (trimmed).
+  // An empty value here would otherwise fail only AFTER the first correction's
+  // feedback row is written.
+  for (const [field, value] of [
+    ["projectId", input.projectId],
+    ["localeBranchId", input.localeBranchId],
+    ["actorUserId", input.actorUserId],
+  ] as const) {
+    if (value.trim().length === 0) {
+      invalid(null, field, "must be non-empty");
+    }
+  }
+
+  input.corrections.forEach((correction, index) => {
+    // reason: repository trims then rejects empty.
+    if (correction.reason.trim().length === 0) {
+      invalid(index, "reason", "must be a non-empty reason");
+    }
+    // correctedText → afterText: repository rejects length 0 (NOT trimmed).
+    if (correction.correctedText.length === 0) {
+      invalid(index, "correctedText", "must be non-empty corrected text");
+    }
+    // sourceRevisionId / bridgeUnitId: repository requires non-empty (trimmed).
+    if (correction.sourceRevisionId.trim().length === 0) {
+      invalid(index, "sourceRevisionId", "must be non-empty");
+    }
+    if (correction.bridgeUnitId.trim().length === 0) {
+      invalid(index, "bridgeUnitId", "must be non-empty");
+    }
+  });
+
+  return diagnostics;
 }
 
 function buildFeedbackImportInput(
