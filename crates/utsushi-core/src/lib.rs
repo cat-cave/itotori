@@ -63,6 +63,14 @@ pub use conformance::branch_coverage::{
     derive_coverage_status, join_branch_coverage,
     read_model_from_json as branch_coverage_read_model_from_json,
 };
+// UTSUSHI-069: branch-coverage GAP FINDING emitter (data-only; reads the
+// UTSUSHI-009 read model and emits gap findings for unvisited-reachable +
+// ambiguous branches, never visited/unreachable).
+pub use conformance::branch_coverage_gaps::{
+    BRANCH_COVERAGE_GAP_FINDINGS_SCHEMA_VERSION, BranchCoverageGapFinding, BranchCoverageGapReport,
+    BranchCoverageGapSummary, GapArtifactLink, GapKind, GapSeverity, HIGH_TEXT_SEVERITY_THRESHOLD,
+    emit_branch_coverage_gap_findings, severity_for as branch_coverage_gap_severity_for,
+};
 pub use embed::{
     EMBED_MAX_CAPABILITIES, EmbedCapability, EmbedCapabilityId, EmbedCapabilityStatus, EmbedError,
 };

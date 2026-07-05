@@ -28,6 +28,7 @@
 use serde::{Deserialize, Serialize};
 
 pub mod branch_coverage;
+pub mod branch_coverage_gaps;
 pub mod capture_recording;
 pub mod diagnostics;
 pub mod fixtures;
@@ -42,6 +43,11 @@ pub use branch_coverage::{
     BranchCoverageFixtureError, BranchCoverageReadModel, BranchCoverageRecord,
     BranchCoverageSummary, BranchTraceObservation, CoverageStatus, RouteMapEntry,
     derive_coverage_status, join_branch_coverage, read_model_from_json,
+};
+pub use branch_coverage_gaps::{
+    BRANCH_COVERAGE_GAP_FINDINGS_SCHEMA_VERSION, BranchCoverageGapFinding, BranchCoverageGapReport,
+    BranchCoverageGapSummary, GapArtifactLink, GapKind, GapSeverity, HIGH_TEXT_SEVERITY_THRESHOLD,
+    emit_branch_coverage_gap_findings, severity_for,
 };
 pub use capture_recording::{
     ArtifactCountRange, CaptureCheckSummary, DurationRangeMs, FrameArtifactRef,
