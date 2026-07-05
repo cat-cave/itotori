@@ -1,0 +1,13 @@
+[
+  { "code": 101, "indent": 0, "parameters": ["Actor1", 0, 0, 2, "Alice"] },
+  { "code": 401, "indent": 0, "parameters": ["Good morning, traveller."] },
+  { "code": 401, "indent": 0, "parameters": ["Which road will you take?"] },
+  {
+    "code": 102,
+    "indent": 0,
+    "parameters": [["The forest path", "The mountain pass"], 1, 0, 2, 0]
+  },
+  { "code": 101, "indent": 0, "parameters": ["", 0, 0, 2, ""] },
+  { "code": 401, "indent": 0, "parameters": ["Choose wisely."] },
+  { "code": 0, "indent": 0, "parameters": [] }
+]

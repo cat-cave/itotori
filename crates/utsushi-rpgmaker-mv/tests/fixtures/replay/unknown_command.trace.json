@@ -1,0 +1,38 @@
+{
+  "schemaVersion": "0.1.0-alpha",
+  "observationSource": "static_replay",
+  "events": [
+    {
+      "eventKind": "text",
+      "payload": {
+        "payloadKind": "text",
+        "speaker": "Bob",
+        "lines": ["The gate is locked."]
+      }
+    },
+    {
+      "eventKind": "state",
+      "payload": { "payloadKind": "variable", "variableId": 10, "value": 1 }
+    }
+  ],
+  "finalState": {
+    "switches": [],
+    "variables": [{ "variableId": 10, "value": 1 }]
+  },
+  "diagnostics": [
+    {
+      "code": 356,
+      "commandIndex": 2,
+      "severity": "unsupported",
+      "reasonKind": "command_outside_subset",
+      "message": "event command code 356 is outside the declared replay subset"
+    },
+    {
+      "code": 111,
+      "commandIndex": 4,
+      "severity": "unsupported",
+      "reasonKind": "command_outside_subset",
+      "message": "event command code 111 is outside the declared replay subset"
+    }
+  ]
+}

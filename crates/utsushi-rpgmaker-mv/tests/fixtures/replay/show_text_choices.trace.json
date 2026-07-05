@@ -1,0 +1,34 @@
+{
+  "schemaVersion": "0.1.0-alpha",
+  "observationSource": "static_replay",
+  "events": [
+    {
+      "eventKind": "text",
+      "payload": {
+        "payloadKind": "text",
+        "speaker": "Alice",
+        "lines": ["Good morning, traveller.", "Which road will you take?"]
+      }
+    },
+    {
+      "eventKind": "choice",
+      "payload": {
+        "payloadKind": "choice",
+        "options": ["The forest path", "The mountain pass"]
+      }
+    },
+    {
+      "eventKind": "text",
+      "payload": {
+        "payloadKind": "text",
+        "speaker": null,
+        "lines": ["Choose wisely."]
+      }
+    }
+  ],
+  "finalState": {
+    "switches": [],
+    "variables": []
+  },
+  "diagnostics": []
+}

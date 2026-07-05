@@ -1,0 +1,37 @@
+{
+  "schemaVersion": "0.1.0-alpha",
+  "observationSource": "static_replay",
+  "events": [
+    { "eventKind": "state", "payload": { "payloadKind": "switch", "switchId": 1, "value": true } },
+    { "eventKind": "state", "payload": { "payloadKind": "switch", "switchId": 5, "value": false } },
+    { "eventKind": "state", "payload": { "payloadKind": "switch", "switchId": 6, "value": false } },
+    {
+      "eventKind": "state",
+      "payload": { "payloadKind": "variable", "variableId": 10, "value": 100 }
+    },
+    {
+      "eventKind": "state",
+      "payload": { "payloadKind": "variable", "variableId": 10, "value": 150 }
+    },
+    {
+      "eventKind": "state",
+      "payload": { "payloadKind": "variable", "variableId": 11, "value": 150 }
+    },
+    {
+      "eventKind": "state",
+      "payload": { "payloadKind": "variable", "variableId": 11, "value": 300 }
+    }
+  ],
+  "finalState": {
+    "switches": [
+      { "switchId": 1, "value": true },
+      { "switchId": 5, "value": false },
+      { "switchId": 6, "value": false }
+    ],
+    "variables": [
+      { "variableId": 10, "value": 150 },
+      { "variableId": 11, "value": 300 }
+    ]
+  },
+  "diagnostics": []
+}

@@ -29,10 +29,14 @@
 //!   and loaded inventory into the snapshot substrate.
 //!
 //! **Deferred (honestly not yet exercised):**
-//! - No live JS interpretation: the walk is a static event-stream pass, so
-//!   conditional branches are not evaluated, all choice options are
-//!   surfaced in declaration order, and variable/switch state is not
-//!   threaded. Pins the port at trace-only / E1.
+//! - No live JS interpretation on the *port's* `observe` path: that walk is a
+//!   static event-stream pass, so conditional branches are not evaluated, all
+//!   choice options are surfaced in declaration order, and variable/switch
+//!   state is not threaded. Pins the `observe` path at trace-only / E1.
+//!   (The [`replay`] module is a separate narrow skeleton that *does* thread
+//!   deterministic switch/variable state across a declared command subset and
+//!   surfaces out-of-subset commands as typed diagnostics; it is not yet wired
+//!   into the `observe` lifecycle.)
 //! - No frame rasterisation (JS DOM/canvas) and no audio: both sinks are
 //!   declared `Unsupported`. Screenshot/frame capture is a future node.
 //! - Script (355/655) / Plugin (356/357) command text is not extracted.
@@ -63,9 +67,14 @@
 
 pub mod event_data;
 pub mod port;
+pub mod replay;
 
 pub use event_data::{DataDir, DataLayout, EventDataError, MessageLine, PlaybackProgram, TextRole};
 pub use port::{RpgmakerMvObservationSinks, RpgmakerMvTextSink, UtsushiRpgmakerMvPort};
+pub use replay::{
+    DiagnosticReason, DiagnosticSeverity, ReplayDiagnostic, ReplayEvent, ReplayOutcome,
+    ReplayState, UnknownPolicy, replay_event_list,
+};
 
 // `missing_debug_implementations` is denied crate-wide; the port struct
 // holds a `SinkSet` (which is `Debug`) plus parsed program state, so a
