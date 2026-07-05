@@ -122,6 +122,7 @@
               "benchmark-input",
               "helper-result",
               "helper-registry",
+              "helper-registry-invalid",
               "metadata",
               "asset"
             ]

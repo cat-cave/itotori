@@ -12,10 +12,13 @@ const schema = JSON.parse(readFileSync(schemaPath, "utf8"));
 const helperResultDir = resolve(publicFixturesDir, "kaifuu-helper-results");
 const helperResultSchemaPath = resolve(helperResultDir, "helper-result.schema.json");
 const helperResultSchema = JSON.parse(readFileSync(helperResultSchemaPath, "utf8"));
+const helperRegistrySchemaPath = resolve(helperResultDir, "helper-registry.schema.json");
+const helperRegistrySchema = JSON.parse(readFileSync(helperRegistrySchemaPath, "utf8"));
 const manifestPaths = findManifests(publicFixturesDir);
 const ajv = new Ajv2020({ allErrors: true });
 const validate = ajv.compile(schema);
 const validateHelperResult = ajv.compile(helperResultSchema);
+const validateHelperRegistry = ajv.compile(helperRegistrySchema);
 const errors = [];
 
 if (manifestPaths.length === 0) {
@@ -41,6 +44,10 @@ for (const manifestPath of manifestPaths) {
     validateFixtureFile(manifestPath, file);
     if (file.role === "helper-result") {
       validateHelperResultFixture(resolve(repoRoot, file.path), true);
+    } else if (file.role === "helper-registry") {
+      validateHelperRegistryFixture(resolve(repoRoot, file.path), true);
+    } else if (file.role === "helper-registry-invalid") {
+      validateHelperRegistryFixture(resolve(repoRoot, file.path), false);
     }
   }
 }
@@ -122,6 +129,35 @@ function validateHelperResultFixture(fixturePath, expectedValid) {
   } else if (!expectedValid && valid) {
     errors.push(`${displayPath} fixtureId=${fixtureId} expected helper-result validation failure`);
   }
+}
+
+function validateHelperRegistryFixture(fixturePath, expectedValid) {
+  const fixture = loadJson(fixturePath);
+  if (!fixture) {
+    return;
+  }
+
+  const schemaValid = validateHelperRegistry(fixture);
+  const displayPath = relative(repoRoot, fixturePath);
+  const helperId = redactDiagnosticText(
+    typeof fixture.helperId === "string" ? fixture.helperId : "<missing-helper-id>",
+  );
+
+  if (expectedValid && !schemaValid) {
+    for (const error of validateHelperRegistry.errors ?? []) {
+      errors.push(
+        helperRegistryDiagnostic(displayPath, helperId, errorField(error), error.message),
+      );
+    }
+  } else if (!expectedValid && schemaValid) {
+    errors.push(
+      `${displayPath} helperId=${helperId} expected helper-registry schema validation failure`,
+    );
+  }
+}
+
+function helperRegistryDiagnostic(path, helperId, field, message) {
+  return `${path} helperId=${helperId} field=${field} ${redactDiagnosticText(message ?? "helper-registry validation failed")}`;
 }
 
 function helperResultSecretRefPolicyFailures(fixture) {

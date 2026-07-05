@@ -1,0 +1,35 @@
+{
+  "schemaVersion": "0.1.0",
+  "helperId": "kaifuu.fixture.helper-stub",
+  "capabilities": ["fixture_invocation"],
+  "inputSchemaId": "kaifuu.helper.fixture-request.v0.1",
+  "outputSchemaId": "kaifuu.helper-result.v0.1",
+  "redactionClass": "public_fixture",
+  "unexpectedField": "wrong-shape",
+  "executionPolicy": {
+    "policyId": "kaifuu-fixture-helper-stub-policy",
+    "mode": "fixture_in_process",
+    "allowlistRefId": "kaifuu-fixture-helper-stub-allowlist",
+    "filesystemAccess": "none",
+    "networkAccess": false,
+    "maxRuntimeSeconds": 1
+  },
+  "binaryAllowlist": {
+    "entries": [
+      {
+        "allowlistEntryId": "kaifuu-fixture-helper-stub-allowlist",
+        "helperId": "kaifuu.fixture.helper-stub",
+        "platform": "fixture-any",
+        "helperVersion": "0.1.0",
+        "executableName": "kaifuu-fixture-helper",
+        "sha256Hash": "sha256:c1ac7473395cf2fbb823d33c63b5b4810352e3d2c255833498ba4fc4efb29f7c",
+        "signature": {
+          "signatureKind": "public-fixture-none",
+          "signer": "kaifuu-public-fixtures",
+          "signatureRef": "fixtures-public-no-signature"
+        },
+        "capabilities": ["fixture_invocation"]
+      }
+    ]
+  }
+}

@@ -69,7 +69,7 @@
     },
     {
       "path": "fixtures/public/kaifuu-helper-results/helper-registry/bad-schema-id.json",
-      "role": "helper-registry",
+      "role": "helper-registry-invalid",
       "mediaType": "application/json",
       "sha256": "f5f2c4030b434d8a133aa128349ea9fd51a12431c79d4cdad58e4033d78cfc8a",
       "bytes": 1193,
@@ -77,7 +77,7 @@
     },
     {
       "path": "fixtures/public/kaifuu-helper-results/helper-registry/missing-capability.json",
-      "role": "helper-registry",
+      "role": "helper-registry-invalid",
       "mediaType": "application/json",
       "sha256": "a9f5a18c1206e1748a2db17f1d8f63988a6029c3d1546590adc6b7c98b276d7c",
       "bytes": 1169,
@@ -85,7 +85,7 @@
     },
     {
       "path": "fixtures/public/kaifuu-helper-results/helper-registry/unsupported-redaction-class.json",
-      "role": "helper-registry",
+      "role": "helper-registry-invalid",
       "mediaType": "application/json",
       "sha256": "94a71e81cbf43c647e1d18c5c655154fc2d5809169fce416142eb12428f7517d",
       "bytes": 1189,
@@ -97,6 +97,14 @@
       "mediaType": "application/json",
       "sha256": "d21b57c9e8b24283f4255ffd0db74beb1efb51dad0795796152a737d74b22258",
       "bytes": 1225,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/public/kaifuu-helper-results/helper-registry/malformed-shape.json",
+      "role": "helper-registry-invalid",
+      "mediaType": "application/json",
+      "sha256": "15c5a71daea5fdb8c4297ca62639583e1dc9a1ce7a3d2aac1dca0478e06881ff",
+      "bytes": 1197,
       "redistributable": true
     },
     {
@@ -413,7 +421,7 @@
     }
   ],
   "aggregateStats": {
-    "files": 49,
+    "files": 50,
     "textUnits": 0,
     "sourceTextUtf16CodeUnits": 0,
     "protectedSpans": 0,
