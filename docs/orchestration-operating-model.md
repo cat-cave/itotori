@@ -164,9 +164,55 @@ the audit must demonstrate at least one non-test consumer or attach a
 follow-up node whose acceptance criteria includes wiring at least one
 real-engine adapter to consume the new surface.
 
-The current substrate (UTSUSHI-020..120) is in a deferred state: zero
-non-test consumers exist outside `utsushi-core`. New substrate work must
-not extend this pattern.
+The substrate (UTSUSHI-020..120) is **partially consumed**, not wholly
+deferred. The port, sink, snapshot, VFS, input, and redaction slices each
+have at least one production (non-test) consumer in a real-engine crate,
+while the embed, recorder, and conformance slices remain deferred with
+no non-test consumers outside `utsushi-core`. Concretely (rg-verified;
+representative import sites):
+
+- **Port** (UTSUSHI-025/056/224 — `EnginePort`, `PortManifest`,
+  `PortRequest`, `EnginePortError`, `LifecycleStage`, `PortCapability`,
+  `REQUIRED_LIFECYCLE_STAGES`): all three real-engine ports —
+  `utsushi-reallive/src/engine_port.rs:45`,
+  `utsushi-siglus/src/lib.rs:98`, `utsushi-rpgmaker-mv/src/port.rs:27`.
+- **Sink** (UTSUSHI-022 — `SinkSet`, `TextSurfaceSink`,
+  `FrameArtifactSink`, `AudioEventSink`, `TextLine`, `FrameArtifact`):
+  `utsushi-reallive/src/engine_port.rs:45`,
+  `utsushi-reallive/src/render_pipeline.rs:86`,
+  `utsushi-reallive/src/rlop/module_msg.rs:51`,
+  `utsushi-siglus/src/vm.rs:46`, `utsushi-rpgmaker-mv/src/port.rs:27`.
+- **Snapshot** (UTSUSHI-023 — `Inspectable`, `Restorable`, `Snapshot`,
+  `SnapshotError`, `StateTree`, `take_snapshot`, `restore_snapshot`):
+  `utsushi-reallive/src/vm.rs:45`,
+  `utsushi-reallive/src/var_banks.rs:42`,
+  `utsushi-reallive/src/save.rs:71`,
+  `utsushi-reallive/src/replay.rs:42`, `utsushi-siglus/src/vm.rs:46`,
+  `utsushi-rpgmaker-mv/src/port.rs:27`.
+- **VFS** (UTSUSHI-020 — `AssetPackage`, `AssetId`, `RuntimeVfs`):
+  `utsushi-reallive/src/engine_port.rs:46`,
+  `utsushi-reallive/src/rlop/module_obj.rs:44`,
+  `utsushi-siglus/src/lib.rs:99`, `utsushi-rpgmaker-mv/src/port.rs:28`,
+  `utsushi-kirikiri/src/xp3_vfs_replay.rs:42`.
+- **Input** (UTSUSHI-021 — `InputEvent`, `ChoiceIndex`):
+  `utsushi-reallive/src/syscall.rs:72`,
+  `utsushi-reallive/src/rlop/module_sel.rs:109`.
+- **Redaction** (UTSUSHI-056 — `reject_unredacted_local_paths`):
+  `utsushi-siglus/src/runtime_profile.rs:53`,
+  `utsushi-siglus/src/opcode_profile.rs:49`.
+
+Still deferred (no non-test consumers outside `utsushi-core`,
+scaffolding-only): the **embed** capability surface (UTSUSHI-024), the
+**recorder / reference-trace** surface (UTSUSHI-060/062), and the
+**conformance** manifest/check surface (UTSUSHI-025..030). New substrate
+work must wire a real-engine consumer for these slices, not extend the
+scaffolding-only pattern.
+
+Keep this list current — the anti-pattern audit gate above keys off it, so
+a stale premise makes the gate mis-classify which slices are scaffolding
+vs consumed. Re-verify with `rg -lw EnginePort crates/utsushi-reallive/src`
+(must be non-empty) and `rg -n 'use utsushi_core::substrate' crates/*/src`
+whenever a slice gains or loses a production consumer.
 
 ### Database migration shipped without TypeScript registration
 
