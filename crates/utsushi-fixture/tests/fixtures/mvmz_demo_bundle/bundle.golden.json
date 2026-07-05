@@ -1,0 +1,313 @@
+{
+  "bundleId": "f273dfbc-0493-7750-8ee2-d47ea0ba5115",
+  "bundleKind": "utsushi.mvmz.embedded_playback_demo_bundle",
+  "bundleValid": true,
+  "captureRefs": {
+    "availability": "available",
+    "refs": [
+      {
+        "artifactRef": {
+          "artifactId": "76dcaf93-37f1-7227-8869-92285557b5d0",
+          "artifactKind": "screenshot",
+          "byteSize": 54,
+          "mediaType": "image/png",
+          "uri": "artifacts/utsushi/runtime/58a98a57-e18f-75dc-8bce-19880e3b9856/screenshots/76dcaf93-37f1-7227-8869-92285557b5d0.png"
+        },
+        "bridgeUnitRef": {
+          "bridgeUnitId": "5ce7ce53-c610-743e-b987-f54465e15561",
+          "sourceUnitKey": "rpgmaker:Map012.json#/events/3/pages/0/list/5/parameters/0"
+        },
+        "captureId": "8b2c327b-c600-75e6-adaa-c152bb147fca",
+        "evidencesTraceEventId": "3291ade3-e2b5-7a4f-9e7f-4e654e2ed1f3",
+        "frame": 1,
+        "mvCommandRef": {
+          "code": 401,
+          "commandIndex": 5,
+          "containerId": 7,
+          "containerIndex": 3,
+          "containerKind": "map_event",
+          "pageIndex": 0,
+          "pointer": "/events/3/pages/0/list/5/parameters/0",
+          "sourceFile": "Map012.json",
+          "textRole": "show_text"
+        },
+        "refHash": "sha256:8067d5fb5b02906ef308488c7d2da4cb3e548fbff957aecdff5bc351939b932e",
+        "validated": true,
+        "validation": {
+          "artifactIdPresent": true,
+          "artifactKindIsScreenshot": true,
+          "bridgeLinked": true,
+          "byteSizePresent": true,
+          "mediaTypePresent": true,
+          "traceLinked": true,
+          "uriManaged": true
+        }
+      },
+      {
+        "artifactRef": {
+          "artifactId": "7ba21a49-d6ec-74c0-bbc5-20e6e8ffe2bc",
+          "artifactKind": "screenshot",
+          "byteSize": 54,
+          "mediaType": "image/png",
+          "uri": "artifacts/utsushi/runtime/58a98a57-e18f-75dc-8bce-19880e3b9856/screenshots/7ba21a49-d6ec-74c0-bbc5-20e6e8ffe2bc.png"
+        },
+        "bridgeUnitRef": {
+          "bridgeUnitId": "0b4d782a-0d5d-7207-af73-041d2be2a3bd",
+          "sourceUnitKey": "rpgmaker:Map012.json#/events/3/pages/0/list/8/parameters/0/0"
+        },
+        "captureId": "02b8429b-9347-701b-acc5-93ab5380a409",
+        "evidencesTraceEventId": "b10cfc3c-3b0e-71fd-9eca-fa55d492e926",
+        "frame": 2,
+        "mvCommandRef": {
+          "code": 102,
+          "commandIndex": 8,
+          "containerId": 7,
+          "containerIndex": 3,
+          "containerKind": "map_event",
+          "optionIndex": 0,
+          "pageIndex": 0,
+          "pointer": "/events/3/pages/0/list/8/parameters/0/0",
+          "sourceFile": "Map012.json",
+          "textRole": "choice_option"
+        },
+        "refHash": "sha256:f547092c69eabbb608fba78c206d0354e5d66448f17938b79024a6105e70f7b0",
+        "validated": true,
+        "validation": {
+          "artifactIdPresent": true,
+          "artifactKindIsScreenshot": true,
+          "bridgeLinked": true,
+          "byteSizePresent": true,
+          "mediaTypePresent": true,
+          "traceLinked": true,
+          "uriManaged": true
+        }
+      },
+      {
+        "artifactRef": {
+          "artifactId": "c102504b-184c-7bca-b42e-cf8669c84104",
+          "artifactKind": "screenshot",
+          "byteSize": 54,
+          "mediaType": "image/png",
+          "uri": "artifacts/utsushi/runtime/58a98a57-e18f-75dc-8bce-19880e3b9856/screenshots/c102504b-184c-7bca-b42e-cf8669c84104.png"
+        },
+        "bridgeUnitRef": {
+          "bridgeUnitId": "46cfb39f-9dcd-790c-acde-13e2988c7af8",
+          "sourceUnitKey": "rpgmaker:CommonEvents.json#/3/list/2/parameters/0"
+        },
+        "captureId": "5ac96046-d2f0-7adf-b686-26c31e9deb55",
+        "evidencesTraceEventId": "79d09dc2-4066-7a88-906b-d7db2b87b439",
+        "frame": 3,
+        "mvCommandRef": {
+          "code": 401,
+          "commandIndex": 2,
+          "containerId": 4,
+          "containerIndex": 3,
+          "containerKind": "common_event",
+          "pointer": "/3/list/2/parameters/0",
+          "sourceFile": "CommonEvents.json",
+          "textRole": "show_text"
+        },
+        "refHash": "sha256:8408b362c3d2df59193fa910bbfcb765220daec09f78e453f0fd1e5275e7e2fe",
+        "validated": true,
+        "validation": {
+          "artifactIdPresent": true,
+          "artifactKindIsScreenshot": true,
+          "bridgeLinked": true,
+          "byteSizePresent": true,
+          "mediaTypePresent": true,
+          "traceLinked": true,
+          "uriManaged": true
+        }
+      }
+    ]
+  },
+  "createdAt": "2026-06-17T00:00:00.000Z",
+  "engine": "rpg_maker_mv_mz",
+  "limitations": [
+    "Embedded playback demo bundle PACKAGES the committed UTSUSHI-119/102/065/010 artifacts by id / hash / verdict; it re-derives none of the proofs it links.",
+    "Public synthetic MV/MZ fixture only. The playback surface opens the patched fixture's observed text / choices + screenshot artifact references — never a live game and never copyrighted bytes or pixels.",
+    "Screenshot captures are surfaced as managed runtime artifact URIs + content-addressed ref hashes; the bundle embeds no pixels."
+  ],
+  "observationEnvelope": {
+    "events": [
+      {
+        "bridgeUnitRef": {
+          "bridgeUnitId": "019ed000-0000-7000-8000-bridgeun0001",
+          "sourceUnitKey": "mvmz.scene1.line1"
+        },
+        "eventKind": "text",
+        "speaker": "Mira",
+        "text": "The lighthouse keeps watch over the quiet cove.",
+        "textSurface": "dialogue"
+      },
+      {
+        "bridgeUnitRef": {
+          "bridgeUnitId": "019ed000-0000-7000-8000-bridgeun0002",
+          "sourceUnitKey": "mvmz.scene1.line2"
+        },
+        "eventKind": "text",
+        "speaker": "Kai",
+        "text": "Let us signal the passing ship.",
+        "textSurface": "dialogue"
+      },
+      {
+        "bridgeUnitRef": {
+          "bridgeUnitId": "019ed000-0000-7000-8000-bridgeun0003",
+          "sourceUnitKey": "mvmz.scene1.choice"
+        },
+        "eventKind": "choice",
+        "options": [
+          {
+            "bridgeUnitRef": {
+              "bridgeUnitId": "019ed000-0000-7000-8000-bridgeun0004",
+              "sourceUnitKey": "mvmz.scene1.choice.opt0"
+            },
+            "label": "Raise the lantern high.",
+            "optionId": "opt-0"
+          },
+          {
+            "bridgeUnitRef": {
+              "bridgeUnitId": "019ed000-0000-7000-8000-bridgeun0005",
+              "sourceUnitKey": "mvmz.scene1.choice.opt1"
+            },
+            "label": "Wait in the darkness.",
+            "optionId": "opt-1"
+          }
+        ],
+        "prompt": "What will you do?"
+      }
+    ],
+    "evidenceTier": "E1",
+    "observationSource": "live_dom",
+    "runtimeReportId": "019ed050-0000-7000-8000-000000001000",
+    "runtimeTargetId": "fixture:mvmz-patched-fixture"
+  },
+  "playbackSurface": {
+    "live": false,
+    "public": true,
+    "runtimeTargetId": "fixture:mvmz-patched-fixture",
+    "sourceRevision": {
+      "revisionId": "fixture-source-v0.1",
+      "sourceId": "mvmz-patched-fixture"
+    },
+    "surfaceKind": "patched_mvmz_fixture"
+  },
+  "proofLinks": {
+    "alphaProof": {
+      "proofId": "cac432af-03e2-7aa5-955b-bc1d66a3629a",
+      "proofKind": "utsushi.mvmz.runtime_observation_proof",
+      "provenEvidenceTier": "E1",
+      "runtimeObservationProven": true,
+      "source": "UTSUSHI-102"
+    },
+    "patchResult": {
+      "outputHash": "sha256:8bfc28f64244432d6f834142c3dece101caae933ba8eb6ef058f2589e9c1b671",
+      "patchExportId": "019ed060-0000-7000-8000-0000000000a1",
+      "patchResultId": "019ed060-0000-7000-8000-000000000001",
+      "status": "passed"
+    },
+    "patchedRuntimeProof": {
+      "patchResultOutputHash": "sha256:8bfc28f64244432d6f834142c3dece101caae933ba8eb6ef058f2589e9c1b671",
+      "patchedRuntimeObservationProven": true,
+      "proofId": "c62169a0-0237-7584-ad64-02c1a44aa085",
+      "proofKind": "utsushi.mvmz.patched_runtime_observation_proof",
+      "provenEvidenceTier": "E1",
+      "source": "UTSUSHI-119"
+    },
+    "screenshotEvidence": {
+      "captureCount": 3,
+      "evidenceTier": "E2",
+      "runtimeReportId": "58a98a57-e18f-75dc-8bce-19880e3b9856",
+      "source": "UTSUSHI-065"
+    }
+  },
+  "provenEvidenceTier": "E1",
+  "reviewManifest": {
+    "manifestKind": "utsushi.mvmz.review_package_manifest",
+    "reviewPackageId": "ec58da93-216e-7a07-b796-beed7cf97f06",
+    "screenshotArtifactCount": 3,
+    "source": "UTSUSHI-010",
+    "supportedReviewActions": [
+      {
+        "action": "approve",
+        "label": "Approve"
+      },
+      {
+        "action": "reject",
+        "label": "Reject"
+      },
+      {
+        "action": "defer",
+        "label": "Defer"
+      },
+      {
+        "action": "escalate",
+        "label": "Escalate"
+      },
+      {
+        "action": "request_repair",
+        "label": "Request repair"
+      },
+      {
+        "action": "import_runtime_feedback",
+        "label": "Import runtime feedback"
+      }
+    ]
+  },
+  "schemaVersion": "0.1.0",
+  "sourceLocale": "ja-JP",
+  "targetLocale": "en-US",
+  "validation": {
+    "bundleValid": true,
+    "checks": [
+      {
+        "checkId": "patched_proof_proven_e1",
+        "detail": "packaged UTSUSHI-119 proof proofKind=utsushi.mvmz.patched_runtime_observation_proof patchedRuntimeObservationProven=true provenEvidenceTier=E1; expected the patched proof proven at E1",
+        "mandatory": true,
+        "status": "pass"
+      },
+      {
+        "checkId": "alpha_proof_proven_e1",
+        "detail": "packaged UTSUSHI-102 proof proofKind=utsushi.mvmz.runtime_observation_proof runtimeObservationProven=true provenEvidenceTier=E1; expected the alpha proof proven at E1",
+        "mandatory": true,
+        "status": "pass"
+      },
+      {
+        "checkId": "patch_result_consistent",
+        "detail": "PatchResult status=passed outputHash=sha256:8bfc28f64244432d6f834142c3dece101caae933ba8eb6ef058f2589e9c1b671; patched-proof attestation outputHash=sha256:8bfc28f64244432d6f834142c3dece101caae933ba8eb6ef058f2589e9c1b671; expected status=passed and the two hashes to agree",
+        "mandatory": true,
+        "status": "pass"
+      },
+      {
+        "checkId": "observation_events_bridge_linked",
+        "detail": "3 observation event(s), 0 missing a bridge unit ref; every observed text/choice must link to a bridge unit ref",
+        "mandatory": true,
+        "status": "pass"
+      },
+      {
+        "checkId": "observation_covers_proven_units",
+        "detail": "119 proof proved bridge units [\"019ed000-0000-7000-8000-bridgeun0001\", \"019ed000-0000-7000-8000-bridgeun0002\", \"019ed000-0000-7000-8000-bridgeun0003\"]; observation envelope covers [\"019ed000-0000-7000-8000-bridgeun0001\", \"019ed000-0000-7000-8000-bridgeun0002\", \"019ed000-0000-7000-8000-bridgeun0003\"]; every proven unit must appear in the playback envelope",
+        "mandatory": true,
+        "status": "pass"
+      },
+      {
+        "checkId": "capture_refs_validated",
+        "detail": "3 packaged screenshot capture reference(s); every one must resolve to a managed runtime URI, a screenshot artifact kind + media type + byte size, a bridge unit ref, and the trace event it evidences",
+        "mandatory": true,
+        "status": "pass"
+      },
+      {
+        "checkId": "captures_agree_with_review_manifest",
+        "detail": "3 packaged 065 capture(s); the 010 review manifest names screenshot artifact ids [\"76dcaf93-37f1-7227-8869-92285557b5d0\", \"7ba21a49-d6ec-74c0-bbc5-20e6e8ffe2bc\", \"c102504b-184c-7bca-b42e-cf8669c84104\"]; every packaged capture must also be named by the review manifest",
+        "mandatory": true,
+        "status": "pass"
+      },
+      {
+        "checkId": "review_manifest_kind",
+        "detail": "review manifest manifestKind=utsushi.mvmz.review_package_manifest; expected utsushi.mvmz.review_package_manifest",
+        "mandatory": true,
+        "status": "pass"
+      }
+    ]
+  }
+}

@@ -63,6 +63,11 @@ export default defineConfig({
       // of the observed translation, so the formatter must not rewrite it.
       "crates/utsushi-fixture/tests/fixtures/mvmz_patched_observation/**",
       "crates/utsushi-fixture/tests/fixtures/mvmz_patched_runtime_proof/**",
+      // UTSUSHI-134 MV/MZ embedded playback demo bundle golden is byte-compared
+      // against `serde_json::to_string_pretty` output by
+      // `demo_bundle_matches_committed_golden_bytes`, and the runtime-web-review
+      // playback surface renders it data-only; the formatter must not rewrite it.
+      "crates/utsushi-fixture/tests/fixtures/mvmz_demo_bundle/**",
       // UTSUSHI-008 KAG command-trace golden is byte-compared against the
       // `trace-kag` subcommand's deterministic (sorted-key) output by
       // `cli_emits_committed_golden_trace`; the formatter must not rewrite it.
