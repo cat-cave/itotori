@@ -338,6 +338,31 @@ impl EngineFamily {
             Self::Other => "other",
         }
     }
+
+    /// Single source of truth for the manifest-id prefix each engine family's
+    /// substrate manifest must carry (`None` for `Other`, which has no
+    /// dedicated substrate). The `match self` below is intentionally
+    /// EXHAUSTIVE with NO `_ =>` wildcard arm: adding a new `EngineFamily`
+    /// variant is a compile error here until its manifest prefix is declared,
+    /// keeping the prefix surface in lockstep with the variant set.
+    pub fn manifest_prefix(self) -> Option<&'static str> {
+        match self {
+            Self::RealLive => Some("utsushi-reallive"),
+            Self::RpgmakerMv => Some("utsushi-rpgmaker-mv"),
+            Self::RpgmakerMz => Some("utsushi-rpgmaker-mz"),
+            Self::RpgmakerVxAce => Some("utsushi-rpgmaker-vx-ace"),
+            Self::KirikiriKag => Some("utsushi-kirikiri"),
+            Self::Xp3 => Some("utsushi-xp3"),
+            Self::Siglus => Some("utsushi-siglus"),
+            Self::RenPy => Some("utsushi-renpy"),
+            Self::WolfRpgEditor => Some("utsushi-wolf"),
+            Self::BgiEthornell => Some("utsushi-bgi"),
+            Self::TyranoScript => Some("utsushi-tyrano"),
+            Self::Rgss3 => Some("utsushi-rgss3"),
+            Self::Unity => Some("utsushi-unity"),
+            Self::Other => None,
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------

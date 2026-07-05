@@ -675,7 +675,7 @@ pub fn validate_against_manifest(
         }
     }
 
-    if let Some(expected_prefix) = engine_family_manifest_prefix(map.engine_family)
+    if let Some(expected_prefix) = map.engine_family.manifest_prefix()
         && !manifest.id.starts_with(expected_prefix)
     {
         errors.push(ImplMapManifestMismatch::EngineFamilyManifestIdMismatch {
@@ -688,25 +688,6 @@ pub fn validate_against_manifest(
         Ok(())
     } else {
         Err(errors)
-    }
-}
-
-fn engine_family_manifest_prefix(family: EngineFamily) -> Option<&'static str> {
-    match family {
-        EngineFamily::RealLive => Some("utsushi-reallive"),
-        EngineFamily::RpgmakerMv => Some("utsushi-rpgmaker-mv"),
-        EngineFamily::RpgmakerMz => Some("utsushi-rpgmaker-mz"),
-        EngineFamily::RpgmakerVxAce => Some("utsushi-rpgmaker-vx-ace"),
-        EngineFamily::KirikiriKag => Some("utsushi-kirikiri"),
-        EngineFamily::Xp3 => Some("utsushi-xp3"),
-        EngineFamily::Siglus => Some("utsushi-siglus"),
-        EngineFamily::RenPy => Some("utsushi-renpy"),
-        EngineFamily::WolfRpgEditor => Some("utsushi-wolf"),
-        EngineFamily::BgiEthornell => Some("utsushi-bgi"),
-        EngineFamily::TyranoScript => Some("utsushi-tyrano"),
-        EngineFamily::Rgss3 => Some("utsushi-rgss3"),
-        EngineFamily::Unity => Some("utsushi-unity"),
-        EngineFamily::Other => None,
     }
 }
 
