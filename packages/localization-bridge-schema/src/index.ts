@@ -1503,6 +1503,44 @@ export type BenchmarkCostLedgerV02 = {
   localeBranchId?: Uuid7;
 };
 
+/**
+ * Authoritative recompute of a benchmark cost ledger from its provider-run
+ * records. This is the SINGLE source of the ledger arithmetic: unknown-cost
+ * runs flip `includesUnknownCost` and contribute nothing; every other run adds
+ * its `amountMicrosUsd` to the report total and its per-system total. Both the
+ * report renderer (which builds the `costLedger` field) and
+ * `assertBenchmarkReportV02` (which validates it) call this, so a ledger can
+ * never disagree with the records it summarizes. Callers must pass already
+ * schema-valid provider runs (the asserter validates each run first).
+ */
+export function computeBenchmarkCostLedgerV02(
+  providerRuns: readonly BenchmarkProviderRunV02[],
+  localeBranchId?: Uuid7,
+): BenchmarkCostLedgerV02 {
+  let reportTotalMicrosUsd = 0;
+  let includesUnknownCost = false;
+  const totals = new Map<string, number>();
+  for (const run of providerRuns) {
+    if (run.cost.costKind === "unknown") {
+      includesUnknownCost = true;
+      continue;
+    }
+    const amount = run.cost.amountMicrosUsd ?? 0;
+    reportTotalMicrosUsd += amount;
+    totals.set(run.systemId, (totals.get(run.systemId) ?? 0) + amount);
+  }
+  return {
+    currency: "USD",
+    reportTotalMicrosUsd,
+    totalsBySystem: [...totals.entries()].map(([systemId, totalMicrosUsd]) => ({
+      systemId,
+      totalMicrosUsd,
+    })),
+    includesUnknownCost,
+    ...(localeBranchId !== undefined ? { localeBranchId } : {}),
+  };
+}
+
 export type BenchmarkFindingRecordV02 = {
   findingId: Uuid7;
   systemId: string;
@@ -2361,9 +2399,6 @@ export function assertBenchmarkReportV02(value: unknown): asserts value is Bench
   const providerRunIds = new Set<Uuid7>();
   const providerRunSystemIds = new Map<Uuid7, string>();
   const llmQaProviderRunSystemIds = new Map<Uuid7, string>();
-  const costTotalsBySystem = new Map<string, number>();
-  let reportTotalMicrosUsd = 0;
-  let includesUnknownCost = false;
   for (const [index, providerRun] of providerRunsInput.entries()) {
     const label = `BenchmarkReportV02.providerModelCostRecords[${index}]`;
     assertBenchmarkProviderRunV02(providerRun, label);
@@ -2376,16 +2411,6 @@ export function assertBenchmarkReportV02(value: unknown): asserts value is Bench
       llmQaProviderRunSystemIds.set(providerRun.providerRunId, providerRun.systemId);
     }
     assertKnownStringRefV02(providerRun.systemId, `${label}.systemId`, "system", systemIds);
-    if (providerRun.cost.costKind === "unknown") {
-      includesUnknownCost = true;
-      continue;
-    }
-    const amountMicrosUsd = providerRun.cost.amountMicrosUsd ?? 0;
-    reportTotalMicrosUsd += amountMicrosUsd;
-    costTotalsBySystem.set(
-      providerRun.systemId,
-      (costTotalsBySystem.get(providerRun.systemId) ?? 0) + amountMicrosUsd,
-    );
   }
   for (const providerRunId of declaredProviderRunIds) {
     if (!providerRunIds.has(providerRunId)) {
@@ -2394,13 +2419,22 @@ export function assertBenchmarkReportV02(value: unknown): asserts value is Bench
       );
     }
   }
+  // Recompute the authoritative ledger from the now-validated provider runs and
+  // assert the report's `costLedger` matches it byte-for-byte — the same
+  // arithmetic the renderer used to build the field, single-sourced here.
+  const expectedLedger = computeBenchmarkCostLedgerV02(
+    providerRunsInput as BenchmarkProviderRunV02[],
+  );
+  const expectedTotalsBySystem = new Map<string, number>(
+    expectedLedger.totalsBySystem.map((total) => [total.systemId, total.totalMicrosUsd]),
+  );
   assertBenchmarkCostLedgerV02(
     report.costLedger,
     "BenchmarkReportV02.costLedger",
     systemIds,
-    reportTotalMicrosUsd,
-    costTotalsBySystem,
-    includesUnknownCost,
+    expectedLedger.reportTotalMicrosUsd,
+    expectedTotalsBySystem,
+    expectedLedger.includesUnknownCost,
     report.localeBranchId as Uuid7 | undefined,
   );
 

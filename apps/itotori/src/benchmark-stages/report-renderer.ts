@@ -16,7 +16,7 @@
 
 import {
   assertBenchmarkReportV02,
-  type BenchmarkCostLedgerV02,
+  computeBenchmarkCostLedgerV02,
   type BenchmarkCountBucketV02,
   type BenchmarkFindingRecordV02,
   type BenchmarkInputRefV02,
@@ -85,7 +85,10 @@ export function assembleBenchmarkReport(input: BenchmarkReportRenderInput): Benc
     ...input.qaAgent.findings,
   ];
 
-  const costLedger = computeCostLedger(providerModelCostRecords, input.localeBranchId);
+  // The cost ledger is built by the schema's single authoritative recompute —
+  // the same function `assertBenchmarkReportV02` uses to validate it below, so
+  // the assembled field can never disagree with the validator.
+  const costLedger = computeBenchmarkCostLedgerV02(providerModelCostRecords, input.localeBranchId);
   const severities = findingRecords.map((finding) => finding.qualitySeverity);
   const { totalSourceCharacterCount, totalSourceUnitCount } = sumCorpusTotals(
     input.fixtureOrCorpusRefs,
@@ -346,34 +349,6 @@ function renderQaAccuracyReport(
       seededPrecision: summary.metrics.seededPrecision,
       seededRecall: summary.metrics.seededRecall,
     })),
-  };
-}
-
-function computeCostLedger(
-  providerRuns: BenchmarkProviderRunV02[],
-  localeBranchId: string,
-): BenchmarkCostLedgerV02 {
-  let reportTotalMicrosUsd = 0;
-  let includesUnknownCost = false;
-  const totals = new Map<string, number>();
-  for (const run of providerRuns) {
-    if (run.cost.costKind === "unknown") {
-      includesUnknownCost = true;
-      continue;
-    }
-    const amount = run.cost.amountMicrosUsd ?? 0;
-    reportTotalMicrosUsd += amount;
-    totals.set(run.systemId, (totals.get(run.systemId) ?? 0) + amount);
-  }
-  return {
-    currency: "USD",
-    reportTotalMicrosUsd,
-    totalsBySystem: [...totals.entries()].map(([systemId, totalMicrosUsd]) => ({
-      systemId,
-      totalMicrosUsd,
-    })),
-    includesUnknownCost,
-    localeBranchId,
   };
 }
 
