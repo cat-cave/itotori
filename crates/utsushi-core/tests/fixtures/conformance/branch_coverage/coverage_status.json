@@ -1,0 +1,32 @@
+{
+  "adapterId": "utsushi-synthetic",
+  "observations": [
+    {
+      "branchId": "mvmz.map012.ev003.choice0.opt0",
+      "routeKey": "route_true_end",
+      "observedTraceIds": ["trace-0001", "trace-0002"],
+      "reachableTextCount": 3
+    },
+    {
+      "branchId": "mvmz.map012.ev003.choice0.opt1",
+      "routeKey": "route_bad_end",
+      "observedTraceIds": [],
+      "reachableTextCount": 2
+    },
+    {
+      "branchId": "mvmz.map014.ev007.choice1.opt0",
+      "routeKey": "route_orphaned_end",
+      "observedTraceIds": ["trace-0003"],
+      "reachableTextCount": 1
+    },
+    {
+      "branchId": "mvmz.map020.ev001.choice0.opt2",
+      "observedTraceIds": [],
+      "reachableTextCount": 0
+    }
+  ],
+  "routeMap": [
+    { "routeMapId": "0190a000-0000-7000-8000-0000000000a1", "routeKey": "route_true_end" },
+    { "routeMapId": "0190a000-0000-7000-8000-0000000000a2", "routeKey": "route_bad_end" }
+  ]
+}

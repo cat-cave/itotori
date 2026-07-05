@@ -54,6 +54,15 @@ pub use conformance::{
     unsupported_frame_capture_result, unsupported_recording_capture_result,
     unsupported_snapshot_restore_result,
 };
+// UTSUSHI-009: MV/MZ branch coverage read model (data-only join of runtime
+// trace observations + Itotori route maps → per-branch coverage status).
+pub use conformance::branch_coverage::{
+    BRANCH_COVERAGE_READ_MODEL_SCHEMA_VERSION, BranchCoverageError, BranchCoverageFixture,
+    BranchCoverageFixtureError, BranchCoverageReadModel, BranchCoverageRecord,
+    BranchCoverageSummary, BranchTraceObservation, CoverageStatus, RouteMapEntry,
+    derive_coverage_status, join_branch_coverage,
+    read_model_from_json as branch_coverage_read_model_from_json,
+};
 pub use embed::{
     EMBED_MAX_CAPABILITIES, EmbedCapability, EmbedCapabilityId, EmbedCapabilityStatus, EmbedError,
 };
