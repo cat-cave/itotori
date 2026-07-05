@@ -7,7 +7,10 @@
 // `itotori-225-audit-allow:` marker (with a mandatory non-empty reason) is
 // the only per-line opt-out, that the enumerated comment-incapable JSON
 // fixtures (COST_LITERAL_ALLOW) are exempted per-file but an UN-listed JSON
-// fixture is not, and that the legacy-enum patterns still fire everywhere.
+// fixture is not, that the legacy-enum patterns fire everywhere EXCEPT the
+// enumerated external-system benchmark fixtures (LEGACY_ENUM_ALLOW), and that
+// the bridge-schema package has NO blanket exemption (a new un-listed schema
+// file with a cost literal or revived legacy enum still fails).
 
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -128,6 +131,54 @@ test("enumerated JSON fixtures skip cost-literal patterns but nothing else", () 
   assert.deepEqual(labels(listed, '    "cost": 0.000123,'), []);
   // A non-cost-literal pattern (deprecated costTier) still fires on the file.
   assert.deepEqual(labels(listed, '    "costTier": 2,'), ["deprecated costTier field/enum"]);
+});
+
+test("catches a JSON-quoted legacy-enum costKind literal (not just the TS form)", () => {
+  // The legacy-enum pattern now allows optional quotes around the key so the
+  // JSON shape `"costKind": "provider_estimate"` is caught alongside the TS
+  // object-literal `costKind: "provider_estimate"`.
+  assert.deepEqual(labels(PROD_PATH, '        "costKind": "provider_estimate",'), [
+    'costKind: "unknown" / "provider_estimate" / "local_estimate"',
+  ]);
+  assert.deepEqual(labels("fixtures/some-new.json", '  "costKind": "unknown",'), [
+    'costKind: "unknown" / "provider_estimate" / "local_estimate"',
+  ]);
+});
+
+test("no blanket schema-package exemption: a NEW un-listed schema file still fires", () => {
+  // The whole-package `packages/localization-bridge-schema/` ALLOW_LIST entry
+  // is gone. A fresh, un-enumerated file in the schema package with a cost
+  // literal or a revived legacy enum fails exactly as production source does.
+  const newSchemaSrc = "packages/localization-bridge-schema/src/new-thing.ts";
+  assert.deepEqual(labels(newSchemaSrc, "    amountMicrosUsd: 12_500,"), [
+    "hardcoded non-zero amountMicrosUsd literal",
+  ]);
+  assert.deepEqual(labels(newSchemaSrc, '    costKind: "unknown",'), [
+    'costKind: "unknown" / "provider_estimate" / "local_estimate"',
+  ]);
+  const newSchemaFixture =
+    "packages/localization-bridge-schema/test/examples/benchmark-report-v0.2-unlisted.json";
+  assert.deepEqual(labels(newSchemaFixture, '        "costKind": "unknown",'), [
+    'costKind: "unknown" / "provider_estimate" / "local_estimate"',
+  ]);
+  assert.deepEqual(labels(newSchemaFixture, '        "amountMicrosUsd": 1570,'), [
+    "hardcoded non-zero amountMicrosUsd literal",
+  ]);
+});
+
+test("enumerated benchmark fixtures skip BOTH the cost-literal and legacy-enum patterns", () => {
+  // The four external-system benchmark fixtures are enumerated in COST_LITERAL_ALLOW
+  // (amountMicrosUsd estimate) AND LEGACY_ENUM_ALLOW (external-system
+  // costKind: provider_estimate, genuinely unknowable per audit-3). Both
+  // patterns are skipped for these exact paths; nothing else is.
+  const listed = "packages/localization-bridge-schema/test/examples/benchmark-report-v0.2.json";
+  assert.deepEqual(labels(listed, '        "costKind": "provider_estimate",'), []);
+  assert.deepEqual(labels(listed, '        "amountMicrosUsd": 1570,'), []);
+  const listedInvalid =
+    "packages/localization-bridge-schema/test/examples/invalid/benchmark-report-v0.2-global-provider-coverage.json";
+  assert.deepEqual(labels(listedInvalid, '        "costKind": "provider_estimate",'), []);
+  // A non-cost / non-legacy-enum pattern (deprecated costTier) still fires.
+  assert.deepEqual(labels(listed, '        "costTier": 2,'), ["deprecated costTier field/enum"]);
 });
 
 test("fires cost-literal patterns inside scanned src/ even for fixture modules", () => {

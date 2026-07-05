@@ -41,11 +41,6 @@ const ALLOW_LIST = [
   "apps/itotori/test/fixtures/recorded-bundles/",
   "scripts/audit-no-hardcoded-cost.mjs",
   "scripts/audit-no-hardcoded-cost.test.mjs",
-  // Bridge-schema is a cross-app contract that owns the legacy
-  // BenchmarkCostKindV02 enum until the corresponding schema-side
-  // corrective node lands. Itotori narrows at the ingest boundary
-  // (see services/project-workflow.ts narrowBenchmarkCostToItotoriShape).
-  "packages/localization-bridge-schema/",
   // Historical migrations are immutable (checksum-locked by the migration
   // runner). 0006 created the legacy 5-value enum; 0039 is the rip-out
   // that narrows it. Re-running the audit against 0006 would block any
@@ -122,6 +117,61 @@ const COST_LITERAL_ALLOW = new Map([
     "fixtures/provider-proof/recorded-raw-mtl-baseline-input.json",
     "deterministic raw-MTL-baseline replay input; synthetic per-attempt costs exercise the raw-MTL baseline proof",
   ],
+  // Bridge-schema benchmark-report fixtures. These carry a synthetic estimated
+  // `amountMicrosUsd` under an external-system `costKind: "provider_estimate"`
+  // row (see LEGACY_ENUM_ALLOW below): the benchmark subsystem compares
+  // third-party systems whose per-call cost is genuinely unknowable, so the
+  // amount is an ESTIMATE (never itotori's own billed OpenRouter spend, which
+  // is always exact). These are enumerated per-file because JSON cannot host a
+  // per-line marker; a NEW un-listed schema fixture with a cost literal still
+  // fails the guard.
+  [
+    "packages/localization-bridge-schema/test/examples/benchmark-report-v0.2.json",
+    "external-system benchmark cost, genuinely unknowable per audit-3; synthetic provider_estimate amount exercises the benchmark cost ledger",
+  ],
+  [
+    "packages/localization-bridge-schema/test/examples/benchmark-report-v0.2-multi-system-qa.json",
+    "external-system benchmark cost, genuinely unknowable per audit-3; synthetic provider_estimate amount exercises the multi-system benchmark cost ledger",
+  ],
+  [
+    "packages/localization-bridge-schema/test/examples/invalid/benchmark-report-v0.2-mismatched-finding-coverage.json",
+    "external-system benchmark cost, genuinely unknowable per audit-3; synthetic provider_estimate amount in an intentionally-invalid finding-coverage fixture",
+  ],
+  [
+    "packages/localization-bridge-schema/test/examples/invalid/benchmark-report-v0.2-global-provider-coverage.json",
+    "external-system benchmark cost, genuinely unknowable per audit-3; synthetic provider_estimate amount in an intentionally-invalid provider-coverage fixture",
+  ],
+]);
+
+// LEGACY_ENUM_ALLOW — enumerated JSON fixtures permitted to carry the
+// `costKind: "provider_estimate" | "local_estimate" | "unknown"` legacy-enum
+// literal. Unlike itotori's own OpenRouter spend (purged to billed/zero by
+// ITOTORI-225), the cross-app BENCHMARK cost schema (BenchmarkCostAmountV02)
+// compares EXTERNAL third-party systems whose per-call cost is genuinely
+// unknowable — the estimate/unknown kinds are legitimate there (audit-3), and
+// forcing `billed` would fabricate a cost, violating this very guard. Because
+// JSON cannot host a `// itotori-225-audit-allow:` marker, each such benchmark
+// fixture is enumerated here with its reason. The legacy-enum pattern is
+// skipped ONLY for these exact paths; every other pattern still fires, and a
+// NEW un-listed schema fixture with a revived legacy enum still fails. A
+// `.ts`/`.tsx` file is NEVER eligible here — it carries a per-line marker.
+const LEGACY_ENUM_ALLOW = new Map([
+  [
+    "packages/localization-bridge-schema/test/examples/benchmark-report-v0.2.json",
+    "external-system benchmark cost, genuinely unknowable per audit-3",
+  ],
+  [
+    "packages/localization-bridge-schema/test/examples/benchmark-report-v0.2-multi-system-qa.json",
+    "external-system benchmark cost, genuinely unknowable per audit-3",
+  ],
+  [
+    "packages/localization-bridge-schema/test/examples/invalid/benchmark-report-v0.2-mismatched-finding-coverage.json",
+    "external-system benchmark cost, genuinely unknowable per audit-3",
+  ],
+  [
+    "packages/localization-bridge-schema/test/examples/invalid/benchmark-report-v0.2-global-provider-coverage.json",
+    "external-system benchmark cost, genuinely unknowable per audit-3",
+  ],
 ]);
 
 // Patterns: each pattern fires a violation if matched on a line outside the
@@ -146,7 +196,13 @@ const FORBIDDEN_PATTERNS = [
   },
   {
     label: 'costKind: "unknown" / "provider_estimate" / "local_estimate"',
-    regex: /costKind\s*:\s*['"`](unknown|provider_estimate|local_estimate)['"`]/u,
+    // Optional quotes around the key so the JSON form (`"costKind": "unknown"`)
+    // is caught alongside the TS object-literal form (`costKind: "unknown"`).
+    // `legacyEnum` gates the per-file LEGACY_ENUM_ALLOW opt-out (the enumerated
+    // external-system benchmark fixtures); the pattern still fires everywhere
+    // else, including any new un-listed schema JSON fixture.
+    regex: /["'`]?costKind["'`]?\s*:\s*['"`](unknown|provider_estimate|local_estimate)['"`]/u,
+    legacyEnum: true,
   },
   {
     label: 'cost_kind = "unknown" / "provider_estimate" / "local_estimate" (SQL)',
@@ -249,6 +305,10 @@ export function findViolations(path, contents) {
   // ONLY. Every other pattern still fires on them. `.ts`/`.tsx`/`.js` paths
   // are never eligible — they use per-line markers.
   const costLiteralAllowed = COST_LITERAL_ALLOW.has(path);
+  // Enumerated JSON benchmark fixtures skip the legacy-enum `costKind` pattern
+  // ONLY (external-system benchmark cost, genuinely unknowable per audit-3).
+  // Every other pattern still fires on them.
+  const legacyEnumAllowed = LEGACY_ENUM_ALLOW.has(path);
   const lines = contents.split(/\r?\n/u);
   for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
     const line = lines[lineIndex];
@@ -278,6 +338,7 @@ export function findViolations(path, contents) {
     }
     for (const pattern of FORBIDDEN_PATTERNS) {
       if (pattern.costLiteral && costLiteralAllowed) continue;
+      if (pattern.legacyEnum && legacyEnumAllowed) continue;
       if (pattern.regex.test(line)) {
         found.push({
           file: path,

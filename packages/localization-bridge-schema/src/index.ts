@@ -108,12 +108,6 @@ export type PatchResult = {
   failures: string[];
 };
 
-/**
- * @deprecated Use `PatchResultV02`. v0.1 callers will be migrated under
- *   KAIFUU-010 §7 then removed once ALPHA-006 closes.
- */
-export type PatchResultV01 = PatchResult;
-
 export type RuntimeTextEvent = {
   runtimeTextEventId: Uuid7;
   bridgeUnitId: Uuid7;

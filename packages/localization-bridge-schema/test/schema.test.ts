@@ -1407,7 +1407,7 @@ describe("localization bridge schema guards", () => {
     delete firstProviderRecord.latencyMs;
     firstProviderRecord.status = "skipped";
     firstProviderRecord.tokenUsage = { tokenCountSource: "unknown" };
-    firstProviderRecord.cost = { costKind: "unknown", currency: "USD" };
+    firstProviderRecord.cost = { costKind: "unknown", currency: "USD" }; // itotori-225-audit-allow: external-system benchmark cost may be genuinely unknowable (audit-3); this test asserts the schema ACCEPTS costKind unknown for an external benchmarked system, distinct from itotori's own billed/zero-only spend.
     const costLedger = asTestRecord(report.costLedger, "benchmark cost ledger");
     costLedger.includesUnknownCost = true;
 
