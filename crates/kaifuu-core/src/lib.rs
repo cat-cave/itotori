@@ -1659,6 +1659,72 @@ impl ArchiveDetectionScan {
             .filter(|header| header.starts_with(b"XP3"))
             .count() as u64
     }
+
+    /// Count container headers that carry the given XP3 subtype marker at its
+    /// STRUCTURAL position (see [`xp3_structural_marker`]). A genuine plain
+    /// XP3 whose member payload happens to contain marker-like text is never
+    /// counted — the scan anchors on the container's marker line, not on an
+    /// incidental substring anywhere in the early payload bytes.
+    fn xp3_structural_marker_count(&self, marker: Xp3StructuralMarker) -> u64 {
+        self.headers
+            .iter()
+            .filter(|header| xp3_structural_marker(header) == Some(marker))
+            .count() as u64
+    }
+}
+
+/// The synthetic XP3 subtype a container header structurally encodes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Xp3StructuralMarker {
+    Encrypted,
+    Compressed,
+    Unknown,
+}
+
+/// Classify the XP3 subtype a container header signals, recognizing the
+/// marker ONLY at its structural position.
+///
+/// Synthetic XP3 subtype fixtures share the 5-byte `XP3\r\n` container prefix
+/// with a plain archive, then write the subtype token on the single marker
+/// line that immediately follows the prefix (for example
+/// `XP3\r\nXP3-CRYPT\n…` or `XP3\r\nKAIFUU-XP3-ENCRYPTED`). This function only
+/// inspects that structural marker line, so a marker-like string that appears
+/// deeper in a member payload cannot be mistaken for a subtype signal.
+///
+/// A genuine plain XP3 begins with the full [`XP3_PLAIN_MAGIC`] (byte 5 is a
+/// space, never the `X` of a subtype token) and therefore has no marker line:
+/// it is always classified plain (`None`), regardless of any marker-like text
+/// carried inside its members.
+fn xp3_structural_marker(header: &[u8]) -> Option<Xp3StructuralMarker> {
+    // A full-magic plain container is authoritatively plain: never scan its
+    // payload for a subtype marker.
+    if header.starts_with(XP3_PLAIN_MAGIC) {
+        return None;
+    }
+    // The subtype token lives on the marker line right after the container
+    // prefix; bound the scan to that single line so trailing payload bytes
+    // cannot contribute an incidental match.
+    let region = header.strip_prefix(b"XP3\r\n")?;
+    let marker_line = match region.iter().position(|&byte| byte == b'\n') {
+        Some(newline) => &region[..newline],
+        None => region,
+    };
+    if header_contains_ascii(marker_line, "kaifuu-xp3-unknown")
+        || header_contains_ascii(marker_line, "xp3-unknown-variant")
+    {
+        Some(Xp3StructuralMarker::Unknown)
+    } else if header_contains_ascii(marker_line, "kaifuu-xp3-encrypted")
+        || header_contains_ascii(marker_line, "xp3-encrypted")
+        || header_contains_ascii(marker_line, "xp3-crypt")
+    {
+        Some(Xp3StructuralMarker::Encrypted)
+    } else if header_contains_ascii(marker_line, "kaifuu-xp3-compressed")
+        || header_contains_ascii(marker_line, "xp3-compressed")
+    {
+        Some(Xp3StructuralMarker::Compressed)
+    } else {
+        None
+    }
 }
 
 fn lower_path_component(component: Option<&std::ffi::OsStr>) -> Option<String> {
@@ -1744,13 +1810,13 @@ fn system_json_has_encryption_fields(path: &Path) -> bool {
 fn detect_kirikiri_xp3(scan: &ArchiveDetectionScan) -> ArchiveDetectionRow {
     let xp3_extension_count = scan.extension_count("xp3");
     let xp3_header_count = scan.xp3_header_count();
-    let encrypted_marker_count = scan.header_count("kaifuu-xp3-encrypted")
-        + scan.header_count("xp3-encrypted")
-        + scan.header_count("xp3-crypt");
-    let compressed_marker_count =
-        scan.header_count("kaifuu-xp3-compressed") + scan.header_count("xp3-compressed");
-    let unknown_marker_count =
-        scan.header_count("kaifuu-xp3-unknown") + scan.header_count("xp3-unknown-variant");
+    // Subtype markers are recognized only at their structural position on the
+    // container marker line, so a plain XP3 whose member payload contains
+    // marker-like text (e.g. an in-scenario "xp3-crypt" string) is never
+    // misclassified as encrypted/compressed/unknown (KAIFUU-163).
+    let encrypted_marker_count = scan.xp3_structural_marker_count(Xp3StructuralMarker::Encrypted);
+    let compressed_marker_count = scan.xp3_structural_marker_count(Xp3StructuralMarker::Compressed);
+    let unknown_marker_count = scan.xp3_structural_marker_count(Xp3StructuralMarker::Unknown);
     let detected = xp3_extension_count > 0 || xp3_header_count > 0;
     let mut signals = if detected {
         vec![ArchiveDetectionSignal::Packed]
@@ -23236,6 +23302,107 @@ mod tests {
         assert!(serialized.contains("aggregate-only"));
 
         let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn archive_detection_plain_xp3_with_marker_like_payload_is_not_encrypted_or_compressed() {
+        // KAIFUU-163: a valid plain XP3 whose member payload legitimately
+        // contains marker-like text ("XP3-CRYPT", "xp3-encrypted",
+        // "xp3-compressed") must be classified PLAIN. The aggregate detector
+        // must not treat an incidental payload substring as a structural
+        // subtype marker.
+        let root = temp_dir("kirikiri-xp3-plain-with-marker-payload");
+        let bytes = plain_xp3_fixture(&[
+            Xp3TestEntry {
+                path: "scenario/spoiler.ks",
+                // Marker-like tokens embedded in ordinary member payload
+                // bytes — exactly the false-positive trigger.
+                payload:
+                    b"the villain says: XP3-CRYPT and xp3-encrypted and xp3-compressed are just words here",
+                compressed: false,
+                adler32: 0x0102_0304,
+            },
+        ]);
+        // Sanity: the fixture really is a genuine plain XP3 the structural
+        // parser accepts, and the marker-like text lands inside the header
+        // window the detector reads.
+        assert!(bytes.starts_with(XP3_PLAIN_MAGIC));
+        assert!(read_plain_xp3_inventory(&bytes).is_ok());
+        write_fixture_file(&root, "private-route-name.xp3", &bytes);
+
+        let report = ArchiveDetectionReport::scan(&root);
+        let kirikiri = detected_archive_row(&report, "kirikiri-xp3");
+        assert_eq!(
+            kirikiri.detected_variant, "xp3-archive",
+            "plain XP3 with marker-like payload must classify as a plain archive"
+        );
+        assert!(
+            !kirikiri
+                .signals
+                .contains(&ArchiveDetectionSignal::Encrypted),
+            "plain XP3 must not be flagged encrypted from a payload substring: {kirikiri:#?}"
+        );
+        assert!(
+            !kirikiri
+                .signals
+                .contains(&ArchiveDetectionSignal::Compressed),
+            "plain XP3 must not be flagged compressed from a payload substring: {kirikiri:#?}"
+        );
+        assert!(
+            !kirikiri
+                .signals
+                .contains(&ArchiveDetectionSignal::UnknownVariant)
+        );
+        // The encrypted-marker evidence count is zero for a plain archive.
+        assert!(kirikiri.evidence.iter().any(|evidence| {
+            evidence.pattern == "synthetic XP3 encryption marker" && evidence.count == 0
+        }));
+        assert!(kirikiri.evidence.iter().any(|evidence| {
+            evidence.pattern == "synthetic XP3 compression marker" && evidence.count == 0
+        }));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn archive_detection_genuinely_encrypted_and_compressed_xp3_are_still_detected() {
+        // KAIFUU-163 true-positive guard: hardening the marker scan must not
+        // break detection of a real synthetic encrypted/compressed XP3, whose
+        // subtype token sits on the structural marker line right after the
+        // `XP3\r\n` container prefix.
+        let encrypted_root = temp_dir("kirikiri-xp3-genuine-encrypted");
+        write_fixture_file(
+            &encrypted_root,
+            "private-route-name.xp3",
+            b"XP3\r\nXP3-CRYPT\nkaifuu-xp3-encrypted synthetic fixture\n",
+        );
+        let report = ArchiveDetectionReport::scan(&encrypted_root);
+        let kirikiri = detected_archive_row(&report, "kirikiri-xp3");
+        assert_eq!(kirikiri.detected_variant, "xp3-encrypted-archive");
+        assert!(
+            kirikiri
+                .signals
+                .contains(&ArchiveDetectionSignal::Encrypted)
+        );
+        assert!(kirikiri.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == SemanticErrorCode::UnsupportedVariantEncrypted
+        }));
+        let _ = fs::remove_dir_all(encrypted_root);
+
+        let compressed_root = temp_dir("kirikiri-xp3-genuine-compressed");
+        write_fixture_file(
+            &compressed_root,
+            "private-route-name.xp3",
+            b"XP3\r\nXP3-COMPRESSED\nkaifuu-xp3-compressed synthetic fixture\n",
+        );
+        let report = ArchiveDetectionReport::scan(&compressed_root);
+        let kirikiri = detected_archive_row(&report, "kirikiri-xp3");
+        assert_eq!(kirikiri.detected_variant, "xp3-compressed-archive");
+        assert!(
+            kirikiri
+                .signals
+                .contains(&ArchiveDetectionSignal::Compressed)
+        );
+        let _ = fs::remove_dir_all(compressed_root);
     }
 
     #[test]
