@@ -57,21 +57,79 @@ impl Default for ReplaySchemaVersion {
 
 /// Run-level metadata. Carries no host path, no embedded bytes, and no
 /// host-clock instants.
+///
+/// All fields are private: metadata is read-only after construction and is
+/// created either through [`ReplayMetadata::new`] (the build path) or through
+/// serde `Deserialize` (which populates the private fields directly). Reads go
+/// through the accessor methods. The serde wire form is unchanged — the field
+/// names and `camelCase` rename remain identical to the pre-privatization form.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct ReplayMetadata {
     /// Stable identifier of the recorded run.
-    pub run_id: String,
+    run_id: String,
     /// Public name of the engine adapter that produced the recording.
-    pub adapter_name: String,
-    pub adapter_version: String,
+    adapter_name: String,
+    adapter_version: String,
     /// Clock origin used by the recording.
-    pub clock_origin: ClockOrigin,
+    clock_origin: ClockOrigin,
     /// RNG seed delivered to the adapter; 0 means no RNG was requested.
-    pub seed: u64,
+    seed: u64,
     /// Optional public-name reference to the asset bundle used.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub source_label: Option<String>,
+    source_label: Option<String>,
+}
+
+impl ReplayMetadata {
+    /// Construct run-level metadata. This is the build path; the returned value
+    /// is read-only through the accessor methods.
+    pub fn new(
+        run_id: impl Into<String>,
+        adapter_name: impl Into<String>,
+        adapter_version: impl Into<String>,
+        clock_origin: ClockOrigin,
+        seed: u64,
+        source_label: Option<String>,
+    ) -> Self {
+        Self {
+            run_id: run_id.into(),
+            adapter_name: adapter_name.into(),
+            adapter_version: adapter_version.into(),
+            clock_origin,
+            seed,
+            source_label,
+        }
+    }
+
+    /// Stable identifier of the recorded run.
+    pub fn run_id(&self) -> &str {
+        &self.run_id
+    }
+
+    /// Public name of the engine adapter that produced the recording.
+    pub fn adapter_name(&self) -> &str {
+        &self.adapter_name
+    }
+
+    /// Version of the engine adapter that produced the recording.
+    pub fn adapter_version(&self) -> &str {
+        &self.adapter_version
+    }
+
+    /// Clock origin used by the recording.
+    pub fn clock_origin(&self) -> ClockOrigin {
+        self.clock_origin
+    }
+
+    /// RNG seed delivered to the adapter; 0 means no RNG was requested.
+    pub fn seed(&self) -> u64 {
+        self.seed
+    }
+
+    /// Optional public-name reference to the asset bundle used.
+    pub fn source_label(&self) -> Option<&str> {
+        self.source_label.as_deref()
+    }
 }
 
 /// A recorded input event anchored at a logical tick.
@@ -86,8 +144,8 @@ pub struct ReplayEntry {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct ReplayLog {
-    pub schema_version: ReplaySchemaVersion,
-    pub metadata: ReplayMetadata,
+    schema_version: ReplaySchemaVersion,
+    metadata: ReplayMetadata,
     events: Vec<ReplayEntry>,
     asset_refs: Vec<AssetId>,
 }
@@ -194,6 +252,16 @@ impl ReplayLogBuilder {
 }
 
 impl ReplayLog {
+    /// Borrow the pinned schema version envelope.
+    pub fn schema_version(&self) -> &ReplaySchemaVersion {
+        &self.schema_version
+    }
+
+    /// Borrow the run-level metadata.
+    pub fn metadata(&self) -> &ReplayMetadata {
+        &self.metadata
+    }
+
     /// Borrow the recorded events.
     pub fn events(&self) -> &[ReplayEntry] {
         &self.events

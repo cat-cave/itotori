@@ -323,14 +323,14 @@ fn replay_log_round_trips_through_the_existing_replay_log_builder() {
     // without any UTSUSHI-021 schema change.
     let set = JumpTargetSet::load_from_json(SINGLE_BRANCH_JSON).unwrap();
     let entries = build_replay_entries(FixtureCase::SingleBranch, &set);
-    let mut builder = ReplayLogBuilder::new().metadata(ReplayMetadata {
-        run_id: FixtureCase::SingleBranch.run_id().to_string(),
-        adapter_name: set.adapter_id.clone(),
-        adapter_version: "0.1.0-alpha".to_string(),
-        clock_origin: ClockOrigin::RunStart,
-        seed: 0,
-        source_label: None,
-    });
+    let mut builder = ReplayLogBuilder::new().metadata(ReplayMetadata::new(
+        FixtureCase::SingleBranch.run_id().to_string(),
+        set.adapter_id.clone(),
+        "0.1.0-alpha",
+        ClockOrigin::RunStart,
+        0,
+        None,
+    ));
     for entry in entries {
         builder.record(entry.tick, entry.event).unwrap();
     }

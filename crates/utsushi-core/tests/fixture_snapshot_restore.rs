@@ -465,14 +465,14 @@ fn fixture_snapshot_clock_tick_aligns_with_replay_log_post_restore_tail() {
 
     // Round-trip the tail through `ReplayLogBuilder` so the test exercises
     // the existing UTSUSHI-021 surface end-to-end as well.
-    let mut builder = ReplayLogBuilder::new().metadata(ReplayMetadata {
-        run_id: SMOKE_RUN_ID.to_string(),
-        adapter_name: INSPECTABLE_ID.to_string(),
-        adapter_version: "0.1.0-alpha".to_string(),
-        clock_origin: ClockOrigin::SnapshotRestore,
-        seed: 0,
-        source_label: None,
-    });
+    let mut builder = ReplayLogBuilder::new().metadata(ReplayMetadata::new(
+        SMOKE_RUN_ID.to_string(),
+        INSPECTABLE_ID.to_string(),
+        "0.1.0-alpha",
+        ClockOrigin::SnapshotRestore,
+        0,
+        None,
+    ));
     builder.record(tail_first.tick, tail_first.event).unwrap();
     builder.record(tail_second.tick, tail_second.event).unwrap();
     let log = builder.build().expect("replay log builds");

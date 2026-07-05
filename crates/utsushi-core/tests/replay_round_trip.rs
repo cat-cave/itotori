@@ -60,7 +60,7 @@ impl RecordingAdapter {
 
 fn drive_log(adapter: &RecordingAdapter, log: &ReplayLog) -> Result<Vec<String>, InputError> {
     let mut cursor = ReplayCursor::start();
-    let mut clock = LogicalClock::starting_at(log.metadata.clock_origin);
+    let mut clock = LogicalClock::starting_at(log.metadata().clock_origin());
     let mut trace = Vec::new();
     while let Some((entry, next)) = log.next_event(cursor)? {
         clock.advance_to(entry.tick)?;
@@ -72,14 +72,14 @@ fn drive_log(adapter: &RecordingAdapter, log: &ReplayLog) -> Result<Vec<String>,
 }
 
 fn sample_log() -> ReplayLog {
-    let mut builder = ReplayLogBuilder::new().metadata(ReplayMetadata {
-        run_id: "replay-fixture-1".to_string(),
-        adapter_name: "fixture".to_string(),
-        adapter_version: "0.1.0".to_string(),
-        clock_origin: ClockOrigin::RunStart,
-        seed: 0,
-        source_label: Some("public-fixture:hello-game".to_string()),
-    });
+    let mut builder = ReplayLogBuilder::new().metadata(ReplayMetadata::new(
+        "replay-fixture-1",
+        "fixture",
+        "0.1.0",
+        ClockOrigin::RunStart,
+        0,
+        Some("public-fixture:hello-game".to_string()),
+    ));
     builder
         .record(LogicalClockTick(1), InputEvent::text())
         .unwrap();
@@ -123,14 +123,14 @@ fn fixture_replay_emits_same_text_and_choice_sequence_as_recording() {
 
 #[test]
 fn fixture_replay_unsupported_input_surface_typed_unsupported_kind_error() {
-    let mut builder = ReplayLogBuilder::new().metadata(ReplayMetadata {
-        run_id: "replay-pointer-fixture".to_string(),
-        adapter_name: "fixture".to_string(),
-        adapter_version: "0.1.0".to_string(),
-        clock_origin: ClockOrigin::RunStart,
-        seed: 0,
-        source_label: None,
-    });
+    let mut builder = ReplayLogBuilder::new().metadata(ReplayMetadata::new(
+        "replay-pointer-fixture",
+        "fixture",
+        "0.1.0",
+        ClockOrigin::RunStart,
+        0,
+        None,
+    ));
     builder
         .record(LogicalClockTick(1), InputEvent::text())
         .unwrap();
@@ -274,14 +274,14 @@ fn runtime_request_debug_does_not_leak_replay_log_contents() {
 
 #[test]
 fn replay_log_supports_menu_select_and_raw_variants_via_round_trip() {
-    let mut builder = ReplayLogBuilder::new().metadata(ReplayMetadata {
-        run_id: "replay-menu-fixture".to_string(),
-        adapter_name: "fixture".to_string(),
-        adapter_version: "0.1.0".to_string(),
-        clock_origin: ClockOrigin::SnapshotRestore,
-        seed: 7,
-        source_label: None,
-    });
+    let mut builder = ReplayLogBuilder::new().metadata(ReplayMetadata::new(
+        "replay-menu-fixture",
+        "fixture",
+        "0.1.0",
+        ClockOrigin::SnapshotRestore,
+        7,
+        None,
+    ));
     builder
         .record(
             LogicalClockTick(1),
@@ -333,14 +333,14 @@ fn replay_log_supports_menu_select_and_raw_variants_via_round_trip() {
 
 #[test]
 fn replay_log_pointer_round_trip_preserves_exact_float_bits() {
-    let mut builder = ReplayLogBuilder::new().metadata(ReplayMetadata {
-        run_id: "replay-pointer-bits".to_string(),
-        adapter_name: "fixture".to_string(),
-        adapter_version: "0.1.0".to_string(),
-        clock_origin: ClockOrigin::RunStart,
-        seed: 0,
-        source_label: None,
-    });
+    let mut builder = ReplayLogBuilder::new().metadata(ReplayMetadata::new(
+        "replay-pointer-bits",
+        "fixture",
+        "0.1.0",
+        ClockOrigin::RunStart,
+        0,
+        None,
+    ));
     let event = InputEvent::Pointer {
         x: 0.125_f32,
         y: 0.875_f32,

@@ -237,14 +237,14 @@ fn mount_a_fixture_vfs_through_the_facade() {
 // ---------------------------------------------------------------------
 
 fn build_replay_log() -> ReplayLog {
-    let mut builder = ReplayLogBuilder::new().metadata(ReplayMetadata {
-        run_id: "substrate-facade-fixture".to_string(),
-        adapter_name: "fixture".to_string(),
-        adapter_version: "0.0.0".to_string(),
-        clock_origin: ClockOrigin::RunStart,
-        seed: 0,
-        source_label: Some("public-fixture:substrate-facade".to_string()),
-    });
+    let mut builder = ReplayLogBuilder::new().metadata(ReplayMetadata::new(
+        "substrate-facade-fixture",
+        "fixture",
+        "0.0.0",
+        ClockOrigin::RunStart,
+        0,
+        Some("public-fixture:substrate-facade".to_string()),
+    ));
     builder
         .record(LogicalClockTick(1), InputEvent::text())
         .expect("record text 1");
@@ -267,7 +267,7 @@ fn drive_a_logical_clock_and_replay_log_through_the_facade() {
         "replay-log serialization is byte-stable across calls"
     );
     // Schema version is pinned through the facade.
-    assert_eq!(log.schema_version.as_str(), REPLAY_LOG_SCHEMA_VERSION);
+    assert_eq!(log.schema_version().as_str(), REPLAY_LOG_SCHEMA_VERSION);
 }
 
 // ---------------------------------------------------------------------
