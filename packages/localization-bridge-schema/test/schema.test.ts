@@ -700,6 +700,64 @@ describe("localization bridge schema guards", () => {
     );
   });
 
+  it("rejects a style-guide proposal whose proposalId is not UUID7-shaped", () => {
+    const transcript = styleGuideConversationFixture("accepted");
+    const proposals = transcript.proposals as Array<Record<string, unknown>>;
+    const proposal = asTestRecord(proposals[0], "first style-guide proposal");
+    proposal.proposalId = "proposal-not-a-uuid7";
+
+    const diagnostics = validateStyleGuideConversationTranscript(transcript);
+
+    expect(diagnostics).toContainEqual(
+      expect.objectContaining({
+        turnId: "turn-assistant-proposals",
+        field: "$.proposals[0].proposalId",
+        rule: "style_guide_conversation.proposal.proposal_id_uuid7",
+        proposalId: "proposal-not-a-uuid7",
+      }),
+    );
+    expect(() => assertStyleGuideConversationTranscript(transcript)).toThrow(
+      /proposal_id_uuid7|proposal-not-a-uuid7/,
+    );
+  });
+
+  it("rejects a turn proposalIds entry that is not UUID7-shaped naming the turn and index", () => {
+    const transcript = styleGuideConversationFixture("accepted");
+    const turns = transcript.turns as Array<Record<string, unknown>>;
+    const proposalTurn = asTestRecord(
+      turns.find((turn) => turn.turnId === "turn-assistant-proposals"),
+      "style-guide proposal turn",
+    );
+    const proposalIds = proposalTurn.proposalIds as string[];
+    proposalIds[0] = "turn-proposal-not-a-uuid7";
+
+    const diagnostics = validateStyleGuideConversationTranscript(transcript);
+
+    expect(diagnostics).toContainEqual(
+      expect.objectContaining({
+        turnId: "turn-assistant-proposals",
+        field: "$.turns[2].proposalIds[0]",
+        rule: "style_guide_conversation.turn.proposal_id_uuid7",
+        proposalId: "turn-proposal-not-a-uuid7",
+      }),
+    );
+  });
+
+  it("accepts UUID7-shaped proposal ids without emitting UUID7 proposal-id diagnostics", () => {
+    const transcript = styleGuideConversationFixture("accepted");
+
+    const diagnostics = validateStyleGuideConversationTranscript(transcript);
+
+    expect(
+      diagnostics.filter(
+        (diagnostic) =>
+          diagnostic.rule === "style_guide_conversation.proposal.proposal_id_uuid7" ||
+          diagnostic.rule === "style_guide_conversation.turn.proposal_id_uuid7",
+      ),
+    ).toEqual([]);
+    expect(() => assertStyleGuideConversationTranscript(transcript)).not.toThrow();
+  });
+
   it("rejects style-guide proposals with conflicting edits in a single proposal", () => {
     const transcript = styleGuideConversationFixture("accepted");
     const proposals = transcript.proposals as Array<Record<string, unknown>>;

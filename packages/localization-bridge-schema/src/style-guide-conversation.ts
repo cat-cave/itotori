@@ -473,6 +473,21 @@ function validateTurn(
     diagnostics,
     proposalIdsFromTurns,
   );
+  if (Array.isArray(value.proposalIds)) {
+    for (const [entryIndex, entry] of value.proposalIds.entries()) {
+      if (typeof entry === "string" && entry.trim().length > 0 && !isUuid7(entry)) {
+        diagnostics.push(
+          diagnostic(
+            turnId,
+            `$.turns[${index}].proposalIds[${entryIndex}]`,
+            "style_guide_conversation.turn.proposal_id_uuid7",
+            `$.turns[${index}].proposalIds[${entryIndex}] must be a UUID7 proposal id`,
+            entry,
+          ),
+        );
+      }
+    }
+  }
   if (typeof value.turnId === "string" && Array.isArray(value.proposalIds)) {
     proposalIdsByTurnId.set(value.turnId, {
       proposalIds: new Set(proposalIds),
@@ -528,6 +543,17 @@ function validateProposal(
     "style_guide_conversation.proposal.proposal_id",
     diagnostics,
   );
+  if (proposalId !== undefined && proposalId.trim().length > 0 && !isUuid7(proposalId)) {
+    diagnostics.push(
+      diagnostic(
+        turnId,
+        `$.proposals[${index}].proposalId`,
+        "style_guide_conversation.proposal.proposal_id_uuid7",
+        `$.proposals[${index}].proposalId must be a UUID7 proposal id`,
+        proposalId,
+      ),
+    );
+  }
   if (proposalId !== undefined) {
     if (proposalIds.has(proposalId)) {
       diagnostics.push(
