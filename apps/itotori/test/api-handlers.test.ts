@@ -9,7 +9,12 @@ import {
   permissionValues,
   reviewerQueueActionValues,
   type CandidateAssetRecord,
+  type CatalogCompletenessPool,
+  type CatalogConfidence,
   type CatalogConflictReviewReadModel,
+  type CatalogConflictStatus,
+  type CatalogLanguageStatus,
+  type CatalogLanguageStatusScope,
   type LocaleBranchIdentity,
   type Permission,
   type ProjectCostReport,
@@ -1417,6 +1422,173 @@ describe("Itotori API handlers", () => {
     expect(response.statusCode).toBe(500);
     expect(response.body).toMatchObject({ code: "internal_error" });
     expect(response.body.error).toMatch(error);
+  });
+
+  it.each([
+    {
+      name: "language status",
+      body: {
+        ...catalogCompletenessFixture,
+        pools: {
+          ...catalogCompletenessFixture.pools,
+          mtl_only: [
+            {
+              ...catalogCompletenessFixture.pools.mtl_only[0]!,
+              statuses: [
+                {
+                  ...catalogCompletenessFixture.pools.mtl_only[0]!.statuses[0]!,
+                  status: "totally_translated" as CatalogLanguageStatus,
+                },
+              ],
+            },
+          ],
+        },
+      },
+      error: /statuses\[0\]\.status must be one of/u,
+    },
+    {
+      name: "language status scope",
+      body: {
+        ...catalogCompletenessFixture,
+        pools: {
+          ...catalogCompletenessFixture.pools,
+          mtl_only: [
+            {
+              ...catalogCompletenessFixture.pools.mtl_only[0]!,
+              statuses: [
+                {
+                  ...catalogCompletenessFixture.pools.mtl_only[0]!.statuses[0]!,
+                  statusScope: "galaxy" as CatalogLanguageStatusScope,
+                },
+              ],
+            },
+          ],
+        },
+      },
+      error: /statuses\[0\]\.statusScope must be one of/u,
+    },
+    {
+      name: "confidence",
+      body: {
+        ...catalogCompletenessFixture,
+        pools: {
+          ...catalogCompletenessFixture.pools,
+          mtl_only: [
+            {
+              ...catalogCompletenessFixture.pools.mtl_only[0]!,
+              statuses: [
+                {
+                  ...catalogCompletenessFixture.pools.mtl_only[0]!.statuses[0]!,
+                  confidence: "absolutely_certain" as CatalogConfidence,
+                },
+              ],
+            },
+          ],
+        },
+      },
+      error: /statuses\[0\]\.confidence must be one of/u,
+    },
+    {
+      name: "conflict status",
+      body: {
+        ...catalogCompletenessFixture,
+        pools: {
+          ...catalogCompletenessFixture.pools,
+          mtl_only: [
+            {
+              ...catalogCompletenessFixture.pools.mtl_only[0]!,
+              conflicts: [
+                {
+                  conflictId: "conflict-invalid",
+                  status: "escalated" as CatalogConflictStatus,
+                  reasonCode: "language_status_disagreement",
+                  sourceIds: [{ catalogSource: "egs", sourceId: "egs-mtl" }],
+                  privateSourceCount: 0,
+                },
+              ],
+            },
+          ],
+        },
+      },
+      error: /conflicts\[0\]\.status must be one of/u,
+    },
+    {
+      name: "report pool",
+      body: {
+        ...catalogCompletenessFixture,
+        publicReport: {
+          ...catalogCompletenessFixture.publicReport,
+          pools: [
+            {
+              pool: "hyper_only" as CatalogCompletenessPool,
+              workCount: 0,
+              sourceIds: [],
+            },
+          ],
+        },
+      },
+      error: /publicReport\.pools\[0\]\.pool must be one of/u,
+    },
+    {
+      name: "report status",
+      body: {
+        ...catalogCompletenessFixture,
+        publicReport: {
+          ...catalogCompletenessFixture.publicReport,
+          statuses: [
+            {
+              status: "ultra_translated" as CatalogLanguageStatus,
+              factCount: 0,
+              sourceIds: [],
+            },
+          ],
+        },
+      },
+      error: /publicReport\.statuses\[0\]\.status must be one of/u,
+    },
+  ])("rejects invalid catalog completeness enum $name", async ({ body, error }) => {
+    const services = serviceFixture();
+    services.catalogRepository.catalogCompletenessBenchmarkPools.mockResolvedValueOnce(body);
+
+    const response = await handleItotoriApiRequest(
+      { method: "GET", pathname: "/api/catalog/completeness" },
+      services,
+    );
+
+    expect(response.statusCode).toBe(500);
+    expect(response.body).toMatchObject({ code: "internal_error" });
+    expect(response.body.error).toMatch(error);
+  });
+
+  it("accepts valid catalog completeness enum values including conflict status", async () => {
+    const services = serviceFixture();
+    services.catalogRepository.catalogCompletenessBenchmarkPools.mockResolvedValueOnce({
+      ...catalogCompletenessFixture,
+      pools: {
+        ...catalogCompletenessFixture.pools,
+        mtl_only: [
+          {
+            ...catalogCompletenessFixture.pools.mtl_only[0]!,
+            conflicts: [
+              {
+                conflictId: "conflict-valid",
+                status: "open" as CatalogConflictStatus,
+                reasonCode: "language_status_disagreement",
+                sourceIds: [{ catalogSource: "egs", sourceId: "egs-mtl" }],
+                privateSourceCount: 0,
+              },
+            ],
+          },
+        ],
+      },
+    });
+
+    const response = await handleItotoriApiRequest(
+      { method: "GET", pathname: "/api/catalog/completeness" },
+      services,
+    );
+
+    expect(response.statusCode).toBe(200);
   });
 
   it.each([

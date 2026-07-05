@@ -5,9 +5,11 @@ import type {
   CatalogConfidence,
   CatalogBenchmarkSeedFinderReadModel,
   CatalogCompletenessBenchmarkPools,
+  CatalogCompletenessPool,
   CatalogConflictKind,
   CatalogConflictReviewReadModel,
   CatalogConflictReviewStatus,
+  CatalogConflictStatus,
   CatalogExternalIdKind,
   CatalogLanguageStatus,
   CatalogLanguageStatusScope,
@@ -32,6 +34,7 @@ import {
   assetLocalizationDecisionAssetKindList,
   assetLocalizationDecisionPolicyList,
   catalogCandidateMatchStatusValues,
+  catalogCompletenessPoolValues,
   catalogConfidenceValues,
   catalogConflictKindValues,
   catalogConflictStatusValues,
@@ -2372,12 +2375,14 @@ export function assertCatalogCompletenessBenchmarkPools(
           status.language,
           `${label}.pools.${poolName}[${index}].statuses[${statusIndex}].language`,
         );
-        assertString(
+        assertEnum(
           status.status,
+          Object.values(catalogLanguageStatusValues) as CatalogLanguageStatus[],
           `${label}.pools.${poolName}[${index}].statuses[${statusIndex}].status`,
         );
-        assertString(
+        assertEnum(
           status.statusScope,
+          Object.values(catalogLanguageStatusScopeValues) as CatalogLanguageStatusScope[],
           `${label}.pools.${poolName}[${index}].statuses[${statusIndex}].statusScope`,
         );
         assertNullableString(
@@ -2392,8 +2397,9 @@ export function assertCatalogCompletenessBenchmarkPools(
           status.sourceProvenanceId,
           `${label}.pools.${poolName}[${index}].statuses[${statusIndex}].sourceProvenanceId`,
         );
-        assertString(
+        assertEnum(
           status.confidence,
+          Object.values(catalogConfidenceValues) as CatalogConfidence[],
           `${label}.pools.${poolName}[${index}].statuses[${statusIndex}].confidence`,
         );
         assertDateLike(
@@ -2488,8 +2494,9 @@ export function assertCatalogCompletenessBenchmarkPools(
           conflict.conflictId,
           `${label}.pools.${poolName}[${index}].conflicts[${conflictIndex}].conflictId`,
         );
-        assertString(
+        assertEnum(
           conflict.status,
+          Object.values(catalogConflictStatusValues) as CatalogConflictStatus[],
           `${label}.pools.${poolName}[${index}].conflicts[${conflictIndex}].status`,
         );
         assertString(
@@ -2528,7 +2535,11 @@ export function assertCatalogCompletenessBenchmarkPools(
       "workCount",
       "sourceIds",
     ]);
-    assertString(pool.pool, `${label}.publicReport.pools[${index}].pool`);
+    assertEnum(
+      pool.pool,
+      Object.values(catalogCompletenessPoolValues) as CatalogCompletenessPool[],
+      `${label}.publicReport.pools[${index}].pool`,
+    );
     assertNonNegativeInteger(pool.workCount, `${label}.publicReport.pools[${index}].workCount`);
     assertConflictReviewSourceIds(
       pool.sourceIds,
@@ -2542,7 +2553,11 @@ export function assertCatalogCompletenessBenchmarkPools(
       "factCount",
       "sourceIds",
     ]);
-    assertString(status.status, `${label}.publicReport.statuses[${index}].status`);
+    assertEnum(
+      status.status,
+      Object.values(catalogLanguageStatusValues) as CatalogLanguageStatus[],
+      `${label}.publicReport.statuses[${index}].status`,
+    );
     assertNonNegativeInteger(
       status.factCount,
       `${label}.publicReport.statuses[${index}].factCount`,
