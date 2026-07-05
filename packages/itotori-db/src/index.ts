@@ -12,6 +12,31 @@ export {
 export type { AuthorizationActor, Permission } from "./authorization.js";
 export { migrate } from "./migrations.js";
 export {
+  BENCHMARK_MANAGED_ARTIFACT_KINDS,
+  CORPUS_SIDECAR_ARTIFACT_KINDS,
+  MANAGED_ARTIFACT_URI_ROOTS,
+  assertManagedArtifactUri,
+  benchmarkManagedArtifactRef,
+  benchmarkManagedArtifactUri,
+  corpusSidecarArtifactRef,
+  corpusSidecarManagedArtifactUri,
+  managedArtifactCleanupScopePrefix,
+  planManagedArtifactCleanup,
+  redactPrivateLocalManagedArtifactRef,
+} from "./managed-artifact-refs.js";
+export type {
+  BenchmarkManagedArtifactKind,
+  BenchmarkManagedArtifactRef,
+  CorpusSidecarArtifactKind,
+  CorpusSidecarArtifactRef,
+  ManagedArtifactClass,
+  ManagedArtifactCleanupCandidate,
+  ManagedArtifactCleanupClassification,
+  ManagedArtifactCleanupDecision,
+  ManagedArtifactCleanupPlan,
+  ManagedArtifactCleanupScope,
+} from "./managed-artifact-refs.js";
+export {
   jobIdempotencyPolicyValues,
   jobStatusValues,
   jobTaskTypeValues,
