@@ -239,7 +239,7 @@ ci-utsushi:
     pnpm --filter @itotori/runtime-web-review typecheck
     pnpm --filter @itotori/runtime-web-review test
     pnpm --filter @itotori/runtime-web-review build
-    cargo test -p utsushi-core -p utsushi-fixture -p utsushi-reallive -p utsushi-rpgmaker-mv -p utsushi-siglus -p utsushi-kirikiri -p utsushi-cli
+    cargo test -p utsushi-core -p utsushi-fixture -p utsushi-reallive -p utsushi-rpgmaker-mv -p utsushi-rpgmaker-mv-mz -p utsushi-siglus -p utsushi-kirikiri -p utsushi-cli
 
 schema:
     pnpm --filter @itotori/localization-bridge-schema typecheck

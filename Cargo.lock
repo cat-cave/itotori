@@ -1406,6 +1406,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "utsushi-rpgmaker-mv-mz"
+version = "0.0.0"
+dependencies = [
+ "utsushi-core",
+]
+
+[[package]]
 name = "utsushi-siglus"
 version = "0.0.0"
 dependencies = [

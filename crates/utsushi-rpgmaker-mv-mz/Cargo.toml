@@ -1,0 +1,20 @@
+[package]
+name = "utsushi-rpgmaker-mv-mz"
+version = "0.0.0"
+publish = false
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "UTSUSHI-179 — pure-Rust RPG Maker MV/MZ engine-port scaffold for the utsushi-core substrate facade. The browser/NW.js JS engine IS the MV/MZ runtime, so this port carries ZERO opcode handlers: it declares the MV/MZ family through the substrate facade conformance manifest and emits a from-scratch clean-room attestation. Clean-room; no decompiled/copyrighted engine code, no vendored engine source, no game bytes."
+
+[dependencies]
+# ONLY utsushi-core. This crate consumes the substrate facade
+# (`utsushi_core::substrate::*`) plus the engine-neutral implementation-map
+# schema (`utsushi_core::port::impl_map`). It depends on NO other engine
+# crate (not `utsushi-rpgmaker-mv`, not `kaifuu-rpgmaker`) and vendors NO
+# engine source: MV/MZ command dispatch happens in the browser/NW.js JS
+# runtime, so there is nothing here to share with a Rust interpreter.
+utsushi-core = { path = "../utsushi-core" }
+
+[lints]
+workspace = true
