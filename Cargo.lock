@@ -564,7 +564,9 @@ dependencies = [
  "kaifuu-reallive",
  "kaifuu-rpgmaker",
  "kaifuu-vault-source",
+ "rusqlite",
  "serde_json",
+ "sevenz-rust2",
  "sha2",
  "tempfile",
 ]

@@ -16,6 +16,8 @@ kaifuu-vault-source = { path = "../kaifuu-vault-source" }
 serde_json.workspace = true
 
 [dev-dependencies]
+rusqlite = { workspace = true }
+sevenz-rust2 = { workspace = true }
 sha2.workspace = true
 tempfile = { workspace = true }
 

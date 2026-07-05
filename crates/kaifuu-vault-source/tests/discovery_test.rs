@@ -79,6 +79,37 @@ fn discovers_release_by_release_id_directly() {
 }
 
 #[test]
+fn discovers_release_by_artifact_canonical_sha256() {
+    let v = common::SyntheticVault::build();
+    let source = open_source(&v);
+    // The good-primary artifact is linked to release 10 via release_artifacts;
+    // resolving by its repacked archive sha256 must return that release.
+    let sha = v.fixtures[common::FIXTURE_GOOD_PRIMARY]
+        .canonical_sha256
+        .clone();
+    let candidates = source
+        .discover(&ClaimQuery::ByArtifactSha256 { sha256: sha })
+        .unwrap();
+    let ids: Vec<i64> = candidates.iter().map(|c| c.release_id).collect();
+    assert_eq!(ids, vec![10]);
+}
+
+#[test]
+fn discovery_raises_release_not_resolved_for_unknown_artifact_sha256() {
+    let v = common::SyntheticVault::build();
+    let source = open_source(&v);
+    let err = source
+        .discover(&ClaimQuery::ByArtifactSha256 {
+            sha256: "0".repeat(64),
+        })
+        .unwrap_err();
+    assert!(matches!(
+        err,
+        kaifuu_vault_source::VaultSourceError::ReleaseNotResolved { .. }
+    ));
+}
+
+#[test]
 fn discovery_raises_release_not_resolved_for_unknown_external_id() {
     let v = common::SyntheticVault::build();
     let source = open_source(&v);
