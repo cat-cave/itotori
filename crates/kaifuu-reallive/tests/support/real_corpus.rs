@@ -37,6 +37,23 @@ pub struct RealCorpus {
     pub seen_txt: PathBuf,
 }
 
+impl RealCorpus {
+    /// Locate this corpus's `Gameexe.ini` under either supported layout:
+    /// the modern `<root>/REALLIVEDATA/Gameexe.ini` (Sweetie HD) or the
+    /// flat `<root>/Gameexe.ini` (older 1.2.6.x titles such as Kanon).
+    /// Case-insensitive to absorb `GAMEEXE.INI` on case-sensitive volumes.
+    pub fn gameexe_ini(&self) -> Option<PathBuf> {
+        if let Some(reallivedata) = find_child_ci(&self.root, "REALLIVEDATA")
+            && let Some(ini) = find_child_ci(&reallivedata, "Gameexe.ini")
+            && ini.is_file()
+        {
+            return Some(ini);
+        }
+        let flat = find_child_ci(&self.root, "Gameexe.ini")?;
+        flat.is_file().then_some(flat)
+    }
+}
+
 /// Resolve the first corpus (`ITOTORI_REAL_GAME_ROOT`, Sweetie HD).
 pub fn corpus_1() -> Option<RealCorpus> {
     corpus_for_env("corpus-1", REAL_GAME_ROOT_ENV)

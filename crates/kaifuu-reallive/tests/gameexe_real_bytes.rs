@@ -1,17 +1,25 @@
 //! KAIFUU-190 real-bytes integration test for the Gameexe.ini key-family
-//! classifier. Anchors the classifier against the only RealLive corpus
-//! currently staged (Sweetie HD) and asserts that the dominant key
-//! families are typed correctly, leaving < 10% of lines unclassified.
+//! classifier. Exercises the classifier against every staged RealLive
+//! corpus and asserts DETERMINISTIC COMPLETENESS: **zero** lines fall
+//! through to `Unknown` on real bytes.
 //!
-//! **Multi-game validation status.** Per the itotori operating model
-//! (`docs/orchestration-operating-model.md`), an engine-substrate parser
-//! is exercised against at least two real corpora before its node is
-//! merged-complete. The Gameexe.ini key-naming convention is
-//! engine-structural — it is hard-coded by the RealLive compiler, and
-//! the catalogue generalises across titles by construction. The
-//! multi-game-validation requirement is satisfied by this engine
-//! invariant (analogous to KAIFUU-189's reasoning); second-corpus
-//! retroactive validation is welcome but not blocking.
+//! **No relaxed floor (substrate law).** An earlier revision permitted up
+//! to 10% (≤135 lines) to remain `Unknown` and still pass — exactly the
+//! numeric-tolerance shape the strict-proof / 100%-decompilation law
+//! forbids, because it masks incomplete classification. That floor is
+//! deleted. The classifier now recognises every key/line-form present in
+//! the staged corpora, so the assertion is `unknown == 0` for each corpus
+//! (a new unrecognised key hard-fails). No enumerated known-unclassified
+//! manifest is needed: the staged evidence contains no genuinely opaque
+//! key (the last hold-out, Kanon's `#DLL.NNN` extension-DLL slot binding,
+//! is now a typed `Dll` family).
+//!
+//! **Multi-game validation.** Per project law an engine-family parser
+//! validates against ≥2 real corpora. This test iterates over every
+//! staged corpus (`ITOTORI_REAL_GAME_ROOT` = Sweetie HD 1.6.x, plus
+//! `ITOTORI_REAL_GAME_ROOT_2` = Kanon 1.2.6.x when staged) and enforces
+//! zero-unknown on each. The Sweetie-HD-specific total-count envelope and
+//! per-family floors additionally anchor the dominant families.
 //!
 //! Env-gating, STRICT: this test reads bytes only when
 //! `ITOTORI_REAL_GAME_ROOT` is set; otherwise an absent corpus is an
@@ -23,131 +31,163 @@ mod real_corpus;
 
 use std::collections::HashMap;
 use std::fs;
-use std::path::PathBuf;
 
 use kaifuu_reallive::{GameexeKeyFamily, GameexeKeyTreatment, parse_gameexe_inventory};
 
 #[test]
 #[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
-fn classifies_sweetie_hd_gameexe_ini_to_at_least_ninety_percent_coverage() {
-    let Some(ini_path) = real_gameexe_ini_path() else {
-        real_corpus::require_real_bytes("Sweetie HD Gameexe.ini real-bytes test");
+fn classifies_every_staged_gameexe_ini_to_zero_unknown() {
+    // STRICT gate: corpus-1 (Sweetie HD) must be staged. An absent
+    // primary corpus is an unconditional hard failure (no silent pass).
+    if real_corpus::corpus_1().is_none() {
+        real_corpus::require_real_bytes("Gameexe.ini zero-unknown real-bytes test");
         return;
-    };
+    }
 
-    let bytes = fs::read(&ini_path)
-        .unwrap_or_else(|err| panic!("failed to read {}: {err}", ini_path.display()));
-    let report = parse_gameexe_inventory(&bytes);
+    // Validate every staged corpus (Sweetie HD, plus Kanon when
+    // ITOTORI_REAL_GAME_ROOT_2 is set). Each must reach zero-unknown.
+    let corpora = real_corpus::corpora();
+    for corpus in &corpora {
+        let ini_path = corpus.gameexe_ini().unwrap_or_else(|| {
+            panic!(
+                "corpus {} ({}) has no Gameexe.ini under either the modern \
+                 REALLIVEDATA/ or the flat root layout",
+                corpus.label,
+                corpus.root.display()
+            )
+        });
+        let bytes = fs::read(&ini_path)
+            .unwrap_or_else(|err| panic!("failed to read {}: {err}", ini_path.display()));
+        let report = parse_gameexe_inventory(&bytes);
 
+        let mut family_counts: HashMap<&'static str, usize> = HashMap::new();
+        let mut treatment_counts: HashMap<&'static str, usize> = HashMap::new();
+        for entry in &report.entries {
+            *family_counts
+                .entry(family_label(&entry.family))
+                .or_insert(0) += 1;
+            *treatment_counts
+                .entry(treatment_label(entry.treatment))
+                .or_insert(0) += 1;
+        }
+        let total = report.entries.len();
+        let unknown = *treatment_counts.get("unknown").unwrap_or(&0);
+
+        // Dump the breakdown to stderr so an auditor can verify the
+        // zero-unknown claim from `cargo test -- --nocapture` output.
+        eprintln!(
+            "\n=== KAIFUU-190 {label} Gameexe.ini classification breakdown ===\n\
+             path:              {path}\n\
+             total entries:     {total}\n\
+             bridge_unit:       {bu}\n\
+             asset_reference:   {ar}\n\
+             config:            {cf}\n\
+             unknown:           {un}\n\
+             warnings emitted:  {wn}",
+            label = corpus.label,
+            path = ini_path.display(),
+            bu = treatment_counts.get("bridge_unit").copied().unwrap_or(0),
+            ar = treatment_counts
+                .get("asset_reference")
+                .copied()
+                .unwrap_or(0),
+            cf = treatment_counts.get("config").copied().unwrap_or(0),
+            un = unknown,
+            wn = report.warnings.len(),
+        );
+        let mut family_vec: Vec<(&&str, &usize)> = family_counts.iter().collect();
+        family_vec.sort_by(|a, b| b.1.cmp(a.1).then_with(|| a.0.cmp(b.0)));
+        eprintln!("--- per-family counts (descending) ---");
+        for (family, count) in &family_vec {
+            eprintln!("  {family:<32} {count:>5}");
+        }
+
+        // Deterministic-completeness assertion (NO numeric tolerance):
+        // every real Gameexe.ini line must classify into a typed family.
+        // A new unrecognised key surfaces here as a non-zero `unknown`
+        // and hard-fails, listing the offending keys.
+        if unknown != 0 {
+            let unknown_keys: Vec<String> = report
+                .entries
+                .iter()
+                .filter(|e| treatment_label(e.treatment) == "unknown")
+                .map(|e| format!("{} (line {})", e.key, e.line_number))
+                .collect();
+            panic!(
+                "corpus {} ({}) must classify EVERY Gameexe.ini key (substrate law: \
+                 no relaxed floor); got {unknown} unknown of {total}: {unknown_keys:?}",
+                corpus.label,
+                ini_path.display(),
+            );
+        }
+
+        // No-silent-unknown invariant: warnings are emitted only for
+        // Unknown entries, so with zero unknowns there are zero warnings.
+        assert_eq!(
+            report.warnings.len(),
+            0,
+            "corpus {} ({}) reached zero-unknown but emitted {} warnings; \
+             warnings must pair 1:1 with Unknown entries",
+            corpus.label,
+            ini_path.display(),
+            report.warnings.len(),
+        );
+
+        // Sweetie-HD-specific total envelope + per-family floors anchor
+        // the dominant families for the primary corpus.
+        if corpus.label == "corpus-1" {
+            assert_sweetie_hd_family_shape(total, &family_counts, &treatment_counts);
+        }
+    }
+}
+
+/// Sweetie-HD-specific shape anchors: total-count envelope and the
+/// dominant per-family / per-treatment floors documented at
+/// `docs/research/reallive-engine.md` §B. Kept scoped to corpus-1 because
+/// these counts are title-specific.
+fn assert_sweetie_hd_family_shape(
+    total: usize,
+    family_counts: &HashMap<&'static str, usize>,
+    treatment_counts: &HashMap<&'static str, usize>,
+) {
     // Total-key envelope. The documented count is 1,345 lines (the
     // research doc anchors §A's Gameexe.ini at 51,800 bytes / 1,345
     // lines). We allow 1,300..=1,400 to absorb any later parser-
     // tweak drift without losing the bound.
-    let total = report.entries.len();
     assert!(
         (1300..=1400).contains(&total),
         "Sweetie HD Gameexe.ini should yield 1300..=1400 entries; got {total}"
     );
 
-    // Tally the family breakdown for both the diagnostic dump and the
-    // family-presence assertions.
-    let mut family_counts: HashMap<&'static str, usize> = HashMap::new();
-    let mut treatment_counts: HashMap<&'static str, usize> = HashMap::new();
-    for entry in &report.entries {
-        *family_counts
-            .entry(family_label(&entry.family))
-            .or_insert(0) += 1;
-        *treatment_counts
-            .entry(treatment_label(entry.treatment))
-            .or_insert(0) += 1;
-    }
-    let unknown = *treatment_counts.get("unknown").unwrap_or(&0);
-
-    // Dump the breakdown to stderr so an auditor can verify the
-    // coverage claim from `cargo test -- --nocapture` output.
-    eprintln!(
-        "\n=== KAIFUU-190 Sweetie HD Gameexe.ini classification breakdown ===\n\
-         total entries:     {total}\n\
-         bridge_unit:       {bu}\n\
-         asset_reference:   {ar}\n\
-         config:            {cf}\n\
-         unknown:           {un}\n\
-         unknown share:     {pct:.2}%\n\
-         warnings emitted:  {wn}",
-        bu = treatment_counts.get("bridge_unit").copied().unwrap_or(0),
-        ar = treatment_counts
-            .get("asset_reference")
-            .copied()
-            .unwrap_or(0),
-        cf = treatment_counts.get("config").copied().unwrap_or(0),
-        un = unknown,
-        pct = 100.0 * (unknown as f64) / (total as f64),
-        wn = report.warnings.len(),
-    );
-    let mut family_vec: Vec<(&&str, &usize)> = family_counts.iter().collect();
-    family_vec.sort_by(|a, b| b.1.cmp(a.1).then_with(|| a.0.cmp(b.0)));
-    eprintln!("--- per-family counts (descending) ---");
-    for (family, count) in &family_vec {
-        eprintln!("  {family:<32} {count:>5}");
-    }
-    if !report.warnings.is_empty() {
-        eprintln!("--- warnings ---");
-        for warn in &report.warnings {
-            eprintln!(
-                "  line {}: key={} message={}",
-                warn.line_number, warn.key, warn.message
-            );
-        }
-    }
-    eprintln!();
-
-    // Coverage assertion: ≤10% of lines should fall through to
-    // Unknown. Sweetie HD has 1,345 lines so the cap is 135 (10% of
-    // 1,350, rounded up).
-    assert!(
-        // TODO(strictness-fix-relaxed-floors-to-strict): relaxed 10% unknown cap; tighten toward zero.
-        unknown <= 135,
-        "expected ≤135 unknown classifications (10% of ~1350 lines); got {unknown}"
-    );
-
-    // Warnings count must match the unknown count (no silent unknowns).
-    assert_eq!(
-        report.warnings.len(),
-        unknown,
-        "every Unknown classification must emit a paired warning; \
-         got {} warnings vs {unknown} unknowns",
-        report.warnings.len()
-    );
-
     // Specific-family presence + count floors. These exercise the
     // dominant Sweetie HD families documented at
     // `docs/research/reallive-engine.md` §B.
-    assert_family_count(&family_counts, "FolderName", 13);
-    assert_family_count(&family_counts, "Object", 7);
-    assert_family_count(&family_counts, "ObjectMax", 1);
-    assert_family_count(&family_counts, "Waku", 200);
-    assert_family_count(&family_counts, "Window", 300);
-    assert_family_count(&family_counts, "Syscom", 70);
-    assert_family_count(&family_counts, "SelBtn", 60);
-    assert_family_count(&family_counts, "BtnObj", 90);
-    assert_family_count(&family_counts, "SysBtn", 50);
-    assert_family_count(&family_counts, "Namae", 11);
-    assert_family_count(&family_counts, "KoeOnOff", 6);
-    assert_family_count(&family_counts, "ColorTable", 30);
-    assert_family_count(&family_counts, "DsTrack", 28);
-    assert_family_count(&family_counts, "PcmVolMod", 16);
-    assert_family_count(&family_counts, "FullScreenMessageBack", 25);
-    assert_family_count(&family_counts, "Hint", 12);
-    assert_family_count(&family_counts, "MouseActionCall", 3);
-    assert_family_count(&family_counts, "Sel", 60);
-    assert_family_count(&family_counts, "Shake", 3);
-    assert_family_count(&family_counts, "SoundEffect", 4);
-    assert_family_count(&family_counts, "Caption", 1);
-    assert_family_count(&family_counts, "RegName", 1);
-    assert_family_count(&family_counts, "ScreenSizeMod", 1);
-    assert_family_count(&family_counts, "CancelCall", 2);
-    assert_family_count(&family_counts, "LoadCall", 2);
-    assert_family_count(&family_counts, "SystemCall", 6);
+    assert_family_count(family_counts, "FolderName", 13);
+    assert_family_count(family_counts, "Object", 7);
+    assert_family_count(family_counts, "ObjectMax", 1);
+    assert_family_count(family_counts, "Waku", 200);
+    assert_family_count(family_counts, "Window", 300);
+    assert_family_count(family_counts, "Syscom", 70);
+    assert_family_count(family_counts, "SelBtn", 60);
+    assert_family_count(family_counts, "BtnObj", 90);
+    assert_family_count(family_counts, "SysBtn", 50);
+    assert_family_count(family_counts, "Namae", 11);
+    assert_family_count(family_counts, "KoeOnOff", 6);
+    assert_family_count(family_counts, "ColorTable", 30);
+    assert_family_count(family_counts, "DsTrack", 28);
+    assert_family_count(family_counts, "PcmVolMod", 16);
+    assert_family_count(family_counts, "FullScreenMessageBack", 25);
+    assert_family_count(family_counts, "Hint", 12);
+    assert_family_count(family_counts, "MouseActionCall", 3);
+    assert_family_count(family_counts, "Sel", 60);
+    assert_family_count(family_counts, "Shake", 3);
+    assert_family_count(family_counts, "SoundEffect", 4);
+    assert_family_count(family_counts, "Caption", 1);
+    assert_family_count(family_counts, "RegName", 1);
+    assert_family_count(family_counts, "ScreenSizeMod", 1);
+    assert_family_count(family_counts, "CancelCall", 2);
+    assert_family_count(family_counts, "LoadCall", 2);
+    assert_family_count(family_counts, "SystemCall", 6);
 
     // BridgeUnit floor: at least the `#CAPTION`, `#NAMAE` ×11,
     // `#KOEONOFF` ×6, `#SYSCOM` ×70+, `#SAVE_NODATA`, `#VERSION_STR`,
@@ -249,6 +289,7 @@ fn family_label(family: &GameexeKeyFamily) -> &'static str {
         GameexeKeyFamily::DsTrack => "DsTrack",
         GameexeKeyFamily::PcmVolMod { .. } => "PcmVolMod",
         GameexeKeyFamily::SerialPdt { .. } => "SerialPdt",
+        GameexeKeyFamily::Dll { .. } => "Dll",
         GameexeKeyFamily::Shake { .. } => "Shake",
         GameexeKeyFamily::ShakeZoom { .. } => "ShakeZoom",
         GameexeKeyFamily::QuarterViewSize => "QuarterViewSize",
@@ -271,8 +312,4 @@ fn family_label(family: &GameexeKeyFamily) -> &'static str {
         GameexeKeyFamily::GameexeVersion => "GameexeVersion",
         GameexeKeyFamily::Unknown { .. } => "Unknown",
     }
-}
-
-fn real_gameexe_ini_path() -> Option<PathBuf> {
-    real_corpus::gameexe_ini_path()
 }

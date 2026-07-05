@@ -383,6 +383,15 @@ pub enum GameexeKeyFamily {
         /// Index after `#SERIALPDT.`.
         index: String,
     },
+    /// `#DLL.NNN = "rlBabel"` — RealLive extension-DLL slot binding. The
+    /// RHS is an engine extension-module name (e.g. the RLDEV `rlBabel`
+    /// text-formatting / translation-support DLL) that the VM resolves for
+    /// extended system-call dispatch. It is an engine configuration
+    /// binding, not translatable text and not a game-content asset path.
+    Dll {
+        /// Decimal slot index after `#DLL.`.
+        index: String,
+    },
 
     // ---- Shake / motion / cinematic ----
     /// `#SHAKE.NNN=(…)(…)…` — screen-shake offset sequence.
@@ -1008,6 +1017,17 @@ fn classify_key(key: &str, value: &str) -> (GameexeKeyFamily, GameexeKeyTreatmen
     if let Some(rest) = bare.strip_prefix("SERIALPDT.") {
         return (
             GameexeKeyFamily::SerialPdt {
+                index: rest.to_string(),
+            },
+            GameexeKeyTreatment::Config,
+        );
+    }
+    if let Some(rest) = bare.strip_prefix("DLL.") {
+        // `#DLL.NNN = "rlBabel"` — RealLive extension-DLL slot binding.
+        // The RHS names an engine extension module resolved by the VM;
+        // it is engine configuration, not translatable text or an asset.
+        return (
+            GameexeKeyFamily::Dll {
                 index: rest.to_string(),
             },
             GameexeKeyTreatment::Config,
@@ -1847,6 +1867,23 @@ mod tests {
             }
             other => panic!("expected MessageBackConfig, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn classifies_dll_slot_binding_as_config() {
+        // `#DLL.000 = "rlBabel"` is a RealLive extension-DLL slot binding
+        // (observed in the Kanon corpus); it is engine config, not a
+        // translatable string or an asset path, and must not fall through
+        // to Unknown.
+        let ini = b"#DLL.000 = \"rlBabel\"\n";
+        let report = parse_gameexe_inventory(ini);
+        let entry = first(&report);
+        assert_eq!(entry.treatment, GameexeKeyTreatment::Config);
+        match &entry.family {
+            GameexeKeyFamily::Dll { index } => assert_eq!(index, "000"),
+            other => panic!("expected Dll, got {other:?}"),
+        }
+        assert!(report.warnings.is_empty());
     }
 
     #[test]
