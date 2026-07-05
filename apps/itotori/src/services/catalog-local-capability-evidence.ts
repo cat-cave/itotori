@@ -27,7 +27,10 @@ export const catalogLocalRpgMakerMvMzSourceAdapterId = "local-scan:rpg_maker_mv_
 export const catalogPublicRpgMakerMvMzAdapterId = "kaifuu.rpg-maker-mv-mz" as const;
 
 export type CatalogCapabilityEvidenceSource = "public_fixture" | "private_local_aggregate";
-export type CatalogCapabilityEvidenceKind = "adapter_matrix" | "local_corpus_sidecar";
+export type CatalogCapabilityEvidenceKind =
+  | "adapter_matrix"
+  | "local_corpus_sidecar"
+  | "key_validation";
 export type CatalogCapabilityEvidenceStatus = "present" | "partial" | "missing" | "unknown";
 
 export type CatalogCapabilityEvidenceInput = {
@@ -52,6 +55,57 @@ export type CatalogPublicFixtureCapabilityEvidence = {
   evidenceKind: "adapter_matrix";
   fixtureId: string;
   status: CatalogCapabilityEvidenceStatus;
+  evidenceLabels: string[];
+  limitations: string[];
+};
+
+export type CatalogKeyValidationDiagnosticResult =
+  | "success"
+  | "missing_key"
+  | "bad_key"
+  | "unsupported_suffix";
+
+// One record from a KAIFUU MV/MZ key-validation fixture (KAIFUU-114). Only the
+// aggregate-safe outcome (`diagnosticResult`) is ever surfaced downstream; the
+// proof hashes are read for shape validation but never emitted as evidence.
+export type CatalogKeyValidationFixtureRecord = {
+  requirementId: string;
+  secretRefScheme: string;
+  surface: string;
+  codec: string;
+  diagnosticResult: CatalogKeyValidationDiagnosticResult;
+  proofHash: string;
+  systemJsonProofHash: string;
+  imageEvidenceHash: string;
+};
+
+// The public KAIFUU MV/MZ key-validation fixture shape. A genuine runtime check
+// that fixture-safe key evidence matches System metadata + encrypted image
+// evidence; it does NOT decrypt, extract, replace, or patch encrypted media.
+export type CatalogKeyValidationFixture = {
+  schemaVersion: string;
+  fixtureId: string;
+  status: "passed" | "failed";
+  supportBoundary: string;
+  records: CatalogKeyValidationFixtureRecord[];
+  decryptOrPatchClaimed: boolean;
+};
+
+// Public-fixture `key_validation` runtime-readiness evidence produced from a
+// KAIFUU key-validation fixture. This is the runtime-evidence source the
+// catalog opportunity read-model counts (catalog-repository
+// `isRuntimeReadinessEvidence`): `public_fixture` + `key_validation`. Distinct
+// from `CatalogPublicFixtureCapabilityEvidence`, which is the static
+// `adapter_matrix` shape and is deliberately NOT counted as runtime readiness.
+export type CatalogPublicKeyValidationCapabilityEvidence = {
+  schemaVersion: typeof catalogCapabilityEvidenceInputSchemaVersion;
+  adapterId: string;
+  level: CapabilityLevel;
+  evidenceSource: "public_fixture";
+  evidenceKind: "key_validation";
+  fixtureId: string;
+  status: CatalogCapabilityEvidenceStatus;
+  aggregateCounts: Record<string, number>;
   evidenceLabels: string[];
   limitations: string[];
 };
@@ -88,8 +142,18 @@ export class CatalogLocalCapabilityEvidenceError extends Error {
   }
 }
 
+export const catalogRpgMakerMvMzKeyValidationFixtureId =
+  "kaifuu-rpg-maker-mv-mz-key-validation-success" as const;
+
 const knownMarkerLabels = new Set(["rpgmaker_mv_metadata"]);
 const knownPublicFixtureIds = new Set(["catalog-capability-evidence-mv-mz-public-matrix"]);
+const knownKeyValidationFixtureIds = new Set<string>([catalogRpgMakerMvMzKeyValidationFixtureId]);
+const knownKeyValidationOutcomes = new Set<CatalogKeyValidationDiagnosticResult>([
+  "success",
+  "missing_key",
+  "bad_key",
+  "unsupported_suffix",
+]);
 const knownPublicEvidenceLabels = new Set(["rpg_maker_mv_mz_public_fixture_matrix"]);
 const catalogCapabilityEvidenceStatusValues = new Set<CatalogCapabilityEvidenceStatus>([
   "present",
@@ -230,6 +294,142 @@ export function mapLocalCapabilityEvidenceToDbInput(
     ],
     limitations: evidence.limitations,
   };
+}
+
+// Producer path for `public_fixture` `key_validation` runtime-evidence. This
+// closes the gap documented in catalog-repository.ts: the read-model counts
+// `public_fixture` + `key_validation` evidence as public runtime readiness, but
+// no producer emitted it — only `adapter_matrix` matrices (static) and private
+// sidecars. Given a KAIFUU MV/MZ key-validation fixture, this emits the
+// `key_validation` evidence the consumer expects. Only aggregate-safe outcome
+// counts are surfaced; the fixture's proof hashes and key material are never
+// included.
+export function mapKeyValidationFixtureToCapabilityEvidence(
+  fixture: CatalogKeyValidationFixture,
+): CatalogPublicKeyValidationCapabilityEvidence {
+  assertKnownKeyValidationFixture(fixture);
+
+  const evidence: CatalogPublicKeyValidationCapabilityEvidence = {
+    schemaVersion: catalogCapabilityEvidenceInputSchemaVersion,
+    adapterId: catalogPublicRpgMakerMvMzAdapterId,
+    // Key validation is a precondition for decrypting/extracting encrypted
+    // media, so it is recorded against the `extract` rung (the closest DB
+    // capability level; no key material is resolved or decrypted here).
+    level: capabilityLevelValues.extract,
+    evidenceSource: "public_fixture",
+    evidenceKind: "key_validation",
+    fixtureId: fixture.fixtureId,
+    status: keyValidationEvidenceStatus(fixture),
+    aggregateCounts: keyValidationAggregateCounts(fixture.records),
+    evidenceLabels: [capabilityEvidenceLabelValues.publicFixtureKeyValidation],
+    limitations: [
+      "public fixture key-validation runtime evidence; validates fixture-safe MV/MZ key evidence against System metadata and encrypted image evidence only",
+      "key validation does not decrypt, extract, replace, or patch encrypted media",
+    ],
+  };
+
+  // Belt-and-suspenders: the emitted evidence surfaces only aggregate-safe
+  // fields. Raw proof hashes / key material from the fixture must never leak
+  // into evidence; this assertion fails loudly if that discipline is violated.
+  assertNoForbiddenPublicFixtureEvidenceLeakage(evidence, "keyValidationEvidence");
+  return evidence;
+}
+
+export function mapPublicKeyValidationEvidenceToDbInput(
+  evidence: CatalogPublicKeyValidationCapabilityEvidence,
+): DbCapabilityEvidenceInput {
+  if (
+    evidence.adapterId !== catalogPublicRpgMakerMvMzAdapterId ||
+    evidence.evidenceSource !== "public_fixture" ||
+    evidence.evidenceKind !== "key_validation"
+  ) {
+    throw new CatalogLocalCapabilityEvidenceError(
+      "only public_fixture key_validation MV/MZ evidence can be persisted by this mapper",
+    );
+  }
+
+  return {
+    adapterId: evidence.adapterId,
+    level: evidence.level,
+    evidenceSource: engineCapabilityEvidenceSourceValues.publicFixture,
+    evidenceKind: engineCapabilityEvidenceKindValues.keyValidation,
+    schemaVersion: evidence.schemaVersion,
+    status: dbEvidenceStatus(evidence.status),
+    aggregateCounts: evidence.aggregateCounts,
+    evidenceLabels: [capabilityEvidenceLabelValues.publicFixtureKeyValidation],
+    limitations: evidence.limitations,
+    publicFixtureId: evidence.fixtureId,
+  };
+}
+
+function assertKnownKeyValidationFixture(
+  fixture: CatalogKeyValidationFixture,
+): asserts fixture is CatalogKeyValidationFixture {
+  if (fixture === null || typeof fixture !== "object" || Array.isArray(fixture)) {
+    throw new CatalogLocalCapabilityEvidenceError("key validation fixture must be an object");
+  }
+  if (
+    typeof fixture.fixtureId !== "string" ||
+    !knownKeyValidationFixtureIds.has(fixture.fixtureId)
+  ) {
+    throw new CatalogLocalCapabilityEvidenceError("unsupported key validation fixtureId");
+  }
+  if (typeof fixture.schemaVersion !== "string" || fixture.schemaVersion.trim().length === 0) {
+    throw new CatalogLocalCapabilityEvidenceError(
+      "key validation fixture schemaVersion must be a non-empty string",
+    );
+  }
+  if (fixture.status !== "passed" && fixture.status !== "failed") {
+    throw new CatalogLocalCapabilityEvidenceError("unsupported key validation fixture status");
+  }
+  if (!Array.isArray(fixture.records) || fixture.records.length === 0) {
+    throw new CatalogLocalCapabilityEvidenceError(
+      "key validation fixture must carry at least one record",
+    );
+  }
+  fixture.records.forEach((record, index) => {
+    if (record === null || typeof record !== "object" || Array.isArray(record)) {
+      throw new CatalogLocalCapabilityEvidenceError(
+        `key validation record ${index} must be an object`,
+      );
+    }
+    if (!knownKeyValidationOutcomes.has(record.diagnosticResult)) {
+      throw new CatalogLocalCapabilityEvidenceError(
+        `key validation record ${index} has an unsupported diagnosticResult`,
+      );
+    }
+  });
+}
+
+function keyValidationEvidenceStatus(
+  fixture: CatalogKeyValidationFixture,
+): CatalogCapabilityEvidenceStatus {
+  if (fixture.status !== "passed") {
+    return "missing";
+  }
+  const successes = fixture.records.filter(
+    (record) => record.diagnosticResult === "success",
+  ).length;
+  if (successes === fixture.records.length) {
+    return "present";
+  }
+  if (successes > 0) {
+    return "partial";
+  }
+  return "missing";
+}
+
+function keyValidationAggregateCounts(
+  records: CatalogKeyValidationFixtureRecord[],
+): Record<string, number> {
+  const counts: Record<string, number> = { key_validation_records: records.length };
+  for (const outcome of knownKeyValidationOutcomes) {
+    const total = records.filter((record) => record.diagnosticResult === outcome).length;
+    if (total > 0) {
+      counts[`key_validation_${outcome}`] = total;
+    }
+  }
+  return sortRecord(counts);
 }
 
 export function mergeCapabilityEvidenceFixture(

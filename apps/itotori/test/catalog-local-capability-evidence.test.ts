@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import {
   type CapabilityEvidenceInput as DbCapabilityEvidenceInput,
+  EngineCapabilityReportRepository,
   capabilityEvidenceLabelValues,
   engineCapabilityEvidenceKindValues,
   engineCapabilityEvidenceSourceValues,
@@ -11,10 +12,14 @@ import { describe, expect, it } from "vitest";
 import {
   type CatalogCapabilityEvidenceMergeInput,
   type CatalogCapabilityEvidenceReadiness,
+  type CatalogKeyValidationFixture,
   catalogCapabilityEvidenceInputSchemaVersion,
   catalogPublicRpgMakerMvMzAdapterId,
+  catalogRpgMakerMvMzKeyValidationFixtureId,
+  mapKeyValidationFixtureToCapabilityEvidence,
   mapLocalCapabilityEvidenceToDbInput,
   mapLocalEngineEvidenceToCapabilityEvidence,
+  mapPublicKeyValidationEvidenceToDbInput,
   mergeCapabilityEvidenceFixture,
 } from "../src/services/catalog-local-capability-evidence.js";
 import type { CatalogLocalEngineEvidence } from "../src/services/catalog-local-scan.js";
@@ -236,7 +241,189 @@ describe("catalog local capability evidence mapper", () => {
       );
     }
   });
+
+  it("produces public_fixture key_validation runtime evidence from the KAIFUU fixture (not adapter_matrix)", async () => {
+    const fixture = await readJson<CatalogKeyValidationFixture>(
+      "fixtures/public/kaifuu-encrypted-matrix/expected/rpg-maker-mv-mz-key-validation-success-v0.1.json",
+    );
+    expect(fixture.fixtureId).toBe(catalogRpgMakerMvMzKeyValidationFixtureId);
+
+    const evidence = mapKeyValidationFixtureToCapabilityEvidence(fixture);
+
+    // The gap this closes: it is `key_validation` runtime readiness, NOT the
+    // static `adapter_matrix` shape the merge producer hard-codes.
+    expect(evidence.evidenceSource).toBe("public_fixture");
+    expect(evidence.evidenceKind).toBe("key_validation");
+    expect(evidence.evidenceKind).not.toBe("adapter_matrix");
+    expect(evidence).toEqual({
+      schemaVersion: catalogCapabilityEvidenceInputSchemaVersion,
+      adapterId: catalogPublicRpgMakerMvMzAdapterId,
+      level: "extract",
+      evidenceSource: "public_fixture",
+      evidenceKind: "key_validation",
+      fixtureId: catalogRpgMakerMvMzKeyValidationFixtureId,
+      status: "present",
+      aggregateCounts: {
+        key_validation_records: 1,
+        key_validation_success: 1,
+      },
+      evidenceLabels: [capabilityEvidenceLabelValues.publicFixtureKeyValidation],
+      limitations: [
+        "public fixture key-validation runtime evidence; validates fixture-safe MV/MZ key evidence against System metadata and encrypted image evidence only",
+        "key validation does not decrypt, extract, replace, or patch encrypted media",
+      ],
+    });
+
+    // No fixture proof hashes / key material may leak into surfaced evidence.
+    const serialized = JSON.stringify(evidence);
+    expect(serialized).not.toContain("proofHash");
+    expect(serialized).not.toContain("sha256:");
+    for (const record of fixture.records) {
+      expect(serialized).not.toContain(record.proofHash);
+      expect(serialized).not.toContain(record.systemJsonProofHash);
+      expect(serialized).not.toContain(record.imageEvidenceHash);
+    }
+  });
+
+  it("maps key_validation evidence into a DB input the consumer repository accepts as runtime readiness", async () => {
+    const fixture = await readJson<CatalogKeyValidationFixture>(
+      "fixtures/public/kaifuu-encrypted-matrix/expected/rpg-maker-mv-mz-key-validation-success-v0.1.json",
+    );
+    const evidence = mapKeyValidationFixtureToCapabilityEvidence(fixture);
+    const dbInput = mapPublicKeyValidationEvidenceToDbInput(evidence);
+
+    expect(dbInput).toEqual({
+      adapterId: catalogPublicRpgMakerMvMzAdapterId,
+      level: "extract",
+      evidenceSource: engineCapabilityEvidenceSourceValues.publicFixture,
+      evidenceKind: engineCapabilityEvidenceKindValues.keyValidation,
+      schemaVersion: catalogCapabilityEvidenceInputSchemaVersion,
+      status: engineCapabilityEvidenceStatusValues.present,
+      aggregateCounts: {
+        key_validation_records: 1,
+        key_validation_success: 1,
+      },
+      evidenceLabels: [capabilityEvidenceLabelValues.publicFixtureKeyValidation],
+      limitations: [
+        "public fixture key-validation runtime evidence; validates fixture-safe MV/MZ key evidence against System metadata and encrypted image evidence only",
+        "key validation does not decrypt, extract, replace, or patch encrypted media",
+      ],
+      publicFixtureId: catalogRpgMakerMvMzKeyValidationFixtureId,
+    } satisfies DbCapabilityEvidenceInput);
+
+    // The DB-side consumer must accept this exact shape: the repository's
+    // source/kind pairing + leakage guards run before persistence. A capturing
+    // stub returns the normalized row, proving validation passed.
+    const persisted = await repositoryWithCapturingStub().recordCapabilityEvidence(
+      { userId: "local-user" },
+      dbInput,
+    );
+    expect(persisted).toMatchObject({
+      evidenceSource: engineCapabilityEvidenceSourceValues.publicFixture,
+      evidenceKind: engineCapabilityEvidenceKindValues.keyValidation,
+      publicFixtureId: catalogRpgMakerMvMzKeyValidationFixtureId,
+      evidenceLabels: [capabilityEvidenceLabelValues.publicFixtureKeyValidation],
+    });
+  });
+
+  it("derives partial/missing key_validation status and per-outcome aggregate counts", () => {
+    const partial = mapKeyValidationFixtureToCapabilityEvidence(
+      keyValidationFixture({
+        records: [
+          keyValidationRecord("success"),
+          keyValidationRecord("bad_key"),
+          keyValidationRecord("unsupported_suffix"),
+        ],
+      }),
+    );
+    expect(partial.status).toBe("partial");
+    expect(partial.aggregateCounts).toEqual({
+      key_validation_bad_key: 1,
+      key_validation_records: 3,
+      key_validation_success: 1,
+      key_validation_unsupported_suffix: 1,
+    });
+
+    const failed = mapKeyValidationFixtureToCapabilityEvidence(
+      keyValidationFixture({
+        status: "failed",
+        records: [keyValidationRecord("missing_key")],
+      }),
+    );
+    expect(failed.status).toBe("missing");
+    expect(failed.aggregateCounts).toEqual({
+      key_validation_missing_key: 1,
+      key_validation_records: 1,
+    });
+  });
+
+  it("rejects unknown key_validation fixtures and outcomes", () => {
+    expect(() =>
+      mapKeyValidationFixtureToCapabilityEvidence(
+        keyValidationFixture({ fixtureId: "some-other-fixture" }),
+      ),
+    ).toThrow(/unsupported key validation fixtureId/u);
+
+    expect(() =>
+      mapKeyValidationFixtureToCapabilityEvidence(
+        keyValidationFixture({
+          records: [keyValidationRecord("mystery_outcome" as "success")],
+        }),
+      ),
+    ).toThrow(/unsupported diagnosticResult/u);
+
+    expect(() =>
+      mapKeyValidationFixtureToCapabilityEvidence(keyValidationFixture({ records: [] })),
+    ).toThrow(/at least one record/u);
+  });
 });
+
+function keyValidationRecord(
+  diagnosticResult: CatalogKeyValidationFixture["records"][number]["diagnosticResult"],
+): CatalogKeyValidationFixture["records"][number] {
+  return {
+    requirementId: "rpg-maker-mv-mz-asset-key",
+    secretRefScheme: "local-secret",
+    surface: "image_asset",
+    codec: "png_image",
+    diagnosticResult,
+    proofHash: "sha256:a326ae67c10fd2c4de4907469f85292b85f2040b318c739ea8bac2f2c6ebb176",
+    systemJsonProofHash: "sha256:c7a19c8919ea7345ac69ac2e6591f6cbd35bd354a3e6be27de7b3461e233246d",
+    imageEvidenceHash: "sha256:5bda4203182bc8aecb1a49af627733d73728a98f0483ed02ed409e3619e12572",
+  };
+}
+
+function keyValidationFixture(
+  overrides: Partial<CatalogKeyValidationFixture> = {},
+): CatalogKeyValidationFixture {
+  return {
+    schemaVersion: "0.1.0",
+    fixtureId: catalogRpgMakerMvMzKeyValidationFixtureId,
+    status: "passed",
+    supportBoundary: "fixture-safe MV/MZ key evidence only",
+    records: [keyValidationRecord("success")],
+    decryptOrPatchClaimed: false,
+    ...overrides,
+  };
+}
+
+function repositoryWithCapturingStub(): EngineCapabilityReportRepository {
+  const db = {
+    select: () => ({
+      from: () => ({
+        where: () => ({
+          limit: async () => [{ permission: "project.import" }],
+        }),
+      }),
+    }),
+    insert: () => ({
+      values: (row: unknown) => ({
+        returning: async () => [row],
+      }),
+    }),
+  } as never;
+  return new EngineCapabilityReportRepository(db);
+}
 
 function localMvMzEvidence(): CatalogLocalEngineEvidence {
   return {
