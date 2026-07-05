@@ -1,0 +1,47 @@
+{
+  "gameId": "mvmz-patched-fixture",
+  "title": "MV/MZ Patched Observation Fixture",
+  "sourceLocale": "ja-JP",
+  "units": [
+    {
+      "sourceUnitKey": "mvmz.scene1.line1",
+      "speaker": "Mira",
+      "textSurface": "dialogue",
+      "sourceText": "灯台は静かな入り江を見守り続ける。",
+      "targetText": "PLACEHOLDER line1 -- the PATCHED translation is observed from the live DOM, not this field.",
+      "protectedSpans": []
+    },
+    {
+      "sourceUnitKey": "mvmz.scene1.line2",
+      "speaker": "Kai",
+      "textSurface": "dialogue",
+      "sourceText": "通りゆく船に合図を送ろう。",
+      "targetText": "PLACEHOLDER line2 -- the PATCHED translation is observed from the live DOM, not this field.",
+      "protectedSpans": []
+    },
+    {
+      "sourceUnitKey": "mvmz.scene1.choice",
+      "speaker": null,
+      "textSurface": "choice",
+      "sourceText": "どうする？",
+      "targetText": "PLACEHOLDER choice prompt -- the PATCHED translation is observed from the live DOM.",
+      "protectedSpans": []
+    },
+    {
+      "sourceUnitKey": "mvmz.scene1.choice.opt0",
+      "speaker": null,
+      "textSurface": "choice_option",
+      "sourceText": "灯りを高く掲げる。",
+      "targetText": "PLACEHOLDER opt0 -- the PATCHED translation is observed from the live DOM.",
+      "protectedSpans": []
+    },
+    {
+      "sourceUnitKey": "mvmz.scene1.choice.opt1",
+      "speaker": null,
+      "textSurface": "choice_option",
+      "sourceText": "暗がりで息を潜める。",
+      "targetText": "PLACEHOLDER opt1 -- the PATCHED translation is observed from the live DOM.",
+      "protectedSpans": []
+    }
+  ]
+}

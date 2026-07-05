@@ -1,0 +1,84 @@
+{
+  "checks": [
+    {
+      "checkId": "trace_evidence_tier_is_e1",
+      "detail": "runtime evidence report evidenceTier = E1; expected E1",
+      "mandatory": true,
+      "status": "pass"
+    },
+    {
+      "checkId": "observation_events_present",
+      "detail": "3 observation-hook event(s); a launch that produced no instrumentation island observes nothing and proves nothing",
+      "mandatory": true,
+      "status": "pass"
+    },
+    {
+      "checkId": "observation_source_is_live_runtime",
+      "detail": "all 3 event(s) observationSource = live_dom",
+      "mandatory": true,
+      "status": "pass"
+    },
+    {
+      "checkId": "observation_evidence_tier_is_e1",
+      "detail": "every observation event must carry evidenceTier E1 (3 event(s) checked)",
+      "mandatory": true,
+      "status": "pass"
+    },
+    {
+      "checkId": "full_bridge_and_environment_linkage",
+      "detail": "0 of 3 event(s) missing bridge-unit / source-revision / runtime-target / adapter / environment linkage",
+      "mandatory": true,
+      "status": "pass"
+    },
+    {
+      "checkId": "observed_text_absent_from_static_source",
+      "detail": "all 5 observed string(s) are absent from the static fixture source; they could only have materialised from a live runtime render",
+      "mandatory": true,
+      "status": "pass"
+    }
+  ],
+  "consumes": {
+    "adapterName": "utsushi-browser",
+    "reportEvidenceTier": "E1",
+    "runtimeReportId": "019ed050-0000-7000-8000-000000001000",
+    "runtimeTraceSource": "UTSUSHI-006"
+  },
+  "engine": "rpg_maker_mv_mz",
+  "limitations": [
+    "No UTSUSHI-065 screenshot evidence supplied; the proof rests on the E1 text + choice observation trace alone.",
+    "Runtime-observation proof is an evidence VERDICT over a consumed UTSUSHI-006 trace: it re-derives the E1-vs-static distinction from the static fixture bytes and does not embed raw game bytes or pixels."
+  ],
+  "observation": {
+    "adapterId": {
+      "name": "utsushi-browser",
+      "version": "0.0.0"
+    },
+    "choiceEventCount": 1,
+    "environment": {
+      "display": "browser-headless",
+      "engine": "browser-smoke-fixture",
+      "locale": "ja-JP",
+      "platform": "linux",
+      "runtime": "browser"
+    },
+    "observedBridgeUnitIds": [
+      "019ed000-0000-7000-8000-bridgeun0001",
+      "019ed000-0000-7000-8000-bridgeun0002",
+      "019ed000-0000-7000-8000-bridgeun0003"
+    ],
+    "runtimeTargetId": "fixture:mvmz-patched-fixture",
+    "sourceRevision": {
+      "revisionId": "fixture-source-v0.1",
+      "sourceId": "mvmz-patched-fixture"
+    },
+    "textEventCount": 2
+  },
+  "proofId": "cac432af-03e2-7aa5-955b-bc1d66a3629a",
+  "proofKind": "utsushi.mvmz.runtime_observation_proof",
+  "provenEvidenceTier": "E1",
+  "runtimeObservationProven": true,
+  "schemaVersion": "0.1.0",
+  "screenshotEvidence": {
+    "available": false
+  }
+}

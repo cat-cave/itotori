@@ -1,0 +1,149 @@
+{
+  "baseRuntimeObservationProof": {
+    "checks": [
+      {
+        "checkId": "trace_evidence_tier_is_e1",
+        "detail": "runtime evidence report evidenceTier = E1; expected E1",
+        "mandatory": true,
+        "status": "pass"
+      },
+      {
+        "checkId": "observation_events_present",
+        "detail": "3 observation-hook event(s); a launch that produced no instrumentation island observes nothing and proves nothing",
+        "mandatory": true,
+        "status": "pass"
+      },
+      {
+        "checkId": "observation_source_is_live_runtime",
+        "detail": "all 3 event(s) observationSource = live_dom",
+        "mandatory": true,
+        "status": "pass"
+      },
+      {
+        "checkId": "observation_evidence_tier_is_e1",
+        "detail": "every observation event must carry evidenceTier E1 (3 event(s) checked)",
+        "mandatory": true,
+        "status": "pass"
+      },
+      {
+        "checkId": "full_bridge_and_environment_linkage",
+        "detail": "0 of 3 event(s) missing bridge-unit / source-revision / runtime-target / adapter / environment linkage",
+        "mandatory": true,
+        "status": "pass"
+      },
+      {
+        "checkId": "observed_text_absent_from_static_source",
+        "detail": "all 5 observed string(s) are absent from the static fixture source; they could only have materialised from a live runtime render",
+        "mandatory": true,
+        "status": "pass"
+      }
+    ],
+    "observation": {
+      "adapterId": {
+        "name": "utsushi-browser",
+        "version": "0.0.0"
+      },
+      "choiceEventCount": 1,
+      "environment": {
+        "display": "browser-headless",
+        "engine": "browser-smoke-fixture",
+        "locale": "ja-JP",
+        "platform": "linux",
+        "runtime": "browser"
+      },
+      "observedBridgeUnitIds": [
+        "019ed000-0000-7000-8000-bridgeun0001",
+        "019ed000-0000-7000-8000-bridgeun0002",
+        "019ed000-0000-7000-8000-bridgeun0003"
+      ],
+      "runtimeTargetId": "fixture:mvmz-patched-fixture",
+      "sourceRevision": {
+        "revisionId": "fixture-source-v0.1",
+        "sourceId": "mvmz-patched-fixture"
+      },
+      "textEventCount": 2
+    },
+    "proofId": "cac432af-03e2-7aa5-955b-bc1d66a3629a",
+    "proofKind": "utsushi.mvmz.runtime_observation_proof",
+    "provenEvidenceTier": "E1",
+    "runtimeObservationProven": true,
+    "screenshotEvidence": {
+      "available": false
+    }
+  },
+  "checks": [
+    {
+      "checkId": "base_runtime_observation_proven_e1",
+      "detail": "the patched trace re-derives the full UTSUSHI-102 E1 proof (live-DOM, E1 tier, full linkage, observed translation absent from every consumed static input): proven=true",
+      "mandatory": true,
+      "status": "pass"
+    },
+    {
+      "checkId": "patch_result_status_passed",
+      "detail": "Kaifuu PatchResult status = passed; expected passed",
+      "mandatory": true,
+      "status": "pass"
+    },
+    {
+      "checkId": "patched_output_matches_patch_result_hash",
+      "detail": "canonical hash of the 5 observed translated unit(s) equals the PatchResult outputHash (sha256:8bfc28f64244432d6f834142c3dece101caae933ba8eb6ef058f2589e9c1b671); the observation reproduces exactly the attested patched output",
+      "mandatory": true,
+      "status": "pass"
+    },
+    {
+      "checkId": "observed_text_is_translation_not_prepatch_source",
+      "detail": "all 5 observed string(s) differ from their pre-patch sourceText; the observation is the PATCHED translation, not the original",
+      "mandatory": true,
+      "status": "pass"
+    },
+    {
+      "checkId": "alpha_proof_manifest_baseline_e1_proven",
+      "detail": "alpha proof manifest proofKind=utsushi.mvmz.runtime_observation_proof runtimeObservationProven=true provenEvidenceTier=E1; expected the UTSUSHI-102 proof proven at E1",
+      "mandatory": true,
+      "status": "pass"
+    },
+    {
+      "checkId": "patched_units_match_alpha_proof_units",
+      "detail": "alpha proof proved bridge units [\"019ed000-0000-7000-8000-bridgeun0001\", \"019ed000-0000-7000-8000-bridgeun0002\", \"019ed000-0000-7000-8000-bridgeun0003\"]; patched observation covers [\"019ed000-0000-7000-8000-bridgeun0001\", \"019ed000-0000-7000-8000-bridgeun0002\", \"019ed000-0000-7000-8000-bridgeun0003\"]; every alpha unit must be covered post-patch",
+      "mandatory": true,
+      "status": "pass"
+    }
+  ],
+  "consumes": {
+    "alphaProofManifest": {
+      "proofId": "cac432af-03e2-7aa5-955b-bc1d66a3629a",
+      "proofKind": "utsushi.mvmz.runtime_observation_proof",
+      "provenEvidenceTier": "E1"
+    },
+    "patchResult": {
+      "outputHash": "sha256:8bfc28f64244432d6f834142c3dece101caae933ba8eb6ef058f2589e9c1b671",
+      "patchExportId": "019ed060-0000-7000-8000-0000000000a1",
+      "patchResultId": "019ed060-0000-7000-8000-000000000001",
+      "status": "passed"
+    },
+    "patchedRuntimeTraceSource": "UTSUSHI-006",
+    "runtimeReportId": "019ed050-0000-7000-8000-000000001000"
+  },
+  "engine": "rpg_maker_mv_mz",
+  "limitations": [
+    "Patched-runtime-observation proof re-derives the UTSUSHI-102 E1-vs-static distinction over the patched trace and does not embed raw game bytes or pixels; it names the PatchResult and alpha proof by id/hash only.",
+    "The absent-from-static crux guarantees the observed translation was not LIFTED from any consumed static input (patched fixture bytes, PatchResult, alpha proof); an operator who hand-authors the correct translation into a fabricated trace is out of scope, exactly as in UTSUSHI-102. The outputHash provenance link ties the observation to a specific attested patch."
+  ],
+  "patchAttestation": {
+    "hashMatches": true,
+    "patchResultOutputHash": "sha256:8bfc28f64244432d6f834142c3dece101caae933ba8eb6ef058f2589e9c1b671",
+    "recomputedOutputHash": "sha256:8bfc28f64244432d6f834142c3dece101caae933ba8eb6ef058f2589e9c1b671",
+    "translatedUnitKeys": [
+      "mvmz.scene1.choice",
+      "mvmz.scene1.choice.opt0",
+      "mvmz.scene1.choice.opt1",
+      "mvmz.scene1.line1",
+      "mvmz.scene1.line2"
+    ]
+  },
+  "patchedRuntimeObservationProven": true,
+  "proofId": "c62169a0-0237-7584-ad64-02c1a44aa085",
+  "proofKind": "utsushi.mvmz.patched_runtime_observation_proof",
+  "provenEvidenceTier": "E1",
+  "schemaVersion": "0.1.0"
+}

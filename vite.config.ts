@@ -54,6 +54,15 @@ export default defineConfig({
       // `committed_real_launch_evidence_reproduces_the_e1_proof` and the
       // real-browser gate; the formatter must not rewrite them.
       "crates/utsushi-fixture/tests/fixtures/mvmz_runtime_proof/**",
+      // UTSUSHI-119 MV/MZ PATCHED-output runtime-observation proof artifacts:
+      // the real launched-Chromium E1 patched trace, the Kaifuu PatchResult, the
+      // alpha proof, and the deterministic patched verdict golden are compared
+      // against the pipeline output by
+      // `committed_patched_trace_reproduces_the_e1_proof` and the real-browser
+      // gate. The patched fixture's inline base64 payload carries the ONLY copy
+      // of the observed translation, so the formatter must not rewrite it.
+      "crates/utsushi-fixture/tests/fixtures/mvmz_patched_observation/**",
+      "crates/utsushi-fixture/tests/fixtures/mvmz_patched_runtime_proof/**",
       // UTSUSHI-008 KAG command-trace golden is byte-compared against the
       // `trace-kag` subcommand's deterministic (sorted-key) output by
       // `cli_emits_committed_golden_trace`; the formatter must not rewrite it.

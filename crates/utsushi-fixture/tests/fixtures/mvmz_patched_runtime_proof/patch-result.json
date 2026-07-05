@@ -1,0 +1,8 @@
+{
+  "failures": [],
+  "outputHash": "sha256:8bfc28f64244432d6f834142c3dece101caae933ba8eb6ef058f2589e9c1b671",
+  "patchExportId": "019ed060-0000-7000-8000-0000000000a1",
+  "patchResultId": "019ed060-0000-7000-8000-000000000001",
+  "schemaVersion": "0.2.0",
+  "status": "passed"
+}
