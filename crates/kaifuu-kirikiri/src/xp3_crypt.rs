@@ -347,15 +347,31 @@ pub enum Xp3CryptError {
 /// semantics), so a correct key reproduces it and a wrong key does not.
 pub fn build_synthetic_crypt_xp3() -> Vec<u8> {
     let key = Xp3CryptKey::from_resolved_bytes(SYNTHETIC_FIXTURE_KEY.to_vec());
-    let entries: Vec<PlainXp3ArchiveEntry> = FIXTURE_MEMBERS
+    let members: Vec<(String, Vec<u8>)> = FIXTURE_MEMBERS
         .iter()
-        .map(|(path, text)| {
-            let plaintext = text.as_bytes();
+        .map(|(path, text)| ((*path).to_string(), text.as_bytes().to_vec()))
+        .collect();
+    encode_encrypted_xp3(&members, &key)
+}
+
+/// Encode an encrypted XP3 container from `(member id, plaintext)` pairs and a
+/// resolved key: encipher each member's **file data** with the fixture crypt
+/// filter and store the `adlr` adler-32 of the **plaintext** (KiriKiri
+/// semantics), then hand the entries to the shared plain-XP3 encoder.
+///
+/// This is the single encode path the KAIFUU-100 build and the KAIFUU-101
+/// patch-back rebuild both go through, so `encode(decrypt(x))` with no change
+/// is byte-identical and a trivial replacement recomputes member sizes / index
+/// offsets through the same deterministic encoder.
+pub(crate) fn encode_encrypted_xp3(members: &[(String, Vec<u8>)], key: &Xp3CryptKey) -> Vec<u8> {
+    let entries: Vec<PlainXp3ArchiveEntry> = members
+        .iter()
+        .map(|(path, plaintext)| {
             let plaintext_adler = compute_adler32(plaintext);
             let ciphertext = key.apply_filter(plaintext);
             let size = ciphertext.len() as u64;
             PlainXp3ArchiveEntry {
-                path: (*path).to_string(),
+                path: path.clone(),
                 // original_size == archive_size: the XOR filter preserves length
                 // and the fixture is uncompressed.
                 original_size: size,
@@ -400,13 +416,28 @@ pub struct Xp3CryptManifest {
     pub members: Vec<Xp3CryptExtractedMember>,
 }
 
-/// Decrypt + extract every member of an encrypted XP3 using the resolved key,
-/// verifying each member against its stored `adlr` adler-32. A wrong key trips
-/// the integrity check with a typed [`Xp3CryptError::IntegrityCheckFailed`].
-pub(crate) fn decrypt_and_extract(
+/// One decrypted member with its recovered **plaintext bytes** and the stored
+/// adler-32 it was verified against. Crate-private: the plaintext never leaves
+/// the module boundary except as a one-way hash in a report.
+pub(crate) struct Xp3DecryptedMember {
+    /// The in-archive member id.
+    pub(crate) member_id: String,
+    /// The verified decrypted plaintext.
+    pub(crate) plaintext: Vec<u8>,
+    /// The stored `adlr` adler-32 (of the plaintext) the member verified against.
+    pub(crate) stored_adler: u32,
+}
+
+/// Decrypt + verify every member of an encrypted XP3 using the resolved key,
+/// returning the recovered **plaintext** per member. Each member is checked
+/// against its stored `adlr` adler-32; a wrong key trips the integrity check
+/// with a typed [`Xp3CryptError::IntegrityCheckFailed`]. This is the shared
+/// decrypt path both the hash-only manifest and the patch-back extract go
+/// through, so integrity is verified in exactly one place.
+pub(crate) fn decrypt_members(
     container: &[u8],
     key: &Xp3CryptKey,
-) -> Result<Xp3CryptManifest, Xp3CryptError> {
+) -> Result<Vec<Xp3DecryptedMember>, Xp3CryptError> {
     let archive =
         read_plain_xp3_archive(container).map_err(|error| Xp3CryptError::ContainerRead {
             detail: error.to_string(),
@@ -425,14 +456,35 @@ pub(crate) fn decrypt_and_extract(
                 member_id: entry.path.clone(),
             });
         }
-        members.push(Xp3CryptExtractedMember {
+        members.push(Xp3DecryptedMember {
             member_id: entry.path.clone(),
-            plaintext_byte_len: plaintext.len() as u64,
-            plaintext_hash: ProofHash::new(sha256_hash_bytes(&plaintext))
-                .map_err(|message| Xp3CryptError::Internal { message })?,
-            adler32: format!("adler32:{stored_adler:08x}"),
+            plaintext,
+            stored_adler,
         });
     }
+    Ok(members)
+}
+
+/// Decrypt + extract every member of an encrypted XP3 using the resolved key,
+/// verifying each member against its stored `adlr` adler-32, and emit the
+/// hash-based manifest (no raw plaintext). A wrong key trips the integrity
+/// check with a typed [`Xp3CryptError::IntegrityCheckFailed`].
+pub(crate) fn decrypt_and_extract(
+    container: &[u8],
+    key: &Xp3CryptKey,
+) -> Result<Xp3CryptManifest, Xp3CryptError> {
+    let members = decrypt_members(container, key)?
+        .into_iter()
+        .map(|member| {
+            Ok(Xp3CryptExtractedMember {
+                member_id: member.member_id,
+                plaintext_byte_len: member.plaintext.len() as u64,
+                plaintext_hash: ProofHash::new(sha256_hash_bytes(&member.plaintext))
+                    .map_err(|message| Xp3CryptError::Internal { message })?,
+                adler32: format!("adler32:{:08x}", member.stored_adler),
+            })
+        })
+        .collect::<Result<Vec<_>, Xp3CryptError>>()?;
     Ok(Xp3CryptManifest { members })
 }
 
@@ -648,8 +700,23 @@ impl Xp3CryptReport {
 
 // --- Driver -----------------------------------------------------------------
 
+/// Build a hash-based member digest from a member id + its decrypted plaintext.
+/// Shared by the decrypt manifest and the KAIFUU-101 patch-back verification.
+pub(crate) fn member_digest_from_plaintext(
+    member_id: &str,
+    plaintext: &[u8],
+) -> Result<Xp3CryptMemberDigest, Xp3CryptError> {
+    Ok(Xp3CryptMemberDigest {
+        member_id: member_id.to_string(),
+        plaintext_byte_len: plaintext.len() as u64,
+        plaintext_hash: ProofHash::new(sha256_hash_bytes(plaintext))
+            .map_err(|message| Xp3CryptError::Internal { message })?,
+        adler32: format!("adler32:{:08x}", compute_adler32(plaintext)),
+    })
+}
+
 /// Resolve the fixture's container bytes in-process.
-fn resolve_container(
+pub(crate) fn resolve_container_bytes(
     source: &Xp3CryptContainerSource,
     fixture_dir: &Path,
 ) -> Result<Vec<u8>, Xp3CryptError> {
@@ -689,7 +756,7 @@ pub fn run_xp3_crypt_smoke_from_fixture(
         });
     }
 
-    let container = resolve_container(&fixture.container_source, fixture_dir)?;
+    let container = resolve_container_bytes(&fixture.container_source, fixture_dir)?;
     let container_hash = ProofHash::new(sha256_hash_bytes(&container))
         .map_err(|message| Xp3CryptError::Internal { message })?;
 

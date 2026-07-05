@@ -45,6 +45,7 @@ mod ids;
 mod parse;
 mod patch;
 pub mod xp3_crypt;
+pub mod xp3_patch;
 
 pub use parse::{
     KsDocument, KsEncoding, KsFinding, KsFindingKind, KsUnit, TextRole, parse_ks,
@@ -58,6 +59,11 @@ pub use xp3_crypt::{
     Xp3CryptExtractedMember, Xp3CryptFixture, Xp3CryptManifest, Xp3CryptMemberDigest,
     Xp3CryptMissingKeyReport, Xp3CryptReport, Xp3CryptWrongKeyReport, Xp3CryptoProfile,
     build_synthetic_crypt_xp3, run_xp3_crypt_smoke_from_fixture, run_xp3_crypt_smoke_from_path,
+};
+pub use xp3_patch::{
+    Xp3PatchCapability, Xp3PatchChangeReport, Xp3PatchCoverage, Xp3PatchError,
+    Xp3PatchIdentityReport, Xp3PatchManifest, Xp3PatchReport, Xp3PatchVerification,
+    Xp3TextReplacement, run_xp3_patch_smoke_from_fixture, run_xp3_patch_smoke_from_paths,
 };
 
 /// One-line honest-scope statement, embedded so the boundary is queryable

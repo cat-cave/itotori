@@ -1,0 +1,12 @@
+{
+  "schemaVersion": "0.1.0",
+  "manifestId": "kirikiri-xp3-patch-back-manifest",
+  "sourceNodeId": "KAIFUU-101",
+  "replacements": [
+    {
+      "memberId": "scenario/intro.ks",
+      "find": "[synthetic-kirikiri-xp3-crypt-line-0]",
+      "replace": "[localized-kirikiri-xp3-patch-back-line-0-JA]"
+    }
+  ]
+}
