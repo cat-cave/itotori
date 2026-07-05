@@ -7,6 +7,7 @@ export * from "./speaker-label.js";
 export * from "./translation-draft.js";
 export * from "./draft-artifact-bundle.js";
 export * from "./patch-export-bundle.js";
+export * from "./asset-localization-draft.js";
 export * from "./agentic-loop-bundle.js";
 export * from "./pair-policy.v0.3.js";
 export * from "./provider-proof-bundle.js";
