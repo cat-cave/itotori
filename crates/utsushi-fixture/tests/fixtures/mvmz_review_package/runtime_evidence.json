@@ -1,0 +1,370 @@
+{
+  "adapterName": "utsushi-mvmz-screenshot-evidence",
+  "adapterVersion": "0.1.0-alpha",
+  "approximations": [
+    {
+      "affectedBridgeUnitRefs": [
+        {
+          "bridgeUnitId": "5ce7ce53-c610-743e-b987-f54465e15561",
+          "sourceUnitKey": "rpgmaker:Map012.json#/events/3/pages/0/list/5/parameters/0"
+        },
+        {
+          "bridgeUnitId": "0b4d782a-0d5d-7207-af73-041d2be2a3bd",
+          "sourceUnitKey": "rpgmaker:Map012.json#/events/3/pages/0/list/8/parameters/0/0"
+        },
+        {
+          "bridgeUnitId": "46cfb39f-9dcd-790c-acde-13e2988c7af8",
+          "sourceUnitKey": "rpgmaker:CommonEvents.json#/3/list/2/parameters/0"
+        }
+      ],
+      "approximationId": "22fe77eb-f47e-7b7f-a1b7-59588cf0da26",
+      "approximationTier": "layout_probe",
+      "description": "MV/MZ map / common-event command trace events are linked to screenshot artifactRefs by bridge unit ref + frame; this narrow evidence proves screenshot attachment, not reference-runtime fidelity.",
+      "evidenceTierCeiling": "E2",
+      "scope": "mvmz screenshot evidence"
+    }
+  ],
+  "branchEvents": [],
+  "captureMetadata": {
+    "adapter": "utsushi-browser",
+    "deviceScaleFactor": 1.0,
+    "viewport": {
+      "height": 624,
+      "width": 816
+    }
+  },
+  "captures": [
+    {
+      "artifactRef": {
+        "artifactId": "76dcaf93-37f1-7227-8869-92285557b5d0",
+        "artifactKind": "screenshot",
+        "byteSize": 54,
+        "mediaType": "image/png",
+        "uri": "artifacts/utsushi/runtime/58a98a57-e18f-75dc-8bce-19880e3b9856/screenshots/76dcaf93-37f1-7227-8869-92285557b5d0.png"
+      },
+      "bridgeUnitRef": {
+        "bridgeUnitId": "5ce7ce53-c610-743e-b987-f54465e15561",
+        "sourceUnitKey": "rpgmaker:Map012.json#/events/3/pages/0/list/5/parameters/0"
+      },
+      "captureId": "8b2c327b-c600-75e6-adaa-c152bb147fca",
+      "captureMetadata": {
+        "adapter": "utsushi-browser",
+        "deviceScaleFactor": 1.0,
+        "viewport": {
+          "height": 624,
+          "width": 816
+        }
+      },
+      "evidenceTier": "E2",
+      "evidencesTraceEventId": "3291ade3-e2b5-7a4f-9e7f-4e654e2ed1f3",
+      "frame": 1,
+      "height": 624,
+      "mvCommandRef": {
+        "code": 401,
+        "commandIndex": 5,
+        "containerId": 7,
+        "containerIndex": 3,
+        "containerKind": "map_event",
+        "pageIndex": 0,
+        "pointer": "/events/3/pages/0/list/5/parameters/0",
+        "sourceFile": "Map012.json",
+        "textRole": "show_text"
+      },
+      "width": 816
+    },
+    {
+      "artifactRef": {
+        "artifactId": "7ba21a49-d6ec-74c0-bbc5-20e6e8ffe2bc",
+        "artifactKind": "screenshot",
+        "byteSize": 54,
+        "mediaType": "image/png",
+        "uri": "artifacts/utsushi/runtime/58a98a57-e18f-75dc-8bce-19880e3b9856/screenshots/7ba21a49-d6ec-74c0-bbc5-20e6e8ffe2bc.png"
+      },
+      "bridgeUnitRef": {
+        "bridgeUnitId": "0b4d782a-0d5d-7207-af73-041d2be2a3bd",
+        "sourceUnitKey": "rpgmaker:Map012.json#/events/3/pages/0/list/8/parameters/0/0"
+      },
+      "captureId": "02b8429b-9347-701b-acc5-93ab5380a409",
+      "captureMetadata": {
+        "adapter": "utsushi-browser",
+        "deviceScaleFactor": 1.0,
+        "viewport": {
+          "height": 624,
+          "width": 816
+        }
+      },
+      "evidenceTier": "E2",
+      "evidencesTraceEventId": "b10cfc3c-3b0e-71fd-9eca-fa55d492e926",
+      "frame": 2,
+      "height": 624,
+      "mvCommandRef": {
+        "code": 102,
+        "commandIndex": 8,
+        "containerId": 7,
+        "containerIndex": 3,
+        "containerKind": "map_event",
+        "optionIndex": 0,
+        "pageIndex": 0,
+        "pointer": "/events/3/pages/0/list/8/parameters/0/0",
+        "sourceFile": "Map012.json",
+        "textRole": "choice_option"
+      },
+      "width": 816
+    },
+    {
+      "artifactRef": {
+        "artifactId": "c102504b-184c-7bca-b42e-cf8669c84104",
+        "artifactKind": "screenshot",
+        "byteSize": 54,
+        "mediaType": "image/png",
+        "uri": "artifacts/utsushi/runtime/58a98a57-e18f-75dc-8bce-19880e3b9856/screenshots/c102504b-184c-7bca-b42e-cf8669c84104.png"
+      },
+      "bridgeUnitRef": {
+        "bridgeUnitId": "46cfb39f-9dcd-790c-acde-13e2988c7af8",
+        "sourceUnitKey": "rpgmaker:CommonEvents.json#/3/list/2/parameters/0"
+      },
+      "captureId": "5ac96046-d2f0-7adf-b686-26c31e9deb55",
+      "captureMetadata": {
+        "adapter": "utsushi-browser",
+        "deviceScaleFactor": 1.0,
+        "viewport": {
+          "height": 624,
+          "width": 816
+        }
+      },
+      "evidenceTier": "E2",
+      "evidencesTraceEventId": "79d09dc2-4066-7a88-906b-d7db2b87b439",
+      "frame": 3,
+      "height": 624,
+      "mvCommandRef": {
+        "code": 401,
+        "commandIndex": 2,
+        "containerId": 4,
+        "containerIndex": 3,
+        "containerKind": "common_event",
+        "pointer": "/3/list/2/parameters/0",
+        "sourceFile": "CommonEvents.json",
+        "textRole": "show_text"
+      },
+      "width": 816
+    }
+  ],
+  "createdAt": "2026-06-17T00:00:00.000Z",
+  "evidenceTier": "E2",
+  "fidelityTier": "layout_probe",
+  "limitations": [
+    "Synthetic public MV/MZ fixture; screenshot artifactRefs reference managed runtime artifacts, not live commercial-engine pixels.",
+    "Narrow screenshot-evidence attachment only; not the broad runtime conformance manifest."
+  ],
+  "observationHookEvents": [
+    {
+      "adapterId": {
+        "name": "utsushi-mvmz-screenshot-evidence",
+        "version": "0.1.0-alpha"
+      },
+      "bridgeRefs": [
+        {
+          "bridgeUnitId": "5ce7ce53-c610-743e-b987-f54465e15561",
+          "sourceUnitKey": "rpgmaker:Map012.json#/events/3/pages/0/list/5/parameters/0"
+        }
+      ],
+      "environment": {
+        "display": "utsushi-browser",
+        "engine": "rpg_maker_mv_mz",
+        "locale": "ja-JP",
+        "runtime": "mvmz-screenshot-evidence"
+      },
+      "eventId": "36c8581b-1235-764f-a3ac-d6cfa72a40b5",
+      "eventKind": "frame",
+      "evidenceTier": "E2",
+      "observedAt": "2026-06-17T00:00:00.000Z",
+      "payload": {
+        "artifactRef": {
+          "artifactId": "76dcaf93-37f1-7227-8869-92285557b5d0",
+          "artifactKind": "screenshot",
+          "byteSize": 54,
+          "mediaType": "image/png",
+          "uri": "artifacts/utsushi/runtime/58a98a57-e18f-75dc-8bce-19880e3b9856/screenshots/76dcaf93-37f1-7227-8869-92285557b5d0.png"
+        },
+        "evidencesTraceEventId": "3291ade3-e2b5-7a4f-9e7f-4e654e2ed1f3",
+        "frame": 1,
+        "height": 624,
+        "payloadKind": "frame",
+        "width": 816
+      },
+      "redaction": {
+        "status": "not_required"
+      },
+      "runtimeTargetId": "mvmz:mvmz-screenshot-evidence-fixture",
+      "schemaVersion": "0.1.0-alpha",
+      "sourceRevision": {
+        "revisionId": "mvmz-screenshot-evidence-v0.1",
+        "sourceId": "mvmz-screenshot-evidence-fixture"
+      }
+    },
+    {
+      "adapterId": {
+        "name": "utsushi-mvmz-screenshot-evidence",
+        "version": "0.1.0-alpha"
+      },
+      "bridgeRefs": [
+        {
+          "bridgeUnitId": "0b4d782a-0d5d-7207-af73-041d2be2a3bd",
+          "sourceUnitKey": "rpgmaker:Map012.json#/events/3/pages/0/list/8/parameters/0/0"
+        }
+      ],
+      "environment": {
+        "display": "utsushi-browser",
+        "engine": "rpg_maker_mv_mz",
+        "locale": "ja-JP",
+        "runtime": "mvmz-screenshot-evidence"
+      },
+      "eventId": "89ed3563-1dda-75ff-82a6-6838b1eae0ac",
+      "eventKind": "frame",
+      "evidenceTier": "E2",
+      "observedAt": "2026-06-17T00:00:00.000Z",
+      "payload": {
+        "artifactRef": {
+          "artifactId": "7ba21a49-d6ec-74c0-bbc5-20e6e8ffe2bc",
+          "artifactKind": "screenshot",
+          "byteSize": 54,
+          "mediaType": "image/png",
+          "uri": "artifacts/utsushi/runtime/58a98a57-e18f-75dc-8bce-19880e3b9856/screenshots/7ba21a49-d6ec-74c0-bbc5-20e6e8ffe2bc.png"
+        },
+        "evidencesTraceEventId": "b10cfc3c-3b0e-71fd-9eca-fa55d492e926",
+        "frame": 2,
+        "height": 624,
+        "payloadKind": "frame",
+        "width": 816
+      },
+      "redaction": {
+        "status": "not_required"
+      },
+      "runtimeTargetId": "mvmz:mvmz-screenshot-evidence-fixture",
+      "schemaVersion": "0.1.0-alpha",
+      "sourceRevision": {
+        "revisionId": "mvmz-screenshot-evidence-v0.1",
+        "sourceId": "mvmz-screenshot-evidence-fixture"
+      }
+    },
+    {
+      "adapterId": {
+        "name": "utsushi-mvmz-screenshot-evidence",
+        "version": "0.1.0-alpha"
+      },
+      "bridgeRefs": [
+        {
+          "bridgeUnitId": "46cfb39f-9dcd-790c-acde-13e2988c7af8",
+          "sourceUnitKey": "rpgmaker:CommonEvents.json#/3/list/2/parameters/0"
+        }
+      ],
+      "environment": {
+        "display": "utsushi-browser",
+        "engine": "rpg_maker_mv_mz",
+        "locale": "ja-JP",
+        "runtime": "mvmz-screenshot-evidence"
+      },
+      "eventId": "a75e6048-1957-7eb1-8d06-32d890ae6cc6",
+      "eventKind": "frame",
+      "evidenceTier": "E2",
+      "observedAt": "2026-06-17T00:00:00.000Z",
+      "payload": {
+        "artifactRef": {
+          "artifactId": "c102504b-184c-7bca-b42e-cf8669c84104",
+          "artifactKind": "screenshot",
+          "byteSize": 54,
+          "mediaType": "image/png",
+          "uri": "artifacts/utsushi/runtime/58a98a57-e18f-75dc-8bce-19880e3b9856/screenshots/c102504b-184c-7bca-b42e-cf8669c84104.png"
+        },
+        "evidencesTraceEventId": "79d09dc2-4066-7a88-906b-d7db2b87b439",
+        "frame": 3,
+        "height": 624,
+        "payloadKind": "frame",
+        "width": 816
+      },
+      "redaction": {
+        "status": "not_required"
+      },
+      "runtimeTargetId": "mvmz:mvmz-screenshot-evidence-fixture",
+      "schemaVersion": "0.1.0-alpha",
+      "sourceRevision": {
+        "revisionId": "mvmz-screenshot-evidence-v0.1",
+        "sourceId": "mvmz-screenshot-evidence-fixture"
+      }
+    }
+  ],
+  "recordings": [],
+  "runtimeReportId": "58a98a57-e18f-75dc-8bce-19880e3b9856",
+  "schemaVersion": "0.2.0",
+  "sourceLocale": "ja-JP",
+  "status": "passed",
+  "traceEvents": [
+    {
+      "bridgeUnitRef": {
+        "bridgeUnitId": "5ce7ce53-c610-743e-b987-f54465e15561",
+        "sourceUnitKey": "rpgmaker:Map012.json#/events/3/pages/0/list/5/parameters/0"
+      },
+      "eventKind": "text_observed",
+      "frame": 1,
+      "mvCommandRef": {
+        "code": 401,
+        "commandIndex": 5,
+        "containerId": 7,
+        "containerIndex": 3,
+        "containerKind": "map_event",
+        "pageIndex": 0,
+        "pointer": "/events/3/pages/0/list/5/parameters/0",
+        "sourceFile": "Map012.json",
+        "textRole": "show_text"
+      },
+      "observedText": "The lighthouse keeps its vigil over the quiet bay.",
+      "traceEventId": "3291ade3-e2b5-7a4f-9e7f-4e654e2ed1f3",
+      "traceKey": "rpgmaker:Map012.json#/events/3/pages/0/list/5/parameters/0"
+    },
+    {
+      "bridgeUnitRef": {
+        "bridgeUnitId": "0b4d782a-0d5d-7207-af73-041d2be2a3bd",
+        "sourceUnitKey": "rpgmaker:Map012.json#/events/3/pages/0/list/8/parameters/0/0"
+      },
+      "eventKind": "text_observed",
+      "frame": 2,
+      "mvCommandRef": {
+        "code": 102,
+        "commandIndex": 8,
+        "containerId": 7,
+        "containerIndex": 3,
+        "containerKind": "map_event",
+        "optionIndex": 0,
+        "pageIndex": 0,
+        "pointer": "/events/3/pages/0/list/8/parameters/0/0",
+        "sourceFile": "Map012.json",
+        "textRole": "choice_option"
+      },
+      "observedText": "Signal the passing ship.",
+      "traceEventId": "b10cfc3c-3b0e-71fd-9eca-fa55d492e926",
+      "traceKey": "rpgmaker:Map012.json#/events/3/pages/0/list/8/parameters/0/0"
+    },
+    {
+      "bridgeUnitRef": {
+        "bridgeUnitId": "46cfb39f-9dcd-790c-acde-13e2988c7af8",
+        "sourceUnitKey": "rpgmaker:CommonEvents.json#/3/list/2/parameters/0"
+      },
+      "eventKind": "text_observed",
+      "frame": 3,
+      "mvCommandRef": {
+        "code": 401,
+        "commandIndex": 2,
+        "containerId": 4,
+        "containerIndex": 3,
+        "containerKind": "common_event",
+        "pointer": "/3/list/2/parameters/0",
+        "sourceFile": "CommonEvents.json",
+        "textRole": "show_text"
+      },
+      "observedText": "A gentle wind carries the salt of the sea.",
+      "traceEventId": "79d09dc2-4066-7a88-906b-d7db2b87b439",
+      "traceKey": "rpgmaker:CommonEvents.json#/3/list/2/parameters/0"
+    }
+  ],
+  "validationFindings": []
+}

@@ -33,6 +33,11 @@ export default defineConfig({
       // `fixture_report_matches_committed_golden_bytes`; letting the formatter
       // rewrite it would break that byte-equality gate.
       "crates/utsushi-fixture/tests/fixtures/mvmz_screenshot_evidence/evidence.golden.json",
+      // UTSUSHI-010 MV/MZ review-package manifest golden is byte-compared
+      // against `serde_json::to_string_pretty` output by
+      // `manifest_matches_committed_golden_bytes`; the formatter must not
+      // rewrite it.
+      "crates/utsushi-fixture/tests/fixtures/mvmz_review_package/manifest.golden.json",
       "apps/itotori/src/engine-capability/**",
       "fixtures/synthetic/**",
       "crates/kaifuu-rpgmaker/tests/fixtures/**",

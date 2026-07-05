@@ -11,7 +11,7 @@ use utsushi_core::{
     RuntimeAdapterDescriptor, RuntimeAdapterRegistry, RuntimeOperation, RuntimeRequest, write_json,
 };
 
-const USAGE: &str = "usage: utsushi capabilities --output <path>\n       utsushi validate-reference-captures <corpus_manifest> --output <path>\n       utsushi replay --engine reallive --seen <PATH> --scene <N> --output <PATH> [--snapshot-output <PATH>]\n       utsushi replay-validate --engine reallive --seen <PATH> --scene <N> --print-replay-log <PATH> [--print-textlines]\n       utsushi render-validate --engine reallive --seen <PATH> --scene <N> --artifact-root <DIR> [--run-id <ID>] [--expect-text-contains <SUBSTR>] [--width <N>] [--height <N>] [--output <PATH>]\n       utsushi rpgmaker-mv-capture --game-dir <DIR> --artifact-root <DIR> --output <PATH> [--run-id <ID>] [--assert-observed-text <TEXT>]\n       utsushi <trace|capture|smoke> <game_dir> [--adapter <name>] [--artifact-root <path>] --output <path>";
+const USAGE: &str = "usage: utsushi capabilities --output <path>\n       utsushi validate-reference-captures <corpus_manifest> --output <path>\n       utsushi replay --engine reallive --seen <PATH> --scene <N> --output <PATH> [--snapshot-output <PATH>]\n       utsushi replay-validate --engine reallive --seen <PATH> --scene <N> --print-replay-log <PATH> [--print-textlines]\n       utsushi render-validate --engine reallive --seen <PATH> --scene <N> --artifact-root <DIR> [--run-id <ID>] [--expect-text-contains <SUBSTR>] [--width <N>] [--height <N>] [--output <PATH>]\n       utsushi rpgmaker-mv-capture --game-dir <DIR> --artifact-root <DIR> --output <PATH> [--run-id <ID>] [--assert-observed-text <TEXT>]\n       utsushi review-package --patch-export <PATH> --runtime-evidence <PATH> [--replay-pack <PATH>] [--no-browser] [--no-screenshot] --output <PATH>\n       utsushi <trace|capture|smoke> <game_dir> [--adapter <name>] [--artifact-root <path>] --output <path>";
 const DEFAULT_ADAPTER_NAME: &str = utsushi_fixture::FixtureRuntimeAdapter::NAME;
 
 static FIXTURE_RUNTIME_ADAPTER: utsushi_fixture::FixtureRuntimeAdapter =
@@ -99,6 +99,18 @@ fn run_cli_with_registry(
             let tail: Vec<String> = args.iter().skip(1).cloned().collect();
             rpgmaker_mv_capture::run_rpgmaker_mv_capture_command(&tail)?;
         }
+        Some("review-package") => {
+            // UTSUSHI-010 — the MV/MZ alpha-proof CAPSTONE: aggregate the
+            // merged proof surfaces (KAIFUU patch artifact, UTSUSHI-006 +
+            // UTSUSHI-033 runtime trace evidence, UTSUSHI-065 screenshot
+            // artifact refs) into one reviewer-facing evidence manifest. Owns
+            // its own flag parsing because it carries boolean host-capability
+            // flags (`--no-browser` / `--no-screenshot`) that the value-flag
+            // `validate_exact_flags` matrix cannot express. Skips the leading
+            // `review-package` argv slot.
+            let tail: Vec<String> = args.iter().skip(1).cloned().collect();
+            run_review_package_command(&tail)?;
+        }
         Some(command) => {
             let operation = operation_from_command(command).ok_or(USAGE)?;
             validate_exact_flags(
@@ -119,6 +131,67 @@ fn run_cli_with_registry(
         }
         None => return Err(USAGE.into()),
     }
+    Ok(())
+}
+
+/// UTSUSHI-010 review-package manifest export.
+///
+/// Reads the three MV/MZ proof surfaces from disk (KAIFUU patch export,
+/// UTSUSHI-065 runtime evidence report, optional UTSUSHI-033 replay-pack trace)
+/// and writes the aggregated review-package manifest. Host capabilities default
+/// to a fully-supported alpha host; `--no-browser` / `--no-screenshot` model an
+/// unsupported host so the manifest records screenshot evidence as an honest,
+/// non-silent limitation + semantic diagnostic rather than omitting it.
+fn run_review_package_command(tail: &[String]) -> Result<(), Box<dyn std::error::Error>> {
+    const VALUE_FLAGS: &[&str] = &[
+        "--patch-export",
+        "--runtime-evidence",
+        "--replay-pack",
+        "--output",
+    ];
+    const BOOL_FLAGS: &[&str] = &["--no-browser", "--no-screenshot"];
+
+    // Strict flag validation: reject unknown flags and missing values rather
+    // than silently ignoring them.
+    let mut index = 0;
+    while index < tail.len() {
+        let arg = tail[index].as_str();
+        if BOOL_FLAGS.contains(&arg) {
+            index += 1;
+            continue;
+        }
+        if VALUE_FLAGS.contains(&arg) {
+            let value = tail.get(index + 1);
+            if value.is_none_or(|value| value.starts_with("--")) {
+                return Err(format!("missing value for flag {arg}; {USAGE}").into());
+            }
+            index += 2;
+            continue;
+        }
+        return Err(format!("unexpected argument {arg}; {USAGE}").into());
+    }
+
+    let patch_export = PathBuf::from(flag(tail, "--patch-export")?);
+    let runtime_evidence = PathBuf::from(flag(tail, "--runtime-evidence")?);
+    let replay_pack = optional_flag(tail, "--replay-pack").map(PathBuf::from);
+    let output = PathBuf::from(flag(tail, "--output")?);
+
+    let browser_available = !tail.iter().any(|arg| arg == "--no-browser");
+    // Screenshot capture requires a browser; `--no-browser` implies no
+    // screenshot capture even without an explicit `--no-screenshot`.
+    let screenshot_capture = browser_available && !tail.iter().any(|arg| arg == "--no-screenshot");
+    let host = utsushi_fixture::mv_mz_review_package::HostCapabilities {
+        browser_available,
+        screenshot_capture,
+    };
+
+    let manifest = utsushi_fixture::mv_mz_review_package::mv_mz_review_package_manifest_from_paths(
+        &patch_export,
+        &runtime_evidence,
+        replay_pack.as_deref(),
+        host,
+    )?;
+    write_json(&output, &manifest)?;
     Ok(())
 }
 

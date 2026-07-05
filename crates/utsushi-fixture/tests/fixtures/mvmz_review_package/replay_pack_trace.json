@@ -1,0 +1,39 @@
+{
+  "schemaVersion": "0.1.0-alpha",
+  "observationSource": "static_replay",
+  "linkedEvents": [
+    {
+      "eventKind": "text",
+      "bridgeRefs": [
+        {
+          "sourceUnitKey": "mvmz.map012.ev003.p0.msg000",
+          "bridgeUnitId": "019ed050-0000-7000-8000-000000000001"
+        }
+      ],
+      "payload": {
+        "payloadKind": "text",
+        "speaker": "Yuki",
+        "lines": ["Good morning.", "The festival starts today."]
+      }
+    },
+    {
+      "eventKind": "text",
+      "bridgeRefs": [
+        {
+          "sourceUnitKey": "mvmz.map012.ev003.p0.msg001",
+          "bridgeUnitId": "019ed050-0000-7000-8000-000000000002"
+        }
+      ],
+      "payload": {
+        "payloadKind": "text",
+        "speaker": "Sora",
+        "lines": ["I can't wait!"]
+      }
+    }
+  ],
+  "finalState": {
+    "switches": [],
+    "variables": []
+  },
+  "diagnostics": []
+}

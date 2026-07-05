@@ -1,0 +1,121 @@
+{
+  "createdAt": "2026-06-17T00:00:00.000Z",
+  "diagnostics": [],
+  "engine": "rpg_maker_mv_mz",
+  "host": {
+    "browserAvailable": true,
+    "screenshotCapture": true
+  },
+  "limitations": [
+    "Synthetic public MV/MZ fixture; screenshot artifactRefs reference managed runtime artifacts, not live commercial-engine pixels.",
+    "Narrow screenshot-evidence attachment only; not the broad runtime conformance manifest.",
+    "Review-package manifest is an evidence-surface index: it names patch, trace, and screenshot artifacts by id/uri/hash and does not embed raw game bytes or pixels."
+  ],
+  "manifestKind": "utsushi.mvmz.review_package_manifest",
+  "patchArtifacts": [
+    {
+      "artifactKind": "kaifuu_patch_export",
+      "contentHash": "sha256:0019d69179a9a1e0046d6a33c1f36c380ff7036f03fa0eb472a9529a064e8d70",
+      "entryCount": 3,
+      "patchExportId": "0192b010-0000-7000-8000-0000000000a1",
+      "sourceLocale": "ja-JP",
+      "targetLocale": "en-US"
+    }
+  ],
+  "reviewPackageId": "ec58da93-216e-7a07-b796-beed7cf97f06",
+  "runtimeTraceEvidence": {
+    "evidenceTier": "E2",
+    "observation": {
+      "observationHookEventCount": 3,
+      "source": "UTSUSHI-006",
+      "traceEventCount": 3
+    },
+    "replayPack": {
+      "available": true,
+      "diagnosticCount": 0,
+      "linkedEventCount": 2,
+      "observationSource": "static_replay",
+      "source": "UTSUSHI-033"
+    },
+    "runtimeReportId": "58a98a57-e18f-75dc-8bce-19880e3b9856"
+  },
+  "schemaVersion": "0.1.0",
+  "screenshotArtifactRefs": {
+    "availability": "available",
+    "refs": [
+      {
+        "artifactRef": {
+          "artifactId": "76dcaf93-37f1-7227-8869-92285557b5d0",
+          "artifactKind": "screenshot",
+          "byteSize": 54,
+          "mediaType": "image/png",
+          "uri": "artifacts/utsushi/runtime/58a98a57-e18f-75dc-8bce-19880e3b9856/screenshots/76dcaf93-37f1-7227-8869-92285557b5d0.png"
+        },
+        "bridgeUnitRef": {
+          "bridgeUnitId": "5ce7ce53-c610-743e-b987-f54465e15561",
+          "sourceUnitKey": "rpgmaker:Map012.json#/events/3/pages/0/list/5/parameters/0"
+        },
+        "evidencesTraceEventId": "3291ade3-e2b5-7a4f-9e7f-4e654e2ed1f3",
+        "frame": 1
+      },
+      {
+        "artifactRef": {
+          "artifactId": "7ba21a49-d6ec-74c0-bbc5-20e6e8ffe2bc",
+          "artifactKind": "screenshot",
+          "byteSize": 54,
+          "mediaType": "image/png",
+          "uri": "artifacts/utsushi/runtime/58a98a57-e18f-75dc-8bce-19880e3b9856/screenshots/7ba21a49-d6ec-74c0-bbc5-20e6e8ffe2bc.png"
+        },
+        "bridgeUnitRef": {
+          "bridgeUnitId": "0b4d782a-0d5d-7207-af73-041d2be2a3bd",
+          "sourceUnitKey": "rpgmaker:Map012.json#/events/3/pages/0/list/8/parameters/0/0"
+        },
+        "evidencesTraceEventId": "b10cfc3c-3b0e-71fd-9eca-fa55d492e926",
+        "frame": 2
+      },
+      {
+        "artifactRef": {
+          "artifactId": "c102504b-184c-7bca-b42e-cf8669c84104",
+          "artifactKind": "screenshot",
+          "byteSize": 54,
+          "mediaType": "image/png",
+          "uri": "artifacts/utsushi/runtime/58a98a57-e18f-75dc-8bce-19880e3b9856/screenshots/c102504b-184c-7bca-b42e-cf8669c84104.png"
+        },
+        "bridgeUnitRef": {
+          "bridgeUnitId": "46cfb39f-9dcd-790c-acde-13e2988c7af8",
+          "sourceUnitKey": "rpgmaker:CommonEvents.json#/3/list/2/parameters/0"
+        },
+        "evidencesTraceEventId": "79d09dc2-4066-7a88-906b-d7db2b87b439",
+        "frame": 3
+      }
+    ]
+  },
+  "sourceLocale": "ja-JP",
+  "supportedReviewActions": [
+    {
+      "action": "approve",
+      "label": "Approve"
+    },
+    {
+      "action": "reject",
+      "label": "Reject"
+    },
+    {
+      "action": "defer",
+      "label": "Defer"
+    },
+    {
+      "action": "escalate",
+      "label": "Escalate"
+    },
+    {
+      "action": "request_repair",
+      "label": "Request repair"
+    },
+    {
+      "action": "import_runtime_feedback",
+      "label": "Import runtime feedback"
+    }
+  ],
+  "targetLocale": "en-US"
+}

@@ -12,6 +12,7 @@ use utsushi_core::{
 pub mod engine_port;
 pub mod jump_targets;
 mod launch_adapters;
+pub mod mv_mz_review_package;
 pub mod mv_mz_screenshot_evidence;
 mod reference_corpus;
 

@@ -1,0 +1,28 @@
+{
+  "patchExportId": "0192b010-0000-7000-8000-0000000000a1",
+  "sourceLocale": "ja-JP",
+  "targetLocale": "en-US",
+  "entries": [
+    {
+      "bridgeUnitId": "5ce7ce53-c610-743e-b987-f54465e15561",
+      "sourceUnitKey": "rpgmaker:Map012.json#/events/3/pages/0/list/5/parameters/0",
+      "sourceHash": "sha256:0000000000000000000000000000000000000000000000000000000000000001",
+      "targetText": "The lighthouse keeps its vigil over the quiet bay.",
+      "protectedSpanMappings": []
+    },
+    {
+      "bridgeUnitId": "0b4d782a-0d5d-7207-af73-041d2be2a3bd",
+      "sourceUnitKey": "rpgmaker:Map012.json#/events/3/pages/0/list/8/parameters/0/0",
+      "sourceHash": "sha256:0000000000000000000000000000000000000000000000000000000000000002",
+      "targetText": "Signal the passing ship.",
+      "protectedSpanMappings": []
+    },
+    {
+      "bridgeUnitId": "46cfb39f-9dcd-790c-acde-13e2988c7af8",
+      "sourceUnitKey": "rpgmaker:CommonEvents.json#/3/list/2/parameters/0",
+      "sourceHash": "sha256:0000000000000000000000000000000000000000000000000000000000000003",
+      "targetText": "A gentle wind carries the salt of the sea.",
+      "protectedSpanMappings": []
+    }
+  ]
+}

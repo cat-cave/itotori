@@ -599,7 +599,7 @@ fn rfc6901_pointer(tokens: &[String]) -> String {
 /// Deterministic uuid7-shaped id derived from a namespace + role via SHA-256.
 /// Byte-for-byte identical to the derivation `kaifuu-rpgmaker` uses for its
 /// bridge unit ids, so the two agree on the same command's bridge unit id.
-fn deterministic_uuid7(namespace: &str, role: &str) -> String {
+pub(crate) fn deterministic_uuid7(namespace: &str, role: &str) -> String {
     use sha2::{Digest, Sha256};
     let mut hasher = Sha256::new();
     hasher.update(namespace.as_bytes());
