@@ -102,7 +102,10 @@ impl MediaCapability {
     /// assets are real M4A (`ftyp`), which the synthetic fixtures do not model;
     /// the suffix still routes to [`Self::Audio`], and a real M4A signature check
     /// would be added when M4A fixtures land.
-    fn signature_matches(self, bytes: &[u8]) -> bool {
+    ///
+    /// `pub(crate)` so the KAIFUU-059 media-surface layer reuses this single
+    /// signature oracle (never re-implements it).
+    pub(crate) fn signature_matches(self, bytes: &[u8]) -> bool {
         match self {
             Self::Image => {
                 bytes.len() >= PNG_SIGNATURE.len() && &bytes[..PNG_SIGNATURE.len()] == PNG_SIGNATURE
@@ -247,7 +250,10 @@ impl MvMzKeySource {
     /// Resolve the 16-byte asset key. `encrypted` is the encrypted asset bytes
     /// (needed for image-derived recovery); `capability` is the asset suffix's
     /// capability (image-derived is image-only). Every failure is typed.
-    fn resolve(
+    ///
+    /// `pub(crate)` so the KAIFUU-059 media-surface layer reuses this single key
+    /// resolution path (System.json hex / image-derived / none).
+    pub(crate) fn resolve(
         &self,
         encrypted: &[u8],
         capability: MediaCapability,

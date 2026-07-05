@@ -55,6 +55,7 @@ mod extract;
 mod integration;
 mod json_locate;
 mod map_common_event;
+mod media_surface;
 mod patchback;
 mod plugin_profile;
 mod recognize;
@@ -105,6 +106,13 @@ pub use map_common_event::{
     CommandTranslation, FIXTURE_PROFILE_ID, MapExtractError, MapExtraction, StableCommandUnit,
     extract_common_events as extract_common_event_units, extract_common_events_file,
     extract_map as extract_map_units, extract_map_file, patch_file as patch_command_file,
+};
+pub use media_surface::{
+    FailureClass, MEDIA_SURFACE_ENGINE_FAMILY, MEDIA_SURFACE_SCHEMA_VERSION,
+    MEDIA_SURFACE_SOURCE_NODE_ID, MEDIA_SURFACE_SUPPORT_BOUNDARY, MediaAssetDecision,
+    MediaAssetSurface, MediaDecryptState, MediaLocalizationRole, MediaManifestError,
+    MediaSurfaceError, MediaSurfaceManifest, MediaSurfaceProfile, MediaSurfaceRule, PatchBackMode,
+    ReplacementPlan, ReplacementProof, build_media_surface, commitment, plan_replacement,
 };
 pub use patchback::{
     JsonStringEscaping, PATCHBACK_BUNDLE_SCHEMA_INVALID_CODE, PATCHBACK_DELTA_PRODUCE_CODE,
