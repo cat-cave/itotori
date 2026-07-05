@@ -224,6 +224,18 @@ const repositoryPermissionGateMatrix = [
     "event-queue-repository.test.ts authorized job read coverage",
     (repo) => repo.getJob(deniedActor, "job"),
   ),
+  queueGate(
+    "getJobEvents",
+    "queueRead",
+    "job-events-audit.test.ts job event read coverage",
+    (repo) => repo.getJobEvents(deniedActor, "job"),
+  ),
+  queueGate(
+    "pruneJobEvents",
+    "queueManage",
+    "job-events-audit.test.ts retention prune coverage",
+    (repo) => repo.pruneJobEvents(deniedActor),
+  ),
   catalogGate(
     "recordSourceProvenance",
     "catalogWrite",
@@ -1116,6 +1128,18 @@ describe("repository permission gate matrix", () => {
           "mutation": "ItotoriEventQueueRepository.getJob",
           "requiredPermission": "queue.read",
           "successFixture": "event-queue-repository.test.ts authorized job read coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriEventQueueRepository.getJobEvents",
+          "requiredPermission": "queue.read",
+          "successFixture": "job-events-audit.test.ts job event read coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriEventQueueRepository.pruneJobEvents",
+          "requiredPermission": "queue.manage",
+          "successFixture": "job-events-audit.test.ts retention prune coverage",
         },
         {
           "denialFixture": "missing permission actor user-without-required-permission",
