@@ -225,12 +225,21 @@ test("qd-full-ci selectLanes: an undeterminable diff falls back to the full ci g
   assert.deepEqual(selectLanes(noGitDir, {}, ["node", "qd-full-ci"]), ["ci"]);
 });
 
-test("affected + lanes: a presets/ diff selects ci-itotori (localize-project-stage vitest reads it)", () => {
-  // presets/localize-project.pair-policy.json is consumed by the ci-itotori
-  // localize-project-stage vitest, which `just check` never runs.
-  assert.deepEqual(affectedTasks(["presets/localize-project.pair-policy.json"]), ["ci-itotori"]);
+test("affected + lanes: a presets/ diff selects ci-itotori AND localize-project-test (both read it)", () => {
+  // presets/localize-project.pair-policy.json is consumed by BOTH the ci-itotori
+  // localize-project-stage vitest AND suite/scripts/localize-project/run.test.mjs
+  // (which runs only under the localize-project-test lane); `just check` runs
+  // neither, so a preset change must select both fine-grained lanes.
+  assert.deepEqual(affectedTasks(["presets/localize-project.pair-policy.json"]), [
+    "ci-itotori",
+    "localize-project-test",
+  ]);
   const lanes = affectedCiLanes(["presets/localize-project.pair-policy.json"]);
   assert.ok(lanes.includes("ci-itotori"), "preset change must run the ci-itotori lane");
+  assert.ok(
+    lanes.includes("localize-project-test"),
+    "preset change must run the localize-project-test lane (run.test.mjs reads the preset)",
+  );
   assert.ok(lanes.includes("check"), "preset change still runs the base check gate");
   assert.ok(!lanes.includes("ci"), "preset change stays fine-grained, not the full ci sentinel");
 });

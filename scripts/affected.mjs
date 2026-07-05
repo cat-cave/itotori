@@ -98,6 +98,14 @@ export function affectedTasks(changedPaths) {
       // vitest (e.g. presets/localize-project.pair-policy.json). `just check`
       // never runs app vitest, so a preset change must select ci-itotori.
       add(tasks, "ci-itotori");
+      // The same presets are ALSO read by suite/scripts/localize-project/
+      // run.test.mjs (DEFAULT_PAIR_POLICY_PATH = presets/localize-project.
+      // pair-policy.json and presets/localize-project.alpha-target-data.json),
+      // which runs ONLY under the localize-project-test lane (justfile:
+      // `node --test suite/scripts/localize-project/*.test.mjs`), never under
+      // ci-itotori. A preset change must select that lane too, or it could
+      // break the localize-project test undetected.
+      add(tasks, "localize-project-test");
     } else if (
       path.startsWith("suite/scripts/alpha-public-fixture/") ||
       path.startsWith("suite/scripts/itotori-fixture-iteration/") ||
