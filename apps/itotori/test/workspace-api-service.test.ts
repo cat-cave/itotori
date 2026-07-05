@@ -313,6 +313,40 @@ describe("LocalizationWorkspaceApiService.loadProjectBrowse", () => {
     expect(branches[0]!.sceneBrowsePath).toContain(encodeURIComponent(BRANCH_ID));
   });
 
+  it("emits an unresolved-identity diagnostic and drops a status-present branch whose identity fails to resolve", async () => {
+    // Only the primary branch has an identity; OTHER_BRANCH_ID is present in
+    // dashboard status but missing from the identity list — a REQUIRED
+    // identity that fails to resolve must never be substituted by the raw
+    // branch id / project source locale.
+    const service = makeService({
+      listLocaleBranchIdentities: async () => [localeBranchIdentities()[0]!],
+    });
+    const model = await service.loadProjectBrowse({ permission: permission() });
+    const branches = model.projects[0]!.localeBranches;
+    // The unresolvable branch is dropped, not fabricated with a raw-id name.
+    expect(branches.map((branch) => branch.localeBranchId)).toEqual([BRANCH_ID]);
+    expect(branches.some((branch) => branch.branchName === OTHER_BRANCH_ID)).toBe(false);
+    expect(
+      model.diagnostics.some(
+        (diagnostic) =>
+          diagnostic.code === workspaceDiagnosticCodeValues.unresolvedLocaleBranchIdentity,
+      ),
+    ).toBe(true);
+  });
+
+  it("does not emit an unresolved-identity diagnostic when every status branch resolves (legitimate case)", async () => {
+    const model = await makeService().loadProjectBrowse({ permission: permission() });
+    expect(
+      model.diagnostics.some(
+        (diagnostic) =>
+          diagnostic.code === workspaceDiagnosticCodeValues.unresolvedLocaleBranchIdentity,
+      ),
+    ).toBe(false);
+    // Identity resolved → real branch name + source locale, never fabricated.
+    expect(model.projects[0]!.localeBranches[0]!.branchName).toBe("English (informal)");
+    expect(model.projects[0]!.localeBranches[0]!.sourceLocale).toBe("ja-JP");
+  });
+
   it("returns a permission-denied diagnostic and never touches the read port", async () => {
     let touched = false;
     const service = makeService({
@@ -368,6 +402,58 @@ describe("LocalizationWorkspaceApiService.loadSceneBrowse", () => {
         (diagnostic) => diagnostic.code === workspaceDiagnosticCodeValues.branchConflationGuard,
       ),
     ).toBe(true);
+  });
+
+  it("emits an unresolved-cited-unit diagnostic and never fabricates identity for a cited bridge unit that fails to resolve", async () => {
+    // The summary cites bridge-unit-1 but the unit lookup returns nothing:
+    // its REQUIRED identity (sourceUnitKey / occurrenceId) must never be
+    // substituted with the raw bridgeUnitId and marked cited:true.
+    const service = makeService({
+      loadBridgeUnitsForSummary: async () => new Map<string, BridgeUnitTextRecord>(),
+    });
+    const model = await service.loadSceneBrowse({
+      projectId: PROJECT_ID,
+      localeBranchId: BRANCH_ID,
+      permission: permission(),
+    });
+    const scene = model.scenes[0]!;
+    // No fabricated citation survives: the raw-id unit is dropped, not surfaced.
+    expect(scene.units).toHaveLength(0);
+    expect(scene.citedUnitCount).toBe(0);
+    expect(
+      scene.units.some(
+        (unit) => unit.sourceUnitKey === "bridge-unit-1" || unit.occurrenceId === "bridge-unit-1",
+      ),
+    ).toBe(false);
+    expect(
+      model.diagnostics.some(
+        (diagnostic) => diagnostic.code === workspaceDiagnosticCodeValues.unresolvedCitedUnit,
+      ),
+    ).toBe(true);
+  });
+
+  it("does not emit an unresolved-cited-unit diagnostic when a resolved unit has a legitimately-absent speaker", async () => {
+    const service = makeService({
+      loadBridgeUnitsForSummary: async () =>
+        new Map<string, BridgeUnitTextRecord>([
+          ["bridge-unit-1", { ...bridgeUnit(), speaker: null }],
+        ]),
+    });
+    const model = await service.loadSceneBrowse({
+      projectId: PROJECT_ID,
+      localeBranchId: BRANCH_ID,
+      permission: permission(),
+    });
+    const scene = model.scenes[0]!;
+    // Identity resolved; speaker legitimately null → real key, no false diagnostic.
+    expect(scene.units).toHaveLength(1);
+    expect(scene.units[0]!.sourceUnitKey).toBe("scene.001.line.001");
+    expect(scene.units[0]!.speaker).toBeNull();
+    expect(
+      model.diagnostics.some(
+        (diagnostic) => diagnostic.code === workspaceDiagnosticCodeValues.unresolvedCitedUnit,
+      ),
+    ).toBe(false);
   });
 
   it("flags a stale scene summary", async () => {

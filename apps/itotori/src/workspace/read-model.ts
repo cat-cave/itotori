@@ -45,9 +45,11 @@ export type WorkspacePermissionView = ReviewerQueuePermissionView;
 export const workspaceDiagnosticCodeValues = {
   permissionDenied: "workspace_permission_denied",
   branchConflationGuard: "workspace_branch_conflation_guard",
+  unresolvedLocaleBranchIdentity: "workspace_unresolved_locale_branch_identity",
   missingSceneSummaries: "workspace_missing_scene_summaries",
   staleSceneSummary: "workspace_stale_scene_summary",
   missingUnits: "workspace_missing_units",
+  unresolvedCitedUnit: "workspace_unresolved_cited_unit",
   opaqueSearchResultDropped: "workspace_opaque_search_result_dropped",
   comparisonUnavailable: "workspace_comparison_unavailable",
 } as const;

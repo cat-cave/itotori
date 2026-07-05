@@ -145,13 +145,23 @@ export class LocalizationWorkspaceApiService implements LocalizationWorkspaceApi
     const status = await this.deps.readPort.getDashboardStatus();
     const identities = await this.deps.readPort.listLocaleBranchIdentities(status.projectId);
     const identityById = new Map(identities.map((identity) => [identity.localeBranchId, identity]));
-    const localeBranches: WorkspaceLocaleBranchSummary[] = status.localeBranches.map((branch) => {
+    const diagnostics: WorkspaceDiagnostic[] = [];
+    const localeBranches: WorkspaceLocaleBranchSummary[] = [];
+    for (const branch of status.localeBranches) {
       const identity = identityById.get(branch.localeBranchId);
-      return {
+      // A branch present in the dashboard status REQUIRES a resolvable
+      // identity (branch name + source locale). If it fails to resolve,
+      // never fabricate the identity from the raw branch id / project
+      // source locale — surface it and drop the branch (ITOTORI-059).
+      if (identity === undefined) {
+        diagnostics.push(unresolvedLocaleBranchIdentityDiagnostic(branch.localeBranchId));
+        continue;
+      }
+      localeBranches.push({
         localeBranchId: branch.localeBranchId,
         projectId: status.projectId,
-        branchName: identity?.branchName ?? branch.localeBranchId,
-        sourceLocale: identity?.sourceLocale ?? status.sourceLocale,
+        branchName: identity.branchName,
+        sourceLocale: identity.sourceLocale,
         targetLocale: branch.targetLocale,
         status: branch.status,
         unitCount: branch.unitCount,
@@ -161,8 +171,8 @@ export class LocalizationWorkspaceApiService implements LocalizationWorkspaceApi
         currentStyleGuidePolicyVersionId: branch.currentStyleGuidePolicyVersionId,
         sceneBrowsePath: workspaceSceneBrowsePath(status.projectId, branch.localeBranchId),
         assetBrowsePath: workspaceAssetBrowsePath(status.projectId, branch.localeBranchId),
-      };
-    });
+      });
+    }
     const project: WorkspaceProjectSummary = {
       projectId: status.projectId,
       projectKey: status.projectKey,
@@ -179,7 +189,7 @@ export class LocalizationWorkspaceApiService implements LocalizationWorkspaceApi
       generatedAt: this.now(),
       permission: input.permission,
       projects: [project],
-      diagnostics: [],
+      diagnostics,
     };
   }
 
@@ -241,20 +251,36 @@ export class LocalizationWorkspaceApiService implements LocalizationWorkspaceApi
         : await this.deps.readPort.loadBridgeUnitsForSummary(allBridgeUnitIds);
     const scenes: WorkspaceSceneContext[] = scopedSummaries.map((summary) => {
       const stale = summary.status === sceneSummaryStatusValues.stale;
-      const units: WorkspaceSceneUnit[] = summary.citations
+      const units: WorkspaceSceneUnit[] = [];
+      let unresolvedCitedUnitCount = 0;
+      for (const citation of summary.citations
         .slice()
-        .sort((left, right) => left.citeOrdinal - right.citeOrdinal)
-        .map((citation) => {
-          const unit = unitsById.get(citation.bridgeUnitId) ?? null;
-          return {
-            bridgeUnitId: citation.bridgeUnitId,
-            sourceUnitKey: unit?.sourceUnitKey ?? citation.bridgeUnitId,
-            speaker: unit?.speaker ?? null,
-            occurrenceId: unit?.occurrenceId ?? citation.bridgeUnitId,
-            sourceText: unit?.sourceText ?? null,
-            cited: true,
-          };
+        .sort((left, right) => left.citeOrdinal - right.citeOrdinal)) {
+        const unit = unitsById.get(citation.bridgeUnitId);
+        // A scene-cited bridge unit REQUIRES a resolvable identity
+        // (sourceUnitKey + occurrenceId). If the lookup returns nothing,
+        // never fabricate that identity from the raw bridgeUnitId and mark
+        // it cited — surface it and drop the fabricated citation. speaker /
+        // sourceText remain legitimately optional on a resolved unit.
+        if (unit === undefined) {
+          unresolvedCitedUnitCount += 1;
+          continue;
+        }
+        units.push({
+          bridgeUnitId: citation.bridgeUnitId,
+          sourceUnitKey: unit.sourceUnitKey,
+          speaker: unit.speaker,
+          occurrenceId: unit.occurrenceId,
+          sourceText: unit.sourceText,
+          cited: true,
         });
+      }
+      if (unresolvedCitedUnitCount > 0) {
+        diagnostics.push({
+          code: workspaceDiagnosticCodeValues.unresolvedCitedUnit,
+          message: `Scene ${summary.sceneId} cites ${unresolvedCitedUnitCount} bridge unit(s) whose identity (source unit key / occurrence id) could not be resolved; those citations are omitted rather than surfaced with a fabricated identity.`,
+        });
+      }
       if (units.length === 0) {
         diagnostics.push({
           code: workspaceDiagnosticCodeValues.missingUnits,
@@ -616,6 +642,13 @@ function branchConflationDiagnostic(
   return {
     code: workspaceDiagnosticCodeValues.branchConflationGuard,
     message: `Dropped ${recordLabel} on locale branch ${recordBranchId} while browsing locale branch ${input.localeBranchId}; branches are never conflated.`,
+  };
+}
+
+function unresolvedLocaleBranchIdentityDiagnostic(localeBranchId: string): WorkspaceDiagnostic {
+  return {
+    code: workspaceDiagnosticCodeValues.unresolvedLocaleBranchIdentity,
+    message: `Locale branch ${localeBranchId} is present in the project dashboard status but its identity (branch name / source locale) could not be resolved; the branch is omitted rather than surfaced with a fabricated name.`,
   };
 }
 
