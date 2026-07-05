@@ -2,18 +2,16 @@
 //
 // Pure-render assertions for the batched-correction UI: the preview shows
 // source / draft / final + style/glossary/runtime context and only advertises
-// the submit form when the actor can manage the queue; the submit view shows
-// the durable edit-history rows + the affected-unit rerun scope. The route
+// the submit form when the actor can manage the queue. The submit itself is a
+// native POST to `/api/workspace/corrections` (no SPA render path). The route
 // parser maps `/workspace/corrections` to the correction-preview API target.
 
 import { describe, expect, it } from "vitest";
 import {
   parseWorkspaceRoute,
   renderWorkspaceCorrectionPreviewView,
-  renderWorkspaceCorrectionSubmitView,
   workspaceRouteApiTarget,
   type WorkspaceCorrectionPreviewReadModel,
-  type WorkspaceCorrectionSubmitReadModel,
 } from "../src/workspace/index.js";
 
 const managePermission = {
@@ -116,52 +114,6 @@ describe("renderWorkspaceCorrectionPreviewView", () => {
       ],
     });
     expect(html).toContain('data-state="denied"');
-  });
-});
-
-describe("renderWorkspaceCorrectionSubmitView", () => {
-  const submitModel: WorkspaceCorrectionSubmitReadModel = {
-    schemaVersion: "workspace.correction_submit.v0.1",
-    generatedAt: new Date("2026-06-30T00:00:00Z"),
-    permission: managePermission,
-    localeBranchId: "branch-en",
-    batchId: "workspace-correction-batch-abc",
-    batchLabel: "slice-1",
-    submittedCount: 1,
-    edits: [
-      {
-        correctionEditId: "workspace-correction-1",
-        projectId: "project-1",
-        localeBranchId: "branch-en",
-        sourceRevisionId: "rev-1",
-        bridgeUnitId: "unit-a",
-        actorUserId: "reviewer-1",
-        reason: "Typo fix",
-        beforeText: "Teh hero.",
-        afterText: "The hero.",
-        disposition: "repair_candidate",
-        triageLabel: "objective_defect_candidate",
-        feedbackReportId: "feedback-report-1",
-        feedbackEvidenceId: "feedback-evidence-1",
-        reviewItemId: null,
-        duplicate: false,
-      },
-    ],
-    repairCandidateReportIds: ["feedback-report-1"],
-    decisionQueueReportIds: [],
-    needsContextReportIds: [],
-    affectedBridgeUnitIds: ["unit-a"],
-    diagnostics: [],
-  };
-
-  it("renders the durable edit-history rows with before/after + the rerun scope", () => {
-    const html = renderWorkspaceCorrectionSubmitView(submitModel);
-    expect(html).toContain('data-correction-edit-id="workspace-correction-1"');
-    expect(html).toContain("Teh hero.");
-    expect(html).toContain("The hero.");
-    expect(html).toContain('data-disposition="repair_candidate"');
-    expect(html).toContain('data-affected-unit-count="1"');
-    expect(html).toContain("feedback-report-1");
   });
 });
 

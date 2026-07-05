@@ -92,10 +92,7 @@ export type {
   WorkspaceCorrectionServicePort,
   WorkspaceCorrectionSubmission,
 } from "./correction-service.js";
-export {
-  renderWorkspaceCorrectionPreviewView,
-  renderWorkspaceCorrectionSubmitView,
-} from "./correction-view.js";
+export { renderWorkspaceCorrectionPreviewView } from "./correction-view.js";
 
 export {
   itotori040FixtureLocaleBranchId,

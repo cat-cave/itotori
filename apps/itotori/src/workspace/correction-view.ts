@@ -1,12 +1,13 @@
 // ITOTORI-118 — workspace manual-correction views (pure render).
 //
-// Stateless renderers for the correction mutation layer. `renderWorkspace-
+// Stateless renderer for the correction mutation layer. `renderWorkspace-
 // CorrectionPreviewView` renders the batched before/after context a reviewer
 // sees BEFORE submitting (source / draft / final, runtime + screenshot
-// evidence, style-guide policy + glossary), plus a submit form that POSTs to
-// `/api/workspace/corrections`. `renderWorkspaceCorrectionSubmitView` renders
-// the durable result: one edit-history row per correction with its routing
-// disposition + the affected-unit rerun scope.
+// evidence, style-guide policy + glossary), plus a submit form that POSTs
+// natively to `/api/workspace/corrections`. The POST records the corrections
+// server-side; the submit result is the typed `WorkspaceCorrectionSubmit-
+// ReadModel` JSON returned by that endpoint (there is no SPA render path for
+// it — the workspace route loader only fetches+renders GET read-models).
 //
 // No fetch, no DOM, no globals — every test exercises a renderer directly.
 
@@ -14,7 +15,6 @@ import type {
   WorkspaceCorrectionDiagnostic,
   WorkspaceCorrectionPreviewReadModel,
   WorkspaceCorrectionPreviewUnit,
-  WorkspaceCorrectionSubmitReadModel,
 } from "./correction-model.js";
 
 export function renderWorkspaceCorrectionPreviewView(
@@ -117,68 +117,6 @@ function renderPreviewUnit(unit: WorkspaceCorrectionPreviewUnit): string {
         ${runtime === "" ? `<p class="empty">No runtime evidence linked.</p>` : `<ul>${runtime}</ul>`}
       </div>
     </article>
-  `;
-}
-
-export function renderWorkspaceCorrectionSubmitView(
-  model: WorkspaceCorrectionSubmitReadModel,
-): string {
-  if (!model.permission.canManageQueue) {
-    return renderDeniedShell(
-      "correction-submit",
-      "Submit corrections",
-      model.diagnostics,
-      "queue.manage",
-    );
-  }
-  const rows = model.edits
-    .map(
-      (edit) => `
-      <li class="correction-edit" data-correction-edit-id="${escapeHtml(edit.correctionEditId)}"
-        data-bridge-unit-id="${escapeHtml(edit.bridgeUnitId)}"
-        data-disposition="${escapeHtml(edit.disposition)}"
-        data-duplicate="${edit.duplicate ? "true" : "false"}">
-        <p class="edit-reason">${escapeHtml(edit.reason)}</p>
-        <div class="edit-before-after">
-          <span class="before" lang="">${escapeHtml(edit.beforeText ?? "—")}</span>
-          <span class="after" lang="">${escapeHtml(edit.afterText)}</span>
-        </div>
-        <p class="edit-trace">
-          <code class="feedback-report">${escapeHtml(edit.feedbackReportId)}</code>
-          <code class="triage-label">${escapeHtml(edit.triageLabel)}</code>
-          <code class="source-revision">${escapeHtml(edit.sourceRevisionId)}</code>
-          <code class="actor">${escapeHtml(edit.actorUserId)}</code>
-        </p>
-      </li>`,
-    )
-    .join("");
-  return `
-    <main class="itotori-shell workspace-correction-submit" data-state="ready"
-      data-view="correction-submit"
-      data-batch-id="${escapeHtml(model.batchId)}"
-      data-locale-branch-id="${escapeHtml(model.localeBranchId)}"
-      data-submitted-count="${model.submittedCount}"
-      data-affected-unit-count="${model.affectedBridgeUnitIds.length}">
-      <header class="shell-header">
-        <p class="eyebrow">Localization workspace</p>
-        <h1>Corrections submitted</h1>
-        <p class="subhead">Batch <code>${escapeHtml(model.batchId)}</code> —
-          ${model.submittedCount} correction(s) recorded; rerun scope is
-          ${model.affectedBridgeUnitIds.length} affected unit(s).</p>
-      </header>
-      ${renderDiagnosticBanner(model.diagnostics)}
-      <ul class="correction-edits" aria-label="Recorded edit history">
-        ${rows === "" ? `<p class="empty">No corrections recorded.</p>` : rows}
-      </ul>
-      <section class="correction-routing" aria-label="Routing">
-        <p data-repair-candidate-count="${model.repairCandidateReportIds.length}">
-          ${model.repairCandidateReportIds.length} repair candidate(s)</p>
-        <p data-decision-queue-count="${model.decisionQueueReportIds.length}">
-          ${model.decisionQueueReportIds.length} decision-queue item(s)</p>
-        <p data-needs-context-count="${model.needsContextReportIds.length}">
-          ${model.needsContextReportIds.length} needs-context item(s)</p>
-      </section>
-    </main>
   `;
 }
 
