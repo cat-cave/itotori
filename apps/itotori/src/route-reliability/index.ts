@@ -5,8 +5,10 @@ import type { JsonObject } from "../providers/types.js";
 import type { ProviderLedgerEntry } from "./report.js";
 
 export {
+  CostAggregateDivergenceError,
   PROVIDER_ROUTE_REPORT_SCHEMA_VERSION,
   RouteReportReconciliationError,
+  assertCostAggregateReconciled,
   assertRouteReportReconciled,
   microsToUsdDecimalString,
   reconcileRouteCost,

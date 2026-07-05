@@ -31,8 +31,10 @@ import {
   type ExperimentMatrixConfig,
 } from "../src/experiment-matrix/index.js";
 import {
+  CostAggregateDivergenceError,
   PROVIDER_ROUTE_REPORT_SCHEMA_VERSION,
   RouteReportReconciliationError,
+  assertCostAggregateReconciled,
   assertRouteReportReconciled,
   ledgerRunIdFromProofId,
   microsToUsdDecimalString,
@@ -44,6 +46,7 @@ import {
   servedRouteKey,
   usdDecimalStringToMicros,
   type ProviderLedgerEntry,
+  type RouteCostReconciliationReport,
 } from "../src/route-reliability/index.js";
 import {
   artifact,
@@ -222,6 +225,67 @@ describe("ITOTORI-100 — cost reconciliation (cross-check, not restate)", () =>
     const ledger: ProviderLedgerEntry = { ...ledgerFor(art), ledgerId: "ledger:WRONG" };
     const report = reconcileRouteCost({ ...input([art]), ledgerEntries: [ledger] });
     expect(report.findings.some((f) => f.kind === "ledger_id_mismatch")).toBe(true);
+  });
+
+  it("COST CORRECTNESS: the headline aggregate traces to the authoritative decimal, not the rounded amountMicrosUsd mirror", () => {
+    // A real sub-micro cost the rounded `amountMicrosUsd` mirror rounds UP
+    // (`0.0000005` → 1 micro, round-half-up on the 7th digit) while the
+    // authoritative-decimal ledger side TRUNCATES (→ 0 micros). Before the
+    // fix the artifact aggregate consumed the mirror and drifted a micro
+    // above the ledger while still "reconciling" on the decimal — a silent
+    // divergence. The aggregate must now equal the authoritative decimal.
+    const art = artifact({
+      cellId: "sub-micro-drift",
+      // amountMicrosUsd: 1 is the ROUNDED mirror — it must NOT feed the aggregate.
+      cost: {
+        costKind: "billed",
+        currency: "USD",
+        amountUsd: "0.0000005",
+        amountMicrosUsd: 1, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
+      } as ProviderCost,
+    });
+    const report = reconcileRouteCost({ ...input([art]), ledgerEntries: [ledgerFor(art)] });
+
+    expect(report.findings).toHaveLength(0);
+    expect(report.reconciledInvocationCount).toBe(1);
+    // Authoritative decimal micros (truncated → 0), NOT the rounded mirror (1).
+    expect(report.artifactMicrosUsd).toBe(0);
+    expect(report.artifactMicrosUsd).toBe(report.ledgerMicrosUsd);
+    // reconcileRouteCost enforces the equality internally; it did not throw.
+    expect(() => assertCostAggregateReconciled(report)).not.toThrow();
+  });
+
+  it("ENFORCES artifact-vs-ledger equality — a rounded-drift divergence is CAUGHT, not silently accumulated", () => {
+    const art = artifact({ cellId: "drift-guard" });
+    const report = reconcileRouteCost({ ...input([art]), ledgerEntries: [ledgerFor(art)] });
+    // A matching artifact+ledger report passes the enforcement.
+    expect(() => assertCostAggregateReconciled(report)).not.toThrow();
+    expect(report.artifactMicrosUsd).toBe(report.ledgerMicrosUsd);
+
+    // Simulate the OLD rounded-mirror behaviour: the HEADLINE artifact micros
+    // drift a micro above the authoritative ledger micros. Exact-integer
+    // (not fuzzy) enforcement MUST catch it.
+    const divergentTotal: RouteCostReconciliationReport = {
+      ...report,
+      artifactMicrosUsd: report.ledgerMicrosUsd + 1,
+    };
+    expect(() => assertCostAggregateReconciled(divergentTotal)).toThrow(
+      CostAggregateDivergenceError,
+    );
+    expect(() => assertCostAggregateReconciled(divergentTotal)).toThrow(/headline total/);
+
+    // A PER-ROUTE drift is caught too (the guard checks every served route).
+    const routeKey = Object.keys(report.byServedRoute)[0]!;
+    const row = report.byServedRoute[routeKey]!;
+    const divergentRow: RouteCostReconciliationReport = {
+      ...report,
+      byServedRoute: {
+        ...report.byServedRoute,
+        [routeKey]: { ...row, artifactMicrosUsd: row.artifactMicrosUsd + 1 },
+      },
+    };
+    expect(() => assertCostAggregateReconciled(divergentRow)).toThrow(CostAggregateDivergenceError);
+    expect(() => assertCostAggregateReconciled(divergentRow)).toThrow(routeKey);
   });
 });
 

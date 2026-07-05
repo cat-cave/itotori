@@ -419,7 +419,7 @@ export type RouteCostReconciliationRow = {
   readonly reconciledInvocationCount: number;
   readonly billedInvocationCount: number;
   readonly zeroCostInvocationCount: number;
-  /** SUM of artifact `cost.amountMicrosUsd` over reconciled runs (verbatim). */
+  /** SUM over reconciled runs of the authoritative decimal `usage.cost` (`run.cost.amountUsd`) in exact truncated micros — the SAME arithmetic as the ledger side, NOT the rounded `amountMicrosUsd` mirror. */
   readonly artifactMicrosUsd: number;
   /** SUM of ledger `cost_amount` over reconciled runs, in micros (×1e6 of the real ledger value). */
   readonly ledgerMicrosUsd: number;
@@ -437,9 +437,9 @@ export type RouteCostReconciliationReport = {
   readonly artifactInvocationCount: number;
   readonly ledgerEntryCount: number;
   readonly reconciledInvocationCount: number;
-  /** SUM of every reconciled artifact's real captured micros. */
+  /** SUM over reconciled runs of the authoritative decimal `usage.cost` in exact truncated micros. Enforced EXACTLY equal to {@link ledgerMicrosUsd} (assertCostAggregateReconciled). */
   readonly artifactMicrosUsd: number;
-  /** SUM of every reconciled ledger row's `cost_amount`, in micros. Equal to artifact within rounding when reconciled. */
+  /** SUM of every reconciled ledger row's `cost_amount`, in exact truncated micros. Provably equal to {@link artifactMicrosUsd} — same authoritative decimal, same arithmetic. */
   readonly ledgerMicrosUsd: number;
   readonly artifactUsd: string;
   readonly ledgerUsd: string;
@@ -589,8 +589,17 @@ export function reconcileRouteCost(
 
     if (reconciled) {
       acc.reconciledInvocationCount += 1;
-      // Sourced VERBATIM from the real captured artifact cost — never a literal.
-      acc.artifactMicrosUsd += run.cost.amountMicrosUsd;
+      // COST CORRECTNESS: the artifact aggregate is derived from the
+      // AUTHORITATIVE full-precision decimal `usage.cost` (run.cost.amountUsd)
+      // via the SAME integer parser as the ledger side — NOT the rounded
+      // `amountMicrosUsd` mirror. The mirror round-half-ups the 7th fractional
+      // digit whereas the ledger side truncates, so the two arithmetics can
+      // diverge by a micro on sub-micro costs (e.g. `0.0000005` → mirror 1 vs
+      // ledger 0) even for a run whose decimals reconcile within 1e-9. Both
+      // sides now derive from the authoritative decimal with identical
+      // arithmetic, so they CANNOT diverge by construction; the exact-integer
+      // equality invariant is enforced below (assertCostAggregateReconciled).
+      acc.artifactMicrosUsd += usdDecimalStringToMicros(run.cost.amountUsd);
       // Ledger micros derived from the real persisted decimal (×1e6).
       acc.ledgerMicrosUsd += usdDecimalStringToMicros(ledger.costAmountUsd ?? "0");
       if (run.cost.costKind === "billed") acc.billedInvocationCount += 1;
@@ -621,7 +630,7 @@ export function reconcileRouteCost(
     totalReconciled += acc.reconciledInvocationCount;
   }
 
-  return {
+  const report: RouteCostReconciliationReport = {
     schemaVersion: PROVIDER_ROUTE_REPORT_SCHEMA_VERSION,
     section: "cost_reconciliation",
     experimentId: input.experimentId,
@@ -637,6 +646,64 @@ export function reconcileRouteCost(
     byServedRoute,
     findings,
   };
+
+  // COST CORRECTNESS invariant: the headline cost aggregate MUST equal the
+  // authoritative ledger aggregate to the exact micro. Both sides are built
+  // from the authoritative decimal above, so a divergence here can only come
+  // from a code regression (e.g. reintroducing the rounded mirror) or a
+  // corrupt input — either way it must fail LOUDLY, never accumulate silently.
+  assertCostAggregateReconciled(report);
+  return report;
+}
+
+/**
+ * Thrown by {@link assertCostAggregateReconciled} when the headline cost
+ * aggregate does not EXACTLY equal the authoritative ledger aggregate
+ * (exact integer micros, no fuzzy epsilon). Names the scope + both amounts
+ * so a silent rounded-mirror drift can never masquerade as reconciled.
+ */
+export class CostAggregateDivergenceError extends Error {
+  constructor(
+    public readonly scope: string,
+    public readonly artifactMicrosUsd: number,
+    public readonly ledgerMicrosUsd: number,
+  ) {
+    super(
+      `headline cost aggregate DIVERGED from the authoritative ledger at ${scope}: ` +
+        `artifact ${artifactMicrosUsd} micros-USD != ledger ${ledgerMicrosUsd} micros-USD ` +
+        `(Δ ${artifactMicrosUsd - ledgerMicrosUsd} micros); the reported cost MUST equal the ` +
+        `authoritative ledger cost exactly — no rounded-mirror approximation`,
+    );
+    this.name = "CostAggregateDivergenceError";
+  }
+}
+
+/**
+ * COST CORRECTNESS enforcement: assert that the report's cost aggregate
+ * equals the authoritative ledger aggregate to the EXACT micro, per served
+ * route AND in the headline total. This is the check the audit flagged as
+ * "never enforced": the headline cost can no longer be a rounded mirror that
+ * silently drifts from the ledger. Throws {@link CostAggregateDivergenceError}
+ * on any mismatch. Callers that render a report for publication/CLI escalation
+ * can call this to fail the process on divergence.
+ */
+export function assertCostAggregateReconciled(report: RouteCostReconciliationReport): void {
+  for (const [key, row] of Object.entries(report.byServedRoute)) {
+    if (row.artifactMicrosUsd !== row.ledgerMicrosUsd) {
+      throw new CostAggregateDivergenceError(
+        `served route '${key}'`,
+        row.artifactMicrosUsd,
+        row.ledgerMicrosUsd,
+      );
+    }
+  }
+  if (report.artifactMicrosUsd !== report.ledgerMicrosUsd) {
+    throw new CostAggregateDivergenceError(
+      "headline total",
+      report.artifactMicrosUsd,
+      report.ledgerMicrosUsd,
+    );
+  }
 }
 
 /**
