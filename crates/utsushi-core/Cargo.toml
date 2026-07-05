@@ -21,6 +21,15 @@ serde_json.workspace = true
 sha2.workspace = true
 unicode-normalization.workspace = true
 
+# UTSUSHI-093: fd-relative / no-follow (openat/unlinkat/renameat/getdents)
+# filesystem operations for the runtime artifact root. Opening the managed root
+# once as a directory descriptor and driving every write/rename/cleanup relative
+# to that descriptor with `O_NOFOLLOW` closes the TOCTOU window between path
+# validation and use, so a directory validated as real cannot be swapped for a
+# symlink that escapes the root.
+[target.'cfg(unix)'.dependencies]
+rustix.workspace = true
+
 [dev-dependencies]
 jsonschema.workspace = true
 tempfile.workspace = true
