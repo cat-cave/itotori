@@ -34,6 +34,7 @@ import {
   ReviewerBatchActionServiceInputError,
   ReviewerBatchPreviewService,
   ReviewerQueueActionService,
+  ReviewerQueueActionServiceInputError,
   reviewerBatchPreviewStatusValues,
   reviewerTriggeredRerunJobNameValues,
   type BatchActionPayload,
@@ -457,6 +458,123 @@ describe("ReviewerBatchActionService — payload resolver dispatch", () => {
     expect(result.appliedAll).toBe(true);
     expect(actionService.applyPreparedBatch).toHaveBeenCalledTimes(1);
     expect(calls.map((call) => call.method)).toEqual(["importRuntimeFeedback"]);
+  });
+
+  it("records the persisted evidence tier verbatim on a matching importRuntimeFeedback batch", async () => {
+    // The runtime-evidence fixture persists evidenceTier "tier-2-trace".
+    const item = fixturePendingRuntimeEvidenceItem();
+    const previewService = new ReviewerBatchPreviewService(
+      makeResolver({ [item.reviewItemId]: item }),
+    );
+    const { service: actionService } = makeActionStub();
+    const executor = new ReviewerBatchActionService({
+      previewService,
+      actionService,
+      resolvePayload: (loaded) => ({
+        kind: "importRuntimeFeedback",
+        evidenceTier: loaded.evidenceTier ?? "tier-2-trace",
+        observationEventIds: loaded.observationEventIds ?? ["observation-fallback-1"],
+        artifactHashes: loaded.artifactHashes ?? ["sha256:fallback"],
+      }),
+    });
+
+    const result = await executor.execute(
+      actor,
+      {
+        action: reviewerQueueActionValues.importRuntimeFeedback,
+        actorUserId: actor.userId,
+        selections: [
+          { reviewItemId: item.reviewItemId, expectedSourceRevisionId: item.sourceRevisionId },
+        ],
+      },
+      fixtureBatchPermissionView(),
+    );
+
+    expect(result.appliedAll).toBe(true);
+    // The tier recorded on the transition metadata is the persisted value,
+    // verbatim — consistent with the single-item path.
+    expect(result.applied[0]).toMatchObject({ kind: "applied" });
+    const applied = result.applied[0];
+    if (applied.kind !== "applied") {
+      throw new Error("expected an applied outcome");
+    }
+    expect(applied.result.transition.metadata).toMatchObject({
+      evidenceTier: item.evidenceTier,
+      observationEventIds: item.observationEventIds,
+      artifactHashes: item.artifactHashes,
+    });
+  });
+
+  it("rejects a batch importRuntimeFeedback whose evidence tier drifts from the persisted item", async () => {
+    // SECURITY: a batch caller must NOT be able to substitute an evidence
+    // tier that differs from the persisted runtime-evidence record. This
+    // is the SAME enforcement the single-item path applies — the batch
+    // throws the same ReviewerQueueActionServiceInputError, and no writes
+    // happen (applyPreparedBatch is never reached).
+    const item = fixturePendingRuntimeEvidenceItem();
+    const previewService = new ReviewerBatchPreviewService(
+      makeResolver({ [item.reviewItemId]: item }),
+    );
+    const { service: actionService } = makeActionStub();
+    const executor = new ReviewerBatchActionService({
+      previewService,
+      actionService,
+      resolvePayload: () => ({
+        kind: "importRuntimeFeedback",
+        evidenceTier: "tier-3-forged",
+        observationEventIds: item.observationEventIds ?? ["observation-fallback-1"],
+        artifactHashes: item.artifactHashes ?? ["sha256:fallback"],
+      }),
+    });
+
+    const promise = executor.execute(
+      actor,
+      {
+        action: reviewerQueueActionValues.importRuntimeFeedback,
+        actorUserId: actor.userId,
+        selections: [
+          { reviewItemId: item.reviewItemId, expectedSourceRevisionId: item.sourceRevisionId },
+        ],
+      },
+      fixtureBatchPermissionView(),
+    );
+    await expect(promise).rejects.toBeInstanceOf(ReviewerQueueActionServiceInputError);
+    await expect(promise).rejects.toMatchObject({ field: "evidenceTier" });
+    // No partial writes: the atomic batch transaction is never entered.
+    expect(actionService.applyPreparedBatch).not.toHaveBeenCalled();
+  });
+
+  it("rejects a batch importRuntimeFeedback whose observation/artifact refs drift from the persisted item", async () => {
+    const item = fixturePendingRuntimeEvidenceItem();
+    const previewService = new ReviewerBatchPreviewService(
+      makeResolver({ [item.reviewItemId]: item }),
+    );
+    const { service: actionService } = makeActionStub();
+    const executor = new ReviewerBatchActionService({
+      previewService,
+      actionService,
+      resolvePayload: () => ({
+        kind: "importRuntimeFeedback",
+        evidenceTier: item.evidenceTier ?? "tier-2-trace",
+        observationEventIds: ["observation-forged-1"],
+        artifactHashes: item.artifactHashes ?? ["sha256:fallback"],
+      }),
+    });
+
+    const promise = executor.execute(
+      actor,
+      {
+        action: reviewerQueueActionValues.importRuntimeFeedback,
+        actorUserId: actor.userId,
+        selections: [
+          { reviewItemId: item.reviewItemId, expectedSourceRevisionId: item.sourceRevisionId },
+        ],
+      },
+      fixtureBatchPermissionView(),
+    );
+    await expect(promise).rejects.toBeInstanceOf(ReviewerQueueActionServiceInputError);
+    await expect(promise).rejects.toMatchObject({ field: "observationEventIds" });
+    expect(actionService.applyPreparedBatch).not.toHaveBeenCalled();
   });
 
   it("dispatches defer with a defer reason", async () => {

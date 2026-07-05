@@ -60,7 +60,10 @@ import type {
   ReviewerQueueActionServicePort,
   ReviewerQueueDecisionContextRefs,
 } from "./action-service.js";
-import { buildReviewerQueueActionInput } from "./action-service.js";
+import {
+  assertImportRuntimeFeedbackMatchesPersisted,
+  buildReviewerQueueActionInput,
+} from "./action-service.js";
 import {
   reviewerBatchPreviewStatusValues,
   type BatchPreviewItem,
@@ -440,6 +443,19 @@ function buildPreparedActionInput(
       assertNonEmptyPayload("evidenceTier", payload.evidenceTier);
       assertNonEmptyPayloadArray("observationEventIds", payload.observationEventIds);
       assertNonEmptyPayloadArray("artifactHashes", payload.artifactHashes);
+      // SECURITY (persisted-vs-supplied evidence): the batch surface must
+      // enforce the SAME check as the single `importRuntimeFeedback` path
+      // (action-service.ts). The freshly loaded `item` carries the
+      // authoritative persisted tier + observation/artifact refs; reject
+      // any batch item that supplies evidence which does not match, so a
+      // batch caller cannot forge/substitute evidence or drift the
+      // recorded tier. Byte-identical enforcement via the shared helper —
+      // no divergence. Thrown before any writes → fail closed.
+      assertImportRuntimeFeedbackMatchesPersisted(item, {
+        evidenceTier: payload.evidenceTier,
+        observationEventIds: payload.observationEventIds,
+        artifactHashes: payload.artifactHashes,
+      });
       return buildReviewerQueueActionInput(
         {
           ...common,

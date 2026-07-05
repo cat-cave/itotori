@@ -1,6 +1,7 @@
 // ITOTORI-081 / ITOTORI-082 — public surface of the reviewer API.
 
 export {
+  assertImportRuntimeFeedbackMatchesPersisted,
   buildReviewerQueueActionInput,
   ReviewerQueueActionService,
   ReviewerQueueActionServiceInputError,
@@ -8,6 +9,7 @@ export {
 } from "./action-service.js";
 export type {
   ApproveActionInput,
+  ImportRuntimeFeedbackEvidence,
   DeferActionInput,
   EscalateActionInput,
   ImportRuntimeFeedbackActionInput,

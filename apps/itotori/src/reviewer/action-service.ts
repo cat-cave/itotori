@@ -279,21 +279,12 @@ export class ReviewerQueueActionService implements ReviewerQueueActionServicePor
     // carries (the item row itself stays correct via the SQL discriminant,
     // but the recorded feedback must not drift). Feedback-kind items carry
     // no persisted tier, so the supplied values are recorded verbatim. A
-    // missing item is left to the repository's typed not-found error.
+    // missing item is left to the repository's typed not-found error. This
+    // is the SAME enforcement the batch surface applies via
+    // `assertImportRuntimeFeedbackMatchesPersisted` — single enforcement
+    // point, no divergence.
     const item = await this.repository.getItem(actor, input.reviewItemId);
-    if (item !== null && isRuntimeEvidenceItem(item)) {
-      assertMatchesPersistedString("evidenceTier", input.evidenceTier, item.evidenceTier);
-      assertMatchesPersistedStringArray(
-        "observationEventIds",
-        input.observationEventIds,
-        item.observationEventIds,
-      );
-      assertMatchesPersistedStringArray(
-        "artifactHashes",
-        input.artifactHashes,
-        item.artifactHashes,
-      );
-    }
+    assertImportRuntimeFeedbackMatchesPersisted(item, input);
     // Persist the evidence tier + observation event ids + artifact
     // hashes verbatim onto the transition's metadata so the audit trail
     // captures what was imported, in addition to the persisted values
@@ -389,6 +380,49 @@ export function isRuntimeEvidenceItem(
     record.observationEventIds !== null &&
     record.artifactHashes !== null
   );
+}
+
+/**
+ * Supplied runtime-feedback evidence to validate against the persisted
+ * item row. Shared by the single-item `importRuntimeFeedback` path and
+ * the batch surface (`batch-execute.ts`) so both enforce byte-identical
+ * persisted-vs-supplied rules.
+ */
+export type ImportRuntimeFeedbackEvidence = {
+  evidenceTier: string;
+  observationEventIds: readonly string[];
+  artifactHashes: readonly string[];
+};
+
+/**
+ * The single persisted-vs-supplied enforcement point for
+ * `importRuntimeFeedback`. For a runtime-evidence item the persisted
+ * tier + observation/artifact refs are authoritative: the supplied
+ * evidence MUST match them exactly, so a caller (single-item OR batch)
+ * cannot forge/substitute evidence or drift the recorded tier away from
+ * what the item actually carries. The tier is therefore recorded
+ * verbatim from the persisted record. A null item (repository leaves
+ * not-found to its typed error) and feedback-kind items (no persisted
+ * tier) pass through — their supplied values are recorded verbatim.
+ * Throws `ReviewerQueueActionServiceInputError` on mismatch.
+ */
+export function assertImportRuntimeFeedbackMatchesPersisted(
+  item: ReviewerQueueItemRecord | null,
+  supplied: ImportRuntimeFeedbackEvidence,
+): void {
+  if (item !== null && isRuntimeEvidenceItem(item)) {
+    assertMatchesPersistedString("evidenceTier", supplied.evidenceTier, item.evidenceTier);
+    assertMatchesPersistedStringArray(
+      "observationEventIds",
+      supplied.observationEventIds,
+      item.observationEventIds,
+    );
+    assertMatchesPersistedStringArray(
+      "artifactHashes",
+      supplied.artifactHashes,
+      item.artifactHashes,
+    );
+  }
 }
 
 function assertNonEmpty(field: string, value: string): void {
