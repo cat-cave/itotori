@@ -5092,6 +5092,8 @@ mod tests {
                         Capability::AssetTextPatching,
                         "registry test adapter does not patch image assets",
                     ),
+                    patch_payload: None,
+                    metadata_hash: None,
                     notes: vec![],
                 }],
                 capabilities: test_capabilities().reports,

@@ -13252,6 +13252,30 @@ impl AssetInventoryManifest {
             failures,
         }
     }
+
+    /// KAIFUU-028: stamp every surface with its stable metadata hash, making the
+    /// manifest's asset identity + patch capability tamper-evident. Adapters call
+    /// this before publishing a manifest; the validator later recomputes and
+    /// rejects any drift.
+    pub fn stamp_asset_metadata_hashes(&mut self) {
+        let surfaces = self.surfaces.clone();
+        for (index, surface) in surfaces.iter().enumerate() {
+            let hash = asset_inventory_surface_metadata_hash(self, surface);
+            self.surfaces[index].metadata_hash = Some(hash);
+        }
+    }
+
+    /// KAIFUU-028: run the patch-capability consistency validator, returning the
+    /// typed diagnostics that REJECT the manifest (empty = consistent). See
+    /// [`validate_asset_inventory_patch_capability`].
+    pub fn validate_patch_capability(&self) -> Result<(), Vec<AssetCapabilityDiagnostic>> {
+        let diagnostics = validate_asset_inventory_patch_capability(self);
+        if diagnostics.is_empty() {
+            Ok(())
+        } else {
+            Err(diagnostics)
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -13449,7 +13473,32 @@ pub struct AssetInventorySurface {
     pub text_source_kind: AssetInventoryTextSourceKind,
     pub patch_mode: AssetInventoryPatchMode,
     pub patching: CapabilityReport,
+    /// KAIFUU-028: the patch payload (a translation/edit) this surface advertises,
+    /// if any. A surface that carries a payload is claiming to edit its backing
+    /// asset; the patch-capability validator rejects a payload whose `patching`
+    /// capability is unsupported (a manifest cannot patch an asset it declares it
+    /// cannot edit).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub patch_payload: Option<AssetInventoryPatchPayload>,
+    /// KAIFUU-028: stable, tamper-evident hash over this surface's inventory
+    /// IDENTITY + PATCH-DECISION fields (see [`asset_inventory_surface_metadata_hash`]).
+    /// When present, the patch-capability validator recomputes the hash and emits
+    /// a `metadata_hash_mismatch` diagnostic if the declared hash has drifted.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub metadata_hash: Option<String>,
     pub notes: Vec<String>,
+}
+
+/// KAIFUU-028: a patch payload advertised for an asset surface — the concrete
+/// translation/edit the manifest claims it will apply to the surface's backing
+/// asset.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AssetInventoryPatchPayload {
+    /// BCP 47-style locale the payload targets (e.g. `en-US`).
+    pub target_locale: String,
+    /// The translated/edited text the manifest advertises for this surface.
+    pub translated_text: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -15305,6 +15354,345 @@ pub fn derive_asset_preservation_claims(
             .cmp(&(b.surface_id.as_str(), b.asset_id.as_str()))
     });
     claims
+}
+
+/// KAIFUU-028: the canonical, order-fixed projection of the inventory IDENTITY +
+/// PATCH-DECISION fields that a surface's metadata hash commits to. Serialized
+/// under the repo-wide `utf8-lf-json-stable` rule ([`stable_json`]) and hashed
+/// with [`sha256_hash_bytes`], so the hash is deterministic and tamper-evident:
+/// any drift of the asset id/key/path/source-hash, the surface kind, the
+/// patch mode, or the declared patch capability changes the hash.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AssetMetadataHashInput<'a> {
+    asset_id: &'a str,
+    asset_key: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    path: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    source_hash: Option<&'a str>,
+    surface_id: &'a str,
+    surface_kind: &'a AssetInventorySurfaceKind,
+    patch_mode: &'a AssetInventoryPatchMode,
+    capability: &'a Capability,
+    capability_status: &'a CapabilityStatus,
+}
+
+/// KAIFUU-028: compute the stable metadata hash for one asset surface.
+///
+/// The hash binds the surface's PATCH-DECISION fields (`patch_mode`, the
+/// `patching` capability + status, the surface kind) to the IDENTITY of the
+/// asset it patches (`asset_id`, `asset_key`, `path`, `source_hash`, resolved
+/// from the manifest's `assets` list, falling back to the surface's own
+/// `source_asset_ref`). It is a pure function of those fields, so two manifests
+/// that declare the same identity + patch capability for a surface always
+/// produce the same hash, and any tamper with either changes it.
+pub fn asset_inventory_surface_metadata_hash(
+    manifest: &AssetInventoryManifest,
+    surface: &AssetInventorySurface,
+) -> String {
+    let asset = manifest
+        .assets
+        .iter()
+        .find(|asset| asset.asset_id == surface.source_asset_ref.asset_id);
+    let asset_key = asset
+        .map(|asset| asset.asset_key.as_str())
+        .or(surface.source_asset_ref.asset_key.as_deref())
+        .unwrap_or(surface.source_asset_ref.asset_id.as_str());
+    let input = AssetMetadataHashInput {
+        asset_id: surface.source_asset_ref.asset_id.as_str(),
+        asset_key,
+        path: asset.and_then(|asset| asset.path.as_deref()),
+        source_hash: asset
+            .and_then(|asset| asset.source_hash.as_deref())
+            .or(surface.source_hash.as_deref()),
+        surface_id: surface.surface_id.as_str(),
+        surface_kind: &surface.asset_surface_kind,
+        patch_mode: &surface.patch_mode,
+        capability: &surface.patching.capability,
+        capability_status: &surface.patching.status,
+    };
+    let canonical =
+        stable_json(&input).expect("asset metadata hash input serializes deterministically");
+    sha256_hash_bytes(canonical.as_bytes())
+}
+
+/// KAIFUU-028: a typed diagnostic for a patch-capability inconsistency in an
+/// asset inventory manifest. Emitted (never a silent pass or panic) when a
+/// manifest would imply an unsupported asset edit or its identity/patch
+/// metadata hash has drifted.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "code", rename_all = "camelCase")]
+pub enum AssetCapabilityDiagnostic {
+    /// A surface advertises a patch payload (a translation/edit) for an asset
+    /// whose patch capability is UNSUPPORTED. The manifest cannot claim to patch
+    /// an asset it declares it cannot edit.
+    #[serde(rename = "unsupported_asset_patched")]
+    UnsupportedAssetPatched {
+        surface_id: String,
+        asset_id: String,
+        asset_ref: String,
+        required_capability: Capability,
+        support_boundary: String,
+    },
+    /// A surface's declared metadata hash does not match the hash recomputed from
+    /// its identity + patch-decision fields — the identity/patch capability has
+    /// been tampered with or has drifted from what was committed.
+    #[serde(rename = "metadata_hash_mismatch")]
+    MetadataHashMismatch {
+        surface_id: String,
+        asset_id: String,
+        declared_hash: String,
+        computed_hash: String,
+    },
+}
+
+impl AssetCapabilityDiagnostic {
+    /// The stable diagnostic code (matches the serde tag).
+    pub fn code(&self) -> &'static str {
+        match self {
+            Self::UnsupportedAssetPatched { .. } => "unsupported_asset_patched",
+            Self::MetadataHashMismatch { .. } => "metadata_hash_mismatch",
+        }
+    }
+
+    /// The surface the diagnostic is keyed on.
+    pub fn surface_id(&self) -> &str {
+        match self {
+            Self::UnsupportedAssetPatched { surface_id, .. }
+            | Self::MetadataHashMismatch { surface_id, .. } => surface_id,
+        }
+    }
+}
+
+/// KAIFUU-028: whether a surface's declared patch capability forbids editing its
+/// backing asset. A surface is unsupported when its `patching` capability status
+/// is `Unsupported` OR its `patch_mode` is `Unsupported`.
+fn asset_surface_patch_unsupported(surface: &AssetInventorySurface) -> bool {
+    surface.patching.status == CapabilityStatus::Unsupported
+        || surface.patch_mode == AssetInventoryPatchMode::Unsupported
+}
+
+/// KAIFUU-028: the patch-capability consistency validator.
+///
+/// Returns one typed [`AssetCapabilityDiagnostic`] per inconsistency:
+/// * `unsupported_asset_patched` — a surface advertises a [`AssetInventoryPatchPayload`]
+///   for an asset whose patch capability is unsupported (a manifest cannot patch
+///   an asset it declares it cannot edit).
+/// * `metadata_hash_mismatch` — a surface declares a `metadata_hash` that does
+///   not match the hash recomputed from its identity + patch-decision fields.
+///
+/// A manifest with a non-empty result is REJECTED (see
+/// [`AssetInventoryManifest::validate_patch_capability`]). This is a pure
+/// function of the manifest; diagnostics are returned in a deterministic order.
+pub fn validate_asset_inventory_patch_capability(
+    manifest: &AssetInventoryManifest,
+) -> Vec<AssetCapabilityDiagnostic> {
+    let asset_key_by_id: BTreeMap<&str, &str> = manifest
+        .assets
+        .iter()
+        .map(|asset| (asset.asset_id.as_str(), asset.asset_key.as_str()))
+        .collect();
+
+    let mut diagnostics = Vec::new();
+    for surface in &manifest.surfaces {
+        let asset_id = surface.source_asset_ref.asset_id.clone();
+
+        if let Some(declared) = &surface.metadata_hash {
+            let computed = asset_inventory_surface_metadata_hash(manifest, surface);
+            if declared != &computed {
+                diagnostics.push(AssetCapabilityDiagnostic::MetadataHashMismatch {
+                    surface_id: surface.surface_id.clone(),
+                    asset_id: asset_id.clone(),
+                    declared_hash: declared.clone(),
+                    computed_hash: computed,
+                });
+            }
+        }
+
+        if surface.patch_payload.is_some() && asset_surface_patch_unsupported(surface) {
+            let asset_ref = surface
+                .source_asset_ref
+                .asset_key
+                .clone()
+                .or_else(|| {
+                    asset_key_by_id
+                        .get(asset_id.as_str())
+                        .map(|key| (*key).to_string())
+                })
+                .unwrap_or_else(|| asset_id.clone());
+            let support_boundary = surface.patching.limitation.clone().unwrap_or_else(|| {
+                format!(
+                    "adapter reports surface {} as patch-capability-unsupported; it must not advertise a patch payload",
+                    surface.surface_id
+                )
+            });
+            diagnostics.push(AssetCapabilityDiagnostic::UnsupportedAssetPatched {
+                surface_id: surface.surface_id.clone(),
+                asset_id,
+                asset_ref,
+                required_capability: surface.patching.capability.clone(),
+                support_boundary,
+            });
+        }
+    }
+
+    diagnostics.sort_by(|a, b| (a.code(), a.surface_id()).cmp(&(b.code(), b.surface_id())));
+    diagnostics
+}
+
+/// KAIFUU-028: the two synthetic assets the patch-capability fixtures share —
+/// a patchable audio asset (a metadata song title) and an unpatchable binary
+/// art asset.
+fn asset_inventory_patch_capability_fixture_assets() -> Vec<AssetInventoryAsset> {
+    vec![
+        AssetInventoryAsset {
+            asset_id: "asset-song".to_string(),
+            asset_key: "audio/theme".to_string(),
+            asset_kind: AssetInventoryAssetKind::Audio,
+            path: Some("audio/theme.ogg".to_string()),
+            source_hash: Some(content_hash("audio/theme")),
+            metadata: BTreeMap::new(),
+        },
+        AssetInventoryAsset {
+            asset_id: "asset-logo".to_string(),
+            asset_key: "art/logo".to_string(),
+            asset_kind: AssetInventoryAssetKind::Image,
+            path: Some("art/logo.png".to_string()),
+            source_hash: Some(content_hash("art/logo")),
+            metadata: BTreeMap::new(),
+        },
+    ]
+}
+
+/// A supported (patchable) song-title surface that advertises a patch payload.
+fn asset_inventory_patch_capability_fixture_supported_surface(
+    patch_payload: Option<AssetInventoryPatchPayload>,
+) -> AssetInventorySurface {
+    AssetInventorySurface {
+        surface_id: "surface-song-title".to_string(),
+        asset_surface_kind: AssetInventorySurfaceKind::SongTitle,
+        source_asset_ref: AssetInventoryAssetRef {
+            asset_id: "asset-song".to_string(),
+            asset_key: Some("audio/theme".to_string()),
+        },
+        source_location: None,
+        source_text: Some("テーマ曲".to_string()),
+        source_hash: Some(content_hash("テーマ曲")),
+        text_source_kind: AssetInventoryTextSourceKind::Metadata,
+        patch_mode: AssetInventoryPatchMode::MetadataOnly,
+        patching: CapabilityReport::supported(Capability::AssetTextPatching),
+        patch_payload,
+        metadata_hash: None,
+        notes: vec![],
+    }
+}
+
+/// An unsupported (unpatchable) binary-art surface. `patch_payload` is populated
+/// only by the negative fixture that advertises an edit it cannot honour.
+fn asset_inventory_patch_capability_fixture_unsupported_surface(
+    patch_payload: Option<AssetInventoryPatchPayload>,
+) -> AssetInventorySurface {
+    AssetInventorySurface {
+        surface_id: "surface-logo-art".to_string(),
+        asset_surface_kind: AssetInventorySurfaceKind::UiArt,
+        source_asset_ref: AssetInventoryAssetRef {
+            asset_id: "asset-logo".to_string(),
+            asset_key: Some("art/logo".to_string()),
+        },
+        source_location: None,
+        source_text: None,
+        source_hash: Some(content_hash("art/logo")),
+        text_source_kind: AssetInventoryTextSourceKind::NotApplicable,
+        patch_mode: AssetInventoryPatchMode::AssetReplacementRequired,
+        patching: CapabilityReport::unsupported(
+            Capability::NonTextSurfaceExtraction,
+            "fixture adapter cannot redraw or replace binary art assets",
+        ),
+        patch_payload,
+        metadata_hash: None,
+        notes: vec![],
+    }
+}
+
+fn asset_inventory_patch_capability_fixture_manifest(
+    manifest_id: &str,
+    surfaces: Vec<AssetInventorySurface>,
+) -> AssetInventoryManifest {
+    let mut manifest = AssetInventoryManifest {
+        schema_version: ASSET_INVENTORY_SCHEMA_VERSION.to_string(),
+        manifest_id: manifest_id.to_string(),
+        adapter_id: "kaifuu.fixture.asset-capability".to_string(),
+        source_locale: "ja-JP".to_string(),
+        assets: asset_inventory_patch_capability_fixture_assets(),
+        surfaces,
+        capabilities: vec![CapabilityReport::supported(Capability::AssetInventory)],
+        warnings: vec![],
+        metadata: BTreeMap::new(),
+    };
+    manifest.normalize();
+    manifest.stamp_asset_metadata_hashes();
+    manifest
+}
+
+/// KAIFUU-028 POSITIVE fixture: a consistent manifest. The supported song-title
+/// surface advertises a patch payload (allowed — its capability is supported);
+/// the unsupported art surface advertises no payload. Every surface carries a
+/// correct, stamped metadata hash. Passes both base validation and the
+/// patch-capability validator (zero diagnostics).
+pub fn asset_inventory_patch_capability_positive_fixture() -> AssetInventoryManifest {
+    asset_inventory_patch_capability_fixture_manifest(
+        "asset-capability-positive",
+        vec![
+            asset_inventory_patch_capability_fixture_supported_surface(Some(
+                AssetInventoryPatchPayload {
+                    target_locale: "en-US".to_string(),
+                    translated_text: "Theme Song".to_string(),
+                },
+            )),
+            asset_inventory_patch_capability_fixture_unsupported_surface(None),
+        ],
+    )
+}
+
+/// KAIFUU-028 NEGATIVE fixture (unsupported-asset-patched): the unsupported art
+/// surface advertises a patch payload for an asset it declares it cannot edit.
+/// Base validation passes; the patch-capability validator REJECTS it with a
+/// typed `unsupported_asset_patched` diagnostic.
+pub fn asset_inventory_patch_capability_unsupported_patched_fixture() -> AssetInventoryManifest {
+    asset_inventory_patch_capability_fixture_manifest(
+        "asset-capability-unsupported-patched",
+        vec![
+            asset_inventory_patch_capability_fixture_supported_surface(None),
+            asset_inventory_patch_capability_fixture_unsupported_surface(Some(
+                AssetInventoryPatchPayload {
+                    target_locale: "en-US".to_string(),
+                    translated_text: "Logo (EN)".to_string(),
+                },
+            )),
+        ],
+    )
+}
+
+/// KAIFUU-028 NEGATIVE fixture (metadata-hash mismatch): a structurally valid
+/// manifest whose supported surface declares a metadata hash that does not match
+/// its identity + patch-decision fields (tampered/drifted). Base validation
+/// passes; the patch-capability validator REJECTS it with a typed
+/// `metadata_hash_mismatch` diagnostic.
+pub fn asset_inventory_metadata_hash_mismatch_fixture() -> AssetInventoryManifest {
+    let mut manifest = asset_inventory_patch_capability_fixture_manifest(
+        "asset-capability-hash-mismatch",
+        vec![
+            asset_inventory_patch_capability_fixture_supported_surface(None),
+            asset_inventory_patch_capability_fixture_unsupported_surface(None),
+        ],
+    );
+    for surface in &mut manifest.surfaces {
+        if surface.surface_id == "surface-song-title" {
+            surface.metadata_hash = Some(format!("sha256:{}", "0".repeat(64)));
+        }
+    }
+    manifest
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -20909,6 +21297,8 @@ mod tests {
                         Capability::NonTextSurfaceExtraction,
                         INVENTORY_LOGO_BOUNDARY,
                     ),
+                    patch_payload: None,
+                    metadata_hash: None,
                     notes: vec![],
                 }],
                 capabilities: self.capabilities().reports,
@@ -25798,6 +26188,8 @@ mod tests {
                     Capability::AssetTextPatching,
                     "test adapter does not patch image assets",
                 ),
+                patch_payload: None,
+                metadata_hash: None,
                 notes: vec![],
             }],
             capabilities: vec![CapabilityReport::supported(Capability::AssetInventory)],
@@ -25812,6 +26204,137 @@ mod tests {
             failure.code == "engine_specific_source_location"
                 && failure.field == "surfaces.0.sourceLocation.rpgMakerEventId"
         }));
+    }
+
+    // --- KAIFUU-028: asset metadata hashing + patch-capability consistency ----
+
+    #[test]
+    fn asset_metadata_hash_is_deterministic_and_identity_bound() {
+        let manifest = asset_inventory_patch_capability_positive_fixture();
+        let surface = manifest
+            .surfaces
+            .iter()
+            .find(|surface| surface.surface_id == "surface-song-title")
+            .expect("song-title surface");
+
+        // Deterministic: recomputing the hash yields the same value, and it is a
+        // well-formed sha256 ref.
+        let first = asset_inventory_surface_metadata_hash(&manifest, surface);
+        let second = asset_inventory_surface_metadata_hash(&manifest, surface);
+        assert_eq!(first, second, "metadata hash must be deterministic");
+        assert!(is_sha256_ref(&first), "metadata hash must be a sha256 ref");
+        assert_eq!(
+            surface.metadata_hash.as_deref(),
+            Some(first.as_str()),
+            "stamped hash must equal the recomputed hash",
+        );
+
+        // Identity/patch-decision bound: mutating the referenced asset's identity
+        // (source_hash) changes the hash; mutating the patch capability changes it.
+        let mut mutated_identity = manifest.clone();
+        for asset in &mut mutated_identity.assets {
+            if asset.asset_id == "asset-song" {
+                asset.source_hash = Some(content_hash("audio/theme/tampered"));
+            }
+        }
+        assert_ne!(
+            asset_inventory_surface_metadata_hash(&mutated_identity, surface),
+            first,
+            "changing asset identity must change the metadata hash",
+        );
+
+        let mut mutated_capability = surface.clone();
+        mutated_capability.patch_mode = AssetInventoryPatchMode::Unsupported;
+        assert_ne!(
+            asset_inventory_surface_metadata_hash(&manifest, &mutated_capability),
+            first,
+            "changing the patch decision must change the metadata hash",
+        );
+    }
+
+    #[test]
+    fn asset_inventory_patch_capability_positive_fixture_passes() {
+        let manifest = asset_inventory_patch_capability_positive_fixture();
+        // Structurally valid.
+        assert_eq!(manifest.validate().status, OperationStatus::Passed);
+        // Consistent: no capability diagnostics.
+        assert_eq!(validate_asset_inventory_patch_capability(&manifest), vec![]);
+        assert!(manifest.validate_patch_capability().is_ok());
+    }
+
+    #[test]
+    fn asset_inventory_rejects_patch_payload_for_unsupported_asset() {
+        let manifest = asset_inventory_patch_capability_unsupported_patched_fixture();
+        // The manifest is otherwise structurally valid.
+        assert_eq!(manifest.validate().status, OperationStatus::Passed);
+
+        let diagnostics = manifest
+            .validate_patch_capability()
+            .expect_err("manifest advertising a patch for an unsupported asset must be rejected");
+        assert_eq!(diagnostics.len(), 1, "exactly one typed diagnostic");
+        match &diagnostics[0] {
+            AssetCapabilityDiagnostic::UnsupportedAssetPatched {
+                surface_id,
+                asset_id,
+                asset_ref,
+                required_capability,
+                ..
+            } => {
+                assert_eq!(diagnostics[0].code(), "unsupported_asset_patched");
+                assert_eq!(surface_id, "surface-logo-art");
+                assert_eq!(asset_id, "asset-logo");
+                assert_eq!(asset_ref, "art/logo");
+                assert_eq!(*required_capability, Capability::NonTextSurfaceExtraction);
+            }
+            AssetCapabilityDiagnostic::MetadataHashMismatch { .. } => {
+                panic!("expected unsupported_asset_patched, got a hash mismatch")
+            }
+        }
+    }
+
+    #[test]
+    fn asset_inventory_rejects_metadata_hash_mismatch() {
+        let manifest = asset_inventory_metadata_hash_mismatch_fixture();
+        // Structurally valid, but the declared hash has drifted.
+        assert_eq!(manifest.validate().status, OperationStatus::Passed);
+
+        let diagnostics = manifest
+            .validate_patch_capability()
+            .expect_err("manifest with a drifted metadata hash must be rejected");
+        assert_eq!(diagnostics.len(), 1, "exactly one typed diagnostic");
+        match &diagnostics[0] {
+            AssetCapabilityDiagnostic::MetadataHashMismatch {
+                surface_id,
+                asset_id,
+                declared_hash,
+                computed_hash,
+            } => {
+                assert_eq!(diagnostics[0].code(), "metadata_hash_mismatch");
+                assert_eq!(surface_id, "surface-song-title");
+                assert_eq!(asset_id, "asset-song");
+                assert_ne!(declared_hash, computed_hash);
+                assert!(is_sha256_ref(computed_hash));
+            }
+            AssetCapabilityDiagnostic::UnsupportedAssetPatched { .. } => {
+                panic!("expected metadata_hash_mismatch, got an unsupported-patched diagnostic")
+            }
+        }
+    }
+
+    #[test]
+    fn asset_capability_diagnostic_serializes_with_typed_code() {
+        let diagnostic = AssetCapabilityDiagnostic::UnsupportedAssetPatched {
+            surface_id: "s".to_string(),
+            asset_id: "a".to_string(),
+            asset_ref: "k".to_string(),
+            required_capability: Capability::NonTextSurfaceExtraction,
+            support_boundary: "boundary".to_string(),
+        };
+        let json = serde_json::to_value(&diagnostic).expect("serialize diagnostic");
+        assert_eq!(json["code"], "unsupported_asset_patched");
+        let round_trip: AssetCapabilityDiagnostic =
+            serde_json::from_value(json).expect("round-trip diagnostic");
+        assert_eq!(round_trip, diagnostic);
     }
 
     #[test]

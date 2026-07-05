@@ -633,6 +633,8 @@ impl FixtureAdapter {
                         Capability::AssetTextPatching,
                         limitation,
                     ),
+                    patch_payload: None,
+                    metadata_hash: None,
                     notes: surface["notes"]
                         .as_array()
                         .map_or(&[][..], Vec::as_slice)
