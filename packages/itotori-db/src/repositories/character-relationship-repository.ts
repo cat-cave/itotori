@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull } from "drizzle-orm";
 import type { ItotoriDatabase } from "../connection.js";
 import { type AuthorizationActor, permissionValues, requirePermission } from "../authorization.js";
 import {
@@ -544,7 +544,11 @@ export class ItotoriCharacterRelationshipRepository implements ItotoriCharacterR
         sourceHash: sourceUnits.sourceHash,
       })
       .from(sourceUnits)
-      .where(inArray(sourceUnits.bridgeUnitId, input.bridgeUnitIds));
+      // ITOTORI-060: "current" source hashes exclude tombstoned (removed) units
+      // so a unit dropped by a later reimport reads as absent (stale), not live.
+      .where(
+        and(inArray(sourceUnits.bridgeUnitId, input.bridgeUnitIds), isNull(sourceUnits.removedAt)),
+      );
     for (const row of rows) {
       result.set(row.bridgeUnitId, row.sourceHash);
     }

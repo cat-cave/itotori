@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { and, asc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 import type { ItotoriDatabase } from "../connection.js";
 import { type AuthorizationActor, permissionValues, requirePermission } from "../authorization.js";
 import {
@@ -796,8 +796,14 @@ async function currentSourceUnitRows(
       sourceHash: sourceUnits.sourceHash,
     })
     .from(sourceUnits)
+    // ITOTORI-060: context staleness compares against the ACTIVE source set;
+    // tombstoned (removed) units are excluded so a dropped unit reads as absent.
     .where(
-      and(eq(sourceUnits.sourceBundleId, sourceBundleId), inArray(sourceUnits.bridgeUnitId, ids)),
+      and(
+        eq(sourceUnits.sourceBundleId, sourceBundleId),
+        inArray(sourceUnits.bridgeUnitId, ids),
+        isNull(sourceUnits.removedAt),
+      ),
     );
 }
 

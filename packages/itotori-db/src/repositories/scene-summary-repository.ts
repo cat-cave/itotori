@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull } from "drizzle-orm";
 import type { ItotoriDatabase } from "../connection.js";
 import { type AuthorizationActor, permissionValues, requirePermission } from "../authorization.js";
 import {
@@ -336,7 +336,10 @@ export class ItotoriSceneSummaryRepository implements ItotoriSceneSummaryReposit
         sourceHash: sourceUnits.sourceHash,
       })
       .from(sourceUnits)
-      .where(inArray(sourceUnits.bridgeUnitId, input.bridgeUnitIds));
+      // ITOTORI-060: "current" source hashes exclude tombstoned (removed) units.
+      .where(
+        and(inArray(sourceUnits.bridgeUnitId, input.bridgeUnitIds), isNull(sourceUnits.removedAt)),
+      );
     for (const row of rows) {
       result.set(row.bridgeUnitId, row.sourceHash);
     }
@@ -363,7 +366,11 @@ export class ItotoriSceneSummaryRepository implements ItotoriSceneSummaryReposit
         occurrenceId: sourceUnits.occurrenceId,
       })
       .from(sourceUnits)
-      .where(inArray(sourceUnits.bridgeUnitId, input.bridgeUnitIds));
+      // ITOTORI-060: summaries are built from the active set; tombstoned
+      // (removed) units are excluded.
+      .where(
+        and(inArray(sourceUnits.bridgeUnitId, input.bridgeUnitIds), isNull(sourceUnits.removedAt)),
+      );
     for (const row of rows) {
       result.set(row.bridgeUnitId, {
         bridgeUnitId: row.bridgeUnitId,

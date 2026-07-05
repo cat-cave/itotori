@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { and, eq, inArray, not, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, not, sql } from "drizzle-orm";
 import {
   assertPatchExport,
   assertPatchExportV02,
@@ -555,6 +555,8 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
               assetKind: asset.assetKind,
               sourceHash: asset.sourceHash,
               path: asset.path ?? null,
+              // ITOTORI-060: revive a previously-tombstoned asset on re-add.
+              removedAt: null,
             },
           });
       }
@@ -604,18 +606,37 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
               patchRef: unit.patchRef,
               runtimeExpectation: unit.runtimeExpectation,
               updatedAt: sql`now()`,
+              // ITOTORI-060: revive a previously-tombstoned unit that this
+              // reimport re-adds, rather than leaving it archived or
+              // duplicating the row.
+              removedAt: null,
             },
           });
       }
 
+      // ITOTORI-060: units/assets omitted by this reimport are TOMBSTONED
+      // (removed_at = now()), not hard-deleted. Deleting them would CASCADE
+      // away locale-branch unit rows + runtime evidence refs + TM reuse events
+      // and sever every historical back-pointer; tombstoning keeps that history
+      // intact while removing the row from the active/current set. Guard on
+      // removed_at IS NULL so already-tombstoned rows are left untouched.
       if (diff.units.removedIds.length > 0) {
         await tx
-          .delete(sourceUnits)
-          .where(inArray(sourceUnits.bridgeUnitId, diff.units.removedIds));
+          .update(sourceUnits)
+          .set({ removedAt: sql`now()`, updatedAt: sql`now()` })
+          .where(
+            and(
+              inArray(sourceUnits.bridgeUnitId, diff.units.removedIds),
+              isNull(sourceUnits.removedAt),
+            ),
+          );
       }
 
       if (diff.assets.removedIds.length > 0) {
-        await tx.delete(assets).where(inArray(assets.assetId, diff.assets.removedIds));
+        await tx
+          .update(assets)
+          .set({ removedAt: sql`now()` })
+          .where(and(inArray(assets.assetId, diff.assets.removedIds), isNull(assets.removedAt)));
       }
 
       await tx
@@ -2554,8 +2575,11 @@ function diffAssets(incomingAssets: BridgeAssetV02[], existingAssets: ExistingAs
     }
   }
 
+  // ITOTORI-060: only currently-active (non-tombstoned) rows can be newly
+  // removed by this reimport. Already-tombstoned rows that stay omitted are not
+  // re-counted or re-touched.
   const removedIds = existingAssets
-    .filter((asset) => !incomingIds.has(asset.assetId))
+    .filter((asset) => asset.removedAt === null && !incomingIds.has(asset.assetId))
     .map((asset) => asset.assetId);
   return { added, updated, removed: removedIds.length, unchanged, removedIds };
 }
@@ -2578,14 +2602,20 @@ function diffUnits(incomingUnits: LocalizationUnitV02[], existingUnits: Existing
     }
   }
 
+  // ITOTORI-060: only currently-active (non-tombstoned) rows can be newly
+  // removed by this reimport. Already-tombstoned rows that stay omitted are not
+  // re-counted or re-touched.
   const removedIds = existingUnits
-    .filter((unit) => !incomingIds.has(unit.bridgeUnitId))
+    .filter((unit) => unit.removedAt === null && !incomingIds.has(unit.bridgeUnitId))
     .map((unit) => unit.bridgeUnitId);
   return { added, updated, removed: removedIds.length, unchanged, removedIds };
 }
 
 function assetMatchesExisting(asset: BridgeAssetV02, existingAsset: ExistingAsset): boolean {
   return (
+    // ITOTORI-060: a tombstoned row being re-added is a state change (revive),
+    // never "unchanged".
+    existingAsset.removedAt === null &&
     existingAsset.sourceRevisionId === asset.sourceRevision.revisionId &&
     existingAsset.assetKey === asset.assetKey &&
     existingAsset.assetKind === asset.assetKind &&
@@ -2596,6 +2626,9 @@ function assetMatchesExisting(asset: BridgeAssetV02, existingAsset: ExistingAsse
 
 function unitMatchesExisting(unit: LocalizationUnitV02, existingUnit: ExistingSourceUnit): boolean {
   return (
+    // ITOTORI-060: a tombstoned row being re-added is a state change (revive),
+    // never "unchanged".
+    existingUnit.removedAt === null &&
     existingUnit.sourceAssetId === unit.sourceAssetRef.assetId &&
     existingUnit.sourceRevisionId === unit.sourceRevision.revisionId &&
     existingUnit.surfaceId === unit.surfaceId &&

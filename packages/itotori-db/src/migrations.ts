@@ -260,6 +260,10 @@ export const migrations = [
     id: "0050_workspace_correction_edits",
     file: "0050_workspace_correction_edits.sql",
   },
+  {
+    id: "0051_source_unit_asset_tombstone",
+    file: "0051_source_unit_asset_tombstone.sql",
+  },
 ] as const;
 
 function migrationPath(file: string): string {

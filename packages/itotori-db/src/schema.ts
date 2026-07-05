@@ -1408,11 +1408,19 @@ export const assets = pgTable(
     sourceHash: text("source_hash").notNull(),
     path: text("path"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    // ITOTORI-060: tombstone timestamp. NULL = active/current member of the
+    // latest reimported bundle; non-NULL = the asset was omitted by a later
+    // bridge reimport and archived (its rows + dependents are retained, not
+    // hard-deleted). Reviving on re-add clears this back to NULL.
+    removedAt: timestamp("removed_at", { withTimezone: true }),
   },
   (table) => [
     index("itotori_assets_project_kind_idx").on(table.projectId, table.assetKind),
     index("itotori_assets_bundle_key_idx").on(table.sourceBundleId, table.assetKey),
     index("itotori_assets_revision_idx").on(table.sourceRevisionId),
+    index("itotori_assets_active_idx")
+      .on(table.sourceBundleId)
+      .where(sql`${table.removedAt} is null`),
   ],
 );
 
@@ -1448,6 +1456,14 @@ export const sourceUnits = pgTable(
     runtimeExpectation: jsonb("runtime_expectation").$type<unknown>().notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    // ITOTORI-060: tombstone timestamp. NULL = active/current member of the
+    // latest reimported bundle; non-NULL = the unit was omitted by a later
+    // bridge reimport and archived. Tombstoning replaces the former
+    // hard-DELETE so dependent locale-branch unit rows, runtime evidence refs,
+    // TM reuse events and historical facts are PRESERVED (they keep pointing at
+    // the retained, now-tombstoned unit). Reviving on re-add clears this back
+    // to NULL rather than duplicating the row.
+    removedAt: timestamp("removed_at", { withTimezone: true }),
   },
   (table) => [
     uniqueIndex("itotori_source_units_bundle_key_idx").on(
@@ -1461,6 +1477,9 @@ export const sourceUnits = pgTable(
     ),
     index("itotori_source_units_asset_idx").on(table.sourceAssetId),
     index("itotori_source_units_revision_idx").on(table.sourceRevisionId),
+    index("itotori_source_units_active_idx")
+      .on(table.sourceBundleId)
+      .where(sql`${table.removedAt} is null`),
   ],
 );
 

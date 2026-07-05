@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import type { ItotoriDatabase } from "../connection.js";
 import { type AuthorizationActor, permissionValues, requirePermission } from "../authorization.js";
 import {
@@ -388,7 +388,10 @@ export class ItotoriTerminologyCandidateRepository implements ItotoriTerminology
         sourceHash: sourceUnits.sourceHash,
       })
       .from(sourceUnits)
-      .where(inArray(sourceUnits.bridgeUnitId, input.bridgeUnitIds));
+      // ITOTORI-060: "current" source hashes exclude tombstoned (removed) units.
+      .where(
+        and(inArray(sourceUnits.bridgeUnitId, input.bridgeUnitIds), isNull(sourceUnits.removedAt)),
+      );
     for (const row of rows) {
       result.set(row.bridgeUnitId, row.sourceHash);
     }
