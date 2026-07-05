@@ -1,3 +1,4 @@
+mod coverage_export;
 mod mvmz_patched_runtime_proof;
 mod mvmz_runtime_proof;
 mod render_validate;
@@ -14,7 +15,7 @@ use utsushi_core::{
     RuntimeAdapterDescriptor, RuntimeAdapterRegistry, RuntimeOperation, RuntimeRequest, write_json,
 };
 
-const USAGE: &str = "usage: utsushi capabilities --output <path>\n       utsushi validate-reference-captures <corpus_manifest> --output <path>\n       utsushi replay --engine reallive --seen <PATH> --scene <N> --output <PATH> [--snapshot-output <PATH>]\n       utsushi replay-validate --engine reallive --seen <PATH> --scene <N> --print-replay-log <PATH> [--print-textlines]\n       utsushi render-validate --engine reallive --seen <PATH> --scene <N> --artifact-root <DIR> [--run-id <ID>] [--expect-text-contains <SUBSTR>] [--width <N>] [--height <N>] [--output <PATH>]\n       utsushi rpgmaker-mv-capture --game-dir <DIR> --artifact-root <DIR> --output <PATH> [--run-id <ID>] [--assert-observed-text <TEXT>]\n       utsushi review-package --patch-export <PATH> --runtime-evidence <PATH> [--replay-pack <PATH>] [--no-browser] [--no-screenshot] --output <PATH>\n       utsushi trace-kag <script.ks> --output <PATH>\n       utsushi mvmz-runtime-proof --runtime-trace <PATH> --fixture-dir <DIR> [--screenshot-evidence <PATH>] --output <PATH>\n       utsushi mvmz-patched-runtime-proof --patched-runtime-trace <PATH> --patched-fixture-dir <DIR> --patch-result <PATH> --alpha-proof <PATH> [--screenshot-evidence <PATH>] --output <PATH>\n       utsushi <trace|capture|smoke> <game_dir> [--adapter <name>] [--artifact-root <path>] --output <path>";
+const USAGE: &str = "usage: utsushi capabilities --output <path>\n       utsushi validate-reference-captures <corpus_manifest> --output <path>\n       utsushi replay --engine reallive --seen <PATH> --scene <N> --output <PATH> [--snapshot-output <PATH>]\n       utsushi replay-validate --engine reallive --seen <PATH> --scene <N> --print-replay-log <PATH> [--print-textlines]\n       utsushi render-validate --engine reallive --seen <PATH> --scene <N> --artifact-root <DIR> [--run-id <ID>] [--expect-text-contains <SUBSTR>] [--width <N>] [--height <N>] [--output <PATH>]\n       utsushi rpgmaker-mv-capture --game-dir <DIR> --artifact-root <DIR> --output <PATH> [--run-id <ID>] [--assert-observed-text <TEXT>]\n       utsushi review-package --patch-export <PATH> --runtime-evidence <PATH> [--replay-pack <PATH>] [--no-browser] [--no-screenshot] --output <PATH>\n       utsushi trace-kag <script.ks> --output <PATH>\n       utsushi coverage-export --read-model <PATH> --generated-at <RFC3339> --output <PATH> [--markdown-output <PATH>] [--include-gap-findings]\n       utsushi mvmz-runtime-proof --runtime-trace <PATH> --fixture-dir <DIR> [--screenshot-evidence <PATH>] --output <PATH>\n       utsushi mvmz-patched-runtime-proof --patched-runtime-trace <PATH> --patched-fixture-dir <DIR> --patch-result <PATH> --alpha-proof <PATH> [--screenshot-evidence <PATH>] --output <PATH>\n       utsushi <trace|capture|smoke> <game_dir> [--adapter <name>] [--artifact-root <path>] --output <path>";
 const DEFAULT_ADAPTER_NAME: &str = utsushi_fixture::FixtureRuntimeAdapter::NAME;
 
 static FIXTURE_RUNTIME_ADAPTER: utsushi_fixture::FixtureRuntimeAdapter =
@@ -137,6 +138,16 @@ fn run_cli_with_registry(
             // `review-package` argv slot.
             let tail: Vec<String> = args.iter().skip(1).cloned().collect();
             run_review_package_command(&tail)?;
+        }
+        Some("coverage-export") => {
+            // UTSUSHI-070 — export the UTSUSHI-009 branch-coverage read model +
+            // UTSUSHI-069 gap summaries as a STABLE JSON + Markdown artifact for
+            // alpha reports + offline review. Takes an INJECTED `--generated-at`
+            // (never a clock read) so the outputs are deterministic and
+            // snapshot-testable. DATA-ONLY: launches no runtime host. Owns its
+            // own flag parsing; skips the leading `coverage-export` argv slot.
+            let tail: Vec<String> = args.iter().skip(1).cloned().collect();
+            coverage_export::run_coverage_export_command(&tail)?;
         }
         Some("trace-kag") => {
             // UTSUSHI-008 — KAG command-trace probe for plaintext /
@@ -968,6 +979,84 @@ mod tests {
         assert_eq!(report["schemaVersion"], "0.1.0");
         assert_eq!(report["fixturesValidated"], 1);
         assert_eq!(report["artifactsValidated"], 1);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn coverage_export_command_writes_json_and_markdown() {
+        let root = temp_dir("coverage-export");
+        let read_model = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(
+            "../utsushi-core/tests/fixtures/conformance/branch_coverage/coverage_status.json",
+        );
+        let json_output = root.join("export.json");
+        let markdown_output = root.join("export.md");
+        let registry = empty_registry();
+
+        run_cli_with_registry(
+            &args(&[
+                Path::new("coverage-export"),
+                Path::new("--read-model"),
+                read_model.as_path(),
+                Path::new("--generated-at"),
+                Path::new("2026-07-05T00:00:00Z"),
+                Path::new("--output"),
+                json_output.as_path(),
+                Path::new("--markdown-output"),
+                markdown_output.as_path(),
+                Path::new("--include-gap-findings"),
+            ]),
+            &registry,
+        )
+        .unwrap();
+
+        let export: Value =
+            serde_json::from_str(&fs::read_to_string(&json_output).unwrap()).unwrap();
+        assert_eq!(
+            export["schemaVersion"],
+            "utsushi.branch_coverage_export.v0.1"
+        );
+        // Generated-at is the INJECTED value, not a clock read.
+        assert_eq!(export["generatedAt"], "2026-07-05T00:00:00Z");
+        assert_eq!(export["adapterId"], "utsushi-synthetic");
+        // Read model rides through with branch/route/trace/status fields.
+        assert_eq!(export["readModel"]["records"].as_array().unwrap().len(), 4);
+        assert_eq!(export["readModel"]["summary"]["visited"], 1);
+        // Gap counts always present; findings included on opt-in.
+        assert_eq!(export["gaps"]["summary"]["gapCount"], 2);
+        assert_eq!(export["gaps"]["findings"].as_array().unwrap().len(), 2);
+
+        let markdown = fs::read_to_string(&markdown_output).unwrap();
+        assert!(markdown.contains("# Branch Coverage Export"));
+        assert!(markdown.contains("2026-07-05T00:00:00Z"));
+        assert!(markdown.contains("## Gap Findings"));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn coverage_export_command_rejects_malformed_generated_at() {
+        let root = temp_dir("coverage-export-bad-generated-at");
+        let read_model = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(
+            "../utsushi-core/tests/fixtures/conformance/branch_coverage/coverage_status.json",
+        );
+        let json_output = root.join("export.json");
+        let registry = empty_registry();
+
+        let error = run_cli_with_registry(
+            &args(&[
+                Path::new("coverage-export"),
+                Path::new("--read-model"),
+                read_model.as_path(),
+                Path::new("--generated-at"),
+                Path::new(""),
+                Path::new("--output"),
+                json_output.as_path(),
+            ]),
+            &registry,
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(error.contains("generated-at"));
+        assert!(!json_output.exists());
         let _ = fs::remove_dir_all(root);
     }
 

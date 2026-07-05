@@ -71,6 +71,13 @@ pub use conformance::branch_coverage_gaps::{
     BranchCoverageGapSummary, GapArtifactLink, GapKind, GapSeverity, HIGH_TEXT_SEVERITY_THRESHOLD,
     emit_branch_coverage_gap_findings, severity_for as branch_coverage_gap_severity_for,
 };
+// UTSUSHI-070: branch-coverage EXPORT artifact (data-only; reshapes the
+// UTSUSHI-009 read model + UTSUSHI-069 gap summaries into a stable JSON +
+// Markdown export with an INJECTED generated-at for deterministic snapshots).
+pub use conformance::branch_coverage_export::{
+    BRANCH_COVERAGE_EXPORT_SCHEMA_VERSION, BranchCoverageExport, BranchCoverageExportError,
+    BranchCoverageExportGaps, build_branch_coverage_export, render_branch_coverage_markdown,
+};
 pub use embed::{
     EMBED_MAX_CAPABILITIES, EmbedCapability, EmbedCapabilityId, EmbedCapabilityStatus, EmbedError,
 };

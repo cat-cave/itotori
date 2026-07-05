@@ -1,0 +1,114 @@
+{
+  "schemaVersion": "utsushi.branch_coverage_export.v0.1",
+  "generatedAt": "2026-07-05T00:00:00Z",
+  "adapterId": "utsushi-synthetic",
+  "readModel": {
+    "schemaVersion": "utsushi.branch_coverage.v0.1",
+    "adapterId": "utsushi-synthetic",
+    "records": [
+      {
+        "branchId": "mvmz.map012.ev003.choice0.opt0",
+        "routeKey": "route_true_end",
+        "routeMapIds": [
+          "0190a000-0000-7000-8000-0000000000a1"
+        ],
+        "observedTraceIds": [
+          "trace-0001",
+          "trace-0002"
+        ],
+        "reachableTextCount": 3,
+        "coverageStatus": "visited"
+      },
+      {
+        "branchId": "mvmz.map012.ev003.choice0.opt1",
+        "routeKey": "route_bad_end",
+        "routeMapIds": [
+          "0190a000-0000-7000-8000-0000000000a2"
+        ],
+        "observedTraceIds": [],
+        "reachableTextCount": 2,
+        "coverageStatus": "unvisited"
+      },
+      {
+        "branchId": "mvmz.map014.ev007.choice1.opt0",
+        "routeKey": "route_orphaned_end",
+        "routeMapIds": [],
+        "observedTraceIds": [
+          "trace-0003"
+        ],
+        "reachableTextCount": 1,
+        "coverageStatus": "ambiguous"
+      },
+      {
+        "branchId": "mvmz.map020.ev001.choice0.opt2",
+        "routeMapIds": [],
+        "observedTraceIds": [],
+        "reachableTextCount": 0,
+        "coverageStatus": "unreachable"
+      }
+    ],
+    "summary": {
+      "branchCount": 4,
+      "visited": 1,
+      "unvisited": 1,
+      "ambiguous": 1,
+      "unreachable": 1,
+      "totalReachableText": 6,
+      "coveredReachableText": 3
+    }
+  },
+  "gaps": {
+    "schemaVersion": "utsushi.branch_coverage_gaps.v0.1",
+    "summary": {
+      "gapCount": 2,
+      "unvisitedReachable": 1,
+      "ambiguousRoute": 1,
+      "highSeverity": 0,
+      "mediumSeverity": 1,
+      "lowSeverity": 1,
+      "uncoveredReachableText": 2
+    },
+    "findings": [
+      {
+        "findingId": "branch-coverage-gap:unvisited_reachable:mvmz.map012.ev003.choice0.opt1",
+        "branchId": "mvmz.map012.ev003.choice0.opt1",
+        "routeKey": "route_bad_end",
+        "routeMapIds": [
+          "0190a000-0000-7000-8000-0000000000a2"
+        ],
+        "observedTraceIds": [],
+        "reachableTextCount": 2,
+        "coverageStatus": "unvisited",
+        "gapKind": "unvisited_reachable",
+        "severity": "medium",
+        "artifactLinks": [
+          {
+            "rel": "route-map",
+            "refId": "0190a000-0000-7000-8000-0000000000a2",
+            "uri": "/artifact-store/artifacts/utsushi/branch-coverage/utsushi-synthetic/route-maps/0190a000-0000-7000-8000-0000000000a2.json"
+          }
+        ]
+      },
+      {
+        "findingId": "branch-coverage-gap:ambiguous_route:mvmz.map014.ev007.choice1.opt0",
+        "branchId": "mvmz.map014.ev007.choice1.opt0",
+        "routeKey": "route_orphaned_end",
+        "routeMapIds": [],
+        "observedTraceIds": [
+          "trace-0003"
+        ],
+        "reachableTextCount": 1,
+        "coverageStatus": "ambiguous",
+        "gapKind": "ambiguous_route",
+        "severity": "low",
+        "artifactLinks": [
+          {
+            "rel": "runtime-trace",
+            "refId": "trace-0003",
+            "uri": "/artifact-store/artifacts/utsushi/branch-coverage/utsushi-synthetic/traces/trace-0003.json"
+          }
+        ]
+      }
+    ]
+  }
+}

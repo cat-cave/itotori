@@ -38,6 +38,13 @@ export default defineConfig({
       // `manifest_matches_committed_golden_bytes`; the formatter must not
       // rewrite it.
       "crates/utsushi-fixture/tests/fixtures/mvmz_review_package/manifest.golden.json",
+      // UTSUSHI-070 branch-coverage export goldens are byte-compared against
+      // `serde_json::to_string_pretty` (JSON) and the Markdown renderer output
+      // by `json_export_matches_committed_golden_bytes` /
+      // `markdown_export_matches_committed_golden_bytes`; the formatter must not
+      // rewrite them out from under the byte-compare.
+      "crates/utsushi-core/tests/fixtures/conformance/branch_coverage/export.golden.json",
+      "crates/utsushi-core/tests/fixtures/conformance/branch_coverage/export.golden.md",
       "apps/itotori/src/engine-capability/**",
       "fixtures/synthetic/**",
       "crates/kaifuu-rpgmaker/tests/fixtures/**",
