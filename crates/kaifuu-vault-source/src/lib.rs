@@ -43,9 +43,13 @@ pub mod metadata;
 pub mod paths;
 pub mod resolution;
 pub mod retention;
+pub mod scratch_inventory;
 pub mod source;
 
-pub use config::{GameIdSource, RetentionPolicy, ScratchConfig, VaultConfig};
+pub use config::{
+    GameIdSource, RetentionPolicy, ScratchConfig, VaultConfig, resolve_scratch_root,
+    resolve_vault_root,
+};
 pub use discovery::{ClaimQuery, ReleaseCandidate};
 pub use error::{
     SEMANTIC_VAULT_ARTIFACT_MISSING, SEMANTIC_VAULT_CATALOG_EMBEDDED_MISMATCH,
@@ -62,6 +66,10 @@ pub use metadata::{CrossCheckOutcome, CrossCheckTolerance, EmbeddedMetadata};
 pub use paths::{ExternalId, GameId, GameIdContext};
 pub use resolution::{ArtifactSelection, ResolvedArtifact};
 pub use retention::RunOutcome;
+pub use scratch_inventory::{
+    PrunePlan, PrunePolicy, ScratchGameEntry, ScratchInventory, ScratchPruneError, execute_prune,
+    inventory_scratch_root, now_unix, plan_prune, prune_scratch_root,
+};
 pub use source::{
     LocalCorpusCapabilityReport, LocalCorpusRegistry, LocalCorpusSource, MaterializeOptions,
     MaterializeResult, VaultSource,

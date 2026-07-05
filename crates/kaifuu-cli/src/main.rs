@@ -892,6 +892,7 @@ fn resolve_reallive_game_root_via_vault(
 fn run_vault_command(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
     use kaifuu_vault_source::{
         ClaimQuery, LocalCorpusSource, MaterializeOptions, ScratchConfig, VaultConfig, VaultSource,
+        inventory_scratch_root, now_unix, prune_scratch_root, resolve_scratch_root,
     };
 
     let json = flag_present(args, "--json");
@@ -1004,16 +1005,47 @@ fn run_vault_command(args: &[String]) -> Result<(), Box<dyn std::error::Error>> 
             )?;
             emit_materialize_report(&result, json)?;
         }
+        Some("inventory") => {
+            // Scratch-only: resolve the scratch root WITHOUT opening the vault
+            // (inventory reports what has been materialised; a vault need not be
+            // present or valid to list scratch trees).
+            let scratch_root = resolve_scratch_root(&scratch_cfg).map_err(
+                |err| -> Box<dyn std::error::Error> {
+                    format!("kaifuu.vault.scratch_root: {err}").into()
+                },
+            )?;
+            let compute_sha = !flag_present(args, "--no-sha");
+            let inventory = inventory_scratch_root(&scratch_root, compute_sha).map_err(
+                |err| -> Box<dyn std::error::Error> {
+                    format!("kaifuu.vault.inventory: {err}").into()
+                },
+            )?;
+            emit_scratch_inventory(&inventory, json)?;
+        }
+        Some("prune") => {
+            let scratch_root = resolve_scratch_root(&scratch_cfg).map_err(
+                |err| -> Box<dyn std::error::Error> {
+                    format!("kaifuu.vault.scratch_root: {err}").into()
+                },
+            )?;
+            let policy = parse_prune_policy(args)?;
+            let dry_run = flag_present(args, "--dry-run");
+            let plan = prune_scratch_root(&scratch_root, policy, now_unix(), dry_run).map_err(
+                |err| -> Box<dyn std::error::Error> { format!("kaifuu.vault.prune: {err}").into() },
+            )?;
+            emit_prune_plan(&plan, dry_run, json)?;
+        }
         _ => {
-            return Err(
-                "usage: kaifuu vault <capabilities|discover|materialize|materialize-by-sha> \
+            return Err("usage: kaifuu vault \
+                 <capabilities|discover|materialize|materialize-by-sha|inventory|prune> \
                  [--vault-root <PATH>] [--scratch-root <PATH>] [--json] \
                  [--canonical-id <ID> | --release-id <N> | --sha256 <HEX> | \
                  --engine <NAME> [--engine-version <V>] | \
                  --external-id <source:kind:value> | --work-title <TITLE> [--language <LANG>]] \
-                 [--retention <keep-none|keep-on-failure|keep-all|keep-extracted-for-game>]"
-                    .into(),
-            );
+                 [--retention <keep-none|keep-on-failure|keep-all|keep-extracted-for-game>] \
+                 [inventory: --no-sha] \
+                 [prune: --max-total-bytes <N> | --max-age-secs <N>] [--dry-run]"
+                .into());
         }
     }
     Ok(())
@@ -1222,6 +1254,105 @@ fn retention_policy_label(policy: kaifuu_vault_source::RetentionPolicy) -> &'sta
         RetentionPolicy::KeepOnFailure => "keep-on-failure",
         RetentionPolicy::KeepAll => "keep-all",
         RetentionPolicy::KeepExtractedForGame => "keep-extracted-for-game",
+    }
+}
+
+/// Emit a scratch inventory (KAIFUU-179 `kaifuu vault inventory`).
+///
+/// Reports per-game id / size / mtime / content-digest ONLY — never raw game
+/// bytes. `--json` yields the canonical deterministic form.
+fn emit_scratch_inventory(
+    inventory: &kaifuu_vault_source::ScratchInventory,
+    json: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
+    if json {
+        println!("{}", stable_json(inventory)?);
+    } else {
+        println!("vault inventory: {} game(s)", inventory.game_count);
+        println!("  scratch_root: {}", inventory.scratch_root);
+        println!("  total_size_bytes: {}", inventory.total_size_bytes);
+        for g in &inventory.games {
+            println!(
+                "  id={} size_bytes={} file_count={} mtime_unix={} sha256={}",
+                g.id,
+                g.size_bytes,
+                g.file_count,
+                g.mtime_unix
+                    .map_or_else(|| "-".to_string(), |m| m.to_string()),
+                g.sha256.as_deref().unwrap_or("-"),
+            );
+        }
+    }
+    Ok(())
+}
+
+/// Emit a prune plan/report (KAIFUU-179 `kaifuu vault prune`). In `--dry-run`
+/// the plan describes what WOULD be pruned; otherwise it describes what was
+/// removed. Scratch-only — the vault is never a prune target.
+fn emit_prune_plan(
+    plan: &kaifuu_vault_source::PrunePlan,
+    dry_run: bool,
+    json: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
+    if json {
+        println!("{}", stable_json(plan)?);
+    } else {
+        println!(
+            "vault prune ({}): {}",
+            if dry_run { "dry-run" } else { "applied" },
+            plan.policy
+        );
+        println!("  scratch_root: {}", plan.scratch_root);
+        println!(
+            "  total_size_bytes_before: {}",
+            plan.total_size_bytes_before
+        );
+        println!("  freed_bytes: {}", plan.freed_bytes);
+        println!("  total_size_bytes_after: {}", plan.total_size_bytes_after);
+        println!("  pruned: {} game(s)", plan.pruned.len());
+        for g in &plan.pruned {
+            println!("    - id={} size_bytes={}", g.id, g.size_bytes);
+        }
+        println!("  kept: {} game(s)", plan.kept.len());
+        for g in &plan.kept {
+            println!("    - id={} size_bytes={}", g.id, g.size_bytes);
+        }
+    }
+    Ok(())
+}
+
+/// Parse the prune policy from operator flags. Exactly one of
+/// `--max-total-bytes <N>` (quota) or `--max-age-secs <N>` (LRU horizon) is
+/// required; both is an error.
+fn parse_prune_policy(
+    args: &[String],
+) -> Result<kaifuu_vault_source::PrunePolicy, Box<dyn std::error::Error>> {
+    use kaifuu_vault_source::PrunePolicy;
+    let quota = flag_optional(args, "--max-total-bytes");
+    let horizon = flag_optional(args, "--max-age-secs");
+    match (quota, horizon) {
+        (Some(_), Some(_)) => Err(
+            "vault prune: pass exactly one of --max-total-bytes (quota) or \
+             --max-age-secs (LRU horizon), not both"
+                .into(),
+        ),
+        (Some(v), None) => {
+            let max_total_bytes = v.parse::<u64>().map_err(|_| {
+                format!("--max-total-bytes must be a non-negative integer, got {v}")
+            })?;
+            Ok(PrunePolicy::Quota { max_total_bytes })
+        }
+        (None, Some(v)) => {
+            let max_age_secs = v
+                .parse::<u64>()
+                .map_err(|_| format!("--max-age-secs must be a non-negative integer, got {v}"))?;
+            Ok(PrunePolicy::LruHorizon { max_age_secs })
+        }
+        (None, None) => Err(
+            "vault prune requires a policy flag: --max-total-bytes <N> (quota) or \
+             --max-age-secs <N> (LRU horizon)"
+                .into(),
+        ),
     }
 }
 
