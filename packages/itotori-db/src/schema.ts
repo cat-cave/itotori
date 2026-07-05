@@ -10,6 +10,7 @@ import {
   primaryKey,
   text,
   timestamp,
+  unique,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
@@ -1529,6 +1530,21 @@ export const styleGuides = pgTable(
   (table) => [
     uniqueIndex("itotori_style_guides_locale_branch_idx").on(table.localeBranchId),
     index("itotori_style_guides_project_idx").on(table.projectId),
+    // ITOTORI-122: target key for the version -> guide scope composite FK.
+    unique("itotori_style_guides_scope_key").on(
+      table.styleGuideId,
+      table.projectId,
+      table.localeBranchId,
+    ),
+    // ITOTORI-122: latest_version_id and approved_version_id are guarded by
+    // composite FKs onto itotori_style_guide_versions
+    // (<pointer>, style_guide_id, project_id, locale_branch_id), so each pointer
+    // must resolve to an EXISTING version in the SAME guide + project +
+    // locale-branch (rejects dangling AND cross-project / cross-locale-branch).
+    // Those FKs live in migration 0053 only: declaring them here would pair with
+    // the version table's own style_guide_id FK back to this table to form a
+    // mutually-recursive table type TypeScript cannot infer. The DB constraint
+    // is the source of truth and is asserted by the migration-drift test.
   ],
 );
 
@@ -1575,6 +1591,33 @@ export const styleGuideVersions = pgTable(
     index("itotori_style_guide_versions_guide_created_idx").on(table.styleGuideId, table.createdAt),
     index("itotori_style_guide_versions_source_revision_idx").on(table.sourceRevisionId),
     index("itotori_style_guide_versions_status_idx").on(table.status),
+    // ITOTORI-122: target key for the pointer composite FKs (latest/approved on
+    // the guide + previous on this table). Trivially unique via the PK.
+    unique("itotori_style_guide_versions_scope_key").on(
+      table.styleGuideVersionId,
+      table.styleGuideId,
+      table.projectId,
+      table.localeBranchId,
+    ),
+    // ITOTORI-122: a version's (project, locale-branch) MUST match its guide's.
+    // This composite FK (style_guide_id, project_id, locale_branch_id) ->
+    // itotori_style_guides is enforced in migration 0053; it is intentionally
+    // NOT declared here because pairing it with the guide's latest/approved
+    // composite FKs (which reference THIS table) forms a mutually-recursive
+    // table type that TypeScript cannot infer. The DB constraint is the source
+    // of truth; the acceptance-critical pointer FKs below stay in the model.
+    // ITOTORI-122: previous_version_id must reference an existing (prior)
+    // version in the SAME guide + project + locale-branch (self-referential).
+    foreignKey({
+      columns: [table.previousVersionId, table.styleGuideId, table.projectId, table.localeBranchId],
+      foreignColumns: [
+        table.styleGuideVersionId,
+        table.styleGuideId,
+        table.projectId,
+        table.localeBranchId,
+      ],
+      name: "itotori_style_guide_versions_previous_version_scope_fkey",
+    }),
   ],
 );
 

@@ -268,6 +268,10 @@ export const migrations = [
     id: "0052_job_lifecycle_events",
     file: "0052_job_lifecycle_events.sql",
   },
+  {
+    id: "0053_style_guide_version_reference_integrity",
+    file: "0053_style_guide_version_reference_integrity.sql",
+  },
 ] as const;
 
 function migrationPath(file: string): string {
