@@ -46,6 +46,13 @@ pub const REDACTED_DETECTION_GAME_DIR: &str = "[redacted-local-game-dir]";
 
 pub const BRIDGE_SCHEMA_VERSION_V02: &str = "0.2.0";
 
+/// Shared cross-language semantic code emitted when a contract field is not a
+/// valid RFC3339 date-time instant. The TypeScript contract validator emits the
+/// identical code (`RFC3339_INSTANT_MALFORMED_CODE` in
+/// `packages/localization-bridge-schema/src/index.ts`). See
+/// `docs/contracts/rfc3339-instant-acceptance.md`.
+pub const SEMANTIC_RFC3339_INSTANT_MALFORMED: &str = "itotori.contract.rfc3339_instant_malformed";
+
 pub const SEMANTIC_MISSING_KEY_PROFILE: &str = "kaifuu.missing_capability.key_profile";
 pub const SEMANTIC_MISSING_KEY_MATERIAL: &str = "kaifuu.missing_key_material";
 pub const SEMANTIC_HELPER_UNAVAILABLE: &str = "kaifuu.helper_unavailable";
@@ -13859,13 +13866,38 @@ pub struct PatchRef {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BridgeContractValidationError {
     message: String,
+    code: Option<&'static str>,
 }
 
 impl BridgeContractValidationError {
     fn new(message: impl Into<String>) -> Self {
         Self {
             message: message.into(),
+            code: None,
         }
+    }
+
+    /// Construct a rejection that carries a stable, cross-language semantic
+    /// code so callers can branch on the failure category rather than parsing
+    /// the human-readable message.
+    fn with_code(code: &'static str, message: impl Into<String>) -> Self {
+        Self {
+            message: message.into(),
+            code: Some(code),
+        }
+    }
+
+    /// The stable semantic code for this rejection, when one has been assigned
+    /// (for example [`SEMANTIC_RFC3339_INSTANT_MALFORMED`]).
+    #[must_use]
+    pub fn code(&self) -> Option<&'static str> {
+        self.code
+    }
+
+    /// The human-readable rejection message.
+    #[must_use]
+    pub fn message(&self) -> &str {
+        &self.message
     }
 }
 
@@ -20372,6 +20404,74 @@ mod tests {
 
     fn repo_fixture_path(relative_path: &str) -> PathBuf {
         crate::test_manifest_dir().join("../..").join(relative_path)
+    }
+
+    /// Cross-language parity: run the SHARED RFC3339 acceptance matrix through
+    /// the Rust contract validator. The identical matrix is run through the
+    /// TypeScript validator in
+    /// `packages/localization-bridge-schema/test/rfc3339-instant-parity-matrix.test.ts`,
+    /// so both languages must agree on every row's accept/reject decision, and
+    /// every rejection must carry the shared semantic code.
+    #[test]
+    fn rfc3339_instant_parity_matrix_matches_typescript_validator() {
+        #[derive(serde::Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct MatrixRow {
+            id: String,
+            value: serde_json::Value,
+            expected: String,
+        }
+        #[derive(serde::Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct ParityMatrix {
+            semantic_code: String,
+            rows: Vec<MatrixRow>,
+        }
+
+        let matrix: ParityMatrix = serde_json::from_str(
+            &fs::read_to_string(repo_fixture_path(
+                "packages/localization-bridge-schema/test/rfc3339-instant-parity-matrix.v0.2.json",
+            ))
+            .expect("parity matrix fixture should be readable"),
+        )
+        .expect("parity matrix fixture should be valid JSON");
+
+        assert_eq!(
+            matrix.semantic_code,
+            crate::SEMANTIC_RFC3339_INSTANT_MALFORMED,
+            "matrix must pin the shared cross-language semantic code",
+        );
+        assert!(
+            matrix.rows.iter().any(|row| row.expected == "accept")
+                && matrix.rows.iter().any(|row| row.expected == "reject"),
+            "matrix must cover both accept and reject",
+        );
+
+        for row in &matrix.rows {
+            let value = row
+                .value
+                .as_str()
+                .unwrap_or_else(|| panic!("row {} value must be a JSON string", row.id));
+            let result = crate::contracts::validate_rfc3339_instant(value, "matrix");
+            match row.expected.as_str() {
+                "accept" => assert!(
+                    result.is_ok(),
+                    "row {} ({value:?}) should be ACCEPTED, got {result:?}",
+                    row.id,
+                ),
+                "reject" => {
+                    let error = result
+                        .expect_err(&format!("row {} ({value:?}) should be REJECTED", row.id));
+                    assert_eq!(
+                        error.code(),
+                        Some(crate::SEMANTIC_RFC3339_INSTANT_MALFORMED),
+                        "row {} rejection must carry the shared semantic code",
+                        row.id,
+                    );
+                }
+                other => panic!("row {} has unknown expected value {other}", row.id),
+            }
+        }
     }
 
     fn bridge_v02_fixture_value() -> Value {

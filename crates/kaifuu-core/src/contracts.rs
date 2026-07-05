@@ -5925,10 +5925,29 @@ fn assert_required_rfc3339<'a>(
 
 fn assert_rfc3339_value<'a>(value: &'a Value, label: &str) -> BridgeContractResult<&'a str> {
     let value = string_value(value, label)?;
+    validate_rfc3339_instant(value, label)?;
+    Ok(value)
+}
+
+/// Validate a bare RFC3339 date-time instant string against the canonical
+/// cross-language acceptance rule shared with the TypeScript contract validator
+/// (`assertRfc3339Instant` in
+/// `packages/localization-bridge-schema/src/index.ts`).
+///
+/// Both validators are locked to the same accept/reject boundary by the shared
+/// parity matrix in
+/// `packages/localization-bridge-schema/test/rfc3339-instant-parity-matrix.v0.2.json`.
+/// Rejections carry the shared semantic code
+/// [`crate::SEMANTIC_RFC3339_INSTANT_MALFORMED`]. See
+/// `docs/contracts/rfc3339-instant-acceptance.md` for the canonical rule.
+pub fn validate_rfc3339_instant(value: &str, label: &str) -> BridgeContractResult<()> {
     if is_valid_rfc3339_instant(value) {
-        Ok(value)
+        Ok(())
     } else {
-        error(format!("{label} must be a valid RFC3339 timestamp instant"))
+        Err(BridgeContractValidationError::with_code(
+            crate::SEMANTIC_RFC3339_INSTANT_MALFORMED,
+            format!("{label} must be a valid RFC3339 timestamp instant"),
+        ))
     }
 }
 

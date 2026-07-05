@@ -1,0 +1,295 @@
+{
+  "schemaVersion": "0.2.0",
+  "description": "Cross-language RFC3339 date-time instant acceptance parity matrix. Both the Rust contract validator (crates/kaifuu-core/src/contracts.rs :: validate_rfc3339_instant) and the TypeScript contract validator (packages/localization-bridge-schema/src/index.ts :: assertRfc3339Instant) MUST agree on every row: identical accept/reject, and rejections carry the shared semantic code below. See docs/contracts/rfc3339-instant-acceptance.md for the canonical rule.",
+  "semanticCode": "itotori.contract.rfc3339_instant_malformed",
+  "canonicalRule": "YYYY-MM-DDTHH:MM:SS[.fraction](Z|(+|-)HH:MM) — uppercase 'T' separator and uppercase 'Z' only; 4-digit year; 2-digit month/day/hour/minute/second; seconds REQUIRED; calendar-valid date (Gregorian leap years); optional fractional seconds of one-or-more digits at any precision; timezone REQUIRED and is either 'Z' or a numeric offset with hours 00-23 and minutes 00-59; leap seconds (:60) are REJECTED.",
+  "rows": [
+    {
+      "id": "accept-basic-utc",
+      "value": "2026-07-05T12:00:00Z",
+      "expected": "accept",
+      "note": "canonical UTC instant"
+    },
+    {
+      "id": "accept-positive-offset",
+      "value": "2026-07-05T12:00:00+09:00",
+      "expected": "accept",
+      "note": "numeric positive offset"
+    },
+    {
+      "id": "accept-negative-offset",
+      "value": "2026-07-05T12:00:00-05:00",
+      "expected": "accept",
+      "note": "numeric negative offset"
+    },
+    {
+      "id": "accept-zero-offset-plus",
+      "value": "2026-07-05T12:00:00+00:00",
+      "expected": "accept",
+      "note": "explicit +00:00 offset"
+    },
+    {
+      "id": "accept-zero-offset-minus",
+      "value": "2026-07-05T12:00:00-00:00",
+      "expected": "accept",
+      "note": "-00:00 (RFC3339 unknown-local-offset) accepted numerically"
+    },
+    {
+      "id": "accept-fraction-millis",
+      "value": "2026-07-05T12:00:00.123Z",
+      "expected": "accept",
+      "note": "3-digit fraction"
+    },
+    {
+      "id": "accept-fraction-micros",
+      "value": "2026-07-05T12:00:00.123456Z",
+      "expected": "accept",
+      "note": "6-digit fraction"
+    },
+    {
+      "id": "accept-fraction-nanos-offset",
+      "value": "2026-07-05T12:00:00.123456789+09:00",
+      "expected": "accept",
+      "note": "9-digit fraction with offset"
+    },
+    {
+      "id": "accept-fraction-single-digit",
+      "value": "2026-07-05T12:00:00.1Z",
+      "expected": "accept",
+      "note": "single fraction digit"
+    },
+    {
+      "id": "accept-max-offset",
+      "value": "2026-07-05T12:00:00+23:59",
+      "expected": "accept",
+      "note": "maximum in-range offset"
+    },
+    {
+      "id": "accept-leap-day-valid",
+      "value": "2024-02-29T00:00:00Z",
+      "expected": "accept",
+      "note": "Feb 29 in a leap year"
+    },
+    {
+      "id": "accept-end-of-year",
+      "value": "2026-12-31T23:59:59Z",
+      "expected": "accept",
+      "note": "last second of the year"
+    },
+    {
+      "id": "accept-midnight",
+      "value": "2026-01-01T00:00:00Z",
+      "expected": "accept",
+      "note": "midnight start of year"
+    },
+    {
+      "id": "accept-min-year",
+      "value": "0001-01-01T00:00:00Z",
+      "expected": "accept",
+      "note": "year 0001"
+    },
+    {
+      "id": "accept-max-year",
+      "value": "9999-12-31T23:59:59Z",
+      "expected": "accept",
+      "note": "year 9999"
+    },
+
+    {
+      "id": "reject-no-timezone",
+      "value": "2026-07-05T12:00:00",
+      "expected": "reject",
+      "reason": "missing-timezone",
+      "note": "timezone designator is required"
+    },
+    {
+      "id": "reject-space-separator",
+      "value": "2026-07-05 12:00:00Z",
+      "expected": "reject",
+      "reason": "space-separator",
+      "note": "space instead of 'T' not accepted"
+    },
+    {
+      "id": "reject-lowercase-t",
+      "value": "2026-07-05t12:00:00Z",
+      "expected": "reject",
+      "reason": "lowercase-designator",
+      "note": "lowercase 't' separator not accepted"
+    },
+    {
+      "id": "reject-lowercase-z",
+      "value": "2026-07-05T12:00:00z",
+      "expected": "reject",
+      "reason": "lowercase-designator",
+      "note": "lowercase 'z' zulu not accepted"
+    },
+    {
+      "id": "reject-z-and-offset",
+      "value": "2026-07-05T12:00:00Z+09:00",
+      "expected": "reject",
+      "reason": "double-timezone",
+      "note": "cannot combine 'Z' and a numeric offset"
+    },
+    {
+      "id": "reject-two-digit-year",
+      "value": "26-07-05T12:00:00Z",
+      "expected": "reject",
+      "reason": "non-four-digit-year",
+      "note": "year must be 4 digits"
+    },
+    {
+      "id": "reject-missing-seconds",
+      "value": "2026-07-05T12:00Z",
+      "expected": "reject",
+      "reason": "missing-seconds",
+      "note": "seconds are required"
+    },
+    {
+      "id": "reject-month-zero",
+      "value": "2026-00-05T12:00:00Z",
+      "expected": "reject",
+      "reason": "field-out-of-range",
+      "note": "month 00"
+    },
+    {
+      "id": "reject-month-13",
+      "value": "2026-13-05T12:00:00Z",
+      "expected": "reject",
+      "reason": "field-out-of-range",
+      "note": "month 13"
+    },
+    {
+      "id": "reject-day-zero",
+      "value": "2026-07-00T12:00:00Z",
+      "expected": "reject",
+      "reason": "field-out-of-range",
+      "note": "day 00"
+    },
+    {
+      "id": "reject-day-32",
+      "value": "2026-07-32T12:00:00Z",
+      "expected": "reject",
+      "reason": "field-out-of-range",
+      "note": "day 32"
+    },
+    {
+      "id": "reject-non-leap-feb29",
+      "value": "2026-02-29T00:00:00Z",
+      "expected": "reject",
+      "reason": "field-out-of-range",
+      "note": "Feb 29 in a non-leap year"
+    },
+    {
+      "id": "reject-hour-24",
+      "value": "2026-07-05T24:00:00Z",
+      "expected": "reject",
+      "reason": "field-out-of-range",
+      "note": "hour 24"
+    },
+    {
+      "id": "reject-minute-60",
+      "value": "2026-07-05T12:60:00Z",
+      "expected": "reject",
+      "reason": "field-out-of-range",
+      "note": "minute 60"
+    },
+    {
+      "id": "reject-leap-second-60",
+      "value": "2026-07-05T12:00:60Z",
+      "expected": "reject",
+      "reason": "leap-second-unsupported",
+      "note": "DELIBERATE: leap second :60 is rejected by both validators (see doc)"
+    },
+    {
+      "id": "reject-offset-hour-24",
+      "value": "2026-07-05T12:00:00+24:00",
+      "expected": "reject",
+      "reason": "offset-out-of-range",
+      "note": "offset hour 24"
+    },
+    {
+      "id": "reject-offset-minute-60",
+      "value": "2026-07-05T12:00:00+09:60",
+      "expected": "reject",
+      "reason": "offset-out-of-range",
+      "note": "offset minute 60"
+    },
+    {
+      "id": "reject-empty-fraction",
+      "value": "2026-07-05T12:00:00.Z",
+      "expected": "reject",
+      "reason": "malformed-fraction",
+      "note": "fraction dot with no digits"
+    },
+    {
+      "id": "reject-comma-fraction",
+      "value": "2026-07-05T12:00:00,5Z",
+      "expected": "reject",
+      "reason": "malformed-fraction",
+      "note": "comma decimal separator not accepted"
+    },
+    {
+      "id": "reject-single-digit-offset-hour",
+      "value": "2026-07-05T12:00:00+9:00",
+      "expected": "reject",
+      "reason": "malformed-offset",
+      "note": "offset hour must be 2 digits"
+    },
+    {
+      "id": "reject-offset-no-colon",
+      "value": "2026-07-05T12:00:00+0900",
+      "expected": "reject",
+      "reason": "malformed-offset",
+      "note": "offset requires HH:MM colon form"
+    },
+    {
+      "id": "reject-trailing-space",
+      "value": "2026-07-05T12:00:00Z ",
+      "expected": "reject",
+      "reason": "trailing-content",
+      "note": "trailing whitespace"
+    },
+    {
+      "id": "reject-leading-space",
+      "value": " 2026-07-05T12:00:00Z",
+      "expected": "reject",
+      "reason": "leading-content",
+      "note": "leading whitespace"
+    },
+    {
+      "id": "reject-empty-string",
+      "value": "",
+      "expected": "reject",
+      "reason": "empty",
+      "note": "empty string"
+    },
+    {
+      "id": "reject-not-a-timestamp",
+      "value": "not a timestamp",
+      "expected": "reject",
+      "reason": "not-rfc3339",
+      "note": "arbitrary text"
+    },
+    {
+      "id": "reject-date-only",
+      "value": "2026-07-05",
+      "expected": "reject",
+      "reason": "missing-time",
+      "note": "date without a time part"
+    },
+    {
+      "id": "reject-numeric-epoch",
+      "value": "1720180800",
+      "expected": "reject",
+      "reason": "not-rfc3339",
+      "note": "unix epoch integer, not an RFC3339 string"
+    },
+    {
+      "id": "reject-slash-date-separator",
+      "value": "2026/07/05T12:00:00Z",
+      "expected": "reject",
+      "reason": "wrong-date-separator",
+      "note": "slashes instead of hyphens"
+    }
+  ]
+}

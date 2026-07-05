@@ -420,6 +420,31 @@ const BENCHMARK_NORMALIZED_PENALTY_TOLERANCE = 0.01;
 const RFC3339_INSTANT_PATTERN =
   /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(Z|[+-]\d{2}:\d{2})$/;
 
+/**
+ * Shared cross-language semantic code emitted when a contract field is not a
+ * valid RFC3339 date-time instant. The Rust contract validator emits the
+ * identical code (`SEMANTIC_RFC3339_INSTANT_MALFORMED` in
+ * `crates/kaifuu-core/src/lib.rs`). See
+ * `docs/contracts/rfc3339-instant-acceptance.md`.
+ */
+export const RFC3339_INSTANT_MALFORMED_CODE = "itotori.contract.rfc3339_instant_malformed";
+
+/**
+ * Typed rejection for a malformed RFC3339 date-time instant. Carries a stable
+ * {@link RFC3339_INSTANT_MALFORMED_CODE} so callers branch on a named semantic
+ * failure rather than parsing the human-readable message.
+ */
+export class Rfc3339InstantValidationError extends Error {
+  readonly code = RFC3339_INSTANT_MALFORMED_CODE;
+  readonly value: unknown;
+
+  constructor(label: string, value: unknown) {
+    super(`${label} must be a valid RFC3339 timestamp instant`);
+    this.name = "Rfc3339InstantValidationError";
+    this.value = value;
+  }
+}
+
 export const LOCALIZATION_ROOT_CAUSES = [
   "source_content_defect",
   "source_annotation_gap",
@@ -6741,11 +6766,31 @@ function assertOptionalString(value: unknown, label: string): asserts value is s
   }
 }
 
-function assertRfc3339Instant(value: unknown, label: string): asserts value is string {
-  assertString(value, label);
+/**
+ * Assert that `value` is a valid RFC3339 date-time instant per the canonical
+ * cross-language acceptance rule shared with the Rust contract validator
+ * (`validate_rfc3339_instant` in `crates/kaifuu-core/src/contracts.rs`).
+ *
+ * Both validators are locked to the same accept/reject boundary by the shared
+ * parity matrix in
+ * `packages/localization-bridge-schema/test/rfc3339-instant-parity-matrix.v0.2.json`.
+ * Rejections throw a {@link Rfc3339InstantValidationError} carrying the shared
+ * {@link RFC3339_INSTANT_MALFORMED_CODE}. See
+ * `docs/contracts/rfc3339-instant-acceptance.md` for the canonical rule.
+ *
+ * The acceptance decision is a pure regular-expression + numeric-range check,
+ * matching the Rust validator exactly. It deliberately does NOT consult
+ * `Date.parse`, whose engine-defined leniency (e.g. rolling `2026-02-29` over
+ * to March, or version-specific offset handling) is a cross-language
+ * divergence hazard and is redundant with the range checks below.
+ */
+export function assertRfc3339Instant(value: unknown, label: string): asserts value is string {
+  if (typeof value !== "string") {
+    throw new Rfc3339InstantValidationError(label, value);
+  }
   const match = RFC3339_INSTANT_PATTERN.exec(value);
   if (match === null) {
-    throw new Error(`${label} must be a valid RFC3339 timestamp instant`);
+    throw new Rfc3339InstantValidationError(label, value);
   }
 
   const [, yearText, monthText, dayText, hourText, minuteText, secondText, offsetText] = match;
@@ -6756,7 +6801,7 @@ function assertRfc3339Instant(value: unknown, label: string): asserts value is s
   const minute = Number(minuteText);
   const second = Number(secondText);
   if (offsetText === undefined) {
-    throw new Error(`${label} must be a valid RFC3339 timestamp instant`);
+    throw new Rfc3339InstantValidationError(label, value);
   }
   if (
     month < 1 ||
@@ -6766,17 +6811,14 @@ function assertRfc3339Instant(value: unknown, label: string): asserts value is s
     second > 59 ||
     !isValidCalendarDate(year, month, day)
   ) {
-    throw new Error(`${label} must be a valid RFC3339 timestamp instant`);
+    throw new Rfc3339InstantValidationError(label, value);
   }
   if (offsetText !== "Z") {
     const offsetHour = Number(offsetText.slice(1, 3));
     const offsetMinute = Number(offsetText.slice(4, 6));
     if (offsetHour > 23 || offsetMinute > 59) {
-      throw new Error(`${label} must be a valid RFC3339 timestamp instant`);
+      throw new Rfc3339InstantValidationError(label, value);
     }
-  }
-  if (!Number.isFinite(Date.parse(value))) {
-    throw new Error(`${label} must be a valid RFC3339 timestamp instant`);
   }
 }
 
