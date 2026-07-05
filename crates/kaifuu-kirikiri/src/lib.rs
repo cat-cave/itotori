@@ -44,6 +44,7 @@
 mod ids;
 mod parse;
 mod patch;
+pub mod xp3_crypt;
 
 pub use parse::{
     KsDocument, KsEncoding, KsFinding, KsFindingKind, KsUnit, TextRole, parse_ks,
@@ -51,6 +52,12 @@ pub use parse::{
 };
 pub use patch::{
     PatchError, VerifyError, apply_patch, source_structural_bytes, verify_byte_preserving,
+};
+pub use xp3_crypt::{
+    FixtureSecretResolver, KirikiriXp3Surface, Xp3CryptContainerSource, Xp3CryptError,
+    Xp3CryptExtractedMember, Xp3CryptFixture, Xp3CryptManifest, Xp3CryptMemberDigest,
+    Xp3CryptMissingKeyReport, Xp3CryptReport, Xp3CryptWrongKeyReport, Xp3CryptoProfile,
+    build_synthetic_crypt_xp3, run_xp3_crypt_smoke_from_fixture, run_xp3_crypt_smoke_from_path,
 };
 
 /// One-line honest-scope statement, embedded so the boundary is queryable

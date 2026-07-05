@@ -604,7 +604,9 @@ name = "kaifuu-kirikiri"
 version = "0.0.0"
 dependencies = [
  "encoding_rs",
+ "kaifuu-core",
  "serde",
+ "serde_json",
  "sha2",
  "thiserror",
 ]
