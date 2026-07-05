@@ -2843,9 +2843,10 @@ pub enum RuntimeHarnessErrorKind {
     /// `utsushi.browser.chromium_version_mismatch`.
     ChromiumVersionMismatch,
     /// Browser-launch path could not reach a usable display surface under
-    /// strict display checking. Reserved for follow-up; producing this kind
-    /// is gated and not exercised in UTSUSHI-148 production paths. Semantic
-    /// code: `utsushi.browser.display_unavailable`.
+    /// strict display checking. Produced by the strict-display probe
+    /// (UTSUSHI-162) when the operator opts into the `UTSUSHI_STRICT_DISPLAY`
+    /// activation gate and no usable display surface is detected; off by
+    /// default. Semantic code: `utsushi.browser.display_unavailable`.
     ChromiumDisplayUnavailable,
     /// Adapter is research-tier and not advertised as alpha capability;
     /// invoking trace/capture/smoke returns this kind. Semantic code:

@@ -563,14 +563,12 @@ mod browser_detection {
             detected: ChromiumVersion,
             required_major: u32,
         },
-        /// Reserved semantic-code variant; the gate that produces this
-        /// reason (strict display checking) is intentionally not exposed
-        /// in UTSUSHI-148. Tests exercise the variant via
-        /// [`force_display_unavailable`] so the wiring (semantic code,
-        /// harness error kind, diagnostic detail attachment) stays
-        /// live under workspace clippy.
-        // reason: reserved harness error variant kept live under workspace clippy; not constructed on every path yet.
-        #[allow(dead_code)]
+        /// No usable display surface under strict display checking
+        /// (UTSUSHI-162). Produced by [`probe_display`] when the operator
+        /// opts into the `UTSUSHI_STRICT_DISPLAY` activation gate and the
+        /// host exposes no X11/Wayland display env var on a platform that
+        /// uses that convention. Off by default, so the headless-only
+        /// UTSUSHI-148 path is unchanged.
         DisplayUnavailable {
             source: BrowserDetectionLabel,
             platform: &'static str,
@@ -637,8 +635,6 @@ mod browser_detection {
     }
 
     #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-    // reason: reserved enum variant kept for API symmetry; see DisplayUnavailable note above.
-    #[allow(dead_code)]
     pub(super) enum DisplayProbeOutcome {
         /// Display env vars present (X11/Wayland session). Headless launch
         /// nonetheless proceeds with `--headless=new --disable-gpu --no-sandbox`.
@@ -647,7 +643,7 @@ mod browser_detection {
         /// so launch is not gated.
         HeadlessOnly,
         /// Strict display checking explicitly enabled and no usable surface
-        /// detected. Reserved; not produced in the default UTSUSHI-148 path.
+        /// detected. Produced under the `UTSUSHI_STRICT_DISPLAY` gate.
         UnavailableStrict,
     }
 
@@ -733,10 +729,121 @@ mod browser_detection {
             });
         }
 
+        // 3. Strict-display gate (UTSUSHI-162). Under the UTSUSHI_STRICT_DISPLAY
+        //    activation gate the probe requires a usable display surface and
+        //    emits DisplayUnavailable when none is detected. With the gate off
+        //    (default) this is a no-op headless-only outcome, so the UTSUSHI-148
+        //    headless launch path is unchanged.
+        probe_display(source)?;
+
         Ok(ChromiumProbeOutcome {
             program,
             source,
             version,
+        })
+    }
+
+    /// Activation-gate env var for strict display checking (UTSUSHI-162).
+    /// Absent / falsey (unset, `""`, `0`, `false`, `off`) leaves the
+    /// headless-only UTSUSHI-148 behavior untouched: no display env var is
+    /// NOT an error. Truthy opts the operator into requiring a usable
+    /// display surface, so a CI runner with a broken/absent display gets a
+    /// typed `utsushi.browser.display_unavailable` diagnostic instead of a
+    /// silent headless launch.
+    const STRICT_DISPLAY_ENV: &str = "UTSUSHI_STRICT_DISPLAY";
+
+    /// X11/Wayland session env vars whose presence signals a usable display
+    /// surface on platforms that use that convention (Linux/BSD).
+    const DISPLAY_ENV_VARS: &[&str] = &["WAYLAND_DISPLAY", "DISPLAY"];
+
+    pub(super) fn strict_display_enabled() -> bool {
+        env_flag_enabled(STRICT_DISPLAY_ENV)
+    }
+
+    fn env_flag_enabled(name: &str) -> bool {
+        match env::var(name) {
+            Ok(value) => {
+                let trimmed = value.trim();
+                !trimmed.is_empty()
+                    && !trimmed.eq_ignore_ascii_case("0")
+                    && !trimmed.eq_ignore_ascii_case("false")
+                    && !trimmed.eq_ignore_ascii_case("off")
+            }
+            Err(_) => false,
+        }
+    }
+
+    fn display_env_present() -> bool {
+        DISPLAY_ENV_VARS
+            .iter()
+            .any(|name| env::var(name).is_ok_and(|value| !value.trim().is_empty()))
+    }
+
+    fn display_platform() -> &'static str {
+        if cfg!(target_os = "macos") {
+            "macos"
+        } else if cfg!(target_os = "windows") {
+            "windows"
+        } else if cfg!(target_os = "linux") {
+            "linux"
+        } else {
+            "unix"
+        }
+    }
+
+    /// Whether the current platform advertises a usable display through the
+    /// X11/Wayland `DISPLAY`/`WAYLAND_DISPLAY` env-var convention. macOS and
+    /// Windows expose a native window server whose availability those env
+    /// vars do not describe, so strict env-based checking cannot prove the
+    /// surface is absent there and must not false-positive.
+    fn platform_uses_display_env() -> bool {
+        cfg!(all(unix, not(target_os = "macos")))
+    }
+
+    /// Real strict-display probe (UTSUSHI-162). Reads the activation gate and
+    /// the host display env, then decides via [`evaluate_display`].
+    pub(super) fn probe_display(
+        source: BrowserDetectionLabel,
+    ) -> Result<DisplayProbeOutcome, BrowserUnavailabilityReason> {
+        evaluate_display(
+            strict_display_enabled(),
+            display_env_present(),
+            platform_uses_display_env(),
+            source,
+            display_platform(),
+        )
+    }
+
+    /// Pure strict-display decision, separated from the env reads in
+    /// [`probe_display`] so the policy is exercised deterministically without
+    /// process-env mutation.
+    ///
+    /// - A present display surface is always usable (`PresentEnv`).
+    /// - Gate off keeps the headless-only default (`HeadlessOnly`); absence of
+    ///   a display is never an error, preserving UTSUSHI-148 behavior.
+    /// - Gate on with no display: on env-convention platforms this is a hard
+    ///   [`BrowserUnavailabilityReason::DisplayUnavailable`]; on native-window
+    ///   platforms the env signal is inapplicable, so it stays `PresentEnv`.
+    pub(super) fn evaluate_display(
+        strict: bool,
+        display_present: bool,
+        platform_uses_display_env: bool,
+        source: BrowserDetectionLabel,
+        platform: &'static str,
+    ) -> Result<DisplayProbeOutcome, BrowserUnavailabilityReason> {
+        if display_present {
+            return Ok(DisplayProbeOutcome::PresentEnv);
+        }
+        if !strict {
+            return Ok(DisplayProbeOutcome::HeadlessOnly);
+        }
+        if !platform_uses_display_env {
+            return Ok(DisplayProbeOutcome::PresentEnv);
+        }
+        Err(BrowserUnavailabilityReason::DisplayUnavailable {
+            source,
+            platform,
+            probe: DisplayProbeOutcome::UnavailableStrict,
         })
     }
 
@@ -881,10 +988,11 @@ mod browser_detection {
         }
     }
 
-    /// Test-only constructor for the reserved `DisplayUnavailable` variant.
-    /// Production callers never produce this variant; the helper exists so
-    /// downstream tests can assert the semantic code wiring is correct
-    /// without flipping any production gate.
+    /// Test-only constructor for the `DisplayUnavailable` variant. The real
+    /// probe ([`probe_display`]) now produces this variant under the
+    /// `UTSUSHI_STRICT_DISPLAY` gate; this helper builds a deterministic
+    /// instance so the wiring smoke test can assert the semantic-code /
+    /// harness-kind contract without depending on host env.
     #[cfg(test)]
     pub(super) fn force_display_unavailable() -> BrowserUnavailabilityReason {
         BrowserUnavailabilityReason::DisplayUnavailable {
@@ -2420,12 +2528,11 @@ exit 0
 
     #[test]
     fn reserved_display_unavailable_reason_carries_typed_semantic_code() {
-        // Reserved variant smoke. UTSUSHI-148 documents
-        // BrowserUnavailabilityReason::DisplayUnavailable as registered but
-        // not produced in production paths; this test pins the semantic
-        // code, harness error kind, and detail-attachment wiring so a
-        // follow-up node that flips the production gate inherits a working
-        // contract.
+        // Wiring smoke for the DisplayUnavailable variant: pins the semantic
+        // code, harness error kind, and detail-attachment contract that the
+        // real strict-display probe (UTSUSHI-162) relies on. Uses the
+        // deterministic force_display_unavailable constructor so the contract
+        // is asserted without depending on host display env.
         let reason = super::browser_detection::force_display_unavailable();
         assert_eq!(
             reason.semantic_code(),
@@ -2449,6 +2556,183 @@ exit 0
             .find(|(key, _)| key == "displayProbe")
             .map(|(_, value)| value.as_str());
         assert_eq!(probe, Some("unavailable_strict"));
+    }
+
+    #[test]
+    fn strict_display_policy_gate_off_default_is_headless_only() {
+        // Gate OFF (default): a missing display surface is NOT an error, so
+        // the UTSUSHI-148 headless launch path is unchanged. Uses the pure
+        // policy fn so the default is asserted deterministically regardless
+        // of host env, on every platform.
+        for platform_uses_display_env in [true, false] {
+            let outcome = super::browser_detection::evaluate_display(
+                false, // strict gate off
+                false, // no display surface
+                platform_uses_display_env,
+                super::browser_detection::BrowserDetectionLabel::Path,
+                "linux",
+            );
+            assert_eq!(
+                outcome,
+                Ok(super::browser_detection::DisplayProbeOutcome::HeadlessOnly)
+            );
+        }
+        // A present surface is always usable, gate on or off.
+        for strict in [true, false] {
+            let outcome = super::browser_detection::evaluate_display(
+                strict,
+                true, // display present
+                true,
+                super::browser_detection::BrowserDetectionLabel::Path,
+                "linux",
+            );
+            assert_eq!(
+                outcome,
+                Ok(super::browser_detection::DisplayProbeOutcome::PresentEnv)
+            );
+        }
+    }
+
+    #[test]
+    fn strict_display_policy_gate_on_no_surface_emits_display_unavailable() {
+        // Gate ON + no display surface on an env-convention platform -> hard
+        // DisplayUnavailable carrying the typed semantic code. On a native-
+        // window platform (macOS/Windows) the env signal is inapplicable, so
+        // the same inputs stay PresentEnv rather than false-positive.
+        let unavailable = super::browser_detection::evaluate_display(
+            true,  // strict gate on
+            false, // no display surface
+            true,  // env-convention platform (Linux/BSD)
+            super::browser_detection::BrowserDetectionLabel::Path,
+            "linux",
+        );
+        let reason = unavailable.expect_err("strict + no surface must be an error");
+        assert_eq!(
+            reason.semantic_code(),
+            "utsushi.browser.display_unavailable"
+        );
+        assert_eq!(
+            reason.harness_error_kind(),
+            RuntimeHarnessErrorKind::ChromiumDisplayUnavailable
+        );
+        let harness =
+            super::unavailability_harness_error(RuntimeOperation::SmokeValidation, &reason);
+        let semantic = harness
+            .details
+            .iter()
+            .find(|(key, _)| key == "semanticCode")
+            .map(|(_, value)| value.as_str());
+        assert_eq!(semantic, Some("utsushi.browser.display_unavailable"));
+        let probe = harness
+            .details
+            .iter()
+            .find(|(key, _)| key == "displayProbe")
+            .map(|(_, value)| value.as_str());
+        assert_eq!(probe, Some("unavailable_strict"));
+
+        // Native-window platform: same strict/no-surface inputs stay present.
+        let native = super::browser_detection::evaluate_display(
+            true,
+            false,
+            false, // native-window platform (macOS/Windows)
+            super::browser_detection::BrowserDetectionLabel::Path,
+            "macos",
+        );
+        assert_eq!(
+            native,
+            Ok(super::browser_detection::DisplayProbeOutcome::PresentEnv)
+        );
+    }
+
+    #[cfg(all(unix, not(target_os = "macos")))]
+    #[test]
+    // reason: this test mutates process env via the unavoidably unsafe
+    // std::env::{set_var,remove_var} (edition 2024) through a scoped guard to
+    // exercise the REAL env-reading strict-display probe. Test-only; src stays
+    // unsafe-free.
+    #[allow(unsafe_code)]
+    fn real_strict_display_probe_reads_env_gate_and_emits_display_unavailable() {
+        // Exercises the REAL env-backed probe_display path end to end: with the
+        // UTSUSHI_STRICT_DISPLAY gate on and no DISPLAY/WAYLAND_DISPLAY, the
+        // probe emits DisplayUnavailable; with the gate off (default), the
+        // same no-display host is headless-only. Restores prior env on drop.
+        struct EnvGuard {
+            keys: Vec<(&'static str, Option<std::ffi::OsString>)>,
+        }
+        impl EnvGuard {
+            fn capture(keys: &[&'static str]) -> Self {
+                Self {
+                    keys: keys.iter().map(|key| (*key, env::var_os(key))).collect(),
+                }
+            }
+            fn set(key: &str, value: &str) {
+                // SAFETY: deliberate, scoped mutation for a test that restores
+                // prior values on drop; documented single-test env scope.
+                unsafe {
+                    env::set_var(key, value);
+                }
+            }
+            fn remove(key: &str) {
+                // SAFETY: see EnvGuard::set.
+                unsafe {
+                    env::remove_var(key);
+                }
+            }
+        }
+        impl Drop for EnvGuard {
+            fn drop(&mut self) {
+                for (key, previous) in &self.keys {
+                    // SAFETY: see EnvGuard::set.
+                    unsafe {
+                        match previous {
+                            Some(value) => env::set_var(key, value),
+                            None => env::remove_var(key),
+                        }
+                    }
+                }
+            }
+        }
+
+        let _guard = EnvGuard::capture(&["UTSUSHI_STRICT_DISPLAY", "DISPLAY", "WAYLAND_DISPLAY"]);
+        EnvGuard::remove("DISPLAY");
+        EnvGuard::remove("WAYLAND_DISPLAY");
+
+        // Gate off (default): no display surface is NOT an error.
+        EnvGuard::remove("UTSUSHI_STRICT_DISPLAY");
+        assert_eq!(
+            super::browser_detection::probe_display(
+                super::browser_detection::BrowserDetectionLabel::Path
+            ),
+            Ok(super::browser_detection::DisplayProbeOutcome::HeadlessOnly)
+        );
+
+        // Gate on: the real probe emits the typed DisplayUnavailable.
+        EnvGuard::set("UTSUSHI_STRICT_DISPLAY", "1");
+        let reason = super::browser_detection::probe_display(
+            super::browser_detection::BrowserDetectionLabel::Path,
+        )
+        .expect_err("strict gate + no display env must be DisplayUnavailable");
+        assert_eq!(
+            reason.semantic_code(),
+            "utsushi.browser.display_unavailable"
+        );
+        let harness =
+            super::unavailability_harness_error(RuntimeOperation::SmokeValidation, &reason);
+        let semantic = harness
+            .details
+            .iter()
+            .find(|(key, _)| key == "semanticCode")
+            .map(|(_, value)| value.as_str());
+        assert_eq!(semantic, Some("utsushi.browser.display_unavailable"));
+
+        // Falsey gate value is treated as off.
+        EnvGuard::set("UTSUSHI_STRICT_DISPLAY", "0");
+        assert_eq!(
+            super::browser_detection::probe_display(
+                super::browser_detection::BrowserDetectionLabel::Path
+            ),
+            Ok(super::browser_detection::DisplayProbeOutcome::HeadlessOnly)
+        );
     }
 
     #[test]
