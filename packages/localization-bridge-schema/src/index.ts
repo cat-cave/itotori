@@ -624,7 +624,7 @@ export type SourceRevisionKindV02 = (typeof SOURCE_REVISION_KINDS)[number];
 export const HASH_ALGORITHMS = ["sha256"] as const;
 export type HashAlgorithmV02 = (typeof HASH_ALGORITHMS)[number];
 
-export const HASH_NORMALIZATIONS = ["utf8-nfc-lf-json-stable-v1", "bytes"] as const;
+export const HASH_NORMALIZATIONS = ["utf8-lf-json-stable-v1", "bytes"] as const;
 export type HashNormalizationV02 = (typeof HASH_NORMALIZATIONS)[number];
 
 export const HASH_SCOPES = [
@@ -4837,18 +4837,18 @@ function assertHashStrategyV02(value: unknown, label: string): asserts value is 
   assertHashRuleV02(patchExport, `${label}.patchExport`, "patch_export");
   assertHashRuleV02(deltaPackage, `${label}.deltaPackage`, "delta_package");
   assertHashRuleNormalizationV02(sourceProfile, `${label}.sourceProfile`, [
-    "utf8-nfc-lf-json-stable-v1",
+    "utf8-lf-json-stable-v1",
   ]);
   assertHashRuleNormalizationV02(sourceBundle, `${label}.sourceBundle`, [
-    "utf8-nfc-lf-json-stable-v1",
+    "utf8-lf-json-stable-v1",
   ]);
   assertHashRuleNormalizationV02(sourceAsset, `${label}.sourceAsset`, ["bytes"]);
-  assertHashRuleNormalizationV02(sourceUnit, `${label}.sourceUnit`, ["utf8-nfc-lf-json-stable-v1"]);
+  assertHashRuleNormalizationV02(sourceUnit, `${label}.sourceUnit`, ["utf8-lf-json-stable-v1"]);
   assertHashRuleNormalizationV02(patchExport, `${label}.patchExport`, [
-    "utf8-nfc-lf-json-stable-v1",
+    "utf8-lf-json-stable-v1",
   ]);
   assertHashRuleNormalizationV02(deltaPackage, `${label}.deltaPackage`, [
-    "utf8-nfc-lf-json-stable-v1",
+    "utf8-lf-json-stable-v1",
   ]);
   assertRequiredHashRuleFieldsV02(sourceUnit, `${label}.sourceUnit`);
 }

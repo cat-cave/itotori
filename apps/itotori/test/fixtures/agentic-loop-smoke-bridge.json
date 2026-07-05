@@ -20,7 +20,7 @@
   "sourceLocale": "ja-JP",
   "hashStrategy": {
     "algorithm": "sha256",
-    "normalization": "utf8-nfc-lf-json-stable-v1",
+    "normalization": "utf8-lf-json-stable-v1",
     "sourceProfile": { "scope": "source_profile", "preimage": "fixture" },
     "sourceBundle": { "scope": "source_bundle", "preimage": "fixture" },
     "sourceAsset": { "scope": "source_asset", "preimage": "fixture" },

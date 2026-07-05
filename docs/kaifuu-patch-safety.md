@@ -16,11 +16,11 @@ Adapters must identify the source asset encoding before patching. They must not
 guess from translated text or silently rewrite an asset into a different
 encoding.
 
-| Encoding  | Required patch behavior                                                                                                                                                                                                                               |
-| --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| UTF-8     | Decode as UTF-8, preserve valid scalar values, and emit UTF-8 unless the adapter readiness record names a different engine requirement. JSON outputs use UTF-8, NFC, LF, and stable pretty serialization.                                             |
-| UTF-16LE  | Require BOM or adapter-specific fixture evidence before accepting the file as UTF-16LE. Preserve little-endian output and BOM policy from the input profile. Reject unpaired surrogate sequences as semantic patch failures.                          |
-| Shift-JIS | Decode with the adapter's documented Shift-JIS variant. Preserve bytes for protected spans and unsupported byte ranges. If a replacement cannot be encoded in the same variant, fail the patch instead of writing mojibake or replacement characters. |
+| Encoding  | Required patch behavior                                                                                                                                                                                                                                                  |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| UTF-8     | Decode as UTF-8, preserve valid scalar values, and emit UTF-8 unless the adapter readiness record names a different engine requirement. JSON outputs use UTF-8, LF, and stable pretty serialization; string contents are preserved byte-exact (no Unicode form folding). |
+| UTF-16LE  | Require BOM or adapter-specific fixture evidence before accepting the file as UTF-16LE. Preserve little-endian output and BOM policy from the input profile. Reject unpaired surrogate sequences as semantic patch failures.                                             |
+| Shift-JIS | Decode with the adapter's documented Shift-JIS variant. Preserve bytes for protected spans and unsupported byte ranges. If a replacement cannot be encoded in the same variant, fail the patch instead of writing mojibake or replacement characters.                    |
 
 Binary patchers that operate on encoded string slots must validate encoded byte
 lengths, terminators, offset tables, and protected spans before writing. A
@@ -29,16 +29,24 @@ has a tested relocation or rebuild path.
 
 ## Unicode Normalization
 
-Bridge, profile, and patch metadata use the stable JSON normalization rule named
-`utf8-nfc-lf-json-stable-v1`. Future adapters must document asset-level
-normalization separately:
+Bridge, profile, and patch metadata use the stable JSON serialization rule named
+`utf8-lf-json-stable-v1`: UTF-8 encoding, LF line endings, and deterministic
+pretty serialization. This rule does **not** apply Unicode Normalization Form
+folding — string contents (including `sourceText` and `spans.raw`) are emitted
+byte-exact so the "span byte range must match sourceText" contract and
+byte-identical patchback hold. Composed and decomposed inputs therefore
+serialize to distinct bytes and distinct hashes. Future adapters must document
+asset-level normalization separately:
 
-- Text metadata emitted by Kaifuu should be NFC unless the bridge contract says
-  otherwise.
-- Asset bytes should not be normalized blindly. Preserve source normalization
-  when the engine treats byte identity as significant.
-- If an engine requires NFD, NFKC, width folding, or another rule, the adapter
-  readiness record must name the rule and include round-trip fixtures.
+- Kaifuu does not silently NFC-normalize text metadata. If an engine requires a
+  canonical Unicode form for a field, the bridge contract must name it and the
+  adapter must normalize the source explicitly (never as a hidden side effect of
+  serialization).
+- Asset bytes are hashed with the `bytes` rule and are never normalized.
+  Preserve source normalization when the engine treats byte identity as
+  significant.
+- If an engine requires NFC, NFD, NFKC, width folding, or another rule, the
+  adapter readiness record must name the rule and include round-trip fixtures.
 
 ## Newlines
 

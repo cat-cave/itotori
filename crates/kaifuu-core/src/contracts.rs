@@ -2910,14 +2910,14 @@ fn validate_hash_strategy(value: &Value, label: &str) -> BridgeContractResult<()
         required(strategy, "sourceProfile", &format!("{label}.sourceProfile"))?,
         &format!("{label}.sourceProfile"),
         "source_profile",
-        "utf8-nfc-lf-json-stable-v1",
+        "utf8-lf-json-stable-v1",
         false,
     )?;
     validate_hash_rule(
         required(strategy, "sourceBundle", &format!("{label}.sourceBundle"))?,
         &format!("{label}.sourceBundle"),
         "source_bundle",
-        "utf8-nfc-lf-json-stable-v1",
+        "utf8-lf-json-stable-v1",
         false,
     )?;
     validate_hash_rule(
@@ -2931,21 +2931,21 @@ fn validate_hash_strategy(value: &Value, label: &str) -> BridgeContractResult<()
         required(strategy, "sourceUnit", &format!("{label}.sourceUnit"))?,
         &format!("{label}.sourceUnit"),
         "source_unit",
-        "utf8-nfc-lf-json-stable-v1",
+        "utf8-lf-json-stable-v1",
         true,
     )?;
     validate_hash_rule(
         required(strategy, "patchExport", &format!("{label}.patchExport"))?,
         &format!("{label}.patchExport"),
         "patch_export",
-        "utf8-nfc-lf-json-stable-v1",
+        "utf8-lf-json-stable-v1",
         false,
     )?;
     validate_hash_rule(
         required(strategy, "deltaPackage", &format!("{label}.deltaPackage"))?,
         &format!("{label}.deltaPackage"),
         "delta_package",
-        "utf8-nfc-lf-json-stable-v1",
+        "utf8-lf-json-stable-v1",
         false,
     )
 }

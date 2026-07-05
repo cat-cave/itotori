@@ -295,12 +295,12 @@ pub(crate) fn build_synthetic_translated_bundle_json(
             "sourceProfile": {
                 "scope": "source_profile",
                 "algorithm": "sha256",
-                "normalization": "utf8-nfc-lf-json-stable-v1",
+                "normalization": "utf8-lf-json-stable-v1",
             },
             "sourceBundle": {
                 "scope": "source_bundle",
                 "algorithm": "sha256",
-                "normalization": "utf8-nfc-lf-json-stable-v1",
+                "normalization": "utf8-lf-json-stable-v1",
             },
             "sourceAsset": {
                 "scope": "source_asset",
@@ -310,18 +310,18 @@ pub(crate) fn build_synthetic_translated_bundle_json(
             "sourceUnit": {
                 "scope": "source_unit",
                 "algorithm": "sha256",
-                "normalization": "utf8-nfc-lf-json-stable-v1",
+                "normalization": "utf8-lf-json-stable-v1",
                 "fields": ["sourceLocale", "sourceUnitKey", "sourceText", "spans.raw"],
             },
             "patchExport": {
                 "scope": "patch_export",
                 "algorithm": "sha256",
-                "normalization": "utf8-nfc-lf-json-stable-v1",
+                "normalization": "utf8-lf-json-stable-v1",
             },
             "deltaPackage": {
                 "scope": "delta_package",
                 "algorithm": "sha256",
-                "normalization": "utf8-nfc-lf-json-stable-v1",
+                "normalization": "utf8-lf-json-stable-v1",
             },
         },
         "extractor": {

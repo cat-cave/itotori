@@ -24,12 +24,12 @@
     "sourceProfile": {
       "scope": "source_profile",
       "algorithm": "sha256",
-      "normalization": "utf8-nfc-lf-json-stable-v1"
+      "normalization": "utf8-lf-json-stable-v1"
     },
     "sourceBundle": {
       "scope": "source_bundle",
       "algorithm": "sha256",
-      "normalization": "utf8-nfc-lf-json-stable-v1"
+      "normalization": "utf8-lf-json-stable-v1"
     },
     "sourceAsset": {
       "scope": "source_asset",
@@ -39,18 +39,18 @@
     "sourceUnit": {
       "scope": "source_unit",
       "algorithm": "sha256",
-      "normalization": "utf8-nfc-lf-json-stable-v1",
+      "normalization": "utf8-lf-json-stable-v1",
       "fields": ["sourceLocale", "sourceUnitKey", "sourceText", "spans.raw"]
     },
     "patchExport": {
       "scope": "patch_export",
       "algorithm": "sha256",
-      "normalization": "utf8-nfc-lf-json-stable-v1"
+      "normalization": "utf8-lf-json-stable-v1"
     },
     "deltaPackage": {
       "scope": "delta_package",
       "algorithm": "sha256",
-      "normalization": "utf8-nfc-lf-json-stable-v1"
+      "normalization": "utf8-lf-json-stable-v1"
     }
   },
   "patchExportHash": "sha256:8c8bd1092bba59430737fc36ec0ede41e36b8c94d7759a1313bcfc5aba94941a",

@@ -67,7 +67,7 @@ Do not collapse unknown speakers into a single string or boolean.
   Kaifuu, Itotori, and Utsushi fixture pipeline is intentionally versioned.
 - v0.2 hashes use canonical lowercase `sha256:` strings plus `hashStrategy` to
   name the algorithm, normalization, and source scope. The current source-unit
-  text strategy is `utf8-nfc-lf-json-stable-v1` with explicit source fields;
+  text strategy is `utf8-lf-json-stable-v1` with explicit source fields;
   the source-asset strategy uses `bytes` so binary asset hashing is not
   confused with text normalization.
 - v0.2 patch exports carry source game/profile, source bundle revision, and

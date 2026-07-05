@@ -159,7 +159,7 @@ v0.2 source identity is deterministic and explicit:
 - `sourceBundleHash` and `sourceBundleRevision` identify the full extracted
   source bundle for tracing reruns.
 - `hashStrategy` declares per-scope `sha256` rules. Source units use
-  `utf8-nfc-lf-json-stable-v1` text normalization with explicit source fields;
+  `utf8-lf-json-stable-v1` text normalization with explicit source fields;
   source assets use `bytes` normalization for binary content.
 - v0.2 hash strings are canonical lowercase SHA-256 digests in the form
   `sha256:` plus 64 hex characters.

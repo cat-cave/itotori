@@ -186,15 +186,15 @@ fn build_bundle_json(
 
 fn hash_strategy_json() -> Value {
     json!({
-        "sourceProfile": {"scope": "source_profile", "algorithm": "sha256", "normalization": "utf8-nfc-lf-json-stable-v1"},
-        "sourceBundle": {"scope": "source_bundle", "algorithm": "sha256", "normalization": "utf8-nfc-lf-json-stable-v1"},
+        "sourceProfile": {"scope": "source_profile", "algorithm": "sha256", "normalization": "utf8-lf-json-stable-v1"},
+        "sourceBundle": {"scope": "source_bundle", "algorithm": "sha256", "normalization": "utf8-lf-json-stable-v1"},
         "sourceAsset": {"scope": "source_asset", "algorithm": "sha256", "normalization": "bytes"},
         "sourceUnit": {
-            "scope": "source_unit", "algorithm": "sha256", "normalization": "utf8-nfc-lf-json-stable-v1",
+            "scope": "source_unit", "algorithm": "sha256", "normalization": "utf8-lf-json-stable-v1",
             "fields": ["sourceLocale", "sourceUnitKey", "sourceText", "spans.raw"],
         },
-        "patchExport": {"scope": "patch_export", "algorithm": "sha256", "normalization": "utf8-nfc-lf-json-stable-v1"},
-        "deltaPackage": {"scope": "delta_package", "algorithm": "sha256", "normalization": "utf8-nfc-lf-json-stable-v1"},
+        "patchExport": {"scope": "patch_export", "algorithm": "sha256", "normalization": "utf8-lf-json-stable-v1"},
+        "deltaPackage": {"scope": "delta_package", "algorithm": "sha256", "normalization": "utf8-lf-json-stable-v1"},
     })
 }
 

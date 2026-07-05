@@ -166,12 +166,12 @@
   "hashStrategy": {
     "deltaPackage": {
       "algorithm": "sha256",
-      "normalization": "utf8-nfc-lf-json-stable-v1",
+      "normalization": "utf8-lf-json-stable-v1",
       "scope": "delta_package"
     },
     "patchExport": {
       "algorithm": "sha256",
-      "normalization": "utf8-nfc-lf-json-stable-v1",
+      "normalization": "utf8-lf-json-stable-v1",
       "scope": "patch_export"
     },
     "sourceAsset": {
@@ -181,18 +181,18 @@
     },
     "sourceBundle": {
       "algorithm": "sha256",
-      "normalization": "utf8-nfc-lf-json-stable-v1",
+      "normalization": "utf8-lf-json-stable-v1",
       "scope": "source_bundle"
     },
     "sourceProfile": {
       "algorithm": "sha256",
-      "normalization": "utf8-nfc-lf-json-stable-v1",
+      "normalization": "utf8-lf-json-stable-v1",
       "scope": "source_profile"
     },
     "sourceUnit": {
       "algorithm": "sha256",
       "fields": ["sourceLocale", "sourceUnitKey", "sourceText", "spans.raw"],
-      "normalization": "utf8-nfc-lf-json-stable-v1",
+      "normalization": "utf8-lf-json-stable-v1",
       "scope": "source_unit"
     }
   },

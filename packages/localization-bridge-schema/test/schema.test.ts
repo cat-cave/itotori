@@ -1526,7 +1526,7 @@ describe("localization bridge schema guards", () => {
     const bridge = bridgeV02Example();
     bridge.hashStrategy = {
       algorithm: "sha256",
-      normalization: "utf8-nfc-lf-json-stable-v1",
+      normalization: "utf8-lf-json-stable-v1",
       sourceProfileScope: "source_profile",
       sourceBundleScope: "source_bundle",
       sourceAssetScope: "source_asset",
@@ -1541,7 +1541,7 @@ describe("localization bridge schema guards", () => {
     const bridge = bridgeV02Example();
     const hashStrategy = asTestRecord(bridge.hashStrategy, "v0.2 hash strategy");
     const sourceAsset = asTestRecord(hashStrategy.sourceAsset, "v0.2 source asset hash rule");
-    sourceAsset.normalization = "utf8-nfc-lf-json-stable-v1";
+    sourceAsset.normalization = "utf8-lf-json-stable-v1";
 
     expect(() => assertBridgeBundleV02(bridge)).toThrow(/hashStrategy\.sourceAsset\.normalization/);
   });

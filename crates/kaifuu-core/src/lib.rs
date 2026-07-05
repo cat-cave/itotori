@@ -13958,13 +13958,13 @@ impl HashStrategyV02 {
         self.source_profile.validate(
             &format!("{label}.sourceProfile"),
             "source_profile",
-            "utf8-nfc-lf-json-stable-v1",
+            "utf8-lf-json-stable-v1",
             false,
         )?;
         self.source_bundle.validate(
             &format!("{label}.sourceBundle"),
             "source_bundle",
-            "utf8-nfc-lf-json-stable-v1",
+            "utf8-lf-json-stable-v1",
             false,
         )?;
         self.source_asset.validate(
@@ -13976,19 +13976,19 @@ impl HashStrategyV02 {
         self.source_unit.validate(
             &format!("{label}.sourceUnit"),
             "source_unit",
-            "utf8-nfc-lf-json-stable-v1",
+            "utf8-lf-json-stable-v1",
             true,
         )?;
         self.patch_export.validate(
             &format!("{label}.patchExport"),
             "patch_export",
-            "utf8-nfc-lf-json-stable-v1",
+            "utf8-lf-json-stable-v1",
             false,
         )?;
         self.delta_package.validate(
             &format!("{label}.deltaPackage"),
             "delta_package",
-            "utf8-nfc-lf-json-stable-v1",
+            "utf8-lf-json-stable-v1",
             false,
         )
     }
@@ -23149,6 +23149,113 @@ mod tests {
         assert_eq!(
             validate_helper_result_value(&serialized_value).status,
             OperationStatus::Passed
+        );
+    }
+
+    // KAIFUU-027: the hash rule is named `utf8-lf-json-stable-v1`. It USED to
+    // claim `nfc`, but no write path NFC-normalizes string contents — and it
+    // must not: the bridge (`sourceText`, `spans.raw`) is emitted through
+    // `stable_json` and must stay BYTE-EXACT for the "span byte range must
+    // match sourceText" contract and byte-identical patchback. NFC-normalizing
+    // would compose e.g. a decomposed Japanese voiced kana (か + U+3099 → が)
+    // and corrupt that round-trip. These fixtures + test pin the honest
+    // behavior: composed and decomposed metadata serialize DISTINCTLY (no
+    // silent normalization), and raw/asset bytes are hashed untouched.
+    fn nfc_alignment_fixture(name: &str) -> String {
+        let path = repo_fixture_path(&format!("fixtures/kaifuu-core/nfc-alignment/{name}"));
+        fs::read_to_string(path).unwrap()
+    }
+
+    #[test]
+    fn stable_json_metadata_rule_does_not_nfc_normalize_string_contents() {
+        // Composed: "café" = U+00E9; "がぎぐ" = U+304C U+304E U+3050.
+        // Decomposed: "cafe" + U+0301; "か"+U+3099 ... = the SAME logical text.
+        let composed: Value =
+            serde_json::from_str(&nfc_alignment_fixture("composed-metadata.json"))
+                .expect("composed fixture is valid JSON");
+        let decomposed: Value =
+            serde_json::from_str(&nfc_alignment_fixture("decomposed-metadata.json"))
+                .expect("decomposed fixture is valid JSON");
+
+        // The fixtures encode exactly the code points we claim: byte-distinct
+        // representations of the same logical strings.
+        assert_eq!(composed["displayName"].as_str().unwrap(), "caf\u{00e9}");
+        assert_eq!(decomposed["displayName"].as_str().unwrap(), "cafe\u{0301}");
+        assert_eq!(
+            composed["speakerNote"].as_str().unwrap(),
+            "\u{304c}\u{304e}\u{3050}"
+        );
+        assert_eq!(
+            decomposed["speakerNote"].as_str().unwrap(),
+            "\u{304b}\u{3099}\u{304d}\u{3099}\u{304f}\u{3099}"
+        );
+        // Logically equal, byte-distinct (this is exactly what an NFC rule would
+        // otherwise collapse — and what we must NOT collapse).
+        assert_ne!(
+            composed["displayName"], decomposed["displayName"],
+            "fixtures must differ at the code-point level"
+        );
+
+        let composed_json = stable_json(&composed).unwrap();
+        let decomposed_json = stable_json(&decomposed).unwrap();
+
+        // Honest `utf8-lf-json-stable-v1`: NO NFC. The decomposed input keeps
+        // its combining marks; the two serializations stay distinct. If the
+        // writer NFC-normalized (as the old `...nfc...` name claimed), these
+        // would be byte-identical.
+        assert_ne!(
+            composed_json, decomposed_json,
+            "stable_json must NOT NFC-normalize (decomposed != composed)"
+        );
+        assert!(
+            decomposed_json.contains("cafe\u{0301}"),
+            "decomposed combining acute must survive stable_json byte-exact"
+        );
+        assert!(
+            decomposed_json.contains("\u{304b}\u{3099}"),
+            "decomposed combining dakuten must survive stable_json byte-exact"
+        );
+        assert!(
+            !decomposed_json.contains("caf\u{00e9}"),
+            "stable_json must not silently compose the decomposed form"
+        );
+
+        // Round-trip: the emitted bytes reparse to the SAME (still decomposed)
+        // value — proving byte-exact preservation the patchback path relies on.
+        let reparsed: Value = serde_json::from_str(&decomposed_json).unwrap();
+        assert_eq!(reparsed, decomposed);
+    }
+
+    #[test]
+    fn source_asset_bytes_are_hashed_without_normalization() {
+        // The `sourceAsset` scope declares `normalization: "bytes"`, and no
+        // scope may blindly normalize raw bytes. Composed vs decomposed UTF-8
+        // hash DIFFERENTLY (no NFC folding), and binary payloads containing
+        // byte sequences that are not even valid UTF-8 hash by raw bytes.
+        let composed = "caf\u{00e9}".as_bytes();
+        let decomposed = "cafe\u{0301}".as_bytes();
+        assert_ne!(composed, decomposed);
+        assert_ne!(
+            sha256_hash_bytes(composed),
+            sha256_hash_bytes(decomposed),
+            "bytes-scope hashing must not NFC-fold composed/decomposed forms"
+        );
+
+        // A decomposed voiced-kana metadata string, hashed as raw bytes, is
+        // stable and NOT folded onto its composed counterpart.
+        let decomposed_kana = "\u{304b}\u{3099}".as_bytes(); // か + U+3099
+        let composed_kana = "\u{304c}".as_bytes(); // が
+        assert_ne!(
+            sha256_hash_bytes(decomposed_kana),
+            sha256_hash_bytes(composed_kana)
+        );
+
+        // Raw binary (invalid UTF-8) asset bytes hash by their exact bytes.
+        let binary_asset: &[u8] = &[0x00, 0xff, 0x81, 0x9f, 0xe3, 0x82];
+        assert_eq!(
+            sha256_hash_bytes(binary_asset),
+            sha256_hash_bytes(&[0x00, 0xff, 0x81, 0x9f, 0xe3, 0x82]),
+            "raw asset bytes hash deterministically with no normalization step"
         );
     }
 
