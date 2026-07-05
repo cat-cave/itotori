@@ -7,11 +7,18 @@ import type {
 } from "../repositories/style-guide-repository.js";
 export {
   affectedWorkInvalidatedPayloadSchemaVersion,
+  assertStyleGuideApprovalBoundary,
+  assertStyleGuideVersionChangedPayload,
+  buildStyleGuideApprovalEventPayload,
+  buildStyleGuideVersionCreatedPayload,
   styleGuideVersionChangedPayloadSchemaVersion,
 } from "../repositories/style-guide-repository.js";
 export type {
   AffectedWorkInvalidatedPayload,
+  StyleGuideApprovalBoundary,
+  StyleGuideVersionApprovedPayload,
   StyleGuideVersionChangedPayload,
+  StyleGuideVersionCreatedPayload,
 } from "../repositories/style-guide-repository.js";
 
 export const styleGuidePolicySchemaVersion = "style-guide-policy.v0";

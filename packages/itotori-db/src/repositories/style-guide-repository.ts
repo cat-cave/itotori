@@ -73,16 +73,215 @@ export type StyleGuideVersionRecord = {
   updatedAt: Date;
 };
 
-export type StyleGuideVersionChangedPayload = {
+/**
+ * The full approval boundary carried by every primary style-guide approval
+ * event. It is captured independently of affected-work fanout so an approval is
+ * audit-complete even when no downstream work is invalidated.
+ */
+export type StyleGuideApprovalBoundary = {
+  approverUserId: string;
+  localeBranchId: string;
+  priorVersionId: string | null;
+  approvedVersionId: string;
+  sourceRevisionBoundary: {
+    prior: SourceRevisionReference | null;
+    approved: SourceRevisionReference;
+  };
+};
+
+type StyleGuideVersionChangedPayloadBase = {
   schemaVersion: typeof styleGuideVersionChangedPayloadSchemaVersion;
   eventName: "StyleGuideVersionChanged";
-  changeKind: "version_created" | "version_approved";
   projectId: string;
   localeBranchId: string;
   previousVersionId: string | null;
   newVersionId: string;
   sourceRevisionReference: SourceRevisionReference;
 };
+
+export type StyleGuideVersionCreatedPayload = StyleGuideVersionChangedPayloadBase & {
+  changeKind: "version_created";
+};
+
+export type StyleGuideVersionApprovedPayload = StyleGuideVersionChangedPayloadBase & {
+  changeKind: "version_approved";
+  /**
+   * The complete approval boundary is ALWAYS present on the primary approval
+   * event, regardless of whether any AffectedWorkInvalidated fanout events are
+   * emitted alongside it.
+   */
+  approvalBoundary: StyleGuideApprovalBoundary;
+};
+
+export type StyleGuideVersionChangedPayload =
+  | StyleGuideVersionCreatedPayload
+  | StyleGuideVersionApprovedPayload;
+
+/**
+ * Builds the primary style-guide "version created" event payload. Pure: no DB
+ * access, so the event contract can be validated DB-less.
+ */
+export function buildStyleGuideVersionCreatedPayload(input: {
+  projectId: string;
+  localeBranchId: string;
+  previousVersionId: string | null;
+  version: StyleGuideVersionRecord;
+}): StyleGuideVersionCreatedPayload {
+  return {
+    schemaVersion: styleGuideVersionChangedPayloadSchemaVersion,
+    eventName: "StyleGuideVersionChanged",
+    changeKind: "version_created",
+    projectId: input.projectId,
+    localeBranchId: input.localeBranchId,
+    previousVersionId: input.previousVersionId,
+    newVersionId: input.version.styleGuideVersionId,
+    sourceRevisionReference: input.version.sourceRevisionReference,
+  };
+}
+
+/**
+ * Builds the primary style-guide APPROVAL event payload. Pure: no DB access.
+ *
+ * The returned payload ALWAYS carries the full approval boundary — approver id,
+ * locale branch id, prior version id, approved version id, and the prior→approved
+ * source-revision boundary — independent of whether any affected-work fanout
+ * exists. This keeps every approval audit-complete on its own.
+ */
+export function buildStyleGuideApprovalEventPayload(input: {
+  projectId: string;
+  localeBranchId: string;
+  approverUserId: string;
+  priorVersion: StyleGuideVersionRecord | null;
+  approvedVersion: StyleGuideVersionRecord;
+}): StyleGuideVersionApprovedPayload {
+  const priorVersionId = input.priorVersion?.styleGuideVersionId ?? null;
+  return {
+    schemaVersion: styleGuideVersionChangedPayloadSchemaVersion,
+    eventName: "StyleGuideVersionChanged",
+    changeKind: "version_approved",
+    projectId: input.projectId,
+    localeBranchId: input.localeBranchId,
+    previousVersionId: priorVersionId,
+    newVersionId: input.approvedVersion.styleGuideVersionId,
+    sourceRevisionReference: input.approvedVersion.sourceRevisionReference,
+    approvalBoundary: {
+      approverUserId: input.approverUserId,
+      localeBranchId: input.localeBranchId,
+      priorVersionId,
+      approvedVersionId: input.approvedVersion.styleGuideVersionId,
+      sourceRevisionBoundary: {
+        prior: input.priorVersion?.sourceRevisionReference ?? null,
+        approved: input.approvedVersion.sourceRevisionReference,
+      },
+    },
+  };
+}
+
+/**
+ * Contract for the primary style-guide version-changed event payload.
+ *
+ * Enforces that every APPROVAL event (`changeKind === "version_approved"`)
+ * carries a complete approval boundary — approver id, locale branch id, prior
+ * version id (nullable but present), approved version id, and the source-revision
+ * boundary (prior nullable but present, approved required). Throws when a
+ * boundary field is missing so consumers can reject audit-incomplete events.
+ */
+export function assertStyleGuideVersionChangedPayload(
+  payload: unknown,
+): asserts payload is StyleGuideVersionChangedPayload {
+  if (!isRecord(payload)) {
+    throw new Error("style guide version changed payload must be an object");
+  }
+  if (payload.schemaVersion !== styleGuideVersionChangedPayloadSchemaVersion) {
+    throw new Error(
+      `style guide version changed payload schemaVersion must be ${styleGuideVersionChangedPayloadSchemaVersion}`,
+    );
+  }
+  if (payload.eventName !== "StyleGuideVersionChanged") {
+    throw new Error(
+      'style guide version changed payload eventName must be "StyleGuideVersionChanged"',
+    );
+  }
+  requireString(payload, "projectId");
+  requireString(payload, "localeBranchId");
+  requireNullableStringKey(payload, "previousVersionId");
+  requireString(payload, "newVersionId");
+  assertSourceRevisionReference(payload.sourceRevisionReference, "sourceRevisionReference");
+
+  if (payload.changeKind !== "version_created" && payload.changeKind !== "version_approved") {
+    throw new Error(
+      'style guide version changed payload changeKind must be "version_created" or "version_approved"',
+    );
+  }
+
+  if (payload.changeKind === "version_approved") {
+    assertStyleGuideApprovalBoundary(payload.approvalBoundary);
+  }
+}
+
+/**
+ * Contract for the approval boundary. Rejects a payload that is missing any of
+ * the five boundary fields, so a fanout-less approval cannot silently drop the
+ * audit boundary.
+ */
+export function assertStyleGuideApprovalBoundary(
+  boundary: unknown,
+): asserts boundary is StyleGuideApprovalBoundary {
+  if (!isRecord(boundary)) {
+    throw new Error("style guide approval event must carry an approvalBoundary object");
+  }
+  requireString(boundary, "approverUserId", "approvalBoundary.approverUserId");
+  requireString(boundary, "localeBranchId", "approvalBoundary.localeBranchId");
+  requireNullableStringKey(boundary, "priorVersionId", "approvalBoundary.priorVersionId");
+  requireString(boundary, "approvedVersionId", "approvalBoundary.approvedVersionId");
+
+  const sourceRevisionBoundary = boundary.sourceRevisionBoundary;
+  if (!isRecord(sourceRevisionBoundary)) {
+    throw new Error("approvalBoundary.sourceRevisionBoundary must be an object");
+  }
+  if (!("prior" in sourceRevisionBoundary)) {
+    throw new Error("approvalBoundary.sourceRevisionBoundary.prior must be present");
+  }
+  if (sourceRevisionBoundary.prior !== null) {
+    assertSourceRevisionReference(
+      sourceRevisionBoundary.prior,
+      "approvalBoundary.sourceRevisionBoundary.prior",
+    );
+  }
+  assertSourceRevisionReference(
+    sourceRevisionBoundary.approved,
+    "approvalBoundary.sourceRevisionBoundary.approved",
+  );
+}
+
+function assertSourceRevisionReference(value: unknown, path: string): void {
+  if (!isRecord(value)) {
+    throw new Error(`${path} must be a source revision reference object`);
+  }
+  requireString(value, "sourceRevisionId", `${path}.sourceRevisionId`);
+  requireString(value, "revisionKind", `${path}.revisionKind`);
+  requireString(value, "value", `${path}.value`);
+}
+
+function requireString(record: Record<string, unknown>, key: string, path = key): void {
+  if (typeof record[key] !== "string") {
+    throw new Error(`${path} must be a string`);
+  }
+}
+
+function requireNullableStringKey(record: Record<string, unknown>, key: string, path = key): void {
+  if (!(key in record)) {
+    throw new Error(`${path} must be present`);
+  }
+  const value = record[key];
+  if (value !== null && typeof value !== "string") {
+    throw new Error(`${path} must be a string or null`);
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
 
 export type AffectedWorkSurface = "drafts" | "qa_findings" | "exports" | "benchmarks";
 
@@ -376,14 +575,15 @@ export class ItotoriStyleGuideRepository implements ItotoriStyleGuideRepositoryP
       if (version === null) {
         throw new Error(`style guide version ${styleGuideVersionId} was not persisted`);
       }
-      const outboxEvent = await appendStyleGuideVersionChangedEventInTx(tx, {
-        changeKind: "version_created",
-        projectId: input.projectId,
-        localeBranchId: input.localeBranchId,
-        previousVersionId,
-        newVersionId: version.styleGuideVersionId,
-        sourceRevisionReference: version.sourceRevisionReference,
-      });
+      const outboxEvent = await appendStyleGuideVersionChangedEventInTx(
+        tx,
+        buildStyleGuideVersionCreatedPayload({
+          projectId: input.projectId,
+          localeBranchId: input.localeBranchId,
+          previousVersionId,
+          version,
+        }),
+      );
       return { version, outboxEvent };
     });
   }
@@ -471,14 +671,16 @@ export class ItotoriStyleGuideRepository implements ItotoriStyleGuideRepositoryP
       if (approved === null) {
         throw new Error(`style guide version ${input.styleGuideVersionId} was not approved`);
       }
-      const outboxEvent = await appendStyleGuideVersionChangedEventInTx(tx, {
-        changeKind: "version_approved",
-        projectId: input.projectId,
-        localeBranchId: input.localeBranchId,
-        previousVersionId: previousApprovedVersionId,
-        newVersionId: approved.styleGuideVersionId,
-        sourceRevisionReference: approved.sourceRevisionReference,
-      });
+      const outboxEvent = await appendStyleGuideVersionChangedEventInTx(
+        tx,
+        buildStyleGuideApprovalEventPayload({
+          projectId: input.projectId,
+          localeBranchId: input.localeBranchId,
+          approverUserId: input.approverUserId ?? actor.userId,
+          priorVersion: previousApprovedVersion,
+          approvedVersion: approved,
+        }),
+      );
 
       const invalidationOutboxEvents =
         previousApprovedVersion === null
@@ -515,15 +717,11 @@ type StyleGuideDb = Pick<ItotoriDatabase, "select" | "execute" | "insert" | "upd
 
 async function appendStyleGuideVersionChangedEventInTx(
   db: StyleGuideDb,
-  payload: Omit<StyleGuideVersionChangedPayload, "schemaVersion" | "eventName">,
+  eventPayload: StyleGuideVersionChangedPayload,
 ): Promise<OutboxEventRecord> {
+  assertStyleGuideVersionChangedPayload(eventPayload);
   const outboxEventId = createUuid7();
-  const idempotencyKey = styleGuideVersionChangedIdempotencyKey(payload);
-  const eventPayload: StyleGuideVersionChangedPayload = {
-    schemaVersion: styleGuideVersionChangedPayloadSchemaVersion,
-    eventName: "StyleGuideVersionChanged",
-    ...payload,
-  };
+  const idempotencyKey = styleGuideVersionChangedIdempotencyKey(eventPayload);
   const rows = await db.execute(sql`
     insert into ${eventOutbox} (
       outbox_event_id,
@@ -537,8 +735,8 @@ async function appendStyleGuideVersionChangedEventInTx(
     )
     values (
       ${outboxEventId},
-      ${payload.projectId},
-      ${payload.localeBranchId},
+      ${eventPayload.projectId},
+      ${eventPayload.localeBranchId},
       ${outboxEventTypeValues.styleGuideVersionChanged},
       ${outboxStatusValues.pending},
       ${idempotencyKey},
@@ -565,9 +763,7 @@ async function appendStyleGuideVersionChangedEventInTx(
   return outboxEventFromRow(existing as Record<string, unknown>);
 }
 
-function styleGuideVersionChangedIdempotencyKey(
-  payload: Omit<StyleGuideVersionChangedPayload, "schemaVersion" | "eventName">,
-): string {
+function styleGuideVersionChangedIdempotencyKey(payload: StyleGuideVersionChangedPayload): string {
   return [
     "style-guide-version-changed",
     payload.changeKind,

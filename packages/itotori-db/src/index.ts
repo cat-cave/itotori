@@ -388,6 +388,10 @@ export type {
 } from "./services/semantic-search.js";
 export {
   affectedWorkInvalidatedPayloadSchemaVersion,
+  assertStyleGuideApprovalBoundary,
+  assertStyleGuideVersionChangedPayload,
+  buildStyleGuideApprovalEventPayload,
+  buildStyleGuideVersionCreatedPayload,
   ItotoriStyleGuideService,
   styleGuidePolicySchemaVersion,
   styleGuideVersionChangedPayloadSchemaVersion,
@@ -396,9 +400,12 @@ export {
 export type {
   AffectedWorkInvalidatedPayload,
   ApproveStyleGuideVersionCommand,
+  StyleGuideApprovalBoundary,
   StyleGuideCommandResult,
   StyleGuideDiagnostic,
+  StyleGuideVersionApprovedPayload,
   StyleGuideVersionChangedPayload,
+  StyleGuideVersionCreatedPayload,
   SubmitStyleGuideVersionInput,
 } from "./services/style-guide-service.js";
 export {

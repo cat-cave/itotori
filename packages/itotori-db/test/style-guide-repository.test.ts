@@ -272,10 +272,22 @@ describe("ItotoriStyleGuideService", () => {
       });
       expect(approved.outboxEvent?.payload).toMatchObject({
         eventName: "StyleGuideVersionChanged",
+        changeKind: "version_approved",
         projectId: fixture.projectId,
         localeBranchId: fixture.localeBranchId,
         previousVersionId: null,
         newVersionId: fixture.cases.approve.styleGuideVersionId,
+        // Fanout-less approval (no prior approved version) is still audit-complete.
+        approvalBoundary: {
+          approverUserId: localUserId,
+          localeBranchId: fixture.localeBranchId,
+          priorVersionId: null,
+          approvedVersionId: fixture.cases.approve.styleGuideVersionId,
+          sourceRevisionBoundary: {
+            prior: null,
+            approved: { sourceRevisionId: expect.any(String) },
+          },
+        },
       });
 
       const stale = await service.approveVersion(localActor, {
@@ -384,6 +396,19 @@ describe("ItotoriStyleGuideService", () => {
         },
         outboxEvent: {
           eventType: outboxEventTypeValues.styleGuideVersionChanged,
+        },
+      });
+      expect(approved.outboxEvent?.payload).toMatchObject({
+        changeKind: "version_approved",
+        approvalBoundary: {
+          approverUserId: localUserId,
+          localeBranchId: fixture.localeBranchId,
+          priorVersionId: fixture.outbox.approval.priorStyleGuideVersionId,
+          approvedVersionId: fixture.outbox.approval.approvedStyleGuideVersionId,
+          sourceRevisionBoundary: {
+            prior: { sourceRevisionId: expect.any(String) },
+            approved: { sourceRevisionId: expect.any(String) },
+          },
         },
       });
       expect(approved.invalidationOutboxEvents).toHaveLength(4);
