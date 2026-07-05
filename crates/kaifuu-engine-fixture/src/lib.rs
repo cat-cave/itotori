@@ -6147,9 +6147,9 @@ pub fn registry() -> kaifuu_core::AdapterRegistry {
 mod tests {
     use super::*;
     use kaifuu_core::{
-        GoldenAssertionStatus, GoldenByteEquivalenceMode, GoldenHarnessRequest, PatchExport,
-        ProtectedSpanMapping, XP3_PLAIN_MAGIC, read_json, run_round_trip_golden, sha256_hash_bytes,
-        stable_json,
+        Capability, GoldenAssertionStatus, GoldenByteEquivalenceMode, GoldenHarnessRequest,
+        PatchExport, ProtectedSpanMapping, XP3_PLAIN_MAGIC, read_json, run_round_trip_golden,
+        sha256_hash_bytes, stable_json,
     };
     use std::collections::{BTreeMap, BTreeSet};
     use std::path::PathBuf;
@@ -6569,6 +6569,68 @@ mod tests {
         }));
 
         let _ = fs::remove_dir_all(game_dir);
+    }
+
+    #[test]
+    fn round_trip_golden_harness_asserts_assets_via_inventory_and_capability() {
+        // KAIFUU-032: the real fixture adapter, driven in adapter-neutral
+        // AssertInventory mode. Even though the public fixture happens to ship a
+        // source.json, the harness asserts asset preservation + emits
+        // capability-aware unsupported-asset diagnostics purely from the adapter's
+        // asset inventory + capability reports — the source.json layout is never
+        // assumed by the asset-assertion path.
+        let fixture_dir = public_fixture_dir();
+        let work_dir = temp_dir("golden-inventory-assert");
+
+        let report = run_round_trip_golden(
+            &registry(),
+            GoldenHarnessRequest {
+                game_dir: &fixture_dir,
+                work_dir: &work_dir,
+                adapter_id: Some(FIXTURE_ADAPTER_ID),
+                byte_equivalence: GoldenByteEquivalenceMode::AssertInventory,
+                translated_patch_export: None,
+                translated_source_bridge: None,
+            },
+        )
+        .unwrap();
+
+        assert_eq!(report.status, OperationStatus::Passed);
+        assert!(report.failures.is_empty());
+
+        // Adapter-neutral preservation phase passed (no source.json byte compare).
+        let preservation = report
+            .phases
+            .iter()
+            .find(|phase| phase.phase == "inventory_asset_preservation")
+            .expect("inventory preservation phase");
+        assert_eq!(preservation.status, GoldenAssertionStatus::Passed);
+        assert!(
+            !report
+                .phases
+                .iter()
+                .any(|phase| phase.phase == "byte_equivalence")
+        );
+
+        // The fixture's 6 capability-unsupported asset surfaces each produce a
+        // typed capability-aware diagnostic keyed on AssetTextPatching.
+        let diagnostics: Vec<_> = report
+            .phases
+            .iter()
+            .filter(|phase| phase.phase == "asset_capability_diagnostic")
+            .collect();
+        assert_eq!(
+            diagnostics.len(),
+            6,
+            "one diagnostic per unsupported surface"
+        );
+        assert!(diagnostics.iter().all(|phase| {
+            phase.status == GoldenAssertionStatus::Skipped
+                && phase.required_capability == Some(Capability::AssetTextPatching)
+                && phase.asset_ref.as_deref() != Some("source.json")
+        }));
+
+        let _ = fs::remove_dir_all(work_dir);
     }
 
     #[test]

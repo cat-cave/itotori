@@ -15156,6 +15156,11 @@ pub struct GoldenPhaseReport {
     pub expected: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub actual: Option<String>,
+    /// KAIFUU-032: the capability an adapter-neutral asset assertion is keyed on.
+    /// Set for capability-aware asset diagnostics so an unsupported asset carries
+    /// a TYPED capability code (not just prose), letting the harness assert on it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub required_capability: Option<Capability>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -15175,6 +15180,10 @@ pub struct GoldenFailure {
     pub expected: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub actual: Option<String>,
+    /// KAIFUU-032: capability an adapter-neutral asset-preservation failure is
+    /// keyed on (e.g. the unsupported-surface capability whose asset mutated).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub required_capability: Option<Capability>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -15196,8 +15205,18 @@ impl GoldenRoundTripReport {
 }
 
 pub enum GoldenByteEquivalenceMode {
+    /// Fixture-shaped case: assert the single `source.json` file is byte-identical
+    /// after an unchanged patch. Retained as ONE covered case; it assumes the
+    /// fixture `source.json` layout and is NOT adapter-neutral.
     AssertSourceJson,
-    Unsupported { support_boundary: String },
+    /// KAIFUU-032 adapter-neutral case: assert asset preservation (and emit
+    /// capability-aware unsupported-asset diagnostics) purely from the adapter's
+    /// own asset INVENTORY + CAPABILITY reports. Makes no assumption about a
+    /// `source.json` file or any on-disk layout, so it works for any adapter.
+    AssertInventory,
+    Unsupported {
+        support_boundary: String,
+    },
 }
 
 pub struct GoldenHarnessRequest<'a> {
@@ -15207,6 +15226,85 @@ pub struct GoldenHarnessRequest<'a> {
     pub byte_equivalence: GoldenByteEquivalenceMode,
     pub translated_patch_export: Option<&'a Value>,
     pub translated_source_bridge: Option<&'a Value>,
+}
+
+/// KAIFUU-032: an adapter-neutral asset-preservation claim derived from an
+/// adapter's [`AssetInventoryManifest`] (inventory + capability reports) — NOT
+/// from a fixture `source.json` layout.
+///
+/// A claim is raised for every asset backing a surface the adapter reports it
+/// cannot edit (the surface's `patching` capability is `Unsupported`, or its
+/// `patch_mode` is `Unsupported`). Because the adapter declares it cannot patch
+/// that asset, an identity round-trip MUST leave the asset unchanged, and the
+/// harness records a TYPED capability-aware diagnostic for the surface. The
+/// claim carries only inventory/capability-sourced fields (`asset_id`,
+/// `asset_ref` from `asset_key`, the `required_capability`, and the boundary),
+/// so it is meaningful for any adapter regardless of on-disk layout.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AssetPreservationClaim {
+    pub asset_id: String,
+    /// Adapter-neutral reference to the asset (its `asset_key`, falling back to
+    /// `asset_id`); never a hard-coded `source.json` path.
+    pub asset_ref: String,
+    pub surface_id: String,
+    pub required_capability: Capability,
+    pub support_boundary: String,
+}
+
+/// KAIFUU-032: derive adapter-neutral asset-preservation claims from an asset
+/// inventory manifest.
+///
+/// This is a pure function over the manifest's `surfaces` + their `patching`
+/// capability reports. It raises one [`AssetPreservationClaim`] per surface the
+/// adapter reports as capability-unsupported. It reads nothing from disk and
+/// assumes nothing about a `source.json` file, so the golden harness can drive
+/// asset assertions off it for any adapter.
+pub fn derive_asset_preservation_claims(
+    manifest: &AssetInventoryManifest,
+) -> Vec<AssetPreservationClaim> {
+    let asset_key_by_id: BTreeMap<&str, &str> = manifest
+        .assets
+        .iter()
+        .map(|asset| (asset.asset_id.as_str(), asset.asset_key.as_str()))
+        .collect();
+
+    let mut claims = Vec::new();
+    for surface in &manifest.surfaces {
+        let capability_unsupported = surface.patching.status == CapabilityStatus::Unsupported;
+        let patch_mode_unsupported = surface.patch_mode == AssetInventoryPatchMode::Unsupported;
+        if !capability_unsupported && !patch_mode_unsupported {
+            continue;
+        }
+        let asset_id = surface.source_asset_ref.asset_id.clone();
+        let asset_ref = surface
+            .source_asset_ref
+            .asset_key
+            .clone()
+            .or_else(|| {
+                asset_key_by_id
+                    .get(asset_id.as_str())
+                    .map(|key| (*key).to_string())
+            })
+            .unwrap_or_else(|| asset_id.clone());
+        let support_boundary = surface.patching.limitation.clone().unwrap_or_else(|| {
+            format!(
+                "adapter reports surface {} as capability-unsupported; the underlying asset must be preserved unchanged",
+                surface.surface_id
+            )
+        });
+        claims.push(AssetPreservationClaim {
+            asset_id,
+            asset_ref,
+            surface_id: surface.surface_id.clone(),
+            required_capability: surface.patching.capability.clone(),
+            support_boundary,
+        });
+    }
+    claims.sort_by(|a, b| {
+        (a.surface_id.as_str(), a.asset_id.as_str())
+            .cmp(&(b.surface_id.as_str(), b.asset_id.as_str()))
+    });
+    claims
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -16149,6 +16247,7 @@ impl GoldenPhaseReport {
                 .map(redact_for_log_or_report),
             expected: self.expected.as_deref().map(redact_for_log_or_report),
             actual: self.actual.as_deref().map(redact_for_log_or_report),
+            required_capability: self.required_capability.clone(),
         }
     }
 }
@@ -16171,6 +16270,7 @@ impl GoldenFailure {
                 .map(redact_for_log_or_report),
             expected: self.expected.as_deref().map(redact_for_log_or_report),
             actual: self.actual.as_deref().map(redact_for_log_or_report),
+            required_capability: self.required_capability.clone(),
         }
     }
 }
@@ -18274,6 +18374,7 @@ pub fn run_round_trip_golden(
                 support_boundary: None,
                 expected: Some("detected=true".to_string()),
                 actual: Some("detected=false".to_string()),
+                required_capability: None,
             };
             record_golden_failure(&mut report, failure);
             return Ok(finalize_golden_report(report));
@@ -18291,6 +18392,7 @@ pub fn run_round_trip_golden(
                     support_boundary: None,
                     expected: Some("successful detection".to_string()),
                     actual: Some("adapter error".to_string()),
+                    required_capability: None,
                 },
             );
             return Ok(finalize_golden_report(report));
@@ -18322,6 +18424,7 @@ pub fn run_round_trip_golden(
                     support_boundary: None,
                     expected: Some("successful extraction".to_string()),
                     actual: Some("adapter error".to_string()),
+                    required_capability: None,
                 },
             );
             return Ok(finalize_golden_report(report));
@@ -18353,6 +18456,7 @@ pub fn run_round_trip_golden(
     };
 
     report_byte_equivalence(
+        adapter,
         &mut report,
         request.game_dir,
         &unchanged_output_dir,
@@ -18427,6 +18531,7 @@ fn run_golden_patch_phase(
                     support_boundary: None,
                     expected: Some(format!("{patch_expected} preflight")),
                     actual: Some("adapter error".to_string()),
+                    required_capability: None,
                 },
             );
             return Ok(None);
@@ -18460,6 +18565,7 @@ fn run_golden_patch_phase(
                     support_boundary: None,
                     expected: Some(patch_expected.to_string()),
                     actual: Some("adapter error".to_string()),
+                    required_capability: None,
                 },
             );
             return Ok(None);
@@ -18529,7 +18635,8 @@ fn unchanged_patch_export(bridge: &BridgeBundle) -> Result<PatchExport, Box<Gold
                     ),
                     expected: Some(span.raw.clone()),
                     actual: Some(unit.source_text.clone()),
-                }));
+                                    required_capability: None,
+}));
             };
             let target_start = search_start + relative_start;
             let target_end = target_start + span.raw.len();
@@ -18578,6 +18685,7 @@ fn report_passed_phase(
         support_boundary: None,
         expected: None,
         actual: None,
+        required_capability: None,
     });
 }
 
@@ -18591,6 +18699,7 @@ fn record_golden_failure(report: &mut GoldenRoundTripReport, failure: GoldenFail
         support_boundary: failure.support_boundary.clone(),
         expected: failure.expected.clone(),
         actual: failure.actual.clone(),
+        required_capability: None,
     });
     report.failures.push(failure);
 }
@@ -18615,6 +18724,7 @@ fn record_adapter_failures(
                 support_boundary: None,
                 expected: Some("patch status passed".to_string()),
                 actual: Some("patch status failed".to_string()),
+                required_capability: None,
             },
         );
         return;
@@ -18641,18 +18751,23 @@ fn record_adapter_failures(
                 support_boundary: Some(failure.support_boundary.clone()),
                 expected: Some("patch status passed".to_string()),
                 actual: Some("patch status failed".to_string()),
+                required_capability: None,
             },
         );
     }
 }
 
 fn report_byte_equivalence(
+    adapter: &dyn EngineAdapter,
     report: &mut GoldenRoundTripReport,
     game_dir: &Path,
     output_dir: &Path,
     mode: &GoldenByteEquivalenceMode,
 ) {
     match mode {
+        GoldenByteEquivalenceMode::AssertInventory => {
+            report_inventory_asset_preservation(adapter, report, game_dir, output_dir);
+        }
         GoldenByteEquivalenceMode::Unsupported { support_boundary } => {
             report.phases.push(GoldenPhaseReport {
                 phase: "byte_equivalence".to_string(),
@@ -18663,6 +18778,7 @@ fn report_byte_equivalence(
                 support_boundary: Some(support_boundary.clone()),
                 expected: None,
                 actual: None,
+                required_capability: None,
             });
         }
         GoldenByteEquivalenceMode::AssertSourceJson => {
@@ -18690,7 +18806,8 @@ fn report_byte_equivalence(
                         ),
                         expected: Some(byte_content_hash(&original)),
                         actual: Some(byte_content_hash(&patched)),
-                    },
+                                            required_capability: None,
+},
                 ),
                 (original, patched) => record_golden_failure(
                     report,
@@ -18711,7 +18828,8 @@ fn report_byte_equivalence(
                         ),
                         expected: Some("readable source.json input and output".to_string()),
                         actual: Some("missing or unreadable source.json".to_string()),
-                    },
+                                            required_capability: None,
+},
                 ),
             }
         }
@@ -18725,6 +18843,228 @@ fn byte_content_hash(bytes: &[u8]) -> String {
         hash = hash.wrapping_mul(0x100000001b3);
     }
     format!("{hash:016x}")
+}
+
+/// KAIFUU-032 adapter-neutral asset-preservation phase.
+///
+/// Instead of reading a hard-coded `source.json`, this re-runs the adapter's
+/// own `asset_inventory` on both the input and the unchanged-patch output and
+/// drives assertions off the adapter's INVENTORY + CAPABILITY reports:
+///
+/// * For every surface the adapter reports as capability-unsupported
+///   ([`derive_asset_preservation_claims`]), it records a TYPED capability-aware
+///   diagnostic (`asset_capability_diagnostic`, carrying the required
+///   `Capability`) — proving an unsupported asset surfaces a structured
+///   diagnostic rather than a silent skip.
+/// * Because the adapter declares it cannot edit those assets, an identity
+///   round-trip MUST preserve them: the harness compares each backing asset's
+///   preservation signature (on-disk bytes when the asset path resolves to a
+///   file, otherwise the adapter-reported `source_hash`) between input and
+///   output and fails on any mutation, missing, or unexpected asset.
+///
+/// This makes no assumption about a `source.json` file or on-disk layout, so it
+/// works for an adapter whose inventory names assets under any scheme.
+fn report_inventory_asset_preservation(
+    adapter: &dyn EngineAdapter,
+    report: &mut GoldenRoundTripReport,
+    game_dir: &Path,
+    output_dir: &Path,
+) {
+    let original = match adapter.asset_inventory(AssetInventoryRequest { game_dir }) {
+        Ok(manifest) => manifest,
+        Err(error) => {
+            record_golden_failure(
+                report,
+                GoldenFailure {
+                    code: "inventory_asset_preservation_input_error".to_string(),
+                    phase: "inventory_asset_preservation".to_string(),
+                    adapter_id: adapter.id().to_string(),
+                    message: error.to_string(),
+                    asset_ref: None,
+                    source_unit_key: None,
+                    support_boundary: Some(
+                        "adapter-neutral asset preservation requires the adapter to report an asset inventory for the input"
+                            .to_string(),
+                    ),
+                    expected: Some("asset inventory for input".to_string()),
+                    actual: Some("adapter inventory error".to_string()),
+                    required_capability: Some(Capability::AssetInventory),
+                },
+            );
+            return;
+        }
+    };
+    let patched = match adapter.asset_inventory(AssetInventoryRequest {
+        game_dir: output_dir,
+    }) {
+        Ok(manifest) => manifest,
+        Err(error) => {
+            record_golden_failure(
+                report,
+                GoldenFailure {
+                    code: "inventory_asset_preservation_output_error".to_string(),
+                    phase: "inventory_asset_preservation".to_string(),
+                    adapter_id: adapter.id().to_string(),
+                    message: error.to_string(),
+                    asset_ref: None,
+                    source_unit_key: None,
+                    support_boundary: Some(
+                        "adapter-neutral asset preservation requires the unchanged-patch output to remain inventoriable"
+                            .to_string(),
+                    ),
+                    expected: Some("asset inventory for patched output".to_string()),
+                    actual: Some("adapter inventory error".to_string()),
+                    required_capability: Some(Capability::AssetInventory),
+                },
+            );
+            return;
+        }
+    };
+
+    let original_assets: BTreeMap<&str, &AssetInventoryAsset> = original
+        .assets
+        .iter()
+        .map(|asset| (asset.asset_id.as_str(), asset))
+        .collect();
+    let patched_assets: BTreeMap<&str, &AssetInventoryAsset> = patched
+        .assets
+        .iter()
+        .map(|asset| (asset.asset_id.as_str(), asset))
+        .collect();
+
+    let claims = derive_asset_preservation_claims(&original);
+    let mut preserved = 0usize;
+    let mut had_failure = false;
+
+    for claim in &claims {
+        // Record the capability-aware unsupported-asset diagnostic (typed).
+        report.phases.push(GoldenPhaseReport {
+            phase: "asset_capability_diagnostic".to_string(),
+            status: GoldenAssertionStatus::Skipped,
+            details: format!(
+                "adapter reports asset surface {} as capability-unsupported ({:?}); underlying asset must be preserved unchanged",
+                claim.surface_id, claim.required_capability
+            ),
+            asset_ref: Some(claim.asset_ref.clone()),
+            source_unit_key: None,
+            support_boundary: Some(claim.support_boundary.clone()),
+            expected: None,
+            actual: None,
+            required_capability: Some(claim.required_capability.clone()),
+        });
+
+        let Some(original_asset) = original_assets.get(claim.asset_id.as_str()) else {
+            had_failure = true;
+            record_golden_failure(
+                report,
+                GoldenFailure {
+                    code: "inventory_asset_missing_in_input".to_string(),
+                    phase: "inventory_asset_preservation".to_string(),
+                    adapter_id: adapter.id().to_string(),
+                    message: format!(
+                        "surface {} references asset {} that the input inventory does not list",
+                        claim.surface_id, claim.asset_ref
+                    ),
+                    asset_ref: Some(claim.asset_ref.clone()),
+                    source_unit_key: None,
+                    support_boundary: Some(claim.support_boundary.clone()),
+                    expected: Some("asset present in input inventory".to_string()),
+                    actual: Some("asset absent".to_string()),
+                    required_capability: Some(claim.required_capability.clone()),
+                },
+            );
+            continue;
+        };
+        let Some(patched_asset) = patched_assets.get(claim.asset_id.as_str()) else {
+            had_failure = true;
+            record_golden_failure(
+                report,
+                GoldenFailure {
+                    code: "inventory_asset_missing_after_patch".to_string(),
+                    phase: "inventory_asset_preservation".to_string(),
+                    adapter_id: adapter.id().to_string(),
+                    message: format!(
+                        "capability-unsupported asset {} disappeared from the inventory after an unchanged patch",
+                        claim.asset_ref
+                    ),
+                    asset_ref: Some(claim.asset_ref.clone()),
+                    source_unit_key: None,
+                    support_boundary: Some(claim.support_boundary.clone()),
+                    expected: Some("asset preserved in patched inventory".to_string()),
+                    actual: Some("asset absent after patch".to_string()),
+                    required_capability: Some(claim.required_capability.clone()),
+                },
+            );
+            continue;
+        };
+
+        let expected_signature = asset_preservation_signature(game_dir, original_asset);
+        let actual_signature = asset_preservation_signature(output_dir, patched_asset);
+        if expected_signature == actual_signature {
+            preserved += 1;
+        } else {
+            had_failure = true;
+            record_golden_failure(
+                report,
+                GoldenFailure {
+                    code: "inventory_unsupported_asset_mutated".to_string(),
+                    phase: "inventory_asset_preservation".to_string(),
+                    adapter_id: adapter.id().to_string(),
+                    message: format!(
+                        "capability-unsupported asset {} changed after an unchanged patch even though the adapter cannot edit it",
+                        claim.asset_ref
+                    ),
+                    asset_ref: Some(claim.asset_ref.clone()),
+                    source_unit_key: None,
+                    support_boundary: Some(claim.support_boundary.clone()),
+                    expected: Some(expected_signature),
+                    actual: Some(actual_signature),
+                    required_capability: Some(claim.required_capability.clone()),
+                },
+            );
+        }
+    }
+
+    if had_failure {
+        return;
+    }
+
+    let details = if claims.is_empty() {
+        "adapter inventory reports no capability-unsupported assets to preserve".to_string()
+    } else {
+        format!(
+            "{preserved} capability-unsupported asset(s) preserved across the unchanged patch, driven by adapter inventory + capability reports",
+        )
+    };
+    report.phases.push(GoldenPhaseReport {
+        phase: "inventory_asset_preservation".to_string(),
+        status: GoldenAssertionStatus::Passed,
+        details,
+        asset_ref: None,
+        source_unit_key: None,
+        support_boundary: None,
+        expected: None,
+        actual: None,
+        required_capability: None,
+    });
+}
+
+/// Adapter-neutral preservation signature for a single inventory asset: prefer
+/// the on-disk bytes when the asset's declared `path` resolves to a readable
+/// file, otherwise fall back to the adapter-reported `source_hash`. Either way
+/// the value is sourced from what the adapter itself reports, never from a
+/// hard-coded `source.json` assumption.
+fn asset_preservation_signature(base_dir: &Path, asset: &AssetInventoryAsset) -> String {
+    if let Some(path) = &asset.path
+        && let Ok(resolved) = safe_join_relative(base_dir, path)
+        && let Ok(bytes) = fs::read(&resolved)
+    {
+        return format!("bytes:{}", byte_content_hash(&bytes));
+    }
+    match &asset.source_hash {
+        Some(hash) => format!("reportedHash:{hash}"),
+        None => format!("noSignature:{}", asset.asset_id),
+    }
 }
 
 fn report_verify_phase(
@@ -18755,6 +19095,7 @@ fn report_verify_phase(
                         support_boundary: None,
                         expected: Some("verify status passed".to_string()),
                         actual: Some("verify status failed".to_string()),
+                        required_capability: None,
                     },
                 );
             } else {
@@ -18778,6 +19119,7 @@ fn report_verify_phase(
                             support_boundary: Some(failure.support_boundary),
                             expected: Some("verify status passed".to_string()),
                             actual: Some("verify status failed".to_string()),
+                            required_capability: None,
                         },
                     );
                 }
@@ -18795,6 +19137,7 @@ fn report_verify_phase(
                 support_boundary: None,
                 expected: Some("successful verification".to_string()),
                 actual: Some("adapter error".to_string()),
+                required_capability: None,
             },
         ),
     }
@@ -18827,6 +19170,7 @@ fn report_output_equivalence(
                     ),
                     expected: Some("extractable patched output".to_string()),
                     actual: Some("adapter extract error".to_string()),
+                    required_capability: None,
                 },
             );
             return;
@@ -18863,7 +19207,8 @@ fn report_output_equivalence(
                     ),
                     expected: Some(expected_signature.clone()),
                     actual: Some(actual_signature.clone()),
-                },
+                                    required_capability: None,
+},
             ),
             None => record_golden_failure(
                 report,
@@ -18880,7 +19225,8 @@ fn report_output_equivalence(
                     ),
                     expected: Some(expected_signature.clone()),
                     actual: None,
-                },
+                                    required_capability: None,
+},
             ),
         }
     }
@@ -18900,6 +19246,7 @@ fn report_output_equivalence(
                 ),
                 expected: None,
                 actual: actual.get(key).cloned(),
+                required_capability: None,
             },
         );
     }
@@ -18951,6 +19298,7 @@ fn report_translated_patch(
                         ),
                         expected: Some("valid PatchExportV02".to_string()),
                         actual: Some("invalid patch export".to_string()),
+                        required_capability: None,
                     },
                 );
                 return Ok(());
@@ -18997,7 +19345,8 @@ fn report_translated_patch(
                     ),
                     expected: Some("convertible patch export".to_string()),
                     actual: Some("conversion error".to_string()),
-                },
+                                    required_capability: None,
+},
             );
             return Ok(());
         }
@@ -19053,7 +19402,8 @@ fn report_v02_source_compatibility(
             ),
             expected: Some("source bridge artifact".to_string()),
             actual: Some("missing source bridge".to_string()),
-        });
+                    required_capability: None,
+});
         return;
     };
 
@@ -19075,7 +19425,8 @@ fn report_v02_source_compatibility(
                     ),
                     expected: Some("valid source bridge units".to_string()),
                     actual: Some("invalid source bridge".to_string()),
-                },
+                                    required_capability: None,
+},
             );
             return;
         }
@@ -19094,6 +19445,7 @@ fn report_v02_source_compatibility(
                 support_boundary: None,
                 expected: Some("entries array".to_string()),
                 actual: None,
+                required_capability: None,
             },
         );
         return;
@@ -19122,6 +19474,7 @@ fn report_v02_source_compatibility(
                     ),
                     expected: Some("source bridge unit".to_string()),
                     actual: None,
+                    required_capability: None,
                 },
             );
             continue;
@@ -19144,7 +19497,8 @@ fn report_v02_source_compatibility(
                     ),
                     expected: Some(unit.bridge_unit_id.clone()),
                     actual: Some(bridge_unit_id.to_string()),
-                },
+                                    required_capability: None,
+},
             );
             continue;
         }
@@ -19166,7 +19520,8 @@ fn report_v02_source_compatibility(
                     ),
                     expected: Some(unit.source_hash.clone()),
                     actual: Some(source_hash.to_string()),
-                },
+                                    required_capability: None,
+},
             );
             continue;
         }
@@ -19191,7 +19546,8 @@ fn report_v02_source_compatibility(
                         "protectedSpanMappings compatible with source bridge".to_string(),
                     ),
                     actual: Some("protected span mapping mismatch".to_string()),
-                },
+                                    required_capability: None,
+},
             );
             continue;
         }
@@ -19397,7 +19753,8 @@ fn report_translated_target_equivalence(
                     ),
                     expected: Some("readable patched source.json".to_string()),
                     actual: Some("read error".to_string()),
-                },
+                                    required_capability: None,
+},
             );
             return;
         }
@@ -19419,6 +19776,7 @@ fn report_translated_target_equivalence(
                 ),
                 expected: Some("units array".to_string()),
                 actual: None,
+                required_capability: None,
             },
         );
         return;
@@ -19456,7 +19814,8 @@ fn report_translated_target_equivalence(
                     ),
                     expected: Some(entry.target_text.clone()),
                     actual: Some(actual.clone()),
-                },
+                                    required_capability: None,
+},
             ),
             Some(None) => record_golden_failure(
                 report,
@@ -19473,7 +19832,8 @@ fn report_translated_target_equivalence(
                     ),
                     expected: Some(entry.target_text.clone()),
                     actual: None,
-                },
+                                    required_capability: None,
+},
             ),
             None => record_golden_failure(
                 report,
@@ -19490,7 +19850,8 @@ fn report_translated_target_equivalence(
                     ),
                     expected: Some(entry.target_text.clone()),
                     actual: None,
-                },
+                                    required_capability: None,
+},
             ),
         }
     }
@@ -20413,6 +20774,513 @@ mod tests {
                 protected_span_mappings: vec![],
             }],
         }
+    }
+
+    // KAIFUU-032: test adapters + fixtures proving the golden harness drives asset
+    // assertions off adapter INVENTORY + CAPABILITY data rather than a fixture
+    // `source.json` layout.
+
+    const INVENTORY_GOLDEN_ID: &str = "kaifuu.inventory-golden";
+    const INVENTORY_SCENE_ASSET: &str = "scene.dat";
+    const INVENTORY_LOGO_ASSET: &str = "art/logo.dat";
+    const INVENTORY_LOGO_ASSET_ID: &str = "asset-art-logo";
+    const INVENTORY_LOGO_BOUNDARY: &str = "inventory-golden adapter reports the logo art surface but cannot redraw or replace binary art assets";
+
+    fn write_file_all(base: &Path, relative: &str, bytes: &[u8]) {
+        let path = base.join(relative);
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).unwrap();
+        }
+        fs::write(path, bytes).unwrap();
+    }
+
+    /// A NON-`source.json` game layout: a `scene.dat` script asset the adapter can
+    /// edit plus an `art/logo.dat` binary asset it reports as capability-unsupported.
+    fn inventory_golden_game(name: &str) -> PathBuf {
+        let dir = temp_dir(name);
+        write_file_all(&dir, INVENTORY_SCENE_ASSET, b"scene bytes v1");
+        write_file_all(&dir, INVENTORY_LOGO_ASSET, b"logo binary bytes");
+        dir
+    }
+
+    struct InventoryGoldenAdapter {
+        /// When true, the unchanged patch corrupts the capability-unsupported
+        /// `art/logo.dat` asset so the adapter-neutral preservation check flags it.
+        mutate_unsupported_asset: bool,
+    }
+
+    impl InventoryGoldenAdapter {
+        fn asset_hash(game_dir: &Path, relative: &str) -> Option<String> {
+            fs::read(game_dir.join(relative))
+                .ok()
+                .map(|bytes| content_hash(&String::from_utf8_lossy(&bytes)))
+        }
+    }
+
+    impl EngineAdapter for InventoryGoldenAdapter {
+        fn id(&self) -> &'static str {
+            INVENTORY_GOLDEN_ID
+        }
+
+        fn name(&self) -> &'static str {
+            "Inventory Golden"
+        }
+
+        fn capabilities(&self) -> AdapterCapabilities {
+            let reports = vec![
+                CapabilityReport::supported(Capability::Detection),
+                CapabilityReport::supported(Capability::Extraction),
+                CapabilityReport::supported(Capability::Patching),
+                CapabilityReport::supported(Capability::Verification),
+                CapabilityReport::supported(Capability::AssetInventory),
+                CapabilityReport::unsupported(
+                    Capability::NonTextSurfaceExtraction,
+                    "cannot patch binary art surfaces",
+                ),
+            ];
+            let matrix = AdapterCapabilityMatrix::derive_from_reports(self.id(), &reports);
+            AdapterCapabilities::new(self.id(), reports, matrix)
+        }
+
+        fn detect(&self, _request: DetectRequest<'_>) -> KaifuuResult<DetectionResult> {
+            Ok(DetectionResult {
+                adapter_id: self.id().to_string(),
+                detected: true,
+                engine_family: Some("fixture".to_string()),
+                engine_version: None,
+                detected_variant: Some("inventory-golden".to_string()),
+                evidence: vec![],
+                requirements: vec![],
+                capabilities: self.capabilities().reports,
+            })
+        }
+
+        fn profile(&self, _request: ProfileRequest<'_>) -> KaifuuResult<GameProfile> {
+            Ok(golden_boundary_profile(self.id()))
+        }
+
+        fn list_assets(&self, _request: AssetListRequest<'_>) -> KaifuuResult<AssetList> {
+            Ok(AssetList {
+                adapter_id: self.id().to_string(),
+                assets: vec![],
+            })
+        }
+
+        fn asset_inventory(
+            &self,
+            request: AssetInventoryRequest<'_>,
+        ) -> KaifuuResult<AssetInventoryManifest> {
+            let mut manifest = AssetInventoryManifest {
+                schema_version: ASSET_INVENTORY_SCHEMA_VERSION.to_string(),
+                manifest_id: deterministic_id("inventory-golden", 1),
+                adapter_id: self.id().to_string(),
+                source_locale: "ja-JP".to_string(),
+                assets: vec![
+                    AssetInventoryAsset {
+                        asset_id: "asset-scene".to_string(),
+                        asset_key: "scene/main".to_string(),
+                        asset_kind: AssetInventoryAssetKind::Script,
+                        path: Some(INVENTORY_SCENE_ASSET.to_string()),
+                        source_hash: Self::asset_hash(request.game_dir, INVENTORY_SCENE_ASSET),
+                        metadata: BTreeMap::new(),
+                    },
+                    AssetInventoryAsset {
+                        asset_id: INVENTORY_LOGO_ASSET_ID.to_string(),
+                        asset_key: "art/logo".to_string(),
+                        asset_kind: AssetInventoryAssetKind::Image,
+                        path: Some(INVENTORY_LOGO_ASSET.to_string()),
+                        source_hash: Self::asset_hash(request.game_dir, INVENTORY_LOGO_ASSET),
+                        metadata: BTreeMap::new(),
+                    },
+                ],
+                surfaces: vec![AssetInventorySurface {
+                    surface_id: "surface-art-logo".to_string(),
+                    asset_surface_kind: AssetInventorySurfaceKind::UiArt,
+                    source_asset_ref: AssetInventoryAssetRef {
+                        asset_id: INVENTORY_LOGO_ASSET_ID.to_string(),
+                        asset_key: Some("art/logo".to_string()),
+                    },
+                    source_location: None,
+                    source_text: None,
+                    source_hash: Self::asset_hash(request.game_dir, INVENTORY_LOGO_ASSET),
+                    text_source_kind: AssetInventoryTextSourceKind::NotApplicable,
+                    patch_mode: AssetInventoryPatchMode::AssetReplacementRequired,
+                    patching: CapabilityReport::unsupported(
+                        Capability::NonTextSurfaceExtraction,
+                        INVENTORY_LOGO_BOUNDARY,
+                    ),
+                    notes: vec![],
+                }],
+                capabilities: self.capabilities().reports,
+                warnings: vec![],
+                metadata: BTreeMap::new(),
+            };
+            manifest.normalize();
+            Ok(manifest)
+        }
+
+        fn extract(&self, _request: ExtractRequest<'_>) -> KaifuuResult<ExtractionResult> {
+            Ok(ExtractionResult {
+                adapter_id: self.id().to_string(),
+                profile: golden_boundary_profile(self.id()),
+                bridge: BridgeBundle {
+                    schema_version: PROFILE_SCHEMA_VERSION.to_string(),
+                    bridge_id: deterministic_id("inventory-golden-bridge", 1),
+                    source_bundle_hash: content_hash("inventory-golden"),
+                    source_locale: "ja-JP".to_string(),
+                    extractor_name: "inventory-golden-test".to_string(),
+                    extractor_version: "0.0.0".to_string(),
+                    units: vec![],
+                },
+                warnings: vec![],
+            })
+        }
+
+        fn patch(&self, request: PatchRequest<'_>) -> KaifuuResult<PatchResult> {
+            // Identity round-trip: copy the editable script asset byte-for-byte.
+            let scene = fs::read(request.game_dir.join(INVENTORY_SCENE_ASSET))?;
+            write_file_all(request.output_dir, INVENTORY_SCENE_ASSET, &scene);
+            // The capability-unsupported asset must be passed through unchanged;
+            // the mutating variant deliberately corrupts it.
+            if self.mutate_unsupported_asset {
+                write_file_all(
+                    request.output_dir,
+                    INVENTORY_LOGO_ASSET,
+                    b"corrupted logo bytes",
+                );
+            } else {
+                let logo = fs::read(request.game_dir.join(INVENTORY_LOGO_ASSET))?;
+                write_file_all(request.output_dir, INVENTORY_LOGO_ASSET, &logo);
+            }
+            Ok(PatchResult {
+                schema_version: PROFILE_SCHEMA_VERSION.to_string(),
+                patch_result_id: deterministic_id("inventory-golden-patch", 1),
+                patch_export_id: request.patch_export.patch_export_id.clone(),
+                status: OperationStatus::Passed,
+                output_hash: content_hash(&String::from_utf8_lossy(&scene)),
+                failures: vec![],
+            })
+        }
+
+        fn verify(&self, _request: VerifyRequest<'_>) -> KaifuuResult<VerificationResult> {
+            Ok(VerificationResult {
+                schema_version: PROFILE_SCHEMA_VERSION.to_string(),
+                patch_result_id: deterministic_id("inventory-golden-verify", 1),
+                status: OperationStatus::Passed,
+                output_hash: content_hash("verified"),
+                failures: vec![],
+            })
+        }
+    }
+
+    /// A `source.json`-shaped identity adapter used to keep the fixture
+    /// `source.json` byte-equivalence path covered as ONE case (KAIFUU-032).
+    struct SourceJsonGoldenAdapter {
+        mutate: bool,
+    }
+
+    impl EngineAdapter for SourceJsonGoldenAdapter {
+        fn id(&self) -> &'static str {
+            "kaifuu.source-json-golden"
+        }
+
+        fn name(&self) -> &'static str {
+            "Source Json Golden"
+        }
+
+        fn capabilities(&self) -> AdapterCapabilities {
+            let reports = vec![
+                CapabilityReport::supported(Capability::Detection),
+                CapabilityReport::supported(Capability::Extraction),
+                CapabilityReport::supported(Capability::Patching),
+                CapabilityReport::supported(Capability::Verification),
+            ];
+            let matrix = AdapterCapabilityMatrix::derive_from_reports(self.id(), &reports);
+            AdapterCapabilities::new(self.id(), reports, matrix)
+        }
+
+        fn detect(&self, _request: DetectRequest<'_>) -> KaifuuResult<DetectionResult> {
+            Ok(DetectionResult {
+                adapter_id: self.id().to_string(),
+                detected: true,
+                engine_family: Some("fixture".to_string()),
+                engine_version: None,
+                detected_variant: Some("source-json-golden".to_string()),
+                evidence: vec![],
+                requirements: vec![],
+                capabilities: self.capabilities().reports,
+            })
+        }
+
+        fn profile(&self, _request: ProfileRequest<'_>) -> KaifuuResult<GameProfile> {
+            Ok(golden_boundary_profile(self.id()))
+        }
+
+        fn list_assets(&self, _request: AssetListRequest<'_>) -> KaifuuResult<AssetList> {
+            Ok(AssetList {
+                adapter_id: self.id().to_string(),
+                assets: vec![],
+            })
+        }
+
+        fn asset_inventory(
+            &self,
+            _request: AssetInventoryRequest<'_>,
+        ) -> KaifuuResult<AssetInventoryManifest> {
+            Err("source-json-golden adapter uses the source.json byte case".into())
+        }
+
+        fn extract(&self, _request: ExtractRequest<'_>) -> KaifuuResult<ExtractionResult> {
+            Ok(ExtractionResult {
+                adapter_id: self.id().to_string(),
+                profile: golden_boundary_profile(self.id()),
+                bridge: BridgeBundle {
+                    schema_version: PROFILE_SCHEMA_VERSION.to_string(),
+                    bridge_id: deterministic_id("source-json-golden-bridge", 1),
+                    source_bundle_hash: content_hash("source-json-golden"),
+                    source_locale: "ja-JP".to_string(),
+                    extractor_name: "source-json-golden-test".to_string(),
+                    extractor_version: "0.0.0".to_string(),
+                    units: vec![],
+                },
+                warnings: vec![],
+            })
+        }
+
+        fn patch(&self, request: PatchRequest<'_>) -> KaifuuResult<PatchResult> {
+            let bytes = if self.mutate {
+                b"{\"changed\": true}\n".to_vec()
+            } else {
+                fs::read(request.game_dir.join("source.json"))?
+            };
+            write_file_all(request.output_dir, "source.json", &bytes);
+            Ok(PatchResult {
+                schema_version: PROFILE_SCHEMA_VERSION.to_string(),
+                patch_result_id: deterministic_id("source-json-golden-patch", 1),
+                patch_export_id: request.patch_export.patch_export_id.clone(),
+                status: OperationStatus::Passed,
+                output_hash: content_hash(&String::from_utf8_lossy(&bytes)),
+                failures: vec![],
+            })
+        }
+
+        fn verify(&self, _request: VerifyRequest<'_>) -> KaifuuResult<VerificationResult> {
+            Ok(VerificationResult {
+                schema_version: PROFILE_SCHEMA_VERSION.to_string(),
+                patch_result_id: deterministic_id("source-json-golden-verify", 1),
+                status: OperationStatus::Passed,
+                output_hash: content_hash("verified"),
+                failures: vec![],
+            })
+        }
+    }
+
+    fn inventory_golden_registry(mutate_unsupported_asset: bool) -> AdapterRegistry {
+        let mut registry = AdapterRegistry::new();
+        registry.register(InventoryGoldenAdapter {
+            mutate_unsupported_asset,
+        });
+        registry
+    }
+
+    #[test]
+    fn derive_asset_preservation_claims_from_inventory_is_source_json_agnostic() {
+        let adapter = InventoryGoldenAdapter {
+            mutate_unsupported_asset: false,
+        };
+        let game_dir = inventory_golden_game("k032-derive-claims");
+        let manifest = adapter
+            .asset_inventory(AssetInventoryRequest {
+                game_dir: &game_dir,
+            })
+            .unwrap();
+
+        let claims = derive_asset_preservation_claims(&manifest);
+        assert_eq!(claims.len(), 1, "one capability-unsupported surface");
+        let claim = &claims[0];
+        assert_eq!(claim.asset_id, INVENTORY_LOGO_ASSET_ID);
+        assert_eq!(claim.asset_ref, "art/logo");
+        assert_eq!(
+            claim.required_capability,
+            Capability::NonTextSurfaceExtraction
+        );
+        assert_eq!(claim.support_boundary, INVENTORY_LOGO_BOUNDARY);
+        // The claim never mentions source.json (adapter-neutral).
+        assert!(!claim.asset_ref.contains("source.json"));
+
+        let _ = fs::remove_dir_all(game_dir);
+    }
+
+    #[test]
+    fn golden_inventory_mode_asserts_preservation_and_capability_diagnostic_without_source_json() {
+        let game_dir = inventory_golden_game("k032-inventory-pass-game");
+        let work_dir = temp_dir("k032-inventory-pass-work");
+        assert!(
+            !game_dir.join("source.json").exists(),
+            "the adapter-neutral fixture must have NO source.json"
+        );
+
+        let report = run_round_trip_golden(
+            &inventory_golden_registry(false),
+            GoldenHarnessRequest {
+                game_dir: &game_dir,
+                work_dir: &work_dir,
+                adapter_id: Some(INVENTORY_GOLDEN_ID),
+                byte_equivalence: GoldenByteEquivalenceMode::AssertInventory,
+                translated_patch_export: None,
+                translated_source_bridge: None,
+            },
+        )
+        .unwrap();
+
+        assert_eq!(report.status, OperationStatus::Passed);
+        assert!(report.failures.is_empty());
+
+        // Capability-aware diagnostic: typed, keyed on the unsupported capability.
+        let diagnostic = report
+            .phases
+            .iter()
+            .find(|phase| phase.phase == "asset_capability_diagnostic")
+            .expect("capability-aware diagnostic phase");
+        assert_eq!(diagnostic.status, GoldenAssertionStatus::Skipped);
+        assert_eq!(
+            diagnostic.required_capability,
+            Some(Capability::NonTextSurfaceExtraction)
+        );
+        assert_eq!(diagnostic.asset_ref.as_deref(), Some("art/logo"));
+
+        // Preservation asserted from inventory + capability, not source.json.
+        let preservation = report
+            .phases
+            .iter()
+            .find(|phase| phase.phase == "inventory_asset_preservation")
+            .expect("inventory preservation phase");
+        assert_eq!(preservation.status, GoldenAssertionStatus::Passed);
+
+        // The asset-assertion phases (preservation + capability diagnostics) are
+        // adapter-neutral: none of them fall back to a source.json asset ref, and
+        // no byte_equivalence-by-source.json phase is emitted in inventory mode.
+        assert!(
+            !report
+                .phases
+                .iter()
+                .any(|phase| phase.phase == "byte_equivalence")
+        );
+        assert!(
+            report
+                .phases
+                .iter()
+                .filter(|phase| {
+                    phase.phase == "inventory_asset_preservation"
+                        || phase.phase == "asset_capability_diagnostic"
+                })
+                .all(|phase| phase.asset_ref.as_deref() != Some("source.json")),
+            "adapter-neutral asset assertions must not reference a source.json asset ref"
+        );
+
+        let _ = fs::remove_dir_all(game_dir);
+        let _ = fs::remove_dir_all(work_dir);
+    }
+
+    #[test]
+    fn golden_inventory_mode_flags_mutated_capability_unsupported_asset() {
+        let game_dir = inventory_golden_game("k032-inventory-mutate-game");
+        let work_dir = temp_dir("k032-inventory-mutate-work");
+
+        let report = run_round_trip_golden(
+            &inventory_golden_registry(true),
+            GoldenHarnessRequest {
+                game_dir: &game_dir,
+                work_dir: &work_dir,
+                adapter_id: Some(INVENTORY_GOLDEN_ID),
+                byte_equivalence: GoldenByteEquivalenceMode::AssertInventory,
+                translated_patch_export: None,
+                translated_source_bridge: None,
+            },
+        )
+        .unwrap();
+
+        assert_eq!(report.status, OperationStatus::Failed);
+        let failure = report
+            .failures
+            .iter()
+            .find(|failure| failure.code == "inventory_unsupported_asset_mutated")
+            .expect("mutated capability-unsupported asset failure");
+        assert_eq!(failure.phase, "inventory_asset_preservation");
+        assert_eq!(failure.asset_ref.as_deref(), Some("art/logo"));
+        assert_eq!(
+            failure.required_capability,
+            Some(Capability::NonTextSurfaceExtraction)
+        );
+
+        let _ = fs::remove_dir_all(game_dir);
+        let _ = fs::remove_dir_all(work_dir);
+    }
+
+    #[test]
+    fn golden_source_json_mode_asserts_byte_identity_as_one_retained_case() {
+        let game_dir = temp_dir("k032-source-json-pass-game");
+        write_file_all(&game_dir, "source.json", b"{\"units\": []}\n");
+        let work_dir = temp_dir("k032-source-json-pass-work");
+
+        let mut registry = AdapterRegistry::new();
+        registry.register(SourceJsonGoldenAdapter { mutate: false });
+
+        let report = run_round_trip_golden(
+            &registry,
+            GoldenHarnessRequest {
+                game_dir: &game_dir,
+                work_dir: &work_dir,
+                adapter_id: Some("kaifuu.source-json-golden"),
+                byte_equivalence: GoldenByteEquivalenceMode::AssertSourceJson,
+                translated_patch_export: None,
+                translated_source_bridge: None,
+            },
+        )
+        .unwrap();
+
+        assert_eq!(report.status, OperationStatus::Passed);
+        let byte_phase = report
+            .phases
+            .iter()
+            .find(|phase| phase.phase == "byte_equivalence")
+            .expect("byte equivalence phase");
+        assert_eq!(byte_phase.status, GoldenAssertionStatus::Passed);
+        assert_eq!(byte_phase.asset_ref.as_deref(), Some("source.json"));
+
+        let _ = fs::remove_dir_all(game_dir);
+        let _ = fs::remove_dir_all(work_dir);
+    }
+
+    #[test]
+    fn golden_source_json_mode_flags_byte_mismatch() {
+        let game_dir = temp_dir("k032-source-json-fail-game");
+        write_file_all(&game_dir, "source.json", b"{\"units\": []}\n");
+        let work_dir = temp_dir("k032-source-json-fail-work");
+
+        let mut registry = AdapterRegistry::new();
+        registry.register(SourceJsonGoldenAdapter { mutate: true });
+
+        let report = run_round_trip_golden(
+            &registry,
+            GoldenHarnessRequest {
+                game_dir: &game_dir,
+                work_dir: &work_dir,
+                adapter_id: Some("kaifuu.source-json-golden"),
+                byte_equivalence: GoldenByteEquivalenceMode::AssertSourceJson,
+                translated_patch_export: None,
+                translated_source_bridge: None,
+            },
+        )
+        .unwrap();
+
+        assert_eq!(report.status, OperationStatus::Failed);
+        assert!(report.failures.iter().any(|failure| {
+            failure.phase == "byte_equivalence" && failure.code == "byte_equivalence_mismatch"
+        }));
+
+        let _ = fs::remove_dir_all(game_dir);
+        let _ = fs::remove_dir_all(work_dir);
     }
 
     struct GoldenPreflightBoundaryAdapter {

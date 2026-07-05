@@ -2476,12 +2476,14 @@ fn run_golden_command(
         .map(PathBuf::from)
         .map(|path| read_json::<serde_json::Value>(&path))
         .transpose()?;
-    let byte_equivalence = if flag_present(args, "--expect-byte-identical") {
+    let byte_equivalence = if flag_present(args, "--assert-asset-inventory") {
+        GoldenByteEquivalenceMode::AssertInventory
+    } else if flag_present(args, "--expect-byte-identical") {
         GoldenByteEquivalenceMode::AssertSourceJson
     } else {
         GoldenByteEquivalenceMode::Unsupported {
             support_boundary:
-                "byte-identical round-trip is not claimed unless --expect-byte-identical is set for an adapter known to support byte-stable patching"
+                "byte-identical round-trip is not claimed unless --expect-byte-identical or --assert-asset-inventory is set for an adapter known to support byte-stable patching"
                     .to_string(),
         }
     };
