@@ -1,0 +1,164 @@
+{
+  "$schema": "./kag-corpus.manifest.schema.json",
+  "schemaVersion": "0.1.0",
+  "SPDX-License-Identifier": "CC0-1.0",
+  "fixture": {
+    "id": "kaifuu-kag-synthetic-corpus",
+    "title": "Kaifuu Synthetic KAG .ks Corpus (CC0)",
+    "kind": "synthetic",
+    "summary": "Hand-authored, original CC0 KiriKiri/TyranoScript KAG `.ks` scenario scripts covering dialogue, choices, labels, jumps, variables, comments, and the KAG profile-B tag inventory. Contains no copyrighted game text.",
+    "sourceLocale": "en-US",
+    "license": {
+      "spdx": "CC0-1.0",
+      "evidence": "All `.ks` scripts are original prose hand-authored in-repository for KAIFUU-203 and dedicated to the public domain (CC0-1.0); each file carries a `; SPDX-License-Identifier: CC0-1.0` header. No retail/game bytes."
+    },
+    "provenance": {
+      "author": "Itotori contributors",
+      "creationMethod": "Hand-authored original KAG `.ks` scenario scripts; this manifest is regenerated deterministically by fixtures/generate-kaifuu-kag-synthetic-corpus.mjs (sha256 + byte length + scanned tag inventory, no modification times).",
+      "rawAssetPolicy": "contains-no-copyrighted-game-assets"
+    }
+  },
+  "profileBTagInventory": [
+    "call",
+    "cm",
+    "ct",
+    "endif",
+    "endmacro",
+    "eval",
+    "if",
+    "image",
+    "jump",
+    "l",
+    "macro",
+    "p",
+    "playbgm",
+    "r",
+    "return",
+    "wait"
+  ],
+  "tagInventory": [
+    "call",
+    "cm",
+    "ct",
+    "endif",
+    "endlink",
+    "endmacro",
+    "eval",
+    "if",
+    "image",
+    "jump",
+    "l",
+    "link",
+    "macro",
+    "p",
+    "playbgm",
+    "r",
+    "refrain",
+    "return",
+    "wait"
+  ],
+  "files": [
+    {
+      "path": "fixtures/public/kaifuu-kag-synthetic-corpus/01-intro.ks",
+      "role": "source-game",
+      "mediaType": "text/plain; charset=utf-8",
+      "sha256": "2229490477a6541f3331ff349a23213b69bad031008f58c1ba32b0b5a3cda85f",
+      "bytes": 604,
+      "tagInventory": [
+        "eval",
+        "l",
+        "p",
+        "r"
+      ],
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/public/kaifuu-kag-synthetic-corpus/02-choices.ks",
+      "role": "source-game",
+      "mediaType": "text/plain; charset=utf-8",
+      "sha256": "6e3c5f1cae04ee4dbe7fd087c656bc212952028e095a646fbe4b4fe0b139abc4",
+      "bytes": 888,
+      "tagInventory": [
+        "endlink",
+        "jump",
+        "l",
+        "link",
+        "p",
+        "r"
+      ],
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/public/kaifuu-kag-synthetic-corpus/03-flow.ks",
+      "role": "source-game",
+      "mediaType": "text/plain; charset=utf-8",
+      "sha256": "d4d3252a61cbbddcbfd8bde5721f9aa06c963ae1009c21850c9a1b234a3acefa",
+      "bytes": 806,
+      "tagInventory": [
+        "call",
+        "endif",
+        "eval",
+        "if",
+        "jump",
+        "l",
+        "p",
+        "return"
+      ],
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/public/kaifuu-kag-synthetic-corpus/04-macros.ks",
+      "role": "source-game",
+      "mediaType": "text/plain; charset=utf-8",
+      "sha256": "cd281b72b23c73c14bfc0086238b670be83dd846411215811b125aff3312b879",
+      "bytes": 550,
+      "tagInventory": [
+        "endmacro",
+        "l",
+        "macro",
+        "p",
+        "r",
+        "refrain",
+        "wait"
+      ],
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/public/kaifuu-kag-synthetic-corpus/05-stage.ks",
+      "role": "source-game",
+      "mediaType": "text/plain; charset=utf-8",
+      "sha256": "b6c536cc610c04ad1ff297076d0c2851c2c0e43a3d9161a51388cc3d31d6c863",
+      "bytes": 673,
+      "tagInventory": [
+        "cm",
+        "ct",
+        "image",
+        "p",
+        "playbgm"
+      ],
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/public/kaifuu-kag-synthetic-corpus/06-epilogue.ks",
+      "role": "source-game",
+      "mediaType": "text/plain; charset=utf-8",
+      "sha256": "6a58285c8d2cbdafd2d62f94884bccae6103601762a44e9cf80d759c214a60a1",
+      "bytes": 642,
+      "tagInventory": [
+        "eval",
+        "l",
+        "p",
+        "r",
+        "wait"
+      ],
+      "redistributable": true
+    }
+  ],
+  "aggregateStats": {
+    "files": 6,
+    "sourceLocales": [
+      "en-US"
+    ],
+    "notes": "Original CC0 KAG scenario scripts. tagInventory is the union of distinct inline KAG tags scanned across all files; profileBTagInventory is the subset drawn from the KAG profile-B inventory (r, l, p, cm, ct, wait, jump, call, return, if, endif, macro, endmacro, eval, image, playbgm). Includes at least one label/jump pair for control-flow replay."
+  }
+}

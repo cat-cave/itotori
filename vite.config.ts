@@ -100,6 +100,15 @@ export default defineConfig({
       // parser-boundary smoke expected output it now preserves).
       "fixtures/public/kaifuu-encrypted-matrix/**",
       "fixtures/public/kaifuu-encrypted-matrix.manifest.json",
+      // KAIFUU-203: the hand-authored CC0 KAG `.ks` corpus is byte-level
+      // load-bearing (line/byte offsets appear in kaifuu-kirikiri bridge-unit
+      // keys), and its manifest is emitted by
+      // `fixtures/generate-kaifuu-kag-synthetic-corpus.mjs` as
+      // `JSON.stringify(value, null, 2)` with each file's recorded sha256/bytes.
+      // The `--check` regeneration and `fixtures/validate-public-manifests.mjs`
+      // fail on any drift, so the formatter must not rewrite either.
+      "fixtures/public/kaifuu-kag-synthetic-corpus/**",
+      "fixtures/public/kaifuu-kag-synthetic-corpus.manifest.json",
     ],
   },
   resolve: {

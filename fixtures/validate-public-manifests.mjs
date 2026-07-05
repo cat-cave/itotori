@@ -9,6 +9,13 @@ const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const publicFixturesDir = resolve(repoRoot, "fixtures/public");
 const schemaPath = resolve(publicFixturesDir, "manifest.schema.json");
 const schema = JSON.parse(readFileSync(schemaPath, "utf8"));
+// KAIFUU-203: the hand-authored CC0 KAG `.ks` corpus manifest declares a
+// distinct shape (verbatim `SPDX-License-Identifier`, per-file KAG tag
+// inventory) and points its `$schema` at `kag-corpus.manifest.schema.json`.
+// Each manifest is validated against the schema it declares.
+const kagCorpusSchemaSuffix = "kag-corpus.manifest.schema.json";
+const kagCorpusSchemaPath = resolve(publicFixturesDir, kagCorpusSchemaSuffix);
+const kagCorpusSchema = JSON.parse(readFileSync(kagCorpusSchemaPath, "utf8"));
 const helperResultDir = resolve(publicFixturesDir, "kaifuu-helper-results");
 const helperResultSchemaPath = resolve(helperResultDir, "helper-result.schema.json");
 const helperResultSchema = JSON.parse(readFileSync(helperResultSchemaPath, "utf8"));
@@ -17,6 +24,7 @@ const helperRegistrySchema = JSON.parse(readFileSync(helperRegistrySchemaPath, "
 const manifestPaths = findManifests(publicFixturesDir);
 const ajv = new Ajv2020({ allErrors: true });
 const validate = ajv.compile(schema);
+const validateKagCorpus = ajv.compile(kagCorpusSchema);
 const validateHelperResult = ajv.compile(helperResultSchema);
 const validateHelperRegistry = ajv.compile(helperRegistrySchema);
 const errors = [];
@@ -31,8 +39,12 @@ for (const manifestPath of manifestPaths) {
     continue;
   }
 
-  if (!validate(manifest)) {
-    for (const error of validate.errors ?? []) {
+  const declaredSchema = typeof manifest.$schema === "string" ? manifest.$schema : "";
+  const isKagCorpus = declaredSchema.endsWith(kagCorpusSchemaSuffix);
+  const activeValidate = isKagCorpus ? validateKagCorpus : validate;
+
+  if (!activeValidate(manifest)) {
+    for (const error of activeValidate.errors ?? []) {
       errors.push(
         `${relative(repoRoot, manifestPath)} ${error.instancePath || "/"} ${error.message}`,
       );
@@ -42,6 +54,9 @@ for (const manifestPath of manifestPaths) {
 
   for (const file of manifest.files) {
     validateFixtureFile(manifestPath, file);
+    if (isKagCorpus) {
+      continue;
+    }
     if (file.role === "helper-result") {
       validateHelperResultFixture(resolve(repoRoot, file.path), true);
     } else if (file.role === "helper-registry") {

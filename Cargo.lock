@@ -576,6 +576,7 @@ name = "kaifuu-core"
 version = "0.0.0"
 dependencies = [
  "encoding_rs",
+ "kaifuu-kirikiri",
  "rustix",
  "serde",
  "serde_json",
