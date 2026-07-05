@@ -189,6 +189,7 @@ pub mod compat_evidence;
 pub mod compat_profile;
 pub mod compat_regression;
 pub mod contracts;
+pub mod dynamic_key_discovery_helper;
 pub mod mv_mz_asset_xor;
 pub mod mv_mz_encrypted_asset_replacement;
 pub mod mv_mz_encrypted_audio;
@@ -349,6 +350,19 @@ pub use native_windows_helper::{
     WindowsQuotingCase, resolve_native_windows_dry_run,
     resolve_windows_command_line_quoting_fixture, windows_command_line,
     windows_command_line_to_argv, windows_quote_argument,
+};
+
+pub use dynamic_key_discovery_helper::{
+    AdapterHelperDependency, AdapterTierEntry, DYNAMIC_KEY_DISCOVERY_HELPER_SCHEMA_VERSION,
+    DYNAMIC_KEY_DISCOVERY_HELPER_SUPPORT_BOUNDARY, DYNAMIC_KEY_DISCOVERY_PLATFORM_ID,
+    DynamicKeyDiscoveryDiagnostic, DynamicKeyDiscoveryFailure, DynamicKeyDiscoveryOutcome,
+    DynamicKeyDiscoveryRefusal, DynamicKeyDiscoveryRequest, DynamicKeyDiscoveryResponse,
+    DynamicKeyDiscoveryValidation, DynamicKeyHelperTierReference, HelperInvocationMode,
+    PURE_ADAPTER_ENGINE_IDS, SEMANTIC_DYNAMIC_KEY_HELPER_DISABLED,
+    SEMANTIC_DYNAMIC_KEY_HELPER_LAUNCH_FORBIDDEN,
+    SEMANTIC_DYNAMIC_KEY_HELPER_PURE_ADAPTER_DEPENDENCY,
+    SEMANTIC_DYNAMIC_KEY_HELPER_RESULT_INVALID, SEMANTIC_DYNAMIC_KEY_HELPER_SECRET_LEAK,
+    attempt_dynamic_key_discovery, dynamic_key_helper_tier_reference,
 };
 
 pub use patch_transaction::{
