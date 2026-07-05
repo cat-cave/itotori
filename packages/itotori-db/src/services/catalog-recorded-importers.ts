@@ -8,6 +8,7 @@ import type {
   CatalogJsonRecord,
   CatalogLanguageStatusInput,
   CatalogReleaseInput,
+  CatalogReleaseMappingInput,
   CatalogSeedTargetInput,
   CatalogWorkInput,
   ItotoriCatalogRepositoryPort,
@@ -23,9 +24,12 @@ import {
   catalogLanguageStatusValues,
   catalogRawContentRedactionClassValues,
   catalogReleaseKindValues,
+  catalogReleaseMappingKindValues,
+  catalogReleasePackageKindValues,
   catalogSeedOriginValues,
   catalogSeedStatusValues,
   catalogSourceValues,
+  catalogTranslationPortabilityValues,
   type CatalogConfidence,
   type CatalogConflictKind,
   type CatalogConflictStatus,
@@ -36,7 +40,10 @@ import {
   type CatalogLanguageStatusScope,
   type CatalogRawContentRedactionClass,
   type CatalogReleaseKind,
+  type CatalogReleaseMappingKind,
+  type CatalogReleasePackageKind,
   type CatalogSource,
+  type CatalogTranslationPortability,
 } from "../schema.js";
 import {
   catalogCrawlerFactImportStrategyValues,
@@ -136,9 +143,32 @@ type NormalizedDlsiteStorefrontPayload = {
   workType?: string;
   makerName?: string;
   translationInfo: CatalogJsonRecord;
+  originalWorkno: string;
   languageStatuses: CatalogRecordedLanguageStatusFact[];
+  editionReleases: CatalogRecordedReleaseFact[];
+  releaseMappings: CatalogRecordedReleaseMappingFact[];
+  mappingDiagnostics: CatalogRecordedStorefrontDiagnostic[];
   demand: CatalogJsonRecord;
 };
+
+type DlsiteEdition = {
+  index: number;
+  workno: string;
+  language: string;
+  label?: string;
+  status: CatalogLanguageStatus;
+  statusScope: CatalogLanguageStatusScope;
+  translationRole?: string;
+  confidence?: CatalogConfidence;
+  rawContentRedactionClass?: CatalogRawContentRedactionClass;
+};
+
+// DLsite translation_info roles that denote a real derived translation (child of
+// the original workno) — each maps to a first-class translation_of relation.
+const dlsiteTranslationRoles = new Set(["official_translation", "fan_translation", "translation"]);
+// Roles that denote the original edition or a not-yet-published placeholder — no
+// parent-child mapping is emitted for these.
+const dlsiteNonMappingRoles = new Set(["original", "missing_storefront_indicator"]);
 
 type SteamLanguageStatusParseResult = {
   statuses: CatalogRecordedLanguageStatusFact[];
@@ -351,11 +381,29 @@ export type CatalogRecordedReleaseFact = {
   sourceReleaseId?: string;
   releaseTitle: string;
   releaseKind?: CatalogReleaseKind;
+  editionName?: string;
+  milestone?: string;
+  packageKind?: CatalogReleasePackageKind;
   platform?: string;
   language?: string;
   releaseDate?: string;
   releaseYear?: number;
   isOfficial?: boolean;
+  metadata?: CatalogJsonRecord;
+};
+
+// A first-class release-to-release mapping fact. Recorded importers emit these
+// so edition / milestone / translation parent-child evidence survives as a
+// structured relation between two releases (referenced by their sourceReleaseId)
+// instead of being buried in a metadata blob. The ingest step resolves each
+// sourceReleaseId to the stable catalog release id before persistence.
+export type CatalogRecordedReleaseMappingFact = {
+  sourceReleaseId: string;
+  targetReleaseId: string;
+  relationKind: CatalogReleaseMappingKind;
+  portability?: CatalogTranslationPortability;
+  confidence?: CatalogConfidence;
+  observedAt?: string;
   metadata?: CatalogJsonRecord;
 };
 
@@ -414,6 +462,7 @@ export type CatalogRecordedImporterFact = {
   titles?: readonly string[];
   externalIds?: readonly CatalogRecordedExternalIdFact[];
   releases?: readonly CatalogRecordedReleaseFact[];
+  releaseMappings?: readonly CatalogRecordedReleaseMappingFact[];
   languageStatuses?: readonly CatalogRecordedLanguageStatusFact[];
   demandFacts?: readonly CatalogRecordedDemandFact[];
   conflicts?: readonly CatalogRecordedConflictFact[];
@@ -434,16 +483,37 @@ function parseDlsiteStorefrontResponse(
   const makerName = normalized.makerName;
   const translationInfo = normalized.translationInfo;
   const demand = normalized.demand;
-  const diagnostics = demandDiagnostics(
+  const demandDiags = demandDiagnostics(
     fixture,
     response,
     demand,
     ["dl_count", "rating_summary", "rating_histogram", "wishlist_count", "rank_facts"],
     "DLsite",
   );
+  const diagnostics = [...demandDiags, ...normalized.mappingDiagnostics];
   const languages = normalized.languageStatuses;
   const primaryLanguage = languages[0]?.language ?? "ja-JP";
   const demandFacts = dlsiteDemandFacts(sourceId, normalized, response);
+  // First-class edition releases carry edition/milestone/package-kind columns.
+  // The queried product's own edition additionally retains the full source
+  // metadata blob so nothing that used to live only in metadata is lost.
+  const releases = normalized.editionReleases.map((release) =>
+    release.sourceReleaseId === `${sourceId}:dlsite`
+      ? (compactJson({
+          ...release,
+          releaseTitle: title,
+          releaseDate,
+          releaseYear,
+          metadata: compactJson({
+            ...release.metadata,
+            makerName,
+            workType,
+            ageCategory: optionalString(response.payload, "age_category"),
+            translationInfo,
+          }),
+        }) as CatalogRecordedReleaseFact)
+      : release,
+  );
 
   return {
     diagnostics,
@@ -461,25 +531,8 @@ function parseDlsiteStorefrontResponse(
           metadata: compactJson({ workno: sourceId, makerName, workType }),
         },
       ],
-      releases: [
-        compactJson({
-          sourceReleaseId: `${sourceId}:dlsite`,
-          releaseTitle: title,
-          releaseKind: catalogReleaseKindValues.original,
-          platform: "dlsite",
-          language: primaryLanguage,
-          releaseDate,
-          releaseYear,
-          isOfficial: true,
-          metadata: compactJson({
-            workno: sourceId,
-            makerName,
-            workType,
-            ageCategory: optionalString(response.payload, "age_category"),
-            translationInfo,
-          }),
-        }) as CatalogRecordedReleaseFact,
-      ],
+      releases,
+      releaseMappings: normalized.releaseMappings,
       languageStatuses: languages,
       demandFacts,
       seedTarget: false,
@@ -521,6 +574,27 @@ export function mapDlsiteDemandFactsForRecordedResponse(
       ["dl_count", "rating_summary", "rating_histogram", "wishlist_count", "rank_facts"],
       "DLsite",
     ),
+  };
+}
+
+// DB-less surface over the DLsite translation_info -> first-class mapping-fact
+// projection. Returns the edition releases (edition/milestone/package-kind), the
+// translation parent-child release mappings, and any explicit unsupported-shape
+// diagnostics for translation evidence that could not be mapped (rather than
+// silently dropping that evidence into a metadata blob).
+export function mapDlsiteReleaseMappingsForRecordedResponse(
+  fixture: CatalogRecordedStorefrontFixture,
+  response: CatalogRecordedStorefrontResponse,
+): {
+  releases: readonly CatalogRecordedReleaseFact[];
+  releaseMappings: readonly CatalogRecordedReleaseMappingFact[];
+  diagnostics: readonly CatalogRecordedStorefrontDiagnostic[];
+} {
+  const normalized = normalizeDlsiteStorefrontPayload(fixture, response);
+  return {
+    releases: normalized.editionReleases,
+    releaseMappings: normalized.releaseMappings,
+    diagnostics: normalized.mappingDiagnostics,
   };
 }
 
@@ -1099,16 +1173,36 @@ function normalizeDlsiteStorefrontPayload(
     rank_facts: optionalDlsiteRankFacts(payload, "rank_facts", fixture, response),
   });
 
+  const title = stringField(payload, "title", fixture, response);
+  const editions = languageEditions.map((entry, index) =>
+    dlsiteEdition(entry, index, fixture, response),
+  );
+  const originalWorkno =
+    optionalString(translationInfo, "original_workno") ??
+    optionalString(optionalRecord(translationInfo, "original") ?? {}, "workno") ??
+    editions.find((edition) => edition.translationRole === "original")?.workno ??
+    sourceId;
+  const projection = dlsiteEditionReleasesAndMappings(
+    sourceId,
+    title,
+    originalWorkno,
+    editions,
+    fixture,
+    response,
+  );
+
   return compactJson({
     sourceId,
-    title: stringField(payload, "title", fixture, response),
+    title,
     releaseDate: optionalString(payload, "release_date"),
     workType: optionalString(payload, "work_type"),
     makerName: optionalString(payload, "maker_name") ?? optionalString(maker, "name"),
     translationInfo,
-    languageStatuses: languageEditions.map((entry, index) =>
-      dlsiteLanguageStatus(entry, index, sourceId, fixture, response),
-    ),
+    originalWorkno,
+    languageStatuses: editions.map((edition) => dlsiteLanguageStatusFromEdition(edition)),
+    editionReleases: projection.releases,
+    releaseMappings: projection.mappings,
+    mappingDiagnostics: projection.diagnostics,
     demand,
   }) as NormalizedDlsiteStorefrontPayload;
 }
@@ -1150,13 +1244,12 @@ function unwrapSteamAppdetailsEnvelope(
   return { envelopeKey, appdetails: appdetails as CatalogJsonRecord };
 }
 
-function dlsiteLanguageStatus(
+function dlsiteEdition(
   input: unknown,
   index: number,
-  sourceId: string,
   fixture: CatalogRecordedStorefrontFixture,
   response: CatalogRecordedStorefrontResponse,
-): CatalogRecordedLanguageStatusFact {
+): DlsiteEdition {
   const sourceField = `translation_info.language_editions[${index}]`;
   if (input === null || typeof input !== "object" || Array.isArray(input)) {
     throw storefrontSemanticError(
@@ -1188,18 +1281,6 @@ function dlsiteLanguageStatus(
     fixture,
     response,
   );
-  const statusFact: CatalogRecordedLanguageStatusFact = {
-    language,
-    status,
-    statusScope: statusScope ?? catalogLanguageStatusScopeValues.platform,
-    platform: "dlsite",
-    releaseSourceId: `${sourceId}:dlsite`,
-    metadata: compactJson({
-      sourceField: "translation_info.language_editions",
-      localeLabel: optionalString(record, "label"),
-      translationRole: optionalString(record, "translation_role"),
-    }),
-  };
   const confidence = optionalEnumStringField(
     record.confidence,
     Object.values(catalogConfidenceValues),
@@ -1214,13 +1295,149 @@ function dlsiteLanguageStatus(
     fixture,
     response,
   );
+  const edition: DlsiteEdition = {
+    index,
+    workno: optionalString(record, "workno") ?? response.sourceId,
+    language,
+    status,
+    statusScope: statusScope ?? catalogLanguageStatusScopeValues.platform,
+  };
+  const label = optionalString(record, "label");
+  if (label !== undefined) {
+    edition.label = label;
+  }
+  const translationRole = optionalString(record, "translation_role");
+  if (translationRole !== undefined) {
+    edition.translationRole = translationRole;
+  }
   if (confidence !== undefined) {
-    statusFact.confidence = confidence;
+    edition.confidence = confidence;
   }
   if (rawContentRedactionClass !== undefined) {
-    statusFact.rawContentRedactionClass = rawContentRedactionClass;
+    edition.rawContentRedactionClass = rawContentRedactionClass;
+  }
+  return edition;
+}
+
+function dlsiteLanguageStatusFromEdition(
+  edition: DlsiteEdition,
+): CatalogRecordedLanguageStatusFact {
+  const statusFact: CatalogRecordedLanguageStatusFact = {
+    language: edition.language,
+    status: edition.status,
+    statusScope: edition.statusScope,
+    platform: "dlsite",
+    releaseSourceId: `${edition.workno}:dlsite`,
+    metadata: compactJson({
+      sourceField: "translation_info.language_editions",
+      localeLabel: edition.label,
+      translationRole: edition.translationRole,
+    }),
+  };
+  if (edition.confidence !== undefined) {
+    statusFact.confidence = edition.confidence;
+  }
+  if (edition.rawContentRedactionClass !== undefined) {
+    statusFact.rawContentRedactionClass = edition.rawContentRedactionClass;
   }
   return statusFact;
+}
+
+// Project the DLsite language_editions + original workno into first-class
+// releases (edition/milestone/package-kind columns) and first-class translation
+// parent-child release mappings. Editions are de-duplicated by workno. A child
+// edition whose translation_role is neither a known translation role nor a
+// recognized non-mapping role yields an EXPLICIT unsupported-shape diagnostic
+// instead of being silently dropped into a metadata blob.
+function dlsiteEditionReleasesAndMappings(
+  sourceId: string,
+  title: string,
+  originalWorkno: string,
+  editions: readonly DlsiteEdition[],
+  fixture: CatalogRecordedStorefrontFixture,
+  response: CatalogRecordedStorefrontResponse,
+): {
+  releases: CatalogRecordedReleaseFact[];
+  mappings: CatalogRecordedReleaseMappingFact[];
+  diagnostics: CatalogRecordedStorefrontDiagnostic[];
+} {
+  const releases: CatalogRecordedReleaseFact[] = [];
+  const mappings: CatalogRecordedReleaseMappingFact[] = [];
+  const diagnostics: CatalogRecordedStorefrontDiagnostic[] = [];
+  const seenWorknos = new Set<string>();
+
+  for (const edition of editions) {
+    const isOriginal = edition.workno === originalWorkno || edition.translationRole === "original";
+    const sourceReleaseId = `${edition.workno}:dlsite`;
+
+    if (!seenWorknos.has(edition.workno)) {
+      seenWorknos.add(edition.workno);
+      releases.push(
+        compactJson({
+          sourceReleaseId,
+          releaseTitle: title,
+          releaseKind: isOriginal
+            ? catalogReleaseKindValues.original
+            : catalogReleaseKindValues.officialTranslation,
+          editionName: edition.label,
+          milestone: originalWorkno,
+          packageKind: catalogReleasePackageKindValues.dlsiteProduct,
+          platform: "dlsite",
+          language: edition.language,
+          isOfficial: true,
+          metadata: compactJson({
+            workno: edition.workno,
+            localeLabel: edition.label,
+            translationRole: edition.translationRole,
+          }),
+        }) as CatalogRecordedReleaseFact,
+      );
+    }
+
+    if (isOriginal || edition.workno === originalWorkno) {
+      continue;
+    }
+    const role = edition.translationRole;
+    if (role !== undefined && dlsiteTranslationRoles.has(role)) {
+      const mapping: CatalogRecordedReleaseMappingFact = {
+        sourceReleaseId,
+        targetReleaseId: `${originalWorkno}:dlsite`,
+        relationKind: catalogReleaseMappingKindValues.translationOf,
+        portability:
+          role === "official_translation"
+            ? catalogTranslationPortabilityValues.likelyPortable
+            : catalogTranslationPortabilityValues.needsReview,
+        confidence: edition.confidence ?? catalogConfidenceValues.high,
+        metadata: compactJson({
+          sourceField: `translation_info.language_editions[${edition.index}]`,
+          translationRole: role,
+          language: edition.language,
+        }),
+      };
+      mappings.push(mapping);
+      continue;
+    }
+    if (role !== undefined && dlsiteNonMappingRoles.has(role)) {
+      continue;
+    }
+    // A foreign-workno edition with an unrecognized (or missing) translation role
+    // cannot be mapped to a known relation kind: surface it explicitly.
+    diagnostics.push({
+      code: catalogRecordedStorefrontDiagnosticCodeValues.unsupportedResponseShape,
+      severity: "warning",
+      fixtureId: fixture.fixtureId,
+      sourceRevision: fixture.sourceVersion,
+      stepKey: response.stepKey,
+      sourceId,
+      sourceField: `translation_info.language_editions[${edition.index}].translation_role`,
+      message:
+        `DLsite translation_info.language_editions[${edition.index}] references workno ` +
+        `${edition.workno} with unmappable translation_role ${role ?? "<missing>"}; ` +
+        "no first-class release mapping was emitted",
+    });
+  }
+
+  return { releases, mappings, diagnostics };
 }
 
 function steamLanguageStatuses(
@@ -2214,6 +2431,7 @@ async function importRecordedCatalogFact(
       generatedConflicts,
     ),
     releases: releaseInputs(context, fact, importMetadata, sourceProvenanceId),
+    releaseMappings: releaseMappingInputs(context, fact, importMetadata, sourceProvenanceId),
     languageStatuses: languageStatusInputs(
       context,
       fact,
@@ -2355,6 +2573,15 @@ function releaseInputs(
       sourceProvenanceId,
       metadata: compactJson({ ...release.metadata, ...importMetadata }),
     };
+    if (release.editionName !== undefined) {
+      input.editionName = release.editionName;
+    }
+    if (release.milestone !== undefined) {
+      input.milestone = release.milestone;
+    }
+    if (release.packageKind !== undefined) {
+      input.packageKind = release.packageKind;
+    }
     if (release.platform !== undefined) {
       input.platform = release.platform;
     }
@@ -2369,6 +2596,52 @@ function releaseInputs(
     }
     if (release.isOfficial !== undefined) {
       input.isOfficial = release.isOfficial;
+    }
+    return input;
+  });
+}
+
+// Resolve first-class release-mapping facts into repository inputs. Each mapping
+// endpoint's sourceReleaseId is resolved to the same stable catalog release id
+// that releaseInputs assigns, so the mapping references a persisted release of
+// this same work.
+function releaseMappingInputs(
+  context: CatalogCrawlerIngestContext<CatalogRecordedImporterFact>,
+  fact: CatalogRecordedImporterFact,
+  importMetadata: CatalogJsonRecord,
+  sourceProvenanceId: string,
+): CatalogReleaseMappingInput[] {
+  const releaseId = (sourceReleaseId: string): string =>
+    stableCatalogId("catalog-release", [
+      context.adapter.catalogSource,
+      fact.sourceId,
+      sourceReleaseId,
+    ]);
+  return (fact.releaseMappings ?? []).map((mapping) => {
+    const sourceReleaseId = releaseId(mapping.sourceReleaseId);
+    const targetReleaseId = releaseId(mapping.targetReleaseId);
+    const input: CatalogReleaseMappingInput = {
+      releaseMappingId: stableCatalogId("catalog-release-mapping", [
+        context.adapter.catalogSource,
+        fact.sourceId,
+        mapping.sourceReleaseId,
+        mapping.targetReleaseId,
+        mapping.relationKind,
+      ]),
+      sourceReleaseId,
+      targetReleaseId,
+      relationKind: mapping.relationKind,
+      sourceProvenanceId,
+      metadata: compactJson({ ...mapping.metadata, ...importMetadata }),
+    };
+    if (mapping.portability !== undefined) {
+      input.portability = mapping.portability;
+    }
+    if (mapping.confidence !== undefined) {
+      input.confidence = mapping.confidence;
+    }
+    if (mapping.observedAt !== undefined) {
+      input.observedAt = mapping.observedAt;
     }
     return input;
   });
@@ -2634,6 +2907,11 @@ function assertFact(fact: CatalogRecordedImporterFact): void {
   }
   for (const release of fact.releases ?? []) {
     requiredString(release.releaseTitle, "fact.releases[].releaseTitle");
+  }
+  for (const mapping of fact.releaseMappings ?? []) {
+    requiredString(mapping.sourceReleaseId, "fact.releaseMappings[].sourceReleaseId");
+    requiredString(mapping.targetReleaseId, "fact.releaseMappings[].targetReleaseId");
+    requiredString(mapping.relationKind, "fact.releaseMappings[].relationKind");
   }
   for (const status of fact.languageStatuses ?? []) {
     requiredString(status.language, "fact.languageStatuses[].language");

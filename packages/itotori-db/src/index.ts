@@ -570,6 +570,7 @@ export {
   createCatalogRecordedImporterVerifier,
   createSteamRecordedStorefrontAdapter,
   mapDlsiteDemandFactsForRecordedResponse,
+  mapDlsiteReleaseMappingsForRecordedResponse,
 } from "./services/catalog-recorded-importers.js";
 export type {
   CatalogRecordedDemandFact,
@@ -578,6 +579,7 @@ export type {
   CatalogRecordedImporterOptions,
   CatalogRecordedLanguageStatusFact,
   CatalogRecordedReleaseFact,
+  CatalogRecordedReleaseMappingFact,
   CatalogRecordedSeedTargetFact,
   CatalogRecordedStorefrontDiagnostic,
   CatalogRecordedStorefrontDiagnosticCode,

@@ -24,8 +24,8 @@
       "path": "fixtures/catalog-recorded-importers/vndb-dump-replay.json",
       "role": "metadata",
       "mediaType": "application/json",
-      "sha256": "2b9b8dcedc67066901d37db7fffa76665d22a019c3b7ed8af175596fe01132a1",
-      "bytes": 6294,
+      "sha256": "bf189e3a42469c025ed982869ac5a39ffc1dfaea6f41c5fb575d1c9f964bf879",
+      "bytes": 7194,
       "redistributable": true
     },
     {

@@ -70,6 +70,9 @@
               "sourceReleaseId": "r5001",
               "releaseTitle": "星影の約束",
               "releaseKind": "original",
+              "editionName": "Japanese complete edition",
+              "milestone": "v1001",
+              "packageKind": "installer",
               "platform": "pc",
               "language": "ja-JP",
               "releaseDate": "2019-04-26",
@@ -81,12 +84,32 @@
               "sourceReleaseId": "r5002",
               "releaseTitle": "Promise Under Starlight",
               "releaseKind": "official_translation",
+              "editionName": "English complete edition",
+              "milestone": "v1001",
+              "packageKind": "installer",
               "platform": "pc",
               "language": "en-US",
               "releaseDate": "2021-09-10",
               "releaseYear": 2021,
               "isOfficial": true,
               "metadata": { "vndbReleaseType": "complete", "vndbPlatforms": ["win"] }
+            }
+          ],
+          "releaseMappings": [
+            {
+              "sourceReleaseId": "r5002",
+              "targetReleaseId": "r5001",
+              "relationKind": "same_milestone_as",
+              "confidence": "high",
+              "metadata": { "sourceField": "vn.id", "milestone": "v1001" }
+            },
+            {
+              "sourceReleaseId": "r5002",
+              "targetReleaseId": "r5001",
+              "relationKind": "translation_of",
+              "portability": "likely_portable",
+              "confidence": "high",
+              "metadata": { "sourceField": "releases.languages" }
             }
           ],
           "languageStatuses": [

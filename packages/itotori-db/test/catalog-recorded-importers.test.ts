@@ -29,6 +29,7 @@ import {
   type CatalogRecordedStorefrontFixture,
   CatalogRecordedStorefrontSemanticError,
   createWikidataRecordedPlatformAdapter,
+  mapDlsiteReleaseMappingsForRecordedResponse,
 } from "../src/services/catalog-recorded-importers.js";
 import {
   catalogConfidenceValues,
@@ -36,9 +37,13 @@ import {
   catalogDemandFactKindValues,
   catalogExternalIdKindValues,
   catalogLanguageStatusValues,
+  catalogReleaseKindValues,
+  catalogReleaseMappingKindValues,
+  catalogReleasePackageKindValues,
   catalogSeedOriginValues,
   catalogSourceProvenance,
   catalogSourceRecordKindValues,
+  catalogTranslationPortabilityValues,
 } from "../src/schema.js";
 import { isolatedMigratedContext } from "./db-test-context.js";
 
@@ -361,12 +366,42 @@ describe("catalog recorded source importers", () => {
             sourceReleaseId: "r5001",
             releaseTitle: "星影の約束",
             language: "ja-JP",
+            editionName: "Japanese complete edition",
+            milestone: "v1001",
+            packageKind: catalogReleasePackageKindValues.installer,
           }),
           expect.objectContaining({
             sourceReleaseId: "r5002",
             releaseTitle: "Promise Under Starlight",
             releaseKind: "official_translation",
             language: "en-US",
+            editionName: "English complete edition",
+            milestone: "v1001",
+            packageKind: catalogReleasePackageKindValues.installer,
+          }),
+        ]),
+      );
+
+      // VNDB milestone-like evidence is promoted to first-class release mappings
+      // (same-milestone + translation parent-child), not left in a metadata blob.
+      const r5001Id = starlight?.releases.find(
+        (release) => release.sourceReleaseId === "r5001",
+      )?.releaseId;
+      const r5002Id = starlight?.releases.find(
+        (release) => release.sourceReleaseId === "r5002",
+      )?.releaseId;
+      expect(starlight?.releaseMappings).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            sourceReleaseId: r5002Id,
+            targetReleaseId: r5001Id,
+            relationKind: catalogReleaseMappingKindValues.sameMilestoneAs,
+          }),
+          expect.objectContaining({
+            sourceReleaseId: r5002Id,
+            targetReleaseId: r5001Id,
+            relationKind: catalogReleaseMappingKindValues.translationOf,
+            portability: catalogTranslationPortabilityValues.likelyPortable,
           }),
         ]),
       );
@@ -1373,6 +1408,78 @@ describe("catalog recorded source importers", () => {
         assertCompleteStorefrontDiagnostic(diagnostic, driftCase.expected);
       });
     }
+  });
+
+  it("projects DLsite translation_info into first-class edition/milestone/mapping facts", () => {
+    const response = required(dlsiteFixture.responses[0], "DLsite response");
+    const { releases, releaseMappings, diagnostics } = mapDlsiteReleaseMappingsForRecordedResponse(
+      dlsiteFixture,
+      response,
+    );
+
+    // The two language_editions (RJ00001001 ja original + RJ01111111 en) become
+    // two first-class releases carrying edition/milestone/package-kind columns —
+    // NOT a single blob of translation_info metadata.
+    expect(releases).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          sourceReleaseId: "RJ00001001:dlsite",
+          releaseKind: catalogReleaseKindValues.original,
+          editionName: "Japanese",
+          milestone: "RJ00001001",
+          packageKind: catalogReleasePackageKindValues.dlsiteProduct,
+          language: "ja-JP",
+        }),
+        expect.objectContaining({
+          sourceReleaseId: "RJ01111111:dlsite",
+          releaseKind: catalogReleaseKindValues.officialTranslation,
+          editionName: "English",
+          milestone: "RJ00001001",
+          packageKind: catalogReleasePackageKindValues.dlsiteProduct,
+          language: "en-US",
+        }),
+      ]),
+    );
+
+    // The parent-child translation edge becomes a first-class release mapping.
+    expect(releaseMappings).toEqual([
+      expect.objectContaining({
+        sourceReleaseId: "RJ01111111:dlsite",
+        targetReleaseId: "RJ00001001:dlsite",
+        relationKind: catalogReleaseMappingKindValues.translationOf,
+        portability: catalogTranslationPortabilityValues.likelyPortable,
+      }),
+    ]);
+    expect(diagnostics).toEqual([]);
+  });
+
+  it("emits an explicit unsupported-shape diagnostic for unmappable DLsite translation evidence", () => {
+    const fixture = structuredClone(dlsiteFixture);
+    const response = required(fixture.responses[0], "DLsite response");
+    const editions = dlsiteLanguageEditions(response.payload);
+    // A foreign-workno edition with an unrecognized translation_role cannot be
+    // mapped to a known relation kind.
+    record(editions[1], "language edition").workno = "RJ07777777";
+    record(editions[1], "language edition").translation_role = "bespoke_remix";
+
+    const { releaseMappings, diagnostics } = mapDlsiteReleaseMappingsForRecordedResponse(
+      fixture,
+      response,
+    );
+
+    // The unmappable edition is surfaced explicitly instead of silently dropped.
+    expect(releaseMappings).toEqual([]);
+    expect(diagnostics).toEqual([
+      expect.objectContaining({
+        code: "unsupported_response_shape",
+        severity: "warning",
+        fixtureId: DLSITE_FIXTURE_ID,
+        sourceRevision: DLSITE_SOURCE_REVISION,
+        stepKey: response.stepKey,
+        sourceId: response.sourceId,
+        sourceField: "translation_info.language_editions[1].translation_role",
+      }),
+    ]);
   });
 
   it("preserves unmapped Steam locale diagnostics", async () => {
