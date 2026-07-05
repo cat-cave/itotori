@@ -7,6 +7,7 @@ use std::path::{Component, Path, PathBuf};
 use std::process::{Child, Command, ExitStatus, Stdio};
 use std::str::FromStr;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
@@ -2766,6 +2767,14 @@ pub enum RuntimeHarnessErrorKind {
     ProcessCleanupFailed,
     CaptureTimeout,
     CaptureFailed,
+    /// UTSUSHI-096: a capture hook worker attempted to write a managed runtime
+    /// artifact after the capture boundary closed (the hook timed out or
+    /// `launch-capture` already returned). The write fence refuses the mutation
+    /// so a detached, still-running hook worker cannot corrupt managed artifact
+    /// state after completion. Semantic code: `runtime_capture_boundary_closed`.
+    /// Distinct from `CaptureTimeout` so a fenced late write is distinguishable
+    /// from the normal timeout diagnostic.
+    CaptureBoundaryClosed,
     ArtifactStoreUnavailable,
     ArtifactWriteFailed,
     /// Browser-launch path could not locate a Chromium-compatible binary.
@@ -2802,6 +2811,7 @@ impl RuntimeHarnessErrorKind {
             Self::ProcessCleanupFailed => "runtime_process_cleanup_failed",
             Self::CaptureTimeout => "runtime_capture_timeout",
             Self::CaptureFailed => "runtime_capture_failed",
+            Self::CaptureBoundaryClosed => "runtime_capture_boundary_closed",
             Self::ArtifactStoreUnavailable => "runtime_artifact_store_unavailable",
             Self::ArtifactWriteFailed => "runtime_artifact_write_failed",
             Self::ChromiumUnavailable => "runtime_browser_chromium_unavailable",
@@ -3061,6 +3071,57 @@ impl RuntimeCaptureArtifactStore {
     }
 }
 
+/// UTSUSHI-096: a write fence shared between the launch-capture harness and a
+/// spawned capture-hook worker thread.
+///
+/// A capture hook runs on a detached worker thread (see
+/// [`run_capture_hook_with_timeout`]). When the hook times out, the harness
+/// stops waiting and `launch-capture` returns, but the worker thread may still
+/// be running and still holds a clone of the [`RuntimeCaptureArtifactStore`].
+/// Without a fence, that detached worker could write a managed runtime artifact
+/// *after* the capture boundary, corrupting managed artifact state
+/// (use-after-completion side effect).
+///
+/// The fence is open while a hook's bounded capture window is valid and is
+/// closed at the capture boundary (the moment the harness stops waiting for the
+/// hook — completion or timeout). Every managed-artifact write is gated on the
+/// fence, so a post-boundary write from a still-running worker is refused
+/// (typed [`RuntimeHarnessErrorKind::CaptureBoundaryClosed`], no state
+/// mutation) while writes during the valid window still succeed.
+#[derive(Clone, Debug)]
+pub struct CaptureWriteFence {
+    open: Arc<AtomicBool>,
+}
+
+impl CaptureWriteFence {
+    /// A fresh, open fence: managed-artifact writes are permitted until it is
+    /// [`close`](Self::close)d at the capture boundary.
+    fn open() -> Self {
+        Self {
+            open: Arc::new(AtomicBool::new(true)),
+        }
+    }
+
+    /// Whether managed-artifact writes are currently permitted. Checked before
+    /// every write so a late write from a detached worker is refused.
+    fn is_open(&self) -> bool {
+        self.open.load(Ordering::SeqCst)
+    }
+
+    /// Close the fence at the capture boundary. Idempotent; once closed, any
+    /// subsequent managed-artifact write through a context sharing this fence
+    /// is refused.
+    fn close(&self) {
+        self.open.store(false, Ordering::SeqCst);
+    }
+}
+
+impl Default for CaptureWriteFence {
+    fn default() -> Self {
+        Self::open()
+    }
+}
+
 pub struct RuntimeCaptureContext {
     pub operation: RuntimeOperation,
     pub boundary: RuntimeCaptureBoundary,
@@ -3068,6 +3129,10 @@ pub struct RuntimeCaptureContext {
     pub run_id: String,
     artifact_store: Option<RuntimeCaptureArtifactStore>,
     artifacts: Vec<RuntimeCapturedArtifact>,
+    // UTSUSHI-096: gates managed-artifact writes. Shared (cloned) with the
+    // harness so the harness can close it at the capture boundary and refuse
+    // writes from a detached worker that outlives `launch-capture`.
+    write_fence: CaptureWriteFence,
 }
 
 impl RuntimeCaptureContext {
@@ -3085,6 +3150,7 @@ impl RuntimeCaptureContext {
             run_id: run_id.into(),
             artifact_store,
             artifacts: Vec::new(),
+            write_fence: CaptureWriteFence::open(),
         }
     }
 
@@ -3095,6 +3161,19 @@ impl RuntimeCaptureContext {
         media_type: impl Into<Option<String>>,
         contents: &[u8],
     ) -> Result<RuntimeCapturedArtifact, RuntimeHarnessError> {
+        // UTSUSHI-096: refuse writes once the capture boundary has closed. This
+        // is checked before touching the store so a detached worker that keeps
+        // running after `launch-capture` returns cannot mutate managed artifact
+        // state; the refusal carries a distinct code from a normal timeout.
+        if !self.write_fence.is_open() {
+            return Err(RuntimeHarnessError::new(
+                RuntimeHarnessErrorKind::CaptureBoundaryClosed,
+                self.operation,
+                "capture hook attempted to write a managed runtime artifact after the capture boundary closed; write refused",
+            )
+            .with_boundary(self.boundary)
+            .with_process_id(self.process_id));
+        }
         let Some(store) = &self.artifact_store else {
             return Err(RuntimeHarnessError::new(
                 RuntimeHarnessErrorKind::ArtifactStoreUnavailable,
@@ -3462,6 +3541,12 @@ fn run_capture_hook_with_timeout(
     let operation = context.operation;
     let boundary = context.boundary;
     let process_id = context.process_id;
+    // UTSUSHI-096: install a fresh open fence and keep a clone in the harness.
+    // The worker thread receives its own clone inside `context`; closing the
+    // harness-side handle at the capture boundary flips the shared flag so any
+    // later write from a still-running worker is refused.
+    let fence = CaptureWriteFence::open();
+    context.write_fence = fence.clone();
     let (sender, receiver) = mpsc::channel();
     thread::spawn(move || {
         let result = match panic::catch_unwind(AssertUnwindSafe(|| hook.capture(&mut context))) {
@@ -3481,7 +3566,14 @@ fn run_capture_hook_with_timeout(
         let _ = sender.send(RuntimeHookThreadResult { hook, result });
     });
 
-    match receiver.recv_timeout(timeout) {
+    let outcome = receiver.recv_timeout(timeout);
+    // UTSUSHI-096: the capture boundary is crossed the instant the harness stops
+    // waiting for the hook (completion OR timeout). Close the fence here so any
+    // write the worker attempts after this point is refused, while writes made
+    // during the valid in-progress window above still succeeded.
+    fence.close();
+
+    match outcome {
         Ok(RuntimeHookThreadResult {
             hook,
             result: Ok(artifacts),
@@ -4355,8 +4447,9 @@ mod tests {
     use serde_json::json;
     use std::process::Command as StdCommand;
     use std::sync::{
-        Arc,
+        Arc, Mutex,
         atomic::{AtomicBool, AtomicUsize, Ordering},
+        mpsc,
     };
     use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -4446,6 +4539,24 @@ mod tests {
             std::thread::sleep(Duration::from_millis(10));
         }
         path.exists()
+    }
+
+    // UTSUSHI-096: poll the out-of-band slot the detached hook worker records
+    // its (fenced) write outcome into.
+    fn wait_for_late_write(
+        slot: &Arc<Mutex<Option<Result<PathBuf, String>>>>,
+        timeout: Duration,
+    ) -> Option<Result<PathBuf, String>> {
+        let started_at = Instant::now();
+        loop {
+            if let Some(value) = slot.lock().unwrap().clone() {
+                return Some(value);
+            }
+            if started_at.elapsed() > timeout {
+                return None;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
     }
 
     // UTSUSHI-224: tests that exercised the deleted typed
@@ -4652,6 +4763,45 @@ mod tests {
         ) -> Result<(), RuntimeHarnessError> {
             self.started.store(true, Ordering::SeqCst);
             std::thread::sleep(self.sleep);
+            Ok(())
+        }
+    }
+
+    // UTSUSHI-096: a hook that blocks past its timeout and, once released by the
+    // test (after `launch-capture` has already returned), attempts a managed
+    // artifact write from the detached worker thread. The outcome is recorded
+    // out-of-band so the test can assert the write was fenced.
+    struct LateWritingCaptureHook {
+        boundary: RuntimeCaptureBoundary,
+        started: Arc<AtomicBool>,
+        proceed: mpsc::Receiver<()>,
+        late_write: Arc<Mutex<Option<Result<PathBuf, String>>>>,
+    }
+
+    impl RuntimeCaptureHook for LateWritingCaptureHook {
+        fn boundary(&self) -> RuntimeCaptureBoundary {
+            self.boundary
+        }
+
+        fn capture(
+            &mut self,
+            context: &mut RuntimeCaptureContext,
+        ) -> Result<(), RuntimeHarnessError> {
+            self.started.store(true, Ordering::SeqCst);
+            // Block until the test releases us. By then the harness has timed
+            // this hook out and `launch-capture` has returned, so this write is
+            // strictly after the capture boundary.
+            let _ = self.proceed.recv();
+            let outcome = match context.write_artifact(
+                RuntimeArtifactKind::Screenshot,
+                HARNESS_SCREENSHOT_ID,
+                Some("image/png".to_string()),
+                b"post-boundary late write that must be refused",
+            ) {
+                Ok(artifact) => Ok(artifact.path),
+                Err(error) => Err(error.code().to_string()),
+            };
+            *self.late_write.lock().unwrap() = Some(outcome);
             Ok(())
         }
     }
@@ -5109,6 +5259,109 @@ mod tests {
         assert!(cleanup.attempted);
         assert!(cleanup.completed);
         assert_eq!(cleanup.scope, RuntimeProcessCleanupScope::ProcessTree);
+    }
+
+    // UTSUSHI-096: a hook that times out during launch-capture leaves a detached
+    // worker thread running that still holds a clone of the managed artifact
+    // store. This test proves that once the capture boundary closes, a late
+    // write from that worker is REFUSED by the write fence (managed artifact
+    // state unchanged), while the timeout diagnostic still names the boundary.
+    #[test]
+    fn timed_out_hook_write_is_fenced_after_capture_boundary() {
+        let temp = temp_root("harness-fence-late");
+        let artifact_root = temp.join("runtime-artifacts");
+        let plan = RuntimeLaunchCapturePlan::new(
+            HARNESS_RUN_ID,
+            RuntimeOperation::Capture,
+            harness_child_command("tests::harness_child_sleeps"),
+        )
+        .with_artifact_root(&artifact_root)
+        .with_timeout(Duration::from_secs(5))
+        .with_hook_timeout(Duration::from_millis(50))
+        .with_shutdown_grace(Duration::from_secs(1))
+        .with_poll_interval(Duration::from_millis(5));
+        let harness = RuntimeLaunchCaptureHarness::new();
+        let started = Arc::new(AtomicBool::new(false));
+        let late_write: Arc<Mutex<Option<Result<PathBuf, String>>>> = Arc::new(Mutex::new(None));
+        let (proceed_tx, proceed_rx) = mpsc::channel();
+        let mut hooks = RuntimeCaptureHooks::new();
+        hooks.push(LateWritingCaptureHook {
+            boundary: RuntimeCaptureBoundary::AfterLaunch,
+            started: Arc::clone(&started),
+            proceed: proceed_rx,
+            late_write: Arc::clone(&late_write),
+        });
+
+        // The hook blocks (never receives `proceed`) so the harness times it out
+        // and `launch-capture` returns.
+        let error = harness.run(&plan, &mut hooks).unwrap_err();
+
+        // (3) The timeout diagnostic still identifies the capture boundary and
+        // is distinct from the fenced-late-write refusal below.
+        assert!(started.load(Ordering::SeqCst));
+        assert_eq!(error.kind, RuntimeHarnessErrorKind::CaptureTimeout);
+        assert_eq!(error.code(), "runtime_capture_timeout");
+        assert_eq!(error.boundary, Some(RuntimeCaptureBoundary::AfterLaunch));
+
+        // launch-capture has returned; release the detached worker so it now
+        // attempts a managed-artifact write strictly after the capture boundary.
+        proceed_tx.send(()).unwrap();
+
+        // The late write is refused with a code distinct from the timeout.
+        match wait_for_late_write(&late_write, Duration::from_secs(5)) {
+            Some(Err(code)) => assert_eq!(code, "runtime_capture_boundary_closed"),
+            other => panic!("expected fenced late write to be refused, got {other:?}"),
+        }
+
+        // Crux + mutation proof: managed artifact state is unchanged. Without the
+        // fence check in `write_artifact`, this file would have been created by
+        // the detached worker and this assertion would fail.
+        let leaked = artifact_root
+            .join(HARNESS_RUN_ID)
+            .join("screenshots")
+            .join(format!("{HARNESS_SCREENSHOT_ID}.png"));
+        assert!(
+            !leaked.exists(),
+            "fenced late write must not create a managed artifact: {}",
+            leaked.display()
+        );
+
+        let _ = fs::remove_dir_all(temp);
+    }
+
+    // UTSUSHI-096: the fence must not disturb the normal path — a write made
+    // while the capture window is still valid (fence open) succeeds and persists.
+    #[test]
+    fn in_boundary_hook_write_succeeds_within_fence() {
+        let temp = temp_root("harness-fence-inbound");
+        let artifact_root = temp.join("runtime-artifacts");
+        let plan = RuntimeLaunchCapturePlan::new(
+            HARNESS_RUN_ID,
+            RuntimeOperation::Capture,
+            harness_child_command("tests::harness_child_exits"),
+        )
+        .with_artifact_root(&artifact_root)
+        .with_timeout(Duration::from_secs(5))
+        .with_hook_timeout(Duration::from_secs(5))
+        .with_shutdown_grace(Duration::from_secs(1));
+        let harness = RuntimeLaunchCaptureHarness::new();
+        let calls = Arc::new(AtomicUsize::new(0));
+        let mut hooks = RuntimeCaptureHooks::new();
+        hooks.push(WritingCaptureHook::new(
+            RuntimeCaptureBoundary::AfterLaunch,
+            Arc::clone(&calls),
+        ));
+
+        let outcome = harness.run(&plan, &mut hooks).unwrap();
+
+        assert!(outcome.exit.success);
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        assert_eq!(outcome.artifacts.len(), 2);
+        for artifact in &outcome.artifacts {
+            assert!(artifact.path.starts_with(&artifact_root));
+            assert!(artifact.path.is_file());
+        }
+        let _ = fs::remove_dir_all(temp);
     }
 
     #[test]
