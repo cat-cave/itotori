@@ -90,15 +90,29 @@ pub const SYSCALL_MOUSE_AREA_MALFORMED_CODE: &str = "utsushi.reallive.syscall.mo
 /// refuses to guess.
 pub const SYSCALL_MISSING_SCREEN_SIZE_CODE: &str = "utsushi.reallive.syscall.missing_screen_size";
 
-/// Sweetie HD's WBCALL slot count (`WBCALL.000`-`WBCALL.007`).
+/// WBCALL slot count **CORPUS-OBSERVED from Sweetie HD**
+/// (`WBCALL.000`-`WBCALL.007`) — the only alpha-corpus RealLive title
+/// that declares any WBCALL routes.
+///
+/// **This is NOT an engine-validated universal.** RLDEV documents a
+/// *larger* WBCALL namespace, and the 2nd staged RealLive corpus
+/// (Kanon) declares no WBCALL routes at all, so nothing corroborates
+/// `8` as a RealLive-engine ceiling. Read this as "what Sweetie HD
+/// happens to declare", not "the RealLive WBCALL cap". Promotion from
+/// corpus-observed to engine-validated requires a 2nd RealLive title
+/// that itself exercises WBCALL slots — tracked by the beta-gate guard
+/// `wbcall_slot_count_stays_corpus_observed_until_second_reallive_title`
+/// in `tests/syscall_routes_real_bytes.rs`.
+///
 /// Pinned as a `const` so the dispatcher loop and the acceptance test
-/// share a single source of truth.
+/// share a single source of truth for the Sweetie-HD-observed value.
 pub const WBCALL_SLOT_COUNT: u8 = 8;
 
 /// Stable diagnostic code emitted when a `WBCALL.NNN` key is declared at
-/// or beyond the validated [`WBCALL_SLOT_COUNT`] cap. RLDEV documents a
-/// larger WBCALL namespace, but no alpha-corpus RealLive title exercises
-/// it; the dispatcher refuses to silently ignore an out-of-range slot.
+/// or beyond the corpus-observed [`WBCALL_SLOT_COUNT`] cap (Sweetie HD).
+/// RLDEV documents a larger WBCALL namespace, but no staged RealLive
+/// title exercises a higher slot, so the cap stays corpus-observed; the
+/// dispatcher refuses to silently ignore an out-of-range slot.
 pub const SYSCALL_WBCALL_BEYOND_CAP_CODE: &str = "utsushi.reallive.syscall.wbcall_beyond_cap";
 
 /// The fixed kind-distinct route count documented in
@@ -306,17 +320,18 @@ pub enum SyscallDispatchBuildError {
         route_key: String,
     },
     /// A `WBCALL.NNN` key is present with `NNN` at or beyond the
-    /// validated [`WBCALL_SLOT_COUNT`] cap. Sweetie HD (the only
-    /// alpha-corpus RealLive title) declares exactly `WBCALL.000`-`007`;
-    /// RLDEV documents a larger namespace but no real corpus game
-    /// exercises it. The dispatcher refuses to silently ignore the
-    /// out-of-range slot (the original silent-truncation behaviour)
-    /// rather than register a route the engine has never validated. When
+    /// corpus-observed [`WBCALL_SLOT_COUNT`] cap. Sweetie HD (the only
+    /// alpha-corpus RealLive title that declares WBCALL routes) declares
+    /// exactly `WBCALL.000`-`007`; RLDEV documents a larger namespace but
+    /// no staged corpus game exercises it, so the cap is corpus-observed,
+    /// NOT engine-validated. The dispatcher refuses to silently ignore
+    /// the out-of-range slot (the original silent-truncation behaviour)
+    /// rather than register a route no staged corpus has validated. When
     /// a real ≥2-game beta corpus exercises higher slots, raise the cap
-    /// and convert this to enumeration (mirroring the MOUSEACTIONCALL
-    /// full-namespace scan).
+    /// (promoting it toward engine-validated) and convert this to
+    /// enumeration (mirroring the MOUSEACTIONCALL full-namespace scan).
     #[error(
-        "wbcall route {route_key} declares slot index {index} at or beyond the validated cap of {cap} ({code})"
+        "wbcall route {route_key} declares slot index {index} at or beyond the corpus-observed cap of {cap} ({code})"
     )]
     WbcallSlotBeyondCap {
         /// Stable diagnostic code (matches
@@ -326,7 +341,7 @@ pub enum SyscallDispatchBuildError {
         route_key: String,
         /// The out-of-range slot index that was declared.
         index: u8,
-        /// The validated cap ([`WBCALL_SLOT_COUNT`]).
+        /// The corpus-observed cap ([`WBCALL_SLOT_COUNT`], Sweetie HD).
         cap: u8,
     },
 }
@@ -475,7 +490,8 @@ impl SyscallDispatcher {
             });
         }
 
-        // WBCALL.000-007 — fixed 8-slot window-button table.
+        // WBCALL.000-007 — the Sweetie-HD-observed 8-slot window-button
+        // table (corpus-observed cap, see [`WBCALL_SLOT_COUNT`]).
         for index in 0..WBCALL_SLOT_COUNT {
             let key = format!("WBCALL.{index:03}");
             if let Some(pair) = gameexe.get_int_pair(&key) {
@@ -495,12 +511,13 @@ impl SyscallDispatcher {
         }
 
         // Guard against silent truncation of the WBCALL namespace. The
-        // loop above only registers `WBCALL.000`-`007` (the validated
-        // Sweetie HD corpus); RealLive's namespace is larger. Scan the
+        // loop above only registers `WBCALL.000`-`007` (the
+        // corpus-observed Sweetie HD cap, NOT an engine-validated
+        // ceiling); RealLive's documented namespace is larger. Scan the
         // rest of the `u8` index space and refuse — with a typed error —
         // to silently ignore any `WBCALL.NNN` declared at or beyond the
-        // cap, rather than dropping a route the engine has never
-        // validated.
+        // corpus-observed cap, rather than dropping a route no staged
+        // corpus has validated.
         for index in WBCALL_SLOT_COUNT..=u8::MAX {
             let key = format!("WBCALL.{index:03}");
             if gameexe.get(&key).is_some() {
@@ -1179,8 +1196,9 @@ mod tests {
     #[test]
     fn wbcall_slot_beyond_cap_is_typed_error_not_silent_ignore() {
         // Audit-focus pin: a `WBCALL.NNN` declared at or beyond the
-        // validated 8-slot cap must surface a typed error, not be
-        // silently dropped. Append WBCALL.008 to the Sweetie HD shape.
+        // corpus-observed 8-slot cap (Sweetie HD) must surface a typed
+        // error, not be silently dropped. Append WBCALL.008 to the
+        // Sweetie HD shape.
         let mut text = reallive_real_bytes_lines_14_28().to_string();
         text.push_str("#WBCALL.008=9999,8\r\n");
         let gx = parse_gameexe(&text);

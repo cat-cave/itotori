@@ -473,3 +473,154 @@ fn mouseactioncall_scan_discovers_real_bytes_non_contiguous_namespace() {
         );
     }
 }
+
+/// Collect the distinct `NNN` indices declared by any `#WBCALL.NNN` line in a
+/// raw (Shift-JIS) Gameexe byte buffer, ascending. Mirrors
+/// [`mouseactioncall_indices`]: the RealLive key namespace is ASCII inside the
+/// Shift-JIS file, so a byte scan is exact and encoding-independent. A
+/// `#WBCALL.NNN=scene,entrypoint` line is a scalar route (no dotted `.MOD` /
+/// `.AREA` sub-keys), so the digits are terminated by `=` rather than `.`.
+fn wbcall_indices(bytes: &[u8]) -> Vec<u8> {
+    let prefix = b"#WBCALL.";
+    let mut indices = std::collections::BTreeSet::new();
+    for line in bytes.split(|&b| b == b'\n') {
+        let line = line.strip_suffix(b"\r").unwrap_or(line);
+        if let Some(rest) = line.strip_prefix(prefix.as_slice())
+            && rest.len() >= 4
+            && rest[3] == b'='
+            && rest[..3].iter().all(u8::is_ascii_digit)
+        {
+            let digits = std::str::from_utf8(&rest[..3]).expect("ascii digits");
+            if let Ok(index) = digits.parse::<u8>() {
+                indices.insert(index);
+            }
+        }
+    }
+    indices.into_iter().collect()
+}
+
+/// BETA-GATE marker (always-run companion to the env-gated guard below).
+///
+/// Pins the multi-game-validation posture of [`WBCALL_SLOT_COUNT`] in the
+/// fast lane, where no corpus is staged: the `8`-slot cap is **CORPUS-OBSERVED
+/// from Sweetie HD**, NOT engine-validated. RLDEV documents a larger WBCALL
+/// namespace and the only other staged RealLive title (Kanon) declares no
+/// WBCALL routes, so nothing corroborates `8` as a universal engine ceiling.
+///
+/// This test does not (and cannot) promote the constant — it exists so the
+/// intent is executable documentation: the value is pinned at the
+/// Sweetie-HD-observed `8`, and promotion to an engine-validated cap is gated
+/// on a 2nd RealLive title that actually declares WBCALL routes (enforced by
+/// [`wbcall_slot_count_stays_corpus_observed_until_second_reallive_title`]).
+#[test]
+fn wbcall_slot_count_is_corpus_observed_not_engine_validated() {
+    // The Sweetie-HD-observed cap. If a future change bumps this, the
+    // companion multi-game guard below must show a 2nd RealLive corpus that
+    // exercises the higher slot — otherwise the bump is an over-claim.
+    assert_eq!(
+        WBCALL_SLOT_COUNT, 8,
+        "WBCALL_SLOT_COUNT is the Sweetie-HD-observed 8-slot cap; a change here \
+         must be corroborated by a 2nd RealLive corpus (see the beta-gate guard)"
+    );
+}
+
+/// BETA-GATE regression guard (multi-game-validation law,
+/// `docs/orchestration-operating-model.md`): [`WBCALL_SLOT_COUNT`] may only be
+/// promoted from CORPUS-OBSERVED (Sweetie HD) to engine-validated once a 2nd
+/// RealLive title itself declares WBCALL routes that corroborate (or revise)
+/// the 8-slot cap.
+///
+/// Env-gated on `ITOTORI_REAL_GAME_ROOT_2`. It reads the 2nd corpus's real
+/// `Gameexe.ini` and counts its declared `#WBCALL.NNN` slots:
+///
+/// - **0 slots** (the currently-staged Kanon, a plain 1.2.6.8 title): the cap
+///   CANNOT be promoted — there is no 2nd-corpus WBCALL evidence, so it stays
+///   corpus-observed / Sweetie-HD-only. The test pins this premise so a future
+///   WBCALL-declaring 2nd corpus makes it FAIL loudly (prompting a promotion
+///   review) instead of silently corroborating nothing.
+/// - **>= 1 slot**: a real 2nd-corpus WBCALL namespace exists. Its highest
+///   declared index must be `< WBCALL_SLOT_COUNT` (the 8-slot cap covers it);
+///   if a 2nd corpus declares a HIGHER slot the cap is too small and this fails,
+///   telling us to widen it. Either way the corpus-observed marker on
+///   [`WBCALL_SLOT_COUNT`] can then be revisited with real 2-game evidence.
+///
+/// No raw copyrighted bytes are emitted — only integer slot indices/counts.
+#[test]
+#[ignore = "requires ITOTORI_REAL_GAME_ROOT_2 (2nd RealLive title); opt in with --include-ignored"]
+fn wbcall_slot_count_stays_corpus_observed_until_second_reallive_title() {
+    let Some(corpus) = real_corpus::corpus_2() else {
+        real_corpus::require_real_bytes(
+            "utsushi-reallive wbcall_slot_count_stays_corpus_observed_until_second_reallive_title \
+             (set ITOTORI_REAL_GAME_ROOT_2 to a 2nd RealLive title, e.g. Kanon)",
+        );
+        return;
+    };
+
+    let dir = corpus
+        .seen_txt
+        .parent()
+        .expect("2nd corpus SEEN archive must have a parent directory");
+    let gameexe_path = std::fs::read_dir(dir)
+        .expect("2nd corpus directory must be readable")
+        .flatten()
+        .map(|entry| entry.path())
+        .find(|path| {
+            path.file_name()
+                .and_then(|n| n.to_str())
+                .is_some_and(|n| n.eq_ignore_ascii_case("Gameexe.ini"))
+        })
+        .unwrap_or_else(|| {
+            panic!(
+                "2nd corpus at {} has no Gameexe.ini beside its SEEN archive",
+                dir.display()
+            )
+        });
+    let bytes = std::fs::read(&gameexe_path).unwrap_or_else(|err| {
+        panic!(
+            "2nd-corpus Gameexe.ini at {} could not be read: {err}",
+            gameexe_path.display()
+        )
+    });
+
+    let indices = wbcall_indices(&bytes);
+    eprintln!(
+        "[{}] 2nd-corpus WBCALL slots declared: {} (indices={indices:?}); \
+         WBCALL_SLOT_COUNT={WBCALL_SLOT_COUNT} (corpus-observed from Sweetie HD)",
+        corpus.label,
+        indices.len(),
+    );
+
+    match indices.last().copied() {
+        None => {
+            // No WBCALL evidence in the 2nd corpus. WBCALL_SLOT_COUNT stays
+            // corpus-observed (Sweetie-HD-only) — it MUST NOT be promoted to
+            // engine-validated. Pin the premise so a future 2nd corpus that
+            // DOES declare WBCALL routes fails here and forces a promotion
+            // review rather than passing vacuously.
+            eprintln!(
+                "[{}] BETA-GATE HELD: 2nd corpus declares no WBCALL routes; \
+                 WBCALL_SLOT_COUNT remains CORPUS-OBSERVED (Sweetie HD only), \
+                 not engine-validated.",
+                corpus.label,
+            );
+        }
+        Some(highest) => {
+            // A real 2nd-corpus WBCALL namespace exists — the cap can start to
+            // be corroborated. The current 8-slot cap must cover it; a higher
+            // declared slot means the corpus-observed cap is too small.
+            assert!(
+                highest < WBCALL_SLOT_COUNT,
+                "[{}] 2nd RealLive corpus declares WBCALL.{highest:03}, at/beyond the \
+                 corpus-observed cap WBCALL_SLOT_COUNT={WBCALL_SLOT_COUNT}: widen the cap \
+                 and re-evaluate its corpus-observed/engine-validated label with 2-game evidence",
+                corpus.label,
+            );
+            eprintln!(
+                "[{}] BETA-GATE: 2nd corpus corroborates WBCALL slots up to {highest} \
+                 (< cap {WBCALL_SLOT_COUNT}); WBCALL_SLOT_COUNT may now be reviewed for \
+                 promotion toward engine-validated with real 2-game evidence.",
+                corpus.label,
+            );
+        }
+    }
+}
