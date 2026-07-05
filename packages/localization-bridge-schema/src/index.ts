@@ -4839,17 +4839,11 @@ function assertHashStrategyV02(value: unknown, label: string): asserts value is 
   assertHashRuleNormalizationV02(sourceProfile, `${label}.sourceProfile`, [
     "utf8-lf-json-stable-v1",
   ]);
-  assertHashRuleNormalizationV02(sourceBundle, `${label}.sourceBundle`, [
-    "utf8-lf-json-stable-v1",
-  ]);
+  assertHashRuleNormalizationV02(sourceBundle, `${label}.sourceBundle`, ["utf8-lf-json-stable-v1"]);
   assertHashRuleNormalizationV02(sourceAsset, `${label}.sourceAsset`, ["bytes"]);
   assertHashRuleNormalizationV02(sourceUnit, `${label}.sourceUnit`, ["utf8-lf-json-stable-v1"]);
-  assertHashRuleNormalizationV02(patchExport, `${label}.patchExport`, [
-    "utf8-lf-json-stable-v1",
-  ]);
-  assertHashRuleNormalizationV02(deltaPackage, `${label}.deltaPackage`, [
-    "utf8-lf-json-stable-v1",
-  ]);
+  assertHashRuleNormalizationV02(patchExport, `${label}.patchExport`, ["utf8-lf-json-stable-v1"]);
+  assertHashRuleNormalizationV02(deltaPackage, `${label}.deltaPackage`, ["utf8-lf-json-stable-v1"]);
   assertRequiredHashRuleFieldsV02(sourceUnit, `${label}.sourceUnit`);
 }
 
