@@ -322,7 +322,7 @@ pub enum KagTraceError {
 
 /// Recursively rebuild a serde value with object keys sorted, so the pretty
 /// printer emits a byte-stable ordering regardless of struct field order.
-fn to_sorted_value<T: Serialize>(value: &T) -> Result<serde_json::Value, KagTraceError> {
+pub(crate) fn to_sorted_value<T: Serialize>(value: &T) -> Result<serde_json::Value, KagTraceError> {
     let raw = serde_json::to_value(value).map_err(|e| KagTraceError::Serialize(e.to_string()))?;
     Ok(sort_value(raw))
 }

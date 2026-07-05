@@ -66,8 +66,10 @@
 #![forbid(unsafe_code)]
 
 mod encoding;
+mod ids;
 mod parse;
 mod replay;
+mod trace;
 mod xp3_vfs_replay;
 
 pub use encoding::KagEncoding;
@@ -78,6 +80,10 @@ pub use replay::{
     ChoiceOption, DEFAULT_STEP_BUDGET, KAG_TRACE_SCHEMA_VERSION, KagDiagnostic, KagDiagnosticKind,
     KagEvent, KagOutcome, KagReplayOpts, KagTrace, KagTraceError, VarValue, replay_kag,
     replay_kag_with_opts,
+};
+pub use trace::{
+    BridgeRef, KAG_COMMAND_TRACE_SCHEMA_VERSION, KAG_COMMAND_TRACE_SCOPE, KagCommandTrace,
+    KagTraceRow, MacroRole, RowKind, trace_kag_commands, trace_kag_commands_with_encoding,
 };
 pub use xp3_vfs_replay::{
     KAG_VFS_CAPABILITY_ID, KAG_VFS_EVIDENCE_SCHEMA_VERSION, KAG_VFS_SUPPORT_BOUNDARY, KagVfsError,

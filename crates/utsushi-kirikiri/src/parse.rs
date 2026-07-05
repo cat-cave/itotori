@@ -550,7 +550,7 @@ fn flush_run(run: &mut String, instrs: &mut Vec<Instr>) {
 
 /// Parse `name key=value key2="v2" flag` (the shared body of an inline tag
 /// and an `@` line command) into a [`Command`].
-fn parse_command(inner: &str) -> Command {
+pub(crate) fn parse_command(inner: &str) -> Command {
     let trimmed = inner.trim();
     let mut parts = split_attrs(trimmed);
     let name = if parts.is_empty() {

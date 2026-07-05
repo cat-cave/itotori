@@ -1330,6 +1330,7 @@ dependencies = [
  "serde_json",
  "utsushi-core",
  "utsushi-fixture",
+ "utsushi-kirikiri",
  "utsushi-reallive",
  "utsushi-rpgmaker-mv",
 ]
@@ -1368,6 +1369,7 @@ dependencies = [
  "kaifuu-kirikiri",
  "serde",
  "serde_json",
+ "sha2",
  "thiserror",
  "utsushi-core",
 ]

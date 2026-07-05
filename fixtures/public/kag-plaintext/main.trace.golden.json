@@ -1,0 +1,219 @@
+{
+  "encoding": "utf8",
+  "rowCount": 22,
+  "rows": [
+    {
+      "commandIndex": 0,
+      "kind": "label",
+      "label": "start",
+      "lineIndex": 6
+    },
+    {
+      "bridgeRef": {
+        "bridgeUnitId": "5ff20c75-3ceb-701c-b9c2-232fc9441600",
+        "sourceUnitKey": "kirikiri-kag:main.ks#L7#seg0#speaker_name"
+      },
+      "commandIndex": 1,
+      "kind": "speaker",
+      "label": "start",
+      "lineIndex": 7,
+      "speaker": "Mother"
+    },
+    {
+      "bridgeRef": {
+        "bridgeUnitId": "3f9898f6-fe35-7f2a-a1e0-cf014717bd25",
+        "sourceUnitKey": "kirikiri-kag:main.ks#L8#seg0#dialogue"
+      },
+      "commandIndex": 2,
+      "kind": "message",
+      "label": "start",
+      "lineIndex": 8,
+      "speaker": "Mother",
+      "text": "Welcome home. Did you have a good day at school?"
+    },
+    {
+      "commandIndex": 3,
+      "kind": "macro",
+      "label": "start",
+      "lineIndex": 9,
+      "macroId": "aside",
+      "macroRole": "definition"
+    },
+    {
+      "commandIndex": 4,
+      "jumpTarget": "crossroads",
+      "kind": "jump",
+      "label": "start",
+      "lineIndex": 10
+    },
+    {
+      "commandIndex": 5,
+      "kind": "label",
+      "label": "crossroads",
+      "lineIndex": 12
+    },
+    {
+      "bridgeRef": {
+        "bridgeUnitId": "19296feb-a105-74f8-866f-1599684dd8be",
+        "sourceUnitKey": "kirikiri-kag:main.ks#L13#seg0#speaker_name"
+      },
+      "commandIndex": 6,
+      "kind": "speaker",
+      "label": "crossroads",
+      "lineIndex": 13,
+      "speaker": "Guide"
+    },
+    {
+      "bridgeRef": {
+        "bridgeUnitId": "c896da65-f666-766f-9715-94346b22f7e8",
+        "sourceUnitKey": "kirikiri-kag:main.ks#L14#seg0#dialogue"
+      },
+      "commandIndex": 7,
+      "kind": "message",
+      "label": "crossroads",
+      "lineIndex": 14,
+      "speaker": "Guide",
+      "text": "Which road will you walk?"
+    },
+    {
+      "branchId": "branch0.0",
+      "bridgeRef": {
+        "bridgeUnitId": "47b867f2-6cc5-7595-9e3a-ee6120dde047",
+        "sourceUnitKey": "kirikiri-kag:main.ks#L15#seg0#dialogue"
+      },
+      "commandIndex": 8,
+      "jumpTarget": "left",
+      "kind": "branch",
+      "label": "crossroads",
+      "lineIndex": 15,
+      "speaker": "Guide",
+      "text": "Take the left road"
+    },
+    {
+      "branchId": "branch0.1",
+      "bridgeRef": {
+        "bridgeUnitId": "24b4d0a4-9f7a-7040-a16c-267dd32b1502",
+        "sourceUnitKey": "kirikiri-kag:main.ks#L16#seg0#dialogue"
+      },
+      "commandIndex": 9,
+      "jumpTarget": "right",
+      "kind": "branch",
+      "label": "crossroads",
+      "lineIndex": 16,
+      "speaker": "Guide",
+      "text": "Take the right road"
+    },
+    {
+      "commandIndex": 10,
+      "kind": "label",
+      "label": "left",
+      "lineIndex": 18
+    },
+    {
+      "bridgeRef": {
+        "bridgeUnitId": "6aa6c456-25a2-70b0-bb80-4c813153eda5",
+        "sourceUnitKey": "kirikiri-kag:main.ks#L19#seg0#speaker_name"
+      },
+      "commandIndex": 11,
+      "kind": "speaker",
+      "label": "left",
+      "lineIndex": 19,
+      "speaker": "Guide"
+    },
+    {
+      "bridgeRef": {
+        "bridgeUnitId": "551a260c-e3e6-71c8-a743-26ab73e0b395",
+        "sourceUnitKey": "kirikiri-kag:main.ks#L20#seg0#dialogue"
+      },
+      "commandIndex": 12,
+      "kind": "message",
+      "label": "left",
+      "lineIndex": 20,
+      "speaker": "Guide",
+      "text": "The left road is calm and shaded."
+    },
+    {
+      "commandIndex": 13,
+      "kind": "macro",
+      "label": "left",
+      "lineIndex": 21,
+      "macroId": "aside",
+      "macroRole": "invocation"
+    },
+    {
+      "commandIndex": 14,
+      "jumpTarget": "ending",
+      "kind": "jump",
+      "label": "left",
+      "lineIndex": 22
+    },
+    {
+      "commandIndex": 15,
+      "kind": "label",
+      "label": "right",
+      "lineIndex": 24
+    },
+    {
+      "bridgeRef": {
+        "bridgeUnitId": "40dbcb82-a0df-791f-be5d-fa0ac30f1018",
+        "sourceUnitKey": "kirikiri-kag:main.ks#L25#seg0#speaker_name"
+      },
+      "commandIndex": 16,
+      "kind": "speaker",
+      "label": "right",
+      "lineIndex": 25,
+      "speaker": "Guide"
+    },
+    {
+      "bridgeRef": {
+        "bridgeUnitId": "8dab0aea-b99e-7ad8-8625-7afcadd8d64b",
+        "sourceUnitKey": "kirikiri-kag:main.ks#L26#seg0#dialogue"
+      },
+      "commandIndex": 17,
+      "kind": "message",
+      "label": "right",
+      "lineIndex": 26,
+      "speaker": "Guide",
+      "text": "The right road is bright and busy."
+    },
+    {
+      "commandIndex": 18,
+      "jumpTarget": "ending",
+      "kind": "jump",
+      "label": "right",
+      "lineIndex": 27
+    },
+    {
+      "commandIndex": 19,
+      "kind": "label",
+      "label": "ending",
+      "lineIndex": 29
+    },
+    {
+      "bridgeRef": {
+        "bridgeUnitId": "a7066a0a-4a76-7acc-aa4c-7870bcf40476",
+        "sourceUnitKey": "kirikiri-kag:main.ks#L30#seg0#speaker_name"
+      },
+      "commandIndex": 20,
+      "kind": "speaker",
+      "label": "ending",
+      "lineIndex": 30,
+      "speaker": "Narrator"
+    },
+    {
+      "bridgeRef": {
+        "bridgeUnitId": "1500803a-270f-7d8f-b7d9-5e322df0cd2e",
+        "sourceUnitKey": "kirikiri-kag:main.ks#L31#seg0#dialogue"
+      },
+      "commandIndex": 21,
+      "kind": "message",
+      "label": "ending",
+      "lineIndex": 31,
+      "speaker": "Narrator",
+      "text": "And so the short walk comes to an end."
+    }
+  ],
+  "schemaVersion": "utsushi-kirikiri-kag-command-trace/0.1.0",
+  "scope": "plaintext / already-extracted KAG `.ks` ONLY: reads a script already plaintext on disk (author tree, fan-distributed script, or extracted members of an UNENCRYPTED XP3). Does NOT open, decrypt, or unpack an XP3 container — commercial encrypted-XP3 titles are a separate capability and out of scope. Structural flow probe, not a full TJS runtime.",
+  "sourceFile": "main.ks"
+}

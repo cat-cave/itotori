@@ -16,6 +16,14 @@ description = "UTSUSHI-037 KAG plaintext REPLAY skeleton: deterministically repl
 encoding_rs.workspace = true
 serde = { workspace = true }
 serde_json.workspace = true
+# UTSUSHI-008: the KAG command-trace bridge refs re-derive the SAME
+# SHA-256 → UUID7-shaped `bridgeUnitId` scheme KAIFUU-009's extraction uses
+# (namespace `kirikiri-kag-bridge:source-file=<file>`), so a speaker/branch
+# trace row links to the ACTUAL extraction bridge unit. Re-derived (not
+# imported) per this crate's regression-isolation posture; the
+# `command_trace_bridge` oracle test proves byte-identical ids against
+# `kaifuu_kirikiri::parse_ks` output.
+sha2.workspace = true
 thiserror.workspace = true
 # UTSUSHI-039: the shared VFS boundary + the sealed XP3-backed handoff reader.
 # Utsushi consumes Kaifuu-owned extracted output through this VFS (no

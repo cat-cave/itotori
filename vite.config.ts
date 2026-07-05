@@ -48,6 +48,13 @@ export default defineConfig({
       "crates/kaifuu-tyrano/fixtures/**",
       "fixtures/kaifuu/repro-bundle/**",
       "crates/utsushi-fixture/tests/fixtures/mvmz_observation/**",
+      // UTSUSHI-008 KAG command-trace golden is byte-compared against the
+      // `trace-kag` subcommand's deterministic (sorted-key) output by
+      // `cli_emits_committed_golden_trace`; the formatter must not rewrite it.
+      // The `.ks` fixture beside it is a byte-level KAG scenario source whose
+      // line offsets are load-bearing (they appear verbatim in bridge-unit
+      // keys), so it is pinned too.
+      "fixtures/public/kag-plaintext/**",
     ],
   },
   resolve: {

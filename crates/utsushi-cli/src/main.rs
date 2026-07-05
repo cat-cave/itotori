@@ -3,6 +3,7 @@ mod replay;
 mod replay_validate;
 mod rpgmaker_mv_capture;
 mod staged_replay;
+mod trace_kag;
 
 use std::path::PathBuf;
 
@@ -11,7 +12,7 @@ use utsushi_core::{
     RuntimeAdapterDescriptor, RuntimeAdapterRegistry, RuntimeOperation, RuntimeRequest, write_json,
 };
 
-const USAGE: &str = "usage: utsushi capabilities --output <path>\n       utsushi validate-reference-captures <corpus_manifest> --output <path>\n       utsushi replay --engine reallive --seen <PATH> --scene <N> --output <PATH> [--snapshot-output <PATH>]\n       utsushi replay-validate --engine reallive --seen <PATH> --scene <N> --print-replay-log <PATH> [--print-textlines]\n       utsushi render-validate --engine reallive --seen <PATH> --scene <N> --artifact-root <DIR> [--run-id <ID>] [--expect-text-contains <SUBSTR>] [--width <N>] [--height <N>] [--output <PATH>]\n       utsushi rpgmaker-mv-capture --game-dir <DIR> --artifact-root <DIR> --output <PATH> [--run-id <ID>] [--assert-observed-text <TEXT>]\n       utsushi review-package --patch-export <PATH> --runtime-evidence <PATH> [--replay-pack <PATH>] [--no-browser] [--no-screenshot] --output <PATH>\n       utsushi <trace|capture|smoke> <game_dir> [--adapter <name>] [--artifact-root <path>] --output <path>";
+const USAGE: &str = "usage: utsushi capabilities --output <path>\n       utsushi validate-reference-captures <corpus_manifest> --output <path>\n       utsushi replay --engine reallive --seen <PATH> --scene <N> --output <PATH> [--snapshot-output <PATH>]\n       utsushi replay-validate --engine reallive --seen <PATH> --scene <N> --print-replay-log <PATH> [--print-textlines]\n       utsushi render-validate --engine reallive --seen <PATH> --scene <N> --artifact-root <DIR> [--run-id <ID>] [--expect-text-contains <SUBSTR>] [--width <N>] [--height <N>] [--output <PATH>]\n       utsushi rpgmaker-mv-capture --game-dir <DIR> --artifact-root <DIR> --output <PATH> [--run-id <ID>] [--assert-observed-text <TEXT>]\n       utsushi review-package --patch-export <PATH> --runtime-evidence <PATH> [--replay-pack <PATH>] [--no-browser] [--no-screenshot] --output <PATH>\n       utsushi trace-kag <script.ks> --output <PATH>\n       utsushi <trace|capture|smoke> <game_dir> [--adapter <name>] [--artifact-root <path>] --output <path>";
 const DEFAULT_ADAPTER_NAME: &str = utsushi_fixture::FixtureRuntimeAdapter::NAME;
 
 static FIXTURE_RUNTIME_ADAPTER: utsushi_fixture::FixtureRuntimeAdapter =
@@ -110,6 +111,15 @@ fn run_cli_with_registry(
             // `review-package` argv slot.
             let tail: Vec<String> = args.iter().skip(1).cloned().collect();
             run_review_package_command(&tail)?;
+        }
+        Some("trace-kag") => {
+            // UTSUSHI-008 — KAG command-trace probe for plaintext /
+            // already-extracted KiriKiri/KAG `.ks` scripts. Owns its own flag
+            // parsing (single positional script path + `--output`). Skips the
+            // leading `trace-kag` argv slot. Plaintext ONLY — never opens or
+            // decrypts a packed/encrypted XP3 archive.
+            let tail: Vec<String> = args.iter().skip(1).cloned().collect();
+            trace_kag::run_trace_kag_command(&tail)?;
         }
         Some(command) => {
             let operation = operation_from_command(command).ok_or(USAGE)?;
