@@ -1,0 +1,297 @@
+{
+  "schemaVersion": "0.1.0",
+  "pathId": "kaifuu-asset-ocr-ui-title-card",
+  "sourceNodeId": "KAIFUU-026",
+  "supportBoundary": "Kaifuu asset-OCR is a DETERMINISTIC in-process prototype: it decodes uncompressed (stored-deflate) 8-bit grayscale PNG fixtures and matches fixed-pitch 5x7 glyph cells against a small reference font. It never shells out to an external OCR binary and never reads compressed retail image bytes. Recognized text is published in recovered_text ONLY when every glyph matches exactly (Hamming distance 0); any fuzzy or unrecognized region is marked uncertain, its recovered_text is None, and it is surfaced as a structured finding carrying provenance + confidence + a labelled candidate — OCR output is evidence, never asserted ground-truth translation source.",
+  "status": "passed",
+  "asset": {
+    "assetName": "title-card.png",
+    "width": 50,
+    "height": 43,
+    "contentHash": "sha256:a5fe464bfb1fae0b0adb1e99a47f2cc7e56663dca5a7ac17ef7b66ce49aa221d"
+  },
+  "textRegions": [
+    {
+      "regionId": "region-0001",
+      "provenance": {
+        "x": 3,
+        "y": 3,
+        "width": 17,
+        "height": 7,
+        "assetName": "title-card.png",
+        "assetContentHash": "sha256:a5fe464bfb1fae0b0adb1e99a47f2cc7e56663dca5a7ac17ef7b66ce49aa221d"
+      },
+      "contentHash": "sha256:e1d15dfb6c6fcbc8a1e871f65adcc65873d8774073ee5a0579a9d957262b74ca",
+      "recognition": {
+        "recoveredText": "NEW",
+        "confidenceScore": 1.0,
+        "confidence": "high",
+        "isUncertain": false,
+        "glyphCells": [
+          {
+            "x": 3,
+            "y": 3,
+            "width": 5,
+            "height": 7,
+            "bestMatch": "N",
+            "hammingDistance": 0,
+            "contentHash": "sha256:e2f0d7e9ea6c720b4ca16ec874e1eb1ef9a2d3a734394eca24025be906acb587"
+          },
+          {
+            "x": 9,
+            "y": 3,
+            "width": 5,
+            "height": 7,
+            "bestMatch": "E",
+            "hammingDistance": 0,
+            "contentHash": "sha256:8f6ef4db4acb08eb984b713624e76750486d4eab5689958c4f1e494f529b61e3"
+          },
+          {
+            "x": 15,
+            "y": 3,
+            "width": 5,
+            "height": 7,
+            "bestMatch": "W",
+            "hammingDistance": 0,
+            "contentHash": "sha256:973c051ed366e2b646ffbb4fab6f3cede0994368bde0ac876c674b3daf615d8c"
+          }
+        ]
+      }
+    },
+    {
+      "regionId": "region-0002",
+      "provenance": {
+        "x": 23,
+        "y": 3,
+        "width": 23,
+        "height": 7,
+        "assetName": "title-card.png",
+        "assetContentHash": "sha256:a5fe464bfb1fae0b0adb1e99a47f2cc7e56663dca5a7ac17ef7b66ce49aa221d"
+      },
+      "contentHash": "sha256:42a63b435879e4ee228a1807fd10d710551d58ee3975aa4878a238dcdd7a089a",
+      "recognition": {
+        "recoveredText": "GAME",
+        "confidenceScore": 1.0,
+        "confidence": "high",
+        "isUncertain": false,
+        "glyphCells": [
+          {
+            "x": 23,
+            "y": 3,
+            "width": 5,
+            "height": 7,
+            "bestMatch": "G",
+            "hammingDistance": 0,
+            "contentHash": "sha256:ec650d162423fe051b03a19728a5bd1ff5765f5d2e26bc5482b988d15aaea672"
+          },
+          {
+            "x": 29,
+            "y": 3,
+            "width": 5,
+            "height": 7,
+            "bestMatch": "A",
+            "hammingDistance": 0,
+            "contentHash": "sha256:0f6bc4f318b75253dfead9422ed1b50df64322b8b3fda46e79b3c81484e08248"
+          },
+          {
+            "x": 35,
+            "y": 3,
+            "width": 5,
+            "height": 7,
+            "bestMatch": "M",
+            "hammingDistance": 0,
+            "contentHash": "sha256:b34fb83203204738ae87fc73169386be4500b490031997c074b6f2f7ef89a244"
+          },
+          {
+            "x": 41,
+            "y": 3,
+            "width": 5,
+            "height": 7,
+            "bestMatch": "E",
+            "hammingDistance": 0,
+            "contentHash": "sha256:8f6ef4db4acb08eb984b713624e76750486d4eab5689958c4f1e494f529b61e3"
+          }
+        ]
+      }
+    },
+    {
+      "regionId": "region-0003",
+      "provenance": {
+        "x": 3,
+        "y": 13,
+        "width": 23,
+        "height": 7,
+        "assetName": "title-card.png",
+        "assetContentHash": "sha256:a5fe464bfb1fae0b0adb1e99a47f2cc7e56663dca5a7ac17ef7b66ce49aa221d"
+      },
+      "contentHash": "sha256:7a49c2802d7ec8e908240a2ccf9626b12fe380ecb779de3b13c2b087f08af64a",
+      "recognition": {
+        "recoveredText": "LOAD",
+        "confidenceScore": 1.0,
+        "confidence": "high",
+        "isUncertain": false,
+        "glyphCells": [
+          {
+            "x": 3,
+            "y": 13,
+            "width": 5,
+            "height": 7,
+            "bestMatch": "L",
+            "hammingDistance": 0,
+            "contentHash": "sha256:723196e0282661de121fff6bc7f539aede119637d6575478a2ed90104188f671"
+          },
+          {
+            "x": 9,
+            "y": 13,
+            "width": 5,
+            "height": 7,
+            "bestMatch": "O",
+            "hammingDistance": 0,
+            "contentHash": "sha256:4dfec7e1ba71afd27534ba83ca1d8dc629bfd54126a45c65b6cb9f0cb65669da"
+          },
+          {
+            "x": 15,
+            "y": 13,
+            "width": 5,
+            "height": 7,
+            "bestMatch": "A",
+            "hammingDistance": 0,
+            "contentHash": "sha256:0f6bc4f318b75253dfead9422ed1b50df64322b8b3fda46e79b3c81484e08248"
+          },
+          {
+            "x": 21,
+            "y": 13,
+            "width": 5,
+            "height": 7,
+            "bestMatch": "D",
+            "hammingDistance": 0,
+            "contentHash": "sha256:496959e9209feadaa2b81eb1e56cf3819b1ac263925d4300397aa3dd2f42ba04"
+          }
+        ]
+      }
+    },
+    {
+      "regionId": "region-0004",
+      "provenance": {
+        "x": 3,
+        "y": 23,
+        "width": 23,
+        "height": 7,
+        "assetName": "title-card.png",
+        "assetContentHash": "sha256:a5fe464bfb1fae0b0adb1e99a47f2cc7e56663dca5a7ac17ef7b66ce49aa221d"
+      },
+      "contentHash": "sha256:47091dc6f54eb8091ef055ba1beed5a880a4c127c5d8fb1e8e15df047ef9b643",
+      "recognition": {
+        "confidenceScore": 0.9785714285714285,
+        "confidence": "medium",
+        "isUncertain": true,
+        "glyphCells": [
+          {
+            "x": 3,
+            "y": 23,
+            "width": 5,
+            "height": 7,
+            "bestMatch": "L",
+            "hammingDistance": 0,
+            "contentHash": "sha256:723196e0282661de121fff6bc7f539aede119637d6575478a2ed90104188f671"
+          },
+          {
+            "x": 9,
+            "y": 23,
+            "width": 5,
+            "height": 7,
+            "bestMatch": "O",
+            "hammingDistance": 0,
+            "contentHash": "sha256:4dfec7e1ba71afd27534ba83ca1d8dc629bfd54126a45c65b6cb9f0cb65669da"
+          },
+          {
+            "x": 15,
+            "y": 23,
+            "width": 5,
+            "height": 7,
+            "bestMatch": "A",
+            "hammingDistance": 3,
+            "contentHash": "sha256:53ea745e0af11a7c1187d93a589e1b462dd7476372f1dd0d3a582c34d84514e6"
+          },
+          {
+            "x": 21,
+            "y": 23,
+            "width": 5,
+            "height": 7,
+            "bestMatch": "D",
+            "hammingDistance": 0,
+            "contentHash": "sha256:496959e9209feadaa2b81eb1e56cf3819b1ac263925d4300397aa3dd2f42ba04"
+          }
+        ]
+      }
+    },
+    {
+      "regionId": "region-0005",
+      "provenance": {
+        "x": 3,
+        "y": 33,
+        "width": 5,
+        "height": 7,
+        "assetName": "title-card.png",
+        "assetContentHash": "sha256:a5fe464bfb1fae0b0adb1e99a47f2cc7e56663dca5a7ac17ef7b66ce49aa221d"
+      },
+      "contentHash": "sha256:f2d2b1d74b24e1e3067674171a1c9c442fafc3d5b83688d6a4c1c0e27ff4bc2f",
+      "recognition": {
+        "confidenceScore": 0.0,
+        "confidence": "low",
+        "isUncertain": true,
+        "glyphCells": [
+          {
+            "x": 3,
+            "y": 33,
+            "width": 5,
+            "height": 7,
+            "hammingDistance": 13,
+            "contentHash": "sha256:f2d2b1d74b24e1e3067674171a1c9c442fafc3d5b83688d6a4c1c0e27ff4bc2f"
+          }
+        ]
+      }
+    }
+  ],
+  "findings": [
+    {
+      "code": "uncertain_text_region",
+      "severity": "P2",
+      "regionId": "region-0004",
+      "source": {
+        "provenance": {
+          "x": 3,
+          "y": 23,
+          "width": 23,
+          "height": 7,
+          "assetName": "title-card.png",
+          "assetContentHash": "sha256:a5fe464bfb1fae0b0adb1e99a47f2cc7e56663dca5a7ac17ef7b66ce49aa221d"
+        },
+        "contentHash": "sha256:47091dc6f54eb8091ef055ba1beed5a880a4c127c5d8fb1e8e15df047ef9b643",
+        "confidenceScore": 0.9785714285714285,
+        "confidence": "medium",
+        "candidateText": "LOAD"
+      },
+      "message": "region resembles text but no exact glyph match was found; candidate is evidence, not ground truth"
+    },
+    {
+      "code": "unrecognized_region",
+      "severity": "P2",
+      "regionId": "region-0005",
+      "source": {
+        "provenance": {
+          "x": 3,
+          "y": 33,
+          "width": 5,
+          "height": 7,
+          "assetName": "title-card.png",
+          "assetContentHash": "sha256:a5fe464bfb1fae0b0adb1e99a47f2cc7e56663dca5a7ac17ef7b66ce49aa221d"
+        },
+        "contentHash": "sha256:f2d2b1d74b24e1e3067674171a1c9c442fafc3d5b83688d6a4c1c0e27ff4bc2f",
+        "confidenceScore": 0.0,
+        "confidence": "low"
+      },
+      "message": "region contains ink but did not resemble any reference glyph; no text is asserted"
+    }
+  ]
+}

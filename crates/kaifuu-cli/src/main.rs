@@ -303,9 +303,12 @@ fn run_with_args_and_registry(
         Some("compat-evidence") => {
             return run_compat_evidence_command(&args);
         }
+        Some("asset-ocr") => {
+            return run_asset_ocr_command(&args);
+        }
         _ => {
             return Err(
-                "usage: kaifuu <detect|extract|asset-inventory|patch|diff|apply|verify|golden|offset-map|helper|helper-result|key-helper|helper-registry|key|siglus|rpgmaker|rpg-maker|xp3|profile|readiness|capabilities|binary-patch-smoke|compat-evidence> ..."
+                "usage: kaifuu <detect|extract|asset-inventory|patch|diff|apply|verify|golden|offset-map|helper|helper-result|key-helper|helper-registry|key|siglus|rpgmaker|rpg-maker|xp3|profile|readiness|capabilities|binary-patch-smoke|compat-evidence|asset-ocr> ..."
                     .into(),
             );
         }
@@ -3205,6 +3208,31 @@ fn promote_patch_staging_dir(staging_output: &Path, output: &Path) -> KaifuuResu
 ///   `--bundle <p> --catalogue <p> --baseline <p>`
 ///                                     integrate real inputs read from JSON.
 /// Both require `--output <p>`.
+/// KAIFUU-026 — `asset-ocr <asset.png> --output <report.json>`.
+///
+/// Reads a PUBLIC image/UI asset (an uncompressed grayscale PNG fixture) and
+/// emits schema-valid text regions with provenance + stable content hashes.
+/// Uncertain / unrecognized regions are surfaced as findings (source =
+/// provenance + confidence + a labelled candidate), never asserted as truth.
+/// Pure in-process Rust: no shell-out to any external OCR binary.
+fn run_asset_ocr_command(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
+    use kaifuu_core::asset_ocr::{AssetOcrRequest, run_asset_ocr};
+
+    let asset_path = PathBuf::from(positional(args, 1)?);
+    let output = PathBuf::from(flag(args, "--output")?);
+    let asset_name = asset_path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or("asset-ocr: asset path has no file name")?;
+    let asset_bytes = fs::read(&asset_path)?;
+    let report = run_asset_ocr(AssetOcrRequest {
+        asset_bytes: &asset_bytes,
+        asset_name,
+    })?;
+    write_json(&output, &report)?;
+    Ok(())
+}
+
 fn run_compat_evidence_command(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
     use kaifuu_core::compat_evidence::integrate_compat_evidence;
     use kaifuu_core::compat_regression::{PublicFixtureCatalogue, RegressionBaseline};
@@ -3465,6 +3493,81 @@ mod tests {
         assert!(serialized.contains("sha256:"));
         assert!(!serialized.contains("BEGIN"));
         assert!(!serialized.contains("/home/"));
+    }
+
+    #[test]
+    fn asset_ocr_public_fixture_matches_committed_golden() {
+        // KAIFUU-026: the public fixture command emits schema-valid text regions
+        // with provenance + stable content hashes; the output is byte-pinned to a
+        // committed golden. Set KAIFUU_026_REGEN=1 to rewrite the golden.
+        let root = temp_dir("asset-ocr-public-fixture");
+        let output = root.join("title-card.text-regions.json");
+        let asset = public_fixture_path("fixtures/public/ocr-ui/title-card.png");
+        let golden =
+            public_fixture_path("fixtures/public/ocr-ui/title-card.text-regions.golden.json");
+
+        run_with_args(vec![
+            "asset-ocr".to_string(),
+            asset.to_str().unwrap().to_string(),
+            "--output".to_string(),
+            output.to_str().unwrap().to_string(),
+        ])
+        .unwrap();
+
+        let produced = fs::read_to_string(&output).unwrap();
+        if std::env::var_os("KAIFUU_026_REGEN").is_some() {
+            fs::write(&golden, &produced).unwrap();
+        }
+        let committed = fs::read_to_string(&golden).unwrap();
+        assert_eq!(
+            produced, committed,
+            "asset-ocr output drifted from the committed golden; regen with KAIFUU_026_REGEN=1"
+        );
+
+        let report: serde_json::Value = serde_json::from_str(&produced).unwrap();
+        assert_eq!(report["sourceNodeId"], "KAIFUU-026");
+        // Three confident regions recover exact text; two uncertain regions are
+        // findings (NOT asserted as recovered text).
+        let regions = report["textRegions"].as_array().unwrap();
+        assert_eq!(regions.len(), 5);
+        let recovered: Vec<&str> = regions
+            .iter()
+            .filter_map(|region| region["recognition"]["recoveredText"].as_str())
+            .collect();
+        assert_eq!(recovered, ["NEW", "GAME", "LOAD"]);
+        let findings = report["findings"].as_array().unwrap();
+        assert_eq!(findings.len(), 2);
+        // The uncertain "LOAD" read is a candidate on a finding, never truth.
+        let uncertain = findings
+            .iter()
+            .find(|finding| finding["code"] == "uncertain_text_region")
+            .unwrap();
+        assert_eq!(uncertain["source"]["candidateText"], "LOAD");
+        assert!(uncertain["source"]["provenance"].is_object());
+        // Provenance + content hashes present.
+        assert!(
+            report["asset"]["contentHash"]
+                .as_str()
+                .unwrap()
+                .starts_with("sha256:")
+        );
+        for region in regions {
+            assert!(
+                region["contentHash"]
+                    .as_str()
+                    .unwrap()
+                    .starts_with("sha256:")
+            );
+            assert!(
+                region["provenance"]["assetContentHash"]
+                    .as_str()
+                    .unwrap()
+                    .starts_with("sha256:")
+            );
+        }
+        // No local path leakage.
+        assert!(!produced.contains("/home/"));
+        assert!(!produced.contains("/scratch/"));
     }
 
     #[test]

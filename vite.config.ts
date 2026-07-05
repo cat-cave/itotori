@@ -75,6 +75,11 @@ export default defineConfig({
       // line offsets are load-bearing (they appear verbatim in bridge-unit
       // keys), so it is pinned too.
       "fixtures/public/kag-plaintext/**",
+      // KAIFUU-026 asset-OCR public fixture: `title-card.text-regions.golden.json`
+      // is byte-compared against the `asset-ocr` command's `stable_json` output by
+      // `asset_ocr_public_fixture_matches_committed_golden`; the formatter must not
+      // rewrite it. (The sibling `title-card.png` is a binary grayscale fixture.)
+      "fixtures/public/ocr-ui/**",
     ],
   },
   resolve: {
