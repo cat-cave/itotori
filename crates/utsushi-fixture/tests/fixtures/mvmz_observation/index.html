@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>Utsushi MV/MZ Observation Fixture</title>
+</head>
+<body>
+<!--
+  Public, synthetic RPG Maker MV/MZ-style deployment entrypoint.
+
+  STRICT-PROOF DESIGN: the dialogue and choice text that the trace probe
+  observes is NOT present anywhere in this source file. It is carried only in
+  the base64 payload below (`utsushi-observed-src`) and is decoded, rendered,
+  and injected into `#utsushi-observed-events` by the runtime script when a
+  real JavaScript runtime (headless Chromium via `--dump-dom`) actually loads
+  and executes this page. A static read of this file yields nothing the probe
+  can accept: the observed-events island only exists in the live post-render
+  DOM. No copyrighted bytes are used; all strings are original placeholders.
+-->
+<div id="game">
+  <canvas id="gameCanvas" width="320" height="180"></canvas>
+  <div id="messageWindow" class="rmmz-window" data-window="message"></div>
+  <ul id="choiceWindow" class="rmmz-window" data-window="choice"></ul>
+</div>
+
+<!-- Runtime-only payload; the decoded plaintext appears only after JS runs. -->
+<script id="utsushi-observed-src" type="application/base64">eyJldmVudHMiOlt7ImtpbmQiOiJ0ZXh0IiwidW5pdEtleSI6Im12bXouc2NlbmUxLmxpbmUxIiwic3BlYWtlciI6Ill1a2kiLCJ0ZXh0U3VyZmFjZSI6ImRpYWxvZ3VlIiwidGV4dCI6IlRoZSBmcm9zdCBibG9zc29tcyBvcGVuIGF0IGZpcnN0IGxpZ2h0LiJ9LHsia2luZCI6InRleHQiLCJ1bml0S2V5IjoibXZtei5zY2VuZTEubGluZTIiLCJzcGVha2VyIjoiU29yYSIsInRleHRTdXJmYWNlIjoiZGlhbG9ndWUiLCJ0ZXh0IjoiVGhlbiBsZXQgdXMgd2FsayBiZWZvcmUgdGhlIHRvd24gd2FrZXMuIn0seyJraW5kIjoiY2hvaWNlIiwidW5pdEtleSI6Im12bXouc2NlbmUxLmNob2ljZSIsInByb21wdCI6IkhvdyBkbyB5b3UgYW5zd2VyIFNvcmE/Iiwib3B0aW9ucyI6W3sib3B0aW9uSWQiOiJvcHQtMCIsImxhYmVsIjoiRm9sbG93IGhlciBpbnRvIHRoZSBzbm93LiIsInVuaXRLZXkiOiJtdm16LnNjZW5lMS5jaG9pY2Uub3B0MCJ9LHsib3B0aW9uSWQiOiJvcHQtMSIsImxhYmVsIjoiU3RheSBieSB0aGUgd2FybSBoZWFydGguIiwidW5pdEtleSI6Im12bXouc2NlbmUxLmNob2ljZS5vcHQxIn1dfV19Cg==</script>
+
+<!-- Filled in at runtime; empty in the static source. -->
+<script id="utsushi-observed-events" type="application/json"></script>
+
+<script>
+(function () {
+  "use strict";
+
+  function decodeBase64Utf8(value) {
+    var binary = atob(value.trim());
+    var bytes = Uint8Array.from(binary, function (ch) {
+      return ch.charCodeAt(0);
+    });
+    return new TextDecoder("utf-8").decode(bytes);
+  }
+
+  // Decode the runtime payload. This is the "render": the plaintext only
+  // comes into existence here, when a real JS runtime executes the page.
+  var srcEl = document.getElementById("utsushi-observed-src");
+  var data = JSON.parse(decodeBase64Utf8(srcEl.textContent));
+  var events = Array.isArray(data.events) ? data.events : [];
+
+  var messageWindow = document.getElementById("messageWindow");
+  var choiceWindow = document.getElementById("choiceWindow");
+
+  // Paint the observed text/choice content into the MV/MZ-style windows so
+  // the live DOM genuinely contains what the probe reports.
+  events.forEach(function (event) {
+    if (event.kind === "text") {
+      var line = document.createElement("p");
+      line.className = "rmmz-message-line";
+      line.setAttribute("data-unit-key", event.unitKey || "");
+      if (event.speaker) {
+        line.setAttribute("data-speaker", event.speaker);
+      }
+      line.textContent = event.text;
+      messageWindow.appendChild(line);
+    } else if (event.kind === "choice") {
+      if (event.prompt) {
+        choiceWindow.setAttribute("data-prompt", event.prompt);
+      }
+      (event.options || []).forEach(function (option) {
+        var item = document.createElement("li");
+        item.className = "rmmz-choice";
+        item.setAttribute("data-option-id", option.optionId || "");
+        item.setAttribute("data-unit-key", option.unitKey || "");
+        item.textContent = option.label;
+        choiceWindow.appendChild(item);
+      });
+    }
+  });
+
+  // Publish the machine-readable observation island the trace probe parses
+  // out of the live `--dump-dom` output.
+  var island = document.getElementById("utsushi-observed-events");
+  island.textContent =
+    "/*UTSUSHI-OBSERVED-BEGIN*/" +
+    JSON.stringify(data) +
+    "/*UTSUSHI-OBSERVED-END*/";
+})();
+</script>
+</body>
+</html>

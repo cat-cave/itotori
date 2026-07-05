@@ -1,7 +1,7 @@
 use std::any::Any;
 use std::collections::HashSet;
 use std::fs;
-use std::io::{self, Write};
+use std::io::{self, Read, Write};
 use std::panic::{self, AssertUnwindSafe};
 use std::path::{Component, Path, PathBuf};
 use std::process::{Child, Command, ExitStatus, Stdio};
@@ -2582,6 +2582,13 @@ pub struct RuntimeLaunchCapturePlan {
     pub hook_timeout: Duration,
     pub poll_interval: Duration,
     pub artifact_root: Option<PathBuf>,
+    /// When set, the harness pipes the launched process's stdout and drains
+    /// it on a dedicated reader thread, surfacing the captured bytes as
+    /// [`RuntimeLaunchCaptureOutcome::stdout`]. This is how the MV/MZ browser
+    /// trace probe reads the live post-render DOM (`--dump-dom`) instead of
+    /// the fixture-declared text. Off by default so screenshot/capture launches
+    /// keep discarding stdout.
+    pub capture_stdout: bool,
 }
 
 impl RuntimeLaunchCapturePlan {
@@ -2599,7 +2606,15 @@ impl RuntimeLaunchCapturePlan {
             hook_timeout: DEFAULT_HARNESS_HOOK_TIMEOUT,
             poll_interval: DEFAULT_HARNESS_POLL_INTERVAL,
             artifact_root: None,
+            capture_stdout: false,
         }
+    }
+
+    /// Enable draining and capturing the launched process's stdout. Used by
+    /// the browser trace probe to read the live `--dump-dom` output.
+    pub fn with_stdout_capture(mut self, capture_stdout: bool) -> Self {
+        self.capture_stdout = capture_stdout;
+        self
     }
 
     pub fn with_timeout(mut self, timeout: Duration) -> Self {
@@ -3123,6 +3138,11 @@ pub struct RuntimeLaunchCaptureOutcome {
     pub exit: RuntimeProcessExit,
     pub elapsed: Duration,
     pub artifacts: Vec<RuntimeCapturedArtifact>,
+    /// Captured process stdout, present only when the plan set
+    /// [`RuntimeLaunchCapturePlan::capture_stdout`]. Carries the live
+    /// post-render DOM for the browser trace probe. Bytes are decoded
+    /// lossily as UTF-8.
+    pub stdout: Option<String>,
 }
 
 #[derive(Clone, Copy)]
@@ -3161,6 +3181,9 @@ impl RuntimeLaunchCaptureHarness {
         let started_at = Instant::now();
         let deadline = started_at + plan.timeout;
         let mut command = plan.command.to_command();
+        if plan.capture_stdout {
+            command.stdout(Stdio::piped());
+        }
         configure_runtime_process_tree(&mut command, plan.operation)?;
         let mut child = command.spawn().map_err(|error| {
             RuntimeHarnessError::new(
@@ -3174,6 +3197,22 @@ impl RuntimeLaunchCaptureHarness {
             .with_detail("ioKind", error.kind().to_string())
         })?;
         let process_id = child.id();
+        // Drain stdout on a dedicated thread so a large `--dump-dom` payload
+        // cannot deadlock the poll-based wait by filling the pipe buffer while
+        // the child blocks writing. The buffer is joined only on the success
+        // path; on every error path the child is terminated, the pipe closes,
+        // and the detached reader thread completes on its own.
+        let mut stdout_reader: Option<thread::JoinHandle<Vec<u8>>> = if plan.capture_stdout {
+            child.stdout.take().map(|mut stdout| {
+                thread::spawn(move || {
+                    let mut buffer = Vec::new();
+                    let _ = stdout.read_to_end(&mut buffer);
+                    buffer
+                })
+            })
+        } else {
+            None
+        };
         let mut artifacts = Vec::new();
         let hook_run = RuntimeHookRun {
             plan,
@@ -3286,11 +3325,17 @@ impl RuntimeLaunchCaptureHarness {
                 .with_detail("processExitSuccess", "true"));
         }
 
+        let stdout = stdout_reader.take().map(|handle| {
+            let bytes = handle.join().unwrap_or_default();
+            String::from_utf8_lossy(&bytes).into_owned()
+        });
+
         Ok(RuntimeLaunchCaptureOutcome {
             process_id,
             exit,
             elapsed: started_at.elapsed(),
             artifacts,
+            stdout,
         })
     }
 
@@ -4180,9 +4225,17 @@ mod tests {
         );
     }
 
+    const HARNESS_STDOUT_SENTINEL: &str = "UTSUSHI-STDOUT-CAPTURE-SENTINEL-6f3a2d";
+
     #[test]
     #[ignore = "child-process harness entry point; spawned by a parent harness test, not run standalone"]
     fn harness_child_exits() {}
+
+    #[test]
+    #[ignore = "child-process harness entry point; spawned by a parent harness test, not run standalone"]
+    fn harness_child_prints_stdout_sentinel() {
+        println!("{HARNESS_STDOUT_SENTINEL}");
+    }
 
     #[test]
     #[ignore = "child-process harness entry point; spawned by a parent harness test, not run standalone"]
@@ -4549,6 +4602,52 @@ mod tests {
             .to_string();
 
         assert!(error.contains("does not support capture"));
+    }
+
+    #[test]
+    fn launch_capture_harness_captures_stdout_when_requested() {
+        let plan = RuntimeLaunchCapturePlan::new(
+            HARNESS_RUN_ID,
+            RuntimeOperation::Trace,
+            harness_child_command("tests::harness_child_prints_stdout_sentinel"),
+        )
+        .with_timeout(Duration::from_secs(5))
+        .with_shutdown_grace(Duration::from_secs(1))
+        .with_stdout_capture(true);
+        let harness = RuntimeLaunchCaptureHarness::new();
+        let mut hooks = RuntimeCaptureHooks::new();
+
+        let outcome = harness.run(&plan, &mut hooks).unwrap();
+
+        assert!(outcome.exit.success);
+        let stdout = outcome
+            .stdout
+            .expect("stdout must be captured when the plan requests it");
+        assert!(
+            stdout.contains(HARNESS_STDOUT_SENTINEL),
+            "captured stdout should carry the live child output, was: {stdout}"
+        );
+    }
+
+    #[test]
+    fn launch_capture_harness_discards_stdout_by_default() {
+        let plan = RuntimeLaunchCapturePlan::new(
+            HARNESS_RUN_ID,
+            RuntimeOperation::Trace,
+            harness_child_command("tests::harness_child_prints_stdout_sentinel"),
+        )
+        .with_timeout(Duration::from_secs(5))
+        .with_shutdown_grace(Duration::from_secs(1));
+        let harness = RuntimeLaunchCaptureHarness::new();
+        let mut hooks = RuntimeCaptureHooks::new();
+
+        let outcome = harness.run(&plan, &mut hooks).unwrap();
+
+        assert!(outcome.exit.success);
+        assert!(
+            outcome.stdout.is_none(),
+            "stdout must be discarded unless capture is explicitly enabled"
+        );
     }
 
     #[test]

@@ -29,6 +29,18 @@ const BROWSER_APPROXIMATION_ID: &str = "019ed050-0000-7000-8000-000000005000";
 const BROWSER_SESSION_ID: &str = "019ed050-0000-7000-8000-000000006000";
 const BROWSER_OBSERVATION_TEXT_ID: &str = "019ed050-0000-7000-8000-000000007000";
 const BROWSER_OBSERVATION_FRAME_ID: &str = "019ed050-0000-7000-8000-000000007100";
+
+/// Sentinel markers the public MV/MZ fixture's runtime script wraps around the
+/// machine-readable observation island it injects into the live DOM. The trace
+/// probe extracts the JSON between them from the `--dump-dom` output. Because
+/// the fixture only emits these markers after a real JS runtime executes, a
+/// static read of the fixture source never contains them.
+const OBSERVED_ISLAND_BEGIN: &str = "/*UTSUSHI-OBSERVED-BEGIN*/";
+const OBSERVED_ISLAND_END: &str = "/*UTSUSHI-OBSERVED-END*/";
+/// Evidence-tier discriminator distinguishing genuinely live-observed events
+/// from fixture-declared reachability markers.
+const OBSERVATION_SOURCE_LIVE_DOM: &str = "live_dom";
+const OBSERVATION_SOURCE_FIXTURE_DECLARED: &str = "fixture_declared";
 const BROWSER_VIEWPORT_WIDTH: u32 = 320;
 const BROWSER_VIEWPORT_HEIGHT: u32 = 180;
 
@@ -80,7 +92,6 @@ impl RuntimeAdapter for BrowserLaunchAdapter {
 
     fn trace(&self, request: &RuntimeRequest<'_>) -> UtsushiResult<Value> {
         let source = super::read_source(request.input_root)?;
-        let unit = super::first_unit(&source)?;
         let target = resolve_browser_entrypoint(request.input_root, RuntimeOperation::Trace)?;
         let outcome = self.run_browser(
             RuntimeOperation::Trace,
@@ -89,6 +100,15 @@ impl RuntimeAdapter for BrowserLaunchAdapter {
             false,
         )?;
 
+        // OBSERVE the live post-render DOM the browser dumped to stdout. The
+        // public fixture's runtime script injects the observation island only
+        // after a real JS runtime executes; a launch that produced no live DOM
+        // (or a static source read) yields no observed events at all.
+        let dom = outcome.stdout.as_deref().unwrap_or_default();
+        let observed = parse_observed_dom(dom);
+        let (trace_events, observation_events) =
+            build_observed_events(&self.descriptor(), &source, &observed);
+
         Ok(browser_runtime_report(
             &self.descriptor(),
             &source,
@@ -96,17 +116,12 @@ impl RuntimeAdapter for BrowserLaunchAdapter {
                 operation: RuntimeOperation::Trace,
                 fidelity_tier: FidelityTier::TraceOnly,
                 evidence_tier: EvidenceTier::E1,
-                trace_events: vec![browser_trace_event(unit)?],
-                observation_events: vec![browser_text_observation_hook_event(
-                    &self.descriptor(),
-                    &source,
-                    unit,
-                    EvidenceTier::E1,
-                )?],
+                trace_events,
+                observation_events,
                 captures: vec![],
                 elapsed_millis: outcome.elapsed.as_millis(),
                 launch_target: target.relative,
-                limitation: "Browser trace confirms a bounded headless launch of the public fixture entrypoint; text observation is fixture-declared until DOM hooks land.",
+                limitation: "Browser trace observes live post-render DOM (--dump-dom) text and choice events from the public MV/MZ fixture entrypoint; observation is empty when the render produced no instrumented DOM island.",
             },
         ))
     }
@@ -214,10 +229,14 @@ impl BrowserLaunchAdapter {
         };
         args.push(target.url.clone());
         let command = RuntimeLaunchCommand::new(browser_program).args(args);
+        // The `--dump-dom` (non-screenshot) launch writes the live post-render
+        // DOM to stdout; capture it so the trace probe can OBSERVE the runtime
+        // text/choice island instead of reading fixture-declared strings.
         let mut plan = RuntimeLaunchCapturePlan::new(BROWSER_RUN_ID, operation, command)
             .with_timeout(Duration::from_secs(10))
             .with_shutdown_grace(Duration::from_secs(2))
-            .with_hook_timeout(Duration::from_secs(2));
+            .with_hook_timeout(Duration::from_secs(2))
+            .with_stdout_capture(!persist_screenshot);
         if let Some(artifact_root) = artifact_root {
             plan = plan.with_artifact_root(artifact_root);
         }
@@ -1176,6 +1195,23 @@ fn browser_runtime_report(
         "Browser launch completed in {elapsed_millis} ms under the core bounded process harness."
     ));
 
+    // Only claim a layout-probe approximation when the launch actually
+    // observed bridge-linked runtime events. A launch that produced no
+    // instrumented DOM (the strict-proof negative control) makes no
+    // approximation claim rather than an empty, invalid one.
+    let approximations = if affected_bridge_unit_refs.is_empty() {
+        Vec::new()
+    } else {
+        vec![json!({
+            "approximationId": BROWSER_APPROXIMATION_ID,
+            "approximationTier": ApproximationTier::LayoutProbe.as_str(),
+            "scope": "browser launch adapter",
+            "description": "Browser launch/capture proves bounded entrypoint reachability and screenshot production, but not RPG Maker scene instrumentation or reference-runtime fidelity.",
+            "affectedBridgeUnitRefs": affected_bridge_unit_refs,
+            "evidenceTierCeiling": evidence_tier.as_str()
+        })]
+    };
+
     json!({
         "schemaVersion": "0.2.0",
         "runtimeReportId": BROWSER_RUN_ID,
@@ -1204,20 +1240,187 @@ fn browser_runtime_report(
         "branchEvents": [],
         "captures": captures,
         "recordings": [],
-        "approximations": [
-            {
-                "approximationId": BROWSER_APPROXIMATION_ID,
-                "approximationTier": ApproximationTier::LayoutProbe.as_str(),
-                "scope": "browser launch adapter",
-                "description": "Browser launch/capture proves bounded entrypoint reachability and screenshot production, but not RPG Maker scene instrumentation or reference-runtime fidelity.",
-                "affectedBridgeUnitRefs": affected_bridge_unit_refs,
-                "evidenceTierCeiling": evidence_tier.as_str()
-            }
-        ],
+        "approximations": approximations,
         "validationFindings": [],
         "referenceComparisons": [],
         "limitations": limitations
     })
+}
+
+/// Extract the observation island the fixture's runtime script injected into
+/// the live post-render DOM, returning the decoded `events` array. Any DOM
+/// without a well-formed island (JS never ran, render produced nothing, or the
+/// caller passed a static source read) yields an empty vector — the
+/// strict-proof negative control.
+fn parse_observed_dom(dom: &str) -> Vec<Value> {
+    let Some(start) = dom.find(OBSERVED_ISLAND_BEGIN) else {
+        return Vec::new();
+    };
+    let after = &dom[start + OBSERVED_ISLAND_BEGIN.len()..];
+    let Some(end) = after.find(OBSERVED_ISLAND_END) else {
+        return Vec::new();
+    };
+    let json = after[..end].trim();
+    let Ok(parsed) = serde_json::from_str::<Value>(json) else {
+        return Vec::new();
+    };
+    parsed
+        .get("events")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default()
+}
+
+/// Turn the observed DOM events into `(traceEvents, observationHookEvents)`.
+/// Text events produce both a trace event and a text observation hook event;
+/// choice events produce a choice observation hook event.
+fn build_observed_events(
+    descriptor: &RuntimeAdapterDescriptor,
+    source: &Value,
+    observed: &[Value],
+) -> (Vec<Value>, Vec<Value>) {
+    let mut trace_events = Vec::new();
+    let mut observation_events = Vec::new();
+    for (index, event) in observed.iter().enumerate() {
+        match event.get("kind").and_then(Value::as_str) {
+            Some("text") => {
+                if let Some(hook) = observed_text_hook_event(descriptor, source, index, event) {
+                    observation_events.push(hook);
+                }
+                if let Some(trace) = observed_trace_event(source, index, event) {
+                    trace_events.push(trace);
+                }
+            }
+            Some("choice") => {
+                if let Some(hook) = observed_choice_hook_event(descriptor, source, index, event) {
+                    observation_events.push(hook);
+                }
+            }
+            _ => {}
+        }
+    }
+    (trace_events, observation_events)
+}
+
+/// Deterministic event id derived from the fixed observation-id base and the
+/// observed event's position in the live DOM stream.
+fn observed_event_id(index: usize) -> String {
+    format!("019ed050-0000-7000-8000-0000000072{index:02}")
+}
+
+fn observed_trace_id(index: usize) -> String {
+    format!("019ed050-0000-7000-8000-0000000073{index:02}")
+}
+
+/// Build a bridge reference linking an observed runtime unit key back to the
+/// source unit (and therefore its bridge unit id) it corresponds to. Falls
+/// back to a runtime-object reference when the key is unknown so the envelope
+/// always identifies *something*.
+fn observed_bridge_ref(source: &Value, unit_key: Option<&str>) -> Value {
+    if let Some(unit_key) = unit_key {
+        if let Some(units) = source["units"].as_array()
+            && let Some(position) = units
+                .iter()
+                .position(|unit| unit["sourceUnitKey"].as_str() == Some(unit_key))
+        {
+            return json!({
+                "bridgeUnitId": super::legacy_fixture_id("bridge-unit", position + 1),
+                "sourceUnitKey": unit_key,
+            });
+        }
+        return json!({ "sourceUnitKey": unit_key });
+    }
+    json!({ "runtimeObjectId": "utsushi:observed:unbound" })
+}
+
+fn observed_text_hook_event(
+    descriptor: &RuntimeAdapterDescriptor,
+    source: &Value,
+    index: usize,
+    observed: &Value,
+) -> Option<Value> {
+    let text = observed.get("text").and_then(Value::as_str)?;
+    let unit_key = observed.get("unitKey").and_then(Value::as_str);
+    Some(json!({
+        "schemaVersion": FIXTURE_OBSERVATION_HOOK_SCHEMA_LITERAL,
+        "eventId": observed_event_id(index),
+        "observedAt": "2026-06-17T00:00:00.000Z",
+        "eventKind": "text",
+        "runtimeTargetId": super::runtime_target_id(source),
+        "adapterId": super::adapter_id_value(descriptor),
+        "evidenceTier": EvidenceTier::E1.as_str(),
+        "observationSource": OBSERVATION_SOURCE_LIVE_DOM,
+        "environment": browser_environment_value(source),
+        "sourceRevision": super::source_revision_value(source),
+        "bridgeRefs": [observed_bridge_ref(source, unit_key)],
+        "redaction": {"status": "not_required"},
+        "payload": {
+            "payloadKind": "text",
+            "text": text,
+            "speaker": observed.get("speaker").and_then(Value::as_str),
+            "textSurface": observed.get("textSurface").and_then(Value::as_str),
+        },
+    }))
+}
+
+fn observed_choice_hook_event(
+    descriptor: &RuntimeAdapterDescriptor,
+    source: &Value,
+    index: usize,
+    observed: &Value,
+) -> Option<Value> {
+    let raw_options = observed.get("options").and_then(Value::as_array)?;
+    let mut options = Vec::new();
+    for (option_index, option) in raw_options.iter().enumerate() {
+        let label = option.get("label").and_then(Value::as_str)?;
+        let option_id = option
+            .get("optionId")
+            .and_then(Value::as_str)
+            .map_or_else(|| format!("opt-{option_index}"), str::to_string);
+        let unit_key = option.get("unitKey").and_then(Value::as_str);
+        options.push(json!({
+            "optionId": option_id,
+            "label": label,
+            "bridgeRef": observed_bridge_ref(source, unit_key),
+        }));
+    }
+    if options.is_empty() {
+        return None;
+    }
+    let unit_key = observed.get("unitKey").and_then(Value::as_str);
+    Some(json!({
+        "schemaVersion": FIXTURE_OBSERVATION_HOOK_SCHEMA_LITERAL,
+        "eventId": observed_event_id(index),
+        "observedAt": "2026-06-17T00:00:00.000Z",
+        "eventKind": "choice",
+        "runtimeTargetId": super::runtime_target_id(source),
+        "adapterId": super::adapter_id_value(descriptor),
+        "evidenceTier": EvidenceTier::E1.as_str(),
+        "observationSource": OBSERVATION_SOURCE_LIVE_DOM,
+        "environment": browser_environment_value(source),
+        "sourceRevision": super::source_revision_value(source),
+        "bridgeRefs": [observed_bridge_ref(source, unit_key)],
+        "redaction": {"status": "not_required"},
+        "payload": {
+            "payloadKind": "choice",
+            "prompt": observed.get("prompt").and_then(Value::as_str),
+            "options": options,
+        },
+    }))
+}
+
+fn observed_trace_event(source: &Value, index: usize, observed: &Value) -> Option<Value> {
+    let text = observed.get("text").and_then(Value::as_str)?;
+    let unit_key = observed.get("unitKey").and_then(Value::as_str)?;
+    Some(json!({
+        "traceEventId": observed_trace_id(index),
+        "eventKind": "text_observed",
+        "bridgeUnitRef": observed_bridge_ref(source, Some(unit_key)),
+        "frame": index + 1,
+        "traceKey": unit_key,
+        "observedText": text,
+        "observationSource": OBSERVATION_SOURCE_LIVE_DOM,
+    }))
 }
 
 fn browser_text_observation_hook_event(
@@ -1235,6 +1438,7 @@ fn browser_text_observation_hook_event(
         "runtimeTargetId": super::runtime_target_id(source),
         "adapterId": super::adapter_id_value(descriptor),
         "evidenceTier": evidence_tier.as_str(),
+        "observationSource": OBSERVATION_SOURCE_FIXTURE_DECLARED,
         "environment": browser_environment_value(source),
         "sourceRevision": super::source_revision_value(source),
         "bridgeRefs": [bridge_ref_value],
@@ -2110,5 +2314,263 @@ exit 0
                 super::browser_detection::parse_chromium_version(input).expect("version parses");
             assert_eq!(parsed.major(), Some(expected_major));
         }
+    }
+
+    // ---- UTSUSHI-006: live MV/MZ DOM text + choice observation --------------
+
+    fn mvmz_observation_fixture_root() -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/mvmz_observation")
+    }
+
+    /// Fake browser that genuinely *renders* the fixture: it reads the launched
+    /// `file://` entrypoint, decodes the runtime base64 payload exactly as the
+    /// fixture's JavaScript would, and emits the observation island on stdout
+    /// (as real Chromium `--dump-dom` does after executing the page). The
+    /// observed plaintext therefore only comes into existence by transforming
+    /// the fixture at runtime — it is never read verbatim from the source.
+    #[cfg(unix)]
+    const LIVE_DOM_FAKE_BROWSER: &str = r#"#!/bin/sh
+set -eu
+url=""
+for arg in "$@"; do
+  case "$arg" in
+    file://*) url="$arg" ;;
+  esac
+done
+[ -n "$url" ] || exit 70
+path="${url#file://}"
+b64=$(sed -n 's|.*type="application/base64">\([A-Za-z0-9+/=]*\)</script>.*|\1|p' "$path")
+[ -n "$b64" ] || exit 71
+json=$(printf '%s' "$b64" | base64 -d)
+printf '<!doctype html><html><body><div id="messageWindow"></div>'
+printf '<script id="utsushi-observed-events" type="application/json">'
+printf '/*UTSUSHI-OBSERVED-BEGIN*/%s/*UTSUSHI-OBSERVED-END*/' "$json"
+printf '</script></body></html>\n'
+"#;
+
+    /// Fake browser that launches successfully but produces a DOM WITHOUT the
+    /// instrumentation island (simulating a render where the page JavaScript
+    /// never populated the observed events). The probe must observe nothing.
+    #[cfg(unix)]
+    const NO_ISLAND_FAKE_BROWSER: &str = r#"#!/bin/sh
+printf '<!doctype html><html><body><div id="messageWindow">launched without instrumentation</div></body></html>\n'
+"#;
+
+    #[cfg(unix)]
+    #[test]
+    fn browser_trace_observes_live_dom_text_and_choice_events() {
+        let work = temp_dir("browser-trace-live");
+        let fixture = mvmz_observation_fixture_root();
+        let fake = fake_browser(&work, LIVE_DOM_FAKE_BROWSER);
+        let adapter = BrowserLaunchAdapter::with_browser_program(fake);
+
+        let report = adapter.trace(&RuntimeRequest::new(&fixture)).unwrap();
+
+        assert_eq!(report["adapterName"], BrowserLaunchAdapter::NAME);
+        assert_eq!(report["status"], "passed");
+        assert_eq!(report["evidenceTier"], "E1");
+
+        let events = report["observationHookEvents"].as_array().unwrap();
+        let text_events: Vec<&Value> = events.iter().filter(|e| e["eventKind"] == "text").collect();
+        let choice_events: Vec<&Value> = events
+            .iter()
+            .filter(|e| e["eventKind"] == "choice")
+            .collect();
+        assert_eq!(text_events.len(), 2, "two dialogue lines are observed");
+        assert_eq!(choice_events.len(), 1, "one choice is observed");
+
+        // Live text observed from the DOM, NOT the source.json PLACEHOLDER.
+        let first = text_events[0];
+        assert_eq!(
+            first["payload"]["text"],
+            "The frost blossoms open at first light."
+        );
+        assert_eq!(first["payload"]["speaker"], "Yuki");
+        assert_eq!(first["payload"]["textSurface"], "dialogue");
+        assert_eq!(first["evidenceTier"], "E1");
+        assert_eq!(first["observationSource"], "live_dom");
+        assert_eq!(
+            first["schemaVersion"],
+            FIXTURE_OBSERVATION_HOOK_SCHEMA_LITERAL
+        );
+
+        // Full linkage: bridge unit, source revision, runtime target, adapter.
+        let bridge = &first["bridgeRefs"][0];
+        assert_eq!(bridge["sourceUnitKey"], "mvmz.scene1.line1");
+        assert!(
+            bridge["bridgeUnitId"]
+                .as_str()
+                .unwrap()
+                .starts_with("019ed000-"),
+            "text event must link to a bridge unit id: {bridge}"
+        );
+        assert_eq!(first["runtimeTargetId"], "fixture:mvmz-observation-fixture");
+        assert_eq!(first["adapterId"]["name"], BrowserLaunchAdapter::NAME);
+        assert_eq!(
+            first["sourceRevision"]["sourceId"],
+            "mvmz-observation-fixture"
+        );
+
+        // Choice linkage + per-option bridge refs.
+        let choice = choice_events[0];
+        assert_eq!(choice["observationSource"], "live_dom");
+        assert_eq!(choice["evidenceTier"], "E1");
+        assert_eq!(choice["payload"]["prompt"], "How do you answer Sora?");
+        let options = choice["payload"]["options"].as_array().unwrap();
+        assert_eq!(options.len(), 2);
+        assert_eq!(options[0]["label"], "Follow her into the snow.");
+        assert_eq!(options[0]["optionId"], "opt-0");
+        assert_eq!(
+            options[0]["bridgeRef"]["sourceUnitKey"],
+            "mvmz.scene1.choice.opt0"
+        );
+        assert_eq!(options[1]["label"], "Stay by the warm hearth.");
+
+        // Trace events mirror the observed text and feed the approximation refs.
+        let trace_events = report["traceEvents"].as_array().unwrap();
+        assert_eq!(trace_events.len(), 2);
+        assert_eq!(
+            trace_events[0]["observedText"],
+            "The frost blossoms open at first light."
+        );
+        assert_eq!(trace_events[0]["observationSource"], "live_dom");
+        assert_eq!(
+            report["approximations"][0]["affectedBridgeUnitRefs"]
+                .as_array()
+                .unwrap()
+                .len(),
+            2
+        );
+
+        // The whole runtime evidence report is envelope-conformant.
+        utsushi_core::validate_runtime_evidence_report_value(&report).unwrap();
+
+        let _ = fs::remove_dir_all(work);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn browser_trace_yields_no_observed_events_without_instrumentation_island() {
+        let work = temp_dir("browser-trace-empty");
+        let fixture = mvmz_observation_fixture_root();
+        let fake = fake_browser(&work, NO_ISLAND_FAKE_BROWSER);
+        let adapter = BrowserLaunchAdapter::with_browser_program(fake);
+
+        let report = adapter.trace(&RuntimeRequest::new(&fixture)).unwrap();
+
+        // Launch succeeded, but the render produced no observed events.
+        assert_eq!(report["status"], "passed");
+        assert!(
+            report["observationHookEvents"]
+                .as_array()
+                .unwrap()
+                .is_empty(),
+            "a render without an instrumentation island must observe nothing"
+        );
+        assert!(report["traceEvents"].as_array().unwrap().is_empty());
+        // A render that produced no instrumented DOM carries no runtime
+        // evidence at all, so the report is not even contract-conformant:
+        // there is nothing for a bypassed/static path to pass off as observed.
+        let error = utsushi_core::validate_runtime_evidence_report_value(&report)
+            .expect_err("an empty observation must not form a valid evidence report");
+        assert!(
+            error.to_string().contains("must contain"),
+            "unexpected validation error: {error}"
+        );
+
+        let _ = fs::remove_dir_all(work);
+    }
+
+    #[test]
+    fn static_fixture_read_cannot_satisfy_the_runtime_trace_probe() {
+        let fixture = mvmz_observation_fixture_root();
+        let html = fs::read_to_string(fixture.join("index.html")).unwrap();
+        let source = fs::read_to_string(fixture.join("source.json")).unwrap();
+
+        // The observed strings exist only after a runtime render; no static
+        // input the probe reads contains them.
+        for observed in [
+            "The frost blossoms open at first light.",
+            "Then let us walk before the town wakes.",
+            "How do you answer Sora?",
+            "Follow her into the snow.",
+            "Stay by the warm hearth.",
+        ] {
+            assert!(
+                !html.contains(observed),
+                "static index.html leaked observed text: {observed}"
+            );
+            assert!(
+                !source.contains(observed),
+                "source.json leaked observed text: {observed}"
+            );
+        }
+
+        // Parsing the raw static source directly yields no observed events:
+        // only the live post-render DOM carries the island.
+        assert!(parse_observed_dom(&html).is_empty());
+        assert!(parse_observed_dom(&source).is_empty());
+    }
+
+    #[test]
+    fn build_observed_events_links_each_event_to_its_bridge_unit_without_a_browser() {
+        // Unit-level proof of the envelope + parse + linkage logic that does
+        // not need a live browser (the CI/oracle exercises real Chromium).
+        let source = json!({
+            "gameId": "mvmz-observation-fixture",
+            "sourceLocale": "ja-JP",
+            "units": [
+                {"sourceUnitKey": "mvmz.scene1.line1"},
+                {"sourceUnitKey": "mvmz.scene1.choice"},
+                {"sourceUnitKey": "mvmz.scene1.choice.opt0"},
+            ],
+        });
+        let dom = concat!(
+            "<html><body><script>",
+            "/*UTSUSHI-OBSERVED-BEGIN*/",
+            r#"{"events":[{"kind":"text","unitKey":"mvmz.scene1.line1","speaker":"Yuki","textSurface":"dialogue","text":"Hello."},{"kind":"choice","unitKey":"mvmz.scene1.choice","prompt":"Pick","options":[{"optionId":"opt-0","label":"Go","unitKey":"mvmz.scene1.choice.opt0"}]}]}"#,
+            "/*UTSUSHI-OBSERVED-END*/",
+            "</script></body></html>"
+        );
+
+        let observed = parse_observed_dom(dom);
+        assert_eq!(observed.len(), 2);
+
+        let descriptor = BrowserLaunchAdapter::new().descriptor();
+        let (trace_events, hook_events) = build_observed_events(&descriptor, &source, &observed);
+        assert_eq!(trace_events.len(), 1);
+        assert_eq!(hook_events.len(), 2);
+
+        let text = &hook_events[0];
+        assert_eq!(text["eventKind"], "text");
+        assert_eq!(text["payload"]["text"], "Hello.");
+        assert_eq!(text["bridgeRefs"][0]["sourceUnitKey"], "mvmz.scene1.line1");
+        assert!(text["bridgeRefs"][0]["bridgeUnitId"].is_string());
+        assert_eq!(text["evidenceTier"], "E1");
+        assert_eq!(text["observationSource"], "live_dom");
+        assert_eq!(text["adapterId"]["name"], BrowserLaunchAdapter::NAME);
+
+        let choice = &hook_events[1];
+        assert_eq!(choice["eventKind"], "choice");
+        assert_eq!(
+            choice["payload"]["options"][0]["bridgeRef"]["sourceUnitKey"],
+            "mvmz.scene1.choice.opt0"
+        );
+    }
+
+    #[test]
+    fn parse_observed_dom_returns_empty_for_missing_or_malformed_island() {
+        assert!(parse_observed_dom("<html>no island here</html>").is_empty());
+        assert!(
+            parse_observed_dom("/*UTSUSHI-OBSERVED-BEGIN*/ not json /*UTSUSHI-OBSERVED-END*/")
+                .is_empty()
+        );
+        // Begin marker but no end marker.
+        assert!(parse_observed_dom("/*UTSUSHI-OBSERVED-BEGIN*/{\"events\":[]}").is_empty());
+        // Well-formed but empty stream.
+        assert!(
+            parse_observed_dom("/*UTSUSHI-OBSERVED-BEGIN*/{\"events\":[]}/*UTSUSHI-OBSERVED-END*/")
+                .is_empty()
+        );
     }
 }

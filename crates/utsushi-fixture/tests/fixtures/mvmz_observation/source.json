@@ -1,0 +1,47 @@
+{
+  "gameId": "mvmz-observation-fixture",
+  "title": "MV/MZ Observation Fixture",
+  "sourceLocale": "ja-JP",
+  "units": [
+    {
+      "sourceUnitKey": "mvmz.scene1.line1",
+      "speaker": "Yuki",
+      "textSurface": "dialogue",
+      "sourceText": "霜の花が夕明けに開く。",
+      "targetText": "PLACEHOLDER line1 -- authoritative text is observed from the live DOM, not this field.",
+      "protectedSpans": []
+    },
+    {
+      "sourceUnitKey": "mvmz.scene1.line2",
+      "speaker": "Sora",
+      "textSurface": "dialogue",
+      "sourceText": "ならば町が目覚める前に歩こう。",
+      "targetText": "PLACEHOLDER line2 -- authoritative text is observed from the live DOM, not this field.",
+      "protectedSpans": []
+    },
+    {
+      "sourceUnitKey": "mvmz.scene1.choice",
+      "speaker": null,
+      "textSurface": "choice",
+      "sourceText": "どう答える？",
+      "targetText": "PLACEHOLDER choice prompt -- authoritative text is observed from the live DOM.",
+      "protectedSpans": []
+    },
+    {
+      "sourceUnitKey": "mvmz.scene1.choice.opt0",
+      "speaker": null,
+      "textSurface": "choice_option",
+      "sourceText": "雪の中へ彼女についていく。",
+      "targetText": "PLACEHOLDER opt0 -- authoritative text is observed from the live DOM.",
+      "protectedSpans": []
+    },
+    {
+      "sourceUnitKey": "mvmz.scene1.choice.opt1",
+      "speaker": null,
+      "textSurface": "choice_option",
+      "sourceText": "暖炉のそばに残る。",
+      "targetText": "PLACEHOLDER opt1 -- authoritative text is observed from the live DOM.",
+      "protectedSpans": []
+    }
+  ]
+}
