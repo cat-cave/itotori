@@ -21,7 +21,12 @@ import {
   RecordedModelProvider,
   type RecordedProviderBundle,
 } from "../src/providers/recorded.js";
-import type { ModelInvocationResult, ModelProvider, ProviderCost } from "../src/providers/types.js";
+import type {
+  ModelCapabilities,
+  ModelInvocationResult,
+  ModelProvider,
+  ProviderCost,
+} from "../src/providers/types.js";
 import {
   EXPERIMENT_INVOCATION_ARTIFACT_SCHEMA_VERSION,
   EXPERIMENT_MATRIX_CONFIG_SCHEMA_VERSION,
@@ -271,8 +276,29 @@ describe("ITOTORI-099 — guarded experiment runner (recorded replay)", () => {
     expect(() => assertExperimentRunSucceeded(manifest)).toThrow(/run FAILED/u);
   });
 
-  it("rejects an unsupported structured-output mode for the PAIR before invocation", async () => {
-    // DEV_PAIR's measured sheet marks json_schema UNSUPPORTED under ZDR.
+  it("GUARD #2 rejects an unsupported mode from the MEASURED sheet, NOT the permissive descriptor", async () => {
+    // This LOCKS the "measured sheet, NOT the permissive descriptor"
+    // invariant (runner.ts GUARD #2). The two capability sources are made
+    // to DIFFER so the test can prove which one drove the decision:
+    //
+    //   • the MEASURED guard sheet (getModelCapabilities(DEV_PAIR)) marks
+    //     json_schema UNSUPPORTED under ZDR — the real, measured fact;
+    //   • the provider's DESCRIPTOR carries a PERMISSIVE sheet that (wrongly)
+    //     advertises json_schema as SUPPORTED — the looser fallback the
+    //     runner must NEVER consult.
+    //
+    // A json_schema fixture is rejected ONLY if the runner reads the measured
+    // sheet. If it regressed to `descriptor.capabilities` (the permissive
+    // path via `input.capabilities ?? input.descriptor.capabilities`),
+    // json_schema would pass, `invoke` would be reached, and this test FAILS.
+    // (Before this fix the descriptor also carried the measured sheet, so the
+    // two paths were indistinguishable and the guard was vacuous.)
+    const measured = getModelCapabilities(DEV_PAIR);
+    expect(measured.structuredOutputs.jsonSchema).toBe("unsupported");
+    const permissiveDescriptorCapabilities: ModelCapabilities = {
+      ...measured,
+      structuredOutputs: { ...measured.structuredOutputs, jsonSchema: "supported" },
+    };
     let invokeCount = 0;
     const spyProvider: ModelProvider = {
       descriptor: {
@@ -280,11 +306,11 @@ describe("ITOTORI-099 — guarded experiment runner (recorded replay)", () => {
         endpointFamily: "recorded-fixture",
         providerName: "spy",
         defaultModelId: DEV_PAIR.modelId,
-        capabilities: getModelCapabilities(DEV_PAIR),
+        capabilities: permissiveDescriptorCapabilities,
       },
       invoke: async (): Promise<ModelInvocationResult> => {
         invokeCount += 1;
-        throw new Error("invoke must not run for an unsupported capability");
+        throw new Error("invoke must not run for a mode the MEASURED sheet marks unsupported");
       },
     };
     const jsonSchemaFixture: ExperimentFixtureContent = {
@@ -307,7 +333,11 @@ describe("ITOTORI-099 — guarded experiment runner (recorded replay)", () => {
 
     expect(invokeCount).toBe(0);
     expect(manifest.status).toBe("failed");
+    expect(manifest.artifacts).toHaveLength(0);
     expect(manifest.findings[0]!.kind).toBe("capability_unsupported");
+    // The rejection names json_schema — proving the MEASURED (unsupported)
+    // value drove it, not the descriptor's permissive (supported) one.
+    expect(manifest.findings[0]!.message).toMatch(/json_schema/u);
   });
 
   it("records a missing fixture as a structured finding (never a silent skip)", async () => {
