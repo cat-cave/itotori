@@ -199,6 +199,36 @@ export {
   itotori083FixtureSourceRevisionId,
 } from "./batch-fixtures.js";
 
+// UTSUSHI-066 — import MV/MZ review-package annotations as deterministic findings.
+export {
+  assertReviewAnnotation,
+  buildReviewImportReferenceIndex,
+  importReviewAnnotation,
+  MANAGED_RUNTIME_URI_ROOT,
+  parseReviewAnnotation,
+  REVIEW_ANNOTATION_ATTRIBUTION,
+  REVIEW_ANNOTATION_FINDING_CATEGORY,
+  REVIEW_ANNOTATION_IMPORT_REJECTION_CODES,
+  REVIEW_ANNOTATION_REDACTION_STATUSES,
+  ReviewAnnotationImportError,
+  ReviewAnnotationValidationError,
+  reviewAnnotationFindingToHumanFinding,
+  tryImportReviewAnnotation,
+} from "./review-annotation-import.js";
+export type {
+  ReviewAnnotation,
+  ReviewAnnotationBridgeUnitRef,
+  ReviewAnnotationFinding,
+  ReviewAnnotationFindingProvenance,
+  ReviewAnnotationImportOutcome,
+  ReviewAnnotationImportRejectionCode,
+  ReviewAnnotationImportResult,
+  ReviewAnnotationRedactionStatus,
+  ReviewAnnotationScreenshotArtifactRef,
+  ReviewImportReferenceIndex,
+  ReviewPackageReferenceSource,
+} from "./review-annotation-import.js";
+
 export {
   itotori023DashboardFixtureIds,
   reviewQueueDashboardFixtures,
