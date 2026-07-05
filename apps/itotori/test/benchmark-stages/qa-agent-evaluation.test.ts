@@ -114,6 +114,53 @@ describe("qa-agent-evaluation stage", () => {
     expect(calibration.falsePositiveUnitIds).toEqual([U4]);
   });
 
+  it("counts a seed matched by multiple findings once (seed-level recall <= 1)", () => {
+    // Two DISTINCT findings (different category => different finding id) both
+    // land on U2, so both match seed-A by location. Under the old finding-level
+    // truePositives this produced truePositives=2 while falseNegatives stayed
+    // seed-level (1) — an inconsistent 2+1=3 over only 2 seeds, and a recall
+    // numerator that could exceed the seed denominator. Reconciled to seed level
+    // the seed is a single true positive.
+    const agent: QaAgentRecordedRun = {
+      qaAgentId: "terminology-qa-agent",
+      qaAgentVersion: "0.2.0",
+      evaluatedSystemId: "itotori-draft",
+      limitations: ["smoke"],
+      providerRun: providerRun(),
+      recordedFindings: [
+        recordedFinding(U2, "terminology", "major"),
+        recordedFinding(U2, "accuracy", "major"),
+      ],
+    };
+    const result = evaluateQaAgents({
+      agents: [agent],
+      seededDefectOracle: [
+        seed("seed-A", U2, "terminology", "major"),
+        seed("seed-B", U3, "accuracy", "critical"),
+      ],
+    });
+
+    const calibration = result.calibration[0];
+    // Seed counted ONCE, not once per matching finding.
+    expect(calibration.truePositives).toBe(1);
+    expect(calibration.matchedSeededDefectIds).toEqual(["seed-A"]);
+    expect(calibration.falseNegatives).toBe(1); // seed-B unmatched
+    // Internal consistency: truePositives + falseNegatives == totalSeeds.
+    expect(calibration.truePositives + calibration.falseNegatives).toBe(2);
+
+    const metrics = result.evaluations[0].metrics;
+    // recall is seed-level and can never exceed 1 despite 2 findings on 1 seed.
+    expect(metrics.seededRecall).toBe(0.5);
+    expect(metrics.seededRecall).toBeLessThanOrEqual(1);
+    // precision is finding-level: 2 matched findings, 0 false positives => 1.
+    expect(metrics.seededPrecision).toBe(1);
+    // F1 is the harmonic mean of the two coherent values.
+    expect(metrics.f1).toBeCloseTo((2 * 1 * 0.5) / (1 + 0.5), 6);
+    // Both findings are recorded against the single matched seed.
+    const seedA = result.seededDefectOracle.find((s) => s.seededDefectId === "seed-A");
+    expect(seedA?.matchedFindingIds).toHaveLength(2);
+  });
+
   it("scores category/severity/root-cause calibration against the matched seed", () => {
     const metrics = evaluateQaAgents(input()).evaluations[0].metrics;
     expect(metrics.categoryAccuracy).toBe(1); // terminology == terminology

@@ -159,17 +159,33 @@ export function evaluateQaAgents(input: QaAgentEvaluationInput): QaAgentEvaluati
     const matchedSeedIds = new Set(matchedFindings.map((entry) => entry.seed.seededDefectId));
     const allSeeds = input.seededDefectOracle;
     const totalSeeds = allSeeds.length;
-    const truePositives = matchedFindings.length;
+    // GRANULARITY (it091): detection is scored at SEED level. A seed is a true
+    // positive iff >=1 recorded finding matched it, counted ONCE regardless of
+    // how many findings pointed at that seed. This keeps truePositives coherent
+    // with the seed-level false negatives (truePositives + falseNegatives ==
+    // totalSeeds) and bounds recall = truePositives / totalSeeds at <= 1 even
+    // when several findings collapse onto one seed. Precision is measured over
+    // the FINDING population instead — the findings that could be scored against
+    // the oracle (matched findings vs. false-positive findings) — so its
+    // numerator and denominator share the finding granularity. Recall shares the
+    // seed granularity, and F1 is the harmonic mean of those two internally
+    // coherent values.
+    const truePositives = matchedSeedIds.size;
     const falsePositives = falsePositiveUnitIds.length;
+    // Finding-level count of matched findings backs the finding-scoped precision
+    // (distinct from the seed-level truePositives above).
+    const matchedFindingCount = matchedFindings.length;
     const falseNegativeSeedIds = allSeeds
       .map((seed) => seed.seededDefectId)
       .filter((seedId) => !matchedSeedIds.has(seedId));
     const findingsEmitted = agent.recordedFindings.length;
     const scorableFindings = findingsEmitted - unscorableCount;
 
-    const seededRecall = totalSeeds === 0 ? 1 : matchedSeedIds.size / totalSeeds;
+    const seededRecall = totalSeeds === 0 ? 1 : truePositives / totalSeeds;
     const seededPrecision =
-      truePositives + falsePositives === 0 ? 1 : truePositives / (truePositives + falsePositives);
+      matchedFindingCount + falsePositives === 0
+        ? 1
+        : matchedFindingCount / (matchedFindingCount + falsePositives);
     const f1 =
       seededPrecision + seededRecall === 0
         ? 0
