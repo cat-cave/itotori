@@ -182,3 +182,6 @@ export type {
   RegistrySchemaDescriptor,
   StableJsonHash,
 } from "./registry.js";
+// UTSUSHI-011 — runtime-evidence QA tools, deterministic checks, agent prompt,
+// and triage integration.
+export * from "./runtime-evidence/index.js";
