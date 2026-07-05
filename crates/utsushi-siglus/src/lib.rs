@@ -88,6 +88,7 @@
 #![forbid(unsafe_code)]
 #![deny(missing_debug_implementations)]
 
+pub mod opcode_profile;
 pub mod runtime_profile;
 pub mod vm;
 pub mod vm_impl_map;
