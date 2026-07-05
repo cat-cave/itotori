@@ -103,6 +103,51 @@ describe("normalizeToSjisSafe", () => {
     const out = normalizeToSjisSafe("The “quick” brown—fox… jumped’");
     expect([...out].every((c) => (c.codePointAt(0) ?? 0) <= 0x7e)).toBe(true);
   });
+  it("does NOT keep non-JIS CJK that Shift_JIS cannot encode", () => {
+    // U+3402 (Ext-A), U+9FA6 (CJK block tail), U+31F0 (Kana Ext) all satisfied
+    // the old Unicode-range whitelist but are NOT in JIS X 0208 / Shift_JIS.
+    for (const cp of [0x3402, 0x9fa6, 0x31f0]) {
+      const ch = String.fromCodePoint(cp);
+      const out = normalizeToSjisSafe(ch);
+      // Handled (substituted), never passed through to fail later at encode.
+      expect(out).not.toContain(ch);
+      expect(out).toBe("?");
+    }
+  });
+  it("keeps genuine JIS X 0208 kanji including U+4E00", () => {
+    expect(normalizeToSjisSafe("一")).toBe("一");
+    expect(normalizeToSjisSafe("日本語")).toBe("日本語");
+  });
+  it("output always round-trips through the real Shift_JIS codec with zero failures", () => {
+    const decoder = new TextDecoder("shift_jis", { fatal: true });
+    // Encodability oracle built from the real codec (encode->decode->identical).
+    const encodable = new Set<number>();
+    const add = (bytes: number[]): void => {
+      try {
+        const s = decoder.decode(new Uint8Array(bytes));
+        const cps = [...s];
+        if (cps.length === 1 && cps[0] !== "�") {
+          encodable.add(cps[0]!.codePointAt(0)!);
+        }
+      } catch {
+        /* invalid sequence */
+      }
+    };
+    for (let b = 0; b <= 0xff; b++) add([b]);
+    for (let lead = 0x81; lead <= 0xfc; lead++) {
+      if (!((lead >= 0x81 && lead <= 0x9f) || (lead >= 0xe0 && lead <= 0xfc))) continue;
+      for (let trail = 0x40; trail <= 0xfc; trail++) {
+        if ((trail >= 0x40 && trail <= 0x7e) || (trail >= 0x80 && trail <= 0xfc))
+          add([lead, trail]);
+      }
+    }
+    const sample =
+      "It’s “fine”—really… café naïve 残った日本語 一 " + "mixed 㐂龦ㇰ tail ☃ ★ 日本語で。";
+    const normalized = normalizeToSjisSafe(sample);
+    for (const ch of normalized) {
+      expect(encodable.has(ch.codePointAt(0)!)).toBe(true);
+    }
+  });
 });
 
 describe("repairJsonObject", () => {

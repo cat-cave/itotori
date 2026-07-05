@@ -173,21 +173,77 @@ const TYPOGRAPHY_MAP: ReadonlyMap<string, string> = new Map([
 ]);
 
 /**
- * Codepoints kept verbatim — all Shift_JIS-encodable (they round-trip from the
- * decoded source): ASCII, CJK symbols/punctuation, kana, CJK ideographs,
- * compatibility ideographs, and fullwidth/halfwidth forms.
+ * The AUTHORITATIVE set of Shift_JIS-encodable Unicode codepoints, derived once
+ * from a REAL Shift_JIS codec rather than a hand-maintained Unicode-range table.
+ *
+ * WHY A CODEC, NOT RANGES. The old range whitelist kept the *entire* CJK Unified
+ * Ideographs (`0x4e00-0x9fff`), Ext-A (`0x3400-0x4dbf`), Kana Ext (`0x31f0-…`)
+ * and CJK-compat (`0xf900-0xfaff`) blocks. But Shift_JIS only covers the JIS
+ * X 0208 subset of those blocks (~6900 ideographs), so non-JIS CJK such as
+ * U+3402, U+9FA6 or U+31F0 PASSED the range check yet is NOT Shift_JIS-encodable
+ * — it then reached the RealLive patchback and raised
+ * `kaifuu.reallive.patchback_target_encode_failure`. The keep-decision must be
+ * "can a real Shift_JIS codec represent this char?", not "is it in a CJK block?".
+ *
+ * We enumerate every valid Shift_JIS byte sequence and decode it with the
+ * platform's WHATWG `TextDecoder("shift_jis")` — the same Shift_JIS index that
+ * `encoding_rs::SHIFT_JIS` (the Rust patchback encoder) implements, so a
+ * codepoint kept here is exactly one the patchback can encode. The WHATWG
+ * Shift_JIS encoder emits a byte sequence for a codepoint iff that codepoint is
+ * a value of this index (ASCII / halfwidth-kana singles plus the JIS X 0208
+ * double-byte plane), so the decode-derived value set equals the encodable set
+ * (every duplicated double-byte pointer also has a canonical pointer, so no
+ * codepoint is reachable *only* via a non-encodable pointer). Building the set
+ * from the codec keeps this dependency-free while remaining verifiably exact.
+ */
+const SJIS_ENCODABLE_CODEPOINTS: ReadonlySet<number> = buildSjisEncodableSet();
+
+function buildSjisEncodableSet(): ReadonlySet<number> {
+  const decoder = new TextDecoder("shift_jis", { fatal: true });
+  const set = new Set<number>();
+  const add = (bytes: number[]): void => {
+    let decoded: string;
+    try {
+      decoded = decoder.decode(new Uint8Array(bytes));
+    } catch {
+      return; // invalid Shift_JIS sequence
+    }
+    const cps = [...decoded];
+    if (cps.length === 1) {
+      const cp = cps[0]?.codePointAt(0);
+      if (cp !== undefined && cp !== 0xfffd) {
+        set.add(cp);
+      }
+    }
+  };
+  // Single-byte: ASCII (0x00-0x7f) + halfwidth katakana (0xa1-0xdf).
+  for (let b = 0x00; b <= 0xff; b++) {
+    add([b]);
+  }
+  // Double-byte: lead 0x81-0x9f / 0xe0-0xfc, trail 0x40-0x7e / 0x80-0xfc.
+  const isLead = (b: number): boolean => (b >= 0x81 && b <= 0x9f) || (b >= 0xe0 && b <= 0xfc);
+  const isTrail = (b: number): boolean => (b >= 0x40 && b <= 0x7e) || (b >= 0x80 && b <= 0xfc);
+  for (let lead = 0x81; lead <= 0xfc; lead++) {
+    if (!isLead(lead)) {
+      continue;
+    }
+    for (let trail = 0x40; trail <= 0xfc; trail++) {
+      if (isTrail(trail)) {
+        add([lead, trail]);
+      }
+    }
+  }
+  return set;
+}
+
+/**
+ * True iff `cp` is representable in Shift_JIS, verified against the real codec
+ * (see {@link SJIS_ENCODABLE_CODEPOINTS}). Everything else — including non-JIS
+ * CJK that the old range table let slip through — is treated as non-encodable
+ * and routed to the NFKD-fold / `?` substitution path by {@link normalizeToSjisSafe}.
  */
 function isSjisSafeKept(cp: number): boolean {
-  return (
-    cp <= 0x7e ||
-    (cp >= 0x3000 && cp <= 0x303f) ||
-    (cp >= 0x3040 && cp <= 0x30ff) ||
-    (cp >= 0x31f0 && cp <= 0x31ff) ||
-    (cp >= 0x3400 && cp <= 0x4dbf) ||
-    (cp >= 0x4e00 && cp <= 0x9fff) ||
-    (cp >= 0xf900 && cp <= 0xfaff) ||
-    (cp >= 0xff00 && cp <= 0xffef)
-  );
+  return SJIS_ENCODABLE_CODEPOINTS.has(cp);
 }
 
 /**
