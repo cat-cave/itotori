@@ -17398,6 +17398,15 @@ pub enum PlainXp3WriterError {
     /// The manifest carries a path that fails Kaifuu's safe-relative-path
     /// rule (see [`validate_safe_relative_path`]).
     UnsafeRelativePath(String),
+    /// A path component under the unpack/output root resolved through a
+    /// symlink while materializing a payload/manifest file. The read/write was
+    /// refused (fd-relative `O_NOFOLLOW` descent) so it could never escape the
+    /// intended root. The string is the manifest-declared relative path that
+    /// was being materialized. Distinct from [`UnsafeRelativePath`], which is a
+    /// pure string-level check: this variant is the real materialization guard
+    /// and fires even when the string looked safe but a symlink was planted in
+    /// the directory tree (TOCTOU / symlink-traversal hardening).
+    SymlinkTraversalRefused(String),
     /// Manifest JSON could not be parsed.
     ManifestParse(String),
 }
@@ -17433,6 +17442,10 @@ impl fmt::Display for PlainXp3WriterError {
             Self::UnsafeRelativePath(path) => {
                 write!(formatter, "unsafe relative manifest path {path:?}")
             }
+            Self::SymlinkTraversalRefused(path) => write!(
+                formatter,
+                "refused symlink traversal materializing manifest path {path:?}: a component under the unpack root is a symlink (semantic: kaifuu.plain_xp3_writer.symlink_traversal_refused)"
+            ),
             Self::ManifestParse(message) => {
                 write!(formatter, "plain XP3 manifest parse error: {message}")
             }
@@ -17454,6 +17467,7 @@ impl PlainXp3WriterError {
             Self::UnsupportedHelperRequired => SEMANTIC_HELPER_REQUIRED,
             Self::UnsupportedProtectedExecutable => SEMANTIC_PROTECTED_EXECUTABLE_UNSUPPORTED,
             Self::UnsupportedVariant(_) => SEMANTIC_UNSUPPORTED_ENGINE_VARIANT,
+            Self::SymlinkTraversalRefused(_) => "kaifuu.plain_xp3_writer.symlink_traversal_refused",
             Self::InventoryError(_)
             | Self::InconsistentManifest(_)
             | Self::Io(_)
@@ -17814,6 +17828,211 @@ pub struct PlainXp3DirectoryManifestEntry {
     pub segments: Vec<PlainXp3ArchiveSegment>,
 }
 
+/// Symlink-safe (`O_NOFOLLOW`, fd-relative) materialization of the unpacked
+/// plain XP3 directory layout.
+///
+/// [`validate_safe_relative_path`] is a string-level first-line check only: it
+/// cannot see the filesystem, so a symlink planted inside the unpack/output
+/// directory (or a directory component that is a symlink pointing outside the
+/// root) would let a `dir.join(relative)` + `fs::write`/`fs::read` escape the
+/// intended root even though the string looked "safe" (TOCTOU / symlink
+/// traversal). These helpers are the real security boundary: they open the
+/// caller-named root, then descend every relative component RELATIVE to a held
+/// directory descriptor with `O_NOFOLLOW`. A symlink squatting on any component
+/// (or the leaf) fails the `openat` with `ELOOP` and is reported as
+/// [`PlainXp3WriterError::SymlinkTraversalRefused`] — the read/write is refused
+/// in place and can never follow the link out of the root, even under a
+/// concurrent swap. Mirrors the UTSUSHI-093 runtime-artifact hardening.
+///
+/// Threat model: the root `dir` is the caller's trust anchor (they explicitly
+/// name it), so the root path itself is resolved normally; every component
+/// BELOW the root — which is influenced by the manifest and/or a prior unpack
+/// of untrusted archive bytes — is descended no-follow.
+#[cfg(unix)]
+mod plain_xp3_no_follow {
+    use super::PlainXp3WriterError;
+    use std::ffi::OsStr;
+    use std::io::{self, Read, Write};
+    use std::os::fd::{AsFd, BorrowedFd, OwnedFd};
+    use std::path::Path;
+
+    use rustix::fs::{AtFlags, FileType, Mode, OFlags};
+    use rustix::io::Errno;
+
+    fn io_err(error: impl Into<io::Error>) -> PlainXp3WriterError {
+        PlainXp3WriterError::Io(error.into().to_string())
+    }
+
+    fn symlink_refused(relative: &str) -> PlainXp3WriterError {
+        PlainXp3WriterError::SymlinkTraversalRefused(relative.to_string())
+    }
+
+    /// Open the caller-named trusted root directory. The root's own path is
+    /// resolved normally (the caller chose it); every component descended below
+    /// it carries `O_NOFOLLOW`.
+    fn open_root(dir: &Path) -> Result<OwnedFd, PlainXp3WriterError> {
+        rustix::fs::open(
+            dir,
+            OFlags::RDONLY | OFlags::DIRECTORY | OFlags::CLOEXEC,
+            Mode::empty(),
+        )
+        .map_err(io_err)
+    }
+
+    /// Re-open `dir` via `.` for an owned descriptor to the same inode without
+    /// following any symlink.
+    fn reopen(dir: BorrowedFd<'_>) -> Result<OwnedFd, PlainXp3WriterError> {
+        rustix::fs::openat(
+            dir,
+            ".",
+            OFlags::RDONLY | OFlags::DIRECTORY | OFlags::CLOEXEC,
+            Mode::empty(),
+        )
+        .map_err(io_err)
+    }
+
+    fn is_symlink(dir: BorrowedFd<'_>, name: &OsStr) -> bool {
+        rustix::fs::statat(dir, name, AtFlags::SYMLINK_NOFOLLOW)
+            .is_ok_and(|stat| FileType::from_raw_mode(stat.st_mode).is_symlink())
+    }
+
+    /// Split a `validate_safe_relative_path`-validated relative path
+    /// (`/`-separated, no empty / `.` / `..` components) into its directory
+    /// components and final filename.
+    fn split_relative(relative: &str) -> Result<(Vec<&OsStr>, &OsStr), PlainXp3WriterError> {
+        let mut parts: Vec<&OsStr> = relative.split('/').map(OsStr::new).collect();
+        let filename = parts.pop().filter(|name| !name.is_empty()).ok_or_else(|| {
+            PlainXp3WriterError::InconsistentManifest(format!(
+                "relative materialization path {relative:?} has no filename component"
+            ))
+        })?;
+        Ok((parts, filename))
+    }
+
+    /// Descend `parents` from the trusted root with `O_NOFOLLOW` on every hop.
+    /// A symlink on any component fails the `openat` (`ELOOP`) and is reported
+    /// as a refused traversal, never followed. Missing components are created
+    /// (`mkdirat`, 0700) when `create` is set.
+    fn descend(
+        root: BorrowedFd<'_>,
+        parents: &[&OsStr],
+        relative: &str,
+        create: bool,
+    ) -> Result<OwnedFd, PlainXp3WriterError> {
+        let mut current = reopen(root)?;
+        for name in parents {
+            if create {
+                match rustix::fs::mkdirat(current.as_fd(), *name, Mode::RWXU) {
+                    Ok(()) => {}
+                    Err(error) if error == Errno::EXIST => {}
+                    Err(error) => return Err(io_err(error)),
+                }
+            }
+            let opened = rustix::fs::openat(
+                current.as_fd(),
+                *name,
+                OFlags::RDONLY | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC,
+                Mode::empty(),
+            );
+            current = match opened {
+                Ok(fd) => fd,
+                Err(error) if error == Errno::LOOP => return Err(symlink_refused(relative)),
+                Err(error) => {
+                    if is_symlink(current.as_fd(), name) {
+                        return Err(symlink_refused(relative));
+                    }
+                    return Err(io_err(error));
+                }
+            };
+        }
+        Ok(current)
+    }
+
+    /// Write `contents` to `relative` under `dir`, refusing any symlink
+    /// component (including a symlink squatting on the leaf). `create_dirs`
+    /// creates missing parent directories no-follow.
+    pub fn write_no_follow(
+        dir: &Path,
+        relative: &str,
+        contents: &[u8],
+        create_dirs: bool,
+    ) -> Result<(), PlainXp3WriterError> {
+        let (parents, filename) = split_relative(relative)?;
+        let root = open_root(dir)?;
+        let dir_fd = descend(root.as_fd(), &parents, relative, create_dirs)?;
+        // A symlink already occupying the leaf is refused with a clear error;
+        // the `O_NOFOLLOW` open below is the actual guard (`ELOOP`) and holds
+        // even under a concurrent swap between this check and the open.
+        if is_symlink(dir_fd.as_fd(), filename) {
+            return Err(symlink_refused(relative));
+        }
+        let opened = rustix::fs::openat(
+            dir_fd.as_fd(),
+            filename,
+            OFlags::WRONLY | OFlags::CREATE | OFlags::TRUNC | OFlags::NOFOLLOW | OFlags::CLOEXEC,
+            Mode::RUSR | Mode::WUSR | Mode::RGRP | Mode::ROTH,
+        );
+        let fd = match opened {
+            Ok(fd) => fd,
+            Err(error) if error == Errno::LOOP => return Err(symlink_refused(relative)),
+            Err(error) => return Err(io_err(error)),
+        };
+        let mut file = std::fs::File::from(fd);
+        file.write_all(contents).map_err(io_err)?;
+        file.sync_all().map_err(io_err)?;
+        Ok(())
+    }
+
+    /// Read `relative` under `dir`, refusing any symlink component (including a
+    /// symlink squatting on the leaf).
+    pub fn read_no_follow(dir: &Path, relative: &str) -> Result<Vec<u8>, PlainXp3WriterError> {
+        let (parents, filename) = split_relative(relative)?;
+        let root = open_root(dir)?;
+        let dir_fd = descend(root.as_fd(), &parents, relative, false)?;
+        let opened = rustix::fs::openat(
+            dir_fd.as_fd(),
+            filename,
+            OFlags::RDONLY | OFlags::NOFOLLOW | OFlags::CLOEXEC,
+            Mode::empty(),
+        );
+        let fd = match opened {
+            Ok(fd) => fd,
+            Err(error) if error == Errno::LOOP => return Err(symlink_refused(relative)),
+            Err(error) => return Err(io_err(error)),
+        };
+        let mut file = std::fs::File::from(fd);
+        let mut buffer = Vec::new();
+        file.read_to_end(&mut buffer).map_err(io_err)?;
+        Ok(buffer)
+    }
+}
+
+/// Non-Unix fallback: the fd-relative `O_NOFOLLOW` primitives the symlink-safe
+/// materialization depends on are Unix-only, so the plain XP3 directory writer
+/// is unsupported there rather than silently falling back to an unsafe
+/// `fs::write`/`fs::read`.
+#[cfg(not(unix))]
+mod plain_xp3_no_follow {
+    use super::PlainXp3WriterError;
+    use std::path::Path;
+
+    const UNSUPPORTED: &str =
+        "symlink-safe plain XP3 directory materialization requires a Unix platform";
+
+    pub fn write_no_follow(
+        _dir: &Path,
+        _relative: &str,
+        _contents: &[u8],
+        _create_dirs: bool,
+    ) -> Result<(), PlainXp3WriterError> {
+        Err(PlainXp3WriterError::Io(UNSUPPORTED.to_string()))
+    }
+
+    pub fn read_no_follow(_dir: &Path, _relative: &str) -> Result<Vec<u8>, PlainXp3WriterError> {
+        Err(PlainXp3WriterError::Io(UNSUPPORTED.to_string()))
+    }
+}
+
 /// Unpack a plain XP3 archive into a directory layout suitable for the
 /// deterministic writer.
 ///
@@ -17834,8 +18053,6 @@ pub fn unpack_plain_xp3_to_directory(
     let archive = read_plain_xp3_archive(bytes)?;
 
     fs::create_dir_all(dir).map_err(|error| PlainXp3WriterError::Io(error.to_string()))?;
-    let payload_dir = dir.join("payload");
-    fs::create_dir_all(&payload_dir).map_err(|error| PlainXp3WriterError::Io(error.to_string()))?;
 
     let mut manifest_entries = Vec::with_capacity(archive.entries.len());
     let width = format!("{}", archive.entries.len().saturating_sub(1))
@@ -17846,13 +18063,10 @@ pub fn unpack_plain_xp3_to_directory(
             .map_err(|_| PlainXp3WriterError::UnsafeRelativePath(entry.path.clone()))?;
         let flat = entry.path.replace('/', "__");
         let payload_relative = format!("payload/{index:0width$}-{flat}.bin");
-        let payload_path = dir.join(&payload_relative);
-        if let Some(parent) = payload_path.parent() {
-            fs::create_dir_all(parent)
-                .map_err(|error| PlainXp3WriterError::Io(error.to_string()))?;
-        }
-        fs::write(&payload_path, &entry.payload)
-            .map_err(|error| PlainXp3WriterError::Io(error.to_string()))?;
+        // Symlink-safe materialization: descends `payload/` no-follow and
+        // refuses a symlink squatting anywhere under the root (create_dirs=true
+        // makes the `payload/` subdir with `mkdirat`).
+        plain_xp3_no_follow::write_no_follow(dir, &payload_relative, &entry.payload, true)?;
         manifest_entries.push(PlainXp3DirectoryManifestEntry {
             path: entry.path.clone(),
             payload_relative_path: payload_relative,
@@ -17870,8 +18084,7 @@ pub fn unpack_plain_xp3_to_directory(
     };
     let manifest_json = serde_json::to_string_pretty(&manifest)
         .map_err(|error| PlainXp3WriterError::ManifestParse(error.to_string()))?;
-    fs::write(dir.join("manifest.json"), manifest_json)
-        .map_err(|error| PlainXp3WriterError::Io(error.to_string()))?;
+    plain_xp3_no_follow::write_no_follow(dir, "manifest.json", manifest_json.as_bytes(), true)?;
     Ok(manifest)
 }
 
@@ -17887,9 +18100,7 @@ pub fn unpack_plain_xp3_to_directory(
 /// [`PlainXp3WriterError::UnsupportedCompressedReplacement`] because the
 /// writer cannot recompress.
 pub fn pack_plain_xp3_from_directory(dir: &Path) -> Result<Vec<u8>, PlainXp3WriterError> {
-    let manifest_path = dir.join("manifest.json");
-    let manifest_bytes =
-        fs::read(&manifest_path).map_err(|error| PlainXp3WriterError::Io(error.to_string()))?;
+    let manifest_bytes = plain_xp3_no_follow::read_no_follow(dir, "manifest.json")?;
     let manifest: PlainXp3DirectoryManifest = serde_json::from_slice(&manifest_bytes)
         .map_err(|error| PlainXp3WriterError::ManifestParse(error.to_string()))?;
 
@@ -17904,9 +18115,9 @@ pub fn pack_plain_xp3_from_directory(dir: &Path) -> Result<Vec<u8>, PlainXp3Writ
         validate_safe_relative_path(&entry.payload_relative_path).map_err(|_| {
             PlainXp3WriterError::UnsafeRelativePath(entry.payload_relative_path.clone())
         })?;
-        let payload_path = dir.join(&entry.payload_relative_path);
-        let payload =
-            fs::read(&payload_path).map_err(|error| PlainXp3WriterError::Io(error.to_string()))?;
+        // Symlink-safe read: refuses a symlink component so a tampered manifest
+        // plus a planted symlink cannot exfiltrate a file outside the root.
+        let payload = plain_xp3_no_follow::read_no_follow(dir, &entry.payload_relative_path)?;
 
         let total_archive_size: u64 = entry.segments.iter().map(|s| s.archive_size).sum();
         if (payload.len() as u64) != total_archive_size {
@@ -17973,9 +18184,7 @@ pub fn replace_plain_xp3_entry_payload(
     entry_path: &str,
     new_payload: &[u8],
 ) -> Result<PlainXp3DirectoryManifest, PlainXp3WriterError> {
-    let manifest_path = dir.join("manifest.json");
-    let manifest_bytes =
-        fs::read(&manifest_path).map_err(|error| PlainXp3WriterError::Io(error.to_string()))?;
+    let manifest_bytes = plain_xp3_no_follow::read_no_follow(dir, "manifest.json")?;
     let mut manifest: PlainXp3DirectoryManifest = serde_json::from_slice(&manifest_bytes)
         .map_err(|error| PlainXp3WriterError::ManifestParse(error.to_string()))?;
     if manifest.variant != PLAIN_XP3_MANIFEST_VARIANT {
@@ -18019,14 +18228,14 @@ pub fn replace_plain_xp3_entry_payload(
     entry.segments[0].archive_size = new_size;
     entry.stored_adler32_hex = Some(format!("{:08x}", compute_adler32(new_payload)));
 
-    let payload_path = dir.join(&entry.payload_relative_path);
-    fs::write(&payload_path, new_payload)
-        .map_err(|error| PlainXp3WriterError::Io(error.to_string()))?;
+    // Symlink-safe write: the payload is materialized first, so if a symlink is
+    // refused here the manifest.json on disk is left untouched (metadata is not
+    // persisted through a partial escape).
+    plain_xp3_no_follow::write_no_follow(dir, &entry.payload_relative_path, new_payload, false)?;
 
     let manifest_json = serde_json::to_string_pretty(&manifest)
         .map_err(|error| PlainXp3WriterError::ManifestParse(error.to_string()))?;
-    fs::write(&manifest_path, manifest_json)
-        .map_err(|error| PlainXp3WriterError::Io(error.to_string()))?;
+    plain_xp3_no_follow::write_no_follow(dir, "manifest.json", manifest_json.as_bytes(), false)?;
     Ok(manifest)
 }
 
@@ -20971,6 +21180,120 @@ mod tests {
         assert_eq!(
             persisted_entry.archive_size, expected_archive_size,
             "replace must fail before mutating manifest metadata"
+        );
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    /// SECURITY regression (KAIFUU-098 symlink-traversal hardening): a symlink
+    /// planted inside the unpack directory must not let `replace` follow it out
+    /// of the root, even when the manifest-declared relative path is
+    /// string-safe. We swap the real `payload/` subdir for a symlink pointing
+    /// OUTSIDE the root; the string check passes ("payload/..." has no `..`),
+    /// but the fd-relative `O_NOFOLLOW` materialization refuses the traversal
+    /// and the outside target is never written.
+    ///
+    /// Mutation proof: reverting `write_no_follow` to a plain `dir.join(rel)` +
+    /// `fs::write` makes the write follow the symlink and create the escaped
+    /// target, flipping the `!escaped_target.exists()` assertion to a failure.
+    #[cfg(unix)]
+    #[test]
+    fn replace_plain_xp3_entry_refuses_symlinked_payload_dir() {
+        use std::os::unix::fs::symlink;
+
+        let fixture_bytes =
+            fs::read(repo_fixture_path("fixtures/kaifuu/kirikiri/plain.xp3")).unwrap();
+        let root = temp_dir("kaifuu-098-replace-symlink-dir");
+        let dir = root.join("unpacked");
+        unpack_plain_xp3_to_directory(&fixture_bytes, &dir).unwrap();
+
+        // Attacker-controlled area OUTSIDE the unpack root.
+        let outside = root.join("outside");
+        fs::create_dir_all(&outside).unwrap();
+
+        let manifest: PlainXp3DirectoryManifest =
+            serde_json::from_slice(&fs::read(dir.join("manifest.json")).unwrap()).unwrap();
+        let target = manifest
+            .entries
+            .iter()
+            .find(|entry| entry.path == "scenario/intro.ks")
+            .unwrap();
+        let leaf = target
+            .payload_relative_path
+            .strip_prefix("payload/")
+            .expect("payload path stays inside the payload/ subdir");
+        let escaped_target = outside.join(leaf);
+
+        // Replace the real `payload/` directory with a symlink pointing outside
+        // the root. The manifest's payloadRelativePath is still "payload/...".
+        let payload_dir = dir.join("payload");
+        fs::remove_dir_all(&payload_dir).unwrap();
+        symlink(&outside, &payload_dir).unwrap();
+
+        let error =
+            replace_plain_xp3_entry_payload(&dir, "scenario/intro.ks", b"must not escape\n")
+                .unwrap_err();
+        assert!(
+            matches!(
+                error,
+                PlainXp3WriterError::SymlinkTraversalRefused(ref path)
+                    if *path == target.payload_relative_path
+            ),
+            "replace must refuse the symlinked payload dir with SymlinkTraversalRefused, got {error:?}"
+        );
+        assert_eq!(
+            error.semantic_code(),
+            "kaifuu.plain_xp3_writer.symlink_traversal_refused"
+        );
+        assert!(
+            !escaped_target.exists(),
+            "replace must not follow the symlinked payload/ dir out of the root"
+        );
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    /// SECURITY regression: the read side (`pack`) must also refuse a symlink
+    /// component, so a tampered manifest plus a planted symlink cannot
+    /// exfiltrate a file outside the root. We stage look-alike payload files in
+    /// a secret dir outside the root and symlink `payload/` at it; the read is
+    /// refused rather than following the link.
+    ///
+    /// Mutation proof: reverting `read_no_follow` to `fs::read(dir.join(rel))`
+    /// makes the read follow the symlink and load the outside bytes, so the
+    /// error becomes `InconsistentManifest`/`Io` instead of
+    /// `SymlinkTraversalRefused` and the assertion fails.
+    #[cfg(unix)]
+    #[test]
+    fn pack_plain_xp3_refuses_symlinked_payload_dir() {
+        use std::os::unix::fs::symlink;
+
+        let fixture_bytes =
+            fs::read(repo_fixture_path("fixtures/kaifuu/kirikiri/plain.xp3")).unwrap();
+        let root = temp_dir("kaifuu-098-pack-symlink-dir");
+        let dir = root.join("unpacked");
+        unpack_plain_xp3_to_directory(&fixture_bytes, &dir).unwrap();
+
+        let secret = root.join("secret");
+        fs::create_dir_all(&secret).unwrap();
+        let manifest: PlainXp3DirectoryManifest =
+            serde_json::from_slice(&fs::read(dir.join("manifest.json")).unwrap()).unwrap();
+        for entry in &manifest.entries {
+            let leaf = entry
+                .payload_relative_path
+                .strip_prefix("payload/")
+                .expect("payload path stays inside the payload/ subdir");
+            fs::write(secret.join(leaf), b"secret-outside-root").unwrap();
+        }
+
+        let payload_dir = dir.join("payload");
+        fs::remove_dir_all(&payload_dir).unwrap();
+        symlink(&secret, &payload_dir).unwrap();
+
+        let error = pack_plain_xp3_from_directory(&dir).unwrap_err();
+        assert!(
+            matches!(error, PlainXp3WriterError::SymlinkTraversalRefused(_)),
+            "pack must refuse the symlinked payload dir on read, got {error:?}"
         );
 
         let _ = fs::remove_dir_all(&root);
