@@ -84,6 +84,20 @@ export type CatalogRecordedStorefrontDiagnostic = {
   message: string;
 };
 
+// Thrown when a recorded storefront response has an unsupported/unexpected
+// shape (parse drift). The error carries the FULL structured semantic
+// diagnostic (fixtureId/sourceRevision/stepKey/sourceId/sourceField), so
+// callers and tests can assert on the metadata directly instead of scraping
+// the formatted message string.
+export class CatalogRecordedStorefrontSemanticError extends Error {
+  readonly diagnostic: CatalogRecordedStorefrontDiagnostic;
+  constructor(diagnostic: CatalogRecordedStorefrontDiagnostic, message: string) {
+    super(message);
+    this.name = "CatalogRecordedStorefrontSemanticError";
+    this.diagnostic = diagnostic;
+  }
+}
+
 export type CatalogRecordedStorefrontResponse = {
   stepKey: string;
   sourceId: string;
@@ -1531,11 +1545,21 @@ function storefrontSemanticError(
   message: string,
   fixture: CatalogRecordedStorefrontFixture,
   response: CatalogRecordedStorefrontResponse,
-  sourceField?: string,
-): Error {
-  const field = sourceField === undefined ? "" : ` sourceField=${sourceField}`;
-  return new Error(
-    `CATALOG-012 semantic diagnostic ${code} fixtureId=${fixture.fixtureId} sourceRevision=${fixture.sourceVersion} stepKey=${response.stepKey} sourceId=${response.sourceId}${field}: ${message}`,
+  sourceField: string,
+): CatalogRecordedStorefrontSemanticError {
+  const diagnostic: CatalogRecordedStorefrontDiagnostic = {
+    code,
+    severity: "error",
+    fixtureId: fixture.fixtureId,
+    sourceRevision: fixture.sourceVersion,
+    stepKey: response.stepKey,
+    sourceId: response.sourceId,
+    sourceField,
+    message,
+  };
+  return new CatalogRecordedStorefrontSemanticError(
+    diagnostic,
+    `CATALOG-012 semantic diagnostic ${code} fixtureId=${fixture.fixtureId} sourceRevision=${fixture.sourceVersion} stepKey=${response.stepKey} sourceId=${response.sourceId} sourceField=${sourceField}: ${message}`,
   );
 }
 

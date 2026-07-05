@@ -24,7 +24,10 @@ import {
   type CatalogRecordedImporterFact,
   type CatalogRecordedPlatformFixture,
   createSteamRecordedStorefrontAdapter,
+  type CatalogRecordedStorefrontDiagnostic,
+  type CatalogRecordedStorefrontDiagnosticCode,
   type CatalogRecordedStorefrontFixture,
+  CatalogRecordedStorefrontSemanticError,
   createWikidataRecordedPlatformAdapter,
 } from "../src/services/catalog-recorded-importers.js";
 import {
@@ -47,6 +50,271 @@ const dlsiteFixture = readStorefrontFixture("dlsite-storefront-replay.json");
 const steamFixture = readStorefrontFixture("steam-storefront-replay.json");
 const igdbFixture = readPlatformFixture("igdb-platform-replay.json");
 const wikidataFixture = readPlatformFixture("wikidata-platform-replay.json");
+
+const DLSITE_FIXTURE_ID = "catalog-recorded-importer-dlsite-storefront-v0.1";
+const DLSITE_SOURCE_REVISION = "dlsite-storefront-synthetic-2026-06-18";
+const STEAM_FIXTURE_ID = "catalog-recorded-importer-steam-storefront-v0.1";
+const STEAM_SOURCE_REVISION = "steam-storefront-synthetic-2026-06-18";
+
+type StorefrontDriftExpectation = {
+  code: CatalogRecordedStorefrontDiagnosticCode;
+  fixtureId: string;
+  sourceRevision: string;
+  stepKey: string;
+  sourceId: string;
+  sourceField: string;
+};
+
+type StorefrontDriftCase = {
+  name: string;
+  mutate: (fixture: CatalogRecordedStorefrontFixture) => CatalogRecordedStorefrontFixture;
+  expected: StorefrontDriftExpectation;
+};
+
+// Each DLsite parse-drift / unsupported-shape case: a synthetic mutation of the
+// recorded fixture that drives one diagnostic, plus the COMPLETE diagnostic
+// metadata (fixtureId/sourceRevision/stepKey/sourceId/sourceField) it must emit.
+const dlsiteUnsupportedShapeMatrix: readonly StorefrontDriftCase[] = [
+  {
+    name: "missing required title field",
+    mutate: (fixture) => {
+      const response = required(fixture.responses[0], "DLsite response");
+      delete response.payload.title;
+      return fixture;
+    },
+    expected: dlsiteExpectation("parse_drift", 0, "title"),
+  },
+  {
+    name: "missing workno identity",
+    mutate: (fixture) => {
+      const response = required(fixture.responses[0], "DLsite response");
+      delete response.payload.workno;
+      delete response.payload.product_id;
+      delete response.payload.id;
+      return fixture;
+    },
+    expected: dlsiteExpectation("parse_drift", 0, "workno"),
+  },
+  {
+    name: "workno mismatched against fixture source id",
+    mutate: (fixture) => {
+      const response = required(fixture.responses[0], "DLsite response");
+      response.payload.workno = "RJ09999999";
+      return fixture;
+    },
+    expected: dlsiteExpectation("parse_drift", 0, "workno"),
+  },
+  {
+    name: "missing translation_info tree",
+    mutate: (fixture) => {
+      const response = required(fixture.responses[0], "DLsite response");
+      delete response.payload.translation_info;
+      return fixture;
+    },
+    expected: dlsiteExpectation("unsupported_response_shape", 0, "translation_info"),
+  },
+  {
+    name: "language_editions is not an array",
+    mutate: (fixture) => {
+      const response = required(fixture.responses[0], "DLsite response");
+      record(response.payload.translation_info, "translation_info").language_editions =
+        "not-an-array";
+      return fixture;
+    },
+    expected: dlsiteExpectation("parse_drift", 0, "translation_info.language_editions"),
+  },
+  {
+    name: "language edition entry is not an object",
+    mutate: (fixture) => {
+      const response = required(fixture.responses[0], "DLsite response");
+      const editions = dlsiteLanguageEditions(response.payload);
+      editions[0] = "not-an-object";
+      return fixture;
+    },
+    expected: dlsiteExpectation("parse_drift", 0, "translation_info.language_editions[0]"),
+  },
+  {
+    name: "language edition status enum drift",
+    mutate: (fixture) => {
+      const response = required(fixture.responses[0], "DLsite response");
+      const editions = dlsiteLanguageEditions(response.payload);
+      record(editions[0], "language edition").status = "official-ish";
+      return fixture;
+    },
+    expected: dlsiteExpectation("parse_drift", 0, "translation_info.language_editions[0].status"),
+  },
+  {
+    name: "language edition confidence enum drift",
+    mutate: (fixture) => {
+      const response = required(fixture.responses[1], "DLsite response");
+      const editions = dlsiteLanguageEditions(response.payload);
+      record(editions[1], "language edition").confidence = "pretty_sure";
+      return fixture;
+    },
+    expected: dlsiteExpectation(
+      "parse_drift",
+      1,
+      "translation_info.language_editions[1].confidence",
+    ),
+  },
+];
+
+// Each Steam parse-drift / unsupported-shape case, with the complete diagnostic
+// metadata the appdetails envelope parser must emit.
+const steamUnsupportedShapeMatrix: readonly StorefrontDriftCase[] = [
+  {
+    name: "unsuccessful response without delisted status",
+    mutate: (fixture) => {
+      const response = required(fixture.responses[1], "Steam response");
+      delete record(response.payload["2100099"], "appdetails envelope").delisting_status;
+      return fixture;
+    },
+    expected: steamExpectation("unsupported_response_shape", 1, "2100099.success"),
+  },
+  {
+    name: "delisted response app id mismatch",
+    mutate: (fixture) => {
+      const response = required(fixture.responses[1], "Steam response");
+      record(response.payload["2100099"], "appdetails envelope").steam_appid = "9999999";
+      return fixture;
+    },
+    expected: steamExpectation("parse_drift", 1, "2100099.steam_appid"),
+  },
+  {
+    name: "successful response missing data object",
+    mutate: (fixture) => {
+      const response = required(fixture.responses[0], "Steam response");
+      response.payload = { "2100010": { success: true } };
+      return fixture;
+    },
+    expected: steamExpectation("unsupported_response_shape", 0, "2100010.data"),
+  },
+  {
+    name: "multi-key appdetails envelope",
+    mutate: (fixture) => {
+      const response = required(fixture.responses[0], "Steam response");
+      response.payload = {
+        "2100010": { success: true, data: { steam_appid: 2100010, name: "Promise" } },
+        "2100011": { success: false, delisting_status: "delisted" },
+      };
+      return fixture;
+    },
+    expected: steamExpectation("unsupported_response_shape", 0, "appdetails"),
+  },
+  {
+    name: "envelope value is not an object",
+    mutate: (fixture) => {
+      const response = required(fixture.responses[0], "Steam response");
+      response.payload = { "2100010": "not-an-object" };
+      return fixture;
+    },
+    expected: steamExpectation("unsupported_response_shape", 0, "2100010"),
+  },
+  {
+    name: "envelope key mismatched against fixture source id",
+    mutate: (fixture) => {
+      const response = required(fixture.responses[0], "Steam response");
+      response.payload = { "2100011": { success: true, data: { steam_appid: 2100011 } } };
+      return fixture;
+    },
+    expected: steamExpectation("parse_drift", 0, "2100011"),
+  },
+  {
+    name: "data.steam_appid mismatched against fixture source id",
+    mutate: (fixture) => {
+      const response = required(fixture.responses[0], "Steam response");
+      response.payload = {
+        "2100010": { success: true, data: { steam_appid: 2100011, name: "Drifted" } },
+      };
+      return fixture;
+    },
+    expected: steamExpectation("parse_drift", 0, "data.steam_appid"),
+  },
+  {
+    name: "successful response missing name field",
+    mutate: (fixture) => {
+      const response = required(fixture.responses[0], "Steam response");
+      response.payload = { "2100010": { success: true, data: { steam_appid: 2100010 } } };
+      return fixture;
+    },
+    expected: steamExpectation("parse_drift", 0, "name"),
+  },
+];
+
+function dlsiteExpectation(
+  code: CatalogRecordedStorefrontDiagnosticCode,
+  responseIndex: number,
+  sourceField: string,
+): StorefrontDriftExpectation {
+  const response = required(dlsiteFixture.responses[responseIndex], "DLsite response");
+  return {
+    code,
+    fixtureId: DLSITE_FIXTURE_ID,
+    sourceRevision: DLSITE_SOURCE_REVISION,
+    stepKey: response.stepKey,
+    sourceId: response.sourceId,
+    sourceField,
+  };
+}
+
+function steamExpectation(
+  code: CatalogRecordedStorefrontDiagnosticCode,
+  responseIndex: number,
+  sourceField: string,
+): StorefrontDriftExpectation {
+  const response = required(steamFixture.responses[responseIndex], "Steam response");
+  return {
+    code,
+    fixtureId: STEAM_FIXTURE_ID,
+    sourceRevision: STEAM_SOURCE_REVISION,
+    stepKey: response.stepKey,
+    sourceId: response.sourceId,
+    sourceField,
+  };
+}
+
+function dlsiteLanguageEditions(payload: Record<string, unknown>): unknown[] {
+  const translationInfo = record(payload.translation_info, "translation_info");
+  return requiredArray(translationInfo.language_editions, "language_editions");
+}
+
+function captureStorefrontSemanticDiagnostic(
+  build: () => unknown,
+): CatalogRecordedStorefrontDiagnostic {
+  try {
+    build();
+  } catch (error) {
+    if (error instanceof CatalogRecordedStorefrontSemanticError) {
+      return error.diagnostic;
+    }
+    throw error;
+  }
+  throw new Error("expected a CatalogRecordedStorefrontSemanticError to be thrown");
+}
+
+function assertCompleteStorefrontDiagnostic(
+  diagnostic: CatalogRecordedStorefrontDiagnostic,
+  expected: StorefrontDriftExpectation,
+): void {
+  expect(diagnostic.code).toBe(expected.code);
+  expect(diagnostic.fixtureId).toBe(expected.fixtureId);
+  expect(diagnostic.sourceRevision).toBe(expected.sourceRevision);
+  expect(diagnostic.stepKey).toBe(expected.stepKey);
+  expect(diagnostic.sourceId).toBe(expected.sourceId);
+  expect(diagnostic.sourceField).toBe(expected.sourceField);
+  expect(diagnostic.severity).toBe("error");
+  // Every parse-drift case must carry the COMPLETE semantic metadata: a
+  // diagnostic missing any of the five fields (empty/undefined) fails here.
+  for (const field of [
+    "fixtureId",
+    "sourceRevision",
+    "stepKey",
+    "sourceId",
+    "sourceField",
+  ] as const) {
+    expect(diagnostic[field], `diagnostic.${field} must be present`).toBeTruthy();
+  }
+}
 
 describe("catalog recorded source importers", () => {
   it("imports VNDB dump facts with releases, language facts, source ids, and source-version provenance", async () => {
@@ -1087,93 +1355,27 @@ describe("catalog recorded source importers", () => {
     );
   });
 
-  it("reports parser drift and unsupported storefront response shapes as semantic diagnostics", () => {
-    const badDlsite = structuredClone(dlsiteFixture);
-    const dlsiteResponse = required(badDlsite.responses[0], "DLsite response");
-    dlsiteResponse.payload = { ...dlsiteResponse.payload };
-    delete dlsiteResponse.payload.title;
-    expect(() => createDlsiteRecordedStorefrontAdapter(badDlsite)).toThrow(
-      /CATALOG-012 semantic diagnostic parse_drift fixtureId=catalog-recorded-importer-dlsite-storefront-v0\.1 sourceRevision=dlsite-storefront-synthetic-2026-06-18/u,
-    );
+  describe("unsupported recorded storefront response shapes carry complete semantic diagnostics", () => {
+    for (const driftCase of dlsiteUnsupportedShapeMatrix) {
+      it(`DLsite ${driftCase.name} asserts full diagnostic metadata`, () => {
+        const diagnostic = captureStorefrontSemanticDiagnostic(() =>
+          createDlsiteRecordedStorefrontAdapter(driftCase.mutate(structuredClone(dlsiteFixture))),
+        );
+        assertCompleteStorefrontDiagnostic(diagnostic, driftCase.expected);
+      });
+    }
 
-    const missingTranslationInfo = structuredClone(dlsiteFixture);
-    const missingTranslationInfoResponse = required(
-      missingTranslationInfo.responses[0],
-      "DLsite response",
-    );
-    missingTranslationInfoResponse.payload = { ...missingTranslationInfoResponse.payload };
-    delete missingTranslationInfoResponse.payload.translation_info;
-    expect(() => createDlsiteRecordedStorefrontAdapter(missingTranslationInfo)).toThrow(
-      /CATALOG-012 semantic diagnostic unsupported_response_shape fixtureId=catalog-recorded-importer-dlsite-storefront-v0\.1 sourceRevision=dlsite-storefront-synthetic-2026-06-18 stepKey=dlsite-rj01111111 sourceId=RJ01111111 sourceField=translation_info/u,
-    );
-
-    const badSteam = structuredClone(steamFixture);
-    const steamResponse = required(badSteam.responses[1], "Steam response");
-    steamResponse.payload = {
-      "2100099": { success: false, steam_appid: "2100099" },
-    };
-    expect(() => createSteamRecordedStorefrontAdapter(badSteam)).toThrow(
-      /CATALOG-012 semantic diagnostic unsupported_response_shape fixtureId=catalog-recorded-importer-steam-storefront-v0\.1 sourceRevision=steam-storefront-synthetic-2026-06-18/u,
-    );
-
-    const missingData = structuredClone(steamFixture);
-    const missingDataResponse = required(missingData.responses[0], "Steam response");
-    missingDataResponse.payload = { "2100010": { success: true } };
-    expect(() => createSteamRecordedStorefrontAdapter(missingData)).toThrow(
-      /CATALOG-012 semantic diagnostic unsupported_response_shape fixtureId=catalog-recorded-importer-steam-storefront-v0\.1 sourceRevision=steam-storefront-synthetic-2026-06-18 stepKey=steam-2100010 sourceId=2100010 sourceField=2100010\.data/u,
-    );
-
-    const appIdMismatch = structuredClone(steamFixture);
-    const appIdMismatchResponse = required(appIdMismatch.responses[0], "Steam response");
-    appIdMismatchResponse.payload = {
-      "2100011": { success: true, data: { steam_appid: 2100011 } },
-    };
-    expect(() => createSteamRecordedStorefrontAdapter(appIdMismatch)).toThrow(
-      /CATALOG-012 semantic diagnostic parse_drift fixtureId=catalog-recorded-importer-steam-storefront-v0\.1 sourceRevision=steam-storefront-synthetic-2026-06-18 stepKey=steam-2100010 sourceId=2100010 sourceField=2100011/u,
-    );
-
-    const unexpectedEnvelope = structuredClone(steamFixture);
-    const unexpectedEnvelopeResponse = required(unexpectedEnvelope.responses[0], "Steam response");
-    unexpectedEnvelopeResponse.payload = {
-      "2100010": { success: true, data: { steam_appid: 2100010 } },
-      "2100011": { success: false, delisting_status: "delisted" },
-    };
-    expect(() => createSteamRecordedStorefrontAdapter(unexpectedEnvelope)).toThrow(
-      /CATALOG-012 semantic diagnostic unsupported_response_shape fixtureId=catalog-recorded-importer-steam-storefront-v0\.1 sourceRevision=steam-storefront-synthetic-2026-06-18 stepKey=steam-2100010 sourceId=2100010 sourceField=appdetails/u,
-    );
+    for (const driftCase of steamUnsupportedShapeMatrix) {
+      it(`Steam ${driftCase.name} asserts full diagnostic metadata`, () => {
+        const diagnostic = captureStorefrontSemanticDiagnostic(() =>
+          createSteamRecordedStorefrontAdapter(driftCase.mutate(structuredClone(steamFixture))),
+        );
+        assertCompleteStorefrontDiagnostic(diagnostic, driftCase.expected);
+      });
+    }
   });
 
-  it("validates DLsite enum drift and preserves unmapped Steam locale diagnostics", async () => {
-    const badStatus = structuredClone(dlsiteFixture);
-    const badStatusResponse = required(badStatus.responses[0], "DLsite response");
-    const badStatusTranslationInfo = record(
-      badStatusResponse.payload.translation_info,
-      "translation_info",
-    );
-    const badStatusEditions = requiredArray(
-      badStatusTranslationInfo.language_editions,
-      "language_editions",
-    );
-    record(badStatusEditions[0], "language edition").status = "official-ish";
-    expect(() => createDlsiteRecordedStorefrontAdapter(badStatus)).toThrow(
-      /CATALOG-012 semantic diagnostic parse_drift fixtureId=catalog-recorded-importer-dlsite-storefront-v0\.1 sourceRevision=dlsite-storefront-synthetic-2026-06-18 stepKey=dlsite-rj01111111 sourceId=RJ01111111 sourceField=translation_info\.language_editions\[0\]\.status/u,
-    );
-
-    const badConfidence = structuredClone(dlsiteFixture);
-    const badConfidenceResponse = required(badConfidence.responses[1], "DLsite response");
-    const badConfidenceTranslationInfo = record(
-      badConfidenceResponse.payload.translation_info,
-      "translation_info",
-    );
-    const badConfidenceEditions = requiredArray(
-      badConfidenceTranslationInfo.language_editions,
-      "language_editions",
-    );
-    record(badConfidenceEditions[1], "language edition").confidence = "pretty_sure";
-    expect(() => createDlsiteRecordedStorefrontAdapter(badConfidence)).toThrow(
-      /CATALOG-012 semantic diagnostic parse_drift fixtureId=catalog-recorded-importer-dlsite-storefront-v0\.1 sourceRevision=dlsite-storefront-synthetic-2026-06-18 stepKey=dlsite-rj02222222 sourceId=RJ02222222 sourceField=translation_info\.language_editions\[1\]\.confidence/u,
-    );
-
+  it("preserves unmapped Steam locale diagnostics", async () => {
     const unknownSteamLocale = structuredClone(steamFixture);
     const unknownSteamLocaleResponse = required(unknownSteamLocale.responses[0], "Steam response");
     const appdetails = record(
@@ -1190,6 +1392,8 @@ describe("catalog recorded source importers", () => {
           code: "parse_drift",
           fixtureId: "catalog-recorded-importer-steam-storefront-v0.1",
           sourceRevision: "steam-storefront-synthetic-2026-06-18",
+          stepKey: "steam-2100010",
+          sourceId: "2100010",
           sourceField: "data.supported_languages",
         }),
       ],
