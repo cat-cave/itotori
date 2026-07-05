@@ -15,6 +15,17 @@ kaifuu-rpgmaker = { path = "../kaifuu-rpgmaker" }
 kaifuu-vault-source = { path = "../kaifuu-vault-source" }
 serde_json.workspace = true
 
+[features]
+# Test/debug-only failure-injection seam for the `binary-patch-smoke`
+# subcommand (the `--inject-failure` flag / `InjectFailure` enum /
+# `BinaryPatchSmokeConfig.inject_failure` field used to exercise the
+# rollback/failure paths). NOT a default feature: a release build with
+# `--no-default-features` gates the seam out entirely and the CLI rejects
+# `--inject-failure` as an unknown flag. `cfg(debug_assertions)` keeps the
+# seam for ordinary `cargo test`/debug builds, so this feature only needs
+# to be enabled to keep the seam in an explicit release build.
+failure-injection = []
+
 [dev-dependencies]
 rusqlite = { workspace = true }
 sevenz-rust2 = { workspace = true }

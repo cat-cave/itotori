@@ -44,6 +44,14 @@ use kaifuu_reallive::{
 use serde_json::{Value, json};
 
 /// Test-seam failure injection mode.
+///
+/// This is a TEST/DEBUG affordance (KAIFUU-187): it lets a caller inject
+/// artificial preflight/verify failures to exercise the rollback paths. It
+/// MUST NOT be reachable from a shipped release binary, so the whole seam is
+/// gated behind `cfg(any(debug_assertions, feature = "failure-injection"))`.
+/// A release `--no-default-features` build compiles this out entirely and the
+/// CLI rejects `--inject-failure` as an unknown flag.
+#[cfg(any(debug_assertions, feature = "failure-injection"))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InjectFailure {
     None,
@@ -52,6 +60,7 @@ pub enum InjectFailure {
     VerifyHashMismatch,
 }
 
+#[cfg(any(debug_assertions, feature = "failure-injection"))]
 impl InjectFailure {
     pub fn parse(value: &str) -> Result<Self, String> {
         match value {
@@ -80,6 +89,10 @@ pub struct BinaryPatchSmokeConfig<'a> {
     /// unit via the canonical `bundle_driven` patchback.
     pub fixture_dir: Option<&'a Path>,
     pub output_dir: &'a Path,
+    /// Test/debug-only failure-injection selector (KAIFUU-187). Gated behind
+    /// `cfg(any(debug_assertions, feature = "failure-injection"))` so it is
+    /// absent from a release `--no-default-features` build.
+    #[cfg(any(debug_assertions, feature = "failure-injection"))]
     pub inject_failure: InjectFailure,
     pub run_id: &'a str,
 }
@@ -552,10 +565,13 @@ pub fn run_binary_patch_smoke(config: BinaryPatchSmokeConfig<'_>) -> BinarySmoke
     // forcing a typed `ProvenanceMismatch` (source-incompatible) out of
     // the bundle_driven driver — the bundle_driven analogue of the old
     // stale-source-hash refusal.
+    #[cfg(any(debug_assertions, feature = "failure-injection"))]
     let source_unit_key = match config.inject_failure {
         InjectFailure::PreflightSourceHash => "reallive:scene-0001#9999",
         _ => SYNTHETIC_DIALOGUE_SOURCE_UNIT_KEY,
     };
+    #[cfg(not(any(debug_assertions, feature = "failure-injection")))]
+    let source_unit_key = SYNTHETIC_DIALOGUE_SOURCE_UNIT_KEY;
     let bundle_value =
         build_synthetic_translated_bundle_json(SYNTHETIC_TARGET_TEXT, source_unit_key);
     let translated = match TranslatedBundleV02::from_json(&bundle_value) {
@@ -602,6 +618,7 @@ pub fn run_binary_patch_smoke(config: BinaryPatchSmokeConfig<'_>) -> BinarySmoke
     // Step 3: apply --inject-failure that does NOT change the patchback
     // input shape.
     // ---------------------------------------------------------------
+    #[cfg(any(debug_assertions, feature = "failure-injection"))]
     let payload_to_stage = match config.inject_failure {
         InjectFailure::VerifyHashMismatch => {
             // Flip the last byte so verify mismatches.
@@ -613,11 +630,16 @@ pub fn run_binary_patch_smoke(config: BinaryPatchSmokeConfig<'_>) -> BinarySmoke
         }
         _ => patched_bytes.clone(),
     };
+    #[cfg(not(any(debug_assertions, feature = "failure-injection")))]
+    let payload_to_stage = patched_bytes.clone();
 
+    #[cfg(any(debug_assertions, feature = "failure-injection"))]
     let byte_budget = match config.inject_failure {
         InjectFailure::PreflightByteBudget => 1, // force preflight rejection
         _ => patched_bytes.len() as u64,
     };
+    #[cfg(not(any(debug_assertions, feature = "failure-injection")))]
+    let byte_budget = patched_bytes.len() as u64;
 
     let expected_source_hash = sha256_hash_bytes(&archive_bytes);
     let expected_output_hash = sha256_hash_bytes(&patched_bytes);

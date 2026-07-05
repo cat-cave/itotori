@@ -21,6 +21,18 @@
 //! keep the archive byte-length-identical (so the composed KAIFUU-084
 //! identity-relocation transaction promotes), but the dialogue bytes
 //! change and the patched archive still re-parses as a one-scene envelope.
+//!
+//! # KAIFUU-187 — failure-injection gating
+//!
+//! These tests exercise the `InjectFailure` seam, which is compiled out of a
+//! release `--no-default-features` build. The whole test file is therefore
+//! gated behind the same `cfg(any(debug_assertions, feature =
+//! "failure-injection"))` predicate: it compiles and runs under ordinary
+//! `cargo test` (debug) or with `--features failure-injection`, and is an
+//! empty test crate in a release `--no-default-features` build (so
+//! `clippy --release --no-default-features --all-targets` sees no dangling
+//! references to the gated-out enum/field).
+#![cfg(any(debug_assertions, feature = "failure-injection"))]
 
 #[path = "../src/binary_patch_smoke.rs"]
 mod binary_patch_smoke;

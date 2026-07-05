@@ -1463,15 +1463,31 @@ fn game_root_gameexe_path(game_root: &Path) -> PathBuf {
 fn run_binary_patch_smoke_command(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
     let fixture_dir = flag_optional(args, "--fixture").map(PathBuf::from);
     let output_dir = PathBuf::from(flag(args, "--output")?);
-    let inject_failure_raw = flag_optional(args, "--inject-failure").unwrap_or("none");
-    let inject_failure = binary_patch_smoke::InjectFailure::parse(inject_failure_raw)
-        .map_err(|message| -> Box<dyn std::error::Error> { message.into() })?;
+
+    // KAIFUU-187: `--inject-failure` is a test/debug-only rollback-testing
+    // seam. It is only parsed when the failure-injection seam is compiled in
+    // (`cfg(any(debug_assertions, feature = "failure-injection"))`). In a
+    // release `--no-default-features` build the flag is NOT registered, so a
+    // caller-supplied `--inject-failure` is an unknown flag and is rejected
+    // rather than silently ignored by the manual arg parser.
+    #[cfg(any(debug_assertions, feature = "failure-injection"))]
+    let inject_failure = {
+        let inject_failure_raw = flag_optional(args, "--inject-failure").unwrap_or("none");
+        binary_patch_smoke::InjectFailure::parse(inject_failure_raw)
+            .map_err(|message| -> Box<dyn std::error::Error> { message.into() })?
+    };
+    #[cfg(not(any(debug_assertions, feature = "failure-injection")))]
+    if flag_present(args, "--inject-failure") {
+        return Err("unknown flag --inject-failure".into());
+    }
+
     let run_id = flag_optional(args, "--run-id").unwrap_or("binary-patch-smoke-0001");
 
     let outcome =
         binary_patch_smoke::run_binary_patch_smoke(binary_patch_smoke::BinaryPatchSmokeConfig {
             fixture_dir: fixture_dir.as_deref(),
             output_dir: &output_dir,
+            #[cfg(any(debug_assertions, feature = "failure-injection"))]
             inject_failure,
             run_id,
         });
