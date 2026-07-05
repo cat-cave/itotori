@@ -547,6 +547,8 @@ export type {
   CatalogCrawlerAdapterReadiness,
   CatalogCrawlerAdapterContext,
   CatalogCrawlerAdapterStep,
+  CatalogCrawlerBeforeCommitStepImportContext,
+  CatalogCrawlerBeforeCommitStepImportHook,
   CatalogCrawlerFactImportContract,
   CatalogCrawlerFactImportEvidence,
   CatalogCrawlerFactImportProof,

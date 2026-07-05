@@ -126,6 +126,28 @@ export type CatalogCrawlerVerifyFactImportStep<TFact = unknown> = (
   | null
   | undefined;
 
+/**
+ * Runner extension point that fires in the CATALOG-074 crash window: after the
+ * source facts have been ingested and the import proof has been validated and
+ * verified against persisted evidence, but strictly BEFORE `commitStepImport`
+ * marks the crawler step imported and advances the checkpoint.
+ *
+ * A `beforeCommitStepImport` hook that throws faithfully models a process crash
+ * in that window: the facts are already written, but the step never reaches the
+ * imported marker, so a replay must re-ingest idempotently without duplicating
+ * facts. It is a real injectable seam for failure-injection harnesses (no manual
+ * DB surgery required) and doubles as a clean before-commit extension point.
+ */
+export type CatalogCrawlerBeforeCommitStepImportContext<TFact = unknown> =
+  CatalogCrawlerIngestContext<TFact> & {
+    alreadyImported: boolean;
+    importProof: CatalogCrawlerFactImportProof | undefined;
+  };
+
+export type CatalogCrawlerBeforeCommitStepImportHook<TFact = unknown> = (
+  context: CatalogCrawlerBeforeCommitStepImportContext<TFact>,
+) => Promise<void> | void;
+
 export type CatalogCrawlerRunnerOptions<TFact = unknown> = {
   repository: ItotoriCatalogCrawlerRepositoryPort;
   actor: AuthorizationActor;
@@ -133,6 +155,7 @@ export type CatalogCrawlerRunnerOptions<TFact = unknown> = {
   mode?: "live" | "recorded_fixture";
   ingestStep?: CatalogCrawlerIngestStep<TFact>;
   verifyFactImport?: CatalogCrawlerVerifyFactImportStep<TFact>;
+  beforeCommitStepImport?: CatalogCrawlerBeforeCommitStepImportHook<TFact>;
   leaseSeconds?: number;
   metadata?: CatalogCrawlerJsonRecord;
 };
@@ -246,6 +269,7 @@ export class ItotoriCatalogCrawlerRunner {
           facts: adapterStep.facts,
         };
 
+        let stepImportProof: CatalogCrawlerFactImportProof | undefined;
         try {
           if (recorded.alreadyImported) {
             if (adapter.factImportContract !== undefined) {
@@ -276,6 +300,7 @@ export class ItotoriCatalogCrawlerRunner {
                 importProof,
               );
             }
+            stepImportProof = importProof ?? undefined;
             importedSteps += 1;
           }
         } catch (error) {
@@ -299,6 +324,17 @@ export class ItotoriCatalogCrawlerRunner {
         }
 
         lastCursor = adapterStep.checkpointCursor;
+        if (options.beforeCommitStepImport !== undefined) {
+          // CATALOG-074 crash window: facts are ingested and the proof is
+          // verified, but the step has NOT yet been committed as imported. A
+          // hook that throws here models a real crash in that window; the outer
+          // catch fails the job and the still-`fetched` step replays idempotently.
+          await options.beforeCommitStepImport({
+            ...ingestContext,
+            alreadyImported: recorded.alreadyImported,
+            importProof: stepImportProof,
+          });
+        }
         const committed = await options.repository.commitStepImport(options.actor, {
           crawlerJobId: job.crawlerJobId,
           workerId: options.workerId,
