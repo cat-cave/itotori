@@ -343,7 +343,7 @@ impl CompatDiagnostic {
         self.severity.is_blocking()
     }
 
-    fn redacted_for_report(&self) -> Self {
+    pub(crate) fn redacted_for_report(&self) -> Self {
         Self {
             layer: self.layer,
             status: self.status,

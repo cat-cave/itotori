@@ -300,9 +300,12 @@ fn run_with_args_and_registry(
         Some("binary-patch-smoke") => {
             return run_binary_patch_smoke_command(&args);
         }
+        Some("compat-evidence") => {
+            return run_compat_evidence_command(&args);
+        }
         _ => {
             return Err(
-                "usage: kaifuu <detect|extract|asset-inventory|patch|diff|apply|verify|golden|offset-map|helper|helper-result|key-helper|helper-registry|key|siglus|rpgmaker|rpg-maker|xp3|profile|readiness|capabilities|binary-patch-smoke> ..."
+                "usage: kaifuu <detect|extract|asset-inventory|patch|diff|apply|verify|golden|offset-map|helper|helper-result|key-helper|helper-registry|key|siglus|rpgmaker|rpg-maker|xp3|profile|readiness|capabilities|binary-patch-smoke|compat-evidence> ..."
                     .into(),
             );
         }
@@ -3206,6 +3209,51 @@ fn promote_patch_staging_dir(staging_output: &Path, output: &Path) -> KaifuuResu
     promote_staged_directory_no_clobber(staging_output, output, "patch output directory")
 }
 
+/// KAIFUU-060 — `kaifuu compat-evidence` — the claimed-support compatibility
+/// EVIDENCE integration command.
+///
+/// It produces one suite-readable [`kaifuu_core::compat_evidence::CompatEvidenceReport`]
+/// that INTEGRATES the three existing sources for a KAIFUU-106 reproduction
+/// bundle: the KAIFUU-105 claimed-support tuple validation (engine family,
+/// variant, container, crypto, codec, surface, patch-back mode, profile/fixture
+/// id, secret-requirement ids, diagnostics), the redacted repro-bundle index
+/// (KAIFUU-106), and the KAIFUU-107 regression verdict per claim. The written
+/// artifact is always the REDACTED form (ref-only ids/hashes/counts).
+///
+/// Two modes:
+///   `--fixture`                       integrate the committed SYNTHETIC
+///                                     fixtures (no private inputs) — emits the
+///                                     golden shape; and
+///   `--bundle <p> --catalogue <p> --baseline <p>`
+///                                     integrate real inputs read from JSON.
+/// Both require `--output <p>`.
+fn run_compat_evidence_command(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
+    use kaifuu_core::compat_evidence::integrate_compat_evidence;
+    use kaifuu_core::compat_regression::{PublicFixtureCatalogue, RegressionBaseline};
+    use kaifuu_core::repro_bundle::ReproBundle;
+
+    let output = PathBuf::from(flag(args, "--output")?);
+
+    let report = if flag_present(args, "--fixture") {
+        use kaifuu_core::compat_regression::fixtures as regression_fixtures;
+        use kaifuu_core::repro_bundle::fixtures as bundle_fixtures;
+        integrate_compat_evidence(
+            &bundle_fixtures::clean_bundle(),
+            &regression_fixtures::public_catalogue(),
+            &regression_fixtures::baseline(),
+        )
+    } else {
+        let bundle: ReproBundle = read_json(&PathBuf::from(flag(args, "--bundle")?))?;
+        let catalogue: PublicFixtureCatalogue =
+            read_json(&PathBuf::from(flag(args, "--catalogue")?))?;
+        let baseline: RegressionBaseline = read_json(&PathBuf::from(flag(args, "--baseline")?))?;
+        integrate_compat_evidence(&bundle, &catalogue, &baseline)
+    };
+
+    write_json(&output, &report.redacted_for_report())?;
+    Ok(())
+}
+
 fn positional(args: &[String], index: usize) -> Result<&str, Box<dyn std::error::Error>> {
     args.get(index)
         .map(String::as_str)
@@ -3384,6 +3432,61 @@ mod tests {
         assert!(report.get("stdout").is_none());
         assert!(report.get("stderr").is_none());
         assert!(validate_helper_result_value(&report).failures.is_empty());
+    }
+
+    #[test]
+    fn compat_evidence_fixture_writes_integrated_report() {
+        // The `--fixture` mode integrates the committed synthetic sources into
+        // one suite-readable report, listing all three sources per claimed
+        // support, and writes the REDACTED artifact.
+        let root = temp_dir("compat-evidence-fixture");
+        let output = root.join("compat-evidence.json");
+
+        run_with_args(vec![
+            "compat-evidence".to_string(),
+            "--fixture".to_string(),
+            "--output".to_string(),
+            output.to_str().unwrap().to_string(),
+        ])
+        .unwrap();
+
+        let report: serde_json::Value = read_json(&output).unwrap();
+        assert_eq!(report["schemaVersion"], "0.1.0");
+        assert_eq!(report["status"], "passed");
+        assert_eq!(report["bundleSelfSufficient"], true);
+        let supports = report["supports"].as_array().expect("supports array");
+        assert_eq!(supports.len(), 2);
+        // Each claimed support lists every acceptance field from all three
+        // sources.
+        for support in supports {
+            for field in [
+                "engineFamily",
+                "engineVariant",
+                "container",
+                "crypto",
+                "codec",
+                "surface",
+                "patchBackMode",
+                "profileOrFixtureId",
+                "secretRequirementIds",
+                "diagnostics",
+                "reproBundleIndex",
+                "latestRegression",
+            ] {
+                assert!(
+                    support.get(field).is_some(),
+                    "claimed support must list {field}: {support}"
+                );
+            }
+            // KAIFUU-106 index + KAIFUU-107 verdict are wired.
+            assert!(support["reproBundleIndex"]["fixtureId"].is_string());
+            assert_eq!(support["latestRegression"]["status"], "passed");
+        }
+        // Redaction-clean: ref-only, no raw material.
+        let serialized = fs::read_to_string(&output).unwrap();
+        assert!(serialized.contains("sha256:"));
+        assert!(!serialized.contains("BEGIN"));
+        assert!(!serialized.contains("/home/"));
     }
 
     #[test]

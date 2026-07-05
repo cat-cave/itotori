@@ -279,7 +279,7 @@ impl RegressionFinding {
         }
     }
 
-    fn redacted_for_report(&self) -> Self {
+    pub(crate) fn redacted_for_report(&self) -> Self {
         Self {
             tuple_id: redact_for_log_or_report(&self.tuple_id),
             kind: self.kind,
@@ -303,7 +303,7 @@ pub struct DriftFinding {
 }
 
 impl DriftFinding {
-    fn redacted_for_report(&self) -> Self {
+    pub(crate) fn redacted_for_report(&self) -> Self {
         Self {
             tuple_id: redact_for_log_or_report(&self.tuple_id),
             baseline_fingerprint: self.baseline_fingerprint.clone(),

@@ -1,0 +1,92 @@
+{
+  "schemaVersion": "0.1.0",
+  "boundary": "[REDACTED:kaifuu.secret_redacted]",
+  "bundleId": "repro/kaifuu/siglus-and-kag",
+  "status": "passed",
+  "bundleSelfSufficient": true,
+  "privateAssetViolationCount": 0,
+  "reproductionGapCount": 0,
+  "claimedSupportCount": 2,
+  "passedCount": 2,
+  "failedCount": 0,
+  "driftCount": 0,
+  "supports": [
+    {
+      "profileOrFixtureId": "compat/siglus/known-key-extract",
+      "engineFamily": "siglus",
+      "engineVariant": "siglus_pck_static_key",
+      "container": "siglus_pck",
+      "crypto": "fixed_key",
+      "codec": "utf16_text",
+      "surface": "archive_entry",
+      "patchBackMode": "unsupported",
+      "claimedLevel": "extract",
+      "secretRequirementIds": ["siglus.scene-pck.static-key"],
+      "diagnostics": [
+        {
+          "layer": "crypto",
+          "status": "known_key_only",
+          "reasonId": "kaifuu.missing_key_material",
+          "severity": "P2",
+          "detail": "extraction is limited to catalogued known static keys"
+        },
+        {
+          "layer": "patch_back",
+          "status": "not_implemented",
+          "reasonId": "kaifuu.missing_capability.patch_back",
+          "severity": "P2",
+          "detail": "[REDACTED:kaifuu.secret_redacted]"
+        }
+      ],
+      "reproBundleIndex": {
+        "bundleId": "repro/kaifuu/siglus-and-kag",
+        "tupleId": "compat/siglus/known-key-extract",
+        "fixtureId": "public/siglus-known-key-extract",
+        "proofHash": "sha256:bd08c39a3d640b5abd5df02e21700d89b7bf5bc6c675ba8be1ce86dcce8fd250"
+      },
+      "latestRegression": {
+        "status": "passed",
+        "fixtureResolution": "resolved",
+        "resolvedFixtureId": "public/siglus-known-key-extract",
+        "secretMetadata": "declared",
+        "diagnosticsFingerprint": "sha256:458604879b39dd04b6ef735bfa43c6b53c28b220e2ca945165710b1ce03a4267",
+        "findings": []
+      }
+    },
+    {
+      "profileOrFixtureId": "compat/kirikiri-kag/plaintext-patch",
+      "engineFamily": "kirikiri_kag_plaintext",
+      "engineVariant": "kirikiri_kag_plaintext_ks",
+      "container": "loose_file",
+      "crypto": "null_key",
+      "codec": "shift_jis_text",
+      "surface": "identity",
+      "patchBackMode": "replace_file",
+      "claimedLevel": "patch",
+      "secretRequirementIds": [],
+      "diagnostics": [
+        {
+          "layer": "container",
+          "status": "not_implemented",
+          "reasonId": "kaifuu.unsupported_variant.encrypted",
+          "severity": "P3",
+          "detail": "plaintext KAG only — encrypted commercial XP3 is NOT covered"
+        }
+      ],
+      "reproBundleIndex": {
+        "bundleId": "repro/kaifuu/siglus-and-kag",
+        "tupleId": "compat/kirikiri-kag/plaintext-patch",
+        "fixtureId": "public/kirikiri-kag-plaintext-patch",
+        "proofHash": "sha256:3090f0a13cb37e7c207334048a3996aea5cdd8b170d0ffb81c51236d0cf90ceb"
+      },
+      "latestRegression": {
+        "status": "passed",
+        "fixtureResolution": "resolved",
+        "resolvedFixtureId": "public/kirikiri-kag-plaintext-patch",
+        "secretMetadata": "not_required",
+        "diagnosticsFingerprint": "sha256:b0bc2ae56c2072c7518a27253c4cca0717f7bfc5565d989715b184ca5defb3ef",
+        "findings": []
+      }
+    }
+  ]
+}

@@ -178,6 +178,7 @@ pub const XP3_PLAIN_MAGIC: &[u8] = b"XP3\r\n \n\x1a\x8b\x67\x01";
 
 pub mod alpha_encrypted_readiness;
 pub mod alpha_readiness_profile;
+pub mod compat_evidence;
 pub mod compat_profile;
 pub mod compat_regression;
 pub mod contracts;
