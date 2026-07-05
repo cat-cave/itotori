@@ -16,12 +16,23 @@ export default defineConfig({
     // `$plugins` array the extractor parses as STRICT JSON (quoted keys).
     // Formatting them as JavaScript would unquote the object keys and break
     // the strict-JSON parse, so they must stay strict-JSON-parseable.
+    //
+    // The UTSUSHI-006 MV/MZ live-observation fixture is load-bearing at the
+    // byte level: its dialogue/choice plaintext lives ONLY in the inline
+    // base64 runtime payload, and the live-trace probe tests assert (a) those
+    // strings are ABSENT from the static file and (b) a real JS runtime
+    // base64-decodes the payload to build the observation island. Reformatting
+    // the inline `<script>`/base64 block changes the runtime page such that
+    // headless Chromium's `--dump-dom` trace fails (browser_trace_observes_
+    // live_dom_text_and_choice_events exits non-zero), so the fixture must be
+    // preserved byte-for-byte.
     ignorePatterns: [
       "crates/utsushi-fixture/tests/fixtures/jump_targets/replay_logs/**",
       "apps/itotori/src/engine-capability/**",
       "fixtures/synthetic/**",
       "crates/kaifuu-rpgmaker/tests/fixtures/**",
       "fixtures/kaifuu/repro-bundle/**",
+      "crates/utsushi-fixture/tests/fixtures/mvmz_observation/**",
     ],
   },
   resolve: {
