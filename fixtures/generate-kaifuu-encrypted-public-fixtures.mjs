@@ -1,12 +1,22 @@
 #!/usr/bin/env node
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const fixtureRoot = resolve(repoRoot, "fixtures/public/kaifuu-encrypted-matrix");
 const manifestPath = resolve(repoRoot, "fixtures/public/kaifuu-encrypted-matrix.manifest.json");
+// Expected outputs that are AUTHORED by their originating command (the detector
+// CLI, the RPG Maker key validator, and the Siglus parser-boundary smoke) rather
+// than re-derived here. This generator OWNS the raw fixture bytes those commands
+// read, so it must PRESERVE their committed expected reports byte-for-byte across
+// a regeneration instead of wiping them with the rest of the fixture tree.
+//
+// Preservation is REQUIRED: reading a missing committed expected output throws
+// (see `readRequiredExpectedOutput`), so regenerating after the KAIFUU-093 Siglus
+// parser-boundary smoke report (or any sibling detector report) is deleted fails
+// loudly instead of silently staling the fixture matrix.
 const preservedExpectedOutputs = [
   "expected/xp3-compressed-detector-profile-v0.1.json",
   "expected/xp3-encrypted-detector-profile-v0.1.json",
@@ -16,9 +26,10 @@ const preservedExpectedOutputs = [
   "expected/siglus-asset-inventory-v0.1.json",
   "expected/siglus-detection-report-v0.1.json",
   "expected/siglus-detector-profile-v0.1.json",
+  "expected/siglus-parser-boundary-smoke-v0.1.json",
 ].map((relativePath) => ({
   relativePath,
-  content: readExistingFixtureFile(relativePath),
+  content: readRequiredExpectedOutput(relativePath),
 }));
 
 const files = [];
@@ -493,9 +504,7 @@ writeJson(
 );
 
 for (const output of preservedExpectedOutputs) {
-  if (output.content) {
-    writeBytes(output.relativePath, output.content, "expected-output", "application/json");
-  }
+  writeBytes(output.relativePath, output.content, "expected-output", "application/json");
 }
 
 writeManifest();
@@ -682,7 +691,7 @@ function writeManifest() {
       title: "Kaifuu Synthetic Encrypted Matrix",
       kind: "synthetic",
       summary:
-        "Generated public fixture-only encrypted, packed, missing-key, helper-required, validation-failed, redaction, and unknown archive detector cases.",
+        "Generated public fixture-only encrypted, packed, missing-key, helper-required, validation-failed, redaction, parser-boundary, and unknown archive detector cases.",
       sourceLocale: "ja-JP",
       targetLocales: [],
       publicRedistribution: "allowed",
@@ -694,7 +703,7 @@ function writeManifest() {
       provenance: {
         author: "Kaifuu fixture authors",
         creationMethod:
-          "Deterministic generator writes tiny synthetic archive-like byte strings, public fixture-only key labels, helper results, negative profile fixtures, and preserved XP3/Siglus detector expected outputs.",
+          "Deterministic generator writes tiny synthetic archive-like byte strings, public fixture-only key labels, helper results, negative profile fixtures, and preserved XP3/Siglus detector and parser-boundary expected outputs.",
         rawAssetPolicy: "contains-no-copyrighted-game-assets",
       },
     },
@@ -726,7 +735,7 @@ function writeManifest() {
         "unknown-synthetic-archive-signals",
       ],
       notes:
-        "All bytes are generated fixture-only data. Public helper results cover missing_key, helper_required, helper_unavailable, validation_failed, and redaction_failure paths; XP3 and Siglus detector expected outputs cover identify/profile/inventory-only boundaries; negative profiles cover raw-key-looking and private-path-looking secret refs.",
+        "All bytes are generated fixture-only data. Public helper results cover missing_key, helper_required, helper_unavailable, validation_failed, and redaction_failure paths; XP3 and Siglus detector expected outputs cover identify/profile/inventory-only boundaries; Siglus parser-boundary output covers key-ref-only known-key smoke slots and diagnostics; negative profiles cover raw-key-looking and private-path-looking secret refs.",
     },
     benchmarkUse: {
       allowedInPublicCi: true,
@@ -764,9 +773,20 @@ function readFile(path) {
   return readFileSync(path);
 }
 
-function readExistingFixtureFile(relativePath) {
+function readRequiredExpectedOutput(relativePath) {
   const path = resolve(fixtureRoot, relativePath);
-  return existsSync(path) ? readFileSync(path) : null;
+  try {
+    return readFileSync(path);
+  } catch (error) {
+    if (error && error.code === "ENOENT") {
+      throw new Error(
+        `missing committed expected output fixtures/public/kaifuu-encrypted-matrix/${relativePath}; ` +
+          "this generator preserves (does not re-derive) command-authored expected reports, so regenerate " +
+          "only from a tree that still contains it (e.g. re-run the Siglus parser-boundary smoke or restore from git).",
+      );
+    }
+    throw error;
+  }
 }
 
 function bytes(text) {

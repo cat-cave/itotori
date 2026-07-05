@@ -42,6 +42,7 @@ check:
     node --test scripts/rgt-readiness-checklist.test.mjs
     node scripts/rgt-readiness-checklist.mjs
     just fixtures-validate
+    node --test fixtures/generate-kaifuu-encrypted-public-fixtures.test.mjs
     just impl-map-schema-validate
     node scripts/verify-toolchain-policy.mjs
     pnpm exec vp run ts:typecheck

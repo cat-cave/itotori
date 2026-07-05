@@ -87,6 +87,19 @@ export default defineConfig({
       // `asset_ocr_public_fixture_matches_committed_golden`; the formatter must not
       // rewrite it. (The sibling `title-card.png` is a binary grayscale fixture.)
       "fixtures/public/ocr-ui/**",
+      // KAIFUU-166: the Kaifuu encrypted-matrix public fixtures + their manifest
+      // are byte-golden artifacts OWNED by
+      // `fixtures/generate-kaifuu-encrypted-public-fixtures.mjs`. The generator
+      // emits `JSON.stringify(value, null, 2)` and records each file's exact
+      // sha256/bytes in the manifest, and `fixtures/validate-public-manifests.mjs`
+      // fails on any drift. Letting the formatter collapse arrays would rewrite the
+      // committed bytes out from under those recorded hashes, so regeneration
+      // (`node fixtures/generate-kaifuu-encrypted-public-fixtures.mjs`) would no
+      // longer be byte-idempotent. Pin the generated tree + manifest so the
+      // generator stays the single source of truth (incl. the KAIFUU-093 Siglus
+      // parser-boundary smoke expected output it now preserves).
+      "fixtures/public/kaifuu-encrypted-matrix/**",
+      "fixtures/public/kaifuu-encrypted-matrix.manifest.json",
     ],
   },
   resolve: {
