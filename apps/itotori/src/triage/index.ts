@@ -34,3 +34,36 @@ export {
   type FindingTriageSummary,
   type TriageContext,
 } from "./router.js";
+
+// ITOTORI-120 — metadata-aware community/human feedback triage (enrichment +
+// catalog-keyed routing). Distinct from the QA/root-cause router above: it
+// decides whether a raw feedback REPORT enters the queue at all, using catalog
+// metadata (edition identity, language completeness, demand, readiness,
+// existing-translation, style-dispute).
+export {
+  type CatalogEditionMetadata,
+  type CatalogFeedbackMetadataProvider,
+  type CatalogWorkMetadataSnapshot,
+  catalogWorkMetadataFromReadModel,
+  deriveFeedbackReadinessLevel,
+  enrichCommunityFeedback,
+  type EnrichedFeedbackEdition,
+  type EnrichedFeedbackItem,
+  existingTranslationFromLanguageStatus,
+  feedbackEditionMatchValues,
+  type FeedbackEditionMatch,
+  type FeedbackQueueLane,
+  feedbackQueueLaneValues,
+  feedbackReadinessLevelValues,
+  type FeedbackReadinessLevel,
+  type FeedbackTriageDecision,
+  type FeedbackTriageDisposition,
+  feedbackTriageDispositionValues,
+  type FeedbackTriageSignals,
+  InMemoryCatalogFeedbackMetadataProvider,
+  isLowFeedbackReadiness,
+  type RawCommunityFeedbackItem,
+  type RequestedEditionRef,
+  routeEnrichedFeedback,
+  STYLE_DISPUTE_FEEDBACK_TYPES,
+} from "./community/index.js";
