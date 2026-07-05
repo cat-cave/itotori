@@ -38,6 +38,8 @@ check:
     node scripts/coverage-parity.mjs
     node --test scripts/alpha-readiness-checklist.test.mjs
     node scripts/alpha-readiness-checklist.mjs
+    node --test scripts/rgt-readiness-checklist.test.mjs
+    node scripts/rgt-readiness-checklist.mjs
     just fixtures-validate
     just impl-map-schema-validate
     node scripts/verify-toolchain-policy.mjs
@@ -296,6 +298,15 @@ alpha-demo: alpha-proof
 # a PatchResult + SHARED-025 manifest ids. Also run inside `just check`.
 alpha-readiness-checklist:
     node scripts/alpha-readiness-checklist.mjs
+
+# RGT-005: real-game-testing-ready milestone readiness checklist. Re-derives the
+# substrate readiness surfaces (catalog / benchmark / dashboard / MV-MZ-readiness
+# / synthetic-encrypted / real-bytes-parse / dag-lint) from the committed roadmap
+# DAG and confirms each is wired under the RGT-005 hub; warns on any non-complete
+# P1 real-game-testing-ready node not yet an ancestor of RGT-005. Also run inside
+# `just check`. Mirrors `alpha-readiness-checklist` for the RGT tier.
+rgt-readiness-checklist:
+    node scripts/rgt-readiness-checklist.mjs
 
 # ALPHA-009: `hello` is retained ONLY as a compatibility alias for nodes that
 # still declare `just hello` as a verification. It cannot diverge from the alpha

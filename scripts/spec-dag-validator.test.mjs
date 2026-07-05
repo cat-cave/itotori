@@ -813,6 +813,78 @@ test("rejects qd export edges that reference missing nodes", () => {
   assertError(errors, "edge MISSING-001 -> ITOTORI-300 references unknown from_node MISSING-001");
 });
 
+test("flags a non-complete P1 real-game-testing-ready node that is not an ancestor of RGT-005", () => {
+  const errors = errorsFor(
+    nodeFixture({
+      id: "RGT-ORPHAN-001",
+      target: "real-game-testing-ready",
+      priority: "P1",
+      status: "planned",
+      dependsOn: [],
+    }),
+  );
+
+  assertError(
+    errors,
+    "RGT-ORPHAN-001 is P1 real-game-testing-ready work but is not an ancestor of RGT-005",
+  );
+});
+
+test("accepts a non-complete P1 real-game-testing-ready node wired as an ancestor of RGT-005", () => {
+  const dag = dagFixture([
+    nodeFixture({
+      id: "RGT-CHILD-001",
+      target: "real-game-testing-ready",
+      priority: "P1",
+      status: "planned",
+      dependsOn: [],
+    }),
+  ]);
+  // Wire the hub -> child so the child becomes an ancestor of RGT-005.
+  dag.nodes.find((node) => node.id === "RGT-005").dependsOn = ["RGT-CHILD-001"];
+
+  const errors = validateDag(dag).errors;
+
+  assert.ok(
+    !errors.some((error) => error.includes("RGT-CHILD-001 is P1 real-game-testing-ready work")),
+    `expected no RGT-005 ancestor error, got:\n${errors.join("\n")}`,
+  );
+});
+
+test("flags a non-complete P1 alpha node that is not an ancestor of ALPHA-005", () => {
+  const errors = errorsFor(
+    nodeFixture({
+      id: "ALPHA-ORPHAN-001",
+      target: "alpha",
+      priority: "P1",
+      status: "planned",
+      dependsOn: [],
+    }),
+  );
+
+  assertError(
+    errors,
+    "ALPHA-ORPHAN-001 is P1 alpha-readiness work but is not an ancestor of ALPHA-005",
+  );
+});
+
+test("a complete P1 real-game-testing-ready node need not be an ancestor of RGT-005", () => {
+  const errors = errorsFor(
+    nodeFixture({
+      id: "RGT-DONE-001",
+      target: "real-game-testing-ready",
+      priority: "P1",
+      status: "complete",
+      dependsOn: [],
+    }),
+  );
+
+  assert.ok(
+    !errors.some((error) => error.includes("RGT-DONE-001 is P1 real-game-testing-ready work")),
+    `expected no RGT-005 ancestor error for a complete node, got:\n${errors.join("\n")}`,
+  );
+});
+
 function errorsFor(...nodes) {
   return validateDag(dagFixture(nodes)).errors;
 }
