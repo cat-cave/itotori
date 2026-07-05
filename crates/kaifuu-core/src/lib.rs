@@ -3032,10 +3032,19 @@ impl GameProfile {
         }
     }
 
+    /// Serialize into report-safe, canonical JSON.
+    ///
+    /// Public serialization always routes through the centralized report
+    /// redaction policy (`redact_report_value`) so library callers cannot
+    /// accidentally leak absolute paths, key material, helper dumps, or
+    /// private text into a report/log/fixture. There is no raw public
+    /// serialization path for `GameProfile`; the redaction cannot be bypassed
+    /// through this API.
     pub fn stable_json(&self) -> KaifuuResult<String> {
         let mut normalized = self.clone();
         normalized.normalize();
-        Ok(format!("{}\n", serde_json::to_string_pretty(&normalized)?))
+        let value = redact_report_value(&serde_json::to_value(&normalized)?);
+        Ok(format!("{}\n", serde_json::to_string_pretty(&value)?))
     }
 
     pub fn validate(&self) -> ProfileValidationResult {
@@ -13419,10 +13428,19 @@ impl AssetInventoryManifest {
             .sort_by_key(|warning| (warning.code.clone(), warning.message.clone()));
     }
 
+    /// Serialize into report-safe, canonical JSON.
+    ///
+    /// Public serialization always routes through the centralized report
+    /// redaction policy (`redact_report_value`) so library callers cannot
+    /// accidentally leak absolute paths, key material, helper dumps, or
+    /// private text into a report/log/fixture. There is no raw public
+    /// serialization path for `AssetInventoryManifest`; the redaction cannot
+    /// be bypassed through this API.
     pub fn stable_json(&self) -> KaifuuResult<String> {
         let mut normalized = self.clone();
         normalized.normalize();
-        Ok(format!("{}\n", serde_json::to_string_pretty(&normalized)?))
+        let value = redact_report_value(&serde_json::to_value(&normalized)?);
+        Ok(format!("{}\n", serde_json::to_string_pretty(&value)?))
     }
 
     pub fn validate(&self) -> AssetInventoryValidationResult {
@@ -27795,67 +27813,71 @@ mod tests {
                 category: RequirementCategory::SecretKey,
                 key: "decryption_key".to_string(),
                 status: RequirementStatus::NotRequired,
-                description: "plain JSON fixture does not require decryption keys".to_string(),
+                description: "decryption key not required".to_string(),
                 placeholder: None,
                 secret: true,
             }],
             metadata,
         };
 
+        // `stable_json` is report-safe: it routes through the centralized
+        // redaction policy, so keys are emitted in canonical (sorted) order and
+        // sensitive values are redacted. This fixture uses clean data, so
+        // redaction is a no-op and the values pass through unchanged.
         let expected = r#"{
-  "schemaVersion": "0.1.0",
-  "profileId": "019ed000-0000-7000-8000-profile00001",
-  "gameId": "hello-fixture",
-  "title": "Hello Fixture",
-  "sourceLocale": "ja-JP",
-  "engine": {
-    "adapterId": "kaifuu.fixture",
-    "engineFamily": "fixture",
-    "engineVersion": "0.0.0",
-    "detectedVariant": "plain-json"
-  },
   "assets": [
     {
       "assetId": "019ed000-0000-7000-8000-asset0000001",
-      "path": "source.json",
       "assetKind": "script",
-      "textSurfaces": [
-        "dialogue"
-      ],
-      "sourceHash": "abcdef",
       "patching": {
         "capability": "patching",
-        "status": "limited",
-        "limitation": "fixture rewrites source.json with pretty JSON"
-      }
+        "limitation": "fixture rewrites source.json with pretty JSON",
+        "status": "limited"
+      },
+      "path": "source.json",
+      "sourceHash": "abcdef",
+      "textSurfaces": [
+        "dialogue"
+      ]
     }
   ],
   "capabilities": [
     {
       "capability": "delta_patching",
-      "status": "unsupported",
-      "limitation": "delta packages are handled outside the engine adapter"
+      "limitation": "delta packages are handled outside the engine adapter",
+      "status": "unsupported"
     },
     {
       "capability": "detection",
-      "status": "supported",
-      "limitation": null
+      "limitation": null,
+      "status": "supported"
     }
   ],
-  "requirements": [
-    {
-      "category": "secret_key",
-      "key": "decryption_key",
-      "status": "not_required",
-      "description": "plain JSON fixture does not require decryption keys",
-      "placeholder": null,
-      "secret": true
-    }
-  ],
+  "engine": {
+    "adapterId": "kaifuu.fixture",
+    "detectedVariant": "plain-json",
+    "engineFamily": "fixture",
+    "engineVersion": "0.0.0"
+  },
+  "gameId": "hello-fixture",
   "metadata": {
     "source": "fixture",
     "supportBoundary": "plain JSON fixture"
-  }
+  },
+  "profileId": "019ed000-0000-7000-8000-profile00001",
+  "requirements": [
+    {
+      "category": "secret_key",
+      "description": "decryption key not required",
+      "key": "decryption_key",
+      "placeholder": null,
+      "secret": true,
+      "status": "not_required"
+    }
+  ],
+  "schemaVersion": "0.1.0",
+  "sourceLocale": "ja-JP",
+  "title": "Hello Fixture"
 }
 "#;
         assert_eq!(profile.stable_json().unwrap(), expected);
@@ -27863,6 +27885,112 @@ mod tests {
             profile.stable_json().unwrap(),
             profile.stable_json().unwrap()
         );
+    }
+
+    /// Synthetic sensitive values (NO real key material) spanning every
+    /// redaction class the centralized policy protects.
+    const SENSITIVE_ABSOLUTE_PATH: &str = "/home/dev/games/secret/game.exe";
+    const SENSITIVE_KEY_MATERIAL: &str = "00112233445566778899aabbccddeeff00112233";
+    const SENSITIVE_HELPER_DUMP: &str = "helper dump: fixture-helper --dump 0xfeed";
+    const SENSITIVE_PRIVATE_TEXT: &str = "decrypted text: private-ending spoiler line";
+
+    fn sensitive_metadata() -> BTreeMap<String, String> {
+        let mut metadata = BTreeMap::new();
+        metadata.insert(
+            "absolutePath".to_string(),
+            SENSITIVE_ABSOLUTE_PATH.to_string(),
+        );
+        metadata.insert(
+            "keyMaterial".to_string(),
+            SENSITIVE_KEY_MATERIAL.to_string(),
+        );
+        metadata.insert("helperDump".to_string(), SENSITIVE_HELPER_DUMP.to_string());
+        metadata.insert(
+            "privateText".to_string(),
+            SENSITIVE_PRIVATE_TEXT.to_string(),
+        );
+        metadata
+    }
+
+    fn assert_public_serialization_is_report_safe(serialized: &str) {
+        for leaked in [
+            SENSITIVE_ABSOLUTE_PATH,
+            SENSITIVE_KEY_MATERIAL,
+            SENSITIVE_HELPER_DUMP,
+            SENSITIVE_PRIVATE_TEXT,
+        ] {
+            assert!(
+                !serialized.contains(leaked),
+                "public serialization leaked sensitive value {leaked:?}: {serialized}"
+            );
+        }
+        assert!(
+            serialized.contains("[REDACTED:"),
+            "public serialization should carry redaction placeholders: {serialized}"
+        );
+        // The redacted output must still be valid, re-parseable JSON.
+        let value: Value = serde_json::from_str(serialized).unwrap();
+        assert!(value.is_object());
+    }
+
+    #[test]
+    fn game_profile_public_stable_json_redacts_sensitive_fields() {
+        let mut profile = GameProfile {
+            schema_version: PROFILE_SCHEMA_VERSION.to_string(),
+            profile_id: deterministic_id("profile", 913_201),
+            game_id: "sensitive-fixture".to_string(),
+            // Absolute path smuggled into a typed string field.
+            title: SENSITIVE_ABSOLUTE_PATH.to_string(),
+            source_locale: "ja-JP".to_string(),
+            engine: EngineProfile {
+                adapter_id: "kaifuu.fixture".to_string(),
+                engine_family: "fixture".to_string(),
+                engine_version: None,
+                detected_variant: "plain".to_string(),
+            },
+            source_fingerprint: None,
+            key_requirements: vec![],
+            archive_parameters: vec![],
+            helper_evidence: None,
+            assets: vec![],
+            layered_access: None,
+            // Raw key material smuggled into a capability limitation.
+            capabilities: vec![CapabilityReport::unsupported(
+                Capability::AssetTextPatching,
+                SENSITIVE_KEY_MATERIAL,
+            )],
+            requirements: vec![],
+            metadata: sensitive_metadata(),
+        };
+        profile.normalize();
+
+        // The only public serialization path is report-safe; there is no raw
+        // `stable_json` bypass on `GameProfile`.
+        assert_public_serialization_is_report_safe(&profile.stable_json().unwrap());
+    }
+
+    #[test]
+    fn asset_inventory_manifest_public_stable_json_redacts_sensitive_fields() {
+        let mut manifest = AssetInventoryManifest {
+            schema_version: ASSET_INVENTORY_SCHEMA_VERSION.to_string(),
+            manifest_id: "sensitive-manifest".to_string(),
+            adapter_id: "kaifuu.fixture".to_string(),
+            source_locale: "ja-JP".to_string(),
+            assets: vec![],
+            surfaces: vec![],
+            // Raw key material smuggled into a warning message.
+            warnings: vec![AdapterWarning {
+                code: "diagnostic".to_string(),
+                message: SENSITIVE_KEY_MATERIAL.to_string(),
+            }],
+            capabilities: vec![],
+            metadata: sensitive_metadata(),
+        };
+        manifest.normalize();
+
+        // The only public serialization path is report-safe; there is no raw
+        // `stable_json` bypass on `AssetInventoryManifest`.
+        assert_public_serialization_is_report_safe(&manifest.stable_json().unwrap());
     }
 
     #[test]

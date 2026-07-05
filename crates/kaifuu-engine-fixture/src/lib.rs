@@ -9684,10 +9684,15 @@ mod tests {
                 game_dir: &game_dir,
             })
             .unwrap();
+        // `AssetInventoryManifest::stable_json` is report-safe: it routes
+        // through the centralized redaction policy, so the public serialization
+        // is a fixed point (re-serializing the round-tripped manifest is
+        // stable) rather than a lossless round-trip of the raw struct. Non
+        // sensitive asset metadata still survives redaction.
         let serialized = manifest.stable_json().unwrap();
         let round_tripped: AssetInventoryManifest = serde_json::from_str(&serialized).unwrap();
 
-        assert_eq!(round_tripped, manifest);
+        assert_eq!(round_tripped.stable_json().unwrap(), serialized);
         assert_eq!(round_tripped.validate().status, OperationStatus::Passed);
         let audio_asset = round_tripped
             .assets
