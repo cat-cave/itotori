@@ -1,7 +1,8 @@
-//! UTSUSHI-102 integration proof: an ACTUAL LAUNCHED browser process emits
-//! text + choice observation events from the public MV/MZ fixture, and the
-//! runtime-observation proof consumes that UTSUSHI-006 trace output to render an
-//! E1 verdict with full bridge/source-revision/runtime-target/adapter/
+//! UTSUSHI-102 / UTSUSHI-031 integration proof: an ACTUAL LAUNCHED browser
+//! process emits text + choice observation events AND the broader scene +
+//! branch runtime event kinds (UTSUSHI-031) from the public MV/MZ fixture, and
+//! the runtime-observation proof consumes that UTSUSHI-006 trace output to
+//! render an E1 verdict with full bridge/source-revision/runtime-target/adapter/
 //! environment linkage.
 //!
 //! Two lanes:
@@ -127,11 +128,38 @@ fn launched_browser_process_trace_proves_e1_runtime_observation() {
     assert_eq!(proof["provenEvidenceTier"], "E1");
     assert_eq!(proof["observation"]["textEventCount"], 2);
     assert_eq!(proof["observation"]["choiceEventCount"], 1);
+    // The broader event kinds beyond the UTSUSHI-102 text+choice surface.
+    assert_eq!(proof["observation"]["sceneEventCount"], 1);
+    assert_eq!(proof["observation"]["branchEventCount"], 1);
     assert_eq!(
         proof["observation"]["runtimeTargetId"],
         "fixture:mvmz-observation-fixture"
     );
     assert_eq!(proof["observation"]["adapterId"]["name"], "utsushi-browser");
+
+    // The scene + branch observation events genuinely materialised from the
+    // launched render, each with its own live-DOM observationSource.
+    let obs = trace["observationHookEvents"].as_array().unwrap();
+    assert_eq!(obs.len(), 5, "scene + 2 text + choice + branch observed");
+    let scene = obs
+        .iter()
+        .find(|event| event["eventKind"] == "scene")
+        .expect("a scene observation event was observed");
+    assert_eq!(scene["observationSource"], "live_dom");
+    assert_eq!(
+        scene["payload"]["sceneName"],
+        "The frost-veiled courtyard at winter dawn."
+    );
+    let branch = obs
+        .iter()
+        .find(|event| event["eventKind"] == "branch")
+        .expect("a branch observation event was observed");
+    assert_eq!(branch["observationSource"], "live_dom");
+    assert_eq!(branch["payload"]["taken"], true);
+    assert_eq!(
+        branch["payload"]["destination"],
+        "Scene_Map:winter-path-approach"
+    );
 
     let _ = fs::remove_dir_all(work);
 }

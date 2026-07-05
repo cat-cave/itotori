@@ -8,31 +8,31 @@
     },
     {
       "checkId": "observation_events_present",
-      "detail": "3 observation-hook event(s); a launch that produced no instrumentation island observes nothing and proves nothing",
+      "detail": "5 observation-hook event(s); a launch that produced no instrumentation island observes nothing and proves nothing",
       "mandatory": true,
       "status": "pass"
     },
     {
       "checkId": "observation_source_is_live_runtime",
-      "detail": "all 3 event(s) observationSource = live_dom",
+      "detail": "all 5 event(s) observationSource = live_dom",
       "mandatory": true,
       "status": "pass"
     },
     {
       "checkId": "observation_evidence_tier_is_e1",
-      "detail": "every observation event must carry evidenceTier E1 (3 event(s) checked)",
+      "detail": "every observation event must carry evidenceTier E1 (5 event(s) checked)",
       "mandatory": true,
       "status": "pass"
     },
     {
       "checkId": "full_bridge_and_environment_linkage",
-      "detail": "0 of 3 event(s) missing bridge-unit / source-revision / runtime-target / adapter / environment linkage",
+      "detail": "0 of 5 event(s) missing bridge-unit / source-revision / runtime-target / adapter / environment linkage",
       "mandatory": true,
       "status": "pass"
     },
     {
       "checkId": "observed_text_absent_from_static_source",
-      "detail": "all 5 observed string(s) are absent from the static fixture source; they could only have materialised from a live runtime render",
+      "detail": "all 8 observed string(s) are absent from the static fixture source; they could only have materialised from a live runtime render",
       "mandatory": true,
       "status": "pass"
     },
@@ -58,6 +58,7 @@
       "name": "utsushi-browser",
       "version": "0.0.0"
     },
+    "branchEventCount": 1,
     "choiceEventCount": 1,
     "environment": {
       "display": "browser-headless",
@@ -67,11 +68,14 @@
       "runtime": "browser"
     },
     "observedBridgeUnitIds": [
+      "019ed000-0000-7000-8000-bridgeun0006",
       "019ed000-0000-7000-8000-bridgeun0001",
       "019ed000-0000-7000-8000-bridgeun0002",
-      "019ed000-0000-7000-8000-bridgeun0003"
+      "019ed000-0000-7000-8000-bridgeun0003",
+      "019ed000-0000-7000-8000-bridgeun0007"
     ],
     "runtimeTargetId": "fixture:mvmz-observation-fixture",
+    "sceneEventCount": 1,
     "sourceRevision": {
       "revisionId": "fixture-source-v0.1",
       "sourceId": "mvmz-observation-fixture"

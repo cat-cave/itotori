@@ -125,36 +125,37 @@ fn observation_events(trace: &Value) -> &[Value] {
 }
 
 /// Collect every runtime-only plaintext string an observation event surfaced:
-/// dialogue text, choice prompt, and each choice option label. Speakers and
-/// unit keys are deliberately excluded — those legitimately also live in the
-/// static source and are not the runtime-only payload the crux check guards.
+/// dialogue text, choice prompt/option labels, scene/map display name, and the
+/// branch route label/destination. Speakers, unit keys, and structural ids
+/// (sceneId, branchId) are deliberately excluded — those legitimately also live
+/// in the static source and are not the runtime-only payload the crux check
+/// guards. Every collected string exists ONLY in the fixture's runtime base64
+/// payload, so its presence in a trace proves a live render produced it.
 fn observed_plaintext_strings(trace: &Value) -> Vec<String> {
     let mut strings = Vec::new();
     for event in observation_events(trace) {
         let payload = event.get("payload").unwrap_or(&Value::Null);
-        match event.get("eventKind").and_then(Value::as_str) {
-            Some("text") => {
-                if let Some(text) = payload.get("text").and_then(Value::as_str)
-                    && !text.is_empty()
-                {
-                    strings.push(text.to_string());
-                }
+        let mut push_nonempty = |value: Option<&str>| {
+            if let Some(text) = value
+                && !text.is_empty()
+            {
+                strings.push(text.to_string());
             }
+        };
+        match event.get("eventKind").and_then(Value::as_str) {
+            Some("text") => push_nonempty(payload.get("text").and_then(Value::as_str)),
             Some("choice") => {
-                if let Some(prompt) = payload.get("prompt").and_then(Value::as_str)
-                    && !prompt.is_empty()
-                {
-                    strings.push(prompt.to_string());
-                }
+                push_nonempty(payload.get("prompt").and_then(Value::as_str));
                 if let Some(options) = payload.get("options").and_then(Value::as_array) {
                     for option in options {
-                        if let Some(label) = option.get("label").and_then(Value::as_str)
-                            && !label.is_empty()
-                        {
-                            strings.push(label.to_string());
-                        }
+                        push_nonempty(option.get("label").and_then(Value::as_str));
                     }
                 }
+            }
+            Some("scene") => push_nonempty(payload.get("sceneName").and_then(Value::as_str)),
+            Some("branch") => {
+                push_nonempty(payload.get("label").and_then(Value::as_str));
+                push_nonempty(payload.get("destination").and_then(Value::as_str));
             }
             _ => {}
         }
@@ -346,14 +347,16 @@ pub fn build_mvmz_runtime_observation_proof(
         .filter(|check| check.mandatory)
         .all(|check| check.passed);
 
-    let text_event_count = events
-        .iter()
-        .filter(|event| event.get("eventKind").and_then(Value::as_str) == Some("text"))
-        .count();
-    let choice_event_count = events
-        .iter()
-        .filter(|event| event.get("eventKind").and_then(Value::as_str) == Some("choice"))
-        .count();
+    let count_event_kind = |kind: &str| {
+        events
+            .iter()
+            .filter(|event| event.get("eventKind").and_then(Value::as_str) == Some(kind))
+            .count()
+    };
+    let text_event_count = count_event_kind("text");
+    let choice_event_count = count_event_kind("choice");
+    let scene_event_count = count_event_kind("scene");
+    let branch_event_count = count_event_kind("branch");
     let observed_bridge_unit_ids: Vec<Value> = events
         .iter()
         .filter_map(|event| {
@@ -404,6 +407,8 @@ pub fn build_mvmz_runtime_observation_proof(
         "observation": {
             "textEventCount": text_event_count,
             "choiceEventCount": choice_event_count,
+            "sceneEventCount": scene_event_count,
+            "branchEventCount": branch_event_count,
             "observedBridgeUnitIds": observed_bridge_unit_ids,
             "runtimeTargetId": first_event.and_then(|e| e.get("runtimeTargetId")).cloned().unwrap_or(Value::Null),
             "adapterId": first_event.and_then(|e| e.get("adapterId")).cloned().unwrap_or(Value::Null),
@@ -523,10 +528,11 @@ mod tests {
     }
 
     /// A live-DOM E1 trace shaped exactly as `BrowserLaunchAdapter::trace`
-    /// emits it: two text events + one choice event, every event carrying the
-    /// full linkage envelope and `observationSource = live_dom`. The observed
-    /// plaintext deliberately matches the fixture's runtime-only base64 payload
-    /// (absent from the static source).
+    /// emits it: one scene event + two text events + one choice event + one
+    /// branch event, every event carrying the full linkage envelope and
+    /// `observationSource = live_dom`. The observed plaintext deliberately
+    /// matches the fixture's runtime-only base64 payload (absent from the
+    /// static source).
     fn live_dom_trace() -> Value {
         let linkage = |unit_key: &str| {
             json!({
@@ -539,6 +545,9 @@ mod tests {
                 "evidenceTier": EVIDENCE_TIER_E1,
             })
         };
+        let mut scene = linkage("mvmz.scene1.scene");
+        scene["eventKind"] = json!("scene");
+        scene["payload"] = json!({"payloadKind": "scene", "sceneId": "Scene_Map:0031", "sceneName": "The frost-veiled courtyard at winter dawn."});
         let mut text1 = linkage("mvmz.scene1.line1");
         text1["eventKind"] = json!("text");
         text1["payload"] = json!({"payloadKind": "text", "text": "The frost blossoms open at first light.", "speaker": "Yuki"});
@@ -555,12 +564,21 @@ mod tests {
                 {"optionId": "opt-1", "label": "Stay by the warm hearth."}
             ]
         });
+        let mut branch = linkage("mvmz.scene1.branch");
+        branch["eventKind"] = json!("branch");
+        branch["payload"] = json!({
+            "payloadKind": "branch",
+            "branchId": "branch-0031",
+            "label": "The snow-walk route opens beyond the gate.",
+            "destination": "Scene_Map:winter-path-approach",
+            "taken": true
+        });
         json!({
             "runtimeReportId": "019ed050-0000-7000-8000-000000001000",
             "adapterName": "utsushi-browser",
             "evidenceTier": EVIDENCE_TIER_E1,
             "status": "passed",
-            "observationHookEvents": [text1, text2, choice],
+            "observationHookEvents": [scene, text1, text2, choice, branch],
             "traceEvents": [],
         })
     }
@@ -625,9 +643,12 @@ mod tests {
             assert_eq!(check_status(&proof, check_id), "pass", "check {check_id}");
         }
 
-        // Observation linkage surfaced.
+        // Observation linkage surfaced — text + choice AND the broader
+        // scene + branch event kinds (beyond the UTSUSHI-102 surface).
         assert_eq!(proof["observation"]["textEventCount"], 2);
         assert_eq!(proof["observation"]["choiceEventCount"], 1);
+        assert_eq!(proof["observation"]["sceneEventCount"], 1);
+        assert_eq!(proof["observation"]["branchEventCount"], 1);
         assert_eq!(
             proof["observation"]["runtimeTargetId"],
             "fixture:mvmz-observation-fixture"
@@ -643,7 +664,7 @@ mod tests {
                 .as_array()
                 .unwrap()
                 .len(),
-            3
+            5
         );
 
         // Screenshot artifactRef linkage (UTSUSHI-065).
@@ -781,6 +802,11 @@ mod tests {
             "How do you answer Sora?",
             "Follow her into the snow.",
             "Stay by the warm hearth.",
+            // The broader scene + branch runtime-only strings must also be
+            // absent from the static source (static read cannot forge them).
+            "The frost-veiled courtyard at winter dawn.",
+            "The snow-walk route opens beyond the gate.",
+            "Scene_Map:winter-path-approach",
         ] {
             assert!(
                 !static_source.contains(observed),

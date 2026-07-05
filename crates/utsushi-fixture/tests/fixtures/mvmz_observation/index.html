@@ -8,23 +8,32 @@
 <!--
   Public, synthetic RPG Maker MV/MZ-style deployment entrypoint.
 
-  STRICT-PROOF DESIGN: the dialogue and choice text that the trace probe
-  observes is NOT present anywhere in this source file. It is carried only in
-  the base64 payload below (`utsushi-observed-src`) and is decoded, rendered,
-  and injected into `#utsushi-observed-events` by the runtime script when a
-  real JavaScript runtime (headless Chromium via `--dump-dom`) actually loads
-  and executes this page. A static read of this file yields nothing the probe
-  can accept: the observed-events island only exists in the live post-render
-  DOM. No copyrighted bytes are used; all strings are original placeholders.
+  STRICT-PROOF DESIGN: the scene, dialogue, choice, and branch text that the
+  trace probe observes is NOT present anywhere in this source file. It is
+  carried only in the base64 payload below (`utsushi-observed-src`) and is
+  decoded, rendered, and injected into `#utsushi-observed-events` by the runtime
+  script when a real JavaScript runtime (headless Chromium via `--dump-dom`)
+  actually loads and executes this page. A static read of this file yields
+  nothing the probe can accept: the observed-events island only exists in the
+  live post-render DOM. No copyrighted bytes are used; all strings are original
+  placeholders.
+
+  Observed event kinds (RPG Maker MV/MZ runtime-meaningful):
+    - scene:  SceneManager scene/map transition (Window_MapName display name)
+    - text:   message-window dialogue line (with name-box speaker)
+    - choice: Window_ChoiceList prompt + options
+    - branch: Conditional-branch route decision taken at runtime
 -->
 <div id="game">
   <canvas id="gameCanvas" width="320" height="180"></canvas>
+  <div id="mapNameWindow" class="rmmz-window" data-window="map_name"></div>
   <div id="messageWindow" class="rmmz-window" data-window="message"></div>
   <ul id="choiceWindow" class="rmmz-window" data-window="choice"></ul>
+  <div id="branchWindow" class="rmmz-window" data-window="branch"></div>
 </div>
 
 <!-- Runtime-only payload; the decoded plaintext appears only after JS runs. -->
-<script id="utsushi-observed-src" type="application/base64">eyJldmVudHMiOlt7ImtpbmQiOiJ0ZXh0IiwidW5pdEtleSI6Im12bXouc2NlbmUxLmxpbmUxIiwic3BlYWtlciI6Ill1a2kiLCJ0ZXh0U3VyZmFjZSI6ImRpYWxvZ3VlIiwidGV4dCI6IlRoZSBmcm9zdCBibG9zc29tcyBvcGVuIGF0IGZpcnN0IGxpZ2h0LiJ9LHsia2luZCI6InRleHQiLCJ1bml0S2V5IjoibXZtei5zY2VuZTEubGluZTIiLCJzcGVha2VyIjoiU29yYSIsInRleHRTdXJmYWNlIjoiZGlhbG9ndWUiLCJ0ZXh0IjoiVGhlbiBsZXQgdXMgd2FsayBiZWZvcmUgdGhlIHRvd24gd2FrZXMuIn0seyJraW5kIjoiY2hvaWNlIiwidW5pdEtleSI6Im12bXouc2NlbmUxLmNob2ljZSIsInByb21wdCI6IkhvdyBkbyB5b3UgYW5zd2VyIFNvcmE/Iiwib3B0aW9ucyI6W3sib3B0aW9uSWQiOiJvcHQtMCIsImxhYmVsIjoiRm9sbG93IGhlciBpbnRvIHRoZSBzbm93LiIsInVuaXRLZXkiOiJtdm16LnNjZW5lMS5jaG9pY2Uub3B0MCJ9LHsib3B0aW9uSWQiOiJvcHQtMSIsImxhYmVsIjoiU3RheSBieSB0aGUgd2FybSBoZWFydGguIiwidW5pdEtleSI6Im12bXouc2NlbmUxLmNob2ljZS5vcHQxIn1dfV19Cg==</script>
+<script id="utsushi-observed-src" type="application/base64">eyJldmVudHMiOlt7ImtpbmQiOiJzY2VuZSIsInVuaXRLZXkiOiJtdm16LnNjZW5lMS5zY2VuZSIsInNjZW5lSWQiOiJTY2VuZV9NYXA6MDAzMSIsInNjZW5lTmFtZSI6IlRoZSBmcm9zdC12ZWlsZWQgY291cnR5YXJkIGF0IHdpbnRlciBkYXduLiJ9LHsia2luZCI6InRleHQiLCJ1bml0S2V5IjoibXZtei5zY2VuZTEubGluZTEiLCJzcGVha2VyIjoiWXVraSIsInRleHRTdXJmYWNlIjoiZGlhbG9ndWUiLCJ0ZXh0IjoiVGhlIGZyb3N0IGJsb3Nzb21zIG9wZW4gYXQgZmlyc3QgbGlnaHQuIn0seyJraW5kIjoidGV4dCIsInVuaXRLZXkiOiJtdm16LnNjZW5lMS5saW5lMiIsInNwZWFrZXIiOiJTb3JhIiwidGV4dFN1cmZhY2UiOiJkaWFsb2d1ZSIsInRleHQiOiJUaGVuIGxldCB1cyB3YWxrIGJlZm9yZSB0aGUgdG93biB3YWtlcy4ifSx7ImtpbmQiOiJjaG9pY2UiLCJ1bml0S2V5IjoibXZtei5zY2VuZTEuY2hvaWNlIiwicHJvbXB0IjoiSG93IGRvIHlvdSBhbnN3ZXIgU29yYT8iLCJvcHRpb25zIjpbeyJvcHRpb25JZCI6Im9wdC0wIiwibGFiZWwiOiJGb2xsb3cgaGVyIGludG8gdGhlIHNub3cuIiwidW5pdEtleSI6Im12bXouc2NlbmUxLmNob2ljZS5vcHQwIn0seyJvcHRpb25JZCI6Im9wdC0xIiwibGFiZWwiOiJTdGF5IGJ5IHRoZSB3YXJtIGhlYXJ0aC4iLCJ1bml0S2V5IjoibXZtei5zY2VuZTEuY2hvaWNlLm9wdDEifV19LHsia2luZCI6ImJyYW5jaCIsInVuaXRLZXkiOiJtdm16LnNjZW5lMS5icmFuY2giLCJicmFuY2hJZCI6ImJyYW5jaC0wMDMxIiwibGFiZWwiOiJUaGUgc25vdy13YWxrIHJvdXRlIG9wZW5zIGJleW9uZCB0aGUgZ2F0ZS4iLCJkZXN0aW5hdGlvbiI6IlNjZW5lX01hcDp3aW50ZXItcGF0aC1hcHByb2FjaCIsInRha2VuIjp0cnVlfV19Cg==</script>
 
 <!-- Filled in at runtime; empty in the static source. -->
 <script id="utsushi-observed-events" type="application/json"></script>
@@ -47,13 +56,19 @@
   var data = JSON.parse(decodeBase64Utf8(srcEl.textContent));
   var events = Array.isArray(data.events) ? data.events : [];
 
+  var mapNameWindow = document.getElementById("mapNameWindow");
   var messageWindow = document.getElementById("messageWindow");
   var choiceWindow = document.getElementById("choiceWindow");
+  var branchWindow = document.getElementById("branchWindow");
 
-  // Paint the observed text/choice content into the MV/MZ-style windows so
-  // the live DOM genuinely contains what the probe reports.
+  // Paint the observed scene/text/choice/branch content into the MV/MZ-style
+  // windows so the live DOM genuinely contains what the probe reports.
   events.forEach(function (event) {
-    if (event.kind === "text") {
+    if (event.kind === "scene") {
+      mapNameWindow.setAttribute("data-scene-id", event.sceneId || "");
+      mapNameWindow.setAttribute("data-unit-key", event.unitKey || "");
+      mapNameWindow.textContent = event.sceneName || "";
+    } else if (event.kind === "text") {
       var line = document.createElement("p");
       line.className = "rmmz-message-line";
       line.setAttribute("data-unit-key", event.unitKey || "");
@@ -74,6 +89,12 @@
         item.textContent = option.label;
         choiceWindow.appendChild(item);
       });
+    } else if (event.kind === "branch") {
+      branchWindow.setAttribute("data-branch-id", event.branchId || "");
+      branchWindow.setAttribute("data-destination", event.destination || "");
+      branchWindow.setAttribute("data-taken", String(event.taken === true));
+      branchWindow.setAttribute("data-unit-key", event.unitKey || "");
+      branchWindow.textContent = event.label || "";
     }
   });
 

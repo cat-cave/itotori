@@ -53,6 +53,7 @@
       "name": "utsushi-browser",
       "version": "0.0.0"
     },
+    "branchEventCount": 0,
     "choiceEventCount": 1,
     "environment": {
       "display": "browser-headless",
@@ -67,6 +68,7 @@
       "019ed000-0000-7000-8000-bridgeun0003"
     ],
     "runtimeTargetId": "fixture:mvmz-patched-fixture",
+    "sceneEventCount": 0,
     "sourceRevision": {
       "revisionId": "fixture-source-v0.1",
       "sourceId": "mvmz-patched-fixture"

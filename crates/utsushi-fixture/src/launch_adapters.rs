@@ -1310,8 +1310,17 @@ fn parse_observed_dom(dom: &str) -> Vec<Value> {
 }
 
 /// Turn the observed DOM events into `(traceEvents, observationHookEvents)`.
-/// Text events produce both a trace event and a text observation hook event;
-/// choice events produce a choice observation hook event.
+///
+/// The observed surface spans the RPG Maker MV/MZ runtime event kinds the
+/// public fixture emits from a live render:
+/// - `text` -> a trace event AND a text observation hook event,
+/// - `choice` -> a choice observation hook event,
+/// - `scene` -> a scene observation hook event (SceneManager/map transition),
+/// - `branch` -> a branch observation hook event (conditional-branch routing).
+///
+/// `scene` and `branch` are carried by the existing observation-hook envelope
+/// (`ObservationScenePayload` / `ObservationBranchPayload`); no schema change is
+/// required to observe them beyond the UTSUSHI-102 text+choice surface.
 fn build_observed_events(
     descriptor: &RuntimeAdapterDescriptor,
     source: &Value,
@@ -1331,6 +1340,16 @@ fn build_observed_events(
             }
             Some("choice") => {
                 if let Some(hook) = observed_choice_hook_event(descriptor, source, index, event) {
+                    observation_events.push(hook);
+                }
+            }
+            Some("scene") => {
+                if let Some(hook) = observed_scene_hook_event(descriptor, source, index, event) {
+                    observation_events.push(hook);
+                }
+            }
+            Some("branch") => {
+                if let Some(hook) = observed_branch_hook_event(descriptor, source, index, event) {
                     observation_events.push(hook);
                 }
             }
@@ -1443,6 +1462,76 @@ fn observed_choice_hook_event(
             "payloadKind": "choice",
             "prompt": observed.get("prompt").and_then(Value::as_str),
             "options": options,
+        },
+    }))
+}
+
+/// A scene/map-transition observation hook event. RPG Maker MV/MZ drives play
+/// through `SceneManager` scene changes (`Scene_Map`, `Scene_Battle`, ...); the
+/// live `Window_MapName` display name (`sceneName`) is a runtime-only string
+/// that determines which message stream is active. Carried by the schema's
+/// `ObservationScenePayload` (`payloadKind: "scene"`).
+fn observed_scene_hook_event(
+    descriptor: &RuntimeAdapterDescriptor,
+    source: &Value,
+    index: usize,
+    observed: &Value,
+) -> Option<Value> {
+    let scene_id = observed.get("sceneId").and_then(Value::as_str)?;
+    let unit_key = observed.get("unitKey").and_then(Value::as_str);
+    Some(json!({
+        "schemaVersion": FIXTURE_OBSERVATION_HOOK_SCHEMA_LITERAL,
+        "eventId": observed_event_id(index),
+        "observedAt": "2026-06-17T00:00:00.000Z",
+        "eventKind": "scene",
+        "runtimeTargetId": super::runtime_target_id(source),
+        "adapterId": super::adapter_id_value(descriptor),
+        "evidenceTier": EvidenceTier::E1.as_str(),
+        "observationSource": OBSERVATION_SOURCE_LIVE_DOM,
+        "environment": browser_environment_value(source),
+        "sourceRevision": super::source_revision_value(source),
+        "bridgeRefs": [observed_bridge_ref(source, unit_key)],
+        "redaction": {"status": "not_required"},
+        "payload": {
+            "payloadKind": "scene",
+            "sceneId": scene_id,
+            "sceneName": observed.get("sceneName").and_then(Value::as_str),
+        },
+    }))
+}
+
+/// A conditional-branch/route observation hook event. RPG Maker MV/MZ routes
+/// play through Conditional Branch (event command 111) and choice-driven jumps;
+/// the branch `label`/`destination` actually `taken` at runtime is the
+/// structural spine downstream context-building consumes. Carried by the
+/// schema's `ObservationBranchPayload` (`payloadKind: "branch"`).
+fn observed_branch_hook_event(
+    descriptor: &RuntimeAdapterDescriptor,
+    source: &Value,
+    index: usize,
+    observed: &Value,
+) -> Option<Value> {
+    let branch_id = observed.get("branchId").and_then(Value::as_str)?;
+    let unit_key = observed.get("unitKey").and_then(Value::as_str);
+    Some(json!({
+        "schemaVersion": FIXTURE_OBSERVATION_HOOK_SCHEMA_LITERAL,
+        "eventId": observed_event_id(index),
+        "observedAt": "2026-06-17T00:00:00.000Z",
+        "eventKind": "branch",
+        "runtimeTargetId": super::runtime_target_id(source),
+        "adapterId": super::adapter_id_value(descriptor),
+        "evidenceTier": EvidenceTier::E1.as_str(),
+        "observationSource": OBSERVATION_SOURCE_LIVE_DOM,
+        "environment": browser_environment_value(source),
+        "sourceRevision": super::source_revision_value(source),
+        "bridgeRefs": [observed_bridge_ref(source, unit_key)],
+        "redaction": {"status": "not_required"},
+        "payload": {
+            "payloadKind": "branch",
+            "branchId": branch_id,
+            "label": observed.get("label").and_then(Value::as_str),
+            "destination": observed.get("destination").and_then(Value::as_str),
+            "taken": observed.get("taken").and_then(Value::as_bool),
         },
     }))
 }

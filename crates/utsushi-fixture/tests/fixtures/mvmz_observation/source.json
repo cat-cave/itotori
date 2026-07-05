@@ -42,6 +42,22 @@
       "sourceText": "暖炉のそばに残る。",
       "targetText": "PLACEHOLDER opt1 -- authoritative text is observed from the live DOM.",
       "protectedSpans": []
+    },
+    {
+      "sourceUnitKey": "mvmz.scene1.scene",
+      "speaker": null,
+      "textSurface": "scene_name",
+      "sourceText": "冬の霜に覆われた中庭。",
+      "targetText": "PLACEHOLDER scene name -- authoritative map name is observed from the live DOM.",
+      "protectedSpans": []
+    },
+    {
+      "sourceUnitKey": "mvmz.scene1.branch",
+      "speaker": null,
+      "textSurface": "branch",
+      "sourceText": "分岐：雪道ルート。",
+      "targetText": "PLACEHOLDER branch -- authoritative branch label is observed from the live DOM.",
+      "protectedSpans": []
     }
   ]
 }

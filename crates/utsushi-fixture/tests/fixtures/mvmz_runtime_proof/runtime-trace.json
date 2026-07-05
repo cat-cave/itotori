@@ -40,10 +40,10 @@
       "Chromium browser launch is required for MV/MZ alpha runtime evidence; supported host environments must provide Chromium on PATH or through UTSUSHI_BROWSER_BIN.",
       "Environmental misconfiguration (missing or incompatible Chromium, version below 100.0.0, unavailable display surface) is a hard error with semantic codes in the utsushi.browser.* namespace.",
       "Adapter-discovered common install paths are a fallback after PATH lookup and are not guaranteed; operators with custom installs must set UTSUSHI_BROWSER_BIN.",
-      "Browser executable resolved through the adapter probe (source: environment, version: 149.0.7827).",
+      "Browser executable resolved through the adapter probe (source: configured, version: 149.0.7827).",
       "Browser trace observes live post-render DOM (--dump-dom) text and choice events from the public MV/MZ fixture entrypoint; observation is empty when the render produced no instrumented DOM island.",
       "Browser launch target was recorded as repository-relative fixture entrypoint index.html; raw local paths are omitted from report metadata.",
-      "Browser launch completed in 564 ms under the core bounded process harness."
+      "Browser launch completed in 543 ms under the core bounded process harness."
     ],
     "requestedOperation": "trace",
     "sessionId": "019ed050-0000-7000-8000-000000006000",
@@ -59,12 +59,50 @@
     "Chromium browser launch is required for MV/MZ alpha runtime evidence; supported host environments must provide Chromium on PATH or through UTSUSHI_BROWSER_BIN.",
     "Environmental misconfiguration (missing or incompatible Chromium, version below 100.0.0, unavailable display surface) is a hard error with semantic codes in the utsushi.browser.* namespace.",
     "Adapter-discovered common install paths are a fallback after PATH lookup and are not guaranteed; operators with custom installs must set UTSUSHI_BROWSER_BIN.",
-    "Browser executable resolved through the adapter probe (source: environment, version: 149.0.7827).",
+    "Browser executable resolved through the adapter probe (source: configured, version: 149.0.7827).",
     "Browser trace observes live post-render DOM (--dump-dom) text and choice events from the public MV/MZ fixture entrypoint; observation is empty when the render produced no instrumented DOM island.",
     "Browser launch target was recorded as repository-relative fixture entrypoint index.html; raw local paths are omitted from report metadata.",
-    "Browser launch completed in 564 ms under the core bounded process harness."
+    "Browser launch completed in 543 ms under the core bounded process harness."
   ],
   "observationHookEvents": [
+    {
+      "adapterId": {
+        "name": "utsushi-browser",
+        "version": "0.0.0"
+      },
+      "bridgeRefs": [
+        {
+          "bridgeUnitId": "019ed000-0000-7000-8000-bridgeun0006",
+          "sourceUnitKey": "mvmz.scene1.scene"
+        }
+      ],
+      "environment": {
+        "display": "browser-headless",
+        "engine": "browser-smoke-fixture",
+        "locale": "ja-JP",
+        "platform": "linux",
+        "runtime": "browser"
+      },
+      "eventId": "019ed050-0000-7000-8000-000000007200",
+      "eventKind": "scene",
+      "evidenceTier": "E1",
+      "observationSource": "live_dom",
+      "observedAt": "2026-06-17T00:00:00.000Z",
+      "payload": {
+        "payloadKind": "scene",
+        "sceneId": "Scene_Map:0031",
+        "sceneName": "The frost-veiled courtyard at winter dawn."
+      },
+      "redaction": {
+        "status": "not_required"
+      },
+      "runtimeTargetId": "fixture:mvmz-observation-fixture",
+      "schemaVersion": "0.1.0-alpha",
+      "sourceRevision": {
+        "revisionId": "fixture-source-v0.1",
+        "sourceId": "mvmz-observation-fixture"
+      }
+    },
     {
       "adapterId": {
         "name": "utsushi-browser",
@@ -83,7 +121,7 @@
         "platform": "linux",
         "runtime": "browser"
       },
-      "eventId": "019ed050-0000-7000-8000-000000007200",
+      "eventId": "019ed050-0000-7000-8000-000000007201",
       "eventKind": "text",
       "evidenceTier": "E1",
       "observationSource": "live_dom",
@@ -122,7 +160,7 @@
         "platform": "linux",
         "runtime": "browser"
       },
-      "eventId": "019ed050-0000-7000-8000-000000007201",
+      "eventId": "019ed050-0000-7000-8000-000000007202",
       "eventKind": "text",
       "evidenceTier": "E1",
       "observationSource": "live_dom",
@@ -161,7 +199,7 @@
         "platform": "linux",
         "runtime": "browser"
       },
-      "eventId": "019ed050-0000-7000-8000-000000007202",
+      "eventId": "019ed050-0000-7000-8000-000000007203",
       "eventKind": "choice",
       "evidenceTier": "E1",
       "observationSource": "live_dom",
@@ -187,6 +225,46 @@
         ],
         "payloadKind": "choice",
         "prompt": "How do you answer Sora?"
+      },
+      "redaction": {
+        "status": "not_required"
+      },
+      "runtimeTargetId": "fixture:mvmz-observation-fixture",
+      "schemaVersion": "0.1.0-alpha",
+      "sourceRevision": {
+        "revisionId": "fixture-source-v0.1",
+        "sourceId": "mvmz-observation-fixture"
+      }
+    },
+    {
+      "adapterId": {
+        "name": "utsushi-browser",
+        "version": "0.0.0"
+      },
+      "bridgeRefs": [
+        {
+          "bridgeUnitId": "019ed000-0000-7000-8000-bridgeun0007",
+          "sourceUnitKey": "mvmz.scene1.branch"
+        }
+      ],
+      "environment": {
+        "display": "browser-headless",
+        "engine": "browser-smoke-fixture",
+        "locale": "ja-JP",
+        "platform": "linux",
+        "runtime": "browser"
+      },
+      "eventId": "019ed050-0000-7000-8000-000000007204",
+      "eventKind": "branch",
+      "evidenceTier": "E1",
+      "observationSource": "live_dom",
+      "observedAt": "2026-06-17T00:00:00.000Z",
+      "payload": {
+        "branchId": "branch-0031",
+        "destination": "Scene_Map:winter-path-approach",
+        "label": "The snow-walk route opens beyond the gate.",
+        "payloadKind": "branch",
+        "taken": true
       },
       "redaction": {
         "status": "not_required"
@@ -313,10 +391,10 @@
         "sourceUnitKey": "mvmz.scene1.line1"
       },
       "eventKind": "text_observed",
-      "frame": 1,
+      "frame": 2,
       "observationSource": "live_dom",
       "observedText": "The frost blossoms open at first light.",
-      "traceEventId": "019ed050-0000-7000-8000-000000007300",
+      "traceEventId": "019ed050-0000-7000-8000-000000007301",
       "traceKey": "mvmz.scene1.line1"
     },
     {
@@ -325,10 +403,10 @@
         "sourceUnitKey": "mvmz.scene1.line2"
       },
       "eventKind": "text_observed",
-      "frame": 2,
+      "frame": 3,
       "observationSource": "live_dom",
       "observedText": "Then let us walk before the town wakes.",
-      "traceEventId": "019ed050-0000-7000-8000-000000007301",
+      "traceEventId": "019ed050-0000-7000-8000-000000007302",
       "traceKey": "mvmz.scene1.line2"
     }
   ],
