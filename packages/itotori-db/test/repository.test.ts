@@ -773,10 +773,14 @@ describe("ItotoriProjectRepository", () => {
       await repo.importSourceBundle(localActor, project);
       const patchExport = patchExportV02Fixture(bridge);
       patchExport.entries[0]!.targetText = "{name} and {name}";
+      // Collapsed duplicates: both mappings resolve to the SAME source span
+      // (bytes 0..6) via explicit byte-range identity. This stays schema-valid
+      // (KAIFUU-170 only rejects duplicate `sourceSpanId`, which is absent
+      // here), so it reaches the compatibility evaluator, which flags the
+      // collapse as protected_span_mapping_mismatch.
       patchExport.entries[0]!.protectedSpanMappings = [
         {
           raw: "{name}",
-          sourceSpanId: "019ed001-0000-7000-8000-000000000841",
           sourceStartByte: 0,
           sourceEndByte: 6,
           targetStart: 0,
@@ -784,11 +788,10 @@ describe("ItotoriProjectRepository", () => {
         },
         {
           raw: "{name}",
-          sourceSpanId: "019ed001-0000-7000-8000-000000000841",
           sourceStartByte: 0,
           sourceEndByte: 6,
-          targetStart: 0,
-          targetEnd: 6,
+          targetStart: 11,
+          targetEnd: 17,
         },
       ];
 
