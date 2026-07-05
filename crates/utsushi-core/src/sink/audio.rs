@@ -110,7 +110,6 @@ mod tests {
         capability: SinkCapability,
         adapter_id: String,
         events: Mutex<Vec<AudioEvent>>,
-        budget_inject: Mutex<Option<String>>,
     }
 
     impl CollectingAudioSink {
@@ -121,7 +120,6 @@ mod tests {
                 },
                 adapter_id: "synthetic-json".to_string(),
                 events: Mutex::new(Vec::new()),
-                budget_inject: Mutex::new(None),
             }
         }
 
@@ -130,16 +128,7 @@ mod tests {
                 capability: SinkCapability::Unsupported,
                 adapter_id: "text-only-adapter".to_string(),
                 events: Mutex::new(Vec::new()),
-                budget_inject: Mutex::new(None),
             }
-        }
-
-        /// Test-only injection point that emulates a future budget hook. In
-        /// production, the budget surface lives on the artifact store
-        /// (UTSUSHI-029); this is here so the BudgetExhausted variant is
-        /// reachable in tests without wiring it into the live sink path.
-        fn inject_budget_exhaustion(&self, budget: impl Into<String>) {
-            *self.budget_inject.lock().expect("lock") = Some(budget.into());
         }
     }
 
@@ -154,12 +143,6 @@ mod tests {
                     sink: SinkKind::AudioEvent,
                     adapter_id: self.adapter_id.clone(),
                     reason: "adapter does not produce audio metadata".to_string(),
-                });
-            }
-            if let Some(budget) = self.budget_inject.lock().expect("lock").take() {
-                return Err(SinkError::BudgetExhausted {
-                    sink: SinkKind::AudioEvent,
-                    budget,
                 });
             }
             audio.validate()?;
@@ -275,20 +258,5 @@ mod tests {
         let event = sample_event(AudioEventKind::SeFire, EvidenceTier::E0);
         let value = json!({ "audioEvent": serde_json::to_value(&event).unwrap() });
         reject_unredacted_local_paths("", &value).expect("clean emission passes");
-    }
-
-    #[test]
-    fn budget_exhausted_variant_is_reachable_via_injection_point_but_not_wired_in_production() {
-        let sink = CollectingAudioSink::supported();
-        sink.inject_budget_exhaustion("audio_event_cap");
-        let event = sample_event(AudioEventKind::Marker, EvidenceTier::E0);
-        let error = sink.emit_event(event).expect_err("budget exhaustion");
-        match error {
-            SinkError::BudgetExhausted { sink, budget } => {
-                assert_eq!(sink, SinkKind::AudioEvent);
-                assert_eq!(budget, "audio_event_cap");
-            }
-            other => panic!("expected BudgetExhausted, got {other:?}"),
-        }
     }
 }

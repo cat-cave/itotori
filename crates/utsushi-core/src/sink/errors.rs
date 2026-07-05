@@ -64,12 +64,14 @@ pub enum SinkError {
     /// serialization. Carries the offending field path inside the payload.
     RedactionViolation { sink: SinkKind, field: String },
 
-    /// The sink is configured but disabled because a soft artifact-budget
-    /// ceiling was hit (per the fidelity policy's `artifactLimits`). The
-    /// variant is defined here so a future budget tracker can return it
-    /// without an ABI break; UTSUSHI-029 wires it into the artifact-store
-    /// surface. In this slice the variant is reachable only via an explicit
-    /// injection point in tests, not a production path.
+    /// A write exceeded the configured soft artifact-byte budget (per the
+    /// fidelity policy's `artifactLimits`). Surfaced on the real artifact-store
+    /// write path by [`crate::RuntimeArtifactRoot::write_bytes`] when the root
+    /// carries a soft byte budget (see
+    /// [`crate::RuntimeArtifactRoot::with_soft_byte_budget`]); the artifact
+    /// store is the `FrameArtifact` sink's storage surface, so `sink` is always
+    /// [`SinkKind::FrameArtifact`] and `budget` is
+    /// [`crate::RUNTIME_ARTIFACT_SOFT_BYTE_BUDGET_LABEL`].
     BudgetExhausted { sink: SinkKind, budget: String },
 }
 

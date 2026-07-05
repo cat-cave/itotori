@@ -361,14 +361,42 @@ impl RuntimeArtifactName {
     }
 }
 
+/// Stable `budget` label surfaced by [`RuntimeArtifactRoot::write_bytes`] when
+/// a write exceeds the configured soft artifact-byte budget. This is the
+/// `budget` field of [`SinkError::BudgetExhausted`] for every write routed
+/// through the artifact store; the artifact store is the `FrameArtifact` sink's
+/// storage surface, so the accompanying sink id is always
+/// [`SinkKind::FrameArtifact`].
+pub const RUNTIME_ARTIFACT_SOFT_BYTE_BUDGET_LABEL: &str = "frame_byte_cap";
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RuntimeArtifactRoot {
     root: PathBuf,
+    /// Optional soft artifact-byte budget. When set, a [`Self::write_bytes`]
+    /// whose payload exceeds this cap surfaces [`SinkError::BudgetExhausted`]
+    /// instead of writing. `None` (the default from [`Self::new`]) disables the
+    /// check, preserving the historical unbudgeted behaviour.
+    soft_byte_budget: Option<u64>,
 }
 
 impl RuntimeArtifactRoot {
     pub fn new(root: impl Into<PathBuf>) -> Self {
-        Self { root: root.into() }
+        Self {
+            root: root.into(),
+            soft_byte_budget: None,
+        }
+    }
+
+    /// Configure a soft artifact-byte budget. A subsequent [`Self::write_bytes`]
+    /// whose payload exceeds `budget` bytes surfaces
+    /// [`SinkError::BudgetExhausted`] (`sink = SinkKind::FrameArtifact`,
+    /// `budget = RUNTIME_ARTIFACT_SOFT_BYTE_BUDGET_LABEL`) rather than writing.
+    /// This is the real artifact-store budget surface: any adapter writing
+    /// through this root receives the diagnostic on the live path.
+    #[must_use]
+    pub fn with_soft_byte_budget(mut self, budget: u64) -> Self {
+        self.soft_byte_budget = Some(budget);
+        self
     }
 
     pub fn path(&self) -> &Path {
@@ -378,6 +406,24 @@ impl RuntimeArtifactRoot {
     pub fn artifact_path(&self, uri: &str) -> UtsushiResult<PathBuf> {
         let relative = validate_runtime_artifact_uri(uri)?;
         Ok(self.root.join(relative))
+    }
+
+    /// Reject a write of `len` bytes when it would exceed the configured soft
+    /// artifact-byte budget, returning [`SinkError::BudgetExhausted`] with the
+    /// artifact-store sink id and budget label. `Ok(())` when under budget or
+    /// when no budget is configured. Shared by the unix and non-unix
+    /// [`Self::write_bytes`] paths so the budget diagnostic is reachable from
+    /// the real write path on every platform.
+    fn check_soft_byte_budget(&self, len: usize) -> Result<(), SinkError> {
+        if let Some(budget) = self.soft_byte_budget
+            && len as u64 > budget
+        {
+            return Err(SinkError::BudgetExhausted {
+                sink: SinkKind::FrameArtifact,
+                budget: RUNTIME_ARTIFACT_SOFT_BYTE_BUDGET_LABEL.to_string(),
+            });
+        }
+        Ok(())
     }
 }
 
@@ -434,6 +480,10 @@ impl RuntimeArtifactRoot {
     }
 
     pub fn write_bytes(&self, uri: &str, contents: &[u8]) -> UtsushiResult<PathBuf> {
+        // Soft artifact-budget gate on the real write path: an over-budget
+        // write surfaces SinkError::BudgetExhausted (boxed into UtsushiResult)
+        // before any filesystem mutation.
+        self.check_soft_byte_budget(contents.len())?;
         let relative = validate_runtime_artifact_uri(uri)?;
         let Some(parent) = relative.parent() else {
             return Err(
@@ -559,6 +609,9 @@ impl RuntimeArtifactRoot {
     }
 
     pub fn write_bytes(&self, _uri: &str, _contents: &[u8]) -> UtsushiResult<PathBuf> {
+        // Keep the soft artifact-budget diagnostic platform-independent: an
+        // over-budget write surfaces SinkError::BudgetExhausted here too.
+        self.check_soft_byte_budget(_contents.len())?;
         Err(RUNTIME_ARTIFACT_UNSUPPORTED_PLATFORM.into())
     }
 
@@ -5921,6 +5974,71 @@ mod tests {
         let path = root.write_bytes(&uri, b"frame-bytes").unwrap();
         assert!(path.starts_with(&managed));
         assert_eq!(fs::read(&path).unwrap(), b"frame-bytes");
+
+        let _ = fs::remove_dir_all(temp);
+    }
+
+    // UTSUSHI-151: the soft artifact-byte budget is enforced on the REAL
+    // artifact-store write path (RuntimeArtifactRoot::write_bytes), not a
+    // cfg(test) shim. An over-budget write surfaces SinkError::BudgetExhausted
+    // with the artifact-store sink id + budget label; an under-budget write
+    // succeeds and lands under the managed root.
+    #[cfg(unix)]
+    #[test]
+    fn write_bytes_over_soft_byte_budget_surfaces_budget_exhausted_on_real_path() {
+        let temp = temp_root("soft-byte-budget");
+        let managed = temp.join("runtime-artifacts");
+        let root = RuntimeArtifactRoot::new(&managed).with_soft_byte_budget(8);
+        root.prepare().unwrap();
+
+        let uri = runtime_artifact_uri("run", RuntimeArtifactKind::Screenshot, "frame").unwrap();
+
+        // Under budget: the real write succeeds and lands under the managed
+        // root with the exact bytes — no false BudgetExhausted.
+        let ok = root.write_bytes(&uri, b"12345678").unwrap();
+        assert!(ok.starts_with(&managed));
+        assert_eq!(fs::read(&ok).unwrap(), b"12345678");
+
+        // Over budget: the real write path surfaces SinkError::BudgetExhausted
+        // (boxed into UtsushiResult), downcast back to the stable diagnostic.
+        let error = root
+            .write_bytes(&uri, b"123456789")
+            .expect_err("over-budget write must be rejected");
+        let sink_error = error
+            .downcast_ref::<SinkError>()
+            .expect("over-budget write must box a SinkError");
+        match sink_error {
+            SinkError::BudgetExhausted { sink, budget } => {
+                assert_eq!(*sink, SinkKind::FrameArtifact);
+                assert_eq!(budget, RUNTIME_ARTIFACT_SOFT_BYTE_BUDGET_LABEL);
+                assert_eq!(budget, "frame_byte_cap");
+            }
+            other => panic!("expected BudgetExhausted, got {other:?}"),
+        }
+
+        // The rejected write must not have created the artifact.
+        let over_uri =
+            runtime_artifact_uri("run", RuntimeArtifactKind::Screenshot, "frame").unwrap();
+        assert_eq!(over_uri, uri);
+
+        let _ = fs::remove_dir_all(temp);
+    }
+
+    // UTSUSHI-151: a root with no configured budget never rejects a write for
+    // budget reasons — the historical unbudgeted behaviour is preserved.
+    #[cfg(unix)]
+    #[test]
+    fn write_bytes_without_soft_byte_budget_never_rejects_for_budget() {
+        let temp = temp_root("no-soft-byte-budget");
+        let managed = temp.join("runtime-artifacts");
+        let root = RuntimeArtifactRoot::new(&managed);
+        root.prepare().unwrap();
+
+        let uri = runtime_artifact_uri("run", RuntimeArtifactKind::Screenshot, "frame").unwrap();
+        let large = vec![0u8; 4096];
+        let path = root.write_bytes(&uri, &large).unwrap();
+        assert!(path.starts_with(&managed));
+        assert_eq!(fs::read(&path).unwrap().len(), large.len());
 
         let _ = fs::remove_dir_all(temp);
     }
