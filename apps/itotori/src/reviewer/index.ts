@@ -66,6 +66,7 @@ export type {
   ReviewerDetailRouteDeps,
 } from "./detail-route.js";
 export {
+  branchReferenceFixture,
   draftFixture,
   glossaryFixture,
   policyFixture,
@@ -84,6 +85,7 @@ export {
   transitionFixture,
 } from "./detail-fixtures.js";
 export type {
+  ReviewerDetailBranchReference,
   ReviewerDetailContext,
   ReviewerDetailDiagnostic,
   ReviewerDetailDiagnosticCode,

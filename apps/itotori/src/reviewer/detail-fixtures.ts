@@ -80,6 +80,41 @@ export type ReviewerDetailGlossaryEntry = {
 };
 
 /**
+ * ITOTORI-139 — branch-scoped policy + glossary REFERENCE PROVENANCE.
+ *
+ * The exact `branch_policy_glossary_reference` version that was attached
+ * to the draft under review. Previously this provenance was only
+ * observable inside `packages/itotori-db`
+ * (`BranchPolicyGlossaryReferenceRecord`); a consumer outside itotori-db
+ * had no way to verify WHICH policy/glossary version a draft was
+ * produced under. Surfacing it on the review context lets a non-DB
+ * consumer read `draft → branchPolicyRef + glossaryRef` and assert it
+ * matches the expected reference.
+ *
+ * Field mapping onto the DB record:
+ *   - `referenceId`          ← reference identity (`referenceId`)
+ *   - `versionSequence`      ← monotonic branch reference version
+ *   - `branchPolicyRef`      ← the exact `styleGuideVersionId` (POLICY);
+ *                              null when the branch has no approved policy
+ *   - `glossaryRef`          ← the exact `glossaryContentHash` (GLOSSARY)
+ *   - `supersedesReferenceId`← the reference this one replaced
+ *
+ * `draftId` binds the reference to the specific draft it was attached to,
+ * so the binding proof is exact: the consumer confirms this reference
+ * belongs to THIS draft, not merely that some reference exists.
+ */
+export type ReviewerDetailBranchReference = {
+  referenceId: string;
+  localeBranchId: string;
+  versionSequence: number;
+  draftId: string;
+  branchPolicyRef: string | null;
+  glossaryRef: string;
+  supersedesReferenceId: string | null;
+  updateReason: string;
+};
+
+/**
  * QA finding reference. Only includes typed refs (category, severity,
  * finding id) — the full finding payload lives behind the finding id so
  * the reviewer detail UI does not duplicate / drift QA copy.
@@ -147,6 +182,7 @@ export const reviewerDetailDiagnosticCodeValues = {
   missingDraft: "reviewer_detail_missing_draft",
   missingPolicy: "reviewer_detail_missing_policy",
   missingGlossaryRef: "reviewer_detail_missing_glossary_ref",
+  missingBranchReference: "reviewer_detail_missing_branch_reference",
   missingRuntimeEvidence: "reviewer_detail_missing_runtime_evidence",
   missingRationale: "reviewer_detail_missing_rationale",
   permissionDenied: "reviewer_detail_permission_denied",
@@ -176,6 +212,12 @@ export type ReviewerDetailContext = {
   draft: ReviewerDetailDraft | null;
   policy: ReviewerDetailPolicy | null;
   glossary: ReviewerDetailGlossaryEntry[];
+  /**
+   * ITOTORI-139 — the exact branch policy + glossary reference the draft
+   * was produced under. Null when no draft / reference is bound (e.g. a
+   * stale source revision blanks it out alongside the draft + policy).
+   */
+  branchReference: ReviewerDetailBranchReference | null;
   qaFindings: ReviewerDetailQaFinding[];
   runtimeEvidence: ReviewerDetailRuntimeEvidence[];
   rationaleRefs: ReviewerDetailRationaleRef[];
@@ -278,6 +320,22 @@ export function glossaryFixture(
     sourceTerm: "世界",
     preferredTranslation: "world",
     glossaryEntryStatus: "approved",
+    ...overrides,
+  };
+}
+
+export function branchReferenceFixture(
+  overrides: Partial<ReviewerDetailBranchReference> = {},
+): ReviewerDetailBranchReference {
+  return {
+    referenceId: "branch-policy-glossary-reference-itotori-082",
+    localeBranchId: fixtureLocaleBranchId,
+    versionSequence: 3,
+    draftId: "draft-itotori-082",
+    branchPolicyRef: "style-guide-version-itotori-082",
+    glossaryRef: "sha256:branch-glossary-content-hash-itotori-082",
+    supersedesReferenceId: "branch-policy-glossary-reference-itotori-082-prior",
+    updateReason: "glossary_snapshot_refreshed",
     ...overrides,
   };
 }
@@ -423,6 +481,7 @@ export function readyContextFixture(
     draft: draftFixture(),
     policy: policyFixture(),
     glossary: [glossaryFixture()],
+    branchReference: branchReferenceFixture(),
     qaFindings: [qaFindingFixture()],
     runtimeEvidence: [
       runtimeTextTraceFixture(),
@@ -468,6 +527,7 @@ export function deniedContextFixture(actorUserId = "unauthorized-user"): Reviewe
     draft: null,
     policy: null,
     glossary: [],
+    branchReference: null,
     qaFindings: [],
     runtimeEvidence: [],
     rationaleRefs: [],
@@ -501,6 +561,7 @@ export function staleContextFixture(): ReviewerDetailContext {
     draft: null,
     policy: null,
     glossary: [],
+    branchReference: null,
     qaFindings: [qaFindingFixture()],
     runtimeEvidence: [],
     rationaleRefs: [],

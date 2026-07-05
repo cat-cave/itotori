@@ -336,6 +336,7 @@ function defaultEvidenceLoader(
       draft: null,
       policy: null,
       glossary: [],
+      branchReference: null,
       qaFindings: [],
       runtimeEvidence: [],
       rationaleRefs: [],

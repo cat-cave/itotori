@@ -28,6 +28,7 @@ import {
 } from "@itotori/db";
 import {
   reviewerDetailDiagnosticCodeValues,
+  type ReviewerDetailBranchReference,
   type ReviewerDetailContext,
   type ReviewerDetailDiagnostic,
   type ReviewerDetailDiagnosticCode,
@@ -124,6 +125,7 @@ function renderReadyView(context: ReviewerDetailContext): string {
         ${renderComparisonPanel(context.source, context.draft)}
         ${renderPolicyPanel(context.policy, context.diagnostics)}
         ${renderGlossaryPanel(context.glossary, context.diagnostics)}
+        ${renderBranchReferencePanel(context.branchReference, context.diagnostics)}
         ${renderQaFindingsPanel(context.qaFindings)}
         ${renderRuntimeEvidencePanel(context.runtimeEvidence, item, context.diagnostics)}
         ${renderRationalePanel(context.rationaleRefs, context.diagnostics)}
@@ -383,6 +385,43 @@ function renderGlossaryPanel(
         </thead>
         <tbody>${rows}</tbody>
       </table>
+    `,
+  );
+}
+
+// ITOTORI-139 — surface the exact branch policy + glossary reference the
+// draft was produced under, so the reviewer (a non-DB consumer) can read
+// the provenance directly instead of trusting the DB. The values are
+// echoed verbatim into data-* attributes so tests can pin them.
+function renderBranchReferencePanel(
+  branchReference: ReviewerDetailBranchReference | null,
+  diagnostics: ReviewerDetailDiagnostic[],
+): string {
+  if (branchReference === null) {
+    return missingPanel(
+      "branch-reference",
+      "Branch policy / glossary reference",
+      reviewerDetailDiagnosticCodeValues.missingBranchReference,
+      diagnostics,
+    );
+  }
+  return panel(
+    "branch-reference",
+    "Branch policy / glossary reference",
+    `
+      <dl class="metric-list"
+        data-branch-reference-id="${escapeHtml(branchReference.referenceId)}"
+        data-draft-id="${escapeHtml(branchReference.draftId)}"
+        data-branch-policy-ref="${escapeHtml(branchReference.branchPolicyRef ?? "")}"
+        data-glossary-ref="${escapeHtml(branchReference.glossaryRef)}">
+        <div><dt>Reference id</dt><dd><code>${escapeHtml(branchReference.referenceId)}</code></dd></div>
+        <div><dt>Version</dt><dd>${branchReference.versionSequence}</dd></div>
+        <div><dt>Attached to draft</dt><dd><code>${escapeHtml(branchReference.draftId)}</code></dd></div>
+        <div><dt>Branch policy ref</dt><dd><code>${escapeHtml(branchReference.branchPolicyRef ?? "—")}</code></dd></div>
+        <div><dt>Glossary ref</dt><dd><code>${escapeHtml(branchReference.glossaryRef)}</code></dd></div>
+        <div><dt>Supersedes</dt><dd><code>${escapeHtml(branchReference.supersedesReferenceId ?? "—")}</code></dd></div>
+        <div><dt>Update reason</dt><dd>${escapeHtml(branchReference.updateReason)}</dd></div>
+      </dl>
     `,
   );
 }

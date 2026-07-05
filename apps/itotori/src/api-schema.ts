@@ -1422,6 +1422,7 @@ function assertReviewerDetailContext(
     "draft",
     "policy",
     "glossary",
+    "branchReference",
     "qaFindings",
     "runtimeEvidence",
     "rationaleRefs",
@@ -1433,12 +1434,40 @@ function assertReviewerDetailContext(
   if (context.item !== null) {
     assertReviewerQueueItemRecord(context.item, `${label}.item`);
   }
+  if (context.branchReference !== null) {
+    assertReviewerDetailBranchReference(context.branchReference, `${label}.branchReference`);
+  }
   asArray(context.glossary, `${label}.glossary`);
   asArray(context.qaFindings, `${label}.qaFindings`);
   asArray(context.runtimeEvidence, `${label}.runtimeEvidence`);
   asArray(context.rationaleRefs, `${label}.rationaleRefs`);
   asArray(context.transitions, `${label}.transitions`);
   asArray(context.diagnostics, `${label}.diagnostics`);
+}
+
+// ITOTORI-139 — branch policy/glossary reference provenance on the
+// reviewer detail (review context) API response. A non-DB consumer that
+// receives the `reviewer.detail` JSON body validates and reads the exact
+// reference (branchPolicyRef + glossaryRef) the draft was produced under.
+function assertReviewerDetailBranchReference(value: unknown, label: string): void {
+  const reference = asStrictRecord(value, label, [
+    "referenceId",
+    "localeBranchId",
+    "versionSequence",
+    "draftId",
+    "branchPolicyRef",
+    "glossaryRef",
+    "supersedesReferenceId",
+    "updateReason",
+  ]);
+  assertString(reference.referenceId, `${label}.referenceId`);
+  assertString(reference.localeBranchId, `${label}.localeBranchId`);
+  assertNonNegativeInteger(reference.versionSequence, `${label}.versionSequence`);
+  assertString(reference.draftId, `${label}.draftId`);
+  assertNullableString(reference.branchPolicyRef, `${label}.branchPolicyRef`);
+  assertString(reference.glossaryRef, `${label}.glossaryRef`);
+  assertNullableString(reference.supersedesReferenceId, `${label}.supersedesReferenceId`);
+  assertString(reference.updateReason, `${label}.updateReason`);
 }
 
 function assertReviewerBatchPreview(

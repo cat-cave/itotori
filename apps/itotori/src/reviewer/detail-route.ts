@@ -30,6 +30,7 @@ import {
 } from "@itotori/db";
 import {
   reviewerDetailDiagnosticCodeValues,
+  type ReviewerDetailBranchReference,
   type ReviewerDetailContext,
   type ReviewerDetailDiagnostic,
   type ReviewerDetailDraft,
@@ -68,6 +69,7 @@ export function emptyReviewerDetailEvidence(): Pick<
   | "draft"
   | "policy"
   | "glossary"
+  | "branchReference"
   | "qaFindings"
   | "runtimeEvidence"
   | "rationaleRefs"
@@ -79,6 +81,7 @@ export function emptyReviewerDetailEvidence(): Pick<
     draft: null,
     policy: null,
     glossary: [],
+    branchReference: null,
     qaFindings: [],
     runtimeEvidence: [],
     rationaleRefs: [],
@@ -113,6 +116,12 @@ export type ReviewerDetailEvidencePayload = {
   draft: ReviewerDetailDraft | null;
   policy: ReviewerDetailPolicy | null;
   glossary: ReviewerDetailGlossaryEntry[];
+  /**
+   * ITOTORI-139 — the exact branch policy + glossary reference the draft
+   * was produced under (resolved from the `branch_policy_glossary_reference`
+   * table by the live loader). Null when no reference is bound.
+   */
+  branchReference: ReviewerDetailBranchReference | null;
   qaFindings: ReviewerDetailQaFinding[];
   runtimeEvidence: ReviewerDetailRuntimeEvidence[];
   rationaleRefs: ReviewerDetailRationaleRef[];
@@ -200,6 +209,7 @@ export async function loadReviewerDetailContext(
   let source = evidencePayload.source;
   let draft = evidencePayload.draft;
   let policy = evidencePayload.policy;
+  let branchReference = evidencePayload.branchReference;
 
   if (isStaleSource) {
     diagnostics.push({
@@ -208,6 +218,9 @@ export async function loadReviewerDetailContext(
     });
     draft = null;
     policy = null;
+    // The branch reference is the provenance of the draft; if we won't
+    // show the draft, we won't claim which reference produced it.
+    branchReference = null;
   }
 
   if (source === null && !isStaleSource) {
@@ -229,6 +242,16 @@ export async function loadReviewerDetailContext(
       code: reviewerDetailDiagnosticCodeValues.missingPolicy,
       message:
         "Locale-branch style-guide policy version is missing; the reviewer cannot confirm policy adherence.",
+    });
+  }
+
+  // A draft with no bound branch reference is a provenance gap: the
+  // reviewer cannot verify WHICH policy/glossary version produced it.
+  if (branchReference === null && draft !== null && !isStaleSource) {
+    diagnostics.push({
+      code: reviewerDetailDiagnosticCodeValues.missingBranchReference,
+      message:
+        "No branch policy/glossary reference is bound to this draft; the exact policy + glossary version it was produced under cannot be verified.",
     });
   }
 
@@ -276,6 +299,7 @@ export async function loadReviewerDetailContext(
     draft,
     policy,
     glossary: evidencePayload.glossary,
+    branchReference,
     qaFindings: evidencePayload.qaFindings,
     runtimeEvidence: evidencePayload.runtimeEvidence,
     rationaleRefs: evidencePayload.rationaleRefs,

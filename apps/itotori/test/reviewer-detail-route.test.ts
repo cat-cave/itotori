@@ -19,7 +19,9 @@ import {
   type ReviewerQueueTransitionRecord,
 } from "@itotori/db";
 import { resolveReviewerQueuePermissionView, type ItotoriAuthorizationPort } from "../src/auth.js";
+import { assertItotoriApiResponse } from "../src/api-schema.js";
 import {
+  branchReferenceFixture,
   draftFixture,
   glossaryFixture,
   loadReviewerDetailContext,
@@ -58,6 +60,7 @@ function stubLoader(opts: {
       draft: opts.payload?.draft ?? null,
       policy: opts.payload?.policy ?? null,
       glossary: opts.payload?.glossary ?? [],
+      branchReference: opts.payload?.branchReference ?? null,
       qaFindings: opts.payload?.qaFindings ?? [],
       runtimeEvidence: opts.payload?.runtimeEvidence ?? [],
       rationaleRefs: opts.payload?.rationaleRefs ?? [],
@@ -361,6 +364,125 @@ describe("loadReviewerDetailContext — transition history", () => {
     const first = context.transitions[0]!;
     expect(first.action).toBe(reviewerQueueActionValues.requestRepair);
     expect(first.nextState).toBe(reviewerQueueItemStateValues.repairRequested);
+  });
+});
+
+describe("loadReviewerDetailContext — branch policy/glossary reference provenance (ITOTORI-139)", () => {
+  it("carries the exact branch policy + glossary reference bound to the draft, observable by a non-DB consumer", async () => {
+    const item = runtimeEvidenceItemFixture();
+    const draft = draftFixture({ draftId: "draft-under-review-139" });
+    // The exact reference the DB attached to this draft. A non-DB
+    // consumer must be able to read + verify THIS reference — not merely
+    // observe that "some" reference exists.
+    const expectedReference = branchReferenceFixture({
+      referenceId: "branch-ref-139",
+      draftId: draft.draftId,
+      versionSequence: 7,
+      branchPolicyRef: "style-guide-version-139",
+      glossaryRef: "sha256:glossary-content-hash-139",
+      supersedesReferenceId: "branch-ref-139-prior",
+      updateReason: "policy_approved",
+    });
+    const stub = stubLoader({
+      item,
+      payload: {
+        loadedSourceRevisionId: item.sourceRevisionId,
+        source: sourceUnitFixture(),
+        draft,
+        policy: policyFixture(),
+        branchReference: expectedReference,
+        rationaleRefs: [rationaleFixture()],
+        runtimeEvidence: [runtimeTextTraceFixture()],
+      },
+    });
+
+    const context = await loadReviewerDetailContext(
+      { reviewItemId: item.reviewItemId },
+      { permission: permissionView(), evidenceLoader: stub.loader },
+    );
+
+    // The review context is app-layer state (apps/itotori) — no DB
+    // handle is involved in this test. A consumer OUTSIDE
+    // packages/itotori-db observes the reference here.
+    expect(context.branchReference).not.toBeNull();
+    expect(context.branchReference).toEqual(expectedReference);
+
+    // The binding is EXACT: the reference is bound to the draft under
+    // review, and the branch POLICY + GLOSSARY refs match verbatim.
+    expect(context.branchReference?.draftId).toBe(context.draft?.draftId);
+    expect(context.branchReference?.branchPolicyRef).toBe("style-guide-version-139");
+    expect(context.branchReference?.glossaryRef).toBe("sha256:glossary-content-hash-139");
+    expect(context.branchReference?.referenceId).toBe("branch-ref-139");
+
+    // A non-DB consumer receiving the `reviewer.detail` JSON body
+    // validates it with the shared API schema and reads the reference
+    // off the wire. The provenance fields are plain JSON (no Dates), so
+    // they survive serialization intact.
+    expect(() => assertItotoriApiResponse("reviewer.detail", context)).not.toThrow();
+    const wireReference = JSON.parse(JSON.stringify(context.branchReference)) as unknown as Record<
+      string,
+      unknown
+    >;
+    expect(wireReference).toEqual(expectedReference);
+    expect(wireReference.draftId).toBe(draft.draftId);
+
+    // No diagnostic is raised: the provenance is present and bound.
+    expect(context.diagnostics.map((d) => d.code)).not.toContain(
+      reviewerDetailDiagnosticCodeValues.missingBranchReference,
+    );
+  });
+
+  it("emits missing_branch_reference when a draft has no bound reference", async () => {
+    const item = runtimeEvidenceItemFixture();
+    const stub = stubLoader({
+      item,
+      payload: {
+        loadedSourceRevisionId: item.sourceRevisionId,
+        source: sourceUnitFixture(),
+        draft: draftFixture(),
+        policy: policyFixture(),
+        branchReference: null,
+        rationaleRefs: [rationaleFixture()],
+        runtimeEvidence: [runtimeTextTraceFixture()],
+      },
+    });
+    const context = await loadReviewerDetailContext(
+      { reviewItemId: item.reviewItemId },
+      { permission: permissionView(), evidenceLoader: stub.loader },
+    );
+
+    expect(context.branchReference).toBeNull();
+    expect(context.diagnostics.map((d) => d.code)).toContain(
+      reviewerDetailDiagnosticCodeValues.missingBranchReference,
+    );
+  });
+
+  it("blanks the branch reference on a stale source revision (no unverifiable provenance)", async () => {
+    const item = runtimeEvidenceItemFixture({
+      sourceRevisionId: "source-revision-itotori-082-newer",
+    });
+    const stub = stubLoader({
+      item,
+      payload: {
+        loadedSourceRevisionId: "source-revision-itotori-082-older",
+        source: sourceUnitFixture({ sourceRevisionId: "source-revision-itotori-082-older" }),
+        draft: draftFixture(),
+        policy: policyFixture(),
+        branchReference: branchReferenceFixture(),
+        rationaleRefs: [rationaleFixture()],
+        runtimeEvidence: [runtimeTextTraceFixture()],
+      },
+    });
+    const context = await loadReviewerDetailContext(
+      { reviewItemId: item.reviewItemId },
+      { permission: permissionView(), evidenceLoader: stub.loader },
+    );
+
+    expect(context.draft).toBeNull();
+    expect(context.branchReference).toBeNull();
+    expect(context.diagnostics.map((d) => d.code)).toContain(
+      reviewerDetailDiagnosticCodeValues.staleSourceRevision,
+    );
   });
 });
 
