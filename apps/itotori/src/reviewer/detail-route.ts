@@ -29,7 +29,6 @@ import {
   type ReviewerQueueTransitionRecord,
 } from "@itotori/db";
 import {
-  deniedContextFixture,
   reviewerDetailDiagnosticCodeValues,
   type ReviewerDetailContext,
   type ReviewerDetailDiagnostic,
@@ -52,6 +51,40 @@ import {
 
 export { parseReviewerDetailRoute, reviewerDetailRoutePathRegex };
 export type { ReviewerDetailRouteParams };
+
+/**
+ * The empty-evidence scaffold every "no visible evidence" reviewer-detail
+ * context shares: a permission-denied response and a not-found response
+ * both carry a null item / source / draft / policy and empty evidence
+ * arrays. This is REAL production code (NOT a test fixture): the denied
+ * and not-found paths return it directly, and the JSON API layer reuses
+ * it to build the permission-denied API response. Keeping it here means
+ * no fixture builder is reachable from the production API/route surface.
+ */
+export function emptyReviewerDetailEvidence(): Pick<
+  ReviewerDetailContext,
+  | "item"
+  | "source"
+  | "draft"
+  | "policy"
+  | "glossary"
+  | "qaFindings"
+  | "runtimeEvidence"
+  | "rationaleRefs"
+  | "transitions"
+> {
+  return {
+    item: null,
+    source: null,
+    draft: null,
+    policy: null,
+    glossary: [],
+    qaFindings: [],
+    runtimeEvidence: [],
+    rationaleRefs: [],
+    transitions: [],
+  };
+}
 
 /**
  * Persistence port the loader queries for per-item evidence + draft +
@@ -120,7 +153,7 @@ export async function loadReviewerDetailContext(
       deps.permission.denialReasons[0] ??
       `user ${deps.permission.actorUserId} is missing permission queue.read`;
     return {
-      ...deniedContextFixture(deps.permission.actorUserId),
+      ...emptyReviewerDetailEvidence(),
       reviewItemId: params.reviewItemId,
       permission: {
         ...deps.permission,
@@ -141,17 +174,9 @@ export async function loadReviewerDetailContext(
   const item = await deps.evidenceLoader.loadItem(params.reviewItemId);
   if (item === null) {
     return {
+      ...emptyReviewerDetailEvidence(),
       reviewItemId: params.reviewItemId,
       permission: deps.permission,
-      item: null,
-      source: null,
-      draft: null,
-      policy: null,
-      glossary: [],
-      qaFindings: [],
-      runtimeEvidence: [],
-      rationaleRefs: [],
-      transitions: [],
       diagnostics: [
         {
           code: reviewerDetailDiagnosticCodeValues.staleSourceRevision,

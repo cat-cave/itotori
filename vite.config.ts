@@ -82,7 +82,11 @@ export default defineConfig({
         cache: false,
       },
       "itotori:review-queue-fixture": {
-        command: "node apps/itotori/dist/cli.js review-queue-fixture",
+        // Dev-only fixture SEEDER. Invoked via its dedicated dev binary,
+        // NOT the production CLI (`cli.js`): the seeder is compile-time
+        // separated from the shipped command dispatch so no fixture
+        // builder is reachable from the production CLI surface.
+        command: "node apps/itotori/dist/review-queue-fixture-dev.js",
         dependsOn: ["ts:build"],
         cache: false,
       },

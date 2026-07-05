@@ -85,7 +85,6 @@ import {
   flattenPairPolicyV03Postures,
   type AgenticLoopBundle,
   type BridgeBundleV02,
-  type LocalizationUnitV02,
   type PairPolicyV03,
   type StagePostureV03,
   type StyleGuidePolicyV0Draft,
@@ -94,7 +93,6 @@ import { parseNarrativeStructure } from "../agents/structure-informed-context/in
 import type { TranslationGlossaryEntry } from "../agents/translation/shapes.js";
 import { DEFAULT_COST_CAP_USD, OpenRouterModelProvider } from "../providers/openrouter.js";
 import { LocalProviderRunArtifactRecorder } from "../providers/artifacts.js";
-import { FakeModelProvider } from "../providers/fake.js";
 import type {
   ModelInvocationRequest,
   ModelInvocationResult,
@@ -102,7 +100,6 @@ import type {
   ProviderRunArtifactRecorder,
 } from "../providers/types.js";
 import {
-  fakeSemanticContextContent,
   runAgenticLoopForUnit,
   type AgenticLoopPolicy,
   type AgenticLoopProviderFactory,
@@ -167,15 +164,6 @@ export type LocalizeProjectStageArgs = {
   actor: AuthorizationActor;
   log?: (message: string) => void;
   /**
-   * Test-only escape hatch: when set to "fake", the command builds a
-   * deterministic FakeModelProvider whose translation output is a
-   * deterministic stand-in (`[en-US] <source>`). Refused at runtime unless the
-   * caller also sets `ITOTORI_ALLOW_FAKE_LOCALIZE_PROVIDER=1` — keeps
-   * a stray flag from silently downgrading the recipe to fake. The
-   * production driver never sets this.
-   */
-  providerKind?: "live" | "fake";
-  /**
    * Maximum repair attempts the loop is allowed. Defaults to 1.
    */
   maxRepairAttempts?: number;
@@ -219,15 +207,6 @@ export class LocalizeProjectPairPolicyError extends Error {
   constructor(detail: string) {
     super(`localize-project-stage refused: pair-policy ${detail}`);
     this.name = "LocalizeProjectPairPolicyError";
-  }
-}
-
-export class LocalizeProjectRefusedFakeError extends Error {
-  constructor() {
-    super(
-      "localize-project-stage refused: --provider-kind fake requires ITOTORI_ALLOW_FAKE_LOCALIZE_PROVIDER=1 to be set; the production recipe must run live",
-    );
-    this.name = "LocalizeProjectRefusedFakeError";
   }
 }
 
@@ -377,19 +356,16 @@ export async function runLocalizeProjectStageCommand(
     `localize-project-stage: pair=(${pair.modelId}, ${pair.providerId}) (OpenRouter-side fallback handles 429s within the ZDR allow-list)`,
   );
 
-  const providerKind = args.providerKind ?? "live";
-  if (providerKind === "fake" && process.env.ITOTORI_ALLOW_FAKE_LOCALIZE_PROVIDER !== "1") {
-    throw new LocalizeProjectRefusedFakeError();
-  }
-  if (
-    providerKind === "live" &&
-    args.providerRunArtifactDirectory === undefined &&
-    args.liveFactoryOverride === undefined
-  ) {
+  // The command always runs the LIVE OpenRouter path. The only test seam
+  // is `liveFactoryOverride` (a test injects a deterministic provider
+  // factory in place of the real OpenRouter client). There is NO fake /
+  // shipped-fixture provider branch: a fake translation must never be
+  // reachable on this production localize surface.
+  if (args.providerRunArtifactDirectory === undefined && args.liveFactoryOverride === undefined) {
     throw new LocalizeProjectMissingProviderRunArtifactsDirectoryError();
   }
   const artifactRecorder =
-    providerKind === "live" && args.providerRunArtifactDirectory !== undefined
+    args.providerRunArtifactDirectory !== undefined
       ? new LocalProviderRunArtifactRecorder(args.providerRunArtifactDirectory)
       : undefined;
 
@@ -436,14 +412,12 @@ export async function runLocalizeProjectStageCommand(
   // provider is at quota, OR returns the terminal error and
   // `runAgenticLoopForUnit` surfaces it verbatim as a `ModelProviderError`.
   const factory: AgenticLoopProviderFactory =
-    providerKind === "fake"
-      ? fakeTranslationFactory(unit, policy)
-      : args.liveFactoryOverride !== undefined
-        ? withStagePostureInjectionFactory(args.liveFactoryOverride(pair, { artifactRecorder }))
-        : liveOpenRouterFactory({
-            costCapUsd: args.costCapUsd ?? DEFAULT_COST_CAP_USD,
-            artifactRecorder,
-          });
+    args.liveFactoryOverride !== undefined
+      ? withStagePostureInjectionFactory(args.liveFactoryOverride(pair, { artifactRecorder }))
+      : liveOpenRouterFactory({
+          costCapUsd: args.costCapUsd ?? DEFAULT_COST_CAP_USD,
+          artifactRecorder,
+        });
 
   const bundle = await runAgenticLoopForUnit(input, pairPolicy, policy, factory);
   assertAgenticLoopBundle(bundle);
@@ -610,70 +584,6 @@ function descriptorForStagePair(
     return candidate.descriptorForPair(pair);
   }
   return provider.descriptor;
-}
-
-/**
- * Deterministic fake provider used by the unit-test path (refused at
- * runtime unless `ITOTORI_ALLOW_FAKE_LOCALIZE_PROVIDER=1`). Emits
- * structurally-correct stage payloads where the translation stage's
- * draft text is a deterministic stand-in for a real translation
- * (`[en-US] <source>`). It carries NO sentinel: the downstream runtime
- * evidence is asserted over the engine's observed decode of THIS text.
- */
-function fakeTranslationFactory(
-  unit: LocalizationUnitV02,
-  policy: AgenticLoopPolicy,
-): AgenticLoopProviderFactory {
-  return ({ stage, agentLabel }) =>
-    new FakeModelProvider({
-      providerName: `localize-project-fake:${stage}:${agentLabel}`,
-      generate: (request: ModelInvocationRequest) => {
-        if (request.taskKind === "experiment" && agentLabel === "speaker-label") {
-          return JSON.stringify({
-            schemaVersion: "itotori.speaker-label-output.v1",
-            labels: [
-              {
-                bridgeUnitId: unit.bridgeUnitId,
-                speakerId: { kind: "narration" },
-                confidence: "high",
-                evidenceRefs: [],
-                agentRationale: "localize-project-fake narration",
-              },
-            ],
-          });
-        }
-        if (request.taskKind === "experiment") {
-          // Context stage runs the four real semantic agents; the fake returns
-          // each agent's minimal-valid pack so the fake path parses.
-          return fakeSemanticContextContent(agentLabel);
-        }
-        if (request.taskKind === "draft_translation") {
-          return JSON.stringify({
-            schemaVersion: "itotori.structured-translation-draft-output.v1",
-            drafts: [
-              {
-                bridgeUnitId: unit.bridgeUnitId,
-                sourceLocale: unit.sourceLocale,
-                targetLocale: policy.targetLocale,
-                // A deterministic stand-in translation (no sentinel).
-                draftText: `[en-US] ${unit.sourceText}`,
-                protectedSpanRefs: [],
-                citationRefs: [],
-                agentRationale: "localize-project-fake translation",
-                confidenceFloor: "medium",
-              },
-            ],
-          });
-        }
-        if (request.taskKind === "llm_qa") {
-          return JSON.stringify({
-            schemaVersion: "itotori.structured-qa-finding-output.v1",
-            findings: [],
-          });
-        }
-        return "";
-      },
-    });
 }
 
 /**

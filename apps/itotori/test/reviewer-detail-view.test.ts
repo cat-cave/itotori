@@ -8,7 +8,6 @@ import {
   reviewerQueueItemStateValues,
 } from "@itotori/db";
 import {
-  deniedContextFixture,
   draftFixture,
   parseReviewerDetailRoute,
   readyContextFixture,
@@ -23,6 +22,10 @@ import {
   staleContextFixture,
   type ReviewerDetailContext,
 } from "../src/reviewer/index.js";
+// deniedContextFixture is a TEST-ONLY fixture: it is intentionally NOT
+// re-exported from the reviewer public surface (index.js) and is not
+// reachable from any production API/route. Tests import it directly.
+import { deniedContextFixture } from "../src/reviewer/detail-fixtures.js";
 
 function renderInto(html: string): HTMLDivElement {
   const root = document.createElement("div");

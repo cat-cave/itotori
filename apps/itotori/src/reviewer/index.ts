@@ -66,7 +66,6 @@ export type {
   ReviewerDetailRouteDeps,
 } from "./detail-route.js";
 export {
-  deniedContextFixture,
   draftFixture,
   glossaryFixture,
   policyFixture,

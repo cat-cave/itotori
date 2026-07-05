@@ -74,10 +74,8 @@ import type {
   ItotoriProjectWorkflowPort,
   RuntimeIngestResult,
 } from "./services/project-workflow.js";
-import {
-  deniedContextFixture,
-  reviewerDetailDiagnosticCodeValues,
-} from "./reviewer/detail-fixtures.js";
+import { reviewerDetailDiagnosticCodeValues } from "./reviewer/detail-fixtures.js";
+import { emptyReviewerDetailEvidence } from "./reviewer/detail-route.js";
 import type { ReviewerQueueApiServicePort } from "./reviewer/api-service.js";
 import { reviewerBatchPreviewStatusValues } from "./reviewer/batch-preview.js";
 import type { ReviewerQueuePermissionView } from "./auth.js";
@@ -719,7 +717,7 @@ function deniedReviewerDetailApiResponse(
     permission.denialReasons[0] ??
     `user ${permission.actorUserId} is missing permission queue.read`;
   return {
-    ...deniedContextFixture(permission.actorUserId),
+    ...emptyReviewerDetailEvidence(),
     reviewItemId,
     permission: {
       ...permission,

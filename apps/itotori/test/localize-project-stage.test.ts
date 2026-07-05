@@ -5,11 +5,12 @@
 //   - Missing/malformed pair-policy fields hard-fail (no defaulting).
 //   - Per-stage pair must byte-equal the top-level pair (single-game
 //     alpha invariant).
-//   - The handler refuses to run with `providerKind: "fake"` unless
-//     the `ITOTORI_ALLOW_FAKE_LOCALIZE_PROVIDER=1` opt-in is set.
-//   - The fake-provider mode (opt-in) writes all three artifacts AND
-//     the agentic-loop-bundle.v0 carries the (modelId, providerId)
-//     pair pinned on every invocation (matching the pair-policy).
+//   - Injecting a deterministic provider via the `liveFactoryOverride`
+//     test seam writes all three artifacts AND the agentic-loop-bundle.v0
+//     carries the (modelId, providerId) pair pinned on every invocation
+//     (matching the pair-policy). There is NO shipped fake-provider mode:
+//     a fake translation is never reachable on the production localize
+//     surface, so tests inject the fake through the override seam.
 //   - The synthesised translated bundle's `target.text` field contains
 //     the en-US sentinel substring, wrapped with the SJIS bracket pair
 //     (`「…」`) so the KAIFUU-191 lexer classifies it as a Textout run.
@@ -25,7 +26,6 @@ import { describe, expect, it, vi } from "vitest";
 import {
   LocalizeProjectMissingProviderRunArtifactsDirectoryError,
   LocalizeProjectPairPolicyError,
-  LocalizeProjectRefusedFakeError,
   parseLocalizeProjectPairPolicy,
   runLocalizeProjectStageCommand,
   type LocalizeProjectStageIo,
@@ -165,36 +165,6 @@ describe("UTSUSHI-228 parseLocalizeProjectPairPolicy", () => {
 });
 
 describe("UTSUSHI-228 runLocalizeProjectStageCommand", () => {
-  it("refuses providerKind='fake' unless ITOTORI_ALLOW_FAKE_LOCALIZE_PROVIDER=1", async () => {
-    const prevAllow = process.env.ITOTORI_ALLOW_FAKE_LOCALIZE_PROVIDER;
-    delete process.env.ITOTORI_ALLOW_FAKE_LOCALIZE_PROVIDER;
-    try {
-      const reads = new Map<string, unknown>([
-        ["bridge.json", loadSmokeBridge()],
-        ["pair-policy.json", loadPreset()],
-      ]);
-      const { io } = ioFixture(reads);
-      await expect(
-        runLocalizeProjectStageCommand({
-          bridgePath: "bridge.json",
-          pairPolicyPath: "pair-policy.json",
-          outputPath: "out/agentic-loop-bundle.v0.json",
-          translatedBundleOutputPath: "out/translated-bridge.json",
-          patchReportOutputPath: "out/patch-report.json",
-          providerKind: "fake",
-          io,
-          actor: { userId: "test" },
-        }),
-      ).rejects.toBeInstanceOf(LocalizeProjectRefusedFakeError);
-    } finally {
-      if (prevAllow === undefined) {
-        delete process.env.ITOTORI_ALLOW_FAKE_LOCALIZE_PROVIDER;
-      } else {
-        process.env.ITOTORI_ALLOW_FAKE_LOCALIZE_PROVIDER = prevAllow;
-      }
-    }
-  });
-
   it("refuses the real live OpenRouter path without a provider-run artifact directory", async () => {
     const reads = new Map<string, unknown>([
       ["bridge.json", loadSmokeBridge()],
@@ -214,112 +184,116 @@ describe("UTSUSHI-228 runLocalizeProjectStageCommand", () => {
     ).rejects.toBeInstanceOf(LocalizeProjectMissingProviderRunArtifactsDirectoryError);
   });
 
-  it("writes all three artifacts with the real translated draft, and pins every invocation to the policy pair (fake provider, opt-in)", async () => {
-    const prevAllow = process.env.ITOTORI_ALLOW_FAKE_LOCALIZE_PROVIDER;
-    process.env.ITOTORI_ALLOW_FAKE_LOCALIZE_PROVIDER = "1";
-    try {
-      const reads = new Map<string, unknown>([
-        ["bridge.json", loadSmokeBridge()],
-        ["pair-policy.json", loadPreset()],
-      ]);
-      const { io, writes } = ioFixture(reads);
-      await runLocalizeProjectStageCommand({
-        bridgePath: "bridge.json",
-        pairPolicyPath: "pair-policy.json",
-        outputPath: "out/agentic-loop-bundle.v0.json",
-        translatedBundleOutputPath: "out/translated-bridge.json",
-        patchReportOutputPath: "out/patch-report.json",
-        providerKind: "fake",
-        io,
-        actor: { userId: "test" },
-      });
+  it("writes all three artifacts with the real translated draft, and pins every invocation to the policy pair (injected en-US stand-in provider)", async () => {
+    const smokeBridge = loadSmokeBridge() as {
+      units: ReadonlyArray<{ bridgeUnitId: string; sourceLocale?: string; sourceText?: string }>;
+    };
+    const firstUnit = smokeBridge.units[0];
+    if (firstUnit === undefined || firstUnit.sourceText === undefined) {
+      throw new Error("smoke bridge fixture must carry a first unit with sourceText");
+    }
+    const reads = new Map<string, unknown>([
+      ["bridge.json", smokeBridge],
+      ["pair-policy.json", loadPreset()],
+    ]);
+    const { io, writes } = ioFixture(reads);
+    // Inject the deterministic en-US stand-in provider via the ONLY test
+    // seam (`liveFactoryOverride`). No fake provider ships in the command.
+    await runLocalizeProjectStageCommand({
+      bridgePath: "bridge.json",
+      pairPolicyPath: "pair-policy.json",
+      outputPath: "out/agentic-loop-bundle.v0.json",
+      translatedBundleOutputPath: "out/translated-bridge.json",
+      patchReportOutputPath: "out/patch-report.json",
+      liveFactoryOverride: () =>
+        enUsStandInTranslationFactory({
+          bridgeUnitId: firstUnit.bridgeUnitId,
+          sourceLocale: firstUnit.sourceLocale ?? "ja-JP",
+          sourceText: firstUnit.sourceText ?? "",
+        }),
+      io,
+      actor: { userId: "test" },
+    });
 
-      // ----- AgenticLoopBundle -----
-      const bundle = writes.get("out/agentic-loop-bundle.v0.json") as {
-        schemaVersion: string;
-        stages: Array<{
-          stageName: string;
-          invocations: Array<{
-            pair: { modelId: string; providerId: string };
-            zdr: boolean;
-            seed: number;
-          }>;
+    // ----- AgenticLoopBundle -----
+    const bundle = writes.get("out/agentic-loop-bundle.v0.json") as {
+      schemaVersion: string;
+      stages: Array<{
+        stageName: string;
+        invocations: Array<{
+          pair: { modelId: string; providerId: string };
+          zdr: boolean;
+          seed: number;
         }>;
-        finalDraft: { draftText?: string };
-      };
-      expect(bundle).toBeDefined();
-      expect(bundle.schemaVersion).toBe("itotori.agentic-loop-bundle.v2");
-      const stageNames = bundle.stages.map((s) => s.stageName);
-      expect(stageNames).toEqual([
-        "context",
-        "pre_translation",
-        "translation",
-        "deterministic_checks",
-        "qa_findings",
-        "routing",
-        "repair",
-        "final_draft",
-      ]);
-      // Every invocation's pair must be the policy pair, AND every
-      // invocation must carry the per-stage zdr + seed posture
-      // (ITOTORI-234 acceptance criterion #3).
-      for (const stage of bundle.stages) {
-        for (const invocation of stage.invocations) {
-          expect(invocation.pair.modelId).toBe("deepseek/deepseek-v4-flash");
-          expect(invocation.pair.providerId).toBe("fireworks");
-          expect(invocation.zdr).toBe(true);
-          expect(Number.isInteger(invocation.seed)).toBe(true);
-          expect(invocation.seed).toBeGreaterThanOrEqual(0);
-        }
-      }
-      // The fake provider emits a deterministic stand-in translation
-      // (`[en-US] <source>`), no sentinel; assert the orchestrator
-      // surfaced the REAL draft through final-draft.
-      const draftText = bundle.finalDraft.draftText ?? "";
-      expect(draftText.startsWith("[en-US] ")).toBe(true);
-
-      // ----- Translated bridge bundle -----
-      const translated = writes.get("out/translated-bridge.json") as {
-        units: Array<{ target: { locale: string; text: string } }>;
-      };
-      expect(translated).toBeDefined();
-      expect(translated.units.length).toBeGreaterThan(0);
-      for (const unit of translated.units) {
-        expect(unit.target.locale).toBe("en-US");
-        // RealLive bracket wrap is an encoding requirement; the interior
-        // is the REAL translated draft verbatim.
-        expect(unit.target.text.startsWith("「")).toBe(true);
-        expect(unit.target.text.endsWith("」")).toBe(true);
-        expect(unit.target.text).toContain(draftText);
-      }
-
-      // ----- Patch report -----
-      const patchReport = writes.get("out/patch-report.json") as {
-        schemaVersion: string;
-        pair: { modelId: string; providerId: string };
-        sceneId: number;
-        finalDraftText: string;
-        translatedTargetText: string;
-      };
-      expect(patchReport).toBeDefined();
-      expect(patchReport.schemaVersion).toBe("itotori.localize-project.patch-report.v0");
-      expect(patchReport.pair).toEqual({
-        modelId: "deepseek/deepseek-v4-flash",
-        providerId: "fireworks",
-      });
-      expect(patchReport).not.toHaveProperty("enUsSentinel");
-      expect(patchReport.sceneId).toBe(1017);
-      // The patch-report records the REAL translated text the downstream
-      // replay must OBSERVE — not a planted sentinel.
-      expect(patchReport.finalDraftText).toBe(draftText);
-      expect(patchReport.translatedTargetText).toBe(`「${draftText}」`);
-    } finally {
-      if (prevAllow === undefined) {
-        delete process.env.ITOTORI_ALLOW_FAKE_LOCALIZE_PROVIDER;
-      } else {
-        process.env.ITOTORI_ALLOW_FAKE_LOCALIZE_PROVIDER = prevAllow;
+      }>;
+      finalDraft: { draftText?: string };
+    };
+    expect(bundle).toBeDefined();
+    expect(bundle.schemaVersion).toBe("itotori.agentic-loop-bundle.v2");
+    const stageNames = bundle.stages.map((s) => s.stageName);
+    expect(stageNames).toEqual([
+      "context",
+      "pre_translation",
+      "translation",
+      "deterministic_checks",
+      "qa_findings",
+      "routing",
+      "repair",
+      "final_draft",
+    ]);
+    // Every invocation's pair must be the policy pair, AND every
+    // invocation must carry the per-stage zdr + seed posture
+    // (ITOTORI-234 acceptance criterion #3).
+    for (const stage of bundle.stages) {
+      for (const invocation of stage.invocations) {
+        expect(invocation.pair.modelId).toBe("deepseek/deepseek-v4-flash");
+        expect(invocation.pair.providerId).toBe("fireworks");
+        expect(invocation.zdr).toBe(true);
+        expect(Number.isInteger(invocation.seed)).toBe(true);
+        expect(invocation.seed).toBeGreaterThanOrEqual(0);
       }
     }
+    // The injected provider emits a deterministic stand-in translation
+    // (`[en-US] <source>`), no sentinel; assert the orchestrator
+    // surfaced the REAL draft through final-draft.
+    const draftText = bundle.finalDraft.draftText ?? "";
+    expect(draftText.startsWith("[en-US] ")).toBe(true);
+
+    // ----- Translated bridge bundle -----
+    const translated = writes.get("out/translated-bridge.json") as {
+      units: Array<{ target: { locale: string; text: string } }>;
+    };
+    expect(translated).toBeDefined();
+    expect(translated.units.length).toBeGreaterThan(0);
+    for (const unit of translated.units) {
+      expect(unit.target.locale).toBe("en-US");
+      // RealLive bracket wrap is an encoding requirement; the interior
+      // is the REAL translated draft verbatim.
+      expect(unit.target.text.startsWith("「")).toBe(true);
+      expect(unit.target.text.endsWith("」")).toBe(true);
+      expect(unit.target.text).toContain(draftText);
+    }
+
+    // ----- Patch report -----
+    const patchReport = writes.get("out/patch-report.json") as {
+      schemaVersion: string;
+      pair: { modelId: string; providerId: string };
+      sceneId: number;
+      finalDraftText: string;
+      translatedTargetText: string;
+    };
+    expect(patchReport).toBeDefined();
+    expect(patchReport.schemaVersion).toBe("itotori.localize-project.patch-report.v0");
+    expect(patchReport.pair).toEqual({
+      modelId: "deepseek/deepseek-v4-flash",
+      providerId: "fireworks",
+    });
+    expect(patchReport).not.toHaveProperty("enUsSentinel");
+    expect(patchReport.sceneId).toBe(1017);
+    // The patch-report records the REAL translated text the downstream
+    // replay must OBSERVE — not a planted sentinel.
+    expect(patchReport.finalDraftText).toBe(draftText);
+    expect(patchReport.translatedTargetText).toBe(`「${draftText}」`);
   });
 });
 
@@ -464,9 +438,9 @@ function alwaysFailingFactory(error: ModelProviderError): AgenticLoopProviderFac
 /**
  * Build a fake provider factory keyed to a (modelId, providerId) pair
  * that emits structurally-correct payloads whose translated draft
- * carries a caller-supplied `marker` string. Mirrors the production
- * fakeTranslationFactory so a downstream agentic-loop run actually
- * succeeds when this factory is adopted. The marker is an ordinary
+ * carries a caller-supplied `marker` string, so a downstream
+ * agentic-loop run actually succeeds when this factory is injected via
+ * the `liveFactoryOverride` test seam. The marker is an ordinary
  * test-double tracer for asserting the draft flowed through the
  * orchestrator — NOT a runtime-evidence sentinel.
  *
@@ -474,6 +448,68 @@ function alwaysFailingFactory(error: ModelProviderError): AgenticLoopProviderFac
  * resolver finds a known unit; the smoke bridge fixture's first unit
  * is the canonical alpha-closer scene-1 unit 0.
  */
+/**
+ * Deterministic en-US stand-in translation provider for the artifact
+ * shape test. Mirrors what a real provider would emit per stage but the
+ * translation stage's draft is the deterministic stand-in `[en-US]
+ * <source>` (no sentinel). This lives in the TEST harness — the shipped
+ * command carries no fake provider; the test injects it through the
+ * `liveFactoryOverride` seam.
+ */
+function enUsStandInTranslationFactory(unit: {
+  bridgeUnitId: string;
+  sourceLocale: string;
+  sourceText: string;
+}): AgenticLoopProviderFactory {
+  return ({ stage, agentLabel }) =>
+    new FakeModelProvider({
+      providerName: `test-en-us-standin:${stage}:${agentLabel}`,
+      generate: (request: ModelInvocationRequest) => {
+        if (request.taskKind === "experiment" && agentLabel === "speaker-label") {
+          return JSON.stringify({
+            schemaVersion: "itotori.speaker-label-output.v1",
+            labels: [
+              {
+                bridgeUnitId: unit.bridgeUnitId,
+                speakerId: { kind: "narration" },
+                confidence: "high",
+                evidenceRefs: [],
+                agentRationale: "test narration",
+              },
+            ],
+          });
+        }
+        if (request.taskKind === "experiment") {
+          return fakeSemanticContextContent(agentLabel);
+        }
+        if (request.taskKind === "draft_translation") {
+          return JSON.stringify({
+            schemaVersion: "itotori.structured-translation-draft-output.v1",
+            drafts: [
+              {
+                bridgeUnitId: unit.bridgeUnitId,
+                sourceLocale: unit.sourceLocale,
+                targetLocale: "en-US",
+                draftText: `[en-US] ${unit.sourceText}`,
+                protectedSpanRefs: [],
+                citationRefs: [],
+                agentRationale: "test translation",
+                confidenceFloor: "medium",
+              },
+            ],
+          });
+        }
+        if (request.taskKind === "llm_qa") {
+          return JSON.stringify({
+            schemaVersion: "itotori.structured-qa-finding-output.v1",
+            findings: [],
+          });
+        }
+        return "";
+      },
+    });
+}
+
 function workingTranslationFactory(
   pair: PairChoice["pair"],
   marker: string,
@@ -808,41 +844,31 @@ describe("OpenRouter-side fallback resilience", () => {
   });
 
   it("a provider error surfaces verbatim — no app-level retry or provider swap", async () => {
-    const prevAllow = process.env.ITOTORI_ALLOW_FAKE_LOCALIZE_PROVIDER;
-    process.env.ITOTORI_ALLOW_FAKE_LOCALIZE_PROVIDER = "1";
-    try {
-      const reads = new Map<string, unknown>([
-        ["bridge.json", loadSmokeBridge()],
-        ["pair-policy.json", loadPreset()],
-      ]);
-      const { io } = ioFixture(reads);
-      // An HTTP 429 that reaches the APP means OpenRouter already exhausted
-      // the ZDR allow-list. With the app-level alternate-chaining removed,
-      // there is nothing to swallow it: the error surfaces verbatim.
-      const error = http429Error({
-        modelId: "deepseek/deepseek-v4-flash",
-        providerId: "fireworks",
-      });
-      const liveFactoryOverride = (_pair: { modelId: string; providerId: string }) =>
-        alwaysFailingFactory(error);
-      await expect(
-        runLocalizeProjectStageCommand({
-          bridgePath: "bridge.json",
-          pairPolicyPath: "pair-policy.json",
-          outputPath: "out/agentic-loop-bundle.v0.json",
-          translatedBundleOutputPath: "out/translated-bridge.json",
-          patchReportOutputPath: "out/patch-report.json",
-          liveFactoryOverride,
-          io,
-          actor: { userId: "test" },
-        }),
-      ).rejects.toBeInstanceOf(ModelProviderError);
-    } finally {
-      if (prevAllow === undefined) {
-        delete process.env.ITOTORI_ALLOW_FAKE_LOCALIZE_PROVIDER;
-      } else {
-        process.env.ITOTORI_ALLOW_FAKE_LOCALIZE_PROVIDER = prevAllow;
-      }
-    }
+    const reads = new Map<string, unknown>([
+      ["bridge.json", loadSmokeBridge()],
+      ["pair-policy.json", loadPreset()],
+    ]);
+    const { io } = ioFixture(reads);
+    // An HTTP 429 that reaches the APP means OpenRouter already exhausted
+    // the ZDR allow-list. With the app-level alternate-chaining removed,
+    // there is nothing to swallow it: the error surfaces verbatim.
+    const error = http429Error({
+      modelId: "deepseek/deepseek-v4-flash",
+      providerId: "fireworks",
+    });
+    const liveFactoryOverride = (_pair: { modelId: string; providerId: string }) =>
+      alwaysFailingFactory(error);
+    await expect(
+      runLocalizeProjectStageCommand({
+        bridgePath: "bridge.json",
+        pairPolicyPath: "pair-policy.json",
+        outputPath: "out/agentic-loop-bundle.v0.json",
+        translatedBundleOutputPath: "out/translated-bridge.json",
+        patchReportOutputPath: "out/patch-report.json",
+        liveFactoryOverride,
+        io,
+        actor: { userId: "test" },
+      }),
+    ).rejects.toBeInstanceOf(ModelProviderError);
   });
 });

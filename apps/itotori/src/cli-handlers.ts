@@ -85,7 +85,6 @@ import {
   readProviderRunArtifactsFromDir,
 } from "./telemetry/provider-run-artifact-source.js";
 import type { TelemetryQuery } from "./telemetry/queries.js";
-import { runReviewQueueFixtureCommand } from "./reviewer/review-queue-fixture-command.js";
 import {
   DEFAULT_PUBLIC_BENCHMARK_SEEDS_FIXTURE_PATH,
   DEFAULT_PUBLIC_BENCHMARK_SETS_FIXTURE_PATH,
@@ -288,9 +287,6 @@ export async function runItotoriCliCommand(
     case "telemetry-summary":
       await runTelemetrySummaryHandler(args, dependencies);
       break;
-    case "review-queue-fixture":
-      await runReviewQueueFixtureHandler(args, dependencies);
-      break;
     case "benchmark-harness-run":
       await runBenchmarkHarnessHandler(args, dependencies);
       break;
@@ -306,20 +302,6 @@ export async function runItotoriCliCommand(
     default:
       throw new Error(`unknown itotori command: ${String(command)}`);
   }
-}
-
-async function runReviewQueueFixtureHandler(
-  args: string[],
-  dependencies: ItotoriCliDependencies,
-): Promise<void> {
-  const outputPath = optionalFlag(args, "--output");
-  await runReviewQueueFixtureCommand({
-    ...(outputPath === undefined ? {} : { outputPath }),
-    writeJson: (path, value) => dependencies.io.writeJson(path, value),
-    log: (message) => {
-      process.stdout.write(`${message}\n`);
-    },
-  });
 }
 
 async function runTelemetrySummaryHandler(
@@ -647,10 +629,10 @@ async function runLocalizeProjectStage(
   // Optional:
   //   --unit-index <N>                         default 0
   //   --max-repair-attempts <N>                default 1
-  //   --provider-kind <live|fake>              default live; fake requires
-  //                                            ITOTORI_ALLOW_FAKE_LOCALIZE_PROVIDER=1
   //   --cost-cap-usd <decimal>                 default 0.5
   //   --provider-run-artifacts-dir <PATH>      persist live provider-run artifacts here
+  // The command runs the LIVE OpenRouter path only — there is no fake /
+  // fixture provider option on this production CLI surface.
   const bridgePath = requiredFlag(args, "--bridge");
   const pairPolicyPath = requiredFlag(args, "--pair-policy");
   const outputPath = requiredFlag(args, "--output");
@@ -659,18 +641,11 @@ async function runLocalizeProjectStage(
   const unitIndexRaw = optionalFlag(args, "--unit-index");
   const engineProfileRaw = optionalFlag(args, "--engine-profile");
   const maxRepairAttemptsRaw = optionalFlag(args, "--max-repair-attempts");
-  const providerKindRaw = optionalFlag(args, "--provider-kind");
   const costCapUsdRaw = optionalFlag(args, "--cost-cap-usd");
   const providerRunArtifactDirectory = optionalFlag(args, "--provider-run-artifacts-dir");
-  const providerKind = providerKindRaw ?? "live";
-  if (providerKind !== "live" && providerKind !== "fake") {
+  if (providerRunArtifactDirectory === undefined) {
     throw new Error(
-      `localize-project-stage refused: --provider-kind '${providerKind}' must be 'live' or 'fake'`,
-    );
-  }
-  if (providerKind === "live" && providerRunArtifactDirectory === undefined) {
-    throw new Error(
-      "localize-project-stage refused: --provider-run-artifacts-dir is required when --provider-kind is live",
+      "localize-project-stage refused: --provider-run-artifacts-dir is required (the live OpenRouter path persists per-run provider artifacts there)",
     );
   }
 
@@ -714,9 +689,6 @@ async function runLocalizeProjectStage(
       );
     }
     callArgs.maxRepairAttempts = parsed;
-  }
-  if (providerKindRaw !== undefined) {
-    callArgs.providerKind = providerKind;
   }
   if (costCapUsdRaw !== undefined) {
     const parsed = Number.parseFloat(costCapUsdRaw);
