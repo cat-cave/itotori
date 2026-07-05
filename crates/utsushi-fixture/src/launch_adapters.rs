@@ -47,6 +47,13 @@ const BROWSER_VIEWPORT_HEIGHT: u32 = 180;
 #[derive(Clone, Debug)]
 pub struct BrowserLaunchAdapter {
     browser_program: Option<PathBuf>,
+    // Test-only seam: inject a deterministic Chromium version so the
+    // version-mismatch comparison logic can be exercised WITHOUT spawning a
+    // real `<binary> --version` shell-out. Production builds never set this
+    // (the constructor that populates it is `#[cfg(test)]`), so the live probe
+    // path always shells out to the real binary.
+    #[cfg(test)]
+    version_probe_override: Option<browser_detection::ChromiumVersion>,
 }
 
 impl BrowserLaunchAdapter {
@@ -55,12 +62,33 @@ impl BrowserLaunchAdapter {
     pub const fn new() -> Self {
         Self {
             browser_program: None,
+            #[cfg(test)]
+            version_probe_override: None,
         }
     }
 
     pub fn with_browser_program(browser_program: impl Into<PathBuf>) -> Self {
         Self {
             browser_program: Some(browser_program.into()),
+            #[cfg(test)]
+            version_probe_override: None,
+        }
+    }
+
+    /// Test-only constructor that resolves the given launchable browser binary
+    /// but injects a fixed Chromium version instead of shelling out to
+    /// `<binary> --version`. This makes the version-mismatch comparison logic
+    /// deterministic under concurrency (the real probe spawn can race/time out
+    /// under load); the real shell-out probe stays live for production and is
+    /// covered by the env-gated real-browser tests.
+    #[cfg(test)]
+    fn with_browser_program_and_version(
+        browser_program: impl Into<PathBuf>,
+        version: browser_detection::ChromiumVersion,
+    ) -> Self {
+        Self {
+            browser_program: Some(browser_program.into()),
+            version_probe_override: Some(version),
         }
     }
 }
@@ -283,7 +311,11 @@ impl BrowserLaunchAdapter {
     /// and on every launch so the diagnostic reflects fresh host state
     /// (environment can change between capability listing and launch).
     fn probe(&self) -> Result<ChromiumProbeOutcome, BrowserUnavailabilityReason> {
-        probe_chromium(self.browser_program.as_deref())
+        #[cfg(test)]
+        let version_override = self.version_probe_override;
+        #[cfg(not(test))]
+        let version_override = None;
+        probe_chromium(self.browser_program.as_deref(), version_override)
     }
 
     fn browser_host_availability_diagnostic(&self) -> RuntimeAdapterDiagnostic {
@@ -661,6 +693,7 @@ mod browser_detection {
     /// is bounded and does not produce runtime evidence.
     pub(super) fn probe_chromium(
         configured: Option<&Path>,
+        version_override: Option<ChromiumVersion>,
     ) -> Result<ChromiumProbeOutcome, BrowserUnavailabilityReason> {
         // 1. Resolve a binary candidate against the configured/env/PATH/platform
         //    order documented in the descriptor limitation list.
@@ -683,8 +716,13 @@ mod browser_detection {
             });
         };
 
-        // 2. Bounded version probe.
-        let version = probe_version(&program).unwrap_or(ChromiumVersion::Unknown);
+        // 2. Bounded version probe. Tests may inject a deterministic version
+        //    to exercise the mismatch comparison below without spawning the
+        //    real `<binary> --version` shell-out (which can race/time out
+        //    under concurrent load); production always passes `None` and thus
+        //    shells out to the resolved binary.
+        let version = version_override
+            .unwrap_or_else(|| probe_version(&program).unwrap_or(ChromiumVersion::Unknown));
         if let Some(major) = version.major()
             && major < CHROMIUM_MIN_SUPPORTED_MAJOR
         {
@@ -2115,18 +2153,39 @@ exit 0
         let root = temp_dir("browser-version-too-old");
         write_browser_smoke_fixture(&root);
         let artifact_root = root.join("runtime-artifacts");
+        // Inject a DETERMINISTIC "too old" Chromium version (major 50 < the
+        // supported floor of 100) directly into the probe, so this unit test
+        // exercises the version-mismatch comparison logic WITHOUT spawning a
+        // real `<binary> --version` shell-out. The prior shell-out variant was
+        // intermittently flaky: under full-CI concurrency the `--version` spawn
+        // could race/time out against the bounded probe timeout, returning an
+        // Unknown version that PASSES the floor and falls through to a real
+        // capture launch — surfacing `CaptureFailed` instead of the expected
+        // `ChromiumVersionMismatch`. The fake browser's own `--version` here
+        // prints a NEWER (passing) version on purpose: if this test ever
+        // regressed to the real shell-out it would detect "124.*" and fail,
+        // proving the injected value — not a spawned process — drives the
+        // outcome. The real shell-out probe stays live for production and is
+        // covered by the env-gated real-browser tests.
         let fake_browser = fake_browser(
             &root,
             r#"#!/bin/sh
 set -eu
 if [ "$1" = "--version" ]; then
-  printf 'Chromium 50.0.2661.102 unknown\n'
+  printf 'Chromium 124.0.6367.118 chromium-headless-shell\n'
   exit 0
 fi
 exit 0
 "#,
         );
-        let adapter = BrowserLaunchAdapter::with_browser_program(fake_browser);
+        let adapter = BrowserLaunchAdapter::with_browser_program_and_version(
+            fake_browser,
+            super::browser_detection::ChromiumVersion::Parsed {
+                major: 50,
+                minor: 0,
+                patch: 2661,
+            },
+        );
 
         let error = adapter
             .smoke_validate(&RuntimeRequest::new(&root).with_artifact_root(&artifact_root))
